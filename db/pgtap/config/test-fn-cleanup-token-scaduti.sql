@@ -39,6 +39,22 @@ SELECT plan(8);
 -- 0. Setup: recupero un auth_user_id valido e creo token di test
 -- ============================================================
 
+-- 🔴 PULIZIA D'INGRESSO, aggiunta il 2026-08-18.
+--   `fn_cleanup_token_scaduti` cancella su TUTTA la tabella e ritorna il totale
+--   cancellato: e' una funzione di manutenzione, non sa cosa sia una fixture.
+--   Il test 6 asseriva `= 2` contando sul fatto che in tabella ci fossero solo
+--   i suoi due token — e da quando in sviluppo ce ne sono altri 13 scaduti
+--   usciva `have: 15, want: 2`.
+--
+--   ⚠️ Non si aggiusta il numero: sarebbe una fotografia dei dati di sviluppo,
+--   e domani ne basta uno in piu'. Si rende deterministico l'universo su cui la
+--   funzione lavora.
+--
+--   ⭐ Sicuro perche' questo file e' TRANSAZIONALE: si chiude in ROLLBACK e i
+--   token veri tornano tutti. La stessa riga in un test non transazionale
+--   sarebbe un disastro.
+DELETE FROM config.token_monouso;
+
 CREATE TEMP TABLE tmp_token_ctx AS
 SELECT rau.auth_user_id AS user_id
 FROM anagrafiche.risorse_umane_auth_user rau

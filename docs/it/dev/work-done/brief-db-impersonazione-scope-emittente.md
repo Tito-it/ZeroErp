@@ -20,6 +20,16 @@
 > fine compilazione (§9.4). Richiede prima di decidere quali aree esigono
 > davvero un emittente — lavoro a sé, non un residuo di questo.
 >
+> ⚠️ **Aggiornato il 2026-08-18 — il ripiego che copriva quella coda non c'è
+> più.** L'avviso di topbar (icona occhio, «stai vedendo tutti gli emittenti»)
+> è stato **rimosso** su decisione di Tid: il dubbio da cui era nato — *«e se
+> sto guardando più emittenti?»* — nel frattempo ha una risposta vera invece
+> di un avviso, ed è il cantiere
+> [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+> (cancello sulle liste non certificate, etichette di perimetro su contatori e
+> ricerca, colonna emittente sulle liste certificate). La coda 🟠 **resta
+> aperta, e ora è scoperta**: dettaglio e conseguenze nel §9.4.
+>
 > ---
 >
 > 🟢 **Stato precedente: ACCOLTO — in sviluppo lato DB (2026-08-04).** L'impianto regge: la
@@ -621,6 +631,11 @@ a «Tutti» i due divergono), `modalita_globale`, `puo_scegliere` (falso per
 l'operatore: il suo emittente è un permesso, non una scelta) e
 `deve_scegliere`.
 
+> ⚠️ **Dal 2026-08-18 `modalita_globale` non ha più nessun consumatore nel
+> frontend** (§9.4): il campo **resta** nel contratto di `/me/` e nei test del
+> servizio, ma chi lo leggeva — il computed `isModalitaGlobale` — è caduto
+> insieme all'icona di topbar che era la sua unica destinazione.
+
 > 💡 **«Non ha mai scelto» e «ha scelto Tutti» sono due stati diversi che dal
 > claim si vedono uguali** — assente in entrambi. A distinguerli è la
 > preferenza salvata. Senza questa distinzione il dialog bloccante
@@ -637,6 +652,40 @@ l'operatore: il suo emittente è un permesso, non una scelta) e
    `*_EMITTENTE_NON_RISOLTO`, i cui testi riscritti (§8.6) rimandano alla combo
    — la catena funziona, ma l'utente lo scopre a fine compilazione. Spegnere i
    verbi richiede prima decidere quali aree esigono davvero un emittente.
+
+   > ⚠️ **Aggiornato il 2026-08-18 — il ripiego è stato tolto, la coda no.**
+   > Rimossi, su decisione di Tid: l'icona occhio in topbar col tooltip *«Stai
+   > vedendo tutti gli emittenti: per creare documenti seleziona un emittente
+   > dalla barra in alto»*, il computed `isModalitaGlobale` (di quell'icona era
+   > l'**unico** consumatore in tutto il frontend) e la chiave
+   > `core.emittente_attivo.globale_sola_lettura`, it **e** en. Il campo
+   > `modalita_globale` di `/me/` resta: è contratto, §9.3.
+   >
+   > **Perché.** Era la risposta che ci eravamo dati al dubbio «e se guardo più
+   > emittenti?», e oggi quel dubbio ha una risposta vera — il cancello di
+   > **lettura** sulle liste non certificate, le etichette di perimetro, la
+   > colonna emittente: cantiere
+   > [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
+   > E come preavviso di **creazione** valeva comunque poco: un tooltip su
+   > un'icona senza testo parla solo a chi ci passa sopra il mouse, cioè a chi
+   > il dubbio ce l'aveva già.
+   >
+   > **Cosa resta della catena**, che è la parte da sapere:
+   >
+   > | Momento | Chi parla, oggi |
+   > | --- | --- |
+   > | quando si **sceglie** «Tutti gli emittenti» | il dialog di conferma, a lettere: *«vedrai i dati di tutti, ma non potrai creare documenti finché non ne selezioni uno»* |
+   > | mentre si **guarda** | la combo dice «Tutti gli emittenti»; etichette su KPI e ricerca; il pannello sulle liste non certificate — ⚠️ **nessuno dei tre parla di creazione** |
+   > | quando si **salva** | il rifiuto del DB (`*_EMITTENTE_NON_RISOLTO`), coi testi che rimandano alla combo |
+   >
+   > ⛔ **Nessuna protezione è cambiata**: la protezione è del DB, e non si è
+   > mossa. È caduto un promemoria, non un divieto. Ma la finestra centrale —
+   > *«ho scelto Tutti un'ora fa e non ci penso più»* — ora è muta sul punto, e
+   > si richiude solo facendo il lavoro vero: spegnere i verbi dove un
+   > emittente serve davvero. Se un giorno servisse comunque un segnale
+   > permanente, la forma giusta non è un'icona da hover ma un **chip di
+   > testo** accanto alla combo: si legge senza mouse e non finge di essere un
+   > divieto.
 2. 🟡 **Lo storico degli switch non esiste ancora.** Verificato:
    `SELECT to_regclass('storico.user_emittente_attivo')` → `NULL`. Il job
    pgagent gira alle 21:00 (§8.11), quindi **fino a quel momento i cambi di

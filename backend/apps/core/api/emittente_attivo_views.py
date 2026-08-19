@@ -154,8 +154,22 @@ class EmittenteAttivoView(DomainAPIView):
                 refresh[JWT_CLAIM_EMITTENTE_ATTIVO_ID] = int(attivo)
 
             return {
+                # ⚠️ `con_perimetro=False`, non «senza user»: la chiave
+                # `perimetro_multi_emittente` resta assente qui, e non e' una
+                # dimenticanza. Il perimetro si risolve dalla GUC
+                # `app.current_emittente_id`, che in QUESTA richiesta porta
+                # ancora l'emittente PRECEDENTE — il claim nuovo esiste solo
+                # nel token che stiamo restituendo. Calcolarla qui
+                # descriverebbe la sessione che sta per finire.
+                # Il client sostituisce i token e riparte dal boot: il valore
+                # giusto arriva da `/me/` un istante dopo.
+                # `user` invece serve, e non dipende dalla GUC: `puo_scegliere`
+                # si decide sul bypass SUPER_ADMIN, che e' una proprieta' di
+                # chi chiama e non della sessione — senza, questa risposta
+                # direbbe una cosa diversa da `/me/` sullo stesso utente.
                 "emittente_attivo": EmittenteAttivoService().descrivi(
                     request.user.id, attivo,
+                    user=request.user, con_perimetro=False,
                 ),
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),

@@ -1,0 +1,404 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P-6 / 5d — i registri si intestano, e il secondo emittente ha i suoi
+#   (brief-db-note-credito-prerequisiti-be-fe §12 · B3; decisioni D-P6-2 e
+#    D-P6-3; il vincolo «un solo changeSet» e' C-7).
+#
+# ── LO STATO DI PARTENZA, MISURATO IL 2026-08-19 ───────────────────────
+#   registri_fatturazione            emittente  utility  serie_default
+#     3  Front-office                 NULL       NULL     R2
+#     4  Back-office                  NULL       NULL     R1
+#     5  NC                           NULL       NULL     (vuota)
+#
+#   tipi_doc_fiscale_registri (4 righe, serie tutte NULL)
+#     FRONTOFFICE + FATTURA       -> 3
+#     BACKOFFICE  + FATTURA       -> 4
+#     FRONTOFFICE + NOTA_CREDITO  -> 5
+#     BACKOFFICE  + NOTA_CREDITO  -> 5
+#
+#   emittenti attivi: sr 72 (42 BA mappati, e' il default globale) e sr 159
+#   (EMI-TEST, 1 BA). Due aziende che emettono, tre registri che non sanno di
+#   chi sono: e' il difetto C-4 — non collisioni di numero, che l'indice
+#   univoco impedisce, ma BUCHI NELLA SERIE, che nessun vincolo puo' vedere.
+#
+# ── ⛔ PERCHE' UN SOLO CHANGESET (C-7) ─────────────────────────────────
+#   Fra l'intestazione dei registri esistenti e l'inserimento delle mappature
+#   nuove esiste una finestra in cui l'emittente 159 NON PUO' NUMERARE: i
+#   registri 3/4/5 sono diventati di 72 (quindi esclusi dal WHERE di
+#   fn_get_registro_id) e i suoi non sono ancora mappati -> E_CONFIG_MANCANTE
+#   su ogni sua fattura. Spezzarlo in due file aprirebbe quella finestra sul
+#   database, non solo sulla carta.
+#
+# ── ⭐ NESSUN ID NUDO: TUTTO PER CHIAVE NATURALE ───────────────────────
+#   Gli id 3/4/5 e 72/159 sono misurati, ma non si scrivono: i registri si
+#   risolvono per `codice`, l'emittente principale per il flag `is_default`
+#   (che e' esattamente cio' che D-P6-3 dichiara — «72 e' anche il gestore
+#   globale che copre i BA non mappati»), il secondo per `emittenti_fiscali.codice`.
+#   ⚠️ E ogni risoluzione ha il suo guard: se una non trova nulla il changeSet
+#   si ferma con un errore parlante invece di scrivere su un bersaglio
+#   sbagliato. Uno zero qui non e' un dato, e' un difetto.
+#
+# ── ⭐ I REGISTRI NUOVI SI CLONANO, NON SI RIDIGITANO ──────────────────
+#   INSERT ... SELECT dai tre esistenti: `serie_default`, `reset_policy`,
+#   `utility_id`, `attivo` arrivano dalla riga sorgente. ⚠️ `reset_policy` in
+#   particolare governa QUANDO il progressivo riparte: ridigitarla a mano e'
+#   il modo piu' facile di dare al secondo emittente una numerazione che si
+#   comporta diversamente senza che nessuno se ne accorga.
+#   La provenienza resta scritta in `meta->>'clonato_da'`, ed e' anche la
+#   chiave con cui si agganciano le mappature nuove.
+#
+#   D-P6-2: le SERIE si ripetono (R2 front-office, R1 back-office, vuota NC) ed
+#   e' voluto — la serie significa CANALE, non azienda. L'azienda si legge
+#   dalla P.IVA sul documento e dalla colonna emittente nelle liste.
+#   ⚠️ Il `codice` invece e' UNIQUE — e stretto: **varchar(16)**, misurato.
+#   La prima stesura vi concatenava il codice dell'emittente ('Front-office
+#   EMI-TEST' = 21 caratteri) e il migrate e' morto con «il valore e' troppo
+#   lungo per il tipo character varying(16)»: un errore tecnico che non dice
+#   quale valore ne' quale colonna. Ora il suffisso e' l'ID DEL SOGGETTO_RUOLO
+#   ('-159') e il codice sorgente si tronca con left() a quanto resta, cosi'
+#   il risultato STA NEI 16 PER COSTRUZIONE:
+#       Front-office -> Front-office-159 (16)
+#       Back-office  -> Back-office-159  (15)
+#       NC           -> NC-159           (6)
+#   ⭐ Il codice dell'emittente non si usa: 'EMI-TEST' da solo mangia 9 dei 16
+#   e lascerebbe 'Front-o-EMI-TEST', che non si legge. La descrizione — che ha
+#   120 caratteri — resta il posto dove il nome esteso ci sta.
+#   ⚠️ E un guard precede l'INSERT: il troncamento e' deterministico ma non
+#   iniettivo, quindi si verifica prima che nessun codice derivato collida.
+#
+# ── ⚠️ DOPO QUESTO CHANGESET NON ESISTE PIU' UN REGISTRO GENERICO ──────
+#   Oggi i tre registri hanno emittente NULL e fanno da fallback per chiunque
+#   (livello 4 della gerarchia di fn_get_registro_id). Dopo, ogni registro e'
+#   intestato: un TERZO emittente che comparisse non risolverebbe nulla e
+#   prenderebbe E_CONFIG_MANCANTE alla prima fattura.
+#   ⭐ E' fail-closed e va bene cosi': meglio un errore parlante che numerare
+#   sul registro di un'altra azienda. Ma va saputo, perche' e' il momento in
+#   cui «aggiungere un emittente» smette di essere una riga in anagrafica e
+#   diventa anche tre registri e le loro mappature.
+#
+# ── 🟢 NESSUN RISCHIO SUI DOCUMENTI ESISTENTI ──────────────────────────
+#   Le 6 fatture numerate stanno sul registro 3, che diventa di 72 — cioe'
+#   dell'emittente che gia' portavano (C-5). L'intestazione non riscrive la
+#   storia, la DICHIARA, e la serie 1->6 continua senza salti.
+#   ⛔ Nessun backfill della numerazione: deciso da Tid, non si fa.
+#
+# Dipendenze: vendite.registri_fatturazione, vendite.tipi_doc_fiscale_registri
+#   (UNIQUE su tipo_doc + natura + REGISTRO — verificato: e' cio' che permette
+#   alla stessa coppia di mappare piu' registri), anagrafiche.emittenti_fiscali,
+#   anagrafiche.emittenti_fiscali_billing_account.
+# Verifica: db/pgtap/vendite/test-registri-per-emittente-v1.sql (5e).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260819-05-intestazione-registri-e-registri-secondo-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260819-05-intestazione-registri-e-registri-secondo-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        P-6/5d: i tre registri esistenti si intestano all'emittente di default e il secondo
+        emittente riceve i suoi tre, clonati dai primi (serie_default e reset_policy inclusi) con
+        le mappature (tipo_doc, natura) corrispondenti. UN SOLO changeSet perche' fra
+        l'intestazione e le mappature esiste una finestra in cui il secondo emittente non puo'
+        numerare. Nessun id nudo: registri per codice, emittenti per is_default e per codice,
+        ogni risoluzione con il suo guard.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: emittente_soggetto_ruolo_id
+            - tableExists:
+                schemaName: vendite
+                tableName: tipi_doc_fiscale_registri
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $do$
+              DECLARE
+                  v_ef_principale anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ef_secondo    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_cod_secondo   anagrafiche.emittenti_fiscali.codice%TYPE;
+                  -- ⚠️ `codice` di registri_fatturazione e' varchar(16) —
+                  --    misurato, non supposto. Il suffisso e' l'id del
+                  --    soggetto_ruolo e non il codice dell'emittente: 'EMI-TEST'
+                  --    da solo mangia 9 dei 16 caratteri e lascerebbe
+                  --    'Front-o-EMI-TEST', che non si legge.
+                  v_suffisso      text;
+                  v_n             integer;
+              BEGIN
+                  -- ------------------------------------------------------
+                  -- 0) Le risoluzioni, per chiave naturale e con guard.
+                  --    ⚠️ Uno zero qui non e' un dato: e' il segno che il
+                  --    bersaglio non e' quello che il piano credeva, e
+                  --    proseguire scriverebbe su un registro sbagliato.
+                  -- ------------------------------------------------------
+                  -- L'emittente principale e' quello che oggi fa da DEFAULT
+                  -- globale: e' la definizione di D-P6-3, non una scelta fra
+                  -- i due. Copre i billing account non mappati esplicitamente,
+                  -- quindi e' lui che le 6 fatture gia' numerate portano.
+                  SELECT m.emittente_soggetto_ruolo_id
+                    INTO v_ef_principale
+                    FROM anagrafiche.emittenti_fiscali_billing_account m
+                   WHERE m.is_default IS TRUE;
+
+                  -- ⚠️ ASSENTE non vuol dire INCOERENTE. Su un database
+                  --    RICOSTRUITO DA ZERO (la CI) gli emittenti non esistono:
+                  --    non sono seedati da nessun changeSet, li crea
+                  --    l'esercizio. I registri invece SI' (20260127-57 e
+                  --    20260818-45). Quindi la CI arriva qui con tre registri
+                  --    e nessun emittente — uno stato legittimo, in cui non
+                  --    c'e' NIENTE DA INTESTARE.
+                  --    ⛔ Sollevare qui faceva fallire il migrate da zero, ed
+                  --    e' il difetto che questo blocco ha avuto per primo.
+                  IF v_ef_principale IS NULL THEN
+                      RAISE NOTICE '20260819-05: nessun emittente di default — database non ancora configurato, changeSet senza effetto.';
+                      RETURN;
+                  END IF;
+
+                  -- Il secondo: l'unico altro emittente ATTIVO. Si prende cosi'
+                  -- e non per codice perche' il codice del principale e'
+                  -- generato (PGTAP-EF-<timestamp>) e scriverlo qui legherebbe
+                  -- il changeSet a una stringa nata a caso.
+                  -- ⚠️ Si CONTA prima e si legge dopo. `SELECT ... INTO`
+                  --    non e' STRICT: con piu' righe prende la prima e mette
+                  --    ROW_COUNT a 1 lo stesso, quindi un GET DIAGNOSTICS qui
+                  --    NON distinguerebbe «uno» da «tre». Il caso «sono
+                  --    diventati di piu'» sarebbe passato inosservato proprio
+                  --    dove il piano va ripensato.
+                  SELECT count(*)
+                    INTO v_n
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.attivo IS TRUE
+                     AND ef.soggetto_ruolo_id IS DISTINCT FROM v_ef_principale;
+
+                  -- ⭐ ZERO e PIU' DI UNO sono due cose diverse, e vanno
+                  --    trattate diversamente.
+                  IF v_n = 0 THEN
+                      -- Installazione a emittente SINGOLO: legittima. Non c'e'
+                      --   nessun secondo registro da creare, e l'intestazione
+                      --   qui sopra e' gia' tutto il lavoro utile.
+                      RAISE NOTICE '20260819-05: un solo emittente attivo — registri intestati, nessun registro secondario da creare.';
+                      RETURN;
+                  END IF;
+
+                  IF v_n > 1 THEN
+                      -- ⛔ Il piano e' stato scritto su DUE emittenti. Se ora
+                      --    sono di piu', va ripensato invece che eseguito a
+                      --    meta': «quale dei tre riceve i registri?» non ha
+                      --    una risposta che possa darsi un changeSet.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','20260819-05','E_CONFIG_MANCANTE',
+                          jsonb_build_object('passo','risoluzione secondo emittente',
+                                             'attesi', 1, 'trovati', v_n),
+                          NULL::uuid,
+                          concat('attesi 1 emittente attivo oltre al default, trovati ', v_n));
+                  END IF;
+
+                  SELECT ef.soggetto_ruolo_id, ef.codice
+                    INTO v_ef_secondo, v_cod_secondo
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.attivo IS TRUE
+                     AND ef.soggetto_ruolo_id IS DISTINCT FROM v_ef_principale;
+
+                  -- ------------------------------------------------------
+                  -- 1) INTESTAZIONE dei tre registri esistenti.
+                  --    Per `codice`, non per id. Solo quelli ancora senza
+                  --    emittente: se qualcuno li ha gia' intestati, non si
+                  --    sovrascrive la sua decisione.
+                  -- ------------------------------------------------------
+                  SELECT count(*) INTO v_n
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.codice IN ('Front-office', 'Back-office', 'NC');
+
+                  IF v_n <> 3 THEN
+                      RAISE NOTICE '20260819-05: attesi 3 registri (Front-office, Back-office, NC), trovati % — changeSet senza effetto.', v_n;
+                      RETURN;
+                  END IF;
+
+                  -- ⚠️ Si intestano solo quelli ancora SENZA emittente: se
+                  --    qualcuno li ha gia' intestati non si sovrascrive la sua
+                  --    decisione, e il blocco resta ri-eseguibile.
+                  UPDATE vendite.registri_fatturazione r
+                     SET emittente_soggetto_ruolo_id = v_ef_principale
+                   WHERE r.codice IN ('Front-office', 'Back-office', 'NC')
+                     AND r.emittente_soggetto_ruolo_id IS NULL;
+
+                  -- ⭐ L'invariante non e' «ne ho toccati tre» ma «nessuno dei
+                  --    tre e' rimasto senza emittente»: il primo e' falso a
+                  --    ogni ri-esecuzione, il secondo e' quello che conta.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.codice IN ('Front-office', 'Back-office', 'NC')
+                     AND r.emittente_soggetto_ruolo_id IS NULL;
+
+                  IF v_n <> 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','20260819-05','E_CONFIG_MANCANTE',
+                          jsonb_build_object('passo','intestazione registri',
+                                             'rimasti_senza_emittente', v_n),
+                          NULL::uuid,
+                          concat('rimasti ', v_n, ' registri senza emittente dopo l intestazione'));
+                  END IF;
+
+                  -- ------------------------------------------------------
+                  -- 1-bis) Il suffisso dei codici nuovi, e la verifica che
+                  --    stiano nei 16 caratteri PRIMA di provarci.
+                  --    ⚠️ Senza `left()` l'INSERT muore con «il valore e'
+                  --    troppo lungo per il tipo character varying(16)», che
+                  --    non dice quale valore ne' quale colonna: un errore
+                  --    tecnico al posto di un errore di dominio.
+                  -- ------------------------------------------------------
+                  v_suffisso := '-' || v_ef_secondo::text;
+
+                  -- ⭐ GIA' FATTO non e' COLLISIONE. Se i registri derivati
+                  --    esistono e sono gia' del secondo emittente con la loro
+                  --    provenienza, il lavoro c'e' stato: si esce in silenzio
+                  --    invece di accusare una collisione che non c'e'.
+                  SELECT count(*) INTO v_n
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.emittente_soggetto_ruolo_id = v_ef_secondo
+                     AND r.meta ? 'clonato_da';
+
+                  IF v_n = 3 THEN
+                      RAISE NOTICE '20260819-05: i tre registri di % esistono gia (clonati) — changeSet gia applicato.', v_cod_secondo;
+                      RETURN;
+                  END IF;
+
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.registri_fatturazione r
+                       WHERE r.codice IN ('Front-office', 'Back-office', 'NC')
+                         AND left(r.codice, 16 - length(v_suffisso)) || v_suffisso
+                             IN (SELECT r2.codice FROM vendite.registri_fatturazione r2)
+                  ) THEN
+                      -- Il troncamento e' deterministico ma non iniettivo: se
+                      -- due codici sorgente condividessero i primi caratteri,
+                      -- o se un registro con quel codice esistesse gia', si
+                      -- finirebbe contro uq del codice con un messaggio muto.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','20260819-05','E_CONFIG_MANCANTE',
+                          jsonb_build_object('passo','codici dei registri nuovi',
+                                             'suffisso', v_suffisso),
+                          NULL::uuid,
+                          concat('un registro con il codice derivato esiste gia (suffisso ', v_suffisso, ')'));
+                  END IF;
+
+                  -- ------------------------------------------------------
+                  -- 2) I TRE REGISTRI DEL SECONDO EMITTENTE, clonati.
+                  --    ⭐ serie_default, reset_policy, utility_id e attivo
+                  --    arrivano dalla riga sorgente: reset_policy governa
+                  --    quando il progressivo riparte, e ridigitarla darebbe al
+                  --    secondo emittente una numerazione che si comporta
+                  --    diversamente senza che si veda.
+                  --    D-P6-2: le SERIE si ripetono (canale, non azienda);
+                  --    il `codice` no, e' UNIQUE -> ci si aggiunge l'emittente.
+                  -- ------------------------------------------------------
+                  INSERT INTO vendite.registri_fatturazione
+                         (codice, descrizione, serie_default, reset_policy,
+                          emittente_soggetto_ruolo_id, utility_id, attivo, meta)
+                  SELECT left(r.codice, 16 - length(v_suffisso)) || v_suffisso,
+                         left(COALESCE(r.descrizione, r.codice) || ' - ' || v_cod_secondo, 120),
+                         r.serie_default,
+                         r.reset_policy,
+                         v_ef_secondo,
+                         r.utility_id,
+                         r.attivo,
+                         COALESCE(r.meta, '{}'::jsonb)
+                           || jsonb_build_object('clonato_da', r.id,
+                                                 'origine', '20260819-05 (P-6/5d)')
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.codice IN ('Front-office', 'Back-office', 'NC');
+
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  IF v_n <> 3 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','20260819-05','E_CONFIG_MANCANTE',
+                          jsonb_build_object('passo','clonazione registri',
+                                             'attesi', 3, 'creati', v_n),
+                          NULL::uuid, concat('attesi 3 registri nuovi, creati ', v_n));
+                  END IF;
+
+                  -- ------------------------------------------------------
+                  -- 3) LE MAPPATURE, ricalcate su quelle esistenti.
+                  --    ⚠️ Si copiano invece di elencarle: cosi' ogni coppia
+                  --    (tipo_doc, natura) in uso oggi arriva anche al secondo
+                  --    emittente, comprese quelle che il piano non aveva
+                  --    contato. `serie` si copia com'e': NULL significa «vale
+                  --    il serie_default del registro», e COALESCE-arla qui
+                  --    scriverebbe il default dentro fatture.serie.
+                  --    ⚠️ La UNIQUE e' su (tipo_doc, natura, REGISTRO): la
+                  --    stessa coppia PUO' mappare piu' registri, ed e' cio'
+                  --    che rende possibile questo disegno.
+                  --    L'INSERT ... SELECT legge la snapshot di inizio
+                  --    statement, quindi non ripesca le righe che sta
+                  --    scrivendo; il filtro sul registro sorgente lo dice
+                  --    comunque, invece di lasciarlo dedurre.
+                  -- ------------------------------------------------------
+                  INSERT INTO vendite.tipi_doc_fiscale_registri
+                         (tipo_doc_fiscale_id, natura_doc_id, registro_id, serie)
+                  SELECT m.tipo_doc_fiscale_id,
+                         m.natura_doc_id,
+                         n.id,
+                         m.serie
+                    FROM vendite.tipi_doc_fiscale_registri m
+                    JOIN vendite.registri_fatturazione o ON o.id = m.registro_id
+                    JOIN vendite.registri_fatturazione n
+                      ON (n.meta ->> 'clonato_da')::bigint = o.id
+                     AND n.emittente_soggetto_ruolo_id = v_ef_secondo
+                   WHERE o.codice IN ('Front-office', 'Back-office', 'NC');
+
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+                  IF v_n < 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','20260819-05','E_CONFIG_MANCANTE',
+                          jsonb_build_object('passo','mappature',
+                                             'creati', v_n),
+                          NULL::uuid,
+                          'nessuna mappatura creata per il secondo emittente: numererebbe nel vuoto');
+                  END IF;
+
+                  RAISE NOTICE 'P-6/5d: registri intestati a sr %, tre registri e % mappature creati per sr % (%)',
+                      v_ef_principale, v_n, v_ef_secondo, v_cod_secondo;
+              END
+              $do$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si toglie prima cio' che referenzia, poi cio' che e'
+              -- referenziato; l'intestazione torna a NULL per ultima.
+              -- ⚠️ `??` e non `?`: qui siamo FUORI da un dollar-quote, e
+              --    Liquibase leggerebbe un `?` come segnaposto di bind. Nel
+              --    blocco DO sopra `?` va bene, perche' li' e' dollar-quotato.
+              DELETE FROM vendite.tipi_doc_fiscale_registri m
+               USING vendite.registri_fatturazione r
+               WHERE r.id = m.registro_id
+                 AND r.meta ?? 'clonato_da'
+                 AND r.meta ->> 'origine' = '20260819-05 (P-6/5d)';
+
+              DELETE FROM vendite.registri_fatturazione r
+               WHERE r.meta ?? 'clonato_da'
+                 AND r.meta ->> 'origine' = '20260819-05 (P-6/5d)';
+
+              UPDATE vendite.registri_fatturazione r
+                 SET emittente_soggetto_ruolo_id = NULL
+               WHERE r.codice IN ('Front-office', 'Back-office', 'NC');

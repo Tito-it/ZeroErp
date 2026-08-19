@@ -29,7 +29,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
 
-from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, db_error_code
+from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, db_diag, db_error_code
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -919,7 +919,19 @@ def translate_db_errors(
         # dichiari vince sul `fallback_code` — ma letto da una fonte che non
         # dipende da come e' scritto il call site nel corpo della funzione.
         code = db_error_code(exc, text=exc_text) or fallback_code
+        # ⭐ L'HINT del database e' l'AZIONE SUGGERITA che il team DB scrive a
+        # catalogo per ogni codice («se il documento non e' ancora numerato, la
+        # strada e' il reset del lotto…»): la parte che dice all'operatore cosa
+        # fare. Fino al 2026-08-18 si perdeva qui — sopravviveva solo annegata
+        # nel testo grezzo di `detail` — e un dominio che volesse darla
+        # all'utente doveva RISCRIVERLA in Python, cioe' duplicare il catalogo.
+        # ⚠️ `ErrorTranslator._from_database_error` la legge gia' dalla diag, ma
+        # quel ramo vale solo per un DatabaseError che arriva NUDO al
+        # middleware: appena un service traduce — cioe' sempre, qui — non ci
+        # passa. Ora il campo viaggia strutturato fino all'envelope.
+        diag = db_diag(exc)
         ErrorManager.raise_error(
+            hint=getattr(diag, "message_hint", None),
             code=code,
             message=exc_text.split("\n", maxsplit=1)[0].strip()
             or fallback_message,

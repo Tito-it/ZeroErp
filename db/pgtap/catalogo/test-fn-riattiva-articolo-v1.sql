@@ -48,18 +48,46 @@ SELECT plan(6);
 -- =========================================================
 -- Setup: 2 articoli rilevanti
 -- =========================================================
-CREATE TEMP TABLE _t_ctx AS
-SELECT
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE')     AS art_a,
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS art_b;
-
-DO $pgtap$
+-- 🔴 ARTICOLI PROPRI invece di ART_TEST_BASE / ART_TEST_FALLBACK — 2026-08-18.
+--   Il file usava due articoli CONDIVISI del seed. `catalogo.articoli` ha oggi
+--   **28 tabelle figlie guardate** da `prevent_deactivate_if_children`, e su un
+--   articolo condiviso e di lunga vita quelle righe si accumulano: la
+--   disattivazione del padre (passo centrale di questo test) era diventata
+--   impossibile, e il file moriva.
+--
+--   ⚠️ Il commento qui sotto diceva «i figli noti per ART_TEST_BASE:
+--   articoli_uom_operativa». Erano noti quando e' stato scritto. Un test che si
+--   appoggia all'inventario dei figli di un oggetto condiviso ha una scadenza
+--   che nessuno ha fissato.
+--
+--   ⭐ Il rimedio e' gia' in casa: sei test di questa cartella creano il proprio
+--   articolo clonando i riferimenti da uno esistente, e sono tutti verdi. Qui
+--   si fa lo stesso. Il file e' transazionale: gli articoli spariscono al
+--   ROLLBACK, e con loro ogni figlio.
+CREATE OR REPLACE FUNCTION pg_temp.mk_articolo(p_codice text)
+RETURNS uuid AS $mk$
+DECLARE v_id uuid;
 BEGIN
-    IF (SELECT art_a IS NULL OR art_b IS NULL FROM _t_ctx) THEN
-        RAISE EXCEPTION 'Seed articoli ART_TEST_BASE / ART_TEST_FALLBACK mancanti.';
-    END IF;
-END
-$pgtap$;
+    -- I riferimenti si CLONANO da un articolo esistente: cosi' la fixture non
+    -- deve conoscere il dominio (tipo voce, gruppo, spesa, iva) ne' inseguirlo
+    -- quando cambia. ORDER BY id: deterministico, non «il primo che capita».
+    INSERT INTO catalogo.articoli (codice, descrizione, uom_id, tipo_voce_id,
+                                   gruppo_voce_id, spesa_id, iva_id)
+    SELECT p_codice, 'pgTAP riattiva articolo',
+           a.uom_id, a.tipo_voce_id, a.gruppo_voce_id, a.spesa_id, a.iva_id
+      FROM catalogo.articoli a ORDER BY a.id LIMIT 1
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END $mk$ LANGUAGE plpgsql;
+
+CREATE TEMP TABLE _t_ctx AS
+SELECT pg_temp.mk_articolo('PGTAP_RIATT_A') AS art_a,
+       pg_temp.mk_articolo('PGTAP_RIATT_B') AS art_b;
+
+-- ⭐ Nessun figlio da creare a mano: l'articolo nasce gia' con la propria
+--   `articoli_uom_operativa` di base (la crea un trigger). E' esattamente il
+--   figlio attivo che il test 1 pretende — uno solo, e sappiamo quale, che e'
+--   il punto di tutta questa correzione.
 
 -- =========================================================
 -- 1) Disattivazione bloccata da figlio attivo

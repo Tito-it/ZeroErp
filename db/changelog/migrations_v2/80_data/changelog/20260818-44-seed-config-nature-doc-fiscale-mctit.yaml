@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N1 — il MIRROR del vocabolario delle nature documento
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md D-NC-3
+#
+# Tre voci: FATTURA / NOTA_CREDITO / NOTA_DEBITO. Il codice italiano
+# (TD01/TD04/TD05) vive in `meta.sdi_tipo_documento` come parametro di PROFILO
+# NAZIONALE, non come colonna: il modello si dichiara «senza vincoli di
+# specifico ordinamento nazionale».
+#
+# ⚠️ QUESTE TRE RIGHE ESISTONO GIA' quando questo loader gira: le inserisce il
+#    changeSet che crea la tabella (20260818-24), con `ON CONFLICT DO NOTHING`.
+#    Non e' una doppia sorgente di verita' — e' il contrario:
+#
+#      * `80_data` gira DOPO tutto `00_schema`, e la colonna `natura_doc_id
+#        NOT NULL DEFAULT FATTURA` (20260818-26) ha bisogno della riga FATTURA
+#        **durante** l'ALTER TABLE. Senza il bootstrap, l'apply fallirebbe su
+#        ogni database che ha gia' delle fatture;
+#      * il bootstrap **non aggiorna mai**: inserisce se manca e tace. Questo
+#        mirror ri-upserta per PK e riallinea, quindi la SEDE dei valori e'
+#        QUESTO CSV, ed e' qui che si cambiano descrizioni, ordine e `meta`.
+#
+#    E' il pattern gia' usato per `config.esiti_flussi_pratiche`
+#    (20260701-01 + mirror 20260701-04).
+#
+# ⚠️ Aggiungere una natura in futuro costa una riga di questo CSV. NON serve un
+#    loader nuovo, e non va fatto con un `INSERT` a parte: `loadUpdateData`
+#    e' `runOnChange` apposta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260818-44-seed-config-nature-doc-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260818-44-seed-config-nature-doc-fiscale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror CSV di config.nature_doc_fiscale (FATTURA / NOTA_CREDITO /
+        NOTA_DEBITO, con il TipoDocumento FatturaPA in meta). Le tre righe sono
+        gia' bootstrappate da 20260818-24 perche' la colonna natura_doc_id
+        NOT NULL DEFAULT FATTURA ne ha bisogno durante l'ALTER TABLE, e 80_data
+        gira dopo 00_schema: qui si ri-upsertano per PK, ed e' questo CSV la
+        sede dei valori.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: nature_doc_fiscale
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/nature_doc_fiscale.csv
+            tableName: nature_doc_fiscale
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordine, type: NUMERIC }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

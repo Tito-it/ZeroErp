@@ -61,7 +61,23 @@ BEGIN
                         'nota', 'soggetto_ruolo_id non trovato in anagrafiche.soggetti_ruoli'
                     ),
                     NULL::uuid,
-                    NEW.soggetto_ruolo_id::text
+                    -- ⚠️ ARITA' (2026-08-18): E_SOGGETTI_RUOLI ha tre segnaposto
+                    --   (id, soggetto_id, ruolo_id) e qui ne arrivava uno solo
+                    --   -> format() alzava 22023 al posto del P0001.
+                    --   Gli altri due NON si possono valorizzare, ed e' il punto:
+                    --   si arriva qui **perche' la riga non e' stata trovata**,
+                    --   quindi soggetto_id e ruolo_id non esistono da leggere.
+                    --   Si passa 'NULL' esplicito, che e' la convenzione gia' in
+                    --   uso in script.fn_guard_soggetto_ruolo — l'altro
+                    --   chiamante di questo stesso codice.
+                    --   ⚠️ Resta un difetto di MERITO, non toccato qui: la
+                    --   condizione e' «soggetto_ruolo_id non trovato», mentre il
+                    --   messaggio dice «non e' stata assegnata la relazione».
+                    --   E' materia del quarto lato
+                    --   (scripts/sql/check_messaggio_vs_condizione.sql).
+                    NEW.soggetto_ruolo_id::text,
+                    'NULL',
+                    'NULL'
                 );
             END IF;
 

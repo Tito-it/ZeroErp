@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Uno zero plausibile e' peggio di un errore: guard sui parametri d'ambito
+#   Origine: db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql, test 6,
+#   rosso in baseline con «caught: no exception».
+#
+# ── COSA NON ANDAVA ────────────────────────────────────────────────────
+#   `vendite.fn_get_arrotondamento_scope` non validava i parametri, contro la
+#   convenzione di `.codex/AGENTS.md` («per parametri numerici di tipo ID
+#   applicare guard di validazione esplicita: errore se NULL o <= 0, non
+#   normalizzare silenziosamente»).
+#
+#   ⚠️ E qui l'omissione mordeva piu' del solito, per via del contratto della
+#   funzione: «assenza di riga = saldo zero, non errore». Un parametro NULL non
+#   trova nulla, quindi esce **0** — che e' anche la risposta giusta quando il
+#   saldo davvero non c'e'. Le due cose diventano indistinguibili, e su un saldo
+#   di arrotondamento uno zero sbagliato non e' un messaggio brutto: e' un
+#   importo sbagliato che nessuno vede passare.
+#
+# ── ⚠️ PERCHE' SOLO DUE PARAMETRI SU CINQUE ────────────────────────────
+#   E' la parte da non sbagliare, ed e' misurata:
+#
+#     billing_account_id           NOT NULL su vendite.fatture  -> guardato
+#     emittente_soggetto_ruolo_id  NOT NULL su vendite.fatture  -> guardato
+#     utility_id                   NULLABLE                     -> NON guardato
+#     tipo_doc_fiscale_id          NULLABLE                     -> NON guardato
+#     valuta_id                    NULLABLE                     -> NON guardato
+#
+#   L'unico chiamante e' `vendite.fn_ricalcola_totali_fattura`, che legge quei
+#   valori dalla fattura. Sui tre nullable un NULL e' uno **stato legittimo**:
+#   guardarli avrebbe trasformato un caso valido in un errore di dominio, cioe'
+#   avrebbe rotto il ricalcolo dei totali proprio per le fatture che quei campi
+#   non li hanno. E' il caso che la memoria di casa chiama «guard restrittivo:
+#   verificare prima chi passa di li'».
+#
+# ── ⚠️ QUELLO CHE RESTA APERTO, E CHE NON HO TOCCATO ───────────────────
+#   Sui tre parametri nullable il confronto nella WHERE e' `=`, che con NULL non
+#   matcha **mai**; il setter, invece, una riga con quella chiave a NULL puo'
+#   averla scritta. Get e set sono quindi potenzialmente asimmetrici sulle
+#   chiavi nullable — la trappola gemella del NULL nelle chiavi
+#   (`IS NOT DISTINCT FROM` nella WHERE / `NULLS NOT DISTINCT` nell'indice).
+#   Non e' una svista da correggere di sfuggita dentro a questo changeSet: e'
+#   una decisione sul modello dell'ambito, e va presa guardando anche il setter
+#   e l'indice univoco. Segnalata, non risolta.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · Permessi: la funzione e' di `titodb`, non `SECURITY DEFINER`, non nel
+#     registro `dbops.sec_functions_owner` — `CREATE OR REPLACE` liscio, nessun
+#     blocco `GRANT` (stesso precedente del `20260808-04`).
+#   · Corpo dalla doc auto-gen, col `;` dopo `$function$` aggiunto a mano.
+#   · Firma, `RETURNS` e `STABLE` invariati.
+#   · `E_PARAMETRO_INVALIDO` e' gia' a catalogo e ha un solo segnaposto: si
+#     passa un valore solo, coerentemente con l'arita' (vedi
+#     docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-70-update-fn-get-arrotondamento-scope-guard-parametri-mctit.yaml
+
+  - changeSet:
+      id: 20260818-70-update-fn-get-arrotondamento-scope-guard-parametri
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard esplicito su p_billing_account_id e p_emittente_soggetto_ruolo_id (NULL o <= 0 ->
+        E_PARAMETRO_INVALIDO). Senza, un parametro nullo non trovava riga e la funzione tornava 0,
+        indistinguibile dallo zero legittimo del contratto «assenza di riga = saldo zero»: su un
+        saldo di arrotondamento e' un importo sbagliato che non si vede. Gli altri tre parametri
+        d'ambito restano non guardati perche' sono nullable su vendite.fatture e l'unico chiamante
+        puo' passarli NULL legittimamente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_get_arrotondamento_scope'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: saldo di arrotondamento accumulato nell'ambito. Da D-N
+              --        l'ambito comprende anche le condizioni di pagamento.
+              -- Regole: assenza di riga = saldo zero, non errore.
+              DECLARE
+                  v_saldo vendite.fatture_arrotondamenti_scope.saldo_arrotondamento%TYPE;
+              BEGIN
+                  -- 🔴 GUARD, 18-08-2026.
+                  --   `.codex/AGENTS.md`: «per parametri numerici di tipo ID applicare guard
+                  --   di validazione esplicita: errore se NULL o <= 0 (non normalizzare
+                  --   silenziosamente)». Qui mancava, e non era innocuo: la funzione promette
+                  --   «assenza di riga = saldo zero», quindi un parametro NULL non trova
+                  --   nulla e torna **0** — uno zero PLAUSIBILE, indistinguibile da quello
+                  --   legittimo. Su un saldo di arrotondamento uno zero sbagliato non e' un
+                  --   messaggio brutto: e' un importo sbagliato, e nessuno lo vede.
+                  --   Lo diceva da tempo il test 6 di
+                  --   db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql, rosso in
+                  --   baseline con «caught: no exception».
+                  --
+                  -- ⚠️ SOLO DUE DEI CINQUE, ed e' la parte da non sbagliare.
+                  --   `p_billing_account_id` e `p_emittente_soggetto_ruolo_id` sono NOT NULL
+                  --   su `vendite.fatture`: un NULL li' e' un errore di programmazione.
+                  --   `p_utility_id`, `p_tipo_doc_fiscale_id` e `p_valuta_id` invece sono
+                  --   **nullable** sulla stessa tabella (verificato, non dedotto), quindi
+                  --   l'unico chiamante — `vendite.fn_ricalcola_totali_fattura` — puo'
+                  --   passarli NULL in modo legittimo. Un guard su tutti e cinque avrebbe
+                  --   trasformato un caso valido in un errore di dominio, cioe' avrebbe rotto
+                  --   il ricalcolo dei totali per le fatture che quei campi non li hanno.
+                  --   ⚠️ Su quei tre resta aperta una questione DIVERSA, non toccata qui: il
+                  --   confronto e' `=`, che con NULL non matcha mai, mentre il setter una
+                  --   riga con quella chiave a NULL potrebbe averla scritta — get e set
+                  --   asimmetrici sulle chiavi nullable. E' la trappola gemella del NULL
+                  --   nelle chiavi, e va decisa, non corretta di sfuggita.
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.fn_get_arrotondamento_scope',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_billing_account_id',
+                                             'valore', p_billing_account_id),
+                          NULL::uuid,
+                          'p_billing_account_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.fn_get_arrotondamento_scope',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id',
+                                             'valore', p_emittente_soggetto_ruolo_id),
+                          NULL::uuid,
+                          'p_emittente_soggetto_ruolo_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT s.saldo_arrotondamento
+                    INTO v_saldo
+                    FROM vendite.fatture_arrotondamenti_scope s
+                   WHERE s.billing_account_id = p_billing_account_id
+                     AND s.utility_id = p_utility_id
+                     AND s.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                     AND s.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND s.valuta_id = p_valuta_id
+                     AND s.termine_pagamento_id  IS NOT DISTINCT FROM p_termine_pagamento_id
+                     AND s.modalita_pagamento_id IS NOT DISTINCT FROM p_modalita_pagamento_id;
+
+                  RETURN COALESCE(v_saldo, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
+              IS 'Saldo arrotondamento dell''ambito di compensazione. Da D-N l''ambito comprende (termine_pagamento_id, modalita_pagamento_id), confrontati con IS NOT DISTINCT FROM perche'' sono NULL nella maggioranza dei casi. Assenza di riga = 0. Post 18-08-2026: guard esplicito su p_billing_account_id e p_emittente_soggetto_ruolo_id (NULL o <= 0 -> E_PARAMETRO_INVALIDO). Senza, un parametro nullo non trovava riga e la funzione restituiva 0 — indistinguibile dallo zero legittimo del contratto ''assenza di riga = saldo zero''. Gli altri tre parametri di ambito NON sono guardati di proposito: sono nullable su vendite.fatture, quindi l''unico chiamante (fn_ricalcola_totali_fattura) puo'' passarli NULL legittimamente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Vuoto di proposito: togliere il guard rimetterebbe la funzione
+              -- nella condizione di rispondere uno zero plausibile a una domanda
+              -- malposta.
+              SELECT 1;

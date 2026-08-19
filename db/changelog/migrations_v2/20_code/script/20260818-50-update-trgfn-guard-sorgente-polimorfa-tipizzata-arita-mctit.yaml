@@ -1,0 +1,255 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Arita' dei valori — `E_SORG_KEY_MISSING` passava 1 valore su 2 segnaposto, in DUE rami
+#   Brief: docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md §7
+#   Lotto: 20260818-47 .. -54, uno per funzione. Decisione Tid, 2026-08-18.
+#
+# ── IL DIFETTO, IN UNA RIGA ────────────────────────────────────────────
+#   `script.fn_log_and_raise_error` compone il testo con
+#   `format(messaggio, VARIADIC valori)`. Con MENO valori dei segnaposto,
+#   `format()` non degrada: **alza `22023`**. E alza da DENTRO la funzione,
+#   quindi il `RAISE` di dominio due righe sotto non viene mai eseguito —
+#   niente `P0001`, niente codice nel canale `CONSTRAINT`, niente campo nel
+#   canale `COLUMN`. Il guard blocca lo stesso (il dato resta integro, ed e'
+#   il motivo per cui non se n'era accorto nessuno), ma il backend perde il
+#   codice su cui decide 409/404/403 e l'operatore legge un errore interno al
+#   posto della frase scritta per lui.
+#
+# ── ⚠️ FUNZIONE NON AGGANCIATA, CORRETTA LO STESSO ─────────────────────
+#   Questa guard oggi **non e' su nessuna tabella**: il trigger su
+#   `attivita_fatturabili` fu rimosso col `20260225-45` e il riaggancio e'
+#   da ri-decidere. I suoi due punti rotti non hanno quindi mai fatto danno.
+#   Si correggono lo stesso, e non per pignoleria: il giorno del riaggancio
+#   nessuno andra' a rileggere l'arita' dei valori, e il difetto entrerebbe in
+#   servizio insieme al trigger. Un ramo morto che verra' resuscitato e' codice
+#   vivo con un ritardo, non codice morto.
+#
+# ── ⚠️ LA FORMA: DUE MESSAGGI SCRITTI DUE VOLTE ────────────────────────
+#   Qui non manca un valore per distrazione: il chiamante passava una **frase
+#   gia' composta** come valore unico, mentre a catalogo il messaggio ha i suoi
+#   segnaposto. Sono due testi che dicono la stessa cosa e non si compongono.
+#   ⭐ Ed e' un difetto anche quando non alza: una frase composta dentro al
+#   plpgsql **non e' traducibile**, perche' non passa da
+#   `config.messaggi_errore`. I valori vanno passati sciolti; il testo lo
+#   compone il catalogo, che e' l'unico posto da cui si puo' tradurre.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · ⚠️ **PERMESSI — nessun prestito di proprieta', nessun `GRANT`.** Misurato
+#     il 2026-08-18, non dedotto: questa funzione e' di **`titodb`** (che e' chi
+#     migra), **non** e' `SECURITY DEFINER` e **non** e' nel registro
+#     `dbops.sec_functions_owner`. Il precedente e' il `20260808-04` su
+#     `script.fn_log_and_raise_error`, che documenta anche il perche' l'ACL
+#     esplicita (`=X/titodb`, `zeroerp_app=X`, `zeroerp_batch_fatturazione=X`)
+#     **sopravvive** a un `CREATE OR REPLACE` — sarebbe diverso con
+#     `DROP` + `CREATE`, dove i privilegi si perdono e il loop di grant
+#     `20260205-41` li rimetterebbe solo alla corsa `ci_apply` successiva.
+#     ⚠️ Da non confondere con `script.fn_log_error_only`, che invece e' di
+#     `postgres`, **e'** `SECURITY DEFINER` ed **e'** nel registro: quella,
+#     riscriverla, il prestito lo richiede.
+#   · Corpo dalla doc auto-gen `docs/it/dbzero/`, col `;` dopo `$function$`
+#     aggiunto a mano: l'auto-gen non ce l'ha e senza quello il `COMMENT`
+#     sotto da' «errore di sintassi a o presso COMMENT».
+#   · Firma e `RETURNS` invariati: cambia solo la lista dei valori.
+#   · Presidio: `db/pgtap/script/test-catalogo-messaggi-errore-completo.sql`
+#     test 5. Rientra quando l'ultimo degli 8 changeSet e' applicato — e a
+#     quel punto va tolta la riga di questo file da `baseline-rossi.tsv`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260818-50-update-trgfn-guard-sorgente-polimorfa-tipizzata-arita-mctit.yaml
+
+  - changeSet:
+      id: 20260818-50-update-trgfn-guard-sorgente-polimorfa-tipizzata-arita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Entrambi i rami (chiave id e chiave uid) passavano un concat() come valore
+        unico a E_SORG_KEY_MISSING, che ha due segnaposto: format() avrebbe alzato
+        22023 al posto del P0001. La funzione oggi non e' agganciata ad alcuna tabella:
+        si corregge perche' il riaggancio non riapra il difetto.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_sorgente_polimorfa_tipizzata'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_area          text := TG_TABLE_SCHEMA;
+                v_tbl           regclass;
+                v_selector      text;
+                v_exists        boolean;
+                v_src_id        bigint;
+                v_src_uid       uuid;
+                v_target_id     text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Validare la sorgente polimorfa (sorgente_tipo_id) usando
+                --   config.sorgenti, verificando la presenza del record target
+                --   su tabella/chiave configurata (id oppure uid).
+                --   MODELLO A (colonne tipizzate alternative): la chiave sta in
+                --   NEW.sorgente_riga (BIGINT) per selector 'id' e in
+                --   NEW.sorgente_uid (UUID) per selector 'uid'.
+                --   Per le tabelle a chiave unica testuale (pratiche_sorgenti,
+                --   commesse_sorgenti) usare la sorella _testuale.
+                -- =========================================================
+                -- Se non è valorizzata la sorgente, nessuna verifica
+                IF NEW.sorgente_tipo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero configurazione sorgente attiva
+                SELECT s.target_table, s.key_selector
+                  INTO v_tbl, v_selector
+                  FROM config.sorgenti s
+                WHERE s.id = NEW.sorgente_tipo_id
+                  AND s.attivo = true;
+
+                IF v_tbl IS NULL OR v_selector IS NULL THEN
+                -- Configurazione mancante o errata
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_tipizzata',
+                    'E_SORG_CONF',
+                    jsonb_build_object(
+                      'detail','Configurazione sorgente mancante/errata',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'target_table', COALESCE(v_tbl::text,'<NULL>'),
+                      'key_selector', COALESCE(v_selector,'<NULL>')
+                    ),
+                    NULL::uuid,
+                    concat( NEW.sorgente_tipo_id::text,
+                    ' target_table:', COALESCE(v_tbl::text,'<NULL>'),
+                     ' key_selector:', COALESCE(v_selector,'<NULL>'))
+                  );
+                END IF;
+
+                -- Selezione per tipo chiave
+                IF v_selector = 'id' THEN
+                  v_src_id := NEW.sorgente_riga;
+                  IF v_src_id IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'script.trgfn_guard_sorgente_polimorfa_tipizzata',
+                      'E_SORG_KEY_MISSING',
+                      jsonb_build_object(
+                        'detail','Chiave sorgente mancante: atteso sorgente_riga (id)',
+                        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                        'key_selector', v_selector
+                      ),
+                      NULL::uuid,
+                      -- ⚠️ ARITA' (2026-08-18): concat() = un valore, E_SORG_KEY_MISSING ne
+                      --   chiede due -> 22023 al posto del P0001. Vale per entrambi i rami
+                      --   (id e uid) di questa funzione.
+                      NEW.sorgente_tipo_id::text, v_selector
+                    );
+                  END IF;
+
+                  EXECUTE format('SELECT true FROM %s WHERE id = $1', v_tbl::text)
+                    INTO v_exists
+                    USING v_src_id;
+
+                ELSIF v_selector = 'uid' THEN
+                  v_src_uid := NEW.sorgente_uid;
+                  IF v_src_uid IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'script.trgfn_guard_sorgente_polimorfa_tipizzata',
+                      'E_SORG_KEY_MISSING',
+
+                      jsonb_build_object(
+                        'detail','Chiave sorgente mancante: atteso sorgente_uid (uuid)',
+                        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                        'key_selector', v_selector
+                      ),
+                      NULL::uuid,
+                      -- ⚠️ ARITA' (2026-08-18): secondo dei due rami, stesso difetto.
+                      NEW.sorgente_tipo_id::text, v_selector
+                    );
+                  END IF;
+
+                  EXECUTE format('SELECT true FROM %s WHERE uid = $1', v_tbl::text)
+                    INTO v_exists
+                    USING v_src_uid;
+
+                ELSE
+                  -- Valore non consentito: la tabella config.sorgenti dovrebbe impedirlo con CHECK
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_tipizzata',
+                    'E_SORG_KEYSEL',
+
+                    jsonb_build_object(
+                      'detail','key_selector non supportato',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'key_selector', v_selector
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text , ' key_selector:', v_selector)
+                  );
+                END IF;
+
+                IF v_selector = 'id' THEN
+                  v_target_id := v_src_id::text;
+                ELSE
+                  v_target_id := v_src_uid::text;
+                END IF;
+
+                IF NOT COALESCE(v_exists,false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_tipizzata',
+                    'E_SORG_NOT_FOUND',
+                    jsonb_build_object(
+                      'detail','Riferimento sorgente non trovato nella tabella target',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'target_table', v_tbl::text,
+                      'key_selector', v_selector,
+                      'sorgente_riga', NEW.sorgente_riga,
+                      'sorgente_uid', NEW.sorgente_uid
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text ,
+                    ' target_table ', v_tbl::text,
+                      ' key_selector ', v_selector,
+                      ' sorgente_riga ', NEW.sorgente_riga,
+                      ' sorgente_uid ', NEW.sorgente_uid
+                    )
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()
+              IS 'Guard polimorfo MODELLO A (colonne tipizzate alternative): valida che la sorgente esista nella target_table di config.sorgenti leggendo NEW.sorgente_riga (BIGINT) per key_selector=id e NEW.sorgente_uid (UUID) per key_selector=uid. Ex trgfn_guard_sorgente_polimorfa (rinominata 2026-07-18, brief-db-guard-sorgente-polimorfa: nasce la sorella _testuale per il modello B a chiave unica testuale). NON agganciata ad alcuna tabella: il trigger su attivita_fatturabili fu rimosso con 20260225-45 (ridondante con FK commessa_attivita_id nel flusso commessa-only); riaggancio da ri-decidere.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Vuoto di proposito: il ripristino della versione precedente
+              -- rimetterebbe in servizio la chiamata che alza 22023. Se serve
+              -- tornare indietro, si scrive un changeSet in avanti.
+              SELECT 1;

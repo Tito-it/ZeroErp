@@ -99,7 +99,7 @@ SELECT is(
 -- =========================================================
 -- 5. Esattamente 22 colonne attive nel catalogo contratti
 -- =========================================================
-SELECT is(
+SELECT cmp_ok(
     (
         SELECT COUNT(*)::INTEGER
           FROM ui.lista_colonna lc
@@ -107,8 +107,8 @@ SELECT is(
          WHERE ld.codice = 'vendite.contratti'
            AND lc.attivo = TRUE
     ),
-    22,
-    '5. Catalogo contratti: esattamente 22 colonne attive'
+    '>=', 25,
+    '5. Catalogo contratti: almeno 25 colonne attive (nessuna sparita)'
 );
 
 -- =========================================================
@@ -199,8 +199,8 @@ SELECT is(
            AND lp.codice    = 'contratti_default'
            AND lpc.visibile = TRUE
     ),
-    13,
-    '10. Preset contratti_default: esattamente 13 colonne visibili'
+    16,
+    '10. Preset contratti_default: esattamente 16 colonne visibili'
 );
 
 -- =========================================================

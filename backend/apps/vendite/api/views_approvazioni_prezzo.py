@@ -268,6 +268,7 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
     area_funzionale = "vendite"
     get_permission = "approva_prezzo_override"
     is_search_endpoint = True
+    lista_codice = "vendite.approvazioni_prezzo"
 
     @extend_schema(
         parameters=[

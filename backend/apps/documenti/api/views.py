@@ -49,6 +49,7 @@ class ApiTemplateList(DomainAPIView):
 
     area_funzionale = "documenti"
     is_search_endpoint = True
+    lista_codice = "documenti.template_documenti"
     # Azione processo richiesta dal POST (Decisione 75 + seed DB id azione=11+).
     post_permission = "documenti_template_manage"
 
@@ -467,6 +468,7 @@ class ApiAssetList(DomainAPIView):
 
     area_funzionale = "documenti"
     is_search_endpoint = True
+    lista_codice = "documenti.template_asset"
     post_permission = "documenti_asset_manage"
     parser_classes = [MultiPartParser, FormParser]
 

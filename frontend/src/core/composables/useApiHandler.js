@@ -23,6 +23,32 @@
 import { ref } from 'vue'
 import { useNotify } from './useNotify'
 
+// Codici che NON producono un toast, perche' a video c'e' gia' una schermata
+// che dice la stessa cosa meglio: due messaggi identici, di cui uno rosso,
+// fanno sembrare guasto quello che e' solo una scelta da fare.
+//
+// ⚠️ Sopprime il TOAST, non l'errore: `execute` ritorna `null` come sempre e
+//    la chiamata resta fallita. Deve restare CORTISSIMA: un codice qui dentro
+//    non si vede piu', e se la schermata che lo spiega cambia il rifiuto
+//    diventa silenzioso. Presidiata da
+//    `apps/core/tests/test_perimetro_emittente_copertura.py` (i codici devono
+//    esistere a catalogo).
+//
+// ⚠️ `Set` e non un oggetto: `MAPPA[codice]` eredita dal prototipo, quindi un
+//    codice chiamato `toString` risulterebbe «presente».
+const CODICI_SENZA_TOAST = new Set([
+  // Cancello di perimetro emittente (P-2b): `<ListaConfigurabile>` mostra gia'
+  // il pannello «scegli un emittente» al posto della tabella.
+  // ⭐ Si sopprime QUI e non evitando la chiamata nei caller perche' la config
+  //    (che porta `richiede_scelta_emittente`) arriva DOPO che la fetch e'
+  //    partita — si caricano in parallelo: evitarla del tutto vorrebbe dire
+  //    far ASPETTARE ogni lista la config di un componente figlio.
+  //    Dalla config in poi la lista si sospende da se'
+  //    (`store.fetchSospesa`, in `useListaConfigurabilePage`), quindi qui
+  //    passa la PRIMA chiamata e nessun'altra.
+  'E_UI_LISTA_EMITTENTE_DA_SCEGLIERE',
+])
+
 export function useApiHandler() {
   const loading = ref(false)
   const notify = useNotify()
@@ -64,7 +90,8 @@ export function useApiHandler() {
       // evidenziare senza far comparire un toast.
       campiErrati.value = estraiCampi(err)
       azioneUi.value = err.response?.data?.error?.ui_action ?? null
-      if (!options.silent) {
+      const codice = err.response?.data?.error?.code
+      if (!options.silent && !CODICI_SENZA_TOAST.has(codice)) {
         const message = extractErrorMessage(err) || options.errorMessage
         const isSystem = isSystemError(err)
         if (isSystem) {

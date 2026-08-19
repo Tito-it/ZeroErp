@@ -348,9 +348,23 @@ DOCUMENTI_STORAGE_ROOT = env(
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
 
 # --- Email ---
-# In DEBUG con account SMTP vuoto/placeholder, le email vengono loggate in console.
-# Per invio reale: configurare config.email_account con SMTP host reale (es. Gmail).
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# ⚠️ LA POSTA DELL'APPLICAZIONE NON PASSA DA QUI. `EmailService` risolve
+# l'account da `config.email_account` e parla SMTP con `smtplib` per conto suo:
+# e' li' che vive la "console mode" (host vuoto/placeholder, oppure DEBUG), non
+# in questo backend. Per l'invio reale si configura `config.email_account`.
+#
+# Questo mailer e' la RETE per la posta che spedisce DJANGO — reset password
+# dell'admin, `mail_admins()` di un handler di logging: senza, il default e' lo
+# SMTP backend, cioe' un tentativo di consegna vera verso localhost:25 da un
+# ambiente che non se l'aspetta. La console la rende visibile e innocua.
+#
+# Forma nuova di Django 6.1: `EMAIL_BACKEND` e' deprecato (RemovedInDjango70Warning
+# sollevato al caricamento delle settings, e il gate DJANGO_DEPRECATION_GATE lo
+# escala a errore in CI). `MAILERS` e' il suo sostituto; le opzioni del backend,
+# se un giorno servissero, stanno in `OPTIONS`.
+MAILERS = {
+    "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
+}
 
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx

@@ -15,6 +15,7 @@ from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool
+from apps.vendite.db.commesse_repository import TIPO_MOVIMENTO_RETTIFICA
 from apps.vendite.db.pipeline_repository import (
     AttivitaDaFatturare,
     GroupAttivitaInput,
@@ -89,9 +90,60 @@ class FattureRigheService:
             function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
             log_to_db=True,
         )
+        self._guard_coerenza_rettifica(
+            row,
+            function_name="vendite.fatture_righe_service.group_attivita_fatturabili",
+        )
         return self._build_group_key(row)
 
+    # Scopo: Il cartellino `tipo_movimento` e il puntatore
+    #        `fattura_riga_rettificata_id` sono una COPPIA, e il guard e'
+    #        simmetrico su entrambi i versi (disciplina normalize+guard delle
+    #        coppie flag/valore):
+    #          RETTIFICA senza puntatore → la riga di nota di credito nascerebbe
+    #            gemella di nessuna, con prezzo e sconto presi da un'attivita'
+    #            che non li ha (brief nota di credito §12.6);
+    #          puntatore senza RETTIFICA → il prezzo verrebbe copiato dal
+    #            documento su una riga che si dichiara normale, e nessuno
+    #            saprebbe perche' quel prezzo non e' quello dell'attivita'.
+    # Perimetro: la regola vive QUI e non nei due chiamanti — il giro della
+    #        pipeline e la facade `group_attivita_fatturabili` — perche' scritta
+    #        due volte divergerebbe, ed e' un invariante su documenti fiscali.
+    #        La madre `fn_accredita_riga_reso` scrive sempre i due insieme: se
+    #        arrivano scompagnati la catena si e' rotta a monte, e fermarsi e'
+    #        l'unica cosa onesta.
+    @staticmethod
+    def _guard_coerenza_rettifica(row: GroupAttivitaInput, *, function_name: str) -> None:
+        e_rettifica_label = row.tipo_movimento == TIPO_MOVIMENTO_RETTIFICA
+        e_rettifica_ptr = row.fattura_riga_rettificata_id is not None
+        ErrorManager.require(
+            e_rettifica_label == e_rettifica_ptr,
+            code="E_GROUP_ATTIVITA_INVALID_DATA",
+            message="Dati attivita non validi per grouping.",
+            detail=(
+                f"attivita {row.attivita_id}: tipo_movimento="
+                f"{row.tipo_movimento} e fattura_riga_rettificata_id="
+                f"{row.fattura_riga_rettificata_id} sono incoerenti "
+                "(la rettifica porta sempre entrambi)"
+            ),
+            context={"attivita_id": row.attivita_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
     # Scopo: Costruisce GroupAttivitaKey da un GroupAttivitaInput con logica competenza.
+    # Perimetro: per una RETTIFICA (nota di credito) prezzo, sconto e IVA NON
+    #        vengono dall'attività ma dalla RIGA DI FATTURA che rettifica —
+    #        `af.fattura_riga_rettificata_id → fatture_righe` — e non si
+    #        ricalcolano mai (N-1: «la nota di credito non può differire da
+    #        quanto fatturato»).
+    # ⚠️ Oggi i due valori COINCIDONO per costruzione, ed è precisamente il
+    #        motivo per cui prendere quello dell'attività non darebbe nessun
+    #        sintomo: si vedrebbe solo il giorno in cui divergono, su documenti
+    #        già emessi. E lo sconto sull'attività non c'è affatto — la catena
+    #        `commesse_attivita`/`attivita_fatturabili` non ha la colonna: senza
+    #        questa lettura, «copia esatta compresi gli sconti» non sarebbe
+    #        realizzabile senza toccare la catena di TUTTE le fatture.
     @staticmethod
     def _build_group_key(row: GroupAttivitaInput) -> GroupAttivitaKey:
         use_competenza = (
@@ -103,6 +155,7 @@ class FattureRigheService:
             )
         )
         assert row.dest_billing_account_id is not None
+        e_rettifica = row.fattura_riga_rettificata_id is not None
         return {
             "articolo_id": row.articolo_id,
             "dest_billing_account_id": int(row.dest_billing_account_id),
@@ -110,8 +163,10 @@ class FattureRigheService:
             # Stringa canonica e non float: il prezzo sta nella chiave di gruppo,
             # ed è ciò che rende l'aggregazione un'identità esatta
             # (Σ(qᵢ×p) = p×Σqᵢ). Su float il raggruppamento sarebbe approssimato.
-            "prezzo_unitario": _to_decimal_str(row.prezzo_unitario),
-            "iva_id": row.iva_id,
+            "prezzo_unitario": _to_decimal_str(
+                row.rett_prezzo_unitario if e_rettifica else row.prezzo_unitario
+            ),
+            "iva_id": row.rett_iva_id if e_rettifica else row.iva_id,
             "competenza_dal": _to_iso(row.competenza_dal) if use_competenza else None,
             "competenza_al": _to_iso(row.competenza_al) if use_competenza else None,
             "calcolo_qta_padre": row.calcolo_qta_padre,
@@ -119,6 +174,14 @@ class FattureRigheService:
             "arrotondamento_quantita_dec": row.arrotondamento_quantita_dec,
             "metodo_arrotondamento_importi": row.metodo_arrotondamento_importi,
             "metodo_arrotondamento_quantita": row.metodo_arrotondamento_quantita,
+            "fattura_riga_rettificata_id": row.fattura_riga_rettificata_id,
+            # `None` fuori dalla rettifica, non `0`: la riga normale non ha uno
+            # sconto da dichiarare, e la INSERT lo fa collassare sul DEFAULT del
+            # DB. Scrivere 0 qui cambierebbe la chiave di TUTTE le righe di
+            # fattura esistenti senza cambiare niente nel documento.
+            "sconto_percentuale": (
+                _to_decimal_str(row.rett_sconto_percentuale) if e_rettifica else None
+            ),
         }
 
     # Scopo: Estrae dallo `meta` dell'attività lo snapshot di esposizione kit.
@@ -223,12 +286,22 @@ class FattureRigheService:
                     function_name=fn,
                     log_to_db=True,
                 )
+                self._guard_coerenza_rettifica(gi, function_name=fn)
+                # `chiave` e non `gk`: piu' avanti nella stessa funzione `gk` e'
+                # la chiave del GRUPPO in lavorazione, un'altra cosa. Due nomi
+                # uguali per due cose diverse nello stesso scope si leggono male
+                # e si sbagliano al primo refactor.
+                chiave = self._build_group_key(gi)
                 # `attivita_fatturabili.prezzo_unitario` è nullable, ma
                 # `fatture_righe.prezzo_unitario` è NOT NULL: senza questo guard
                 # l'attività senza prezzo arriverebbe fino all'INSERT e
                 # produrrebbe un IntegrityError che non dice quale attività sia.
+                # ⚠️ Si guarda il prezzo EFFETTIVO — quello della chiave — e non
+                # `gi.prezzo_unitario`: su una rettifica il prezzo è quello
+                # della riga di fattura, e guardare il campo sbagliato lascerebbe
+                # passare proprio il caso che questo guard esiste per fermare.
                 ErrorManager.require(
-                    gi.prezzo_unitario is not None,
+                    chiave["prezzo_unitario"] is not None,
                     code="E_GROUP_ATTIVITA_INVALID_DATA",
                     message="Dati attivita non validi per grouping.",
                     detail=f"prezzo_unitario mancante per attivita: {aid}",
@@ -236,7 +309,7 @@ class FattureRigheService:
                     function_name=fn,
                     log_to_db=True,
                 )
-                group_keys[aid] = self._build_group_key(gi)
+                group_keys[aid] = chiave
 
             # 3. Batch header creation (1 round-trip, N function calls server-side).
             header_map = self.repository.batch_get_or_create_fattura_headers(
@@ -269,6 +342,10 @@ class FattureRigheService:
             righe_kit_esposti: list[bool | None] = []
             righe_kit_padri: list[str | None] = []
             righe_metas: list[str | None] = []
+            # Le due colonne della rettifica. Restano piene di `None` su un
+            # lotto senza note di credito, che e' il caso normale.
+            righe_sconti: list[Decimal | None] = []
+            righe_rettificate: list[int | None] = []
 
             att_ids: list[int] = []
             att_fattura_ids: list[int] = []
@@ -294,6 +371,8 @@ class FattureRigheService:
                 righe_kit_keys.append(gruppo.kit.key)
                 righe_kit_esposti.append(gruppo.kit.esposto_in_fattura)
                 righe_kit_padri.append(gruppo.kit.articolo_padre_id)
+                righe_sconti.append(_to_decimal(gk["sconto_percentuale"]))
+                righe_rettificate.append(gk["fattura_riga_rettificata_id"])
                 righe_metas.append(
                     json.dumps(
                         {
@@ -323,6 +402,8 @@ class FattureRigheService:
                 righe_kit_keys=righe_kit_keys,
                 righe_kit_esposti=righe_kit_esposti,
                 righe_kit_articolo_padre_ids=righe_kit_padri,
+                righe_sconti=righe_sconti,
+                righe_rettificate=righe_rettificate,
                 righe_metas=righe_metas,
                 att_ids=att_ids,
                 att_fattura_ids=att_fattura_ids,
@@ -402,6 +483,12 @@ class FattureRigheService:
             uom_id is None,
             uom_id if uom_id is not None else 0,
             g.kit.key or "",
+            # Ultimo discriminante: due rettifiche di righe di fattura diverse
+            # possono avere articolo, prezzo e uom identici. Senza questo,
+            # l'ordine — e quindi il `riga_nr` — cambierebbe fra due
+            # rigenerazioni dello stesso lotto, che è ciò che tutta questa
+            # chiave esiste per impedire.
+            g.group_key["fattura_riga_rettificata_id"] or 0,
         )
 
     # Scopo: R10 — i componenti che confluiscono nella stessa riga padre devono

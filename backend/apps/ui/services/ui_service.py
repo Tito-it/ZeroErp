@@ -18,6 +18,7 @@ from typing import Any
 
 from django.db import DatabaseError
 
+from apps.core.services import perimetro_emittente
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.db.ui_repository import UiRepository
@@ -42,6 +43,12 @@ class UiService:
 
     def __init__(self, repository: UiRepository | None = None) -> None:
         self._repo = repository or UiRepository()
+        # Cache PER-ISTANZA delle risoluzioni di permesso/scope. Le view
+        # costruiscono un `UiService` per richiesta, quindi vale una richiesta.
+        # Serve perche' `get_catalogo` chiama `get_lista_config`: senza, la
+        # stessa domanda sul perimetro andrebbe al database DUE volte per una
+        # sola apertura di modale.
+        self._perm_cache: dict[str, Any] = {}
 
     # Scopo: Risolve la configurazione effettiva di una lista per l'utente
     #        autenticato. Deriva `emittente_fiscale_id` 1:1 dall'utente via
@@ -83,6 +90,25 @@ class UiService:
                 detail=f"codice lista: '{lista_codice}'",
                 context={"lista_codice": lista_codice},
             )
+
+        # Chiave ADDITIVA: chi non la legge non si accorge di niente.
+        # ⚠️ E' una CONCLUSIONE, non un dato: `multi_emittente` (che resta
+        # esposto com'e') dice cosa sa fare la LISTA, questa dice se in questo
+        # momento, per QUESTO utente, la lista va sbarrata. La deriva il
+        # backend perche' e' l'unico che conosce la cardinalita' dello scope:
+        # farla ricalcolare al frontend creerebbe una seconda sede della stessa
+        # verita', ed e' la duplicazione che poi diverge (P-2b).
+        # ⚠️ L'ordine dei due termini NON e' indifferente, ed e' lo stesso di
+        # `guard_lista_per_codice`: il flag e' gia' in memoria (arriva
+        # nell'envelope), la cardinalita' dello scope costa una query. Scritto
+        # al contrario, ogni apertura di una lista CERTIFICATA pagherebbe un
+        # round-trip per un risultato che il flag da solo aveva gia' deciso.
+        config["richiede_scelta_emittente"] = (
+            not bool(config.get("multi_emittente"))
+            and perimetro_emittente.scope_multi_emittente(
+                user, cache=self._perm_cache
+            )
+        )
 
         return config
 

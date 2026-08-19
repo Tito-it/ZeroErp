@@ -455,12 +455,31 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
 | `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Il frontend non lo legge ancora** |
 | `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
+| `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso            |
 
 ⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
 `ui_action: highlight_form_fields` non è azionabile: diceva *«evidenzia il
 campo»* senza dire quale. Arriva dal `context` del `ServiceError`, dalla
 convenzione `context={"field": <nome>}` già presente in **114 punti di
 chiamata** — non è una convenzione nuova, è una che si fermava al log.
+
+⭐ **`hint` — dal 2026-08-18.** È la `soluzione` che il team DB scrive **a
+catalogo per ogni codice** (*«se il documento non è ancora numerato, la strada è
+il reset del lotto…»*): la parte che dice all'operatore cosa fare. PostgreSQL la
+consegna come `HINT` dell'eccezione.
+
+🔴 **Prima non arrivava, ed è il motivo per cui la modifica esiste.**
+`ErrorTranslator._from_database_error` la leggeva già dalla diag psycopg — ma
+quel ramo vale solo per un `DatabaseError` che arriva **nudo** al middleware, e
+appena un service traduce con `translate_db_errors` (cioè sempre, in ogni
+dominio) non ci passa: il `ServiceError` nasceva **senza `hint`** e la frase
+restava annegata nel testo grezzo di `detail`.
+
+Ne discendeva che un dominio che volesse mostrarla doveva **riscriverla in
+Python**, cioè duplicare il catalogo. Ora il campo viaggia strutturato fino
+all'envelope. ⚠️ **Il frontend non lo legge ancora** (zero occorrenze di
+`error.hint`): il primo consumatore sarà la coda accrediti, dove distingue
+«non si può» da «resetta il lotto, ma sappi che la nota si rigenera».
 
 ⚠️ **Escono solo i nomi, e solo dalla chiave `field`.** Il `context` è una borsa
 diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
@@ -581,7 +600,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
 * **Vendite — Fattura (consultazione)**: [api_fattura_dettaglio.md](/backend/vendite/manual/api_fattura_dettaglio) — `GET /vendite/fatture/<id>/` restituisce il **documento completo** (testata decodificata + righe da `vw_fattura_righe_esposte` con kit risolti + riepilogo IVA + piano rate) in un round-trip, per il drawer di consultazione. Orchestra gli **stessi** lettori che alimentano il contesto del PDF → video e stampa raccontano lo stesso documento per costruzione (regola R17). Sola lettura: oltre EMESSA le righe sono congelate a DB. ⚠️ **Ordine di lettura vincolante**: la testata è l'unico cancello di scope — `vendite.fatture` ha la RLS, `fatture_righe`/`fatture_riepiloghi_iva` **no**. Include le note fattura (`<id>/note/`, sesto dominio del BB partizionato) e i `contatori` dei badge (oggi `note`) — dict e non scalare per reggere i prossimi senza cambiare shape; il conteggio sta **dopo** il cancello di testata perché `note_fatture` non ha RLS
 * **Vendite — Fondi fattura (governo)**: [api_fondi_fattura.md](/backend/vendite/manual/api_fondi_fattura) — `GET /vendite/fondi-fattura/da-decidere/`: l'elenco dei casi in cui il giro automatico **si ferma** e la scelta resta a una persona (4 motivi a vocabolario chiuso). Read-only su `vw_fondi_fattura_da_decidere`, `security_invoker` → **va letta con la connessione dell'utente, mai da un canale di sistema**. ⭐ L'elenco **presenta, non sana**: nessuna riga ha un gemello automatico che la corregge, perché sanarla vorrebbe dire muovere denaro senza che nessuno l'abbia deciso
-* **Vendite — Situazione merce (ordine e DDT)**: [api_situazione_merce.md](/backend/vendite/manual/api_situazione_merce) — `GET /vendite/{ordini|ddt}/<id>/situazione-merce/`: quanto è uscito, tornato, fatturato e cosa resta aperto, in **un round-trip** e quattro sezioni (riassunto per riga d'ordine · partite di merce · coda accrediti · coda ri-consegne). Read-only su `vw_situazione_merce_ordine` + `vw_partite_merce` + le due code, tutte `security_invoker`. Le due view nascono dal factory `build_situazione_merce_view` (i domini sono due dal primo giorno). ⛔ **`differenza` può essere `null` e non significa zero** («il conto non si applica»: riga mai spedita, causale non fatturabile, conto non calcolabile) e **`stato` non si ri-traduce** — arriva già tradotto dal DB con sei valori. ⚠️ `fatturato_anticipato` non è un accredito. 🔴 Il perimetro si verifica sulla **testata** prima di ogni lettura (`ordini`/`ddt` hanno la RLS, le righe no): fuori scope → 404, altrimenti il pannello uscirebbe vuoto invece che negato
+* **Vendite — Situazione merce (ordine e DDT)**: [api_situazione_merce.md](/backend/vendite/manual/api_situazione_merce) — `GET /vendite/{ordini|ddt}/<id>/situazione-merce/`: quanto è uscito, tornato, fatturato e cosa resta aperto, in **un round-trip** e quattro sezioni (riassunto per riga d'ordine · partite di merce · coda accrediti · coda ri-consegne). Read-only su `vw_situazione_merce_ordine` + `vw_partite_merce` + le due code, tutte `security_invoker`. Le due view nascono dal factory `build_situazione_merce_view` (i domini sono due dal primo giorno). ⛔ **`differenza` e `da_spedire` possono essere `null`, e `null` non è zero** («il conto non si applica»: ordine non ancora impegnato, riga mai spedita, causale non fatturabile, conto non calcolabile) e **`stato` non si ri-traduce** — arriva già tradotto dal DB con **sette** valori. ⚠️ `fatturato_anticipato` non è un accredito. 🔴 Il perimetro si verifica sulla **testata** prima di ogni lettura (`ordini`/`ddt` hanno la RLS, le righe no): fuori scope → 404, altrimenti il pannello uscirebbe vuoto invece che negato
 * **Vendite — Lineage/genealogia documenti**: [api_lineage_passaggi.md](/backend/vendite/manual/api_lineage_passaggi) — `GET /<dominio>/<id>/passaggi/` sui 7 domini (6 documenti + commessa — factory `build_passaggi_view`): pratica collegata + frontiera + catena transiti avanti/indietro (read-only su `vw_documento_lineage`/`fn_documento_lineage`, RLS invoker)
 * **Vendite — Situazione aperta**: [api_dashboard_aperto.md](/backend/vendite/manual/api_dashboard_aperto) — stock documenti per `area × fase` senza asse temporale + drill-down (read-only su `vw_dash_aperto_*`; sostituisce la dashboard 5-card, Fase 3 due-lenti)
 * **Vendite — Dashboard competenza (Lente 1)**: [api_dashboard_competenza.md](/backend/vendite/manual/api_dashboard_competenza) — funnel commessa→fattura per mese di competenza: aggregata 12 mesi × 4 stadi + breakdown stato fattura, drill-down attività, drill-down per commessa, **gruppi fatturabili** (`gruppi/` — l'unità dell'emissione mirata: documento sorgente oppure oneri di commessa, con riepilogo di perimetro nell'envelope; la `gruppo_key` è la stessa accettata da `fatturazione/run/`), errori vivi (read-only su `vw_dash_competenza_*`)
@@ -1057,6 +1076,26 @@ la lettura letterale dello standard. L'alternativa RFC-stretta sarebbe 422.
 > `error.message` (in `useApiHandler.extractErrorMessage`) e lo **status**:
 > `>= 500` → toast di sistema, 401 → refresh del token, 401/403 → il polling dei
 > contatori si ferma. **Sono tutti e tre gli effetti che esistono.**
+>
+> 🔴 **AGGIORNAMENTO (2026-08-18): la prima metà di quella misura è scaduta, la
+> seconda no — e la differenza è quella che conta.** Rimisurato:
+>
+> | Cosa | 2026-08-07 | 2026-08-18 |
+> | --- | --- | --- |
+> | il **nome** in `frontend/src` | zero | **2 occorrenze**, entrambe in `useApiHandler.js`: il commento e `azioneUi.value = err.response?.data?.error?.ui_action ?? null` |
+> | i **consumatori** di quel valore | zero | **zero** — `azioneUi` non è letto da nessun componente |
+> | i **valori** del vocabolario (`show_error_banner`, `highlight_form_fields`, `show_empty_state`, `redirect_login`, …) | zero | **zero** |
+>
+> Il campo è arrivato insieme a `fields` (2026-08-08), dallo stesso envelope e
+> nella stessa riga: `useApiHandler` **estrae** entrambi, ma solo `campiErrati`
+> ha un consumatore. Quindi `ui_action` oggi è **emessa, trasportata e non
+> consumata** — un passo più avanti di «non la legge nessuno», e **zero passi**
+> più avanti sul comportamento a video.
+>
+> ⚠️ **Le tre conseguenze pratiche qui sotto non cambiano di una virgola**, e
+> il punto 3 diventa più concreto: il giorno in cui un componente reagirà a
+> `azioneUi` non ci sarà da scrivere l'estrazione — c'è già. Ci sarà solo da
+> riguardare le 176 righe di override, **prima** di accenderlo.
 >
 > ⚠️ **Non vuol dire che `ui_action` sia da togliere**, e nemmeno che le 176
 > decisioni di override siano state inutili: è un contratto **emesso e non

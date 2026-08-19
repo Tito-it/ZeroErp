@@ -4,8 +4,22 @@
 --
 -- Test: guard transizione stato su vendite.listini_versioni
 --       (migration 20260424-01-create-trgfn-listini-versioni-guard-transizione-stato)
---       + funzione batch vendite.fn_listini_versioni_close_scadute
---       (migration 20260424-02-create-fn-listini-versioni-close-scadute).
+--       + chiusura batch per scadenza, oggi delegata al framework
+--       parametrico dbops.fn_apply_chiusura_scadenze().
+--
+-- 🔴 AGGIORNATO IL 2026-08-18. I test 8 e 9 chiamavano
+--    `vendite.fn_listini_versioni_close_scadute()`, DROPPATA dal
+--    `20260426-04`: la logica e' passata al framework generico
+--    `dbops.fn_apply_chiusura_scadenze()` (`20260426-02`), che legge la
+--    configurazione da `dbops.automazione_chiusura_scadenze` — dove
+--    `vendite.listini_versioni` c'e' ed e' attiva. Il file moriva in parsing e
+--    non eseguiva NESSUNA delle 10 asserzioni.
+--    ⚠️ Non li ho cancellati, e la ragione conta: il comportamento non e'
+--    sparito, e' cambiato di porta. Il test generico di `dbops` verifica che il
+--    framework funzioni; questi due verificano che **questa tabella sia
+--    davvero agganciata** al framework — cosa che il test generico non puo'
+--    dire. Toglierli lascerebbe scoperto proprio il punto in cui il passaggio
+--    puo' rompersi: una riga di configurazione spenta o mai seedata.
 --
 -- Indice test (1..10):
 --   1) BOZZA  -> ATTIVA ammesso
@@ -15,8 +29,8 @@
 --   5) ATTIVA -> CHIUSA con valido_al scaduto ammesso
 --   6) BOZZA  -> CHIUSA vietato
 --   7) CHIUSA -> ATTIVA vietato
---   8) fn_listini_versioni_close_scadute chiude ATTIVA con valido_al scaduto
---   9) fn_listini_versioni_close_scadute NON tocca ATTIVA con valido_al futuro
+--   8) la chiusura per scadenza chiude ATTIVA con valido_al scaduto
+--   9) la chiusura per scadenza NON tocca ATTIVA con valido_al futuro
 --  10) ATTIVA -> ATTIVA no-op ammesso (WHEN distinct filter)
 --
 -- Strategia fixture:
@@ -199,30 +213,30 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 8) fn_listini_versioni_close_scadute chiude Slot_F (valido_al scaduto)
+-- 8) la chiusura per scadenza chiude Slot_F (valido_al scaduto)
 -- ============================================================
 -- Slot_F e'' ATTIVA con valido_al = 2022-12-31 (scaduto); la funzione
 -- deve chiuderla. Nota: anche Slot_C (gia'' chiusa al test 5) non sara''
 -- piu'' selezionata (gia'' CHIUSA). Verifichiamo puntualmente Slot_F.
-DO $$ BEGIN PERFORM vendite.fn_listini_versioni_close_scadute(); END $$;
+DO $$ BEGIN PERFORM dbops.fn_apply_chiusura_scadenze(); END $$;
 
 SELECT is(
     (SELECT stato FROM vendite.listini_versioni
       WHERE listino_id = (SELECT listino_id FROM tmp_listino)
         AND codice_versione = 'F'),
     'CHIUSA'::varchar,
-    'fn_listini_versioni_close_scadute chiude Slot_F (ATTIVA scaduta)'
+    'Chiusura per scadenza: Slot_F (ATTIVA scaduta) diventa CHIUSA'
 );
 
 -- ============================================================
--- 9) fn_listini_versioni_close_scadute NON tocca Slot_H (valido_al futuro)
+-- 9) la chiusura per scadenza NON tocca Slot_H (valido_al futuro)
 -- ============================================================
 SELECT is(
     (SELECT stato FROM vendite.listini_versioni
       WHERE listino_id = (SELECT listino_id FROM tmp_listino)
         AND codice_versione = 'H'),
     'ATTIVA'::varchar,
-    'fn_listini_versioni_close_scadute NON tocca Slot_H (ATTIVA con valido_al futuro)'
+    'Chiusura per scadenza: Slot_H (ATTIVA con valido_al futuro) resta ATTIVA'
 );
 
 -- ============================================================

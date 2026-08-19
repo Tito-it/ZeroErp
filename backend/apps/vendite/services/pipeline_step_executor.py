@@ -22,6 +22,14 @@ from apps.vendite.services.fatture_righe_service import FattureRigheService
 
 # Esecutore di singolo step pipeline con mapping task JSON -> azioni applicative.
 
+# Task che NON hanno (e non devono avere) un handler: segnaposto di
+# configurazione che l'esecutore attraversa senza fare niente. ⚠️ Costante e non
+# literal inline perche' la legge anche il cancello
+# `tests/db/test_pipeline_task_handler_guardrail.py`: con due copie, aggiungerne
+# un terzo qui renderebbe il cancello rosso su un task che invece e' legittimo —
+# e la reazione naturale sarebbe allentare il cancello.
+TASK_SENZA_HANDLER = frozenset({"noop", "log_only"})
+
 
 # Scopo: Esito di un task che ha COMPLETATO il proprio giro ma con una parte
 #        delle fatture in errore (D-Q p.3). Un handler che lo ritorna NON
@@ -99,6 +107,13 @@ class PipelineStepExecutor:
     # un ordine sbagliato deve fermarsi PRIMA di scrivere, non dopo.
     _TASK_ORDER_DEPENDENCIES: dict[str, tuple[str, ...]] = {
         "genera_scadenze_lotto": ("ricalcola_iva_lotto",),
+        # Il legame documentale si scrive DOPO la numerazione: prima, un reset
+        # di lotto puo' ancora arrivare, e `fn_cleanup_fatture_by_ids` non
+        # cancella `vendite.fatture_rettifiche` (FK non ON DELETE CASCADE).
+        # Il seed lo mette gia' nell'ordine giusto: questa riga fa in modo che
+        # una configurazione girata si fermi PRIMA che il primo task scriva,
+        # invece di scoprirsi a documenti numerati.
+        "popola_fatture_rettifiche": ("numera_fatture",),
     }
 
     # Scopo: Inizializza la istanza.
@@ -127,6 +142,7 @@ class PipelineStepExecutor:
             "pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task,
             "snapshot_indirizzi_lotto_default": self._handle_snapshot_indirizzi_lotto_task,
             "genera_scadenze_lotto_default": self._handle_genera_scadenze_lotto_task,
+            "popola_fatture_rettifiche_default": self._handle_popola_fatture_rettifiche_task,
         }
 
     # Scopo: Gestisce uno step pipeline validando input, risolvendo processi da configurazione DB e dispatch dei task
@@ -295,7 +311,7 @@ class PipelineStepExecutor:
             },
         )
 
-        if task in {"noop", "log_only"}:
+        if task in TASK_SENZA_HANDLER:
             return
 
         handler_code = self.repository.get_task_handler_code(
@@ -1075,3 +1091,65 @@ class PipelineStepExecutor:
                 meta={"task": task, **esito},
             )
         return None
+
+    # Scopo: Task `popola_fatture_rettifiche` (step DEFINITIVA, N10 + BE-8):
+    #        proietta il legame documento-a-documento delle note di credito
+    #        chiamando `fn_popola_fatture_rettifiche` per ogni fattura del lotto.
+    #        La proiezione e' idempotente e non cancella mai: le righe sono il
+    #        FATTO, `vendite.fatture_rettifiche` e' il loro INDICE.
+    #        Perimetro: tutte le fatture del lotto — una fattura senza righe di
+    #        rettifica aggiunge zero coppie, non e' un caso da filtrare a monte.
+    # ⚠️ FAIL-FAST per fattura (`_run_per_fattura_task`), NON esito parziale — ed
+    #    e' la scelta opposta a quella di `genera_scadenze_lotto` e
+    #    `snapshot_indirizzi_lotto`, quindi va motivata: quei due non hanno
+    #    nessuno a valle nello stesso step, qui invece `stampa_documenti_lotto`
+    #    viene subito dopo e CONSUMA questo legame (`DatiFattureCollegate` di una
+    #    TD04 vuole numero e data del documento rettificato). Proseguire con una
+    #    coppia mancante non lascerebbe una riga da rilavorare: stamperebbe un
+    #    documento fiscale incompleto. Meglio fermare lo step — le fatture sono
+    #    gia' numerate e la proiezione delle sane e' committata, quindi il
+    #    rilancio (task_policy `RESUME_TASK`) riprende da qui e l'idempotenza
+    #    rende innocuo il secondo giro.
+    def _handle_popola_fatture_rettifiche_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        def _action() -> None:
+            fattura_ids = self.repository.list_fatture_by_lotto(lotto_id)
+            # Il conteggio delle coppie e' l'unica traccia del giro: la tabella
+            # di proiezione non ha un log suo, e senza questa riga un lotto
+            # senza note di credito (zero coppie, esito corretto) sarebbe
+            # indistinguibile da un task che non ha lavorato.
+            coppie = 0
+
+            def _proietta(fattura_id: int) -> None:
+                nonlocal coppie
+                coppie += self.repository.popola_fatture_rettifiche(fattura_id)
+
+            self._run_per_fattura_task(
+                lotto_id=lotto_id,
+                stato_doc_fiscale_id=stato_doc_fiscale_id,
+                task=task,
+                fattura_ids=fattura_ids,
+                action=_proietta,
+            )
+            logging.getLogger(__name__).info(
+                "pipeline.popola_fatture_rettifiche lotto_id=%s fatture=%s coppie=%s",
+                lotto_id, len(fattura_ids), coppie,
+            )
+
+        self._run_validated_task(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            dry_run=dry_run,
+            action=_action,
+        )

@@ -73,7 +73,11 @@ BEGIN
         'key_selector', v_selector
       ),
       NULL::uuid,
-      concat(NEW.sorgente_tipo_id::text, ' key_selector:', v_selector)
+      -- ⚠️ ARITA' (2026-08-18): il concat() componeva UN valore solo, ma
+      --   E_SORG_KEY_MISSING ha due segnaposto -> format() alzava 22023.
+      --   Gli altri tre punti di questa funzione passano un valore a messaggi
+      --   con un segnaposto e stanno bene: era solo questo.
+      NEW.sorgente_tipo_id::text, v_selector
     );
   END IF;
 

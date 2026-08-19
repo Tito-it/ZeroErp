@@ -356,7 +356,7 @@ pratiche ZeroErp via API bidirezionale.
 
 | Setting | Default | Scopo |
 | --- | --- | --- |
-| `EMAIL_BACKEND` | `console` | Backend Django (non usato direttamente, il service usa SMTP per-account) |
+| `MAILERS['default']['BACKEND']` | `console` | Mailer Django (non usato dal service, che parla SMTP per-account). Sostituisce `EMAIL_BACKEND`, deprecato da Django 6.1 |
 | `EMAIL_ATTACHMENTS_ROOT` | `{BASE_DIR}/email_attachments` | Root storage allegati |
 | `EMAIL_ATTACHMENT_MAX_SIZE_MB` | `10` | Dimensione massima allegato in MB |
 | `EMAIL_ATTACHMENT_MAX_COUNT` | `10` | Numero massimo allegati per email |

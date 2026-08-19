@@ -19,3 +19,4 @@ id,task_registry_id,implementation_key,handler_code,is_default,attivo,meta,data_
 18,18,default,stampa_documenti_lotto_default,true,true,{},2026-07-20 00:00:00+02,titodb,,
 19,19,default,snapshot_indirizzi_lotto_default,true,true,{},2026-07-31 00:00:00+02,titodb,,
 20,20,default,genera_scadenze_lotto_default,true,true,{},2026-08-01 00:00:00+02,titodb,,
+21,21,default,popola_fatture_rettifiche_default,true,true,{},2026-08-18 00:00:00+02,mctit,,

@@ -1,3 +1,4 @@
 id,uid,codice,descrizione,emittente_soggetto_ruolo_id,serie_default,reset_policy,attivo,meta,tx_id,storicizza,data_insert,user_insert,data_update,user_update,utility_id
 3,019bfb1e-63e6-7d9f-bdf8-68c68c787019,Front-office,Front-office,NULL,R2,ANNUALE,t,{},019bfb1e-63f1-7639-a1e0-dd2fe6606f83,f,2026-01-26 17:23:51.505797+01,titodb,2026-01-27 16:08:41.612894+01,titodb,NULL
 4,019bfffe-aec4-748f-aa44-4ac77d3b938d,Back-office,Back-office,NULL,R1,ANNUALE,t,{},019bfffe-aed0-71ac-80f2-e29a15d92751,f,2026-01-27 16:07:19.502666+01,titodb,2026-01-27 16:08:41.612894+01,titodb,NULL
+5,019f0000-0000-7000-8000-000000000005,NC,Note di credito,NULL,NULL,ANNUALE,t,{},NULL,f,2026-08-18 00:00:00+02,SEED,2026-08-18 00:00:00+02,SEED,NULL

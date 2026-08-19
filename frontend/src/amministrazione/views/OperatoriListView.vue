@@ -55,7 +55,7 @@ const activeFilter = ref(null)
 
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.nuovo_operatore',
   onNew: () => drawer.openCreate(),
@@ -126,7 +126,7 @@ function buildRowActions(data) {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText
           v-model="searchText"
           :placeholder="t('amministrazione.search_placeholder')"

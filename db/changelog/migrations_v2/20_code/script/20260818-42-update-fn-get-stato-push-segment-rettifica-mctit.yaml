@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N11 (1/2) — IL CLASSIFICATORE DEL PUSH IMPARA IL SUFFISSO `#RET:`
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §15 (N11)
+#
+# ── L'AVVERTENZA ERA GIA' SCRITTA, ED ERA INDIRIZZATA QUI ──────────────
+#
+#   Il commento vivo di `vendite.fn_list_ddt_da_pushare` dice:
+#
+#       «E' l'unica cintura che impedira' di ri-spingere una riga la cui
+#        differenza torna positiva per una RETTIFICA (nota di credito): chi
+#        introdurra' un segment_key nuovo per la rettifica deve
+#        insegnarglielo.»
+#
+#   Questo e' quel momento. `fn_get_stato_push_segment` riconosce oggi il
+#   segmento esatto e il suffisso dei componenti (`#CMP:`); un segmento di
+#   rettifica (`#RET:<n>`, eventualmente seguito da `#CMP:<comp>`) le sarebbe
+#   passato accanto senza essere visto.
+#
+# ── ⚠️ NON E' COSMESI, ed e' bene dire perche' ─────────────────────────
+#
+#   Su una partita fatturata dalla corsia **DDT** il segmento porta gia'
+#   l'attivita' NORMALE, quindi risulta `EMESSA` comunque: li' non cambia nulla.
+#   Su una partita fatturata dalla corsia **ORD**, invece, il segmento DDT non
+#   ha alcuna attivita' — e resterebbe `LIBERA` anche dopo la nota di credito.
+#   A impedire una ri-spinta ci sarebbe **solo** la cintura XOR sullo stato del
+#   documento d'ordine.
+#
+#   ⭐ Due cinture sono una; una e' zero. Con il suffisso riconosciuto, la
+#   rettifica rende il segmento `EMESSA` (o `ALLOCATA` finche' non e' emessa) e
+#   la partita e' protetta dalla sua stessa storia, non da una condizione che
+#   vive altrove.
+#
+# ── ⚠️ NESSUN CAMBIO DI COMPORTAMENTO OGGI ─────────────────────────────
+#
+#   Al 2026-08-18 le righe `RETTIFICA` sono **zero**: nessun segmento contiene
+#   `#RET:`, quindi la clausola nuova non matcha nulla e il classificatore
+#   risponde esattamente come prima su ogni riga esistente. E' una cintura che
+#   entra in funzione il giorno in cui serve.
+#
+# ── LA FORMA DEL PATTERN ───────────────────────────────────────────────
+#
+#   `LIKE p_segment_key || '#RET:%'` copre entrambe le forme, perche' il
+#   suffisso `#CMP:` di un kit viene DOPO `#RET:<n>`:
+#
+#       DDT:<uid>:R:<id>#RET:1
+#       DDT:<uid>:R:<id>#RET:1#CMP:<componente>
+#
+#   ⚠️ Ed e' anche il motivo per cui la madre scrive `#RET` prima di `#CMP` e
+#   non il contrario: cosi' `split_part(segment_key, '#CMP:', 1)` continua a
+#   dare il kit_key e `vw_af_merce_per_riga` legge la rettifica senza modifiche.
+#
+# Base: definizione VIVA di script.fn_get_stato_push_segment.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260818-42-update-fn-get-stato-push-segment-rettifica-mctit.yaml
+
+  - changeSet:
+      id: 20260818-42-update-fn-get-stato-push-segment-rettifica
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N11: il classificatore «gia' inviato» riconosce anche i segmenti di
+        RETTIFICA (#RET:<n>, con o senza #CMP). Non e' cosmesi: su una partita
+        fatturata dalla corsia ORD il segmento DDT resterebbe LIBERA anche dopo
+        la nota di credito, e a proteggerla ci sarebbe solo la cintura XOR — due
+        cinture sono una, una e' zero. Nessun cambio di comportamento oggi:
+        le righe RETTIFICA sono zero.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: commesse_attivita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Parametro ANCORATO con %TYPE (linee-guida-sql §5b). Il
+              --    ritorno resta `text`: e' un'etichetta di classificazione
+              --    (LIBERA/ALLOCATA/EMESSA), non il valore di una colonna.
+              CREATE OR REPLACE FUNCTION script.fn_get_stato_push_segment(
+                  p_segment_key vendite.commesse_attivita.segment_key%TYPE)
+               RETURNS text
+               LANGUAGE sql
+               STABLE
+              AS $function$
+              -- Scopo: classificare lo stato-push della segment_key di una riga
+              --   documento rispetto a vendite.commesse_attivita, vedendo anche
+              --   le attivita' dei componenti BoM (suffisso '#CMP:<id>') e le
+              --   RETTIFICHE (suffisso '#RET:<n>', dal 2026-08-18):
+              --     LIBERA   = nessuna attivita' (riga mai instradata)
+              --     ALLOCATA = attivita' presenti, non tutte EMESSE (in attesa
+              --                di fatturazione; ANNULLATA conta come allocata)
+              --     EMESSA   = attivita' presenti e tutte fatturate
+              --   Single source del predicato "gia' inviato": consumata dalle
+              --   fn_list_*_da_pushare (eleggibile <=> LIBERA) e dai rami
+              --   reason delle capability (brief-db-push-commessa-gia-inviato).
+              -- rev 2026-08-18 (brief nota di credito, N11): il suffisso
+              --   '#RET:%' copre sia la rettifica semplice sia quella per
+              --   componente, perche' '#CMP:' viene DOPO '#RET:<n>'.
+              --   ⚠️ Su una partita fatturata dalla corsia ORD il segmento DDT
+              --   non ha attivita' NORMALE e resterebbe LIBERA anche a nota di
+              --   credito emessa: a impedire la ri-spinta ci sarebbe SOLO la
+              --   cintura XOR sullo stato dell'ordine. Due cinture sono una;
+              --   una e' zero.
+              SELECT CASE
+                       WHEN count(*) = 0 THEN 'LIBERA'
+                       WHEN bool_and(ca.stato_emissione = 'EMESSA') THEN 'EMESSA'
+                       ELSE 'ALLOCATA'
+                     END
+                FROM vendite.commesse_attivita ca
+               WHERE ca.segment_key = p_segment_key
+                  OR ca.segment_key LIKE p_segment_key || '#CMP:%'
+                  OR ca.segment_key LIKE p_segment_key || '#RET:%';
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_stato_push_segment(character varying)
+              IS 'Classifica lo stato-push di una segment_key rispetto a vendite.commesse_attivita: LIBERA (mai instradata) / ALLOCATA (attivita'' presenti, non tutte emesse) / EMESSA (tutte fatturate). Fonte UNICA del predicato «gia'' inviato», consumata dalle fn_list_*_da_pushare (eleggibile <=> LIBERA) e dai rami reason delle capability. Vede i suffissi dei componenti BoM (#CMP:) e, dal 2026-08-18, quelli delle RETTIFICHE (#RET:<n>, con o senza #CMP a seguire). ⚠️ Il suffisso di rettifica non e'' cosmesi: su una partita fatturata dalla corsia ORD il segmento DDT non ha attivita'' NORMALE e resterebbe LIBERA anche a nota di credito emessa — a impedire la ri-spinta ci sarebbe SOLO la cintura XOR sullo stato dell''ordine, e due cinture sono una mentre una e'' zero. brief-design-note-credito-resi N11.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Va ri-applicato il changeSet che definiva la versione senza
+              --    il suffisso #RET.
+              SELECT 1;

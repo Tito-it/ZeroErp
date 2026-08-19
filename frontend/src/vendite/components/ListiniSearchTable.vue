@@ -67,6 +67,7 @@ const auth = useAuthStore()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions: pageActionsBase,
+  perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'vendite.listini.nuovo_listino',
   onNew: () => emit('new'),
@@ -337,7 +338,7 @@ onMounted(() => store.fetchList())
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText v-model="searchText" :placeholder="t('vendite.listini.search_placeholder')" style="width: 320px;" />
         <UtilityPerRuoloSelect v-model="utilityFilter"
           :placeholder="t('vendite.listini.filtro_utility')" :show-clear="true"

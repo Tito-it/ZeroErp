@@ -23,6 +23,7 @@
 
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '../../../stores/auth'
 
 const props = defineProps({
   // Widget risolto dalla fn DB: {codice, etichetta, etichetta_i18n_key,
@@ -41,6 +42,8 @@ const props = defineProps({
 const emit = defineEmits(['apri'])
 
 const { t, te } = useI18n()
+const auth = useAuthStore()
+
 
 // Etichetta: chiave i18n se risolvibile, altrimenti l'etichetta di
 // catalogo. `te()` evita di stampare la chiave grezza quando la
@@ -53,6 +56,8 @@ const label = computed(() => {
 
 // Il widget ha un numero da mostrare?
 const haContatore = computed(() => Boolean(props.widget?.contatore_key))
+
+
 
 // Contatore non disponibile: fallito lato BE (`ok:false`) oppure MAI
 // arrivato (fetch batch fallita: `contatore` resta null a caricamento
@@ -70,6 +75,29 @@ const valore = computed(() => {
   if (!haContatore.value || degradato.value) return null
   return props.contatore?.valore ?? null
 })
+
+// Etichetta di perimetro (P-2c): un aggregato ha UN perimetro solo, quindi
+// dichiararlo lo rende non ambiguo — «Da fatturare: 240.000 € — tutti gli
+// emittenti» e' informazione completa, lo stesso numero senza etichetta no.
+//
+// ⚠️ Qui l'etichetta CURA, non e' un cerotto: su una lista non basterebbe
+//    (le righe resterebbero indistinguibili e serve la colonna o il cancello),
+//    su un numero si'. Ed e' il motivo per cui la home NON prende il cancello:
+//    e' la pagina di atterraggio, e la prima cosa dopo il login non puo'
+//    essere una domanda.
+//
+// ⚠️ Solo dove c'e' un NUMERO **davvero a video**: su una card informativa
+//    (benvenuto) non c'e' nessun aggregato di cui dichiarare il perimetro, e
+//    su una card DEGRADATA o in caricamento il numero non c'e' ancora —
+//    dichiarare il perimetro di un numero assente e' rumore attaccato a un
+//    trattino.
+const mostraPerimetro = computed(
+  () =>
+    auth.perimetroMultiEmittente
+    && haContatore.value
+    && !degradato.value
+    && valore.value !== null,
+)
 
 // Semaforo: 'neutro' | 'warn' | 'danger'. Neutro anche quando la soglia
 // e' assente/vuota (caso v1) o il valore non e' noto.
@@ -132,11 +160,22 @@ function onKeydown(event) {
       {{ valore }}
     </div>
 
+    <!-- Perimetro del numero, quando ce n'e' piu' d'uno. -->
+    <div v-if="mostraPerimetro" class="app-dash-card-hint kpi-perimetro">
+      {{ t('common.perimetro_emittente.etichetta_tutti') }}
+    </div>
+
     <!-- 3. widget informativo senza contatore: nessun numero -->
   </div>
 </template>
 
 <style scoped>
+.kpi-perimetro {
+  /* Dichiarazione di perimetro: informazione di contorno, non un avviso. */
+  font-style: italic;
+  opacity: 0.85;
+}
+
 .kpi-card {
   /* Il layout di base (bordo, radius, hover) arriva da .app-dash-card in
      main.css: qui solo cio' che e' specifico della card KPI. */

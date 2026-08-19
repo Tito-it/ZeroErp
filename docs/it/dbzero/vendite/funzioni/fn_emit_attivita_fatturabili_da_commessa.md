@@ -30,6 +30,11 @@ AS $function$
 --        AF gia' esistenti (senza quello, le righe di un altro
 --        gruppo rimaste da un giro precedente verrebbero comunque
 --        rastrellate — garanzia G12).
+-- rev 2026-08-18 (brief nota di credito N1b+N5): propaga anche
+--        natura_doc_id e fattura_riga_rettificata_id. La natura
+--        deve arrivare fino alla TESTATA (e' li' che la FatturaPA
+--        chiedera' TD01 o TD04): se si fermasse qui, la chiave
+--        documento non avrebbe cosa separare.
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
     v_root_id               vendite.commesse_sorgenti.id%TYPE;
@@ -102,6 +107,7 @@ BEGIN
                ca.tipo_doc_fiscale_id, ca.valuta_id, ca.area_geografica_id,
                ca.prezzo_snapshot, ca.prezzo_bloccato, ca.stato_approvazione, ca.meta,
                ca.tipo_movimento,
+               ca.natura_doc_id, ca.fattura_riga_rettificata_id,
                ca.sorgente_tipo_id AS ca_sorgente_tipo_id,
                -- Snapshot audit pricing v5 (propagati 1:1)
                ca.prezzo_base_snapshot, ca.origine_prezzo,
@@ -157,6 +163,7 @@ BEGIN
                 area_geografica_id, stato_esecuzione, prezzo_bloccato,
                 commessa_id, commessa_attivita_id, sorgente_origine_tipo_id,
                 tipo_movimento,
+                natura_doc_id, fattura_riga_rettificata_id,
                 prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata,
                 valore_variazione_applicata, promo_id, contratto_id,
                 categoria_cliente_id_snapshot, classe_utenza_id_snapshot
@@ -176,6 +183,7 @@ BEGIN
                 v_row.area_geografica_id, 'PENDING', v_row.prezzo_bloccato,
                 p_commessa_id, v_row.id, v_row.ca_sorgente_tipo_id,
                 v_row.tipo_movimento,
+                v_row.natura_doc_id, v_row.fattura_riga_rettificata_id,
                 v_row.prezzo_base_snapshot, v_row.origine_prezzo, v_row.tipo_variazione_applicata,
                 v_row.valore_variazione_applicata, v_row.promo_id, v_row.contratto_id,
                 v_row.categoria_cliente_id_snapshot, v_row.classe_utenza_id_snapshot
@@ -222,6 +230,9 @@ BEGIN
                    -- Registro della riga: lo specchio segue la CA
                    -- (la riga gia' fatturata e' respinta sopra).
                    tipo_movimento = v_row.tipo_movimento,
+                   -- Natura e riga rettificata: stesso specchio.
+                   natura_doc_id = v_row.natura_doc_id,
+                   fattura_riga_rettificata_id = v_row.fattura_riga_rettificata_id,
                    -- Refresh snapshot audit pricing v5 (riga non ancora fatturata)
                    prezzo_base_snapshot = v_row.prezzo_base_snapshot,
                    origine_prezzo = v_row.origine_prezzo,
@@ -243,7 +254,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[])
-IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1 e tipo_movimento. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-17: propaga tipo_movimento (colonna, brief immutabilita §4c.2). rev 2026-07-27 (brief emissione mirata A3): p_gruppi text[] restringe l''emissione ai soli gruppi fatturabili richiesti — NULL = nessuna restrizione (comportamento storico, garanzia G1), array vuoto = richiesta vuota (zero righe), chiave inesistente = zero righe senza errore (G6). La chiave arriva da vendite.fn_build_gruppo_fatturabile_key, mai ricostruita a mano: elenco ed emissione filtrano cosi'' sulla stessa stringa (G8). Senza questo filtro un giro mirato porterebbe fuori da "Da emettere" anche le righe degli altri documenti della stessa commessa, che e'' multi-sorgente (G3/G13). ⚠️ Filtrare qui NON basta: le AF gia'' esistenti le filtra fn_select_attivita_fatturabili (G12).';
+IS 'Emette righe da vendite.commesse_attivita verso vendite.attivita_fatturabili, idempotente su (sorgente COMMESSA, hash del segment_key). Propaga 1:1 lo snapshot audit pricing v5, tipo_movimento (dal 2026-07-17) e, dal 2026-08-18, natura_doc_id e fattura_riga_rettificata_id (brief-design-note-credito-resi N1b+N5). ⭐ La natura deve arrivare fino alla TESTATA — e'' li'' che il builder XML della FatturaPA chiedera'' se sta trasmettendo un TD01 o un TD04 — quindi fermarla qui avrebbe lasciato la chiave documento senza nulla da separare, e fatture e note di credito sarebbero finite sulla stessa testata. rev 2026-08-18.';
 ```
 
 ---

@@ -1,0 +1,4 @@
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update
+1,FATTURA,FATTURA,Fattura,t,10,"{""sdi_tipo_documento"": ""TD01""}",2026-08-18 00:00:00+02,SEED,2026-08-18 00:00:00+02,SEED
+2,NOTA_CREDITO,NOTA_CREDITO,Nota di credito,t,20,"{""sdi_tipo_documento"": ""TD04""}",2026-08-18 00:00:00+02,SEED,2026-08-18 00:00:00+02,SEED
+3,NOTA_DEBITO,NOTA_DEBITO,Nota di debito,t,30,"{""sdi_tipo_documento"": ""TD05""}",2026-08-18 00:00:00+02,SEED,2026-08-18 00:00:00+02,SEED

@@ -85,16 +85,23 @@ SELECT is(
     '4. Lista preventivi: vista_sql = vw_preventivi_lista'
 );
 
--- 5. 21 colonne attive nel catalogo
-SELECT is(
+-- 5. Il catalogo e' un INVENTARIO, e cresce per progetto: `>=` e non `=`.
+--    ⚠️ Era `esattamente 21`, ed e' rimasto rosso per mesi da quando
+--    `pratica`/`fase`/`transito` sono entrate in tutte e quattro le liste
+--    documento. Un file rosso finisce in baseline-rossi.tsv, e li' il
+--    runner tace sull'INTERO file: le altre 16 asserzioni — fra cui il
+--    test 7, l'anti-typo su cui si appoggia P-4 — non le leggeva piu'
+--    nessuno. Un conteggio esatto su una cosa che cresce non e' un
+--    presidio: e' una fotografia che spegne i presidi veri.
+SELECT cmp_ok(
     (
         SELECT COUNT(*)::INTEGER
           FROM ui.lista_colonna lc
           JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
          WHERE ld.codice = 'vendite.preventivi' AND lc.attivo = TRUE
     ),
-    21,
-    '5. Catalogo preventivi: esattamente 21 colonne attive'
+    '>=', 24,
+    '5. Catalogo preventivi: almeno 24 colonne attive (nessuna sparita)'
 );
 
 -- 6. id_fiscale -> id_fiscale_univoco_cf_piva
@@ -158,7 +165,13 @@ SELECT ok(
     '9. Preset preventivi_default: pagina_dimensione=25, ambito=sistema'
 );
 
--- 10. 12 colonne visibili nel preset
+-- 10. ⭐ Qui il conteggio esatto RESTA, e la differenza col 5 e' di merito.
+--     Il catalogo e' un inventario; il preset di default e' quello che
+--     ogni utente vede alla prima apertura, cioe' una SCELTA. Se cresce
+--     da solo, e' un cambio di schermata che nessuno ha deciso — ed e'
+--     esattamente cio' che vogliamo vedere rosso.
+--     ⚠️ Aggiornato da 12 a 15 (le stesse tre colonne del 5). Chi cambia
+--     la vista di default aggiorna QUESTO numero, di proposito.
 SELECT is(
     (
         SELECT COUNT(*)::INTEGER
@@ -169,8 +182,8 @@ SELECT is(
            AND lp.codice = 'preventivi_default'
            AND lpc.visibile = TRUE
     ),
-    12,
-    '10. Preset preventivi_default: esattamente 12 colonne visibili'
+    15,
+    '10. Preset preventivi_default: esattamente 15 colonne visibili'
 );
 
 -- 11. numero fissata=true

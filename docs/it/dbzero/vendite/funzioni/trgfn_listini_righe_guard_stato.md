@@ -45,7 +45,11 @@ BEGIN
                 'operazione', TG_OP
             ),
             OLD.tx_id,
-            OLD.id::text, v_stato
+            -- ⚠️ ARITA' (2026-08-18): il messaggio comincia con «Operazione %s
+            --   non ammessa: ...» e di segnaposto ne ha TRE; qui ne arrivavano
+            --   due. Mancava proprio il primo, l'operazione — che il trigger
+            --   aveva gia' in mano (TG_OP) e metteva perfino nel context.
+            TG_OP, OLD.id::text, v_stato
         );
     END IF;
 

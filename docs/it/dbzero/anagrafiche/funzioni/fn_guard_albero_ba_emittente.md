@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente.md" %}
 # ⚙️ Funzione `fn_guard_albero_ba_emittente`
 
 ```sql
@@ -47,7 +48,7 @@ BEGIN
                 'verso', 'padre',
                 'billing_account_id', p_billing_account_id,
                 'parent_account_id', v_padre_id,
-                'column', 'parent_account_id',
+                'campo',  'parent_account_id',
                 'emittente_sr_figlio', anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id),
                 'emittente_sr_padre',  anagrafiche.fn_get_emittente_fiscale_id(v_padre_id)
             ),
@@ -78,7 +79,7 @@ BEGIN
                     'verso', 'figlio',
                     'billing_account_id', r.id,
                     'parent_account_id', p_billing_account_id,
-                    'column', 'parent_account_id',
+                    'campo',  'parent_account_id',
                     'emittente_sr_figlio', anagrafiche.fn_get_emittente_fiscale_id(r.id),
                     'emittente_sr_padre',  anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id)
                 ),

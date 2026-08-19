@@ -1,0 +1,197 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-4 — 4 di 5. Lista «Competenza — errori vivi» (41).
+#
+# ⭐ Anche qui la union (TASK_ERRORE + FATTURA_CRITICA) viene avvolta in una CTE
+#    e il nome si risolve una volta all'esterno: entrambi i rami portano gia'
+#    `emittente_soggetto_ruolo_id` — dal LOTTO nel primo, dalla FATTURA nel
+#    secondo — quindi non c'e' niente da normalizzare, solo da risolvere.
+#
+# ⚠️ IL FILTRO DI SCOPE RESTA DOV'E', dentro i due rami. Spostarlo fuori
+#    sembrerebbe piu' pulito e sarebbe un errore: nel ramo FATTURA_CRITICA la
+#    condizione e' su `fc.emittente_soggetto_ruolo_id`, cioe' l'emittente della
+#    FATTURA, mentre la colonna proiettata in coda al ramo e' la stessa — ma i
+#    due rami filtrano su sorgenti diverse (lotto vs fattura) e accorparli
+#    significherebbe deciderne una. Il filtro sta dove sta la ragione.
+#
+# ⚠️ La CTE `eventi` non e' un materializzatore: PostgreSQL dalla 12 inlinea le
+#    CTE non ricorsive referenziate una volta sola. Nessun costo aggiunto.
+#
+# ⚠️ security_invoker = on va RI-SPECIFICATA o PostgreSQL la azzera.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-fase-e-e-ricerca.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-64-update-vw-dash-competenza-errori-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260818-64-update-vw-dash-competenza-errori-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        R-4 (4 di 5): `emittente_ragione_sociale` in coda a
+        vw_dash_competenza_errori. La union dei due rami (TASK_ERRORE dal
+        lotto, FATTURA_CRITICA dalla fattura) viene avvolta in una CTE e il
+        nome si risolve una volta all'esterno. Il filtro di scope resta DENTRO
+        i rami: filtrano su sorgenti diverse e accorparli significherebbe
+        sceglierne una. security_invoker=on ri-specificata. Brief Fase E, R-4.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_dash_competenza_errori
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: soggetti_ruoli
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
+              WITH (security_invoker=on) AS
+              WITH escope AS (
+                       SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids
+                      ), task_err AS (
+                       SELECT tr.lotto_id,
+                          tr.task_code,
+                          tr.tentativo,
+                          tr.error_code,
+                          tr.error_message,
+                          tr.started_at
+                         FROM vendite.fatturazione_lotti_task_runs tr
+                        WHERE (((tr.task_stato)::text = 'ERRORE'::text) AND (tr.attivo IS TRUE) AND (NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_task_runs tr2
+                                WHERE ((tr2.lotto_id = tr.lotto_id) AND (NOT (tr2.stato_doc_fiscale_id IS DISTINCT FROM tr.stato_doc_fiscale_id)) AND ((tr2.task_code)::text = (tr.task_code)::text) AND (tr2.tentativo > tr.tentativo) AND ((tr2.task_stato)::text = 'COMPLETATO'::text) AND (tr2.attivo IS TRUE))))))
+                      ), fatture_critiche AS (
+                       SELECT f.id,
+                          f.anno,
+                          f.serie,
+                          f.numero,
+                          f.data,
+                          f.emittente_soggetto_ruolo_id,
+                          ll.messaggio,
+                          ll.data_ora
+                         FROM (vendite.fatture f
+                           LEFT JOIN LATERAL ( SELECT fl.messaggio,
+                                  fl.data_ora
+                                 FROM vendite.fatture_log fl
+                                WHERE ((fl.fattura_id = f.id) AND (fl.disabilitato IS FALSE))
+                                ORDER BY fl.data_ora DESC
+                               LIMIT 1) ll ON (true))
+                        WHERE (f.critical IS TRUE)
+                      ), fatture_competenze AS (
+                       SELECT fc.id AS fattura_id,
+                          l.competenza_mese,
+                          lf.lotto_id
+                         FROM ((fatture_critiche fc
+                           JOIN vendite.fatturazione_lotti_fatture lf ON ((lf.fattura_id = fc.id)))
+                           JOIN vendite.fatturazione_lotti l ON ((l.id = lf.lotto_id)))
+                      UNION
+                       SELECT fc.id,
+                          af.competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM ((fatture_critiche fc
+                           JOIN vendite.fatture_righe fr ON ((fr.fattura_id = fc.id)))
+                           JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
+                        WHERE (NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf2
+                                WHERE (lf2.fattura_id = fc.id))))
+                      UNION
+                       SELECT fc.id,
+                          (date_trunc('month'::text, (fc.data)::timestamp with time zone))::date AS competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM fatture_critiche fc
+                        WHERE ((NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf3
+                                WHERE (lf3.fattura_id = fc.id)))) AND (NOT (EXISTS ( SELECT 1
+                                 FROM (vendite.fatture_righe fr2
+                                   JOIN vendite.attivita_fatturabili af2 ON ((af2.fattura_riga_id = fr2.id)))
+                                WHERE (fr2.fattura_id = fc.id)))))
+                      ), eventi AS (
+                       -- ⚠️ Il filtro di scope resta DENTRO i due rami, e non
+                       --   si accorpa qui fuori: il primo filtra sull'emittente
+                       --   del LOTTO, il secondo su quello della FATTURA.
+                       --   Portarlo all'esterno vorrebbe dire sceglierne uno.
+                       SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
+                          l.competenza_mese,
+                          l.id AS lotto_id,
+                          l.codice AS lotto_codice,
+                          l.stato_lotto,
+                          NULL::bigint AS fattura_id,
+                          NULL::smallint AS fattura_anno,
+                          NULL::character varying AS fattura_serie,
+                          NULL::bigint AS fattura_numero,
+                          te.task_code,
+                          te.error_code,
+                          te.error_message AS messaggio,
+                          te.started_at AS data_evento,
+                          l.emittente_soggetto_ruolo_id
+                         FROM ((task_err te
+                           JOIN vendite.fatturazione_lotti l ON ((l.id = te.lotto_id)))
+                           CROSS JOIN escope)
+                        WHERE ((escope.sr_ids IS NULL) OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+                      UNION ALL
+                       SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
+                          fk.competenza_mese,
+                          fk.lotto_id,
+                          l2.codice AS lotto_codice,
+                          l2.stato_lotto,
+                          fc.id AS fattura_id,
+                          fc.anno AS fattura_anno,
+                          fc.serie AS fattura_serie,
+                          fc.numero AS fattura_numero,
+                          NULL::character varying AS task_code,
+                          NULL::character varying AS error_code,
+                          fc.messaggio,
+                          fc.data_ora AS data_evento,
+                          fc.emittente_soggetto_ruolo_id
+                         FROM (((fatture_critiche fc
+                           JOIN fatture_competenze fk ON ((fk.fattura_id = fc.id)))
+                           LEFT JOIN vendite.fatturazione_lotti l2 ON ((l2.id = fk.lotto_id)))
+                           CROSS JOIN escope)
+                        WHERE ((escope.sr_ids IS NULL) OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+                      )
+               SELECT e.*,
+                  -- R-4: il nome dell'emittente, risolto una volta per entrambi
+                  -- i rami. Entrambi portano gia' la chiave, quindi non c'e'
+                  -- niente da normalizzare: solo da leggere.
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM eventi e
+                 LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                        ON sr_ef.id = e.emittente_soggetto_ruolo_id
+                 LEFT JOIN anagrafiche.soggetti s_ef
+                        ON s_ef.id = sr_ef.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_errori IS
+                  'Lente 1 Competenza, blocco errori: eventi "vivi" della pipeline di '
+                  'fatturazione per mese di competenza. TASK_ERRORE = run in ERRORE (attivo) '
+                  'non superato da un COMPLETATO successivo sulla stessa chiave '
+                  '(lotto/step/task), competenza dal lotto. FATTURA_CRITICA = fatture.critical '
+                  '(sync da fatture_log), messaggio = ultimo log non disabilitato; competenza: '
+                  'lotto collegato -> mesi distinti delle AF (una riga per mese) -> fallback '
+                  'mese data fattura (DB-7). SCOPE EMITTENTE via '
+                  'fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on. '
+                  '⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda '
+                  '`emittente_ragione_sociale`. La union dei due rami e'' avvolta in una CTE e '
+                  'il nome si risolve una volta all''esterno — entrambi i rami portano gia'' la '
+                  'chiave (dal LOTTO il primo, dalla FATTURA il secondo). '
+                  '⚠️ Il filtro di scope NON e'' stato accorpato fuori dalla union, e non e'' '
+                  'una svista: i due rami filtrano su sorgenti diverse e unificarli '
+                  'significherebbe sceglierne una. Il filtro sta dove sta la ragione.';
+      rollback:
+        - sql:
+            sql: |
+              -- Nessun rollback automatico: rimuovere una colonna da una vista
+              -- richiede DROP + ricreazione della catena a valle.
+              SELECT 1;

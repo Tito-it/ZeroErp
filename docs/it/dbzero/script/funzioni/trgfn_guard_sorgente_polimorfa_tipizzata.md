@@ -77,8 +77,10 @@ BEGIN
           'key_selector', v_selector
         ),
         NULL::uuid,
-
-        concat( NEW.sorgente_tipo_id::text, ' key_selector:', v_selector)
+        -- ⚠️ ARITA' (2026-08-18): concat() = un valore, E_SORG_KEY_MISSING ne
+        --   chiede due -> 22023 al posto del P0001. Vale per entrambi i rami
+        --   (id e uid) di questa funzione.
+        NEW.sorgente_tipo_id::text, v_selector
       );
     END IF;
 
@@ -100,7 +102,8 @@ BEGIN
           'key_selector', v_selector
         ),
         NULL::uuid,
-        concat(NEW.sorgente_tipo_id::text , ' key_selector:', v_selector)
+        -- ⚠️ ARITA' (2026-08-18): secondo dei due rami, stesso difetto.
+        NEW.sorgente_tipo_id::text, v_selector
       );
     END IF;
 

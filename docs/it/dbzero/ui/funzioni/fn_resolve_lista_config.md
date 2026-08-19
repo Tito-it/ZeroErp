@@ -26,6 +26,8 @@ AS $function$
 --        da ui.lista_colonna (attributo globale, non overridabile).
 DECLARE
   v_lista_id         ui.lista_definizione.id%TYPE;
+  -- P-2b (2026-08-18): la capacita' dichiarata della lista.
+  v_multi_emittente  ui.lista_definizione.multi_emittente%TYPE;
   v_config_colonne   JSONB;
   v_ordinamento      JSONB;
   v_filtri           JSONB;
@@ -63,7 +65,11 @@ BEGIN
   -- -------------------------------------------------------
   -- 0. Recupera lista_id dal codice
   -- -------------------------------------------------------
-  SELECT id INTO v_lista_id
+  -- ⚠️ P-2b: multi_emittente si legge QUI, nella SELECT che c'era gia'.
+  --   Una seconda query sulla stessa riga sarebbe un round-trip in piu' su
+  --   una funzione che gira a ogni apertura di lista.
+  SELECT id, multi_emittente
+    INTO v_lista_id, v_multi_emittente
     FROM ui.lista_definizione
    WHERE codice = p_lista_codice
      AND attivo = TRUE;
@@ -413,14 +419,23 @@ BEGIN
     'filtri',            COALESCE(v_filtri, '{}'::JSONB),
     'pagina_dimensione', v_pagina_dim,
     'colonne_nuove',     v_colonne_nuove,
-    'preset_aggiornato', v_preset_aggiornato
+    'preset_aggiornato', v_preset_aggiornato,
+    -- ⭐ P-2b: la lista dichiara se sa reggere piu' emittenti.
+    --   Chiave ADDITIVA: i consumatori che non la leggono non si accorgono
+    --   di niente. COALESCE difensivo — la colonna e' NOT NULL DEFAULT false,
+    --   ma se la SELECT non ha trovato la riga siamo gia' usciti con errore.
+    -- ⚠️ NON E' UN PERMESSO: non dice cosa l'utente puo' vedere (quello lo
+    --   decidono lo scope e la RLS), dice se la SCHERMATA e' leggibile nella
+    --   condizione in cui sta per essere aperta. Chi la usa come controllo di
+    --   autorizzazione crea una seconda via d'accesso accanto a quella vera.
+    'multi_emittente',   COALESCE(v_multi_emittente, false)
   );
 
 END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile).';
+IS 'Risolve configurazione lista per un utente: cascata preset (GUC-aware, deterministica per priorita), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b.';
 ```
 
 ---

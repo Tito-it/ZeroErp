@@ -28,7 +28,7 @@ LANGUAGE plpgsql STABLE
 | Valore | Significato |
 | --- | --- |
 | `NULL` | Nessuna restrizione: l'utente vede tutti gli emittenti (super admin) |
-| `'{}'::bigint[]` | Nessun accesso: l'utente non ha identita' OPERATORE attiva |
+| `'{}'::bigint[]` | Nessun accesso. Due casi: l'utente non ha identita' OPERATORE attiva, **oppure** (dal 2026-08-18, P-2a) e' un operatore **senza riga** in `config.user_emittenti_fiscali` |
 | Array di PK | Whitelist: l'utente vede solo gli emittenti elencati |
 
 ## Logica (catena di controllo)

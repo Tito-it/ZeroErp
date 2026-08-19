@@ -52,7 +52,7 @@ const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty,
-  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
+  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   exportFn: exportDdt,
   getExportParams: (fmt) => buildExportParams(fmt),
@@ -148,7 +148,7 @@ onMounted(() => store.fetchList())
     <template v-else>
       <!-- Toolbar UNICA esterna (pattern lista standard). -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
+        <div class="app-page-filters" :inert="perimetroBloccato">
           <InputText v-model="searchText" :placeholder="t('vendite.ddt.search_placeholder')" style="width: 260px;" />
           <LookupSelect
             v-model="statoFilter"

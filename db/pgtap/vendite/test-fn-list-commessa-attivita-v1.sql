@@ -100,7 +100,20 @@ SELECT
     WHERE u.attivo IS TRUE
     ORDER BY u.id
     LIMIT 1
-  ) AS uom_id;
+  ) AS uom_id,
+  -- rev 2026-08-18 (bonifica baseline): il tipo documento fiscale mancava, e
+  -- da quando esiste trg_commesse_attivita_a10_guard_tipo_doc_emittibile una
+  -- riga che nasce APPROVATA + NON_EMESSA senza tipo_doc non e' piu' un caso
+  -- ammesso: e' invisibile a fn_list_emittibili_lane, cioe' fatturato perso in
+  -- silenzio. Il guard lo dice fail-fast e la fixture moriva li', prima di
+  -- eseguire una sola asserzione.
+  (
+    SELECT t.id
+    FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE
+    ORDER BY t.id
+    LIMIT 1
+  ) AS tipo_doc_fiscale_id;
 
 -- Crea commessa di test
 CREATE TEMP TABLE tmp_commessa_lca AS
@@ -145,6 +158,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_lca),
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
@@ -180,6 +194,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_lca),
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',

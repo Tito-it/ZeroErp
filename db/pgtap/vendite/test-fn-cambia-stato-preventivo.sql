@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_cambia_stato_preventivo
 -- ------------------------------------------------------------
--- Indice test (1..10):
+-- Indice test (1..11):
 -- 1) Funzione presente
 -- 2) Riferimenti minimi disponibili
 -- 3) Setup preventivo DRAFT con riga valida
@@ -12,7 +12,8 @@
 -- 6) DRAFT -> ANNULLATO ammessa (senza commessa; ACCETTATO->ANNULLATO disattivata nel seed)
 -- 7) DRAFT -> ACCETTATO vietata (non in matrice)
 -- 8) DRAFT -> EMESSO vietata senza righe attive
--- 9) DRAFT -> EMESSO vietata con totale = 0
+-- 9a) Premessa: il preventivo di prova ha totale_documento = 0
+-- 9b) DRAFT -> EMESSO AMMESSA con totale = 0 (regola rev 2026-07-16)
 -- 10) anti-regressione: rename codice stati -> DRAFT->EMESSO risolta per codice_interno
 -- ------------------------------------------------------------
 BEGIN;
@@ -31,7 +32,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(11);
 -- ============================================================
 -- Setup GUC app.current_user_id: il trigger trgfn_preventivi_default_emittente
 -- richiede l'emittente fiscale dell'operatore loggato (GUC popolata in API da
@@ -411,7 +412,8 @@ SELECT throws_ok(
     '8. DRAFT -> EMESSO vietata senza righe attive'
   );
 -- ============================================================
--- 9) DRAFT -> EMESSO vietata con totale = 0
+-- 9a) Premessa: il preventivo di prova ha totale_documento = 0
+-- 9b) DRAFT -> EMESSO AMMESSA con totale = 0 (regola rev 2026-07-16)
 --    (riga con prezzo = 0)
 -- ============================================================
 CREATE TEMP TABLE tmp_cs_prev4 AS WITH ins AS (
@@ -469,7 +471,18 @@ SELECT p.id,
   jsonb_build_object('test_scope', 'pgtap_cambia_stato')
 FROM tmp_cs_prev4 p,
   tmp_cs_refs r;
-SELECT throws_ok(
+-- La premessa: il documento e' davvero a totale zero?
+SELECT is(
+    (
+      SELECT coalesce(p.totale_documento, 0)
+      FROM vendite.preventivi p
+      WHERE p.id = (SELECT id FROM tmp_cs_prev4)
+    ),
+    0::numeric,
+    '9a. Premessa: il preventivo di prova ha totale_documento = 0'
+  );
+
+SELECT lives_ok(
     format(
       'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'', ''pgtap'')',
       (
@@ -477,9 +490,7 @@ SELECT throws_ok(
         FROM tmp_cs_prev4
       )
     ),
-    NULL,
-    NULL,
-    '9. DRAFT -> EMESSO vietata con totale = 0'
+    '9b. DRAFT -> EMESSO ammessa con totale = 0 (rev 2026-07-16: basta che ci siano righe)'
   );
 -- ============================================================
 -- 10) Anti-regressione codice_interno (analisi-hardcoded-codice §3a #1):

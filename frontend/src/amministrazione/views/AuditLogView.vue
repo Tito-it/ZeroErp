@@ -32,7 +32,7 @@ const store = useAuditLogStore()
 
 const {
   onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: {
     // Allineato al preset del seed (`timestamp desc`). Va detto in entrambi i
@@ -96,7 +96,7 @@ onMounted(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <Select
           v-model="store.filters.tabella"
           :options="tabellaOptions"

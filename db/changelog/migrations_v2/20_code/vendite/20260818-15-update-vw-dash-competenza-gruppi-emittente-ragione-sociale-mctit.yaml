@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 6 (P-4) del cantiere «perimetro emittente» — la lista PILOTA
+# «Competenza — gruppi fatturabili» (decisione Q4).
+#
+# COSA MANCAVA. La vista esponeva gia' `emittente_soggetto_ruolo_id`, cioe'
+# l'ID. Ma un id a video non e' «dichiarare l'emittente»: e' spostare
+# l'ambiguita' di un passo. Serve la RAGIONE SOCIALE — che e' esattamente
+# quello che le SEI liste documento (contratti, preventivi, offerte, ordini,
+# DDT, resi) mostrano gia' da mesi, con lo stesso identico frammento:
+#     s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+# Non si inventa niente: si copia.
+#
+# PERCHE' QUESTA LISTA PER PRIMA (Q4): e' quella da cui parte l'emissione
+# mirata. Si spuntano i gruppi e si preme «fattura». Una lista che mescola
+# emittenti senza dirlo, con quel pulsante sotto, e' il caso peggiore del
+# cantiere.
+#
+# ⚠️ DUE COSE DA NON DIMENTICARE in una CREATE OR REPLACE VIEW:
+#   1) `security_invoker=on` va RI-SPECIFICATA, o PostgreSQL la azzera — e
+#      questa vista ci appoggia lo scope emittente;
+#   2) si possono solo APPENDERE colonne in coda: la nuova va per forza
+#      ultima, e non e' una scelta estetica.
+#
+# ⚠️ NON BASTA QUESTO CHANGE SET perche' la colonna si veda: la lista ha
+#    `vista_sql = NULL`, quindi le righe le compone il repository di dominio,
+#    che elenca le colonne ESPLICITAMENTE. Serve la richiesta BE-2 del brief.
+#    Una colonna a catalogo senza il campo a monte e' peggio di nessuna
+#    colonna: si spunta e resta vuota, cioe' *sembra* la garanzia che il flag
+#    multi_emittente pretendera'.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-15-update-vw-dash-competenza-gruppi-emittente-ragione-sociale-mctit.yaml
+
+  - changeSet:
+      id: 20260818-15-update-vw-dash-competenza-gruppi-emittente-ragione-sociale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        P-4 sulla lista pilota: vw_dash_competenza_gruppi espone la RAGIONE
+        SOCIALE dell'emittente e non piu' il solo id. Stesso frammento delle sei
+        liste documento (s_ef.ragione_sociale_completa AS
+        emittente_ragione_sociale). Colonna appesa in coda (vincolo di CREATE OR
+        REPLACE VIEW) e security_invoker=on ri-specificata. Brief P-4, Q4.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_dash_competenza_gruppi
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'vendite' AND table_name = 'vw_dash_competenza_gruppi'
+                   AND column_name = 'emittente_soggetto_ruolo_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=on) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  -- ⭐ P-4: la riga dichiara da quale emittente arriva.
+                  --    In coda per forza: CREATE OR REPLACE VIEW puo' solo
+                  --    APPENDERE colonne, non inserirle in mezzo.
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM aggregato g
+                   LEFT JOIN config.sorgenti s ON s.id = g.sorgente_tipo_id
+                   LEFT JOIN LATERAL ( SELECT d.codice,
+                          d.documento_id
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE ((s.area IS NOT NULL) AND ((d.area)::text = (s.area)::text) AND (d.documento_uid = g.sorgente_uid))
+                        ORDER BY d.competenza_mese DESC NULLS LAST
+                       LIMIT 1) doc ON true
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ba_riga.id = g.billing_account_id
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id)
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON sr_fatt.id = ba_fatt.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti sog ON sog.id = sr_fatt.soggetto_id
+                   -- Emittente della riga: soggetto_ruolo -> soggetto. Stessa
+                   -- forma delle sei viste documento che la mostrano gia'.
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = g.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                  'Lente 1 Competenza, gruppi fatturabili: l''unita'' dell''emissione mirata. '
+                  'Una riga per (competenza_mese, gruppo_key). security_invoker=on (scope '
+                  'emittente). Rev 2026-08-18 (P-4, brief perimetro-emittente Q4): espone '
+                  'emittente_ragione_sociale, non piu'' il solo emittente_soggetto_ruolo_id — '
+                  'un id a video non dichiara l''emittente, lo nasconde meglio. E'' la lista '
+                  'PILOTA del giro P-4 perche'' e'' quella da cui parte l''emissione mirata: si '
+                  'spuntano i gruppi e si fattura. ⚠️ La colonna arriva a video solo con la '
+                  'richiesta BE-2 (la lista ha vista_sql NULL: le righe le compone il '
+                  'repository, che elenca le colonne esplicitamente).';
+      rollback:
+        - sql:
+            sql: |
+              -- Nessun rollback automatico: una CREATE OR REPLACE VIEW non puo'
+              -- TOGLIERE una colonna, quindi tornare indietro richiede DROP +
+              -- ricreazione con le dipendenze. Si crea un changeSet nuovo.
+              SELECT 1;

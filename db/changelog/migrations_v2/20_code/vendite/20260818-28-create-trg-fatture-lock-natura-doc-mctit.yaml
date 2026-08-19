@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N1 — LA NATURA NON SI CAMBIA DOPO
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4-bis.9
+#
+# ── LA REGOLA, E PERCHE' E' PIU' SERIA DI UN REFUSO ─────────────────────
+#
+#   Un documento non cambia natura. Cambiarla vorrebbe dire trasformare una
+#   fattura in una nota di credito **a numero gia' assegnato**: il numero
+#   resterebbe quello del registro delle fatture, il segno del totale sarebbe
+#   quello di prima, e il builder XML trasmetterebbe un TD04 con dentro un TD01.
+#
+#   Non e' un caso di fantasia: la natura entra nella chiave documento, quindi
+#   il giorno in cui qualcuno «correggesse» il campo a mano su una testata
+#   sbagliata avrebbe un documento fiscale che mente su se stesso, e nessuna
+#   delle sei condizioni del guard D-K se ne accorgerebbe (girano PRIMA della
+#   numerazione, non dopo).
+#
+# ── PERCHE' UN BUILDING BLOCK E NON UN GUARD NUOVO ─────────────────────
+#
+#   `script.trgfn_lock_columns` fa esattamente questo, e' gia' il presidio di
+#   `codice_interno` su config.tipi_doc_fiscale e su
+#   vendite.tipi_doc_fiscale_registri, e prende le coppie (colonna, codice
+#   errore) come argomenti del trigger. Scriverne un altro sarebbe logica
+#   duplicata fra livelli per una regola che il progetto sa gia' esprimere.
+#
+#   ⚠️ E il codice errore e' `E_COLONNA_NON_MODIFICABILE`, **gia' registrato**
+#   (classe CONFLITTO_STATO, messaggio «Colonna non modificabile: %s», un solo
+#   segnaposto, ed e' il nome della colonna che il BB passa). Un codice nuovo
+#   qui non aggiungerebbe informazione e costerebbe una rigenerazione di
+#   `error_policies_generated.py` al backend per dire la stessa cosa.
+#
+# ── ⚠️ IL GUC DI MANUTENZIONE ───────────────────────────────────────────
+#
+#   `trgfn_lock_columns` esce in testa se `zeroerp.allow_lock_columns_override`
+#   vale `'on'`. E' il canale previsto per le riparazioni dati, e vale anche
+#   qui: la cintura protegge dall'errore, non dal DBA che sa cosa sta facendo.
+#
+# ── FASE `_a10_` e evento `UPDATE OF natura_doc_id` ─────────────────────
+#
+#   Guard/blocco -> fase a10 (linee-guida-trigger). `UPDATE OF` perche' la
+#   logica e' specifica di quella colonna: un UPDATE che non la nomina non deve
+#   nemmeno svegliare il trigger.
+#
+# Dipendenze: vendite.fatture.natura_doc_id (20260818-26),
+#   script.trgfn_lock_columns, codice errore E_COLONNA_NON_MODIFICABILE (id 12).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-28-create-trg-fatture-lock-natura-doc-mctit.yaml
+
+  - changeSet:
+      id: 20260818-28-create-trg-fatture-lock-natura-doc
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N1: immutabilita' di vendite.fatture.natura_doc_id via il building block
+        script.trgfn_lock_columns, lo stesso che protegge codice_interno su
+        tipi_doc_fiscale. Un documento non cambia natura a numero gia'
+        assegnato: sarebbe un TD04 con dentro un TD01, e nessuna delle sei
+        condizioni del guard D-K se ne accorgerebbe perche' girano prima della
+        numerazione. Codice errore riusato: E_COLONNA_NON_MODIFICABILE.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: fatture
+            columnName: natura_doc_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_lock_natura_doc_upd ON vendite.fatture;
+
+              CREATE TRIGGER trg_fatture_a10_lock_natura_doc_upd
+                BEFORE UPDATE OF natura_doc_id
+                ON vendite.fatture
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_lock_columns(
+                    'natura_doc_id', 'E_COLONNA_NON_MODIFICABILE');
+
+              COMMENT ON TRIGGER trg_fatture_a10_lock_natura_doc_upd ON vendite.fatture IS
+                'Un documento non cambia natura fiscale. Riuso del building block '
+                'script.trgfn_lock_columns (lo stesso che congela codice_interno su '
+                'config.tipi_doc_fiscale e su vendite.tipi_doc_fiscale_registri). '
+                'Perche'' e'' seria: la natura entra nella chiave documento e decide il '
+                'TipoDocumento della FatturaPA — cambiarla a numero gia'' assegnato '
+                'produrrebbe un TD04 con dentro un TD01, e le sei condizioni del guard '
+                'D-K non lo vedrebbero perche'' girano PRIMA della numerazione, non dopo. '
+                'Si scavalca solo dal canale previsto: GUC '
+                'zeroerp.allow_lock_columns_override = on, per le riparazioni dati. '
+                'brief-design-note-credito-resi S12.4-bis.9. rev 2026-08-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_lock_natura_doc_upd ON vendite.fatture;

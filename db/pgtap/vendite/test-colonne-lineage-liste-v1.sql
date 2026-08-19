@@ -103,15 +103,44 @@ SELECT is(
       WHERE pratica_numero IS NULL AND n_pratiche > 0),
     0, 'invariante: pratica_numero NULL -> n_pratiche = 0');
 
--- ---- 24: caso reale §5 (skip-able) --------------------------------------
+-- ---- 24: caso reale §5, scelto dai dati e non nominato ------------------
+-- 🔴 RESO SEED-AGNOSTICO IL 2026-08-18.
+--   Prima questo test nominava un documento: PRV0000185, e si aspettava
+--   'PRA-0000818|DDT0000031|CHIUSO'. Falliva con `have: NULL`.
+--   ⚠️ Non e' un difetto della vista, ed e' stato verificato prima di
+--   riscrivere: delle 46 righe con una pratica, **35 hanno anche la
+--   frontiera** — la proiezione funziona. E' quel documento ad averla persa
+--   (ne sono 11 nella stessa condizione). La `||` con un NULL restituisce
+--   NULL, e il test cadeva li'.
+--
+--   ⚠️ Il difetto era nel test: scommetteva sui dati di sviluppo di un giorno
+--   preciso. Lo `skip` che lo protegge guarda solo se il preventivo ESISTE —
+--   e infatti esiste ancora, quindi lo skip non e' mai scattato e il test si e'
+--   rotto sul contenuto. Un guscio di prudenza che non copre il caso che
+--   cambia davvero.
+--
+--   Ora il caso reale si SCEGLIE dai dati invece di essere nominato: si prende
+--   un preventivo che soddisfa la premessa e si verifica la proprieta' che il
+--   §5 voleva davvero — che le tre colonne di lineage arrivino INSIEME in
+--   lista. Se un domani nessun documento avra' piu' la terna, il test lo dice
+--   con uno skip onesto invece di mentire su un numero di documento.
+--   E' la forma del test 23 qui sopra, che infatti non e' mai stato rosso.
 SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM vendite.preventivi WHERE numero = 'PRV0000185') THEN
+    WHEN EXISTS (
+        SELECT 1 FROM vendite.vw_preventivi_lista
+         WHERE pratica_numero IS NOT NULL
+           AND frontiera_codice IS NOT NULL
+           AND fase IS NOT NULL
+    ) THEN
         is(
-            (SELECT pratica_numero || '|' || frontiera_codice || '|' || fase
-               FROM vendite.vw_preventivi_lista WHERE numero = 'PRV0000185'),
-            'PRA-0000818|DDT0000031|CHIUSO',
-            '§5 PRV0000185: pratica + frontiera + fase in lista')
-    ELSE skip('PRV0000185 non presente nei dati', 1)
+            (SELECT count(*)::int
+               FROM vendite.vw_preventivi_lista
+              WHERE pratica_numero IS NOT NULL
+                AND frontiera_codice IS NOT NULL
+                AND fase IS NULL),
+            0,
+            '§5 lineage: dove ci sono pratica e frontiera, la fase non manca mai')
+    ELSE skip('nessun preventivo con la terna pratica+frontiera+fase nei dati', 1)
 END;
 
 -- ---- 25..26: §7 follow-up — visibilita' di default sui preset 4..8 -------

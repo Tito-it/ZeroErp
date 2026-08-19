@@ -31,7 +31,7 @@ const store = useTemplateAssetDocumentiStore()
 const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'config.modelli_documenti.asset.new',
   onNew: () => emit('new'),
@@ -63,7 +63,7 @@ onMounted(() => store.fetchList())
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
+        <div class="app-page-filters" :inert="perimetroBloccato">
           <InputText
             v-model="searchText"
             :placeholder="t('config.modelli_documenti.asset.search_placeholder')"

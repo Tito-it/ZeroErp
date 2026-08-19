@@ -33,7 +33,8 @@ const store = useArticoliStore()
 const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  mostraLista, mostraSearchHint,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'catalogo.nuovo_articolo',
   onNew: () => emit('new'),
@@ -124,7 +125,7 @@ onMounted(() => {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText v-model="searchText" :placeholder="t('catalogo.search_placeholder')" />
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
           :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" style="width: 130px;" />
@@ -143,10 +144,10 @@ onMounted(() => {
       </PageActionsBar>
     </div>
 
-    <SearchHint v-if="!store.hasSearched && !store.loading" />
+    <SearchHint v-if="mostraSearchHint" />
 
     <ListaConfigurabile
-      v-show="store.hasSearched || store.loading"
+      v-show="mostraLista"
       ref="listaRef"
       codice="catalogo.articoli"
       :rows="store.items"

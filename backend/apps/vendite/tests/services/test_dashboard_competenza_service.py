@@ -45,6 +45,10 @@ Indice test eseguiti:
 23) DashCompetenzaGruppiRepositoryTests.test_id_documento_dalla_vista_non_da_una_seconda_risoluzione
 24) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_documento_id_e_ne_preserva_il_null
 24-bis) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittibilita_testata_col_motivo
+24-ter) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_cliente_di_fatturazione_e_ne_preserva_il_null
+24-quater) DashCompetenzaGruppiRepositoryTests.test_where_gruppi_filtro_cliente_e_ricerca
+24-quinquies) DashCompetenzaGruppiRepositoryTests.test_mapping_espone_emittente_ragione_sociale
+24-sexies) DashCompetenzaGruppiRepositoryTests.test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga
 25) DashCompetenzaFatturePerCellaTests.test_n_fatture_innestato_sulla_cella_di_quello_stadio
 26) DashCompetenzaFatturePerCellaTests.test_stadio_non_calcolabile_e_non_applicabile
 27) DashCompetenzaFatturePerCellaTests.test_calcolo_fallito_e_errore_non_silenzio
@@ -632,22 +636,25 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     colonna sfasato da un inserimento a meta' proiezione).
     """
 
-    # Scopo: righe finte con le 19 colonne della proiezione (rev 2026-08-15:
+    # Scopo: righe finte con le 20 colonne della proiezione (rev 2026-08-15:
     # + commessa_emittibile, commessa_stato_codice_interno, stato_descrizione;
     # rev 2026-08-17: + ba_codice_fatturazione, id_fiscale — cliente di
-    # fatturazione, brief-db-dash-competenza-gruppi §D-4).
+    # fatturazione, brief-db-dash-competenza-gruppi §D-4;
+    # rev 2026-08-18: + emittente_ragione_sociale — P-4 sulla lista PILOTA,
+    # brief-db-perimetro-emittente passo 6 / BE-2).
     # ⚠️ La fixture deve avere ESATTAMENTE la forma della proiezione reale: una
     # riga finta piu' corta non fa fallire il mapping in modo parlante, lo fa
     # esplodere su un indice — e una piu' lunga lo farebbe passare leggendo la
     # colonna sbagliata, che e' il modo silenzioso di sbagliare.
     def _rows(self, documento_id, *, emittibile=True,
               stato="PRONTA_FATTURAZIONE", stato_descr="Pronta fatturazione",
-              ba_codice="BA-0001", id_fiscale="12345678901"):
+              ba_codice="BA-0001", id_fiscale="12345678901",
+              emittente="Tito Srl"):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
-            emittibile, stato, stato_descr, ba_codice, id_fiscale,
+            emittibile, stato, stato_descr, ba_codice, id_fiscale, emittente,
         )]
 
     # 23) 🟢 L'id del documento viene dalla VISTA, non piu' da una LATERAL
@@ -735,6 +742,86 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         sql = mock_query.call_args.kwargs["select_sql"]
         self.assertIn("g.ba_codice_fatturazione", sql)
         self.assertIn("g.id_fiscale", sql)
+
+    # 24-quinquies) L'EMITTENTE della riga arriva al FE (P-4, brief
+    #     perimetro-emittente passo 6). Questa e' la lista PILOTA del giro: il
+    #     DB ha fatto la sua meta' il 2026-08-18 (vista + riga di catalogo), e
+    #     senza questa colonna nel SELECT la colonna spuntata resterebbe VUOTA
+    #     — cioe' SEMBREREBBE la garanzia che il flag `multi_emittente`
+    #     pretende, senza esserlo.
+    # ⚠️ Si asserisce la RAGIONE SOCIALE e si nega l'id: la vista espone anche
+    #     `emittente_soggetto_ruolo_id`, e portarlo a video sposterebbe
+    #     l'ambiguita' di un passo invece di toglierla (§11.4).
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_espone_emittente_ragione_sociale(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["emittente_ragione_sociale"], "Tito Srl")
+
+        mock_query.return_value = (self._rows(5387, emittente=None), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertIsNone(righe[0]["emittente_ragione_sociale"])
+
+        sql = mock_query.call_args.kwargs["select_sql"]
+        self.assertIn("g.emittente_ragione_sociale", sql)
+        # ⚠️ La negazione va cercata nella sola PROIEZIONE, non in tutto lo
+        # `select_sql`: quella stringa contiene anche la `WHERE`, e un filtro
+        # legittimo per emittente (che un giorno potrebbe servire) renderebbe
+        # rosso un test che parla di cosa arriva A VIDEO. Un presidio che
+        # vieta piu' di quel che intende viene disattivato al primo falso
+        # positivo.
+        proiezione = sql.split("FROM vendite.vw_dash_competenza_gruppi")[0]
+        self.assertNotIn("emittente_soggetto_ruolo_id", proiezione)
+
+    # 24-sexies) OGNI `campo_sorgente` del catalogo deve essere una chiave della
+    #     riga che il repository consegna. La lista ha `vista_sql = NULL`,
+    #     quindi il catalogo non puo' pescare i campi da se': li compone questo
+    #     repository, e se le due parti divergono la colonna si spunta e resta
+    #     VUOTA — senza che nessun errore lo dica.
+    #
+    # ⚠️ Il `campo_sorgente` si LEGGE DAL CSV, non si scrive qui. Una prima
+    #     versione di questo test asseriva la stringa `"emittente_ragione_sociale"`
+    #     a mano: si chiamava «allineata al campo_sorgente di catalogo» e il
+    #     catalogo non lo apriva nemmeno — sarebbe rimasta verde proprio nel
+    #     caso che dichiarava di presidiare (il seed che cambia nome al campo).
+    #
+    # ⚠️ Vale per TUTTE le colonne, non per l'ultima arrivata: e' il contratto
+    #     del building block `<ListaConfigurabile>` su questa lista. Le colonne
+    #     `tipo_colonna = 'azione'` sono fuori perche' un campo sorgente non ce
+    #     l'hanno (lo dichiara gia' `test_colonna_azione_mai_ordinabile` del
+    #     presidio trasversale).
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_ogni_campo_sorgente_di_catalogo_e_una_chiave_della_riga(self, mock_query):
+        # Import locale: lega questo test al presidio trasversale invece di
+        # riscrivere la lettura del CSV (che li' e' gia' scritta, con la
+        # ricerca della root del repo che non conta i livelli a mano).
+        from apps.core.tests.test_liste_configurabili_seed import _colonne_attive
+
+        attese = sorted(
+            r["campo_sorgente"]
+            for r in _colonne_attive("vendite.dash_competenza_gruppi")
+            if r["tipo_colonna"] != "azione" and r["campo_sorgente"]
+        )
+        self.assertIn(
+            "emittente_ragione_sociale", attese,
+            "il catalogo non dichiara piu' la colonna emittente: se e' voluto "
+            "va tolta anche dal SELECT del repository (P-4, passo 6).",
+        )
+
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        mancanti = [c for c in attese if c not in righe[0]]
+        self.assertEqual(
+            mancanti, [],
+            "campi dichiarati a catalogo che il repository non consegna: la "
+            "colonna si spunta e resta vuota a video.",
+        )
 
     # 24-quater) Il filtro cliente e la ricerca vivono in `_where_gruppi`, cioe'
     #     nel predicato CONDIVISO da lista e riepilogo: e' cio' che impedisce ai

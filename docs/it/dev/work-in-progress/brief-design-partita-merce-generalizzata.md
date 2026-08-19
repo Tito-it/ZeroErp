@@ -1,13 +1,20 @@
 # Brief di design — generalizzare la «partita»: dalla riga d'ordine alla riga di merce
 
 > **Tipo**: brief di design + **piano DB** · **Data**: 2026-08-17 · **Owner**: Tid ·
-> **Stato**: 🟢 **PERIMETRO DB CHIUSO** (2026-08-17) — tutte e otto le slice
-> S0→S7 fatte e **applicate** (9 changeSet, `20260817-06` → `-14`), pgTAP verdi
-> come applicazione, baseline `vendite` senza regressioni.
+> **Stato**: 🟢 **CHIUSO** (2026-08-18) — **tutti e tre i perimetri**: DB
+> (`20260817-06`→`-15`, `20260818-06`, `20260818-20`), backend, frontend.
+> Definizione di fatto **12/12**, validata in-app da Tid su `ORD0018586` e
+> `ORD0018585`. Dettaglio e misure nel **§23**.
 >
-> ⏳ **Resta fuori dal perimetro DB**: le richieste a backend e frontend (§19) e
-> i due cantieri che ora possono partire — **pannello situazione merce** e
-> **nota di credito**.
+> ⛔ **Resta in `work-in-progress/` di proposito** (decisione di Tid, 2026-08-18):
+> la tabella qui sotto è **l'indice della catena**, e due dei quattro cantieri —
+> **nota di credito** e **righe DDT a prezzo zero** — sono ancora da fare.
+> Archiviare l'indice mentre i lavori che indicizza sono aperti è il modo più
+> rapido per perderli. Ragioni per esteso nel §23.4.
+>
+> Il testo che segue è quello del **2026-08-17**, quando il perimetro DB era
+> appena chiuso e BE/FE restavano fuori: si legge come il cantiere è andato, non
+> come sta oggi. Per lo stato di oggi, §23.
 >
 > ⚠️ **Il §8 va letto prima del §10.** L'analisi ha trovato che il conto di oggi
 > è corretto **perché è stretto**: le tre esclusioni (riga d'ordine obbligatoria,
@@ -1248,7 +1255,7 @@ di sviluppo da prima che questo cantiere iniziasse.
    20 / 10 / 5, che devono concordare tutti sul padre **10**. È il test che i
    dati reali non potevano dare.
 
-### 14.5 ⏳ Cosa resta, e da dove riprendere
+### 14.5 Cosa resta, e da dove riprendere *(diario del 2026-08-17 — superato, vedi §23)*
 
 **S3** — riscrivere `vw_contatore_merce` come aggregato di `vw_partite_merce`.
 È la prima slice che cambia il comportamento del sistema. Due avvertenze già
@@ -1745,8 +1752,8 @@ allarme è entrato insieme alla generalizzazione.
 |                                            |                                                                                                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Cantiere 2** — pannello situazione merce | ✅ **sbloccato**: legge `vw_partite_merce`, che copre ordine, DDT, righe manuali e kit con una lettura sola, e porta `stato` già tradotto                                            |
-| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata |
-| **Backend / Frontend**                     | ⏳ otto richieste in §19, nessuna bloccante per il DB                                                                                                                                |
+| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata. ⭐ **PARTITO il 2026-08-18**: analisi critica e piano DB (nove slice) nella PARTE II di [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md). ⚠️ Lì il **NC-3 di questo §19.3 è corretto**: la cintura tiene, ma nel caso ri-consegna **impedisce ciò che deve succedere** — la correzione `20260817-11/-12` ha chiuso il segmento vergine su cui la «riga 9» di luglio contava |
+| **Backend / Frontend**                     | ✅ otto richieste in §19 **tutte fatte** (BE 2026-08-17, FE 2026-08-18)                                                                                                                                |
 
 ### 20.5 Le tre cose che questo cantiere ha insegnato
 
@@ -1777,12 +1784,12 @@ allarme è entrato insieme alla generalizzazione.
 
 ### 21.1 ✅ Fatto subito — e una delle tre cose era **rossa adesso**
 
-| # | Cosa | Esito |
-| --- | --- | --- |
-| **BE-0** | policy + messaggio di ripiego del codice errore nuovo | 🔴 **tre cancelli erano rossi**, vedi sotto — ora verdi |
-| **BE-4** | commento di `resi_repository.list_da_accreditare` | ✅ corretto: diceva l'opposto del vero |
-| **BE-5** | `ordine_riga_id` usato come **chiave** sulla coda accrediti | ✅ **zero occorrenze**, misurato — nessuna modifica |
-| **§12 BE-4** | `_kit_meta` scrive ancora `coeff_qta` | ✅ sì, e la sede è quella che S1 legge |
+| #            | Cosa                                                        | Esito                                                  |
+| ------------ | ----------------------------------------------------------- | ------------------------------------------------------ |
+| **BE-0**     | policy + messaggio di ripiego del codice errore nuovo       | 🔴 **tre cancelli erano rossi**, vedi sotto — ora verdi |
+| **BE-4**     | commento di `resi_repository.list_da_accreditare`           | ✅ corretto: diceva l'opposto del vero                  |
+| **BE-5**     | `ordine_riga_id` usato come **chiave** sulla coda accrediti | ✅ **zero occorrenze**, misurato — nessuna modifica     |
+| **§12 BE-4** | `_kit_meta` scrive ancora `coeff_qta`                       | ✅ sì, e la sede è quella che S1 legge                  |
 
 #### 🔴 BE-0 — la «conferma» del §19.1 aveva una risposta, ed era «no»
 
@@ -1841,12 +1848,12 @@ misura fatta una volta.
 
 #### BE-5 — la misura, in quattro punti
 
-| Dove | `ordine_riga_id` usato come chiave? |
-| --- | --- |
-| `_CODA_META` (`order_cols` / `search_cols`) | ❌ assente |
-| `resi_service.list_da_accreditare` | ❌ assente (filtra etichetta/BA/date/search) |
-| FE — `resiCoda.js`, `ResiCodaTable.vue`, `constants.js` | ❌ assente |
-| seed `ui.lista_colonna` della lista `vendite.resi_da_accreditare` (id 10) | ❌ assente |
+| Dove                                                                      | `ordine_riga_id` usato come chiave?         |
+| ------------------------------------------------------------------------- | ------------------------------------------- |
+| `_CODA_META` (`order_cols` / `search_cols`)                               | ❌ assente                                   |
+| `resi_service.list_da_accreditare`                                        | ❌ assente (filtra etichetta/BA/date/search) |
+| FE — `resiCoda.js`, `ResiCodaTable.vue`, `constants.js`                   | ❌ assente                                   |
+| seed `ui.lista_colonna` della lista `vendite.resi_da_accreditare` (id 10) | ❌ assente                                   |
 
 Viaggia solo come campo passante nel `SELECT v.*`. **Niente da correggere**, ed è
 il modello che ha funzionato: la merce senza ordine entra nella coda senza che
@@ -1875,7 +1882,7 @@ quattro sezioni in un round-trip (`righe_ordine` · `partite` · `accrediti` ·
 `riconsegne`). Doc:
 [api_situazione_merce.md](../../backend/vendite/manual/api_situazione_merce.md).
 9 test service verdi + prova con chiamata REALE al DB (i mock non vedono il
-binding SQL). ⚠️ **Non mergiabile prima del push di `20260817-15`.**
+binding SQL). ✅ **Integrato** (PR #1283, insieme a `20260817-15`).
 
 ⭐ **La prova che vale piu' dei test**: l'ordine del §3 del brief pannello — le
 cinque schermate — torna in **una chiamata sola**.
@@ -1888,16 +1895,16 @@ accrediti     RESO0005122 · 5 · DOVUTA     RESO0005123 · 3 · FACOLTATIVA
 riconsegne    RESO0005123 · residua 3 · DA_RICONSEGNARE
 ```
 
-| Scelta | Perché |
-| --- | --- |
-| **Un factory**, sul modello di `build_riepilogo_iva_view` e `build_passaggi_view` | due domini dal primo giorno, e il §5.1 del brief pannello ne dichiara due **per costruzione**. ⚠️ È la **regola del 2**: dichiarata qui, in attesa dell'ok di Tid |
-| **Due filtri, una lettura** (`ddt_id` / `ordine_id` su `vw_partite_merce`) | è testualmente la richiesta BE-1: *«sono due filtri, non due letture»* |
-| **Display fields via JOIN** | la vista porta il solo `articolo_id`: servono codice/descrizione/UoM (e sul lato ordine numero e `riga_nr`). JOIN nella lettura, mai lookup client-side |
-| **`stato` passa così com'è** (BE-2) | nessun `if differenza > 0` in Python: la traduzione del verso del saldo è **una sola**, e sta nella vista |
-| **`differenza = NULL` viaggia come `null`** (BE-3) | nessun `COALESCE`, né in Python né **in SQL nel repository** — la vista lo mette NULL apposta, e `0` rimetterebbe dentro i falsi allarmi del §8.4 e del §8.6 |
-| **Nessun filtro applicativo di scope** | `security_invoker=on`: il cancello è la RLS su `ddt`/`commesse_attivita`. Si legge con la connessione dell'utente, **mai da un canale di sistema** (stessa regola di `vw_fondi_fattura_da_decidere`) |
-| **Nessuna paginazione** | le partite di un documento sono decine. Come `ApiDdtRighe`: `success_response` con la lista |
-| `DomainAPIView`, `area_funzionale = "vendite"`, LETTURA, `@extend_schema` | checklist nuovo endpoint di `api.md` |
+| Scelta                                                                            | Perché                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Un factory**, sul modello di `build_riepilogo_iva_view` e `build_passaggi_view` | due domini dal primo giorno, e il §5.1 del brief pannello ne dichiara due **per costruzione**. ⚠️ È la **regola del 2**: dichiarata qui, in attesa dell'ok di Tid                                     |
+| **Due filtri, una lettura** (`ddt_id` / `ordine_id` su `vw_partite_merce`)        | è testualmente la richiesta BE-1: *«sono due filtri, non due letture»*                                                                                                                               |
+| **Display fields via JOIN**                                                       | la vista porta il solo `articolo_id`: servono codice/descrizione/UoM (e sul lato ordine numero e `riga_nr`). JOIN nella lettura, mai lookup client-side                                              |
+| **`stato` passa così com'è** (BE-2)                                               | nessun `if differenza > 0` in Python: la traduzione del verso del saldo è **una sola**, e sta nella vista                                                                                            |
+| **`differenza = NULL` viaggia come `null`** (BE-3)                                | nessun `COALESCE`, né in Python né **in SQL nel repository** — la vista lo mette NULL apposta, e `0` rimetterebbe dentro i falsi allarmi del §8.4 e del §8.6                                         |
+| **Nessun filtro applicativo di scope**                                            | `security_invoker=on`: il cancello è la RLS su `ddt`/`commesse_attivita`. Si legge con la connessione dell'utente, **mai da un canale di sistema** (stessa regola di `vw_fondi_fattura_da_decidere`) |
+| **Nessuna paginazione**                                                           | le partite di un documento sono decine. Come `ApiDdtRighe`: `success_response` con la lista                                                                                                          |
+| `DomainAPIView`, `area_funzionale = "vendite"`, LETTURA, `@extend_schema`         | checklist nuovo endpoint di `api.md`                                                                                                                                                                 |
 
 ⚠️ **E vale il §8.6 anche a video**: `misurabile = false` non è uno zero. Il
 backend lo trasporta, il frontend lo distingue (FE-1).
@@ -1907,7 +1914,27 @@ convenzione di naming di `AGENTS.md`), orchestrazione in `vendite_service.py`,
 view dal factory in `apps/vendite/api/`. Test service con repository mockato
 (`unittest.TestCase`, niente DB — regola CI).
 
-### 21.3 ⏳ FE-1 / FE-2 / FE-3 — non hanno ancora una casa
+### 21.3 ✅ FE-1 / FE-2 / FE-3 — FATTE (2026-08-18)
+
+> Il testo qui sotto e' rimasto **com'era scritto** il 2026-08-17, perche' la
+> ragione per cui allora non si potevano fare si legge meglio accanto a com'e'
+> andata a finire: **avevano bisogno del pannello**, e il pannello ora c'e'.
+>
+> * **FE-1** — `NON_MISURABILE` e' **rosso** in `STATO_MERCE_MAP`, contro il
+>   grigio di `NON_FATTURABILE` e il verde di `PAREGGIATA`. I due «grigi» non
+>   sono lo stesso grigio: uno e' sano («non si applica»), l'altro e' un conto
+>   che non si **puo'** fare.
+> * **FE-2** — il chip «da verificare» su `sospetto_duplicato_ordine`, con il
+>   tooltip che spiega perche' il caso legittimo esiste. Senza, la colonna di
+>   S6b non avvisava nessuno.
+> * **FE-3** — `fatturato_anticipato` **non e'** fra i chip-compito e non entra
+>   in nessuna somma di saldo: compare nel dettaglio, dichiarato («di cui N
+>   gia' fatturati e non ancora spediti»).
+>
+> E i due stati nuovi in tavolozza (`RICONSEGNA`, `NON_MISURABILE`) sono
+> arrivati **col** loro consumatore, non prima.
+
+#### Com'era la situazione il 2026-08-17
 
 Le tre richieste frontend del §19.2 sono **requisiti sul pannello del cantiere
 2**, che non esiste: `NON_MISURABILE` contro `PAREGGIATA` (FE-1),
@@ -1939,9 +1966,9 @@ descrive come pericoloso — *«non è mai stato mostrato a una persona»*.
 un ordine da 3 righe evase con 2 DDT dà fino a 6 partite, e il §5.2 del brief
 pannello vuole un **riassunto in testata**. Due strade:
 
-| | Cosa restituisce l'endpoint |
-| --- | --- |
-| **(a)** | le partite grezze; il riassunto lo somma il frontend |
+|           | Cosa restituisce l'endpoint                                                                                                                                      |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **(a)**   | le partite grezze; il riassunto lo somma il frontend                                                                                                             |
 | **(b)** ⭐ | **due livelli**: righe d'ordine da `vw_contatore_merce` (che *è già* l'aggregato per riga d'ordine e porta `fatturato_anticipato`, cioè FE-3) + le partite sotto |
 
 → **Raccomandazione: (b).** L'aggregato esiste già a DB: ri-sommarlo in Python
@@ -1954,11 +1981,11 @@ nessuna delle due viste: né partita, né contatore. Sul pannello dell'ordine
 quella riga **non compare affatto** — l'operatore vedrebbe 3 righe su 4. Sono le
 **12 righe** del rilievo A.
 
-| | Cosa si vede |
-| --- | --- |
-| **(a)** | solo ciò che si è mosso, **dichiarando** quante righe non sono ancora partite |
+|           | Cosa si vede                                                                                            |
+| --------- | ------------------------------------------------------------------------------------------------------- |
+| **(a)**   | solo ciò che si è mosso, **dichiarando** quante righe non sono ancora partite                           |
 | **(b)** ⭐ | l'endpoint fa `LEFT JOIN` da `ordini_righe`: la riga compare con `consegnato 0` e **`differenza` NULL** |
-| **(c)** | niente: si vedono solo le partite (è il comportamento di oggi) |
+| **(c)**   | niente: si vedono solo le partite (è il comportamento di oggi)                                          |
 
 → **Raccomandazione: (b), ma solo con `differenza` NULL.** Un pannello d'ordine
 che non nomina una riga ordinata mente per omissione — è lo stesso difetto del
@@ -1986,28 +2013,28 @@ gemelle: due domini dal primo giorno, e i due precedenti in casa
 
 ### 21.5 ✅ Decisioni di Tid (2026-08-17) e risposta a D-1
 
-| # | Esito |
-| --- | --- |
-| **D-2** | ✅ due livelli — ⚠️ **con una correzione sulla fonte del livello 1**, vedi §21.6 |
-| **D-3** | ✅ `LEFT JOIN` da `ordini_righe`, `differenza` NULL sulle righe mai spedite |
-| **D-4** | ✅ le due code dentro lo stesso endpoint, un round-trip solo |
-| **D-5** | ✅ estrazione del BB autorizzata (`build_situazione_merce_view`) |
+| #       | Esito                                                                                           |
+| ------- | ----------------------------------------------------------------------------------------------- |
+| **D-2** | ✅ due livelli — ⚠️ **con una correzione sulla fonte del livello 1**, vedi §21.6                  |
+| **D-3** | ✅ `LEFT JOIN` da `ordini_righe`, `differenza` NULL sulle righe mai spedite                      |
+| **D-4** | ✅ le due code dentro lo stesso endpoint, un round-trip solo                                     |
+| **D-5** | ✅ estrazione del BB autorizzata (`build_situazione_merce_view`)                                 |
 | **D-1** | ❓ *«il pannello del cantiere 2 ha bisogno di attività DB?»* → **sì, ed è UNA sola cosa**, §21.6 |
 
 #### La risposta a D-1, voce per voce
 
-| Cosa serve al pannello | Da dove | DB? |
-| --- | --- | --- |
-| situazione **della spedizione** (lato DDT) | `vw_partite_merce` filtrata per `ddt_id` | ✅ **c'è** |
-| dettaglio per partita sull'ordine | `vw_partite_merce` filtrata per `ordine_id` | ✅ **c'è** |
-| `sospetto_duplicato_ordine` (FE-2), `NON_MISURABILE` (FE-1) | colonne della partita | ✅ **c'è** |
-| «da accreditare» con etichetta dovuto/facoltativo (D-4) | `vw_resi_da_accreditare` | ✅ **c'è** |
-| «da riconsegnare» col residuo (D-4) | `vw_resi_da_riconsegnare` | ✅ **c'è** |
-| codice/descrizione/UoM articolo, numero ordine, `riga_nr` | JOIN nella lettura del repository | ✅ nessun oggetto nuovo |
-| tabella del pannello | DataTable annidata `app-datatable--inner` in un drawer, **non** una `<ListaConfigurabile>` | ✅ **nessun seed** `ui.lista_definizione` |
-| testi | `it.json` / `en.json` | ✅ solo FE |
-| scope | la **testata** è il cancello (`vendite.ordini` / `vendite.ddt` hanno la RLS, le righe no) | ✅ pattern BE già in uso sulla fattura |
-| **riassunto per riga d'ordine** (livello 1, D-2 + D-3) | ⛔ **non esiste un oggetto che lo dia con la semantica giusta** | 🔴 **una vista nuova** |
+| Cosa serve al pannello                                      | Da dove                                                                                    | DB?                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| situazione **della spedizione** (lato DDT)                  | `vw_partite_merce` filtrata per `ddt_id`                                                   | ✅ **c'è**                                |
+| dettaglio per partita sull'ordine                           | `vw_partite_merce` filtrata per `ordine_id`                                                | ✅ **c'è**                                |
+| `sospetto_duplicato_ordine` (FE-2), `NON_MISURABILE` (FE-1) | colonne della partita                                                                      | ✅ **c'è**                                |
+| «da accreditare» con etichetta dovuto/facoltativo (D-4)     | `vw_resi_da_accreditare`                                                                   | ✅ **c'è**                                |
+| «da riconsegnare» col residuo (D-4)                         | `vw_resi_da_riconsegnare`                                                                  | ✅ **c'è**                                |
+| codice/descrizione/UoM articolo, numero ordine, `riga_nr`   | JOIN nella lettura del repository                                                          | ✅ nessun oggetto nuovo                   |
+| tabella del pannello                                        | DataTable annidata `app-datatable--inner` in un drawer, **non** una `<ListaConfigurabile>` | ✅ **nessun seed** `ui.lista_definizione` |
+| testi                                                       | `it.json` / `en.json`                                                                      | ✅ solo FE                                |
+| scope                                                       | la **testata** è il cancello (`vendite.ordini` / `vendite.ddt` hanno la RLS, le righe no)  | ✅ pattern BE già in uso sulla fattura    |
+| **riassunto per riga d'ordine** (livello 1, D-2 + D-3)      | ⛔ **non esiste un oggetto che lo dia con la semantica giusta**                             | 🔴 **una vista nuova**                    |
 
 ### 21.6 🔴 Il rilievo che corregge D-2 — misurato, non dedotto
 
@@ -2098,10 +2125,11 @@ sarebbe rimasto lì per sempre. Rilievo accolto, **rimedio modificato**: la riga
 NON sparisce (il pannello è per ordine e sparire lo renderebbe vuoto), sparisce
 il numero — `da_spedire` NULL e `stato` col **settimo** valore `NON_IMPEGNATA`,
 con le partite che hanno la precedenza. changeSet `20260818-06`, pgTAP a 17.
-⛔ **Non applicato.** Analisi e richieste BE/FE nel §10 del brief archiviato.
+✅ **Applicato**, baseline senza regressioni, e il FE l'ha gia' assorbito nella
+stessa giornata. Analisi completa nel §10 del brief archiviato.
 
-⚠️ **Applicata al DB di sviluppo, non ancora pushata**: il backend ci costruisce
-sopra introspezionando la vista viva, ma **non è mergiabile prima del push**.
+✅ **Pushata e integrata il 2026-08-18** (PR #1282). Il backend era stato
+costruito introspezionando la vista **viva**: il corpo pubblicato coincide.
 
 🔴 **E due cose le ho sbagliate io, scritte lì**: la formula di `da_spedire`
 (divergeva proprio sulla riga da 21 pezzi che ha generato il cantiere) e la
@@ -2119,13 +2147,13 @@ BE-2 vieta — presidiata da nessun pgTAP. È il motivo per cui il §9.3 dice *�
 
 #### Cosa può partire subito, senza aspettare
 
-| Pezzo | Dipende dalla vista nuova? |
-| --- | --- |
-| il factory `build_situazione_merce_view` (D-5) | ❌ no |
-| lato **DDT**: partite filtrate per `ddt_id` | ❌ no — è completo oggi |
-| lato **ordine**, livello 2: partite filtrate per `ordine_id` | ❌ no |
-| le due code nell'envelope (D-4) | ❌ no |
-| lato **ordine**, livello 1: il riassunto per riga d'ordine | ✅ **sì** |
+| Pezzo                                                        | Dipende dalla vista nuova? |
+| ------------------------------------------------------------ | -------------------------- |
+| il factory `build_situazione_merce_view` (D-5)               | ❌ no                       |
+| lato **DDT**: partite filtrate per `ddt_id`                  | ❌ no — è completo oggi     |
+| lato **ordine**, livello 2: partite filtrate per `ordine_id` | ❌ no                       |
+| le due code nell'envelope (D-4)                              | ❌ no                       |
+| lato **ordine**, livello 1: il riassunto per riga d'ordine   | ✅ **sì**                   |
 
 ---
 
@@ -2136,31 +2164,31 @@ BE-2 vieta — presidiata da nessun pgTAP. È il motivo per cui il §9.3 dice *�
 
 ### 22.1 Le richieste del §19, una per una
 
-| # | Richiesta | Stato |
-| --- | --- | --- |
-| **BE-1** | esporre `vw_partite_merce` filtrata per DDT e per ordine | ✅ **fatto**, e cresciuto in un pannello a 4 sezioni (D-2/D-3/D-4) |
-| **BE-2** | non ri-tradurre il verso del saldo in Python | ✅ `stato` passa così com'è — presidiato da un test |
-| **BE-3** | `differenza = NULL` è «non si applica», mai 0 | ✅ nessun `COALESCE`, né in Python né in SQL — presidiato da un test |
-| **BE-4** | correggere il commento di `resi_repository.py` | ✅ diceva l'opposto del vero |
-| **BE-5** | nulla usi `ordine_riga_id` come chiave sulla coda accrediti | ✅ **zero occorrenze**, misurato in 4 punti |
-| **§12 BE-4** | `_kit_meta` scrive ancora `coeff_qta` | ✅ sì, e nella tabella che S1 legge |
-| *(la «conferma» del §19.1)* | il cancello del terzo lato resta verde? | 🔴 **no, era rosso** — §21.1 |
-| **FE-1/2/3** | tavolozza, avviso, anticipo | ⏳ **non hanno ancora una casa**: sono la definizione di fatto del cantiere 2 |
+| #                           | Richiesta                                                   | Stato                                                                        |
+| --------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **BE-1**                    | esporre `vw_partite_merce` filtrata per DDT e per ordine    | ✅ **fatto**, e cresciuto in un pannello a 4 sezioni (D-2/D-3/D-4)            |
+| **BE-2**                    | non ri-tradurre il verso del saldo in Python                | ✅ `stato` passa così com'è — presidiato da un test                           |
+| **BE-3**                    | `differenza = NULL` è «non si applica», mai 0               | ✅ nessun `COALESCE`, né in Python né in SQL — presidiato da un test          |
+| **BE-4**                    | correggere il commento di `resi_repository.py`              | ✅ diceva l'opposto del vero                                                  |
+| **BE-5**                    | nulla usi `ordine_riga_id` come chiave sulla coda accrediti | ✅ **zero occorrenze**, misurato in 4 punti                                   |
+| **§12 BE-4**                | `_kit_meta` scrive ancora `coeff_qta`                       | ✅ sì, e nella tabella che S1 legge                                           |
+| *(la «conferma» del §19.1)* | il cancello del terzo lato resta verde?                     | 🔴 **no, era rosso** — §21.1                                                  |
+| **FE-1/2/3** | tavolozza, avviso, anticipo | ✅ **fatte** col pannello del cantiere 2 (2026-08-18), validato in-app |
 
 ### 22.2 Cosa è stato scritto
 
-| File | Cosa |
-| --- | --- |
-| `core/services/error_policies_generated.py` | rigenerato dal catalogo (696 → 697) |
-| `core/services/error_messages_fallback.py` | il messaggio di ripiego del codice nuovo |
-| `vendite/db/vendite_repository.py` | 6 letture: le due `exists_*` di perimetro, il livello 1, le partite, le due code |
-| `vendite/services/vendite_service.py` | `get_situazione_merce` — orchestrazione e cancello di scope |
-| `vendite/api/situazione_merce_views.py` | **nuovo**: il factory + le due view di dominio |
-| `vendite/api/urls_ordini.py`, `urls_ddt.py` | le due rotte |
-| `vendite/db/resi_repository.py` | BE-4, il commento corretto |
-| `vendite/tests/services/test_situazione_merce_service.py` | **nuovo**: 9 test |
-| `docs/it/backend/vendite/manual/api_situazione_merce.md` | **nuovo**: il manuale |
-| `docs/it/dev/api.md` | la riga nell'inventario endpoint |
+| File                                                      | Cosa                                                                             |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `core/services/error_policies_generated.py`               | rigenerato dal catalogo (696 → 697)                                              |
+| `core/services/error_messages_fallback.py`                | il messaggio di ripiego del codice nuovo                                         |
+| `vendite/db/vendite_repository.py`                        | 6 letture: le due `exists_*` di perimetro, il livello 1, le partite, le due code |
+| `vendite/services/vendite_service.py`                     | `get_situazione_merce` — orchestrazione e cancello di scope                      |
+| `vendite/api/situazione_merce_views.py`                   | **nuovo**: il factory + le due view di dominio                                   |
+| `vendite/api/urls_ordini.py`, `urls_ddt.py`               | le due rotte                                                                     |
+| `vendite/db/resi_repository.py`                           | BE-4, il commento corretto                                                       |
+| `vendite/tests/services/test_situazione_merce_service.py` | **nuovo**: 9 test                                                                |
+| `docs/it/backend/vendite/manual/api_situazione_merce.md`  | **nuovo**: il manuale                                                            |
+| `docs/it/dev/api.md`                                      | la riga nell'inventario endpoint                                                 |
 
 ### 22.3 Il collaudo
 
@@ -2177,14 +2205,13 @@ letture attraversano **quattro viste** e la RLS.
 
 ### 22.4 ⚠️ Cosa resta, e il vincolo di merge
 
-🔴 **Il backend NON è mergiabile prima del push di `20260817-15`**: in CI
-`vw_situazione_merce_ordine` non esiste. Il resto — lato DDT, partite
-sull'ordine, le due code — poggia su oggetti già in repository.
+✅ **Il vincolo di merge è caduto il 2026-08-18**: `20260817-15` è in
+repository (PR #1282) e il backend che la consuma pure (PR #1283). Verificato a
+`Tito-dev`: changeSet, doc auto-gen e suite Django (3702 verdi) allineati.
 
-⏳ **Il frontend**: il pannello del cantiere 2 non esiste. Le tre richieste FE
-restano scritte nel §19.2 e vanno riprese **come definizione di fatto di quel
-cantiere**, non anticipate qui: una tavolozza di severity che nessun componente
-consuma è codice morto, e i colori si scelgono guardando il pannello.
+✅ **Il frontend**: il pannello del cantiere 2 è stato fatto il 2026-08-18 e le
+tre richieste FE vivono lì, come previsto — la tavolozza è arrivata **col** suo
+consumatore, non prima. Validato in-app su `ORD0018586` e `ORD0018585`.
 
 ### 22.5 Le tre cose imparate, dal lato backend
 
@@ -2202,3 +2229,266 @@ consuma è codice morto, e i colori si scelgono guardando il pannello.
    tratta «causale assente» come «non fatturabile»: 5 invece di 1. È lo stesso
    errore che questo brief vieta ai consumatori — commesso nello strumento con
    cui lo si dimostrava.
+
+---
+
+## 23. ✅ Stato al 2026-08-18 — i tre perimetri chiusi, e cosa NON è chiuso
+
+> Sezione di stato, non di chiusura. ⛔ **Il brief resta in
+> `work-in-progress/`** — le ragioni sono nel §23.4, e la prima non è tecnica.
+
+### 23.1 Chiuso: DB, backend, frontend
+
+| Perimetro | Stato |
+| --- | --- |
+| **DB** | ✅ nove changeSet `20260817-06`→`-15`, più `20260818-06` (soglia di impegno) |
+| **BE** | ✅ BE-1..BE-5 + il codice errore; `situazione-merce` su ordine e DDT |
+| **FE** | ✅ pannello del cantiere 2, con FE-1/2/3 dentro |
+| **Definizione di fatto** (§7 + §7-bis) | ✅ **12/12** |
+| **Validazione in-app** (Tid) | ✅ `ORD0018586` (il caso del §3) e `ORD0018585` (confermato e fermo) |
+
+⭐ **Il numero che riassume tutto è ancora il primo del §20.3**: sette partite di
+merce che prima non comparivano affatto — non a zero, **assenti** — più nove kit
+che l'esclusione teneva fuori. Oggi si leggono in una riga sul drawer.
+
+### 23.2 ✅ CHIUSO il 2026-08-18 — ma non era il residuo che credevamo
+
+> Il testo qui sotto resta **com'era posto**, perché il rilievo si legge meglio
+> accanto a com'è stato chiuso. L'esito è in fondo alla sezione.
+
+Il §19.4 elencava *«`fn_ddt_push_diagnosi` non conosce il motivo nuovo»* come una
+lacuna minore. **Il team DB l'ha riqualificata il 2026-08-18, ed è un'altra
+cosa**: la diagnosi non ha una lacuna, è **ferma a prima di S5**.
+
+Verificato leggendo i due oggetti vivi:
+
+| | `fn_list_ddt_da_pushare` (dopo `20260817-10`) | `fn_ddt_push_diagnosi` |
+| --- | --- | --- |
+| fonte del dosaggio | `JOIN vw_partite_merce ON ddt_riga_id` | `LEFT JOIN vw_contatore_merce` (per riga d'**ordine**) |
+| ridistribuzione greedy | **tolta** | ancora `SUM() OVER (PARTITION BY ord_riga …)` |
+| caso speciale compositi | **tolto** | ancora `NOT COALESCE(a_composito, false)` |
+
+🔴 **Sono due implementazioni della regola che dosa la fatturazione** — e una
+delle due si dichiara *«Fonte unica: … Riproduce i predicati di
+`fn_list_ddt_da_pushare` in un unico posto (equivalenza … blindata da pgTAP)»*.
+Oggi quel `COMMENT` dice il falso. Non è cosmesi: `fn_available_actions_ddt`
+consuma il `min(rank)` della diagnosi per il ramo `reason`, quindi il drawer può
+spiegare la mancata spinta con una regola diversa da quella che l'ha decisa.
+
+⚠️ **E la rete che doveva accorgersene non tiene.** Il test 1 di
+`test-fn-available-actions-ddt-reason-catch-all-v1` è un `EXCEPT` bidirezionale
+fra i due oggetti — la forma giusta — ma **gira prima che le fixture esistano**:
+gli `INSERT` che sembrano precederlo sono dentro il *corpo* di
+`pg_temp.mk_caso`, e le fixture vere nascono al `CREATE TEMP TABLE f AS SELECT
+pg_temp.mk_caso(…)`, **dopo**. Quindi confronta solo i dati vivi, e dopo S5 è
+verde perché **nessuna riga attraversa la divergenza**, non perché la
+divergenza non ci sia. La sua intestazione dice «indipendente dai dati»: vero
+della forma, falso della copertura.
+
+✅ **CHIUSA dal team DB il 2026-08-18** — `20260818-20`, più il pgTAP spostato.
+✅ **E applicata**: `DATABASECHANGELOG` la registra al 2026-08-18 (la riga
+«scritta, non applicata» di questo paragrafo era vera quando è stata scritta ed
+è stata corretta dopo la misura, non prima).
+
+**Verificato dal lato applicativo il 2026-08-18**, sull'oggetto vivo e non sul
+changeSet:
+
+```text
+la diagnosi legge vw_partite_merce ...................... sì
+legge ancora vw_contatore_merce ......... solo in un commento di storia
+greedy `PARTITION BY ord_riga` .......................... sparito
+ramo `NOT COALESCE(a_composito, false)` ................. sparito
+
+equivalenza LIVE, bidirezionale (diagnosi motivo NULL == lister)
+  diagnosi ma non lister .... 0
+  lister ma non diagnosi .... 0        (2 righe eleggibili, coincidono)
+
+pgTAP  test-fn-available-actions-ddt-reason-catch-all-v1 ... 8/8
+       test-ponte-riconsegna-copre-riga-v1 (§23.3) ......... 2/2
+```
+
+⚠️ **E il pgTAP è la rete vera, non l'equivalenza live**: dei tre motivi nuovi
+**nessuno compare nei dati di sviluppo** (i motivi vivi sono
+`DDT_SOLO_TRASPORTO` 17, `DDT_FATTURA_DA_ORDINE` 16, `DDT_RESO` 2,
+`DDT_ROUTED` 2, `DDT_ANNULLATO` 1, `DDT_MERCE_IN_VIAGGIO` 1, più 2 eleggibili).
+È esattamente la ragione per cui il test doveva scendere sotto le fixture: sui
+soli dati vivi sarebbe verde comunque.
+
+⚠️ I due pgTAP li ho fatti girare **come owner**, non come applicazione: in
+questo ambiente manca `~/.pgpass` per `zeroerp_app`. Provano la logica e
+l'equivalenza, **non** il comportamento sotto RLS — quella corsa resta al team DB.
+
+**La diagnosi ora legge la partita**, con gli stessi join del lister (gli `INNER`
+diventano `LEFT` perché la diagnosi deve *spiegare* l'esclusione, non ripeterla).
+Via la ridistribuzione greedy, via il caso speciale sui compositi.
+
+⭐ **E i tre motivi nuovi non sono stati ri-derivati: si leggono da
+`vw_partite_merce.stato`**, che *è già* la decomposizione di «differenza IS NULL»
+nelle sue tre cause (`e_riconsegna` → `RICONSEGNA`, `NOT conta_fatturazione` →
+`NON_FATTURABILE`, `NOT misurabile` → `NON_MISURABILE`). Ricostruirle con
+predicati propri avrebbe creato la **terza** sede della stessa regola mentre se
+ne chiudeva la seconda.
+
+Le rank passano da 7 a 11, e i motivi della partita stanno **prima** di
+`DDT_CONTATORE`: una partita senza conto ha `differenza` NULL, quindi quantità 0,
+quindi il contatore scatterebbe per primo mascherando la ragione vera — che è il
+difetto di oggi. ⚠️ Rinumerare si può: `fn_available_actions_ddt` fa
+`ORDER BY motivo_rank` ma mappa **per stringa**, e il suo `CASE` ha un
+`ELSE 'DDT_NON_PUSHABILE'`, quindi i motivi nuovi cadono da soli nel generico
+senza chiavi i18n mancanti.
+
+| rank | motivo | |
+| --- | --- | --- |
+| 1 | `DDT_ANNULLATO` / `DDT_RESO` | |
+| 2 | `DDT_SOLO_TRASPORTO` | ⭐ ora copre anche la causale **assente** |
+| 3 | `DDT_SENZA_BA` | |
+| 4 | `DDT_ROUTED` | |
+| 5 | `DDT_MERCE_IN_VIAGGIO` | |
+| 6 | `DDT_FATTURA_DA_ORDINE` | |
+| 7 | `DDT_RICONSEGNA` | 🆕 |
+| 8 | `DDT_NON_FATTURABILE` | 🆕 |
+| 9 | `DDT_NON_MISURABILE` | 🆕 ← il motivo che il §19.4 chiedeva |
+| 10 | `DDT_SENZA_PARTITA` | 🆕 fallback |
+| 11 | `DDT_CONTATORE` | c'è un conto, ed è ≤ 0 |
+
+⭐ **Il rank 10 è deliberato**: una riga esclusa dal lister non deve **mai** uscire
+con motivo NULL, perché per questa funzione NULL significa «eleggibile» — la
+bugia peggiore possibile. Se un join non previsto escludesse una riga, il
+fallback la marca invece di dichiararla buona.
+
+**Due divergenze minori chiuse per strada**, nessuna delle due nel rilievo
+originale:
+
+* **causale assente** — il lister fa `JOIN causali_trasporto … AND fatturabile IS TRUE`,
+  un `INNER`, quindi una causale NULL esclude. La diagnosi vecchia la trattava
+  come `MERCE_IN_VIAGGIO` in un ramo e la lasciava **passare** nell'altro: un DDT
+  standalone SPEDITO senza causale usciva *eleggibile* mentre il lister lo
+  escludeva. Ora il predicato è `IS NOT TRUE`, che copre entrambe;
+* **billing account** — il lister ci fa un `INNER JOIN`; qui resta `LEFT` più il
+  rank 3, che è la differenza fra escludere e spiegare.
+
+**La rete**: il test 1 di `test-fn-available-actions-ddt-reason-catch-all-v1` è
+stato **spostato dopo il `CREATE TEMP TABLE f`** — dove le fixture nascono
+davvero — e si è aggiunto un **test 8** di coerenza `rank ↔ motivo`, perché un
+`CASE` che dimentica un ramo non fallisce: restituisce NULL, cioè «eleggibile».
+Con 11 rank rinumerate a mano quel rischio è concreto.
+
+#### ⚠️ Misurato — ed è il caso che chiedeva attenzione
+
+L'attesa dichiarata era: *«spostato dopo le fixture, il test 1 può andare in
+rosso — ed è il punto. Se resta verde vuol dire che nemmeno le fixture
+attraversano la divergenza.»*
+
+✅ **Misurato il 2026-08-18: verde.** 🔴 **Ed è il secondo caso, non il primo.**
+
+Le cinque fixture di `pg_temp.mk_caso` costruiscono `FATTURA_DA_ORDINE`,
+`MERCE_IN_VIAGGIO`, `SOLO_TRASPORTO`, `ANNULLATO` e il caso di precedenza.
+**Nessuna costruisce una ri-consegna, un kit non misurabile o una spedizione
+standalone senza causale** — cioè esattamente i tre casi su cui i due oggetti
+divergevano. Il verde dice quindi *«diagnosi e lister concordano sui casi
+coperti»*, non *«la divergenza è chiusa»*.
+
+⚠️ **Il riallineamento resta giusto a prescindere** — è stato verificato
+leggendo i due oggetti, non dedotto da un test. Ma **la rete è rimasta della
+misura di prima, solo appesa nel punto giusto**, e va detto qui perché
+altrimenti passa per verificata.
+
+📌 **Residuo dichiarato**: una fixture che attraversi la divergenza. La più
+economica è la **ri-consegna**, che il pgTAP della situazione merce già sa
+costruire (`fn_conferma_reso` + `fn_genera_ddt_riconsegna`, casi D ed E di
+`test-vw-situazione-merce-ordine-v1`): con quella dentro, il test 1 misura
+davvero il rank 7 e il test 8 il resto della rinumerazione.
+
+⭐ **La lezione, che è la quinta e ha la forma delle altre quattro**: spostare un
+test nel punto in cui *può* misurare non basta, se ciò che misura non contiene
+il caso. La domanda «gira al momento giusto?» e la domanda «ha davanti il caso
+giusto?» sono due, e la prima risolta bene fa sembrare risolta anche la
+seconda.
+
+### 23.2-bis 📌 Il seguito, che non era nella richiesta
+
+`DDT_NON_MISURABILE` oggi cade nel generico `DDT_NON_PUSHABILE`: la funzione
+sa il motivo, il **drawer** ancora no. Chiudere davvero il reclamo del §19.4
+(«chi cerca *perché* non lo trova») vuole un ramo proprio in
+`script.fn_available_actions_ddt` più una chiave i18n
+`vendite.ddt.push_commessa_reason.non_misurabile`.
+
+⛔ **Non fatto qui, di proposito**: è una `CREATE OR REPLACE` su una funzione
+plpgsql di ~250 righe per aggiungere due righe a un `CASE`, e riprodurla intera
+per quello è più rischio che valore — soprattutto perché l'`ELSE` esistente
+garantisce che nulla si rompa nel frattempo. Slice a sé, con la richiesta FE
+accanto.
+
+✅ **E l'`ELSE` regge davvero — verificato dal lato FE, non dedotto.** Il ramo
+di ripiego di `fn_available_actions_ddt` compone
+`'vendite.ddt.push_commessa_reason.' || … ELSE 'non_pushabile'`, e quella chiave
+**esiste** nei locales (accanto a `fattura_da_ordine`, `solo_trasporto`,
+`merce_in_viaggio`, `gia_fatturato`, `gia_inviato`). Quindi oggi il drawer mostra
+una frase vera e generica, non un codice grezzo — e il pezzo FE della slice è
+**una chiave sola**, da aggiungere il giorno in cui il ramo dedicato arriva.
+
+⚠️ Nota di sicurezza sulla catena: anche se quella chiave un giorno mancasse, il
+drawer **non** resterebbe muto — `mapAvailableActionsToDrawerActions` risolve con
+`labelOrCode`, quindi si vedrebbe il codice invece del vuoto. È la stessa scelta
+fail-visible del pannello merce (§21.3).
+
+### 23.3 ✅ Il secondo residuo, con un invariante invece di una dichiarazione
+
+L'assunzione su `fn_genera_ddt_riconsegna` (§19.4): oggi il ponte copre **tutta**
+la riga di ri-consegna, verificato sui 6 ponti esistenti. Se un domani una riga
+fosse in parte ri-consegna e in parte merce nuova, quella parte resterebbe fuori
+dal conto.
+
+⭐ **Resta dichiarata qui, ma con un pgTAP** (proposta del team DB, accolta):
+*nessun ponte copre meno della quantità della sua riga di DDT*. Una
+dichiarazione invecchia da sola e nessuno se ne accorge; un invariante fallisce
+il giorno in cui l'assunzione cade.
+
+✅ **Scritto il 2026-08-18**: `db/pgtap/vendite/test-ponte-riconsegna-copre-riga-v1.sql`.
+✅ **Fatto girare il 2026-08-18: 2/2.** Non ha changeSet — un pgTAP non si
+applica, si esegue. (Corsa come *owner*: manca `~/.pgpass` per `zeroerp_app` in
+questo ambiente, quindi prova l'invariante ma non la RLS.)
+
+Due asserzioni, e la prima è quella che di solito manca: **la copertura della
+misura**. Se in quel contesto non esiste nessun ponte, il file fa `skip()` con
+la ragione scritta invece di passare — perché un invariante su un insieme vuoto
+è verde per sottrazione, che è il modo in cui questo cantiere si è già quasi
+fatto ingannare due volte.
+
+⚠️ **Non è un guard e non deve diventarlo**: il caso misto non è vietato dal
+modello, è solo non gestito dal conto. Se comparirà, la decisione — vietarlo,
+spezzare la riga, o contare per quantità invece che per riga — va presa allora,
+con il caso vero davanti.
+
+### 23.4 ⛔ Perché il brief NON va in `work-done/`
+
+1. **È l'indice della catena** (decisione di Tid, 2026-08-18). La tabella in
+   testa — «l'ordine con cui eseguire i lavori collegati» — è la roadmap dei
+   cantieri: il **3 (nota di credito)** e le **righe DDT a prezzo zero** sono
+   ancora da fare. Archiviare l'indice mentre i lavori che indicizza sono aperti
+   è il modo più rapido per perderli.
+2. **Ha lavoro vivo**: il §23.2 è una richiesta DB presa in carico, non un
+   residuo.
+3. I link, che è la ragione **più debole** e va detta col numero giusto:
+   spostandolo si romperebbero **5** link markdown con path (3 brief in
+   `work-in-progress`, il brief DB in `work-done`, il manuale BE) — non 19. Le
+   **19** occorrenze in `db/` (changeSet e pgTAP, di cui molte immutabili) sono
+   citazioni **per nome**, non path: un file che cambia cartella conserva il
+   nome, quindi non si rompono. Restano 5, tutte correggibili nello stesso
+   commit — quindi da sole non deciderebbero niente.
+
+### 23.5 La quarta cosa imparata, che è la terza volta
+
+Il §20.5 ne elencava tre. Questa è la quarta, e ha la stessa forma delle altre:
+
+> ⚠️ **Una verifica può essere fatta, essere precisa, e guardare la cosa
+> sbagliata.** Per controllare se il test 1 girasse dopo le fixture ho cercato
+> gli `INSERT` e confrontato i numeri di riga: 80-92 contro 108, quindi «le
+> fixture vengono prima». Ma quegli `INSERT` erano dentro il **corpo di una
+> funzione**, cioè testo che non esegue nulla al momento in cui lo si legge.
+> La domanda giusta non era *dove stanno gli `INSERT`* ma **dove viene chiamata
+> la funzione che li contiene**.
+
+⭐ È la stessa lezione del §20.5.3 («la domanda va posta sull'assenza, non sulla
+presenza») e del §18.2-bis, sul terzo travestimento diverso. In tutti e tre i
+casi lo strumento ha risposto con precisione a una domanda che non era quella.

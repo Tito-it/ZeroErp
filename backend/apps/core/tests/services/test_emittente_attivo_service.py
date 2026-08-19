@@ -25,11 +25,17 @@
 #   8. descrivi_super_admin_senza_scelta_deve_scegliere
 #   9. descrivi_operatore_non_puo_scegliere
 #  10. descrivi_modalita_globale_esplicita
+#  11. descrivi_senza_user_non_dichiara_il_perimetro
+#  12. descrivi_con_scope_multiplo_dichiara_il_perimetro
+#  13. descrivi_con_scope_singolo_dichiara_perimetro_falso
+#  14. super_admin_puo_scegliere
+#  15. operatore_non_configurato_non_puo_scegliere
+#  16. senza_user_resta_il_calcolo_storico
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
@@ -142,3 +148,89 @@ class DescriviTests(SimpleTestCase):
         self.assertTrue(d["modalita_globale"])
         self.assertTrue(d["puo_scegliere"])
         self.assertFalse(d["deve_scegliere"])
+
+
+class DescriviPerimetroTests(SimpleTestCase):
+    """La chiave `perimetro_multi_emittente` (P-2c, etichette di perimetro)."""
+
+    _SCOPE = (
+        "apps.core.services.perimetro_emittente.PermissionResolver"
+        ".get_emittenti_pk_ids"
+    )
+    # ⚠️ Da mockare in ogni test che passa `user`: dal 2026-08-18
+    # `puo_scegliere` interroga il bypass SUPER_ADMIN, che va al database.
+    _SUPER_ADMIN = (
+        "apps.core.services.emittente_attivo_service.PermissionResolver"
+        ".is_super_admin"
+    )
+
+    # 11. Senza l'oggetto utente la chiave NON compare.
+    #     ⚠️ Non vale `False`: senza utente lo scope non si risolve, e scrivere
+    #     «un solo emittente» a chi magari li ha tutti sarebbe peggio del
+    #     silenzio. E' il caso del POST di cambio emittente, dove per giunta la
+    #     GUC porta ancora la sessione precedente.
+    def test_descrivi_senza_user_non_dichiara_il_perimetro(self) -> None:
+        d = EmittenteAttivoService(_repo(permesso=32)).descrivi(_UTENTE, 32)
+        self.assertNotIn("perimetro_multi_emittente", d)
+
+    # 12. Super admin in «Tutti gli emittenti»: perimetro multiplo -> etichetta.
+    def test_descrivi_con_scope_multiplo_dichiara_il_perimetro(self) -> None:
+        with patch(self._SCOPE, return_value=None), \
+                patch(self._SUPER_ADMIN, return_value=True):
+            d = EmittenteAttivoService(_repo(preferenza=None)).descrivi(
+                _UTENTE, None, user=MagicMock(id=_UTENTE),
+            )
+        self.assertTrue(d["perimetro_multi_emittente"])
+
+    # 13. Operatore, o super admin che ha scelto: un perimetro solo, niente
+    #     etichetta. ⚠️ E' il caso che dimostra perche' si usa lo scope
+    #     EFFETTIVO (gia' intersecato con l'emittente attivo) e non quello di
+    #     diritto: il super admin che ha scelto sta guardando UN emittente.
+    def test_descrivi_con_scope_singolo_dichiara_perimetro_falso(self) -> None:
+        with patch(self._SCOPE, return_value=[32]), \
+                patch(self._SUPER_ADMIN, return_value=False):
+            d = EmittenteAttivoService(_repo(permesso=32)).descrivi(
+                _UTENTE, 32, user=MagicMock(id=_UTENTE),
+            )
+        self.assertFalse(d["perimetro_multi_emittente"])
+
+
+class PuoScegliereTests(SimpleTestCase):
+    """Chi vede la combo dell'emittente di lavoro.
+
+    🔴 Il difetto che questi test chiudono: `puo_scegliere` guardava solo
+    l'assenza di un emittente proprio, e dopo P-2a quella condizione descrive
+    **anche l'operatore non configurato** — uno che il database non fa piu'
+    vedere niente, e a cui l'interfaccia offriva una combo con dentro zero
+    opzioni.
+    """
+
+    _SUPER_ADMIN = (
+        "apps.core.services.emittente_attivo_service.PermissionResolver"
+        ".is_super_admin"
+    )
+
+    # 14. Super admin senza emittente proprio: sceglie (invariato).
+    def test_super_admin_puo_scegliere(self) -> None:
+        with patch(self._SUPER_ADMIN, return_value=True):
+            d = EmittenteAttivoService(_repo(preferenza=None)).descrivi(
+                _UTENTE, None, user=MagicMock(id=_UTENTE), con_perimetro=False,
+            )
+        self.assertTrue(d["puo_scegliere"])
+
+    # 15. ⭐ Operatore NON configurato: nessun emittente proprio, ma nemmeno
+    #     super admin. Prima vedeva la combo, ora no.
+    def test_operatore_non_configurato_non_puo_scegliere(self) -> None:
+        with patch(self._SUPER_ADMIN, return_value=False):
+            d = EmittenteAttivoService(_repo(preferenza=None)).descrivi(
+                _UTENTE, None, user=MagicMock(id=_UTENTE), con_perimetro=False,
+            )
+        self.assertFalse(d["puo_scegliere"])
+        # E non gli si impone nemmeno il dialog: non c'e' niente da scegliere.
+        self.assertFalse(d["deve_scegliere"])
+
+    # 16. ⚠️ Senza `user` resta il calcolo storico: restringere al buio
+    #     toglierebbe la combo a un super admin per mancanza di informazioni.
+    def test_senza_user_resta_il_calcolo_storico(self) -> None:
+        d = EmittenteAttivoService(_repo(preferenza=None)).descrivi(_UTENTE, None)
+        self.assertTrue(d["puo_scegliere"])

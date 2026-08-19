@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Arita' dei valori — `E_SOSPENSIONI_FLUSSO_NON_COERENTE` passava 1 valore su 2 segnaposto
+#   Brief: docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md §7
+#   Lotto: 20260818-47 .. -54, uno per funzione. Decisione Tid, 2026-08-18.
+#
+# ── IL DIFETTO, IN UNA RIGA ────────────────────────────────────────────
+#   `script.fn_log_and_raise_error` compone il testo con
+#   `format(messaggio, VARIADIC valori)`. Con MENO valori dei segnaposto,
+#   `format()` non degrada: **alza `22023`**. E alza da DENTRO la funzione,
+#   quindi il `RAISE` di dominio due righe sotto non viene mai eseguito —
+#   niente `P0001`, niente codice nel canale `CONSTRAINT`, niente campo nel
+#   canale `COLUMN`. Il guard blocca lo stesso (il dato resta integro, ed e'
+#   il motivo per cui non se n'era accorto nessuno), ma il backend perde il
+#   codice su cui decide 409/404/403 e l'operatore legge un errore interno al
+#   posto della frase scritta per lui.
+#
+# ── ⚠️ LA FORMA: DUE MESSAGGI SCRITTI DUE VOLTE ────────────────────────
+#   Qui non manca un valore per distrazione: il chiamante passava una **frase
+#   gia' composta** come valore unico, mentre a catalogo il messaggio ha i suoi
+#   segnaposto. Sono due testi che dicono la stessa cosa e non si compongono.
+#   ⭐ Ed e' un difetto anche quando non alza: una frase composta dentro al
+#   plpgsql **non e' traducibile**, perche' non passa da
+#   `config.messaggi_errore`. I valori vanno passati sciolti; il testo lo
+#   compone il catalogo, che e' l'unico posto da cui si puo' tradurre.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · ⚠️ **PERMESSI — nessun prestito di proprieta', nessun `GRANT`.** Misurato
+#     il 2026-08-18, non dedotto: questa funzione e' di **`titodb`** (che e' chi
+#     migra), **non** e' `SECURITY DEFINER` e **non** e' nel registro
+#     `dbops.sec_functions_owner`. Il precedente e' il `20260808-04` su
+#     `script.fn_log_and_raise_error`, che documenta anche il perche' l'ACL
+#     esplicita (`=X/titodb`, `zeroerp_app=X`, `zeroerp_batch_fatturazione=X`)
+#     **sopravvive** a un `CREATE OR REPLACE` — sarebbe diverso con
+#     `DROP` + `CREATE`, dove i privilegi si perdono e il loop di grant
+#     `20260205-41` li rimetterebbe solo alla corsa `ci_apply` successiva.
+#     ⚠️ Da non confondere con `script.fn_log_error_only`, che invece e' di
+#     `postgres`, **e'** `SECURITY DEFINER` ed **e'** nel registro: quella,
+#     riscriverla, il prestito lo richiede.
+#   · Corpo dalla doc auto-gen `docs/it/dbzero/`, col `;` dopo `$function$`
+#     aggiunto a mano: l'auto-gen non ce l'ha e senza quello il `COMMENT`
+#     sotto da' «errore di sintassi a o presso COMMENT».
+#   · Firma e `RETURNS` invariati: cambia solo la lista dei valori.
+#   · Presidio: `db/pgtap/script/test-catalogo-messaggi-errore-completo.sql`
+#     test 5. Rientra quando l'ultimo degli 8 changeSet e' applicato — e a
+#     quel punto va tolta la riga di questo file da `baseline-rossi.tsv`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260818-54-update-trgfn-sospensioni-guard-coerenza-flusso-arita-mctit.yaml
+
+  - changeSet:
+      id: 20260818-54-update-trgfn-sospensioni-guard-coerenza-flusso-arita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard ricostruiva con concat() la stessa frase del catalogo e la passava
+        come valore unico: il template ha due segnaposto, quindi format() alzava 22023
+        e il P0001 di dominio non arrivava. Ora passa flusso e pratica sciolti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pratiche' AND p.proname = 'trgfn_sospensioni_guard_coerenza_flusso'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: verifica che flusso_id appartenga alla stessa pratica_id della sospensione.
+              -- Se flusso_id IS NULL (sospensione pratica intera), nessun controllo.
+              DECLARE
+                  v_pratica_flusso pratiche.flussi.pratica_id%TYPE;
+              BEGIN
+                  IF NEW.flusso_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT pratica_id INTO v_pratica_flusso
+                  FROM pratiche.flussi WHERE id = NEW.flusso_id;
+
+                  IF v_pratica_flusso IS NULL OR v_pratica_flusso <> NEW.pratica_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_sospensioni_guard_coerenza_flusso',
+                          'E_SOSPENSIONI_FLUSSO_NON_COERENTE',
+                          jsonb_build_object(
+                              'flusso_id', NEW.flusso_id,
+                              'pratica_id', NEW.pratica_id
+                          ),
+                          NULL::uuid,
+                          -- ⚠️ ARITA' (2026-08-18): il concat() ricostruiva parola per parola
+                          --   la stessa frase che sta a catalogo («Il flusso %s non appartiene
+                          --   alla pratica %s») e la passava come valore unico: due segnaposto,
+                          --   un valore, format() alzava 22023.
+                          NEW.flusso_id::text, NEW.pratica_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
+              IS 'Guard: verifica coerenza flusso_id/pratica_id su sospensioni.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Vuoto di proposito: il ripristino della versione precedente
+              -- rimetterebbe in servizio la chiamata che alza 22023. Se serve
+              -- tornare indietro, si scrive un changeSet in avanti.
+              SELECT 1;

@@ -30,6 +30,8 @@ Indice test eseguiti:
 21) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_target_state
 22) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_transition
 23) VenditePipelineRepositoryUnitTests.test_list_lotto_task_runs_maps_rows
+24) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_chiama_la_fn_e_ritorna_le_coppie
+25) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_casta_id_a_intero
 """
 
 from unittest.mock import MagicMock
@@ -503,3 +505,35 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         execute_sql, execute_params = cursor.execute.call_args.args
         self.assertIn("fatturazione_lotti_task_runs", execute_sql)
         self.assertEqual(execute_params, [80, 50])
+
+    # Scopo: il legame documentale delle note di credito (N10/BE-8) passa da una
+    #        sola `SELECT fn_()` per fattura e ritorna quante coppie ha aggiunto.
+    #        L'handler di pipeline mocka il repository, quindi questa e' l'unica
+    #        rete sulla stringa SQL: senza, il nome della funzione sarebbe
+    #        verificato solo dalla whitelist, che e' una stringa a sua volta.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_popola_fatture_rettifiche_chiama_la_fn_e_ritorna_le_coppie(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (2,)
+        mocked_cursor_factory.return_value = cursor
+
+        result = VenditePipelineRepository().popola_fatture_rettifiche(7701)
+
+        self.assertEqual(result, 2)
+        execute_sql, execute_params = cursor.execute.call_args.args
+        self.assertIn("vendite.fn_popola_fatture_rettifiche", execute_sql)
+        self.assertEqual(execute_params, [7701])
+
+    # Scopo: il confine SQL casta l'id; il guard di merito (NULL / <= 0) sta
+    #        nella funzione DB e non si ripete qui.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_popola_fatture_rettifiche_casta_id_a_intero(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = (0,)
+        mocked_cursor_factory.return_value = cursor
+
+        VenditePipelineRepository().popola_fatture_rettifiche("7701")
+
+        self.assertEqual(cursor.execute.call_args.args[1], [7701])

@@ -216,6 +216,7 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_competenza_commesse"
 
     @extend_schema(
         operation_id="vendite_dashboard_competenza_commesse",
@@ -342,6 +343,11 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    # ⚠️ Da qui parte l'EMISSIONE MIRATA — si spuntano i gruppi e si fattura:
+    #    una lista che mescola emittenti senza dirlo, con un pulsante
+    #    «fattura» sotto, e' il caso peggiore che il cancello esiste per
+    #    impedire. (Il meccanismo e' su `DomainAPIView.lista_codice`.)
+    lista_codice = "vendite.dash_competenza_gruppi"
 
     @extend_schema(
         operation_id="vendite_dashboard_competenza_gruppi",
@@ -531,6 +537,7 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_competenza_errori"
 
     @extend_schema(
         operation_id="vendite_dashboard_competenza_errori",
@@ -650,6 +657,7 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_competenza_gruppi"
 
     @extend_schema(
         operation_id="vendite_dashboard_competenza_gruppi_export",
@@ -711,6 +719,7 @@ class ApiDashboardCompetenzaCommesseExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_competenza_commesse"
 
     @extend_schema(
         operation_id="vendite_dashboard_competenza_commesse_export",
@@ -759,6 +768,7 @@ class ApiDashboardCompetenzaErroriExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_competenza_errori"
 
     @extend_schema(
         operation_id="vendite_dashboard_competenza_errori_export",

@@ -107,7 +107,19 @@ BEGIN
   ELSIF p_stato_finale <> r.stato_ddt_emesso_id THEN
     UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
     IF p_stato_finale <> r.stato_ddt_spedito_id THEN
-      -- RESO e CONSEGNATO sono entrambi raggiungibili da SPEDITO
+      -- 🔴 RESO NON E' PIU' RAGGIUNGIBILE DA SPEDITO, corretto il 2026-08-18.
+      --   Il commento diceva «RESO e CONSEGNATO sono entrambi raggiungibili da
+      --   SPEDITO»: oggi non e' piu' vero. In config.transizioni_stati_ddt la
+      --   coppia SPEDITO -> RESO esiste ma e' **attivo = false**; la sola via
+      --   viva e' CONSEGNATO -> RESO. Il guard rifiutava il salto e il file
+      --   moriva nella fixture, senza eseguire nessuna asserzione.
+      --   ⚠️ Il percorso si allunga di una tappa, non si forza: passare per
+      --   CONSEGNATO e' cio' che fa anche l'applicazione, e un test che
+      --   scavalca la matrice verifica un documento che nella realta' non puo'
+      --   esistere.
+      IF p_stato_finale = r.stato_ddt_reso_id THEN
+        UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id WHERE id=v_ddt;
+      END IF;
       UPDATE vendite.ddt SET stato_doc_ddt_id=p_stato_finale WHERE id=v_ddt;
     END IF;
   END IF;

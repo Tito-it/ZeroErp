@@ -17,7 +17,7 @@
 > ⏸️ **Una sola casella resta aperta in §8, e non è lavoro**: la voce «cliente
 > non determinabile» (D-5) non ha soggetti su cui mostrarsi — DL-1 ha misurato
 > **zero billing account con padre**. Si chiude da sé quando finisce
-> [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
+> [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
 >
 > 📌 **Un lavoro è uscito da qui e vive altrove**: DL-2 ha trovato un costo che
 > la ricerca non c'entra (166 ms per 45 righe, il 78% per risolvere
@@ -65,7 +65,7 @@
 > promessa che il motore non può mantenere.
 >
 > **Dipendenze dichiarate**: due pezzi di questo brief poggiano su un cantiere
-> separato — [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
+> separato — [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
 > Vedi **§9**.
 
 ---
@@ -176,7 +176,7 @@ costruzione**. Il manuale lo dice anche a parole.
 ⚠️ **Buco noto del guard**: il confronto è `IS DISTINCT FROM` e
 `id_fiscale_univoco_cf_piva` è **nullable**. Due BA entrambi senza codice
 fiscale passano il controllo anche se sono soggetti diversi. Registrato in
-[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
 §4, non qui.
 
 ### 3.4 🔴 La ragione sociale **non è un asse di filtro**
@@ -679,7 +679,7 @@ se lo fosse, perché `0 = 0` sarebbe verde per sottrazione.
 🔴 **Il caso (b) di D-5 non è coperto**: BA della riga visibile ma **padre fuori
 scope RLS**, cioè `ba_fatturazione_id` valorizzato e le tre descrittive NULL.
 Servirebbe un albero che attraversa due emittenti — che è proprio la cosa che
-[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
 P-1 vuole rendere **impossibile**. Costruirla qui significherebbe seminare il
 difetto per collaudare la rete. Il test 8 verifica l'invariante che regge quel
 caso, ed è ciò che serve davvero.
@@ -742,7 +742,7 @@ riga): al cambio di **perimetro**, no.
       L'invariante è coperta dal pgTAP test 8 e la voce di filtro esiste (BE-3),
       ma **non c'è un caso su cui mostrarsi**: servirebbe un albero BA che
       attraversa due emittenti — cioè la configurazione che il cantiere
-      [perimetro emittente](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+      [perimetro emittente](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
       sta rendendo **impossibile** proprio ora. Costruirla apposta significherebbe
       seminare il difetto per collaudare la rete (§5-bis, «Limiti dichiarati»).
       ⭐ Si chiude **da sé** quando quel cantiere finisce: se la causa a monte
@@ -794,7 +794,7 @@ che rompono il «seleziona tutto».
 ## 9. Dipendenze da altri cantieri
 
 Due punti di questo brief **non si chiudono qui dentro**, e sono in
-[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md):
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md):
 
 | Punto | Perché sta là |
 | --- | --- |
@@ -936,7 +936,7 @@ se può succedere, e per §3.5 la risposta è sì finché non c'è il guard.
 | Risoluzione colonne e merge automatico | `docs/it/dbzero/ui/funzioni/fn_resolve_lista_config.md` §3 |
 | Regola colonne sempre ordinabili | `scripts/gen_seed_lista.py` — `NUCLEO_ORDINABILE` |
 | Policy ricerca e paginazione | `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` |
-| Cantiere perimetro emittente | [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md) |
+| Cantiere perimetro emittente | [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md) |
 
 ---
 

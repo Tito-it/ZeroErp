@@ -6,7 +6,7 @@
 -- la ricerca universale risolve lo scope emittente DA SE'.
 -- Brief: docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 15):
 --    0) PRECONDIZIONE: il contesto pgTAP e' un operatore con scope proprio
 --   script.fn_get_emittenti_scope_sr_effettivo
 --    1) restrizione assente (NULL) -> NON e' NULL           ⭐ la correzione
@@ -22,6 +22,10 @@
 --   script.fn_get_search_detail
 --   10) il parametro non decide piu': NULL == proprio scope
 --   11) restrizione fuori scope -> righe vuote
+--   fixture a DUE emittenti (il buco dichiarato sotto, chiuso il 2026-08-18)
+--   12) PRECONDIZIONE: c'e' un secondo emittente e il cliente di prova si vede
+--   13) * spostato il suo BA sull'altro emittente, il cliente SPARISCE
+--   14)   per lo scope-universo c'e' ancora: sparito dal perimetro, non dai dati
 --
 -- Scopo:
 --  - verificare che NESSUN valore passato dal chiamante possa ALLARGARE
@@ -34,9 +38,11 @@
 --   funzione di scope e non dipendono dai dati.
 --   I test 8-11 verificano l'INVARIANTE «il parametro non decide piu'»
 --   confrontando due chiamate. NON dimostrano che un cliente di un altro
---   emittente sparisce: per quello servirebbe una fixture a DUE emittenti
---   con un cliente per ciascuno, che questo file NON costruisce. E' un
---   buco dichiarato, non coperto per sbaglio.
+--   emittente sparisce.
+--   ⭐ Quella prova e' arrivata il 2026-08-18 con i test 12-14, che costruiscono
+--   la fixture a due emittenti spostando davvero il billing account del cliente
+--   sotto l'altro emittente. Restano condizionati alla presenza di un SECONDO
+--   emittente attivo in istanza: se non c'e', saltano dichiarandolo.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -45,7 +51,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(15);
 
 -- ============================================================
 -- Fixture
@@ -214,6 +220,121 @@ SELECT CASE WHEN EXISTS (SELECT 1 FROM _t_cl_sog)
     '11. dettaglio CL con restrizione fuori scope -> righe vuote (fail-closed)'
   )
   ELSE skip('11. nessun cliente attivo utilizzabile come soggetto di prova', 1)
+END;
+
+-- ============================================================
+-- 12-14) ⭐ LA FIXTURE A DUE EMITTENTI — il buco dichiarato sopra, chiuso
+--
+--   I test 8-11 verificano l'INVARIANTE «il parametro non decide piu'»: due
+--   chiamate che devono dare lo stesso risultato. Nessuno di loro dimostra la
+--   cosa che al perimetro interessa davvero — che un cliente di un ALTRO
+--   emittente SPARISCE. Per quello serve un secondo emittente, e la misura di
+--   Fase 0 ha stabilito che l'istanza ne ha due.
+--
+--   ⚠️ Il secondo emittente NON si usa come "restrizione fuori scope" (quello
+--   e' il test 4, e li' l'id inesistente e' la scelta giusta). Qui si sposta
+--   davvero il billing account del cliente sotto l'altro emittente e si guarda
+--   se la ricerca lo mostra ancora.
+--
+--   ⭐ E si chiude con la contro-asserzione che rende il verde leggibile: il
+--   soggetto non e' sparito dai DATI, e' sparito dal PERIMETRO. Senza il
+--   test 14 un errore di fixture — soggetto cancellato, termine sbagliato —
+--   darebbe lo stesso zero del test 13, e verrebbe letto come una prova.
+-- ============================================================
+CREATE TEMP TABLE _t_ef2 ON COMMIT DROP AS
+SELECT (SELECT ef.soggetto_ruolo_id
+          FROM anagrafiche.emittenti_fiscali ef
+         WHERE ef.attivo
+           AND NOT (ef.soggetto_ruolo_id = ANY (COALESCE((SELECT sr_ids FROM _t_scope), '{}'::bigint[])))
+         ORDER BY ef.soggetto_ruolo_id
+         LIMIT 1) AS ef_altro;
+
+-- Il cliente di prova: CL, con billing account MAPPATO (se ricadesse sul
+-- gestore globale l'UPDATE sotto toccherebbe zero righe, in silenzio),
+-- OGGI dentro il mio scope — e' la condizione che rende il caso
+-- significativo — e fuori da qualunque albero, per non chiamare in causa
+-- il guard di P-1 che con questo test non c'entra.
+CREATE TEMP TABLE _t_due ON COMMIT DROP AS
+SELECT sr.id                                       AS soggetto_ruolo_id,
+       cl.billing_account_id                       AS ba_id,
+       substring(s.ragione_sociale_completa, 1, 4) AS termine
+  FROM anagrafiche.clienti cl
+  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = cl.soggetto_ruolo_id
+  JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+  JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
+ WHERE sr.tipo_ruolo_id = (SELECT tipo_ruolo_id FROM _t_cl)
+   AND s.attivo
+   AND length(btrim(s.ragione_sociale_completa)) >= 4
+   AND ba.parent_account_id IS NULL
+   AND NOT EXISTS (SELECT 1 FROM anagrafiche.billing_account f
+                    WHERE f.parent_account_id = ba.id)
+   AND EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account e
+                WHERE e.billing_account_id = ba.id)
+   AND script.fn_get_ba_emittente_sr_id(ba.id)
+       = ANY (COALESCE((SELECT sr_ids FROM _t_scope), '{}'::bigint[]))
+ ORDER BY s.ragione_sociale_completa, sr.id
+ LIMIT 1;
+
+-- 12) Precondizione: c'e' un secondo emittente e un cliente spostabile, e
+--     oggi quel cliente la ricerca lo TROVA. Senza questa riga i due test
+--     sotto sarebbero verdi anche partendo da zero risultati.
+SELECT CASE WHEN (SELECT ef_altro FROM _t_ef2) IS NOT NULL
+             AND EXISTS (SELECT 1 FROM _t_due)
+  THEN is(
+    (SELECT count(*) FROM script.fn_search_soggetti_universale(
+        (SELECT termine FROM _t_due), (SELECT tipo_ruolo_id FROM _t_cl), NULL) r
+      WHERE r.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM _t_due)),
+    1::bigint,
+    '12. PRECONDIZIONE fixture a due emittenti: il cliente di prova oggi si vede'
+  )
+  ELSE skip('12. istanza con un solo emittente attivo, o nessun cliente CL mappato e fuori albero', 1)
+END;
+
+-- Lo spostamento: il billing account del cliente passa all'ALTRO emittente.
+UPDATE anagrafiche.emittenti_fiscali_billing_account
+   SET emittente_soggetto_ruolo_id = (SELECT ef_altro FROM _t_ef2)
+ WHERE billing_account_id = (SELECT ba_id FROM _t_due)
+   AND (SELECT ef_altro FROM _t_ef2) IS NOT NULL;
+
+-- 13) ⭐ Il cliente di un altro emittente SPARISCE dalla ricerca. E' la cosa
+--     che i test 8-11 non dimostravano.
+SELECT CASE WHEN (SELECT ef_altro FROM _t_ef2) IS NOT NULL
+             AND EXISTS (SELECT 1 FROM _t_due)
+  THEN is(
+    (SELECT count(*) FROM script.fn_search_soggetti_universale(
+        (SELECT termine FROM _t_due), (SELECT tipo_ruolo_id FROM _t_cl), NULL) r
+      WHERE r.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM _t_due)),
+    0::bigint,
+    '13. ⭐ spostato il BA sull''altro emittente, il cliente sparisce dalla ricerca'
+  )
+  ELSE skip('13. istanza con un solo emittente attivo, o nessun cliente CL utilizzabile', 1)
+END;
+
+-- 14) La contro-asserzione: per chi ha l'universo nello scope il soggetto c'e'
+--     ancora. Sparito dal perimetro, non dai dati.
+SELECT set_config('app.current_user_id',
+                  COALESCE((SELECT idg.auth_user_id
+                              FROM anagrafiche.identita_digitali idg
+                             WHERE idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                               AND idg.attivo
+                               AND script.fn_is_super_admin(idg.auth_user_id)
+                             ORDER BY idg.auth_user_id
+                             LIMIT 1)::text,
+                           current_setting('app.current_user_id', true)),
+                  false);
+
+SELECT CASE WHEN (SELECT ef_altro FROM _t_ef2) IS NOT NULL
+             AND EXISTS (SELECT 1 FROM _t_due)
+             AND script.fn_get_emittenti_scope_sr_ids(
+                   NULLIF(current_setting('app.current_user_id', true), '')::integer) IS NULL
+  THEN is(
+    (SELECT count(*) FROM script.fn_search_soggetti_universale(
+        (SELECT termine FROM _t_due), (SELECT tipo_ruolo_id FROM _t_cl), NULL) r
+      WHERE r.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM _t_due)),
+    1::bigint,
+    '14. per lo scope-universo il soggetto c''e'' ancora: sparito dal perimetro, non dai dati'
+  )
+  ELSE skip('14. nessun super admin operatore in istanza, o fixture non costruita', 1)
 END;
 
 -- ============================================================

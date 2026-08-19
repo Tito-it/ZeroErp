@@ -6,13 +6,35 @@
 --       + inserimento di una filiale in anagrafiche.bank_branches
 -- ------------------------------------------------------------
 
--- Numero di test che ci aspettiamo di eseguire
+-- ============================================================================
+-- rev 2026-08-18 — bonifica baseline. Il file era NON TRANSAZIONALE: apriva la
+-- transazione a meta' e chiudeva in COMMIT, quindi lasciava il soggetto nel
+-- database. Alla corsa dopo una «pulizia preventiva» in testa cercava di
+-- cancellarlo — e da quando anagrafiche.bank_branches e' fra le tabelle di
+-- dbops.automation_delete_block_ruoli (2026-01-23) quel DELETE non e' piu'
+-- permesso. Risultato: il file moriva alla riga 44, ZERO asserzioni eseguite.
+--
+-- ⭐ Il rimedio non e' cancellare il residuo — sotto i residui di anagrafiche
+-- ci sono 37 istanze utility e 16 clienti, e non e' roba da cancellare per far
+-- passare un test. E' togliere al test il BISOGNO di cancellare:
+--   1. BEGIN ... ROLLBACK, e la pulizia preventiva sparisce (il ROLLBACK e' la
+--      garanzia: comunque vada, questo file non lascia nulla dietro di se');
+--   2. una P.IVA NUOVA, valida e mai usata. Il vincolo che faceva collidere le
+--      corse e' uq_soggetto_idstato_id_fiscale_univoco, e il vecchio
+--      05555555555 e' bruciato da «Banca Zero Test pgTAP» del 2025-11-25, che
+--      resta li' e da oggi non da' piu' fastidio a nessuno.
+-- ============================================================================
+BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(4);
@@ -22,7 +44,7 @@ SELECT plan(4);
 -- =========================================================
 CREATE TEMP TABLE tmp_costanti_banca_zero AS
 SELECT
-    '05555555555'::text      AS piva_test,              -- P.IVA fittizia
+    '88800100005'::text      AS piva_test,              -- P.IVA fittizia valida e mai usata (rev 2026-08-18)
     'BANK_B'::varchar        AS codice_ruolo_istituto,  -- config.tipi_ruoli.codice_interno (da adattare)
     'EUR'::varchar           AS codice_valuta,          -- se servirà in futuro
     'ZEROERP'::varchar       AS codice_prod_software,   -- se servirà in futuro
@@ -30,40 +52,25 @@ SELECT
     '01234'::varchar         AS branch_code_test,       -- es. CAB fittizio
     'BZEROIT2XXX'::varchar   AS bic_swift_test;         -- BIC/SWIFT fittizio 8+3
 
--- =========================================================
--- Pulizia preventiva di eventuali residui
--- =========================================================
 
--- bank_branches → soggetti_ruoli → soggetti
-DELETE FROM anagrafiche.bank_branches bb
-USING anagrafiche.soggetti_ruoli sr,
-      anagrafiche.soggetti s,
-      tmp_costanti_banca_zero k
-WHERE bb.soggetto_ruolo_id = sr.id
-  AND sr.soggetto_id = s.id
-  AND s.partita_iva = k.piva_test;
-
-DELETE FROM anagrafiche.soggetti_ruoli sr
-USING anagrafiche.soggetti s,
-      config.tipi_ruoli tr,
-      tmp_costanti_banca_zero k
-WHERE sr.soggetto_id = s.id
-  AND sr.tipo_ruolo_id = tr.id
-  AND s.partita_iva = k.piva_test
-  AND tr.codice_interno = k.codice_ruolo_istituto;
-
-DELETE FROM anagrafiche.soggetti s
-USING tmp_costanti_banca_zero k
-WHERE s.partita_iva = k.piva_test;
-
--- =========================================================
--- Inizio transazione “applicativa”
--- =========================================================
-BEGIN;
 
 -- ---------------------------------------------------------
 -- 1) Inserimento soggetto "Banca Zero Test pgTAP"
 -- ---------------------------------------------------------
+-- ⭐ FINESTRA DIFFERITA (rev 2026-08-18) — e' il punto che teneva rosso il file.
+--   Su anagrafiche.soggetti ci sono TRE guard DEFERRABLE INITIALLY DEFERRED
+--   (dati societari, indirizzi, contatti richiesti). Sono differiti APPOSTA:
+--   un soggetto si costruisce come SAGA — testata, dati societari, indirizzo,
+--   contatto — e la completezza ha senso verificarla quando la saga e' finita,
+--   non dopo il primo INSERT.
+--   Il `SET CONSTRAINTS ALL IMMEDIATE` del preambolo obbligatorio li fa pero'
+--   scattare subito, cioe' prima che la saga possa esistere. Qui si riaprono
+--   per il tempo della costruzione e si richiudono sotto: la verifica NON si
+--   perde, si sposta dove il modello la vuole. ⚠️ La richiusura non e'
+--   facoltativa: senza, il ROLLBACK finale se li porterebbe via non verificati
+--   e il file sarebbe verde per sottrazione.
+SET CONSTRAINTS ALL DEFERRED;
+
 WITH nuovo_soggetto AS (
     INSERT INTO anagrafiche.soggetti (
         ragione_sociale,
@@ -72,6 +79,10 @@ WITH nuovo_soggetto AS (
         sesso,
         stato_id,
         partita_iva,
+        -- rev 2026-08-18: il codice fiscale non c'era. Per una societa' di
+        -- capitali trgfn_soggetti_guard_cf_piva_obbligatori lo pretende, e
+        -- per una PG coincide con la partita IVA.
+        codice_fiscale,
         tipo_soggetto_dettaglio_id,
         storicizza,
         attivo
@@ -82,6 +93,7 @@ WITH nuovo_soggetto AS (
         NULL,
         'S',
         1,                 -- stato_id IT (adatta se diverso)
+        k.piva_test,
         k.piva_test,
         3,                 -- tipo_soggetto_dettaglio_id (PG IT, adatta se diverso)
         TRUE,
@@ -117,6 +129,47 @@ VALUES (
     TRUE,
     'soggetto'
 );
+
+-- ---------------------------------------------------------
+-- 1-bis) Dati societari (rev 2026-08-18)
+--
+-- Una societa' di capitali senza riga in anagrafiche.dati_societari non e' piu'
+-- ammessa: la policy la pretende. Quando questo file e' stato scritto non
+-- esisteva, ed e' il terzo dei guard entrati dopo che lo tenevano rosso.
+-- ---------------------------------------------------------
+INSERT INTO anagrafiche.dati_societari (
+    soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
+    socio_unico, liquidazione, destinatario_fe
+)
+SELECT s.id, 10000.00,
+       (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
+       'REA-PGTAP-01', 'SM', 'LN', '0000000'
+  FROM tmp_soggetto_banca s;
+
+-- Indirizzi obbligatori del SOGGETTO. Forma libera completa: il CHECK
+-- chk_indirizzi_free_requirements vuole indirizzo_libero + stato_id +
+-- (locality, postal_box, administrative_area). Stessa forma di
+-- create-cliente.sql, che e' verde.
+INSERT INTO anagrafiche.indirizzi_soggetti (
+    soggetto_id, tipo_indirizzo_id,
+    indirizzo_libero, stato_id, locality, postal_box, administrative_area
+)
+-- ⚠️ I tipi ammessi li decide config.tipi_soggetto_dettaglio_tipi_indirizzo
+--   per il tipo_soggetto_dettaglio del soggetto (qui 3 = PG IT), NON la
+--   matrice dei ruoli: 'RES' e' un tipo da persona fisica e su una PG viene
+--   respinto. Si legge la matrice invece di elencare i codici a mano, cosi'
+--   il test segue la configurazione se cambia.
+SELECT s.id, m.tipo_indirizzo_id,
+       'Via pgTAP Banca Zero 1', 1, 'Roma', '00100', 'RM'
+  FROM tmp_soggetto_banca s
+  JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo m
+    ON m.tipo_soggetto_dettaglio_id = 3 AND m.attivo
+  JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
+ WHERE ti.codice_interno IN ('DOMFISC', 'SEDELEG');
+
+-- Saga completa: si richiude la finestra. I tre guard differiti scattano QUI,
+-- su un soggetto finito — ed e' esattamente la verifica che il modello vuole.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ---------------------------------------------------------
 -- 2) Assegnazione ruolo ISTITUTO_CREDITO (es. codice 'IC')
@@ -188,13 +241,14 @@ SELECT ok(
     'La filiale ha bank_code/branch_code attesi ed è attiva'
 );
 
--- Forzo la verifica dei constraint DEFERRABLE
-SET CONSTRAINTS ALL IMMEDIATE;
+SELECT * FROM finish();
 
-COMMIT;
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia nulla dietro di se'.
+-- ⚠️ finish() sta PRIMA: pgTAP tiene il suo stato in una temp table, e dopo il
+-- ROLLBACK non esiste piu' («la relazione __tcache__ non esiste»).
+ROLLBACK;
 
 -- (Opzionale) pulizia della temp table, non strettamente necessaria
 -- DROP TABLE IF EXISTS tmp_costanti_banca_zero;
 
--- Fine test
-SELECT * FROM finish();

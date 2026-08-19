@@ -27,7 +27,8 @@ const store = useIndirizziStore()
 const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
+  mostraLista, mostraSearchHint,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'indirizzi.nuovo_indirizzo',
   onNew: () => emit('new'),
@@ -62,7 +63,7 @@ function onRowClick(data) {
 
     <template v-else>
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText
           v-model="searchText"
           :placeholder="t('indirizzi.search_indirizzo')"
@@ -81,10 +82,10 @@ function onRowClick(data) {
     </div>
 
     <!-- Placeholder: nessuna ricerca effettuata -->
-    <SearchHint v-if="!store.hasSearched && !store.loading" />
+    <SearchHint v-if="mostraSearchHint" />
 
     <ListaConfigurabile
-      v-show="store.hasSearched || store.loading"
+      v-show="mostraLista"
       ref="listaRef"
       codice="anagrafiche.indirizzi"
       data-key="indirizzo_dettaglio_id"

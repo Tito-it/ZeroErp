@@ -11,7 +11,7 @@
 //     searchText, onPage, onSort, applyFilters, reload, paginatorProps,
 //     tablePage, listaRef, dirty, configReady,
 //     exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded,
-//     pageActions,
+//     pageActions, mostraLista, mostraSearchHint,
 //   } = useListaConfigurabilePage(store, {
 //     exportFn: exportFornitori,
 //     getExportParams: (fmt) => buildExportParams(fmt),
@@ -19,6 +19,12 @@
 //     onNew: () => emit('new'),
 //     searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 //   })
+//
+// Liste a ricerca obbligatoria (<SearchHint> + lista dietro `v-show`): usare
+// `mostraSearchHint` / `mostraLista` invece di `!store.hasSearched &&
+// !store.loading`. Non e' zucchero: dentro ci sta il cancello di perimetro
+// emittente, che altrimenti resta nascosto proprio quando deve parlare (vedi
+// il commento su `perimetroBloccato`).
 //
 // `getExportParams` e' invocata SOLO al click di export (lazy): puo' quindi
 // riferire `searchText`/ref dei filtri definiti nel componente DOPO il
@@ -49,6 +55,24 @@ export function useListaConfigurabilePage(
   const { t } = useI18n()
   const search = useSearchTable(store, searchTableOptions)
 
+  // Cancello di perimetro emittente (P-2b): la conclusione la fa il BACKEND e
+  // arriva nella config (`richiede_scelta_emittente`); <ListaConfigurabile>
+  // mostra gia' il pannello AL POSTO della tabella. Qui non si ricalcola
+  // niente — si legge, e si decide COSA della pagina resta a video.
+  //
+  // ⚠️ Perche' vive nello scaffolding e non nei template: sulle liste a
+  // ricerca obbligatoria (clienti, soggetti, fornitori, indirizzi, articoli)
+  // il pannello non si vedeva MAI. Il caller tiene l'intera lista dietro
+  // `v-show="hasSearched || loading"` e al suo posto mostra <SearchHint>:
+  // finche' non si cerca, il cancello e' renderizzato ma nascosto — cioe'
+  // proprio nello stato in cui doveva parlare. A video il difetto si vedeva
+  // come «il pannello lampeggia mentre cerco e sparisce»: durante la fetch
+  // `loading` lo scopre, poi il BE rifiuta con 422 (toast soppresso),
+  // `hasSearched` resta false e il `v-show` lo richiude.
+  // ⚠️ Dichiarato in testa perche' lo leggono sia le azioni di testata (qui
+  // sotto) sia i caller, che ci legano l'`inert` sui propri filtri.
+  const perimetroBloccato = ref(false)
+
   // Stato della lista configurabile + le due azioni di utility
   // (personalizza/export): vivono in `useListaAzioni`, sede unica condivisa
   // coi cruscotti, che non possono usare questo scaffolding (store diverso).
@@ -59,9 +83,38 @@ export function useListaConfigurabilePage(
     azioniLista,
   } = useListaAzioni(() => listaRef.value, { exportFn, getExportParams })
 
+  // I due stati della pagina a ricerca obbligatoria, ed e' UNA regola sola:
+  // il secondo e' la negazione del primo, scritto come tale. Scriverli come
+  // due espressioni gemelle («bloccato || cercato || carico» e «!bloccato &&
+  // !cercato && !carico») li avrebbe fatti divergere alla prima modifica —
+  // ed e' la classe di difetto che questo cantiere ha gia' pagato una volta.
+  // ⚠️ <SearchHint> va TOLTO col cancello su, non affiancato: inviterebbe a
+  // cercare in una lista che il backend rifiutera' comunque finche'
+  // l'emittente non e' scelto, e due pannelli che dicono cose diverse sono
+  // peggio di nessuno.
+  const mostraLista = computed(
+    () => perimetroBloccato.value || store.hasSearched || store.loading,
+  )
+  const mostraSearchHint = computed(() => !mostraLista.value)
+
   // Allinea store.filters.limit alla pagina_dimensione risolta dal BE (una volta).
   const configAligned = ref(false)
   function onConfigLoaded(config) {
+    // ⚠️ PRIMA della guardia `configAligned`: quella protegge l'allineamento
+    // del limit, che si fa una volta sola. Il cancello no — e' uno stato che
+    // cambia quando cambia l'emittente attivo, e leggerlo dopo un `return`
+    // significherebbe lasciarlo fermo al primo valore.
+    perimetroBloccato.value = config?.richiede_scelta_emittente === true
+    // Sospende la lista finche' il cancello e' su: ogni richiesta sarebbe
+    // rifiutata con 422 dal guard di backend, che resta l'unica protezione
+    // vera. Si scrive nei DUE versi — rientrare in un emittente riapre la
+    // lista senza che nessuno debba ricordarsi di abbassare la bandiera.
+    // ⚠️ Il guard `in` non e' difensivismo: tutti i caller di oggi passano uno
+    // store di `createCrudStore`, che la chiave ce l'ha. Serve perche' lo
+    // scaffolding non ha modo di PRETENDERLO — chi domani passera' uno store
+    // fatto a mano non deve schiantare su una pagina che, senza sospensione,
+    // funziona lo stesso: il cancello si vede, e il backend rifiuta comunque.
+    if ('fetchSospesa' in store) store.fetchSospesa = perimetroBloccato.value
     if (configAligned.value) return
     configAligned.value = true
     const newLimit = config?.pagina_dimensione
@@ -85,8 +138,24 @@ export function useListaConfigurabilePage(
     // vive qui una volta sola (2026-07-31). La condizione su `exportFn` e' ora
     // dentro `useListaAzioni`, che produce le due azioni di lista.
     const conNew = typeof onNew === 'function'
+    // Cancello di perimetro su: TUTTE le azioni di testata si spengono, in un
+    // punto solo (§C-3-bis). Non e' un elenco di eccezioni — «ricarica» non ha
+    // niente da ricaricare (la lista e' sospesa), «esporta» scaricherebbe lo
+    // stesso 422 della lista (l'endpoint dichiara lo stesso `lista_codice` e
+    // cade sotto lo stesso guard), «nuovo» aprirebbe un drawer che al
+    // salvataggio si sente dire dal database che l'emittente non e' risolto, e
+    // le azioni custom del caller non hanno modo di essere piu' fortunate.
+    // ⚠️ `disabled` e non «tolte»: la barra resta la stessa e spenta, che e'
+    // un'informazione; farla sparire e ricomparire sarebbe un'interfaccia che
+    // si riscrive sotto le mani mentre il pannello spiega cosa fare.
+    // ⚠️ Col cancello giu' l'azione passa INTATTA (stesso oggetto): niente
+    // `disabled: false` scritto sopra, che spegnerebbe il `disabled` proprio
+    // dell'azione — «personalizza» finche' la config non c'e', «esporta»
+    // mentre un download e' in corso. Col cancello su vince `true`, che e'
+    // l'OR di quei due stati.
+    const spegni = (a) => (perimetroBloccato.value ? { ...a, disabled: true } : a)
     return [
-      {
+      spegni({
         key: 'reload',
         kind: 'utility',
         label: t('common.reload_list'),
@@ -97,10 +166,10 @@ export function useListaConfigurabilePage(
         // e senza di lui il pulsante "default" resta disallineato. Il caller
         // richiama `reload` (esposto qui sotto) dentro il proprio handler.
         command: onReload ?? search.reload,
-      },
-      ...azioniLista.value,
-      ...extras,
-      ...(conNew ? [{
+      }),
+      ...azioniLista.value.map(spegni),
+      ...extras.map(spegni),
+      ...(conNew ? [spegni({
         key: 'new',
         kind: 'primary',
         label: t('common.new'),
@@ -108,7 +177,7 @@ export function useListaConfigurabilePage(
         icon: MANAGE_ICONS.ADD,
         hideWhenReadonly: true,
         command: onNew,
-      }] : []),
+      })] : []),
     ]
   })
 
@@ -134,5 +203,10 @@ export function useListaConfigurabilePage(
     onExportConfirm,
     onConfigLoaded,
     pageActions,
+    // Consumato dai caller per rendere `inert` il proprio blocco filtri: la
+    // toolbar e' markup loro, e lo scaffolding non ha modo di raggiungerla.
+    perimetroBloccato,
+    mostraLista,
+    mostraSearchHint,
   }
 }

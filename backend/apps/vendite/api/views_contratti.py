@@ -109,6 +109,7 @@ class ApiContrattiExportView(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.contratti"
 
     @extend_schema(
         parameters=[
@@ -188,6 +189,7 @@ class ApiContrattiExportView(DomainAPIView):
 class ApiContrattiList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.contratti"
 
     @extend_schema(
         parameters=[

@@ -46,13 +46,28 @@ LIMIT 2;
 -- Se ce n'e' uno solo riusiamo lo stesso (l'UPDATE allora avviene su stesso
 -- valore e il trigger lock_columns NON solleva: quel test diventa skip soft).
 
+-- 🔴 RIFERIMENTO MORTO, corretto il 2026-08-18.
+--   Questa query filtrava su `rau.ruolo_sistema <> 'DISABILITATO'`. La colonna
+--   NON ESISTE PIU': il cutover multi-face-auth (2026-04-19) ha archiviato la
+--   tabella in `_legacy_risorse_umane_auth_user` e l'ha sostituita con una
+--   VISTA che legge da `identita_digitali`, dove quel concetto e' `attivo`.
+--
+--   ⚠️ L'effetto non era «un test rosso»: era un test che eseguiva ZERO
+--   asserzioni su 3. Moriva qui, prima di arrivarci — e siccome il file stava
+--   in baseline-rossi.tsv, il runner taceva. L'immutabilita' di
+--   config.user_emittenti_fiscali non era verificata da nessuno da mesi,
+--   proprio mentre quella tabella veniva toccata (20260818-12, -13).
+--
+--   ⭐ Il predicato non viene sostituito con un equivalente: viene TOLTO.
+--   `au.is_active` + `rau.attivo` dicono gia' «utente utilizzabile» nel modello
+--   nuovo, e inventare un terzo filtro sarebbe una regola in piu' che nessuno
+--   ha chiesto.
 CREATE TEMP TABLE tmp_imm_user AS
 SELECT au.id AS user_id
 FROM django.auth_user au
 JOIN anagrafiche.risorse_umane_auth_user rau ON rau.auth_user_id = au.id
 WHERE au.is_active = true
   AND rau.attivo = true
-  AND rau.ruolo_sistema <> 'DISABILITATO'::config.ruolo_sistema
 ORDER BY au.id
 LIMIT 1;
 

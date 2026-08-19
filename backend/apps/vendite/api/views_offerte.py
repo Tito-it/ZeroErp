@@ -214,6 +214,7 @@ _UTILITY_PATCH_REQUEST = inline_serializer(
 class ApiOfferteList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.offerte"
 
     @extend_schema(
         operation_id="vendite_offerte_list",
@@ -298,6 +299,7 @@ class ApiOfferteExportView(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.offerte"
 
     @extend_schema(
         operation_id="vendite_offerte_export",

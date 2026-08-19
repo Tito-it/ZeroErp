@@ -937,6 +937,18 @@ a {
   opacity: 1;
 }
 
+/* ===== Filtri inerti — cancello di perimetro emittente (P-2b) =====
+ * ⚠️ Il verso OPPOSTO della regola qui sopra, e non e' una contraddizione:
+ * col readonly filtrare resta lecito (filtrare e' leggere), col cancello di
+ * perimetro no — la lista non si apre affatto finche' non si sceglie un
+ * emittente, e ogni richiesta tornerebbe 422.
+ * L'inertizzazione vera la fa l'attributo `inert` del browser (niente click,
+ * niente tastiera, niente screen reader): qui c'e' solo il segnale visivo,
+ * perche' un blocco che non risponde e ha l'aria normale sembra guasto. */
+.app-page-filters[inert] {
+  opacity: 0.55;
+}
+
 /* ===== Riga DataTable readonly (non selezionabile) =====
  * Per righe che concettualmente non hanno un record CRUD-able dietro
  * (es. preview righe contratto modalita' A/B con origine='DA_LISTINO',

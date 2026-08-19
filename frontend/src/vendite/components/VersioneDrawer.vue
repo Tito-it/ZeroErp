@@ -72,7 +72,7 @@ const emit = defineEmits(['update:visible'])
 // visibilita'/disable di dominio e viaggia fra le extra.
 const {
   searchText, onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   onReload: reloadAll,
   extraActions: () => [
@@ -477,7 +477,7 @@ const onClose = useDrawerClose(emit)
 
       <!-- === MASTER: toolbar + lista configurabile (server-side lazy) === -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
+        <div class="app-page-filters" :inert="perimetroBloccato">
           <InputText v-model="searchText" :placeholder="t('vendite.listini.righe_cerca_articolo')"
             style="width: 240px;" />
         </div>

@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N1 — la natura entra nelle TRE tabelle della catena
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4-bis.10
+#
+#   commesse_attivita  ->  attivita_fatturabili  ->  fatture
+#        (l'intento)          (l'emissione)        (il documento)
+#
+# ── PERCHE' TUTTE E TRE, E NON SOLO `fatture` ───────────────────────────
+#
+#   Il §12.4-bis.5 fissa un requisito che vale qualunque strada si scelga: **la
+#   natura dev'essere leggibile da `vendite.fatture`**, perche' e' li' che il
+#   builder XML della FatturaPA andra' a chiedere se sta trasmettendo un TD01 o
+#   un TD04. Ma una colonna sulla sola testata sarebbe un valore che nessuno
+#   sa da dove viene: la natura nasce con l'INTENTO (la riga di rettifica in
+#   commessa), viaggia con l'EMISSIONE e si deposita sul DOCUMENTO. E' la stessa
+#   coreografia gia' fatta per `tipo_movimento` (20260717-01..04) e per
+#   `causale_onere_id` (20260721-04/-06).
+#
+# ── ⭐ NOT NULL DEFAULT FATTURA: nulla di esistente cambia comportamento ─
+#
+#   Tutte le righe di oggi sono fatture, e lo restano. Il DEFAULT non e' una
+#   comodita': e' cio' che rende questa slice **inerte**. Le INSERT esistenti
+#   (fn_get_or_create_fattura_header, fn_emit_attivita_fatturabili_da_commessa,
+#   fn_upsert_commessa_attivita) non nominano la colonna e continuano a
+#   funzionare senza toccarle — le impareranno a -29 e -34, quando ci sara'
+#   qualcosa di diverso da dire.
+#
+#   ⚠️ Il DEFAULT chiama una FUNZIONE (-25) e non scrive l'id `1`: vedi la nota
+#   in testa a quel changeSet. In breve: l'id e' dettaglio implementativo, la
+#   chiave naturale e' il contratto, e un `DEFAULT 1` sbaglierebbe in silenzio
+#   il giorno in cui il catalogo venisse ricostruito.
+#
+# ── ⚠️ `%TYPE` NON E' VALIDO in ALTER TABLE ADD COLUMN ──────────────────
+#
+#   E' DDL plain: tipi espliciti, e va bene cosi'. Il tipo e' `bigint`, lo
+#   stesso di config.nature_doc_fiscale.id.
+#
+# ── ⚠️ GLI INDICI FK SONO OPT-IN ────────────────────────────────────────
+#
+#   Tre FK nuove; `fn_populate_fk_index_policy()` le registrera' a
+#   `consentito=false`. Il seed che decide sta in 80_data. Qui NON si crea
+#   nessun indice a mano: lo fa `dbops.apply_fk_index_policy()` in 90_end.
+#   ⭐ E per queste tre la scelta e' NO: una colonna con tre valori distinti,
+#   di cui uno copre oggi il 100% delle righe, non e' selettiva — un btree su
+#   di essa e' peso in scrittura e nient'altro. La FK va comunque registrata,
+#   perche' una FK senza riga di policy e' una FK che nessuno ha deciso.
+#
+# Dipendenze: config.nature_doc_fiscale (-24), config.fn_get_natura_doc_fiscale_id (-25).
+# Consumatori: -27 (lock immutabilita'), -29 (la catena impara), -33/-34 (la chiave).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260818-26-alter-add-natura-doc-id-catena-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260818-26-alter-add-natura-doc-id-catena-fattura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N1: natura_doc_id (NOT NULL DEFAULT FATTURA, FK verso
+        config.nature_doc_fiscale) su vendite.commesse_attivita,
+        vendite.attivita_fatturabili e vendite.fatture. Slice inerte per
+        costruzione: tutte le righe di oggi sono fatture e il DEFAULT le lascia
+        tali, quindi nessuna INSERT esistente va toccata. Il DEFAULT chiama la
+        fn di lookup per chiave naturale, mai un id cablato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: nature_doc_fiscale
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture
+                    columnName: natura_doc_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN (DDL plain):
+              --    tipo esplicito, allineato a config.nature_doc_fiscale.id.
+              ALTER TABLE vendite.commesse_attivita
+                  ADD COLUMN natura_doc_id bigint NOT NULL
+                      DEFAULT config.fn_get_natura_doc_fiscale_id('FATTURA');
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD COLUMN natura_doc_id bigint NOT NULL
+                      DEFAULT config.fn_get_natura_doc_fiscale_id('FATTURA');
+
+              ALTER TABLE vendite.fatture
+                  ADD COLUMN natura_doc_id bigint NOT NULL
+                      DEFAULT config.fn_get_natura_doc_fiscale_id('FATTURA');
+
+              ALTER TABLE vendite.commesse_attivita
+                  ADD CONSTRAINT fk_commesse_attivita_natura_doc
+                      FOREIGN KEY (natura_doc_id)
+                      REFERENCES config.nature_doc_fiscale(id) ON UPDATE CASCADE;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT fk_attivita_fatturabili_natura_doc
+                      FOREIGN KEY (natura_doc_id)
+                      REFERENCES config.nature_doc_fiscale(id) ON UPDATE CASCADE;
+
+              ALTER TABLE vendite.fatture
+                  ADD CONSTRAINT fk_fatture_natura_doc
+                      FOREIGN KEY (natura_doc_id)
+                      REFERENCES config.nature_doc_fiscale(id) ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.commesse_attivita.natura_doc_id IS
+                'Natura fiscale del documento che questa attivita'' produrra'' '
+                '(config.nature_doc_fiscale). E'' l''INTENTO: una riga di rettifica '
+                'nasce NOTA_CREDITO e da li'' la natura viaggia fino alla testata, '
+                'passando per attivita_fatturabili. Entra nella chiave documento '
+                '(fn_build_fattura_key), quindi due attivita'' di natura diversa '
+                'finiscono su due documenti diversi senza che nessuno debba separarle. '
+                'Default FATTURA: la stragrande maggioranza delle righe non ha nulla di '
+                'diverso da dire. brief-design-note-credito-resi D-NC-3.';
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.natura_doc_id IS
+                'Natura fiscale propagata 1:1 da commesse_attivita all''emissione '
+                '(fn_emit_attivita_fatturabili_da_commessa), sullo stesso modello di '
+                'tipo_movimento. E'' cio'' che la chiave documento legge per non '
+                'mescolare fatture e note di credito nella stessa testata. '
+                'brief-design-note-credito-resi D-NC-3.';
+
+              COMMENT ON COLUMN vendite.fatture.natura_doc_id IS
+                'Natura fiscale del DOCUMENTO (config.nature_doc_fiscale): FATTURA, '
+                'NOTA_CREDITO, NOTA_DEBITO. ⭐ Requisito del S12.4-bis.5: la natura deve '
+                'essere leggibile DALLA FATTURA, non solo dall''attivita'' che l''ha '
+                'generata, perche'' e'' qui che il builder XML della FatturaPA chiedera'' '
+                'se sta trasmettendo un TD01 o un TD04 (il codice sta in '
+                'nature_doc_fiscale.meta.sdi_tipo_documento). '
+                '⛔ NON si cambia dopo: un documento non muta natura a numero gia'' '
+                'assegnato. Presidiato dal lock trg_fatture_a10_lock_natura_doc_upd. '
+                'Invariante verificato da fn_assign_numero_fattura, condizione 7 del '
+                'guard D-K: natura = NOTA_CREDITO <=> totale_a_pagare <= 0. '
+                'brief-design-note-credito-resi D-NC-2 e D-NC-3.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture              DROP COLUMN IF EXISTS natura_doc_id;
+              ALTER TABLE vendite.attivita_fatturabili DROP COLUMN IF EXISTS natura_doc_id;
+              ALTER TABLE vendite.commesse_attivita    DROP COLUMN IF EXISTS natura_doc_id;

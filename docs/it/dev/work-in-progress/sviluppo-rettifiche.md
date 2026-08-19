@@ -2,6 +2,47 @@
 
 > Stato: **DA IMPLEMENTARE** (DB-L4 della roadmap pricing)
 >
+> ---
+>
+> ## ⚠️ NOTA DEL 2026-08-18 — leggere prima di riprendere questo cantiere
+>
+> **Il PERCHÉ di questo documento regge; il COME è superato in più punti.** Il
+> testo è di aprile 2026 e non ha visto quattro cose arrivate dopo, tutte sul
+> suo stesso terreno:
+>
+> | Cosa è cambiato | Dove |
+> | --- | --- |
+> | `tipo_movimento` è una **colonna** su `commesse_attivita` e `attivita_fatturabili` con CHECK `NORMALE \| RETTIFICA \| ONERE` | `20260717-01..04` |
+> | Le quantità sono **immutabili** dopo l'emissione: le correzioni sono **righe nuove**, mai UPDATE | [brief immutabilità e porta oneri](../work-done/brief-db-immutabilita-quantita-e-porta-oneri.md) |
+> | Le voci di puro valore hanno **una porta sola** (`fn_aggiungi_onere_commessa`, causali a catalogo) | stesso brief, §4c |
+> | La correzione di **merce** ha ora il suo modello completo: contatore, `tipo_movimento='RETTIFICA'`, `resi_righe_accrediti` | [brief nota di credito](brief-design-note-credito-resi.md) |
+>
+> 🔴 **Il punto su cui questo documento va riscritto, non aggiornato**: il §6.2
+> e il §7.1 propongono `vendite.rettifiche` + `vendite.rettifiche_righe` come
+> modello di audit delle correzioni, e il §3.3 dice *«attività negativa/positiva
+> se la riga non è ancora fatturata, nota di credito/debito se è già in
+> fattura»*. **Costruirlo così oggi significherebbe creare il SECONDO modello di
+> correzione**, accanto a quello che esiste — e due modelli di correzione sulla
+> stessa catena divergono, perché ognuno è coerente con sé stesso.
+>
+> ⭐ **Ma il cantiere resta valido, ed è distinto**: qui si corregge un **prezzo**
+> (il listino cambia dopo la fattura, il delta è un errore di valore); là si
+> corregge la **merce** (il cliente rende roba già fatturata, il delta è un
+> fatto fisico). Due domini diversi con la stessa parola. Chi riprende deve
+> **riusare** il modello esistente — la rettifica è già una riga di commessa con
+> il suo `tipo_movimento` — non affiancargliene un altro.
+>
+> ⚠️ Il §6.2 chiede *«tabella dedicata o campi su `attivita_fatturabili`?»*:
+> quella domanda **ha già una risposta** dall'altro cantiere, e va letta prima
+> di ri-porla.
+>
+> ⚠️ E le due funzioni DB del §7.2 non sono mai state scritte: il riallineamento
+> prezzo è arrivato **in Python** (`fn_riallinea_prezzo` + endpoint). Il verbale
+> della richiesta di febbraio è in
+> [work-done/brief-db-rettifiche-e-componenti.md](../work-done/brief-db-rettifiche-e-componenti.md).
+>
+> ---
+>
 > Ultima revisione: aprile 2026
 >
 > Documento estratto da `sviluppo-listini.md` per isolare il perimetro rettifiche come fase autonoma.

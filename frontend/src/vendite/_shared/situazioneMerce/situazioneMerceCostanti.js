@@ -1,0 +1,32 @@
+// Costanti del pannello «situazione merce». Il vocabolario di `stato` vive a
+// DB (`vw_situazione_merce_ordine` / `vw_partite_merce`, brief partita §9.3):
+// qui il suo mirror FE, per la stessa ragione di `STATO_RESO` in
+// `resi/constants.js` e degli enum di frontend-standards — un typo in un
+// literal (`'DA_FATURARE'`) non rompe niente a runtime: filtra zero righe e il
+// riassunto mente in silenzio. L'enum lo rende un errore che si vede.
+//
+// ⚠️ Il frontend USA questi codici per scegliere frase e colore, mai per
+// ri-derivare il verso del saldo (richiesta BE-2): se il DB aggiunge un valore,
+// qui si aggiunge una riga — non una regola.
+
+export const STATO_MERCE = Object.freeze({
+  PAREGGIATA: 'PAREGGIATA',
+  DA_FATTURARE: 'DA_FATTURARE',
+  DA_ACCREDITARE: 'DA_ACCREDITARE',
+  NON_SPEDITA: 'NON_SPEDITA',        // livello ordine: impegnata ma mai spedita
+  NON_IMPEGNATA: 'NON_IMPEGNATA',    // livello ordine: ordine sotto soglia CONFERMATO
+                                     // o abortito -> `da_spedire` e' NULL (20260818-06)
+  NON_FATTURABILE: 'NON_FATTURABILE',
+  NON_MISURABILE: 'NON_MISURABILE',
+  RICONSEGNA: 'RICONSEGNA',          // solo partite (riga di un DDT di ri-consegna)
+})
+
+// Etichetta della coda accrediti (`vw_resi_da_accreditare.etichetta`):
+// DOVUTA = obbligo (reso a credito), FACOLTATIVA = opzione dell'operatore
+// (reso per ri-consegna, DL-26). Mirror della whitelist BE/DB, gia' speculare
+// in `resi/constants.js` (ETICHETTA_ACCREDITO) — qui ri-esposta per non
+// importare dal dominio resi dentro un BB `_shared`.
+export const ETICHETTA_ACCREDITO_MERCE = Object.freeze({
+  DOVUTA: 'DOVUTA',
+  FACOLTATIVA: 'FACOLTATIVA',
+})

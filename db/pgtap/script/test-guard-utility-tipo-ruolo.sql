@@ -64,6 +64,23 @@ SELECT ok(
 );
 
 -- 3) Utility senza matrice attiva/valida
+-- 🔴 PRECONDIZIONE COSTRUITA, non cercata — 2026-08-18.
+--   Questa fixture cercava «una utility senza matrice attiva/valida» e si
+--   affidava al fatto che in sviluppo ce ne fosse una. Non ce n'e' piu':
+--   la ricerca tornava vuota, `utility_id` usciva NULL e l'INSERT sotto moriva
+--   sul NOT NULL — 4 asserzioni su 12.
+--
+--   ⚠️ Terza occorrenza dello stesso difetto in questo giro (con
+--   test-fn-change-user-emittenti-scope e test-fn-get-user-emittenti-scope):
+--   una fixture che CERCA la propria precondizione invece di costruirla smette
+--   di funzionare il giorno in cui qualcuno sistema i dati — cioe' viene punita
+--   da un miglioramento.
+--
+--   Qui la si costruisce: si prende la prima utility e le si toglie la matrice.
+--   Il file e' transazionale, la matrice vera torna al ROLLBACK.
+DELETE FROM config.utilities_tipi_ruolo m
+ WHERE m.utility_id = (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1);
+
 CREATE TEMP TABLE tmp_utility_no_matrix AS
 SELECT u.id AS utility_id
 FROM config.utilities u
@@ -148,8 +165,18 @@ SELECT throws_ok(
     (SELECT tipo_ruolo_deny_id FROM tmp_ruoli_ctx)
   ),
   'P0001',
+  -- 🔴 FRASE AGGIORNATA il 2026-08-18. Il guard funziona e blocca: era il suo
+  --   MESSAGGIO a essere cambiato, da quando l'errore passa per
+  --   script.fn_log_and_raise_error e prende il testo dal catalogo.
+  --   ⚠️ Asserire la FRASE e' fragile per costruzione: si rompe a ogni
+  --   riscrittura del messaggio, e non verifica cio' che conta. La forma
+  --   durevole e' leggere il canale strutturato (CONSTRAINT = codice di
+  --   dominio) con GET STACKED DIAGNOSTICS, come in
+  --   db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1 (test 8-9).
+  --   Qui si allinea la frase e si lascia scritto il debito: cambiarne la
+  --   forma e' una slice a se', non una riga di questa pulizia.
   format(
-    'Tipo ruolo non ammesso per utility: %s tipo_ruolo_id: %s',
+    'Tipo ruolo %2$s non ammesso per utility %1$s in base alla matrice configurata.',
     (SELECT utility_id FROM tmp_utility_no_matrix),
     (SELECT tipo_ruolo_deny_id FROM tmp_ruoli_ctx)
   ),
@@ -178,8 +205,18 @@ SELECT throws_ok(
     (SELECT tipo_ruolo_deny_id FROM tmp_ruoli_ctx)
   ),
   'P0001',
+  -- 🔴 FRASE AGGIORNATA il 2026-08-18. Il guard funziona e blocca: era il suo
+  --   MESSAGGIO a essere cambiato, da quando l'errore passa per
+  --   script.fn_log_and_raise_error e prende il testo dal catalogo.
+  --   ⚠️ Asserire la FRASE e' fragile per costruzione: si rompe a ogni
+  --   riscrittura del messaggio, e non verifica cio' che conta. La forma
+  --   durevole e' leggere il canale strutturato (CONSTRAINT = codice di
+  --   dominio) con GET STACKED DIAGNOSTICS, come in
+  --   db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1 (test 8-9).
+  --   Qui si allinea la frase e si lascia scritto il debito: cambiarne la
+  --   forma e' una slice a se', non una riga di questa pulizia.
   format(
-    'Tipo ruolo non ammesso per utility: %s tipo_ruolo_id: %s',
+    'Tipo ruolo %2$s non ammesso per utility %1$s in base alla matrice configurata.',
     (SELECT utility_id FROM tmp_utility_no_matrix),
     (SELECT tipo_ruolo_deny_id FROM tmp_ruoli_ctx)
   ),
@@ -201,8 +238,18 @@ SELECT throws_ok(
     (SELECT tipo_ruolo_deny_id FROM tmp_ruoli_ctx)
   ),
   'P0001',
+  -- 🔴 FRASE AGGIORNATA il 2026-08-18. Il guard funziona e blocca: era il suo
+  --   MESSAGGIO a essere cambiato, da quando l'errore passa per
+  --   script.fn_log_and_raise_error e prende il testo dal catalogo.
+  --   ⚠️ Asserire la FRASE e' fragile per costruzione: si rompe a ogni
+  --   riscrittura del messaggio, e non verifica cio' che conta. La forma
+  --   durevole e' leggere il canale strutturato (CONSTRAINT = codice di
+  --   dominio) con GET STACKED DIAGNOSTICS, come in
+  --   db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1 (test 8-9).
+  --   Qui si allinea la frase e si lascia scritto il debito: cambiarne la
+  --   forma e' una slice a se', non una riga di questa pulizia.
   format(
-    'Tipo ruolo non ammesso per utility: %s tipo_ruolo_id: %s',
+    'Tipo ruolo %2$s non ammesso per utility %1$s in base alla matrice configurata.',
     (SELECT utility_id FROM tmp_utility_no_matrix),
     (SELECT tipo_ruolo_deny_id FROM tmp_ruoli_ctx)
   ),

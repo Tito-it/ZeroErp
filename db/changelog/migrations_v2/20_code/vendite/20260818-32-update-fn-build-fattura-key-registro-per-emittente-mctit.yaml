@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N2b — 🔴 I REGISTRI INTESTATI A UN EMITTENTE TORNANO RAGGIUNGIBILI
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.4-bis.4
+#
+# ── IL DIFETTO, IN QUATTRO RIGHE ────────────────────────────────────────
+#
+#   `fn_get_registro_id` ha un fallback a quattro livelli su utility ed
+#   emittente. Il suo UNICO chiamante la invocava con **un argomento solo**:
+#
+#       v_registro_id := vendite.fn_get_registro_id(v_tipo_doc_fiscale_id);
+#
+#   Con `p_utility_id` e `p_emittente_soggetto_ruolo_id` a NULL, il WHERE della
+#   funzione si riduce a:
+#
+#       AND (r.utility_id IS NULL OR r.utility_id = NULL)      -- NULL, mai vero
+#       AND (r.emittente_soggetto_ruolo_id IS NULL OR ... = NULL)   -- idem
+#
+#   ⛔ Ne discende che dalla pipeline erano raggiungibili **solo** i registri con
+#   utility ed emittente entrambi NULL. Un registro intestato a un emittente non
+#   veniva scelto: veniva **escluso dalla selezione**, e se fosse stato l'unico
+#   per quel tipo documento la funzione avrebbe sollevato `E_CONFIG_MANCANTE`.
+#
+#   ⚠️ E il modello promette il contrario. La doc di `registri_fatturazione`:
+#   «la FK su emittente_soggetto_ruolo_id e' coerente con un modello
+#   multi-emittente… la separazione dei registri evita collisioni di
+#   numerazione». Oggi quella promessa non era raggiungibile.
+#
+# ── PERCHE' SI CORREGGE QUI E NON ALTROVE ───────────────────────────────
+#
+#   D-NC-3b sceglie il **sezionale proprio** per le note di credito: il registro
+#   e' NUOVO, ed e' proprio il caso in cui un'azienda multi-emittente ne vorrebbe
+#   uno per emittente. Costruirci sopra una risoluzione che ignora l'emittente
+#   significherebbe ereditare il difetto e renderlo piu' difficile da togliere.
+#   Il rilievo e' anche EM-1 per il cantiere «perimetro emittente», che e'
+#   aperto: e' un pezzo dello stesso quadro.
+#
+# ── ⭐ MISURATA, NON ASSUNTA: la parita' e' garantita, e si vede ────────
+#
+#   Fotografia N0, punto 7 (2026-08-18, come owner): **zero** registri con
+#   `utility_id` o `emittente_soggetto_ruolo_id` non nulli. I due in seed hanno
+#   entrambi i campi NULL, quindi il livello 4 del fallback resta l'unico
+#   esercitato e **nessun documento di oggi cambia registro**. Il difetto era
+#   latente — zero occorrenze, e nulla lo impediva — e la correzione e' inerte
+#   sui dati e viva sul comportamento: dal primo registro intestato in poi,
+#   funziona.
+#
+# ── PERCHE' UN CHANGESET A SE', E NON INSIEME A N3 ─────────────────────
+#
+#   Perche' N3 cambia la CHIAVE del documento. Se le due modifiche viaggiassero
+#   insieme e la parita' si rompesse, non si saprebbe quale delle due l'ha
+#   rotta. Stessa disciplina di N6/N7. Qui la funzione si limita a passare due
+#   valori che aveva gia' in mano tre righe piu' su, e ad adeguarsi al nuovo
+#   tipo di ritorno di `fn_get_registro_id` — che ora e' una riga, non uno
+#   scalare. La natura resta NULL (cioe' FATTURA) fino a -33: e' corretto,
+#   perche' fino a N8 nessuna attivita' puo' avere natura diversa.
+#
+# Base: corpo dalla definizione VIVA
+#   (docs/it/dbzero/vendite/funzioni/fn_build_fattura_key.md).
+# Dipendenze: vendite.fn_get_registro_id nuova firma (-31).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-32-update-fn-build-fattura-key-registro-per-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260818-32-update-fn-build-fattura-key-registro-per-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N2b: fn_build_fattura_key passa utility ed emittente a
+        fn_get_registro_id — li aveva gia' calcolati tre righe piu' su — e si
+        adegua al nuovo tipo di ritorno. Corregge il difetto per cui dalla
+        pipeline erano raggiungibili SOLO i registri con utility ed emittente
+        entrambi NULL, rendendo irraggiungibili i sezionali intestati a un
+        emittente che il modello promette. Parita' misurata: zero registri
+        intestati oggi, quindi nessun documento cambia registro.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: tipi_doc_fiscale_registri
+            columnName: natura_doc_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Parametro ANCORATO con %TYPE (linee-guida-sql §5b). Il tipo
+              --    di ritorno resta `jsonb`: non c'e' una colonna a cui
+              --    agganciarlo, ed e' la chiave logica, non un campo.
+              CREATE OR REPLACE FUNCTION vendite.fn_build_fattura_key(
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: chiave logica di aggregazione del documento a partire da una
+              --        attivita' fatturabile. Da D-7/D-B comprende anche le
+              --        condizioni di pagamento: due attivita' con termini diversi
+              --        finiscono su due fatture.
+              -- Regole: le condizioni si risolvono con la catena UNICA
+              --         (fn_resolve_termini_pagamento, 3b.1) — questa e' la
+              --         chiamata che chiude C-13, perche' una catena riscritta e
+              --         mai invocata resta un secondo risolutore in attesa d'uso.
+              -- rev 2026-08-18 (brief nota di credito, N2b): il registro si
+              --         risolve passando ANCHE utility ed emittente. Erano gia'
+              --         in mano tre righe piu' su, e senza di loro il fallback a
+              --         quattro livelli di fn_get_registro_id collassava sul solo
+              --         livello 4: i registri intestati a un emittente non
+              --         venivano scelti, venivano ESCLUSI dalla selezione.
+              DECLARE
+                  v_ba_id               anagrafiche.billing_account.id%TYPE;
+                  v_ba_fattura_id       anagrafiche.billing_account.id%TYPE;
+                  v_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE;
+                  v_valuta_id           config.valute.id%TYPE;
+                  v_utility_id          config.utilities.id%TYPE;
+                  v_emittente_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_reseller_id         anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_registro_id         vendite.registri_fatturazione.id%TYPE;
+                  v_termine_id          config.termini_pagamento.id%TYPE;
+                  v_modalita_id         config.modalita_pagamento.id%TYPE;
+              BEGIN
+                  -- Guard: parametro obbligatorio
+                  IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_fattura_key', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_attivita_id', 'valore', p_attivita_id),
+                          NULL::uuid, 'p_attivita_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Recupera BA, tipo doc, valuta, utility dall'attivita'
+                  SELECT a.billing_account_id,
+                         COALESCE(ba.parent_account_id, a.billing_account_id),
+                         a.tipo_doc_fiscale_id,
+                         a.valuta_id,
+                         ba.utility_id
+                    INTO v_ba_id, v_ba_fattura_id, v_tipo_doc_fiscale_id, v_valuta_id, v_utility_id
+                    FROM vendite.attivita_fatturabili a
+                    JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
+                   WHERE a.id = p_attivita_id;
+
+                  IF v_ba_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_fattura_key', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('attivita_id', p_attivita_id),
+                          NULL::uuid, concat('attivita o BA non trovati per id ', p_attivita_id)
+                      );
+                  END IF;
+
+                  -- Emittente dal mapping BA → emittente fiscale
+                  v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(v_ba_fattura_id);
+
+                  -- Reseller dal mapping BA → reseller (opzionale)
+                  SELECT rb.reseller_soggetto_ruolo_id
+                    INTO v_reseller_id
+                    FROM anagrafiche.resellers_billing_account rb
+                   WHERE rb.billing_account_id = v_ba_fattura_id
+                   ORDER BY rb.id
+                   LIMIT 1;
+
+                  -- Registro dal tipo documento.
+                  -- ⚠️ utility ed emittente vanno PASSATI: senza, i due
+                  --    predicati del fallback valutano NULL (mai veri) e la
+                  --    funzione vede solo i registri con entrambi i campi
+                  --    vuoti. Un sezionale intestato a un emittente
+                  --    risulterebbe inesistente — e con un solo registro per
+                  --    quel tipo documento la risposta sarebbe
+                  --    E_CONFIG_MANCANTE su una configurazione corretta.
+                  --    La natura resta implicita (FATTURA) fino a -33.
+                  SELECT g.registro_id
+                    INTO v_registro_id
+                    FROM vendite.fn_get_registro_id(
+                             p_tipo_doc_fiscale_id         => v_tipo_doc_fiscale_id,
+                             p_natura_doc_id               => NULL,
+                             p_utility_id                  => v_utility_id,
+                             p_emittente_soggetto_ruolo_id => v_emittente_id) g;
+
+                  -- Condizioni di pagamento: catena unica (3b.1).
+                  SELECT t.termine_pagamento_id, t.modalita_pagamento_id
+                    INTO v_termine_id, v_modalita_id
+                    FROM vendite.fn_resolve_termini_pagamento(p_attivita_id) t;
+
+                  RETURN jsonb_build_object(
+                      'billing_account_id', v_ba_fattura_id,
+                      'tipo_doc_fiscale_id', v_tipo_doc_fiscale_id,
+                      'valuta_id', v_valuta_id,
+                      'emittente_soggetto_ruolo_id', v_emittente_id,
+                      'reseller_soggetto_ruolo_id', v_reseller_id,
+                      'utility_id', v_utility_id,
+                      'registro_id', v_registro_id,
+                      'termine_pagamento_id', v_termine_id,
+                      'modalita_pagamento_id', v_modalita_id
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_build_fattura_key(bigint)
+              IS 'Chiave logica di aggregazione del documento a partire da un''attivita'' fatturabile: due attivita'' con la stessa chiave finiscono sulla stessa fattura. rev 2026-08-18 (brief-design-note-credito-resi N2b): il registro si risolve passando ANCHE utility ed emittente. Prima la chiamata era a un argomento solo, e con utility ed emittente a NULL i due predicati del fallback di fn_get_registro_id valutavano NULL — mai veri — quindi dalla pipeline erano raggiungibili SOLO i registri con entrambi i campi vuoti. Un sezionale intestato a un emittente non veniva scelto: veniva escluso dalla selezione, e se fosse stato l''unico per quel tipo documento la risposta sarebbe stata E_CONFIG_MANCANTE su una configurazione corretta. Il modello prometteva il contrario ("la separazione dei registri evita collisioni di numerazione" fra piu'' aziende). Parita'' misurata il 2026-08-18: zero registri intestati, quindi nessun documento esistente cambia registro.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non si torna indietro da soli: la versione precedente chiama
+              --    fn_get_registro_id con la firma vecchia (scalare). Va
+              --    ri-applicato 20260801-04 insieme a 20260331-13.
+              SELECT 1;

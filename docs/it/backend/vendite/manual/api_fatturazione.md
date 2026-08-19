@@ -84,8 +84,34 @@ oneri di una commessa. Un solo verbo, due perimetri: il processo è identico
 
 - `POST /api/v1/vendite/fatturazione/numera/` · permesso `numera_fatture_lotti`
 - Body: `{ "competenza_mese": "YYYY-MM-DD" }`
-- Accoda un job `FATTURAZIONE_NUMERA`: esegue lo step DEFINITIVA (numera + accoda
-  stampa) sui **lotti EMESSA** del mese. Polling via `run/<job_id>/`.
+- Accoda un job `FATTURAZIONE_NUMERA`: esegue lo step DEFINITIVA sui **lotti
+  EMESSA** del mese. Polling via `run/<job_id>/`.
+
+⭐ **Lo step DEFINITIVA ha tre task, dal 2026-08-18** (prima due):
+
+```text
+numera_fatture  →  popola_fatture_rettifiche  →  stampa_documenti_lotto
+```
+
+`popola_fatture_rettifiche` proietta il legame documento-a-documento delle
+**note di credito** (`vendite.fatture_rettifiche`) da ciò che le righe già
+dicono (`fatture_righe.riga_rettificata_id`). Idempotente
+(`ON CONFLICT DO NOTHING`), non cancella mai.
+
+⚠️ **Sta in mezzo, e le due ragioni non sono intercambiabili**: *dopo* la
+numerazione perché prima un reset di lotto può ancora passare e
+`fn_cleanup_fatture_by_ids` **non** cancella `fatture_rettifiche` (la FK non è
+`ON DELETE CASCADE`); *prima* della stampa perché una TD04 porta
+`DatiFattureCollegate`, cioè numero e data del documento rettificato. L'ordine è
+**dichiarato** in `_TASK_ORDER_DEPENDENCIES` e verificato **prima** che il primo
+task scriva, non lasciato al solo seed.
+
+⚠️ **Fail-fast per fattura**, a differenza di `genera_scadenze_lotto` e
+`snapshot_indirizzi_lotto` che chiudono in esito parziale: qui la stampa viene
+subito dopo e **consuma** il legame, quindi proseguire non lascerebbe una riga
+da rilavorare — stamperebbe un documento fiscale incompleto. La `task_policy` è
+`RESUME_TASK`: il rilancio riprende dal task fallito, e l'idempotenza rende
+innocuo il secondo giro.
 
 ### 4. «Rendi definitive» singolo lotto (C-4, sincrono)
 

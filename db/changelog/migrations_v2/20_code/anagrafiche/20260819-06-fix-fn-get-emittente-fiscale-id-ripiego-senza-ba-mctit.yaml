@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 REGRESSIONE DI 20260819-03: senza billing account non si ripiegava piu'
+#   sull'emittente di default.
+#
+# ── COSA E' SUCCESSO ───────────────────────────────────────────────────
+#   Il 20260819-03 ha fatto delegare fn_get_emittente_fiscale_id a
+#   script.fn_get_ba_emittente_sr_id, dichiarando di essere «a comportamento
+#   invariato». Non lo era, e la differenza sta in una riga della delegata:
+#
+#       SELECT CASE
+#                WHEN p_billing_account_id IS NULL THEN NULL   <-- QUI
+#                ELSE COALESCE(specifico, default)
+#              END
+#
+#   La delegata CORTO-CIRCUITA su input NULL e non arriva mai al default.
+#   La versione storica di questa funzione invece ci arrivava — e non per
+#   disegno: il suo `WHERE billing_account_id = p_billing_account_id` con NULL
+#   non trovava nulla, e la seconda SELECT (quella sul default) rispondeva lo
+#   stesso. ⭐ Comportamento nato per caso, ma su cui il codice fa affidamento.
+#
+#   §11.11 del cantiere perimetro emittente lo aveva scritto — «le due
+#   divergono sul NULL» — e io l'ho letto come «una risponde NULL, l'altra
+#   solleva». La divergenza era piu' profonda: riguarda anche l'INPUT nullo,
+#   non solo l'esito nullo. ⚠️ Un avviso letto e capito a meta' e' peggio di
+#   un avviso assente: da' la sensazione di aver controllato.
+#
+# ── CHI SI E' ROTTO ────────────────────────────────────────────────────
+#   vendite.fn_get_or_create_lotto chiama questa funzione SENZA billing
+#   account — un lotto non ne ha uno, raccoglie fatture di BA diversi — e da
+#   20260819-03 prendeva E_EMITTENTE_DEFAULT_MISSING su un giro legittimo.
+#   Visto il 2026-08-19 su:
+#     db/pgtap/vendite/test-annulla-lotto-vuoto-v1.sql
+#     db/pgtap/vendite/test-fn-get-or-create-lotto-emittente.sql
+#   ⚠️ Nessuno dei due era nel sottoinsieme di regressione che avevo scelto:
+#   avevo cercato i test che nominano fn_get_emittente_fiscale_id o i registri,
+#   e questi la raggiungono per via indiretta, attraverso il lotto.
+#
+# ── LA CORREZIONE, E DOVE STA ──────────────────────────────────────────
+#   Il ripiego sul default torna QUI, dopo la delegata: se la delegata non
+#   risolve — perche' il BA e' NULL o perche' non c'e' un default — si guarda
+#   il default esplicitamente, e solo allora si solleva.
+#   ⚠️ Il ramo NON si attiva quando il BA c'e' ed e' semplicemente non mappato:
+#   li' la delegata ha gia' fatto COALESCE(specifico, default) e ha risposto.
+#   Costa quindi una query in piu' solo nel caso «senza billing account».
+#
+#   ⛔ NON si toglie il corto-circuito alla delegata, e la tentazione c'era:
+#   sarebbe bastato un `WHEN NULL` in meno e la copia unica restava una. Ma
+#   quel `WHEN p_billing_account_id IS NULL THEN NULL` e' una scelta ESPLICITA
+#   di un altro cantiere, e i suoi lettori (fn_check_ba_visible_for_emittenti,
+#   la ricerca universale) si aspettano NULL da un input nullo. Cambiarlo
+#   sarebbe una decisione di dominio — «chi fattura un billing account che non
+#   esiste?» — presa dentro la riparazione di una regressione, che e' il
+#   momento peggiore per prenderne.
+#
+# ── COSA RESTA DELL'UNIFICAZIONE ───────────────────────────────────────
+#   La regola «mapping specifico, poi default» vive ancora nella delegata: e'
+#   lei a rispondere in TUTTI i casi in cui un billing account c'e', che sono
+#   tutti quelli del percorso di fatturazione. Qui resta una sola lettura del
+#   default, per il caso senza BA, e con scritto accanto perche'.
+#   ⚠️ Non e' l'unificazione completa che 5b prometteva. La completa esige la
+#   decisione di dominio di cui sopra, e va presa a parte.
+#
+# Dipendenze: script.fn_get_ba_emittente_sr_id,
+#   anagrafiche.emittenti_fiscali_billing_account.
+# Verifica: test-annulla-lotto-vuoto-v1, test-fn-get-or-create-lotto-emittente,
+#   test-registri-per-emittente-v1 (5e) e la suite di numerazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260819-06-fix-fn-get-emittente-fiscale-id-ripiego-senza-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260819-06-fix-fn-get-emittente-fiscale-id-ripiego-senza-ba
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ripara la regressione di 20260819-03: la delegata fn_get_ba_emittente_sr_id corto-circuita
+        su billing account NULL e non ripiega sul default, mentre la versione storica ci ripiegava.
+        vendite.fn_get_or_create_lotto chiama senza BA (un lotto non ne ha uno) e prendeva
+        E_EMITTENTE_DEFAULT_MISSING su un giro legittimo. Il ripiego torna nella chiamante; il
+        corto-circuito della delegata NON si tocca, e' una scelta esplicita di un altro cantiere.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_ba_emittente_sr_id'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_emittente_fiscale_id(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: «quale emittente fattura questo billing account»,
+              --   per lo SCRITTORE. Restituisce il soggetto_ruolo_id
+              --   dell'emittente e SOLLEVA se non e' risolvibile.
+              -- La regola «mapping specifico, poi is_default» vive in
+              --   script.fn_get_ba_emittente_sr_id dal 2026-08-19 (P-6/5b):
+              --   qui resta il punto in cui un NULL diventa un errore di
+              --   dominio, perche' questa e' la funzione che
+              --   vendite.fn_build_fattura_key usa per scegliere il REGISTRO
+              --   su cui numerare, e li' un NULL vorrebbe dire «numera dove
+              --   capita».
+              DECLARE
+                v_emittente_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                v_emittente_id := script.fn_get_ba_emittente_sr_id(p_billing_account_id);
+
+                -- ⚠️ IL RIPIEGO SENZA BILLING ACCOUNT, e perche' sta qui.
+                --   La delegata corto-circuita sull'input NULL
+                --   (`WHEN p_billing_account_id IS NULL THEN NULL`) e non
+                --   arriva mai al default. La versione storica di questa
+                --   funzione invece ci arrivava, e non per disegno: il suo
+                --   `WHERE billing_account_id = NULL` non trovava nulla e la
+                --   SELECT sul default rispondeva lo stesso.
+                --   ⭐ Comportamento nato per caso, ma PORTANTE:
+                --   vendite.fn_get_or_create_lotto chiama senza billing
+                --   account — un lotto non ne ha uno, raccoglie fatture di BA
+                --   diversi — e senza questo ripiego prende
+                --   E_EMITTENTE_DEFAULT_MISSING su un giro legittimo.
+                --   (Regressione del 20260819-03, vista il 2026-08-19.)
+                --   ⚠️ Il ramo NON scatta quando il BA c'e' ed e' solo non
+                --   mappato: li' la delegata ha gia' fatto COALESCE con il
+                --   default. Costa una query in piu' SOLO senza BA.
+                --   ⛔ NON si toglie il corto-circuito alla delegata: e' una
+                --   scelta esplicita di un altro cantiere e i suoi lettori si
+                --   aspettano NULL da un input nullo. Toglierlo sarebbe una
+                --   decisione di dominio, non la riparazione di un difetto.
+                IF v_emittente_id IS NULL THEN
+                  SELECT m.emittente_soggetto_ruolo_id
+                    INTO v_emittente_id
+                    FROM anagrafiche.emittenti_fiscali_billing_account m
+                   WHERE m.is_default IS TRUE;
+                END IF;
+
+                IF v_emittente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_get_emittente_fiscale_id',
+                    'E_EMITTENTE_DEFAULT_MISSING',
+                    jsonb_build_object(
+                      'detail', 'Emittente fiscale di default mancante',
+                      'billing_account_id', p_billing_account_id
+                    ),
+                    NULL::uuid,
+                    concat('Emittente fiscale di default mancante ',
+                      'billing_account_id ', p_billing_account_id::text)
+                  );
+                END IF;
+
+                RETURN v_emittente_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(bigint)
+              IS 'Risolve «quale emittente fattura questo billing account» PER LO SCRITTORE: restituisce il soggetto_ruolo_id dell''emittente e SOLLEVA E_EMITTENTE_DEFAULT_MISSING se non e'' risolvibile. La regola «mapping specifico, poi is_default» vive in script.fn_get_ba_emittente_sr_id dal 2026-08-19 (P-6/5b); qui resta il punto in cui un NULL diventa un errore di dominio, perche'' e'' questa la funzione che vendite.fn_build_fattura_key usa per scegliere il REGISTRO su cui numerare — e li'' un NULL significherebbe «numera dove capita». ⚠️ CONSERVA UN RIPIEGO PROPRIO sul default per il caso SENZA billing account: la delegata corto-circuita sull''input NULL e non ci arriva, mentre la versione storica ci arrivava — non per disegno, ma perche'' il suo WHERE su NULL non trovava nulla e la SELECT sul default rispondeva lo stesso. E'' un comportamento nato per caso e diventato portante: vendite.fn_get_or_create_lotto chiama senza BA (un lotto non ne ha uno) e senza il ripiego prende E_EMITTENTE_DEFAULT_MISSING su un giro legittimo — regressione introdotta dal 20260819-03 e riparata qui. ⛔ Non si e'' tolto il corto-circuito alla delegata: e'' una scelta esplicita del cantiere perimetro emittente (§11.11) e i suoi lettori si aspettano NULL da un input nullo; cambiarlo e'' una decisione di dominio da prendere a parte. Il ramo non scatta per un BA esistente ma non mappato, dove la delegata ha gia'' fatto COALESCE. SECURITY INVOKER. rev 2026-08-19.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun rollback: tornare a 20260819-03 ripristinerebbe la
+              --    regressione sul percorso senza billing account.
+              SELECT 1;

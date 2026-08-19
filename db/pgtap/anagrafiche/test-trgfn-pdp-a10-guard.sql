@@ -155,9 +155,21 @@ SELECT is(
 
 -- =========================================================
 -- 2) PDP di test
+--
+-- ⚠️ rev 2026-08-18 (bonifica baseline): qui c'era un
+--   `DELETE FROM anagrafiche.pdp WHERE pdp = 'TEST-PDP-GUARD-0001'`, cioe' la
+--   pulizia del residuo lasciato da una corsa precedente. Non funziona piu':
+--   quel PDP nel frattempo e' referenziato da anagrafiche.clienti
+--   (fk_clienti_pdp) e il DELETE muore li', portandosi dietro tutto il file.
+--   Il rimedio non e' cancellare il residuo, e' non averne bisogno: il codice
+--   PDP e' UNICO PER CORSA, quindi non collide con niente e il ROLLBACK non
+--   lascia nulla.
 -- =========================================================
-DELETE FROM anagrafiche.pdp
-WHERE pdp = 'TEST-PDP-GUARD-0001';
+CREATE TEMP TABLE tmp_codici_pdp AS
+-- ⚠️ ::varchar e non text: la colonna anagrafiche.pdp.pdp e' varchar, e
+--   pgTAP is() risolve la funzione sui tipi esatti degli argomenti.
+SELECT ('TEST-PDP-GUARD-'     || substr(md5(clock_timestamp()::text), 1, 10))::varchar AS pdp_ok,
+       ('TEST-PDP-GUARD-ALT-' || substr(md5(clock_timestamp()::text), 1, 10))::varchar AS pdp_alt;
 
 CREATE TEMP TABLE tmp_pdp_guard AS
 WITH addr AS (
@@ -174,7 +186,7 @@ ins AS (
         cliente_id
     )
     SELECT
-        'TEST-PDP-GUARD-0001',
+        (SELECT pdp_ok FROM tmp_codici_pdp),
         (SELECT utility_id FROM tmp_utility_gas),
         (SELECT id FROM addr),
         NULL::bigint
@@ -195,10 +207,12 @@ SELECT is(
 SELECT throws_ok(
     $$
     UPDATE anagrafiche.pdp
-       SET pdp = 'TEST-PDP-GUARD-0002'
-     WHERE pdp = 'TEST-PDP-GUARD-0001';
+       SET pdp = (SELECT pdp_alt FROM tmp_codici_pdp)
+     WHERE pdp = (SELECT pdp_ok FROM tmp_codici_pdp);
     $$,
-    NULL,
+    -- ⚠️ rev 2026-08-18: era `NULL`, cioe' «un errore qualunque va bene» —
+    --   compreso il crash del guard che questo test dovrebbe verificare.
+    'P0001',
     NULL,
     'Update su pdp deve essere bloccato dalla guard'
 );
@@ -212,9 +226,9 @@ SELECT throws_ok(
            ORDER BY id DESC
            LIMIT 1
        )
-     WHERE pdp = 'TEST-PDP-GUARD-0001';
+     WHERE pdp = (SELECT pdp_ok FROM tmp_codici_pdp);
     $$,
-    NULL,
+    'P0001',
     NULL,
     'Update su indirizzo_dettaglio_id deve essere bloccato dalla guard'
 );
@@ -226,9 +240,9 @@ SELECT is(
     (
         SELECT pdp
         FROM anagrafiche.pdp
-        WHERE pdp = 'TEST-PDP-GUARD-0001'
+        WHERE pdp = (SELECT pdp_ok FROM tmp_codici_pdp)
     ),
-    'TEST-PDP-GUARD-0001',
+    (SELECT pdp_ok FROM tmp_codici_pdp),
     'Il codice PDP resta invariato dopo tentativi di update'
 );
 
@@ -236,7 +250,7 @@ SELECT is(
     (
         SELECT indirizzo_dettaglio_id
         FROM anagrafiche.pdp
-        WHERE pdp = 'TEST-PDP-GUARD-0001'
+        WHERE pdp = (SELECT pdp_ok FROM tmp_codici_pdp)
     ),
     (SELECT indirizzo_dettaglio_id FROM tmp_pdp_guard),
     'L''indirizzo_dettaglio_id resta invariato dopo tentativi di update'

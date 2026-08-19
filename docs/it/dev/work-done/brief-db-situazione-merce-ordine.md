@@ -1,20 +1,22 @@
 # Brief al team DB — l'aggregato *parlante* per riga d'ordine
 
 > **Tipo**: brief DB · **Data**: 2026-08-17 · **Richiedente**: perimetro BE/FE ·
-> **Stato**: 🟡 **RIAPERTO il 2026-08-18** su rilievo del perimetro BE — alla
-> vista mancava la **soglia sullo stato dell'ordine**, gemella della D1 sul DDT.
-> Rilievo accolto nel merito, **rimedio modificato**: §10. changeSet
-> `20260818-06` scritto, pgTAP esteso a 17, **NON applicato**.
+> **Stato**: 🟢 **CHIUSO di nuovo il 2026-08-18** — riaperto in giornata su
+> rilievo del perimetro BE (alla vista mancava la **soglia sullo stato
+> dell'ordine**, gemella della D1 sul DDT), accolto nel merito con **rimedio
+> modificato**: §10. changeSet `20260818-06` applicato, pgTAP a 17, baseline
+> `vendite` senza regressioni, richieste BE/FE assorbite dal perimetro nella
+> stessa giornata.
 >
 > **Stato precedente**: 🟢 CHIUSO — accolto e implementato dal team DB il
 > 2026-08-17 (`20260817-15`, pgTAP **11/11** come applicazione), **con tre cambi
 > rispetto alla richiesta**: §8.
 >
-> ⚠️ **Applicato al DB di sviluppo, NON ancora pushato**: il changeSet e la doc
-> auto-gen non sono nel repository. Il perimetro BE ci costruisce sopra avendo
-> introspezionato la vista **viva**, non un contratto immaginato — ma il
-> backend **non e' mergiabile prima del push del DB** (in CI la vista non
-> esiste).
+> ✅ **Pushato e integrato il 2026-08-18** (PR #1282 → `Tito-dev`): changeSet e
+> doc auto-gen sono in repository, insieme al backend che li consuma (PR #1283).
+> Il corpo pubblicato coincide con quello che il perimetro BE aveva
+> introspezionato dalla vista viva per costruirci sopra — nessuna sorpresa fra
+> il DB di sviluppo e il changeSet.
 >
 > **Origine**: [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md)
 > §21.6 — misura del 2026-08-17 sul DB di sviluppo.
@@ -108,18 +110,18 @@ un'eventuale materializzata.
 
 ### 3.1 Le colonne proposte
 
-| Colonna | Contenuto |
-| --- | --- |
-| `ordine_riga_id`, `ordine_id`, `riga_nr`, `articolo_id` | chiave e contesto |
-| `ordinato` | `ordini_righe.quantita` |
-| `consegnato`, `reso`, `in_riconsegna`, `tenuti` | Σ dalle partite (0 se non ce ne sono) |
-| `fatturato_merce`, `fatturato_da_ordine`, `fatturato` | Σ dalle partite + corsia ORD |
-| `fatturato_anticipato` | fatturato di merce non ancora uscita — **FE-3**: non è un accredito |
-| `da_spedire` | `ordinato − consegnato`, mai negativo — vedi §4.1 |
-| `partite_merce` | quante partite ci sono sotto (0 = mai spedita) |
-| `misurabile` | `bool_and` delle partite ∧ corsia ORD |
-| `differenza` | **con la propagazione dei NULL**, §3.2 |
-| `stato` | il vocabolario del §9.3 + il valore nuovo, §3.3 |
+| Colonna                                                 | Contenuto                                                           |
+| ------------------------------------------------------- | ------------------------------------------------------------------- |
+| `ordine_riga_id`, `ordine_id`, `riga_nr`, `articolo_id` | chiave e contesto                                                   |
+| `ordinato`                                              | `ordini_righe.quantita`                                             |
+| `consegnato`, `reso`, `in_riconsegna`, `tenuti`         | Σ dalle partite (0 se non ce ne sono)                               |
+| `fatturato_merce`, `fatturato_da_ordine`, `fatturato`   | Σ dalle partite + corsia ORD                                        |
+| `fatturato_anticipato`                                  | fatturato di merce non ancora uscita — **FE-3**: non è un accredito |
+| `da_spedire`                                            | `ordinato − consegnato`, mai negativo — vedi §4.1                   |
+| `partite_merce`                                         | quante partite ci sono sotto (0 = mai spedita)                      |
+| `misurabile`                                            | `bool_and` delle partite ∧ corsia ORD                               |
+| `differenza`                                            | **con la propagazione dei NULL**, §3.2                              |
+| `stato`                                                 | il vocabolario del §9.3 + il valore nuovo, §3.3                     |
 
 ### 3.2 ⭐ La regola che è il cuore della richiesta: i NULL si propagano
 
@@ -356,13 +358,12 @@ fattura.
 ## 9. Cosa resta al perimetro BE/FE
 
 * **BE**: l'endpoint `situazione-merce` legge questa vista come livello 1
-  (§21.2 del brief partita). ⚠️ **Non mergiabile prima del push del DB.**
+  (§21.2 del brief partita). ✅ **Fatto e integrato** (PR #1283).
 * **FE**: `NON_SPEDITA` entra nella tavolozza insieme a `RICONSEGNA` e
   `NON_MISURABILE` (FE-1); `fatturato_anticipato` e `da_spedire` **non sono
   accrediti** (FE-3).
-* **Doc auto-gen**: `docs/it/dbzero/vendite/manual/vw_situazione_merce_ordine.md`
-  arriva col push del team DB — oggi non è nel repository.
-
+* **Doc auto-gen**: `docs/it/dbzero/vendite/{views,manual}/vw_situazione_merce_ordine.md`
+  ✅ in repository dal push del 2026-08-18.
 
 ---
 
@@ -370,11 +371,11 @@ fattura.
 
 > **Origine**: rilievo del perimetro BE del 2026-08-18 («manca la soglia di
 > stato sull'ordine, ed è la gemella della vostra D1»). **Esito**: accolto nel
-> merito, **rimedio modificato**. changeSet `20260818-06`.
+> merito, **rimedio modificato**. changeSet `20260818-06`, applicato.
 
 ### 10.1 Il rilievo, verificato
 
-Vero alla riga: la vista filtra `WHERE orr.attivo IS TRUE` e basta
+Vero alla riga: la vista filtrava `WHERE orr.attivo IS TRUE` e basta
 (`20260817-15`, riga 272). Il `JOIN vendite.ordini` c'era già ma serviva **solo**
 a far scattare la RLS — lo stato era lì e non lo leggeva nessuno.
 
@@ -386,9 +387,9 @@ righe attive ..........................  107
 
 Entrambe le conseguenze segnalate sono reali:
 
-* un ordine in **BOZZA** dichiara «N da spedire»: un'intenzione presentata come
-  un arretrato;
-* un ordine **ANNULLATO** mai spedito lo dichiarerebbe **per sempre**. ⚠️
+* un ordine in **BOZZA** dichiarava «N da spedire»: un'intenzione presentata
+  come un arretrato;
+* un ordine **ANNULLATO** mai spedito lo avrebbe dichiarato **per sempre**. ⚠️
   Verificato che il caso è raggiungibile: `trgfn_ordini_guard_transizione`
   delega ad `fn_check_ordine_annullabile` e **non disattiva le righe**, quindi
   «confermato → mai spedito → annullato» lascia righe attive con residuo.
@@ -433,9 +434,11 @@ dominio, confermando vivo un ramo che nessun percorso attraversa.
 
 **c) La misura era sulla vista, non sul pannello.** «56% delle righe di oggi» non
 è il rumore che un operatore vede: chi apre un ordine confermato vede **zero**
-di quelle 60. Questo non toglie ragione al «prima arriva, meglio è» — il FE non
-è ancora scritto, quindi il momento è quello giusto — ma toglie il numero come
-misura di gravità.
+di quelle 60. Questo non toglie ragione al «prima arriva, meglio è» — ⭐ ed è
+stato *più* giusto di quanto sembrasse: il pannello FE è atterrato lo stesso
+giorno (`21.3` del brief di cantiere), quindi la soglia è arrivata **appena in
+tempo**, prima che qualche occhio si abituasse a ignorare il chip. Ma toglie il
+numero come misura di gravità.
 
 **d) Il difetto stava in una colonna.** Su una riga di bozza `partite_merce` è
 già 0, `differenza` già NULL, i denari già a zero. L'unica cosa che mentiva era
@@ -484,6 +487,11 @@ farebbe ricomparire le bozze **in silenzio**.
 quindi la sola soglia numerica lo lascerebbe passare; e `is_abortito` da solo non
 escluderebbe la bozza. Sono due, come nella D1, e nessuna è ridondante.
 
+⚠️ E `ordine` è **nullable**: senza `COALESCE(ordine, -1)` il confronto darebbe
+NULL e la riga uscirebbe **incoerente** — `da_spedire` vuoto (il `CASE` non
+entra) ma `stato = NON_SPEDITA` (perché `NOT NULL` non è vero). Con `-1` uno
+stato senza ordinamento sta sotto soglia, e il test 15 lo conta comunque.
+
 Soglia ancorata a `codice_interno` (immutabile), mai al `codice` né all'id: §6d
 delle linee guida SQL.
 
@@ -505,15 +513,20 @@ delle linee guida SQL.
 * nessuna bonifica dati, nessun codice errore nuovo (è una lettura, non un
   guard).
 
-### 10.6 📌 Richieste al perimetro BE/FE
+### 10.6 ✅ Richieste al perimetro BE/FE — tutte assorbite
 
-1. **FE** — `NON_IMPEGNATA` entra nella tavolozza di `stato` come **settimo**
+> Scritte come richieste e trovate **già fatte** alla verifica del 2026-08-18:
+> il perimetro BE/FE le ha assorbite nella stessa giornata. Restano qui perché
+> sono il contratto, e perché il §4 va letto: hanno trovato una conseguenza che
+> da qui non era stata vista.
+
+1. **FE** ✅ — `NON_IMPEGNATA` entra nella tavolozza di `stato` come **settimo**
    valore, accanto a `NON_SPEDITA`. Etichetta suggerita: «nessun impegno» /
    «ordine non confermato». ⛔ Non ricavarlo dallo stato della testata: arriva
    già tradotto.
-2. **FE** — `da_spedire` può essere **`null`**, esattamente come `differenza`, e
+2. **FE** ✅ — `da_spedire` può essere **`null`**, esattamente come `differenza`, e
    significa «non si applica». Va reso come un trattino, **mai come 0**.
-3. **BE** — nessuna modifica al codice: l'endpoint resta passthrough e non deve
+3. **BE** ✅ — nessuna modifica al codice: l'endpoint resta passthrough e non deve
    introdurre `COALESCE`. Da aggiornare i **soli testi**, che oggi affermano il
    contrario del nuovo comportamento:
    * il docstring di `list_situazione_merce_ordine` («una riga per riga d'ordine
@@ -522,21 +535,36 @@ delle linee guida SQL.
    * `docs/it/dev/api.md` §API vendite e
      `docs/it/backend/vendite/manual/api_situazione_merce.md`: `stato` ha
      **sette** valori, non sei.
-4. **BE** — la rete di collaudo chiesta («parità sulle 47 righe») è stata scritta
+4. **BE** ✅ — la rete di collaudo chiesta («parità sulle 47 righe») è stata scritta
    nella forma che non decade: non un numero che i dati di sviluppo spostano, ma
    i due invarianti (test 16: nessun arretrato sotto soglia · test 17:
    cardinalità invariata).
+
+⭐ **E il FE ha trovato una conseguenza che da qui non era stata vista.** Su una
+bozza, `da_spedire` era **l'unica** voce che alimentava `haPendenze`: portandolo
+a NULL, `tuttoRegolare` sarebbe diventato TRUE — la spunta verde «tutto
+regolare» su un documento dove non è successo **niente**. Corretto filtrando le
+righe `NON_IMPEGNATA` prima del calcolo (`situazioneMerceSintesi.js`).
+
+⚠️ **La lezione è la stessa del §8.1, di nuovo**: portare una grandezza da
+«sempre valorizzata» a «può non applicarsi» non cambia solo come si legge — toglie
+un ingresso a chi la sommava a valle. «Tutto regolare», «non ancora calcolato» e
+«non ancora impegnato» sono **tre** cose, e solo la prima si può affermare.
 
 ### 10.7 Stato di applicazione
 
 | Artefatto | Stato |
 |---|---|
-| `20260818-06-update-vw-situazione-merce-ordine-soglia-impegno-mctit.yaml` | ✅ scritto, ⛔ **non applicato** |
+| `20260818-06-update-vw-situazione-merce-ordine-soglia-impegno-mctit.yaml` | ✅ **applicato** il 2026-08-18 |
 | `db/pgtap/vendite/test-vw-situazione-merce-ordine-v1.sql` | ✅ esteso a **plan 17** (nuovi 12→17) |
+| `scripts/pgtap-baseline.sh vendite` | ✅ **0 regressioni** |
 | `docs/it/dbzero/vendite/manual/vw_situazione_merce_ordine.md` | ✅ aggiornata |
-| doc auto-gen `views/` | ⏳ si rigenera al migrate |
-| richieste BE/FE §10.6 | ⏳ da girare al perimetro |
+| doc auto-gen `views/` | ✅ rigenerata al migrate |
+| richieste BE/FE §10.6 | ✅ **già assorbite** dal perimetro (stessa giornata) |
+| pannello FE (`situazioneMerce/`) | ✅ atterrato con `NON_IMPEGNATA` in tavolozza |
 
-⚠️ Da eseguire alla prima applicazione: `scripts/pgtap-baseline.sh vendite`. La
-vista è letta dall'endpoint situazione-merce, e il §14.1 ricorda che è proprio
-l'attesa «non cambia nulla» a far saltare i controlli.
+⚠️ **Nota di storia**: questo §10 è andato perso una prima volta nella
+risoluzione dei conflitti del rebase su `Tito-dev` del 2026-08-18 — il changeSet
+e il pgTAP erano passati, la motivazione no. È il motivo per cui esiste la
+raccomandazione di rileggere i file in conflitto **dopo** il `rebase --continue`,
+e non solo di contare che l'albero sia pulito.

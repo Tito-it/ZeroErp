@@ -14,18 +14,29 @@
 --   4) * MOVIMENTO 2: si cambia l'emittente del PADRE   -> E_ALBERO_EMITTENTE_MISTO
 --        (il verso «verso i figli», quello che si dimentica)
 --   5) * MOVIMENTO 3: si CANCELLA il mapping del figlio -> E_ALBERO_EMITTENTE_MISTO
+--   8-9) * i DUE CANALI strutturati: CONSTRAINT = codice, COLUMN = campo (R-2)
 --        (ricade sul gestore globale, che e' un altro emittente)
 --   6) due alberi SEPARATI dello stesso soggetto        -> PASSA (§3.1, legittimo)
 --   7) il guard non e' cieco: vede un figlio FUORI dal perimetro di chi scrive
+--  10) * MOVIMENTO 4: si sposta il GESTORE GLOBALE, coppia MISTA -> rifiutato
+--  11)   MOVIMENTO 4: si sposta il GESTORE GLOBALE, coppia OMOGENEA -> PASSA
 --
--- ⚠️ COSA QUESTO FILE NON COPRE, dichiarato:
---   il MOVIMENTO 4 (spostamento del gestore globale, raggio N). Spostarlo
---   richiede DELETE+INSERT della riga default nella stessa transazione, perche'
---   il constraint trigger differito trgfn_emittenti_fiscali_default_guard
---   pretende esattamente un default al COMMIT — e in un file che chiude in
---   ROLLBACK quel COMMIT non arriva mai. Il ramo e' verificato indirettamente
---   dal test 5 (stessa funzione fn_guard_albero_ba_emittente, stessa
---   condizione), non direttamente. Non e' coperto: e' dichiarato.
+-- ⭐ IL MOVIMENTO 4 NON RICHIEDE UN TEST NON TRANSAZIONALE — 2026-08-18.
+--   L'intestazione diceva il contrario: «spostarlo richiede DELETE+INSERT della
+--   riga default, e il constraint differito pretende il COMMIT che un file
+--   pgTAP non fa mai». La premessa era sbagliata, e per due ragioni misurate:
+--     a) «spostare il gestore globale» non obbliga a cambiare QUALE riga e'
+--        default. Basta cambiare l'EMITTENTE della riga default — un solo
+--        UPDATE, il default resta esattamente uno, il constraint differito non
+--        ha mai niente da ridire. E' anche il modo naturale di dirlo: «da oggi
+--        il gestore globale e' l'altro»;
+--     b) anche volendo la coppia DELETE+INSERT, non servirebbe un COMMIT:
+--        trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt e' un CONSTRAINT
+--        TRIGGER deferrable, quindi si differisce per la coppia e si forza con
+--        `SET CONSTRAINTS ... IMMEDIATE` dentro la transazione.
+--   ⚠️ E il prezzo evitato non e' teorico: in tutta la suite non esiste un solo
+--     file non transazionale, e la memoria del progetto dice perche' — un test
+--     che non chiude in ROLLBACK contamina le corse successive.
 --
 -- ⚠️ NOTE DI FIXTURE (ereditate da test-billing-account-guard-cf-confrontabile-v1):
 --   a) i test agiscono via UPDATE, non via INSERT del figlio: ogni istanza deve
@@ -42,7 +53,7 @@ BEGIN;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(12);
 
 -- ============================================================
 -- Fixture
@@ -231,6 +242,127 @@ SELECT ok(
         (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2')),
     '7. il check vede l''emittente anche di un BA fuori perimetro (SECURITY DEFINER, §11.1)'
 );
+
+-- ============================================================
+-- 8-9) ⭐ I DUE CANALI STRUTTURATI — richiesta R-2 del perimetro BE
+--
+--   `script.fn_log_and_raise_error` manda al client due cose in canali
+--   separati: il CODICE di dominio in CONSTRAINT e il NOME DEL CAMPO da
+--   correggere in COLUMN. Il secondo lo legge da `p_context ->> 'campo'`.
+--
+--   ⚠️ I `throws_like` qui sopra NON coprono questa parte: verificano la
+--   FRASE. Sono rimasti verdi per tutto il tempo in cui il guard scriveva
+--   `'column'` invece di `'campo'` e il canale del campo usciva VUOTO —
+--   verde per sottrazione, sul difetto stesso.
+--
+--   L'unico modo di leggere i due canali e' catturare l'eccezione:
+--   `throws_ok` non espone COLUMN_NAME.
+-- ============================================================
+CREATE TEMP TABLE _t_diag AS
+SELECT * FROM (
+  SELECT NULL::text AS vincolo, NULL::text AS campo WHERE false
+) z;
+
+DO $diag$
+DECLARE v_cst text; v_col text;
+BEGIN
+    BEGIN
+        UPDATE anagrafiche.billing_account
+           SET parent_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2')
+         WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio');
+        -- Se arriva qui il guard non ha sollevato: si registra il vuoto, e le
+        -- due asserzioni sotto falliscono dicendo cosa manca.
+        INSERT INTO _t_diag VALUES (NULL, NULL);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME, v_col = COLUMN_NAME;
+        INSERT INTO _t_diag VALUES (nullif(v_cst, ''), nullif(v_col, ''));
+    END;
+END $diag$;
+
+SELECT is(
+    (SELECT vincolo FROM _t_diag),
+    'E_ALBERO_EMITTENTE_MISTO',
+    '8. canale CONSTRAINT: il codice di dominio arriva strutturato, non solo nella frase'
+);
+
+SELECT is(
+    (SELECT campo FROM _t_diag),
+    'parent_account_id',
+    '9. * canale COLUMN: il CAMPO da correggere arriva al client (context ''campo'', non ''column'')'
+);
+
+-- ============================================================
+-- 10-11) ⭐ MOVIMENTO 4 — lo spostamento del GESTORE GLOBALE (raggio N)
+--
+--   E' l'unica operazione del cantiere che, con UNA riga, cambia l'emittente
+--   di un numero arbitrario di BA: tutti quelli senza mapping specifico.
+--
+--   ⚠️ La condizione che conta e' la COPPIA MISTA, non «esiste un albero»
+--   (decisione Q3). Se entrambi i lati sono non mappati si spostano INSIEME e
+--   l'albero resta omogeneo: per questo servono DUE asserzioni, una per verso.
+--   Con la sola 10 il guard potrebbe essere scritto su «esiste un albero senza
+--   mapping» e restare verde bloccando anche cio' che e' lecito.
+--
+--   La scena si costruisce sul secondo albero (padre2/figlio2), che il test 6
+--   ha lasciato agganciato e mappato:
+--     - si portano entrambi sull'emittente del gestore globale ATTUALE
+--       (qualunque sia: il file non presume che coincida con quello
+--       dell'operatore, e senza questo passo il DELETE sotto sarebbe gia' lui
+--       a sollevare, per il movimento 3 invece che per il 4);
+--     - si toglie il mapping del solo FIGLIO -> resta appeso al gestore
+--       globale, e la coppia diventa MISTA: padre mappato, figlio no.
+--   Da li' spostare il gestore globale spacca l'albero.
+--
+--   ⚠️ Lo scollegamento prima di spostare i mapping non e' pignoleria: il
+--   trigger e' AFTER ROW e scatta a ogni riga, quindi muovere padre e figlio
+--   con un solo UPDATE li vedrebbe comunque disallineati a meta' strada.
+-- ============================================================
+CREATE TEMP TABLE _t_gg ON COMMIT DROP AS
+SELECT d.emittente_soggetto_ruolo_id AS gg_attuale,
+       CASE WHEN d.emittente_soggetto_ruolo_id = t.ef_altro
+            THEN t.ef_mio ELSE t.ef_altro END AS gg_nuovo
+  FROM anagrafiche.emittenti_fiscali_billing_account d
+  CROSS JOIN _t_ef t
+ WHERE d.is_default;
+
+UPDATE anagrafiche.billing_account SET parent_account_id = NULL
+ WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio2');
+
+UPDATE anagrafiche.emittenti_fiscali_billing_account
+   SET emittente_soggetto_ruolo_id = (SELECT gg_attuale FROM _t_gg)
+ WHERE billing_account_id IN (
+       (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2'),
+       (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio2'));
+
+UPDATE anagrafiche.billing_account
+   SET parent_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2')
+ WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio2');
+
+-- Il figlio perde il mapping: ricade sul gestore globale, che in questo istante
+-- e' lo STESSO emittente del padre. Lecito, e infatti non solleva.
+DELETE FROM anagrafiche.emittenti_fiscali_billing_account
+ WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio2');
+
+-- 10) * Coppia MISTA: il figlio segue il gestore globale, il padre no.
+SELECT throws_like($$
+    UPDATE anagrafiche.emittenti_fiscali_billing_account
+       SET emittente_soggetto_ruolo_id = (SELECT gg_nuovo FROM _t_gg)
+     WHERE is_default
+$$, '%emittenti fiscali diversi%',
+    '10. * MOVIMENTO 4: spostare il GESTORE GLOBALE con una coppia mista -> rifiutato');
+
+-- 11) Coppia OMOGENEA: tolto anche il mapping del padre, i due si spostano
+--     insieme. Il guard deve LASCIAR PASSARE — e' il verso che dimostra che
+--     la condizione e' la coppia mista e non la semplice esistenza di un
+--     albero non mappato (decisione Q3).
+DELETE FROM anagrafiche.emittenti_fiscali_billing_account
+ WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2');
+
+SELECT lives_ok($$
+    UPDATE anagrafiche.emittenti_fiscali_billing_account
+       SET emittente_soggetto_ruolo_id = (SELECT gg_nuovo FROM _t_gg)
+     WHERE is_default
+$$, '11. MOVIMENTO 4: coppia non mista (entrambi non mappati) -> si sposta, lecito');
 
 -- ============================================================
 -- Chiusura

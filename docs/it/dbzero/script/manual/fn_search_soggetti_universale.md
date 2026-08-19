@@ -75,6 +75,7 @@ La funzione restituisce una tabella (`RETURNS TABLE`) con le seguenti colonne:
 | `ragione_sociale_completa` | `TEXT`    | `anagrafiche.soggetti.ragione_sociale_completa`    |
 | `id_fiscale_univoco`       | `TEXT`    | `anagrafiche.soggetti.id_fiscale_univoco_cf_piva`  |
 | `utility_list`             | `TEXT`    | `string_agg(DISTINCT codice_interno)` da utilities |
+| `emittente_ragione_sociale`| `TEXT`    | **Dal 18-08-2026 (R-5)** — emittenti presso cui il soggetto è cliente, **aggregati**; `NULL` sui ruoli non-CL |
 
 Se nessun soggetto corrisponde, la funzione restituisce **zero righe**.
 
@@ -108,7 +109,12 @@ with_utility (CTE 2)
   filtered f
     LEFT JOIN clienti cl        ON cl.soggetto_ruolo_id = f.soggetto_ruolo_id
     LEFT JOIN utilities u       ON u.id = cl.utility_id
+    LEFT JOIN soggetti_ruoli sr_ef                       -- R-5 (18-08-2026)
+           ON sr_ef.id = fn_get_ba_emittente_sr_id(cl.billing_account_id)
+          AND ($5 IS NULL OR sr_ef.id = ANY($5))         -- <- filtrata dallo scope
+    LEFT JOIN soggetti s_ef     ON s_ef.id = sr_ef.soggetto_id
   GROUP BY (tutti i campi filtered)
+  -- string_agg su utility_list E su emittente_ragione_sociale
 
 paged (CTE 3)
   COUNT(*) OVER() + ORDER BY dinamico + LIMIT/OFFSET
@@ -142,7 +148,16 @@ Per aggiungere un nuovo tipo ruolo con ricerca codice: INSERT/UPDATE su `tipi_ru
 
 Il parametro `p_emittente_ids` filtra i risultati in base agli emittenti fiscali autorizzati. Si applica **solo per tipo ruolo CL** (clienti).
 
-* **`NULL`** = nessuna restrizione (ADMIN o utente senza scope)
+⚠️ **Dal 2026-08-18 il parametro NON decide piu' da solo.** La funzione risolve
+lo scope **da se'**, dalla GUC `app.current_user_id` via
+`script.fn_get_emittenti_scope_sr_effettivo`, e `p_emittente_ids` puo' solo
+**RESTRINGERE**: nessun valore passato dal chiamante puo' allargare cio' che la
+funzione mostra. Prima il filtro si accendeva su `p_emittente_ids IS NOT NULL`,
+quindi `NULL` valeva «nessuna restrizione» — ed e' cio' in cui Python appiattisce
+la lista vuota, che significa l'opposto.
+
+* **`NULL`** = nessuna restrizione **richiesta dal chiamante** (vale lo scope di
+  diritto: universo per il super admin, la sua whitelist per l'operatore)
 * **Array valorizzato** = mostra solo clienti il cui billing_account e' collegato a uno degli emittenti autorizzati
 * **`'{}'::bigint[]`** = nessun accesso (zero risultati)
 
@@ -166,6 +181,61 @@ soggetti_ruoli.id
 > Stessa funzione usata anche da `fn_get_search_detail`. Allineamento a `clienti_repository.list_clienti` lato Python.
 
 Per ruoli non-CL (FO, EF, VT, ...) il parametro viene ignorato.
+
+---
+
+### L'emittente nella riga *(R-5, dal 18-08-2026)*
+
+La colonna `emittente_ragione_sociale` esiste per un caso concreto:
+
+> Due clienti **omonimi**, di due emittenti diversi, sono a video **due righe
+> identiche**. Chi cerca ne sceglie una e non ha modo di sapere quale.
+
+L'etichetta di perimetro che il frontend mostra sopra i risultati (*«stai
+cercando in tutti gli emittenti»*) dichiara **dove** si sta cercando, ma non
+distingue le due righe. Serve il dato **nella** riga.
+
+#### ⚠️ È aggregata, e non è una scelta di comodo
+
+Un soggetto può avere billing account sotto **più** emittenti — sull'istanza di
+sviluppo era già vero per 1 cliente su 7. L'alternativa (una riga per emittente)
+è stata scartata perché sarebbe **concettualmente sbagliata**:
+
+> **La riga della ricerca è un soggetto, e un soggetto NON ha un emittente.**
+> Il legame è solo transitivo, via billing account — vedi
+> [soggetti-e-ruoli-anagrafici §5a-bis](/guide/soggetti-e-ruoli-anagrafici).
+
+Moltiplicare i soggetti per una proprietà che non è loro romperebbe anche
+`total_count`, che oggi conta soggetti.
+
+#### ⚠️ Ne segue che l'etichetta a video non può essere «Emittente»
+
+Su una riga-soggetto quella colonna mostra una **relazione**, non un attributo.
+Chiamarla «Emittente» insegnerebbe un modello falso: *«Emittenti presso cui è
+cliente»*, o simile. È una scelta di frontend, ma nasce da un vincolo di dominio.
+
+#### ⚠️ La colonna è filtrata dallo scope, non solo la riga
+
+È il punto meno ovvio. Non basta che la **riga** sia visibile: se un soggetto è
+cliente di A e di B, e chi guarda ha in whitelist il solo A, la riga si vede (via
+A) ma la colonna deve dire **«A»**, non «A, B». Altrimenti una colonna nata per
+disambiguare finirebbe per rivelare l'esistenza di un emittente **fuori
+perimetro**.
+
+Con scope `NULL` (super admin) il filtro non morde e si vedono tutti: è
+esattamente il caso per cui la colonna è stata chiesta.
+
+#### `NULL` sui rami non-CL è la risposta giusta
+
+Un fornitore non ha billing account, quindi non ha emittente. La funzione non ne
+inventa uno; il frontend mostra l'etichetta solo dove il valore c'è.
+
+#### Non è ordinabile
+
+`emittente_ragione_sociale` **non** è nella whitelist di `p_order_by`, ed è
+voluto: è un aggregato, quindi ordinarci sopra ordinerebbe per la *stringa
+concatenata* — non per emittente. Se un giorno servirà, sarà una decisione di
+merito, non un'aggiunta meccanica alla lista.
 
 ---
 
@@ -247,7 +317,11 @@ SELECT * FROM script.fn_search_soggetti_universale(
 
 ### Caratteristiche Tecniche
 
-* **Volatilita'**: `STABLE` + `PARALLEL SAFE` — non modifica dati, puo' essere parallelizzata.
+* **Volatilita'**: `STABLE`. ⚠️ `PARALLEL SAFE` è stato **tolto il 18-08-2026**: la
+  funzione chiama `fn_get_emittenti_scope_sr_effettivo`, che è `STABLE` e basta —
+  tenerla `SAFE` sarebbe stata una dichiarazione falsa al planner. Il costo reale è
+  ~zero: la query dinamica interna resta parallelizzabile, perché lo scope si
+  risolve **prima**, in una variabile, e non dentro la query.
 * **Linguaggio**: PL/pgSQL
 * **SQL dinamico**: `RETURN QUERY EXECUTE` con `format()` per il frammento EXISTS. La tabella e' validata come `regclass` dal trigger guard su `tipi_ruoli`.
 * **Tipi colonne**: `%TYPE` per allineamento automatico ai tipi delle tabelle sorgente.

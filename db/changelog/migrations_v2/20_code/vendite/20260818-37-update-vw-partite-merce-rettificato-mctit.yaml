@@ -1,0 +1,323 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N6 — 🔴 LA PARTITA SOMMA LA RETTIFICA (la slice critica)
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.2, §15 (N6)
+#
+# ── IL CONTRATTO CHE QUESTA SLICE ONORA ────────────────────────────────
+#
+#   §2 del brief, scritto a luglio e vincolante: «una NC che non abbassa i
+#   fatturati della partita e' invisibile al contatore -> la coda accrediti
+#   continuerebbe a chiedere l'accredito per sempre, anche a NC emessa».
+#   Questa e' la riga che lo chiude.
+#
+# ── 🔴 IL RILIEVO A: la rettifica va sulla PARTITA, non sulla CORSIA ───
+#
+#   La merce puo' essere stata fatturata da due corsie, e la partita le tiene
+#   separate apposta: `fatturato_merce` (corsia DDT, join diretto sulla riga di
+#   DDT) e `fatturato_da_ordine` (corsia ORD, quota ALLOCATA con una greedy
+#   oldest-first dentro la CTE `alloc`).
+#
+#   Se la rettifica abbassasse il SERBATOIO d'ordine — cioe' se entrasse in
+#   `fo.quantita` — la greedy toglierebbe capienza all'**ultima** spedizione,
+#   non a quella da cui la merce e' tornata:
+#
+#       Ordine riga 100, fatturato sulla corsia ORD per 10.
+#         DDT₁ (1 marzo)  consegnato 6  ->  fatturato_da_ordine 6
+#         DDT₂ (5 marzo)  consegnato 4  ->  fatturato_da_ordine 4
+#       Reso di 4 pezzi DA DDT₁, accredito 4. Serbatoio a 6:
+#         DDT₁ -> 6  (invariato, la greedy lo serve per primo)
+#         DDT₂ -> 0  ← l'accredito e' finito sulla spedizione SBAGLIATA
+#
+#   ⚠️ Il totale tornerebbe giusto e **nessun test di parita' se ne
+#   accorgerebbe**: e' la RIPARTIZIONE a essere falsa. E' lo stesso difetto che
+#   il cantiere 1 aveva corretto nella direzione opposta (§17.4: «il greedy
+#   d'ordine non sapeva da quale spedizione la merce fosse tornata; la partita
+#   lo sa»).
+#
+#   ✅ Per questo D-NC-1 impone che la rettifica porti SEMPRE il segmento della
+#   partita — quello del DDT — anche quando a fatturare e' stata la corsia ORD.
+#   Allora qui basta una somma nel posto giusto, e la CTE `alloc` **non si tocca
+#   affatto**.
+#
+# ── ⭐ E' UNA SOMMA, NON UNA SOTTRAZIONE ───────────────────────────────
+#
+#   Con D-NC-2 la quantita' della rettifica e' NEGATIVA in catena: il segno sta
+#   nel numero, e nessun consumatore deve saperlo. Se il segno fosse vissuto in
+#   un'etichetta (`tipo_movimento` che sottrae), ogni consumatore che somma
+#   degli importi avrebbe dovuto sapere che una riga RETTIFICA va sottratta — e
+#   chi non lo sapeva avrebbe calcolato il segno sbagliato in silenzio.
+#
+# ── ⭐ E LA BASE NON SI TOCCA — verificato riga per riga ───────────────
+#
+#   `vw_af_merce_per_riga` estrae corsia, riga_id e kit_key dal `segment_key`
+#   con cinque espressioni. Un segmento di rettifica
+#   `DDT:<uid>:R:<id>#RET:<n>` le attraversa **tutte e cinque con il risultato
+#   giusto**: corsia `DDT`, riga_id `<id>`, `e_componente` falso, e finisce in
+#   un gruppo `tipo_movimento = 'RETTIFICA'` gia' separato da quello `NORMALE`.
+#   La frase nel commento di quella vista — «il filtro NORMALE resta nei
+#   consumatori, cosi' la nota di credito entrera' cambiando un WHERE e non
+#   questa base» — era una promessa, ed e' mantenuta: qui si aggiunge **un
+#   LEFT JOIN e un piu'**.
+#
+# ── 🔴 LE TRE COSE DA NON SBAGLIARE ────────────────────────────────────
+#
+#   1. **`security_invoker=on` va RI-SPECIFICATO.** La reloption non si vede in
+#      `pg_get_viewdef` e un `CREATE OR REPLACE` la azzera. Qui significa
+#      **bypass della RLS** su `vendite.ddt` e, via S1, su `commesse_attivita`:
+#      e' la regressione V-1, gia' costata un rework;
+#   2. **`CREATE OR REPLACE VIEW` non cambia il tipo di una colonna esistente**
+#      e non ne inserisce di nuove in mezzo: `rettificato` va in CODA, dopo
+#      `sospetto_duplicato_ordine`. Non e' estetica — e' l'unico modo di non
+#      fare `DROP CASCADE` su una vista da cui dipendono `vw_contatore_merce`,
+#      `vw_resi_da_accreditare` e `vw_situazione_merce_ordine`;
+#   3. **`differenza` resta NULL quando il conto non si applica, mai zero.**
+#      `0` e' un'affermazione, `NULL` e' un'astensione.
+#
+# ── ⚠️ `misurabile` COMPRENDE LA RETTIFICA ─────────────────────────────
+#
+#   Un kit rettificato senza coefficienti non e' piu' misurabile della sua
+#   fattura: se la rettifica non e' misurabile, il conto della partita non lo
+#   e'. Escluderla renderebbe «misurabile» una partita di cui non si sa quanto
+#   e' stato accreditato.
+#
+# ── COLLAUDO ──────────────────────────────────────────────────────────
+#
+#   Parita' su TUTTE le partite: al 2026-08-18 le righe `RETTIFICA` sono ZERO,
+#   quindi **nessun valore deve cambiare**. Piu' il caso costruito a mano nel
+#   pgTAP, che va fatto passando dalla madre e non inserendo la riga a mano —
+#   «un ramo si verifica dal percorso che lo attraversa, non dal codice che lo
+#   dichiara».
+#
+# ⚠️ Changeset SEPARATO da N7 (-38), e non e' pignoleria: la parita' di questa
+#    slice si misura PRIMA che la ri-consegna cambi i numeri.
+#
+# Base: definizione VIVA di vw_partite_merce (rev 20260817-14).
+# Dipendenze: vendite.vw_af_merce_per_riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-37-update-vw-partite-merce-rettificato-mctit.yaml
+
+  - changeSet:
+      id: 20260818-37-update-vw-partite-merce-rettificato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N6: vw_partite_merce somma le rettifiche della corsia DDT (colonna nuova
+        `rettificato`, in coda perche' CREATE OR REPLACE non inserisce colonne
+        in mezzo). E' la riga che chiude il contratto del §2: senza, una nota di
+        credito sarebbe invisibile al contatore e la coda continuerebbe a
+        chiedere l'accredito per sempre. La CTE `alloc` della corsia ordine NON
+        si tocca: D-NC-1 impone che la rettifica porti sempre il segmento della
+        spedizione, o la greedy scaricherebbe l'accredito sul DDT sbagliato con
+        un totale perfettamente giusto. security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_partite_merce
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_af_merce_per_riga
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_partite_merce
+              WITH (security_invoker=on) AS
+              WITH soglia AS (
+                  SELECT s.ordine AS ordine_emesso
+                    FROM config.stati_doc_ddt s
+                   WHERE s.codice_interno::text = 'EMESSO'::text
+              ), ponte AS (
+                  SELECT rr.ddt_riga_id AS ddt_riga_origine,
+                         COALESCE(sum(rc.qta) FILTER (WHERE sdd_n.ordine >= sg.ordine_emesso), 0::numeric) AS riconsegnato,
+                         COALESCE(sum(rc.qta) FILTER (WHERE sdd_n.ordine < sg.ordine_emesso), 0::numeric) AS in_riconsegna
+                    FROM vendite.resi_righe_riconsegne rc
+                    JOIN vendite.resi_righe rr ON rr.id = rc.resi_riga_id
+                    JOIN vendite.ddt_righe dr_new ON dr_new.id = rc.ddt_riga_id
+                    JOIN vendite.ddt d_new ON d_new.id = dr_new.ddt_id
+                    JOIN config.stati_doc_ddt sdd_n ON sdd_n.id = d_new.stato_doc_ddt_id
+                    CROSS JOIN soglia sg
+                   GROUP BY rr.ddt_riga_id
+              ), riga AS (
+                  SELECT dr.id AS ddt_riga_id,
+                         dr.ddt_id,
+                         d.uid AS ddt_uid,
+                         d.data AS ddt_data,
+                         dr.articolo_id,
+                         COALESCE(art.is_composito, false) AS is_composito,
+                         (EXISTS ( SELECT 1
+                                FROM vendite.resi_righe_riconsegne rc
+                               WHERE rc.ddt_riga_id = dr.id)) AS e_riconsegna,
+                         (dr.quantita + COALESCE(pt.riconsegnato, 0::numeric))::numeric(18,6) AS consegnato,
+                         COALESCE(pt.in_riconsegna, 0::numeric) AS in_riconsegna,
+                         COALESCE(caus.fatturabile, false) AS fatturabile
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ddt d ON d.id = dr.ddt_id
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                    JOIN catalogo.articoli art ON art.id = dr.articolo_id
+                    LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+                    LEFT JOIN ponte pt ON pt.ddt_riga_origine = dr.id
+                    CROSS JOIN soglia sg
+                   WHERE dr.attivo IS TRUE AND NOT sdd.is_abortito AND sdd.ordine >= sg.ordine_emesso
+              ), orig AS (
+                  SELECT f.ddt_riga_id,
+                         count(DISTINCT f.ordine_riga_id) AS n_origini,
+                         min(f.ordine_riga_id) AS ordine_riga_id
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ddt_riga_id
+              ), sospetto AS (
+                  SELECT dr.id AS ddt_riga_id
+                    FROM vendite.ddt_righe dr
+                   WHERE NOT (EXISTS ( SELECT 1
+                            FROM vendite.ordini_righe_fulfillment f
+                           WHERE f.ddt_riga_id = dr.id)) AND (EXISTS ( SELECT 1
+                            FROM vendite.ddt_righe dr2
+                              JOIN vendite.ordini_righe_fulfillment f2 ON f2.ddt_riga_id = dr2.id
+                              JOIN vendite.ordini_righe orr_ful ON orr_ful.id = f2.ordine_riga_id
+                              JOIN vendite.ordini_righe orr_ord ON orr_ord.ordine_id = orr_ful.ordine_id
+                           WHERE dr2.ddt_id = dr.ddt_id AND dr2.attivo IS TRUE AND orr_ord.attivo IS TRUE AND orr_ord.articolo_id = dr.articolo_id))
+              ), res AS (
+                  SELECT e.ddt_riga_id,
+                         sum(e.quantita) AS reso
+                    FROM vendite.vw_resi_righe_effettive e
+                   GROUP BY e.ddt_riga_id
+              ), alloc AS (
+                  -- ⚠️ NON SI TOCCA. Il serbatoio d'ordine (fo.quantita) resta il
+                  --    fatturato NORMALE della corsia ORD: se la rettifica lo
+                  --    abbassasse, la greedy oldest-first toglierebbe capienza
+                  --    all'ULTIMA spedizione invece che a quella da cui la merce
+                  --    e' tornata — con un totale giusto e la ripartizione falsa,
+                  --    cioe' il difetto che nessun test di parita' vede.
+                  SELECT r_1.ddt_riga_id,
+                         GREATEST(0::numeric, LEAST(r_1.consegnato, COALESCE(fo.quantita, 0::numeric) - COALESCE(sum(r_1.consegnato) OVER (PARTITION BY o_1.ordine_riga_id ORDER BY r_1.ddt_data, r_1.ddt_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0::numeric))) AS fatturato_da_ordine,
+                         COALESCE(fo.misurabile, true) AS ord_misurabile
+                    FROM riga r_1
+                    JOIN orig o_1 ON o_1.ddt_riga_id = r_1.ddt_riga_id
+                    LEFT JOIN vendite.vw_af_merce_per_riga fo ON fo.corsia::text = 'ORD'::text AND fo.riga_id = o_1.ordine_riga_id AND fo.tipo_movimento::text = 'NORMALE'::text
+                   WHERE NOT r_1.e_riconsegna
+              )
+              SELECT r.ddt_riga_id,
+                 r.ddt_id,
+                 r.ddt_uid,
+                 r.articolo_id,
+                 r.is_composito,
+                 o.ordine_riga_id,
+                 orr.ordine_id,
+                     CASE
+                         WHEN o.ddt_riga_id IS NULL THEN 'NESSUNA'::text
+                         WHEN o.n_origini > 1 THEN 'MULTIPLA'::text
+                         ELSE 'ORDINE'::text
+                     END::character varying AS origine,
+                 r.fatturabile,
+                 r.consegnato,
+                 COALESCE(res.reso, 0::numeric) AS reso,
+                 r.in_riconsegna,
+                 v.tenuti,
+                 COALESCE(fd.quantita, 0::numeric) AS fatturato_merce,
+                 COALESCE(al.fatturato_da_ordine, 0::numeric) AS fatturato_da_ordine,
+                 v.fatturato,
+                 v.misurabile,
+                     CASE
+                         WHEN w.conta_fatturazione AND v.misurabile AND NOT r.e_riconsegna THEN w.saldo
+                         ELSE NULL::numeric
+                     END AS differenza,
+                     CASE
+                         WHEN r.e_riconsegna THEN 'RICONSEGNA'::text
+                         WHEN NOT w.conta_fatturazione THEN 'NON_FATTURABILE'::text
+                         WHEN NOT v.misurabile THEN 'NON_MISURABILE'::text
+                         WHEN w.saldo > 0::numeric THEN 'DA_FATTURARE'::text
+                         WHEN w.saldo < 0::numeric THEN 'DA_ACCREDITARE'::text
+                         ELSE 'PAREGGIATA'::text
+                     END::character varying AS stato,
+                 r.e_riconsegna,
+                 sos.ddt_riga_id IS NOT NULL AS sospetto_duplicato_ordine,
+                 -- ⚠️ IN CODA, e non e' estetica: CREATE OR REPLACE VIEW non
+                 --    inserisce colonne in mezzo, e da questa vista dipendono
+                 --    vw_contatore_merce, vw_resi_da_accreditare e
+                 --    vw_situazione_merce_ordine — un DROP CASCADE se le
+                 --    porterebbe via.
+                 -- Il valore e' NEGATIVO o zero: il segno vive nel numero
+                 -- (D-NC-2), non in un'etichetta che ogni consumatore
+                 -- dovrebbe saper tradurre.
+                 COALESCE(fr.quantita, 0::numeric) AS rettificato
+                FROM riga r
+                LEFT JOIN orig o ON o.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.ordini_righe orr ON orr.id = o.ordine_riga_id
+                LEFT JOIN res ON res.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN sospetto sos ON sos.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN alloc al ON al.ddt_riga_id = r.ddt_riga_id
+                LEFT JOIN vendite.vw_af_merce_per_riga fd ON fd.corsia::text = 'DDT'::text AND fd.riga_id = r.ddt_riga_id AND fd.tipo_movimento::text = 'NORMALE'::text
+                -- ⭐ LA RETTIFICA. Corsia DDT SEMPRE, anche quando a fatturare
+                --    e' stata la corsia ORD: e' D-NC-1, ed e' cio' che scarica
+                --    l'accredito sulla riga di merce da cui la merce e' tornata
+                --    invece che sull'ultima spedizione della riga d'ordine.
+                LEFT JOIN vendite.vw_af_merce_per_riga fr ON fr.corsia::text = 'DDT'::text AND fr.riga_id = r.ddt_riga_id AND fr.tipo_movimento::text = 'RETTIFICA'::text
+                CROSS JOIN LATERAL ( SELECT r.consegnato - COALESCE(res.reso, 0::numeric) AS tenuti,
+                       -- Una SOMMA, non una sottrazione: la quantita' della
+                       -- rettifica e' gia' negativa in catena.
+                       COALESCE(fd.quantita, 0::numeric)
+                         + COALESCE(al.fatturato_da_ordine, 0::numeric)
+                         + COALESCE(fr.quantita, 0::numeric) AS fatturato,
+                       -- Un kit rettificato senza coefficienti non e' piu'
+                       -- misurabile della sua fattura: escludere la rettifica
+                       -- direbbe «misurabile» su una partita di cui non si sa
+                       -- quanto e' stato accreditato.
+                       COALESCE(fd.misurabile, true)
+                         AND COALESCE(al.ord_misurabile, true)
+                         AND COALESCE(fr.misurabile, true) AS misurabile) v
+                CROSS JOIN LATERAL ( SELECT r.fatturabile OR v.fatturato > 0::numeric AS conta_fatturazione,
+                       v.tenuti - v.fatturato AS saldo) w;
+
+              COMMENT ON VIEW vendite.vw_partite_merce IS
+                'La PARTITA DI MERCE: una riga per riga di DDT attiva su documento '
+                'EMESSO in poi, con la riga d''ordine come ORIGINE nullable. '
+                'rev 2026-08-18 (brief-design-note-credito-resi N6): il `fatturato` '
+                'somma anche le RETTIFICHE della corsia DDT (colonna nuova '
+                '`rettificato`, negativa o zero). ⭐ E'' la riga che chiude il contratto '
+                'del S2 del brief: senza, una nota di credito sarebbe invisibile al '
+                'contatore e la coda accrediti continuerebbe a chiedere l''accredito '
+                'per sempre, anche a NC emessa. '
+                '⚠️ La rettifica si legge SEMPRE sulla corsia DDT, anche quando a '
+                'fatturare e'' stata la corsia ORD (D-NC-1): se entrasse nel serbatoio '
+                'd''ordine, la greedy oldest-first della CTE `alloc` toglierebbe '
+                'capienza all''ULTIMA spedizione invece che a quella da cui la merce e'' '
+                'tornata — con il totale perfettamente giusto e la ripartizione falsa, '
+                'cioe'' un difetto che nessun test di parita'' vede. Per questo `alloc` '
+                'non e'' stata toccata. '
+                '⚠️ E'' una SOMMA e non una sottrazione: con D-NC-2 il segno vive nel '
+                'numero, non in un''etichetta che ogni consumatore dovrebbe tradurre. '
+                'security_invoker=on ri-specificato (la reloption non si vede in '
+                'pg_get_viewdef e un CREATE OR REPLACE la azzera: qui significa bypass '
+                'della RLS, regressione V-1).';
+
+              COMMENT ON COLUMN vendite.vw_partite_merce.rettificato IS
+                'Quantita'' rettificata sulla partita: la somma delle attivita'' '
+                'fatturabili con tipo_movimento = RETTIFICA sul segmento DDT di questa '
+                'riga di merce. NEGATIVA o zero. Entra nel `fatturato` come addendo, '
+                'quindi dopo una nota di credito la `differenza` torna a zero e la riga '
+                'esce dalla coda accrediti da sola — che e'' la prova che il contatore '
+                'ha visto la NC.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback non ricrea la versione senza `rettificato`: va
+              --    ri-applicato 20260817-14. Un DROP secco porterebbe via
+              --    vw_contatore_merce, vw_resi_da_accreditare e
+              --    vw_situazione_merce_ordine.
+              SELECT 1;

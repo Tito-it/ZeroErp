@@ -25,7 +25,7 @@ const store = useEmailAccountsStore()
 const drawer = useDrawerState()
 const {
   searchText, onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.email_new_account',
   onNew: () => drawer.openCreate(),
@@ -47,7 +47,7 @@ function onRowClick(data) {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
       </div>
       <PageActionsBar :actions="pageActions">

@@ -9,10 +9,11 @@
 --        trg_contratti_a10_guard_modalita_c_activation_ins_upd,
 --        trg_contratti_righe_a10_guard_modalita_c_ins_upd droppati).
 --
--- Indice test (1..3):
+-- Indice test (1..4):
 --   1) listino + variazione globale in DRAFT -> ok
 --   2) listino NULL + variazione NULL in DRAFT -> ok
---   3) Contratto con listino ATTIVO: riga senza prezzo ammessa (DA_LISTINO)
+--   3) Contratto con listino, in DRAFT: riga di ESCLUSIONE senza prezzo ammessa
+--   4) Contratto ATTIVO: inserimento di riga vietato (pricing immutabile)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -31,7 +32,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(3);
+SELECT plan(4);
 
 CREATE TEMP TABLE tmp_ctx_ba AS
 SELECT ba.id AS billing_account_id,
@@ -80,19 +81,65 @@ SELECT lives_ok(
     '2) listino NULL + variazione NULL in DRAFT ammessa'
 );
 
--- Setup per test 3: attiva contratto A
+-- 🔴 RIORDINATO IL 2026-08-18.
+--   Il test 3 falliva con E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE, e non
+--   perche' la proprieta' che verifica sia venuta meno: perche' il SETUP
+--   attivava il contratto prima di inserire la riga, e
+--   `trg_contratti_righe_a10_lock_post_attivazione` (Step 2.3) vieta
+--   INSERT/UPDATE/DELETE su `contratti_righe` quando il padre e' ATTIVO.
+--
+--   ⚠️ Quell'attivazione era un residuo: serviva al guard «modalita' C
+--   activation», che la Fase 2 ha DROPPATO (vedi la testata di questo file).
+--   Restava li' a fare da setup di un guard che non esiste piu', ed e' andata a
+--   sbattere contro uno che nel frattempo e' nato.
+--
+--   ⚠️ E sotto ce n'era una seconda, che si e' vista solo togliendo la prima:
+--   `contratti_righe.tipo_eccezione` e' NOT NULL, e il CHECK
+--   `chk_contrighe_prezzo_per_tipo_eccezione` detta la regola vera —
+--
+--       ESCLUSIONE            -> prezzo_unitario **deve** essere NULL
+--       OVERRIDE | AGGIUNTA   -> prezzo_unitario **deve** essere valorizzato
+--
+--   cioe' «riga senza prezzo perche' il prezzo lo mette il listino» non e' piu'
+--   un caso di questo modello: `contratti_righe` e' diventata la tabella delle
+--   ECCEZIONI a un listino, non l'elenco delle righe con prezzo facoltativo. La
+--   proprieta' del titolo, presa alla lettera, oggi e' FALSA.
+--
+--   Quello che resta vero, e che il test ora verifica, e' *quando* una riga
+--   senza prezzo e' ammessa: come ESCLUSIONE, e solo in DRAFT. E l'attivazione,
+--   invece di essere buttata, diventa il test 4 e copre la regola NUOVA — dopo
+--   l'attivazione il pricing e' immutabile — che fin qui nessuno guardava e che
+--   si era fatta notare solo rompendo questo file.
+
+-- 3) Contratto con listino, in DRAFT: riga di ESCLUSIONE senza prezzo ammessa
+SELECT lives_ok(
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione,
+                                          prezzo_unitario, attivo, qta_operativa)
+      SELECT c.id, a.articolo_id, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+             NULL, TRUE, 1
+        FROM vendite.contratti c, tmp_ctx_articolo a
+       WHERE c.numero = 'PGTAP_CONTR_A'$$,
+    '3) Contratto con listino in DRAFT: riga di ESCLUSIONE senza prezzo ammessa'
+);
+
+-- Ora si attiva il contratto: da qui in poi il pricing e' congelato.
 UPDATE vendite.contratti
    SET stato_doc_contratto_id = (SELECT stato_id FROM tmp_ctx_stato_attivo)
  WHERE numero = 'PGTAP_CONTR_A';
 
--- 3) Contratto con listino ATTIVO: riga senza prezzo_unitario ammessa
---    (il prezzo viene risolto via listino — il guard modalita' C e' droppato)
-SELECT lives_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario, attivo, qta_operativa)
-      SELECT c.id, a.articolo_id, NULL, TRUE, 1
+-- 4) Dopo l'attivazione, le righe sono bloccate
+--    ⚠️ Lo SQLSTATE si passa: `throws_ok` senza accetta QUALUNQUE errore, e qui
+--    l'INSERT ha molti modi di fallire che non c'entrano col lock.
+SELECT throws_ok(
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione,
+                                          prezzo_unitario, attivo, qta_operativa)
+      SELECT c.id, a.articolo_id, 'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+             NULL, TRUE, 1
         FROM vendite.contratti c, tmp_ctx_articolo a
        WHERE c.numero = 'PGTAP_CONTR_A'$$,
-    '3) Contratto con listino ATTIVO: riga senza prezzo_unitario ammessa'
+    'P0001',
+    NULL,
+    '4) Contratto ATTIVO: inserimento di riga vietato (pricing immutabile post-attivazione)'
 );
 
 SELECT * FROM finish();

@@ -271,15 +271,6 @@ export const useAuthStore = defineStore('auth', () => {
   // scelta e il secondo e' null.
   const emittenteAttivo = computed(() => user.value?.emittente_attivo ?? null)
 
-  // Modalita' «Tutti gli emittenti»: nessun emittente attivo. E' SOLA LETTURA
-  // per costruzione, non per scelta di UI — `emittente_fiscale_id` e' NOT NULL
-  // sui documenti di vendita e senza emittente attivo il DB non ha con cosa
-  // valorizzarlo (rifiuta con `*_EMITTENTE_NON_RISOLTO`). I verbi di creazione
-  // vanno spenti qui, per non far scoprire il vincolo a fine compilazione.
-  const isModalitaGlobale = computed(
-    () => emittenteAttivo.value?.modalita_globale === true
-  )
-
   // Mostra o no la combo in topbar: l'operatore non sceglie, il suo emittente
   // e' un permesso.
   const puoScegliereEmittente = computed(
@@ -290,6 +281,24 @@ export const useAuthStore = defineStore('auth', () => {
   // da «ha scelto Tutti», che non deve riproporre nulla.
   const deveScegliereEmittente = computed(
     () => emittenteAttivo.value?.deve_scegliere === true
+  )
+
+  // Perimetro EFFETTIVO: sta guardando piu' di un emittente? Alimenta le
+  // etichette di perimetro su contatori e ricerca (P-2c, brief
+  // perimetro-emittente): «Da fatturare: 240.000 € — tutti gli emittenti» e'
+  // informazione completa, lo stesso numero senza etichetta non lo e'.
+  //
+  // ⚠️ Lo DERIVA IL BACKEND (`perimetro_multi_emittente` in /me/): e' l'unico
+  //    che conosce la cardinalita' dello scope. Non si ricalcola qui da
+  //    `modalita_globale`, che e' una cosa diversa: un OPERATORE senza
+  //    emittente attivo e' in modalita' globale ma vede un solo emittente —
+  //    l'etichetta gli direbbe una cosa falsa.
+  //
+  // ⚠️ Chiave assente -> `false`: il POST di cambio emittente non la manda
+  //    (li' descriverebbe la sessione precedente), e in quel momento la
+  //    pagina si sta comunque ricaricando.
+  const perimetroMultiEmittente = computed(
+    () => emittenteAttivo.value?.perimetro_multi_emittente === true
   )
 
   // Scopo: Domini visibili. Filtri applicati:
@@ -408,7 +417,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdminGlobale,
     emittenteCorrente,
     emittenteAttivo,
-    isModalitaGlobale,
+    perimetroMultiEmittente,
     puoScegliereEmittente,
     deveScegliereEmittente,
     cambiaEmittenteAttivo,

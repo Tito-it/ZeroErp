@@ -40,6 +40,16 @@ CREATE TEMP TABLE tmp_pipeline_fb_ids (
 );
 
 WITH ins AS (
+-- 🔴 `fase` AGGIUNTA IL 2026-08-18.
+--   `config.stati_doc_fiscale.fase` e' diventata NOT NULL (CHECK
+--   `chk_stati_doc_fiscale_fase`: APERTO | IN_ATTESA | IN_CORSO | CHIUSO) dopo
+--   che questa fixture era stata scritta: l'INSERT moriva sul vincolo e il file
+--   non eseguiva NESSUNA asserzione.
+--   ⚠️ IN_CORSO e non APERTO/CHIUSO: e' uno stato tecnico di prova che il test
+--   usa come tappa della pipeline, non un inizio ne' un termine — ed e' la fase
+--   che portano EMESSA e DEFINITIVA, gli stati veri della stessa parte di giro.
+--   La fase qui non e' oggetto del test: conta che sia COERENTE, perche' un
+--   valore terminale potrebbe far comportare diversamente cio' che legge la fase.
   INSERT INTO config.stati_doc_fiscale (
     codice,
     descrizione,
@@ -48,7 +58,8 @@ WITH ins AS (
     meta,
     codice_interno,
     applica_lotto,
-    applica_fattura
+    applica_fattura,
+    fase
   )
   SELECT
     left('TPFB_' || (SELECT test_scope FROM tmp_pipeline_fb_costanti), 30),
@@ -58,7 +69,8 @@ WITH ins AS (
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_pipeline_fb_costanti)),
     left('TPFB_' || (SELECT test_scope FROM tmp_pipeline_fb_costanti), 30),
     true,
-    false
+    false,
+    'IN_CORSO'
   RETURNING id
 )
 INSERT INTO tmp_pipeline_fb_ids (stato_doc_fiscale_id)

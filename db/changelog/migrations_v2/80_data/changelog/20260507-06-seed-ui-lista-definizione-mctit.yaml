@@ -45,3 +45,8 @@ databaseChangeLog:
               - column: { name: attivo,       type: BOOLEAN }
               - column: { name: data_insert,  type: STRING }
               - column: { name: user_insert,  type: STRING }
+              # P-2b (2026-08-18): il flag si dichiara QUI e solo qui — mai da
+              # interfaccia. Presidiato dal trigger
+              # trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd, che
+              # ammette la scrittura solo dal proprietario della tabella (il migrate).
+              - column: { name: multi_emittente, type: BOOLEAN }

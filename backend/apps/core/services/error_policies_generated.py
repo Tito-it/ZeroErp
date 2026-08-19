@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 697, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 718, di cui 79 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -42,6 +42,30 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "DEFINIZIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-05
     "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "CONFLITTO_STATO",
+    # vendite.fn_annulla_accredito_riga_reso, difesa in profondita': la UPDATE ad ANNULLATA ha toccato meno rettifiche di quante il ponte ne dichiarasse. Serve perche' vendite.commesse_attivita HA la RLS (rls_commesse_attivita_ef_whitelist) mentre vendite.resi_righe_accrediti NO: una rettifica fuori perimetro emittente si legge come «non c'e'» e la UPDATE la salterebbe IN SILENZIO, lasciando esattamente l'annullo parziale che la semantica d'insieme vieta. Copre anche la finestra fra il controllo e la scrittura. Gemello di E_ACCREDITO_SEGMENT_DUPLICATO nella madre: se scatta e' una regressione o un perimetro incoerente, non un caso d'uso. Piano: brief-db-note-credito-prerequisiti-be-fe §8 passo 3 (P-5).
+    "E_ACCREDITO_ANNULLO_INCOMPLETO": "CONFLITTO_STATO",
+    # vendite.fn_annulla_accredito_riga_reso: almeno una delle rettifiche generate dall'accredito e' gia' uscita dallo stato NON_EMESSA, quindi ha gia' prodotto la sua attivita' fatturabile ed e' in viaggio verso un documento. ⚠️ Si rifiuta l'INTERO annullo, non solo la parte bloccata: un accredito e' N rettifiche (consumo LIFO su piu' righe di fattura, e una rettifica per componente sui kit), e annullarne una parte lascerebbe la coda a chiedere un residuo che nessuno puo' piu' soddisfare. E' la stessa dottrina di E_ACCREDITO_QUOTA_NON_COPERTA, allo specchio. Piano: brief-db-note-credito-prerequisiti-be-fe §7 C-2.
+    "E_ACCREDITO_ANNULLO_NON_AMMESSO": "CONFLITTO_STATO",
+    # vendite.fn_accredita_riga_reso: una delle attivita' che hanno fatturato la partita non e' mai atterrata su una riga di fattura (attivita_fatturabili.fattura_riga_id vuoto). Non e' un caso da gestire con un ripiego: e' la condizione che rende l'accredito IMPOSSIBILE, perche' N-1 impone che il prezzo si copi dalla riga di fattura e non si ricalcoli mai. Piano: brief-design-note-credito-resi S12.6.
+    "E_ACCREDITO_ATTIVITA_NON_FATTURATA": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso: la riga di reso ha gia' un accredito registrato in vendite.resi_righe_accrediti e non ha piu' quota da accreditare. E' il doppio click, e l'operatore lo scopre QUANDO CLICCA invece che a fine batch su un documento fiscale. Non e' il presidio vero — quello e' la UNIQUE del ponte piu' il fatto che la coda sottrae la quota gia' accreditata — e' il messaggio parlante che arriva prima. Piano: brief-design-note-credito-resi D-NC-10.
+    "E_ACCREDITO_GIA_ESEGUITO": "CONFLITTO_STATO",
+    # vendite.fn_accredita_riga_reso: un articolo composito fra le attivita' della partita ha componenti senza coeff_qta nel meta, quindi la quantita' in unita' PADRE non e' calcolabile. Stessa condizione che rende `misurabile` falso in vw_af_merce_per_riga. Inventare il coefficiente accrediterebbe un numero che nessuno sa da dove viene. Piano: brief-design-note-credito-resi N8.
+    "E_ACCREDITO_KIT_NON_MISURABILE": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso: un componente del kit da rettificare non porta `componente_di` nel meta, quindi la rettifica nascerebbe dichiarandosi componente (#CMP: nel segmento, che fn_emit scrive nel meta dell'attivita' fatturabile) senza dire DI CHI. Il generatore righe la rifiuterebbe con E_ATTIVITA_KIT_SENZA_PADRE — giustamente: trattarla come riga normale la fatturerebbe DUE volte, dentro il totale del padre e per conto suo (R11). ⚠️ Ma lo rifiuterebbe A VALLE, dopo che il verbo e' riuscito e la riga e' gia' USCITA DALLA CODA: la coda dice fatto e la nota di credito non c'e'. Gemello esatto di E_ACCREDITO_KIT_NON_MISURABILE — stesso momento, stessa forma, altro tasto dello stesso contratto (backend _kit_meta.py). ⛔ Codice distinto da E_ATTIVITA_KIT_SENZA_PADRE (601), che e' del generatore, ha arita' zero e parla del documento di origine: qui il messaggio deve nominare la riga di reso e il kit. Origine: smoke BE del 2026-08-18. Piano: brief-db-note-credito-prerequisiti-be-fe §11 (P-7).
+    "E_ACCREDITO_KIT_SENZA_PADRE": "NON_ESEGUIBILE",
+    # vendite.fn_annulla_accredito_riga_reso: il motivo dell'annullo e' obbligatorio. L'annullo cancella le righe di ponte, quindi la traccia del PERCHE' esiste solo in vendite.commesse_attivita_log: senza motivo resta il fatto senza la ragione. Gemello di E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO sulla porta delle righe manuali, codice distinto perche' il messaggio nomina l'oggetto giusto (l'accredito, non la riga di commessa).
+    "E_ACCREDITO_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
+    # vendite.fn_accredita_riga_reso: la riga di reso non compare nella coda accrediti, oppure il suo accredito dovuto e' sceso a zero. La coda e' la sola sede del numero (D-NC-6: l'accredito e' sempre PIENO e la quantita' non e' un input), quindi fuori di li' non c'e' nulla da accreditare. Classe NON_ESEGUIBILE e non NON_TROVATO: la riga di reso ESISTE, e' la precondizione a mancare. Piano: brief-design-note-credito-resi N8.
+    "E_ACCREDITO_NON_IN_CODA": "NON_ESEGUIBILE",
+    # vendite.fn_annulla_accredito_riga_reso: non esiste nessun accredito da annullare per quella riga di reso. Non e' lo stesso di «gia' annullato»: dopo l'annullo le righe di ponte SPARISCONO, quindi un secondo annullo cade qui — ed e' corretto, perche' lo stato osservabile e' identico a «non e' mai stato accreditato». Piano: brief-db-note-credito-prerequisiti-be-fe §8 passo 3 (P-5).
+    "E_ACCREDITO_NON_TROVATO": "NON_TROVATO",
+    # vendite.fn_accredita_riga_reso: le righe di fattura della partita non bastano a coprire tutto l'accredito dovuto. E' il tetto della MERCE, tenuto dalla madre come UGUAGLIANZA e non dal guard del ponte: la merce si misura in unita' padre e su un kit tre righe di ponte valgono una sola unita', quindi un trigger di riga che le sommasse rifiuterebbe il secondo componente. Solleva invece di accreditare a meta' perche' un accredito PARZIALE lascia un residuo che nessuno puo' chiudere: ne' una rinuncia (riguarda la ri-consegna) ne' un onere (viaggia su segmenti MAN: e non entra nel conto della merce). E' la malattia per cui il cantiere esiste. Piano: brief-design-note-credito-resi D-NC-6.
+    "E_ACCREDITO_QUOTA_NON_COPERTA": "NON_ESEGUIBILE",
+    # vendite.fn_accredita_riga_reso, guard is_new: fn_upsert_commessa_attivita ha aggiornato una riga invece di crearne una. L'accredito e' una CREATE, non una upsert — riusa la fn di upsert solo per non duplicarne il mapping a 40 parametri. Con l'advisory lock sulla partita e il progressivo #RET da MAX+1 non deve mai scattare: se scatta e' una regressione, o una transazione fuori da READ COMMITTED. Gemello di E_ONERE_SEGMENT_DUPLICATO sulla porta oneri. Piano: brief-design-note-credito-resi N8.
+    "E_ACCREDITO_SEGMENT_DUPLICATO": "CONFLITTO_STATO",
+    # vendite.fn_accredita_riga_reso, guard di D-NC-1: la riga di coda non porta una riga di DDT. La condizione e' IMPOSSIBILE per costruzione su tre livelli indipendenti (resi_righe.ddt_riga_id e' NOT NULL, la partita E' la riga di DDT, la coda e' agganciata a ddt_riga_id), e c'e' la ragione di merito: la merce non puo' tornare indietro se non e' mai uscita. Esiste come guard e non come COALESCE perche' un ripiego silenzioso scriverebbe la rettifica sul segmento ORD, spostando l'accredito sulla spedizione sbagliata. Se scatta, e' una regressione del modello. Piano: brief-design-note-credito-resi D-NC-1.
+    "E_ACCREDITO_SENZA_SPEDIZIONE": "TECNICO",
     "E_ADMIN_CF_DUPLICATO": "CONFLITTO_STATO",
     "E_ADMIN_EMAIL_DUPLICATA": "CONFLITTO_STATO",
     "E_ADMIN_PIVA_DUPLICATA": "CONFLITTO_STATO",
@@ -58,6 +82,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AI_QUERY_TOO_LONG": "DATO_ERRATO",
     "E_AI_TOOL_DENIED": "NON_PERMESSO",
     "E_AI_TOOL_NOT_FOUND": "TECNICO",
+    # Guard anagrafiche.fn_guard_albero_ba_emittente: un albero padre/figlio di billing_account attraversa DUE emittenti fiscali. E' la regola di §3.5 del brief: un soggetto puo' essere cliente di piu' emittenti (piu' alberi separati), ma un SINGOLO albero non puo' avere un piede in un emittente e uno in un altro. Perche' conta: vendite.fn_build_fattura_key prende l'emittente dal PADRE, quindi il lavoro fatto sotto un emittente finirebbe su una fattura emessa dall'altro - un documento che chi lo ha generato non puo' nemmeno vedere. L'emittente confrontato e' quello RISOLTO (mapping specifico oppure gestore globale), dalla stessa funzione che usa la fatturazione: un guard che risolvesse diversamente dichiarerebbe omogeneo un albero che la fattura spacca comunque. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba P-1, passo 4.
+    "E_ALBERO_EMITTENTE_MISTO": "DATO_ERRATO",
     "E_ALLEGATO_INSERT": "TECNICO",
     # Rimpiazzano il generico `E_NOT_FOUND` che quattro call-site · sollevavano per entita' diverse: un 404 che non dice cosa manca non · e' diagnosticabile a valle (le note usano E_NOTA_NOT_FOUND, gia' · dichiarato).
     "E_ALLEGATO_NOT_FOUND": "NON_TROVATO",
@@ -567,7 +593,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PARAMETRI_TABELLA": "NON_TROVATO",
     # 177 punti in 114 funzioni: 160 sono guard di parametro (NULL, <= 0, btrim vuoto), 17 altro. DATO_ERRATO copre il 90%. I 17 restanti vanno guardati con la lente messaggio-vs-condizione, non spezzati a priori.
     "E_PARAMETRO_INVALIDO": "DATO_ERRATO",
+    # Guard trgfn_billing_account_guard_normalize §2.2: il parent_account_id indicato non ha restituito nessuna riga. Due cause che il guard NON puo' distinguere e non finge di distinguere: il BA non esiste, oppure esiste ma e' fuori dal perimetro di chi scrive (la SELECT del guard passa dalle policy RLS di anagrafiche.billing_account, perche' la trigger function e' SECURITY INVOKER). Prima di questo codice il caso cadeva su E_ID_FISCALI_DIVERSI, che diceva una cosa falsa: i codici fiscali erano identici, semplicemente il padre era invisibile. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba §11.1, passo 3 (P-3).
+    "E_PARENT_NON_RAGGIUNGIBILE": "DATO_ERRATO",
     "E_PARENT_SELF": "DATO_ERRATO",
+    # Guard trgfn_billing_account_guard_normalize §2.2: padre e figlio appartengono a soggetti DIVERSI e almeno uno dei due non ha id_fiscale_univoco_cf_piva, quindi il confronto sul codice fiscale non e' utilizzabile come prova di identita'. Chiude il fail-open del NULL: `NULL IS DISTINCT FROM NULL` e' falso, quindi due BA entrambi senza CF passavano anche se di soggetti diversi. Il confronto ripiega sul soggetto, che e' sempre disponibile: due BA dello STESSO soggetto senza CF restano legittimi. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba §4, passo 3 (P-3).
+    "E_PARENT_SOGGETTO_DIVERSO": "DATO_ERRATO",
     # --- Coerenza dati (400) ---
     "E_PDP_OBBLIGATORIO": "DATO_ERRATO",
     "E_PDP_UTILITY_MISMATCH": "DATO_ERRATO",
@@ -702,6 +732,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESET_LOTTO_FATTURA_VALIDATION": "DATO_ERRATO",
     "E_RESET_LOTTO_VALIDATION": "DATO_ERRATO",
     "E_RESET_PASSWORD": "DATO_ERRATO",
+    # vendite.trgfn_resi_accrediti_guard: il tetto del DOCUMENTO. La somma degli accrediti su una riga di fattura non puo' superare la quantita' che quella riga ha fatturato. E' il limite che parla la lingua del documento invece che della merce, e prima non esisteva: l'unico tetto all'accredito era il conto della merce. Puo' scattare quando RESI DIVERSI accreditano la stessa riga di fattura in momenti diversi. Piano: brief-design-note-credito-resi D-NC-10.
+    "E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA": "CONFLITTO_STATO",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "CONFLITTO_STATO",
     # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
@@ -720,6 +752,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_RICONSEGNA_SUPERA_RESO": "CONFLITTO_STATO",
     # Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio · ammesso solo su righe con tipo_reso.riapre_residuo = true.
     "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": "CONFLITTO_STATO",
+    # script.fn_check_rinuncia_reversibile: la quota rinunciata risulta gia' ACCREDITATA (esiste almeno una riga in vendite.resi_righe_accrediti per quella riga di reso), quindi riaprire la rinuncia sfalserebbe un accredito gia' in viaggio verso una nota di credito. ⭐ E' il gate che il commento della funzione teneva in caldo dal 2026-07-26 dichiarando di NON registrare il codice «per non lasciare a catalogo un codice mai sollevato»: la slice NC e' arrivata, e ora si solleva. ⚠️ VINCOLO RECIPROCO con vendite.fn_annulla_accredito_riga_reso: il gate si auto-ripara perche' l'annullo CANCELLA le righe di ponte — se un giorno diventasse un soft-delete, questo ramo va cambiato insieme, o vieterebbe per sempre una rinuncia ormai reversibile e lo farebbe in silenzio. Piano: brief-db-note-credito-prerequisiti-be-fe §12 (P-3 / passo 4).
+    "E_RESO_RINUNCIA_ACCREDITO_ESEGUITO": "CONFLITTO_STATO",
     # Gemello del precedente sull'ALTRA uscita della stessa copertura · (id 560): ri-spedizioni e rinunce condividono il residuo · `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo' · eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno · ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto · di stato, non errore di validazione del payload.
     "E_RESO_RINUNCIA_SUPERA_RESO": "CONFLITTO_STATO",
     "E_RESO_SENZA_RIGHE": "CONFLITTO_STATO",
@@ -840,6 +874,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Trigger whitelist tipi indirizzo per ambito documento · (trgfn_tipi_indirizzi_only_allowed, fail-closed): ri-sollevato da · _db_errors del BB col codice originale del RAISE.
     "E_TIPO_INDIRIZZO": "DATO_ERRATO",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "DATO_ERRATO",
+    # anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo: il tipo di indirizzo non e' fra quelli che config.tipi_soggetto_dettaglio_tipi_indirizzo ammette per il TIPO SOGGETTO DETTAGLIO della riga. ⛔ Codice distinto da E_TIPO_INDIRIZZO_NON_PERMESSO (584) e non un doppione: quello resta del guard sui RUOLI (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo), che legge un'altra matrice (config.tipi_ruolo_tipi_indirizzo) e ha altri identificativi in mano. I due guard hanno condiviso un codice solo fino al 2026-08-19, e il messaggio era scritto per il ruolo: chi lo incontrava sul layer soggetto leggeva «tipo_ruolo_id» dove c'era un tipo_soggetto_dettaglio_id e veniva mandato a cercare nella tabella sbagliata. Un messaggio plausibile e falso costa piu' di un messaggio assente. Origine: bonifica baseline pgTAP anagrafiche.
+    "E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO": "DATO_ERRATO",
     "E_TIPO_RUOLO_NON_TROVATO": "NON_TROVATO",
     # <- E_AI_CONFIRMATION_REQUIRED RIMOSSO il 2026-08-06 (audit coerenza · status). Non lo sollevava nessuno — ne' Python, ne' Vue, ne' il · database — e il motivo e' che il flusso di conferma dei tool in · scrittura ha scelto un'altra strada, migliore: `ai_assistant_service` · restituisce **200 con `requires_confirmation` nel payload**. Una · conferma richiesta non e' un errore HTTP. · ⚠️ E il 428 non c'entrava comunque: RFC 6585 lo definisce come «la · richiesta deve essere condizionale» (`If-Match`, per non perdere · aggiornamenti concorrenti), non «l'utente deve confermare». · Se un giorno servisse davvero un errore per questo caso, i due · presidi lo pretenderanno dichiarato: si riparte da qui, non dal 428. · --- Autenticazione: token, email, invito, cambio/reset password ---
     "E_TOKEN": "DATO_ERRATO",
@@ -868,8 +904,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_EXPORT_LIMIT_EXCEEDED": "NON_ESEGUIBILE",
     # Fallback per DatabaseError non riconosciute dai marker noti · nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
     "E_UI_GENERIC_FAILED": "DATO_ERRATO",
+    # Cancello applicativo del flag ui.lista_definizione.multi_emittente (P-2b): una lista che NON sa dire da quale emittente arriva ogni riga viene aperta da chi ha in scope piu' di un emittente. Lo solleva il BACKEND (apps/core/services/perimetro_emittente.guard_lista), non una funzione PL/pgSQL: il catalogo lo registra perche' ogni codice che l'applicazione nomina deve avere la sua classe, e il cancello del terzo lato non distingue fra codici nati nel DB e codici nati nel backend. Classe NON_ESEGUIBILE (422) e NON NON_PERMESSO (403), ed e' di merito: il diritto C'E', manca una precondizione che l'utente scioglie da se' scegliendo un emittente dalla combo di topbar. Un 403 racconterebbe una bugia sul motivo, e fra sei mesi qualcuno cercherebbe un diritto da concedere a qualcuno. Richiesta R-1 del perimetro BE, 2026-08-18.
+    "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "NON_ESEGUIBILE",
     # E_UI_LISTA_NON_TROVATA: sollevato da fn_resolve_lista_config quando il codice · lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427). · Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard · admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
     "E_UI_LISTA_NON_TROVATA": "NON_TROVATO",
+    # Guard ui.trgfn_lista_definizione_guard_multi_emittente: tentativo di scrivere ui.lista_definizione.multi_emittente da un ruolo diverso dal proprietario della tabella (cioe' dall'applicazione). Il flag dichiara una CAPACITA' DEL SOFTWARE — «questa lista sa dire da quale emittente arriva ogni riga» — non una preferenza dell'utente, e una capacita' non si dichiara per stanchezza. Si accende SOLO dal seed lista_definizione.csv, insieme (o dopo) al lavoro di P-4 che la rende vera. ⚠️ Il presidio e' un TRIGGER e non un permesso di colonna: il GRANT verrebbe ri-concesso a ogni passata di ci_apply dal giro dei grant runtime, che cicla su tutti gli schemi. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba Q1 e §11.5.
+    "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "NON_PERMESSO",
     "E_UI_PERMESSO_NON_TROVATO": "NON_TROVATO",
     "E_UI_PERMESSO_VALIDAZIONE": "DATO_ERRATO",
     # DEF-2 "preset aggiornato": l'endpoint POST /preferenza/ignore-preset-update/ · solleva quando l'utente non ha ancora una preferenza salvata sulla lista · (banner non dovrebbe essere visibile, ma l'errore lato BE e' parlante).
@@ -1015,6 +1055,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "DATO_ERRATO",
+    # script.fn_log_and_raise_error: ripiego di arita' (18-08-2026). Non si SOLLEVA mai — si scrive soltanto nel log, come ogni W_: e' il controllo (E) del guardrail. Segnala che un punto di sollevamento passa meno valori dei segnaposto del suo messaggio; prima di questa data la format() interna alzava 22023 e cancellava l'errore di dominio. Gemello statico: test 5 di db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.
+    "W_MESSAGGIO_ARITA": "AVVISO",
     # <- W_TXID_NOT_REGISTERED  (vivo)
     "W_TXID_NOT_REGISTERED": "AVVISO",
 }

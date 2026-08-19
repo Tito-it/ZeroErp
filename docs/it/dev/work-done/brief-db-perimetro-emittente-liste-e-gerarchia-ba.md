@@ -10,15 +10,180 @@
 >
 > **Origine.** Emersi il **2026-08-17** analizzando la richiesta «filtrare i
 > gruppi fatturabili per cliente»
-> ([brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)).
+> ([brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md)).
 > Sono stati messi qui perché sono cantieri loro: toccano l'anagrafica e
 > l'accesso, non la dashboard.
 >
-> **Stato al 2026-08-17: nulla eseguito, ma niente più da decidere.** Nessun
-> changeSet, nessuna migrazione, nessun seed. Diagnosi verificata contro il
-> codice, **undici decisioni prese** (sei di forma in §7, cinque di attuazione
-> in Q1–Q5), piano eseguibile in **§12**. Il prossimo passo è il **DL-A**, che è
-> una misura.
+> ## ✅ Stato al 2026-08-18 — **il perimetro DB è chiuso**
+>
+> **Applicati e verdi i passi 1, 2, 3, 4, 6 e 7**: sedici changeSet
+> (`20260818-01`, `-02`, `-03`, `-05`, `-08`→`-19`), pgTAP nuovi verdi, baseline
+> senza regressioni. Misure di Fase 0 eseguite, DL-A sanato.
+>
+> **Verificato sul database a lavoro finito:**
+>
+> | | |
+> | --- | ---: |
+> | liste a catalogo | 44 |
+> | di cui `multi_emittente = true` | ~~0~~ → **6** (le sei del perimetro, 2026-08-18 · §13-ter.7) |
+> | controllo «adesivi senza collaudo» | **0** |
+> | operatori senza emittente (DL-A) | **0** |
+> | liste del perimetro con la colonna emittente | ~~1~~ → **6** (dopo R-3 della Fase E) |
+> | trigger del guard «albero omogeneo» | **2** |
+>
+> ## 🟢 Stato al 2026-08-18, sera — **A→E chiuse, due brief archiviati**
+>
+> Il cantiere è completo su **tutte** le fasi del piano BE/FE (§13-bis): perimetro
+> DB, policy dei codici, colonna emittente su **6 liste**, cancello su **34**
+> (51 view), etichette di perimetro, colonna nella ricerca universale.
+> I due brief di richiesta al team DB sono **esauriti e spostati in work-done**:
+> [le due richieste R-1/R-2](brief-db-perimetro-emittente-due-richieste-dal-be.md)
+> e [Fase E + ricerca](brief-db-perimetro-emittente-fase-e-e-ricerca.md).
+>
+> # 🟢 CANTIERE CHIUSO — 2026-08-18
+>
+> 📦 **Archiviato in `work-done` il 2026-08-18**, a collaudo a video finito:
+> DB chiuso, BE/FE chiusi, §15 verde per intero. Nulla resta in carico al team
+> DB — le sue due richieste sono consegnate e i due documenti relativi erano
+> già qui accanto.
+>
+> **Migrato e pgTAP verdi** (conferma di Tid). Tutto il piano è fatto e
+> collaudato sui dati **e a video**: P-1, P-2a/b/c, P-3, P-4, passi 1→8, fasi
+> BE/FE A→E.
+> Flag `multi_emittente` su **6 liste su 44**, vista di controllo a **zero**,
+> **12** righe di colonna emittente a catalogo, suite backend **3790 verdi**.
+>
+> **Le due voci che restano non sono lavoro di questo brief:**
+>
+> | | Cosa | Dove vive |
+> | --- | --- | --- |
+> | 🔵 | `fn_get_emittente_fiscale_id` non delega a `fn_get_ba_emittente_sr_id` | **cantiere numerazione (P-6)**, di cui è prerequisito. ⚠️ «Non è una riga»: le due divergono sul `NULL` (§11.11) |
+> | 🕳️ | Nessun presidio lega la riga di catalogo al **mapping** del repository | debito **dichiarato** in `test_perimetro_emittente_copertura.py`, con la ragione: serve una mappa lista → repository che non esiste |
+>
+> ✅ **COLLAUDATO A VIDEO da Tid il 2026-08-18 — §15 eseguito per intero,
+> tutti i punti verdi**: il cancello (§15.1), le sei colonne emittente col loro
+> ordinamento (§15.2), le due etichette di perimetro (§15.3), il verso opposto
+> (§15.4).
+>
+> 🔴 **E ha trovato l'unico difetto rimasto**, che nessun test avrebbe preso:
+> sulle liste a ricerca obbligatoria il pannello del cancello era **nascosto
+> dal `v-show` del caller** — backend giusto, componente giusto, difetto nella
+> terza cosa: *chi dei due si vede*. Corretto e riverificato verde
+> (**C-3-bis**), insieme alla sospensione della lista bloccata e all'export che
+> scaricava un rifiuto invisibile.
+
+> ### ✅ Risposta al §13-ter — rifatta la misura, il 2026-08-18 sera
+>
+> **Il DB ha ragione su tutti e tre i punti, e il primo era un mio errore di
+> misura.** Rifatta dentro un contesto operatore completo
+> (`operator_identity_context`, **non** `system_process_context`):
+>
+> | vista | righe | con il nome |
+> | --- | ---: | ---: |
+> | `vw_dash_competenza_gruppi` | 74 | **74** |
+> | `vw_dash_competenza_attivita` | 90 | **90** |
+> | `vw_dash_backlog_documenti` | 102 | **102** |
+> | `vw_dash_aperto_documenti` | 156 | **156** ← era 0 prima di `-74` |
+> | `vw_dash_fatturazione_documenti` | 297 | **297** ← idem |
+>
+> 🔴 **«La vista è vuota in questa istanza» era falso**: quello zero era **P-2a
+> che funziona**, non assenza di dati.
+> ⚠️ **E il mio errore ha un dettaglio che vale scrivere**: la misura l'avevo
+> fatta con `system_process_context`, *credendo* di aver evitato la trappola di
+> [[feedback_rls_query_contesto_sistema]]. Non basta — il canale di sistema non
+> porta un'**identità operatore**, e queste viste risolvono lo scope da
+> `app.current_user_id`. Applicare il rimedio giusto al problema giusto e
+> ottenere lo stesso zero è il modo più insidioso di sbagliare: *sembra* una
+> verifica fatta.
+>
+> ⭐ **E i repository consegnano la colonna PIENA**, misurato negli stessi
+> contesto e dati: `lotti` **44/44**, `aperto` **156/156**, `backlog`
+> **102/102**, `gruppi` **20/20**, `commesse` **9/9** (`errori` ha zero righe
+> perché non ci sono errori vivi). **BE-4 e BE-5 erano già chiuse** — fatte in
+> parallelo alla stesura di §13-ter — e ora sono anche **collaudate sui dati**,
+> che è la verifica che il DB chiedeva.
+>
+> ✅ **Chiuso anche il residuo BE su `puo_scegliere`**, e la soluzione non era
+> una funzione DB nuova: era **la domanda giusta**. Non «quanti emittenti stai
+> guardando» — che cambia quando scegli, ed era il rimedio sbagliato che avevo
+> proposto e ritirato — ma «**chi sei**», cioè il bypass `SUPER_ADMIN`, già
+> disponibile: `puo_scegliere = nessun emittente proprio **E** super admin`.
+> L'operatore non configurato non vede più una combo con dentro zero opzioni.
+> Tre asserzioni nuove.
+
+> ### Cosa resta aperto — verificato sul codice il 2026-08-18, sera
+>
+> ✅ **Quattro voci su sei sono state chiuse il 2026-08-18 sera** (dal DB con
+> §13-ter, e dal BE con la correzione di `puo_scegliere`). **Restano due**, ed
+> è quello che manca all'intero cantiere.
+>
+> | | Cosa | Perimetro |
+> | --- | --- | --- |
+> | ~~⛔~~ | ~~Accendere `multi_emittente`~~ → ✅ **acceso su tutte e sei** le liste del perimetro (decisione di Tid, §13-ter.7). Registro **6 su 44**, vista di controllo a **zero**. E la riserva del DB — «su cinque il flag precede il `SELECT`» — è **già superata**: i repository consegnano la colonna piena (sopra) | — |
+> | 🔵 | `anagrafiche.fn_get_emittente_fiscale_id` **non delega** ancora a `script.fn_get_ba_emittente_sr_id` (verificato): la regola *«quale emittente fattura questo BA»* vive in **due** definizioni. Da chiudere col cantiere **numerazione** (§11.2) | DB |
+> | ~~🔵~~ | ~~La ricerca applica il perimetro solo a `CL`~~ → ⛔ **non è un residuo: è il modello.** Un fornitore non ha billing account, quindi non ha emittente (§11.9). Chiuso dal DB | — |
+> | ~~🕳️~~ | ~~I due buchi di test dichiarati~~ → ✅ **chiusi entrambi** dal DB, e il movimento 4 **non richiedeva** un test non transazionale (12/12 e 15/15 verdi) | — |
+> | ~~🔵~~ | ~~`puo_scegliere` sull'assenza dell'emittente proprio~~ → ✅ **chiuso il 2026-08-18**: `nessun emittente proprio` **E** `SUPER_ADMIN`. Non serviva lo scope non intersecato: serviva smettere di chiedere «cosa stai guardando» e chiedere «chi sei» | — |
+> | 🕳️ | Manca il presidio che leghi la riga di **catalogo** al **mapping** del repository. Tentato due volte e **tolto**, con la ragione scritta nel file di test: serve una mappa lista → repository che non esiste | BE (test) |
+>
+> ℹ️ **Non è di questo cantiere, ma si vede nella stessa suite**: 2 test rossi
+> per codici errore `E_ACCREDITO_*` del cantiere **note di credito resi** —
+> policy da rigenerare e messaggi di ripiego da scrivere da chi conosce quel
+> dominio.
+>
+> **Cosa resta, e di chi è (com'era il 2026-08-18 mattina):**
+>
+> | Cosa | Perimetro |
+> | --- | --- |
+> | **Passo 5** — etichette su contatori e ricerche (P-2c) | FE/BE, indipendente |
+> | **Passo 8** — le altre cinque liste, una alla volta | DB + BE |
+> | **BE-1** igiene · ~~**BE-2** ⛔~~ *(fatta)* · **BE-3** · **BE-4** | backend (§13) |
+>
+> ⭐ **§13-ter — risposta al backend del 2026-08-18.** Il BE ha riferito che
+> *«l'unico lavoro vero è accendere `multi_emittente`»* e che sulla pilota la
+> vista è vuota. **La misura dice il contrario**, e nel giro sono uscite due
+> cose che nessuno dei due vedeva:
+>
+> | | Cosa | Misura |
+> | --- | --- | --- |
+> | 🔴 | La pilota **non era vuota**: lo era la sessione. Senza `app.current_user_id` P-2a risponde `'{}'` e la vista filtra tutto | **74 righe, 74/74** con l'emittente, con un operatore vero — e **90** attività dietro |
+> | 🔴 | `20260818-61` consegnava la colonna **vuota**: risolveva il nome da una colonna che **cinque resolver su sei** scrivono `NULL::bigint` | 274 righe su 274 mute; su «Situazione aperta» il vuoto era **strutturale**. Corretto da `20260818-74` |
+> | ✅ | I **due buchi di test** dichiarati sono chiusi, e il movimento 4 **non richiedeva** un test non transazionale | +2 asserzioni su P-1 (12/12), +3 sul passo 1 (15/15) |
+>
+> ⭐ **Il piano BE/FE è in §13-bis** (scritto il 2026-08-18, misurato sul
+> codice). Ne escono **tre cose che il §13 non prevedeva**, e la prima è un
+> cancello rosso:
+>
+> | | Cosa | Misura |
+> | --- | --- | --- |
+> | 🔴 | **BE-0** — i quattro codici errore nuovi non hanno la loro `classe` nel backend | **0 su 4** in `error_policies_generated.py`, 4 su 4 a catalogo. `test_error_codes_db_policy_guardrail` è rosso, e `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` esce **400** invece di 403 |
+> | 🟠 | **DB-1** — il canale `COLUMN` non parte: i guard nuovi scrivono `'column'`, la funzione legge `'campo'` | il `note` a catalogo promette *«Campo da dichiarare al client: parent_account_id»*, e quel campo non arriva mai al form |
+> | 🔵 | **BE-5** — `puo_scegliere` è scritto sull'assenza dell'emittente proprio, non sulla cardinalità dello scope | dopo P-2a quel ramo descrive anche l'operatore non configurato: nessun dato, e la combo di scelta accesa |
+>
+> ~~⛔ **BE-2 è l'unico bloccante rimasto, e blocca una cosa precisa: accendere
+> il flag sulla pilota.** … Mettere `multi_emittente = true` prima di allora
+> aprirebbe esattamente la finestra che la decisione 3 vietava.~~
+>
+> ✅ **BE-2 è stata fatta** (`vendite_repository.py:1293`), il collaudo è
+> passato e **il flag sulla pilota è acceso dal 2026-08-18** (§13-ter.5).
+> ⚠️ Sulle altre cinque il flag è stato acceso lo stesso giorno **senza** il
+> giro completo, per decisione di Tid: §13-ter.7 dice perché regge e cosa
+> resta scoperto.
+>
+> ~~Il flag resta quindi a `false` su tutte e 44. **Ed è lo stato giusto**: è un
+> registro di debito che deve calare, e oggi non è ancora calato di uno.~~
+>
+> ⭐ **Dal 2026-08-18 è 6 su 44**: la pilota per collaudo, le altre cinque per
+> decisione di Tid (§13-ter.7). ~~⚠️ Su quelle cinque il flag è **in carico**,
+> non **collaudato**: manca BE-5.~~ — **superato**: BE-4 e BE-5 erano già
+> chiuse mentre §13-ter veniva scritto, e sono state collaudate sui dati (le
+> sei colonne piene, misura in testata) e **a video** il 2026-08-18 (§15.2).
+>
+> ~~**Stato al 2026-08-17: nulla eseguito.** Nessun changeSet, nessuna
+> migrazione, nessun seed; il prossimo passo è il DL-A, che è una misura.~~ —
+> superato dall'esecuzione del 2026-08-18. Resta vero il resto: diagnosi
+> verificata contro il codice, **undici decisioni prese** (sei di forma in §7,
+> cinque di attuazione in Q1–Q5), piano eseguibile in **§12**.
 >
 > 🔬 **Revisione critica del 2026-08-17 (§11).** Tutte le sei decisioni reggono e
 > non ne cambia nessuna. Cambiano invece **quattro cose di attuazione**, e una è
@@ -1293,6 +1458,183 @@ Ma la misura dice anche dove sta il lavoro vero, e **non è il CSV**:
   emittente in `ui.lista_colonna` è una query di due join, e non ha bisogno di
   sapere niente delle viste.
 
+### 11.9 ⭐ Il soggetto NON ha un emittente — verificato il 2026-08-18
+
+Rilievo di Tid, nato leggendo il brief della Fase E. È il presupposto su cui
+poggia §3.5, e non era scritto da nessuna parte: era **implicito**. E ciò che è
+implicito viene letto al contrario — infatti la richiesta **R-5** del backend
+chiedeva *«l'emittente del soggetto»* come se fosse un suo attributo.
+
+**Verificato sul catalogo**: in tutta l'anagrafica l'emittente fiscale compare
+in **un solo posto**, `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`.
+Non esiste su `soggetti`, `soggetti_ruoli`, `clienti`, `billing_account` né
+`istanze_utilities`.
+
+| Entità | Legame con l'emittente |
+| --- | --- |
+| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, più il ripiego sul gestore globale (che è comunque uno) |
+| **soggetto** | ❌ **nessuno.** Il legame esiste solo *transitivamente*, attraverso i suoi billing account |
+
+⭐ **Questo cantiere aveva già fatto la cosa giusta**, e ora si sa perché: P-1
+presidia **l'albero di billing account**, non il soggetto — ed è esattamente la
+distinzione di §3.5 fra la regola vera e quella sbagliata che le assomiglia. Il
+**test 6** del pgTAP di P-1 asserisce che *due alberi separati dello stesso
+soggetto su emittenti diversi* **passano**. Il modello non era solo rispettato:
+era già a test.
+
+**Misurato**: su **7 soggetti cliente, 1** ha già billing account sotto più
+emittenti. Il 14% — non un caso di laboratorio, e la conferma che il modello
+funziona come deve.
+
+**Conseguenza per chi mostra il dato**: accanto a un soggetto l'emittente è una
+**relazione**, non un attributo. Se il soggetto ne tocca due i valori sono due,
+l'etichetta deve dirlo, e la riga **non** va duplicata per emittente —
+duplicarla cambierebbe il significato di un conteggio di soggetti.
+
+> Scritto come sezione canonica in
+> [soggetti-e-ruoli-anagrafici §5a-bis](/guide/soggetti-e-ruoli-anagrafici),
+> perché è lì che si va a leggere prima di disegnare una tabella o una vista.
+
+### 11.10 ✅ La legacy `fn_get_emittenti_scope` è stata dismessa — 2026-08-18 · *applicato*
+
+Segnalata come anomalia dopo P-2a, chiusa nello stesso giro della Fase E.
+
+**Cos'era.** Rispondeva a *«quali emittenti può vedere questo utente?»* leggendo
+`config.user_emittenti_fiscali`, e per un utente **senza righe** rispondeva
+`NULL` — che nella convenzione a tre stati significa **«tutti»**. Era il
+fail-open. P-2a ha ribaltato quel comportamento su tutta la famiglia guarded
+(`nessuna riga = '{}' = nessun accesso`), ma la legacy **non è stata toccata**,
+perché non la chiamava più nessuno.
+
+**Non era un difetto vivo: era un attrezzo carico**, che è peggio. Zero chiamanti
+verificati — zero funzioni DB, zero viste, zero policy RLS; nel backend solo due
+commenti storici, ricablati il 2026-06-02 (`4201c0f75`, chiusura di B5 in
+`analisi-attivazione-rls-db.md`, dove la dismissione era già indicata come
+possibile). Il rischio non era che qualcuno la chiamasse oggi: era che domani
+qualcuno cercasse *«gli emittenti di un utente»*, trovasse una funzione dal nome
+perfetto, e la usasse — riaprendo il buco in un punto **nuovo**, e in fail-open,
+cioè senza nessun sintomo.
+
+**Come si ritira una funzione senza perdere il presidio.** Le quattro asserzioni
+pgTAP che la esercitavano non sono state cancellate: due sono state **girate di
+segno** (`hasnt_function`: *«non esiste più»*), due spostate sull'**erede
+guarded** `fn_get_emittenti_scope_pk_ids`. Il conteggio dei plan non cambia, la
+copertura del comportamento resta, e chi la ricreasse troverebbe tre file rossi.
+Cancellarle avrebbe tolto il presidio insieme al difetto.
+
+Rimossi anche i due file di documentazione (`funzioni/` e `manual/`), le voci di
+indice e il rimando in `fn_check_user_emittente_scope`; corretta la tabella
+«Dipendenze DB» di `api_search_universale.md`, che la citava ancora.
+
+#### ⛔ E una lezione pagata sul campo: `onFail: MARK_RAN`
+
+> ✅ **Chiuso il 2026-08-18**: `-67` applicato, la funzione non c'è più, i tre
+> pgTAP che la presidiano sono verdi.
+
+Il primo changeSet del drop (`20260818-66`) aveva una preCondition
+`onFail: MARK_RAN` con uno sqlCheck *«la funzione esiste»*, pensata per renderlo
+ripetibile. **MARK_RAN significa «non eseguire, ma segna come eseguito».**
+
+Lo sqlCheck non ha trovato quel che cercava, Liquibase ha registrato l'id in
+`DATABASECHANGELOG`, e la funzione è rimasta viva sotto un changeSet che giurava
+di averla tolta. Con `runOnChange: false` non ci sarebbe più tornato: correggere
+il file non serve a niente, l'id è già registrato. Si è corretto in avanti con
+`20260818-67`, senza preCondition.
+
+> ⭐ **Le due cose da portarsi dietro.**
+> 1. `DROP ... IF EXISTS` è **già** idempotente: una preCondition che ne
+>    verifica l'esistenza non aggiunge sicurezza, aggiunge un modo di fallire in
+>    silenzio.
+> 2. Lo hanno scoperto **i test**, non la migrazione — che era verde. Tre pgTAP
+>    asserivano che la funzione non ci fosse più. Senza quelle asserzioni
+>    sarebbe rimasta vera sulla carta per sempre.
+
+### 11.11 🟠 Restano TRE copie della regola «l'emittente di un BA» — ne sono state unite due
+
+§11.2 aveva già fotografato la duplicazione. La Fase E ne ha chiusa una parte, e
+vale la pena scrivere quale, perché il residuo è reale.
+
+| Funzione | Cosa restituisce | Stato |
+| --- | --- | --- |
+| `script.fn_get_ba_emittente_sr_id` | il **soggetto-ruolo** dell'emittente | ⭐ **nuova, 2026-08-18** — è ora *la* definizione |
+| `script.fn_check_ba_visible_for_emittenti` | booleano «è fra i miei?» | ✅ **delega** alla prima (`20260818-59`) |
+| `anagrafiche.fn_get_emittente_fiscale_id` | la **PK** dell'emittente fiscale | 🟠 **terza copia, ancora indipendente** |
+
+La terza è usata da `fn_build_fattura_key`, cioè dalla **numerazione delle
+fatture**. Non è stata toccata di proposito: è un percorso caldo e critico, ed
+entrarci dentro non era quello che chiedeva la Fase E. Ma la duplicazione è
+esattamente quella che §11.2 segnalava, e se un giorno la regola cambia
+(l'esempio concreto: *«l'albero eredita l'emittente del padre?»*) bisogna
+ricordarsi che i posti da toccare sono **due**, non uno.
+
+> 🔵 **Da fare, quando si aprirà il cantiere numerazione**: far delegare anche
+> `anagrafiche.fn_get_emittente_fiscale_id`. È l'ultimo passo per avere una
+> definizione sola.
+
+#### 🔴 Aggiornamento 2026-08-18 — non è più «quando si aprirà». Il cantiere è aperto ORA
+
+Il brief [brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md),
+richiesta **P-6**, chiede di intestare i registri di numerazione agli emittenti:
+oggi tutti e tre hanno `emittente_soggetto_ruolo_id = NULL` e **due aziende
+numerano sulla stessa serie** — dal gennaio 2026, sulle fatture.
+
+La catena che decide su quale registro numera una fattura passa **esattamente**
+per la terza copia:
+
+```text
+fn_build_fattura_key
+  └─ anagrafiche.fn_get_emittente_fiscale_id(billing_account_id)   ← la copia non unificata
+       └─ vendite.fn_get_registro_id(tipo_doc, natura, utility, EMITTENTE)
+```
+
+⚠️ **Finché i registri hanno l'emittente a `NULL`, quel parametro non sceglie
+niente**: vince sempre il livello 4 del fallback. È un ramo che esiste e non
+viene mai percorso — il motivo per cui la duplicazione non si era mai vista
+mordere.
+
+🔴 **P-6 lo rende portante per la prima volta.** Da lì in avanti *«su quale
+registro numera questa fattura»* dipende da una funzione che risponde alla stessa
+domanda di `script.fn_get_ba_emittente_sr_id` senza esserne la stessa.
+
+⭐ **Quindi l'unificazione smette di essere igiene e diventa un prerequisito di
+P-6** — passo 5b del piano in §8 di quel brief. E con essa va decisa una cosa
+che finora era innocua e da lì in poi non lo è: la funzione **non filtra su
+`attivo`** (lo dice il suo stesso commento), quindi un emittente disattivato può
+essere scelto come intestatario del registro su cui si numera.
+
+🟢 Una verifica che toglie un sospetto: malgrado il nome, quella funzione
+restituisce già un `soggetto_ruolo_id` e **non** la PK di `emittenti_fiscali` —
+nessun disallineamento di tipo con `fn_get_registro_id`.
+
+#### ⚠️ E la delega **non è una riga**: le due funzioni divergono sul `NULL` — misurato il 2026-08-18
+
+Il backend l'ha segnalata il 2026-08-18 come residuo *«fn_get_emittente_fiscale_id
+non delega ancora»*. È vero, ed è **giustamente parcheggiata**; ma chi la farà
+deve sapere che non è un rinvio di chiamata. Le due funzioni **non rispondono la
+stessa cosa** agli estremi:
+
+| | `anagrafiche.fn_get_emittente_fiscale_id` | `script.fn_get_ba_emittente_sr_id` |
+| --- | --- | --- |
+| BA `NULL` in ingresso | **restituisce il gestore globale**, in silenzio (misurato: `72`) | `NULL` — c'è un `CASE` esterno scritto apposta |
+| non risolvibile | **solleva** `E_EMITTENTE_DEFAULT_MISSING` e logga | restituisce `NULL` |
+| volatilità | `plpgsql`, scrive un log ⇒ **non può diventare `STABLE`** | `sql STABLE PARALLEL SAFE` |
+
+⚠️ **Quel «restituisce il gestore globale su input nullo» è la trappola.** È
+proprio il caso che il `CASE` della funzione nuova esiste per impedire — *«nessun
+billing account»* letto come *«billing account non ancora mappato»*, che apre
+invece di chiudere. Delegare senza guard **sposterebbe** il comportamento: da
+«ti do il default» a «ti sollevo un errore che parla di un default mancante»,
+che è meglio ma è un **cambio**, e va fatto con la validazione esplicita che le
+linee guida chiedono sugli ID (errore se `NULL` o `<= 0`), non per effetto
+collaterale.
+
+**Il perimetro del cambio, misurato**: 15 oggetti la citano nella doc auto-gen
+(fra cui `fn_build_fattura_key`, `fn_create_fatturazione_lotto` e i cinque
+`fn_list_*_da_pushare`), e il suo stesso `COMMENT` dichiara *«usata da ~33
+funzioni del dominio vendite»*. Prima riga del lavoro: **contare quanti
+chiamanti possono passare un BA nullo**. È il tipo di misura che decide se
+l'unificazione è una riga o una giornata.
+
 ### 11.4-bis ⚠️ Due cose che si chiamano quasi uguale — e non sono la stessa
 
 Il cantiere ne maneggia **due**, legate da una regola ma diverse per tabella, per
@@ -1559,7 +1901,7 @@ Non è una formalità: sono i punti su cui **non serve tornare**.
 uniche due** funzioni di scope che si fidano di un array calcolato dal chiamante
 invece di risolverlo. Passano a risolverlo da sé.
 
-✅ **SCRITTO il 2026-08-18 — non applicato.** Tre changeSet + un pgTAP, su
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.** Tre changeSet + un pgTAP, su
 `dev/db-tid`. Nessuna migrazione eseguita, nessun commit.
 
 | File | Cartella | Cosa |
@@ -1630,24 +1972,54 @@ esiste** (`MAX(id) + 1000000`). Scegliere un secondo emittente reale renderebbe
 il test dipendente dalla popolazione — l'istanza potrebbe averne uno solo — e
 passerebbe a giorni alterni.
 
-🕳️ **Buco dichiarato, non coperto per sbaglio**: i test 8–11 verificano
+~~🕳️ **Buco dichiarato, non coperto per sbaglio**: i test 8–11 verificano
 l'*invariante* «il parametro non decide più», confrontando due chiamate. **Non**
 dimostrano che un cliente di un altro emittente sparisce: per quello servirebbe
 una fixture a **due** emittenti con un cliente ciascuno, che questo file non
-costruisce. È scritto nell'intestazione del test, non solo qui.
+costruisce.~~
+
+✅ **CHIUSO il 2026-08-18 — test 12-14, il file è a 15 asserzioni.** La fixture a
+due emittenti non si «pesca» dai dati: si **costruisce**, spostando davvero il
+billing account di un cliente sotto il secondo emittente attivo e guardando se
+la ricerca lo mostra ancora.
+
+| # | Cosa | Esito |
+| --- | --- | --- |
+| 12 | precondizione: c'è un secondo emittente **e** il cliente di prova oggi si vede | senza, i due sotto sarebbero verdi partendo da zero |
+| 13 ⭐ | spostato il BA sull'altro emittente, **il cliente sparisce** | è la cosa che 8–11 non dimostravano |
+| 14 | per lo **scope-universo** il soggetto c'è ancora | sparito dal *perimetro*, non dai *dati* |
+
+⭐ **Il 14 è la metà che si dimentica.** Senza, un errore di fixture — soggetto
+cancellato, termine sbagliato — darebbe lo **stesso zero** del 13 e verrebbe
+letto come una prova. Il cliente scelto ha tre condizioni dichiarate (mappato
+davvero, oggi dentro il mio scope, fuori da qualunque albero): la prima perché
+altrimenti l'`UPDATE` toccherebbe zero righe in silenzio, la terza per non
+chiamare in causa il guard di P-1, che con questo test non c'entra.
 
 **Fatto quando**: le 12 asserzioni sono verdi e nessun valore passato dal
 chiamante può più **allargare** ciò che la funzione mostra.
 
-⚠️ **Residuo, non chiuso qui**: il filtro emittente si applica **solo al tipo
-ruolo `CL`** — è l'unico che ha un billing account da cui derivare l'emittente. I
-rami `FO` ed `ELSE` non ne hanno mai avuto uno. Il passo 1 non lo amplia, e
-l'obiettivo dichiarato regge lo stesso: *nessun valore del chiamante può
-allargare*. Ma resta vero che una ricerca fornitori non conosce perimetro.
+~~⚠️ **Residuo, non chiuso qui**: il filtro emittente si applica **solo al tipo
+ruolo `CL`** … Ma resta vero che una ricerca fornitori non conosce perimetro.~~
+
+⛔ **Superato da §11.9 — e va letto, perché il backend l'ha ripescato come
+residuo aperto il 2026-08-18.** Non è un debito: **è il modello.** L'emittente
+fiscale compare in **un solo posto** di tutta l'anagrafica,
+`emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`, e un fornitore
+un billing account non ce l'ha. Non c'è niente su cui filtrare: la risposta
+`NULL` sui rami `FO` ed `ELSE` è **la risposta giusta**, non un buco — e dal
+2026-08-18 è scritta nel `COMMENT` della funzione (`20260818-60`), che è il
+posto dove la si va a cercare.
+
+> ⭐ **Il giorno in cui servisse davvero un perimetro sugli acquisti**, non
+> sarebbe questo il lavoro: bisognerebbe prima **inventare l'ancoraggio**
+> (quale relazione lega un fornitore a un emittente?), che è una decisione di
+> modello e un cantiere suo. Chiamarlo «residuo della ricerca» fa sembrare una
+> riga di SQL quello che è una domanda di dominio.
 
 #### Passo 2 · P-2a — fail-closed nella catena canonica · *prerequisito sciolto*
 
-✅ **SCRITTO il 2026-08-18 — non applicato.** Il prerequisito DL-A è stato
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.** Il prerequisito DL-A è stato
 sanato lo stesso giorno (sopra), quindi il passo non è più bloccato.
 
 | File | Cartella | Cosa |
@@ -1658,9 +2030,45 @@ sanato lo stesso giorno (sopra), quindi il passo non è più bloccato.
 | `20260818-14-create-vw-operatori-senza-emittente` | `20_code/dbops` | la diagnostica |
 | `db/pgtap/script/test-scope-emittenti-fail-closed-v1.sql` | — | 8 asserzioni |
 
-**Verifica a changeSet non applicati**: 4 asserzioni su 8 falliscono, e sono
-**esattamente** le quattro della correzione — con i vecchi valori (`NULL`,
-`true`). Il ramo super admin passa già, cioè non viene toccato.
+✅ **Dopo l'applicazione: 8 su 8 verdi.**
+
+### 🔴 I test ESISTENTI che P-2a rompe — la casella che mancava
+
+⚠️ **Questa lista non c'era, e si è visto.** Il 2026-08-18
+`test-rls-fatture-satelliti-functional` è arrivato rosso al collaudo, e la
+diagnosi iniziale è stata «regressione». Non lo era: il suo caso 1 asseriva
+*«whitelist vuota → visibili (accesso globale)»*, cioè **esattamente il
+fail-open che P-2a toglie**. Il test era vecchio, non il codice rotto.
+
+⭐ **Un cambio restrittivo va preceduto dal grep dei pgTAP che codificano il
+comportamento vecchio**, e l'elenco va scritto QUI prima di applicare — non
+ricostruito dopo, un rosso alla volta, sperando che l'ultimo sia l'ultimo.
+
+| File | Cosa asseriva | Stato |
+| --- | --- | --- |
+| `script/test-fn-scope-ef-whitelist.sql` | semantica della whitelist | ✅ aggiornato con P-2a |
+| `script/test-permessi-fn-check-emittente-scope.sql` | idem | ✅ aggiornato con P-2a |
+| `script/test-permessi-funzioni-risoluzione.sql` | idem | ✅ aggiornato con P-2a |
+| `rls/test-rls-fatture-satelliti-functional.sql` | caso 1: vuota → **visibili** | ✅ corretto il 2026-08-18 (era sfuggito) |
+| `rls/test-rls-fatture-ef-whitelist-functional.sql` | caso 1: vuota → **visibile** | ✅ corretto il 2026-08-18 (**non era ancora stato eseguito**) |
+
+🔴 **Il secondo non era ancora stato lanciato.** Aveva l'asserzione identica al
+primo (riga 222) più il commento di testata che dichiarava la vecchia
+semantica: sarebbe uscito rosso al primo giro, con la stessa diagnosi sbagliata.
+La differenza fra i tre `script/` aggiornati e i due `rls/` dimenticati è solo
+la cartella — il grep li avrebbe presi tutti e cinque.
+
+⚠️ **Cautela sul verde di questi due**: entrambi hanno un soft-skip
+(`(SELECT NOT prereq FROM _flags) OR …`). Con il `prereq` falso le asserzioni
+passano **banalmente**, quindi vanno guardate misurando, non solo contando gli
+ok — o si conferma la correzione per sottrazione.
+
+⭐ **La misura PRIMA di applicare, che è quella che vale** (tenuta qui perché è
+la prova che il test misurava il difetto e non se stesso): a changeSet non
+applicati **4 asserzioni su 8 fallivano, ed erano esattamente le quattro della
+correzione**, con i vecchi valori (`NULL`, `true`). Il ramo super admin passava
+già, cioè non veniva toccato. ⚠️ Un test scritto dopo la correzione e verde al
+primo colpo non dice niente: questo è stato visto rosso per la ragione giusta.
 
 ⚠️ **La fixture del test ha dovuto ricreare il difetto**: DL-A è ormai a zero,
 quindi un operatore senza riga **non esiste più** e va costruito togliendo lo
@@ -1749,7 +2157,7 @@ regressioni, e il `COMMENT` non dice più una cosa falsa.
 
 #### Passo 3 · P-3 — il fail-open del NULL nel guard CF
 
-✅ **SCRITTO il 2026-08-18 — non applicato.**
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.**
 
 | File | Cosa |
 | --- | --- |
@@ -1877,7 +2285,7 @@ diventa al primo migrate che ricarica `messaggi_errore.csv`.
 
 Il pezzo grosso. Si costruisce dal basso.
 
-✅ **SCRITTO il 2026-08-18 — non applicato.**
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.**
 
 | File | Cosa |
 | --- | --- |
@@ -1963,12 +2371,50 @@ l'avvertenza che §9 dà a chi scrive i test.
 | 6 | **due alberi separati** dello stesso soggetto su emittenti diversi → passa | §3.1, la regola sbagliata che assomiglia a quella giusta |
 | 7 | il check vede un BA **fuori perimetro** | §11.1: da `SECURITY INVOKER` questo passerebbe |
 
-🕳️ **Non coperto, e dichiarato: il movimento 4** (spostamento del gestore
+~~🕳️ **Non coperto, e dichiarato: il movimento 4** (spostamento del gestore
 globale). Spostarlo richiede `DELETE`+`INSERT` della riga default nella stessa
 transazione, perché il constraint differito `trgfn_emittenti_fiscali_default_guard`
-pretende esattamente un default **al COMMIT** — e un file pgTAP chiude in
-`ROLLBACK`, quindi quel COMMIT non arriva mai. Il ramo passa dalla **stessa**
-funzione del test 5, ma verificarlo davvero richiede un test non transazionale.
+pretende esattamente un default **al COMMIT** … verificarlo davvero richiede un
+test non transazionale.~~
+
+✅ **CHIUSO il 2026-08-18 — test 10 e 11, il file è a 12 asserzioni. E la
+premessa era sbagliata: il test non transazionale non serviva.** Due ragioni,
+misurate:
+
+1. ⭐ **«spostare il gestore globale» non obbliga a cambiare *quale* riga è
+   default.** Basta cambiare l'**emittente** della riga default: un solo
+   `UPDATE`, il default resta esattamente uno, il constraint differito non ha
+   mai niente da ridire. È anche il modo naturale di dirlo — *«da oggi il
+   gestore globale è l'altro»*;
+2. e anche volendo la coppia `DELETE`+`INSERT`, il COMMIT **non servirebbe**:
+   `trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt` è un **constraint
+   trigger** `DEFERRABLE INITIALLY DEFERRED` (verificato su `pg_trigger`), quindi
+   si differisce per la coppia e si forza con `SET CONSTRAINTS … IMMEDIATE`
+   **dentro** la transazione.
+
+| # | Caso | Atteso |
+| --- | --- | --- |
+| 10 ⭐ | coppia **MISTA** (figlio non mappato, padre mappato): si sposta il gestore globale | ❌ `E_ALBERO_EMITTENTE_MISTO` |
+| 11 | coppia **OMOGENEA** (entrambi non mappati): si spostano insieme | ✅ passa |
+
+⭐ **Servono tutte e due, e l'11 è quella che si dimentica**: con la sola 10 il
+guard potrebbe essere scritto su *«esiste un albero non mappato»* e restare
+verde bloccando anche ciò che è lecito — cioè contraddicendo la decisione Q3,
+che dice che la condizione è la **coppia mista**. Le due asserzioni sono lo
+stesso statement in due configurazioni: è la controprova, non un'aggiunta.
+
+> ⚠️ **Il prezzo evitato non era teorico.** In tutta la suite **non esiste un
+> solo file non transazionale** (verificato: tutti aprono con `BEGIN;`), e la
+> ragione è in memoria — un test che non chiude in `ROLLBACK` contamina le
+> corse successive. Si stava per pagare quel prezzo per una premessa che non
+> reggeva.
+>
+> 🟢 **Una misura che spiega perché nessuno se n'era accorto**: oggi in
+> sviluppo i billing account sono **42, tutti mappati, e nessuno ha un padre**.
+> Zero alberi. Il guard di P-1 non ha ancora mai avuto un albero vero da
+> difendere: quelli che difende li costruisce il pgTAP. È anche il motivo per
+> cui lo spostamento del gestore globale oggi non toccherebbe niente — il ciclo
+> a raggio N gira a vuoto.
 
 ---
 
@@ -2061,7 +2507,42 @@ subito, è quella.
    colonna si spunta e **resta vuota**: cioè la garanzia che il flag pretende,
    non mantenuta.
 
-**Fatto quando**: la colonna si spunta e **mostra un nome**.
+✅ **APPLICATO il 2026-08-18 — nessuna regressione sui test.**
+
+| File | Cosa |
+| --- | --- |
+| `20260818-15-update-vw-dash-competenza-gruppi-emittente-ragione-sociale` | `20_code/vendite` — la vista espone la ragione sociale |
+| `lista_colonna.csv` | **append** di una riga (id 478, lista 42, `ordine_default` 100) |
+| `db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql` | 5 asserzioni |
+
+**Applicato e collaudato**: i 5 test del file nuovo sono verdi, baseline senza
+regressioni. ⚠️ **I dati restano non verificati**, ed è una lacuna della misura
+e non del passo:
+`vw_dash_competenza_gruppi` in questa istanza è **vuota** (nessuna attività
+fatturabile aperta), quindi un `count(emittente_ragione_sociale)` sarebbe
+`0 = 0` — verde per sottrazione. Il test asserisce la **struttura**, che è ciò
+che il passo introduce.
+
+⚠️ **Due vincoli di `CREATE OR REPLACE VIEW` rispettati, entrambi silenziosi se
+sbagliati:** `security_invoker=on` va **ri-specificata** o PostgreSQL la azzera
+(e questa vista ci appoggia lo scope emittente), e si possono solo **appendere**
+colonne in coda — la nuova è per forza ultima.
+
+⭐ **Il test che conta è il 4: coerenza catalogo → vista.** Il «prezzo del
+biglietto» di P-2b dice che una lista può dichiararsi multi-emittente solo se
+espone l'emittente nella riga. Una riga di catalogo che punta a un campo
+**inesistente** è una colonna che si spunta e resta vuota: *sembra* la garanzia,
+e non lo è. Il test verifica che il `campo_sorgente` dichiarato esista davvero
+nella vista. Sta in coppia col test 3 (esistenza): da solo sarebbe verde anche
+senza la riga.
+
+⚠️ **Il test 5 è il registro di debito**: asserisce che **una sola** delle sei
+liste del perimetro ha la colonna. Se quel numero sale senza che nessuno abbia
+fatto il lavoro, qualcuno ha attaccato l'adesivo «collaudato» senza collaudare.
+
+**Fatto quando**: la colonna si spunta e **mostra un nome** — e la seconda metà
+è **BE-2**, non il database. Il DB garantisce che il campo esista; che il
+repository lo selezioni no.
 
 ##### L'ordine delle altre cinque · *deciso con Q4*
 
@@ -2098,9 +2579,94 @@ whitelist** — è l'unica eccezione a una convenzione dichiarata sulla riga 192
 un'eccezione senza motivo scritto viene tolta dal primo che passa convinto di
 star sistemando una svista. Strato 2: test in CI su quelle due `frozenset`.
 
-**Fatto quando**: il flag esiste, è `false` su 43 liste su 44, l'unica a `true`
-mostra l'emittente, il trigger rifiuta la scrittura dal ruolo applicativo, il
-test CI è verde e la vista di controllo restituisce **zero righe**.
+✅ **SCRITTO il 2026-08-18.** Presidio (`-16`/`-17`/`-18`) **applicato e verde**;
+la lettura (`-19`) scritta e non ancora applicata.
+
+| File | Cosa |
+| --- | --- |
+| `20260818-16-alter-ui-lista-definizione-add-multi-emittente` | `00_schema/ui` — la colonna, `NOT NULL DEFAULT false` |
+| `20260818-17-create-trgfn-lista-definizione-guard-multi-emittente` | `20_code/ui` — **lo strato 1, nella forma nuova** |
+| `20260818-18-create-vw-liste-multi-emittente-non-certificate` | `20_code/dbops` — il controllo automatico |
+| `lista_definizione.csv` · loader `20260507-06` · `gen_seed_lista.py` | seed: colonna su tutte e 44 le righe (a `f`), `columns:` del loader, `CAMPI_DEF` |
+| `codici_errore.csv` · `messaggi_errore.csv` | `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE`, classe `NON_PERMESSO` |
+| `db/pgtap/ui/test-lista-definizione-multi-emittente-v1.sql` | 6 asserzioni |
+
+⭐ **Il trigger non nomina il ruolo: legge il proprietario della tabella** da
+`pg_class` e usa `pg_has_role(current_user, owner, 'USAGE')`. Un nome di ruolo
+scritto a mano sarebbe giusto su questa istanza e falso sulla prossima. Il
+migrate passa perché *è* il proprietario — non perché qualcuno accende un
+interruttore, e infatti non c'è nessun interruttore da accendere.
+
+⚠️ **L'ordine Liquibase è rispettato e verificato**: `ALTER` a **-16**, i due
+lettori a **-17** e **-18**. `changelog-autogen.yaml` mescola `00_schema` e
+`20_code` ordinando per numero: al contrario, l'apply su un database ricostruito
+da zero fallirebbe e su dev no.
+
+⚠️ **Il `CAMPI_DEF` del generatore è stato esteso**, con il perché sulla riga
+sopra: senza, `gen_seed_lista.py` riscriverebbe il CSV **senza** la colonna,
+spegnendo il flag su tutte le liste in silenzio.
+
+**Il test** — 6 asserzioni, di cui la **0 è la più importante del file**:
+dichiara che il test gira **come applicazione**, non come proprietario. Girando
+come owner le asserzioni 3 e 4 lascerebbero passare la scrittura e il file
+sarebbe verde **verificando il contrario di quel che dice**. Nel dry-run la 0
+passa già; le altre attendono l'apply.
+
+| # | Cosa |
+| --- | --- |
+| 0 | precondizione: si gira come applicazione |
+| 1–2 | la colonna esiste, il default è `false` |
+| 3 ⭐ | l'applicazione **non** può accendere il flag |
+| 4 ⭐ | né crearne una già accesa |
+| 5 | il registro di debito parte pieno: **zero** liste certificate |
+| 6 | la vista di controllo è a zero righe |
+
+#### ✅ La lettura — `20260818-19`, scritta il 2026-08-18
+
+`ui.fn_resolve_lista_config` porta ora `multi_emittente` nell'envelope. Chiave
+**additiva**: i consumatori che non la leggono non si accorgono di niente.
+
+⭐ **Come è stato prodotto il corpo, ed è la parte che conta.** La funzione supera
+le **400 righe** ed era stata modificata poche ore prima da un altro lavoro
+(`20260818-04`). Ricopiarla a mano è il modo in cui si regredisce in silenzio il
+lavoro di qualcun altro — il progetto ha già pagato per quello. Il corpo è stato
+quindi **derivato dalla definizione viva** applicando **tre sostituzioni
+testuali mirate**, e il risultato **diffato contro l'originale**: l'unica
+differenza sono le righe volute. Nessuna trascrizione manuale.
+
+1. `DECLARE` → la variabile;
+2. la `SELECT` **che c'era già** legge anche la colonna — nessun round-trip in
+   più su una funzione che gira a ogni apertura di lista;
+3. l'envelope guadagna la chiave, in coda.
+
+**Verificato in transazione con `ROLLBACK`**: la funzione compila e l'envelope
+passa da 6 a **7 chiavi**, con `multi_emittente` fra loro.
+
+Il test è salito a **9 asserzioni** (le due nuove sulla lettura).
+
+⚠️ **Una trappola pagata scrivendole**: `??` **non** è l'escape dell'operatore
+JSONB `?` in un file pgTAP. Quell'escape serve a **Liquibase**, che legge il `?`
+come segnaposto; in un file letto da `psql` è un errore di sintassi. Riscritto
+come `jsonb_exists(…)`, che toglie la domanda in entrambi i contesti.
+
+#### ~~Quello che manca al passo 7: la lettura~~ → fatto, vedi sopra
+
+`ui.fn_resolve_lista_config` deve restituire il flag nell'envelope (chiave
+additiva, non rompe i consumatori). **Non è stato fatto in questo giro**, e la
+ragione è concreta: è una funzione di **oltre 400 righe** che un altro lavoro ha
+appena modificato (`20260818-04`, il contatore delle colonne nuove). Ricopiarla
+in coda a un giro lungo è il modo in cui si regredisce il lavoro di qualcun
+altro senza accorgersene — e il progetto ha già pagato per quello.
+
+Va fatta come pezzo a sé, con la verifica che ha funzionato al passo 1: **corpo
+dalla doc auto-generata, poi diff del risultato contro la definizione viva** per
+provare che l'unica differenza è la chiave nuova.
+
+**Fatto quando**: il flag esiste, è `false` su tutte e 44 le liste, il trigger
+rifiuta la scrittura dal ruolo applicativo, la vista di controllo restituisce
+**zero righe** e `fn_resolve_lista_config` lo espone. ✅ **Tutti e cinque
+scritti.** Resta la richiesta **BE-3** (whitelist, test in CI, motivo accanto),
+che è backend.
 
 #### Passo 8 · Le liste restanti — una alla volta, e non tutte
 
@@ -2179,11 +2745,22 @@ risultati**, non «nessun errore».
 **non si legge mai con un test di verità.** `if ids:` e `ids or []` collassano i
 due estremi opposti sullo stesso valore, e lo fanno dalla parte che apre.
 
-### BE-2 🟢 Competenza — gruppi fatturabili: la ragione sociale dell'emittente nella riga
+### BE-2 ✅ Competenza — gruppi fatturabili: la ragione sociale dell'emittente nella riga · *FATTA*
 
-Dipende dal passo 6 (pilota, decisione Q4). Quando
-`vendite.vw_dash_competenza_gruppi` esporrà `emittente_ragione_sociale`, il
-repository deve **portarla nella riga** con quella chiave. Non è automatico:
+> ✅ **Verificata sul codice il 2026-08-18**: `vendite_repository.py` seleziona
+> `g.emittente_ragione_sociale` (riga **1293**) e la mappa nella
+> `DashCompetenzaGruppoRow` (riga **1342**, con il commento che vieta di
+> rinominare la chiave). La pilota è l'**unica** delle sei ad avere il giro
+> completo. Il testo sotto resta come cronaca di cosa serviva.
+
+
+> ⚠️ **Non è più «quando»: è adesso.** Il passo 6 è applicato dal 2026-08-18 —
+> `vendite.vw_dash_competenza_gruppi` **espone** `emittente_ragione_sociale` e la
+> riga di catalogo esiste (`lista_colonna` id 478). Da qui in poi la colonna è
+> spuntabile e **esce vuota** finché il backend non la seleziona: il DB ha fatto
+> la sua metà, e la metà che resta è l'unica visibile all'operatore.
+
+Il repository deve **portarla nella riga** con quella chiave. Non è automatico:
 `vendite_repository` elenca le colonne **esplicitamente** (`SELECT g.gruppo_key,
 g.tipo_gruppo, …`), quindi una colonna nuova nella vista **non arriva a video da
 sola** — e la lista ha `vista_sql = NULL`, quindi il catalogo non può pescarla.
@@ -2192,13 +2769,68 @@ Serve: una riga nel `SELECT`, una nel mapping della `DashCompetenzaGruppoRow`.
 Senza, la colonna a catalogo si spunta e resta vuota — che è peggio di non
 averla, perché *sembra* la garanzia che il flag pretende.
 
-### BE-4 🔵 Lotti di fatturazione: l'emittente nella riga · *ultima del giro P-4*
+### BE-4 🔴 Lotti di fatturazione: l'emittente nella riga · *era 🔵, ora urgente*
+
+> ⚠️ **Alzata a 🔴 il 2026-08-18.** Non è cambiata la difficoltà, è cambiato il
+> contesto: il commit di Fase E (`714efd6e7`) ha messo **attiva** la riga di
+> catalogo (`lista_colonna` id 483). Finché era assente, la colonna non si
+> poteva spuntare; ora si può, ed **esce vuota**.
+> 🔴 E questa lista sta peggio delle altre: non ha una vista-sorgente, quindi il
+> campo `emittente_ragione_sociale` **non esiste da nessuna parte nel DB** per
+> lei — è l'unica esclusa dalla mappa di coerenza del pgTAP
+> `ui/test-lista-competenza-gruppi-colonna-emittente-v1`, con il motivo scritto.
+
 
 Fuori dal perimetro DB **per intero**: `vendite_repository.list_lotti` costruisce
 la lista con SQL diretto su `vendite.fatturazione_lotti`, senza passare da
 nessuna vista. Il dato c'è già sulla tabella (`emittente_soggetto_ruolo_id`,
 `NOT NULL`): serve la JOIN a `soggetti_ruoli`/`soggetti`, la colonna e il
 mapping. È il motivo per cui questa schermata è **l'ultima** del giro (Q4).
+
+### BE-5 🔴 Le altre quattro liste del perimetro: colonna a catalogo, campo non selezionato · *aperta il 2026-08-18*
+
+> **Da dove esce.** Il pgTAP `ui/test-lista-competenza-gruppi-colonna-emittente-v1`
+> asseriva «una sola delle sei liste ha la colonna» come registro di debito, e
+> avvertiva: *se il numero sale senza il lavoro dietro, qualcuno ha attaccato
+> l'adesivo senza collaudare*. Il 2026-08-18 il numero è salito a **sei** col
+> commit di Fase E. Andando a vedere: **cinque adesivi su sei**.
+
+Le righe di catalogo sono attive su tutte e sei, ma il repository di dominio
+seleziona `emittente_ragione_sociale` **solo per la pilota**. Le liste che
+mostrano oggi una colonna spuntabile e vuota:
+
+| Lista | Sorgente | Il campo c'è alla sorgente? | Cosa serve |
+| --- | --- | --- | --- |
+| `vendite.dash_aperto_documenti` | `vw_dash_aperto_documenti` | ⚠️ **c'era ma era VUOTO** fino a `20260818-74` (§13-ter.2) | riga nel `SELECT` + mapping |
+| `vendite.dash_backlog_documenti` | `vw_dash_backlog_documenti` | ✅ sì | riga nel `SELECT` + mapping |
+| `vendite.dash_competenza_errori` | `vw_dash_competenza_errori` | ✅ sì | riga nel `SELECT` + mapping |
+| `vendite.dash_competenza_commesse` | `vw_dash_competenza_attivita` | ✅ sì | ⚠️ **non solo il `SELECT`** |
+| `vendite.lotti` | `vendite.fatturazione_lotti` (nessuna vista) | ⛔ **no** | vedi BE-4 |
+
+⚠️ **`dash_competenza_commesse` non è come le altre tre.** Il repository
+(`vendite_repository.list_dash_competenza_commesse`) **aggrega**:
+`GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display`. Aggiungere
+l'emittente al solo `SELECT` non compila: va aggiunto anche al `GROUP BY`.
+È lecito — una commessa ha un solo emittente
+(`vendite.commesse.emittente_soggetto_ruolo_id`), quindi il raggruppamento non
+si spacca — ma è una decisione da prendere con gli occhi aperti, non una riga
+copiata dalle altre tre.
+
+⭐ **Per le prime tre il DB ha già fatto tutto**: la vista espone il campo, ed è
+verificato a ogni corsa dal test 4 del pgTAP citato sopra. Manca solo la riga
+nel `SELECT` e nel mapping della riga tipizzata.
+
+> 🔴 **Correzione del 2026-08-18 — «espone il campo» non voleva dire «lo
+> valorizza».** Su `vw_dash_aperto_documenti` la colonna c'era e usciva `NULL`
+> su **156 righe su 156**, per costruzione e per sempre (§13-ter.2). Il test 4
+> era verde perché chiede *«il campo esiste?»*. Ora c'è anche il **test 6**, che
+> chiede *«quante righe lo portano?»* — ed è quello che l'ha trovato. Corretto
+> da `20260818-74`; le altre due (`backlog`, `errori`) erano a posto.
+
+⚠️ **Il flag è stato acceso su tutte e sei il 2026-08-18** (§13-ter.7), quindi
+questa richiesta NON è più protetta dal cancello: la colonna è spuntabile e a
+video esce **vuota** finché il `SELECT` non arriva. Il registro è **6 su 44**, e
+cinque di quei sei sono in carico a voi.
 
 ### BE-3 🔵 `multi_emittente`: cancello e non raccomandazione
 
@@ -2215,6 +2847,1462 @@ Dipende dal passo 7. Tre cose, in ordine di forza:
 
 Il rifiuto lato DB (§11.5) diventerà un errore con **codice registrato**, da
 mappare in `error_policies.py` come tutti gli altri.
+
+---
+
+## 13-bis. Piano di sviluppo BE/FE
+
+> **Cos'è.** La metà applicativa di questo cantiere: cosa scrivere in
+> `backend/` e in `frontend/` ora che il perimetro DB è chiuso e **pushato**.
+> Non riapre nessuna decisione di §7: le esegue.
+>
+> **Metodo.** Ogni affermazione qui sotto è stata **misurata sul codice**
+> il 2026-08-18, non dedotta dal brief. Dove il piano di §12 dava per fatta una
+> cosa che il codice non ha, è scritto qui con la misura accanto.
+>
+> ⛔ **Tre cose non si fanno in questo piano**: applicare migrazioni (le
+> autorizza Tid, per quel comando), aggiungere dipendenze npm/pip, committare.
+
+### 13-bis.0 — Quello che l'apply del DB ha lasciato scoperto · *misurato*
+
+Tre cose che il §13 non prevedeva, perché nascono dall'esecuzione. La prima è
+un cancello rosso, non un miglioramento.
+
+> ⚠️ **E scrivendo il piano ne sono diventate cinque: i cancelli rossi erano
+> TRE, non uno.** Gli altri due sono emersi solo *eseguendo* — nessuno dei due
+> si vedeva leggendo il codice:
+>
+> | Presidio | Perché era rosso | Trovato |
+> | --- | --- | --- |
+> | `test_liste_configurabili_seed` (2 versi) | la riga 478 del catalogo è `ordinabile = t`, ma la whitelist di ordinamento del repository non conosceva la colonna | rosso **dal 2026-08-17**, cioè dal momento dell'apply DB |
+> | `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` | un codice nuovo vuole **due** cose, non una: la classe *e* il messaggio di ripiego senza segnaposto | rosso appena data la classe (A-1) |
+>
+> ⭐ **Nessuno dei due si trova a lettura.** Il primo lega un CSV di seed a un
+> dizionario Python in un altro repository-folder; il secondo si accende solo
+> *dopo* aver sistemato il primo problema. È il motivo per cui la suite si esegue
+> **prima** di dichiarare fatto un passo, e non dopo.
+
+| | Cosa | Misura del 2026-08-18 |
+| --- | --- | --- |
+| 🔴 **BE-0** ✅ *sanato* | I **quattro** codici errore nuovi non hanno la loro `classe` nel backend | `E_ALBERO_EMITTENTE_MISTO`, `E_PARENT_SOGGETTO_DIVERSO`, `E_PARENT_NON_RAGGIUNGIBILE`, `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE`: **0 su 4** in `apps/core/services/error_policies_generated.py`; **4 su 4** in `config/codici_errore.csv` |
+| 🟠 **DB-1** | Il canale `COLUMN` **non parte**: i guard nuovi scrivono `'column'` nel context, `fn_log_and_raise_error` legge `'campo'` (ripiego `'parametro'`) | `20260818-08` e `20260818-17` usano `'column'`; il `note` a catalogo dei tre codici dichiara *«Campo da dichiarare al client: parent_account_id»* — e quel campo non esce |
+| 🔵 **BE-5** | `EmittenteAttivoService.descrivi` decide `puo_scegliere` sull'**assenza dell'emittente proprio**, non sulla **cardinalità dello scope** | `emittente_attivo_service.py:119` — `puo_scegliere = proprio is None`. Dopo P-2a quel ramo descrive **anche** l'operatore non configurato: uno che non vede più niente, a cui l'interfaccia offre la combo |
+
+#### 🔴 BE-0 — perché è la prima cosa e non una rifinitura
+
+`apps/core/tests/test_error_codes_db_policy_guardrail.py` gira **a ogni PR**
+(opt-in `ZEROERP_TEST_DB_E2E=1`, acceso in `ci-validate.yaml`) e confronta
+`dbops.vw_codici_errore_da_dichiarare` con il dizionario: il **verso 1** —
+*«un codice che il DB può nominare, senza policy e non nel registro»* — è
+esattamente questo caso, e il registro del debito è **a zero** dal 2026-08-07.
+Non c'è arretrato in cui nascondersi: il cancello è rosso il giorno stesso.
+
+⚠️ **E c'è un secondo effetto, peggiore perché silenzioso.** Finché la classe
+manca, `ErrorPolicyRegistry.resolve` cade sulla scorciatoia *«comincia per `E_`
+→ 400»*. Per i tre codici `DATO_ERRATO` il 400 coincide per caso; per
+`E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` (classe `NON_PERMESSO`, **403**) no: il
+rifiuto del trigger arriverebbe al client travestito da errore di validazione.
+
+#### 🟠 DB-1 — la richiesta che torna al team DB
+
+Non è lavoro BE: il backend **legge già** `diag.column_name`
+(`apps/core/services/db_error_fields.py:111`) e `ErrorTranslator` lo porta in
+`error.fields`, che il frontend consuma da `useApiHandler.campiErrati`. Il pezzo
+che manca è una chiave nel context dei guard nuovi:
+
+```sql
+-- oggi (canale muto)            -- serve
+'column', 'parent_account_id'    'campo', 'parent_account_id'
+```
+
+`'column'` non è un refuso di battitura: è una chiave **diagnostica** usata da
+altre funzioni per altro. Il canale del form è `'campo'`, e la doc della
+funzione lo dice in maiuscolo. Costo: una riga in due changeSet nuovi. Senza,
+l'errore del guard arriva a video come banner e il campo `parent_account_id`
+non si evidenzia — che è la promessa scritta nel `note` del catalogo.
+
+---
+
+### Fase A — Igiene, subito · *nessun prerequisito, nessun blocco*
+
+> ✅ **ESEGUITA il 2026-08-18.** `error_policies_generated.py` rigenerato
+> (697 → **701** voci, e il diff conteneva **esattamente** i quattro codici del
+> cantiere: nessun codice estraneo da cantieri paralleli), `search_repository`
+> corretto, **6 asserzioni nuove**. Suite backend: **3710 verdi** con
+> `ZEROERP_TEST_DB_E2E=1`.
+>
+> 🔴 **E la rigenerazione ha scoperto un SECONDO presidio rosso, che nessuno
+> aveva previsto**: `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`
+> (`apps/core/tests/services/test_error_policies_classi.py`). Dare la classe a
+> un codice non basta: ogni codice **vivo** deve avere anche il suo messaggio di
+> ripiego in `error_messages_fallback.py` — la frase da mostrare **quando quella
+> del database non arriva**. I quattro l'hanno ora, riscritti **senza
+> segnaposto** (è la ragione d'essere di quel modulo: i messaggi a catalogo dei
+> quattro hanno da 1 a 4 `%s`, questi zero).
+>
+> ⭐ **La lezione, che vale per il prossimo codice nuovo:** *«registrare un
+> codice»* sono **due** file, non uno — la classe (generata dal catalogo) e il
+> ripiego (scritto a mano). Il primo lo dice §Tassonomia errori di
+> [api.md](../api.md); il secondo lo dice solo il presidio, quando diventa
+> rosso.
+
+#### A-1 · BE-0 — rigenerare le policy ⛔ *blocca la CI*
+
+⛔ **`error_policies_generated.py` è GENERATO: non si tocca a mano.**
+
+```bash
+cd backend
+./manage-env.sh genera_error_policies            # riscrive il modulo dal catalogo
+./manage-env.sh genera_error_policies --check    # non scrive: dice se diverge
+```
+
+**Verifica**: `--check` esce 0; `./manage-test.sh apps.core.tests -v 2` verde,
+`test_error_policies_divergenza_db` compreso.
+**Fatto quando**: i quattro codici hanno la loro classe, e
+`E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` risponde **403** e non 400.
+
+> ✅ **FATTO il 2026-08-18.** Misura **prima**: `--check` falliva con *«DIVERGE
+> dal catalogo»*. Dopo: `--check` verde, e la risoluzione dei quattro è quella
+> attesa —
+>
+> | Codice | Classe | Status |
+> | --- | --- | ---: |
+> | `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` | `NON_PERMESSO` | **403** ← era 400 |
+> | `E_ALBERO_EMITTENTE_MISTO` · `E_PARENT_SOGGETTO_DIVERSO` · `E_PARENT_NON_RAGGIUNGIBILE` | `DATO_ERRATO` | 400 |
+>
+> `test_error_codes_db_policy_guardrail`: **4 su 4 verdi**.
+
+⚠️ **Da guardare mentre si rigenera**: il diff può contenere **altri** codici
+seminati da cantieri paralleli. Il modulo è un prodotto del catalogo, quindi il
+diff giusto è quello che il catalogo produce — non quello che si aspettava chi
+lancia il comando. Se compaiono codici estranei, si guarda **da dove vengono**
+prima di committare, non si toglie una riga a mano.
+
+#### A-2 · BE-1 — `search_repository`: la lista vuota non è «nessun filtro» 🔵
+
+**Dove**: `backend/apps/core/db/search_repository.py`, righe **42** e **98**.
+
+```python
+# oggi — [] è falsy e diventa None, cioè «nessuna restrizione»
+pg_emittente_ids = emittente_ids if emittente_ids else None
+# serve — i tre stati restano tre
+pg_emittente_ids = emittente_ids
+```
+
+Il passo 1 del DB ha già tolto il potere a questa riga (la funzione si risolve
+lo scope da sé e il parametro può solo **restringere**), quindi non è più un
+buco: è un punto che scrive una cosa falsa. Si corregge perché la **regola** che
+ne discende vale per il prossimo consumatore — *questa convenzione a tre stati
+non si legge mai con un test di verità* — e perché una riga che mente invecchia
+male.
+
+**Verifica**: unit test con `emittente_ids=[]` che asserisce che il cursore
+riceve `[]` e **non** `None` (mock su `connection.cursor`, niente DB — regola CI).
+**Fatto quando**: i tre stati arrivano distinti alla funzione SQL.
+
+> ✅ **FATTO il 2026-08-18.** `apps/core/tests/db/test_search_repository_scope.py`,
+> **6 asserzioni** (tre stati × due funzioni), tutte verdi.
+>
+> ⭐ **Controprova eseguita, ed è quella che dà valore al test**: rimessa la riga
+> vecchia, il file diventa rosso con **2 fallimenti** — esattamente i due dello
+> scope vuoto, gli altri quattro restano verdi. Il test misura il difetto, non
+> se stesso; un file verde al primo colpo non l'avrebbe dimostrato.
+
+---
+
+### Fase B — Chiudere la pilota: la colonna che oggi esce vuota
+
+> ✅ **ESEGUITA il 2026-08-18.** BE-2 e la chiave i18n sono fatti, e con loro il
+> **passo 6** del §12 si chiude su entrambi i lati: il DB garantiva che il campo
+> esistesse, ora il repository lo seleziona e il catalogo ha un'etichetta che
+> parla due lingue.
+>
+> ~~⛔ **Il flag `multi_emittente` sulla pilota resta `false`** … Oggi la vista
+> è vuota, quindi quel momento non è ancora arrivato.~~
+> → **Superato la sera del 2026-08-18, e per due motivi che vanno letti insieme**:
+> «la vista è vuota» era una **misura sbagliata** (§13-ter.1 — quello zero era
+> P-2a che funziona: con un contesto operatore la pilota rende **74 righe, 74
+> con il nome**), e il flag è poi stato acceso su **tutte e sei** le liste per
+> decisione di Tid (§13-ter.7).
+
+> Il DB ha fatto la sua metà il 2026-08-18 (`20260818-15` + riga di catalogo
+> `lista_colonna` id **478**). **La metà che resta è l'unica visibile
+> all'operatore**: la lista ha `vista_sql = NULL`, quindi le righe le compone il
+> repository, che elenca le colonne **esplicitamente**.
+
+#### B-1 · BE-2 — la ragione sociale dell'emittente nella riga 🔴
+
+**Dove**: `backend/apps/vendite/db/vendite_repository.py`,
+`list_dash_competenza_gruppi` (≈ riga 1200) e
+`backend/apps/vendite/types.py`, `DashCompetenzaGruppoRow` (≈ riga 784).
+
+| Punto | Cosa |
+| --- | --- |
+| `SELECT` | `g.emittente_ragione_sociale` **in coda** (indice 19, dopo `g.id_fiscale`) |
+| mapping | `"emittente_ragione_sociale": None if row[19] is None else str(row[19])` |
+| `TypedDict` | chiave nuova `emittente_ragione_sociale: str \| None` |
+
+⚠️ **Si porta a video la ragione sociale, non l'id.** La vista espone **anche**
+`emittente_soggetto_ruolo_id`: metterlo in riga sarebbe *spostare l'ambiguità di
+un passo*, che è il difetto che P-4 chiude (§11.4).
+
+⚠️ **La chiave della riga deve combaciare con `campo_sorgente`**
+(`emittente_ragione_sociale`, verificato nel CSV): è quello il contratto fra
+catalogo e dati. Se diverge, la colonna si spunta e **resta vuota** — cioè
+esattamente la garanzia che il flag di P-2b pretende, non mantenuta.
+
+✅ **L'export non richiede lavoro**: la lista passa da `build_dash_export_response`
+→ `build_export_response`, che risolve le colonne dalla **config runtime**. La
+colonna nuova entra da sé, purché la chiave combaci (sopra).
+
+🔵 **Il riepilogo di perimetro non si tocca**: `get_dash_competenza_gruppi_riepilogo`
+aggrega con lo **stesso** predicato della lista e non elenca colonne di riga.
+
+**Verifica**: `apps/vendite/tests/services/test_dashboard_competenza_service.py`
+— il mock del repository ritorna la chiave e il service la propaga
+nell'envelope; poi una chiamata **reale** a
+`GET /api/v1/vendite/dashboard/competenza/gruppi/` che la mostri valorizzata.
+⚠️ Il test col mock non prova niente sul SQL: prova il trasporto. Il SELECT si
+prova solo chiamando.
+
+**Fatto quando**: la colonna spuntata mostra **un nome**, e l'export lo contiene.
+
+> ✅ **FATTO il 2026-08-18** — `vendite_repository.list_dash_competenza_gruppi`
+> (SELECT + mapping) e `DashCompetenzaGruppoRow`. **51 test verdi** sul file di
+> competenza, **2 nuovi**: il mapping espone la ragione sociale e ne preserva il
+> NULL (e **nega** `emittente_soggetto_ruolo_id` nel SQL), e la chiave della riga
+> è allineata al `campo_sorgente` di catalogo.
+>
+> 🔴 **E qui è saltato fuori il TERZO presidio rosso, rosso dal 2026-08-17**:
+> `apps/core/tests/test_liste_configurabili_seed.py`, in **due** versi
+> contemporaneamente. La riga 478 del CSV è `ordinabile = t`, ma
+> `DASH_COMPETENZA_GRUPPI_SORT_COLUMNS` non conosceva la colonna:
+>
+> | Asserzione | Cosa diceva |
+> | --- | --- |
+> | `test_whitelist_copre_le_colonne_ordinabili` | *«colonne ordinabili nel seed ma assenti dalla whitelist: la freccia a video risponderebbe 400»* |
+> | `test_whitelist_chiavata_sul_campo_sorgente` | *«la whitelist deve usare il campo fisico `emittente_ragione_sociale`, non il codice `emittente_fiscale`»* |
+>
+> ⭐ **Il presidio ha fatto esattamente il suo mestiere**, e vale la pena
+> notarlo: il commento che sta sopra quella whitelist dichiarava già che seed e
+> whitelist *«sono UN SOLO passo»* e che separarli rende la CI rossa in un verso
+> o nell'altro. È stato scritto da chi ha fatto le due colonne del cliente di
+> fatturazione, e ha protetto il lavoro di **oggi**, fatto da un'altra parte del
+> cantiere. Aggiunta la voce, entrambi i versi sono verdi.
+>
+> ⚠️ **I dati restano non verificabili in questa istanza, ed è una lacuna della
+> misura e non del passo.** `vw_dash_competenza_gruppi` ha **zero righe** —
+> verificato **con il contesto di sistema**, quindi non è la RLS che nasconde
+> ([[feedback_rls_query_contesto_sistema]]): non ci sono proprio attività
+> fatturabili aperte. Quello che si è potuto provare **davvero**, ed è stato
+> provato contro il database vero: il `SELECT` con la colonna nuova **gira**, e
+> l'`ORDER BY emittente_ragione_sociale` pure — mentre una colonna fuori
+> whitelist viene ancora rifiutata. La riga valorizzata la vedrà il primo che
+> apre la lista con del lavoro aperto dentro.
+
+#### B-2 · FE-1 — la chiave i18n della colonna ⚠️ *misurata mancante*
+
+`vendite.dashboard_competenza.col_emittente` — dichiarata nel seed
+(`lista_colonna.etichetta_i18n_key`) e **assente in entrambi i file**:
+
+```bash
+# it.json / en.json → vendite.dashboard_competenza: nessuna col_emittente
+```
+
+`ListaConfigurabile` risolve l'header con `te()` e ripiega sull'etichetta di
+catalogo, quindi non si vede un errore: si vede **«Emittente» anche in
+inglese**. È il difetto silenzioso che §Multilingua descrive.
+
+- aggiungere in **entrambi** i file (`it.json`: `"col_emittente": "Emittente"`,
+  `en.json`: `"col_emittente": "Issuer"` — è la forma già usata in 10 altre
+  radici);
+- `python3 scripts/check_i18n_keys.py` verde.
+
+Nessun altro lavoro FE: la colonna è `tipo_colonna = informazione`,
+`tipo_dato = string`, quindi `CellaConfigurabile` la rende dal `campo_sorgente`
+senza slot. Arriva **spenta** (merge automatico delle colonne nuove) col badge
+«colonne nuove» — che è il comportamento voluto: chi la vuole se la spunta.
+
+**Fatto quando**: `check_i18n_keys.py` è verde e l'header cambia lingua.
+
+> ✅ **FATTO il 2026-08-18** — `vendite.dashboard_competenza.col_emittente`
+> aggiunta a **entrambi** i file (`Emittente` / `Issuer`), accanto a
+> `col_cliente`. `python3 scripts/check_i18n_keys.py` → **tutto pulito**.
+
+---
+
+### Fase C — Il cancello di P-2b · *la parte che va progettata, non solo scritta*
+
+#### C-0 · DB-2 — il codice errore del rifiuto ⛔ *prerequisito duro*
+
+Il cancello rifiuta, e un rifiuto ha un codice registrato — mai `E_GENERICO`.
+Il codice nasce **a catalogo** (`config.codici_errore` + `messaggi_errore`,
+append al CSV), non nel backend: è una **richiesta al team DB**.
+
+| Proposta | |
+| --- | --- |
+| Codice | `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` ✅ confermato da Tid il 2026-08-18 |
+| Classe | **`NON_ESEGUIBILE`** → 422 ✅ |
+| Messaggio | *«Questa lista non dice da quale emittente arriva ogni riga: scegli un emittente per entrare.»* ✅ |
+
+⚠️ **Perché non `NON_PERMESSO` (403).** Il brief lo dichiara: *«non è un
+permesso»*. Un 403 direbbe *«non hai diritto»*, che è **falso** — il diritto c'è,
+manca una precondizione che l'utente stesso può sciogliere in due click. La
+classe che descrive «si capisce, ma non si può eseguire adesso» è
+`NON_ESEGUIBILE`. Dopo il seed: `./manage-env.sh genera_error_policies` (A-1).
+
+⛔ **Senza questo, C-2 si scrive ma non si chiude.** È il prerequisito DB della
+regola «BE/FE non partono a metà».
+
+#### C-1 · BE-3 — l'interruttore che non deve nascere (strati 2 e 3) · *indipendente, si fa subito*
+
+**Dove**: `backend/apps/ui/services/lista_definizione_admin_service.py`.
+
+Oggi `_CREATE_KEYS` ha sei chiavi e `multi_emittente` **non c'è** — la whitelist
+protegge già. Il lavoro non è aggiungere: è **impedire che qualcuno la aggiunga**.
+
+1. **commento accanto alla whitelist** (`_CREATE_KEYS`) che dichiara l'esclusione
+   e il perché — il flag descrive una *capacità del software*, non una preferenza;
+2. **commento sulla frase** *«Tutti i campi sono mutabili (nessun immutabile per
+   design)»* (`update_definizione`): è la convenzione a cui `multi_emittente` fa
+   **eccezione**, e un'eccezione senza motivo scritto viene tolta dal primo che
+   passa convinto di sistemare una svista.
+   ⚠️ **Si citano i simboli, non i numeri di riga**: quei numeri li sposta il
+   commento stesso che si sta aggiungendo — un riferimento che si invalida
+   nell'atto di scriverlo;
+3. **test in CI** in `apps/ui/tests/services/test_lista_definizione_admin_service.py`:
+   `multi_emittente` non compare in `_CREATE_KEYS | _UPDATE_KEYS`, con il perché
+   **nel messaggio di fallimento** e non solo nel brief. Tre righe, gira a ogni
+   PR, ed è lo strato che serve il giorno del refactor.
+
+⚠️ **Guardare anche i builder**, non solo la whitelist: `_build_create_data` /
+`_build_update_data` compongono le colonne dell'`INSERT`/`UPDATE`. La whitelist
+filtra il **payload**; se un builder elencasse le colonne da un'altra parte, la
+protezione sarebbe in un punto solo su due. (Il trigger DB resta comunque lo
+strato 1: rifiuta la scrittura dal ruolo applicativo qualunque strada prenda.)
+
+**Fatto quando**: il test è verde per la ragione giusta — cioè fallisce se si
+aggiunge la chiave.
+
+> ✅ **FATTO il 2026-08-18**, e il perimetro è risultato **più largo di quanto
+> il piano dicesse**: i punti che elencano campi scrivibili non sono uno, sono
+> **quattro**, e presidiarne uno solo lascia scoperti gli altri tre.
+>
+> | # | Punto | Dove |
+> | --- | --- | --- |
+> | 1 | le due `frozenset` del payload | `lista_definizione_admin_service._CREATE_KEYS` / `_UPDATE_KEYS` |
+> | 2 | `_build_create_data` | idem — compone il `data` che va al repository |
+> | 3 | `_build_update_data` | idem |
+> | 4 | l'`INSERT` e il tuple dell'`UPDATE` | `ui_admin_repository` |
+>
+> ⭐ **È la stessa regola della «funzione con gemelle»** di [api.md](../api.md):
+> chi aggiunge un campo lo aggiunge **dove serve a lui**, non dove sta il test.
+> Un presidio sulla sola whitelist sarebbe stato verde mentre il campo passava
+> dal builder.
+>
+> **`ListaDefinizioneMultiEmittenteFuoriScritturaTests`, 7 asserzioni** — le due
+> whitelist, il **comportamento** (payload rifiutato e repository mai chiamato,
+> in create e in update), i due builder chiamati **direttamente** con la chiave
+> dentro (cioè saltando la whitelist: è così che ci si arriva per sbaglio in un
+> refactor), e l'SQL delle due scritture.
+>
+> ⭐ **Controprova eseguita**: simulato il refactor «per coerenza» che aggiunge
+> il campo a tutti e quattro i punti → **7 rossi su 7**. Ripristinato → 26 verdi.
+> Suite backend completa: **3717**.
+>
+> **Strato 3** scritto in **tre** posti, non uno: accanto a `_CREATE_KEYS` (il
+> perché per esteso), sul commento *«tutti i campi sono mutabili»* — che ora dice
+> «tutti i campi **esposti**», perché era la frase da cui nasceva l'equivoco — e
+> sopra l'`INSERT` del repository.
+
+#### C-2 · BE — il perimetro risolto **in un punto solo**
+
+> Decisione presa qui, con la sua ragione: **il backend calcola, il frontend
+> mostra**. Il FE non deve ricalcolare la cardinalità dello scope da `/me/`:
+> sarebbe una seconda sede della stessa verità, e le due divergerebbero al primo
+> caso nuovo.
+
+**Nuovo building block** — `backend/apps/core/services/perimetro_emittente.py`
+(⚠️ estrazione da autorizzare, §13-bis.4):
+
+| Funzione | Cosa |
+| --- | --- |
+| `scope_multi_emittente(user) -> bool` | `ids = PermissionResolver.get_emittenti_pk_ids(user)`; **`None` (universo) o `len(ids) > 1` → True**. Il resto → False |
+| `guard_lista(user, lista_codice)` | lista con `multi_emittente = false` **e** perimetro multiplo → `ErrorManager.raise_error(code=E_UI_LISTA_EMITTENTE_DA_SCEGLIERE, …)` |
+
+⚠️ **Scritto sulla cardinalità, mai sul ruolo.** *«Se non è super admin»* sembra
+equivalente e non lo è: si appoggia a un'identità invece che al perimetro
+effettivo, e smette di proteggere il giorno in cui nasce un terzo caso (P-2b).
+⚠️ E `get_emittenti_pk_ids` distingue davvero i tre stati (`[]` resta `[]`,
+verificato a riga 263): è la funzione giusta su cui appoggiarsi.
+
+**Due consumatori, e un solo calcolo:**
+
+1. **`UiService.get_lista_config`** arricchisce l'envelope con
+   `richiede_scelta_emittente` (booleano derivato). `multi_emittente` resta
+   esposto com'è — è il dato, l'altro è la conclusione. Chiave **additiva**: i
+   consumatori che non la leggono non si accorgono di niente;
+2. **gli endpoint dati**: attributo di classe `lista_codice: str | None` su
+   `DomainAPIView`, verificato in `initial()`. **Dichiarativo, non per
+   endpoint** — le liste future lo ereditano e nessuno deve ricordarsene, che è
+   la ragione per cui il brief voleva «un solo punto». Sulle sei liste del
+   perimetro si valorizza; altrove resta `None` e non cambia niente.
+
+⚠️ **Non su `AdminAPIView`**: l'amministrazione delle liste non è una lista di
+lavoro, e bloccarla significherebbe impedire al super admin di configurare il
+sistema **proprio** mentre gli si chiede di scegliere un emittente.
+
+**Verifica**: unit test del guard (mock del resolver) sui **quattro** casi —
+scope 1 / scope N / scope universo / lista certificata; più un test che la
+chiave additiva non rompa la shape dell'envelope.
+
+> ✅ **FATTO il 2026-08-18** — **23 asserzioni nuove**, suite **3739 verdi**.
+>
+> | File | Cosa |
+> | --- | --- |
+> | `apps/core/services/perimetro_emittente.py` | il building block: `scope_multi_emittente`, `guard_lista`, `guard_lista_per_codice` |
+> | `apps/core/db/lista_catalogo_repository.py` | la lettura minima del flag dal catalogo |
+> | `apps/core/api/base_views.py` | `lista_codice` su `DomainAPIView` + il cancello in `initial()` |
+> | `apps/ui/services/ui_service.py` | la chiave derivata `richiede_scelta_emittente` + cache per-istanza |
+> | `apps/vendite/api/views_dashboard_competenza.py` | la pilota **e il suo export** dichiarano `lista_codice` |
+> | 3 file di test | 11 + 6 + 5 asserzioni (building block · base view · envelope) |
+>
+> **Quattro decisioni prese scrivendolo**, tutte con la loro ragione nel file:
+>
+> 1. ⭐ **la lettura del flag sta in `apps/core/db/`, non in `apps/ui/db/`** dove
+>    il catalogo ha la sua sede naturale. Il consumatore è `DomainAPIView`, e
+>    **`core` non può importare `ui`**: la direzione degli anelli ammette
+>    dominio → ui (i domini importano già `ui.api.export_helpers`), non il
+>    contrario. Un import core → ui legherebbe la base view di **tutti** gli
+>    endpoint a un'app di presentazione. La dipendenza che resta è verso lo
+>    *schema DB*, non verso il codice — la stessa che `lookup_repository` ha su
+>    nove schemi;
+> 2. ⭐ **l'ordine delle due domande**: prima il perimetro (cache per richiesta),
+>    e **solo se è multiplo** si legge il catalogo. Nel 99% dei casi la seconda
+>    query non parte affatto. Invertirle costerebbe un round-trip su **ogni**
+>    apertura di lista per un cancello che quasi mai scatta — ed è il motivo per
+>    cui `guard_lista_per_codice` esiste invece di far leggere il catalogo al
+>    chiamante;
+> 3. **cache per-istanza in `UiService`**: `get_catalogo` chiama
+>    `get_lista_config`, quindi senza cache **una sola apertura della modale
+>    colonne** avrebbe chiesto due volte al database la stessa cosa. Il test lo
+>    asserisce (`call_count == 1`), non lo assume;
+> 4. **il cancello vale anche per l'export**, che è la porta più larga (10.000
+>    righe in una richiesta): rifiutare a video quel che si concede in un file è
+>    il modo peggiore di avere un presidio.
+>
+> ⚠️ **`[]` (nessun accesso) NON è multi-emittente**, ed è scritto nel file:
+> chi non vede niente non ha due emittenti fra cui scegliere, e il cancello gli
+> offrirebbe una tendina vuota. Il suo problema — configurazione mancante dopo
+> P-2a — si vede dalla lista vuota e da `dbops.vw_operatori_senza_emittente`.
+>
+> ⚠️ **Lista sconosciuta → errore tecnico, non «scegli un emittente»**: un
+> `lista_codice` che non esiste a catalogo è un difetto **nostro** (una view mal
+> dichiarata). Tradurlo nel rifiuto di perimetro manderebbe l'operatore a
+> risolvere un problema che non lo riguarda; tacere lascerebbe il presidio
+> spento in silenzio.
+>
+> ⭐ **Controprove eseguite, non solo test verdi:**
+>
+> - disattivato il cancello in `initial()` → **4 asserzioni su 6** diventano
+>   rosse, fra cui quella che verifica che il `get` non venga mai eseguito;
+> - contro il **database vero**: catalogo della pilota `multi_emittente = False`,
+>   lista inesistente `None`, scope universo → `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`,
+>   scope singolo → passa.
+>
+> ✅ **ESTESO A TUTTE LE LISTE il 2026-08-18** — decisione di Tid, presa dopo
+> aver visto il meccanismo funzionare sulla pilota.
+>
+> | | |
+> | --- | ---: |
+> | liste con il cancello | **34** |
+> | view che lo dichiarano (lista + export) | **51** |
+> | liste esentate, **con la ragione scritta** | 10 |
+> | file toccati | 22 |
+>
+> ⛔ **Le 10 esenzioni sono tutte `AdminAPIView`, e non è una scorciatoia.** Il
+> cancello vive su `DomainAPIView` per decisione esplicita: sbarrare
+> l'amministrazione significherebbe chiedere al super admin di scegliere un
+> emittente **mentre sta configurando il sistema** — e in due casi
+> (`anagrafiche.emittenti_fiscali`, `anagrafiche.emittente_billing_account`)
+> mentre sta configurando **gli emittenti stessi**, cioè la cosa che gli si
+> chiede di scegliere.
+>
+> ⭐ **Il pezzo che rende «tutte» una regola invece di «tutte quelle di oggi»**:
+> `apps/core/tests/test_perimetro_emittente_copertura.py`, **4 asserzioni** che
+> girano in CI senza DB (lettura del sorgente con `ast`):
+>
+> | # | Cosa |
+> | --- | --- |
+> | 0 | ogni lista del registro ha il cancello, **o** sta in `_ESENZIONI` con la ragione |
+> | 1 | il verso opposto: un'esenzione che ha ottenuto il cancello va **tolta** — il registro deve calare |
+> | 2 | nessun `lista_codice` punta a una lista inesistente (a runtime lo scoprirebbe solo chi ha scope multiplo, cioè quasi nessuno) |
+> | 3 | lista ed export stanno o cadono **insieme** |
+>
+> 🔴 **E il test 3 esiste per un buco che la prima stesura aveva davvero.**
+> Togliendo `lista_codice` da `ApiDdtList` e lasciandolo sull'export, il
+> presidio **restava verde**: il test 0 conta i **codici**, e finché una
+> qualunque view dichiara `vendite.ddt` la lista risulta coperta. Era verde per
+> sottrazione sul difetto **peggiore** dei due — i dati escono dalla porta larga
+> (10.000 righe in un file) e non da quella stretta.
+> ⭐ **L'ho trovato solo eseguendo la controprova**, non rileggendo il test.
+> Ora entrambi i versi sono rossi quando devono esserlo (verificato).
+>
+> ⚠️ **Due difetti miei corretti nello stesso giro**, entrambi nel presidio:
+> l'accoppiamento lista↔export per **prefisso** produceva cinque falsi positivi
+> (`ApiDashboardAperto` legato alla gemella di un'altra classe) — ora si
+> accoppia sulla **radice** del nome, perché i suffissi reali non sono uniformi
+> (`...List`/`...ExportView`, `...List`/`...Export`, `...View`/`...ExportView`);
+> e la prima stesura riparsava l'intero albero **dentro** un ciclo sulle classi,
+> **34 secondi** per quattro test. Ora è **0,9 s** — un presidio lento è un
+> presidio che qualcuno toglie dalla corsa veloce.
+>
+> ⭐ **I test API esistenti: 78 rossi, e la correzione è stata UNA riga.** Il
+> cancello interroga il database a ogni apertura di lista, e i test API girano
+> in `SimpleTestCase` senza DB. La sede giusta era già lì: `JwtMockedApiTest`,
+> la base class che neutralizza il side-effect delle GUC per **tutti** i test
+> API. Si mocka però la **risoluzione dello scope**, non il guard: così il
+> codice del cancello viene eseguito davvero in ogni test API — se un giorno
+> rifiutasse a sproposito, i 551 test API diventerebbero rossi. Un `patch` sul
+> guard lo avrebbe spento e basta, e un presidio spento nei test è un presidio
+> che si scopre rotto in esercizio.
+
+#### C-3 · FE-2 — il gate, dentro il punto che già c'è
+
+`ListaConfigurabile` **carica la config da sé** (`useListaConfig`, emette
+`config-loaded`): è già il punto unico FE, e il gate va lì. Nessun caller deve
+cambiare per ereditarlo.
+
+| Pezzo | Dove |
+| --- | --- |
+| Il pannello al posto della tabella | `src/core/components/ListaConfigurabile.vue` — `v-if="config.richiede_scelta_emittente"`: `Message` + pulsante «Scegli un emittente» |
+| La scelta | riusa `EmittenteAttivoSelect` / `EmittenteAttivoDialog`, già in topbar. **Nessun componente nuovo di scelta**: sarebbe una seconda strada per la stessa azione |
+| L'evento | `@perimetro-bloccato` (boolean), emesso **dopo** `config-loaded`. Le sei liste del perimetro lo usano per **sospendere la fetch** |
+| i18n | `common.perimetro_emittente.*` — vocabolario trasversale, non d'area (§Multilingua) |
+
+⚠️ **L'evento non è un di più.** Senza, il caller chiama comunque l'API, il
+guard di C-2 risponde 422 e l'utente vede un **toast d'errore** su una schermata
+che avrebbe dovuto spiegargli cosa fare. Il dato sarebbe protetto lo stesso — è
+l'interfaccia a essere sbagliata.
+
+⚠️ **CSS**: classi `app-*` esistenti, nessuna variabile `--p-surface-*` diretta
+(§Stili CSS). Se serve una classe nuova va in `main.css`, non nel componente.
+
+> ✅ **FATTO il 2026-08-18** — dentro `ListaConfigurabile`, che è già il punto
+> unico: carica la config da sé, quindi **nessuno dei 34 caller cambia**.
+>
+> | Pezzo | Scelta |
+> | --- | --- |
+> | il pannello | `Message severity="warn"` **al posto** della tabella (`v-if` / `v-else`), non sopra |
+> | la scelta | **nessun controllo nuovo**: il testo rimanda alla combo di topbar |
+> | l'evento | ~~`@perimetro-bloccato` (boolean), emesso col `config-loaded`~~ — **rimosso il 2026-08-18**, vedi C-3-bis |
+> | i18n | `common.perimetro_emittente.*` — vocabolario trasversale, in entrambe le lingue, `check_i18n_keys.py` pulito |
+>
+> ⚠️ **Il pannello prende il POSTO della tabella, non le sta sopra**: mostrarla
+> con un avviso in cima non toglierebbe l'ambiguità — le righe resterebbero
+> indistinguibili una dall'altra. È la regola di P-2c: su una lista l'etichetta
+> non basta, serve la colonna o il blocco.
+>
+> ⚠️ **`severity="warn"`, non `error`**: il diritto c'è, manca una scelta che si
+> fa in due secondi. Vestirlo da errore direbbe una cosa falsa sul motivo.
+>
+> ⚠️ **Nessun secondo selettore di emittente nel pannello**, benché sarebbe
+> stato comodo: la combo di topbar esiste già e cambia lo stato di tutta
+> l'applicazione (token, tab aperte, conferma). Duplicarla sarebbe una seconda
+> strada per la stessa azione, e le due divergerebbero al primo cambiamento.
+>
+> ✅ **Il toast doppio è chiuso il 2026-08-18, in `useApiHandler`** — e la
+> ragione della scelta non è il costo, è **il momento**.
+>
+> L'evento `@perimetro-bloccato` arriva **dopo** che la fetch è partita: la
+> config e i dati si caricano in parallelo, ciascuno nel proprio `onMounted`.
+> Per sopprimere davvero la chiamata, ogni lista dovrebbe **aspettare** la
+> config di un componente figlio — cioè rallentare tutte le liste
+> dell'applicazione, sempre, per un caso che riguarda un utente su cento e che
+> il backend rifiuta comunque. **I 34 caller non erano il costo: erano la
+> soluzione sbagliata.**
+>
+> ```js
+> const CODICI_SENZA_TOAST = new Set(['E_UI_LISTA_EMITTENTE_DA_SCEGLIERE'])
+> ```
+>
+> ⚠️ **Sopprime il toast, non l'errore**: `execute` ritorna `null` come sempre,
+> i campi in errore si leggono lo stesso, la chiamata resta fallita.
+>
+> ⚠️ **`Set` e non un oggetto letterale**, ed è un difetto corretto in corsa:
+> `MAPPA[codice]` eredita dal prototipo, quindi un codice chiamato `toString` o
+> `constructor` sarebbe risultato «presente» e il toast sarebbe sparito senza
+> motivo. Improbabile — e della classe che non si trova mai rileggendo.
+>
+> ⛔ **L'alternativa elegante era `ui_action`**, che il backend già emette e
+> `useApiHandler` già estrae in `azioneUi`. Scartata: nessuno la consuma, e
+> farne il primo consumatore qui vorrebbe dire accendere di passaggio un
+> contratto da **176 override**, che [api.md](../api.md) dice di riguardare
+> **prima**. Non è una decisione da prendere dentro questo cantiere.
+>
+> ⭐ **Presidiato**: `test_il_codice_citato_dal_frontend_esiste_a_catalogo` —
+> il codice è scritto a mano in un file JavaScript e nessuno lo legava al
+> catalogo. Il degrado sarebbe stato benigno (un rename fa **ricomparire** il
+> toast, non nasconde un errore), ma il verso opposto no: una riga aggiunta lì
+> per un codice inesistente **sembra** un presidio e non sopprime niente.
+> Stesso mestiere di `check_i18n_keys.py`. Controprova eseguita: codice
+> inventato → rosso.
+>
+> 🔵 ~~**`@perimetro-bloccato` resta**, e non è codice morto: serve al caller
+> che un domani vorrà davvero risparmiarsi la chiamata (per esempio sospendendo
+> un polling). Non è più obbligatorio per nessuno.~~
+>
+> 🔴 **Corretto il 2026-08-18: non reggeva.** «Serve a un domani» è il modo in
+> cui si tiene in vita un'API che nessuno chiama — e intanto la sostanza (non
+> chiedere al backend cose che rifiuterà) restava **non fatta**. Il seguito è
+> il C-3-bis: la sospensione esiste davvero, in un punto che copre tutti gli
+> ingressi, e l'evento è caduto perché diceva quello che `config-loaded` porta
+> già dentro.
+
+#### C-3-bis · Il collaudo a video, e le due cose che ha trovato
+
+> ✅ **2026-08-18, collaudo di Tid sul §15.1.** Il cancello non compariva sulla
+> lista **Clienti**, e non era il cancello: era **nascosto dal caller**.
+
+**Il difetto.** Cinque liste sono «a ricerca obbligatoria» — clienti, soggetti,
+fornitori, indirizzi, articoli — e tengono l'**intera** `<ListaConfigurabile>`
+dietro un `v-show`, mostrando al suo posto `<SearchHint>` («esegui una ricerca
+per visualizzare i risultati»):
+
+```vue
+<SearchHint v-if="!store.hasSearched && !store.loading" />
+<ListaConfigurabile v-show="store.hasSearched || store.loading" …>
+```
+
+Il pannello di C-3 vive **dentro** `ListaConfigurabile`: veniva renderizzato e
+restava invisibile finché non si cercava — cioè esattamente nello stato in cui
+doveva parlare.
+
+⭐ **A video il difetto si presentava come un lampeggio, ed è il lampeggio che
+lo ha spiegato**: cerchi → `loading` scopre la lista → il pannello **si vede** →
+il BE rifiuta con 422 (toast soppresso) → `hasSearched` resta `false`
+(`useListaEmptyStateFetch` lo scrive solo dopo una risposta buona) → il
+`finally` spegne `loading` → il `v-show` richiude tutto. Il pannello c'era, per
+il tempo della richiesta.
+
+⚠️ **Nessun test lo avrebbe preso**, ed è la ragione per cui il §15 esiste: il
+BE risponde giusto, il componente rende giusto, e il difetto sta nella terza
+cosa — *chi dei due si vede*.
+
+**La correzione, in una sede sola.** La regola non poteva stare in cinque
+template: vive in `useListaConfigurabilePage`, che la config dal BE la riceve
+già (`@config-loaded`).
+
+| Pezzo | Scelta |
+| --- | --- |
+| `perimetroBloccato` | letto da `richiede_scelta_emittente` **prima** della guardia `configAligned` — quella protegge l'allineamento del `limit`, che si fa una volta sola; il cancello no, e dopo un `return` sarebbe rimasto fermo al primo valore |
+| `mostraLista` / `mostraSearchHint` | i due nomi che i cinque caller usano al posto di `hasSearched`/`loading` |
+| `<SearchHint>` | **sparisce** quando il cancello è su: inviterebbe a cercare in una lista che il BE rifiuterà comunque, e due pannelli che dicono cose diverse sono peggio di nessuno |
+
+**La seconda cosa: `@perimetro-bloccato` era API morta.** Zero ascoltatori in
+tutto il frontend. Chiuderla ascoltandola sarebbe stato l'errore: l'evento
+arriva **dopo** che la fetch è partita, ed è il motivo per cui il toast si
+sopprime in `useApiHandler`. I due momenti vanno separati:
+
+| Chiamata | Cosa succede ora |
+| --- | --- |
+| la **prima** (liste che partono piene) | parte insieme alla config, quindi prima che si sappia del cancello: arriva il 422, il toast è soppresso. **Una, e una sola** |
+| **tutte le altre** — tasto nella ricerca, sort, pagina, F5, `reload`, refetch di `onActivated` | non partono: `fetchList` esce in testa su `sospesa` |
+
+⚠️ **Il guard sta in `useListaEmptyStateFetch`, non nel composable di pagina**,
+perché lì c'è **un** punto: gli ingressi alla fetch sono sei, e presidiarli uno
+per uno sarebbe stato un elenco di posti da ricordare — il settimo sarebbe nato
+scoperto. Lo store lo espone come `fetchSospesa`, e
+`useListaConfigurabilePage` lo scrive **nei due versi**: rientrare in un
+emittente riapre la lista senza che nessuno debba ricordarsi di abbassare la
+bandiera (memoria `feedback_pipeline_esito_parziale_ritiro_bandiere`).
+
+⭐ **E col cancello su l'export spariva nel nulla**: l'endpoint dichiara lo
+stesso `lista_codice` e cade sotto lo stesso guard (è il presidio «lista ed
+export stanno o cadono insieme», C-2), quindi il pulsante scaricava un rifiuto
+— invisibile, col toast soppresso. Ora l'azione **non viene offerta** finché il
+cancello è su. «Personalizza colonne» resta: la config c'è, ed è lecito
+preparare le colonne prima di scegliere l'emittente.
+
+> ⭐ **E il 2026-08-18, su richiesta di Tid, la toolbar si spegne tutta.** Col
+> cancello su restavano vivi due comandi che non potevano riuscire: i **filtri**
+> (si digitava e non succedeva niente — la lista e' sospesa) e le **azioni di
+> testata**, «Nuovo» compreso, che avrebbe aperto un drawer per farsi dire dal
+> database, a fine compilazione, che l'emittente non e' risolto.
+>
+> | Pezzo | Dove | Perche' li' |
+> | --- | --- | --- |
+> | le azioni | `pageActions` in `useListaConfigurabilePage` | e' il punto in cui **tutte** convergono — reload, personalizza, export, nuovo e gli `extras` del caller. Una funzione sola (`spegni`), **nessun caller toccato**. ⚠️ `disabled`, non «tolte»: una barra che sparisce e ricompare e' un'interfaccia che si riscrive sotto le mani mentre il pannello spiega cosa fare |
+> | i filtri | `:inert` sul blocco `app-page-filters` dei **36 caller** | la toolbar e' markup del caller: lo scaffolding non la raggiunge. `inert` e non `disabled` campo per campo — e' il browser a rendere inerte il sottoalbero, tastiera e screen reader compresi |
+>
+> ⚠️ **`inert` porta con se' una regola CSS gemella e opposta a una che c'era
+> gia'**: sotto `.app-readonly` i filtri restano **attivi** (filtrare e'
+> leggere, e il readonly vieta di scrivere). Col cancello no: la lista non si
+> apre affatto. Le due regole convivono in `main.css`, ciascuna col suo perche'
+> scritto accanto — altrimenti la prossima persona ne cancella una.
+>
+> ⛔ **Le azioni di RIGA non c'entrano**: con il cancello su la tabella non
+> esiste, quindi non esistono righe. Il perimetro e' la testata.
+
+#### C-3-ter · Il ripiego che questo cantiere ha reso inutile
+
+> ✅ **2026-08-18, decisione di Tid.** Rimossa l'icona occhio in topbar —
+> l'avviso *«Stai vedendo tutti gli emittenti: per creare documenti seleziona
+> un emittente»* — insieme al computed `isModalitaGlobale` (ne era l'unico
+> consumatore) e alla chiave `core.emittente_attivo.globale_sola_lettura`, it e
+> en. Il campo `modalita_globale` di `/me/` resta: è contratto.
+
+Veniva da
+[brief-db-impersonazione-scope-emittente.md](brief-db-impersonazione-scope-emittente.md)
+§9.4, dove era dichiarato per quello che era: un **ripiego**, in attesa di
+spegnere i verbi di creazione area per area. Era la risposta che ci si era dati
+al dubbio «e se guardo più emittenti?» — dubbio a cui **questo** cantiere
+risponde davvero, e con quattro sedi scritte invece di un tooltip.
+
+⚠️ **Ma le due cose non si sovrappongono, e va detto**: il cancello di P-2b
+blocca la **lettura** di una lista ambigua, l'icona avvisava che la
+**creazione** è spenta. Togliendola cade il promemoria nella finestra centrale
+(«ho scelto Tutti un'ora fa e non ci penso più»): resta il dialog di conferma
+nel momento della scelta e il rifiuto del DB al salvataggio. ⛔ **Nessuna
+protezione è cambiata** — quella è del DB. La coda 🟠 del §9.4 di quel brief
+resta aperta, e ora è scoperta: è aggiornata lì.
+
+#### C-4 · La prova, e il modo di sbagliarla
+
+| Attore | Atteso |
+| --- | --- |
+| Super admin in «Tutti gli emittenti» | la pilota **chiede di scegliere**; scelto l'emittente, entra |
+| Super admin con emittente attivo | entra subito (scope = 1: il cancello non scatta) |
+| Operatore configurato | **mai** il cancello, in nessuna lista |
+
+⚠️ **Provarlo da operatore non collauda niente**: il suo scope ha cardinalità 1
+per costruzione, quindi il ramo del cancello non viene attraversato e il verde
+è **per sottrazione**. È la stessa trappola di §9, sul lato applicativo.
+
+---
+
+### Fase D — P-2c: le etichette di perimetro · *indipendente da tutto*
+
+> ## ✅ Fase D ESEGUITA il 2026-08-18 — suite **3747 verdi**, build FE ok
+>
+> | Passo | Cosa | Dove |
+> | --- | --- | --- |
+> | **D-1** | `perimetro_multi_emittente` nel blocco `emittente_attivo` di `/me/` (+3 asserzioni) | `emittente_attivo_service.py`, `me_view.py` |
+> | **D-2** | etichetta sotto il numero delle card KPI | `KpiCard.vue`, store `auth` |
+> | **D-3** | etichetta di perimetro sulla ricerca universale | `SearchDrawer.vue` |
+> | **D-4** | la ragione del «fuori», scritta **nel componente** | `FatturaDrawer.vue` |
+>
+> 🔴 **E BE-5 — la correzione che avevo proposto io — è RITIRATA, perché
+> verificandola si è rivelata dannosa.**
+>
+> Avevo scritto che `puo_scegliere` andava calcolato sulla **cardinalità dello
+> scope** invece che sull'assenza dell'emittente proprio. L'obiezione era
+> giusta (quella condizione descrive anche l'operatore non configurato, a cui
+> l'interfaccia offre la combo mentre il database non gli fa vedere niente), il
+> **rimedio no**: `script.fn_get_emittenti_scope_pk_ids` **interseca** con
+> `app.current_emittente_id` (rev 2026-08-04, «universo ∩ {X} = {X}»), quindi
+> il super admin che ha scelto un emittente ha scope di cardinalità **1**.
+> Applicando la mia proposta, la combo gli **sparirebbe dalla topbar appena
+> sceglie** — cioè non potrebbe più cambiare idea.
+>
+> ⭐ **La distinzione che mi mancava**, e che ora è scritta accanto al codice:
+>
+> | | Scope **di diritto** | Scope **effettivo** |
+> | --- | --- | --- |
+> | cos'è | quello che l'utente potrebbe vedere | quello che sta guardando **adesso** |
+> | interseca l'emittente attivo? | no | **sì** |
+> | a cosa serve | `puo_scegliere` (le opzioni della combo) | `perimetro_multi_emittente` (l'etichetta) |
+>
+> Sono due domande diverse, e usare la risposta della seconda per la prima è il
+> difetto che ho evitato solo perché l'ho provato prima di scriverlo. Il difetto
+> originale (l'operatore non configurato vede la combo) **resta aperto**: è
+> marginale — DL-A è a zero e dopo P-2a quell'utente non vede dati comunque — e
+> chiuderlo richiede una funzione di scope **non intersecata**, che oggi non
+> esiste. Segnalato, non rattoppato.
+>
+> ⚠️ **La chiave non viene mandata dal POST di cambio emittente**, ed è
+> deliberato: lì la GUC porta ancora l'emittente **precedente**, quindi il
+> perimetro calcolato descriverebbe la sessione che sta per finire. Con
+> `user=None` la chiave è **assente**, non `False`: dire «un solo emittente» a
+> chi magari li ha tutti sarebbe peggio del silenzio. Il valore giusto arriva da
+> `/me/` un istante dopo, col token nuovo.
+>
+> ⚠️ **Il frontend non ricalcola niente**: `auth.perimetroMultiEmittente` legge
+> la chiave del backend. In particolare **non** si deriva da `isModalitaGlobale`,
+> che è una cosa diversa — un *operatore* senza emittente attivo è in modalità
+> globale ma vede **un solo** emittente, e l'etichetta gli direbbe il falso.
+>
+> ✅ **Residuo D-3 CHIUSO il 2026-08-18**: `fn_search_soggetti_universale` espone
+> ora `emittente_ragione_sociale` (`20260818-60`) e la colonna è in tabella per
+> i **clienti**. L'etichetta di perimetro **resta accanto**, e non è ridondante:
+> la colonna dice da quale emittente arriva **ogni riga**, l'etichetta dice che
+> la ricerca ne sta guardando più d'uno — utile *prima* di leggere i risultati,
+> e l'unica informazione disponibile sui tipi ruolo diversi da CLIENTE.
+>
+> ~~🔵 **Residuo dichiarato su D-3**: l'etichetta sta sul **perimetro della
+> ricerca**, non sulla singola voce come il §P-2c auspicava.~~ Il motivo è che la
+> riga non porta l'emittente — `fn_search_soggetti_universale` restituisce
+> `soggetto_codice, ragione_sociale_completa, id_fiscale_univoco, utility_list`
+> e basta. Distinguere due omonimi di emittenti diversi richiede quel dato: è
+> una richiesta al team DB, non qualcosa che il frontend possa dedurre. Scritto
+> anche nel componente, non solo qui.
+
+#### D-1 · BE-5 — il perimetro nel profilo, e un difetto che sparisce
+
+`EmittenteAttivoService.descrivi` guadagna `perimetro_multi_emittente`, dalla
+**stessa** funzione di C-2 (mai un secondo calcolo). Chiave additiva nel blocco
+`emittente_attivo` di `/me/`.
+
+⭐ **E vale la pena sistemare `puo_scegliere` nello stesso giro**: oggi è
+`proprio is None`, cioè *«non ha un emittente proprio»*. Dopo P-2a quella
+condizione descrive **anche** l'operatore non configurato — a cui l'interfaccia
+offrirebbe una combo di scelta mentre il database non gli fa più vedere niente.
+Sulla cardinalità dello scope il caso sparisce, e non è una riscrittura: è la
+stessa riga che chiama la funzione giusta.
+
+#### D-2 · FE-3 — i contatori della `home`
+
+Etichetta di perimetro sul riquadro quando `perimetro_multi_emittente`:
+`KpiCard` (o `HomeView`, se l'etichetta è di griglia e non di card) mostra
+«Tutti gli emittenti» sotto il numero.
+
+> **La dashboard è il panorama: può essere di tutti, purché lo dica.**
+> **La lista è il posto dove si lavora: deve avere un perimetro.**
+
+⚠️ **Niente cancello qui**: la `home` è la pagina di atterraggio, e la prima
+cosa dopo il login non può essere una domanda. Su un aggregato il perimetro è
+**uno solo**, quindi dichiararlo lo rende non ambiguo — l'etichetta è una cura,
+non un cerotto.
+
+#### D-3 · FE-4 — la ricerca universale
+
+`SearchDrawer`: etichetta sulla voce quando il perimetro è multiplo. Il rischio
+non è «non capisco», è **«scelgo fra due voci uguali»** — due clienti omonimi di
+due emittenti diversi. Bloccare una ricerca sarebbe sproporzionato.
+
+#### D-4 · Il dettaglio singolo resta fuori, **con la ragione scritta nel file**
+
+Un documento **si dichiara**: c'è scritto chi lo ha emesso, e non c'è niente
+accanto con cui confonderlo. La ragione va in un commento nel componente di
+dettaglio, non solo qui: senza, fra sei mesi qualcuno aggiunge il cancello anche
+lì «per coerenza».
+
+---
+
+### Fase E — Il resto del giro P-4 · *dopo, e non tutto insieme*
+
+> ## ✅ Fase E BE ESEGUITA il 2026-08-18 — suite **3745 verdi**
+>
+> Il team DB ha consegnato (`20260818-58`→`-67`) e il backend ha fatto la sua
+> metà: **5 liste**, whitelist di ordinamento + colonna nel `SELECT` + mapping +
+> TypedDict + 4 chiavi i18n, più la colonna nella **ricerca universale**
+> (residuo D-3 chiuso).
+>
+> | Lista | Lavoro BE |
+> | --- | --- |
+> | aperto · backlog · errori | colonna nel `SELECT` (dalla vista) + mapping + whitelist |
+> | drill-down commesse | idem, **più** la colonna nel `GROUP BY` |
+> | lotti | **JOIN** a `soggetti_ruoli`/`soggetti` (nessuna vista da estendere) + colonna + mapping + whitelist |
+> | ricerca universale | colonna in tabella per i soli **CLIENTI**, non ordinabile |
+>
+> 🔴 **E provando gli ordinamenti contro il database è saltato fuori un difetto
+> PREESISTENTE, grave e invisibile**: `list_dash_competenza_errori` interpolava
+> `ORDER BY {sort_col} {direction} NULLS LAST`, ma `direction` porta **già** la
+> clausola (`ASC NULLS FIRST`). L'SQL usciva `ASC NULLS FIRST NULLS LAST`, che
+> PostgreSQL rifiuta: la lista «Competenza — errori vivi» rispondeva **500 su
+> ogni click di intestazione**, su tutte e cinque le colonne, **da sempre**.
+>
+> ⚠️ **Nessun presidio poteva vederlo**: quello del seed confronta catalogo e
+> whitelist senza eseguire SQL, e i test dei repository mockano
+> `_query_paged_view` — la query al database non arriva mai. Si vedeva solo
+> cliccando una freccia. Corretto (era un residuo dell'unificazione dei 29
+> call-site in `sql_order_direction`, che la sua docstring dichiara) e
+> **presidiato staticamente**: `test_sql_order_helpers` ora rifiuta un `NULLS`
+> incollato dopo `{direction}`. ⭐ Poi ho provato **ogni colonna ordinabile di
+> tutte e sei le liste, in entrambe le direzioni**: 88 combinazioni, tutte ok.
+>
+> ⚠️ **Il presidio nuovo ha dato 6 falsi positivi alla prima stesura**, ed è la
+> stessa trappola di stamattina: cercava anche `{dir}`, che in
+> `coda_lavori/repository.py` e `pipeline_repository.py` porta la direzione
+> **nuda** (asserita `ASC`/`DESC`) — lì `{dir} NULLS LAST` è scritto giusto.
+> Ristretto a `{direction}`, che è il nome con cui **tutti** i 35 call-site
+> chiamano il risultato dell'helper (misurato).
+>
+> 🕳️ **E un presidio che ho scritto e poi TOLTO**, perché non poteva funzionare:
+> volevo legare la riga di catalogo al mapping del repository. Prima stesura:
+> cercava la chiave in tutti i repository concatenati — verde anche togliendola
+> da `list_lotti`. Seconda: contava le occorrenze — 12 liste attese contro 15
+> mapping, il margine la rende **cieca**. Il presidio vero richiede una mappa
+> lista → repository che non esiste (il legame passa dalla view). L'ho tolto e
+> ho scritto il buco nel file: *un test che non può diventare rosso è peggio di
+> nessun test, perché dà l'impressione di una garanzia.*
+> ⚠️ E prima ancora era **annidato dentro un'altra funzione** e non veniva
+> nemmeno raccolto: l'ho visto solo controllando l'elenco dei test eseguiti.
+
+---
+
+### Fase E — richiesta al DB (storico) · *ferma fino al 2026-08-18*
+
+> ⛔ **FERMA, e per intero, sul team DB — misurato il 2026-08-18.** Non è una
+> scelta di sequenza: senza la riga di catalogo la colonna **non esiste** per il
+> frontend, e senza la ragione sociale nella vista il backend non ha cosa
+> selezionare. La richiesta è scritta:
+> [brief-db-perimetro-emittente-fase-e-e-ricerca.md](brief-db-perimetro-emittente-fase-e-e-ricerca.md).
+>
+> | Lista | Da dove nascono le righe | id | ragione sociale | serve dal DB |
+> | --- | --- | :---: | :---: | --- |
+> | aperto (39) | `vw_dash_fatturazione_documenti` | ✅ | ❌ | vista + catalogo |
+> | backlog (40) | *la stessa vista a monte* | ✅ | ❌ | **eredita** + catalogo |
+> | errori (41) | `vw_dash_competenza_errori` | ✅ | ❌ | vista + catalogo |
+> | commesse (43) | `vw_dash_competenza_attivita`, **aggregata dal BE** | ✅ | ❌ | vista + catalogo |
+> | lotti (12) | SQL diretto, **nessuna vista** | ✅ | n/a | **solo** catalogo |
+>
+> ⭐ **Le due misure che cambiano il lavoro**, e nessuna delle due si vedeva dal
+> piano: aperto e backlog costano **una JOIN sola** (stessa vista a monte), e
+> lotti non chiede niente al database oltre alla riga di catalogo — il dato è
+> sulla tabella, la JOIN la fa il repository.
+>
+> ❓ **Una domanda di merito è stata girata al DB**, e non è un dettaglio: il
+> drill-down commesse **aggrega** `vw_dash_competenza_attivita`
+> (`GROUP BY commessa_id, commessa_codice, cliente_display`). Aggiungere
+> l'emittente al `GROUP BY` è sicuro **solo se è univoco per commessa**; se non
+> lo fosse, la stessa commessa si spezzerebbe in più righe — i totali
+> resterebbero giusti e il conteggio delle righe no, cioè una regressione
+> silenziosa. Se la risposta è «no», su quella lista la colonna è un lavoro
+> diverso, non una riga di CSV.
+>
+> ⚠️ **Nota di sequenza, già vista sulla pilota**: fra il seed della riga
+> `ordinabile = t` e la voce nella whitelist del repository, il presidio
+> `test_liste_configurabili_seed` è **rosso**. È il presidio che fa il suo
+> mestiere — ma va attraversato in fretta, non scoperto.
+>
+> 🔵 **Nello stesso brief c'è il residuo D-3** (l'emittente nella riga della
+> ricerca universale), che non blocca niente ma toglie l'unico caso in cui
+> l'etichetta di perimetro non basta: due clienti **omonimi** di emittenti
+> diversi sono a video due righe identiche.
+
+| Passo | Perimetro | Nota |
+| --- | --- | --- |
+| **2° giro** — Situazione aperta + Backlog | BE (dopo la vista) | due proiezioni della **stessa** vista a monte: una JOIN a DB, **due** liste da estendere in `vendite_repository` |
+| **3° giro** — Competenza errori + drill-down commesse | BE (dopo le viste) | stesso identico lavoro di B-1: una riga nel `SELECT`, una nel mapping, una chiave i18n |
+| **BE-4** — Lotti di fatturazione | **tutto BE** | `list_lotti` costruisce la lista con SQL diretto su `vendite.fatturazione_lotti` (`emittente_soggetto_ruolo_id`, `NOT NULL`): serve la JOIN a `soggetti_ruoli`/`soggetti`, la colonna e il mapping. È **l'ultima** per decisione Q4 |
+| **Il flag** | 80_data (DB) | su ogni lista, **solo dopo** che la colonna mostra un nome. Mai prima |
+
+⚠️ **Il passo 8 non si fa «per tutte le liste».** Il flag è un registro di
+debito che cala: il giorno in cui lo si accendesse in blocco avrebbe smesso di
+significare qualcosa.
+
+---
+
+### 13-bis.3-bis — Review critica del codice scritto · *2026-08-18*
+
+> **Metodo.** Riletto tutto il diff della giornata cercando **bug, codice
+> fragile, duplicazioni e valori scritti a mano**. Sette rilievi, tutti
+> corretti; due meritano di essere letti perché la lezione vale oltre il punto.
+
+#### 🔴 Il rilievo che conta: un test che dichiarava di leggere il catalogo e non lo apriva
+
+`test_chiave_riga_allineata_al_campo_sorgente_di_catalogo` asseriva la stringa
+`"emittente_ragione_sociale"` **scritta a mano nel test**. Si chiamava
+*«allineata al `campo_sorgente` di catalogo»* e il catalogo non lo leggeva
+nemmeno: sarebbe rimasto **verde proprio nel caso che diceva di presidiare** —
+il seed che cambia nome al campo.
+
+Riscritto per **leggere il CSV** (riusando `_colonne_attive` del presidio
+trasversale, invece di riscrivere la lettura). E una volta che il catalogo lo si
+apre davvero, non c'è ragione di guardare una colonna sola: ora verifica che
+**ognuno** degli 11 `campo_sorgente` attivi della lista sia una chiave della riga
+che il repository consegna.
+
+⭐ **Controprova**: tolta la riga del mapping dal repository → rosso. Rimessa →
+verde. Prima della riscrittura, la stessa prova lo lasciava **verde**.
+
+> ⚠️ **La forma del difetto è quella che il progetto conosce**: un presidio che
+> *sembra* legare due sedi e invece ne guarda una sola, con il nome che promette
+> l'altra. Si trova solo rileggendo il test come se fosse codice di produzione —
+> chiedendosi *«cosa deve cambiare perché diventi rosso?»*.
+
+#### 🟠 Un'asserzione che vietava più di quel che intendeva
+
+`assertNotIn("emittente_soggetto_ruolo_id", sql)` cercava in **tutto** lo
+`select_sql`, che contiene anche la `WHERE`: un filtro per emittente — legittimo,
+e plausibile in questo cantiere — avrebbe reso rosso un test che parla di *cosa
+arriva a video*. Ristretto alla **proiezione** (taglio prima del `FROM`).
+
+> Un presidio che dà falsi positivi viene disattivato dal primo che ci sbatte,
+> e con lui se ne va anche la parte che serviva.
+
+#### Gli altri cinque
+
+| | Rilievo | Correzione |
+| --- | --- | --- |
+| 🟠 | **indici posizionali a mano** nei test dello scope (`_POS_SCOPE_LISTA = 2`) | la posizione si **deriva dall'SQL**, contando i `%s` che precedono `p_emittente_ids` |
+| 🔵 | `cursor.execute.call_args[0][0]` | accetta **entrambe** le forme (posizionale / `sql=`), e asserisce che una query sia stata eseguita — altrimenti un `IndexError` muto al posto del presidio |
+| 🔵 | **import dentro un metodo** di test (`patch`, `UiAdminRepository`) | spostati in testa al file |
+| 🔵 | **id numerici di catalogo nei commenti** (`lista_colonna` id 478) | si nomina la colonna per **codice** (`emittente_fiscale`): il seed può rinumerare, e *«un numero da solo non dice niente a chi legge»* — è la regola che questo stesso brief detta in Q4 |
+| 🔵 | **numeri di riga** citati nel piano (`riga 192`) | sostituiti dai **simboli**: quei numeri li sposta il commento stesso che si sta aggiungendo |
+
+#### 🔵 Una duplicazione NON corretta, e il perché
+
+`_mock_connection` nel file di test nuovo è la **15ª** copia di quel helper in
+`backend/apps/*/tests` (misurate: 14 preesistenti, tutte locali al proprio file,
+tutte leggermente diverse). La regola del 2 direbbe di estrarre — **ma non è una
+decisione di questo cantiere**: riguarda 14 file che non ho toccato, e
+un'estrazione fatta di passaggio produrrebbe un building block modellato sul
+quindicesimo caso invece che sui quindici. **Segnalata a Tid, non eseguita.**
+
+#### ⚠️ Un errore di processo, per non ripeterlo
+
+Durante una controprova ho usato `git checkout --` su
+`vendite_repository.py` per annullare una modifica **simulata** — e ho cancellato
+con essa il lavoro **non committato** di B-1 (SELECT, mapping, whitelist).
+Riapplicato subito e riverificato, ma la lezione è secca: **per annullare una
+simulazione si usa una copia di backup, mai `git checkout`**, finché il lavoro
+vero non è committato. `git checkout` non distingue le due cose.
+
+### 13-bis.3-ter — Seconda review critica · *2026-08-18, dopo C-2/C-3/D*
+
+> **Metodo**: riletto tutto il codice delle fasi C e D cercando bug, fragilità,
+> duplicazioni e valori a mano. Sei rilievi, tutti corretti. Due riguardano
+> **codice che ricalcola** e **codice ripetuto**, e sono quelli che valgono.
+
+#### 🔴 243 righe di commento per 65 di codice
+
+L'estensione a tutte le liste è stata fatta con uno script, e lo script
+copiava accanto a **ogni** `lista_codice` lo stesso blocco di quattro righe:
+**48 copie identiche** della stessa spiegazione. Misurato sul diff: 243 righe di
+commento contro 65 di codice.
+
+⚠️ **Non è verbosità, è duplicazione**: quel testo descrive il **meccanismo**,
+non la singola view — e nessuno commenta `area_funzionale = "vendite"`. Se un
+giorno la regola cambia, ci sono 48 posti che raccontano quella vecchia.
+
+Tolti tutti; il perché vive **una volta** su `DomainAPIView.lista_codice`, dove
+è stata portata anche la regola sull'export. Sulle view resta solo ciò che è
+**specifico di quella lista** — sulla pilota, che da lì parte l'emissione
+mirata.
+
+#### 🟠 Il guard risolveva lo scope due volte
+
+`guard_lista_per_codice` risolveva il perimetro, poi delegava a un helper che
+**lo risolveva di nuovo**. Con una cache passata dal chiamante sarebbe stato un
+cache hit — ma `DomainAPIView.initial()` una cache non ce l'ha: erano **due
+query vere**, proprio nel ramo raro in cui si arriva fin lì.
+
+L'helper è stato eliminato, non riparato: la sua unica ragione d'essere era
+prendere il flag già risolto, e chi ce l'ha già ha anche già fatto il lavoro.
+Restano una porta pubblica e un `_rifiuta()` che non decide niente e serve solo
+a non scrivere codice e messaggio in due posti.
+
+⭐ **E con l'helper sono spariti tre test**, che verificavano gli **stessi** due
+versi già coperti dalla porta pubblica: *un test in più su una funzione in meno
+non aggiungeva copertura, aggiungeva un secondo posto da cambiare.*
+
+#### Gli altri quattro
+
+| | Rilievo | Correzione |
+| --- | --- | --- |
+| 🟠 | `UiService` risolveva lo scope **prima** di guardare il flag: ogni apertura di una lista **certificata** avrebbe pagato una query per un esito che il flag da solo aveva già deciso | termini invertiti, stesso ordine di `guard_lista_per_codice`. Il test della cache ora dichiara perché la sua fixture ha `multi_emittente: False` — col flag acceso il cortocircuito lo renderebbe verde senza provare niente |
+| 🟠 | l'etichetta di perimetro compariva anche sulle card **degradate o in caricamento** — attaccata a un trattino | si mostra solo con un numero davvero a video |
+| 🔵 | `"E_UI_LISTA_NON_TROVATA"` scritto a mano dentro il guard, mentre l'altro codice era una costante | costante, come il gemello |
+| 🔵 | il registro `_ESENZIONI` poteva contenere liste **non più a catalogo**, e nessuno se ne sarebbe accorto | asserzione in più: un'esenzione fantasma è rossa |
+
+#### ⛔ Due test rossi che NON sono di questo cantiere
+
+La suite chiude a **3744 con 2 rossi**, ed entrambi dicono la stessa cosa: nel
+catalogo sono comparsi **otto codici errore nuovi** — `E_ACCREDITO_*` e
+`E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA` — che appartengono al cantiere
+**accrediti/resi**, non a questo.
+
+⚠️ **Non li ho toccati, ed è una scelta.** Rigenerare `error_policies_generated.py`
+è meccanico e li includerebbe, ma la seconda metà — il **messaggio di ripiego**
+per ognuno — va scritta da chi conosce quel dominio: sono otto frasi che
+l'operatore leggerà quando il messaggio del database non arriva, e inventarle
+da fuori significherebbe scrivere otto cose plausibili e forse false.
+È esattamente la lezione di stamattina: **registrare un codice sono due file**,
+e il secondo non è meccanico.
+
+### 13-bis.4 — Cosa va autorizzato prima di scriverlo
+
+| # | Cosa | Perché serve un ok |
+| --- | --- | --- |
+| 1 | ✅ **AUTORIZZATO da Tid il 2026-08-18** — `apps/core/services/perimetro_emittente.py` (BB nuovo, **subito**) | Era un building block estratto alla **prima** occorrenza, contro la regola del 2. Autorizzato perché i consumatori sono **tre dal primo giorno** (config lista, guard endpoint, profilo `/me/`) e **le altre cinque liste lo useranno** — la seconda occorrenza non è ipotetica, è in calendario (Fase E). Il brief la chiedeva già: *«un solo punto lato BE, un helper in `apps/core`, non un controllo per endpoint»* |
+| 2 | ✅ **AUTORIZZATO da Tid il 2026-08-18** — `lista_codice` su `DomainAPIView` (opzione **A**) | Tocca la base view di tutti gli endpoint di dominio, ma è additivo e **inerte quando `None`**. Scelto contro la chiamata esplicita per riga (opzione B) per la **settima lista**, quella che oggi nessuno ha in mente: con l'attributo si dichiara e il controllo c'è; con la chiamata qualcuno deve ricordarsene — *«una regola che qualcuno prima o poi dimentica»*. Stesso meccanismo dichiarativo di `area_funzionale` e `post_permission`: si dichiara **cosa sei**, non cosa controllare |
+| 3 | ✅ **CONFERMATO da Tid il 2026-08-18** — `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`, classe `NON_ESEGUIBILE` (422), messaggio *«Questa lista non dice da quale emittente arriva ogni riga: scegli un emittente per entrare.»* | Nasce a catalogo: è una **richiesta al team DB** (C-0), non una scrittura BE. Non 403: il diritto c'è, manca una precondizione che l'utente scioglie da sé dalla combo di topbar — e il flag *«non è un permesso»* (P-2b). Un 403 racconterebbe una bugia sul motivo, e fra sei mesi qualcuno cercherebbe un diritto da concedere |
+| 4 | ✅ **AUTORIZZATO da Tid il 2026-08-18** — DB-1: `'campo'` al posto di `'column'` nei due guard nuovi | Perimetro DB. Una riga per changeSet |
+
+⭐ **Le due richieste al team DB (C-0 e DB-1) sono partite**, scritte il
+2026-08-18 in un documento loro:
+[brief-db-perimetro-emittente-due-richieste-dal-be.md](brief-db-perimetro-emittente-due-richieste-dal-be.md).
+Le fasi **A** e **B** non le aspettano.
+
+### 13-bis.5 — Quadro d'insieme
+
+| Passo | Perimetro | Prerequisito | Blocca |
+| --- | --- | --- | --- |
+| ✅ **A-1** BE-0 policy **+ messaggi di ripiego** | `backend/apps/core` | — | ⛔ era **la CI** |
+| ✅ **A-2** BE-1 igiene | `backend/apps/core/db` | — | — |
+| ✅ **B-1** BE-2 pilota **+ whitelist ordinamento** | `backend/apps/vendite` | ✅ DB 2026-08-18 | era la colonna a video |
+| ✅ **B-2** FE-1 i18n | `frontend/src/locales` | — | era l'etichetta in inglese |
+| ✅ **C-0** DB-2 codice errore | 80_data (**team DB**) | — | era ⛔ C-2 |
+| ✅ **C-1** BE-3 whitelist (4 punti, non 1) | `backend/apps/ui` | — | — |
+| ✅ **C-2** BE perimetro | `backend/apps/core`, `apps/ui`, `apps/vendite` | ✅ C-0 arrivata · autorizzazioni date | C-3 |
+| ✅ **C-3** FE-2 gate | `frontend/src/core` | ✅ C-2 | — |
+| ✅ **D-1..D-4** P-2c | BE + FE | 🔵 nessuno | — |
+| ✅ **E** le altre liste | BE | ✅ R-3 e R-4 consegnate | il flag |
+| ✅ **R-5** ricerca | BE + FE | ✅ residuo D-3 **chiuso** | — |
+
+### 13-bis.6 — Cosa NON è in perimetro BE/FE
+
+- **La RLS non si tocca**, e nessun filtro applicativo la sostituisce: i
+  `get_emittenti_*` restano difesa in profondità e si sommano;
+- **`ui_action` non si accende**, e la misura di [api.md](../api.md) è stata
+  **corretta il 2026-08-18**: diceva *«non la legge nessuno»*, ma dal 2026-08-08
+  `useApiHandler` la **estrae** in `azioneUi` — semplicemente **nessun
+  chiamante la usa** (verificato: zero consumatori fuori dal composable). È un
+  contratto emesso, trasportato e non ancora consumato. Questo cantiere non è
+  il posto per accenderlo: il giorno in cui un componente reagirà a
+  `azioneUi`, le 176 righe di override vanno riguardate **prima**;
+- **nessun interruttore in interfaccia** per `multi_emittente`, in nessuna
+  forma: né campo, né toggle, né «solo per il super admin»;
+- **niente ricalcolo lato FE** della cardinalità dello scope: il perimetro lo
+  dichiara il backend, il frontend lo mostra;
+- **il dettaglio di un singolo documento resta fuori** (D-4);
+- **`fn_build_fattura_key` e la pipeline** non si toccano — vale identico qui.
+
+---
+
+## 13-ter. Risposta al backend — 2026-08-18
+
+> **Cos'è.** Il backend ha riferito lo stato del cantiere dal suo lato e ha
+> elencato tre residui DB. Questa sezione verifica ogni affermazione contro il
+> database e registra cosa è stato fatto. **Una delle tre è sbagliata nel punto
+> che conta**, e verificandola sono usciti un difetto vero e una terza
+> occorrenza dello stesso errore di lettura.
+
+### 13-ter.1 🔴 «Sulla pilota la vista è vuota» — no: era vuota la sessione
+
+Il backend scrive: *«sulla pilota la colonna c'è dal mattino, ma la vista è
+vuota in questa istanza — non c'è lavoro fatturabile aperto — quindi il momento
+non è ancora arrivato»*.
+
+| Contesto | `vw_dash_competenza_gruppi` | con il nome dell'emittente |
+| --- | ---: | ---: |
+| sessione **senza** `app.current_user_id` | 0 | 0 |
+| operatore vero (`auth_user_id = 5`) | **74** | **74** |
+| super admin (scope = universo) | **74** | **74** |
+
+⭐ **Lo zero è P-2a che funziona.** La vista filtra
+`escope.sr_ids IS NULL OR emittente = ANY(escope.sr_ids)`, e dal 2026-08-18
+`fn_get_emittenti_scope_sr_ids(NULL)` risponde `'{}'` — fail-closed. Un attore
+nullo non vede niente: è il cantiere che fa il suo mestiere, letto come assenza
+di dati. Dietro ci sono **90 attività** su **59 commesse**, tutte con
+l'emittente valorizzato.
+
+> ⚠️ **Non è una svista di una persona: è un errore che si è fatto in tre.** La
+> stessa frase — *«la vista è vuota in questa istanza»* — era già scritta
+> nell'intestazione del pgTAP `ui/test-lista-competenza-gruppi-colonna-emittente-v1`,
+> come **motivazione per non asserire i dati**. E quel test gira **proprio** in
+> un contesto operatore, dove la vista rende 74 righe. Corretta anche lì.
+>
+> ⭐ **La regola operativa che ne esce**: una vista del perimetro **non si
+> misura da psql**. Senza `app.current_user_id` ogni conteggio è zero, e lo zero
+> non distingue *«non c'è lavoro»* da *«non sei nessuno»*.
+
+**La misura si rifà così** — due righe, e la seconda è quella che manca sempre:
+
+```sql
+SET app.current_user_id = '5';   -- un operatore vero, non una sessione anonima
+SELECT count(*) AS righe,
+       count(emittente_ragione_sociale) AS con_nome
+  FROM vendite.vw_dash_competenza_gruppi;
+-- atteso oggi: 74 | 74
+```
+
+⚠️ **`count(*)` da solo non basta, ed è il punto di §13-ter.2**: dice che le
+righe ci sono, non che la colonna porta un valore. Le due `count` vanno sempre
+in coppia.
+
+**Conseguenza**: il collaudo della pilota è stato fatto, e il flag è acceso.
+
+### 13-ter.2 🔴 Il difetto che nessuno dei due vedeva — `20260818-61` consegnava una colonna vuota
+
+Verificando la 13-ter.1 sono state contate anche le altre viste del perimetro, con
+un contesto operatore addosso:
+
+| vista | righe | con il nome |
+| --- | ---: | ---: |
+| `vw_dash_competenza_gruppi` (pilota) | 74 | 74 ✅ |
+| `vw_dash_competenza_attivita` | 90 | 90 ✅ |
+| `vw_dash_backlog_documenti` | 102 | 102 ✅ |
+| `vw_dash_aperto_documenti` | 156 | **0** 🔴 |
+| `vw_dash_fatturazione_documenti` | 274 | **0** 🔴 |
+
+**La causa.** `20260818-61` risolve il nome da `emittente_soggetto_ruolo_id`,
+fidandosi della frase scritta nel `COMMENT` della vista — *«i sei resolver
+portano tutti `emittente_soggetto_ruolo_id`»*. **Cinque su sei la scrivono
+`NULL::bigint` a mano** (preventivi, ordini, offerte, contratti, DDT); l'unica
+che porta il valore è `commesse`. E `vw_dash_aperto_documenti` filtra
+`area <> 'COMMESSE'`: lì la colonna era vuota **per costruzione, per sempre**.
+
+**Corretto da `20260818-74`** con la stessa cura che `-63` aveva già adottato
+per il ramo resi: `COALESCE` sulla chiave — soggetto-ruolo se c'è, altrimenti
+quello dedotto da `emittente_fiscale_id`, che è valorizzato su 274 righe su 274.
+Verificato in transazione: 274/274, e «Situazione aperta» 156/156 **senza
+rifare `-62`**, che proietta la colonna da lì.
+
+> ⛔ **Era esattamente l'adesivo senza collaudo che il flag esiste per
+> impedire**, e la vista di controllo dava zero — correttamente, perché è un
+> controllo di **catalogo**: sa che la colonna è *dichiarata*, non che *porta un
+> valore*.
+>
+> ⭐ **La verifica che mancava è di una riga**: `count(*)` contro
+> `count(colonna)`, sulla vista che il backend legge davvero e con un contesto
+> operatore. È diventata il **test 6** del pgTAP `ui/…-colonna-emittente-v1`, e
+> il suo rosso nomina il colpevole: `vw_dash_aperto_documenti 0/156`.
+
+### 13-ter.3 I tre residui, uno per uno
+
+| | Residuo segnalato dal BE | Verdetto |
+| --- | --- | --- |
+| 🔵 | `fn_get_emittente_fiscale_id` non delega a `fn_get_ba_emittente_sr_id` | **vero**, e giustamente parcheggiato: è il prerequisito di **P-6** e si fa in quel cantiere. ⚠️ **Non è una riga**: le due divergono sul `NULL` — §11.11 |
+| ⛔ | «la ricerca universale applica il perimetro solo a `CL`» | **non è un residuo: è il modello.** Un fornitore non ha billing account, quindi non ha emittente (§11.9). Già scritto nel `COMMENT` di `20260818-60` — passo 1 |
+| ✅ | i due buchi di test dichiarati | **chiusi entrambi**, e il movimento 4 **non richiedeva** un test non transazionale — passo 4 e passo 1 |
+
+### 13-ter.4 Cosa è stato scritto — e i due rossi che aspettano il migrate
+
+| File | Cosa |
+| --- | --- |
+| `20260818-74-update-vw-dash-fatturazione-documenti-emittente-coalesce` | la correzione di §13-ter.2 |
+| `80_data/sql/ui/lista_definizione.csv` | **la pilota passa a `multi_emittente = t`** — una cella, riga id 42 |
+| `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql` | +2 asserzioni (movimento 4) → **12/12 verdi** |
+| `db/pgtap/script/test-search-scope-interno-v1.sql` | +3 asserzioni (fixture a due emittenti) → **15/15 verdi** |
+| `db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql` | +2 asserzioni (**la colonna è piena**) + corretta l'intestazione sbagliata |
+| `db/pgtap/ui/test-lista-definizione-multi-emittente-v1.sql` | il registro di debito passa da un **conteggio** a un **elenco**, e la fixture sceglie una lista non certificata |
+
+⛔ **Due file sono rossi ORA, e devono esserlo**: presidiano lo stato che il
+migrate deve produrre e nessuno dei due è debito di baseline.
+
+| File | Dice | Diventa verde |
+| --- | --- | --- |
+| `ui/…-colonna-emittente-v1` | `vw_dash_aperto_documenti 0/156` | applicando `20260818-74` |
+| `ui/…-multi-emittente-v1` | `have {}` · `want {vendite.dash_competenza_gruppi}` | applicando il CSV |
+
+> ⚠️ **Non sono stati messi in baseline, ed è deliberato.** La baseline è un
+> registro di **debito**; questi due sono presidi che aspettano una migrazione
+> di mezz'ora. Metterceli significherebbe insegnare a chi legge che un rosso si
+> archivia invece di chiuderlo.
+
+Baseline `script` e `anagrafiche` rieseguite: **nessuna regressione** (1 su 60 e
+27 su 56, tutti già noti).
+
+### 13-ter.5 Il registro di debito cala per la prima volta
+
+`multi_emittente` era **0 su 44** e *«non è ancora calato di uno»*. Da oggi è
+**1 su 44**, e la lista è **Competenza — gruppi fatturabili**, la pilota decisa
+in Q4.
+
+**Il collaudo che l'ha autorizzato**, per esteso, perché il flag vale quanto vale
+il collaudo dietro:
+
+1. la colonna è a catalogo, attiva, `campo_sorgente = emittente_ragione_sociale`;
+2. la vista la espone **e la valorizza**: 74 righe su 74, sia per l'operatore sia
+   per il super admin — cioè proprio per l'attore multi-emittente, l'unico per
+   cui il flag decide qualcosa;
+3. il repository la **seleziona** (`vendite_repository.py:1293`) e la mappa nella
+   riga tipizzata: è la metà che il DB non può vedere, ed è quella che rende
+   vuota una colonna dichiarata;
+4. la vista di controllo `vw_liste_multi_emittente_non_certificate` resta a
+   **zero righe**.
+
+⚠️ **Una cosa che il collaudo NON dimostra, ed è giusto scriverla**: in questa
+istanza tutte le 59 commesse stanno sullo stesso emittente, quindi a video il
+nome è **uno solo**. Ciò che è provato è che *ogni riga dichiara il proprio
+emittente* — la capacità che il flag certifica — non che se ne vedano due. Il
+secondo emittente esiste (SR 159) ma non ha commesse.
+
+~~⛔ **Le altre cinque restano a `false`**, e per un motivo che ora è misurato e
+non prudenziale: il repository seleziona la colonna **solo per la pilota**
+(BE-5), e su «Situazione aperta» fino a `-74` la colonna era vuota comunque.~~
+
+→ **Superato nello stesso giorno, e su entrambi i fronti**: il flag è stato
+acceso su tutte e sei (§13-ter.7, decisione di Tid), e la riserva che
+accompagnava quella decisione — *«su cinque il flag precede il `SELECT`»* — non
+vale più: **BE-4 e BE-5 erano già fatte** mentre questa sezione veniva scritta,
+e sono state **collaudate sui dati** la sera stessa (`lotti` 44/44, `aperto`
+156/156, `backlog` 102/102, `gruppi` 20/20, `commesse` 9/9).
+
+### 13-ter.6 Cosa torna al backend
+
+| | Cosa | Perché |
+| --- | --- | --- |
+| 🔵 | **Rifare la misura sulla pilota con un contesto operatore** (query in §13-ter.1) e chiudere la voce «la vista è vuota» | è l'unico punto in cui la relazione del BE porta a una conclusione sbagliata: il collaudo era possibile da subito |
+| 🔵 | **BE-5 su «Situazione aperta» e «Backlog» era mezzo bloccato e non si sapeva**: su `aperto` la colonna sarebbe arrivata vuota anche selezionandola | dopo `20260818-74` non lo è più. Le due liste condividono la stessa vista a monte: è **una** JOIN già fatta e due `SELECT` da estendere |
+| 🔵 | Quando estendete il `SELECT`, **contate**: `count(*)` contro `count(emittente_ragione_sociale)` sulla vista che il repository legge davvero | è la verifica che ha trovato `-61`, e costa una query |
+| ⛔ | **Non accendete `multi_emittente` da nessuna parte**: si accende dal seed, una lista alla volta, e il DB lo fa quando il giro è completo | invariato — decisione 3 e §11.5 |
+
+~~⭐ **E una cosa che il BE ha visto giusto e vale la pena confermare**: *«è un
+registro di debito che cala quando qualcuno certifica una lista, non quando
+accende un interruttore»*. È esattamente così, ed è il motivo per cui il numero
+oggi è **1** e non **6**.~~ → **superato dalla decisione di §13-ter.7.**
+
+### 13-ter.7 ⚠️ Decisione di Tid: il flag si accende su tutte e sei · *2026-08-18*
+
+> *«accendilo anche sulle altre 5, inutile aspettare»*
+
+**Fatto: `multi_emittente = true` su tutte e sei le liste del perimetro**
+(`lotti`, `dash_aperto_documenti`, `dash_backlog_documenti`,
+`dash_competenza_errori`, `dash_competenza_gruppi`, `dash_competenza_commesse`).
+Registro: **6 su 44**.
+
+**La riserva, detta una volta e poi basta.** Sulla sola pilota il flag ha dietro
+il giro completo. Sulle altre cinque si accende **prima** che il repository
+selezioni la colonna (BE-5), quindi resta spuntabile e vuota; e su
+`vendite.lotti` il campo `emittente_ragione_sociale` **non esiste in nessuna
+vista** (BE-4), quindi lì il lavoro è più lungo di una riga di `SELECT`.
+
+**Perché la decisione regge lo stesso**, e non è «si è ceduto»:
+
+- il flag **non è un permesso**: toglie una domanda al super admin, non concede
+  un diritto. Chi non ha lo scope non vede comunque niente — quello lo tiene la
+  RLS più P-2a, che sono intatti;
+- **non siamo in produzione**, e il gate proteggeva un utente che qui non c'è:
+  in questa istanza tutte le 59 commesse e tutti i 274 documenti stanno su **un
+  solo emittente**. La finestra che la decisione 3 vietava — *«la lista mescola
+  emittenti senza dirlo»* — oggi non ha due emittenti da mescolare;
+- il rischio residuo è **una colonna vuota**, non un dato sbagliato. È
+  fastidioso e visibile, che è il modo giusto in cui un debito deve fare male.
+
+⛔ **Cosa NON cambia**: il flag resta scrivibile **solo dal seed**, il trigger di
+§11.5 resta, e la vista di controllo resta a zero (tutte e sei hanno la riga a
+catalogo). Il registro tornerà a significare qualcosa quando **BE-5** sarà
+chiusa; fino ad allora dice *«queste sei sono in carico»*, non *«queste sei sono
+collaudate»* — ed è scritto nei due pgTAP che lo asseriscono, non solo qui.
+
+✅ **Applicato e verificato in banca dati**: `ui.lista_definizione` ha **6 righe
+su 44** con il flag, e `dbops.vw_liste_multi_emittente_non_certificate` resta a
+**zero**. I due presidi che lo asseriscono per elenco —
+`ui/…-multi-emittente-v1` (test 5) e `vendite/test-viste-dash-emittente-v1`
+(test 10) — sono **verdi**.
+
+> ⭐ **I due presidi sono stati rossi per il tempo fra la scrittura del CSV e il
+> migrate, e hanno detto la cosa giusta** (`have` cinque codici in meno di
+> `want`). È il modo in cui un registro scritto per **elenco** si comporta:
+> nomina ciò che manca. Un `count` avrebbe detto «1 ≠ 6».
+
+## 15. Come si collauda a video — *la parte che i test non fanno*
+
+> **Perché serve una sezione.** Tutto il cantiere è verificato per **dati** e per
+> **contratto**; nulla è stato guardato **a schermo**. E non basta dire «apri una
+> lista»: in questa istanza il cancello **non può scattare** sulle sei liste del
+> perimetro, perché sono tutte certificate. Chi le apre e non vede niente
+> potrebbe concludere che il cancello non funziona.
+
+> ✅ **ESEGUITO INTEGRALMENTE da Tid il 2026-08-18 — tutti i punti verdi.**
+> §15.1 il cancello · §15.2 le sei colonne emittente e il loro ordinamento ·
+> §15.3 le due etichette di perimetro · §15.4 il verso opposto.
+>
+> ⚠️ **Con una correzione in mezzo, ed è la ragione per cui questa sezione
+> esiste**: il §15.1 è stato **rosso al primo giro**, e non per il cancello —
+> il pannello era nascosto dal `v-show` delle liste a ricerca obbligatoria
+> (diagnosi e rimedio nel **C-3-bis**). Corretto e **riverificato verde**.
+>
+> ⭐ Nessun test lo avrebbe preso: il backend rispondeva giusto e il componente
+> rendeva giusto: il difetto stava nella terza cosa, *chi dei due si vede*. È
+> l'unico difetto che il collaudo a schermo ha trovato, ed è tutto quello che
+> serve per giustificare il §15.
+
+### 15.0 Prima di tutto: ricaricare il backend
+
+Il backend di sviluppo è **gunicorn sotto systemd senza autoreload**: finché non
+si ricarica, in-app gira il codice di prima e ogni collaudo misura il passato.
+
+```bash
+kill -HUP $(pgrep -f 'gunicorn zeroerp_backend.wsgi' | head -1)   # master
+ps -eo pid,etimes,cmd | grep '[g]unicorn'                          # i worker devono essere NUOVI
+```
+
+Il frontend gira con `vite --host` e si ricarica da sé (HMR).
+
+### 15.1 Il cancello — ⚠️ **non sulle liste del perimetro**
+
+| Passo | Atteso |
+| --- | --- |
+| 1. login come **super admin** (`tid`) | — |
+| 2. combo di topbar → **«Tutti gli emittenti»** | scope = universo, cioè perimetro multiplo |
+| 3. aprire una lista **NON certificata** — es. **Clienti** (`anagrafiche.clienti`) | al posto della tabella il pannello **«Scegli un emittente per continuare»**, severity *warn*. ⭐ **E nessun toast rosso**: è la soppressione in `useApiHandler` |
+| 4. scegliere un emittente dalla combo | la stessa lista si apre normalmente |
+
+⛔ **Sulle sei liste del perimetro il pannello NON comparirà mai**, ed è
+corretto: hanno `multi_emittente = true`, cioè dichiarano di saper dire da quale
+emittente arriva ogni riga.
+
+> 🔴 **Eseguito il 2026-08-18, e il passo 3 è stato ROSSO**: su Clienti il
+> pannello non compariva. Non per il cancello — per il `v-show` del caller, che
+> teneva nascosta l'intera lista finché non si cercava. Diagnosi e correzione
+> nel **C-3-bis**; dopo la correzione il pannello si vede **subito, senza
+> cercare**, e `<SearchHint>` cede il posto invece di affiancarsi. ✅ **Passo
+> riverificato verde** da Tid nello stesso giro.
+>
+> ⭐ Da rifare così, perché è il passo che ha trovato il difetto: aprire la
+> lista e **non cercare**. Chi digita subito vede il pannello lampeggiare per
+> il tempo della richiesta e conclude che «qualcosa fa» — che è il modo
+> peggiore di passare un collaudo.
+
+### 15.2 Le sei colonne emittente
+
+Da **«Tutti gli emittenti»**, su ognuna: `Personalizza colonne` → spuntare
+**Emittente** (arriva **spenta**: è il merge automatico delle colonne nuove).
+
+| Lista | righe attese oggi | con il nome |
+| --- | ---: | ---: |
+| Lotti di fatturazione | 44 | 44 |
+| Situazione aperta — documenti | 156 | 156 |
+| Backlog — documenti fermi | 102 | 102 |
+| Competenza — gruppi fatturabili (luglio) | 20 | 20 |
+| Competenza — drill-down commesse (luglio) | 9 | 9 |
+| Competenza — errori vivi | 0 | — (nessun errore vivo) |
+
+⭐ **E cliccare l'intestazione «Emittente»**: deve **ordinare**. Non è un
+dettaglio — su «Competenza — errori vivi» *ogni* ordinamento rispondeva **500**
+da sempre, ed è il difetto trovato provando esattamente questo.
+
+### 15.3 Le due etichette di perimetro
+
+- **Home**: i contatori mostrano *«Tutti gli emittenti»* sotto il numero — e
+  **solo** dove un numero c'è davvero (non su una card di benvenuto, non su una
+  degradata);
+- **Ricerca universale**: riga di perimetro sopra i risultati e, cercando un
+  **cliente**, la colonna *«Emittenti presso cui è cliente»*.
+  ⚠️ Su fornitori e altri tipi ruolo la colonna **non c'è**, e non è un difetto:
+  un fornitore non ha billing account, quindi non ha emittente (§11.9).
+
+### 15.4 Il verso opposto, che è quello che si dimentica
+
+Rientrare in **un** emittente dalla combo e ripetere: le etichette
+**spariscono** (il perimetro è uno solo) e il cancello non scatta più da nessuna
+parte. Un collaudo che prova solo il caso «acceso» non distingue un presidio che
+funziona da uno sempre attivo.
+
+### 15.5 Test automatici di interfaccia: oggi **non esistono**
+
+Misurato: `frontend/package.json` ha `dev`, `build`, `preview`, `lint`,
+`format` — **nessun** runner (niente Vitest, Jest, Playwright, Cypress).
+
+⚠️ **Ma il frontend non è senza presidi**, ed è una scelta già in casa: lo
+presidiano **test Python che leggono il sorgente FE** —
+`scripts/check_i18n_keys.py` (lega le chiavi emesse dal DB alle traduzioni) e
+`test_perimetro_emittente_copertura.test_il_codice_citato_dal_frontend_esiste_a_catalogo`
+(lega il codice errore citato in `useApiHandler.js` al catalogo). È la strada
+più economica per estendere la copertura senza introdurre una suite.
+
+> ⭐ **Raccomandazione**: **non** introdurre una suite FE *per questo cantiere*.
+> Quello che il frontend fa qui sono tre `v-if` e due etichette; il rischio vero
+> stava nel backend, dove i test ci sono e hanno trovato quattro difetti. Una
+> suite FE è un cantiere a sé — Vitest + Testing Library per i composable
+> (`useListaConfig`, `useApiHandler`) e Playwright per due o tre percorsi
+> critici — e va deciso guardando **tutto** il frontend, non l'ultima cosa
+> toccata.
 
 ---
 
@@ -2254,5 +4342,5 @@ mappare in `error_policies.py` come tutti gli altri.
 | Gerarchia BA (manuale) | `docs/it/dbzero/anagrafiche/manual/billing_account.md` |
 | Policy RLS BA (lettura + scrittura) | `db/changelog/migrations_v2/00_schema/anagrafiche/20260601-36-…`, `20260603-25-…` |
 | GUC emittente attivo (BE) | `backend/apps/core/api/jwt_audit_authentication.py` |
-| Cantiere che ha fatto emergere i buchi | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) |
+| Cantiere che ha fatto emergere i buchi | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) |
 | Architettura multi-face auth | `docs/it/guide/architettura-multi-face-auth.md` |

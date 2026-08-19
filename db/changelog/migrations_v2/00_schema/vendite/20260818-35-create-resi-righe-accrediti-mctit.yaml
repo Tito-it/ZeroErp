@@ -1,0 +1,274 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N4 — `vendite.resi_righe_accrediti`: IL TERZO LATO
+#   docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §12.6-ter
+#   (requisito D-NC-10, Tid 2026-08-18)
+#
+# ── ⭐ NON E' UN'ECCEZIONE AL MODELLO: NE COMPLETA UNA SIMMETRIA ────────
+#
+#   Una riga di reso ha TRE uscite, e finora ne aveva due con la loro
+#   tabella-ponte. La doc di `resi_righe_rinunce` le chiama gia' per nome —
+#   «la merce torna indietro (ponte resi_righe_riconsegne) OPPURE si chiude qui»:
+#
+#       torna al cliente  ->  vendite.resi_righe_riconsegne   ✅ esiste
+#       non torna piu'    ->  vendite.resi_righe_rinunce      ✅ esiste
+#       si accredita      ->  vendite.resi_righe_accrediti    ⛔ mancava
+#
+#   E' il motivo per cui il §4 del brief — «nessuna seconda pipeline» — regge
+#   fino in fondo: il posto dove registrare l'accredito non e' un'invenzione,
+#   e' la casella vuota di una simmetria a tre.
+#
+# ── COSA REGISTRA, E PERCHE' NON BASTAVA UNA COLONNA ───────────────────
+#
+#   «Di questa riga di reso, N pezzi sono stati accreditati CONTRO QUELLA riga
+#   di fattura, e ne e' nata quella rettifica in commessa». Tre informazioni
+#   che una colonna `qta_accreditata` su `resi_righe` non saprebbe portare:
+#   perde contro cosa, perde chi e quando, e non regge il caso strutturale in
+#   cui l'accredito dovuto di UNA riga di reso copre DUE righe di fattura a
+#   prezzi diversi (D-NC-5, consumo LIFO) — che genera due righe qui, non una.
+#
+# ── I DUE TETTI, E PERCHE' DEVONO ESSERE DUE ───────────────────────────
+#
+#       Σ unita' di merce per resi_riga_id     =  accredito dovuto   (la MERCE)
+#       Σ qta per fattura_riga_rettificata_id  ≤  qta della riga     (il DOCUMENTO)
+#
+#   ⭐ Due misure che parlano lingue diverse: una conta i pezzi tornati,
+#   l'altra i pezzi fatturati. Quando divergono non c'e' un numero di cui
+#   fidarsi — c'e' un difetto da guardare. Nessuna delle due si esprime con un
+#   vincolo di colonna: **le somme non si scrivono in una UNIQUE**.
+#
+# ── 🔴 CORREZIONE AL PIANO: i due tetti NON hanno lo stesso proprietario ─
+#
+#   Il §15 (N4) del brief li mette entrambi nel guard del ponte. **Non regge
+#   sul KIT**, ed e' il primo caso reale della coda: la riga di reso 24 accredita
+#   un articolo composito con TRE componenti, ciascuno con la sua riga di
+#   fattura a prezzo diverso (1, 2 e 14 euro).
+#
+#       la MERCE si misura in UNITA' PADRE      -> accredito dovuto = 1
+#       il DOCUMENTO si misura in unita' di riga -> tre righe di ponte, qta 1+1+1
+#
+#   Un tetto «Σ qta per riga di reso ≤ accredito dovuto» valutato riga per riga
+#   direbbe «3» dove la merce dice «1», e **rifiuterebbe il secondo componente**
+#   di un accredito perfettamente legittimo. E' lo stesso motivo per cui
+#   `vw_af_merce_per_riga` calcola `quantita_padre = max(quantita / coeff_qta)`
+#   invece di sommare i componenti.
+#
+#   ✅ Divisione del lavoro, e ciascun tetto vive dove e' esattamente definibile:
+#
+#     * il **guard del ponte** (-36) tiene il tetto del DOCUMENTO — riga per
+#       riga, esatto, e vale anche contro una scrittura diretta. E' anche il
+#       tetto che prima non esisteva: l'unico limite all'accredito era il conto
+#       della merce;
+#     * la **madre** (`fn_accredita_riga_reso`) tiene il tetto della MERCE, e lo
+#       tiene come **uguaglianza** (D-NC-6: l'accredito e' sempre pieno). E'
+#       l'unica a conoscere l'unita' padre e a sapere quando l'operazione e'
+#       finita; un trigger di riga non sa ne' l'una ne' l'altra cosa;
+#     * la **UNIQUE** ferma il doppione esatto, cioe' il doppio click.
+#
+#   ⭐ La colonna `qta_partita` porta la misura in unita' di MERCE accanto a
+#   quella in unita' di documento: per un kit le tre righe portano `qta` 1, 1, 1
+#   e `qta_partita` 1, 1, 1 — cioe' «tre righe di documento per UNA unita' di
+#   merce». Senza, la storia di un accredito su kit non sarebbe leggibile senza
+#   rifare il conto dei coefficienti.
+#
+#   ⚠️ E per questo serve anche `gruppo`: `qta_partita` va sommata **una volta
+#   per unita' consumata**, non una volta per riga. Due casi tirano in direzioni
+#   opposte e coesistono:
+#
+#       kit          -> N righe con la STESSA quota padre  -> sommarle triplica
+#       consumo LIFO -> N righe con quote padre DIVERSE    -> vanno sommate
+#
+#   Con `gruppo` (il segmento della rettifica privato del `#CMP`) la somma si fa
+#   una volta per gruppo e regge entrambi. La formula sta in un posto solo,
+#   `vendite.fn_resi_riga_accreditato_partita`, e la consuma la coda.
+#
+# ── ⚠️ LA `UNIQUE` C'E', MA NON E' IL PRESIDIO ─────────────────────────
+#
+#   `(resi_riga_id, fattura_riga_rettificata_id)`, calco di
+#   `uq_resi_riconsegne_pair`: una riga di reso non accredita **due volte la
+#   stessa riga di fattura**. Impedisce il doppione esatto — cioe' il doppio
+#   click — e nient'altro: l'ECCESSO lo ferma solo il guard.
+#
+# ── ⭐ E' QUI CHE SI CHIUDE LA FINESTRA DELL'IDEMPOTENZA ───────────────
+#
+#   Il §12.6-E descrive il buco: fra il verbo e l'emissione la rettifica esiste
+#   come attivita' NON_EMESSA, l'attivita' fatturabile non c'e' ancora, quindi
+#   il conto della merce non e' cambiato e **la riga e' ancora in coda**. Un
+#   secondo click sarebbe perfettamente coerente col conto.
+#   Con questa tabella l'accredito e' registrato **al momento del verbo**, e il
+#   secondo click sbatte contro una riga che c'e' gia': l'operatore lo scopre
+#   quando clicca, non a fine batch su un documento fiscale.
+#
+# ── ⚠️ LE TRAPPOLE DI UNA TABELLA NUOVA, tutte gia' pagate dal progetto ─
+#
+#   * indici FK **opt-in**: senza il seed esplicito in `dbops.fk_index_policy`
+#     non ne nasce nessuno. Seed in 80_data;
+#   * i trigger di audit, `tx_id` e storico girano solo in contesto `ci_apply`:
+#     su un migrate manuale li aggancia il job serale del pgagent;
+#   * PK `bigint GENERATED BY DEFAULT AS IDENTITY` (tabella tecnica), non
+#     SERIAL, come le due sorelle.
+#
+# ── PERCHE' `commessa_attivita_id` E' NOT NULL ─────────────────────────
+#
+#   La prima stesura lo prevedeva nullable, temendo che scrivere la rettifica
+#   PRIMA della riga di ponte lasciasse aperta la finestra del doppio click.
+#   **Non e' cosi'**: la madre e' una sola `SELECT`, quindi una sola
+#   transazione. Due chiamate concorrenti si serializzano sull'advisory lock e
+#   la seconda sbatte comunque contro la UNIQUE del ponte — a quel punto
+#   l'INTERA transazione rolla, rettifica compresa. L'ordine delle scritture
+#   dentro la transazione non cambia nulla per l'idempotenza.
+#
+#   ⭐ E il NOT NULL paga: la riga di ponte non nasce mai orfana, e non serve
+#   una seconda scrittura per riempirla dopo — cioe' non esiste lo stato
+#   intermedio «accredito registrato ma senza rettifica», che sarebbe l'unico
+#   modo di avere un fatto senza il suo effetto.
+#
+# Dipendenze: vendite.resi_righe, vendite.fatture_righe, vendite.commesse_attivita.
+# Consumatori: -36 (guard), -39 (la madre), -40 (la coda espone gia_accreditato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260818-35-create-resi-righe-accrediti-mctit.yaml
+
+  - changeSet:
+      id: 20260818-35-create-resi-righe-accrediti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N4 (D-NC-10): crea vendite.resi_righe_accrediti, il terzo lato accanto a
+        resi_righe_riconsegne e resi_righe_rinunce. Registra quanti pezzi di una
+        riga di reso sono stati accreditati contro quale riga di fattura, e
+        quale rettifica di commessa ne e' nata. E' anche il presidio contro il
+        doppio click, e chiude la finestra fra il verbo e l'emissione: senza,
+        due click produrrebbero due accrediti coerenti col conto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: resi_righe_accrediti
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_righe
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: resi_righe_accrediti
+            remarks: >-
+              Quota di una riga reso accreditata al cliente, contro una precisa
+              riga di fattura. Terzo lato accanto a resi_righe_riconsegne e
+              resi_righe_rinunce. brief-design-note-credito-resi D-NC-10.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_resi_accrediti, nullable: false }
+
+              - column: { name: resi_riga_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.resi_righe.id: la riga di reso accreditata." }
+              - column: { name: fattura_riga_rettificata_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.fatture_righe.id: QUALE riga di fattura si accredita. E' da qui che prezzo, sconto e IVA si copiano, mai da un ricalcolo." }
+              - column: { name: qta, type: numeric, constraints: { nullable: false }, remarks: "Quantita accreditata nell'unita' della RIGA DI FATTURA (per un componente di kit: unita' padre x coeff_qta). E' la misura su cui vive il tetto del DOCUMENTO. Il segno negativo vive sulla rettifica in commessa, non qui: questa e' una misura, non un movimento." }
+              - column: { name: qta_partita, type: numeric, constraints: { nullable: false }, remarks: "La stessa quota misurata in unita' di MERCE (unita' padre della partita). Per un kit tutte le righe del gruppo portano lo stesso valore: tre righe di documento per UNA unita' di merce. Coincide con qta quando non c'e' un kit." }
+              - column: { name: gruppo, type: VARCHAR(128), constraints: { nullable: false }, remarks: "L'unita' consumata a cui questa riga appartiene: il segmento della rettifica privato del suffisso #CMP (es. 'DDT:<uid>:R:<id>#RET:1'). Serve a sommare qta_partita UNA volta per gruppo: su un kit tre righe portano la stessa quota padre, e sommarle la triplicherebbe." }
+              - column: { name: commessa_attivita_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.commesse_attivita.id: la rettifica generata. NOT NULL: la riga di ponte non nasce mai orfana, e non esiste lo stato intermedio «accredito registrato senza rettifica»." }
+
+              - column: { name: note, type: VARCHAR(255), remarks: "Motivo facoltativo, testo libero (stessa forma delle due sorelle)." }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: resi_righe_accrediti
+            columnNames: resi_riga_id, fattura_riga_rettificata_id
+            constraintName: uq_resi_accrediti_pair
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: resi_righe_accrediti
+            baseColumnNames: resi_riga_id
+            constraintName: fk_resi_accrediti_resi_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: resi_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: resi_righe_accrediti
+            baseColumnNames: fattura_riga_rettificata_id
+            constraintName: fk_resi_accrediti_fattura_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: resi_righe_accrediti
+            baseColumnNames: commessa_attivita_id
+            constraintName: fk_resi_accrediti_commessa_attivita
+            referencedTableSchemaName: vendite
+            referencedTableName: commesse_attivita
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi_righe_accrediti
+                ADD CONSTRAINT k_resi_accrediti_qta_pos CHECK (qta > 0),
+                ADD CONSTRAINT k_resi_accrediti_qta_partita_pos CHECK (qta_partita > 0);
+
+              COMMENT ON TABLE vendite.resi_righe_accrediti IS
+                'Il TERZO LATO delle uscite di una riga di reso, accanto a '
+                'vendite.resi_righe_riconsegne (la merce torna al cliente) e '
+                'vendite.resi_righe_rinunce (non torna piu''): qui si registra che una '
+                'quota e'' stata ACCREDITATA, contro una precisa riga di fattura. '
+                '⭐ Non e'' un''eccezione al modello, ne completa una simmetria che la '
+                'doc delle due sorelle nominava gia''. '
+                'Popolata SOLO da vendite.fn_accredita_riga_reso. '
+                'Serve tre cose insieme: (1) il FATTO, con chi/quando/quanto/contro '
+                'cosa — una storia che altrimenti non esisterebbe da nessuna parte, '
+                'perche'' la rettifica in commessa dice COSA e'' stato fatto, non A '
+                'FRONTE DI COSA; (2) il PRESIDIO contro il doppio accredito, che '
+                'chiude la finestra fra il verbo e l''emissione: in quel lasso '
+                'l''attivita'' fatturabile non esiste ancora, il conto della merce non '
+                'e'' cambiato e la riga e'' ANCORA IN CODA, quindi un secondo click '
+                'sarebbe coerente col conto; (3) il `gia_accreditato` che la coda '
+                'espone in riga, cosi'' il frontend gate il bottone su un dato che ha '
+                'gia'' invece di chiamare una capability per riga. '
+                'Due tetti, imposti dal guard e non da un vincolo di colonna (le somme '
+                'non si esprimono con una UNIQUE): Sigma qta per riga di reso <= '
+                'accredito dovuto (la MERCE), Sigma qta per riga di fattura <= qta '
+                'della riga (il DOCUMENTO). Due misure in lingue diverse che devono '
+                'concordare: quando divergono c''e'' un difetto da guardare, non un '
+                'numero di cui fidarsi. '
+                'brief-design-note-credito-resi D-NC-10 (S12.6-ter). rev 2026-08-18.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: resi_righe_accrediti

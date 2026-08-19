@@ -26,7 +26,7 @@ useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useEmailLogsStore()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions,
+  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
   searchTableOptions: {
     defaultSortField: 'data_insert',
@@ -71,7 +71,7 @@ onMounted(() => {
 <template>
   <div class="app-page">
     <div class="app-page-toolbar">
-      <div class="app-page-filters">
+      <div class="app-page-filters" :inert="perimetroBloccato">
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
         <EmailLogStatoSelect
           :modelValue="store.filters.stato"

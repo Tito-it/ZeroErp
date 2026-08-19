@@ -79,6 +79,9 @@ Contiene:
 * lo schema dati (es. `anagrafiche`)
 * la **vista SQL** dalla quale la lista legge i dati (es. `vw_clienti_lista`)
 * lo stato attivo/disattivo
+* il **bollino «multi-emittente»** — dice se quella lista è stata collaudata per
+  mostrare righe di **più emittenti insieme**. Nasce spento e non si accende
+  dall'interfaccia: vedi §11.7
 
 ### 2.2 Colonna (`lista_colonna`)
 
@@ -230,9 +233,11 @@ disattivate).
 * **Nuova definizione**: form con codice (`<schema>.<entità>`),
   descrizione, schema dati, **vista SQL** (nome di una view PostgreSQL
   che alimenta la lista), note, flag attivo.
-* **Modifica definizione**: tutti i campi sono mutabili. Cambiare la
-  vista SQL su una lista già in uso può rendere stale i campi sorgente
-  delle colonne (la nuova vista deve esporre gli stessi attributi).
+* **Modifica definizione**: tutti i campi sono mutabili **tranne uno** — il
+  bollino «multi-emittente», che il database rifiuta di far scrivere
+  dall'applicazione (§11.7). Cambiare la vista SQL su una lista già in uso può
+  rendere stale i campi sorgente delle colonne (la nuova vista deve esporre gli
+  stessi attributi).
 * **Disattiva (soft-disable)**: porta `attivo=false`. La lista
   scompare dal catalogo runtime ma le configurazioni esistenti
   (preset, colonne, preferenze) restano in DB.
@@ -671,6 +676,89 @@ L'admin può comunque marcare un'`identificatore` con permesso
 `BLOCCATO` per un certo profilo: in quel caso la colonna scompare
 **prima** di arrivare alla modale (filtro lato backend), non viene
 nascosta lato UI.
+
+---
+
+### 11.7 Il bollino «multi-emittente» — un'etichetta che si guadagna
+
+> 🔵 Introdotto il **18-08-2026**. Oggi è **spento su tutte le liste**, ed è
+> corretto che lo sia: sotto c'è scritto perché.
+
+#### Il problema, in parole semplici
+
+Un'azienda può fatturare sotto **più intestazioni** — chiamiamole *emittenti*.
+Chi ha accesso a una sola di esse vede solo le proprie righe, e va benissimo.
+
+Il caso delicato è l'altro: **chi ha accesso a più emittenti**. Costui apre una
+lista e trova, mescolate nella stessa tabella, righe che appartengono a
+intestazioni diverse — senza che niente glielo dica. Due documenti con lo stesso
+numero, due clienti con lo stesso nome, un totale che somma cose che non si
+sommano.
+
+Non è un errore del programma: la lista sta mostrando esattamente ciò che
+l'utente ha il diritto di vedere. È un errore di **lettura**, ed è il tipo
+peggiore, perché chi lo commette non ha modo di accorgersene.
+
+#### La cura, e perché non è «aggiungere una colonna»
+
+La cura è ovvia: **mostrare l'emittente nella riga**. Il problema è un altro —
+come si fa a sapere quali liste l'hanno già fatto e quali no, quando sono
+decine?
+
+Da qui il bollino. `multi_emittente` è una dichiarazione che la lista fa di sé:
+
+> *«Io sono stata collaudata per mostrare più emittenti insieme: chi mi legge
+> capisce di chi è ogni riga.»*
+
+Finché il bollino è spento, il resto del sistema sa che quella lista **non** è
+attrezzata, e può comportarsi di conseguenza.
+
+#### ⭐ Il bollino si guadagna, non si mette
+
+È il punto che tiene in piedi tutto il meccanismo, ed è il motivo per cui esiste
+un controllo automatico.
+
+Un'etichetta di collaudo che chiunque può appiccicare per far sparire un fastidio
+non vale niente — anzi, è **peggio di niente**, perché da quel momento la lista
+mescola emittenti *e dichiara di non farlo*. Quindi:
+
+| | |
+| --- | --- |
+| **Il prezzo del biglietto** | una lista può dichiarare `multi_emittente` **solo se espone l'emittente in una sua colonna** |
+| **Chi lo verifica** | `dbops.vw_liste_multi_emittente_non_certificate`, un controllo automatico che elenca le liste col bollino e senza la colonna |
+| **Quanto deve valere** | **zero righe**, sempre. Una riga lì è un bollino senza collaudo dietro |
+
+#### ⛔ Non si accende dall'interfaccia, e nemmeno via API
+
+Il database ha un presidio che **rifiuta la scrittura** su questo campo a
+chiunque non sia il processo di migrazione. Non è una questione di permessi
+configurabili: non c'è nessun interruttore da aprire, e non esiste un profilo
+abbastanza potente da farlo. Il tentativo si ferma con un errore esplicito.
+
+La ragione è che un invariante con l'interruttore non è un invariante. Il campo
+si dichiara nel **seed** delle liste, insieme al lavoro che lo giustifica, e
+arriva insieme a quello.
+
+> ⚠️ **Un limite dichiarato**: il presidio copre *questo* campo, non
+> genericamente «i campi di sistema» di una lista. È una difesa stretta che
+> tiene, scelta al posto di una larga che sulla carta copriva tutto e nella
+> pratica non teneva.
+
+#### Cosa vede chi sviluppa il frontend
+
+Il bollino arriva nella configurazione della lista come una chiave in più,
+`multi_emittente`. È **additiva**: chi non la legge non se ne accorge. Vale
+`false` finché la lista non se l'è guadagnata.
+
+#### Perché oggi è spento ovunque
+
+Perché accenderlo prima che la colonna emittente sia effettivamente a video
+aprirebbe esattamente la finestra che il bollino serve a chiudere: una lista che
+*dichiara* di distinguere gli emittenti e non lo fa è peggio di una lista che
+non dichiara niente.
+
+Le liste si accendono **una per una**, quando la loro colonna mostra un nome su
+dati veri.
 
 ---
 

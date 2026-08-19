@@ -384,7 +384,15 @@ Tutta l'infrastruttura a valle dell'handler e identica per commerciali e utiliti
 - Il ricalcolo di un consumo si ottiene rieseguendo l'handler sullo stesso consumo:
   i segment_key idempotenti producono UPSERT su `commesse_attivita`.
 - Per rettifiche post-fatturazione, usare il meccanismo delta gia previsto in
-  `sviluppo-listini.md` § rettifiche. Non creare percorsi paralleli.
+  [sviluppo-rettifiche.md](sviluppo-rettifiche.md). Non creare percorsi paralleli.
+  > 🔴 **Riferimento corretto il 2026-08-18**: puntava a `sviluppo-listini.md`,
+  > che **non esiste piu'** — la specifica e' stata versionata in v1..v6 e il
+  > perimetro rettifiche estratto in `sviluppo-rettifiche.md`. La frase «non
+  > creare percorsi paralleli» puntava al vuoto.
+  >
+  > ⚠️ E vale la nota in testa a quel documento: il **come** e' superato. La
+  > correzione di **merce** (reso gia' fatturato) non passa di li' — ha il suo
+  > modello in [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
 - Un ricalcolo NON modifica righe con `stato_emissione = 'EMESSA'` e `fatturato = TRUE`
   (guard in `fn_upsert_commessa_attivita` e `fn_emit`).
 

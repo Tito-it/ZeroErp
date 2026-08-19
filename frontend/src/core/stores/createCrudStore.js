@@ -74,7 +74,9 @@ export function createCrudStore(storeId, {
       order_dir: orderDir,
     })
 
-    const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
+    const {
+      items, totalRecords, loading, hasSearched, sospesa: fetchSospesa, fetchList,
+    } = useListaEmptyStateFetch({
       filters,
       alwaysFetch: !startsEmpty,
       hasActiveFilters: (f) => gateKeys.some((k) => f[k] != null),
@@ -119,6 +121,10 @@ export function createCrudStore(storeId, {
 
     const exposed = {
       items, totalRecords, loading, hasSearched, filters,
+      // Alzata da chi conosce il motivo (oggi solo il cancello di perimetro
+      // emittente, in `useListaConfigurabilePage`): finche' e' true la lista
+      // non interroga il backend. Si scrive nei DUE versi, mai una volta sola.
+      fetchSospesa,
       fetchList, create,
     }
     // update e fetchDetail esposti solo se l'api relativa esiste (es. comuni

@@ -36,7 +36,8 @@ const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty,
-  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
+  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded,
+  pageActions, perimetroBloccato, mostraLista, mostraSearchHint,
 } = useListaConfigurabilePage(store, {
   exportFn: exportClienti,
   getExportParams: (fmt) => buildExportParams(fmt),
@@ -138,7 +139,7 @@ onMounted(() => {
 
     <template v-else>
       <div class="app-page-toolbar">
-        <div class="app-page-filters">
+        <div class="app-page-filters" :inert="perimetroBloccato">
           <InputText
             v-model="searchText"
             :placeholder="t('anagrafiche.clienti.search_placeholder')"
@@ -169,11 +170,11 @@ onMounted(() => {
       </div>
 
       <!-- Placeholder: nessuna ricerca effettuata. -->
-      <SearchHint v-if="!store.hasSearched && !store.loading" />
+      <SearchHint v-if="mostraSearchHint" />
 
       <ListaConfigurabile
         ref="listaRef"
-        v-show="store.hasSearched || store.loading"
+        v-show="mostraLista"
         codice="anagrafiche.clienti"
         :rows="store.items"
         :total="store.totalRecords"

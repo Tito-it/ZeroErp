@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Arita' dei valori — `E_CANALE_ORIGINE_IMMUTABILE` passava 1 valore su 2 segnaposto
+#   Brief: docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md §7
+#   Lotto: 20260818-47 .. -54, uno per funzione. Decisione Tid, 2026-08-18.
+#
+# ── IL DIFETTO, IN UNA RIGA ────────────────────────────────────────────
+#   `script.fn_log_and_raise_error` compone il testo con
+#   `format(messaggio, VARIADIC valori)`. Con MENO valori dei segnaposto,
+#   `format()` non degrada: **alza `22023`**. E alza da DENTRO la funzione,
+#   quindi il `RAISE` di dominio due righe sotto non viene mai eseguito —
+#   niente `P0001`, niente codice nel canale `CONSTRAINT`, niente campo nel
+#   canale `COLUMN`. Il guard blocca lo stesso (il dato resta integro, ed e'
+#   il motivo per cui non se n'era accorto nessuno), ma il backend perde il
+#   codice su cui decide 409/404/403 e l'operatore legge un errore interno al
+#   posto della frase scritta per lui.
+#
+# ── ⚠️ LA FORMA: DUE MESSAGGI SCRITTI DUE VOLTE ────────────────────────
+#   Qui non manca un valore per distrazione: il chiamante passava una **frase
+#   gia' composta** come valore unico, mentre a catalogo il messaggio ha i suoi
+#   segnaposto. Sono due testi che dicono la stessa cosa e non si compongono.
+#   ⭐ Ed e' un difetto anche quando non alza: una frase composta dentro al
+#   plpgsql **non e' traducibile**, perche' non passa da
+#   `config.messaggi_errore`. I valori vanno passati sciolti; il testo lo
+#   compone il catalogo, che e' l'unico posto da cui si puo' tradurre.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────────
+#   · ⚠️ **PERMESSI — nessun prestito di proprieta', nessun `GRANT`.** Misurato
+#     il 2026-08-18, non dedotto: questa funzione e' di **`titodb`** (che e' chi
+#     migra), **non** e' `SECURITY DEFINER` e **non** e' nel registro
+#     `dbops.sec_functions_owner`. Il precedente e' il `20260808-04` su
+#     `script.fn_log_and_raise_error`, che documenta anche il perche' l'ACL
+#     esplicita (`=X/titodb`, `zeroerp_app=X`, `zeroerp_batch_fatturazione=X`)
+#     **sopravvive** a un `CREATE OR REPLACE` — sarebbe diverso con
+#     `DROP` + `CREATE`, dove i privilegi si perdono e il loop di grant
+#     `20260205-41` li rimetterebbe solo alla corsa `ci_apply` successiva.
+#     ⚠️ Da non confondere con `script.fn_log_error_only`, che invece e' di
+#     `postgres`, **e'** `SECURITY DEFINER` ed **e'** nel registro: quella,
+#     riscriverla, il prestito lo richiede.
+#   · Corpo dalla doc auto-gen `docs/it/dbzero/`, col `;` dopo `$function$`
+#     aggiunto a mano: l'auto-gen non ce l'ha e senza quello il `COMMENT`
+#     sotto da' «errore di sintassi a o presso COMMENT».
+#   · Firma e `RETURNS` invariati: cambia solo la lista dei valori.
+#   · Presidio: `db/pgtap/script/test-catalogo-messaggi-errore-completo.sql`
+#     test 5. Rientra quando l'ultimo degli 8 changeSet e' applicato — e a
+#     quel punto va tolta la riga di questo file da `baseline-rossi.tsv`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260818-47-update-trgfn-canale-origine-immutable-arita-mctit.yaml
+
+  - changeSet:
+      id: 20260818-47-update-trgfn-canale-origine-immutable-arita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard passava a fn_log_and_raise_error una frase gia' composta con format()
+        come valore unico, mentre E_CANALE_ORIGINE_IMMUTABILE ha due segnaposto: la
+        format() interna alzava 22023 e l'errore di dominio (P0001 + CONSTRAINT) non
+        veniva mai sollevato. Ora passa schema e tabella sciolti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_canale_origine_immutable'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_canale_origine_immutable()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire modifiche alla colonna canale_origine di una
+                  --   tabella transazionale. La colonna traccia l'origine
+                  --   del record (ADMIN/PORTALE/SHOP) e deve essere
+                  --   immutabile: alterazioni retroattive invaliderebbero
+                  --   la storia e le decisioni RLS basate sul canale.
+                  --
+                  -- Regole:
+                  --   1. Scatta solo se NEW.canale_origine != OLD.canale_origine.
+                  --      IS DISTINCT FROM per sicurezza (NULL non previsti ma
+                  --      gestiti).
+                  --   2. Raise E_CANALE_ORIGINE_IMMUTABILE con context di
+                  --      schema/tabella per debug.
+                  -- =========================================================
+
+                  IF NEW.canale_origine IS DISTINCT FROM OLD.canale_origine THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA,
+                          TG_NAME,
+                          'E_CANALE_ORIGINE_IMMUTABILE',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'schema', TG_TABLE_SCHEMA,
+                              'tabella', TG_TABLE_NAME,
+                              'old_canale', OLD.canale_origine,
+                              'new_canale', NEW.canale_origine
+                          ),
+                          NULL::uuid,
+                          -- ⚠️ ARITA' (2026-08-18): qui c'era una frase gia' composta con
+                          --   format(), passata come valore UNICO. Il messaggio a catalogo
+                          --   («Canale origine su %s.%s: ...») di segnaposto ne ha DUE, quindi
+                          --   format(messaggio, VARIADIC ARRAY[una_frase]) alzava 22023 al
+                          --   posto del P0001 di dominio.
+                          --   I due canali (vecchio e nuovo) non spariscono: erano gia' nel
+                          --   context qui sopra, sotto 'old_canale' e 'new_canale', ed e' li'
+                          --   che devono stare — il messaggio dice all'operatore COSA non puo'
+                          --   fare, il context dice al log cos'e' successo.
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_canale_origine_immutable()
+              IS 'Trigger function generica: blocca UPDATE che modifica la colonna canale_origine. Applicata via UPDATE OF canale_origine su billing_account, vendite.ordini, vendite.fatture. Codice errore E_CANALE_ORIGINE_IMMUTABILE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Vuoto di proposito: il ripristino della versione precedente
+              -- rimetterebbe in servizio la chiamata che alza 22023. Se serve
+              -- tornare indietro, si scrive un changeSet in avanti.
+              SELECT 1;

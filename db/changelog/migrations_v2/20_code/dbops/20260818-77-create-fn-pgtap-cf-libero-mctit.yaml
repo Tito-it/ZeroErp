@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Terzo helper di fixture pgTAP: un codice fiscale libero e valido.
+#
+# Sorella di dbops.fn_pgtap_piva_libera (20260818-76), e nasce dallo stesso
+# fatto: il vincolo che fa collidere le corse dei vecchi test di anagrafiche e'
+# uq_soggetto_idstato_id_fiscale_univoco, e i pochi identificativi che quei
+# test avevano inchiodato nel codice sono ormai occupati da soggetti residui
+# che NON si possono piu' cancellare (dbops.automation_delete_block_ruoli dal
+# 2026-01-23, piu' FK RESTRICT). Con la partita IVA il problema era chiuso; con
+# il codice fiscale delle PERSONE FISICHE no, e i test che le creano restavano
+# rossi per quel solo motivo.
+#
+# COME TROVA IL CARATTERE DI CONTROLLO, che e' la parte che vale la pena
+# spiegare: NON lo calcola. L'algoritmo del CF ha una tabella di pesi pari/
+# dispari e una di resti che, reimplementata qui, sarebbe una SECONDA copia
+# della regola — destinata a divergere da script.fn_valida_codice_fiscale il
+# giorno in cui una delle due cambia. Si prova invece tutto l'alfabeto e si
+# tiene la lettera che il validatore DI DOMINIO accetta: 26 tentativi su una
+# funzione pura, e una sola regola nel database.
+#
+# ⚠️ NON e' un generatore di codici fiscali reali: il corpo e' fittizio
+# (TST…80A01H501) e serve solo a superare validatore e unicita' in un test.
+# Non usarlo per fabbricare anagrafiche vere.
+#
+# Come la sorella, vede anche le righe non ancora committate: due chiamate
+# nella stessa transazione danno valori diversi.
+#
+# ⚠️ Perche' un changeSet NUOVO e non un'aggiunta al -76: quello e' gia'
+# applicato, e modificarlo cambierebbe il checksum di un changeSet eseguito.
+#
+# Permessi: funzione di titodb, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner -> CREATE OR REPLACE liscio, nessun GRANT
+# (precedente 20260808-04).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/dbops/20260818-77-create-fn-pgtap-cf-libero-mctit.yaml
+
+    - changeSet:
+          id: 20260818-77-create-fn-pgtap-cf-libero
+          author: mctit
+          runOnChange: false
+          comment: >
+              Helper di fixture pgTAP: dbops.fn_pgtap_cf_libero() restituisce un
+              codice fiscale valido secondo script.fn_valida_codice_fiscale e non
+              ancora presente in anagrafiche.soggetti.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION dbops.fn_pgtap_cf_libero()
+                         RETURNS text
+                         LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: dare a una fixture pgTAP un codice fiscale VALIDO e non
+                        --   ancora usato, cosi' nessun test deve piu' cancellare il
+                        --   soggetto residuo della corsa precedente per poter ripartire.
+                        DECLARE
+                            v_lettere text := 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                            v_corpo   text;
+                            v_cf      text;
+                            v_i       int;
+                            v_j       int;
+                        BEGIN
+                            -- Il corpo varia su una lettera; il CARATTERE DI CONTROLLO non
+                            -- si calcola, si CERCA: si provano le 26 lettere e si tiene
+                            -- quella che script.fn_valida_codice_fiscale accetta. Cosi' la
+                            -- regola resta UNA, quella di dominio, invece di essere
+                            -- reimplementata qui e divergere alla prima modifica.
+                            FOR v_i IN 1..26 LOOP
+                                v_corpo := 'TST' || substr(v_lettere, v_i, 1) || 'PG'
+                                           || '80A01' || 'H501';
+                                FOR v_j IN 1..26 LOOP
+                                    v_cf := v_corpo || substr(v_lettere, v_j, 1);
+                                    IF script.fn_valida_codice_fiscale(v_cf)
+                                       AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti s
+                                                        WHERE s.codice_fiscale = v_cf
+                                                           OR s.id_fiscale_univoco_cf_piva = v_cf) THEN
+                                        RETURN v_cf;
+                                    END IF;
+                                END LOOP;
+                            END LOOP;
+
+                            RAISE EXCEPTION 'fn_pgtap_cf_libero: nessun codice fiscale libero trovato';
+                        END;
+                        $function$;
+
+                        CREATE OR REPLACE FUNCTION dbops.fn_pgtap_piva_libera(p_skip integer)
+                         RETURNS text
+                         LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: come dbops.fn_pgtap_piva_libera(), ma SALTANDO le prime
+                        --   p_skip libere. Serve quando una fixture ne vuole DUE o piu'
+                        --   nella stessa istruzione.
+                        --
+                        -- ⚠️ IL PERCHE', ed e' un difetto vero della sorella senza
+                        --   argomenti scoperto sul campo. Quella dice «due chiamate nella
+                        --   stessa transazione danno valori diversi», e regge solo se fra
+                        --   l'una e l'altra la prima e' stata INSERITA: e' la riga nuova
+                        --   che la rende occupata. Dentro una sola SELECT
+                        --   (`SELECT fn(), fn()`) non c'e' nessun insert in mezzo, le due
+                        --   chiamate vedono lo stesso database e tornano lo STESSO valore
+                        --   — e la fixture si schianta su
+                        --   uq_soggetto_idstato_id_fiscale_univoco, dando la colpa al test.
+                        --   Con p_skip il chiamante distingue le sue: fn(0), fn(1), fn(2).
+                        DECLARE
+                            v_base   bigint := 88800000000;
+                            v_body   text;
+                            v_check  int;
+                            v_piva   text;
+                            v_i      int;
+                            v_d      int;
+                            v_sum    int;
+                            v_try    int := 0;
+                            v_saltate int := 0;
+                        BEGIN
+                            IF p_skip IS NULL OR p_skip < 0 THEN
+                                RAISE EXCEPTION 'fn_pgtap_piva_libera: p_skip deve essere >= 0';
+                            END IF;
+
+                            LOOP
+                                v_try := v_try + 1;
+                                EXIT WHEN v_try > 100000;
+                                v_body := lpad(((v_base + v_try) % 10000000000)::text, 10, '0');
+
+                                v_sum := 0;
+                                FOR v_i IN 1..10 LOOP
+                                    v_d := substr(v_body, v_i, 1)::int;
+                                    IF v_i % 2 = 0 THEN
+                                        v_d := v_d * 2;
+                                        IF v_d > 9 THEN v_d := v_d - 9; END IF;
+                                    END IF;
+                                    v_sum := v_sum + v_d;
+                                END LOOP;
+                                v_check := (10 - (v_sum % 10)) % 10;
+                                v_piva := v_body || v_check::text;
+
+                                IF script.fn_valida_partita_iva(v_piva)
+                                   AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti s
+                                                    WHERE s.partita_iva = v_piva
+                                                       OR s.codice_fiscale = v_piva
+                                                       OR s.id_fiscale_univoco_cf_piva = v_piva) THEN
+                                    IF v_saltate >= p_skip THEN
+                                        RETURN v_piva;
+                                    END IF;
+                                    v_saltate := v_saltate + 1;
+                                END IF;
+                            END LOOP;
+
+                            RAISE EXCEPTION 'fn_pgtap_piva_libera(%): nessuna partita IVA libera trovata', p_skip;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera(integer)
+                        IS 'Come dbops.fn_pgtap_piva_libera(), ma salta le prime p_skip libere. ⚠️ Serve perche'' la sorella senza argomenti torna lo STESSO valore se la si chiama due volte nella stessa ISTRUZIONE: e'' l''insert della riga a rendere occupato un identificativo, e dentro una sola SELECT non c''e'' nessun insert in mezzo. Una fixture che vuole due partite IVA distinte usa fn(0) e fn(1). Firma separata e senza DEFAULT di proposito: un default renderebbe ambigue le chiamate a zero argomenti gia'' scritte.';
+
+                        COMMENT ON FUNCTION dbops.fn_pgtap_cf_libero()
+                        IS 'Restituisce un codice fiscale VALIDO secondo script.fn_valida_codice_fiscale e non ancora presente in anagrafiche.soggetti, per le fixture pgTAP. Sorella di dbops.fn_pgtap_piva_libera: stesso problema (uq_soggetto_idstato_id_fiscale_univoco contro identificativi inchiodati nel codice e residui non cancellabili), stessa soluzione. ⭐ Il carattere di controllo non lo calcola, lo CERCA provando l''alfabeto e chiedendo al validatore di dominio: reimplementare l''algoritmo qui vorrebbe dire tenerne due copie e vederle divergere. ⚠️ Non e'' un generatore di codici fiscali reali — il corpo e'' fittizio e serve solo a superare validatore e unicita'' in un test. Vede anche le righe non ancora committate. Brief: work-in-progress/brief-db-bonifica-baseline-pgtap-vendite.md';
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    sql: |
+                        DROP FUNCTION IF EXISTS dbops.fn_pgtap_cf_libero();

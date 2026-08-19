@@ -57,3 +57,50 @@ semantica si tocca un posto solo.
 ### Dipendenze DB
 
 `vendite.commesse_attivita` (`segment_key`, `stato_emissione`).
+
+---
+
+### 🔄 rev 2026-08-18 — riconosce il suffisso `#RET:` delle rettifiche
+
+Brief: `brief-design-note-credito-resi` (slice **N11**).
+
+L'avvertenza era già scritta, nel commento vivo di
+`vendite.fn_list_ddt_da_pushare`:
+
+> *«È l'unica cintura che impedirà di ri-spingere una riga la cui differenza
+> torna positiva per una RETTIFICA (nota di credito): chi introdurrà un
+> segment_key nuovo per la rettifica deve insegnarglielo.»*
+
+Il predicato guadagna quindi:
+
+```sql
+OR ca.segment_key LIKE p_segment_key || '#RET:%'
+```
+
+che copre **entrambe** le forme, perché il suffisso `#CMP:` di un kit viene DOPO
+`#RET:<n>`:
+
+```text
+DDT:<uid>:R:<id>#RET:1
+DDT:<uid>:R:<id>#RET:1#CMP:<componente>
+```
+
+⚠️ Ed è anche il motivo per cui la madre scrive `#RET` **prima** di `#CMP` e non
+il contrario: così `split_part(segment_key, '#CMP:', 1)` continua a dare il
+`kit_key` e `vw_af_merce_per_riga` legge la rettifica senza modifiche.
+
+#### ⚠️ Non è cosmesi
+
+Su una partita fatturata dalla corsia **DDT** il segmento porta già l'attività
+`NORMALE`, quindi risulta `EMESSA` comunque: lì non cambia nulla. Su una partita
+fatturata dalla corsia **ORD**, invece, il segmento DDT non ha alcuna attività —
+e resterebbe `LIBERA` anche dopo la nota di credito. A impedire una ri-spinta ci
+sarebbe **solo** la cintura XOR sullo stato del documento d'ordine.
+
+⭐ **Due cinture sono una; una è zero.** Con il suffisso riconosciuto, la partita
+è protetta dalla propria storia e non da una condizione che vive altrove.
+
+⚠️ **Nessun cambio di comportamento all'applicazione**: al 2026-08-18 le righe
+`RETTIFICA` erano zero, quindi nessun segmento conteneva `#RET:` e il
+classificatore rispondeva esattamente come prima su ogni riga esistente. È una
+cintura che entra in funzione il giorno in cui serve.

@@ -66,6 +66,7 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_backlog_documenti"
 
     @extend_schema(
         operation_id="vendite_dashboard_backlog_documenti",
@@ -207,6 +208,7 @@ class ApiDashboardBacklogDocumentiExport(DomainAPIView):
 
     area_funzionale = "vendite"
     is_search_endpoint = True
+    lista_codice = "vendite.dash_backlog_documenti"
 
     @extend_schema(
         operation_id="vendite_dashboard_backlog_documenti_export",

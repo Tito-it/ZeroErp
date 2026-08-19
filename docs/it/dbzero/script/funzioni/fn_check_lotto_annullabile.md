@@ -24,6 +24,7 @@ DECLARE
   v_motivi    jsonb := '[]'::jsonb;
   v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
   v_trovato   boolean;
+  v_numerate  integer;
 BEGIN
   -- Guard parametro (AGENTS.md).
   IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
@@ -68,12 +69,45 @@ BEGIN
   v_motivi := v_motivi
             || script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id);
 
+  -- MOTIVO 3 — fatture gia' NUMERATE (aggiunto 2026-08-18).
+  -- ⚠️ DELIBERATAMENTE RIDONDANTE rispetto al 2, e da NON
+  --   semplificare via: e' la stessa scelta gia' fatta in
+  --   fn_check_lotto_riportabile_a_draft e nel motivo 4 di
+  --   fn_check_fattura_eliminabile_da_lotto. Il motivo 2 si
+  --   affida allo stato, che pre-fiscale IMPLICA non numerata
+  --   (C-19); qui si guarda il FATTO, perche' cancellare una
+  --   fattura numerata apre un buco nella numerazione fiscale e
+  --   il danno non si ripara.
+  -- ⭐ Da oggi non e' piu' solo prudenza: il task
+  --   popola_fatture_rettifiche scrive vendite.fatture_rettifiche
+  --   sui documenti NUMERATI, e fk_fatture_ret_fattura non e'
+  --   ON DELETE CASCADE. Senza questo motivo, l'unica cosa che
+  --   tiene lontano il reset da quella proiezione sarebbe
+  --   l'implicazione stato -> numero; e quando cede non da' un
+  --   errore di dominio, da' una violazione di chiave esterna
+  --   grezza dentro fn_cleanup_fatture_by_ids.
+  SELECT count(*)
+    INTO v_numerate
+    FROM vendite.fatture f
+    JOIN vendite.fatturazione_lotti_fatture lf
+      ON lf.fattura_id = f.id
+   WHERE lf.lotto_id = p_lotto_id
+     AND f.numero IS NOT NULL;
+
+  IF v_numerate > 0 THEN
+    v_motivi := v_motivi || jsonb_build_object(
+      'codice',     'E_LOTTO_FATTURE_NUMERATE',
+      'reason',     'FATTURE_NUMERATE',
+      'reason_key', 'vendite.lotti.azione_reason.fatture_numerate',
+      'dettaglio',  v_numerate);
+  END IF;
+
   RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_lotto_annullabile(p_lotto_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di un lotto. Ritorna [] se annullabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto non in DRAFT (codice 798) — ANNULLATA e'' terminale e non si riapre, quindi si concede solo prima che il lotto abbia prodotto qualcosa; da EMESSA la via d''uscita non distruttiva e'' fn_riporta_lotto_a_draft. Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Il tipo di lotto NON e'' un motivo: dal 2026-08-02 (D-L pt.2 + D-T) vale per MASSIVO e GIORNALIERO. Sorgente UNICA condivisa da vendite.fn_annulla_lotto_da_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons): chiude il vicolo cieco del pulsante visibile da EMESSA, trovato in-app il 2026-07-31 e tappato allora con un v-if in Vue. rev 2026-08-04.';
+IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di un lotto. Ritorna [] se annullabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto non in DRAFT (codice 798) — ANNULLATA e'' terminale e non si riapre, quindi si concede solo prima che il lotto abbia prodotto qualcosa; da EMESSA la via d''uscita non distruttiva e'' fn_riporta_lotto_a_draft. Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. ⭐ Motivo 3 (2026-08-18): fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via, come nelle due sorelle: il motivo 2 si affida allo stato, che pre-fiscale IMPLICA non numerata, mentre questo guarda il FATTO. Era l''ULTIMA delle tre porte di reset che si affidava a quella implicazione, e da oggi il peso che ci si appoggia sopra e'' reale: il task popola_fatture_rettifiche scrive vendite.fatture_rettifiche sui documenti numerati e fk_fatture_ret_fattura NON e'' ON DELETE CASCADE — quando l''implicazione cede non da'' un errore di dominio, da'' una violazione di chiave esterna grezza dentro fn_cleanup_fatture_by_ids. Il tipo di lotto NON e'' un motivo: dal 2026-08-02 (D-L pt.2 + D-T) vale per MASSIVO e GIORNALIERO. Sorgente UNICA condivisa da vendite.fn_annulla_lotto_da_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons).';
 ```
 
 ---

@@ -2,88 +2,87 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: ruolo Gestore + abbinamento indirizzo RES (residenza)
+-- Test: ruolo Gestore + abbinamento indirizzo di SEDE OPERATIVA
 --       con indirizzo normalizzato in anagrafiche.indirizzi_dettaglio
 --       e associazione in anagrafiche.indirizzi
 --
 -- Scenario:
 --   - Legge automaticamente il primo Gestore da anagrafiche.gestori
 --     (via anagrafiche.soggetti_ruoli + anagrafiche.soggetti)
---   - Recupera il tipo indirizzo 'RES' da config.tipi_indirizzi
+--   - Recupera il tipo indirizzo 'SEDEOP' da config.tipi_indirizzi
 --   - Crea un indirizzo_dettaglio dedicato (indirizzo normalizzato di test)
---   - Crea un indirizzo RES per il Gestore in anagrafiche.indirizzi
+--   - Crea un indirizzo di sede operativa per il Gestore in anagrafiche.indirizzi
 --   - Verifica coerenza ruolo, tipo, dettaglio normalizzato e tx_id
+--   - Verifica che RES (residenza) su un GESTORE sia RESPINTO
 -- ------------------------------------------------------------
 
--- Numero di test che ci aspettiamo di eseguire
+-- ============================================================================
+-- rev 2026-08-18 — bonifica baseline. Il file era NON TRANSAZIONALE: chiudeva
+-- in COMMIT e lasciava nel database l'indirizzo di prova. Alla corsa dopo tre
+-- DELETE di «pulizia preventiva» provavano a toglierlo e fallivano — il
+-- dettaglio normalizzato era ormai referenziato da anagrafiche.indirizzi
+-- (fk_indirizzi_dettaglio, RESTRICT). Il file moriva alla riga 81 con ZERO
+-- asserzioni eseguite.
+--
+-- Ora: BEGIN ... ROLLBACK e le tre pulizie spariscono — il ROLLBACK e' la
+-- garanzia. Qui non serve l'helper dei soggetti: il test non ne crea, legge il
+-- gestore che c'e'.
+-- ⚠️ Legge MIN(id) da anagrafiche.gestori, cioe' «il primo che capita». Regge
+-- perche' il gestore e' un singleton globale — ma se un giorno ne esistessero
+-- due, questo test sceglierebbe a caso.
+--
+-- ⚠️ E il tipo indirizzo e' passato da RES a SEDEOP. Non e' cosmesi, sono due
+-- fatti in fila che il test non controllava:
+--   1. RES (residenza) NON e' ammesso per il ruolo GESTORE —
+--      config.tipi_ruolo_tipi_indirizzo per GE prevede SEDELEG (obbligatorio),
+--      FATT (obbligatorio) e SEDEOP. Una residenza su una societa' non vuol
+--      dire niente, e il guard la respinge;
+--   2. dei tre ammessi, SEDELEG e FATT il gestore LI HA GIA' — sono gli
+--      obbligatori — e uq_indirizzi_ruolo_tipo_no_istanza e' UNIQUE su
+--      (soggetto_ruolo_id, tipo_indirizzo_id). Resta SEDEOP, l'unico che il
+--      ruolo ammette e non ha.
+-- Il soggetto del test — indirizzo NORMALIZZATO agganciato al ruolo via
+-- indirizzi_dettaglio, con tx_id e coerenza — e' intatto: era stale la scelta
+-- del tipo, non cio' che il file verifica.
+-- ============================================================================
+
+BEGIN;
+
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
--- ⚠️ Questo file non apre una transazione propria: la riga va prima di plan().
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(8);
 
 -- =========================================================
 -- Costanti per il test (TEMP TABLE)
 -- (le teniamo, anche se non le usiamo più in pulizia)
 -- =========================================================
+-- ⚠️ rev 2026-08-18: il CIVICO e' unico per corsa. uq_indirizzi_dettaglio_norm
+--   e' UNIQUE su (stradario_id, civico, estensione, palazzina, scala, piano...):
+--   con un civico fisso la corsa sbatteva sul dettaglio lasciato dal COMMIT
+--   della corsa precedente, che non si puo' cancellare perche' nel frattempo e'
+--   referenziato da anagrafiche.indirizzi. Con un civico diverso ogni volta il
+--   residuo resta li' e non da' piu' fastidio a nessuno.
 CREATE TEMP TABLE tmp_costanti_indirizzo_gestore AS
 SELECT
     'VIA TEST RESIDENZA GESTORE'::text AS via_norm_test,
-    '1'::text                         AS civico_norm_test,
+    (1000 + (abs(hashtext(clock_timestamp()::text)) % 90000))::text AS civico_norm_test,
     NULL::text                        AS interno_test,
     NULL::text                        AS piano_test,
     NULL::text                        AS palazzina_test;
 
--- =========================================================
--- Pulizia preventiva di eventuali residui (indirizzo test)
--- =========================================================
-
--- 0) Identifico il Gestore che userò nel test (il primo per id)
+-- 0) Il Gestore che si usera' nel test (il primo per id). Stava piu' su,
+--    dentro la regione della vecchia pulizia d'ingresso, ed e' rientrato qui.
 CREATE TEMP TABLE tmp_first_gestore AS
-SELECT
-    MIN(id) AS gestore_id
-FROM anagrafiche.gestori;
-
--- 1) Elimino QUALSIASI indirizzo RES esistente per il Gestore scelto
-DELETE FROM anagrafiche.indirizzi i
-USING anagrafiche.soggetti_ruoli sr,
-      anagrafiche.gestori g,
-      config.tipi_indirizzi ti,
-      tmp_first_gestore fg
-WHERE i.soggetto_ruolo_id = sr.id
-  AND g.soggetto_ruolo_id = sr.id
-  AND g.id = fg.gestore_id
-  AND i.tipo_indirizzo_id = ti.id
-  AND ti.codice_interno = 'RES';
-
--- 2) Elimino eventuali indirizzi RES del Gestore che puntano
---    a un indirizzo_dettaglio marcato come test
-DELETE FROM anagrafiche.indirizzi i
-USING anagrafiche.soggetti_ruoli sr,
-      anagrafiche.gestori g,
-      config.tipi_indirizzi ti,
-      anagrafiche.indirizzi_dettaglio idd,
-      tmp_first_gestore fg
-WHERE i.soggetto_ruolo_id = sr.id
-  AND g.soggetto_ruolo_id = sr.id
-  AND g.id = fg.gestore_id
-  AND i.tipo_indirizzo_id = ti.id
-  AND ti.codice_interno = 'RES'
-  AND i.indirizzo_dettaglio_id = idd.id
-  AND idd.altro = 'Indirizzo test RES Gestore (pgTAP)';
-
--- 3) Elimino eventuali indirizzi_dettaglio di test rimasti orfani
-DELETE FROM anagrafiche.indirizzi_dettaglio idd
-WHERE idd.altro = 'Indirizzo test RES Gestore (pgTAP)';
-
--- =========================================================
--- Inizio transazione “applicativa”
--- =========================================================
-BEGIN;
+SELECT MIN(id) AS gestore_id FROM anagrafiche.gestori;
 
 -- ---------------------------------------------------------
 -- 1) Recupero del Gestore (con soggetto e stato/comune)
@@ -110,23 +109,23 @@ SELECT ok(
 );
 
 -- ---------------------------------------------------------
--- 2) Recupero del tipo indirizzo RES (residenza)
+-- 2) Recupero del tipo indirizzo SEDEOP (sede operativa)
 -- ---------------------------------------------------------
-CREATE TEMP TABLE tmp_tipo_indirizzo_res AS
+CREATE TEMP TABLE tmp_tipo_indirizzo_res AS  -- nome storico: ora contiene SEDEOP
 SELECT
     ti.id,
     ti.codice_interno,
     ti.codice,
     ti.descrizione
 FROM config.tipi_indirizzi ti
-WHERE ti.codice_interno = 'RES'
+WHERE ti.codice_interno = 'SEDEOP'
 ORDER BY ti.id
 LIMIT 1;
 
--- Test 2: esiste almeno un tipo indirizzo con codice_interno = ''RES''
+-- Test 2: esiste almeno un tipo indirizzo con codice_interno = ''SEDEOP''
 SELECT ok(
     (SELECT count(*) FROM tmp_tipo_indirizzo_res) = 1,
-    'Esiste almeno un tipo indirizzo RES in config.tipi_indirizzi (codice_interno = ''RES'')'
+    'Esiste almeno un tipo indirizzo SEDEOP in config.tipi_indirizzi (ammesso per il ruolo GESTORE)'
 );
 
 -- ---------------------------------------------------------
@@ -167,13 +166,15 @@ WITH nuovo_indirizzo_dettaglio AS (
     )
     SELECT
         s.id,                            -- stradario_id
-        1,                               -- civico numerico fittizio
+        -- ⚠️ civico UNICO PER CORSA: e' questa la colonna dentro
+        --   uq_indirizzi_dettaglio_norm, non civico_norm.
+        k.civico_norm_test::integer,     -- civico numerico, diverso a ogni corsa
         NULL,                            -- estensione_civico
         k.palazzina_test,
         k.interno_test,
         k.piano_test,
         NULL,                            -- civic_geoloc
-        'Indirizzo test RES Gestore (pgTAP)', -- altro (nota per riconoscere test)
+        'Indirizzo test SEDEOP Gestore (pgTAP)', -- altro (nota per riconoscere test)
         k.via_norm_test,
         k.civico_norm_test,
         NULL,                            -- street_geoloc
@@ -196,7 +197,7 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------
--- 5) Inserimento indirizzo RES per il ruolo Gestore
+-- 5) Inserimento indirizzo di sede operativa per il ruolo Gestore
 -- ---------------------------------------------------------
 WITH nuovo_indirizzo AS (
     INSERT INTO anagrafiche.indirizzi (
@@ -277,15 +278,43 @@ SELECT ok(
           ON idd.id = i.indirizzo_dettaglio_id
         WHERE i.indirizzo_libero IS NULL
           AND i.tx_id IS NOT NULL  -- trigger dbops.trgfn_tx_id_managed
-          AND idd.altro = 'Indirizzo test RES Gestore (pgTAP)'
+          AND idd.altro = 'Indirizzo test SEDEOP Gestore (pgTAP)'
     ),
-    'L’indirizzo RES del Gestore è coerente (ruolo, tipo, dettaglio normalizzato di test, nessun indirizzo_libero, tx_id valorizzato)'
+    'L’indirizzo di sede operativa del Gestore è coerente (ruolo, tipo, dettaglio normalizzato di test, nessun indirizzo_libero, tx_id valorizzato)'
 );
 
--- Forzo la verifica dei constraint DEFERRABLE (se presenti)
-SET CONSTRAINTS ALL IMMEDIATE;
+-- ---------------------------------------------------------
+-- 8) ⭐ La regola che questo file ha scoperto diventa un presidio.
+--
+-- Il test nasceva per dare al Gestore un indirizzo RES, e RES su un GESTORE
+-- non e' ammesso: config.tipi_ruolo_tipi_indirizzo per GE prevede SEDELEG,
+-- FATT e SEDEOP, non la residenza — che su una societa' non vuol dire niente.
+-- Invece di limitarsi a cambiare tipo e dimenticare la cosa, qui si asserisce
+-- il divieto: se un giorno qualcuno aggiungesse RES alla matrice di GE senza
+-- accorgersene, questo test lo direbbe.
+-- ---------------------------------------------------------
+SELECT throws_ok(
+    $$
+    INSERT INTO anagrafiche.indirizzi (
+        soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
+        indirizzo_libero, stato_id, locality, postal_box, administrative_area
+    )
+    SELECT g.soggetto_ruolo_id, ti.id, NULL,
+           'Via pgTAP residenza illegittima', g.soggetto_stato_id,
+           'Roma', '00100', 'RM'
+      FROM tmp_gestore g,
+           config.tipi_indirizzi ti
+     WHERE ti.codice_interno = 'RES';
+    $$,
+    'P0001',
+    NULL,
+    'Un indirizzo RES (residenza) su un ruolo GESTORE viene respinto: non e'' nella matrice del ruolo'
+);
 
-COMMIT;
-
--- Fine test
 SELECT * FROM finish();
+
+-- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
+-- questo file non lascia nulla dietro di se'.
+-- ⚠️ finish() sta PRIMA: pgTAP tiene il suo stato in una temp table, e dopo il
+-- ROLLBACK non esiste piu'.
+ROLLBACK;

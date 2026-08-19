@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Passo 7 (P-2b) del cantiere «perimetro emittente»: il flag `multi_emittente`.
+#
+# COS'E'. Un si'/no per lista: «questa schermata sa dire da quale emittente
+# arriva ogni riga». Quando lo scope di chi entra contiene PIU' di un emittente
+# — cioe' praticamente solo il super admin — una lista con il flag a `false`
+# chiede di sceglierne uno prima di entrare.
+#
+# ⭐ PERCHE' IL DEFAULT E' `false`. Una lista nuova nasce NON CERTIFICATA, e
+#    nessuno deve ricordarsi di dichiararla. Il contrario — default `true` con
+#    un elenco di eccezioni — smette di funzionare al primo che si dimentica:
+#    diventa una lista di eccezioni che nessuno mantiene, invece di un registro
+#    di debito che cala.
+#
+# ⚠️ ORDINE LIQUIBASE, e non e' un dettaglio: questo `ALTER TABLE` sta in
+#    `00_schema`, la funzione che leggera' la colonna stara' in `20_code`, e
+#    `changelog-autogen.yaml` MESCOLA le due cartelle ordinando per NUMERO.
+#    Chi legge la colonna deve avere numero PIU' ALTO di questo (-16), o
+#    l'apply su un database ricostruito da zero fallisce — e su dev no, perche'
+#    li' la colonna c'e' gia'.
+#
+# ⚠️ E' l'unico passo NON reversibile a costo zero del cantiere: sta in fondo
+#    apposta. Si aggiunge la colonna solo quando esiste gia' una lista che puo'
+#    metterla a `true` — ed e' il caso: «Competenza — gruppi fatturabili» ha
+#    guadagnato la sua colonna emittente al passo 6.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260818-16-alter-ui-lista-definizione-add-multi-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260818-16-alter-ui-lista-definizione-add-multi-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        P-2b: aggiunge ui.lista_definizione.multi_emittente (boolean NOT NULL
+        DEFAULT false). Il default false e' la scelta: una lista nuova nasce non
+        certificata e nessuno deve ricordarsi di dichiararla. Il presidio contro
+        la scrittura applicativa e' un TRIGGER (20260818-17), non un permesso di
+        colonna — vedi §11.5. Brief P-2b, decisione Q1.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: ui
+              tableName: lista_definizione
+          - not:
+            - columnExists:
+                schemaName: ui
+                tableName: lista_definizione
+                columnName: multi_emittente
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN (DDL plain):
+              --    tipo esplicito, ed e' corretto cosi'.
+              ALTER TABLE ui.lista_definizione
+                  ADD COLUMN multi_emittente boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN ui.lista_definizione.multi_emittente IS
+                  'Capacita'' dichiarata della lista: sa dire da quale emittente fiscale arriva '
+                  'ogni riga? Quando lo scope di chi entra contiene PIU'' di un emittente (in '
+                  'pratica il solo super admin, dopo P-2a), una lista con false chiede di '
+                  'sceglierne uno prima di entrare. '
+                  '⚠️ NON E'' UN PERMESSO: non decide COSA un utente puo'' vedere — quello lo '
+                  'decidono lo scope e la RLS — ma se una schermata e'' LEGGIBILE nella '
+                  'condizione in cui sta per essere aperta. Chi lo implementa come controllo di '
+                  'autorizzazione crea una seconda via d''accesso accanto a quella vera. '
+                  '⛔ Si accende SOLO dal seed lista_definizione.csv, mai da interfaccia, e solo '
+                  'insieme (o dopo) al lavoro che lo rende vero: la lista deve gia'' esporre '
+                  'l''emittente nella riga. Presidiato dal trigger '
+                  'trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd e dalla vista di '
+                  'controllo dbops.vw_liste_multi_emittente_non_certificate. '
+                  'Default false: una lista nuova nasce NON certificata. '
+                  'Brief perimetro-emittente P-2b (decisioni Q1 e §7 punto 3).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE ui.lista_definizione DROP COLUMN IF EXISTS multi_emittente;

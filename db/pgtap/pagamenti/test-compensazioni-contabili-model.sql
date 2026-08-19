@@ -154,16 +154,33 @@ WHERE attivo IS TRUE
 ORDER BY id
 LIMIT 1;
 
+-- 🔴 EMITTENTE, aggiunto il 2026-08-18.
+--   `vendite.fatturazione_lotti` ha una policy RLS (`rls_fatturazione_lotti_ef_whitelist`)
+--   che, per il ruolo OPERATORE, ammette solo gli emittenti nella whitelist
+--   dell'utente — e la stessa espressione sta nel `WITH CHECK`, quindi vale
+--   anche in scrittura. La fixture non valorizzava
+--   `emittente_soggetto_ruolo_id` e l'INSERT moriva con «la nuova riga viola
+--   la regola di sicurezza per riga»: il file si fermava lì e delle 7
+--   asserzioni ne eseguiva **una**.
+--   ⚠️ Non e' un rosso «del test»: e' esattamente cio' che il passaggio al
+--   runner applicativo (2026-08-07) doveva far emergere — una fixture che
+--   scriveva dove l'applicazione non scrive.
+--   L'emittente non si sceglie a mano: `script.fn_pgtap_emittente_sr_operatore()`
+--   restituisce il soggetto_ruolo dell'emittente su cui l'operatore corrente
+--   puo' davvero scrivere, ed e' la compagna esatta della
+--   `fn_scope_ef_whitelist_via_sr` che la policy interroga.
 CREATE TEMP TABLE tmp_lotto_ref AS
 WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
     tipo_doc_fiscale_id,
     competenza_mese,
+    emittente_soggetto_ruolo_id,
     meta
   )
   SELECT
     (SELECT id FROM tmp_tipo_doc_ref),
     (SELECT competenza_mese FROM tmp_costanti_ccm),
+    script.fn_pgtap_emittente_sr_operatore(),
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ccm))
   RETURNING id
 )

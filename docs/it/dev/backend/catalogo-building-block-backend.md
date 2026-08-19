@@ -94,7 +94,7 @@ Le operazioni di scrittura (`POST`, `PATCH`, `DELETE` sul path classico) restano
 | `CLASSE_PER_CODICE` · `CODICI_RITIRATI` | [error_policies_generated.py](../../../../backend/apps/core/services/error_policies_generated.py) | `codice → classe`, **689 voci** (79 ritirate). ⛔ **GENERATO — non si modifica a mano**: la sorgente e' `config.vw_codici_errore_identita` e il commento sopra ogni voce e' la sua `note` a catalogo. Registrare un codice nuovo = chiedere al team DB il seed **a catalogo** con la sua classe, poi `manage.py genera_error_policies`. ⚠️ I ritirati **restano e risolvono** (il diario deve restare leggibile), ma nessun punto di chiamata nuovo deve nominarli: `CODICI_RITIRATI` e' la risposta a «questo codice si puo' usare?», che **`has()` non da' piu'** — `has()` oggi dice «lo conosco», ed e' vero anche per un codice morto. |
 | `genera_error_policies` | [management/commands/genera_error_policies.py](../../../../backend/apps/core/management/commands/genera_error_policies.py) | Il generatore del modulo sopra. `--check` non scrive e esce 1 se il file diverge dal catalogo (forma usata in CI, via `test_error_policies_divergenza_db`). ⚠️ Verifica il prodotto **prima** di scriverlo eseguendolo in uno spazio isolato: un file rotto qui impedisce l'avvio di Django e quindi anche del comando stesso — difetto gia' pagato alla prima esecuzione. ⛔ La sorgente e' la vista di **identita'**, mai `config.vw_codici_errore` (di revisione, una riga per codice+lingua: filtrarla per lingua perde in silenzio i codici senza messaggio). |
 | `UI_ACTION_OVERRIDE` | [error_ui_overrides.py](../../../../backend/apps/core/services/error_ui_overrides.py) | Le **176** `ui_action` che non seguono il default della loro classe, **con la ragione scritta accanto**. ⚠️ Non e' un CSV e non deve diventarlo: sono decisioni con una motivazione, e su `DATO_ERRATO` il default e' 117 contro 117 — il discriminante e' **dove manca il dato**, non la classe. |
-| `USER_MESSAGE_FALLBACK` | [error_messages_fallback.py](../../../../backend/apps/core/services/error_messages_fallback.py) | Il messaggio da mostrare **quando quello del DB non e' arrivato**. ⚠️ Non duplica `config.messaggi_errore`: e' la variante **senza segnaposto** — misurato, `%s` in **371** messaggi a catalogo e in **0** di questi. |
+| `USER_MESSAGE_FALLBACK` | [error_messages_fallback.py](../../../../backend/apps/core/services/error_messages_fallback.py) | Il messaggio da mostrare **quando quello del DB non e' arrivato**. ⚠️ Non duplica `config.messaggi_errore`: e' la variante **senza segnaposto** — misurato, `%s` in **371** messaggi a catalogo e in **0** di questi. ⚠️ **Il perimetro e' OGNI codice vivo, e la descrizione qui sopra non lo dice** (letta come perimetro il 2026-08-18, e l'ho letta male): `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` e' rosso finche' un codice non ritirato non ha la sua voce. ⭐ **Un `%s` a catalogo non e' un'esenzione: e' la ragione per cui il ripiego serve** — e' proprio quando gli argomenti non arrivano che il segnaposto finirebbe a video in chiaro. Registrare un codice nuovo = rigenerare `error_policies_generated.py` **e** scrivere qui la sua frase. |
 | `richiedi_db_provvisto` | [tests/db_e2e.py](../../../../backend/apps/core/tests/db_e2e.py) | **Prerequisito unico dei test che interrogano il DB vero** (quello configurato, con lo schema Liquibase completo). Salta — non fallisce — su flag spenta (`ZEROERP_TEST_DB_E2E`), DB irraggiungibile, o schema assente perche' il runner ha creato un database usa-e-getta. ⚠️ Va chiamata da `setUpClass`, **mai** a import time: la prima versione usava `@skipUnless` con un probe valutato all'import e rendeva rossi 469 test di altre app. Se il tuo test presidia un oggetto specifico, verificane l'esistenza **dopo** questa chiamata e li' **fallisci**: schema presente + oggetto assente e' un difetto, non una condizione d'ambiente. Consumer: `test_db_error_fields` (3 e2e), `test_error_codes_db_policy_guardrail`. |
 | `EmailDispatchService.send_email` | [email_service.py](../../../../backend/apps/core/services/email_service.py) | Invio email con risoluzione template/account e logging |
 | `EmailDispatchService.resolve_and_render` | [email_service.py](../../../../backend/apps/core/services/email_service.py) | Risolve template + account con fallback e renderizza variabili |
@@ -578,6 +578,39 @@ Perimetro ristretto del giro di fatturazione (brief-be-fe-emissione-fattura-mira
 | `LottoContext.gruppi` + `set_lotto_gruppi` | [pipeline_repository.py](../../../../backend/apps/vendite/db/pipeline_repository.py) | Lettura/scrittura del perimetro su `vendite.fatturazione_lotti_gruppi`. `array_agg` su zero righe ritorna NULL, non array vuoto: la distinzione «nessuna riga → `None` → nessuna restrizione» È la convenzione DB (un array vuoto significherebbe «nessun gruppo ammesso», il contrario). |
 | `LottoPipelineParams.gruppi` → `_resolve_lotto` | [pipeline_runner.py](../../../../backend/apps/vendite/services/pipeline_runner.py) | Scrive il perimetro **nella stessa transazione** in cui crea il lotto, e **solo alla creazione**: su lotto esistente (rerun / avanza step del `LottoDrawer`) il criterio è già a DB e va riprodotto, non riscritto. |
 | corsia `mirata` | [fatturazione_driver_service.py](../../../../backend/apps/vendite/services/fatturazione_driver_service.py) | `('MASSIVO', None, 'EMESSA')`: filtro di corsia **assente** di proposito — la lista dei gruppi non conosce la corsia, quindi mostra anche quelli di commesse a fatturazione immediata; filtrare li renderebbe selezionabili a video e produttivi di zero lotti in silenzio. Non è fra le `modalita_disponibili()` (choices del cron): senza gruppi degenererebbe in un giro di massa su entrambe le corsie, ed è un `ValueError` fail-fast. `summary["lotti"]` = estratto compatto dei lotti prodotti (sono N, non uno: tipi doc fiscale diversi → terne diverse). |
+
+## Vendite — Code resi filtrate su un documento (`apps/vendite/db/`)
+
+Il predicato «questa riga di coda appartiene a QUESTO documento», condiviso fra
+il **pannello situazione merce** e le **due code di lavoro resi**. Estratto il
+2026-08-18 (regola del 2, ok Tid) dalla slice B3 di
+[brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md),
+per la richiesta FE-2: dal pannello si arriva alla coda **già filtrata** sul
+documento aperto.
+
+| Building Block | File | Descrizione |
+| --- | --- | --- |
+| `filtro_coda_per_documento` | [_coda_documento_filtro.py](../../../../backend/apps/vendite/db/_coda_documento_filtro.py) | `(*, ddt_id=None, ordine_id=None) -> (condizione_sql \| None, params)`. Lato **DDT** usa `v.ddt_id`, che la coda espone già (è il DDT della riga resa, per costruzione quello della partita). Lato **ordine** il legame non è una colonna: è un `EXISTS` sul **fulfillment** della riga di DDT resa (`ordini_righe_fulfillment` → `ordini_righe`), cioè la stessa fonte da cui `vw_partite_merce` deriva la propria origine — un criterio solo, non un terzo criterio. 🔴 **E NON si passa da `v.ordine_riga_id`**, che pure c'è: con la partita generalizzata quella colonna è **nullable** (vuota sulla merce senza origine ordine — riga di DDT aggiunta a mano, DDT standalone), e usarla come chiave farebbe sparire dal filtro proprio le righe che il cantiere della partita ha appena portato dentro il conto: l'elenco corto sembrerebbe giusto. Senza documento ritorna `(None, [])` = «nessuna restrizione», **non** una condizione sempre vera. ⚠️ Assume l'alias `v` sulla vista-coda: è la convenzione di entrambi i chiamanti. ⚠️ I due id sono **alternativi**, e il divieto vive nel service (`_valida_filtro_documento` → `E_RESO_VALIDAZIONE`), non qui: il BB resta puro e deterministico (a parità arriva, vince il DDT). |
+
+**Consumer**: `VenditeRepository._list_coda_su_partite` (le sezioni «da
+accreditare» / «da ri-consegnare» del pannello) e `ResiRepository._list_coda`
+via `_aggiungi_filtro_documento` (le due code di lavoro, con i query param
+`?ddt_id=` / `?ordine_id=` su list **ed export**).
+
+⚠️ **Perché è un BB e non due copie**: le due schermate rispondono alla stessa
+domanda e devono contare le **stesse righe**. Scritto due volte, il giorno in cui
+uno dei due cambia il pannello dice «8 da accreditare» e la coda filtrata ne
+mostra 7 — e nessun test lo intercetta, perché ognuna delle due copie è coerente
+con sé stessa.
+
+⚠️ **L'unica rete sulla stringa SQL sono i test del BB**
+(`apps/vendite/tests/db/test_coda_documento_filtro.py`, 6 test): i test del
+service situazione merce mockano il repository, quindi il predicato non lo
+attraversano. Verificato inoltre **sui dati** il 2026-08-18: la partizione per
+DDT somma al totale della coda, la variante ordine dà lo stesso split, e un id
+inesistente dà **0** e non «tutto».
+
+---
 
 ## Vendite — Lineage documenti / pannello "Passaggi" (`apps/vendite/`)
 

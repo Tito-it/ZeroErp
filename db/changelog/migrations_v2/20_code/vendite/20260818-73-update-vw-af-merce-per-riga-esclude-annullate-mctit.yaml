@@ -1,0 +1,300 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il conto della merce smette di contare cio' che e' ANNULLATO
+#   (brief-db-note-credito-prerequisiti-be-fe §10). Trovato scrivendo il pgTAP
+#   dell'annullo dell'accredito, ma il difetto e' piu' vecchio del cantiere.
+#
+# ── IL DIFETTO, IN UNA CATENA ──────────────────────────────────────────
+#   accredito  ->  rettifica -3, nessuna attivita' fatturabile   coda: -3  ✅
+#   emissione  ->  nasce l'AF -3                                 coda:  0  (pari)
+#   reset      ->  l'AF SOPRAVVIVE, ca torna NON_EMESSA          coda:  0
+#   ANNULLO    ->  ponte vuoto, ca -> ANNULLATA
+#                  ⛔ ma l'AF -3 e' ancora li' e vale ancora come «rettificato»
+#                  coda: 0  ->  LA RIGA NON TORNA IN CODA, MAI PIU'
+#
+#   🔴 Il ponte e' vuoto, gia_accreditato e' 0, e la merce resa non e' piu'
+#   accreditabile da nessuno: e' letteralmente la malattia per cui il cantiere
+#   note di credito esiste, ricreata dal rimedio. E il percorso non e' esotico —
+#   e' quello che il messaggio di E_ACCREDITO_ANNULLO_NON_AMMESSO CONSIGLIA
+#   all'operatore: «se il documento non e' ancora numerato, resetta il lotto».
+#
+#   ⚠️ Non e' un difetto delle note di credito: vale identico per
+#   vendite.fn_annulla_commessa_attivita dal 2026-07-28. Una riga manuale
+#   emessa, resettata e poi annullata continua a contare come fatturato.
+#   ⭐ Quella funzione guarisce qui, senza essere toccata.
+#
+# ── ⭐ PERCHE' SOLO 'ANNULLATA', E PERCHE' NON 'NON_EMESSA' ────────────
+#   E' la parte da non sbagliare, e viene dal commento della vista stessa:
+#
+#     «Non guarda fatturato/stato_emissione: l'esistenza dell'attivita'
+#      E' la frontiera EMESSA»
+#
+#   Quella frase dice cosa la vista MISURA: non «quanto e' stato fatturato» ma
+#   «quanto e' entrato nella CORSIA di fatturazione». Ed e' giusta —
+#   e' la misura che dosa il push e impedisce di spingere due volte.
+#
+#     * dopo un RESET l'attivita' e' NON_EMESSA ma sta ANCORA nella corsia:
+#       verra' ri-emessa, e il vaso e' li' apposta. ⛔ Filtrarla sarebbe un
+#       secondo difetto, uguale e contrario — la merce risulterebbe da
+#       fatturare due volte;
+#     * un'attivita' ANNULLATA dalla corsia e' USCITA, e non ci rientra:
+#       tutte le porte verso fattura e cockpit gia' la escludono.
+#
+#   Quindi la frase del 2026-08-17 non era sbagliata: era scritta quando gli
+#   stati in gioco erano DUE. ANNULLATA e' il terzo, e l'esistenza dell'AF non
+#   sa rappresentarlo — perche' l'AF e' un MIRROR e nessuno la riallinea
+#   all'annullo (vedi sotto). Il commento nuovo lo dice per esteso.
+#
+# ── ⛔ LE TRE ALTERNATIVE SCARTATE ──────────────────────────────────────
+#   1. Far cancellare all'annullo le AF delle rettifiche che annulla.
+#      Sistemerebbe un solo percorso e lascerebbe scoperti tutti gli altri modi
+#      di arrivare ad ANNULLATA. E romperebbe il vaso: vedi 2.
+#   2. Cancellare comunque l'AF quando il padre viene annullato (trigger).
+#      ⚠️ vendite.attivita_fatturabili e' un MIRROR DUREVOLE 1:1:
+#      fn_emit_attivita_fatturabili_da_commessa NON inserisce, fa UPSERT —
+#      cerca la riga per (sorgente_tipo_id, sorgente_uid) con sorgente_uid
+#      derivato in modo deterministico dal segment_key (md5) e la AGGIORNA.
+#      E' il motivo per cui fn_cleanup_fatture_by_ids la lascia in piedi dopo un
+#      reset, ed e' anche il motivo per cui reset + ri-emit NON produce due
+#      righe che si sommano. Cancellarla toglierebbe quella garanzia.
+#   3. Rispecchiare lo stato DENTRO attivita_fatturabili (una colonna
+#      `annullata`). E' l'alternativa che sembra piu' solida ed e' la peggiore:
+#      ⛔ il mirror lo aggiorna SOLO l'emit, e un annullo non chiama l'emit.
+#      Una colonna di stato li' sarebbe STALE PER COSTRUZIONE — vera il giorno
+#      in cui la si scrive e falsa da subito dopo. Il join al padre e' l'unica
+#      cosa che non puo' invecchiare.
+#
+# ── E IL FILTRO COPRE TUTTO IL CONTO, NON UN CONSUMATORE ───────────────
+#   Misurato sul CODICE (non sui dati): vw_af_merce_per_riga e' l'UNICO oggetto
+#   in vendite che somma attivita_fatturabili.quantita. Tutto il conto della
+#   merce passa da qui — vw_partite_merce, vw_contatore_merce_aggregato,
+#   vw_situazione_merce_ordine, fn_get_stato_push_segment,
+#   fn_resi_riga_tetti_accredito leggono LEI, non la tabella.
+#   Non c'e' un secondo lettore che domani ripeta il difetto.
+#
+# ── I PGTAP DEL CONFINE VECCHIO: LETTI PRIMA ───────────────────────────
+#   Sei file insistono su questa vista o sui suoi consumatori. Verificato che
+#   NESSUNO di loro produce mai un'attivita' ANNULLATA (grep 'ANNULLATA' = 0 su
+#   tutti e sei; le fixture usano solo NON_EMESSA e l'emissione):
+#     test-vw-af-merce-per-riga-v1, test-vw-partite-merce-v1,
+#     test-vw-partite-merce-riconsegna-dopo-nc-v1, test-vw-contatore-merce-v1,
+#     test-ponte-riconsegna-copre-riga-v1, test-fn-accredita-riga-reso-v1
+#   Il filtro quindi non puo' cambiarne l'esito. ⚠️ Non e' una previsione: e'
+#   una misura sul contenuto dei file, che vale a prescindere dai dati.
+#
+# ⚠️ security_invoker=on RI-SPECIFICATA: e' una reloption e non sopravvive a un
+#   CREATE OR REPLACE VIEW che la ometta. Senza, la vista tornerebbe a girare
+#   coi diritti del proprietario e la RLS su commesse_attivita smetterebbe di
+#   applicarsi — un buco di perimetro aperto da una riga dimenticata.
+#
+# ⚠️ La bonifica dei dati e' UN'ALTRA COSA e viene DOPO: se esistono righe con
+#   un'AF il cui padre e' gia' ANNULLATA, i loro conti di partita cambiano al
+#   primo refresh. Si misura come owner (commesse_attivita ha la RLS: come
+#   applicazione lo zero e' fail-closed) e si sistema a mano — non siamo in
+#   produzione. ⛔ Non e' una condizione per applicare questo changeset.
+#
+# Dipendenze: vendite.vw_af_merce_per_riga (20260817-06),
+#   vendite.commesse_attivita.stato_emissione (CHECK a 3 valori, 20260224-07).
+# Verifica: db/pgtap/vendite/test-annulla-accredito-riga-reso-v1.sql test 18
+#   (accredito -> emissione -> reset -> annullo -> LA CODA RISALE), rosso prima
+#   di questo changeset e verde dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-73-update-vw-af-merce-per-riga-esclude-annullate-mctit.yaml
+
+  - changeSet:
+      id: 20260818-73-update-vw-af-merce-per-riga-esclude-annullate
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_af_merce_per_riga esclude le attivita' con stato_emissione = ANNULLATA. Senza, una
+        rettifica emessa, resettata e poi annullata lascia la sua attivita_fatturabili nel conto
+        della merce: la partita resta pareggiata e la riga di reso NON torna mai in coda accrediti.
+        Solo ANNULLATA: NON_EMESSA sta ancora nella corsia (dopo un reset viene ri-emessa) e
+        filtrarla farebbe risultare la merce da fatturare due volte. Corregge anche il gemello
+        su fn_annulla_commessa_attivita senza toccarla. security_invoker=on ri-specificata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_af_merce_per_riga
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: stato_emissione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_af_merce_per_riga
+              WITH (security_invoker=on) AS
+              WITH base AS (
+                  -- Attivita' fatturabili agganciate a una riga di documento
+                  -- merce, con la segment_key scomposta nei suoi pezzi.
+                  -- Il filtro corsia ORD/DDT tiene fuori PREV, CONS, MAN.
+                  SELECT af.quantita                                          AS quantita,
+                         af.tipo_movimento                                    AS tipo_movimento,
+                         split_part(ca.segment_key, ':', 1)                   AS corsia,
+                         (substring(ca.segment_key FROM ':R:([0-9]+)'))::bigint AS riga_id,
+                         -- Istanza di kit = tutto cio' che sta a SINISTRA del
+                         -- separatore. Identifica il kit venduto, non l'articolo:
+                         -- lo stesso kit puo' comparire due volte da righe diverse.
+                         split_part(ca.segment_key, '#CMP:', 1)               AS kit_key,
+                         (ca.segment_key LIKE '%#CMP:%')                      AS e_componente,
+                         -- Moltiplicatore scritto al push. Il controllo di forma
+                         -- e' una cintura: un valore non numerico farebbe fallire
+                         -- il cast a lettura, cioe' fermerebbe la FATTURAZIONE
+                         -- (il contatore dosa il push). Meglio «non misurabile».
+                         CASE
+                           WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
+                             THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0)
+                         END                                                  AS coeff_qta
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                   WHERE split_part(ca.segment_key, ':', 1) IN ('ORD', 'DDT')
+                     AND ca.segment_key ~ ':R:[0-9]+'
+                     -- ⭐ 2026-08-18: l'attivita' ANNULLATA e' USCITA dalla corsia
+                     --   di fatturazione e non ci rientra, quindi non ha fatturato
+                     --   nulla. Senza questa riga una rettifica emessa, resettata e
+                     --   poi annullata lasciava qui la sua AF e la partita restava
+                     --   pareggiata: la riga di reso non tornava MAI in coda
+                     --   accrediti (brief note-credito §10).
+                     -- ⛔ Solo ANNULLATA, MAI «= EMESSA»: dopo un reset di lotto
+                     --   l'attivita' e' NON_EMESSA e sta ANCORA nella corsia — il
+                     --   vaso e' li' perche' il ri-emit lo riempia. Escluderla
+                     --   farebbe risultare la stessa merce da fatturare due volte.
+                     AND ca.stato_emissione <> 'ANNULLATA'
+              ),
+              kit AS (
+                  -- Una riga per ISTANZA di kit, riportata in unita' del padre.
+                  -- max e non sum: i componenti sono N letture della stessa
+                  -- quantita' di padre. Se non concordano (min <> max) il valore
+                  -- e' ambiguo -> non misurabile, e non si sceglie per comodita'.
+                  SELECT b.corsia,
+                         b.riga_id,
+                         b.tipo_movimento,
+                         b.kit_key,
+                         max(b.quantita / b.coeff_qta)                        AS quantita_padre,
+                         ( bool_and(b.coeff_qta IS NOT NULL)
+                           AND min(b.quantita / b.coeff_qta)
+                             = max(b.quantita / b.coeff_qta) )                AS misurabile
+                    FROM base b
+                   WHERE b.e_componente
+                   GROUP BY b.corsia, b.riga_id, b.tipo_movimento, b.kit_key
+              ),
+              unita_padre AS (
+                  -- Kit normalizzati e righe semplici, ormai nella stessa unita'.
+                  SELECT k.corsia, k.riga_id, k.tipo_movimento,
+                         k.quantita_padre AS quantita, k.misurabile, TRUE AS da_componenti
+                    FROM kit k
+                  UNION ALL
+                  SELECT b.corsia, b.riga_id, b.tipo_movimento,
+                         b.quantita, TRUE, FALSE
+                    FROM base b
+                   WHERE NOT b.e_componente
+              )
+              SELECT u.corsia::varchar                                        AS corsia,
+                     u.riga_id                                                AS riga_id,
+                     u.tipo_movimento                                         AS tipo_movimento,
+                     COALESCE(SUM(u.quantita), 0)                             AS quantita,
+                     bool_and(u.misurabile)                                   AS misurabile,
+                     bool_or(u.da_componenti)                                 AS da_componenti,
+                     COUNT(*)::integer                                        AS voci
+                FROM unita_padre u
+               GROUP BY u.corsia, u.riga_id, u.tipo_movimento;
+
+              COMMENT ON VIEW vendite.vw_af_merce_per_riga IS
+                'Base del contatore merce (brief-design-partita-merce-generalizzata S1): traduce le '
+                'attivita'' fatturabili in quantita'' PER RIGA DI DOCUMENTO SORGENTE. Grana '
+                '(corsia, riga_id, tipo_movimento). corsia ORD/DDT da split_part(segment_key), riga_id '
+                'da substring(... ):R:([0-9]+)) — ⚠️ i due id vengono da sequenze diverse, la corsia e'' '
+                'obbligatoria per interpretarli. I kit (segmenti #CMP) sono normalizzati in unita'' del '
+                'PADRE: quantita_padre = max(quantita / meta->>''coeff_qta'') per istanza di kit, con '
+                'pretesa di coerenza min=max — se i componenti non concordano, o il coefficiente manca '
+                'o non e'' numerico, misurabile=false e il valore NON va usato come zero. '
+                'tipo_movimento e'' ESPOSTO e NON filtrato: il filtro NORMALE resta nei consumatori. '
+                '⭐ COSA MISURA: non «quanto e'' stato fatturato» ma quanto e'' entrato nella CORSIA di '
+                'fatturazione — e'' la misura che dosa il push e impedisce di spingere due volte. Non '
+                'guarda quindi ne'' fatturato ne'' fattura_riga_id, e NON filtra NON_EMESSA: dopo un '
+                'reset di lotto l''attivita'' e'' NON_EMESSA ma sta ANCORA nella corsia, e la sua riga '
+                'di attivita_fatturabili e'' il vaso che il ri-emit riempie di nuovo (l''emit e'' un '
+                'UPSERT su (sorgente_tipo_id, sorgente_uid), non un INSERT — ed e'' per questo che '
+                'reset + ri-emit non produce due righe che si sommano). ⛔ FILTRA pero'' ANNULLATA, dal '
+                '2026-08-18: un''attivita'' annullata dalla corsia e'' USCITA e non ci rientra. Senza '
+                'quel filtro una rettifica emessa, resettata e poi annullata lasciava qui la propria '
+                'attivita_fatturabili, la partita restava pareggiata e la riga di reso non tornava MAI '
+                'in coda accrediti — la merce resa diventava non accreditabile da nessuno (brief '
+                'note-credito §10). ⚠️ Il filtro sta QUI e non nell''annullo perche'' questa vista e'' '
+                'l''unico oggetto che somma attivita_fatturabili.quantita: correggerla corregge il '
+                'conto ovunque, e vale per OGNI percorso che porta una riga ad ANNULLATA — compreso '
+                'fn_annulla_commessa_attivita, che guarisce senza essere toccata. ⛔ E non si '
+                'rispecchia lo stato dentro attivita_fatturabili: quel mirror lo aggiorna solo '
+                'l''emit, quindi una colonna di stato li'' sarebbe stale per costruzione. '
+                'security_invoker=on (RLS su commesse_attivita). rev 2026-08-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: si torna alla definizione del 20260817-06, cioe' SENZA
+              -- il filtro su ANNULLATA. ⚠️ Ripristina anche il difetto di §10.
+              CREATE OR REPLACE VIEW vendite.vw_af_merce_per_riga
+              WITH (security_invoker=on) AS
+              WITH base AS (
+                  SELECT af.quantita                                          AS quantita,
+                         af.tipo_movimento                                    AS tipo_movimento,
+                         split_part(ca.segment_key, ':', 1)                   AS corsia,
+                         (substring(ca.segment_key FROM ':R:([0-9]+)'))::bigint AS riga_id,
+                         split_part(ca.segment_key, '#CMP:', 1)               AS kit_key,
+                         (ca.segment_key LIKE '%#CMP:%')                      AS e_componente,
+                         CASE
+                           WHEN (ca.meta ->> 'coeff_qta') ~ '^[0-9]+(\.[0-9]+){0,1}$'
+                             THEN NULLIF((ca.meta ->> 'coeff_qta')::numeric, 0)
+                         END                                                  AS coeff_qta
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                   WHERE split_part(ca.segment_key, ':', 1) IN ('ORD', 'DDT')
+                     AND ca.segment_key ~ ':R:[0-9]+'
+              ),
+              kit AS (
+                  SELECT b.corsia, b.riga_id, b.tipo_movimento, b.kit_key,
+                         max(b.quantita / b.coeff_qta)                        AS quantita_padre,
+                         ( bool_and(b.coeff_qta IS NOT NULL)
+                           AND min(b.quantita / b.coeff_qta)
+                             = max(b.quantita / b.coeff_qta) )                AS misurabile
+                    FROM base b
+                   WHERE b.e_componente
+                   GROUP BY b.corsia, b.riga_id, b.tipo_movimento, b.kit_key
+              ),
+              unita_padre AS (
+                  SELECT k.corsia, k.riga_id, k.tipo_movimento,
+                         k.quantita_padre AS quantita, k.misurabile, TRUE AS da_componenti
+                    FROM kit k
+                  UNION ALL
+                  SELECT b.corsia, b.riga_id, b.tipo_movimento,
+                         b.quantita, TRUE, FALSE
+                    FROM base b
+                   WHERE NOT b.e_componente
+              )
+              SELECT u.corsia::varchar                                        AS corsia,
+                     u.riga_id                                                AS riga_id,
+                     u.tipo_movimento                                         AS tipo_movimento,
+                     COALESCE(SUM(u.quantita), 0)                             AS quantita,
+                     bool_and(u.misurabile)                                   AS misurabile,
+                     bool_or(u.da_componenti)                                 AS da_componenti,
+                     COUNT(*)::integer                                        AS voci
+                FROM unita_padre u
+               GROUP BY u.corsia, u.riga_id, u.tipo_movimento;

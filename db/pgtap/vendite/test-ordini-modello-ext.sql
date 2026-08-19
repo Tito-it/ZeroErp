@@ -10,7 +10,7 @@
 --   - estensione A1: documento_origine_tipo/_id (varchar+CHECK, nullable,
 --     SENZA UNIQUE -> piu' ordini da una stessa origine)
 --
--- Indice test (1..11):
+-- Indice test (1..12):
 --   1.  chk_ordini_v_r_qta_pos referenzia la QUANTITA' (quantita)
 --   2.  chk_ordini_v_r_qta_pos NON referenzia il prezzo (anti-regressione bug)
 --   3.  CHECK co-presenza UoM operativa presente su ordini_righe
@@ -20,8 +20,9 @@
 --   7.  documento_origine_id presente, bigint, nullable
 --   8.  CHECK chk_ordini_documento_origine_tipo presente (vocabolario)
 --   9.  CHECK chk_ordini_documento_origine_copres presente (co-presenza tipo<->id)
---   10. NESSUNA UNIQUE su documento_origine_* (anti-A2: piu' ordini da una origine)
---   11. Il CHECK del tipo origine enumera PREVENTIVO/OFFERTA
+--   10. Nessuna UNIQUE PIENA su documento_origine_* (A1: piu' ordini da una origine)
+--   11. Esiste la UNIQUE PARZIALE limitata a OFFERTA (1:1 offerta->ordine)
+--   12. Il CHECK del tipo origine enumera PREVENTIVO/OFFERTA
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -39,7 +40,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- 1. chk_ordini_v_r_qta_pos referenzia quantita
 SELECT ok(
@@ -138,16 +139,44 @@ SELECT ok(
     '9. CHECK chk_ordini_documento_origine_copres presente'
 );
 
--- 10. NESSUNA UNIQUE su documento_origine_* (anti-A2)
+-- 10-11. Le UNIQUE su documento_origine_*
+-- 🔴 PRECISATO IL 2026-08-18.
+--   Il test pretendeva ZERO indici unici su `documento_origine_*` — la scelta
+--   A1 del `20260603-13`, «piu' ordini da una stessa origine», per consentire i
+--   riordini. Falliva con have=1, e non e' una regressione: il `20260607-07` ha
+--   invertito quella scelta **per la sola origine OFFERTA** (ratificato Tid,
+--   2026-06-07), perche' un'offerta non ha righe materializzate — e' una
+--   condizione quadro atomica, quindi l'1:1 e' la sua natura e non un ripiego.
+--   PREVENTIVO non e' toccato: il suo modello e' lo split per riga.
+--
+--   ⚠️ Il test non si rovescia e non si cancella: si RENDE PRECISO. «Nessuna
+--   UNIQUE» era troppo, «una UNIQUE qualsiasi» sarebbe troppo poco — passerebbe
+--   anche se qualcuno togliesse il `WHERE` e vincolasse pure i preventivi, che
+--   e' esattamente il danno che A1 voleva evitare. Le due meta' della regola
+--   vanno guardate separatamente, ed e' per questo che qui i test sono due.
 SELECT is(
     (
         SELECT COUNT(*)::INTEGER FROM pg_indexes
          WHERE schemaname = 'vendite' AND tablename = 'ordini'
            AND indexdef ILIKE '%documento_origine%'
            AND indexdef ILIKE '%unique%'
+           AND indexdef NOT ILIKE '%where%'
     ),
     0,
-    '10. Nessuna UNIQUE su documento_origine_* (piu ordini da una stessa origine)'
+    '10. Nessuna UNIQUE PIENA su documento_origine_* (A1: piu ordini da una stessa origine)'
+);
+
+SELECT is(
+    (
+        SELECT COUNT(*)::INTEGER FROM pg_indexes
+         WHERE schemaname = 'vendite' AND tablename = 'ordini'
+           AND indexdef ILIKE '%documento_origine%'
+           AND indexdef ILIKE '%unique%'
+           AND indexdef ILIKE '%where%'
+           AND indexdef ILIKE '%OFFERTA%'
+    ),
+    1,
+    '11. Esiste la UNIQUE parziale limitata a OFFERTA (1:1 offerta->ordine, 20260607-07)'
 );
 
 -- 11. Il CHECK tipo enumera PREVENTIVO/OFFERTA

@@ -76,6 +76,7 @@
 - [reservations](tabelle/reservations.md)
 - [resi](tabelle/resi.md)
 - [resi_righe](tabelle/resi_righe.md)
+- [resi_righe_accrediti](tabelle/resi_righe_accrediti.md)
 - [resi_righe_riconsegne](tabelle/resi_righe_riconsegne.md)
 - [resi_righe_rinunce](tabelle/resi_righe_rinunce.md)
 - [rettifiche](tabelle/rettifiche.md)

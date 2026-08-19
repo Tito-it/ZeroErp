@@ -75,6 +75,36 @@ ResiDbErrorsTests
 25) test_integrity_error_fk_mappato       — E_VENDITE_FK
 26) test_integrity_error_fallback         — E_VENDITE_VALIDATION
 27) test_database_error_trigger_code      — E_RESO_QTA_SUPERA_CONSEGNATO
+28) test_filtro_ddt_passthrough            — ddt_id arriva al repository
+28b) test_filtro_documento_id_non_positivo — ddt_id=0 -> 400, non coda vuota
+29) test_filtro_ordine_passthrough         — ordine_id arriva al repository
+30) test_filtro_documento_mutuamente_esclusivo — ddt_id + ordine_id -> 400
+31) test_filtro_documento_assente_default  — None su entrambe le code
+32) test_filtro_documento_su_riconsegne    — la simmetria fra le due code
+33) test_etichette_export_dichiarano_il_documento — il file non mente sul perimetro
+
+ResiAccreditoTests (il verbo della nota di credito — madre fn_accredita_riga_reso)
+34) test_accredito_ritorna_tutte_le_rettifiche   — RETURNS TABLE: N righe, non la prima
+35) test_accredito_nessun_precheck_applicativo   — i guard sono nella madre
+36) test_accredito_no_atomic_extra               — una sola SELECT fn_()
+37) test_accredito_codice_dominio_dalla_madre    — E_ACCREDITO_GIA_ESEGUITO
+
+ResiAccreditoMassivoTests (il fan-out del verbo — B2 / D-NC-7)
+38) test_massivo_esito_parziale_non_solleva      — 200 con esito PARZIALE
+39) test_massivo_tutte_fallite_non_solleva       — anche ERRORE e' un report
+40) test_massivo_accrediti_portano_la_riga       — flatten con resi_riga_id
+41) test_massivo_dedup_preserva_ordine           — id ripetuto lavorato UNA volta
+42) test_massivo_lista_vuota_rifiutata           — no «tutte» per omissione
+43) test_massivo_lista_degenere_rifiutata        — non-lista, id 0/negativi/bool/testo
+44) test_massivo_cap_rispettato                  — max MAX_ACCREDITI_MASSIVI
+
+ResiAnnulloAccreditoTests (B2-bis / D-NC-11)
+45) test_annullo_delega_alla_madre               — una sola fn, ritorno light
+46) test_annullo_riga_di_altro_reso_rifiutata    — E_RESO_NOT_FOUND, madre non chiamata
+47) test_annullo_motivo_vuoto_a_null             — normalizza, il rifiuto e' della madre
+48) test_annullo_codice_dominio_dalla_madre      — E_ACCREDITO_ANNULLO_NON_AMMESSO
+49) test_annullo_no_atomic_extra                 — atomicita' nella fn madre
+50) test_annullo_motivo_non_stringa_rifiutato    — nessun tipo strano al driver
 """
 
 from contextlib import nullcontext
@@ -84,12 +114,24 @@ from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.fan_out import run_fan_out as _run_fan_out_vero
 from apps.vendite.services import resi_service
 from apps.vendite.services.resi_service import _db_errors
 
 _REPO = "apps.vendite.services.resi_service.ResiRepository"
 _SVC = "apps.vendite.services.resi_service"
 _ATOMIC = "apps.vendite.services.resi_service.transaction.atomic"
+
+
+# Scopo: il BB `run_fan_out` VERO, con l'isolamento per elemento spento. Il
+#        savepoint richiede un database e questi test girano su SimpleTestCase;
+#        spegnere l'isolamento lascia intatto cio' che i test misurano —
+#        aggregazione a tre stati, ordine, cattura dei codici — e non simula il
+#        BB con un finto ciclo, che sarebbe il modo migliore per verificare una
+#        cosa e consegnarne un'altra.
+def _fan_out_reale(items, process, **kwargs):
+    kwargs["isola_in_transazione"] = False
+    return _run_fan_out_vero(items, process, **kwargs)
 
 # Lettura leggera di comodo per i guard righe (get_stato_e_ddt_origine).
 _RESO_DRAFT = {"stato_codice_interno": "DRAFT", "ddt_origine_id": 30}
@@ -408,6 +450,104 @@ class ResiCodaAccreditareTests(SimpleTestCase):
         self.assertIsNone(repo.list_da_accreditare.call_args.kwargs["etichetta"])
 
 
+class ResiCodaFiltroDocumentoTests(SimpleTestCase):
+    """Restrizione delle code a un documento (slice B3, richiesta FE-2)."""
+
+    # Scopo: il filtro DDT arriva al repository. E' il caso del collegamento dal
+    #        pannello situazione merce del DDT.
+    @patch(_REPO)
+    def test_filtro_ddt_passthrough(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        resi_service.list_da_accreditare(ddt_id=140, limit=25, offset=0)
+        kwargs = repo.list_da_accreditare.call_args.kwargs
+        self.assertEqual(kwargs["ddt_id"], 140)
+        self.assertIsNone(kwargs["ordine_id"])
+
+    # Scopo: idem dal pannello dell'ordine, dove il legame passa dal
+    #        fulfillment della riga di DDT resa e non da una colonna.
+    @patch(_REPO)
+    def test_filtro_ordine_passthrough(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        resi_service.list_da_accreditare(ordine_id=240, limit=25, offset=0)
+        kwargs = repo.list_da_accreditare.call_args.kwargs
+        self.assertEqual(kwargs["ordine_id"], 240)
+        self.assertIsNone(kwargs["ddt_id"])
+
+    # Scopo: i due id sono ALTERNATIVI. Accettarli insieme vorrebbe dire due
+    #        domande in una, con la seconda che restringe la prima in silenzio:
+    #        l'operatore vedrebbe un elenco corto senza sapere perche'.
+    #        ⚠️ E il repository non deve essere chiamato affatto.
+    @patch(_REPO)
+    def test_filtro_documento_mutuamente_esclusivo(self, repo_cls) -> None:
+        for chiamata in (
+            lambda: resi_service.list_da_accreditare(
+                ddt_id=1, ordine_id=2, limit=25, offset=0
+            ),
+            lambda: resi_service.list_da_riconsegnare(
+                ddt_id=1, ordine_id=2, limit=25, offset=0
+            ),
+        ):
+            with self.subTest(chiamata=chiamata):
+                with self.assertRaises(ServiceError) as ctx:
+                    chiamata()
+                self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.list_da_accreditare.assert_not_called()
+        repo_cls.return_value.list_da_riconsegnare.assert_not_called()
+
+    # Scopo: 🔴 `?ddt_id=0` passa il parsing strict (0 e' un intero valido) e
+    #        produrrebbe `WHERE v.ddt_id = 0`, cioe' una coda VUOTA. E una coda
+    #        vuota si legge «non c'e' niente da fare» — il messaggio piu'
+    #        sbagliato possibile su un elenco di accrediti dovuti. Deve essere
+    #        un errore parlante, non una normalizzazione silenziosa.
+    @patch(_REPO)
+    def test_filtro_documento_id_non_positivo(self, repo_cls) -> None:
+        for kwargs in ({"ddt_id": 0}, {"ddt_id": -1}, {"ordine_id": 0}):
+            with self.subTest(**kwargs):
+                with self.assertRaises(ServiceError) as ctx:
+                    resi_service.list_da_accreditare(limit=25, offset=0, **kwargs)
+                self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.list_da_accreditare.assert_not_called()
+
+    # Scopo: NON-regressione. La coda aperta a mano non ha nessun documento, e
+    #        i due filtri devono arrivare `None` — non 0, che sarebbe un id.
+    @patch(_REPO)
+    def test_filtro_documento_assente_default(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        repo.list_da_riconsegnare.return_value = ([], 0)
+        resi_service.list_da_accreditare(limit=25, offset=0)
+        resi_service.list_da_riconsegnare(limit=25, offset=0)
+        for chiamata in (repo.list_da_accreditare, repo.list_da_riconsegnare):
+            self.assertIsNone(chiamata.call_args.kwargs["ddt_id"])
+            self.assertIsNone(chiamata.call_args.kwargs["ordine_id"])
+
+    # Scopo: la simmetria fra le due code. Il pannello situazione merce mostra
+    #        «da accreditare» e «da ri-consegnare» una sopra l'altra: dare il
+    #        collegamento filtrato a una sola sarebbe un'asimmetria visibile.
+    @patch(_REPO)
+    def test_filtro_documento_su_riconsegne(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_riconsegnare.return_value = ([], 0)
+        resi_service.list_da_riconsegnare(ddt_id=15848, limit=25, offset=0)
+        self.assertEqual(
+            repo.list_da_riconsegnare.call_args.kwargs["ddt_id"], 15848
+        )
+
+    # Scopo: un export lanciato dalla coda filtrata contiene le sole righe di
+    #        quel documento. Senza la dichiarazione nel foglio «Filtri
+    #        applicati» il file si leggerebbe come la coda intera — ed e' lo
+    #        stesso motivo per cui l'etichetta era stata dichiarata.
+    def test_etichette_export_dichiarano_il_documento(self) -> None:
+        etichette = resi_service.resolve_filtri_coda_export_label(ddt_id=140)
+        self.assertEqual(etichette, {"DDT (id)": 140})
+        etichette = resi_service.resolve_filtri_coda_export_label(ordine_id=240)
+        self.assertEqual(etichette, {"Ordine (id)": 240})
+        # Nessun documento: nessuna riga in piu' nel foglio dei filtri.
+        self.assertEqual(resi_service.resolve_filtri_coda_export_label(), {})
+
+
 class ResiEliminaTests(SimpleTestCase):
     """elimina_reso: hard-delete solo per bozza orfana (0 righe)."""
 
@@ -635,6 +775,269 @@ class ResiChiusuraRiconsegnaTests(SimpleTestCase):
         repo.riapri_riconsegna.return_value = 1
         resi_service.chiudi_riconsegna(7)
         resi_service.riapri_riconsegna(7)
+        mock_tx.atomic.assert_not_called()
+
+
+class ResiAccreditoTests(SimpleTestCase):
+    """Il verbo dell'accredito: delega alla madre `fn_accredita_riga_reso`."""
+
+    # Scopo: 🔴 la madre e' `RETURNS TABLE` e ritorna UNA riga per rettifica
+    # creata (kit: una per componente; consumo su piu' righe di fattura a
+    # prezzi diversi: altrettante). Il service le rilancia TUTTE: prenderne una
+    # sarebbe verde su ogni caso semplice e muto sui kit, cioe' esattamente i
+    # casi per cui il cantiere esiste.
+    @patch(_REPO)
+    def test_accredito_ritorna_tutte_le_rettifiche(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = [
+            {"accredito_id": 901, "commessa_attivita_id": 5501,
+             "fattura_riga_rettificata_id": 7101,
+             "qta": "-3.000000", "qta_partita": "-3.000000"},
+            {"accredito_id": 902, "commessa_attivita_id": 5502,
+             "fattura_riga_rettificata_id": 7102,
+             "qta": "-1.000000", "qta_partita": "-1.000000"},
+        ]
+
+        out = resi_service.accredita_riga_reso(5797)
+
+        repo.accredita_riga_reso.assert_called_once_with(5797)
+        self.assertEqual(out["resi_riga_id"], 5797)
+        self.assertEqual(len(out["accrediti"]), 2)
+        self.assertEqual(
+            [a["accredito_id"] for a in out["accrediti"]], [901, 902],
+        )
+
+    # Scopo: nessun guard applicativo che ripeta la madre. «E' in coda»,
+    # «l'attivita' e' finita in fattura», «non e' gia' accreditata» stanno nel
+    # DB: il service non deve leggere la coda ne' lo stato del reso prima di
+    # chiamare (due copie della stessa regola divergono, e la piu' vecchia non
+    # fa rumore).
+    @patch(_REPO)
+    def test_accredito_nessun_precheck_applicativo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = []
+
+        resi_service.accredita_riga_reso(5797)
+
+        repo.list_da_accreditare.assert_not_called()
+        repo.get_stato_codice.assert_not_called()
+        repo.get_riga.assert_not_called()
+        repo.get_capabilities.assert_not_called()
+
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_accredito_no_atomic_extra(self, repo_cls, mock_tx) -> None:
+        # L'atomicita' vive DENTRO fn_accredita_riga_reso: una sola
+        # SELECT fn_(), nessun transaction.atomic() nel service.
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = []
+        resi_service.accredita_riga_reso(5797)
+        mock_tx.atomic.assert_not_called()
+
+    # Scopo: i codici di dominio dell'accredito arrivano dalla madre e passano
+    # da _db_errors (routing UI del FE). Il doppio click e' il caso vivo:
+    # E_ACCREDITO_GIA_ESEGUITO, non un 500.
+    @patch(_REPO)
+    def test_accredito_codice_dominio_dalla_madre(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = DatabaseError(
+            "E_ACCREDITO_GIA_ESEGUITO: Riga di reso 5797: accredito gia' "
+            "eseguito.",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.accredita_riga_reso(5797)
+        self.assertEqual(cm.exception.code, "E_ACCREDITO_GIA_ESEGUITO")
+
+
+class ResiAccreditoMassivoTests(SimpleTestCase):
+    """Il fan-out del verbo: un endpoint solo, e la riga singola e' una lista di uno."""
+
+    # Scopo: 🔴 il test che fissa la scelta di fondo — un esito parziale NON
+    # solleva. Il verbo non e' l'atto fiscale (il documento nasce dopo, nel
+    # giro di fatturazione), quindi sollevare butterebbe via anche le righe
+    # riuscite; e le righe rifiutate restano semplicemente in coda.
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_esito_parziale_non_solleva(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = [
+            [{"accredito_id": 901}],
+            DatabaseError("E_ACCREDITO_GIA_ESEGUITO: gia' eseguito."),
+            [{"accredito_id": 903}],
+        ]
+        _fan_out.side_effect = _fan_out_reale
+
+        out = resi_service.accredita_righe_reso([1, 2, 3])
+
+        self.assertEqual(out["esito"], "PARZIALE")
+        self.assertEqual((out["totale"], out["ok"]), (3, 2))
+        self.assertEqual(len(out["falliti"]), 1)
+        self.assertEqual(out["falliti"][0]["resi_riga_id"], 2)
+        self.assertEqual(out["falliti"][0]["codice"], "E_ACCREDITO_GIA_ESEGUITO")
+
+    # Scopo: anche «tutte fallite» e' un report a 200. Sollevare qui darebbe al
+    # frontend DUE forme da leggere per la stessa domanda (una lista di esiti
+    # oppure un errore): e' lo stesso argomento per cui l'endpoint e' uno solo.
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_tutte_fallite_non_solleva(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = DatabaseError(
+            "E_ACCREDITO_NON_IN_CODA: niente da accreditare.",
+        )
+        _fan_out.side_effect = _fan_out_reale
+
+        out = resi_service.accredita_righe_reso([1, 2])
+
+        self.assertEqual(out["esito"], "ERRORE")
+        self.assertEqual(out["ok"], 0)
+        self.assertEqual(
+            [f["codice"] for f in out["falliti"]],
+            ["E_ACCREDITO_NON_IN_CODA"] * 2,
+        )
+
+    # Scopo: le rettifiche di righe diverse finiscono in una lista sola, e ogni
+    # riga porta il proprio `resi_riga_id`: senza, il chiamante non saprebbe di
+    # chi e' la rettifica che sta guardando (su un kit ne arrivano N per riga).
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_accrediti_portano_la_riga(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.side_effect = [
+            [{"accredito_id": 901}, {"accredito_id": 902}],
+            [{"accredito_id": 903}],
+        ]
+        _fan_out.side_effect = _fan_out_reale
+
+        out = resi_service.accredita_righe_reso([7, 9])
+
+        self.assertEqual(
+            [(a["resi_riga_id"], a["accredito_id"]) for a in out["accrediti"]],
+            [(7, 901), (7, 902), (9, 903)],
+        )
+
+    # Scopo: lo stesso id due volte nel body produrrebbe un
+    # E_ACCREDITO_GIA_ESEGUITO AUTOINFLITTO, che a video sembra un difetto del
+    # sistema e invece e' il body. L'ordine si preserva: e' quello in cui
+    # l'operatore ha spuntato le righe.
+    @patch(f"{_SVC}.run_fan_out")
+    @patch(_REPO)
+    def test_massivo_dedup_preserva_ordine(self, repo_cls, _fan_out) -> None:
+        repo = repo_cls.return_value
+        repo.accredita_riga_reso.return_value = []
+        _fan_out.side_effect = _fan_out_reale
+
+        resi_service.accredita_righe_reso([9, 7, 9, "7", 5])
+
+        self.assertEqual(
+            [c.args[0] for c in repo.accredita_riga_reso.call_args_list],
+            [9, 7, 5],
+        )
+
+    @patch(_REPO)
+    def test_massivo_lista_vuota_rifiutata(self, repo_cls) -> None:
+        # Lista vuota NON e' «tutte»: indovinare male qui significa lavorare un
+        # perimetro che nessuno ha chiesto, su un documento fiscale.
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.accredita_righe_reso([])
+        self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.accredita_riga_reso.assert_not_called()
+
+    @patch(_REPO)
+    def test_massivo_lista_degenere_rifiutata(self, repo_cls) -> None:
+        # ⚠️ `True` e' incluso apposta: in Python `bool` e' un `int`, quindi
+        # senza il controllo di tipo esplicito passerebbe come riga 1.
+        for degenere in (None, "5797", 5797, [0], [-1], ["banana"], [True], [None]):
+            with self.subTest(degenere=degenere):
+                with self.assertRaises(ServiceError) as cm:
+                    resi_service.accredita_righe_reso(degenere)
+                self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.accredita_riga_reso.assert_not_called()
+
+    @patch(_REPO)
+    def test_massivo_cap_rispettato(self, repo_cls) -> None:
+        troppi = list(range(1, resi_service.MAX_ACCREDITI_MASSIVI + 2))
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.accredita_righe_reso(troppi)
+        self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.accredita_riga_reso.assert_not_called()
+
+
+class ResiAnnulloAccreditoTests(SimpleTestCase):
+    """L'annullo dell'accredito (D-NC-11): a monte del documento, non il reset."""
+
+    @patch(_REPO)
+    def test_annullo_delega_alla_madre(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.return_value = [
+            {"accredito_id": 901}, {"accredito_id": 902},
+        ]
+
+        out = resi_service.annulla_accredito_riga_reso(7, 24, "riga sbagliata")
+
+        repo.annulla_accredito_riga_reso.assert_called_once_with(24, "riga sbagliata")
+        self.assertEqual(out["resi_riga_id"], 24)
+        self.assertEqual(len(out["rimosse"]), 2)
+
+    # Scopo: la madre non conosce il reso, quindi l'appartenenza della riga al
+    # percorso e' l'unico guard legittimo qui — senza,
+    # `/resi/999/righe/24/annulla-accredito/` annullerebbe l'accredito della
+    # riga 24 di un ALTRO reso.
+    @patch(_REPO)
+    def test_annullo_riga_di_altro_reso_rifiutata(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.annulla_accredito_riga_reso(7, 24, "motivo")
+        self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
+        repo.annulla_accredito_riga_reso.assert_not_called()
+
+    # Scopo: whitespace -> NULL e' normalizzazione, non un guard: il rifiuto lo
+    # fa la madre (E_ACCREDITO_MOTIVO_OBBLIGATORIO), che e' anche l'unica a
+    # sapere perche' il motivo serve — l'annullo cancella le righe di ponte,
+    # quindi la traccia del PERCHE' resta solo nel log.
+    @patch(_REPO)
+    def test_annullo_motivo_vuoto_a_null(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.return_value = []
+        resi_service.annulla_accredito_riga_reso(7, 24, "   ")
+        repo.annulla_accredito_riga_reso.assert_called_once_with(24, None)
+
+    @patch(_REPO)
+    def test_annullo_codice_dominio_dalla_madre(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.side_effect = DatabaseError(
+            "E_ACCREDITO_ANNULLO_NON_AMMESSO: rettifiche gia' emesse.",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.annulla_accredito_riga_reso(7, 24, "motivo")
+        self.assertEqual(cm.exception.code, "E_ACCREDITO_ANNULLO_NON_AMMESSO")
+
+    # Scopo: il motivo passa dallo STESSO parser della nota di rinuncia, che
+    # rifiuta i tipi non stringa invece di consegnarli al driver. E' la meta'
+    # che una normalizzazione scritta al volo (`empty_to_none` se e' str, else
+    # passa) dimentica sempre: un dict sarebbe arrivato a psycopg.
+    @patch(_REPO)
+    def test_annullo_motivo_non_stringa_rifiutato(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        for degenere in ({"motivo": "x"}, ["x"], 42):
+            with self.subTest(degenere=degenere):
+                with self.assertRaises(ServiceError) as cm:
+                    resi_service.annulla_accredito_riga_reso(7, 24, degenere)
+                self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo.annulla_accredito_riga_reso.assert_not_called()
+
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_annullo_no_atomic_extra(self, repo_cls, mock_tx) -> None:
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 24, "reso_id": 7}
+        repo.annulla_accredito_riga_reso.return_value = []
+        resi_service.annulla_accredito_riga_reso(7, 24, "motivo")
         mock_tx.atomic.assert_not_called()
 
 

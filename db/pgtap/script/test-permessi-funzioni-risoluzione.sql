@@ -32,7 +32,8 @@
 --   script.fn_resolve_livello_oggetto,
 --   script.fn_get_user_object_permissions_map,
 --   script.fn_check_azione_processo,
---   script.fn_get_emittenti_scope,
+--   script.fn_get_emittenti_scope  [DISMESSA 2026-08-18: il test 13 ora
+--     verifica che NON esista piu'],
 --   script.fn_check_user_emittente_scope,
 --   script.fn_get_override_scaduti,
 --   script.fn_get_emittenti_scope_sr_ids,
@@ -51,13 +52,13 @@
 -- 10) fn_check_azione_processo: OPERATIVO default → false
 -- 11) fn_check_azione_processo: ADMIN → true
 -- 12) fn_check_azione_processo: override abilitata → true
--- 13) fn_get_emittenti_scope: senza whitelist → NULL
+-- 13) legacy fn_get_emittenti_scope: DISMESSA (asserzione girata di segno)
 -- 14) fn_check_user_emittente_scope: NULL user → true (batch)
 -- 15) fn_check_user_emittente_scope: ADMIN → true
--- 16) fn_check_user_emittente_scope: OPERATIVO senza whitelist → true
+-- 16) fn_check_user_emittente_scope: OPERATIVO senza whitelist → false (P-2a)
 -- 17) fn_check_user_emittente_scope: emittente in whitelist → true
 -- 18) fn_check_user_emittente_scope: emittente fuori whitelist → false
--- 19) fn_get_emittenti_scope: con whitelist → array contiene emittente
+-- 19) fn_get_emittenti_scope_pk_ids (erede guarded): con whitelist → array contiene emittente
 -- 20) fn_get_override_scaduti(0): override scaduto trovato
 -- 21) fn_get_override_scaduti(30): override recente escluso da tolleranza
 -- 22) Trigger function trgfn_guard_emittente_scope esiste
@@ -391,16 +392,20 @@ DELETE FROM config.user_override_azioni
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 -- ============================================================
--- E. fn_get_emittenti_scope + fn_check_user_emittente_scope
+-- E. dismissione della legacy + fn_check_user_emittente_scope
 -- ============================================================
 
--- 13) fn_get_emittenti_scope: senza whitelist → NULL
-SELECT is(
-    script.fn_get_emittenti_scope(
-        (SELECT user_id FROM tmp_ctx)
-    ),
-    NULL::bigint[],
-    '13) fn_get_emittenti_scope: senza whitelist → NULL'
+-- 13) ⛔ L'asserzione non e' stata CANCELLATA: e' stata GIRATA DI SEGNO.
+--     Diceva «senza whitelist → NULL», cioe' «un utente senza abilitazioni vede
+--     tutti gli emittenti»: il fail-open che P-2a ha chiuso ovunque il
+--     2026-08-18. La legacy non e' mai stata allineata perche' non la
+--     chiamava piu' nessuno, ed e' stata dismessa (changeSet 20260818-66).
+--     Ora il test dice che la funzione NON C'E' PIU': chi la ricreasse
+--     troverebbe questa riga rossa. Cancellarlo avrebbe tolto il presidio
+--     insieme al difetto.
+SELECT hasnt_function(
+    'script', 'fn_get_emittenti_scope', ARRAY['integer'],
+    '13) legacy fn_get_emittenti_scope: DISMESSA (era il fail-open «senza whitelist → tutti»)'
 );
 
 -- 14) fn_check NULL user → true (batch job)
@@ -466,14 +471,18 @@ SELECT is(
     '18) fn_check_user_emittente_scope: emittente fuori whitelist → false'
 );
 
--- 19) fn_get_emittenti_scope: array contiene emittente
+-- 19) La COPERTURA non se ne va con la funzione: la stessa domanda — «la
+--     whitelist finisce nello scope?» — si fa all'erede guarded
+--     fn_get_emittenti_scope_pk_ids, che risponde in PK emittente come la
+--     legacy. Il test 13 presidia che la vecchia non torni; questo continua a
+--     verificare il comportamento.
 SELECT ok(
     (SELECT emittente_id FROM tmp_ctx) = ANY(
-        script.fn_get_emittenti_scope(
+        script.fn_get_emittenti_scope_pk_ids(
             (SELECT user_id FROM tmp_ctx)
         )
     ),
-    '19) fn_get_emittenti_scope: con whitelist → array contiene emittente'
+    '19) fn_get_emittenti_scope_pk_ids (erede guarded): con whitelist → array contiene emittente'
 );
 
 -- ============================================================

@@ -47,4 +47,57 @@ in base al mapping **tipo documento → registro**, considerando utility/emitten
 
 ---
 
+
+---
+
+### 🔄 rev 2026-08-18 — la natura entra, la SERIE esce
+
+Brief: `brief-design-note-credito-resi` (slice **N2**).
+
+La firma e il **tipo di ritorno** sono cambiati (`DROP` + `CREATE`: un
+`CREATE OR REPLACE` non cambia un tipo di ritorno):
+
+```text
+prima    fn_get_registro_id(tipo_doc, utility, emittente)          → bigint
+ora      fn_get_registro_id(tipo_doc, NATURA, utility, emittente)  → TABLE(registro_id, serie)
+```
+
+La natura entra in **seconda posizione**, accanto al tipo documento, perché i due
+sono la coppia che identifica la riga di mapping; utility ed emittente restano il
+raffinamento.
+
+#### ⚠️ La natura è un filtro ESATTO, non un livello di fallback
+
+Il fallback a quattro livelli (utility+emittente → utility → emittente → nessuno
+dei due) è la gerarchia di specificità del **registro** e resta identico. La
+natura no: se il mapping per `(tipo_doc, NOTA_CREDITO)` non esiste, la risposta è
+`E_CONFIG_MANCANTE`. Ripiegare sulla fattura emetterebbe **una nota di credito
+nel registro delle fatture**, in silenzio.
+
+#### Perché restituisce anche la serie
+
+Perché è il mapping a saperlo, e perché `vendite.fatture.serie` **non era mai
+stata scritta dalla pipeline**: restava `NULL` e la numerazione cadeva sul
+`serie_default` del registro. Va benissimo finché esiste una serie sola per
+registro; smette di funzionare nel momento in cui due nature devono numerare
+separate **dentro** lo stesso registro.
+
+⚠️ La serie esce **grezza** (l'override del mapping), non `COALESCE`-ata sul
+default del registro: scrivere il default dentro `fatture.serie`, dove oggi c'è
+`NULL`, cambierebbe il valore di una colonna **su documenti già emessi**.
+
+#### ⭐ E così «registro proprio o serie dedicata?» diventa una riga di seed
+
+| Se il seed dice… | Effetto |
+|---|---|
+| stesso `registro_id`, `serie = 'NC'` | le note di credito numerano in una serie a parte **dentro** il registro vendite |
+| `registro_id` diverso | **sezionale proprio**, progressivo e `reset_policy` indipendenti |
+
+Entrambe funzionano **senza una riga di codice diversa**. È la forma che il
+progetto usa per le scelte che appartengono all'azienda e non allo sviluppatore.
+⭐ La scelta è stata il **sezionale proprio** (D-NC-3b), e lo dice il seed, non
+questa funzione.
+
+---
+
 {% include-markdown "signature-core.md" %}

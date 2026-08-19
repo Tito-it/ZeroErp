@@ -33,6 +33,21 @@ BEGIN
     DELETE FROM anagrafiche.clienti c
     WHERE c.codice_cliente_importato LIKE 'TST-DIS-%';
 
+    -- 🔴 Il mapping emittente PRIMA del billing account (2026-08-18).
+    --   Ogni BA nuovo riceve automaticamente una riga in
+    --   `emittenti_fiscali_billing_account`, e la sua FK impedisce di
+    --   cancellare il padre: la pulizia moriva sul figlio che non aveva
+    --   creato lei. ⚠️ Quarto strato di questo file — ogni difetto ne
+    --   nascondeva un altro.
+    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
+    WHERE efba.billing_account_id IN (
+        SELECT ba.id FROM anagrafiche.billing_account ba
+        WHERE ba.istanza_utility_id IN (
+            SELECT iu.id FROM anagrafiche.istanze_utilities iu
+            WHERE iu.codice LIKE 'TST-DIS-%'
+        )
+    );
+
     DELETE FROM anagrafiche.billing_account ba
     WHERE ba.istanza_utility_id IN (
         SELECT iu.id FROM anagrafiche.istanze_utilities iu
@@ -137,6 +152,24 @@ SELECT script.fn_subentro_cliente(
 ) AS cliente_chiuso_id;
 
 -- Tabella per conservare gli ID di test
+-- 🔴 DEFERRED LOCALE PER LA SOLA FIXTURE, aggiunto il 2026-08-18.
+--   `trg_istanze_utilities_z90_require_utility_dichiarata_ins` e' un CONSTRAINT
+--   TRIGGER **DEFERRABLE INITIALLY DEFERRED**: pretende che ogni istanza nuova
+--   abbia almeno un satellite, e lo verifica al COMMIT proprio per lasciare
+--   spazio a «INSERT istanza + INSERT BA/cliente» nella stessa transazione.
+--   La fixture qui sotto fa esattamente cosi', ed e' corretta.
+--
+--   ⚠️ A romperla e' il `SET CONSTRAINTS ALL IMMEDIATE` del preambolo (riga 63):
+--   riporta il trigger a scattare a fine di OGNI istruzione, quindi subito dopo
+--   l'INSERT dell'istanza — quando il satellite non c'e' ancora. Il file moriva
+--   li'.
+--
+--   ⭐ Due regole giuste che si scontrano: IMMEDIATE serve a non essere verdi
+--   per sottrazione, DEFERRED serve a poter costruire un aggregato. Si risolve
+--   restringendo la seconda alla sola fixture — e RIMETTENDO IMMEDIATE prima
+--   delle asserzioni, che e' la meta' che non va dimenticata.
+SET CONSTRAINTS ALL DEFERRED;
+
 CREATE TEMP TABLE tmp_dis_ids (
     istanza_id bigint,
     ba_id bigint,
@@ -181,10 +214,17 @@ BEGIN
     ) RETURNING id INTO v_istanza_id;
 
     -- Billing account
+    -- 🔴 `categoria_cliente_id` aggiunta il 2026-08-18: la colonna e' diventata
+    --   NOT NULL dopo che questa fixture era stata scritta, e il file moriva
+    --   qui. Non si vedeva perche' moriva PRIMA, sul constraint trigger
+    --   dell'istanza: due strati di difetto, il primo che nascondeva il secondo.
     INSERT INTO anagrafiche.billing_account (
-        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
+        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        categoria_cliente_id
     ) VALUES (
-        v_istanza_id, v_soggetto_ruolo_id, v_utility_id::integer, CURRENT_DATE
+        v_istanza_id, v_soggetto_ruolo_id, v_utility_id::integer, CURRENT_DATE,
+        (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+          WHERE cc.attivo IS TRUE ORDER BY cc.id LIMIT 1)
     ) RETURNING id INTO v_ba_id;
 
     -- Cliente attivo con PDP
@@ -204,6 +244,11 @@ BEGIN
     VALUES (v_istanza_id, v_ba_id, v_cliente_id);
 END;
 $$;
+
+-- ⭐ Ripristino IMMEDIATE: da qui in poi le asserzioni devono vedere i vincoli
+--   scattare a fine istruzione, altrimenti il file tornerebbe verde per
+--   sottrazione — che e' il motivo per cui il preambolo lo imposta.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT ok(
     (SELECT count(*) FROM tmp_dis_ids) = 1,
@@ -270,7 +315,11 @@ SELECT is(
        FROM anagrafiche.clienti c
        JOIN config.stati_cliente sc ON sc.id = c.stato_cliente_id
       WHERE c.id = (SELECT cliente_id FROM tmp_dis_ids)),
-    'CH'::bpchar,
+    -- 🔴 `::bpchar` -> `::varchar` il 2026-08-18: `stati_cliente.codice_interno`
+    --   e' passata da `character` a `character varying` con 20260401-21, e
+    --   pgTAP non trova piu' una `is(varchar, char, unknown)`. Il test non
+    --   falliva: non compilava — terzo strato di difetto in questo file.
+    'CH'::varchar,
     'T08 DB-05: stato cliente = CH dopo disdetta'
 );
 
@@ -330,6 +379,21 @@ BEGIN
 
     DELETE FROM anagrafiche.clienti c
     WHERE c.codice_cliente_importato LIKE 'TST-DIS-%';
+
+    -- 🔴 Il mapping emittente PRIMA del billing account (2026-08-18).
+    --   Ogni BA nuovo riceve automaticamente una riga in
+    --   `emittenti_fiscali_billing_account`, e la sua FK impedisce di
+    --   cancellare il padre: la pulizia moriva sul figlio che non aveva
+    --   creato lei. ⚠️ Quarto strato di questo file — ogni difetto ne
+    --   nascondeva un altro.
+    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
+    WHERE efba.billing_account_id IN (
+        SELECT ba.id FROM anagrafiche.billing_account ba
+        WHERE ba.istanza_utility_id IN (
+            SELECT iu.id FROM anagrafiche.istanze_utilities iu
+            WHERE iu.codice LIKE 'TST-DIS-%'
+        )
+    );
 
     DELETE FROM anagrafiche.billing_account ba
     WHERE ba.istanza_utility_id IN (

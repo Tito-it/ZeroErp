@@ -30,12 +30,35 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(5);
 
+-- 🔴 ARTICOLI PROPRI invece dei condivisi ART_TEST_* — 2026-08-18.
+--   `ART_TEST_BASE` non e' composito, quindi il guard rifiutava di appendergli
+--   un componente e i test 4 e 5 non potevano riuscire. Non e' un difetto del
+--   guard: e' la fixture che assume su un articolo CONDIVISO una proprieta'
+--   che quell'articolo non ha — e non deve avere, essendo la base di mezza
+--   suite. Stessa radice degli altri quattro test di questa cartella.
+CREATE OR REPLACE FUNCTION pg_temp.mk_articolo(p_codice text, p_composito boolean,
+                                               p_solo_componente boolean)
+RETURNS uuid AS $mk$
+DECLARE v_id uuid;
+BEGIN
+    -- Riferimenti CLONATI da un articolo esistente (ORDER BY id: deterministico):
+    -- la fixture non deve conoscere il dominio ne' inseguirlo quando cambia.
+    INSERT INTO catalogo.articoli (codice, descrizione, uom_id, tipo_voce_id,
+                                   gruppo_voce_id, spesa_id, iva_id,
+                                   is_composito, is_solo_componente)
+    SELECT p_codice, 'pgTAP solo componente',
+           a.uom_id, a.tipo_voce_id, a.gruppo_voce_id, a.spesa_id, a.iva_id,
+           p_composito, p_solo_componente
+      FROM catalogo.articoli a ORDER BY a.id LIMIT 1
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END $mk$ LANGUAGE plpgsql;
+
 CREATE TEMP TABLE tmp_seed AS
-SELECT
-  (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS prodotto_id,
-  (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS componente_id,
-  (SELECT is_solo_componente FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS prodotto_solo,
-  (SELECT is_solo_componente FROM catalogo.articoli WHERE codice = 'ART_TEST_FALLBACK') AS componente_solo;
+SELECT pg_temp.mk_articolo('PGTAP_SOLOCOMP_PADRE', true,  false) AS prodotto_id,
+       pg_temp.mk_articolo('PGTAP_SOLOCOMP_FIGLIO', false, true) AS componente_id,
+       false AS prodotto_solo,
+       true  AS componente_solo;
 
 SELECT ok(
   (SELECT prodotto_id IS NOT NULL FROM tmp_seed),
@@ -114,7 +137,10 @@ SELECT lives_ok(
     )
     RETURNING id INTO v_id;
 
-    DELETE FROM catalogo.articoli_componenti WHERE id = v_id;
+    -- 🔴 DELETE rimossa il 2026-08-18: `articoli_componenti` e' protetta da un
+    -- guard di IMMUTABILITA' della struttura BoM, arrivato dopo questo file.
+    -- Cancellare non e' piu' lecito per nessuno, e non serve: il ROLLBACK
+    -- toglie la riga insieme all'articolo che la porta.
   END $do$;
   $$,
   'Prodotto valido: inserimento consentito'
@@ -151,7 +177,10 @@ SELECT lives_ok(
     )
     RETURNING id INTO v_id;
 
-    DELETE FROM catalogo.articoli_componenti WHERE id = v_id;
+    -- 🔴 DELETE rimossa il 2026-08-18: `articoli_componenti` e' protetta da un
+    -- guard di IMMUTABILITA' della struttura BoM, arrivato dopo questo file.
+    -- Cancellare non e' piu' lecito per nessuno, e non serve: il ROLLBACK
+    -- toglie la riga insieme all'articolo che la porta.
   END $do$;
   $$,
   'Componente solo componente: inserimento consentito'

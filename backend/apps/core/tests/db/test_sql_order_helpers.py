@@ -22,6 +22,7 @@
 #   6. tiebreak_da_direzione_grezza
 #   7. repository_produce_order_by_col_tiebreak_allineato (end-to-end)
 #   8. repository_asc_produce_tiebreak_asc (end-to-end)
+#   9. nessun_call_site_incolla_nulls_alla_direzione (presidio statico)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -147,3 +148,68 @@ class OrderByEndToEndTests(TestCase):
             )
         sql = cursor.execute.call_args_list[-1][0][0]
         self.assertIn("ORDER BY cc.descrizione ASC NULLS FIRST, cc.id ASC", sql)
+
+
+class NullsIncollatiAllaDirezioneTests(TestCase):
+    """⛔ Nessun call-site deve aggiungere `NULLS ...` dopo `{direction}`.
+
+    🔴 **Questo presidio nasce da un difetto vero, trovato il 2026-08-18**:
+    `list_dash_competenza_errori` interpolava
+    `ORDER BY {sort_col} {direction} NULLS LAST`, e siccome `direction` porta
+    gia' la clausola (`ASC NULLS FIRST` / `DESC NULLS LAST`) l'SQL usciva
+    `ASC NULLS FIRST NULLS LAST`: PostgreSQL lo rifiuta, e la lista
+    «Competenza — errori vivi» rispondeva **500 su ogni click di
+    intestazione**, su tutte e cinque le colonne ordinabili.
+
+    ⚠️ **Nessun presidio esistente poteva vederlo**, ed e' il motivo per cui
+    questo e' statico: il controllo sul seed confronta catalogo e whitelist
+    (non esegue SQL), e i test dei repository mockano `_query_paged_view`,
+    quindi la query al database non arriva mai. Il difetto si vedeva solo
+    cliccando una freccia — o provando un ORDER BY vero, che e' come e' saltato
+    fuori.
+
+    Il residuo veniva dall'unificazione dei 29 call-site in
+    `sql_order_direction` (2026-07-19): la sua docstring dichiara che «3
+    avevano un NULLS LAST fisso incollato al template», e su quel call-site il
+    pezzo vecchio non era stato tolto.
+    """
+
+    # Scopo: sorgenti Python del backend, esclusi i test.
+    def _sorgenti(self):
+        from pathlib import Path
+
+        radice = Path(__file__).resolve()
+        while not (radice / "apps").is_dir():
+            radice = radice.parent
+        for percorso in (radice / "apps").rglob("*.py"):
+            if "/tests/" not in str(percorso):
+                yield percorso
+
+    def test_nessun_call_site_incolla_nulls_alla_direzione(self) -> None:
+        import re
+
+        # ⚠️ SOLO `{direction}`, e non e' pigrizia: e' il nome con cui **tutti**
+        #    i 35 call-site chiamano il risultato di `sql_order_direction`
+        #    (misurato). Il segnaposto `{dir}` di `coda_lavori/repository.py` e
+        #    `pipeline_repository.py` porta invece la direzione NUDA — quei due
+        #    asseriscono `sort_dir in ("ASC", "DESC")` — e li' `{dir} NULLS LAST`
+        #    e' scritto GIUSTO.
+        #    La prima stesura di questo presidio li segnalava tutti e sei: un
+        #    presidio che da' falsi positivi viene disattivato dal primo che ci
+        #    sbatte, e con lui se ne va la parte che serviva.
+        sospetto = re.compile(r"\{direction\}\s+NULLS", re.I)
+        colpevoli = [
+            f"{percorso.name}:{n}"
+            for percorso in self._sorgenti()
+            for n, riga in enumerate(
+                percorso.read_text(encoding="utf-8").splitlines(), 1
+            )
+            if sospetto.search(riga)
+        ]
+        self.assertEqual(
+            colpevoli, [],
+            "`NULLS ...` incollato dopo la direzione: `sql_order_direction` la "
+            "porta gia', e l'SQL risultante e' sintatticamente invalido — la "
+            "lista risponde 500 su ogni ordinamento. Togliere il pezzo fisso: "
+            + "; ".join(colpevoli),
+        )

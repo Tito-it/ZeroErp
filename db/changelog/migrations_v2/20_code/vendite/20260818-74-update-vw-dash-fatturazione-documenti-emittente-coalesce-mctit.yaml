@@ -1,0 +1,262 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 CORREZIONE DI -61: la colonna aggiunta da R-4 esce VUOTA su tutte le righe.
+#
+# Misurato il 2026-08-18 sul database di sviluppo:
+#
+#     vw_dash_fatturazione_documenti   274 righe →   0 con il nome
+#     vw_dash_aperto_documenti (-62)   156 righe →   0 con il nome
+#     vw_dash_backlog_documenti (-63)   95 righe →  95 con il nome  ✅
+#
+# ⚠️ LA CAUSA, ed e' la stessa che -63 aveva gia' trovato sul ramo resi. Il
+#    changeSet -61 risolve il nome da `emittente_soggetto_ruolo_id`, dando per
+#    buona la premessa scritta nel COMMENT della vista — «i sei resolver
+#    portano tutti emittente_soggetto_ruolo_id». Non e' vero: CINQUE dei sei
+#    la scrivono `NULL::bigint` a mano.
+#
+#      vw_dash_fatturazione_preventivi   NULL::bigint
+#      vw_dash_fatturazione_ordini       NULL::bigint
+#      vw_dash_fatturazione_offerte      NULL::bigint
+#      vw_dash_fatturazione_contratti    NULL::bigint
+#      vw_dash_fatturazione_ddt          NULL::bigint
+#      vw_dash_fatturazione_commesse     co.emittente_soggetto_ruolo_id  ← l'unica vera
+#
+#    `emittente_fiscale_id` invece e' valorizzato su 274 righe su 274.
+#
+# ⭐ E su «Situazione aperta» (-62) il difetto non e' «vuoto in questa
+#    istanza»: e' vuoto PER COSTRUZIONE e per sempre, perche' quella lente
+#    filtra `area <> 'COMMESSE'` — cioe' esclude l'unico ramo che risolverebbe.
+#    Non serviva un altro dataset per accorgersene, serviva contare.
+#
+# ⭐ LA CURA E' QUELLA DI -63, portata a monte: COALESCE sulla CHIAVE, non due
+#    catene di JOIN e un COALESCE sul nome. `emittenti_fiscali.soggetto_ruolo_id`
+#    e' NOT NULL con UNIQUE (verificato: 0 righe a NULL), quindi fra emittente
+#    fiscale e soggetto-ruolo c'e' un uno-a-uno e la risoluzione del nome resta
+#    scritta UNA volta sola.
+#
+# ⚠️ NON si tocca la colonna `emittente_soggetto_ruolo_id` esposta: resta
+#    com'e', NULL sui cinque rami. E' la stessa decisione presa in -63
+#    («valorizzarla sarebbe un miglioramento vero, ma e' un cambio di semantica
+#    di una colonna ESISTENTE, e va deciso a parte») e non si cambia idea qui:
+#    -74 e' una correzione, non un allargamento. Resta pero' scritto che quella
+#    colonna e' una trappola — chi ci filtrasse sopra otterrebbe zero righe in
+#    silenzio su cinque aree su sei. Nessun consumatore oggi lo fa (verificato:
+#    zero riferimenti in backend/apps fuori dai test).
+#
+# ⚠️ -62 (Situazione aperta) NON va rifatta: proietta `emittente_ragione_sociale`
+#    da questa vista, quindi si popola da sola. -63 (Backlog) gia' funziona e il
+#    suo COALESCE diventa ridondante ma non sbagliato: continua a rispondere
+#    prima sul ramo che ha il soggetto-ruolo.
+#
+# ⚠️ security_invoker = on va RI-SPECIFICATA o PostgreSQL la azzera.
+# ⚠️ Ordine: numero maggiore di -61, che crea la colonna a monte.
+#
+# docs/it/dev/work-in-progress/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260818-74-update-vw-dash-fatturazione-documenti-emittente-coalesce-mctit.yaml
+
+  - changeSet:
+      id: 20260818-74-update-vw-dash-fatturazione-documenti-emittente-coalesce
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Correzione di -61: `emittente_ragione_sociale` usciva NULL su tutte le
+        righe (274 su 274) perche' il nome si risolveva da
+        emittente_soggetto_ruolo_id, che cinque dei sei resolver scrivono
+        NULL::bigint a mano. Si passa al COALESCE sulla chiave — soggetto-ruolo
+        se c'e', altrimenti quello dedotto da emittente_fiscale_id — che e' la
+        stessa cura gia' adottata in -63 per il ramo resi. Ricade su -62
+        (Situazione aperta), che proietta la colonna da qui e dove il vuoto era
+        strutturale: quella lente esclude l'area COMMESSE, l'unica che
+        risolveva. Colonna emittente_soggetto_ruolo_id NON toccata.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM information_schema.columns
+                 WHERE table_schema = 'vendite'
+                   AND table_name = 'vw_dash_fatturazione_documenti'
+                   AND column_name = 'emittente_ragione_sociale';
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: emittenti_fiscali
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_documenti
+              WITH (security_invoker=on) AS
+              SELECT d.area,
+                     d.competenza_mese,
+                     d.documento_id,
+                     d.documento_uid,
+                     d.codice,
+                     d.emittente_fiscale_id,
+                     -- ⚠️ Colonna INVARIATA: NULL su cinque rami su sei. Non e'
+                     --   questo il changeSet che ne cambia la semantica (stessa
+                     --   decisione di -63). Il NOME, sotto, si risolve comunque.
+                     d.emittente_soggetto_ruolo_id,
+                     d.valore_totale,
+                     d.valore_transitato,
+                     d.unita_totali,
+                     d.unita_transitate,
+                     d.is_transitato,
+                     d.is_abortito,
+                     d.motivo_fermo,
+                     d.stato_codice_interno,
+                     d.stato_codice,
+                     d.fase,
+                     d.cliente_display,
+                     d.data_riferimento,
+                     s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                FROM ( SELECT p.area,
+                              p.competenza_mese,
+                              p.documento_id,
+                              p.documento_uid,
+                              p.codice,
+                              p.emittente_fiscale_id,
+                              p.emittente_soggetto_ruolo_id,
+                              p.valore_totale,
+                              p.valore_transitato,
+                              p.unita_totali,
+                              p.unita_transitate,
+                              p.is_transitato,
+                              p.is_abortito,
+                              p.motivo_fermo,
+                              p.stato_codice_interno,
+                              p.stato_codice,
+                              p.fase,
+                              p.cliente_display,
+                              p.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_preventivi p
+                       UNION ALL
+                       SELECT o.area,
+                              o.competenza_mese,
+                              o.documento_id,
+                              o.documento_uid,
+                              o.codice,
+                              o.emittente_fiscale_id,
+                              o.emittente_soggetto_ruolo_id,
+                              o.valore_totale,
+                              o.valore_transitato,
+                              o.unita_totali,
+                              o.unita_transitate,
+                              o.is_transitato,
+                              o.is_abortito,
+                              o.motivo_fermo,
+                              o.stato_codice_interno,
+                              o.stato_codice,
+                              o.fase,
+                              o.cliente_display,
+                              o.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_ordini o
+                       UNION ALL
+                       SELECT f.area,
+                              f.competenza_mese,
+                              f.documento_id,
+                              f.documento_uid,
+                              f.codice,
+                              f.emittente_fiscale_id,
+                              f.emittente_soggetto_ruolo_id,
+                              f.valore_totale,
+                              f.valore_transitato,
+                              f.unita_totali,
+                              f.unita_transitate,
+                              f.is_transitato,
+                              f.is_abortito,
+                              f.motivo_fermo,
+                              f.stato_codice_interno,
+                              f.stato_codice,
+                              f.fase,
+                              f.cliente_display,
+                              f.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_offerte f
+                       UNION ALL
+                       SELECT c.area,
+                              c.competenza_mese,
+                              c.documento_id,
+                              c.documento_uid,
+                              c.codice,
+                              c.emittente_fiscale_id,
+                              c.emittente_soggetto_ruolo_id,
+                              c.valore_totale,
+                              c.valore_transitato,
+                              c.unita_totali,
+                              c.unita_transitate,
+                              c.is_transitato,
+                              c.is_abortito,
+                              c.motivo_fermo,
+                              c.stato_codice_interno,
+                              c.stato_codice,
+                              c.fase,
+                              c.cliente_display,
+                              c.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_contratti c
+                       UNION ALL
+                       SELECT m.area,
+                              m.competenza_mese,
+                              m.documento_id,
+                              m.documento_uid,
+                              m.codice,
+                              m.emittente_fiscale_id,
+                              m.emittente_soggetto_ruolo_id,
+                              m.valore_totale,
+                              m.valore_transitato,
+                              m.unita_totali,
+                              m.unita_transitate,
+                              m.is_transitato,
+                              m.is_abortito,
+                              m.motivo_fermo,
+                              m.stato_codice_interno,
+                              m.stato_codice,
+                              m.fase,
+                              m.cliente_display,
+                              m.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_commesse m
+                       UNION ALL
+                       SELECT t.area,
+                              t.competenza_mese,
+                              t.documento_id,
+                              t.documento_uid,
+                              t.codice,
+                              t.emittente_fiscale_id,
+                              t.emittente_soggetto_ruolo_id,
+                              t.valore_totale,
+                              t.valore_transitato,
+                              t.unita_totali,
+                              t.unita_transitate,
+                              t.is_transitato,
+                              t.is_abortito,
+                              t.motivo_fermo,
+                              t.stato_codice_interno,
+                              t.stato_codice,
+                              t.fase,
+                              t.cliente_display,
+                              t.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_ddt t) d
+                -- ⭐ La correzione, in due righe. L'uno-a-uno
+                --   emittenti_fiscali.soggetto_ruolo_id (NOT NULL + UNIQUE)
+                --   rende la deduzione esatta, non un'approssimazione.
+                LEFT JOIN anagrafiche.emittenti_fiscali ef
+                       ON ef.id = d.emittente_fiscale_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                       ON sr_ef.id = COALESCE(d.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id)
+                LEFT JOIN anagrafiche.soggetti s_ef
+                       ON s_ef.id = sr_ef.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_documenti IS
+              'Union dei resolver per la dashboard fatturazione: preventivi, ordini, offerte, contratti, commesse e — dal 2026-07-18 (step 6, brief-db-fatturazione-ddt-resi §4a) — DDT. Le due lenti derivano da qui: il serbatoio filtra fase <> CHIUSO, il backlog filtra classe <> FISIOLOGICO. security_invoker=on (ri-specificato a ogni REPLACE: la reloption non e'' visibile in pg_get_viewdef e verrebbe azzerata in silenzio -> bypass RLS). ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. ⚠️ Rev 2026-08-18 (-74, CORREZIONE): la prima stesura risolveva il nome da `emittente_soggetto_ruolo_id` dando per buono che «i sei resolver la portano tutti». NON e'' vero: cinque su sei la scrivono NULL::bigint a mano (solo commesse ha il valore), quindi la colonna usciva vuota su 274 righe su 274 — e su vw_dash_aperto_documenti, che esclude l''area COMMESSE, sarebbe stata vuota per sempre. Ora la chiave si risolve con COALESCE(emittente_soggetto_ruolo_id, emittenti_fiscali.soggetto_ruolo_id): stessa cura gia'' adottata in -63 per il ramo resi, e una sola catena di JOIN. ⚠️ La colonna `emittente_soggetto_ruolo_id` esposta resta NULL sui cinque rami: cambiarne la semantica e'' una decisione a parte, non una correzione. Chi filtra su quella colonna ottiene zero righe su cinque aree su sei — per il perimetro emittente si usa `emittente_fiscale_id`.';

@@ -70,7 +70,7 @@ Convenzioni:
 
 | id | codice | funzione_db | Semantica |
 |----|--------|-------------|-----------|
-| 1 | `EF_WHITELIST` | `script.fn_scope_ef_whitelist` | Whitelist emittenti fiscali (legacy). Whitelist vuota = accesso globale. |
+| 1 | `EF_WHITELIST` | `script.fn_scope_ef_whitelist` | Whitelist emittenti fiscali. ⚠️ **Dal 2026-08-18**: whitelist vuota = **nessun accesso** (era «accesso globale»). L'adapter delega a `fn_check_user_emittente_scope` ed **eredita** la correzione senza modifiche proprie. |
 | 2 | `BA_OWNERSHIP` | `script.fn_scope_ba_ownership` | Identità cliente (CLIENTE_PORTALE / SHOP_CUSTOMER) vede solo i billing_account del proprio soggetto_ruolo. |
 | 3 | `FORNITORE_OWNERSHIP` | `script.fn_scope_fornitore_ownership` | Identità FORNITORE_PORTALE vede solo i dati del proprio soggetto_ruolo fornitore. |
 
