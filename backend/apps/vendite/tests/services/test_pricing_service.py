@@ -23,6 +23,8 @@ Indice test:
 11) test_composito_ok                           — ritorna lista di righe
 12) test_composito_uuid_invalido                — UUID invalido -> VALIDATION
 13) test_composito_db_error                     — propaga codice noto
+14) test_contesto_loggato_completo              — il diario riceve classe_utenza_id
+                                                  e listino_versione_id_preferito
 """
 
 from datetime import date
@@ -158,6 +160,28 @@ class TestResolvePrezzo(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_PRICING_FAILED")
         # detail deve contenere il messaggio originale.
         self.assertIn("sconosciuto", ctx.exception.detail or "")
+
+    # Scopo: il contesto scritto nel diario deve portare i DUE parametri che
+    #        cambiano lo stadio a cui il resolver fallisce. Senza, due tentativi
+    #        diversi lasciano nel log righe IDENTICHE e non si distinguono piu'
+    #        a posteriori: e' l'ambiguita' che il 2026-08-19 ha fatto perdere
+    #        tempo al team DB (brief-be-pricing-codice-errore-fantasma.md §6.3).
+    @patch("apps.core.services.error_manager.ErrorManager.log_error_only")
+    @patch(_REPO)
+    def test_contesto_loggato_completo(self, mock_repo, mock_log):
+        mock_repo.return_value.resolve_prezzo_listino_v2.side_effect = DatabaseError(
+            "Errore sconosciuto del DB"
+        )
+        with self.assertRaises(ServiceError):
+            PricingService().resolve_prezzo(
+                **_base_kwargs(classe_utenza_id=3, listino_versione_id_preferito=77)
+            )
+        contesto = mock_log.call_args.kwargs["context"]
+        self.assertEqual(contesto["classe_utenza_id"], 3)
+        self.assertEqual(contesto["listino_versione_id_preferito"], 77)
+        # E i campi storici non devono essere spariti nel frattempo.
+        self.assertEqual(contesto["ba_id"], 100)
+        self.assertEqual(contesto["utility_id"], 7)
 
 
 # `TestResolveComposito` rimosso col cleanup legacy 2026-05-14: la fn DB
