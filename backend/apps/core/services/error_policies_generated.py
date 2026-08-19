@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 718, di cui 79 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 719, di cui 80 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -692,6 +692,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREV_UTILITY_ISTANZA_INCOERENTE": "CONFLITTO_STATO",
     "E_PREV_VALIDAZIONE": "DATO_ERRATO",
     "E_PREZZO_LISTINO_AMBIGUO": "CONFLITTO_STATO",
+    # Ritirato il 2026-08-19. L'unico ramo che lo sollevava — «BA senza categoria» nel resolver prezzi — e' irraggiungibile da quando anagrafiche.billing_account.categoria_cliente_id e' NOT NULL (2026-04-14 · changeSet 20260414-03) ed e' stato rimosso dal changeSet 20260819-10, PRIMA di questa data come impone il controllo (D) del guardrail codici errore. · Il BE ha verificato di non produrlo: le righe di dbops.error_log a suo nome erano della loro suite di test. · Il ritiro chiude il NUOVO uso non la lettura del vecchio: il messaggio resta risolvibile e le righe di log storiche restano agganciate.
+    # ⚠️ RITIRATO il 2026-08-19
     "E_PREZZO_LISTINO_NON_TROVATO": "NON_TROVATO",
     "E_PREZZO_LISTINO_RIGA_NON_TROVATA": "NON_TROVATO",
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "NON_PERMESSO",
@@ -960,6 +962,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Pattern simmetrico a `E_VENDITE_CONTRATTO_OVERLAP` / `E_VENDITE_PROMO_OVERLAP`: · `ex_listini_versioni_no_overlap` (EXCLUDE GIST con WHERE attivo+stato=ATTIVA) · blocca sovrapposizioni di versioni listino ATTIVE. La risoluzione richiede · chiusura della versione precedente (valido_al = nuova_valido_dal - 1).
     "E_VENDITE_LISTINO_VERSIONE_OVERLAP": "CONFLITTO_STATO",
     "E_VENDITE_NOT_FOUND": "NON_TROVATO",
+    # Errore INTERNO del guscio vendite.fn_resolve_prezzo_listino_v2: il nucleo _esito deve restituire sempre una riga e non lo ha fatto. · Nasce il 2026-08-19 perche' il guard usava E_PARAMETRO_INVALIDO, e il rubinetto degli accumulatori (B-7) l'ha giustamente respinto: li' non c'e' nessun parametro invalido, c'e' un'invariante rotta. · Non e' raggiungibile dall'operatore: se scatta, qualcuno ha modificato il nucleo togliendogli un RETURN NEXT.
+    "E_VENDITE_PRICING_ESITO_ASSENTE": "TECNICO",
     # Codici di dominio sollevati dal DB via script.fn_log_and_raise_error. · Policy UI: operatore/admin vede messaggio business-safe; detail tecnico · nel payload solo se DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1.
     "E_VENDITE_PRICING_FAILED": "DATO_ERRATO",
     "E_VENDITE_PROMO_OVERLAP": "CONFLITTO_STATO",
@@ -1095,6 +1099,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_NUMERAZIONE_IMMUTABILE",
         "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID",
         "E_PERC_IVA_NO_MOD",
+        "E_PREZZO_LISTINO_NON_TROVATO",
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",
         "ERRORE_PARAMETRI",

@@ -721,6 +721,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_VENDITE_LISTINO_VERSIONE_NOT_FOUND": "Versione listino non trovata.",
     "E_VENDITE_LISTINO_VERSIONE_OVERLAP": "Esiste gia' una versione ATTIVA sovrapposta per il listino. Chiudi la vecchia (valido_al = nuova_valido_dal - 1) e poi attiva la nuova: la nuova decorrenza deve essere almeno 1 giorno dopo l'inizio della precedente.",
     "E_VENDITE_NOT_FOUND": "Record vendite non trovato.",
+    "E_VENDITE_PRICING_ESITO_ASSENTE": "Errore interno del calcolo prezzi: il resolver non ha restituito un esito. Segnalare all'assistenza.",
     "E_VENDITE_PRICING_FAILED": "Impossibile risolvere il prezzo listino.",
     "E_VENDITE_PROMO_OVERLAP": "Esiste gia' una promo attiva per questo (articolo, unita' di misura) nel periodo indicato.",
     "E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA": "Riallineamento richiede conferma: la versione listino e` cambiata.",
