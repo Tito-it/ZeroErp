@@ -165,11 +165,19 @@ SELECT throws_matching(
 -- =========================================================
 -- 9) Errore: stradario inesistente
 -- =========================================================
+-- ⚠️ Il messaggio a catalogo dice «non e' stato trovato», non «non trovato»: il
+--   test inseguiva una formulazione vecchia e falliva su un ramo SANO. Il
+--   pattern e' una regexp e nomina anche il codice cercato e la tabella, cosi'
+--   non puo' essere soddisfatto da un errore qualunque che contenga «trovato».
+--   ⛔ `throws_matching` non prende lo SQLSTATE: questa asserzione accetta
+--   qualunque eccezione il cui testo combaci. E' il debito che il cancello dei
+--   pgTAP presidia a soglia — qui resta perche' il messaggio e' l'oggetto del
+--   test, ma se un giorno serve stringere, la forma e' throws_ok con 'P0001'.
 SELECT throws_matching(
     $$SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
       p_stradario_id := 999999999
     ) $$,
-    'non trovato',
+    '999999999 non .* stato trovato.*config\.stradario',
     '9. Errore stradario inesistente'
   );
 

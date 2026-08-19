@@ -1,26 +1,17 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-billing-account-guard-parent.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-clienti-sync-utility-pdp-policy.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-operatore.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-indirizzi-fallback.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql	ASSERZIONE
-db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane-auth-user-view.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-risorse-umane.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql	ASSERZIONE
-db/pgtap/anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata.sql	ASSERZIONE
+db/pgtap/anagrafiche/test_indirizzi_unique_res.sql	ERRORE_FIXTURE
 db/pgtap/documenti/test-documenti-template-documenti.sql	ERRORE_FIXTURE
 db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ERRORE_FIXTURE
-db/pgtap/rls/test-rls-fatture-ef-whitelist-functional.sql	ERRORE_FIXTURE
-db/pgtap/rls/test-rls-ordini-multipolicy.sql	ERRORE_FIXTURE
-db/pgtap/rls/test-rls-viste-security-invoker.sql	ASSERZIONE
 db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-snapshot.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-list-preventivi-da-pushare-v1.sql	ASSERZIONE

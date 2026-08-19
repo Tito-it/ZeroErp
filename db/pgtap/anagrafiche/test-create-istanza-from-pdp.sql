@@ -100,6 +100,18 @@ SELECT is(
 --    - indirizzo_dettaglio_id = stesso del PDP
 --    - pdp_id = id del PDP
 -- =========================================================
+-- ⭐ FINESTRA DIFFERITA. Un'istanza utility non e' un INSERT, e' una SAGA:
+--   `trg_istanze_utilities_z90_require_utility_dichiarata_ins` e' un
+--   CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che al COMMIT pretende
+--   almeno un satellite (billing_account, istanze_dati_precontrattuali o
+--   cliente) — un'istanza senza satellite non e' uno stato legale del modello.
+--   Il preambolo obbligatorio (SET CONSTRAINTS ALL IMMEDIATE) lo fa scattare sul
+--   PRIMO insert, cioe' prima che il satellite possa esistere: e' li' che questo
+--   file moriva, con ZERO asserzioni eseguite.
+--   Si apre la finestra, si costruisce l'istanza CON il suo satellite, e si
+--   RICHIUDE: la verifica non si perde, si sposta dove il modello la vuole.
+SET CONSTRAINTS ALL DEFERRED;
+
 WITH ins AS (
     INSERT INTO anagrafiche.istanze_utilities (
         fittizia,
@@ -126,6 +138,16 @@ WITH ins AS (
 SELECT *
 INTO TEMP TABLE tmp_istanza_test
 FROM ins;
+
+-- Il satellite. Fra i tre ammessi si sceglie `istanze_dati_precontrattuali`
+-- perche' e' il piu' leggero (due sole colonne obbligatorie): qui serve a
+-- rendere l'istanza uno stato legale, non e' il soggetto del test.
+INSERT INTO anagrafiche.istanze_dati_precontrattuali (istanza_utility_id, utility_id)
+SELECT i.id, u.id
+  FROM tmp_istanza_test i, tmp_utility_gas u;
+
+-- Saga completa: il guard differito scatta QUI, su un'istanza finita.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_istanza_test),
