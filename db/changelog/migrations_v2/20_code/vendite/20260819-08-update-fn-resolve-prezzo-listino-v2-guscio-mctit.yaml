@@ -1,0 +1,231 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_resolve_prezzo_listino_v2 diventa il GUSCIO del nucleo 20260819-07.
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice A.
+# Secondo dei due changeSet: il primo (20260819-07) crea
+# vendite.fn_resolve_prezzo_listino_v2_esito, che risolve e RIPORTA l'esito
+# invece di sollevarlo. Questo riscrive la funzione storica come un guscio che
+# lo chiama e, se l'esito c'e', lo solleva.
+#
+# ⭐ COSA NON CAMBIA, ed e' il punto. Firma (9 parametri, stessi nomi, stessi
+# DEFAULT) e RETURNS TABLE (14 colonne, stessi nomi, stessi tipi) sono
+# IDENTICI: quindi CREATE OR REPLACE basta, non serve DROP, non nasce nessun
+# overload — e i dieci chiamanti non si toccano.
+#
+#   in DB (6)  vendite.fn_ddt_riga_componenti_init / _preview
+#              vendite.fn_ordine_riga_componenti_init / _preview
+#              vendite.fn_preventivo_riga_componenti_init / _preview
+#              vendite.fn_contratto_riga_componenti_init / _preview
+#              vendite.fn_offerta_eccezione_componenti_init / _preview
+#   in BE (1)  apps/vendite/db/pricing_repository.py — passa 9 argomenti
+#              posizionali e rilegge per NOME di colonna: le tre colonne di
+#              esito del nucleo non lo raggiungono nemmeno, perche' il guscio
+#              non le espone.
+#
+# Per loro, dopo questo changeSet, non e' successo niente: stesso prezzo, stesso
+# errore, stesso codice sul canale CONSTRAINT, stessa riga in dbops.error_log.
+# Ed e' esattamente il requisito «ordini e preventivi CONTINUANO a rifiutare il
+# prezzo non risolvibile» della definizione di fatto del brief (§6, quarta
+# casella): l'allentamento appartiene a chi chiamera' il nucleo, non al pricing.
+#
+# COME SOLLEVA. I tre canali dell'esito ricostruiscono la chiamata originale
+# senza perdere niente:
+#
+#   esito_codice   -> il codice, identico a prima;
+#   esito_context  -> lo stesso jsonb_build_object che stava nel corpo;
+#   esito_valori   -> gli stessi valori VARIADIC, nello stesso ordine, che
+#                     riempiono i segnaposto del messaggio.
+#
+# ⚠️ L'ARITA' CONTA. format() con MENO valori dei segnaposto alzava 22023 e
+# faceva sparire l'errore di dominio; dal 2026-08-18 fn_log_and_raise_error ha
+# il ripiego e degrada al messaggio non sostituito conservando il codice
+# (W_MESSAGGIO_ARITA nel log). Qui il rischio non si corre comunque: l'array
+# viene dal nucleo, che lo costruisce con gli stessi valori che il corpo storico
+# passava per posizione. Il pgTAP 20260819-09 lo verifica codice per codice.
+#
+# ⚠️ E IL NOME NEL LOG. Il guscio si firma 'fn_resolve_prezzo_listino_v2', cioe'
+# esattamente come prima: le righe di dbops.error_log degli 8 esiti non cambiano
+# forma e le query storiche continuano a valere. Il nucleo invece firma col
+# proprio nome per i 2 E_PARAMETRO_INVALIDO che solleva da se'. Chi solleva si
+# nomina, ed e' la lezione di brief-be-pricing-codice-errore-fantasma: `area` e
+# `function_name` sono le uniche due colonne di dbops.error_log che dicono CHI
+# ha scritto una riga. Senza guardarle si attribuisce al DB un codice che il DB
+# non emette — o si scambia il rumore della suite di test del BE per traffico di
+# produzione. Nell'agosto 2026 e' successo in tutte e due le direzioni.
+#
+# STABLE: invariato. La funzione era gia' STABLE e gia' chiamava
+# fn_log_and_raise_error (che scrive via dblink fuori transazione). Non e' una
+# regressione introdotta qui, e cambiarla ora vorrebbe dire toccare la volatilita'
+# di una funzione usata in FROM da viste e lister: fuori perimetro.
+#
+# Permessi: funzione gia' esistente e gia' con ACL (il loop di
+# 90_end/ci_apply/20260205-41 gliela ha concessa). CREATE OR REPLACE non tocca
+# i GRANT: nessun grant da rifare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260819-08-update-fn-resolve-prezzo-listino-v2-guscio-mctit.yaml
+
+    - changeSet:
+          id: 20260819-08-update-fn-resolve-prezzo-listino-v2-guscio
+          author: mctit
+          runOnChange: false
+          comment: >
+              vendite.fn_resolve_prezzo_listino_v2 diventa un guscio sottile su
+              fn_resolve_prezzo_listino_v2_esito (20260819-07): delega la
+              risoluzione e solleva l'esito con fn_log_and_raise_error. Firma e
+              RETURNS TABLE invariati, nessun DROP, nessun overload: i 10 chiamanti
+              (6 fn *_componenti_* in DB + pricing_repository.py) non cambiano.
+              Brief brief-ddt-righe-senza-prezzo §9 slice A.
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - sqlCheck:
+                          expectedResult: 1
+                          sql: >
+                              SELECT count(*) FROM pg_proc p
+                                JOIN pg_namespace n ON n.oid = p.pronamespace
+                               WHERE n.nspname = 'vendite'
+                                 AND p.proname = 'fn_resolve_prezzo_listino_v2_esito'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino_v2(
+                            p_articolo_id                   catalogo.articoli.id%TYPE,
+                            p_uom_id                        catalogo.articoli.uom_id%TYPE,
+                            p_data_riferimento              date,
+                            p_ba_id                         anagrafiche.billing_account.id%TYPE,
+                            p_utility_id                    anagrafiche.billing_account.utility_id%TYPE,
+                            p_emittente_soggetto_ruolo_id   anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                            p_classe_utenza_id              config.classi_utenze.id%TYPE      DEFAULT NULL,
+                            p_articolo_padre_contesto       catalogo.articoli.id%TYPE         DEFAULT NULL,
+                            p_listino_versione_id_preferito vendite.listini_versioni.id%TYPE  DEFAULT NULL
+                        )
+                        RETURNS TABLE(
+                            prezzo_finale                   vendite.listini_righe.prezzo%TYPE,
+                            prezzo_base_snapshot            vendite.listini_righe.prezzo%TYPE,
+                            tipo_variazione_applicata       anagrafiche.categorie_clienti_listini.tipo_variazione%TYPE,
+                            valore_variazione_applicata     anagrafiche.categorie_clienti_listini.valore_variazione%TYPE,
+                            origine                         varchar,
+                            listino_id                      vendite.listini.id%TYPE,
+                            listino_versione_id             vendite.listini_versioni.id%TYPE,
+                            listino_riga_id                 vendite.listini_righe.id%TYPE,
+                            contratto_id                    vendite.contratti.id%TYPE,
+                            promo_id                        vendite.promo_articoli.id%TYPE,
+                            categoria_cliente_listino_id    anagrafiche.categorie_clienti_listini.id%TYPE,
+                            categoria_cliente_id_snapshot   anagrafiche.billing_account.categoria_cliente_id%TYPE,
+                            classe_utenza_id_snapshot       config.classi_utenze.id%TYPE,
+                            tipo_eccezione                  vendite.tipo_eccezione_contratto
+                        )
+                        LANGUAGE plpgsql
+                        STABLE
+                        AS $function$
+                        -- Scopo: guscio storico del resolver prezzi. Delega TUTTA la
+                        --   risoluzione a fn_resolve_prezzo_listino_v2_esito e converte
+                        --   l'esito in eccezione, che e' il contratto che i chiamanti
+                        --   esistenti si aspettano da sempre.
+                        --   La logica di risoluzione NON sta piu' qui: sta nel nucleo, in
+                        --   un posto solo. Chi vuole modificarla va li'.
+                        DECLARE
+                            v_esito record;
+                        BEGIN
+                            SELECT * INTO v_esito
+                              FROM vendite.fn_resolve_prezzo_listino_v2_esito(
+                                       p_articolo_id,
+                                       p_uom_id,
+                                       p_data_riferimento,
+                                       p_ba_id,
+                                       p_utility_id,
+                                       p_emittente_soggetto_ruolo_id,
+                                       p_classe_utenza_id,
+                                       p_articolo_padre_contesto,
+                                       p_listino_versione_id_preferito
+                                   );
+
+                            -- Il nucleo ritorna SEMPRE una riga: se INTO non trova nulla
+                            -- e' successo qualcosa che non deve passare in silenzio.
+                            -- ⚠️ Guard necessario perche' SELECT INTO senza righe non
+                            --   solleva: azzera le variabili e prosegue, e qui
+                            --   proseguire vorrebbe dire restituire un prezzo NULL come
+                            --   se fosse un prezzo risolto.
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite',
+                                    'fn_resolve_prezzo_listino_v2',
+                                    'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object(
+                                        'motivo',      'il nucleo _esito non ha restituito righe',
+                                        'articolo_id', p_articolo_id,
+                                        'ba_id',       p_ba_id
+                                    ),
+                                    NULL::uuid,
+                                    'fn_resolve_prezzo_listino_v2_esito non ha restituito righe'
+                                );
+                            END IF;
+
+                            -- Esito valorizzato: si solleva col codice, il contesto e i
+                            -- valori che il nucleo ha preparato. Identico a com'era
+                            -- quando il raise stava dentro al corpo.
+                            IF v_esito.esito_codice IS NOT NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite',
+                                    'fn_resolve_prezzo_listino_v2',
+                                    v_esito.esito_codice,
+                                    v_esito.esito_context,
+                                    NULL::uuid,
+                                    VARIADIC v_esito.esito_valori
+                                );
+                            END IF;
+
+                            -- Risolto: proiezione delle 14 colonne storiche. Le tre
+                            -- colonne di esito restano nel nucleo e non escono di qui.
+                            prezzo_finale                 := v_esito.prezzo_finale;
+                            prezzo_base_snapshot          := v_esito.prezzo_base_snapshot;
+                            tipo_variazione_applicata     := v_esito.tipo_variazione_applicata;
+                            valore_variazione_applicata   := v_esito.valore_variazione_applicata;
+                            origine                       := v_esito.origine;
+                            listino_id                    := v_esito.listino_id;
+                            listino_versione_id           := v_esito.listino_versione_id;
+                            listino_riga_id               := v_esito.listino_riga_id;
+                            contratto_id                  := v_esito.contratto_id;
+                            promo_id                      := v_esito.promo_id;
+                            categoria_cliente_listino_id  := v_esito.categoria_cliente_listino_id;
+                            categoria_cliente_id_snapshot := v_esito.categoria_cliente_id_snapshot;
+                            classe_utenza_id_snapshot     := v_esito.classe_utenza_id_snapshot;
+                            tipo_eccezione                := v_esito.tipo_eccezione;
+
+                            RETURN NEXT;
+                        END
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2(
+                            catalogo.articoli.id%TYPE,
+                            catalogo.articoli.uom_id%TYPE,
+                            date,
+                            anagrafiche.billing_account.id%TYPE,
+                            anagrafiche.billing_account.utility_id%TYPE,
+                            anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                            config.classi_utenze.id%TYPE,
+                            catalogo.articoli.id%TYPE,
+                            vendite.listini_versioni.id%TYPE)
+                        IS 'GUSCIO del resolver prezzi v5 — 9 param, firma e RETURNS invariati dal '
+                           '20260520-01. Dal 20260819-08 non contiene piu'' la logica di risoluzione: '
+                           'delega a vendite.fn_resolve_prezzo_listino_v2_esito (il NUCLEO) e converte '
+                           'l''esito in eccezione via script.fn_log_and_raise_error. Per i chiamanti '
+                           'non cambia nulla — stesso prezzo, stesso codice, stessa riga di log — ed e'' '
+                           'voluto: ordini, preventivi, contratti e offerte DEVONO continuare a '
+                           'rifiutare il prezzo non risolvibile. Chi ha bisogno della risoluzione NON '
+                           'obbligatoria (il DDT) chiama il nucleo. ⚠️ Modifiche alla risoluzione vanno '
+                           'fatte nel NUCLEO, non qui: qui si romperebbe l''unicita'' del corpo, che e'' '
+                           'la ragione per cui le due funzioni esistono. '
+                           'Brief: brief-ddt-righe-senza-prezzo §9 slice A.';

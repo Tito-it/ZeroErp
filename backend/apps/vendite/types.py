@@ -130,6 +130,10 @@ class LottoFattureRow(TypedDict):
     soggetto_id: int
     ragione_sociale_completa: str | None
     id_fiscale_univoco_cf_piva: str | None
+    # Natura del documento (FATTURA | NOTA_CREDITO | NOTA_DEBITO): un lotto ne
+    # puo' contenere di diverse, quindi «N fatture» e' «N documenti».
+    natura_doc_codice: str | None
+    natura_doc_descrizione: str | None
 
 
 class LottoListRow(TypedDict):

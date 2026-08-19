@@ -96,6 +96,17 @@ Ogni elemento di `sessioni`:
 
 ---
 
+## POST /api/v1/core/me/sessioni/revoca-tutte/ — Revoca tutte le altre
+
+Revoca **tutte** le sessioni dell'utente corrente **tranne quella da cui arriva
+la richiesta**, e scrive un evento `REVOCA` per ogni `sid` distinto revocato.
+
+⚠️ L'esclusione della sessione corrente non e' una comodita': se revocasse anche
+la propria, l'operatore che clicca «esci da tutti i dispositivi» verrebbe
+buttato fuori dal dispositivo che ha in mano, senza sapere se l'operazione e'
+riuscita. Il caso d'uso — «ho perso il telefono» — vuole esattamente il
+contrario.
+
 ## Dipendenze DB
 
 | Funzione/Tabella | Schema | Ruolo |

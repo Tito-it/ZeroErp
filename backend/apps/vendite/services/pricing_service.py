@@ -181,6 +181,13 @@ class PricingService:
                 fallback_code=E_VENDITE_PRICING_FAILED,
                 message="Impossibile risolvere il prezzo listino.",
                 function_name="pricing_service.resolve",
+                # ⚠️ `classe_utenza_id` e `listino_versione_id_preferito` NON
+                # sono decorazione: sono i due parametri che cambiano lo stadio
+                # a cui il resolver fallisce. Senza, due tentativi diversi
+                # scrivono nel diario un contesto IDENTICO e diventano
+                # indistinguibili a posteriori — e' esattamente l'ambiguita' che
+                # ha fatto perdere tempo al team DB il 2026-08-19
+                # (brief-be-pricing-codice-errore-fantasma.md §6.3).
                 context={
                     "articolo_id": articolo_str,
                     "uom_id": uom_id,
@@ -188,6 +195,8 @@ class PricingService:
                     "utility_id": utility_id,
                     "data_riferimento": data_riferimento.isoformat(),
                     "articolo_padre_contesto": padre_str,
+                    "classe_utenza_id": classe_utenza_id,
+                    "listino_versione_id_preferito": listino_versione_id_preferito,
                 },
             )
 

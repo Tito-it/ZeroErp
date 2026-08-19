@@ -61,6 +61,17 @@ BEGIN
               AND ba2.parent_account_id IS NOT NULL
          );
 
+        -- ⚠️ Prima il legame con l'emittente: vedi la nota nel cleanup finale
+        --   (FK fk_emittenti_fiscali_billing_account_ba, 20260819-04).
+        DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
+        WHERE efba.billing_account_id IN (
+            SELECT ba.id FROM anagrafiche.billing_account ba
+            WHERE ba.istanza_utility_id IN (
+                SELECT iu.id FROM anagrafiche.istanze_utilities iu
+                WHERE iu.codice LIKE 'TST-GUARD-PARENT-%'
+            )
+        );
+
         DELETE FROM anagrafiche.billing_account ba
         WHERE ba.istanza_utility_id IN (
             SELECT iu.id FROM anagrafiche.istanze_utilities iu
@@ -175,12 +186,33 @@ DECLARE
     v_valuta_id integer;
     v_commessa_id bigint;
     v_commessa_attivita_id bigint;
+    v_categoria_cliente_id integer;
 BEGIN
     SELECT soggetto_id, utility_id, soggetto_ruolo_id,
            articolo_id, uom_id, tipo_doc_fiscale_id, valuta_id
       INTO v_soggetto_id, v_utility_id, v_soggetto_ruolo_id,
            v_articolo_id, v_uom_id, v_tipo_doc_id, v_valuta_id
       FROM tmp_refs_guard_parent;
+
+    -- Categoria cliente: `billing_account.categoria_cliente_id` e' diventata
+    -- NOT NULL dopo la scrittura di questo file. Si prende per CODICE INTERNO e
+    -- non con un LIMIT 1: fra le categorie ci sono anche residui di smoke test
+    -- disattivati, e un LIMIT senza ORDER BY non verifica, scommette.
+    SELECT id INTO v_categoria_cliente_id
+      FROM anagrafiche.categorie_clienti
+     WHERE codice_interno = 'STANDARD';
+
+    -- ⭐ FINESTRA DIFFERITA. Un'istanza utility non e' un INSERT, e' una SAGA:
+    --   `trg_istanze_utilities_z90_require_utility_dichiarata_ins` e' un
+    --   CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che al COMMIT pretende
+    --   almeno un satellite (BA, dati precontrattuali o cliente) — un'istanza
+    --   senza satellite non e' uno stato legale del modello. Il preambolo
+    --   obbligatorio (SET CONSTRAINTS ALL IMMEDIATE) lo fa scattare sul PRIMO
+    --   insert, cioe' prima che i tre BA qui sotto possano esistere: e' li' che
+    --   questo file moriva, con ZERO asserzioni eseguite.
+    --   Si apre la finestra, si costruiscono le istanze CON i loro BA, e si
+    --   RICHIUDE: la verifica non si perde, si sposta dove il modello la vuole.
+    SET CONSTRAINTS ALL DEFERRED;
 
     -- Crea 3 istanze per lo stesso soggetto
     INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
@@ -197,30 +229,48 @@ BEGIN
 
     -- BA padre (stand-alone)
     INSERT INTO anagrafiche.billing_account (
-        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
+        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        categoria_cliente_id
     ) VALUES (
-        v_parent_istanza_id, v_soggetto_ruolo_id, v_utility_id, CURRENT_DATE
+        v_parent_istanza_id, v_soggetto_ruolo_id, v_utility_id, CURRENT_DATE,
+        v_categoria_cliente_id
     ) RETURNING id INTO v_parent_ba_id;
 
     -- BA figlio 1 (con parent, avra attivita_fatturabili)
     INSERT INTO anagrafiche.billing_account (
-        istanza_utility_id, soggetto_ruolo_id, utility_id, parent_account_id, valido_dal
+        istanza_utility_id, soggetto_ruolo_id, utility_id, parent_account_id, valido_dal,
+        categoria_cliente_id
     ) VALUES (
-        v_child1_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, CURRENT_DATE
+        v_child1_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, CURRENT_DATE,
+        v_categoria_cliente_id
     ) RETURNING id INTO v_child1_ba_id;
 
     -- BA figlio 2 (con parent, senza attivita)
     INSERT INTO anagrafiche.billing_account (
-        istanza_utility_id, soggetto_ruolo_id, utility_id, parent_account_id, valido_dal
+        istanza_utility_id, soggetto_ruolo_id, utility_id, parent_account_id, valido_dal,
+        categoria_cliente_id
     ) VALUES (
-        v_child2_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, CURRENT_DATE
+        v_child2_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, CURRENT_DATE,
+        v_categoria_cliente_id
     ) RETURNING id INTO v_child2_ba_id;
 
+    -- Saga completa: ogni istanza ha il suo BA, il guard differito scatta QUI e
+    -- le trova finite.
+    SET CONSTRAINTS ALL IMMEDIATE;
+
     -- Commessa per BA figlio 1
+    -- ⚠️ L'emittente NON si lascia a NULL. `vendite.commesse` ha una policy
+    --   RLS (rls_commesse_ef_whitelist) il cui WITH CHECK passa da
+    --   `script.fn_scope_ef_whitelist_via_sr(utente, emittente_soggetto_ruolo_id)`:
+    --   con la colonna vuota la scrittura viene NEGATA, e il file moriva qui.
+    --   L'helper da' il soggetto_ruolo dell'emittente su cui l'operatore del
+    --   contesto puo' davvero scrivere: la scelta di «quale emittente» resta in
+    --   un posto solo.
     INSERT INTO vendite.commesse (
-        codice, billing_account_id, utility_id
+        codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
     ) VALUES (
-        'TST-GUARD-PARENT-COMM-01', v_child1_ba_id, v_utility_id
+        'TST-GUARD-PARENT-COMM-01', v_child1_ba_id, v_utility_id,
+        script.fn_pgtap_emittente_sr_operatore()
     ) RETURNING id INTO v_commessa_id;
 
     -- Commessa attivita
@@ -350,6 +400,21 @@ BEGIN
 
     DELETE FROM vendite.commesse c
     WHERE c.codice = 'TST-GUARD-PARENT-COMM-01';
+
+    -- ⚠️ Prima il legame con l'emittente, poi il BA. Ogni billing account viene
+    --   agganciato a un emittente fiscale da
+    --   `trg_billing_account_z90_link_ef_ins`, e dal 2026-08-19 quel legame ha
+    --   una FK verso il BA (`fk_emittenti_fiscali_billing_account_ba`,
+    --   changeSet 20260819-04): senza questa DELETE la cancellazione del BA
+    --   viola la chiave esterna e il file muore prima di finish().
+    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
+    WHERE efba.billing_account_id IN (
+        SELECT ba.id FROM anagrafiche.billing_account ba
+        WHERE ba.istanza_utility_id IN (
+            SELECT iu.id FROM anagrafiche.istanze_utilities iu
+            WHERE iu.codice LIKE 'TST-GUARD-PARENT-%'
+        )
+    );
 
     DELETE FROM anagrafiche.billing_account ba
     WHERE ba.istanza_utility_id IN (

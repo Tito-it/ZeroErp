@@ -4,8 +4,11 @@
 >
 > Vista flat clienti per la lista UI (anagrafiche.clienti). Espone anagrafica soggetto (incl. id_fiscale_univoco_cf_piva), codice BA, servizio, stato e date del ciclo di vita. stato_codice_interno = codice_interno (logica), stato_codice = codice (display). Sorgente dati per ui.lista_definizione codice='anagrafiche.clienti'.
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW anagrafiche.vw_clienti_lista AS
+CREATE OR REPLACE VIEW anagrafiche.vw_clienti_lista
+WITH (security_invoker=on) AS
 SELECT cl.id,
     cl.soggetto_ruolo_id,
     cl.istanza_utility_id,

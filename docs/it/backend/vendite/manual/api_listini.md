@@ -3,7 +3,16 @@
 ## Scopo
 
 Esporre via HTTP la gestione completa dei listini vendite: anagrafica listino,
-versioni temporali, righe prezzo, associazioni di contesto e test del resolver prezzo.
+versioni temporali e righe prezzo.
+
+> ⚠️ **Rimossi da F2-BE-13** (verificato sul codice il 2026-08-19): le rotte
+> `/associazioni/` e `/test-prezzo/`, e con loro i campi `associazioni_count` e
+> `associazioni` nei payload. Nel modello v5 il listino si sceglie dalla matrice
+> `categorie_clienti_listini` o dal contratto, non da una tabella di
+> associazione dedicata. Le sezioni relative restano qui come **lapidi** (§5,
+> §6): dicono cosa e' sparito e cosa usare al suo posto, perche' una pagina che
+> descrive un endpoint inesistente e' indistinguibile da una che ne descrive uno
+> vivo.
 
 ## Contesto
 
@@ -81,8 +90,7 @@ stringa vuota equivale a parametro assente (nessun filtro).
         "tipologia_codice": "CONSUMO",
         "tipologia_descrizione": "Consumi",
         "attivo": true,
-        "versioni_count": 2,
-        "associazioni_count": 1
+        "versioni_count": 2
       }
     ]
   }
@@ -147,9 +155,7 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
     "tipologia_descrizione": "Consumi",
     "attivo": true,
     "versioni_count": 2,
-    "associazioni_count": 1,
-    "versioni": [],
-    "associazioni": []
+    "versioni": []
   }
 }
 ```
@@ -195,9 +201,12 @@ Campi ammessi (tutti opzionali; almeno uno deve essere presente):
 | **Metodo** | `DELETE` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/` |
 
-Elimina un listino **solo se non ha figli**: `versioni_count == 0` AND
-`associazioni_count == 0`. Caso d'uso tipico: listini di test creati per
-errore. Per disattivare un listino con figli, usare `PATCH attivo=false`.
+Elimina un listino **solo se non ha versioni**: `versioni_count == 0`. Caso
+d'uso tipico: listini di test creati per errore. Per disattivare un listino con
+figli, usare `PATCH attivo=false`.
+
+⚠️ Il secondo controllo storico — `associazioni_count == 0` — **non esiste piu'**
+da F2-BE-13 (`listini_service.fn_delete_listino`).
 
 Risposta (200):
 
@@ -207,7 +216,7 @@ Risposta (200):
 
 Errori tipici:
 
-- `400` `E_VENDITE_VALIDATION` se il listino ha versioni o associazioni
+- `400` `E_VENDITE_VALIDATION` se il listino ha versioni
 - `404` `E_VENDITE_LISTINO_NOT_FOUND`
 
 ---
@@ -745,101 +754,32 @@ Il service cattura `IntegrityError` e `DatabaseError`:
 
 ---
 
-## 5. Associazioni listino
+## 5. Associazioni listino — RIMOSSA
 
-### 5.1 Lista associazioni
+⛔ **Le quattro rotte `/api/v1/vendite/listini/{listino_id}/associazioni/`
+(GET/POST/PATCH/DELETE) non esistono piu'**: tolte da F2-BE-13 insieme alla
+tabella `vendite.listini_associazioni`. Verificato il 2026-08-19: nel backend
+vivo la parola «associazioni» compare **solo in commenti**, e
+`urls_listini.py` lo dichiara in testa al file.
 
-| | |
-|---|---|
-| **Metodo** | `GET` |
-| **URL** | `/api/v1/vendite/listini/{listino_id}/associazioni/` |
+**Cosa si usa al suo posto.** Il legame listino → contesto non e' piu' una
+tabella di associazione: il listino si sceglie dalla matrice
+`anagrafiche.categorie_clienti_listini` (categoria cliente + utility + data)
+oppure dal contratto del billing account. E' lo STADIO 1/2 di
+`vendite.fn_resolve_prezzo_listino_v2`, descritto in `api_pricing.md`.
 
-### 5.2 Crea associazione
+## 6. Test resolver prezzo — RIMOSSO
 
-| | |
-|---|---|
-| **Metodo** | `POST` |
-| **URL** | `/api/v1/vendite/listini/{listino_id}/associazioni/` |
+⛔ **`POST /api/v1/vendite/listini/test-prezzo/` non esiste piu'** (F2-BE-13).
 
-#### Body JSON
+**Cosa si usa al suo posto**, e sono due cose diverse:
 
-| Campo | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `valido_dal` | date | Si | Data inizio validita` associazione |
-| `valido_al` | date | No | Data fine validita` |
-| `billing_account_id` | int | No | Contesto BA |
-| `utility_id` | int | No | Contesto utility |
-| `emittente_soggetto_ruolo_id` | int | No | Contesto emittente fiscale |
-| `meta` | object | No | Metadati liberi |
-| `attivo` | bool | No | Default DB `true` |
-
-### 5.3 Aggiorna associazione
-
-| | |
-|---|---|
-| **Metodo** | `PATCH` |
-| **URL** | `/api/v1/vendite/listini/{listino_id}/associazioni/{assoc_id}/` |
-
-### 5.4 Elimina associazione
-
-| | |
-|---|---|
-| **Metodo** | `DELETE` |
-| **URL** | `/api/v1/vendite/listini/{listino_id}/associazioni/{assoc_id}/` |
-
-#### Regole specifiche
-
-- `valido_al`, se presente, deve essere maggiore di `valido_dal`
-- L'unicita` della combinazione attiva (`listino + contesto + valido_dal`) e` demandata al DB
-
----
-
-## 6. Test resolver prezzo
-
-| | |
-|---|---|
-| **Metodo** | `POST` |
-| **URL** | `/api/v1/vendite/listini/test-prezzo/` |
-
-### Body JSON
-
-| Campo | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `articolo_id` | uuid | Si | Articolo da risolvere |
-| `uom_id` | int | Si | UoM da risolvere |
-| `data_riferimento` | date | Si | Data di riferimento |
-| `billing_account_id` | int | No | BA di contesto |
-| `utility_id` | int | No | Utility di contesto |
-| `emittente_soggetto_ruolo_id` | int | No | Emittente fiscale di contesto |
-
-### Risposta (200)
-
-```json
-{
-  "data": {
-    "listino_id": 10,
-    "listino_codice": "LIST-UTILITY",
-    "listino_descrizione": "Listino Utility Base",
-    "listino_versione_id": 101,
-    "codice_versione": "2026-Q2",
-    "versione_stato": "ATTIVA",
-    "listino_riga_id": 1001,
-    "listino_associazione_id": 3001,
-    "prezzo": "12.5000000000",
-    "match_level": 6
-  }
-}
-```
-
-### Regole specifiche
-
-- Wrapper HTTP del resolver DB `vendite.fn_resolve_prezzo_listino(...)`
-- Richiede `data_riferimento`
-- In caso di nessun match o pareggio totale, gli errori restano quelli del DB:
-  - `E_PREZZO_LISTINO_NON_TROVATO`
-  - `E_PREZZO_LISTINO_AMBIGUO`
-
----
+* per **risolvere un prezzo**: `PricingService.resolve_prezzo` su
+  `vendite.fn_resolve_prezzo_listino_v2` — vedi `api_pricing.md`;
+* per **capire perche' un prezzo non si risolve**:
+  `POST /api/v1/vendite/pricing/diagnose/`, che ispeziona la configurazione
+  (contratto, matrice categoria → listino, versioni, righe) e risponde senza
+  sollevare. E' quello che usa `TestResolverDialog.vue`.
 
 ## 7. Alert scadenze versioni (N2)
 

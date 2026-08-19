@@ -37,6 +37,8 @@ Indice test eseguiti:
 from unittest.mock import MagicMock
 from unittest.mock import patch
 from unittest import TestCase
+
+from django.test import override_settings
 from datetime import date
 from decimal import Decimal
 
@@ -425,6 +427,11 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertEqual(second_params, ["COMPLETATO", "Pipeline completata", "Pipeline completata", 10])
 
     # Scopo: Verifica che set_lotto_job_stato rifiuti uno stato target non valido.
+    # ⚠️ `ERROR_LOG_DB_ENABLED=True` riacceso apposta: questi due test
+    # verificano PROPRIO che il rifiuto finisca nel diario tecnico, e il recinto
+    # della suite (zeroerp_backend/test_runner.py) lo spegne per tutti. Nessuna
+    # scrittura vera: il cursore e' un mock.
+    @override_settings(ERROR_LOG_DB_ENABLED=True)
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
     def test_set_lotto_job_stato_rejects_invalid_target_state(self, mocked_cursor_factory):
         cursor = MagicMock()
@@ -441,6 +448,11 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertIn("fn_log_error_only", execute_sql)
 
     # Scopo: Verifica che set_lotto_job_stato applichi le transizioni ammesse dello stato tecnico lotto.
+    # ⚠️ `ERROR_LOG_DB_ENABLED=True` riacceso apposta: questi due test
+    # verificano PROPRIO che il rifiuto finisca nel diario tecnico, e il recinto
+    # della suite (zeroerp_backend/test_runner.py) lo spegne per tutti. Nessuna
+    # scrittura vera: il cursore e' un mock.
+    @override_settings(ERROR_LOG_DB_ENABLED=True)
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
     def test_set_lotto_job_stato_rejects_invalid_transition(self, mocked_cursor_factory):
         cursor = MagicMock()

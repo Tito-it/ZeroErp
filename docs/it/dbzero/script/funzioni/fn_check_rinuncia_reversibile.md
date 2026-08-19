@@ -17,31 +17,42 @@ AS $function$
 --   (annullare la dichiarazione di definitivita' su una quota resa).
 --   Funzione PURA (fn_check_*): nessun raise di dominio, nessuna
 --   scrittura. Consumatore: vendite.fn_riapri_riconsegna_reso.
---   Brief: brief-db-chiusura-riconsegna-reso-definitivo §5.1.
+--   Brief: brief-db-chiusura-riconsegna-reso-definitivo §5.1;
+--   il gate NC: brief-db-note-credito-prerequisiti-be-fe §12 (P-3).
 -- Ritorna: [] se reversibile; altrimenti array ordinato di
 --   {codice, reason, reason_key, dettaglio}.
 --
--- STATO ATTUALE: ritorna SEMPRE []. E' deliberato, non incompleto.
---   Il gate corretto sarebbe "non piu' reversibile una volta emessa
---   la nota di credito sulla quota", ma il ramo NC non esiste ancora
---   nel progetto: oggi la coda accrediti (vw_resi_da_accreditare) la
---   alimenta e nessuno emette NC. Vietare qualcosa che non puo'
---   accadere sarebbe finto rigore.
+-- ⭐ 2026-08-19: IL GATE SI E' SVEGLIATO. Dal 2026-07-26 questa
+--   funzione ritornava sempre [] e lo dichiarava: «il ramo NC non
+--   esiste ancora nel progetto […] codice da registrare allora,
+--   non oggi». La slice NC e' arrivata, e il divieto e' entrato
+--   qui — come previsto, senza toccare la madre, che solleva gia'
+--   il primo motivo prodotto.
 --
--- ⚠️ QUANDO ARRIVERA' LA SLICE NC: il divieto va aggiunto QUI, e si
---   attiva da se' — fn_riapri_riconsegna_reso solleva gia' il primo
---   motivo che questa funzione produce. Non serve toccare la madre.
---   Motivo previsto: la quota rinunciata risulta coperta da una nota
---   di credito emessa -> riaprirla sfalserebbe un documento fiscale.
---   Codice da registrare allora (non oggi, per non lasciare a
---   catalogo un codice mai sollevato).
+-- ⚠️ LA CONDIZIONE E' «ACCREDITATA», NON «NC EMESSA». Il commento
+--   del 2026-07-26 immaginava il gate sul DOCUMENTO; la finestra
+--   pericolosa si apre invece AL VERBO. Fra l'accredito e la
+--   fattura la quota e' gia' impegnata e la riga e' gia' uscita
+--   dalla coda: aspettare l'emissione lascerebbe scoperta la
+--   parte piu' lunga del giro.
 --
--- ⚠️ NON RIMUOVERE questa funzione "perche' ritorna sempre vuoto":
---   e' il punto di innesto del gate. Rimuoverla riporta il problema
---   a essere una nota in un commento che nessuno cerchera'.
+-- ⭐⚠️ VINCOLO RECIPROCO con vendite.fn_annulla_accredito_riga_reso
+--   (C-3). Questo gate si AUTO-RIPARA perche' l'annullo CANCELLA
+--   le righe di ponte: annullato l'accredito la rinuncia torna
+--   reversibile, senza che questa funzione sappia nulla di
+--   quella. E' un pregio FRAGILE: se l'annullo diventasse un
+--   soft-delete, questo ramo continuerebbe a vedere la riga e
+--   vieterebbe PER SEMPRE una rinuncia ormai reversibile, IN
+--   SILENZIO — perche' nessuno dei due lati sarebbe sbagliato da
+--   solo. Le due funzioni si cambiano INSIEME.
+--
+-- ⚠️ NON RIMUOVERE questa funzione: e' il punto di innesto del
+--   gate. Rimuoverla riporta il problema a essere una nota in un
+--   commento che nessuno cerchera'.
 DECLARE
     v_motivi jsonb := '[]'::jsonb;
     v_esiste boolean;
+    v_accreditata boolean;
 BEGIN
     IF p_resi_riga_id IS NULL OR p_resi_riga_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -68,17 +79,32 @@ BEGIN
         RETURN v_motivi;
     END IF;
 
-    -- === PUNTO DI INNESTO SLICE NC ===
-    -- Qui andra' il controllo sulla nota di credito emessa per la
-    -- quota rinunciata. Finche' il ramo NC non esiste, nessun motivo.
-    -- ==================================
+    -- === IL GATE NC ===
+    -- ⚠️ DOPO «riga inesistente», che ritorna subito: quello e'
+    --    l'IDENTITA' della riga, non una sua condizione. Dire
+    --    «gia' accreditata» a chi ha passato un id inventato lo
+    --    manderebbe a cercare un accredito che non esiste.
+    -- Basta l'ESISTENZA di una riga di ponte: un accredito e' N
+    -- coppie, e una sola impegna gia' la quota.
+    SELECT EXISTS (SELECT 1 FROM vendite.resi_righe_accrediti a
+                    WHERE a.resi_riga_id = p_resi_riga_id)
+      INTO v_accreditata;
+
+    IF v_accreditata THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_RESO_RINUNCIA_ACCREDITO_ESEGUITO',
+            'reason',     'ACCREDITO_ESEGUITO',
+            'reason_key', 'vendite.resi.rinuncia_reason.accredito_eseguito',
+            'dettaglio',  p_resi_riga_id);
+    END IF;
+    -- ==================
 
     RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_rinuncia_reversibile(p_resi_riga_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi che impediscono di RIAPRIRE una rinuncia di ri-consegna (brief-db-chiusura-riconsegna-reso-definitivo S5.1). Ritorna [] se reversibile. GATE DORMIENTE: oggi l''unico motivo prodotto e'' la riga inesistente, perche'' il gate vero - "non piu'' reversibile a nota di credito emessa" - riguarda un ramo NC che nel progetto NON esiste ancora. E'' il PUNTO DI INNESTO: quando la slice NC arrivera'', il divieto si aggiunge QUI e si attiva da se'' (vendite.fn_riapri_riconsegna_reso solleva gia'' il primo motivo prodotto), senza toccare la madre. NON rimuovere perche'' "ritorna sempre vuoto": rimuoverla riporta la conseguenza a essere una nota in un commento. rev 2026-07-26.';
+IS 'Funzione PURA (fn_check_*): motivi che impediscono di RIAPRIRE una rinuncia di ri-consegna (brief-db-chiusura-riconsegna-reso-definitivo S5.1). Ritorna [] se reversibile, altrimenti un array di {codice, reason, reason_key, dettaglio}. ⭐ NON E'' PIU'' DORMIENTE dal 2026-08-19 (P-3, brief note-credito §12): al ramo «riga inesistente» si e'' aggiunto il gate della nota di credito, che il commento del 2026-07-26 teneva in caldo dichiarando di non registrare ancora il codice «per non lasciare a catalogo un codice mai sollevato». ⚠️ La condizione e'' «esiste una riga in vendite.resi_righe_accrediti», NON «nota di credito emessa»: la finestra pericolosa si apre AL VERBO — fra l''accredito e la fattura la quota e'' gia'' impegnata e la riga e'' gia'' uscita dalla coda, quindi aspettare l''emissione lascerebbe scoperta la parte piu'' lunga del giro. Il ramo sta DOPO «riga inesistente», che e'' l''identita'' della riga e non una sua condizione. ⭐⚠️ VINCOLO RECIPROCO con vendite.fn_annulla_accredito_riga_reso: questo gate si AUTO-RIPARA perche'' l''annullo CANCELLA le righe di ponte — se un giorno diventasse un soft-delete, questo ramo continuerebbe a vedere la riga e vieterebbe per sempre una rinuncia ormai reversibile, IN SILENZIO, perche'' nessuno dei due lati sarebbe sbagliato da solo. Le due funzioni si cambiano INSIEME. La madre vendite.fn_riapri_riconsegna_reso NON e'' stata toccata: solleva gia'' il primo motivo prodotto. reason_key da tradurre lato FE. rev 2026-08-19.';
 ```
 
 ---

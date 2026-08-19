@@ -212,3 +212,76 @@ Il record risultante va scritto in `vendite.commesse_attivita` (campi snapshot) 
 ---
 
 {% include-markdown "signature-core.md" %}
+
+---
+
+## ⭐ Dal 2026-08-19 le funzioni sono **due**, e questa non contiene più la logica
+
+| | a chi serve | cosa fa quando non trova il prezzo |
+|---|---|---|
+| `fn_resolve_prezzo_listino_v2_esito` — il **nucleo** | a chi può accettare un prezzo assente: oggi il DDT | **ritorna** l'esito in tre colonne (`esito_codice`, `esito_context`, `esito_valori`) e va avanti. Una riga esce sempre |
+| `fn_resolve_prezzo_listino_v2` — il **guscio** (questa) | a tutti gli altri: preventivi, ordini, contratti, offerte | **solleva**, come ha sempre fatto: stesso codice, stesso `P0001`, stessa riga di log |
+
+Firma e `RETURNS TABLE` del guscio sono rimasti identici, quindi per i dieci
+chiamanti esistenti non è cambiato niente. **La logica di risoluzione vive solo
+nel nucleo**: chi deve modificarla va lì, altrimenti le due funzioni smettono di
+essere lo stesso corpo — che è l'unica cosa che rende questa coppia sicura.
+
+### Perché non basta catturare l'errore
+
+È la domanda che si fanno tutti guardando questa coppia, e la risposta non è di
+gusto. `script.fn_log_error_only` scrive su `dbops.error_log` attraverso una
+**connessione separata, fuori dalla transazione**: la riga di log resta anche se
+tutto il resto viene annullato. Un `BEGIN … EXCEPTION` attorno alla chiamata —
+in SQL o in Python — nasconderebbe l'errore a chi chiama, ma il log lo avrebbe
+già scritto il database un istante prima di sollevare: una riga per ogni
+tentativo, moltiplicata per le righe del documento.
+
+Il log lo scrive il database, quindi **solo il database può smettere di
+scriverlo**. Da qui un nucleo che non solleva affatto, invece di un guscio che
+ingoia.
+
+### Cosa diventa un esito e cosa resta un errore
+
+La regola in una riga: **un parametro sbagliato è un errore; un prezzo che non
+c'è è un esito.**
+
+Restano errori i due `E_PARAMETRO_INVALIDO` — argomenti fuori dominio e
+billing account inesistente: lì ha sbagliato chi chiama, o si sta parlando di
+qualcosa che non esiste. Diventano esito tutti e otto i casi in cui il prezzo
+semplicemente non si trova, compreso **l'articolo escluso da contratto**:
+l'esclusione dice che quell'articolo non si *fattura* a quel cliente, non che non
+possa *viaggiare*, e infatti serve mandarlo in riparazione o riprenderselo
+indietro. Il divieto non si allenta — se la causale del DDT è di vendita, la
+riga resta senza prezzo e il documento non si emette.
+
+> **Un ramo che non poteva più scattare, e che è stato tolto.** Nel nucleo
+> c'era il caso «billing account senza categoria», impossibile dal 2026-04-14
+> perché quella colonna è diventata obbligatoria. Per un giorno l'abbiamo
+> tenuto, commentato, «semmai un domani». Poi il codice d'errore che sollevava
+> è andato in pensione — e a quel punto tenerlo sarebbe stato dichiarare due
+> cose incompatibili: un cancello in CI vieta che una funzione viva nomini un
+> codice ritirato, e ha ragione. Rimosso il 2026-08-19.
+>
+> Non si è scoperto nulla: se quel vincolo un giorno cadesse, la ricerca sulla
+> matrice non troverebbe righe e si uscirebbe con «categoria non mappata» —
+> un errore vero, che nomina la tabella giusta.
+
+### Ogni esito porta gli input della chiamata
+
+Dal 2026-08-19 il contesto registrato con ogni esito contiene **i nove
+parametri della chiamata**, oltre ai dati specifici dello stadio che ha
+fallito.
+
+Sembra un dettaglio e non lo è. Prima, quando qualcosa non si risolveva,
+scrivevano in due: il database e il backend, ciascuno con i propri campi. Messi
+insieme bastavano a ricostruire il caso; presi singolarmente, no — il database
+diceva *quale mappa mancava* ma non *per quale articolo*. Deciso che a scrivere
+sia il database e basta, la riga rimasta doveva diventare completa, altrimenti
+si sarebbe guadagnata una riga e persa la possibilità di indagare.
+
+Ci sono anche i due parametri che nessuno aveva chiesto — la classe di utenza e
+la versione di listino preferita — perché senza di essi due chiamate diverse
+lasciano righe identiche, e chi legge non può distinguerle.
+
+**Brief**: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md` §9 slice A.

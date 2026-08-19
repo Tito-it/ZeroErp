@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tre viste tornate DEFINER si riprendono security_invoker=on.
+#
+# COS'E' SUCCESSO, e non e' un refuso di forma. Il 2026-06-01 il changeSet
+# `20260601-26` ha portato a `security_invoker = on` le nove viste che leggono
+# le tabelle del lotto RLS. Il 2026-06-28 tre di quelle nove sono state
+# ricostruite per altri motivi — un codice interno, uno stato:
+#
+#   * `20260628-22` -> vendite.vw_preventivi_pratiche
+#   * `20260628-03` -> anagrafiche.vw_clienti_lista
+#   * `20260628-04` -> anagrafiche.vw_clienti_codice_ba
+#
+# ⚠️ Nessuno dei tre ripete la clausola `WITH (security_invoker = on)`, e in
+# PostgreSQL le reloptions di una vista NON sopravvivono alla sua ricostruzione:
+# `CREATE OR REPLACE VIEW` senza `WITH` le azzera, un `DROP` + `CREATE` le
+# perde per definizione. Le tre viste sono tornate a eseguire coi privilegi
+# dell'OWNER (titodb, che possiede le tabelle e non e' soggetto alle policy
+# senza FORCE): la RLS sotto di loro e' diventata cosmetica.
+#
+# QUANTO PESA. Non e' una svista formale su viste marginali:
+#
+#   * `vw_clienti_lista` e `vw_clienti_codice_ba` leggono
+#     `anagrafiche.billing_account` (RLS attiva);
+#   * `vw_preventivi_pratiche` legge DIECI tabelle con RLS attiva, fra cui
+#     `vendite.preventivi` e `pratiche.pratiche`.
+#
+# Chi interroga quelle viste vede tutto, indipendentemente dal perimetro
+# dell'operatore. E il perimetro emittente e' l'unica cosa che tiene separati
+# due emittenti fiscali sullo stesso database.
+#
+# ⭐ IL CANCELLO C'ERA, E LO AVEVA VISTO. `db/pgtap/rls/test-rls-viste-security-invoker.sql`
+# e' scritto esattamente per questo («fallisce se una vista del lotto torna
+# DEFINER») e da allora e' rosso sui test 3, 7, 8 — cioe' su queste tre viste,
+# per nome. Il rosso e' stato messo in `baseline-rossi.tsv` come debito noto
+# invece di essere letto: e' rimasto li' 52 giorni. Un cancello parcheggiato in
+# baseline non presidia niente, e questa e' la prova.
+#
+# COME SI CORREGGE. `ALTER VIEW ... SET (security_invoker = on)`, la stessa
+# forma di `20260601-26`: non serve ricostruire i corpi, che sono giusti — si
+# rimette solo l'opzione che la ricostruzione ha portato via. Idempotente
+# (`IF EXISTS`), e in avanti.
+#
+# ⚠️ PREREQUISITO VERIFICATO. `security_invoker` fa leggere le tabelle base coi
+# privilegi del CHIAMANTE: se `zeroerp_app` non avesse `SELECT` su una delle
+# basi, la vista passerebbe da «troppo permissiva» a «permesso negato».
+# Verificato il 2026-08-19 su tutte e 12 le relazioni base delle tre viste
+# (billing_account, clienti, soggetti, istanze_utilities, preventivi,
+# pratiche, pratiche_sorgenti, tipi_prestazione, sorgenti, stati_cliente,
+# stati_pratiche, utilities): `has_table_privilege` risponde `true` su ognuna.
+#
+# ⚠️ EFFETTO ATTESO, da non confondere con un guasto: dopo questo changeSet un
+# operatore vede in quelle liste SOLO cio' che il suo perimetro ammette. Se una
+# lista si svuota, la domanda giusta e' «il contesto applicativo e' impostato su
+# quel percorso?», non «la vista e' rotta»: uno zero qui puo' essere
+# fail-closed, non un dato.
+#
+# ⛔ CIO' CHE QUESTO CHANGESET NON FA. La stessa misura del 2026-08-19 ha trovato
+# altre SEI viste che leggono tabelle in RLS senza `security_invoker`
+# (`vendite.vw_stato_sorgente_contratto|ddt|offerta|ordine|preventivo|reso`,
+# lette da `backend/apps/pratiche/db/pratiche_repository.py`). Non sono una
+# regressione — non sono mai state convertite, e non stanno nell'elenco che il
+# test presidia. Restano fuori apposta: sono una DECISIONE, non un ripristino, e
+# vanno insieme all'allargamento del cancello. Vedi il brief.
+#
+# Il posto del file: `20_code/vendite/` come `20260601-26`, di cui questo e' la
+# continuazione diretta (stesso test, stesso elenco). L'autogen ordina per
+# numero, non per cartella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260819-09-alter-viste-security-invoker-regredite-mctit.yaml
+
+  - changeSet:
+      id: 20260819-09-alter-viste-security-invoker-regredite
+      author: mctit
+      runOnChange: false
+      comment: >
+        Ripristina security_invoker=on sulle tre viste del lotto RLS che le
+        ricostruzioni del 2026-06-28 avevano riportato a DEFINER
+        (vw_preventivi_pratiche, vw_clienti_lista, vw_clienti_codice_ba).
+        Le reloptions di una vista non sopravvivono a CREATE OR REPLACE senza
+        WITH: la RLS sotto di loro era cosmetica. Idempotente (ALTER VIEW IF
+        EXISTS). Prerequisito verificato: zeroerp_app ha SELECT su tutte le
+        relazioni base. Rosso storico di
+        db/pgtap/rls/test-rls-viste-security-invoker.sql (test 3, 7, 8).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Dieci tabelle base con RLS attiva, fra cui preventivi e pratiche.
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_pratiche  SET (security_invoker = on);
+
+              -- Clienti via billing_account (RLS attiva).
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_lista    SET (security_invoker = on);
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba SET (security_invoker = on);
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il rollback RIAPRE il buco: esiste per simmetria con
+              --   20260601-26, non perche' tornare a DEFINER sia una posizione
+              --   difendibile.
+              ALTER VIEW IF EXISTS vendite.vw_preventivi_pratiche  SET (security_invoker = off);
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_lista    SET (security_invoker = off);
+              ALTER VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba SET (security_invoker = off);

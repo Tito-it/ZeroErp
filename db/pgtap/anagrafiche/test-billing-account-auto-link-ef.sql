@@ -51,42 +51,94 @@ SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 -- ============================================================
 -- Setup contesto
 -- ============================================================
+-- L'emittente NON e' «il primo attivo»: e' quello dell'operatore che il
+-- preambolo ha messo in sessione. Con due emittenti in whitelist diverse, «il
+-- primo attivo» e' una scommessa che il perimetro non conferma.
 CREATE TEMP TABLE tmp_link_ctx AS
 SELECT
     ef.id                AS emittente_pk,
     ef.soggetto_ruolo_id AS emittente_sr_id
 FROM anagrafiche.emittenti_fiscali ef
-WHERE ef.attivo = true
-ORDER BY ef.id
-LIMIT 1;
+WHERE ef.id = script.fn_pgtap_emittente_operatore();
 
--- 4 BA template distinti, uno per test, numerati da 1 a 4.
-CREATE TEMP TABLE tmp_link_templates AS
-SELECT
-    row_number() OVER (ORDER BY ba.id) AS slot,
-    ba.id                              AS template_ba_id,
-    ba.istanza_utility_id              AS istanza_utility_id,
-    ba.soggetto_ruolo_id               AS soggetto_ruolo_id,
-    ba.utility_id                      AS utility_id,
-    coalesce(ba.valido_dal, current_date) AS valido_dal
-FROM anagrafiche.billing_account ba
-WHERE ba.parent_account_id IS NULL
-ORDER BY ba.id
-LIMIT 4;
-
+-- L'OPERATORE e' quello che il preambolo ha messo in sessione, non uno cercato
+-- a mano.
+--
+-- ⚠️ Il file lo cercava con `risorse_umane_auth_user.ruolo_sistema <> 'DISABILITATO'`,
+--   e quella colonna e' stata RITIRATA (non c'e' la colonna, non c'e' il tipo
+--   enum che la tipizzava): era la ragione per cui questo file moriva alla prima
+--   istruzione, con ZERO asserzioni eseguite.
+--
+-- ⭐ E non si sostituisce creando un utente Django nuovo: senza un'identita'
+--   OPERATORE attiva lo scope emittenti di un utente e' `{}`, cioe' fail-closed
+--   (`script.fn_get_emittenti_scope_sr_ids`), e non passerebbe nemmeno la
+--   rilettura del BA appena inserito. L'operatore di contesto ha per costruzione
+--   identita' attiva e whitelist: rifargli la saga del soggetto non aggiunge
+--   niente al test.
 CREATE TEMP TABLE tmp_link_user AS
-SELECT au.id AS user_id
-FROM django.auth_user au
-JOIN anagrafiche.risorse_umane_auth_user rau ON rau.auth_user_id = au.id
-WHERE au.is_active = true
-  AND rau.attivo = true
-  AND rau.ruolo_sistema <> 'DISABILITATO'::config.ruolo_sistema
-ORDER BY au.id
-LIMIT 1;
+SELECT NULLIF(current_setting('app.current_user_id', true), '')::integer AS user_id;
 
--- Pulizia preventiva associazione utente
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_link_user);
+-- QUATTRO SLOT = quattro istanze utility NUOVE, una per test.
+--
+-- ⚠️ PRIMA ERANO QUATTRO BA ESISTENTI, PRESI IN PRESTITO E CANCELLATI. Servivano
+--   solo per la loro terna (istanza, soggetto_ruolo, utility): il test inserisce
+--   un BA nuovo, e la DELETE del «template» era li' per liberare
+--   UNIQUE(istanza_utility_id, utility_id). Oggi quella DELETE non passa piu' —
+--   le FK figlie la bloccano — e i tre DO la catturavano finendo in «skip soft»:
+--   il file risultava con asserzioni che passavano senza aver inserito niente.
+--   ⭐ E' la premessa decaduta della suite: si smette di cancellare e si smette
+--   di collidere. Ogni slot ha la sua istanza, quindi la UNIQUE non e' mai in
+--   gioco e le tre asserzioni tornano a misurare l'auto-link.
+CREATE TEMP TABLE tmp_link_seed AS
+SELECT ba.soggetto_ruolo_id, ba.utility_id, iu.soggetto_id
+  FROM anagrafiche.billing_account ba
+  JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
+ WHERE ba.parent_account_id IS NULL
+   AND ba.soggetto_ruolo_id IS NOT NULL
+   AND ba.utility_id IS NOT NULL
+   AND iu.soggetto_id IS NOT NULL
+ ORDER BY ba.id
+ LIMIT 1;
+
+CREATE TEMP TABLE tmp_link_templates (
+    slot               int,
+    istanza_utility_id bigint,
+    soggetto_ruolo_id  bigint,
+    utility_id         integer,
+    valido_dal         date
+);
+
+DO $seed$
+DECLARE v_seed record; v_iu bigint; v_i int; v_sfx text;
+BEGIN
+    SELECT * INTO v_seed FROM tmp_link_seed;
+    IF v_seed IS NULL THEN
+        RETURN;                            -- niente terna valida: skip soft a valle
+    END IF;
+
+    -- ⭐ FINESTRA DIFFERITA: `trg_istanze_utilities_z90_require_utility_dichiarata_ins`
+    --   e' un CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che pretende un
+    --   satellite (BA / dati precontrattuali / cliente). Il preambolo
+    --   obbligatorio lo fa scattare sul primo insert: si apre la finestra, si
+    --   costruisce istanza + satellite, e si RICHIUDE.
+    SET CONSTRAINTS ALL DEFERRED;
+
+    FOR v_i IN 1..4 LOOP
+        v_sfx := substring(md5(clock_timestamp()::text || v_i::text) from 1 for 8);
+
+        INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
+        VALUES (v_seed.soggetto_id, true, 'PGTAP-AUTOLINK-IU-' || v_i || '-' || v_sfx)
+        RETURNING id INTO v_iu;
+
+        INSERT INTO anagrafiche.istanze_dati_precontrattuali (istanza_utility_id, utility_id)
+        VALUES (v_iu, v_seed.utility_id);
+
+        INSERT INTO tmp_link_templates
+        VALUES (v_i, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, current_date);
+    END LOOP;
+
+    SET CONSTRAINTS ALL IMMEDIATE;
+END $seed$;
 
 -- Tabella di appoggio per i risultati intermedi (creata fuori da qualunque
 -- savepoint perche' ne abbiamo eliminati: il ROLLBACK finale la elimina
@@ -118,27 +170,21 @@ BEGIN
         RETURN;
     END IF;
 
-    BEGIN
-        DELETE FROM anagrafiche.emittenti_fiscali_billing_account
-         WHERE billing_account_id = v_template.template_ba_id;
-        DELETE FROM anagrafiche.billing_account
-         WHERE id = v_template.template_ba_id;
-    EXCEPTION WHEN OTHERS THEN
-        INSERT INTO tmp_link_results (test_name, setup_ok, mapping_count)
-        VALUES ('test1', false, 0);
-        RAISE NOTICE 'Test 1: skip soft (FK figlie bloccano DELETE template slot 1)';
-        RETURN;
-    END;
+    -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
+    -- (istanza_utility_id, utility_id) non e' in gioco. Vedi la nota del seed.
 
     INSERT INTO anagrafiche.billing_account (
-        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
+        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        -- NOT NULL arrivata dopo la scrittura di questo file.
+        categoria_cliente_id
     )
     VALUES (
         'PGTAP-AUTOLINK-1-' || floor(random()*1e9)::text,
         v_template.istanza_utility_id,
         v_template.soggetto_ruolo_id,
         v_template.utility_id,
-        v_template.valido_dal
+        v_template.valido_dal,
+        (SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD')
     )
     RETURNING id INTO v_new_id;
 
@@ -159,10 +205,9 @@ SELECT is(
 -- ============================================================
 -- 2) Operatore con EF -> mapping specifico creato
 -- ============================================================
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_link_user),
-       (SELECT emittente_pk FROM tmp_link_ctx);
-
+-- Nessun INSERT in whitelist: l'operatore di contesto ha gia' la sua riga, ed e'
+-- unica per utente (UNIQUE su auth_user_id). `tmp_link_ctx` e' proprio
+-- l'emittente che quella riga gli assegna.
 SELECT set_config('app.current_user_id',
                   (SELECT user_id::text FROM tmp_link_user),
                   true);
@@ -186,27 +231,21 @@ BEGIN
         RETURN;
     END IF;
 
-    BEGIN
-        DELETE FROM anagrafiche.emittenti_fiscali_billing_account
-         WHERE billing_account_id = v_template.template_ba_id;
-        DELETE FROM anagrafiche.billing_account
-         WHERE id = v_template.template_ba_id;
-    EXCEPTION WHEN OTHERS THEN
-        INSERT INTO tmp_link_results (test_name, setup_ok, mapped_sr_id)
-        VALUES ('test2', false, v_expected_sr_id);
-        RAISE NOTICE 'Test 2: skip soft (FK figlie bloccano DELETE template slot 2)';
-        RETURN;
-    END;
+    -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
+    -- (istanza_utility_id, utility_id) non e' in gioco. Vedi la nota del seed.
 
     INSERT INTO anagrafiche.billing_account (
-        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
+        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        -- NOT NULL arrivata dopo la scrittura di questo file.
+        categoria_cliente_id
     )
     VALUES (
         'PGTAP-AUTOLINK-2-' || floor(random()*1e9)::text,
         v_template.istanza_utility_id,
         v_template.soggetto_ruolo_id,
         v_template.utility_id,
-        v_template.valido_dal
+        v_template.valido_dal,
+        (SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD')
     )
     RETURNING id INTO v_new_id;
 
@@ -243,27 +282,21 @@ BEGIN
         RETURN;
     END IF;
 
-    BEGIN
-        DELETE FROM anagrafiche.emittenti_fiscali_billing_account
-         WHERE billing_account_id = v_template.template_ba_id;
-        DELETE FROM anagrafiche.billing_account
-         WHERE id = v_template.template_ba_id;
-    EXCEPTION WHEN OTHERS THEN
-        INSERT INTO tmp_link_results (test_name, setup_ok, mapping_count)
-        VALUES ('test3', false, 1);
-        RAISE NOTICE 'Test 3: skip soft (FK figlie bloccano DELETE template slot 3)';
-        RETURN;
-    END;
+    -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
+    -- (istanza_utility_id, utility_id) non e' in gioco. Vedi la nota del seed.
 
     INSERT INTO anagrafiche.billing_account (
-        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
+        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        -- NOT NULL arrivata dopo la scrittura di questo file.
+        categoria_cliente_id
     )
     VALUES (
         'PGTAP-AUTOLINK-3-' || floor(random()*1e9)::text,
         v_template.istanza_utility_id,
         v_template.soggetto_ruolo_id,
         v_template.utility_id,
-        v_template.valido_dal
+        v_template.valido_dal,
+        (SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD')
     )
     RETURNING id INTO v_new_id;
 
@@ -287,6 +320,12 @@ SELECT is(
 --    quindi l'INSERT minimal sarebbe sufficiente. Per maggiore
 --    realismo usiamo comunque un template (slot 4 o fallback al 1).
 -- ============================================================
+-- Amministratore globale = whitelist VUOTA (`fn_get_emittenti_scope_sr_ids`
+-- risponde NULL, cioe' nessuna restrizione). Si svuota quella dell'operatore di
+-- contesto, ed e' lecito qui perche' il file dichiara in testa
+-- `zeroerp.allow_user_emittente_delete_override = 'on'`: e' lo sportello
+-- previsto dal guard `trgfn_user_emittenti_fiscali_guard_delete`, non un
+-- aggiramento.
 DELETE FROM config.user_emittenti_fiscali
 WHERE auth_user_id = (SELECT user_id FROM tmp_link_user);
 

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Se il prezzo puo' mancare, anche la sua origine deve poterlo.
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C.
+# Completa 20260819-13 (prezzo del componente facoltativo) e 20260819-17
+# (l'init che scrive NULL invece di sollevare).
+#
+# ⛔ SENZA QUESTO, LA SLICE NON FUNZIONA — e non si vedeva. La colonna
+# origine_prezzo dice DA DOVE viene il prezzo, e il suo CHECK ammette sei
+# valori: PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA, MANUALE,
+# LISTINO_BUNDLE. Nessuno significa «non risolto», perche' fino a ieri il caso
+# non esisteva: il resolver o trovava un prezzo, o sollevava.
+#
+# Ora che l'init scrive il prezzo NULL, scrive anche l'origine NULL — e la
+# colonna e' NOT NULL. L'INSERT muore con 23502, cioe' proprio nel caso che
+# tutta la slice serve a rendere possibile: il kit su un DDT che non vende.
+#
+# ⚠️ COME E' STATO TROVATO, perche' vale piu' del rimedio. I collaudi
+# precedenti avevano verificato che l'init COMPILASSE e che la preview
+# degradasse — ma la preview non inserisce nulla, e la compilazione non esercita
+# il ramo. Il difetto e' uscito solo quando il pgTAP di slice ha provato a
+# costruire davvero un kit senza prezzi: la fixture falliva, e la prima
+# impressione era «il caso non e' costruibile su questo DB». Era invece la
+# slice, incompleta. Un test che costruisce il caso vero vede cose che un test
+# sulle parti non vede.
+#
+# LA SCELTA: origine facoltativa, non un settimo valore nel vocabolario.
+#   * il prezzo e l'origine mancano INSIEME, sempre: sono la stessa assenza
+#     detta due volte, e due colonne che si accendono e si spengono insieme non
+#     hanno bisogno di un valore inventato per dire «spente»;
+#   * un 'NON_RISOLTO' nel CHECK sarebbe entrato nel vocabolario di CINQUE
+#     tabelle (o avrebbe reso il vincolo diverso su una sola, che e' peggio), e
+#     ogni lettore di origine_prezzo avrebbe dovuto imparare un valore nuovo;
+#   * un CHECK che valuta NULL non fallisce: il vincolo esistente resta valido
+#     senza toccarlo.
+#
+# ⭐ PERIMETRO: SOLO ddt_righe_componenti, come per il prezzo. Su preventivi,
+# ordini, contratti e offerte la colonna resta NOT NULL — li' un prezzo c'e'
+# sempre, quindi un'origine pure.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260819-19-alter-ddt-righe-componenti-origine-nullable-mctit.yaml
+
+  - changeSet:
+      id: 20260819-19-alter-ddt-righe-componenti-origine-nullable
+      author: mctit
+      runOnChange: false
+      comment: >
+        vendite.ddt_righe_componenti.origine_prezzo diventa facoltativa:
+        quando il prezzo del componente non si risolve non c'e' nessuna
+        origine da dichiarare, e il CHECK a sei valori non ne prevede una per
+        «non risolto». Senza, l'INSERT dell'init muore con 23502 proprio nel
+        caso che la slice serve a rendere possibile. SOLO questa tabella.
+        Brief brief-ddt-righe-senza-prezzo §9 slice C.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt_righe_componenti
+                columnName: origine_prezzo
+            # Ha senso solo se il prezzo e' gia' facoltativo: le due colonne
+            # mancano insieme o non mancano affatto.
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'vendite.ddt_righe_componenti'::regclass
+                     AND a.attname  = 'prezzo_unitario'
+                     AND a.attnotnull
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ALTER COLUMN origine_prezzo DROP NOT NULL;
+
+              COMMENT ON COLUMN vendite.ddt_righe_componenti.origine_prezzo
+              IS 'Da dove viene il prezzo del componente: PROMO, CONTRATTO_OVERRIDE, '
+                 'CONTRATTO_LISTINO, CATEGORIA, MANUALE, LISTINO_BUNDLE. NULL ammesso dal '
+                 '2026-08-19 e significa «nessuna origine perche'' nessun prezzo»: le due '
+                 'colonne mancano sempre insieme, sul DDT che non vende. Non esiste un valore '
+                 '«NON_RISOLTO» apposta — sarebbe entrato nel vocabolario di cinque tabelle '
+                 'per dire cio'' che l''assenza dice gia''. Il motivo tecnico della mancata '
+                 'risoluzione sta in prezzo_resolver_context->>''esito_codice''. Sulle tabelle '
+                 'gemelle la colonna resta NOT NULL. Brief: brief-ddt-righe-senza-prezzo §9 slice C.';

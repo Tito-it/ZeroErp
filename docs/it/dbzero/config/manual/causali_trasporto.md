@@ -112,3 +112,56 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
 ---
 
 > **“Un catalogo ben governato delle causali di trasporto rende più chiaro il ciclo logistico e facilita la definizione di regole automatiche su DDT, ordini e fatture.”**
+
+---
+
+## ⭐ `fatturabile` — la colonna che dice se la merce si sta vendendo
+
+> Aggiunta il 2026-07-17. È la colonna più importante della tabella, e non si
+> vede dal nome: decide **se un documento entra nel giro della fatturazione**.
+
+La merce si muove anche quando non si vende: conto visione, campionatura,
+riparazione, trasferimento fra depositi, conto lavorazione, omaggio. In quei casi
+un prezzo di listino è un dato che **non ha significato** — non manca per
+distrazione, semplicemente non si applica.
+
+Il problema è che l'assenza di un prezzo, da sola, è **ambigua**: non distingue
+«ho deciso che non si vende» da «me ne sono dimenticato». Per questo l'intento
+**non si deduce**, si **dichiara** — e lo si dichiara con il campo che
+l'operatore compila comunque, la causale.
+
+| causale (seed) | `fatturabile` |
+|---|---|
+| VENDITA | ✅ sì |
+| CONTO_VISIONE · RESO · RIPARAZIONE · CAMPIONATURA · TRASFERIMENTO · CONTO_LAVORO · OMAGGIO | no |
+
+### Che cosa cambia, in concreto
+
+* **all'emissione**: se la causale dice che si vende, ogni riga — e ogni
+  componente di un kit — deve avere un prezzo, altrimenti il documento non esce
+  e il messaggio dice **quale riga** manca. Se la causale dice che non si vende,
+  il prezzo non viene chiesto a nessuno;
+* **dopo l'emissione**: i documenti non fatturabili restano **fuori** dalle liste
+  e dai cruscotti della fatturazione — non come «scartati», proprio come non
+  pertinenti;
+* **la causale non si cambia più** una volta che il documento è uscito dalla
+  bozza: è stampata sul documento di trasporto, e cambiarla dopo vorrebbe dire
+  che il foglio consegnato al vettore e l'archivio dicono cose diverse.
+
+### Due cose da sapere prima di aggiungere una causale
+
+⚠️ **`fatturabile` è una cella di seed, non codice.** I casi discutibili — e
+l'omaggio è il principale — si decidono cambiando un valore nel CSV, non
+toccando funzioni. Se un domani l'omaggio dovesse arrivare a fattura (la rivalsa
+IVA), quello **non** è un fatto del prezzo né della causale: è la **natura** del
+documento, l'asse che vive in `config.nature_doc_fiscale`.
+
+⚠️ **In bozza la causale può mancare, ed è voluto.** L'operatore carica le righe
+prima di aver deciso l'intento: pretendere la causale al salvataggio
+sposterebbe l'errore su un momento in cui la risposta non c'è ancora. Il
+presidio sta **all'emissione**, che è il momento in cui il documento comincia ad
+avere effetti.
+
+**Approfondimento**: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md`
+· decisione di design DL-28 in
+`docs/it/dev/work-done/brief-design-fatturazione-due-lenti.md` §10.

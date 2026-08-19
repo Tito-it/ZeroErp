@@ -157,3 +157,82 @@ class ResiRigheGiaAccreditatoTests(TestCase):
         self.assertIn("vendite.fn_resi_riga_accreditato_partita(rr.id)", sql)
         self.assertIn("AS gia_accreditato", sql)
         self.assertNotIn("SUM(qta_partita)", sql)
+
+
+class FatturaNaturaELegameTests(TestCase):
+    """B5 + B7: la natura del documento e il legame della nota di credito."""
+
+    # Scopo: 🔴 B5 — la natura DEVE uscire decodificata dal backend, non essere
+    # risolta dal client (display field via JOIN, memoria
+    # feedback_display_fields_backend). Prima del 2026-08-19 `natura_doc_id` non
+    # era nominata da nessun punto di `backend/apps/`: il drawer del lotto non
+    # «assumeva» che fossero tutte fatture — non aveva il dato.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_testata_fattura_decodifica_la_natura(self, mock_conn) -> None:
+        cursor = MagicMock()
+        cursor.description = []
+        cursor.fetchall.return_value = []
+        cursor.fetchone.return_value = None
+        _mock_connection(mock_conn, cursor)
+
+        from apps.vendite.db.vendite_repository import VenditeRepository
+
+        VenditeRepository().get_fattura_testata(7, auth_user_id=1)
+
+        sql = cursor.execute.call_args[0][0]
+        self.assertIn("config.nature_doc_fiscale ndf", sql)
+        self.assertIn("AS natura_doc_codice", sql)
+        self.assertIn("AS natura_doc_descrizione", sql)
+
+    # Scopo: B7 — il puntatore riga↔riga e la sua decodifica minima (numero
+    # della fattura rettificata + riga_nr della gemella). ⚠️ Il puntatore sta su
+    # `fatture_righe`, che la vista di esposizione NON proietta: se qualcuno
+    # tornasse a leggere solo la vista, la colonna sparirebbe in silenzio.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_righe_fattura_portano_il_legame_riga_a_riga(self, mock_conn) -> None:
+        cursor = MagicMock()
+        cursor.description = []
+        cursor.fetchall.return_value = []
+        _mock_connection(mock_conn, cursor)
+
+        from apps.vendite.db.vendite_repository import VenditeRepository
+
+        VenditeRepository().list_fattura_righe(7)
+
+        sql = cursor.execute.call_args[0][0]
+        # ⚠️ Si guarda la PROIEZIONE, non tutta la query: `fr.riga_rettificata_id`
+        # compare anche nella JOIN, quindi un `assertIn` sull'intero SQL resta
+        # verde anche se la colonna sparisce dalla SELECT. Provato per
+        # mutazione — la prima versione di questo test non mordeva.
+        proiezione = sql.split(" FROM ", 1)[0]
+        self.assertIn("fr.riga_rettificata_id", proiezione)
+        self.assertIn("AS riga_rettificata_nr", proiezione)
+        self.assertIn("AS riga_rettificata_fattura_numero", proiezione)
+
+    # Scopo: B7 — il legame DOCUMENTALE si legge nei due versi con la stessa
+    # query, e il verso e' un PARAMETRO, non due SQL copiate.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_legame_documentale_nei_due_versi(self, mock_conn) -> None:
+        cursor = MagicMock()
+        cursor.description = []
+        cursor.fetchall.return_value = []
+        _mock_connection(mock_conn, cursor)
+
+        from apps.vendite.db.vendite_repository import VenditeRepository
+
+        out = VenditeRepository().get_fattura_rettifiche(7)
+
+        self.assertEqual(sorted(out.keys()), ["rettifica", "rettificata_da"])
+        chiamate = cursor.execute.call_args_list
+        self.assertEqual([c.args[1][0] for c in chiamate],
+                         ["rettifica", "rettificata_da"])
+        self.assertEqual([c.args[1][1] for c in chiamate], [7, 7])
+        # 🔴 Il test che conta: nei due versi le colonne del ponte si SCAMBIANO,
+        # e le due metà della stessa query (JOIN e WHERE) devono restare
+        # concordi. Se un giorno divergessero, il drawer mostrerebbe il numero
+        # di un altro documento senza sollevare niente.
+        sql_rettifica, sql_rettificata_da = (c.args[0] for c in chiamate)
+        self.assertIn("f.id = fr.rettificata_id", sql_rettifica)
+        self.assertIn("WHERE fr.fattura_id =", sql_rettifica)
+        self.assertIn("f.id = fr.fattura_id", sql_rettificata_da)
+        self.assertIn("WHERE fr.rettificata_id =", sql_rettificata_da)

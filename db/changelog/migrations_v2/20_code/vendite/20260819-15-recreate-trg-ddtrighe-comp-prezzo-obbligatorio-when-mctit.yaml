@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il divieto del prezzo zero sui componenti obbligatori vale se il DDT vende.
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# punto C3 (decisione D-5 = K2). Richiede 20260819-14 (la funzione della WHEN).
+#
+# IL DIVIETO E LA SUA PREMESSA. script.trgfn_componenti_check_prezzo_obbligatorio
+# blocca prezzo_unitario = 0 sui componenti che la distinta dichiara
+# obbligatori, e la sua ragione e' scritta nel messaggio 444: «i componenti
+# obbligatori devono sempre produrre valore». Vero — su un documento che vende.
+# Su un conto visione, una campionatura o una riparazione non c'e' nessun valore
+# da produrre, e il divieto chiede di inventare un prezzo per merce che non si
+# sta vendendo.
+#
+# ⭐ LA FORMA: si cambia QUANDO il trigger scatta, non cosa fa. La funzione
+# trigger e' condivisa da quattro tabelle *_righe_componenti e NON viene toccata:
+# preventivi, ordini e contratti restano identici, bit per bit, e non c'e'
+# nessuna riga di codice nuova da tenere allineata fra le due strade. La
+# condizione vive nella clausola WHEN, che e' il posto che PostgreSQL prevede
+# per «esegui il trigger solo se».
+#
+# ⚠️ WHEN e non un IF dentro la funzione: un IF avrebbe richiesto di passare
+# alla funzione condivisa il modo di raggiungere la testata del DDT — cioe' di
+# insegnarle un dominio. La WHEN tiene la conoscenza dove appartiene, in
+# vendite.fn_check_ddt_riga_richiede_prezzo.
+#
+# ⚠️ SOLO INSERT: la WHEN non puo' essere valutata allo stesso modo su UPDATE
+# senza riferirsi a NEW, che qui c'e' — quindi la si applica a entrambi gli
+# eventi come prima. Il trigger resta BEFORE INSERT OR UPDATE OF
+# prezzo_unitario, articolo_componente_id: gli stessi eventi di prima, non uno
+# di piu' e non uno di meno. L'unica differenza e' la condizione.
+#
+# COSA RESTA IN PIEDI, ed e' il motivo per cui allentare qui non apre niente:
+#   * con causale FATTURABILE la WHEN e' vera e il divieto vale come sempre;
+#   * con causale ASSENTE (bozza) la WHEN e' falsa, ma il documento non e'
+#     ancora emesso: presidia il gate all'emissione (20260819-16);
+#   * il gate all'emissione ferma comunque il DDT fatturabile con componenti
+#     non valorizzati.
+#
+# Definizione del trigger presa da pg_get_triggerdef sull'oggetto vivo, non da
+# uno YAML storico: cambia solo l'aggiunta della WHEN.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260819-15-recreate-trg-ddtrighe-comp-prezzo-obbligatorio-when-mctit.yaml
+
+  - changeSet:
+      id: 20260819-15-recreate-trg-ddtrighe-comp-prezzo-obbligatorio-when
+      author: mctit
+      runOnChange: false
+      comment: >
+        Il trigger trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd su
+        vendite.ddt_righe_componenti prende una clausola WHEN: il divieto del
+        prezzo zero sui componenti obbligatori scatta solo se il DDT ha una
+        causale fatturabile. La funzione trigger condivisa con preventivi,
+        ordini e contratti NON viene toccata. Brief
+        brief-ddt-righe-senza-prezzo §9 slice C (C3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_check_ddt_riga_richiede_prezzo'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_trigger
+                   WHERE tgname = 'trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd
+                  ON vendite.ddt_righe_componenti;
+
+              -- Stessi eventi e stessa funzione di prima. L'unica differenza e'
+              -- la WHEN: il divieto del prezzo zero sui componenti obbligatori
+              -- scatta solo se il documento vende davvero.
+              CREATE TRIGGER trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd
+                  BEFORE INSERT OR UPDATE OF prezzo_unitario, articolo_componente_id
+                  ON vendite.ddt_righe_componenti
+                  FOR EACH ROW
+                  WHEN (vendite.fn_check_ddt_riga_richiede_prezzo(NEW.riga_ddt_id))
+                  EXECUTE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd
+                  ON vendite.ddt_righe_componenti;
+              CREATE TRIGGER trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd
+                  BEFORE INSERT OR UPDATE OF prezzo_unitario, articolo_componente_id
+                  ON vendite.ddt_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio();

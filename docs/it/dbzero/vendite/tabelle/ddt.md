@@ -75,17 +75,18 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ddt_a10_aspetti_beni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aspetti_beni', 'attivo', 'aspetto_bene_id', 'id')` |
 | trg_ddt_a10_aspetti_beni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aspetti_beni', 'attivo', 'aspetto_bene_id', 'id')` |
-| trg_ddt_a10_causali_trasporto_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_trasporto', 'attivo', 'causale_trasporto_id', 'id')` |
+| trg_ddt_a10_aspetti_beni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aspetti_beni', 'attivo', 'aspetto_bene_id', 'id')` |
 | trg_ddt_a10_causali_trasporto_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_trasporto', 'attivo', 'causale_trasporto_id', 'id')` |
+| trg_ddt_a10_causali_trasporto_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_trasporto', 'attivo', 'causale_trasporto_id', 'id')` |
 | trg_ddt_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ddt_default_emittente()` |
 | trg_ddt_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_ddt_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
-| trg_ddt_a10_gen_numero_emesso_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ddt_gen_numero_emesso()` |
 | trg_ddt_a10_gen_numero_emesso_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_gen_numero_emesso()` |
+| trg_ddt_a10_gen_numero_emesso_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ddt_gen_numero_emesso()` |
 | trg_ddt_a10_guard_approvazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()` |
 | trg_ddt_a10_guard_causale_emissione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_guard_causale_emissione()` |
+| trg_ddt_a10_guard_causale_immutabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_guard_causale_immutabile()` |
 | trg_ddt_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_ddt_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_ddt_a10_guard_fatt_immediata_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('DDT_VENDITA')` |

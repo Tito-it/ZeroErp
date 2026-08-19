@@ -2,7 +2,25 @@
 
 ### Scopo
 
-Inizializza i componenti BoM (modello unificato) per una riga DDT composita. Per ogni componente attivo della BoM: se presente un override in `p_componenti_overrides`, usa quel prezzo; altrimenti chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto = v_articolo_id` per attivare il pricing bundle — se il resolver fallisce, solleva `E_DOC_COMPONENTE_LISTINO_MANCANTE`. Idempotente.
+Inizializza i componenti BoM (modello unificato) per una riga DDT composita. Per ogni componente attivo della BoM: se presente un override in `p_componenti_overrides`, usa quel prezzo; altrimenti chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto = v_articolo_id` per attivare il pricing bundle — se il resolver non risolve **la riga si crea lo stesso, con prezzo `NULL`** (rev 2026-08-19). Idempotente.
+
+> ## ⚠️ Rev 2026-08-19 — non fallisce più quando il prezzo non c'è
+>
+> Chiama il **nucleo**
+> [fn_resolve_prezzo_listino_v2_esito](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2_esito)
+> invece del guscio che solleva. Quando il prezzo non si risolve:
+>
+> * il componente viene **inserito** con `prezzo_unitario` e `origine_prezzo` a
+>   `NULL` — prima falliva l'inserimento dell'**intera riga-kit**, ed era l'unica
+>   ragione per cui un kit non poteva viaggiare su un DDT che non vende;
+> * il **motivo** finisce in `prezzo_resolver_context->>'esito_codice'`: chi
+>   guarderà quella riga fra sei mesi saprà che il prezzo manca perché l'articolo
+>   non era a listino, non per una dimenticanza;
+> * **nessuna riga di log**: il nucleo non scrive su `dbops.error_log`.
+>
+> ⚠️ Il divieto dell'**override a zero** su un componente obbligatorio prende la
+> stessa condizione del trigger: vale finché il documento vende. Erano due posti
+> che avrebbero detto cose diverse sulla stessa regola.
 
 > **Vedi anche**
 >
@@ -54,7 +72,7 @@ vendite.fn_ddt_riga_componenti_init(
 5. **Lettura parametri DDT** — `billing_account_id`, `utility_id` da `ddt`. `utility_id` è di tipo `integer`.
 6. **Loop per-componente** — per ogni componente attivo della BoM (`attivo = TRUE`, `validita @> p_data_riferimento`), senza filtro su `esposto_in_fattura`:
    - **Path override**: se `p_componenti_overrides ? componente_id::text` → prezzo = valore della mappa, `origine_prezzo = 'MANUALE'`. Prezzo = 0 → raise `E_PARAMETRO_INVALIDO` **solo** se `v_comp.obbligatorio = TRUE`; per i componenti opzionali, prezzo = 0 è ammesso.
-   - **Path resolver**: chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto := v_articolo_id`. Se esiste una riga in `vendite.listini_righe_componenti` per (listino_versione, padre, figlio, data), il resolver ritorna `origine = 'LISTINO_BUNDLE'`. Se fallisce → raise `E_DOC_COMPONENTE_LISTINO_MANCANTE`.
+   - **Path resolver**: chiama `fn_resolve_prezzo_listino_v2` con `p_articolo_padre_contesto := v_articolo_id`. Se esiste una riga in `vendite.listini_righe_componenti` per (listino_versione, padre, figlio, data), il resolver ritorna `origine = 'LISTINO_BUNDLE'`. ⚠️ Se non risolve → **nessun raise**: prezzo `NULL` e motivo nel contesto (rev 2026-08-19).
    - **INSERT**: `attivo` = `v_comp.obbligatorio` — TRUE per i componenti obbligatori, FALSE per i componenti opzionali.
 7. **INSERT componente** — `prezzo_unitario` NOT NULL, `origine_prezzo`, `prezzo_resolver_context` JSONB.
 8. **Check BoM vuota** — se `v_inserted = 0` dopo il loop → raise `E_DOC_COMPOSITO_BOM_VUOTA` (442). Non scatta in caso di idempotenza (intercettata al passo 4).
@@ -114,7 +132,7 @@ Struttura via override:
 | Codice | Quando |
 |---|---|
 | `E_PARAMETRO_INVALIDO` | `p_riga_id`/`p_emittente_sr_id` NULL/≤0; riga non trovata; override con prezzo = 0 su componente obbligatorio |
-| `E_DOC_COMPONENTE_LISTINO_MANCANTE` (id 440) | Resolver fallisce per un componente senza override |
+| ~~`E_DOC_COMPONENTE_LISTINO_MANCANTE` (id 440)~~ | ⚠️ **non più sollevato da qui** (rev 2026-08-19): il mancato prezzo è un esito, non un errore |
 | `E_DOC_COMPOSITO_BOM_VUOTA` (442) | Articolo composito senza componenti attivi e validi alla data di riferimento |
 
 ## Note operative

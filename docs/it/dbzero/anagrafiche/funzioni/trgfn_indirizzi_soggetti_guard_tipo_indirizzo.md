@@ -60,10 +60,20 @@ BEGIN
        AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
        AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
   ) THEN
+    -- ⭐ rev 2026-08-19: codice PROPRIO di questo layer.
+    --   Prima era E_TIPO_INDIRIZZO_NON_PERMESSO, condiviso col guard
+    --   sui RUOLI (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo).
+    --   L'arita' tornava — tre segnaposto, tre valori — quindi niente
+    --   si rompeva; ma il messaggio di quel codice chiama il secondo
+    --   valore `tipo_ruolo_id` e il terzo `soggetto_ruolo_id`, mentre
+    --   qui sono un tipo_soggetto_dettaglio_id e un soggetto_id, e la
+    --   nota manda a config.tipi_ruolo_tipi_indirizzo — che questo
+    --   guard non legge nemmeno. Un messaggio plausibile e falso manda
+    --   a cercare dove il problema non c'e'.
     PERFORM script.fn_log_and_raise_error(
       'database',
       'trgfn_indirizzi_soggetti_guard_tipo_indirizzo',
-      'E_TIPO_INDIRIZZO_NON_PERMESSO',
+      'E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO',
       jsonb_build_object(
         'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
         'tipo_soggetto_dettaglio_id', v_tipo_soggetto_dettaglio_id,
@@ -81,10 +91,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
-IS 'Trigger function per validare coerenza tra anagrafiche.indirizzi_soggetti e config.tipi_soggetto_dettaglio_tipi_indirizzo.
-Verifica che tipo_indirizzo sia ammesso per il tipo_soggetto_dettaglio del soggetto associato.
-Se non esiste alcuna riga di matrice per il tipo_soggetto_dettaglio → tutti i tipi sono ammessi.
-Altrimenti, solo i tipi attivi e validi sono permessi.';
+IS 'Guard sugli indirizzi di SOGGETTO: il tipo di indirizzo deve essere fra quelli che config.tipi_soggetto_dettaglio_tipi_indirizzo ammette per il tipo_soggetto_dettaglio della riga, attivo e valido oggi. Fallback permissivo quando il soggetto non ha un tipo_soggetto_dettaglio o quando per quel tipo non esiste nessuna riga di matrice. ⛔ Da NON confondere con anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo, che e'' il guard del layer RUOLO e legge un''altra matrice: sono due controlli distinti su due tabelle distinte, e dal 2026-08-19 hanno anche due CODICI ERRORE distinti. Prima ne condividevano uno, e il messaggio — scritto per i ruoli — mandava chi sbagliava sul layer soggetto a cercare nella tabella dei ruoli.';
 ```
 
 ---

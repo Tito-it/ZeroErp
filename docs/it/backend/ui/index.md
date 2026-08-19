@@ -1,5 +1,6 @@
 # Area 'ui' (Backend)
 
 ## API
+- [api_export_liste](manual/api_export_liste.md) — Un contratto solo per **tutti** gli export di lista dell'applicazione: stesso parametro, stesso comportamento, stesso tetto. Cambia il dominio, non la regola.
 - [api_ui_admin_personalizzazioni](manual/api_ui_admin_personalizzazioni.md) — Esporre via HTTP la gestione amministrativa dei **preset** di lista (ui.lista_preset + composizione ui.lista_preset_colonna) e dei **permessi colonna** (ui.lista_colonna_permesso) per il refactor personalizzazioni liste…
 - [api_ui_liste](manual/api_ui_liste.md) — Esporre via HTTP la configurazione effettiva di una lista per l'utente autenticato (cascata preset + permessi) e gestire la sua preferenza personale (UPSERT/DELETE). Endpoint trasversali consumati da tutte le viste del…

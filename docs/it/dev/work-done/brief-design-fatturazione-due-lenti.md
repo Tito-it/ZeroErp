@@ -529,6 +529,39 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 | DL-27 | **Il contatore — la forma del motore** (2026-07-16/17) | Fonte unica **set-based** per **partita di merce**: `tenuti − fatturati`, e **il segno decide** (positivo → fattura la differenza · negativo → accredita · zero → niente). **Tenuti** = Σ consegnati − Σ resi (CONFERMATI, attivi, tutti i tipi) + Σ ri-consegnati. **Fatturati** = Σ `attivita_fatturabili.quantita` delle righe AF della partita, via `commessa_attivita_id` — **frontiera = EMISSIONE** (*«lo stato EMESSA serve una NC»*, Tid: l'esistenza della riga AF **è** la frontiera; predicato `= 'EMESSA'` whitelist). **Chiave partita** = `ordine_riga_id` + catena DDT/ponte per lo standalone (**NO sorgente polimorfa**: servono archi pesati, non identità di nodo — guida sorgente-polimorfa §6; precedente ROW_VALIDATOR archiviato). Consumatori: fn di push, coda accrediti, resolver DDT dashboard, `available_actions`. Decisioni figlie chiuse: fix flip a RESO (`= 'CONFERMATO'`, i resi DRAFT non contano — difetto corretto in `fn_conferma_reso` + `fn_annulla_reso`) · **contratto alla slice NC** (la NC deve essere attribuibile alla merce e portare una quantità, o il contatore non la vede) · quantità immutabili + porta oneri (brief dedicato, valori negativi restano ammessi in catena per predisposizione a conguagli/storni futuri). **Capitolato di verifica**: le 10 righe della tabella §3a del [brief DB](brief-db-fatturazione-ddt-resi.md) |
 | DL-28 | **DDT di solo trasporto — l'intento si dichiara con la causale** (2026-07-17) | Il DDT ammette righe senza prezzo per design («solo trasporto»), ma il lister non le esclude → standalone senza prezzi a SPEDITO = «da fatturare» con prezzo vuoto. L'intento **non si inferisce** dall'assenza di prezzo (ambiguo: dimenticanza o scelta): si dichiara col campo che l'operatore già compila. **Colonna `fatturabile` su `config.causali_trasporto`** (seed: VENDITA = sì; CONTO_VISIONE/RESO/RIPARAZIONE/CAMPIONATURA/TRASFERIMENTO/CONTO_LAVORO/OMAGGIO = no — i casi ambigui come OMAGGIO sono una cella di seed, non codice; pattern `tipi_reso.riapre_residuo`). **Gate all'emissione** (mirror gate indirizzi): causale fatturabile → ogni riga con prezzo **risolvibile** (proprio o da ordine via COALESCE), altrimenti blocco parlante — il prezzo dimenticato diventa errore, non silenzio; causale obbligatoria all'emissione. Lister e popolazione resolver (DL-21) escludono i non fatturabili: la card resta «dentro chi fattura, fuori chi no». Scartata l'alternativa flag in testata DDT (due verità da allineare con la causale). Dettaglio: brief DB §4a |
 
+> ## ⛔ Errata corrige a DL-28 — 2026-08-19
+>
+> **La premessa della riga qui sopra era falsa per metà, e la metà falsa è la
+> prima.** *«Il DDT ammette righe senza prezzo per design»* descriveva
+> un'intenzione, non il prodotto: fino al 2026-08-19 un operatore quella riga
+> **non poteva caricarla**. Il pricing la respingeva con «impossibile risolvere
+> il prezzo listino», e lo faceva per **qualunque** causale — comprese le sette
+> non fatturabili, dove un prezzo di listino non ha significato.
+>
+> Ne discendeva che **la metà «blocco parlante» del gate era irraggiungibile
+> dall'applicazione**: un presidio che si attiva su una condizione che il
+> prodotto non consente di produrre non scatta mai.
+>
+> **Le tre cose che erano vere, e che vanno tenute distinte da quella falsa:**
+>
+> * il caso esisteva **nel database**: `vendite.ddt_righe.prezzo_unitario` è
+>   sempre stato nullable, e `vendite.fn_genera_ddt_riconsegna` righe senza
+>   prezzo le **crea** (misurate: 6 sul DB di sviluppo, tutte ri-consegne);
+> * il gate era **esercitato dai pgTAP**, che quelle righe le scrivono in SQL;
+> * ma **non è mai scattato su un documento reale**: 271 occorrenze in
+>   `dbops.error_log`, tutte con un `ddt_id` che non esiste più, cioè corse di
+>   test (il log è out-of-transaction e sopravvive al rollback).
+>
+> **Dal 2026-08-19 la premessa è vera anche nel prodotto** (lato DB): il
+> resolver dei prezzi sa rispondere «non risolvo» senza sollevare, i componenti
+> di un kit ammettono il prezzo assente, e il gate all'emissione chiede il
+> prezzo — a righe **e** componenti — solo quando la causale dichiara che il
+> documento vende. ⚠️ Resta la metà applicativa: finché il backend non usa il
+> nuovo resolver, l'operatore continua a non poter caricare la riga.
+>
+> Storia, misure e piano: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md`
+> (§7 R-1/R-2 per il rilievo, §9 per il piano).
+
 ## 11. Piano di sviluppo
 
 > **Riallineamento 2026-08-09.** Le note «non committato» sparse nelle righe sotto

@@ -4,8 +4,11 @@
 >
 > Vista flat clienti con codice da billing_account, stato e date ciclo vita. Usata per ricerca codice universale (entita_tabella in tipi_ruoli) e come source dati per dettaglio entita' CL. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW anagrafiche.vw_clienti_codice_ba AS
+CREATE OR REPLACE VIEW anagrafiche.vw_clienti_codice_ba
+WITH (security_invoker=on) AS
 SELECT cl.soggetto_ruolo_id,
     cl.id,
     cl.id AS entita_id,

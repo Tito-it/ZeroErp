@@ -2,7 +2,34 @@
 
 ### Scopo
 
-Funzione generica del pattern "righe componenti BoM CASO A": aggiorna `prezzo_unitario` della riga padre come `COALESCE(SUM(figli.prezzo_unitario × figli.coeff_qta_snapshot), 0)` sui figli attivi. Parametrizzata su schema/tabella/FK per essere riusata da tutte e 4 le sorgenti documentali (preventivi, ordini, contratti, DDT).
+Funzione generica del pattern "righe componenti BoM CASO A": aggiorna `prezzo_unitario` della riga padre dai figli attivi.
+
+> ## ⚠️ Rev 2026-08-19 — tre casi, non piu' due
+>
+> La formula **non è più** `COALESCE(SUM(…), 0)`:
+>
+> | figli attivi | prezzo del padre |
+> |---|---|
+> | nessuno | `0` |
+> | almeno uno **senza prezzo** | **`NULL`** — «non si sa» |
+> | tutti valorizzati | `SUM(prezzo × coeff_qta_snapshot)` |
+>
+> **Perché.** Da quando su `vendite.ddt_righe_componenti` il prezzo può mancare
+> (un kit che viaggia senza vendersi), la `SUM` semplice **ignorerebbe** il
+> figlio scoperto e restituirebbe la somma degli altri: un prezzo **sbagliato**
+> al posto di un prezzo **assente**.
+>
+> ⛔ E la differenza non è formale. Un kit a prezzo assente lo ferma il gate
+> all'emissione; un kit a prezzo **parziale** il gate lo passa — un prezzo c'è —
+> e arriva in fattura. È l'unico difetto di quella slice che nessun altro
+> controllo prenderebbe.
+>
+> ⚠️ **Il `COALESCE` non torna «per sicurezza»**: trasformerebbe il `NULL` in
+> zero, cioè rifarebbe il difetto in un altro modo. Il caso «nessun figlio» è
+> gestito esplicitamente.
+>
+> Su preventivi, ordini e contratti i figli restano `NOT NULL`: per loro il ramo
+> nuovo è irraggiungibile e il comportamento è identico a prima. Parametrizzata su schema/tabella/FK per essere riusata da tutte e 4 le sorgenti documentali (preventivi, ordini, contratti, DDT).
 
 > **Vedi anche**
 >
@@ -56,6 +83,10 @@ UPDATE <schema>.<tab_padre>
 - **SQL dinamico sicuro**: gli identificatori schema/tabella/colonna passano per `%I` di `format()` — nessun rischio SQL injection.
 
 ## Invariante componenti
+
+⚠️ **Superato il 2026-08-19** (vale ancora per preventivi, ordini, contratti e
+offerte; **non** per `vendite.ddt_righe_componenti`, dove il prezzo e la sua
+origine possono mancare insieme). Il testo storico:
 
 Con il pattern form atomic (rev. 12-05-2026b), `prezzo_unitario` è sempre NOT NULL su tutte le tabelle `*_righe_componenti`. Il vincolo DB è:
 

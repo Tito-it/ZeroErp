@@ -110,6 +110,34 @@ Per aggiungere una relazione specializzata: una riga di config in
 `_LOOKUP_SPECIALIZZATE` (`extra_col`, opz. `extra_expr`, `has_codice_interno`,
 `has_obsoleto`) — niente nuovo SQL.
 
+## Lookup a matrice — endpoint dedicati
+
+Tre lookup **non** passano da `rel`, e non e' un'eccezione arbitraria: non
+servono una tabella codice/descrizione, servono una **matrice** (quali
+indirizzi per quale tipo, quali utility per quale ruolo). Il contratto generico
+non saprebbe esprimere il vincolo, quindi hanno un path proprio.
+
+| endpoint | risponde |
+|---|---|
+| `GET /api/v1/core/lookup/tipi-soggetto-dettaglio/{tipo_soggetto_dettaglio_id}/indirizzi/` | tipi indirizzo **ammessi e obbligatori** per quel tipo soggetto dettaglio |
+| `GET /api/v1/core/lookup/tipi-ruolo/{tipo_ruolo_codice}/indirizzi/` | idem, ma per **tipo ruolo** (chiave = `codice_interno`, non id) |
+| `GET /api/v1/core/lookup/tipi-ruolo/{tipo_ruolo_codice}/utilities/` | utility ammesse per quel ruolo, filtro strict su `config.utilities_tipi_ruolo` |
+
+Risposta: envelope standard con `results`. Nessun parametro di query: la
+matrice si chiede per intero, e il FE la usa per costruire i form indirizzo
+giusti **prima** che l'operatore sbagli.
+
+⚠️ **Le due matrici indirizzi sono governate da tabelle diverse e non vanno
+confuse**: quella per tipo soggetto e'
+`config.tipi_soggetto_dettaglio_tipi_indirizzo`, quella per ruolo e'
+`config.tipi_ruolo_tipi_indirizzo`. Hanno guard distinti a DB e, dal
+2026-08-19, **codici errore distinti** — prima ne condividevano uno e il
+messaggio mandava a cercare nella tabella sbagliata.
+
+⭐ Tutti e tre dichiarano `skip_area_check = True`: sono lookup cross-dominio,
+letti da form di aree diverse. Lo scope resta quello del repository — vedi
+`api_routing_core.md`.
+
 ## Regole
 
 - `rel` deve essere nella whitelist `_REL_CONSENTITE` (errore `E_CORE_VALIDATION` se assente).

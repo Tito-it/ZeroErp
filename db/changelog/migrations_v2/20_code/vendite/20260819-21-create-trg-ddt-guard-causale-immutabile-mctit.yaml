@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il trigger che aggancia il guard sulla causale immutabile.
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice B
+# (decisione D-4). La funzione e' il changeSet 20260819-20.
+#
+# NOME: fase a10 come tutti i guard di questa tabella (linee-guida-trigger),
+# evento _upd, e `UPDATE OF causale_trasporto_id` perche' la logica riguarda
+# quella colonna sola — un trigger che si sveglia su ogni UPDATE di testata per
+# poi accorgersi che la causale non e' cambiata e' lavoro sprecato a ogni
+# salvataggio.
+#
+# ⚠️ LA CLAUSOLA WHEN NON E' RIDONDANTE rispetto a UPDATE OF. `UPDATE OF col`
+# scatta quando la colonna e' NOMINATA nella SET list, anche se le si riassegna
+# lo STESSO valore — ed e' esattamente cio' che fa un salvataggio di testata che
+# rimanda indietro tutti i campi del form. Senza la WHEN, riemettere la stessa
+# causale su un DDT spedito verrebbe bloccato: un errore su un'operazione che
+# non cambia niente. La WHEN filtra sul valore, non sulla menzione.
+#
+# Precedente in casa, stessa forma e stessa ragione:
+# trg_ddt_a10_guard_fatt_immediata_upd (brief-db-emissione-fattura-per-documento
+# -sorgente PARTE B, D-7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260819-21-create-trg-ddt-guard-causale-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260819-21-create-trg-ddt-guard-causale-immutabile
+      author: mctit
+      runOnChange: false
+      comment: >
+        Trigger trg_ddt_a10_guard_causale_immutabile_upd su vendite.ddt:
+        BEFORE UPDATE OF causale_trasporto_id, con WHEN sul valore realmente
+        cambiato. Aggancia vendite.trgfn_ddt_guard_causale_immutabile
+        (20260819-20). Brief brief-ddt-righe-senza-prezzo §9 slice B / D-4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_ddt_guard_causale_immutabile'
+            # Il codice errore deve essere a catalogo: senza, il guard
+            # solleverebbe un codice che nessuno sa tradurre. ⚠️ Sta in
+            # 80_data, che gira DOPO: quindi si verifica la presenza della
+            # COLONNA su cui il guard lavora, non del codice — vedi la nota
+            # sulle precondizioni in 20260819-11.
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt
+                columnName: causale_trasporto_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_causale_immutabile_upd
+                  ON vendite.ddt;
+
+              CREATE TRIGGER trg_ddt_a10_guard_causale_immutabile_upd
+                  BEFORE UPDATE OF causale_trasporto_id
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  WHEN (NEW.causale_trasporto_id IS DISTINCT FROM OLD.causale_trasporto_id)
+                  EXECUTE FUNCTION vendite.trgfn_ddt_guard_causale_immutabile();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_causale_immutabile_upd
+                  ON vendite.ddt;

@@ -139,6 +139,25 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 | `apps/core/services/error_policies.py` | Policy `E_CORE_PROFILE_NOT_FOUND` (HTTP 404) |
 | `apps/core/tests/api/test_me_view.py` | Test unitari (mock DB + mock AuthRepository, incluso `IdentitaDelJwtTests` per §8.3.6) |
 
+## GET / POST `/api/v1/core/me/emittente-attivo/` — l'emittente di sessione
+
+La combo di topbar con cui il super admin sceglie **dentro quale emittente
+lavorare** (impersonazione di scope).
+
+| metodo | fa |
+|---|---|
+| `GET` | le opzioni selezionabili per l'utente corrente |
+| `POST` | cambia l'emittente attivo **e riemette i token** — body: `emittente_fiscale_id` (opzionale: assente/null = torna alla vista completa) |
+
+⭐ **Perche' il POST riemette i token invece di limitarsi a salvare la scelta.**
+La verita' della richiesta in corso e' il **claim JWT**, da cui nasce la GUC
+`app.current_emittente_id` che restringe i dati a database. Senza token nuovi la
+scelta avrebbe effetto solo al login successivo: la combo cambierebbe e i dati
+no — cioe' il difetto peggiore di tutti, **l'interfaccia che mente**.
+
+Errore specifico: `E_EMITTENTE_ATTIVO_TOKEN` se la riemissione del token
+fallisce.
+
 ## Errori
 
 | Codice | HTTP | Quando |

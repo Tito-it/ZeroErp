@@ -49,13 +49,14 @@ import { SORGENTE_CODES } from '../../documenti/constants'
 import {
   DRAWER_WIDTH,
   MANAGE_ICONS,
+  NATURA_DOC,
   READONLY_DOMAINS,
   READONLY_MODELS,
 } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatIvaLabel, formatNumber } from '../../core/utils/format'
-import { statoDocFiscaleSeverity } from '../../core/utils/severity'
+import { naturaDocSeverity, statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { downloadBlob } from '../../core/utils/download'
 import { getFatturaDettaglio } from '../api/fatture'
 
@@ -109,12 +110,54 @@ const noteCount = ref(0)
 // assegna alla numerazione. Renderlo esplicito, mai una cella vuota: in un
 // documento fiscale un vuoto si legge come dato perso, non come stato del
 // processo.
-const numeroDisplay = computed(() => {
-  const f = fattura.value
-  if (!f) return ''
-  if (!f.numero) return t('vendite.fatture.non_numerata')
-  return `${f.serie ? f.serie + ' ' : ''}${f.numero}${f.anno ? '/' + f.anno : ''}`
+// Scopo: il numero fiscale in una stringa — «R1 1234/2026». Sede UNICA del
+//        formato: lo usano l'intestazione del documento corrente e i documenti
+//        collegati del legame (F5). Due copie mostrerebbero lo STESSO documento
+//        in due modi diversi nella stessa schermata alla prima modifica.
+function numeroDocumento(doc) {
+  if (!doc?.numero) return t('vendite.fatture.non_numerata')
+  return `${doc.serie ? doc.serie + ' ' : ''}${doc.numero}${doc.anno ? '/' + doc.anno : ''}`
+}
+
+const numeroDisplay = computed(() =>
+  fattura.value ? numeroDocumento(fattura.value) : '',
+)
+
+// Natura del documento (B5): si dichiara solo quando NON è una fattura — vedi
+// il commento nel template. `FATTURA` è il default della colonna a DB, quindi
+// una testata senza natura è una fattura, non un dato mancante.
+const naturaNonOrdinaria = computed(() => {
+  const codice = fattura.value?.natura_doc_codice
+  return !!codice && codice !== NATURA_DOC.FATTURA
 })
+
+// Legame documentale (B7/F5). Il backend risponde nei due versi; a video se ne
+// mostra UNO — quello che questo documento «è»:
+//   · una nota di credito dice cosa RETTIFICA,
+//   · una fattura dice da quali note è stata RETTIFICATA.
+// ⚠️ Non si sommano le due liste: sarebbero due frasi diverse sotto la stessa
+// etichetta, e l'operatore non saprebbe in che verso leggerla.
+// I due versi si mostrano ENTRAMBI se entrambi hanno righe. ⚠️ La prima
+// versione ne rendeva uno solo («quello che il documento è») e nel caso —
+// raro ma ammesso dal modello — di un documento che rettifica ed è a sua volta
+// rettificato ne avrebbe nascosto uno **in silenzio**. Ogni blocco porta la
+// propria etichetta, quindi il verso resta leggibile.
+const blocchiCollegati = computed(() => {
+  const r = dettaglio.value?.rettifiche ?? {}
+  return [
+    { verso: 'rettifica', labelKey: 'vendite.fatture.rettifica_di', documenti: r.rettifica ?? [] },
+    { verso: 'rettificata_da', labelKey: 'vendite.fatture.rettificata_da', documenti: r.rettificata_da ?? [] },
+  ].filter((b) => b.documenti.length)
+})
+const haLegameRiga = computed(() => righe.value.some((r) => r.riga_rettificata_id))
+
+// Scopo: il documento collegato in una stringa sola — serie, numero e anno
+//        come li scrive `numeroDisplay` per il documento corrente, così i due
+//        si leggono uguale.
+function documentoLabel(d) {
+  const numero = numeroDocumento(d)
+  return d.data ? `${numero} — ${displayDate(d.data)}` : numero
+}
 
 // ------------------------------------------------------------------ load
 // Scopo: carica il documento; 404/fuori scope → toast + chiusura (il BE non
@@ -320,6 +363,17 @@ function onNoteSaved(total) {
               <!-- Stato in alto, utility sotto: è il contesto del documento
                    (quale servizio si sta fatturando), non un suo stato. -->
               <div class="app-drawer-header-status-stack">
+                <!-- Natura del documento: si dichiara solo quando NON è una
+                     fattura. ⚠️ Mostrarla sempre («Fattura» su una fattura)
+                     aggiungerebbe rumore al caso normale e toglierebbe forza
+                     al caso che conta. ⛔ E mai `danger`: una nota di credito
+                     non è un errore, è un documento di segno opposto — il
+                     totale negativo è il suo contenuto, non un difetto. -->
+                <Tag
+                  v-if="naturaNonOrdinaria"
+                  :value="fattura.natura_doc_descrizione || fattura.natura_doc_codice"
+                  :severity="naturaDocSeverity(fattura.natura_doc_codice)"
+                />
                 <Tag
                   v-if="fattura.stato_descrizione"
                   :value="fattura.stato_descrizione"
@@ -331,6 +385,32 @@ function onNoteSaved(total) {
           </DrawerEntityHeader>
 
           <DrawerActionsBar :actions="drawerActions" />
+
+          <!-- F5 · IL LEGAME DOCUMENTALE. «Questo accredito vale 12 € perché la
+               riga 7 della fattura 2026/1234 valeva 12 €»: qui la prima metà,
+               sulle righe la seconda. Nei DUE versi — una nota di credito dice
+               cosa rettifica, una fattura dice da quali note è stata
+               rettificata: chi guarda la fattura ha lo stesso diritto di
+               saperlo.
+               ⚠️ La proiezione la scrive il task di pipeline dopo la
+               NUMERAZIONE: su un documento non ancora numerato è
+               legittimamente vuota, e infatti qui non compare niente. -->
+          <div
+            v-for="b in blocchiCollegati"
+            :key="b.verso"
+            class="app-doc-campo app-mt-1"
+          >
+            <span class="app-doc-campo-label">{{ t(b.labelKey) }}</span>
+            <span>
+              <Tag
+                v-for="d in b.documenti"
+                :key="d.id"
+                class="app-mr-1"
+                severity="info"
+                :value="documentoLabel(d)"
+              />
+            </span>
+          </div>
 
           <!-- Cliente e Documento affiancati (`form-grid-2col`, collassa a una
                colonna su schermi stretti): due schede corte, nessuna ragione di
@@ -408,6 +488,26 @@ function onNoteSaved(total) {
                 <!-- BB formatIvaLabel: aliquota > 0 → "22%", esente → codice
                      IVA parlante; fallback natura di riga (snapshot). -->
                 {{ formatIvaLabel(data, { placeholder: data.iva_natura || '—' }) }}
+              </template>
+            </Column>
+            <!-- La riga gemella: è ciò che rende verificabile l'importo della
+                 rettifica senza aprire l'altro documento. Colonna presente solo
+                 se almeno una riga ha il legame — su una fattura ordinaria
+                 sarebbe una colonna di trattini. -->
+            <Column
+              v-if="haLegameRiga"
+              field="riga_rettificata_id"
+              :header="t('vendite.fatture.col_rettifica_riga')"
+              style="width: 130px;"
+            >
+              <template #body="{ data }">
+                <span v-if="data.riga_rettificata_id">
+                  {{ t('vendite.fatture.rettifica_riga_valore', {
+                       numero: data.riga_rettificata_fattura_numero ?? '—',
+                       riga: data.riga_rettificata_nr ?? '—',
+                     }) }}
+                </span>
+                <span v-else>—</span>
               </template>
             </Column>
             <Column field="importo_riga" :header="t('vendite.fatture.col_imponibile')" style="width: 110px;">

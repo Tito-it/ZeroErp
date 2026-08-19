@@ -161,6 +161,13 @@ SELECT is(
     'T07 Trovato PDP GAS con indirizzo valorizzato'
 );
 
+-- Categoria cliente: `billing_account.categoria_cliente_id` e' diventata
+-- NOT NULL dopo la scrittura di questo file. Si prende per CODICE INTERNO e non
+-- con un LIMIT 1: un `LIMIT` senza `ORDER BY` non verifica, scommette — e qui
+-- fra le categorie ci sono anche residui di smoke test disattivati.
+CREATE TEMP TABLE tmp_categoria_cliente AS
+SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD';
+
 -- Data base per evitare conflitti con dati gia' presenti nel DB di test
 CREATE TEMP TABLE tmp_date_base AS
 SELECT (current_date + 30)::date AS d0;
@@ -175,6 +182,19 @@ SELECT script.fn_subentro_cliente(
 -- =========================================================
 -- 1) Dati di test (4 istanze + 4 billing account)
 -- =========================================================
+-- ⭐ FINESTRA DIFFERITA. Un'istanza utility non e' un INSERT, e' una SAGA:
+--   `trg_istanze_utilities_z90_require_utility_dichiarata_ins` e' un
+--   CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che al COMMIT pretende
+--   almeno un satellite (billing_account, istanze_dati_precontrattuali o
+--   cliente) — un'istanza senza satellite non e' uno stato legale del modello.
+--   Il preambolo obbligatorio (SET CONSTRAINTS ALL IMMEDIATE) lo fa scattare sul
+--   PRIMO insert, cioe' prima che i billing account qui sotto possano esistere:
+--   e' li' che questo file moriva, con ZERO asserzioni eseguite.
+--   Si apre la finestra, si costruiscono le quattro istanze CON i loro quattro
+--   BA, e si RICHIUDE: la verifica non si perde, si sposta dove il modello la
+--   vuole.
+SET CONSTRAINTS ALL DEFERRED;
+
 CREATE TEMP TABLE tmp_iu_created AS
 WITH ins AS (
     INSERT INTO anagrafiche.istanze_utilities (
@@ -213,27 +233,36 @@ WITH ins AS (
         istanza_utility_id,
         soggetto_ruolo_id,
         utility_id,
-        codice
+        codice,
+        categoria_cliente_id
     )
-    SELECT iu1.id, sr.soggetto_ruolo_id, ug.id, tc.ba1
-    FROM anagrafiche.istanze_utilities iu1, tmp_sr_test sr, tmp_utility_gas ug, tmp_codes tc
+    SELECT iu1.id, sr.soggetto_ruolo_id, ug.id, tc.ba1, cc.id
+    FROM anagrafiche.istanze_utilities iu1, tmp_sr_test sr, tmp_utility_gas ug, tmp_codes tc,
+         tmp_categoria_cliente cc
     WHERE iu1.codice = tc.iu1
     UNION ALL
-    SELECT iu2.id, sr.soggetto_ruolo_id, ug.id, tc.ba2
-    FROM anagrafiche.istanze_utilities iu2, tmp_sr_test sr, tmp_utility_gas ug, tmp_codes tc
+    SELECT iu2.id, sr.soggetto_ruolo_id, ug.id, tc.ba2, cc.id
+    FROM anagrafiche.istanze_utilities iu2, tmp_sr_test sr, tmp_utility_gas ug, tmp_codes tc,
+         tmp_categoria_cliente cc
     WHERE iu2.codice = tc.iu2
     UNION ALL
-    SELECT iu3.id, sr.soggetto_ruolo_id, unp.id, tc.ba3
-    FROM anagrafiche.istanze_utilities iu3, tmp_sr_test sr, tmp_utility_no_pdp unp, tmp_codes tc
+    SELECT iu3.id, sr.soggetto_ruolo_id, unp.id, tc.ba3, cc.id
+    FROM anagrafiche.istanze_utilities iu3, tmp_sr_test sr, tmp_utility_no_pdp unp, tmp_codes tc,
+         tmp_categoria_cliente cc
     WHERE iu3.codice = tc.iu3
     UNION ALL
-    SELECT iu4.id, sr.soggetto_ruolo_id, unp.id, tc.ba4
-    FROM anagrafiche.istanze_utilities iu4, tmp_sr_test sr, tmp_utility_no_pdp unp, tmp_codes tc
+    SELECT iu4.id, sr.soggetto_ruolo_id, unp.id, tc.ba4, cc.id
+    FROM anagrafiche.istanze_utilities iu4, tmp_sr_test sr, tmp_utility_no_pdp unp, tmp_codes tc,
+         tmp_categoria_cliente cc
     WHERE iu4.codice = tc.iu4
     RETURNING id, codice, utility_id, istanza_utility_id
 )
 SELECT *
 FROM ins;
+
+-- Saga completa: ogni istanza ha il suo billing account, il guard differito
+-- scatta QUI e le trova finite.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- =========================================================
 -- 2) Caso OK: utility richiede PDP + PDP presente e coerente
