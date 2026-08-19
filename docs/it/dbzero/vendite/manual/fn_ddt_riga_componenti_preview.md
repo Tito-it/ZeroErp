@@ -1,5 +1,25 @@
 # fn_ddt_riga_componenti_preview
 
+> ## ⚠️ Rev 2026-08-19 — stesso risultato, senza sporcare il diario
+>
+> La preview chiama ora il **nucleo**
+> [fn_resolve_prezzo_listino_v2_esito](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2_esito)
+> e ha perso il `BEGIN … EXCEPTION` che catturava l'errore del resolver.
+>
+> **Per il drawer non cambia niente**: prezzo suggerito `NULL` e motivazione in
+> `resolver_error_reason`, esattamente come prima.
+>
+> ⛔ **Cambia il costo nascosto.** `script.fn_log_error_only` scrive su
+> `dbops.error_log` via una connessione dblink **separata, fuori transazione**:
+> il database la riga la scriveva **prima** di sollevare. Catturare l'eccezione
+> nascondeva l'errore al chiamante e lasciava il log intatto — una riga per ogni
+> componente non risolto, **a ogni apertura del drawer**. Ora zero.
+>
+> ⚠️ Il messaggio mostrato viene composto con `format()` sui valori dell'esito,
+> con il ripiego che ha `fn_log_and_raise_error`: se la sostituzione dei
+> segnaposto fallisce resta il modello — brutto da leggere, ma una preview non
+> deve rompersi per colpa di un messaggio.
+
 ### Scopo
 
 Preview read-only dei componenti BoM per il drawer riga DDT (pattern form atomic). Stesso comportamento di `fn_preventivo_riga_componenti_preview` ma tipizzato per la testata `ddt`. Proietta tutti i componenti attivi della BoM (modello unificato), inclusi `obbligatorio` e `esposto_in_fattura`. Consumata dal BE prima del save della riga composita.

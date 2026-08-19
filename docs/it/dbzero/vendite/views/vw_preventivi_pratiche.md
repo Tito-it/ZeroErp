@@ -5,8 +5,11 @@
 >
 > Pratiche collegate ai preventivi vendita via pratiche_sorgenti. Include stato pratica, tipo prestazione, date.
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_preventivi_pratiche AS
+CREATE OR REPLACE VIEW vendite.vw_preventivi_pratiche
+WITH (security_invoker=on) AS
 SELECT p.id AS preventivo_id,
     p.uid AS preventivo_uid,
     p.numero AS preventivo_numero,

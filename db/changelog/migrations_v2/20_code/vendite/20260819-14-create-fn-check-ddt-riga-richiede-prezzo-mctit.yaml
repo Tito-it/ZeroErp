@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «Questa riga di DDT ha bisogno di un prezzo?» — la domanda in una funzione.
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# punto C3 (decisione D-5 = K2).
+#
+# A COSA SERVE. Il changeSet 20260819-15 la usa nella clausola WHEN del trigger
+# che vieta il prezzo ZERO sui componenti obbligatori: quel divieto ha senso
+# finche' il documento vende, e non ne ha nessuno su un conto visione.
+#
+# ⭐ PERCHE' UNA FUNZIONE E UNA CLAUSOLA WHEN, invece di modificare
+# script.trgfn_componenti_check_prezzo_obbligatorio. Quella funzione e'
+# condivisa da QUATTRO tabelle *_righe_componenti (preventivi, ordini,
+# contratti, DDT). Parametrizzarla avrebbe voluto dire portarle dentro la
+# nozione di «causale di trasporto», che esiste solo per i DDT — cioe' insegnare
+# a un oggetto generico un fatto di un dominio solo, e rischiare su tre tabelle
+# per servirne una. Con la WHEN il codice condiviso NON SI TOCCA: cambia solo
+# quando quel trigger viene invocato, che e' esattamente il mestiere della WHEN.
+#
+# LA REGOLA, e le sue due risposte non ovvie:
+#
+#   causale FATTURABILE   -> TRUE   il documento vende: il prezzo serve
+#   causale NON fatturabile -> FALSE il documento non vende: il prezzo non serve
+#   causale ASSENTE       -> FALSE  ⚠️ in bozza il NULL e' legittimo, e non si
+#                                   inventa un intento che l'operatore non ha
+#                                   ancora dichiarato. Non e' un buco: chi
+#                                   presidia e' il gate all'emissione, che con
+#                                   causale fatturabile non lascia uscire il
+#                                   documento (DL-28). E' la stessa scelta del
+#                                   §3.1 del brief — il vincolo di riga non
+#                                   dipende dalla testata, il presidio sta a valle
+#   riga/DDT non leggibili -> TRUE  ⚠️ FAIL-CLOSED, vedi sotto
+#
+# ⚠️ IL FAIL-CLOSED NON E' PRUDENZA GENERICA. La funzione gira dentro un trigger,
+# quindi sotto RLS, e una lettura che non trova la riga NON distingue «non
+# esiste» da «non la vedo». Nel dubbio si risponde TRUE, cioe' si tiene il
+# comportamento severo di prima: al massimo si chiede un prezzo dove non
+# serviva. La risposta opposta lascerebbe passare uno zero su un documento che
+# vende, ed e' l'unico dei due errori che arriva in fattura.
+#
+# STABLE e non SECURITY DEFINER: legge e basta, e il fail-closed rende inutile
+# scavalcare la RLS — che porterebbe con se' owner e GRANT da governare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260819-14-create-fn-check-ddt-riga-richiede-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20260819-14-create-fn-check-ddt-riga-richiede-prezzo
+      author: mctit
+      runOnChange: false
+      comment: >
+        vendite.fn_check_ddt_riga_richiede_prezzo(riga_ddt_id): TRUE se il DDT
+        della riga ha una causale di trasporto fatturabile. Funzione PURA
+        (fn_check_*): non solleva, non scrive. La consuma la clausola WHEN del
+        trigger sul prezzo zero dei componenti obbligatori (20260819-15), cosi'
+        da non dover parametrizzare la funzione trigger condivisa con
+        preventivi, ordini e contratti. Fail-closed a TRUE se la riga non e'
+        leggibile. Brief brief-ddt-righe-senza-prezzo §9 slice C (C3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: fatturabile
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_check_ddt_riga_richiede_prezzo(
+                  p_riga_ddt_id vendite.ddt_righe.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: dire se la riga di DDT indicata appartiene a un documento
+              --   che VENDE, cioe' che ha una causale di trasporto fatturabile.
+              --   PURA (fn_check_*): non solleva e non scrive, secondo
+              --   linee-guida-sql §5.
+              DECLARE
+                  v_fatturabile boolean;
+              BEGIN
+                  -- Guard di parametro: un id nullo o non positivo e' un difetto
+                  -- del chiamante, ma qui la funzione non solleva — risponde
+                  -- TRUE, cioe' il comportamento severo.
+                  IF p_riga_ddt_id IS NULL OR p_riga_ddt_id <= 0 THEN
+                      RETURN TRUE;
+                  END IF;
+
+                  SELECT ct.fatturabile
+                    INTO v_fatturabile
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ddt d
+                      ON d.id = dr.ddt_id
+                    LEFT JOIN config.causali_trasporto ct
+                      ON ct.id = d.causale_trasporto_id
+                   WHERE dr.id = p_riga_ddt_id;
+
+                  -- ⚠️ FAIL-CLOSED. Sotto RLS «non trovata» non distingue «non
+                  --   esiste» da «non la vedo»: nel dubbio si tiene il
+                  --   comportamento di prima (prezzo richiesto). Sbagliare qui
+                  --   costa una richiesta di prezzo di troppo; sbagliare al
+                  --   contrario manda uno zero in fattura.
+                  --   ⛔ Si guarda FOUND, non una variabile-sentinella. La
+                  --   prima stesura faceva `SELECT ct.fatturabile, TRUE INTO
+                  --   v_fatturabile, v_trovata` con v_trovata inizializzata a
+                  --   FALSE — e non funzionava: SELECT INTO senza righe non
+                  --   lascia le variabili come stanno, le AZZERA. v_trovata
+                  --   diventava NULL, `NOT NULL` non e' vero, il ramo non
+                  --   scattava e la funzione cadeva sul COALESCE finale
+                  --   rispondendo FALSE, cioe' l'esatto contrario del
+                  --   fail-closed. Trovato dal test sull'id inesistente.
+                  IF NOT FOUND THEN
+                      RETURN TRUE;
+                  END IF;
+
+                  -- Causale assente (bozza): l'intento non e' ancora dichiarato
+                  -- e non si inventa. Presidia il gate all'emissione.
+                  RETURN COALESCE(v_fatturabile, FALSE);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_check_ddt_riga_richiede_prezzo(vendite.ddt_righe.id%TYPE)
+              IS 'TRUE se la riga di DDT appartiene a un documento che vende (causale di '
+                 'trasporto fatturabile). PURA: non solleva, non scrive. Consumata dalla '
+                 'clausola WHEN del trigger che vieta il prezzo zero sui componenti '
+                 'obbligatori, per non dover insegnare la nozione di causale alla funzione '
+                 'trigger condivisa con preventivi, ordini e contratti. '
+                 'Causale ASSENTE -> FALSE: in bozza il NULL e'' legittimo e il presidio e'' '
+                 'il gate all''emissione (DL-28). Riga non leggibile -> TRUE, fail-closed: '
+                 'sotto RLS «non trovata» non distingue «non esiste» da «non la vedo», e dei '
+                 'due errori possibili solo quello opposto arriva in fattura. '
+                 'Brief: brief-ddt-righe-senza-prezzo §9 slice C (C3).';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_check_ddt_riga_richiede_prezzo(
+                  vendite.ddt_righe.id%TYPE) TO zeroerp_app;

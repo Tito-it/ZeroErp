@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il componente di un kit puo' non avere prezzo — ma solo sul DDT.
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# punto C1 (decisione D-5 = K2, presa da Tid il 2026-08-19).
+#
+# PERCHE'. La merce si muove anche quando non si vende — conto visione,
+# campionatura, riparazione, trasferimento — e un kit e' merce come il resto. Su
+# quei documenti pretendere un prezzo per ogni componente significa chiedere un
+# dato che per essi non ha significato. Il padre lo ammetteva gia'
+# (ddt_righe.prezzo_unitario e' nullable); i figli no, ed era l'unica ragione per
+# cui un kit non poteva viaggiare senza vendersi.
+#
+# ⭐ PERIMETRO: SOLO ddt_righe_componenti. Preventivi, ordini e contratti
+# restano NOT NULL, e non e' una dimenticanza — e' il requisito. Un preventivo o
+# un ordine senza prezzo e' un difetto vero, e la quarta casella della
+# definizione di fatto del brief («ordini e preventivi continuano a rifiutare il
+# prezzo non risolvibile») si prova proprio verificando che questa colonna sia
+# rimasta com'era altrove.
+#
+# ⛔ ORDINE OBBLIGATORIO: questo changeSet ha numero 13, il ricalcolo del prezzo
+# padre ha numero 12 e deve girare PRIMA. L'autogen mescola 00_schema e 20_code
+# ordinando per NN, quindi la sequenza e' garantita dai numeri, non dalla
+# cartella. Invertirli aprirebbe una finestra in cui il padre di un kit con un
+# componente scoperto riceve la SOMMA DEI RIMANENTI invece di NULL: un prezzo
+# sbagliato, che passa il gate all'emissione e arriva in fattura.
+# Vedi 20260819-12 per il ragionamento completo.
+#
+# Cosa NON cambia, e va detto perche' e' la difesa che resta in piedi:
+#   * script.trgfn_componenti_check_prezzo_obbligatorio continua a vietare lo
+#     ZERO sui componenti obbligatori (lo allenta il changeSet 20260819-14, e
+#     solo quando il documento non vende);
+#   * il gate all'emissione continua a fermare il DDT con causale fatturabile e
+#     componenti non valorizzati (20260819-15).
+# Il prezzo assente diventa ammissibile nel DATO; resta inammissibile nel
+# DOCUMENTO CHE SI FATTURA. E' la stessa idea di DL-28, un livello piu' sotto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260819-13-alter-ddt-righe-componenti-prezzo-nullable-mctit.yaml
+
+  - changeSet:
+      id: 20260819-13-alter-ddt-righe-componenti-prezzo-nullable
+      author: mctit
+      runOnChange: false
+      comment: >
+        vendite.ddt_righe_componenti.prezzo_unitario diventa facoltativo: un
+        kit puo' viaggiare su un DDT che non vende (conto visione,
+        campionatura, riparazione) senza prezzi sui componenti. SOLO questa
+        tabella — preventivi, ordini e contratti restano NOT NULL.
+        Richiede 20260819-12 (ricalcolo padre NULL-aware) applicato prima.
+        Brief brief-ddt-righe-senza-prezzo §9 slice C (C1) / D-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt_righe_componenti
+                columnName: prezzo_unitario
+            # Il ricalcolo del padre deve gia' saper gestire il NULL: senza,
+            # questa ALTER apre la finestra descritta nell'intestazione.
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_ricalcola_prezzo_padre_da_componenti'
+                     AND p.prosrc LIKE '%prezzo_unitario IS NULL%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ALTER COLUMN prezzo_unitario DROP NOT NULL;
+
+              COMMENT ON COLUMN vendite.ddt_righe_componenti.prezzo_unitario
+              IS 'Prezzo del componente. NULL ammesso dal 2026-08-19: un kit puo'' viaggiare '
+                 'su un DDT che non vende (causale non fatturabile) e li'' il prezzo di un '
+                 'componente non ha significato. NULL significa «non si applica», non zero: '
+                 'con un figlio a NULL il prezzo del padre diventa NULL e non la somma dei '
+                 'rimanenti (script.fn_ricalcola_prezzo_padre_da_componenti). Sulle tabelle '
+                 'gemelle di preventivi, ordini e contratti la colonna resta NOT NULL: li'' '
+                 'un prezzo mancante e'' un difetto. Brief: brief-ddt-righe-senza-prezzo §9 slice C.';

@@ -4,10 +4,11 @@
 > **rev**: 2026-08-18 analisi critica e piano DB (§7–§12) · **rev**: 2026-08-19
 > **decisioni chiuse** — D-3 #3 (esito) e D-5 (K2) decise da Tid; D-3 #7 si è
 > rivelato un ramo morto (R-10, F-4) ·
-> **Owner**: Tid · **Stato**: 🟡 **APERTO** — ⭐ **nessuna decisione pendente: il
-> piano DB del §9 è eseguibile così com'è.** Perimetro DB verificato, misurato e
-> pianificato (§7, §9, §12); perimetro BE/FE scritto come richiesta (§10).
-> Nessuna migrazione applicata.
+> **Owner**: Tid · **Stato**: 🟢 **PERIMETRO DB CHIUSO — 2026-08-19.** Tutte e
+> quattro le slice (A, B, C, D) scritte, applicate e collaudate: pgTAP verdi,
+> baseline senza regressioni, cancelli statici verdi. 🔴 **Resta il solo lato
+> applicativo**: le richieste **BE-1 → BE-4** del §10, da cui dipende l'unica
+> casella che l'operatore vede ancora chiusa.
 >
 > ⚠️ **I §1, §3 e §4 sono stati scritti prima della verifica su codice e DB.**
 > Si leggano insieme al **§7**, che ne corregge tre premesse: il DB ammette già
@@ -548,7 +549,39 @@ difetto vero, e la quarta casella del §6 dice esattamente questo.
 usa è il BE (BE-1, §10) per gli articoli semplici e la slice C per i compositi.
 Va detto nel commit, altrimenti sembra un lavoro senza effetto.
 
-### Slice B — L'intento, una volta emesso, non si cambia
+### Slice B — L'intento, una volta emesso, non si cambia ✅ **SCRITTA E COLLAUDATA (2026-08-19)**
+
+> ✅ **APPLICATA il 2026-08-19**, pgTAP 5/5 e baseline senza regressioni (corsa di Tid).
+>
+> | file | cosa |
+> |---|---|
+> | `80_data/sql/config/codici_errore.csv` + `messaggi_errore.csv` | B0 — `E_DDT_CAUSALE_IMMUTABILE` (932, classe CONFLITTO_STATO), **append** |
+> | `20_code/vendite/20260819-20-…-trgfn-ddt-guard-causale-immutabile` | B1 — la funzione |
+> | `20_code/vendite/20260819-21-…-trg-ddt-guard-causale-immutabile` | B2 — il trigger |
+> | `db/pgtap/vendite/test-ddt-causale-immutabile-v1.sql` | B3 — 5 test |
+>
+> ⭐ **Due scelte che un guard scritto in fretta sbaglierebbe, ed entrambe hanno
+> un test che le protegge:**
+>
+> * **si legge lo stato VECCHIO, non il nuovo.** L'`UPDATE` che porta
+>   DRAFT→EMESSO scegliendo contestualmente la causale è l'operazione legittima
+>   per eccellenza; guardando `NEW` la si boccerebbe, e il guard sarebbe verde
+>   su tutto il resto (test 4);
+> * **la clausola `WHEN` filtra sul valore, non sulla menzione.** `UPDATE OF
+>   colonna` scatta anche quando le si riassegna lo **stesso** valore — cioè a
+>   ogni salvataggio di testata che rimanda indietro tutti i campi del form.
+>   Senza la `WHEN`, riemettere la stessa causale su un DDT spedito verrebbe
+>   bloccato: un errore su un'operazione che non cambia niente (test 5).
+>
+> ⚠️ **Verifica sui guard restrittivi, come impone la regola.** I file pgTAP che
+> impostano `causale_trasporto_id` sono **26**; eseguiti tutti col trigger
+> attivo, **nessuno si rompe**. Tutti impostano la causale mentre il DDT è in
+> bozza, prima di avanzare lo stato — che è anche l'ordine in cui lavora
+> l'applicazione. L'unico rosso incontrato
+> (`test-vw-situazione-merce-ordine-v1`, test 11 sullo scope) esce **identico
+> con e senza** il guard.
+
+#### Contenuto della slice
 
 | # | Oggetto | Fase | Tipo | Note |
 |---|---|---|---|---|
@@ -567,7 +600,48 @@ nuovi su fixture vecchie. Da confrontare con `scripts/pgtap-baseline.sh vendite`
 > un invariante da Python al DB, dove il progetto ha deciso che stia. Priorità
 > **media** — se il tempo è poco, si fa dopo A e C.
 
-### Slice C — I compositi *(D-5 = **K2**, deciso 2026-08-19: slice **confermata**)*
+### Slice C — I compositi ✅ **SCRITTA E COLLAUDATA (2026-08-19)**
+
+> ## ✅ CHIUSA — 2026-08-19
+>
+> **Tutti i changeSet applicati** (`20260819-12` → `-19`) e **pgTAP verde**,
+> eseguito da Tid come `zeroerp_app` con RLS attiva e confrontato con la
+> baseline: nessuna regressione. Il kit può viaggiare su un DDT che non vende.
+>
+> | file | cosa |
+> |---|---|
+> | `20_code/script/20260819-12-…-ricalcola-prezzo-padre-null-aware` | C2 — tre casi: 0 / NULL / SUM |
+> | `00_schema/vendite/20260819-13-…-prezzo-nullable` | C1 — prezzo del componente facoltativo |
+> | `20_code/vendite/20260819-14-…-fn-check-ddt-riga-richiede-prezzo` | C3a — «questo documento vende?» |
+> | `20_code/vendite/20260819-15-…-prezzo-obbligatorio-when` | C3b — la `WHEN` sul trigger |
+> | `20_code/script/20260819-16-…-componenti-per-causale` | C4 — il gate segue la causale |
+> | `20_code/vendite/20260819-17-…-init-prezzo-facoltativo` | C5a — l'init scrive NULL |
+> | `20_code/vendite/20260819-18-…-preview-nucleo` | C5b — la preview non logga più |
+> | `00_schema/vendite/20260819-19-…-origine-nullable` | ⚠️ **non previsto dal piano** — vedi sotto |
+> | `db/pgtap/vendite/test-ddt-componenti-senza-prezzo-v1.sql` | C6 — 8 test |
+>
+> ⛔ **`20260819-19` è la lezione della slice.** `origine_prezzo` è NOT NULL e il
+> suo CHECK ammette sei valori, nessuno dei quali significa «non risolto» —
+> perché fino a ieri il caso non esisteva. Con l'init che scrive il prezzo NULL,
+> scrive anche l'origine NULL, e l'INSERT muore con `23502` **proprio nel caso
+> che la slice serve ad abilitare**.
+>
+> ⚠️ E non si vedeva. I collaudi di C5 avevano verificato che l'init
+> *compilasse* e che la preview *degradasse* — ma la preview non inserisce, e la
+> compilazione non attraversa il ramo. Il difetto è uscito solo quando il pgTAP
+> ha provato a costruire **davvero** un kit senza prezzi. La prima impressione è
+> stata «il caso non è costruibile su questo DB»: era invece la slice,
+> incompleta. È la stessa lente di R-5 — *un ramo si verifica dal percorso che
+> lo attraversa*.
+>
+> ⭐ **Scelta di forma su C3**, che vale oltre questa slice: invece di
+> parametrizzare `script.trgfn_componenti_check_prezzo_obbligatorio` — condivisa
+> da **quattro** tabelle — si è cambiato **quando** il trigger scatta, con una
+> clausola `WHEN`. Il codice condiviso non si tocca: preventivi, ordini e
+> contratti restano identici bit per bit, e non c'è logica duplicata da tenere
+> allineata fra le due strade.
+
+#### Contenuto della slice
 
 | # | Oggetto | Fase | Tipo | Note |
 |---|---|---|---|---|
@@ -584,7 +658,36 @@ ricalcolo sappia gestire il NULL, esiste una finestra in cui il padre riceve
 somme parziali. La finestra è di minuti su un DB solo, ma è esattamente il tipo di
 dato sporco che poi non si sa più da dove viene.
 
-### Slice D — Verità documentale *(nessuna migrazione, ma non è opzionale)*
+### Slice D — Verità documentale ✅ **FATTA (2026-08-19)**
+
+> Nessuna migrazione: quattro documenti allineati al comportamento reale.
+>
+> | # | dove | cosa |
+> |---|---|---|
+> | D1 | `work-done/brief-design-fatturazione-due-lenti.md` §10 | **errata corrige a DL-28**: la premessa era falsa per metà, e si dice quale metà — il caso esisteva nel DB (e le ri-consegne lo producono), il gate era esercitato dai pgTAP, ma non è **mai** scattato su un documento reale |
+> | D2 | `brief-be-fan-out-isolato-e-esito-parziale.md` §13.2 | la voce resta ⏸️ sospesa, ma **il blocco è cambiato di natura**: non più un pezzo di modello mancante, una riga di Python (BE-1) |
+> | D3 | `COMMENT ON script.fn_check_ddt_emittibile` | fatto contestualmente a C4: dichiarava cinque presidi, uno dei quali non poteva scattare |
+> | D4 | `dbzero/config/manual/causali_trasporto.md` | `fatturabile` spiegata per quello che è — **la colonna che decide se un documento entra nel giro della fatturazione** — in linguaggio comprensibile anche a chi non legge SQL |
+> | D5 | `dbzero/*/manual/` | **doc concettuale degli oggetti nuovi e di quelli cambiati** (2026-08-19), vedi sotto |
+>
+> **D5 — le pagine `manual/`.** Le pagine auto-generate le rifà il migrate e non
+> si toccano a mano: la doc concettuale sta in `manual/`, e andava scritta per i
+> tre oggetti nuovi e **corretta** per quattro esistenti, che descrivevano un
+> comportamento che questa attività ha cambiato.
+>
+> | | pagina |
+> |---|---|
+> | nuove | `vendite/manual/fn_resolve_prezzo_listino_v2_esito.md` · `fn_check_ddt_riga_richiede_prezzo.md` · `trgfn_ddt_guard_causale_immutabile.md` |
+> | corrette | `script/manual/fn_ricalcola_prezzo_padre_da_componenti.md` (diceva `COALESCE(SUM,0)`) · `script/manual/fn_check_ddt_emittibile.md` (motivi componenti incondizionati) · `vendite/manual/ddt_righe_componenti.md` (colonne NOT NULL) · `vendite/manual/fn_ddt_riga_componenti_init.md` e `_preview.md` (dicevano che sollevano) |
+>
+> ⚠️ Nelle pagine corrette il testo storico **resta**, marcato come superato: chi
+> legge deve poter vedere che cosa è cambiato e quando, non trovare una verità
+> nuova senza traccia della vecchia.
+>
+> ℹ️ La riga `include-markdown` che aggancia il `manual/` all'auto-gen la scrive
+> il generatore: comparirà alla prossima rigenerazione della doc.
+
+#### Contenuto della slice
 
 | # | Cosa | Dove |
 |---|---|---|
@@ -596,10 +699,10 @@ dato sporco che poi non si sa più da dove viene.
 ### Ordine dei lavori e cosa consegna ciascuna slice
 
 ```
-A (resolver a esito) ✅ ┬──► BE-1 (§10) ──► articolo semplice senza prezzo: FATTO
-                       └──► C (compositi) ──► kit senza prezzo: FATTO
-B (causale immutabile) ─────────────────────► invariante spostato nel DB
-D (documentale) ────────────────────────────► la doc smette di mentire
+A (resolver a esito) ✅ ┬──► BE-1 (§10) 🔴 ──► articolo semplice senza prezzo
+                       └──► C (compositi) ✅ ──► kit senza prezzo: FATTO
+B (causale immutabile) ✅ ──────────────────► invariante spostato nel DB
+D (documentale) ✅ ─────────────────────────► la doc smette di mentire
 ```
 
 * **A da sola**: nessun effetto visibile. È il prerequisito di tutto il resto.
@@ -681,14 +784,14 @@ l'indicazione di **chi** chiude ogni casella.
 
 | # | Casella (§6) | Chi | Stato oggi |
 |---|---|---|---|
-| 1 | Si carica una riga di DDT senza prezzo, articolo **semplice** | A + BE-1 | ⛔ bloccato dal BE |
-| 1-bis | …articolo **composito** | C (K2 ✅) | ⛔ bloccato dal DB, tre volte |
+| 1 | Si carica una riga di DDT senza prezzo, articolo **semplice** | A ✅ + BE-1 | 🔴 **ora dipende solo dal BE**: il DB gli ha dato lo strumento |
+| 1-bis | …articolo **composito** | C (K2) | ✅ **FATTO 2026-08-19** — i tre muri del DB sono caduti |
 | 2 | Causale fatturabile → emissione **blocca**, parlante, nomina la riga | — | ✅ **già fatto**, provato dai pgTAP; diventa raggiungibile in-app con la casella 1 |
 | 3 | Causale non fatturabile → si emette e resta fuori da card e lister | — | ✅ **già fatto** (`fn_list_ddt_da_pushare`, `vw_dash_fatturazione_ddt`), con controprova a test |
-| 3-bis | …**e** resta fuori anche se qualcuno cambia la causale dopo | B | ⛔ oggi difeso solo in Python |
-| 4 | Ordini e preventivi continuano a rifiutare | BE-1 (per omissione) + C6 test 4 | ✅ per costruzione, **da provare** |
-| 5 | La premessa di DL-28 allineata al comportamento reale | D1 | ⛔ e ora si sa **come** va corretta (R-2) |
-| 6 | *(nuova)* Una ri-consegna **standalone** si emette senza digitare prezzi a mano | A + BE-1 | ⛔ R-3 — non era nel §6 perché il caso è nato ieri |
+| 3-bis | …**e** resta fuori anche se qualcuno cambia la causale dopo | B | ✅ **FATTO** — l'invariante è nel DB, non più in una costante Python |
+| 4 | Ordini e preventivi continuano a rifiutare | C6 test 7 | ✅ **PROVATO**: sulle tre tabelle gemelle il prezzo del componente è ancora obbligatorio |
+| 5 | La premessa di DL-28 allineata al comportamento reale | D1 | ✅ **FATTO** — errata corrige datata in fondo al §10 del design-of-record |
+| 6 | *(nuova)* Una ri-consegna **standalone** si emette senza digitare prezzi a mano | A ✅ + BE-1 | 🔴 il DB è pronto; manca il BE |
 
 ---
 

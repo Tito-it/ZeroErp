@@ -13,6 +13,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_componenti_preview(p_articolo_id 
  LANGUAGE plpgsql
  STABLE
 AS $function$
+
 -- Scopo: preview read-only dei componenti BoM CASO A per il drawer riga DDT
 --   (form atomic). Per ogni componente attivo e valido tenta
 --   fn_resolve_prezzo_listino_v2; se fallisce ritorna prezzo_suggerito=NULL
@@ -22,6 +23,7 @@ AS $function$
 DECLARE
     v_rec     record;
     v_resolve record;
+    v_msg     text;
 BEGIN
     FOR v_rec IN
         SELECT ac.id          AS bom_entry_id,
@@ -53,34 +55,70 @@ BEGIN
         obbligatorio           := v_rec.obbligatorio;
         esposto_in_fattura     := v_rec.esposto_in_fattura;
 
-        BEGIN
-            SELECT * INTO v_resolve
-              FROM vendite.fn_resolve_prezzo_listino_v2(
-                  v_rec.componente_id,
-                  v_rec.a_uom_id,
-                  p_data_riferimento,
-                  p_ba_id,
-                  p_utility_id::integer,
-                  p_emittente_sr_id,
-                  p_classe_utenza_id,
-                  p_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
-              );
+        -- ⭐ Si chiama il NUCLEO, non il guscio (2026-08-19, slice C).
+        --   Prima qui c'era un BEGIN..EXCEPTION che catturava il P0001 del
+        --   resolver e lo trasformava in prezzo_suggerito NULL + motivazione.
+        --   Il risultato per il chiamante era gia' quello giusto — questa e'
+        --   una preview, non deve fallire — ma il costo era invisibile: il
+        --   database SCRIVE la riga di dbops.error_log PRIMA di sollevare, via
+        --   dblink fuori transazione, quindi catturare l'eccezione nascondeva
+        --   l'errore e lasciava il log. Una riga per componente non risolto, a
+        --   ogni apertura del drawer.
+        --   Il nucleo non solleva e non logga: riporta l'esito e basta.
+        SELECT * INTO v_resolve
+          FROM vendite.fn_resolve_prezzo_listino_v2_esito(
+              v_rec.componente_id,
+              v_rec.a_uom_id,
+              p_data_riferimento,
+              p_ba_id,
+              p_utility_id::integer,
+              p_emittente_sr_id,
+              p_classe_utenza_id,
+              p_articolo_id  -- p_articolo_padre_contesto: attiva STADIO BUNDLE
+          );
+
+        IF v_resolve.esito_codice IS NULL THEN
             prezzo_suggerito      := v_resolve.prezzo_finale;
             origine_prezzo        := v_resolve.origine;
             resolver_error_reason := NULL;
-        EXCEPTION WHEN SQLSTATE 'P0001' THEN
-            GET STACKED DIAGNOSTICS resolver_error_reason = MESSAGE_TEXT;
+        ELSE
             prezzo_suggerito := NULL;
             origine_prezzo   := NULL;
-        END;
+
+            -- Il testo mostrato resta una FRASE, come prima: il chiamante
+            -- e' un drawer e l'operatore legge questo. Il codice
+            -- strutturato viaggia in coda, per chi distingue i casi.
+            v_msg := script.fn_get_messaggio(v_resolve.esito_codice, NULL, 'it');
+
+            -- ⚠️ I SEGNAPOSTO VANNO SOSTITUITI, e fn_get_messaggio non lo fa:
+            --   accetta un valore solo, e questi messaggi ne hanno fino a
+            --   cinque. Senza format() l'operatore leggerebbe «Nessuna mappa
+            --   categoria %s -> listino per utility %s», che e' peggio di
+            --   nessun messaggio: sembra un difetto del programma.
+            --   ⛔ E format() con MENO valori dei segnaposto non degrada:
+            --   alza 22023. Il ripiego e' lo stesso che
+            --   script.fn_log_and_raise_error si e' dato il 2026-08-18 — se la
+            --   sostituzione fallisce resta il modello, brutto da leggere ma
+            --   innocuo. Una preview non deve rompersi per un messaggio.
+            IF array_length(v_resolve.esito_valori, 1) IS NOT NULL THEN
+                BEGIN
+                    v_msg := format(v_msg, VARIADIC v_resolve.esito_valori);
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;  -- v_msg resta il modello
+                END;
+            END IF;
+
+            resolver_error_reason := v_msg || ' [' || v_resolve.esito_codice || ']';
+        END IF;
 
         RETURN NEXT;
     END LOOP;
 END;
+
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ddt_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer)
-IS 'Preview componenti BoM CASO A per drawer riga DDT (form atomic). Read-only STABLE. rev 2026-05-13, modello unificato: aggiunta obbligatorio + esposto_in_fattura nella proiezione. Rimosso filtro esposto_in_fattura=TRUE: tutti i componenti attivi e validi sono restituiti. prezzo_suggerito=NULL + resolver_error_reason se listino mancante.';
+IS 'Preview read-only dei componenti BoM CASO A per il drawer riga DDT. rev 2026-08-19: chiama il NUCLEO fn_resolve_prezzo_listino_v2_esito invece del guscio, e perde il BEGIN..EXCEPTION. Per il chiamante il risultato e'' identico (prezzo_suggerito NULL + resolver_error_reason quando non si risolve); sparisce la riga di dbops.error_log che il DB scriveva comunque, via dblink fuori transazione, PRIMA di sollevare — una per componente non risolto, a ogni apertura del drawer. Brief: brief-ddt-righe-senza-prezzo §9 slice C (C5).';
 ```
 
 ---

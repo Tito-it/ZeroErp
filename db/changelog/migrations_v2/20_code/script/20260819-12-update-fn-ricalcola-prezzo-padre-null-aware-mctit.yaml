@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il prezzo del kit impara la differenza fra «zero» e «non si sa».
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice C,
+# punto C2 (decisione D-5 = K2, presa da Tid il 2026-08-19).
+#
+# ⛔ E' IL PUNTO DELICATO DELL'INTERA SLICE, e va applicato PRIMA che la colonna
+# vendite.ddt_righe_componenti.prezzo_unitario diventi facoltativa (20260819-13).
+# Non e' una preferenza di stile: fra i due changeSet c'e' una finestra in cui il
+# padre riceverebbe un prezzo sbagliato, e un prezzo sbagliato non si vede.
+#
+# IL PROBLEMA. Il prezzo della riga-kit e' SUM(figli.prezzo * coeff). Oggi la
+# funzione usa una SUM semplice, e il suo stesso commento dichiara la premessa
+# che K2 rimuove:
+#
+#     «Con form atomic prezzo_unitario e' sempre NOT NULL:
+#      SUM standard e' sufficiente (no NULL propagation).»
+#
+# Tolta la NOT NULL, quella premessa cade e la SUM **ignora** il figlio senza
+# prezzo: un kit con tre componenti di cui uno non valorizzato produrrebbe la
+# somma degli altri due. Cioe' un prezzo **sbagliato**, non un prezzo
+# **assente** — e la differenza e' tutta:
+#
+#   * un kit a prezzo ASSENTE lo ferma il gate all'emissione (DL-28): la riga
+#     non ha prezzo risolvibile, il DDT con causale fatturabile non esce;
+#   * un kit a prezzo PARZIALE passa il gate — un prezzo c'e' — e finisce in
+#     fattura. Nessun controllo lo prende, perche' nessun controllo puo'
+#     sapere che quella somma e' incompleta.
+#
+# LA REGOLA NUOVA, in tre casi e nessun altro:
+#
+#   nessun figlio attivo            -> 0      (invariato)
+#   almeno un figlio senza prezzo   -> NULL   (nuovo: «non si sa»)
+#   tutti i figli valorizzati       -> SUM    (invariato)
+#
+# ⭐ PERCHE' NON SERVE UNA VARIANTE PER IL DDT. La funzione e' condivisa da
+# quattro tabelle *_righe_componenti. Su preventivi e ordini la colonna dei
+# figli resta NOT NULL, quindi il ramo nuovo non puo' proprio scattare: per loro
+# il comportamento e' identico, bit per bit. Su contratti idem. La generalita'
+# regge da se', senza un caso speciale cablato sul DDT dentro una funzione che
+# non sa nulla dei DDT — che e' esattamente il motivo per cui e' parametrizzata.
+#
+# ⚠️ E il padre puo' accogliere il NULL dove serve: ddt_righe.prezzo_unitario e
+# contratti_righe.prezzo_unitario sono nullable; preventivi_righe e
+# ordini_righe sono NOT NULL, ma li' il ramo non si raggiunge. Verificato sulla
+# doc auto-generata delle quattro tabelle prima di scrivere.
+#
+# Corpo dalla doc auto-generata (oggetto vivo). Cambia solo l'espressione
+# dell'UPDATE; firma, parametri e RETURNS invariati -> CREATE OR REPLACE liscio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260819-12-update-fn-ricalcola-prezzo-padre-null-aware-mctit.yaml
+
+  - changeSet:
+      id: 20260819-12-update-fn-ricalcola-prezzo-padre-null-aware
+      author: mctit
+      runOnChange: false
+      comment: >
+        script.fn_ricalcola_prezzo_padre_da_componenti distingue «nessun
+        figlio» (0) da «figlio senza prezzo» (NULL) invece di sommare i
+        rimanenti. Prerequisito di 20260819-13, che rende facoltativo il
+        prezzo dei componenti DDT: senza, un kit con un componente non
+        valorizzato riceverebbe una somma PARZIALE, che passa il gate
+        all'emissione e arriva in fattura. Brief brief-ddt-righe-senza-prezzo
+        §9 slice C (C2) / D-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_ricalcola_prezzo_padre_da_componenti'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(
+                  p_schema        text,
+                  p_tab_padre     text,
+                  p_tab_figli     text,
+                  p_col_fk_padre  text,
+                  p_riga_padre_id bigint
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sql text;
+              BEGIN
+                  -- Ricalcola prezzo_unitario del padre dai figli ATTIVI.
+                  --
+                  -- ⛔ Tre casi, e il secondo e' quello per cui esiste questa
+                  --   revisione (2026-08-19, slice C del brief righe DDT senza
+                  --   prezzo):
+                  --
+                  --     nessun figlio attivo          -> 0
+                  --     almeno un figlio senza prezzo -> NULL  «non si sa»
+                  --     tutti valorizzati             -> SUM(prezzo * coeff)
+                  --
+                  --   Prima era COALESCE(SUM(...), 0) e bastava, perche' il
+                  --   prezzo dei figli era NOT NULL ovunque. Da quando su
+                  --   vendite.ddt_righe_componenti puo' mancare (un kit che
+                  --   viaggia senza vendersi: conto visione, campionatura,
+                  --   riparazione), la SUM semplice IGNOREREBBE il figlio
+                  --   scoperto e restituirebbe la somma degli altri: un prezzo
+                  --   sbagliato al posto di un prezzo assente.
+                  --   ⚠️ La differenza non e' formale. Il kit a prezzo assente
+                  --   lo ferma il gate all'emissione; il kit a prezzo PARZIALE
+                  --   il gate lo passa — un prezzo c'e' — e arriva in fattura.
+                  --
+                  -- ⚠️ Il COALESCE non e' tornato per sbaglio: qui NON ci va.
+                  --   COALESCE(..., 0) trasformerebbe il NULL in zero, cioe'
+                  --   rifarebbe il difetto in un altro modo. Il caso «nessun
+                  --   figlio» e' gestito dal CASE, esplicitamente.
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET prezzo_unitario = (
+                                SELECT CASE
+                                         WHEN count(*) = 0 THEN 0
+                                         WHEN count(*) FILTER (
+                                                WHERE c.prezzo_unitario IS NULL) > 0
+                                           THEN NULL
+                                         ELSE SUM(c.prezzo_unitario * c.coeff_qta_snapshot)
+                                       END
+                                  FROM %1$I.%3$I c
+                                 WHERE c.%4$I = $1
+                                   AND c.attivo = TRUE
+                            )
+                          WHERE id = $1$q$,
+                      p_schema,
+                      p_tab_padre,
+                      p_tab_figli,
+                      p_col_fk_padre
+                  );
+                  EXECUTE v_sql USING p_riga_padre_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(text, text, text, text, bigint)
+              IS 'Helper generica BoM CASO A: aggiorna prezzo_unitario della riga padre dai figli '
+                 'attivi. rev 2026-08-19: TRE casi invece di due — nessun figlio 0, almeno un '
+                 'figlio senza prezzo NULL, altrimenti SUM(prezzo * coeff_qta_snapshot). '
+                 '⚠️ Il ramo NULL esiste perche'' su vendite.ddt_righe_componenti il prezzo puo'' '
+                 'mancare (kit che viaggia senza vendersi): con la SUM semplice il figlio scoperto '
+                 'veniva IGNORATO e il padre riceveva la somma parziale — un prezzo sbagliato, che '
+                 'passa il gate all''emissione, invece di un prezzo assente, che il gate ferma. '
+                 'Su preventivi e ordini i figli restano NOT NULL: per loro il ramo e'' irraggiungibile '
+                 'e il comportamento identico a prima. Parametrizzata su schema/tabella/FK, 4 sorgenti. '
+                 'Brief: brief-ddt-righe-senza-prezzo §9 slice C (C2).';

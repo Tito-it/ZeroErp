@@ -61,14 +61,43 @@ Questa tabella è **solo CASO A**. Per CASO B la riga padre ha il prezzo diretta
 | `componente_id` | FK all'articolo componente (`articoli.id`) — denormalizzato per query dirette, coerenza garantita da guard |
 | `coeff_qta_snapshot` | Snapshot di `articoli_componenti.coeff_qta` al momento della creazione — isolato da evoluzioni BoM future |
 | `quantita` | Calcolata dal trigger `_m50_calcola_quantita` come `coeff_qta_snapshot × quantita_padre` |
-| `prezzo_unitario` | Prezzo del componente (suggerito dal resolver, modificabile dall'operatore L1/L2/L3) |
-| `origine_prezzo` | Traccia l'origine: `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE` |
+| `prezzo_unitario` | Prezzo del componente (suggerito dal resolver, modificabile dall'operatore L1/L2/L3). ⚠️ **Può mancare** dal 2026-08-19, vedi sotto |
+| `origine_prezzo` | Traccia l'origine: `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE`, `LISTINO_BUNDLE`. ⚠️ **Può mancare** insieme al prezzo |
 | `prezzo_resolver_context` | JSONB con contesto chiamata resolver (emittente, BA, data, utility); in fallback contiene `error`/`sqlstate` |
 | `stato_approvazione_prezzo` | ENUM `config.stato_approvazione_prezzo` per workflow L3: `PENDING`/`APPROVED`/`REJECTED` |
 
 ---
 
 ### Relazione con la riga padre
+
+> ## ⚠️ Rev 2026-08-19 — su QUESTA tabella il prezzo può mancare
+>
+> `prezzo_unitario` e `origine_prezzo` sono diventati **facoltativi**, e solo
+> qui: sulle gemelle di preventivi, ordini, contratti e offerte restano
+> obbligatori — lì un prezzo mancante è un difetto vero.
+>
+> **Perché.** Un kit è merce come il resto, e la merce si muove anche quando non
+> si vende: conto visione, campionatura, riparazione, trasferimento. Su quei
+> documenti pretendere un prezzo per ogni componente significa chiedere un dato
+> che per essi non ha significato. Era l'ultima ragione per cui un kit non
+> poteva viaggiare senza vendersi.
+>
+> **Le due colonne mancano sempre insieme**: nessun prezzo, nessuna origine. Non
+> esiste un valore `NON_RISOLTO` — sarebbe entrato nel vocabolario di cinque
+> tabelle per dire ciò che l'assenza dice già. Il motivo tecnico della mancata
+> risoluzione sta in `prezzo_resolver_context->>'esito_codice'`.
+>
+> ⛔ **E il prezzo del padre diventa `NULL`, non la somma dei figli rimasti.** Un
+> kit a prezzo assente lo ferma il gate all'emissione; un kit a prezzo
+> **parziale** il gate lo passa e arriva in fattura. Vedi
+> [script.fn_ricalcola_prezzo_padre_da_componenti](/dbzero/script/funzioni/fn_ricalcola_prezzo_padre_da_componenti).
+>
+> **Cosa resta in piedi**: il divieto del prezzo **zero** sui componenti
+> obbligatori vale ancora — ma solo se il DDT ha una causale fatturabile
+> (clausola `WHEN` del trigger, su
+> [vendite.fn_check_ddt_riga_richiede_prezzo](/dbzero/vendite/funzioni/fn_check_ddt_riga_richiede_prezzo)).
+> E il gate all'emissione ferma comunque il DDT che vende con componenti non
+> valorizzati.
 
 Il prezzo sulla riga padre (`ddt_righe.prezzo_unitario`) è **calcolato automaticamente** come SUM pesata dei componenti, tramite il trigger `z90_ricalcola_padre`:
 

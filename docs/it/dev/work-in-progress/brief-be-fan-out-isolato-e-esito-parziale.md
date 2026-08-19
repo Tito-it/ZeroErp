@@ -538,7 +538,10 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   → **blocco parlante** all'emissione, non silenzio. E causale non fatturabile (es.
   CONTO_VISIONE) → fuori dalle card. **SOSPESO il 2026-08-17**: la metà «blocco parlante»
   non è provabile perché il caso **non è costruibile** — vedi il riquadro in fondo alla
-  sezione e [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md). ✅ La metà
+  sezione e [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md).
+  ⭐ **Aggiornamento 2026-08-19**: il lato DB è chiuso e applicato; il caso resta
+  non costruibile solo perché il backend non usa ancora il nuovo resolver
+  (richiesta BE-1). ✅ La metà
   «causale non fatturabile fuori dalle card» è invece **provata**: `DDT0010840`
   (CONTO_VISIONE, prezzo valorizzato, `SPEDITO`) resta fuori dai pushabili.
 - 🟡 **DL-23 — nessun doppio conteggio**: ordine parzialmente spedito con trigger
@@ -665,6 +668,31 @@ non erano un difetto: erano resi fatti nell'ordine che non genera accredito.
 
 **Non ancora provato di DL-27**: il ramo *«reso in DRAFT non conta»*, che si
 verifica con un secondo reso lasciato in bozza — la coda non deve mostrarlo.
+
+> ## ⭐ Aggiornamento DB — 2026-08-19: la porta non è più murata
+>
+> Il perimetro DB del brief dedicato è **chiuso e applicato**: il resolver dei
+> prezzi sa rispondere «non risolvo» senza sollevare, i componenti di un kit
+> ammettono il prezzo assente, e il gate all'emissione chiede il prezzo — a
+> righe **e** componenti — solo quando la causale dichiara che il documento
+> vende. La premessa di DL-28 è stata corretta nel design-of-record
+> ([brief-design-fatturazione-due-lenti](../work-done/brief-design-fatturazione-due-lenti.md),
+> errata corrige in fondo al §10).
+>
+> ⚠️ **Ma il caso in-app non è ancora costruibile, e il motivo è cambiato.**
+> Prima il muro era nel database; ora è nel backend: `ddt_service` continua a
+> chiamare il resolver che **solleva** invece del nucleo che **riporta**
+> (richiesta **BE-1** del brief dedicato, §10). Finché quella riga non cambia,
+> l'operatore vede lo stesso errore di prima.
+>
+> ⚠️ E una precisazione sul riquadro qui sotto, che va letta prima di
+> riprovarlo: *«non è mai scattata e non può scattare»* era vero **per
+> l'applicazione**, non per il sistema. Il gate era già esercitato dai pgTAP, e
+> il database quelle righe le produce da sé nelle ri-consegne. Quello che non è
+> mai successo è che scattasse su un documento reale.
+>
+> **Quindi**: la voce resta ⏸️ **sospesa**, ma il blocco è ora **una riga di
+> Python**, non un pezzo di modello mancante.
 
 #### DL-28 (2026-08-17) — ⏸️ sospeso: il gate presidia una porta murata
 
