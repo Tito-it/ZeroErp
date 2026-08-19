@@ -35,7 +35,24 @@ possono più divergere: al prossimo vincolo aggiunto, si aggiunge QUI e basta.
 | 2 | intento | `E_DDT_CAUSALE_OBBLIGATORIA` (544) | `causale_trasporto_id` NULL — in bozza il NULL è legittimo (DL-28): il vincolo è all'emissione |
 | 3 | dati riga | `E_DDT_PREZZO_NON_RISOLVIBILE` (545) | causale **fatturabile** e almeno una riga attiva senza prezzo risolvibile (proprio o ereditato dall'ordine via fulfillment) |
 | 4 | testata | `E_INDIRIZZO_DOC_OBBLIGATORIO` | mancano indirizzi marcati obbligatori per l'ambito DDT |
-| 5 | componenti | `E_COMPONENTE_PREZZO_PENDENTE` / `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` | componenti BoM CASO A in approvazione o senza prezzo |
+| 5 | componenti | `E_COMPONENTE_PREZZO_PENDENTE` / `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` | ⚠️ **solo se la causale è fatturabile** (rev 2026-08-19): componenti BoM CASO A in approvazione o senza prezzo |
+
+> ## ⚠️ Rev 2026-08-19 — anche i componenti seguono la causale
+>
+> I due motivi del punto 5 erano **incondizionati**, e il secondo era
+> **irraggiungibile**: cercava un prezzo `NULL` su una colonna `NOT NULL` in
+> tutte e quattro le tabelle gemelle — un presidio davanti a una porta murata,
+> dentro questa funzione.
+>
+> Da quando il prezzo dei componenti DDT può mancare, quel ramo **è tornato
+> vivo**. Senza condizionarlo alla causale avrebbe bloccato all'emissione ogni
+> DDT con un kit non valorizzato, **compresi quelli che non si fatturano** —
+> cioè proprio i documenti che si voleva rendere possibili: il conto visione di
+> un kit sarebbe passato da «impossibile da caricare» a «impossibile da
+> emettere».
+>
+> ⭐ È la regola del punto 3 applicata un livello più sotto: **padre e figli
+> obbediscono alla stessa dichiarazione**, la causale.
 
 ### Regole
 

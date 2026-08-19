@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Una volta emesso, il documento e' quello: la causale non si cambia piu'.
+#
+# Brief: docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md §9 slice B
+# (decisione D-4). Il trigger che la usa e' il changeSet 20260819-21.
+#
+# IL BUCO CHE CHIUDE (rilievo R-4 del brief). Il gate all'emissione —
+# vendite.trgfn_ddt_guard_causale_emissione — esce in testa se lo stato NEW non
+# e' EMESSO. Quindi un UPDATE che porta causale_trasporto_id da CONTO_VISIONE a
+# VENDITA su un DDT gia' SPEDITO non ripassa da nessun controllo. Da li':
+#
+#   1. la riga senza prezzo diventa eleggibile per fn_list_ddt_da_pushare, il
+#      cui unico discriminatore e' caus.fatturabile IS TRUE;
+#   2. il push la porta a fn_upsert_commessa_attivita, che la respinge con
+#      E_PARAMETRO_INVALIDO «prezzo_snapshot obbligatorio».
+#
+# Non c'e' corruzione — la terza cintura, il NOT NULL di
+# commesse_attivita.prezzo_snapshot, tiene — ma l'errore arriva TARDI, in
+# batch, e non nomina la causa. Chi lo legge cerca un difetto nel push.
+#
+# ⚠️ E LA RAGIONE VERA NON E' TECNICA. La causale e' STAMPATA sul documento di
+# trasporto. Cambiarla dopo l'emissione vorrebbe dire che il foglio consegnato
+# al vettore e la riga in archivio dicono cose diverse. Il presidio informatico
+# viene dopo: qui si sta descrivendo un fatto del mondo.
+#
+# ⚠️ OGGI QUELLA PORTA E' CHIUSA IN PYTHON, non nel database:
+# ddt_service.aggiorna_ddt ammette modifiche di testata solo in DRAFT
+# (_STATI_MODIFICABILI). Quindi questo changeSet non ripara un difetto
+# osservabile: sposta un invariante dove il progetto ha deciso che stia. La
+# domanda non e' «e' successo?» ma «puo' succedere?» — e la risposta oggi
+# dipende da una costante in un file Python.
+#
+# LA REGOLA, in una riga: in bozza la causale si cambia liberamente; da EMESSO
+# in poi no. Non «da quando e' stata pushata» — cio' che rende il documento
+# immutabile e' l'emissione, non il suo destino contabile.
+#
+# ⚠️ Verificato prima di scrivere, come impone la regola sui guard restrittivi:
+# 18 file pgTAP impostano causale_trasporto_id, e TUTTI lo fanno mentre il DDT
+# e' ancora in bozza, prima di avanzare lo stato — che e' anche l'ordine in cui
+# lavora l'applicazione. Il guard non li tocca.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260819-20-create-trgfn-ddt-guard-causale-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260819-20-create-trgfn-ddt-guard-causale-immutabile
+      author: mctit
+      runOnChange: false
+      comment: >
+        vendite.trgfn_ddt_guard_causale_immutabile: blocca il cambio di
+        causale_trasporto_id su un DDT che non e' piu' in bozza
+        (E_DDT_CAUSALE_IMMUTABILE). Chiude il buco R-4 del brief: il gate
+        all'emissione guarda solo la transizione verso EMESSO, quindi una
+        causale non fatturabile poteva diventare fatturabile a documento gia'
+        spedito. Brief brief-ddt-righe-senza-prezzo §9 slice B / D-4.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt
+                columnName: causale_trasporto_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_causale_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: impedire il cambio della causale di trasporto su un DDT
+              --   che ha gia' lasciato la bozza. La causale dichiara se la merce
+              --   che viaggia e' una vendita (DL-28) ed e' stampata sul
+              --   documento: dopo l'emissione, cambiarla vorrebbe dire che il
+              --   foglio consegnato e l'archivio dicono cose diverse.
+              -- Uso: BEFORE UPDATE OF causale_trasporto_id FOR EACH ROW
+              --   WHEN (NEW.causale_trasporto_id IS DISTINCT FROM OLD.causale_trasporto_id)
+              DECLARE
+                  v_stato_vecchio config.stati_doc_ddt.codice_interno%TYPE;
+              BEGIN
+                  -- ⚠️ Si guarda lo stato VECCHIO, non il nuovo. Un UPDATE che
+                  --   cambia insieme stato e causale — DRAFT -> EMESSO con la
+                  --   causale finalmente scelta — e' l'operazione LEGITTIMA per
+                  --   eccellenza, ed e' quella che il gate all'emissione
+                  --   presidia. Guardare NEW la boccerebbe, e sarebbe un guard
+                  --   che vieta proprio il caso giusto.
+                  SELECT sdd.codice_interno
+                    INTO v_stato_vecchio
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = OLD.stato_doc_ddt_id;
+
+                  IF v_stato_vecchio IS DISTINCT FROM 'DRAFT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_DDT_CAUSALE_IMMUTABILE',
+                          jsonb_build_object(
+                              'ddt_id',        NEW.id,
+                              'numero',        NEW.numero,
+                              'stato',         v_stato_vecchio,
+                              'causale_da',    OLD.causale_trasporto_id,
+                              'causale_a',     NEW.causale_trasporto_id),
+                          NEW.tx_id,
+                          COALESCE(NEW.numero, NEW.id::text)
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_immutabile()
+              IS 'Trigger BEFORE UPDATE OF causale_trasporto_id su vendite.ddt: blocca il '
+                 'cambio se il DDT ha gia'' lasciato la bozza (E_DDT_CAUSALE_IMMUTABILE). '
+                 'La causale e'' stampata sul documento e dichiara se la merce si vende '
+                 '(DL-28): dopo l''emissione il documento e'' quello. '
+                 '⚠️ Legge lo stato VECCHIO: l''UPDATE che porta DRAFT->EMESSO scegliendo '
+                 'contestualmente la causale e'' legittimo, e guardare NEW lo boccerebbe. '
+                 'Chiude il buco R-4 del brief: il gate all''emissione guarda solo la '
+                 'transizione verso EMESSO, quindi una causale non fatturabile poteva '
+                 'diventare fatturabile a documento gia'' spedito, rendendo eleggibile al '
+                 'lister una riga senza prezzo. '
+                 'Brief: brief-ddt-righe-senza-prezzo §9 slice B (D-4).';

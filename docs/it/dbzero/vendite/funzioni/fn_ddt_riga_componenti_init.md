@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_componenti_init(p_riga_id bigint,
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
+
 -- Scopo: Popola ddt_righe_componenti per una riga composita.
 --   Modello unificato: tutti i componenti attivi inseriti con attivo=TRUE.
 --   BoM = contratto immutabile: l'operatore non sceglie quali includere.
@@ -90,7 +91,13 @@ BEGIN
            AND p_componenti_overrides ? v_comp.componente_id::text THEN
             v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
             v_origine := 'MANUALE';
-            IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE) THEN
+            -- ⚠️ Stessa regola della clausola WHEN del trigger (20260819-15):
+            --   l'override a zero su un componente obbligatorio si vieta
+            --   finche' il documento vende. Senza questa condizione il divieto
+            --   sarebbe stato allentato nel trigger e rimasto qui, cioe' in
+            --   due posti che dicono cose diverse sulla stessa regola.
+            IF v_prezzo = 0 AND COALESCE(v_comp.obbligatorio, TRUE)
+               AND vendite.fn_check_ddt_riga_richiede_prezzo(p_riga_id) THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_ddt_riga_componenti_init',
                     'E_PARAMETRO_INVALIDO',
@@ -114,9 +121,15 @@ BEGIN
                     'ba_id', v_ba_id, 'utility_id', v_utility_id)
             );
         ELSE
+            -- rev 2026-08-19: il BEGIN..END resta un blocco nudo, senza
+            --   EXCEPTION. Il commento storico diceva che lo si teneva per non
+            --   re-indentare venticinque righe: ora che la chiamata cambia
+            --   comunque, la ragione decade — ma toglierlo sposterebbe righe
+            --   che questo changeSet non ha motivo di toccare, e un diff piu'
+            --   grande e' un diff piu' difficile da rivedere.
             BEGIN
                 SELECT * INTO v_resolve
-                  FROM vendite.fn_resolve_prezzo_listino_v2(
+                  FROM vendite.fn_resolve_prezzo_listino_v2_esito(
                       v_comp.componente_id, v_comp.componente_uom_id,
                       p_data_riferimento, v_ba_id, v_utility_id::integer,
                       p_emittente_sr_id, NULL,
@@ -130,7 +143,13 @@ BEGIN
                     p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
                     v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
                     v_comp.componente_uom_id, 1,
-                    v_resolve.prezzo_finale, v_comp.componente_iva_id,
+                    -- ⭐ Prezzo NULL quando il nucleo non ha risolto: e' il
+                    --   punto in cui un kit puo' finalmente viaggiare senza
+                    --   vendersi. Prima qui il resolver sollevava e la riga
+                    --   non si creava affatto.
+                    CASE WHEN v_resolve.esito_codice IS NULL
+                         THEN v_resolve.prezzo_finale END,
+                    v_comp.componente_iva_id,
                     v_resolve.origine,
                     TRUE,
                     jsonb_build_object('emittente_sr_id', p_emittente_sr_id,
@@ -140,7 +159,10 @@ BEGIN
                         'listino_versione_id', v_resolve.listino_versione_id,
                         'listino_riga_id', v_resolve.listino_riga_id,
                         'contratto_id', v_resolve.contratto_id,
-                        'origine', v_resolve.origine)
+                        'origine', v_resolve.origine,
+                        -- Il motivo per cui il prezzo manca resta scritto qui:
+                        -- NULL se ha risolto, il codice dell'esito altrimenti.
+                        'esito_codice', v_resolve.esito_codice)
                 );
             -- ⚠️ rev 2026-08-07: qui c'era `EXCEPTION WHEN SQLSTATE 'P0001'`,
             --   che catturava QUALUNQUE errore di dominio del resolver e lo
@@ -171,10 +193,11 @@ BEGIN
 
     RETURN v_inserted;
 END;
+
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ddt_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
-IS 'Inizializza componenti BoM per riga DDT. rev 2026-08-07: tolto l''handler EXCEPTION WHEN SQLSTATE P0001 che catturava qualunque errore del resolver listini e lo ri-sollevava come E_DOC_COMPONENTE_LISTINO_MANCANTE tenendo solo MESSAGE_TEXT (brief terzo lato §18.3). rev 2026-08-07 (bis): la riga inesistente solleva E_DDT_RIGA_NON_TROVATA (899) invece di E_PARAMETRO_INVALIDO, che dava 400 su un 404 — sesto e ultimo dei punti trovati dalla lente del quarto lato (§19.4).';
+IS 'Popola vendite.ddt_righe_componenti per una riga composita. BoM = contratto immutabile: l''operatore non sceglie quali componenti includere. rev 2026-08-19: usa il NUCLEO fn_resolve_prezzo_listino_v2_esito. Se il prezzo di un componente non si risolve la riga si crea lo stesso con prezzo_unitario NULL e con esito_codice in prezzo_resolver_context — prima l''intera riga-kit falliva, ed era l''unica ragione per cui un kit non poteva viaggiare su un DDT che non vende. Il divieto dell''override a zero sui componenti obbligatori si applica solo se la causale e'' fatturabile (stessa regola della WHEN del trigger 20260819-15). Brief: brief-ddt-righe-senza-prezzo §9 slice C (C5).';
 ```
 
 ---

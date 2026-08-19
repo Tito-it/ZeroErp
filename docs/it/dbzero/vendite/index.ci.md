@@ -103,6 +103,7 @@
 - [fn_cambia_stato_commessa](manual/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
 - [fn_cambia_stato_preventivo](manual/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
+- [fn_check_ddt_riga_richiede_prezzo](manual/fn_check_ddt_riga_richiede_prezzo.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice C)
 - [fn_check_fondo_fattura_capiente](manual/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
 - [fn_chiudi_contratto_per_successione](manual/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](manual/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
@@ -191,6 +192,7 @@
 - [fn_resolve_lotto_task_execution_mode](manual/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](manual/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 - [fn_resolve_prezzo_listino_v2](manual/fn_resolve_prezzo_listino_v2.md) — (rev 2026-05-20 — 9° param p_listino_versione_id_preferito: fast path diretto)
+- [fn_resolve_prezzo_listino_v2_esito](manual/fn_resolve_prezzo_listino_v2_esito.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice A)
 - [fn_resolve_stato_esecuzione](manual/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
 - [fn_resolve_termini_pagamento](manual/fn_resolve_termini_pagamento.md) — (latest review 02-08-2026)
 - [fn_riapri_riconsegna_reso](manual/fn_riapri_riconsegna_reso.md) — (rev 2026-07-26)
@@ -237,6 +239,7 @@
 - [trgfn_ddt_default_emittente](manual/trgfn_ddt_default_emittente.md) — (rev 2026-07-13)
 - [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-07-18)
+- [trgfn_ddt_guard_causale_immutabile](manual/trgfn_ddt_guard_causale_immutabile.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice B, decisione D-4)
 - [trgfn_ddt_guard_emittente_ba](manual/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_ddt_guard_indirizzi_obbligatori](manual/trgfn_ddt_guard_indirizzi_obbligatori.md) — (rev 2026-07-11)
 - [trgfn_ddt_guard_transizione](manual/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
