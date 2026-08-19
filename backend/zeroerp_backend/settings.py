@@ -68,6 +68,19 @@ API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
 API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
 REQUEST_LOG_ENABLED = env("DJANGO_REQUEST_LOG_ENABLED", "1") == "1"
 
+# Diario tecnico degli errori (`dbops.error_log`, via `script.fn_log_error_only`).
+# ⚠️ NON e' una variabile d'ambiente, ed e' voluto: la spegne da sola
+# `ZeroErpTestRunner` quando gira la suite (vedi `zeroerp_backend/test_runner.py`).
+# Una flag che si puo' dimenticare di spegnere e' una flag che si dimentica: il
+# 2026-08-19 il diario aveva 597 righe scritte dai test di `pricing_service`, e
+# il team DB ci ha costruito sopra una diagnosi sbagliata
+# (work-in-progress/brief-be-pricing-codice-errore-fantasma.md §10 e §12).
+# Per accenderla in un singolo test: `@override_settings(ERROR_LOG_DB_ENABLED=True)`.
+ERROR_LOG_DB_ENABLED = True
+
+# Runner dei test: unico compito oggi, spegnere ERROR_LOG_DB_ENABLED.
+TEST_RUNNER = "zeroerp_backend.test_runner.ZeroErpTestRunner"
+
 # ── Assistente AI ──
 AI_ENABLED = env("AI_ENABLED", "0") == "1"
 AI_PROVIDER = env("AI_PROVIDER", "mock")

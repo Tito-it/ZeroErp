@@ -9,6 +9,7 @@
 import json
 from typing import Any, NoReturn
 
+from django.conf import settings
 from django.db import connection
 
 from apps.core.services.db_error_fields import structured_db_error_code
@@ -124,6 +125,18 @@ class ErrorManager:
         structured = structured_db_error_code(exc)
         if structured is not None and any(c == structured for c, _ in known_markers):
             matched_code = structured
+        # ⛔ NON DUPLICARE IL DIARIO — decisione DB+BE del 2026-08-19.
+        # Il campo strutturato e' valorizzato SOLO da `script.fn_log_and_raise_error`,
+        # che prima di sollevare ha gia' scritto la sua riga in `dbops.error_log`
+        # (via `fn_log_error_only`, dblink: sopravvive al rollback del RAISE).
+        # Ri-loggare qui significa DUE righe per UN fallimento, con la seconda
+        # marcata `area='backend'` come se l'errore fosse nato nel backend.
+        # ⚠️ E il ripiego non e' simmetrico, percio' non si spegne tutto: i ~135
+        # `RAISE EXCEPTION` diretti (46 funzioni, vedi `db_error_fields`) e gli
+        # errori PG veri — violazioni di vincolo, timeout — nel diario NON ci
+        # sono. Se il backend smettesse di scriverli si perderebbero del tutto:
+        # li' la riga la scriviamo noi, e non e' un doppione.
+        gia_scritto_dal_database = structured is not None
         for code_candidate, markers in known_markers:
             if matched_code is not None:
                 break
@@ -142,12 +155,23 @@ class ErrorManager:
             detail=msg,
             context=context,
             cause=exc,
-            log_to_db=log_to_db,
+            log_to_db=log_to_db and not gia_scritto_dal_database,
             function_name=function_name,
         )
         raise AssertionError("unreachable: raise_error alza sempre")
 
     # Scopo: Registra un errore tecnico su DB in best-effort senza interrompere il flusso chiamante.
+    #
+    #        ⚠️ RECINTO FRA TEST E PRODUZIONE. `settings.ERROR_LOG_DB_ENABLED` e'
+    #        spento dal runner dei test (`zeroerp_backend/test_runner.py`): la
+    #        suite gira contro il database vero e un test che esercita un service
+    #        con `log_to_db=True` sostituisce il repository con un mock, non
+    #        questo logger — la riga finirebbe nel diario indistinguibile da un
+    #        errore vero. E' costato una diagnosi sbagliata al team DB il
+    #        2026-08-19 (brief-be-pricing-codice-errore-fantasma.md §10).
+    #        Il controllo sta QUI e non nei chiamanti: e' l'unico punto Python che
+    #        chiama `script.fn_log_error_only`, quindi il recinto e' completo per
+    #        costruzione — un service nuovo lo eredita senza saperlo.
     @staticmethod
     def log_error_only(
         *,
@@ -156,6 +180,8 @@ class ErrorManager:
         area: str = "backend",
         function_name: str = "django_service",
     ) -> None:
+        if not getattr(settings, "ERROR_LOG_DB_ENABLED", True):
+            return
         # Best-effort: non deve rompere il flusso applicativo.
         try:
             with connection.cursor() as cursor:
