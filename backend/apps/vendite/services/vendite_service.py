@@ -1418,6 +1418,11 @@ def get_fattura_dettaglio(
         "righe": repository.list_fattura_righe(fattura_id),
         "riepilogo_iva": repository.list_fattura_riepilogo_iva(fattura_id),
         "scadenze": repository.list_fattura_scadenze(fattura_id),
+        # Legame documentale della nota di credito, nei due versi (B7). ⚠️ Sta
+        # QUI, dopo il cancello: `vendite.fatture` ha la RLS,
+        # `fatture_rettifiche` no — leggerlo prima esporrebbe il numero di un
+        # documento fuori perimetro.
+        "rettifiche": repository.get_fattura_rettifiche(fattura_id),
         "contatori": {
             "note": PartitionedNoteService(repo=NOTE_REPO_FATTURA).count_per_target(
                 target_id=fattura_id,

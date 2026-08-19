@@ -1,0 +1,117 @@
+# API — export delle liste configurabili
+
+## Scopo
+
+Un contratto solo per **tutti** gli export di lista dell'applicazione: stesso
+parametro, stesso comportamento, stesso tetto. Cambia il dominio, non la regola.
+
+Il renderer e' `apps/ui/services/lista_export_service.py` (CSV/XLSX); i dati li
+prende sempre il repository del dominio, mai il renderer — **niente SQL
+dinamico**, quindi niente `vista_sql` costruita a runtime.
+
+## 1. Il contratto
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **Path** | `…/export/` in coda alla lista che esporta (tabella al §3) |
+| **Parametro** | `formato=csv` (default) oppure `formato=xlsx` |
+| **Risposta** | file binario con `Content-Disposition: attachment` |
+| **Tetto** | **10.000 righe**; oltre, `E_UI_EXPORT_LIMIT_EXCEEDED` |
+
+⛔ **Il parametro si chiama `formato`, in italiano, e non e' un vezzo.** `format`
+e' un **magic param di DRF**: usarlo fa entrare in gioco il content negotiation
+del framework e la richiesta muore con **404** prima di arrivare alla view. Il
+nome italiano e' la difesa contro una collisione che si manifesta come «endpoint
+inesistente», cioe' nel modo piu' difficile da diagnosticare.
+
+## 2. Cosa esce, e perche' non e' «la query di prima con piu' righe»
+
+L'export **rispetta le preferenze di lista dell'operatore**: ordine delle
+colonne, colonne nascoste, permessi. Sono gli stessi che il FE usa a video, letti
+da `UiService.get_lista_config`.
+
+Il renderer scarta:
+
+* le colonne `tipo_colonna='azione'` — sono pulsanti, non dati;
+* le colonne `esportabile = false` — decisione dell'admin, non dell'utente;
+* le colonne che il livello di permesso dell'utente non espone.
+
+Restano identificatori e informazioni, nell'ordine `ordine_default` (o in quello
+che il chiamante passa). ⚠️ Conseguenza pratica: **due operatori con permessi
+diversi ottengono file diversi dallo stesso endpoint**, ed e' voluto.
+
+I **filtri applicati** viaggiano col file: riga di intestazione commentata (`#`)
+nel CSV, foglio «Filtri applicati» nell'XLSX. Servono a non ritrovarsi in mano
+un file che nessuno sa piu' da dove venga.
+
+Date e numeri passano da `locale_formatters.format_for_export` — formato
+italiano (`DD-MM-YYYY`), mai la serializzazione di default.
+
+## 3. Gli endpoint
+
+Ognuno dichiara il proprio `lista_codice`: e' la chiave con cui il BE risolve la
+configurazione della lista **e** il cancello del perimetro emittente.
+
+| endpoint | `lista_codice` |
+|---|---|
+| `GET /api/v1/anagrafiche/clienti/export/` | `anagrafiche.clienti` |
+| `GET /api/v1/anagrafiche/fornitori/export/` | `anagrafiche.fornitori` |
+| `GET /api/v1/anagrafiche/soggetti/export/` | `anagrafiche.soggetti` |
+| `GET /api/v1/vendite/preventivi/export/` | `vendite.preventivi` |
+| `GET /api/v1/vendite/offerte/export/` | `vendite.offerte` |
+| `GET /api/v1/vendite/contratti/export/` | `vendite.contratti` |
+| `GET /api/v1/vendite/ordini/export/` | `vendite.ordini` |
+| `GET /api/v1/vendite/ddt/export/` | `vendite.ddt` |
+| `GET /api/v1/vendite/lotti/export/` | `vendite.lotti` |
+| `GET /api/v1/vendite/resi/export/` | `vendite.resi` |
+| `GET /api/v1/vendite/resi/da-accreditare/export/` | `vendite.resi_da_accreditare` |
+| `GET /api/v1/vendite/resi/da-riconsegnare/export/` | `vendite.resi_da_riconsegnare` |
+| `GET /api/v1/vendite/dashboard-aperto/documenti/export/` | `vendite.dash_aperto_documenti` |
+| `GET /api/v1/vendite/dashboard-backlog/documenti/export/` | `vendite.dash_backlog_documenti` |
+| `GET /api/v1/vendite/dashboard-competenza/gruppi/export/` | `vendite.dash_competenza_gruppi` |
+| `GET /api/v1/vendite/dashboard-competenza/commesse/export/` | `vendite.dash_competenza_commesse` |
+| `GET /api/v1/vendite/dashboard-competenza/errori/export/` | `vendite.dash_competenza_errori` |
+
+**I filtri sono quelli della lista corrispondente**: l'export accetta gli stessi
+query param della sua `GET` di lista e li applica agli stessi campi. Per il
+dettaglio dei filtri di un dominio si guarda la pagina di quel dominio, non
+questa.
+
+## 4. Il perimetro emittente vale anche qui — anzi, soprattutto qui
+
+`lista_codice` non serve solo a leggere la configurazione: e' la dichiarazione su
+cui `DomainAPIView` applica il **cancello del perimetro emittente** prima di
+servire i dati (`E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`, 422).
+
+⚠️ **E l'export e' la porta piu' larga**: una sola richiesta porta via fino a
+10.000 righe. Rifiutare a video quel che si concede in un file e' il modo
+peggiore di avere un presidio — per questo `test_perimetro_emittente_copertura`
+pretende che lista ed export dichiarino la stessa cosa **nei due versi**: se una
+lista lo dichiara, il suo export deve farlo; e viceversa.
+
+## 5. Codici errore
+
+| codice | quando |
+|---|---|
+| `E_UI_EXPORT_LIMIT_EXCEEDED` | oltre 10.000 righe: si stringono i filtri, non si alza il tetto |
+| `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` (422) | perimetro emittente non risolto — **non e' un 403**: il diritto c'e', manca una precondizione che l'operatore scioglie da se' |
+
+## 6. Aggiungere un export a una lista nuova
+
+1. la view estende `DomainAPIView` e dichiara `lista_codice` — **lo stesso** della
+   lista che esporta;
+2. il repository di dominio produce le righe (whitelist colonne/filtri gia' sue);
+3. la serializzazione va delegata a `ListaExportService`: non si riscrive un CSV
+   a mano, o si perdono formattazione locale, filtri in testata e cap;
+4. il parametro si chiama **`formato`**;
+5. si aggiunge la riga alla tabella del §3, altrimenti il prossimo che cerca
+   «come esporto X» non lo trova — ed e' il motivo per cui questa pagina esiste.
+
+## Dipendenze
+
+* `apps/ui/services/lista_export_service.py` — renderer CSV/XLSX, cap, filtri in testata
+* `apps/ui/services/ui_service.py` — `get_lista_config` (colonne, ordine, permessi)
+* `apps/core/services/locale_formatters.py` — `format_for_export`
+* `apps/core/api/base_views.py` — `DomainAPIView.lista_codice` e cancello perimetro
+* [api_ui_liste](api_ui_liste.md) — la configurazione delle liste, di cui l'export e' la proiezione su file

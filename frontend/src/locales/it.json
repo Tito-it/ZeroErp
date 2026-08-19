@@ -1138,7 +1138,8 @@
       "ut_empty_matrix_hint": "Configura prima la matrice Utilities/Ruoli a livello di sistema, poi torna qui per attivare le utility per questo emittente.",
       "ut_empty_matrix_cta": "Apri matrice Utilities/Ruoli",
       "ut_parent_inactive_warn": "L'emittente fiscale e' disattivato: le configurazioni utility possono essere salvate solo come non attive. Riattiva l'emittente per abilitare le righe.",
-      "ut_parent_inactive_tooltip": "Emittente disattivato: figlio non puo' essere attivo"
+      "ut_parent_inactive_tooltip": "Emittente disattivato: figlio non puo' essere attivo",
+      "avviso_registri": "Dopo aver creato l'emittente servono anche i suoi registri di numerazione e le mappature tipo documento/natura: senza, la sua prima fattura si ferma con «configurazione mancante». Non esiste un registro generico di ripiego — è voluto: meglio fermarsi che numerare sul progressivo di un'altra azienda."
     }
   },
   "indirizzi": {
@@ -2190,7 +2191,11 @@
       "col_sconto": "Sconto",
       "col_iva": "IVA",
       "col_imponibile": "Imponibile",
-      "nessuna_riga": "Nessuna riga in fattura"
+      "nessuna_riga": "Nessuna riga in fattura",
+      "rettifica_di": "Rettifica",
+      "rettificata_da": "Rettificata da",
+      "col_rettifica_riga": "Rettifica riga",
+      "rettifica_riga_valore": "{numero} · riga {riga}"
     },
     "indirizzi": {
       "da_soggetto": "da soggetto",
@@ -2499,7 +2504,10 @@
         "fattura_numerata": "La fattura è già numerata: eliminarla aprirebbe un buco nella numerazione fiscale."
       },
       "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata.",
-      "col_emittente": "Emittente"
+      "col_emittente": "Emittente",
+      "tab_documenti": "Documenti",
+      "col_natura": "Natura",
+      "reset_avviso_accrediti": "⚠️ Un accredito già registrato NON viene annullato: la sua rettifica torna «da emettere» e la nota di credito viene RIGENERATA al giro successivo. Per disfare davvero un accredito si usa «Annulla l'accredito» sulla riga del reso."
     },
     "offerte": {
       "stato_info": {

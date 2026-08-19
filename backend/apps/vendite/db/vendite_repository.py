@@ -170,6 +170,18 @@ FONDI_DA_DECIDERE_MOTIVI: tuple[str, ...] = (
 )
 
 
+# I due versi del legame documentale della nota di credito, come coppia di
+# COLONNE di `vendite.fatture_rettifiche`: (colonna da filtrare, colonna da
+# raggiungere). ⭐ Sede unica del ribaltamento — il verso non si scrive due
+# volte dentro una query, dove le due copie possono divergere.
+#   rettifica      : da una NC, i documenti che rettifica
+#   rettificata_da : da una fattura, le note che la rettificano
+_RETTIFICHE_VERSI: dict[str, tuple[str, str]] = {
+    "rettifica": ("fattura_id", "rettificata_id"),
+    "rettificata_da": ("rettificata_id", "fattura_id"),
+}
+
+
 class VenditeRepository:
 
     # Scopo: Query paginata su vista/union costosa in UNA valutazione con
@@ -2121,6 +2133,8 @@ class VenditeRepository:
                 ON ssdi.id = fllf.stato_sdi_id
             LEFT JOIN config.stati_doc_fiscale sdf
                 ON sdf.id = fllf.stato_doc_fiscale_id
+            LEFT JOIN config.nature_doc_fiscale ndf
+                ON ndf.id = f.natura_doc_id
         """
 
         count_sql = f"""
@@ -2149,7 +2163,14 @@ class VenditeRepository:
                 srd.soggetto_id,
                 srd.ragione_sociale_completa,
                 srd.id_fiscale_univoco_cf_piva,
-                sdf.codice_interno      AS stato_doc_fiscale_codice
+                sdf.codice_interno      AS stato_doc_fiscale_codice,
+                -- ⚠️ Un lotto puo' contenere documenti di NATURA DIVERSA: la
+                -- nota di credito nasce nello stesso giro della fattura e il
+                -- verbo «numera» le numera entrambe, sui rispettivi registri
+                -- (§12.4-bis.8). Senza questa decodifica il drawer del lotto
+                -- non «assume» che siano tutte fatture: non ha il dato.
+                ndf.codice_interno      AS natura_doc_codice,
+                ndf.descrizione         AS natura_doc_descrizione
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
             {where_clause}
@@ -2188,6 +2209,8 @@ class VenditeRepository:
                     "ragione_sociale_completa": row[15],
                     "id_fiscale_univoco_cf_piva": row[16],
                     "stato_doc_fiscale_codice": row[17],
+                    "natura_doc_codice": row[18],
+                    "natura_doc_descrizione": row[19],
                 }
             )
         return result, total_count
@@ -2278,6 +2301,13 @@ class VenditeRepository:
                 f.tipo_doc_fiscale_id,
                 tdf.codice_interno           AS tipo_doc_fiscale_codice,
                 tdf.descrizione              AS tipo_doc_fiscale_descrizione,
+                -- Natura del documento (FATTURA | NOTA_CREDITO | NOTA_DEBITO):
+                -- e' un asse DIVERSO dal tipo documento (front/back office) e
+                -- dal registro. Sta accanto a `serie` perche' le tre cose
+                -- insieme dicono su quale sezionale il documento e' numerato.
+                f.natura_doc_id,
+                ndf.codice_interno           AS natura_doc_codice,
+                ndf.descrizione              AS natura_doc_descrizione,
                 f.stato_doc_fiscale_id,
                 sdf.codice_interno           AS stato_codice_interno,
                 sdf.descrizione              AS stato_descrizione,
@@ -2362,6 +2392,8 @@ class VenditeRepository:
                 ON tpag.id = f.termine_pagamento_id
               LEFT JOIN config.tipi_doc_fiscale tdf
                 ON tdf.id = f.tipo_doc_fiscale_id
+              LEFT JOIN config.nature_doc_fiscale ndf
+                ON ndf.id = f.natura_doc_id
               LEFT JOIN config.stati_doc_fiscale sdf
                 ON sdf.id = f.stato_doc_fiscale_id
               LEFT JOIN config.valute val
@@ -2442,16 +2474,73 @@ class VenditeRepository:
                 iva.descrizione     AS iva_descrizione,
                 iva.aliquota_iva    AS iva_aliquota,
                 r.iva_natura,
-                r.imponibile        AS importo_riga
+                r.imponibile        AS importo_riga,
+                -- Legame riga↔riga della nota di credito: «una nota di credito
+                -- si legge accanto alla fattura RIGA PER RIGA» (§12.6). Il
+                -- puntatore sta su `fatture_righe`, che la vista di esposizione
+                -- non proietta: si prende dalla tabella, con la decodifica
+                -- MINIMA che serve a nominare la gemella (numero + riga_nr).
+                fr.riga_rettificata_id,
+                orig.riga_nr        AS riga_rettificata_nr,
+                forig.numero        AS riga_rettificata_fattura_numero,
+                forig.id            AS riga_rettificata_fattura_id
               FROM vendite.vw_fattura_righe_esposte r
               LEFT JOIN catalogo.articoli a      ON a.id  = r.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_id
               LEFT JOIN config.iva iva           ON iva.id = r.iva_id
+              LEFT JOIN vendite.fatture_righe fr ON fr.id = r.fatture_righe_id
+              LEFT JOIN vendite.fatture_righe orig
+                     ON orig.id = fr.riga_rettificata_id
+              LEFT JOIN vendite.fatture forig    ON forig.id = orig.fattura_id
              WHERE r.fattura_id = %s
              ORDER BY r.ordinamento, r.livello, r.riga_nr
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Il legame DOCUMENTO-a-documento della nota di credito
+    #        (`vendite.fatture_rettifiche`), letto nei DUE versi: da una nota di
+    #        credito i documenti che rettifica, da una fattura le note di
+    #        credito che la rettificano. Numero, data e id per il link.
+    # ⚠️ SI CHIAMA DOPO IL CANCELLO DI TESTATA, MAI PRIMA. `vendite.fatture` ha
+    #    la RLS, `fatture_rettifiche` NO: chiamarla su un id qualunque
+    #    esporrebbe il numero di un documento fuori perimetro. Il service lo
+    #    rispetta (§B7 del brief nota di credito) — chi aggiunge un chiamante
+    #    nuovo deve rispettarlo pure.
+    # ⭐ La tabella e' una PROIEZIONE di cio' che le righe gia' dicono
+    #    (`fatture_righe.riga_rettificata_id`), scritta dal task di pipeline
+    #    `popola_fatture_rettifiche` dopo la numerazione: su un documento non
+    #    ancora numerato e' legittimamente vuota.
+    def get_fattura_rettifiche(self, fattura_id: int) -> dict[str, list[dict[str, Any]]]:
+        return {
+            verso: self._legame_rettifiche(fattura_id, verso=verso)
+            for verso in _RETTIFICHE_VERSI
+        }
+
+    # Scopo: un verso solo del legame documentale. Le due colonne del ponte si
+    #        scambiano di ruolo fra i due versi, e vengono da una **whitelist**:
+    #        sono nomi di colonna, non valori, quindi non possono arrivare da
+    #        fuori.
+    # ⚠️ Prima erano due `CASE WHEN %(verso)s = 'rettifica'`, uno nella JOIN e
+    #    uno nella WHERE: due copie della stessa condizione che DEVONO
+    #    concordare, e un refuso in una delle due avrebbe agganciato il
+    #    documento sbagliato **in silenzio** — nessun errore, solo il numero di
+    #    un'altra fattura a video. Qui la coppia si legge da una riga sola.
+    def _legame_rettifiche(self, fattura_id: int, *, verso: str) -> list[dict[str, Any]]:
+        col_filtro, col_target = _RETTIFICHE_VERSI[verso]
+        sql = f"""
+            SELECT %s::text AS verso,
+                   f.id, f.numero, f.serie, f.anno, f.data,
+                   ndf.codice_interno AS natura_doc_codice
+              FROM vendite.fatture_rettifiche fr
+              JOIN vendite.fatture f ON f.id = fr.{col_target}
+              LEFT JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
+             WHERE fr.{col_filtro} = %s
+             ORDER BY f.anno, f.numero
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [verso, int(fattura_id)])
             return rows_to_list(cursor)
 
     # Scopo: Riepilogo IVA della fattura, letto dalla tabella REALE

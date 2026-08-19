@@ -126,6 +126,11 @@ class FatturaDettaglioServiceTests(TestCase):
         repo.list_fattura_righe.assert_not_called()
         repo.list_fattura_riepilogo_iva.assert_not_called()
         repo.list_fattura_scadenze.assert_not_called()
+        # ⚠️ E il legame documentale meno che mai (B7): `vendite.fatture` ha la
+        # RLS, `vendite.fatture_rettifiche` NO. Leggerlo prima del cancello
+        # esporrebbe NUMERO e DATA di un documento di un altro emittente — cioe'
+        # il leak che le policy sui satelliti hanno chiuso altrove.
+        repo.get_fattura_rettifiche.assert_not_called()
 
     # Scopo: lo scope dell'utente arriva al cancello (difesa applicativa che si
     #        somma alla RLS), non si ferma nel service.
@@ -147,7 +152,8 @@ class FatturaDettaglioServiceTests(TestCase):
 
         self.assertEqual(
             set(result.keys()),
-            {"fattura", "righe", "riepilogo_iva", "scadenze", "contatori"},
+            {"fattura", "righe", "riepilogo_iva", "scadenze", "contatori",
+             "rettifiche"},
         )
         self.assertEqual(result["fattura"]["numero"], 123)
         self.assertEqual(result["righe"], _RIGHE)

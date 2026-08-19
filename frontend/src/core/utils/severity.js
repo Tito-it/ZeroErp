@@ -460,6 +460,24 @@ export function statoEsecuzioneFatturaSeverity(codice) {
   return resolveSeverity(STATO_ESECUZIONE_FATTURA_MAP, codice)
 }
 
+// Natura del documento fiscale (config.nature_doc_fiscale.codice_interno):
+// FATTURA | NOTA_CREDITO | NOTA_DEBITO.
+// ⚠️ NESSUNA delle tre è `danger`, ed è una scelta: una nota di credito non è
+// un errore né un'anomalia — è un documento di segno opposto, previsto dal
+// modello. Colorarla di rosso la farebbe cercare fra i problemi in ogni lista
+// in cui compare, e il totale negativo che porta con sé sembrerebbe un difetto
+// invece che il suo contenuto.
+// `secondary` alla fattura (è il caso normale: non deve gridare) e `info` alle
+// due rettifiche, che sono ciò che merita di essere notato.
+export const NATURA_DOC_MAP = {
+  FATTURA: 'secondary',
+  NOTA_CREDITO: 'info',
+  NOTA_DEBITO: 'info',
+}
+export function naturaDocSeverity(codice) {
+  return resolveSeverity(NATURA_DOC_MAP, codice)
+}
+
 // Stato approvazione della riga commessa (vendite.commesse_attivita
 // .stato_approvazione): BOZZA=arancio (lavoro da fare), APPROVATA=verde,
 // RIFIUTATA=rosso.
