@@ -13,7 +13,7 @@
 
 ---
 
-## ⚠️ Le quattro cose da sapere prima di cominciare
+## ⚠️ Le cinque cose da sapere prima di cominciare
 
 1. **C'è un punto di non ritorno, ed è dichiarato**: la **prova 6** numera una
    nota di credito. Oltre la numerazione non si torna indietro — nessun verbo,
@@ -29,6 +29,11 @@
 4. **Il reset del lotto NON annulla l'accredito**: lo rimette in coda e la nota
    di credito **si rigenera** al giro dopo. Per disfare davvero serve «Annulla
    l'accredito» sulla riga del reso.
+5. ⛔ **E nemmeno annullare il RESO è una via d'uscita** (rev 2026-08-19): con un
+   accredito registrato il DB lo **rifiuta**, e deve farlo — annullare il reso
+   non toglierebbe la rettifica già creata. La sola strada indietro resta
+   «Annulla l'accredito». ⚠️ Se in collaudo il reso si annulla lo stesso, la
+   guardia non è ancora in esercizio: vedi la prova 4.
 
 ---
 
@@ -101,8 +106,19 @@ Usa la riga **5797**.
       kebab della riga offre **«Annulla l'accredito»**;
 - [ ] l'annullo chiede un **motivo obbligatorio** (senza, il pulsante è spento)
       e avvisa che **questo non è il reset del lotto**;
+- [ ] ⭐ **prima di annullare l'accredito, prova ad annullare il RESO** («Annulla»
+      sul reso `RESO0005122`): deve **rifiutare**, dicendo che c'è un accredito
+      registrato e che va annullato **prima** quello;
 - [ ] dopo l'annullo: toast verde, e la riga **torna** nella coda accrediti col
-      suo dovuto.
+      suo dovuto;
+- [ ] e ora il reso **si annulla** (se lo si prova): il divieto si è spento da
+      solo, perché l'annullo dell'accredito ha tolto il collegamento.
+
+⛔ **Se il reso si annulla anche con l'accredito registrato, FERMATI.** È il
+difetto trovato il 2026-08-19 (§38 del brief): il reso risulterebbe annullato ma
+la rettifica resterebbe viva, e il primo giro di fatturazione emetterebbe **una
+nota di credito per un reso annullato**. Vuol dire che la migrazione della
+guardia non è ancora stata applicata — non proseguire con la prova 6.
 
 ⭐ Se arrivi in fondo a questa prova, il giro reversibile è chiuso: hai provato
 verbo, idempotenza, annullo e ritorno in coda **senza produrre nessun documento**.
@@ -151,7 +167,10 @@ Usa la riga **24** (il kit).
       bozza» / «Annulla lotto» avvisa che **un accredito già registrato NON
       viene annullato** e che la nota **si rigenera** al giro successivo;
 - [ ] *(se la riga era anche rinunciata)* riaprire la rinuncia è **rifiutato**,
-      con il messaggio sull'accredito già eseguito.
+      con il messaggio sull'accredito già eseguito;
+- [ ] e **annullare il reso** è rifiutato a sua volta, con il messaggio
+      sull'accredito registrato: qui la strada indietro non c'è più da nessuna
+      parte, ed è corretto che i tre verbi lo dicano tutti e tre.
 
 ### 8 · Il permesso *(P-1, B2)*
 
@@ -184,6 +203,7 @@ Usa la riga **24** (il kit).
 | la NC nasce **dentro** la fattura | 🔴 grave: la chiave documento non sta separando la natura. Fermati |
 | il numero è sul progressivo fatture | 🔴 grave: registro sbagliato. Fermati |
 | «operazione non consentita» sull'annullo | è già emessa: è corretto. Il messaggio deve dire il perché |
+| il **reso** si annulla anche se accreditato | 🔴 grave: la guardia del §38 non è in esercizio. Fermati: la NC uscirebbe lo stesso |
 
 ⛔ **Sui due «grave»: non ritentare.** Sono i due casi in cui un secondo giro
 produce un secondo documento sbagliato.
