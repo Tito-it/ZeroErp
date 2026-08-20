@@ -3,10 +3,20 @@
 > **Tipo**: brief di design (decisioni di dominio) + **piano DB** + **esecuzione**
 > + **piano BE/FE** ·
 > **Data**: 2026-08-17 · **rev**: 2026-08-18 (PARTE IV) · **Owner**: Tid ·
-> **Stato**: ✅ **PERIMETRO DB CHIUSO E APPLICATO** (2026-08-18) ·
+> **Stato**: ✅ **PERIMETRO DB CHIUSO E APPLICATO** (2026-08-18) — ⚠️ **riaperto
+> il 2026-08-19 dal collaudo**, vedi §38 ·
 > 🟡 **BE IN CORSO: 3 slice su 9 chiuse e committate** (`24b09c7f2`) ·
 > ⛔ **FE non iniziato** · 🔴 **5 prerequisiti in attesa del team DB**.
 > **Stato slice per slice e ripartenza nel §27.**
+>
+> 🔴 **2026-08-19 — la guardia che mancava (§38).** Il collaudo in-app ha trovato
+> che `vendite.fn_annulla_reso` **non vedeva l'accredito**: un reso già
+> accreditato si annullava lasciando vive le rettifiche, e il primo giro di
+> fatturazione ne avrebbe fatto uscire una nota di credito. Tre changeSet
+> (`20260819-22` → `-24`), un codice errore nuovo (**933**) e un pgTAP da 8
+> asserzioni sono **preparati e NON applicati**: la migrazione aspetta il via.
+> ⚠️ Finché non è applicata il difetto è vivo in `dbdev`, e ci sono **due resi
+> accreditati** che non vanno annullati.
 > Ventitré changeSet (`20260818-24` → `-46`) applicati, due pgTAP nuovi (22
 > asserzioni), quattro pgTAP esistenti riallineati, baseline `vendite` e
 > `script` **senza regressioni**, doc concettuale aggiornata. Cronaca
@@ -4330,3 +4340,156 @@ di una regola che vive nel DB**.
 debito da inseguire: sono lo specchio di una convenzione, pronte per il giorno in
 cui una capability esporrà i motivi. Scritto qui perché chi le trova non le
 prenda per un lavoro lasciato a metà.
+
+---
+
+## 38. 🔴 La guardia che mancava: `fn_annulla_reso` non vedeva l'accredito (2026-08-19)
+
+> **Origine**: segnalazione del team BE, trovata **in collaudo** (prova 4 della
+> [checklist in-app](collaudo-in-app-nota-credito-resi.md)). È il primo difetto
+> che il collaudo ha prodotto, ed è di quelli che nessuna suite avrebbe trovato:
+> non c'è niente di rotto: c'è una cosa che **non è stata scritta**.
+>
+> ⛔ **Stato: preparato, NON applicato.** Tre changeSet, due righe di catalogo e
+> un pgTAP nuovo sono nel repo; la migrazione **non è stata eseguita** e aspetta
+> il via dell'utente. Finché non lo è, il difetto è vivo in `dbdev`.
+
+### 38.1 Il fatto, e la misura
+
+`vendite.fn_annulla_reso` sollevava quattro codici — `E_VALIDAZIONE`,
+`E_RESO_NOT_FOUND`, `E_RESO_STATO_NON_ANNULLABILE`,
+`E_RESO_ANNULLO_CON_RICONSEGNE` — e **nessuno nominava l'accredito**. Un reso già
+accreditato si annullava senza che nulla venisse stornato, e restavano vive:
+
+* le righe di ponte in `vendite.resi_righe_accrediti`;
+* le `vendite.commesse_attivita` `tipo_movimento = 'RETTIFICA'` in
+  `APPROVATA` / `NON_EMESSA`.
+
+⚠️ **E il lister non ripara a valle**: `fn_list_emittibili_lane` e
+`fn_emit_attivita_fatturabili_da_commessa` non nominano mai il reso — per loro
+una rettifica `NON_EMESSA` è materia normale. Al primo giro sarebbe uscita **una
+nota di credito per un reso annullato**.
+
+Misurato in `dbdev` il 2026-08-19, a conferma della segnalazione:
+
+| reso | riga | ponti | commesse_attivita | stato |
+| --- | --- | --- | --- | --- |
+| RESO0005122 | 5797 | 460 | 35187 (−5,000000 × 2,50) | APPROVATA / NON_EMESSA |
+| RESO0000017 (il kit) | 24 | 457, 458, 459 | 35184, 35185, 35186 | APPROVATA / NON_EMESSA |
+
+⭐ **E una cosa che vale la pena aver misurato**: **nessun reso già annullato
+porta righe di ponte**. Il difetto non ha ancora prodotto dati sporchi, quindi la
+correzione è interamente **in avanti** — non c'è bonifica da scrivere.
+
+### 38.2 Perché è una dimenticanza e non una scelta
+
+La stessa guardia esiste già nei due vicini di casa: `fn_annulla_reso` rifiuta
+già quando la merce è stata ri-consegnata (`E_RESO_ANNULLO_CON_RICONSEGNE` —
+identica classe di problema, un effetto già in viaggio), e
+`script.fn_check_rinuncia_reversibile` rifiuta già di riaprire una rinuncia se la
+quota è accreditata (`E_RESO_RINUNCIA_ACCREDITO_ESEGUITO`, §32.1).
+
+Mancava solo nel verbo che annulla **il documento intero**, cioè quello che ne
+cancella tutte le premesse.
+
+### 38.3 Cosa è stato fatto
+
+| # | Oggetto | Cosa |
+| --- | --- | --- |
+| `20260819-22` | `vendite.fn_annulla_reso` | la guardia: `EXISTS` su una riga di ponte → `E_RESO_ANNULLO_CON_ACCREDITO` |
+| `20260819-23` | `script.fn_check_rinuncia_reversibile` | **solo commenti**: il vincolo reciproco passa da due posti a tre |
+| `20260819-24` | `vendite.fn_annulla_accredito_riga_reso` | **solo commenti**: idem, sul lato da cui gli altri due dipendono |
+| CSV `80_data` | `codici_errore` + `messaggi_errore` | `E_RESO_ANNULLO_CON_ACCREDITO`, classe `CONFLITTO_STATO`, id **933** |
+| pgTAP | `test-annulla-reso-gate-accredito-v1.sql` | 8 asserzioni |
+
+Il messaggio è quello chiesto dal BE, e **dice la strada** invece del solo
+divieto — sul modello di quello delle ri-consegne:
+
+> «Il reso ha un accredito registrato: annulla prima l'accredito sulla riga, poi
+> il reso.»
+
+### 38.4 I tre punti su cui non si è improvvisato
+
+1. **Rifiutare, non cascatare.** `fn_annulla_accredito_riga_reso` pretende un
+   **motivo obbligatorio** e la traccia del perché vive solo in
+   `commesse_attivita_log`: una cascata automatica dovrebbe **inventarselo**. E
+   quella madre rifiuta se anche una sola rettifica ha lasciato `NON_EMESSA` — lì
+   l'annullo del reso non deve avvenire **affatto**, non avvenire a metà.
+   ⭐ È il test 3 del pgTAP: dopo il rifiuto il ponte è **intero**.
+2. **Il predicato è l'esistenza del ponte, non lo stato delle rettifiche.** Se
+   l'accredito è ormai troppo tardi per essere disfatto lo dice la sua madre con
+   `E_ACCREDITO_ANNULLO_NON_AMMESSO`; ricalcolare qui «tutte `NON_EMESSA`»
+   sarebbe **una seconda copia della stessa regola**, destinata a divergere al
+   primo ritocco.
+3. **Vincolo reciproco, ora su tre posti.** La nota di C-3 — *«il gate si
+   auto-ripara perché l'annullo CANCELLA le righe di ponte; se un giorno
+   diventasse un soft-delete questo ramo va cambiato insieme»* — vale identica
+   per la guardia nuova, ed è stata **estesa a tre** (`-23` e `-24`).
+   ⚠️ Due changeSet di soli commenti hanno un costo, e la ragione per pagarlo è
+   questa: **una nota che elenca due dipendenze su tre è peggio di nessuna
+   nota** — chi la legge crede di avere l'elenco completo e cambia il
+   soft-delete convinto di aver controllato tutto. Il corpo eseguibile di
+   entrambe è **identico** a quello vivo, verificato con un diff riga per riga
+   sulle sole righe non-commento (34 e 139 righe).
+
+### 38.5 Il verso opposto era già chiuso — verificato, non supposto
+
+«Accreditare un reso **annullato**» non passa, e non serviva nessuna guardia
+nuova: `vw_resi_da_accreditare` si costruisce su `vw_resi_righe_effettive`, che
+filtra `stati_doc_reso.codice_interno = 'CONFERMATO'`. Un reso annullato esce
+dalla coda e `fn_accredita_riga_reso` risponde `E_ACCREDITO_NON_IN_CODA`.
+
+⭐ Vale la pena averlo guardato: le due direzioni **sembrano** simmetriche, e
+solo una delle due lo era davvero.
+
+### 38.6 Due cose considerate e NON fatte
+
+* **Il bottone «annulla» del reso resta acceso.** `script.fn_available_actions_reso`
+  espone `annulla` su un reso `CONFERMATO` e continuerà a farlo. È la stessa
+  scelta del §37.2, e per la stessa ragione: **il rimedio è dell'operatore** —
+  annulla prima l'accredito, poi il reso — e il messaggio glielo dice. Spegnerlo
+  vorrebbe dire far consumare il gate alla capability, cioè un'altra modifica DB
+  per togliere un click a un caso raro.
+* **Il lister non è stato toccato.** Con la guardia, una rettifica orfana di reso
+  annullato **non si crea più**: riparare a valle sarebbe una seconda difesa per
+  un caso che la prima ha già reso impossibile — e una che dovrebbe insegnare al
+  motore di fatturazione cos'è un reso, che oggi non sa e non deve sapere.
+
+### 38.7 Le misure
+
+* **pgTAP nuovo**, `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`,
+  plan(8). **Senza** il changeSet: 4 rossi (2, 3, 4, 8) — il 4 muore *perché* il
+  2 ha già annullato il reso. **Con** il changeSet: **8/8**.
+  ⚠️ Il «con» è stato misurato applicando la funzione in una sessione a parte e
+  ributtandola indietro: la migrazione **non** è stata eseguita.
+* ⭐ **Il test 8 non usa un kit, di proposito.** Un kit moltiplica i ponti su
+  **una** riga di reso: la `EXISTS` lo vedrebbe al primo. La forma che mette
+  davvero alla prova la guardia è l'opposta — un reso con **due righe di cui una
+  sola accreditata** — perché lì la `EXISTS` deve attraversare tutte le righe del
+  documento, ed è l'unico modo in cui può sbagliare.
+* ⚠️ **Quello che il pgTAP NON misura, e che è scritto nel file**: «la guardia
+  sta prima di qualunque scrittura». Sia `throws_ok` sia l'helper catturano
+  l'eccezione in una **sottotransazione**, che annulla comunque le scritture
+  eventuali: il test 3 misura l'**esito**, non l'ordine delle istruzioni.
+* Il codice di dominio si legge dal canale **CONSTRAINT** dell'eccezione, non dal
+  testo. ⭐ Così il test è verde **anche prima** che il mirror CSV carichi la voce
+  nuova: un `throws_like` sulla frase sarebbe rosso per un motivo che non c'entra
+  con la guardia.
+* Nessun test esistente regredisce: `test-resi-motore-v1` annulla un reso (test
+  23) su una fixture che **non ha mai fatturato nulla**, quindi non ha e non può
+  avere accrediti.
+
+### 38.8 🔴 Cosa serve dagli altri due lati
+
+* **BE — obbligatorio, e con una scadenza precisa**: rigenerare
+  `apps/core/services/error_policies_generated.py` (e il fallback dei messaggi)
+  per `E_RESO_ANNULLO_CON_ACCREDITO`. ⚠️ Il **cancello del terzo lato**
+  (`test_error_codes_db_policy_guardrail`) diventa **rosso in CI** appena il
+  database viene ricostruito da zero con il codice nuovo a catalogo: va nello
+  stesso giro, non dopo.
+* **BE — opportuno**: l'endpoint di annullo reso non deve fare nulla di diverso
+  (il codice arriva dal DB e la policy lo mappa su 409), ma vale la pena
+  verificare che il messaggio arrivi **intero** all'operatore: è quello che gli
+  dice cosa fare.
+* **FE — niente.** Nessun `reason_key`, nessuna chiave i18n nuova: il codice si
+  solleva direttamente e la frase viene dal catalogo.

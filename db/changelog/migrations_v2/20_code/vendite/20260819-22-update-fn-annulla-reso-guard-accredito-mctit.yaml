@@ -1,0 +1,316 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA GUARDIA CHE MANCAVA: vendite.fn_annulla_reso non vedeva l'accredito.
+#   Trovato in collaudo (prova 4, nota di credito resi) il 2026-08-19 e
+#   segnalato dal team BE. Cantiere: brief-design-note-credito-resi.md.
+#
+# -- IL FATTO ----------------------------------------------------------
+#   fn_annulla_reso sollevava quattro codici - E_VALIDAZIONE,
+#   E_RESO_NOT_FOUND, E_RESO_STATO_NON_ANNULLABILE,
+#   E_RESO_ANNULLO_CON_RICONSEGNE - e NESSUNO nominava l'accredito. Un reso
+#   gia' accreditato si annullava senza che nulla venisse stornato, e
+#   restavano vive:
+#     - le righe di ponte in vendite.resi_righe_accrediti;
+#     - le vendite.commesse_attivita tipo_movimento = 'RETTIFICA' in
+#       stato_approvazione = APPROVATA / stato_emissione = NON_EMESSA.
+#
+#   ⚠️ E il lister NON ripara a valle: vendite.fn_list_emittibili_lane e
+#   vendite.fn_emit_attivita_fatturabili_da_commessa non nominano mai il
+#   reso - per loro una rettifica NON_EMESSA e' materia normale. Al primo
+#   giro sarebbe uscita una nota di credito per un reso annullato.
+#
+#   Caso reale in dbdev al momento della segnalazione, verificato:
+#   RESO0005122 -> riga 5797 -> ponte 460 -> commessa_attivita 35187
+#   (-5,000000 x 2,50), APPROVATA / NON_EMESSA. E RESO0000017 (il kit) con
+#   tre ponti (457-459). ⭐ Nessun reso GIA' annullato porta righe di ponte:
+#   la correzione e' interamente in avanti, non c'e' dato da bonificare.
+#
+# -- PERCHE' E' UNA DIMENTICANZA E NON UNA SCELTA ----------------------
+#   La stessa guardia esiste gia' nei due vicini di casa:
+#     - fn_annulla_reso rifiuta gia' quando la merce e' stata ri-consegnata
+#       (E_RESO_ANNULLO_CON_RICONSEGNE): identica classe di problema, un
+#       effetto gia' in viaggio;
+#     - script.fn_check_rinuncia_reversibile rifiuta gia' di riaprire una
+#       rinuncia se la quota e' accreditata
+#       (E_RESO_RINUNCIA_ACCREDITO_ESEGUITO, changeset 20260819-02).
+#   Mancava solo nel verbo che annulla il DOCUMENTO INTERO, cioe' quello che
+#   ne cancella tutte le premesse.
+#
+# -- I TRE PUNTI SU CUI NON SI IMPROVVISA (dalla segnalazione BE) ------
+#   1. RIFIUTARE, NON CASCATARE. fn_annulla_accredito_riga_reso pretende un
+#      motivo obbligatorio (E_ACCREDITO_MOTIVO_OBBLIGATORIO) e la traccia del
+#      perche' vive solo in vendite.commesse_attivita_log: una cascata
+#      automatica dovrebbe inventarsi il motivo. E quella madre rifiuta se
+#      anche una sola rettifica ha lasciato NON_EMESSA - li' l'annullo del
+#      reso non deve avvenire affatto, non avvenire a meta'.
+#   2. IL PREDICATO E' L'ESISTENZA DEL PONTE, non lo stato delle rettifiche.
+#      Se l'accredito e' troppo tardi per essere disfatto lo dice la madre
+#      con il suo messaggio; ricalcolare qui «tutte NON_EMESSA» sarebbe una
+#      seconda copia della regola, destinata a divergere.
+#   3. VINCOLO RECIPROCO, ORA SU TRE POSTI. La nota gia' a catalogo su
+#      fn_check_rinuncia_reversibile - «il gate si auto-ripara perche'
+#      l'annullo CANCELLA le righe di ponte; se un giorno diventasse un
+#      soft-delete questo ramo va cambiato insieme» - vale identica qui.
+#      Estesa a tre da 20260819-23 e 20260819-24, che non toccano altro.
+#
+# -- POSIZIONE DELLA GUARDIA ------------------------------------------
+#   Dopo le ri-consegne e PRIMA di qualunque scrittura (la transizione ad
+#   ANNULLATO e' lo statement subito successivo). Un reso che ha ENTRAMBE le
+#   condizioni continua a rispondere E_RESO_ANNULLO_CON_RICONSEGNE, com'era:
+#   cambiargli messaggio adesso non direbbe nulla di piu' a chi lo legge.
+#
+# -- IL VERSO OPPOSTO ERA GIA' CHIUSO, ed e' stato verificato ----------
+#   «Accreditare un reso ANNULLATO» non passa: vw_resi_da_accreditare si
+#   costruisce su vw_resi_righe_effettive, che filtra
+#   stati_doc_reso.codice_interno = 'CONFERMATO'. Un reso annullato esce
+#   dalla coda e fn_accredita_riga_reso risponde E_ACCREDITO_NON_IN_CODA.
+#   Non serviva quindi nessuna guardia sull'altro lato.
+#
+# -- RLS: qui uno zero e' un dato -------------------------------------
+#   Misurato: vendite.resi_righe e vendite.resi_righe_accrediti NON hanno la
+#   RLS (relrowsecurity = false, zero policy); ce l'ha solo vendite.resi, gia'
+#   attraversata dalla lettura dello stato piu' sopra. La EXISTS non puo'
+#   quindi essere fail-closed per invisibilita', che e' la trappola dei guard
+#   che leggono sotto policy. Stessa forma della guardia ri-consegne.
+#
+# Origine: corpo = pg_get_functiondef del 2026-08-19 (uguale alla doc auto-gen)
+#   con il solo blocco nuovo inserito - diffato riga per riga; firma e
+#   SECURITY INVOKER dallo YAML vivo 20260717-10, perche' l'auto-gen scioglie
+#   i %TYPE.
+# Dipendenze: vendite.resi_righe_accrediti (20260818-35);
+#   codice E_RESO_ANNULLO_CON_ACCREDITO, classe CONFLITTO_STATO, id 933
+#   (append ai CSV di 80_data). ⚠️ Nessuna preCondition sul codice: 80_data
+#   gira DOPO 20_code.
+# Verifica: db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql
+# 🔴 RICHIESTA AL BE, fuori dal perimetro DB: rigenerare
+#   apps/core/services/error_policies_generated.py (e il fallback dei messaggi)
+#   per il codice nuovo, altrimenti il cancello del terzo lato
+#   (test_error_codes_db_policy_guardrail) diventa rosso in CI appena il
+#   database viene ricostruito da zero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260819-22-update-fn-annulla-reso-guard-accredito-mctit.yaml
+
+  - changeSet:
+      id: 20260819-22-update-fn-annulla-reso-guard-accredito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La guardia che mancava: vendite.fn_annulla_reso rifiuta l'annullo di un reso che ha
+        gia' un accredito registrato (E_RESO_ANNULLO_CON_ACCREDITO), gemella di
+        E_RESO_ANNULLO_CON_RICONSEGNE. Senza, le rettifiche a quantita' negativa restavano vive
+        e il primo giro di fatturazione emetteva una nota di credito per un reso annullato.
+        Il predicato e' l'esistenza della riga di ponte, non lo stato delle rettifiche.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe_accrediti
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_annulla_reso'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_stato            config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_ann_id     config.stati_doc_reso.id%TYPE;
+                  v_ddt_uid          vendite.resi.sorgente_uid%TYPE;
+                  v_ddt_id           vendite.ddt.id%TYPE;
+                  v_ddt_stato        config.stati_doc_ddt.codice_interno%TYPE;
+                  v_stato_target_id  config.stati_doc_ordini.id%TYPE;
+                  v_stato_cons_id    config.stati_doc_ddt.id%TYPE;
+                  v_tutto_reso       boolean;
+                  v_ord              RECORD;
+              BEGIN
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  SELECT sdr.codice_interno, r.sorgente_uid
+                    INTO v_stato, v_ddt_uid
+                    FROM vendite.resi r
+                    JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+                   WHERE r.id = p_reso_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  IF v_stato NOT IN ('DRAFT','CONFERMATO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_STATO_NON_ANNULLABILE',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+                          NULL::uuid, p_reso_id::text, v_stato);
+                  END IF;
+
+                  -- Reso gia' ri-spedito -> storno complesso fuori scope.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.resi_righe_riconsegne rrr
+                        JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                       WHERE rr.reso_id = p_reso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_RICONSEGNE',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- ⛔ Reso gia' ACCREDITATO -> l'annullo si RIFIUTA.
+                  --    Gemella di E_RESO_ANNULLO_CON_RICONSEGNE: stessa classe di
+                  --    problema, un effetto gia' in viaggio. Qui l'effetto e' una
+                  --    rettifica a quantita' NEGATIVA in vendite.commesse_attivita,
+                  --    che il giro di fatturazione raccoglie da se': annullare il
+                  --    reso senza disfarla emetterebbe una nota di credito per un
+                  --    reso che non esiste piu'. E il lister non ripara a valle -
+                  --    vendite.fn_list_emittibili_lane e
+                  --    vendite.fn_emit_attivita_fatturabili_da_commessa non nominano
+                  --    mai il reso: per loro quella rettifica e' materia normale.
+                  --
+                  -- ⚠️ IL PREDICATO E' L'ESISTENZA DEL PONTE, NON LO STATO DELLE
+                  --    RETTIFICHE. Se l'accredito e' ormai troppo tardi per essere
+                  --    disfatto lo dice la sua madre con il proprio messaggio
+                  --    (E_ACCREDITO_ANNULLO_NON_AMMESSO): ricalcolare qui «tutte
+                  --    NON_EMESSA» sarebbe una seconda copia della stessa regola,
+                  --    destinata a divergere al primo ritocco.
+                  --
+                  -- ⛔ SI RIFIUTA, NON SI CASCATA. vendite.fn_annulla_accredito_riga_reso
+                  --    pretende un motivo obbligatorio (E_ACCREDITO_MOTIVO_OBBLIGATORIO)
+                  --    e la traccia del perche' vive solo in commesse_attivita_log:
+                  --    una cascata automatica dovrebbe inventarselo. E se anche una
+                  --    sola rettifica ha lasciato NON_EMESSA, quella madre rifiuta:
+                  --    li' l'annullo del reso non deve avvenire affatto, non avvenire
+                  --    a meta'.
+                  --
+                  -- ⭐⚠️ VINCOLO RECIPROCO, ora su TRE posti (C-3): questa guardia,
+                  --    script.fn_check_rinuncia_reversibile e la madre dell'annullo
+                  --    accredito. Si auto-ripara perche' l'annullo dell'accredito
+                  --    CANCELLA le righe di ponte - ed e' anche il motivo per cui
+                  --    E_ACCREDITO_NON_TROVATO copre insieme «mai accreditato» e
+                  --    «gia' annullato». Se un giorno diventasse un soft-delete,
+                  --    questo ramo continuerebbe a vedere la riga e vieterebbe PER
+                  --    SEMPRE l'annullo di un reso ormai annullabile, IN SILENZIO:
+                  --    i tre posti si cambiano INSIEME.
+                  --
+                  -- ⚠️ Sta DOPO le ri-consegne di proposito: un reso che ha entrambe
+                  --    rispondeva gia' con E_RESO_ANNULLO_CON_RICONSEGNE, e cambiargli
+                  --    messaggio adesso non direbbe nulla di piu' a chi lo legge.
+                  --    Nessuna delle due tabelle lette ha la RLS (ce l'ha solo
+                  --    vendite.resi, gia' attraversata sopra): qui uno zero e' un
+                  --    dato, non un fail-closed.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.resi_righe rr
+                        JOIN vendite.resi_righe_accrediti a ON a.resi_riga_id = rr.id
+                       WHERE rr.reso_id = p_reso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_ACCREDITO',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- Transizione -> ANNULLATO.
+                  SELECT id INTO v_stato_ann_id FROM config.stati_doc_reso
+                   WHERE codice_interno = 'ANNULLATO' AND attivo IS TRUE;
+                  UPDATE vendite.resi
+                     SET stato_doc_reso_id = v_stato_ann_id
+                   WHERE id = p_reso_id;
+
+                  -- Storno effetti solo se era CONFERMATO.
+                  IF v_stato = 'CONFERMATO' THEN
+                      FOR v_ord IN
+                          SELECT DISTINCT orr.ordine_id
+                            FROM vendite.resi_righe rr
+                            JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                            JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                           WHERE rr.reso_id = p_reso_id
+                             AND tr.riapre_residuo IS TRUE
+                      LOOP
+                          IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
+                              SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+                               WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
+                          ELSE
+                              SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+                               WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+                          END IF;
+                          UPDATE vendite.ordini
+                             SET stato_doc_ordine_id = v_stato_target_id
+                           WHERE id = v_ord.ordine_id
+                             AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+                      END LOOP;
+
+                      -- Ri-flip DDT RESO->CONSEGNATO se non piu' reso totale.
+                      SELECT d.id, sdd.codice_interno
+                        INTO v_ddt_id, v_ddt_stato
+                        FROM vendite.ddt d
+                        JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                       WHERE d.uid = v_ddt_uid;
+
+                      IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'RESO' THEN
+                          SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+                            INTO v_tutto_reso
+                            FROM vendite.ddt_righe dr
+                            LEFT JOIN (
+                                -- rev 2026-07-17 (step 2): fonte unica
+                                -- vw_resi_righe_effettive (CONFERMATE + attive,
+                                -- tutti i tipi). Il ri-flip non filtra il tipo.
+                                SELECT e.ddt_riga_id, SUM(e.quantita) AS tot
+                                  FROM vendite.vw_resi_righe_effettive e
+                                 GROUP BY e.ddt_riga_id
+                            ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+                           WHERE dr.ddt_id = v_ddt_id
+                             AND dr.attivo IS TRUE;
+
+                          IF NOT COALESCE(v_tutto_reso, false) THEN
+                              SELECT id INTO v_stato_cons_id FROM config.stati_doc_ddt
+                               WHERE codice_interno = 'CONSEGNATO' AND attivo IS TRUE;
+                              UPDATE vendite.ddt
+                                 SET stato_doc_ddt_id = v_stato_cons_id
+                               WHERE id = v_ddt_id;
+                          END IF;
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_reso(bigint)
+              IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Simmetrica a fn_conferma_reso. brief S2/S5. ⛔ DUE guardie di RIFIUTO, gemelle fra loro e tutte e due prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) e - dal 2026-08-19 - E_RESO_ANNULLO_CON_ACCREDITO (esiste almeno una riga di ponte in vendite.resi_righe_accrediti). ⚠️ Senza la seconda un reso accreditato si annullava lasciando VIVE le rettifiche a quantita'' negativa in vendite.commesse_attivita, e il primo giro di fatturazione emetteva una nota di credito per un reso annullato: i due lister (fn_list_emittibili_lane, fn_emit_attivita_fatturabili_da_commessa) non nominano mai il reso e non riparano a valle. Il predicato e'' l''ESISTENZA del ponte, non lo stato delle rettifiche: se l''accredito e'' ormai troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolare qui «tutte NON_EMESSA» sarebbe una seconda copia della stessa regola. ⛔ Si RIFIUTA e non si cascata: vendite.fn_annulla_accredito_riga_reso pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi, e se una sola rettifica non e'' piu'' NON_EMESSA l''annullo del reso non deve avvenire affatto - non avvenire a meta''. ⭐⚠️ VINCOLO RECIPROCO su TRE posti (C-3), con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche'' l''annullo dell''accredito CANCELLA le righe di ponte - se un giorno diventasse un soft-delete i tre posti si cambiano INSIEME. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il ri-flip legge l helper unico vw_resi_righe_effettive. rev 2026-08-19: guardia accredito (brief-design-note-credito-resi; segnalazione BE del 2026-08-19).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: togliere la guardia riaprirebbe
+              --    la strada alla nota di credito per un reso annullato, che e'
+              --    esattamente il difetto per cui questo changeset esiste.
+              --    Si torna indietro ri-applicando 20260717-10.
+              SELECT 1;

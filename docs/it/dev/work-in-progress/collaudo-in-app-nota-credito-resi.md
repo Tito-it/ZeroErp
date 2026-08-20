@@ -13,7 +13,7 @@
 
 ---
 
-## ⚠️ Le quattro cose da sapere prima di cominciare
+## ⚠️ Le cinque cose da sapere prima di cominciare
 
 1. **C'è un punto di non ritorno, ed è dichiarato**: la **prova 6** numera una
    nota di credito. Oltre la numerazione non si torna indietro — nessun verbo,
@@ -29,6 +29,11 @@
 4. **Il reset del lotto NON annulla l'accredito**: lo rimette in coda e la nota
    di credito **si rigenera** al giro dopo. Per disfare davvero serve «Annulla
    l'accredito» sulla riga del reso.
+5. ⛔ **E nemmeno annullare il RESO è una via d'uscita** (rev 2026-08-19): con un
+   accredito registrato il DB lo **rifiuta**, e deve farlo — annullare il reso
+   non toglierebbe la rettifica già creata. La sola strada indietro resta
+   «Annulla l'accredito». ⚠️ Se in collaudo il reso si annulla lo stesso, la
+   guardia non è ancora in esercizio: vedi la prova 4.
 
 ---
 
@@ -151,7 +156,10 @@ Usa la riga **24** (il kit).
       bozza» / «Annulla lotto» avvisa che **un accredito già registrato NON
       viene annullato** e che la nota **si rigenera** al giro successivo;
 - [ ] *(se la riga era anche rinunciata)* riaprire la rinuncia è **rifiutato**,
-      con il messaggio sull'accredito già eseguito.
+      con il messaggio sull'accredito già eseguito;
+- [ ] e **annullare il reso** è rifiutato a sua volta, con il messaggio
+      sull'accredito registrato: qui la strada indietro non c'è più da nessuna
+      parte, ed è corretto che i tre verbi lo dicano tutti e tre.
 
 ### 8 · Il permesso *(P-1, B2)*
 
@@ -176,14 +184,15 @@ Usa la riga **24** (il kit).
 
 ## Se qualcosa va storto
 
-| Sintomo                                  | Cosa guardare                                                                |
-| ---------------------------------------- | ---------------------------------------------------------------------------- |
-| il verbo risponde 403                    | l'azione non è concessa al profilo (prova 8)                                 |
-| la riga resta in coda dopo l'accredito   | il verbo non ha scritto: guarda il toast, poi `vendite.resi_righe_accrediti` |
-| la NC non nasce al giro                  | le rettifiche sono ancora `NON_EMESSA`? il lotto ha incluso quella commessa? |
-| la NC nasce **dentro** la fattura        | 🔴 grave: la chiave documento non sta separando la natura. Fermati            |
-| il numero è sul progressivo fatture      | 🔴 grave: registro sbagliato. Fermati                                         |
-| «operazione non consentita» sull'annullo | è già emessa: è corretto. Il messaggio deve dire il perché                   |
+| Sintomo | Cosa guardare |
+| --- | --- |
+| il verbo risponde 403 | l'azione non è concessa al profilo (prova 8) |
+| la riga resta in coda dopo l'accredito | il verbo non ha scritto: guarda il toast, poi `vendite.resi_righe_accrediti` |
+| la NC non nasce al giro | le rettifiche sono ancora `NON_EMESSA`? il lotto ha incluso quella commessa? |
+| la NC nasce **dentro** la fattura | 🔴 grave: la chiave documento non sta separando la natura. Fermati |
+| il numero è sul progressivo fatture | 🔴 grave: registro sbagliato. Fermati |
+| «operazione non consentita» sull'annullo | è già emessa: è corretto. Il messaggio deve dire il perché |
+| il **reso** si annulla anche se accreditato | 🔴 grave: la guardia del §38 non è in esercizio. Fermati: la NC uscirebbe lo stesso |
 
 ⛔ **Sui due «grave»: non ritentare.** Sono i due casi in cui un secondo giro
 produce un secondo documento sbagliato.
