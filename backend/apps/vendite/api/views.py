@@ -999,6 +999,7 @@ class ApiCommessaAttivita(DomainAPIView):
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (id, data_attivita, competenza_mese, segment_key, quantita, prezzo_snapshot, stato_approvazione, stato_emissione). Assente = ordine storico per id."),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
+            OpenApiParameter(name="tipo_movimento", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro natura della riga: NORMALE | RETTIFICA | ONERE. Assente o vuoto = tutti. Un valore fuori vocabolario e' rifiutato (400), non filtra a vuoto."),
         ],
         responses={
             200: inline_serializer(
@@ -1035,6 +1036,7 @@ class ApiCommessaAttivita(DomainAPIView):
             offset=offset,
             order_by=qp_str(request.query_params.get("order_by")),
             order_dir=qp_str(request.query_params.get("order_dir")),
+            tipo_movimento=qp_str(request.query_params.get("tipo_movimento")),
         )
         return success_response(data)
 

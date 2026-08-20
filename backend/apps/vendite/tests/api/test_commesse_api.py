@@ -221,6 +221,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
             commessa_id=1, stato_emissione=None, stato_approvazione=None,
             competenza_mese=None, limit=20, offset=0,
             order_by=None, order_dir=None,
+            tipo_movimento=None,
         )
 
     # Scopo: endpoint V1 richiede JWT.
@@ -241,6 +242,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
             commessa_id=1, stato_emissione="NON_EMESSA", stato_approvazione="APPROVATA",
             competenza_mese="2026-02-01", limit=50, offset=0,
             order_by=None, order_dir=None,
+            tipo_movimento=None,
         )
 
     # Scopo: order_by/order_dir propagati al service (7° lotto liste, 2026-08-03).
@@ -256,6 +258,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
             commessa_id=1, stato_emissione=None, stato_approvazione=None,
             competenza_mese=None, limit=50, offset=0,
             order_by="data_attivita", order_dir="desc",
+            tipo_movimento=None,
         )
 
     # Scopo: limit fuori range → 400.

@@ -28,7 +28,11 @@ from django.db import DatabaseError, transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import PayloadValidator
-from apps.vendite.db.commesse_repository import ATTIVITA_SORT_COLUMNS, CommesseRepository
+from apps.vendite.db.commesse_repository import (
+    ATTIVITA_SORT_COLUMNS,
+    TIPO_MOVIMENTO_VALUES,
+    CommesseRepository,
+)
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services.commesse_push_orchestrator import (
     CommessaPushOrchestrator,
@@ -828,6 +832,7 @@ def fn_list_commessa_attivita(
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
+    tipo_movimento: str | None = None,
 ) -> dict:
     """Entrypoint servizio Python: lista attività commessa (paginata)."""
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_list_commessa_attivita")
@@ -851,6 +856,24 @@ def fn_list_commessa_attivita(
             error_code="E_COMMESSA_VALIDATION",
             function_name="vendite.commesse_service.fn_list_commessa_attivita",
         )
+    # Filtro movimento: vocabolario chiuso, validato PRIMA del round-trip come
+    # l'ordinamento. ⚠️ Vuoto e None sono la STESSA cosa — «tutti i movimenti» —
+    # e non un valore da validare: un filtro azzerato dal frontend arriva come
+    # stringa vuota, e rifiutarlo direbbe «valore non valido» a chi ha appena
+    # tolto il filtro.
+    if tipo_movimento is not None:
+        tipo_movimento = tipo_movimento.strip().upper() or None
+    if tipo_movimento is not None:
+        ErrorManager.require(
+            tipo_movimento in TIPO_MOVIMENTO_VALUES,
+            code="E_COMMESSA_VALIDATION",
+            message="Parametri non validi.",
+            detail=f"tipo_movimento non ammesso: {tipo_movimento}",
+            context={"commessa_id": commessa_id, "tipo_movimento": tipo_movimento},
+            function_name="vendite.commesse_service.fn_list_commessa_attivita",
+            log_to_db=True,
+        )
+
     from apps.core.api.payload_validators import optional_iso_date as _parse_date
 
     competenza_mese_date = _parse_date({"competenza_mese": competenza_mese}, "competenza_mese") if competenza_mese else None
@@ -865,6 +888,7 @@ def fn_list_commessa_attivita(
         offset=offset,
         order_by=order_by,
         order_dir=order_dir or "asc",
+        tipo_movimento=tipo_movimento,
     )
     return {"commessa_id": commessa_id, **data}
 

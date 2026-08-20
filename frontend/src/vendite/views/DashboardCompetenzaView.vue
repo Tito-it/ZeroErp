@@ -1522,12 +1522,19 @@ onActivated(() => {
             <span class="app-dash-card-title">
               {{ t('vendite.dashboard_competenza.copertura_titolo') }}
             </span>
+            <!-- ⚠️ NON «Emesso / Da emettere»: erano le STESSE PAROLE della
+                 scheda di stadio `stadio_da_emettere`, che sulla stessa
+                 schermata mostra lo stesso importo COL SEGNO (−29,50 ad
+                 agosto). Due numeri identici e opposti sotto la stessa
+                 etichetta erano la domanda senza risposta trovata in
+                 collaudo. «Coperto / Scoperto» parla della COPERTURA — che e'
+                 il titolo della card — e non di uno stadio del funnel. -->
             <DonutTransito
               :transitato="totaliMese.coperturaFatturato"
               :fermo="totaliMese.coperturaDaFatturare"
               format="currency"
-              :label-transitato="t('vendite.dashboard_competenza.emesso')"
-              :label-fermo="t('vendite.dashboard_competenza.da_emettere')"
+              :label-transitato="t('vendite.dashboard_competenza.coperto')"
+              :label-fermo="t('vendite.dashboard_competenza.scoperto')"
             />
             <!-- Le due voci del residuo, STESSA FORMA per entrambe: cambia la
                  parola e il colore, non la struttura. «Da accreditare» compare
@@ -1540,7 +1547,17 @@ onActivated(() => {
               </div>
               <div v-if="totaliMese.daAccreditare > 0" class="is-accredito">
                 <dt>{{ t('vendite.dashboard_competenza.da_accreditare') }}</dt>
-                <dd>{{ formatCurrency(totaliMese.daAccreditare) }}</dd>
+                <!-- ⚠️ Col SEGNO, e non e' un ripensamento sul §5.4. Qui il
+                     numero sta accanto a «Da addebitare», che e' di verso
+                     opposto, e soprattutto sulla stessa schermata la scheda di
+                     stadio DA_EMETTERE espone lo stesso importo come −29,50
+                     (`valore_display`, il netto). Due numeri uguali con segno
+                     diverso, a un palmo l'uno dall'altro, sono una domanda
+                     senza risposta: qui il verso VA mostrato.
+                     ⭐ Il valore assoluto resta dov'e' indispensabile — nel
+                     RAPPORTO del donut, dove i due versi non devono
+                     compensarsi. Geometria in assoluto, denaro col segno. -->
+                <dd>{{ formatCurrency(-totaliMese.daAccreditare) }}</dd>
               </div>
             </dl>
           </div>
