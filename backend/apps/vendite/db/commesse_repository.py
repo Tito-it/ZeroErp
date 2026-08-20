@@ -57,8 +57,6 @@ _SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({"PREVENTIVO"})
 # una preCondition che si ferma se il CHECK cresce. Vale qui per la stessa
 # ragione di ATTIVITA_SORT_COLUMNS: un valore fuori vocabolario si rifiuta
 # PRIMA di spendere un round-trip, e l'utente vede un 400 dal posto giusto.
-TIPO_MOVIMENTO_VALUES: frozenset[str] = frozenset({"NORMALE", "RETTIFICA", "ONERE"})
-
 ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     "id",
     "data_attivita",
@@ -163,6 +161,20 @@ TIPO_MOVIMENTO_NORMALE = "NORMALE"
 # quantita' NEGATIVA, prezzo copiato dalla riga di fattura rettificata.
 TIPO_MOVIMENTO_RETTIFICA = "RETTIFICA"
 TIPO_CONSUMO_CONGUAGLIO = "CONGUAGLIO"
+
+# Il vocabolario intero, per il filtro della lista attivita' (changeSet
+# 20260820-09). ⚠️ E' uno SPECCHIO, non l'autorita': a enforcare e' il CHECK, e
+# la fn ha la sua copia con una preCondition che si ferma se il CHECK cresce.
+# Vale qui per la stessa ragione di ATTIVITA_SORT_COLUMNS: un valore fuori
+# vocabolario si rifiuta PRIMA di spendere un round-trip.
+TIPO_MOVIMENTO_VALUES: frozenset[str] = frozenset(
+    {"NORMALE", TIPO_MOVIMENTO_RETTIFICA, "ONERE"}
+)
+
+# Il tetto della lista attivita': quello che la fn DB applica da se' su
+# `p_limit`. Il tetto di PAGINA (200) NON sta qui — vive nel service, dove e'
+# un errore parlante invece di un troncamento muto.
+_ATTIVITA_EXPORT_MAX_ROWS = 10_000
 
 
 @dataclass(frozen=True)
@@ -1420,6 +1432,7 @@ class CommesseRepository:
         order_by: str | None = None,
         order_dir: str = "asc",
         tipo_movimento: str | None = None,
+        max_rows: int | None = None,
     ) -> dict:
         """Lista paginata attività di una commessa via vendite.fn_list_commessa_attivita.
 
@@ -1427,7 +1440,20 @@ class CommesseRepository:
         validata a monte dal service); None = ordine storico ca.id.
         Restituisce {"count": <total_righe_filtrate>, "rows": [dict, ...]}.
         """
-        safe_limit = max(1, min(int(limit), 200))
+        # `max_rows` = percorso EXPORT: salta la paginazione, come i `fetch`
+        # dei cruscotti (`build_dash_export_response`). Senza, il file uscirebbe
+        # con le righe di UNA PAGINA su una commessa che ne ha mille — troncato
+        # in silenzio, il modo peggiore di sbagliare un file scaricato.
+        #
+        # ⚠️ UN SOLO TETTO QUI, ed e' quello della fn (10.000, che `p_limit`
+        # clampa da se'). Il tetto di PAGINA (200) vive nel service, dove e' un
+        # `require` che risponde 400 e DICE il limite: averlo anche qui era una
+        # seconda copia della stessa regola — e proprio la copia silenziosa, che
+        # avrebbe tagliato l'export a 200 righe senza dirlo a nessuno.
+        # ⭐ Il guard sul limite vero e' a monte (`build_export_response`) e
+        # confronta il `count` ESATTO, non le righe estratte: quindi il clamp
+        # della fn non puo' far passare per completo un export che non lo e'.
+        safe_limit = max(1, min(int(max_rows or limit), _ATTIVITA_EXPORT_MAX_ROWS))
         safe_offset = max(0, int(offset))
 
         # Parametri WHERE condivisi tra count e data query.

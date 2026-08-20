@@ -1041,6 +1041,84 @@ class ApiCommessaAttivita(DomainAPIView):
         return success_response(data)
 
 
+class ApiCommessaAttivitaExport(DomainAPIView):
+    """GET /api/v1/vendite/commesse/<id>/attivita/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista di attivita' del drawer commessa, con gli STESSI
+    filtri e lo STESSO ordinamento: il file rispecchia cio' che l'operatore sta
+    guardando, non una seconda lista che gli somiglia.
+
+    Le colonne le decide il catalogo `vendite.commesse_attivita` attraverso
+    `UiService.get_lista_config`: colonne nascoste escluse, ordine e permessi
+    dell'utente rispettati (DEF-1). L'export non ha una lista di colonne propria,
+    che divergerebbe dalla tabella al primo cambio di configurazione.
+
+    Hard cap `EXPORT_MAX_ROWS`: oltre, `E_UI_EXPORT_LIMIT_EXCEEDED` (422) —
+    meglio un errore che un file troncato senza dirlo.
+
+    NB: il parametro si chiama `formato` (italiano) e NON `format`, che DRF
+    intercetta come magic parameter di content-negotiation prima della view.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.commesse_attivita"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False, description="csv (default) | xlsx"),
+            OpenApiParameter(name="stato_emissione", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="stato_approvazione", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="tipo_movimento", type=str, location=OpenApiParameter.QUERY, required=False, description="NORMALE | RETTIFICA | ONERE. Assente = tutti."),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Stessa whitelist della lista."),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="asc | desc"),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Genera il file CSV/XLSX delle attivita' di UNA commessa.
+    def get(self, request: Request, commessa_id: int) -> HttpResponse:
+        # Formato PRIMA della query: su formato invalido non si paga il fetch.
+        fmt = parse_export_format(request)
+        qp = request.query_params
+
+        filtri = {
+            "stato_emissione": qp.get("stato_emissione") or None,
+            "stato_approvazione": qp.get("stato_approvazione") or None,
+            "competenza_mese": qp.get("competenza_mese") or None,
+            "tipo_movimento": qp_str(qp.get("tipo_movimento")),
+        }
+        # ⚠️ `max_rows` e non `limit`: l'export salta la paginazione invece di
+        # violarne il tetto. Il `+1` non serve a troncare — il guard di
+        # `build_export_response` confronta il `count` ESATTO della lista.
+        data = fn_list_commessa_attivita(
+            commessa_id=commessa_id,
+            **filtri,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+
+        # Filtri riportati nell'intestazione del file: solo quelli valorizzati,
+        # cosi' chi riapre l'export sa che fotografia stava guardando.
+        filtri_applicati = {
+            "commessa_id": str(commessa_id),
+            **{k: str(v) for k, v in filtri.items() if v is not None},
+        }
+
+        return build_export_response(
+            request,
+            lista_codice="vendite.commesse_attivita",
+            results=data["rows"],
+            total=data["count"],
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
+
+
 class ApiCommessaAttivitaApprova(DomainAPIView):
     """Azione APPROVA sulle attivita' di una commessa (cockpit Fase A, A-1):
     righe_ids assente = tutte le righe NON_EMESSA in BOZZA; altrimenti solo le
