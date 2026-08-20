@@ -325,6 +325,14 @@ qualcosa che l'operatore possa risolvere dal kebab, quindi una voce grigia
 sarebbe una promessa che non si mantiene; ciò che invece dipende dallo stato del
 record può cambiare, e lì `disabled` + `tooltip` spiega e resta a video.
 
+> ⭐ **E la regola vale prima di tutto per il DATABASE**, che è chi decide se
+> un'azione è proposta, spenta o assente: sono le `script.fn_available_actions_*`
+> a emettere `enabled` / `reason` / `reason_key`, e il frontend le rende.
+> La stessa regola è scritta per chi lavora in SQL in
+> [linee-guida-sql §12](/linee-guida-sql). ⚠️ Le due copie vanno tenute
+> allineate: il 2026-08-20 una decisione DB è stata presa ignorando questa
+> pagina, perché chi scrive SQL non la legge.
+
 **Regola record inattivo (`attivo=false` / `is_active=false`):**
 
 - Se la lista ha una colonna stato standard (`attivo` o `is_active`), passare sempre

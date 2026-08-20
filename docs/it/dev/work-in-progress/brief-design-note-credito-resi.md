@@ -4743,6 +4743,15 @@ inadeguato per metà del parco trigger, in un verso o nell'altro.
 > **copiato dalla fattura che rettifica**. Due changeSet (`20260820-10`, `-11`),
 > due codici (**935**, **936**) e un pgTAP da 14 asserzioni **scritti e NON
 > applicati**.
+>
+> ⭐ **2026-08-20 — e il §38.6 si corregge, con una regola di casa (§43).** Il BE
+> ha obiettato citando `frontend-standards`: *«permesso ⇒ nascondi, **stato** ⇒
+> disabilita col motivo»*. Avere un accredito è uno stato che **cambia**, quindi
+> «annulla reso» non resta acceso e muto: si **disabilita col motivo**
+> (`20260820-12`, pgTAP 8 → 11). 🔴 Il difetto vero non era il bottone: la regola
+> era **irraggiungibile da chi scrive SQL**, e ora è il **§12 di
+> `linee-guida-sql.md`** — con il censimento delle otto capability, due delle
+> quali (**commessa**, **lotto**) disabilitano ancora **senza dire perché**.
 
 ### 40.0 ✅ Il punto 1 è già fatto **e già applicato** — verificato sul DB, non supposto
 
@@ -5813,3 +5822,158 @@ sulla frase sarebbe rosso per un motivo che non c'entra con il guard.
   §38.6 sul bottone «annulla» del reso. Spegnerle vorrebbe dire far consumare i
   gate alle capability, cioè altre modifiche DB per togliere un click a un caso
   raro.
+
+---
+
+## 43. ⭐ «Annulla reso» resta acceso ma spiega — e la regola torna raggiungibile dal DB (2026-08-20)
+
+> **Origine**: obiezione del team BE al §38.6, con una regola di casa in mano.
+>
+> ⛔ **Stato: SCRITTO, NON APPLICATO.** Un changeSet (`20260820-12`), tre
+> asserzioni pgTAP in più (`test-annulla-reso-gate-accredito-v1`: 8 → **11**),
+> una sezione nuova in `linee-guida-sql.md` (**§12**). 🔴 Serve **una chiave
+> i18n** al FE.
+
+### 43.1 La decisione del §38.6 cambia, e la ragione è scritta
+
+Il §38.6 aveva deciso: *«il bottone «annulla» del reso resta acceso: il rimedio è
+dell'operatore e il messaggio glielo dice»*. Il BE ha obiettato citando
+`frontend-standards.md`:
+
+> **Permesso ⇒ nascondi, stato ⇒ disabilita col motivo.** *Il permesso non è
+> qualcosa che l'operatore possa risolvere dal kebab, quindi una voce grigia
+> sarebbe una promessa che non si mantiene; ciò che invece dipende dallo stato
+> del record può cambiare, e lì `disabled` + `tooltip` spiega e resta a video.*
+
+Avere un accredito registrato **è uno stato che cambia** — si disfa l'accredito e
+l'annullo torna possibile. Quindi il bottone non va nascosto e non va lasciato
+acceso: va **disabilitato col motivo**. Il BE ha ragione.
+
+⭐ **E la decisione del §38.6 non era sbagliata sul dominio: era ignorante di una
+regola che vive nel documento di un altro lato.** È il punto che conta di questo
+giro, ed è per questo che non finisce col changeSet — vedi §43.4.
+
+### 43.2 Non serve il flag di testata: il meccanismo c'era già
+
+Il BE chiedeva *«un flag di testata del tipo `ha_accrediti`»*, avendo misurato che
+`fn_available_actions_reso` non nomina l'accredito e che il drawer non ha in mano
+le righe. Vero entrambi — ma la strada è un'altra e più corta:
+**`available_actions` porta già, per ogni azione, la terna
+`enabled` / `reason` / `reason_key`**, oggi valorizzata da `meta.requires_righe`,
+e il frontend la rende già come pulsante grigio + tooltip. Il commento nel corpo
+lo dice da luglio: *«la barra azioni deve comparire proprio per mostrare il
+pulsante grigio + tooltip»*.
+
+Un flag di testata sarebbe stato **peggio**, non solo in più:
+
+* spegne il **documento**, non l'**azione** — e le altre transizioni non c'entrano;
+* vuole cablaggio FE nuovo, mentre `reason_key` è già letto;
+* è un dato senza consumatore il giorno che l'azione cambia nome.
+
+Modello esatto: `fn_available_actions_ddt`, che dal 2026-07-19 disabilita la sola
+transizione `EMESSO` con un motivo suo e lascia abilitate le altre.
+
+Risultato sul dato vero (transazione annullata):
+
+```text
+reso 24   RESO0000017  CONFERMATO  annulla  enabled=false
+                                   reason=RESO_CON_ACCREDITI
+                                   reason_key=vendite.reso.annulla_reason.con_accrediti
+reso 5796 RESO0005122  CONFERMATO  annulla  enabled=true    (accredito annullato in app)
+reso 18   RESO0000011  CONFERMATO  annulla  enabled=true
+
+can_change_state resta true su entrambi → il bottone è GRIGIO, non sparito.
+```
+
+⭐ **E capability e guard dicono la stessa cosa**, verificato mettendoli a
+confronto riga per riga sugli stessi due resi:
+
+```text
+reso 24   capability enabled=false · guard RIFIUTA/E_RESO_ANNULLO_CON_ACCREDITO
+reso 5796 capability enabled=true  · guard PASSA
+```
+
+È l'invariante che conta: se divergessero, il bottone sarebbe grigio su un
+annullo che sarebbe passato — o, peggio, acceso su uno che verrà rifiutato. Il
+predicato è lo **stesso `EXISTS`**, apposta.
+
+#### ⚠️ Tre asserzioni nuove, ma il difetto lo misura UNA
+
+Misurata la corsa **senza** il changeSet: **10/11**, non 8/11.
+
+| test | senza il changeSet | cos'è |
+| --- | --- | --- |
+| **9** | 🔴 rosso | ⭐ l'unico che misura il difetto: il bottone era acceso e muto |
+| 10 | ✅ verde | l'azione era già nell'elenco e `can_change_state` già `true` |
+| 11 | ✅ verde | senza accredito `enabled` era `true` comunque |
+
+Non è un difetto dei test 10 e 11: sono **invarianti**, devono reggere prima e
+dopo, e il loro mestiere è accorgersi di una regressione futura — l'azione che
+sparisce dall'elenco, la capability che non si riabilita. Ma chi legge «tre test
+nuovi» deve sapere che il difetto lo misura **uno**, ed è scritto anche
+nell'intestazione del file accanto alla corsa «prima» dei test 1-8.
+
+### 43.3 Quello che il BE ha misurato, e che non cambia
+
+L'accredito resta **per riga**, e la loro misura chiude la questione:
+*su 4 resi multi-riga in dbdev, 3 mescolano `RESO_A_CREDITO` e
+`RESO_PER_RICONSEGNA` nella stessa testata*. Un accredito di documento
+accrediterebbe anche la riga che deve tornare al cliente.
+
+E la guardia `EXISTS` messa nel §38 è già quella giusta: **una** riga accreditata
+blocca l'**intero** annullo, quindi l'annullo parziale non può capitare — è il
+test 8 di `test-annulla-reso-gate-accredito-v1`.
+
+### 43.4 ⭐ La regola torna raggiungibile da chi scrive SQL (`linee-guida-sql §12`)
+
+Il difetto vero di questo giro non è il bottone: è che **la regola era
+irraggiungibile da dove serviva**. Vive in `frontend-standards.md` e nei building
+block FE, ma **chi la applica per primo è il database** — sono le
+`script.fn_available_actions_*` a decidere se un'azione è proposta, spenta o
+assente.
+
+Da qui una sezione nuova, **§12 di `linee-guida-sql.md`** — il documento che
+`AGENTS.md` impone di leggere prima di scrivere SQL:
+
+* la regola, con le **due varianti peggiori** dette per nome: lasciare l'azione
+  **accesa** su qualcosa che il guard rifiuterà (l'operatore scopre il vincolo
+  sbagliando), e **toglierla dall'elenco** per uno stato (sparisce senza
+  spiegazione);
+* la forma da scrivere (`enabled`/`reason`/`reason_key`) e le quattro cose da
+  fare bene: stesso predicato del guard, `can_change_state` che conta anche le
+  disabilitate, **precedenza dichiarata** fra motivi, aggancio su
+  `codice_interno` e mai su `codice`;
+* l'obbligo verso il FE sulla `reason_key`, con il cancello che lo presidia;
+* ⭐ e un **censimento** delle otto capability.
+
+E un rimando **all'indietro** in `frontend-standards.md`: la regola vale prima di
+tutto per il database, e le due copie vanno tenute allineate.
+
+#### 🟠 Il censimento, che è anche un debito
+
+| Funzione | `enabled` | `reason` + `reason_key` |
+| --- | --- | --- |
+| contratto · ddt · offerta · ordine · preventivo · reso | ✅ | ✅ |
+| **commessa** | ✅ | ⛔ |
+| **lotto** | ✅ | ⛔ |
+
+⚠️ Due su otto espongono `enabled` ma **non** il motivo: quando disabilitano
+qualcosa, il pulsante è grigio e **muto** — la stessa classe di difetto appena
+corretta sul reso, in due domini che nessuno ha ancora collaudato da quel lato.
+Non è un rilievo di collaudo: è un debito **misurato**, scritto nel §12.4 perché
+chi tocca quelle due funzioni lo trovi.
+
+### 43.5 📮 Cosa serve dagli altri due lati
+
+* 🔴 **FE — obbligatorio, nello stesso giro**: la chiave
+  `vendite.reso.annulla_reason.con_accrediti` in `it.json` **e** `en.json`.
+  ⚠️ Senza, `scripts/check_i18n_keys.py` (controllo 4) diventa **rosso** appena
+  la doc auto-gen viene rigenerata — e a video resterebbe un pulsante grigio col
+  tooltip **vuoto**, cioè il difetto che la regola voleva evitare in una forma
+  peggiore. Il namespace è quello delle azioni del reso (`vendite.reso.*`, dove
+  già vivono `azione_annulla` e `stato_info`), non `vendite.resi.*` che ospita
+  la UI degli accrediti.
+* 🟡 **BE — niente di obbligatorio**: nessun campo nuovo nel blob, nessun
+  endpoint da toccare. Il detail porta già `available_actions`.
+* 🟡 **FE — niente cablaggio nuovo**: `enabled`/`reason_key` sono già letti (è
+  così che funziona oggi «documento senza righe»).
