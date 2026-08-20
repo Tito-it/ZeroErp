@@ -4727,11 +4727,22 @@ inadeguato per metà del parco trigger, in un verso o nell'altro.
 > spenta) e **`tipo_movimento` nel `GROUP BY`** come chiesto dal BE.
 > Cronaca e misure nel **§40.5**.
 >
-> ⛔ **Coda aperta (§40.6): il filtro `p_tipo_movimento`.** Il BE l'ha chiesto
-> poche ore dopo l'apply — resa visibile la colonna «Movimento», il passo dopo è
-> isolarla. ChangeSet **`20260820-09`** e sei asserzioni pgTAP in più (plan 22 →
-> 28) **scritti e NON applicati**. ⭐ Il parametro è **in coda** alla firma:
-> nessun chiamante da toccare, nemmeno quelli posizionali.
+> ✅ **Coda del §40.6 chiusa**: il filtro `p_tipo_movimento` (`20260820-09`) è
+> **applicato** il 2026-08-20 alle 11:01, nessuna regressione. Il parametro è
+> **in coda** alla firma (nono argomento): nessun chiamante da toccare, nemmeno
+> quelli posizionali.
+>
+> 🔴 **2026-08-20 — le note di credito raggiungibili da DUE verbi di commessa
+> (§42).** Terza segnalazione BE del cantiere, e seconda della famiglia del §38:
+> *un verbo che non sa dell'accredito*. `fn_annulla_commessa_attivita` definiva
+> «riga manuale» come **sourceless**, e l'equazione si è rotta quando
+> `fn_accredita_riga_reso` ha iniziato a scrivere rettifiche sourceless: una riga
+> di nota di credito si annullava lasciando **vivo il ponte** in
+> `resi_righe_accrediti` — credito al cliente, nessun documento, nessun segnale.
+> E i tre percorsi di prezzo restavano offerti su una riga il cui importo è
+> **copiato dalla fattura che rettifica**. Due changeSet (`20260820-10`, `-11`),
+> due codici (**935**, **936**) e un pgTAP da 14 asserzioni **scritti e NON
+> applicati**.
 
 ### 40.0 ✅ Il punto 1 è già fatto **e già applicato** — verificato sul DB, non supposto
 
@@ -5556,3 +5567,249 @@ ONERE          0      ← zero righe, nessun errore: e' l'esito giusto
   posto sbagliato;
 * `movimento` è `filtrabile = t` a catalogo; le altre cinque restano `f` e il
   §40.6.4 dice perché.
+
+---
+
+## 42. 🔴 Le note di credito raggiungibili da due verbi di commessa (2026-08-20)
+
+> **Origine**: segnalazione del team BE, trovata **in collaudo** il 2026-08-20 —
+> la terza del cantiere dopo il §38, il §39 e il §41, e la seconda della stessa famiglia:
+> *un verbo che non sa dell'accredito*.
+>
+> ⛔ **Stato: SCRITTO, NON APPLICATO.** Due changeSet (`20260820-10`, `-11`), due
+> codici errore nuovi (**935**, **936**) e un pgTAP da 14 asserzioni.
+> Nessun danno in `dbdev` — verificato, non supposto.
+
+⭐ **Il filo che lega §38, §39 e questo.** Nessuno dei tre è un difetto di codice:
+sono tre **premesse** che hanno smesso di essere vere quando la nota di credito è
+entrata in esercizio. Il §38 era un verbo che non nominava l'accredito; questo
+sono **due verbi che nominavano la cosa sbagliata**.
+
+---
+
+### 42.1 «Annulla voce manuale» annullava anche una nota di credito
+
+#### 42.1.1 L'equazione che si è rotta
+
+`vendite.fn_annulla_commessa_attivita` definisce «riga manuale» come
+**sourceless** (`sorgente_tipo_id IS NULL` → `E_RIGA_COMMESSA_NON_MANUALE`), e
+il suo stesso `COMMENT` lo dichiarava:
+
+> «il discriminante è la sorgente, **non** `tipo_movimento = ONERE` (natura, non
+> origine)»
+
+⚠️ **Ed era corretto quando fu scritto** (2026-07-28): allora *sourceless ⇔
+ONERE*, perché nessuno scriveva righe `RETTIFICA` — la doc di
+`commesse_attivita` diceva letteralmente *«RETTIFICA: nessuno, oggi»*. Dal
+2026-08-18 `fn_accredita_riga_reso` ne scrive, e le scrive **sourceless per
+progetto**. L'equazione si è rotta, e con lei il perimetro del verbo.
+
+⭐ **E la cosa era stata prevista per iscritto.** La doc manuale della funzione
+ha, da luglio, un paragrafo intitolato «Cautela onesta»:
+
+> *«Il criterio sourceless ha un rovescio da accettare consapevolmente: se
+> domani nascesse un altro tipo di riga manuale, l'annullamento la coprirebbe
+> senza che nessuno abbia ripensato il perimetro. Il giorno che arriva il
+> secondo tipo di riga sourceless, questo guard va riletto.»*
+
+Il secondo tipo è arrivato **tre settimane dopo**. Vale la pena notarlo: la
+previsione non ha impedito il difetto, perché nessuno rilegge una cautela — è il
+collaudo che l'ha trovata.
+
+#### 42.1.2 Il danno, misurato dal percorso reale
+
+Il BE l'ha misurato annullando una rettifica viva, in transazione annullata:
+
+```text
+PRIMA: accreditato=5,00  ponte=1  rettifica=NON_EMESSA  in_coda=0
+DOPO : accreditato=5,00  ponte=1  rettifica=ANNULLATA   in_coda=0
+```
+
+La rettifica esce dal giro, il ponte in `resi_righe_accrediti` **sopravvive**,
+`fn_resi_riga_accreditato_partita` continua a dire 5,00 e la riga del reso **non
+torna in coda**.
+
+🔴 **Il cliente ha un credito e nessun documento uscirà mai, senza che niente lo
+segnali.** Non è un errore: è un successo che lascia il mondo incoerente — la
+forma peggiore, perché non c'è niente da cercare nei log.
+
+Ri-misurato in `dbdev` il 2026-08-20, il varco era aperto su **quattro** righe:
+
+| movimento | sourceless | passa il gate oggi |
+| --- | --- | --- |
+| `NORMALE` | 0 | 0 |
+| `ONERE` | 3 | 0 *(tutte EMESSA/ANNULLATA)* |
+| `RETTIFICA` | 6 | **4** |
+
+Il perimetro nuovo toglie l'azione a quelle 4 e a **zero** righe legittime.
+
+#### 42.1.3 ⭐ Due fatti, non uno: origine **e** natura
+
+Il guard nuovo **non sostituisce** quello sulla sorgente: si aggiunge.
+
+* **origine** — la riga nasce da un documento? → `E_RIGA_COMMESSA_NON_MANUALE`
+* **natura** — che movimento è? → il codice nuovo
+
+⚠️ Metterne uno solo sarebbe di nuovo l'errore di oggi. Il `CHECK
+chk_commesse_attivita_sorgente_pair` garantisce la coerenza della **coppia**
+`sorgente_*`, non che origine e natura restino allineate per sempre — e la prova
+che non lo restano è esattamente questo changeSet.
+
+⭐ **Whitelist fail-closed**: si ammette `ONERE`, non si vieta `RETTIFICA`. Un
+quarto movimento manuale dovrà essere ammesso **esplicitamente**, invece di
+ereditare in silenzio un verbo distruttivo. È la lezione della «Cautela onesta»
+trasformata in codice invece che in prosa.
+
+#### 42.1.4 Un codice solo (935), e perché non due
+
+Riusare `E_RIGA_COMMESSA_NON_MANUALE` era escluso: il suo messaggio dice *«nasce
+dal documento sorgente %s»*, che su una rettifica è **falso** — la riga è
+sourceless. Un messaggio falso è peggio di nessun messaggio: manda a cercare un
+documento che non esiste.
+
+Ma nemmeno **due** codici (uno per `RETTIFICA`, uno generico fail-closed): il
+secondo guarderebbe un ramo che oggi **non è raggiungibile** — il `CHECK` ammette
+tre valori e due sono già gestiti — e ⚠️ *un ramo morto sembra coperto senza
+esserlo*, che è una trappola che questo progetto ha già pagato.
+
+Uno solo, con un messaggio le cui **due frasi sono entrambe vere sempre**:
+
+> «Riga commessa %s (segment %s): è un movimento %s e l'annullamento di riga vale
+> solo per gli oneri di commessa. Una rettifica di nota di credito si disfa con
+> «Annulla l'accredito» sulla riga del reso.»
+
+La prima nomina il movimento e la regola; la seconda dice **la strada** per il
+caso che oggi arriva il 100% delle volte.
+
+#### 42.1.5 L'ordine dei guard: la natura sta prima di «già emessa»
+
+`già-annullata (564) → origine (565) → NATURA (935) → già-emessa (566)`
+
+La natura precede lo stato per la stessa ragione per cui lo precede l'origine: è
+l'**identità** della riga, non una condizione. Per una rettifica il rimedio è
+«annulla l'accredito» tanto da `NON_EMESSA` quanto da `EMESSA` — dire «già
+emessa» manderebbe a cercare una nota di credito che non c'è.
+
+---
+
+### 42.2 🔴 Il prezzo di una rettifica è IMMUTABILE — decisione di Tid
+
+#### 42.2.1 Perché non è una preferenza
+
+Il prezzo di una riga `RETTIFICA` è **copiato** dalla riga di fattura che
+rettifica (`fn_accredita_riga_reso`, decisione **N-1**: copiato da
+`vendite.fatture_righe`, mai ricalcolato e mai riletto dal listino).
+
+Cambiarlo farebbe accreditare un importo **diverso da quello fatturato**: una
+nota di credito che non corrisponde al documento che dichiara di correggere.
+
+⭐ **Non è un dato da tenere aggiornato: è una CITAZIONE.** È il modo più corto di
+dire perché i tre percorsi di pricing — riallinea, variazione eccezionale,
+sblocca — non hanno senso su questa riga.
+
+**Decisione**: il prezzo di una riga `RETTIFICA` non si modifica. Mai, in nessuno
+dei tre percorsi.
+
+#### 42.2.2 ⚠️ Perché il guard sta nella TABELLA e non nel backend
+
+Il prezzo si scrive con una **UPDATE diretta** su `vendite.commesse_attivita`
+(`update_attivita_prezzo` nel repository), **non** attraverso una funzione madre:
+
+```sql
+UPDATE vendite.commesse_attivita
+   SET prezzo_snapshot = …, prezzo_bloccato = …,
+       prezzo_da_riallineare = FALSE, meta = …
+ WHERE id = …
+```
+
+Un controllo solo nel backend sarebbe una **convenzione, non un blocco**:
+chiunque scriva quella colonna per un'altra strada lo aggirerebbe senza
+accorgersene.
+
+⭐ È la stessa ragione per cui `tipo_movimento` è diventata una colonna con un
+`CHECK` invece di una chiave di `meta` (doc `commesse_attivita`, 17-07-2026):
+*«un discriminatore su cui si fondano soldi e riconciliazioni non può dipendere
+dalla buona educazione del chiamante»*.
+
+#### 42.2.3 Cosa blocca, esattamente
+
+`prezzo_snapshot` e `prezzo_bloccato`, sulle sole righe `RETTIFICA`, **in
+qualunque stato**.
+
+⭐ **Blocca il CAMBIAMENTO, non la scrittura** (`IS DISTINCT FROM`): una `UPDATE`
+che riscrive lo stesso valore passa. Senza, l'`ON CONFLICT DO UPDATE` di
+`fn_upsert_commessa_attivita` — che riassegna `prezzo_snapshot = EXCLUDED…` anche
+quando il valore è identico — si romperebbe su ogni ri-scrittura.
+
+⚠️ **Non dipende da `stato_emissione`**, a differenza del gemello sulla quantità.
+Quello protegge un **fatto già uscito** (riga emessa); questo protegge una
+**citazione**, che è sbagliata anche prima di uscire — anzi soprattutto prima,
+perché è lì che i tre percorsi di pricing la toccherebbero.
+
+#### 42.2.4 Due cose considerate e NON fatte
+
+* **`prezzo_da_riallineare` non è nell'elenco.** Misurato: nessuna funzione di
+  database e nessun percorso backend lo porta a `true`; arriva solo come
+  parametro dell'upsert, e le rettifiche nascono con `false`. Bloccarlo oggi non
+  impedirebbe niente e allargherebbe un guard restrittivo oltre la richiesta. Se
+  nascesse un giro di riallineamento massivo che lo accende, va aggiunto **lì**,
+  nella riga di `UPDATE OF`.
+* **Nessun bypass `zeroerp.maintenance_reset_lotto_draft`**, che il gemello sulla
+  quantità invece ha. Verificato che servisse davvero: il reset scrive su questa
+  tabella tramite `fn_cleanup_fatture_by_ids`, ma **solo `stato_emissione`**
+  (ritorno a `NON_EMESSA`, RD-4) — non tocca il prezzo, quindi non incontra
+  questo guard. ⛔ E una porta di servizio sul prezzo di una nota di credito è
+  esattamente la porta che la decisione vuole chiusa: se un giorno servisse,
+  dev'essere una decisione, non un'eredità.
+
+---
+
+### 42.3 Le misure
+
+**pgTAP nuovo**: `db/pgtap/vendite/test-rettifica-non-annullabile-e-prezzo-immutabile-v1.sql`,
+plan(14), **14/14 verdi** con i due changeSet applicati in transazione e
+annullati. Gira **come applicazione** (non owner): il test 10 fa una `UPDATE`
+diretta sulla tabella, cioè la stessa strada del backend, e deve incontrare il
+guard da quella veste.
+
+⭐ **Le tre asserzioni che valgono più delle altre:**
+
+* la **9** — *l'onere si annulla ancora*. Un guard che blocca anche il caso
+  legittimo non è una correzione, è una regressione: il perimetro doveva
+  **stringersi**, non spostarsi.
+* la **12** — *riscrivere lo stesso prezzo passa*. È la differenza fra un guard
+  sul cambiamento e uno sulla scrittura, e senza di essa l'upsert si romperebbe.
+* la **13** — *il prezzo di un ONERE si cambia ancora*. Se diventasse rossa, il
+  guard avrebbe smesso di essere una regola sulle rettifiche per diventare una
+  regola sui prezzi.
+
+⚠️ E una cosa che il test **non** dimostra, scritta nel file: la rettifica della
+fixture nasce da `fn_upsert_commessa_attivita`, non da `fn_accredita_riga_reso`.
+Il soggetto è la **forma** della riga (sourceless + RETTIFICA), non il modo in
+cui nasce; che il varco fosse **reale** è stato misurato sul dato vero (4 righe),
+non dedotto.
+
+**Nessuna regressione**: `test-annulla-commessa-attivita-v1` resta **27/27** con i
+changeSet applicati — la sua fixture usa `fn_aggiungi_onere_commessa`, quindi
+tutte le sue righe sono `ONERE` e restano dentro il perimetro nuovo.
+
+**Codice di dominio dal canale `CONSTRAINT`**, non dal testo: così le asserzioni
+sono verdi anche prima che il mirror CSV carichi le voci, e un `throws_like`
+sulla frase sarebbe rosso per un motivo che non c'entra con il guard.
+
+---
+
+### 42.4 📮 Cosa serve dagli altri due lati
+
+* 🔴 **BE — obbligatorio**: rigenerare `error_policies_generated.py` per i codici
+  **935** e **936**. È il **terzo** giro di catalogo in due giorni (933 del §38,
+  il ritiro del 131 del §39, questi due): conviene farne uno solo.
+* 🟡 **BE — opportuno**: il presidio applicativo su `update_attivita_prezzo` resta
+  utile per dare all'operatore un **400 parlante** invece del 409 che arriva dal
+  database. Ma è un'aggiunta, non un'alternativa: il blocco vero è nella tabella,
+  ed è lì che deve restare.
+* 🟡 **FE**: le tre azioni prezzo e l'azione «annulla» su una riga `RETTIFICA`
+  possono restare accese — il messaggio dice la strada, ed è la stessa scelta del
+  §38.6 sul bottone «annulla» del reso. Spegnerle vorrebbe dire far consumare i
+  gate alle capability, cioè altre modifiche DB per togliere un click a un caso
+  raro.
