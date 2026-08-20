@@ -9,7 +9,7 @@
 
 Django>=6.0,<6.2
 asgiref>=3.11
-sqlparse>=0.5, <0.6
+sqlparse>=0.6, <0.7
 
 # Django REST
 djangorestframework>=3.18
