@@ -25,5 +25,11 @@
 | ix_resi_righe_accrediti_resi_righe_accrediti_id_fk | `CREATE INDEX ix_resi_righe_accrediti_resi_righe_accrediti_id_fk ON storico.resi_righe_accrediti USING btree (resi_righe_accrediti_id)` |
 | pk_storico_resi_righe_accrediti | `CREATE UNIQUE INDEX pk_storico_resi_righe_accrediti ON storico.resi_righe_accrediti USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_resi_righe_accrediti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_resi_righe_accrediti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

@@ -62,6 +62,59 @@ BEGIN
             NULL::uuid, p_reso_id::text);
     END IF;
 
+    -- ⛔ Reso gia' ACCREDITATO -> l'annullo si RIFIUTA.
+    --    Gemella di E_RESO_ANNULLO_CON_RICONSEGNE: stessa classe di
+    --    problema, un effetto gia' in viaggio. Qui l'effetto e' una
+    --    rettifica a quantita' NEGATIVA in vendite.commesse_attivita,
+    --    che il giro di fatturazione raccoglie da se': annullare il
+    --    reso senza disfarla emetterebbe una nota di credito per un
+    --    reso che non esiste piu'. E il lister non ripara a valle -
+    --    vendite.fn_list_emittibili_lane e
+    --    vendite.fn_emit_attivita_fatturabili_da_commessa non nominano
+    --    mai il reso: per loro quella rettifica e' materia normale.
+    --
+    -- ⚠️ IL PREDICATO E' L'ESISTENZA DEL PONTE, NON LO STATO DELLE
+    --    RETTIFICHE. Se l'accredito e' ormai troppo tardi per essere
+    --    disfatto lo dice la sua madre con il proprio messaggio
+    --    (E_ACCREDITO_ANNULLO_NON_AMMESSO): ricalcolare qui «tutte
+    --    NON_EMESSA» sarebbe una seconda copia della stessa regola,
+    --    destinata a divergere al primo ritocco.
+    --
+    -- ⛔ SI RIFIUTA, NON SI CASCATA. vendite.fn_annulla_accredito_riga_reso
+    --    pretende un motivo obbligatorio (E_ACCREDITO_MOTIVO_OBBLIGATORIO)
+    --    e la traccia del perche' vive solo in commesse_attivita_log:
+    --    una cascata automatica dovrebbe inventarselo. E se anche una
+    --    sola rettifica ha lasciato NON_EMESSA, quella madre rifiuta:
+    --    li' l'annullo del reso non deve avvenire affatto, non avvenire
+    --    a meta'.
+    --
+    -- ⭐⚠️ VINCOLO RECIPROCO, ora su TRE posti (C-3): questa guardia,
+    --    script.fn_check_rinuncia_reversibile e la madre dell'annullo
+    --    accredito. Si auto-ripara perche' l'annullo dell'accredito
+    --    CANCELLA le righe di ponte - ed e' anche il motivo per cui
+    --    E_ACCREDITO_NON_TROVATO copre insieme «mai accreditato» e
+    --    «gia' annullato». Se un giorno diventasse un soft-delete,
+    --    questo ramo continuerebbe a vedere la riga e vieterebbe PER
+    --    SEMPRE l'annullo di un reso ormai annullabile, IN SILENZIO:
+    --    i tre posti si cambiano INSIEME.
+    --
+    -- ⚠️ Sta DOPO le ri-consegne di proposito: un reso che ha entrambe
+    --    rispondeva gia' con E_RESO_ANNULLO_CON_RICONSEGNE, e cambiargli
+    --    messaggio adesso non direbbe nulla di piu' a chi lo legge.
+    --    Nessuna delle due tabelle lette ha la RLS (ce l'ha solo
+    --    vendite.resi, gia' attraversata sopra): qui uno zero e' un
+    --    dato, non un fail-closed.
+    IF EXISTS (
+        SELECT 1
+          FROM vendite.resi_righe rr
+          JOIN vendite.resi_righe_accrediti a ON a.resi_riga_id = rr.id
+         WHERE rr.reso_id = p_reso_id) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_ACCREDITO',
+            jsonb_build_object('reso_id', p_reso_id),
+            NULL::uuid, p_reso_id::text);
+    END IF;
+
     -- Transizione -> ANNULLATO.
     SELECT id INTO v_stato_ann_id FROM config.stati_doc_reso
      WHERE codice_interno = 'ANNULLATO' AND attivo IS TRUE;
@@ -127,7 +180,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
-IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Blocca l annullo di resi gia ri-spediti (E_RESO_ANNULLO_CON_RICONSEGNE). Simmetrica a fn_conferma_reso. brief §2/§5. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il ri-flip legge l helper unico vw_resi_righe_effettive.';
+IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Simmetrica a fn_conferma_reso. brief S2/S5. ⛔ DUE guardie di RIFIUTO, gemelle fra loro e tutte e due prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) e - dal 2026-08-19 - E_RESO_ANNULLO_CON_ACCREDITO (esiste almeno una riga di ponte in vendite.resi_righe_accrediti). ⚠️ Senza la seconda un reso accreditato si annullava lasciando VIVE le rettifiche a quantita'' negativa in vendite.commesse_attivita, e il primo giro di fatturazione emetteva una nota di credito per un reso annullato: i due lister (fn_list_emittibili_lane, fn_emit_attivita_fatturabili_da_commessa) non nominano mai il reso e non riparano a valle. Il predicato e'' l''ESISTENZA del ponte, non lo stato delle rettifiche: se l''accredito e'' ormai troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolare qui «tutte NON_EMESSA» sarebbe una seconda copia della stessa regola. ⛔ Si RIFIUTA e non si cascata: vendite.fn_annulla_accredito_riga_reso pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi, e se una sola rettifica non e'' piu'' NON_EMESSA l''annullo del reso non deve avvenire affatto - non avvenire a meta''. ⭐⚠️ VINCOLO RECIPROCO su TRE posti (C-3), con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche'' l''annullo dell''accredito CANCELLA le righe di ponte - se un giorno diventasse un soft-delete i tre posti si cambiano INSIEME. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il ri-flip legge l helper unico vw_resi_righe_effettive. rev 2026-08-19: guardia accredito (brief-design-note-credito-resi; segnalazione BE del 2026-08-19).';
 ```
 
 ---
