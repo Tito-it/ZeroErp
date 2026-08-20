@@ -39,7 +39,7 @@ E_INDIRIZZO_OBBLIGATORIO_MANCANTE,it,"Indirizzo obbligatorio mancante per sogget
 E_FORMA_GIURIDICA_PAESE,it,Forma giuridica (%s) non coerente con il paese del soggetto (%s).,120,,
 E_DATA_ERRATA,it,Data %s errata o mancante.,122,,
 E_ATTIVO_BLOCK_FKCOL_NOT_FOUND,it,%s,123,,
-E_ATTIVO_BLOCK_CHILDREN_EXIST,it,%s,125,,
+E_ATTIVO_BLOCK_CHILDREN_EXIST,it,Non si puo' disattivare %s (%s = %s): ci sono ancora righe collegate in %s.,125,"Il guard generico dbops.trgfn_prevent_deactivate_if_children impedisce di disattivare una riga che ha ancora righe collegate in un'altra tabella. E' generato dall'automazione ATTIVO per ogni coppia padre/figlia che abbia una chiave esterna, quindi lo stesso codice arriva da un centinaio di trigger diversi: la tabella nominata nel messaggio e' quella che sta bloccando. ATTENZIONE: se la tabella collegata ha una colonna attivo contano solo le righe attive, se non ce l'ha conta qualunque riga - ed e' il motivo per cui dal 2026-08-20 il messaggio non dice piu' «righe attive», che era falso ogni volta che la figlia non aveva quella colonna.","Aprire la tabella indicata nel messaggio, disattivare o rimuovere le righe che puntano a questa, poi ripetere la disattivazione. Il nome della colonna che le collega e gli altri identificativi sono nel contesto dell'evento in dbops.error_log (chiavi fk_col, ref_col, ref_val). Se le righe collegate non si possono togliere, la strada non e' la disattivazione: e' capire quale delle due informazioni non e' piu' vera."
 E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,,
 E_RIGA_GIA_FATTURATA,it,Riga già fatturata.(id_riga %s),129,,
 E_EMITTENTE_DEFAULT_MISSING,it,Emittente fiscale di default mancante. %s,130,,

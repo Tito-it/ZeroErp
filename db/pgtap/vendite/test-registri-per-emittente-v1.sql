@@ -23,11 +23,22 @@
 --   da due emittenti» — che ha senso solo vedendoli tutti.
 --
 -- ⛔ Verde dopo 20260819-05 (intestazione + registri del secondo emittente).
---    ⭐ Il test 6 e' verde GIA' ORA: il guard sulla disattivazione esisteva
+--    ⭐ Il test 6 era verde gia' allora: il guard sulla disattivazione esisteva
 --    gia', ed e' questo file ad averlo scoperto — il piano lo dava per
 --    mancante perche' cercava la famiglia prevent_deactivate_if_children.
 --
--- Indice test (1..6):
+-- ⛔ rev 2026-08-20 — IL TEST 6 E' DIVENTATO ROSSO DA SOLO, senza che nessuno
+--    lo toccasse, ed e' il caso che vale la pena ricordare. Il 19 pomeriggio
+--    era verde; la notte l'automazione ATTIVO ha generato un trigger generico
+--    sulla stessa coppia (la FK era appena nata con 20260819-04), quello ha
+--    cominciato a scattare PRIMA per ordine alfabetico, e il messaggio letto
+--    dall'operatore e' cambiato. Nessun comportamento rotto: solo un'altra voce
+--    che parlava. Da qui 20260820-01 (il messaggio generico impara a nominare
+--    la tabella) e 20260820-02 (via il doppione scritto a mano).
+--    ⚠️ Il test 6 di oggi asserisce quindi un'ALTRA cosa, e il test 7 e' nuovo:
+--    verde solo dopo quei due changeSet.
+--
+-- Indice test (1..7):
 --   1) ogni registro attivo ha un emittente: e' il presidio che impedisce di
 --      tornare indietro a un registro «di nessuno»
 --   2) ⭐ nessuna coppia (tipo_doc, natura) porta due emittenti sullo STESSO
@@ -38,7 +49,9 @@
 --   5) ⭐ EM-1 CHIUSA: la catena reale passa l'emittente — l'emittente di un
 --      billing account arriva fino alla scelta del registro
 --   6) ⭐ il guard di D-P6-1 morde: disattivare un emittente con billing
---      account mappati fallisce
+--      account mappati fallisce, e il messaggio NOMINA la tabella che blocca
+--   7) ⛔ il trigger generato che tiene quella regola esiste — e' il costo
+--      dichiarato di 20260820-02, reso misurabile
 --
 -- ⚠️ SCOSTAMENTO DAL PIANO, dichiarato. Il §8/5e chiedeva di esercitare il
 --    test 6 «su un emittente di prova, non su 72 o 159». Si usa invece un
@@ -53,7 +66,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- ============================================================
 -- Riferimenti — per CHIAVE NATURALE, mai per id nudo.
@@ -171,25 +184,68 @@ SELECT is(
 );
 
 -- ============================================================
--- 6) ⭐ IL GUARD DI D-P6-1 — CHE ESISTEVA GIA', e l'ha scoperto questo test.
---    Il cancello sta sulla DISATTIVAZIONE e non sulla numerazione: il
---    problema si ferma dove nasce — chi disattiva — invece che davanti a un
---    operatore che sta fatturando e non capisce perche' non puo'.
---    ⚠️ Lo tiene anagrafiche.trgfn_emittenti_fiscali_guard_attivo, un guard
---    SCRITTO A MANO con codice dedicato (E_EMITTENTE_DISATTIVAZIONE_BLOCCATA),
---    non un trigger della famiglia prevent_deactivate_if_children. Il piano
---    cercava quella famiglia e concludeva che il presidio mancasse: cercava
---    nel posto sbagliato. ⭐ Qui il test smette di essere una richiesta e
---    diventa il PRESIDIO di un invariante che nessuno aveva fissato.
---    Il discriminante e' la FRASE: senza, throws_ok accetterebbe qualunque
---    errore, compreso un guard diverso che scatta per un'altra ragione.
+-- 6) ⭐ IL GUARD DI D-P6-1 MORDE. Il cancello sta sulla DISATTIVAZIONE e non
+--    sulla numerazione: il problema si ferma dove nasce — chi disattiva —
+--    invece che davanti a un operatore che sta fatturando e non capisce
+--    perche' non puo'.
+--
+--    ⭐ CHI lo tiene e' cambiato il 2026-08-20, e la storia vale la pena.
+--    Fino al 19 lo teneva anagrafiche.trgfn_emittenti_fiscali_guard_attivo,
+--    scritto a mano: il piano cercava la famiglia generica
+--    prevent_deactivate_if_children e concludeva che il presidio mancasse —
+--    cercava nel posto sbagliato, non nel posto vuoto, e l'ha scoperto questo
+--    test. Poi 20260819-04 ha dato alla tabella dei mapping una FK verso
+--    emittenti_fiscali, l'automazione notturna ha generato il trigger
+--    generico, e quello ha cominciato a scattare PRIMA (i BEFORE ROW vanno in
+--    ordine alfabetico: «...billing_acco_b98811» < «...guard_attivo_upd»).
+--    I due erano doppioni esatti — la tabella figlia non ha colonna `attivo`,
+--    quindi anche il ramo «solo figli attivi» del generico coincideva — e
+--    20260820-02 ha tolto quello a mano.
+--
+-- ⚠️ IL DISCRIMINANTE NON E' PIU' LA FRASE, E' IL NOME DELLA TABELLA.
+--    Prima bastava «mapping billing_account presente», che era una frase
+--    scritta apposta per questo guard. Il messaggio generico invece si compone
+--    dai valori che il trigger passa, e padre e figlia sono ENTRAMBI
+--    `schema.tabella`: se il loro ordine si scambiasse rispetto ai segnaposti
+--    del catalogo (20260820-01), la frase resterebbe grammaticalmente perfetta
+--    e nominerebbe la tabella SBAGLIATA. Asserire la tabella FIGLIA e' l'unico
+--    modo di accorgersene — un throws_ok sul solo SQLSTATE passerebbe.
 -- ============================================================
 SELECT throws_like(
   format($$ UPDATE anagrafiche.emittenti_fiscali SET attivo = false
              WHERE soggetto_ruolo_id = %s $$,
          (SELECT ef_secondo FROM tmp_ref_reg)),
-  '%mapping billing_account presente%',
-  '6) il guard morde (ed esisteva gia''): un emittente con billing account mappati non si disattiva'
+  '%righe collegate in anagrafiche.emittenti_fiscali_billing_account%',
+  '6) il guard morde, e il messaggio NOMINA la tabella che sta bloccando'
+);
+
+-- ============================================================
+-- 7) ⛔ IL COSTO DI 20260820-02, RESO VISIBILE.
+--    Tolto il guard scritto a mano, la regola vive in un trigger GENERATO
+--    dall'automazione ATTIVO. Se un giorno la FK di
+--    emittenti_fiscali_billing_account sparisse o cambiasse bersaglio,
+--    l'automazione toglierebbe il trigger e il divieto se ne andrebbe IN
+--    SILENZIO: nessun errore, nessun changeSet, solo un emittente che da
+--    quel giorno si disattiva.
+--    ⚠️ Questo non poteva essere una preCondition del changeSet: su un
+--    database ricostruito da zero le automazioni girano in `ci_apply`, cioe'
+--    DOPO 20_code, e la preCondition sarebbe rossa a ogni build. Il presidio
+--    va qui, dove si misura a build finita.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int
+     FROM pg_trigger t
+     JOIN pg_class c   ON c.oid = t.tgrelid
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     JOIN pg_proc p    ON p.oid = t.tgfoid
+    WHERE n.nspname = 'anagrafiche'
+      AND c.relname = 'emittenti_fiscali'
+      AND p.proname = 'trgfn_prevent_deactivate_if_children'
+      AND NOT t.tgisinternal
+      -- la coppia esatta: figlia + colonna FK, lette dagli argomenti
+      AND pg_get_triggerdef(t.oid) LIKE '%''emittenti_fiscali_billing_account'', ''emittente_soggetto_ruolo_id''%'),
+  1,
+  '7) il trigger generato che tiene la regola c''e'': se sparisse, il divieto se ne andrebbe in silenzio'
 );
 
 SELECT * FROM finish();

@@ -9,14 +9,18 @@
 > ⛔ **FE non iniziato** · 🔴 **5 prerequisiti in attesa del team DB**.
 > **Stato slice per slice e ripartenza nel §27.**
 >
-> 🔴 **2026-08-19 — la guardia che mancava (§38).** Il collaudo in-app ha trovato
-> che `vendite.fn_annulla_reso` **non vedeva l'accredito**: un reso già
-> accreditato si annullava lasciando vive le rettifiche, e il primo giro di
-> fatturazione ne avrebbe fatto uscire una nota di credito. Tre changeSet
+> ✅ **2026-08-19/20 — la guardia che mancava (§38): APPLICATA.** Il collaudo
+> in-app ha trovato che `vendite.fn_annulla_reso` **non vedeva l'accredito**: un
+> reso già accreditato si annullava lasciando vive le rettifiche, e il primo giro
+> di fatturazione ne avrebbe fatto uscire una nota di credito. Tre changeSet
 > (`20260819-22` → `-24`), un codice errore nuovo (**933**) e un pgTAP da 8
-> asserzioni sono **preparati e NON applicati**: la migrazione aspetta il via.
-> ⚠️ Finché non è applicata il difetto è vivo in `dbdev`, e ci sono **due resi
-> accreditati** che non vanno annullati.
+> asserzioni, migrati il **2026-08-20 alle 07:53** e verdi sui dati veri (8/8).
+>
+> 🟠 **2026-08-20 — e la migrazione ha fatto emergere un doppione (§39).** Il
+> pgTAP `test-registri-per-emittente-v1` è diventato rosso **da solo**: la FK
+> nata con `20260819-04` ha fatto generare all'automazione un guard generico che
+> duplica esattamente quello scritto a mano su `emittenti_fiscali`. Due
+> changeSet (`20260820-01`, `-02`) **preparati e NON applicati**.
 > Ventitré changeSet (`20260818-24` → `-46`) applicati, due pgTAP nuovi (22
 > asserzioni), quattro pgTAP esistenti riallineati, baseline `vendite` e
 > `script` **senza regressioni**, doc concettuale aggiornata. Cronaca
@@ -4350,9 +4354,9 @@ prenda per un lavoro lasciato a metà.
 > che il collaudo ha prodotto, ed è di quelli che nessuna suite avrebbe trovato:
 > non c'è niente di rotto: c'è una cosa che **non è stata scritta**.
 >
-> ⛔ **Stato: preparato, NON applicato.** Tre changeSet, due righe di catalogo e
-> un pgTAP nuovo sono nel repo; la migrazione **non è stata eseguita** e aspetta
-> il via dell'utente. Finché non lo è, il difetto è vivo in `dbdev`.
+> ✅ **Stato: APPLICATO** il 2026-08-20 alle 07:53 (`20260819-22` → `-24`
+> `EXECUTED`, codice 933 a catalogo). Il pgTAP nuovo gira **8/8 sui dati veri**,
+> e non solo nella prova a transazione annullata con cui era stato scritto.
 
 ### 38.1 Il fatto, e la misura
 
@@ -4459,9 +4463,8 @@ solo una delle due lo era davvero.
 
 * **pgTAP nuovo**, `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`,
   plan(8). **Senza** il changeSet: 4 rossi (2, 3, 4, 8) — il 4 muore *perché* il
-  2 ha già annullato il reso. **Con** il changeSet: **8/8**.
-  ⚠️ Il «con» è stato misurato applicando la funzione in una sessione a parte e
-  ributtandola indietro: la migrazione **non** è stata eseguita.
+  2 ha già annullato il reso. **Con** il changeSet: **8/8**, prima in una prova a
+  transazione annullata e poi ⭐ **davvero, dopo la migrazione del 2026-08-20**.
 * ⭐ **Il test 8 non usa un kit, di proposito.** Un kit moltiplica i ponti su
   **una** riga di reso: la `EXISTS` lo vedrebbe al primo. La forma che mette
   davvero alla prova la guardia è l'opposta — un reso con **due righe di cui una
@@ -4493,3 +4496,136 @@ solo una delle due lo era davvero.
   dice cosa fare.
 * **FE — niente.** Nessun `reason_key`, nessuna chiave i18n nuova: il codice si
   solleva direttamente e la frase viene dal catalogo.
+
+---
+
+## 39. 🟠 Un guard di troppo, comparso da solo nella notte (2026-08-20)
+
+> **Origine**: il pgTAP `test-registri-per-emittente-v1` è diventato **rosso senza
+> che nessuno lo toccasse**. Il 19 pomeriggio era verde; il 20 mattina no.
+>
+> ⛔ **Stato: preparato, NON applicato.** Due changeSet, due righe di catalogo e
+> due asserzioni pgTAP sono nel repo; la migrazione aspetta il via.
+
+### 39.1 Cosa è successo, in ordine
+
+1. `20260819-04` ha dato a `anagrafiche.emittenti_fiscali_billing_account` una
+   **chiave esterna** verso `anagrafiche.emittenti_fiscali`. Prima non ne aveva
+   **nessuna** — ed era proprio il motivo per cui l'automazione non vedeva la
+   coppia.
+2. L'automazione ATTIVO (`dbops.fn_run_automations_attivo`) scopre le figlie da
+   `pg_constraint`. La notte ha visto la coppia nuova e ha generato il
+   **sedicesimo** trigger `prevent_deactivate_if_children` su `emittenti_fiscali`.
+3. I trigger `BEFORE … FOR EACH ROW` scattano in **ordine alfabetico**:
+   `trg_…_a10_emittenti_fiscali_billing_acco_b98811` viene prima di
+   `trg_…_a10_guard_attivo_upd`. Da quella notte parla il generico, e il guard
+   scritto a mano **non viene più raggiunto**.
+
+⭐ **Non è una sorpresa: era stato previsto alla lettera.** `20260819-04`, riga 91:
+*«se l'automazione lo genera, il messaggio che l'operatore vedrà potrebbe
+cambiare: è l'unica conseguenza da tenere d'occhio dopo l'apply»*. È successo, e a
+vederlo è stato il pgTAP — che è esattamente il punto di scrivere il discriminante
+invece di accontentarsi di «solleva qualcosa».
+
+### 39.2 La cosa che il piano dava per diversa, e non lo era
+
+`20260819-04` supponeva una differenza residua fra i due: il generico blocca solo
+se esistono figli **attivi**, quello a mano su qualunque riga.
+
+**Misurato: la differenza non esiste.** `emittenti_fiscali_billing_account` non ha
+una colonna `attivo` (`id`, `billing_account_id`, `emittente_soggetto_ruolo_id`,
+`is_default`, `meta` + i quattro campi di audit), quindi il generico ricade sul
+ramo «qualunque riga». Stessa tabella figlia, stessa colonna FK, stessa colonna
+referenziata, stesso predicato, stesso momento: **doppioni esatti**.
+
+⚠️ È la seconda volta in due giorni che una *supposizione* su questa coppia si
+rivela sbagliata, e nelle due direzioni opposte: prima il piano dava il guard per
+**mancante** quando c'era (§32.1), ora lo dava per **diverso** quando è identico.
+Le supposizioni sul codice altrui costano poco a scriverle e molto a crederci.
+
+### 39.3 Le due decisioni
+
+**Il doppione si toglie, e a cadere è quello scritto a mano** (`20260820-02`).
+Gli altri **quindici** figli di `emittenti_fiscali` — contratti, ddt, ordini,
+preventivi, pratiche, template… — sono già presidiati dal solo generico, senza
+gemelli. Tenere l'eccezione qui vorrebbe dire mantenere due meccanismi per la
+stessa regola su una tabella sola.
+
+⛔ **L'alternativa non era economica**: `dbops.automation_rules_tbl` ha **una**
+riga `*all`/`*all` e il suo bersaglio è la tabella **padre**. Escludere
+`emittenti_fiscali` ucciderebbe tutti e sedici i trigger; per saltarne uno solo
+servirebbe un meccanismo di esclusione **per coppia** che oggi non esiste,
+costruito dentro un'automazione usata ovunque per un caso unico.
+
+⚠️ **Il costo è dichiarato**: da qui in avanti la regola vive in un trigger
+**generato**. Se quella FK sparisse, l'automazione toglierebbe il trigger e il
+divieto se ne andrebbe **in silenzio**. È lo stesso costo che il progetto paga già
+per gli altri quindici, e ora è **misurato**: il test 7 verifica che il trigger
+generato ci sia.
+
+⭐ E non poteva essere una `preCondition`: su un database ricostruito da zero le
+automazioni girano in `ci_apply`, cioè **dopo** `20_code` — la preCondition
+sarebbe rossa a ogni build. Il presidio va dove si misura a build finita.
+
+### 39.4 Il difetto più grande, trovato per strada
+
+Il messaggio di `E_ATTIVO_BLOCK_CHILDREN_EXIST` a catalogo era **`%s` nudo**. Ma
+il trigger a `fn_log_and_raise_error` passava **sei** valori: la frase, e poi
+padre, figlia, colonna referenziata, suo valore, colonna FK. Un solo segnaposto ne
+consuma uno: **cinque venivano buttati via a ogni violazione**.
+
+Effetto: **un centinaio di trigger** di quella famiglia (28 su `catalogo.articoli`,
+21 su `catalogo.unita_misura`, 18 su `config.sorgenti`, 16 su `config.iva`, 16
+qui…) dicevano tutti la stessa frase cieca — *«esistono righe figlio attive
+collegate»* — senza mai nominare la tabella che stava bloccando.
+
+⚠️ **E la frase era anche falsa in metà dei casi**: diceva «attive» anche quando la
+figlia non ha una colonna `attivo` e quindi conta *qualunque* riga. Il caso che ha
+fatto scoprire tutto è proprio uno di quelli.
+
+`20260820-01` toglie la frase dagli argomenti e la porta a catalogo:
+
+> «Non si può disattivare `%s` (`%s` = `%s`): ci sono ancora righe collegate in
+> `%s`.»
+
+⛔ **Non bastava arricchire il solo CSV**: con la frase come primo valore il
+messaggio poteva solo *crescere intorno* a una frase già fatta («…collegate Padre:
+X. Figlia: Y.»), che è la forma che nasce quando un testo è scritto metà nel codice
+e metà a catalogo. E il «attive» non si sarebbe potuto correggere affatto.
+
+⚠️ **Il vincolo che nasce oggi**: l'ordine dei valori nella funzione e i segnaposti
+del CSV sono **una cosa sola**. Padre e figlia sono entrambi `schema.tabella`: uno
+scambio produrrebbe una frase grammaticalmente perfetta che nomina **la tabella
+sbagliata**, e nessun controllo di sintassi può vederlo. È il motivo per cui il
+test 6 non asserisce «solleva», ma «nomina la tabella **giusta**».
+
+### 39.5 Le misure
+
+* `scripts/pgtap-baseline.sh vendite` dopo la migrazione del 20: **una sola
+  regressione su 196 file**, ed è questa. Tutti gli altri rossi erano già noti.
+* Dry-run dei due changeSet + la riga di catalogo, in transazione annullata:
+  `test-registri-per-emittente-v1` **7/7**. Prima: 6 su 7, con il test 6 rosso.
+* Il corpo di `dbops.trgfn_prevent_deactivate_if_children` è diffato riga per riga
+  contro quello vivo: **cambia solo il blocco dei valori passati**. Nessuna
+  condizione, nessun momento, nessun codice errore toccato.
+* Nessun pgTAP e nessun sorgente si appoggiava alla frase vecchia (verificato), e
+  un solo punto del database solleva quel codice.
+* `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` (131) va in `obsoleto_dal = 2026-08-20`,
+  che è il pattern del progetto per ritirare senza rompere chi referenzia.
+
+### 39.6 🔴 Cosa serve dagli altri due lati
+
+* **BE — obbligatorio**: rigenerare `error_policies_generated.py`
+  (`manage.py genera_error_policies`). Servono **due** giri di catalogo insieme:
+  il codice nuovo **933** di §38 e il ritiro del **131**.
+  ⚠️ `test_error_policies_divergenza_db` confronta il **file intero** con
+  `config.vw_codici_errore_identita`: senza rigenerazione diventa rosso, e lo
+  diventa in una PR che non c'entra.
+* **BE — una riga di doc sbagliata**:
+  `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (riga 86) attribuisce
+  a `trgfn_emittenti_fiscali_guard_attivo` il blocco su *«BA mapping, utilities,
+  parameter_overrides, user_emittenti_fiscali»*. ⚠️ È **già falso oggi** — quella
+  funzione guardava **solo** i BA mapping, gli altri tre li tengono trigger generici
+  distinti — e dopo `20260820-02` nominerà una funzione che non esiste. Non l'ho
+  corretta perché sta sotto `docs/it/backend/`.
+* **FE — niente.**

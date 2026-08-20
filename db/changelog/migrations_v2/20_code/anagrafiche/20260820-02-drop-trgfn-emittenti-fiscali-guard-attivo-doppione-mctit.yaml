@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN GUARD DI TROPPO: `trgfn_emittenti_fiscali_guard_attivo` e' diventato un
+#   DOPPIONE ESATTO dell'automazione, e si toglie.
+#   Origine: pgTAP test-registri-per-emittente-v1 rosso al test 6 il
+#   2026-08-20. Cantiere: brief-design-note-credito-resi (§39).
+#
+# -- COSA E' SUCCESSO, IN ORDINE --------------------------------------
+#   1. 20260819-04 ha ripuntato la FK di
+#      anagrafiche.emittenti_fiscali_billing_account su
+#      anagrafiche.emittenti_fiscali (prima non ne aveva NESSUNA).
+#   2. La notte, l'automazione ATTIVO (dbops.fn_run_automations_attivo, che
+#      scopre le figlie da pg_constraint) ha visto la coppia nuova e ha
+#      generato il SEDICESIMO trigger prevent_deactivate_if_children su
+#      emittenti_fiscali.
+#   3. I trigger BEFORE ROW scattano in ordine ALFABETICO:
+#        trg_emittenti_fiscali_a10_emittenti_fiscali_billing_acco_b98811
+#        trg_emittenti_fiscali_a10_guard_attivo_upd
+#      «e» viene prima di «g», quindi da quella notte parla il generico e il
+#      guard scritto a mano non viene mai raggiunto.
+#
+#   ⭐ Non e' una sorpresa: 20260819-04 lo aveva PREVISTO alla lettera — «se
+#   l'automazione lo genera, il messaggio che l'operatore vedra' potrebbe
+#   cambiare: e' l'unica conseguenza da tenere d'occhio dopo l'apply».
+#   E' successo, ed e' stato il pgTAP a vederlo.
+#
+# -- ⚠️ SONO DOPPIONI ESATTI, NON SIMILI ------------------------------
+#   20260819-04 supponeva una differenza residua: il generico blocca solo se
+#   esistono figli ATTIVI, quello a mano su qualunque riga. MISURATO, e la
+#   differenza NON esiste: anagrafiche.emittenti_fiscali_billing_account non
+#   ha una colonna `attivo` (id, billing_account_id,
+#   emittente_soggetto_ruolo_id, is_default, meta + i quattro campi di audit),
+#   quindi il generico ricade sul ramo «qualunque riga». Stessa tabella
+#   figlia, stessa colonna FK, stessa colonna referenziata, stesso predicato,
+#   stesso momento: due modi di dire la stessa identica cosa.
+#
+#   Il solo vantaggio che restava a quello a mano era il MESSAGGIO — e non
+#   resta piu': 20260820-01 lo toglie dandolo a tutta la famiglia.
+#
+# -- PERCHE' SI TOGLIE QUESTO E NON L'ALTRO ---------------------------
+#   Perche' gli ALTRI QUINDICI figli di emittenti_fiscali (contratti, ddt,
+#   ordini, preventivi, pratiche, template_documenti...) sono gia' tutti
+#   presidiati dal solo generico, senza gemelli scritti a mano. Tenere
+#   l'eccezione qui vorrebbe dire mantenere due meccanismi per la stessa
+#   regola su una tabella sola.
+#   ⛔ L'alternativa — insegnare all'automazione a saltare QUESTA coppia — non
+#   esiste come opzione economica: dbops.automation_rules_tbl ha UNA riga
+#   `*all`/`*all` e il suo target e' la tabella PADRE. Escludere
+#   emittenti_fiscali ucciderebbe tutti e sedici i trigger; per saltarne uno
+#   solo servirebbe un meccanismo di esclusione per COPPIA che oggi non c'e',
+#   costruito in un'automazione usata ovunque per un caso unico.
+#
+# -- ⚠️ IL COSTO, DICHIARATO ------------------------------------------
+#   Da oggi la regola vive in un trigger GENERATO: se un domani quella FK
+#   sparisse, l'automazione toglierebbe il trigger e il divieto se ne andrebbe
+#   IN SILENZIO. E' il costo di questa scelta, ed e' lo stesso che il progetto
+#   paga gia' per gli altri quindici.
+#   ⭐ Il presidio non e' una preCondition — non potrebbe esserlo, perche' le
+#   automazioni girano in `ci_apply`, cioe' DOPO questo changeSet su un
+#   database ricostruito da zero: sarebbe rossa alla prima passata di ogni
+#   build. Il presidio e' il pgTAP, che gira a build finita: il test 6 di
+#   test-registri-per-emittente-v1 verifica che il trigger generato ci sia E
+#   che nomini la tabella giusta.
+#
+# -- IL CODICE ERRORE ------------------------------------------------
+#   E_EMITTENTE_DISATTIVAZIONE_BLOCCATA (id 131) resta a catalogo ma prende
+#   `obsoleto_dal = 2026-08-20` in codici_errore.csv: e' il pattern del
+#   progetto per ritirare una voce senza rompere chi la referenzia
+#   (memoria: NON si usa attivo = false). Dopo questo changeSet nessuna
+#   funzione viva lo nomina piu'.
+#
+# Dipendenze: 20260820-01 (il messaggio parlante) — questo changeSet ha senso
+#   solo dopo, altrimenti si toglie il messaggio buono per tenere quello cieco.
+#   Il numero piu' alto garantisce l'ordine.
+# Verifica: db/pgtap/vendite/test-registri-per-emittente-v1.sql (test 6).
+# 🔴 RICHIESTA AL BE: rigenerare error_policies_generated.py
+#   (`manage.py genera_error_policies`). Il ritiro aggiunge la riga
+#   «# ⚠️ RITIRATO il 2026-08-20» e test_error_policies_divergenza_db confronta
+#   il FILE INTERO col catalogo: senza rigenerazione diventa rosso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260820-02-drop-trgfn-emittenti-fiscali-guard-attivo-doppione-mctit.yaml
+
+  - changeSet:
+      id: 20260820-02-drop-trgfn-emittenti-fiscali-guard-attivo-doppione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Si toglie anagrafiche.trgfn_emittenti_fiscali_guard_attivo e il suo trigger: dal
+        20260819-04 l'automazione ATTIVO genera un prevent_deactivate_if_children sulla stessa
+        coppia, e i due sono doppioni esatti (la figlia non ha colonna attivo, quindi anche il
+        ramo «solo figli attivi» coincide). Il generico scatta prima per ordine alfabetico, e con
+        20260820-01 ha anche il messaggio migliore. Il codice 131 va in obsoleto_dal.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'trgfn_emittenti_fiscali_guard_attivo'
+            # ⚠️ La FK da cui l'automazione scopre la coppia. Non si verifica
+            #    il TRIGGER generato — su un database ricostruito da zero non
+            #    esiste ancora a questo punto della timeline (le automazioni
+            #    girano in ci_apply) — ma il presupposto da cui nascera'.
+            #    Senza la FK, togliere il guard a mano lascerebbe la tabella
+            #    scoperta per sempre, non per una passata.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_constraint c
+                    JOIN pg_class ch ON ch.oid = c.conrelid
+                    JOIN pg_namespace nch ON nch.oid = ch.relnamespace
+                    JOIN pg_class pa ON pa.oid = c.confrelid
+                    JOIN pg_namespace npa ON npa.oid = pa.relnamespace
+                   WHERE c.contype = 'f'
+                     AND nch.nspname = 'anagrafiche'
+                     AND ch.relname  = 'emittenti_fiscali_billing_account'
+                     AND npa.nspname = 'anagrafiche'
+                     AND pa.relname  = 'emittenti_fiscali'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Prima il trigger, poi la funzione: nessun CASCADE, che qui
+              -- porterebbe via oggetti che non abbiamo guardato.
+              DROP TRIGGER trg_emittenti_fiscali_a10_guard_attivo_upd
+                ON anagrafiche.emittenti_fiscali;
+
+              DROP FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino non automatizzato: si riapplica 20260123-15 (che
+              -- crea funzione e trigger) e poi 20260331-02.
+              -- ⚠️ Rimetterlo indietro NON ripristina niente di utile: il
+              --    generico continuerebbe a scattare prima, e si tornerebbe
+              --    ad avere due guard di cui uno irraggiungibile.
+              SELECT 1;
