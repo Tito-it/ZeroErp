@@ -16,8 +16,9 @@
 -- figli noti via UPDATE ad-hoc + ROLLBACK ripristina il seed.
 --
 -- Indice test (1..6):
---   1. UPDATE attivo=false su articolo con figlio attivo -> raise
---      (verifica trigger trgfn_prevent_deactivate_if_children)
+--   1. UPDATE attivo=false su articolo con figlio attivo -> raise, e il
+--      messaggio NOMINA la figlia (verifica trigger
+--      trgfn_prevent_deactivate_if_children + messaggio parlante 20260820-01)
 --   2. fn_riattiva_articolo su articolo disattivato esegue senza errori
 --   3. dopo (2): articolo padre attivo=true
 --   4. dopo (2): figli (articoli_uom_operativa) restano attivo=false
@@ -92,14 +93,36 @@ SELECT pg_temp.mk_articolo('PGTAP_RIATT_A') AS art_a,
 -- =========================================================
 -- 1) Disattivazione bloccata da figlio attivo
 -- ART_TEST_BASE ha articoli_uom_operativa (seed id 9002) attivo=true
+--
+-- ⚠️ rev 2026-08-20 — IL DISCRIMINANTE E' CAMBIATO, e vale la pena sapere
+--    perche'. Fino a ieri era la parola «attive», presa dalla frase che
+--    dbops.trgfn_prevent_deactivate_if_children passava come primo valore a
+--    fn_log_and_raise_error. Quella frase non esiste piu' (20260820-01): il
+--    messaggio sta a catalogo e NOMINA la tabella collegata, che prima non
+--    diceva mai.
+--    ⛔ E la parola «attive» e' caduta di proposito: era falsa ogni volta che
+--    la figlia NON ha una colonna attivo — li' il blocco conta QUALUNQUE riga.
+--    Qui il caso e' l'altro (articoli_uom_operativa la colonna ce l'ha, ed e'
+--    quella che il test 4 rilegge), quindi la parola era vera: si perde una
+--    parola giusta per non tenerne una sbagliata altrove. La distinzione vive
+--    ora nella `causa` del codice 125.
+--
+-- ⭐ Il discriminante nuovo e' PIU' FORTE del vecchio: «attive» sarebbe
+--    passata con qualunque figlia: qui si asserisce PROPRIO
+--    catalogo.articoli_uom_operativa — che e' l'unico figlio che questa
+--    fixture crea, come dice il commento qui sopra («uno solo, e sappiamo
+--    quale»). Nel messaggio nuovo padre e figlia sono entrambi
+--    `schema.tabella`: se il loro ordine si scambiasse rispetto ai segnaposti
+--    del catalogo, la frase resterebbe perfetta e nominerebbe la tabella
+--    sbagliata — e questo e' il test che se ne accorge.
 -- =========================================================
 SELECT throws_like(
     format(
         $sql$ UPDATE catalogo.articoli SET attivo = false WHERE id = %L::uuid $sql$,
         (SELECT art_a FROM _t_ctx)
     ),
-    '%attive%',
-    '1) UPDATE attivo=false su articolo con figlio attivo -> raise (trigger prevent_deactivate_if_children)'
+    '%righe collegate in catalogo.articoli_uom_operativa%',
+    '1) UPDATE attivo=false con figlio attivo -> raise, e il messaggio NOMINA la figlia'
 );
 
 -- =========================================================

@@ -21,6 +21,11 @@
 > nata con `20260819-04` ha fatto generare all'automazione un guard generico che
 > duplica esattamente quello scritto a mano su `emittenti_fiscali`. Due
 > changeSet (`20260820-01`, `-02`) **applicati** il 2026-08-20 alle 08:32.
+> ⚠️ Con `20260820-01` il **messaggio** della famiglia
+> `prevent_deactivate_if_children` cambia per **tutti** i suoi trigger (un
+> centinaio): un secondo pgTAP asseriva su una parola di quella frase ed è stato
+> adeguato — §39.7, che è anche il racconto di una ricerca dei consumatori fatta
+> male.
 >
 > 🟠 **2026-08-20 — gli altri due punti del messaggio BE (§40).** Lo stesso
 > messaggio che segnalava la guardia del §38 ne portava altri due, di
@@ -4644,6 +4649,58 @@ test 6 non asserisce «solleva», ma «nomina la tabella **giusta**».
 * **FE — niente.**
 
 ---
+
+### 39.7 ⚠️ La coda: un secondo test rosso, e una ricerca fatta male
+
+Dopo l'apply è diventato rosso anche
+`db/pgtap/catalogo/test-fn-riattiva-articolo-v1.sql` (test 1). Non è un difetto
+del messaggio nuovo: quel test asseriva `throws_like(…, '%attive%')`, cioè **una
+parola sola** della frase che il `20260820-01` ha tolto.
+
+⛔ **Ed è un mio errore di metodo, non una sorpresa.** Prima di cambiare il
+messaggio avevo cercato i consumatori con due grep: la **frase intera**
+(«esistono righe figlio») e il **nome del codice**
+(`E_ATTIVO_BLOCK_CHILDREN_EXIST`). Nessuno dei due poteva trovare un
+`throws_like` su un *frammento*. La ricerca giusta era una terza, ovvia a
+posteriori: il **nome della funzione**, `prevent_deactivate_if_children`, che di
+file ne trova otto.
+
+📌 **La regola che ne esce**: quando si cambia un messaggio, i consumatori si
+cercano dal **nome di chi lo solleva**, non dal testo. Il testo è esattamente
+ciò che sta cambiando — cercarlo trova solo chi lo copia per intero, e chi
+asserisce su una parola è invisibile.
+
+Degli **otto** file che nominano la famiglia, misurati uno per uno: **sette**
+verificano l'esistenza di un trigger per nome (`tgname LIKE '%block_deact%'`,
+`pg_get_triggerdef ILIKE …`) e sono indifferenti al testo; **uno solo** — questo
+— asseriva sul messaggio.
+
+**Corretto**, e con lo stesso criterio del test 6 di
+`test-registri-per-emittente-v1`: il discriminante diventa **il nome della
+tabella figlia** (`%righe collegate in catalogo.articoli_uom_operativa%`). È più
+forte di prima: `'%attive%'` sarebbe passata con qualunque figlia, mentre qui la
+fixture ne crea **una sola e si sa quale** — e se padre e figlia si scambiassero
+rispetto ai segnaposti del catalogo, questo test se ne accorgerebbe.
+
+### ⚠️ Una parola giusta persa, dichiarata
+
+Va detto per intero: su `catalogo.articoli_uom_operativa` la parola «attive»
+**era vera** — quella tabella la colonna `attivo` ce l'ha. Si è persa una parola
+corretta in un caso per non tenerne una sbagliata nell'altro, perché una frase
+sola non può dire due cose diverse.
+
+Dove è finita la distinzione: nella **`causa`** del codice 125, che ora la
+dichiara, e nella **`soluzione`**, che copre entrambi i rimedi («disattivare
+**o** rimuovere le righe che puntano a questa»).
+
+📌 **Se un giorno valesse la pena riprenderla**, la strada pulita non è
+rimettere la parola nella frase generica: è **due codici distinti**, scelti dal
+`v_child_has_attivo` che la funzione già calcola — «ci sono ancora righe
+collegate **attive** in X» (rimedio: disattivarle) contro «ci sono ancora righe
+collegate in X» (rimedio: toglierle). Sono due situazioni con due rimedi
+diversi, che è il criterio con cui in questo progetto nasce un codice nuovo.
+Non è stato fatto oggi perché era una correzione di regressione, non un
+cantiere sui messaggi.
 
 ## 40. 🟠 Le altre due del messaggio BE: provenienza a video e rettifiche che si compensano (2026-08-20)
 
