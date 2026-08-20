@@ -1785,6 +1785,42 @@ a {
   box-shadow: 0 0 0 1px var(--p-primary-color);
 }
 
+/* Voci del residuo sotto un donut di card (copertura competenza: «Da
+   addebitare» / «Da accreditare»). ⭐ STESSA FORMA per tutte: cambia la parola
+   e il colore, mai la struttura — due lavori dello stesso tipo in due versi
+   opposti devono leggersi con lo stesso gesto dell'occhio.
+   ⚠️ Il rosso passa dal token `--app-accredito-color`
+   (feedback_css_centralizzazione): un `#c00` qui non seguirebbe il tema scuro,
+   e `--app-chart-errore` direbbe «guasto» dove c'e' solo un verso opposto. */
+.app-dash-card-voci {
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: var(--app-font-size-sm);
+  width: 100%;
+}
+
+.app-dash-card-voci > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.app-dash-card-voci dt {
+  color: var(--app-text-muted);
+}
+
+.app-dash-card-voci dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-dash-card-voci .is-accredito dt,
+.app-dash-card-voci .is-accredito dd {
+  color: var(--app-accredito-color);
+}
+
 .app-dash-card-title {
   font-weight: 600;
   font-size: var(--app-font-size-base);

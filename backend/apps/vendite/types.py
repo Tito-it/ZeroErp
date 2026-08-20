@@ -747,12 +747,18 @@ class DashApertoDocumentoRow(TypedDict):
 
 class DashCompetenzaMensileRow(TypedDict):
     # Riga aggregata Lente 1 Competenza (vw_dash_competenza_mensile, formato
-    # lungo mese × stadio × stato fattura — il pivot ai 4 blocchi e' del service).
-    # stato_fattura_* NULL per gli stadi non fatturati.
+    # lungo mese × stadio × stato fattura × TIPO MOVIMENTO — il pivot ai 4
+    # blocchi e' del service). stato_fattura_* NULL per gli stadi non fatturati.
+    # ⚠️ `tipo_movimento` e' entrato nella grana il 2026-08-20 (changeSet
+    # 20260820-07) e la cardinalita' e' CAMBIATA: dove un bucket contiene
+    # movimenti di natura diversa arrivano piu' righe dove prima ne arrivava
+    # una. Chi accumula (i totali) non se ne accorge; chi fa `append` per riga
+    # (il breakdown per stato fattura) duplicherebbe la voce.
     competenza_mese: str
     stadio: str
     stato_fattura_codice_interno: str | None
     stato_fattura_codice: str | None
+    tipo_movimento: str
     n_attivita: int
     valore: str
     valore_fatturato: str

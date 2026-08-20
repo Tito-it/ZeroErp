@@ -233,6 +233,16 @@ const nDaNumerare = computed(() => {
 })
 
 // Totali di copertura del mese: calcolati dal BE (blocco `totali`, DB-6).
+//
+// ⭐ DUE MISURE, NON UNA (2026-08-20). `fatturato`/`daFatturare` sono il NETTO —
+// la verita' contabile del mese, rettifiche comprese — e restano per le voci di
+// riepilogo. `copertura*` e' la stessa cosa SENZA le rettifiche, ed e' l'unica
+// che puo' finire in un grafico parte-su-tutto.
+// ⚠️ Il motivo non e' il «101%» che si vedeva ad agosto: quello e' il sintomo
+// innocuo. Il residuo era una somma con segno, quindi una nota di credito da
+// emettere COMPENSAVA una fattura da emettere — con due importi pari il residuo
+// va a zero e il grafico direbbe «niente da fare» con due documenti da produrre.
+// La compensazione nascondeva lavoro. Rilievo in-app di Tid.
 const totaliMese = computed(() => {
   const tot = meseCorrente.value?.totali ?? {}
   return {
@@ -240,6 +250,17 @@ const totaliMese = computed(() => {
     fatturato: Number(tot.valore_fatturato ?? 0),
     daFatturare: Number(tot.valore_da_fatturare ?? 0),
     nInRitardo: tot.n_in_ritardo ?? 0,
+    coperturaFatturato: Number(tot.copertura_fatturato ?? 0),
+    // Il residuo intero: e' il «fermo» del donut, e vale
+    // `daAddebitare + daAccreditare`. Le due voci NON stanno fuori dal conto —
+    // sono la sua lettura, non una nota a margine.
+    coperturaDaFatturare: Number(tot.copertura_da_fatturare ?? 0),
+    // ⭐ Due voci SIMMETRICHE: lo stesso verbo — produrre un documento — nei due
+    // versi. Il segno vive nella parola («accreditare») e nel colore, mai nel
+    // numero: e' la regola §5.4 del pannello merce, dove un importo negativo a
+    // video si legge come un guasto anche quando descrive il mondo com'e'.
+    daAddebitare: Number(tot.copertura_da_addebitare ?? 0),
+    daAccreditare: Number(tot.copertura_da_accreditare ?? 0),
   }
 })
 
@@ -1502,12 +1523,26 @@ onActivated(() => {
               {{ t('vendite.dashboard_competenza.copertura_titolo') }}
             </span>
             <DonutTransito
-              :transitato="totaliMese.fatturato"
-              :fermo="totaliMese.daFatturare"
+              :transitato="totaliMese.coperturaFatturato"
+              :fermo="totaliMese.coperturaDaFatturare"
               format="currency"
-              :label-transitato="t('vendite.dashboard_competenza.fatturato')"
-              :label-fermo="t('vendite.dashboard_competenza.da_fatturare')"
+              :label-transitato="t('vendite.dashboard_competenza.emesso')"
+              :label-fermo="t('vendite.dashboard_competenza.da_emettere')"
             />
+            <!-- Le due voci del residuo, STESSA FORMA per entrambe: cambia la
+                 parola e il colore, non la struttura. «Da accreditare» compare
+                 solo quando c'e', ma quando c'e' e' una riga come l'altra —
+                 non una nota a pie' di grafico. -->
+            <dl class="app-dash-card-voci">
+              <div>
+                <dt>{{ t('vendite.dashboard_competenza.da_addebitare') }}</dt>
+                <dd>{{ formatCurrency(totaliMese.daAddebitare) }}</dd>
+              </div>
+              <div v-if="totaliMese.daAccreditare > 0" class="is-accredito">
+                <dt>{{ t('vendite.dashboard_competenza.da_accreditare') }}</dt>
+                <dd>{{ formatCurrency(totaliMese.daAccreditare) }}</dd>
+              </div>
+            </dl>
           </div>
 
           <!-- Card stadio funnel (ordine e misura dal BE): click → drill-down. -->

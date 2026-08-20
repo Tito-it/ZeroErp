@@ -526,6 +526,13 @@ def fn_dash_aperto_documenti(
     )
 
 
+# La natura che si separa dalla copertura. Letterale UNICO: il vocabolario vive
+# nel CHECK di `vendite.commesse_attivita.tipo_movimento` (NORMALE | RETTIFICA |
+# ONERE) e un typo qui non romperebbe niente a runtime — filtrerebbe zero righe
+# e il grafico tornerebbe a compensare in silenzio, cioe' il difetto di partenza.
+TIPO_MOVIMENTO_RETTIFICA = "RETTIFICA"
+
+
 @dataclass
 class _CellaCompetenza:
     # Scopo: Accumulatore tipizzato del pivot Lente 1 per (mese, stadio):
@@ -536,7 +543,43 @@ class _CellaCompetenza:
     valore_fatturato: Decimal = Decimal(0)
     n_in_ritardo: int = 0
     valore_in_ritardo: Decimal = Decimal(0)
-    stati_fattura: list[dict[str, object]] = field(default_factory=list)
+    # ⭐ LA COPERTURA SI MISURA IN VALORE ASSOLUTO (2026-08-20, correzione di
+    # Tid). Il saldo con segno non serve a rispondere «quanto del mese e' stato
+    # portato a documento», perche' una nota di credito da emettere e' LAVORO DA
+    # FARE quanto una fattura da emettere — vale meno zero euro di ricavo, ma
+    # vale un documento da produrre.
+    #
+    # Le due misure sbagliate, in ordine di scoperta:
+    #   · somma con segno       -> ad agosto il residuo era −29,50 e il grafico
+    #                              segnava 101%. E con una fattura di pari
+    #                              importo il residuo andrebbe a ZERO: «niente
+    #                              da fare» con due documenti da produrre.
+    #   · rettifiche ESCLUSE    -> il primo rimedio, e diceva 100%. Toglierle
+    #                              dal conto le fa sparire come lavoro: e'
+    #                              «coperto» mentre due note di credito
+    #                              aspettano. Sbagliato allo stesso modo.
+    # In assoluto agosto dice 99%, che e' la verita': quasi tutto fatturato,
+    # resta 29,50 da accreditare.
+    #
+    # ⚠️ L'assoluto si prende sulla RIGA, non sull'aggregato: da quando
+    # `tipo_movimento` e' nella grana (changeSet 20260820-07) ogni riga e'
+    # OMOGENEA di segno — misurato: NORMALE e ONERE tutti positivi, RETTIFICA
+    # tutti negativi. Sull'aggregato, positivi e negativi si annullerebbero
+    # PRIMA dell'assoluto, cioe' la compensazione rientrerebbe dalla finestra.
+    valore_abs: Decimal = Decimal(0)
+    valore_fatturato_abs: Decimal = Decimal(0)
+    # La quota RETTIFICA resta tracciata a parte, ma per DICHIARARLA sotto il
+    # grafico: il donut dice quanto manca, questa dice che cos'e' quel che manca.
+    n_rettifiche: int = 0
+    valore_rettifiche: Decimal = Decimal(0)
+    # Breakdown 3a per stato fattura. ⚠️ DIZIONARIO e non lista: da quando
+    # `tipo_movimento` e' nella grana della vista (changeSet 20260820-07) lo
+    # stesso stato arriva su PIU' righe — a luglio 2026 il bucket
+    # FATTURATA/EMESSA si spezza in NORMALE (25 att.) + ONERE (1 att., 5.000 €).
+    # Con l'`append` di prima quello stato compariva DUE VOLTE nel payload.
+    # 🔴 E si vedeva solo su luglio: ad agosto la cardinalita' non cambia
+    # affatto, quindi provare il solo mese del rilievo avrebbe detto «a posto».
+    stati_fattura_per_stato: dict[str | None, dict[str, object]] = field(default_factory=dict)
 
 
 # Scopo: Serializza una cella-stadio nel payload API. Contratto SIMMETRICO su
@@ -603,7 +646,13 @@ def _cella_stadio_payload(
         "valore_display": str(display),
         "n_in_ritardo": cella.n_in_ritardo,
         "valore_in_ritardo": str(cella.valore_in_ritardo),
-        "stati_fattura": cella.stati_fattura,
+        # Le voci del breakdown, serializzate qui una volta sola: dentro la
+        # cella i valori restano Decimal (si sommano fra loro), fuori sono
+        # stringhe come ogni altro importo del payload.
+        "stati_fattura": [
+            {k: (str(v) if isinstance(v, Decimal) else v) for k, v in voce.items()}
+            for voce in cella.stati_fattura_per_stato.values()
+        ],
         # Seconda misura della card: quante FATTURE, non quante attivita'.
         # `0` -> la card dice zero; `None` -> non c'e' un numero, e il PERCHE'
         # lo dice `n_fatture_stato`. Collassare `0` su `None` direbbe «non lo
@@ -675,18 +724,32 @@ def fn_dash_competenza_mensile(
         cella.valore_fatturato += Decimal(r["valore_fatturato"])
         cella.n_in_ritardo += r["n_in_ritardo"]
         cella.valore_in_ritardo += Decimal(r["valore_in_ritardo"])
+        cella.valore_abs += abs(Decimal(r["valore"]))
+        cella.valore_fatturato_abs += abs(Decimal(r["valore_fatturato"]))
+        if r["tipo_movimento"] == TIPO_MOVIMENTO_RETTIFICA:
+            cella.n_rettifiche += r["n_attivita"]
+            cella.valore_rettifiche += Decimal(r["valore"])
         if r["stadio"] == "FATTURATA":
-            cella.stati_fattura.append(
-                {
+            # Una voce per STATO FATTURA, con i movimenti sommati dentro: il
+            # breakdown risponde a «di cio' che e' fatturato, in che stato sono
+            # le fatture», e la natura del movimento non e' quella domanda.
+            voce = cella.stati_fattura_per_stato.get(r["stato_fattura_codice_interno"])
+            if voce is None:
+                voce = {
                     "stato_fattura_codice_interno": r["stato_fattura_codice_interno"],
                     "stato_fattura_codice": r["stato_fattura_codice"],
-                    "n_attivita": r["n_attivita"],
-                    "valore": r["valore"],
-                    "valore_fatturato": r["valore_fatturato"],
-                    "n_in_ritardo": r["n_in_ritardo"],
-                    "valore_in_ritardo": r["valore_in_ritardo"],
+                    "n_attivita": 0,
+                    "valore": Decimal(0),
+                    "valore_fatturato": Decimal(0),
+                    "n_in_ritardo": 0,
+                    "valore_in_ritardo": Decimal(0),
                 }
-            )
+                cella.stati_fattura_per_stato[r["stato_fattura_codice_interno"]] = voce
+            voce["n_attivita"] += r["n_attivita"]
+            voce["valore"] += Decimal(r["valore"])
+            voce["valore_fatturato"] += Decimal(r["valore_fatturato"])
+            voce["n_in_ritardo"] += r["n_in_ritardo"]
+            voce["valore_in_ritardo"] += Decimal(r["valore_in_ritardo"])
 
     mesi: list[dict[str, object]] = []
     for mese_num in range(1, 13):
@@ -705,6 +768,31 @@ def fn_dash_competenza_mensile(
         da_fatturare = sum(
             (c.valore for s, c in celle_mese if s != "FATTURATA"), Decimal(0)
         )
+        # ⭐ LA MISURA DI COPERTURA, in VALORE ASSOLUTO. I tre totali qui sopra
+        # restano il NETTO e non cambiano (li leggono altri consumatori): questi
+        # si aggiungono, e sono quelli che il grafico deve usare.
+        # Ogni documento da produrre pesa per quello che vale, qualunque sia il
+        # suo verso: il rapporto non puo' superare il 100% per costruzione, e
+        # niente si compensa con niente.
+        rettifiche_valore = sum((c.valore_rettifiche for _, c in celle_mese), Decimal(0))
+        rettifiche_n = sum(c.n_rettifiche for _, c in celle_mese)
+        copertura_fatturato = sum(
+            (c.valore_fatturato_abs for _, c in celle_mese), Decimal(0)
+        )
+        # ⭐ Il residuo si legge in DUE VOCI SIMMETRICHE, non in una sola con una
+        # nota a margine: «da addebitare» (le fatture da emettere) e «da
+        # accreditare» (le note di credito da emettere). Sono lo stesso verbo —
+        # produrre un documento — in due direzioni opposte, e chi guarda deve
+        # poterle leggere con la stessa forma. La loro somma e' il residuo del
+        # donut: nessuna delle due sta fuori dal conto.
+        copertura_da_accreditare = sum(
+            (abs(c.valore_rettifiche) for s, c in celle_mese if s != "FATTURATA"),
+            Decimal(0),
+        )
+        copertura_da_fatturare = sum(
+            (c.valore_abs for s, c in celle_mese if s != "FATTURATA"), Decimal(0)
+        )
+        copertura_da_addebitare = copertura_da_fatturare - copertura_da_accreditare
         mesi.append(
             {
                 "competenza_mese": competenza,
@@ -722,6 +810,18 @@ def fn_dash_competenza_mensile(
                     "valore_fatturato": str(totale_fatturato),
                     "valore_da_fatturare": str(da_fatturare),
                     "n_in_ritardo": sum(c.n_in_ritardo for _, c in celle_mese),
+                    # La copertura in ASSOLUTO (ogni documento da produrre pesa
+                    # per quello che vale, qualunque verso abbia) e le
+                    # rettifiche dichiarate a parte, perche' il grafico dice
+                    # QUANTO manca e questa dice CHE COSA manca.
+                    "copertura_fatturato": str(copertura_fatturato),
+                    # Il residuo intero (denominatore del donut) e le sue due
+                    # voci: `da_addebitare + da_accreditare == da_fatturare`.
+                    "copertura_da_fatturare": str(copertura_da_fatturare),
+                    "copertura_da_addebitare": str(copertura_da_addebitare),
+                    "copertura_da_accreditare": str(copertura_da_accreditare),
+                    "rettifiche_valore": str(rettifiche_valore),
+                    "rettifiche_n": rettifiche_n,
                 },
                 "n_errori": errori_per_mese.get(competenza, 0),
             }
