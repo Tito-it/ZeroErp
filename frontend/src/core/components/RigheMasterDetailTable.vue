@@ -227,7 +227,18 @@ defineExpose({ loadRighe })
       removable-sort
       @row-click="onRowClick">
       <slot name="columns" />
-      <Column v-if="haColonnaAzioni" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
+      <!-- ⭐ `app-escape` sulla cella azioni. Le azioni di DOMINIO
+           (`extraRowActions`) esistono proprio per i documenti NON piu'
+           modificabili — un accredito da disfare vive su un reso CONFERMATO —
+           e quel drawer e' in `.app-readonly` (`pointer-events: none`). Senza
+           questa classe l'azione si vede e non si preme: misurato in-app il
+           2026-08-19, dove l'unica azione a video era spenta e sembrava un
+           cestino correttamente bloccato.
+           ⚠️ Qui NON si riapre nulla di distruttivo: «elimina» ha gia'
+           `visible: props.isModificabile`, quindi su un documento in protect e'
+           filtrata via da `RowActionsMenu` prima di arrivare a video. Resta
+           operabile solo cio' che il chiamante ha dichiarato vivo li'. -->
+      <Column v-if="haColonnaAzioni" :header="t('common.col_azioni')" class="app-col-actions app-escape" :exportable="false">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>

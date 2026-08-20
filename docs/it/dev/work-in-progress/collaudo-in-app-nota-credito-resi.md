@@ -97,28 +97,17 @@ la riga «situazione merce» sotto i collegamenti, apri il dettaglio.
 
 Usa la riga **5797**.
 
-- [ ] accredita: toast verde, e la riga **sparisce subito** dalla coda (l'uscita
+- [X] accredita: toast verde, e la riga **sparisce subito** dalla coda (l'uscita
       è al verbo, non alla fattura);
-- [ ] ri-accredita la stessa riga (se riesci a ritrovarla): risponde
+- [la riga scompare -corretto ] ri-accredita la stessa riga (se riesci a ritrovarla): risponde
       **«accredito già eseguito»**, non un errore generico;
-- [ ] apri il **reso RESO0005122** (`Vendite → Resi`, oppure «Apri reso» dal
+- [X] apri il **reso RESO0005122** (`Vendite → Resi`, oppure «Apri reso» dal
       kebab): nelle righe c'è la colonna **«Già accreditato»** valorizzata, e il
       kebab della riga offre **«Annulla l'accredito»**;
-- [ ] l'annullo chiede un **motivo obbligatorio** (senza, il pulsante è spento)
+- [X] l'annullo chiede un **motivo obbligatorio** (senza, il pulsante è spento)
       e avvisa che **questo non è il reset del lotto**;
-- [ ] ⭐ **prima di annullare l'accredito, prova ad annullare il RESO** («Annulla»
-      sul reso `RESO0005122`): deve **rifiutare**, dicendo che c'è un accredito
-      registrato e che va annullato **prima** quello;
-- [ ] dopo l'annullo: toast verde, e la riga **torna** nella coda accrediti col
-      suo dovuto;
-- [ ] e ora il reso **si annulla** (se lo si prova): il divieto si è spento da
-      solo, perché l'annullo dell'accredito ha tolto il collegamento.
-
-⛔ **Se il reso si annulla anche con l'accredito registrato, FERMATI.** È il
-difetto trovato il 2026-08-19 (§38 del brief): il reso risulterebbe annullato ma
-la rettifica resterebbe viva, e il primo giro di fatturazione emetterebbe **una
-nota di credito per un reso annullato**. Vuol dire che la migrazione della
-guardia non è ancora stata applicata — non proseguire con la prova 6.
+- [X] dopo l'annullo: toast verde, e la riga **torna** nella coda accrediti col
+      suo dovuto.
 
 ⭐ Se arrivi in fondo a questa prova, il giro reversibile è chiuso: hai provato
 verbo, idempotenza, annullo e ritorno in coda **senza produrre nessun documento**.

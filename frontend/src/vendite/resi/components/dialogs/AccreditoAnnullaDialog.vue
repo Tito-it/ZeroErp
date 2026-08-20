@@ -40,6 +40,15 @@ const props = defineProps({
   // reso). Sono lo stesso numero: si normalizza qui invece di chiedere ai due
   // caller di adattarsi a una forma.
   riga: { type: Object, default: null },
+  // ⚠️ Readonly PURO del chiamante (permessi area / split), MAI quello
+  // combinato con lo stato del documento. Senza questo override la dialog
+  // eredita il readonly dell'albero e `FormFooter` NASCONDE il pulsante di
+  // conferma: resta solo «Annulla», e l'annullo dell'accredito diventa
+  // impossibile — misurato in-app il 2026-08-19.
+  // ⭐ E non e' un caso limite, e' il caso NORMALE: l'annullo vive su un reso
+  // CONFERMATO, cioe' esattamente dove il drawer e' in protect. Stessa ragione
+  // e stessa forma di `DdtResoDialog`.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'annullato'])
 
@@ -72,6 +81,7 @@ async function salva() {
     width="sm"
     :header="t('vendite.resi.annullo_header')"
     :loading="loading"
+    :readonly="readonly"
     :save-disabled="!valido"
     :save-label="t('vendite.resi.annullo_salva')"
     save-severity="danger"
