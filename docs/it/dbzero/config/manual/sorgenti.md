@@ -110,6 +110,39 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
     * `uid` → chiave UUID.
   * guida la logica dei trigger polimorfi su come costruire le query di validazione.
 
+* **Selettore etichetta** (`label_selector`) — *aggiunta 20-08-2026*:
+
+  * la **gemella** di `key_selector`: quella dichiara la colonna con cui la riga
+    si **trova**, questa la colonna con cui il documento si **nomina** — il
+    numero che l'operatore riconosce (`DDT0010839`, `ORD0000227`, `RESO0005122`);
+  * non è uniforme, ed è per questo che è un **dato** e non un `CASE` dentro una
+    funzione: `numero` su preventivi, contratti, ordini, DDT, resi e fatture;
+    `codice` su offerte commerciali e commesse;
+  * **`NULL` = la sorgente non ha un numero leggibile** (`ATTIVITA`,
+    `ATTIVITA_CONSUMI` e le cinque `*_RIGA`). Non è un errore, e **non spegne**
+    la risoluzione dell'id;
+  * la legge [`vendite.fn_get_sorgente_documento_ref`](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref)
+    con `format(%I)`;
+  * vincolata dal check `chk_sorgenti_label_selector_identificatore`: o `NULL`, o
+    un identificatore PostgreSQL minuscolo non quotato.
+
+  > ⚠️ **Il CHECK è igiene contro il REFUSO, non contro l'injection** — quella la
+  > copre `%I`. Un nome sbagliato non darebbe nessun errore: il resolver cattura
+  > `undefined_column` e risponde `NULL`, e l'unico sintomo sarebbe una **colonna
+  > vuota a video**. Il cancello che verifica l'esistenza reale della colonna sta
+  > nel pgTAP (`test-fn-list-commessa-attivita-provenienza-v1`, test 10), perché
+  > un `CHECK` non può interrogare `pg_attribute`.
+  >
+  > ⭐ E un secondo invariante (test 11) tiene la coerenza con `area`: una
+  > sorgente **sfogliabile** deve avere anche un numero. Senza, la colonna
+  > «Origine» della lista attività resterebbe vuota per sempre su quel dominio.
+  >
+  > ⚠️ **Le cinque `*_RIGA` non sono nel CSV di seed.** Misurato il 20-08-2026:
+  > `config.sorgenti` ha **15 righe nel database e 10 nel CSV** — gli id 3, 5, 7,
+  > 9, 11 esistono solo nel DB. `loadUpdateData` non tocca chi non trova, quindi
+  > restano a `NULL`, che per loro è il valore giusto. È una divergenza
+  > preesistente, non una dimenticanza di questa colonna.
+
 * **Audit**:
 
   * `data_insert`, `user_insert`, `data_update`, `user_update` tracciano le modifiche al catalogo sorgenti;

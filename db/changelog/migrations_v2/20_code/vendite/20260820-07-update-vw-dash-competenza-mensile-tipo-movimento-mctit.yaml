@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_dash_competenza_mensile — `tipo_movimento` nel raggruppamento
+#   (brief-design-note-credito-resi §40.2, richiesta BE del 2026-08-20 punto 3).
+#
+# ── IL FATTO, MISURATO ──────────────────────────────────────────────────
+#
+#   Agosto 2026 segna 101% di copertura. Non e' un errore di calcolo: il residuo
+#   del mese e' −29,50, cioe' le due note di credito ancora da emettere. Il
+#   residuo e' una somma CON SEGNO, quindi le rettifiche si compensano con le
+#   fatture da emettere.
+#
+#     competenza   NORMALE     RETTIFICA   ONERE      totale
+#     ──────────────────────────────────────────────────────
+#     2026-07-01   1.704,00         0,00   5.000,00   6.704,00
+#     2026-08-01   2.836,50       −29,50       0,00   2.807,00
+#
+#   ⚠️ Non e' estetica: con una sola fattura da 29,50 in sospeso il residuo di
+#   agosto andrebbe a ZERO e la dashboard direbbe «100%, niente da fare» con tre
+#   documenti da produrre. La compensazione NASCONDE LAVORO.
+#
+#   ⭐ E non riguarda solo le rettifiche: a luglio ci sono 5.000 € di ONERI nello
+#   stesso totale. La somma con segno mescola tre cose di natura diversa, non
+#   due — ed e' la ragione per cui la dimensione va aggiunta al raggruppamento
+#   invece di aggiungere una colonna `valore_rettifiche`: quella metterebbe i
+#   tre valori dell'enum dentro la vista, e il quarto che nascera' non lo
+#   vedrebbe nessuno.
+#
+# ── 🔴 E' BREAKING PER IL BACKEND, IN UN PUNTO SOLO ─────────────────────
+#
+#   Aggiungere la dimensione cambia la CARDINALITA'. Misurato su tutto il
+#   dataset il 2026-08-20:
+#
+#       righe oggi:    7
+#       righe domani:  8
+#       l'unico bucket che si spezza:
+#           2026-07-01 · FATTURATA · EMESSA  ->  NORMALE + ONERE
+#
+#   Letto il consumatore (`fn_dash_competenza_mensile`, vendite_service.py):
+#
+#     ✅ i TOTALI reggono: il pivot ACCUMULA per (mese, stadio)
+#        (`cella.valore += …`), quindi due righe al posto di una si sommano e i
+#        numeri delle card non cambiano.
+#     🔴 il BREAKDOWN 3a no: `stati_fattura` fa `append` di una voce per OGNI
+#        riga con stadio = FATTURATA. Luglio 2026 mostrerebbe DUE VOLTE lo stato
+#        EMESSA — una NORMALE da 924 € (25 attivita') e una ONERE da 5.000 €
+#        (1 attivita'). Verificato eseguendo la vista nuova, non dedotto.
+#
+#   ⚠️ E si vede solo a video, e solo su luglio: su agosto la cardinalita' non
+#   cambia affatto (le rettifiche stanno in DA_EMETTERE, i normali in
+#   FATTURATA). Chi provasse il solo mese del rilievo concluderebbe che non si
+#   e' rotto niente.
+#
+#   Percio' la modifica BE va nello STESSO giro (richiesta scritta nel §40.4).
+#
+# ── DUE COSE DA NON DIMENTICARE, ENTRAMBE GIA' COSTATE ──────────────────
+#
+#   1. ⚠️ `WITH (security_invoker=on)` RI-SPECIFICATO. La reloption non e'
+#      visibile in `pg_get_viewdef` e un REPLACE che la omette la AZZERA in
+#      silenzio: la vista tornerebbe a girare coi diritti del proprietario e lo
+#      scope emittente della vista sottostante smetterebbe di valere.
+#   2. La colonna nuova va IN CODA alla SELECT: `CREATE OR REPLACE VIEW` ammette
+#      solo colonne aggiunte in fondo. Nessun DROP serve — verificato il
+#      2026-08-20 che NESSUNA vista dipende da questa (zero righe in pg_depend).
+#
+# Dipendenze: vendite.vw_dash_competenza_attivita (che espone gia'
+#             `tipo_movimento`: la colonna esiste, si perdeva solo qui).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260820-07-update-vw-dash-competenza-mensile-tipo-movimento-mctit.yaml
+
+  - changeSet:
+      id: 20260820-07-update-vw-dash-competenza-mensile-tipo-movimento
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_mensile: tipo_movimento in coda alla SELECT e nel
+        GROUP BY, cosi' i totali si separano fra valore che si aggiunge,
+        rettifiche e oneri. Oggi il residuo e' una somma con segno e la
+        compensazione nasconde lavoro (agosto 2026: 101% di copertura per
+        −29,50 di note di credito). 🔴 Cambia la cardinalita' (7 righe -> 8): il
+        breakdown per stato fattura lato BE va adeguato nello stesso giro.
+        Richiesta BE del 2026-08-20, punto 3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_dash_competenza_mensile
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM information_schema.columns
+                  WHERE table_schema = 'vendite'
+                    AND table_name  = 'vw_dash_competenza_attivita'
+                    AND column_name = 'tipo_movimento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*))::integer AS n_attivita,
+                  COALESCE(sum(valore), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo,
+                  -- ⭐ In CODA e non al suo posto logico accanto a `stadio`:
+                  --    CREATE OR REPLACE VIEW ammette solo colonne aggiunte in
+                  --    fondo. La posizione non ha significato, il GROUP BY si'.
+                  tipo_movimento
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_mensile IS
+                  'Lente 1 Competenza, aggregata in FORMATO LUNGO: una riga per '
+                  '(competenza_mese, stadio, stato fattura, tipo_movimento). Il pivot alla '
+                  'griglia 12 mesi x 4 stadi e'' del service, non della vista. '
+                  'security_invoker=on: lo scope emittente arriva da '
+                  'vw_dash_competenza_attivita (GUC fail-closed) e va RI-SPECIFICATO a ogni '
+                  'REPLACE, perche'' la reloption non e'' visibile in pg_get_viewdef e '
+                  'verrebbe azzerata in silenzio. '
+                  '⭐ Rev 2026-08-20 (richiesta BE, punto 3): `tipo_movimento` entra nel '
+                  'raggruppamento. Prima si perdeva qui, e il residuo del mese — che e'' una '
+                  'somma CON SEGNO — compensava le rettifiche con le fatture da emettere: '
+                  'agosto 2026 segnava 101% di copertura perche'' il residuo era −29,50, '
+                  'cioe'' due note di credito da emettere. Con una sola fattura da 29,50 in '
+                  'sospeso il residuo sarebbe andato a zero e la dashboard avrebbe detto '
+                  '«100%, niente da fare» con tre documenti da produrre: la compensazione '
+                  'NASCONDE LAVORO. ⭐ E non riguarda le sole rettifiche — a luglio 2026 ci '
+                  'sono 5.000 EUR di ONERI nello stesso totale: la somma mescolava tre cose '
+                  'di natura diversa, ed e'' il motivo per cui si aggiunge la DIMENSIONE e '
+                  'non una colonna `valore_rettifiche`, che avrebbe messo i valori '
+                  'dell''enum dentro la vista. '
+                  '🔴 Cambia la CARDINALITA'': 7 righe -> 8 sul dato del 2026-08-20, unico '
+                  'bucket spezzato 2026-07 FATTURATA/EMESSA (NORMALE + ONERE). I totali del '
+                  'consumatore reggono perche'' il pivot accumula, ma il breakdown per stato '
+                  'documento fiscale elenca una voce per riga: senza adeguamento BE mostra '
+                  'EMESSA due volte. brief-design-note-credito-resi §40.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si torna alla forma senza tipo_movimento. ⚠️ Togliere una colonna
+              -- NON e' possibile con CREATE OR REPLACE VIEW: serve il DROP, ed e'
+              -- sicuro perche' nessuna vista dipende da questa (verificato).
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_mensile;
+
+              CREATE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*))::integer AS n_attivita,
+                  COALESCE(sum(valore), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno;
