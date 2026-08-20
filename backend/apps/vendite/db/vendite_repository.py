@@ -724,6 +724,7 @@ class VenditeRepository:
                 m.stadio,
                 m.stato_fattura_codice_interno,
                 sdf.codice          AS stato_fattura_codice,
+                m.tipo_movimento,
                 m.n_attivita,
                 m.valore_tot,
                 m.valore_fatturato_tot,
@@ -735,7 +736,8 @@ class VenditeRepository:
             WHERE m.competenza_mese >= make_date(%s, 1, 1)
               AND m.competenza_mese <  (make_date(%s, 1, 1) + interval '1 year')
             ORDER BY m.competenza_mese, m.stadio,
-                     sdf.ordine NULLS LAST, m.stato_fattura_codice_interno
+                     sdf.ordine NULLS LAST, m.stato_fattura_codice_interno,
+                     m.tipo_movimento
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [anno, anno])
@@ -749,11 +751,12 @@ class VenditeRepository:
                     "stadio": str(row[1]),
                     "stato_fattura_codice_interno": None if row[2] is None else str(row[2]),
                     "stato_fattura_codice": None if row[3] is None else str(row[3]),
-                    "n_attivita": int(row[4]),
-                    "valore": str(row[5]) if row[5] is not None else "0",
-                    "valore_fatturato": str(row[6]) if row[6] is not None else "0",
-                    "n_in_ritardo": int(row[7]),
-                    "valore_in_ritardo": str(row[8]) if row[8] is not None else "0",
+                    "tipo_movimento": str(row[4]),
+                    "n_attivita": int(row[5]),
+                    "valore": str(row[6]) if row[6] is not None else "0",
+                    "valore_fatturato": str(row[7]) if row[7] is not None else "0",
+                    "n_in_ritardo": int(row[8]),
+                    "valore_in_ritardo": str(row[9]) if row[9] is not None else "0",
                 }
             )
         return result

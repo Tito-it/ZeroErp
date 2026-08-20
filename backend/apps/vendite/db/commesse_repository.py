@@ -65,6 +65,17 @@ ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     # ieri o tre mesi fa» — e senza ordinamento la si risponde solo a occhio.
     "fatturata_il",
     "fattura_numero",
+    # Sei nomi nuovi (changeSet 20260820-05). ⚠️ Questa whitelist e' lo SPECCHIO
+    # di quella CHIUSA dentro la fn: una colonna dichiarata ordinabile a
+    # catalogo su un nome che il DB non conosce non da' una freccia inerte,
+    # ROMPE la lista al primo click (`E_PARAMETRO_INVALIDO`). Verificati uno per
+    # uno contro il corpo della funzione, non contro il nome della colonna.
+    "tipo_movimento",
+    "articolo_codice",
+    "articolo_descrizione",
+    "sorgente_codice",
+    "sorgente_documento_numero",
+    "gruppo_key",
 })
 
 # Nomi delle 26 colonne condivise da tutte le fn_list_*_da_pushare.
@@ -1359,6 +1370,27 @@ class CommesseRepository:
         "fatturata_il",
         "fattura_id", "fattura_numero", "fattura_stato",
         "sorgente_uid", "sorgente_area", "sorgente_documento_id",
+        # Cinque colonne additive (changeSet 20260820-05): la riga dice
+        # finalmente COSA e' e DA DOVE VIENE. Prima l'unica traccia della
+        # provenienza era `segment_key`, una chiave tecnica — rilievo in-app di
+        # Tid del 2026-08-20: «per capire da dove viene e' un terno al lotto».
+        #
+        # ⚠️ `sorgente_documento_numero` e le altre colonne d'origine sono VUOTE
+        # sulle righe RETTIFICA e ONERE, e non e' un dato sporco:
+        # `fn_accredita_riga_reso` scrive la rettifica con la sorgente a NULL, e
+        # un CHECK impone la coppia tutta-vuota o tutta-piena. Sono esattamente
+        # le righe di nota di credito — cioe' quelle per cui la colonna era
+        # stata chiesta. Chi mostra «Origine» deve sapere che li' non c'e'.
+        #
+        # ⭐ Per quelle righe la domanda ha risposta su `gruppo_key`, che e'
+        # un'ALTRA domanda: il gruppo fatturabile di una rettifica non e' il
+        # DDT ma `MAN:<commessa_id>` (il gruppo oneri). Il segmento porta il
+        # DDT, il gruppo no — e le due colonne non sono intercambiabili.
+        # Il documento resta comunque separato: `fn_build_fattura_key` porta la
+        # natura, quindi una rettifica non finisce nella fattura ordinaria.
+        "tipo_movimento",
+        "articolo_codice", "articolo_descrizione",
+        "sorgente_documento_numero", "gruppo_key",
     )
     # Type mapping per serializzazione colonne attivita.
     _ATTIVITA_DATE_COLS = frozenset({

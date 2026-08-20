@@ -204,7 +204,32 @@ BEGIN
       PERFORM script.fn_log_and_raise_error(
         'database',
         TG_NAME,
-        'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+        -- ⭐ 2026-08-20 (secondo giro): DUE CODICI, NON DUE SFUMATURE.
+        --    Il blocco ha due rami, e non sono due modi di dire la
+        --    stessa cosa: sono due situazioni con DUE RIMEDI DIVERSI.
+        --      · figlia CON colonna attivo -> bloccano solo le righe
+        --        ATTIVE, e il rimedio e' DISATTIVARLE (il pattern
+        --        «figli prima, padre poi»);
+        --      · figlia SENZA colonna attivo -> blocca QUALUNQUE riga,
+        --        e il rimedio e' TOGLIERLE: spegnerle non si puo',
+        --        quello stato li' non esiste.
+        --    Misurato il 2026-08-20 con le stesse funzioni che usa
+        --    questo trigger (fn_get_override_col + fn_col_exists):
+        --    168 trigger su 349 nel primo ramo (77 tabelle figlie),
+        --    181 nel secondo (88). ⚠️ NON e' un caso di nicchia contro
+        --    uno normale: e' meta' e meta'.
+        --    Fino a stamattina il messaggio era UNO e diceva «attive»:
+        --    falso per 181 trigger su 349, che mandavano l'operatore a
+        --    cercare una colonna inesistente. Toglierla (20260820-01)
+        --    ha reso la frase vera per tutti e imprecisa per 168. Una
+        --    frase sola non puo' dire due cose: da qui i due codici.
+        --    ⛔ Qui si sceglie il CODICE, non si compone una frase: il
+        --    testo resta a catalogo. Comporlo qui e' esattamente il
+        --    difetto da cui questa funzione e' uscita stamattina.
+        CASE WHEN v_child_has_attivo
+             THEN 'E_ATTIVO_BLOCK_CHILDREN_ACTIVE'
+             ELSE 'E_ATTIVO_BLOCK_CHILDREN_EXIST'
+        END,
         jsonb_build_object(
           'parent_table',     TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
           'child_table',      v_child_schema||'.'||v_child_table,
@@ -232,14 +257,20 @@ BEGIN
         --    caso blocca qualunque riga, non le attive. Il caso non e'
         --    teorico: anagrafiche.emittenti_fiscali_billing_account e'
         --    cosi', e mandava a cercare una colonna che non esiste.
-        --    La distinzione ora vive nella `causa` del catalogo, che
-        --    e' il posto dove una sfumatura si legge senza affollare
-        --    la riga principale.
+        --    ⭐ La distinzione vive ora nei DUE CODICI qui sopra. Al
+        --    mattino era finita nella `causa` del catalogo, ed era un
+        --    ripiego che non bastava: la `causa` si legge dopo, mentre
+        --    quello che cambia fra i due rami e' il RIMEDIO — cioe' la
+        --    prima cosa che serve a chi ha appena letto il rifiuto.
         --
-        --    Il testo sta a catalogo (E_ATTIVO_BLOCK_CHILDREN_EXIST,
-        --    id 125) e qui viaggiano solo i DATI, nell'ORDINE che il
-        --    messaggio consuma: padre, colonna referenziata, suo
-        --    valore, figlia. ⚠️ Cambiare quest'ordine senza cambiare
+        --    Il testo sta a catalogo (id 125 per il ramo «qualunque
+        --    riga», id 934 per «attive») e qui viaggiano solo i DATI,
+        --    nell'ORDINE che il messaggio consuma: padre, colonna
+        --    referenziata, suo valore, figlia.
+        --    ⛔ I due messaggi hanno UNA SOLA lista di valori, quindi
+        --    devono avere gli STESSI segnaposti nello STESSO ordine.
+        --    Presidio: test 13 di
+        --    db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql. ⚠️ Cambiare quest'ordine senza cambiare
         --    il CSV scambia due nomi di tabella in una frase che
         --    resta grammaticalmente perfetta: i due vanno letti
         --    insieme.
@@ -261,7 +292,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children()
-IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione del padre se esistono figli collegati. TG_ARGV: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]. Il 4° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE non-PK). Il 5° arg e'' la colonna attivo del padre (rispetta override via dbops.automation_overrides_cols). ⭐ rev 2026-08-20 — SOLO IL MESSAGGIO, il blocco e'' identico: la FRASE non viaggia piu'' fra i valori passati a script.fn_log_and_raise_error, sta a catalogo (E_ATTIVO_BLOCK_CHILDREN_EXIST, id 125). Prima il messaggio a catalogo era un `%s` nudo e i cinque valori identificativi che questa funzione gli passava — padre, figlia, colonna referenziata, suo valore, colonna FK — venivano scartati: il centinaio di trigger di questa famiglia diceva tutto la stessa frase cieca, senza mai nominare la tabella che bloccava. ⚠️ La frase diceva anche «attive» quando la figlia non ha una colonna attivo, cioe'' quando conta QUALUNQUE riga: la sfumatura ora vive nella causa del catalogo. ⚠️ I valori viaggiano nell''ORDINE che il messaggio consuma (padre, ref_col, ref_val, figlia; fk_col in piu'' per far crescere il testo senza toccare il codice): cambiare l''ordine qui senza cambiare il CSV scambia due nomi di tabella in una frase che resta grammaticalmente perfetta. I due si leggono insieme.';
+IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione del padre se esistono figli collegati. TG_ARGV: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]. Il 4° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE non-PK). Il 5° arg e'' la colonna attivo del padre (rispetta override via dbops.automation_overrides_cols). ⭐ rev 2026-08-20 — DUE REVISIONI NELLO STESSO GIORNO, entrambe SOLO sul messaggio: il blocco, le condizioni e il momento sono identici da mesi. (1) la FRASE e'' uscita dagli argomenti e sta a catalogo, cosi'' i valori identificativi che questa funzione passa — padre, colonna referenziata, suo valore, figlia, colonna FK — smettono di essere scartati da un `%s` nudo e la tabella che blocca viene finalmente NOMINATA. (2) il codice non e'' piu'' uno solo: si sceglie fra E_ATTIVO_BLOCK_CHILDREN_ACTIVE (id 934) e E_ATTIVO_BLOCK_CHILDREN_EXIST (id 125) leggendo v_child_has_attivo. ⚠️ Perche'' i due rami hanno RIMEDI DIVERSI: se la figlia ha la colonna attivo bloccano solo le righe attive e si DISATTIVANO (figli prima, padre poi); se non ce l''ha blocca qualunque riga e si TOLGONO, perche'' spegnerle non si puo''. Misurato il 2026-08-20: 168 trigger su 349 nel primo ramo, 181 nel secondo — meta'' e meta''. Il messaggio unico diceva «attive» ed era falso per 181, poi (per un mattino) non lo diceva piu'' ed era impreciso per 168. ⛔ I due messaggi condividono UNA sola lista di valori: devono avere gli stessi segnaposti nello stesso ordine, e cambiare l''ordine qui senza cambiare il CSV scambierebbe due nomi di tabella in una frase che resta grammaticalmente perfetta. Presidio: test 13 di db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql.';
 ```
 
 ---

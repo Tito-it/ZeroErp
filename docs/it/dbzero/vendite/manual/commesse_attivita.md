@@ -122,7 +122,7 @@ natura e'** ciascuna. E' il compito di `tipo_movimento`:
 | ----------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `NORMALE`   | il push (default di `fn_upsert_commessa_attivita`) | merce/servizio che rispecchia il documento d'origine                                      |
 | `ONERE`     | la porta "aggiungi onere"                          | voce di **valore** senza contratto specifico: quantita' 1 fissa, il prezzo *e'* l'importo |
-| `RETTIFICA` | nessuno, oggi                                      | riservato ai conguagli/rettifiche futuri (il dominio lo prevede gia')                     |
+| `RETTIFICA` | `vendite.fn_accredita_riga_reso` (dal 18-08-2026)  | la quota accreditata di un reso: quantita' **negativa** sul segmento della spedizione, e il documento nasce dal giro di fatturazione normale |
 
 **Perche' e' portante.** Il contatore della fatturazione (`tenuti − fatturati`) somma le
 quantita' delle sole righe `NORMALE`: e' cosi' che una voce di valore caricata a mano non
@@ -136,6 +136,12 @@ campo `meta` (jsonb), validato solo dalla funzione di upsert: un INSERT diretto 
 un discriminatore su cui si fondano soldi e riconciliazioni non puo' dipendere dalla buona
 educazione del chiamante. Ora e' una colonna con un CHECK, e il campo `meta` non lo ospita
 piu'. Su `meta` resta `tipo_consumo` (`ACCONTO` | `CONGUAGLIO` | `STORNO`), non promosso.
+
+> ⚠️ **La riga `RETTIFICA` diceva «nessuno, oggi» fino al 20-08-2026**, ed era
+> vero quando fu scritta: il cantiere nota di credito l'ha resa il verbo di
+> `fn_accredita_riga_reso`. ⭐ E come l'`ONERE`, la rettifica e' **sourceless per
+> progetto** — nessun documento a monte, gruppo fatturabile `MAN:<commessa_id>`.
+> Vedi `brief-design-note-credito-resi` §40.1.2.
 
 > Le righe scritte prima di questa data conservano in `meta` una chiave `tipo_movimento`
 > residua: vale sempre `NORMALE` (verificato all'applicazione della migrazione) e nessuno la

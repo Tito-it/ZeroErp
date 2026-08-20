@@ -98,6 +98,18 @@
    * CVD+contrasto su entrambe le superfici -> nessun override light. */
   --app-warning-color: var(--p-orange-600);
 
+  /* Denaro che torna al CLIENTE (note di credito da emettere, quote da
+   * accreditare) quando sta accanto a un importo di verso opposto: rosso, come
+   * chiesto in collaudo il 2026-08-20, perche' li' il colore e' l'unica cosa
+   * che distingue i due versi a colpo d'occhio. Stesso red-600 di
+   * `--app-chart-errore`, gia' validato CVD+contrasto su entrambe le superfici.
+   * ⚠️ NON e' un errore: e' una direzione. Il token e' distinto proprio per non
+   * far passare «accredito» per «guasto» il giorno in cui uno dei due cambia.
+   * ⚠️ Dove l'accredito e' un COMPITO fra altri compiti (chip «N da
+   * accreditare» del pannello situazione merce) resta `warn`/arancio: li' non
+   * c'e' un verso opposto accanto da distinguere. */
+  --app-accredito-color: var(--p-red-600);
+
   /* Attività IN CORSO (spinner di riga): il colore primario del tema, non un
    * colore d'allarme — un lavoro che sta girando è normale, non un problema.
    * Primo consumer: lo spinner «fatturazione in corso» nella lista gruppi

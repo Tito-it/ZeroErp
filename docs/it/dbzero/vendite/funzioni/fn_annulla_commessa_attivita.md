@@ -83,11 +83,10 @@ BEGIN
 
   -- ---------------------------------------------------------
   -- 3. Guard "gia' annullata". PRIMO della catena: una riga
-  --    ANNULLATA e' per costruzione manuale (nessun altro
-  --    percorso scrive quel valore), quindi non toglie mai il
-  --    posto a una diagnosi migliore. Codice DEDICATO: dire
-  --    "gia' emessa" a chi ha riannullato una riga e' falso e lo
-  --    manda a cercare una fattura che non esiste.
+  --    ANNULLATA e' per costruzione gia' passata da qui, quindi
+  --    non toglie mai il posto a una diagnosi migliore. Codice
+  --    DEDICATO: dire "gia' emessa" a chi ha riannullato una riga
+  --    e' falso e lo manda a cercare una fattura che non esiste.
   -- ---------------------------------------------------------
   IF v_stato_emissione = 'ANNULLATA' THEN
     PERFORM script.fn_log_and_raise_error(
@@ -99,10 +98,10 @@ BEGIN
   END IF;
 
   -- ---------------------------------------------------------
-  -- 4. Guard "e' manuale" = SOURCELESS. Prima di "gia' emessa"
-  --    perche' e' l'identita' della riga, non una condizione:
-  --    per una riga da push il rimedio e' SEMPRE a monte, sul
-  --    documento, sia essa emessa o no.
+  -- 4. Guard ORIGINE: la riga nasce da un documento?
+  --    Prima di "gia' emessa" perche' e' l'identita' della riga,
+  --    non una condizione: per una riga da push il rimedio e'
+  --    SEMPRE a monte, sul documento, sia essa emessa o no.
   --    NOTA: fn_upsert_commessa_attivita ha p_sorgente_tipo_id
   --    DEFAULT NULL, quindi "sourceless" e' garantito dalla
   --    disciplina di chi chiama e non dalla struttura -> questo
@@ -118,6 +117,36 @@ BEGIN
                          'sorgente_uid', v_sorgente_uid),
       NULL::uuid, p_commessa_attivita_id::text, v_segment_key,
       COALESCE(v_sorgente_uid,'?'));
+  END IF;
+
+  -- ---------------------------------------------------------
+  -- 4-bis. ⭐ Guard NATURA (2026-08-20, segnalazione BE).
+  --    ORIGINE e NATURA sono DUE FATTI DIVERSI, e fino al
+  --    2026-08-18 coincidevano solo per assenza: sourceless
+  --    voleva dire ONERE perche' nessuno scriveva RETTIFICA.
+  --    Da quando fn_accredita_riga_reso ne scrive — e le scrive
+  --    sourceless per progetto — il solo guard di origine lascia
+  --    passare una riga di NOTA DI CREDITO.
+  --    ⚠️ E il danno non e' un errore: l'annullo riesce, il ponte
+  --    in vendite.resi_righe_accrediti SOPRAVVIVE, la quota resta
+  --    accreditata e la riga del reso NON torna in coda. Credito
+  --    al cliente, nessun documento, nessun segnale.
+  --    ⭐ WHITELIST e non blacklist: si ammette ONERE. Un quarto
+  --    movimento manuale dovra' essere ammesso esplicitamente,
+  --    non ereditare in silenzio un verbo distruttivo.
+  --    Sta PRIMA di "gia' emessa" perche' e' identita', non
+  --    condizione: per una rettifica il rimedio e' «annulla
+  --    l'accredito» sia da NON_EMESSA sia da EMESSA.
+  -- ---------------------------------------------------------
+  IF v_tipo_movimento IS DISTINCT FROM 'ONERE' THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite','fn_annulla_commessa_attivita','E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE',
+      jsonb_build_object('commessa_attivita_id', p_commessa_attivita_id,
+                         'commessa_id', v_commessa_id,
+                         'segment_key', v_segment_key,
+                         'tipo_movimento', v_tipo_movimento),
+      NULL::uuid, p_commessa_attivita_id::text, v_segment_key,
+      COALESCE(v_tipo_movimento::text,'?'));
   END IF;
 
   -- ---------------------------------------------------------
@@ -177,7 +206,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_commessa_attivita(p_commessa_attivita_id bigint, p_motivo text)
-IS 'Madre DB annullamento riga MANUALE di commessa (brief-annullamento-righe-manuali-commessa §4). Porta stato_emissione a ANNULLATA e scrive vendite.commesse_attivita_log (evento RIGA_MANUALE_ANNULLATA con motivo, stato_precedente, prezzo_snapshot, tipo_movimento): due scritture, una unita'' atomica (linee-guida-sql §5b). NON cancella: la riga resta con importo e storia, smette solo di essere eleggibile -- ANNULLATA e'' gia'' filtrato da fn_emit_attivita_fatturabili_da_commessa, fn_list_commesse_emittibili, fn_list_emittibili_lane, fn_approva_commessa_attivita (=> nessun ripristino), vw_dash_competenza_attivita e vw_dash_fatturazione_commesse. Nessuna colonna nuova. PERIMETRO: righe SOURCELESS (sorgente_tipo_id IS NULL) e NON_EMESSA; il discriminante e'' la sorgente, non tipo_movimento=ONERE (natura, non origine) ne'' il prefisso MAN: della segment_key (convenzione, non contratto). ORDINE GUARD: gia''-annullata (564) -> non-manuale (565) -> gia''-emessa (566); "non manuale" precede "gia'' emessa" perche'' e'' l''identita'' della riga e per una riga da push il rimedio e'' sempre a monte sul documento. Motivo obbligatorio (567): l''annullamento e'' irreversibile e il log e'' l''unica traccia del perche''. SELECT ... FOR UPDATE sulla riga: senza, due annullamenti concorrenti scriverebbero due eventi per un solo annullamento. SECURITY INVOKER: RLS e scope emittente restano applicati. Presidio permessi (carica_voce_manuale) sul BE. Ritorna commessa_attivita_id. rev 2026-07-28.';
+IS 'Madre DB annullamento riga MANUALE di commessa (brief-annullamento-righe-manuali-commessa §4). Porta stato_emissione a ANNULLATA e scrive vendite.commesse_attivita_log (evento RIGA_MANUALE_ANNULLATA con motivo, stato_precedente, prezzo_snapshot, tipo_movimento): due scritture, una unita'' atomica (linee-guida-sql §5b). NON cancella: la riga resta con importo e storia, smette solo di essere eleggibile -- ANNULLATA e'' gia'' filtrato da fn_emit_attivita_fatturabili_da_commessa, fn_list_commesse_emittibili, fn_list_emittibili_lane, fn_approva_commessa_attivita (=> nessun ripristino), vw_dash_competenza_attivita e vw_dash_fatturazione_commesse. ⭐ PERIMETRO, rev 2026-08-20 (segnalazione BE): righe SOURCELESS **E** tipo_movimento = ''ONERE'', e NON_EMESSA. Fino a oggi il discriminante era la sola ORIGINE, con la nota esplicita «non tipo_movimento = ONERE (natura, non origine)»: era corretta quando fu scritta, perche'' sourceless equivaleva a ONERE — nessuno scriveva righe RETTIFICA. Dal 2026-08-18 vendite.fn_accredita_riga_reso ne scrive, e le scrive SOURCELESS per progetto: l''equazione si e'' rotta e una riga di NOTA DI CREDITO passava il guard. 🔴 Il danno non era un errore: l''annullo riusciva, il ponte in vendite.resi_righe_accrediti sopravviveva, fn_resi_riga_accreditato_partita continuava a dichiarare la quota accreditata e la riga del reso non tornava in coda — credito al cliente, nessun documento, nessun segnale. Stessa famiglia del buco su fn_annulla_reso (E_RESO_ANNULLO_CON_ACCREDITO), da un''altra porta. ⭐ ORIGINE e NATURA sono due fatti distinti e si controllano ENTRAMBI: il CHECK chk_commesse_attivita_sorgente_pair garantisce la coerenza della coppia sorgente_*, non che origine e natura restino allineate. WHITELIST fail-closed (si ammette ONERE, non si vieta RETTIFICA): un quarto movimento manuale andra'' ammesso esplicitamente. ORDINE GUARD: gia''-annullata (564) -> origine (565) -> NATURA (935) -> gia''-emessa (566); la natura precede lo stato perche'' e'' identita'' e non condizione — per una rettifica il rimedio e'' «annulla l''accredito» sia da NON_EMESSA sia da EMESSA, e dire «gia'' emessa» manderebbe a cercare una nota di credito che non c''e''. Il codice 935 e'' UNO e non due: un secondo codice generico guarderebbe un ramo oggi irraggiungibile (il CHECK ammette tre valori, due sono gestiti), e un ramo morto sembra coperto senza esserlo. Motivo obbligatorio (567). SELECT ... FOR UPDATE sulla riga. SECURITY INVOKER. Presidio permessi (carica_voce_manuale) sul BE. Ritorna commessa_attivita_id. rev 2026-08-20.';
 ```
 
 ---

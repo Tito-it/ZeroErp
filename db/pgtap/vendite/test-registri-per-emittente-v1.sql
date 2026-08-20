@@ -202,6 +202,18 @@ SELECT is(
 --    quindi anche il ramo «solo figli attivi» del generico coincideva — e
 --    20260820-02 ha tolto quello a mano.
 --
+-- ⭐ E QUESTO FILE E' IL TESTIMONE DEL RAMO B (rev 2026-08-20, 20260820-08).
+--    Il guard ha due rami e due codici: `emittenti_fiscali_billing_account`
+--    NON ha una colonna attivo, quindi blocca su QUALUNQUE riga collegata e
+--    il rimedio e' TOGLIERLE — codice E_ATTIVO_BLOCK_CHILDREN_EXIST (125),
+--    messaggio SENZA la parola «attive». Il ramo A (figlia con la colonna, si
+--    disattivano) e' presidiato da
+--    db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql (test 4)
+--    e da db/pgtap/catalogo/test-fn-riattiva-articolo-v1.sql (test 1).
+--    ⚠️ I due pattern si escludono a vicenda per costruzione: «righe collegate
+--    attive in X» non contiene «righe collegate in X». Se il guard sbagliasse
+--    ramo, questo test diventerebbe rosso — ed e' il suo secondo mestiere.
+--
 -- ⚠️ IL DISCRIMINANTE NON E' PIU' LA FRASE, E' IL NOME DELLA TABELLA.
 --    Prima bastava «mapping billing_account presente», che era una frase
 --    scritta apposta per questo guard. Il messaggio generico invece si compone
