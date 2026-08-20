@@ -31,6 +31,13 @@
 --  20) vw_dash_competenza_mensile espone tipo_movimento
 --  21) vw_dash_competenza_mensile ha ancora security_invoker=on
 --  22) vw_dash_competenza_mensile: nessuna riga mescola due tipo_movimento
+--  23) filtro p_tipo_movimento NULL: nessun filtro, la riga c'e'
+--  24) filtro sul movimento presente: la riga c'e'
+--  25) filtro su un movimento assente: zero righe, SENZA errore
+--  26) ⭐ un valore fuori vocabolario SOLLEVA (P0001), non filtra a vuoto
+--  27) tolleranza a spazi e minuscole, come per p_order_by/p_order_dir
+--  28) ⭐ la chiamata POSIZIONALE a 8 argomenti (la firma di prima del
+--      filtro) funziona ancora: il parametro nuovo e' in coda apposta
 --
 -- Scopo:
 --  - Le colonne nuove escono davvero, e la lista non si rompe ordinando per
@@ -51,7 +58,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(22);
+SELECT plan(28);
 
 -- ============================================================
 -- 1..3  Gli oggetti: c'e' la nuova, non c'e' piu' la vecchia
@@ -323,6 +330,12 @@ SELECT lives_ok($$
     SELECT commessa_id INTO v_commessa FROM tmp_commessa_lcp;
     FOREACH c IN ARRAY ARRAY['tipo_movimento','articolo_codice','articolo_descrizione',
                              'sorgente_codice','sorgente_documento_numero','gruppo_key'] LOOP
+      -- ⭐ POSIZIONALE, e di proposito: sono gli OTTO argomenti della firma
+      --   precedente al filtro `p_tipo_movimento`. Il nono e' stato appeso IN
+      --   CODA con un DEFAULT apposta perche' chiamate come questa continuino a
+      --   funzionare senza toccare la catena di chi chiama; se un domani
+      --   qualcuno spostasse un parametro in mezzo, questa riga diventerebbe
+      --   rossa — ed e' il suo secondo mestiere.
       EXECUTE format(
         'SELECT count(*) FROM vendite.fn_list_commessa_attivita(%s, NULL, NULL, NULL, 1000, 0, %L, %L)',
         v_commessa, c, 'desc') INTO n;
@@ -369,6 +382,71 @@ SELECT is(
    ) x),
   '22. la mensile ha una riga per (mese, stadio, stato, tipo_movimento)'
 );
+
+-- ============================================================
+-- 23..27  Il quarto filtro: p_tipo_movimento
+-- ============================================================
+-- La fixture ha UNA riga, `NORMALE`: basta e avanza, perche' le cinque
+-- asserzioni misurano il comportamento del FILTRO, non la popolazione.
+
+SELECT is(
+  (SELECT count(*)::int FROM vendite.fn_list_commessa_attivita(
+      p_commessa_id => (SELECT commessa_id FROM tmp_commessa_lcp))),
+  1,
+  '23. p_tipo_movimento assente: nessun filtro, la riga c''e'''
+);
+
+SELECT is(
+  (SELECT count(*)::int FROM vendite.fn_list_commessa_attivita(
+      p_commessa_id    => (SELECT commessa_id FROM tmp_commessa_lcp),
+      p_tipo_movimento => 'NORMALE')),
+  1,
+  '24. filtro sul movimento presente: la riga c''e'''
+);
+
+-- ⚠️ Zero righe QUI e' l'esito giusto — ed e' proprio per questo che il test 26
+--   esiste: senza, «zero righe» sarebbe la risposta sia alla domanda legittima
+--   sia al valore sbagliato, e le due diventerebbero indistinguibili.
+SELECT is(
+  (SELECT count(*)::int FROM vendite.fn_list_commessa_attivita(
+      p_commessa_id    => (SELECT commessa_id FROM tmp_commessa_lcp),
+      p_tipo_movimento => 'RETTIFICA')),
+  0,
+  '25. filtro su un movimento assente: zero righe, senza errore'
+);
+
+-- ⭐ L'asserzione per cui il filtro e' stato scritto cosi'. Un valore fuori
+--   vocabolario NON deve restituire una lista vuota: si leggerebbe come «non
+--   c'e' niente», cioe' il difetto travestito da dato. SQLSTATE esplicito,
+--   altrimenti throws_ok accetterebbe anche il crash della funzione.
+SELECT throws_ok($$
+  SELECT count(*) FROM vendite.fn_list_commessa_attivita(
+      p_commessa_id    => (SELECT commessa_id FROM tmp_commessa_lcp),
+      p_tipo_movimento => 'MOVIMENTO_INVENTATO')
+$$, 'P0001', NULL,
+   '26. un tipo_movimento fuori vocabolario SOLLEVA, non filtra a vuoto');
+
+-- Stessa tolleranza gia' applicata a p_order_by e p_order_dir: spazi e
+-- minuscole non sono un valore sbagliato, sono lo stesso valore scritto male.
+-- Il vocabolario resta chiuso — lo dimostra il test 26.
+SELECT is(
+  (SELECT count(*)::int FROM vendite.fn_list_commessa_attivita(
+      p_commessa_id    => (SELECT commessa_id FROM tmp_commessa_lcp),
+      p_tipo_movimento => '  normale  ')),
+  1,
+  '27. p_tipo_movimento tollera spazi e minuscole'
+);
+
+-- ⭐ 28. La ragione per cui `p_tipo_movimento` e' il NONO argomento e non il
+--   quinto. Questa e' esattamente la firma di prima — otto argomenti, tutti
+--   posizionali — e deve continuare a risolvere senza toccare nessun chiamante.
+--   Una firma piu' ordinata non vale la ricostruzione della catena di chi
+--   chiama; se un domani qualcuno infilasse un parametro in mezzo, questa riga
+--   diventerebbe rossa, ed e' il punto.
+SELECT lives_ok($$
+  SELECT count(*) FROM vendite.fn_list_commessa_attivita(
+      (SELECT commessa_id FROM tmp_commessa_lcp), NULL, NULL, NULL, 1000, 0, NULL, 'asc')
+$$, '28. la chiamata posizionale a 8 argomenti (firma pre-filtro) regge ancora');
 
 SELECT * FROM finish();
 

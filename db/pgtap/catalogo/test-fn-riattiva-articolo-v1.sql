@@ -100,12 +100,18 @@ SELECT pg_temp.mk_articolo('PGTAP_RIATT_A') AS art_a,
 --    fn_log_and_raise_error. Quella frase non esiste piu' (20260820-01): il
 --    messaggio sta a catalogo e NOMINA la tabella collegata, che prima non
 --    diceva mai.
---    ⛔ E la parola «attive» e' caduta di proposito: era falsa ogni volta che
---    la figlia NON ha una colonna attivo — li' il blocco conta QUALUNQUE riga.
---    Qui il caso e' l'altro (articoli_uom_operativa la colonna ce l'ha, ed e'
---    quella che il test 4 rilegge), quindi la parola era vera: si perde una
---    parola giusta per non tenerne una sbagliata altrove. La distinzione vive
---    ora nella `causa` del codice 125.
+--    ⭐ E la parola «attive» e' TORNATA il 2026-08-20 con 20260820-08, ma per
+--    un altro motivo: non e' piu' nella frase unica (dove era falsa ogni volta
+--    che la figlia NON ha la colonna attivo), e' in un CODICE SUO —
+--    E_ATTIVO_BLOCK_CHILDREN_ACTIVE (934), che il guard sceglie quando la
+--    figlia la colonna ce l'ha. `catalogo.articoli_uom_operativa` e' proprio
+--    quel caso (ed e' la stessa colonna che il test 4 rilegge), quindi questo
+--    file e' il testimone del RAMO A. Il ramo B — figlia senza colonna attivo,
+--    codice 125 — e' presidiato da
+--    db/pgtap/vendite/test-registri-per-emittente-v1.sql (test 6).
+--    ⛔ I due rami non sono due sfumature: hanno due RIMEDI diversi
+--    (disattivare le righe qui, toglierle la'), ed e' per questo che sono due
+--    codici e non un messaggio con un forse.
 --
 -- ⭐ Il discriminante nuovo e' PIU' FORTE del vecchio: «attive» sarebbe
 --    passata con qualunque figlia: qui si asserisce PROPRIO
@@ -121,8 +127,8 @@ SELECT throws_like(
         $sql$ UPDATE catalogo.articoli SET attivo = false WHERE id = %L::uuid $sql$,
         (SELECT art_a FROM _t_ctx)
     ),
-    '%righe collegate in catalogo.articoli_uom_operativa%',
-    '1) UPDATE attivo=false con figlio attivo -> raise, e il messaggio NOMINA la figlia'
+    '%righe collegate attive in catalogo.articoli_uom_operativa%',
+    '1) UPDATE attivo=false con figlio attivo -> raise: messaggio del ramo ATTIVE, e NOMINA la figlia'
 );
 
 -- =========================================================
