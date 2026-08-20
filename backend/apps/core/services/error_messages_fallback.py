@@ -91,7 +91,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ATTIVITA_VALIDATION": "Parametri pipeline attivita non validi.",
     "E_ATTIVO_BLOCK": "Generazione della regola di automazione ATTIVO_block fallita.",
     "E_ATTIVO_BLOCK_ARGS": "Configurazione trigger di protezione non valida.",
-    "E_ATTIVO_BLOCK_CHILDREN_EXIST": "Impossibile disattivare: esistono record collegati ancora attivi.",
+    # ⚠️ La parola «attivi» qui era FALSA dal 2026-08-20 (changeSet 20260820-08):
+    # questo e' il ramo delle tabelle figlie che NON hanno una colonna attivo —
+    # li' le righe si tolgono, non si disattivano. Il ramo gemello
+    # (`..._ACTIVE`) e' quello dove «attive» significa qualcosa.
+    "E_ATTIVO_BLOCK_CHILDREN_ACTIVE": "Non si puo' disattivare: ci sono ancora righe collegate attive.",
+    "E_ATTIVO_BLOCK_CHILDREN_EXIST": "Non si puo' disattivare: ci sono ancora righe collegate.",
     "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": "Configurazione trigger di protezione non valida.",
     "E_ATTIVO_BLOCK_REF_NULL": "Colonna di riferimento nulla nel guard di disattivazione.",
     "E_ATTIVO_REQUIRE": "Regola di automazione ATTIVO_require non generata o trigger configurato male.",

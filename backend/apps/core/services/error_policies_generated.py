@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 721, di cui 81 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 722, di cui 81 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -129,6 +129,9 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ATTIVO_BLOCK": "TECNICO",
     # I due sotto sono errori di CONFIGURAZIONE del trigger generico · `dbops.trgfn_prevent_deactivate_if_children` (TG_ARGV insufficienti, · colonna FK dichiarata inesistente sul figlio): non dipendono da cosa · fa l'utente, quindi 500 e non 4xx. Raggiungibili dal ciclo richiesta · perche' il trigger e' armato su ~96 tabelle e scatta sull'UPDATE · `attivo = false` che parte dalle API di disattivazione. · Registrati il 2026-08-05: prima erano irraggiungibili perche' i loro · call site chiamavano `fn_log_and_raise_error` senza valori variadici · e morivano su 42883 (bonifica riferimenti morti F8, changeSet · 20260805-02/03/04).
     "E_ATTIVO_BLOCK_ARGS": "TECNICO",
+    # dbops.trgfn_prevent_deactivate_if_children, ramo «la tabella figlia HA la colonna attivo»: bloccano solo le righe ATTIVE e il rimedio e' DISATTIVARLE (il pattern «figli prima, padre poi»). Gemello di E_ATTIVO_BLOCK_CHILDREN_EXIST (125), che e' l'altro ramo: figlia senza colonna attivo, blocca qualunque riga, rimedio TOGLIERLE. Due codici e non uno perche' i RIMEDI sono diversi, non la sfumatura - che e' il criterio con cui in questo progetto nasce un codice nuovo. Misurato il 2026-08-20 con fn_get_override_col + fn_col_exists: 168 trigger su 349 in questo ramo (77 tabelle figlie), 181 nell'altro (88): meta' e meta', non un caso di nicchia. Fino al 2026-08-20 il messaggio era unico e diceva «attive», falso per i 181 dell'altro ramo, che mandava a cercare una colonna inesistente. I due messaggi condividono UNA sola lista di valori e devono avere gli stessi segnaposti nello stesso ordine (presidio: test 13 di db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql). Piano: brief-design-note-credito-resi.
+    "E_ATTIVO_BLOCK_CHILDREN_ACTIVE": "CONFLITTO_STATO",
+    # dbops.trgfn_prevent_deactivate_if_children, ramo «la tabella figlia NON ha la colonna attivo»: blocca su QUALUNQUE riga collegata e il rimedio e' TOGLIERLE, perche' spegnerle non si puo'. Gemello di E_ATTIVO_BLOCK_CHILDREN_ACTIVE (934), l'altro ramo. Fino al 2026-08-20 questo codice copriva ENTRAMBI i rami con un messaggio solo, che diceva «attive» ed era falso proprio qui.
     "E_ATTIVO_BLOCK_CHILDREN_EXIST": "CONFLITTO_STATO",
     "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": "TECNICO",
     # ⚠️ CODICE SOLO-LOG: l'unico punto che lo nomina usa · `fn_log_error_only`, che scrive in dbops.error_log e NON solleva. · Non arriva mai a un client, quindi questo status non lo legge · nessuno: la policy esiste perche' il cancello lo pretende, ed e' · giusto che lo pretenda — la misura e' volutamente larga e non puo' · sapere se domani qualcuno lo fara' sollevare davvero. Vedi §16.2.

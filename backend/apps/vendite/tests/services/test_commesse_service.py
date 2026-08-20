@@ -824,7 +824,48 @@ class CommesseServiceTests(TestCase):
             offset=0,
             order_by="data_attivita",
             order_dir="desc",
+            tipo_movimento=None,
         )
+
+    # Scopo: il filtro movimento arriva al repository normalizzato (spazi via,
+    #        maiuscolo), come gia' fanno order_by/order_dir.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_tipo_movimento_normalizzato(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "rows": []}
+
+        fn_list_commessa_attivita(commessa_id=1, tipo_movimento="  rettifica  ")
+
+        _, kwargs = mock_repo_cls.return_value.list_commessa_attivita.call_args
+        self.assertEqual(kwargs["tipo_movimento"], "RETTIFICA")
+
+    # Scopo: ⚠️ Filtro VUOTO = «tutti i movimenti», non un valore da validare.
+    #        Un filtro appena azzerato dal frontend arriva come stringa vuota:
+    #        rifiutarlo direbbe «valore non valido» a chi ha tolto il filtro.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_tipo_movimento_vuoto_e_tutti(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "rows": []}
+
+        fn_list_commessa_attivita(commessa_id=1, tipo_movimento="   ")
+
+        _, kwargs = mock_repo_cls.return_value.list_commessa_attivita.call_args
+        self.assertIsNone(kwargs["tipo_movimento"])
+
+    # Scopo: 🔴 Movimento fuori vocabolario → ServiceError, repo MAI chiamato.
+    # ⚠️ E' la meta' che si dimentica: un movimento ammesso ma assente dai dati
+    #        deve dare ZERO RIGHE senza errore (lo prova il pgTAP del DB con
+    #        ONERE), un movimento INVENTATO deve sollevare. Senza questa
+    #        distinzione «lista vuota» sarebbe la risposta a due domande
+    #        diverse — «non ce ne sono» e «hai scritto una parola sbagliata».
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_tipo_movimento_fuori_vocabolario(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_list_commessa_attivita(commessa_id=1, tipo_movimento="INVENTATO")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
 
     # Scopo: order_by fuori whitelist → ServiceError, repo mai chiamato.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")

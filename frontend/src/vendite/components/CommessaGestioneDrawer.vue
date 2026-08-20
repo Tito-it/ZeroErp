@@ -42,7 +42,11 @@ import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
 import { DOCUMENTO_DRAWER_TIPI } from '../_shared/documenti/documentoDrawers'
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
-import { STATO_APPROVAZIONE_ATTIVITA, STATO_EMISSIONE_ATTIVITA } from '../constants'
+import {
+  STATO_APPROVAZIONE_ATTIVITA,
+  STATO_EMISSIONE_ATTIVITA,
+  TIPO_MOVIMENTO_ATTIVITA,
+} from '../constants'
 import { toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
@@ -127,6 +131,10 @@ const righeSortDir = ref(1)
 // Filtro stato emissione applicato alla lista: parte dalla prop (card di
 // provenienza) ed e' modificabile a video. null = tutte.
 const filtroStatoEmissione = ref(props.statoEmissione)
+// Filtro natura della riga (changeSet 20260820-09). null = tutti i movimenti.
+// Non arriva da nessuna prop: nasce sempre vuoto, perche' nessuna card di
+// provenienza parla di movimenti.
+const filtroTipoMovimento = ref(null)
 // Totale FILTRATO, dal `count` della risposta lista. Non si usa
 // `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
 // con un filtro attivo il paginator direbbe 4 righe mostrandone 1, e la
@@ -182,6 +190,9 @@ async function loadRighe() {
     if (filtroStatoEmissione.value) {
       params.stato_emissione = filtroStatoEmissione.value
     }
+    if (filtroTipoMovimento.value) {
+      params.tipo_movimento = filtroTipoMovimento.value
+    }
     const res = await listCommessaAttivita(props.commessaId, params)
     righe.value = res.data?.data?.rows ?? []
     // `count` e' il totale gia' filtrato (stessa WHERE della pagina).
@@ -214,6 +225,7 @@ watch(
     // stessa commessa da una card diversa deve valere la card nuova, non
     // quella di prima.
     filtroStatoEmissione.value = props.statoEmissione
+    filtroTipoMovimento.value = null
     selected.value = []
     await reloadAll()
   },
@@ -271,6 +283,16 @@ const opzioniStatoEmissione = computed(() => [
   ...Object.values(STATO_EMISSIONE_ATTIVITA).map((v) => ({
     value: v,
     label: t(`vendite.commesse.stato_emissione_${v.toLowerCase()}`),
+  })),
+])
+
+// Opzioni del filtro movimento: i tre valori del dominio + «tutti» (null).
+// Derivate dalla costante, come le gemelle dello stato emissione.
+const opzioniTipoMovimento = computed(() => [
+  { value: null, label: t('vendite.commesse.filtro_movimento_tutti') },
+  ...Object.values(TIPO_MOVIMENTO_ATTIVITA).map((v) => ({
+    value: v,
+    label: t(`vendite.commesse.tipo_movimento_${v.toLowerCase()}`),
   })),
 ])
 
@@ -733,6 +755,21 @@ const drawerActions = computed(() => [
             size="small"
             :aria-label="t('vendite.commesse.filtro_stato_label')"
             v-tooltip.bottom="t('vendite.commesse.filtro_stato_label')"
+            style="min-width: 12rem;"
+            @change="onFiltroStatoChange"
+          />
+          <!-- Filtro movimento: gemello di quello sopra, stessa forma e stesso
+               handler — cambiare un filtro riparte da pagina 1 e azzera la
+               selezione, qualunque filtro sia. Serve a isolare le rettifiche,
+               che su una commessa vera sono una manciata dentro centinaia. -->
+          <Select
+            v-model="filtroTipoMovimento"
+            :options="opzioniTipoMovimento"
+            option-label="label"
+            option-value="value"
+            size="small"
+            :aria-label="t('vendite.commesse.filtro_movimento_label')"
+            v-tooltip.bottom="t('vendite.commesse.filtro_movimento_label')"
             style="min-width: 12rem;"
             @change="onFiltroStatoChange"
           />

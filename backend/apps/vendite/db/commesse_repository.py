@@ -51,6 +51,14 @@ _SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({"PREVENTIVO"})
 # l'autorita' e solleva E_PARAMETRO_INVALIDO su un nome fuori mappa.
 # Livello modulo, non ClassVar: e' un dato, e un test che mocka la classe non
 # deve poterla svuotare.
+# Vocabolario di `commesse_attivita.tipo_movimento`, filtro della lista attivita
+# (changeSet 20260820-09). ⚠️ E' uno SPECCHIO, non l'autorita': a enforcare e'
+# il CHECK `chk_commesse_attivita_tipo_movimento`, e la fn ha la sua copia con
+# una preCondition che si ferma se il CHECK cresce. Vale qui per la stessa
+# ragione di ATTIVITA_SORT_COLUMNS: un valore fuori vocabolario si rifiuta
+# PRIMA di spendere un round-trip, e l'utente vede un 400 dal posto giusto.
+TIPO_MOVIMENTO_VALUES: frozenset[str] = frozenset({"NORMALE", "RETTIFICA", "ONERE"})
+
 ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     "id",
     "data_attivita",
@@ -1411,6 +1419,7 @@ class CommesseRepository:
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str = "asc",
+        tipo_movimento: str | None = None,
     ) -> dict:
         """Lista paginata attività di una commessa via vendite.fn_list_commessa_attivita.
 
@@ -1433,6 +1442,14 @@ class CommesseRepository:
         if competenza_mese is not None:
             where_clauses.append("ca.competenza_mese = date_trunc('month', %s::date)::date")
             where_params.append(competenza_mese)
+        # ⚠️ Il COUNT vive su una query SUA, sulla tabella: ogni filtro passato
+        # alla fn va ripetuto QUI o il totale del paginatore conta righe che la
+        # lista non mostra — «1 di 98» con 3 righe a video. La tolleranza su
+        # spazi/maiuscole e' la stessa della fn, per non contare diversamente da
+        # come si filtra.
+        if tipo_movimento is not None:
+            where_clauses.append("ca.tipo_movimento = upper(btrim(%s))")
+            where_params.append(tipo_movimento)
         where_sql = " AND ".join(where_clauses)
 
         _cols_sql = ", ".join(self._ATTIVITA_COLS)
@@ -1457,12 +1474,13 @@ class CommesseRepository:
                     p_limit => %s,
                     p_offset => %s,
                     p_order_by => %s,
-                    p_order_dir => %s
+                    p_order_dir => %s,
+                    p_tipo_movimento => %s
                 )
                 """,  # noqa: S608 — colonne da costante _ATTIVITA_COLS
                 [commessa_id, stato_emissione, stato_approvazione,
                  competenza_mese, safe_limit, safe_offset,
-                 order_by, order_dir],
+                 order_by, order_dir, tipo_movimento],
             )
             raw_rows = cursor.fetchall()
 
