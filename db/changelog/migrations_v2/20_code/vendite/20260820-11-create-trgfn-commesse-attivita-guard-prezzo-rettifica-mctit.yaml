@@ -1,0 +1,195 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il prezzo di una RETTIFICA e' IMMUTABILE — guard di tabella
+#   (decisione di Tid, 2026-08-20 · brief nota di credito §42.2)
+#
+# ── LA DECISIONE, E PERCHE' NON E' UNA PREFERENZA ───────────────────────
+#
+#   Il prezzo di una riga `tipo_movimento = 'RETTIFICA'` e' COPIATO dalla riga
+#   di fattura che rettifica (`fn_accredita_riga_reso`, decisione N-1: si copia
+#   da `vendite.fatture_righe`, mai ricalcolato e mai riletto dal listino).
+#
+#   Cambiarlo farebbe accreditare un importo DIVERSO da quello fatturato: una
+#   nota di credito che non corrisponde al documento che dichiara di correggere.
+#   Non e' un dato da tenere aggiornato — e' una CITAZIONE.
+#
+#   Decisione: il prezzo di una riga RETTIFICA non si modifica. Mai, in nessuno
+#   dei tre percorsi (riallinea prezzo, variazione eccezionale, sblocca prezzo).
+#
+# ── ⚠️ PERCHE' IL GUARD DEVE STARE QUI E NON NEL BACKEND ────────────────
+#
+#   Il prezzo si scrive con una **UPDATE DIRETTA** su
+#   `vendite.commesse_attivita` — `update_attivita_prezzo` nel repository — e
+#   non attraverso una funzione madre:
+#
+#       UPDATE vendite.commesse_attivita
+#          SET prezzo_snapshot = …, prezzo_bloccato = …,
+#              prezzo_da_riallineare = FALSE, meta = …
+#        WHERE id = …
+#
+#   Un controllo solo nel backend sarebbe una CONVENZIONE, non un blocco:
+#   chiunque scriva quella colonna per un'altra strada lo aggirerebbe senza
+#   accorgersene. E' la stessa ragione per cui `tipo_movimento` e' diventata una
+#   colonna con un CHECK invece di una chiave di `meta` (doc `commesse_attivita`,
+#   17-07-2026): «un discriminatore su cui si fondano soldi e riconciliazioni
+#   non puo' dipendere dalla buona educazione del chiamante».
+#
+# ── COSA BLOCCA, ESATTAMENTE ────────────────────────────────────────────
+#
+#   `prezzo_snapshot` e `prezzo_bloccato`, sulle sole righe RETTIFICA, in
+#   qualunque stato.
+#
+#   ⭐ Blocca il CAMBIAMENTO, non la scrittura (`IS DISTINCT FROM`): una UPDATE
+#   che riscrive lo stesso valore passa. Serve a non rompere le riscritture
+#   idempotenti — per esempio l'`ON CONFLICT DO UPDATE` di
+#   `fn_upsert_commessa_attivita`, che riassegna `prezzo_snapshot = EXCLUDED…`
+#   anche quando il valore non cambia.
+#
+#   ⚠️ **NON dipende da `stato_emissione`**, a differenza del gemello sulla
+#   quantita'. Quello protegge un FATTO GIA' USCITO (riga emessa); questo
+#   protegge una CITAZIONE, che e' sbagliata anche prima di uscire — anzi,
+#   soprattutto prima, perche' e' li' che i tre percorsi di pricing la
+#   toccherebbero.
+#
+# ── DUE COSE CONSIDERATE E NON FATTE ────────────────────────────────────
+#
+#   * **`prezzo_da_riallineare` NON e' nell'elenco.** Misurato il 2026-08-20:
+#     nessuna funzione di database e nessun percorso backend lo porta a `true`;
+#     arriva solo come parametro dell'upsert, e le rettifiche nascono con
+#     `false`. Bloccarlo oggi non impedirebbe niente e allargherebbe un guard
+#     restrittivo oltre la richiesta. Se un domani nascesse un giro di
+#     riallineamento massivo che lo accende, va aggiunto QUI — e la riga di
+#     `UPDATE OF` e' il posto dove guardare.
+#   * **Nessun bypass `zeroerp.maintenance_reset_lotto_draft`**, che il gemello
+#     sulla quantita' invece ha. Verificato che serva davvero a qualcosa: il
+#     reset scrive su `vendite.commesse_attivita` tramite
+#     `fn_cleanup_fatture_by_ids`, ma **solo `stato_emissione`** (ritorno a
+#     NON_EMESSA, RD-4) — non tocca il prezzo, quindi non incontra questo guard.
+#     ⛔ E una porta di servizio sul prezzo di una nota di credito e'
+#     esattamente la porta che la decisione vuole chiusa: se un giorno servisse,
+#     dev'essere una decisione, non un'eredita'.
+#
+# ── FASE E NAMING ───────────────────────────────────────────────────────
+#
+#   `_a10_` = guard/blocco, `BEFORE UPDATE OF <colonne>` — convenzioni trigger
+#   del progetto. Gemello esatto di
+#   `trg_commesse_attivita_a10_guard_quantita_immutabile_upd`.
+#
+# Dipendenze: config.messaggi_errore id 936 (CSV 80_data, stesso giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260820-11-create-trgfn-commesse-attivita-guard-prezzo-rettifica-mctit.yaml
+
+  - changeSet:
+      id: 20260820-11-create-trgfn-commesse-attivita-guard-prezzo-rettifica
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di TABELLA sull'immutabilita' del prezzo delle righe RETTIFICA:
+        blocca UPDATE di prezzo_snapshot e prezzo_bloccato quando il valore
+        CAMBIA. Il prezzo di una rettifica e' copiato dalla riga di fattura che
+        rettifica: cambiarlo accrediterebbe un importo diverso da quello
+        fatturato. Sta nel database e non nel backend perche' il prezzo si scrive
+        con una UPDATE diretta (update_attivita_prezzo), non da una funzione
+        madre: un controllo applicativo sarebbe una convenzione, non un blocco.
+        Decisione di Tid del 2026-08-20.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: tipo_movimento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_prezzo_rettifica()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il prezzo di una riga RETTIFICA e' una CITAZIONE della
+                  --   riga di fattura che rettifica (fn_accredita_riga_reso,
+                  --   N-1: copiato, mai ricalcolato). Cambiarlo farebbe
+                  --   accreditare un importo diverso da quello fatturato, cioe'
+                  --   una nota di credito che non corrisponde al documento che
+                  --   dichiara di correggere.
+                  -- Regole:
+                  --   - blocca il CAMBIO di prezzo_snapshot o prezzo_bloccato
+                  --     sulle righe tipo_movimento = 'RETTIFICA';
+                  --   - in QUALUNQUE stato: la citazione e' sbagliata anche
+                  --     prima dell'emissione — anzi soprattutto prima, perche'
+                  --     e' li' che i tre percorsi di pricing la toccherebbero;
+                  --   - `IS DISTINCT FROM`: una riscrittura dello STESSO valore
+                  --     passa, cosi' l'ON CONFLICT DO UPDATE dell'upsert non si
+                  --     rompe.
+                  -- ⚠️ Nessun bypass di manutenzione, a differenza del gemello
+                  --   sulla quantita': verificato che il reset lotto scrive su
+                  --   questa tabella solo `stato_emissione`, quindi non
+                  --   incontra questo guard. Una porta di servizio sul prezzo di
+                  --   una nota di credito dev'essere una decisione, mai
+                  --   un'eredita'.
+                  -- Decisione di Tid, 2026-08-20. brief nota di credito §42.2.
+                  -- =========================================================
+                  IF OLD.tipo_movimento = 'RETTIFICA'
+                     AND (NEW.prezzo_snapshot IS DISTINCT FROM OLD.prezzo_snapshot
+                          OR NEW.prezzo_bloccato IS DISTINCT FROM OLD.prezzo_bloccato) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_COMMESSA_ATTIVITA_PREZZO_RETTIFICA_IMMUTABILE',
+                          jsonb_build_object(
+                              'id', OLD.id,
+                              'segment_key', OLD.segment_key,
+                              'stato_emissione', OLD.stato_emissione,
+                              'prezzo_old', OLD.prezzo_snapshot,
+                              'prezzo_new', NEW.prezzo_snapshot,
+                              'bloccato_old', OLD.prezzo_bloccato,
+                              'bloccato_new', NEW.prezzo_bloccato),
+                          NULL::uuid, OLD.id::text, OLD.segment_key
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_prezzo_rettifica() IS
+                  'Guard immutabilita PREZZO delle righe RETTIFICA di vendite.commesse_attivita: blocca il CAMBIO di prezzo_snapshot o prezzo_bloccato, in qualunque stato. Il prezzo di una rettifica non e'' un dato da tenere aggiornato, e'' una CITAZIONE della riga di fattura che rettifica (fn_accredita_riga_reso, N-1: copiato da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino): cambiarlo accrediterebbe un importo diverso da quello fatturato, cioe'' una nota di credito che non corrisponde al documento che dichiara di correggere. ⚠️ STA NEL DATABASE E NON NEL BACKEND perche'' il prezzo si scrive con una UPDATE DIRETTA (update_attivita_prezzo nel repository), non da una funzione madre: un controllo applicativo sarebbe una convenzione e non un blocco, e chiunque scrivesse quella colonna per un''altra strada lo aggirerebbe senza accorgersene — stessa ragione per cui tipo_movimento e'' una colonna con CHECK e non una chiave di meta. ⭐ Blocca il CAMBIAMENTO e non la scrittura (IS DISTINCT FROM): una UPDATE che riscrive lo stesso valore passa, cosi'' l''ON CONFLICT DO UPDATE di fn_upsert_commessa_attivita non si rompe. ⚠️ NON dipende da stato_emissione, a differenza del gemello sulla quantita'': quello protegge un fatto gia'' uscito, questo una citazione — che e'' sbagliata anche prima di uscire, anzi soprattutto prima, perche'' e'' li'' che i tre percorsi di pricing (riallinea, variazione eccezionale, sblocca) la toccherebbero. ⛔ Nessun bypass di manutenzione: verificato che il reset lotto (fn_cleanup_fatture_by_ids) scrive su questa tabella solo stato_emissione. prezzo_da_riallineare NON e'' fra le colonne guardate — misurato che nessun percorso lo porta a true su una rettifica. Errore E_COMMESSA_ATTIVITA_PREZZO_RETTIFICA_IMMUTABILE (936). Decisione di Tid 2026-08-20, brief-design-note-credito-resi §42.2.';
+
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_guard_prezzo_rettifica_upd
+                  ON vendite.commesse_attivita;
+
+              -- `UPDATE OF` sulle due colonne: il trigger si sveglia solo quando
+              -- una delle due compare nella SET list, poi l'IS DISTINCT FROM
+              -- decide se e' un cambio vero.
+              CREATE TRIGGER trg_commesse_attivita_a10_guard_prezzo_rettifica_upd
+                  BEFORE UPDATE OF prezzo_snapshot, prezzo_bloccato
+                  ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_prezzo_rettifica();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_guard_prezzo_rettifica_upd
+                  ON vendite.commesse_attivita;
+              DROP FUNCTION IF EXISTS vendite.trgfn_commesse_attivita_guard_prezzo_rettifica();

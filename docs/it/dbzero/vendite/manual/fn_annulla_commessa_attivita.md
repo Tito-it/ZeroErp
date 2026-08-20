@@ -48,12 +48,29 @@ ritocco è stato ai contatori di testata di `fn_get_commessa_stato`, che erano r
 * **Perimetro: righe MANUALI e NON ancora emesse.** Le righe da push restano non annullabili —
   il fatto viene dal documento e il rimedio sta a monte, sul documento. Le righe già emesse o
   fatturate si correggono con una **nota di credito**, che è un atto fiscale con un suo perimetro.
-* **Il discriminante «manuale» è `sorgente_tipo_id IS NULL`** (*sourceless* = non nata da un
-  documento). Non `tipo_movimento = 'ONERE'`, che è la **natura** del movimento e non l'origine
-  (il `CHECK` ammette già `RETTIFICA`, e il giorno che nascesse una porta rettifiche manuale un
-  filtro su `ONERE` la escluderebbe **in silenzio**); non il prefisso `MAN:` della `segment_key`,
-  che è una convenzione di leggibilità e non un contratto. È la stessa definizione che
-  `fn_build_gruppo_fatturabile_key` usa per il gruppo «oneri di commessa».
+* **⭐ Il discriminante è DOPPIO dal 20-08-2026: `sorgente_tipo_id IS NULL` **e**
+  `tipo_movimento = 'ONERE'`.** Origine e natura sono due fatti diversi e si controllano
+  entrambi. Il prefisso `MAN:` della `segment_key` non c'entra: è una convenzione di
+  leggibilità, non un contratto.
+* **⚠️ Fino al 20-08-2026 il discriminante era la sola ORIGINE**, e questa pagina lo motivava
+  così: *«non `tipo_movimento = 'ONERE'`, che è la natura del movimento e non l'origine»*. Era
+  **corretto quando fu scritto**, perché *sourceless* equivaleva a `ONERE`: nessuno scriveva
+  righe `RETTIFICA`. Dal 18-08-2026 [`fn_accredita_riga_reso`](/dbzero/vendite/funzioni/fn_accredita_riga_reso)
+  ne scrive, e le scrive **sourceless per progetto** — l'equazione si è rotta e una riga di
+  **nota di credito** passava il guard.
+
+  🔴 **E il danno non era un errore**: l'annullo riusciva, il ponte in
+  `vendite.resi_righe_accrediti` sopravviveva, la quota restava accreditata e la riga del reso
+  non tornava in coda. Credito al cliente, nessun documento, nessun segnale.
+  ⭐ La «Cautela onesta» più in basso lo aveva previsto per iscritto — *«il giorno che arriva il
+  secondo tipo di riga sourceless, questo guard va riletto»* — ed è arrivato.
+* **⭐ Whitelist, non blacklist**: si ammette `ONERE`, non si vieta `RETTIFICA`. Un quarto
+  movimento manuale dovrà essere ammesso **esplicitamente**, invece di ereditare in silenzio un
+  verbo distruttivo.
+* **Ordine dei guard**: già-annullata (564) → origine (565) → **natura (935)** → già-emessa
+  (566). La natura precede lo stato perché è **identità e non condizione**: per una rettifica il
+  rimedio è «annulla l'accredito» sia da `NON_EMESSA` sia da `EMESSA`, e dire «già emessa»
+  manderebbe a cercare una nota di credito che non c'è.
 * **Motivo obbligatorio**, normalizzato con `btrim` e salvato nel log. L'annullamento è
   irreversibile: senza motivo resterebbe il fatto senza la ragione, e a mesi di distanza un
   importo sparito senza spiegazione è indistinguibile da un errore.
@@ -107,9 +124,17 @@ garantito dalla **disciplina di chi chiama**, non dalla struttura. Nella pratica
 sempre la sorgente — è così che nascono i `segment_key` `ORD:`/`CTR:`/`DDT:` — ma il guard resta
 necessario e **non va dato per implicito**.
 
+> ⭐ **Il paragrafo qui sotto era una previsione, e si è avverata il 20-08-2026.** Resta agli
+> atti perché è la cosa più utile di questa pagina: il rovescio era stato *scritto*, e il
+> secondo tipo di riga sourceless è arrivato dopo tre settimane.
+
 Il criterio *sourceless* ha un rovescio da accettare consapevolmente: se domani nascesse un altro
 tipo di riga manuale, l'annullamento la coprirebbe **senza che nessuno abbia ripensato il
 perimetro**. Il giorno che arriva il secondo tipo di riga sourceless, questo guard va **riletto**.
+
+✅ **Riletto**: il perimetro è ora `sourceless` **e** `ONERE`, e la whitelist è fail-closed
+proprio perché il terzo tipo non ripeta la storia. Vedi il §42.1 di
+`brief-design-note-credito-resi`.
 
 ### Cosa NON fa
 
