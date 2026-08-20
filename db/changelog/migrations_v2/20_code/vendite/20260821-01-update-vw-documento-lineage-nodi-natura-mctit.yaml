@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA NATURA ENTRA NEL NODO (1 di 4) — il grafo impara che «FATTURA» non e'
+#   piu' una cosa sola.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Dalla commessa 322 escono DUE archi G identici: stesso tipo (FATTURA),
+#   stesso stato (EMESSA), e `codice` NULL su tutti e due perche' nessuno dei
+#   due documenti e' ancora numerato. A video l'operatore legge due volte
+#   «Fattura · EMESSA» e non ha modo di sapere quale sia la nota di credito.
+#
+#   ⭐ La ragione e' storica ed e' la parte che vale la pena ricordare: il
+#   grafo e' nato il 2026-07-14, quando FATTURA era un tipo unico. La natura
+#   (config.nature_doc_fiscale) e' arrivata con la slice nota di credito, il
+#   2026-08-18, ed e' un ASSE NUOVO: il tipo dice da quale tabella viene il
+#   nodo, la natura che cosa e' fiscalmente. Nessuno dei due sostituisce
+#   l'altro.
+#
+# -- COSA CAMBIA ------------------------------------------------------
+#   Due colonne in coda: natura_doc_codice, natura_doc_descrizione. Valorizzate
+#   nel solo ramo FATTURA (LEFT JOIN a config.nature_doc_fiscale), NULL negli
+#   altri sette — ed e' corretto: preventivi e DDT non hanno una natura fiscale.
+#   ⚠️ Nomi allineati a quelli che il backend usa gia' altrove
+#   (natura_doc_codice/descrizione da codice_interno/descrizione): un
+#   vocabolario solo fra database e applicazione.
+#   ⚠️ LEFT JOIN e non JOIN: natura_doc_id e' nullable e una fattura storica
+#   puo' non averla — con il JOIN quel documento sparirebbe dal grafo, che e'
+#   molto peggio di una natura vuota.
+#
+# -- ⛔ COLONNE IN CODA, non in mezzo ----------------------------------
+#   CREATE OR REPLACE VIEW puo' solo AGGIUNGERE colonne alla fine: cambiare
+#   nome, tipo o ordine di quelle esistenti richiederebbe un DROP, che qui
+#   porterebbe via anche le due viste che dipendono da questa.
+#
+# -- IL CANTIERE ------------------------------------------------------
+#   Messaggio del team BE dal collaudo, prova 6 (2026-08-20): la prima nota di
+#   credito esiste — fattura 15353, natura NOTA_CREDITO, tre righe che
+#   rettificano le righe 461/465/468 della fattura 835 — e il documento e'
+#   corretto. Restano due cose, e le due si toccano nel grafo di genealogia.
+#   Cantiere: brief-design-note-credito-resi §44.
+#
+# -- ⚠️ UNA MISURA DEL BE NON SI RIPRODUCE ----------------------------
+#   Il messaggio dice «FATTURA 835 · indietro: 0 archi · avanti: 0 archi».
+#   Rimisurato il 2026-08-21 in contesto operatore: da 835 indietro escono
+#   SETTE archi (G verso tre commesse, E, A) e dalla NC 15353 ne escono due.
+#   Il grafo attraversa gia' le fatture: quello che manca davvero e' l'arco
+#   FRA le due fatture, che e' un'altra cosa e la richiesta la nomina bene.
+# ------------------------------------------------------------
+
+# Origine: testo dello YAML 20260714-08, verificato il 2026-08-21 identico alla
+#   vista viva con un round-trip (riapplicata in transazione e confrontato il
+#   deparse di PostgreSQL). E' l'unico changeSet che l'ha mai definita.
+# Dipendenze: config.nature_doc_fiscale (20260818-24).
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-01-update-vw-documento-lineage-nodi-natura-mctit.yaml
+
+  - changeSet:
+      id: 20260821-01-update-vw-documento-lineage-nodi-natura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il nodo del grafo porta anche la natura del documento (natura_doc_codice/descrizione),
+        valorizzata nel solo ramo FATTURA. Senza, due nodi FATTURA della stessa commessa - la
+        fattura e la nota di credito che la rettifica - sono indistinguibili: stesso tipo, stesso
+        stato, e codice NULL finche' non sono numerati.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_nodi
+            - tableExists:
+                schemaName: config
+                tableName: nature_doc_fiscale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_nodi
+              WITH (security_invoker=on) AS
+              -- ⭐ rev 2026-08-20: il nodo porta anche la NATURA del documento.
+              --    Il grafo e' nato quando FATTURA era una cosa sola. Da quando la natura
+              --    esiste (config.nature_doc_fiscale) due nodi FATTURA della stessa commessa
+              --    — la fattura e la nota di credito che la rettifica — sono INDISTINGUIBILI
+              --    a video: stesso tipo, stesso stato, e `codice` NULL finche' non sono
+              --    numerati. Chi guarda i «Passaggi» vede due volte «Fattura · EMESSA».
+              --    ⚠️ La natura NON e' il tipo documento: il tipo dice da quale tabella
+              --    viene il nodo, la natura che cosa e' fiscalmente. Sono due assi, e il
+              --    secondo esiste solo per le fatture: per tutti gli altri nodi qui e' NULL,
+              --    ed e' corretto che lo sia.
+              --    Nomi allineati a quelli che il backend gia' usa altrove
+              --    (natura_doc_codice / natura_doc_descrizione, da codice_interno):
+              --    un vocabolario solo fra DB e applicazione.
+              SELECT s.id AS tipo_id, (p.uid)::text AS uid, p.numero AS codice,
+                     st.codice_interno AS stato_codice_interno,
+                     st.codice          AS stato_codice,
+                     st.descrizione     AS stato_descrizione,
+                     st.fase, st.is_abortito,
+                     1::smallint AS pipeline_rank,
+                     NULL::varchar AS natura_doc_codice,
+                     NULL::varchar AS natura_doc_descrizione
+                FROM vendite.preventivi p
+                JOIN config.sorgenti s ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_preventivi st ON st.id = p.stato_doc_preventivo_id
+              UNION ALL
+              SELECT s.id, (oc.uid)::text, oc.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint, NULL::varchar, NULL::varchar
+                FROM vendite.offerte_commerciali oc
+                JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_offerte st ON st.id = oc.stato_doc_offerta_id
+              UNION ALL
+              SELECT s.id, (o.id)::text, o.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar
+                FROM vendite.ordini o
+                JOIN config.sorgenti s ON s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ordini st ON st.id = o.stato_doc_ordine_id
+              UNION ALL
+              SELECT s.id, (c.id)::text, c.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar
+                FROM vendite.contratti c
+                JOIN config.sorgenti s ON s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_contratti st ON st.id = c.stato_doc_contratto_id
+              UNION ALL
+              SELECT s.id, (d.id)::text, d.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     3::smallint, NULL::varchar, NULL::varchar
+                FROM vendite.ddt d
+                JOIN config.sorgenti s ON s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ddt st ON st.id = d.stato_doc_ddt_id
+              UNION ALL
+              -- ⭐ L'UNICO ramo che valorizza la natura: qui vive la distinzione fra una
+              --    fattura e una nota di credito. LEFT JOIN e non JOIN: `natura_doc_id` e'
+              --    nullable e una fattura storica puo' non averla — con il JOIN quel
+              --    documento sparirebbe dal grafo, che e' molto peggio di una natura vuota.
+              SELECT s.id, (f.id)::text, (f.numero)::text,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     5::smallint, nd.codice_interno, nd.descrizione
+                FROM vendite.fatture f
+                JOIN config.sorgenti s ON s.codice_interno = 'FATTURA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_fiscale st ON st.id = f.stato_doc_fiscale_id
+                LEFT JOIN config.nature_doc_fiscale nd ON nd.id = f.natura_doc_id
+              UNION ALL
+              SELECT s.id, (cm.id)::text, cm.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     4::smallint, NULL::varchar, NULL::varchar
+                FROM vendite.commesse cm
+                JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
+                LEFT JOIN vendite.stati_commessa st ON st.id = cm.stato_commessa_id
+              UNION ALL
+              SELECT s.id, (r.id)::text, r.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     0::smallint, NULL::varchar, NULL::varchar
+                FROM vendite.resi r
+                JOIN config.sorgenti s ON s.codice_interno = 'RESO_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_reso st ON st.id = r.stato_doc_reso_id;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_nodi IS
+                  'Lineage documenti vendite: dimensione nodo condivisa (una riga per '
+                  'documento nodo, chiave polimorfa tipo_id+uid::text per key_selector, '
+                  'stato/fase/is_abortito normalizzati, pipeline_rank per il tie-break '
+                  'frontiera). Base di vw_documento_lineage_archi, vw_documento_lineage e '
+                  'fn_documento_lineage. security_invoker=on. '
+                  '⭐ rev 2026-08-20: il nodo porta anche natura_doc_codice/natura_doc_descrizione '
+                  '(da config.nature_doc_fiscale.codice_interno/descrizione). Serve perche'' il grafo '
+                  'e'' nato quando FATTURA era una cosa sola: due nodi FATTURA della stessa commessa — '
+                  'la fattura e la nota di credito che la rettifica — erano indistinguibili, stesso tipo '
+                  'e stesso stato, con `codice` NULL finche'' non numerati. La natura e'' un ASSE DIVERSO '
+                  'dal tipo documento (il tipo dice da quale tabella viene il nodo, la natura che cosa e'' '
+                  'fiscalmente) ed esiste solo per le fatture: negli altri sette rami e'' NULL, ed e'' '
+                  'corretto. LEFT JOIN sulla natura perche'' natura_doc_id e'' nullable: con un JOIN una '
+                  'fattura senza natura sparirebbe dal grafo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino non automatizzato: si riapplica 20260714-08.
+              -- ⚠️ Ma non da solo: le due viste a valle leggono le colonne nuove.
+              SELECT 1;

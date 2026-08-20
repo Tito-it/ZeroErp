@@ -9,7 +9,7 @@ CREATE FUNCTION fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione t
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione text DEFAULT 'avanti'::text)
- RETURNS TABLE(livello integer, ordine integer, arco text, ruolo character varying, from_tipo_id bigint, from_uid text, from_codice text, to_tipo_id bigint, to_uid text, to_codice text, to_stato_codice_interno character varying, to_fase character varying, to_is_abortito boolean, is_ramo_inverso boolean)
+ RETURNS TABLE(livello integer, ordine integer, arco text, ruolo character varying, from_tipo_id bigint, from_uid text, from_codice text, to_tipo_id bigint, to_uid text, to_codice text, to_stato_codice_interno character varying, to_fase character varying, to_is_abortito boolean, is_ramo_inverso boolean, from_natura_doc_codice character varying, to_natura_doc_codice character varying)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -47,7 +47,8 @@ BEGIN
         SELECT a.from_tipo_id, a.from_uid, a.from_codice,
                a.to_tipo_id, a.to_uid, a.to_codice,
                a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
-               a.ruolo, a.arco,
+               a.ruolo, a.arco, a.is_ramo_inverso,
+               a.from_natura_doc_codice, a.to_natura_doc_codice,
                1 AS livello,
                CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END AS cur_tipo,
                CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END AS cur_uid,
@@ -65,7 +66,8 @@ BEGIN
         SELECT a.from_tipo_id, a.from_uid, a.from_codice,
                a.to_tipo_id, a.to_uid, a.to_codice,
                a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
-               a.ruolo, a.arco,
+               a.ruolo, a.arco, a.is_ramo_inverso,
+               a.from_natura_doc_codice, a.to_natura_doc_codice,
                t.livello + 1,
                CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END,
                CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END,
@@ -97,14 +99,22 @@ BEGIN
            t.from_tipo_id, t.from_uid::text, t.from_codice::text,
            t.to_tipo_id, t.to_uid::text, t.to_codice::text,
            t.to_stato_codice_interno::varchar, t.to_fase::varchar, t.to_is_abortito,
-           (t.arco = 'R') AS is_ramo_inverso
+           -- ⭐ rev 2026-08-20: NON si ricalcola piu' `t.arco = 'R'`. La
+           --    proprieta' arriva da vw_documento_lineage_archi, che e' l'unica
+           --    sede dell'elenco dei rami di ritorno. Con l'arrivo dell'arco N
+           --    (nota di credito) quella lettera era scritta a mano in tre
+           --    posti: qui e nei due WHERE della summary. Il posto dimenticato
+           --    non avrebbe dato nessun errore — solo un ramo di ritorno reso
+           --    come avanzamento del flusso.
+           t.is_ramo_inverso,
+           t.from_natura_doc_codice::varchar, t.to_natura_doc_codice::varchar
       FROM trav t
      ORDER BY ordine;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione text)
-IS 'Lineage documenti vendite (Step 4): traversal ricorsivo del grafo genealogia (vw_documento_lineage_archi) dal nodo (tipo,uid) in direzione avanti|indietro, per il pannello Passaggi. Ritorna gli archi con livello/ordine + stato/fase target; is_ramo_inverso marca l''arco R (DDT->Reso). SECURITY INVOKER (RLS emittente del chiamante).';
+IS 'Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice/to_natura_doc_codice: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet.';
 ```
 
 ---

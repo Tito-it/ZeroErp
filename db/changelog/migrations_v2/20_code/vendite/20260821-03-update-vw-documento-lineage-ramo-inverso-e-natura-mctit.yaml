@@ -1,0 +1,262 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SUMMARY LEGGE LA PROPRIETA', NON LA LETTERA (3 di 4).
+#
+# -- COSA CAMBIA, E COSA NO -------------------------------------------
+#   ⛔ Il risultato non cambia di una riga, ed e' MISURATO: applicando le
+#   quattro modifiche in transazione e confrontando la summary prima/dopo su
+#   tutti i nodi, le righe cambiate sono ZERO. La frontiera, i discendenti,
+#   is_transitato e n_sorgenti restano identici, perche' l'arco N e' un ramo di
+#   ritorno ed e' escluso dal grafo forward esattamente come R.
+#
+#   Cambia COME lo si esclude: i due WHERE non nominano piu' la lettera, ma
+#   leggono vw_documento_lineage_archi.is_ramo_inverso. E' la ragione per cui
+#   il risultato non cambia oggi e continuera' a non cambiare quando arrivera'
+#   il prossimo ramo di ritorno.
+#
+# -- ⚠️ QUANTO SAREBBE COSTATO SBAGLIARE -------------------------------
+#   Se uno dei due filtri fosse rimasto `arco <> 'R'`, la nota di credito
+#   sarebbe diventata un discendente forward della fattura che rettifica. La
+#   regola della frontiera sceglie l'ATTIVO piu' profondo: la nota avrebbe
+#   vinto sulla fattura stessa, e ogni riga di lista avrebbe cambiato la
+#   propria frontiera. Senza errori, senza log, solo un valore diverso.
+#
+# -- LA NATURA NELLA SUMMARY ------------------------------------------
+#   Si aggiungono anche natura_doc_codice/natura_doc_descrizione del nodo, cosi'
+#   una lista di fatture smette di scrivere «Fattura» sopra una nota di credito:
+#   e' la stessa cecita' dei «Passaggi», nell'altra superficie.
+#   ⚠️ NON si aggiunge una `frontiera_natura_doc_codice`, e non e' una
+#   dimenticanza: l'arco N e' escluso dal grafo forward, quindi una nota di
+#   credito non puo' MAI essere la frontiera di nessuno e quella colonna
+#   varrebbe sempre NULL. Una colonna che vale sempre NULL non e' un dato, e'
+#   qualcosa che qualcuno prima o poi prova a leggere.
+#
+# -- IL CANTIERE ------------------------------------------------------
+#   Messaggio del team BE dal collaudo, prova 6 (2026-08-20): la prima nota di
+#   credito esiste — fattura 15353, natura NOTA_CREDITO, tre righe che
+#   rettificano le righe 461/465/468 della fattura 835 — e il documento e'
+#   corretto. Restano due cose, e le due si toccano nel grafo di genealogia.
+#   Cantiere: brief-design-note-credito-resi §44.
+#
+# -- ⚠️ UNA MISURA DEL BE NON SI RIPRODUCE ----------------------------
+#   Il messaggio dice «FATTURA 835 · indietro: 0 archi · avanti: 0 archi».
+#   Rimisurato il 2026-08-21 in contesto operatore: da 835 indietro escono
+#   SETTE archi (G verso tre commesse, E, A) e dalla NC 15353 ne escono due.
+#   Il grafo attraversa gia' le fatture: quello che manca davvero e' l'arco
+#   FRA le due fatture, che e' un'altra cosa e la richiesta la nomina bene.
+# ------------------------------------------------------------
+
+# Origine: testo dello YAML 20260714-10, verificato con round-trip.
+# Dipendenze: 20260821-02 (is_ramo_inverso) e 20260821-01 (le nature).
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-03-update-vw-documento-lineage-ramo-inverso-e-natura-mctit.yaml
+
+  - changeSet:
+      id: 20260821-03-update-vw-documento-lineage-ramo-inverso-e-natura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        I due filtri del grafo forward leggono is_ramo_inverso invece di nominare la lettera 'R',
+        e il nodo espone la natura. Il risultato e' identico - misurato: zero righe cambiate su
+        tutti i nodi - ma il prossimo ramo di ritorno non avra' un terzo posto da ricordare.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name   = 'vw_documento_lineage_archi'
+                     AND column_name  = 'is_ramo_inverso'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage
+              WITH (security_invoker=on) AS
+              WITH RECURSIVE
+              fwd AS (
+                  -- grafo forward (esclude i rami di RITORNO: R reso, N nota di credito)
+                  -- ⭐ rev 2026-08-20: si filtra sulla PROPRIETA', non sulla lettera. Il
+                  --   filtro `arco <> 'R'` era scritto qui, venti righe piu' sotto, e una
+                  --   terza volta in fn_documento_lineage: con l'arrivo dell'arco N un solo
+                  --   posto dimenticato avrebbe fatto comparire la nota di credito come
+                  --   discendente forward della fattura che rettifica, cambiando la
+                  --   FRONTIERA di ogni riga di lista — e senza errori, solo con un valore
+                  --   diverso. Ora l'elenco dei rami di ritorno vive in
+                  --   vw_documento_lineage_archi.is_ramo_inverso e qui si legge.
+                  SELECT from_tipo_id, from_uid, to_tipo_id, to_uid,
+                         to_codice, to_stato_codice_interno, to_fase, to_is_abortito, ruolo
+                    FROM vendite.vw_documento_lineage_archi
+                   WHERE NOT is_ramo_inverso
+              ),
+              walk AS (
+                  -- livello 1: discendenti diretti di ogni nodo
+                  SELECT f.from_tipo_id AS o_tipo, f.from_uid AS o_uid,
+                         f.to_tipo_id   AS d_tipo, f.to_uid   AS d_uid,
+                         f.to_codice AS d_codice, f.to_stato_codice_interno AS d_stato,
+                         f.to_fase AS d_fase, f.to_is_abortito AS d_abortito,
+                         1 AS lvl,
+                         ARRAY[(f.from_tipo_id::text || ':' || f.from_uid),
+                               (f.to_tipo_id::text   || ':' || f.to_uid)] AS visited
+                    FROM fwd f
+                  UNION ALL
+                  SELECT w.o_tipo, w.o_uid,
+                         f.to_tipo_id, f.to_uid, f.to_codice, f.to_stato_codice_interno,
+                         f.to_fase, f.to_is_abortito,
+                         w.lvl + 1,
+                         w.visited || (f.to_tipo_id::text || ':' || f.to_uid)
+                    FROM walk w
+                    JOIN fwd f ON f.from_tipo_id = w.d_tipo AND f.from_uid = w.d_uid
+                   WHERE w.lvl < 10
+                     AND NOT ((f.to_tipo_id::text || ':' || f.to_uid) = ANY (w.visited))
+              ),
+              cand AS (
+                  -- candidati frontiera: il nodo stesso (lvl 0) + i discendenti forward
+                  SELECT n.tipo_id AS o_tipo, n.uid AS o_uid,
+                         n.tipo_id AS d_tipo, n.uid AS d_uid, n.codice AS d_codice,
+                         n.stato_codice_interno AS d_stato, n.fase AS d_fase,
+                         n.is_abortito AS d_abortito, 0 AS lvl
+                    FROM vendite.vw_documento_lineage_nodi n
+                  UNION ALL
+                  SELECT o_tipo, o_uid, d_tipo, d_uid, d_codice, d_stato, d_fase, d_abortito, lvl
+                    FROM walk
+              ),
+              frontiera AS (
+                  -- Scelta della frontiera per ogni nodo origine, in ordine:
+                  --  1. prima gli ATTIVI: fase<>CHIUSO AND NOT is_abortito
+                  --  2. poi il piu' PROFONDO: lvl DESC
+                  --  3. a parita' di livello, il piu' A VALLE nel flusso via
+                  --     pipeline_rank DESC [fattura>commessa>ddt>ordine=contratto>preventivo=offerta]
+                  --  4. tie-break finale deterministico: tipo, uid
+                  SELECT c.o_tipo, c.o_uid, c.d_tipo, c.d_uid, c.d_codice, c.d_stato, c.d_fase,
+                         ROW_NUMBER() OVER (
+                             PARTITION BY c.o_tipo, c.o_uid
+                             ORDER BY (CASE WHEN c.d_fase <> 'CHIUSO'
+                                             AND NOT COALESCE(c.d_abortito, false)
+                                            THEN 0 ELSE 1 END),
+                                      c.lvl DESC,
+                                      COALESCE(nd.pipeline_rank, 0) DESC,
+                                      c.d_tipo, c.d_uid
+                         ) AS rn
+                    FROM cand c
+                    LEFT JOIN vendite.vw_documento_lineage_nodi nd
+                           ON nd.tipo_id = c.d_tipo AND nd.uid = c.d_uid
+              ),
+              disc AS (
+                  -- conteggi discendenti diretti (lvl 1)
+                  SELECT o_tipo, o_uid,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid)) AS n_diretti,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid))
+                             FILTER (WHERE d_fase <> 'CHIUSO' AND NOT COALESCE(d_abortito, false))
+                             AS n_attivi
+                    FROM walk
+                   WHERE lvl = 1
+                   GROUP BY o_tipo, o_uid
+              ),
+              inc AS (
+                  -- archi forward ENTRANTI nel nodo (lato inverso; per lista commesse)
+                  SELECT to_tipo_id AS tipo, to_uid AS uid,
+                         COUNT(*) AS n_sorgenti,
+                         (array_agg(from_tipo_id ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, from_tipo_id, from_uid))[1] AS root_tipo,
+                         (array_agg(from_uid     ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, from_tipo_id, from_uid))[1] AS root_uid,
+                         (array_agg(from_codice  ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, from_tipo_id, from_uid))[1] AS root_codice
+                    FROM vendite.vw_documento_lineage_archi
+                   WHERE NOT is_ramo_inverso   -- stessa regola del grafo forward, stessa sede
+                   GROUP BY to_tipo_id, to_uid
+              ),
+              prat AS (
+                  -- pratica 1:1 difensiva: prima per id + conteggio
+                  SELECT ps.sorgente_tipo_id AS tipo, ps.sorgente_uid AS uid,
+                         COUNT(DISTINCT ps.pratica_id) AS n_pratiche,
+                         (array_agg(p.id     ORDER BY p.id))[1] AS pratica_id,
+                         (array_agg(p.codice ORDER BY p.id))[1] AS pratica_numero
+                    FROM pratiche.pratiche_sorgenti ps
+                    JOIN pratiche.pratiche p ON p.id = ps.pratica_id
+                   GROUP BY ps.sorgente_tipo_id, ps.sorgente_uid
+              )
+              SELECT
+                  n.tipo_id,
+                  n.uid,
+                  n.codice,
+                  n.stato_codice_interno,
+                  n.stato_codice,
+                  n.stato_descrizione,
+                  n.fase,
+                  n.is_abortito,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  COALESCE(pr.n_pratiche, 0)          AS n_pratiche,
+                  fr.d_tipo                           AS frontiera_tipo_id,
+                  fr.d_uid                            AS frontiera_uid,
+                  fr.d_codice                         AS frontiera_codice,
+                  fr.d_stato                          AS frontiera_stato_codice_interno,
+                  fr.d_fase                           AS frontiera_fase,
+                  COALESCE(dc.n_diretti, 0)           AS n_discendenti_diretti,
+                  COALESCE(dc.n_attivi, 0)            AS n_discendenti_attivi,
+                  (COALESCE(dc.n_diretti, 0) > 0)     AS is_transitato,
+                  COALESCE(ic.n_sorgenti, 0)          AS n_sorgenti,
+                  ic.root_tipo                        AS root_tipo_id,
+                  ic.root_uid                         AS root_uid,
+                  ic.root_codice                      AS root_codice,
+                  -- ⭐ rev 2026-08-20: la natura del nodo, per le liste. Senza, una lista di
+                  --   fatture scrive «Fattura» anche sopra una nota di credito — che e' la
+                  --   stessa cecita' per cui, nei «Passaggi», due documenti della stessa
+                  --   commessa erano indistinguibili.
+                  -- ⚠️ NON si espone una `frontiera_natura_doc_codice`, e non e' una
+                  --   dimenticanza: l'arco N e' un ramo di RITORNO ed e' escluso dal grafo
+                  --   forward, quindi una nota di credito non puo' MAI essere la frontiera
+                  --   di nessuno. Una colonna che vale sempre NULL non e' un dato, e'
+                  --   qualcosa che qualcuno prima o poi prova a leggere.
+                  n.natura_doc_codice,
+                  n.natura_doc_descrizione
+                FROM vendite.vw_documento_lineage_nodi n
+                LEFT JOIN prat pr      ON pr.tipo   = n.tipo_id AND pr.uid   = n.uid
+                LEFT JOIN frontiera fr ON fr.o_tipo = n.tipo_id AND fr.o_uid = n.uid AND fr.rn = 1
+                LEFT JOIN disc dc      ON dc.o_tipo = n.tipo_id AND dc.o_uid = n.uid
+                LEFT JOIN inc ic       ON ic.tipo   = n.tipo_id AND ic.uid   = n.uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage IS
+                  'Lineage documenti vendite (Step 3): summary per nodo per arricchire le '
+                  'liste. Espone pratica (1:1 difensiva + n_pratiche), fase propria, '
+                  'frontiera forward (piu'' a valle attivo, esclude i rami di RITORNO), discendenti '
+                  'diretti/attivi, is_transitato, lato inverso (n_sorgenti + ROOT), natura del documento. '
+                  'security_invoker=on. '
+                  '⭐ rev 2026-08-20 — DUE COSE. (1) i due filtri del grafo forward non nominano piu'' la '
+                  'lettera R ma leggono vw_documento_lineage_archi.is_ramo_inverso: con l''arrivo '
+                  'dell''arco N (fattura rettificata -> nota di credito) la lettera era scritta a mano in '
+                  'TRE posti, e il terzo dimenticato non avrebbe dato nessun errore — solo la nota di '
+                  'credito come discendente forward, cioe'' una FRONTIERA diversa su ogni riga di lista. '
+                  '(2) espone natura_doc_codice/natura_doc_descrizione del nodo, cosi'' una lista di '
+                  'fatture smette di scrivere «Fattura» sopra una nota di credito. '
+                  '⚠️ NON esiste una frontiera_natura_doc_codice, di proposito: l''arco N e'' un ramo di '
+                  'ritorno ed e'' escluso dal grafo forward, quindi una nota di credito non puo'' mai '
+                  'essere la frontiera di nessuno e quella colonna varrebbe sempre NULL.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino non automatizzato: si riapplica 20260714-10.
+              -- ⚠️ Tornare indietro rimette il filtro sulla LETTERA 'R', che NON
+              --    esclude l'arco N: la nota di credito diventerebbe la frontiera
+              --    della fattura che rettifica, su ogni riga di lista.
+              SELECT 1;
