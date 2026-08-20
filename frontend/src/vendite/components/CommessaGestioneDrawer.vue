@@ -24,6 +24,10 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -60,6 +64,7 @@ import {
   annullaRigaCommessa,
   approvaCommessaAttivita,
   cambiaStatoCommessa,
+  exportCommessaAttivita,
   getCommessaStato,
   listCommessaAttivita,
   riallineaPrezzoAttivita,
@@ -247,6 +252,29 @@ const {
 // Ref alla lista configurabile (per il modale «personalizza», raggiungibile
 // dal drawer tramite l'azione dedicata sotto).
 const listaRef = ref(null)
+
+// Azioni di lista (personalizza colonne + esporta): lo stesso BB delle 37 viste
+// standard e dei tre cruscotti, cosi' questa lista non puo' divergere da loro.
+// ⚠️ `useListaAzioni` e non `useListaConfigurabilePage`: quest'ultimo e'
+// costruito su `useSearchTable` e pretende uno store con la forma «ricerca
+// testuale + sort + limit». Qui le righe sono pilotate dal drawer (commessa,
+// filtri di stato e movimento, paginazione propria), esattamente il caso per
+// cui il BB e' stato estratto.
+// ⭐ L'export riceve gli STESSI filtri e lo STESSO ordinamento della lista a
+// video: il file E' la lista, non una seconda query che le somiglia.
+const {
+  dirty, exportDialogVisible, exportLoading, onExportConfirm, azioniLista,
+} = useListaAzioni(() => listaRef.value, {
+  exportFn: (params) => exportCommessaAttivita(props.commessaId, params),
+  getExportParams: (formato) => ({
+    formato,
+    ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
+    ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),
+    ...(righeSortBy.value
+      ? { order_by: righeSortBy.value, order_dir: righeSortDir.value === -1 ? 'desc' : 'asc' }
+      : {}),
+  }),
+})
 
 // Prop paginator per il BB: qui non c'e' useSearchTable (il drawer non e' una
 // pagina lista), quindi la compone il drawer con lo stato che gia' possiede.
@@ -509,7 +537,20 @@ function buildRowActions(row) {
   // fattura_riga_id valorizzato, esposta dalla lista (changeset 20260724-07):
   // specchio esatto del guard, non `stato_emissione` (che resta EMESSA anche
   // dopo un reset-lotto che ha reso il prezzo di nuovo modificabile).
-  const prezzoOk = canPrezzo.value && !row.fatturata
+  // ⭐ Il prezzo di una RETTIFICA e' immutabile: e' copiato dalla riga di fattura
+  // che rettifica, e cambiarlo farebbe accreditare un importo diverso da quello
+  // fatturato. Le tre azioni prezzo non si mostrano proprio.
+  // ⚠️ `visible: false` e non `disabled`, per la regola di frontend-standards:
+  // il permesso NASCONDE, lo stato DISABILITA col motivo — e questa non e' ne'
+  // l'uno ne' l'altro. E' l'IDENTITA' della riga, che non cambiera' mai: una
+  // voce grigia per sempre e' una promessa che non si mantiene, ed e' lo stesso
+  // criterio del `sorgente_tipo_id === null` qui sotto.
+  // ⛔ Il gate NON sostituisce le guardie vere: il presidio BE
+  // (`_assert_prezzo_modificabile`) e soprattutto il trigger
+  // `trgfn_commesse_attivita_guard_prezzo_rettifica` sulla tabella restano dove
+  // sono. Qui si smette solo di proporre una porta chiusa.
+  const eRettifica = row.tipo_movimento === TIPO_MOVIMENTO_ATTIVITA.RETTIFICA
+  const prezzoOk = canPrezzo.value && !row.fatturata && !eRettifica
   return [
     {
       key: 'riallinea',
@@ -555,8 +596,16 @@ function buildRowActions(row) {
       label: t('vendite.commesse.azione_annulla_riga'),
       icon: 'pi pi-ban',
       severity: 'danger',
+      // ⚠️ `sourceless` NON basta piu' a dire «manuale»: dal cantiere note di
+      // credito anche una RETTIFICA nasce senza sorgente (`fn_accredita_riga_
+      // reso` la scrive con la coppia `sorgente_*` a NULL). Serve anche la
+      // NATURA — specchio del perimetro della madre, changeSet 20260820-10,
+      // che rifiuta con E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE.
+      // ⭐ Una rettifica si disfa con «Annulla l'accredito» sulla riga del reso:
+      // quella e' la strada, e questa azione non deve nemmeno somigliarle.
       visible: canVoceManuale.value
         && row.sorgente_tipo_id === null
+        && row.tipo_movimento === TIPO_MOVIMENTO_ATTIVITA.ONERE
         && row.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
       command: () => apriAnnullaRiga(row),
     },
@@ -683,7 +732,7 @@ const drawerActions = computed(() => [
   <Drawer
     :visible="visible"
     position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
+    :style="{ width: DRAWER_WIDTH.XLARGE }"
     :dismissable="true"
     @update:visible="(v) => { if (!v) onClose() }"
     @after-show="onAfterShow"
@@ -773,6 +822,16 @@ const drawerActions = computed(() => [
             style="min-width: 12rem;"
             @change="onFiltroStatoChange"
           />
+          <!-- Personalizza colonne + Esporta: le stesse due azioni di ogni
+               <ListaConfigurabile> dell'applicazione, dallo stesso BB. Il tag
+               di stato dice quando la configurazione a video si discosta dal
+               preset — senza, l'operatore non sa di star guardando una lista
+               personalizzata. -->
+          <PageActionsBar :actions="azioniLista">
+            <template #suffix>
+              <ListaConfigStatusTag :dirty="dirty" />
+            </template>
+          </PageActionsBar>
           <!-- Difetto D1 (§6-bis, corretto 2026-07-27): la visibilita' era sul
                SOLO permesso, quindi su una commessa gia' PRONTA_FATTURAZIONE i
                due verbi restavano a video disabilitati — rumore che suggerisce
@@ -1032,6 +1091,14 @@ const drawerActions = computed(() => [
       :doc-id="docDrawerId"
       @update:visible="onDocDrawerVisible" />
   </Drawer>
+
+  <!-- Scelta formato export (CSV/XLSX): il file copia la lista a video —
+       filtri e ordinamento compresi — non una seconda query che le somiglia. -->
+  <ExportDialog
+    v-model:visible="exportDialogVisible"
+    :loading="exportLoading"
+    @export="onExportConfirm"
+  />
 </template>
 
 <style scoped>

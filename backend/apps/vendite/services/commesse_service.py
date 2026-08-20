@@ -30,6 +30,7 @@ from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.commesse_repository import (
     ATTIVITA_SORT_COLUMNS,
+    TIPO_MOVIMENTO_RETTIFICA,
     TIPO_MOVIMENTO_VALUES,
     CommesseRepository,
 )
@@ -833,11 +834,19 @@ def fn_list_commessa_attivita(
     order_by: str | None = None,
     order_dir: str | None = None,
     tipo_movimento: str | None = None,
+    max_rows: int | None = None,
 ) -> dict:
-    """Entrypoint servizio Python: lista attività commessa (paginata)."""
+    """Entrypoint servizio Python: lista attività commessa (paginata).
+
+    `max_rows` valorizzato = percorso EXPORT: salta la paginazione (e quindi il
+    tetto di pagina qui sotto), fino al tetto della fn DB.
+    """
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_list_commessa_attivita")
+    # ⚠️ Il tetto di PAGINA vale solo sul percorso paginato: l'export chiede di
+    # proposito piu' righe di una pagina, e la sua misura la governa
+    # `build_export_response` col `count` esatto.
     ErrorManager.require(
-        1 <= int(limit) <= 200,
+        max_rows is not None or 1 <= int(limit) <= 200,
         code="E_COMMESSA_VALIDATION",
         message="Parametri non validi.",
         detail="limit deve essere compreso tra 1 e 200",
@@ -889,6 +898,7 @@ def fn_list_commessa_attivita(
         order_by=order_by,
         order_dir=order_dir or "asc",
         tipo_movimento=tipo_movimento,
+        max_rows=max_rows,
     )
     return {"commessa_id": commessa_id, **data}
 
@@ -952,6 +962,39 @@ def _assert_commessa_modificabile(
 
 
 # Scopo: Helper — guard riga non ancora fatturata.
+# Scopo: il prezzo di una RETTIFICA non si tocca — non e' suo. E' copiato dalla
+#        riga di fattura che rettifica, e cambiarlo farebbe accreditare un
+#        importo diverso da quello fatturato: una nota di credito che non
+#        corrisponde piu' al documento che dichiara di correggere.
+# ⚠️ Questo e' un PRESIDIO, non il blocco. Il blocco vero e'
+#        `vendite.trgfn_commesse_attivita_guard_prezzo_rettifica` sulla tabella,
+#        e deve restare li': il prezzo si scrive con una UPDATE diretta
+#        (`update_attivita_prezzo`), quindi un controllo solo qui sarebbe una
+#        convenzione che chiunque scriva quella colonna per un'altra strada
+#        aggirerebbe senza accorgersene.
+# ⭐ Serve a dire la stessa cosa PRIMA e MEGLIO: un 400 parlante dal posto
+#        giusto invece del 409 che risalirebbe dal trigger a UPDATE gia' tentata.
+def _assert_prezzo_modificabile(
+    att: dict[str, Any],
+    *,
+    function_name: str,
+) -> None:
+    tipo_movimento = str(att.get("tipo_movimento") or "")
+    ErrorManager.require(
+        tipo_movimento != TIPO_MOVIMENTO_RETTIFICA,
+        code="E_COMMESSA_ATTIVITA_PREZZO_RETTIFICA_IMMUTABILE",
+        message="Il prezzo di una rettifica di nota di credito non si modifica.",
+        detail=(
+            "La riga e` una RETTIFICA: il prezzo e` copiato dalla riga di fattura "
+            "che rettifica e deve restare uguale a quella. Per disfare "
+            "l`accredito: «Annulla l`accredito» sulla riga del reso."
+        ),
+        context={"attivita_id": att.get("id"), "tipo_movimento": tipo_movimento},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+
 def _assert_non_fatturata(
     att: dict[str, Any],
     *,
@@ -1053,6 +1096,7 @@ def fn_riallinea_prezzo(
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
     _assert_commessa_modificabile(att, function_name=function_name)
     _assert_non_fatturata(att, function_name=function_name)
+    _assert_prezzo_modificabile(att, function_name=function_name)
 
     ErrorManager.require(
         not att.get("prezzo_bloccato"),
@@ -1138,6 +1182,7 @@ def fn_variazione_prezzo_eccezionale(
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
     _assert_commessa_modificabile(att, function_name=function_name)
     _assert_non_fatturata(att, function_name=function_name)
+    _assert_prezzo_modificabile(att, function_name=function_name)
 
     ErrorManager.require(
         not att.get("prezzo_bloccato"),
@@ -1197,6 +1242,7 @@ def fn_sblocca_prezzo(
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
     _assert_commessa_modificabile(att, function_name=function_name)
     _assert_non_fatturata(att, function_name=function_name)
+    _assert_prezzo_modificabile(att, function_name=function_name)
 
     ErrorManager.require(
         att.get("prezzo_bloccato") is True,
@@ -1272,6 +1318,14 @@ _STATO_EMISSIONE_NON_EMESSA = "NON_EMESSA"
 _ANNULLA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("E_RIGA_COMMESSA_GIA_ANNULLATA", ("E_RIGA_COMMESSA_GIA_ANNULLATA",)),
     ("E_RIGA_COMMESSA_NON_MANUALE", ("E_RIGA_COMMESSA_NON_MANUALE",)),
+    # Guard di NATURA della madre (changeSet 20260820-10): la riga e' sourceless
+    # ma e' una RETTIFICA, quindi `_assert_annullabile` qui sopra la lascia
+    # passare — sourceless per lui vuol dire manuale — e a rifiutarla e' il DB.
+    # ⚠️ Questa whitelist e' CHIUSA: un codice che non c'e' non fallisce, ricade
+    # su `E_COMMESSA_VALIDATION` (classe DATO_ERRATO, 400). Senza questa riga
+    # l'operatore vedrebbe un errore di VALIDAZIONE al posto di un conflitto di
+    # stato (409) — messaggio giusto, reazione sbagliata, e in silenzio.
+    ("E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE", ("E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE",)),
     ("E_RIGA_COMMESSA_GIA_EMESSA", ("E_RIGA_COMMESSA_GIA_EMESSA",)),
     ("E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO", ("E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO",)),
 )

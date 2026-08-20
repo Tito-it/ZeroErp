@@ -5,7 +5,9 @@ export const DRAWER_WIDTH = {
   COMPLEX: '800px',   // pratiche, contratti
   WIDE: '960px',      // ricerca universale, liste con dettaglio
   WIDE_PLUS: '1100px', // master-detail con sub-tabella expansion (righe + componenti BoM)
-  XLARGE: '1360px'    // matrici parametri-per-entita' (utility, slot/override)
+  XLARGE: '1360px'    // matrici parametri-per-entita' (utility, slot/override) e
+                      // liste a molte colonne dentro un drawer (attivita' di
+                      // commessa: 11 colonne + selezione + azioni)
 }
 
 // Larghezze Dialog modali "azione" (conferma, form one-shot). Scala usata

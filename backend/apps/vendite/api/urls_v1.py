@@ -4,6 +4,7 @@ from apps.vendite.api.views import (
     ApiCommessaAttivita,
     ApiCommessaAttivitaAnnulla,
     ApiCommessaAttivitaApprova,
+    ApiCommessaAttivitaExport,
     ApiCommessaAttivitaRiallineaPrezzo,
     ApiCommessaAttivitaSbloccaPrezzo,
     ApiCommessaAttivitaVariazionePrezzoEccezionale,
@@ -327,6 +328,16 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/",
         ApiCommessaAttivita.as_view(),
         name="vendite-commessa-attivita",
+    ),
+    # Export della STESSA lista (DEF-1): colonne, ordine e permessi dal catalogo
+    # `vendite.commesse_attivita`, non da un elenco proprio che divergerebbe.
+    # ⚠️ PRIMA della rotta `<int:att_id>` sarebbe indifferente (`export` non e'
+    # un intero), ma sta qui perche' e' la gemella della lista: si leggono
+    # insieme.
+    path(
+        "commesse/<int:commessa_id>/attivita/export/",
+        ApiCommessaAttivitaExport.as_view(),
+        name="vendite-commessa-attivita-export",
     ),
     # Porta oneri: POST crea la riga di valore sulla sotto-risorsa `oneri`
     # (nessun verbo nel path — il metodo HTTP dice "crea", api.md §Grammatica).
