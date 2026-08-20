@@ -28,6 +28,18 @@ export const STATO_EMISSIONE_ATTIVITA = Object.freeze({
   ANNULLATA: 'ANNULLATA',
 })
 
+// Natura della riga di commessa (`commesse_attivita.tipo_movimento`): filtro
+// della lista attivita' e colonna «Movimento».
+// ⚠️ Specchio, non autorita': a enforcare e' il CHECK
+// `chk_commesse_attivita_tipo_movimento`. Vive qui per la stessa ragione degli
+// altri enum di questo file — un typo in un literal non romperebbe niente a
+// runtime: filtrerebbe zero righe e la lista sembrerebbe semplicemente vuota.
+export const TIPO_MOVIMENTO_ATTIVITA = Object.freeze({
+  NORMALE: 'NORMALE',
+  RETTIFICA: 'RETTIFICA',
+  ONERE: 'ONERE',
+})
+
 // Stato di approvazione di una riga di commessa
 // (`vendite.commesse_attivita.stato_approvazione`). Gemello dell'asse
 // emissione qui sopra — stessa avvertenza: la mappa cromatica vive in

@@ -40,7 +40,14 @@ export function useDrawerState() {
   // l'utente su un'altra rotta, questo pannello non deve restare davanti alla
   // pagina d'arrivo. Vedi `useDrawerChiusuraGlobale` per il perche' il segnale
   // e' uno solo e non un evento per drawer.
-  registraDrawerChiudibile(close)
+  // ⚠️ Si chiude solo cio' che e' APERTO. Qui `close` non ha effetti collaterali
+  // (setta un flag), ma la regola vale per tutti i registrati: la chiusura
+  // globale scatta a ogni cambio di rotta, e un callback che fa qualcosa su un
+  // drawer gia' chiuso lo fa per sempre, a ogni navigazione. E' cosi' che il
+  // primo giro produsse `/vendite/commesse/null/stato/` (vedi useDocumentoDrawer).
+  registraDrawerChiudibile(() => {
+    if (state.visible) close()
+  })
 
   return { state, openCreate, editRow, close }
 }

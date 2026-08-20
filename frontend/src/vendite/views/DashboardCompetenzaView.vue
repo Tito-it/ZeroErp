@@ -266,6 +266,16 @@ const totaliMese = computed(() => {
 
 const nErroriMese = computed(() => meseCorrente.value?.n_errori ?? 0)
 
+// Mese del titolo di pagina. ⚠️ `Intl.DateTimeFormat(..., {month:'long'})` in
+// italiano rende «agosto» minuscolo: corretto in una frase, sbagliato in un
+// titolo. La maiuscola si mette QUI e non nel dizionario, o servirebbero dodici
+// stringhe tradotte a mano al posto di una formattazione che gia' conosce la
+// lingua dell'utente.
+const meseTitolo = computed(() => {
+  const nome = nomiMesi.value[meseIdx.value] ?? ''
+  return nome.charAt(0).toUpperCase() + nome.slice(1)
+})
+
 const stadioSelezionatoLabel = computed(() =>
   stadioSelezionato.value ? stadioLabel(stadioSelezionato.value) : ''
 )
@@ -1438,8 +1448,9 @@ onActivated(() => {
   <div class="app-page">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <h2 style="margin: 0;">{{ t('vendite.dashboard_competenza.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('vendite.dashboard_competenza.page_description') }}</small>
+        <h2 style="margin: 0;">
+          {{ t('vendite.dashboard_competenza.page_title', { mese: meseTitolo, anno }) }}
+        </h2>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -1510,24 +1521,25 @@ onActivated(() => {
           </template>
         </DashMeseStepper>
 
-        <div class="app-dash-header">
-          <h3 style="margin: 0;">
-            {{ t('vendite.dashboard_competenza.competenza_titolo', { mese: nomiMesi[meseIdx], anno }) }}
-          </h3>
-        </div>
-
         <div class="app-dash-cards">
           <!-- Copertura del mese: totali BE (fatturato = imponibile, DB-6). -->
           <div class="app-dash-card" style="cursor: default;">
             <span class="app-dash-card-title">
               {{ t('vendite.dashboard_competenza.copertura_titolo') }}
             </span>
+            <!-- ⚠️ NON «Emesso / Da emettere»: erano le STESSE PAROLE della
+                 scheda di stadio `stadio_da_emettere`, che sulla stessa
+                 schermata mostra lo stesso importo COL SEGNO (−29,50 ad
+                 agosto). Due numeri identici e opposti sotto la stessa
+                 etichetta erano la domanda senza risposta trovata in
+                 collaudo. «Coperto / Scoperto» parla della COPERTURA — che e'
+                 il titolo della card — e non di uno stadio del funnel. -->
             <DonutTransito
               :transitato="totaliMese.coperturaFatturato"
               :fermo="totaliMese.coperturaDaFatturare"
               format="currency"
-              :label-transitato="t('vendite.dashboard_competenza.emesso')"
-              :label-fermo="t('vendite.dashboard_competenza.da_emettere')"
+              :label-transitato="t('vendite.dashboard_competenza.coperto')"
+              :label-fermo="t('vendite.dashboard_competenza.scoperto')"
             />
             <!-- Le due voci del residuo, STESSA FORMA per entrambe: cambia la
                  parola e il colore, non la struttura. «Da accreditare» compare
@@ -1540,7 +1552,17 @@ onActivated(() => {
               </div>
               <div v-if="totaliMese.daAccreditare > 0" class="is-accredito">
                 <dt>{{ t('vendite.dashboard_competenza.da_accreditare') }}</dt>
-                <dd>{{ formatCurrency(totaliMese.daAccreditare) }}</dd>
+                <!-- ⚠️ Col SEGNO, e non e' un ripensamento sul §5.4. Qui il
+                     numero sta accanto a «Da addebitare», che e' di verso
+                     opposto, e soprattutto sulla stessa schermata la scheda di
+                     stadio DA_EMETTERE espone lo stesso importo come −29,50
+                     (`valore_display`, il netto). Due numeri uguali con segno
+                     diverso, a un palmo l'uno dall'altro, sono una domanda
+                     senza risposta: qui il verso VA mostrato.
+                     ⭐ Il valore assoluto resta dov'e' indispensabile — nel
+                     RAPPORTO del donut, dove i due versi non devono
+                     compensarsi. Geometria in assoluto, denaro col segno. -->
+                <dd>{{ formatCurrency(-totaliMese.daAccreditare) }}</dd>
               </div>
             </dl>
           </div>
