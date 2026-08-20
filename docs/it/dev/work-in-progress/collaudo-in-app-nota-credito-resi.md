@@ -41,11 +41,11 @@
 
 Misurato il 2026-08-19 (contesto operatore — la vista ha la RLS):
 
-| riga di reso | reso | DDT | ordine | dovuto | etichetta | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| **24** | RESO0000017 | DDT0000062 | 240 | 1,00 | DOVUTA | 🔬 **articolo composito**: produce **3 rettifiche**, una per componente |
-| **5797** | RESO0005122 | DDT0010839 | 19151 | 5,00 | DOVUTA | articolo semplice, 1 rettifica |
-| **5799** | RESO0005123 | DDT0010839 | 19151 | 3,00 | FACOLTATIVA | stessa partita della 5797 |
+| riga di reso | reso        | DDT        | ordine | dovuto | etichetta   | note                                                                   |
+| ------------ | ----------- | ---------- | ------ | ------ | ----------- | ---------------------------------------------------------------------- |
+| **24**       | RESO0000017 | DDT0000062 | 240    | 1,00   | DOVUTA      | 🔬 **articolo composito**: produce **3 rettifiche**, una per componente |
+| **5797**     | RESO0005122 | DDT0010839 | 19151  | 5,00   | DOVUTA      | articolo semplice, 1 rettifica                                         |
+| **5799**     | RESO0005123 | DDT0010839 | 19151  | 3,00   | FACOLTATIVA | stessa partita della 5797                                              |
 
 ⚠️ **5797 e 5799 condividono la partita**: accreditare la prima può azzerare il
 dovuto della seconda. Non è un difetto, è il conto della merce — se dopo un
@@ -63,14 +63,14 @@ caso che è già costato una correzione al DB — e tieni la **5797** per l'annu
 **Dove**: `Vendite → Ordini`, apri l'ordine **240** (oppure il DDT **140**), guarda
 la riga «situazione merce» sotto i collegamenti, apri il dettaglio.
 
-- [ ] la nota *«l'emissione della nota di credito non è ancora disponibile»*
+- [X] la nota *«l'emissione della nota di credito non è ancora disponibile»*
       **non c'è più**;
-- [ ] al suo posto c'è **«… da accreditare»** con il collegamento;
-- [ ] cliccando: la dialog **si chiude**, si arriva alla coda accrediti, e in
+- [X] al suo posto c'è **«… da accreditare»** con il collegamento;
+- [X] cliccando: la dialog **si chiude**, si arriva alla coda accrediti, e in
       cima c'è la riga **«Coda filtrata sul DDT #140»** (o sull'ordine) con il
       link per togliere il filtro;
-- [ ] l'elenco mostra **solo** le righe di quel documento — non tutta la coda;
-- [ ] tolto il filtro, la coda torna piena.
+- [X] l'elenco mostra **solo** le righe di quel documento — non tutta la coda;
+- [X] tolto il filtro, la coda torna piena.
 
 ⚠️ Se la coda si apre **non filtrata**: è il difetto che F3 doveva chiudere
 («un percorso spezzato uguale, solo con un click in più»). Segnalalo.
@@ -79,17 +79,17 @@ la riga «situazione merce» sotto i collegamenti, apri il dettaglio.
 
 **Dove**: `Vendite → Resi → tab «Da accreditare»`.
 
-- [ ] c'è la **colonna di selezione** (checkbox) a sinistra;
-- [ ] selezionando una riga, il pulsante in alto diventa **«Accredita (1)»**;
-- [ ] il kebab di riga ha **«Accredita questa riga»**;
-- [ ] **nessuna riga è disabilitata** oggi (nessuna porta un `blocco_codice`) —
+- [X] c'è la **colonna di selezione** (checkbox) a sinistra;
+- [X] selezionando una riga, il pulsante in alto diventa **«Accredita (1)»**;
+- [X] il kebab di riga ha **«Accredita questa riga»**;
+- [X] **nessuna riga è disabilitata** oggi (nessuna porta un `blocco_codice`) —
       se ne trovi una disabilitata, il tooltip deve **dire perché**.
 
 ### 3 · La conferma dice la verità *(F1)*
 
-- [ ] cliccando «Accredita», la conferma dice che **la nota di credito NON viene
+- [X] cliccando «Accredita», la conferma dice che **la nota di credito NON viene
       emessa adesso** e che nasce al prossimo giro di fatturazione;
-- [ ] ⛔ se il testo promette di «emettere una nota di credito», **fermati**: è
+- [Nessun problema] ⛔ se il testo promette di «emettere una nota di credito», **fermati**: è
       la cosa che il brief voleva evitare — l'operatore andrebbe a cercare un
       documento che non esiste ancora.
 

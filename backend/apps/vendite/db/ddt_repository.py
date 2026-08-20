@@ -216,11 +216,19 @@ class DdtRepository(
                 -- Corsia di instradamento: colonna aggiunta dalla Fase B del
                 -- brief emissione mirata, non esposta dalla vista di lista.
                 d.fatturazione_immediata,
-                ba.istanza_utility_id
+                ba.istanza_utility_id,
+                -- DEC-5: «questo documento vende?» ha UNA sede lato
+                -- applicativo, ed e' la causale di trasporto. Grezzo, senza
+                -- COALESCE: al FE serve distinguere «non vende» (false) da
+                -- «causale non ancora scelta» (NULL), e un default a false
+                -- cancellerebbe proprio quella differenza.
+                ct.fatturabile AS causale_trasporto_fatturabile
               FROM vendite.vw_ddt_lista v
               JOIN vendite.ddt d ON d.id = v.id
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = v.billing_account_id
+              LEFT JOIN config.causali_trasporto ct
+                ON ct.id = d.causale_trasporto_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
@@ -314,8 +322,16 @@ class DdtRepository(
                 iva.codice              AS iva_codice,
                 iva.descrizione         AS iva_descrizione,
                 iva.aliquota_iva        AS iva_aliquota,
+                -- ⛔ NIENTE `COALESCE(r.prezzo_unitario, 0)` (V-2 del
+                -- brief-ddt-righe-senza-prezzo): con lo zero, una riga senza
+                -- prezzo mostrava importo 0,00 — indistinguibile da una riga
+                -- che vale davvero zero, e il totale del documento tornava
+                -- «giusto» sommando quel che non c'e'. Ora `importo_riga` esce
+                -- NULL, e il FE ha di che distinguere (DEC-6).
+                -- ⚠️ Lo sconto tiene il suo COALESCE: sconto assente vuol dire
+                -- sconto zero, e li' lo zero e' il fatto.
                 ROUND(
-                    (r.quantita * COALESCE(r.prezzo_unitario, 0::numeric)) *
+                    (r.quantita * r.prezzo_unitario) *
                     (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
                     2
                 ) AS importo_riga,

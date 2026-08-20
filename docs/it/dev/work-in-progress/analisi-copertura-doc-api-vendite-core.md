@@ -1,4 +1,4 @@
-# Analisi — copertura della doc API (strato 1): vendite e core
+# Analisi — copertura della doc API (strato 1): tutte le aree
 
 **Chi scrive:** BE, 2026-08-19. **Cosa misura:** *quali rotte esistono nel
 codice e non compaiono in nessun `.md`*, e viceversa quali path la doc nomina
@@ -30,18 +30,32 @@ Tre cose che cambiano il risultato, e che la prima passata sbagliava:
 3. **un path citato come prefisso non e' un fantasma.** «tutti gli endpoint sono
    sotto `/api/v1/core/tracciamento/`» non e' una rotta mancante.
 
-Lo script sta in `scratchpad/copertura2.py`; e' rifacibile in un minuto quando
-serve rimisurare.
+⭐ **Lo script non e' piu' uno script**: e' il management command
+`./manage-env.sh copertura_doc_api [--aree x,y] [--dettaglio]`
+(`apps/core/management/commands/copertura_doc_api.py`). Le sei regole che ha
+imparato — le tre forme di citazione, il jolly `{}` nei due versi, la lapide, i
+valori d'esempio, la coda che ripete il path, il prefisso — sono l'unica ragione
+per cui i numeri qui sotto significano qualcosa: senza, la misura inventava 19
+fantasmi in `anagrafiche` e dichiarava scoperta meta' di `pratiche`, che e'
+documentata al 100%.
 
 ## 2. I numeri
 
-| | rotte | documentate | scoperte | fantasmi veri |
-|---|---|---|---|---|
-| **vendite** | 254 | ~~201 (79%)~~ → **240 (94%)** | ~~53~~ → **14** | ~~4~~ → **0** |
-| **core** | 54 | ~~36 (66%)~~ → **54 (100%)** | ~~18~~ → **0** | 0 |
+| | rotte | documentate | scoperte |
+|---|---|---|---|
+| **vendite** | 254 | ~~201 (79%)~~ → **248 (97%)** | ~~53~~ → **6** |
+| **core** | 54 | ~~36 (66%)~~ → **54 (100%)** | ~~18~~ → **0** |
+| **pratiche** | 49 | **49 (100%)** | 0 |
+| **anagrafiche** | 72 | 67 (93%) | 5 |
+| **amm-software** | 32 | 29 (90%) | 3 |
+| **catalogo** | 22 | ~~16 (72%)~~ → **22 (100%)** | ~~6~~ → 0 |
+| **ui** | 20 | ~~12 (60%)~~ → **20 (100%)** | ~~8~~ → 0 |
+| **documenti** | 9 | ~~6 (66%)~~ → **9 (100%)** | ~~3~~ → 0 |
+| altre (auth, config, portale, shop, admin, ai) | 26 | 26 (100%) | 0 |
+| **TOTALE** | **538** | **524 (97%)** | **14** |
 
 > ✅ **Fatti il 2026-08-19**: i fantasmi (§3), la famiglia della generazione
-> documenti (§7), export e code core (§8). I numeri barrati sono la prima misura, quelli in grassetto lo
+> documenti (§7), export e code core (§8), note di documento (§9). I numeri barrati sono la prima misura, quelli in grassetto lo
 > stato di adesso. ⚠️ Parte del recupero di **core** non e' lavoro sulla doc ma
 > **sulla misura**: vedi §7, il jolly `{}`.
 
@@ -196,6 +210,35 @@ DB.
   **`preventivi/da-pratica/{id}/stato/` (1)**, **`riepilogo-iva` (1)**: endpoint
   di dominio, da chiudere insieme alla verifica di sostanza del loro dominio
   (strato 2), non a parte.
+
+## 9. ✅ Fatta il 2026-08-19 — le note di documento
+
+Nuova pagina [api_note_documento](../../backend/core/manual/api_note_documento.md)
+piu' **sei rimandi**. Chiude le 4 rotte scoperte, ma il difetto vero era un
+altro: **un building block descritto quattro volte e mancante in due**, con
+quattro livelli di dettaglio diversi. Ora il contratto sta in un posto e ogni
+dominio dichiara solo il proprio delta (partizione, `target_tipo`, righe
+ancorabili).
+
+Cose che stavano solo nel codice e ora sono scritte:
+
+* ⛔ **`Idempotency-Key` obbligatoria** sulla creazione. Una nota doppia non da'
+  errore a nessuno — per questo il presidio e' in ingresso;
+* ⛔ **`target_riga_id` immutabile** in `PATCH`: una nota non trasloca di riga,
+  si cancella e si riscrive (cosi' l'audit dice cosa e' successo);
+* **`include_invisible` di default `true`**, e il perche': «invisibile» vuol dire
+  «non esce in stampa», non «segreta» — il drawer dell'operatore le deve vedere;
+* i **default di stile e lingua** viaggiano per **chiave naturale**
+  (`codice_interno`, `codice_iso`) e non per id, perche' l'id cambia a ogni
+  re-seed e un default sbagliato si vedrebbe solo in stampa, tardi;
+* i permessi sono di **livello oggetto** per dominio (`model_permission`), non di
+  sola area.
+
+⚠️ **Restano 10 rotte in vendite**, tutte di dominio: componenti BoM (3),
+`eccezioni-offerta` approva/rifiuta (2), i due verbi di ri-consegna dei resi,
+`lotti/{id}/riporta-a-draft/`, `preventivi/da-pratica/{id}/stato/`,
+`riepilogo-iva`. Non sono famiglie: sono endpoint singoli che conviene chiudere
+con la verifica di sostanza del loro dominio (strato 2).
 
 ## 4. Lo schema OpenAPI c'e', ma oggi non puo' sostituire la doc
 

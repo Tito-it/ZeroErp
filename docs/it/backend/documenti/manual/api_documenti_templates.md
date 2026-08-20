@@ -601,3 +601,30 @@ nome vincolo, case-insensitive):
   per allineare il ciclo versioni template al pattern di sostituzione delle
   versioni listino. Il FE non orchestra piu' la chiusura della versione
   precedente.
+
+---
+
+## Asset documentali (loghi, firme, immagini)
+
+Gli asset sono i file che i template incorporano: logo dell'emittente, firma,
+timbro. Vivono per conto loro perche' hanno **validita' temporale** — un logo
+cambia, e le ristampe di ieri devono continuare a mostrare quello di ieri.
+
+| | |
+|---|---|
+| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `page`, `page_size`, `order_by`, `order_dir` |
+| **Upload** | `POST /api/v1/documenti/asset/` — **multipart**: campo `file` piu' l'anagrafica (`codice`, `codice_interno`, `descrizione`, `asset_tipo_id`, `emittente_fiscale_id`, `valido_dal`…). I metadati si possono passare come campi form singoli **oppure** come JSON nel campo `metadati`: la view accetta entrambe le forme |
+| **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/documenti/asset/{asset_id}/` — la `PATCH` tocca i **metadati**, non il binario |
+| **Download** | `GET /api/v1/documenti/asset/{asset_id}/file/` — il file originale, come `attachment` |
+
+⛔ **Non esiste la DELETE, ed e' un divieto del database**: il trigger A3 blocca
+la cancellazione fisica. Per «togliere» un asset si usa `PATCH attivo=false`
+oppure `valido_al=<data passata>`.
+
+⭐ E' la stessa logica della ristampa fedele: un asset cancellato davvero
+renderebbe **irriproducibile** ogni documento che lo incorporava — la
+riproducibilita' si difende impedendo la cancellazione, non sperando che
+nessuno la faccia.
+
+La lista e' `is_search_endpoint` (throttling di ricerca).
+

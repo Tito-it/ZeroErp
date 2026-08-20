@@ -2846,8 +2846,42 @@ class VenditeRepository:
     #        righe su 107 in sviluppo.
     # ⚠️ NON e' `vw_contatore_merce`: quello e' il contatore GREZZO che dosa la
     #        fatturazione, non ha `stato` e appiattisce i NULL a un numero.
-    def list_situazione_merce_ordine(self, ordine_id: int) -> list[dict[str, Any]]:
-        sql = """
+    # ⭐ DUE FILTRI, UNA LETTURA (come `list_partite_merce`, rev 2026-08-19):
+    #        per ordine = tutte le sue righe; per DDT = le righe d'ordine che
+    #        QUELLA spedizione ha toccato. Il secondo serve al pannello
+    #        uniformato — dal DDT si vede sia lo stato della riga d'ordine sia
+    #        quello della spedizione (rilievo in-app di Tid del 2026-08-19).
+    # ⚠️ Il legame DDT->riga d'ordine si legge da `ordini_righe_fulfillment`,
+    #        che e' la STESSA fonte da cui `vw_partite_merce` deriva la propria
+    #        `origine` (CTE `orig`). NON si passa dalla partita: sarebbe la
+    #        vista piu' costosa del sistema ri-valutata per rispondere a un
+    #        filtro — lo stesso errore gia' corretto su `_list_coda_su_partite`.
+    def list_situazione_merce_ordine(
+        self,
+        *,
+        ordine_id: int | None = None,
+        ddt_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if (ordine_id is None) == (ddt_id is None):
+            raise ValueError(
+                "list_situazione_merce_ordine: passare ESATTAMENTE uno fra "
+                "ordine_id e ddt_id"
+            )
+        if ordine_id is not None:
+            condizione, param = "s.ordine_id = %s", int(ordine_id)
+        else:
+            assert ddt_id is not None
+            condizione, param = (
+                """EXISTS (
+                     SELECT 1
+                       FROM vendite.ordini_righe_fulfillment f
+                       JOIN vendite.ddt_righe dr_f ON dr_f.id = f.ddt_riga_id
+                      WHERE f.ordine_riga_id = s.ordine_riga_id
+                        AND dr_f.ddt_id = %s
+                   )""",
+                int(ddt_id),
+            )
+        sql = f"""
             SELECT
                 s.ordine_riga_id,
                 s.ordine_id,
@@ -2875,11 +2909,11 @@ class VenditeRepository:
               JOIN vendite.ordini_righe orr      ON orr.id = s.ordine_riga_id
               LEFT JOIN catalogo.articoli a      ON a.id   = s.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id  = orr.uom_operativa_id
-             WHERE s.ordine_id = %s
-             ORDER BY s.riga_nr, s.ordine_riga_id
+             WHERE {condizione}
+             ORDER BY s.ordine_id, s.riga_nr, s.ordine_riga_id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(ordine_id)])
+            cursor.execute(sql, [param])
             return rows_to_list(cursor)
 
     # Scopo: Le PARTITE DI MERCE (livello 2 del pannello), da

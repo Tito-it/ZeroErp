@@ -18,7 +18,7 @@
 // precisamente il difetto che il §5.4 chiede di non commettere.
 
 import { formatNumber } from '../../../core/utils/format'
-import { STATO_MERCE } from './situazioneMerceCostanti'
+import { CONTESTO_MERCE, STATO_MERCE } from './situazioneMerceCostanti'
 
 // Scopo: formato UNICO delle quantita' del pannello (barra e dialog): qui si
 //        contano PEZZI — «8 da accreditare» si legge, «8,00» no. Vive nel
@@ -33,11 +33,31 @@ export function formatQtaMerce(v) {
 //  - sull'ORDINE si somma `righe_ordine` (una riga per riga d'ordine, che
 //    aggrega gia' tutte le sue spedizioni). Sommare anche le partite
 //    conterebbe la stessa merce due volte;
-//  - sul DDT `righe_ordine` e' vuota di proposito e si sommano le `partite`,
-//    che sono le righe di QUELLA spedizione.
+//  - sul DDT si sommano le `partite`, che sono le righe di QUELLA spedizione.
+//    Le `righe_ordine` ci sono anche qui (si mostrano, per leggere i due livelli
+//    insieme) ma raccontano l'ordine INTERO, comprese le altre spedizioni.
 // Una sola delle due liste entra nel totale, mai entrambe.
+//
+// ⭐ Il contesto e' DICHIARATO dal backend, non dedotto dal fatto che una lista
+// sia vuota: fino al 2026-08-19 `righe_ordine` era vuota sul DDT e l'euristica
+// funzionava per coincidenza. Adesso e' popolata su entrambi i lati, e la stessa
+// euristica conterebbe sul DDT il saldo dell'intera riga d'ordine.
+//
+// ⚠️ Contesto assente o sconosciuto -> NESSUNA riga entra nel conto, e lo si
+// dice in console. E' la stessa scelta di `loaded` in `useSituazioneMerce`: su
+// una base che non si sa leggere non si afferma un numero. Inventare qui un
+// ripiego «prova righe_ordine, se no partite» rimetterebbe esattamente il
+// difetto che questo campo esiste per chiudere.
 function _righeDelConto(sezioni) {
-  return sezioni.righe_ordine?.length ? sezioni.righe_ordine : (sezioni.partite ?? [])
+  switch (sezioni.contesto) {
+    case CONTESTO_MERCE.ORDINE:
+      return sezioni.righe_ordine ?? []
+    case CONTESTO_MERCE.DDT:
+      return sezioni.partite ?? []
+    default:
+      console.warn('situazione merce: contesto non riconosciuto', sezioni.contesto)
+      return []
+  }
 }
 
 // Scopo: somma numerica tollerante. I valori arrivano dal DB come stringhe
@@ -156,4 +176,59 @@ export function sintesiSituazioneMerce(sezioni) {
     // E' l'altra meta' del requisito §5.2, quella che si dimentica.
     tuttoRegolare: !haPendenze && righeImpegnate.length > 0,
   }
+}
+
+/**
+ * I COMPITI del documento, gia' pronti da mostrare — la lista unica che la
+ * barra usa come chip in testata e il dettaglio come riepilogo in fondo.
+ *
+ * ⭐ PERCHE' QUI E NON DUE VOLTE (regola del 2, 2026-08-19): dal ridisegno del
+ * pannello il conto si legge in DUE posti — il chip «1 da accreditare» sulla
+ * riga di testata e la voce «1 da accreditare» nel riepilogo della dialog.
+ * Scritte due volte, prima o poi una guardia cambia in un posto solo e i due
+ * numeri divergono: e' esattamente il difetto che il §5.4 vieta, e la ragione
+ * per cui `sintesiSituazioneMerce` era gia' un modulo puro.
+ *
+ * ⚠️ `fatturato_anticipato` NON entra in questa lista (FE-3): non e' un compito
+ * ma un fatto contabile da dichiarare, e metterlo accanto a «da accreditare» e'
+ * il modo in cui tornerebbe a essere letto come tale. Chi mostra il riepilogo lo
+ * espone a parte.
+ *
+ * @param {object} s - il risultato di `sintesiSituazioneMerce`
+ * @param {Function} t - la `t` di vue-i18n del chiamante
+ * @returns {Array<{key: string, severity: string, label: string}>}
+ */
+export function compitiSituazioneMerce(s, t) {
+  const out = []
+  // L'ordine in cui contano per chi guarda: prima quello che costa denaro
+  // (accreditare), poi quello che lo incassa (fatturare), poi la logistica,
+  // infine cio' che va solo GUARDATO.
+  if (s.daAccreditare > 0) {
+    out.push({ key: 'accreditare', severity: 'warn',
+               label: t('vendite.situazione_merce.chip_da_accreditare', { n: formatQtaMerce(s.daAccreditare) }) })
+  }
+  if (s.daFatturare > 0) {
+    out.push({ key: 'fatturare', severity: 'info',
+               label: t('vendite.situazione_merce.chip_da_fatturare', { n: formatQtaMerce(s.daFatturare) }) })
+  }
+  if (s.daRiconsegnare > 0) {
+    out.push({ key: 'riconsegnare', severity: 'info',
+               label: t('vendite.situazione_merce.chip_da_riconsegnare', { n: formatQtaMerce(s.daRiconsegnare) }) })
+  }
+  if (s.daSpedire > 0) {
+    out.push({ key: 'spedire', severity: 'secondary',
+               label: t('vendite.situazione_merce.chip_da_spedire', { n: formatQtaMerce(s.daSpedire) }) })
+  }
+  // FE-1: «non calcolabile» e' rosso, non grigio — deve staccarsi da «tutto
+  // regolare» e dal «non si applica», che sono sani.
+  if (s.nonMisurabili > 0) {
+    out.push({ key: 'non-misurabile', severity: 'danger',
+               label: t('vendite.situazione_merce.chip_non_misurabile', { n: s.nonMisurabili }) })
+  }
+  // FE-2: senza questa voce l'avviso di S6b non esiste per nessuno.
+  if (s.sospette > 0) {
+    out.push({ key: 'sospette', severity: 'warn',
+               label: t('vendite.situazione_merce.chip_sospette', { n: s.sospette }) })
+  }
+  return out
 }

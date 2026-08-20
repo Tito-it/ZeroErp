@@ -25,6 +25,11 @@ Indice test:
 13) test_composito_db_error                     — propaga codice noto
 14) test_contesto_loggato_completo              — il diario riceve classe_utenza_id
                                                   e listino_versione_id_preferito
+15) test_esito_risolto                          — nucleo che risolve: esito_codice None
+16) test_esito_non_risolto_non_solleva          — nucleo che NON risolve: nessuna eccezione
+17) test_esito_riga_assente                     — repo che alza -> codice preservato
+18) test_esito_parametro_invalido_solleva       — DatabaseError tradotto come sempre
+19) test_esito_valida_gli_input                 — l'helper estratto vale anche qui
 """
 
 from datetime import date
@@ -190,3 +195,73 @@ class TestResolvePrezzo(TestCase):
 # invocate in produzione (preventivi usa snapshot loader, ordini/ddt non
 # esistono). Per i test del nuovo path: `test_commesse_source_handlers.py`
 # `BoMComponentExpanderTests` (snapshot loader).
+
+
+# ══════════════════════════════════════════════════════════
+#  BE-A5 — il resolver «a esito» (nucleo)
+# ══════════════════════════════════════════════════════════
+# Scopo: presidiare la differenza che giustifica il metodo nuovo: quando il
+#        prezzo non e' risolvibile il nucleo **non solleva**. Se un giorno
+#        tornasse a sollevare, il DDT ricomincerebbe a rifiutare le righe in
+#        conto visione — e il difetto si vedrebbe in-app, non qui.
+class TestResolvePrezzoEsito(TestCase):
+    @patch(_REPO)
+    def test_esito_risolto(self, mock_repo):
+        mock_repo.return_value.resolve_prezzo_listino_v2_esito.return_value = {
+            "prezzo_finale": Decimal("12.50"),
+            "origine": "CATEGORIA",
+            "esito_codice": None,
+            "esito_context": None,
+            "esito_valori": None,
+        }
+        out = PricingService().resolve_prezzo_esito(**_base_kwargs())
+        self.assertEqual(out["prezzo_finale"], Decimal("12.50"))
+        self.assertIsNone(out["esito_codice"])
+
+    @patch(_REPO)
+    def test_esito_non_risolto_non_solleva(self, mock_repo):
+        # E' IL test di questa slice: prezzo assente, motivo valorizzato,
+        # nessuna eccezione. Il guscio `resolve_prezzo` qui solleverebbe.
+        mock_repo.return_value.resolve_prezzo_listino_v2_esito.return_value = {
+            "prezzo_finale": None,
+            "origine": None,
+            "esito_codice": "E_CATEGORIA_LISTINO_NON_MAPPATA",
+            "esito_context": {"utility_id": 7},
+            "esito_valori": ["3", "7"],
+        }
+        out = PricingService().resolve_prezzo_esito(**_base_kwargs())
+        self.assertIsNone(out["prezzo_finale"])
+        self.assertEqual(out["esito_codice"], "E_CATEGORIA_LISTINO_NON_MAPPATA")
+
+    @patch(_REPO)
+    def test_esito_riga_assente(self, mock_repo):
+        # Il guard vive nel repository (BE-A2): qui si presidia che il service
+        # non addomestichi quell'errore trasformandolo in un prezzo mancante.
+        mock_repo.return_value.resolve_prezzo_listino_v2_esito.side_effect = ServiceError(
+            code="E_VENDITE_PRICING_ESITO_ASSENTE",
+            message="Errore interno del calcolo prezzi.",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            PricingService().resolve_prezzo_esito(**_base_kwargs())
+        self.assertEqual(ctx.exception.code, "E_VENDITE_PRICING_ESITO_ASSENTE")
+
+    @patch(_REPO)
+    def test_esito_parametro_invalido_solleva(self, mock_repo):
+        # Il nucleo non solleva per «prezzo non risolto», ma solleva ancora per
+        # parametri invalidi: la traduzione deve restare.
+        mock_repo.return_value.resolve_prezzo_listino_v2_esito.side_effect = DatabaseError(
+            "Errore sconosciuto del DB"
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            PricingService().resolve_prezzo_esito(**_base_kwargs())
+        self.assertEqual(ctx.exception.code, "E_VENDITE_PRICING_FAILED")
+
+    @patch(_REPO)
+    def test_esito_valida_gli_input(self, mock_repo):
+        # DEC-7: i guard sono estratti in `_valida_input_resolver`, quindi
+        # valgono identici sui due metodi. Se l'estrazione si scollegasse da
+        # uno dei due, il repo verrebbe chiamato con input non validati.
+        del mock_repo
+        with self.assertRaises(ServiceError) as ctx:
+            PricingService().resolve_prezzo_esito(**_base_kwargs(ba_id=-1))
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")

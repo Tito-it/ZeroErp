@@ -5,6 +5,7 @@ import { useTabsStore } from '../stores/tabs'
 import { DOMAINS, resolveTabLabel, resolveTabIcon } from '../core/navigation'
 import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
 import i18n from '../core/i18n'
+import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
 
@@ -581,6 +582,26 @@ router.beforeEach(async (to) => {
     // Limite raggiunto — blocca navigazione
     if (!opened) return false
   }
+})
+
+// ⭐ CHIUSURA GLOBALE DEI DRAWER a ogni cambio di PAGINA.
+// I drawer sono teleportati sul body e le view vivono sotto KeepAlive: senza
+// questo, cambiare rotta lascia la pila di pannelli aperta DAVANTI alla pagina
+// d'arrivo — misurato in-app il 2026-08-19 partendo dal «apri la coda filtrata»
+// del pannello merce, con ordine e DDT ancora impilati sopra la coda.
+//
+// ⚠️ `afterEach` e non `beforeEach`: si chiude solo quando la navigazione e'
+// davvero avvenuta. Il guard sopra puo' ancora rifiutarla (limite tab
+// raggiunto, area bloccata, redirect al login) e chiudere i drawer di una
+// navigazione poi annullata significherebbe far sparire il pannello su cui
+// l'utente sta lavorando senza che si sia mosso nulla.
+//
+// ⚠️ Solo sul PATH, mai sulla query: le liste sincronizzano filtri e ripuliscono
+// i deep-link con `router.replace` sulla stessa pagina (es. la coda accrediti
+// che toglie `ddt_id` dall'URL). Chiudere li' sarebbe un drawer che si chiude
+// da solo mentre si filtra.
+router.afterEach((to, from) => {
+  if (to.path !== from.path) chiudiTuttiIDrawer()
 })
 
 export default router

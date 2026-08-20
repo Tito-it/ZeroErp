@@ -1564,15 +1564,27 @@ def get_situazione_merce(
             function_name=_FN_SITUAZIONE_MERCE,
         )
 
-    # Livello 1 — il riassunto per riga d'ordine. Esiste SOLO sul lato ordine:
-    # sul DDT la domanda e' «cosa e' successo a QUESTA spedizione» (§5.1 del
-    # brief pannello), e le righe d'ordine che il DDT non ha toccato non
-    # c'entrano. Lista vuota e non `None`: il frontend itera sempre.
-    righe_ordine: list[dict[str, object]] = []
-    if ordine_id is not None:
-        righe_ordine = repository.list_situazione_merce_ordine(ordine_id)
+    # Livello 1 — il riassunto per riga d'ordine. C'e' su ENTRAMBI i lati
+    # (rev 2026-08-19, rilievo in-app di Tid): dal DDT sono le righe d'ordine
+    # che QUELLA spedizione ha toccato, e servono a leggere i due livelli
+    # insieme — «la riga d'ordine nel complesso sta cosi', questa spedizione
+    # cosi'». Prima erano assenti sul DDT e le due schermate raccontavano due
+    # storie diverse dello stesso fatto.
+    # ⚠️ Una riga di DDT senza origine ordine (`origine <> 'ORDINE'`) non ha
+    # riga d'ordine: la sezione resta piu' corta delle partite, ed e' corretto.
+    # Lista vuota e non `None`: il frontend itera sempre.
+    righe_ordine = repository.list_situazione_merce_ordine(
+        ordine_id=ordine_id, ddt_id=ddt_id
+    )
 
     return {
+        # ⭐ Il CONTESTO e' dato, non deduzione. Con `righe_ordine` popolata su
+        # entrambi i lati, «quale delle due liste e' il saldo del documento» non
+        # si puo' piu' leggere dal fatto che una sia vuota — e sbagliarlo
+        # significa contare, sul DDT, il saldo dell'INTERA riga d'ordine
+        # (tutte le sue spedizioni) al posto di questa. Il consumatore riceve la
+        # risposta, non l'indovinello.
+        "contesto": "ORDINE" if ordine_id is not None else "DDT",
         "righe_ordine": righe_ordine,
         "partite": repository.list_partite_merce(
             ordine_id=ordine_id, ddt_id=ddt_id
