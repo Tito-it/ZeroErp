@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lineage documenti vendite (Step 3): summary per nodo per arricchire le liste. Espone pratica (1:1 difensiva + n_pratiche), fase propria, frontiera forward (piu' a valle attivo, esclude arco R), discendenti diretti/attivi, is_transitato, lato inverso (n_sorgenti + ROOT). security_invoker=on.
+> Lineage documenti vendite (Step 3): summary per nodo per arricchire le liste. Espone pratica (1:1 difensiva + n_pratiche), fase propria, frontiera forward (piu' a valle attivo, esclude i rami di RITORNO), discendenti diretti/attivi, is_transitato, lato inverso (n_sorgenti + ROOT), natura del documento. security_invoker=on. ⭐ rev 2026-08-20 — DUE COSE. (1) i due filtri del grafo forward non nominano piu' la lettera R ma leggono vw_documento_lineage_archi.is_ramo_inverso: con l'arrivo dell'arco N (fattura rettificata -&gt; nota di credito) la lettera era scritta a mano in TRE posti, e il terzo dimenticato non avrebbe dato nessun errore — solo la nota di credito come discendente forward, cioe' una FRONTIERA diversa su ogni riga di lista. (2) espone natura_doc_codice/natura_doc_descrizione del nodo, cosi' una lista di fatture smette di scrivere «Fattura» sopra una nota di credito. ⚠️ NON esiste una frontiera_natura_doc_codice, di proposito: l'arco N e' un ramo di ritorno ed e' escluso dal grafo forward, quindi una nota di credito non puo' mai essere la frontiera di nessuno e quella colonna varrebbe sempre NULL.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -21,7 +21,7 @@ WITH RECURSIVE fwd AS (
             vw_documento_lineage_archi.to_is_abortito,
             vw_documento_lineage_archi.ruolo
            FROM vendite.vw_documento_lineage_archi
-          WHERE (vw_documento_lineage_archi.arco <> 'R'::text)
+          WHERE (NOT vw_documento_lineage_archi.is_ramo_inverso)
         ), walk AS (
          SELECT f.from_tipo_id AS o_tipo,
             f.from_uid AS o_uid,
@@ -101,7 +101,7 @@ WITH RECURSIVE fwd AS (
             (array_agg(vw_documento_lineage_archi.from_uid ORDER BY ((vw_documento_lineage_archi.ruolo)::text = 'ROOT'::text) DESC NULLS LAST, vw_documento_lineage_archi.from_tipo_id, vw_documento_lineage_archi.from_uid))[1] AS root_uid,
             (array_agg(vw_documento_lineage_archi.from_codice ORDER BY ((vw_documento_lineage_archi.ruolo)::text = 'ROOT'::text) DESC NULLS LAST, vw_documento_lineage_archi.from_tipo_id, vw_documento_lineage_archi.from_uid))[1] AS root_codice
            FROM vendite.vw_documento_lineage_archi
-          WHERE (vw_documento_lineage_archi.arco <> 'R'::text)
+          WHERE (NOT vw_documento_lineage_archi.is_ramo_inverso)
           GROUP BY vw_documento_lineage_archi.to_tipo_id, vw_documento_lineage_archi.to_uid
         ), prat AS (
          SELECT ps.sorgente_tipo_id AS tipo,
@@ -135,7 +135,9 @@ WITH RECURSIVE fwd AS (
     COALESCE(ic.n_sorgenti, (0)::bigint) AS n_sorgenti,
     ic.root_tipo AS root_tipo_id,
     ic.root_uid,
-    ic.root_codice
+    ic.root_codice,
+    n.natura_doc_codice,
+    n.natura_doc_descrizione
    FROM ((((vendite.vw_documento_lineage_nodi n
      LEFT JOIN prat pr ON (((pr.tipo = n.tipo_id) AND (pr.uid = n.uid))))
      LEFT JOIN frontiera fr ON (((fr.o_tipo = n.tipo_id) AND (fr.o_uid = n.uid) AND (fr.rn = 1))))

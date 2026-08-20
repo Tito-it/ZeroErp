@@ -1,0 +1,286 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARCO CHE MANCAVA (2 di 4) — fattura rettificata -> nota di credito.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Il legame esiste nei dati, riga per riga
+#   (vendite.fatture_righe.riga_rettificata_id), ma non nel grafo: dalla nota
+#   di credito non si risale al documento che corregge, e dalla fattura non si
+#   scende alla nota che la rettifica. La forma esisteva gia' — l'arco R
+#   (DDT -> Reso) e' un ramo di ritorno — mancava solo questo.
+#
+# -- ⭐ DA DOVE SI LEGGE, E PERCHE' NON DALL'ALTRA FONTE ---------------
+#   Le fonti candidate erano due e dicono la stessa cosa, ma NON nello stesso
+#   momento:
+#     · vendite.fatture_rettifiche — il ponte a livello DOCUMENTO, popolato da
+#       un task della fase DEFINITIVA che gira DOPO la numerazione;
+#     · vendite.fatture_righe.riga_rettificata_id — il legame riga-riga,
+#       scritto alla generazione delle righe.
+#   ⚠️ Misurato il 2026-08-21: la prima nota di credito esiste con tre righe
+#   collegate, e fatture_rettifiche e' ANCORA A ZERO RIGHE — il lotto non e'
+#   stato reso definitivo. Un grafo costruito sul ponte sarebbe rimasto muto
+#   proprio nella finestra in cui l'operatore guarda.
+#   E' anche la stessa scelta dell'arco G, che legge il soft-link
+#   attivita_fatturabili.fattura_riga_id e non una tabella ponte.
+#
+# -- ⚠️ IL PRIMO ARCO FRA DUE NODI DELLO STESSO TIPO -------------------
+#   Entrambi gli estremi sono nodi FATTURA. Il traversal regge (ha il set dei
+#   visitati sul percorso e il tetto a livello 10), ma un arco X->X non
+#   direbbe una genealogia, direbbe un ciclo: si esclude esplicitamente con
+#   `rr.fattura_id <> fr.fattura_id`.
+#
+# -- ⭐ is_ramo_inverso NASCE QUI, E TOGLIE UNA RIPETIZIONE ------------
+#   La lettera 'R' era scritta a mano in TRE posti: i due WHERE della summary
+#   (che esclude il ramo di ritorno dal grafo forward) e il calcolo dentro
+#   fn_documento_lineage. Aggiungere un secondo ramo di ritorno voleva dire
+#   ricordarsene tre volte — e il posto dimenticato non avrebbe dato NESSUN
+#   errore: solo la nota di credito comparsa come discendente forward della
+#   fattura, cioe' una FRONTIERA diversa su ogni riga di lista, in silenzio.
+#   Ora l'elenco vive in una riga di questa vista e i consumatori la leggono.
+#
+#   ⚠️ «Inverso» non vuol dire «all'indietro nel tempo»: la nota di credito
+#   nasce DOPO la fattura. Vuol dire ramo di RITORNO — nel reso torna la merce,
+#   qui torna il valore — e come il reso non e' un avanzamento del flusso.
+#   E' la decisione presa da Tid il 2026-08-21: l'arco sta nel pannello
+#   «Passaggi» e NON entra nella frontiera delle liste.
+#
+# -- IL CANTIERE ------------------------------------------------------
+#   Messaggio del team BE dal collaudo, prova 6 (2026-08-20): la prima nota di
+#   credito esiste — fattura 15353, natura NOTA_CREDITO, tre righe che
+#   rettificano le righe 461/465/468 della fattura 835 — e il documento e'
+#   corretto. Restano due cose, e le due si toccano nel grafo di genealogia.
+#   Cantiere: brief-design-note-credito-resi §44.
+#
+# -- ⚠️ UNA MISURA DEL BE NON SI RIPRODUCE ----------------------------
+#   Il messaggio dice «FATTURA 835 · indietro: 0 archi · avanti: 0 archi».
+#   Rimisurato il 2026-08-21 in contesto operatore: da 835 indietro escono
+#   SETTE archi (G verso tre commesse, E, A) e dalla NC 15353 ne escono due.
+#   Il grafo attraversa gia' le fatture: quello che manca davvero e' l'arco
+#   FRA le due fatture, che e' un'altra cosa e la richiesta la nomina bene.
+# ------------------------------------------------------------
+
+# Origine: testo dello YAML 20260714-09, verificato con round-trip.
+# Dipendenze: 20260821-01 (le nature sul nodo, che questa vista propaga).
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-02-update-vw-documento-lineage-archi-arco-nota-credito-mctit.yaml
+
+  - changeSet:
+      id: 20260821-02-update-vw-documento-lineage-archi-arco-nota-credito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arco N: fattura rettificata -> nota di credito, ricostruito dal legame riga-riga
+        (fatture_righe.riga_rettificata_id) e non dal ponte fatture_rettifiche, che si popola solo
+        dopo la numerazione. Nasce qui anche is_ramo_inverso, che prima era la lettera 'R' ripetuta
+        a mano in tre posti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_archi
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: riga_rettificata_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name   = 'vw_documento_lineage_nodi'
+                     AND column_name  = 'natura_doc_codice'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              WITH archi AS (
+                  -- A — Preventivo -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id AS from_tipo_id, (p.uid)::text AS from_uid,
+                         s_to.id   AS to_tipo_id,   (o.id)::text  AS to_uid,
+                         NULL::varchar AS ruolo, 'A'::text AS arco
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO'     AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA' AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'PREVENTIVO'
+                  UNION ALL
+                  -- B — Preventivo -> Commessa (sorgente polimorfa; ruolo ROOT/COLLEGATO)
+                  SELECT s_from.id, cs.sorgente_uid,
+                         s_to.id, (cs.commessa_id)::text,
+                         cs.ruolo_link, 'B'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- C — Offerta -> Contratto (contratti.offerta_id)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (c.id)::text,
+                         NULL::varchar, 'C'::text
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'CONTRATTO'           AND s_to.attivo   IS TRUE
+                   WHERE c.offerta_id IS NOT NULL
+                  UNION ALL
+                  -- D — Offerta -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (o.id)::text,
+                         NULL::varchar, 'D'::text
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA'      AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'OFFERTA'
+                  UNION ALL
+                  -- E — Ordine -> Commessa (sorgente polimorfa)
+                  SELECT s_from.id, cs.sorgente_uid,
+                         s_to.id, (cs.commessa_id)::text,
+                         cs.ruolo_link, 'E'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- F — Contratto -> Commessa (sorgente polimorfa; 1:N)
+                  SELECT s_from.id, cs.sorgente_uid,
+                         s_to.id, (cs.commessa_id)::text,
+                         cs.ruolo_link, 'F'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- G — Commessa -> Fattura (via attivita fatturabili gia' fatturate; 1:N)
+                  SELECT DISTINCT
+                         s_from.id, (af.commessa_id)::text,
+                         s_to.id, (f.id)::text,
+                         NULL::varchar, 'G'::text
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'  AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+                  UNION ALL
+                  -- H — Ordine -> DDT (colonna diretta uuid ddt.sorgente_uid -> ordini.uid; 1:N)
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (d.id)::text,
+                         NULL::varchar, 'H'::text
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- R — DDT -> Reso (ramo INVERSO; colonna diretta uuid resi.sorgente_uid -> ddt.uid; 1:N)
+                  SELECT s_from.id, (d.id)::text,
+                         s_to.id, (r.id)::text,
+                         NULL::varchar, 'R'::text
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- N — Fattura rettificata -> Nota di credito (ramo di RITORNO; 1:N)
+                  --   ⭐ Ricostruito da vendite.fatture_righe.riga_rettificata_id, cioe' dal
+                  --   legame RIGA-RIGA, e non da vendite.fatture_rettifiche. Le due fonti
+                  --   dicono la stessa cosa ma non nello stesso momento: il ponte
+                  --   documentale lo popola un task della fase DEFINITIVA, DOPO la
+                  --   numerazione, mentre riga_rettificata_id esiste dalla generazione delle
+                  --   righe. Il grafo deve mostrare il legame quando c'e', non quando il
+                  --   documento e' chiuso — ed e' misurato: al 2026-08-20 la prima nota di
+                  --   credito esiste con tre righe collegate e fatture_rettifiche e' ancora
+                  --   a zero righe, perche' il lotto non e' stato reso definitivo.
+                  --   E' anche la stessa scelta dell'arco G, che legge il soft-link
+                  --   attivita_fatturabili.fattura_riga_id e non una tabella ponte.
+                  --   ⚠️ Entrambi gli estremi sono nodi FATTURA: e' il primo arco del grafo
+                  --   fra due nodi dello STESSO tipo. Il traversal regge (ha il set dei
+                  --   visitati sul percorso), ma un arco X->X non direbbe una genealogia,
+                  --   direbbe un ciclo: si esclude esplicitamente.
+                  --   DISTINCT come in G: N righe di rettifica producono UN arco.
+                  SELECT DISTINCT
+                         s_fat.id, (rr.fattura_id)::text,
+                         s_fat.id, (fr.fattura_id)::text,
+                         NULL::varchar, 'N'::text
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.fatture_righe rr ON rr.id = fr.riga_rettificata_id
+                    JOIN config.sorgenti s_fat ON s_fat.codice_interno = 'FATTURA' AND s_fat.attivo IS TRUE
+                   WHERE fr.riga_rettificata_id IS NOT NULL
+                     AND rr.fattura_id <> fr.fattura_id
+              )
+              SELECT a.from_tipo_id,
+                     a.from_uid,
+                     nf.codice AS from_codice,
+                     a.to_tipo_id,
+                     a.to_uid,
+                     nt.codice AS to_codice,
+                     nt.stato_codice_interno AS to_stato_codice_interno,
+                     nt.fase                 AS to_fase,
+                     nt.is_abortito          AS to_is_abortito,
+                     a.ruolo,
+                     a.arco,
+                     -- ⭐ rev 2026-08-20: LA PROPRIETA' VIVE QUI, UNA VOLTA SOLA.
+                     --   Prima la lettera 'R' era scritta a mano in TRE posti: due WHERE
+                     --   della summary (che esclude il ramo inverso dal grafo forward) e il
+                     --   calcolo di is_ramo_inverso dentro fn_documento_lineage. Aggiungere
+                     --   un secondo ramo di ritorno voleva dire ricordarsene tre volte, e la
+                     --   terza dimenticata non avrebbe rotto niente in modo visibile: la
+                     --   nota di credito sarebbe semplicemente comparsa come discendente
+                     --   forward di una fattura, cambiando la frontiera di ogni lista.
+                     --   Ora l'elenco dei rami di ritorno sta in questa riga e i consumatori
+                     --   leggono la proprieta'.
+                     -- ⚠️ «Inverso» non vuol dire «all'indietro nel tempo»: la nota di
+                     --   credito nasce DOPO. Vuol dire ramo di RITORNO — nel reso torna la
+                     --   merce, qui torna il valore — e come il reso non e' un avanzamento
+                     --   del flusso, quindi non entra nella frontiera.
+                     (a.arco IN ('R', 'N')) AS is_ramo_inverso,
+                     nf.natura_doc_codice AS from_natura_doc_codice,
+                     nt.natura_doc_codice AS to_natura_doc_codice
+                FROM archi a
+                LEFT JOIN vendite.vw_documento_lineage_nodi nf ON nf.tipo_id = a.from_tipo_id AND nf.uid = a.from_uid
+                LEFT JOIN vendite.vw_documento_lineage_nodi nt ON nt.tipo_id = a.to_tipo_id   AND nt.uid = a.to_uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                  'Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R e N '
+                  '(rami di ritorno). Chiave nodo polimorfa (tipo_id, uid::text). Nodo target '
+                  'decorato via vw_documento_lineage_nodi. security_invoker=on. Base di '
+                  'vw_documento_lineage e fn_documento_lineage. '
+                  '⭐ rev 2026-08-20 — ARCO N: fattura rettificata -> nota di credito, ricostruito da '
+                  'vendite.fatture_righe.riga_rettificata_id (legame RIGA-RIGA) e NON da '
+                  'vendite.fatture_rettifiche: quel ponte lo popola un task della fase DEFINITIVA, dopo '
+                  'la numerazione, mentre riga_rettificata_id esiste dalla generazione delle righe — il '
+                  'grafo deve mostrare il legame quando c''e'', non quando il documento e'' chiuso. '
+                  'Stessa scelta dell''arco G (soft-link, non tabella ponte). E'' il primo arco fra due '
+                  'nodi dello STESSO tipo (FATTURA->FATTURA): l''arco X->X e'' escluso perche'' sarebbe '
+                  'un ciclo e non una genealogia. '
+                  '⭐ is_ramo_inverso E'' CALCOLATO QUI, una volta sola: prima la lettera R era ripetuta '
+                  'in tre posti (due WHERE della summary e fn_documento_lineage) e il terzo dimenticato '
+                  'non avrebbe rotto niente di visibile — la nota di credito sarebbe solo comparsa come '
+                  'discendente forward, cambiando la frontiera di ogni lista. ⚠️ «Inverso» non e'' '
+                  '«all''indietro nel tempo» (la NC nasce dopo): e'' ramo di RITORNO — nel reso torna la '
+                  'merce, qui il valore. '
+                  'Espone anche from/to_natura_doc_codice, per distinguere i due nodi FATTURA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: si riapplica 20260714-09, e insieme
+              --    20260821-03 e -04, che leggono is_ramo_inverso da qui. Tornare
+              --    indietro da soli lascerebbe la summary a filtrare una colonna che
+              --    non esiste piu'.
+              SELECT 1;

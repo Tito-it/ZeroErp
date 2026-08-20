@@ -86,4 +86,42 @@ JOIN vendite.vw_documento_lineage dl
 
 ---
 
+
+### ⭐ Il filtro del ramo di ritorno, e la natura (rev 2026-08-21)
+
+I due `WHERE` del grafo forward non nominano più la lettera `'R'`: leggono
+`vw_documento_lineage_archi.is_ramo_inverso`, che è l'unica sede dell'elenco dei
+rami di ritorno (oggi `R` e `N`).
+
+⛔ **Il risultato non è cambiato di una riga, ed è misurato**: applicando le
+quattro modifiche in transazione e confrontando la summary prima/dopo su tutti i
+nodi, le righe cambiate sono **zero**.
+
+⚠️ **Quanto sarebbe costato sbagliare.** Se uno dei due filtri fosse rimasto
+`arco <> 'R'`, la nota di credito sarebbe diventata un discendente forward della
+fattura che rettifica. La regola della frontiera sceglie l'**attivo più
+profondo**: la nota avrebbe vinto sulla fattura stessa, e ogni riga di lista
+avrebbe cambiato la propria frontiera. Senza errori, senza log, solo un valore
+diverso.
+
+**La natura del nodo** (`natura_doc_codice` / `natura_doc_descrizione`) è esposta
+anche qui, così una lista di fatture smette di scrivere «Fattura» sopra una nota
+di credito.
+
+⚠️ **Non esiste una `frontiera_natura_doc_codice`**, e non è una dimenticanza:
+l'arco N è escluso dal grafo forward, quindi una nota di credito non può **mai**
+essere la frontiera di nessuno e quella colonna varrebbe sempre NULL. Una colonna
+che vale sempre NULL non è un dato: è qualcosa che qualcuno prima o poi prova a
+leggere.
+
+📌 **Un'invariante che vale la pena conoscere**, ed è quella che presidia la
+scelta: *una fattura è sempre frontiera di sé stessa* — nel grafo forward non ha
+archi uscenti. È il test 30 di `test-documento-lineage-v1`.
+⚠️ **Non** «una nota di credito non è mai frontiera»: quella formulazione è
+sbagliata, perché la nota è raggiungibile in avanti dalla **commessa** (arco G) e
+al 2026-08-21 è già legittimamente la frontiera dell'ordine 240 e della commessa
+322.
+
+---
+
 {% include-markdown "signature-core.md" %}
