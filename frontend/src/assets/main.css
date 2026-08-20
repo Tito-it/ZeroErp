@@ -1749,14 +1749,6 @@ a {
   overflow-y: auto;
 }
 
-.app-dash-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
 .app-dash-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -2149,12 +2141,6 @@ a {
 
   .app-dash-stepper {
     display: flex;
-  }
-
-  /* Il titolo "Competenza <mese> <anno>" duplicherebbe la label dello
-   * stepper: nascosto su piccoli schermi. */
-  .app-dash-header {
-    display: none;
   }
 }
 

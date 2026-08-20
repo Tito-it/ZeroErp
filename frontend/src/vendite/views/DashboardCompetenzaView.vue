@@ -266,6 +266,16 @@ const totaliMese = computed(() => {
 
 const nErroriMese = computed(() => meseCorrente.value?.n_errori ?? 0)
 
+// Mese del titolo di pagina. ⚠️ `Intl.DateTimeFormat(..., {month:'long'})` in
+// italiano rende «agosto» minuscolo: corretto in una frase, sbagliato in un
+// titolo. La maiuscola si mette QUI e non nel dizionario, o servirebbero dodici
+// stringhe tradotte a mano al posto di una formattazione che gia' conosce la
+// lingua dell'utente.
+const meseTitolo = computed(() => {
+  const nome = nomiMesi.value[meseIdx.value] ?? ''
+  return nome.charAt(0).toUpperCase() + nome.slice(1)
+})
+
 const stadioSelezionatoLabel = computed(() =>
   stadioSelezionato.value ? stadioLabel(stadioSelezionato.value) : ''
 )
@@ -1438,8 +1448,9 @@ onActivated(() => {
   <div class="app-page">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <h2 style="margin: 0;">{{ t('vendite.dashboard_competenza.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('vendite.dashboard_competenza.page_description') }}</small>
+        <h2 style="margin: 0;">
+          {{ t('vendite.dashboard_competenza.page_title', { mese: meseTitolo, anno }) }}
+        </h2>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -1509,12 +1520,6 @@ onActivated(() => {
             <i v-else-if="statoMeseCorrente.stato === 'vuoto'" class="pi pi-minus app-dash-mese-vuoto" />
           </template>
         </DashMeseStepper>
-
-        <div class="app-dash-header">
-          <h3 style="margin: 0;">
-            {{ t('vendite.dashboard_competenza.competenza_titolo', { mese: nomiMesi[meseIdx], anno }) }}
-          </h3>
-        </div>
 
         <div class="app-dash-cards">
           <!-- Copertura del mese: totali BE (fatturato = imponibile, DB-6). -->
