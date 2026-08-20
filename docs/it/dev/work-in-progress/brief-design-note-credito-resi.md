@@ -22,10 +22,17 @@
 > duplica esattamente quello scritto a mano su `emittenti_fiscali`. Due
 > changeSet (`20260820-01`, `-02`) **applicati** il 2026-08-20 alle 08:32.
 > ⚠️ Con `20260820-01` il **messaggio** della famiglia
-> `prevent_deactivate_if_children` cambia per **tutti** i suoi trigger (un
-> centinaio): un secondo pgTAP asseriva su una parola di quella frase ed è stato
+> `prevent_deactivate_if_children` cambia per **tutti** i suoi trigger (**349**,
+> misurati): un secondo pgTAP asseriva su una parola di quella frase ed è stato
 > adeguato — §39.7, che è anche il racconto di una ricerca dei consumatori fatta
 > male.
+>
+> 🟠 **2026-08-20 — e da lì, due rami due rimedi due codici (§41).** Quel
+> messaggio unico era inadeguato per **metà** del parco trigger: diceva «attive»
+> ed era falso per i 181 senza colonna `attivo`; toltala, diventava impreciso per
+> i 168 che ce l'hanno. Ora il guard sceglie fra due codici — si **disattivano**
+> le righe collegate in un ramo, si **tolgono** nell'altro. Un changeSet
+> (`20260820-08`), il codice **934** e tre pgTAP: **preparati e NON applicati**.
 >
 > 🟠 **2026-08-20 — gli altri due punti del messaggio BE (§40).** Lo stesso
 > messaggio che segnalava la guardia del §38 ne portava altri due, di
@@ -4693,14 +4700,17 @@ Dove è finita la distinzione: nella **`causa`** del codice 125, che ora la
 dichiara, e nella **`soluzione`**, che copre entrambi i rimedi («disattivare
 **o** rimuovere le righe che puntano a questa»).
 
-📌 **Se un giorno valesse la pena riprenderla**, la strada pulita non è
-rimettere la parola nella frase generica: è **due codici distinti**, scelti dal
-`v_child_has_attivo` che la funzione già calcola — «ci sono ancora righe
-collegate **attive** in X» (rimedio: disattivarle) contro «ci sono ancora righe
-collegate in X» (rimedio: toglierle). Sono due situazioni con due rimedi
-diversi, che è il criterio con cui in questo progetto nasce un codice nuovo.
-Non è stato fatto oggi perché era una correzione di regressione, non un
-cantiere sui messaggi.
+📌 **La strada pulita** non è rimettere la parola nella frase generica: è **due
+codici distinti**, scelti dal `v_child_has_attivo` che la funzione già calcola —
+«ci sono ancora righe collegate **attive** in X» (rimedio: disattivarle) contro
+«ci sono ancora righe collegate in X» (rimedio: toglierle). Sono due situazioni
+con due rimedi diversi, che è il criterio con cui in questo progetto nasce un
+codice nuovo.
+
+✅ **Fatto**, nello stesso giorno: Tid ha letto questo paragrafo e ha chiesto di
+farlo bene. È il **§41** — e la misura che ne è uscita (168 trigger in un ramo,
+181 nell'altro) dice che non era una rifinitura: il messaggio unico era
+inadeguato per metà del parco trigger, in un verso o nell'altro.
 
 ## 40. 🟠 Le altre due del messaggio BE: provenienza a video e rettifiche che si compensano (2026-08-20)
 
@@ -4709,13 +4719,19 @@ cantiere sui messaggi.
 > il §38**, scritto il 19 e **applicato il 20 alle 07:53** (§40.0); qui gli
 > **altri due**, verificati uno per uno contro il database vivo.
 >
-> ⛔ **Stato: SCRITTO e MISURATO, NON APPLICATO.** Cinque changeSet
-> (`20260820-03` → `-07`), tre CSV di seed, un loader esteso in place e un pgTAP
-> nuovo da 22 asserzioni sono nel repo; la migrazione **aspetta il via**.
-> Le due decisioni del §40.1.3 e del §40.2.2 sono state **prese da Tid il
-> 2026-08-20**: rispettivamente **A+B** (numero del documento + `gruppo_key` a
-> catalogo ma spenta) e **`tipo_movimento` nel `GROUP BY`** come chiesto dal BE.
-> Cronaca dell'esecuzione e misure nel **§40.5**.
+> ✅ **Stato: APPLICATO** il 2026-08-20 alle 09:10 — cinque changeSet
+> (`20260820-03` → `-07`) `EXECUTED`, tre CSV di seed, un loader esteso in place
+> e un pgTAP nuovo. **Nessuna regressione** (confermato da Tid).
+> Le due decisioni del §40.1.3 e del §40.2.2 sono state **prese da Tid**:
+> rispettivamente **A+B** (numero del documento + `gruppo_key` a catalogo ma
+> spenta) e **`tipo_movimento` nel `GROUP BY`** come chiesto dal BE.
+> Cronaca e misure nel **§40.5**.
+>
+> ⛔ **Coda aperta (§40.6): il filtro `p_tipo_movimento`.** Il BE l'ha chiesto
+> poche ore dopo l'apply — resa visibile la colonna «Movimento», il passo dopo è
+> isolarla. ChangeSet **`20260820-09`** e sei asserzioni pgTAP in più (plan 22 →
+> 28) **scritti e NON applicati**. ⭐ Il parametro è **in coda** alla firma:
+> nessun chiamante da toccare, nemmeno quelli posizionali.
 
 ### 40.0 ✅ Il punto 1 è già fatto **e già applicato** — verificato sul DB, non supposto
 
@@ -5264,3 +5280,279 @@ questo giro — ma va abbassata, altrimenti la cricchetta resta lasca.
 3. **La corsa pgTAP vera**, come applicazione, sui quattro file dei vicini più
    il nuovo.
 
+
+---
+
+## 41. ✅ Due rami, due rimedi, due codici (2026-08-20)
+
+> **Origine**: la parola giusta persa del §39.7. Tid l'ha letta, ha chiesto di
+> farlo bene, e questa è la ripresa.
+>
+> ⛔ **Stato: preparato, NON applicato.** Un changeSet (`20260820-08`), due
+> righe di catalogo, tre pgTAP adeguati. La migrazione aspetta il via.
+
+### 41.1 Il punto, in due righe
+
+Il guard `prevent_deactivate_if_children` impedisce di disattivare una riga
+quando altre righe la usano ancora. Ma le tabelle collegate sono di **due tipi**,
+e chi legge il rifiuto deve fare **due cose diverse**:
+
+| ramo | quando blocca | cosa deve fare l'operatore |
+| --- | --- | --- |
+| **A** — la figlia ha la colonna `attivo` | solo se resta almeno una riga **attiva** | **disattivarle** («figli prima, padre poi») |
+| **B** — la figlia non ce l'ha | se esiste **qualunque** riga | **toglierle**: spegnerle non si può, quello stato non esiste |
+
+Un messaggio solo non può dire due cose. Da qui due codici:
+`E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (**934**, nuovo) e
+`E_ATTIVO_BLOCK_CHILDREN_EXIST` (**125**, che resta e ora copre solo il ramo B).
+
+### 41.2 ⭐ La misura che ha deciso: non è un caso di nicchia
+
+Fatta con le **stesse funzioni che usa il trigger** — `dbops.fn_get_override_col`
++ `dbops.fn_col_exists` — e non contando la colonna letterale `attivo`: la
+colonna «attivo» della figlia **può avere un altro nome**, e contarla alla
+lettera darebbe un numero simile e sbagliato. (In questo database l'override non
+cambia nulla oggi, ma è vero per costruzione, non per fortuna.)
+
+| ramo | trigger | tabelle figlie |
+| --- | --- | --- |
+| A — figlia con la colonna | **168** | 77 |
+| B — figlia senza | **181** | 88 |
+| **totale** | **349** | |
+
+⚠️ **Metà e metà.** Non c'è un caso normale e un'eccezione da rimandare — ed è
+questo che ha reso la decisione facile. *(E i 349 correggono la mia stima di «un
+centinaio» del §39.4: era bassa di tre volte.)*
+
+### 41.3 La storia di una giornata, perché non si ripeta
+
+1. **Fino a stamattina**: messaggio unico, diceva «righe figlio **attive**
+   collegate». **Falso per 181 trigger su 349**, che mandavano l'operatore a
+   cercare uno stato che in quella tabella non esiste.
+2. **`20260820-01`**: la parola cade. Vera per tutti, **imprecisa per 168**. La
+   distinzione finisce nella `causa` del catalogo.
+3. ⛔ **Era un ripiego, e si è visto subito**: la `causa` si legge *dopo*, mentre
+   ciò che cambia fra i due rami è la **prima** cosa che serve a chi ha appena
+   letto il rifiuto. La sfumatura sta nella causa; il **rimedio** no.
+4. **`20260820-08`**: due codici, scelti dal `v_child_has_attivo` che la funzione
+   **già calcolava** per costruire la query. Nessun lavoro nuovo: si usa una
+   risposta che c'era già.
+
+### 41.4 Cosa non cambia
+
+Il **blocco**. Stesse condizioni, stesso momento, stesso `SQLSTATE`, stessa
+classe (`CONFLITTO_STATO` per entrambi i codici — quindi lo stesso HTTP e la
+stessa reazione lato applicazione). Cambia **solo quale frase legge** chi riceve
+il rifiuto.
+
+Il corpo è diffato riga per riga contro quello vivo: **l'unica riga eseguibile
+diversa è il `CASE`** che sceglie il codice.
+
+### 41.5 ⚠️ Il vincolo nuovo, e il suo presidio
+
+I due codici viaggiano sulla **stessa** chiamata a `fn_log_and_raise_error`,
+quindi con la **stessa lista di valori**. I due messaggi devono perciò avere gli
+**stessi segnaposti nello stesso ordine**. Se uno dei due ne avesse di più,
+`format()` alzerebbe `W_MESSAGGIO_ARITA` e l'errore di dominio sparirebbe in un
+`22023` — cioè il guard smetterebbe di dire *perché* ha bloccato, proprio mentre
+blocca.
+
+⭐ Presidiato dal **test 13** di `test-trgfn-prevent-deactivate-if-children-pdp`,
+che confronta l'arità delle due righe di catalogo. ⚠️ E asserisce la **coppia**
+(`'4|4'`), non «sono uguali»: un confronto fra due valori resta vero anche se una
+delle due righe è sparita.
+
+### 41.6 I testimoni, uno per ramo — e nessuno costruito apposta
+
+⭐ I due rami non si verificano con una fixture inventata, ma con le tabelle vere
+che i pgTAP già usavano. Per fortuna coprivano entrambi:
+
+| ramo | testimone | file |
+| --- | --- | --- |
+| A | `anagrafiche.pdp` | `dbops/test-trgfn-prevent-deactivate-if-children-pdp` (test 4) |
+| A | `catalogo.articoli_uom_operativa` | `catalogo/test-fn-riattiva-articolo-v1` (test 1) |
+| B | `anagrafiche.emittenti_fiscali_billing_account` | `vendite/test-registri-per-emittente-v1` (test 6) |
+
+⚠️ **I due pattern si escludono per costruzione**: «righe collegate **attive** in
+X» non contiene «righe collegate in X». Se il guard sbagliasse ramo, i test
+diventerebbero rossi — è il loro secondo mestiere, oltre a verificare che il
+messaggio nomini la tabella **giusta**.
+
+⭐ **Un debito sanato per strada**: il test 4 del file `pdp` era
+`throws_ok(…, NULL, NULL, …)`, cioè accettava **qualunque** eccezione — sarebbe
+passato anche con un errore di permessi o con il guard sbagliato. Ora asserisce
+la frase, e la soglia del cancello `guardrail_pgtap_preambolo` scende da 137 a
+**131** (il debito misurato oggi).
+
+### 41.7 Le misure
+
+* Dry-run del changeSet + le due righe di catalogo, in transazione annullata,
+  su tutti e tre i file: **6/6**, **13/13**, **7/7**.
+* Prima del changeSet, gli stessi tre: `catalogo` rosso, `pdp` rosso su 8 e 13,
+  `registri` **verde** — cioè esattamente le asserzioni del ramo A e l'arità, e
+  nessun'altra. Il ramo B era già a posto da stamattina.
+* Database di sviluppo verificato **intatto**: funzione invariata, codice 934
+  non a catalogo, changeSet non applicato.
+
+### 41.8 🔴 Cosa serve al BE
+
+Rigenerare `error_policies_generated.py` (`manage.py genera_error_policies`).
+⚠️ Con questo diventano **tre** i giri di catalogo da prendere insieme:
+
+1. il codice **933** `E_RESO_ANNULLO_CON_ACCREDITO` (§38);
+2. il **ritiro** del 131 `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` (§39);
+3. il codice **934** `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (qui).
+
+`test_error_policies_divergenza_db` confronta il **file intero** con
+`config.vw_codici_errore_identita`: finché non si rigenera resta rosso, e lo
+diventa in una PR che non c'entra.
+
+📌 Vale la pena aggiungere anche il fallback di
+`apps/core/services/error_messages_fallback.py`, dove `E_ATTIVO_BLOCK_CHILDREN_EXIST`
+ha ancora la frase vecchia — *«esistono record collegati ancora attivi»* — che è
+il testo che ora è **falso proprio per quel codice**.
+
+---
+
+### 40.6 ⭐ Il quarto filtro: `p_tipo_movimento` (2026-08-20, seconda mandata BE)
+
+> **Origine**: risposta del BE al §40.5, poche ore dopo l'apply. *«Con "Movimento"
+> diventata una colonna visibile, il passo successivo che l'operatore fa è
+> isolarla — fammi vedere solo le rettifiche.»*
+>
+> ⛔ **Stato: SCRITTO, NON APPLICATO** — changeSet `20260820-09`, una cella di
+> CSV, cinque asserzioni pgTAP in più (plan 22 → **27**).
+
+⭐ **È la stessa lezione del §7.1, un giro più in là.** Lì il difetto era che il
+dato usciva dall'API e la colonna non esisteva a catalogo; qui è che la colonna
+esiste e non si può **interrogare**. Una colonna non è finita quando il dato è
+giusto: deve arrivare a chi guarda, ordinare nel verso in cui la domanda è
+posta, **e potersi filtrare**. Sono tre cose diverse e nessuna implica le altre.
+
+E la misura dà ragione alla richiesta: in sviluppo le rettifiche sono **6 righe
+su 98**; su una commessa vera sono una manciata dentro centinaia.
+
+#### 40.6.1 Come è fatto
+
+`p_tipo_movimento`, **quarto filtro** subito dopo `p_competenza_mese`.
+`NULL`/vuoto = tutti i movimenti, quindi chi non chiede niente ottiene esattamente
+il risultato di prima.
+
+**Fail-loud sul vocabolario**, come chiesto: un valore fuori elenco solleva
+`E_PARAMETRO_INVALIDO` invece di restituire zero righe. La ragione la dice bene
+il BE — *«un valore sbagliato che torna una lista vuota si legge come "non c'è
+niente"»* — ed è il motivo per cui nel pgTAP le due cose sono **due asserzioni
+distinte**: il test 25 verifica che un movimento *assente* dia zero righe **senza
+errore**, il 26 che un movimento *inventato* **sollevi**. Senza il 26, «zero
+righe» sarebbe la risposta a entrambe le domande.
+
+ℹ️ Tollera spazi e minuscole (`upper(btrim(...))`), la stessa tolleranza già
+applicata a `p_order_by` e `p_order_dir`. Non è indovinare: il vocabolario resta
+chiuso, e lo dimostra il test 26.
+
+#### 40.6.2 ⚠️ Il vocabolario è ripetuto, e va detto invece che nascosto
+
+I tre valori sono scritti anche nella funzione. È la **seconda** copia: la prima
+— e l'unica che **enforca** — è il `CHECK chk_commesse_attivita_tipo_movimento`.
+Non esiste una tabella-vocabolario per `tipo_movimento`: è un CHECK, non una FK.
+
+Misurato il 2026-08-20 in `20_code`, i letterali legati a `tipo_movimento` sono
+già **42 `NORMALE`, 19 `ONERE`, 8 `RETTIFICA`**: questa non è la seconda
+occorrenza, è l'ennesima **lettura** — e le letture non enforcano niente.
+
+⭐ **Quando la regola del 2 scatterà davvero**: il giorno in cui il vocabolario
+dovesse crescere, o portare attributi (etichetta i18n, segno, «conta nel
+contatore merce»), la mossa è una **tabella di catalogo con `codice_interno`**,
+non un quarto CHECK. È un cantiere a sé, e non si fa di straforo dentro un filtro
+di lista. Nel frattempo il changeSet ha una **preCondition** che verifica che il
+CHECK ammetta ancora esattamente quei tre valori: se qualcuno ne aggiunge un
+quarto, il migrate si ferma e questo file va riscritto insieme.
+
+#### 40.6.3 ⭐ Il parametro va IN CODA — e la prima stesura sbagliava
+
+`p_tipo_movimento` è il **nono** argomento, dopo `p_order_dir`.
+
+⚠️ **La prima stesura lo metteva come quarto filtro**, accanto agli altri tre,
+per simmetria: lì è il suo posto *a leggersi*. Tid l'ha respinta con la ragione
+giusta — *«altrimenti dobbiamo ricostruire tutta la catena di chi lo usa»* — e
+la respinta vale più della simmetria:
+
+> **una firma più ordinata non vale la ricostruzione della catena di chi la
+> chiama.**
+
+Appeso in fondo e con un `DEFAULT`, ogni chiamata **posizionale** esistente
+continua a funzionare identica: i primi otto argomenti restano dove sono e il
+nono si omette. Misurato sul dato vero:
+
+```text
+fn_list_commessa_attivita(15370, NULL, NULL, NULL, 1000, 0, NULL, 'asc')     → 4 righe
+fn_list_commessa_attivita(p_commessa_id => 15370, p_tipo_movimento => 'RETTIFICA') → 3
+fn_list_commessa_attivita(15370, NULL, NULL, NULL, 1000, 0, NULL, 'asc', 'NORMALE') → 1
+firme: 1
+```
+
+⭐ **E la spesa evitata non era teorica**: la firma di questa funzione è cresciuta
+**due volte in cinque giorni** (il `-05` e questo). Ogni parametro infilato in
+mezzo riscrive tutti i chiamanti posizionali — e in un pgTAP si rompe nell'unico
+posto in cui nessuno lo sta guardando.
+
+⭐ **Il test 28 presidia proprio questo**: è la firma di prima, otto argomenti
+tutti posizionali, e deve continuare a risolvere. Se un domani qualcuno sposta un
+parametro, quella riga diventa rossa — è il suo unico mestiere.
+
+ℹ️ **La posizione serve ai chiamanti, non alla logica**: nell'elenco dei filtri
+`p_tipo_movimento` è il quarto perché è così che si legge il comportamento; nella
+firma è l'ultimo perché è così che non si rompe niente.
+
+⚠️ Resta **DROP + CREATE**, non `CREATE OR REPLACE`: aggiungere un parametro a una
+funzione **non la sostituisce**, ne crea un **overload** — e con otto parametri
+opzionali le due firme renderebbero ambigua ogni chiamata. Il `DROP` nomina la
+firma **vecchia** (8 argomenti), il `rollback` quella **nuova** (9, col nono in
+coda). La `RETURNS TABLE` invece **non cambia**.
+
+#### 40.6.4 Il catalogo: `movimento` da `filtrabile = f` a `t`, e le altre cinque no
+
+Il BE chiedeva anche se accenderla sulle altre cinque. **No, e non per
+prudenza**: la funzione filtra su `stato_emissione`, `stato_approvazione`,
+`competenza_mese` e ora `tipo_movimento`. Su `articolo_codice`, `descrizione`,
+`origine`, `tipo origine` e `gruppo_key` **il database non sa filtrare**, quindi
+`filtrabile = t` sarebbe una dichiarazione che nessuno può onorare — la stessa
+classe di difetto dell'ordinamento, un livello più in là.
+
+> ℹ️ **E una cosa che vale la pena sapere prima di aspettarsi qualcosa da quel
+> flag.** Misurato il 2026-08-20: nel frontend `filtrabile` è letto **solo** da
+> `ListaColonnaDrawer.vue`, cioè dal pannello che *modifica* la definizione della
+> colonna. `<ListaConfigurabile>` **non lo consuma**. Accenderlo oggi non cambia
+> niente a runtime: è una **dichiarazione di intento** che diventa vera il giorno
+> in cui qualcuno costruirà la riga di filtri generica sopra al catalogo. Il
+> filtro che l'operatore userà davvero è il controllo nel drawer, come dice il
+> BE — e quello passa dal parametro nuovo, non dal flag.
+
+#### 40.6.5 Le misure
+
+**pgTAP** `test-fn-list-commessa-attivita-provenienza-v1`: plan 22 → **28**,
+**28/28 verdi** (prova con il `-09` applicato in transazione e annullato). La
+ventottesima è la compatibilità posizionale del §40.6.3.
+Nessuna regressione sui due vicini che chiamano la funzione:
+`test-fn-list-commessa-attivita-v1` **14/14**, `test-lista-commessa-attivita-fatturata-v1`
+**4/4**.
+
+**Sul dato vero**, commessa 15370 (il reso semplice):
+
+```text
+senza filtro   4 righe
+NORMALE        1
+RETTIFICA      3      ← e 'rettifica' minuscolo funziona uguale
+ONERE          0      ← zero righe, nessun errore: e' l'esito giusto
+```
+
+#### 40.6.6 📮 Per il BE
+
+* il parametro c'è: `p_tipo_movimento`, `NULL` = tutti i movimenti;
+* ⭐ **è in coda alla firma** (nono argomento): le chiamate esistenti, nominate o
+  posizionali, **non vanno toccate**;
+* la validazione lato service è uno **specchio** del vocabolario, come già per
+  `order_by`: se diverge, il DB rifiuta comunque e l'utente vede un 400 dal
+  posto sbagliato;
+* `movimento` è `filtrabile = t` a catalogo; le altre cinque restano `f` e il
+  §40.6.4 dice perché.

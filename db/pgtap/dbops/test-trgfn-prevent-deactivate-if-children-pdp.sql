@@ -3,6 +3,14 @@
 -- pgTAP test per Zero ERP
 -- Trigger: dbops.trgfn_prevent_deactivate_if_children
 -- Caso: config.stati_pdp (padre) -> anagrafiche.pdp (figlio con attivo)
+--
+-- ⭐ Questo file e' il TESTIMONE DEL RAMO A del guard: la tabella figlia ha la
+--    colonna `attivo`, quindi bloccano solo le righe ATTIVE e il rimedio e'
+--    disattivarle. Dal 20260820-08 quel ramo ha un codice suo,
+--    E_ATTIVO_BLOCK_CHILDREN_ACTIVE (934). Il ramo B — figlia senza colonna
+--    attivo, blocca qualunque riga, rimedio toglierle, codice 125 — e'
+--    presidiato da db/pgtap/vendite/test-registri-per-emittente-v1.sql (test 6).
+--    Misura del 2026-08-20: 168 trigger nel ramo A, 181 nel B.
 -- ------------------------------------------------------------
 
 -- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
@@ -29,7 +37,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(13);
 
 CREATE TEMP TABLE tmp_test_keys AS
 SELECT '*$*' AS ts;
@@ -145,17 +153,32 @@ LIMIT 1;
 -- =========================================================
 -- 4) Disattivazione con figlio: deve fallire
 -- =========================================================
+-- ⭐ rev 2026-08-20 — il discriminante non e' piu' «un errore qualsiasi».
+--    Prima era throws_ok(..., NULL, NULL, ...), che accetta QUALUNQUE
+--    eccezione: sarebbe passato anche se a fallire fosse stato un permesso,
+--    una FK o il guard sbagliato. Ora si asserisce la FRASE, e quella frase
+--    dice due cose che prima non erano verificate da nessuno:
+--      · «attive» -> il guard ha preso il ramo giusto. anagrafiche.pdp HA la
+--        colonna attivo, quindi deve sollevare E_ATTIVO_BLOCK_CHILDREN_ACTIVE
+--        (934) e non E_ATTIVO_BLOCK_CHILDREN_EXIST (125). Sono due codici
+--        perche' i rimedi sono diversi: qui si DISATTIVANO le righe figlie
+--        (ed e' esattamente quello che fa il test 5 qui sotto), nell'altro
+--        ramo si TOLGONO;
+--      · «anagrafiche.pdp» -> nel messaggio padre e figlia sono entrambi
+--        `schema.tabella`. Se il loro ordine si scambiasse rispetto ai
+--        segnaposti del catalogo, la frase resterebbe grammaticalmente
+--        perfetta e nominerebbe config.stati_pdp: nessun controllo di
+--        sintassi puo' vederlo, questo test si'.
 SELECT CASE
     WHEN (SELECT utility_id IS NOT NULL AND indirizzo_id IS NOT NULL FROM tmp_pdp_base) THEN
-        throws_ok(
+        throws_like(
             $$
             UPDATE config.stati_pdp
             SET attivo = false
             WHERE id = (SELECT id FROM tmp_stato_pdp);
             $$,
-            NULL,
-            NULL,
-            'Disattivazione stato_pdp con figli: bloccata'
+            '%righe collegate attive in anagrafiche.pdp%',
+            'Disattivazione stato_pdp con figli: bloccata, col messaggio del ramo ATTIVE'
         )
     ELSE
         ok(true, 'Prerequisiti mancanti: test blocco skipped')
@@ -213,6 +236,28 @@ SELECT CASE
     ELSE
         ok(true, 'PDP figlio non presente: check attivo padre skipped')
 END;
+
+-- =========================================================
+-- 13) ⛔ I DUE MESSAGGI CONDIVIDONO UNA SOLA LISTA DI VALORI.
+--     Dal 20260820-08 questa funzione sceglie fra due codici, ma li solleva
+--     con la STESSA chiamata e quindi con gli STESSI valori: padre, colonna
+--     referenziata, suo valore, figlia. Se uno dei due messaggi avesse piu'
+--     segnaposti dell'altro, format() alzerebbe W_MESSAGGIO_ARITA e l'errore
+--     di dominio sparirebbe in un 22023 — cioe' il guard smetterebbe di
+--     dire perche' ha bloccato, proprio mentre blocca.
+--     ⚠️ Si asserisce la COPPIA e non «sono uguali»: un confronto fra due
+--     valori resta vero anche se una delle due righe non esiste piu'.
+-- =========================================================
+SELECT is(
+    (SELECT string_agg(
+              ((length(m.messaggio) - length(replace(m.messaggio, '%s', ''))) / 2)::text,
+              '|' ORDER BY m.codice)
+       FROM config.messaggi_errore m
+      WHERE m.codice IN ('E_ATTIVO_BLOCK_CHILDREN_ACTIVE', 'E_ATTIVO_BLOCK_CHILDREN_EXIST')
+        AND m.lingua = 'it'),
+    '4|4',
+    '13) i due codici del guard hanno lo stesso numero di segnaposti (4): la lista dei valori e'' una sola'
+);
 
 -- Cleanup
 DELETE FROM anagrafiche.pdp

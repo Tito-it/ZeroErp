@@ -28,6 +28,37 @@ Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri 
   * `p_stato_emissione`
   * `p_stato_approvazione`
   * `p_competenza_mese` (normalizzato al primo giorno del mese)
+  * `p_tipo_movimento` (dal 20-08-2026) — `NORMALE` | `RETTIFICA` | `ONERE`;
+    `NULL`/vuoto = tutti i movimenti.
+    ⚠️ Un valore **fuori vocabolario solleva** `E_PARAMETRO_INVALIDO`, non filtra
+    a vuoto: una lista vuota si legge come *«non c'è niente»*, cioè il difetto si
+    traveste da dato. È la stessa classe della «freccia che non ordina».
+    ℹ️ Tollera spazi e minuscole (`upper(btrim(...))`), come `p_order_by` e
+    `p_order_dir`: il vocabolario resta chiuso, ma una lista non deve dipendere
+    da uno spazio di troppo.
+    ⚠️ I tre valori sono una **lettura** del vocabolario: a enforcarlo è il
+    `CHECK chk_commesse_attivita_tipo_movimento` sulla tabella, che resta l'unica
+    difesa vera. Non esiste una tabella-vocabolario per `tipo_movimento`.
+
+> ⭐ **`p_tipo_movimento` è il NONO argomento, in coda dopo `p_order_dir`** — non
+> accanto agli altri tre filtri, dove starebbe meglio a leggersi.
+>
+> È una scelta, non una svista: **una firma più ordinata non vale la
+> ricostruzione della catena di chi la chiama.** Appeso in fondo e con un
+> `DEFAULT`, ogni chiamata **posizionale** esistente continua a funzionare
+> identica — i primi otto argomenti restano dove sono e il nono si omette.
+> Il pgTAP lo presidia (`test-fn-list-commessa-attivita-provenienza-v1`, test 28):
+> se un domani qualcuno infilasse un parametro in mezzo, quella riga diventerebbe
+> rossa.
+>
+> ℹ️ **La posizione serve ai chiamanti, non alla logica**: nell'elenco dei filtri
+> qui sopra `p_tipo_movimento` è il quarto perché è così che si legge il
+> comportamento; nella firma è l'ultimo perché è così che non si rompe niente.
+>
+> ⚠️ È comunque un `DROP + CREATE`: aggiungere un parametro a una funzione
+> **non la sostituisce**, ne crea un **overload** — e con otto parametri
+> opzionali le due firme renderebbero ambigua ogni chiamata. La `RETURNS TABLE`
+> invece non cambia.
 * Paginazione:
   * `p_limit` default `1000`, massimo `10000`
   * `p_offset` minimo `0`
