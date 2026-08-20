@@ -1265,6 +1265,114 @@ timeline — stesso CSV, stesse colonne, numerazione nuova. Esempi:
 
 ---
 
+---
+
+## 12. Capability: le azioni che il database propone all'operatore
+
+> ⭐ **Perché questa sezione sta QUI.** La regola che segue vive da sempre in
+> [frontend-standards.md](dev/frontend/frontend-standards.md) e nei building
+> block del frontend. Ma **chi la applica per primo è il database**: sono le
+> `script.fn_available_actions_*` a decidere se un'azione è proposta, spenta o
+> assente, e chi scrive SQL non legge il documento del frontend. Il 2026-08-20
+> una decisione DB è stata presa ignorandola — «il bottone resta acceso, tanto
+> il messaggio spiega» — e il BE ha dovuto citare la regola per farla
+> correggere. La regola non era sbagliata: era **irraggiungibile** da dove
+> serviva.
+
+### 12.1 La regola
+
+> **Permesso ⇒ nascondi. Stato ⇒ disabilita col motivo.**
+
+* Il **permesso** non è qualcosa che l'operatore possa risolvere da solo: una
+  voce grigia sarebbe una promessa che non si mantiene. Si nasconde.
+* Lo **stato del record** può cambiare — si annulla l'accredito, si aggiunge una
+  riga, si sblocca il lotto — quindi l'azione **resta a video, disabilitata, e
+  dice perché**. `disabled` + tooltip spiega e resta.
+
+⚠️ **La terza via è la peggiore**: lasciare l'azione **accesa** su qualcosa che
+il guard rifiuterà. L'operatore clicca, prende un 409, e scopre il vincolo
+sbagliando. Un'azione proposta è una promessa.
+
+⚠️ **E la quarta pure**: togliere l'azione dall'elenco per uno *stato*. Sparisce
+senza spiegazione, e chi la cercava non sa se è un permesso, un bug o una
+versione vecchia.
+
+### 12.2 Come si scrive, in pratica
+
+Ogni voce di `available_actions` porta la terna:
+
+| Campo | Cosa |
+| --- | --- |
+| `enabled` | `false` quando una precondizione di **stato** non è soddisfatta |
+| `reason` | codice macchina (`DOCUMENTO_SENZA_RIGHE`, `RESO_CON_ACCREDITI`) |
+| `reason_key` | chiave i18n del tooltip — **il testo non si scrive in SQL** |
+
+```sql
+'enabled',    NOT ( <precondizione_generica> OR <precondizione_specifica> ),
+'reason',     CASE WHEN <specifica> THEN 'CODICE_SPECIFICO'
+                   WHEN <generica>  THEN 'CODICE_GENERICO' END,
+'reason_key', CASE WHEN <specifica> THEN 'dominio.entita.azione_reason.caso'
+                   WHEN <generica>  THEN 'common.azione_reason.caso' END
+```
+
+Quattro cose da fare bene, tutte già costate:
+
+1. **Il predicato è lo STESSO del guard** che rifiuterebbe. Se divergono,
+   l'operatore vede un bottone grigio su un'azione che sarebbe passata — o
+   acceso su una che verrà rifiutata. La capability *specchia* la regola, non ne
+   scrive una seconda.
+2. **`can_change_state` conta anche le azioni disabilitate.** La barra deve
+   comparire proprio per mostrare il pulsante grigio: se la si contasse solo
+   sulle abilitate, il motivo non arriverebbe mai a video.
+3. **Precedenza dichiarata** quando i motivi possono essere più di uno: **lo
+   specifico batte il generico**, e si scrive nel corpo. Un ordine non scritto è
+   un ordine che il prossimo cambia senza accorgersene.
+4. **L'aggancio è su `codice_interno`**, mai su `codice` (§6c/§6d): al primo
+   rename fatto dall'utente un `CASE` su `codice` smette di agganciarsi **in
+   silenzio**, e il bottone torna acceso.
+
+### 12.3 ⚠️ La `reason_key` è un debito verso il frontend
+
+Una `reason_key` emessa dal database e **assente dai locales** produce un
+pulsante grigio col tooltip vuoto — cioè il difetto che la regola voleva
+evitare, in una forma peggiore.
+
+È presidiato: `scripts/check_i18n_keys.py` (controllo 4) cerca le `reason_key`
+emesse dalle funzioni nella doc auto-gen e assenti da `it.json`/`en.json`, e
+**fallisce**. Quindi ogni `reason_key` nuova va **chiesta al FE nello stesso
+giro**, non dopo.
+
+Namespace: `common.azione_reason.*` per i motivi trasversali (documento senza
+righe, indirizzi mancanti), `<area>.<entità>.<azione>_reason.*` per quelli di
+dominio (`vendite.reso.annulla_reason.con_accrediti`,
+`vendite.ddt.push_commessa_reason.gia_inviato`).
+
+### 12.4 Dove vive, e chi non ci è ancora arrivato
+
+Le capability stanno **solo sul DETTAGLIO**, mai per riga di lista: una lista che
+chiamasse una `fn_available_actions_*` per riga farebbe N chiamate. Le liste
+fanno il gate sui codici che hanno già in riga.
+
+Censimento delle otto funzioni al 2026-08-20:
+
+| Funzione | `enabled` | `reason` + `reason_key` |
+| --- | --- | --- |
+| `fn_available_actions_contratto` | ✅ | ✅ |
+| `fn_available_actions_ddt` | ✅ | ✅ |
+| `fn_available_actions_offerta` | ✅ | ✅ |
+| `fn_available_actions_ordine` | ✅ | ✅ |
+| `fn_available_actions_preventivo` | ✅ | ✅ |
+| `fn_available_actions_reso` | ✅ | ✅ |
+| `fn_available_actions_commessa` | ✅ | ⛔ |
+| `fn_available_actions_lotto` | ✅ | ⛔ |
+
+⚠️ Le ultime due espongono `enabled` ma **non** il motivo: quando disabilitano
+qualcosa, il pulsante è grigio e muto. Non è un difetto trovato in collaudo — è
+un debito **misurato**, e va sanato quando quei due domini toccano le loro
+azioni. Chi ci mette mano legga prima questa sezione.
+
+---
+
 *Documento riassuntivo delle best practice SQL per lo sviluppo e la manutenzione di Zero ERP.*
 
 ---

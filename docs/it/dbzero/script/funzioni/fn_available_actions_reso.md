@@ -31,6 +31,23 @@ AS $function$
 --   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
 --   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
 --   legge gia': il cablaggio c'era ed era inerte.
+--   ⭐ rev 2026-08-20: la transizione ad ANNULLATO si DISABILITA COL
+--   MOTIVO quando il reso ha un accredito registrato. Applica la regola
+--   di frontend-standards — «permesso => nascondi, STATO => disabilita
+--   col motivo» — ora scritta anche per il DB in linee-guida-sql §12:
+--   avere un accredito e' uno stato che CAMBIA (si disfa l'accredito e
+--   l'annullo torna possibile), quindi il bottone resta a video e
+--   spiega. Cambia la decisione del §38.6 del brief nota di credito, che
+--   lo lasciava acceso e muto.
+--   ⭐ Nessun flag di testata `ha_accrediti`: la terna
+--   enabled/reason/reason_key esiste gia' PER AZIONE, e un flag di
+--   documento spegnerebbe anche le transizioni che non c'entrano.
+--   Modello: fn_available_actions_ddt, che disabilita la sola
+--   transizione EMESSO con un motivo suo.
+--   ⚠️ Il predicato e' lo STESSO EXISTS della guardia di
+--   vendite.fn_annulla_reso (E_RESO_ANNULLO_CON_ACCREDITO, 933): se i
+--   due divergono, il bottone e' grigio quando l'annullo passerebbe — o
+--   peggio il contrario.
 --   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
 --   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
 --   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
@@ -39,7 +56,8 @@ AS $function$
 --   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
 --   si applica: filtrare per presenza risponde vero per tutti i documenti,
 --   va guardato il valore.
---   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
+--   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3;
+--   brief-design-note-credito-resi §43.
 DECLARE
     v_stato_id   vendite.resi.stato_doc_reso_id%TYPE;
     v_stato_cod  config.stati_doc_reso.codice_interno%TYPE;
@@ -47,6 +65,7 @@ DECLARE
     v_actions    jsonb;
     v_can_change boolean := false;
     v_ha_righe   boolean := false;
+    v_ha_accrediti boolean := false;
     c_non_edit_draft CONSTANT jsonb :=
         '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id","emittente_fiscale_id"]'::jsonb;
     c_non_edit_tutti CONSTANT jsonb :=
@@ -74,6 +93,26 @@ BEGIN
            AND rr.attivo IS TRUE
     );
 
+    -- ⭐ Precondizione "nessun accredito registrato" per la
+    -- transizione ad ANNULLATO. STESSO PREDICATO della guardia in
+    -- vendite.fn_annulla_reso: l'ESISTENZA di una riga di ponte, non
+    -- lo stato delle rettifiche — se l'accredito e' ormai troppo
+    -- tardi per essere disfatto lo dice la sua madre con
+    -- E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolarlo qui sarebbe
+    -- una seconda copia della stessa regola.
+    -- ⚠️ vendite.resi_righe_accrediti NON ha RLS (verificato
+    -- 2026-08-20): questa lettura vede tutto il ponte anche da
+    -- SECURITY INVOKER. Se un domani la RLS ci arrivasse, chi non
+    -- vedesse il ponte leggerebbe «nessun accredito» e si
+    -- troverebbe il bottone acceso e il 409 in faccia: allora
+    -- servirebbe una SECURITY DEFINER, non un COALESCE.
+    v_ha_accrediti := EXISTS (
+        SELECT 1
+          FROM vendite.resi_righe_accrediti rra
+          JOIN vendite.resi_righe rr ON rr.id = rra.resi_riga_id
+         WHERE rr.reso_id = p_reso_id
+    );
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -88,14 +127,37 @@ BEGIN
                 'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
-                'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                         AND NOT v_ha_righe),
-                'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                              AND NOT v_ha_righe
-                                         THEN 'DOCUMENTO_SENZA_RIGHE' END,
-                'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                              AND NOT v_ha_righe
-                                         THEN 'common.azione_reason.senza_righe' END
+                -- ⚠️ PRECEDENZA DICHIARATA fra due motivi: il
+                -- SPECIFICO batte il generico. Oggi non si
+                -- incontrano (le transizioni `annulla` non
+                -- dichiarano requires_righe, e un reso con
+                -- accrediti ha per forza righe), ma un ordine non
+                -- scritto e' un ordine che il prossimo cambia
+                -- senza accorgersene.
+                --   1. ANNULLATO + accrediti  -> RESO_CON_ACCREDITI
+                --   2. requires_righe + vuoto -> DOCUMENTO_SENZA_RIGHE
+                -- ⚠️ Il match e' su `codice_interno`, la colonna
+                -- IMMUTABILE: su `codice` si romperebbe al primo
+                -- rename fatto dall'utente, e in silenzio.
+                'enabled',          NOT (
+                                        (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                         AND NOT v_ha_righe)
+                                     OR (sa.codice_interno = 'ANNULLATO' AND v_ha_accrediti)
+                                    ),
+                'reason',           CASE
+                                      WHEN sa.codice_interno = 'ANNULLATO' AND v_ha_accrediti
+                                           THEN 'RESO_CON_ACCREDITI'
+                                      WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                           AND NOT v_ha_righe
+                                           THEN 'DOCUMENTO_SENZA_RIGHE'
+                                    END,
+                'reason_key',       CASE
+                                      WHEN sa.codice_interno = 'ANNULLATO' AND v_ha_accrediti
+                                           THEN 'vendite.reso.annulla_reason.con_accrediti'
+                                      WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                           AND NOT v_ha_righe
+                                           THEN 'common.azione_reason.senza_righe'
+                                    END
             )
             ORDER BY sa.ordine
         ),
@@ -129,7 +191,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_reso(p_reso_id bigint)
-IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_reso.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari, anche accanto a un''azione ancora abilitata: la nota spiega lo STATO e non risponde a una barra vuota (decisione §5 di Tid, gia'' applicata a preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era fra i cinque che non emettevano affatto il campo mentre il drawer lo legge gia'': il cablaggio c''era ed era inerte. ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key: scripts/check_i18n_keys.py trova le chiavi seminate per quel nome, e rinominarla senza toccare il guard lo renderebbe verde per cecita''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare per presenza risponde vero per tutti i documenti, va guardato il valore. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.';
+IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE). rev 2026-08-06: + target_state_descrizione accanto a target_state. rev 2026-08-11: + stato_info_key, la nota di stato letta dal meta dello stato corrente ed emessa SEMPRE che lo stato la dichiari. ⭐ rev 2026-08-20 (segnalazione BE): la transizione ad ANNULLATO si DISABILITA COL MOTIVO quando il reso ha un accredito registrato -> enabled=false, reason RESO_CON_ACCREDITI, reason_key vendite.reso.annulla_reason.con_accrediti. Applica la regola di frontend-standards, ora scritta anche per il DB in linee-guida-sql §12: «permesso => nascondi, STATO => disabilita col motivo». Avere un accredito e'' uno stato che CAMBIA — si disfa l''accredito e l''annullo torna possibile — quindi il bottone non va nascosto ne'' lasciato acceso e muto: resta a video e spiega. Cambia la decisione del §38.6 del brief nota di credito. ⭐ NIENTE flag di testata `ha_accrediti`, che il BE aveva chiesto: la terna enabled/reason/reason_key esiste gia'' PER AZIONE ed e'' gia'' letta dal FE, mentre un flag di documento spegnerebbe anche le transizioni che non c''entrano e vorrebbe cablaggio nuovo. Modello: fn_available_actions_ddt, che disabilita la sola transizione EMESSO con un motivo suo. ⚠️ Il predicato e'' lo STESSO EXISTS della guardia di vendite.fn_annulla_reso (933): capability e guard devono dire la stessa cosa, o il bottone e'' grigio quando l''annullo passerebbe — o peggio il contrario. ⚠️ vendite.resi_righe_accrediti NON ha RLS (verificato): se un domani ce l''avesse, chi non vede il ponte leggerebbe «nessun accredito» e si troverebbe il bottone acceso e il 409 in faccia, e servirebbe una SECURITY DEFINER. ⚠️ PRECEDENZA fra motivi dichiarata nel corpo: lo SPECIFICO (accrediti) batte il generico (senza righe). ⚠️ La PROPRIETA'' nel meta resta nessuna_azione_key mentre il campo del blob si chiama stato_info_key. 🔴 Richiede la chiave i18n vendite.reso.annulla_reason.con_accrediti in it.json e en.json: senza, check_i18n_keys.py diventa rosso e il tooltip resta vuoto. brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3; brief-design-note-credito-resi §43.';
 ```
 
 ---
