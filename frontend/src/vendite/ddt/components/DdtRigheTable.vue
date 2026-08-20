@@ -10,6 +10,7 @@ import { formatCurrency, formatNumber } from '../../../core/utils/format'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import DdtRigaForm from './DdtRigaForm.vue'
 import Column from 'primevue/column'
+import Tag from 'primevue/tag'
 
 const { t } = useI18n()
 const store = useDdtStore()
@@ -17,6 +18,10 @@ const store = useDdtStore()
 defineProps({
   ddtId: { type: Number, required: true },
   isModificabile: { type: Boolean, default: true },
+  // FE-A: la causale del documento vende? Serve al form e ai componenti per
+  // decidere se il prezzo e' obbligatorio (default `true` = comportamento
+  // storico, cosi' un chiamante che non la passa non cambia).
+  causaleFatturabile: { type: Boolean, default: true },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
 
@@ -49,16 +54,28 @@ defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
         <template #body="{ data }">{{ formatNumber(data.qta_operativa) }}</template>
       </Column>
       <Column field="uom_codice" :header="t('vendite.ddt.riga_uom')" style="width: 70px;" />
+      <!-- DEC-6: prezzo assente non e' prezzo zero. Senza il Tag la cella
+           resterebbe vuota (o peggio, 0,00) e l'operatore non saprebbe se il
+           prezzo manca o se qualcuno ha deciso che vale zero. -->
       <Column field="prezzo_unitario" :header="t('vendite.ddt.riga_prezzo')" sortable style="width: 130px;">
         <template #body="{ data }">
-          {{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 6, maximumFractionDigits: 6 }) }}
+          <Tag v-if="data.prezzo_unitario == null"
+               severity="secondary" :value="t('vendite.ddt.riga_senza_prezzo')" />
+          <template v-else>
+            {{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 6, maximumFractionDigits: 6 }) }}
+          </template>
         </template>
       </Column>
       <Column field="sconto_percentuale" :header="t('vendite.ddt.riga_sconto')" sortable style="width: 80px;">
         <template #body="{ data }">{{ data.sconto_percentuale ? `${data.sconto_percentuale}%` : '' }}</template>
       </Column>
+      <!-- Dopo B4 l'importo arriva NULL quando manca il prezzo: stessa cura. -->
       <Column field="importo_riga" :header="t('vendite.ddt.riga_importo')" sortable style="width: 120px;">
-        <template #body="{ data }">{{ formatCurrency(data.importo_riga) }}</template>
+        <template #body="{ data }">
+          <Tag v-if="data.importo_riga == null"
+               severity="secondary" :value="t('vendite.ddt.riga_senza_prezzo')" />
+          <template v-else>{{ formatCurrency(data.importo_riga) }}</template>
+        </template>
       </Column>
       <Column field="iva_descrizione" :header="t('vendite.ddt.riga_iva')" sortable style="width: 80px;">
         <template #body="{ data }">{{ data.iva_descrizione || data.iva_codice || '' }}</template>
@@ -69,6 +86,7 @@ defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
       <DdtRigaForm
         :ddt-id="ddtId"
         :riga="riga"
+        :causale-fatturabile="causaleFatturabile"
         @saved="onSaved"
         @componenti-changed="onComponentiChanged"
         @cancel="onCancel"

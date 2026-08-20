@@ -27,12 +27,12 @@
 
 import logging
 from datetime import date
-from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import make_db_errors_translator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ddt_repository import DdtRepository
@@ -529,17 +529,36 @@ def gestisci_riga(
 
     is_composito = repo.is_articolo_composito(str(articolo_id))
     prezzo_unitario = data.get("prezzo_unitario")
+    esito_codice: str | None = None
+    meta_riga = data.get("meta") if isinstance(data.get("meta"), dict) else None
 
     # Pricing auto-fill (solo articolo NON composito, prezzo non passato).
+    #
+    # ⛔ NESSUN RAMO PER IL COMPOSITO, e l'assenza e' la modifica (V-6). Fino al
+    # 2026-08-19 il padre di un kit si inseriva con "0" «per soddisfare
+    # l'eventuale guard»: oggi il prezzo lo ricalcola
+    # `fn_ricalcola_prezzo_padre_da_componenti` dopo l'init dei componenti, e
+    # quel ricalcolo mette NULL se anche un solo figlio e' scoperto. Partire da
+    # zero dichiarerebbe un prezzo che nessuno ha deciso — e lo zero, a
+    # differenza del NULL, e' un valore che passa i controlli.
     if not is_composito and prezzo_unitario is None:
-        prezzo_unitario = _resolve_prezzo_riga(
+        esito = _resolve_prezzo_riga(
             repo, testata, articolo_id=str(articolo_id),
             uom_id=data.get("uom_operativa_id"),
         )
-    elif is_composito:
-        # Padre composito: prezzo = SUM(figli), ricalcolato dal trigger DB dopo
-        # init componenti. Si inserisce con 0 per soddisfare l'eventuale guard.
-        prezzo_unitario = prezzo_unitario if prezzo_unitario is not None else "0"
+        prezzo_unitario = esito.prezzo
+        esito_codice = esito.codice
+        # F-7 / DEC-8: il PERCHE' del prezzo assente si persiste, o ricaricando
+        # la lista sparisce e resta solo una riga vuota che nessuno sa spiegare.
+        # Chiave `prezzo_resolver_context`: lo stesso nome della colonna che il
+        # DB usa sui componenti — due tabelle, un nome. Si scrive SOLO quando il
+        # prezzo manca (l'assenza della chiave e' informazione) e si FONDE col
+        # meta del client, che e' suo.
+        if prezzo_unitario is None and esito_codice is not None:
+            meta_riga = {
+                **(meta_riga or {}),
+                "prezzo_resolver_context": {"esito_codice": esito_codice},
+            }
 
     with _db_errors("gestisci_riga"), transaction.atomic():
         riga_nr = repo.next_riga_nr(ddt_id)
@@ -555,7 +574,7 @@ def gestisci_riga(
             prezzo_unitario=prezzo_unitario,
             sconto_percentuale=data.get("sconto_percentuale"),
             iva_id=data.get("iva_id"),
-            meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
+            meta=meta_riga,
         )
         riga_id = int(created["id"])
 
@@ -572,7 +591,22 @@ def gestisci_riga(
                 componenti_overrides=componenti_overrides,
             )
 
-    return {"ddt_id": ddt_id, "riga_id": riga_id, "is_composito": is_composito}
+    # DEC-3: l'avviso viaggia nel `data` della risposta, non nell'envelope
+    # errori — la riga e' stata salvata, quindi non e' un fallimento.
+    # DEC-4: il testo si prende dal ripiego del catalogo (senza segnaposto), non
+    # si riscrive qui e non si duplica in chiavi i18n del FE.
+    prezzo_esito = None
+    if esito_codice is not None:
+        prezzo_esito = {
+            "codice": esito_codice,
+            "messaggio": ErrorPolicyRegistry.resolve(esito_codice).user_message,
+        }
+    return {
+        "ddt_id": ddt_id,
+        "riga_id": riga_id,
+        "is_composito": is_composito,
+        "prezzo_esito": prezzo_esito,
+    }
 
 
 # Scopo: Aggiorna una riga DDT esistente (solo DRAFT).
@@ -900,12 +934,31 @@ def _data_riferimento(testata: dict[str, Any]) -> date:
     return date.fromisoformat(str(raw))
 
 
+# Scopo: l'esito della risoluzione prezzo di una riga DDT: il prezzo se c'e',
+#        altrimenti il CODICE che dice perche' non c'e'. Non e' una tupla nuda
+#        perche' il chiamante deve poter leggere i nomi: `esito.prezzo` e
+#        `esito.codice` si capiscono, `esito[1]` no.
+class _EsitoPrezzoRiga(NamedTuple):
+    prezzo: str | None
+    codice: str | None
+
+
 # Scopo: Risolve il prezzo unitario riga via PricingService (BB condiviso, mai
 #        query dirette su listini — memoria feedback_pricing_centralizzato).
+#
+#        ⛔ NIENTE RIPIEGO A "0" (V-6 del brief-ddt-righe-senza-prezzo). Fino al
+#        2026-08-19 un prezzo non risolto diventava zero, e zero e' un prezzo:
+#        la riga entrava in fattura a valore nullo invece di essere fermata.
+#        Prezzo assente e prezzo zero sono due fatti diversi, e solo uno dei due
+#        e' una decisione di qualcuno.
+#
+#        ⚠️ Usa il NUCLEO (`resolve_prezzo_esito`), non il guscio: sul DDT il
+#        prezzo mancante non e' un errore — e' un esito da riportare. Gli altri
+#        domini continuano a chiamare `resolve_prezzo`, che solleva (BE-3/DEC-2).
 def _resolve_prezzo_riga(
     repo: DdtRepository, testata: dict[str, Any], *,
     articolo_id: str, uom_id: int | None,
-) -> str:
+) -> _EsitoPrezzoRiga:
     from apps.vendite.services.pricing_service import PricingService
 
     fn = f"{_FN}._resolve_prezzo_riga"
@@ -928,7 +981,7 @@ def _resolve_prezzo_riga(
         function_name=fn,
     )
     emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
-    result = PricingService().resolve_prezzo(
+    result = PricingService().resolve_prezzo_esito(
         articolo_id=articolo_id,
         uom_id=int(uom_id),
         data_riferimento=_data_riferimento(testata),
@@ -937,6 +990,7 @@ def _resolve_prezzo_riga(
         emittente_soggetto_ruolo_id=emittente_sr_id,
     )
     prezzo = result.get("prezzo_finale")
-    if isinstance(prezzo, Decimal):
-        return str(prezzo)
-    return str(prezzo) if prezzo is not None else "0"
+    codice = result.get("esito_codice")
+    if prezzo is None:
+        return _EsitoPrezzoRiga(prezzo=None, codice=codice)
+    return _EsitoPrezzoRiga(prezzo=str(prezzo), codice=codice)

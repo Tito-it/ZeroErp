@@ -31,11 +31,20 @@ Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri 
 * Paginazione:
   * `p_limit` default `1000`, massimo `10000`
   * `p_offset` minimo `0`
-* Ordinamento (dal 02-08-2026):
-  * `p_order_by` — nome della colonna, **whitelist chiusa** di 7 voci:
+* Ordinamento (dal 02-08-2026, esteso il 16 e il 20-08-2026):
+  * `p_order_by` — nome della colonna, **whitelist chiusa** di 15 voci:
     `data_attivita`, `competenza_mese`, `segment_key`, `quantita`,
-    `prezzo_snapshot`, `stato_approvazione`, `stato_emissione` (più `id`).
+    `prezzo_snapshot`, `stato_approvazione`, `stato_emissione` (più `id`);
+    `fatturata_il`, `fattura_numero` (16-08); `tipo_movimento`,
+    `articolo_codice`, `articolo_descrizione`, `sorgente_codice`,
+    `sorgente_documento_numero`, `gruppo_key` (20-08).
   * `p_order_dir` — `asc` (default) o `desc`.
+  * ⚠️ **La whitelist e il catalogo `ui.lista_colonna` si muovono insieme.** Una
+    colonna dichiarata a catalogo con `ordinabile = t` su un nome che questa
+    mappa non conosce **non** produce una freccia inerte: fa **rompere la
+    lista** al primo click, perché il ramo qui sotto è fail-loud e deve
+    restarlo. Chi aggiunge una colonna a catalogo aggiunge il nome qui nello
+    stesso giro.
   * `NULL`/vuoto ⇒ **ordine storico `ca.id`**: chi non chiede niente ottiene
     esattamente il risultato di prima.
   * Un nome fuori whitelist **solleva** `E_PARAMETRO_INVALIDO`: non ripiega sul
@@ -57,8 +66,14 @@ Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri 
 > È sicuro perché l'espressione **non viene mai dal parametro**: viene da un
 > `CASE` chiuso che mappa nome → espressione. I valori restano parametri.
 >
-> ℹ️ Nessun `NULLS LAST`: tutte e sette le colonne ordinabili sono `NOT NULL`.
-> Scriverlo suggerirebbe una nullabilità che non esiste.
+> ⚠️ **`NULLS LAST` esplicito in entrambi i versi** (dal 16-08-2026). La nota
+> precedente — «nessun `NULLS LAST`: tutte le colonne ordinabili sono `NOT
+> NULL`» — è **superata**: da agosto la whitelist contiene colonne nullable
+> (`fatturata_il`, `sorgente_documento_numero`), e sul `DESC` il default di
+> PostgreSQL mette i `NULL` in **testa**. Chi ordina per una colonna vuole
+> vedere per prime le righe che quel valore ce l'hanno; scriverlo per entrambi
+> i versi evita che l'ordinamento si comporti in due modi a seconda della
+> freccia.
 
 ---
 
@@ -69,8 +84,51 @@ Elenco righe `commesse_attivita` della commessa con i principali campi operativi
 * identificativi (`id`, `commessa_id`, `segment_key`)
 * dati di competenza/quantita`/prezzo
 * stati (`stato_approvazione`, `stato_emissione`)
-* classificazione sorgente (`sorgente_tipo_id`, `sorgente_codice`)
+* classificazione sorgente (`sorgente_tipo_id`, `sorgente_codice`, `sorgente_uid`,
+  `sorgente_area`)
+* legame con la fattura (`fatturata`, `fatturata_il`, `fattura_id`,
+  `fattura_numero`, `fattura_stato`) — dal 16-08-2026
 * `meta` e `data_update`
+
+#### La provenienza della riga (dal 20-08-2026)
+
+Cinque colonne che rispondono a **da dove viene questa riga**, ed è la domanda
+con cui nasce la fattura: il documento si separa per **gruppo fatturabile**, una
+fattura per documento sorgente.
+
+| Colonna | Cosa dice |
+| --- | --- |
+| `tipo_movimento` | `NORMALE` / `RETTIFICA` / `ONERE`. Prima una rettifica si distingueva **solo** perché la quantità è negativa |
+| `articolo_codice`, `articolo_descrizione` | di cosa parla la riga: prima usciva il solo `articolo_id` uuid |
+| `sorgente_documento_numero` | il numero che l'operatore legge (`DDT0010839`), accanto all'id nudo |
+| `gruppo_key` | l'unità con cui nasce la fattura, da `vendite.fn_build_gruppo_fatturabile_key` |
+
+> 🔴 **Perché sono cinque e non quattro.** Le righe `RETTIFICA` e `ONERE` sono
+> **senza documento sorgente per progetto** — `fn_accredita_riga_reso` le scrive
+> con la sorgente a `NULL`, e il `CHECK` sulla tabella impone la coppia
+> tutta-vuota o tutta-piena. Misurato il 20-08-2026: **9 righe su 98**, cioè il
+> **100%** delle righe di nota di credito. Su quelle, `sorgente_documento_numero`
+> è vuoto — proprio dove la colonna serviva.
+>
+> `gruppo_key` risponde comunque, e risponde la cosa giusta: su una riga senza
+> sorgente vale `MAN:<commessa_id>`, cioè **il gruppo «oneri di commessa»**, che
+> è davvero il contenitore da cui quella riga verrà fatturata. Le due colonne
+> rispondono a due domande diverse — *«da quale documento discende»* e *«in che
+> gruppo verrà fatturata»* — che sulle righe normali coincidono e sulle
+> sourceless no.
+>
+> ⭐ **E non è un difetto del documento**: `fn_build_fattura_key` porta la
+> **natura**, quindi una rettifica non finisce nella fattura ordinaria in nessun
+> caso. Il gruppo è l'unità dell'**emissione mirata**, non del documento.
+
+> ℹ️ `sorgente_documento_id` e `sorgente_documento_numero` arrivano da **una
+> sola** chiamata a [`vendite.fn_get_sorgente_documento_ref`](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref),
+> che dal 20-08-2026 sostituisce `fn_get_sorgente_documento_id`: due funzioni
+> gemelle avrebbero voluto due letture per riga e due copie della stessa regola
+> di risoluzione polimorfa.
+>
+> ⚠️ Entrambe sono `NULL` anche quando il documento **esiste ma non è visibile**
+> a chi chiede (RLS): l'azione «apri» va nascosta, e il numero non si mostra.
 
 ---
 

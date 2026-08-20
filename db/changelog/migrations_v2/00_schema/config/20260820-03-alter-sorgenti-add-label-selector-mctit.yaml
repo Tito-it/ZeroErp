@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.sorgenti.label_selector — quale colonna della target_table porta il
+#   NUMERO LEGGIBILE del documento (brief-design-note-credito-resi §40.1.4,
+#   richiesta BE del 2026-08-20, punto 2).
+#
+# IL PROBLEMA. La lista attivita' di commessa espone `sorgente_documento_id`
+#   (un id nudo) e non il numero che l'operatore legge. Il numero esiste, ma
+#   NON si chiama sempre allo stesso modo:
+#
+#     PREVENTIVO · CONTRATTO · ORDINE_VENDITA · DDT_VENDITA · RESO_VENDITA
+#     · FATTURA                                        -> colonna `numero`
+#     OFFERTA_COMMERCIALE · COMMESSA                   -> colonna `codice`
+#     ATTIVITA · ATTIVITA_CONSUMI · le cinque *_RIGA   -> nessuna
+#
+# ⚠️ PERCHE' NON SI INDOVINA. Un COALESCE(numero, codice) letto via to_jsonb
+#   funzionerebbe oggi e diventerebbe una colonna vuota in silenzio il giorno
+#   di una terza convenzione. E' esattamente il «non si indovina» che
+#   vendite.fn_get_sorgente_documento_id si e' scritta in corpo per la CHIAVE:
+#   qui vale identico per l'ETICHETTA.
+#
+# PERCHE' UNA COLONNA E NON UN CASE NELLA FUNZIONE. Un CASE sul codice_interno
+#   metterebbe la mappa in un posto che non e' il catalogo, e un dominio nuovo
+#   la troverebbe gia' sbagliata: e' il «literale hardcoded contro una tabella
+#   di catalogo» di linee-guida-sql §6d. Qui la colonna sta accanto alla sua
+#   GEMELLA `key_selector`, che fa la stessa identica cosa per la chiave —
+#   stessa tabella, stessa forma, stessa manutenzione: una cella nel CSV.
+#
+# NULLABLE, e il NULL ha significato: «questa sorgente non ha un numero
+#   leggibile». Vale per ATTIVITA, ATTIVITA_CONSUMI e le cinque *_RIGA. Il
+#   resolver risponde NULL e l'etichetta a video resta vuota, senza errore.
+#
+# ⚠️ LE CINQUE *_RIGA NON SONO NEL CSV. Misurato il 2026-08-20: config.sorgenti
+#   ha 15 righe nel database e 10 nel CSV — gli id 3, 5, 7, 9, 11
+#   (PREVENTIVO_RIGA, CONTRATTO_RIGA, ORDINE_VENDITA_RIGA, DDT_VENDITA_RIGA,
+#   FATTURA_RIGA) esistono solo nel DB. `loadUpdateData` non tocca chi non
+#   trova, quindi restano con label_selector a NULL — che per loro e' il valore
+#   giusto (nessuna delle cinque ha ne' `numero` ne' `codice`). Scritto qui
+#   perche' a chi le cerca nel CSV sembra un errore, e non lo e'.
+#
+# CHECK di igiene: o e' NULL, o e' un identificatore PostgreSQL non quotato in
+#   minuscolo. La lettura usa comunque `%I` (format identifier), quindi il CHECK
+#   non e' la difesa contro l'injection: e' la difesa contro il refuso, che
+#   altrimenti si vedrebbe solo come una colonna vuota a video. Il cancello
+#   completo — «la colonna dichiarata esiste davvero sulla target_table» — sta
+#   nel pgTAP, perche' un CHECK non puo' interrogare pg_attribute.
+#
+# NON AGGIUNTA ALLE COLONNE LOCK, per la stessa ragione gia' scritta per `area`
+#   nel 20260727-17: e' una mappa di presentazione, non una classificazione
+#   strutturale, e aggiungere una colonna al lock su un DB esistente richiede
+#   DROP + rigenera del trigger.
+#
+# Il SEED sta nel CSV 80_data/sql/config/sorgenti.csv, caricato dal loader
+#   esistente 20251002-21 (runOnChange + validCheckSums ANY = mirror vivo):
+#   loader esteso IN PLACE, nessun loader nuovo. Stessa strada di `area`.
+#
+# ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN (DDL plain): tipo esplicito.
+#   63 = lunghezza massima di un identificatore PostgreSQL.
+# Dipendenze: config.sorgenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260820-03-alter-sorgenti-add-label-selector-mctit.yaml
+
+  - changeSet:
+      id: 20260820-03-alter-sorgenti-add-label-selector
+      author: mctit
+      comment: >
+        Aggiunge config.sorgenti.label_selector (varchar nullable): la colonna
+        della target_table che porta il numero leggibile del documento. Gemella
+        di key_selector, che fa lo stesso per la chiave. NULL = la sorgente non
+        ha un numero leggibile. Richiesta BE del 2026-08-20 (punto 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: sorgenti
+                    columnName: label_selector
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: sorgenti
+            columns:
+              - column:
+                  name: label_selector
+                  type: character varying(63)
+                  remarks: >-
+                    Colonna della target_table che porta il numero leggibile del
+                    documento (numero, codice, ...). NULL = la sorgente non ha
+                    un numero leggibile.
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_label_selector_identificatore
+                CHECK (label_selector IS NULL
+                       OR label_selector ~ '^[a-z_][a-z0-9_]*$');
+
+              COMMENT ON COLUMN config.sorgenti.label_selector IS
+                  'Nome della colonna di `target_table` che porta il NUMERO LEGGIBILE del '
+                  'documento — quello che l''operatore riconosce (DDT0010839, ORD0000227, '
+                  'RESO0005122). Gemella di `key_selector`, che dichiara allo stesso modo '
+                  'la colonna CHIAVE: la prima serve a trovare la riga, questa a nominarla. '
+                  'La legge vendite.fn_get_sorgente_documento_ref con format(%I). '
+                  'Non e'' uniforme e per questo e'' un dato e non un CASE: `numero` su '
+                  'preventivi, contratti, ordini, ddt, resi e fatture; `codice` su offerte '
+                  'commerciali e commesse. NULL = la sorgente non ha un numero leggibile '
+                  '(ATTIVITA, ATTIVITA_CONSUMI e le cinque *_RIGA): il resolver risponde '
+                  'NULL e l''etichetta resta vuota, senza errore. '
+                  '⚠️ Il CHECK di identificatore e'' igiene contro il REFUSO, non contro '
+                  'l''injection (che la copre %I): un nome sbagliato darebbe una colonna '
+                  'vuota a video e nessun errore. Il cancello che verifica l''esistenza '
+                  'reale della colonna sta nel pgTAP, perche'' un CHECK non puo'' leggere '
+                  'pg_attribute. '
+                  'brief-design-note-credito-resi §40.1.4, richiesta BE del 2026-08-20.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                DROP CONSTRAINT IF EXISTS chk_sorgenti_label_selector_identificatore;
+              ALTER TABLE config.sorgenti
+                DROP COLUMN IF EXISTS label_selector;

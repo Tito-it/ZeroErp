@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 719, di cui 80 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 721, di cui 81 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -287,6 +287,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Configurazione mancante: logga ma non blocca, usa il fallback locale.
     # ⚠️ RITIRATO il 2026-08-07
     "E_DBLINK_LOG_CONN_MISSING": "AVVISO",
+    # Il DDT emesso porta stampata la sua causale: cambiarla dopo vorrebbe dire che il documento consegnato al vettore e quello in archivio dicono cose diverse. · Nasce il 2026-08-19 (brief-ddt-righe-senza-prezzo, decisione D-4): il gate all'emissione guarda solo la transizione verso EMESSO, quindi senza questo guard una causale non fatturabile poteva diventare fatturabile a documento gia' spedito — e la riga senza prezzo finiva eleggibile al lister, per fermarsi molto piu' tardi contro il NOT NULL di commesse_attivita.prezzo_snapshot.
+    "E_DDT_CAUSALE_IMMUTABILE": "CONFLITTO_STATO",
     # Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione, · DL-28): la causale di trasporto dichiara se la merce e' una vendita · da fatturare; obbligatoria a DRAFT->EMESSO, e se fatturabile ogni · riga attiva deve avere un prezzo risolvibile (proprio o ereditato · dall'ordine via fulfillment).
     "E_DDT_CAUSALE_OBBLIGATORIA": "CONFLITTO_STATO",
     # Cliente (billing_account_id/destinatario) immutabile post-create: · cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE). · 400 -> 409 il 2026-08-06 (audit coerenza status), gemello di · E_ORD_CLIENTE_IMMUTABILE. `ui_action` invariata.
@@ -373,6 +375,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # 404 -> 500 (audit 2026-08-06): nessuna riga con `is_default = true` · in `emittenti_fiscali_billing_account`. E' un'installazione non · configurata, e lo dice il messaggio stesso: «non configurato».
     "E_EMITTENTE_DEFAULT_MISSING": "TECNICO",
     "E_EMITTENTE_DEFAULT_SINGLETON": "CONFLITTO_STATO",
+    # RITIRATO il 2026-08-20 (changeSet 20260820-02). anagrafiche.trgfn_emittenti_fiscali_guard_attivo era diventato un DOPPIONE ESATTO del trigger prevent_deactivate_if_children che l'automazione ATTIVO genera dal 20260819-04 (FK di emittenti_fiscali_billing_account ripuntata su emittenti_fiscali), e non veniva nemmeno piu' raggiunto: i BEFORE ROW scattano in ordine alfabetico e trg_..._emittenti_fiscali_billing_acco_b98811 viene prima di trg_..._guard_attivo_upd. I due erano equivalenti anche nel predicato, perche' la tabella figlia NON ha una colonna attivo e quindi il generico ricade sul ramo «qualunque riga». La regola non e' sparita: la dice ora E_ATTIVO_BLOCK_CHILDREN_EXIST (125), che dal 20260820-01 nomina la tabella collegata invece di dire soltanto che esiste. Nessuna funzione viva nomina piu' questo codice.
+    # ⚠️ RITIRATO il 2026-08-20
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "CONFLITTO_STATO",
     # 400 -> 409 il 2026-08-06 (audit coerenza status, api.md · §Tassonomia): «non si tocca piu' dopo la creazione» e' la · definizione RFC 9110 del 409 — conflitto con lo stato attuale · della risorsa — ed e' gia' lo status degli altri 29 codici della · stessa famiglia. `ui_action` invariata: a video non cambia nulla.
     "E_EMITTENTE_NON_MODIFICABILE": "CONFLITTO_STATO",
@@ -736,6 +740,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESET_PASSWORD": "DATO_ERRATO",
     # vendite.trgfn_resi_accrediti_guard: il tetto del DOCUMENTO. La somma degli accrediti su una riga di fattura non puo' superare la quantita' che quella riga ha fatturato. E' il limite che parla la lingua del documento invece che della merce, e prima non esisteva: l'unico tetto all'accredito era il conto della merce. Puo' scattare quando RESI DIVERSI accreditano la stessa riga di fattura in momenti diversi. Piano: brief-design-note-credito-resi D-NC-10.
     "E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA": "CONFLITTO_STATO",
+    # vendite.fn_annulla_reso: il reso ha almeno una riga di ponte in vendite.resi_righe_accrediti, cioe' un accredito gia' registrato. Gemello esatto di E_RESO_ANNULLO_CON_RICONSEGNE (540): stessa classe di problema — un effetto gia' in viaggio che l'annullo del documento non saprebbe stornare. Senza questa guardia l'annullo passava e lasciava vive le commesse_attivita tipo_movimento = 'RETTIFICA' in APPROVATA / NON_EMESSA: al primo giro di fatturazione ne usciva una nota di credito per un reso annullato, perche' fn_list_emittibili_lane e fn_emit_attivita_fatturabili_da_commessa non nominano mai il reso e non riparano a valle. Il predicato e' l'ESISTENZA del ponte e non lo stato delle rettifiche: se l'accredito e' troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolarlo qui sarebbe una seconda copia della regola. Si RIFIUTA e non si cascata: l'annullo dell'accredito pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi. VINCOLO RECIPROCO su TRE posti con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche' l'annullo dell'accredito CANCELLA le righe di ponte. Origine: collaudo in-app note di credito resi (prova 4/7), segnalazione BE del 2026-08-19. Piano: brief-design-note-credito-resi.
+    "E_RESO_ANNULLO_CON_ACCREDITO": "CONFLITTO_STATO",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "CONFLITTO_STATO",
     # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
@@ -1094,6 +1100,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_DATA_FINE_INFERIORE_DI_INIZIO",
         "E_DBLINK_LOG_CONN_MISSING",
         "E_DRYRUN_CREATE_TRIGGER",
+        "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
         "E_FONTE_QUANTITA_NON_VALIDA",
         "E_INVALID_SNAPSHOT",
         "E_NUMERAZIONE_IMMUTABILE",

@@ -65,6 +65,13 @@ const notify = useNotify()
 const auth = useAuthStore()
 
 const props = defineProps({
+  // FE-D1/D2 (brief-ddt-righe-senza-prezzo): il documento pretende un prezzo
+  // sui componenti? Il DDT in conto visione no — il kit viaggia senza prezzi.
+  // ⭐ `default: true` NON e' pigrizia: preventivi, ordini, contratti e listino
+  // bundle non passano la prop e restano identici bit per bit. E' la stessa
+  // scelta fatta dal team DB sul trigger C3 — non si tocca il codice condiviso,
+  // si cambia solo quando la regola si applica.
+  prezzoRichiesto: { type: Boolean, default: true },
   // ID del documento padre (preventivo/contratto/ordine/ddt).
   // Non required: in modalita' data-driven non serve.
   documentoId: { type: Number, default: 0 },
@@ -289,14 +296,21 @@ function isDirty(comp) {
 function isPrezzoEditatoValido(comp) {
   const editVal = prezzoEditato.value[comp.id]
   if (editVal == null) return true
-  if (isObbligatorio(comp) && Number(editVal) === 0) return false
+  // FE-D2: lo zero resta invalido sugli obbligatori solo dove il documento
+  // vende. Dove non vende (conto visione) e' il prezzo stesso a non avere
+  // significato, quindi non c'e' niente da validare.
+  if (props.prezzoRichiesto && isObbligatorio(comp) && Number(editVal) === 0) return false
   return true
 }
 
 function getPrezzoVisualizzato(comp) {
-  if (effectiveReadonly.value) return Number(comp.prezzo_unitario)
-  const local = prezzoEditato.value[comp.id]
-  return local != null ? Number(local) : Number(comp.prezzo_unitario)
+  // ⛔ FE-D3: `Number(null)` e' `0`, e uno zero qui sarebbe una BUGIA — la
+  // cella direbbe «vale zero» dove il prezzo non c'e'. Si ritorna `null` e la
+  // colonna mostra il tag «senza prezzo» (DEC-6).
+  const grezzo = effectiveReadonly.value
+    ? comp.prezzo_unitario
+    : (prezzoEditato.value[comp.id] ?? comp.prezzo_unitario)
+  return grezzo == null ? null : Number(grezzo)
 }
 
 function setPrezzoEditato(componenteId, val) {
@@ -369,7 +383,11 @@ async function onSalvaPrezzo(comp) {
       <Column :header="t(localizedKey('col_prezzo'))" style="width: 180px; min-width: 180px;">
         <template #body="{ data }">
           <template v-if="effectiveReadonly">
-            <span>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) }}</span>
+            <!-- DEC-6: prezzo assente non e' prezzo zero, e non e' nemmeno una
+                 cella vuota — quella si legge come «non l'ho ancora guardato». -->
+            <Tag v-if="data.prezzo_unitario == null"
+                 severity="secondary" :value="t(localizedKey('senza_prezzo'))" />
+            <span v-else>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) }}</span>
           </template>
           <template v-else>
             <div class="componenti-panel-prezzo-cell">

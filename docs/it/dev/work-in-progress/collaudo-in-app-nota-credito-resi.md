@@ -13,7 +13,7 @@
 
 ---
 
-## ⚠️ Le quattro cose da sapere prima di cominciare
+## ⚠️ Le cinque cose da sapere prima di cominciare
 
 1. **C'è un punto di non ritorno, ed è dichiarato**: la **prova 6** numera una
    nota di credito. Oltre la numerazione non si torna indietro — nessun verbo,
@@ -29,6 +29,11 @@
 4. **Il reset del lotto NON annulla l'accredito**: lo rimette in coda e la nota
    di credito **si rigenera** al giro dopo. Per disfare davvero serve «Annulla
    l'accredito» sulla riga del reso.
+5. ⛔ **E nemmeno annullare il RESO è una via d'uscita** (rev 2026-08-19): con un
+   accredito registrato il DB lo **rifiuta**, e deve farlo — annullare il reso
+   non toglierebbe la rettifica già creata. La sola strada indietro resta
+   «Annulla l'accredito». ⚠️ Se in collaudo il reso si annulla lo stesso, la
+   guardia non è ancora in esercizio: vedi la prova 4.
 
 ---
 
@@ -36,11 +41,11 @@
 
 Misurato il 2026-08-19 (contesto operatore — la vista ha la RLS):
 
-| riga di reso | reso | DDT | ordine | dovuto | etichetta | note |
-| --- | --- | --- | --- | --- | --- | --- |
-| **24** | RESO0000017 | DDT0000062 | 240 | 1,00 | DOVUTA | 🔬 **articolo composito**: produce **3 rettifiche**, una per componente |
-| **5797** | RESO0005122 | DDT0010839 | 19151 | 5,00 | DOVUTA | articolo semplice, 1 rettifica |
-| **5799** | RESO0005123 | DDT0010839 | 19151 | 3,00 | FACOLTATIVA | stessa partita della 5797 |
+| riga di reso | reso        | DDT        | ordine | dovuto | etichetta   | note                                                                   |
+| ------------ | ----------- | ---------- | ------ | ------ | ----------- | ---------------------------------------------------------------------- |
+| **24**       | RESO0000017 | DDT0000062 | 240    | 1,00   | DOVUTA      | 🔬 **articolo composito**: produce **3 rettifiche**, una per componente |
+| **5797**     | RESO0005122 | DDT0010839 | 19151  | 5,00   | DOVUTA      | articolo semplice, 1 rettifica                                         |
+| **5799**     | RESO0005123 | DDT0010839 | 19151  | 3,00   | FACOLTATIVA | stessa partita della 5797                                              |
 
 ⚠️ **5797 e 5799 condividono la partita**: accreditare la prima può azzerare il
 dovuto della seconda. Non è un difetto, è il conto della merce — se dopo un
@@ -58,14 +63,14 @@ caso che è già costato una correzione al DB — e tieni la **5797** per l'annu
 **Dove**: `Vendite → Ordini`, apri l'ordine **240** (oppure il DDT **140**), guarda
 la riga «situazione merce» sotto i collegamenti, apri il dettaglio.
 
-- [ ] la nota *«l'emissione della nota di credito non è ancora disponibile»*
+- [X] la nota *«l'emissione della nota di credito non è ancora disponibile»*
       **non c'è più**;
-- [ ] al suo posto c'è **«… da accreditare»** con il collegamento;
-- [ ] cliccando: la dialog **si chiude**, si arriva alla coda accrediti, e in
+- [X] al suo posto c'è **«… da accreditare»** con il collegamento;
+- [X] cliccando: la dialog **si chiude**, si arriva alla coda accrediti, e in
       cima c'è la riga **«Coda filtrata sul DDT #140»** (o sull'ordine) con il
       link per togliere il filtro;
-- [ ] l'elenco mostra **solo** le righe di quel documento — non tutta la coda;
-- [ ] tolto il filtro, la coda torna piena.
+- [X] l'elenco mostra **solo** le righe di quel documento — non tutta la coda;
+- [X] tolto il filtro, la coda torna piena.
 
 ⚠️ Se la coda si apre **non filtrata**: è il difetto che F3 doveva chiudere
 («un percorso spezzato uguale, solo con un click in più»). Segnalalo.
@@ -74,17 +79,17 @@ la riga «situazione merce» sotto i collegamenti, apri il dettaglio.
 
 **Dove**: `Vendite → Resi → tab «Da accreditare»`.
 
-- [ ] c'è la **colonna di selezione** (checkbox) a sinistra;
-- [ ] selezionando una riga, il pulsante in alto diventa **«Accredita (1)»**;
-- [ ] il kebab di riga ha **«Accredita questa riga»**;
-- [ ] **nessuna riga è disabilitata** oggi (nessuna porta un `blocco_codice`) —
+- [X] c'è la **colonna di selezione** (checkbox) a sinistra;
+- [X] selezionando una riga, il pulsante in alto diventa **«Accredita (1)»**;
+- [X] il kebab di riga ha **«Accredita questa riga»**;
+- [X] **nessuna riga è disabilitata** oggi (nessuna porta un `blocco_codice`) —
       se ne trovi una disabilitata, il tooltip deve **dire perché**.
 
 ### 3 · La conferma dice la verità *(F1)*
 
-- [ ] cliccando «Accredita», la conferma dice che **la nota di credito NON viene
+- [X] cliccando «Accredita», la conferma dice che **la nota di credito NON viene
       emessa adesso** e che nasce al prossimo giro di fatturazione;
-- [ ] ⛔ se il testo promette di «emettere una nota di credito», **fermati**: è
+- [Nessun problema] ⛔ se il testo promette di «emettere una nota di credito», **fermati**: è
       la cosa che il brief voleva evitare — l'operatore andrebbe a cercare un
       documento che non esiste ancora.
 
@@ -92,16 +97,16 @@ la riga «situazione merce» sotto i collegamenti, apri il dettaglio.
 
 Usa la riga **5797**.
 
-- [ ] accredita: toast verde, e la riga **sparisce subito** dalla coda (l'uscita
+- [X] accredita: toast verde, e la riga **sparisce subito** dalla coda (l'uscita
       è al verbo, non alla fattura);
-- [ ] ri-accredita la stessa riga (se riesci a ritrovarla): risponde
+- [la riga scompare -corretto ] ri-accredita la stessa riga (se riesci a ritrovarla): risponde
       **«accredito già eseguito»**, non un errore generico;
-- [ ] apri il **reso RESO0005122** (`Vendite → Resi`, oppure «Apri reso» dal
+- [X] apri il **reso RESO0005122** (`Vendite → Resi`, oppure «Apri reso» dal
       kebab): nelle righe c'è la colonna **«Già accreditato»** valorizzata, e il
       kebab della riga offre **«Annulla l'accredito»**;
-- [ ] l'annullo chiede un **motivo obbligatorio** (senza, il pulsante è spento)
+- [X] l'annullo chiede un **motivo obbligatorio** (senza, il pulsante è spento)
       e avvisa che **questo non è il reset del lotto**;
-- [ ] dopo l'annullo: toast verde, e la riga **torna** nella coda accrediti col
+- [X] dopo l'annullo: toast verde, e la riga **torna** nella coda accrediti col
       suo dovuto.
 
 ⭐ Se arrivi in fondo a questa prova, il giro reversibile è chiuso: hai provato
@@ -151,7 +156,10 @@ Usa la riga **24** (il kit).
       bozza» / «Annulla lotto» avvisa che **un accredito già registrato NON
       viene annullato** e che la nota **si rigenera** al giro successivo;
 - [ ] *(se la riga era anche rinunciata)* riaprire la rinuncia è **rifiutato**,
-      con il messaggio sull'accredito già eseguito.
+      con il messaggio sull'accredito già eseguito;
+- [ ] e **annullare il reso** è rifiutato a sua volta, con il messaggio
+      sull'accredito registrato: qui la strada indietro non c'è più da nessuna
+      parte, ed è corretto che i tre verbi lo dicano tutti e tre.
 
 ### 8 · Il permesso *(P-1, B2)*
 
@@ -184,6 +192,7 @@ Usa la riga **24** (il kit).
 | la NC nasce **dentro** la fattura | 🔴 grave: la chiave documento non sta separando la natura. Fermati |
 | il numero è sul progressivo fatture | 🔴 grave: registro sbagliato. Fermati |
 | «operazione non consentita» sull'annullo | è già emessa: è corretto. Il messaggio deve dire il perché |
+| il **reso** si annulla anche se accreditato | 🔴 grave: la guardia del §38 non è in esercizio. Fermati: la NC uscirebbe lo stesso |
 
 ⛔ **Sui due «grave»: non ritentare.** Sono i due casi in cui un secondo giro
 produce un secondo documento sbagliato.

@@ -1,0 +1,401 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_list_commessa_attivita — la PROVENIENZA della riga arriva a valle
+#   (brief-design-note-credito-resi §40.1, richiesta BE del 2026-08-20 punto 2).
+#
+# ── LA RICHIESTA, E PERCHE' NON E' ESTETICA ─────────────────────────────
+#
+#   Il documento di fattura si separa per GRUPPO FATTURABILE — una fattura per
+#   documento sorgente — quindi «da dove viene la riga» e' il criterio con cui
+#   la fattura nasce, non un dettaglio. A video, oggi, l'unica traccia e'
+#   `segment_key`, che e' una chiave tecnica.
+#
+#   Cinque colonne additive:
+#
+#     tipo_movimento             NORMALE / RETTIFICA / ONERE. C'era in tabella
+#                                dal 2026-07-17 e non usciva: una rettifica si
+#                                distingueva solo perche' la quantita' e'
+#                                negativa.
+#     articolo_codice
+#     articolo_descrizione       usciva il solo `articolo_id` uuid: la lista non
+#                                diceva DI COSA parla la riga.
+#     sorgente_documento_numero  il numero leggibile (DDT0010839), accanto
+#                                all'id nudo che gia' usciva.
+#     gruppo_key                 il gruppo fatturabile, dalla SSOT
+#                                fn_build_gruppo_fatturabile_key. Vedi sotto.
+#
+# ── 🔴 LA MISURA CHE HA CAMBIATO IL DISEGNO ─────────────────────────────
+#
+#   La richiesta dava per buono che `sorgente_codice`/`_area`/`_documento_id`
+#   «escono gia': vanno solo esposti a catalogo». Escono, ma VUOTI su una riga
+#   su undici — e non a caso. Misurato il 2026-08-20 su 98 righe:
+#
+#       NORMALE   PREVENTIVO      44
+#       NORMALE   ORDINE_VENDITA  43
+#       NORMALE   DDT_VENDITA      2
+#       RETTIFICA (nessuna)        6   ← sourceless
+#       ONERE     (nessuna)        3   ← sourceless
+#
+#   ⚠️ Le nove righe senza sorgente sono TUTTE E SOLE le rettifiche e gli oneri,
+#      cioe' il 100% delle righe di nota di credito — quelle per cui la colonna
+#      e' stata chiesta. Non e' dato sporco: e' il modello.
+#      `fn_accredita_riga_reso` scrive la rettifica con sorgente NULL, e il
+#      CHECK `chk_commesse_attivita_sorgente_pair` impone la coppia tutta-NULL o
+#      tutta-piena.
+#
+#   ⭐ Ne discende una cosa che il messaggio non poteva sapere: il gruppo
+#      fatturabile di una rettifica NON e' il DDT. Su una riga sourceless
+#      `fn_build_gruppo_fatturabile_key` risponde `MAN:<commessa_id>`, cioe' il
+#      gruppo «oneri di commessa». Misurato:
+#
+#        DDT_VENDITA:01a00cb3…   FATTURATA    NORMALE     1    52,50
+#        ORDINE_VENDITA:019f5f9c… FATTURATA   NORMALE     3    17,00
+#        MAN:15370               DA_EMETTERE  RETTIFICA   1   −12,50
+#        MAN:322                 DA_EMETTERE  RETTIFICA   3   −17,00
+#
+#      E NON e' un difetto del documento: `fn_build_fattura_key` porta la
+#      NATURA (rev 2026-08-18, N3), quindi una rettifica non puo' finire nella
+#      fattura ordinaria comunque. Il gruppo e' l'unita' dell'EMISSIONE MIRATA,
+#      non del documento.
+#
+#   Da qui la quinta colonna: `sorgente_documento_numero` risponde «da quale
+#   documento discende», `gruppo_key` risponde «in che gruppo verra' fatturata».
+#   Sulle righe normali dicono la stessa cosa; sulle nove sourceless solo la
+#   seconda ha una risposta, ed e' la domanda del messaggio BE.
+#   Decisione A+B del §40.1.3.
+#
+# ── ⚠️ LA TRAPPOLA DELL'ORDINAMENTO, E PERCHE' LA WHITELIST CRESCE ──────
+#
+#   La whitelist qui dentro e' CHIUSA e FAIL-LOUD: un `p_order_by` sconosciuto
+#   solleva `E_PARAMETRO_INVALIDO`, non ripiega sul default (e' la «freccia che
+#   non ordina» del 2026-08-16). Ottimo — e proprio per questo:
+#
+#     una riga di `ui.lista_colonna` con `ordinabile = t` su un campo che la
+#     whitelist non conosce NON produce una freccia inerte: produce una LISTA
+#     CHE SI ROMPE appena l'operatore clicca l'intestazione.
+#
+#   Quindi ogni colonna che va a catalogo entra QUI nello stesso giro. Sono sei
+#   nomi nuovi, `sorgente_codice` compreso — che usciva gia' ma non era
+#   ordinabile, e a catalogo ci va adesso.
+#
+# ── SCELTE CHE NON SI VEDONO DAL RISULTATO ──────────────────────────────
+#
+#   1. `catalogo.articoli` in LEFT JOIN e non JOIN, benche' `articolo_id` sia
+#      NOT NULL. La tabella non ha RLS (verificato: relrowsecurity = false),
+#      quindi non e' una difesa dalla visibilita': e' la regola per cui una riga
+#      di lista non deve MAI sparire per colpa di un decode.
+#   2. `gruppo_key` da un CROSS JOIN LATERAL e non da un'espressione ripetuta:
+#      cosi' l'ORDER BY puo' nominarlo come una colonna qualunque, e la formula
+#      resta una sola — quella della funzione.
+#      ⚠️ `fn_build_gruppo_fatturabile_key` SOLLEVA su una coppia sorgente
+#      incoerente e su una riga sourceless senza commessa. Da QUESTO chiamante
+#      non puo' accadere: il CHECK garantisce la coppia e `commessa_id` e'
+#      NOT NULL. Verificato prima di metterla in una lista, perche' una funzione
+#      che alza dentro un elenco e' un elenco che non si apre.
+#   3. La risoluzione del documento passa da UNA sola chiamata
+#      (`fn_get_sorgente_documento_ref`, changeSet -04) invece delle due che
+#      servirebbero con una funzione per l'id e una per il numero.
+#      `fn_get_sorgente_documento_id` resta senza chiamanti e sparisce nel -06.
+#   4. DROP + CREATE e non `CREATE OR REPLACE`: cambia la `RETURNS TABLE`, e
+#      `CREATE OR REPLACE` non la cambia. Firma dei PARAMETRI invariata, quindi
+#      nessun overload e nessuna chiamata ambigua.
+#
+# Dipendenze: vendite.fn_get_sorgente_documento_ref (20260820-04),
+#             vendite.fn_build_gruppo_fatturabile_key, catalogo.articoli.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260820-05-update-fn-list-commessa-attivita-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20260820-05-update-fn-list-commessa-attivita-provenienza
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_list_commessa_attivita: cinque colonne additive per la PROVENIENZA
+        della riga — tipo_movimento, articolo_codice, articolo_descrizione,
+        sorgente_documento_numero, gruppo_key — e sei nomi nuovi nella whitelist
+        di ordinamento (una colonna a catalogo con ordinabile=t su un campo
+        fuori whitelist romperebbe la lista, non la freccia). La risoluzione del
+        documento passa dal resolver unico fn_get_sorgente_documento_ref.
+        Richiesta BE del 2026-08-20, punto 2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_list_commessa_attivita'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_get_sorgente_documento_ref'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_build_gruppo_fatturabile_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La RETURNS TABLE cambia: CREATE OR REPLACE non basta.
+              -- Firma dei parametri IDENTICA -> nessun overload.
+              DROP FUNCTION IF EXISTS vendite.fn_list_commessa_attivita(
+                  bigint, character varying, character varying, date,
+                  integer, integer, text, text);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_commessa_attivita(
+                      p_commessa_id        vendite.commesse.id%TYPE,
+                      p_stato_emissione    vendite.commesse_attivita.stato_emissione%TYPE DEFAULT NULL,
+                      p_stato_approvazione vendite.commesse_attivita.stato_approvazione%TYPE DEFAULT NULL,
+                      p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL,
+                      p_limit              integer DEFAULT 1000,
+                      p_offset             integer DEFAULT 0,
+                      p_order_by           text DEFAULT NULL,
+                      p_order_dir          text DEFAULT 'asc')
+               RETURNS TABLE (
+                      id                    vendite.commesse_attivita.id%TYPE,
+                      commessa_id           vendite.commesse.id%TYPE,
+                      segment_key           vendite.commesse_attivita.segment_key%TYPE,
+                      articolo_id           vendite.commesse_attivita.articolo_id%TYPE,
+                      istanza_utility_id    vendite.commesse_attivita.istanza_utility_id%TYPE,
+                      data_attivita         vendite.commesse_attivita.data_attivita%TYPE,
+                      uom_id                vendite.commesse_attivita.uom_id%TYPE,
+                      quantita              vendite.commesse_attivita.quantita%TYPE,
+                      competenza_mese       vendite.commesse_attivita.competenza_mese%TYPE,
+                      competenza_dal        vendite.commesse_attivita.competenza_dal%TYPE,
+                      competenza_al         vendite.commesse_attivita.competenza_al%TYPE,
+                      prezzo_snapshot       vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                      prezzo_bloccato       vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                      prezzo_da_riallineare vendite.commesse_attivita.prezzo_da_riallineare%TYPE,
+                      stato_approvazione    vendite.commesse_attivita.stato_approvazione%TYPE,
+                      stato_emissione       vendite.commesse_attivita.stato_emissione%TYPE,
+                      sorgente_tipo_id      vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                      sorgente_codice       config.sorgenti.codice%TYPE,
+                      meta                  vendite.commesse_attivita.meta%TYPE,
+                      data_update           vendite.commesse_attivita.data_update%TYPE,
+                      fatturata             boolean,
+                      -- ===== I tre campi chiesti dal BE il 2026-08-16 =====
+                      fatturata_il          vendite.fatture_righe.data_insert%TYPE,
+                      fattura_id            vendite.fatture.id%TYPE,
+                      fattura_numero        vendite.fatture.numero%TYPE,
+                      fattura_stato         config.stati_doc_fiscale.codice_interno%TYPE,
+                      sorgente_uid          vendite.commesse_attivita.sorgente_uid%TYPE,
+                      sorgente_area         config.sorgenti.area%TYPE,
+                      sorgente_documento_id bigint,
+                      -- ===== Le cinque della PROVENIENZA (BE, 2026-08-20) =====
+                      tipo_movimento            vendite.commesse_attivita.tipo_movimento%TYPE,
+                      articolo_codice           catalogo.articoli.codice%TYPE,
+                      articolo_descrizione      catalogo.articoli.descrizione%TYPE,
+                      -- text e non %TYPE: il numero e' polimorfo (varchar su
+                      -- ordini/DDT/resi, bigint sulle fatture), il resolver lo
+                      -- normalizza a testo.
+                      sorgente_documento_numero text,
+                      gruppo_key                text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+                  v_order_col       text;
+                  v_order_dir       text;
+              BEGIN
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_commessa_attivita', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id), NULL::uuid, 'p_commessa_id obbligatorio e > 0');
+                  END IF;
+
+                  -- ⚠️ La whitelist si valida PRIMA di andare a cercare la
+                  -- commessa: un parametro sbagliato non deve costare una query
+                  -- per essere respinto. Stessa scelta fatta dal BE sulla coda
+                  -- approvazioni, dove la validazione precede la risoluzione
+                  -- utente/emittente.
+                  -- Whitelist di ordinamento: mappa CHIUSA nome -> espressione.
+                  -- Le chiavi sono i `campo_sorgente` che il seed manda dal FE
+                  -- (<ListaConfigurabile> monta le Column su campo_sorgente).
+                  -- NULL/vuoto = ordine storico `ca.id`: le chiamate che non
+                  -- chiedono niente ottengono esattamente quello di prima.
+                  v_order_col := CASE lower(btrim(COALESCE(p_order_by, '')))
+                      WHEN ''                   THEN 'ca.id'
+                      WHEN 'id'                 THEN 'ca.id'
+                      WHEN 'data_attivita'      THEN 'ca.data_attivita'
+                      WHEN 'competenza_mese'    THEN 'ca.competenza_mese'
+                      WHEN 'segment_key'        THEN 'ca.segment_key'
+                      WHEN 'quantita'           THEN 'ca.quantita'
+                      WHEN 'prezzo_snapshot'    THEN 'ca.prezzo_snapshot'
+                      WHEN 'stato_approvazione' THEN 'ca.stato_approvazione'
+                      WHEN 'stato_emissione'    THEN 'ca.stato_emissione'
+                      -- Nuove dal 2026-08-16. `fatturata_il` e' quella che serve
+                      -- alla domanda che ha originato la richiesta: distinguere
+                      -- una riga fatturata ieri da una di tre mesi fa.
+                      WHEN 'fatturata_il'       THEN 'fatt.fatturata_il'
+                      WHEN 'fattura_numero'     THEN 'fatt.fattura_numero'
+                      -- Nuove dal 2026-08-20 (provenienza). ⚠️ Entrano QUI nello
+                      -- stesso giro in cui entrano a catalogo: una colonna con
+                      -- `ordinabile = t` su un nome che questa mappa non conosce
+                      -- non da' una freccia inerte, ROMPE la lista al primo
+                      -- click (il ramo sotto e' fail-loud, e deve restarlo).
+                      WHEN 'tipo_movimento'            THEN 'ca.tipo_movimento'
+                      WHEN 'articolo_codice'           THEN 'art.codice'
+                      WHEN 'articolo_descrizione'      THEN 'art.descrizione'
+                      WHEN 'sorgente_codice'           THEN 's.codice'
+                      WHEN 'sorgente_documento_numero' THEN 'ref.documento_numero'
+                      WHEN 'gruppo_key'                THEN 'grp.gruppo_key'
+                      ELSE NULL
+                  END;
+
+                  -- Fail-loud: un nome fuori whitelist NON ripiega sul default.
+                  -- Un ripiego silenzioso e' la «freccia che non ordina»: a video
+                  -- sembra funzionare e restituisce un ordine che nessuno ha chiesto.
+                  IF v_order_col IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_commessa_attivita', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_order_by', 'valore', p_order_by),
+                          NULL::uuid, concat('p_order_by non ammesso: ', p_order_by));
+                  END IF;
+
+                  v_order_dir := CASE WHEN lower(btrim(COALESCE(p_order_dir, 'asc'))) = 'desc'
+                                      THEN 'DESC' ELSE 'ASC' END;
+
+                  IF NOT EXISTS (SELECT 1 FROM vendite.commesse c WHERE c.id = p_commessa_id) THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_commessa_attivita', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('commessa_id', p_commessa_id), NULL::uuid, concat('commessa_id ', p_commessa_id));
+                  END IF;
+
+                  -- Sanitize limit/offset
+                  IF p_limit IS NULL OR p_limit <= 0 THEN p_limit := 1000; END IF;
+                  IF p_limit > 10000 THEN p_limit := 10000; END IF;
+                  IF p_offset IS NULL OR p_offset < 0 THEN p_offset := 0; END IF;
+
+                  v_competenza_mese := CASE WHEN p_competenza_mese IS NOT NULL
+                      THEN date_trunc('month', p_competenza_mese)::DATE ELSE NULL END;
+
+                  -- SQL dinamico solo per l'ORDER BY (non parametrizzabile).
+                  -- L'espressione viene dal CASE chiuso qui sopra, MAI dal
+                  -- parametro: i valori restano parametri veri (USING).
+                  -- Tiebreak ca.id: senza, righe con la stessa chiave possono
+                  -- scambiarsi fra una pagina e l'altra.
+                  -- ⚠️ NULLS LAST ESPLICITO, e non solo sul DESC: chi ordina per
+                  -- una colonna vuole vedere per prime le righe che quel valore
+                  -- ce l'hanno. Su ASC e' gia' il default di PostgreSQL, su DESC
+                  -- e' l'opposto — scriverlo per entrambi i versi evita che
+                  -- l'ordinamento si comporti in due modi diversi a seconda
+                  -- della freccia.
+                  RETURN QUERY EXECUTE format($q$
+                      SELECT ca.id, ca.commessa_id, ca.segment_key, ca.articolo_id, ca.istanza_utility_id,
+                             ca.data_attivita, ca.uom_id, ca.quantita, ca.competenza_mese, ca.competenza_dal,
+                             ca.competenza_al, ca.prezzo_snapshot, ca.prezzo_bloccato, ca.prezzo_da_riallineare,
+                             ca.stato_approvazione, ca.stato_emissione, ca.sorgente_tipo_id,
+                             s.codice AS sorgente_codice, ca.meta, ca.data_update,
+                             -- fatturata: specchio del guard BE _assert_non_fatturata.
+                             -- ⚠️ Resta l'EXISTS su attivita_fatturabili, che NON ha
+                             -- RLS, e non diventa `fatt.fattura_id IS NOT NULL`:
+                             -- vendite.fatture ce l'ha, e chi non vede la fattura
+                             -- leggerebbe «da fatturare» una riga gia' fatturata.
+                             EXISTS (
+                                 SELECT 1 FROM vendite.attivita_fatturabili af
+                                  WHERE af.commessa_attivita_id = ca.id
+                                    AND af.fattura_riga_id IS NOT NULL
+                             ) AS fatturata,
+                             -- Il momento in cui la riga e' stata PORTATA in
+                             -- fattura: la nascita della riga di fattura, non
+                             -- l'ultimo aggiornamento dell'attivita'.
+                             fatt.fatturata_il,
+                             fatt.fattura_id, fatt.fattura_numero, fatt.fattura_stato,
+                             ca.sorgente_uid, s.area AS sorgente_area,
+                             -- Id e numero del documento di origine: UNA
+                             -- chiamata, non due funzioni gemelle.
+                             ref.documento_id AS sorgente_documento_id,
+                             -- ===== La provenienza (BE, 2026-08-20) =====
+                             ca.tipo_movimento,
+                             art.codice      AS articolo_codice,
+                             art.descrizione AS articolo_descrizione,
+                             ref.documento_numero AS sorgente_documento_numero,
+                             grp.gruppo_key
+                        FROM vendite.commesse_attivita ca
+                        LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                        -- ⚠️ LEFT anche se articolo_id e' NOT NULL, e non perche'
+                        -- catalogo.articoli abbia la RLS (non ce l'ha): perche'
+                        -- una riga di lista non deve sparire per colpa di un
+                        -- decode. Se l'articolo non risolve, mancano il codice e
+                        -- la descrizione, non la riga.
+                        LEFT JOIN catalogo.articoli art ON art.id = ca.articolo_id
+                        -- Il documento di origine, id + numero in una lettura.
+                        -- La funzione restituisce SEMPRE una riga, quindi qui il
+                        -- LEFT e' cintura, non necessita'.
+                        LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(
+                                     ca.sorgente_tipo_id, ca.sorgente_uid) ref ON TRUE
+                        -- Il gruppo fatturabile dalla SUA unica fonte di verita'.
+                        -- ⚠️ fn_build_gruppo_fatturabile_key SOLLEVA su coppia
+                        -- sorgente incoerente o riga sourceless senza commessa:
+                        -- da qui non puo' accadere — lo impediscono il CHECK
+                        -- chk_commesse_attivita_sorgente_pair e il NOT NULL su
+                        -- commessa_id. In un LATERAL cosi' l'ORDER BY puo'
+                        -- nominarlo come una colonna qualunque.
+                        CROSS JOIN LATERAL (
+                            SELECT vendite.fn_build_gruppo_fatturabile_key(
+                                       ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                                   ) AS gruppo_key
+                        ) grp
+                        -- ⚠️ LATERAL ordinato e non join nuda: oggi il rapporto
+                        -- attivita' -> riga di fattura e' 1:1, ma e' una
+                        -- fotografia e non un vincolo. Con una join diretta, il
+                        -- giorno di una fatturazione parziale la lista
+                        -- raddoppierebbe le righe — dati sbagliati, non un errore.
+                        LEFT JOIN LATERAL (
+                            SELECT fr.data_insert AS fatturata_il,
+                                   f.id           AS fattura_id,
+                                   f.numero       AS fattura_numero,
+                                   sdf.codice_interno AS fattura_stato
+                              FROM vendite.attivita_fatturabili af
+                              JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                              JOIN vendite.fatture f        ON f.id  = fr.fattura_id
+                              LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                             WHERE af.commessa_attivita_id = ca.id
+                             ORDER BY fr.data_insert DESC, fr.id DESC
+                             LIMIT 1
+                        ) fatt ON TRUE
+                       WHERE ca.commessa_id = $1
+                         AND ($2 IS NULL OR ca.stato_emissione = $2)
+                         AND ($3 IS NULL OR ca.stato_approvazione = $3)
+                         AND ($4 IS NULL OR ca.competenza_mese = $4)
+                       ORDER BY %s %s NULLS LAST, ca.id
+                       LIMIT $5 OFFSET $6
+                  $q$, v_order_col, v_order_dir)
+                  USING p_commessa_id, p_stato_emissione, p_stato_approvazione,
+                        v_competenza_mese, p_limit, p_offset;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_commessa_attivita(
+                      bigint, character varying, character varying, date,
+                      integer, integer, text, text)
+              IS 'Elenco paginato delle attivita'' di una commessa, con whitelist chiusa di ordinamento e fail-loud sul nome fuori whitelist. Rev 2026-08-16 (richiesta BE): porta a valle tre informazioni che si fermavano al database. (1) `fatturata_il` = vendite.fatture_righe.data_insert, cioe'' quando la riga e'' stata PORTATA in fattura — NON `data_update`, che e'' «ultimo aggiornamento» e oggi coincide solo per coincidenza: misurato il 2026-08-16, 10 righe su 37 gia'' divergono, e basta un riallineamento di prezzo dopo la fatturazione perche'' l''etichetta menta. (2) `fattura_id`, `fattura_numero`, `fattura_stato`: il documento su cui navigare, preso con un LATERAL ordinato + LIMIT 1 e non con una join nuda, perche'' il rapporto 1:1 fra attivita'' e riga di fattura e'' una fotografia e non un vincolo — con una join, una fatturazione parziale raddoppierebbe le righe della lista. (3) `sorgente_uid`, `sorgente_area` e `sorgente_documento_id` per l''azione «apri documento sorgente». ⚠️ Il booleano `fatturata` resta calcolato sull''EXISTS in vendite.attivita_fatturabili, che NON ha RLS, e non deriva dalla join: vendite.fatture ce l''ha, e chi non vede la fattura leggerebbe «da fatturare» una riga gia'' fatturata. Cosi'' invece legge fatturata = true con le colonne del documento a NULL: sa che e'' fatturata e sa di non poterci navigare. Rev 2026-08-16 (sera): ORDER BY con NULLS LAST esplicito in ENTRAMBI i versi (sul DESC PostgreSQL mette i NULL in testa, quindi le righe mai fatturate finivano prime). ⭐ Rev 2026-08-20 (richiesta BE, punto 2): la PROVENIENZA della riga arriva a valle, perche'' il documento di fattura si separa per gruppo fatturabile e «da dove viene la riga» e'' il criterio con cui la fattura nasce — a video l''unica traccia era `segment_key`, una chiave tecnica. Cinque colonne additive: `tipo_movimento` (c''era in tabella dal 2026-07-17 e non usciva: una rettifica si distingueva solo dalla quantita'' negativa), `articolo_codice` e `articolo_descrizione` (usciva il solo articolo_id uuid, e la lista non diceva di cosa parla la riga), `sorgente_documento_numero` (il numero leggibile accanto all''id nudo, dal resolver unico fn_get_sorgente_documento_ref) e `gruppo_key`. 🔴 La quinta esiste per una misura: le righe RETTIFICA e ONERE sono SOURCELESS per progetto — 9 su 98 il 2026-08-20, cioe'' il 100% delle righe di nota di credito — quindi `sorgente_*` e'' vuoto esattamente sulle righe per cui la colonna e'' stata chiesta, e il loro gruppo fatturabile e'' `MAN:<commessa_id>`, non il DDT. `sorgente_documento_numero` risponde «da quale documento discende», `gruppo_key` risponde «in che gruppo verra'' fatturata»: sulle righe normali coincidono, sulle sourceless solo la seconda ha una risposta. ⚠️ La whitelist cresce di SEI nomi nello stesso giro in cui le colonne vanno a catalogo: una riga di ui.lista_colonna con ordinabile=t su un campo fuori whitelist non da'' una freccia inerte, ROMPE la lista al primo click. ⚠️ catalogo.articoli in LEFT JOIN benche'' articolo_id sia NOT NULL: una riga di lista non deve sparire per colpa di un decode.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback non ripristina la forma precedente della RETURNS TABLE:
+              -- si ri-applica il changeSet 20260816-05, che e' la revisione a
+              -- monte di questa. Qui si toglie solo l'oggetto corrente.
+              DROP FUNCTION IF EXISTS vendite.fn_list_commessa_attivita(
+                  bigint, character varying, character varying, date,
+                  integer, integer, text, text);

@@ -216,10 +216,41 @@ BEGIN
           'child_has_attivo', v_child_has_attivo
         ),
         NULL::uuid,
-        'Non e'' possibile disattivare il padre: esistono righe figlio attive collegate',
+        -- ⭐ 2026-08-20: LA FRASE NON VIAGGIA PIU' QUI.
+        --    Fino a ieri il primo valore era «Non e' possibile
+        --    disattivare il padre: esistono righe figlio attive
+        --    collegate» e il messaggio a catalogo era un `%s` NUDO:
+        --    gli altri cinque valori — padre, figlia, colonna
+        --    referenziata, suo valore, colonna FK — arrivavano fin qui
+        --    e venivano BUTTATI VIA, perche' un solo segnaposto ne
+        --    consuma uno solo. Un centinaio di trigger di questa
+        --    famiglia dicevano tutti la stessa frase cieca, senza mai
+        --    nominare la tabella che stava bloccando.
+        --
+        -- ⚠️ E la frase era anche IMPRECISA: diceva «attive» anche
+        --    quando la figlia NON ha una colonna attivo — e in quel
+        --    caso blocca qualunque riga, non le attive. Il caso non e'
+        --    teorico: anagrafiche.emittenti_fiscali_billing_account e'
+        --    cosi', e mandava a cercare una colonna che non esiste.
+        --    La distinzione ora vive nella `causa` del catalogo, che
+        --    e' il posto dove una sfumatura si legge senza affollare
+        --    la riga principale.
+        --
+        --    Il testo sta a catalogo (E_ATTIVO_BLOCK_CHILDREN_EXIST,
+        --    id 125) e qui viaggiano solo i DATI, nell'ORDINE che il
+        --    messaggio consuma: padre, colonna referenziata, suo
+        --    valore, figlia. ⚠️ Cambiare quest'ordine senza cambiare
+        --    il CSV scambia due nomi di tabella in una frase che
+        --    resta grammaticalmente perfetta: i due vanno letti
+        --    insieme.
+        --    Il quinto (fk_col) e' passato IN PIU' di proposito, cosi'
+        --    arricchire il messaggio non costa un changeSet di codice:
+        --    format() ignora i valori che avanzano, ma non perdona
+        --    quelli che mancano (W_MESSAGGIO_ARITA).
         TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+        v_ref_col,
+        v_parent_ref_val_text,
         v_child_schema||'.'||v_child_table,
-        v_ref_col, v_parent_ref_val_text,
         v_fk_col
       );
     END IF;
@@ -230,7 +261,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children()
-IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione del padre se esistono figli collegati. TG_ARGV: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]. Il 4° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE non-PK). Il 5° arg e'' la colonna attivo del padre (rispetta override via dbops.automation_overrides_cols).';
+IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione del padre se esistono figli collegati. TG_ARGV: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]. Il 4° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE non-PK). Il 5° arg e'' la colonna attivo del padre (rispetta override via dbops.automation_overrides_cols). ⭐ rev 2026-08-20 — SOLO IL MESSAGGIO, il blocco e'' identico: la FRASE non viaggia piu'' fra i valori passati a script.fn_log_and_raise_error, sta a catalogo (E_ATTIVO_BLOCK_CHILDREN_EXIST, id 125). Prima il messaggio a catalogo era un `%s` nudo e i cinque valori identificativi che questa funzione gli passava — padre, figlia, colonna referenziata, suo valore, colonna FK — venivano scartati: il centinaio di trigger di questa famiglia diceva tutto la stessa frase cieca, senza mai nominare la tabella che bloccava. ⚠️ La frase diceva anche «attive» quando la figlia non ha una colonna attivo, cioe'' quando conta QUALUNQUE riga: la sfumatura ora vive nella causa del catalogo. ⚠️ I valori viaggiano nell''ORDINE che il messaggio consuma (padre, ref_col, ref_val, figlia; fk_col in piu'' per far crescere il testo senza toccare il codice): cambiare l''ordine qui senza cambiare il CSV scambia due nomi di tabella in una frase che resta grammaticalmente perfetta. I due si leggono insieme.';
 ```
 
 ---

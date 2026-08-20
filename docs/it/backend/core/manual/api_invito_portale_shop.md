@@ -282,6 +282,13 @@ password preesistente dell'utente operatore o altra veste resta valida).
 Simmetrici ai precedenti del portale, con tipi token `INVITO_SHOP` /
 `ATTIVAZIONE_SHOP_CROSS`. Codice errore distinto: `E_ATTIVAZIONE_SHOP`.
 
+⚠️ Esiste anche `POST /api/v1/shop/register/check-email/`, ma **oggi e' uno stub
+che risponde 501**: e' il buco lasciato apposta per la registrazione autonoma
+(PR-C), che dovra' distinguere tre casi da una sola email — nuova (onboarding
+guest), gia' `auth_user` (cross-shop), gia' `SHOP_CUSTOMER` (login). Il body non
+viene nemmeno letto, perche' nessuna logica dipende ancora dall'input: chiamarlo
+non fa danni e non fa niente.
+
 ---
 
 ## Endpoint cross-veste autenticato

@@ -26,7 +26,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import Tag from 'primevue/tag'
 import SituazioneMerceDialog from './SituazioneMerceDialog.vue'
-import { formatQtaMerce as qta, sintesiSituazioneMerce } from './situazioneMerceSintesi'
+import { compitiSituazioneMerce, sintesiSituazioneMerce } from './situazioneMerceSintesi'
 import { useSituazioneMerce } from './useSituazioneMerce'
 import { ROUTE_RESI, TAB_RESI } from '../../resi/constants'
 
@@ -83,51 +83,20 @@ function apriCodaAccrediti() {
     console.warn('situazione merce: nessun filtro coda per basePath', props.basePath)
     return
   }
+  // La pila di drawer che ci ospita non si chiude qui: ci pensa la chiusura
+  // globale su cambio rotta (`useDrawerChiusuraGlobale`, agganciata nel router).
+  // Farlo anche qui sarebbe una seconda strada per la stessa cosa — e quella
+  // locale chiuderebbe UN anello solo, lasciando aperti quelli sopra.
   router.push({
     name: ROUTE_RESI,
     query: { tab: TAB_RESI.DA_ACCREDITARE, [chiave]: props.docId },
   })
 }
 
-// I compiti, nell'ordine in cui contano per chi guarda: prima quello che
-// costa denaro (accreditare), poi quello che lo incassa (fatturare), poi la
-// logistica, infine cio' che va solo GUARDATO.
-//
-// ⚠️ `fatturato_anticipato` NON e' in questa lista (FE-3): non e' un compito,
-// e metterlo qui accanto a «da accreditare» e' esattamente il modo in cui
-// tornerebbe a essere letto come tale. Vive nel dettaglio, dichiarato.
-const chips = computed(() => {
-  const v = s.value
-  const out = []
-  if (v.daAccreditare > 0) {
-    out.push({ key: 'accreditare', severity: 'warn',
-               label: t('vendite.situazione_merce.chip_da_accreditare', { n: qta(v.daAccreditare) }) })
-  }
-  if (v.daFatturare > 0) {
-    out.push({ key: 'fatturare', severity: 'info',
-               label: t('vendite.situazione_merce.chip_da_fatturare', { n: qta(v.daFatturare) }) })
-  }
-  if (v.daRiconsegnare > 0) {
-    out.push({ key: 'riconsegnare', severity: 'info',
-               label: t('vendite.situazione_merce.chip_da_riconsegnare', { n: qta(v.daRiconsegnare) }) })
-  }
-  if (v.daSpedire > 0) {
-    out.push({ key: 'spedire', severity: 'secondary',
-               label: t('vendite.situazione_merce.chip_da_spedire', { n: qta(v.daSpedire) }) })
-  }
-  // FE-1: «non calcolabile» e' rosso, non grigio — deve staccarsi da «tutto
-  // regolare» e dal «non si applica», che sono sani.
-  if (v.nonMisurabili > 0) {
-    out.push({ key: 'non-misurabile', severity: 'danger',
-               label: t('vendite.situazione_merce.chip_non_misurabile', { n: v.nonMisurabili }) })
-  }
-  // FE-2: senza questo chip l'avviso di S6b non esiste per nessuno.
-  if (v.sospette > 0) {
-    out.push({ key: 'sospette', severity: 'warn',
-               label: t('vendite.situazione_merce.chip_sospette', { n: v.sospette }) })
-  }
-  return out
-})
+// I compiti in testata: la STESSA lista che il dettaglio mostra come riepilogo
+// in fondo alla dialog (`compitiSituazioneMerce`). Scritta una volta sola, il
+// chip e la voce del riepilogo non possono dire due numeri diversi.
+const chips = computed(() => compitiSituazioneMerce(s.value, t))
 
 // La riga si mostra solo con dati ARRIVATI e qualcosa da dire. `loaded` e' la
 // difesa contro il vuoto positivo: su una fetch fallita non si afferma nulla.
@@ -137,7 +106,15 @@ const dialogVisible = ref(false)
 </script>
 
 <template>
-  <div v-if="visibile" class="app-merce-bar">
+  <!-- `app-escape`: nei drawer ordine/DDT il contenuto e' .app-readonly appena
+       il documento esce da DRAFT (`pointer-events: none`), e la merce nasce
+       PROPRIO li' — un DDT ha partite solo da EMESSO in poi. Senza questa
+       classe la barra si vede e i chip NON si cliccano: la dialog di dettaglio
+       non si apre MAI in uso reale, e con lei se ne va il collegamento alla
+       coda accrediti (F3). Stessa ragione, e stessa riga, di
+       `DocumentoCollegamentiBar` qui sopra: aprire un dettaglio e' LEGGERE,
+       e leggere non e' l'azione che il protect deve fermare. -->
+  <div v-if="visibile" class="app-escape app-merce-bar">
     <span class="app-merce-label">{{ t('vendite.situazione_merce.etichetta') }}</span>
 
     <button

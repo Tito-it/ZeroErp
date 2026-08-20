@@ -1,0 +1,369 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MESSAGGIO CIECO DELLA FAMIGLIA `prevent_deactivate_if_children`.
+#   Trovato il 2026-08-20 indagando la regressione del pgTAP
+#   test-registri-per-emittente-v1 (vedi 20260820-02, che e' l'altra meta').
+#
+# -- IL DIFETTO, ED E' DI FAMIGLIA ------------------------------------
+#   La funzione passava a script.fn_log_and_raise_error SEI valori: la frase
+#   «Non e' possibile disattivare il padre: esistono righe figlio attive
+#   collegate», e poi padre, figlia, colonna referenziata, suo valore, colonna
+#   FK. Il messaggio a catalogo (id 125) era `%s`: UN segnaposto, che consuma
+#   il primo valore. ⛔ Gli altri cinque arrivavano fin li' e venivano buttati
+#   via, a ogni singola violazione.
+#
+#   La misura: un centinaio di trigger di questa famiglia (28 su
+#   catalogo.articoli, 21 su catalogo.unita_misura, 18 su config.sorgenti, 16
+#   su config.iva, 16 su anagrafiche.emittenti_fiscali...), e tutti dicevano la
+#   STESSA frase, senza mai nominare la tabella che li stava bloccando.
+#   L'operatore leggeva «esistono righe figlio collegate» e doveva indovinare
+#   quali.
+#
+# -- ⚠️ E LA FRASE ERA ANCHE FALSA IN UN CASO SU DUE ------------------
+#   Diceva «righe figlio ATTIVE». Ma il blocco guarda le righe attive SOLO se
+#   la figlia ha una colonna `attivo`; se non ce l'ha, blocca su QUALUNQUE
+#   riga. Il caso non e' teorico ed e' quello che ha fatto scoprire tutto:
+#   anagrafiche.emittenti_fiscali_billing_account NON ha la colonna attivo,
+#   quindi la frase mandava a cercare uno stato che li' non esiste.
+#   La sfumatura va nella `causa` del catalogo, non nella riga principale.
+#
+# -- COSA CAMBIA, E COSA NO -------------------------------------------
+#   ⛔ Il COMPORTAMENTO e' identico: stesse condizioni, stesso momento, stesso
+#   codice errore, stesso SQLSTATE. Cambia solo il TESTO che l'operatore legge,
+#   e cambia per tutti i trigger della famiglia insieme — che e' il motivo per
+#   cui si fa qui e non caso per caso.
+#
+#   Il testo nuovo (CSV di 80_data, id 125):
+#     «Non si puo' disattivare %s (%s = %s): ci sono ancora righe collegate
+#      in %s.»
+#   con i valori nell'ordine padre, ref_col, ref_val, figlia.
+#
+# -- ⚠️ IL VINCOLO CHE NASCE OGGI -------------------------------------
+#   L'ordine dei valori qui e i segnaposti del CSV sono UNA COSA SOLA. Uno
+#   scambio fra due valori dello stesso tipo — padre e figlia sono entrambi
+#   `schema.tabella` — produce una frase grammaticalmente perfetta e SBAGLIATA,
+#   che nessun test di sintassi puo' vedere. E' il motivo per cui il pgTAP di
+#   verifica non asserisce «solleva», ma «nomina la tabella GIUSTA».
+#
+# -- PERCHE' NON BASTAVA ARRICCHIRE IL SOLO CSV -----------------------
+#   Con la frase come primo valore, il messaggio poteva solo CRESCERE intorno a
+#   una frase gia' fatta: «...collegate Padre: X. Figlia: Y.». Si leggeva come
+#   due messaggi incollati, ed e' la forma che nasce quando il testo e' scritto
+#   meta' nel codice e meta' a catalogo. Tolta la frase dal codice, il
+#   messaggio si scrive per intero in un posto solo — che e' anche l'unico modo
+#   di correggere il «attive» senza toccare di nuovo la funzione.
+#
+# Origine: corpo = pg_get_functiondef del 2026-08-20; cambia il SOLO blocco dei
+#   valori passati (piu' i commenti che lo spiegano). Firma `()`, nessun %TYPE.
+# Dipendenze: la riga id 125 di 80_data/sql/config/messaggi_errore.csv, che ha
+#   ora QUATTRO segnaposti. ⚠️ 80_data gira DOPO 20_code: nella finestra fra i
+#   due il messaggio vecchio (`%s`) consuma il primo valore, cioe' il nome del
+#   padre. Dura un migrate, e non e' un errore — e' un testo povero.
+#   ⛔ Il verso opposto sarebbe grave: un CSV con quattro segnaposti e la
+#   funzione vecchia che ne passa uno alzerebbe W_MESSAGGIO_ARITA. Non puo'
+#   accadere nell'ordine di Liquibase, ma non applicare i due separatamente.
+# Verifica: db/pgtap/vendite/test-registri-per-emittente-v1.sql (test 6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260820-01-update-trgfn-prevent-deactivate-if-children-messaggio-parlante-mctit.yaml
+
+  - changeSet:
+      id: 20260820-01-update-trgfn-prevent-deactivate-if-children-messaggio-parlante
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Solo il messaggio, il blocco e' identico: la frase esce dagli argomenti e va a catalogo,
+        cosi' i cinque valori identificativi che la funzione gia' passava (padre, figlia, colonna,
+        valore) smettono di essere buttati via da un `%s` nudo. Un centinaio di trigger della
+        famiglia smette di dire «esistono righe figlio collegate» senza dire quali. Corregge anche
+        il «attive», falso quando la figlia non ha una colonna attivo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname = 'trgfn_prevent_deactivate_if_children'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_prevent_deactivate_if_children()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_child_schema       text;
+                v_child_table        text;
+                v_fk_col             text;
+                v_ref_col            text;     -- colonna del padre referenziata dalla FK (default 'id')
+                v_parent_attivo_col  text;     -- colonna attivo del padre (rispetta override; default 'attivo')
+
+                v_parent_ref_val_text text;
+                v_fk_type             text;
+
+                v_old_attivo boolean;
+                v_new_attivo boolean;
+
+                v_child_attivo_col text;
+                v_child_has_attivo boolean;
+
+                v_exists boolean;
+                v_sql    text;
+              BEGIN
+                /*
+                  Scopo
+                  -----
+                  Trigger function (ATTIVO/BLOCK): impedisce la disattivazione
+                  (attivo TRUE -> FALSE) del padre se esistono figli collegati.
+                  Se il figlio ha colonna attivo, il blocco scatta solo se esistono
+                  figli attivi.
+
+                  Argomenti attesi (TG_ARGV)
+                  --------------------------
+                  [0] child_schema       - schema della tabella figlia
+                  [1] child_table        - nome tabella figlia
+                  [2] fk_col             - colonna FK sul figlio
+                  [3] ref_col            - colonna del padre referenziata dalla FK
+                                           (puo' essere UNIQUE diversa da PK).
+                                           Se omesso, fallback 'id' (DEPRECATO).
+                  [4] parent_attivo_col  - nome colonna attivo del padre
+                                           (default 'attivo' se omesso, DEPRECATO).
+                                           Necessario per supportare override
+                                           via dbops.automation_overrides_cols.
+                */
+
+                IF array_length(TG_ARGV, 1) < 3 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ATTIVO_BLOCK_ARGS',
+                    jsonb_build_object(
+                      'trigger', TG_NAME,
+                      'table',   TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'tg_argv', TG_ARGV
+                    ),
+                    NULL::uuid,
+                    'Attesi: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]'
+                  );
+                END IF;
+
+                v_child_schema := TG_ARGV[0];
+                v_child_table  := TG_ARGV[1];
+                v_fk_col       := TG_ARGV[2];
+
+                IF array_length(TG_ARGV, 1) >= 4 AND TG_ARGV[3] IS NOT NULL THEN
+                  v_ref_col := TG_ARGV[3];
+                ELSE
+                  v_ref_col := 'id';
+                  PERFORM script.fn_log_error_only(
+                    'database',
+                    'trgfn_prevent_deactivate_if_children',
+                    'E_ATTIVO_BLOCK',
+                    jsonb_build_object(
+                      'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'ref_col',      v_ref_col,
+                      'note',         'Usata colonna di default id'
+                    ),
+                    NULL::uuid,
+                    'Passa ref_col come 4° parametro per evitare ambiguita'''
+                  );
+                END IF;
+
+                -- 5° arg: nome colonna attivo del padre (rispetta override)
+                v_parent_attivo_col := COALESCE(TG_ARGV[4], 'attivo');
+
+                IF TG_ARGV[4] IS NULL THEN
+                  PERFORM script.fn_log_error_only(
+                    'database',
+                    'trgfn_prevent_deactivate_if_children',
+                    'E_ATTIVO_BLOCK',
+                    jsonb_build_object(
+                      'parent_table',      TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      'parent_attivo_col', v_parent_attivo_col,
+                      'note',              'Usata colonna attivo di default'
+                    ),
+                    NULL::uuid,
+                    'Passa parent_attivo_col come 5° parametro per supportare override'
+                  );
+                END IF;
+
+                -- Estrai dinamicamente OLD/NEW.parent_attivo_col via to_jsonb
+                -- (no EXECUTE per riga, supporta override del nome colonna)
+                v_old_attivo := (to_jsonb(OLD)->>v_parent_attivo_col)::boolean;
+                v_new_attivo := (to_jsonb(NEW)->>v_parent_attivo_col)::boolean;
+
+                -- Controlliamo solo transizione TRUE -> FALSE
+                IF TG_OP = 'UPDATE'
+                  AND COALESCE(v_old_attivo, FALSE) IS TRUE
+                  AND COALESCE(v_new_attivo, FALSE) IS FALSE
+                THEN
+                  -- Estrai valore della colonna referenziata dal record OLD via to_jsonb
+                  v_parent_ref_val_text := to_jsonb(OLD)->>v_ref_col;
+
+                  IF v_parent_ref_val_text IS NULL THEN
+                    -- rev 2026-08-05: TRE difetti in questa sola chiamata.
+                    --   1) mancavano i valori variadici -> `fn_log_error_only` non si
+                    --      risolveva e SOLLEVAVA, in una funzione il cui contratto e'
+                    --      «logga senza sollevare»: una disattivazione legittima
+                    --      falliva. E' il piu' grave dei 16 perche' non sporca un
+                    --      messaggio, cambia il comportamento — ed e' armato su 96
+                    --      tabelle.
+                    --   2) il codice era `E_ATTIVO_BLOCK`, il cui messaggio e'
+                    --      «Errore generazione regola ATTIVO_block. Sqlerrm: %s»: parla
+                    --      della GENERAZIONE della regola da parte del framework di
+                    --      automazione, non di questo salto a runtime. Ora
+                    --      `E_ATTIVO_BLOCK_REF_NULL` (id 840), coerente con la famiglia
+                    --      `E_ATTIVO_BLOCK_*` che ha messaggio `%s` pass-through.
+                    --   3) quel messaggio ha un segnaposto: un array vuoto avrebbe
+                    --      stampato «%s» alla lettera. Si passa la nota vera.
+                    PERFORM script.fn_log_error_only(
+                      'database',
+                      'trgfn_prevent_deactivate_if_children',
+                      'E_ATTIVO_BLOCK_REF_NULL',
+                      jsonb_build_object(
+                        'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                        'ref_col',      v_ref_col,
+                        'note',         'Colonna referenziata NULL: controllo figli saltato'
+                      ),
+                      NULL::uuid,
+                      format('%s.%s: colonna referenziata %s NULL, controllo figli saltato',
+                             TG_TABLE_SCHEMA, TG_TABLE_NAME, v_ref_col)
+                    );
+                    RETURN NEW;
+                  END IF;
+
+                  -- Ricava tipo della FK del figlio (per cast corretto)
+                  SELECT a.atttypid::regtype::text
+                    INTO v_fk_type
+                    FROM pg_attribute a
+                    JOIN pg_class c     ON c.oid = a.attrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                  WHERE n.nspname = v_child_schema
+                    AND c.relname = v_child_table
+                    AND a.attname = v_fk_col
+                    AND a.attnum > 0
+                    AND NOT a.attisdropped;
+
+                  IF v_fk_type IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_ATTIVO_BLOCK_FKCOL_NOT_FOUND',
+                      jsonb_build_object(
+                        'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                        'child_table',  v_child_schema||'.'||v_child_table,
+                        'fk_col',       v_fk_col,
+                        'ref_col',      v_ref_col
+                      ),
+                      NULL::uuid,
+                      'Colonna FK del figlio non trovata in catalogo',
+                      v_child_schema, v_child_table, v_fk_col
+                    );
+                  END IF;
+
+                  -- Se il figlio ha una colonna attivo, blocca solo se esistono figli attivi
+                  v_child_attivo_col := dbops.fn_get_override_col(v_child_schema, v_child_table, 'ATTIVO_COL', 'attivo');
+                  v_child_has_attivo := dbops.fn_col_exists(v_child_schema, v_child_table, v_child_attivo_col);
+
+                  IF v_child_has_attivo THEN
+                    v_sql := format(
+                      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = ($1)::%s AND %I IS DISTINCT FROM FALSE)',
+                      v_child_schema, v_child_table, v_fk_col, v_fk_type, v_child_attivo_col
+                    );
+                  ELSE
+                    v_sql := format(
+                      'SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = ($1)::%s)',
+                      v_child_schema, v_child_table, v_fk_col, v_fk_type
+                    );
+                  END IF;
+
+                  EXECUTE v_sql INTO v_exists USING v_parent_ref_val_text;
+
+                  IF v_exists THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      'E_ATTIVO_BLOCK_CHILDREN_EXIST',
+                      jsonb_build_object(
+                        'parent_table',     TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                        'child_table',      v_child_schema||'.'||v_child_table,
+                        'ref_col',          v_ref_col,
+                        'ref_val',          v_parent_ref_val_text,
+                        'fk_col',           v_fk_col,
+                        'fk_type',          v_fk_type,
+                        'child_attivo_col', v_child_attivo_col,
+                        'child_has_attivo', v_child_has_attivo
+                      ),
+                      NULL::uuid,
+                      -- ⭐ 2026-08-20: LA FRASE NON VIAGGIA PIU' QUI.
+                      --    Fino a ieri il primo valore era «Non e' possibile
+                      --    disattivare il padre: esistono righe figlio attive
+                      --    collegate» e il messaggio a catalogo era un `%s` NUDO:
+                      --    gli altri cinque valori — padre, figlia, colonna
+                      --    referenziata, suo valore, colonna FK — arrivavano fin qui
+                      --    e venivano BUTTATI VIA, perche' un solo segnaposto ne
+                      --    consuma uno solo. Un centinaio di trigger di questa
+                      --    famiglia dicevano tutti la stessa frase cieca, senza mai
+                      --    nominare la tabella che stava bloccando.
+                      --
+                      -- ⚠️ E la frase era anche IMPRECISA: diceva «attive» anche
+                      --    quando la figlia NON ha una colonna attivo — e in quel
+                      --    caso blocca qualunque riga, non le attive. Il caso non e'
+                      --    teorico: anagrafiche.emittenti_fiscali_billing_account e'
+                      --    cosi', e mandava a cercare una colonna che non esiste.
+                      --    La distinzione ora vive nella `causa` del catalogo, che
+                      --    e' il posto dove una sfumatura si legge senza affollare
+                      --    la riga principale.
+                      --
+                      --    Il testo sta a catalogo (E_ATTIVO_BLOCK_CHILDREN_EXIST,
+                      --    id 125) e qui viaggiano solo i DATI, nell'ORDINE che il
+                      --    messaggio consuma: padre, colonna referenziata, suo
+                      --    valore, figlia. ⚠️ Cambiare quest'ordine senza cambiare
+                      --    il CSV scambia due nomi di tabella in una frase che
+                      --    resta grammaticalmente perfetta: i due vanno letti
+                      --    insieme.
+                      --    Il quinto (fk_col) e' passato IN PIU' di proposito, cosi'
+                      --    arricchire il messaggio non costa un changeSet di codice:
+                      --    format() ignora i valori che avanzano, ma non perdona
+                      --    quelli che mancano (W_MESSAGGIO_ARITA).
+                      TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+                      v_ref_col,
+                      v_parent_ref_val_text,
+                      v_child_schema||'.'||v_child_table,
+                      v_fk_col
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children()
+              IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione del padre se esistono figli collegati. TG_ARGV: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]. Il 4° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE non-PK). Il 5° arg e'' la colonna attivo del padre (rispetta override via dbops.automation_overrides_cols). ⭐ rev 2026-08-20 — SOLO IL MESSAGGIO, il blocco e'' identico: la FRASE non viaggia piu'' fra i valori passati a script.fn_log_and_raise_error, sta a catalogo (E_ATTIVO_BLOCK_CHILDREN_EXIST, id 125). Prima il messaggio a catalogo era un `%s` nudo e i cinque valori identificativi che questa funzione gli passava — padre, figlia, colonna referenziata, suo valore, colonna FK — venivano scartati: il centinaio di trigger di questa famiglia diceva tutto la stessa frase cieca, senza mai nominare la tabella che bloccava. ⚠️ La frase diceva anche «attive» quando la figlia non ha una colonna attivo, cioe'' quando conta QUALUNQUE riga: la sfumatura ora vive nella causa del catalogo. ⚠️ I valori viaggiano nell''ORDINE che il messaggio consuma (padre, ref_col, ref_val, figlia; fk_col in piu'' per far crescere il testo senza toccare il codice): cambiare l''ordine qui senza cambiare il CSV scambia due nomi di tabella in una frase che resta grammaticalmente perfetta. I due si leggono insieme.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico, e tornare indietro da soli e'
+              --    peggio che restare: la funzione vecchia passa la frase come
+              --    primo valore, e col CSV nuovo (quattro segnaposti) il
+              --    messaggio direbbe la frase seguita da tre nomi sbagliati.
+              --    Si torna indietro SOLO insieme alla riga 125 del CSV.
+              SELECT 1;

@@ -17,7 +17,7 @@
 - [api_fondi_fattura](manual/api_fondi_fattura.md) — Espone l'elenco paginato dei fondi fattura su cui il giro automatico **si è fermato**, e la decisione resta a un operatore.
 - [api_indirizzi_documento](manual/api_indirizzi_documento.md) — Gestione degli **indirizzi documento** (snapshot congelato + origine soft) per i 5 domini vendite: **preventivi, offerte, ordini, ddt, contratti**. Endpoint identici su tutti i domini, generati dal factory condiviso bui…
 - [api_lineage_passaggi](manual/api_lineage_passaggi.md) — Esporre la **genealogia/lineage** di un documento vendite per il pannello "Passaggi" dei drawer: pratica collegata, **frontiera** (documento più prossimo in esecuzione) e la **catena reale dei transiti** in entrambe le…
-- [api_listini](manual/api_listini.md) — Esporre via HTTP la gestione completa dei listini vendite: anagrafica listino, versioni temporali, righe prezzo, associazioni di contesto e test del resolver prezzo.
+- [api_listini](manual/api_listini.md) — Esporre via HTTP la gestione completa dei listini vendite: anagrafica listino, versioni temporali e righe prezzo.
 - [api_lotti_list](manual/api_lotti_list.md) — Esporre via HTTP l'elenco paginato dei lotti di fatturazione con filtri opzionali e decodifica delle FK.
 - [api_lotto_fatture_list](manual/api_lotto_fatture_list.md) — Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con decodifiche FK, filtri opzionali e ordinamento configurabile.
 - [api_lotto_segnalazioni_summary](manual/api_lotto_segnalazioni_summary.md) — Esporre via HTTP il riepilogo segnalazioni attive di un lotto, con indicazione di blocco avanzamento step.

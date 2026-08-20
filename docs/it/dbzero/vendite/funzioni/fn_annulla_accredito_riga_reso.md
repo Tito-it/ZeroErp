@@ -24,6 +24,19 @@ AS $function$
 --   successivo. Qui no: si torna prima del verbo.
 -- Il presidio permessi vive sul BE (post_permission), non qui:
 --   la madre deve restare usabile da un processo autorizzato.
+--
+-- ⭐⚠️ VINCOLO RECIPROCO, ORA SU TRE POSTI (C-3). Che questa
+--   funzione CANCELLI le righe di ponte invece di marcarle non e'
+--   un dettaglio implementativo: e' cio' che fa auto-riparare
+--   script.fn_check_rinuncia_reversibile e — dal 2026-08-19 — la
+--   guardia E_RESO_ANNULLO_CON_ACCREDITO di
+--   vendite.fn_annulla_reso. Nessuno dei due sa nulla di qui:
+--   tornano permissivi solo perche' la riga sparisce davvero.
+--   ⛔ Se un giorno l'annullo diventasse un soft-delete, quei due
+--   rami vieterebbero PER SEMPRE una rinuncia ormai reversibile e
+--   un annullo di reso ormai ammesso, IN SILENZIO — perche'
+--   nessuno dei lati sarebbe sbagliato da solo. I TRE posti si
+--   cambiano INSIEME.
 DECLARE
     v_motivo        text;
     -- ⚠️ bigint[] esplicito: colonna%TYPE[] non esiste in
@@ -113,7 +126,8 @@ BEGIN
         --    qui insieme, e non e' un difetto: l'annullo
         --    cancella, quindi lo stato osservabile e' lo
         --    stesso. Un flag per distinguerle sarebbe il
-        --    soft-delete che romperebbe il gate della rinuncia.
+        --    soft-delete che romperebbe il gate della rinuncia
+        --    E la guardia dell'annullo reso (C-3, tre posti).
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_annulla_accredito_riga_reso','E_ACCREDITO_NON_TROVATO',
             jsonb_build_object('resi_riga_id', p_resi_riga_id),
@@ -225,8 +239,10 @@ BEGIN
 
     -- --------------------------------------------------
     -- 7) Il ponte. ⭐ CANCELLA, non marca: e' da questa riga
-    --    che dipende il gate della rinuncia (P-3), che si
-    --    auto-ripara solo perche' la riga sparisce davvero.
+    --    che dipendono il gate della rinuncia (P-3) e la guardia
+    --    E_RESO_ANNULLO_CON_ACCREDITO di vendite.fn_annulla_reso,
+    --    che si auto-riparano solo perche' la riga sparisce
+    --    davvero.
     --    Ed e' la cancellazione a far RISALIRE accredito_dovuto
     --    in vw_resi_da_accreditare: senza, la coda resterebbe
     --    muta per sempre e la merce non sarebbe piu'
@@ -291,7 +307,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_accredito_riga_reso(p_resi_riga_id bigint, p_motivo text)
-IS 'MADRE del verbo «annulla accredito», specchio di vendite.fn_accredita_riga_reso (brief-db-note-credito-prerequisiti-be-fe §8 passo 3, P-5 corretta da C-2). Toglie le coppie da vendite.resi_righe_accrediti e porta le rettifiche a stato_emissione = ANNULLATA, con motivo obbligatorio e audit su commesse_attivita_log (evento ACCREDITO_ANNULLATO): tre scritture, una unita'' atomica. ⛔ NON e'' l''annullo del DOCUMENTO — quello e'' il reset del lotto, dopo il quale la nota di credito RIGENERA al giro successivo perche'' la merce resa non e'' cambiata; qui si torna prima del verbo. ⭐ SEMANTICA D''INSIEME: un accredito non e'' una riga ma N coppie e N rettifiche (consumo LIFO su piu'' righe di fattura + una rettifica per componente sui kit), quindi basta UNA rettifica emessa, fatturata o agganciata a un lotto vivo per rifiutare TUTTO (E_ACCREDITO_ANNULLO_NON_AMMESSO) — un annullo parziale lascerebbe la coda a chiedere un residuo che nessuno puo'' piu'' soddisfare, che e'' la dottrina di E_ACCREDITO_QUOTA_NON_COPERTA allo specchio. ⚠️ Le tre condizioni si tengono tutte e tre: dopo un reset di lotto la riga di attivita_fatturabili SOPRAVVIVE sbloccata e senza fattura_riga_id, quindi «esiste una AF -> bloccato» vieterebbe per sempre l''annullo dopo un reset legittimo. LOCK: FOR UPDATE su vendite.resi_righe, lo stesso appiglio di trgfn_resi_accrediti_guard — e'' li'' che l''esclusione con la madre interseca davvero, perche'' la madre ci arriva attraversando il proprio guard alla prima INSERT (il suo advisory lock sta sulla riga di DDT e serve al progressivo #RET). Nessun deadlock: qui l''advisory non si attende mai. ⚠️ DOPPIO FAIL-CLOSED su ROW_COUNT (E_ACCREDITO_ANNULLO_INCOMPLETO): commesse_attivita ha la RLS e il ponte no, quindi una rettifica fuori perimetro emittente verrebbe saltata IN SILENZIO lasciando l''annullo a meta''. ⭐ CANCELLA e non marca, e non e'' un dettaglio implementativo: il gate della rinuncia (fn_check_rinuncia_reversibile) si auto-ripara SOLO perche'' la riga sparisce — se un giorno diventasse un soft-delete, quel gate va cambiato insieme. E'' anche la cancellazione a far risalire accredito_dovuto in vw_resi_da_accreditare. NON si riusa fn_annulla_commessa_attivita benche'' le rettifiche siano sourceless: il suo perimetro dichiarato e'' la riga MANUALE, il suo evento di log direbbe il falso e la sua decisione e'' per riga invece che d''insieme. «Nessun accredito» copre insieme «mai accreditato» e «gia'' annullato», indistinguibili per costruzione. SECURITY INVOKER. Presidio permessi sul BE. Ritorna le coppie rimosse. rev 2026-08-18.';
+IS 'MADRE del verbo «annulla accredito», specchio di vendite.fn_accredita_riga_reso (brief-db-note-credito-prerequisiti-be-fe §8 passo 3, P-5 corretta da C-2). Toglie le coppie da vendite.resi_righe_accrediti e porta le rettifiche a stato_emissione = ANNULLATA, con motivo obbligatorio e audit su commesse_attivita_log (evento ACCREDITO_ANNULLATO): tre scritture, una unita'' atomica. ⛔ NON e'' l''annullo del DOCUMENTO — quello e'' il reset del lotto, dopo il quale la nota di credito RIGENERA al giro successivo perche'' la merce resa non e'' cambiata; qui si torna prima del verbo. ⭐ SEMANTICA D''INSIEME: un accredito non e'' una riga ma N coppie e N rettifiche (consumo LIFO su piu'' righe di fattura + una rettifica per componente sui kit), quindi basta UNA rettifica emessa, fatturata o agganciata a un lotto vivo per rifiutare TUTTO (E_ACCREDITO_ANNULLO_NON_AMMESSO) — un annullo parziale lascerebbe la coda a chiedere un residuo che nessuno puo'' piu'' soddisfare, che e'' la dottrina di E_ACCREDITO_QUOTA_NON_COPERTA allo specchio. ⚠️ Le tre condizioni si tengono tutte e tre: dopo un reset di lotto la riga di attivita_fatturabili SOPRAVVIVE sbloccata e senza fattura_riga_id, quindi «esiste una AF -> bloccato» vieterebbe per sempre l''annullo dopo un reset legittimo. LOCK: FOR UPDATE su vendite.resi_righe, lo stesso appiglio di trgfn_resi_accrediti_guard — e'' li'' che l''esclusione con la madre interseca davvero, perche'' la madre ci arriva attraversando il proprio guard alla prima INSERT (il suo advisory lock sta sulla riga di DDT e serve al progressivo #RET). Nessun deadlock: qui l''advisory non si attende mai. ⚠️ DOPPIO FAIL-CLOSED su ROW_COUNT (E_ACCREDITO_ANNULLO_INCOMPLETO): commesse_attivita ha la RLS e il ponte no, quindi una rettifica fuori perimetro emittente verrebbe saltata IN SILENZIO lasciando l''annullo a meta''. ⭐ CANCELLA e non marca, e non e'' un dettaglio implementativo: il gate della rinuncia (fn_check_rinuncia_reversibile) E la guardia E_RESO_ANNULLO_CON_ACCREDITO di vendite.fn_annulla_reso (dal 2026-08-19) si auto-riparano SOLO perche'' la riga sparisce — se un giorno diventasse un soft-delete, quei due vanno cambiati insieme a questa: il vincolo C-3 e'' su TRE posti, non su due. E'' anche la cancellazione a far risalire accredito_dovuto in vw_resi_da_accreditare. NON si riusa fn_annulla_commessa_attivita benche'' le rettifiche siano sourceless: il suo perimetro dichiarato e'' la riga MANUALE, il suo evento di log direbbe il falso e la sua decisione e'' per riga invece che d''insieme. «Nessun accredito» copre insieme «mai accreditato» e «gia'' annullato», indistinguibili per costruzione. SECURITY INVOKER. Presidio permessi sul BE. Ritorna le coppie rimosse. rev 2026-08-18. rev 2026-08-19: nota del vincolo estesa a TRE posti (solo commenti).';
 ```
 
 ---

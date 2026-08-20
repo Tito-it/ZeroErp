@@ -8,6 +8,7 @@
 //   //           :mode="drawer.state.mode" :item="drawer.state.itemData"
 
 import { reactive } from 'vue'
+import { registraDrawerChiudibile } from './useDrawerChiusuraGlobale'
 
 export function useDrawerState() {
   const state = reactive({
@@ -34,6 +35,12 @@ export function useDrawerState() {
   function close() {
     state.visible = false
   }
+
+  // Il drawer di testa risponde alla chiusura globale: quando qualcosa porta
+  // l'utente su un'altra rotta, questo pannello non deve restare davanti alla
+  // pagina d'arrivo. Vedi `useDrawerChiusuraGlobale` per il perche' il segnale
+  // e' uno solo e non un evento per drawer.
+  registraDrawerChiudibile(close)
 
   return { state, openCreate, editRow, close }
 }

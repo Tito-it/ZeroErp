@@ -65,6 +65,10 @@ const isConfermato = computed(
 // post-DRAFT (modifiche libere solo in bozza). Le azioni di stato restano
 // cliccabili in readonly grazie ad `app-escape` di DrawerActionsBar.
 const parentReadonly = useInjectReadonly()
+// Readonly PURO: permessi soltanto, senza il lock-di-stato. Lo consumano le
+// dialog di processo lanciate dal drawer, che devono restare operabili su un
+// documento post-DRAFT — che per loro e' il caso normale, non l'eccezione.
+const isReadonlyPuro = computed(() => props.readonly || parentReadonly.value)
 const isReadonly = computed(
   () => props.readonly
     || parentReadonly.value
@@ -285,6 +289,7 @@ async function onCoperturaRiconsegnaCambiata() {
           :reso-id="props.resoId"
           :ddt-origine-id="detail?.ddt_origine_id ?? null"
           :is-modificabile="canEditRighe && !isReadonly"
+          :readonly="isReadonlyPuro"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />
 

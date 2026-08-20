@@ -329,6 +329,13 @@ export const MANAGE_ICONS = {
   RELOAD: 'pi pi-refresh',
   DOWNLOAD: 'pi pi-download',
   DELETE: 'pi pi-trash',
+  // Storno di un fatto GIA' REGISTRATO (annulla l'accredito di una riga di
+  // reso, e i suoi futuri gemelli). ⚠️ NON e' DELETE: in variante desktop le
+  // azioni di riga sono bottoni icon-only, e col cestino l'annullo era
+  // indistinguibile da «elimina la riga» — misurato in-app il 2026-08-19, dove
+  // per di piu' l'unica azione a video ERA questa e veniva letta come il
+  // cestino di eliminazione. Elimina toglie una riga; questo disfa un effetto.
+  UNDO: 'pi pi-undo',
   KEBAB: 'pi pi-ellipsis-v',
   // Documenti PDF (lista/anteprima/scarica). Centralizzata 2026-05-30:
   // usata da GeneraPdfButton + EntityPdfButton (BB documenti) e dai

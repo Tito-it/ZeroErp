@@ -56,8 +56,8 @@
 | trg_emittenti_fiscali_a10_default_bootstrap_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` |
 | trg_emittenti_fiscali_a10_delete_block_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
 | trg_emittenti_fiscali_a10_documenti_generati_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'documenti_generati', 'emittente_fiscale_id', 'id', 'attivo')` |
+| trg_emittenti_fiscali_a10_emittenti_fiscali_billing_acco_b98811 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'emittenti_fiscali_billing_account', 'emittente_soggetto_ruolo_id', 'soggetto_ruolo_id', 'attivo')` |
 | trg_emittenti_fiscali_a10_emittenti_fiscali_utilities_bl_fafe8a | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'emittenti_fiscali_utilities', 'emittente_soggetto_ruolo_id', 'soggetto_ruolo_id', 'attivo')` |
-| trg_emittenti_fiscali_a10_guard_attivo_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo()` |
 | trg_emittenti_fiscali_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
 | trg_emittenti_fiscali_a10_offerte_commerciali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'emittente_fiscale_id', 'id', 'attivo')` |
@@ -70,8 +70,8 @@
 | trg_emittenti_fiscali_a10_user_emittente_attivo_block_de_78b189 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_emittente_attivo', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_user_emittenti_fiscali_block_d_f876e4 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_emittenti_fiscali', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_workflow_definizioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'workflow_definizioni', 'emittente_fiscale_id', 'id', 'attivo')` |
-| trg_emittenti_fiscali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_emittenti_fiscali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_emittenti_fiscali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |

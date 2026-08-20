@@ -8,12 +8,12 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 06-07-2026)
+(latest review 20-08-2026)
 Aggregata mensile della **Lente 1 Competenza** in **formato lungo**: una riga
-per `competenza_mese × stadio × stato_fattura_codice_interno`. Gli stati
-fattura sono **dati** (`config.stati_doc_fiscale`), non colonne: il formato
-lungo regge il breakdown per stato (blocco 3a del design) senza rincorrere il
-vocabolario; il **BE pivota**.
+per `competenza_mese × stadio × stato_fattura_codice_interno × tipo_movimento`.
+Gli stati fattura sono **dati** (`config.stati_doc_fiscale`), non colonne: il
+formato lungo regge il breakdown per stato (blocco 3a del design) senza
+rincorrere il vocabolario; il **BE pivota**.
 
 ---
 
@@ -25,8 +25,39 @@ vocabolario; il **BE pivota**.
 | `n_attivita`, `valore_tot` | Conteggio e somma `prezzo_snapshot × quantita` del gruppo |
 | `valore_fatturato_tot` | Somma `imponibile_riga` (riconciliazione col fatturato reale) |
 | `n_in_ritardo`, `valore_in_ritardo` | Recuperi tardivi del gruppo (`emessa_in_ritardo`) |
+| `tipo_movimento` | `NORMALE` / `RETTIFICA` / `ONERE` — dimensione del raggruppamento dal 20-08-2026 |
 
 Eredita dal dettaglio perimetro computabile e scope emittente fail-closed.
+
+---
+
+### ⭐ `tipo_movimento` nel raggruppamento (20-08-2026)
+
+**Perché.** Il residuo del mese è una somma **con segno**, quindi senza questa
+dimensione le rettifiche si **compensano** con le fatture ancora da emettere.
+Misurato: agosto 2026 segnava **101% di copertura** perché il residuo era
+−29,50 — due note di credito da emettere.
+
+⚠️ **Non è estetica.** Con una sola fattura da 29,50 in sospeso, il residuo
+sarebbe andato a **zero** e la dashboard avrebbe detto *«100%, niente da fare»*
+con **tre documenti da produrre**. La compensazione **nasconde lavoro**.
+
+⭐ E non riguarda solo le rettifiche: a luglio 2026 ci sono **5.000 € di oneri**
+nello stesso totale. La somma mescolava **tre** cose di natura diversa, non due
+— ed è la ragione per cui si è aggiunta la **dimensione** e non una colonna
+`valore_rettifiche`, che avrebbe messo i valori dell'enum dentro la vista e
+avrebbe ignorato il quarto movimento che nascerà.
+
+🔴 **Cambia la cardinalità, ed è un contratto rotto in un punto solo.** Sul dato
+del 20-08-2026 le righe passano da **7 a 8**; l'unico bucket che si spezza è
+`2026-07 · FATTURATA · EMESSA` (`NORMALE` + `ONERE`). Il pivot del BE
+**accumula** per `(mese, stadio)`, quindi i **totali reggono**; il breakdown per
+stato documento fiscale invece elenca **una voce per riga**, e senza adeguamento
+mostra **EMESSA due volte**.
+
+⚠️ E si vede **solo su luglio**: su agosto la cardinalità non cambia affatto (le
+rettifiche stanno in `DA_EMETTERE`, i normali in `FATTURATA`). Chi provasse il
+solo mese del rilievo concluderebbe che non si è rotto niente.
 
 ---
 
@@ -46,10 +77,17 @@ ORDER BY stadio, stato_fattura_codice_interno NULLS FIRST;
 
 * Contratto **stabile per tutti i 4 blocchi** del design DL-8 (funnel,
   breakdown stato, ritardi; gli errori hanno la loro vista dedicata).
+  ⚠️ La revisione del 20-08-2026 lo **estende** (una dimensione in più): è
+  l'unica volta in cui la grana è cambiata, e il §40.2 di
+  `brief-design-note-credito-resi` dice cosa deve fare il BE.
 * Materializzabile in futuro (snapshot notturno) **senza cambiare il
   contratto** verso il BE.
 * ⚠️ Fail-closed: senza GUC operatore restituisce 0 righe (vedi dettaglio).
-* Test: `db/pgtap/vendite/test-vw-dash-competenza-v1.sql`.
+* Test: `db/pgtap/vendite/test-vw-dash-competenza-v1.sql` e
+  `db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql`
+  (test 20-22: la colonna, `security_invoker` preservato, e la **grana** —
+  una riga per `(mese, stadio, stato, tipo_movimento)`, così una
+  ri-aggregazione a valle «per non rompere il backend» diventerebbe rossa).
 
 ---
 

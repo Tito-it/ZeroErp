@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Toglie vendite.fn_get_sorgente_documento_id, sostituita da
+#   vendite.fn_get_sorgente_documento_ref (changeSet 20260820-04).
+#
+# PERCHE' SI TOGLIE E NON SI LASCIA. La nuova fa tutto quello che faceva la
+#   vecchia e in piu' il numero leggibile, nella stessa lettura. Lasciarle
+#   entrambe vorrebbe dire due funzioni che risolvono la stessa sorgente
+#   polimorfa con lo stesso corpo: la copia sopravvissuta e' quella che al primo
+#   ritocco diverge, e chi arriva dopo non sa quale delle due e' quella buona.
+#
+# ⚠️ VERIFICATO CHE NON HA PIU' CHIAMANTI, e non supposto. Il 2026-08-20, prima
+#   di scrivere questo file: un solo riferimento in tutto il repo fuori dalla
+#   propria doc e dai propri changeSet — `vendite.fn_list_commessa_attivita`,
+#   riscritta nel -05 per usare il resolver nuovo. Zero riferimenti in
+#   `backend/`, zero in `db/pgtap/`.
+#
+# ⚠️ MAI `CASCADE`. Se qualcosa la referenziasse ancora, il DROP deve FALLIRE e
+#   dirlo: un CASCADE porterebbe via l'oggetto dipendente in silenzio. Regola di
+#   casa, e il motivo per cui questo changeSet ha numero PIU' ALTO di chi la
+#   sostituisce — l'autogen mescola 00_schema e 20_code ordinando per NN, quindi
+#   chi ricrea deve venire prima di chi droppa.
+#
+# ⚠️ E NIENTE `onFail: MARK_RAN`. La preCondition qui sotto verifica che la
+#   sostituta esista; se non esistesse, questo changeSet deve FERMARE la
+#   migrazione (HALT), non segnarsi come eseguito lasciando il database senza
+#   nessuna delle due.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260820-06-drop-fn-get-sorgente-documento-id-mctit.yaml
+
+  - changeSet:
+      id: 20260820-06-drop-fn-get-sorgente-documento-id
+      author: mctit
+
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DROP di vendite.fn_get_sorgente_documento_id: sostituita da
+        fn_get_sorgente_documento_ref (-04), che fa lo stesso lavoro piu' il
+        numero leggibile in una lettura sola. Verificato che l'unico chiamante
+        era fn_list_commessa_attivita, riscritta nel -05. Niente CASCADE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # La sostituta deve esserci gia': senza, si resterebbe senza
+            # nessuna delle due.
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_get_sorgente_documento_ref'
+            # E la lista non deve piu' nominare la vecchia.
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite' AND p.proname = 'fn_list_commessa_attivita'
+                    AND pg_get_functiondef(p.oid) LIKE '%fn_get_sorgente_documento_id%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_sorgente_documento_id(BIGINT, TEXT);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback non ricrea la funzione: si ri-applica il changeSet
+              -- 20260816-03, che e' la sua sede. Qui non c'e' niente da disfare.
+              SELECT 1;
