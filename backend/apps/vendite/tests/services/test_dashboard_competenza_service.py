@@ -74,6 +74,111 @@ from apps.vendite.services.vendite_service import (
     fn_dash_competenza_mensile,
 )
 
+# ⭐ Il mese che si SPEZZA con la grana nuova (changeSet 20260820-07): lo stesso
+# bucket FATTURATA/EMESSA arriva su DUE righe, una per tipo movimento. E' la
+# forma misurata dal team DB su luglio 2026 — 25 attivita' NORMALE + 1 ONERE da
+# 5.000 €. Il breakdown 3a deve restare UNA voce per stato.
+_ROWS_BUCKET_SPEZZATO = [
+    {
+        "competenza_mese": "2026-07-01",
+        "stadio": "FATTURATA",
+        "stato_fattura_codice_interno": "EMESSA",
+        "stato_fattura_codice": "EMESSA",
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 25,
+        "valore": "924.00",
+        "valore_fatturato": "924.00",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+    },
+    {
+        "competenza_mese": "2026-07-01",
+        "stadio": "FATTURATA",
+        "stato_fattura_codice_interno": "EMESSA",
+        "stato_fattura_codice": "EMESSA",
+        "tipo_movimento": "ONERE",
+        "n_attivita": 1,
+        "valore": "5000.00",
+        "valore_fatturato": "5000.00",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+    },
+]
+
+# ⭐ Il mese del rilievo in-app: una fattura da emettere e una NOTA DI CREDITO da
+# emettere, di pari importo. Col residuo a somma unica si annullerebbero e la
+# dashboard direbbe «niente da fare» con DUE documenti da produrre.
+_ROWS_COMPENSAZIONE = [
+    {
+        "competenza_mese": "2026-08-01",
+        "stadio": "FATTURATA",
+        "stato_fattura_codice_interno": "EMESSA",
+        "stato_fattura_codice": "EMESSA",
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 10,
+        "valore": "1000.00",
+        "valore_fatturato": "1000.00",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+    },
+    {
+        "competenza_mese": "2026-08-01",
+        "stadio": "DA_EMETTERE",
+        "stato_fattura_codice_interno": None,
+        "stato_fattura_codice": None,
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 1,
+        "valore": "29.50",
+        "valore_fatturato": "0",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+    },
+    {
+        "competenza_mese": "2026-08-01",
+        "stadio": "DA_EMETTERE",
+        "stato_fattura_codice_interno": None,
+        "stato_fattura_codice": None,
+        "tipo_movimento": "RETTIFICA",
+        "n_attivita": 2,
+        "valore": "-29.50",
+        "valore_fatturato": "0",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+    },
+]
+
+# ⭐ Il mese CHIUSO: tutto fatturato, nota di credito COMPRESA (gia' emessa).
+# Serve a provare la proprieta' di chiusura della misura assoluta — se il
+# numeratore non fosse anch'esso in valore assoluto, un mese senza piu' niente
+# da fare non arriverebbe MAI al 100%: la nota di credito emessa lo tirerebbe
+# giu' come se fosse lavoro arretrato.
+_ROWS_TUTTO_FATTURATO = [
+    {
+        "competenza_mese": "2026-09-01",
+        "stadio": "FATTURATA",
+        "stato_fattura_codice_interno": "EMESSA",
+        "stato_fattura_codice": "EMESSA",
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 10,
+        "valore": "1000.00",
+        "valore_fatturato": "1000.00",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+    },
+    {
+        "competenza_mese": "2026-09-01",
+        "stadio": "FATTURATA",
+        "stato_fattura_codice_interno": "EMESSA",
+        "stato_fattura_codice": "EMESSA",
+        "tipo_movimento": "RETTIFICA",
+        "n_attivita": 2,
+        "valore": "-29.50",
+        "valore_fatturato": "-29.50",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+    },
+]
+
 # Due righe FATTURATA di gennaio (una per stato fattura) + una DA_EMETTERE:
 # esercitano insieme la somma per stadio e il breakdown 3a.
 _ROWS_GENNAIO = [
@@ -82,6 +187,7 @@ _ROWS_GENNAIO = [
         "stadio": "DA_EMETTERE",
         "stato_fattura_codice_interno": None,
         "stato_fattura_codice": None,
+        "tipo_movimento": "NORMALE",
         "n_attivita": 2,
         "valore": "300.00",
         "valore_fatturato": "0",
@@ -93,6 +199,7 @@ _ROWS_GENNAIO = [
         "stadio": "FATTURATA",
         "stato_fattura_codice_interno": "DRAFT",
         "stato_fattura_codice": "DRAFT",
+        "tipo_movimento": "NORMALE",
         "n_attivita": 3,
         "valore": "1000.00",
         "valore_fatturato": "990.00",
@@ -104,6 +211,7 @@ _ROWS_GENNAIO = [
         "stadio": "FATTURATA",
         "stato_fattura_codice_interno": "DEFINITIVA",
         "stato_fattura_codice": "DEFINITIVA",
+        "tipo_movimento": "NORMALE",
         "n_attivita": 4,
         "valore": "2000.00",
         "valore_fatturato": "2010.50",
@@ -239,6 +347,106 @@ class DashCompetenzaMensileServiceTests(TestCase):
         self.assertEqual(totali["valore_da_fatturare"], "300.00")
         self.assertEqual(totali["n_in_ritardo"], 1)
 
+    # Scopo: 🔴 Il breakdown 3a resta UNA voce per stato fattura anche quando la
+    #        vista spezza il bucket per tipo movimento (changeSet 20260820-07).
+    # ⚠️ Il difetto si vede SOLO su un mese come luglio, dove uno stesso stadio
+    #        contiene movimenti di natura diversa: su agosto le rettifiche stanno
+    #        in DA_EMETTERE e i normali in FATTURATA, la cardinalita' non cambia
+    #        affatto e provare quel mese direbbe «non si e' rotto niente».
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=_ROWS_BUCKET_SPEZZATO,
+    )
+    def test_breakdown_non_duplica_lo_stato_su_bucket_spezzato(self, _mock_rows, _mock_err):
+        data = fn_dash_competenza_mensile(anno=2026)
+        luglio = data["mesi"][6]
+        fatturata = next(s for s in luglio["stadi"] if s["stadio"] == "FATTURATA")
+
+        # UNA voce, non due: il breakdown risponde a «in che stato sono le
+        # fatture», e la natura del movimento non e' quella domanda.
+        self.assertEqual(len(fatturata["stati_fattura"]), 1)
+        voce = fatturata["stati_fattura"][0]
+        self.assertEqual(voce["stato_fattura_codice_interno"], "EMESSA")
+        # E i movimenti si SOMMANO dentro la voce, non si perdono.
+        self.assertEqual(voce["n_attivita"], 26)
+        self.assertEqual(voce["valore"], "5924.00")
+        self.assertEqual(voce["valore_fatturato"], "5924.00")
+
+    # Scopo: 🔴 La copertura conta una nota di credito da emettere come LAVORO,
+    #        in valore ASSOLUTO. Due misure sbagliate prima di questa:
+    #          · somma con segno   -> i due importi si annullano, residuo ZERO,
+    #                                 «niente da fare» con due documenti aperti;
+    #          · rettifiche escluse -> residuo 29,50 ma la nota di credito
+    #                                 sparisce dal conto: «100% coperto» mentre
+    #                                 aspetta di essere emessa.
+    #        In assoluto il residuo e' 59,00 — i due documenti, contati due
+    #        volte perche' sono due lavori. Correzione di Tid, 2026-08-20.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=_ROWS_COMPENSAZIONE,
+    )
+    def test_copertura_non_compensa_le_rettifiche(self, _mock_rows, _mock_err):
+        totali = fn_dash_competenza_mensile(anno=2026)["mesi"][7]["totali"]
+
+        # Il NETTO resta quello di prima (altri consumatori lo leggono): la
+        # fattura e la nota di credito si annullano, e infatti fa zero.
+        self.assertEqual(totali["valore_da_fatturare"], "0.00")
+
+        # La COPERTURA no: 29,50 di fattura + 29,50 di nota di credito, ognuno
+        # per quello che vale. Due documenti da produrre, due volte contati.
+        self.assertEqual(totali["copertura_da_fatturare"], "59.00")
+        self.assertEqual(totali["copertura_fatturato"], "1000.00")
+        # Le due voci simmetriche del residuo, e la loro somma E' il residuo:
+        # nessuna delle due sta fuori dal denominatore del grafico.
+        self.assertEqual(totali["copertura_da_addebitare"], "29.50")
+        self.assertEqual(totali["copertura_da_accreditare"], "29.50")
+        self.assertEqual(
+            Decimal(totali["copertura_da_addebitare"])
+            + Decimal(totali["copertura_da_accreditare"]),
+            Decimal(totali["copertura_da_fatturare"]),
+        )
+        # E le rettifiche restano DICHIARATE, col loro segno vero: il grafico
+        # dice quanto manca, questa voce dice che cosa manca.
+        self.assertEqual(totali["rettifiche_valore"], "-29.50")
+        self.assertEqual(totali["rettifiche_n"], 2)
+
+        # E il rapporto del grafico non puo' superare il 100% NE' toccarlo:
+        # finche' c'e' un documento aperto, «coperto» non si puo' dire.
+        transitato = Decimal(totali["copertura_fatturato"])
+        fermo = Decimal(totali["copertura_da_fatturare"])
+        self.assertLess(transitato / (transitato + fermo), 1)
+
+    # Scopo: 🔴 PROPRIETA' DI CHIUSURA — a mese tutto fatturato la copertura fa
+    #        esattamente 100%, anche con una nota di credito gia' emessa dentro.
+    # ⚠️ E' la contro-prova della misura assoluta, ed e' il punto in cui una
+    #        formula mista (denominatore assoluto, numeratore con segno) si
+    #        romperebbe: il numeratore varrebbe 970,50 su 1.029,50 = 94%, cioe'
+    #        un mese senza NIENTE da fare che si dichiara incompleto per sempre.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=_ROWS_TUTTO_FATTURATO,
+    )
+    def test_copertura_chiude_al_100_con_nota_di_credito_emessa(self, _mock_rows, _mock_err):
+        totali = fn_dash_competenza_mensile(anno=2026)["mesi"][8]["totali"]
+
+        # Numeratore in assoluto: la nota di credito emessa e' lavoro FATTO.
+        self.assertEqual(totali["copertura_fatturato"], "1029.50")
+        self.assertEqual(totali["copertura_da_fatturare"], "0")
+
+        transitato = Decimal(totali["copertura_fatturato"])
+        fermo = Decimal(totali["copertura_da_fatturare"])
+        self.assertEqual(transitato / (transitato + fermo), 1)
+
+        # ⚠️ Il netto NON fa 1029,50 ed e' giusto cosi': quello e' il ricavo
+        # (970,50), questa e' la quantita' di lavoro. Due domande diverse.
+        self.assertEqual(totali["valore_fatturato"], "970.50")
+
     # Scopo: Uno stadio emesso dalla vista ma fuori whitelist NON viene perso:
     #        accodato dopo i 4 noti (fail-visible) e conteggiato nei totali.
     @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
@@ -251,6 +459,7 @@ class DashCompetenzaMensileServiceTests(TestCase):
                 "stadio": "STORNATA",
                 "stato_fattura_codice_interno": None,
                 "stato_fattura_codice": None,
+                "tipo_movimento": "NORMALE",
                 "n_attivita": 1,
                 "valore": "50.00",
                 "valore_fatturato": "0",
@@ -959,18 +1168,21 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
         {
             "competenza_mese": "2026-01-01", "stadio": "FATTURATA",
             "stato_fattura_codice_interno": "EMESSA", "stato_fattura_codice": "EM",
+ "tipo_movimento": "NORMALE",
             "n_attivita": 9, "valore": "900.00", "valore_fatturato": "900.00",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
         },
         {
             "competenza_mese": "2026-01-01", "stadio": "DA_EMETTERE",
             "stato_fattura_codice_interno": None, "stato_fattura_codice": None,
+ "tipo_movimento": "NORMALE",
             "n_attivita": 3, "valore": "300.00", "valore_fatturato": "0",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
         },
         {
             "competenza_mese": "2026-01-01", "stadio": "EMESSA_NON_FATTURATA",
             "stato_fattura_codice_interno": None, "stato_fattura_codice": None,
+ "tipo_movimento": "NORMALE",
             "n_attivita": 5, "valore": "500.00", "valore_fatturato": "0",
             "n_in_ritardo": 0, "valore_in_ritardo": "0",
         },

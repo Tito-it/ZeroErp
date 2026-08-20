@@ -832,7 +832,10 @@ class CommesseServiceTests(TestCase):
         from apps.vendite.services.commesse_service import fn_list_commessa_attivita
 
         with self.assertRaises(ServiceError) as ctx:
-            fn_list_commessa_attivita(commessa_id=1, order_by="sorgente_codice")
+            # ⚠️ NON `sorgente_codice`: dal changeSet 20260820-05 e' un nome
+            # AMMESSO, e il test avrebbe smesso di presidiare qualcosa restando
+            # verde per il motivo sbagliato. Serve un nome che nessuno conosce.
+            fn_list_commessa_attivita(commessa_id=1, order_by="colonna_inesistente")
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
         mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
 

@@ -53,6 +53,7 @@ _MENSILE_RESPONSE = {
                         {
                             "stato_fattura_codice_interno": "DRAFT",
                             "stato_fattura_codice": "DRAFT",
+                            "tipo_movimento": "NORMALE",
                             "n_attivita": 3,
                             "valore": "1000.00",
                             "valore_fatturato": "990.00",

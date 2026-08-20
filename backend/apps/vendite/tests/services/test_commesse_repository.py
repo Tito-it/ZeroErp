@@ -553,6 +553,12 @@ class CommesseRepositoryUnitTests(TestCase):
             77, 210, "DEFINITIVA",               # fattura_id, _numero, _stato
             "019fc716-7386-7b0d-9c26-0a4d30f3a022",  # sorgente_uid
             "ORDINI", 100,                       # sorgente_area, _documento_id
+            # Cinque colonne del changeSet 20260820-05, in coda alla RETURNS
+            # TABLE: la riga dice COSA e' e DA DOVE VIENE.
+            "NORMALE",                           # tipo_movimento
+            "ART001", "Articolo di prova",       # articolo_codice, _descrizione
+            "ORD0000227",                        # sorgente_documento_numero
+            "ORDINE_VENDITA:019fc716-7386-7b0d-9c26-0a4d30f3a022",  # gruppo_key
         )
         # Due execute: 1) COUNT → fetchone, 2) data → fetchall.
         mock_cursor_factory.return_value = _mock_cursor(
@@ -568,6 +574,17 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["id"], 100)
         self.assertEqual(row["segment_key"], "SEG:001")
         self.assertEqual(row["articolo_id"], str(_art_id))
+        # Le cinque colonne nuove arrivano al posto giusto: la mappatura e'
+        # POSIZIONALE su `_ATTIVITA_COLS`, quindi un ordine sbagliato non
+        # solleverebbe — scriverebbe il valore di una colonna dentro un'altra.
+        self.assertEqual(row["tipo_movimento"], "NORMALE")
+        self.assertEqual(row["articolo_codice"], "ART001")
+        self.assertEqual(row["articolo_descrizione"], "Articolo di prova")
+        self.assertEqual(row["sorgente_documento_numero"], "ORD0000227")
+        self.assertEqual(
+            row["gruppo_key"],
+            "ORDINE_VENDITA:019fc716-7386-7b0d-9c26-0a4d30f3a022",
+        )
         self.assertEqual(row["stato_emissione"], "NON_EMESSA")
         self.assertEqual(row["meta"], {"note": "test"})
         self.assertIs(row["fatturata"], True)  # colonna in coda (20260724-07)
