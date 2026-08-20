@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 720, di cui 80 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 721, di cui 80 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -738,6 +738,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESET_PASSWORD": "DATO_ERRATO",
     # vendite.trgfn_resi_accrediti_guard: il tetto del DOCUMENTO. La somma degli accrediti su una riga di fattura non puo' superare la quantita' che quella riga ha fatturato. E' il limite che parla la lingua del documento invece che della merce, e prima non esisteva: l'unico tetto all'accredito era il conto della merce. Puo' scattare quando RESI DIVERSI accreditano la stessa riga di fattura in momenti diversi. Piano: brief-design-note-credito-resi D-NC-10.
     "E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA": "CONFLITTO_STATO",
+    # vendite.fn_annulla_reso: il reso ha almeno una riga di ponte in vendite.resi_righe_accrediti, cioe' un accredito gia' registrato. Gemello esatto di E_RESO_ANNULLO_CON_RICONSEGNE (540): stessa classe di problema — un effetto gia' in viaggio che l'annullo del documento non saprebbe stornare. Senza questa guardia l'annullo passava e lasciava vive le commesse_attivita tipo_movimento = 'RETTIFICA' in APPROVATA / NON_EMESSA: al primo giro di fatturazione ne usciva una nota di credito per un reso annullato, perche' fn_list_emittibili_lane e fn_emit_attivita_fatturabili_da_commessa non nominano mai il reso e non riparano a valle. Il predicato e' l'ESISTENZA del ponte e non lo stato delle rettifiche: se l'accredito e' troppo tardi per essere disfatto lo dice la sua madre con E_ACCREDITO_ANNULLO_NON_AMMESSO, e ricalcolarlo qui sarebbe una seconda copia della regola. Si RIFIUTA e non si cascata: l'annullo dell'accredito pretende un motivo obbligatorio che una cascata automatica dovrebbe inventarsi. VINCOLO RECIPROCO su TRE posti con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: la guardia si auto-ripara perche' l'annullo dell'accredito CANCELLA le righe di ponte. Origine: collaudo in-app note di credito resi (prova 4/7), segnalazione BE del 2026-08-19. Piano: brief-design-note-credito-resi.
+    "E_RESO_ANNULLO_CON_ACCREDITO": "CONFLITTO_STATO",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "CONFLITTO_STATO",
     # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
