@@ -28,6 +28,9 @@ defineProps({
   // con residuo rendibile.
   ddtOrigineId: { type: [Number, null], default: null },
   isModificabile: { type: Boolean, default: true },
+  // Readonly PURO del drawer (permessi), non il lock-di-stato: le azioni di
+  // dominio sulle righe vivono proprio sul documento non piu' modificabile.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
 
@@ -57,7 +60,7 @@ function azioniRiga(riga) {
   return [{
     key: 'annulla-accredito',
     label: t('vendite.resi.annullo_azione'),
-    icon: MANAGE_ICONS.DELETE,
+    icon: MANAGE_ICONS.UNDO,
     severity: 'danger',
     command: () => {
       annulloRiga.value = riga
@@ -131,6 +134,7 @@ function azioniRiga(riga) {
   <!-- Stesso dialog della coda accrediti: una sola copia del testo che
        distingue «annulla l'accredito» da «resetta il lotto». -->
   <AccreditoAnnullaDialog
+    :readonly="readonly"
     v-model:visible="annulloVisible"
     :riga="annulloRiga"
     @annullato="tableRef?.loadRighe(); emit('changed')"
