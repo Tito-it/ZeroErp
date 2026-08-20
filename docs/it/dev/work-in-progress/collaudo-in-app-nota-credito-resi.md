@@ -130,13 +130,13 @@ già accreditata (accredita la 5797, poi selezionala di nuovo insieme alla 24).
 
 Usa la riga **24** (il kit).
 
-- [ ] accredita la riga 24 → spariscono **3 rettifiche** dietro le quinte (una
+- [X] accredita la riga 24 → spariscono **3 rettifiche** dietro le quinte (una
       per componente);
-- [ ] lancia il giro di fatturazione dal cockpit (`Vendite → Fatturazione`),
+- [X] lancia il giro di fatturazione dal cockpit (`Vendite → Fatturazione`),
       oppure aspetta il giro automatico;
-- [ ] **prima di numerare**, apri il lotto: nel tab **«Documenti»** (non più
+- [X] **prima di numerare**, apri il lotto: nel tab **«Documenti»** (non più
       «Fatture») c'è un documento con natura **«Nota di credito»**;
-- [ ] ⚠️ **il documento della nota di credito è SEPARATO** da quello della
+- [X] ⚠️ **il documento della nota di credito è SEPARATO** da quello della
       fattura che rettifica: se le righe di rettifica sono finite dentro una
       fattura ordinaria, **fermati e segnala**;
 - [ ] «Rendi definitive» → il documento prende un **numero sul sezionale NC**
