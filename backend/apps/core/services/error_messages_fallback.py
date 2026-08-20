@@ -561,6 +561,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESET_LOTTO_VALIDATION": "Parametri reset lotto non validi.",
     "E_RESET_PASSWORD": "Errore reset password.",
     "E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA": "L'accredito supera la quantita' fatturata dalla riga di fattura indicata.",
+    "E_RESO_ANNULLO_CON_ACCREDITO": "Il reso ha un accredito registrato: annullare prima l'accredito sulla riga, poi il reso.",
     "E_RESO_ANNULLO_CON_RICONSEGNE": "Il reso e' gia' stato ri-spedito: non e' annullabile.",
     "E_RESO_DDT_NON_CONSEGNATO": "Il DDT sorgente non e' in stato CONSEGNATO: reso non ammesso.",
     "E_RESO_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente del reso.",
