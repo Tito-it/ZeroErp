@@ -120,3 +120,17 @@ export function sbloccaPrezzoAttivita(commessaId, attId, { motivo }) {
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
+
+// GET /vendite/commesse/<id>/attivita/export/?formato=csv|xlsx&<stessi filtri>
+// Export della STESSA lista del drawer: colonne, ordine e permessi dalla
+// configurazione lista dell'operatore (catalogo `vendite.commesse_attivita`).
+// ⚠️ `formato`, non `format`: quest'ultimo e' magic per DRF e verrebbe
+// intercettato dalla content-negotiation prima della view.
+// ⚠️ `responseType: 'blob'` e nessun `useApiHandler`: l'handler standard
+// assume una risposta JSON e romperebbe il download (BB `useFileDownload`).
+export function exportCommessaAttivita(commessaId, params = {}) {
+  return api.get(`${BASE}/${commessaId}/attivita/export/`, {
+    params,
+    responseType: 'blob',
+  })
+}

@@ -19,7 +19,19 @@
 --      8      have OK, want P0001|...  <- il gemello del 2 sul reso a due righe
 --    Con il changeset applicato: 8/8.
 --
--- Indice test (1..8):
+-- ⛔ E per i test 9..11 (capability, changeset 20260820-12) la corsa «prima» e'
+--    10/11, NON 8/11 — misurata il 2026-08-20, e vale la pena scriverlo:
+--      9   have true|?|?, want false|RESO_CON_ACCREDITI|...  <- ⭐ l'UNICO che
+--          misura il difetto: senza il changeset il bottone e' acceso e muto
+--      10  VERDE anche senza  <- l'azione era gia' nell'elenco e
+--          can_change_state gia' true: e' un'INVARIANTE, non una misura
+--      11  VERDE anche senza  <- senza accredito enabled e' true comunque
+--    ⚠️ Non e' un difetto dei test 10 e 11: sono invarianti che devono reggere
+--    PRIMA e DOPO, ed e' il loro mestiere accorgersi di una regressione futura
+--    (l'azione che sparisce dall'elenco, la capability che non si riabilita).
+--    Ma chi legge «tre test nuovi» deve sapere che il difetto lo misura UNO.
+--
+-- Indice test (1..11):
 --   1) fixture A: il reso e' CONFERMATO e la sua riga e' in coda accrediti
 --   2) ⭐ registrato l'accredito, fn_annulla_reso RIFIUTA: P0001 e il codice
 --      E_RESO_ANNULLO_CON_ACCREDITO nel canale CONSTRAINT
@@ -30,6 +42,15 @@
 --   6) nessuna regressione: un reso CONFERMATO senza accredito si annulla
 --   7) guardia inerte su un reso DRAFT: un accredito pretende il CONFERMATO
 --   8) ⭐ basta UNA riga di ponte su UNA riga per rifiutare l'INTERO annullo
+--   ⭐ 9..11 — LA CAPABILITY, aggiunte il 2026-08-20 (changeset 20260820-12).
+--      La guardia da sola lasciava il bottone «annulla» acceso e muto. La regola
+--      di casa e' «permesso => nascondi, STATO => disabilita col motivo»
+--      (frontend-standards, e ora linee-guida-sql §12): avere un accredito e'
+--      uno stato che CAMBIA, quindi il bottone resta a video e spiega.
+--   9) capability: l'azione annulla c'e' ma e' DISABILITATA, col motivo giusto
+--  10) e can_change_state resta true: il bottone e' grigio, non sparito
+--  11) ⭐ annullato l'accredito la capability torna abilitata — l'auto-riparazione
+--      del test 4, vista dal lato dell'interfaccia
 --
 -- ⭐ PERCHE' IL TEST 8 NON USA UN KIT. La proprieta' da verificare e' «una
 --    sola riga di ponte basta a rifiutare tutto il documento». Il kit la
@@ -69,7 +90,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(11);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -437,6 +458,53 @@ SELECT is(
   (SELECT esito FROM tmp_esito_d),
   'P0001|E_RESO_ANNULLO_CON_ACCREDITO',
   '8) basta UNA riga accreditata su due per rifiutare l''INTERO annullo del reso'
+);
+
+-- ============================================================
+-- 9..11) ⭐ LA CAPABILITY DICE LA STESSA COSA DELLA GUARDIA.
+--   Se questi tre e i test 2/4 divergessero, l'operatore vedrebbe un bottone
+--   acceso e prenderebbe un 409 in faccia — o, peggio, un bottone grigio su un
+--   annullo che sarebbe passato. Il predicato e' lo stesso EXISTS, apposta.
+-- ============================================================
+
+CREATE TEMP TABLE tmp_cap_d AS
+SELECT a->>'key' AS azione,
+       (a->>'enabled')::boolean AS enabled,
+       a->>'reason'     AS reason,
+       a->>'reason_key' AS reason_key
+  FROM jsonb_array_elements(
+       script.fn_available_actions_reso((SELECT reso_id FROM tmp_reso_d)) -> 'available_actions') a
+ WHERE a->>'key' = 'annulla';
+
+SELECT is(
+  (SELECT enabled::text || '|' || COALESCE(reason,'?') || '|' || COALESCE(reason_key,'?')
+     FROM tmp_cap_d),
+  'false|RESO_CON_ACCREDITI|vendite.reso.annulla_reason.con_accrediti',
+  '9) capability: l''azione annulla e'' disabilitata col motivo dell''accredito'
+);
+
+-- ⚠️ Il punto della decisione, e la ragione per cui NON si e' tolta l'azione
+--   dalle ammesse: sparire senza spiegazione e' la variante peggiore.
+SELECT is(
+  (SELECT count(*)::int FROM tmp_cap_d)::text || '|' ||
+  (script.fn_available_actions_reso((SELECT reso_id FROM tmp_reso_d)) ->> 'can_change_state'),
+  '1|true',
+  '10) l''azione resta NELL''ELENCO e can_change_state resta true: grigia, non sparita'
+);
+
+-- ⭐ L'auto-riparazione del test 4, vista dall'interfaccia: la capability non sa
+--   nulla dell'annullo dell'accredito, si riabilita solo perche' quello CANCELLA
+--   le righe di ponte.
+SELECT vendite.fn_annulla_accredito_riga_reso(
+    (SELECT resi_riga1 FROM tmp_reso_d_righe), 'ci ho ripensato anche qui, pgTAP');
+
+SELECT is(
+  (SELECT (a->>'enabled')::boolean
+     FROM jsonb_array_elements(
+          script.fn_available_actions_reso((SELECT reso_id FROM tmp_reso_d)) -> 'available_actions') a
+    WHERE a->>'key' = 'annulla'),
+  true,
+  '11) annullato l''accredito la capability torna abilitata (auto-riparazione lato UI)'
 );
 
 SELECT * FROM finish();

@@ -81,6 +81,17 @@ function tipoLabel(codice) {
   return lineageTipoLabel(t, te, codice)
 }
 
+// Scopo: l'etichetta della tappa quando il documento NON HA ANCORA UN NUMERO.
+// ⚠️ Un documento puo' esistere ed essere gia' EMESSO senza codice: la fattura
+// prende numero solo con «Rendi definitive», quindi fra emissione e
+// numerazione la tappa ha tipo e stato ma `codice` NULL. Prima quel caso
+// rendeva un link con etichetta VUOTA (o un trattino), e chi guardava leggeva
+// «manca il collegamento» invece di «manca il numero» — due cose diverse, e la
+// prima manda a cercare un guasto che non c'e' (rilievo in-app 2026-08-20).
+function etichettaCodice(row) {
+  return row.codice || t('vendite.lineage.non_numerato')
+}
+
 // Apribile = regola unica del registry (`isTappaApribile`): id di dominio
 // risolto dal BE + tipo sorgente con drawer. Qui decide se il codice si rende
 // come link; l'apertura vera la guarda di nuovo il composable del contenitore.
@@ -147,10 +158,10 @@ const isApribile = isTappaApribile
             v-if="isApribile(row)"
             link
             class="lineage-link"
-            :label="row.codice"
+            :label="etichettaCodice(row)"
             v-tooltip.top="t('vendite.lineage.apri_documento')"
             @click="emit('apri-documento', row)" />
-          <span v-else class="lineage-codice">{{ row.codice ?? '—' }}</span>
+          <span v-else class="lineage-codice">{{ etichettaCodice(row) }}</span>
           <Tag
             v-if="row.stato || row.fase"
             :value="row.stato ?? row.fase"

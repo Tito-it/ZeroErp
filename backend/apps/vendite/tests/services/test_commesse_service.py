@@ -825,6 +825,7 @@ class CommesseServiceTests(TestCase):
             order_by="data_attivita",
             order_dir="desc",
             tipo_movimento=None,
+            max_rows=None,
         )
 
     # Scopo: il filtro movimento arriva al repository normalizzato (spazi via,
@@ -864,6 +865,34 @@ class CommesseServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             fn_list_commessa_attivita(commessa_id=1, tipo_movimento="INVENTATO")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
+
+    # Scopo: 🔴 L'EXPORT salta il tetto di pagina invece di violarlo. Il tetto
+    #        di 200 e' della PAGINA e vive nel `require` qui sopra, che risponde
+    #        400 e dice il limite; il repository non ne ha piu' una seconda copia
+    #        silenziosa — ed era proprio quella che avrebbe tagliato il file a
+    #        200 righe su una commessa che ne ha mille, senza dirlo a nessuno.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_export_supera_il_tetto_di_pagina(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+        mock_repo_cls.return_value.list_commessa_attivita.return_value = {"count": 0, "rows": []}
+
+        # `limit` resta il suo default: sul percorso export non e' lui a contare.
+        fn_list_commessa_attivita(commessa_id=1, max_rows=10_001)
+
+        _, kwargs = mock_repo_cls.return_value.list_commessa_attivita.call_args
+        self.assertEqual(kwargs["max_rows"], 10_001)
+
+    # Scopo: ⚠️ E il tetto di pagina resta vivo sul percorso PAGINATO: senza
+    #        `max_rows` un limit fuori range e' ancora un 400 parlante, non una
+    #        pagina da diecimila righe.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_list_commessa_attivita_limit_fuori_range_resta_400(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_list_commessa_attivita(commessa_id=1, limit=5000)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
         mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
 
@@ -1582,6 +1611,59 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
         repo.annulla_attivita.assert_called_once_with(
             attivita_id=501, motivo="causale sbagliata",
         )
+
+    # Scopo: 🔴 Il codice della madre sul MOVIMENTO arriva INTERO all'operatore.
+    # ⚠️ `_ANNULLA_DB_ERROR_MARKERS` e' una whitelist CHIUSA e non fallisce su un
+    #        codice che non conosce: lo appiattisce su `E_COMMESSA_VALIDATION`
+    #        (classe DATO_ERRATO, HTTP 400). Una rettifica e' sourceless, quindi
+    #        `_assert_annullabile` la lascia passare e a rifiutarla e' il DB:
+    #        senza il marker l'operatore vedrebbe un errore di VALIDAZIONE al
+    #        posto di un conflitto di stato (409) — messaggio giusto, reazione
+    #        sbagliata, e in silenzio. Misurato in-app il 2026-08-20.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_movimento_non_annullabile_conserva_il_codice(self, mock_repo_cls):
+        from django.db import DatabaseError
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        # Sourceless (passa i guard BE) ma RETTIFICA: rifiuta la madre.
+        repo.get_attivita_pricing.return_value = self._att(tipo_movimento="RETTIFICA")
+        repo.annulla_attivita.side_effect = DatabaseError(
+            "E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE: e' un movimento RETTIFICA"
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+        self.assertEqual(
+            ctx.exception.code, "E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE"
+        )
+
+    # Scopo: 🔴 Il prezzo di una RETTIFICA non si modifica da NESSUNO dei tre
+    #        percorsi. E' un PRESIDIO, non il blocco: quello vero e' il trigger
+    #        `trgfn_commesse_attivita_guard_prezzo_rettifica` sulla tabella,
+    #        perche' il prezzo si scrive con una UPDATE diretta. Qui si guadagna
+    #        un 400 parlante al posto del 409 che risalirebbe a UPDATE tentata.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_prezzo_rettifica_immutabile_sui_tre_percorsi(self, mock_repo_cls):
+        from apps.vendite.services import commesse_service as cs
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att(tipo_movimento="RETTIFICA")
+
+        percorsi = (
+            ("riallinea", lambda: cs.fn_riallinea_prezzo(10, 501, {})),
+            ("variazione", lambda: cs.fn_variazione_prezzo_eccezionale(
+                10, 501, {"prezzo": "9.99", "motivo": "prova"})),
+            ("sblocca", lambda: cs.fn_sblocca_prezzo(10, 501, {"motivo": "prova"})),
+        )
+        for nome, chiamata in percorsi:
+            with self.subTest(percorso=nome):
+                with self.assertRaises(ServiceError) as ctx:
+                    chiamata()
+                self.assertEqual(
+                    ctx.exception.code,
+                    "E_COMMESSA_ATTIVITA_PREZZO_RETTIFICA_IMMUTABILE",
+                )
 
     # Scopo: G4 — lo scoping riga<->commessa passa dalla WHERE su ENTRAMBI gli
     #        id: id di un'altra commessa (o inesistente) → 404, mai

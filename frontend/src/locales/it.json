@@ -2247,6 +2247,7 @@
     },
     "lineage": {
       "titolo": "Passaggi",
+      "non_numerato": "(non ancora numerato)",
       "col_pratica": "Pratica",
       "col_fase": "Fase",
       "col_transito": "Transito",
@@ -3244,6 +3245,9 @@
     "reso": {
       "azione_conferma": "Conferma reso",
       "azione_annulla": "Annulla reso",
+      "annulla_reason": {
+        "con_accrediti": "Il reso ha un accredito registrato: annulla prima l'accredito sulla riga, poi il reso."
+      },
       "stato_info": {
         "confermato": "Il reso è confermato: la merce è rientrata e i movimenti di magazzino sono registrati.",
         "annullato": "Il reso è annullato: il rientro è stato stornato e lo stato è definitivo."

@@ -117,10 +117,10 @@ verbo, idempotenza, annullo e ritorno in coda **senza produrre nessun documento*
 Serve un rifiuto vero. Il modo più semplice: seleziona **due** righe di cui una
 già accreditata (accredita la 5797, poi selezionala di nuovo insieme alla 24).
 
-- [ ] il toast è **arancione**, non rosso, e dice «X su Y»;
-- [ ] si apre l'elenco delle righe **non servite**, con **codice** e **motivo**
+- [X] il toast è **arancione**, non rosso, e dice «X su Y»;
+- [X] si apre l'elenco delle righe **non servite**, con **codice** e **motivo**
       per ciascuna;
-- [ ] le righe passate **sono passate** (non è stato annullato tutto).
+- [X] le righe passate **sono passate** (non è stato annullato tutto).
 
 ### 6 · 🔴 IL GIRO VERO — da qui non si torna indietro
 
@@ -130,13 +130,13 @@ già accreditata (accredita la 5797, poi selezionala di nuovo insieme alla 24).
 
 Usa la riga **24** (il kit).
 
-- [ ] accredita la riga 24 → spariscono **3 rettifiche** dietro le quinte (una
+- [X] accredita la riga 24 → spariscono **3 rettifiche** dietro le quinte (una
       per componente);
-- [ ] lancia il giro di fatturazione dal cockpit (`Vendite → Fatturazione`),
+- [X] lancia il giro di fatturazione dal cockpit (`Vendite → Fatturazione`),
       oppure aspetta il giro automatico;
-- [ ] **prima di numerare**, apri il lotto: nel tab **«Documenti»** (non più
+- [X] **prima di numerare**, apri il lotto: nel tab **«Documenti»** (non più
       «Fatture») c'è un documento con natura **«Nota di credito»**;
-- [ ] ⚠️ **il documento della nota di credito è SEPARATO** da quello della
+- [X] ⚠️ **il documento della nota di credito è SEPARATO** da quello della
       fattura che rettifica: se le righe di rettifica sono finite dentro una
       fattura ordinaria, **fermati e segnala**;
 - [ ] «Rendi definitive» → il documento prende un **numero sul sezionale NC**
@@ -163,9 +163,9 @@ Usa la riga **24** (il kit).
 
 ### 8 · Il permesso *(P-1, B2)*
 
-- [ ] con un utente **non** super admin (es. `terenzi`): nella coda accrediti il
+- [X] con un utente **non** super admin (es. `terenzi`): nella coda accrediti il
       pulsante «Accredita» **non compare** e il kebab non offre il verbo;
-- [ ] 📌 e questo è oggi lo stato **di tutti** i non-admin: l'azione
+- [X] 📌 e questo è oggi lo stato **di tutti** i non-admin: l'azione
       `accredita_riga_reso` non è assegnata a nessun profilo. Se il verbo deve
       essere usato da qualcuno che non è super admin, **va concessa** —
       `Amministrazione → profili`.
@@ -184,14 +184,14 @@ Usa la riga **24** (il kit).
 
 ## Se qualcosa va storto
 
-| Sintomo | Cosa guardare |
-| --- | --- |
-| il verbo risponde 403 | l'azione non è concessa al profilo (prova 8) |
-| la riga resta in coda dopo l'accredito | il verbo non ha scritto: guarda il toast, poi `vendite.resi_righe_accrediti` |
-| la NC non nasce al giro | le rettifiche sono ancora `NON_EMESSA`? il lotto ha incluso quella commessa? |
-| la NC nasce **dentro** la fattura | 🔴 grave: la chiave documento non sta separando la natura. Fermati |
-| il numero è sul progressivo fatture | 🔴 grave: registro sbagliato. Fermati |
-| «operazione non consentita» sull'annullo | è già emessa: è corretto. Il messaggio deve dire il perché |
+| Sintomo                                     | Cosa guardare                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| il verbo risponde 403                       | l'azione non è concessa al profilo (prova 8)                                       |
+| la riga resta in coda dopo l'accredito      | il verbo non ha scritto: guarda il toast, poi `vendite.resi_righe_accrediti`       |
+| la NC non nasce al giro                     | le rettifiche sono ancora `NON_EMESSA`? il lotto ha incluso quella commessa?       |
+| la NC nasce **dentro** la fattura           | 🔴 grave: la chiave documento non sta separando la natura. Fermati                  |
+| il numero è sul progressivo fatture         | 🔴 grave: registro sbagliato. Fermati                                               |
+| «operazione non consentita» sull'annullo    | è già emessa: è corretto. Il messaggio deve dire il perché                         |
 | il **reso** si annulla anche se accreditato | 🔴 grave: la guardia del §38 non è in esercizio. Fermati: la NC uscirebbe lo stesso |
 
 ⛔ **Sui due «grave»: non ritentare.** Sono i due casi in cui un secondo giro

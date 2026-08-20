@@ -2247,6 +2247,7 @@
     },
     "lineage": {
       "titolo": "Lineage",
+      "non_numerato": "(not numbered yet)",
       "col_pratica": "Case",
       "col_fase": "Phase",
       "col_transito": "Transit",
@@ -3244,6 +3245,9 @@
     "reso": {
       "azione_conferma": "Confirm return",
       "azione_annulla": "Cancel return",
+      "annulla_reason": {
+        "con_accrediti": "The return has a registered credit: undo the credit on the line first, then the return."
+      },
       "stato_info": {
         "confermato": "The return is confirmed: the goods are back and the stock movements are recorded.",
         "annullato": "The return is cancelled: the inbound movement was reversed and this state is final."

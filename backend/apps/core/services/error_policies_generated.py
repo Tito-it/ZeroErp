@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 722, di cui 81 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 724, di cui 81 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -205,6 +205,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMMESSA_ATTIVITA_GIA_EMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_NON_COERENTE": "DATO_ERRATO",
     "E_COMMESSA_ATTIVITA_NOT_FOUND": "NON_TROVATO",
+    # vendite.trgfn_commesse_attivita_guard_prezzo_rettifica: si sta cambiando prezzo_snapshot o prezzo_bloccato su una riga tipo_movimento = 'RETTIFICA'. Il prezzo di una rettifica non e' un dato da tenere aggiornato, e' una CITAZIONE della riga di fattura che rettifica (fn_accredita_riga_reso, N-1: copiato da vendite.fatture_righe, mai ricalcolato): cambiarlo accrediterebbe un importo diverso da quello fatturato, cioe' una nota di credito che non corrisponde al documento che dichiara di correggere. Fratello di E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE (550) ma con due differenze: NON dipende dallo stato (una citazione e' sbagliata anche prima dell'emissione, anzi soprattutto prima, perche' e' li' che i tre percorsi di pricing la toccherebbero) e NON ha bypass di manutenzione. Guard di TABELLA e non di service perche' il prezzo si scrive con una UPDATE diretta (update_attivita_prezzo nel repository), non da una funzione madre: un controllo applicativo sarebbe una convenzione, non un blocco. Decisione di Tid del 2026-08-20. Piano: brief-design-note-credito-resi §42.2.
+    "E_COMMESSA_ATTIVITA_PREZZO_RETTIFICA_IMMUTABILE": "CONFLITTO_STATO",
     # --- Immutabilita' quantita' + porta oneri (guard DB 550-554) --- · I due guard di immutabilita' sono 409: non e' un input da correggere, · e' un fatto che non si modifica (si corregge con una riga nuova).
     "E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE": "CONFLITTO_STATO",
     "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO": "DATO_ERRATO",
@@ -777,6 +779,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "CONFLITTO_STATO",
     "E_RIGA_COMMESSA_GIA_EMESSA": "CONFLITTO_STATO",
     "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
+    # vendite.fn_annulla_commessa_attivita, guard di NATURA: la riga e' sourceless ma il suo tipo_movimento non e' ONERE. Nasce da un'equazione che ha smesso di essere vera: fino al 2026-08-18 sourceless voleva dire ONERE, perche' nessuno scriveva righe RETTIFICA (la doc diceva letteralmente «RETTIFICA: nessuno, oggi»); da quando vendite.fn_accredita_riga_reso ne scrive — e le scrive sourceless per progetto — il solo guard di origine (E_RIGA_COMMESSA_NON_MANUALE, 565) lasciava passare una riga di NOTA DI CREDITO. Il danno non era un errore: l'annullo riusciva, il ponte in vendite.resi_righe_accrediti sopravviveva, la quota restava accreditata e la riga del reso non tornava in coda — credito al cliente, nessun documento, nessun segnale. Stessa famiglia di E_RESO_ANNULLO_CON_ACCREDITO (933), da un'altra porta. Codice DISTINTO da 565 perche' quel messaggio dice «nasce dal documento sorgente %s», falso su una rettifica: manderebbe a cercare un documento che non esiste. Uno solo e non due: un secondo codice generico guarderebbe un ramo oggi irraggiungibile (il CHECK ammette tre valori, due sono gestiti). WHITELIST fail-closed: si ammette ONERE, non si vieta RETTIFICA. Origine: collaudo in-app note di credito, segnalazione BE del 2026-08-20. Piano: brief-design-note-credito-resi §42.1.
+    "E_RIGA_COMMESSA_MOVIMENTO_NON_ANNULLABILE": "CONFLITTO_STATO",
     "E_RIGA_COMMESSA_NON_MANUALE": "CONFLITTO_STATO",
     "E_RIGA_GIA_FATTURATA": "CONFLITTO_STATO",
     "E_RIGA_LISTINO_PROPAGATA": "CONFLITTO_STATO",
