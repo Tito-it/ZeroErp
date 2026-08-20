@@ -76,7 +76,6 @@
 - [trgfn_efba_guard_albero_emittente](manual/trgfn_efba_guard_albero_emittente.md) — (latest review 18-08-26)
 - [trgfn_emittenti_fiscali_default_bootstrap](manual/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
 - [trgfn_emittenti_fiscali_default_guard](manual/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
-- [trgfn_emittenti_fiscali_guard_attivo](manual/trgfn_emittenti_fiscali_guard_attivo.md) — (latest review 23-01-26) La funzione **`anagrafiche.trgfn_emittenti_fiscali_guard_attivo()`** impedisce la disattivazione (`attivo = false`) di un emittente fiscale quando esistono righe di mapping in `emittenti_fiscali_billing_account` collegate al suo `emittente_soggetto_ruolo_id`.
 - [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](manual/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`** garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un `soggetto_ruolo_id` valido e coerente con il ruolo di **emittente fiscale** (`codice_interno = 'EF'`).
 - [trgfn_emittenti_fiscali_normalize](manual/trgfn_emittenti_fiscali_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e' attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene esplicitato nel flusso trigger che la normalizzazione locale non e' necessaria e che l'eventuale generazione del `codice` resta demandata al sistema automatico basato su `config.sistema_codici`.
 - [trgfn_fornitori_guard_normalize](manual/trgfn_fornitori_guard_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_normalize()`** normalizza i dati minimi del fornitore prima del salvataggio, con focus sul campo `canale_fe`.
@@ -136,3 +135,4 @@
 
 ## 📘 Altri contenuti manuali
 - [catasto-architettura](manual/catasto-architettura.md)
+- [trgfn_emittenti_fiscali_guard_attivo](manual/trgfn_emittenti_fiscali_guard_attivo.md)

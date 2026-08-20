@@ -70,3 +70,17 @@ databaseChangeLog:
               #   quindi mirror vivo del CSV. Nessun loader nuovo.
               #   NULL (token) = sorgente non sfogliabile come documento.
               - column: { name: area, type: STRING }
+
+              # label_selector: quale colonna della target_table porta il NUMERO
+              #   LEGGIBILE del documento, aggiunta 2026-08-20 (colonna da
+              #   20260820-03, brief nota di credito §40.1.4 — richiesta BE).
+              #   Gemella di key_selector: quella dichiara la colonna CHIAVE,
+              #   questa la colonna con cui il documento si NOMINA. Non e'
+              #   uniforme (`numero` quasi ovunque, `codice` su offerte e
+              #   commesse) e per questo e' un dato e non un CASE.
+              #   Loader esteso IN PLACE, come per `area`: nessun loader nuovo.
+              #   NULL (token) = la sorgente non ha un numero leggibile.
+              #   ⚠️ Le cinque *_RIGA (id 3,5,7,9,11) esistono nel DB e NON nel
+              #   CSV: loadUpdateData non le tocca e restano a NULL, che per
+              #   loro e' il valore giusto.
+              - column: { name: label_selector, type: STRING }

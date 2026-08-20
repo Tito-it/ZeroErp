@@ -9,14 +9,33 @@
 > ⛔ **FE non iniziato** · 🔴 **5 prerequisiti in attesa del team DB**.
 > **Stato slice per slice e ripartenza nel §27.**
 >
-> 🔴 **2026-08-19 — la guardia che mancava (§38).** Il collaudo in-app ha trovato
-> che `vendite.fn_annulla_reso` **non vedeva l'accredito**: un reso già
-> accreditato si annullava lasciando vive le rettifiche, e il primo giro di
-> fatturazione ne avrebbe fatto uscire una nota di credito. Tre changeSet
+> ✅ **2026-08-19/20 — la guardia che mancava (§38): APPLICATA.** Il collaudo
+> in-app ha trovato che `vendite.fn_annulla_reso` **non vedeva l'accredito**: un
+> reso già accreditato si annullava lasciando vive le rettifiche, e il primo giro
+> di fatturazione ne avrebbe fatto uscire una nota di credito. Tre changeSet
 > (`20260819-22` → `-24`), un codice errore nuovo (**933**) e un pgTAP da 8
-> asserzioni sono **preparati e NON applicati**: la migrazione aspetta il via.
-> ⚠️ Finché non è applicata il difetto è vivo in `dbdev`, e ci sono **due resi
-> accreditati** che non vanno annullati.
+> asserzioni, migrati il **2026-08-20 alle 07:53** e verdi sui dati veri (8/8).
+>
+> 🟠 **2026-08-20 — e la migrazione ha fatto emergere un doppione (§39).** Il
+> pgTAP `test-registri-per-emittente-v1` è diventato rosso **da solo**: la FK
+> nata con `20260819-04` ha fatto generare all'automazione un guard generico che
+> duplica esattamente quello scritto a mano su `emittenti_fiscali`. Due
+> changeSet (`20260820-01`, `-02`) **applicati** il 2026-08-20 alle 08:32.
+> ⚠️ Con `20260820-01` il **messaggio** della famiglia
+> `prevent_deactivate_if_children` cambia per **tutti** i suoi trigger (un
+> centinaio): un secondo pgTAP asseriva su una parola di quella frase ed è stato
+> adeguato — §39.7, che è anche il racconto di una ricerca dei consumatori fatta
+> male.
+>
+> 🟠 **2026-08-20 — gli altri due punti del messaggio BE (§40).** Lo stesso
+> messaggio che segnalava la guardia del §38 ne portava altri due, di
+> leggibilità: la **provenienza** delle righe di commessa (che a video è solo
+> `segment_key`, una chiave tecnica) e `vw_dash_competenza_mensile` **senza
+> `tipo_movimento`**, dove il residuo con segno compensa le rettifiche con le
+> fatture da emettere. **Verificati contro il DB vivo e pianificati; niente
+> scritto.** Restano due decisioni: cosa scrive «Origine» su una riga di
+> rettifica — che è **sourceless per progetto** — e come il BE assorbe il
+> cambio di cardinalità della vista mensile.
 > Ventitré changeSet (`20260818-24` → `-46`) applicati, due pgTAP nuovi (22
 > asserzioni), quattro pgTAP esistenti riallineati, baseline `vendite` e
 > `script` **senza regressioni**, doc concettuale aggiornata. Cronaca
@@ -4350,9 +4369,9 @@ prenda per un lavoro lasciato a metà.
 > che il collaudo ha prodotto, ed è di quelli che nessuna suite avrebbe trovato:
 > non c'è niente di rotto: c'è una cosa che **non è stata scritta**.
 >
-> ⛔ **Stato: preparato, NON applicato.** Tre changeSet, due righe di catalogo e
-> un pgTAP nuovo sono nel repo; la migrazione **non è stata eseguita** e aspetta
-> il via dell'utente. Finché non lo è, il difetto è vivo in `dbdev`.
+> ✅ **Stato: APPLICATO** il 2026-08-20 alle 07:53 (`20260819-22` → `-24`
+> `EXECUTED`, codice 933 a catalogo). Il pgTAP nuovo gira **8/8 sui dati veri**,
+> e non solo nella prova a transazione annullata con cui era stato scritto.
 
 ### 38.1 Il fatto, e la misura
 
@@ -4459,9 +4478,8 @@ solo una delle due lo era davvero.
 
 * **pgTAP nuovo**, `db/pgtap/vendite/test-annulla-reso-gate-accredito-v1.sql`,
   plan(8). **Senza** il changeSet: 4 rossi (2, 3, 4, 8) — il 4 muore *perché* il
-  2 ha già annullato il reso. **Con** il changeSet: **8/8**.
-  ⚠️ Il «con» è stato misurato applicando la funzione in una sessione a parte e
-  ributtandola indietro: la migrazione **non** è stata eseguita.
+  2 ha già annullato il reso. **Con** il changeSet: **8/8**, prima in una prova a
+  transazione annullata e poi ⭐ **davvero, dopo la migrazione del 2026-08-20**.
 * ⭐ **Il test 8 non usa un kit, di proposito.** Un kit moltiplica i ponti su
   **una** riga di reso: la `EXISTS` lo vedrebbe al primo. La forma che mette
   davvero alla prova la guardia è l'opposta — un reso con **due righe di cui una
@@ -4493,3 +4511,756 @@ solo una delle due lo era davvero.
   dice cosa fare.
 * **FE — niente.** Nessun `reason_key`, nessuna chiave i18n nuova: il codice si
   solleva direttamente e la frase viene dal catalogo.
+
+---
+
+## 39. 🟠 Un guard di troppo, comparso da solo nella notte (2026-08-20)
+
+> **Origine**: il pgTAP `test-registri-per-emittente-v1` è diventato **rosso senza
+> che nessuno lo toccasse**. Il 19 pomeriggio era verde; il 20 mattina no.
+>
+> ✅ **Stato: APPLICATO** il 2026-08-20 alle 08:32 (`20260820-01`, `-02`
+> `EXECUTED`). Verificato sul database vivo: `trgfn_emittenti_fiscali_guard_attivo`
+> **non esiste più**, `dbops.trgfn_prevent_deactivate_if_children` è l'unica
+> rimasta, e `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` porta `obsoleto_dal =
+> 2026-08-20`.
+
+### 39.1 Cosa è successo, in ordine
+
+1. `20260819-04` ha dato a `anagrafiche.emittenti_fiscali_billing_account` una
+   **chiave esterna** verso `anagrafiche.emittenti_fiscali`. Prima non ne aveva
+   **nessuna** — ed era proprio il motivo per cui l'automazione non vedeva la
+   coppia.
+2. L'automazione ATTIVO (`dbops.fn_run_automations_attivo`) scopre le figlie da
+   `pg_constraint`. La notte ha visto la coppia nuova e ha generato il
+   **sedicesimo** trigger `prevent_deactivate_if_children` su `emittenti_fiscali`.
+3. I trigger `BEFORE … FOR EACH ROW` scattano in **ordine alfabetico**:
+   `trg_…_a10_emittenti_fiscali_billing_acco_b98811` viene prima di
+   `trg_…_a10_guard_attivo_upd`. Da quella notte parla il generico, e il guard
+   scritto a mano **non viene più raggiunto**.
+
+⭐ **Non è una sorpresa: era stato previsto alla lettera.** `20260819-04`, riga 91:
+*«se l'automazione lo genera, il messaggio che l'operatore vedrà potrebbe
+cambiare: è l'unica conseguenza da tenere d'occhio dopo l'apply»*. È successo, e a
+vederlo è stato il pgTAP — che è esattamente il punto di scrivere il discriminante
+invece di accontentarsi di «solleva qualcosa».
+
+### 39.2 La cosa che il piano dava per diversa, e non lo era
+
+`20260819-04` supponeva una differenza residua fra i due: il generico blocca solo
+se esistono figli **attivi**, quello a mano su qualunque riga.
+
+**Misurato: la differenza non esiste.** `emittenti_fiscali_billing_account` non ha
+una colonna `attivo` (`id`, `billing_account_id`, `emittente_soggetto_ruolo_id`,
+`is_default`, `meta` + i quattro campi di audit), quindi il generico ricade sul
+ramo «qualunque riga». Stessa tabella figlia, stessa colonna FK, stessa colonna
+referenziata, stesso predicato, stesso momento: **doppioni esatti**.
+
+⚠️ È la seconda volta in due giorni che una *supposizione* su questa coppia si
+rivela sbagliata, e nelle due direzioni opposte: prima il piano dava il guard per
+**mancante** quando c'era (§32.1), ora lo dava per **diverso** quando è identico.
+Le supposizioni sul codice altrui costano poco a scriverle e molto a crederci.
+
+### 39.3 Le due decisioni
+
+**Il doppione si toglie, e a cadere è quello scritto a mano** (`20260820-02`).
+Gli altri **quindici** figli di `emittenti_fiscali` — contratti, ddt, ordini,
+preventivi, pratiche, template… — sono già presidiati dal solo generico, senza
+gemelli. Tenere l'eccezione qui vorrebbe dire mantenere due meccanismi per la
+stessa regola su una tabella sola.
+
+⛔ **L'alternativa non era economica**: `dbops.automation_rules_tbl` ha **una**
+riga `*all`/`*all` e il suo bersaglio è la tabella **padre**. Escludere
+`emittenti_fiscali` ucciderebbe tutti e sedici i trigger; per saltarne uno solo
+servirebbe un meccanismo di esclusione **per coppia** che oggi non esiste,
+costruito dentro un'automazione usata ovunque per un caso unico.
+
+⚠️ **Il costo è dichiarato**: da qui in avanti la regola vive in un trigger
+**generato**. Se quella FK sparisse, l'automazione toglierebbe il trigger e il
+divieto se ne andrebbe **in silenzio**. È lo stesso costo che il progetto paga già
+per gli altri quindici, e ora è **misurato**: il test 7 verifica che il trigger
+generato ci sia.
+
+⭐ E non poteva essere una `preCondition`: su un database ricostruito da zero le
+automazioni girano in `ci_apply`, cioè **dopo** `20_code` — la preCondition
+sarebbe rossa a ogni build. Il presidio va dove si misura a build finita.
+
+### 39.4 Il difetto più grande, trovato per strada
+
+Il messaggio di `E_ATTIVO_BLOCK_CHILDREN_EXIST` a catalogo era **`%s` nudo**. Ma
+il trigger a `fn_log_and_raise_error` passava **sei** valori: la frase, e poi
+padre, figlia, colonna referenziata, suo valore, colonna FK. Un solo segnaposto ne
+consuma uno: **cinque venivano buttati via a ogni violazione**.
+
+Effetto: **un centinaio di trigger** di quella famiglia (28 su `catalogo.articoli`,
+21 su `catalogo.unita_misura`, 18 su `config.sorgenti`, 16 su `config.iva`, 16
+qui…) dicevano tutti la stessa frase cieca — *«esistono righe figlio attive
+collegate»* — senza mai nominare la tabella che stava bloccando.
+
+⚠️ **E la frase era anche falsa in metà dei casi**: diceva «attive» anche quando la
+figlia non ha una colonna `attivo` e quindi conta *qualunque* riga. Il caso che ha
+fatto scoprire tutto è proprio uno di quelli.
+
+`20260820-01` toglie la frase dagli argomenti e la porta a catalogo:
+
+> «Non si può disattivare `%s` (`%s` = `%s`): ci sono ancora righe collegate in
+> `%s`.»
+
+⛔ **Non bastava arricchire il solo CSV**: con la frase come primo valore il
+messaggio poteva solo *crescere intorno* a una frase già fatta («…collegate Padre:
+X. Figlia: Y.»), che è la forma che nasce quando un testo è scritto metà nel codice
+e metà a catalogo. E il «attive» non si sarebbe potuto correggere affatto.
+
+⚠️ **Il vincolo che nasce oggi**: l'ordine dei valori nella funzione e i segnaposti
+del CSV sono **una cosa sola**. Padre e figlia sono entrambi `schema.tabella`: uno
+scambio produrrebbe una frase grammaticalmente perfetta che nomina **la tabella
+sbagliata**, e nessun controllo di sintassi può vederlo. È il motivo per cui il
+test 6 non asserisce «solleva», ma «nomina la tabella **giusta**».
+
+### 39.5 Le misure
+
+* `scripts/pgtap-baseline.sh vendite` dopo la migrazione del 20: **una sola
+  regressione su 196 file**, ed è questa. Tutti gli altri rossi erano già noti.
+* Dry-run dei due changeSet + la riga di catalogo, in transazione annullata:
+  `test-registri-per-emittente-v1` **7/7**. Prima: 6 su 7, con il test 6 rosso.
+* Il corpo di `dbops.trgfn_prevent_deactivate_if_children` è diffato riga per riga
+  contro quello vivo: **cambia solo il blocco dei valori passati**. Nessuna
+  condizione, nessun momento, nessun codice errore toccato.
+* Nessun pgTAP e nessun sorgente si appoggiava alla frase vecchia (verificato), e
+  un solo punto del database solleva quel codice.
+* `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` (131) va in `obsoleto_dal = 2026-08-20`,
+  che è il pattern del progetto per ritirare senza rompere chi referenzia.
+
+### 39.6 🔴 Cosa serve dagli altri due lati
+
+* **BE — obbligatorio**: rigenerare `error_policies_generated.py`
+  (`manage.py genera_error_policies`). Servono **due** giri di catalogo insieme:
+  il codice nuovo **933** di §38 e il ritiro del **131**.
+  ⚠️ `test_error_policies_divergenza_db` confronta il **file intero** con
+  `config.vw_codici_errore_identita`: senza rigenerazione diventa rosso, e lo
+  diventa in una PR che non c'entra.
+* **BE — una riga di doc sbagliata**:
+  `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (riga 86) attribuisce
+  a `trgfn_emittenti_fiscali_guard_attivo` il blocco su *«BA mapping, utilities,
+  parameter_overrides, user_emittenti_fiscali»*. ⚠️ È **già falso oggi** — quella
+  funzione guardava **solo** i BA mapping, gli altri tre li tengono trigger generici
+  distinti — e dopo `20260820-02` nominerà una funzione che non esiste. Non l'ho
+  corretta perché sta sotto `docs/it/backend/`.
+* **FE — niente.**
+
+---
+
+### 39.7 ⚠️ La coda: un secondo test rosso, e una ricerca fatta male
+
+Dopo l'apply è diventato rosso anche
+`db/pgtap/catalogo/test-fn-riattiva-articolo-v1.sql` (test 1). Non è un difetto
+del messaggio nuovo: quel test asseriva `throws_like(…, '%attive%')`, cioè **una
+parola sola** della frase che il `20260820-01` ha tolto.
+
+⛔ **Ed è un mio errore di metodo, non una sorpresa.** Prima di cambiare il
+messaggio avevo cercato i consumatori con due grep: la **frase intera**
+(«esistono righe figlio») e il **nome del codice**
+(`E_ATTIVO_BLOCK_CHILDREN_EXIST`). Nessuno dei due poteva trovare un
+`throws_like` su un *frammento*. La ricerca giusta era una terza, ovvia a
+posteriori: il **nome della funzione**, `prevent_deactivate_if_children`, che di
+file ne trova otto.
+
+📌 **La regola che ne esce**: quando si cambia un messaggio, i consumatori si
+cercano dal **nome di chi lo solleva**, non dal testo. Il testo è esattamente
+ciò che sta cambiando — cercarlo trova solo chi lo copia per intero, e chi
+asserisce su una parola è invisibile.
+
+Degli **otto** file che nominano la famiglia, misurati uno per uno: **sette**
+verificano l'esistenza di un trigger per nome (`tgname LIKE '%block_deact%'`,
+`pg_get_triggerdef ILIKE …`) e sono indifferenti al testo; **uno solo** — questo
+— asseriva sul messaggio.
+
+**Corretto**, e con lo stesso criterio del test 6 di
+`test-registri-per-emittente-v1`: il discriminante diventa **il nome della
+tabella figlia** (`%righe collegate in catalogo.articoli_uom_operativa%`). È più
+forte di prima: `'%attive%'` sarebbe passata con qualunque figlia, mentre qui la
+fixture ne crea **una sola e si sa quale** — e se padre e figlia si scambiassero
+rispetto ai segnaposti del catalogo, questo test se ne accorgerebbe.
+
+### ⚠️ Una parola giusta persa, dichiarata
+
+Va detto per intero: su `catalogo.articoli_uom_operativa` la parola «attive»
+**era vera** — quella tabella la colonna `attivo` ce l'ha. Si è persa una parola
+corretta in un caso per non tenerne una sbagliata nell'altro, perché una frase
+sola non può dire due cose diverse.
+
+Dove è finita la distinzione: nella **`causa`** del codice 125, che ora la
+dichiara, e nella **`soluzione`**, che copre entrambi i rimedi («disattivare
+**o** rimuovere le righe che puntano a questa»).
+
+📌 **Se un giorno valesse la pena riprenderla**, la strada pulita non è
+rimettere la parola nella frase generica: è **due codici distinti**, scelti dal
+`v_child_has_attivo` che la funzione già calcola — «ci sono ancora righe
+collegate **attive** in X» (rimedio: disattivarle) contro «ci sono ancora righe
+collegate in X» (rimedio: toglierle). Sono due situazioni con due rimedi
+diversi, che è il criterio con cui in questo progetto nasce un codice nuovo.
+Non è stato fatto oggi perché era una correzione di regressione, non un
+cantiere sui messaggi.
+
+## 40. 🟠 Le altre due del messaggio BE: provenienza a video e rettifiche che si compensano (2026-08-20)
+
+> **Origine**: il messaggio unico del team BE del **2026-08-20** — tre punti nati
+> dallo stesso collaudo in-app della nota di credito (19-20 agosto). Il **primo è
+> il §38**, scritto il 19 e **applicato il 20 alle 07:53** (§40.0); qui gli
+> **altri due**, verificati uno per uno contro il database vivo.
+>
+> ⛔ **Stato: SCRITTO e MISURATO, NON APPLICATO.** Cinque changeSet
+> (`20260820-03` → `-07`), tre CSV di seed, un loader esteso in place e un pgTAP
+> nuovo da 22 asserzioni sono nel repo; la migrazione **aspetta il via**.
+> Le due decisioni del §40.1.3 e del §40.2.2 sono state **prese da Tid il
+> 2026-08-20**: rispettivamente **A+B** (numero del documento + `gruppo_key` a
+> catalogo ma spenta) e **`tipo_movimento` nel `GROUP BY`** come chiesto dal BE.
+> Cronaca dell'esecuzione e misure nel **§40.5**.
+
+### 40.0 ✅ Il punto 1 è già fatto **e già applicato** — verificato sul DB, non supposto
+
+Il BE chiede la guardia su `vendite.fn_annulla_reso` con un codice nuovo
+`E_RESO_ANNULLO_CON_ACCREDITO`, classe `CONFLITTO_STATO`, e un messaggio che
+**dica la strada** invece del solo divieto. È **esattamente** il §38, scritto il
+2026-08-19. Anche i tre punti su cui il BE mette l'accento — rifiutare e non
+cascatare, la simmetria con i vicini, il messaggio parlante — sono i §38.4 e
+§38.3.
+
+⭐ **E dal 2026-08-20 mattina non è più «preparato»: è vivo in `dbdev`.**
+Verificato interrogando il database, non leggendo il repo:
+
+```text
+databasechangelog                  20260819-22 · -23 · -24   EXECUTED  07:53:50
+pg_get_functiondef(fn_annulla_reso)  contiene E_RESO_ANNULLO_CON_ACCREDITO
+config.codici_errore                 E_RESO_ANNULLO_CON_ACCREDITO / CONFLITTO_STATO
+config.messaggi_errore  id 933       «Il reso ha un accredito registrato: annulla
+                                      prima l'accredito sulla riga, poi il reso.»
+```
+
+**Quindi al team DB non resta niente** su questo punto. Resta la richiesta al BE
+del §38.8: rigenerare `error_policies_generated.py` per il 933, **insieme** al
+ritiro del 131 del §39 — un giro solo, come dice il §39.6.
+
+Ri-misurato oggi il perimetro dei dati, a conferma che non è cambiato:
+
+```text
+vendite.resi_righe_accrediti, 2026-08-20
+
+  reso 24   RESO0000017  CONFERMATO   3 ponti · 3 attività (il kit)
+  reso 5796 RESO0005122  CONFERMATO   1 ponte  · 1 attività
+```
+
+⚠️ Entrambi **CONFERMATO**: nessun reso annullato porta ponti, quindi la
+correzione è rimasta interamente in avanti e non c'è stata bonifica da scrivere.
+⭐ E ora che `-22` è applicato, provare ad annullarli è il modo di **vedere** la
+guardia. Provato davvero, in transazione annullata, sul reso vero e col contesto
+operatore (non come owner):
+
+```text
+SELECT vendite.fn_annulla_reso(5796);   -- RESO0005122, CONFERMATO, 1 ponte
+
+  sqlstate = P0001
+  codice   = E_RESO_ANNULLO_CON_ACCREDITO      ← dal canale CONSTRAINT
+  messaggio= «Il reso ha un accredito registrato: annulla prima l'accredito
+              sulla riga, poi il reso.»
+```
+
+⚠️ Il `ROLLBACK` è **nello stesso file eseguito**: nulla è stato scritto.
+Il messaggio arriva **intero**, che è la verifica «opportuna» chiesta al BE nel
+§38.8 — quella frase è ciò che dice all'operatore cosa fare.
+
+⭐ Una cosa in più rispetto al 19: fra le sei righe di rettifica **due sono in
+`stato_emissione = 'ANNULLATA'`** (35187, 35188). L'annullo dell'accredito è
+stato esercitato in app e ha fatto quello che doveva.
+
+---
+
+### 40.1 Punto 2 — la provenienza delle righe di commessa
+
+#### 40.1.1 Cosa esce già, e cosa manca davvero
+
+`vendite.fn_list_commessa_attivita` è la funzione del §1 del
+[brief-db-lista-attivita-commessa-tre-campi](../work-done/brief-db-lista-attivita-commessa-tre-campi.md),
+chiusa il 2026-08-16. Delle tre cose chieste oggi:
+
+| Chiesto | Oggi | Cosa manca |
+| --- | --- | --- |
+| `tipo_movimento` | **non esce** | la colonna c'è in tabella dal 2026-07-17, basta portarla a valle |
+| `articolo_codice` + descrizione | esce il solo `articolo_id` uuid | join su `catalogo.articoli` (⭐ **niente RLS**: verificato `relrowsecurity = false`) |
+| numero del documento sorgente | escono `sorgente_codice`, `sorgente_area`, `sorgente_documento_id` | **il numero leggibile non esiste da nessuna parte** — vedi §40.1.4 |
+
+Ed è corretto anche il resto della diagnosi del BE: le tre colonne che «escono
+già» **non sono a catalogo** in `ui.lista_colonna`, quindi oggi non arrivano a
+video. È la stessa classe del §7.1 del brief di agosto — *il dato c'è, la
+colonna non esiste* — la peggiore da diagnosticare perché la risposta
+dell'endpoint sembra a posto.
+
+#### 40.1.2 🔴 La misura che cambia la soluzione: la sorgente **non c'è** proprio sulle righe che hanno originato la richiesta
+
+Il messaggio dà per buono che `sorgente_codice`, `sorgente_area` e
+`sorgente_documento_id` «escono già: vanno solo esposti a catalogo». Escono, ma
+**vuoti** su una riga su undici — e non a caso:
+
+```text
+vendite.commesse_attivita, 2026-08-20 — 98 righe
+
+  tipo_movimento  sorgente          n
+  ─────────────────────────────────────
+  NORMALE         PREVENTIVO       44
+  NORMALE         ORDINE_VENDITA   43
+  NORMALE         DDT_VENDITA       2
+  RETTIFICA       (nessuna)         6   ← sourceless
+  ONERE           (nessuna)         3   ← sourceless
+```
+
+⚠️ **Le nove righe senza sorgente sono tutte e sole le rettifiche e gli oneri**,
+cioè il 100% delle righe di nota di credito. Non è un dato sporco: è il modello.
+`vendite.fn_accredita_riga_reso` scrive la rettifica con
+`p_sorgente_tipo_id => NULL, p_sorgente_uid => NULL`, e il CHECK
+`chk_commesse_attivita_sorgente_pair` impone che la coppia sia tutta NULL o
+tutta valorizzata.
+
+**Ne discende una cosa che il messaggio non poteva sapere**: il gruppo
+fatturabile di una rettifica **non è il DDT**. `fn_build_gruppo_fatturabile_key`
+sulle righe sourceless risponde `MAN:<commessa_id>`, cioè il gruppo «oneri di
+commessa». Misurato:
+
+```text
+gruppo_key                                            stadio       movimento   n   valore
+─────────────────────────────────────────────────────────────────────────────────────────
+DDT_VENDITA:01a00cb3-2f2e-7703-a739-38c827d939e4      FATTURATA    NORMALE     1    52,50
+ORDINE_VENDITA:019f5f9c-b504-70c0-a1a0-7ecd27ec8a70   FATTURATA    NORMALE     3    17,00
+MAN:15370                                             DA_EMETTERE  RETTIFICA   1   −12,50
+MAN:322                                               DA_EMETTERE  RETTIFICA   3   −17,00
+```
+
+⭐ **E questo NON è un difetto del documento**: `fn_build_fattura_key` porta la
+**natura** (rev 2026-08-18, N3), quindi una rettifica non può finire nella
+fattura ordinaria comunque. Il gruppo è l'unità dell'**emissione mirata**, non
+del documento: una rettifica si spunta insieme agli oneri della commessa, non
+insieme al DDT da cui la merce è tornata. Vale la pena saperlo prima di
+disegnare la colonna, non dopo.
+
+⚠️ **Quindi la colonna «Origine», presa alla lettera, sarebbe vuota esattamente
+sulle righe per cui il BE l'ha chiesta.** Consegnarla così sarebbe consegnare un
+difetto.
+
+#### 40.1.3 🔴 DECISIONE APERTA — cosa scrive «Origine» su una rettifica
+
+Tre risposte possibili, tutte oneste, con costi diversi.
+
+| | Cosa fa | Costo | Cosa si perde |
+| --- | --- | --- | --- |
+| **A** | «Origine» resta vuota; la colonna **Movimento** dice `RETTIFICA`/`ONERE` e il FE rende `—` | zero DB in più | l'operatore vede una cella vuota e deve dedurre |
+| **B** | Si espone anche `gruppo_key` (dalla SSOT `fn_build_gruppo_fatturabile_key`), colonna a catalogo **spenta di default** | una colonna in più, nessuna logica nuova | `MAN:15370` è una stringa tecnica, non un documento |
+| **C** | «Origine» risolta **per movimento**: `NORMALE` → documento, `RETTIFICA` → il **reso** (via `resi_righe_accrediti` → `resi.numero`), `ONERE` → la causale | due LATERAL in più nella funzione | è la più cara, ed è una nozione di provenienza **diversa** da quella che fa nascere la fattura |
+
+⭐ **La tensione, detta chiaramente**: A e B rispondono alla domanda *«in che
+gruppo fatturabile finisce questa riga»* — che è la domanda del messaggio BE
+(*«il criterio con cui la fattura nasce»*). C risponde a *«da quale documento
+questa riga discende»*, che è quello che l'operatore probabilmente **guarda**.
+Non sono la stessa domanda e non hanno la stessa risposta: per una rettifica la
+prima dice «la commessa», la seconda dice «RESO0005122».
+
+✅ **DECISO da Tid il 2026-08-20: A + B.** «Origine» = numero del documento
+sorgente (vuota sulle sourceless), `Movimento` accanto, e `gruppo_key`
+disponibile-e-spenta per chi sta facendo emissione mirata.
+
+**C resta scritta qui come seguito da decidere**: è la colonna «Reso di
+origine», e ha senso il giorno in cui la coda accrediti diventa un posto in cui
+si *lavora*, non solo si guarda. ⚠️ Il dato per costruirla c'è già e non va
+inventato — `vendite.resi_righe_accrediti.commessa_attivita_id` è il ponte, e
+`commesse_attivita.meta` porta `resi_riga_id` e `accredito_da = 'RESO'`.
+
+#### 40.1.4 Il numero leggibile non è una colonna sola — serve un selettore a catalogo
+
+`sorgente_documento_id` c'è, il numero no, e non si può prendere «dalla colonna
+`numero`» perché **quella colonna non si chiama sempre così**:
+
+```text
+config.sorgenti → target_table          colonna leggibile
+────────────────────────────────────────────────────────
+PREVENTIVO      → vendite.preventivi           numero
+CONTRATTO       → vendite.contratti            numero
+ORDINE_VENDITA  → vendite.ordini               numero
+DDT_VENDITA     → vendite.ddt                  numero
+RESO_VENDITA    → vendite.resi                 numero
+FATTURA         → vendite.fatture              numero  (bigint)
+OFFERTA_COMM.   → vendite.offerte_commerciali  codice
+COMMESSA        → vendite.commesse             codice
+ATTIVITA, ATTIVITA_CONSUMI, i cinque *_RIGA    nessuna
+```
+
+Tre strade, e due si scartano per un motivo che il progetto ha già pagato:
+
+* ❌ **Indovinare** (`COALESCE(numero, codice)` letto via `to_jsonb`): è
+  esattamente il *«non si indovina»* che `fn_get_sorgente_documento_id` si è
+  scritta in corpo. Un domani con una terza convenzione la colonna diventa vuota
+  in silenzio.
+* ❌ **Un `CASE` sul `codice_interno` dentro la funzione**: mette la mappa in un
+  posto che non è il catalogo, e un dominio nuovo la trova già sbagliata. È il
+  «literale hardcoded» di [linee-guida-sql §6d](../../linee-guida-sql.md).
+* ✅ **Una colonna a catalogo**, `config.sorgenti.label_selector`, gemella di
+  `key_selector` che c'è già e fa la stessa cosa per la chiave. Aggiungere un
+  dominio = una cella nel CSV, non una riga di codice.
+
+⭐ **E il resolver diventa uno solo.** Oggi `fn_get_sorgente_documento_id` fa già
+la lettura dinamica sulla `target_table`; farne una seconda gemella per il
+numero significherebbe **due `EXECUTE` per riga** e due copie della stessa
+regola. Si sostituisce con
+`vendite.fn_get_sorgente_documento_ref(tipo, uid) RETURNS TABLE(documento_id, documento_numero)`,
+chiamata **una volta** in `LEFT JOIN LATERAL`. La vecchia si può togliere:
+verificato che ha **un solo chiamante**, ed è questa funzione.
+
+⚠️ **`config.sorgenti` ha 15 righe nel DB e 10 nel CSV**: le cinque `*_RIGA`
+(id 3, 5, 7, 9, 11) esistono solo nel database. `loadUpdateData` non cancella e
+non tocca chi non trova, quindi resteranno con `label_selector` a NULL — che per
+loro è il valore giusto (nessuna delle cinque ha una colonna leggibile). Va
+scritto, però, perché al primo che va a cercarle nel CSV sembra un errore.
+
+#### 40.1.5 ⚠️ La trappola che il seed a catalogo si porta dietro: l'ordinamento
+
+La whitelist di ordinamento dentro `fn_list_commessa_attivita` è **chiusa e
+fail-loud**: un `p_order_by` fuori elenco solleva `E_PARAMETRO_INVALIDO`, non
+ripiega sul default. È la scelta giusta (la «freccia che non ordina») e proprio
+per questo:
+
+> **una riga di `ui.lista_colonna` con `ordinabile = t` su un `campo_sorgente`
+> che la whitelist non conosce non produce una freccia inerte: produce una lista
+> che si rompe** appena l'operatore clicca l'intestazione.
+
+Quindi ogni colonna nuova entra **insieme** al suo nome nella whitelist —
+`tipo_movimento`, `articolo_codice`, `sorgente_documento_numero` — oppure nasce
+`ordinabile = f`. È il seguito diretto del §7.2 di agosto, dove il difetto era
+lo stesso a un livello più in là.
+
+#### 40.1.6 Il piano del punto 2
+
+1. **`00_schema/config`** — `ALTER TABLE config.sorgenti ADD COLUMN label_selector text`,
+   nullable, con `CHECK (label_selector IS NULL OR label_selector ~ '^[a-z_][a-z0-9_]*$')`
+   (igiene di identificatore; la lettura usa comunque `%I`).
+2. **`80_data`** — `config/sorgenti.csv` con la colonna nuova, e **loader esteso
+   in place** (`20251002-21`, `runOnChange: true` + `validCheckSums: ANY`, è un
+   mirror vivo): stessa strada già percorsa per `area` il 2026-07-27, nessun
+   loader nuovo.
+3. **`20_code/vendite`** — `vendite.fn_get_sorgente_documento_ref(bigint, text)`
+   `RETURNS TABLE(documento_id bigint, documento_numero text)`, `STABLE`,
+   `SECURITY INVOKER`, **sempre una riga** (anche tutta a NULL: così un
+   `CROSS JOIN LATERAL` per distrazione non fa sparire la riga di lista).
+   Corpo ripreso da `fn_get_sorgente_documento_id` — la regex uuid, la lettura
+   della `target_table` dal catalogo, il `NULL` invece del `RAISE`.
+4. **`20_code/vendite`** — `fn_list_commessa_attivita`: **DROP + CREATE**
+   (la `RETURNS TABLE` cambia, e `CREATE OR REPLACE` non la cambia), quattro
+   colonne additive in coda — `tipo_movimento`, `articolo_codice`,
+   `articolo_descrizione`, `sorgente_documento_numero` (+ `gruppo_key` se la
+   decisione §40.1.3 è A+B) — e i nomi nuovi in whitelist.
+5. **`20_code/vendite`** — `DROP FUNCTION vendite.fn_get_sorgente_documento_id`,
+   con numerazione **più alta** di chi la sostituisce (l'autogen ordina per NN) e
+   **mai `CASCADE`**.
+6. **`80_data`** — `ui/lista_colonna.csv`: righe nuove da id **484** (il massimo
+   è 483 in CSV e in DB, allineati) sulla lista **38**; `ui/lista_preset_colonna.csv`:
+   le nuove nel preset `38` e **`segment_key` (colonna 410) da `visibile = t` a `f`**.
+   Entrambi i mirror sono `runOnChange` e ri-leggono il CSV: nessun `UPDATE` SQL.
+7. **pgTAP** — un file nuovo: le colonne escono, la whitelist accetta i nomi
+   nuovi, il numero risolve su tutte e tre le sorgenti presenti, ⭐ e
+   l'**invariante di catalogo**: ogni `config.sorgenti` attiva con `target_table`
+   e `label_selector` valorizzato deve avere quella colonna davvero
+   (`pg_attribute`). È il cancello che rende rumoroso il refuso nel CSV, che
+   altrimenti si vede solo come una cella vuota a video.
+
+Colonne a catalogo previste (le tre chieste + le due «disponibili e spente»):
+
+| codice | etichetta | campo_sorgente | visibile di default |
+| --- | --- | --- | --- |
+| `articolo` | Articolo | `articolo_codice` | ✅ |
+| `articolo_descrizione` | Descrizione | `articolo_descrizione` | ✅ |
+| `movimento` | Movimento | `tipo_movimento` | ✅ |
+| `origine` | Origine | `sorgente_documento_numero` | ✅ |
+| `origine_tipo` | Tipo origine | `sorgente_codice` | ⛔ spenta |
+| `gruppo_fatturabile` | Gruppo fatturabile | `gruppo_key` | ⛔ spenta *(solo se §40.1.3 = A+B)* |
+| `segment_key` | Segmento | — | ⛔ **retrocessa a spenta** |
+
+⚠️ **`etichetta_i18n_key`**: le chiavi nuove (`vendite.commesse.col_*`) vanno
+aggiunte in `frontend/src/locales/it.json` **e** `en.json`, ed è lavoro FE — è
+andata così anche per `col_fatturata_il`, seedato dal DB e tradotto dal FE in un
+commit a parte. Senza, in inglese resta l'etichetta italiana del catalogo.
+
+---
+
+### 40.2 Punto 3 — `vw_dash_competenza_mensile` senza `tipo_movimento`
+
+#### 40.2.1 La misura conferma il rilievo, e lo allarga
+
+Il BE segnala agosto 2026 al 101% di copertura perché il residuo è −29,50.
+Confermato, e il conto torna esatto:
+
+```text
+competenza   NORMALE     RETTIFICA   ONERE      totale
+──────────────────────────────────────────────────────
+2026-07-01   1.704,00         0,00   5.000,00   6.704,00
+2026-08-01   2.836,50       −29,50       0,00   2.807,00
+```
+
+⭐ **E la compensazione non riguarda solo le rettifiche.** A luglio ci sono
+5.000 € di **oneri** dentro lo stesso totale: la somma con segno mescola tre cose
+di natura diversa, non due. Il rimedio chiesto — `tipo_movimento` nel
+raggruppamento — le separa tutte e tre, ed è la ragione per cui è meglio della
+scorciatoia «aggiungi una colonna `valore_rettifiche`»: quella metterebbe i tre
+valori dell'enum dentro la vista, e il quarto che nascerà non lo vedrebbe
+nessuno.
+
+#### 40.2.2 ⚠️ DECISIONE APERTA — è breaking per il BE, e in un punto solo
+
+Aggiungere `tipo_movimento` al `GROUP BY` cambia la **cardinalità** della vista.
+Misurato su tutto il dataset:
+
+```text
+righe oggi:    7
+righe domani:  8
+
+l'unico bucket che si spezza:
+  2026-07-01 · FATTURATA · EMESSA  →  NORMALE + ONERE
+```
+
+Letto il consumatore (`fn_dash_competenza_mensile` in
+`backend/apps/vendite/services/vendite_service.py`), la conseguenza è **precisa e
+non ovvia**:
+
+* ✅ **i totali reggono**: il pivot **accumula** (`cella.n_attivita += …`,
+  `cella.valore += …`) per `(mese, stadio)`. Due righe al posto di una si
+  sommano, e i numeri delle card non cambiano.
+* 🔴 **il breakdown 3a no**: `stati_fattura` fa `append` di una voce **per ogni
+  riga** con `stadio == 'FATTURATA'`. Con la vista spezzata, luglio 2026
+  mostrerebbe **due volte lo stato EMESSA** — una `NORMALE` da 924 € (25
+  attività) e una `ONERE` da 5.000 € (1 attività).
+
+⚠️ **È un difetto che si vede solo a video, e solo su luglio.** Su agosto, oggi,
+la cardinalità non cambia affatto (le rettifiche stanno in `DA_EMETTERE`, i
+normali in `FATTURATA`): chi provasse solo il mese del rilievo concluderebbe che
+non si è rotto niente.
+
+✅ **DECISO da Tid il 2026-08-20**: si fa come chiede il BE — la dimensione entra
+nel `GROUP BY`. La strada alternativa (grana invariata + colonne `FILTER`
+`valore_normale` / `_rettifiche` / `_oneri`) era non-breaking ma avrebbe messo i
+tre valori dell'enum **dentro la vista**, e il quarto movimento che nascerà non
+lo vedrebbe nessuno.
+
+**Quindi il changeSet e la modifica BE vanno nello stesso giro**, come il codice
+933 del §38. Due modi per il BE, la scelta è sua:
+
+* aggiungere `tipo_movimento` alla chiave del breakdown (e il FE dichiara le
+  rettifiche a parte, che è la dottrina `fatturato_anticipato` citata nel
+  messaggio); **oppure**
+* ri-aggregare la voce `stati_fattura` per `(stato)` sommando i movimenti, se il
+  breakdown per stato deve restare una riga sola.
+
+#### 40.2.3 Il piano del punto 3
+
+`CREATE OR REPLACE VIEW vendite.vw_dash_competenza_mensile` con
+`tipo_movimento` **in coda** alla SELECT (il `REPLACE` di una vista ammette solo
+colonne aggiunte in fondo) e nel `GROUP BY`.
+
+⚠️ Due cose da non dimenticare, entrambe già costate al progetto:
+`WITH (security_invoker=on)` **ri-specificato** — non è visibile in
+`pg_get_viewdef` e un `REPLACE` che la omette la azzera in silenzio, cioè
+disattiva lo scope emittente — e nessuna vista dipende da questa (verificato:
+zero dipendenti), quindi non serve nessun `DROP`.
+
+pgTAP: `test-vw-dash-competenza-v1.sql` usa `EXISTS … >=` e **non regredisce**
+(verificato riga per riga). Si aggiunge un'asserzione sulla colonna nuova.
+
+---
+
+### 40.3 ✅ I changeSet — SCRITTI (numerazione **globale** per data: oggi c'erano già `-01` e `-02`)
+
+> Questa tabella era il *piano*; l'elenco dei file davvero scritti, con le
+> misure, è nel **§40.5**.
+
+| # | Cartella | Oggetto |
+| --- | --- | --- |
+| `20260820-03` | `00_schema/config` | `config.sorgenti` + `label_selector` (+ CHECK) |
+| `20260820-04` | `20_code/vendite` | `fn_get_sorgente_documento_ref` (id **e** numero, una lettura sola) |
+| `20260820-05` | `20_code/vendite` | `fn_list_commessa_attivita` — DROP + CREATE, colonne e whitelist |
+| `20260820-06` | `20_code/vendite` | `DROP FUNCTION fn_get_sorgente_documento_id` (nessun chiamante residuo) |
+| `20260820-07` | `20_code/vendite` | `vw_dash_competenza_mensile` + `tipo_movimento` |
+| CSV `80_data` | `config/sorgenti.csv` | `label_selector`, loader esteso **in place** |
+| CSV `80_data` | `ui/lista_colonna.csv` · `ui/lista_preset_colonna.csv` | colonne nuove da id 484 · `segment_key` spenta |
+| pgTAP | `vendite/` | provenienza in lista + invariante `label_selector` |
+
+---
+
+### 40.4 🔴 Cosa serve dagli altri due lati
+
+* **BE — obbligatorio e nello stesso giro del `-07`**: il breakdown `stati_fattura`
+  di `fn_dash_competenza_mensile` (§40.2.2). Senza, luglio 2026 mostra EMESSA due
+  volte.
+* **BE — additivo**: le colonne nuove in `_ATTIVITA_COLS`
+  (`commesse_repository`) e i nomi nuovi nella whitelist di ordinamento
+  lato BE, specchio di quella chiusa dentro la funzione (§40.1.5).
+* **FE — le chiavi i18n** `vendite.commesse.col_*` in `it.json` e `en.json`, una
+  per colonna nuova.
+* **FE/BE — la misura di copertura**: separare il movimento normale dalle
+  rettifiche dichiarate a parte è una scelta di presentazione e resta loro, come
+  scritto nel messaggio.
+
+---
+
+### 40.5 ✅ Cosa è stato scritto, e cosa è stato misurato (2026-08-20)
+
+⛔ **Niente è applicato.** Le misure qui sotto vengono da prove in **transazione
+annullata**, con il `BEGIN`/`ROLLBACK` **nel file eseguito** — non da un
+migrate.
+
+#### 40.5.1 Gli otto oggetti
+
+| # | Cartella | Oggetto |
+| --- | --- | --- |
+| `20260820-03` | `00_schema/config` | `config.sorgenti.label_selector` + `chk_sorgenti_label_selector_identificatore` |
+| `20260820-04` | `20_code/vendite` | **nuova** `fn_get_sorgente_documento_ref(tipo, uid) → (documento_id, documento_numero)` |
+| `20260820-05` | `20_code/vendite` | `fn_list_commessa_attivita` — DROP + CREATE, 5 colonne, 6 nomi in whitelist |
+| `20260820-06` | `20_code/vendite` | `DROP FUNCTION fn_get_sorgente_documento_id` |
+| `20260820-07` | `20_code/vendite` | `vw_dash_competenza_mensile` + `tipo_movimento` |
+| CSV | `80_data/sql/config/sorgenti.csv` | `label_selector` su 10 righe, **loader `20251002-21` esteso in place** |
+| CSV | `80_data/sql/ui/lista_colonna.csv` | 6 righe nuove (id **484**→**489**) sulla lista 38 |
+| CSV | `80_data/sql/ui/lista_preset_colonna.csv` | le 6 nel preset 38 + **`segment_key` (colonna 410) da `visibile = t` a `f`** |
+| pgTAP | `vendite/test-fn-list-commessa-attivita-provenienza-v1.sql` | plan(22) |
+
+#### 40.5.2 Le colonne a catalogo, come sono nate
+
+| id | codice | `campo_sorgente` | ordine | visibile | priorità |
+| --- | --- | --- | --- | --- | --- |
+| 484 | `articolo` | `articolo_codice` | 15 | ✅ | 95 |
+| 485 | `articolo_descrizione` | `articolo_descrizione` | 16 | ✅ | 50 |
+| 486 | `movimento` | `tipo_movimento` | 25 | ✅ | 88 |
+| 487 | `origine` | `sorgente_documento_numero` | 35 | ✅ | 78 |
+| 488 | `origine_tipo` | `sorgente_codice` | 36 | ⛔ | 35 |
+| 489 | `gruppo_fatturabile` | `gruppo_key` | 37 | ⛔ | 30 |
+| 410 | `segment_key` | `segment_key` | 30 | ⛔ **retrocessa** | 80 *(invariata)* |
+
+Tre scelte che non si leggono dalla tabella:
+
+* **`filtrabile = f` su tutte e sei**, come per `fatturata_il`. Non è timidezza:
+  la funzione accetta **tre** filtri (`stato_emissione`, `stato_approvazione`,
+  `competenza_mese`) e nessun altro. Dichiarare filtrabile una colonna che il DB
+  non sa filtrare è la stessa classe di difetto dell'ordinamento del §40.1.5,
+  un livello più in là. ⚠️ **Un filtro su `Movimento` sarebbe però utile davvero**
+  («fammi vedere solo le rettifiche»): è un parametro `p_tipo_movimento` in più,
+  piccolo, e si fa quando il BE lo chiede.
+* **La priorità di `segment_key` resta 80.** La `priorita` pesa solo fra le
+  colonne **visibili**; chi riaccende deliberatamente il Segmento probabilmente
+  lo vuole tenere. Abbassarla sarebbe stato un secondo cambiamento non chiesto.
+* **Due colonne invece di una**, sia per l'articolo sia per l'origine. Il BE
+  chiedeva «Origine (tipo + numero)» e «Articolo»: una cella a due righe
+  vorrebbe uno **slot FE**. Esponendo gli atomi in due colonne — la seconda
+  spenta — il risultato a video è lo stesso senza codice nuovo nel frontend, e
+  chi vuole la cella composita la costruisce dopo.
+
+#### 40.5.3 Le misure
+
+**Il resolver, su tutte le righe reali** (transazione annullata):
+
+```text
+codice_interno   righe   id risolti   numeri risolti   esempio
+──────────────────────────────────────────────────────────────
+DDT_VENDITA          2            2                2   DDT0000030
+ORDINE_VENDITA      43           43               43   ORD0000027
+PREVENTIVO          44           44               44   PRV0000081
+
+righe sourceless    ONERE 3 · RETTIFICA 6  →  0 id, e UNA riga a testa
+CROSS JOIN LATERAL  98 righe su 98         →  nessuna riga persa
+```
+
+⭐ **Le due prove che valgono più delle altre**, perché misurano i modi in cui
+questo disegno poteva sbagliare in silenzio:
+
+* un `label_selector` che nomina **una colonna inesistente** → `NULL`, **nessun
+  errore** (ed è il motivo per cui esiste l'invariante pgTAP: senza, il sintomo
+  sarebbe una colonna vuota e basta);
+* il `CHECK` di identificatore **rifiuta** `'numero; DROP TABLE x'`.
+
+**La lista, sulle due commesse del cantiere** (322 = il kit, 15370 = il reso
+semplice):
+
+```text
+  id     movimento   articolo      origine       gruppo_key
+  ────────────────────────────────────────────────────────────────────────
+   536   NORMALE     art 100       ORD0000227    ORDINE_VENDITA:019f5f9c…
+ 35184   RETTIFICA   art 100       (vuota)       MAN:322
+ 24553   NORMALE     ARC005474     DDT0010839    DDT_VENDITA:01a00cb3…
+ 35187   RETTIFICA   ARC005474     (vuota)       MAN:15370
+```
+
+⭐ È la decisione A+B che si vede all'opera: dove «Origine» tace, `gruppo_key`
+parla — e dice la cosa vera, non un ripiego.
+
+**La vista mensile**: 7 righe → **8**, `tipo_movimento` in **nona** posizione
+(in coda, come impone `CREATE OR REPLACE VIEW`), `security_invoker=on`
+**preservato**, e ancora **0 righe senza GUC operatore** (fail-closed intatto).
+
+**Firme**: `fn_list_commessa_attivita` resta **una sola** — i parametri non
+cambiano, quindi nessun overload e nessuna chiamata ambigua.
+
+#### 40.5.4 Il pgTAP, e cosa presidia davvero
+
+`db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql`, **plan(22)**,
+**22/22 verdi** nella prova con la migrazione applicata dentro la transazione.
+
+⚠️ **Due avvertenze oneste su quel verde:**
+
+1. La prova è girata **come owner**, non come applicazione: era l'unico modo per
+   creare gli oggetti in una transazione da annullare (`titodb` non è membro di
+   `zeroerp_app` e non può fare `SET ROLE`). **La RLS non è stata esercitata**:
+   la corsa vera, come app, va fatta **dopo l'apply**.
+2. Prima dell'apply il file è **rosso**, e correttamente: i test 2 e 22
+   descrivono lo stato *dopo* la migrazione. Non va messo in baseline — va
+   eseguito dopo.
+
+⭐ **Le due asserzioni che sono il vero motivo per cui il file esiste** sono la
+10 e la 11, e non riguardano la lista: riguardano il **catalogo**.
+
+* la **10** verifica che ogni `label_selector` dichiarato nomini una colonna che
+  esiste davvero. Senza, un refuso nel CSV non produce **nessun** errore — il
+  resolver cattura `undefined_column` e risponde `NULL` — e l'unico sintomo
+  sarebbe una colonna vuota a video: la classe di difetto che nessuna suite
+  vede;
+* la **11** tiene la coerenza con `area`: una sorgente **sfogliabile** deve avere
+  anche un numero leggibile. Il giorno in cui nasce un dominio documentale nuovo,
+  è questa asserzione a ricordare che «Origine» resterebbe vuota per sempre su
+  quel dominio.
+
+**Nessuna regressione sui vicini**, misurata con la migrazione applicata in
+transazione:
+
+```text
+test-colonne-lineage-liste-v1              26/26
+test-fn-list-commessa-attivita-v1          14/14
+test-lista-commessa-attivita-fatturata-v1    4/4
+test-vw-dash-competenza-v1                 17/17
+```
+
+⭐ L'ultimo è quello che poteva cadere, e non cade perché era scritto bene: usa
+`EXISTS … >=` invece di uguaglianze sui totali, quindi la vista che si spezza in
+più righe non lo tocca.
+
+**Cancelli statici**: `guardrail_run_on_change` verde (tutti i `20_code` sono
+`runOnChange: false`), `guardrail_pgtap_preambolo` verde, guardrail naming
+`codice`/`codice_interno` senza match, `check_i18n_keys` pulito.
+
+⚠️ E una cosa che **non** è mia e va detta lo stesso: il guardrail pgTAP segnala
+che il debito `throws_ok` senza discriminante è **sceso da 137 a 132** e chiede
+di abbassare la soglia nel proprio file. Non l'ho toccata — non appartiene a
+questo giro — ma va abbassata, altrimenti la cricchetta resta lasca.
+
+#### 40.5.5 Quello che resta da fare al team DB
+
+1. **L'apply** (aspetta il via), e nello stesso giro l'apply del `-03`/`-07`
+   insieme ai CSV: la colonna `label_selector` nasce vuota e i valori arrivano
+   da `80_data`, che gira **dopo** il `20_code`.
+2. **Rigenerare la doc auto-gen** dopo l'apply: nascono
+   `funzioni/fn_get_sorgente_documento_ref.md`, sparisce
+   `funzioni/fn_get_sorgente_documento_id.md` e cambiano
+   `fn_list_commessa_attivita.md` e `views/vw_dash_competenza_mensile.md`. Le
+   manuali sono già aggiornate a mano (`manual/`), la nuova compresa.
+3. **La corsa pgTAP vera**, come applicazione, sui quattro file dei vicini più
+   il nuovo.
+
