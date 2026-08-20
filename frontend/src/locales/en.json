@@ -1871,9 +1871,7 @@
       "col_emittente": "Issuer"
     },
     "dashboard_competenza": {
-      "page_title": "Invoicing accrual",
-      "page_description": "Job order → invoice funnel by accrual month (Accrual lens).",
-      "competenza_titolo": "Accrual {mese} {anno}",
+      "page_title": "Invoicing accrual: {mese} {anno}",
       "mese_ok": "All month value has been invoiced",
       "mese_aperti": "{n} activities not yet invoiced in the month",
       "mese_errori": "{n} live invoicing errors in the month",

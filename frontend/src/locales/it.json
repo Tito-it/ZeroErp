@@ -1871,9 +1871,7 @@
       "col_emittente": "Emittente"
     },
     "dashboard_competenza": {
-      "page_title": "Competenza fatturazione",
-      "page_description": "Funnel commessa → fattura per mese di competenza (Lente Competenza).",
-      "competenza_titolo": "Competenza {mese} {anno}",
+      "page_title": "Competenza fatturazione: {mese} {anno}",
       "mese_ok": "Tutto il valore del mese è fatturato",
       "mese_aperti": "{n} attività non ancora fatturate nel mese",
       "mese_errori": "{n} errori vivi di fatturazione nel mese",

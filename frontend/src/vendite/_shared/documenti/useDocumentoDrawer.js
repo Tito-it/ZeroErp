@@ -46,9 +46,26 @@ export function useDocumentoDrawer(onClose = null) {
   // collegamenti, che monta il proprio host: registrandosi qui, un ordine che ha
   // aperto un DDT che ha aperto un reso si chiude tutto insieme al primo cambio
   // di rotta — e nessuno dei tre ha dovuto sapere degli altri due.
-  // Si passa da `onVisibleChange(false)`, non da `visible.value = false`: e'
-  // esattamente la strada della X in testata, `onClose` compreso.
-  registraDrawerChiudibile(() => onVisibleChange(false))
+  //
+  // 🔴 SI CHIUDE E BASTA: niente `onVisibleChange(false)`, quindi `onClose` NON
+  // scatta. La prima versione (2026-08-19) passava di li' «per fare la stessa
+  // strada della X in testata», e ha prodotto un difetto vero: `onClose` e' un
+  // callback di RICARICO, e la chiusura globale lo faceva partire su OGNI host
+  // registrato a OGNI cambio di rotta — anche su drawer chiusi, con le loro
+  // prop a null. `CommessaGestioneDrawer` passa `reloadAll()`, che finiva per
+  // chiedere `/vendite/commesse/null/stato/`: 404, toast d'errore, e siccome
+  // scattava a ogni navigazione l'avviso non se ne andava piu'.
+  // Misurato in `dbops.request_log`: 19 chiamate a quel path, la prima poche ore
+  // dopo il commit che introdusse la chiusura globale, nessuna prima.
+  // ⚠️ E non e' nemmeno la semantica giusta: `onClose` vuol dire «l'operatore ha
+  // chiuso il drawer, ricarica cio' che c'e' sotto». Qui sotto non c'e' piu'
+  // niente — si sta lasciando la pagina, e la view che la ospita ricarica da se'
+  // quando torna attiva (KeepAlive, `onActivated`).
+  // ⚠️ Il guard su `visible` non e' cosmetico: senza, si scriverebbe su un ref
+  // gia' falso una volta per host a ogni navigazione, per sempre.
+  registraDrawerChiudibile(() => {
+    if (visible.value) visible.value = false
+  })
 
   return { visible, tipo, id, apri, onVisibleChange }
 }
