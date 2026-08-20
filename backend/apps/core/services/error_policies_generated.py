@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 721, di cui 80 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 721, di cui 81 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -375,6 +375,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # 404 -> 500 (audit 2026-08-06): nessuna riga con `is_default = true` · in `emittenti_fiscali_billing_account`. E' un'installazione non · configurata, e lo dice il messaggio stesso: «non configurato».
     "E_EMITTENTE_DEFAULT_MISSING": "TECNICO",
     "E_EMITTENTE_DEFAULT_SINGLETON": "CONFLITTO_STATO",
+    # RITIRATO il 2026-08-20 (changeSet 20260820-02). anagrafiche.trgfn_emittenti_fiscali_guard_attivo era diventato un DOPPIONE ESATTO del trigger prevent_deactivate_if_children che l'automazione ATTIVO genera dal 20260819-04 (FK di emittenti_fiscali_billing_account ripuntata su emittenti_fiscali), e non veniva nemmeno piu' raggiunto: i BEFORE ROW scattano in ordine alfabetico e trg_..._emittenti_fiscali_billing_acco_b98811 viene prima di trg_..._guard_attivo_upd. I due erano equivalenti anche nel predicato, perche' la tabella figlia NON ha una colonna attivo e quindi il generico ricade sul ramo «qualunque riga». La regola non e' sparita: la dice ora E_ATTIVO_BLOCK_CHILDREN_EXIST (125), che dal 20260820-01 nomina la tabella collegata invece di dire soltanto che esiste. Nessuna funzione viva nomina piu' questo codice.
+    # ⚠️ RITIRATO il 2026-08-20
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "CONFLITTO_STATO",
     # 400 -> 409 il 2026-08-06 (audit coerenza status, api.md · §Tassonomia): «non si tocca piu' dopo la creazione» e' la · definizione RFC 9110 del 409 — conflitto con lo stato attuale · della risorsa — ed e' gia' lo status degli altri 29 codici della · stessa famiglia. `ui_action` invariata: a video non cambia nulla.
     "E_EMITTENTE_NON_MODIFICABILE": "CONFLITTO_STATO",
@@ -1098,6 +1100,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_DATA_FINE_INFERIORE_DI_INIZIO",
         "E_DBLINK_LOG_CONN_MISSING",
         "E_DRYRUN_CREATE_TRIGGER",
+        "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
         "E_FONTE_QUANTITA_NON_VALIDA",
         "E_INVALID_SNAPSHOT",
         "E_NUMERAZIONE_IMMUTABILE",
