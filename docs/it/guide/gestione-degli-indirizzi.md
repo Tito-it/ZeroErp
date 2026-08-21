@@ -1,6 +1,8 @@
 # Guida – Gestione degli Indirizzi
 
-> (latest review 25-03-26)
+> (latest review 22-08-26 — nuova sezione «Gli indirizzi congelati sui
+> documenti»: snapshot per documento, la fattura che risolve per istanza, il
+> congelamento oltre il pre-fiscale. Revisione precedente: 25-03-26)
 >
 > Destinatari: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -155,6 +157,71 @@ Per letture dirette senza fallback:
 * [`script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_istanza_utility_id DEFAULT NULL)`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo) — solo layer ruolo, con filtro istanza opzionale
 * [`script.fn_get_indirizzi_by_soggetto(p_soggetto_id)`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto) — solo layer soggetto
 * [`script.fn_get_indirizzo_by_soggetto(p_soggetto_id, p_tipo_codice)`](/dbzero/script/funzioni/fn_get_indirizzo_by_soggetto) — layer soggetto con fallback tra tipi
+
+---
+
+## Gli indirizzi congelati sui documenti
+
+Un documento non **legge** l'indirizzo del cliente ogni volta che lo stampa: se
+lo **copia addosso** quando nasce, e da quel momento porta la propria fotografia.
+Ogni documento del ciclo attivo ha la sua tabella satellite —
+`vendite.preventivi_indirizzi`, `ordini_indirizzi`, `ddt_indirizzi`,
+`contratti_indirizzi`, `offerte_commerciali_indirizzi`, `fatture_indirizzi` — con
+una riga per tipo di indirizzo: lo `snapshot` (JSONB, coi campi già composti per
+la stampa) e il riferimento a **da dove è stato preso** (`origine_indirizzo_id` /
+`origine_soggetto_ruolo_id`).
+
+**Perché**: un documento emesso deve continuare a dire quello che diceva. Se il
+cliente trasloca, le fatture di sei mesi fa non devono cambiare indirizzo alla
+prima ristampa.
+
+### Chi risolve e chi copia
+
+| Documento | Come ottiene i suoi indirizzi |
+| --- | --- |
+| Preventivo, offerta (la **radice** della catena) | **Risolve dall'anagrafica** con la cascata qui sopra |
+| Ordine, DDT, contratto (documenti **derivati**) | **Copiano 1:1** lo snapshot del documento padre, filtrato sui tipi ammessi nel loro ambito |
+| **Fattura** | **Risolve dall'anagrafica**, come la radice |
+
+La fattura è l'unica eccezione, e non è una svista: **aggrega N sorgenti**, e una
+parte di ciò che fattura non ha alcun documento padre da cui copiare (oneri di
+commessa, consumi, rettifiche). Risolvere dall'anagrafica è l'unica regola che
+copre tutti i casi. La conseguenza va conosciuta: se l'anagrafica è cambiata dopo
+il DDT, la fattura può stampare un indirizzo **diverso** da quello del DDT che
+sta fatturando. È voluto — vince il dato corrente al momento in cui la fattura
+nasce — non un difetto.
+
+### La fattura risolve **per istanza**
+
+Un soggetto-ruolo può avere legittimamente più indirizzi dello stesso tipo: uno
+per istanza utility, più uno generico (§Policy di risoluzione). Perciò la
+risoluzione della fattura parte dall'**istanza del billing account** e scende sul
+generico solo se lì non trova nulla. Cercare per solo ruolo darebbe fino a N
+righe, cioè un risultato non deterministico — ed è il motivo per cui i tipi
+legati al punto di fornitura si trovano solo passando dall'istanza.
+
+Due dettagli che sembrano anomalie e non lo sono:
+
+* **Solo `FATT` è obbligatorio** nell'ambito `FATTURE`. Gli altri tipi previsti
+  (`CON`, `FORNITURA`, `RES`) se mancano non generano né riga né errore.
+* **Quando il billing account ha un padre, la fattura è del padre**, quindi porta
+  gli indirizzi del padre. Su un BA padre l'indirizzo di fornitura quasi non
+  esiste mai, perché la sua istanza è di servizio e non descrive un punto di
+  fornitura reale: è il caso normale.
+
+### Dopo il pre-fiscale non si tocca più
+
+Finché la fattura è in bozza o emessa i suoi satelliti si possono riscrivere — è
+quello che fa il ri-lancio dello step, e infatti correggere l'anagrafica e
+rifare il giro è il modo previsto di sistemare un indirizzo sbagliato. Superata
+quella soglia un trigger di congelamento li blocca in scrittura **e** in
+cancellazione: da lì in avanti sono la storia del documento.
+
+⚠️ **Un indirizzo congelato da un documento non è più cancellabile.** Il
+riferimento `origine_indirizzo_id` è una chiave esterna: finché un documento la
+punta, la riga di `anagrafiche.indirizzi` non si cancella. Non è un problema da
+aggirare — è la garanzia che la provenienza resti ricostruibile — ma va saputo
+prima di provare a fare pulizia in anagrafica.
 
 ---
 

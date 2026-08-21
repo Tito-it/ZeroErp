@@ -26,14 +26,14 @@
 > `billing_account → emittente` (oggi 43). La metà che importa — **zero sul layer
 > RUOLO** — è confermata.
 >
-> Stato del cantiere: [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §9.
+> Stato del cantiere: [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §9.
 
 ---
 
 > **Chi scrive:** BE (`dev/backend-tid`), 2026-07-31.
 > **A chi:** team DB (`dev/db-tid`).
 > **Cos'è:** **estensione della Fase 2** («ristampa conforme») del piano
-> [piano-be-fe-satelliti-fattura.md](../work-in-progress/piano-be-fe-satelliti-fattura.md). Non è un
+> [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md). Non è un
 > cantiere nuovo: è il completamento della stessa garanzia che la Fase 1 ha
 > aperto a metà.
 > **Prerequisiti nuovi:** nessuno. Si innesta su 2.0-2.2 già applicate.

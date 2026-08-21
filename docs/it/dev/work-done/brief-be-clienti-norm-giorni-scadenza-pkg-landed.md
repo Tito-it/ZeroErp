@@ -60,7 +60,7 @@ Entrambi solo IT, coerenti con la convenzione del progetto (fallback EN→IT com
 ⚠️ **Superato**: il trigger **non esiste più** (riforma termini di pagamento, piano
 satelliti fattura §3a.5) e la pagina manuale è stata **ritirata** — per questo il
 riferimento qui sopra non è più un link. Vedi
-[piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §3a.9.
+[piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §3a.9.
 
 ## 2. Regole dominio (riferimento BE)
 

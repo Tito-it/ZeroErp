@@ -121,6 +121,12 @@ Da oggi una fattura porta il proprio **piano rate**: quante rate, a quale data,
 per quale importo. Lo genera la pipeline nello step EMESSA e vive in
 [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze).
 
+**Chi decide quante rate e con che scadenze** non è questa guida: è il *termine
+di pagamento* del documento, scelto da un catalogo e risolto lungo la catena
+documento → commessa → cliente → *unica rata*. Regole, catalogo di oggi e
+conseguenze (fra cui il fatto che il termine decide anche **quante fatture**
+nascono) in [Termini di pagamento](/guide/termini-di-pagamento).
+
 ### 🔴 Un incasso è agganciato alla FATTURA, non alla RATA
 
 È il punto da avere chiaro prima di progettare qualsiasi cosa in quest'area.
@@ -338,9 +344,18 @@ Da un punto di vista tecnico:
 | `data_valuta`        | DATE         |    si    | Data valuta                                                         |
 | `data_operazione`    | DATE         |    si    | Data operazione                                                     |
 | `motivo_sospeso`     | TEXT         |    si    | Motivazione per stato sospeso                                       |
+| `fondo_source_id`    | BIGINT, FK   |    si    | Atto di fondo fattura da cui la riga nasce (vuoto sulle altre)      |
 | `attivo`             | BOOLEAN      |    no    | Flag attivo (default: true)                                         |
 | `meta`               | JSONB        |    no    | Metadati estensibili                                                |
 | Campi audit          | —            |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+
+> ⭐ **`fondo_source_id` e cio che accade quando la riga viene registrata.**
+> Dal 21-08-2026 il legame con l'atto di fondo fattura e una colonna con una
+> chiave esterna vera (prima era una stringa dentro il `meta`). Non serve solo a
+> ritrovare le righe: portando la riga in uno stato **registrato**, un trigger
+> porta l'atto a **`ESEGUITO`** — cioe il fondo smette di essere una cosa da
+> lavorare e diventa una cosa fatta. Da li non si torna indietro: se il fondo
+> era sbagliato si compie un atto nuovo, non si riscrive quello vecchio.
 
 **Vincoli CHECK:** `chk_vendite_contabili_righe_importo_non_zero` — l'importo non puo essere zero.
 
@@ -555,20 +570,40 @@ Da un punto di vista tecnico:
 
 * `DISPONIBILE` — il fondo e stato generato e attende assegnazione
 * `ASSEGNATO` — il fondo e stato collegato a una fattura figlia (`fattura_figlia_id` valorizzato)
+* `ESEGUITO` — ⭐ il trasferimento e stato **registrato in contabilita**: il fondo e una cosa fatta
 * `ANNULLATO` — il fondo non e piu utilizzabile (documento sorgente gia saldato o reset bloccato)
 
-Il reset centralizzato in `vendite.fn_reset_fondi_fattura()` riporta i fondi `ASSEGNATO` a `DISPONIBILE` rimuovendo il `fattura_figlia_id`.
+> ⭐ **`ESEGUITO` e nato il 21-08-2026, e non e una parola in piu.** Prima
+> `ANNULLATO` ne diceva **tre** di cose — «non si deve fare piu», «non si e piu
+> capienti», «e gia stato eseguito» — e nell'ultimo caso lasciava un record che
+> si contraddiceva: annullato, ma con la fattura figlia ancora agganciata.
+> Adesso ogni fatto ha il suo nome.
+>
+> ⚠️ **`ESEGUITO` e `ANNULLATO` sono entrambi definitivi**, per ragioni
+> opposte: dal secondo si e tolto denaro dal tavolo, nel primo lo si e **mosso**.
+> In tutti e due i casi tornare indietro non disfa niente — se serve un altro
+> esito si compie un **atto nuovo**.
+>
+> ℹ️ Non lo scrive una persona: lo scrive il database, appena la riga contabile
+> nata dal fondo viene registrata.
+
+Il reset centralizzato in `vendite.fn_reset_fondi_fattura()` **cancella** i fondi
+`ASSEGNATO` che non sono stati eseguiti — un atto mai eseguito e una proposta, e
+il giro successivo ne fa una nuova sul residuo di adesso — e **non tocca** quelli
+`ESEGUITO`, che si limita a segnalare nel diario della fattura.
 
 > ⚠️ **Il reset e un'operazione tecnica sulla fattura figlia** (il ritorno di un
 > lotto in bozza), **non una reazione ai pagamenti**: nessun incasso riapre o
 > chiude un fondo da solo.
 >
-> 🟠 **Due cose stanno per cambiare** (piano in corso —
-> [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8):
+> ✅ ~~**Due cose stanno per cambiare**~~ — **la prima e' fatta** (15-08-2026):
+> il fondo di una fattura definitiva **non si ricalcola piu**, la generazione e
+> create-only e l'importo dell'atto e immutabile. La seconda e ancora aperta.
+> (piano — [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8):
 >
-> * oggi il fondo di una fattura non ancora assegnato viene **riallineato** dai
->   giri di fatturazione successivi. Diventera fisso: **una fattura definitiva ha
->   un fondo definitivo**, che non si ricalcola piu;
+> * ~~oggi il fondo di una fattura non ancora assegnato viene **riallineato** dai
+>   giri di fatturazione successivi. Diventera fisso~~ → **fatto**: una fattura
+>   definitiva ha un fondo definitivo;
 > * oggi il passaggio ad `ANNULLATO` per "documento sorgente gia saldato"
 >   avviene **da solo**. Sparira: se nel frattempo la fattura di origine e stata
 >   pagata, il fondo semplicemente **non viene applicato** e resta da guardare.

@@ -27,4 +27,5 @@
 - [trgfn_vendite_contabili_righe_guard_distinta_finale](manual/trgfn_vendite_contabili_righe_guard_distinta_finale.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_righe_guard_stato_dati](manual/trgfn_vendite_contabili_righe_guard_stato_dati.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_righe_guard_transizione](manual/trgfn_vendite_contabili_righe_guard_transizione.md) — (rev 2026-08-21)
+- [trgfn_vendite_contabili_righe_marca_fondo_eseguito](manual/trgfn_vendite_contabili_righe_marca_fondo_eseguito.md) — (rev 2026-08-22)
 - [trgfn_vendite_movimenti_sync_contabile_from_riga](manual/trgfn_vendite_movimenti_sync_contabile_from_riga.md) — Mantenere coerenti `contabile_id`, `fattura_id` e `billing_account_id` su `pagamenti.vendite_movimenti` quando viene usato il riferimento a riga (`contabile_riga_id`).

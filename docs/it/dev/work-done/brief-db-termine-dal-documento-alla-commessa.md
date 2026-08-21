@@ -35,8 +35,8 @@
 > silenzio. La metà applicativa è già corretta e testata; restano **due
 > colonne** nel contratto delle `fn_list_*_da_pushare` e **una decisione** sul
 > livello 1 di `fn_resolve_termini_pagamento`.
-> **Correlati:** [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) (D-R) ·
-> [piano-be-fe-satelliti-fattura.md](../work-in-progress/piano-be-fe-satelliti-fattura.md)
+> **Correlati:** [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) (D-R) ·
+> [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md)
 
 ---
 

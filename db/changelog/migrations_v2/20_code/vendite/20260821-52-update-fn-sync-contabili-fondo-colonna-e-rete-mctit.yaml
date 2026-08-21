@@ -1,0 +1,322 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL SYNC PASSA ALLA COLONNA, SI DA' UNA RETE E CHIUDE IL FAIL-OPEN
+#   vendite.fn_sync_contabili_fondo_fattura — passi S1-14, S1-8 e C-6 (lotto 3)
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.1 S1-8/S1-14, §1.4 C-2/C-6, §6.8
+#
+# ── TRE MODIFICHE, UNA SOLA FUNZIONE ───────────────────────────────────
+#
+#   1) **S1-14 — il legame e' una colonna.** Lettura e scrittura passano da
+#      `fondo_source_id`; la chiave `meta ->> 'fondo_source_id'` non si scrive
+#      piu' e, dove esistesse, viene TOLTA dal meta nell'UPDATE. Due sorgenti
+#      di verita' sullo stesso legame sono il difetto, non la comodita'.
+#      ℹ️ `meta ->> 'origine' = 'FONDO_FATTURA'` RESTA: dice da quale processo
+#      nasce la riga, che e' un'altra domanda.
+#
+#   2) 🛟 **S1-8 — la rete, e non e' piu' il rimedio.** Dopo S1-15/S1-16 un
+#      fondo il cui trasferimento e' registrato non e' piu' ASSEGNATO, quindi
+#      il ciclo non lo vede: C-2 e C-3 sono chiusi UN PIANO SOPRA. Qui resta
+#      il fail-closed sull'invariante — se un fondo ASSEGNATO avesse comunque
+#      una riga che non puo' tornare ad ABBINATA, non la si aggiorna in
+#      silenzio: si salta e si LOGGA.
+#      ⛔ E si logga, non si solleva: questa funzione sta sul percorso vivo
+#      della pipeline (`fn_ricalcola_totali_fattura` la chiama
+#      incondizionatamente come ultima istruzione), e un errore qui fa cadere
+#      un lotto di fatturazione. Regola del progetto: un `W_` si registra, non
+#      si alza — un `W_` sollevato diventa un HTTP 500.
+#
+#      ⭐ **La rete e' data-driven, e questo la rende piu' larga del difetto
+#      che l'ha chiesta.** Non chiede «la riga e' POSTATA?» ma «la matrice
+#      ammette il passaggio dallo stato in cui si trova ad ABBINATA?», letta
+#      da `pagamenti.transizioni_stati_contabile_riga` (lotto 2). Copre quindi
+#      anche il caso che nessuno aveva visto: una riga SCARTATA. `SCARTATA ->
+#      ABBINATA` **non e' ammessa**, quindi oggi il sync la forzerebbe e il
+#      guard delle transizioni farebbe cadere la pipeline con un errore che
+#      accusa il ricalcolo della fattura.
+#
+#   3) 🔴 **C-6 — il fail-open si spegne.** Oggi, se lo stato `ABBINATA` non
+#      si trova a catalogo, la funzione ripiega su «uno stato qualunque»
+#      (`ORDER BY s.id LIMIT 1`). Era gia' sbagliato; **il lotto 2 lo ha reso
+#      peggiore**: con la bandiera `richiede_abbinamento` una riga che
+#      ripiegasse su `IMPORTATA` (bandiera `false`) sfuggirebbe ANCHE al guard
+#      nuovo, e resterebbe non registrabile per sempre senza che nessun errore
+#      lo dica. Ora la mancanza dello stato e' un errore di configurazione, e
+#      lo dice.
+#
+# ── ⭐ TIPI ANCORATI CON %TYPE ANCHE IN FIRMA (regola del progetto) ────
+#   I DECLARE lo usavano quasi tutti; la FIRMA no, e due DECLARE nemmeno
+#   (`v_stato_contabile_codice TEXT`, `v_saldo_effettivo NUMERIC`). Ora:
+#   `p_fattura_figlia_id vendite.fatture.id%TYPE`,
+#   `pagamenti.vendite_contabili_stati.codice_interno%TYPE` e
+#   `vendite.fatture.totale_a_pagare%TYPE` — che e' il numero da cui il
+#   residuo si calcola.
+#
+#   ⚠️ Un `%TYPE` in firma e' una FOTOGRAFIA, non un link: PostgreSQL lo
+#   risolve al CREATE. Se risolvesse a un tipo DIVERSO nascerebbe un OVERLOAD
+#   invece di una sostituzione, e con i DEFAULT le chiamate diventerebbero
+#   ambigue. ✅ Verificato prima di scrivere (2026-08-21): `vendite.fatture.id`
+#   e' `bigint` e `totale_a_pagare` `numeric` senza typmod, cioe' esattamente i
+#   tipi nudi di prima — `pg_get_function_identity_arguments` non cambia e il
+#   CREATE OR REPLACE sostituisce.
+#
+#   ℹ️ Le tre colonne del `RETURNS TABLE` restano `integer`: sono CONTATORI di
+#   righe lavorate, non il riflesso di una colonna. Ancorarli a qualcosa
+#   sarebbe inventare una parentela che non c'e'.
+#
+# ── ⚠️ L'ORDINE DENTRO IL CICLO CAMBIA, ED E' PARTE DEL RIMEDIO ────────
+#   La riga contabile si cerca **prima** del calcolo del saldo. Con l'ordine
+#   vecchio un fondo con riga registrata e saldo zero sarebbe passato per il
+#   ramo di annullamento (difetto C-3) prima ancora che la rete lo vedesse.
+#
+# ── 🔵 CODA LASCIATA APERTA, NON DIMENTICATA ──────────────────────────
+#   Il guard di parametro di questa funzione solleva ancora
+#   `E_PARAMETRO_INVALIDO` passando come valore il NOME del parametro — cioe'
+#   il difetto che il lotto 1 ha tolto da tutta `pagamenti`. Qui non si
+#   corregge: `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (953) e' dichiarato a catalogo
+#   per le funzioni di `pagamenti`, e usarlo da `vendite` contraddirebbe la
+#   sua nota. Coniare il gemello di `vendite` e' una decisione di dominio, ed
+#   e' scritta come domanda nel brief.
+#
+# Origine: corpo dalla doc auto-generata `dbzero` (l'oggetto vivo) coi patch
+#   mirati applicati sopra. Firma e RETURNS TABLE invariati: e' un
+#   CREATE OR REPLACE puro.
+# Verifica: db/pgtap/vendite/test-fondo-fattura-eseguito.sql · db/pgtap/vendite/test-fondi-fattura.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-52-update-fn-sync-contabili-fondo-colonna-e-rete-mctit.yaml
+
+  - changeSet:
+      id: 20260821-52-update-fn-sync-contabili-fondo-colonna-e-rete
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il sync dei fondi legge e scrive il legame sulla colonna fondo_source_id invece che
+        dentro il meta, si da' una rete fail-closed sull'invariante «un fondo ASSEGNATO non
+        ha righe che non possono tornare ad ABBINATA» (si salta e si logga un W_, mai un
+        RAISE: la funzione sta sul percorso vivo della pipeline) e spegne il fallback
+        fail-open sul lookup dello stato, che il lotto 2 aveva reso peggiore. La rete e'
+        data-driven sulla matrice delle transizioni, quindi copre anche una riga SCARTATA —
+        caso che oggi farebbe cadere il ricalcolo della fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+                columnName: fondo_source_id
+            - tableExists:
+                schemaName: pagamenti
+                tableName: transizioni_stati_contabile_riga
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_sync_contabili_fondo_fattura'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_sync_contabili_fondo_fattura(
+                  p_fattura_figlia_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(
+                  inserted_righe   integer,
+                  updated_righe    integer,
+                  annullati_source integer
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_centro_fondo_id  pagamenti.centri_riscossione.id%TYPE;
+                  v_stato_contabile_codice pagamenti.vendite_contabili_stati.codice_interno%TYPE := 'VALIDATA';
+                  v_stato_riga_id    pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_inserted INTEGER := 0;
+                  v_updated  INTEGER := 0;
+                  v_annullati INTEGER := 0;
+                  v_riga_id      pagamenti.vendite_contabili_righe.id%TYPE;
+                  v_riga_stato_id   pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_riga_stato      pagamenti.vendite_contabili_righe_stati.codice_interno%TYPE;
+                  v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                  v_lotto_id     vendite.fatturazione_lotti.id%TYPE;
+                  v_data_valuta  pagamenti.vendite_contabili_righe.data_valuta%TYPE;
+                  v_saldo_effettivo vendite.fatture.totale_a_pagare%TYPE;
+                  r RECORD;
+              BEGIN
+                  IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_contabili_fondo_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_figlia_id', 'valore', p_fattura_figlia_id), NULL::uuid, 'p_fattura_figlia_id obbligatorio e > 0');
+                  END IF;
+
+                  -- Centro riscossione fondo fattura
+                  SELECT c.id INTO v_centro_fondo_id FROM pagamenti.centri_riscossione c WHERE c.attivo IS TRUE AND c.is_fondo_fattura IS TRUE ORDER BY c.id LIMIT 1;
+
+                  IF v_centro_fondo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_contabili_fondo_fattura', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'centri_riscossione.is_fondo_fattura'), NULL::uuid, 'il centro di riscossione dei fondi fattura');
+                  END IF;
+
+                  -- =========================================================
+                  -- Stato riga contabile target: ABBINATA, e SOLO quello.
+                  --
+                  -- 🔴 C-6: fino al 2026-08-21 qui c'era un ripiego su «uno
+                  --    stato qualunque» (ORDER BY s.id LIMIT 1). Era gia'
+                  --    sbagliato, ed e' PEGGIORATO col lotto 2: una riga
+                  --    ripiegata su IMPORTATA ha richiede_abbinamento = false,
+                  --    quindi sfuggirebbe anche al guard nuovo e resterebbe
+                  --    non registrabile per sempre, in silenzio.
+                  --    Uno stato mancante e' una configurazione rotta: si dice.
+                  -- =========================================================
+                  SELECT s.id INTO v_stato_riga_id FROM pagamenti.vendite_contabili_righe_stati s WHERE s.attivo IS TRUE AND s.codice_interno = 'ABBINATA' LIMIT 1;
+                  IF v_stato_riga_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_contabili_fondo_fattura', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'vendite_contabili_righe_stati.ABBINATA'), NULL::uuid, 'lo stato ABBINATA delle righe contabili');
+                  END IF;
+
+                  -- Lotto associato
+                  SELECT lf.lotto_id INTO v_lotto_id FROM vendite.fatturazione_lotti_fatture lf WHERE lf.fattura_id = p_fattura_figlia_id ORDER BY lf.id DESC LIMIT 1;
+
+                  -- Loop fondi assegnati
+                  -- ⭐ Il filtro su ASSEGNATO e' cio' che, dal 2026-08-21, tiene
+                  --    fuori i fondi ESEGUITI: il quarto stato li porta via da
+                  --    qui senza che questa WHERE cambi.
+                  FOR r IN
+                      SELECT s.id AS source_id, s.fattura_sorgente_id, s.importo, s.billing_account_id, fsrc.data AS data_fattura_sorgente
+                        FROM vendite.fatture_fondi_fattura_source s
+                        JOIN vendite.tipi_fondi_fattura t ON t.id = s.tipo_fondo_fattura_id
+                        JOIN vendite.fatture fsrc ON fsrc.id = s.fattura_sorgente_id
+                       WHERE s.fattura_figlia_id = p_fattura_figlia_id AND s.attivo IS TRUE AND s.stato = 'ASSEGNATO' AND t.codice_interno = 'F_F_ADD_ACC'
+                       ORDER BY s.id
+                  LOOP
+                      -- =====================================================
+                      -- La riga contabile di QUESTO atto, letta dalla COLONNA
+                      -- (S1-14) e non piu' da una stringa dentro il meta.
+                      --
+                      -- ⚠️ Si cerca PRIMA di calcolare il saldo, ed e' parte
+                      --    del rimedio: con l'ordine vecchio un fondo con riga
+                      --    registrata e saldo zero passava per il ramo di
+                      --    annullamento (C-3) prima che la rete lo vedesse.
+                      --
+                      -- ORDER BY id DESC: per invariante c'e' una riga sola
+                      -- per atto, ma se ce ne fossero due vale la piu' recente.
+                      -- =====================================================
+                      SELECT cr.id, cr.stato_id, st.codice_interno
+                        INTO v_riga_id, v_riga_stato_id, v_riga_stato
+                        FROM pagamenti.vendite_contabili_righe cr
+                        JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                       WHERE cr.attivo IS TRUE
+                         AND cr.fondo_source_id = r.source_id
+                       ORDER BY cr.id DESC
+                       LIMIT 1;
+
+                      -- =====================================================
+                      -- 🛟 S1-8 — LA RETE. Non e' il rimedio (quello e' il
+                      --    quarto stato del fondo): e' il fail-closed
+                      --    sull'invariante «un fondo ASSEGNATO non ha righe
+                      --    che non possono tornare ad ABBINATA».
+                      --
+                      -- ⭐ La domanda si fa alla MATRICE, non a un elenco di
+                      --    stati scritto qui: copre POSTATA (terminale) e
+                      --    anche SCARTATA, da cui non esiste passaggio verso
+                      --    ABBINATA — e che oggi farebbe cadere il ricalcolo
+                      --    della fattura con un errore che accusa il ricalcolo.
+                      --
+                      -- ⛔ Si LOGGA e si salta: mai un RAISE, questa funzione
+                      --    e' su percorso vivo della pipeline.
+                      -- =====================================================
+                      IF v_riga_id IS NOT NULL
+                         AND v_riga_stato_id IS DISTINCT FROM v_stato_riga_id
+                         AND NOT EXISTS (
+                             SELECT 1
+                               FROM pagamenti.transizioni_stati_contabile_riga t
+                              WHERE t.stato_da_id = v_riga_stato_id
+                                AND t.stato_a_id  = v_stato_riga_id
+                                AND t.attivo IS TRUE)
+                      THEN
+                          INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta, data_insert, user_insert, data_update, user_update)
+                          VALUES (
+                              p_fattura_figlia_id,
+                              now(),
+                              format('Fondo non sincronizzato: la riga contabile e'' in stato %s e da li'' non si torna ad ABBINATA', v_riga_stato),
+                              'W',
+                              FALSE,
+                              jsonb_build_object(
+                                  'source_id',         r.source_id,
+                                  'contabile_riga_id', v_riga_id,
+                                  'stato_riga',        v_riga_stato,
+                                  'error_code',        'W_FONDO_RIGA_CONTABILE_NON_AGGIORNABILE',
+                                  'cause',             'RIGA_NON_RIPORTABILE_AD_ABBINATA'),
+                              now(), current_user, now(), current_user);
+                          CONTINUE;
+                      END IF;
+
+                      -- Formula unica (changeSet 20260815-05): il residuo della
+                      -- sorgente al netto del contributo di QUESTO fondo.
+                      v_saldo_effettivo := vendite.fn_saldo_sorgente_fondo(r.fattura_sorgente_id, r.source_id);
+
+                      IF COALESCE(v_saldo_effettivo, 0) = 0 THEN
+                          -- ⭐ La ragione dell'annullamento sta ora SUL DATO, non
+                          --    solo nel comportamento: chi guarda la riga sa
+                          --    perche' e' finita li'.
+                          UPDATE vendite.fatture_fondi_fattura_source s
+                             SET stato = 'ANNULLATO',
+                                 motivo = COALESCE(s.motivo, 'Sorgente gia coperta: saldo effettivo zero alla sincronizzazione contabile'),
+                                 data_update = now(), user_update = current_user
+                           WHERE s.id = r.source_id AND s.stato IS DISTINCT FROM 'ANNULLATO';
+                          IF FOUND THEN v_annullati := v_annullati + 1; END IF;
+                          CONTINUE;
+                      END IF;
+
+                      v_data_valuta := CASE WHEN current_date > r.data_fattura_sorgente THEN current_date ELSE r.data_fattura_sorgente END;
+
+                      v_contabile_id := pagamenti.fn_get_or_create_vendite_contabile(
+                          p_centro_riscossione_id => v_centro_fondo_id, p_data_contabile => r.data_fattura_sorgente,
+                          p_data_registrazione => r.data_fattura_sorgente, p_ente_incasso_id => NULL, p_lotto_id => v_lotto_id,
+                          p_codice_stato_interno => v_stato_contabile_codice,
+                          p_meta => jsonb_build_object('origine', 'FONDO_FATTURA', 'fattura_figlia_id', p_fattura_figlia_id));
+
+                      IF v_riga_id IS NULL THEN
+                          INSERT INTO pagamenti.vendite_contabili_righe (contabile_id, riferimento_ente, data_pagamento, data_valuta, data_operazione, importo, fattura_id, billing_account_id, stato_id, motivo_sospeso, fondo_source_id, meta, attivo, data_insert, user_insert, data_update, user_update)
+                          VALUES (v_contabile_id, concat('FONDO_SRC_', r.source_id::TEXT), r.data_fattura_sorgente, v_data_valuta, now(), r.importo, r.fattura_sorgente_id, r.billing_account_id, v_stato_riga_id, NULL, r.source_id, jsonb_build_object('origine', 'FONDO_FATTURA', 'fattura_figlia_id', p_fattura_figlia_id), TRUE, now(), current_user, now(), current_user);
+                          v_inserted := v_inserted + 1;
+                      ELSE
+                          -- ⚠️ `- 'fondo_source_id'` toglie la chiave storica dal
+                          --    meta: il legame ha una colonna, e due sorgenti di
+                          --    verita' sulla stessa cosa sono il difetto che
+                          --    S1-14 chiude.
+                          UPDATE pagamenti.vendite_contabili_righe cr SET contabile_id = v_contabile_id, riferimento_ente = concat('FONDO_SRC_', r.source_id::TEXT), data_pagamento = r.data_fattura_sorgente, data_valuta = v_data_valuta, data_operazione = r.data_fattura_sorgente, importo = r.importo, fattura_id = r.fattura_sorgente_id, billing_account_id = r.billing_account_id, stato_id = v_stato_riga_id, motivo_sospeso = NULL, fondo_source_id = r.source_id, meta = (COALESCE(cr.meta, '{}'::JSONB) - 'fondo_source_id') || jsonb_build_object('origine', 'FONDO_FATTURA', 'fattura_figlia_id', p_fattura_figlia_id), data_update = now(), user_update = current_user WHERE cr.id = v_riga_id;
+                          v_updated := v_updated + 1;
+                      END IF;
+                  END LOOP;
+
+                  RETURN QUERY SELECT v_inserted, v_updated, v_annullati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_sync_contabili_fondo_fattura(vendite.fatture.id%TYPE)
+              IS 'Sync righe contabili dei fondi fattura assegnati. Annulla le source a saldo effettivo zero e ne SCRIVE LA RAGIONE nella colonna `motivo`. Il saldo effettivo si legge da vendite.fn_saldo_sorgente_fondo: la stessa formula serve al guard di capienza di fn_applica_fondi_fattura, e due copie della regola che decide se un fondo e'' ancora dovuto darebbero prima o poi due risposte diverse. ⭐ rev 2026-08-21 (cantiere incassi, lotto 3), tre modifiche. (1) S1-14: il legame con l''atto si legge e si scrive sulla COLONNA pagamenti.vendite_contabili_righe.fondo_source_id, non piu'' su meta->>''fondo_source_id'', che nell''UPDATE viene tolta dal meta — `meta->>''origine''` resta perche'' risponde a un''altra domanda. (2) S1-8, la RETE: se un fondo ASSEGNATO ha una riga contabile dalla quale la matrice non ammette il ritorno ad ABBINATA, la riga NON si aggiorna — si salta e si logga W_FONDO_RIGA_CONTABILE_NON_AGGIORNABILE su vendite.fatture_log. ⛔ Si logga e non si solleva: questa funzione e'' chiamata incondizionatamente da fn_ricalcola_totali_fattura, cioe'' sta sul percorso vivo della pipeline, e un W_ sollevato sarebbe un HTTP 500. ⭐ La domanda si fa alla matrice e non a un elenco scritto dentro il guard, quindi copre anche una riga SCARTATA, da cui non esiste passaggio verso ABBINATA. ⚠️ Non e'' piu'' il rimedio di C-2/C-3: quelli li chiude il quarto stato del fondo (ESEGUITO), che porta l''atto fuori dal filtro ASSEGNATO di questo ciclo. Questa e'' la rete sull''invariante. (3) tipi ancorati con %TYPE anche in FIRMA e nei due DECLARE che ancora non lo usavano (le tre colonne del RETURNS TABLE restano integer: sono contatori, non il riflesso di una colonna). (4) C-6: spento il fallback fail-open sul lookup dello stato ABBINATA — ripiegare su «uno stato qualunque» dopo il lotto 2 significava atterrare su IMPORTATA, che ha richiede_abbinamento = false e quindi sfugge anche al guard nuovo. ⚠️ Le righe contabili che crea sono ABBINATA, cioe'' POSTABILI: il giorno del posting diventeranno movimenti veri, ed e'' corretto (la sorgente e'' saldata per TRASFERIMENTO), ma ogni misura di «incassato» deve escludere i centri non-cassa. Coda del D-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: la versione precedente scrive
+              --    il legame dentro il meta e non nella colonna, quindi le
+              --    righe create dopo questo changeSet diventerebbero
+              --    invisibili al reset e al saldo. Si torna indietro solo
+              --    insieme a 20260821-48.
+              SELECT 1;

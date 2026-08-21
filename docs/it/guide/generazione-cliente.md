@@ -1,6 +1,8 @@
 # Guida – Generazione di un Cliente
 
-> (latest review 01-03-26)
+> (latest review 22-08-26 — nuovo §3-bis sulle **condizioni di pagamento**: il
+> cliente porta solo i riferimenti a catalogo, i due campi liberi sono stati
+> eliminati il 31-07-2026. Revisione precedente: 01-03-26)
 >
 > Destinatari: sviluppatori database, backend e analisti funzionali
 >
@@ -214,12 +216,42 @@ Il record in `anagrafiche.clienti` lega tutte le entita precedenti:
 * `stato_cliente_id` → in che stato si trova (tipicamente ATTIVO alla creazione)
 * `data_attivazione` → da quando e attivo
 
+Sulla scheda cliente vivono anche le **condizioni di pagamento** predefinite —
+vedi il paragrafo successivo.
+
 I trigger sulla tabella clienti si occupano automaticamente di:
 
 * normalizzare il `periodo` commerciale (daterange calcolato da `data_attivazione` e `data_chiusura`)
 * allineare `pdp_id` e `utility_id` dall'istanza e dal billing account
 * aggiornare lo stato del PDP (ATTIVO quando il cliente si attiva, DISPONIBILE quando si chiude)
 * mantenere la catena `parent_istanza_id` per la tracciabilita dei subentri
+
+### 3-bis. Le condizioni di pagamento del cliente
+
+Il cliente porta **due riferimenti a catalogo**, entrambi facoltativi:
+
+* `termine_pagamento_id` — **quando** e in quante rate si paga;
+* `modalita_pagamento_id` — **come** si paga (bonifico, RID, …).
+
+Sono riferimenti, non numeri liberi: la condizione vera vive nel catalogo dei
+[termini di pagamento](/guide/termini-di-pagamento), e il cliente si limita a
+sceglierne uno.
+
+> ⚠️ **Fino al 31 luglio 2026 esisteva anche una seconda strada** — due campi
+> liberi sulla scheda cliente (`tipo_gg_scadenza_ft` e `nr_giorni_scadenza`).
+> **Sono stati eliminati**, colonne comprese. Due modi di dire la stessa cosa
+> possono dirla diversa, e non c'era regola che dicesse quale vincesse. Chi ha
+> condizioni particolari usa oggi un termine dedicato a catalogo. Se si trova
+> documentazione o codice che nomina quei due campi, è anteriore alla riforma.
+
+Due conseguenze pratiche:
+
+* **Lasciare il termine vuoto è legittimo.** Se il cliente non ne ha uno, la
+  fatturazione applica «unica rata». Non serve riempirlo per forza.
+* **Il termine non è solo un dato anagrafico**: entra nei criteri con cui il
+  lavoro si raggruppa, quindi cambiare il termine di un cliente può cambiare
+  **quante fatture** riceverà. Il perché sta in
+  [Termini di pagamento §4](/guide/termini-di-pagamento).
 
 ### 4. Dati catastali
 

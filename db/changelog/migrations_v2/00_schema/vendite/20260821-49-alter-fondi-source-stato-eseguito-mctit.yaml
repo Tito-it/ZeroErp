@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL QUARTO STATO DEL FONDO: `ESEGUITO` — passo S1-15 (lotto 3)
+#   vendite.fatture_fondi_fattura_source.stato
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.1 S1-15, §1.4 C-2/C-3 · Decisione: brief madre, D11
+#
+# ── LA DECISIONE, IN UNA RIGA ──────────────────────────────────────────
+#   «Un atto ESEGUITO non e' un atto ANNULLATO» (Tid, 2026-08-21). Oggi
+#   `ANNULLATO` porta TRE significati diversi — non si doveva fare, non si e'
+#   piu' capienti, e' gia' stato eseguito — e il terzo produce un record che
+#   si contraddice: `stato = ANNULLATO` con `fattura_figlia_id` ancora
+#   valorizzato. Il quarto stato scioglie la confusione dando una parola a
+#   ciascun fatto.
+#
+# ── ⭐ E IL GUADAGNO E' STRUTTURALE, NON COSMETICO ─────────────────────
+#   TUTTI E TRE i lettori dei fondi filtrano sullo stato:
+#
+#     fn_sync_contabili_fondo_fattura   stato = 'ASSEGNATO'
+#     fn_applica_fondi_fattura          stato = 'DISPONIBILE'
+#     vw_fondi_fattura_da_decidere      stato = 'DISPONIBILE'
+#
+#   Un fondo che esce da ASSEGNATO esce da tutti e tre GRATIS. E' cosi' che i
+#   difetti C-2 (il sync che riscrive una riga gia' registrata) e C-3 (il
+#   fondo interamente postato che si auto-annulla) smettono di essere
+#   RAGGIUNGIBILI, invece di essere tamponati uno per uno: il ciclo non arriva
+#   piu' a quella riga.
+#   ⚠️ Una colonna affiancata non lo otterrebbe: i tre continuerebbero a
+#   filtrare `stato`, e andrebbero corretti tutti e tre ricordandosene.
+#
+# ── ⚠️ IL VOCABOLARIO E' UN CHECK, NON UNA LOOKUP ──────────────────────
+#   `stato` e' una varchar presidiata da `chk_fondi_source_stato`. Aggiungere
+#   un valore NON e' un append a un CSV: e' sostituire un vincolo, in
+#   `00_schema`, forward-only. E la matrice delle transizioni non e' una
+#   tabella ma un CASE dentro `trgfn_fondi_source_guard_transizione`, che si
+#   riscrive nel changeSet -50.
+#
+#   🔴 **ORDINE OBBLIGATO**: prima il CHECK (qui), poi la matrice (-50), poi il
+#   trigger che scrive lo stato (-51). Invertirli fa fallire il PRIMO posting,
+#   dentro la sua transazione, con «valore non ammesso» o «transizione non
+#   ammessa».
+#
+# ── ⚠️ COSA NON SI TOCCA, E PERCHE' ────────────────────────────────────
+#   `uq_fondi_source_atto_vivo_automatico` e' un indice unico parziale su
+#   (fattura_sorgente_id, tipo_fondo_fattura_id) WHERE stato IN
+#   ('DISPONIBILE','ASSEGNATO') AND origine = 'AUTOMATICA'. ESEGUITO **non**
+#   ci entra, ed e' una scelta: quel predicato descrive l'insieme degli atti
+#   ANCORA IN GIOCO, e un atto eseguito e' concluso — come ANNULLATO, che gia'
+#   ne sta fuori.
+#   ⭐ La garanzia «un atto solo per sorgente» non viene da li' comunque: viene
+#   da `fn_fondo_fattura_proponibile` passo 2, che blocca la proposta se un
+#   atto esiste IN QUALUNQUE STATO. L'indice e' una rete sul percorso
+#   automatico, non la regola.
+#
+#   `chk_fondi_source_motivo_obbligatorio` resta com'e': il motivo e'
+#   obbligatorio su MANUALE e su ANNULLATO, e ESEGUITO non e' ne' l'uno ne'
+#   l'altro — un atto eseguito non ha bisogno di giustificarsi.
+#
+# ── ⭐ NESSUNA RIGA DA SANARE ──────────────────────────────────────────
+#   La tabella ha 0 righe (misurato il 2026-08-21): il CHECK nuovo non deve
+#   validare nulla di preesistente.
+#
+# Verifica: db/pgtap/vendite/test-fondo-fattura-eseguito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260821-49-alter-fondi-source-stato-eseguito-mctit.yaml
+
+  - changeSet:
+      id: 20260821-49-alter-fondi-source-stato-eseguito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Quarto stato del fondo fattura: ESEGUITO. Il vocabolario di
+        vendite.fatture_fondi_fattura_source.stato e' un CHECK e non una lookup, quindi si
+        sostituisce il vincolo. Serve perche' ANNULLATO porta oggi tre significati diversi e
+        il terzo — «e' gia' stato eseguito» — produce un record che si contraddice. Il
+        guadagno e' strutturale: i tre lettori dei fondi filtrano tutti sullo stato, quindi
+        un fondo che esce da ASSEGNATO esce da tutti e tre, e i difetti C-2 e C-3 smettono
+        di essere raggiungibili. Primo dei tre passi a ordine obbligato (-49, -50, -51).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+            # Nessuna riga fuori dal vocabolario nuovo: il CHECK non deve
+            # trovare da validare cio' che non e' stato deciso qui.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM vendite.fatture_fondi_fattura_source
+                   WHERE stato NOT IN ('DISPONIBILE', 'ASSEGNATO', 'ANNULLATO', 'ESEGUITO');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                DROP CONSTRAINT chk_fondi_source_stato;
+
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD CONSTRAINT chk_fondi_source_stato
+                CHECK (stato::text = ANY (ARRAY['DISPONIBILE'::varchar, 'ASSEGNATO'::varchar, 'ANNULLATO'::varchar, 'ESEGUITO'::varchar]::text[]));
+
+              COMMENT ON COLUMN vendite.fatture_fondi_fattura_source.stato IS
+                'Stato dell''ATTO di fondo fattura. Quattro valori dal 2026-08-21 (D11): DISPONIBILE (l''atto esiste e non e'' ancora stato usato), ASSEGNATO (e'' stato applicato a una fattura figlia), ESEGUITO (il trasferimento e'' stato REGISTRATO in contabilita''), ANNULLATO (l''atto non si fa piu''). ⭐ ESEGUITO nasce perche'' ANNULLATO ne portava tre di significati, e il terzo — «e'' gia'' stato eseguito» — produceva un record autocontraddittorio (stato ANNULLATO con fattura_figlia_id valorizzato). ⚠️ Lo scrive un TRIGGER e non una persona: pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito, quando la riga contabile del fondo entra in POSTATA. ⚠️ E'' TERMINALE: da ESEGUITO non si esce (matrice in vendite.trgfn_fondi_source_guard_transizione), e fn_reset_fondi_fattura non lo tocca mai — lo segnala e va avanti. ⭐ Effetto voluto: i tre lettori dei fondi filtrano ASSEGNATO o DISPONIBILE, quindi un atto eseguito esce da tutti e tre senza che nessuno di loro cambi.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback fallisce di proposito se esistono righe in
+              --    ESEGUITO: tornare al vocabolario a tre valori senza dire
+              --    che cosa ne e' di quelle righe le renderebbe invalide.
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                DROP CONSTRAINT chk_fondi_source_stato;
+
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD CONSTRAINT chk_fondi_source_stato
+                CHECK (stato::text = ANY (ARRAY['DISPONIBILE'::varchar, 'ASSEGNATO'::varchar, 'ANNULLATO'::varchar]::text[]));

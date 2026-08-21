@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA MATRICE ACCOGLIE `ESEGUITO`, E LO RENDE TERMINALE — passo S1-15 (lotto 3)
+#   vendite.trgfn_fondi_source_guard_transizione
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.1 S1-15 · Decisione: brief madre, D11
+#
+# ── SECONDO DEI TRE PASSI A ORDINE OBBLIGATO ───────────────────────────
+#   -49 (il CHECK: il valore diventa scrivibile)
+#   -50 (questo: il PASSAGGIO diventa ammesso)
+#   -51 (il trigger: qualcuno lo scrive)
+#
+#   🔴 Invertire -50 e -51 fa fallire il PRIMO posting dentro la sua
+#   transazione: il trigger scriverebbe uno stato che la matrice non ammette,
+#   e l'errore arriverebbe da una funzione che non c'entra.
+#
+# ── LA MATRICE, DOPO ───────────────────────────────────────────────────
+#   DISPONIBILE -> ASSEGNATO | ANNULLATO
+#   ASSEGNATO   -> DISPONIBILE | ANNULLATO | ESEGUITO      ← la novita'
+#   ESEGUITO    -> (terminale)                             ← la novita'
+#   ANNULLATO   -> (terminale)
+#
+# ── ⭐ PERCHE' `ESEGUITO` E' TERMINALE ─────────────────────────────────
+#   Perche' descrive un FATTO gia' avvenuto: il trasferimento e' stato
+#   registrato in contabilita'. Uscire da li' non annullerebbe la
+#   registrazione — la renderebbe soltanto invisibile all'atto che l'ha
+#   prodotta, cioe' esattamente il doppio conteggio che il lotto 3 esiste per
+#   chiudere. E' la stessa ragione per cui e' terminale `ANNULLATO`, letta
+#   dall'altro capo: li' si e' tolto denaro dal tavolo, qui lo si e' mosso.
+#
+#   ⚠️ Un fondo eseguito che si rivelasse sbagliato NON si corregge tornando
+#   indietro: si compie un atto NUOVO — ed e' la ragione per cui i rimborsi
+#   sono un processo (slice 4, `pagamenti.sistemazioni`) e non un UPDATE.
+#
+# ── ⚠️ `ASSEGNATO -> DISPONIBILE` RESTA, MA CAMBIA CHI LA PERCORRE ─────
+#   Fino a oggi era il RESET TECNICO della figlia (il ritorno di un lotto in
+#   bozza). Dal changeSet -54 il reset non la percorre piu': un atto non
+#   eseguito lo CANCELLA. Il passaggio resta ammesso di proposito, come unica
+#   strada per «disfare l'assegnazione senza cancellare l'atto» — ma oggi non
+#   lo esercita nessuno, e questo va detto invece di lasciarlo credere.
+#   🔵 Candidato alla rimozione in un lotto successivo: la decisione e' di
+#   dominio e non si prende passando.
+#
+# Origine: corpo dalla doc auto-generata `dbzero` (l'oggetto vivo) col patch
+#   mirato applicato sopra. La firma non cambia (trigger, senza parametri).
+# Verifica: db/pgtap/vendite/test-fondo-fattura-eseguito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-50-update-trgfn-fondi-source-guard-transizione-eseguito-mctit.yaml
+
+  - changeSet:
+      id: 20260821-50-update-trgfn-fondi-source-guard-transizione-eseguito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La matrice degli stati del fondo accoglie ESEGUITO: ASSEGNATO -> ESEGUITO ammessa,
+        ESEGUITO terminale. Terminale perche' descrive un fatto gia' avvenuto — il
+        trasferimento e' stato registrato — e uscirne non lo annullerebbe: lo renderebbe
+        invisibile all'atto che l'ha prodotto, cioe' il doppio conteggio che il lotto 3
+        chiude. Secondo dei tre passi a ordine obbligato: il CHECK (-49) rende il valore
+        scrivibile, questo rende ammesso il passaggio, il trigger (-51) lo scrive.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_fondi_source_guard_transizione'
+            # Il CHECK di -49 dev'essere gia' passato: ammettere una
+            # transizione verso un valore che la tabella rifiuta produrrebbe
+            # un errore che accusa la matrice invece del vincolo.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conrelid = 'vendite.fatture_fondi_fattura_source'::regclass
+                     AND conname = 'chk_fondi_source_stato'
+                     AND pg_get_constraintdef(oid) LIKE '%ESEGUITO%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: far rispettare la matrice degli stati del fondo.
+              --        ANNULLATO e ESEGUITO sono terminali, per ragioni
+              --        opposte e simmetriche: dal primo si e' tolto denaro
+              --        dal tavolo, nel secondo lo si e' mosso. In entrambi i
+              --        casi tornare indietro non disfa niente — se serve un
+              --        altro esito, si compie un atto NUOVO.
+              -- Uso:   BEFORE UPDATE OF stato FOR EACH ROW
+              DECLARE
+                  v_ammessa BOOLEAN;
+              BEGIN
+                  -- Nessun movimento di stato: niente da verificare.
+                  IF NEW.stato IS NOT DISTINCT FROM OLD.stato THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_ammessa := CASE OLD.stato
+                      WHEN 'DISPONIBILE' THEN NEW.stato IN ('ASSEGNATO', 'ANNULLATO')
+                      -- ⭐ ESEGUITO dal 2026-08-21 (D11): lo scrive il trigger
+                      --    pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito
+                      --    quando la riga contabile del fondo entra in POSTATA.
+                      -- ⚠️ DISPONIBILE resta ammessa ma dal changeSet -54 non
+                      --    la percorre piu' nessuno: il reset di un atto non
+                      --    eseguito lo CANCELLA. Resta come unica strada per
+                      --    disfare l'assegnazione senza cancellare l'atto.
+                      WHEN 'ASSEGNATO'   THEN NEW.stato IN ('DISPONIBILE', 'ANNULLATO', 'ESEGUITO')
+                      WHEN 'ANNULLATO'   THEN FALSE
+                      WHEN 'ESEGUITO'    THEN FALSE
+                      ELSE FALSE
+                  END;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_fondi_source_guard_transizione',
+                          'E_FONDO_STATO_NON_AMMESSO',
+                          jsonb_build_object(
+                              'fondo_source_id',     NEW.id,
+                              'fattura_sorgente_id', NEW.fattura_sorgente_id,
+                              'stato_da',            OLD.stato,
+                              'stato_a',             NEW.stato),
+                          NULL::uuid,
+                          OLD.stato, NEW.stato);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fondi_source_guard_transizione()
+              IS 'Matrice degli stati del fondo fattura: DISPONIBILE -> ASSEGNATO|ANNULLATO, ASSEGNATO -> DISPONIBILE|ANNULLATO|ESEGUITO, ANNULLATO e ESEGUITO terminali. ⭐ rev 2026-08-21 (cantiere incassi, lotto 3, passo S1-15): il quarto stato ESEGUITO entra nella matrice. Nasce perche'' ANNULLATO portava TRE significati — non si deve fare piu'', non si e'' piu'' capienti, e'' gia'' stato eseguito — e il terzo produceva un record autocontraddittorio (ANNULLATO con fattura_figlia_id ancora valorizzato). ⚠️ ESEGUITO e'' TERMINALE perche'' descrive un fatto avvenuto: il trasferimento e'' stato registrato in contabilita'', e uscire da li'' non lo annullerebbe — lo renderebbe invisibile all''atto che l''ha prodotto, cioe'' il doppio conteggio che il lotto 3 chiude. Simmetrico ad ANNULLATO letto dall''altro capo: li'' si e'' tolto denaro dal tavolo, qui lo si e'' mosso. Un fondo eseguito sbagliato non si corregge tornando indietro: si compie un atto NUOVO, ed e'' la ragione per cui i rimborsi sono un processo (pagamenti.sistemazioni) e non un UPDATE. ⚠️ ASSEGNATO -> DISPONIBILE resta ammessa ma dal changeSet 20260821-54 NON la percorre piu'' nessuno: fn_reset_fondi_fattura cancella l''atto non eseguito invece di riaprirlo. Resta come unica strada per disfare l''assegnazione senza cancellare l''atto. Guard e non lookup di transizioni: sono quattro valori interni senza etichette ne'' azioni di UI. D11 del brief incassi; D-7 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2 e'' SUPERATA (diceva «tre stati e non quattro»).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: rimettere la matrice a tre
+              --    stati mentre esistono atti in ESEGUITO li renderebbe
+              --    immobili sotto un guard che non li conosce. Si torna
+              --    indietro solo insieme al CHECK di -49 e al trigger di -51.
+              SELECT 1;

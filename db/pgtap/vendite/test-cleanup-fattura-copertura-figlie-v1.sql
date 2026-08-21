@@ -80,7 +80,11 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
   ('vendite.fatture_log',                  'GESTITA',       'DELETE nel cleanup'),
   ('vendite.fatturazione_lotti_fatture',   'GESTITA',       'DELETE nel cleanup: e il collegamento al lotto'),
   ('vendite.fatture_fondi_fattura',        'GESTITA',       'DELETE via fn_reset_fondi_fattura'),
-  ('vendite.fatture_fondi_fattura_source', 'GESTITA',       'UPDATE via fn_reset_fondi_fattura: azzera fattura_figlia_id e rimette il fondo DISPONIBILE. NON si cancella, ed e giusto: e un credito che deve sopravvivere alla fattura che lo consumava'),
+  -- ⭐ rev 2026-08-21 (cantiere incassi, lotto 3 / D11): la riga qui sopra
+  --   diceva «NON si cancella, ed e giusto». Dal changeSet 20260821-54 non e
+  --   piu vero, e una classificazione che descrive un comportamento finito e
+  --   peggio di una mancante: si legge come se fosse stata verificata.
+  ('vendite.fatture_fondi_fattura_source', 'GESTITA',       'DELETE via fn_reset_fondi_fattura quando l atto NON e stato eseguito: e una PROPOSTA, non un fatto, e il giro successivo ne rifa uno letto sul residuo di adesso. Un atto ESEGUITO invece non si tocca MAI - il reset lo segnala nel diario e va avanti - e uno bloccato da una distinta CHIUSA passa ad ANNULLATO col motivo sul dato'),
   ('pagamenti.vendite_contabili_righe',    'GESTITA',       'DELETE via fn_reset_fondi_fattura'),
 
   -- ── CASCADE_DB: ci pensa la FK, e va bene cosi ─────────────────────
