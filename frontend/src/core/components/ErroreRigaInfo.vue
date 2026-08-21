@@ -45,12 +45,29 @@ const props = defineProps({
   quando: { type: String, default: null },
   // Titolo del pannello; il default parla di un documento generico.
   titolo: { type: String, default: null },
+  // ⭐ Livello della segnalazione (`C` critico · `W` avviso · `I` attenzione).
+  // Senza, l'icona sarebbe rossa anche su un avviso — direbbe «errore» dove
+  // errore non c'e', ed e' proprio la distinzione che il colore deve portare.
+  // Assente o sconosciuto → si assume il caso piu' grave: una segnalazione che
+  // non sa dire quanto pesa e' meglio mostrarla forte che sottovoce.
+  livello: { type: String, default: null },
 })
 
 const { t } = useI18n()
 const popover = ref(null)
 
 const haErrore = computed(() => Boolean(String(props.messaggio ?? '').trim()))
+
+// La scala dei livelli del diario (`fatture_log.status`) tradotta nelle
+// severity PrimeVue: stesso vocabolario di `SelectButtonGravita` e dei Tag.
+const SEVERITY_PER_LIVELLO = { C: 'danger', W: 'warn', I: 'info' }
+const severita = computed(() => SEVERITY_PER_LIVELLO[props.livello] || 'danger')
+
+// L'icona segue il livello: triangolo per critico e avviso (c'e' qualcosa che
+// non va), «i» per l'attenzione (c'e' qualcosa da sapere).
+const icona = computed(
+  () => (props.livello === 'I' ? 'pi pi-info-circle' : 'pi pi-exclamation-triangle'),
+)
 
 function toggle(event) {
   popover.value?.toggle(event)
@@ -64,8 +81,8 @@ function toggle(event) {
     text
     rounded
     size="small"
-    severity="danger"
-    icon="pi pi-info-circle"
+    :severity="severita"
+    :icon="icona"
     :aria-label="t('common.errore_riga_vedi')"
     v-tooltip.top="t('common.errore_riga_vedi')"
     class="app-errore-riga-btn"
@@ -75,7 +92,7 @@ function toggle(event) {
   <Popover v-if="haErrore" ref="popover" :style="{ width: '460px' }">
     <h4 class="mt-0 mb-05">{{ titolo || t('common.errore_riga_titolo') }}</h4>
     <div class="app-errore-riga-meta">
-      <Tag v-if="codice" :value="codice" severity="danger" />
+      <Tag v-if="codice" :value="codice" :severity="severita" />
       <span v-if="quando" class="app-errore-riga-quando">{{ displayTimestamp(quando) }}</span>
     </div>
     <!-- `white-space: pre-line`: i messaggi del database vanno a capo da soli

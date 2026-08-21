@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 748, di cui 81 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 750, di cui 81 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1120,8 +1120,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-05
     "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "DATO_ERRATO",
+    # vendite.fn_reset_fondi_fattura: il reset non puo' riportare il fondo a DISPONIBILE perche' la distinta contabile che lo contiene e' gia' CHIUSA. La source passa ad ANNULLATO con il motivo sulla colonna, e questa nota lo dice anche nel diario della fattura. ⭐ E' un W_ e non un E_ perche' non si solleva: il resto del reset va avanti, e le altre source vengono ripristinate. ⛔ NON ha una entry in config.messaggi_errore, per la stessa ragione del gemello W_SCADENZE_TOTALE_NEGATIVO. ⚠️ Da non confondere con la chiave `cause` che vive nello stesso meta: quella e' il vocabolario LOCALE del ramo (valore 'CONTABILE_CHIUSA', zero consumatori misurati fuori dalla funzione), questo e' il codice di CATALOGO che la lista mostra. Piano: brief-db-liste-drawer-lotto L1/P-6.
+    "W_FONDO_MINIMO_NON_RIPRISTINABILE": "AVVISO",
     # script.fn_log_and_raise_error: ripiego di arita' (18-08-2026). Non si SOLLEVA mai — si scrive soltanto nel log, come ogni W_: e' il controllo (E) del guardrail. Segnala che un punto di sollevamento passa meno valori dei segnaposto del suo messaggio; prima di questa data la format() interna alzava 22023 e cancellava l'errore di dominio. Gemello statico: test 5 di db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.
     "W_MESSAGGIO_ARITA": "AVVISO",
+    # vendite.fn_genera_scadenze_fattura: il totale a pagare della fattura e' negativo, quindi non nasce nessun piano rate (il CHECK vieta importi negativi). Non e' un errore: a volte e' corretto — una fattura coperta oltre il dovuto — a volte e' un fondo configurato male, e la differenza la vede una persona. ⭐ E' un W_ e non un E_ perche' non si solleva MAI: si registra su vendite.fatture_log e il giro prosegue (un W_ sollevato sarebbe un HTTP 500). ⛔ NON ha una entry in config.messaggi_errore, di proposito (decisione di Tid, 2026-08-21, opzione b): la funzione scrive la frase direttamente nel log e non passa da script.fn_log_and_raise_error, quindi un messaggio a catalogo sarebbe una seconda copia della stessa frase che nessuno compone. La FK va da messaggi_errore verso codici_errore: un codice senza figli e' previsto dal disegno. Nasce per dare una sorgente alla colonna «codice» delle liste del drawer lotto — senza, quella colonna sarebbe vuota sul 100% delle righe di avviso. Piano: brief-db-liste-drawer-lotto L1/P-5.
+    "W_SCADENZE_TOTALE_NEGATIVO": "AVVISO",
     # <- W_TXID_NOT_REGISTERED  (vivo)
     "W_TXID_NOT_REGISTERED": "AVVISO",
 }

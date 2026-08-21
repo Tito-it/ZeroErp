@@ -278,10 +278,25 @@ class ApiLottoTaskRuns(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET i task run runtime del lotto per monitoraggio operativo.
+    # Scopo: Restituisce via GET i task run del lotto — elenco PAGINATO e
+    #        ordinabile (BE-2, 2026-08-22): la sorgente e'
+    #        `vendite.fn_list_lotto_task_runs`, che porta anche il totale.
+    # ⚠️ `limit` resta accettato come sinonimo di `page_size`: e' il nome che
+    #    il client attuale manda, e cambiarlo di soppiatto avrebbe rotto il
+    #    drawer prima che la lista configurabile lo sostituisse (FE-2).
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
-        data = fn_get_lotto_task_runs(lotto_id=lotto_id, limit=limit)
+        q = request.query_params
+        page_size = optional_int(
+            {"page_size": q.get("page_size") or q.get("limit") or "100"}, "page_size"
+        )
+        offset = optional_int({"offset": q.get("offset", "0")}, "offset")
+        data = fn_get_lotto_task_runs(
+            lotto_id=lotto_id,
+            page_size=page_size,
+            offset=offset,
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+        )
         return success_response(data)
 
 

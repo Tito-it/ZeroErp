@@ -25,6 +25,7 @@ from apps.core.services.list_helpers import (
 from apps.core.services.partitioned_note_service import PartitionedNoteService
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
+    LOTTO_FATTURE_SORT_COLUMNS,
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
     DASH_BACKLOG_CLASSI,
@@ -50,7 +51,14 @@ from apps.vendite.types import (
 
 logger = logging.getLogger(__name__)
 
-_SORT_BY_VALIDI: tuple[str, ...] = ("fattura_id", "nominativo", "totale_doc")
+# ⚠️ DUE ELENCHI SULLO STESSO REQUISITO, e devono restare allineati: qui si
+# valida l'input (400 parlante al chiamante), nel repository si traduce in SQL
+# (`LOTTO_FATTURE_SORT_COLUMNS`). Il presidio e' il test `test_..._order_by_fuori_whitelist`.
+# ⭐ Derivato dal repository invece di riscritto: alla terza aggiunta di colonna
+# (BE-1, 2026-08-22, da 3 a 11) copiare i nomi a mano sarebbe stato il modo
+# sicuro per farne divergere uno — e la divergenza si vede solo dal lato che
+# rifiuta, cioe' come «ordinamento non ammesso» su una colonna che c'e'.
+_SORT_BY_VALIDI: tuple[str, ...] = tuple(LOTTO_FATTURE_SORT_COLUMNS)
 _SORT_DIR_VALIDI: tuple[str, ...] = ("asc", "desc")
 
 

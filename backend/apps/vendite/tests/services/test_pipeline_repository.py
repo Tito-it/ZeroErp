@@ -499,13 +499,19 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 None,
                 None,
                 '{"rollback": false}',
+                # ⚠️ 14a colonna: `total_count`, che la funzione DB ripete su
+                # OGNI riga. Il repository lo legge dalla prima — senza questa
+                # colonna nel finto, il test misurerebbe una forma che la
+                # funzione non ha (BE-2, 2026-08-22).
+                37,
             )
         ]
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
-        result = repo.list_lotto_task_runs(80, limit=50)
+        result, total_count = repo.list_lotto_task_runs(80, limit=50)
 
+        self.assertEqual(total_count, 37)
         self.assertEqual(len(result), 1)
         row = result[0]
         self.assertEqual(row["id"], 1001)
@@ -514,9 +520,14 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertEqual(row["task_code"], "numera_fatture")
         self.assertEqual(row["task_stato"], "COMPLETATO")
         self.assertEqual(row["meta"], {"rollback": False})
+        # ⭐ La SORGENTE e' la funzione DB, non piu' una SELECT nostra: e' il
+        # punto di BE-2 (due verita' sullo stesso elenco, e quella a video non
+        # era quella dichiarata). Il presidio sta sulla stringa perche' il
+        # binding di una funzione i mock non lo vedono.
         execute_sql, execute_params = cursor.execute.call_args.args
-        self.assertIn("fatturazione_lotti_task_runs", execute_sql)
-        self.assertEqual(execute_params, [80, 50])
+        self.assertIn("vendite.fn_list_lotto_task_runs", execute_sql)
+        self.assertNotIn("FROM vendite.fatturazione_lotti_task_runs", execute_sql)
+        self.assertEqual(execute_params, [80, True, 50, 0, None, "desc"])
 
     # Scopo: il legame documentale delle note di credito (N10/BE-8) passa da una
     #        sola `SELECT fn_()` per fattura e ritorna quante coppie ha aggiunto.
