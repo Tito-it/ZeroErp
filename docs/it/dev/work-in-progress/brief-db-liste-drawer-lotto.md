@@ -36,7 +36,7 @@
 | 🔵 **A carico del BE/FE** | 6 consegne, di cui **3 bloccano** la nascita delle liste. Da concordare **prima** di L3, non in consegna | §4 |
 | ✅ **Domande aperte** | **Zero.** Q-1 e Q-2 chiuse il 2026-08-21 | §6 |
 | ⭐ **Il perno da non perdere** | «Job» ha un'ancora e non serve una colonna nuova: l'`event_time` dell'ultimo `PIPELINE_STARTED` in `vendite.event_log`. ⚠️ Non il `correlation_id`, che due corse condividono | §3 D-6 |
-| ⭐ **STATO** | **L1 e L2 CHIUSI**. L1: 6 changeSet `-38`…`-43` + 2 codici `W_`, **applicati da Tid**. L2: `-44` con `fn_list_lotto_segnalazioni` e 2 pgTAP (11/11 e 8/8), **attende il migrate**. Prossimo: **L3**, i seed delle tre liste — ⛔ ma **BE-1 blocca** e va chiesto ora | §5 · §7 |
+| ⭐ **STATO** | ✅ **L1, L2 e L3 CHIUSI.** L1 (`-38`…`-43` + 2 `W_`) e L2 (`-44`) **applicati**. L3: 76 righe sui 4 CSV, presidio `ok` su tutte e tre — **attende il migrate**. Poi tocca al BE/FE: `_LISTE`, BE-4 e la conversione dei `.vue` | §4 · §5 · §7 |
 
 ---
 
@@ -454,20 +454,83 @@ residuo prima di comporre il lotto, isolare il blocco che vale più liste,
 chiederlo come passata unica*. Qui il blocco che vale di più è **BE-1**.
 Nelle richieste si separa **ciò che blocca** da **ciò che migliora**.
 
-| | Cosa | Blocca? |
-| --- | --- | --- |
-| **BE-1** | Estendere `_SORT_COLUMNS` (`vendite_repository.py`) al nucleo: `numero`, `data`, `id_fiscale_univoco_cf_piva`, `stato_doc_fiscale_descrizione`, `stato_esecuzione`, `serie`, `totale_a_pagare`, `natura_doc_descrizione`. **E rinominare `nominativo` → `ragione_sociale_completa`**: la chiave deve coincidere col campo del payload, che è ciò che il seed dichiara come `campo_sorgente` | 🔴 **sì** — senza, la lista 45 nasce con 5 nuclei rotti |
-| **BE-2** | Chiamare `vendite.fn_list_lotto_task_runs` (nuova firma, D-2) al posto della query diretta in `PipelineRepository.list_lotto_task_runs`, esponendo `limit/offset/order_by/order_dir` e il `total_count` nell'envelope paginato | 🔴 **sì** — la lista 46 non ha un endpoint paginato |
-| **BE-3** | Aggiungere al payload di `list_lotto_fatture` i tre campi `errore_codice`, `errore_messaggio`, `errore_quando` (D-6: ultima `fatture_log` viva del documento) | 🔴 **sì** per le 3 colonne; le altre 13 non lo aspettano |
-| **BE-4** | Nuovo endpoint paginato `/lotti/<id>/segnalazioni/rows/` (o l'estensione di quello esistente) su `vendite.fn_list_lotto_segnalazioni` — l'attuale `/segnalazioni/` resta e continua a servire il banner | 🟡 dopo L2 |
-| **BE-5** | Aggiungere `error_code` alla `GET STACKED DIAGNOSTICS` di `_insert_fatture_log` (D-7), simmetrico a quanto fa il DB | 🟡 migliora |
-| **FE-1** | Registrare le tre liste in `WHITELIST_BE` (`scripts/gen_seed_lista.py`) e nel registro `_LISTE` di `test_liste_configurabili_seed.py`. ⚠️ Per la 46 il percorso è quello della **doc auto-generata** della funzione, non un sorgente Python | 🔴 **sì** — altrimenti le liste vengono *saltate*, cioè dichiarate a posto senza essere guardate |
-| **FE-2** | Convertire i tre tab a `<ListaConfigurabile>`, spostare le chiavi i18n sulle radici nuove (§2.4), aggiornare §8-bis/§9 del piano PrimeVue (D-1) | 🟡 dopo L3 |
+> ✅ **RISPOSTA BE, 2026-08-22: BE-1, BE-2, BE-3 e BE-5 CONSEGNATI**, più metà di
+> FE-1. Il metodo ha retto la terza volta: la passata chiesta prima del lotto è
+> tornata completa in un giro.
+>
+> ⭐ **Due cose che hanno fatto oltre la richiesta, e sono migliori di quanto
+> chiesto.** (1) Hanno tolto la **seconda copia** della whitelist
+> (`_SORT_BY_VALIDI` ora deriva da `LOTTO_FATTURE_SORT_COLUMNS` invece di
+> riscriverne i nomi): alla terza aggiunta copiarli a mano era il modo sicuro di
+> farne divergere uno, *e la divergenza si vede solo dal lato che rifiuta*.
+> (2) Hanno intercettato una **divergenza di chiave** che avrebbero introdotto
+> nel `meta`: scrivevano `code`, D-7 dice `error_code`, ed è ciò che la lista 47
+> dichiara come `campo_sorgente` — le loro righe sarebbero state **presenti in
+> tabella e vuote a video**, il modo peggiore di sbagliare. Hanno anche rinominato
+> il proprio `meta->>'origine'` in `scritto_da`, perché `origine` è già il nome di
+> una colonna della 47 (FATTURA/LOTTO).
+>
+> 🔴 **Una loro affermazione da correggere, ed è quella che morde.** Scrivono che
+> `fn_list_lotto_task_runs` «su un nome ignoto **ripiega**». **Non ripiega:
+> solleva** `E_PARAMETRO_INVALIDO` (verificato sulla funzione viva il 2026-08-22).
+> È una scelta dichiarata nel changeSet — un ordinamento che ripiega in silenzio
+> produce una lista ordinata in un modo che nessuno ha chiesto e che nessuno sa
+> spiegare. Se il BE conta su un fallback, un nome fuori whitelist arriva
+> all'operatore come errore invece che come ordine di default.
+>
+> 🟠 **Due cose nuove tornano al DB**, entrambe per L3: vedi §4-bis.
+
+| | Cosa | Blocca? | Consegnato? |
+| --- | --- | --- | --- |
+| **BE-1** | Estendere `_SORT_COLUMNS` (`vendite_repository.py`) al nucleo: `numero`, `data`, `id_fiscale_univoco_cf_piva`, `stato_doc_fiscale_descrizione`, `stato_esecuzione`, `serie`, `totale_a_pagare`, `natura_doc_descrizione`. **E rinominare `nominativo` → `ragione_sociale_completa`**: la chiave deve coincidere col campo del payload, che è ciò che il seed dichiara come `campo_sorgente` | 🔴 **sì** — senza, la lista 45 nasce con 5 nuclei rotti | ✅ **fatto** (`5901049ab`) — 11 chiavi provate una per una, `nominativo` rinominato, e la **seconda copia** della whitelist tolta: `_SORT_BY_VALIDI` ora deriva invece di riscrivere i nomi |
+| **BE-2** | Chiamare `vendite.fn_list_lotto_task_runs` (nuova firma, D-2) al posto della query diretta in `PipelineRepository.list_lotto_task_runs`, esponendo `limit/offset/order_by/order_dir` e il `total_count` nell'envelope paginato | 🔴 **sì** — la lista 46 non ha un endpoint paginato | ✅ **fatto** — la SELECT diretta non c'è più, envelope paginato con `count/page/page_size/total_pages/results`. `limit` e `task_runs` restano come sinonimi finché FE-2 non atterra |
+| **BE-3** | Aggiungere al payload di `list_lotto_fatture` i tre campi `errore_codice`, `errore_messaggio`, `errore_quando` (D-6: ultima `fatture_log` viva del documento) | 🔴 **sì** per le 3 colonne; le altre 13 non lo aspettano | ✅ **fatto**, con la regola giusta («l'ultima viva, dalle più gravi») e i nomi del seed. ⭐ Più `errore_livello`, che il seed non chiedeva → accolto, §4-bis A |
+| **BE-4** | Nuovo endpoint paginato `/lotti/<id>/segnalazioni/rows/` (o l'estensione di quello esistente) su `vendite.fn_list_lotto_segnalazioni` — l'attuale `/segnalazioni/` resta e continua a servire il banner | 🟡 dopo L2 | ☐ da fare — la funzione DB c'è (`-44`, applicata) |
+| **BE-5** | Aggiungere `error_code` alla `GET STACKED DIAGNOSTICS` di `_insert_fatture_log` (D-7), simmetrico a quanto fa il DB | 🟡 migliora | ✅ **fatto**, e nel farlo hanno intercettato la divergenza `code`/`error_code` prima di scriverla |
+| **FE-1** | Registrare le tre liste in `WHITELIST_BE` (`scripts/gen_seed_lista.py`) e nel registro `_LISTE` di `test_liste_configurabili_seed.py`. ⚠️ Per la 46 il percorso è quello della **doc auto-generata** della funzione, non un sorgente Python | 🔴 **sì** — altrimenti le liste vengono *saltate*, cioè dichiarate a posto senza essere guardate | 🟡 **metà**: le tre liste sono **già registrate** in `WHITELIST_BE` (in anticipo, «una voce in più è inerte, una mancante fa saltare la lista»), più `vendite.fondi_fattura_da_decidere` che era scoperta. Il registro `_LISTE` del test aspetta L3 — ⭐ **ora c'è: si può aggiungere** |
+| **FE-2** | Convertire i tre tab a `<ListaConfigurabile>`, spostare le chiavi i18n sulle radici nuove (§2.4), aggiornare §8-bis/§9 del piano PrimeVue (D-1) | 🟡 dopo L3 | ☐ da fare — dopo il migrate dei seed |
 
 ⚠️ **Contare le `<Column>` del `.vue` contro le righe seedate prima di dire
 «pronta»**: è la lezione di `storico.audit_log`, tre volte. Qui il drawer ha
 **due** `<DataTable>` e un tab che tabella non è: un grep sui `field=` non è una
 misura.
+
+### 4-bis. 🟠 Cosa torna al DB dalla risposta BE
+
+**A — `errore_livello` entra nella lista 45 come colonna di supporto.** Il BE ha
+aggiunto un quarto campo, fuori dal seed: senza, l'icona di riga sarebbe rossa
+anche su un avviso — *direbbe «errore» dove errore non c'è*, e con la regola
+nuova («l'ultima viva, dalle più gravi») gli avvisi entrano eccome.
+✅ **Accolta**: stesso ruolo di `natura_doc_codice` e `stato_doc_fiscale_codice`
+— un **dato** che il FE usa per la severity, quindi a catalogo con
+`visibile = f`. Si seeda in L3, `campo_sorgente = errore_livello`,
+`ordinabile = f`.
+
+**B — ⛔ `vendite.fondi_fattura_da_decidere` (lista 44): il nucleo *stato* è
+rotto, ma l'ordine dei due passi è l'opposto.** Registrandola in `WHITELIST_BE`
+il BE ha scoperto che `stato_atto` è a catalogo `ordinabile = f`, quindi il
+concetto «stato» non è coperto e il presidio è KO. Verificato: la colonna 466 è
+`f`, e `FONDI_DA_DECIDERE_SORT_COLUMNS` ha **7 voci senza `stato_atto`**.
+⚠️ **Il flag NON si alza adesso.** La regola del cantiere è *prima la voce BE,
+poi il ribaltone del flag — mai `t` con la speranza*: un `ordinabile = t` senza
+la voce nel repository è una freccia bugiarda, cioè esattamente il difetto che
+il presidio esiste per trovare. Il DB fa la sua metà **quando** `stato_atto`
+compare nella whitelist.
+⭐ E il rosso resta esposto di proposito: era la dimostrazione della regola —
+*una lista non registrata è dichiarata a posto senza essere stata guardata*.
+
+**C — le righe di log con la chiave vecchia, misurate.** Il BE segnala che le
+righe scritte con `meta->>'code'` restano e non sono riconosciute dal ritiro.
+Misurato il 2026-08-22: **2 righe** su `fatture_log` (1 viva) e **14** su
+`fatturazione_lotti_log` (tutte vive), zero con la chiave nuova — nessun giro è
+ancora passato dopo l'apply.
+→ È **dato sporco di sviluppo**, non un caso da coprire con del codice: si
+corregge a mano (o si lascia morire al primo giro, che sulle 14 di lotto le
+azzera da sé). Nessuna bonifica in changeSet.
+
+**D — `_LISTE` del presidio Python**: il BE ha ragione a non registrarle ora —
+quel test legge i CSV e diventerebbe rosso subito. Vanno **nello stesso commit
+dei seed**, cioè in L3.
 
 ---
 
@@ -662,26 +725,60 @@ la continuità con L1 si legge meglio così — ma se preferisci la data reale,
 rinominarlo in `20260822-01` non ha controindicazioni: nessun altro changeSet
 lo referenzia.
 
-### L3 — I seed
+### L3 — I seed — ✅ **SCRITTI E VERIFICATI**
 
-Un solo changeSet non serve: si appende ai quattro CSV e i mirror `runOnChange`
-riallineano.
+Nessun changeSet: si appende ai quattro CSV e i mirror `runOnChange`
+riallineano al migrate.
 
 | File | Righe |
 | --- | --- |
-| `80_data/sql/ui/lista_definizione.csv` | 3 (id 45-47) — ⚠️ `vista_sql` = letterale `NULL` |
-| `80_data/sql/ui/lista_colonna.csv` | ~33 (id 490+) |
-| `80_data/sql/ui/lista_preset.csv` | 3 (id 45-47) |
-| `80_data/sql/ui/lista_preset_colonna.csv` | ~33 |
+| `80_data/sql/ui/lista_definizione.csv` | **3** (id 45-47) — ⚠️ `vista_sql` = letterale `NULL` |
+| `80_data/sql/ui/lista_colonna.csv` | **35** (id 490-524) |
+| `80_data/sql/ui/lista_preset.csv` | **3** (id 45-47) |
+| `80_data/sql/ui/lista_preset_colonna.csv` | **35** |
 
-Verifica di consegna, **prima** di dire che è pronto:
+**Le scelte, e il perché.**
 
-```bash
-backend/.venv/bin/python scripts/gen_seed_lista.py --verifica-ordinamento
+- ⭐ **`codice` coincide con `campo_sorgente`** su tutte le colonne dato. Il
+  componente FE monta le Column su `campo_sorgente`, e il presidio fa il
+  controllo del **nucleo** sul `codice`: un codice diverso dal campo *schiva in
+  silenzio* una regola del nucleo. L'etichetta leggibile sta in `etichetta`.
+  L'unica eccezione è `ritirata` → `disabilitato`, e non tocca nessun nucleo.
+- **`ordinabile = t` solo dove il nome è nella whitelist vera**: 9 su 16 per la
+  45, 8 su 8 per la 46, 8 su 10 per la 47.
+- **Colonne di supporto a catalogo con `visibile = f`**: `natura_doc_codice`,
+  `stato_doc_fiscale_codice`, `errore_quando`, `errore_livello`, `job_corrente`,
+  `ritirata`. Sono **dati** che il FE usa per severity e gate, non chrome.
+- **`ordinamento_default` vuoto sulla 45**: l'ordine storico dell'endpoint è
+  `fllf.fattura_id`, che non è una colonna a catalogo — dichiararlo sarebbe
+  puntare a qualcosa che nel catalogo non c'è (precedente: lista 38).
+
+**Verifica, in due direzioni (2026-08-22).**
+
+1. **Strutturale** — le 76 righe nuove inserite nelle tabelle vere in una
+   transazione **annullata**: passano CHECK, FK e i due trigger guard
+   (`vista_sql`, `multi_emittente`). Non è un dry-run di forma: è il seed che
+   attraversa i vincoli veri.
+2. **Di consegna** — le quattro direzioni del presidio, replicate contro le
+   whitelist **vere**: `ok` su tutte e tre.
+
+```text
+lista 45  ok  (16 colonne, whitelist 11)
+lista 46  ok  ( 8 colonne, whitelist  8)
+lista 47  ok  (10 colonne, whitelist  8)
 ```
 
-Deve stampare `ok` sulle tre liste nuove — non «NON MAPPATA», che significa
-«non lo so» (FE-1).
+🔴 **E il presidio ha trovato un mio errore prima che uscisse**: sulla 47 avevo
+messo `fase` a `ordinabile = f`, ma la funzione DB la sa ordinare — una
+**capacità irraggiungibile**, la seconda direzione. Corretto il **seed**, non la
+funzione: ordinare le segnalazioni per fase ha senso e la capacità c'era già.
+
+⚠️ **`scripts/gen_seed_lista.py` nel ramo DB dice ancora «NON MAPPATA»** sulle
+tre liste (più `vendite.fondi_fattura_da_decidere`): le registrazioni in
+`WHITELIST_BE` vivono sul commit BE `5901049ab`, cioè su `dev/backend-tid`. Non
+è un difetto del seed — è divergenza di ramo, e sparisce al merge. Per questo la
+verifica qui sopra legge le whitelist **dalle sedi vere**: dal commit BE per la
+45, dalle doc auto-generate delle due funzioni DB per la 46 e la 47.
 
 ### L'ordine, e perché
 
@@ -733,6 +830,35 @@ non è scritto da nessuno** (C-1), `fn_list_lotto_task_runs` è codice morto e
 divergente (C-2), i log non hanno RLS (C-3, innocuo qui ma da dichiarare).
 
 ⛔ Nulla applicato.
+
+### 2026-08-22 (quinto giro) · ✅ **L3 CHIUSO — e il cantiere DB con lui**
+
+76 righe sui quattro CSV, nessun changeSet. ⛔ Non applicato.
+
+✅ **La passata BE è tornata completa in un giro** (commit `5901049ab`):
+BE-1, BE-2, BE-3 e BE-5 consegnati, più metà di FE-1. Il metodo ha retto la
+terza volta — *guardare il residuo prima di comporre il lotto, chiedere il
+blocco come passata unica*.
+
+⭐ **Loro hanno fatto due cose oltre la richiesta**, entrambe migliori del
+chiesto: hanno tolto la **seconda copia** della whitelist (*«alla terza
+aggiunta, copiarli a mano era il modo sicuro per farne divergere uno — e la
+divergenza si vede solo dal lato che rifiuta»*), e hanno intercettato la
+**divergenza di chiave** `code`/`error_code` prima di scriverla, che avrebbe
+prodotto righe *presenti in tabella e vuote a video*.
+
+🔴 **Una loro affermazione corretta**: `fn_list_lotto_task_runs` **non ripiega**
+su un nome ignoto — solleva `E_PARAMETRO_INVALIDO` (verificato sulla funzione
+viva). Chi conta su un fallback vedrà un errore, non un ordine di default.
+
+🔴 **E il presidio ha trovato un mio errore prima che uscisse**: `fase` sulla
+lista 47 era `ordinabile = f` mentre la funzione DB la sa ordinare — capacità
+irraggiungibile. Corretto il seed. *È la seconda volta in questo cantiere che
+una delle quattro direzioni paga da sola il costo di averla.*
+
+Restano fuori dal perimetro DB: `_LISTE` del presidio (ora si può, L3 c'è),
+BE-4, la conversione dei `.vue`, e la coda **B** di §4-bis (`stato_atto` sulla
+lista 44, che aspetta la voce BE prima del flag).
 
 ### 2026-08-21/22 (quarto giro) · ✅ **L2 CHIUSO**
 
