@@ -12,6 +12,7 @@
 -- 6) Reuse contabile con stesso lotto
 -- 7) Idempotenza link lotto-contabile (una sola riga ponte)
 -- 8) Guard parametri: blocco centro_riscossione_id non valido
+-- 9) Il rifiuto parla all'operatore: nomina il dato, non il parametro
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -31,7 +32,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(9);
 
 -- ============================================================
 -- 0) Costanti
@@ -271,6 +272,34 @@ SELECT throws_ok(
   'P0001',
   NULL,
   'Guard parametri: blocco centro_riscossione_id non valido'
+);
+
+-- ============================================================
+-- 9) ⭐ Il rifiuto NOMINA IL DATO, non il parametro PL/pgSQL
+--   Presidia una decisione, non un dettaglio: il centro di riscossione lo
+--   sceglie una PERSONA in un form, quindi il messaggio lo legge una persona.
+--   Fino al 2026-08-21 questo guard sollevava E_GENERICO; la prima bonifica lo
+--   portava su E_PARAMETRO_INVALIDO, il cui messaggio è «Parametro non valido:
+--   %s» — e il %s sarebbe stato «p_centro_riscossione_id», cioè un messaggio di
+--   qualità E_GENERICO sotto un codice registrato.
+--   ⚠️ Si asserisce sulla FRASE e non sul codice perché P0001 dice «errore di
+--   dominio», non QUALE: qui il discriminante è proprio il testo che l'operatore
+--   leggerà. E il pattern non attraversa il segnaposto.
+-- ============================================================
+SELECT throws_like(
+  $$
+  SELECT pagamenti.fn_get_or_create_vendite_contabile(
+    p_centro_riscossione_id => 0,
+    p_data_contabile => current_date,
+    p_data_registrazione => current_date,
+    p_ente_incasso_id => NULL,
+    p_lotto_id => NULL,
+    p_codice_stato_interno => (SELECT codice_interno FROM tmp_stato_ref),
+    p_meta => '{}'::jsonb
+  );
+  $$,
+  '%distinta contabile%centro di riscossione%',
+  'Il rifiuto nomina il centro di riscossione, non il parametro PL/pgSQL'
 );
 
 SELECT * FROM finish();

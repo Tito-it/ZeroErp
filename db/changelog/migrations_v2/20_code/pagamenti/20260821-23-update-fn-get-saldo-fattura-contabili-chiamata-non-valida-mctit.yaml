@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I GUARD DI CHIAMATA ESCONO DA `E_PARAMETRO_INVALIDO` — passo P-7-bis (3 di 3)
+#   pagamenti.fn_get_saldo_fattura_contabili
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §6.7
+#
+# ── PERCHE' UN SECONDO GIRO, E PERCHE' IN AVANTI ────────────────────────
+#   Il lotto 1 e' stato applicato il 2026-08-21 alle 19:38. Il changeSet
+#   `20260821-13` aveva portato questi guard da `E_GENERICO` a
+#   `E_PARAMETRO_INVALIDO`, seguendo la tabella «Regola operativa» di
+#   `work-done/correzione-e-generico.md` (aprile 2026). ⛔ Un changeSet applicato
+#   non si modifica: si corregge in avanti, ed e' questo file.
+#
+# ── 🔴 IL DIFETTO: `E_PARAMETRO_INVALIDO` E' UN DEBITO, NON UNA SEDE ───
+#   Segnalato da Tid il 2026-08-21 (*«esiste ancora perche' il BE deve gestire
+#   vecchie funzioni che non sono riuscito a correggere»*), e i documenti lo
+#   confermano nero su bianco:
+#
+#   · **D11** di `work-done/brief-db-be-classe-codici-errore.md`:
+#     *«`E_VALIDAZIONE` si spezza prima del seed; `E_PARAMETRO_INVALIDO` NO —
+#     denominatore sicuro + `note`, e CANTIERE SUO»*. E' uno **split rimandato**,
+#     con una classe di compromesso e la ragione scritta nel catalogo;
+#   · **§9.1** dello stesso brief: *«la regola che chiude il RUBINETTO — vietare
+#     NUOVI codici generici — resta in coda al lavoro: rincorrere gli esistenti
+#     senza chiudere il rubinetto e' la forma in cui questi registri non calano
+#     mai»*;
+#   · **`docs/it/dev/api.md` §Tassonomia** lo dichiara **candidato allo split**
+#     (113 funzioni, 111 con verita' 400 e 2 con 404) e ne trae la regola
+#     *«un codice usato per due cose si spezza a monte, non si rimappa a valle»*.
+#
+#   ⭐ **Precedente identico e recente**: `E_VENDITE_PRICING_ESITO_ASSENTE`
+#   (2026-08-19, classe TECNICO) nasce perche' il rubinetto B-7 respinse
+#   `E_PARAMETRO_INVALIDO` su un guard analogo — *«li' non c'e' nessun parametro
+#   invalido, c'e' un'invariante rotta»*.
+#
+# ── PERCHE' `TECNICO` (500) E NON `DATO_ERRATO` (400) ──────────────────
+#   Questi guard non difendono un **dato dell'operatore**: difendono
+#   un'**invariante della chiamata**. Su di essi il `NULL` e' AMMESSO, e un id
+#   `<= 0` o un `codice_interno` vuoto non escono da nessuna interfaccia — li
+#   produce solo un chiamante rotto. `DATO_ERRATO` significa *«chi l'ha fatta puo'
+#   correggerlo e riprovare»*: qui non c'e' niente da correggere a video.
+#
+#   ⚠️ **E' un cambio di comportamento per il BE**, non solo di etichetta: quei
+#   punti passano da 400 a 500. E' voluto — un 400 su un bug del chiamante manda
+#   l'operatore a cercare un campo che non esiste.
+#
+#   ⚠️ La chiave `campo` **esce dal contesto**: su un 500 non c'e' nessun campo da
+#   accendere, e lasciarla farebbe evidenziare un input per un errore che l'input
+#   non ha causato. Il nome del parametro resta nel messaggio, dove il lettore e'
+#   chi ha scritto la chiamata.
+#
+# ── ℹ️ IL MESSAGGIO NOMINA IL PARAMETRO, ED E' L'ECCEZIONE DICHIARATA ──
+#   La regola scritta il 2026-08-21 in
+#   `guide/Messaggi-di-Errore-e-Generazione-Log.md` §«I valori del messaggio» dice
+#   che nel `VARIADIC` non entra un nome di parametro. ⭐ Questo e' il caso in cui
+#   **entra di proposito**: il destinatario e' uno sviluppatore e il nome del
+#   parametro e' l'informazione utile. Il criterio non e' «c'e' un nome?» ma
+#   «l'ho messo perche' serve a chi legge?».
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#   Nessun predicato, nessuna firma, nessun `RETURNS`. I `%TYPE` restano quelli
+#   di `20260821-13` — ⚠️ il corpo NON e' stato ripreso da
+#   `pg_get_functiondef`, che li scioglie: e' quello dello YAML applicato,
+#   **verificato identico all'oggetto vivo** prima di toccarlo.
+#
+# Verifica: db/pgtap/pagamenti/ — nessun test cambia esito, perche'
+#   `fn_log_and_raise_error` solleva sempre `P0001` a prescindere dalla classe:
+#   la classe decide lo status HTTP lato backend, non lo SQLSTATE.
+# Dipendenze: codice `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (953, TECNICO), appeso ai
+#   CSV di `80_data` nello stesso commit. ⚠️ `80_data` gira DOPO `20_code`:
+#   nessuna preCondition sul codice.
+# 🔴 RICHIESTA AL BE (BE-1): rigenerare `error_policies_generated.py`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-23-update-fn-get-saldo-fattura-contabili-chiamata-non-valida-mctit.yaml
+
+  - changeSet:
+      id: 20260821-23-update-fn-get-saldo-fattura-contabili-chiamata-non-valida
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.fn_get_saldo_fattura_contabili: il guard su p_fattura_id esce da
+        E_PARAMETRO_INVALIDO e passa a E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO). Nessun
+        predicato cambiato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'fn_get_saldo_fattura_contabili';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura_contabili(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(
+                  saldo_contabile     pagamenti.vendite_contabili_righe.importo%TYPE,
+                  has_righe_postabili boolean
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce il saldo contabile "in lavorazione" di una
+                --   fattura, sommando solo le righe contabili che stanno in
+                --   uno stato postabile e appartengono a una testata non
+                --   ancora finale.
+                --
+                -- Regole:
+                --   - riga attiva e in stato is_postabile;
+                --   - testata non finale. ⚠️ Dal 2026-08-21 lo stato della
+                --     testata e' obbligatorio (20260821-12), quindi il JOIN e'
+                --     interno: il ramo "testata senza stato" non esiste piu'.
+                --   - ⚠️ questo filtro NON e' il presidio contro la riga
+                --     appesa a una testata gia' chiusa (difetto C-5 del piano):
+                --     quella la fermano i guard della slice 1. Qui si esclude
+                --     un documento chiuso, non si ripara un'anomalia.
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_saldo_fattura_contabili', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'fattura_id obbligatoria e maggiore di zero',
+                      'p_fattura_id', p_fattura_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_saldo_fattura_contabili', 'p_fattura_id (obbligatorio, maggiore di zero)'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  COALESCE(SUM(cr.importo), 0)::numeric AS saldo_contabile,
+                  (COUNT(*) > 0) AS has_righe_postabili
+                FROM pagamenti.vendite_contabili_righe cr
+                JOIN pagamenti.vendite_contabili_righe_stati s
+                  ON s.id = cr.stato_id
+                JOIN pagamenti.vendite_contabili c
+                  ON c.id = cr.contabile_id
+                JOIN pagamenti.vendite_contabili_stati cs
+                  ON cs.id = c.stato_id
+                WHERE cr.fattura_id = p_fattura_id
+                  AND cr.attivo IS TRUE
+                  AND s.is_postabile IS TRUE
+                  AND cs.is_final IS FALSE;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura_contabili(vendite.fatture.id%TYPE)
+              IS 'Restituisce il saldo contabile fattura dalle righe in stato postabile sotto una testata non finale. Rev 2026-08-21: tolto il ramo "testata senza stato" (LEFT JOIN + COALESCE su is_final), reso impossibile dal NOT NULL su vendite_contabili.stato_id; guard di chiamata su E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO): un p_fattura_id <= 0 non esce da nessuna interfaccia, e l''operatore non ha niente da correggere; tipi ancorati con %TYPE in firma e RETURNS TABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: rimetterebbe i guard di chiamata
+              --    su E_PARAMETRO_INVALIDO, cioe' su un codice che il progetto ha
+              --    gia' dichiarato candidato allo split, e li riporterebbe a 400
+              --    su un errore che l'operatore non puo' correggere.
+              SELECT 1;

@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `pagamenti` AVEVA STATI E NESSUNA REGOLA SU COME CI SI PASSA — passo S1-3
+#   pagamenti.transizioni_stati_contabile · …_contabile_riga
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.1 S1-3
+#   Decisione: brief-incassi-riconciliazione-rate-promemoria.md, D9-b e D14
+#
+# ── LA MISURA CHE HA FATTO NASCERE IL PASSO ────────────────────────────
+#   Dieci domini hanno una tabella di transizioni con un `trgfn_*_guard_transizione`
+#   a presidio — DDT, ordini, preventivi, contratti, resi, pratiche, commesse,
+#   offerte, documenti fiscali. **`pagamenti` era l'unico con degli stati e
+#   nessuna regola**: qualunque salto era ammesso, compreso **uscire da uno stato
+#   dichiarato finale**.
+#
+# ── LA FORMA E' QUELLA GIA' IN USO, E NON SI REINVENTA ─────────────────
+#   `(stato_da_id, stato_a_id, attivo, meta)` + UNIQUE sulla coppia + CHECK
+#   `da <> a`, come `vendite.transizioni_stati_commessa` e
+#   `config.transizioni_stati_reso`. Due tabelle e non una: **testata e riga sono
+#   due macchine diverse**, con stati diversi e cataloghi diversi.
+#
+#   ℹ️ **Dove**: in `pagamenti`, non in `config`. La regola del progetto è che le
+#   transizioni stanno **dove stanno gli stati** — `config` per i domini con stati
+#   in `config`, `vendite.transizioni_stati_commessa` per quelli con stati in
+#   `vendite`. Gli stati contabili vivono in `pagamenti`.
+#
+# ── ⚠️ IL `meta` PORTA UN CHECK CHE E' UN CONTRATTO COL FRONTEND ───────
+#   Sulle gemelle il `meta` regge i pulsanti di cambio stato:
+#   `{"manuale": true, "action_key": …, "label_key": "vendite.reso.azione_conferma", …}`.
+#   Il CHECK impone che, se `manuale` è vero, ci siano `action_key` e `label_key`.
+#
+#   ⛔ **E qui le righe nascono `{"manuale": false}`, di proposito.**
+#   `scripts/check_i18n_keys.py` (controllo 4) cerca le `label_key` emesse dai seed
+#   `transizioni_stati_*` dentro `it.json`/`en.json` e **fallisce** se mancano. Il
+#   frontend di `pagamenti` oggi è **due `.gitkeep`** (richiesta BE-4): dichiarare
+#   dei pulsanti adesso vorrebbe dire chiedere al FE chiavi i18n per un'interfaccia
+#   che non esiste, e nel frattempo tenere la CI rossa.
+#
+#   ⭐ **Le transizioni servono PRIMA al guard, poi ai bottoni.** Il valore di
+#   questa tabella è che il database smetta di ammettere salti impossibili: quello
+#   vale da subito. Le `label_key` si aggiungono con l'interfaccia, nello stesso
+#   giro in cui il FE crea le chiavi — è un `UPDATE` di `meta` su un CSV, non una
+#   migrazione.
+#   ⚠️ `{"manuale": false}` non significa «transizione automatica»: significa
+#   «non ancora esposta come pulsante». Chi aggiunge l'interfaccia lo cambia.
+#
+# ── ⚠️ CHE COSA **NON** SI SEMINA, ED È UNA DECISIONE ──────────────────
+#   Le transizioni in **uscita da `IMPORTATA`** (riga e testata) non entrano nel
+#   seed: quello stato lo produce **solo l'import da flusso**, che non esiste
+#   (`enti_incasso` è a zero righe). È la lezione appena pagata con `STORNATA` —
+#   *un catalogo pieno di righe irraggiungibili insegna cose false*. Arrivano con
+#   D6, e sono un **append** a un CSV.
+#   ⇒ La tabella nasce con il grafo del giro **manuale**. Vedi il seed
+#   `20260821-31` (passo S1-4).
+#
+# ── ⚠️ LE FK FANNO NASCERE INDICI CHE NON NASCONO DA SOLI ──────────────
+#   Gli indici FK in questo progetto sono **opt-in** (`dbops.fk_index_policy`).
+#   Qui non si seminano: le due tabelle avranno **una manciata di righe** e sono
+#   sempre lette per intero o per coppia, che la UNIQUE già copre.
+#   ⚠️ E una FK nuova fa nascere il trigger generico `child_requires_active_parent`:
+#   è voluto — una transizione non deve poter puntare a uno stato spento.
+#
+# Presidio: db/pgtap/pagamenti/test-transizioni-stati-contabili.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260821-25-create-transizioni-stati-contabile-mctit.yaml
+
+  - changeSet:
+      id: 20260821-25-create-transizioni-stati-contabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea le due matrici di transizione di pagamenti — testata e riga — con la
+        forma già in uso negli altri dieci domini: (stato_da_id, stato_a_id, attivo,
+        meta), UNIQUE sulla coppia, CHECK da <> a. pagamenti era l'unico dominio con
+        degli stati e nessuna regola su come ci si passa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+            - not:
+                - tableExists:
+                    schemaName: pagamenti
+                    tableName: transizioni_stati_contabile
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) La matrice della DISTINTA (testata)
+              -- ============================================================
+              CREATE TABLE pagamenti.transizioni_stati_contabile (
+                  id           bigint GENERATED BY DEFAULT AS IDENTITY,
+                  stato_da_id  smallint NOT NULL,
+                  stato_a_id   smallint NOT NULL,
+                  attivo       boolean  NOT NULL DEFAULT true,
+                  meta         jsonb    NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert  timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert  text     NOT NULL DEFAULT CURRENT_USER,
+                  data_update  timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update  text     NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT pk_transizioni_stati_contabile PRIMARY KEY (id),
+                  CONSTRAINT uq_transizioni_stati_contabile UNIQUE (stato_da_id, stato_a_id),
+                  CONSTRAINT ck_transizioni_stati_contabile_da_diverso_a
+                      CHECK (stato_da_id <> stato_a_id),
+                  CONSTRAINT ck_transizioni_stati_contabile_meta_ui
+                      CHECK (COALESCE((meta ->> 'manuale')::boolean, true) = false
+                             OR (meta ?? 'action_key' AND meta ?? 'label_key')),
+                  CONSTRAINT fk_transizioni_stati_contabile_da
+                      FOREIGN KEY (stato_da_id) REFERENCES pagamenti.vendite_contabili_stati (id),
+                  CONSTRAINT fk_transizioni_stati_contabile_a
+                      FOREIGN KEY (stato_a_id)  REFERENCES pagamenti.vendite_contabili_stati (id)
+              );
+
+              COMMENT ON TABLE pagamenti.transizioni_stati_contabile IS
+                'Matrice delle transizioni ammesse fra stati della DISTINTA contabile (pagamenti.vendite_contabili). Grafo letto da pagamenti.trgfn_vendite_contabili_guard_transizione: nessuna regola e'' scritta nel codice. Percorso di D14-a-bis: BOZZA/IMPORTATA -> VALIDATA|ANNULLATA, VALIDATA -> CHIUSA|BOZZA|ANNULLATA, CHIUSA/ANNULLATA terminali. ⚠️ Le uscite da IMPORTATA non sono seminate finche'' l''import da flusso non esiste.';
+
+              COMMENT ON COLUMN pagamenti.transizioni_stati_contabile.meta IS
+                'Contratto col frontend per i pulsanti di cambio stato, come sulle gemelle di vendite e config. ⛔ Oggi tutte le righe sono {"manuale": false}: NON vuol dire «automatica», vuol dire «non ancora esposta come pulsante». Il frontend di pagamenti non esiste (richiesta BE-4), e una label_key dichiarata qui e assente dai locales fa FALLIRE scripts/check_i18n_keys.py. Si arricchisce quando arriva l''interfaccia, nello stesso giro in cui il FE crea le chiavi.';
+
+              -- ============================================================
+              -- 2) La matrice della RIGA
+              -- ============================================================
+              CREATE TABLE pagamenti.transizioni_stati_contabile_riga (
+                  id           bigint GENERATED BY DEFAULT AS IDENTITY,
+                  stato_da_id  smallint NOT NULL,
+                  stato_a_id   smallint NOT NULL,
+                  attivo       boolean  NOT NULL DEFAULT true,
+                  meta         jsonb    NOT NULL DEFAULT '{}'::jsonb,
+                  data_insert  timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert  text     NOT NULL DEFAULT CURRENT_USER,
+                  data_update  timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update  text     NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT pk_transizioni_stati_contabile_riga PRIMARY KEY (id),
+                  CONSTRAINT uq_transizioni_stati_contabile_riga UNIQUE (stato_da_id, stato_a_id),
+                  CONSTRAINT ck_transizioni_stati_contabile_riga_da_diverso_a
+                      CHECK (stato_da_id <> stato_a_id),
+                  CONSTRAINT ck_transizioni_stati_contabile_riga_meta_ui
+                      CHECK (COALESCE((meta ->> 'manuale')::boolean, true) = false
+                             OR (meta ?? 'action_key' AND meta ?? 'label_key')),
+                  CONSTRAINT fk_transizioni_stati_contabile_riga_da
+                      FOREIGN KEY (stato_da_id) REFERENCES pagamenti.vendite_contabili_righe_stati (id),
+                  CONSTRAINT fk_transizioni_stati_contabile_riga_a
+                      FOREIGN KEY (stato_a_id)  REFERENCES pagamenti.vendite_contabili_righe_stati (id)
+              );
+
+              COMMENT ON TABLE pagamenti.transizioni_stati_contabile_riga IS
+                'Matrice delle transizioni ammesse fra stati della RIGA contabile (pagamenti.vendite_contabili_righe). Grafo letto da pagamenti.trgfn_vendite_contabili_righe_guard_transizione. Percorso di D14-a: DA_ABBINARE -> ABBINATA|SOSPESA|SCARTATA, ABBINATA -> POSTATA|DA_ABBINARE|SOSPESA, SOSPESA -> ABBINATA|DA_ABBINARE|SCARTATA, SCARTATA -> SOSPESA, POSTATA TERMINALE. ⚠️ SCARTATA non e'' finale: da li'' si torna a SOSPESA per riprenderla in mano. ⚠️ Le uscite da IMPORTATA non sono seminate finche'' l''import da flusso non esiste.';
+
+              COMMENT ON COLUMN pagamenti.transizioni_stati_contabile_riga.meta IS
+                'Contratto col frontend per i pulsanti di cambio stato. ⛔ Oggi tutte le righe sono {"manuale": false}: vedi il commento sulla gemella della testata.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP TABLE pagamenti.transizioni_stati_contabile_riga;
+              DROP TABLE pagamenti.transizioni_stati_contabile;

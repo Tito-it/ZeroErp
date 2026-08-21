@@ -1,0 +1,197 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BAGAGLIO CHE UNO STATO PRETENDE — passo S1-6
+#   pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.1 S1-6 · Decisione: D14-a
+#
+# ── LA META' MANCANTE DELLA REGOLA ─────────────────────────────────────
+#   Le transizioni (S1-5) dicono **quando** si può passare da uno stato all'altro.
+#   Questo guard dice **a quali condizioni sui dati**. Sono due metà della stessa
+#   regola — D14-a le mette in una tabella sola, percorso e bagaglio — e senza la
+#   seconda una riga può arrivare in `ABBINATA` senza dire a chi appartiene.
+#
+# ── ⭐ LA REGOLA STA NEL CATALOGO, NON QUI DENTRO ──────────────────────
+#   Il guard legge `vendite_contabili_righe_stati.richiede_abbinamento`
+#   (`20260821-24`): non porta dentro di sé nessun elenco di codici di stato. È
+#   la stessa scelta di S1-5, per la stessa ragione — una regola in una tabella si
+#   legge e si cambia senza toccare il codice.
+#
+#   ⚠️ **E non era derivabile da ciò che c'era già**: `POSTATA` e `SCARTATA` sono
+#   entrambe `is_final`, ma solo la prima pretende l'abbinamento. Una condizione
+#   costruita su `is_final` avrebbe preteso la fattura anche su una riga scartata,
+#   cioè proprio su quella che **non è nostra**.
+#
+# ── ⚠️ LA RATA RESTA FUORI, ED È UNA DECISIONE ─────────────────────────
+#   D14-a: su `ABBINATA` la rata è **facoltativa**, e non è una dimenticanza — la
+#   riga del fondo fattura ha fattura sì e rata no, perché è un saldo per
+#   **trasferimento**, non denaro arrivato su una scadenza.
+#
+#   ⭐ Per questo il guard si scrive **una volta sola**, adesso, con la nullità
+#   già prevista: quando la slice 2 aggiungerà `scadenza_id` **non va toccato**.
+#   Chi lo rileggerà allora non deve credere che manchi un pezzo.
+#
+# ── ⚠️ INSERT **E** UPDATE, e qui l'INSERT serve ───────────────────────
+#   A differenza del guard di transizione — che è solo `UPDATE OF stato_id`,
+#   perché una riga deve poter **nascere** in uno stato qualunque — questo vale
+#   anche sull'INSERT: una riga che nasce già `ABBINATA` senza fattura sarebbe
+#   sbagliata dal primo istante. ✅ E il percorso vivo regge: il sync dei fondi
+#   crea le sue righe in `ABBINATA` con `fattura_sorgente_id` e
+#   `billing_account_id`, entrambe **NOT NULL** sulla sorgente (verificato).
+#
+# ── ⚠️ ORDINE FRA I TRE GUARD DELLA STESSA TABELLA ─────────────────────
+#   I `BEFORE ROW` scattano in ordine **alfabetico**. Su `vendite_contabili_righe`:
+#     1. `…_a10_guard_distinta_finale_ins_upd`  (S1-7)
+#     2. `…_a10_guard_stato_dati_ins_upd`       (questo)
+#     3. `…_a10_guard_transizione_upd`          (S1-5)
+#   ⭐ L'ordine è quello giusto e vale la pena averlo scritto: se la distinta è
+#   chiusa non ha senso discutere del bagaglio della riga, e il rifiuto che
+#   l'operatore legge per primo è quello che spiega di più.
+#
+# Dipendenze: codice E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO (956, DATO_ERRATO),
+#   colonna richiede_abbinamento (`20260821-24`), seed della bandiera (`20260821-30`).
+#   ⚠️ 80_data gira DOPO 20_code: finché il seed non passa, la colonna è `false`
+#   ovunque per default e il guard non rifiuta nulla — fail-OPEN nella finestra
+#   fra le due fasi dello stesso migrate. È accettabile solo perché la tabella è
+#   a zero righe; il pgTAP verifica lo stato di regime.
+# Presidio: db/pgtap/pagamenti/test-righe-contabili-guard-dati.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-27-create-trgfn-righe-guard-stato-dati-mctit.yaml
+
+  - changeSet:
+      id: 20260821-27-create-trgfn-righe-guard-stato-dati
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard stato ↔ dati sulla riga contabile: uno stato che dichiara
+        richiede_abbinamento pretende fattura e billing account. È la metà «bagaglio»
+        di D14-a, di cui le transizioni sono la metà «percorso». La regola sta nel
+        catalogo, non nel guard. La rata resta facoltativa di proposito: il guard non
+        andrà toccato quando arriverà scadenza_id.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+                columnName: richiede_abbinamento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_richiede  pagamenti.vendite_contabili_righe_stati.richiede_abbinamento%TYPE;
+                  v_codice    pagamenti.vendite_contabili_righe_stati.codice_interno%TYPE;
+                  v_mancanti  text;
+                  v_campo     text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Una riga contabile in uno stato che PRETENDE l'abbinamento
+                  --   deve dire a quale fattura e a quale cliente appartiene.
+                  --   Sono i due dati da cui nasce il movimento contabile.
+                  --
+                  -- ⭐ Quali stati lo pretendano NON e' scritto qui: e' la
+                  --    bandiera richiede_abbinamento del catalogo (D14-a).
+                  --
+                  -- ⚠️ La RATA resta FACOLTATIVA anche sugli stati abbinati: la
+                  --    riga del fondo fattura ha fattura si' e rata no, perche'
+                  --    e' un saldo per trasferimento. Quando arrivera'
+                  --    scadenza_id (slice 2) questa funzione NON va toccata.
+                  -- =========================================================
+
+                  SELECT s.richiede_abbinamento, s.codice_interno
+                    INTO v_richiede, v_codice
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.id = NEW.stato_id;
+
+                  -- Stato sconosciuto: non e' compito di questo guard: la FK
+                  -- fk_vendite_contabili_righe_stato lo impedisce gia'.
+                  IF COALESCE(v_richiede, false) IS FALSE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.fattura_id IS NOT NULL AND NEW.billing_account_id IS NOT NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Che cosa manca, detto all'operatore e non al programma. Il
+                  -- campo da accendere e' UNO: se mancano entrambi si indica il
+                  -- primo del percorso, perche' scegliendo la fattura il cliente
+                  -- viene con lei.
+                  v_mancanti := CASE
+                      WHEN NEW.fattura_id IS NULL AND NEW.billing_account_id IS NULL
+                          THEN 'la fattura e il cliente'
+                      WHEN NEW.fattura_id IS NULL THEN 'la fattura'
+                      ELSE 'il cliente'
+                  END;
+                  v_campo := CASE
+                      WHEN NEW.fattura_id IS NULL THEN 'fattura_id'
+                      ELSE 'billing_account_id'
+                  END;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati',
+                      'E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO',
+                      jsonb_build_object(
+                          'campo',              v_campo,
+                          'contabile_riga_id',  NEW.id,
+                          'contabile_id',       NEW.contabile_id,
+                          'stato_id',           NEW.stato_id,
+                          'stato',              v_codice,
+                          'fattura_id',         NEW.fattura_id,
+                          'billing_account_id', NEW.billing_account_id
+                      ),
+                      NEW.tx_id,
+                      COALESCE(v_codice, 'NULL'),
+                      v_mancanti
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati() IS
+                'Guard stato <-> dati della riga contabile: uno stato con richiede_abbinamento pretende fattura_id e billing_account_id. Meta'' «bagaglio» di D14-a, di cui pagamenti.trgfn_vendite_contabili_righe_guard_transizione e'' la meta'' «percorso». ⚠️ La RATA resta facoltativa di proposito (la riga del fondo fattura non ne ha una): quando arrivera'' scadenza_id questa funzione NON va toccata. La lista degli stati che pretendono l''abbinamento sta nel CATALOGO, non qui.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              -- ⚠️ INSERT **e** UPDATE: una riga che nasce gia' abbinata senza
+              -- fattura sarebbe sbagliata dal primo istante. Senza `OF`, perche'
+              -- la condizione dipende da TRE colonne insieme.
+              CREATE TRIGGER trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd
+                  BEFORE INSERT OR UPDATE ON pagamenti.vendite_contabili_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback riapre il buco: una riga puo' tornare ad arrivare
+              -- in ABBINATA senza dire a chi appartiene, e il rifiuto si
+              -- sposterebbe al momento del posting — molto piu' tardi, e su un
+              -- gesto che non e' quello che ha sbagliato.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati();

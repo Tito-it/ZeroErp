@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GRAFO DEGLI STATI, SEMINATO — passo S1-4
+#   pagamenti.transizioni_stati_contabile · …_contabile_riga
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.1 S1-4 · Decisione: D14-a, D14-a-bis
+#
+# ── ⚠️ PERCHE' SQL E NON UN CSV, CONTRO LA REGOLA GENERALE ────────────
+#   Le altre matrici del progetto si seminano da CSV con gli **id** degli stati
+#   (`vendite/transizioni_stati_commessa.csv`). ⛔ Qui non si puo', per la riga:
+#   il CSV di `vendite_contabili_righe_stati` **non porta la colonna `id`** e il
+#   suo loader usa `primaryKey: "codice"`. Gli id di quegli stati **non sono un
+#   contratto** — inciderli in un CSV di transizioni li renderebbe tale per
+#   sbaglio, e al primo reseed la matrice punterebbe altrove **in silenzio**.
+#
+#   ⇒ Si risolve per `codice_interno`, che e' immutabile (lock su entrambe le
+#   tabelle), e quindi serve un `SELECT`: un `loadUpdateData` non sa fare lookup.
+#
+#   ℹ️ **Non e' la «seconda sorgente di verita'» contro cui il progetto mette in
+#   guardia**: quella regola vieta un `UPDATE` SQL che *compete* con un CSV sulla
+#   stessa tabella. Qui l'SQL e' l'**unica** sorgente, e resta `runOnChange: true`
+#   proprio per avere la stessa garanzia di un mirror — la matrice si ri-afferma
+#   a ogni migrate. La sede della verita' e' questo file.
+#   Precedenti della stessa forma: `20260110-13`, `20260713-38`.
+#
+# ── ⚠️ COSA NON SI SEMINA, ED E' UNA DECISIONE ────────────────────────
+#   Le uscite da **`IMPORTATA`** — su entrambe le macchine — non ci sono. Quello
+#   stato lo produce **solo l'import da flusso**, che non esiste: `enti_incasso`
+#   e' a **zero righe**, non c'e' nessun canale da cui un file possa arrivare.
+#
+#   ⭐ E' la lezione appena pagata con `STORNATA`, applicata prima invece che
+#   dopo: *un catalogo pieno di righe irraggiungibili insegna cose false*. Chi
+#   legge questa matrice fra sei mesi deve vedere il giro che si puo' davvero
+#   fare. Le transizioni del flusso arrivano con D6, e sono **due `INSERT` in
+#   coda a questo file** — non una migrazione.
+#
+# ── ⚠️ IL `meta` NASCE `{"manuale": false}`, E NON VUOL DIRE «AUTOMATICA» ─
+#   Sulle matrici gemelle il `meta` regge i **pulsanti** di cambio stato
+#   (`action_key`, `label_key`, icona, severita'). `scripts/check_i18n_keys.py`
+#   cerca quelle `label_key` nei locales del frontend e **fallisce** se mancano —
+#   e il frontend di `pagamenti` oggi e' **due `.gitkeep`** (richiesta BE-4).
+#   ⇒ `{"manuale": false}` significa **«non ancora esposta come pulsante»**. Si
+#   arricchisce quando arriva l'interfaccia, nello stesso giro in cui il FE crea
+#   le chiavi: e' un `UPDATE` di `meta`, non una migrazione.
+#   ⚠️ E il CHECK `ck_transizioni_*_meta_ui` lo impone: con `manuale` vero senza
+#   le due chiavi la riga non entra.
+#
+# ── ⚠️ UNA CONDIZIONE CHE LA MATRICE NON SA ESPRIMERE ─────────────────
+#   D14-a-bis dice che **`VALIDATA -> BOZZA` e' solo per la distinta MANUALE**
+#   (l'automatica e' immutabile). Una matrice `(da, a)` non porta condizioni: qui
+#   la transizione e' seminata **senza** la restrizione, che arrivera' col passo
+#   S1-18 — la colonna `origine` — e vivra' nel guard, non nella matrice.
+#   ⚠️ Fino ad allora una distinta importata potrebbe essere riportata in bozza.
+#   Innocuo oggi: l'import non esiste, quindi distinte importate non ce ne sono.
+#
+# ── LE DUE MATRICI, PER ESTESO ────────────────────────────────────────
+#   DISTINTA (D14-a-bis)          RIGA (D14-a)
+#     BOZZA    -> VALIDATA          DA_ABBINARE -> ABBINATA · SOSPESA · SCARTATA
+#     BOZZA    -> ANNULLATA         ABBINATA    -> POSTATA · DA_ABBINARE · SOSPESA
+#     VALIDATA -> CHIUSA            SOSPESA     -> ABBINATA · DA_ABBINARE · SCARTATA
+#     VALIDATA -> BOZZA             SCARTATA    -> SOSPESA
+#     VALIDATA -> ANNULLATA         POSTATA     -> (nessuna: TERMINALE)
+#
+#   ⭐ `SOSPESA -> ABBINATA` e' **diretta**: risolto il problema non si ripassa da
+#   `DA_ABBINARE`.
+#   ⭐ `SCARTATA -> SOSPESA` esiste, ed e' il motivo per cui `SCARTATA` ha smesso
+#   di essere uno stato finale (passo S1-21, changeSet `20260821-30`).
+#   ⭐ `POSTATA` non ha uscite: e' l'unico stato dopo il quale **esiste un fatto**
+#   (il movimento contabile). Ed e' cio' che chiude il difetto C-2.
+#   ⛔ `STORNATA` non compare: e' ritirata (S1-2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260821-31-seed-transizioni-stati-contabile-mctit.yaml
+
+  - changeSet:
+      id: 20260821-31-seed-transizioni-stati-contabile
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Semina le due matrici di transizione di pagamenti risolvendo gli stati per
+        codice_interno (gli id del catalogo delle righe non sono un contratto). Solo il
+        giro MANUALE: le uscite da IMPORTATA arrivano con l'import, perché un catalogo
+        pieno di righe irraggiungibili insegna cose false. meta = {"manuale": false}:
+        non «automatica», ma «non ancora esposta come pulsante» — il frontend di
+        pagamenti non esiste e una label_key dichiarata qui farebbe fallire la CI.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: transizioni_stati_contabile
+            - tableExists:
+                schemaName: pagamenti
+                tableName: transizioni_stati_contabile_riga
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) La matrice della DISTINTA
+              -- ============================================================
+              WITH coppie(da, a) AS (
+                  VALUES ('BOZZA','VALIDATA'),
+                         ('BOZZA','ANNULLATA'),
+                         ('VALIDATA','CHIUSA'),
+                         ('VALIDATA','BOZZA'),
+                         ('VALIDATA','ANNULLATA')
+              )
+              INSERT INTO pagamenti.transizioni_stati_contabile
+                     (stato_da_id, stato_a_id, attivo, meta)
+              SELECT sd.id, sa.id, true, '{"manuale": false}'::jsonb
+                FROM coppie c
+                JOIN pagamenti.vendite_contabili_stati sd ON sd.codice_interno = c.da
+                JOIN pagamenti.vendite_contabili_stati sa ON sa.codice_interno = c.a
+              ON CONFLICT (stato_da_id, stato_a_id) DO UPDATE
+                     SET attivo = EXCLUDED.attivo;
+
+              -- ============================================================
+              -- 2) La matrice della RIGA
+              -- ============================================================
+              WITH coppie(da, a) AS (
+                  VALUES ('DA_ABBINARE','ABBINATA'),
+                         ('DA_ABBINARE','SOSPESA'),
+                         ('DA_ABBINARE','SCARTATA'),
+                         ('ABBINATA','POSTATA'),
+                         ('ABBINATA','DA_ABBINARE'),
+                         ('ABBINATA','SOSPESA'),
+                         ('SOSPESA','ABBINATA'),
+                         ('SOSPESA','DA_ABBINARE'),
+                         ('SOSPESA','SCARTATA'),
+                         ('SCARTATA','SOSPESA')
+              )
+              INSERT INTO pagamenti.transizioni_stati_contabile_riga
+                     (stato_da_id, stato_a_id, attivo, meta)
+              SELECT sd.id, sa.id, true, '{"manuale": false}'::jsonb
+                FROM coppie c
+                JOIN pagamenti.vendite_contabili_righe_stati sd ON sd.codice_interno = c.da
+                JOIN pagamenti.vendite_contabili_righe_stati sa ON sa.codice_interno = c.a
+              ON CONFLICT (stato_da_id, stato_a_id) DO UPDATE
+                     SET attivo = EXCLUDED.attivo;
+
+              -- ⚠️ Guard del seed stesso: se un JOIN non risolve — un
+              -- codice_interno rinominato, un catalogo non seminato — le righe
+              -- entrano in MENO del previsto e il grafo nasce monco IN SILENZIO.
+              -- Meglio fermare il migrate che avere una matrice a meta'.
+              DO $seed$
+              DECLARE
+                v_testata integer;
+                v_riga    integer;
+              BEGIN
+                SELECT count(*) INTO v_testata FROM pagamenti.transizioni_stati_contabile WHERE attivo;
+                SELECT count(*) INTO v_riga    FROM pagamenti.transizioni_stati_contabile_riga WHERE attivo;
+                IF v_testata < 5 OR v_riga < 10 THEN
+                  RAISE EXCEPTION
+                    'Seed transizioni contabili incompleto: testata % (attese >= 5), riga % (attese >= 10). Un codice_interno non ha risolto.',
+                    v_testata, v_riga;
+                END IF;
+                RAISE NOTICE 'Transizioni contabili: % sulla distinta, % sulla riga.', v_testata, v_riga;
+              END $seed$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Svuotare le matrici NON riporta la libertà di prima: i guard di
+              --    20260821-26 leggono queste tabelle, e con esse vuote
+              --    rifiuterebbero OGNI cambio di stato. Se si torna indietro,
+              --    vanno tolti prima i guard.
+              DELETE FROM pagamenti.transizioni_stati_contabile_riga;
+              DELETE FROM pagamenti.transizioni_stati_contabile;

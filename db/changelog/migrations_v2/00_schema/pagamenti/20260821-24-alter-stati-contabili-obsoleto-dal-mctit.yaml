@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRARE UNA VOCE DI CATALOGO SENZA ROMPERE CHI LA REFERENZIA — passo S1-1
+#   pagamenti.vendite_contabili_stati · pagamenti.vendite_contabili_righe_stati
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §1.4 C-6, §2.1 S1-1
+#
+# ── PERCHE' SERVE ───────────────────────────────────────────────────────
+#   D9-a del brief incassi prescrive di ritirare lo stato `STORNATA` col pattern
+#   del progetto — **`obsoleto_dal`, non `attivo = false`** — perche' `attivo`
+#   spegne la riga e rompe le istanze che la referenziano, mentre `obsoleto_dal`
+#   la toglie dal **selezionabile per il nuovo** lasciando leggibile il passato.
+#
+#   ⚠️ **La colonna pero' non c'e'**: `obsoleto_dal` esiste su quattro tabelle in
+#   tutto il database (`config.classi_errore`, `config.codici_errore`,
+#   `pratiche.template_flussi`, `pratiche.tipi_prestazione`) e su **nessuna** di
+#   `pagamenti`. Il ritiro non e' quindi «una riga di CSV»: e' prima una colonna.
+#
+#   ℹ️ Il brief diceva «sei tabelle»; misurate il 2026-08-21 sono **quattro** (le
+#   altre due occorrenze sono viste). La sostanza non cambia: in `pagamenti` zero.
+#
+# ── ⭐ E LA COLONNA DA SOLA NON RITIRA NIENTE ──────────────────────────
+#   Una colonna che nessuno legge non toglie niente dal selezionabile. Il consumo
+#   arriva col lotto in cui `pagamenti` avra' un'interfaccia (BE-4): qui si posa
+#   la colonna e si valorizza il dato (S1-2), cosi' che il giorno in cui una
+#   lista di stati si costruisce, il filtro abbia gia' che cosa leggere.
+#   ⚠️ Fino ad allora `STORNATA` resta **raggiungibile** solo perche' nessuno la
+#   propone: e' esattamente la ragione per cui il ritiro si fa adesso e non
+#   quando servira'.
+#
+# ── ⚠️ E SI SANA C-8 PASSANDO, PERCHE' COSTA ZERO OGGI ─────────────────
+#   `vendite_contabili_righe_stati.codice_interno` e' **nullable**, mentre la
+#   gemella `vendite_contabili_stati.codice_interno` e' `NOT NULL`. Non e'
+#   un'asimmetria innocua: entrambe portano
+#   `script.trgfn_lock_columns('codice_interno', …)`, e su una riga nata con
+#   `codice_interno` NULL il lock impedisce di **valorizzarlo dopo** — la riga
+#   resterebbe senza chiave stabile per sempre.
+#
+#   ✅ Oggi tutte e sette le righe ce l'hanno, quindi si sana senza bonifica.
+#   Fra un anno servirebbe una migrazione di dati.
+#
+#   ⚠️ E `codice_interno` e' la chiave con cui **tutto** il codice risolve questi
+#   stati (`fn_sync_contabili_fondo_fattura`, `fn_get_or_create_vendite_contabile`),
+#   perche' il CSV di `vendite_contabili_righe_stati` **non porta la colonna `id`**
+#   e il suo loader usa `primaryKey: "codice"`: li' gli id non sono un contratto.
+#
+# ── ⚠️ IL SEED NON SI CARICA DAL MIRROR VECCHIO ────────────────────────
+#   I mirror esistenti (`20260213-04` e `-05`) elencano le colonne **una per una**
+#   e `obsoleto_dal` non c'e': un `loadUpdateData` con lista esplicita tocca solo
+#   quelle. ⛔ E quei changeSet non si modificano, sono mergiati.
+#   ⇒ Servono due mirror **ri-ancorati** piu' avanti nella timeline, con la lista
+#   completa — stesso pattern di `20260806-13` / `-14`. Sono in `80_data`,
+#   changeSet `20260821-30` (passo S1-2 + S1-21).
+#
+# ── ⭐ E UNA COLONNA IN PIÙ, PERCHÉ D14 È UNA TABELLA E NON UN ELENCO ──
+#   D14-a del brief incassi non dice solo **quali stati esistono**: dice, per
+#   ciascuno, **che cosa dev'essere valorizzato**. Su `ABBINATA` e `POSTATA` la
+#   fattura e il cliente sono obbligatori; su tutti gli altri no.
+#
+#   Il guard che lo impone (passo S1-6) potrebbe portare quella lista dentro di
+#   sé — `WHERE codice_interno IN ('ABBINATA','POSTATA')`. ⛔ Sarebbe **un grafo
+#   scritto nel codice**, cioè esattamente ciò che il passo gemello S1-5 evita
+#   mettendo le transizioni in una tabella. E il catalogo è già **progettato**
+#   per portare bandiere di questo tipo: `is_postabile` e `is_final` sono la
+#   stessa cosa per altre due domande.
+#
+#   ⇒ `richiede_abbinamento boolean NOT NULL DEFAULT false`, seminata `true` su
+#   `ABBINATA` e `POSTATA` (changeSet `20260821-30`).
+#
+#   ⚠️ **Non è derivabile dalle bandiere che ci sono già**, ed è la ragione per
+#   cui ne serve una terza: `POSTATA` e `SCARTATA` sono **entrambe** `is_final`,
+#   ma la prima pretende l'abbinamento e la seconda non pretende niente. Una
+#   regola costruita su `is_final` le tratterebbe uguali.
+#
+#   ⚠️ E la **rata resta fuori**: su `ABBINATA` è facoltativa per decisione (la
+#   riga del fondo fattura ha fattura sì e rata no — è un saldo per
+#   trasferimento). Quando la slice 2 aggiungerà `scadenza_id`, questa colonna
+#   **non va toccata**: chi la vedrà non deve pensare che ci sia una dimenticanza.
+#
+# Presidio: db/pgtap/pagamenti/test-stati-contabili-vocabolario.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260821-24-alter-stati-contabili-obsoleto-dal-mctit.yaml
+
+  - changeSet:
+      id: 20260821-24-alter-stati-contabili-obsoleto-dal
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Tre colonne sui cataloghi di stato di pagamenti. obsoleto_dal (date, nullable) su
+        entrambi: senza, il ritiro di STORNATA prescritto da D9-a non è eseguibile col
+        pattern del progetto. richiede_abbinamento sul catalogo delle righe: è la terza
+        bandiera accanto a is_postabile e is_final, e porta nel catalogo la colonna
+        «bagaglio» di D14-a invece di scriverla dentro il guard. E sana passando
+        l'asimmetria C-8 — codice_interno diventa NOT NULL come sulla gemella: oggi costa
+        zero, con una riga NULL costerebbe una bonifica, perché il lock su quella colonna
+        impedisce di valorizzarla dopo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+            # Nessuna riga senza codice_interno: il SET NOT NULL non deve trovare
+            # nulla da sanare, e se ne trovasse va guardata a mano (il lock su
+            # quella colonna impedirebbe di riempirla dopo).
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pagamenti.vendite_contabili_righe_stati
+                   WHERE codice_interno IS NULL OR btrim(codice_interno) = '';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_stati
+                ADD COLUMN obsoleto_dal date;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_stati.obsoleto_dal IS
+                'Data dalla quale la voce non e'' piu'' SELEZIONABILE PER IL NUOVO. ⚠️ Non e'' `attivo = false`: quello spegne la riga e rompe le istanze che la referenziano, questo la toglie dal menu lasciando leggibile il passato. Pattern del progetto (config.codici_errore, pratiche.template_flussi). Chi costruisce una lista di stati filtra `obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE`; chi legge uno stato gia'' scritto NON filtra.';
+
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                ADD COLUMN obsoleto_dal date;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_righe_stati.obsoleto_dal IS
+                'Data dalla quale la voce non e'' piu'' SELEZIONABILE PER IL NUOVO. Gemella di vendite_contabili_stati.obsoleto_dal. Valorizzata su STORNATA dal 2026-08-21 (D9-a): lo stato non ha piu'' un gesto che ci porti, perche'' lo storno non e'' un tipo di documento ma una contabile a importi negativi.';
+
+              -- C-8: la gemella e' gia' NOT NULL. Qui costa zero perche' tutte le
+              -- righe hanno il codice; con una riga NULL costerebbe una bonifica,
+              -- perche' trgfn_lock_columns impedisce di valorizzarla dopo.
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                ALTER COLUMN codice_interno SET NOT NULL;
+
+              -- La terza bandiera del catalogo, accanto a is_postabile e is_final:
+              -- dice se lo stato pretende l'abbinamento. Vedi la testata.
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                ADD COLUMN richiede_abbinamento boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_righe_stati.richiede_abbinamento IS
+                'Lo stato pretende che la riga dica A QUALE FATTURA e A QUALE CLIENTE appartiene (D14-a). Vero su ABBINATA e POSTATA. Letta da pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati, cosi'' la regola sta nel catalogo e non dentro il guard. ⚠️ NON derivabile da is_final: POSTATA e SCARTATA sono entrambe finali, ma solo la prima pretende l''abbinamento. ⚠️ La RATA resta fuori di proposito: su ABBINATA e'' facoltativa, perche'' la riga del fondo fattura ha fattura si'' e rata no. Quando arrivera'' scadenza_id (slice 2) questa colonna NON va toccata.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                DROP COLUMN richiede_abbinamento;
+
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                ALTER COLUMN codice_interno DROP NOT NULL;
+
+              ALTER TABLE pagamenti.vendite_contabili_righe_stati
+                DROP COLUMN obsoleto_dal;
+
+              ALTER TABLE pagamenti.vendite_contabili_stati
+                DROP COLUMN obsoleto_dal;

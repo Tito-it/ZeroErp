@@ -239,6 +239,65 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 - `fn_check_*`: pure checks returning boolean, no raise
 - `fn_guard_*`: fail-fast, can raise/log
 
+### ⛔ Sollevare un errore: tre canali, tre destinatari
+
+`script.fn_log_and_raise_error(area, funzione, codice, context, tx_id, VARIADIC valori)`
+parla a **tre** interlocutori, e confonderli e' il difetto piu' facile da non vedere:
+
+| Cosa | A chi parla |
+| --- | --- |
+| `codice` | il **backend** — status HTTP e `ui_action`. Registrato a catalogo, con la sua classe. Mai `E_GENERICO` |
+| `context ->> 'campo'` | il **frontend** — quale campo accendere. Il nome della colonna, mai il valore |
+| `VARIADIC valori` | **l'operatore** — riempie i `%s`, cioe' **compone la frase che una persona legge** |
+
+⛔ **Nel `VARIADIC` non entra mai il nome di un parametro PL/pgSQL o di una
+colonna.** Un codice registrato con dentro `'p_centro_riscossione_id (obbligatorio,
+> 0)'` passa **tutti** i cancelli — guardrail dei codici, rubinetto degli
+accumulatori, rigenerazione delle policy — e produce un messaggio di qualita'
+`E_GENERICO`. *Il codice sceglie la frase, ma il valore che ci si infila dentro lo
+sceglie chi solleva.*
+
+⭐ E il valore decide anche **quale codice serve**: la domanda «riuso o conio?» si
+risponde su **chi puo' rimediare**, non sulla condizione. Si guarda **parametro
+per parametro**, non funzione per funzione:
+
+| Il dato lo fornisce… | Codice | Classe |
+| --- | --- | --- |
+| una **persona**, in un form | di dominio, frase che **nomina il dato** | `DATO_ERRATO` (400) |
+| solo un **chiamante rotto** (`id <= 0` dove il `NULL` e' ammesso, enum vuoto) | di dominio, messaggio che **nomina il parametro** | `TECNICO` (500) |
+
+⛔ **Nella seconda riga NON si riusa `E_PARAMETRO_INVALIDO`**, ed e' la scelta che
+sembra ovvia: quel codice e' un **debito, non una sede**. La D11 di
+`work-done/brief-db-be-classe-codici-errore.md` lo dichiara **split rimandato**
+(«denominatore sicuro + note, e cantiere suo»), e la §9.1 dice che *«rincorrere
+gli esistenti senza chiudere il rubinetto e' la forma in cui questi registri non
+calano mai»*. Sopravvive perche' il BE deve gestire le funzioni vecchie.
+⭐ Precedente: `E_VENDITE_PRICING_ESITO_ASSENTE` (2026-08-19, TECNICO) nasce
+perche' il rubinetto B-7 respinse `E_PARAMETRO_INVALIDO` — *«li' non c'e' nessun
+parametro invalido, c'e' un'invariante rotta»*.
+⚠️ E su un `TECNICO` la chiave `campo` **esce** dal contesto: su un 500 non c'e'
+nessun campo da accendere.
+
+⚠️ **Ma un messaggio puo' nominare una colonna DI PROPOSITO**, quando il lettore e'
+uno sviluppatore e la colonna e' l'informazione utile (*«Movimento incoerente con
+la riga %s: %s vale %s, mentre la riga dice %s»*). La domanda non e' «c'e' un nome
+di colonna?» ma **«l'ho messo perche' serve a chi legge, o perche' non avevo
+voglia di scrivere una frase?»**.
+
+⛔ **Non c'e' un cancello automatico, ed e' una scelta.** Misurato il 2026-08-21 su
+`pg_proc`: 265 valori sospetti su 1469, in **157 funzioni** — e' lo stile in cui il
+progetto e' cresciuto, non una svista isolata. Un controllo euristico sbaglierebbe
+proprio sul caso legittimo, e vale il criterio gia' scritto per il rubinetto degli
+accumulatori: *un cancello che capisce un caso su cinque boccia a caso e passa a
+caso; dopo due blocchi sbagliati qualcuno lo spegne, e un presidio spento e' peggio
+di uno assente*. Il presidio praticabile e' **per caso**, con un `throws_like` nel
+pgTAP dove la frase e' la posta in gioco.
+⚠️ Corollario operativo: toccando una funzione **vecchia**, il messaggio va
+guardato — non dato per buono perche' il codice e' registrato.
+
+Regola completa, esempi e criterio «riuso o conio un codice?»:
+[Messaggi di Errore e Generazione Log](../docs/it/guide/Messaggi-di-Errore-e-Generazione-Log.md).
+
 ## Workflow Safety
 
 - Ask before running DB migrations locally

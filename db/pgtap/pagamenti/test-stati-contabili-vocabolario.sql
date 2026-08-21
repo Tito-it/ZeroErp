@@ -1,0 +1,111 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: il vocabolario dei due cataloghi di stato contabili
+--
+-- Presidia i passi S1-1, S1-2 e S1-21 del lotto 2 del cantiere incassi
+--   (docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.1).
+--
+-- Elenco test (plan 6):
+-- 1) STORNATA è RITIRATA con obsoleto_dal, e resta ATTIVA
+-- 2) Nessun altro stato di riga è ritirato
+-- 3) 🔴 S1-21: SCARTATA NON è più uno stato finale
+-- 4) richiede_abbinamento è vero SOLO su ABBINATA e POSTATA
+-- 5) ⚠️ richiede_abbinamento non è derivabile da is_final
+-- 6) C-8: codice_interno è obbligatorio su entrambi i cataloghi
+--
+-- Scopo:
+--  - il ritiro si fa con `obsoleto_dal`, MAI con `attivo = false`: quello
+--    spegnerebbe la riga e romperebbe le istanze che la referenziano. Il test 1
+--    verifica ENTRAMBE le metà, perché ritirare spegnendo è l'errore facile;
+--  - il test 3 presidia una CONTRADDIZIONE sanata: il catalogo marcava SCARTATA
+--    finale mentre la matrice ammette SCARTATA -> SOSPESA. Un catalogo che
+--    dichiara una cosa mentre la matrice ne permette un'altra insegna il falso;
+--  - il test 5 è il presidio della decisione di forma: se un giorno qualcuno
+--    volesse derivare l'obbligo di abbinamento da `is_final`, questo test dice
+--    perché non si può — POSTATA e SCARTATA sono entrambe finali e vogliono cose
+--    opposte.
+-- ------------------------------------------------------------
+
+BEGIN;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
+
+SELECT plan(6);
+
+-- ============================================================
+-- 1) STORNATA: ritirata, ma NON spenta
+-- ============================================================
+SELECT is(
+  (SELECT (obsoleto_dal IS NOT NULL AND attivo IS TRUE)
+     FROM pagamenti.vendite_contabili_righe_stati
+    WHERE codice_interno = 'STORNATA'),
+  true,
+  'STORNATA e'' ritirata con obsoleto_dal e resta ATTIVA: il ritiro non spegne la riga'
+);
+
+-- ============================================================
+-- 2) E nessun altro è ritirato
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM pagamenti.vendite_contabili_righe_stati
+    WHERE obsoleto_dal IS NOT NULL),
+  1,
+  'Un solo stato di riga e'' ritirato, ed e'' STORNATA'
+);
+
+-- ============================================================
+-- 3) 🔴 S1-21 — SCARTATA non è finale
+--   Da lì si torna a SOSPESA per riprendere in mano la riga.
+-- ============================================================
+SELECT is(
+  (SELECT is_final FROM pagamenti.vendite_contabili_righe_stati
+    WHERE codice_interno = 'SCARTATA'),
+  false,
+  'SCARTATA non e'' uno stato finale: la matrice ammette SCARTATA -> SOSPESA'
+);
+
+-- ============================================================
+-- 4) richiede_abbinamento: solo ABBINATA e POSTATA
+-- ============================================================
+SELECT is(
+  (SELECT array_agg(codice_interno ORDER BY codice_interno)
+     FROM pagamenti.vendite_contabili_righe_stati
+    WHERE richiede_abbinamento),
+  ARRAY['ABBINATA', 'POSTATA']::text[],
+  'Pretendono fattura e cliente solo ABBINATA e POSTATA (D14-a)'
+);
+
+-- ============================================================
+-- 5) ⚠️ E non è derivabile da is_final
+--   POSTATA e SCARTATA sono entrambe... no: dal test 3 SCARTATA non è più
+--   finale. Il caso che regge la decisione è l'altro verso: ABBINATA pretende
+--   l'abbinamento e NON è finale. Una regola costruita su is_final la
+--   mancherebbe del tutto.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM pagamenti.vendite_contabili_righe_stati
+    WHERE richiede_abbinamento AND is_final IS FALSE),
+  1,
+  'Almeno uno stato pretende l''abbinamento senza essere finale: is_final non basta a derivarlo'
+);
+
+-- ============================================================
+-- 6) C-8 — codice_interno obbligatorio su entrambi i cataloghi
+--   È la chiave con cui TUTTO il codice risolve questi stati, e il lock su
+--   quella colonna impedisce di valorizzarla dopo.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM information_schema.columns
+    WHERE table_schema = 'pagamenti'
+      AND table_name IN ('vendite_contabili_stati', 'vendite_contabili_righe_stati')
+      AND column_name = 'codice_interno'
+      AND is_nullable = 'NO'),
+  2,
+  'codice_interno e'' obbligatorio su tutti e due i cataloghi di stato'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

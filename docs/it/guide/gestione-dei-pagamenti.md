@@ -53,7 +53,28 @@ Il principio fondamentale e che la scrittura diretta in `vendite_movimenti` e un
 **Lookup stati:**
 
 * [pagamenti.vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati) — stati della testata
-* [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) — stati della riga (con `is_postabile`)
+* [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) — stati della riga (con `is_postabile`, `is_final` e `richiede_abbinamento`)
+
+**Come ci si passa (dal 2026-08-21):**
+
+* [pagamenti.transizioni_stati_contabile](/dbzero/pagamenti/tabelle/transizioni_stati_contabile) — il grafo della **distinta**
+* [pagamenti.transizioni_stati_contabile_riga](/dbzero/pagamenti/tabelle/transizioni_stati_contabile_riga) — il grafo della **riga**
+
+⭐ Fino a quella data `pagamenti` era l'unico dominio del progetto con degli
+**stati** e **nessuna regola su come ci si passa**: qualunque salto era ammesso,
+compreso uscire da uno stato dichiarato finale. Le due matrici sono lette da
+altrettanti guard, e **nessun grafo è scritto nel codice**.
+
+⚠️ Due regole però le matrici non le portano, perché dipendono da colonne della
+riga e non dalla coppia di stati — vivono nel guard
+`trgfn_vendite_contabili_guard_validazione`: la **riapertura** in bozza è solo
+della distinta manuale, e entrando in `VALIDATA` la somma delle righe deve
+corrispondere al **totale dichiarato**, se c'è. *Chi legge la sola matrice non le
+vede.*
+
+**Autorizzazioni all'addebito:**
+
+* [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati) — mandati SEPA (`CORE` / `B2B`): l'autorizzazione con cui il debitore permette al creditore di addebitare il proprio conto. ⚠️ Oggi la tabella è **vuota** e nessuna funzione la legge: la struttura è pronta, il processo di addebito diretto non è ancora costruito
 
 **Cross-schema:**
 
@@ -79,7 +100,10 @@ pagamenti
 │   │   └── vendite_movimenti      -- movimento effettivo 1:1 con riga
 │   └── vendite_contabili_lotti     -- legame N:M con lotti di fatturazione
 ├── vendite_contabili_stati         -- lookup stati testata (con is_final)
-└── vendite_contabili_righe_stati   -- lookup stati riga (con is_postabile, is_final)
+│   └── transizioni_stati_contabile -- come ci si passa: il grafo della distinta
+├── vendite_contabili_righe_stati   -- lookup stati riga (is_postabile, is_final, richiede_abbinamento)
+│   └── transizioni_stati_contabile_riga  -- come ci si passa: il grafo della riga
+└── sepa_mandati                    -- mandati di addebito diretto (oggi vuota, nessun lettore)
 
 vendite
 └── fatture_fondi_fattura_source    -- sorgenti fondi fattura (minimi, riaddebiti)

@@ -19,14 +19,23 @@ BEGIN
   -- Scopo:
   --   Restituisce il residuo fattura:
   --     saldo = totale_a_pagare - somma_movimenti_attivi
+  --
+  -- ⚠️ Finche' non esiste il posting (slice 1 del cantiere incassi)
+  --    i movimenti sono zero e il residuo coincide col totale.
+  --
+  -- Rev 2026-08-21 (passo P-7): i due E_GENERICO passano ai codici
+  -- registrati. Nessun predicato e' cambiato.
   -- =========================================================
 
   IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'pagamenti.fn_get_saldo_fattura', 'E_GENERICO',
-      jsonb_build_object('detail','fattura_id obbligatoria'),
+      'database', 'pagamenti.fn_get_saldo_fattura', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+      jsonb_build_object(
+        'detail', 'fattura_id obbligatoria e maggiore di zero',
+        'p_fattura_id', p_fattura_id
+      ),
       NULL::uuid,
-      'fattura_id non valido'
+      'pagamenti.fn_get_saldo_fattura', 'p_fattura_id (obbligatorio, maggiore di zero)'
     );
   END IF;
 
@@ -36,12 +45,14 @@ BEGIN
     FROM vendite.fatture f
    WHERE f.id = p_fattura_id;
 
+  -- ⚠️ L'id e' valido: e' il documento a non esserci. Codice diverso
+  -- dal guard di parametro perche' il rimedio e' diverso.
   IF NOT FOUND THEN
     PERFORM script.fn_log_and_raise_error(
-      'database', 'pagamenti.fn_get_saldo_fattura', 'E_GENERICO',
+      'database', 'pagamenti.fn_get_saldo_fattura', 'E_FATTURA_NON_TROVATA',
       jsonb_build_object('detail','Fattura non trovata', 'fattura_id', p_fattura_id),
       NULL::uuid,
-      concat('Fattura non trovata, id: ', p_fattura_id)
+      p_fattura_id::text
     );
   END IF;
 
@@ -57,7 +68,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura(p_fattura_id bigint)
-IS 'Restituisce il residuo fattura (totale_a_pagare - movimenti attivi) e flag presenza movimenti.';
+IS 'Restituisce il residuo fattura (totale_a_pagare - movimenti attivi) e il flag presenza movimenti. Rev 2026-08-21: guard di chiamata su E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO) e documento inesistente su E_FATTURA_NON_TROVATA (NON_TROVATO), al posto di due E_GENERICO; tipi ancorati con %TYPE in firma e RETURNS TABLE.';
 ```
 
 ---

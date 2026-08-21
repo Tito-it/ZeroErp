@@ -1,0 +1,226 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RAMO CHE RACCONTA UN CASO IMPOSSIBILE, E UN E_GENERICO — passi P-5 e P-7
+#   pagamenti.fn_get_saldo_fattura_contabili
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.0 P-5 (ramo morto) e P-7 (codici errore)
+#
+# ── DUE COSE IN UN CHANGESET, E PERCHE' ─────────────────────────────────
+#   E' la stessa funzione, riscritta una volta sola. Separarle vorrebbe dire due
+#   CREATE OR REPLACE consecutivi sullo stesso corpo, con il secondo che
+#   riscrive il primo: piu' file, nessuna informazione in piu'.
+#
+# ── 1) IL RAMO MORTO (P-5) ──────────────────────────────────────────────
+#   Il changeSet 20260821-12, dello stesso lotto e con numero PIU' BASSO (quindi
+#   applicato prima), rende `pagamenti.vendite_contabili.stato_id` NOT NULL.
+#   Da quel momento questa coppia:
+#
+#     LEFT JOIN pagamenti.vendite_contabili_stati cs ON cs.id = c.stato_id
+#     ...
+#     AND COALESCE(cs.is_final, false) IS FALSE
+#
+#   descrive un caso che non puo' piu' accadere: il LEFT e il COALESCE esistono
+#   entrambi per la testata SENZA stato. Diventano JOIN e confronto secco.
+#
+#   ⚠️ Il COALESCE non serviva nemmeno per la colonna: `is_final` e'
+#   `NOT NULL DEFAULT false` su pagamenti.vendite_contabili_stati — verificato il
+#   2026-08-21. L'unico NULL possibile veniva dal LEFT JOIN a vuoto.
+#   Quindi la nuova forma e' ESATTAMENTE equivalente su ogni riga che oggi esiste,
+#   e cambia solo cio' che non puo' piu' esistere.
+#
+#   ⭐ E il ramo non era neutro: quel filtro, nel caso `CHIUSA`, non protegge
+#   niente — le righe registrate sarebbero escluse comunque, perche' non sono
+#   piu' postabili. L'unica cosa che riusciva a escludere era proprio la riga
+#   ANOMALA, quella appesa a una testata gia' finale. Un filtro che nasconde cio'
+#   che non sa gestire sembra un presidio finche' non si guarda che cosa esclude
+#   davvero. ⚠️ Il buco vero — C-5 del piano — NON si chiude qui: lo chiudono i
+#   guard S1-7 e S1-20 della slice 1. Questo changeSet toglie solo la finzione.
+#
+# ── 2) IL CODICE ERRORE (P-7) ───────────────────────────────────────────
+#   Il guard di parametro sollevava `E_GENERICO`. Passa a `E_PARAMETRO_INVALIDO`,
+#   che e' il codice registrato del progetto per «un parametro obbligatorio e'
+#   nullo o ha un valore non ammesso» (classe DATO_ERRATO, 160 guard di parametro
+#   su 177 punti d'uso). NON un codice nuovo di dominio `pagamenti`: il rimedio e'
+#   identico a quello degli altri 160, e un codice nuovo con lo stesso rimedio e'
+#   rumore, non precisione.
+#
+#   ⚠️ Il MESSAGGIO cambia: da «fattura_id non valido» a «Parametro non valido:
+#   p_fattura_id (obbligatorio, maggiore di zero)». Chi asserisce su un frammento
+#   di testo si cerca dal NOME di chi solleva, non dal testo — verificato: nessun
+#   pgTAP e nessun file di backend nomina questa funzione in un'asserzione di
+#   messaggio.
+#
+#   ⭐ Aggiunta la chiave `campo` nel contesto: `script.fn_log_and_raise_error` la
+#   legge e la fa uscire sul canale COLUMN dell'eccezione, cosi' il backend sa
+#   quale campo indicare senza leggere il testo.
+#
+# ── 3) I TIPI ANCORATI CON %TYPE ───────────────────────────────────────
+#   Firma e RETURNS TABLE erano dichiarate con tipi nudi. Diventano
+#   `vendite.fatture.id%TYPE` e `pagamenti.vendite_contabili_righe.importo%TYPE`,
+#   che e' quello che la funzione somma davvero.
+#
+#   ⚠️ Due trappole, entrambe verificate prima di scrivere (2026-08-21):
+#     · in FIRMA un `%TYPE` che risolvesse a un tipo diverso creerebbe un
+#       OVERLOAD invece di sostituire. `vendite.fatture.id` e' `bigint`, come il
+#       tipo nudo di prima: sostituisce;
+#     · `CREATE OR REPLACE` NON puo' cambiare un `RETURNS TABLE` — servirebbe un
+#       DROP. `vendite_contabili_righe.importo` e' `numeric` SENZA typmod, quindi
+#       la colonna del risultato resta `numeric` e non cambia niente. Se avesse
+#       avuto una precisione (`numeric(15,2)`) questo changeSet avrebbe dovuto
+#       essere un DROP + CREATE.
+#
+# Origine: corpo dalla doc auto-generata del 2026-08-21
+#   (docs/it/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili.md).
+# Dipendenze: E_PARAMETRO_INVALIDO esiste gia' a catalogo (id messaggio 204).
+# Verifica: db/pgtap/pagamenti/test-vendite-contabili-stato-obbligatorio.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-13-update-fn-get-saldo-fattura-contabili-stato-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20260821-13-update-fn-get-saldo-fattura-contabili-stato-obbligatorio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.fn_get_saldo_fattura_contabili: tolto il ramo che descriveva la
+        testata senza stato (LEFT JOIN + COALESCE su is_final), diventato codice
+        morto con il NOT NULL di 20260821-12; il guard di parametro passa da
+        E_GENERICO a E_PARAMETRO_INVALIDO e porta il nome del campo nel contesto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'fn_get_saldo_fattura_contabili';
+            # Il NOT NULL di P-4 dev'essere gia' applicato: senza, togliere il
+            # ramo cambierebbe il risultato invece di descrivere il dominio.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM information_schema.columns
+                   WHERE table_schema = 'pagamenti'
+                     AND table_name   = 'vendite_contabili'
+                     AND column_name  = 'stato_id'
+                     AND is_nullable  = 'YES';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura_contabili(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(
+                  saldo_contabile     pagamenti.vendite_contabili_righe.importo%TYPE,
+                  has_righe_postabili boolean
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce il saldo contabile "in lavorazione" di una
+                --   fattura, sommando solo le righe contabili che stanno in
+                --   uno stato postabile e appartengono a una testata non
+                --   ancora finale.
+                --
+                -- Regole:
+                --   - riga attiva e in stato is_postabile;
+                --   - testata non finale. ⚠️ Dal 2026-08-21 lo stato della
+                --     testata e' obbligatorio (20260821-12), quindi il JOIN e'
+                --     interno: il ramo "testata senza stato" non esiste piu'.
+                --   - ⚠️ questo filtro NON e' il presidio contro la riga
+                --     appesa a una testata gia' chiusa (difetto C-5 del piano):
+                --     quella la fermano i guard della slice 1. Qui si esclude
+                --     un documento chiuso, non si ripara un'anomalia.
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_saldo_fattura_contabili', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'detail', 'fattura_id obbligatoria e maggiore di zero',
+                      'campo', 'p_fattura_id',
+                      'p_fattura_id', p_fattura_id
+                    ),
+                    NULL::uuid,
+                    'p_fattura_id (obbligatorio, maggiore di zero)'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  COALESCE(SUM(cr.importo), 0)::numeric AS saldo_contabile,
+                  (COUNT(*) > 0) AS has_righe_postabili
+                FROM pagamenti.vendite_contabili_righe cr
+                JOIN pagamenti.vendite_contabili_righe_stati s
+                  ON s.id = cr.stato_id
+                JOIN pagamenti.vendite_contabili c
+                  ON c.id = cr.contabile_id
+                JOIN pagamenti.vendite_contabili_stati cs
+                  ON cs.id = c.stato_id
+                WHERE cr.fattura_id = p_fattura_id
+                  AND cr.attivo IS TRUE
+                  AND s.is_postabile IS TRUE
+                  AND cs.is_final IS FALSE;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura_contabili(vendite.fatture.id%TYPE)
+              IS 'Restituisce il saldo contabile fattura dalle righe in stato postabile sotto una testata non finale. Rev 2026-08-21: tolto il ramo "testata senza stato" (LEFT JOIN + COALESCE su is_final), reso impossibile dal NOT NULL su vendite_contabili.stato_id; guard di parametro su E_PARAMETRO_INVALIDO invece di E_GENERICO; tipi ancorati con %TYPE in firma e RETURNS TABLE.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback ripristina la versione precedente: il ramo morto
+              -- torna a descrivere una testata senza stato che la colonna non
+              -- ammette piu', e il guard torna a sollevare E_GENERICO.
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura_contabili(p_fattura_id bigint)
+               RETURNS TABLE(saldo_contabile numeric, has_righe_postabili boolean)
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_saldo_fattura_contabili', 'E_GENERICO',
+                    jsonb_build_object('detail','fattura_id obbligatoria'),
+                    NULL::uuid,
+                    'fattura_id non valido'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  COALESCE(SUM(cr.importo), 0)::numeric AS saldo_contabile,
+                  (COUNT(*) > 0) AS has_righe_postabili
+                FROM pagamenti.vendite_contabili_righe cr
+                JOIN pagamenti.vendite_contabili_righe_stati s
+                  ON s.id = cr.stato_id
+                JOIN pagamenti.vendite_contabili c
+                  ON c.id = cr.contabile_id
+                LEFT JOIN pagamenti.vendite_contabili_stati cs
+                  ON cs.id = c.stato_id
+                WHERE cr.fattura_id = p_fattura_id
+                  AND cr.attivo IS TRUE
+                  AND s.is_postabile IS TRUE
+                  AND COALESCE(cs.is_final, false) IS FALSE;
+              END;
+              $function$;

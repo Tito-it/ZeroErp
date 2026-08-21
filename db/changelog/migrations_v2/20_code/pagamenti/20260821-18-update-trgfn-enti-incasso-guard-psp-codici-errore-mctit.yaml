@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# TRE E_GENERICO SUL GUARD PSP, E TRE RIMEDI DIVERSI — passo P-7 (5 di 6)
+#   pagamenti.trgfn_enti_incasso_guard_psp
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#
+# ── PERCHE' TRE CODICI E NON UNO ────────────────────────────────────────
+#   Il criterio del progetto e' che un codice nuovo nasce quando cambia il
+#   RIMEDIO. Qui i tre gradini del guard chiedono tre cose diverse a tre persone
+#   potenzialmente diverse:
+#
+#   · manca soggetto_ruolo_id      -> si COMPILA il campo
+#     E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO (949, DATO_ERRATO)
+#   · il soggetto-ruolo non e' PSP -> si SCEGLIE un altro soggetto
+#     E_ENTE_INCASSO_PSP_RUOLO_NON_PSP (950, DATO_ERRATO)
+#   · il PSP non e' censito        -> si CENSISCE in anagrafiche.psp
+#     E_ENTE_INCASSO_PSP_NON_CENSITO (951, CONFLITTO_STATO)
+#
+#   ⚠️ Il terzo e' CONFLITTO_STATO e non NON_TROVATO: la cosa indicata dalla
+#   richiesta — l'ente, il soggetto-ruolo — esiste. Manca un censimento a monte,
+#   e finche' non c'e' l'operazione non si puo' fare. Un 404 manderebbe a
+#   cercare l'ente, che c'e'.
+#
+# ── ⚠️ UN'INCOERENZA MINORE SANATA PASSANDO ────────────────────────────
+#   Il terzo punto passava `'pagamenti'` come AREA e `TG_NAME` come nome della
+#   funzione, mentre gli altri due passano `'database'` e il nome qualificato.
+#   Con `TG_NAME` nel log finisce il nome del TRIGGER, non della funzione, quindi
+#   la stessa funzione compariva in `dbops.error_log` sotto due identita'
+#   diverse — e la ricerca «chi solleva questo codice», che e' il modo in cui in
+#   questo progetto si trovano i consumatori di un messaggio, ne perdeva una.
+#   Allineato agli altri due.
+#
+# ── ℹ️ LA TABELLA E' VUOTA ──────────────────────────────────────────────
+#   `pagamenti.enti_incasso` ha ZERO righe (misurato il 2026-08-21): non esiste
+#   ancora nessun canale da cui un flusso possa arrivare. Il guard e' quindi
+#   collaudato solo dal pgTAP, che si fabbrica il soggetto: e' una ragione in piu'
+#   perche' i messaggi siano scritti bene adesso, quando li si sta leggendo, e non
+#   il giorno in cui serviranno.
+#
+# Origine: corpo dalla doc auto-generata del 2026-08-21
+#   (docs/it/dbzero/pagamenti/funzioni/trgfn_enti_incasso_guard_psp.md).
+# Dipendenze: codici 949, 950, 951 (append ai CSV di 80_data nello stesso commit).
+#   ⚠️ 80_data gira DOPO 20_code: nessuna preCondition sui codici.
+# Verifica: db/pgtap/pagamenti/test-enti-incasso-psp.sql (test 7, 9 e 11).
+# 🔴 RICHIESTA AL BE (BE-1): rigenerare error_policies_generated.py.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-18-update-trgfn-enti-incasso-guard-psp-codici-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260821-18-update-trgfn-enti-incasso-guard-psp-codici-errore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.trgfn_enti_incasso_guard_psp: i tre E_GENERICO passano a tre
+        codici distinti, perche' i tre gradini del guard hanno tre rimedi diversi
+        (compilare il campo, scegliere un altro soggetto, censire il PSP).
+        Allineati anche area e nome funzione del terzo punto, che loggava TG_NAME.
+        Nessun predicato cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'trgfn_enti_incasso_guard_psp';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_enti_incasso_guard_psp()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_is_ruolo_psp boolean := false;
+                v_exists_psp boolean := false;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Validare la coerenza tra tipo ente incasso e ruolo PSP.
+                --
+                -- Regole:
+                --   - se tipo = 'PSP', soggetto_ruolo_id e' obbligatorio
+                --   - il soggetto_ruolo_id deve appartenere al tipo ruolo PSP
+                --   - deve esistere una riga attiva in anagrafiche.psp
+                --
+                -- Rev 2026-08-21 (passo P-7): i tre E_GENERICO passano a tre
+                -- codici distinti — i tre gradini hanno tre rimedi diversi — e il
+                -- terzo punto smette di loggare TG_NAME al posto del nome della
+                -- funzione. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                IF NEW.tipo = 'PSP' THEN
+                  IF NEW.soggetto_ruolo_id IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO',
+                      jsonb_build_object(
+                        'detail', 'soggetto_ruolo_id obbligatorio per tipo PSP',
+                        'campo', 'soggetto_ruolo_id',
+                        'tipo', NEW.tipo,
+                        'codice', NEW.codice
+                      ),
+                      NULL::uuid,
+                      NEW.codice
+                    );
+                  END IF;
+
+                  -- Il confronto e' su codice_interno, che e' immutabile, non
+                  -- sull'etichetta modificabile.
+                  SELECT EXISTS (
+                    SELECT 1
+                    FROM anagrafiche.soggetti_ruoli sr
+                    JOIN config.tipi_ruoli tr
+                      ON tr.id = sr.tipo_ruolo_id
+                    WHERE sr.id = NEW.soggetto_ruolo_id
+                      AND tr.codice_interno = 'PSP'
+                  )
+                  INTO v_is_ruolo_psp;
+
+                  IF NOT v_is_ruolo_psp THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_RUOLO_NON_PSP',
+                      jsonb_build_object(
+                        'detail', 'soggetto_ruolo_id non coerente con ruolo PSP',
+                        'campo', 'soggetto_ruolo_id',
+                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                        'tipo', NEW.tipo
+                      ),
+                      NULL::uuid,
+                      NEW.soggetto_ruolo_id::text
+                    );
+                  END IF;
+
+                  SELECT EXISTS (
+                    SELECT 1
+                    FROM anagrafiche.psp p
+                    WHERE p.soggetto_ruolo_id = NEW.soggetto_ruolo_id
+                      AND p.attivo IS TRUE
+                  )
+                  INTO v_exists_psp;
+
+                  -- ⚠️ CONFLITTO_STATO e non NON_TROVATO: l'ente e il
+                  --    soggetto-ruolo esistono, manca un censimento a monte.
+                  IF NOT v_exists_psp THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_NON_CENSITO',
+                      jsonb_build_object(
+                        'detail', 'soggetto_ruolo_id PSP non censito in anagrafiche.psp',
+                        'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                      ),
+                      NULL::uuid,
+                      NEW.soggetto_ruolo_id::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico. Il corpo precedente e' identico
+              --    salvo i codici errore: rimetterlo farebbe tornare
+              --    indistinguibili tre condizioni che si risolvono in tre modi
+              --    diversi, e rimetterebbe TG_NAME nel log del terzo punto.
+              SELECT 1;

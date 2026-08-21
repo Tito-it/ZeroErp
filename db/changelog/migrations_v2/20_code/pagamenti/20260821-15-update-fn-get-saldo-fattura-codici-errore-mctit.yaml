@@ -1,0 +1,195 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DUE E_GENERICO SULLA BILANCIA DELLA FATTURA — passo P-7 (2 di 6)
+#   pagamenti.fn_get_saldo_fattura
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#
+# ── I DUE PUNTI, E PERCHE' PRENDONO CODICI DIVERSI ──────────────────────
+#   · guard di parametro (`p_fattura_id` nullo o <= 0) -> `E_PARAMETRO_INVALIDO`,
+#     il codice registrato del progetto per questa condizione. Il rimedio e'
+#     correggere la chiamata;
+#   · fattura inesistente -> `E_FATTURA_NON_TROVATA`, che ESISTE GIA' a catalogo
+#     (id messaggio 140, classe NON_TROVATO, «Fattura non trovata (id %s)») ed e'
+#     usato da altre funzioni di `vendite`. Il rimedio e' un altro: l'id e'
+#     sintatticamente valido, e' il documento a non esserci.
+#
+#   ⭐ Nessun codice NUOVO in questo changeSet: due condizioni gia' descritte
+#   altrove nel database prendono i nomi che il database usa gia'. Coniare
+#   `E_PAGAMENTI_FATTURA_NON_TROVATA` avrebbe aggiunto un sinonimo, non una
+#   distinzione.
+#
+# ── ⚠️ QUESTA FUNZIONE OGGI MENTE, E NON SI RIPARA QUI ─────────────────
+#   `fn_get_saldo_fattura` calcola `totale_a_pagare - somma dei movimenti
+#   attivi`, e i movimenti sono ZERO perche' il posting non esiste ancora: il
+#   residuo di ogni fattura risulta pari al totale. Non e' un difetto di questa
+#   funzione, e' cio' che la slice 1 esiste per chiudere (passo S1-10). Qui si
+#   toccano solo i codici errore; il manuale della funzione va riscritto al
+#   presente quando il primo movimento esistera' davvero (passo S1-13).
+#
+# ── ⭐ TIPI ANCORATI CON %TYPE ANCHE IN FIRMA E RETURNS TABLE ──────────
+#   Il DECLARE lo usava gia' (`v_totale_a_pagare`), firma e RETURNS TABLE no.
+#   Diventano `vendite.fatture.id%TYPE` e `vendite.fatture.totale_a_pagare%TYPE`,
+#   che e' il numero da cui il residuo si calcola.
+#
+#   ⚠️ Verificato prima di scrivere (2026-08-21): `vendite.fatture.id` e' `bigint`
+#   e `totale_a_pagare` e' `numeric` SENZA typmod — cioe' esattamente i tipi nudi
+#   di prima. Quindi il CREATE OR REPLACE sostituisce (nessun overload) e il
+#   RETURNS TABLE non cambia (che `CREATE OR REPLACE` non saprebbe fare: servirebbe
+#   un DROP).
+#
+# Origine: corpo dalla doc auto-generata del 2026-08-21
+#   (docs/it/dbzero/pagamenti/funzioni/fn_get_saldo_fattura.md).
+# Dipendenze: E_PARAMETRO_INVALIDO (204) e E_FATTURA_NON_TROVATA (140), entrambi
+#   gia' a catalogo. Nessun codice nuovo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-15-update-fn-get-saldo-fattura-codici-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260821-15-update-fn-get-saldo-fattura-codici-errore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.fn_get_saldo_fattura: i due E_GENERICO passano a
+        E_PARAMETRO_INVALIDO (guard di parametro) e a E_FATTURA_NON_TROVATA
+        (documento inesistente), entrambi gia' a catalogo. Nessun predicato cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'fn_get_saldo_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(
+                  saldo         vendite.fatture.totale_a_pagare%TYPE,
+                  has_movimenti boolean
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce il residuo fattura:
+                --     saldo = totale_a_pagare - somma_movimenti_attivi
+                --
+                -- ⚠️ Finche' non esiste il posting (slice 1 del cantiere incassi)
+                --    i movimenti sono zero e il residuo coincide col totale.
+                --
+                -- Rev 2026-08-21 (passo P-7): i due E_GENERICO passano ai codici
+                -- registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_saldo_fattura', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'detail', 'fattura_id obbligatoria e maggiore di zero',
+                      'campo', 'p_fattura_id',
+                      'p_fattura_id', p_fattura_id
+                    ),
+                    NULL::uuid,
+                    'p_fattura_id (obbligatorio, maggiore di zero)'
+                  );
+                END IF;
+
+                -- Recupera totale_a_pagare da fattura
+                SELECT f.totale_a_pagare
+                  INTO v_totale_a_pagare
+                  FROM vendite.fatture f
+                 WHERE f.id = p_fattura_id;
+
+                -- ⚠️ L'id e' valido: e' il documento a non esserci. Codice diverso
+                -- dal guard di parametro perche' il rimedio e' diverso.
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_saldo_fattura', 'E_FATTURA_NON_TROVATA',
+                    jsonb_build_object('detail','Fattura non trovata', 'fattura_id', p_fattura_id),
+                    NULL::uuid,
+                    p_fattura_id::text
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  COALESCE(v_totale_a_pagare, 0)::numeric
+                  - COALESCE(SUM(m.importo), 0)::numeric AS saldo,
+                  (COUNT(*) > 0) AS has_movimenti
+                FROM pagamenti.vendite_movimenti m
+                WHERE m.fattura_id = p_fattura_id
+                  AND m.attivo IS TRUE;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura(vendite.fatture.id%TYPE)
+              IS 'Restituisce il residuo fattura (totale_a_pagare - movimenti attivi) e il flag presenza movimenti. Rev 2026-08-21: guard di parametro su E_PARAMETRO_INVALIDO e documento inesistente su E_FATTURA_NON_TROVATA, al posto di due E_GENERICO; tipi ancorati con %TYPE in firma e RETURNS TABLE.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino integrale della versione precedente: identica salvo i
+              -- due codici errore, che tornerebbero E_GENERICO.
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura(p_fattura_id bigint)
+               RETURNS TABLE(saldo numeric, has_movimenti boolean)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_totale_a_pagare vendite.fatture.totale_a_pagare%TYPE;
+              BEGIN
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_saldo_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','fattura_id obbligatoria'),
+                    NULL::uuid,
+                    'fattura_id non valido'
+                  );
+                END IF;
+
+                SELECT f.totale_a_pagare
+                  INTO v_totale_a_pagare
+                  FROM vendite.fatture f
+                 WHERE f.id = p_fattura_id;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_saldo_fattura', 'E_GENERICO',
+                    jsonb_build_object('detail','Fattura non trovata', 'fattura_id', p_fattura_id),
+                    NULL::uuid,
+                    concat('Fattura non trovata, id: ', p_fattura_id)
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  COALESCE(v_totale_a_pagare, 0)::numeric
+                  - COALESCE(SUM(m.importo), 0)::numeric AS saldo,
+                  (COUNT(*) > 0) AS has_movimenti
+                FROM pagamenti.vendite_movimenti m
+                WHERE m.fattura_id = p_fattura_id
+                  AND m.attivo IS TRUE;
+              END;
+              $function$;

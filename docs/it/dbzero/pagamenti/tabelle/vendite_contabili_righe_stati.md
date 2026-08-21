@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | smallint | NO |  |
 | codice | text | NO |  |
-| codice_interno | text | YES |  |
+| codice_interno | text | NO |  |
 | descrizione | text | NO |  |
 | is_postabile | boolean | NO | false |
 | is_final | boolean | NO | false |
@@ -21,6 +21,8 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| obsoleto_dal | date | YES |  |
+| richiede_abbinamento | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

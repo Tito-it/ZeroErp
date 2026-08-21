@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE CATALOGHI DI STATO, RI-ANCORATI CON LE COLONNE NUOVE
+#   passi S1-2 (ritiro di STORNATA) e S1-21 (SCARTATA non e' piu' finale)
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.1 · Decisioni: D9-a, D14-a
+#
+# ── PERCHE' UN MIRROR NUOVO E NON UNA MODIFICA DI QUELLO CHE C'E' ──────
+#   I mirror esistenti — `20260213-04` (testata) e `-05` (righe) — elencano le
+#   colonne **una per una**, e le tre aggiunte da `20260821-24` non ci sono. ⛔ E
+#   quei changeSet sono mergiati: non si modificano, si aggiunge dopo.
+#
+#   ⭐ **Verificato, non dedotto**: nel progetto ci sono **quindici** CSV che
+#   portano colonne non dichiarate dal loro mirror — fra cui
+#   `pratiche/template_flussi.csv`, con esattamente `obsoleto_dal` — e i loro
+#   migrate funzionano. Un `loadUpdateData` con `columns:` esplicito **carica solo
+#   le colonne dichiarate** e ignora le altre. Quindi:
+#     · aggiungere colonne al CSV **non rompe** il mirror vecchio;
+#     · e il mirror vecchio **non le carica**: serve questo.
+#
+# ── ⚠️ `nullValue: ""` E NON IL TOKEN LETTERALE, DI PROPOSITO ──────────
+#   La convenzione del progetto per il NULL in un CSV e' il **token letterale
+#   `NULL`** con `nullValue: "NULL"`, perche' la cella vuota genera `''` e viola i
+#   CHECK. ⛔ Qui **non si applica**, e la ragione e' che su questi due CSV
+#   insistono **due** mirror: il vecchio dichiara `nullValue: ""`, e due sorgenti
+#   che leggono lo stesso file con due convenzioni di NULL diverse sono il modo
+#   piu' rapido per far divergere dev e CI.
+#   ⇒ Si tiene la convenzione **del file**, non quella globale. L'unica colonna
+#   con celle vuote e' `obsoleto_dal`, che il mirror vecchio non legge.
+#
+# ── COSA CAMBIA NEI DATI ───────────────────────────────────────────────
+#   **S1-2 — `STORNATA` si ritira** (D9-a). Non esiste piu' il gesto che ce la
+#   portava: lo storno non e' un tipo di documento, e' una contabile a importi
+#   negativi (D3-d). E *uno stato che nessuno puo' raggiungere e' una promessa che
+#   il modello non mantiene*: chi legge il catalogo fra un anno progetterebbe
+#   pensando che funzioni.
+#   ✅ Verificato: **nessuna** funzione, vista, riga di backend o di frontend
+#   nomina `STORNATA` in `pagamenti`; le quattro funzioni che parlano di «storno»
+#   stanno in `vendite` e sono un altro dominio.
+#   ⚠️ Si ritira con `obsoleto_dal`, **non** con `attivo = false`: quello
+#   spegnerebbe la riga e romperebbe le istanze che la referenziano.
+#
+#   **S1-21 — `SCARTATA` non e' piu' finale** (D14-a). Il catalogo la marcava
+#   `is_final = true` mentre la matrice ammette `SCARTATA -> SOSPESA`: si
+#   riprende in mano una riga scartata per errore. ⛔ *Un catalogo che dichiara
+#   una cosa mentre la matrice ne permette un'altra insegna il falso*, e qui il
+#   danno sarebbe concreto — `trgfn_vendite_contabili_guard_chiusura` conta le
+#   righe pronte, e altri lettori useranno `is_final` per decidere che cosa e'
+#   chiuso.
+#
+#   **`richiede_abbinamento`** — vero su `ABBINATA` e `POSTATA` (D14-a): sono i
+#   due stati che pretendono di sapere a quale fattura e a quale cliente la riga
+#   appartiene. E' la tabella «bagaglio» di D14 portata nel catalogo invece che
+#   dentro il guard.
+#
+# ── ⚠️ LA TESTATA NON RITIRA NIENTE, E LA COLONNA CI VA LO STESSO ──────
+#   Su `vendite_contabili_stati` nessuno stato e' obsoleto: `obsoleto_dal` e'
+#   vuota su tutte e cinque le righe. La colonna e il mirror ci sono per
+#   **simmetria** fra le due gemelle — ed e' la stessa ragione per cui il lotto ha
+#   sanato `codice_interno` (difetto C-8): due tabelle gemelle che divergono su un
+#   dettaglio sono il modo in cui nasce il prossimo difetto silenzioso.
+#
+# ── ⚠️ E DA QUI IN POI IL DATO SI CAMBIA DA QUESTO CSV ─────────────────
+#   ⛔ Niente `UPDATE` SQL su queste due tabelle: creerebbero una seconda sorgente
+#   di verita', e le due divergerebbero fra dev e CI (il mirror e' `runOnChange` e
+#   ri-legge a ogni migrate, l'SQL di solito no).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260821-30-riancora-mirror-stati-contabili-mctit.yaml
+
+  - changeSet:
+      id: 20260821-30-riancora-mirror-stati-contabili
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-ancora i mirror dei due cataloghi di stato di pagamenti con la lista
+        completa delle colonne: i mirror del 2026-02-13 non dichiarano obsoleto_dal
+        né richiede_abbinamento, e un loadUpdateData con columns esplicito carica solo
+        quelle dichiarate. Porta i dati di S1-2 (STORNATA ritirata con obsoleto_dal,
+        non con attivo=false), S1-21 (SCARTATA non è più finale: da lì si torna a
+        SOSPESA) e la bandiera richiede_abbinamento di D14-a.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+                columnName: obsoleto_dal
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+                columnName: obsoleto_dal
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+                columnName: richiede_abbinamento
+      changes:
+        # ── 1) Il catalogo della DISTINTA ────────────────────────────────
+        #   Nessuno stato ritirato: obsoleto_dal e' vuota su tutte e cinque le
+        #   righe. Il mirror c'e' per simmetria con la gemella.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pagamenti/vendite_contabili_stati.csv
+            tableName: vendite_contabili_stati
+            schemaName: pagamenti
+            separator: ","
+            encoding: UTF-8
+            # ⚠️ Convenzione DEL FILE, non quella globale: vedi la testata.
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,             type: STRING }
+              - column: { name: codice,         type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione,    type: STRING }
+              - column: { name: is_final,       type: BOOLEAN }
+              - column: { name: ordine,         type: STRING }
+              - column: { name: attivo,         type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+              - column: { name: obsoleto_dal,   type: DATE }
+              - column: { name: data_insert,    type: STRING }
+              - column: { name: user_insert,    type: STRING }
+              - column: { name: data_update,    type: STRING }
+              - column: { name: user_update,    type: STRING }
+
+        # ── 2) Il catalogo della RIGA ────────────────────────────────────
+        #   ⚠️ primaryKey "codice" e non "id": questo CSV non porta la colonna
+        #   id, e li' gli id NON sono un contratto — chi scrive una funzione
+        #   risolve sempre per codice_interno.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pagamenti/vendite_contabili_righe_stati.csv
+            tableName: vendite_contabili_righe_stati
+            schemaName: pagamenti
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice,               type: STRING }
+              - column: { name: codice_interno,       type: STRING }
+              - column: { name: descrizione,          type: STRING }
+              - column: { name: is_postabile,         type: BOOLEAN }
+              - column: { name: is_final,             type: BOOLEAN }
+              - column: { name: ordine,               type: STRING }
+              - column: { name: attivo,               type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+              - column: { name: obsoleto_dal,         type: DATE }
+              - column: { name: richiede_abbinamento, type: BOOLEAN }
+              - column: { name: data_insert,          type: STRING }
+              - column: { name: user_insert,          type: STRING }
+              - column: { name: data_update,          type: STRING }
+              - column: { name: user_update,          type: STRING }
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico. Riportare STORNATA fra le voci
+              --    selezionabili significherebbe rimettere a catalogo uno stato
+              --    che nessun gesto raggiunge, e rimettere SCARTATA fra le finali
+              --    farebbe dichiarare al catalogo il contrario di cio' che la
+              --    matrice delle transizioni permette.
+              SELECT 1;

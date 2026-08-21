@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA TESTATA CONTABILE SENZA STATO PASSA I FILTRI DI ENTRAMBI — passo P-4
+#   pagamenti.vendite_contabili.stato_id
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-4
+#   Decisione: brief-incassi-riconciliazione-rate-promemoria.md, D9-d-2
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────────
+#   `stato_id` ammette NULL, e `pagamenti.fn_get_saldo_fattura_contabili`
+#   tratta la testata senza stato come NON FINALE (`COALESCE(cs.is_final,
+#   false) IS FALSE`).
+#
+#   Finche' lo stato era decorativo era innocuo. Da quando — decisione D9-c — e'
+#   IL CANCELLO FRA BROGLIACCIO E REGISTRO (prima della conferma la contabile si
+#   annulla, dopo no) diventa un buco: una testata senza stato non e' ne' bozza
+#   ne' confermata, e passa i filtri di entrambi.
+#
+# ── LA CORREZIONE E' FAR DIRE ALLA COLONNA CIO' CHE IL CODICE GIA' FA ───
+#   L'unico punto d'ingresso, `pagamenti.fn_get_or_create_vendite_contabile`, ha
+#   gia' `p_codice_stato_interno DEFAULT 'BOZZA'` e non inserisce mai una testata
+#   senza stato. Qui la colonna smette di ammettere il caso che nessuno produce.
+#
+#   Backfill: NESSUNO. La tabella e' vuota — 0 righe totali, 0 con stato_id NULL,
+#   verificato il 2026-08-21 — e la preCondition qui sotto lo ricontrolla al
+#   momento del migrate invece di fidarsi di questa riga.
+#
+# ── ⚠️ IL DEFAULT E' UN ID SCRITTO A MANO, E VA SAPUTO ──────────────────
+#   `SET DEFAULT 1` — 1 e' l'id di BOZZA in pagamenti.vendite_contabili_stati.
+#   Non e' il modo che si preferirebbe (la regola del progetto e' referenziare i
+#   cataloghi per `codice_interno`, mai per id), ma un DEFAULT di colonna in
+#   PostgreSQL non ammette sottoquery: non si puo' scrivere «l'id di BOZZA».
+#
+#   Le alternative sono peggiori, ed e' utile scrivere perche':
+#     · risolvere l'id a tempo di migrazione con un DO block -> in `00_schema` il
+#       catalogo NON e' ancora seminato (80_data gira dopo), quindi su un
+#       database ricostruito da zero la lettura tornerebbe vuota e servirebbe un
+#       ripiego. Un ripiego produce un DEFAULT che puo' DIFFERIRE fra dev e CI,
+#       che e' esattamente la classe di difetto peggiore;
+#     · spostare il SET DEFAULT in `80_data`/`90_end` -> separa in due changeSet
+#       una sola decisione, e lascia una finestra in cui la colonna e' NOT NULL
+#       senza default;
+#     · nessun DEFAULT -> contraddice D9-d-2, che il default lo decide.
+#
+#   ⭐ Il precedente del progetto e' identico e recente: `vendite.commesse`
+#   (20260226-02) fa `ALTER COLUMN stato_commessa_id SET DEFAULT 1` con lo stesso
+#   commento «Default = BOZZA (id=1)».
+#
+#   Gli id di `vendite_contabili_stati` SONO un contratto: il CSV
+#   80_data/sql/pagamenti/vendite_contabili_stati.csv li porta espliciti e il suo
+#   loader (20260213-04) usa `primaryKey: "id"`. ⚠️ Non vale per la tabella
+#   gemella `vendite_contabili_righe_stati`, il cui CSV non ha la colonna id: li'
+#   gli stati si risolvono SEMPRE per codice_interno.
+#
+#   Il contratto e' presidiato: db/pgtap/pagamenti/test-vendite-contabili-stato-obbligatorio.sql
+#   asserisce che l'id 1 sia BOZZA. Un'assunzione non presidiata e' la prossima
+#   trappola.
+#
+# ── LA CODA, NELLO STESSO LOTTO ─────────────────────────────────────────
+#   Con la colonna obbligatoria, il ramo `COALESCE(cs.is_final, false)` di
+#   `pagamenti.fn_get_saldo_fattura_contabili` diventa CODICE MORTO: racconta un
+#   caso che non puo' piu' accadere. Si toglie nel changeSet 20260821-13, dello
+#   stesso lotto e con numero piu' alto (quindi dopo, nella timeline dell'autogen).
+#   Un ramo che descrive un caso impossibile e' una descrizione falsa del dominio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260821-12-alter-vendite-contabili-stato-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260821-12-alter-vendite-contabili-stato-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.vendite_contabili.stato_id diventa NOT NULL con default BOZZA
+        (id 1). Da quando lo stato e' il cancello fra brogliaccio e registro
+        (D9-c), una testata senza stato non e' ne' bozza ne' confermata e passa i
+        filtri di entrambi. Nessun backfill: la tabella e' vuota.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+            # La colonna dev'essere ancora nullable: se qualcuno l'avesse gia'
+            # resa obbligatoria ci si ferma invece di rifarlo.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM information_schema.columns
+                   WHERE table_schema = 'pagamenti'
+                     AND table_name   = 'vendite_contabili'
+                     AND column_name  = 'stato_id'
+                     AND is_nullable  = 'YES';
+            # Nessuna riga da sanare. Se ne comparisse una, il SET NOT NULL
+            # fallirebbe comunque: qui si ferma prima, dicendo che cosa guardare.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pagamenti.vendite_contabili
+                   WHERE stato_id IS NULL;
+            # Il default che si sta per scrivere dev'essere davvero BOZZA.
+            # ⚠️ Su un database ricostruito da zero il catalogo e' ancora vuoto
+            # (80_data gira dopo 00_schema): la condizione ammette quindi anche
+            # «nessuna riga», ed e' il pgTAP a presidiare il contratto a regime.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pagamenti.vendite_contabili_stati
+                   WHERE id = 1
+                     AND codice_interno IS DISTINCT FROM 'BOZZA';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Il default PRIMA del NOT NULL: cosi' fra i due statement non
+              -- esiste un istante in cui un INSERT senza stato_id fallirebbe.
+              ALTER TABLE pagamenti.vendite_contabili
+                ALTER COLUMN stato_id SET DEFAULT 1;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                ALTER COLUMN stato_id SET NOT NULL;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili.stato_id IS
+                'Stato della testata contabile (FK a pagamenti.vendite_contabili_stati). OBBLIGATORIO dal 2026-08-21: e'' il cancello fra brogliaccio e registro — prima della conferma la contabile si annulla, dopo no — e una testata senza stato passava i filtri di entrambi. Default 1 = BOZZA: l''id e'' un contratto del CSV di seed (loader 20260213-04, primaryKey id), presidiato da db/pgtap/pagamenti/test-vendite-contabili-stato-obbligatorio.sql. ⚠️ La tabella GEMELLA vendite_contabili_righe_stati non ha id nel CSV: li'' gli stati si risolvono sempre per codice_interno.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback riapre il buco: torna ad ammettere una testata
+              -- senza stato, che non e' ne' bozza ne' confermata.
+              ALTER TABLE pagamenti.vendite_contabili
+                ALTER COLUMN stato_id DROP NOT NULL;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                ALTER COLUMN stato_id DROP DEFAULT;

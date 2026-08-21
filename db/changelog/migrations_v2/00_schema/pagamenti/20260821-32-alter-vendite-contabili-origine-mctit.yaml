@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DA DOVE VIENE UNA DISTINTA, E QUANTO DICHIARA DI VALERE — passo S1-18
+#   pagamenti.vendite_contabili.origine · .importo_dichiarato
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.1 S1-18
+#   Decisione: brief-incassi-riconciliazione-rate-promemoria.md, D12-b, D12-b-bis, D12-c
+#
+# ── ⭐ IL VOCABOLARIO E' A TRE, E LA TERZA E' NATA DA UNA MISURA ───────
+#   D12-b prescriveva due valori — `MANUALE` / `AUTOMATICA` — con la stessa forma
+#   di `vendite.fatture_fondi_fattura_source.origine`.
+#
+#   🔴 Misurando **chi crea davvero le distinte oggi** ne è emerso un terzo caso:
+#   `vendite.fn_sync_contabili_fondo_fattura` è l'**unico creatore esistente**
+#   (nessun chiamante Python; il manuale e l'import non sono costruiti), e quella
+#   distinta **non è né l'una né l'altra** — non la digita una persona e non
+#   arriva da un file. Con due soli valori, **il 100% delle distinte di oggi**
+#   porterebbe una parola falsa.
+#
+#   ⇒ `GENERATA` (Tid, 2026-08-21): la produce il sistema. Decisione scritta nel
+#   brief madre, **D12-b-bis**.
+#
+#   ⭐ E non è un tipo «tecnico» da nascondere: una distinta generata si registra
+#   come le altre, e la sua unica differenza è che **non c'è nessuno a cui
+#   chiedere conto del contenuto** — che è esattamente ciò che serve sapere.
+#
+# ── LE TRE REGOLE CHE PENDONO DA `origine` ────────────────────────────
+#   `origine` è *«il cardine da cui pendono le altre regole»* invece di tre flag
+#   scollegati. Le regole sono:
+#
+#   1. **`importo_dichiarato`** — obbligatorio su `AUTOMATICA` (è l'autocontrollo
+#      dell'import: se abbiamo letto male il file la somma non torna e non nasce
+#      niente), facoltativo su `MANUALE`, e **vuoto** su `GENERATA` (nessuna
+#      sorgente ha dichiarato un totale). ⇒ **due CHECK**, uno per verso;
+#   2. il **raggruppamento per operatore** vale solo su `MANUALE` → passo S1-19;
+#   3. **`VALIDATA → BOZZA`** vale solo su `MANUALE` → guard di S1-19.
+#
+#   ⚠️ Qui atterra solo la (1): le altre due sono comportamento, non struttura.
+#
+# ── ⚠️ IL DEFAULT E' `GENERATA`, E VA SAPUTO ──────────────────────────
+#   La colonna è `NOT NULL DEFAULT 'GENERATA'`. Non è una preferenza estetica: chi
+#   può inserire **senza dire l'origine** è solo uno script o una migrazione, e per
+#   quelli `GENERATA` è vero. ⭐ Il punto d'ingresso `fn_get_or_create_vendite_contabile`
+#   la passerà **sempre esplicita** (S1-19), quindi il default non copre mai un
+#   gesto di dominio.
+#   ⚠️ Se un giorno il backend inserisse una distinta manuale con una `INSERT`
+#   diretta e si dimenticasse `origine`, quella risulterebbe generata **in
+#   silenzio**. È il prezzo del default, ed è accettato perché la strada giusta —
+#   la funzione madre — è l'unica che il progetto ammette.
+#
+# ── ⚠️ `importo_dichiarato` NON E' IL TOTALE DELLE RIGHE ──────────────
+#   È **ciò che la sorgente dichiara di aver mandato**, non ciò che c'è dentro. La
+#   quadratura fra i due è un controllo, e sta altrove:
+#     · su `AUTOMATICA` la fa la **madre dell'import**, in un atto unico — se non
+#       torna, non nasce niente (D12-e). ⛔ Non può essere un trigger di riga:
+#       durante il caricamento la somma torna solo alla fine;
+#     · su `MANUALE` scatta al gesto **«ho finito di inserire»**, cioè al
+#       passaggio a `VALIDATA` → passo S1-22.
+#
+# ── ℹ️ TABELLA A ZERO RIGHE ───────────────────────────────────────────
+#   `vendite_contabili` è vuota (verificato): il `NOT NULL` e i due CHECK entrano
+#   senza backfill e senza sanatoria.
+#
+# Presidio: db/pgtap/pagamenti/test-contabili-origine-e-quadratura.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260821-32-alter-vendite-contabili-origine-mctit.yaml
+
+  - changeSet:
+      id: 20260821-32-alter-vendite-contabili-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        origine (MANUALE / AUTOMATICA / GENERATA, NOT NULL) e importo_dichiarato
+        (nullable) sulla testata contabile. Il terzo valore nasce da una misura: l'unico
+        creatore di distinte esistente è il sync dei fondi, che non è né manuale né
+        automatica — con due soli valori il 100% delle distinte di oggi porterebbe una
+        parola falsa (D12-b-bis). Due CHECK: AUTOMATICA pretende il totale dichiarato,
+        GENERATA lo vieta.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+            # Nessuna riga da sanare: il NOT NULL entra senza backfill.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)::text FROM pagamenti.vendite_contabili;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD COLUMN origine character varying NOT NULL DEFAULT 'GENERATA';
+
+              -- Stessa forma di vendite.fatture_fondi_fattura_source.origine: un
+              -- secondo modo di dire la stessa cosa in un altro schema sarebbe
+              -- solo un'occasione di divergere.
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD CONSTRAINT chk_vendite_contabili_origine
+                CHECK (origine IN ('MANUALE', 'AUTOMATICA', 'GENERATA'));
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili.origine IS
+                'Da dove viene la distinta, ed e'' il cardine da cui pendono le altre regole. MANUALE = il lotto di lavoro di un operatore (la digita una persona). AUTOMATICA = il file arrivato dal canale. GENERATA = la produce il sistema (giro dei fondi fattura, compensazioni): nessuno l''ha digitata e non c''e'' un file da cui quadrare. ⚠️ Il DEFAULT e'' GENERATA perche'' chi inserisce senza dirlo e'' uno script; il punto d''ingresso fn_get_or_create_vendite_contabile la passa SEMPRE esplicita. Decisione D12-b / D12-b-bis del brief incassi.';
+
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD COLUMN importo_dichiarato numeric;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili.importo_dichiarato IS
+                'Cio'' che la SORGENTE dichiara di aver mandato - NON il totale delle righe. Obbligatorio su AUTOMATICA (e'' l''autocontrollo dell''import: se abbiamo letto male il file la somma non torna e non nasce niente), FACOLTATIVO su MANUALE (il classico controllo da data entry), VIETATO su GENERATA (nessuna sorgente ha dichiarato niente). ⚠️ La quadratura fra questo numero e la somma delle righe NON sta in un trigger di riga: durante un caricamento la somma torna solo alla fine. Sull''automatica la fa la madre dell''import in un atto unico; sulla manuale scatta al passaggio a VALIDATA.';
+
+              -- (1) L'automatica DEVE dichiarare: e' l'autocontrollo dell'import.
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD CONSTRAINT chk_vendite_contabili_automatica_dichiara
+                CHECK (origine <> 'AUTOMATICA' OR importo_dichiarato IS NOT NULL);
+
+              -- (2) La generata NON puo' dichiarare: non c'e' nessuna sorgente
+              --     che l'abbia fatto, e un totale inventato romperebbe la
+              --     quadratura di una distinta sana.
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD CONSTRAINT chk_vendite_contabili_generata_non_dichiara
+                CHECK (origine <> 'GENERATA' OR importo_dichiarato IS NULL);
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP CONSTRAINT chk_vendite_contabili_generata_non_dichiara;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP CONSTRAINT chk_vendite_contabili_automatica_dichiara;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP COLUMN importo_dichiarato;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP CONSTRAINT chk_vendite_contabili_origine;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP COLUMN origine;

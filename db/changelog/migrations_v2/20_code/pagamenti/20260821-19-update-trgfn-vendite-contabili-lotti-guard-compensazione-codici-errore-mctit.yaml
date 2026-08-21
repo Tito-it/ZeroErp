@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ULTIMO E_GENERICO DI pagamenti — passo P-7 (6 di 6)
+#   pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#
+# ── ⭐ NON NASCE UN CODICE NUOVO: SE NE RIUSA UNO ───────────────────────
+#   Questo guard e il ramo finale di
+#   `pagamenti.trgfn_vendite_contabili_guard_ente_centro` (changeSet 20260821-17)
+#   dicono LA STESSA COSA nei due versi:
+#
+#     · li'  — si rende di compensazione una testata gia' collegata a un lotto;
+#     · qui  — si collega a un lotto una testata gia' di compensazione.
+#
+#   Stessa regola, stesso rimedio (usare due testate distinte), quindi
+#   `E_CONTABILE_COMPENSAZIONE_CON_LOTTO` (948) e basta. Due codici avrebbero
+#   raccontato due problemi dove ce n'e' uno, e avrebbero costretto il backend a
+#   mappare due volte lo stesso 409.
+#
+#   ⚠️ Ed e' il motivo per cui il messaggio ha UN solo segnaposto — la testata —
+#   anche se qui il lotto e' noto: l'altra porta non lo conosce, e un segnaposto
+#   che una delle due non sa riempire farebbe alzare 22023 a `format()`, facendo
+#   sparire l'errore di dominio. Il lotto va nel CONTESTO dell'evento, che finisce
+#   in `dbops.error_log` e non ha vincoli di arita'.
+#
+# ── CON QUESTO, `pagamenti` NON SOLLEVA PIU' E_GENERICO ────────────────
+#   Sette funzioni, venticinque punti, sei changeSet (20260821-13 … -19). Il
+#   posting della slice 1 nascera' in un'area che risponde con codici di una
+#   specie sola.
+#
+# Origine: corpo dalla doc auto-generata del 2026-08-21
+#   (docs/it/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_lotti_guard_compensazione.md).
+# Dipendenze: codice 948 (append ai CSV di 80_data nello stesso commit).
+#   ⚠️ 80_data gira DOPO 20_code: nessuna preCondition sul codice.
+# Verifica: db/pgtap/pagamenti/test-compensazioni-contabili-model.sql (test 6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-19-update-trgfn-vendite-contabili-lotti-guard-compensazione-codici-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260821-19-update-trgfn-vendite-contabili-lotti-guard-compensazione-codici-errore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione: l'E_GENERICO
+        passa a E_CONTABILE_COMPENSAZIONE_CON_LOTTO, lo stesso codice del guard
+        gemello sulla testata — e' la stessa regola letta nel verso opposto.
+        Ultimo dei venticinque punti E_GENERICO di pagamenti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'trgfn_vendite_contabili_lotti_guard_compensazione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_compensazione_id pagamenti.vendite_contabili.compensazione_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Impedire l'associazione a lotto di testate contabili
+                --   nate da compensazione.
+                --
+                -- ⭐ Stessa regola di trgfn_vendite_contabili_guard_ente_centro
+                --    letta nel verso opposto, quindi stesso codice errore.
+                --
+                -- Rev 2026-08-21 (passo P-7): E_GENERICO ->
+                -- E_CONTABILE_COMPENSAZIONE_CON_LOTTO. Nessun predicato e'
+                -- cambiato.
+                -- =========================================================
+
+                SELECT vc.compensazione_id
+                  INTO v_compensazione_id
+                  FROM pagamenti.vendite_contabili vc
+                 WHERE vc.id = NEW.contabile_id;
+
+                IF v_compensazione_id IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione', 'E_CONTABILE_COMPENSAZIONE_CON_LOTTO',
+                    jsonb_build_object(
+                      'detail', 'testata compensazione non associabile a lotto',
+                      'contabile_id', NEW.contabile_id,
+                      'lotto_id', NEW.lotto_id,
+                      'compensazione_id', v_compensazione_id
+                    ),
+                    NULL::uuid,
+                    NEW.contabile_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino integrale della versione precedente: identica salvo il
+              -- codice errore, che tornerebbe E_GENERICO.
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_compensazione_id pagamenti.vendite_contabili.compensazione_id%TYPE;
+              BEGIN
+                SELECT vc.compensazione_id
+                  INTO v_compensazione_id
+                  FROM pagamenti.vendite_contabili vc
+                 WHERE vc.id = NEW.contabile_id;
+
+                IF v_compensazione_id IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database','pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione' , 'E_GENERICO',
+                    jsonb_build_object(
+                      'detail', 'testata compensazione non associabile a lotto',
+                      'contabile_id', NEW.contabile_id,
+                      'lotto_id', NEW.lotto_id,
+                      'compensazione_id', v_compensazione_id
+                    ),
+                    NULL::uuid,
+                    concat('Contabile di compensazione non associabile a lotto',
+                      ', contabile_id: ', NEW.contabile_id::text,
+                      ', lotto_id: ', NEW.lotto_id::text,
+                      ', compensazione_id: ', v_compensazione_id::text
+                    )
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;

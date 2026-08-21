@@ -1348,6 +1348,10 @@ Chiude **Q-3** e sostituisce il riquadro sopra sulla «distinta di giornata»: i
 raggruppamento **non è la giornata**, e la ragione è che le distinte sono di due
 specie diverse.
 
+> 🔴 **Le specie sono TRE dal 2026-08-21 notte**: si è aggiunta `GENERATA`, per
+> le distinte che produce il sistema. La tabella qui sotto resta perché descrive
+> le due che nascono da un *gesto*; la terza è in **(b-bis)**.
+
 | | Distinta **MANUALE** | Distinta **AUTOMATICA** |
 | --- | --- | --- |
 | **Che cos'è** | il **lotto di lavoro di un operatore** | il **file** arrivato dal canale |
@@ -1382,6 +1386,42 @@ stessa cosa in un altro schema sarebbe solo un'occasione di divergere.
 
 ⭐ `origine` diventa **il cardine da cui pendono le altre regole**, invece di tre
 flag scollegati.
+
+#### b-bis) 🔴 Il vocabolario è a **TRE**, non a due (Tid, 2026-08-21 notte)
+
+Emerso scrivendo il lotto 2, misurando **chi crea davvero le distinte oggi**:
+
+> `vendite.fn_sync_contabili_fondo_fattura` è l'**unico** creatore esistente —
+> nessun chiamante Python, il manuale e l'import non sono ancora costruiti — e
+> quella distinta **non è né l'una né l'altra**: non la digita una persona, e non
+> arriva da un file.
+
+Con un vocabolario a due, **il 100% delle distinte di oggi** sarebbe etichettato
+con una parola falsa. E `origine` è *«il cardine da cui pendono le altre regole»*:
+un cardine che mente su un intero tipo di riga non regge le regole che ci si
+appendono.
+
+| Valore | Che cos'è | Chi la crea |
+| --- | --- | --- |
+| `MANUALE` | il **lotto di lavoro di un operatore** | una persona, digitando |
+| `AUTOMATICA` | il **file** arrivato dal canale | l'import (D6) |
+| 🆕 `GENERATA` | la produce **il sistema**: nessuno l'ha digitata e non c'è un file da cui quadrare | il giro dei fondi fattura, le compensazioni |
+
+⭐ **E le tre regole che pendevano da `origine` si leggono meglio, non peggio:**
+
+* **`importo_dichiarato`** è obbligatorio **solo** su `AUTOMATICA`, facoltativo su
+  `MANUALE`, e su `GENERATA` **dev'essere vuoto**: non c'è nessuna sorgente che
+  abbia dichiarato un totale, e un totale inventato romperebbe la quadratura di
+  una distinta sana;
+* **il raggruppamento per operatore** (a) vale **solo** su `MANUALE`: le altre due
+  non sono lotti di lavoro di nessuno;
+* **`VALIDATA → BOZZA`** (a-bis) vale **solo** su `MANUALE`: l'automatica è
+  immutabile, e riaprire una generata non ha senso — la si rigenera.
+
+⚠️ **Non è un terzo tipo «tecnico» da nascondere**: una distinta generata è un
+documento come gli altri, si registra come gli altri, e la sua unica differenza è
+che **non c'è nessuno a cui chiedere conto del contenuto**. È esattamente
+l'informazione che serve a chi la guarda.
 
 #### c) `importo_dichiarato` — obbligatorio sull'automatica, **facoltativo** sul manuale
 
