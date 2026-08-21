@@ -4,7 +4,7 @@
 >
 **Approfondimento tabelle:**
 >
-[auth_user (Django)](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+[auth_user (Django)](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 >
 **Approfondimento funzioni:**
 >

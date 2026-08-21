@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SCOPE EMITTENTE SULLA FAMIGLIA vendite.vw_stato_sorgente_* (6 viste)
+#   Piano: docs/it/dev/work-in-progress/analisi-copertura-doc-manual-dbzero.md §4/C
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────────
+#   Le sei viste leggono le tabelle documentali che hanno la RLS attiva
+#   (contratti, ddt, offerte_commerciali, ordini, preventivi, resi) ma NON
+#   dichiarano `security_invoker = on`. Sono owned da `titodb`, che e' owner
+#   anche di quelle tabelle ed e' esente dalla RLS non-forced: girano quindi
+#   come DEFINER e BYPASSANO lo scope emittente.
+#
+#   E' esattamente la condizione che il fix V-1 (20260706-15) corresse per la
+#   famiglia `vw_dash_*`. `SELECT` e' concesso a `zeroerp_app` e la union a
+#   valle (`script.vw_stato_sorgente`, changeset -09) e' enumerabile.
+#
+# ── PERCHE' E' UNA DIMENTICANZA, NON UNA SCELTA ─────────────────────────
+#   Il changeset che ha creato la famiglia (20260701-17) documenta quattro
+#   decisioni — dispatch, placement, `risolto=true`, uso liste — e NON nomina
+#   mai RLS, scope o security_invoker. La cronologia lo conferma: la famiglia
+#   nasce l'1-2 luglio 2026, il fix delle `vw_dash_*` arriva il 6 luglio, e il
+#   18 luglio due rami nuovi (ddt, reso) vengono aggiunti senza ripensarci.
+#   Trovato il 2026-08-21 applicando a tutto il DB il criterio che il test
+#   db/pgtap/vendite/test-vw-dash-security-invoker.sql gia' dichiara: cio' che
+#   conta non e' il prefisso del nome, e' «legge tabelle in RLS».
+#
+# ── ⚠️ IL DIFETTO NON E' DIMOSTRABILE SUI DATI DI SVILUPPO ──────────────
+#   Misurato il 2026-08-21: tutti i 165 preventivi appartengono a UN SOLO
+#   emittente (id 32) su due attivi, quindi tabella e vista restituiscono lo
+#   stesso conteggio con o senza RLS. E' precisamente il motivo per cui il test
+#   di presidio verifica la RELOPTION e non il comportamento — lo dice nella
+#   sua intestazione. La domanda e' «puo' succedere?», non «e' successo?».
+#
+# ── ALTER E NON CREATE OR REPLACE ───────────────────────────────────────
+#   ⭐ Si usa `ALTER VIEW ... SET (security_invoker = on)`, che tocca SOLO le
+#   reloptions e lascia intatta la definizione. Un `CREATE OR REPLACE VIEW`
+#   richiederebbe di ricopiare il corpo, e ricopiare un corpo e' esattamente il
+#   modo in cui questa famiglia potrebbe regredire: il progetto ha gia' pagato
+#   un REPLACE senza `WITH (...)` che AZZERO' le reloptions di
+#   vw_dash_fatturazione_contratti (20260707-03, ripristino 20260707-10).
+#
+# ── ⚠️ CONSEGUENZA VOLUTA A VALLE ───────────────────────────────────────
+#   Con lo scope attivo, `pratiche.fn_stato_sorgente` degradera' a UNKNOWN per
+#   i documenti fuori perimetro invece di restituirne lo stato. E' il
+#   comportamento corretto (fail-closed) ed e' il fallback gia' previsto dal
+#   wrapper — ma CAMBIA il risultato per i consumatori, e va saputo.
+#   `zeroerp_batch_fatturazione` ha BYPASSRLS e non e' toccato.
+#
+# Presidio: db/pgtap/vendite/test-vw-dash-security-invoker.sql, la cui coda
+#   esplicita e' stata allungata con queste sei viste nello stesso commit.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-08-alter-vw-stato-sorgente-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260821-08-alter-vw-stato-sorgente-security-invoker
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Attiva security_invoker sulle sei viste vendite.vw_stato_sorgente_*, che
+        leggono le tabelle documentali in RLS e giravano come DEFINER bypassando
+        lo scope emittente. Stessa condizione corretta dal fix V-1 per la
+        famiglia vw_dash_*. ALTER e non CREATE OR REPLACE: si toccano solo le
+        reloptions, senza ricopiare la definizione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "6"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND c.relkind = 'v'
+                     AND c.relname LIKE 'vw\_stato\_sorgente\_%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_stato_sorgente_contratto  SET (security_invoker = on);
+              ALTER VIEW vendite.vw_stato_sorgente_ddt        SET (security_invoker = on);
+              ALTER VIEW vendite.vw_stato_sorgente_offerta    SET (security_invoker = on);
+              ALTER VIEW vendite.vw_stato_sorgente_ordine     SET (security_invoker = on);
+              ALTER VIEW vendite.vw_stato_sorgente_preventivo SET (security_invoker = on);
+              ALTER VIEW vendite.vw_stato_sorgente_reso       SET (security_invoker = on);
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER VIEW vendite.vw_stato_sorgente_contratto  RESET (security_invoker);
+              ALTER VIEW vendite.vw_stato_sorgente_ddt        RESET (security_invoker);
+              ALTER VIEW vendite.vw_stato_sorgente_offerta    RESET (security_invoker);
+              ALTER VIEW vendite.vw_stato_sorgente_ordine     RESET (security_invoker);
+              ALTER VIEW vendite.vw_stato_sorgente_preventivo RESET (security_invoker);
+              ALTER VIEW vendite.vw_stato_sorgente_reso       RESET (security_invoker);

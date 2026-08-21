@@ -61,6 +61,31 @@ La configurazione vive in `config.sistema_codici` alla riga `codice_interno = 'i
 
 ---
 
+### ⚠️ Questa funzione è **generata**, non scritta a mano
+
+Il corpo compresso su una riga sola non è una svista di formattazione. La funzione, la
+sequenza e il trigger che la invoca sono creati con DDL dinamico da
+`script.trgfn_config_sistema_codici_sync_gen_codice` — il trigger
+`AFTER INSERT OR UPDATE OR DELETE` di `config.sistema_codici`. Basta la riga
+`codice_interno = 'istanze_utilities'` con `schema_tabella`, `nome_tabella`, `nome_colonna` valorizzati
+e `usa_sequenza = true`, e i tre oggetti nascono da soli.
+
+È il motivo per cui **tutte** le `trgfn_*_gen_codice` del progetto hanno corpo identico: non
+sono sette funzioni simili, sono la stessa funzione parametrizzata sette volte.
+
+Conseguenze pratiche:
+
+* **Modificarla a mano non serve a niente.** Il loader del CSV `sistema_codici` è
+  `runOnChange`, quindi ripassa a ogni migrate: la funzione viene riscritta col template e
+  qualunque ritocco locale sparisce senza lasciare traccia.
+* **Non si spegne con un `DROP`, si spegne dalla configurazione.** Portando `usa_sequenza`
+  a `false` il trigger di sync cancella da sé trigger e funzione; un `DROP` manuale li fa
+  ricomparire al primo migrate.
+* **Cambiare `schema_tabella`/`nome_tabella`/`nome_colonna` sposta gli oggetti**: il sync
+  fa `DROP` di quelli vecchi e ricrea altrove. Nessun errore, nessun avviso.
+
+---
+
 ### Codici errore
 
 | Codice | Sollevato da | Quando |

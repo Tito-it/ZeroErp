@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_sospensioni_giornale_ins.md" %}
 # ⚙️ Funzione `trgfn_sospensioni_giornale_ins`
 
 ```sql

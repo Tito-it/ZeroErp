@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_billing_account_gen_codice.md" %}
 # ⚙️ Funzione `trgfn_billing_account_gen_codice`
 
 ```sql

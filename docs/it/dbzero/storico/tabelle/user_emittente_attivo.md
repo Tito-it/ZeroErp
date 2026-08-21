@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/user_emittente_attivo.md" %}
 # 📚 Tabella `user_emittente_attivo`
 
 ## 🗂️ Campi principali

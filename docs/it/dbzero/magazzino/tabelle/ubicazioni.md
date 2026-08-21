@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/ubicazioni.md" %}
 # 📚 Tabella `ubicazioni`
 
 > 📝 **Descrizione**

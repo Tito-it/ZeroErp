@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/utilities_tipi_ruolo.md" %}
 # 📚 Tabella `utilities_tipi_ruolo`
 
 ## 🗂️ Campi principali

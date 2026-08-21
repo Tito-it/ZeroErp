@@ -1,6 +1,7 @@
 # Schema `anagrafiche`
 
 ## 📚 Tabelle (manuale)
+- [_legacy_risorse_umane_auth_user](manual/_legacy_risorse_umane_auth_user.md) — (rev 2026-08-21)
 - [bank_branches](manual/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 - [billing_account](manual/billing_account.md) — (latest review 20-04-2026 — aggiunta colonna `canale_origine`)
 - [catasto_unita_immobiliari](manual/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
@@ -32,6 +33,7 @@
 - [soggetti_conti_bancari](manual/soggetti_conti_bancari.md) — (latest review 10-01-26) `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 - [soggetti_ruoli](manual/soggetti_ruoli.md) — (latest review 15-02-26) * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `meta` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 - [soggetti_ruoli_conti_bancari](manual/soggetti_ruoli_conti_bancari.md) — (latest review 25-03-26) `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
+- [vettori](manual/vettori.md) — (rev 2026-08-21)
 
 ## ⚙️ Funzioni (manuale)
 - [fn_build_indirizzo_normalizzato](manual/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
@@ -58,6 +60,7 @@
 - [fn_sync_auth_user_is_active](manual/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
 - [fn_update_cliente](manual/fn_update_cliente.md) — (latest review 08-07-2026)
 - [trgfn_bank_guard_ruolo_bank_branches](manual/trgfn_bank_guard_ruolo_bank_branches.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_billing_account_gen_codice](manual/trgfn_billing_account_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_billing_account_guard_admin_globale](manual/trgfn_billing_account_guard_admin_globale.md)
 - [trgfn_billing_account_guard_albero_emittente](manual/trgfn_billing_account_guard_albero_emittente.md) — (latest review 18-08-26)
 - [trgfn_billing_account_guard_normalize](manual/trgfn_billing_account_guard_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
@@ -78,6 +81,7 @@
 - [trgfn_emittenti_fiscali_default_guard](manual/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
 - [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](manual/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`** garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un `soggetto_ruolo_id` valido e coerente con il ruolo di **emittente fiscale** (`codice_interno = 'EF'`).
 - [trgfn_emittenti_fiscali_normalize](manual/trgfn_emittenti_fiscali_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e' attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene esplicitato nel flusso trigger che la normalizzazione locale non e' necessaria e che l'eventuale generazione del `codice` resta demandata al sistema automatico basato su `config.sistema_codici`.
+- [trgfn_fornitori_gen_codice](manual/trgfn_fornitori_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_fornitori_guard_normalize](manual/trgfn_fornitori_guard_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_normalize()`** normalizza i dati minimi del fornitore prima del salvataggio, con focus sul campo `canale_fe`.
 - [trgfn_fornitori_guard_ruolo_fornitore](manual/trgfn_fornitori_guard_ruolo_fornitore.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()`** assicura che ogni record di `anagrafiche.fornitori` punti a un `soggetto_ruolo_id` coerente con il ruolo **fornitore** (`codice_interno = 'FO'`).
 - [trgfn_gestori_guard](manual/trgfn_gestori_guard.md) — (latest review 03-12-25) La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
@@ -92,6 +96,7 @@
 - [trgfn_indirizzi_soggetti_guard_tipo_indirizzo](manual/trgfn_indirizzi_soggetti_guard_tipo_indirizzo.md) — (latest review 28-12-25) Garantire che il **tipo indirizzo** associato a un soggetto sia coerente con la **matrice di abilitazione** definita per il suo tipo soggetto dettaglio.
 - [trgfn_indirizzi_sync_geoloc](manual/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o `anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
 - [trgfn_istanze_dati_precontrattuali_protect_update](manual/trgfn_istanze_dati_precontrattuali_protect_update.md) — (latest review 20-01-26) La funzione `anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` impedisce la modifica o cancellazione dei dati precontrattuali quando sono gia` stati **congelati** in `vendite.contratti_utilities`.
+- [trgfn_istanze_utilities_gen_codice](manual/trgfn_istanze_utilities_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_istanze_utilities_normalize](manual/trgfn_istanze_utilities_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 - [trgfn_istanze_utilities_require_utility_dichiarata](manual/trgfn_istanze_utilities_require_utility_dichiarata.md)
 - [trgfn_iu_clone_catasto_from_parent](manual/trgfn_iu_clone_catasto_from_parent.md) — (latest review 15-12-25) La trigger function **`anagrafiche.trgfn_iu_clone_catasto_from_parent()`** è un wrapper minimale che, in risposta a un evento di modifica dell’istanza (tipicamente valorizzazione di `parent_istanza_id`), attiva la clonazione del catasto dalla parent verso l’istanza corrente.
@@ -109,6 +114,7 @@
 - [trgfn_risorse_umane_sync_auth_user_active](manual/trgfn_risorse_umane_sync_auth_user_active.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_sync_auth_user_active()`** sincronizza `django.auth_user.is_active` quando cambiano gli attributi di stato della tabella `anagrafiche.risorse_umane`.
 - [trgfn_sepa_mandati_guard](manual/trgfn_sepa_mandati_guard.md) — (latest review 29-12-25) Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
 - [trgfn_soggetti_conti_bancari_guard](manual/trgfn_soggetti_conti_bancari_guard.md) — (latest review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_conti_bancari_guard()`** applica controlli di guardia (coerenza e ammissibilità) sui legami tra soggetti e conti bancari, con due obiettivi principali:
+- [trgfn_soggetti_gen_codice](manual/trgfn_soggetti_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_soggetti_guard_cf_piva_obbligatori](manual/trgfn_soggetti_guard_cf_piva_obbligatori.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_guard_dati_societari_required](manual/trgfn_soggetti_guard_dati_societari_required.md) — (latest review 03-12-25) Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
 - [trgfn_soggetti_guard_indirizzi_required](manual/trgfn_soggetti_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
@@ -118,11 +124,17 @@
 - [trgfn_soggetti_ruoli_guard_indirizzi_required](manual/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un **ruolo soggetto** abbia tutti i tipi di indirizzo **obbligatori** definiti nella matrice `config.tipi_ruolo_tipi_indirizzo`.
 - [trgfn_soggetti_ruoli_guard_natura_ammessa](manual/trgfn_soggetti_ruoli_guard_natura_ammessa.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_valida_cf_piva_dispatch](manual/trgfn_soggetti_valida_cf_piva_dispatch.md) — (latest review 29-12-25) La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
+- [trgfn_vettori_gen_codice](manual/trgfn_vettori_gen_codice.md) — (rev 2026-08-21 — **funzione nata il 2026-08-21**)
+- [trgfn_vettori_guard_ruolo_vettore](manual/trgfn_vettori_guard_ruolo_vettore.md) — (rev 2026-08-21)
+- [trgfn_vettori_normalize](manual/trgfn_vettori_normalize.md) — (rev 2026-08-21)
 
 ## 🔍 Views (manuale)
 - [risorse_umane_auth_user](manual/risorse_umane_auth_user.md) — (latest review 29-04-2026, post-Fase 7 cleanup)
+- [vw_clienti_codice_ba](manual/vw_clienti_codice_ba.md) — (rev 2026-08-21)
+- [vw_clienti_lista](manual/vw_clienti_lista.md) — (rev 2026-08-21)
 - [vw_conti_bancari_per_ruolo](manual/vw_conti_bancari_per_ruolo.md) — (latest review 25-03-26)
 - [vw_dati_societari](manual/vw_dati_societari.md) — (latest review 23-12-25) La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dati societari con:
+- [vw_fornitori_dettaglio](manual/vw_fornitori_dettaglio.md) — (rev 2026-08-21)
 - [vw_indirizzi_dettaglio](manual/vw_indirizzi_dettaglio.md) — (latest review 28-11-25) La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).
 - [vw_indirizzi_resolved_all](manual/vw_indirizzi_resolved_all.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_all`** rappresenta il **punto unico e canonico di lettura** degli indirizzi in Zero ERP.
 - [vw_indirizzi_resolved_base](manual/vw_indirizzi_resolved_base.md) — (latest review 25-03-26) La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
@@ -130,6 +142,7 @@
 - [vw_indirizzi_resolved_soggetto](manual/vw_indirizzi_resolved_soggetto.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_soggetto`** fornisce una rappresentazione **normalizzata e pronta all’uso** degli indirizzi **associati direttamente a un soggetto**, indipendentemente dai suoi ruoli.
 - [vw_istanze_dati_precontrattuali_dettaglio](manual/vw_istanze_dati_precontrattuali_dettaglio.md) — (latest review 09-01-26)  La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**. Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_id`).
 - [vw_istanze_utilities_dettaglio](manual/vw_istanze_utilities_dettaglio.md) — (latest review 15-02-26) La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
+- [vw_pdp](manual/vw_pdp.md) — (rev 2026-08-21)
 - [vw_risorse_umane_dettaglio](manual/vw_risorse_umane_dettaglio.md) — (latest review 07-01-26) La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura unificata delle risorse umane con:
 - [vw_soggetti_ruoli_dettaglio](manual/vw_soggetti_ruoli_dettaglio.md) — (latest review 20-02-26) La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:
 

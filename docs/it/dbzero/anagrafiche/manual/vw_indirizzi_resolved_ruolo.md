@@ -10,7 +10,7 @@ Approfondimenti tabelle:
 >
 Approfondimenti viste:
 >
-[anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)  
+[anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)  
 
 ---
 ### 🎯 Scopo Principale

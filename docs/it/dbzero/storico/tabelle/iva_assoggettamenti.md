@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/iva_assoggettamenti.md" %}
 # 📚 Tabella `iva_assoggettamenti`
 
 ## 🗂️ Campi principali

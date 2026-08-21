@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/tipi_ruolo_tipi_indirizzo.md" %}
 # 📚 Tabella `tipi_ruolo_tipi_indirizzo`
 
 ## 🗂️ Campi principali

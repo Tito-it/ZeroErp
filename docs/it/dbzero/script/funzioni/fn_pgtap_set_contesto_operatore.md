@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_pgtap_set_contesto_operatore.md" %}
 # ⚙️ Funzione `fn_pgtap_set_contesto_operatore`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/note_inventario_riga.md" %}
 # 📚 Tabella `note_inventario_riga`
 
 ## 🗂️ Campi principali

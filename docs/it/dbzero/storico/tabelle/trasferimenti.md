@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/trasferimenti.md" %}
 # 📚 Tabella `trasferimenti`
 
 ## 🗂️ Campi principali

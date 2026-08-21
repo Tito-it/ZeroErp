@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/costo_medio.md" %}
 # 📚 Tabella `costo_medio`
 
 > 📝 **Descrizione**

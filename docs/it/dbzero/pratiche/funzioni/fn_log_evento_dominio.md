@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/fn_log_evento_dominio.md" %}
 # ⚙️ Funzione `fn_log_evento_dominio`
 
 ```sql

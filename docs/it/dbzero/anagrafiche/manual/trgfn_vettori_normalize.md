@@ -33,21 +33,35 @@ Trigger `trg_vettori_norm_ins_upd` — `BEFORE INSERT OR UPDATE` su `anagrafiche
 
 ---
 
-### ⚠️ Il codice del vettore non lo genera nessuno
+### Il rinvio al `sistema_codici` oggi ha un destinatario — dal 2026-08-21
 
-Il `COMMENT` rimanda al `sistema_codici`, ma il rinvio **non ha destinatario**:
+Il `COMMENT` rimanda alla generazione centralizzata dei codici, e da oggi quel rinvio è vero:
+in `config.sistema_codici` esiste la riga `codice_interno = 'vettori'`
+(prefisso `VET`, separatore `-`, 7 cifre), che punta ad `anagrafiche.vettori.codice`.
 
-* su `anagrafiche.vettori` **non esiste** un trigger `gen_codice` (a differenza di
-  `soggetti`, `fornitori`, `billing_account`, `istanze_utilities`);
-* in `config.sistema_codici` **non esiste** una riga per i vettori;
-* la colonna `anagrafiche.vettori.codice` è però `NOT NULL`.
+Da quella riga l'automazione generale — `script.trgfn_config_sistema_codici_sync_gen_codice`,
+il trigger di sync di `config.sistema_codici` — ha creato da sé tre oggetti:
 
-Conseguenza operativa: **il codice del vettore deve arrivare dal chiamante**. Un `INSERT`
-che lo omette non viene salvato da nessun default — fallisce con violazione di vincolo
-(SQLSTATE `23502`), senza nessun codice `E_*` che ne spieghi il motivo.
+1. la sequenza `anagrafiche.vettori_codice_seq`;
+2. la funzione `anagrafiche.trgfn_vettori_gen_codice()`;
+3. il trigger `trg_vettori_a10_gen_codice_ins_upd`.
 
-Una volta scritto, il codice è immutabile: ci pensa
-`trg_vettori_a10_lock_columns_upd` (`CODICE_NON_MODIFICABILE`).
+Un `INSERT` che omette il codice ora ne riceve uno nella forma `VET-0000001`.
+
+⚠️ **Fino al 2026-08-21 il rinvio non aveva destinatario**, ed è la ragione per cui questa
+pagina lo racconta. Non esisteva né la riga in `config.sistema_codici` né alcun trigger
+`gen_codice` sulla tabella, mentre `anagrafiche.vettori.codice` era — ed è — `NOT NULL` e
+`UNIQUE` (`uq_vettori_codice`). Il codice doveva quindi arrivare dal chiamante, e un `INSERT`
+che lo ometteva moriva su una violazione di vincolo (SQLSTATE `23502`), senza nessun codice
+`E_*` a spiegarne il motivo. Il `COMMENT` di questo no-op indicava una strada che nessuno
+aveva aperto.
+
+Presidio: `db/pgtap/anagrafiche/test-vettori-gen-codice.sql`.
+
+Una volta scritto, il codice resta immutabile: ci pensa
+`trg_vettori_a10_lock_columns_upd` (`CODICE_NON_MODIFICABILE`), configurato in
+`dbops.automation_lock_columns` fin da gennaio — fino a oggi presidiava una colonna che
+nessuno generava.
 
 ---
 

@@ -10,7 +10,7 @@ Approfondimento tabelle:
 Approfondimenti funzioni:   
 >
 [script.fn_get_iva_override](/dbzero/script/funzioni/fn_get_iva_override)  
-> [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)     
 
 La tabella **`config.iva_stati`** permette di definire **override locali** di aliquota e assoggettamento IVA per specifici Stati o Paesi, personalizzando il comportamento dei codici IVA principali in base al contesto geografico.
 
@@ -44,7 +44,7 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
 1. **`trg_upd_iva_stati_audit_data_user`**
 
    * **Quando**: `BEFORE UPDATE`
-   * **Cosa**: aggiorna i campi di audit `data_update` e `user_update` tramite la funzione generica `script.trgfn_upd_audit_data_user_generic()`.
+   * **Cosa**: aggiorna i campi di audit `data_update` e `user_update` tramite la funzione generica `script.trgfn_audit_data_user_generic()`.
 
 ---
 

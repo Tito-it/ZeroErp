@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/billing_account.md" %}
 # 📚 Tabella `billing_account`
 
 ## 🗂️ Campi principali

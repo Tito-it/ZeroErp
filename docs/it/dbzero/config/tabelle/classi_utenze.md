@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/classi_utenze.md" %}
 # 📚 Tabella `classi_utenze`
 
 > 📝 **Descrizione**

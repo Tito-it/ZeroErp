@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/inventari_righe.md" %}
 # 📚 Tabella `inventari_righe`
 
 > 📝 **Descrizione**

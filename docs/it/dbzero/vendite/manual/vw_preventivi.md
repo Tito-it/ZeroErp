@@ -4,7 +4,7 @@
 >
 > [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)
 > [config.stati_doc_preventivi](/dbzero/config/tabelle/stati_doc_preventivi)
-> [vendite.vw_preventivi_list](/dbzero/vendite/views/vw_preventivi_list)
+> [vendite.vw_preventivi_lista](/dbzero/vendite/views/vw_preventivi_lista)
 > [vendite.fn_crea_revisione_preventivo](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo)
 
 ---

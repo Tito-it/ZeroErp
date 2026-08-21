@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/user_override_azioni.md" %}
 # 📚 Tabella `user_override_azioni`
 
 ## 🗂️ Campi principali

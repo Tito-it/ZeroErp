@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_sospensioni_set_periodo.md" %}
 # ⚙️ Funzione `trgfn_sospensioni_set_periodo`
 
 ```sql

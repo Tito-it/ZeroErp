@@ -43,24 +43,44 @@ Trigger `trg_preventivi_righe_a10_set_natura_vendita_ins_upd` — fase `_a10_`,
 
 ---
 
-### ⚠️ «Nessun override» vale all'inserimento, non in permanenza
+### Il «nessun override» è vero — ma lo tiene il lock, non questo trigger
 
 L'aggancio è `UPDATE OF articolo_id`: il trigger scatta quando la riga nasce o quando
-**cambia articolo** — ed è giusto, perché in quel caso la natura va rieredidata.
-
-Ma un `UPDATE` che tocca **solo** la natura non lo fa scattare:
+**cambia articolo**, ed è giusto, perché in quel caso la natura va rieredita. Ma un `UPDATE`
+che tocca **solo** `natura_vendita_id` non lo fa scattare:
 
 ```sql
-UPDATE vendite.preventivi_righe SET natura_vendita_id = :altra WHERE id = :id;  -- passa
+UPDATE vendite.preventivi_righe SET natura_vendita_id = :altra WHERE id = :id;
 ```
 
-Su `vendite.preventivi_righe` **non** esiste un `trgfn_lock_columns` su quella colonna, e
-l'unico presidio rimasto è `trg_preventivi_righe_a10_nature_vendita_require_attivo_ins_upd`,
-che verifica soltanto che la natura scelta sia **attiva** — non che sia quella dell'articolo.
+A rifiutarlo è `trg_preventivi_righe_a10_lock_columns_upd`
+(`script.trgfn_lock_columns('natura_vendita_id', 'E_PREV_RIGA_NATURA_IMMUTABILE')`), generato
+dall'automazione `LOCK_COLUMNS`. La dichiarazione «NO override operatore» scritta nel corpo di
+questa funzione è quindi vera, ma **non è questa funzione a garantirla**.
 
-Conseguenza: la natura può essere staccata dall'articolo con un `UPDATE` diretto, e da quel
-momento anche il blocco della ricorrenza è aggirato. Se il congelamento dev'essere davvero
-tale, oggi **non è presidiato**.
+⚠️ **Fino al 2026-08-21 non la garantiva nessuno.** L'unico presidio sulla colonna era
+`trg_preventivi_righe_a10_nature_vendita_require_attivo_ins_upd`, che verifica soltanto che la
+natura scelta sia *attiva* — non che sia quella dell'articolo. La natura poteva quindi essere
+staccata dall'articolo con un `UPDATE` diretto, e con essa si aggirava anche il blocco della
+ricorrenza: una riga a canone restava su un preventivo invece di andare in offerta.
+
+---
+
+### ⭐ Il lock funziona grazie all'ordine alfabetico, ed è una dipendenza fragile
+
+`trg_preventivi_righe_a10_lock_columns_upd` viene **prima** di
+`trg_preventivi_righe_a10_set_natura_vendita_ins_upd` in ordine alfabetico, e i `BEFORE ROW`
+scattano in quell'ordine. È ciò che rende compatibili le due cose:
+
+* su un `UPDATE` che cambia **solo l'articolo**, il lock legge una natura *non ancora
+  riscritta* — `OLD` e `NEW` coincidono — e lascia passare; subito dopo l'ereditarietà la
+  riallinea;
+* su un `UPDATE` che cambia **la natura**, il lock vede la differenza e rifiuta.
+
+⚠️ Se i due trigger venissero rinominati invertendone l'ordine, il lock bloccherebbe anche il
+cambio articolo legittimo — e nessun messaggio direbbe perché. Il presidio di questa
+dipendenza è il test 10 di `test-preventivi-righe-guard-natura-ricorrente-v1.sql`, scritto
+apposta: è l'unica cosa che se ne accorgerebbe.
 
 ---
 
@@ -84,9 +104,10 @@ classificato»* oppure *«articolo non trovato»*.
 
 ### Codici errore
 
-| Codice | Quando |
-|--------|--------|
-| `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` | Articolo con natura a `destinazione_tipo = 'CONTRATTO'` inserito su un preventivo |
+| Codice | Sollevato da | Quando |
+|--------|--------------|--------|
+| `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` | questa funzione | Articolo con natura a `destinazione_tipo = 'CONTRATTO'` inserito su un preventivo |
+| `E_PREV_RIGA_NATURA_IMMUTABILE` (938) | `script.trgfn_lock_columns` | `UPDATE` che cambia a mano `natura_vendita_id` |
 
 Sollevato via `script.fn_log_and_raise_error` con `NEW.tx_id` propagato; il context riporta
 `articolo_id`, `articolo_codice`, `natura_vendita_id` e `destinazione_tipo`.

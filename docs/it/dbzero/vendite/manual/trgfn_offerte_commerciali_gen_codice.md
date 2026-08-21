@@ -41,39 +41,54 @@ Trigger `trg_offerte_commerciali_a10_gen_codice_ins_upd` — fase `_a10_`,
 
 ---
 
-### ⚠️ Qui il codice **non** è protetto da un lock di colonna
+### Il codice è immutabile — ma lo è solo dal 2026-08-21
 
-È la differenza che conta rispetto ai `gen_codice` gemelli. Su `anagrafiche.soggetti`,
-`vendite.contratti`, `pratiche.pratiche` e compagnia, accanto al `gen_codice` c'è sempre un
-`script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` che rende il codice
-immutabile dopo la creazione. Su `vendite.offerte_commerciali` **quel trigger non esiste**.
+Accanto a questo trigger agisce `trg_offerte_commerciali_a10_lock_columns_upd`
+(`script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')`), generato
+dall'automazione `LOCK_COLUMNS` dalla riga `vendite / offerte_commerciali / codice` di
+`dbops.automation_lock_columns`. I `BEFORE ROW` scattano in **ordine alfabetico**, quindi
+`gen_codice` gira *prima* di `lock_columns`: chi azzera `codice` in un `UPDATE` ne ottiene
+uno nuovo, che il lock intercetta subito dopo come modifica e rifiuta.
 
-Il trigger di generazione è però agganciato anche in `UPDATE`. Ne segue che:
+⚠️ **Fino al 2026-08-21 quel lock non c'era**, ed è l'unico motivo per cui vale la pena
+raccontarlo qui. Questa tabella aveva il `gen_codice` agganciato anche in `UPDATE` ma nessun
+lock, a differenza delle sette gemelle (`soggetti`, `billing_account`, `fornitori`,
+`istanze_utilities`, `vettori`, `contratti`, `pratiche`). Un `UPDATE` che azzerava il codice
+ne rigenerava quindi uno **nuovo**, consumando la sequenza, e l'offerta cambiava identità per
+chiunque la citasse per codice — senza GUC, senza manutenzione, senza nessun errore.
 
-```sql
-UPDATE vendite.offerte_commerciali SET codice = NULL WHERE id = :id;
-```
+Il percorso applicativo non era esposto (`codice` non compare in `_OFFERTA_UPDATE_COLS` del
+repository), l'`UPDATE` diretto sì. Classificata come dimenticanza, non come scelta, e chiusa
+aggiungendo la riga di configurazione. Presidio: `test-offerte-commerciali-codice-lock.sql`.
 
-**non fallisce**: il trigger rigenera, la riga si salva con un codice **nuovo**, e l'offerta
-cambia identità agli occhi di chiunque la citi per codice. Non serve nessuna GUC di
-override, nessuna manutenzione: basta un `UPDATE`.
-
-Lo stesso vale per un `UPDATE` che assegna un codice arbitrario: essendo valorizzato, il
-trigger lo lascia passare così com'è.
-
-⚠️ Se l'immutabilità del codice offerta è un requisito — e per un documento commerciale che
-il cliente cita di norma lo è — **oggi non è presidiata dal database**. Va aggiunto un
-`trgfn_lock_columns`, non dato per acquisito perché «funziona come sui contratti».
+⚠️ Con `SET LOCAL zeroerp.allow_lock_columns_override = 'on'` il lock si spegne e si torna
+esattamente al comportamento di prima: in manutenzione, svuotare `codice` **cambia davvero
+l'identità dell'offerta**.
 
 ---
 
-### Altre note
+### ⚠️ Questa funzione è **generata**, non scritta a mano
 
-* **La chiave è `'offerta_commerciale'`** (singolare, con underscore): il legame con
-  `config.sistema_codici` è per stringa, non per FK.
-* **`usa_sequenza = false` restituisce `NULL`, non un errore.** La colonna `codice` è
-  `NOT NULL`, quindi il caso si manifesterebbe come violazione di vincolo (SQLSTATE `23502`),
-  senza nessun codice `E_*` a spiegarla.
+Il corpo compresso su una riga sola non è una svista di formattazione. La funzione, la
+sequenza e il trigger che la invoca sono creati con DDL dinamico da
+`script.trgfn_config_sistema_codici_sync_gen_codice` — il trigger
+`AFTER INSERT OR UPDATE OR DELETE` di `config.sistema_codici`. Basta la riga
+`codice_interno = 'offerta_commerciale'` con `schema_tabella`, `nome_tabella`, `nome_colonna` valorizzati
+e `usa_sequenza = true`, e i tre oggetti nascono da soli.
+
+È il motivo per cui **tutte** le `trgfn_*_gen_codice` del progetto hanno corpo identico: non
+sono sette funzioni simili, sono la stessa funzione parametrizzata sette volte.
+
+Conseguenze pratiche:
+
+* **Modificarla a mano non serve a niente.** Il loader del CSV `sistema_codici` è
+  `runOnChange`, quindi ripassa a ogni migrate: la funzione viene riscritta col template e
+  qualunque ritocco locale sparisce senza lasciare traccia.
+* **Non si spegne con un `DROP`, si spegne dalla configurazione.** Portando `usa_sequenza`
+  a `false` il trigger di sync cancella da sé trigger e funzione; un `DROP` manuale li fa
+  ricomparire al primo migrate.
+* **Cambiare `schema_tabella`/`nome_tabella`/`nome_colonna` sposta gli oggetti**: il sync
+  fa `DROP` di quelli vecchi e ricrea altrove. Nessun errore, nessun avviso.
 
 ---
 

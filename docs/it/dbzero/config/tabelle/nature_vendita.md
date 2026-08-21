@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/nature_vendita.md" %}
 # 📚 Tabella `nature_vendita`
 
 > 📝 **Descrizione**

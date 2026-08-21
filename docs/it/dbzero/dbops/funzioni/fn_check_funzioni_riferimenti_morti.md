@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_check_funzioni_riferimenti_morti.md" %}
 # ⚙️ Funzione `fn_check_funzioni_riferimenti_morti`
 
 ```sql

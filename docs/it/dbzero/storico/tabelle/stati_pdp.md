@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/stati_pdp.md" %}
 # 📚 Tabella `stati_pdp`
 
 ## 🗂️ Campi principali

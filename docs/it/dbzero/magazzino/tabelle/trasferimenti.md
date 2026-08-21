@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/trasferimenti.md" %}
 # 📚 Tabella `trasferimenti`
 
 > 📝 **Descrizione**

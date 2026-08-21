@@ -56,7 +56,7 @@ La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di 
 | Trigger                                    | Evento        | Funzione                                                                        |
 | ------------------------------------------ | ------------- | ------------------------------------------------------------------------------- |
 | `trg_stati_cliente_upd_lock_codiceinterno` | BEFORE UPDATE | `script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
-| `trg_upd_stati_cliente_audit_data_user`    | BEFORE UPDATE | `script.trgfn_upd_audit_data_user_generic()`                                    |
+| `trg_upd_stati_cliente_audit_data_user`    | BEFORE UPDATE | `script.trgfn_audit_data_user_generic()`                                    |
 
 ---
 

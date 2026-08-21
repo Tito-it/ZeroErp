@@ -23,8 +23,13 @@
 > ⛔ **Niente è stato applicato.** Nessuna migrazione, nessuna scrittura sul
 > database. Questo documento è un piano.
 >
-> 🔴 **Prima di iniziare lo sviluppo vanno chiuse le domande di §5.** Sono nove,
-> tutte insieme in coda, e almeno cinque cambiano *cosa* si scrive — non *come*.
+> ✅ **Il piano è scrivibile.** Le nove domande di §5 sono **tutte chiuse**
+> (2026-08-21) e i cinque difetti hanno un rimedio deciso. Restano barrate col
+> loro perché: tre si sono chiuse **senza essere decise**, ed è la cosa più utile
+> da sapere per chi arriva dopo.
+>
+> ⭐ **§6 dice da dove si comincia**, lotto per lotto, con le scorciatoie che
+> l'assenza di produzione consente.
 
 ---
 
@@ -35,9 +40,10 @@
 | ✅ **Regge** | D1 (abbinamento sulla riga, niente N:N) · D2 (stato rata derivato) · D3 (posting per testata, madre DB, correzione = importo negativo) · D5 (perimetro dal conto di incasso) · D9 (transizioni dichiarate, `STORNATA` ritirato, annullamento solo in bozza) | §1.1 |
 | ⭐ **Superato dai fatti** | La «metà fondi» della slice 1 **è fatta**: Fasi A/B/C/E/F applicate il 15-16/08. `fn_sync_pagamento_fondo_fattura` **non esiste più**. La dipendenza si è **invertita**: ora è il cantiere fondi ad aspettare `pagamenti` | §1.2 |
 | 🔴 **Misure sbagliate** | B-2 è sbagliato a metà (il guard **c'è già**, e il difetto è un altro e peggiore) · «due pgTAP rossi in baseline» è **falso** · la scadenza della metà fondi non esiste più | §1.3 |
-| 🔴 **Difetti nuovi, armati dalla slice 1** | Un vincolo che tiene `centri_riscossione` a **due righe in tutto** · il sync dei fondi **riscrive righe già postate** · un fondo interamente postato **si auto-annulla** · la testata riusata accorpa bonifici distinti · righe aggiunte a una testata `CHIUSA` escono dalla bilancia | §1.4 |
-| 📋 **Il piano** | Slice **0** (terreno) → **1** (posting) → **2** (rata) → **3** (perimetro) | §2 |
-| ❓ **Domande aperte** | Nove, in coda | §5 |
+| 🔴 **Difetti nuovi, armati dalla slice 1** | **Due** vincoli mai nati sulla stessa tabella (`centri_riscossione` tenuta a **due righe in tutto**, e un centro può essere due ruoli insieme) · il sync dei fondi **riscrive righe già postate** · un fondo interamente postato **si auto-annulla** · la testata riusata accorpa bonifici distinti · righe aggiunte a una testata `CHIUSA` escono dalla bilancia | §1.4 |
+| 📋 **Il piano, logico** | Slice **0** (terreno) → **1** (posting) → **2** (rata) → **3** (perimetro) → **4** (sistemazioni) | §2 |
+| ⭐ **Il piano, operativo** | **Sette lotti** — che cosa si scrive, si prova e si applica insieme. Non coincidono con le slice | §6 |
+| ✅ **Domande aperte** | **Zero** — tutte e nove chiuse il 21/08, tre **senza essere decise**. Resta il solo dettaglio **D15-e** | §5 |
 
 ---
 
@@ -58,6 +64,7 @@ che al momento in cui furono prese non c'era.
 | **D3-d** — lo storno non esiste: è una contabile con importi negativi | ✅ Il modello lo ospita: `chk_vendite_contabili_righe_importo_non_zero` vieta **lo zero**, non il negativo; `vendite_movimenti.importo` non ha vincolo di segno; il residuo è una somma e torna indietro da sé |
 | **D5** — perimetro dal conto di incasso | ✅ La catena è quella descritta, e il buco è quello descritto: `anagrafiche.soggetti_ruoli_conti_bancari` **non ha** unicità su `(conto_bancario_id, uso)`, quindi lo stesso conto `INCASSO` può appartenere a due soggetti. I tre indici presenti sono tutti di **accesso**, nessuno di **unicità** |
 | **D9-b** — `pagamenti` deve avere le sue transizioni dichiarate | ✅ Confermato: dieci domini hanno una tabella `transizioni_stati_*` (o `stati_*_transizioni`) con un `trgfn_*_guard_transizione` a presidio. `pagamenti` è l'unico che ha stati e **nessuna regola** su come ci si passa |
+| **D10** — il fondo vale il residuo **alla nascita**, e poi non insegue (Tid, 2026-08-21) | ✅ Confermata **alla luce del posting**, ed è già così nel codice: il numero lo dà `fn_saldo_sorgente_fondo`, che sull'esempio «fattura 20, incasso 11» risponde **9**. ⭐ Il posting non introduce la regola, la **accende**. 🔴 E lascia un caso senza destinazione — il credito di chi paga *dopo* il fondo non torna nel fondo e **oggi non compare da nessuna parte**: rafforza **Q-9** |
 | **D9-c** — si annulla solo prima della conferma | ✅ Il modello ha già le colonne per dirlo: `vendite_contabili.data_conferma` e `user_conferma` esistono e **nessuno le scrive**. Sono la sede naturale del gesto |
 
 ### 1.2 ⭐ Superato dai fatti: il cantiere fondi è atterrato
@@ -147,8 +154,13 @@ applicato dal 15/08. Il riquadro va marcato come chiuso.
 
 ### 1.4 🔴 Difetti nuovi, misurati — e li **arma la slice 1**
 
-Questi non sono nel brief madre. Sono cinque più due minori, e i primi tre sono
+Questi non sono nel brief madre. Sono cinque più tre minori, e i primi tre sono
 bloccanti.
+
+> ⭐ **Sono fatti, non domande** — ma tre di essi ne generano una, perché il
+> rimedio ammette più forme. La corrispondenza difetto → domanda, e i **due sensi
+> diversi** in cui i tre sono «bloccanti», stanno nella tabella in testa a
+> **§5**: leggerla prima di decidere da dove partire.
 
 ---
 
@@ -196,9 +208,62 @@ oggi si possono avere N centri fondo-fattura, e
 Deterministico, ma arbitrario: la scelta la fa l'ordine degli id, non una regola.
 I due flag vanno resi simmetrici, ciascuno con un **unico parziale**.
 
-*Lezione, e vale oltre il caso: un attributo che lo strumento non conosce non è
-un errore, è silenzio. Un vincolo dichiarato «parziale» in YAML va **riletto
-sull'oggetto vivo**, non sul file che lo crea.*
+---
+
+#### C-1-bis 🔴 E c'è un **secondo** vincolo mai nato, nello stesso file
+
+Trovato il 2026-08-21 scrivendo il rimedio di C-1. Il changeSet successivo,
+`20260211-21`, aggiunge la colonna `is_fondo_fattura` e — dichiara — un CHECK di
+coerenza:
+
+```sql
+ALTER TABLE pagamenti.centri_riscossione
+  ADD CONSTRAINT chk_centri_riscossione_ruolo_esclusivo
+  CHECK NOT (is_compensazione = true AND is_fondo_fattura = true);
+```
+
+✅ **Quel vincolo non esiste nel database.** Verificato sull'auto-gen: i vincoli
+vivi su `centri_riscossione` sono **tre** — la PK e i due UNIQUE — e nessun
+CHECK. Che l'auto-gen i CHECK li stampi è dimostrato dalla tabella accanto:
+`enti_incasso` ne mostra due. E il nome
+`chk_centri_riscossione_ruolo_esclusivo` compare in **un solo posto** in tutto il
+repository: quel file.
+
+**Perché non è nato.** Nel YAML il blocco `- sql:` è annidato **dentro
+`addColumn.columns:`**, alla pari di `- column:`, invece di essere un cambio
+fratello sotto `changes:`. La lista dei `columns` accetta definizioni di colonna:
+un `sql` lì dentro non è un errore, è **una voce che non viene eseguita**. La
+colonna è nata, il vincolo no.
+
+🔴 **Conseguenza**: oggi un centro può essere **contemporaneamente** compensazione
+e fondo fattura. Non succede — le due righe sono una per tipo — ma è
+esattamente la porta che si apre nel momento in cui P-2 popola la tabella. E i
+due ruoli sono letti da percorsi diversi (`fn_sync_contabili_fondo_fattura`
+cerca `is_fondo_fattura`, `trgfn_vendite_contabili_guard_ente_centro` legge
+`is_compensazione`): una riga che dice sì a entrambi li soddisfa **entrambi**.
+
+> ⭐ **Due vincoli mancanti, stesso file, stesso giorno, stessa causa: un blocco
+> che lo strumento ha ignorato senza dire niente.** Il che sposta la lezione da
+> «attenzione a quell'attributo» a qualcosa di più largo — vedi sotto.
+
+---
+
+#### ⭐ La lezione, che vale oltre il caso
+
+*Un'istruzione che lo strumento non capisce non produce un errore: produce
+**silenzio**.* Un `where:` su un `addUniqueConstraint`, un `- sql:` annidato nel
+posto sbagliato: nessuno dei due si lamenta, entrambi spariscono, e il file di
+migrazione continua a **dichiarare l'intenzione giusta** — quindi chi rilegge il
+file non ha motivo di dubitare.
+
+**Il rimedio operativo, non teorico**: un vincolo si verifica **sull'oggetto
+vivo** (`docs/it/dbzero/<schema>/tabelle/<nome>.md`), mai sul file che dice di
+averlo creato. È la stessa regola già scritta per i corpi delle funzioni,
+estesa ai vincoli — e questa volta l'ha pagata due volte lo stesso file.
+
+⚠️ **E vale come sospetto retroattivo**: se in `20260211-14` e `-21` due vincoli
+su tre sono evaporati, la stessa forma va cercata **altrove**. È il passo **P-0**
+qui sotto.
 
 ---
 
@@ -231,6 +296,57 @@ sta guardando.
 ⚠️ **E il percorso è vivo, non ipotetico**: `fn_ricalcola_totali_fattura` chiama
 `fn_sync_contabili_fondo_fattura` **incondizionatamente**, come ultima
 istruzione. Ogni ricalcolo della fattura figlia ci passa.
+
+##### ⭐ Che cosa cambia davvero su una riga già postata — misurato il 2026-08-21
+
+Non tutto ciò che l'`UPDATE` scrive è un danno, e distinguere serve a scrivere il
+rimedio giusto. **L'importo NON può cambiare**, e lo impediscono tre presidi
+messi dalla Fase B:
+
+| Presidio | Effetto |
+| --- | --- |
+| `trgfn_lock_columns('importo', 'E_FONDO_ATTO_IMMUTABILE', …)` su `fatture_fondi_fattura_source` | l'importo del fondo è **immutabile** |
+| `fn_genera_fondi_fattura_source` **create-only** dal 2026-08-15 | il ramo che riallineava l'importo è stato rimosso |
+| `fn_fondo_fattura_proponibile` passo 2 — «atto unico» | un fondo esistente, **in qualunque stato**, blocca ogni nuova proposta |
+
+E la riga contabile viene scritta con `r.importo`, cioè **quel** valore congelato.
+Quindi su una riga già postata l'`UPDATE` non cambia il numero: cambia
+
+- 🔴 **`stato_id`, che torna ad `ABBINATA`** — il danno, e da solo basta a
+  produrre il doppio conteggio;
+- ⚠️ `data_valuta`, ricalcolata su `current_date` a ogni giro;
+- ⚠️ `contabile_id` e `motivo_sospeso`.
+
+> ⭐ **Ne segue che su una riga in stato finale non c'è nulla che debba
+> legittimamente cambiare.** Non è «non facciamo niente e speriamo»: è che non
+> c'è niente da fare. È ciò che rende il rimedio una scelta obbligata invece di
+> una decisione — vedi sotto.
+
+##### 🔴 E il rimedio ovvio è sbagliato: «restringere il lookup» **peggiora**
+
+La funzione ha **due rami**: se trova la sua riga la aggiorna, **se non la trova
+la crea**. Restringere la ricerca alle sole righe non finali significa che su una
+riga già postata la ricerca **non trova niente** — e si finisce nel ramo
+`INSERT`, che ne scrive **una seconda**. Stesso doppio conteggio, dalla porta
+accanto, e stavolta con due righe invece di una.
+
+**La forma giusta è l'opposta:** il lookup deve **continuare a trovare** la riga
+in qualunque stato; è l'**azione** a cambiare — riga in stato finale ⇒ `CONTINUE`,
+si passa al fondo successivo senza toccare niente.
+
+*Lezione: quando una funzione ha un ramo «se non lo trovo lo creo», restringere
+la ricerca non disattiva il ramo — lo attiva.*
+
+##### ✅ E dal 2026-08-21 nemmeno questo serve: il rimedio sta **un livello sopra**
+
+Decisione **D11**: un fondo il cui trasferimento è stato registrato passa a un
+quarto stato, **`ESEGUITO`**. Il ciclo di `fn_sync_contabili_fondo_fattura`
+filtra `stato = 'ASSEGNATO'`, quindi **non arriva più a quella riga**: non c'è
+nessun `UPDATE` da correggere, perché non c'è nessun `UPDATE`.
+
+**C-2 non si tampona: smette di essere raggiungibile.** Di S1-8 resta una rete
+fail-closed — salta e logga un `W_` — per il caso in cui l'invariante fosse
+rotta. Vedi §2.1.
 
 ---
 
@@ -276,8 +392,30 @@ dichiara di sapere che quell'automatismo *«opera su fondi GIÀ ASSEGNATI — il
 denaro si è già mosso»* e lo lascia in piedi per scelta; ciò che non poteva
 sapere è che il posting gli avrebbe fatto scattare il ramo **nel caso normale**.
 
-⭐ **Il rimedio è piccolo e va deciso ora**: lo scorporo deve contare anche il
-contributo **postato**. La forma esatta è una decisione — vedi **Q-4**.
+~~⭐ Il rimedio è piccolo e va deciso ora: lo scorporo deve contare anche il
+contributo postato.~~
+
+##### ✅ Rimedio deciso il 2026-08-21, e **non è nella formula**
+
+**D11**: col quarto stato `ESEGUITO` il fondo postato esce dal ciclo, e
+`fn_saldo_sorgente_fondo` **non viene più chiamata su di lui**. La formula resta
+com'è ed è corretta — il suo scorporo vale finché la riga è in lavorazione, ed è
+esattamente quando le viene chiesto.
+
+⚠️ Resta da **dichiarare l'assunzione** nel `COMMENT` e presidiarla con un pgTAP
+(**S1-9**).
+
+##### ⚠️ C-2 e C-3 sono **in fila**, non affiancati
+
+Sull'esempio reale (fattura di minimo da 20, incasso di 11, fondo da 9) dopo il
+posting il conto è `20 − 11 − 9 = 0`: **scatta C-3**, e la funzione esce dal ramo
+`CONTINUE` senza arrivare all'`UPDATE`. C-2 resta invisibile.
+
+🔴 **Ma nel momento in cui si corregge C-3** lo scorporo restituisce di nuovo 9,
+la funzione tira dritto, **arriva all'`UPDATE`** e trascina indietro la riga.
+Correggerne uno solo **scopre** l'altro — la trappola già registrata nel progetto
+(*«togliere un automatismo scopre ciò che l'automatismo copriva»*). ⛔ **S1-8 e
+S1-9 non si separano.**
 
 > **Il filo che unisce C-2 e C-3.** Il brief madre, in §1-bis, verifica che «con
 > un posting atomico la bilancia regge da sé» e ne conclude che *«non c'è un
@@ -292,26 +430,85 @@ contributo **postato**. La forma esatta è una decisione — vedi **Q-4**.
 
 ---
 
-#### C-4 ⚠️ La testata riusata **accorpa bonifici distinti**
+#### C-4 ⚠️ Il brief si contraddice su **che cosa sia una contabile**
+
+> 🔴 **Rimisurato il 2026-08-21, e la prima stesura di questo punto era
+> sbagliata.** Diceva che `fn_get_or_create_vendite_contabile` contraddice D3-a
+> riusando la testata. **Il codice non contraddice niente**: contraddirsi è il
+> brief, e il codice implementa la lettura giusta.
 
 `pagamenti.fn_get_or_create_vendite_contabile` — l'unico punto d'ingresso — nel
-ramo ordinario (né compensazione né lotto) riusa una testata esistente a parità
-di `(centro_riscossione_id, ente_incasso_id, data_contabile, data_registrazione,
-stato_id)`.
+ramo ordinario riusa una testata esistente a parità di
+`(centro_riscossione_id, ente_incasso_id, data_contabile, data_registrazione,
+stato_id)`. Due incassi dello stesso giorno sullo stesso canale finiscono nella
+**stessa testata**.
 
-Due bonifici arrivati **lo stesso giorno sullo stesso canale** finiscono **nella
-stessa testata**.
+##### ⭐ Che cosa modella davvero la testata — l'evidenza è nelle colonne
 
-Per i fondi fattura è il comportamento voluto — è un raccoglitore. Ma D3-a dice
-*«la contabile **è** il movimento bancario»* e ne fa **l'unità del posting**: con
-questo ingresso, «posta la contabile» significa postare anche le righe di un
-incasso che non c'entra.
+| Nella testata c'è | Nella testata **non** c'è |
+| --- | --- |
+| centro di riscossione, ente di incasso | ❌ nessun **importo** |
+| data contabile, data registrazione | ❌ nessun riferimento bancario (CRO, TRN, numero operazione) |
+| stato, `data_conferma`, `user_conferma` | ❌ niente che identifichi **una** operazione |
 
-Non è un difetto del codice esistente: è una **collisione fra due significati
-della stessa tabella**, raccoglitore e documento. Va sciolta prima di scrivere il
-posting — **Q-3**.
+E il riferimento della banca sta **sulla riga**: `vendite_contabili_righe.riferimento_ente`,
+che il brief madre definisce *«il dato che **arriva** dalla banca»*.
 
----
+> **La testata non modella un movimento bancario: modella una distinta** — la
+> giornata di quel canale. Il singolo incasso è la **riga**, ed è lì che sta la
+> sua identità. Il riuso non è un difetto: è il comportamento coerente con ciò
+> che la tabella è.
+
+##### 🔴 Il difetto è nel brief madre: due frasi, due definizioni
+
+| Dove | Che cosa dice | |
+| --- | --- | --- |
+| Intestazione, nota sul nome | *«il documento che **raccoglie N importi arrivati insieme** e li prepara»* | ✅ la distinta — ed è quella che il codice implementa |
+| **D3-a**, giustificazione | *«La contabile **è** il movimento bancario»* | 🔴 il singolo bonifico |
+
+La seconda è una frase scritta di passaggio per motivare una decisione — e sta
+**esattamente nella riga che dice a chi scriverà il posting che cosa deve fare**.
+
+##### ⭐ E D3-a funziona **solo** con la lettura «distinta»
+
+La parte migliore di D3-a è: *«una riga dubbia va in `SOSPESA`, che non è
+postabile — quindi "posta la contabile" significa naturalmente registra tutto il
+pronto, lascia lì il resto»*.
+
+Quel ragionamento **richiede più righe**. Con una testata per bonifico, e quindi
+una riga sola, non c'è nessun «resto» da lasciare lì: o posti quell'unica riga o
+non posti niente.
+
+> **La decisione D3-a è giusta; la sua giustificazione dice il contrario di ciò
+> su cui si regge.** Si corregge la frase, non la decisione.
+
+##### ✅ Due fatti che tolgono metà preoccupazione
+
+- **Fondi e incassi veri non condividono mai una testata**: il riuso include il
+  **centro di riscossione**, e sono centri diversi (`FONDI_FATTURA` contro
+  `BANCA`). Denaro vero e trasferimenti interni sono già separati;
+- **una distinta chiusa non si riapre**: il riuso include anche lo **stato**,
+  quindi il primo incasso successivo alla validazione apre una distinta **nuova**.
+
+##### ⚠️ Ciò che resta è **operativo**, non di modello
+
+```text
+Lunedì, canale banca, distinta unica.
+  Anna  inserisce e abbina tre incassi
+  Marco inserisce e abbina altri due, e non ha finito di controllarli
+  Anna preme «registra»  →  registra anche i due di Marco
+```
+
+Il posting per testata resta la decisione giusta, ma su una distinta condivisa
+**chi conferma conferma anche il lavoro altrui**. Non è un errore di dati: è un
+gesto più largo di quanto chi lo compie si aspetti.
+
+⭐ E il modello ha già dove metterlo: `data_conferma` e `user_conferma` esistono
+sulla testata e **nessuno le scrive**.
+
+⛔ **Ciò che non va fatto**: un permesso «si confermano solo le righe proprie».
+Spaccherebbe l'unità della distinta e rientrerebbe dalla finestra la postatura
+parziale che D3-a esclude dalla porta.
 
 #### C-5 ⚠️ Una riga aggiunta a una testata `CHIUSA` esce dalla bilancia
 
@@ -329,6 +526,44 @@ riga:
 rigenera**. È lo stesso buco di B-1, dall'altro lato, e le transizioni dichiarate
 da sole **non lo chiudono** — governano lo stato della testata, non ciò che le
 viene appeso dopo.
+
+##### 🔴 Le porte sono **due**, e la seconda è quella che capita davvero
+
+| | Come ci si arriva | |
+| --- | --- | --- |
+| **Ingresso** | si **aggiunge** una riga a una distinta già finale | prevista fin dalla prima stesura → **S1-7** |
+| **Uscita** | si **chiude** una distinta che ha ancora righe **registrabili** | 🔴 **non prevista, ed è la strada naturale**: si registra, restano due righe non pronte, qualcuno chiude comunque |
+
+⭐ Si chiude con una regola sola e leggibile:
+
+> **Una distinta non si chiude finché ha righe pronte da registrare.**
+
+Chi vuole chiudere ha due strade oneste — registrarle, oppure portarle a
+`SOSPESA`/`SCARTATA`, cioè **dire che cosa ne è stato**. Ciò che non si può fare
+è chiudere lasciandole a metà. → guard **S1-20**.
+
+##### ⭐ E sotto c'è la stessa confusione del fondo, un piano più giù
+
+| Stato finale | Vuol dire | Le sue righe |
+| --- | --- | --- |
+| `CHIUSA` | **è fatta** | dovrebbero essere tutte registrate |
+| `ANNULLATA` | **non è mai successa** | non devono contare in nessun conto |
+
+Sono **opposti**, e `fn_get_saldo_fattura_contabili` li tratta identici perché
+guarda un solo attributo: `is_final`.
+
+> È **esattamente** la coppia che D11 ha separato sul fondo — «annullato perché
+> non si fa più» contro «annullato perché già eseguito». Qui si chiama
+> `CHIUSA` / `ANNULLATA`, e un unico flag le appiattisce.
+
+🔴 **E il filtro, nel caso `CHIUSA`, non protegge niente**: le righe registrate
+sarebbero escluse comunque, perché non sono più postabili. L'unica cosa che quel
+filtro riesce a escludere è **proprio la riga anomala**. *Un filtro che nasconde
+ciò che non sa gestire sembra un presidio finché non si guarda che cosa esclude
+davvero.*
+
+ℹ️ Con S1-7 e S1-20 l'anomalia non può più nascere, e la confusione fra i due
+stati finali resta **innocua**: non serve un terzo attributo sul catalogo.
 
 ---
 
@@ -400,8 +635,11 @@ oggi la blocca del tutto.
 
 > ℹ️ **Numerazione.** I passi sono identificati logicamente (`P-1`, `S1-3`…). Il
 > numero `YYYYMMDD-NN` va assegnato **al momento della scrittura** rileggendo la
-> sequenza — è **globale per data fra tutte le cartelle**, non per cartella. Al
-> 2026-08-21 l'ultimo assegnato è `20260821-05`.
+> sequenza — è **globale per data fra tutte le cartelle**, non per cartella.
+> ⚠️ **Il numero va riletto al momento di scrivere, non copiato da qui**: al
+> 2026-08-21 l'ultimo assegnato era `20260821-05` la mattina e `-06` nel
+> pomeriggio, mentre questo brief veniva scritto. Un numero annotato in un
+> documento invecchia in ore.
 >
 > ⚠️ **Regola trasversale a tutti i passi su oggetti esistenti**: corpo preso
 > dalla **doc auto-generata** `dbzero`, mai da uno YAML di migrazione; nuovo file
@@ -416,7 +654,8 @@ la slice 1 o non si scrive, o si scrive su un terreno che in CI non esiste.
 
 | | Passo | Fase | Cosa fa | Perché ora |
 | --- | --- | --- | --- | --- |
-| **P-1** | Vincoli di `centri_riscossione` | `00_schema` | `DROP CONSTRAINT uq_centri_riscossione_compensazione`, poi `CREATE UNIQUE INDEX … (is_compensazione) WHERE is_compensazione` e il gemello `… (is_fondo_fattura) WHERE is_fondo_fattura` | 🔴 **C-1**: senza, il seed dei centri reali fallisce alla terza riga |
+| **P-0** | Caccia agli altri vincoli evaporati | verifica | Cercare nei changelog la **forma** che ha fatto sparire i due vincoli di C-1/C-1-bis, e confrontare col vivo. Dettaglio sotto | 🔴 Due vincoli su tre persi nello stesso file: la domanda «quanti altri?» non si può lasciare senza risposta |
+| **P-1** | Vincoli di `centri_riscossione` | `00_schema` | **Tre** vincoli, non uno: i due unici parziali e il CHECK mai nato. Dettaglio sotto | 🔴 **C-1** e **C-1-bis**: senza il primo il seed dei centri reali fallisce alla terza riga; senza il terzo la tabella accetta un centro che è due ruoli insieme |
 | **P-2** | CSV + loader `centri_riscossione` | `80_data` | CSV nuovo con **prima** le due righe già esistenti (id 37 e 38, valori identici), **poi** i centri reali; loader `loadUpdateData` sul modello di `20260213-04` (`runOnChange: true` + `validCheckSums: ANY`) | 🔴 D9-d-1: su un DB ricostruito la tabella è **vuota**, e in CI non funzionano né fondi fattura né compensazioni |
 | **P-3** | Resync sequenza IDENTITY di `pagamenti` | `90_end` | `setval` forward-only sulle sequenze di `pagamenti.*`, sul modello di `20260616-02` (che copre `config`) | ⚠️ `id` è `GENERATED BY DEFAULT AS IDENTITY`: un loader con id espliciti **non avanza la sequenza**, e il primo insert automatico collide con la pkey. Oggi `pagamenti` **non è coperto** da nessun resync |
 | **P-4** | `vendite_contabili.stato_id` `NOT NULL DEFAULT BOZZA` | `00_schema` | La colonna dice ciò che `fn_get_or_create_vendite_contabile` già fa. Backfill banale: **0 righe** | D9-d-2: da quando lo stato è il cancello fra brogliaccio e registro, una testata senza stato passa i filtri di **entrambi** |
@@ -424,6 +663,73 @@ la slice 1 o non si scrive, o si scrive su un terreno che in CI non esiste.
 | **P-6** | Codici errore di dominio `pagamenti` | `80_data` | Append ai CSV `codici_errore.csv` e `messaggi_errore.csv`, **con la classe**. Nessun loader nuovo: i mirror `runOnChange` esistenti ripescano il CSV | ⚠️ Prerequisito trasversale del brief madre. E un codice non è registrato finché non ha **entrambi** — codice e messaggio di ripiego |
 | **P-7** | Bonifica `E_GENERICO` in `pagamenti` | `20_code` | Le quattro funzioni esistenti passano ai codici di P-6 | §1.3: il posting non può nascere pulito accanto a quindici `E_GENERICO`. ⚠️ Cambia il **messaggio**: i consumatori si cercano **dal nome di chi solleva**, non dal testo |
 | **P-8** | Doc `manual/` di `sepa_mandati` | doc | L'unica tabella dello schema senza documentazione concettuale, e non è nell'elenco della guida | §3.5 del brief madre. Debito documentale che diventa trappola quando qualcuno progetterà l'addebito SEPA |
+
+#### ⭐ P-0 — la caccia, in concreto
+
+Non è un passo di codice ed è veloce. Due forme da cercare nei changelog, e per
+ogni riscontro **un confronto con l'auto-gen**, che è l'unica prova:
+
+| Forma sospetta | Come si cerca | Che cosa produce |
+| --- | --- | --- |
+| `where:` su `addUniqueConstraint` | l'attributo esiste **solo** su `createIndex` | un unico che nasce **totale** invece che parziale |
+| `- sql:` annidato dentro `columns:` di un `addColumn` / `createTable` | indentazione alla pari di `- column:` invece che di un cambio sotto `changes:` | il blocco **non viene eseguito**: la colonna nasce, il vincolo no |
+
+⚠️ **Il confronto va fatto sull'oggetto vivo, uno per uno.** Un riscontro nel
+grep non prova che il vincolo manchi (potrebbe essere stato rifatto da un
+changeSet successivo), e l'assenza di riscontri non prova che non ci siano altre
+forme silenziose. È una battuta di caccia mirata, non un audit: chiude la
+domanda «quanti altri, nel raggio di questo cantiere?».
+
+ℹ️ Se emerge qualcosa fuori da `pagamenti`, **non lo si ripara qui**: si annota e
+si apre dove vive. Questo cantiere non diventa una bonifica generale.
+
+#### ⭐ P-1 — i tre vincoli, in concreto
+
+```sql
+-- 1) l'unico "parziale" che parziale non è mai stato (C-1)
+ALTER TABLE pagamenti.centri_riscossione
+  DROP CONSTRAINT uq_centri_riscossione_compensazione;
+
+CREATE UNIQUE INDEX uq_centri_riscossione_compensazione
+  ON pagamenti.centri_riscossione (is_compensazione)
+  WHERE is_compensazione;
+
+-- 2) il gemello che non è mai esistito: oggi i centri fondo-fattura
+--    possono essere N, e chi ne sceglie uno prende il primo per id
+CREATE UNIQUE INDEX uq_centri_riscossione_fondo_fattura
+  ON pagamenti.centri_riscossione (is_fondo_fattura)
+  WHERE is_fondo_fattura;
+
+-- 3) il CHECK dichiarato in 20260211-21 e mai nato (C-1-bis)
+ALTER TABLE pagamenti.centri_riscossione
+  ADD CONSTRAINT chk_centri_riscossione_ruolo_esclusivo
+  CHECK (NOT (is_compensazione AND is_fondo_fattura));
+```
+
+⚠️ **`DROP CONSTRAINT`, non `DROP INDEX`**: l'oggetto vivo è un **vincolo** —
+l'indice ne è solo il supporto e sparisce con lui. Il rimpiazzo invece è un
+**indice**, perché in PostgreSQL l'unicità parziale si esprime solo così: non
+esiste un `UNIQUE … WHERE` come vincolo di tabella. È la ragione tecnica per cui
+l'intenzione originale non poteva essere espressa con `addUniqueConstraint`, e
+quindi la ragione per cui era destinata a sparire.
+
+⚠️ **Applicabile senza sanatoria**, verificato: le due righe presenti sono una
+per ruolo, quindi tutti e tre i vincoli passano sul dato di oggi. ⛔ Ma è una
+verifica sul **dev**: il vincolo va scritto perché regga domani, non perché oggi
+non incontri nessuno.
+
+⭐ **Effetto collaterale buono, da notare:**
+`fn_sync_contabili_fondo_fattura` sceglie il centro con
+`WHERE is_fondo_fattura ORDER BY c.id LIMIT 1`. Con il secondo indice quel
+`LIMIT 1` smette di essere una **scommessa sull'ordine degli id** e diventa la
+lettura di una riga che il database garantisce unica. La funzione non si tocca:
+cambia ciò su cui si appoggia.
+
+ℹ️ **Il pgTAP che lo prova** non asserisce l'esistenza dei vincoli — asserisce il
+**comportamento**: un terzo centro non-compensazione **entra**, un secondo centro
+di compensazione **no**, un centro che dice sì a entrambi i ruoli **no**.
+Asserire «il vincolo esiste» verificherebbe l'ipotesi su chi lo impedisce, non il
+fatto.
 
 ⚠️ **P-1 deve precedere P-2 nella timeline.** `00_schema` gira prima di
 `80_data`, quindi l'ordine è garantito dalla **fase** — ma se per qualsiasi
@@ -455,20 +761,142 @@ Non tocca le rate. Non tocca il perimetro. Fa esistere **un movimento vero**, ch
 | **S1-5** | `trgfn_vendite_contabili_guard_transizione` + gemello riga | `20_code` | `BEFORE UPDATE OF stato_id`, sul modello di `trgfn_resi_guard_transizione`. ⚠️ Un guard restrittivo va confrontato coi pgTAP esistenti **prima**; e una FK nuova fa nascere un guard generico che può **oscurare** quello scritto a mano (i BEFORE ROW girano in ordine alfabetico) |
 | **S1-6** | Guard **stato ↔ nullità** sulla riga contabile | `20_code` | `BEFORE INSERT OR UPDATE` su `vendite_contabili_righe`. ⭐ È lo **stesso** guard che nella slice 2 dovrà reggere la rata: si scrive **una volta sola**, con la nullità già prevista. Forma in **Q-2** |
 | **S1-7** | Guard **riga sotto testata finale** | `20_code` | `BEFORE INSERT OR UPDATE` su `vendite_contabili_righe`: nessuna riga nuova o riattivata sotto una testata `is_final`. 🔴 **C-5** |
-| **S1-8** | 🔴 `fn_sync_contabili_fondo_fattura` non tocca righe finali | `20_code` (`vendite`) | Il lookup e l'aggiornamento si restringono alle righe **non finali**; su una riga finale la funzione decide esplicitamente. 🔴 **C-2**, decisione in **Q-5** |
-| **S1-9** | 🔴 `fn_saldo_sorgente_fondo` conta anche il contributo postato | `20_code` (`vendite`) | Lo scorporo smette di filtrare `is_postabile` e comprende il postato/movimentato. 🔴 **C-3**, forma in **Q-4** |
-| **S1-10** | ⭐ **La madre**: `pagamenti.fn_posta_contabile(p_contabile_id)` | `20_code` | Il cuore. Dettaglio sotto |
+| **S1-8** | 🛟 Rete: il sync **non lavora** una riga registrata | `20_code` (`vendite`) | ⚠️ **Non è più il rimedio** — dopo S1-15/S1-16 un fondo postato non è più `ASSEGNATO` e il ciclo non lo vede. Resta come **fail-closed** sull'invariante: se un fondo `ASSEGNATO` avesse una riga registrata, si **salta e si logga un `W_`**, non si aggiorna in silenzio. ⛔ Un `W_` si **logga**, non si solleva: questa funzione è su percorso vivo della pipeline |
+| **S1-9** | ~~`fn_saldo_sorgente_fondo` conta il contributo postato~~ → **doc + pgTAP** | doc + test | ✅ **Non serve più toccare la formula**: nessun chiamante le passa più un fondo postato (i tre filtrano `ASSEGNATO` o `DISPONIBILE`). Resta da **scrivere l'assunzione** nel `COMMENT` — *«lo scorporo vale finché la riga è in lavorazione, ed è garantito da ESEGUITO»* — e un pgTAP che asserisce l'invariante, perché un'assunzione non presidiata è la prossima trappola |
+| **S1-10** | ⭐ **La madre**: `pagamenti.fn_posta_contabile(...)` | `20_code` | Il cuore, e dal 2026-08-21 porta anche **ricevuta e dichiarazione** (D13). Dettaglio sotto |
 | **S1-11** | Indici e `fk_index_policy` | `80_data` + `90_end` | Seed `consentito = true` con `dll_command` valorizzato per `vendite_contabili_righe(fattura_id)`, `(contabile_id)` e `vendite_movimenti(fattura_id)`. 🔴 **C-7** |
 | **S1-12** | pgTAP | test | Vedi §2.4 |
+| **S1-14** | ⭐ `vendite_contabili_righe.fondo_source_id` — **colonna vera**, non JSON | `00_schema` + `20_code` | Colonna + FK a `vendite.fatture_fondi_fattura_source`, indice in `fk_index_policy`; i **tre** lettori esistenti (`fn_sync_contabili_fondo_fattura`, `fn_reset_fondi_fattura`, `fn_saldo_sorgente_fondo`) passano dalla colonna. Backfill banale: **0 righe**. Dettaglio sotto |
+| **S1-15** | ⭐ Quarto stato del fondo: **`ESEGUITO`** | `00_schema` + `20_code` | Il vocabolario è un **CHECK** (`chk_fondi_source_stato`), non una lookup: si sostituisce. Più la matrice: `ASSEGNATO → ESEGUITO` ammessa, `ESEGUITO` **terminale** (`trgfn_fondi_source_guard_transizione`) |
+| **S1-16** | ⭐ Il **trigger** che scrive `ESEGUITO` | `20_code` | Su `pagamenti.vendite_contabili_righe`, quando la riga entra in uno stato **registrato** e porta `fondo_source_id`. ⭐ È ciò che rende il rimedio **non dimenticabile**: scatta sul fatto, non su chi si ricorda |
+| **S1-17** | ⭐ Il reset diventa **DELETE** | `20_code` (`vendite`) | `fn_reset_fondi_fattura`: l'atto **non eseguito** si cancella invece di tornare `DISPONIBILE`; un `ESEGUITO` **non si tocca mai** — si segnala e basta. 🔴 Sparisce il ramo che scriveva `ANNULLATO` contraddittorio |
+| **S1-22** | ⭐ La quadratura col totale dichiarato scatta a **`VALIDATA`** | `20_code` | **D14-a-bis**: il controllo si sposta dal posting al gesto «ho finito di inserire», dove l'operatore è ancora nel flusso. ⚠️ E `VALIDATA → BOZZA` (riapertura per correggere) è **solo per la manuale** |
+| **S1-21** | ⚠️ `SCARTATA` **non è più uno stato finale** | `80_data` | D14-a ammette `SCARTATA → SOSPESA`: il CSV la marca `is_final = true` e va corretto. ⛔ Un catalogo che dichiara una cosa mentre la matrice ne permette un'altra insegna il falso |
+| **S1-20** | 🔴 Guard: **non si chiude una distinta con righe registrabili** | `20_code` | `BEFORE UPDATE OF stato_id` su `vendite_contabili`: il passaggio a uno stato finale è rifiutato se restano righe `is_postabile`. È la **seconda porta** di C-5, quella che capita davvero |
+| **S1-18** | ⭐ `origine` + `importo_dichiarato` sulla testata | `00_schema` | Vocabolario chiuso `MANUALE`/`AUTOMATICA` (stessa forma di `fatture_fondi_fattura_source.origine`) + `importo_dichiarato` **nullable**, con CHECK «`AUTOMATICA` ⇒ dichiarato NOT NULL». **D12-b/c**. Tabella a **0 righe** |
+| **S1-19** | La distinta manuale è **per operatore** | `20_code` | `fn_get_or_create_vendite_contabile`: il ramo manuale **non riusa più a parità di giornata**. **D12-a** — ⭐ è ciò che rende il lock inutile invece di costruirlo |
 | **S1-13** | Doc `manual/` | doc | Le funzioni e le tabelle nuove, più la **riscrittura al presente** di `fn_get_saldo_fattura` — il cui manuale descrive un residuo che oggi non esiste — e della guida `gestione-dei-pagamenti.md` |
+
+#### ⭐ S1-14 … S1-17 — «un atto eseguito non è un atto annullato» (Tid, 2026-08-21)
+
+> **La decisione sta nel brief madre, D11.** Qui ci sono i passi e le trappole
+> che sono emerse progettandoli.
+
+##### Perché uno **stato** e non una colonna — l'argomento è misurabile
+
+Tutti e tre i lettori dei fondi filtrano **sullo stato**:
+
+| Chi | Filtra | Effetto di un quarto stato |
+| --- | --- | --- |
+| `fn_sync_contabili_fondo_fattura` | `stato = 'ASSEGNATO'` | 🔴 **C-2 e C-3 spariscono**: il ciclo non vede più il fondo postato |
+| `fn_applica_fondi_fattura` | `stato = 'DISPONIBILE'` | non lo applica due volte |
+| `vw_fondi_fattura_da_decidere` (capienza) | `stato = 'DISPONIBILE'` | non lo mostra come «non più capiente» |
+
+> ⭐ **Un fondo che esce da `ASSEGNATO` esce da tutti e tre gratis.** Una colonna
+> affiancata non lo otterrebbe: i tre continuerebbero a filtrare `stato`, e
+> andrebbero modificati **tutti e tre ricordandosene**. È la differenza fra una
+> correzione **strutturale** e tre toppe coordinate.
+
+##### ⚠️ Il vocabolario degli stati è un **CHECK**, non una lookup
+
+`fatture_fondi_fattura_source.stato` è una `varchar` presidiata da
+`chk_fondi_source_stato`. Aggiungere `ESEGUITO` **non è un append a un CSV**: è
+sostituire un vincolo in `00_schema`, forward-only. E la matrice delle
+transizioni non è una tabella ma un `CASE` dentro
+`trgfn_fondi_source_guard_transizione` — si riscrive lì.
+
+⚠️ **Ordine obbligato**: prima il CHECK e la matrice (S1-15), **poi** il trigger
+che scrive lo stato (S1-16). Invertendoli, il primo posting fallirebbe con
+«transizione non ammessa» dentro la transazione del posting.
+
+##### ⚠️ Il legame riga ↔ fondo è oggi una stringa in un JSON, e lo si sta rendendo portante
+
+`meta ->> 'fondo_source_id'` non è una relazione: nessuna integrità, nessun
+indice, nessuna garanzia che il valore sia un id valido. Ed è già letto in
+**tre** posti — `fn_sync_contabili_fondo_fattura`, `fn_reset_fondi_fattura`,
+`fn_saldo_sorgente_fondo`. La «regola del 2» è superata da un pezzo.
+
+Appenderci sopra una macchina a stati lo rende **portante**, e un legame portante
+va scritto come tale: colonna + FK (S1-14).
+
+🔴 **E la FK apre una trappola nel reset.** `fn_reset_fondi_fattura` fa oggi
+tutto in **un unico statement** a CTE: cancella le righe contabili e aggiorna
+l'atto. Con S1-17 l'aggiornamento diventa una **cancellazione dell'atto**, e
+dentro un solo statement **l'ordine fra CTE non è garantito** rispetto ai
+vincoli: la FK potrebbe scattare prima che le righe figlie siano sparite.
+
+Due strade, da scegliere scrivendo: **spezzare in due statement** (prima le
+righe, poi gli atti) oppure dichiarare la FK `DEFERRABLE INITIALLY DEFERRED`.
+⭐ **Preferisco spezzare**: è la stessa forma già imposta al posting dalla RLS
+(§ S1-10 punto 6), e una FK differita nasconde l'ordine invece di dichiararlo.
+
+##### ⚠️ Il trigger di S1-16 scrive **da `pagamenti` verso `vendite`**
+
+Va saputo, non scoperto:
+
+- l'oggetto scritto, `vendite.fatture_fondi_fattura_source`, **non ha RLS** —
+  quindi il trigger non incontra il problema «il padre non lo vedo»;
+- le colonne bloccate da `trgfn_lock_columns` su quella tabella sono `importo`,
+  `fattura_sorgente_id`, `tipo_fondo_fattura_id` e `origine`: **`stato` non è
+  fra quelle**, quindi il trigger può scriverlo;
+- ⚠️ ma scrivendo `stato` fa scattare `trgfn_fondi_source_guard_transizione`:
+  è la ragione dell'ordine obbligato di cui sopra.
+
+##### ⭐ Che cosa diventa il reset, e perché il DELETE è **più** sicuro del vecchio UPDATE
+
+| | Oggi | Con S1-15/S1-17 |
+| --- | --- | --- |
+| Righe contabili del fondo | DELETE | DELETE (invariato) |
+| Riga applicata sulla figlia | DELETE | DELETE (invariato) |
+| L'atto **non eseguito** | UPDATE → `DISPONIBILE`, con l'importo **vecchio congelato** | **DELETE** — il giro successivo ne crea uno nuovo, letto sul residuo **di adesso** (D10 applicata a un atto nuovo) |
+| L'atto **eseguito** | 🔴 UPDATE → `ANNULLATO`, **lasciando `fattura_figlia_id` valorizzato**: un record che si contraddice | **non si tocca**: è `ESEGUITO`, il reset lo **segnala** nel diario e va avanti |
+
+> **La regola sta in una riga: si cancella solo ciò che non è stato eseguito.
+> `ESEGUITO` non si cancella mai.** Ed è il quarto stato a renderla applicabile:
+> senza una parola per «eseguito», un reset che cancella non saprebbe da cosa
+> tenere le mani lontane.
+
+⚠️ **Due conseguenze da conoscere**, entrambe accettate:
+
+1. **`fatture_fondi_fattura_source` non è storicizzata** (nessuna colonna
+   `storicizza`, a differenza per esempio di `fatture_scadenze`): un DELETE è
+   definitivo. ✅ Accettato — *un atto mai eseguito è una **proposta**, non un
+   fatto*, e §3-bis dice che sono i **fatti** a doversi solo aggiungere;
+2. **il DELETE riapre la rigenerazione**, ed è voluto: oggi è la regola
+   dell'«atto unico» a impedire al giro notturno di ricreare un fondo, e quella
+   guarda se un atto esiste **in qualunque stato**. Cancellandolo, il giro
+   successivo lo rifà — leggendo il residuo corrente. È il comportamento
+   cercato, ma è un **cambio reale** rispetto a oggi.
+
+##### 🛟 E la rete che resta (S1-8): un `W_`, non un rifiuto
+
+Dopo S1-16 l'invariante è: *un fondo `ASSEGNATO` non ha righe registrate*.
+Incontrarne uno significa che l'invariante è rotta — e allora **non si aggiorna
+in silenzio**: si salta la riga e si **logga** un codice `W_`.
+
+⛔ **Non si solleva.** `fn_sync_contabili_fondo_fattura` è chiamata da
+`fn_ricalcola_totali_fattura`, che è su percorso vivo della pipeline: un errore
+lì fa cadere un lotto di fatturazione. E vale la regola del progetto — *i codici
+`W_` si loggano e non si sollevano; un `W_` sollevato diventa un HTTP 500*.
 
 #### ⭐ S1-10 — la madre, in dettaglio
 
 ```text
-pagamenti.fn_posta_contabile(p_contabile_id bigint)
-  RETURNS TABLE(movimenti_creati integer, righe_postate integer, righe_saltate integer, esito text)
-  LANGUAGE plpgsql        ← mai `sql`: servono due statement separati
+pagamenti.fn_posta_contabile(
+    p_contabile_id   bigint,
+    p_righe_attese   integer,     ← D13: quante righe registrabili ho visto
+    p_totale_atteso  numeric      ←      e per che totale
+)
+RETURNS TABLE(movimenti_creati integer, righe_postate integer,
+              righe_saltate    integer, totale_postato numeric,
+              esito            text)
+LANGUAGE plpgsql        ← mai `sql`: servono due statement separati
 ```
+
+🔴 **La firma si decide adesso.** Non si sta scegliendo *se* costruire la
+dichiarazione: si sta scegliendo **se la funzione ha quei parametri**.
+Aggiungerli dopo crea un **overload**, e coi valori di default le chiamate
+diventano ambigue — trappola già registrata nel progetto.
 
 **Corpo, nell'ordine:**
 
@@ -479,6 +907,16 @@ pagamenti.fn_posta_contabile(p_contabile_id bigint)
    (namespace + chiave), mai a uno;
 3. **guard di stato della testata** — non finale, e nello stato da cui la
    matrice di S1-4 ammette il passaggio;
+4. ⭐ **quadratura della distinta** (D12-e), **solo se `importo_dichiarato` è
+   valorizzato**: somma di **tutte** le righe = totale dichiarato. ⚠️ Non può
+   stare in un trigger di riga — durante il caricamento la somma torna solo alla
+   fine;
+5. ⭐ **dichiarazione** (D13): le righe **registrabili adesso** e il loro totale
+   devono corrispondere a `p_righe_attese` / `p_totale_atteso`. Se no si
+   **rifiuta e non si registra nulla**: il posting è irreversibile, e un avviso
+   dopo non ripara niente. ⚠️ È un controllo **diverso** dal precedente — quello
+   guarda tutta la distinta contro ciò che è arrivato, questo guarda ciò che si
+   sta registrando contro ciò che l'operatore ha visto;
 4. **selezione delle righe** — solo quelle `is_postabile`, cioè `ABBINATA`. Le
    `SOSPESA` restano dove sono: è D3-a, e non richiede nessun meccanismo nuovo;
 5. **rifiuto parlante** — una riga postabile priva di `fattura_id` o
@@ -488,8 +926,9 @@ pagamenti.fn_posta_contabile(p_contabile_id bigint)
    figlio nella stessa snapshot non si vedono e il `WITH CHECK` nega
    fail-closed. Prima l'`INSERT` dei movimenti, **poi** l'aggiornamento delle
    righe a `POSTATA`;
-7. **conferma della testata** — `data_conferma`, `user_conferma`, transizione di
-   stato. Vedi **Q-6**: la testata va a `CHIUSA` sempre, o solo se non restano
+7. **conferma della testata** — `data_conferma` e `user_conferma`, colonne che
+   esistono e che oggi nessuno scrive (**D13**), più la transizione di stato.
+   Vedi **Q-6**: la testata va a `CHIUSA` sempre, o solo se non restano
    righe lavorabili;
 8. **ripetizione** — l'indice unico `uq_vendite_movimenti_contabile_riga` rende
    il doppio movimento impossibile. La funzione **non** deve trattarlo come un
@@ -517,7 +956,7 @@ Chiude: **D1**, **D1-bis**, **D2**.
 | **S2-2** | `scadenza_id` su `vendite_movimenti` + mirror | `00_schema` + `20_code` | Colonna + estensione di `trgfn_vendite_movimenti_sync_contabile_from_riga`, che oggi copia tre campi e ne copierà quattro |
 | **S2-3** | Guard di **coerenza** | `20_code` | `scadenza_id` deve appartenere alla `fattura_id` della stessa riga: due colonne che convivono possono contraddirsi |
 | **S2-4** | Guard di **quadratura** | `20_code` | `0 ≤ Σ imputato alla rata ≤ importo della rata`. 🔴 **Asimmetrico**: il limite **superiore** è forzabile, quello inferiore no (D1-bis). ⛔ E **nessuna** quadratura per **fattura**: su un documento a credito l'intervallo si inverte e diventa vuoto |
-| **S2-5** | La forzatura | `00_schema` + `80_data` + `20_code` | Flag + motivo obbligatorio sulla riga; azione di processo a catalogo (`config.azioni_processo`, area 7); il guard la legge. Vedi **Q-8** |
+| **S2-5** | La forzatura | `00_schema` + `20_code` | **Flag** + **motivo facoltativo** sulla riga; il guard rifiuta il primo tentativo con un messaggio parlante e accetta il secondo, che porta la conferma. ⛔ **Nessuna azione di processo, nessun permesso, un tempo solo** — D14-d, che supera D1-bis |
 | **S2-6** | `pagamenti.fn_get_saldo_rata(p_scadenza_id)` | `20_code` | Gemella di `fn_get_saldo_fattura`, per rata. ⚠️ E deve nascere già capace di distinguere **incassato** da **postato**: i centri `is_fondo_fattura` e `is_compensazione` non sono cassa (§4 del brief madre) |
 | **S2-7** | Elenco delle rate sovra-incassate | `20_code` | Una vista. ⚠️ Senza, la forzatura è un modo di **nascondere** denaro, non di registrarlo |
 | **S2-8** | Indici, pgTAP, doc | vari | `vendite_contabili_righe(scadenza_id)` in `fk_index_policy` |
@@ -536,6 +975,28 @@ Chiude: **D5**, **B-3**.
 | **S3-4** | Guard di scope in **scrittura** su `vendite_contabili_righe` | `20_code` | `script.trgfn_guard_emittente_scope('fattura','fattura_id')`, come già su `vendite_movimenti`. ⚠️ Ma **solo quando `fattura_id` è valorizzato**: il caso `DA_ABBINARE` è per definizione senza fattura, e lì il perimetro si deriva dal **conto** |
 | **S3-5** | RLS in **lettura** su `pagamenti.*` | `00_schema` | Le tre transazionali. ⚠️ Il predicato non può essere solo «via fattura»: la coda «da abbinare» ha `fattura_id` NULL e sparirebbe **per tutti** — ed è **esattamente** il difetto che D5 esiste per evitare. ⚠️ Memoria: uno zero può essere fail-closed, non un dato |
 | **S3-6** | pgTAP di scope + doc | test | ⚠️ Un test di scope **non** si scrive svuotando `app.current_user_id`: non è fail-closed. Il cancello è `app.ruolo_applicativo` |
+
+---
+
+### 2.3-bis Slice 4 — Le sistemazioni *(D15)*
+
+Chiude **D15** e **sblocca la Fase D del cantiere fondi**. Sta dopo la slice 2:
+l'elenco si costruisce sui saldi, e i saldi diventano veri col posting e con
+l'abbinamento alla rata.
+
+| | Passo | Fase | Cosa fa |
+| --- | --- | --- | --- |
+| **S4-1** | `pagamenti.compensazioni` → **`pagamenti.sistemazioni`** | `00_schema` | Rinomina + allargamento: `destinazione` (`RIPORTO`/`RIMBORSO`/`COMPENSAZIONE`), importo, cliente, documenti coinvolti, stato, motivo. **0 righe**: la rinomina costa oggi quanto un'ora, fra sei mesi una migrazione |
+| **S4-2** | Il verso del legame | `00_schema` | 🔵 **Da confermare (D15-e)**: `sistemazioni.contabile_id` farebbe **sparire** `vendite_contabili.compensazione_id`, la sua FK, il suo unico e il parametro `p_compensazione_id` — invece di rinominarli |
+| **S4-3** | `vw_eccedenze_da_sistemare` | `20_code` | La vista: documenti il cui residuo ha **cambiato segno**, **raggruppati per cliente**. ⚠️ È una **vista**, non una tabella: i saldi si leggono, non si conservano |
+| **S4-4** | I tre verbi | `20_code` | Riusano meccanismi esistenti: fondo `origine = MANUALE`, contabile a importi negativi, contabile di compensazione. ⭐ **Nessuna macchina nuova** |
+| **S4-5** | Codici errore, pgTAP, doc | vari | |
+
+⚠️ `centri_riscossione.is_compensazione` **resta com'è**: parla del *centro*, non
+dell'atto.
+
+📮 Con S4-4 si può **chiudere BE-4 e la Fase D** del cantiere fondi, ferma per
+scelta finché `pagamenti` non ha questa porta.
 
 ---
 
@@ -559,8 +1020,10 @@ rischia di confermare un ramo morto**. Per questo:
 - i quattro pgTAP esistenti di `pagamenti` vanno **rivisti**: tre si fabbricano
   il centro (dopo P-2 non serve più), uno non è transazionale (§1.3);
 - baseline: `scripts/pgtap-baseline.sh pagamenti` e `… vendite` **prima e
-  dopo**. Le due correzioni in `vendite` (S1-8, S1-9) toccano funzioni che
-  `test-fondi-fattura.sql` esercita da mesi.
+  dopo**. ⚠️ I passi in `vendite` (S1-14…S1-17) toccano il **reset**, che
+  `test-fondi-fattura.sql` esercita da mesi — incluso il ramo «reset bloccato da
+  contabile CHIUSA», che con S1-17 cambia comportamento: **quella sezione va
+  riscritta, non è una regressione**.
 
 Copertura minima per la slice 1:
 
@@ -574,10 +1037,17 @@ Copertura minima per la slice 1:
 | 6 | Una transizione non dichiarata è rifiutata (per la testata **e** per la riga) |
 | 7 | `ANNULLATA` da uno stato diverso da `BOZZA` è rifiutata |
 | 8 | 🔴 **C-2**: un ricalcolo della figlia dopo il posting **non** riporta la riga ad `ABBINATA` |
-| 9 | 🔴 **C-3**: un fondo interamente postato **non** finisce ad `ANNULLATO` |
-| 10 | 🔴 **C-5**: una riga non si inserisce sotto una testata finale |
-| 11 | 🔴 **C-1**: `centri_riscossione` accetta **tre** centri non-compensazione |
+| 9 | 🔴 **C-3**: un fondo interamente postato **non** finisce ad `ANNULLATO` — passa a **`ESEGUITO`** |
+| 9-bis | Il trigger scrive `ESEGUITO` **nella stessa transazione** del posting, e `ESEGUITO → *` è rifiutato |
+| 9-ter | Il reset **cancella** l'atto non eseguito e **non tocca** un `ESEGUITO`, che si limita a segnalare nel diario |
+| 9-quater | ⭐ L'invariante di S1-9: **nessun fondo `ASSEGNATO` ha una riga registrata**. È l'assunzione su cui `fn_saldo_sorgente_fondo` regge |
+| 10 | 🔴 **C-5**, porta d'ingresso: una riga non si inserisce sotto una distinta finale |
+| 10-bis | 🔴 **C-5**, porta d'uscita: una distinta con righe ancora registrabili **non si chiude** |
+| 11 | 🔴 **C-1 / C-1-bis**: un **terzo** centro non-compensazione entra; un **secondo** centro di compensazione no; un centro che è **due ruoli insieme** no |
 | 12 | Il centro di banca **esiste dopo il solo giro delle migrazioni** — cioè su un DB ricostruito |
+| 13 | **D13**: una dichiarazione che non corrisponde **rifiuta e non registra nulla** (nessun movimento creato) |
+| 14 | **D12-c**: su una distinta con `importo_dichiarato` valorizzato che non quadra, il posting rifiuta; senza dichiarazione, procede |
+| 15 | **D12-a**: due operatori che aprono una distinta manuale nello stesso giorno e canale ne ottengono **due diverse** |
 
 ---
 
@@ -592,7 +1062,9 @@ Slice 0 ── P-1 → P-2 → P-3          (i centri: vincolo, seed, sequenza)
 Slice 1 ────────┼── S1-1 → S1-2                    (obsoleto_dal, ritiro STORNATA)
                 ├── S1-3 → S1-4 → S1-5             (transizioni)
                 ├── S1-6, S1-7                     (guard sui dati)
-                ├── S1-8, S1-9   ← in `vendite`, e vanno INSIEME a S1-10
+                ├── S1-14 → S1-15 → S1-16 → S1-17  ← in `vendite`: colonna, stato,
+                │                                     trigger, reset. ORDINE OBBLIGATO
+                ├── S1-8, S1-9                     (rete + doc dell'invariante)
                 └── S1-10 → S1-11 → S1-12 → S1-13
                 │
 Slice 2 ────────┴── S2-1 … S2-8
@@ -605,13 +1077,17 @@ Slice 3 ────────┴── S3-1 … S3-6
 | **P-1 prima di P-2** | Il vincolo saturo respinge il terzo centro: senza, il loader fallisce **in CI**, non su dev |
 | **P-6 prima di tutto il resto** | Un codice errore va a catalogo in `80_data`, che gira **dopo** `20_code`: la dipendenza si rispetta scrivendo nell'ordine, **non** con una preCondition |
 | **P-4 con P-5** | La colonna obbligatoria e la rimozione del ramo morto sono la stessa decisione. Separarle lascia in giro codice che descrive un caso impossibile |
-| 🔴 **S1-8 e S1-9 con S1-10** | Sono la condizione perché il posting non arrechi danno. Applicare la madre senza di loro significa **armare** C-2 e C-3 nello stesso momento in cui si crea il primo movimento |
+| 🔴 **S1-14 → S1-15 → S1-16, in quest'ordine** | S1-16 scrive uno stato che S1-15 deve aver già reso ammissibile, leggendo una colonna che S1-14 deve aver già creato. Invertirli fa fallire **il primo posting**, dentro la sua transazione |
+| 🔴 **S1-15/S1-16 con S1-10** | Sono la condizione perché il posting non arrechi danno: senza, si crea il primo movimento e **contemporaneamente** il primo modo di rovinarlo (C-2 e C-3) |
+| **S1-17 dopo S1-15** | Il reset può cancellare solo se esiste la parola che gli dice da cosa tenere le mani lontane |
 | **S1-3/4/5 prima di S1-10** | La madre fa una transizione: se la matrice non c'è, la fa senza regola — e la regola arriverebbe dopo, su dati già scritti |
 | **Slice 2 dopo Slice 1** | Il guard stato ↔ nullità (S1-6) nasce già prevedendo `scadenza_id`, ma la colonna arriva dopo: la slice 1 si collauda **senza aver deciso niente della 2** |
 | **Slice 3 in coda** | La RLS in lettura su una tabella vuota non si può collaudare in modo significativo |
 
-⚠️ **Una slice non è una PR.** La slice 0 può stare da sola. La slice 1 **non si
-spezza fra S1-9 e S1-10**: è la coppia che rende sicuro il primo movimento.
+⚠️ **Una slice non è una PR, e non è un lotto.** Le slice dicono *che cosa rende
+vera quale cosa*; i **lotti** di **§6** dicono *che cosa si applica insieme*. La
+slice 1, per esempio, si applica in **tre** lotti — e non si spezza fra il terzo
+e il quarto, perché è lì che sta la garanzia del primo movimento.
 
 ---
 
@@ -619,11 +1095,12 @@ spezza fra S1-9 e S1-10**: è la coppia che rende sicuro il primo movimento.
 
 | Non fa | Perché |
 | --- | --- |
-| **Import del flusso bancario** (D6) | `enti_incasso` è a **0 righe**: non esiste un canale da cui un file possa arrivare, e prima serve la colonna del conto (S3-1) |
+| **Import del flusso bancario** (D6) | `enti_incasso` è a **0 righe**: non esiste un canale da cui un file possa arrivare, e prima serve la colonna del conto (S3-1). ⭐ **Ma dal 2026-08-21 il modello lo aspetta**: `origine` e `importo_dichiarato` entrano già in slice 1 (S1-18), e **D12** ne fissa le regole — immutabilità dei fatti, quadratura col totale dichiarato, percorso degli stati. I due **guard** vanno con D6: prima non hanno righe su cui agire |
 | **Abbinamento automatico** (D4) | Una regola di match si tara sui casi veri; con zero incassi si scriverebbe immaginandoli. E finché non esiste l'abbinamento **manuale**, un automatismo non ha dove atterrare |
 | **Riferimento di pagamento `RF…`** (§3.6) | È una **proposta**, non una decisione. E il suo posto naturale è il blocco `2.4 DatiPagamento`, che è il passo **2** dell'ordine di Tid |
 | **Processo rimborsi** | È D8 (b), l'unica domanda del brief madre senza orientamento — e la Fase D del cantiere fondi lo aspetta. Vedi **Q-9** |
-| **Toccare il meccanismo dei fondi** | Le due correzioni S1-8/S1-9 sono il **prezzo del posting**, non un intervento sul meccanismo: quello ha un cantiere suo, e §3-bis dice che nessun automatismo tocca il fondo in base agli incassi |
+| **Il processo rimborsi** | ~~fuori~~ → ✅ **è la slice 4** (D15): una vista, un registro e tre verbi che riusano meccanismi esistenti |
+| **Toccare il *meccanismo* dei fondi** | S1-14…S1-17 aggiungono al fondo **una tappa di ciclo di vita** che il posting crea (`ESEGUITO`) e rendono onesto il reset. Non toccano **come si decide un fondo**: quello ha un cantiere suo, e §3-bis resta — nessun automatismo tocca il fondo in base agli incassi |
 | **Lista scadenze / scadenzario** | Richiede la slice 2 per non avere colonne false, più cinque prerequisiti FE/BE |
 
 ---
@@ -661,169 +1138,347 @@ non si eseguono.
 
 ## 5. ❓ Domande aperte — da chiudere **prima** di iniziare
 
-> Nove. Le prime cinque cambiano **cosa si scrive**; le ultime quattro cambiano
-> **quanto**. Nessuna è una preferenza di stile.
+> ✅ **ZERO. Tutte e nove chiuse il 2026-08-21**, in un giro solo con Tid.
+>
+> Restano qui **barrate, non cancellate**: ognuna porta il *perché* della
+> risposta, e tre di esse si sono chiuse **senza essere decise** — vale la pena
+> sapere come.
+>
+> 🔵 **Un solo dettaglio proposto e non deciso**: **D15-e**, il verso del legame
+> fra `sistemazioni` e la contabile (passo S4-2).
+
+### ⭐ Domande e difetti sono due cose diverse — ecco dove si incrociano
+
+I **difetti** di §1.4 sono **fatti misurati**: non si decidono, si constatano. Le
+**domande** sono **decisioni non prese**. Tre difetti però *generano* una
+domanda, perché il rimedio ammette più di una forma difendibile; gli altri no,
+perché il rimedio è forzato.
+
+| Difetto (§1.4) | Serve una decisione? | Dove va a finire |
+| --- | --- | --- |
+| **C-1** + **C-1-bis** — due vincoli mai nati | ❌ no: il rimedio è **forzato** (due indici parziali + il CHECK) | passi **P-0** e **P-1** |
+| **C-2** — il sync riscrive righe postate | ❌ **no** (✅ **Q-5 chiusa** il 21/08) | risolto **per costruzione** da S1-15/S1-16; S1-8 resta come rete |
+| **C-3** — il fondo postato si auto-annulla | ❌ **no** (lo era: ✅ **Q-4 chiusa** il 21/08 — **D11** lo toglie dal ciclo) | passi **S1-15/S1-16** |
+| **C-4** — il brief si contraddice su cosa sia una contabile | ❌ **no** (✅ **Q-3 chiusa** il 21/08 — **D12**/**D13**) | passi **S1-18/S1-19**, frase corretta nel brief madre |
+| **C-5** — riga sotto distinta finale, **due porte** | ❌ no | passi **S1-7** (ingresso) e **S1-20** (uscita) |
+| **C-6 · C-7 · C-8** | ❌ no | S1-1 · S1-11 · passando |
+
+E al contrario: **sei domande su nove non hanno nessun difetto dietro** — Q-1,
+Q-2, Q-6, Q-7, Q-8 e Q-9 nascevano da ciò che il brief madre aveva lasciato
+aperto, o che il piano ha fatto emergere scrivendo. ✅ Tutte chiuse il 2026-08-21.
+
+#### 🔴 «Bloccante» vuol dire due cose, e cambiano il momento in cui si parte
+
+| | Che cosa blocca | Conseguenza pratica |
+| --- | --- | --- |
+| **C-1** | **meccanicamente**: il terzo `INSERT` non passa | Non aspetta nessuna risposta. **P-1 e P-2 si scrivono subito**, a domande ancora aperte |
+| **C-2**, **C-3** | **la correttezza**: non impediscono di scrivere il posting, lo rendono **dannoso il giorno in cui gira** | Servono **prima** Q-4 e Q-5: senza, non si scrive la correzione — e senza la correzione non si applica la madre (vincolo «S1-8/S1-9 insieme a S1-10») |
+
+> ⭐ **In pratica: nessuna slice aspetta più una decisione.** Il piano è completo
+> e si può scrivere.
 
 ---
 
-### Q-1 · Il grafo delle transizioni della **riga** contabile
+### ~~Q-1 e Q-2 · Il percorso della riga e il suo bagaglio~~
 
-D9-b dice che le transizioni vanno dichiarate, non **quali**. Sette stati, e
-almeno quattro archi non sono ovvi:
+> ✅ **CHIUSE INSIEME il 2026-08-21 da Tid** — decisione **D14** nel brief madre.
+> Erano due domande perché le avevo poste separate; sono **la stessa domanda
+> fatta due volte**: Q-1 il **percorso**, Q-2 il **bagaglio**. Una tabella sola.
 
-| Arco | La domanda |
+**Esito, in breve:**
+
+- `SOSPESA → ABBINATA` **diretta**, `ABBINATA → DA_ABBINARE` ammessa,
+  `SCARTATA → SOSPESA` ammessa;
+- 🔴 **`SCARTATA` non è più finale** → il catalogo va corretto (**S1-21**);
+- **`POSTATA` resta l'unico stato terminale**, ed è giusto: è l'unico dopo il
+  quale esiste un fatto;
+- ⭐ il database **rifiuta la coerenza** («questa rata è di questa fattura?») e
+  **segnala la capienza** («c'è ancora spazio?»), perché la seconda è un fatto
+  del mondo;
+- ⭐ e la capienza è **una regola sola**, valida per fatture e note di credito, a
+  livello rata **e** fattura: *un movimento normale riduce il residuo e non lo
+  supera*.
+
+⭐ **Il passaggio che ha sciolto il nodo** non è stato rispondere alle domande: è
+stato accorgersi che le quattro situazioni portate da Tid — documento già
+saldato, pagamento oltre il totale, pagamento su un documento a credito, rimborso
+più grande del credito — **erano lo stesso caso**. *Quattro domande a cui si
+risponde una volta sola sono il segno che la domanda era una.*
+
+🔴 **E la nuova forma scioglie una trappola registrata in §5 del brief madre**:
+il divieto di replicare la quadratura a livello fattura valeva per l'**intervallo
+a estremi fissi**, che su un documento a credito si inverte. La regola di D14 non
+ha estremi, quindi passa accanto alla trappola — e il controllo si può fare a
+entrambi i livelli senza il filtro «solo se il totale è positivo».
+
+### ~~Q-3 · Che cos'è una contabile, e come si rende consapevole la conferma~~
+
+> ✅ **CHIUSA il 2026-08-21 da Tid** — decisioni **D12** e **D13** nel brief
+> madre. Restano **sei** domande.
+
+**Esito, in breve:**
+
+- la testata è una **distinta**, non un movimento bancario (frase di D3-a
+  corretta) — ma il raggruppamento **non è la giornata**;
+- **manuale = il lotto di lavoro di un operatore** · **automatica = il file**;
+- ⭐ così il **lock chiesto da Tid non si costruisce**: la distinta manuale è
+  proprietà, non oggetto conteso — niente colonne di blocco, scadenze del lock,
+  sblocco d'emergenza, guard su chi tiene la chiave;
+- il posting **dichiara la propria portata** (ricevuta + dichiarazione +
+  `user_conferma`), e la dichiarazione resta come **rete** anche senza contesa.
+
+⭐ **La forma della chiusura, e vale per le sei rimaste.** La domanda si è chiusa
+**allargandosi**: chiedendo il lock, Tid ha portato in scena i flussi esterni; da
+lì è emerso che le distinte sono di **due specie**, e quella manuale ha un
+confine naturale che rende la contesa impossibile. *Il presidio più economico non
+è quello meglio costruito: è quello che il modello rende inutile.*
+
+### ~~Q-4 · Come si scorpora il contributo postato in `fn_saldo_sorgente_fondo`~~
+
+> ✅ **CHIUSA il 2026-08-21 — non rispondendo, ma togliendole l'oggetto.**
+> Restano **sette** domande.
+
+La domanda era: *«lo scorporo filtra `is_postabile` e dopo il posting smette di
+funzionare — si estende il filtro, o si somma il movimento?»* E sotto ne stava
+una di fondo: *`is_postabile` fa due mestieri, serve un terzo flag sul catalogo?*
+
+⭐ **La decisione D11 — il quarto stato `ESEGUITO` — le rende entrambe senza
+oggetto.** Nessun chiamante passa più a quella formula un fondo postato: i tre
+lettori filtrano `ASSEGNATO` o `DISPONIBILE`, e un fondo postato non è né l'uno
+né l'altro. Lo scorporo continua a chiedere *«fra le righe in lavorazione, quali
+sono mie?»* — e la risposta torna giusta, perché adesso **la domanda gli arriva
+solo quando ha senso porla**.
+
+⚠️ **Ciò che resta non è una decisione ma un debito da saldare subito**:
+l'assunzione va **scritta** nel `COMMENT` della funzione e **presidiata** da un
+pgTAP → passo **S1-9**. Una formula che regge grazie a un invariante scritto
+altrove, e che non lo dichiara, è la prossima trappola di questa stessa specie.
+
+> ⭐ **La forma di questa chiusura vale più della chiusura.** Q-4 e Q-5 sono
+> cadute entrambe **senza essere decise**: una perché una misura ha mostrato che
+> lo scenario non esisteva, l'altra perché una decisione presa un livello sopra
+> le ha tolto l'oggetto. *Prima di rispondere a una domanda di progetto, conviene
+> chiedersi se sia ancora una domanda.*
+
+### ~~Q-5 · Che cosa fa il sync dei fondi quando trova una riga già postata~~
+
+> ✅ **CHIUSA il 2026-08-21, prima ancora di essere posta a Tid** — e non da una
+> decisione: da una **misura**. Restano **otto** domande.
+
+La domanda presupponeva che l'importo di un fondo potesse cambiare dopo il
+posting (*«era 100 e diventa 80: che si fa della differenza?»*), e proponeva tre
+strade — tacere, aggiungere una riga di conguaglio, sollevare.
+
+🔴 **Quello scenario non esiste.** La Fase B lo ha chiuso il 2026-08-15 con tre
+presidi che si sovrappongono:
+
+| Presidio | Effetto |
 | --- | --- |
-| `SOSPESA → ABBINATA` | Una riga sospesa si può risolvere **verso l'alto**, o deve tornare prima a `DA_ABBINARE`? |
-| `ABBINATA → DA_ABBINARE` | Si può **disfare** un abbinamento non ancora postato? (Io direi sì: `ABBINATA` non ha ancora mosso denaro) |
-| `SCARTATA → *` | `SCARTATA` è `is_final`. Davvero non si torna indietro, nemmeno da un errore di battitura? |
-| `IMPORTATA → ?` | Chi la porta via da lì, dato che l'import (D6) è fuori dalla prima slice? Oggi **nessuno**: uno stato senza uscite dichiarate |
+| `trgfn_lock_columns('importo', 'E_FONDO_ATTO_IMMUTABILE', …)` | l'importo del fondo è **immutabile** |
+| `fn_genera_fondi_fattura_source` **create-only** | nessun ramo che riallinea l'importo |
+| `fn_fondo_fattura_proponibile`, «atto unico» | un fondo esistente in **qualunque** stato blocca ogni nuova proposta |
 
-⭐ Serve la matrice completa, non un principio. E la stessa domanda vale, più
-piccola, per la **testata**: `BOZZA → IMPORTATA` ha senso, se l'import non
-esiste?
+E la riga contabile è scritta con quel valore congelato. Quindi **su una riga
+già postata non c'è nulla che debba legittimamente cambiare**: il rimedio non è
+una scelta fra tre, è l'unico che resta — **saltarla**.
 
----
+⚠️ **Ciò che resta da sapere è un'altra cosa, e sta in S1-8**: il modo *ovvio* di
+saltarla — restringere il lookup — è sbagliato, perché fa cadere nel ramo
+`INSERT`. Il lookup deve trovare, l'azione deve astenersi.
 
-### Q-2 · Il guard **stato ↔ nullità**: quale metà si presidia?
-
-Il verso «`ABBINATA` ⇒ `fattura_id` valorizzato» è chiaro. L'altro no:
-
-> **`DA_ABBINARE` con `fattura_id` già valorizzato — si vieta o si tollera?**
-
-Vietarlo è più pulito. Ma c'è un caso reale: *«so di chi sono i soldi, non so su
-quale documento»* — cioè `billing_account_id` noto e `fattura_id` no. E c'è il
-caso opposto della slice 2: fattura nota, **rata** no.
-
-Il guard va scritto **una volta sola** e deve già prevedere `scadenza_id`.
-Quindi la domanda vera è: **quante combinazioni di nullità sono legittime?**
-Propongo tre livelli progressivi (`billing_account` → `fattura` → `scadenza`)
-con la regola *«non si salta un livello»* — ma è una decisione di dominio.
+> ⭐ **Perché vale la pena tenere la domanda barrata invece di cancellarla.**
+> Era una domanda vera **il 2026-08-09**, quando fu scritta nel brief madre; ha
+> smesso di esserlo il 15/08, quando un altro cantiere ha congelato l'atto — e
+> nessuno se n'è accorto perché i due lavori si guardavano da lontano. *Una
+> domanda aperta va rimisurata prima di essere posta: può essere stata chiusa da
+> un lavoro che non sapeva di rispondere.*
 
 ---
 
-### Q-3 · La contabile è un **documento** o un **raccoglitore**?
+### ~~Q-6 · Il percorso della distinta~~
 
-🔴 **Questa è la più importante.** D3-a dice *«la contabile **è** il movimento
-bancario»* e ne fa l'unità del posting. Ma `fn_get_or_create_vendite_contabile`
-**riusa** la testata a parità di `(centro, ente, data_contabile,
-data_registrazione, stato)` — quindi due bonifici dello stesso giorno finiscono
-insieme, e postare l'uno posta l'altro (§1.4 C-4).
+> ✅ **CHIUSA il 2026-08-21 da Tid** — **D14-a-bis** nel brief madre. I cinque
+> stati esistenti vanno bene; la matrice è quella.
 
-Tre strade:
+Due cose ne discendono e cambiano il piano:
 
-| | Strada | Costo |
+- ⭐ **`VALIDATA` è il gesto «ho finito di inserire»**, quindi la quadratura col
+  totale dichiarato (D12-c) si sposta **lì**, non nel posting: l'errore si vede
+  mentre l'operatore è ancora nel flusso. → passo **S1-22**;
+- ⚠️ **`ANNULLATA` da qualunque stato non registrato**, non solo da `BOZZA` come
+  diceva la prima stesura di S1-4.
+
+---
+
+### ~~Q-7 · «Niente da postare»: errore, o esito?~~
+
+> ✅ **CHIUSA il 2026-08-21 da Tid: opzione B.** La funzione **non solleva** —
+> risponde normalmente e dichiara l'esito (`POSTATA` / `NULLA_DA_POSTARE`) dentro
+> la ricevuta che D13 le ha già dato.
+
+**La ragione, in una riga:** un errore dovrebbe significare che **qualcosa non
+funziona**; «non c'era niente da fare» non è qualcosa che non funziona — è una
+risposta, e per giunta vera.
+
+⚠️ E c'era un costo concreto nell'altra strada: in questo progetto il database
+**scrive nel registro degli errori prima di sollevare**, quindi ogni pulsante
+premuto due volte avrebbe lasciato un errore che errore non è — rumore in mezzo
+alle cose vere.
+
+✅ Non si perde D3-c (*«chi preme conferma una seconda volta deve sentirselo
+dire»*): il messaggio lo mette il frontend leggendo l'esito. **Il database dice
+il fatto, chi parla con la persona decide come raccontarlo.**
+
+---
+
+### ~~Q-8 · La forzatura del sovra-incasso: azione propria o `approva_rimessa`?~~
+
+> ✅ **CHIUSA il 2026-08-21 da Tid**: *«per il permesso cade»*. Nessuna delle due
+> — **nessuna azione di processo**, e **un tempo solo**, non il pattern
+> proponi/approva. Restano il **flag** di forzatura e un **motivo facoltativo**.
+
+⚠️ **Supera D1-bis di agosto**, che chiedeva la forzatura *«gated da un'azione di
+processo»* e con motivo **obbligatorio**. Di quella decisione resta l'ultimo
+requisito, che è quello che conta: **visibile dopo** — il flag sulla riga e
+l'elenco a valle (**S2-7**).
+
+⭐ E non è un cedimento: il presidio si è spostato di forma. Il database **non
+accetta in silenzio** — rifiuta il primo tentativo con un messaggio parlante e
+accetta il secondo, che porta la conferma. *Chi fa una cosa fuori dall'ordinario
+lo dice*, ed è la stessa forma di **D13**.
+
+---
+
+### ~~Q-9 · Il processo rimborsi~~
+
+> ✅ **CHIUSA il 2026-08-21 da Tid** — **D15** nel brief madre. Era l'ultima
+> domanda aperta, e si è chiusa **restringendosi**.
+
+**Esito:** non è un processo da costruire. Le tre azioni — riporto su fattura,
+rimborso con bonifico, compensazione — **hanno già tutte il loro meccanismo**.
+Mancano solo **una vista** (le eccedenze da sistemare, raggruppate per cliente) e
+**un registro delle decisioni**, che si ottiene allargando e rinominando il
+guscio `pagamenti.compensazioni` → **`pagamenti.sistemazioni`**.
+
+⭐ **La forma della chiusura**: la domanda chiedeva quanto perimetro dare a un
+«processo rimborsi». La risposta è stata **misurare che cosa esiste già** — e
+sono venute fuori tre macchine su tre. *Prima di dimensionare un lavoro, contare
+quanto ne è già costruito da altri cantieri.*
+
+🔵 **Resta un dettaglio proposto e non deciso** (D15-e): girare il verso del
+legame — `sistemazioni.contabile_id` invece di `vendite_contabili.compensazione_id`
+— che farebbe **sparire** una colonna e un parametro invece di rinominarli.
+
+**Dove sta nel piano:** dopo la slice 2, perché l'elenco si costruisce sui saldi
+e i saldi diventano veri col posting e con l'abbinamento alla rata. → **slice 4**,
+§2.3-bis.
+
+---
+
+## 6. ⭐ Il piano è **scrivibile**: i lotti di sviluppo
+
+> ✅ **Al 2026-08-21 non resta nessuna decisione da prendere.** Le nove domande
+> sono chiuse, i cinque difetti hanno un rimedio deciso, e i tre bloccanti sono
+> risolti — due per costruzione, uno con un cambio di vincolo. Da qui si scrive.
+
+### 6.1 Slice e lotti non sono la stessa cosa
+
+Le **slice** di §2 sono **logiche**: dicono quale cosa rende vera quale altra. I
+**lotti** qui sotto sono **operativi**: dicono che cosa si scrive, si prova e si
+applica *insieme*. Non coincidono — e confonderli fa perdere giri, perché un
+lotto si dimensiona su quanto si può **collaudare in un colpo**, non su quanto è
+concettualmente affine.
+
+### 6.2 Che cosa permette l'assenza di produzione
+
+⭐ **Nessuna delle tabelle toccate ha righe** (`vendite_contabili`,
+`vendite_contabili_righe`, `vendite_movimenti`, `compensazioni`,
+`fatture_fondi_fattura_source`), e non esiste un ambiente di produzione. Quindi
+si sceglie **sempre la strada corta**, e va detto esplicitamente perché altrove
+sarebbe sbagliata:
+
+| | Si fa | Invece di |
 | --- | --- | --- |
-| **a** | Il punto d'ingresso prende un modo «**non riusare**» per gli incassi manuali; i fondi fattura continuano a raccogliere | Un parametro nuovo, ma il significato della tabella resta doppio |
-| **b** | L'unità del posting diventa **la riga**, non la testata | ⛔ Contraddice D3-a, e con essa il *«posta tutto il pronto, lascia lì il resto»* che rende `SOSPESA` gratis |
-| **c** | Il posting accetta un **sottoinsieme** di righe della testata | ⛔ È (b) travestito: riapre «postata a metà» |
+| **1** | `NOT NULL` e vincoli nuovi **direttamente** | colonna nullable + backfill + `SET NOT NULL` in tre changeSet |
+| **2** | **`DROP` + `CREATE`** su firma che cambia (`fn_get_or_create_vendite_contabile`) | un overload di compatibilità che poi nessuno toglie |
+| **3** | **Rinomina secca** `compensazioni` → `sistemazioni` | tabella nuova + vista di compatibilità + deprecazione |
+| **4** | Il ramo morto si toglie **nello stesso lotto** che lo rende morto (`OR NULL` di `fn_get_saldo_fattura_contabili`) | «lo puliamo dopo» |
+| **5** | Il fallback fail-open del lookup stato **si spegne subito** (oggi ripiega su «uno stato qualunque») | si lascia, «tanto non capita» |
+| **6** | Le **fixture pgTAP si adeguano nello stesso lotto** che ne rompe il presupposto | si scopre il rosso al giro dopo e sembra una regressione |
 
-⭐ La mia proposta è **(a)**, perché è l'unica che non tocca una decisione presa.
-Ma va detto esplicitamente, perché cambia una firma.
+🔴 **Ma una cosa NON cambia, ed è la sola cautela che resta**: il database di
+sviluppo **non è ricostruito da zero**, la CI sì. Ogni lotto va quindi pensato
+per funzionare **su entrambi** — è esattamente la classe di difetto di C-1 (due
+righe inserite a mano che in CI non esistono).
 
----
+### 6.3 Il ciclo di un lotto
 
-### Q-4 · Come si scorpora il contributo **postato** in `fn_saldo_sorgente_fondo`
+```text
+1. si SCRIVONO i changeSet del lotto            ← qui
+2. si PROVA in BEGIN … ROLLBACK  (SQL + pgTAP)  ← qui
+3. si CHIEDE il migrate                         ⛔ lo esegue Tid, a voce
+4. pgTAP per davvero + pgtap-baseline.sh
+5. si rigenera la doc auto-gen + si scrivono i manual/
+6. commit
+```
 
-🔴 **C-3**: oggi lo scorporo filtra `is_postabile IS TRUE` e dopo il posting
-smette di funzionare. Due forme:
+⭐ **Il passo 2 è ciò che permette lotti grossi.** Un lotto provato in transazione
+annullata arriva al migrate **già verificato**, quindi il numero di round-trip
+crolla — ed è il round-trip, non il migrate, la cosa cara qui.
 
-| | Forma | Nota |
+⚠️ **Ed è anche ciò che protegge dalla regola più rigida del progetto**: un
+changeSet già mergiato **non si modifica mai**. Un errore scoperto dopo l'apply
+non si corregge — si corregge *in avanti*, con un changeSet nuovo. Provare prima
+è l'unico modo di non accumulare correzioni.
+
+⚠️ Nel passo 2, il `BEGIN … ROLLBACK` dev'essere **dentro il file eseguito**:
+ricomporre lo script perdendo il wrapper significa scrivere davvero.
+
+### 6.4 I sette lotti
+
+| | Lotto | Contiene | Perché sta insieme | Prima corsa possibile |
+| --- | --- | --- | --- | --- |
+| **1** | **Il terreno** | P-0 … P-8 | Non dipende da niente e sblocca tutto: senza i centri, in CI non funzionano nemmeno fondi e compensazioni | **subito** |
+| **2** | **Vocabolario, transizioni e guard** | S1-1…S1-7 · S1-18…S1-22 | Tutto `pagamenti`, tutto dichiarativo: nessun verbo nuovo. Si collauda per **rifiuto** — cosa il database non lascia più fare | dopo 1 |
+| **3** | **Il fondo si difende** | S1-14…S1-17 · S1-8 · S1-9 | Tutto `vendite`. ⭐ **Deve precedere il lotto 4**: la difesa atterra prima della cosa da cui difende | dopo 2 |
+| **4** | **La madre** | S1-10 · S1-11 · S1-12 · S1-13 | ⭐ È il lotto in cui **nasce il primo movimento**, e da lì `fn_get_saldo_fattura` smette di mentire | dopo 3 |
+| **5** | **La rata** | S2-1 … S2-8 | Slice 2 per intero | dopo 4 |
+| **6** | **Il perimetro** | S3-1 … S3-6 | Slice 3 per intero. ⚠️ La RLS su tabelle vuote non si collauda: conviene **dopo** che il lotto 4 ha prodotto dati | dopo 5 |
+| **7** | **Le sistemazioni** | S4-1 … S4-5 | Slice 4. 📮 Chiude **BE-4** e sblocca la **Fase D** del cantiere fondi | dopo 5 |
+
+⚠️ **Il lotto 3 non si spezza e non si salta.** Applicare la madre (4) senza la
+difesa (3) significa creare il primo movimento **e contemporaneamente** il primo
+modo di rovinarlo — C-2 e C-3 insieme, su percorso vivo della pipeline di
+fatturazione.
+
+ℹ️ I lotti **6 e 7 sono indipendenti fra loro**: entrambi partono dopo il 5, e
+l'ordine fra i due è una scelta di priorità. Il 7 sblocca un altro cantiere, il 6
+chiude un buco di sicurezza in lettura.
+
+### 6.5 Che cosa si può fare **senza** aspettare un migrate
+
+Quattro cose, ed è il modo di non stare fermi fra un lotto e l'altro:
+
+| | Cosa | Perché non serve il migrate |
 | --- | --- | --- |
-| **a** | Estendere il filtro a `is_postabile OR codice_interno = 'POSTATA'` | Semplice, ma incide un codice di stato dentro una formula |
-| **b** | Sommare il **movimento** invece della riga, quando la riga è postata | Più fedele — il movimento **è** il fatto — ma la funzione dovrebbe leggere una terza tabella |
+| **P-0** | La caccia agli altri vincoli evaporati | è un confronto fra changelog e doc auto-gen: **si legge, non si scrive** |
+| **P-8** | Il `manual/` di `sepa_mandati` | è documentazione |
+| — | La riscrittura delle **fixture pgTAP** di `pagamenti` (tre si fabbricano il centro, una non è transazionale) | i pgTAP girano in transazione |
+| — | La **stesura** dei lotti successivi | scrivere non è applicare |
 
-⚠️ E c'è una domanda sotto: `is_postabile` sta descrivendo due cose diverse —
-*«può ancora essere postata»* e *«conta come copertura in lavorazione»*. Dopo il
-posting le due si separano. **Serve un terzo flag** sul catalogo degli stati
-(qualcosa come `conta_come_copertura`), o basta l'enumerazione?
+### 6.6 Il primo passo concreto
 
----
+> **Lotto 1, e comincia da P-0** — la caccia, che non scrive niente e può
+> cambiare la lista dei changeSet del lotto stesso.
 
-### Q-5 · Che cosa fa il sync dei fondi quando trova una riga **già postata**
-
-🔴 **C-2**. Restringere il lookup alle righe non finali è il minimo, ma poi:
-
-- **non fa niente** e va avanti — silenzioso, però un fondo il cui importo cambia
-  dopo il posting resta scoperto;
-- **crea una riga nuova** con la differenza — coerente con «i fatti si
-  aggiungono», ma raddoppia le righe per un fondo;
-- **solleva** un errore di dominio — onesto, ma fa fallire
-  `fn_ricalcola_totali_fattura`, che è su percorso vivo della pipeline.
-
-⚠️ La terza opzione fa cadere un lotto di fatturazione. La prima nasconde. Non
-c'è una risposta ovvia.
+Se P-0 trova altri vincoli evaporati **dentro `pagamenti`**, entrano nel lotto 1.
+Se li trova fuori, si **annotano dove vivono** e non si toccano: questo cantiere
+non diventa una bonifica generale del database.
 
 ---
 
-### Q-6 · Dopo il posting, la testata va a `CHIUSA`?
-
-| Caso | Domanda |
-| --- | --- |
-| Tutte le righe postate | `CHIUSA` è ovvia |
-| Restano righe `SOSPESA` | La testata **non** può chiudersi: resterebbero righe lavorabili sotto un documento finale (C-5 al contrario). Quindi resta `VALIDATA`? E chi la chiude poi? |
-| Restano righe `DA_ABBINARE` | Idem |
-
-⚠️ Serve anche sapere **da quale stato** si posta: oggi
-`fn_sync_contabili_fondo_fattura` crea le sue testate direttamente in
-`VALIDATA`, saltando `BOZZA`. Se il posting parte solo da `VALIDATA`, il gesto
-umano ha bisogno di un passo «valida» che oggi non esiste.
-
----
-
-### Q-7 · «Niente da postare»: errore, o esito?
-
-D3-c distingue il **replay tecnico** (silenzio) dalla **seconda azione voluta**
-(messaggio). A livello DB sono lo stesso `SELECT`.
-
-- se la funzione **solleva**, il BE deve catturare per distinguere — e il DB
-  **scrive comunque in `error_log` prima di sollevare**: catturare l'eccezione
-  non basta, è la trappola già registrata nel cantiere DDT senza prezzo;
-- se la funzione **ritorna zeri**, il BE decide — ma allora la distinzione fra
-  «fatto» e «non c'era niente da fare» esce dal DB.
-
-⭐ Propongo il ritorno a zeri **più** una colonna d'esito nel `RETURNS TABLE`
-(`esito text`: `POSTATA` / `NULLA_DA_POSTARE`), così il DB dice il fatto e il BE
-decide come raccontarlo. Ma va confermato.
-
----
-
-### Q-8 · La forzatura del sovra-incasso: azione propria o `approva_rimessa`?
-
-Il brief madre lascia la scelta aperta e propende per una azione **nuova**
-(*«la semantica è diversa»*). ✅ Verificato: `config.azioni_processo` ha già
-`id 5, area 7, approva_rimessa`.
-
-E una seconda metà non decisa: la forzatura è **a un tempo** (chi ha il permesso
-forza) o **a due tempi** (chi opera propone, chi approva conferma), sul modello
-`prezzo_override_manuale` + `approva_prezzo_override` che il progetto ha già in
-`vendite`?
-
-⚠️ A due tempi serve uno **stato intermedio** sulla riga, e quindi tocca Q-1.
-
----
-
-### Q-9 · Il **processo rimborsi**: entra in questo cantiere o no?
-
-🔴 È **D8 (b)** del brief madre — *«dove si vede un credito grande che va
-rimborsato? Oggi da nessuna parte»* — ed è **il blocco della Fase D** del
-cantiere fondi, che aspetta espressamente `pagamenti`.
-
-Due letture, e cambiano il perimetro:
-
-| | Lettura | Conseguenza |
-| --- | --- | --- |
-| **a** | È una **quarta slice** di questo cantiere | Il cantiere fondi si sblocca; il perimetro cresce |
-| **b** | È un cantiere **suo**, che comincia quando esiste un movimento | La slice 1 basta a sbloccarlo; ma resta scritto da qualche parte che qualcuno deve aprirlo |
-
-⭐ Con D3-d il rimborso **non è una macchina nuova** — è una contabile con
-importi negativi, cioè la stessa che si sta facendo. Quel che manca non è il
-gesto: è **l'elenco che lo fa venire in mente a una persona**. Il che fa
-propendere per (b), ma è una decisione di priorità, non di disegno.
-
----
-
-## 6. Registro delle revisioni
+## 7. Registro delle revisioni
 
 | Data | Cosa |
 | --- | --- |
-| 2026-08-21 | Stesura. Rimisurato il terreno contro la doc auto-generata e i changelog. ⭐ **Il cantiere fondi è atterrato** (Fasi A/B/C/E/F applicate, `fn_sync_pagamento_fondo_fattura` ritirata) e **la dipendenza si è invertita**: è la Fase D ad aspettare `pagamenti`. 🔴 **Corrette tre misure del brief madre**: B-2 è sbagliato a metà — il guard **c'è già** e il difetto vero è che sollevano tutti `E_GENERICO`; nessun pgTAP di `pagamenti` è in baseline (e uno non è transazionale); la scadenza della «metà fondi» non esiste più. 🔴 **Cinque difetti nuovi misurati, tre bloccanti**: `uq_centri_riscossione_compensazione` è un UNIQUE **totale** su un booleano — il `where:` scritto su `addUniqueConstraint` è stato **ignorato**, e la tabella non può contenere più di **due righe**, il che rende ineseguibile il prerequisito della slice 1; `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate** perché il lookup non filtra lo stato; un fondo interamente postato **si auto-annulla** perché lo scorporo di `fn_saldo_sorgente_fondo` filtra `is_postabile`. Piano in **quattro** slice (la 0 è nuova), nove domande aperte in §5 |
+| 2026-08-21 | Stesura. Rimisurato il terreno contro la doc auto-generata e i changelog. ⭐ **Il cantiere fondi è atterrato** (Fasi A/B/C/E/F applicate, `fn_sync_pagamento_fondo_fattura` ritirata) e **la dipendenza si è invertita**: è la Fase D ad aspettare `pagamenti`. 🔴 **Corrette tre misure del brief madre**: B-2 è sbagliato a metà — il guard **c'è già** e il difetto vero è che sollevano tutti `E_GENERICO`; nessun pgTAP di `pagamenti` è in baseline (e uno non è transazionale); la scadenza della «metà fondi» non esiste più. 🔴 **Cinque difetti nuovi misurati, tre bloccanti**: `uq_centri_riscossione_compensazione` è un UNIQUE **totale** su un booleano — il `where:` scritto su `addUniqueConstraint` è stato **ignorato**, e la tabella non può contenere più di **due righe**, il che rende ineseguibile il prerequisito della slice 1; `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate** perché il lookup non filtra lo stato; un fondo interamente postato **si auto-annulla** perché lo scorporo di `fn_saldo_sorgente_fondo` filtra `is_postabile`. Piano in **quattro** slice (la 0 e' nuova), otto domande aperte in §5. ⭐ **Aggiornato in giornata scrivendo il rimedio di C-1**: nello stesso file e' evaporato un **secondo** vincolo (**C-1-bis**, `chk_centri_riscossione_ruolo_esclusivo` — un `- sql:` annidato dentro `addColumn.columns:` non viene eseguito), quindi oggi un centro puo' essere compensazione **e** fondo fattura insieme. Due vincoli su tre persi nello stesso file spostano la lezione da «attenzione a quell'attributo» a *un'istruzione che lo strumento non capisce produce silenzio, e il file continua a dichiarare l'intenzione giusta* — da cui il passo **P-0**, una caccia mirata alle altre due forme silenziose nel raggio del cantiere . ⭐ **Secondo giro, su osservazione di Tid** (l'automatismo dei fondi gira solo sulle fatture *di minimo*, e il fondo vale il **residuo**, non il totale): verificato che entrambe le cose sono gia' cosi' nel codice — `f.minimo IS TRUE` in `fn_fondo_fattura_proponibile`, e il numero lo da' `fn_saldo_sorgente_fondo`, che sul caso «fattura 20, incasso 11» risponde **9**. ⭐ Ma la verifica ha chiuso **Q-5** e **corretto S1-8**: l'`importo` del fondo e' **immutabile** (`trgfn_lock_columns` + generazione create-only + atto unico), quindi non esiste lo scenario «l'importo cambia dopo il posting» su cui la domanda era costruita; e il rimedio che avevo scritto — *restringere il lookup alle righe non finali* — era **sbagliato**, perche' fa cadere nel ramo `INSERT` e crea una **seconda** riga. 🔴 Aggiunto che **C-2 e C-3 sono in fila, non affiancati**: oggi il ramo `ANNULLATO` di C-3 esce prima e nasconde C-2, quindi correggerne uno solo **scopre** l'altro. ✅ **Decisione D10 confermata da Tid** (*«altrimenti riparte la rincorsa»*): il fondo vale il residuo **alla nascita** e poi **non insegue** — scritta nel brief madre, §3-bis. 🔴 Con essa emerge la sua meta' mancante: il credito di chi paga *dopo* il fondo non torna nel fondo e **non compare da nessuna parte** (`vw_fondi_fattura_da_decidere` filtra `DISPONIBILE`, e la riga del fondo non e' attribuita a una rata) — **rafforza Q-9** invece di scioglierla . ⭐ **Terzo giro, e cambia il rimedio di due difetti su cinque.** Dal dubbio di Tid — *«un conto e' annullato perche' non si deve fare piu', un conto e' annullato perche' gia' eseguito»* — e' emerso che `ANNULLATO` porta **tre** significati, e che il ramo bloccante di `fn_reset_fondi_fattura` scrive oggi un record **autocontraddittorio** (`stato = ANNULLATO` con `fattura_figlia_id` ancora valorizzato). ✅ Decisione **D11**: quarto stato **`ESEGUITO`**, scritto da un **trigger** sulla riga contabile registrata, legame riga-fondo promosso da stringa JSON a **colonna con FK**, e **reset che cancella** l'atto non eseguito. ⭐ **Il guadagno e' strutturale**: i tre lettori dei fondi filtrano tutti su `stato`, quindi **C-2 e C-3 smettono di essere raggiungibili** invece di essere tamponati, e **Q-4 si chiude** — seconda domanda a cadere **senza essere decisa**, dopo Q-5. Nuovi passi **S1-14 … S1-17**, con tre trappole di scrittura: l'ordine obbligato colonna->stato->trigger, la FK che nel reset a CTE singola puo' scattare prima delle figlie, e il trigger che scrive **da `pagamenti` verso `vendite`**. ⚠️ Marcati superati **D-7** e **D-16** nel brief dei fondi: quel documento dichiarava «tre stati e non quattro» . ⭐ **Quarto giro, sul difetto C-4, e la prima stesura era sbagliata**: dicevo che il punto d'ingresso contraddice D3-a riusando la testata. Misurando le **colonne** si vede il contrario — la testata non ha ne' importo ne' riferimento bancario, e il riferimento della banca sta **sulla riga**: e' una **distinta di giornata per canale**, e il codice e' coerente. A contraddirsi e' il **brief madre**, che nell'intestazione dice «raccoglie N importi arrivati insieme» e in D3-a «e' il movimento bancario». ⭐ E la decisione D3-a **regge solo con la lettura distinta**: il suo «lascia li' il resto» richiede piu' righe. Corretta la frase nel brief madre, riformulata **Q-3** da tre strade a due conferme. ⚠️ Resta un rischio **operativo**, non di modello: su una distinta condivisa chi conferma conferma anche il lavoro altrui — il posting deve **dichiarare la propria portata** . ⭐ **Quinto giro: Tid chiede un lock e la richiesta si risolve togliendo il problema.** Portando in scena i **flussi esterni** e' emerso che le distinte sono di **due specie** — **D12**: manuale = il **lotto di lavoro di un operatore**, automatica = **il file**. Con quel raggruppamento la contesa **non esiste**, quindi il lock non si costruisce: niente colonne di blocco, scadenze, sblocco d'emergenza. *Il presidio piu' economico e' quello che il modello rende inutile.* Decisi anche `origine` + `importo_dichiarato` (obbligatorio sull'automatica, **facoltativo** sul manuale), la linea **fatti/decisioni dentro la riga** importata, e la quadratura che **la madre stabilisce e il guard conserva** — ⚠️ non un trigger di riga, perche' durante il caricamento la somma torna solo alla fine. **D13**: il posting porta **ricevuta + dichiarazione** in firma, e scrive `user_conferma`. ✅ **Q-3 chiusa**: restano **sei** domande, e la slice 1 ne aspetta **due**. ⭐ Chiusa anche la quarta riga di **Q-1**: `IMPORTATA` non e' piu' uno stato senza uscite — ma le sue transizioni **non si seminano** finche' l'import non esiste (la lezione appena pagata con `STORNATA`) . ⭐ **Sesto giro, sul difetto C-5: le porte sono due e avevo visto solo la prima.** Oltre all'«aggiungere una riga a una distinta chiusa» c'e' il caso naturale — **chiudere una distinta che ha ancora righe registrabili** — che fa sparire quelle righe da entrambi i conti. Nuovo passo **S1-20**: non si chiude una distinta con righe pronte. ⭐ E il guard **risponde in gran parte a Q-6**: la chiusura smette di essere una scelta e diventa una conseguenza. 🔴 Trovata sotto la stessa confusione di D11 un piano piu' giu': `is_final` appiattisce `CHIUSA` («e' fatta») e `ANNULLATA` («non e' mai successa»), che sono **opposti** — e nel caso `CHIUSA` quel filtro **non protegge niente**, perche' l'unica cosa che riesce a escludere e' proprio la riga anomala. *Un filtro che nasconde cio' che non sa gestire sembra un presidio finche' non si guarda che cosa esclude davvero.* ℹ️ Con S1-7 e S1-20 la confusione resta **innocua**: nessun attributo nuovo sul catalogo . ⭐ **Settimo giro: Q-1, Q-2 e Q-8 chiuse — le domande scendono da nove a TRE.** Su richiesta di Tid («spiegami Q-1 e Q-2 collegate») e' emerso che erano **la stessa domanda fatta due volte** — percorso e bagaglio — e si rispondono con una tabella sola (**D14**). ⭐ **Il passaggio che ha sciolto il nodo non e' stato rispondere**: e' stato accorgersi che le quattro situazioni portate da Tid (documento gia' saldato, pagamento oltre il totale, pagamento su un documento a credito, rimborso piu' grande del credito) **erano lo stesso caso** — *un movimento normale riduce il residuo e non lo supera*. 🔴 E quella forma **scioglie la trappola di §5**: il divieto di replicare la quadratura a livello fattura valeva per l'**intervallo a estremi fissi**, che su un documento a credito si inverte; una regola senza estremi passa accanto, e vale a entrambi i livelli senza filtri sul segno. ✅ Deciso anche che il DB **rifiuta la coerenza e segnala la capienza**, che la forzatura e' **flag + motivo facoltativo senza permesso** (cade l'azione di processo di D1-bis, e cade la sua **asimmetria**), e che **`SCARTATA` non e' piu' finale** (nuovo passo **S1-21**). ⭐ **Nessuna delle tre domande rimaste ferma lo sviluppo** . ⭐ **Ottavo e ultimo giro: le domande aperte vanno a ZERO.** **Q-6** — la matrice della distinta, cinque stati che vanno bene cosi'; ⭐ ne discende che **`VALIDATA` e' il gesto «ho finito di inserire»**, quindi la quadratura col totale dichiarato si sposta li' invece che nel posting (nuovo passo **S1-22**), e che `ANNULLATA` si raggiunge da **qualunque** stato non registrato. **Q-7** — opzione **B**: il posting **non solleva**, dichiara l'esito; il motivo concreto e' che il DB **scrive nel registro errori prima di sollevare**, quindi un pulsante premuto due volte avrebbe lasciato un errore che errore non e'. **Q-9** — chiusa **restringendosi**: le tre azioni **hanno gia' tutte il loro meccanismo**, mancano solo una **vista** e un **registro**. Il guscio `pagamenti.compensazioni` si allarga e si rinomina in **`pagamenti.sistemazioni`** (nome scelto da Tid; ⛔ scartato `regolazioni`, che in un ERP utilities vuol dire altro). Nuova **slice 4**, che **sblocca la Fase D** del cantiere fondi. ⭐ *Prima di dimensionare un lavoro, contare quanto ne e' gia' costruito da altri cantieri.* 🔵 Resta il solo **D15-e**, il verso del legame . ⭐ **E con le domande a zero il brief prende il §6: il piano operativo a LOTTI.** Le slice sono logiche, i lotti sono cio' che si scrive, si prova e si applica insieme — e si dimensionano su quanto si collauda in un colpo, non su quanto e' concettualmente affine. **Sette lotti**, con le scorciatoie che l'assenza di produzione consente scritte una per una (niente backfill, `DROP`+`CREATE` sulle firme, rinomina secca, il ramo morto tolto nello stesso lotto che lo rende morto, le fixture pgTAP adeguate subito). ⭐ Il perno e' il **passo 2 del ciclo**: provare in `BEGIN … ROLLBACK` prima di chiedere il migrate — e' cio' che permette lotti grossi e protegge dalla regola piu' rigida del progetto (*un changeSet mergiato non si modifica: si corregge in avanti*). 🔴 Il **lotto 3 non si spezza e non si salta**: applicare la madre senza la difesa creerebbe il primo movimento e contemporaneamente il primo modo di rovinarlo. Primo passo concreto: **P-0**, che non scrive niente e puo' cambiare la lista del lotto 1 |

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_stati_doc_guard_esito_verdetto.md" %}
 # ⚙️ Funzione `trgfn_stati_doc_guard_esito_verdetto`
 
 ```sql

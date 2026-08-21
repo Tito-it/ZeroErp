@@ -96,8 +96,8 @@ WITH ins AS (
   RETURNING id)
 SELECT * FROM ins;
 
--- riga "legacy": parte servizio, poi forziamo natura NULL (il trigger di
--- derivazione fira solo su INSERT/cambio articolo_id, non su UPDATE della natura).
+-- riga "legacy": parte servizio, poi si forza natura NULL (vedi sotto: serve
+-- l'override del lock di colonna, non basta piu' l'UPDATE).
 CREATE TEMP TABLE tmp_riga_null AS
 WITH ins AS (
   INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
@@ -105,8 +105,26 @@ WITH ins AS (
     FROM tmp_prev p, tmp_refs r
   RETURNING id)
 SELECT * FROM ins;
+-- ⚠️ La natura NON si azzera piu' con un UPDATE diretto: dal 2026-08-21
+--   `natura_vendita_id` e' protetta dal lock di colonna
+--   `trg_preventivi_righe_a10_lock_columns_upd`
+--   (E_PREV_RIGA_NATURA_IMMUTABILE), perche' scriverla a mano staccava la riga
+--   dalla classificazione dell'articolo e aggirava il guard MODALITA' A.
+--
+--   La riga a natura NULL resta pero' uno stato REALE e da verificare: sono le
+--   righe legacy nate prima del trigger di ereditarieta' (45 su 197 nel DB di
+--   sviluppo al 2026-08-21). Non e' piu' riproducibile passando dall'articolo,
+--   perche' `catalogo.articoli.natura_vendita_id` e' NOT NULL: nessun articolo
+--   puo' avere natura nulla da cui ereditarla.
+--
+--   Si usa quindi la porta di manutenzione che `script.trgfn_lock_columns`
+--   prevede apposta, e la si RICHIUDE subito: lasciarla aperta renderebbe
+--   verdi per sottrazione tutte le asserzioni successive che toccano colonne
+--   lockate.
+SET LOCAL zeroerp.allow_lock_columns_override = 'on';
 UPDATE vendite.preventivi_righe SET natura_vendita_id = NULL
  WHERE id = (SELECT id FROM tmp_riga_null);
+SET LOCAL zeroerp.allow_lock_columns_override = 'off';
 
 -- Preventivo di SOLE merci (per test 4).
 CREATE TEMP TABLE tmp_prev_merce AS

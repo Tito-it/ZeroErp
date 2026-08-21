@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/log.md" %}
 # ⚙️ Funzione `log`
 
 ```sql

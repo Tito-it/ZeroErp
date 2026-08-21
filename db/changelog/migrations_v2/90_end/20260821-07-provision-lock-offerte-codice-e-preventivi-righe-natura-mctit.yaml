@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Changelog Liquibase per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONING IMMEDIATO DEI DUE LOCK DEL 2026-08-21
+#   vendite.offerte_commerciali.codice
+#   vendite.preventivi_righe.natura_vendita_id
+#
+# DA DOVE VENGONO. Due lacune emerse scrivendo la doc manuale delle trigger
+#   function (analisi-copertura-doc-manual-dbzero.md, fascia A). Nessuna delle
+#   due era raggiungibile dal percorso applicativo corrente, entrambe lo erano
+#   con un UPDATE diretto. Classificate da Tid come da chiudere, 2026-08-21.
+#
+#   1) `offerte_commerciali.codice` — la tabella aveva il gen_codice agganciato
+#      anche in UPDATE ma NESSUN lock, a differenza delle sette gemelle
+#      (soggetti, billing_account, fornitori, istanze_utilities, vettori,
+#      contratti, pratiche). Un UPDATE che azzerava il codice ne faceva
+#      rigenerare uno NUOVO, consumando la sequenza: l'offerta cambiava identita'
+#      per chiunque la citasse per codice, senza GUC e senza errori.
+#
+#   2) `preventivi_righe.natura_vendita_id` — il trigger di ereditarieta'
+#      `trgfn_preventivi_righe_set_natura_vendita` dichiara «NO override
+#      operatore», ma e' agganciato a `UPDATE OF articolo_id`: un UPDATE della
+#      sola natura non lo faceva scattare. La natura si staccava dall'articolo e
+#      con essa si aggirava il blocco della ricorrenza
+#      (E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA): una riga a canone restava su un
+#      preventivo invece di andare in offerta.
+#
+# PERCHE' QUI E NON IN 00_schema O 20_code. La sede della regola e' il seed
+#   `80_data/sql/dbops/automation_lock_columns.csv`, dove le due righe sono
+#   state aggiunte. Questo changeSet non dichiara niente: fa girare il
+#   provisioning SUBITO.
+#
+#   🔴 Sta in `90_end` perche' il runner deve LEGGERE quelle righe, quindi deve
+#   girare DOPO il loader di `80_data`. In `00_schema` o `20_code` girerebbe
+#   PRIMA del seed e non provisionerebbe niente — in silenzio.
+#
+#   ⚠️ E senza questo changeSet le righe verrebbero comunque onorate, ma solo
+#   alla passata di `ci_apply` (90_end/ci_apply/20250627-31) o dal pgagent la
+#   sera. **E' successo davvero**: al migrate manuale del 2026-08-21 i due
+#   trigger non sono comparsi e il test 9 di
+#   `test-preventivi-righe-guard-natura-ricorrente-v1.sql` e' uscito
+#   «no exception thrown» — rosso per una ragione che non era sua.
+#   Stesso identico caso di 90_end/20260818-23, da cui questo file e' modellato.
+#
+#   ⭐ Nota di contrasto utile: il codice automatico dei vettori (riga 19 del CSV
+#   `config/sistema_codici`, stesso commit) NON ha avuto bisogno di niente del
+#   genere ed era verde subito. La differenza e' che li' il provisioning lo fa un
+#   TRIGGER `AFTER` sulla tabella di configurazione
+#   (`script.trgfn_config_sistema_codici_sync_gen_codice`), che scatta
+#   nell'istante in cui il loader scrive la riga; qui invece e' un'automazione
+#   BATCH, che qualcuno deve far girare. Due meccanismi dichiarativi, tempi
+#   diversi.
+#
+#   ⭐ `fn_run_automations_lock_columns` e' create-if-not-exists, e qui non morde:
+#   ne' `offerte_commerciali` ne' `preventivi_righe` hanno un trigger di lock,
+#   quindi non serve il DROP-e-rigenera che servirebbe per aggiungere una colonna
+#   a un lock gia' esistente. Le altre tabelle di `vendite` che il runner
+#   incontra (contratti, ordini, preventivi, ...) il loro trigger ce l'hanno gia'
+#   e vengono saltate.
+#
+# ⚠️ ORDINE ALFABETICO PORTANTE su preventivi_righe. Il trigger generato,
+#   `trg_preventivi_righe_a10_lock_columns_upd`, precede
+#   `trg_preventivi_righe_a10_set_natura_vendita_ins_upd`: i BEFORE ROW scattano
+#   in ordine alfabetico, quindi il lock legge la natura NON ancora riscritta
+#   dall'ereditarieta' e il cambio articolo legittimo passa. Invertire i due nomi
+#   bloccherebbe anche quello. Presidio: test 10 del pgTAP citato sopra.
+#
+# Dipendenze: dbops.fn_run_automations_lock_columns,
+#   80_data/sql/dbops/automation_lock_columns.csv (righe vendite/offerte_commerciali
+#   e vendite/preventivi_righe), config.messaggi_errore id 938
+#   (E_PREV_RIGA_NATURA_IMMUTABILE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260821-07-provision-lock-offerte-codice-e-preventivi-righe-natura-mctit.yaml
+
+  - changeSet:
+      id: 20260821-07-provision-lock-offerte-codice-e-preventivi-righe-natura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Provisiona subito i due lock aggiunti al seed automation_lock_columns il
+        2026-08-21: vendite.offerte_commerciali.codice (asimmetria rispetto alle
+        sette tabelle gemelle, dimenticanza) e
+        vendite.preventivi_righe.natura_vendita_id (l'ereditarieta' dall'articolo
+        era presidiata solo su UPDATE OF articolo_id). Senza, i trigger
+        comparirebbero solo alla passata di ci_apply o col pgagent della sera.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND (target_schema, target_table, column_name) IN (
+                           ('vendite', 'offerte_commerciali', 'codice'),
+                           ('vendite', 'preventivi_righe',    'natura_vendita_id')
+                         );
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  -- Il codice errore del secondo lock deve esistere, altrimenti
+                  -- il guard solleverebbe con un segnaposto irrisolto invece che
+                  -- con la sua frase.
+                  SELECT COUNT(*) FROM config.messaggi_errore
+                   WHERE codice = 'E_PREV_RIGA_NATURA_IMMUTABILE';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Solo lo schema `vendite`: un runner a tappeto ri-provisionerebbe
+              -- righe di altri schemi che non c'entrano con questo passo, e un
+              -- loro eventuale fallimento verrebbe attribuito a noi.
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['vendite'], false);
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger provisionati dall'automazione si tolgono a mano: il
+              -- runner crea, non cancella. ⚠️ Le righe nel seed RESTANO — la sede
+              -- della regola e' il CSV, e toglierle di qui sarebbe la seconda
+              -- sorgente di verita'.
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_lock_columns_upd
+                ON vendite.offerte_commerciali;
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_lock_columns_upd
+                ON vendite.preventivi_righe;

@@ -99,7 +99,7 @@ VALUES ('catalogo','articoli','STORICO_FK','articolo_id','storico con fk esplici
 
 ### Interazione con gli automatismi
 
-* **AUDIT_UPDATE**: legge `AUDIT_TS` e `AUDIT_USER` per scegliere la funzione `script.trgfn_upd_audit_data_user_generic()`.
+* **AUDIT_UPDATE**: legge `AUDIT_TS` e `AUDIT_USER` per scegliere la funzione `script.trgfn_audit_data_user_generic()`.
 * **ATTIVO**: legge `ATTIVO_COL` su **padre** e **figlio** per i tre trigger (cascade/require/block).
 * **STORICO**: legge `STORICO_FK` per i trigger `trgfn_upd_dlt_storico_generic()`.
 

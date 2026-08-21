@@ -42,7 +42,7 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 * **`trg_upd_articoli_gruppi_audit_data_user`**
 
   * **Quando**: `BEFORE UPDATE`
-  * **Cosa**: aggiorna in automatico `data_update` e `user_update` tramite la funzione generica `script.trgfn_upd_audit_data_user_generic()`.
+  * **Cosa**: aggiorna in automatico `data_update` e `user_update` tramite la funzione generica `script.trgfn_audit_data_user_generic()`.
 
 ---
 

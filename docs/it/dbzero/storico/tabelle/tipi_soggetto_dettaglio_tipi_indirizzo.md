@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/tipi_soggetto_dettaglio_tipi_indirizzo.md" %}
 # 📚 Tabella `tipi_soggetto_dettaglio_tipi_indirizzo`
 
 ## 🗂️ Campi principali

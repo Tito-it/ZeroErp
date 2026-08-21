@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_istanze_utilities_gen_codice.md" %}
 # ⚙️ Funzione `trgfn_istanze_utilities_gen_codice`
 
 ```sql

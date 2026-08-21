@@ -4,7 +4,7 @@
 >
 **Approfondimento tabelle:**
 >
-[anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+[anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 > [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
 > [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
 >

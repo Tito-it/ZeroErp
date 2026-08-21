@@ -18,7 +18,7 @@ La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`**
 1. legami verso conti bancari **disattivati**;
 2. legami con **intervallo date di validità incoerente**.
 
-In caso di violazione, viene generato un **errore applicativo** tramite `anagrafiche.fn_log_and_raise_error`.
+In caso di violazione, viene generato un **errore applicativo** tramite `script.fn_log_and_raise_error`.
 
 ---
 
@@ -104,7 +104,7 @@ Payload include (come da codice):
 
 Handler:
 
-* `anagrafiche.fn_log_and_raise_error(...)`
+* `script.fn_log_and_raise_error(...)`
 
 ---
 
@@ -140,4 +140,4 @@ Casi minimi consigliati:
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function (guard/consistency)
 * **Tabelle coinvolte:** conti bancari + tabella legame ruoli↔conti
-* **Meccanismo errore:** `anagrafiche.fn_log_and_raise_error`
+* **Meccanismo errore:** `script.fn_log_and_raise_error`

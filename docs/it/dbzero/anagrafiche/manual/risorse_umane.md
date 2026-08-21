@@ -8,7 +8,7 @@ Approfondimento tabelle:
 > [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 > [config.qualifiche](/dbzero/config/tabelle/qualifiche)
 > [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 >
 Approfondimento funzioni:
 >

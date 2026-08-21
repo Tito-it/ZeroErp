@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/bank_branches.md" %}
 # 📚 Tabella `bank_branches`
 
 ## 🗂️ Campi principali

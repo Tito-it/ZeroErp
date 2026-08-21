@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_col_exists.md" %}
 # ⚙️ Funzione `fn_col_exists`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/scope_policy.md" %}
 # 📚 Tabella `scope_policy`
 
 > 📝 **Descrizione**

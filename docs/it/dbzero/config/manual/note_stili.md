@@ -10,7 +10,7 @@ Approfondimenti tabelle note e messaggi:
 >
 Approfondimenti funzioni/trigger generici:
 >
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
@@ -106,7 +106,7 @@ Sebbene non siano definiti nel DDL riportato, è consigliabile introdurre i segu
 
    * **Quando**: `BEFORE UPDATE` su `config.note_stili`.
    * **Cosa fa**: aggiorna `data_update` e `user_update` ad ogni modifica.
-   * **Come**: delega a `script.trgfn_upd_audit_data_user_generic()`.
+   * **Come**: delega a `script.trgfn_audit_data_user_generic()`.
 
 2. **Trigger di protezione del codice interno** (es. `trg_note_stili_protect_codice_interno`)
 

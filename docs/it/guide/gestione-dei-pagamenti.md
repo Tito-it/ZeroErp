@@ -157,6 +157,15 @@ Due flag booleani distinguono i centri speciali:
 
 Un centro non puo essere contemporaneamente di compensazione e di fondo fattura.
 
+> 🔴 **Oggi questo NON e vero, e non e una svista di scrittura: e il vincolo che
+> manca.** Il `CHECK chk_centri_riscossione_ruolo_esclusivo` e dichiarato nella
+> migrazione `20260211-21` ma **non esiste nel database** — il blocco che lo crea
+> e annidato dentro l'elenco delle colonne di un `addColumn`, e li dentro non
+> viene eseguito. La colonna e nata, il vincolo no.
+> Rimessa in piedi dal passo **P-1** di
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
+> — ⛔ **non ancora applicato**.
+
 > ⚠️ **Questi due centri non sono cassa, e chi misura gli incassi deve saperlo.**
 > Un movimento su `is_fondo_fattura` o `is_compensazione` non e denaro arrivato:
 > e denaro **spostato** da un documento a un altro. Per la domanda «questa
@@ -179,7 +188,25 @@ Da un punto di vista tecnico:
 | `meta`             | JSONB           |    no    | Metadati estensibili                                       |
 | Campi audit        | —               |    —     | `data_insert`, `user_insert`, `data_update`, `user_update` |
 
-**Vincolo UNIQUE:** `uq_centri_riscossione_compensazione` su `(is_compensazione)` — garantisce al massimo un centro di compensazione nel sistema.
+**Vincolo UNIQUE:** `uq_centri_riscossione_compensazione` su `(is_compensazione)` — ~~garantisce al massimo un centro di compensazione nel sistema.~~
+
+> 🔴 **Quella e l'intenzione; il vincolo vivo fa un'altra cosa, e va saputo prima
+> di configurare.** Il vincolo e **totale** su una colonna booleana, non parziale:
+> quindi ammette **una sola riga `true` e una sola riga `false`**, cioe`
+> **`centri_riscossione` non puo contenere piu di DUE righe in tutto**. Oggi ce
+> ne sono esattamente due, quindi il vincolo e saturo e sembra rispettato:
+> **aggiungere il centro banca oggi fallisce.**
+>
+> La causa: nella migrazione `20260211-14` il `where: "is_compensazione = true"`
+> e scritto su un `addUniqueConstraint`, che quell'attributo **non prevede** — e
+> lo ha ignorato in silenzio. Sostituito da due indici unici **parziali** (uno
+> per flag) al passo **P-1** di
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
+> — ⛔ **non ancora applicato**.
+>
+> ⚠️ E `is_fondo_fattura` oggi non ha **nessun** vincolo di unicita: i centri
+> fondo fattura potrebbero essere N, e chi ne sceglie uno prende quello con
+> l'id piu basso.
 
 **Protezioni:** trigger `trgfn_prevent_deactivate_if_children` impedisce la disattivazione se esistono enti incasso, contabili o movimenti collegati.
 
@@ -381,6 +408,27 @@ Gli stati delle righe contabili includono un flag cruciale per il processo di po
 ## Compensazioni
 
 La compensazione e un processo automatico che genera una testata contabile per pareggiare importi tra fatture. La tabella `compensazioni` e leggera: registra solo `data_esecuzione` e metadati. La logica operativa passa interamente dalla testata contabile collegata.
+
+> ⭐ **Oggi e cosi; dal cantiere incassi diventera un'altra cosa, e piu grande.**
+> Decisione **D15** del 2026-08-21: la compensazione smette di essere **un
+> processo automatico** e diventa **una delle tre destinazioni** che una persona
+> puo scegliere per un saldo in eccesso — riporto su una fattura futura, rimborso
+> con bonifico, compensazione fra documenti.
+>
+> Di conseguenza la tabella **si allarga e si rinomina in
+> `pagamenti.sistemazioni`**, con una colonna `destinazione` a vocabolario chiuso
+> (`RIPORTO` / `RIMBORSO` / `COMPENSAZIONE`): chiamare «compensazione» un bonifico
+> di rimborso sarebbe falso. Il giro resta quello descritto qui — l'atto genera
+> una contabile, la contabile registrata genera i movimenti — ma a monte c'e una
+> **vista** che mostra le eccedenze da sistemare, raggruppate **per cliente**, e
+> una **persona** che decide.
+>
+> ⚠️ `centri_riscossione.is_compensazione` **non cambia**: parla del *centro*, non
+> dell'atto, e la compensazione resta uno dei tre centri non-cassa.
+>
+> Piano: slice 4 di
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
+> — ⛔ **non ancora applicato**.
 
 Da un punto di vista tecnico:
 

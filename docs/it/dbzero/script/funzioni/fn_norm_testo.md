@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_norm_testo.md" %}
 # ⚙️ Funzione `fn_norm_testo`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_preventivi_righe_set_natura_vendita.md" %}
 # ⚙️ Funzione `trgfn_preventivi_righe_set_natura_vendita`
 
 ```sql

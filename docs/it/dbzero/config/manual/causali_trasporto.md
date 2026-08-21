@@ -92,7 +92,7 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
      * aggiorna automaticamente i campi `data_update` e `user_update` ad ogni modifica della riga.
    * **Come**:
 
-     * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()` che centralizza la gestione dei campi di audit.
+     * invoca la funzione generica `script.trgfn_audit_data_user_generic()` che centralizza la gestione dei campi di audit.
 
 > Questo garantisce che tutte le modifiche al catalogo causali di trasporto siano sempre tracciate in modo uniforme rispetto alle altre tabelle di configurazione.
 

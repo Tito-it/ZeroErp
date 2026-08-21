@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/note_rettifica_riga.md" %}
 # 📚 Tabella `note_rettifica_riga`
 
 ## 🗂️ Campi principali

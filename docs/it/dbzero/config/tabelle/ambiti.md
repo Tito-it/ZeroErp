@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/ambiti.md" %}
 # 📚 Tabella `ambiti`
 
 ## 🗂️ Campi principali

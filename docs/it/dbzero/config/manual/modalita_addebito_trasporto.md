@@ -10,7 +10,7 @@ Approfondimenti tabelle:
 >
 Approfondimenti funzioni/trigger generici:
 >
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
@@ -90,7 +90,7 @@ Esempi tipici: **FRANCO**, **ASSEGNATO**, **TERZI**, con comportamenti diversi r
 Attualmente la definizione non include campi di audit (`data_insert`, `user_insert`, ecc.). Se in futuro verranno aggiunti, si potrà:
 
 1. Introdurre un trigger di audit generico (es. `trg_upd_modalita_addebito_trasporto_audit_data_user`).
-2. Collegarlo alla funzione `script.trgfn_upd_audit_data_user_generic()` per allineare la gestione agli altri domini `config.*`.
+2. Collegarlo alla funzione `script.trgfn_audit_data_user_generic()` per allineare la gestione agli altri domini `config.*`.
 
 > L’adozione di un audit standard è consigliata qualora la tabella venga utilizzata in contesti multi-gestore o dove è importante tracciare modifiche alle regole di porto.
 

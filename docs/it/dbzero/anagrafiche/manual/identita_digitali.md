@@ -11,7 +11,7 @@ Architettura di riferimento:
 Tabelle correlate:
 >
 [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user) (bridge storico, mantenuto fino al cutover)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user) (bridge storico, mantenuto fino al cutover)
 > [django.auth_user](/dbzero/django/auth_user)
 
 ---
@@ -114,7 +114,7 @@ speciale ma un **binding** tra l'identità e un profilo con
   esplicitamente dai caller (`fn_crea_risorsa_umana`,
   `amm_software_repository`) su `config.profili_accesso_bindings`.
 * La vista
-  [risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+  [risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
   ricostruisce dinamicamente la stringa `ruolo_sistema` dal nuovo modello.
 
 ---

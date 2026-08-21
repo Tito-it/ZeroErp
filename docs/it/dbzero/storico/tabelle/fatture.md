@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/fatture.md" %}
 # 📚 Tabella `fatture`
 
 ## 🗂️ Campi principali

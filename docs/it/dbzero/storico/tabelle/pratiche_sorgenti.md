@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/pratiche_sorgenti.md" %}
 # 📚 Tabella `pratiche_sorgenti`
 
 ## 🗂️ Campi principali

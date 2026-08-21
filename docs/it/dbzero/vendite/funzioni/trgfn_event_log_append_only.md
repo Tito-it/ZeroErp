@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_event_log_append_only.md" %}
 # ⚙️ Funzione `trgfn_event_log_append_only`
 
 ```sql

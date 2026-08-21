@@ -6,6 +6,23 @@
 >
 • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
+> 🔴 **Due vincoli dichiarati nelle migrazioni NON esistono nel database**
+> (misurato il 2026-08-21, auto-gen alla mano):
+>
+> * `uq_centri_riscossione_compensazione` è **totale** su un booleano, non
+>   parziale: la tabella **non può contenere più di DUE righe in tutto**. Il
+>   `where:` fu scritto su un `addUniqueConstraint`, che quell'attributo non
+>   prevede, e venne ignorato in silenzio;
+> * `chk_centri_riscossione_ruolo_esclusivo` («o compensazione o fondo fattura»)
+>   **non c'è**: il suo blocco `- sql:` è annidato dentro `addColumn.columns:`,
+>   e lì dentro non viene eseguito. La colonna è nata, il vincolo no.
+>
+> ⚠️ Oggi la tabella ha esattamente due righe, quindi il primo vincolo è **saturo
+> e indistinguibile da uno rispettato**: aggiungere il centro banca fallisce.
+> Rimessi in piedi dal passo **P-1** di
+> `docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md`.
+> ⛔ **Non ancora applicato.**
+
 ### 🎯 Scopo Principale
 La tabella **`pagamenti.centri_riscossione`** definisce le **origini di incasso**
 per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.).

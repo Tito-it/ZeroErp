@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/reservations.md" %}
 # 📚 Tabella `reservations`
 
 ## 🗂️ Campi principali

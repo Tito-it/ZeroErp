@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/eventi_assets.md" %}
 # 📚 Tabella `eventi_assets`
 
 > 📝 **Descrizione**

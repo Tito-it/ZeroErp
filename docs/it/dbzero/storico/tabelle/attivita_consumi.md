@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/attivita_consumi.md" %}
 # 📚 Tabella `attivita_consumi`
 
 ## 🗂️ Campi principali

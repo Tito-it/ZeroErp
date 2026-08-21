@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/inventari_righe.md" %}
 # 📚 Tabella `inventari_righe`
 
 ## 🗂️ Campi principali

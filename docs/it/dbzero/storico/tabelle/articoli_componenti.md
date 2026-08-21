@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/articoli_componenti.md" %}
 # 📚 Tabella `articoli_componenti`
 
 ## 🗂️ Campi principali

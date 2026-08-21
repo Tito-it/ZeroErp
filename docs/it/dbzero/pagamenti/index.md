@@ -4,7 +4,7 @@
 - [centri_riscossione](tabelle/centri_riscossione.md) — La tabella **`pagamenti.centri_riscossione`** definisce le **origini di incasso** per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.).
 - [compensazioni](tabelle/compensazioni.md) — La tabella **`pagamenti.compensazioni`** rappresenta la testata del processo che genera movimenti di compensazione tra documenti del cliente.
 - [enti_incasso](tabelle/enti_incasso.md) — La tabella `pagamenti.enti_incasso` rappresenta i canali di provenienza dei flussi di incasso (banca, poste, PSP, altro), collegando il canale ai riferimenti anagrafici e operativi necessari all'import e riconciliazione.
-- [sepa_mandati](tabelle/sepa_mandati.md)
+- [sepa_mandati](tabelle/sepa_mandati.md) — (rev 2026-08-21)
 - [vendite_contabili](tabelle/vendite_contabili.md) — La tabella **`pagamenti.vendite_contabili`** rappresenta la **testata contabile** per l’aggregazione di movimenti vendite. Serve a raggruppare movimenti per centro riscossione e data contabile, con eventuale dettaglio del canale (`ente_incasso`) e stato operativo della testata.
 - [vendite_contabili_lotti](tabelle/vendite_contabili_lotti.md) — Tabella ponte che collega i lotti di fatturazione (`vendite.fatturazione_lotti`) alle testate contabili vendite (`pagamenti.vendite_contabili`).
 - [vendite_contabili_righe](tabelle/vendite_contabili_righe.md) — La tabella **`pagamenti.vendite_contabili_righe`** contiene il dettaglio delle righe importate/gestite nella testata contabile vendite, con stato di lavorazione e riferimenti di abbinamento (fattura, billing account).

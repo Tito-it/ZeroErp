@@ -4,9 +4,9 @@
 >
 Approfondimenti viste:
 >
-[anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_ruolo)    
-> [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_soggetto)   
-> [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)   
+[anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/views/vw_indirizzi_resolved_ruolo)    
+> [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)   
+> [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)   
 >
 Approfondimenti tabelle:
 >

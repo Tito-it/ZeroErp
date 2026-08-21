@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_lotti_fatture_incoerenti.md" %}
 # 🔍 View `vw_lotti_fatture_incoerenti`
 
 > 📝 **Descrizione**

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_contratti_utilities_guard_tipo_classe.md" %}
 # ⚙️ Funzione `trgfn_contratti_utilities_guard_tipo_classe`
 
 ```sql

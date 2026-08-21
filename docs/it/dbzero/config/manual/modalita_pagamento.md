@@ -10,7 +10,7 @@ Approfondimenti tabelle:
 >
 Approfondimenti funzioni/trigger:
 >
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
@@ -84,7 +84,7 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
      * aggiorna automaticamente `data_update` e `user_update` a ogni modifica del record.
    * **Come**:
 
-     * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()`, che centralizza la logica di aggiornamento campi di audit su più tabelle.
+     * invoca la funzione generica `script.trgfn_audit_data_user_generic()`, che centralizza la logica di aggiornamento campi di audit su più tabelle.
 
 > Questo garantisce che tutte le variazioni apportate alle modalità di pagamento siano sempre tracciate, semplificando audit e diagnostica.
 

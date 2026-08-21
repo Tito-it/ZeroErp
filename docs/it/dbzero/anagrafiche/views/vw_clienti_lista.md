@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_clienti_lista.md" %}
 # 🔍 View `vw_clienti_lista`
 
 > 📝 **Descrizione**

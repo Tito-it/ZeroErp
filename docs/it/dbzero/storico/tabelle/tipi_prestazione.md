@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/tipi_prestazione.md" %}
 # 📚 Tabella `tipi_prestazione`
 
 ## 🗂️ Campi principali

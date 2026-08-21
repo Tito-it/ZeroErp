@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/fatturazione_lotti_gruppi.md" %}
 # 📚 Tabella `fatturazione_lotti_gruppi`
 
 ## 🗂️ Campi principali
