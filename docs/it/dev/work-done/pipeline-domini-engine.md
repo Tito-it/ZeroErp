@@ -1,5 +1,77 @@
 # Progettazione Pipeline Vendite + Registry Multi-Dominio (WIP)
 
+> 🟢 **ARCHIVIATO — 2026-08-22.** Documento di **febbraio 2026** (ultima
+> revisione 19-02), verificato riga per riga contro il **codice e il DB vivi**.
+> Esito: **la decisione architetturale ha retto**, il backlog è per metà fatto e
+> per metà **superato da una decisione presa dopo**, e resta aperto un solo
+> capitolo (SDI), già censito altrove.
+>
+> ### Cosa ha retto
+>
+> | Concetto (§) | Verifica del 22-08 |
+> | --- | --- |
+> | **No a una pipeline DB universale, sì a pipeline per dominio** (§2, §7) | ✅ **retto, e confermato due volte**: dalla deprecazione `20260227-16` e dalla decisione presa con Tid il 2026-06-18 ([analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §A) |
+> | **Engine applicativo unico + registry a DB** (§4.1-bis) | ✅ **in esercizio**: `dbops.domini_task` (2 domini), `pipeline_task_registry` (21 task), `pipeline_task_registry_impl` (21 impl), più `fn_check_pipeline_task_registered` e `fn_get_pipeline_task_implementation`. Il registry è letto sia dal dispatch sia dall'**API di tracciamento** (`views_tracciamento.py`) |
+> | **Dispatch parametrico, mai `eval`; `params.fn` solo legacy** (§2.1, §4.2) | ✅ **retto alla lettera**: `params.fn` è ancora nel codice ma **non pilota il dispatch** — è una validazione che solleva `E_TASK_NOT_ALLOWED` se contraddice la funzione ammessa |
+> | **Governance runtime task/stato lotto** (§8, ultimo punto) | ✅ **fatta**: `fatturazione_pipeline_task_policy` (25 righe) e `fatturazione_lotti_task_runs` (194 corse) |
+> | **Canale unico di chiusura lotto via `chiude_lotto`** (§10.1) | ✅ **adottato e vivo** (`is_stato_doc_chiude_lotto` nel runner). Il task dedicato `close_lotto` è a registro con `attivo = false`, come voleva la decisione. ⚠️ Residuo minimo: l'handler Python `close_lotto_default` esiste ancora |
+>
+> ### Cosa è superato dai fatti
+>
+> ⛔ **§4.3 e §5.1 — la pipeline del dominio «attività fatturabili» non esiste
+> più, ed è una decisione, non un debito.** Il changeSet
+> `20260227-16-drop-attivita-pipeline-deprecated` — applicato il **2026-02-27**,
+> otto giorni dopo l'ultima revisione di questo documento — ha rimosso
+> **l'intero sottosistema**: 15 funzioni, 5 tabelle
+> (`attivita_fatturabili_pipeline`, `..._lotti`, `..._lotti_task_runs`,
+> `..._pipeline_task_policy`, `..._sorgenti_branch_policy`), 4 trigger e la
+> colonna `lotto_attivita_id` da tre tabelle. Motivo scritto nel changeSet:
+> *«sostituito da commesse v2»*. Il processo **commessa → AF** è stato
+> **collassato** in un unico task idempotente, `pull_attivita_da_commessa`, che
+> oggi è lo step 0 della pipeline FATTURAZIONE.
+> ⚠️ Quindi le spunte `[x]` del §4.3 («tabella introdotta», «funzioni
+> `fn_resolve_attivita_pipeline_step` / `fn_list_attivita_pipeline_steps`»)
+> descrivono oggetti **che non esistono**: erano vere quando scritte.
+>
+> ⛔ **§9 «gravità Alta: pipeline dominio attività non implementata»** — non è
+> più un rischio aperto: è la risposta. I due processi non sono simmetrici — AF
+> → fatturazione è un ciclo di vita **fiscale stateful** (che il motore lo
+> merita), commessa → AF è una **promozione idempotente** (che non lo merita).
+> *La macchina pesante era stata costruita davvero, ed è stata ritirata.*
+>
+> 🟡 **§4.1 «registry runtime Python multi-dominio (mappa per dominio)»** — non
+> fatto, e **non serve**: il dominio attivo è uno solo. Oggi c'è
+> `VenditePipelineRepository.DOMINIO_CODE = "FATTURAZIONE"` più una
+> `handler_registry` piatta di **14 handler**. Il presidio che quel punto voleva
+> dare è nato altrove e in forma migliore: il cancello DB↔Python
+> `backend/apps/vendite/tests/db/test_pipeline_task_handler_guardrail.py`
+> (2026-08-18), che confronta i task delle pipeline **vive** col dizionario
+> Python **vivo** — nato dopo un caso reale (`popola_fatture_rettifiche` in
+> pipeline con l'handler ancora da scrivere, e l'errore sarebbe arrivato *dopo*
+> la numerazione).
+> ℹ️ È lo stesso cancello che tiene il **registro del debito dormiente**: i 7
+> task `ATTIVITA_FATTURABILI` (`acquisisci_*`, `normalizza_`, `valida_`,
+> `deduplica_attivita`) sono a registro **senza handler** e sono i resti di
+> questo §4.3. Non fanno danno finché nessuno li mette in un JSON `processi`.
+>
+> ### Cosa resta aperto (e dove vive)
+>
+> 🟠 **Solo il capitolo SDI del §4.2**: builder del file XML, persistenza di
+> `nome_file`/esito, invio e registrazione eventi. Verificato: `vendite.fatture_sdi`
+> e `fatture_sdi_eventi` **esistono e sono vuote**, il task
+> `prepare_sdi_payload_lotto` è attivo in pipeline. È già censito in
+> `.codex/PROJECT_CONTEXT.md` («Builder XML SDI», «Persistenza esito SDI»), che
+> resta la sede: **non serve tenere aperto questo documento per quelle tre righe**.
+>
+> ### Dove è finita la materia viva
+>
+> * [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §A — perché commessa→AF **non** doveva diventare un dominio pipeline (è il seguito diretto di questo documento)
+> * [guide/fatturazione.md](../../guide/fatturazione.md) — la pipeline come è oggi, step per step
+> * [guide/analisi-tracciamento-processi-e-job.md](../../guide/analisi-tracciamento-processi-e-job.md) — l'osservabilità che legge il registry
+> * `docs/it/backend/vendite/manual/api_pipeline_task.md` — i cinque pezzi di cui è fatto un task
+>
+> ---
+
 ## 1) Scopo e origine
 
 Questo documento nasce per chiarire una decisione architetturale:
@@ -239,7 +311,15 @@ Vincolo operativo:
 
 ---
 
-## 4.3 Nuova pipeline attivita fatturabili (DB)
+## 4.3 ~~Nuova pipeline attivita fatturabili (DB)~~ — ⛔ **RITIRATA il 2026-02-27**
+
+> ⛔ **Tutto questo paragrafo è superato**, e non «da fare»: il sottosistema fu
+> **costruito e poi droppato** (`20260227-16-drop-attivita-pipeline-deprecated`,
+> applicato il 2026-02-27) perché sostituito da **commesse v2**. Le spunte `[x]`
+> qui sotto erano vere quando scritte e oggi nominano oggetti inesistenti.
+> Il processo commessa → AF vive ora in un solo task idempotente,
+> `pull_attivita_da_commessa`, step 0 della pipeline FATTURAZIONE.
+> Perché non va ricostruito: [analisi-orchestrazione-vendite-simmetrie.md](../work-done/analisi-orchestrazione-vendite-simmetrie.md) §A.
 
 ### Tabella `vendite.attivita_fatturabili_pipeline` (introdotta)
 
@@ -275,7 +355,11 @@ stessa logica di risoluzione configurazione, ma limitata al dominio attivita.
 
 ## 5) Logging e lotti
 
-## 5.1 Lotti separati
+## 5.1 ~~Lotti separati~~ — ⛔ **caduta con la 4.3**
+
+> ⛔ `vendite.attivita_fatturabili_lotti` **non esiste piu'** (droppata dal
+> `20260227-16`). Il principio «non vanno fusi» resta corretto in astratto, ma
+> oggi il lotto e' uno solo perche' il dominio pipeline e' uno solo.
 
 * `fatturazione_lotti` per pipeline fatture
 * `attivita_fatturabili_lotti` per pipeline attivita
@@ -338,6 +422,12 @@ Non vanno fusi.
 ## 9) Test gravita (stato corrente)
 
 ### Alta
+
+> ⛔ **Non e' piu' un rischio: e' la risposta.** Il dominio pipeline attivita' fu
+> costruito e **ritirato** il 2026-02-27, e la scelta e' stata riconfermata con
+> Tid il 2026-06-18. I due processi non sono simmetrici: AF -> fatturazione e' un
+> ciclo di vita **fiscale stateful** (il motore lo merita), commessa -> AF e' una
+> **promozione idempotente** (non lo merita).
 
 * [ ] Pipeline dominio `attivita_fatturabili` non ancora implementata.
   Impatto: non e` completata la convergenza su modello pipeline per l'intero flusso vendite.
