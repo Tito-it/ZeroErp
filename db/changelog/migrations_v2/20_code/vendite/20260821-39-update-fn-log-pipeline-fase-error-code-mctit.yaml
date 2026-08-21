@@ -1,0 +1,235 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CODICE ERRORE COMINCIA A ESSERE SCRITTO — 1/5, L'IMBUTO DEL LOG DI LOTTO.
+#   Lotto L1, passo P-2 del cantiere brief-db-liste-drawer-lotto.md (D-7).
+#
+# -- ⛔ IL FATTO: IL CODICE ERRORE NON LO SCRIVE NESSUNO ---------------
+#   Misurato il 2026-08-21 su tutta la doc auto-generata: NESSUNA funzione del
+#   database cattura `CONSTRAINT_NAME` — zero occorrenze. I punti che scrivono
+#   una segnalazione prendono `MESSAGE_TEXT` e `RETURNED_SQLSTATE` e mettono in
+#   meta {task, lotto_id, sqlstate, source}.
+#   ⚠️ Ma per un errore di dominio lo sqlstate e' SEMPRE `P0001`: come codice
+#   non distingue niente. Il codice vero — quello registrato a catalogo, quello
+#   su cui il backend mappa status HTTP e ui_action — viaggia nel campo
+#   `CONSTRAINT` della diagnostica, ed e' esattamente quello che nessuno legge.
+#   Verificato sul DB il 2026-08-21: `GET STACKED DIAGNOSTICS x = CONSTRAINT_NAME`
+#   dentro un EXCEPTION restituisce `E_PARAMETRO_INVALIDO`. C'e', va solo preso.
+#
+# -- LA CONSEGUENZA CHE HA FATTO NASCERE QUESTO PASSO -----------------
+#   Le liste `vendite.lotto_segnalazioni` e `vendite.lotto_fatture` chiedono una
+#   colonna «codice». Oggi non ha una sorgente: non e' una colonna dei due log e
+#   non e' in meta. O si comincia a scriverlo, o quella colonna nasce vuota per
+#   sempre.
+#
+# -- ⭐ IN `meta`, NON IN UNA COLONNA NUOVA ---------------------------
+#   E' un dato locale al log, non un asse di ricerca; e le righe gia' scritte
+#   non lo avranno MAI — il codice non e' ricostruibile a posteriori dal testo.
+#   Una colonna NOT NULL sarebbe una bugia sullo storico, una colonna nullable
+#   non aggiungerebbe niente a `meta`. La chiave e' `error_code`: e' libera
+#   (nessuna funzione la usa oggi) ed e' lo stesso nome della colonna omonima
+#   su `fatturazione_lotti_task_runs`.
+#
+# -- PERCHE' UN PARAMETRO E NON «LO METTE IL CHIAMANTE IN p_meta» -----
+#   Il chiamante potrebbe gia' oggi infilare la chiave nel `p_meta` che passa.
+#   Ma allora ogni chiamante sceglierebbe il proprio nome, e la lista dovrebbe
+#   leggerne cinque. Un parametro dichiarato e' il contratto: si vede nella
+#   firma, si trova con un grep, e chi legge sa che chiave aspettarsi.
+#
+# -- ⛔ NESSUNA VALIDAZIONE DEL CODICE CONTRO IL CATALOGO -------------
+#   Sarebbe la cosa piu' naturale da aggiungere ed e' proprio quella da NON
+#   fare: questa funzione scrive un LOG, e un log non deve poter fallire per un
+#   refuso nel codice che sta registrando. Fallirebbe nel ramo EXCEPTION di
+#   qualcun altro, cioe' esattamente dove si sta gia' gestendo un guasto, e il
+#   guasto originale sparirebbe sostituito dal nostro.
+#   Il presidio dei codici non dichiarati vive altrove (dbops.vw_codici_errore_da_dichiarare)
+#   e li' e' al posto giusto: guarda, non blocca.
+#
+# -- ⚠️ E' UN DROP + CREATE, ANCHE SE LA RETURNS NON CAMBIA -----------
+#   Aggiungere un parametro con DEFAULT non SOSTITUISCE la funzione: ne crea un
+#   OVERLOAD. Con la vecchia a sei parametri ancora viva, ogni chiamata a sei
+#   argomenti diventa AMBIGUA e fallisce. Quindi si droppa prima.
+#   ⚠️ Il parametro va IN CODA e non accanto a `p_meta` dove si leggerebbe
+#   meglio: cosi' le chiamate esistenti — le tre funzioni DB
+#   (fn_snapshot_fattura_lotto, fn_genera_scadenze_lotto,
+#   fn_log_lotto_esito_fatture) e la chiamata POSIZIONALE a sei argomenti del
+#   backend (pipeline_repository) — continuano a funzionare identiche. La
+#   posizione serve ai chiamanti, non alla logica.
+#
+# -- ⭐ TIPI ANCORATI CON `%TYPE` — FIRMA E DECLARE --------------------
+#   Il parametro nuovo va a `config.codici_errore.codice%TYPE` (= text): il
+#   valore E' un codice di quel catalogo, ed e' l'unico posto che ne definisce
+#   il dominio.
+#   ⚠️ Nota di passaggio: `fatturazione_lotti_task_runs.error_code` e' invece
+#   `character varying`. Disallineamento preesistente, non si tocca qui.
+#
+#   ⭐ E nello stesso giro si ancorano anche i SEI parametri storici, che erano
+#   scritti a tipo nudo. Verificato uno per uno che l'ancora risolva al tipo
+#   IDENTICO, altrimenti la chiamata POSIZIONALE a sei argomenti del backend
+#   smetterebbe di risolvere:
+#     p_lotto_id             -> vendite.fatturazione_lotti.id             = bigint
+#     p_stato_doc_fiscale_id -> config.stati_doc_fiscale.id               = bigint
+#     p_fase                 -> fatturazione_lotti_log.fase               = text
+#     p_status               -> fatturazione_lotti_log.status             = character(1)
+#     p_messaggio            -> fatturazione_lotti_log.messaggio          = text
+#     p_meta                 -> fatturazione_lotti_log.meta               = jsonb
+#   ⚠️ `p_stato_doc_fiscale_id` e' ancorato al CATALOGO e non alla colonna
+#   omonima della tabella di log: cio' che riceve e' un id di
+#   config.stati_doc_fiscale. Qui i due tipi coincidono, ma l'ancora dice da
+#   dove viene il valore — ed e' il motivo per cui altrove (20260821-38) la
+#   stessa scelta evita un cambio di tipo.
+#   ⚠️ `p_status` -> `character(1)`: e' esattamente cio' che `character` nudo
+#   significava, quindi la firma non cambia. Il trabocchetto noto e' l'opposto —
+#   `character` nudo dove si voleva testo libero.
+#
+# Origine: corpo da pg_get_functiondef del 2026-08-21 (doc auto-gen dbzero).
+# Seguono: P-3..P-6 (i quattro punti che scrivono vendite.fatture_log).
+# 🔵 RICHIESTA AL BE (BE-5, brief §4): `_insert_fatture_log` e `log_pipeline_fase`
+#   passino il codice quando ce l'hanno. Finche' non succede, il campo si
+#   popola solo dai punti DB — che sono la maggioranza dei fallimenti di task.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260821-39-update-fn-log-pipeline-fase-error-code-mctit.yaml
+
+    - changeSet:
+          id: 20260821-39-update-fn-log-pipeline-fase-error-code
+          author: mctit
+          runOnChange: false
+          validCheckSums:
+              - ANY
+          failOnError: true
+          comment: >
+              vendite.fn_log_pipeline_fase accetta p_error_code e lo scrive in meta->>'error_code'.
+              Primo dei cinque punti che cominciano a registrare il codice di dominio: oggi i log
+              conservano solo lo sqlstate, che per un errore di dominio e' sempre P0001 e non
+              distingue niente. DROP + CREATE: un parametro nuovo creerebbe un overload ambiguo.
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - sqlCheck:
+                          expectedResult: 1
+                          sql: |
+                              SELECT count(*) FROM pg_proc p
+                                JOIN pg_namespace n ON n.oid = p.pronamespace
+                               WHERE n.nspname = 'vendite' AND p.proname = 'fn_log_pipeline_fase'
+                    - sqlCheck:
+                          expectedResult: 1
+                          sql: |
+                              SELECT count(*) FROM information_schema.columns
+                               WHERE table_schema = 'config'
+                                 AND table_name   = 'codici_errore'
+                                 AND column_name  = 'codice'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ⚠️ DROP obbligatorio: il parametro nuovo creerebbe un OVERLOAD,
+                        --    e con la vecchia firma ancora viva ogni chiamata a sei
+                        --    argomenti diventerebbe ambigua.
+                        DROP FUNCTION IF EXISTS vendite.fn_log_pipeline_fase(
+                            bigint, bigint, text, character, text, jsonb);
+
+                        CREATE OR REPLACE FUNCTION vendite.fn_log_pipeline_fase(
+                            p_lotto_id             vendite.fatturazione_lotti.id%TYPE,
+                            -- ⚠️ Ancorato al CATALOGO degli stati e non alla colonna
+                            --    omonima della tabella di log: cio' che il parametro
+                            --    riceve e' un id di config.stati_doc_fiscale. Entrambe
+                            --    sono bigint, quindi la firma non cambia — ma l'ancora
+                            --    dice da dove viene il valore, che e' il suo mestiere.
+                            p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                            p_fase                 vendite.fatturazione_lotti_log.fase%TYPE,
+                            -- ⚠️ `status%TYPE` risolve a `character(1)`, che e' esattamente
+                            --    cio' che `character` nudo significava qui: la firma non
+                            --    cambia. (Il trabocchetto e' l'opposto — `character` nudo
+                            --    dove si voleva testo libero.)
+                            p_status               vendite.fatturazione_lotti_log.status%TYPE DEFAULT 'I'::bpchar,
+                            p_messaggio            vendite.fatturazione_lotti_log.messaggio%TYPE DEFAULT NULL,
+                            p_meta                 vendite.fatturazione_lotti_log.meta%TYPE DEFAULT '{}'::jsonb,
+                            -- ⭐ Ancorato al catalogo dei codici: il valore E' un codice
+                            --    di config.codici_errore, ed e' li' che il dominio e'
+                            --    definito. In coda per non spostare i sei esistenti.
+                            p_error_code           config.codici_errore.codice%TYPE DEFAULT NULL
+                        )
+                        RETURNS void
+                        LANGUAGE plpgsql
+                        SECURITY INVOKER
+                        AS $function$
+                        DECLARE
+                            v_tipo_lotto      vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                            v_stato_operativo vendite.fatturazione_lotti.stato_operativo%TYPE;
+                            v_error_code      config.codici_errore.codice%TYPE;
+                            v_meta            vendite.fatturazione_lotti_log.meta%TYPE;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            IF p_status IS NULL OR p_status NOT IN ('I', 'W', 'C') THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_status', 'valore', p_status), NULL::uuid, concat('p_status=', coalesce(p_status::text, 'NULL'), ' (ammessi: I, W, C)'));
+                            END IF;
+
+                            SELECT l.tipo_lotto, l.stato_operativo INTO v_tipo_lotto, v_stato_operativo
+                              FROM vendite.fatturazione_lotti l WHERE l.id = p_lotto_id;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                            END IF;
+
+                            -- ⭐ IL CODICE ERRORE ENTRA IN META.
+                            --    Normalizzato: una stringa di soli spazi e' assenza, non un
+                            --    codice — e in JSON diventerebbe una chiave presente e vuota,
+                            --    cioe' peggio che assente (la lista mostrerebbe una cella
+                            --    bianca dove «non lo so» e «non c'e'» si leggono uguali).
+                            --    ⚠️ NESSUNA verifica contro config.codici_errore: questa
+                            --    funzione scrive un LOG, e un log non deve poter fallire per
+                            --    un refuso nel codice che sta registrando. Fallirebbe dentro
+                            --    il ramo EXCEPTION di qualcun altro, sostituendo il guasto
+                            --    vero con il proprio.
+                            v_error_code := NULLIF(btrim(COALESCE(p_error_code, '')), '');
+                            v_meta       := COALESCE(p_meta, '{}'::jsonb);
+
+                            IF v_error_code IS NOT NULL THEN
+                                -- Il parametro VINCE su una chiave omonima gia' presente in
+                                -- p_meta: e' quello dichiarato in firma, ed e' l'unico che
+                                -- un lettore sa di dover cercare.
+                                v_meta := v_meta || jsonb_build_object('error_code', v_error_code);
+                            END IF;
+
+                            INSERT INTO vendite.fatturazione_lotti_log (
+                                lotto_id, data_ora, messaggio, status, disabilitato, fase,
+                                stato_doc_fiscale_id, tipo_lotto, stato_operativo, meta,
+                                data_insert, user_insert, data_update, user_update
+                            )
+                            VALUES (
+                                p_lotto_id, now(), COALESCE(p_messaggio, p_fase, 'pipeline'), p_status,
+                                FALSE, p_fase, p_stato_doc_fiscale_id, v_tipo_lotto, v_stato_operativo,
+                                v_meta, now(), current_user, now(), current_user
+                            );
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_log_pipeline_fase(bigint, bigint, text, character, text, jsonb, text)
+                        IS 'Scrive una riga di log di FASE su vendite.fatturazione_lotti_log, arricchendola col tipo lotto e lo stato operativo letti dalla testata. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-2): accetta p_error_code e lo scrive in meta->>''error_code''. Nasce da una misura: NESSUNA funzione del database cattura CONSTRAINT_NAME, quindi il codice di dominio — quello registrato a catalogo, su cui il backend mappa status HTTP e ui_action — non veniva conservato da nessuna parte, e i log tenevano solo RETURNED_SQLSTATE, che per un errore di dominio e'' SEMPRE P0001 e non distingue niente. ⭐ Il codice sta in `meta` e non in una colonna: e'' un dato locale al log, non un asse di ricerca, e le righe gia'' scritte non lo avranno mai — non e'' ricostruibile dal testo del messaggio — quindi una colonna NOT NULL mentirebbe sullo storico e una nullable non aggiungerebbe niente al jsonb. ⚠️ Un parametro dichiarato e non «lo mette il chiamante in p_meta»: cinque chiamanti sceglierebbero cinque nomi, e la lista che lo legge deve conoscerne uno. ⛔ NESSUNA validazione contro config.codici_errore, di proposito: questa funzione scrive un log, e un log non deve poter fallire per un refuso nel codice che registra — fallirebbe dentro il ramo EXCEPTION di qualcun altro, sostituendo il guasto vero con il proprio. Il presidio dei codici non dichiarati vive in dbops.vw_codici_errore_da_dichiarare, che guarda e non blocca. Il valore vuoto o di soli spazi e'' assenza e non entra in meta. Il parametro e'' il SETTIMO, in coda: le tre funzioni DB chiamanti e la chiamata posizionale a sei argomenti del backend continuano a funzionare identiche. ⚠️ E'' comunque un DROP + CREATE — un parametro nuovo crea un overload, e con la vecchia firma viva ogni chiamata a sei argomenti sarebbe ambigua.';
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    sql: |
+                        -- ⛔ Nessun ripristino automatico: tornare alla firma a sei
+                        --    parametri rimette il log di lotto nella condizione di non
+                        --    poter registrare il codice, e le righe scritte nel frattempo
+                        --    restano con una chiave meta che nessuno legge piu'.
+                        --    Se serve davvero, si riapplica 20260331-18 (ultima revisione
+                        --    della vecchia forma; nata in 20260128-04) sapendo questo.
+                        SELECT 1;

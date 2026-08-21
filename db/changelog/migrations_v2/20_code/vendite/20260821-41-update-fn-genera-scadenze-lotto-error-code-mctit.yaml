@@ -1,0 +1,292 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CODICE ERRORE COMINCIA A ESSERE SCRITTO — 3/5, LA GENERAZIONE DELLE SCADENZE.
+#   Lotto L1, passo P-4 del cantiere brief-db-liste-drawer-lotto.md (D-7).
+#   Gemello esatto di 20260821-40: stessa forma, altra funzione dello stesso giro.
+#
+# -- IL FATTO ---------------------------------------------------------
+#   Il ramo EXCEPTION di questa funzione cattura MESSAGE_TEXT e
+#   RETURNED_SQLSTATE e scrive in meta {task, lotto_id, sqlstate, source}.
+#   ⚠️ Ma cattura solo `raise_exception`, cioe' P0001: lo sqlstate registrato
+#   e' SEMPRE lo stesso valore, per costruzione. Come codice non distingue
+#   niente — e' una colonna che risponde sempre la stessa cosa.
+#   Il codice che distingue viaggia nel campo CONSTRAINT della diagnostica,
+#   dove lo mette script.fn_log_and_raise_error, ed e' il contratto su cui il
+#   backend mappa status HTTP e ui_action.
+#   ⭐ Verificato sul DB il 2026-08-21, non dedotto: dentro un EXCEPTION,
+#   `GET STACKED DIAGNOSTICS x = CONSTRAINT_NAME` restituisce il codice
+#   registrato (provato: E_PARAMETRO_INVALIDO). C'e', va solo preso.
+#
+# -- PERCHE' ADESSO ---------------------------------------------------
+#   Le liste `vendite.lotto_segnalazioni` e `vendite.lotto_fatture` chiedono
+#   una colonna «codice». Oggi non ha sorgente: non e' una colonna dei due log
+#   e non e' in meta. O si comincia a scriverlo, o quella colonna nasce vuota
+#   per sempre.
+#
+# -- ⚠️ FORWARD-ONLY, E SI VEDRA' -------------------------------------
+#   Le righe di log gia' scritte non hanno il codice e non lo avranno mai: dal
+#   testo del messaggio non e' ricostruibile. La colonna nascera' vuota su
+#   tutto lo storico, ed e' giusto che si veda — l'etichetta estesa della
+#   colonna dira' da quando e' popolata.
+#
+# -- `jsonb_strip_nulls`, E NON E' COSMESI ----------------------------
+#   `CONSTRAINT_NAME` e' vuoto quando l'errore NON viene da
+#   fn_log_and_raise_error (un CHECK violato, per dire). Senza lo strip la
+#   chiave esisterebbe con valore null, e in lista «non lo so» e «non c'e'»
+#   diventerebbero la stessa cella bianca. Le altre quattro chiavi non sono
+#   mai nulle (due letterali, lotto_id e' guardato, sqlstate c'e' sempre),
+#   quindi lo strip non puo' mangiare altro.
+#
+# -- CHE COSA NON CAMBIA ----------------------------------------------
+#   Firma, RETURNS TABLE, i contatori, il filtro sulle fatture oltre
+#   EMESSA, il sotto-blocco per fattura che non uccide il giro e il ritiro
+#   delle proprie segnalazioni al successo. E' un `CREATE OR REPLACE` puro:
+#   nessun parametro nuovo, quindi nessun overload e nessun DROP.
+#
+# Origine: corpo dalla doc auto-generata `dbzero` (l'oggetto vivo) col patch
+#   mirato applicato sopra — NON ricopiato a mano e NON ripreso da un YAML,
+#   che su questa funzione sarebbe stale (piu' changeSet sovrapposti).
+# Verifica: db/pgtap/vendite/test-fatture-log-error-code.sql (nuovo, T-2)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-41-update-fn-genera-scadenze-lotto-error-code-mctit.yaml
+
+  - changeSet:
+      id: 20260821-41-update-fn-genera-scadenze-lotto-error-code
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_genera_scadenze_lotto cattura CONSTRAINT_NAME e lo scrive in
+        meta->>'error_code' sul log di fattura. Il ramo EXCEPTION registrava solo lo
+        sqlstate, che qui e' sempre P0001 per costruzione (cattura solo raise_exception):
+        come codice non distingueva niente. jsonb_strip_nulls perche' CONSTRAINT_NAME e'
+        vuoto quando l'errore non viene da fn_log_and_raise_error.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_genera_scadenze_lotto'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_scadenze_lotto(p_lotto_id bigint, p_batch_size integer DEFAULT 1000)
+               RETURNS TABLE(fatture_count integer, deleted_rows integer, inserted_rows integer, skipped_rows integer, skipped_errore_rows integer, failed_rows integer)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: generare il piano rate su tutte le fatture LAVORABILI di
+              --        un lotto, senza che una fattura chiusa o una fattura
+              --        difettosa fermino le altre.
+              -- Uso:   task genera_scadenze_lotto dello step EMESSA.
+              -- Regole: due filtri DIVERSI e contati a parte — oltre soglia
+              --         (D-F) e in ERRORE (D-Q): il primo non ha lavoro da
+              --         fare, il secondo e' un rifiuto che tocca allo step a
+              --         monte riprovare.
+              DECLARE
+                  v_ids         BIGINT[];
+                  v_slice       BIGINT[];
+                  v_fattura_id  vendite.fatture.id%TYPE;
+                  v_start       INTEGER := 1;
+                  v_end         INTEGER := 0;
+                  v_max         INTEGER := 0;
+                  v_batch_size  INTEGER := 1000;
+                  v_count       INTEGER := 0;
+                  v_deleted     INTEGER := 0;
+                  v_inserted    INTEGER := 0;
+                  v_skipped     INTEGER := 0;
+                  v_skip_err    INTEGER := 0;
+                  v_failed      INTEGER := 0;
+                  v_tmp_del     INTEGER;
+                  v_tmp_ins     INTEGER;
+                  v_err_msg     TEXT;
+                  v_err_state   TEXT;
+                  -- ⭐ Il codice di dominio viaggia nel campo CONSTRAINT della
+                  --    diagnostica, ed E' un codice di config.codici_errore:
+                  --    ancorato li', che ne e' l'unica definizione di dominio.
+                  --    (I due vicini restano TEXT: il testo di un messaggio e
+                  --    uno sqlstate non sono valori di una colonna.)
+                  v_err_code    config.codici_errore.codice%TYPE;
+              BEGIN
+                  -- ===== Guard parametri =====
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_scadenze_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_genera_scadenze_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_batch_size', 'valore', p_batch_size),
+                          NULL::uuid, 'p_batch_size obbligatorio e > 0');
+                  END IF;
+
+                  v_batch_size := p_batch_size;
+
+                  -- ===== Chi si lavora e chi no, in una sola lettura =====
+                  -- I due motivi di salto restano distinti fino in fondo: per
+                  -- chi legge il cockpit, «chiusa» e «rotta» sono l'opposto.
+                  -- `critico_altrui`: esiste un log critico ATTIVO alzato da un
+                  -- task diverso da questo. Non si guarda `stato_esecuzione`,
+                  -- che dice solo «c'e' un critico» senza dire di chi: filtrare
+                  -- su quella colonna chiuderebbe fuori anche le fatture marcate
+                  -- da NOI, e il ritiro di D-Q non sarebbe piu' raggiungibile.
+                  WITH lavorabili AS (
+                      SELECT lf.fattura_id,
+                             s.codice_interno AS stato,
+                             EXISTS (
+                                 SELECT 1
+                                   FROM vendite.fatture_log fl
+                                  WHERE fl.fattura_id = lf.fattura_id
+                                    AND fl.status = 'C'
+                                    AND fl.disabilitato IS FALSE
+                                    AND fl.meta->>'task' IS DISTINCT FROM 'genera_scadenze_lotto'
+                             ) AS critico_altrui
+                        FROM vendite.fatturazione_lotti_fatture lf
+                        JOIN vendite.fatture f ON f.id = lf.fattura_id
+                        LEFT JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+                       WHERE lf.lotto_id = p_lotto_id
+                  )
+                  SELECT array_agg(l.fattura_id ORDER BY l.fattura_id)
+                             FILTER (WHERE l.stato IN ('DRAFT', 'EMESSA')
+                                       AND NOT l.critico_altrui),
+                         count(*)
+                             FILTER (WHERE l.stato IS NULL
+                                        OR l.stato NOT IN ('DRAFT', 'EMESSA')),
+                         count(*)
+                             FILTER (WHERE l.stato IN ('DRAFT', 'EMESSA')
+                                       AND l.critico_altrui)
+                    INTO v_ids, v_skipped, v_skip_err
+                    FROM lavorabili l;
+
+                  v_skipped  := COALESCE(v_skipped, 0);
+                  v_skip_err := COALESCE(v_skip_err, 0);
+
+                  IF v_ids IS NULL THEN
+                      IF v_skipped > 0 OR v_skip_err > 0 THEN
+                          PERFORM vendite.fn_log_pipeline_fase(
+                              p_lotto_id, NULL, 'Generazione scadenze', 'I',
+                              format('Nessuna fattura lavorabile: %s oltre EMESSA, %s in errore.',
+                                     v_skipped, v_skip_err),
+                              jsonb_build_object('task', 'genera_scadenze_lotto',
+                                                 'skipped', v_skipped,
+                                                 'skipped_errore', v_skip_err));
+                      END IF;
+
+                      RETURN QUERY SELECT 0, 0, 0, v_skipped, v_skip_err, 0;
+                      RETURN;
+                  END IF;
+
+                  v_max := array_length(v_ids, 1);
+
+                  WHILE v_start <= v_max LOOP
+                      v_end   := LEAST(v_start + v_batch_size - 1, v_max);
+                      v_slice := v_ids[v_start:v_end];
+
+                      FOR i IN 1..array_length(v_slice, 1) LOOP
+                          v_fattura_id := v_slice[i];
+                          v_count      := v_count + 1;
+
+                          BEGIN
+                              SELECT r.deleted_rows, r.inserted_rows
+                                INTO v_tmp_del, v_tmp_ins
+                                FROM vendite.fn_genera_scadenze_fattura(v_fattura_id) r;
+
+                              v_deleted  := v_deleted  + COALESCE(v_tmp_del, 0);
+                              v_inserted := v_inserted + COALESCE(v_tmp_ins, 0);
+
+                              -- Ritiro della PROPRIA segnalazione precedente: il
+                              -- problema e' risolto, la bandiera si abbassa.
+                              -- ⚠️ Filtro sul TASK, non sul nome della funzione:
+                              -- le funzioni si rinominano, il task_code no. Mai
+                              -- le righe di un altro task.
+                              UPDATE vendite.fatture_log fl
+                                 SET disabilitato = TRUE
+                               WHERE fl.fattura_id = v_fattura_id
+                                 AND fl.disabilitato IS FALSE
+                                 AND fl.status = 'C'
+                                 AND fl.meta->>'task' = 'genera_scadenze_lotto';
+
+                          EXCEPTION WHEN raise_exception THEN
+                              -- Solo gli errori di dominio (P0001) finiscono qui:
+                              -- un guasto di sistema ha altro SQLSTATE e deve
+                              -- continuare a salire.
+                              GET STACKED DIAGNOSTICS
+                                  v_err_msg   = MESSAGE_TEXT,
+                                  v_err_state = RETURNED_SQLSTATE,
+                                  -- ⭐ Il codice registrato a catalogo: e'
+                                  --    l'unica cosa che dice QUALE errore e'
+                                  --    stato, visto che lo sqlstate di un
+                                  --    errore di dominio e' sempre P0001.
+                                  v_err_code  = CONSTRAINT_NAME;
+
+                              v_failed := v_failed + 1;
+
+                              INSERT INTO vendite.fatture_log (
+                                          fattura_id, data_ora, messaggio,
+                                          status, disabilitato, meta)
+                              VALUES (v_fattura_id, now(),
+                                      format('Generazione scadenze non riuscita: %s', v_err_msg),
+                                      'C', FALSE,
+                                      jsonb_strip_nulls(jsonb_build_object(
+                                          'task',       'genera_scadenze_lotto',
+                                          'lotto_id',   p_lotto_id,
+                                          'sqlstate',   v_err_state,
+                                          -- ⚠️ strip_nulls: una chiave presente e
+                                          --    vuota si legge peggio di una assente
+                                          --    (in lista, «non lo so» e «non c'e'»
+                                          --    diventano la stessa cella bianca).
+                                          'error_code', v_err_code,
+                                          'source',     'fn_genera_scadenze_lotto')));
+                          END;
+                      END LOOP;
+
+                      v_start := v_end + 1;
+                  END LOOP;
+
+                  -- ===== Una nota sola, a fine giro, per chi e' stato saltato =====
+                  IF v_skipped > 0 OR v_skip_err > 0 THEN
+                      PERFORM vendite.fn_log_pipeline_fase(
+                          p_lotto_id, NULL, 'Generazione scadenze', 'I',
+                          format('%s fatture non toccate perche'' oltre EMESSA, %s perche'' in errore; %s lavorate.',
+                                 v_skipped, v_skip_err, v_count),
+                          jsonb_build_object('task', 'genera_scadenze_lotto',
+                                             'skipped', v_skipped,
+                                             'skipped_errore', v_skip_err,
+                                             'lavorate', v_count));
+                  END IF;
+
+                  RETURN QUERY SELECT v_count, v_deleted, v_inserted,
+                                      v_skipped, v_skip_err, v_failed;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_genera_scadenze_lotto(p_lotto_id bigint, p_batch_size integer)
+              IS 'Fase 4.2 — wrapper di lotto del generatore del piano rate, task genera_scadenze_lotto dello step EMESSA. Modello: fn_snapshot_fattura_lotto. DUE filtri distinti e contati a parte, e la distinzione e'' sostanziale (D-Q pt.2): le fatture oltre la soglia DRAFT/EMESSA si saltano perche'' non hanno lavoro da fare (D-F), quelle con stato_esecuzione = ERRORE si saltano e NON si riprovano, perche'' questo e'' uno step a VALLE del DRAFT e li'' la fattura e'' un rifiuto, non un candidato — riprovarla qui vorrebbe dire portare verso la numerazione un documento gia'' dichiarato difettoso. Un contatore unico direbbe «cinque saltate» senza distinguere cinque documenti chiusi da cinque rotti, che per il cockpit sono l''opposto. Il fallimento di UNA fattura non uccide il giro (D-Q pt.1): sotto-blocco per fattura, marcatura C su fatture_log, si cattura raise_exception e non others. Al successo il task ritira le PROPRIE segnalazioni filtrando su meta->>''task'' e mai sul nome della funzione (D-Q pt.3). ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-4): il ramo EXCEPTION cattura anche CONSTRAINT_NAME e lo scrive in meta->>''error_code''. Prima registrava solo RETURNED_SQLSTATE, che qui vale SEMPRE P0001 per costruzione — la clausola cattura `raise_exception` e nient''altro — quindi come codice non distingueva niente: una chiave che risponde sempre lo stesso valore. Il codice registrato a catalogo, quello su cui il backend mappa status HTTP e ui_action, viaggia nel campo CONSTRAINT della diagnostica, dove lo mette script.fn_log_and_raise_error. jsonb_strip_nulls e non jsonb_build_object nudo: CONSTRAINT_NAME e'' vuoto quando l''errore non viene da fn_log_and_raise_error (un CHECK violato, per dire), e una chiave presente con valore null in una lista si legge come una cella bianca indistinguibile da «non c''e''». Le altre quattro chiavi non sono mai nulle, quindi lo strip non puo'' mangiare altro. FORWARD-ONLY: le righe di log gia'' scritte non hanno il codice e non lo avranno mai, perche'' dal testo del messaggio non e'' ricostruibile.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: togliere la cattura del codice
+              --    riporta il log di fattura a registrare uno sqlstate che vale
+              --    sempre P0001, e la colonna «codice» delle liste torna senza
+              --    sorgente. Si riapplica 20260801-09 solo sapendo questo.
+              SELECT 1;

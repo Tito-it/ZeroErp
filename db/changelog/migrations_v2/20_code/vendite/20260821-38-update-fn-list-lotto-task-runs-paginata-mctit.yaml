@@ -1,0 +1,300 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TENTATIVI DEI TASK DIVENTANO UNA LISTA: PAGINAZIONE E ORDINAMENTO NEL DB.
+#   Lotto L1, passo P-1 del cantiere brief-db-liste-drawer-lotto.md (D-2).
+#
+# -- IL FATTO: DUE SORGENTI CHE DICONO COSE DIVERSE --------------------
+#   L'elenco dei task run di un lotto oggi esiste DUE volte:
+#     · vendite.fn_list_lotto_task_runs — ordina started_at ASC, NON filtra
+#       `attivo`, e non la chiama NESSUNO (misurato il 2026-08-21: l'unico
+#       riferimento vivo e' un pgTAP);
+#     · PipelineRepository.list_lotto_task_runs — legge la tabella diretta,
+#       ordina started_at DESC, filtra `attivo IS TRUE`, LIMIT 100 fisso.
+#   Il drawer mostra la seconda. La prima e' codice morto che, se qualcuno la
+#   usasse, darebbe un elenco diverso da quello a video: e' esattamente la
+#   duplicazione fra livelli che il progetto vieta.
+#
+# -- PERCHE' L'ORDINAMENTO VA QUI E NON NEL BE ------------------------
+#   Il tab diventa una `<ListaConfigurabile>` e serve una whitelist di
+#   ordinamento LEGGIBILE dal presidio scripts/gen_seed_lista.py, che sa gia'
+#   leggerla da una funzione DB cercando i rami `WHEN '<nome>' THEN` nella doc
+#   auto-generata (unico precedente: fn_list_commessa_attivita, 20260802-26).
+#   Tenerla in Python avrebbe voluto dire una terza forma da presidiare.
+#
+# -- ⚠️ I NOMI DELLA WHITELIST SONO I `campo_sorgente` DEL SEED --------
+#   Il presidio confronta le CHIAVI dei rami WHEN con il `campo_sorgente`
+#   delle colonne di ui.lista_colonna, non con il loro `codice` logico. Quindi
+#   qui stanno `task_stato`, `started_at`, `ended_at` — non `esito`, `inizio`,
+#   `fine`, che sono i codici della lista. Sbagliare livello fa nascere la
+#   lista con otto «frecce bugiarde» e il presidio rosso.
+#
+# -- ⚠️ IL DEFAULT E' `desc`, E NON E' UNA SVISTA ---------------------
+#   fn_list_commessa_attivita usa 'asc'. Qui il default e' 'desc' perche'
+#   l'ordine storico di QUESTA lista e' discendente (il BE ordina started_at
+#   DESC, id DESC) e il tentativo piu' recente e' quello che si guarda. Un
+#   refactor che rovescia in silenzio una lista che l'operatore conosce e' una
+#   regressione travestita da riordino.
+#
+# -- ⭐ IL TOTALE VIAGGIA CON LE RIGHE --------------------------------
+#   `count(*) OVER ()` sulla stessa query, non un secondo SELECT: la finestra
+#   e' valutata PRIMA di LIMIT/OFFSET, quindi il totale e' esatto, e i filtri
+#   restano scritti UNA volta sola. E' il difetto che il repository delle
+#   attivita' di commessa documenta su di se': «ogni filtro passato alla fn va
+#   ripetuto QUI o il totale del paginatore conta righe che la fn non
+#   restituirebbe».
+#   ⚠️ Il prezzo: su una pagina VUOTA (offset oltre la fine) non torna nessuna
+#   riga e quindi nemmeno il totale. E' la stessa proprieta' di
+#   `_query_paged_view` del BE, ed e' accettabile su una lista da drawer.
+#
+# -- `attivo`: VINCE IL BE, E NON E' UN NO-OP -------------------------
+#   Il filtro `attivo IS TRUE` non e' decorativo: vendite.fn_riporta_lotto_a_draft
+#   (20260803-12 / 20260804-05) spegne i task run della «vita precedente» del
+#   lotto. Senza il filtro, riportare un lotto a DRAFT farebbe ricomparire nel
+#   tab i tentativi di un giro che e' stato annullato.
+#   Il parametro `p_solo_attivi` esiste per poterli guardare di proposito, ma
+#   il default e' TRUE: cio' che l'operatore vede oggi non cambia.
+#
+# -- COMPATIBILITA' DELLA FIRMA ---------------------------------------
+#   I tre parametri esistenti restano IDENTICI — stesso nome, stesso tipo,
+#   stessa posizione — e i cinque nuovi sono appesi in coda con un DEFAULT:
+#   la chiamata per nome nel pgTAP test-fatturazione-pipeline-task-runtime.sql
+#   (riga 337, assert «list runs conta 2 righe») continua a funzionare
+#   identica, e le sue 2 righe sono entrambe `attivo = true`.
+#
+# -- ⭐ TIPI ANCORATI CON `%TYPE` — FIRMA, RETURNS TABLE E DECLARE -----
+#   ⚠️ E l'ancora di `p_stato_doc_fiscale_id` e' il CATALOGO, non la colonna
+#   della tabella. La colonna `fatturazione_lotti_task_runs.stato_doc_fiscale_id`
+#   e' `integer`, la PK `config.stati_doc_fiscale.id` e' `bigint`: cio' che il
+#   parametro riceve e' un id di quel catalogo, quindi l'ancora semantica e'
+#   la seconda — e per fortuna e' anche l'unica che non cambia il tipo del
+#   parametro (era gia' `bigint`), quindi nessuna chiamata esistente smette di
+#   risolvere. Il corpo continua a castare a `integer` dove confronta.
+#   ⚠️ Restano espliciti, e va detto invece di sembrare una dimenticanza:
+#   `p_limit`/`p_offset`/`p_order_by`/`p_order_dir` (la finestra con cui si
+#   guarda un dato non e' un dato), `total_count` (un conteggio) e i due
+#   `v_order_*` (frammenti di SQL da interpolare).
+#   ⚠️ Verificato che nessun ancoraggio cambi l'identita' della funzione con
+#   `pg_get_function_identity_arguments`: il typmod di `task_code`
+#   (`varchar(64)`) viene scartato nelle firme, quindi resta `character varying`.
+#
+# -- ⚠️ E' UN DROP + CREATE -------------------------------------------
+#   La RETURNS TABLE cambia (due colonne nuove: `attivo` e `total_count`) e
+#   CREATE OR REPLACE non la puo' cambiare. In piu' i parametri nuovi
+#   creerebbero un OVERLOAD, non una sostituzione: con otto parametri
+#   opzionali le due firme renderebbero ambigua ogni chiamata.
+#
+# Origine: corpo da pg_get_functiondef del 2026-08-21 (doc auto-gen dbzero).
+# Verifica: db/pgtap/vendite/test-fn-list-lotto-task-runs-paginata.sql (nuovo)
+#           + db/pgtap/vendite/test-fatturazione-pipeline-task-runtime.sql (non regredisce)
+# 🔵 RICHIESTA AL BE (BE-2, brief §4): chiamare questa funzione al posto della
+#   query diretta in PipelineRepository.list_lotto_task_runs, esponendo
+#   limit/offset/order_by/order_dir e portando `total_count` nell'envelope
+#   paginato. Finche' non succede, questa funzione resta la sorgente giusta
+#   NON usata: il difetto e' meta' chiuso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-38-update-fn-list-lotto-task-runs-paginata-mctit.yaml
+
+  - changeSet:
+      id: 20260821-38-update-fn-list-lotto-task-runs-paginata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_list_lotto_task_runs diventa paginata e ordinabile, con whitelist chiusa
+        leggibile dal presidio dei seed e fail-loud sul nome fuori whitelist. Filtra `attivo`
+        come fa il backend (i task run di un lotto riportato a DRAFT sono spenti di proposito)
+        e porta `total_count` con le righe. DROP + CREATE: la RETURNS TABLE cambia.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_list_lotto_task_runs'
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name   = 'fatturazione_lotti_task_runs'
+                     AND column_name  = 'attivo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ DROP obbligatorio: cambia la RETURNS TABLE, e i parametri
+              --    nuovi creerebbero un overload invece di sostituire.
+              DROP FUNCTION IF EXISTS vendite.fn_list_lotto_task_runs(
+                  bigint, bigint, character varying);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_task_runs(
+                  p_lotto_id             vendite.fatturazione_lotti_task_runs.lotto_id%TYPE,
+                  -- ⚠️ Ancorato al CATALOGO degli stati, non alla colonna della
+                  --    tabella: la colonna e' `integer`, la PK di
+                  --    config.stati_doc_fiscale e' `bigint`, e cio' che il
+                  --    parametro riceve e' un id di quel catalogo. L'ancora
+                  --    giusta e' quella semantica, e per fortuna e' anche
+                  --    quella che NON cambia il tipo (il corpo casta a integer
+                  --    dove confronta, come faceva prima).
+                  p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE DEFAULT NULL,
+                  p_task_code            vendite.fatturazione_lotti_task_runs.task_code%TYPE DEFAULT NULL,
+                  p_solo_attivi          vendite.fatturazione_lotti_task_runs.attivo%TYPE DEFAULT TRUE,
+                  -- ⚠️ Questi quattro NON si ancorano, e va detto invece di
+                  --    sembrare una dimenticanza: paginazione e ordinamento non
+                  --    sono valori di una colonna. `p_order_by` porta il NOME
+                  --    logico di una colonna, non il suo contenuto.
+                  p_limit                integer DEFAULT 500,
+                  p_offset               integer DEFAULT 0,
+                  p_order_by             text    DEFAULT NULL,
+                  p_order_dir            text    DEFAULT 'desc'
+              )
+              RETURNS TABLE (
+                  id                   vendite.fatturazione_lotti_task_runs.id%TYPE,
+                  lotto_id             vendite.fatturazione_lotti_task_runs.lotto_id%TYPE,
+                  pipeline_id          vendite.fatturazione_lotti_task_runs.pipeline_id%TYPE,
+                  stato_doc_fiscale_id vendite.fatturazione_lotti_task_runs.stato_doc_fiscale_id%TYPE,
+                  task_code            vendite.fatturazione_lotti_task_runs.task_code%TYPE,
+                  fase                 vendite.fatturazione_lotti_task_runs.fase%TYPE,
+                  tentativo            vendite.fatturazione_lotti_task_runs.tentativo%TYPE,
+                  task_stato           vendite.fatturazione_lotti_task_runs.task_stato%TYPE,
+                  started_at           vendite.fatturazione_lotti_task_runs.started_at%TYPE,
+                  ended_at             vendite.fatturazione_lotti_task_runs.ended_at%TYPE,
+                  error_code           vendite.fatturazione_lotti_task_runs.error_code%TYPE,
+                  error_message        vendite.fatturazione_lotti_task_runs.error_message%TYPE,
+                  meta                 vendite.fatturazione_lotti_task_runs.meta%TYPE,
+                  attivo               vendite.fatturazione_lotti_task_runs.attivo%TYPE,
+                  -- ⚠️ `bigint` esplicito: e' un CONTEGGIO, non il valore di una
+                  --    colonna. Non c'e' niente da ancorare, e va detto invece di
+                  --    sembrare una dimenticanza.
+                  total_count          bigint
+              )
+              LANGUAGE plpgsql
+              -- Esplicito: la tabella non ha RLS, ma le sue sorelle del giro
+              -- (fatture, fatturazione_lotti) ce l'hanno. Dichiarare INVOKER dice
+              -- che qui non si sta scavalcando niente di proposito.
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- ⚠️ `text` esplicito: sono FRAMMENTI DI SQL da interpolare,
+                  --    non valori di colonna. Non c'e' niente da ancorare.
+                  v_order_col    text;
+                  v_order_dir    text;
+                  v_solo_attivi  vendite.fatturazione_lotti_task_runs.attivo%TYPE;
+                  -- Idem: un limite e uno scostamento non sono un dato del
+                  --    dominio, sono la finestra con cui lo si guarda.
+                  v_limit        integer;
+                  v_offset       integer;
+              BEGIN
+                  -- Guard sul parametro obbligatorio: id nullo o non positivo e'
+                  -- un chiamante rotto, non un dato che una persona ha digitato.
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_task_runs', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- Normalizzazioni. Il tetto di 500 e' lo stesso che il backend
+                  -- applica oggi: si sposta il clamp dove sta la query, non si
+                  -- alza. Un limite nullo vale il default, non «tutte».
+                  v_solo_attivi := COALESCE(p_solo_attivi, TRUE);
+                  v_limit       := LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500);
+                  v_offset      := GREATEST(COALESCE(p_offset, 0), 0);
+
+                  -- ⭐ WHITELIST CHIUSA. I nomi sono i `campo_sorgente` delle
+                  --    colonne di ui.lista_colonna della lista
+                  --    `vendite.lotto_task_runs`: e' con quelli che il presidio
+                  --    dei seed confronta il flag `ordinabile`.
+                  --    Il ramo '' e' il default (nessun ordinamento chiesto) e non
+                  --    e' una colonna: il lettore del presidio lo salta apposta.
+                  v_order_col := CASE lower(btrim(COALESCE(p_order_by, '')))
+                      WHEN ''              THEN 'r.started_at'
+                      WHEN 'fase'          THEN 'r.fase'
+                      WHEN 'task_code'     THEN 'r.task_code'
+                      WHEN 'tentativo'     THEN 'r.tentativo'
+                      WHEN 'task_stato'    THEN 'r.task_stato'
+                      WHEN 'started_at'    THEN 'r.started_at'
+                      WHEN 'ended_at'      THEN 'r.ended_at'
+                      WHEN 'error_code'    THEN 'r.error_code'
+                      WHEN 'error_message' THEN 'r.error_message'
+                      ELSE NULL
+                  END;
+
+                  -- Fail-loud: un nome fuori whitelist NON ripiega sul default.
+                  -- Ripiegare in silenzio produce una lista ordinata in un modo
+                  -- che nessuno ha chiesto e che nessuno sa spiegare — lo stesso
+                  -- difetto della freccia che non ordina, visto dall'altro lato.
+                  IF v_order_col IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_task_runs', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_order_by', 'valore', p_order_by),
+                          NULL::uuid, concat('p_order_by non ammesso: ', p_order_by));
+                  END IF;
+
+                  -- ⚠️ Il default e' DESC (ordine storico della lista), non ASC.
+                  v_order_dir := CASE WHEN lower(btrim(COALESCE(p_order_dir, 'desc'))) = 'asc'
+                                      THEN 'ASC' ELSE 'DESC' END;
+
+                  -- ⚠️ NULLS LAST esplicito in ENTRAMBI i versi: quattro delle
+                  --    colonne ordinabili sono nullable (fase, ended_at,
+                  --    error_code, error_message) e sul DESC PostgreSQL mette i
+                  --    NULL in TESTA — i task mai finiti salirebbero per primi.
+                  --    Il pareggio si rompe su r.id nella stessa direzione, cosi'
+                  --    la pagina 2 non ripete righe della pagina 1.
+                  RETURN QUERY EXECUTE format($q$
+                      SELECT r.id,
+                             r.lotto_id,
+                             r.pipeline_id,
+                             r.stato_doc_fiscale_id,
+                             r.task_code,
+                             r.fase,
+                             r.tentativo,
+                             r.task_stato,
+                             r.started_at,
+                             r.ended_at,
+                             r.error_code,
+                             r.error_message,
+                             r.meta,
+                             r.attivo,
+                             count(*) OVER ()::bigint AS total_count
+                        FROM vendite.fatturazione_lotti_task_runs r
+                       WHERE r.lotto_id = $1
+                         AND ($2 IS NULL OR r.stato_doc_fiscale_id = $2::INTEGER)
+                         AND ($3 IS NULL OR r.task_code = $3)
+                         AND (NOT $4 OR r.attivo IS TRUE)
+                       ORDER BY %s %s NULLS LAST, r.id %s
+                       LIMIT $5 OFFSET $6
+                  $q$, v_order_col, v_order_dir, v_order_dir)
+                  USING p_lotto_id, p_stato_doc_fiscale_id, p_task_code,
+                        v_solo_attivi, v_limit, v_offset;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_lotto_task_runs(bigint, bigint, character varying, boolean, integer, integer, text, text)
+              IS 'Elenco PAGINATO dei task run di un lotto, con whitelist chiusa di ordinamento e fail-loud sul nome fuori whitelist. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-1): nasce per riunire DUE sorgenti che dicevano cose diverse — questa funzione (started_at ASC, nessun filtro su `attivo`, chiamata da nessuno) e la query diretta del backend (DESC, `attivo IS TRUE`, LIMIT 100 fisso), che e'' quella che il drawer mostrava. ⚠️ I nomi della whitelist sono i `campo_sorgente` delle colonne di ui.lista_colonna (task_stato, started_at, ended_at), NON i loro codici logici (esito, inizio, fine): e'' con i primi che scripts/gen_seed_lista.py confronta il flag `ordinabile`, e il presidio sa leggere una whitelist da funzione DB cercando i rami WHEN ... THEN in questa definizione. ⚠️ Il default di p_order_dir e'' `desc` e non `asc` come nella sorella fn_list_commessa_attivita: l''ordine storico di questa lista e'' discendente e rovesciarlo in silenzio sarebbe una regressione travestita da riordino. ⭐ `total_count` viaggia CON le righe (count(*) OVER (), valutato prima di LIMIT/OFFSET) invece che con un secondo SELECT: cosi'' i filtri sono scritti una volta sola — il difetto opposto e'' documentato dal repository delle attivita'' di commessa, dove ogni filtro va ripetuto nella query del conteggio. ⚠️ Il prezzo e'' che una pagina vuota non riporta il totale, come in _query_paged_view del backend. Il filtro `attivo` NON e'' decorativo: vendite.fn_riporta_lotto_a_draft spegne i task run della vita precedente del lotto, e senza il filtro riportare un lotto a DRAFT farebbe ricomparire i tentativi di un giro annullato; p_solo_attivi = false serve a guardarli di proposito. ⚠️ I tre parametri storici restano identici per nome, tipo e posizione: le chiamate esistenti non cambiano. ⭐ Tipi ancorati con %TYPE in FIRMA, RETURNS TABLE e DECLARE — con una scelta da leggere: p_stato_doc_fiscale_id e'' ancorato a config.stati_doc_fiscale.id (bigint) e NON alla colonna omonima della tabella, che e'' integer. Cio'' che il parametro riceve e'' un id di quel catalogo, quindi l''ancora semantica e'' quella; ed e'' anche l''unica che non cambia il tipo del parametro, quindi nessuna chiamata esistente smette di risolvere. Il corpo continua a castare a integer dove confronta. Restano espliciti, di proposito: p_limit / p_offset / p_order_by / p_order_dir (la finestra con cui si guarda un dato non e'' un dato, e p_order_by porta il NOME di una colonna, non il suo contenuto), total_count (un conteggio) e i due v_order_* (frammenti di SQL da interpolare).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico. Tornare alla firma a tre
+              --    parametri rimetterebbe in piedi la funzione che ordina ASC e
+              --    ignora `attivo`, cioe' la seconda verita' che questo
+              --    changeSet esiste per togliere. Se serve davvero, si riapplica
+              --    20260331-17 (ultima revisione della vecchia forma; nata in
+              --    20260218-07) sapendo questo.
+              SELECT 1;

@@ -8,7 +8,12 @@
 >
 > ✅ **Il binario §8-bis è arrivato in fondo: Gruppo A 30/34 il 2026-08-03**, e
 > i **4 file rimasti sono fermi per decisione** (i cassetti senza endpoint
-> paginato, §8-bis decisione 4), non per debito. Cronologia: `vendite.lotti` e
+> paginato, §8-bis decisione 4), non per debito.
+> ⭐ **Dal 2026-08-21 il bersaglio è 30/35**: `LottoDrawer.vue` è stato
+> riclassificato dal Gruppo B (i suoi tre tab sono tre liste, non tre
+> dettagli di un master) e il lavoro DB che lo precede sta in
+> [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
+> Cronologia: `vendite.lotti` e
 > il 1° lotto il 31-07; dal 2° al 5° l'01-08; il 6° fra l'1 e il 2 agosto
 > (`storico.audit_log` compresa); il **7°** (2 code + approvazioni prezzo +
 > `VersioneDrawer`) e l'**8°** (drawer commessa + le 5 liste delle 3 dashboard)
@@ -1012,7 +1017,7 @@ fuori. Fonderle produrrebbe una lista sbagliata e `codice` duplicati.
 - `core/components/RigheMasterDetailTable.vue`
 - `core/components/SearchDrawer.vue`
 
-#### Gruppo A — liste vere (34 file, hanno il paginator)
+#### Gruppo A — liste vere (35 file, hanno il paginator)
 
 Sono il bersaglio naturale di `<ListaConfigurabile>`: ordinate dalla più
 semplice alla più complessa, così le prime servono da rodaggio.
@@ -1053,6 +1058,19 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 03-08 | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
 | ✅ 01-08 | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
 | ✅ 03-08 | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
+| ⏳ 21-08 | `vendite/components/LottoDrawer.vue` — **3 liste su 3 tab**, dal Gruppo B | 11 | no |
+
+> ⏳ **`LottoDrawer` (2026-08-21) — riclassificato, non ancora convertibile.**
+> È il **35°** file del gruppo: i tre tab diventano tre liste
+> (`vendite.lotto_fatture`, `vendite.lotto_task_runs`,
+> `vendite.lotto_segnalazioni`), e il totale passa da 34 a 35.
+> ⛔ **Non è pronto, e per tre ragioni diverse**: il tab documenti ha
+> l'endpoint paginato ma una whitelist di **3 voci** (5 nuclei rotti); quello
+> dei task **non è paginato** e ha due sorgenti divergenti (una funzione DB
+> mai chiamata che ordina al contrario del BE); quello delle segnalazioni
+> **non ha righe** — esistono solo sei contatori.
+> Piano DB, passata BE richiesta e ordine dei lotti:
+> [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
 
 ##### `vendite.lotti` — ✅ CONVERTITA il 2026-07-31, validata in-app da Tid
 
@@ -1949,12 +1967,28 @@ vede guardando la pagina.
 > whitelist come diceva questa riga. Dettaglio, verifica e **le 4 consegne al
 > team DB** nella voce di registro §9 «Settimo lotto — la passata BE».
 
-#### Gruppo B — tabelle annidate (37 file, senza paginator)
+#### Gruppo B — tabelle annidate (36 file, senza paginator)
 
 Dentro drawer, dialog e pannelli. **Non** vanno su `ListaConfigurabile`:
 il loro equivalente è `RigheMasterDetailTable` / `SearchDetailTable`, o
 un wrapper sottile da estrarre alla seconda occorrenza
 ([[feedback_regola_del_2_estrai_bb]]).
+
+> ⚠️ **«Annidata» non è una categoria sola** (2026-08-21). Il criterio con cui
+> questo gruppo è stato formato — *tabella dentro un contenitore, senza
+> paginator* — mette insieme due cose diverse: la tabella di **righe** di un
+> documento (che è davvero un dettaglio del master, e resta qui) e la
+> **lista su tab** di un'entità che ha vita propria, popolazione arbitraria e
+> un endpoint suo. La seconda è una lista a tutti gli effetti: le manca il
+> paginator, non la natura.
+>
+> ⭐ **`LottoDrawer.vue` è il primo caso riclassificato**: i suoi tre tab
+> (documenti, tentativi dei task, segnalazioni) **passano al Gruppo A**.
+> Il seed e il lavoro DB che li precede — due dei tre tab oggi non hanno un
+> endpoint paginato, e uno non ha nemmeno una sorgente di righe — stanno in
+> [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
+> ⚠️ Se ne emergesse un secondo, la regola del 2 dice di **riscrivere il
+> criterio del gruppo**, non di spostare un'altra riga a mano.
 
 | ✓ | File | Col. |
 | --- | --- | --- |
@@ -1994,7 +2028,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `amministrazione/components/OperatorePermessiTab.vue` | 9 |
 | ☐ | `config/components/ImpostazioniSearchTable.vue` | 9 |
 | ☐ | `ui/components/ListaColonnaPanel.vue` | 9 |
-| ☐ | `vendite/components/LottoDrawer.vue` | 11 |
+| ➡️ | ~~`vendite/components/LottoDrawer.vue`~~ — **spostato al Gruppo A** il 2026-08-21 (3 liste su 3 tab) | 11 |
 
 ### Le opzioni, per quando sarà il momento
 
@@ -2018,6 +2052,40 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-08-21 · `LottoDrawer` esce dal Gruppo B — il bersaglio passa a 35
+
+Scrive il team DB, su richiesta BE/FE. La nota chiedeva tre
+`ui.lista_definizione` per i tab del drawer lotto «sullo stampo di
+`vendite.commesse_attivita`». Prima di seedare si è misurato il terreno, e la
+misura ha cambiato la forma del lavoro.
+
+**La riclassificazione.** `LottoDrawer.vue` stava nel **Gruppo B** — «tabelle
+annidate, non vanno su `ListaConfigurabile`». La decisione di Tid è di
+spostarlo: *«annidate anche nel senso di liste su diverse tab»*. Il criterio del
+Gruppo B mescolava due cose — le **righe di un documento** (dettaglio del
+master) e le **liste su tab** di entità con vita propria — e solo la prima
+appartiene davvero lì. Inventario e §8-bis aggiornati: **35 file, 30 convertiti**.
+
+⚠️ **Una riclassificazione non è una conversione**, e qui la distanza è grossa:
+delle tre liste **una sola** è un seed.
+
+| tab | stato reale |
+| --- | --- |
+| documenti | endpoint paginato ✅, whitelist di **3 voci** → **5 nuclei rotti** al presidio, e la chiave `nominativo` non coincide col `campo_sorgente` (stesso difetto di `anagrafiche.clienti`, maggio) |
+| tentativi task | **non paginato** (`LIMIT 100` fisso, `ORDER BY` inchiodato) e **due sorgenti divergenti**: `vendite.fn_list_lotto_task_runs` esiste, ordina al contrario, ignora `attivo`, e non la chiama nessuno |
+| segnalazioni | **non è una tabella**: sei contatori e tre `Tag`. Le righe non esistono — vanno costruite unendo `fatture_log` e `fatturazione_lotti_log` |
+
+⭐ **Un difetto trovato misurando, che vale a prescindere dalle liste**: il
+**codice errore non è scritto da nessuno**. I writer dei due log catturano
+`MESSAGE_TEXT` e `RETURNED_SQLSTATE`, mai `CONSTRAINT_NAME` — e per un errore di
+dominio lo sqlstate è sempre `P0001`. La colonna «codice» chiesta su due delle
+tre liste non ha una sorgente, e non è recuperabile sullo storico.
+
+Piano DB, le sei consegne BE/FE (di cui **tre bloccanti**) e l'ordine dei lotti:
+[brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
+Vale ancora il metodo delle volte precedenti: **la passata BE si chiede prima di
+comporre il lotto, non in consegna.**
 
 ### 2026-08-03 · Settimo e ottavo lotto: il Gruppo A arriva in fondo (30/34)
 
