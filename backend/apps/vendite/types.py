@@ -163,13 +163,20 @@ class LottoFattureRow(TypedDict):
     # puo' contenere di diverse, quindi «N fatture» e' «N documenti».
     natura_doc_codice: str | None
     natura_doc_descrizione: str | None
-    # ⭐ L'ULTIMO errore CRITICO attaccato a questa fattura (`fatture_log`
-    # status='C' non ritirato), NULL quando non ce n'e'. `stato_esecuzione` dice
-    # CHE la riga e' fallita; questi tre dicono perche', quando e con quale
-    # codice — l'informazione che prima viveva solo nel toast del momento.
+    # ⭐ L'ULTIMA segnalazione VIVA della fattura, DALLE PIU' GRAVI (D-6):
+    # tutti i livelli, non solo i critici, e a parita' vince la gravita' prima
+    # della data. NULL quando non ce n'e'. `stato_esecuzione` dice CHE la riga
+    # e' fallita; questi dicono perche', quando e con quale codice —
+    # l'informazione che prima viveva solo nel toast del momento.
+    # ⚠️ I nomi sono quelli che il seed dichiara come `campo_sorgente`: se
+    # divergono, la colonna si spunta a catalogo e resta vuota a video.
+    errore_codice: str | None
     errore_messaggio: str | None
-    errore_data_ora: str | None
-    errore_code: str | None
+    errore_quando: str | None
+    # ⚠️ Fuori dal seed, ma nel payload: senza il livello il frontend non puo'
+    # distinguere un avviso da un errore e mostrerebbe l'icona rossa su
+    # entrambi. Stesso ruolo di `natura_doc_codice`.
+    errore_livello: str | None
 
 
 class LottoListRow(TypedDict):

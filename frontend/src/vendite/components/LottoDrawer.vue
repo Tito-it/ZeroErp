@@ -575,8 +575,9 @@ function fatturaNumero(row) {
                            errore: nessun `v-if` da ricopiare qui. -->
                       <ErroreRigaInfo
                         :messaggio="data.errore_messaggio"
-                        :codice="data.errore_code"
-                        :quando="data.errore_data_ora"
+                        :codice="data.errore_codice"
+                        :quando="data.errore_quando"
+                        :livello="data.errore_livello"
                         :titolo="t('vendite.lotti.errore_documento_titolo')"
                       />
                     </span>

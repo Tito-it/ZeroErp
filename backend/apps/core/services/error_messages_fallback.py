@@ -803,6 +803,18 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO": "Esito default obbligatorio per la modalita' esito scelta.",
     "TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER": "Conflitto sullo step: ammesso solo uno fra avanzamento su proiezione e handler eventi.",
     "TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO": "Avanzamento su proiezione non ammesso su uno step DOMINIO.",
+    # ⚠️ I due `W_` qui sotto NON hanno una entry in `config.messaggi_errore`, ed
+    # e' una decisione del team DB (L1 del cantiere liste drawer lotto): quei
+    # punti scrivono la frase direttamente in `vendite.fatture_log.messaggio` e
+    # non passano da `script.fn_log_and_raise_error`, quindi un messaggio a
+    # catalogo sarebbe una seconda copia della stessa frase che nessuno compone.
+    # Il ripiego serve lo stesso — il cancello del terzo lato lo pretende per
+    # ogni codice VIVO — e vale come l'unica frase che il backend sa dire se
+    # quel codice arrivasse comunque da un percorso non previsto.
+    # 📌 Sono AVVISI: si registrano e il giro prosegue. Un `W_` sollevato
+    # sarebbe un 500, ed e' esattamente cio' che non devono fare.
+    "W_FONDO_MINIMO_NON_RIPRISTINABILE": "Minimo del fondo non ripristinabile: la quota resta come e'.",
     "W_MESSAGGIO_ARITA": "Messaggio di errore con segnaposti non valorizzati: anomalia tecnica di catalogo.",
+    "W_SCADENZE_TOTALE_NEGATIVO": "Totale a pagare negativo: nessun piano rate generato.",
     "W_TXID_NOT_REGISTERED": "Transazione non registrata: anomalia tecnica di tracciamento.",
 }

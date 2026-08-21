@@ -566,7 +566,14 @@ def fn_get_lotto_segnalazioni_summary(
 
 
 # Scopo: Restituisce i task run runtime del lotto per consultazione operativa (API/UI).
-def fn_get_lotto_task_runs(*, lotto_id: int, limit: int = 100) -> dict[str, object]:
+def fn_get_lotto_task_runs(
+    *,
+    lotto_id: int,
+    page_size: int = 100,
+    offset: int = 0,
+    order_by: str | None = None,
+    order_dir: str = "desc",
+) -> dict[str, object]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",
@@ -577,19 +584,58 @@ def fn_get_lotto_task_runs(*, lotto_id: int, limit: int = 100) -> dict[str, obje
         log_to_db=True,
     )
     ErrorManager.require(
-        1 <= int(limit) <= 500,
+        1 <= int(page_size) <= 500,
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
-        detail="limit deve essere compreso tra 1 e 500",
-        context={"lotto_id": lotto_id, "limit": limit},
+        detail="page_size deve essere compreso tra 1 e 500",
+        context={"lotto_id": lotto_id, "page_size": page_size},
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=True,
     )
+    ErrorManager.require(
+        offset >= 0,
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail="offset non puo' essere negativo",
+        context={"lotto_id": lotto_id, "offset": offset},
+        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        order_dir.lower() in ("asc", "desc"),
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail=f"order_dir={order_dir!r} non ammesso",
+        context={"lotto_id": lotto_id, "order_dir": order_dir},
+        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
+        log_to_db=False,
+    )
     repository = VenditePipelineRepository()
-    runs: list[LottoTaskRunRow] = repository.list_lotto_task_runs(lotto_id, limit=limit)
+    runs: list[LottoTaskRunRow]
+    runs, total_count = repository.list_lotto_task_runs(
+        lotto_id,
+        limit=page_size,
+        offset=offset,
+        order_by=order_by,
+        order_dir=order_dir,
+    )
+    # ⚠️ ENVELOPE PAGINATO, non piu' `{lotto_id, count, task_runs}`: `count`
+    # diceva quante righe erano ARRIVATE, cioe' la dimensione della pagina, e
+    # una lista che si paginava da sola l'avrebbe letto come «totale». Le
+    # chiavi sono quelle di tutte le altre liste (`_build_list_response`), cosi'
+    # il BB di lista non ha bisogno di sapere che questa e' speciale.
+    # 📌 `task_runs` resta come alias di `results` per il consumatore attuale
+    # del drawer: la conversione a `<ListaConfigurabile>` e' un altro passo
+    # (FE-2) e questo endpoint non deve romperlo nel frattempo.
+    pagina = max(1, (offset // page_size) + 1) if page_size else 1
+    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
     return {
         "lotto_id": lotto_id,
-        "count": len(runs),
+        "count": total_count,
+        "page": pagina,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "results": runs,
         "task_runs": runs,
     }
 

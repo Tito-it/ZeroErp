@@ -53,10 +53,34 @@ from apps.vendite.types import (
 logger = logging.getLogger(__name__)
 
 # Whitelist colonne ordinamento per list_lotto_fatture; mai interpolate direttamente.
-_SORT_COLUMNS: dict[str, str] = {
+# Colonne ordinabili dei DOCUMENTI del lotto: chiave esposta al FE ->
+# espressione SQL. Mai interpolate direttamente: solo i valori di questa mappa
+# entrano nella query.
+#
+# ⭐ LA CHIAVE E' IL NOME DEL CAMPO NEL PAYLOAD, e non un sinonimo. Il seed di
+# `ui.lista_colonna` dichiara `campo_sorgente`, e la lista configurabile manda
+# QUELLO come `order_by`: se la chiave qui si chiamasse diversamente, la
+# freccetta comparirebbe sull'intestazione e non ordinerebbe niente — un
+# controllo che si vede e non funziona, peggio di un controllo assente.
+# E' il motivo per cui `nominativo` e' diventato `ragione_sociale_completa`
+# (richiesta BE-1 del team DB, 2026-08-22): il vecchio nome non esisteva in
+# nessun payload.
+#
+# ⚠️ Il NUCLEO ordina sempre (regola delle liste standard): numero, data,
+# identificativo fiscale e stati. Prima ne erano ordinabili 3 su 11, cioe' la
+# lista sarebbe nata con cinque colonne di nucleo rotte.
+LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "fattura_id": "fllf.fattura_id",
-    "nominativo": "srd.ragione_sociale_completa",
+    "numero": "f.numero",
+    "serie": "f.serie",
+    "data": "f.data",
+    "ragione_sociale_completa": "srd.ragione_sociale_completa",
+    "id_fiscale_univoco_cf_piva": "srd.id_fiscale_univoco_cf_piva",
+    "natura_doc_descrizione": "ndf.descrizione",
+    "stato_doc_fiscale_descrizione": "sdf.descrizione",
+    "stato_esecuzione": "fllf.stato_esecuzione",
     "totale_doc": "f.totale_doc",
+    "totale_a_pagare": "f.totale_a_pagare",
 }
 
 # Aree della famiglia dash fatturazione, nell'ordine del funnel (brief
@@ -2135,7 +2159,7 @@ class VenditeRepository:
         safe_offset = max(0, int(offset))
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
-        sort_col = _SORT_COLUMNS.get(sort_by, "fllf.fattura_id")
+        sort_col = LOTTO_FATTURE_SORT_COLUMNS.get(sort_by, "fllf.fattura_id")
         safe_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
         order_clause = f"{sort_col} {safe_dir}"
         if sort_by != "fattura_id":
@@ -2170,26 +2194,40 @@ class VenditeRepository:
                 ON ndf.id = f.natura_doc_id
         """
 
-        # ⭐ L'ULTIMO ERRORE ATTACCATO ALLA RIGA (2026-08-21, richiesta di Tid).
-        # La colonna `stato_esecuzione` dice CHE la fattura e' fallita; da sola
-        # non dice perche', e il motivo lo aveva solo il toast del momento —
-        # cioe' nessuno, un minuto dopo.
-        # ⚠️ LATERAL e non un JOIN semplice: di log critici una fattura ne ha
-        # 0..n e ne serve UNO, il piu' recente. Con un JOIN normale una fattura
-        # con tre errori comparirebbe tre volte nell'elenco del lotto.
+        # ⭐ LA SEGNALAZIONE ATTACCATA ALLA RIGA (D-6 del brief liste drawer
+        # lotto, 2026-08-22). La colonna `stato_esecuzione` dice CHE la fattura
+        # e' fallita; da sola non dice perche', e il motivo viveva solo nel
+        # toast del momento — cioe' in nessun posto, un minuto dopo.
+        #
+        # ⭐ LA REGOLA E' «L'ULTIMA VIVA, DALLE PIU' GRAVI», e le due meta'
+        # contano entrambe: si guardano TUTTI i livelli, non solo i critici, e
+        # a parita' vince la GRAVITA' prima della data. Un documento con un
+        # avviso di ieri e nessun critico ha qualcosa da dire, e prima non lo
+        # diceva; uno con un critico di ieri e un avviso di oggi deve mostrare
+        # il critico, non l'avviso.
+        #
+        # ⚠️ LATERAL e non un JOIN semplice: di segnalazioni una fattura ne ha
+        # 0..n e ne serve UNA. Con un JOIN normale una fattura con tre
+        # segnalazioni comparirebbe tre volte nell'elenco del lotto.
         # ⚠️ Sta FUORI da `joins` di proposito: `count_sql` conta le righe del
         # lotto e non ha bisogno del messaggio — un LATERAL nel COUNT sarebbe
         # lavoro per niente su ogni pagina.
-        # 📌 `disabilitato IS NOT TRUE`: «chi alza la bandiera la abbassa» —
-        # un log ritirato dal task che l'ha scritto non deve piu' comparire.
+        # 📌 `disabilitato IS NOT TRUE`: «chi alza la bandiera la abbassa» — una
+        # segnalazione ritirata da chi l'ha scritta non deve piu' comparire.
         errore_lateral = """
             LEFT JOIN LATERAL (
-                SELECT fl.messaggio, fl.data_ora, fl.meta
+                SELECT fl.status, fl.messaggio, fl.data_ora, fl.meta
                   FROM vendite.fatture_log fl
                  WHERE fl.fattura_id = fllf.fattura_id
-                   AND fl.status = 'C'
                    AND fl.disabilitato IS NOT TRUE
-                 ORDER BY fl.data_ora DESC, fl.id DESC
+                 ORDER BY CASE fl.status
+                              WHEN 'C' THEN 3
+                              WHEN 'W' THEN 2
+                              WHEN 'I' THEN 1
+                              ELSE 0
+                          END DESC,
+                          fl.data_ora DESC,
+                          fl.id DESC
                  LIMIT 1
             ) err ON TRUE
         """
@@ -2229,8 +2267,14 @@ class VenditeRepository:
                 ndf.codice_interno      AS natura_doc_codice,
                 ndf.descrizione         AS natura_doc_descrizione,
                 err.messaggio           AS errore_messaggio,
-                err.data_ora            AS errore_data_ora,
-                err.meta                AS errore_meta
+                err.data_ora            AS errore_quando,
+                err.meta                AS errore_meta,
+                -- ⚠️ Il LIVELLO non e' una colonna del seed ma serve al FE per
+                -- scegliere la severita': senza, l'icona di riga sarebbe rossa
+                -- anche su un avviso, cioe' direbbe «errore» dove errore non
+                -- c'e'. Stesso ruolo di `natura_doc_codice`, colonna di
+                -- supporto invisibile del seed.
+                err.status              AS errore_livello
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
             {errore_lateral}
@@ -2273,11 +2317,12 @@ class VenditeRepository:
                     "natura_doc_codice": row[18],
                     "natura_doc_descrizione": row[19],
                     "errore_messaggio": row[20],
-                    "errore_data_ora": row[21].isoformat() if row[21] is not None else None,
-                    # Il `code` sta nel meta scritto da `marca_fattura_in_errore`:
-                    # serve al FE per dire di che errore si tratta, non solo che
-                    # c'e'. `jsonb_out` perche' dal cursore RAW arriva stringa.
-                    "errore_code": (jsonb_out(row[22]) or {}).get("code"),
+                    "errore_quando": row[21].isoformat() if row[21] is not None else None,
+                    # Il codice sta nel `meta` di chi ha scritto la riga: dice
+                    # DI CHE errore si tratta, non solo che c'e'. `jsonb_out`
+                    # perche' dal cursore RAW il jsonb arriva come stringa.
+                    "errore_codice": (jsonb_out(row[22]) or {}).get("error_code"),
+                    "errore_livello": row[23],
                 }
             )
         return result, total_count

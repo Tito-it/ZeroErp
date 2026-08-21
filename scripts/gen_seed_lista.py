@@ -258,9 +258,33 @@ WHITELIST_BE: dict[str, tuple] = {
     # controllo resta senza DB e continua a leggere il repository.
     "vendite.commesse_attivita": (
         "docs/it/dbzero/vendite/funzioni/fn_list_commessa_attivita.md", ""),
+    # ══════════════════════════════════════════════════════════════════
+    # Le tre liste del drawer lotto di fatturazione (L3, 2026-08-22)
+    # ══════════════════════════════════════════════════════════════════
+    # ⚠️ Registrate PRIMA che il seed esista: qui una voce in piu' e' inerte
+    # (il giro parte dalle liste seedate e cerca la loro whitelist), mentre una
+    # voce MANCANTE il giorno del seed fa saltare la lista — e una lista saltata
+    # viene dichiarata a posto senza essere stata guardata. Meglio in anticipo.
+    "vendite.lotto_fatture": ("apps/vendite/db/vendite_repository.py",
+                              "LOTTO_FATTURE_SORT_COLUMNS"),
+    # ⭐ Come `vendite.commesse_attivita`: la whitelist NON vive in Python, sta
+    # nel `CASE` di `vendite.fn_list_lotto_task_runs` — ordine e paginazione
+    # nella stessa funzione, e ordinare a valle ordinerebbe la pagina gia'
+    # estratta. Il backend non ne tiene uno specchio di proposito: sarebbe una
+    # terza verita' da mantenere allineata a mano.
+    "vendite.lotto_task_runs": (
+        "docs/it/dbzero/vendite/funzioni/fn_list_lotto_task_runs.md", ""),
+    "vendite.lotto_segnalazioni": (
+        "docs/it/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni.md", ""),
     # Le 5 dashboard tengono la whitelist come attributo di CLASSE, quindi
     # serve l'ancora: nello stesso modulo ne convivono cinque e senza ancora si
     # leggerebbe la prima che capita.
+    # ⚠️ Era l'UNICA lista seedata a restare fuori dal registro (trovata dal
+    # presidio stesso il 2026-08-22, mentre si registravano le tre del drawer
+    # lotto). Attributo di CLASSE come le dashboard, quindi serve l'ancora.
+    "vendite.fondi_fattura_da_decidere": ("apps/vendite/db/vendite_repository.py",
+                                          "FONDI_DA_DECIDERE_SORT_COLUMNS",
+                                          "class VenditeRepository"),
     "vendite.dash_aperto_documenti": ("apps/vendite/db/vendite_repository.py",
                                       "DASH_APERTO_SORT_COLUMNS", "class VenditeRepository"),
     "vendite.dash_backlog_documenti": ("apps/vendite/db/vendite_repository.py",

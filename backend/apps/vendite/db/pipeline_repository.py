@@ -561,7 +561,10 @@ class VenditePipelineRepository:
                 "livello": str(row[2]),
                 "messaggio": row[3],
                 "data_ora": row[4].isoformat() if row[4] is not None else None,
-                "codice": (jsonb_out(row[5]) or {}).get("code"),
+                # ⚠️ `error_code`: la chiave di D-7, scritta sia dalle quattro
+                # funzioni DB sia dal backend. Leggere `code` avrebbe mostrato
+                # solo meta' delle righe.
+                "codice": (jsonb_out(row[5]) or {}).get("error_code"),
                 "fase": row[6],
                 "fattura_id": None if row[7] is None else int(row[7]),
                 "ragione_sociale_completa": row[8],
@@ -571,60 +574,83 @@ class VenditePipelineRepository:
         ]
 
     # Scopo: Restituisce i task run runtime del lotto ordinati dal più recente per consultazione API/UI.
-    def list_lotto_task_runs(self, lotto_id: int, *, limit: int = 100) -> list[LottoTaskRunRow]:
+    def list_lotto_task_runs(
+        self,
+        lotto_id: int,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str = "desc",
+        solo_attivi: bool = True,
+    ) -> tuple[list[LottoTaskRunRow], int]:
+        # ⭐ LA SORGENTE E' LA FUNZIONE DB, non una query nostra (BE-2 del brief
+        # liste drawer lotto, 2026-08-22). Prima c'erano DUE verita' sullo
+        # stesso elenco: una `SELECT` qui, con ordine inchiodato e senza
+        # paginazione, e la funzione paginata a DB — e quella a video non era
+        # quella dichiarata. La whitelist di ordinamento vive ora in un posto
+        # solo, dentro la funzione, dove il presidio del DB la sa leggere.
+        #
+        # ⚠️ Ritorna la COPPIA (righe, totale): il totale arriva come colonna
+        # `total_count` ripetuta su ogni riga — e' la forma della funzione — e
+        # va letto dalla prima. Su zero righe non c'e' nessuna riga da cui
+        # leggerlo, quindi il totale e' zero per costruzione.
+        # ⚠️ `order_by` NON si valida qui: la funzione ha la sua whitelist e su
+        # un nome sconosciuto ripiega sul default. Ricopiarla nel backend
+        # sarebbe la terza verita'.
         safe_limit = max(1, min(int(limit), 500))
+        safe_offset = max(0, int(offset))
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT
-                    id,
-                    lotto_id,
-                    pipeline_id,
-                    stato_doc_fiscale_id,
-                    task_code,
-                    fase,
-                    tentativo,
-                    task_stato,
-                    started_at,
-                    ended_at,
-                    error_code,
-                    error_message,
-                    meta
-                FROM vendite.fatturazione_lotti_task_runs
-                WHERE lotto_id = %s
-                  AND attivo IS TRUE
-                ORDER BY started_at DESC, id DESC
-                LIMIT %s
+                    id, lotto_id, pipeline_id, stato_doc_fiscale_id,
+                    task_code, fase, tentativo, task_stato,
+                    started_at, ended_at, error_code, error_message,
+                    meta, total_count
+                FROM vendite.fn_list_lotto_task_runs(
+                    p_lotto_id   => %s,
+                    p_solo_attivi => %s,
+                    p_limit      => %s,
+                    p_offset     => %s,
+                    p_order_by   => %s,
+                    p_order_dir  => %s
+                )
                 """,
-                [lotto_id, safe_limit],
+                [
+                    int(lotto_id),
+                    bool(solo_attivi),
+                    safe_limit,
+                    safe_offset,
+                    order_by or None,
+                    order_dir,
+                ],
             )
             rows = cursor.fetchall()
-        result: list[LottoTaskRunRow] = []
-        for row in rows:
-            meta_raw = row[12]
-            if isinstance(meta_raw, str):
-                try:
-                    meta_raw = json.loads(meta_raw)
-                except json.JSONDecodeError:
-                    meta_raw = {}
-            result.append(
-                {
-                    "id": int(row[0]),
-                    "lotto_id": int(row[1]),
-                    "pipeline_id": None if row[2] is None else int(row[2]),
-                    "stato_doc_fiscale_id": None if row[3] is None else int(row[3]),
-                    "task_code": str(row[4]),
-                    "fase": row[5],
-                    "tentativo": int(row[6]),
-                    "task_stato": str(row[7]),
-                    "started_at": None if row[8] is None else row[8].isoformat(),
-                    "ended_at": None if row[9] is None else row[9].isoformat(),
-                    "error_code": row[10],
-                    "error_message": row[11],
-                    "meta": meta_raw if isinstance(meta_raw, dict) else {},
-                }
-            )
-        return result
+
+        total_count = int(rows[0][13]) if rows else 0
+        result: list[LottoTaskRunRow] = [
+            {
+                "id": int(row[0]),
+                "lotto_id": int(row[1]),
+                "pipeline_id": None if row[2] is None else int(row[2]),
+                "stato_doc_fiscale_id": None if row[3] is None else int(row[3]),
+                "task_code": str(row[4]),
+                "fase": row[5],
+                "tentativo": int(row[6]),
+                "task_stato": str(row[7]),
+                "started_at": None if row[8] is None else row[8].isoformat(),
+                "ended_at": None if row[9] is None else row[9].isoformat(),
+                "error_code": row[10],
+                "error_message": row[11],
+                # ⚠️ `jsonb` dal cursore RAW arriva come STRINGA (psycopg 3 non
+                # lo decodifica fuori dall'ORM): senza questa conversione il
+                # consumatore farebbe `str.get(...)`.
+                "meta": jsonb_out(row[12]) or {},
+            }
+            for row in rows
+        ]
+        return result, total_count
 
     # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
     def get_lotto_stato_doc_fiscale_id(self, lotto_id: int) -> int | None:
@@ -1160,9 +1186,15 @@ class VenditePipelineRepository:
                 # alzate dai task DB, che hanno un altro padrone e un'altra vita.
                 meta={
                     **(meta or {}),
-                    "code": code,
+                    # ⚠️ `error_code` e NON `code`: e' la chiave che scrivono
+                    # le quattro funzioni DB (D-7) ed e' quella che la lista 47
+                    # dichiara come `campo_sorgente`. Con `code` le righe del
+                    # backend sarebbero rimaste invisibili nella colonna
+                    # «codice» — presenti in tabella e vuote a video, che e' il
+                    # modo peggiore di sbagliare.
+                    "error_code": code,
                     "lotto_id": lotto_id,
-                    "origine": _ORIGINE_SEGNALAZIONE_BE,
+                    "scritto_da": _ORIGINE_SEGNALAZIONE_BE,
                 },
             )
 
@@ -1815,7 +1847,7 @@ class VenditePipelineRepository:
     #    segnalazioni critiche» — cioe' con un messaggio che parla d'altro,
     #    dopo che l'operatore aveva corretto la causa. Una porta a senso unico.
     #
-    # ⚠️ Ritira SOLO cio' che ha scritto il BE (`meta->>'origine'`): le
+    # ⚠️ Ritira SOLO cio' che ha scritto il BE (`meta->>'scritto_da'`): le
     #    segnalazioni dei task DB hanno un altro padrone e le ritira lui quando
     #    il suo problema e' risolto. Spegnerle qui vorrebbe dire nascondere un
     #    problema che nessuno ha toccato.
@@ -1847,7 +1879,7 @@ class VenditePipelineRepository:
                    AND fl.fattura_id = lf.fattura_id
                    AND fl.disabilitato IS FALSE
                    AND fl.status = 'C'
-                   AND fl.meta->>'origine' = %s
+                   AND fl.meta->>'scritto_da' = %s
                 """,
                 [int(lotto_id), _ORIGINE_SEGNALAZIONE_BE],
             )

@@ -426,7 +426,11 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         self.assertEqual(data["lotto_id"], 80)
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["task_runs"][0]["task_code"], "numera_fatture")
-        mocked_task_runs.assert_called_once_with(lotto_id=80, limit=50)
+        # ⚠️ `limit` resta il nome che il client manda e arriva come `page_size`:
+        # l'endpoint e' diventato paginato (BE-2) senza rompere il chiamante.
+        mocked_task_runs.assert_called_once_with(
+            lotto_id=80, page_size=50, offset=0, order_by=None, order_dir="desc",
+        )
 
     # Scopo: Verifica il caso `test_get_lotto_task_runs_v1_requires_jwt`.
     def test_get_lotto_task_runs_v1_requires_jwt(self):
