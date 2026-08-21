@@ -1,5 +1,25 @@
 # Indice attività aperte — PREVENTIVI
 
+> ✅ **CHIUSO il 2026-08-22 (decisione di Tid), spostato in `work-done/`.**
+> Motivo: la voce che teneva in piedi l'indice era la **1 — preventivi acquisti**,
+> e il dominio acquisti è **bloccato**: non è in previsione. Un indice di attività
+> aperte il cui unico item di sostanza è parcheggiato non è più un indice, è
+> storia.
+>
+> ⚠️ **Cosa NON si perde chiudendolo** — verificato prima di spostare, perché un
+> indice si chiude solo se i suoi residui vivono altrove:
+>
+> | Residuo | Dove vive ora |
+> | --- | --- |
+> | Preventivi **acquisti** (greenfield) | [sviluppo-preventivi-acquisti.md](../work-in-progress/sviluppo-preventivi-acquisti.md), che resta in `work-in-progress` come specifica |
+> | Validazione **E2E in-app di MOSTRA** su PREVENTIVI | [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md), header «Restano» |
+> | `flusso_id` sui link **COLLEGATO** (capability dormiente → **D4**, lavoro di design) | stesso brief §«bivio» + [brief-design-guida-rollout-multidominio.md](../work-in-progress/brief-design-guida-rollout-multidominio.md) D-B |
+> | Nota di stato del brief-padre da aggiornare | ✅ **già fatta**: la dicitura «MOSTRA implementata su PREVENTIVI» è stata rettificata nell'header del brief proiezione |
+>
+> Il testo sotto è quello del 2026-07-16 e si legge come storico.
+
+---
+
 > Generato il 2026-07-11 da una ricognizione dei documenti in `work-in-progress/`
 > (più i doc recenti in `work-done/` sul tema) incentrati sui preventivi.
 > Ordinato per importanza decrescente.
@@ -36,7 +56,7 @@ _Nessuna._ (l'ex punto 1 — revisione attiva nei cruscotti — è chiuso: vedi 
 
 
 NOta su acquisti ora non è in previsione di fare sviluppo dominio acquisti.
-### 1. [sviluppo-preventivi-acquisti.md](sviluppo-preventivi-acquisti.md)
+### 1. [sviluppo-preventivi-acquisti.md](../work-in-progress/sviluppo-preventivi-acquisti.md)
 
 **Descrizione**: specifica di sviluppo (scorporata il 2026-06-03) della direzione **acquisto** (RFQ, `acquisti.preventivi`): tabelle DB, macchina a stati, flusso verso ordine fornitore, backend e frontend. Feature greenfield interamente da avviare (la direzione vendita è completata e archiviata).
 
@@ -51,7 +71,7 @@ NOta su acquisti ora non è in previsione di fare sviluppo dominio acquisti.
 
 ## Importanza BASSA (residui minori su doc trasversali)
 
-### 2. [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md) — solo parte preventivi
+### 2. [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md) — solo parte preventivi
 
 **Descrizione**: brief proiezione stato dominio; PREVENTIVI è il pilota, con MOSTRA e GUIDA già implementate. Restano solo residui minori lato preventivi (il resto del doc riguarda altri domini).
 
@@ -60,7 +80,7 @@ NOta su acquisti ora non è in previsione di fare sviluppo dominio acquisti.
 - Validazione E2E in-app di MOSTRA su PREVENTIVI ← **unico residuo reale**; non verificabile da codice (attività in-app)
 - ~~Indice a espressione `((uid::text))` su `preventivi.uid`~~ → ✅ **CHIUSO** (verificato 2026-07-16): l'indice esiste in DB — `ix_preventivi_uid_text ON vendite.preventivi USING btree (((uid)::text))`
 
-### 3. [brief-design-guida-rollout-multidominio.md](brief-design-guida-rollout-multidominio.md) — solo parte preventivi
+### 3. [brief-design-guida-rollout-multidominio.md](../work-in-progress/brief-design-guida-rollout-multidominio.md) — solo parte preventivi
 
 **Descrizione**: brief roll-out GUIDA multidominio; il pilota PREVENTIVI è dichiarato chiuso ed E2E-verde. Restano item di coordinamento/pulizia firma.
 
@@ -77,7 +97,7 @@ NOta su acquisti ora non è in previsione di fare sviluppo dominio acquisti.
 
 ## Conclusi (storico, in work-done — nessun lavoro sostanziale aperto)
 
-### 4. [brief-db-preventivi-revisione-attiva-dashboard.md](../work-done/brief-db-preventivi-revisione-attiva-dashboard.md) — ✅ CHIUSO (verificato 2026-07-16)
+### 4. [brief-db-preventivi-revisione-attiva-dashboard.md](brief-db-preventivi-revisione-attiva-dashboard.md) — ✅ CHIUSO (verificato 2026-07-16)
 
 **Era**: importanza ALTA. Bug di vista — la vecchia revisione EMESSO riemergeva come "documento
 aperto" fantasma nei cruscotti fatturazione (Backlog + Situazione aperta).
@@ -123,12 +143,12 @@ combacia esattamente con l'atteso post-fix:
 
 Migration e pgTAP sono **committati** (`fd89c25d8`). Doc spostato in `work-done/` il 2026-07-16.
 
-### 5. [piano-be-fe-uniformita-pratica-preventivi.md](../work-done/piano-be-fe-uniformita-pratica-preventivi.md)
+### 5. [piano-be-fe-uniformita-pratica-preventivi.md](piano-be-fe-uniformita-pratica-preventivi.md)
 
 **Descrizione**: piano BE/FE uniformità pratica preventivi ↔ programma standalone. **✅ COMPLETO (2026-07-02)**: Fasi 0–4 + ritiro handler monolitico, smoke E2E verde.
 **Residuo unico** → ✅ **CHIUSO** (verificato in DB 2026-07-16): il prerequisito flusso `60 ← 50` **è già raddrizzato**, non è più `60 ← 40`. In `pratiche.template_flussi_prerequisiti` la catena 9009-9014 è ora lineare: `20←10`, `30←20`, `40←30`, `50←40`, **`60 INVIO_COMMESSA ← 50 CONFERMA_ORDINE`**. Nessun residuo.
 
-### 6. [analisi-uniformita-pratica-preventivi.md](../work-done/analisi-uniformita-pratica-preventivi.md)
+### 6. [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
 
 **Descrizione**: analisi delle divergenze pratica preventivi vs standalone, razionale del piano al punto 5. **✅ CHIUSA (2026-07-02)**, bug §3.1.1–§3.1.4 chiusi.
-**Residui**: il micro-punto DB `60 ← 50` → ✅ **CHIUSO** (stessa verifica del punto 5). Resta solo il backfill `data_apertura`, **rinvio esplicito e consapevole**, non un pendente da recuperare (vedi [nota-be-backfill-data-apertura-pratiche.md](../work-done/nota-be-backfill-data-apertura-pratiche.md), spostata in `work-done/` il 2026-07-11).
+**Residui**: il micro-punto DB `60 ← 50` → ✅ **CHIUSO** (stessa verifica del punto 5). Resta solo il backfill `data_apertura`, **rinvio esplicito e consapevole**, non un pendente da recuperare (vedi [nota-be-backfill-data-apertura-pratiche.md](nota-be-backfill-data-apertura-pratiche.md), spostata in `work-done/` il 2026-07-11).
