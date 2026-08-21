@@ -47,7 +47,7 @@
 | 🔴 **Difetti nuovi, armati dalla slice 1** | **Due** vincoli mai nati sulla stessa tabella (`centri_riscossione` tenuta a **due righe in tutto**, e un centro può essere due ruoli insieme) · il sync dei fondi **riscrive righe già postate** · un fondo interamente postato **si auto-annulla** · la testata riusata accorpa bonifici distinti · righe aggiunte a una testata `CHIUSA` escono dalla bilancia | §1.4 |
 | 📋 **Il piano, logico** | Slice **0** (terreno) → **1** (posting) → **2** (rata) → **3** (perimetro) → **4** (sistemazioni) | §2 |
 | ⭐ **Il piano, operativo** | **Sette lotti** — che cosa si scrive, si prova e si applica insieme. Non coincidono con le slice | §6 |
-| ✅ **Stato** | **LOTTI 1 e 2 CHIUSI** — 24 changeSet applicati il 21/08 (`-11`…`-34`), 6 pgTAP nuovi, doc manuale completa. Commit `4590ac62d` su `dev/db-tid`. ⭐ `pagamenti` ha ora un **vocabolario, due matrici di transizione e sei guard**. **Prossimo: lotto 3** (in `vendite`) | §6.7 · §6.9 |
+| ✅ **Stato** | **LOTTI 1, 2 e 3 CHIUSI** — 32 changeSet applicati (`-11`…`-34` il 21/08, `-48`…`-55` il 22/08), 7 pgTAP nuovi, doc manuale completa. ⭐ `pagamenti` ha un **vocabolario, due matrici e sei guard**; il fondo fattura ha il suo **quarto stato** e i difetti C-2/C-3/C-6 sono chiusi. **Prossimo: lotto 4 — la madre del posting** | §6.7 · §6.9 · §6.10 |
 | ✅ **Domande aperte** | **Zero** — tutte e nove chiuse il 21/08, tre **senza essere decise**. Resta il solo dettaglio **D15-e** | §5 |
 
 ---
@@ -301,7 +301,15 @@ esito nel riquadro di §2.0.
 
 ---
 
-#### C-2 🔴 Il sync dei fondi **riscrive righe già postate**
+#### C-2 ✅ ~~🔴 Il sync dei fondi **riscrive righe già postate**~~ — **CHIUSO** (lotto 3)
+
+> ✅ **Chiuso il 2026-08-22**, e non con la toppa che questa sezione discute:
+> il quarto stato del fondo (`ESEGUITO`, changeSet `-49`/`-50`/`-51`) porta
+> l'atto **fuori dal filtro `ASSEGNATO`** del ciclo, quindi il sync non arriva
+> più a quella riga. Resta come **rete** il fail-closed di S1-8 (`-52`), che
+> salta e registra un `W_` se l'invariante fosse rotta. L'analisi qui sotto
+> resta perché spiega perché il rimedio ovvio era sbagliato.
+
 
 `vendite.fn_sync_contabili_fondo_fattura` cerca la propria riga così:
 
@@ -384,7 +392,13 @@ rotta. Vedi §2.1.
 
 ---
 
-#### C-3 🔴 Un fondo interamente postato **si auto-annulla**
+#### C-3 ✅ ~~🔴 Un fondo interamente postato **si auto-annulla**~~ — **CHIUSO** (lotto 3)
+
+> ✅ **Chiuso il 2026-08-22**, dallo stesso quarto stato: un fondo registrato
+> non è più `ASSEGNATO`, quindi non entra nel ciclo che lo annullerebbe. E il
+> `-52` sposta la ricerca della riga **prima** del calcolo del saldo, così
+> nemmeno un'invariante rotta finirebbe nel ramo di annullamento.
+
 
 `vendite.fn_saldo_sorgente_fondo` scorpora il contributo del fondo stesso, e lo
 fa con questo filtro sullo stato della riga contabile:
@@ -601,7 +615,14 @@ stati finali resta **innocua**: non serve un terzo attributo sul catalogo.
 
 ---
 
-#### C-6 ⚠️ `obsoleto_dal` **non esiste** in `pagamenti`
+#### C-6 ✅ ~~⚠️ `obsoleto_dal` **non esiste** in `pagamenti`~~ — **CHIUSO** (lotti 2 e 3)
+
+> ✅ **Le due metà sono cadute in due lotti diversi**: la colonna
+> `obsoleto_dal` e il ritiro di `STORNATA` col lotto 2 (`-24`/`-30`); il
+> **fallback fail-open** del lookup di stato col lotto 3 (`-52`), dove uno
+> stato mancante è diventato un errore di configurazione invece di una riga
+> nello stato sbagliato.
+
 
 D9-a prescrive di ritirare `STORNATA` col pattern `obsoleto_dal`, *«non con
 `attivo = false`»*. ✅ La regola è giusta. ⚠️ La colonna **non c'è**:
@@ -890,15 +911,15 @@ Non tocca le rate. Non tocca il perimetro. Fa esistere **un movimento vero**, ch
 | **S1-5** | ✅ **SCRITTO** (`-26`) — `trgfn_vendite_contabili_guard_transizione` + gemello riga | `20_code` | `BEFORE UPDATE OF stato_id`, sul modello di `trgfn_resi_guard_transizione`. ⚠️ Un guard restrittivo va confrontato coi pgTAP esistenti **prima**; e una FK nuova fa nascere un guard generico che può **oscurare** quello scritto a mano (i BEFORE ROW girano in ordine alfabetico) |
 | **S1-6** | ✅ **SCRITTO** (`-27`, guidato dalla bandiera di catalogo) — Guard **stato ↔ nullità** sulla riga contabile | `20_code` | `BEFORE INSERT OR UPDATE` su `vendite_contabili_righe`. ⭐ È lo **stesso** guard che nella slice 2 dovrà reggere la rata: si scrive **una volta sola**, con la nullità già prevista. Forma in **Q-2** |
 | **S1-7** | ✅ **SCRITTO** (`-28`, tre mosse: nascere, riattivare, spostare) — Guard **riga sotto testata finale** | `20_code` | `BEFORE INSERT OR UPDATE` su `vendite_contabili_righe`: nessuna riga nuova o riattivata sotto una testata `is_final`. 🔴 **C-5** |
-| **S1-8** | 🛟 Rete: il sync **non lavora** una riga registrata | `20_code` (`vendite`) | ⚠️ **Non è più il rimedio** — dopo S1-15/S1-16 un fondo postato non è più `ASSEGNATO` e il ciclo non lo vede. Resta come **fail-closed** sull'invariante: se un fondo `ASSEGNATO` avesse una riga registrata, si **salta e si logga un `W_`**, non si aggiorna in silenzio. ⛔ Un `W_` si **logga**, non si solleva: questa funzione è su percorso vivo della pipeline |
-| **S1-9** | ~~`fn_saldo_sorgente_fondo` conta il contributo postato~~ → **doc + pgTAP** | doc + test | ✅ **Non serve più toccare la formula**: nessun chiamante le passa più un fondo postato (i tre filtrano `ASSEGNATO` o `DISPONIBILE`). Resta da **scrivere l'assunzione** nel `COMMENT` — *«lo scorporo vale finché la riga è in lavorazione, ed è garantito da ESEGUITO»* — e un pgTAP che asserisce l'invariante, perché un'assunzione non presidiata è la prossima trappola |
+| **S1-8** | ✅ **APPLICATO** (`-52`) — 🛟 Rete: il sync **non lavora** una riga registrata | `20_code` (`vendite`) | ⚠️ **Non è più il rimedio** — dopo S1-15/S1-16 un fondo postato non è più `ASSEGNATO` e il ciclo non lo vede. Resta come **fail-closed** sull'invariante: se un fondo `ASSEGNATO` avesse una riga registrata, si **salta e si logga un `W_`**, non si aggiorna in silenzio. ⛔ Un `W_` si **logga**, non si solleva: questa funzione è su percorso vivo della pipeline |
+| **S1-9** | ✅ **APPLICATO** (`-53`) — ~~`fn_saldo_sorgente_fondo` conta il contributo postato~~ → **doc + pgTAP** | doc + test | ✅ **Non serve più toccare la formula**: nessun chiamante le passa più un fondo postato (i tre filtrano `ASSEGNATO` o `DISPONIBILE`). Resta da **scrivere l'assunzione** nel `COMMENT` — *«lo scorporo vale finché la riga è in lavorazione, ed è garantito da ESEGUITO»* — e un pgTAP che asserisce l'invariante, perché un'assunzione non presidiata è la prossima trappola |
 | **S1-10** | ⭐ **La madre**: `pagamenti.fn_posta_contabile(...)` | `20_code` | Il cuore, e dal 2026-08-21 porta anche **ricevuta e dichiarazione** (D13). Dettaglio sotto |
 | **S1-11** | Indici e `fk_index_policy` | `80_data` + `90_end` | Seed `consentito = true` con `dll_command` valorizzato per `vendite_contabili_righe(fattura_id)`, `(contabile_id)` e `vendite_movimenti(fattura_id)`. 🔴 **C-7** |
 | **S1-12** | pgTAP | test | Vedi §2.4 |
-| **S1-14** | ⭐ `vendite_contabili_righe.fondo_source_id` — **colonna vera**, non JSON | `00_schema` + `20_code` | Colonna + FK a `vendite.fatture_fondi_fattura_source`, indice in `fk_index_policy`; i **tre** lettori esistenti (`fn_sync_contabili_fondo_fattura`, `fn_reset_fondi_fattura`, `fn_saldo_sorgente_fondo`) passano dalla colonna. Backfill banale: **0 righe**. Dettaglio sotto |
-| **S1-15** | ⭐ Quarto stato del fondo: **`ESEGUITO`** | `00_schema` + `20_code` | Il vocabolario è un **CHECK** (`chk_fondi_source_stato`), non una lookup: si sostituisce. Più la matrice: `ASSEGNATO → ESEGUITO` ammessa, `ESEGUITO` **terminale** (`trgfn_fondi_source_guard_transizione`) |
-| **S1-16** | ⭐ Il **trigger** che scrive `ESEGUITO` | `20_code` | Su `pagamenti.vendite_contabili_righe`, quando la riga entra in uno stato **registrato** e porta `fondo_source_id`. ⭐ È ciò che rende il rimedio **non dimenticabile**: scatta sul fatto, non su chi si ricorda |
-| **S1-17** | ⭐ Il reset diventa **DELETE** | `20_code` (`vendite`) | `fn_reset_fondi_fattura`: l'atto **non eseguito** si cancella invece di tornare `DISPONIBILE`; un `ESEGUITO` **non si tocca mai** — si segnala e basta. 🔴 Sparisce il ramo che scriveva `ANNULLATO` contraddittorio |
+| **S1-14** | ✅ **APPLICATO** (`-48`, `-52`, `-53`, `-54`) — ⭐ `vendite_contabili_righe.fondo_source_id` — **colonna vera**, non JSON | `00_schema` + `20_code` | Colonna + FK a `vendite.fatture_fondi_fattura_source`, indice in `fk_index_policy`; i **tre** lettori esistenti (`fn_sync_contabili_fondo_fattura`, `fn_reset_fondi_fattura`, `fn_saldo_sorgente_fondo`) passano dalla colonna. Backfill banale: **0 righe**. Dettaglio sotto |
+| **S1-15** | ✅ **APPLICATO** (`-49` il CHECK, `-50` la matrice) — ⭐ Quarto stato del fondo: **`ESEGUITO`** | `00_schema` + `20_code` | Il vocabolario è un **CHECK** (`chk_fondi_source_stato`), non una lookup: si sostituisce. Più la matrice: `ASSEGNATO → ESEGUITO` ammessa, `ESEGUITO` **terminale** (`trgfn_fondi_source_guard_transizione`) |
+| **S1-16** | ✅ **APPLICATO** (`-51`) — ⭐ Il **trigger** che scrive `ESEGUITO` | `20_code` | Su `pagamenti.vendite_contabili_righe`, quando la riga entra in uno stato **registrato** e porta `fondo_source_id`. ⭐ È ciò che rende il rimedio **non dimenticabile**: scatta sul fatto, non su chi si ricorda |
+| **S1-17** | ✅ **APPLICATO** (`-54`, DROP+CREATE: `updated_source` → `deleted_source`) — ⭐ Il reset diventa **DELETE** | `20_code` (`vendite`) | `fn_reset_fondi_fattura`: l'atto **non eseguito** si cancella invece di tornare `DISPONIBILE`; un `ESEGUITO` **non si tocca mai** — si segnala e basta. 🔴 Sparisce il ramo che scriveva `ANNULLATO` contraddittorio |
 | **S1-22** | ✅ **SCRITTO** (`-33`, insieme alla restrizione della riapertura) — ⭐ La quadratura col totale dichiarato scatta a **`VALIDATA`** | `20_code` | **D14-a-bis**: il controllo si sposta dal posting al gesto «ho finito di inserire», dove l'operatore è ancora nel flusso. ⚠️ E `VALIDATA → BOZZA` (riapertura per correggere) è **solo per la manuale** |
 | **S1-21** | ✅ **SCRITTO** (`-30` + CSV) — ⚠️ `SCARTATA` **non è più uno stato finale** | `80_data` | D14-a ammette `SCARTATA → SOSPESA`: il CSV la marca `is_final = true` e va corretto. ⛔ Un catalogo che dichiara una cosa mentre la matrice ne permette un'altra insegna il falso |
 | **S1-20** | ✅ **SCRITTO** (`-29`) — 🔴 Guard: **non si chiude una distinta con righe registrabili** | `20_code` | `BEFORE UPDATE OF stato_id` su `vendite_contabili`: il passaggio a uno stato finale è rifiutato se restano righe `is_postabile`. È la **seconda porta** di C-5, quella che capita davvero |
@@ -1569,7 +1590,7 @@ ricomporre lo script perdendo il wrapper significa scrivere davvero.
 | --- | --- | --- | --- | --- |
 | **1** | ✅ **CHIUSO** (21/08: `-11`…`-20` alle 19:38, `-21`…`-23` alle 20:07) · **Il terreno** | P-0 … P-8 (P-3 riassorbito in P-2) | Non dipende da niente e sblocca tutto: senza i centri, in CI non funzionano nemmeno fondi e compensazioni | ~~subito~~ → **fatto il 2026-08-21**, §6.7 |
 | **2** | ✅ **CHIUSO** (21/08, applicato alle 21:19) · **Vocabolario, transizioni e guard** | S1-1…S1-7 · S1-18…S1-22 | Tutto `pagamenti`, tutto dichiarativo: nessun verbo nuovo. Si collauda per **rifiuto** — cosa il database non lascia più fare | ~~dopo 1~~ → **scritto il 2026-08-21**, §6.9 |
-| **3** | **Il fondo si difende** | S1-14…S1-17 · S1-8 · S1-9 · 🔴 **+ il fail-open di C-6** | Tutto `vendite`. ⭐ **Deve precedere il lotto 4**: la difesa atterra prima della cosa da cui difende. ⚠️ **Aggiunto il 2026-08-21**: lo spegnimento del fallback fail-open del lookup stato (C-6) sta **qui** e non nel lotto 2, benché C-6 lo leghi al ritiro di `STORNATA`. Motivo: è dentro `fn_sync_contabili_fondo_fattura`, che **S1-8 riscrive comunque** — farlo due volte in due lotti consecutivi è spreco e rischio. 🔴 E il lotto 2 lo ha reso **peggiore**: con `richiede_abbinamento` una riga che ripiegasse su `IMPORTATA` (bandiera `false`) sfuggirebbe anche al guard nuovo, e resterebbe non registrabile per sempre senza che nessun errore lo dica | dopo 2 |
+| **3** | ✅ **CHIUSO** (22/08, applicato alle 00:36) · **Il fondo si difende** | S1-14…S1-17 · S1-8 · S1-9 · 🔴 **+ il fail-open di C-6** | Tutto `vendite`. ⭐ **Deve precedere il lotto 4**: la difesa atterra prima della cosa da cui difende. ⚠️ **Aggiunto il 2026-08-21**: lo spegnimento del fallback fail-open del lookup stato (C-6) sta **qui** e non nel lotto 2, benché C-6 lo leghi al ritiro di `STORNATA`. Motivo: è dentro `fn_sync_contabili_fondo_fattura`, che **S1-8 riscrive comunque** — farlo due volte in due lotti consecutivi è spreco e rischio. 🔴 E il lotto 2 lo ha reso **peggiore**: con `richiede_abbinamento` una riga che ripiegasse su `IMPORTATA` (bandiera `false`) sfuggirebbe anche al guard nuovo, e resterebbe non registrabile per sempre senza che nessun errore lo dica | ~~dopo 2~~ → **fatto il 2026-08-22**, §6.10 |
 | **4** | **La madre** | S1-10 · S1-11 · S1-12 · S1-13 | ⭐ È il lotto in cui **nasce il primo movimento**, e da lì `fn_get_saldo_fattura` smette di mentire | dopo 3 |
 | **5** | **La rata** | S2-1 … S2-8 | Slice 2 per intero | dopo 4 |
 | **6** | **Il perimetro** | S3-1 … S3-6 | Slice 3 per intero. ⚠️ La RLS su tabelle vuote non si collauda: conviene **dopo** che il lotto 4 ha prodotto dati | dopo 5 |
@@ -1747,10 +1768,21 @@ leggerà.
 
 ---
 
-### 6.8 ⭐ Da dove si riparte: il **lotto 3**
+### ~~6.8 ⭐ Da dove si riparte: il **lotto 3**~~ — ✅ **fatto** (storico)
 
 > ~~Il lotto 2~~ → ✅ **chiuso e applicato il 2026-08-21** (§6.9). Il terreno è
 > posato e `pagamenti` ha un vocabolario, due matrici e sei guard.
+>
+> ~~Il lotto 3~~ → ✅ **chiuso e applicato il 2026-08-22** (§6.10). Il fondo ha il
+> suo quarto stato e C-2, C-3 e C-6 sono chiusi.
+>
+> ⭐ **Da dove si riparte adesso: il LOTTO 4, «la madre»** — S1-10 … S1-13. È il
+> lotto in cui **nasce il primo movimento**, e da lì `fn_get_saldo_fattura`
+> smette di mentire. La difesa che doveva precederlo è atterrata: si può.
+>
+> ⚠️ E prima di scriverlo vanno lette le **tre code** che il lotto 3 lascia
+> aperte (§6.10, in fondo): due sono decisioni di dominio, una è una richiesta al
+> backend.
 
 🔴 **Il lotto 3 — «il fondo si difende» — non si spezza e non si salta.** È tutto
 in `vendite`, e **deve precedere il lotto 4**: applicare la madre del posting
@@ -1925,14 +1957,23 @@ sotto-select ripetuta, cioè due scelte indipendenti sulla stessa riga.
 attiva e agganciata, la distinta si chiude, il reset è bloccato come il test
 pretende.
 
-🔵 **Da rivedere — la domanda vera è di dominio, non di fixture.** `SOSPESA` è la
+✅ ~~🔵 **Da rivedere — la domanda vera è di dominio, non di fixture.**~~ — **CHIUSA
+il 2026-08-22 da Tid: il caso 14 si SDOPPIA.** La *contabilizzazione* (distinta
+chiusa, denaro mai registrato) resta qui, e lì `SOSPESA` smette di essere un
+ripiego e diventa la fixture **giusta** del caso che questo file racconta; la
+*registrazione* (riga `POSTATA` col suo movimento, atto `ESEGUITO`, reset che non
+lo tocca) vive in `db/pgtap/vendite/test-fondo-fattura-eseguito.sql`. Il
+ragionamento originale resta qui sotto perché è quello che ha portato alla
+risposta.
+
+~~`SOSPESA` è la
 via più corta; `POSTATA` sarebbe più fedele a «contabilizzata», che è ciò che il
 nome del caso 14 promette, ma pretende un `vendite_movimenti` (indice unico su
 `contabile_riga_id`) e attraversa gli altri due guard dello stesso lotto. Se il
 caso 14 deve collaudare *una distinta chiusa dopo che il denaro è stato
 registrato* — e non solo *una distinta chiusa* — allora la fixture giusta è
 `POSTATA` e questo è un rattoppo che regge il verde senza dire la cosa giusta.
-**Decisione di dominio, non mia.**
+**Decisione di dominio, non mia.**~~
 
 ~~⛔ **Perimetro NON chiuso**: gli altri file di `vendite/` che toccano
 `pagamenti.vendite_contabili` non sono stati controllati — verifica a carico di
@@ -1967,6 +2008,118 @@ i pgTAP che nominano gli oggetti toccati, non in quelli della sua cartella.
 
 ---
 
+### 6.10 ✅ Lotto 3 — CHIUSO
+
+**Otto changeSet** (`20260821-48` … `-55`), **due** pgTAP (uno nuovo, uno
+riscritto), **due** codici errore nuovi. ✅ **Applicati da Tid il 2026-08-22 alle
+00:36**, doc auto-generata rigenerata nello stesso giro.
+
+⭐ **Che cosa è cambiato, in una riga:** il fondo fattura ha una **tappa di ciclo
+di vita in più** — `ESEGUITO` — e da lì i tre difetti che il posting avrebbe
+armato (C-2, C-3, C-6) non sono più *raggiungibili*, invece di essere tamponati
+uno per uno.
+
+| Passo | File |
+| --- | --- |
+| **S1-14** | `00_schema/pagamenti/20260821-48-alter-vendite-contabili-righe-fondo-source` — la colonna + la FK |
+| **S1-15** | `00_schema/vendite/20260821-49-alter-fondi-source-stato-eseguito` (il CHECK) + `20_code/vendite/20260821-50-update-trgfn-fondi-source-guard-transizione-eseguito` (la matrice) |
+| **S1-16** | `20_code/pagamenti/20260821-51-create-trgfn-righe-marca-fondo-eseguito` |
+| **S1-8 + S1-14 + C-6** | `20_code/vendite/20260821-52-update-fn-sync-contabili-fondo-colonna-e-rete` |
+| **S1-9 + S1-14** | `20_code/vendite/20260821-53-update-fn-saldo-sorgente-fondo-colonna-e-invariante` |
+| **S1-17 + S1-14** | `20_code/vendite/20260821-54-recreate-fn-reset-fondi-fattura-delete-atto` (DROP + CREATE) |
+| indice | `80_data/changelog/20260821-55-upsert-dbops-fk-index-policy-fondo-source` + il suo CSV |
+| codici | append di **2 codici `W_`** a `80_data/sql/config/codici_errore.csv` (nessun loader nuovo) |
+| test | `db/pgtap/vendite/test-fondo-fattura-eseguito.sql` (13, **nuovo**) · `test-fondi-fattura.sql` (21 → **22**, riscritto) |
+
+**Verifica post-migrate**
+
+| Misura | Esito |
+| --- | --- |
+| `test-fondo-fattura-eseguito.sql` (nuovo) | ✅ **13/13** |
+| `test-fondi-fattura.sql` (riscritto) | ✅ **22/22** |
+| Gli **11 altri** pgTAP che nominano gli oggetti toccati | ✅ tutti verdi |
+| `pgtap-baseline.sh pagamenti` | ✅ **0 rossi su 10** |
+| `pgtap-baseline.sh vendite` (204 file) | ✅ 5 rossi, **tutti già in baseline** — nessuna regressione |
+
+⭐ **Il perimetro della prova è stato costruito col `grep`, non con l'`ls`** — è
+la lezione che il lotto 2 aveva pagato con un rosso lasciato in `vendite`. Gli
+oggetti toccati sono stati cercati in **tutta** la suite: 13 file, non i 2 della
+cartella.
+
+#### ⭐ Le decisioni prese scrivendo
+
+1. 🔵→✅ **Il caso 14 si SDOPPIA** (decisione di Tid, 2026-08-22). Era la domanda
+   di dominio lasciata aperta dal lotto 2: *«se il caso 14 deve collaudare una
+   distinta chiusa dopo che il denaro è stato registrato, la fixture giusta è
+   `POSTATA`»*. La risposta è che sono **due fatti diversi**, e vogliono due
+   file:
+   * `test-fondi-fattura.sql` — la **contabilizzazione**: distinta chiusa con
+     dentro denaro **mai registrato**, il reset è bloccato dalla chiusura. Qui
+     `SOSPESA` smette di essere un rattoppo e diventa la fixture *giusta*;
+   * `test-fondo-fattura-eseguito.sql` — la **registrazione**: riga `POSTATA` col
+     suo movimento, l'atto passa a `ESEGUITO`, il reset non lo tocca.
+2. ⭐ **La rete di S1-8 interroga la MATRICE, non un elenco di stati scritto
+   dentro la funzione** — ed è ciò che l'ha resa più larga del difetto che
+   l'aveva chiesta. Chiedendo «la matrice ammette il ritorno ad `ABBINATA` da
+   dove la riga si trova?» copre anche una riga **`SCARTATA`**, caso che nessuno
+   aveva visto: `SCARTATA → ABBINATA` non è ammessa, quindi il sync la forzerebbe
+   e il guard del lotto 2 farebbe **cadere il ricalcolo della fattura** con un
+   errore che accusa il ricalcolo.
+3. ⚠️ **Il blocco «distinta CHIUSA» del reset ora ignora `attivo`**, e non è una
+   svista: con la FK nuova una riga *archiviata* in una distinta chiusa
+   impedirebbe comunque di cancellare l'atto. Meglio un blocco che lo **dice**
+   che una violazione di vincolo che lo scopre.
+4. ⭐ **`updated_source` → `deleted_source`** (DROP + CREATE: `RETURNS TABLE` non
+   si cambia con `CREATE OR REPLACE`). Un nome che descrive un comportamento
+   finito è peggio di un nome generico, perché si legge come se fosse stato
+   verificato. ✅ **Nessun consumatore da avvisare, misurato**: `backend/` non
+   nomina la funzione, e l'unico chiamante DB la invoca con `PERFORM`.
+5. 🔴 **La frase del reset bloccato diceva il falso.** Era *«Minimo non
+   ripristinabile: gia postato»*, mentre la condizione è che la **distinta è
+   chiusa** — cioè proprio il caso in cui il denaro **non** è stato registrato.
+   Adesso i due casi hanno due frasi e due codici, e la `cause` nel meta
+   distingue le due varianti del secondo.
+6. ⛔ **`ESEGUITO` NON entra in `uq_fondi_source_atto_vivo_automatico`.** Quel
+   predicato descrive gli atti **ancora in gioco**, e un atto eseguito è
+   concluso — come `ANNULLATO`, che già ne sta fuori. La garanzia «un atto solo
+   per sorgente» non viene comunque da lì: viene da `fn_fondo_fattura_proponibile`
+   passo 2, che blocca la proposta se un atto esiste **in qualunque stato**.
+7. ⭐ **`%TYPE` esteso a FIRMA e RETURNS**, su richiesta di Tid — nei DECLARE
+   c'era già in parte. ⚠️ Un `%TYPE` in firma è una **fotografia**: se
+   risolvesse a un tipo diverso nascerebbe un **overload** invece di una
+   sostituzione, e con un DEFAULT le chiamate diventerebbero ambigue.
+   ✅ Verificato **eseguendo la forma nuova in una transazione annullata** prima
+   di scriverla: `bigint`/`numeric`, identici alla firma viva, e il DEFAULT si
+   conserva. Le colonne dei `RETURNS TABLE` restano `integer` perché sono
+   **contatori**, non il riflesso di una colonna; gli array restano `bigint[]`
+   perché `colonna%TYPE[]` non esiste in PostgreSQL.
+
+#### ⚠️ Che cosa il lotto 3 NON ha fatto
+
+* **la madre del posting** (S1-10 … S1-13) → è il **lotto 4**, e adesso può
+  partire: la difesa che doveva precederla è atterrata;
+* **gli indici di C-7** su `vendite_contabili_righe(fattura_id)`, `(contabile_id)`
+  e `vendite_movimenti(fattura_id)` → vanno col lotto 4 (S1-11), insieme a chi
+  li userà. Qui è entrato **solo** l'indice della FK nuova.
+
+#### 📮 Le code che il lotto lascia aperte
+
+* **BE-1** (cumulativa con lotti 1 e 2) — rigenerare `error_policies_generated.py`:
+  i due `W_` nuovi non hanno classe lato backend finché non si rigenera;
+* 🔵 **decisione di dominio** — `ASSEGNATO → DISPONIBILE` resta **ammessa** dalla
+  matrice del fondo, ma dal lotto 3 **non la percorre più nessuno** (il reset
+  cancella). Toglierla è un candidato dichiarato: si decide, non si fa passando;
+* 🔵 **decisione di dominio, il rubinetto in `vendite`** — le tre funzioni
+  toccate sollevano ancora `E_PARAMETRO_INVALIDO` passando come valore il **nome
+  del parametro PL/pgSQL**: è esattamente il difetto che il lotto 1 ha tolto da
+  tutta `pagamenti`. Non è stato corretto qui perché
+  `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (953) è dichiarato **a catalogo per le
+  funzioni di `pagamenti`**, e usarlo da `vendite` contraddirebbe la sua nota.
+  Le due strade sono coniare il gemello (`E_VENDITE_CHIAMATA_NON_VALIDA`) o
+  allargare il perimetro del 953 — ed è una scelta, non una rifinitura.
+
+---
+
 ### ~~6.6 Il primo passo concreto~~ — ✅ **fatto** (storico)
 
 > ~~Lotto 1, e comincia da P-0~~ → ✅ **P-0 è fatto** (2026-08-21): nessun altro
@@ -1990,6 +2143,7 @@ segue), **P-6/P-7** (codici errore, poi la bonifica degli `E_GENERICO`), **P-8**
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-22 | ✅ **LOTTO 3 CHIUSO E APPLICATO** (00:36) — otto changeSet (`20260821-48` … `-55`), un pgTAP nuovo (13 asserzioni), uno riscritto (21 → 22), due codici `W_`. ⭐ **Il fondo fattura ha il suo quarto stato, `ESEGUITO`**, e con esso i difetti **C-2, C-3 e C-6 smettono di essere raggiungibili** invece di essere tamponati: i tre lettori dei fondi filtrano tutti sullo stato, quindi un atto che esce da `ASSEGNATO` esce da tutti e tre senza che nessuno di loro cambi. Il legame riga → atto è diventato una **colonna con FK** (`fondo_source_id`) e il reset **cancella** l'atto non eseguito invece di riaprirlo. Verifica: 13/13 e 22/22, gli **11 altri** pgTAP che nominano gli oggetti toccati tutti verdi, baseline `pagamenti` 0 su 10 e `vendite` 5 su 204 tutti già noti — **nessuna regressione** (riverificata da Tid). ⭐ **Il perimetro della prova è stato costruito col `grep` e non con l'`ls`**, che è la lezione pagata dal lotto 2. 🔵→✅ **La domanda di dominio del caso 14 è chiusa da Tid: si SDOPPIA** — la *contabilizzazione* (distinta chiusa, denaro mai registrato) resta in `test-fondi-fattura.sql` e lì `SOSPESA` smette di essere un rattoppo e diventa la fixture giusta; la *registrazione* (riga `POSTATA` col suo movimento, atto `ESEGUITO`, reset che non lo tocca) vive in `test-fondo-fattura-eseguito.sql`. ⭐ **Sette decisioni di forma prese scrivendo** (§6.10), e due meritano di essere lette: (1) la **rete di S1-8 interroga la matrice** delle transizioni invece di un elenco di stati, e per questo copre un caso che nessuno aveva visto — una riga `SCARTATA`, da cui `ABBINATA` non è raggiungibile, avrebbe fatto **cadere il ricalcolo della fattura**; (2) la frase del reset bloccato **diceva il falso** — «gia postato» dove il denaro *non* era stato registrato — e adesso i due casi hanno due frasi e due codici. ⚠️ **`%TYPE` esteso a firma e RETURNS su richiesta di Tid**, con l'anti-overload verificato eseguendo la forma nuova in una transazione annullata (un `%TYPE` in firma è una fotografia: se risolvesse a un tipo diverso affiancherebbe invece di sostituire). 📮 Restano **tre code**: BE-1 cumulativa (rigenerare `error_policies_generated.py`) e due decisioni di dominio — togliere `ASSEGNATO → DISPONIBILE`, che ormai non percorre più nessuno, e il **rubinetto `E_PARAMETRO_INVALIDO` in `vendite`**, dove le tre funzioni toccate passano ancora il nome del parametro come valore del messaggio |
 | 2026-08-21 (dopo l'apply del lotto 2) | 🔴 **UN ROSSO LASCIATO IN `vendite` DA S1-20 — corretto, e da rivedere.** Dopo l'apply, `db/pgtap/vendite/test-fondi-fattura.sql` è rosso su `E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE`. ⚠️ **Non era in baseline: era verde**, quindi è un rosso nuovo. ⭐ **La paternità è stata verificata, non dedotta**: il guard è a `orderexecuted` 13257 e i due changeSet del cantiere *liste drawer lotto* (`-38`, `-39`) a 13273/13274 — dopo — e quel test non nomina nulla di ciò che toccano. È **il guard che funziona**, gemello esatto del caso già pagato *dentro* il lotto 2 (`test-vendite-contabili-stato-obbligatorio.sql`): la fixture portava la distinta a `CHIUSA` mentre la riga nata dal sync del fondo era ancora `ABBINATA`, l'**unico** stato con `is_postabile = true`. 📌 **La lezione è sul perimetro della prova, non sul guard**: quel caso stava in `pagamenti/` e la prova del lotto lo trovò; questo sta in `vendite/`, e la prova non ci è arrivata — *un guard nuovo su una tabella di `pagamenti` va grepato su TUTTA la suite, perché chi chiude una distinta a mano può vivere in un altro dominio*. Correzione: la riga passa a **`SOSPESA`** prima della chiusura (una delle due uscite che l'HINT del guard indica) e la distinta si sceglie **una volta** in una temp table invece che con una sotto-select ripetuta — **20/20 verdi**. ⭐ Non snatura il caso 14 perché `fn_reset_fondi_fattura` blocca su `c.stato_id = CHIUSA` e `cr.attivo IS TRUE` e **non guarda lo stato della riga**. 🔵 **Da rivedere, ed è una domanda di dominio**: se il caso 14 deve collaudare *una distinta chiusa dopo che il denaro è stato registrato*, la fixture giusta è `POSTATA` e `SOSPESA` è un rattoppo che tiene il verde senza dire la cosa giusta. ⛔ **Perimetro non chiuso**: gli altri file di `vendite/` che toccano `vendite_contabili` li verifica Tid (sua richiesta). Dettaglio in §6.9 |
 | 2026-08-21 (notte, 2) | ✅ **LOTTO 2 CHIUSO E APPLICATO** (dalle 21:19) — undici changeSet (`20260821-24` … `-34`), quattro pgTAP nuovi, sette codici errore (954…960), **otto `manual/` nuovi e quattro aggiornati**. Prima del migrate: **31/31 verdi** in transazione annullata, i **sei** pgTAP esistenti di `pagamenti` restano verdi col lotto iniettato, database invariato, `liquibase validate` pulito, cancelli statici verdi, arità dei segnaposti 0 disallineamenti su 54 chiamate. 🔴 **La prova ha trovato una regressione, ed era il guard che funziona**: `test-vendite-contabili-stato-obbligatorio.sql` chiudeva una distinta con una riga ancora `ABBINATA`, cioè esattamente ciò che S1-20 ora vieta — fixture adeguata **nello stesso lotto** (§6.2 punto 6), e il test ci ha guadagnato in precisione perché `ANNULLATA` è il caso in cui il filtro su `is_final` ha davvero un mestiere. ⭐ **Quattro decisioni di forma prese scrivendo.** (1) La colonna «bagaglio» di D14-a diventa una **bandiera di catalogo** (`richiede_abbinamento`) invece di un elenco dentro il guard — stessa scelta di S1-5 per le transizioni, e ⚠️ **non era derivabile** da `is_final`, perché `ABBINATA` pretende l'abbinamento e non è finale. (2) 🔴 **`origine` è a TRE valori**: misurando *chi crea davvero le distinte* è emerso che l'unico creatore esistente — il sync dei fondi — **non è né manuale né automatica**, e con due soli valori il **100% delle distinte di oggi** porterebbe una parola falsa. Nasce **`GENERATA`** (Tid), e la decisione è scritta nel **brief madre, D12-b-bis** — non qui, perché le decisioni si aggiornano solo là. (3) Le matrici nascono `{"manuale": false}`: `check_i18n_keys.py` cerca le `label_key` dei seed `transizioni_stati_*` nei locales e **fallisce** se mancano, e il frontend di `pagamenti` è due `.gitkeep`. ⚠️ Non vuol dire «automatica», vuol dire «non ancora esposta come pulsante». (4) Il seed delle matrici è **SQL con lookup per `codice_interno`, non un CSV con gli id**: il CSV degli stati-riga non porta la colonna `id`, e inciderli in un CSV di transizioni li renderebbe un contratto **per sbaglio**. ⭐ **E una domanda si è chiusa da sola**: `fn_sync_contabili_fondo_fattura` crea già le sue distinte in `VALIDATA`, che è ciò che D14-a-bis prescrive — il codice era avanti al brief. ⚠️ **Verificato invece di dedotto**, su una domanda che poteva rompere il migrate: aggiungere colonne a un CSV condiviso **non rompe il mirror vecchio** — quindici CSV del progetto lo fanno già, fra cui `template_flussi.csv` con lo stesso `obsoleto_dal`. ⚠️ Il fail-open di C-6 **si sposta al lotto 3**, dove S1-8 riscrive comunque quella funzione — e il lotto 2 lo ha reso **peggiore**, perché una riga che ripiegasse su `IMPORTATA` sfuggirebbe anche al guard nuovo |
 | 2026-08-21 (notte) | ✅ **LOTTO 1 CHIUSO — applicato in DUE migrate**, `-11`…`-20` alle 19:38 e `-21`…`-23` alle 20:07, entrambi eseguiti da Tid. Baseline riverificata: `pagamenti` **0 rossi su 6**, `vendite` 5 su 199 tutti già noti, `codici-errore-baseline` 0 accumuli / 0 ristretti. ⭐ **`pagamenti` non solleva più né `E_GENERICO` (erano 25) né `E_PARAMETRO_INVALIDO`.** 🔴 **Il secondo migrate esiste per una correzione che Tid ha imposto due volte, e la seconda è più profonda della prima.** Primo giro: il valore passato nel `VARIADIC` era un **nome di parametro PL/pgSQL**, cioè un messaggio di qualità `E_GENERICO` sotto un codice registrato — nasce `E_CONTABILE_DATI_OBBLIGATORI` (952) per i due dati che l'operatore compila. Secondo giro: **anche i sei guard rimasti su `E_PARAMETRO_INVALIDO` dovevano uscirne**, perché quel codice *«esiste ancora perché il BE deve gestire vecchie funzioni che non sono riuscito a correggere»* — ed è esattamente ciò che dicono la **D11** (*«denominatore sicuro + note, e cantiere suo»*: split **rimandato**) e la **§9.1** di `brief-db-be-classe-codici-errore` (*«rincorrere gli esistenti senza chiudere il rubinetto è la forma in cui questi registri non calano mai»*). Nasce `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (953, **TECNICO** → 500), col precedente di `E_VENDITE_PRICING_ESITO_ASSENTE` (19/08, respinto dal rubinetto B-7 con *«lì non c'è nessun parametro invalido, c'è un'invariante rotta»*). ⭐ **La linea che divide non è «guard di parametro sì/no»: è CHI PUÒ RIMEDIARE** — dato che compila una persona → codice di dominio, 400, frase in italiano; dato che solo un chiamante rotto può produrre → codice di dominio, **500**, e la chiave `campo` **esce** dal contesto perché su un 500 non c'è nessun input da accendere. ⚠️ La correzione è stata **forward-only** (P-7-bis): il primo migrate era già girato, e il corpo è stato ripreso dagli YAML applicati **dopo averli verificati identici all'oggetto vivo** — `pg_get_functiondef` non era usabile perché scioglie i `%TYPE`. 📊 **E la misura ha ridimensionato la colpa**: 265 valori sospetti su 1469, in **157 funzioni** — è lo stile in cui il progetto è cresciuto, non una svista isolata; ⛔ per questo **non si è costruito un cancello** (l'euristica sbaglierebbe proprio sul caso legittimo, e vale *«un presidio spento è peggio di uno assente»*). La regola è scritta in tre sedi — `guide/Messaggi-di-Errore-e-Generazione-Log.md` §«I valori del messaggio» (sostanziale), `linee-guida-sql.md` §5/§5b e `.codex/AGENTS.md` (puntatori). 📮 Resta **BE-1**: rigenerare `error_policies_generated.py` per i 15 codici nuovi |

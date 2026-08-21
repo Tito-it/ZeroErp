@@ -1,6 +1,9 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultima revisione**: 9 agosto 2026 — entrano **DDT e resi**: le aree del §2.1
+> **Ultima revisione**: 22 agosto 2026 — «Rendi definitive» **può rifiutare**
+> (§7.1) e nasce la §7.6 sulle **vie d'uscita**: riportare un lotto in
+> lavorazione, togliere una singola fattura, annullare il lotto. Revisione
+> precedente (9 agosto): entrano **DDT e resi**, le aree del §2.1
 > passano da quattro a sette (⚠️ prima ne mancavano tre), nuova **§4.1** sui
 > motivi di fermo di DDT e resi, il **valore al residuo** degli ordini in §5.1 e
 > la nuova **§8 «La coda accrediti»**. Revisione precedente (22 luglio): §7
@@ -288,13 +291,23 @@ selezionato e chiede sempre conferma, mostrando quante attività coinvolge.
 | **Fattura adesso** | `Da emettere` | Crea le fatture del mese e le porta fino a **EMESSA**. Si ferma lì: **non numera** | Generazione fatture/lotti |
 | **Rendi definitive** | `Emesse non fatturate` | **Numera** le fatture (atto fiscale) e le manda in stampa | Numerazione fatture/lotti (dedicato) |
 
-Due dettagli che non sono ovvi:
+Tre dettagli che non sono ovvi:
 
 - **«Fattura adesso» è cumulativo**: raccoglie l'arretrato dei mesi precedenti,
   non solo il mese a schermo. Se a maggio era rimasto indietro qualcosa, fatturando
   giugno viene preso anche quello. È voluto: evita che il non fatturato si sedimenti.
 - **Approvare non fattura niente.** Approvare significa solo «questo lavoro è
   corretto». La fattura nasce col verbo successivo.
+- **«Rendi definitive» può dire di no**, e da agosto 2026 lo dice. Prima di
+  consumare il numero fiscale il sistema controlla che il documento **stia in
+  piedi da solo**: che i totali siano stati calcolati, che il riepilogo IVA ci
+  sia e quadri con la testata, e che le rate esistano e sommino esattamente al
+  totale da pagare. Se qualcosa manca, la fattura **non viene numerata** e
+  l'errore arriva con **tutti** i motivi insieme, non uno per volta.
+  Il documento non è perduto: si corregge ciò che manca — quasi sempre a monte,
+  in anagrafica o in commessa — e si riporta il lotto in lavorazione (§7.6).
+  L'elenco puntuale dei controlli è in
+  [Fatturazione — non si numera un documento incoerente](/guide/fatturazione).
 
 ### 7.2 Perché la numerazione è un passo separato
 
@@ -353,7 +366,42 @@ vedono le fatture, i tentativi già fatti e il motivo del blocco — senza dover
 cercare a mano nell'elenco dei lotti. Lo stesso collegamento esiste sulle righe già
 fatturate del drill-down.
 
-### 7.6 Cosa non si fa ancora da qui
+### 7.6 Tornare indietro: le tre vie d'uscita
+
+Finché le fatture **non sono numerate** si può tornare indietro. I verbi sono
+tre, non uno, e la differenza fra loro è cosa resta in piedi dopo. Si trovano
+nel **drawer del lotto** e nel menu della riga nell'elenco dei lotti — al lotto
+si arriva anche dal pannello errori della Lente 1 (§7.5).
+
+| Verbo | Su cosa agisce | Cosa resta dopo |
+| --- | --- | --- |
+| **Riporta in lavorazione** | tutto il lotto, da EMESSA (o da bozza) | Il lotto **resta aperto** e torna in bozza: le sue fatture vengono eliminate, le righe di commessa tornano «da emettere» e al giro successivo le fatture si **rigenerano** |
+| **Elimina dal lotto** | **una** fattura | Solo quella fattura sparisce; il lotto e le altre fatture proseguono. Le sue righe rientrano nel giro successivo |
+| **Annulla lotto** | tutto il lotto, solo se è ancora in **bozza** | Il lotto è **chiuso e non si riapre**: le righe tornano libere e servirà un lotto nuovo |
+
+**La regola per scegliere**: se il lavoro va rifatto, *Riporta in lavorazione*;
+se il problema è un documento solo, *Elimina dal lotto*; *Annulla lotto* è per
+un giro partito per sbaglio, che non deve produrre nulla.
+
+Tre avvertenze, tutte pagate sul campo:
+
+- **Tornare indietro cancella, non congela.** Le fatture toccate vengono
+  eliminate per davvero — righe, note e allegati di lavorazione compresi — e
+  dopo non è più possibile sapere cosa dicevano. Resta la traccia storica del
+  loro passaggio nel lotto, non il loro contenuto. È voluto: un documento che
+  qualcuno ha deciso di rifare non serve a nessuno come reperto.
+- **Un numero fiscale ferma tutto.** Se anche una sola fattura del lotto è già
+  stata resa definitiva, nessuno dei tre verbi è disponibile: cancellarla
+  aprirebbe un buco nella numerazione. Da lì in poi la strada è la nota di
+  credito.
+- **Non tutto si disfa insieme al documento.** Un acconto o un minimo già
+  registrato su una contabile chiusa **non viene ripristinato**: l'operazione
+  riesce lo stesso e lascia un avviso nel registro del lotto. E un accredito già
+  registrato non si annulla da qui: la sua nota di credito viene semplicemente
+  rigenerata al giro successivo. Vale la pena leggere gli avvisi, non darli per
+  puliti.
+
+### 7.7 Cosa non si fa ancora da qui
 
 L'**invio allo SDI** non è disponibile dalla dashboard: resta un passo successivo,
 gestito fuori da questa schermata. La dashboard copre il percorso

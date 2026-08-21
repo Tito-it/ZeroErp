@@ -1,7 +1,10 @@
 # Guida — Documenti e Stampe
 
-> **Ultima revisione**: maggio 2026 — copertura Fase A (schema `documenti`,
-> template versionati, asset, generazione PDF con WeasyPrint).
+> **Ultima revisione**: 22 agosto 2026 — nota nel §3: per la **fattura** il
+> contesto arriva dai valori **congelati sul documento**, non letti dall'anagrafica
+> al momento della stampa (ristampa conforme). Revisione precedente (maggio 2026):
+> copertura Fase A (schema `documenti`, template versionati, asset, generazione
+> PDF con WeasyPrint).
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -176,6 +179,22 @@ Esempio di struttura di contesto per un preventivo:
 ```
 
 Il template **non interroga mai il database direttamente**: riceve sempre e solo i dati già preparati. Questo è un vincolo intenzionale: evita logica nascosta nel layout e rende la generazione riproducibile.
+
+> ⭐ **Da agosto 2026 la fattura non legge più i dati «vivi».** Nell'esempio qui
+> sopra ragione sociale e indirizzo sono letti dall'anagrafica al momento della
+> stampa: per i preventivi è ancora così, per la **fattura** no. Intestazione
+> delle due parti e indirizzo arrivano dai valori **congelati sul documento**
+> quando la fattura è nata (`emittente_snapshot`, `cliente_snapshot` e la riga
+> `FATT` del satellite `fatture_indirizzi`).
+>
+> La differenza si vede solo nel caso che conta: **cambiando l'anagrafica e
+> ristampando, il PDF della fattura non cambia**. È la stessa garanzia dello
+> snapshot del contesto salvato a valle (§4), ma applicata *prima* del render:
+> quella conserva ciò che è stato stampato, questa fa sì che una ristampa
+> produca lo stesso documento invece di uno nuovo.
+>
+> Dettaglio della catena e dei casi limite:
+> [Gestione degli indirizzi — Gli indirizzi congelati sui documenti](/guide/gestione-degli-indirizzi).
 
 ---
 

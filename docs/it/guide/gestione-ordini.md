@@ -1,6 +1,8 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultima revisione**: 14 giugno 2026 — modello completo: ordine come documento
+> **Ultima revisione**: 22 agosto 2026 — nota in §3.1: il **termine di pagamento
+> determina quante fatture nascono** (raggruppamento a valle). Revisione
+> precedente (14 giugno): modello completo — ordine come documento
 > del ciclo attivo (testata + righe + componenti BoM), nascita per **conversione**
 > da preventivo (smistamento merce riga-per-riga, 1:N) o da offerta (1:1, in mutua
 > esclusività con il contratto) oppure manuale, azioni **data-driven** via
@@ -175,6 +177,16 @@ Contiene il contesto del documento:
 - **identità e stato** (`numero`/`serie`/`anno`, `uid`, `stato_doc_ordine_id`) e i
   **totali** (`imponibile_tot`, `iva_tot`, `totale_doc`), tenuti aggiornati dai
   trigger.
+
+> ⚠️ **Il termine di pagamento non è solo un dato di testata: decide anche
+> quante fatture nascono.** Dal luglio 2026 le condizioni di pagamento fanno
+> parte dei criteri con cui il lavoro si raggruppa a valle: un ordine con un
+> termine diverso **non riusa la commessa** degli altri documenti dello stesso
+> cliente, ne apre una nuova, e a fine mese produce una **fattura separata**.
+> Non è un difetto — una fattura sola non potrebbe portare due scadenzari — ma è
+> un cambio di conseguenze: se ci si aspettava un documento solo e ne arrivano
+> due, la prima cosa da guardare è il termine sui documenti di partenza.
+> Dettaglio in [Termini di pagamento §4](/guide/termini-di-pagamento).
 
 ### 3.2 Righe `ordini_righe`
 

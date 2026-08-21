@@ -13,6 +13,8 @@
 > * [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)
 > * [vendite.event_log](/dbzero/vendite/tabelle/event_log)
 > * [Messaggi di errore e log](/guide/Messaggi-di-Errore-e-Generazione-Log)
+> * [Termini di pagamento](/guide/termini-di-pagamento) — il piano rate della fattura
+> * [Cruscotti fatturazione](/guide/cruscotti-fatturazione) — le stesse operazioni viste dall'operatore
 
 ---
 
@@ -414,6 +416,34 @@ un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA 
 > presidiato**: `test-pipeline-processi-invariante-v1.sql` fallisce se una tappa qualsiasi ha
 > corsie con `processi` divergenti, o se una corsia attiva resta vuota.
 
+### I task dello step DRAFT (entrambe le corsie)
+
+| # | Task | Cosa fa |
+|---|---|---|
+| 1 | `pull_attivita_da_commessa` | porta sulle attività fatturabili il lavoro maturato sulle commesse |
+| 2 | `select_attivita` | seleziona e **blocca** le attività che finiranno nel lotto |
+| 3 | `generate_fatture_righe` | crea testate e righe delle fatture |
+| 4 | `snapshot_indirizzi_lotto` | **congela** sulla fattura ciò che il documento stamperà: gli indirizzi (`vendite.fatture_indirizzi`) e l'**intestazione fiscale** delle due parti (`emittente_snapshot`, `cliente_snapshot`) |
+
+Sul quarto task vale la pena fermarsi, perché è ciò che rende la **ristampa
+conforme**: da lì in avanti la fattura non legge più l'anagrafica: porta la
+fotografia dei dati com'erano quando è nata. Cambiare l'indirizzo di un cliente
+non cambia i documenti già emessi, e ristampare un PDF vecchio produce lo stesso
+PDF. Il dettaglio della catena di risoluzione è in
+[Gestione degli indirizzi — Gli indirizzi congelati sui documenti](/guide/gestione-degli-indirizzi).
+
+⚠️ **Il congelamento è anche un cancello**: `trgfn_fatture_guard_uscita_draft`
+impedisce a una fattura di lasciare lo stato DRAFT se le manca un indirizzo
+dichiarato obbligatorio per l'ambito `FATTURE` (oggi `FATT`) o l'intestazione
+fiscale di una delle due parti. Una fattura incompleta **non avanza**, invece di
+arrivare alla numerazione con dei trattini al posto dell'intestazione.
+
+⚠️ **Il task non fa fallire il lotto per una fattura difettosa**: le altre
+ricevono il loro lavoro per intero, la fattura in errore resta marcata e il lotto
+**non avanza** allo step successivo. Le vie d'uscita sono correggere a monte e
+**rilanciare lo stesso step**, oppure togliere il documento dal lotto — vedi
+*Rollback di step* più avanti in questa pagina.
+
 ### I task dello step EMESSA (entrambe le corsie)
 
 | # | Task | Cosa fa |
@@ -421,7 +451,7 @@ un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA 
 | 1 | `genera_fondi_source_lotto` | genera i source di fondi/minimi |
 | 2 | `applica_fondi_lotto` | applica i fondi alle fatture del lotto |
 | 3 | `ricalcola_iva_lotto` | ricalcola riepiloghi IVA e totali — **produce `totale_a_pagare`** |
-| 4 | `genera_scadenze_lotto` | genera il **piano rate** di ogni fattura (`vendite.fatture_scadenze`) |
+| 4 | `genera_scadenze_lotto` | genera il **piano rate** di ogni fattura (`vendite.fatture_scadenze`), applicando il termine risolto dalla catena documento → commessa → cliente → *unica rata* — vedi [Termini di pagamento](/guide/termini-di-pagamento) |
 
 ⚠️ **L'ordine 3 → 4 non è negoziabile**: la base di ripartizione delle rate è `totale_a_pagare`,
 che prima del ricalcolo non esiste. Invertirli farebbe sollevare `E_SCADENZE_BASE_NON_PRONTA` su
@@ -453,12 +483,12 @@ automatico se la pipeline ha `meta.auto_step_rollback = true`. Non scatta mai
 spontaneamente su errore: un errore lascia il lotto in stato `ERRORE` e serve
 un rerun esplicito.
 
-**Esempio concreto (seed):**
+**Il seed di oggi (corsia MASSIVO):**
 
-| Step   | `processi`                                               | `rollback`           |
-| ------ | -------------------------------------------------------- | -------------------- |
-| DRAFT  | `select_attivita`, `generate_fatture_righe`              | `[]` (nessuno)       |
-| EMESSA | `genera_fondi`, `applica_fondi`, `ricalcola_iva`         | `reset_lotto_draft`  |
+| Step | `processi` | `rollback` |
+|---|---|---|
+| DRAFT | `pull_attivita_da_commessa`, `select_attivita`, `generate_fatture_righe`, `snapshot_indirizzi_lotto` | `[]` (nessuno) |
+| EMESSA | `genera_fondi_source_lotto`, `applica_fondi_lotto`, `ricalcola_iva_lotto`, `genera_scadenze_lotto` | `reset_lotto_draft` |
 
 In questo caso, se un lotto MASSIVO in stato EMESSA deve tornare a DRAFT, il sistema
 esegue il task `reset_lotto_draft`, che ripristina i fondi delle fatture sorgente,
@@ -479,20 +509,53 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 >    `stato_lotto` = COMPLETATO.
 >
 > **Quel lotto è morto.** Per rifatturare serve un **lotto nuovo**, che ripescherà le
-> stesse righe `attivita_fatturabili` rimaste libere. Non si "riapre e si corregge" il
-> lotto: si demolisce e si rifà.
+> stesse righe `attivita_fatturabili` rimaste libere. Con **questo** verbo il lotto non
+> si "riapre e si corregge": si demolisce e si rifà — per riaprirlo c'è la sorella
+> descritta qui sotto.
 >
-> ⚠️ **E il ripristino dei fondi non è integrale.** Un fondo già **postato su una
-> contabile CHIUSA** non viene ripristinato: `fn_reset_fondi_fattura` non lo tocca,
-> scrive un warning in `vendite.fatture_log` (*«Minimo non ripristinabile: gia postato
-> (fattura X del Y)»*) e marca la riga source come ANNULLATO. Il reset **riesce
-> comunque**: controllare il log, non darlo per pulito.
+> ⚠️ **E il «ripristino» dei fondi non è integrale — né è più un ripristino.**
+> ⭐ **Dal 21-08-2026** `fn_reset_fondi_fattura` **cancella** l'atto di fondo che
+> non è stato eseguito, invece di riaprirlo: un atto mai eseguito è una
+> *proposta*, e il giro successivo ne fa una nuova letta sul residuo di adesso.
+> Restano fuori **due** casi, entrambi segnalati nel diario della fattura
+> (`vendite.fatture_log`) e nessuno dei due bloccante — il reset riesce
+> comunque, quindi il log va **letto**, non dato per pulito:
+>
+> | Che cosa trova | Che cosa fa | Avviso |
+> | --- | --- | --- |
+> | il trasferimento è **già stato registrato** (l'atto è `ESEGUITO`) | non lo tocca | `W_FONDO_ESEGUITO_NON_RESETTABILE` |
+> | la riga sta in una distinta contabile **chiusa** (denaro mai registrato) | marca l'atto `ANNULLATO` con la ragione sul dato | `W_FONDO_MINIMO_NON_RIPRISTINABILE` |
+>
+> ⚠️ I due **non dicono la stessa cosa**, e fino al 21-08-2026 il messaggio del
+> secondo diceva «già postato» — cioè proprio ciò che nel suo caso *non* era
+> successo.
+>
+> ⭐ **Dal 2026-08-03 esiste la sorella che il nome vecchio prometteva:**
+> `fn_riporta_lotto_a_draft` (verbo «Riporta in lavorazione»). Fa la stessa
+> demolizione delle fatture pre-fiscali, ma **non chiude il lotto**: lo riporta a
+> DRAFT con `stato_operativo` APERTO e `riaperto_il` valorizzato, e al giro
+> successivo le fatture si **rigenerano** nello stesso lotto. Vale per MASSIVO
+> **e** GIORNALIERO, su lotti DRAFT o EMESSA, e rifiuta se anche una sola fattura
+> è già numerata.
+>
+> ⚠️ **Chiude ad ANNULLATO tutti i task-run attivi del lotto**, e non è un
+> dettaglio di pulizia: `fn_resolve_lotto_task_execution_mode` legge l'ultimo
+> task-run e su COMPLETATO risponde SKIP — senza quel passo il lotto riaperto
+> rilancerebbe **a vuoto**, senza errori e senza corse nuove. Le corse non si
+> cancellano: si chiudono con esito, e il giro nuovo apre `tentativo = MAX+1`.
+>
+> **Le tre vie d'uscita, in una riga**: *riporta in lavorazione* (il lotto resta e
+> si rifà), *annulla lotto* (il lotto muore, serve un lotto nuovo), *elimina
+> fattura dal lotto* (una sola fattura, il lotto prosegue). Lato operatore:
+> [Cruscotti fatturazione §7.6](/guide/cruscotti-fatturazione).
 
 **Vincoli:**
 
-* Il rollback è ammesso solo per lotti **MASSIVO** e solo se il lotto è già in **DRAFT**;
-  le **fatture** del lotto possono essere DRAFT o EMESSA (pre-fiscali), altrimenti la fn
-  rifiuta.
+* Il rollback pretende il lotto già in **DRAFT**; le **fatture** del lotto possono
+  essere DRAFT o EMESSA (pre-fiscali), altrimenti la fn rifiuta.
+  ⚠️ Il vincolo al solo **MASSIVO** è **caduto il 2026-08-02** (D-L pt.2 + D-T):
+  anche un giro GIORNALIERO interrotto deve poter tornare indietro. Se si trova
+  documentazione che lo dà per vivo, è anteriore a quella data.
 * Dopo la DEFINITIVA (numerazione fiscale) il rollback globale non è più possibile;
   il sistema usa resume per fattura.
 * Le **fatture non tornano mai a DRAFT**: nella matrice `config.stati_doc_fiscale_transizioni`

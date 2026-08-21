@@ -1,5 +1,22 @@
 # Piano BE/FE — satelliti della fattura (indirizzi + piano rate)
 
+> 🟢 **CANTIERE CHIUSO — 2026-08-22.** Le tre decisioni di prodotto del §7 sono
+> state prese da Tid: **tutte e tre «no, non adesso»**. Non c'è codice in sospeso
+> e non resta nulla da decidere: il documento è archiviato.
+>
+> | §7 | Decisione (2026-08-22) | Perché |
+> | --- | --- | --- |
+> | **7.1** — indirizzo correggibile su fattura DRAFT | ❌ **no** | `fn_snapshot_indirizzi_fattura` riscrive la riga a ogni passata (`ON CONFLICT … DO UPDATE`): una correzione a mano verrebbe **sovrascritta dal rilancio dello step DRAFT**, che è esattamente la via di correzione prevista da D-Q. Sarebbe un campo che torna indietro da solo. Si corregge in anagrafica e si rilancia |
+> | **7.2** — lista indirizzi per tipo nel dettaglio | ❌ **no, non adesso** | Con D-P la fattura è del BA **padre**, dove `FATT` è in pratica l'unica riga che esiste, e il suo display è già esposto in `cliente_indirizzo`. Una lista aggiungerebbe una chiave al payload per mostrare una riga sola. Si riapre quando arriverà il **sotto-dettaglio utilities**, che comunque non può vivere in `fatture_indirizzi` (D-P punto c) |
+> | **7.3** — badge documenti nella barra azioni | ❌ **no, non qui** | Non è di questo cantiere: appartiene all'archivio documenti/stampe. Il dict `contatori` regge già il contatore nuovo senza cambiare shape, quindi non c'è debito di predisposizione |
+>
+> ℹ️ **Il rischio RLS del §6 è rientrato da solo**: `vendite.fatture_indirizzi` e
+> `fatture_scadenze` hanno oggi RLS attiva con 2 policy ciascuna (chiuso da
+> `brief-db-rls-satelliti-fattura-portale.md`). La riga del §6 resta com'è scritta
+> perché fotografa la situazione di allora.
+>
+> ---
+>
 > 🟡 **STATO AL 2026-08-04 — lavoro tecnico FINITO, restano tre decisioni di prodotto.**
 >
 > Fasi 0-5 chiuse fra il 31-07 e il 02-08. Il 04-08 sono state chiuse anche le
@@ -72,7 +89,7 @@
 > ora può dire di no. Ricaduta nostra chiusa: **574
 > `E_FATTURA_NON_NUMERABILE_INCOERENTE` registrato** in `error_policies.py`.
 > **Prerequisiti:**
-> [brief-db-snapshot-indirizzi-fattura.md](../work-done/brief-db-snapshot-indirizzi-fattura.md) ·
+> [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
 > [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §Fase 4
 >
 > Questo documento è il **piano di lavoro applicativo**: cosa si tocca, in quale
@@ -428,7 +445,7 @@ Verifica di fase: smoke §3.1 casi 1-4 e 6 verdi.
 (Testo originale della fase:)
 
 > ⚠️ **Estesa il 2026-07-31 — leggere
-> [brief-db-snapshot-intestazione-fattura.md](../work-done/brief-db-snapshot-intestazione-fattura.md)
+> [brief-db-snapshot-intestazione-fattura.md](brief-db-snapshot-intestazione-fattura.md)
 > prima di scrivere questa fase.** Misurando per rispondere a una domanda di Tid
 > («per l'emittente possiamo usare lo storico degli indirizzi?» — no, §2 del
 > brief) è emerso che il perimetro qui sotto è **incompleto**: congela
@@ -908,7 +925,18 @@ completa (nel mio smoke: `'Roma', '00100', 'RM'` + `stato_id` dell'Italia).
 | `fatture_indirizzi` letta nel dettaglio API senza RLS | la tabella **non ha policy**: se la esponiamo, la protezione resta l'ordine «testata prima → 404» già presidiato da `test_note_non_contate_se_testata_none` e gemelli. Valutare l'estensione delle policy satelliti |
 | Storicizzazione gonfiata dalle rigenerazioni | `DELETE+INSERT` su `fatture_scadenze` scrive in `storico.fatture_scadenze_id` a ogni giro: atteso, da tenere presente nei conteggi |
 
-## 7. Decisioni FE ancora aperte
+## 7. Decisioni FE ~~ancora aperte~~ — **TUTTE CHIUSE il 2026-08-22**
+
+> ✅ **Chiuse da Tid il 2026-08-22: «no» a tutte e tre.** Il testo sotto resta
+> com'era scritto (è il ragionamento con cui le domande erano state poste); la
+> risposta e il motivo sono nel box in testa al documento. In sintesi:
+>
+> 1. **No** — lo snapshot si riscrive a ogni passata dello step DRAFT, quindi una
+>    correzione a mano non sopravvive al rilancio: si corregge a monte;
+> 2. **No, non adesso** — sul BA padre la riga `FATT` è in pratica l'unica, e il
+>    suo display è già nel payload; si riapre col sotto-dettaglio utilities;
+> 3. **No, non qui** — il badge documenti appartiene al cantiere archivio/stampe,
+>    e il dict `contatori` è già pronto ad accoglierlo.
 
 1. **L'operatore deve poter correggere un indirizzo su fattura DRAFT?**
    - **Sì** → serve l'endpoint (factory `build_indirizzi_documento_views` già

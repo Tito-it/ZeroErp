@@ -1,6 +1,8 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultima revisione**: 12 giugno 2026 — modello revisione attiva derivata
+> **Ultima revisione**: 22 agosto 2026 — nota in §2.1: il **termine di pagamento
+> determina quante fatture nascono** (raggruppamento a valle). Revisione
+> precedente (12 giugno): modello revisione attiva derivata
 > (`is_attiva` su `vw_preventivi` + copia componenti BoM in
 > `fn_crea_revisione_preventivo`); **split per natura** all'accettazione (merce →
 > ordine via smistamento riga-per-riga, servizio una tantum → commessa), **stato
@@ -83,6 +85,14 @@ Contiene il contesto commerciale del preventivo:
 > validata (errore `E_PREV_UTILITY_ISTANZA_INCOERENTE`). Anche
 > `emittente_fiscale_id`, se assente, è valorizzato di default dal trigger DB
 > sull'utente corrente.
+>
+> ⚠️ **Il `termine_pagamento_id` decide anche quante fatture nascono.** Dal
+> luglio 2026 le condizioni di pagamento entrano nei criteri con cui il lavoro si
+> raggruppa a valle: un preventivo con un termine diverso **apre una commessa
+> propria** e produce una **fattura separata** da quelle degli altri documenti
+> dello stesso cliente. È l'unico esito corretto — una fattura sola non potrebbe
+> portare due scadenzari — ma è un cambio di conseguenze rispetto a prima:
+> [Termini di pagamento §4](/guide/termini-di-pagamento).
 >
 > **`fatturazione_immediata` e `competenza_mese` non sono campi della bozza** ma
 > **dati di processo** richiesti al momento dell'**accettazione** (EMESSO →

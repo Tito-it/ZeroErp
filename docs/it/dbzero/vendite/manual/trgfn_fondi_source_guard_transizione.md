@@ -14,39 +14,59 @@
 > **Chi muove gli stati:**
 >
 > • [vendite.fn_applica_fondi_fattura](/dbzero/vendite/funzioni/fn_applica_fondi_fattura) — `DISPONIBILE` → `ASSEGNATO`
-> • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura) — `ASSEGNATO` → `DISPONIBILE`, e → `ANNULLATO` se la contabile è `CHIUSA`
+> • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura) — → `ANNULLATO` se la distinta contabile è `CHIUSA` (⚠️ dal 21-08-2026 l'atto non eseguito lo **cancella**, non lo riapre)
 > • [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura) — → `ANNULLATO` quando la sorgente non è più capiente
+> • `pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito` — `ASSEGNATO` → **`ESEGUITO`**, quando la riga contabile del fondo viene registrata
 >
 > **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8.2 D-7
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 15-08-2026)
+(latest review 22-08-2026)
 
-**Tre stati, e uno solo da cui non si torna.**
+**Quattro stati, e due da cui non si torna.**
 
 ```text
                   ┌──────────────────┐
                   │   DISPONIBILE    │◄────────────┐
                   └────────┬─────────┘             │
-                           │  applica              │  reset TECNICO
-                           ▼                       │  (la figlia torna in bozza)
+                           │  applica              │  disassegna
+                           ▼                       │  (nessuno la percorre piu')
                   ┌──────────────────┐             │
                   │    ASSEGNATO     │─────────────┘
                   └────────┬─────────┘
                            │
               ┌────────────┴────────────┐
+              │                         │  la riga contabile
+              │                         │  viene REGISTRATA
               ▼                         ▼
-        ┌───────────────────────────────────┐
-        │           ANNULLATO               │   ← terminale
-        └───────────────────────────────────┘
+        ┌───────────────┐        ┌───────────────┐
+        │   ANNULLATO   │        │   ESEGUITO    │
+        └───────────────┘        └───────────────┘
+           ← terminale              ← terminale
 ```
 
 Ogni altra transizione è rifiutata con `E_FONDO_STATO_NON_AMMESSO`, e il
 messaggio porta **da dove a dove** si stava andando.
 
 ---
+
+### ⭐ Perché `ESEGUITO` è terminale (e perché esiste)
+
+Un atto `ESEGUITO` descrive **un fatto già avvenuto**: il trasferimento è stato
+registrato in contabilità. Uscire da lì non annullerebbe la registrazione — la
+renderebbe soltanto **invisibile all'atto che l'ha prodotta**, cioè lo stesso
+denaro contato due volte.
+
+⭐ **Esiste perché `ANNULLATO` diceva tre cose diverse**: «non si deve fare più»,
+«non si è più capienti» e «è già stato eseguito». Il terzo caso scriveva un
+record che si contraddiceva — annullato, ma con la fattura figlia ancora
+agganciata. Adesso ogni fatto ha la sua parola.
+
+⚠️ E il guadagno non è di vocabolario: i tre lettori dei fondi filtrano tutti
+sullo **stato**, quindi un atto che passa a `ESEGUITO` esce da tutti e tre senza
+che nessuno di loro cambi.
 
 ### ⭐ Perché `ANNULLATO` è terminale
 
@@ -62,7 +82,14 @@ riga riscritta racconta che non è mai successo.
 
 ---
 
-### 🔴 Tre stati, non quattro: `REVOCATO` non c'è
+### 🔴 ~~Tre stati, non quattro: `REVOCATO` non c'è~~ — il quarto è arrivato, ed è un altro
+
+> ⚠️ **Il titolo qui sotto è rimasto perché la sua lezione vale ancora**, ma la
+> conclusione è superata: dal 21-08-2026 gli stati sono **quattro**. Il quarto
+> però non è `REVOCATO` e non serve a riemettere niente: è `ESEGUITO`, e
+> descrive un fatto che prima non aveva un nome. La differenza è tutta qui —
+> uno stato per un meccanismo che non esiste è debito, uno stato per un fatto
+> che accade è la parola che mancava.
 
 Il piano nella sua prima stesura aveva un quarto stato, per il meccanismo di
 **revoca + riemissione**: si annullava il fondo vecchio e se ne emetteva uno
@@ -75,13 +102,20 @@ debito, perché va spiegato a ogni lettura.
 
 ---
 
-### ⚠️ `ASSEGNATO` → `DISPONIBILE` resta ammesso, e non è un ripensamento
+### ⚠️ `ASSEGNATO` → `DISPONIBILE` resta ammesso, ma non lo percorre più nessuno
 
-È il **reset tecnico della figlia**: il lotto torna in bozza, la fattura che
-usava il fondo sparisce, e il fondo torna a essere spendibile. Non è una
-reazione a un pagamento — nessun incasso apre o chiude un fondo — ed è la
-ragione per cui la freccia di ritorno esiste.
+Era il **reset tecnico della figlia**: il lotto tornava in bozza, la fattura che
+usava il fondo spariva, e il fondo tornava spendibile. Non era una reazione a un
+pagamento — nessun incasso apre o chiude un fondo — ed è la ragione per cui la
+freccia di ritorno esiste.
 
+> 🔵 **Dal 21-08-2026 quel percorso non lo fa più nessuno**: il reset
+> **cancella** l'atto non eseguito invece di riaprirlo, perché riaprirlo
+> significava riportarsi dietro l'importo vecchio congelato. La transizione
+> resta ammessa come unica strada per disfare l'assegnazione *senza* cancellare
+> l'atto — ed è un candidato dichiarato alla rimozione, non una svista. Toglierla
+> è una decisione di dominio: si prende, non si fa passando.
+>
 > Chi cerca «cosa succede al fondo se la sorgente viene pagata dopo» trova la
 > risposta in [fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura),
 > che lo dichiara nel proprio `COMMENT`: **niente**.
@@ -97,9 +131,11 @@ ragione per cui la freccia di ritorno esiste.
 * Uno stato di partenza **fuori vocabolario** cade nel ramo `ELSE FALSE`: il
   guard è fail-closed anche verso i dati che non dovrebbero esistere. Il
   vocabolario in sé lo presidia il `CHECK chk_fondi_source_stato`.
-* ⚠️ **Non è un lookup di transizioni.** Sono tre valori interni, senza etichette
-  da tradurre né azioni di UI da abilitare: una tabella di transizioni ammesse
-  sarebbe una configurazione che nessuno configura.
+* ⚠️ **Non è un lookup di transizioni.** Sono quattro valori interni, senza
+  etichette da tradurre né azioni di UI da abilitare: una tabella di transizioni
+  ammesse sarebbe una configurazione che nessuno configura. (Diverso il caso
+  delle righe contabili di `pagamenti`, dove la matrice *è* una tabella: là gli
+  stati li muove un operatore.)
 
 ---
 
