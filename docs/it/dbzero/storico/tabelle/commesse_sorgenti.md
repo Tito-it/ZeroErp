@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/commesse_sorgenti.md" %}
 # 📚 Tabella `commesse_sorgenti`
 
 ## 🗂️ Campi principali

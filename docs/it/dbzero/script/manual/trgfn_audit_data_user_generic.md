@@ -106,5 +106,5 @@ cursor.execute("SELECT set_config('app.jwt_user', %s, true)", [str(request.user)
 
 | Data | Modifica |
 |------|----------|
-| 19-11-2025 | Rinominata da `trgfn_upd_audit_data_user_generic` a `trgfn_audit_data_user_generic` |
+| 19-11-2025 | Rinominata da `trgfn_audit_data_user_generic` a `trgfn_audit_data_user_generic` |
 | 27-02-2026 | Aggiornata per usare JWT (`app.jwt_user`) con fallback `CURRENT_USER`. Estesa a `BEFORE INSERT OR UPDATE` per gestire `user_insert`. |

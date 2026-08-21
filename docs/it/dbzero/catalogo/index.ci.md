@@ -5,6 +5,8 @@
 - [articoli_componenti](manual/articoli_componenti.md) — (latest review 13-01-26) `catalogo.articoli_componenti` rappresenta la **distinta base (BoM)** lato **vendita**, con **versionamento temporale**: ogni riga lega un **prodotto** a un **componente** con una finestra di validità (`valido_dal`..`valido_al`).
 - [articoli_uom_operativa](manual/articoli_uom_operativa.md) — (latest review 13-01-26) Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il **fattore di conversione** verso la **UoM base**. Permette di lavorare con confezioni (es. *cartone 6 bottiglie*, *scatola 50 pz*) mantenendo **coerenza contabile e di stock** in **UoM base**.
 - [note](manual/note.md) — (last review 13-01-26) `catalogo.note` centralizza le **note testuali** associate agli oggetti del catalogo, con **tabella partizionata** per tipo di target. Supporta note su:
+- [note_articoli](manual/note_articoli.md) — (rev 2026-08-21)
+- [note_articoli_componenti](manual/note_articoli_componenti.md) — (rev 2026-08-21)
 - [unita_misura](manual/unita_misura.md)
 - [unita_misura_conversioni](manual/unita_misura_conversioni.md)
 - [uom_tipi](manual/uom_tipi.md)
@@ -20,6 +22,9 @@
 - [trgfn_articoli_guard_flags_struttura_bom_attiva](manual/trgfn_articoli_guard_flags_struttura_bom_attiva.md)
 - [trgfn_articoli_guard_iva_bom_attiva](manual/trgfn_articoli_guard_iva_bom_attiva.md)
 - [trgfn_articoli_guard_listino_se_composito](manual/trgfn_articoli_guard_listino_se_composito.md)
+- [trgfn_articoli_seed_uom_base](manual/trgfn_articoli_seed_uom_base.md) — (rev 2026-08-21)
+- [trgfn_unita_misura_guard_tipo_update](manual/trgfn_unita_misura_guard_tipo_update.md) — (rev 2026-08-21)
+- [trgfn_uom_conversioni_guard_tipo](manual/trgfn_uom_conversioni_guard_tipo.md) — (rev 2026-08-21)
 
 ## 🔍 Views (manuale)
 - [vw_articoli_componenti_dettaglio](manual/vw_articoli_componenti_dettaglio.md) — (latest review 14-01-26) La vista **`catalogo.vw_articoli_componenti_dettaglio`** espone i legami prodotto–componente e arricchisce la riga con codice/descrizione di prodotto e componente.

@@ -8,7 +8,7 @@
 >
 **Approfondimento Funzioni:**   
 >
-[anagrafiche.fn_log_and_raise_error](/dbzero/anagrafiche/funzioni/fn_log_and_raise_error)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 > [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
@@ -22,7 +22,7 @@ Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e norma
 
 1. **Validazione stato**
    * Se `NEW.stato = 'ATTIVO'` allora `NEW.data_attivazione` deve essere valorizzata.
-   * In caso contrario, genera errore applicativo con `anagrafiche.fn_log_and_raise_error`.
+   * In caso contrario, genera errore applicativo con `script.fn_log_and_raise_error`.
 2. **Normalizzazione UMR**
    * Se presente, rimuove spazi multipli e consecutivi da `NEW.umr`.
 3. **Normalizzazione IBAN snapshot**
@@ -62,7 +62,7 @@ CREATE TRIGGER trg_sepa_mandati_guard
 | **E_DATA_ATTIVAZIONE_MANDATO** | Stato `ATTIVO` senza `data_attivazione` |
 
 Gli errori sono prodotti tramite:
-`anagrafiche.fn_log_and_raise_error('<contesto>', '<funzione>', '<codice>', <meta>, ...)`.
+`script.fn_log_and_raise_error('<contesto>', '<funzione>', '<codice>', <meta>, ...)`.
 
 ---
 

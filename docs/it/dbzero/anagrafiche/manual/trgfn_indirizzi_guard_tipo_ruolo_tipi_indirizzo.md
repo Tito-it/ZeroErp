@@ -12,7 +12,7 @@
 >
 **Funzioni / trigger di supporto:**
 >
-[`dbops.fn_log_and_raise_error`](/dbzero/dbops/funzioni/fn_log_and_raise_error)
+[`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
 > (eventuale) [`anagrafiche.fn_get_indirizzo_preferito_*`](/dbzero/anagrafiche/funzioni/)
 
 ---
@@ -38,7 +38,7 @@ La funzione implementa una logica **adattiva**:
 * Se invece **il `tipo_ruolo` ha una matrice definita**
   ➜ si accettano **solo** i `tipo_indirizzo_id` **esplicitamente configurati**, attivi e nel range di validità.
 
-In caso di violazione, la funzione richiama **`dbops.fn_log_and_raise_error`** e blocca l’operazione, garantendo che il dato rispetti la configurazione di dominio.
+In caso di violazione, la funzione richiama **`script.fn_log_and_raise_error`** e blocca l’operazione, garantendo che il dato rispetti la configurazione di dominio.
 
 ---
 
@@ -54,7 +54,7 @@ In caso di violazione, la funzione richiama **`dbops.fn_log_and_raise_error`** e
 
 * **Funzioni/trigger di supporto:**
 
-  * [`dbops.fn_log_and_raise_error`](/dbzero/dbops/funzioni/fn_log_and_raise_error) – centralizza logging + raise exception.
+  * [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error) – centralizza logging + raise exception.
 
 ---
 
@@ -112,7 +112,7 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 * Se **NO** → indirizzi “liberi” → `RETURN NEW`.
 * Se **SÌ** → si accetta solo se presente una riga attiva & valida.
 
-📍 Se nessuna riga valida trovata → chiamata a `dbops.fn_log_and_raise_error(...)` + `RAISE EXCEPTION`.
+📍 Se nessuna riga valida trovata → chiamata a `script.fn_log_and_raise_error(...)` + `RAISE EXCEPTION`.
 
 ---
 
@@ -137,7 +137,7 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 * La funzione è **coerente con il pattern “guard”** usato in Zero ERP.
 * Non modifica i dati, si limita a validarli.
 * La logica di fallback indirizzo *non è gestita qui* → demandata a funzioni applicative (es. `fn_get_indirizzo_preferito`).
-* In caso di errore, il messaggio è gestito da `dbops.fn_log_and_raise_error` che garantisce logging centralizzato.
+* In caso di errore, il messaggio è gestito da `script.fn_log_and_raise_error` che garantisce logging centralizzato.
 
 ---
 

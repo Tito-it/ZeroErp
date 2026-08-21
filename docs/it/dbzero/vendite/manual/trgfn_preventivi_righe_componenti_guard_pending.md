@@ -15,7 +15,7 @@
 >
 > Tipo ENUM:
 >
-> [config.stato_approvazione_prezzo](/dbzero/config/tabelle/stato_approvazione_prezzo) — PENDING/APPROVED/REJECTED
+> `stato_approvazione_prezzo` (colonna, non tabella) — PENDING/APPROVED/REJECTED
 >
 > Guide:
 >

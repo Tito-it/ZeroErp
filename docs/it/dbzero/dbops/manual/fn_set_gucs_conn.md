@@ -63,7 +63,7 @@ def set_gucs(get_response):
 ### 📚 Collegamenti con altre componenti
 
 * **`script.fn_get_parameter_full`**: utilizza le GUC `app.user_id` e `app.group_ids` per determinare l’override dei parametri.
-* **Trigger di audit (`script.trgfn_upd_audit_data_user_generic`)**: può leggere `app.user_id` per valorizzare i campi `user_update`.
+* **Trigger di audit (`script.trgfn_audit_data_user_generic`)**: può leggere `app.user_id` per valorizzare i campi `user_update`.
 * **Row-Level Security (RLS)**: le policy possono basarsi su `current_setting('app.user_id', true)` per filtrare i dati per utente.
 
 ---

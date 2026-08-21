@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/trgfn_articoli_seed_uom_base.md" %}
 # ⚙️ Funzione `trgfn_articoli_seed_uom_base`
 
 ```sql

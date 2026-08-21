@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_ubicazione.md" %}
 # 📚 Tabella `tipi_ubicazione`
 
 > 📝 **Descrizione**

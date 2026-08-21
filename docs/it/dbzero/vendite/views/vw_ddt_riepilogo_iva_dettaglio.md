@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_ddt_riepilogo_iva_dettaglio.md" %}
 # 🔍 View `vw_ddt_riepilogo_iva_dettaglio`
 
 > 📝 **Descrizione**

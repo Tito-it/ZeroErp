@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/note_flussi.md" %}
 # 📚 Tabella `note_flussi`
 
 ## 🗂️ Campi principali

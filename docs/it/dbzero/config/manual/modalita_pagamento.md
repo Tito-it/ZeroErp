@@ -5,12 +5,12 @@
 Approfondimenti tabelle:
 >
 [config.condizioni_pagamento](/dbzero/config/tabelle/condizioni_pagamento)
-> [vendite.fatture_testata](/dbzero/vendite/tabelle/fatture_testata)
-> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)
+> [vendite.fatture](/dbzero/vendite/tabelle/fatture)
+> [vendite.ddt](/dbzero/vendite/tabelle/ddt)
 >
 Approfondimenti funzioni/trigger:
 >
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
@@ -66,7 +66,7 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
 
 * **Documenti di vendita**:
 
-  * campi tipo `modalita_pagamento_id` in `vendite.fatture_testata` o in anagrafiche cliente per definire la **modalità predefinita** di incasso.
+  * campi tipo `modalita_pagamento_id` in `vendite.fatture` o in anagrafiche cliente per definire la **modalità predefinita** di incasso.
 
 * **Processi di incasso / riconciliazione**:
 
@@ -84,7 +84,7 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
      * aggiorna automaticamente `data_update` e `user_update` a ogni modifica del record.
    * **Come**:
 
-     * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()`, che centralizza la logica di aggiornamento campi di audit su più tabelle.
+     * invoca la funzione generica `script.trgfn_audit_data_user_generic()`, che centralizza la logica di aggiornamento campi di audit su più tabelle.
 
 > Questo garantisce che tutte le variazioni apportate alle modalità di pagamento siano sempre tracciate, semplificando audit e diagnostica.
 

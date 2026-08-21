@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_listini_righe_guard_tipologia.md" %}
 # ⚙️ Funzione `trgfn_listini_righe_guard_tipologia`
 
 ```sql

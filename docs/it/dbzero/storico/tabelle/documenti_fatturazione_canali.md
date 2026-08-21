@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/documenti_fatturazione_canali.md" %}
 # 📚 Tabella `documenti_fatturazione_canali`
 
 ## 🗂️ Campi principali

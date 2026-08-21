@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_piva_libera.md" %}
 # ⚙️ Funzione `fn_pgtap_piva_libera`
 
 ```sql

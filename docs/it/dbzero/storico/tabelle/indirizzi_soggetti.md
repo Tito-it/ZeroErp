@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/indirizzi_soggetti.md" %}
 # 📚 Tabella `indirizzi_soggetti`
 
 ## 🗂️ Campi principali

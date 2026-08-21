@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_riferimenti_morti_rientrati.md" %}
 # 🔍 View `vw_riferimenti_morti_rientrati`
 
 > 📝 **Descrizione**

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/tipi_asset_documento.md" %}
 # 📚 Tabella `tipi_asset_documento`
 
 ## 🗂️ Campi principali

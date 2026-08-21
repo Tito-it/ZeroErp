@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/stradario_trasformazioni.md" %}
 # 📚 Tabella `stradario_trasformazioni`
 
 > 📝 **Descrizione**

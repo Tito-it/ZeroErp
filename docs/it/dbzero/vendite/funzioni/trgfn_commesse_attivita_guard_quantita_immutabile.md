@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_commesse_attivita_guard_quantita_immutabile.md" %}
 # ⚙️ Funzione `trgfn_commesse_attivita_guard_quantita_immutabile`
 
 ```sql

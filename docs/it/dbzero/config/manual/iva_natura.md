@@ -9,7 +9,7 @@ Approfondimenti tabelle:
 Approfondimenti funzioni:   
 >
 [config.trgfn_iva_ins_upd_check_conti_iva](/dbzero/config/funzioni/trgfn_iva_ins_upd_check_conti_iva)    
-> [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)     
 
 
 
@@ -41,7 +41,7 @@ La tabella **`config.iva_natura`** contiene i codici natura IVA utilizzati per l
 1. **`trg_upd_iva_natura_audit_data_user`**
 
    * **Quando**: `BEFORE UPDATE`
-   * **Cosa**: aggiorna automaticamente i campi di audit `data_update` e `user_update` tramite la funzione generica `script.trgfn_upd_audit_data_user_generic()`.
+   * **Cosa**: aggiorna automaticamente i campi di audit `data_update` e `user_update` tramite la funzione generica `script.trgfn_audit_data_user_generic()`.
 
 ---
 

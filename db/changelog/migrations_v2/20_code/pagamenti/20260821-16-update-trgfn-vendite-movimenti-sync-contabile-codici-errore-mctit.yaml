@@ -1,0 +1,230 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL RIFIUTO PIU' IMPORTANTE DEL POSTING NON AVEVA UN NOME — passo P-7 (3 di 6)
+#   pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §1.3 (rilettura di B-2) e §2.0 P-7
+#
+# ── LA MISURA CHE HA CORRETTO IL BRIEF MADRE ────────────────────────────
+#   Il brief madre (punto B-2) diceva che postare una riga non abbinata avrebbe
+#   prodotto «una violazione NOT NULL (23502), non un errore di dominio
+#   parlante».
+#
+#   ✅ Non e' cosi'. Il guard c'e' GIA' dal 2026-02-13: se la riga non ha
+#   `fattura_id` o `billing_account_id`, questa funzione chiama
+#   `script.fn_log_and_raise_error` e solleva un `P0001` prima che la NOT NULL
+#   entri in gioco.
+#
+#   🔴 Il difetto e' un altro, ed e' di specie diversa: il codice e' `E_GENERICO`.
+#   La condizione piu' importante dell'intero posting — «questa riga non e'
+#   abbinata, quindi non si registra» — non aveva un nome con cui il backend
+#   potesse decidere lo status HTTP, ne' un messaggio scritto per l'operatore.
+#   Da qui `E_RIGA_CONTABILE_SENZA_ABBINAMENTO` (943, CONFLITTO_STATO).
+#
+# ── ⚠️ IL BUCO CHE RESTA, E CHE QUESTO CHANGESET NON CHIUDE ────────────
+#   Il guard scatta SOLO se `NEW.contabile_riga_id IS NOT NULL`. Un movimento
+#   inserito senza riga — strada che il modello ammette, la colonna e' nullable —
+#   non incontra nessun controllo e sbatte davvero sulla NOT NULL. Non e' il
+#   percorso del posting (la madre S1-10 partira' sempre dalla riga), e' il
+#   percorso di chi scrive a mano. Resta annotato: si chiude quando esistera' la
+#   madre, non con una toppa qui.
+#
+# ── I CINQUE PUNTI, IN TRE CODICI ───────────────────────────────────────
+#   · riga inesistente          -> E_RIGA_CONTABILE_NON_TROVATA (942, NON_TROVATO)
+#   · riga senza abbinamento    -> E_RIGA_CONTABILE_SENZA_ABBINAMENTO (943)
+#   · TRE mismatch (contabile_id, fattura_id, billing_account_id)
+#                               -> E_MOVIMENTO_RIFERIMENTO_INCOERENTE (944)
+#
+#   ⭐ Un codice solo per i tre mismatch, e non tre: il rimedio e' identico —
+#   «non passare quel valore, lo deriva il trigger dalla riga» — e il messaggio
+#   nomina la colonna in un segnaposto. Il criterio del progetto e' che un codice
+#   nuovo nasce quando cambia il RIMEDIO, non la sfumatura: tre codici qui
+#   avrebbero prodotto tre frasi identiche con una parola diversa.
+#
+#   ⚠️ Il messaggio di E_MOVIMENTO_RIFERIMENTO_INCOERENTE ha QUATTRO segnaposti
+#   (riga, colonna, valore passato, valore della riga) e i tre punti passano
+#   quattro valori ciascuno. `format()` con meno valori dei segnaposti alza 22023
+#   e farebbe SPARIRE l'errore di dominio: l'arita' e' un contratto, non uno
+#   stile. Presidio statico: test 5 di
+#   db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.
+#
+# Origine: corpo dalla doc auto-generata del 2026-08-21
+#   (docs/it/dbzero/pagamenti/funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga.md).
+# Dipendenze: codici 942, 943, 944 (append ai CSV di 80_data nello stesso commit).
+#   ⚠️ 80_data gira DOPO 20_code: nessuna preCondition sui codici.
+# Verifica: db/pgtap/pagamenti/test-vendite-movimenti-contabile-riga.sql
+# 🔴 RICHIESTA AL BE (BE-1): rigenerare error_policies_generated.py.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-16-update-trgfn-vendite-movimenti-sync-contabile-codici-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260821-16-update-trgfn-vendite-movimenti-sync-contabile-codici-errore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga: i cinque
+        E_GENERICO passano a E_RIGA_CONTABILE_NON_TROVATA,
+        E_RIGA_CONTABILE_SENZA_ABBINAMENTO (il rifiuto che il posting deve avere,
+        B-2 riletto) e E_MOVIMENTO_RIFERIMENTO_INCOERENTE, uno solo per i tre
+        mismatch perche' il rimedio e' identico. Nessun predicato cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'trgfn_vendite_movimenti_sync_contabile_from_riga';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_contabile_id_riga pagamenti.vendite_contabili_righe.contabile_id%TYPE;
+                v_fattura_id_riga pagamenti.vendite_contabili_righe.fattura_id%TYPE;
+                v_billing_account_id_riga pagamenti.vendite_contabili_righe.billing_account_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Mantenere coerenti contabile_id/fattura_id/billing_account_id
+                --   quando viene valorizzato contabile_riga_id.
+                --
+                -- Regole:
+                --   - derivare i riferimenti dalla riga contabile
+                --   - bloccare mismatch su valori passati manualmente
+                --
+                -- ⚠️ Il guard vale SOLO quando il movimento porta
+                --    contabile_riga_id. Un movimento inserito senza riga (la
+                --    colonna e' nullable) non lo incontra e sbatte sulla NOT
+                --    NULL: non e' il percorso del posting, e' il percorso di chi
+                --    scrive a mano.
+                --
+                -- Rev 2026-08-21 (passo P-7): i cinque E_GENERICO passano ai
+                -- codici registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                IF NEW.contabile_riga_id IS NOT NULL THEN
+                  SELECT r.contabile_id, r.fattura_id, r.billing_account_id
+                    INTO v_contabile_id_riga, v_fattura_id_riga, v_billing_account_id_riga
+                    FROM pagamenti.vendite_contabili_righe r
+                   WHERE r.id = NEW.contabile_riga_id;
+
+                  -- contabile_id sulla riga e' NOT NULL: se torna nullo, la riga
+                  -- non esiste.
+                  IF v_contabile_id_riga IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_RIGA_CONTABILE_NON_TROVATA',
+                      jsonb_build_object(
+                        'detail', 'contabile_riga_id non valido',
+                        'campo', 'contabile_riga_id',
+                        'contabile_riga_id', NEW.contabile_riga_id
+                      ),
+                      NULL::uuid,
+                      NEW.contabile_riga_id::text
+                    );
+                  END IF;
+
+                  -- ⭐ Il rifiuto centrale del posting: da una riga non abbinata
+                  --    non si deriva un movimento.
+                  IF v_fattura_id_riga IS NULL OR v_billing_account_id_riga IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_RIGA_CONTABILE_SENZA_ABBINAMENTO',
+                      jsonb_build_object(
+                        'detail', 'riga contabile priva di fattura_id o billing_account_id',
+                        'contabile_riga_id', NEW.contabile_riga_id,
+                        'fattura_id_riga', v_fattura_id_riga,
+                        'billing_account_id_riga', v_billing_account_id_riga
+                      ),
+                      NULL::uuid,
+                      NEW.contabile_riga_id::text
+                    );
+                  END IF;
+
+                  IF NEW.contabile_id IS NOT NULL
+                     AND NEW.contabile_id IS DISTINCT FROM v_contabile_id_riga THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_MOVIMENTO_RIFERIMENTO_INCOERENTE',
+                      jsonb_build_object(
+                        'detail', 'contabile_id incoerente con contabile_riga_id',
+                        'campo', 'contabile_id',
+                        'contabile_id', NEW.contabile_id,
+                        'contabile_riga_id', NEW.contabile_riga_id,
+                        'contabile_id_riga', v_contabile_id_riga
+                      ),
+                      NULL::uuid,
+                      NEW.contabile_riga_id::text, 'contabile_id',
+                      NEW.contabile_id::text, v_contabile_id_riga::text
+                    );
+                  END IF;
+
+                  IF NEW.fattura_id IS NOT NULL
+                     AND NEW.fattura_id IS DISTINCT FROM v_fattura_id_riga THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_MOVIMENTO_RIFERIMENTO_INCOERENTE',
+                      jsonb_build_object(
+                        'detail', 'fattura_id incoerente con contabile_riga_id',
+                        'campo', 'fattura_id',
+                        'fattura_id', NEW.fattura_id,
+                        'contabile_riga_id', NEW.contabile_riga_id,
+                        'fattura_id_riga', v_fattura_id_riga
+                      ),
+                      NULL::uuid,
+                      NEW.contabile_riga_id::text, 'fattura_id',
+                      NEW.fattura_id::text, v_fattura_id_riga::text
+                    );
+                  END IF;
+
+                  IF NEW.billing_account_id IS NOT NULL
+                     AND NEW.billing_account_id IS DISTINCT FROM v_billing_account_id_riga THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga', 'E_MOVIMENTO_RIFERIMENTO_INCOERENTE',
+                      jsonb_build_object(
+                        'detail', 'billing_account_id incoerente con contabile_riga_id',
+                        'campo', 'billing_account_id',
+                        'billing_account_id', NEW.billing_account_id,
+                        'contabile_riga_id', NEW.contabile_riga_id,
+                        'billing_account_id_riga', v_billing_account_id_riga
+                      ),
+                      NULL::uuid,
+                      NEW.contabile_riga_id::text, 'billing_account_id',
+                      NEW.billing_account_id::text, v_billing_account_id_riga::text
+                    );
+                  END IF;
+
+                  NEW.contabile_id := v_contabile_id_riga;
+                  NEW.fattura_id := v_fattura_id_riga;
+                  NEW.billing_account_id := v_billing_account_id_riga;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico. Il corpo precedente e' identico
+              --    salvo i codici errore: rimetterlo riporterebbe a E_GENERICO il
+              --    rifiuto centrale del posting («questa riga non e' abbinata»),
+              --    che e' proprio quello che deve avere un nome.
+              SELECT 1;

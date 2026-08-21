@@ -22,6 +22,9 @@ BEGIN
   --   Garantire coerenza della testata contabile:
   --   - centro/ente incasso
   --   - regole di compensazione
+  --
+  -- Rev 2026-08-21 (passo P-7): i quattro E_GENERICO passano ai
+  -- codici registrati. Nessun predicato e' cambiato.
   -- =========================================================
 
   -- 1) Coerenza ente_incasso -> centro_riscossione.
@@ -31,35 +34,37 @@ BEGIN
       FROM pagamenti.enti_incasso ei
      WHERE ei.id = NEW.ente_incasso_id;
 
+    -- ⚠️ Due cause, un codice: l'ente non esiste, oppure esiste e
+    --    non ha centro (la colonna e' nullable). Stesso rimedio:
+    --    si va a guardare l'ente.
     IF v_centro_ente IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
-        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
+        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_ENTE_INCASSO_SENZA_CENTRO',
         jsonb_build_object(
           'detail', 'ente_incasso senza centro_riscossione valido',
+          'campo', 'ente_incasso_id',
           'ente_incasso_id', NEW.ente_incasso_id
         ),
         NULL::uuid,
-        concat('ente_incasso non valido o privo di centro_riscossione' , ', ente_incasso_id: ', NEW.ente_incasso_id::text)
+        NEW.ente_incasso_id::text
       );
     END IF;
 
     IF NEW.centro_riscossione_id IS DISTINCT FROM v_centro_ente THEN
       PERFORM script.fn_log_and_raise_error(
-        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
+        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_CONTABILE_CENTRO_ENTE_INCOERENTE',
         jsonb_build_object(
           'detail', 'coerenza centro/ente non rispettata',
+          'campo', 'centro_riscossione_id',
           'contabile_id', NEW.id,
           'centro_riscossione_id', NEW.centro_riscossione_id,
           'ente_incasso_id', NEW.ente_incasso_id,
           'centro_riscossione_ente', v_centro_ente
         ),
         NULL::uuid,
-        concat('Incoerenza tra centro_riscossione_id testata e centro ente_incasso',
-          ', contabile_id: ', NEW.id::text,
-          ', centro_riscossione_id: ', NEW.centro_riscossione_id::text,
-          ', ente_incasso_id: ', NEW.ente_incasso_id::text,
-          ', centro_ente: ', v_centro_ente::text
-        )
+        NEW.centro_riscossione_id::text,
+        NEW.ente_incasso_id::text,
+        v_centro_ente::text
       );
     END IF;
   END IF;
@@ -71,21 +76,21 @@ BEGIN
       FROM pagamenti.centri_riscossione c
      WHERE c.id = NEW.centro_riscossione_id;
 
+    -- ⚠️ Dal 2026-08-21 (20260821-11) il centro di compensazione e'
+    --    UNICO per costruzione: indice unico parziale su
+    --    is_compensazione. Prima l'unicita' era solo dichiarata.
     IF COALESCE(v_is_compensazione, false) IS FALSE THEN
       PERFORM script.fn_log_and_raise_error(
-        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
+        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_CENTRO_NON_ABILITATO_COMPENSAZIONE',
         jsonb_build_object(
           'detail', 'centro_riscossione non abilitato a compensazione',
+          'campo', 'centro_riscossione_id',
           'contabile_id', NEW.id,
           'centro_riscossione_id', NEW.centro_riscossione_id,
           'compensazione_id', NEW.compensazione_id
         ),
         NULL::uuid,
-        concat('Centro riscossione non configurato come compensazione',
-          ', contabile_id: ', NEW.id::text,
-          ', centro_riscossione_id: ', NEW.centro_riscossione_id::text,
-          ', compensazione_id: ', NEW.compensazione_id::text
-        )
+        NEW.centro_riscossione_id::text
       );
     END IF;
 
@@ -97,19 +102,19 @@ BEGIN
       )
         INTO v_has_lotto_link;
 
+      -- ⭐ Stesso codice del guard gemello sui lotti: e' la stessa
+      --    regola letta nel verso opposto. Il messaggio ha un solo
+      --    segnaposto perche' questa porta non conosce il lotto.
       IF v_has_lotto_link THEN
         PERFORM script.fn_log_and_raise_error(
-          'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_GENERICO',
+          'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_CONTABILE_COMPENSAZIONE_CON_LOTTO',
           jsonb_build_object(
             'detail', 'testata compensazione non compatibile con link lotto',
             'contabile_id', NEW.id,
             'compensazione_id', NEW.compensazione_id
           ),
           NULL::uuid,
-          concat('Testata compensazione gia collegata a lotto',
-            ', contabile_id: ', NEW.id::text,
-            ', compensazione_id: ', NEW.compensazione_id::text
-          )
+          NEW.id::text
         );
       END IF;
     END IF;

@@ -35,6 +35,30 @@
 >
 > **Fonti**: `brief-db-generazione-scadenze-fattura.md` §6 e §7 (chiuso),
 > `dbzero/vendite/manual/fatture_scadenze.md`, `guide/gestione-dei-pagamenti.md`.
+>
+> ---
+>
+> ⭐ **Dal 2026-08-21 il PIANO DB sta altrove**:
+> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md).
+> **Questo documento resta la sede delle decisioni di dominio**; là stanno i
+> passi, le misure aggiornate e le domande aperte prima dello sviluppo.
+> ⚠️ **Divisione del lavoro, per non far divergere le due sedi**: una decisione
+> di dominio si aggiorna **qui**; una misura del terreno o un passo si aggiorna
+> **là**. Mai il contrario.
+>
+> 🔴 **E quel documento corregge tre cose che qui sono scritte al presente e non
+> lo sono più** (rimisurate il 2026-08-21):
+>
+> | Dove | Cosa non regge più |
+> | --- | --- |
+> | §1-bis, §6 | `vendite.fn_sync_pagamento_fondo_fattura` — «il guscio vuoto che sembra il posting» — **non esiste più**: ritirata con la Fase E del cantiere fondi il 2026-08-15 |
+> | §1-bis **B-2** | «postare una riga non abbinata produrrebbe una violazione NOT NULL (23502)» è **falso**: il trigger di mirror ha **già** il guard e solleva un `P0001`. 🔴 Il difetto vero è un altro — solleva `E_GENERICO`, come **tutte e quattro** le funzioni di `pagamenti` |
+> | §7 | La «metà fondi» della slice 1 **è fatta** (Fasi A/B/C/E/F applicate il 15-16/08), e con essa cade il riquadro rosso sulla sua scadenza. ⭐ **La dipendenza si è invertita**: ora è la **Fase D** del cantiere fondi ad aspettare il processo rimborsi di `pagamenti` (§4-bis **D8 b**) |
+>
+> 🔴 E aggiunge **cinque difetti nuovi** che questo brief non conosce, tre dei
+> quali **bloccano la slice 1** — il più grave: `pagamenti.centri_riscossione`
+> **non può contenere più di due righe**, quindi il passo 3 di §2-bis D9-d-1
+> («aggiungere banca, poste, cassa») oggi non è eseguibile. Vedi §1.4 di là.
 
 ---
 
@@ -71,9 +95,15 @@ funzione di ogni schema: **zero risultati**. Il **posting** — il passaggio
 Ne segue che oggi `pagamenti.fn_get_saldo_fattura` restituisce, per costruzione,
 **sempre `totale_a_pagare`**: sottrae movimenti che nessuno crea.
 
-### ⚠️ Attenzione a una funzione il cui nome dice il contrario
+### ~~⚠️ Attenzione a una funzione il cui nome dice il contrario~~
 
-Cercando il posting si incontra
+> ✅ **CHIUSA il 2026-08-15, verificata il 2026-08-21**: la funzione è stata
+> **ritirata** (`DROP`) con la coda della Fase E del cantiere fondi, e **non
+> esiste più** nel database. Il paragrafo resta perché spiega *perché* la guida
+> descriveva il posting come se esistesse — non perché ci sia ancora qualcosa da
+> fare.
+
+Cercando il posting si incontrava
 `vendite.fn_sync_pagamento_fondo_fattura(p_fattura_figlia_id)`, che restituisce
 `TABLE(inserted_movimenti, updated_movimenti, annullati_source)`. Nome e colonne
 dicono **movimenti**: sembra il pezzo che stiamo cercando.
@@ -156,10 +186,27 @@ Ed è coerente col dominio: `DA_ABBINARE` significa letteralmente *«l'importo �
 arrivato, non so ancora a chi attribuirlo»*, cioè `fattura_id IS NULL`.
 L'abbinamento **è** la scrittura di quella FK.
 
-Ma il trigger `trgfn_vendite_movimenti_sync_contabile_from_riga` copia i tre
+~~Ma il trigger `trgfn_vendite_movimenti_sync_contabile_from_riga` copia i tre
 campi dalla riga al movimento: postare una riga non abbinata produrrebbe una
-**violazione NOT NULL (23502)**, non un errore di dominio parlante. Il posting
-deve quindi rifiutare *prima*, con un codice suo.
+**violazione NOT NULL (23502)**, non un errore di dominio parlante.~~
+
+> 🔴 **Sbagliato, rimisurato il 2026-08-21.** Il trigger **ha già** il guard: se
+> la riga non ha `fattura_id` o `billing_account_id` chiama
+> `script.fn_log_and_raise_error` e solleva un `P0001` *prima* che la `NOT NULL`
+> entri in gioco. La `23502` non si vede mai su quel percorso.
+>
+> **Il difetto vero è di specie diversa, e peggiore: il codice è `E_GENERICO`** —
+> e non solo lì: **tutte e quattro** le funzioni di `pagamenti` sollevano
+> `E_GENERICO`, su una quindicina di punti.
+>
+> ⚠️ Il guard esistente ha però un buco proprio: scatta **solo** se
+> `contabile_riga_id IS NOT NULL`. Un movimento scritto senza riga — la colonna è
+> nullable — non incontra nessun controllo.
+
+**Il requisito resta, cambiando forma**: il posting deve rifiutare *prima*, con
+un codice suo — ma non è «aggiungere un guard che manca», è **dare un nome** a un
+rifiuto che già esiste e **bonificare i vicini**. Passi P-6 e P-7 del
+[piano DB](brief-db-posting-e-abbinamento-rata.md).
 
 🔴 **E non esiste alcun vincolo che leghi lo stato ai dati.** Oggi si può
 scrivere `ABBINATA` con `fattura_id` NULL, o `DA_ABBINARE` con la fattura già
@@ -589,10 +636,42 @@ risulta ancora da pagare per intero. Postare fa passare la riga da `ABBINATA` a
 
 | | Decisione | Perché |
 | --- | --- | --- |
-| **a** | **Unità = la testata contabile**, non la singola riga | La contabile **è** il movimento bancario: postata a metà resta un documento per un pezzo fatto e per un pezzo brogliaccio, che nessuno sa più leggere. ⭐ Il caso difficile si risolve da sé: una riga dubbia va in **`SOSPESA`**, che non è postabile — quindi «posta la contabile» significa naturalmente *«registra tutto il pronto, lascia lì il resto»*. Nessun meccanismo nuovo |
+| **a** | **Unità = la testata contabile**, non la singola riga | ~~La contabile **è** il movimento bancario~~ → 🔴 **frase sbagliata, corretta il 2026-08-21: la contabile è la DISTINTA di giornata per canale** (vedi il riquadro sotto la tabella). La decisione non cambia — regge **solo** così. Postata a metà resta un documento per un pezzo fatto e per un pezzo brogliaccio, che nessuno sa più leggere. ⭐ Il caso difficile si risolve da sé: una riga dubbia va in **`SOSPESA`**, che non è postabile — quindi «posta la contabile» significa naturalmente *«registra tutto il pronto, lascia lì il resto»*. Nessun meccanismo nuovo |
 | **b** | **Una sola `SELECT fn_...()`** (madre DB), non orchestrazione Python | B-1 pretende che cambio di stato e creazione del movimento siano **inseparabili**. Una funzione sola lo è **per costruzione**; l'orchestrazione lo ottiene solo se qualcuno si ricorda di scriverlo. Fra una garanzia strutturale e una da ricordare si sceglie la prima. Ed è la regola del progetto: operazione di soli dati ⇒ sta nel database |
 | **c** | **Ripetizione tecnica = silenzio; seconda azione voluta = messaggio** | L'indice unico impedisce già il doppio movimento: la domanda non è cosa si rompe, è **cosa vede la persona**. Il replay di una richiesta ripetuta è già gestito dal meccanismo generale; un operatore che riclicca «conferma» su una contabile già registrata deve **sentirselo dire**, perché il silenzio direbbe «fatto» a chi sta cercando di cambiare qualcosa e non ha cambiato niente |
 | **d** | 🔴 **Lo storno NON esiste come concetto.** Esiste la contabile, e una contabile può avere **importi negativi** | Decisione di Tid, 2026-08-09 — vedi sotto |
+
+#### 🔴 Correzione alla riga (a): la contabile è una **distinta**, non un movimento (2026-08-21)
+
+La frase *«la contabile è il movimento bancario»* è **sbagliata**, e contraddice
+l'intestazione di questo stesso brief, che dice bene: *«il documento che
+**raccoglie N importi arrivati insieme** e li prepara»*.
+
+✅ **Misurato sulle colonne**: la testata **non ha importo** e **non ha nessun
+riferimento bancario** (CRO, TRN, numero operazione); il riferimento della banca
+sta **sulla riga** (`riferimento_ente`, *«il dato che arriva dalla banca»*).
+Quindi la testata è la **distinta di giornata per canale**, e il punto d'ingresso
+`fn_get_or_create_vendite_contabile` — che riusa la testata a parità di centro,
+ente e date — fa la cosa **giusta**.
+
+⭐ **E la decisione (a) regge solo così.** Il suo passaggio migliore — *«una riga
+dubbia va in `SOSPESA`, quindi posta la contabile significa: registra tutto il
+pronto, lascia lì il resto»* — **richiede più righe**. Con una testata per
+bonifico non ci sarebbe nessun «resto». *La decisione era giusta e la sua
+motivazione diceva il contrario di ciò su cui si regge.*
+
+⚠️ ~~Resta una conseguenza operativa: su una distinta condivisa chi conferma
+conferma anche il lavoro degli altri.~~ ✅ **Chiusa da D12-a**: la distinta
+manuale è **per operatore**, quindi non è condivisa e la contesa non esiste. La
+dichiarazione della portata resta come **rete** (D13), non come presidio.
+
+⚠️ **Ma il raggruppamento non è la giornata**, come diceva la prima stesura di
+questo riquadro: è **il lotto di lavoro di un operatore** (manuale) o **il file**
+(automatica). Vedi **D12** qui sopra.
+
+ℹ️ Misure e riformulazione in
+[brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+§1.4 C-4 e **Q-3**.
 
 #### 🔴 (d) La correzione non è un tipo di documento: è un importo di segno opposto
 
@@ -749,7 +828,39 @@ attribuire ad altro. *È esattamente la trappola «il DB di sviluppo non è un D
 ricostruito da zero»: verificando solo su dev si misura una macchina, non la
 riproducibilità.*
 
-#### La soluzione — quattro passi, non uno
+#### La soluzione — ~~quattro~~ **cinque** passi, non uno
+
+> 🔴 **Ne manca uno davanti, scoperto il 2026-08-21: il passo 3 oggi non è
+> eseguibile.** `uq_centri_riscossione_compensazione` è un UNIQUE **totale** su
+> una colonna booleana — il `where: "is_compensazione = true"` fu scritto su un
+> `addUniqueConstraint`, che quell'attributo **non ha**, ed è stato ignorato in
+> silenzio. Conseguenza: la tabella può contenere **al massimo due righe**, una
+> per valore del flag. Sono esattamente le due che ci sono, il che rende il
+> vincolo **saturo e indistinguibile da uno rispettato**.
+>
+> 🔴 **E non è l'unico vincolo evaporato su quella tabella.** Il changeSet
+> successivo (`20260211-21`) dichiara un CHECK «o compensazione o fondo fattura,
+> non entrambi» che **non esiste nel database**: il blocco `- sql:` è annidato
+> dentro `addColumn.columns:` invece che sotto `changes:`, e lì dentro non viene
+> eseguito. La colonna è nata, il vincolo no — quindi oggi un centro può essere
+> **tutti e due i ruoli insieme**.
+>
+> Prima dei quattro passi qui sotto va quindi un **passo 0** che ne rimette in
+> piedi **tre**: i due indici unici parziali (`WHERE is_compensazione` e il
+> gemello su `is_fondo_fattura`, che non ha mai avuto unicità) e il CHECK mai
+> nato. Dettaglio, SQL e lezione in
+> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+> §1.4 C-1/C-1-bis; passi **P-0** e **P-1** del piano.
+>
+> ⭐ **Due vincoli su tre persi nello stesso file, lo stesso giorno, per la stessa
+> causa**: un'istruzione che lo strumento non capisce non dà errore, dà
+> **silenzio** — e il file di migrazione continua a dichiarare l'intenzione
+> giusta, quindi chi lo rilegge non ha motivo di dubitare.
+>
+> ⚠️ E un **passo 5** in coda: `id` è `GENERATED BY DEFAULT AS IDENTITY`, e un
+> loader con id espliciti **non avanza la sequenza**. `pagamenti` non è coperto
+> da nessun resync (`20260616-02` copre solo `config`): senza, il primo insert
+> automatico collide con la pkey.
 
 Il modello da copiare è a due file di distanza: `vendite_contabili_stati` ha già
 CSV + mirror `loadUpdateData` (`runOnChange: true` + `validCheckSums: ANY`).
@@ -1106,6 +1217,599 @@ Un ciclo richiede che **un automatismo riscriva un numero che un altro rilegge**
 Se l'unica scrittura è l'aggiunta di un fatto e tutto il resto è derivato, non
 c'è niente che possa rincorrersi: **un saldo non insegue sé stesso**.
 
+### ✅ D10 — Il fondo vale il **residuo alla nascita**, e poi non insegue (Tid, 2026-08-21)
+
+Confermato esplicitamente **alla luce del posting**, che è il momento in cui la
+domanda diventa vera: finché i movimenti non esistono, «residuo» e «totale» sono
+lo stesso numero e la scelta non si vede.
+
+**La regola.** L'importo di un fondo è il **residuo della fattura sorgente
+nell'istante in cui il fondo nasce**. Esempio di Tid: fattura di minimo da 20 €
+su cui è già stato registrato un incasso di 11 € → **il fondo è di 9 €**, non di
+20.
+
+⭐ **E il database lo fa già così**, senza che serva scrivere niente:
+`fn_fondo_fattura_proponibile` legge il numero da `fn_saldo_sorgente_fondo`, che
+è `saldo(movimenti) − (righe in lavorazione − quelle di questo stesso fondo)`.
+Oggi quel primo termine vale sempre `totale_a_pagare` perché nessuno crea
+movimenti — *«la formula è scritta per quel giorno, non per oggi»*, dice il suo
+commento. **Il posting non introduce questa regola: la accende.**
+
+**Ciò che si è escluso**, ed è il punto: il fondo **non insegue** il residuo. Se
+il cliente paga *dopo* che il fondo è nato, il fondo **non si riduce**.
+
+> *«altrimenti riparte la rincorsa»* — Tid, 2026-08-21.
+
+È §3-bis applicato: un automatismo che riscrive un numero che un altro rilegge è
+la definizione del ciclo che questo cantiere ha chiuso per costruzione. E
+combacia con la decisione del cantiere fondi del 15/08 — *«il fondo di una
+fattura DEFINITIVA è un atto»* — che l'ha già resa **strutturale**: `importo` è
+una colonna **bloccata** (`E_FONDO_ATTO_IMMUTABILE`), la generazione è
+*create-only*, e un atto esistente in qualunque stato blocca ogni nuova proposta.
+
+#### 🔴 Ma la scelta lascia un caso senza destinazione, e va saputo adesso
+
+Se il fondo nasce a 20 e **poi** il cliente paga 11, la sorgente ha ricevuto 31
+contro un documento da 20. Il fondo non si tocca (è la decisione), quindi restano
+**11 € di credito del cliente**. Dove si vede?
+
+| Dove si potrebbe vedere | Oggi |
+| --- | --- |
+| `fn_get_saldo_fattura` sulla sorgente | ✅ va a **−11**: l'aritmetica è giusta |
+| `vw_fondi_fattura_da_decidere`, ramo `NON_PIU_CAPIENTE` | ❌ **no**: filtra `stato = 'DISPONIBILE'`, e questo fondo è `ASSEGNATO` — il denaro si è già mosso |
+| Elenco delle rate sovra-incassate (slice 2) | ❌ **no**: la riga contabile del fondo non è attribuita a una rata |
+
+🔴 **Quindi: da nessuna parte.** Non è un difetto della decisione — è la sua
+metà mancante. Il credito che non torna nel fondo deve andare **da qualche
+altra parte**, e quel posto è il **processo rimborsi** che `pagamenti` non ha:
+è la **D8 (b)** qui sotto, e la ragione per cui anche la Fase D del cantiere
+fondi è ferma ad aspettarci. La decisione di Tid **rafforza** quella domanda
+invece di scioglierla.
+
+---
+
+### ✅ D11 — «Eseguito» non è «annullato»: il fondo prende un quarto stato (Tid, 2026-08-21)
+
+Nasce da un dubbio di Tid mentre si guardava il difetto del fondo che si
+auto-annulla: *«un conto è annullato perché non si deve fare più, un conto è
+annullato perché già eseguito»*.
+
+**Ed era già vero prima del posting.** Misurato il 2026-08-21: `ANNULLATO` porta
+oggi **tre significati diversi**, e solo uno è un annullamento.
+
+| Chi lo scrive | Vuol dire davvero | |
+| --- | --- | --- |
+| `fn_sync_contabili_fondo_fattura`, ramo saldo-zero | «non serve più» | 🔴 **falso dopo il posting** |
+| `fn_reset_fondi_fattura`, ramo bloccante | «già eseguito, non si torna indietro» | ⚠️ vero, **parola sbagliata** |
+| Una persona (Fase D, da costruire) | «ho deciso di non farlo» | ✅ l'unico vero annullamento |
+
+🔴 **E il secondo produce oggi un record che si contraddice**: scrive
+`stato = 'ANNULLATO'` **lasciando `fattura_figlia_id` valorizzato** — un fondo
+«annullato» che risulta ancora assegnato. Chi l'ha scritto non aveva la parola
+per dire «eseguito», e ha usato l'unica disponibile.
+
+#### Cosa si fa
+
+Un **quarto stato**, `ESEGUITO`: *il trasferimento è stato registrato, esiste un
+movimento, l'atto è compiuto*. Terminale come `ANNULLATO`, ma per la ragione
+opposta — non «tolto dal tavolo», ma **portato a termine**.
+
+Con quattro decisioni che lo rendono sicuro:
+
+| | Cosa | Perché |
+| --- | --- | --- |
+| **a** | Uno **stato**, non una colonna affiancata | I **tre** lettori dei fondi filtrano tutti su `stato`. Un fondo che esce da `ASSEGNATO` esce da tutti e tre **gratis**; una colonna richiederebbe di modificarli tutti e tre ricordandosene |
+| **b** | Lo scrive un **trigger** sulla riga contabile che diventa registrata | ⭐ Un trigger scatta **sul fatto**, non su chi si ricorda. Farlo scrivere al posting sarebbe fail-open: il giorno che qualcuno registra una riga per un'altra via, se lo deve ricordare |
+| **c** | Il legame riga contabile ↔ fondo diventa una **colonna con chiave esterna** | Oggi è una stringa in un campo JSON, già letta in **tre** posti. Appenderci una macchina a stati la rende **portante**, e un legame portante non si tiene con una stringa |
+| **d** | Il **reset cancella** l'atto non eseguito, invece di riportarlo a `DISPONIBILE` | *«si riporta allo stato iniziale tutto»* (Tid). E il giro successivo ne crea uno **nuovo, letto sul residuo di adesso** — che è **D10** applicata a un atto nuovo. È anche la filosofia già scritta nel guard degli stati: *«se serve di nuovo, si compie un atto NUOVO»* |
+
+> **La regola sta in una riga: si cancella solo ciò che non è stato eseguito.
+> `ESEGUITO` non si cancella mai.** Ed è il quarto stato a renderla applicabile:
+> senza una parola per «eseguito», un reset che cancella non saprebbe da cosa
+> tenere le mani lontane.
+
+#### ⭐ Il guadagno, che è più grande della pulizia lessicale
+
+Due difetti smettono di essere raggiungibili invece di essere tamponati, e una
+domanda aperta sparisce:
+
+- il sync **non arriva più** a una riga registrata → niente `UPDATE` che tira
+  indietro uno stato finale;
+- il ramo del saldo-zero **non viene più valutato** su un fondo eseguito → niente
+  auto-annullamento;
+- non serve più correggere lo scorporo di `fn_saldo_sorgente_fondo`: la formula
+  è giusta, le arrivava solo la domanda sbagliata.
+
+#### ⚠️ Due conseguenze accettate consapevolmente
+
+1. **`fatture_fondi_fattura_source` non è storicizzata**: un DELETE è definitivo.
+   ✅ Accettato — *un atto mai eseguito è una **proposta**, non un fatto*, e
+   §3-bis dice che sono i **fatti** a doversi solo aggiungere;
+2. **il DELETE riapre la rigenerazione.** Oggi è la regola dell'«atto unico» a
+   impedire al giro notturno di ricreare un fondo, e quella guarda se un atto
+   esiste **in qualunque stato**. Cancellandolo, il giro successivo lo rifà. È il
+   comportamento cercato, ma è un **cambio reale** rispetto a oggi.
+
+ℹ️ Passi, SQL e trappole di scrittura (l'ordine obbligato, la FK nel reset a CTE
+singola, il trigger che scrive da `pagamenti` verso `vendite`) in
+[brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+§2.1, passi **S1-14 … S1-17**.
+
+⚠️ **Questa decisione cambia un modello di un altro cantiere**: la matrice degli
+stati del fondo era dichiarata a **tre stati** in
+[brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8.2
+D-7. Marcata lì come superata.
+
+---
+
+### ✅ D12 — Che cos'è una distinta, e i due tipi che esistono (Tid, 2026-08-21)
+
+Chiude **Q-3** e sostituisce il riquadro sopra sulla «distinta di giornata»: il
+raggruppamento **non è la giornata**, e la ragione è che le distinte sono di due
+specie diverse.
+
+> 🔴 **Le specie sono TRE dal 2026-08-21 notte**: si è aggiunta `GENERATA`, per
+> le distinte che produce il sistema. La tabella qui sotto resta perché descrive
+> le due che nascono da un *gesto*; la terza è in **(b-bis)**.
+
+| | Distinta **MANUALE** | Distinta **AUTOMATICA** |
+| --- | --- | --- |
+| **Che cos'è** | il **lotto di lavoro di un operatore** | il **file** arrivato dal canale |
+| **Confine** | chi la sta compilando | il file stesso |
+| **Contenuto finanziario** | lo digita una persona | **copia di ciò che è arrivato** |
+| **Lock** | ⛔ **non serve**: è proprietà, non contesa | ⛔ non serve: è immutabile |
+| **Totale dichiarato** | **facoltativo** | **obbligatorio**: lo dichiara la sorgente |
+
+#### a) La distinta manuale è **per operatore**, e con ciò il lock sparisce
+
+Il raggruppamento «giornata + canale» non ha un referente nel mondo: nessun
+documento reale corrisponde a *«tutti gli incassi banca di lunedì digitati a
+mano»*. Il lotto di lavoro di una persona invece ce l'ha.
+
+⭐ **E risolve il lock senza costruirlo.** Tid aveva chiesto che una distinta
+aperta da un operatore fosse inaccessibile agli altri: con questo
+raggruppamento **la contesa non esiste**, quindi non servono colonne di blocco,
+scadenze del lock, sblocco d'emergenza né un guard che presidi chi tiene la
+chiave. *La domanda chiedeva una cosa in più e, per questa strada, se ne toglie
+una più grossa.*
+
+⚠️ **Conseguenza sul punto d'ingresso**: `fn_get_or_create_vendite_contabile`,
+nel ramo manuale, **non riusa più a parità di giornata** — la chiave comprende
+chi sta lavorando.
+
+#### b) `origine`, e il nome esiste già nel progetto
+
+Una colonna `origine` sulla testata con vocabolario chiuso
+(`MANUALE` / `AUTOMATICA`), **stessa parola e stessa forma** di
+`vendite.fatture_fondi_fattura_source.origine`. Un secondo modo di dire la
+stessa cosa in un altro schema sarebbe solo un'occasione di divergere.
+
+⭐ `origine` diventa **il cardine da cui pendono le altre regole**, invece di tre
+flag scollegati.
+
+#### b-bis) 🔴 Il vocabolario è a **TRE**, non a due (Tid, 2026-08-21 notte)
+
+Emerso scrivendo il lotto 2, misurando **chi crea davvero le distinte oggi**:
+
+> `vendite.fn_sync_contabili_fondo_fattura` è l'**unico** creatore esistente —
+> nessun chiamante Python, il manuale e l'import non sono ancora costruiti — e
+> quella distinta **non è né l'una né l'altra**: non la digita una persona, e non
+> arriva da un file.
+
+Con un vocabolario a due, **il 100% delle distinte di oggi** sarebbe etichettato
+con una parola falsa. E `origine` è *«il cardine da cui pendono le altre regole»*:
+un cardine che mente su un intero tipo di riga non regge le regole che ci si
+appendono.
+
+| Valore | Che cos'è | Chi la crea |
+| --- | --- | --- |
+| `MANUALE` | il **lotto di lavoro di un operatore** | una persona, digitando |
+| `AUTOMATICA` | il **file** arrivato dal canale | l'import (D6) |
+| 🆕 `GENERATA` | la produce **il sistema**: nessuno l'ha digitata e non c'è un file da cui quadrare | il giro dei fondi fattura, le compensazioni |
+
+⭐ **E le tre regole che pendevano da `origine` si leggono meglio, non peggio:**
+
+* **`importo_dichiarato`** è obbligatorio **solo** su `AUTOMATICA`, facoltativo su
+  `MANUALE`, e su `GENERATA` **dev'essere vuoto**: non c'è nessuna sorgente che
+  abbia dichiarato un totale, e un totale inventato romperebbe la quadratura di
+  una distinta sana;
+* **il raggruppamento per operatore** (a) vale **solo** su `MANUALE`: le altre due
+  non sono lotti di lavoro di nessuno;
+* **`VALIDATA → BOZZA`** (a-bis) vale **solo** su `MANUALE`: l'automatica è
+  immutabile, e riaprire una generata non ha senso — la si rigenera.
+
+⚠️ **Non è un terzo tipo «tecnico» da nascondere**: una distinta generata è un
+documento come gli altri, si registra come gli altri, e la sua unica differenza è
+che **non c'è nessuno a cui chiedere conto del contenuto**. È esattamente
+l'informazione che serve a chi la guarda.
+
+#### c) `importo_dichiarato` — obbligatorio sull'automatica, **facoltativo** sul manuale
+
+| Caso | Comportamento |
+| --- | --- |
+| **AUTOMATICA** | obbligatorio. È l'**autocontrollo dell'import**: se abbiamo letto male il file, la somma non torna e non nasce niente |
+| **MANUALE, dichiarato** | il classico controllo da data entry: dichiaro 1.500 €, digito, il sistema verifica |
+| **MANUALE, non dichiarato** | nessuna quadratura. ⭐ **Alla conferma i totali si vedono comunque** (è la ricevuta di D13) e l'operatore procede libero |
+
+> Le due cose non sono alternative: sono **la stessa dichiarazione in due
+> momenti**. Chi la fa prima si fa controllare; chi non la fa la vede alla
+> conferma e decide.
+
+#### d) ⚠️ «Non modificabile» va precisato, o congela il lavoro stesso
+
+Se una distinta importata fosse davvero immodificabile non si potrebbe fare **la
+cosa per cui esiste**: l'abbinamento. La linea passa **dentro la riga**:
+
+| | Colonne | Chi le ha stabilite |
+| --- | --- | --- |
+| 🔒 **Fatti** | `importo`, `data_pagamento`, `data_valuta`, `data_operazione`, `riferimento_ente` | **la sorgente**: è ciò che è arrivato |
+| ✏️ **Decisioni** | `fattura_id`, `scadenza_id`, `billing_account_id`, `stato_id`, `motivo_sospeso` | **noi**: è il lavoro |
+
+⭐ È **§3-bis applicato dentro una singola riga**: metà fatto, metà decisione.
+
+⚠️ `billing_account_id` sta fra le **decisioni** anche se il file porta l'IBAN del
+pagatore: il file dice *quell'IBAN*, dire *quel cliente* è una **nostra
+inferenza** — e le inferenze si correggono.
+
+⚠️ E «immutabile» ha **tre porte**: `UPDATE` (cambiare un importo), `INSERT`
+(aggiungere una riga a una distinta arrivata) e `DELETE` (toglierne una).
+Chiuderne una sola non serve a niente.
+
+#### e) La quadratura: **la madre la stabilisce, il guard la conserva**
+
+🔴 **Non può essere un trigger di riga.** Durante il caricamento le righe entrano
+una alla volta: la somma torna **solo alla fine**, quindi un trigger di riga
+rifiuterebbe la prima riga di ogni import. È la regola già registrata nel
+progetto — *un tetto-somma non sta in un trigger di riga; il guard tiene la riga,
+la madre tiene l'uguaglianza*.
+
+Quindi l'import è **un atto unico**: crea testata e **tutte** le righe, verifica
+la somma, e se non torna **la transazione si annulla per intero**. ⭐ Se non
+quadra non nasce niente — un import atterrato a metà è peggio di uno non
+atterrato, perché nessuno saprebbe che manca qualcosa.
+
+Poi l'immutabilità (d) **conserva** l'uguaglianza per sempre: la somma non può
+più cambiare, quindi la quadratura si verifica **una volta** e resta vera per
+costruzione.
+
+⚠️ **Due precisazioni che evitano un errore:**
+
+1. la quadratura conta **tutte** le righe, `SCARTATA` comprese: quel denaro **è
+   arrivato**. Se una riga scartata uscisse dalla somma, il primo scarto
+   romperebbe la quadratura di una distinta sana. La quadratura dice *«abbiamo
+   letto tutto ciò che c'era nel file»*, non *«tutto è nostro»*;
+2. **l'abbinamento non tocca la quadratura**, ed è ciò che rende il disegno
+   solido: attribuire una riga non ne cambia l'importo, quindi il lavoro
+   dell'operatore **non può rompere l'equazione**.
+
+#### f) Il percorso del flusso si **documenta**, non si semina
+
+```text
+IMPORTATA  →  DA_ABBINARE  →  ABBINATA  →  registrata
+                   ↓  ↑
+                SOSPESA
+                   ↓
+                SCARTATA
+```
+
+✅ Nessuno stato nuovo: `SOSPESA` («l'ho guardata e c'è un problema») e il campo
+`motivo_sospeso` esistono già, disegnati per questo. E la differenza fra
+`DA_ABBINARE` e `SOSPESA` è **chi ha guardato** — lavoro non ancora fatto contro
+lavoro fatto che ha trovato un ostacolo: due code per due persone diverse.
+
+⚠️ **Ma le transizioni del flusso NON si seminano finché l'import non esiste.**
+È la lezione appena pagata con `STORNATA`: *un catalogo pieno di righe
+irraggiungibili insegna cose false*. Si semina il giro **manuale**; quelle del
+flusso arrivano con D6, e sono un *append* a un CSV.
+
+ℹ️ ⚠️ I due guard di (d) ed (e) vanno **con l'import**, non nella slice 1: prima
+non hanno righe su cui agire.
+
+---
+
+### ✅ D13 — Registrare una distinta è un gesto che **dichiara la propria portata**
+
+Chiude la seconda metà di **Q-3**. Il posting è **irreversibile** (nascono
+movimenti veri; si corregge solo con una contabile di segno opposto), quindi non
+deve poter fare una cosa diversa da quella che chi lo compie crede di fare.
+
+| | Cosa | |
+| --- | --- | --- |
+| **Ricevuta** | la funzione risponde con **quante righe, che totale, quante saltate e perché** | ⭐ serve comunque: è la stessa risposta che chiude **Q-7** |
+| **Dichiarazione** | chi chiama passa **ciò che ha visto** (righe registrabili e loro totale); se la realtà è diversa la funzione **rifiuta** e non registra nulla | Nessuno stato salvato: la fotografia **viaggia dentro la richiesta** |
+| **Tracciabilità** | il posting scrive `data_conferma` e `user_conferma` | colonne che esistono e che nessuno usa |
+
+⛔ **Non** un permesso «si confermano solo le righe proprie»: rientrerebbe dalla
+finestra la postatura parziale che D3-a esclude dalla porta. E con D12-a la
+contesa non esiste comunque.
+
+⚠️ **Perché la dichiarazione resta anche dopo D12-a**, che toglie la contesa fra
+operatori: copre la stessa persona con due schede aperte e un frontend che lavora
+su dati vecchi. Non è più il presidio principale — è la **rete**. Costa un
+parametro.
+
+🔴 **E la firma si decide adesso, non dopo.** Non stiamo scegliendo *se*
+costruirla: stiamo scegliendo se la funzione ha quel parametro. Aggiungerlo
+dopo crea un **overload**, e coi valori di default le chiamate diventano
+ambigue — trappola già registrata nel progetto.
+
+⚠️ ℹ️ La quadratura della distinta (D12-e) e la dichiarazione sono **due controlli
+diversi**: la prima confronta **tutte** le righe col totale dichiarato della
+distinta, la seconda confronta **le righe registrabili adesso** con ciò che
+l'operatore ha visto. Vanno entrambe nel posting, in quest'ordine.
+
+---
+
+### ✅ D14 — Il percorso della riga, e **una sola regola di capienza** (Tid, 2026-08-21)
+
+Chiude **Q-1**, **Q-2** e **Q-8**. Nasce da una richiesta di Tid — *«spiegami Q-1
+e Q-2 collegate»* — e la connessione è che sono **la stessa domanda fatta due
+volte**: Q-1 chiede il **percorso** (quali stati si attraversano), Q-2 il
+**bagaglio** (che cosa dev'essere valorizzato in ciascuno). È una tabella sola.
+
+#### a) Il percorso e il bagaglio
+
+| Stato | Vuol dire | Cliente | Fattura | Rata | Si va a |
+| --- | --- | :---: | :---: | :---: | --- |
+| **IMPORTATA** | arrivata dal flusso, nessuno l'ha guardata | può mancare | — | — | DA_ABBINARE · SOSPESA · SCARTATA |
+| **DA_ABBINARE** | va attribuita, non so ancora a chi | può mancare | può mancare | può mancare | ABBINATA · SOSPESA · SCARTATA |
+| **ABBINATA** | so dove va, è pronta | **obbligatorio** | **obbligatorio** | facoltativa | POSTATA · DA_ABBINARE · SOSPESA |
+| **SOSPESA** | l'ho guardata e c'è un problema | — | — | — | **ABBINATA** · DA_ABBINARE · SCARTATA |
+| **SCARTATA** | non è nostra | — | — | — | **SOSPESA** |
+| **POSTATA** | registrata, il movimento esiste | obbligatorio | obbligatorio | com'era | ∅ **(unico terminale)** |
+
+⭐ `SOSPESA → ABBINATA` **diretta**: risolto il problema, non si ripassa da
+`DA_ABBINARE`.
+
+⚠️ **`SCARTATA` non è più uno stato finale**: da lì si torna a `SOSPESA` per
+riprenderla in mano. 🔴 Il catalogo oggi la marca `is_final = true` e **va
+corretto**, altrimenti dichiara una cosa mentre la matrice ne permette un'altra.
+
+⚠️ **La rata resta facoltativa anche su `ABBINATA`**, e non è una svista: la riga
+del fondo fattura avrà fattura sì e rata no — è un saldo per **trasferimento**,
+non denaro arrivato su una rata.
+
+#### a-bis) Il percorso della **distinta** (chiude Q-6)
+
+I cinque stati esistenti vanno bene così come sono.
+
+| Stato | Vuol dire | Si va a |
+| --- | --- | --- |
+| **BOZZA** | l'operatore sta inserendo *(qui nasce la manuale)* | VALIDATA · ANNULLATA |
+| **IMPORTATA** | il file è arrivato e quadra *(qui nasce l'automatica)* | VALIDATA · ANNULLATA |
+| **VALIDATA** | «ho finito, è pronta da registrare» | CHIUSA · BOZZA · ANNULLATA |
+| **CHIUSA** | registrata *(finale)* | ∅ |
+| **ANNULLATA** | non è mai successa *(finale)* | ∅ |
+
+⭐ **`VALIDATA` è il gesto «ho finito di inserire»**, e diventa il posto naturale
+per la **quadratura col totale dichiarato** (D12-c): se hai dichiarato 1.500 € e
+ne hai digitati 1.480 te lo dice **lì**, mentre sei ancora nel flusso, invece che
+al momento della registrazione.
+
+⚠️ **`VALIDATA → BOZZA`** serve per correggere — si riapre per aggiungere o
+togliere una riga — ed è **solo per la manuale**: l'automatica è immutabile.
+Questo tiene anche stabile la quadratura: finché è validata il contenuto non
+cambia.
+
+⚠️ **`ANNULLATA` da qualunque stato non registrato**, non solo da `BOZZA`: D9-c
+dice *«prima della conferma si annulla, dopo no»*, e prima della conferma ci sono
+tre stati.
+
+ℹ️ Torna così anche il fatto che il giro dei fondi crei le sue distinte
+**direttamente in `VALIDATA`**: lì non c'è digitazione, la sync ha già tutto —
+nasce già finita.
+
+#### b) ⭐ Il database rifiuta la **coerenza**, segnala la **capienza**
+
+È la distinzione che scioglie Q-2 nel punto dove era più incerta:
+
+| | Domanda | Chi risponde |
+| --- | --- | --- |
+| **Coerenza** | «questa rata appartiene davvero a questa fattura?» | 🔒 **il database, e rifiuta**: è un'incoerenza logica, non un fatto del mondo |
+| **Capienza** | «c'è ancora spazio su questo documento?» | ⚠️ **si segnala**: che il cliente paghi di più, o paghi due volte, **è un fatto del mondo** |
+
+> Decisione di Tid: *«i pagamenti anche di una fattura completamente saldata
+> devono essere accettati; segnaliamo che il documento risulta già saldato, ma se
+> l'operatore conferma è sua la responsabilità.»*
+
+#### c) ⭐ E la capienza è **una regola sola**, per fatture e note di credito
+
+Quattro situazioni diverse portate da Tid — fattura già saldata; pagamento oltre
+il totale; pagamento su un documento a credito; rimborso più grande del credito —
+si rivelano **lo stesso caso**:
+
+> ## Un movimento normale **riduce** il residuo, e **non lo supera**.
+> Tutto il resto si segnala.
+
+Due condizioni, e nessuna nomina «fattura» o «nota di credito»:
+
+1. **va nel verso giusto** — riduce ciò che manca, non lo aumenta;
+2. **non lo scavalca** — al massimo lo azzera.
+
+Con **R** = quanto manca da regolare in quel momento:
+
+| Situazione | R prima | Movimento | | |
+| --- | ---: | ---: | --- | --- |
+| Fattura 100, pagamento 110 | +100 | +110 | supera | **segnala** — R diventa −10 |
+| …poi rimborso −15 invece di −10 | −10 | −15 | supera | **segnala** — incassato netto 95 su 100: **la fattura torna scoperta** |
+| Nota di credito −20, pagamento +15 | −20 | +15 | verso sbagliato | **segnala** — invece di rimborsare, si incassa |
+| Nota di credito −50, rimborso −30 | −50 | −30 | ok | ✅ normale |
+| Documento già saldato | **0** | qualunque | non c'è spazio | **segnala** |
+
+⭐ **«Già saldato» non è un caso a parte**: è `R = 0`, cioè nessuno spazio in
+nessuna direzione. E *«a parti invertite per la nota di credito»* **non si scrive**:
+la regola guarda il **rapporto fra il movimento e ciò che resta**, quindi su un
+documento a credito si comporta identica con i versi già invertiti da sé.
+
+##### 🔴 E questa forma scioglie una trappola registrata in §5
+
+§5 avverte che `0 ≤ Σ ≤ totale_a_pagare` su un documento a credito diventa
+`[0, −50]`, cioè **vuoto** — e ne concludeva: *non replicare la quadratura a
+livello fattura, o solo per totali positivi*.
+
+⭐ Quella conclusione era giusta **per quella forma**: il difetto stava
+nell'**intervallo a estremi fissi**, che si inverte. La regola di D14 non ha
+estremi — dice «il movimento va nel verso di R e non lo supera» — quindi **non
+c'è niente da invertire**, e il controllo si può fare a **tutti e due i livelli**
+(rata e fattura) con la stessa formula, **senza** il filtro «solo se positivo».
+
+*La trappola resta valida come avvertimento sulla forma; questa forma le passa
+accanto.*
+
+#### d) La forzatura: **flag sì, motivo facoltativo, nessun permesso**
+
+E il database **non accetta mai in silenzio**: la forma è quella già scelta per la
+registrazione della distinta (D13) — *chi fa una cosa fuori dall'ordinario lo
+dice*.
+
+```text
+1° tentativo, senza dichiarazione
+   → RIFIUTATO: «la fattura 2026/118 risulta già saldata.
+                 Confermi di voler registrare comunque?»
+2° tentativo, con la conferma
+   → ACCETTATO, e sulla riga resta scritto che è stata forzata
+```
+
+Così l'operatore **non è mai bloccato**, e la forzatura **è un dato**, non un
+ricordo: senza traccia, fra sei mesi nessuno ritrova quei pagamenti — ed è la
+regola già scritta in §5 (*«una forzatura senza un elenco a valle è un modo per
+nascondere, non per registrare»*).
+
+#### e) 🔴 Cade l'asimmetria di D1-bis, e Tid l'ha confermato
+
+D1-bis distingueva: limite **superiore** forzabile (*«lo causa il cliente»*),
+limite **inferiore** non forzabile (*«nessun cliente può provocarlo, è solo un
+errore di chi opera»*).
+
+L'esempio di Tid — pagato 110, rimborso 15 invece di 10 — **è l'estremo
+inferiore**, e non è un capriccio: è un calcolo fatto su un dato vecchio, e
+**capita**. Vietarlo sposterebbe il problema fuori dal sistema invece di
+registrarlo.
+
+**La regola diventa simmetrica**: tutto ciò che non riduce pulitamente il residuo
+si segnala, in entrambe le direzioni.
+
+⚠️ **Cade con essa anche l'azione di processo** che D1-bis chiedeva
+(`approva_rimessa` o una sua gemella): nessun permesso, nessun pattern a due
+tempi. Restano il **flag** e il **motivo facoltativo**.
+
+---
+
+### ✅ D15 — Il processo rimborsi è **un elenco e un registro**, non tre macchine (Tid, 2026-08-21)
+
+Chiude **Q-9**, l'ultima domanda aperta — e la chiude **restringendola**.
+
+> Idea di Tid: *«la gestione dei rimborsi in realtà diventa un elenco di quei
+> documenti che, presi in valore assoluto, hanno incassato più del totale a
+> pagare. Diventa un modo di interrogare i saldi del cliente, poi si decide la
+> tipologia e ci si comporta di conseguenza. L'azione va registrata in una
+> tabella; con la conferma si genera una nuova contabile.»*
+
+#### a) ⭐ Le tre azioni hanno **già tutte il loro meccanismo**
+
+Misurato il 2026-08-21. Non c'è nessuna macchina da costruire:
+
+| L'azione | Con che cosa si fa | |
+| --- | --- | --- |
+| **Riporto su fattura** | il **fondo fattura** con `origine = MANUALE` | ✅ esiste — e la doc di `fatture_fondi_fattura_source` dice già, testualmente, *«arriva dal processo rimborsi di `pagamenti`»* |
+| **Compensazione fra documenti** | una contabile legata all'atto | ✅ l'impianto esiste: colonna, unicità, centro di riscossione dedicato |
+| **Rimborso con bonifico** | una contabile con **importi negativi** | ✅ nessuna macchina nuova: è **D3-d**, *«il denaro non ha versi, ha segni»* |
+
+**Manca l'elenco e manca il registro.** Nient'altro.
+
+#### b) L'elenco è una **vista**, e coincide con ciò che D14 segnala
+
+La definizione di Tid — *documenti che in valore assoluto hanno incassato più del
+totale* — è **esattamente** la condizione che D14 segnala: il residuo che ha
+cambiato segno.
+
+```text
+D14 segnala        →  nel momento in cui succede, a chi sta registrando
+l'elenco raccoglie →  nel tempo, per chi deve decidere che farne
+```
+
+⭐ **Si raggruppa per cliente, non per documento** (indicazione di Tid: *«un modo
+di interrogare i saldi del cliente»*). Un cliente può avere credito su una
+fattura e debito su un'altra — e soprattutto **la compensazione ha senso solo a
+livello cliente**, perché compensare significa mettere insieme due suoi
+documenti.
+
+⚠️ **È una vista, non una tabella**: i saldi si **leggono**, non si conservano
+(§3-bis). Materializzarla richiederebbe un automatismo che la tiene aggiornata,
+cioè la rincorsa che questo cantiere ha chiuso per costruzione.
+
+#### c) Il registro: `pagamenti.compensazioni` si **allarga e si rinomina**
+
+La tabella esiste ed è **un guscio**: id, data, meta. Nessun importo, nessun
+riferimento ai documenti, nessuno stato, nessun motivo. Zero righe, nessuno che
+la scrive. Ma il **disegno** che porta è già quello di Tid — la sua doc dice
+*«collegata alla testata contabile; i movimenti vengono generati in fase di
+posting»*.
+
+> ✅ **Diventa `pagamenti.sistemazioni`** (nome scelto da Tid il 2026-08-21), con
+> una colonna `destinazione` a vocabolario chiuso: `RIPORTO` · `RIMBORSO` ·
+> `COMPENSAZIONE`.
+
+**Perché non affiancarne una nuova**: due tabelle per lo stesso mestiere
+divergono al primo aggiornamento. E con **zero righe ovunque** la rinomina costa
+oggi quanto un'ora di lavoro e fra sei mesi una migrazione.
+
+**Perché non tenere il nome `compensazioni`**: chiamare «compensazione» un
+bonifico di rimborso sarebbe **falso**. Se la tabella copre tre azioni, il nome
+deve dirlo.
+
+⛔ **Perché non `regolazioni`**, che in italiano contabile sarebbe la parola più
+esatta: questo è un ERP orientato alle **utilities**, e lì «regolazione» significa
+un'altra cosa. *Un nome che in un dominio vuol dire due cose è un nome che
+confonde.*
+
+⭐ **E il nome si accoppia con la vista**, che è la ragione principale della
+scelta:
+
+```text
+vista    →  vw_eccedenze_da_sistemare     ← che cosa c'è da fare
+tabella  →  sistemazioni                  ← che cosa è stato fatto
+```
+
+#### d) Il giro, per intero
+
+```text
+la vista mostra un'eccedenza
+   → una PERSONA sceglie la destinazione        (RIPORTO / RIMBORSO / COMPENSAZIONE)
+   → l'atto si registra in `sistemazioni`
+   → alla conferma genera una CONTABILE
+   → la contabile registrata genera i MOVIMENTI
+```
+
+⭐ È §3-bis in fila indiana: **la vista presenta, la persona decide, l'atto
+diventa un fatto.** Nessun automatismo tocca niente da solo.
+
+#### e) ⚠️ Un'occasione dentro la rinomina — **da confermare**
+
+Oggi il legame va **dalla contabile all'atto**
+(`vendite_contabili.compensazione_id`). Ma nel disegno di (d) è l'atto a
+**generare** la contabile, quindi il verso naturale è l'opposto:
+`sistemazioni.contabile_id`.
+
+Girandolo, la colonna su `vendite_contabili` **sparisce** invece di essere
+rinominata, e con lei il parametro `p_compensazione_id` di
+`fn_get_or_create_vendite_contabile`. **Meno pezzi, non di più.**
+
+🔵 **Non ancora deciso da Tid**: proposto il 2026-08-21, in attesa.
+
+#### f) Dove va a finire, come lavoro
+
+| | |
+| --- | --- |
+| **Non è una quarta slice pesante** | una vista, una tabella e tre verbi che riusano meccanismi esistenti |
+| **Sblocca la Fase D del cantiere fondi** | ferma *«finché `pagamenti` non ha un processo rimborsi»* — e ne è la **porta**: il fondo `origine = MANUALE` **è** l'azione «riporto su fattura» |
+| **Ma sta dopo la slice 2** | l'elenco si costruisce sui saldi, e i saldi diventano veri col posting e con l'abbinamento alla rata |
+
+⚠️ `centri_riscossione.is_compensazione` **resta com'è**: parla del *centro*, non
+dell'atto, e la compensazione resta uno dei tre centri non-cassa.
+
+---
+
 ### La regola pratica per queste slice
 
 > **Nessun automatismo tocca il fondo in base agli incassi.** Il fondo esistente
@@ -1413,12 +2117,31 @@ successiva dà per scontata.
 | **2** | **Abbinamento alla rata** | `scadenza_id` sulla riga + mirror sul movimento; guard di quadratura (**con forzatura motivata e gated sul limite superiore**, D1-bis) e di coerenza; `fn_get_saldo_rata`; elenco delle rate sovra-incassate | D1, D1-bis, D2. Rende derivabile «questa rata è pagata» — la domanda da cui dipendono 3.2, 3.3 e 3.4 |
 | **3** | **Perimetro e coda operativa** | conto sull'ente di incasso, vincolo di unicità conto → emittente, RLS in lettura; poi BE e FE | D5, B-3. Rende la coda «da abbinare» **visibile a chi deve** |
 
-🔴 **La scadenza della metà «fondi» non è la slice 1** (rimisurato il
+~~🔴 **La scadenza della metà «fondi» non è la slice 1** (rimisurato il
 2026-08-15, §2-bis D1-bis). La finestra del fondo negativo la apre il **primo che
 scrive righe contabili** — l'import del flusso, una correzione a mano, o la
 slice 1: quello che arriva prima. La collocazione qui resta giusta perché è qui
 che si mette mano a quel terreno, ma se un altro lavoro ci arriva prima, il
-tampone va **con lui**, non aspetta il suo turno.
+tampone va **con lui**, non aspetta il suo turno.~~
+
+> ✅ **CHIUSO il 2026-08-15, verificato il 2026-08-21.** La metà «fondi» **non è
+> più della slice 1: è fatta.** Fasi A, B, C, E ed F del cantiere fondi
+> applicate il 15-16/08 (changeSet `20260815-03`…`-23`), pgTAP verdi, baseline
+> `vendite` senza regressioni. La colonna «Contenuto» della slice 1 qui sopra va
+> letta **senza** il suo ultimo blocco.
+>
+> ⭐ **E la dipendenza si è invertita**: del cantiere fondi resta la sola
+> **Fase D** (l'atto manuale), ferma **per scelta finché `pagamenti` non ha un
+> processo rimborsi** — cioè finché non si chiude la **D8 (b)** di §4-bis. Non è
+> più questo cantiere a portarsi dietro lavoro di `vendite`: è `vendite` ad
+> aspettare questo.
+>
+> ⚠️ **Ma il posting arma due difetti in `vendite` che nessuno aveva visto**, ed
+> entrambi vanno nella slice 1 insieme alla madre: il sync dei fondi
+> **riscriverebbe righe già postate**, e un fondo interamente postato **si
+> auto-annullerebbe**. Misure e passi in
+> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+> §1.4 C-2 e C-3.
 
 ⚠️ **La slice 1 non tocca le rate**, e va bene così: è il gradino sotto tutto il
 resto, e si può collaudare senza aver deciso niente della 2.
@@ -1448,6 +2171,7 @@ stub vuoti.
 
 | Data | Cosa è cambiato |
 | --- | --- |
+| 2026-08-21 | ⭐ **Estratto il piano DB in un brief suo**: [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md). Qui restano le **decisioni di dominio**, là i **passi e le misure** — con la regola esplicita di quale sede si aggiorna per cosa, perché due documenti sullo stesso cantiere aperto divergono al primo aggiornamento (lezione già pagata dal cantiere fondi). 🔴 **Tre punti di questo brief corretti perché parlavano al presente di cose non più vere**: `fn_sync_pagamento_fondo_fattura` **non esiste più** (ritirata il 15/08); **B-2 era sbagliato a metà** — il trigger di mirror ha **già** il guard e solleva `P0001`, e il difetto vero è che tutte e quattro le funzioni di `pagamenti` sollevano `E_GENERICO`; il riquadro sulla **scadenza della metà «fondi»** è chiuso, perché quella metà è **fatta** (Fasi A/B/C/E/F applicate il 15-16/08) e **la dipendenza si è invertita** — la Fase D del cantiere fondi aspetta il processo rimborsi di `pagamenti`, cioè la **D8 (b)** di §4-bis. 🔴 **Cinque difetti nuovi misurati** e scritti là, tre bloccanti: `centri_riscossione` **non può contenere più di due righe** (il `where:` su `addUniqueConstraint` fu ignorato: il passo 3 di D9-d-1 oggi non è eseguibile, annotato in loco); `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate**; un fondo interamente postato **si auto-annullerebbe**. ⭐ La lezione trasversale ai due: *verificare che un'identità algebrica si conservi non è verificare che i consumatori la usino ancora bene* — §1-bis prova che «la bilancia regge da sé» ed è vero, ma il codice che quei termini li **riscrive** non regge |
 | 2026-08-15 (sera) | 🔴 **Il tampone di D1-bis era sbagliato, e l'ha smontato Tid spiegando cosa sono davvero le due soglie.** *«Il verso opposto non è un fondo»* è **falso**: `minimo_soglia_min` e `minimo_soglia_max` sono i **due capi di una banda che contiene lo zero** (esempio reale: `−500 / +10`), e il capo inferiore esiste **apposta** per riportare avanti i **crediti**. Un filtro `importo_target > 0` avrebbe spento metà del meccanismo, in silenzio. Il controllo giusto è la **corrispondenza col documento** (stesso segno del totale della sorgente, non superiore in valore assoluto), in un **guard trigger** perché un CHECK non può leggere `vendite.fatture`. 🔴 Seconda scoperta: **«soglia non impostata = meccanismo spento» vale solo a metà** — se manca il *massimo* la condizione diventa vera per tutti e **ogni** fattura diventa di minimo: configurazione incompleta = meccanismo **spalancato**. Deciso da Tid: dev'essere un errore di configurazione (CHECK «entrambe o nessuna»). Ritirata la trappola *«un automatismo tarato su un verso»* di §5, che era essa stessa l'errore, e sostituita con le due lezioni vere: **leggere la configurazione prima di dedurre l'intenzione**, e **un difetto e un comportamento voluto possono avere lo stesso sintomo**. ✅ Confermato il perimetro del processo rimborsi (in `pagamenti`, tre uscite, passaggio **passivo**: se le va a cercare da sé) |
 | 2026-08-15 | 🔴 **Rimisurata la tabella delle «due serrature» di D1-bis: sbagliata su entrambe le righe.** Il fondo si genera sulla **differenza** `saldo − saldo_contabile` e il secondo termine non dipende dai movimenti: la seconda serratura **non è la slice 1**, è **l'assenza di scrittori di righe contabili** (il guard di quadratura è la slice **2**), e si apre col primo altro scrittore — import del flusso, correzione a mano, o slice 1. E `minimo` non è una configurazione: lo **riscrive** `fn_ricalcola_totali_fattura` dal confronto fra totale e soglie dell'emittente, quindi si accende da solo. La conclusione operativa non cambia (il limite inferiore resta nella slice 1), cambia la **scadenza**. 🔴 Aggiunto che **il limite inferiore da solo peggiora le cose**: senza l'`ANNULLATO` automatico un fondo non più dovuto resta `DISPONIBILE` e viene comunque **applicato** — serve nello stesso lotto il guard che rilegge la capienza al momento dell'atto. ✅ Chiusa la domanda lasciata aperta in D1-bis (fondo esistente con target negativo: **si lascia com'è**) e decisa F-4 (`fn_sync_pagamento_fondo_fattura` si **ritira**). ⭐ Verificato che con un posting **atomico** la bilancia di B-1 **regge da sé** (i due termini si scambiano lo stesso importo): il rischio è tutto nella non-atomicità. ⚠️ Nuovo limite di dominio in §4: «incassato» ≠ «postato» — le misure di cassa devono **escludere i centri non-cassa** (`is_fondo_fattura`, `is_compensazione`), perché il fondo diventerà un movimento vero ma per **trasferimento**. Quattro trappole nuove in §5. Fonte: il piano del cantiere fondi, [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
 | 2026-08-02 | Stesura originale alla chiusura del cantiere satelliti fattura |

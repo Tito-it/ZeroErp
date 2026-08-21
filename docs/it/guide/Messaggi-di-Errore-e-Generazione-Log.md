@@ -338,6 +338,157 @@ PERFORM script.fn_log_and_raise_error(
 l'operatore ha scritto: non ha nessun motivo di tornare indietro, ce l'ha già
 davanti. E il nome deve **sembrare un identificatore**, altrimenti viene scartato.
 
+### ⛔ I valori del messaggio: chi li mette **scrive per una persona**
+
+I canali `CONSTRAINT` e `COLUMN` dicono al **backend** che cosa è successo e dove.
+Il `VARIADIC p_valori` è un'altra cosa: riempie i `%s` del template, cioè
+**compone la frase che l'operatore leggerà**. Non è debug, è interfaccia.
+
+> ⛔ **Nel `VARIADIC` non entra mai il nome di un parametro PL/pgSQL, né il nome
+> di una colonna.** Entra la cosa che l'operatore riconosce.
+
+```sql
+-- ⛔ NO — il codice è registrato, il messaggio no
+PERFORM script.fn_log_and_raise_error(
+    'database', 'pagamenti.fn_get_or_create_vendite_contabile',
+    'E_PARAMETRO_INVALIDO',
+    jsonb_build_object('campo', 'centro_riscossione_id'),
+    NULL::uuid,
+    'p_centro_riscossione_id (obbligatorio, maggiore di zero)'
+);
+--   l'operatore legge: «Parametro non valido: p_centro_riscossione_id (obbligatorio, > 0)»
+
+-- ✅ SÌ — il messaggio nomina il dato, non il parametro
+PERFORM script.fn_log_and_raise_error(
+    'database', 'pagamenti.fn_get_or_create_vendite_contabile',
+    'E_CONTABILE_DATI_OBBLIGATORI',
+    jsonb_build_object('campo', 'centro_riscossione_id'),
+    NULL::uuid,
+    'il centro di riscossione'
+);
+--   l'operatore legge: «Per aprire una distinta contabile serve il centro di riscossione.»
+```
+
+#### ⭐ Perché la regola sta qui e non altrove
+
+Perché il difetto **non si vede guardando il codice errore**. Il primo esempio usa
+un codice registrato, con la sua classe, il suo `ui_action`, il suo campo sul
+canale `COLUMN`: passa tutti i cancelli — il guardrail dei codici, il rubinetto
+degli accumulatori, la rigenerazione delle policy. Eppure produce un messaggio di
+qualità `E_GENERICO`.
+
+> **Un codice registrato non garantisce un messaggio leggibile: il codice sceglie
+> la *frase*, ma il *valore* che ci si infila dentro lo sceglie chi solleva.**
+
+È lo stesso difetto che il refactor `E_GENERICO` ha tolto nel 2026 — lì viveva nel
+**codice**, qui rientra dal **valore**. Caso reale: cantiere incassi, 2026-08-21,
+sei guard di parametro bonificati «bene» e messaggi illeggibili
+(`brief-db-posting-e-abbinamento-rata.md` §6.7).
+
+#### ⭐ E il valore decide anche **quale codice** serve
+
+La domanda «riuso un codice esistente o ne conio uno?» non si risponde guardando
+la *condizione* (*«è un guard di parametro»*), ma **chi può rimediare** — perché è
+quello che decide chi legge la frase.
+
+| Il dato lo fornisce… | Chi legge il messaggio | Codice | Classe |
+| --- | --- | --- | --- |
+| una **persona**, in un form | una persona | codice di dominio, frase in italiano che **nomina il dato** | `DATO_ERRATO` (400) |
+| solo un **chiamante rotto** (`id <= 0` dove il `NULL` è ammesso, enum vuoto) | chi guarda `dbops.error_log` | codice di dominio, messaggio che **nomina il parametro** | `TECNICO` (500) |
+
+⚠️ Lo stesso guard può stare da una parte o dall'altra a seconda del parametro:
+in una funzione con otto parametri due possono essere di form e sei no. Si guarda
+**parametro per parametro**, non funzione per funzione.
+
+##### ⛔ E nella seconda riga NON si riusa `E_PARAMETRO_INVALIDO`
+
+È la scelta che sembra ovvia, ed è sbagliata per una ragione che il codice da
+solo non mostra: **`E_PARAMETRO_INVALIDO` è un debito, non una sede.**
+
+* **D11** di [brief-db-be-classe-codici-errore](/dev/work-done/brief-db-be-classe-codici-errore):
+  *«`E_VALIDAZIONE` si spezza prima del seed; `E_PARAMETRO_INVALIDO` **no** —
+  denominatore sicuro + `note`, e **cantiere suo**»*. È uno **split rimandato**,
+  con una classe di compromesso e la ragione scritta nel catalogo. Sopravvive
+  perché il backend deve poter ancora gestire le funzioni vecchie;
+* **§9.1** dello stesso brief: *«la regola che chiude il **rubinetto** — vietare
+  **nuovi** codici generici — resta in coda al lavoro: rincorrere gli esistenti
+  senza chiudere il rubinetto è la forma in cui questi registri non calano mai»*;
+* **[api.md §Tassonomia errori](/dev/api)** lo dichiara **candidato allo split**
+  (113 funzioni, 111 con verità 400 e 2 con 404) e ne trae la regola *«un codice
+  usato per due cose si spezza a monte, non si rimappa a valle»*.
+
+⭐ **Precedente da citare quando qualcuno riproporrà il riuso**:
+`E_VENDITE_PRICING_ESITO_ASSENTE` (2026-08-19, `TECNICO`) nasce perché il
+rubinetto B-7 respinse `E_PARAMETRO_INVALIDO` su un guard analogo — *«lì non c'è
+nessun parametro invalido, c'è un'invariante rotta»*.
+
+⚠️ **`TECNICO` non è una sfumatura: sposta lo status da 400 a 500**, ed è il
+punto. `DATO_ERRATO` significa *«chi l'ha fatta può correggerlo e riprovare»*: su
+un bug del chiamante non c'è niente da correggere, e un 400 manda l'operatore a
+cercare un campo che non esiste.
+
+⚠️ **E su un `TECNICO` la chiave `campo` esce dal contesto**: su un 500 non c'è
+nessun campo da accendere, e lasciarla farebbe evidenziare un input che l'errore
+non ha causato.
+
+#### ⚠️ L'eccezione che NON è una violazione
+
+Un messaggio può nominare una colonna **di proposito**, quando il suo lettore è
+uno sviluppatore e la colonna è l'informazione utile:
+
+```sql
+-- E_MOVIMENTO_RIFERIMENTO_INCOERENTE:
+--   «Movimento incoerente con la riga contabile %s: %s vale %s, mentre la riga dice %s.»
+… NULL::uuid, NEW.contabile_riga_id::text, 'fattura_id',
+  NEW.fattura_id::text, v_fattura_id_riga::text
+```
+
+Qui `'fattura_id'` è **il soggetto della frase**, non un nome di parametro
+travestito da spiegazione: il messaggio esiste per dire *quale* dei tre
+riferimenti derivati è stato passato a mano sbagliato, e l'unico modo di dirlo è
+nominarlo. Il destinatario è chi ha scritto la chiamata, non chi compila un form.
+
+> **La domanda non è «c'è un nome di colonna nel messaggio?» ma «l'ho messo perché
+> serve a chi legge, o perché non avevo voglia di scrivere una frase?».**
+
+#### 📊 Quanto è diffuso — misurato il 2026-08-21
+
+⚠️ **Questa non è una svista isolata: è lo stile in cui il progetto è cresciuto.**
+Misurando `pg_proc` (l'oggetto vivo, non gli YAML): su **1.469** valori passati nel
+`VARIADIC`, **265** sono letterali che *sembrano* un nome di parametro o di
+colonna, distribuiti su **157 funzioni** in quasi tutti gli schemi. La forma
+ricorrente è `'p_<nome>_id obbligatorio e > 0'`.
+
+⛔ **E per questo NON esiste un cancello bloccante, ed è una scelta.** L'unico
+controllo automatico possibile è euristico, e sbaglierebbe proprio sul caso
+legittimo qui sopra — un messaggio che nomina una colonna perché è la sua
+ragione d'essere. Vale il criterio già scritto per il rubinetto degli accumulatori
+(`scripts/codici-errore-baseline.sh`): *un cancello che capisce un caso su cinque
+boccia a caso e passa a caso, e dopo due blocchi sbagliati qualcuno lo spegne — un
+presidio spento è peggio di uno assente*.
+
+Il presidio praticabile è quindi **a valle e per caso**: dove la frase è la posta
+in gioco, un `throws_like` nel pgTAP di quella funzione (vedi sotto). E il numero
+sopra serve a sapere che, quando si tocca una funzione vecchia, il messaggio va
+guardato — non dato per buono perché il codice è registrato.
+
+#### Come si presidia
+
+Un `throws_ok(..., 'P0001', ...)` **non** protegge questa regola: `P0001` dice
+«errore di dominio», non *quale* e tanto meno *come è scritto*. Dove la frase è la
+posta in gioco si asserisce con `throws_like` su un frammento stabile — mai
+attraverso un segnaposto:
+
+```sql
+SELECT throws_like(
+  $$ SELECT pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id => 0, …) $$,
+  '%distinta contabile%centro di riscossione%',
+  'Il rifiuto nomina il centro di riscossione, non il parametro PL/pgSQL'
+);
+```
+
+---
+
 ### ⚠️ Le tre trappole, prese sul campo
 
 1. **Il codice dice *cosa* è andato storto, il contesto dice *dove*.** Due punti

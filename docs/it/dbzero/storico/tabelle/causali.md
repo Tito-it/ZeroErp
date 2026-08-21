@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/causali.md" %}
 # 📚 Tabella `causali`
 
 ## 🗂️ Campi principali

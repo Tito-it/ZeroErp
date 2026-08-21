@@ -805,7 +805,45 @@ ASSEGNATO    →  DISPONIBILE (solo dal reset tecnico) | ANNULLATO
 ANNULLATO    →  ∅   (terminale)
 ```
 
-Tre stati, non quattro: `REVOCATO` è caduto con la revoca+riemissione.
+~~Tre stati, non quattro: `REVOCATO` è caduto con la revoca+riemissione.~~
+
+> 🔴 **SUPERATO il 2026-08-21: gli stati diventano QUATTRO.** Non torna
+> `REVOCATO` — arriva **`ESEGUITO`**, e lo porta il **posting**, che quando
+> questa sezione fu scritta non esisteva.
+>
+> ```text
+> ASSEGNATO  →  ESEGUITO      ← lo scrive un trigger, quando la riga
+> ESEGUITO   →  ∅ (terminale)   contabile del fondo viene REGISTRATA
+> ```
+>
+> **Perché.** `ANNULLATO` portava **tre** significati, e solo uno era un
+> annullamento. In particolare il ramo bloccante di `fn_reset_fondi_fattura`
+> scrive `ANNULLATO` **lasciando `fattura_figlia_id` valorizzato** — un fondo
+> «annullato» che risulta ancora assegnato: un record che si contraddice. Quel
+> ramo non voleva dire «annullato», voleva dire **«già eseguito»**, e non aveva
+> la parola.
+>
+> ⭐ **E il guadagno è strutturale, non lessicale.** Tutti e tre i lettori dei
+> fondi filtrano su `stato`: un fondo che esce da `ASSEGNATO` esce da tutti e tre
+> **gratis**. Ne discende che due difetti del posting — il sync che riscrive
+> righe registrate e il fondo che si auto-annulla — **smettono di essere
+> raggiungibili** invece di essere tamponati, e cade la necessità di correggere
+> lo scorporo di `fn_saldo_sorgente_fondo`.
+>
+> ⚠️ **Cambia anche D-16 (il reset)**: l'atto **non eseguito** si **cancella**
+> invece di tornare `DISPONIBILE`; un `ESEGUITO` non si tocca mai, si segnala e
+> basta; sparisce il ramo che scriveva `ANNULLATO`.
+>
+> ⚠️ **E cambia la risposta del riquadro qui sotto** («perché un CHECK e non una
+> tabella di stati»): la conclusione **regge ancora** — restano valori interni
+> senza etichette né azioni di UI — ma il vocabolario passa da tre a quattro e il
+> `CHECK` `chk_fondi_source_stato` va sostituito.
+>
+> Decisione **D11** in
+> [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md)
+> §3-bis; passi **S1-14 … S1-17** in
+> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+> §2.1. ⛔ **Non applicato**: è un piano.
 
 🔴 **Prima di scrivere il guard, leggere `db/pgtap/vendite/test-fondi-fattura.sql`.**
 Quel file percorre `ASSEGNATO → DISPONIBILE` (test 9-10) e `→ ANNULLATO` (test
@@ -2026,6 +2064,7 @@ l'adeguamento dei due esistenti.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-21 | 🔴 **Il modello degli stati del fondo cambia da fuori: arriva `ESEGUITO`, quarto stato** (decisione **D11** del cantiere incassi, presa da Tid progettando il posting). §8.2 **D-7** e **D-16** sono marcati superati in loco. La causa e' che `ANNULLATO` portava **tre** significati e solo uno era un annullamento: in particolare il ramo bloccante del reset scrive `ANNULLATO` **lasciando `fattura_figlia_id` valorizzato**, cioe' un record che si contraddice — voleva dire «gia' eseguito» e non aveva la parola. ⭐ Il guadagno e' strutturale: i **tre** lettori dei fondi filtrano tutti su `stato`, quindi un fondo che esce da `ASSEGNATO` esce da tutti e tre **gratis** — due difetti del posting smettono di essere **raggiungibili** invece di essere tamponati, e cade la necessita' di correggere lo scorporo di `fn_saldo_sorgente_fondo`. ⚠️ Cambia anche il **reset**: l'atto non eseguito si **cancella** (Tid: *«si riporta allo stato iniziale tutto»*), un `ESEGUITO` non si tocca mai. ⛔ Nulla applicato. ℹ️ Questo cantiere resta **fermo alla sola Fase D**: la modifica arriva col posting, non da qui |
 | 2026-08-16 | 🧹 **Riletto il brief dall'inizio per allinearlo allo stato reale**, dopo che R-3 e il seed liste sono atterrati a poche ore di distanza. Corretti **quattro** punti che parlavano al futuro di cose gia' fatte: la testata dava il **frontend** per fermo su prerequisiti DB (non lo e' piu' — seed applicato e **verificato sul database**: lista `id 44`, 16 colonne, attiva), §8.3 intitolava le tre richieste al BE *«scritte, non eseguite»* quando sono tutte e tre eseguite, il riquadro del catalogo liste diceva *«serve un append ai CSV»* con il seed gia' fatto due paragrafi sotto, e R-3 era ancora descritta come *«l'unico residuo che non aspetta pagamenti»*. Aggiunto al diagramma di §8.4 il quadro di sintesi, e sciolta una **collisione di numerazione** nel registro (due voci «notte, 13»). ⭐ E' la lezione della notte 10 ripetuta, con un'aggravante: li' a divergere erano due punti dello stesso documento, qui il documento e il **database** |
 | 2026-08-15 (notte, 15) | ✅ **Seed del catalogo liste fatto** — l'ultimo residuo DB che non aspettava nessun altro, e quello che teneva ferma la pagina (`E_UI_LISTA_NON_TROVATA`). Append ai quattro CSV di `80_data/sql/ui/`: lista `id 44` `vendite.fondi_fattura_da_decidere`, **16 colonne**, preset di sistema con i **default veri dell'endpoint** (50 per pagina, `data` DESC). ⚠️ **Da applicare.** 🔴 **`filtrabile`/`ordinabile` rispecchiano le whitelist dell'API e non il desiderabile**: l'endpoint filtra solo su `motivo` e ordina su sette colonne — *una colonna dichiarata ordinabile che l'API rifiuta con un 400 è un controllo che esiste per rompersi*, e il catalogo è l'unico posto dove quel disallineamento non si vede finché non lo clicca qualcuno. ⭐ Due scostamenti dal suggerimento del BE, entrambi motivati: **`importo_atto` resta visibile** (senza, una riga `NON_PIU_CAPIENTE` mostrerebbe la capienza e non l'importo che non ci sta più dentro — cioè tutto tranne il confronto che la mette in elenco), e **`stato_atto` è spenta per una ragione diversa dalle altre**: il ramo filtra `stato = 'DISPONIBILE'`, quindi quella colonna vale sempre lo stesso su ogni riga — *non è mezza vuota, è costante, e una colonna costante non informa*. 🔵 Nessuna colonna `azioni` finché la Fase D non esiste: un menu vuoto è la stessa cosa di una riga che non può accadere |
 | 2026-08-15 (notte, 14) | ✅ **R-3 parte DB APPLICATA e verde.** Migrate dei tre changeSet `20260815-33`…`-35` (ore 23:01), **test verdi e baseline `vendite` senza regressioni** — corsa fatta da Tid, non da me. Doc `dbzero` rigenerata e scritti i tre `manual/` nuovi (`fn_get_scope_fatture_lotto`, `fn_genera_fondi_fattura_lotto`, `fn_applica_fondi_lotto`). ⚠️ **Verificato prima di generare la doc che gli oggetti fossero davvero vivi**: è la lezione di §8.2-quinquies applicata al giro dopo — changelog e catalogo si controllano, non si danno per allineati. 📮 **Resta il consumo lato BE**: due `SELECT` al posto dei due statement set-based, e spariscono `get_tipo_fondo_fattura_id`, `_SCOPE_FATTURE_LOTTO_SQL` e `list_fatture_scope_by_lotto`. ⭐ Con questo **lato DB il cantiere è chiuso tranne la Fase D**, che non è rimandata per scelta ma perché costruirebbe una porta su una stanza che `pagamenti` non ha ancora |

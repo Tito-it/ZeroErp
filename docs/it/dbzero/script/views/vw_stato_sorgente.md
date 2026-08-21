@@ -5,8 +5,11 @@
 >
 > Traduttore di stato per la sorgente polimorfa: dato (sorgente_tipo_id, sorgente_uid) restituisce lo stato del documento nel vocabolario comune (fase/esito/terminale). SEI rami dal 2026-07-18 (step 6b, brief-db-fatturazione-ddt-resi §4a): preventivo, offerta, ordine, contratto, DDT, reso — tutti i tipi documento registrati hanno ora un ramo. La chiave sorgente_uid segue config.sorgenti.key_selector (uid per preventivo/offerta, id::text per gli altri): vedi config/manual/sorgenti.md §Convenzione chiave sorgente. risolto = true sempre: l'assenza di riga E' il "non risolto".
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW script.vw_stato_sorgente AS
+CREATE OR REPLACE VIEW script.vw_stato_sorgente
+WITH (security_invoker=on) AS
 SELECT r.sorgente_tipo_id,
     r.sorgente_uid,
     true AS risolto,

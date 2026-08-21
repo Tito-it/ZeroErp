@@ -8,7 +8,7 @@ Approfondimenti tabelle:
 >
 Approfondimenti funzioni/trigger generici:
 >
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
@@ -88,7 +88,7 @@ Questa tabella è utilizzata come riferimento per tutte le funzionalità di **lo
      * aggiorna `data_update` e `user_update` ad ogni modifica;
    * **Come**:
 
-     * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()` per uniformare la gestione dell’audit su tutte le tabelle di configurazione.
+     * invoca la funzione generica `script.trgfn_audit_data_user_generic()` per uniformare la gestione dell’audit su tutte le tabelle di configurazione.
 
 > In questo modo, ogni variazione alle lingue configurate è tracciabile, aspetto importante soprattutto in contesti multi-tenant o con requisiti di audit.
 

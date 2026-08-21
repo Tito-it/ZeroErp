@@ -17,7 +17,7 @@
 • [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)  
 > • [vendite.preventivi_indirizzi](/dbzero/vendite/tabelle/preventivi_indirizzi)  
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
-> • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
+> • `vendite.attivita_fatturabili_lotti` (tabella rimossa il 2026-02-27)  
 > • [config.stati_doc_preventivi](/dbzero/config/tabelle/stati_doc_preventivi)  
 > • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)  
 > • [config.valute](/dbzero/config/tabelle/valute)  

@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-5, PORTA D'USCITA — E' QUELLA CHE CAPITA DAVVERO — passo S1-20
+#   pagamenti.trgfn_vendite_contabili_guard_chiusura
+#   Piano: brief-db-posting-e-abbinamento-rata.md §1.4 C-5, §2.1 S1-20
+#
+# ── PERCHE' LA SECONDA PORTA E' PIU' IMPORTANTE DELLA PRIMA ────────────
+#   La prima stesura del difetto C-5 vedeva solo l'ingresso — *«qualcuno aggiunge
+#   una riga a una distinta chiusa»* — che è un gesto strano, quindi raro.
+#
+#   🔴 La porta d'uscita è il **percorso naturale**: si registra la distinta,
+#   restano due righe che non erano pronte, e qualcuno la chiude comunque. Nessun
+#   gesto strano, nessuna cattiva intenzione — e quelle due righe spariscono da
+#   entrambi i conti esattamente come nell'altro caso.
+#
+#   ⭐ La regola sta in una riga:
+#
+#   > **Una distinta non si chiude finché ha righe pronte da registrare.**
+#
+#   Chi vuole chiudere ha **due strade oneste** — registrarle, oppure portarle a
+#   `SOSPESA`/`SCARTATA`, cioè **dire che cosa ne è stato**. Ciò che non si può
+#   fare è chiudere lasciandole a metà.
+#
+# ── ⭐ E RISPONDE IN GRAN PARTE A UNA DOMANDA CHE ERA APERTA ───────────
+#   Q-6 chiedeva se la testata debba andare a `CHIUSA` **sempre** dopo il posting
+#   o **solo se non restano righe lavorabili**. Con questo guard la chiusura
+#   smette di essere una scelta della funzione madre e diventa una **conseguenza**:
+#   il posting potrà tentarla sempre, e il database la lascerà passare solo quando
+#   è vera.
+#
+# ── ⚠️ `is_postabile`, NON `is_final` NEGATO ───────────────────────────
+#   Le righe che impediscono la chiusura sono quelle **pronte**, cioè
+#   `is_postabile` — oggi la sola `ABBINATA`. Una riga `DA_ABBINARE` o `IMPORTATA`
+#   **non** blocca: non è pronta, e pretendere che lo diventi costringerebbe a
+#   lavorare righe che magari non sono nostre. Una `SOSPESA` non blocca perché
+#   qualcuno l'ha già guardata e ha detto che cosa c'è che non va.
+#   ⛔ Usare `NOT is_final` prenderebbe dentro `DA_ABBINARE` e `SOSPESA`, e la
+#   distinta non si chiuderebbe mai.
+#
+# ── ⚠️ ANNULLARE NON E' CHIUDERE ───────────────────────────────────────
+#   Il guard vale sul passaggio a **`CHIUSA`**, non su `ANNULLATA`. Sono opposti:
+#   `CHIUSA` vuol dire «è fatta» — e allora le righe pronte devono essere state
+#   registrate; `ANNULLATA` vuol dire «non è mai successa» — e allora le sue righe
+#   non devono contare in nessun conto, comprese quelle pronte.
+#   ⭐ È la stessa coppia che D11 ha separato sul fondo fattura, un piano più su:
+#   *annullato perché non si fa più* contro *annullato perché già eseguito*.
+#
+#   ⚠️ E il modello **non distingue i due casi** in `fn_get_saldo_fattura_contabili`,
+#   che li appiattisce entrambi su `is_final`. Con questo guard e con S1-7
+#   l'anomalia non può più nascere, quindi la confusione resta **innocua** e non
+#   serve un terzo attributo sul catalogo. È scritto qui perché chi ci tornerà
+#   sappia che è una scelta, non una svista.
+#
+# Dipendenze: codice E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE (957, CONFLITTO_STATO).
+# Presidio: db/pgtap/pagamenti/test-contabili-guard-chiusura.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-29-create-trgfn-contabili-guard-chiusura-mctit.yaml
+
+  - changeSet:
+      id: 20260821-29-create-trgfn-contabili-guard-chiusura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C-5, porta d'uscita — quella che capita davvero: una distinta contabile non si
+        chiude finché ha righe pronte da registrare. Chi vuole chiudere le registra
+        oppure dice che cosa ne è stato (SOSPESA/SCARTATA). ⭐ Con questo la chiusura
+        smette di essere una scelta della madre e diventa una conseguenza. Vale su
+        CHIUSA e non su ANNULLATA: sono opposti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe_stati
+                columnName: is_postabile
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_chiusura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_a    pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_pronte     integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Una distinta contabile non si CHIUDE finche' ha righe
+                  --   pronte da registrare. E' la porta d'uscita del difetto
+                  --   C-5, e quella che capita davvero: si registra, restano due
+                  --   righe non pronte, qualcuno chiude comunque - e quelle
+                  --   righe spariscono da entrambi i conti.
+                  --
+                  -- ⚠️ Vale su CHIUSA, NON su ANNULLATA: «e' fatta» e «non e'
+                  --    mai successa» sono opposti. Una distinta annullata non
+                  --    deve contare in nessun conto, righe pronte comprese.
+                  --
+                  -- ⚠️ Il blocco lo danno le righe is_postabile, non le NON
+                  --    finali: DA_ABBINARE e SOSPESA non bloccano, o la distinta
+                  --    non si chiuderebbe mai.
+                  -- =========================================================
+
+                  IF NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT s.codice_interno
+                    INTO v_stato_a
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.id = NEW.stato_id;
+
+                  IF v_stato_a IS DISTINCT FROM 'CHIUSA' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT count(*)
+                    INTO v_pronte
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati s ON s.id = cr.stato_id
+                   WHERE cr.contabile_id = NEW.id
+                     AND cr.attivo IS TRUE
+                     AND s.is_postabile IS TRUE;
+
+                  IF v_pronte = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'pagamenti.trgfn_vendite_contabili_guard_chiusura',
+                      'E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE',
+                      jsonb_build_object(
+                          'contabile_id',  NEW.id,
+                          'codice',        NEW.codice,
+                          'righe_pronte',  v_pronte
+                      ),
+                      NEW.tx_id,
+                      NEW.codice,
+                      v_pronte::text
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_chiusura() IS
+                'C-5, porta d''USCITA: una distinta contabile non si chiude finche'' ha righe is_postabile ancora attive. E'' il percorso che capita davvero - si registra, restano righe non pronte, qualcuno chiude comunque - e quelle righe spariscono da entrambi i conti. ⚠️ Vale su CHIUSA e NON su ANNULLATA: «e'' fatta» e «non e'' mai successa» sono opposti. ⚠️ Il blocco lo danno le righe PRONTE (is_postabile), non le non-finali: con NOT is_final una distinta con una riga DA_ABBINARE non si chiuderebbe mai. ⭐ Con questo guard la chiusura smette di essere una scelta della funzione madre e diventa una conseguenza (chiude in gran parte Q-6).';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_chiusura_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_chiusura_upd
+                  BEFORE UPDATE OF stato_id ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_chiusura();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback riapre la porta d'uscita di C-5, che e' quella che
+              -- capita davvero: si torna a poter chiudere una distinta lasciando
+              -- righe pronte, e quel denaro sparisce da tutti i conti.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_chiusura_upd
+                  ON pagamenti.vendite_contabili;
+
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_guard_chiusura();

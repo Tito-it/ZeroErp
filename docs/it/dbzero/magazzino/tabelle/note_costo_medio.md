@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/note_costo_medio.md" %}
 # 📚 Tabella `note_costo_medio`
 
 ## 🗂️ Campi principali

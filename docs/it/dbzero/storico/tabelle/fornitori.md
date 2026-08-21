@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/fornitori.md" %}
 # 📚 Tabella `fornitori`
 
 ## 🗂️ Campi principali

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_pdp.md" %}
 # 🔍 View `vw_pdp`
 
 ```sql

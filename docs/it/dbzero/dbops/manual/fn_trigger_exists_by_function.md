@@ -61,7 +61,7 @@ La funzione **`dbops.fn_trigger_exists_by_function(p_rel, p_fn_schema, p_fn_name
 ### Esempi di utilizzo
 
 * `SELECT dbops.fn_trigger_exists_by_function('anagrafiche.clienti','dbops','trgfn_tx_id_managed');`
-* `SELECT dbops.fn_trigger_exists_by_function('vendite.fatture','script','trgfn_upd_audit_data_user_generic');`
+* `SELECT dbops.fn_trigger_exists_by_function('vendite.fatture','script','trgfn_audit_data_user_generic');`
 
 ---
 

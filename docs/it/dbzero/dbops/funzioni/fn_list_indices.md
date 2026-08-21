@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_list_indices.md" %}
 # ⚙️ Funzione `fn_list_indices`
 
 ```sql

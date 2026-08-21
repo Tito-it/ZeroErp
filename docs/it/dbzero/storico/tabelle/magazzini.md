@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/magazzini.md" %}
 # 📚 Tabella `magazzini`
 
 ## 🗂️ Campi principali

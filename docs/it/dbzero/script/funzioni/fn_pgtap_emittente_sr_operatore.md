@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_pgtap_emittente_sr_operatore.md" %}
 # ⚙️ Funzione `fn_pgtap_emittente_sr_operatore`
 
 ```sql

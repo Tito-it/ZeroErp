@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_vettori_normalize.md" %}
 # ⚙️ Funzione `trgfn_vettori_normalize`
 
 ```sql

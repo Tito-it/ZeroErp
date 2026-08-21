@@ -1,0 +1,278 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GRAFO DEGLI STATI SMETTE DI ESSERE UN'INTENZIONE — passo S1-5
+#   pagamenti.trgfn_vendite_contabili_guard_transizione
+#   pagamenti.trgfn_vendite_contabili_righe_guard_transizione
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.1 S1-5 · Decisione: D9-b, D14
+#
+# ── COSA FANNO, E COSA NON FANNO ───────────────────────────────────────
+#   Leggono la matrice di `20260821-25` e rifiutano il passaggio che non c'è.
+#   ⛔ **Nessun grafo scritto nel codice**: è la regola del progetto (il mirror di
+#   `trgfn_resi_guard_transizione` e `trgfn_ddt_guard_transizione`), e serve
+#   perché una regola in una tabella si legge e si cambia senza una migrazione di
+#   codice.
+#
+# ── ⚠️ SOLO `UPDATE OF stato_id`, MAI L'INSERT ─────────────────────────
+#   È la regola scritta in `linee-guida-sql.md` §7c punto 6: *non vincolare
+#   l'INSERT con la matrice, per permettere seed e import con stati diretti*. E
+#   qui non è teorica — `vendite.fn_sync_contabili_fondo_fattura` crea le sue
+#   distinte **direttamente in `VALIDATA`** e le sue righe **direttamente in
+#   `ABBINATA`**: nessuna delle due è raggiungibile per transizione, e devono
+#   restare possibili.
+#
+# ── ⭐ EFFETTO COLLATERALE VOLUTO: SI CHIUDE C-2 CON UN LOTTO D'ANTICIPO ─
+#   Nella matrice della riga **`POSTATA` è terminale**. Quindi il ramo di
+#   `fn_sync_contabili_fondo_fattura` che riporta una riga registrata ad
+#   `ABBINATA` — il difetto **C-2**, su percorso vivo della pipeline perché
+#   `fn_ricalcola_totali_fattura` chiama il sync incondizionatamente — da adesso
+#   **viene rifiutato dal database**, non solo scoraggiato.
+#
+#   ⚠️ Non rende inutile il lotto 3: lì il fondo esce dal ciclo con lo stato
+#   `ESEGUITO` e il sync **non arriva più** a quella riga. Qui il sync ci arriva e
+#   **si schianta**, il che su percorso vivo significa una pipeline che cade.
+#   ⇒ Con zero righe registrate oggi non può accadere; è una ragione in più
+#   perché il **lotto 3 preceda il lotto 4**, come già scritto in §6.4.
+#
+# ── ⚠️ DUE CODICI E NON UNO ────────────────────────────────────────────
+#   `E_CONTABILE_TRANSIZIONE_NON_AMMESSA` (954) e
+#   `E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA` (955): le due macchine hanno stati
+#   diversi, e con un codice solo il messaggio manderebbe a guardare il documento
+#   sbagliato. Entrambi `CONFLITTO_STATO` (409): non c'è un campo da correggere,
+#   è la situazione che non lo consente.
+#
+#   ⭐ **I messaggi parlano all'operatore**, e nominano i **codici di stato**, non
+#   gli id — con `codice_interno`, che è immutabile, non `codice`, che l'utente
+#   può rinominare.
+#
+# ── ⚠️ E NON SI USA `TG_NAME` COME NOME DELLA FUNZIONE ─────────────────
+#   Il modello (`trgfn_resi_guard_transizione`) passa `TG_NAME::text` a
+#   `fn_log_and_raise_error`: così nel diario finisce il nome del **trigger**, non
+#   della funzione, e la ricerca «chi solleva questo codice» — che è il modo in
+#   cui in questo progetto si trovano i consumatori di un messaggio — perde il
+#   pezzo. Qui si passa il nome qualificato, come già corretto in
+#   `trgfn_enti_incasso_guard_psp` (`20260821-18`).
+#
+# Dipendenze: codici 954 e 955 (append ai CSV di 80_data nello stesso commit).
+#   ⚠️ 80_data gira DOPO 20_code: nessuna preCondition sui codici.
+#   ⚠️ E la MATRICE arriva anch'essa da 80_data (`20260821-31`): fino a quel
+#   momento le tabelle sono vuote e il guard rifiuterebbe TUTTO. È accettabile
+#   solo perché le due tabelle transazionali sono a zero righe e il migrate posa
+#   entrambi nella stessa passata.
+# Presidio: db/pgtap/pagamenti/test-transizioni-stati-contabili.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-26-create-trgfn-contabili-guard-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260821-26-create-trgfn-contabili-guard-transizione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        I due guard di transizione di pagamenti — testata e riga — leggono la matrice
+        di 20260821-25 e rifiutano i passaggi che non ci sono. Nessun grafo nel codice.
+        Solo UPDATE OF stato_id, mai l'INSERT: il sync dei fondi crea le sue distinte
+        direttamente in VALIDATA e le sue righe in ABBINATA. ⭐ Con POSTATA terminale
+        si chiude per costruzione il difetto C-2, un lotto prima del previsto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: transizioni_stati_contabile
+            - tableExists:
+                schemaName: pagamenti
+                tableName: transizioni_stati_contabile_riga
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) La DISTINTA (testata)
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice_da pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_codice_a  pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Enforcement DB-first del grafo degli stati della DISTINTA
+                  --   contabile. La transizione e' ammessa solo se presente e
+                  --   attiva in pagamenti.transizioni_stati_contabile: nessun
+                  --   grafo scritto qui dentro.
+                  --
+                  -- ⚠️ Solo UPDATE OF stato_id, mai l'INSERT: una distinta puo'
+                  --    nascere in uno stato qualunque (il giro dei fondi la crea
+                  --    direttamente in VALIDATA, perche' li' non c'e' digitazione
+                  --    e nasce gia' finita).
+                  -- =========================================================
+
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne
+                  -- che nomina comunque stato_id nella SET).
+                  IF NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- I due codici in UNA sola lettura: sono la stessa tabella.
+                  SELECT
+                      max(CASE WHEN s.id = OLD.stato_id THEN s.codice_interno END),
+                      max(CASE WHEN s.id = NEW.stato_id THEN s.codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.id IN (OLD.stato_id, NEW.stato_id);
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM pagamenti.transizioni_stati_contabile t
+                       WHERE t.stato_da_id = OLD.stato_id
+                         AND t.stato_a_id  = NEW.stato_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_guard_transizione',
+                          'E_CONTABILE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'contabile_id', NEW.id,
+                              'codice',       NEW.codice,
+                              'stato_da_id',  OLD.stato_id,
+                              'stato_a_id',   NEW.stato_id,
+                              'stato_da',     v_codice_da,
+                              'stato_a',      v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.codice,
+                          COALESCE(v_codice_da, 'NULL'),
+                          COALESCE(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_transizione() IS
+                'Guard del grafo degli stati della distinta contabile: la transizione deve esistere e essere attiva in pagamenti.transizioni_stati_contabile. Solo UPDATE OF stato_id — l''INSERT resta libero perche'' una distinta puo'' nascere in uno stato qualunque. Nato il 2026-08-21: fino ad allora pagamenti era l''unico dominio con degli stati e nessuna regola su come ci si passa.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_transizione_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_transizione_upd
+                  BEFORE UPDATE OF stato_id ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_transizione();
+
+              -- ============================================================
+              -- 2) La RIGA
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice_da pagamenti.vendite_contabili_righe_stati.codice_interno%TYPE;
+                  v_codice_a  pagamenti.vendite_contabili_righe_stati.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Enforcement DB-first del grafo degli stati della RIGA
+                  --   contabile, da pagamenti.transizioni_stati_contabile_riga.
+                  --
+                  -- ⭐ POSTATA e' TERMINALE, ed e' la meta' del difetto C-2 che
+                  --    si chiude qui: il sync dei fondi non puo' piu' riportare
+                  --    ad ABBINATA una riga il cui movimento esiste gia'.
+                  --
+                  -- ⚠️ Solo UPDATE OF stato_id: il sync dei fondi crea le sue
+                  --    righe direttamente in ABBINATA.
+                  -- =========================================================
+
+                  IF NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN s.id = OLD.stato_id THEN s.codice_interno END),
+                      max(CASE WHEN s.id = NEW.stato_id THEN s.codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.id IN (OLD.stato_id, NEW.stato_id);
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM pagamenti.transizioni_stati_contabile_riga t
+                       WHERE t.stato_da_id = OLD.stato_id
+                         AND t.stato_a_id  = NEW.stato_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_righe_guard_transizione',
+                          'E_RIGA_CONTABILE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'contabile_riga_id', NEW.id,
+                              'contabile_id',      NEW.contabile_id,
+                              'stato_da_id',       OLD.stato_id,
+                              'stato_a_id',        NEW.stato_id,
+                              'stato_da',          v_codice_da,
+                              'stato_a',           v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          COALESCE(v_codice_da, 'NULL'),
+                          COALESCE(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione() IS
+                'Guard del grafo degli stati della riga contabile, da pagamenti.transizioni_stati_contabile_riga. Solo UPDATE OF stato_id. ⭐ Con POSTATA terminale chiude per costruzione il difetto C-2: il sync dei fondi non puo'' piu'' riportare ad ABBINATA una riga il cui movimento esiste gia''.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_transizione_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE TRIGGER trg_vendite_contabili_righe_a10_guard_transizione_upd
+                  BEFORE UPDATE OF stato_id ON pagamenti.vendite_contabili_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback riapre il buco: qualunque salto di stato torna
+              -- ammesso, compreso uscire da uno stato dichiarato finale e
+              -- riportare ad ABBINATA una riga gia' registrata (difetto C-2).
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_transizione_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_transizione_upd
+                  ON pagamenti.vendite_contabili;
+
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_righe_guard_transizione();
+
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_guard_transizione();

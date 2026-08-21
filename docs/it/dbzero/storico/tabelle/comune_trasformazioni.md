@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/comune_trasformazioni.md" %}
 # 📚 Tabella `comune_trasformazioni`
 
 > 📝 **Descrizione**

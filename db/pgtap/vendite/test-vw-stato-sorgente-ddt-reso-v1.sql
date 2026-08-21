@@ -58,7 +58,13 @@ SELECT
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  -- ⚠️ L'emittente si DERIVA da chi agisce, non si pesca: da quando le viste
+  --   vw_stato_sorgente_* sono security_invoker (20260821-08/-09) le policy
+  --   ef_whitelist si applicano anche in lettura, e un documento intestato a un
+  --   emittente diverso da quello dell'operatore sarebbe invisibile alla vista.
+  --   Oggi i due valori coincidono per caso — un solo emittente ha documenti —
+  --   e proprio per questo il test passava: coincidenza, non costruzione.
+  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,

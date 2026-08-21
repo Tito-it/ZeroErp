@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/identita_scope_bindings.md" %}
 # 📚 Tabella `identita_scope_bindings`
 
 > 📝 **Descrizione**

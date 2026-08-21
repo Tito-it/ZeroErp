@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_vettori_guard_ruolo_vettore.md" %}
 # ⚙️ Funzione `trgfn_vettori_guard_ruolo_vettore`
 
 ```sql

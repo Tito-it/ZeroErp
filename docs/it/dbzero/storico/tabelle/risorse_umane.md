@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/risorse_umane.md" %}
 # 📚 Tabella `risorse_umane`
 
 ## 🗂️ Campi principali

@@ -153,6 +153,20 @@ Mescolare i nomi a caso:
 
   Diventa impossibile capire dal nome se la funzione lancia o verifica soltanto.
 
+**Che cosa passare a `fn_log_and_raise_error`** — tre canali, tre destinatari
+diversi, e confonderli è il difetto più facile da non vedere:
+
+| Cosa | A chi parla | Regola |
+| --- | --- | --- |
+| `p_error_code` | il **backend** (status HTTP, `ui_action`) | registrato a catalogo, con la sua classe |
+| `p_context ->> 'campo'` | il **frontend** (quale campo accendere) | il nome della colonna, mai il valore |
+| `VARIADIC p_valori` | **l'operatore** (la frase che legge) | ⛔ mai un nome di parametro o di colonna: la cosa che una persona riconosce |
+
+⚠️ Il terzo è quello che sfugge, perché **non lo vede nessun cancello**: il codice
+è registrato, la classe c'è, il campo viaggia — e il messaggio è illeggibile lo
+stesso. Dettaglio e criterio in
+[Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log).
+
 ---
 
 ### 5b. Atomicità delle operazioni multi-scrittura — funzione "madre"
@@ -190,6 +204,13 @@ serve scrivere `BEGIN/EXCEPTION` per l'all-or-nothing (i blocchi `EXCEPTION` ser
 * **Delta parziale** via JSONB (`jsonb_exists()` per la presenza chiave, `jsonb_populate_record`
   per l'INSERT dinamico): aggiorna solo le chiavi presenti e rispetta i default/trigger DB.
 * **Errori** con `script.fn_log_and_raise_error` e codici **registrati** (mai `E_GENERICO`).
+  ⛔ **E il codice registrato non basta**: nel `VARIADIC` non entra mai il nome di
+  un parametro PL/pgSQL o di una colonna — quei valori riempiono i `%s`, cioè
+  **compongono la frase che l'operatore legge**. Un codice giusto con dentro
+  `'p_centro_riscossione_id (obbligatorio, > 0)'` passa tutti i cancelli e produce
+  un messaggio di qualità `E_GENERICO`. Regola, esempi e criterio «riuso o conio
+  un codice?» in
+  [Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log).
 * **Cosa NON spostare in DB**: le validazioni read-only di input restano pre-check del service —
   non attengono all'atomicità (la causa del problema).
 

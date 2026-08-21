@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C-5, PORTA D'INGRESSO: NIENTE RIGHE SOTTO UNA DISTINTA FINITA — passo S1-7
+#   pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale
+#   Piano: brief-db-posting-e-abbinamento-rata.md §1.4 C-5, §2.1 S1-7
+#
+# ── IL DIFETTO, IN TRE NEGAZIONI ───────────────────────────────────────
+#   Nessun vincolo impediva di appendere una riga `ABBINATA` sotto una distinta
+#   `CHIUSA` o `ANNULLATA`. Quella riga:
+#
+#     · **non entra** nel saldo contabile — `fn_get_saldo_fattura_contabili`
+#       esclude le righe la cui testata è finale;
+#     · **non entra** nel saldo movimenti — non è registrata;
+#     · **non verrà mai registrata** — il posting parte dalla testata.
+#
+#   È denaro dichiarato che non compare da nessuna parte. E la differenza
+#   `saldo − saldo_contabile` la legge come «manca copertura»: **il fondo fattura
+#   si rigenera**.
+#
+# ── ⚠️ E IL FILTRO CHE SEMBRAVA PROTEGGERE NON PROTEGGE ────────────────
+#   `fn_get_saldo_fattura_contabili` esclude le testate finali, e sembra un
+#   presidio. Non lo è: le righe di una distinta `CHIUSA` sono già `POSTATA`,
+#   quindi non postabili, quindi **escluse comunque**. L'unica cosa che quel
+#   filtro riesce a escludere è **proprio la riga anomala**.
+#
+#   > *Un filtro che nasconde ciò che non sa gestire sembra un presidio finché
+#   > non si guarda che cosa esclude davvero.*
+#
+# ── LE PORTE SONO DUE, E QUESTA È QUELLA PREVISTA ──────────────────────
+#   **Ingresso** — si *aggiunge* una riga a una distinta già finale: questo file.
+#   **Uscita** — si *chiude* una distinta che ha ancora righe registrabili: è la
+#   strada che capita davvero, e la chiude `20260821-29` (S1-20).
+#   ⛔ Chiuderne una sola non serve a niente.
+#
+# ── ⚠️ TRE MOSSE, NON UNA ──────────────────────────────────────────────
+#   Il guard copre `INSERT` **e** `UPDATE`, perché sotto una distinta finale una
+#   riga può arrivare in tre modi: nascendoci, essendo **riattivata**
+#   (`attivo` da falso a vero) o essendo **spostata** lì da un'altra distinta
+#   (`contabile_id` cambiato). ⭐ Chiudere solo l'INSERT lascerebbe due porte su
+#   tre, ed è il modo in cui questi guard di solito falliscono.
+#
+#   ⚠️ **Una riga già sotto una distinta finale resta modificabile** per il resto:
+#   il guard rifiuta solo l'ingresso e la riattivazione, non ogni scrittura. Se
+#   rifiutasse tutto, non si potrebbe più nemmeno correggere il `motivo_sospeso`
+#   di una riga di una distinta annullata.
+#
+# ── ⚠️ IL GUARD LEGGE LA TESTATA, E LA TESTATA È UN'ALTRA RIGA ─────────
+#   Oggi `pagamenti` non ha RLS (arriva con la slice 3, passo S3-5). Quando
+#   arriverà, questo `SELECT` sulla testata andrà riguardato: un guard che legge
+#   sotto RLS **non distingue «non lo vedo» da «è di un altro»**, e il rimedio
+#   registrato nel progetto è una `SECURITY DEFINER`. Annotato qui perché chi
+#   scriverà S3-5 lo trovi.
+#
+# Dipendenze: codice E_RIGA_CONTABILE_DISTINTA_FINALE (958, CONFLITTO_STATO).
+# Presidio: db/pgtap/pagamenti/test-righe-contabili-guard-dati.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-28-create-trgfn-righe-guard-distinta-finale-mctit.yaml
+
+  - changeSet:
+      id: 20260821-28-create-trgfn-righe-guard-distinta-finale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        C-5, porta d'ingresso: nessuna riga nuova, riattivata o spostata sotto una
+        distinta contabile in stato finale. Una riga così non entra nel saldo contabile,
+        non entra nel saldo movimenti e non verrà mai registrata — e la differenza fa
+        rigenerare il fondo fattura. Tre mosse coperte, non una: INSERT, riattivazione
+        e spostamento.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_stati
+                columnName: is_final
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_is_final     pagamenti.vendite_contabili_stati.is_final%TYPE;
+                  v_stato        pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_codice       pagamenti.vendite_contabili.codice%TYPE;
+                  v_da_guardare  boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire che una riga contabile finisca sotto una distinta
+                  --   in stato finale (CHIUSA o ANNULLATA): la' non entra in
+                  --   nessun conto e non verra' mai registrata.
+                  --
+                  -- ⚠️ TRE mosse, non una: nascere li', esserci RIATTIVATA,
+                  --    esserci SPOSTATA da un'altra distinta.
+                  --
+                  -- ⚠️ Cio' che NON si rifiuta: le altre scritture su una riga
+                  --    gia' li'. Rifiutare tutto impedirebbe perfino di
+                  --    correggere il motivo_sospeso di una riga annullata.
+                  -- =========================================================
+
+                  v_da_guardare := CASE
+                      WHEN TG_OP = 'INSERT' THEN NEW.attivo IS TRUE
+                      -- riattivazione, oppure spostamento sotto un'altra distinta
+                      ELSE (NEW.attivo IS TRUE AND OLD.attivo IS NOT TRUE)
+                        OR (NEW.contabile_id IS DISTINCT FROM OLD.contabile_id)
+                  END;
+
+                  IF NOT v_da_guardare THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ Quando pagamenti avra' la RLS (slice 3, S3-5) questa
+                  --    lettura va riguardata: un guard che legge sotto RLS non
+                  --    distingue «non lo vedo» da «e' di un altro».
+                  SELECT s.is_final, s.codice_interno, c.codice
+                    INTO v_is_final, v_stato, v_codice
+                    FROM pagamenti.vendite_contabili c
+                    JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
+                   WHERE c.id = NEW.contabile_id;
+
+                  IF COALESCE(v_is_final, false) IS FALSE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale',
+                      'E_RIGA_CONTABILE_DISTINTA_FINALE',
+                      jsonb_build_object(
+                          'contabile_riga_id', NEW.id,
+                          'contabile_id',      NEW.contabile_id,
+                          'contabile_codice',  v_codice,
+                          'stato_distinta',    v_stato,
+                          'operazione',        TG_OP
+                      ),
+                      NEW.tx_id,
+                      COALESCE(v_codice, NEW.contabile_id::text),
+                      CASE WHEN v_stato = 'ANNULLATA' THEN 'annullata' ELSE 'chiusa' END
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale() IS
+                'C-5, porta d''INGRESSO: nessuna riga nuova, riattivata o spostata sotto una distinta contabile in stato finale. Una riga li'' non entra nel saldo contabile (la testata e'' finale), non entra nel saldo movimenti (non e'' registrata) e non verra'' mai registrata (il posting parte dalla testata): denaro dichiarato che non compare da nessuna parte, e la differenza fa RIGENERARE il fondo fattura. La porta d''USCITA e'' l''altra, e la chiude pagamenti.trgfn_vendite_contabili_guard_chiusura.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE TRIGGER trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd
+                  BEFORE INSERT OR UPDATE ON pagamenti.vendite_contabili_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback riapre la porta d'ingresso di C-5: torna possibile
+              -- appendere una riga a una distinta chiusa, e quel denaro sparisce
+              -- da tutti i conti senza che nessun errore lo dica.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale();

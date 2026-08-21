@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LEDGER DI MAGAZZINO ACCETTAVA SOLO TRASFERIMENTI
+#   magazzino.movimenti / chk_mag_movimenti_da_destinazione_distinti
+#   Piano: docs/it/dev/work-done/analisi-copertura-doc-manual-dbzero.md §4/F
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────────
+#   Il vincolo nato con la tabella (00_schema/magazzino/20251002-01) e':
+#
+#     CHECK (magazzino_id <> magazzino_id_dest
+#            AND magazzino_id      IS NOT NULL
+#            AND magazzino_id_dest IS NOT NULL)
+#
+#   Le due congiunzioni `IS NOT NULL` pretendono che OGNI movimento abbia un
+#   magazzino di DESTINAZIONE. Ma `magazzino_id_dest` e' dichiarata `nullable`,
+#   e un carico da acquisto o uno scarico da vendita non ce l'hanno: la
+#   destinazione serve ai soli trasferimenti.
+#
+#   🔴 In PostgreSQL un CHECK passa se vale TRUE **o NULL**. Qui la congiunzione
+#   con `IS NOT NULL` porta il predicato a FALSE, non a NULL — quindi il
+#   movimento piu' comune del magazzino, il carico, NON E' INSERIBILE.
+#   Verificato il 2026-08-21 valutando l'espressione:
+#     · carico semplice (dest = NULL)  -> false  -> RIFIUTATO
+#     · trasferimento  (dest = altro)  -> true   -> passa
+#
+# ── PERCHE' NON SE NE ERA ACCORTO NESSUNO ───────────────────────────────
+#   Perche' `magazzino.movimenti` e' **vuota**: il dominio magazzino e'
+#   predisposto e non e' mai stato avviato (tutte le sue tabelle operative sono
+#   a zero righe, solo i due vocabolari di configurazione sono popolati). E
+#   nessun pgTAP tocca questa tabella: il difetto non aveva modo di emergere.
+#   Sarebbe stato il primo errore al primo giorno di esercizio.
+#   Trovato scrivendo la doc manuale della fascia F, leggendo i vincoli.
+#
+# ── LA FORMA CORRETTA, CHE IL PROGETTO GIA' USA ─────────────────────────
+#   ⭐ Sulla stessa tabella, il vincolo gemello sulle ubicazioni e' scritto
+#   BENE, ed e' il modello da seguire:
+#
+#     chk_mag_movimenti_ubi_from_to_diff
+#       CHECK (ubicazione_id_from IS NULL
+#              OR ubicazione_id_to IS NULL
+#              OR ubicazione_id_from <> ubicazione_id_to)
+#
+#   «se il valore c'e', allora dev'essere diverso» — non «il valore ci
+#   dev'essere». La correzione applica la stessa forma ai magazzini:
+#
+#     CHECK (magazzino_id_dest IS NULL OR magazzino_id <> magazzino_id_dest)
+#
+#   `magazzino_id` non ha bisogno del proprio `IS NOT NULL`: la colonna e' gia'
+#   dichiarata NOT NULL, e ripeterlo qui e' la ridondanza da cui e' nato il
+#   difetto.
+#
+# ── ⚠️ QUESTO CHANGESET ALLARGA, NON RESTRINGE ──────────────────────────
+#   Il vincolo nuovo ammette tutto cio' che ammetteva il vecchio e in piu' i
+#   movimenti senza destinazione. Non puo' quindi invalidare righe esistenti —
+#   e comunque la tabella e' vuota (verificato: 0 righe), quindi la
+#   rivalidazione dell'ADD CONSTRAINT non ha nulla da controllare.
+#   Nessun pgTAP esistente tocca `magazzino.movimenti`: niente da riallineare.
+#
+# ── ⚠️ COSA QUESTO CHANGESET **NON** RISOLVE ────────────────────────────
+#   Resta aperto il secondo difetto trovato insieme a questo: `causali.segno`
+#   (+1 / -1) non e' legato in alcun modo al segno di `movimenti.qta`, e
+#   `magazzino.vw_giacenza` calcola la giacenza con un puro `sum(qta)`. Un
+#   CARICO_ACQ scritto con quantita' negativa farebbe CALARE la giacenza, e
+#   nessun vincolo lo impedisce. E' una decisione di modello — CHECK che leghi i
+#   due segni, oppure trigger che derivi `qta` dal valore assoluto per il segno
+#   della causale — e va presa prima di attivare il dominio.
+#   Dettaglio: docs/it/dbzero/magazzino/manual/movimenti.md
+#
+# Presidio: db/pgtap/magazzino/test-movimenti-vincoli-v1.sql (stesso commit),
+#   che finora non esisteva per nessun vincolo di questa tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20260821-10-fix-chk-movimenti-destinazione-mctit.yaml
+
+  - changeSet:
+      id: 20260821-10-fix-chk-movimenti-destinazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Corregge chk_mag_movimenti_da_destinazione_distinti su magazzino.movimenti:
+        pretendeva magazzino_id_dest NOT NULL, rendendo inseribili solo i
+        trasferimenti e rifiutando ogni carico o scarico semplice. Nuova forma
+        «se c'e', dev'essere diverso», la stessa gia' usata dal vincolo gemello
+        sulle ubicazioni. Allarga: nessuna riga esistente puo' risultare invalida.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: movimenti
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  -- Il vincolo dev'essere ancora quello vecchio: se qualcuno lo
+                  -- avesse gia' corretto altrove, ci si ferma invece di
+                  -- sovrascrivere una decisione altrui.
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint
+                   WHERE conrelid = 'magazzino.movimenti'::regclass
+                     AND conname  = 'chk_mag_movimenti_da_destinazione_distinti'
+                     AND pg_get_constraintdef(oid) LIKE '%magazzino_id_dest IS NOT NULL%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.movimenti
+                DROP CONSTRAINT chk_mag_movimenti_da_destinazione_distinti;
+
+              ALTER TABLE magazzino.movimenti
+                ADD CONSTRAINT chk_mag_movimenti_da_destinazione_distinti
+                CHECK (magazzino_id_dest IS NULL
+                       OR magazzino_id <> magazzino_id_dest);
+
+              COMMENT ON CONSTRAINT chk_mag_movimenti_da_destinazione_distinti
+                ON magazzino.movimenti IS
+                'La destinazione serve ai soli trasferimenti: se valorizzata deve essere diversa dall''origine. Corretto il 2026-08-21: la forma precedente pretendeva magazzino_id_dest NOT NULL e rendeva inseribile il solo trasferimento.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback ripristina il vincolo DIFETTOSO: torna a rifiutare
+              -- carichi e scarichi semplici. Ha senso solo per annullare
+              -- integralmente questo changeSet, mai come rimedio a un problema.
+              ALTER TABLE magazzino.movimenti
+                DROP CONSTRAINT chk_mag_movimenti_da_destinazione_distinti;
+
+              ALTER TABLE magazzino.movimenti
+                ADD CONSTRAINT chk_mag_movimenti_da_destinazione_distinti
+                CHECK (magazzino_id <> magazzino_id_dest
+                       AND magazzino_id      IS NOT NULL
+                       AND magazzino_id_dest IS NOT NULL);

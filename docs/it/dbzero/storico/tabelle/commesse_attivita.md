@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/commesse_attivita.md" %}
 # 📚 Tabella `commesse_attivita`
 
 ## 🗂️ Campi principali

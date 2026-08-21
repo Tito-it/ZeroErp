@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/vettori.md" %}
 # 📚 Tabella `vettori`
 
 ## 🗂️ Campi principali

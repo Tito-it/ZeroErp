@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_cf_libero.md" %}
 # ⚙️ Funzione `fn_pgtap_cf_libero`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_commesse_attivita_guard_prezzo_rettifica.md" %}
 # ⚙️ Funzione `trgfn_commesse_attivita_guard_prezzo_rettifica`
 
 ```sql

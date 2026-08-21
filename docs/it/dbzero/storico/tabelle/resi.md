@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/resi.md" %}
 # 📚 Tabella `resi`
 
 ## 🗂️ Campi principali

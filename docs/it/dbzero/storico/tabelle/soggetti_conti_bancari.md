@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/soggetti_conti_bancari.md" %}
 # 📚 Tabella `soggetti_conti_bancari`
 
 ## 🗂️ Campi principali

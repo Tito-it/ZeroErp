@@ -17,6 +17,9 @@
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_visible_for_emittenti](manual/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
 - [fn_check_blocco_login](manual/fn_check_blocco_login.md)
+- [fn_check_commessa_annullabile](manual/fn_check_commessa_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
+- [fn_check_commessa_chiudibile](manual/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
+- [fn_check_commessa_pronta_fatturazione](manual/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_ddt_emittibile](manual/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_fattura_eliminabile_da_lotto](manual/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
 - [fn_check_indirizzo_duplicato](manual/fn_check_indirizzo_duplicato.md)
@@ -24,7 +27,9 @@
 - [fn_check_lotto_fatture_pre_fiscali](manual/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
 - [fn_check_lotto_riportabile_a_draft](manual/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
+- [fn_check_ordine_annullabile](manual/fn_check_ordine_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-15)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
+- [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
 - [fn_check_rinuncia_reversibile](manual/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_ultimo_super_admin_attivo](manual/fn_check_ultimo_super_admin_attivo.md)
 - [fn_check_user_can_create_ba](manual/fn_check_user_can_create_ba.md)
@@ -32,6 +37,7 @@
 - [fn_check_utility_istanza_coerenza](manual/fn_check_utility_istanza_coerenza.md)
 - [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_current_identita_context](manual/fn_current_identita_context.md) — (latest review 19-04-2026)
+- [fn_disdetta_cliente](manual/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — (latest review 18-08-26)
@@ -72,6 +78,7 @@
 - [fn_get_user_object_permissions_map](manual/fn_get_user_object_permissions_map.md)
 - [fn_get_user_permissions_map](manual/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](manual/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + risorse_umane_auth_user + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
+- [fn_get_vie_discendenti](manual/fn_get_vie_discendenti.md) — (rev 2026-08-21)
 - [fn_guard_soggetto_pf_pura](manual/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](manual/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
@@ -81,8 +88,14 @@
 - [fn_job_run_end](manual/fn_job_run_end.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_job_run_start](manual/fn_job_run_start.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_list_parameters_for_user](manual/fn_list_parameters_for_user.md)
+- [fn_log](manual/fn_log.md) — (rev 2026-08-21)
 - [fn_log_and_raise_error](manual/fn_log_and_raise_error.md) — (last review 24-04-2026)
 - [fn_log_error_only](manual/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
+- [fn_norm_testo](manual/fn_norm_testo.md) — (rev 2026-08-21)
+- [fn_norm_via](manual/fn_norm_via.md) — (rev 2026-08-21)
+- [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)
+- [fn_pgtap_emittente_sr_operatore](manual/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
+- [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_for_user](manual/fn_resolve_emittente_for_user.md)
@@ -108,6 +121,7 @@
 - [fn_valida_codice_fiscale](manual/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](manual/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 - [fn_validate_cf_piva_it](manual/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
+- [log](manual/log.md) — (rev 2026-08-21)
 - [trgfn_audit_data_user_generic](manual/trgfn_audit_data_user_generic.md) — * **Audit automatico su INSERT e UPDATE**   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`). * **Centralizzare la logica di audit**   Un'unica trigger function per tutte le tabelle, evitando duplicazione di logica. * **Tracciare l'utente reale (JWT)**   Utilizza la GUC `app.jwt_user` impostata dal middleware Django per registrare   l'utente che ha effettuato la chiamata API, non il ruolo DB della connessione.
 - [trgfn_canale_origine_immutable](manual/trgfn_canale_origine_immutable.md) — (latest review 20-04-2026)
 - [trgfn_componenti_calcola_quantita](manual/trgfn_componenti_calcola_quantita.md) — - **Correttezza automatica**: il BE non deve calcolare `quantita` prima dell'INSERT — la invia come placeholder (o come valore calcolato) e il trigger la sovrascrive con il valore corretto. - **Defense-in-depth**: se il BE invia una quantita inconsistente (bug, refactoring, race condition), il trigger la corregge prima che la riga venga persistita. - **Complemento a `propaga_qta`**: `calcola_quantita` gestisce il caso INSERT/UPDATE diretto; `propaga_qta` gestisce il caso aggiornamento della quantita padre su figli già esistenti.
@@ -128,6 +142,7 @@
 - [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `script.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 - [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
+- [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
 - [trgfn_righe_guard_pending](manual/trgfn_righe_guard_pending.md) — (rev 2026-06-01 — estrazione)
 - [trgfn_storico_generic](manual/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](manual/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.

@@ -1,0 +1,227 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DUE VINCOLI MAI NATI SU pagamenti.centri_riscossione — passo P-1
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §1.4 C-1 e C-1-bis, §2.0 P-1
+#
+# ── IL PRIMO DIFETTO (C-1): un unico "parziale" che parziale non e' mai stato
+#   Il changeSet 20260211-14 dichiarava:
+#
+#     - addUniqueConstraint:
+#         columnNames: is_compensazione
+#         constraintName: uq_centri_riscossione_compensazione
+#         where: "is_compensazione = true"      # <- IGNORATO
+#
+#   `addUniqueConstraint` NON ha l'attributo `where`: quello si dichiara su
+#   `createIndex`. Liquibase non ha protestato, ha eseguito un
+#   `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE (is_compensazione)`, e
+#   l'intenzione — «un solo centro di compensazione» — e' diventata
+#   «DUE CENTRI IN TUTTO», uno per valore del booleano.
+#
+#   🔴 Conseguenza pratica: il terzo INSERT nella tabella non passa. Il seed dei
+#   centri reali (banca, poste, cassa) del passo P-2, che sta nello stesso
+#   lotto, oggi fallirebbe alla terza riga.
+#
+#   ⭐ Ed era invisibile per una ragione istruttiva: la tabella ha esattamente
+#   due righe, cioe' il massimo che il vincolo consente. Un vincolo SATURO e un
+#   vincolo RISPETTATO hanno lo stesso aspetto finche' non si prova ad aggiungere.
+#
+# ── IL SECONDO DIFETTO (C-1-bis): un CHECK dichiarato e mai eseguito
+#   Il changeSet successivo, 20260211-21, dichiara nel suo YAML:
+#
+#     ALTER TABLE pagamenti.centri_riscossione
+#       ADD CONSTRAINT chk_centri_riscossione_ruolo_esclusivo
+#       CHECK NOT (is_compensazione = true AND is_fondo_fattura = true);
+#
+#   ✅ Quel vincolo NON esiste nel database. Il blocco `- sql:` e' annidato
+#   dentro `addColumn.columns:`, alla pari di `- column:`, invece di essere un
+#   cambio fratello sotto `changes:`. La lista dei `columns` accetta definizioni
+#   di colonna: un `sql` li' dentro non e' un errore, e' una voce che non viene
+#   eseguita. La colonna e' nata, il vincolo no.
+#
+#   🔴 Conseguenza: oggi un centro puo' essere COMPENSAZIONE e FONDO FATTURA
+#   insieme — e i due ruoli sono letti da percorsi diversi
+#   (vendite.fn_sync_contabili_fondo_fattura cerca is_fondo_fattura,
+#   pagamenti.trgfn_vendite_contabili_guard_ente_centro legge is_compensazione),
+#   quindi una riga che dice si' a entrambi li soddisfa ENTRAMBI.
+#
+# ── IL TERZO VINCOLO, CHE NON E' MAI STATO NEMMENO DICHIARATO
+#   `is_fondo_fattura` non ha alcuna unicita': oggi i centri fondo-fattura
+#   possono essere N, e `vendite.fn_sync_contabili_fondo_fattura` ne prende uno
+#   con `ORDER BY c.id LIMIT 1`. Deterministico, ma arbitrario: la scelta la fa
+#   l'ordine degli id, non una regola. I due flag vanno resi simmetrici.
+#
+#   ⭐ Effetto collaterale buono: con l'indice qui sotto quel `LIMIT 1` smette di
+#   essere una scommessa sull'ordine degli id e diventa la lettura di una riga
+#   che il database garantisce unica. La funzione non si tocca: cambia cio' su
+#   cui si appoggia.
+#
+# ── ⚠️ PERCHE' `DROP CONSTRAINT` E POI `CREATE UNIQUE INDEX` ─────────────
+#   L'oggetto vivo e' un VINCOLO: l'indice ne e' solo il supporto e sparisce con
+#   lui, quindi si toglie con DROP CONSTRAINT, non con DROP INDEX. Il rimpiazzo
+#   invece e' un INDICE, perche' in PostgreSQL l'unicita' parziale si esprime
+#   solo cosi': non esiste un `UNIQUE ... WHERE` come vincolo di tabella. E' la
+#   ragione tecnica per cui l'intenzione originale non poteva essere espressa
+#   con `addUniqueConstraint`, e quindi la ragione per cui era destinata a
+#   sparire.
+#
+#   ⚠️ SQL esplicito e non `createIndex` con `where:`: nel repository non esiste
+#   piu' nessun indice parziale nato da quell'attributo (l'unico esemplare e'
+#   stato droppato il 2026-07-27), quindi non e' verificabile su un oggetto vivo
+#   che Liquibase lo onori davvero. Dopo due vincoli evaporati nello stesso
+#   file, la regola prudenziale e': per un parziale, SQL esplicito.
+#
+# ── ⚠️ APPLICABILE SENZA SANATORIA, VERIFICATO ──────────────────────────
+#   Le due righe presenti (id 37 FONDI_FATTURA, id 38 COMPENSAZIONI) sono una
+#   per ruolo e nessuna dice si' a entrambi: tutti e tre i vincoli passano sul
+#   dato di oggi, e le preConditions qui sotto lo verificano invece di darlo per
+#   scontato. Ma e' una verifica sul dev: il vincolo si scrive perche' regga
+#   domani, non perche' oggi non incontri nessuno.
+#
+# ── ⚠️ ORDINE: P-1 DEVE PRECEDERE P-2 ───────────────────────────────────
+#   Il seed dei centri (P-2) sta in `80_data`, che gira DOPO `00_schema`:
+#   l'ordine e' garantito dalla FASE. Se per qualsiasi ragione questi vincoli
+#   finissero in `80_data` o in un `sql` inline, l'ordine si romperebbe e la
+#   rottura si vedrebbe SOLO in CI, dove la tabella e' vuota e le tre righe
+#   nuove arrivano davvero.
+#
+# ── LA LEZIONE, CHE VALE OLTRE IL CASO ──────────────────────────────────
+#   Un'istruzione che lo strumento non capisce non produce un errore: produce
+#   SILENZIO — e il file di migrazione continua a dichiarare l'intenzione
+#   giusta, quindi chi lo rilegge non ha motivo di dubitare. Un vincolo si
+#   verifica sull'oggetto vivo (docs/it/dbzero/<schema>/tabelle/<nome>.md), mai
+#   sul file che dice di averlo creato.
+#   ✅ Caccia agli altri casi gia' fatta (passo P-0, 2026-08-21): 2804 YAML
+#   analizzati strutturalmente, nessun altro colpito. Non e' una malattia
+#   diffusa nel changelog: sono due sviste nello stesso schema, in due changeSet
+#   consecutivi, sulla stessa tabella, lo stesso giorno.
+#
+# Presidio: db/pgtap/pagamenti/test-centri-riscossione-vincoli-ruolo.sql
+#   (stesso commit). Asserisce il COMPORTAMENTO — un terzo centro entra, un
+#   secondo centro di compensazione no, un centro che e' due ruoli insieme no —
+#   non l'esistenza dei vincoli: asserire «il vincolo esiste» verificherebbe
+#   l'ipotesi su chi lo impedisce, non il fatto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260821-11-alter-centri-riscossione-vincoli-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20260821-11-alter-centri-riscossione-vincoli-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimette in piedi i due vincoli evaporati su pagamenti.centri_riscossione e
+        ne aggiunge il gemello mancante: uq_centri_riscossione_compensazione da
+        UNIQUE totale su un booleano (che limitava la tabella a due righe in tutto)
+        a indice unico PARZIALE; nuovo uq_centri_riscossione_fondo_fattura, simmetrico;
+        chk_centri_riscossione_ruolo_esclusivo, dichiarato in 20260211-21 e mai
+        eseguito perche' annidato dentro addColumn.columns.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: centri_riscossione
+            # Il vincolo da sostituire dev'essere ancora quello difettoso: se
+            # qualcuno lo avesse gia' corretto altrove ci si ferma, invece di
+            # sovrascrivere una decisione altrui.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint
+                   WHERE conrelid = 'pagamenti.centri_riscossione'::regclass
+                     AND conname  = 'uq_centri_riscossione_compensazione'
+                     AND contype  = 'u';
+            # Il CHECK non dev'essere nato nel frattempo.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint
+                   WHERE conrelid = 'pagamenti.centri_riscossione'::regclass
+                     AND conname  = 'chk_centri_riscossione_ruolo_esclusivo';
+            # I dati devono reggere i tre vincoli nuovi. Senza questa verifica il
+            # migrate fallirebbe comunque, ma con un messaggio di PostgreSQL sul
+            # nome dell'indice invece che sulla riga da sanare.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  -- Quante righe di troppo hanno i tre vincoli nuovi: i centri di
+                  -- compensazione oltre il primo, i centri fondo-fattura oltre il
+                  -- primo, e i centri che sono tutti e due i ruoli insieme.
+                  SELECT (
+                      GREATEST((SELECT COUNT(*) FROM pagamenti.centri_riscossione
+                                 WHERE is_compensazione) - 1, 0)
+                    + GREATEST((SELECT COUNT(*) FROM pagamenti.centri_riscossione
+                                 WHERE is_fondo_fattura) - 1, 0)
+                    +          (SELECT COUNT(*) FROM pagamenti.centri_riscossione
+                                 WHERE is_compensazione AND is_fondo_fattura)
+                  )::text;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- 1) C-1 — l'unico "parziale" che parziale non e' mai stato.
+              --    DROP CONSTRAINT: l'oggetto vivo e' un vincolo, l'indice
+              --    omonimo ne e' il supporto e sparisce con lui.
+              ALTER TABLE pagamenti.centri_riscossione
+                DROP CONSTRAINT uq_centri_riscossione_compensazione;
+
+              CREATE UNIQUE INDEX uq_centri_riscossione_compensazione
+                ON pagamenti.centri_riscossione (is_compensazione)
+                WHERE is_compensazione;
+
+              COMMENT ON INDEX pagamenti.uq_centri_riscossione_compensazione IS
+                'Un solo centro di riscossione di compensazione. Parziale: le righe con is_compensazione = false non partecipano. Nato il 2026-08-21 al posto del vincolo UNIQUE TOTALE creato per errore da 20260211-14, dove il where: era stato scritto su un addUniqueConstraint (che quell''attributo non ha) ed era stato ignorato in silenzio: la tabella non poteva contenere piu'' di due righe.';
+
+              -- 2) Il gemello che non e' mai esistito: senza, i centri
+              --    fondo-fattura possono essere N e chi ne sceglie uno prende il
+              --    primo per id.
+              CREATE UNIQUE INDEX uq_centri_riscossione_fondo_fattura
+                ON pagamenti.centri_riscossione (is_fondo_fattura)
+                WHERE is_fondo_fattura;
+
+              COMMENT ON INDEX pagamenti.uq_centri_riscossione_fondo_fattura IS
+                'Un solo centro di riscossione per i fondi fattura, simmetrico a uq_centri_riscossione_compensazione. Rende deterministico per REGOLA il LIMIT 1 di vendite.fn_sync_contabili_fondo_fattura, che prima lo era solo per ordine degli id.';
+
+              -- 3) C-1-bis — il CHECK dichiarato in 20260211-21 e mai nato.
+              --    I due ruoli sono letti da percorsi diversi: una riga che dice
+              --    si' a entrambi li soddisferebbe entrambi.
+              ALTER TABLE pagamenti.centri_riscossione
+                ADD CONSTRAINT chk_centri_riscossione_ruolo_esclusivo
+                CHECK (NOT (is_compensazione AND is_fondo_fattura));
+
+              COMMENT ON CONSTRAINT chk_centri_riscossione_ruolo_esclusivo
+                ON pagamenti.centri_riscossione IS
+                'Un centro e'' di compensazione OPPURE di fondo fattura, mai tutti e due: sono due usi interni distinti, letti da percorsi diversi. Dichiarato in 20260211-21 e mai eseguito (blocco - sql: annidato dentro addColumn.columns:, dove non viene eseguito); creato davvero il 2026-08-21.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback RIPRISTINA I DIFETTI: la tabella torna a non poter
+              -- contenere piu' di due righe e un centro torna a poter essere due
+              -- ruoli insieme. Ha senso solo per annullare integralmente questo
+              -- changeSet, mai come rimedio a un problema.
+              ALTER TABLE pagamenti.centri_riscossione
+                DROP CONSTRAINT chk_centri_riscossione_ruolo_esclusivo;
+
+              DROP INDEX pagamenti.uq_centri_riscossione_fondo_fattura;
+
+              DROP INDEX pagamenti.uq_centri_riscossione_compensazione;
+
+              ALTER TABLE pagamenti.centri_riscossione
+                ADD CONSTRAINT uq_centri_riscossione_compensazione
+                UNIQUE (is_compensazione);

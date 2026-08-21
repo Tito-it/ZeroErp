@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/rettifiche_righe.md" %}
 # 📚 Tabella `rettifiche_righe`
 
 ## 🗂️ Campi principali

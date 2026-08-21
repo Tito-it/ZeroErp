@@ -8,7 +8,7 @@ Approfondimeto Tabelle:
 >
 Approfondimeto Funzioni:   
 >
-[config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)   
+[script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle vie registrate in `config.stradario`, garantendo la tracciabilità di tutte le operazioni di update e delete.
@@ -25,7 +25,8 @@ La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle v
 ### Meccanismo di Popolamento
 
 1. **Trigger di storicizzazione**
-   La trigger function `config.trgfn_stradario_upd_dlt_storico_stradario()` si attiva **BEFORE UPDATE OR DELETE** su `config.stradario` quando il flag `storicizza = TRUE`.
+   La storicizzazione passa dal trigger `trg_stradario_z90_storico_upd_dlt`, **BEFORE UPDATE OR DELETE** su `config.stradario`, che esegue la funzione generica `script.trgfn_storico_generic('stradario_id')` quando il flag `storicizza = TRUE`.
+   ⚠️ Fino a una revisione precedente esisteva una trigger function dedicata (`config.trgfn_stradario_upd_dlt_storico_stradario`), oggi sostituita dalla generica: il riferimento è rimasto in questa pagina come link morto ed è stato corretto il 2026-08-21.
 2. **Replica dello stato iniziale**
    Al primo update o delete, viene creato automaticamente uno **snapshot iniziale** (tipo_operazione_id = 1) se non esisteva un record storico precedente.
 3. **Chiusura e creazione nuovi snapshot**
@@ -52,7 +53,7 @@ CREATE TRIGGER trg_stradario_upd_dlt_storico_stradario
   ON config.stradario
   FOR EACH ROW
   WHEN (NEW.storicizza = TRUE OR OLD.storicizza = TRUE)
-  EXECUTE FUNCTION config.trgfn_stradario_upd_dlt_storico_stradario();
+  EXECUTE FUNCTION script.trgfn_storico_generic('stradario_id');
 ```
 
 ---

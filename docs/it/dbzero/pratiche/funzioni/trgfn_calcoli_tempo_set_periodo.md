@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_calcoli_tempo_set_periodo.md" %}
 # ⚙️ Funzione `trgfn_calcoli_tempo_set_periodo`
 
 ```sql

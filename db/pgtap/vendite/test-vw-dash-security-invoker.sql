@@ -27,6 +27,27 @@
 --   · vw_lotti_gruppi_serviti (20260815-26) — legge fatture, fatture_righe e
 --     commesse_attivita, tutte con RLS, ed e' il cancello di scope del
 --     consuntivo dei giri (fn_esito_gruppi_giro).
+--   · vendite.vw_stato_sorgente_* — SEI viste (contratto, ddt, offerta, ordine,
+--     preventivo, reso), una per dominio, ciascuna sulla propria tabella
+--     documentale in RLS.
+--   · script.vw_stato_sorgente — la union delle sei.
+--
+-- ⭐ QUELLA CODA E' STATA SCRITTA E POI NON GUARDATA. Le sette viste
+-- `*stato_sorgente*` violavano il criterio dal 1-2 luglio 2026 e nessuno se ne
+-- era accorto: il fix V-1 delle vw_dash_* e' del 6 luglio, cinque giorni DOPO,
+-- e il 18 luglio due rami nuovi (ddt, reso) sono stati aggiunti senza
+-- ripensarci. Trovate il 2026-08-21 applicando il criterio a tutto il DB, non
+-- alla famiglia gia' presidiata. Corrette da 20260821-08 e -09.
+--
+-- 🔴 IL PERIMETRO NON E' PIU' UN SOLO SCHEMA: la union sta in `script`, le
+-- altre in `vendite`. `security_invoker` NON si propaga lungo la catena delle
+-- viste — ogni anello va dichiarato — quindi vanno presidiati entrambi.
+--
+-- ⚠️ Il modo per trovarne altre non e' leggere questo elenco, e' rifare la
+-- misura:
+--     viste senza security_invoker che dipendono da tabelle con relrowsecurity
+--     (pg_class -> pg_rewrite -> pg_depend -> pg_class).
+-- Se ne esce una nuova, si aggiunge qui E si mette il flag.
 --
 -- Indice test (1..2):
 --   1) La famiglia presidiata e' presente (guard: senza, "0 trasgressori"
@@ -54,44 +75,55 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(2);
 
 -- ============================================================
+-- Perimetro presidiato — definito UNA volta sola.
+--   ⭐ In temp table e non ripetuto in ogni asserzione: quando la coda si
+--   allunga si tocca un punto solo. Con il predicato duplicato, allungarne uno
+--   e dimenticare l'altro avrebbe lasciato il conteggio d'accordo con se stesso
+--   e la verifica cieca sulla vista nuova.
+-- ============================================================
+CREATE TEMP TABLE tmp_si_presidiate AS
+SELECT n.nspname AS schema_name, c.relname AS view_name, c.reloptions
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+ WHERE c.relkind = 'v'
+   AND (
+         (n.nspname = 'vendite' AND (   c.relname LIKE 'vw\_dash\_%'
+                                     OR c.relname LIKE 'vw\_stato\_sorgente\_%'
+                                     OR c.relname IN ('vw_lotti_gruppi_serviti')))
+      OR (n.nspname = 'script'  AND c.relname IN ('vw_stato_sorgente'))
+       );
+
+-- ============================================================
 -- 1) Guard: la famiglia esiste
---    ⚠️ La soglia sale da 12 a 13 con la coda esplicita: se un giorno
---    vw_lotti_gruppi_serviti sparisse, il conteggio lo direbbe invece di
---    lasciare la rete piu' larga del pescato.
+--    ⚠️ La soglia sale da 13 a 20 con le sette *stato_sorgente*: se un giorno
+--    una di quelle sparisse, il conteggio lo direbbe invece di lasciare la rete
+--    piu' larga del pescato.
 -- ============================================================
 SELECT cmp_ok(
-  (SELECT count(*)::integer
-     FROM pg_class c
-     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'vendite'
-      AND c.relkind = 'v'
-      AND (c.relname LIKE 'vw_dash\_%'
-           OR c.relname IN ('vw_lotti_gruppi_serviti'))),
-  '>=', 13,
-  '1. Famiglia presidiata presente nel DB (vw_dash_* + coda esplicita, >= 13 viste)'
+  (SELECT count(*)::integer FROM tmp_si_presidiate),
+  '>=', 20,
+  '1. Famiglia presidiata presente nel DB (vw_dash_* + vw_stato_sorgente_* + coda esplicita, >= 20 viste)'
 );
 
 -- ============================================================
--- 2) Ogni vista vw_dash_* ha security_invoker=on.
+-- 2) Ogni vista presidiata ha security_invoker=on.
 --    string_agg dei trasgressori confrontato con NULL: se una vista ha perso
 --    il flag (reloptions azzerate da un REPLACE senza WITH), il diagnostico
 --    di pgTAP mostra "have: <nome vista> / want: NULL".
 --    option_value e' memorizzato come 'on' (non 'true'): cast a boolean per
 --    robustezza ('on'/'true'/'1' -> true; assenza -> false via COALESCE).
+--    ⭐ Il nome e' qualificato con lo schema: da quando il perimetro copre due
+--    schemi, un `relname` nudo non basterebbe a dire quale vista sia.
 -- ============================================================
 SELECT is(
-  (SELECT string_agg(c.relname, ', ' ORDER BY c.relname)
-     FROM pg_class c
-     JOIN pg_namespace n ON n.oid = c.relnamespace
-     LEFT JOIN LATERAL pg_options_to_table(c.reloptions) ot
+  (SELECT string_agg(p.schema_name || '.' || p.view_name, ', '
+                     ORDER BY p.schema_name, p.view_name)
+     FROM tmp_si_presidiate p
+     LEFT JOIN LATERAL pg_options_to_table(p.reloptions) ot
        ON ot.option_name = 'security_invoker'
-    WHERE n.nspname = 'vendite'
-      AND c.relkind = 'v'
-      AND (c.relname LIKE 'vw_dash\_%'
-           OR c.relname IN ('vw_lotti_gruppi_serviti'))
-      AND COALESCE(ot.option_value::boolean, false) = false),
+    WHERE COALESCE(ot.option_value::boolean, false) = false),
   NULL,
-  '2. Tutte le viste presidiate (vw_dash_* + coda esplicita) hanno security_invoker=on'
+  '2. Tutte le viste presidiate (due schemi) hanno security_invoker=on'
 );
 
 SELECT * FROM finish();

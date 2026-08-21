@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/riferimenti_morti_esenzioni.md" %}
 # 📚 Tabella `riferimenti_morti_esenzioni`
 
 > 📝 **Descrizione**

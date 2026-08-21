@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/movimenti.md" %}
 # 📚 Tabella `movimenti`
 
 ## 🗂️ Campi principali

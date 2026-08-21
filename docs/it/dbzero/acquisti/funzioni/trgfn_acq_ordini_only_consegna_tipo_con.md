@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/acquisti/manual/trgfn_acq_ordini_only_consegna_tipo_con.md" %}
 # ⚙️ Funzione `trgfn_acq_ordini_only_consegna_tipo_con`
 
 ```sql

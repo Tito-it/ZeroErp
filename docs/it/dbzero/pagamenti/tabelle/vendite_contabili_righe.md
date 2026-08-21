@@ -45,11 +45,16 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_vendite_contabili_righe_a10_vendite_contabili_righe__73024a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_id', 'id')` |
+| trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()` |
+| trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()` |
+| trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()` |
+| trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()` |
+| trg_vendite_contabili_righe_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione()` |
 | trg_vendite_contabili_righe_a10_vendite_contabili_righe__73024a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_id', 'id')` |
+| trg_vendite_contabili_righe_a10_vendite_contabili_righe__73024a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_id', 'id')` |
 | trg_vendite_contabili_righe_a10_vendite_movimenti_block__236436 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_movimenti', 'contabile_riga_id', 'id', 'attivo')` |
-| trg_vendite_contabili_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_vendite_contabili_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vendite_contabili_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

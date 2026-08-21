@@ -24,21 +24,30 @@ BEGIN
   --   - se tipo = 'PSP', soggetto_ruolo_id e' obbligatorio
   --   - il soggetto_ruolo_id deve appartenere al tipo ruolo PSP
   --   - deve esistere una riga attiva in anagrafiche.psp
+  --
+  -- Rev 2026-08-21 (passo P-7): i tre E_GENERICO passano a tre
+  -- codici distinti — i tre gradini hanno tre rimedi diversi — e il
+  -- terzo punto smette di loggare TG_NAME al posto del nome della
+  -- funzione. Nessun predicato e' cambiato.
   -- =========================================================
 
   IF NEW.tipo = 'PSP' THEN
     IF NEW.soggetto_ruolo_id IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
-        'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_GENERICO',
+        'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO',
         jsonb_build_object(
           'detail', 'soggetto_ruolo_id obbligatorio per tipo PSP',
-          'tipo', NEW.tipo
+          'campo', 'soggetto_ruolo_id',
+          'tipo', NEW.tipo,
+          'codice', NEW.codice
         ),
         NULL::uuid,
-        concat('soggetto_ruolo_id obbligatorio per tipo PSP', ' ( tipo= ', NEW.tipo, ')')
+        NEW.codice
       );
     END IF;
 
+    -- Il confronto e' su codice_interno, che e' immutabile, non
+    -- sull'etichetta modificabile.
     SELECT EXISTS (
       SELECT 1
       FROM anagrafiche.soggetti_ruoli sr
@@ -51,13 +60,15 @@ BEGIN
 
     IF NOT v_is_ruolo_psp THEN
       PERFORM script.fn_log_and_raise_error(
-        'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_GENERICO',
+        'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_RUOLO_NON_PSP',
         jsonb_build_object(
           'detail', 'soggetto_ruolo_id non coerente con ruolo PSP',
-          'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+          'campo', 'soggetto_ruolo_id',
+          'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+          'tipo', NEW.tipo
         ),
         NULL::uuid,
-        concat('Ruolo non PSP per soggetto_ruolo_id= ', NEW.soggetto_ruolo_id::text, ' tipo= ', NEW.tipo)
+        NEW.soggetto_ruolo_id::text
       );
     END IF;
 
@@ -69,15 +80,17 @@ BEGIN
     )
     INTO v_exists_psp;
 
+    -- ⚠️ CONFLITTO_STATO e non NON_TROVATO: l'ente e il
+    --    soggetto-ruolo esistono, manca un censimento a monte.
     IF NOT v_exists_psp THEN
       PERFORM script.fn_log_and_raise_error(
-        'pagamenti', TG_NAME, 'E_GENERICO',
+        'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_NON_CENSITO',
         jsonb_build_object(
           'detail', 'soggetto_ruolo_id PSP non censito in anagrafiche.psp',
           'soggetto_ruolo_id', NEW.soggetto_ruolo_id
         ),
         NULL::uuid,
-        format('PSP non censito/attivo per soggetto_ruolo_id=%s', NEW.soggetto_ruolo_id::text)
+        NEW.soggetto_ruolo_id::text
       );
     END IF;
   END IF;

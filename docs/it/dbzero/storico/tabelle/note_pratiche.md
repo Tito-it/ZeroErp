@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/note_pratiche.md" %}
 # 📚 Tabella `note_pratiche`
 
 ## 🗂️ Campi principali

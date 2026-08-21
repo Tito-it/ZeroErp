@@ -13,7 +13,7 @@ Approfondimento funzioni:
 >
 [`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)
 > [`dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)
-> [`script.fn_log_and_raise_error`](/dbzero/dbops/funzioni/fn_log_and_raise_error)
+> [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
 ### 🎯 Scopo Principale

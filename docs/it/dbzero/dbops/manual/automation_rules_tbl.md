@@ -34,7 +34,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 * **rule_type** *(text)* – tipo di automatismo:
 
   * `TX_ID` → trigger `BEFORE INSERT/UPDATE` con `dbops.trgfn_tx_id_managed()` su tabelle che hanno `tx_id uuid`.
-  * `AUDIT_UPDATE` → trigger `BEFORE UPDATE` con `script.trgfn_upd_audit_data_user_generic()`.
+  * `AUDIT_UPDATE` → trigger `BEFORE UPDATE` con `script.trgfn_audit_data_user_generic()`.
   * `STORICO` → trigger su `BEFORE UPDATE` e `BEFORE DELETE` verso `storico.<table>_storico` con `script.trgfn_upd_dlt_storico_generic(...)`.
   * `LOCK_COLUMNS` → trigger `BEFORE UPDATE OF ...` con `script.trgfn_lock_columns(...)` su colonne critiche.
   * `CLEANUP_AT` → calcolo `cleanup_at` con TTL fisso per tabella.

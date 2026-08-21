@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/resi_righe_rinunce.md" %}
 # 📚 Tabella `resi_righe_rinunce`
 
 ## 🗂️ Campi principali

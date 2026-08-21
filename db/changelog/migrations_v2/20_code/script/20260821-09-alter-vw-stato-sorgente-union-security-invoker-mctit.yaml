@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SCOPE EMITTENTE SULLA UNION script.vw_stato_sorgente
+#   Coppia di 20_code/vendite/20260821-08 (le sei viste di dominio).
+#   Piano: docs/it/dev/work-in-progress/analisi-copertura-doc-manual-dbzero.md §4/C
+#
+# ── PERCHE' SERVE ANCHE QUI, E NON BASTA IL -08 ─────────────────────────
+#   🔴 In PostgreSQL `security_invoker` NON si propaga lungo la catena delle
+#   viste: ogni vista e' valutata con i diritti del proprio owner se non
+#   dichiara il flag. Una union `security_invoker` che legge viste che non ce
+#   l'hanno continuerebbe a vedere tutto attraverso quelle; e — al contrario —
+#   sei viste corrette lette da una union DEFINER resterebbero aggirate dalla
+#   union stessa.
+#
+#   Percio' il flag va messo su OGNI anello: le sei di dominio (-08) e questa.
+#   Metterlo solo qui, o solo la', lascerebbe il buco aperto e darebbe la falsa
+#   impressione di averlo chiuso — che e' peggio di non averlo toccato.
+#
+# ── LA CATENA COMPLETA ──────────────────────────────────────────────────
+#   pratiche.fn_stato_sorgente  (STABLE, NON security definer)
+#     -> script.vw_stato_sorgente        (questo changeset)
+#        -> vendite.vw_stato_sorgente_*  (changeset -08, sei viste)
+#           -> tabelle documentali con RLS
+#
+#   `SELECT` su questa union e' concesso a `zeroerp_app`, ed e' ENUMERABILE
+#   (347 righe al 2026-08-21): non serve conoscere un uid per interrogarla.
+#
+# ── ALTER E NON CREATE OR REPLACE ───────────────────────────────────────
+#   ⭐ `ALTER VIEW ... SET (...)` tocca solo le reloptions. Qui vale doppio:
+#   il changeset che ha creato questa vista (20260701-17) dichiara «MAI
+#   modificare questo file dopo il merge» e prevede che i domini si aggiungano
+#   con rami UNION ALL additivi. Ricopiare il corpo per un CREATE OR REPLACE
+#   significherebbe fotografarlo a oggi e rischiare di perdere i rami aggiunti
+#   nel frattempo (ddt e reso sono arrivati il 18 luglio, dopo la creazione).
+#
+# ── ⚠️ CONSEGUENZA VOLUTA ──────────────────────────────────────────────
+#   `pratiche.fn_stato_sorgente` degradera' a UNKNOWN sui documenti fuori
+#   perimetro invece di restituirne lo stato: fail-closed, ed e' il fallback
+#   che il wrapper gia' prevede per «dominio senza resolver». Cambia pero' il
+#   risultato per i consumatori (backend/apps/pratiche/db/pratiche_repository.py).
+#   `zeroerp_batch_fatturazione` ha BYPASSRLS e non e' toccato.
+#
+# Presidio: db/pgtap/vendite/test-vw-dash-security-invoker.sql, esteso nello
+#   stesso commit per coprire anche lo schema `script`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260821-09-alter-vw-stato-sorgente-union-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260821-09-alter-vw-stato-sorgente-union-security-invoker
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Attiva security_invoker sulla union script.vw_stato_sorgente. Serve anche
+        qui perche' il flag non si propaga lungo la catena delle viste: ogni
+        anello va dichiarato. Coppia di 20260821-08, che copre le sei viste di
+        dominio.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: script
+                viewName: vw_stato_sorgente
+            - sqlCheck:
+                expectedResult: "6"
+                sql: |
+                  -- Le sei viste di dominio devono avere gia' il flag: se il -08
+                  -- non fosse passato, mettere il flag solo sulla union darebbe
+                  -- l'illusione di aver chiuso il buco.
+                  SELECT COUNT(*)::text
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    JOIN LATERAL pg_options_to_table(c.reloptions) ot
+                      ON ot.option_name = 'security_invoker'
+                   WHERE n.nspname = 'vendite'
+                     AND c.relkind = 'v'
+                     AND c.relname LIKE 'vw\_stato\_sorgente\_%'
+                     AND ot.option_value::boolean IS TRUE;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER VIEW script.vw_stato_sorgente SET (security_invoker = on);
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER VIEW script.vw_stato_sorgente RESET (security_invoker);

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/trgfn_righe_default_fonte_qta.md" %}
 # ⚙️ Funzione `trgfn_righe_default_fonte_qta`
 
 ```sql

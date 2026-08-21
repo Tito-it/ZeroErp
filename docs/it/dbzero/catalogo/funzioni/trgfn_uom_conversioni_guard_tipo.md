@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/trgfn_uom_conversioni_guard_tipo.md" %}
 # ⚙️ Funzione `trgfn_uom_conversioni_guard_tipo`
 
 ```sql

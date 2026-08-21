@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/aspetti_beni.md" %}
 # 📚 Tabella `aspetti_beni`
 
 > 📝 **Descrizione**

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/trgfn_unita_misura_guard_tipo_update.md" %}
 # ⚙️ Funzione `trgfn_unita_misura_guard_tipo_update`
 
 ```sql

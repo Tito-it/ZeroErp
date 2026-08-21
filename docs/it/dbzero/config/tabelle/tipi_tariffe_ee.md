@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_tariffe_ee.md" %}
 # 📚 Tabella `tipi_tariffe_ee`
 
 > 📝 **Descrizione**

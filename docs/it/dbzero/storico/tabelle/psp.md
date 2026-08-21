@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/psp.md" %}
 # 📚 Tabella `psp`
 
 ## 🗂️ Campi principali

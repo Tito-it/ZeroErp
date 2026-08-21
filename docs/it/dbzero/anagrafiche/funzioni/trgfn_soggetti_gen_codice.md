@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_gen_codice.md" %}
 # ⚙️ Funzione `trgfn_soggetti_gen_codice`
 
 ```sql

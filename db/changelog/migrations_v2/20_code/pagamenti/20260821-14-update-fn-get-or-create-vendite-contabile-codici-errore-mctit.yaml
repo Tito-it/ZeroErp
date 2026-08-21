@@ -1,0 +1,480 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NOVE E_GENERICO IN UNA FUNZIONE SOLA — passo P-7 (1 di 6)
+#   pagamenti.fn_get_or_create_vendite_contabile
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#
+# ── PERCHE' ORA, E NON «QUANDO CAPITA» ──────────────────────────────────
+#   Il brief madre diceva che nessun codice errore di dominio `pagamenti` esiste
+#   a catalogo. Il fatto piu' duro, misurato il 2026-08-21, e' che il codice GIA'
+#   SCRITTO viola la regola dei codici errore: SETTE funzioni sollevano
+#   `E_GENERICO` su VENTICINQUE punti — non «quattro funzioni su una quindicina»
+#   come stimava il piano. Il posting (S1-10) verrebbe scritto accanto a loro, e
+#   la stessa area risponderebbe con codici di due specie a seconda di quale
+#   funzione si tocca.
+#
+# ── COME SONO STATI SCELTI I CODICI ─────────────────────────────────────
+#   Il criterio del progetto: un codice nuovo nasce quando cambia il RIMEDIO, non
+#   la sfumatura. Qui i nove punti sono di QUATTRO specie:
+#
+#   · DUE sono i dati che l'OPERATORE fornisce per aprire la distinta — il centro
+#     di riscossione e la data contabile -> `E_CONTABILE_DATI_OBBLIGATORI`
+#     (DATO_ERRATO). Vedi il riquadro sotto: e' la parte riscritta di questo file;
+#   · QUATTRO sono guard su parametri che l'operatore NON tocca (`<= 0` su id dove
+#     il NULL e' AMMESSO, stato interno vuoto) -> restano su
+#     `E_PARAMETRO_INVALIDO`, che e' il codice registrato del progetto per questo
+#     (classe DATO_ERRATO, 160 guard di parametro su 177 punti d'uso);
+#   · UNO e' un catalogo non configurato -> `E_CONTABILE_STATO_NON_CONFIGURATO`,
+#     classe TECNICO: chi ha fatto la richiesta non ha sbagliato niente e non puo'
+#     farci niente. In un E_GENERICO questo caso e un parametro sbagliato si
+#     leggono uguali, ed e' il piu' probabile dei venticinque;
+#   · DUE sono regole di dominio -> `E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI`
+#     (due origini incompatibili) e `E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE`
+#     (una testata esiste gia', classe CONFLITTO_STATO).
+#
+# ── 🔴 IL CRITERIO NON E' «GUARD DI PARAMETRO»: E' CHI LEGGE IL MESSAGGIO
+#   La prima stesura mandava TUTTI E SEI i guard di parametro su
+#   `E_PARAMETRO_INVALIDO`, sulla scorta della tabella «Regola operativa» di
+#   `work-done/correzione-e-generico.md` (aprile 2026), che per «parametro
+#   obbligatorio mancante o non valido» prescrive proprio quel codice.
+#
+#   ⚠️ Rivisto su segnalazione di Tid il 2026-08-21, e la segnalazione centrava un
+#   difetto che il codice errore da solo non mostra: il VALORE che si passava era
+#   un nome di parametro PL/pgSQL. L'operatore avrebbe letto
+#
+#       «Parametro non valido: p_centro_riscossione_id (obbligatorio, > 0)»
+#
+#   cioe' un messaggio di qualita' `E_GENERICO` sotto un codice registrato. Il
+#   refactor di aprile esisteva per togliere esattamente quello — e lo ha tolto un
+#   piano piu' giu', dove il codice era generico; qui rientrava dalla finestra nel
+#   VALORE.
+#
+#   ⚠️ Seconda ragione, e non e' un'opinione: `docs/it/dev/api.md` (§Tassonomia
+#   errori) dichiara `E_PARAMETRO_INVALIDO` **candidato allo split** — 113 funzioni
+#   lo nominano, 111 con verita' 400 e 2 con verita' 404 — e ne trae la regola
+#   *«un codice usato per due cose si spezza a monte, non si rimappa a valle»*.
+#   Aggiungergli i punti che si possono evitare va nella direzione opposta a
+#   quella che il progetto ha gia' scelto.
+#
+#   ⭐ **La linea che divide non e' «guard di parametro si'/no»: e' CHI PUO'
+#   RIMEDIARE.** Il centro e la data li sceglie una persona in un form, quindi il
+#   messaggio lo legge una persona. Un `id <= 0` su un parametro dove il NULL e'
+#   ammesso, o un `codice_stato_interno` vuoto, non escono da nessuna interfaccia:
+#   li produce solo un chiamante rotto, e il lettore di quel messaggio e' chi
+#   guarda `dbops.error_log`. Per quei quattro `E_PARAMETRO_INVALIDO` e' la sede
+#   giusta, e un codice nuovo sarebbe rumore.
+#
+#   ℹ️ Cosa NON cambia: il campo da evidenziare viaggia comunque nella chiave
+#   `campo` del contesto, che `script.fn_log_and_raise_error` fa uscire sul canale
+#   `COLUMN` dell'eccezione. E l'`ui_action` di entrambi i codici e'
+#   `highlight_form_fields` — su `E_PARAMETRO_INVALIDO` e' gia' un override
+#   esplicito in `error_ui_overrides.py`, non il default della classe.
+#
+# ── ⚠️ CAMBIANO I MESSAGGI: CHI LI ASSERISCE SI CERCA DAL NOME ─────────
+#   I consumatori di un messaggio non si trovano cercando il testo — chi asserisce
+#   su un frammento e' invisibile a quella ricerca. Si cercano dal NOME di chi
+#   solleva. Verificato il 2026-08-21: nessun pgTAP e nessun file di backend
+#   asserisce su un frammento dei messaggi di questa funzione. Il pgTAP esistente
+#   (test-fn-get-or-create-vendite-contabile.sql, test 8) verifica il guard sul
+#   centro con `throws_ok` SENZA nominare il testo.
+#
+# ── ⚠️ 80_data GIRA DOPO 20_code ────────────────────────────────────────
+#   I tre codici nuovi arrivano a catalogo con l'append ai CSV di `80_data`, che
+#   gira DUE FASI dopo questo file. NON si mette una preCondition su di essi: la
+#   cercherebbe prima che esista. La dipendenza si rispetta scrivendo nell'ordine
+#   (il CSV e' gia' scritto in questo commit), non con una precondizione.
+#   ⚠️ Se un codice mancasse a runtime, `script.fn_log_and_raise_error` non tace:
+#   il template resta com'e' e l'eccezione di dominio parte comunque col suo
+#   codice — ma il messaggio non sarebbe leggibile.
+#
+# ── ⭐ TIPI ANCORATI CON %TYPE ANCHE IN FIRMA E IN RETURNS ─────────────
+#   La regola del progetto vuole `%TYPE` in FIRMA, in RETURNS / RETURNS TABLE e
+#   nei DECLARE. I nove DECLARE lo usavano gia'; la firma e il RETURNS no —
+#   otto parametri e un tipo di ritorno dichiarati con tipi nudi.
+#
+#   ⚠️ Un `%TYPE` in firma e' una FOTOGRAFIA, non un link: PostgreSQL lo risolve
+#   al momento del CREATE e memorizza il tipo risolto. Se il tipo risolto fosse
+#   DIVERSO da quello attuale nascerebbe un OVERLOAD invece di una sostituzione —
+#   e con i DEFAULT le chiamate diventerebbero ambigue. Misurato prima di
+#   scrivere, il 2026-08-21:
+#
+#     centri_riscossione.id            -> bigint   (era bigint)
+#     vendite_contabili.data_contabile -> date     (era date)
+#     vendite_contabili.data_registrazione -> date (era date)
+#     enti_incasso.id                  -> bigint   (era bigint)
+#     compensazioni.id                 -> bigint   (era bigint)
+#     vendite_contabili_lotti.lotto_id -> bigint   (era bigint)
+#     vendite_contabili_stati.codice_interno -> text (era text)
+#     vendite_contabili.meta           -> jsonb    (era jsonb)
+#     RETURNS vendite_contabili.id     -> bigint   (era bigint)
+#
+#   Tutti identici, quindi il CREATE OR REPLACE SOSTITUISCE e non affianca.
+#   Presidio: la prova in transazione annullata confronta
+#   `pg_get_function_identity_arguments` prima e dopo, e verifica che le funzioni
+#   di `pagamenti` restino una per nome.
+#
+# ── COSA QUESTO CHANGESET NON FA ────────────────────────────────────────
+#   Non cambia UN SOLO predicato. Le condizioni che rifiutano sono identiche a
+#   quelle di prima, riga per riga: cambia il nome del rifiuto, non il rifiuto.
+#   ⚠️ In particolare NON tocca il riuso della testata a parita' di giornata: e'
+#   il comportamento corretto (la testata e' una distinta, non un movimento
+#   bancario) e la distinta MANUALE per operatore e' il passo S1-19 della slice 1.
+#
+# Origine: corpo dalla doc auto-generata del 2026-08-21
+#   (docs/it/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile.md).
+# Dipendenze: codici E_CONTABILE_STATO_NON_CONFIGURATO (939, TECNICO),
+#   E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI (940, DATO_ERRATO),
+#   E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE (941, CONFLITTO_STATO),
+#   E_CONTABILE_DATI_OBBLIGATORI (952, DATO_ERRATO).
+# 🔴 RICHIESTA AL BE (BE-1): rigenerare error_policies_generated.py.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-14-update-fn-get-or-create-vendite-contabile-codici-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260821-14-update-fn-get-or-create-vendite-contabile-codici-errore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.fn_get_or_create_vendite_contabile: i nove E_GENERICO passano ai
+        codici registrati — E_CONTABILE_DATI_OBBLIGATORI per i due dati che
+        l'operatore fornisce (centro e data contabile), E_PARAMETRO_INVALIDO per i
+        quattro guard che solo un chiamante rotto puo' far scattare,
+        E_CONTABILE_STATO_NON_CONFIGURATO (TECNICO) per il catalogo stati non
+        seminato, E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI e
+        E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE per le due regole di dominio.
+        Nessun predicato cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'fn_get_or_create_vendite_contabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(
+                  p_centro_riscossione_id pagamenti.centri_riscossione.id%TYPE,
+                  p_data_contabile        pagamenti.vendite_contabili.data_contabile%TYPE,
+                  p_data_registrazione    pagamenti.vendite_contabili.data_registrazione%TYPE DEFAULT CURRENT_DATE,
+                  p_ente_incasso_id       pagamenti.enti_incasso.id%TYPE DEFAULT NULL,
+                  p_compensazione_id      pagamenti.compensazioni.id%TYPE DEFAULT NULL,
+                  p_lotto_id              pagamenti.vendite_contabili_lotti.lotto_id%TYPE DEFAULT NULL,
+                  p_codice_stato_interno  pagamenti.vendite_contabili_stati.codice_interno%TYPE DEFAULT 'BOZZA',
+                  p_meta                  pagamenti.vendite_contabili.meta%TYPE DEFAULT '{}'::jsonb
+              )
+               RETURNS pagamenti.vendite_contabili.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
+                v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_codice pagamenti.vendite_contabili.codice%TYPE;
+                v_existing_centro_id pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
+                v_existing_ente_id pagamenti.vendite_contabili.ente_incasso_id%TYPE;
+                v_existing_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE;
+                v_existing_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_existing_stato_id pagamenti.vendite_contabili.stato_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recuperare o creare una testata contabile vendite.
+                --
+                -- Regole principali:
+                --   - p_compensazione_id e p_lotto_id sono mutualmente esclusivi
+                --   - se p_compensazione_id e' valorizzato, la testata e' unica
+                --     per compensazione (vincolo applicativo + unique DB)
+                --
+                -- Rev 2026-08-21 (passo P-7): i nove E_GENERICO passano ai codici
+                -- registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                -- ⭐ I DUE guard che un OPERATORE puo' far scattare davvero: il
+                --    centro e la data li sceglie lui in un form. Codice di dominio,
+                --    non E_PARAMETRO_INVALIDO, perche' il messaggio lo legge una
+                --    persona e non deve nominare un parametro PL/pgSQL.
+                IF p_centro_riscossione_id IS NULL OR p_centro_riscossione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_centro_riscossione_id obbligatorio > 0',
+                      'campo', 'centro_riscossione_id',
+                      'p_centro_riscossione_id', p_centro_riscossione_id
+                    ),
+                    NULL::uuid,
+                    'il centro di riscossione'
+                  );
+                END IF;
+
+                IF p_data_contabile IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_data_contabile obbligatoria',
+                      'campo', 'data_contabile'
+                    ),
+                    NULL::uuid,
+                    'la data contabile'
+                  );
+                END IF;
+
+                -- ⚠️ Da qui in giu' i guard di parametro RESTANO su
+                --    E_PARAMETRO_INVALIDO, ed e' una scelta misurata: su questi
+                --    il NULL e' AMMESSO, e un id <= 0 o uno stato vuoto non
+                --    escono da nessuna interfaccia — li produce solo un
+                --    chiamante rotto. Il lettore di quel messaggio e' chi
+                --    guarda dbops.error_log, non chi compila un form.
+
+                IF p_ente_incasso_id IS NOT NULL AND p_ente_incasso_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'detail', 'p_ente_incasso_id deve essere > 0 se valorizzato',
+                      'campo', 'p_ente_incasso_id',
+                      'p_ente_incasso_id', p_ente_incasso_id
+                    ),
+                    NULL::uuid,
+                    'p_ente_incasso_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_compensazione_id IS NOT NULL AND p_compensazione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'detail', 'p_compensazione_id deve essere > 0 se valorizzato',
+                      'campo', 'p_compensazione_id',
+                      'p_compensazione_id', p_compensazione_id
+                    ),
+                    NULL::uuid,
+                    'p_compensazione_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'detail', 'p_lotto_id deve essere > 0 se valorizzato',
+                      'campo', 'p_lotto_id',
+                      'p_lotto_id', p_lotto_id
+                    ),
+                    NULL::uuid,
+                    'p_lotto_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                -- Regola di dominio, non guard di parametro: una testata nasce da
+                -- una compensazione OPPURE appartiene a un lotto di fatturazione.
+                IF p_compensazione_id IS NOT NULL AND p_lotto_id IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI',
+                    jsonb_build_object(
+                      'detail', 'p_compensazione_id e p_lotto_id non possono coesistere',
+                      'compensazione_id', p_compensazione_id,
+                      'lotto_id', p_lotto_id
+                    ),
+                    NULL::uuid,
+                    p_compensazione_id::text, p_lotto_id::text
+                  );
+                END IF;
+
+                IF p_codice_stato_interno IS NULL OR btrim(p_codice_stato_interno) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'detail', 'p_codice_stato_interno obbligatorio',
+                      'campo', 'p_codice_stato_interno'
+                    ),
+                    NULL::uuid,
+                    'p_codice_stato_interno (obbligatorio, non vuoto)'
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_stato_id
+                  FROM pagamenti.vendite_contabili_stati s
+                 WHERE s.codice_interno = p_codice_stato_interno
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                -- ⚠️ Non e' un parametro sbagliato: e' il catalogo degli stati a
+                -- non avere quella riga, o ad averla spenta. Classe TECNICO.
+                IF v_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_STATO_NON_CONFIGURATO',
+                    jsonb_build_object(
+                      'detail', 'stato contabile non trovato/attivo',
+                      'codice_interno', p_codice_stato_interno
+                    ),
+                    NULL::uuid,
+                    p_codice_stato_interno
+                  );
+                END IF;
+
+                v_data_registrazione := COALESCE(p_data_registrazione, current_date);
+
+                -- Ricerca/riuso su compensazione (chiave primaria di processo).
+                IF p_compensazione_id IS NOT NULL THEN
+                  SELECT vc.id,
+                         vc.centro_riscossione_id,
+                         vc.ente_incasso_id,
+                         vc.data_contabile,
+                         vc.data_registrazione,
+                         vc.stato_id
+                    INTO v_contabile_id,
+                         v_existing_centro_id,
+                         v_existing_ente_id,
+                         v_existing_data_contabile,
+                         v_existing_data_registrazione,
+                         v_existing_stato_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.compensazione_id = p_compensazione_id
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+
+                  IF v_contabile_id IS NOT NULL THEN
+                    IF v_existing_centro_id IS DISTINCT FROM p_centro_riscossione_id
+                       OR v_existing_ente_id IS DISTINCT FROM p_ente_incasso_id
+                       OR v_existing_data_contabile IS DISTINCT FROM p_data_contabile
+                       OR v_existing_data_registrazione IS DISTINCT FROM v_data_registrazione
+                       OR v_existing_stato_id IS DISTINCT FROM v_stato_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE',
+                        jsonb_build_object(
+                          'detail','Parametri incoerenti con testata gia associata alla compensazione',
+                          'compensazione_id', p_compensazione_id,
+                          'contabile_id', v_contabile_id,
+                          'centro_riscossione_id_atteso', v_existing_centro_id,
+                          'centro_riscossione_id_richiesto', p_centro_riscossione_id,
+                          'ente_incasso_id_atteso', v_existing_ente_id,
+                          'ente_incasso_id_richiesto', p_ente_incasso_id,
+                          'data_contabile_attesa', v_existing_data_contabile,
+                          'data_contabile_richiesta', p_data_contabile,
+                          'data_registrazione_attesa', v_existing_data_registrazione,
+                          'data_registrazione_richiesta', v_data_registrazione,
+                          'stato_id_atteso', v_existing_stato_id,
+                          'stato_id_richiesto', v_stato_id
+                        ),
+                        NULL::uuid,
+                        p_compensazione_id::text, v_contabile_id::text
+                      );
+                    END IF;
+                  END IF;
+
+                ELSIF p_lotto_id IS NULL THEN
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.compensazione_id IS NULL
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                ELSE
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                    JOIN pagamenti.vendite_contabili_lotti vcl
+                      ON vcl.contabile_id = vc.id
+                   WHERE vcl.lotto_id = p_lotto_id
+                     AND vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.compensazione_id IS NULL
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                END IF;
+
+                IF v_contabile_id IS NULL THEN
+                  v_codice := concat(
+                    'VC_',
+                    to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+                    '_',
+                    substr(md5(random()::text || clock_timestamp()::text), 1, 8)
+                  );
+
+                  INSERT INTO pagamenti.vendite_contabili (
+                    codice,
+                    centro_riscossione_id,
+                    ente_incasso_id,
+                    compensazione_id,
+                    data_contabile,
+                    data_registrazione,
+                    stato_id,
+                    meta
+                  ) VALUES (
+                    v_codice,
+                    p_centro_riscossione_id,
+                    p_ente_incasso_id,
+                    p_compensazione_id,
+                    p_data_contabile,
+                    v_data_registrazione,
+                    v_stato_id,
+                    COALESCE(p_meta, '{}'::jsonb)
+                  )
+                  RETURNING id INTO v_contabile_id;
+                END IF;
+
+                IF p_lotto_id IS NOT NULL THEN
+                  INSERT INTO pagamenti.vendite_contabili_lotti (
+                    lotto_id,
+                    contabile_id,
+                    meta
+                  ) VALUES (
+                    p_lotto_id,
+                    v_contabile_id,
+                    jsonb_build_object('source','fn_get_or_create_vendite_contabile')
+                  )
+                  ON CONFLICT (lotto_id, contabile_id) DO NOTHING;
+                END IF;
+
+                RETURN v_contabile_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(
+                  pagamenti.centri_riscossione.id%TYPE,
+                  pagamenti.vendite_contabili.data_contabile%TYPE,
+                  pagamenti.vendite_contabili.data_registrazione%TYPE,
+                  pagamenti.enti_incasso.id%TYPE,
+                  pagamenti.compensazioni.id%TYPE,
+                  pagamenti.vendite_contabili_lotti.lotto_id%TYPE,
+                  pagamenti.vendite_contabili_stati.codice_interno%TYPE,
+                  pagamenti.vendite_contabili.meta%TYPE)
+              IS 'Recupera o crea la testata contabile vendite (la DISTINTA: raccoglie N importi dello stesso canale, non un singolo movimento bancario). Rev 2026-08-21: i nove E_GENERICO passano ai codici registrati (E_CONTABILE_DATI_OBBLIGATORI, E_PARAMETRO_INVALIDO, E_CONTABILE_STATO_NON_CONFIGURATO, E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI, E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE) e i tipi sono ancorati con %TYPE in firma e RETURNS; nessun predicato e'' cambiato. ⭐ I codici sono scelti per CHI LEGGE il messaggio: i due dati che l''operatore fornisce (centro di riscossione, data contabile) hanno un codice di dominio, i quattro guard che solo un chiamante rotto puo'' far scattare restano su E_PARAMETRO_INVALIDO.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico. Il corpo precedente e' identico a
+              --    questo salvo i codici errore: rimetterlo vorrebbe dire riportare
+              --    nove E_GENERICO su una funzione d'ingresso, cioe' far tornare
+              --    indistinguibili un catalogo non seminato e un parametro
+              --    sbagliato. Se serve davvero, si riapplica 20260213-35 sapendo
+              --    che cosa si perde.
+              SELECT 1;

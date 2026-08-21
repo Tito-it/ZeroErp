@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/emittenti_fiscali.md" %}
 # 📚 Tabella `emittenti_fiscali`
 
 ## 🗂️ Campi principali

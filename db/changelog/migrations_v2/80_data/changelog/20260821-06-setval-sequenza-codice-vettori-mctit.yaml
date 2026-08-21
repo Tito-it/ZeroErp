@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Allineamento della sequenza dei codici vettore, subito dopo la sua nascita.
+#   Piano: docs/it/dev/work-in-progress/analisi-copertura-doc-manual-dbzero.md
+#
+# ── DA DOVE VIENE ───────────────────────────────────────────────────────
+#   `anagrafiche.vettori.codice` e' `NOT NULL` e `UNIQUE`
+#   (`uq_vettori_codice`), ma fino a oggi NESSUNO lo generava: non c'era un
+#   trigger `gen_codice` sulla tabella e non c'era una riga in
+#   `config.sistema_codici`. Il codice doveva arrivare dal chiamante, e un
+#   INSERT che lo ometteva falliva con una violazione di vincolo (23502),
+#   senza nessun codice `E_*` a spiegarne il motivo.
+#   Piu' beffardo: `anagrafiche.trgfn_vettori_normalize` e' un no-op il cui
+#   COMMENT dichiara «generazione codice demandata al sistema_codici» — un
+#   rinvio a un meccanismo che per i vettori non era mai stato attivato.
+#   Emerso scrivendo la doc manuale della fascia A (2026-08-21).
+#
+# ── COSA FA IL SEED, E PERCHE' QUI NON C'E' DDL ─────────────────────────
+#   La riga 19 aggiunta a 80_data/sql/config/sistema_codici.csv (stesso
+#   commit) NON e' un dato inerte: `config.sistema_codici` ha il trigger
+#   `trg_sistema_codici_z90_sync_gen_codice_ins_upd_dlt`
+#   (`script.trgfn_config_sistema_codici_sync_gen_codice`, AFTER INS/UPD/DLT)
+#   che al suo passaggio crea da solo, con DDL dinamico:
+#     1. la sequenza `anagrafiche.vettori_codice_seq`;
+#     2. la funzione `anagrafiche.trgfn_vettori_gen_codice()`;
+#     3. il trigger `trg_vettori_a10_gen_codice_ins_upd`.
+#   E' il motivo per cui tutte le `trgfn_*_gen_codice` del progetto hanno il
+#   corpo identico su una riga sola: sono GENERATE, non scritte a mano. Qui
+#   non si scrive nessun DDL apposta — scriverlo sarebbe una seconda sorgente
+#   di verita' accanto al CSV.
+#
+# ── ⚠️ PERCHE' SERVE COMUNQUE QUESTO CHANGESET ──────────────────────────
+#   La sequenza nasce a 1, ma i vettori gia' esistenti hanno codici scritti a
+#   mano. Se anche uno solo di quelli fosse nella forma `VET-<numero>`, il
+#   primo `nextval` produrrebbe un codice gia' preso e la scrittura morirebbe
+#   su `uq_vettori_codice` — un errore che arriverebbe all'operatore, non a
+#   noi. Il setval qui sotto porta la sequenza oltre il massimo gia' in
+#   tabella. Su un DB ricostruito da zero la tabella e' vuota, il massimo e' 0
+#   e la sequenza resta a 1: il changeSet e' innocuo, non condizionale.
+#
+#   `is_called = false`: il prossimo `nextval` restituisce ESATTAMENTE il
+#   valore impostato, non quello dopo. Con `true` si sprecherebbe un numero.
+#
+#   Il filtro `~ '^VET-[0-9]{1,18}$'` ignora i codici manuali di altra forma
+#   (che non possono collidere) e insieme protegge il cast da un numero piu'
+#   lungo di un bigint.
+#
+#   `anagrafiche.vettori` non ha RLS, quindi il MAX vede tutte le righe: se un
+#   giorno gliela si mettesse, questo conteggio andrebbe riletto — una lettura
+#   parziale qui non da' un errore, da' una sequenza troppo bassa.
+#
+# ── ORDINE ──────────────────────────────────────────────────────────────
+#   `80_data` e' incluso con `includeAll`, cioe' in ordine alfabetico di nome
+#   file: questo changeSet (20260821-06) gira dopo il loader del CSV
+#   `sistema_codici` (20250813-05, `runOnChange: true`), quindi la sequenza
+#   esiste gia' quando arriva qui. La preCondition lo verifica e HALTa se non
+#   e' cosi': meglio fermare la migrazione che proseguire con una sequenza che
+#   nessuno ha allineato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260821-06-setval-sequenza-codice-vettori-mctit.yaml
+
+  - changeSet:
+      id: 20260821-06-setval-sequenza-codice-vettori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Porta anagrafiche.vettori_codice_seq oltre il massimo dei codici gia'
+        presenti in forma VET-<numero>, perche' il primo nextval non produca un
+        codice gia' occupato (uq_vettori_codice). La sequenza, la funzione e il
+        trigger gen_codice li crea da se' il trigger di sync di
+        config.sistema_codici alla riga 19 del CSV.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: vettori
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE c.relkind = 'S'
+                     AND n.nspname = 'anagrafiche'
+                     AND c.relname = 'vettori_codice_seq';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT setval(
+                  'anagrafiche.vettori_codice_seq',
+                  COALESCE((
+                      SELECT MAX(substring(v.codice FROM '^VET-([0-9]{1,18})$')::bigint)
+                        FROM anagrafiche.vettori v
+                       WHERE v.codice ~ '^VET-[0-9]{1,18}$'
+                  ), 0) + 1,
+                  false
+              );
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

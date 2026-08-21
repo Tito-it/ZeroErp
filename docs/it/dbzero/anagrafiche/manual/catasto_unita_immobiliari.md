@@ -67,7 +67,7 @@ La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali**
 | Trigger                                             | Tabella                     | Scopo                                                                             |
 | --------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
 | `trg_catasto_unita_immobiliari_gen_tx_id_ins_upd`   | `catasto_unita_immobiliari` | Genera `tx_id` se assente (dbops.trgfn_tx_id_managed)                             |
-| `trg_catasto_unita_immobiliari_audit_data_user_upd` | `catasto_unita_immobiliari` | Aggiorna `data_update` e `user_update` (script.trgfn_upd_audit_data_user_generic) |
+| `trg_catasto_unita_immobiliari_audit_data_user_upd` | `catasto_unita_immobiliari` | Aggiorna `data_update` e `user_update` (script.trgfn_audit_data_user_generic) |
 | `trg_z90_catasto_unita_immobiliari_storico_upd_dlt` | `catasto_unita_immobiliari` | Crea snapshot in storico (script.trgfn_upd_dlt_storico_generic)                   |
 
 ---

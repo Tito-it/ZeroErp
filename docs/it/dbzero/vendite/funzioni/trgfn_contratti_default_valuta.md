@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_contratti_default_valuta.md" %}
 # ⚙️ Funzione `trgfn_contratti_default_valuta`
 
 ```sql

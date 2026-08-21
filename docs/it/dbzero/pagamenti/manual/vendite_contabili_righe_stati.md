@@ -48,4 +48,45 @@ ORDER BY ordine, id;
 
 ---
 
+### Le tre bandiere, e perché sono tre
+
+| Bandiera | Risponde a |
+| --- | --- |
+| `is_postabile` | «questa riga è **pronta** da registrare?» |
+| `is_final` | «da questo stato si va ancora da qualche parte?» |
+| `richiede_abbinamento` *(2026-08-21)* | «questo stato pretende di sapere **a chi** appartiene la riga?» |
+
+⚠️ **La terza non è derivabile dalle prime due**, ed è la ragione per cui esiste:
+`ABBINATA` pretende fattura e cliente e **non è finale**, quindi una regola
+costruita su `is_final` l'avrebbe mancata del tutto.
+
+⭐ Sta nel catalogo e non dentro il guard che la applica per la stessa ragione per
+cui le transizioni stanno in una tabella: una regola in una tabella si legge e si
+cambia senza toccare il codice.
+
+⚠️ **La rata resta fuori di proposito**: su `ABBINATA` è facoltativa, perché la
+riga del fondo fattura ha fattura sì e rata no — è un saldo per **trasferimento**.
+Quando arriverà la colonna della scadenza, questa bandiera **non va toccata**.
+
+### 🔴 Due correzioni del 2026-08-21
+
+* **`SCARTATA` non è più uno stato finale.** Da lì si torna a `SOSPESA` per
+  riprendere in mano una riga scartata per errore. Il catalogo la marcava finale
+  mentre la matrice ammette il ritorno: *un catalogo che dichiara una cosa mentre
+  la matrice ne permette un'altra insegna il falso*;
+* **`STORNATA` è ritirata** (`obsoleto_dal`). Non esiste più il gesto che ce la
+  portava: lo storno non è un tipo di documento, è una contabile a **importi
+  negativi**. ⚠️ Ritirata, **non spenta**: `attivo` resta vero, perché spegnerla
+  romperebbe le righe che la referenziassero. Chi costruisce una lista di stati
+  filtra `obsoleto_dal`; chi legge uno stato già scritto **non** filtra.
+
+### ⚠️ Gli id di questo catalogo NON sono un contratto
+
+Il CSV di seed **non porta la colonna `id`** e il suo loader usa il `codice` come
+chiave. Chi scrive una funzione deve risolvere questi stati **sempre per
+`codice_interno`**, mai incidendo un id — a differenza del catalogo gemello della
+testata, dove gli id sono espliciti nel CSV e sono un contratto.
+
+---
+
 {% include-markdown "signature-core.md" %}

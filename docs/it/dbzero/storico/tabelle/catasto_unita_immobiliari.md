@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/catasto_unita_immobiliari.md" %}
 # 📚 Tabella `catasto_unita_immobiliari`
 
 > 📝 **Descrizione**

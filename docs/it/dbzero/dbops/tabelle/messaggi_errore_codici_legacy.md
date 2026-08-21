@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/messaggi_errore_codici_legacy.md" %}
 # 📚 Tabella `messaggi_errore_codici_legacy`
 
 > 📝 **Descrizione**

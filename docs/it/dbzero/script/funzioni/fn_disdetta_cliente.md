@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_disdetta_cliente.md" %}
 # ⚙️ Funzione `fn_disdetta_cliente`
 
 ```sql
