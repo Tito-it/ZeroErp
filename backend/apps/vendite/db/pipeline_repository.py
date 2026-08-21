@@ -1387,6 +1387,10 @@ class VenditePipelineRepository:
 
     # Scopo: Restituisce elenco `fatture_by_lotto` in base ai filtri disponibili.
     # Safety-net: LIMIT con default alto per evitare memory explosion su lotti massivi.
+    # 📌 L'`ORDER BY f.id` serve alla stabilita' del risultato (due chiamanti, e il
+    # troncamento al limit deve tagliare sempre dalla stessa parte). NON e' il
+    # presidio dell'ordine di numerazione: quel requisito vive dove serve, in
+    # `_handle_numera_fatture_task`, che riordina per conto suo.
     def list_fatture_by_lotto(self, lotto_id: int, *, limit: int = 50000) -> list[int]:
         safe_limit = max(1, min(int(limit), 100000))
         with connection.cursor() as cursor:

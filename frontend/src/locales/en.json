@@ -2272,7 +2272,10 @@
       "tipo_ddt_vendita": "Delivery note",
       "tipo_fattura": "Invoice",
       "tipo_commessa": "Job",
-      "tipo_reso_vendita": "Return"
+      "tipo_reso_vendita": "Return",
+      "natura_fattura": "Invoice",
+      "natura_nota_credito": "Credit note",
+      "natura_nota_debito": "Debit note"
     },
     "listini": {
       "search_placeholder": "Search by price list code or description...",

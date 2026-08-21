@@ -10,7 +10,11 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from apps.core.services.db_error_fields import db_error_code
+from apps.core.services.db_error_fields import (
+    db_diag,
+    db_error_code,
+    structured_db_error_code,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, messaggio_eccezione, run_fan_out
 from apps.core.services.service_errors import ServiceError
@@ -526,17 +530,48 @@ class PipelineStepExecutor:
                 )
                 raise
             except Exception as exc:
+                # ⭐ IL CODICE DEL DATABASE NON SI PERDE QUI. E' lo stesso
+                # difetto gia' corretto in `_fail_task_run_safely` per il
+                # diario dei task run (vedi il suo commento), e restava aperto
+                # sulla strada che l'OPERATORE vede: un task che delega a una
+                # madre DB solleva un `DatabaseError` che porta il suo codice di
+                # dominio nel campo strutturato, e appiattirlo su
+                # `E_TASK_FATTURA` sostituisce una frase che dice cosa fare con
+                # una che dice solo «errore».
+                # 🔴 Misurato sul caso che l'ha fatto emergere (nota di credito,
+                # 2026-08-21): `E_FATTURA_RETTIFICATA_SENZA_NUMERO` — «numera
+                # prima la fattura NNN» — arrivava a video come «Errore su
+                # singola fattura durante task pipeline». La guardia nuova del
+                # DB c'era e funzionava; era illeggibile.
+                # ⚠️ Vale per OGNI task per-fattura, non solo per la
+                # numerazione: scadenze, snapshot indirizzi e proiezione
+                # rettifiche passano tutti di qui.
+                # Letto UNA volta: la stessa risposta decide codice, messaggio
+                # e `log_to_db` — tre letture separate dello stesso fatto sono
+                # tre punti in cui divergere per errore.
+                codice_strutturato = structured_db_error_code(exc)
+                codice_db = codice_strutturato or db_error_code(exc)
+                code = codice_db or "E_TASK_FATTURA"
+                # `message_primary` e' il solo RAISE, senza lo stack PL/pgSQL:
+                # e' cio' che si mostra. Senza codice di dominio non c'e' niente
+                # da mostrare di meglio della frase generica — un `str(exc)`
+                # tecnico a video non aiuterebbe nessuno.
+                diag = db_diag(exc) if codice_db else None
+                message = (
+                    getattr(diag, "message_primary", None)
+                    or "Errore su singola fattura durante task pipeline."
+                )
                 self._log_fattura_task_error(
                     task=task,
                     lotto_id=lotto_id,
                     fattura_id=fattura_id,
                     stato_doc_fiscale_id=stato_doc_fiscale_id,
-                    code="E_TASK_FATTURA",
+                    code=code,
                     detail=str(exc),
                 )
                 ErrorManager.raise_error(
-                    code="E_TASK_FATTURA",
-                    message="Errore su singola fattura durante task pipeline.",
+                    code=code,
+                    message=message,
                     detail=f"Task {task} fallito su fattura_id={fattura_id}: {exc}",
                     context={
                         "lotto_id": lotto_id,
@@ -545,7 +580,12 @@ class PipelineStepExecutor:
                         "task": task,
                     },
                     function_name="vendite.pipeline_step_executor._run_per_fattura_task",
-                    log_to_db=True,
+                    # ⛔ Niente doppia riga nel diario: quando il codice arriva
+                    # dal campo strutturato, `script.fn_log_and_raise_error` ha
+                    # gia' scritto la sua (decisione DB+BE del 2026-08-19, vedi
+                    # `ErrorManager.raise_from_database_error`). Il ripiego
+                    # testuale e gli errori Python la riga non ce l'hanno.
+                    log_to_db=codice_strutturato is None,
                     cause=exc,
                 )
 
@@ -663,7 +703,32 @@ class PipelineStepExecutor:
         # _execute_pipeline_step (runner) dopo i task. Cosi' la fattura passa per EMESSA(2)
         # prima della numerazione, evitando il salto 1→8 vietato dalla matrice transizioni.
         def _action() -> None:
-            fattura_ids = self.repository.list_fatture_by_lotto(lotto_id)
+            # ⭐ L'ORDINE QUI E' UN REQUISITO, NON UNA COMODITA' (DB 2026-08-21,
+            # brief note credito §44.2). Dal 2026-08-21
+            # `fn_numera_fattura_opz_emessa` RIFIUTA
+            # (`E_FATTURA_RETTIFICATA_SENZA_NUMERO`) di numerare un documento le
+            # cui righe rettificano righe di una fattura ancora senza numero: una
+            # nota di credito deve poter citare numero e data del documento
+            # corretto nel blocco `DatiFattureCollegate` della TD04. Il giro e'
+            # FAIL-FAST per fattura, quindi una nota incontrata prima della sua
+            # fattura fermerebbe l'INTERO step.
+            #
+            # L'id crescente E' l'ordine di dipendenza, e non per caso: perche'
+            # un accredito sia possibile la merce dev'essere gia' stata
+            # fatturata, quindi la fattura rettificata nasce SEMPRE prima della
+            # nota che la corregge.
+            #
+            # ⚠️ Il `sorted` non ripete l'`ORDER BY` del repository: lo rende
+            # indipendente da esso. Quella query ha due chiamanti e il suo
+            # ordinamento e' li' per la stabilita' del risultato — chi un giorno
+            # lo cambiasse per un'altra ragione non ha modo di sapere che qui
+            # dentro ci si appoggia, e il guasto sarebbe uno step che si ferma a
+            # meta' lotto con un codice che parla d'altro.
+            #
+            # ⛔ Il caso CROSS-LOTTO non e' coperto da nessun ordinamento e non
+            # deve esserlo: se la fattura rettificata sta in un lotto ancora in
+            # bozza, il rifiuto della madre DB e' la risposta giusta.
+            fattura_ids = sorted(self.repository.list_fatture_by_lotto(lotto_id))
             self._run_per_fattura_task(
                 lotto_id=lotto_id,
                 stato_doc_fiscale_id=stato_doc_fiscale_id,

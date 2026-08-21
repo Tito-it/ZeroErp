@@ -283,6 +283,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FATTURA_NON_EMETTIBILE_INCOMPLETA": "Fattura non emettibile: documento incompleto. Rieseguire lo step DRAFT del lotto (riscrive indirizzi e intestazione).",
     "E_FATTURA_NON_NUMERABILE_INCOERENTE": "Fattura non numerabile: totali, riepiloghi IVA o piano rate incoerenti. Il dettaglio dei motivi e' nei log della fattura.",
     "E_FATTURA_NON_TROVATA": "Fattura non trovata.",
+    "E_FATTURA_RETTIFICATA_SENZA_NUMERO": "Numerazione rifiutata: il documento rettifica le righe di una fattura che non ha ancora un numero. Numerare prima quella. Il rifiuto arriva anche quando la fattura rettificata non e' visibile a chi opera.",
     "E_FATTURA_RIGA_CONGELATA": "Lo stato della fattura non consente piu' di modificare le righe.",
     "E_FATTURA_SATELLITE_CONGELATO": "Lo stato della fattura non consente piu' di modificare questi dati.",
     "E_FATTURA_SENZA_RIGHE": "Numerazione fiscale rifiutata: il documento non ha righe.",

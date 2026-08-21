@@ -2272,7 +2272,10 @@
       "tipo_ddt_vendita": "DDT",
       "tipo_fattura": "Fattura",
       "tipo_commessa": "Commessa",
-      "tipo_reso_vendita": "Reso"
+      "tipo_reso_vendita": "Reso",
+      "natura_fattura": "Fattura",
+      "natura_nota_credito": "Nota di credito",
+      "natura_nota_debito": "Nota di debito"
     },
     "listini": {
       "search_placeholder": "Cerca per codice o descrizione listino...",

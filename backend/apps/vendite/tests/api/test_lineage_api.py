@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unitari API "passaggi" (lineage/genealogia documenti):
-#        routing sui 7 domini (6 documenti + commessa) + envelope + tipo
-#        sorgente corretto.
+#        routing sugli 8 domini (6 documenti + commessa + fattura) +
+#        envelope + tipo sorgente corretto.
 # ------------------------------------------------------------
 
 """
@@ -12,6 +12,7 @@ Indice test eseguiti:
 1) LineagePassaggiApiTests.test_passaggi_ok_envelope
 2) LineagePassaggiApiTests.test_passaggi_requires_jwt
 3) LineagePassaggiApiTests.test_routing_domini_tipo_corretto
+4) LineagePassaggiApiTests.test_ogni_tipo_in_whitelist_ha_la_sua_rotta
 """
 
 from unittest.mock import Mock, patch
@@ -56,8 +57,9 @@ _PASSAGGI_RESPONSE = {
     "indietro": [],
 }
 
-# Le 7 rotte di dominio -> tipo sorgente atteso dalla view (P-1; COMMESSA
-# aggiunta in Fase C, genealogia inversa).
+# Le 8 rotte di dominio -> tipo sorgente atteso dalla view (P-1; COMMESSA
+# aggiunta in Fase C, genealogia inversa; FATTURA il 2026-08-21 con l'arco N
+# verso la nota di credito).
 _ROUTES = {
     "/api/v1/vendite/preventivi/185/passaggi/": "PREVENTIVO",
     "/api/v1/vendite/offerte/78/passaggi/": "OFFERTA_COMMERCIALE",
@@ -66,6 +68,7 @@ _ROUTES = {
     "/api/v1/vendite/ddt/31/passaggi/": "DDT_VENDITA",
     "/api/v1/vendite/resi/4/passaggi/": "RESO_VENDITA",
     "/api/v1/vendite/commesse/186/passaggi/": "COMMESSA",
+    "/api/v1/vendite/fatture/835/passaggi/": "FATTURA",
 }
 
 
@@ -109,3 +112,16 @@ class LineagePassaggiApiTests(JwtMockedApiTest):
             tipo, doc_id = mocked_fn.call_args.args
             self.assertEqual(tipo, tipo_atteso, url)
             self.assertEqual(str(doc_id), url.split("/passaggi/")[0].rsplit("/", 1)[1], url)
+
+    # Scopo: ⭐ LE DUE LISTE NON DEVONO DIVERGERE. La whitelist del service e le
+    #        rotte sono scritte in due file diversi, e ognuna delle due
+    #        divergenze e' muta: un tipo in whitelist senza rotta e' un 404 che
+    #        nessun test raggiunge; una rotta senza il tipo e' un 400 che
+    #        arriva solo all'operatore che ci clicca sopra.
+    #        Il presidio e' costato una riga il giorno in cui e' entrata
+    #        FATTURA — e senza, quella riga non l'avrebbe chiesta nessuno.
+    def test_ogni_tipo_in_whitelist_ha_la_sua_rotta(self):
+        from apps.vendite.services.vendite_service import LINEAGE_TIPI_DOCUMENTO
+        self.assertEqual(
+            sorted(_ROUTES.values()), sorted(LINEAGE_TIPI_DOCUMENTO)
+        )

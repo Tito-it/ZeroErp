@@ -23,7 +23,7 @@ import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
 import { isTappaApribile } from '../documenti/documentoDrawers'
-import { lineageTipoLabel } from './lineageLabels'
+import { lineageDocumentoLabel } from './lineageLabels'
 import { faseDocumentoSeverity } from '../../../core/utils/severity'
 
 const props = defineProps({
@@ -48,6 +48,9 @@ function passaggioToRow(p, lato) {
     key: `${lato}-${p.ordine}`,
     livello: p.livello,
     tipoCodice: from ? p.from_tipo_codice : p.to_tipo_codice,
+    // La natura del documento fiscale: e' cio' che distingue una nota di
+    // credito da una fattura, che condividono il tipo sorgente.
+    naturaCodice: from ? p.from_natura_doc_codice : p.to_natura_doc_codice,
     codice: from ? p.from_codice : p.to_codice,
     docId: from ? p.from_doc_id : p.to_doc_id,
     stato: from ? p.from_stato_codice_interno : p.to_stato_codice_interno,
@@ -77,8 +80,14 @@ const sezioni = computed(() => [
   },
 ])
 
-function tipoLabel(codice) {
-  return lineageTipoLabel(t, te, codice)
+// ⚠️ Due argomenti espliciti e non la riga intera: FRONTIERA e tappe hanno
+// forme diverse (`tipo_codice` vs `tipoCodice`). La natura serve a ENTRAMBE:
+// la frontiera puo' essere una nota di credito — l'arco G dalla commessa non
+// e' un ramo di ritorno, e al 2026-08-21 la NC e' gia' la frontiera
+// dell'ordine 240 (misurato). «Una NC non e' mai frontiera» e' l'invariante
+// falsa che il pgTAP del DB ha corretto (§44.5 del brief).
+function tipoLabel(tipoCodice, naturaCodice = null) {
+  return lineageDocumentoLabel(t, te, tipoCodice, naturaCodice)
 }
 
 // Scopo: l'etichetta della tappa quando il documento NON HA ANCORA UN NUMERO.
@@ -125,8 +134,13 @@ const isApribile = isTappaApribile
       <div class="lineage-row">
         <span class="lineage-label">{{ t('vendite.lineage.frontiera') }}</span>
         <template v-if="frontiera">
-          <Tag :value="tipoLabel(frontiera.tipo_codice)" severity="secondary" />
-          <span class="lineage-codice">{{ frontiera.codice }}</span>
+          <Tag
+            :value="tipoLabel(frontiera.tipo_codice, frontiera.natura_doc_codice)"
+            severity="secondary" />
+          <!-- Stessa fallback delle tappe: una frontiera EMESSA ma non ancora
+               numerata ha `codice` NULL, e il vuoto si legge «manca il
+               collegamento» invece di «manca il numero». -->
+          <span class="lineage-codice">{{ frontiera.codice || t('vendite.lineage.non_numerato') }}</span>
           <Tag
             :value="frontiera.stato_codice_interno ?? frontiera.fase"
             :severity="faseDocumentoSeverity(frontiera.fase)" />
@@ -153,7 +167,7 @@ const isApribile = isTappaApribile
           :class="{ 'lineage-step-inverso': row.ramoInverso }"
           :style="{ paddingLeft: `${(row.livello - 1) * 1.25}rem` }">
           <i :class="row.ramoInverso ? 'pi pi-replay' : `pi ${sezione.icona}`" class="lineage-step-icon" />
-          <Tag :value="tipoLabel(row.tipoCodice)" severity="secondary" />
+          <Tag :value="tipoLabel(row.tipoCodice, row.naturaCodice)" severity="secondary" />
           <Button
             v-if="isApribile(row)"
             link

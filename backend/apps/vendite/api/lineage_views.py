@@ -72,8 +72,9 @@ def build_passaggi_view(
     frontiera (documento piu' prossimo in esecuzione) e catena completa dei
     passaggi in entrambe le direzioni (origine + destinazioni), dal grafo
     vendite.fn_documento_lineage / vw_documento_lineage (RLS invoker).
-    L'arco R (DDT->Reso) arriva con is_ramo_inverso=true (merce che torna,
-    esclusa dalla frontiera forward).
+    I rami di RITORNO arrivano con is_ramo_inverso=true ed esclusi dalla
+    frontiera forward: arco R (DDT->Reso, merce che torna) e arco N (fattura
+    rettificata->nota di credito, valore che torna).
     """
     _PassaggiView.__name__ = f"Api{schema_prefix}Passaggi"
     _PassaggiView.__qualname__ = _PassaggiView.__name__
@@ -116,6 +117,19 @@ ApiResoPassaggi = build_passaggi_view(
     schema_prefix="Reso",
     url_kwarg="reso_id",
     tipo_codice="RESO_VENDITA",
+)
+
+# Fattura (2026-08-21): la decisione Q4 la teneva fuori come «capolinea senza
+# superficie propria». Il drawer di consultazione esiste dal 2026-07-29 e
+# l'arco N (fattura rettificata -> nota di credito) le da' un discendente,
+# quindi nessuna delle due meta' di quella frase regge piu'.
+# ⚠️ Qui il pannello si legge AL CONTRARIO degli altri sei: la frontiera di una
+# fattura e' sempre se' stessa (nessun arco forward uscente), e cio' che serve
+# e' la direzione INDIETRO — da quali commesse, ordini e preventivi viene.
+ApiFatturaPassaggi = build_passaggi_view(
+    schema_prefix="Fattura",
+    url_kwarg="fattura_id",
+    tipo_codice="FATTURA",
 )
 
 # Commessa (Fase C, genealogia inversa): la commessa non ha lista/CRUD propria

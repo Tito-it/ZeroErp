@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 724, di cui 81 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 725, di cui 81 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -408,6 +408,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_FATTURA_NON_NUMERABILE_INCOERENTE": "NON_ESEGUIBILE",
     # --- Not found (404) ---
     "E_FATTURA_NON_TROVATA": "NON_TROVATO",
+    # vendite.fn_numera_fattura_opz_emessa: il documento da numerare ha righe con riga_rettificata_id il cui documento padre non risulta numerato. Nasce il 2026-08-21 dal collaudo della prima nota di credito (prova 6): la funzione sollevava due soli codici (E_PARAMETRO_INVALIDO, E_FATTURA_NON_TROVATA) e non nominava mai rettifica ne' natura, quindi nulla impediva di numerare la nota lasciando senza numero la fattura che corregge. Il predicato NON guarda la natura del documento ma le RIGHE, di proposito: una nota di DEBITO che rettifica ha lo stesso problema e con il predicato sulla natura passerebbe, mentre una fattura ordinaria non ha righe con riga_rettificata_id e quindi non viene mai bloccata. Non usa vendite.fatture_rettifiche perche' quel ponte lo popola un task che gira DOPO la numerazione. FAIL-CLOSED sulla visibilita': fatture e fatture_righe hanno la RLS e la funzione e' SECURITY INVOKER, quindi i JOIN sono LEFT e un padre non visibile conta come bloccante. La guardia sta DOPO il ritorno idempotente: un documento gia' numerato non viene mai ri-bloccato. Piano: brief-design-note-credito-resi.
+    "E_FATTURA_RETTIFICATA_SENZA_NUMERO": "CONFLITTO_STATO",
     "E_FATTURA_RIGA_CONGELATA": "CONFLITTO_STATO",
     "E_FATTURA_SATELLITE_CONGELATO": "CONFLITTO_STATO",
     "E_FATTURA_SENZA_RIGHE": "CONFLITTO_STATO",

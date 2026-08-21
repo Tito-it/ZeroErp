@@ -113,6 +113,31 @@ da rilavorare — stamperebbe un documento fiscale incompleto. La `task_policy` 
 `RESUME_TASK`: il rilancio riprende dal task fallito, e l'idempotenza rende
 innocuo il secondo giro.
 
+### ⭐ `numera_fatture` numera in id crescente (2026-08-21)
+
+Dal 2026-08-21 `fn_numera_fattura_opz_emessa` **rifiuta**
+(`E_FATTURA_RETTIFICATA_SENZA_NUMERO`, 937) di numerare un documento le cui
+righe rettificano righe di una fattura ancora senza numero: la TD04 deve citare
+numero e data del documento corretto. Poiché il giro è fail-fast, una nota di
+credito incontrata **prima** della sua fattura fermerebbe l'intero step.
+
+L'ordine è quindi **esplicito nel task** (`sorted()` in
+`_handle_numera_fatture_task`) e non ereditato dall'`ORDER BY` del repository —
+che ha due chiamanti e potrebbe cambiare per un'altra ragione. L'id crescente
+*è* l'ordine di dipendenza: perché un accredito sia possibile la merce dev'essere
+già stata fatturata, quindi la fattura rettificata nasce sempre prima della nota.
+⛔ Il caso **cross-lotto** deve invece fermarsi: è la ragione della guardia.
+
+### ⭐ Il codice del DB arriva intatto all'operatore (2026-08-21)
+
+`_run_per_fattura_task` non appiattisce più ogni `DatabaseError` su
+`E_TASK_FATTURA`: legge il codice di dominio dal campo strutturato e lo usa per
+il `ServiceError`, il messaggio (`diag.message_primary`) e il log FATTURA.
+🔴 Misurato: la guardia qui sopra dice *«numera prima la fattura NNN»* e
+arrivava a video come *«Errore su singola fattura durante task pipeline»*.
+`E_TASK_FATTURA` resta il ripiego per ciò che il database non ha nominato.
+Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
+
 ### 4. «Rendi definitive» singolo lotto (C-4, sincrono)
 
 - `POST /api/v1/vendite/fatturazione/lotti/<lotto_id>/numera/` · permesso `numera_fatture_lotti`
@@ -184,6 +209,9 @@ innocuo il secondo giro.
 | `E_LOTTO_NON_NUMERABILE` | 409 | «Rendi definitive» su lotto non EMESSA |
 | `E_LOTTO_NON_RISTAMPABILE` | 409 | ristampa massiva su lotto non DEFINITIVA |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | POST senza header `Idempotency-Key` |
+| `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**) | 409 | numerazione di un documento che rettifica righe di una fattura **senza numero** (o non visibile: il guard è fail-closed sulla RLS) |
+| `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | 409 | documento incoerente — totali, riepiloghi IVA o piano rate (sei condizioni, vedi la [guida](../../../guide/fatturazione.md)) |
+| `E_TASK_FATTURA` | 400 | fallimento su singola fattura **che il database non ha nominato** (errore Python, guasto tecnico). Se il codice di dominio c'è, arriva quello |
 
 ## Dipendenze DB
 

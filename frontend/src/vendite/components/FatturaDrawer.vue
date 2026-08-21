@@ -37,6 +37,7 @@ import FormFooter from '../../core/components/FormFooter.vue'
 import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
 import ScadenzeSintesi from '../../core/components/ScadenzeSintesi.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
+import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import FatturaNoteDrawer from './FatturaNoteDrawer.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
@@ -385,6 +386,25 @@ function onNoteSaved(total) {
           </DrawerEntityHeader>
 
           <DrawerActionsBar :actions="drawerActions" />
+
+          <!-- Collegamenti del documento (genealogia), lo stesso BB degli altri
+               sei domini. La fattura ci arriva ultima (2026-08-21) perche' era
+               stata classificata «capolinea senza superficie propria»: aveva un
+               drawer da luglio, e da ieri ha anche un discendente — l'arco N
+               verso la nota di credito che la rettifica.
+               ⭐ QUI SI LEGGE AL CONTRARIO degli altri: una fattura non ha archi
+               in avanti nel grafo forward, quindi il valore e' la direzione
+               INDIETRO — da quali commesse, ordini e preventivi viene. Misurato
+               sulla fattura 835: sette tappe a monte, tre commesse distinte.
+               ⚠️ E NON DUPLICA il blocco «documenti collegati» qui sotto, che
+               legge `vendite.fatture_rettifiche`: quel ponte lo popola un task
+               DOPO la numerazione, mentre il grafo ricostruisce il legame dalle
+               RIGHE ed e' gia' pieno prima. Nella finestra fra emissione e
+               numerazione questa barra e' l'unica delle due che parla. -->
+          <DocumentoCollegamentiBar
+            base-path="/vendite/fatture"
+            :doc-id="fatturaId"
+            :readonly="isReadonly" />
 
           <!-- F5 · IL LEGAME DOCUMENTALE. «Questo accredito vale 12 € perché la
                riga 7 della fattura 2026/1234 valeva 12 €»: qui la prima metà,

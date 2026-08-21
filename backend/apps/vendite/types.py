@@ -1015,6 +1015,17 @@ class LineageNodoRow(TypedDict):
     is_transitato: bool
     n_sorgenti: int
     root_codice: str | None
+    # ⭐ Natura del documento fiscale (FATTURA / NOTA_CREDITO / NOTA_DEBITO),
+    # dal changeSet 20260821-01. Senza, due nodi FATTURA nati dalla stessa
+    # commessa sono indistinguibili — il grafo e' nato quando `FATTURA` era una
+    # cosa sola. NULL per tutti i tipi che non sono documenti fiscali.
+    # (La descrizione NON si porta: il FE decodifica il codice via i18n come
+    # per `tipo_codice` — due sorgenti di etichetta divergerebbero.)
+    natura_doc_codice: str | None
+    # Natura del nodo FRONTIERA (JOIN alla vista nodi): la frontiera puo'
+    # essere una nota di credito — arco G dalla commessa — e senza questa il
+    # pannello la etichetta «Fattura».
+    frontiera_natura_doc_codice: str | None
 
 
 class LineagePassaggioRow(TypedDict):
@@ -1041,6 +1052,11 @@ class LineagePassaggioRow(TypedDict):
     to_is_abortito: bool
     to_doc_id: int | None
     is_ramo_inverso: bool
+    # Natura dei due estremi (vedi `LineageNodoRow.natura_doc_codice`): e' cio'
+    # che permette a una tappa di dire «Nota di credito» invece di «Fattura»
+    # per la seconda volta di fila.
+    from_natura_doc_codice: str | None
+    to_natura_doc_codice: str | None
 
 
 class FondoFatturaDaDecidereRow(TypedDict):

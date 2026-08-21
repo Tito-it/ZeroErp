@@ -571,6 +571,32 @@ chiave, quella proprietà cadrebbe.
 di sorgenti diverse non esiste una sorgente singola. La tracciabilità è il
 puntatore delle attività.
 
+#### La rettifica non si aggrega con nient'altro (2026-08-18)
+
+`fattura_riga_rettificata_id` **fa parte della chiave di gruppo**. Ne segue che
+una riga di rettifica sta da sola: due accrediti che rettificano righe di
+fattura diverse non si fondono mai, nemmeno con articolo, prezzo e competenza
+identici. È la condizione per cui il legame riga↔riga resta 1:1 e la nota di
+credito può dire *quale* riga corregge.
+
+E su una rettifica **prezzo, sconto e IVA non vengono dall'attività**: si
+leggono dalla **riga di fattura rettificata** e non si ricalcolano mai (una nota
+di credito non può differire da quanto è stato fatturato).
+
+> ⚠️ **Oggi i due valori coincidono per costruzione**, ed è precisamente il
+> motivo per cui prendere quello dell'attività non darebbe **nessun sintomo**:
+> si vedrebbe solo il giorno in cui divergono, su documenti già emessi. Lo
+> sconto poi sull'attività non c'è affatto — la catena
+> `commesse_attivita`/`attivita_fatturabili` non ha la colonna.
+
+Il cartellino `tipo_movimento = RETTIFICA` e il puntatore
+`fattura_riga_rettificata_id` sono una **coppia**, e il guard in
+`FattureRigheService` è simmetrico sui due versi: cartellino senza puntatore →
+la riga nascerebbe gemella di nessuna, con prezzo e sconto presi da un'attività
+che non li ha; puntatore senza cartellino → il prezzo verrebbe copiato dal
+documento su una riga che si dichiara normale, e nessuno saprebbe perché quel
+prezzo non è quello dell'attività.
+
 ### Come si calcola l'importo
 
 Lo calcola il **database**, con un trigger, a ogni scrittura:
@@ -643,6 +669,51 @@ Rifiuta in due casi, entrambi **prima** di consumare il progressivo:
 | `E_FATTURA_SENZA_RIGHE` | il documento non ha righe |
 | `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | il documento è incoerente — sei condizioni, qui sotto |
 
+A questi si aggiunge, dal 2026-08-21, un terzo rifiuto che **non** vive in
+`fn_assign_numero_fattura` ma un gradino sopra, in
+`fn_numera_fattura_opz_emessa` — e la differenza di sede è voluta: gli altri due
+guardano il documento *in sé*, questo guarda il suo **rapporto con un altro
+documento**.
+
+| Codice | Quando |
+|---|---|
+| `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**) | il documento rettifica righe di una fattura che **non ha ancora un numero** |
+
+Una nota di credito deve citare numero e data del documento corretto nel blocco
+`DatiFattureCollegate` della **TD04**: con il padre senza numero quel blocco non
+è compilabile, e la nota nascerebbe già inadatta a partire verso lo SDI. Non è
+quindi una questione di ordine cronologico, è una condizione di validità.
+
+Tre proprietà non ovvie del guard:
+
+* **il predicato non guarda la natura, guarda le RIGHE.** Una nota di *debito*
+  che rettifica ha lo stesso identico problema e con un predicato sulla natura
+  passerebbe; una fattura ordinaria non ha righe con `riga_rettificata_id` e
+  quindi non viene mai bloccata. È anche **per riga**: una nota può rettificare
+  righe di fatture diverse, e ne basta una senza numero;
+* **non usa `vendite.fatture_rettifiche`.** Quel ponte documentale lo popola un
+  task della fase DEFINITIVA, che gira *dopo* la numerazione: qui sarebbe sempre
+  vuoto. Il legame di riga invece esiste dalla generazione delle righe;
+* ⛔ **è fail-closed sulla visibilità.** `fatture` e `fatture_righe` hanno la RLS
+  e la funzione è `SECURITY INVOKER`: i JOIN sono `LEFT` e una riga il cui padre
+  non è **visibile** conta come bloccante. Il predicato è «non posso dimostrare
+  che sia numerata», non «risulta non numerata» — con dei JOIN interni uno zero
+  avrebbe voluto dire «via libera» proprio nel caso in cui non si sa.
+
+> ⚠️ **Un difetto reale che era mascherato da un controllo che parla d'altro.**
+> Sui dati veri la nota di credito, oggi, non si numera comunque: la ferma prima
+> `E_FATTURA_NON_NUMERABILE_INCOERENTE` (piano rate assente). Ma un controllo che
+> protegge *per caso* non è un presidio: il giorno in cui il piano rate c'è, la
+> nota passa. È il motivo per cui la guardia si scrive lo stesso.
+
+**Il lotto numera in id crescente**, e da questo guard in poi non è più una
+comodità: il giro è fail-fast, quindi una nota incontrata prima della sua
+fattura fermerebbe l'intero step. L'id crescente *è* l'ordine di dipendenza —
+perché un accredito sia possibile la merce dev'essere già stata fatturata — ed è
+ora esplicito nel task (`sorted()` in `_handle_numera_fatture_task`), non
+ereditato dall'`ORDER BY` del repository. ⛔ Il caso **cross-lotto** invece deve
+fermarsi: è la ragione per cui la guardia esiste.
+
 Le sei condizioni del secondo (guard **D-K**, dal 2026-08-02) non sono un elenco
 di controlli scelti a gusto: verificano una **catena continua**, senza anelli
 scoperti, fra ciò che il documento dichiara e ciò che lo compone.
@@ -681,6 +752,79 @@ rilancio dice all'operatore tutto ciò che manca al documento.
 > aggiungere** — si ripara solo con una nota di variazione, quando il documento è
 > già in mano al cliente e magari già allo SDI. Un salto nella sequenza è
 > un'anomalia di registro che si spiega; una fattura sbagliata no.
+
+---
+
+## Il documento che torna indietro: la nota di credito
+
+> Sezione aggiunta il **2026-08-21**, quando la prima nota di credito è
+> esistita sui dati veri. Design-of-record:
+> [brief-design-note-credito-resi.md](../dev/work-in-progress/brief-design-note-credito-resi.md).
+
+Fino al 2026-08 il flusso copriva solo l'andata: sorgente → commessa → fattura →
+SDI. La nota di credito è il **ritorno del valore**, e sta al valore come il
+reso sta alla merce.
+
+### Natura e canale sono due assi, non uno
+
+La nota di credito **non è un tipo documento fiscale nuovo**: è una **natura**.
+
+| Asse | Tabella | Dice |
+|---|---|---|
+| Canale | `vendite.tipi_doc_fiscale` | come il documento viaggia (immediata, differita, …) |
+| Natura | `config.nature_doc_fiscale` | cosa il documento **è**: `FATTURA`, `NOTA_CREDITO`, `NOTA_DEBITO` |
+
+Metterla in `tipi_doc_fiscale` avrebbe moltiplicato le righe (ogni canale × ogni
+natura) su una colonna che il canale già lo tiene. La fattura porta quindi
+`natura_doc_id`, e **il tipo sorgente resta `FATTURA` per entrambe**: è la
+ragione per cui, dove le due compaiono insieme, serve la natura per
+distinguerle.
+
+⛔ **E non esistono stati `RETTIFICATA`/`NOTA_CREDITO_EMESSA`** sulla fattura
+originale: sarebbero una seconda verità accanto al legame di riga, che è il
+fatto. La fattura corretta resta nel suo stato.
+
+### Il legame è di riga, e l'indice documentale è una proiezione
+
+| Dove | Cosa | Quando esiste |
+|---|---|---|
+| `fatture_righe.riga_rettificata_id` | il **fatto**: questa riga corregge quella | dalla generazione delle righe |
+| `vendite.fatture_rettifiche` | l'**indice** documento↔documento | dopo la numerazione, scritto dal task `popola_fatture_rettifiche` |
+
+Non sono due verità: la seconda è la proiezione della prima, idempotente e mai
+distruttiva. La differenza che conta è **quando** sono disponibili — ed è il
+motivo per cui chi ha bisogno del legame *prima* della numerazione (il guard
+`E_FATTURA_RETTIFICATA_SENZA_NUMERO`, il grafo dei passaggi) legge le righe e
+non il ponte.
+
+### Nel grafo dei passaggi è un ramo di ritorno
+
+L'**arco N** (fattura rettificata → nota di credito) sta accanto all'arco R
+(DDT → Reso) e come quello porta `is_ramo_inverso = true`: compare nel pannello
+«Passaggi», ed è **escluso dal grafo forward** che alimenta le liste.
+
+> Nel reso torna la merce, qui torna il valore. Nessuno dei due è un
+> avanzamento del flusso.
+
+⛔ **Se fosse entrato nel forward**: la regola della frontiera sceglie l'attivo
+più profondo, quindi la nota avrebbe vinto sulla fattura stessa e **ogni riga di
+lista avrebbe cambiato frontiera** — senza errori e senza log, solo con un
+valore diverso.
+
+⚠️ **La nota di credito può però essere legittimamente la frontiera** di un
+ordine o di una commessa: ci si arriva con l'arco **G** (commessa → documento),
+che ramo di ritorno non è. È l'ultimo documento nato da quel lavoro. Per questo
+il pannello e le celle-lista portano la **natura** della frontiera, non solo il
+tipo: senza, etichetterebbero «Fattura» un accredito.
+
+📌 Dettagli d'API: [api_lineage_passaggi.md](../backend/vendite/manual/api_lineage_passaggi.md).
+
+### Cosa resta aperto
+
+La metà **pre**-numerazione — il ritorno di un lotto a DRAFT — è un'altra
+strada, complementare a questa: la nota di credito copre ciò che è già uscito,
+il ritorno in bozza ciò che non è ancora numerato. Vedi la
+[roadmap](../dev/work-in-progress/fatturazione-roadmap.md), item 1.
 
 ---
 

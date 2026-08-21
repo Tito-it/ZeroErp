@@ -3,7 +3,8 @@
 > **Ultima revisione**: 9 agosto 2026 — entrano **DDT e resi**: le aree del §2.1
 > passano da quattro a sette (⚠️ prima ne mancavano tre), nuova **§4.1** sui
 > motivi di fermo di DDT e resi, il **valore al residuo** degli ordini in §5.1 e
-> la nuova **§8 «La coda accrediti»**. Revisione precedente (22 luglio): §7
+> la **§8 «La coda accrediti»** — ⭐ riscritta il **2026-08-21**, da quando
+> l'accredito si emette davvero. Revisione precedente (22 luglio): §7
 > «Gestire la fatturazione» — dalla Lente 1 si **agisce** (approva → fattura →
 > rendi definitive), col perché la numerazione resta un passo separato. Prima
 > ancora (8 luglio): Situazione aperta v2 (serbatoio pre-commessa), donut per
@@ -173,7 +174,7 @@ non è la stessa cosa.
 | *Merce in viaggio, fatturazione non ancora dovuta* | 🟢 | Il DDT è partito ma non ha ancora raggiunto lo stato che fa scattare la fattura. Si aspetta, e basta |
 | *Push a commessa non eseguito* / *parziale* | 🟠 | Il DDT **ha superato** quello stato e la fattura non è partita: è in ritardo. Da sbloccare |
 | *Ri-consegna da generare* | 🟠 | Il cliente ha reso della merce che va rispedita, e finché non la rispedisci la fatturazione resta bloccata. Azione tua |
-| *Merce resa già fatturata — accredito in attesa* | 🟢 | Il cliente ha reso merce **già fatturata**: gli è dovuto un accredito. È verde **perché oggi non esiste ancora l'azione** per emetterlo (vedi §8), non perché sia a posto |
+| *Merce resa già fatturata — accredito in attesa* | 🟠 | Il cliente ha reso merce **già fatturata**: gli è dovuto un accredito. ⭐ **Era verde** finché l'azione non esisteva; dal 2026-08 l'accredito si emette (vedi §8) e il motivo è passato a *Da recuperare*, con l'azione suggerita «Emetti la nota di credito dalla coda accrediti» |
 
 Due domande che nascono guardando l'elenco:
 
@@ -397,14 +398,32 @@ sparire.
 
 ### 8.3 Cosa si fa oggi da qui
 
-**Niente**, ed è voluto dirlo chiaramente: lo strumento per emettere l'accredito
-non è ancora stato realizzato. La coda serve a **non perdere i casi** mentre
-matura — si consulta, si apre il reso per capire di cosa si tratta, e si aspetta.
+⭐ **Si accredita** (aggiornato 2026-08-21 — questa sezione diceva «niente», ed
+era vero fino a metà agosto).
 
-È anche il motivo per cui in Backlog il motivo *«Merce resa già fatturata»* è
-**verde** (§4.1): non perché la situazione sia a posto, ma perché non esiste
-un'azione da chiedere all'operatore. Il giorno in cui esisterà, quel verde
-diventerà arancione e questa sezione cambierà.
+Dalla riga della coda, o dal drawer del reso, si registra l'**accredito** della
+riga: la merce resa esce dalla coda e nasce una riga di **rettifica** sulla
+commessa del cliente. Da lì l'accredito segue la strada normale della
+fatturazione — al giro successivo diventa una **nota di credito**, un documento
+separato dalla fattura, con il legame riga↔riga verso ciò che corregge.
+
+| Verbo | Dove | Cosa fa |
+| --- | --- | --- |
+| **Accredita** | riga della coda · drawer del reso | registra l'accredito dovuto: la riga esce dalla coda, la rettifica entra in commessa |
+| **Annulla l'accredito** | drawer del reso (riga già accreditata) | il caso «ho cliccato la riga sbagliata»: toglie la rettifica, l'accredito torna dovuto. Richiede un **motivo**, ed è l'unica traccia del perché |
+
+⚠️ **«Annulla l'accredito» e «annulla il documento» non sono la stessa cosa**, e
+confonderle manda sulla strada sbagliata: il primo agisce **a monte** del
+documento; per disfare una nota di credito già emessa si riporta il lotto in
+bozza — e la nota **viene rigenerata** al giro successivo, perché la merce resa
+non è cambiata.
+
+⛔ **Finché il reso ha un accredito registrato, il reso non si annulla**: il
+pulsante resta acceso ma spiega il perché. Prima si annulla l'accredito.
+
+📌 Il funzionamento tecnico (natura del documento, legame di riga, guardia sulla
+numerazione) sta nella
+[guida tecnica alla fatturazione](fatturazione.md#il-documento-che-torna-indietro-la-nota-di-credito).
 
 ---
 

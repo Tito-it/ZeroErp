@@ -2684,10 +2684,23 @@ class VenditeRepository:
                 l.n_discendenti_attivi,
                 l.is_transitato,
                 l.n_sorgenti,
-                l.root_codice
+                l.root_codice,
+                l.natura_doc_codice,
+                -- ⚠️ La natura della FRONTIERA si legge dal SUO nodo, non da
+                -- questa riga: la summary porta solo la natura del documento
+                -- stesso. E serve davvero — la frontiera PUO' essere una nota
+                -- di credito (arco G dalla commessa, che non e' un ramo di
+                -- ritorno): misurato il 2026-08-21, e' gia' la frontiera
+                -- dell'ordine 240 e della commessa 322. Senza questa colonna
+                -- il pannello la etichetta «Fattura». Stesso JOIN alla vista
+                -- nodi del traversal qui sotto.
+                nfr.natura_doc_codice          AS frontiera_natura_doc_codice
             FROM vendite.vw_documento_lineage l
             JOIN config.sorgenti s ON s.id = l.tipo_id
             LEFT JOIN config.sorgenti sf ON sf.id = l.frontiera_tipo_id
+            LEFT JOIN vendite.vw_documento_lineage_nodi nfr
+                   ON nfr.tipo_id = l.frontiera_tipo_id
+                  AND nfr.uid = l.frontiera_uid
             WHERE l.tipo_id = %s
               AND l.uid = %s
         """
@@ -2720,6 +2733,8 @@ class VenditeRepository:
             "is_transitato": bool(row[20]),
             "n_sorgenti": int(row[21]),
             "root_codice": row[22],
+            "natura_doc_codice": row[23],
+            "frontiera_natura_doc_codice": row[24],
         }
 
     # Scopo: Catena dei passaggi di un documento via
@@ -2744,7 +2759,9 @@ class VenditeRepository:
                 -- Id numerico apribile nel drawer di dettaglio: uid::bigint
                 -- per i tipi id-keyed; traduzione uuid->id per preventivo/
                 -- offerta (unici key_selector='uid'). NULL = fuori scope RLS
-                -- o nodo senza drawer (fattura/commessa) -> FE non apre.
+                -- -> tappa consultiva, il FE non apre. (Fattura e commessa un
+                -- drawer ce l'hanno: dal 2026-07-29 il grafo non ha piu' nodi
+                -- senza superficie.)
                 COALESCE(pfrom.id, ofrom.id,
                     CASE WHEN sf.key_selector = 'id'
                          THEN NULLIF(p.from_uid, '')::bigint END) AS from_doc_id,
@@ -2758,7 +2775,12 @@ class VenditeRepository:
                 COALESCE(pto.id, oto.id,
                     CASE WHEN st.key_selector = 'id'
                          THEN NULLIF(p.to_uid, '')::bigint END) AS to_doc_id,
-                p.is_ramo_inverso
+                p.is_ramo_inverso,
+                -- La natura dei due estremi: distingue una nota di credito da
+                -- una fattura quando la tappa e' la seconda di fila sotto lo
+                -- stesso tipo documento (arco N).
+                p.from_natura_doc_codice,
+                p.to_natura_doc_codice
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
@@ -2802,6 +2824,8 @@ class VenditeRepository:
                     "to_is_abortito": bool(row[17]),
                     "to_doc_id": None if row[18] is None else int(row[18]),
                     "is_ramo_inverso": bool(row[19]),
+                    "from_natura_doc_codice": row[20],
+                    "to_natura_doc_codice": row[21],
                 }
             )
         return result

@@ -108,6 +108,32 @@ più spesso.
 Il fail-fast per-fattura si scrive con `_run_per_fattura_task`, che logga
 l'errore con scope FATTURA e poi rilancia.
 
+#### Il codice del database non si perde nel rilancio (2026-08-21)
+
+Un task che delega a una madre DB solleva un `DatabaseError` che porta il
+**codice di dominio** nel campo strutturato (`CONSTRAINT` su `SQLSTATE P0001`,
+vedi `apps/core/services/db_error_fields.py`). Fino al 2026-08-21
+`_run_per_fattura_task` lo appiattiva su `E_TASK_FATTURA` — sia nel log FATTURA
+sia nella risposta.
+
+🔴 **Misurato sul caso che l'ha fatto emergere**: la guardia nuova sulla
+numerazione delle note di credito (`E_FATTURA_RETTIFICATA_SENZA_NUMERO`, 937)
+dice *«numera prima la fattura NNN»*, e all'operatore arrivava *«Errore su
+singola fattura durante task pipeline»*. La guardia funzionava; era
+illeggibile.
+
+Ora l'helper legge il codice **una volta** e con quella risposta decide tre
+cose: il codice del `ServiceError`, il messaggio (`diag.message_primary`, il
+solo `RAISE` senza lo stack PL/pgSQL) e se scrivere nel diario
+(`log_to_db=False` quando il codice viene dal campo strutturato: in quel caso
+`script.fn_log_and_raise_error` **ha già scritto** la sua riga — decisione
+DB+BE del 2026-08-19). `E_TASK_FATTURA` resta il ripiego per tutto ciò che il
+database non ha nominato: errori Python, `RuntimeError`, guasti tecnici.
+
+⚠️ È lo stesso difetto già corretto in `_fail_task_run_safely` per il **diario
+dei task run**, che era rimasto aperto sulla strada che l'operatore **vede**.
+Vale per ogni task per-fattura, non solo per la numerazione.
+
 ### L'ordine dentro lo step si DICHIARA
 
 `PipelineStepExecutor._TASK_ORDER_DEPENDENCIES` mappa `task → task che devono
@@ -125,6 +151,34 @@ una riga girata deve fermarsi prima, non scoprirsi a documenti numerati.
 Oggi ci sono due dipendenze: `genera_scadenze_lotto → ricalcola_iva_lotto` (la
 base delle rate è `totale_a_pagare`, che nasce dal ricalcolo) e
 `popola_fatture_rettifiche → numera_fatture`.
+
+### E dentro un task, l'ordine delle FATTURE (2026-08-21)
+
+⚠️ Cosa diversa dalla precedente: quella ordina i **task** dentro lo step,
+questa le **fatture** dentro un task.
+
+`numera_fatture` numera in **id crescente** — `sorted()` esplicito in
+`_handle_numera_fatture_task`, non l'`ORDER BY` del repository. È un
+**requisito**, da quando `fn_numera_fattura_opz_emessa` rifiuta di numerare un
+documento le cui righe rettificano righe di una fattura ancora senza numero
+(`E_FATTURA_RETTIFICATA_SENZA_NUMERO`): il giro è fail-fast, quindi una nota di
+credito incontrata **prima** della sua fattura fermerebbe l'intero step.
+
+L'id crescente **è** l'ordine di dipendenza, e non per caso: perché un accredito
+sia possibile la merce dev'essere già stata fatturata
+(`E_ACCREDITO_ATTIVITA_NON_FATTURATA`), quindi la fattura rettificata nasce
+sempre prima della nota che la corregge.
+
+📌 **Perché `sorted()` e non l'`ORDER BY` della query.** Non è una ripetizione:
+rende il task **indipendente** dal repository. `list_fatture_by_lotto` ha due
+chiamanti e il suo ordinamento è lì per la stabilità del risultato — chi un
+giorno lo cambiasse per un'altra ragione non ha modo di sapere che qui dentro ci
+si appoggia, e il guasto sarebbe uno step fermo a metà lotto con un codice che
+parla d'altro.
+
+⛔ Il caso **cross-lotto** non è coperto da nessun ordinamento e non deve
+esserlo: se la fattura rettificata sta in un lotto ancora in bozza, il rifiuto
+della madre DB è la risposta giusta.
 
 ### Tracing e resume (`task_policy`)
 

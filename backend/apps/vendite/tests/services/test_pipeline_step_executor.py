@@ -61,6 +61,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.core.tests.db_error_fakes import make_db_error
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
@@ -278,6 +279,35 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         # stato dello step (→ DEFINITIVA/8) e' centralizzato nel runner (_execute_pipeline_step).
         repo.sync_lotto_fatture_stato.assert_not_called()
 
+    # Scopo: ⭐ L'ORDINE DI NUMERAZIONE, che dal 2026-08-21 e' un requisito e non
+    #        una comodita' (brief note credito §44.2). La madre DB rifiuta di
+    #        numerare una nota di credito la cui fattura rettificata non ha
+    #        ancora un numero, e il giro e' FAIL-FAST: una nota incontrata prima
+    #        della sua fattura fermerebbe l'intero step.
+    #
+    #        ⚠️ Il repository e' un MagicMock e restituisce quello che gli si
+    #        dice: qui restituisce gli id MESCOLATI apposta, cosi' il test
+    #        misura il riordino del PASSO e non l'`ORDER BY` della query — che
+    #        e' esattamente la ragione per cui il `sorted` sta li' invece di
+    #        appoggiarsi al repository.
+    def test_numera_fatture_numera_in_ordine_di_id_anche_se_il_repo_non_ordina(self):
+        processi = [{"task": "numera_fatture", "fase": "Numerazione", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "numera_fatture_default"
+        # 903 = la nota di credito, 811 = la fattura che rettifica.
+        repo.list_fatture_by_lotto.return_value = [903, 811, 850]
+
+        executor.execute_step(
+            lotto_id=9,
+            stato_doc_fiscale_id=2,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        ordine = [c.args[0] for c in repo.numera_fattura_opz_emessa.call_args_list]
+        self.assertEqual(ordine, [811, 850, 903])
+
     # Scopo: C-2c (outbox stampa) — il task stampa_documenti_lotto ACCODA via
     #        fn_accoda_stampe_lotto e non tocca altro (nessun render qui).
     def test_execute_step_runs_stampa_documenti_lotto_task(self):
@@ -386,6 +416,46 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(kwargs["scope"], "FATTURA")
         self.assertEqual(kwargs["fattura_id"], 102)
         self.assertEqual(kwargs["lotto_id"], 9)
+
+    # Scopo: 🔴 IL CODICE DEL DATABASE ARRIVA INTATTO ALL'OPERATORE. Il giro
+    #        per-fattura appiattiva ogni `DatabaseError` su `E_TASK_FATTURA`
+    #        («Errore su singola fattura durante task pipeline»), cioe' buttava
+    #        via proprio la frase che dice cosa fare. Misurato il 2026-08-21
+    #        sulla guardia nuova della numerazione delle note di credito.
+    #
+    #        ⚠️ Il finto ha la forma VERA (`db_error_fakes`): campo strutturato
+    #        `CONSTRAINT` su SQLSTATE P0001. Un `DatabaseError` nudo passerebbe
+    #        dal ripiego testuale ed esercirebbe un percorso diverso da quello
+    #        del sistema.
+    def test_task_per_fattura_conserva_il_codice_di_dominio_del_database(self):
+        processi = [{"task": "numera_fatture", "fase": "Numerazione", "params": {}}]
+        executor, repo, _, error_logger = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "numera_fatture_default"
+        repo.list_fatture_by_lotto.return_value = [101]
+        repo.numera_fattura_opz_emessa.side_effect = make_db_error(
+            "Non si puo' numerare il documento 15353: la fattura che rettifica "
+            "non e' ancora numerata (documento 835). Numera prima quella.",
+            codice="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+        )
+
+        with self.assertRaises(ServiceError) as exc:
+            executor.execute_step(
+                lotto_id=9,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        self.assertEqual(exc.exception.code, "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
+        # Il messaggio e' quello del RAISE, con dentro i due numeri: e' l'unica
+        # cosa che dice all'operatore QUALE documento numerare prima.
+        self.assertIn("835", exc.exception.message)
+        # E lo stesso codice nel log di scope FATTURA, non il generico.
+        self.assertEqual(
+            error_logger.log_error.call_args.kwargs["code"],
+            "E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+        )
 
     # Scopo: Verifica il caso `test_execute_step_logs_lotto_error_on_not_allowed_function`.
     def test_execute_step_logs_lotto_error_on_not_allowed_function(self):
