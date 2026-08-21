@@ -29,9 +29,8 @@ riga di configurazione che stabilisce segno, obblighi e impatto sulla valorizzaz
 
 ### Le colonne che governano il comportamento
 
-* **`segno`** (`+1` / `−1`) — carico o scarico. ⚠️ Vedi l'avvertenza in
-  [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti): **nessun vincolo lo lega al
-  segno di `movimenti.qta`**, quindi oggi la coerenza è affidata a chi scrive.
+* **`segno`** (`+1` / `−1`) — carico o scarico. ⚠️ È una **dichiarazione, non un
+  meccanismo**: vedi la sezione qui sotto.
 * **`richiede_lotto`, `richiede_seriale`, `richiede_magazzino_dest`** — gli obblighi che il
   movimento deve soddisfare. ⚠️ Sono **dichiarazioni**: perché mordano serve un guard che le
   legga. Da verificare prima di attivare il dominio.
@@ -39,6 +38,69 @@ riga di configurazione che stabilisce segno, obblighi e impatto sulla valorizzaz
   trasferimenti sono `none`, ed è corretto: spostare merce fra due magazzini non cambia il
   valore complessivo, lo sposta.
 * **`abilita_billing`** — il movimento può generare una voce fatturabile.
+
+---
+
+### 🔴 `segno` non è applicato da nessuno — e la giacenza dipende da questo
+
+È il punto più importante di questa tabella, e non si vede guardandola: **la colonna `segno`
+non entra in nessun calcolo.**
+
+`magazzino.vw_giacenza` — l'unica fonte della giacenza — la calcola così:
+
+```sql
+SELECT articolo_id, magazzino_id, sum(qta) FROM magazzino.movimenti GROUP BY 1,2;
+```
+
+Un puro `sum(qta)`. Non moltiplica per `causali.segno`, non lo legge affatto.
+
+Perché il conto torni, `movimenti.qta` deve quindi arrivare **già firmata**: negativa sugli
+scarichi, positiva sui carichi. Che l'intenzione sia questa lo conferma il vincolo sulla
+quantità, che è `qta <> 0` e **non** `qta > 0`.
+
+⚠️ **Ma nulla lo garantisce.** Nessun CHECK, nessun trigger, nessuna funzione lega il segno di
+`qta` al `segno` della sua causale. Oggi è scrivibile:
+
+```sql
+-- causale CARICO_ACQ (segno +1), quantità negativa: nessun errore
+INSERT INTO magazzino.movimenti (articolo_id, magazzino_id, causale_id, qta, ...)
+VALUES (..., (SELECT id FROM magazzino.causali WHERE codice='CARICO_ACQ'), -5, ...);
+```
+
+Il movimento risulta registrato come **carico** e fa **calare** la giacenza. Non c'è errore,
+non c'è avviso: c'è un saldo sbagliato, e la causale — l'unica cosa che direbbe qual era
+l'intenzione — non viene consultata da nessuno.
+
+⭐ Da qui il rischio vero: `segno` **sembra** la definizione del comportamento della causale,
+e chi legge questa tabella lo dà per acquisito. È invece documentazione di un'intenzione che
+il database non fa rispettare.
+
+---
+
+### Le due strade per chiuderlo, da scegliere prima di attivare il dominio
+
+Sono alternative, non complementari, e producono contratti diversi per chi scrive:
+
+1. **Un CHECK che leghi i due segni.** `qta` resta responsabilità del chiamante, ma un segno
+   incoerente viene rifiutato. ⚠️ Richiede di leggere la causale dalla riga, quindi non è un
+   CHECK di colonna: serve un trigger che si comporti da vincolo, oppure una colonna generata.
+   Chi scrive deve continuare a firmare `qta` correttamente — gli si dice solo quando sbaglia.
+2. **Un trigger che *derivi* `qta`** dal valore assoluto per il `segno` della causale. Il
+   chiamante scrive sempre quantità positive e non può sbagliare il segno. ⚠️ In cambio, un
+   `UPDATE` che cambia la causale deve ricalcolare `qta`, e la colonna smette di essere un
+   dato scritto per diventarne uno derivato — con tutto ciò che comporta per import e
+   correzioni.
+
+⚠️ La prima è più conservativa, la seconda toglie la classe di errore alla radice. La scelta
+va fatta **prima** del primo movimento reale: dopo, cambiare la semantica di `qta`
+significherebbe rileggere ogni riga già scritta per capire con quale convenzione era stata
+registrata.
+
+⭐ Nota di metodo: il difetto gemello di questa tabella —
+`chk_mag_movimenti_da_destinazione_distinti`, che rendeva inseribili solo i trasferimenti — è
+stato corretto il 2026-08-21 (`20260821-10`) perché aveva **una sola forma giusta possibile**.
+Questo no: ha due soluzioni legittime, e per questo resta aperto invece di essere stato deciso
+mentre si scriveva la documentazione.
 
 ---
 

@@ -8,8 +8,8 @@
 >
 **Approfondimento funzioni:**
 >
-[anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/manual/fn_crea_operatore)
-> [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana)
+[anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2)
+> [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2)
 
 ---
 ### 🎯 Scopo Principale

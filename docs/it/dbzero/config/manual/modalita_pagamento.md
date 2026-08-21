@@ -5,8 +5,8 @@
 Approfondimenti tabelle:
 >
 [config.condizioni_pagamento](/dbzero/config/tabelle/condizioni_pagamento)
-> [vendite.fatture_testata](/dbzero/vendite/tabelle/fatture_testata)
-> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)
+> [vendite.fatture](/dbzero/vendite/tabelle/fatture)
+> [vendite.ddt](/dbzero/vendite/tabelle/ddt)
 >
 Approfondimenti funzioni/trigger:
 >
@@ -66,7 +66,7 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
 
 * **Documenti di vendita**:
 
-  * campi tipo `modalita_pagamento_id` in `vendite.fatture_testata` o in anagrafiche cliente per definire la **modalità predefinita** di incasso.
+  * campi tipo `modalita_pagamento_id` in `vendite.fatture` o in anagrafiche cliente per definire la **modalità predefinita** di incasso.
 
 * **Processi di incasso / riconciliazione**:
 

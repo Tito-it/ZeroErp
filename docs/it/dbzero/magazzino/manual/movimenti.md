@@ -54,13 +54,24 @@ carico — **non è inseribile**.
 primo errore al primo giorno di esercizio.
 
 **La forma che esprime l'intenzione** — la destinazione serve ai soli trasferimenti, e quando
-c'è dev'essere diversa dall'origine — è:
+c'è dev'essere diversa dall'origine:
 
 ```sql
 CHECK (magazzino_id_dest IS NULL OR magazzino_id <> magazzino_id_dest)
 ```
 
-⛔ Non è stato corretto: è una modifica di schema e va decisa.
+⭐ Non è una forma inventata: è **quella che il vincolo gemello sulle ubicazioni usa già** sulla
+stessa tabella (`chk_mag_movimenti_ubi_from_to_diff`). «Se il valore c'è, dev'essere diverso»,
+non «il valore ci dev'essere». `magazzino_id` non ha bisogno del proprio `IS NOT NULL`: la
+colonna è già dichiarata `NOT NULL`, e ripeterlo nel CHECK è la ridondanza da cui è nato il
+difetto.
+
+✅ **Corretto da `00_schema/magazzino/20260821-10`**, e presidiato da
+`db/pgtap/magazzino/test-movimenti-vincoli-v1.sql` — che prima non esisteva: **nessun pgTAP
+toccava questa tabella**, ed è il motivo per cui il difetto ha potuto restare invisibile.
+
+⚠️ Il changeSet **allarga**: ammette tutto ciò che ammetteva prima, più i movimenti senza
+destinazione. Non può quindi invalidare righe esistenti.
 
 ---
 
@@ -76,9 +87,12 @@ CHECK sulla quantità è `qta <> 0` — non `qta > 0` — il che conferma l'inte
 `segno` della causale. Un `CARICO_ACQ` con `qta = -5` è oggi scrivibile, e farebbe **calare**
 la giacenza pur essendo registrato come carico.
 
-Due strade, entrambe legittime, da scegliere prima di attivare il dominio: un CHECK che leghi
-i due segni, oppure un trigger che derivi `qta` dal valore assoluto moltiplicato per il segno
-della causale. Oggi la coerenza è affidata a chi scrive.
+Oggi la coerenza è affidata a chi scrive.
+
+⭐ **Le due strade per chiuderlo — un CHECK che leghi i due segni, oppure un trigger che derivi
+`qta` — sono discusse in [magazzino.causali](/dbzero/magazzino/tabelle/causali)**, dove vive la
+colonna `segno`: lì c'è il confronto fra le due, con le conseguenze di ciascuna per chi scrive
+un movimento. Va deciso **prima** del primo movimento reale.
 
 ---
 

@@ -4,7 +4,7 @@
 >
 **Approfondimento tabelle:**
 >
-• [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
+• `vendite.attivita_fatturabili_lotti` (tabella rimossa il 2026-02-27)  
 > • [vendite.attivita_consumi](/dbzero/vendite/tabelle/attivita_consumi)  
 >
 ### 🎯 Scopo Principale

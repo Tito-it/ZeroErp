@@ -12,7 +12,7 @@
 **Approfondimento funzioni:**
 >
 [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
-> [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/manual/fn_crea_operatore)
+> [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2)
 >
 **Guide:**
 >

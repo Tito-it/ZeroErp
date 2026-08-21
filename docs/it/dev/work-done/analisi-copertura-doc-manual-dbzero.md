@@ -1,8 +1,14 @@
 # Copertura documentazione manuale `docs/it/dbzero` — il buco misurato
 
-> Analisi del 2026-08-21 — **misura**, non piano approvato.
-> Riguarda solo `docs/it/dbzero/<schema>/manual/`: la doc concettuale scritta a mano
-> che si affianca a quella auto-generata da `scripts/gen_db_docs.py`.
+> ✅ **CANTIERE CHIUSO — 2026-08-21.** Aperto e concluso nella stessa giornata.
+> Riguarda `docs/it/dbzero/<schema>/manual/`: la doc concettuale scritta a mano che si
+> affianca a quella auto-generata da `scripts/gen_db_docs.py`.
+>
+> ⚠️ **Questo file è stato spostato in `work-done/` alla chiusura.** I quattro changeSet
+> nati da questo cantiere — `20260821-06`, `-07`, `-08`, `-09` — lo citano al suo percorso di
+> allora, `docs/it/dev/work-in-progress/analisi-copertura-doc-manual-dbzero.md`: sono
+> `EXECUTED` e non vanno modificati (il checksum farebbe fallire il migrate successivo). È
+> questa riga a colmare il salto.
 >
 > ### 📌 Stato al 2026-08-21 — **CANTIERE CHIUSO**
 >
@@ -21,10 +27,17 @@
 > generazione automatica di `vettori.codice`, `security_invoker` sulle 7 viste
 > `vw_stato_sorgente_*`.
 >
-> 🔴 **Resta aperto un difetto trovato e non corretto**: il CHECK
-> `chk_mag_movimenti_da_destinazione_distinti` su `magazzino.movimenti` rende inseribili **solo
-> i trasferimenti** — un carico o uno scarico semplice viene rifiutato. È latente perché il
-> dominio magazzino è vuoto. Dettaglio e forma corretta nella pagina di `magazzino.movimenti`.
+> ✅ **Corretto anche il difetto di `magazzino.movimenti`** (`20260821-10`): il CHECK
+> `chk_mag_movimenti_da_destinazione_distinti` pretendeva `magazzino_id_dest IS NOT NULL` e
+> rendeva inseribili **solo i trasferimenti**. Ora usa la forma «se c'è, dev'essere diverso»,
+> la stessa già adottata dal vincolo gemello sulle ubicazioni, ed è presidiato da
+> `db/pgtap/magazzino/test-movimenti-vincoli-v1.sql` — **il primo pgTAP** su questa tabella.
+> ⛔ Da migrare.
+>
+> 🔴 **Resta aperto il secondo difetto di magazzino**: `causali.segno` non è legato al segno di
+> `movimenti.qta`, e `vw_giacenza` somma `qta` senza guardarlo. Un `CARICO_ACQ` con quantità
+> negativa farebbe **calare** la giacenza. È una decisione di modello — CHECK che leghi i due
+> segni, o trigger che derivi `qta` — da prendere prima di attivare il dominio.
 
 ---
 
@@ -725,7 +738,7 @@ manuale, ed è il residuo dichiarato del cantiere.
 
 ---
 
-## 8. Link morti nelle pagine manuali preesistenti — **89 trovati, 35 chiusi**
+## 8. Link morti nelle pagine manuali preesistenti — **89 trovati, 52 chiusi**
 
 Il controllo finale sui riferimenti `/dbzero/...` di **tutte** le pagine `manual/` del progetto
 ne ha trovati **89 rotti**. ⚠️ **Nessuno nelle pagine scritte in questo cantiere** — quelle
@@ -772,7 +785,44 @@ di audit. Sono la stessa classe di errore e la stessa correzione: un riferimento
 una frase è sbagliato quanto uno in un link, e lasciarlo avrebbe lasciato la doc a dire il
 falso su *dove* vive una funzione.
 
-**Residuo: 54 link rotti**, tutti da decidere caso per caso. Non sono meccanici: puntano a
+### ✅ Seconda passata: gli oggetti rinominati o rimossi — 21 riferimenti, 2026-08-21
+
+⚠️ **La prima ipotesi era sbagliata.** Avevo proposto `stato_approvazione_prezzo` →
+`stati_approvazione_prezzo`: **nessuna delle due tabelle esiste**. Verificato su
+`information_schema`: è una **colonna** di `contratti_righe`, `ddt_righe_componenti`,
+`offerte_commerciali_eccezioni` e altre — e non esiste **nessun** vocabolario di stati
+approvazione, perché lo stato è una stringa con CHECK. Qualcuno aveva linkato una colonna
+come se fosse una tabella.
+
+Il metodo che ne è uscito, e che vale per tutta la classe: **prima si stabilisce che cosa è
+successo all'oggetto**, poi si sceglie l'azione. Tre esiti, tre azioni diverse.
+
+| Esito dell'indagine | Azione | Casi |
+|---|---|---:|
+| **Rinominato / sostituito** — esiste un successore | sostituzione del link | **14** |
+| **Mai stato un oggetto** — era una colonna | si toglie il link, resta il codice inline | 4 |
+| **Rimosso senza successore** | si toglie il link, e si dice *quando* è sparito | 3 |
+
+Nel dettaglio, con la prova che ha deciso ciascun caso:
+
+* `vendite.ddt_testata` → **`vendite.ddt`**, `vendite.fatture_testata` → **`vendite.fatture`**.
+  Vecchia nomenclatura di quando testata e righe erano tabelle con quel nome. ⭐ La prova non è
+  la somiglianza: le colonne che le pagine citano — `modalita_addebito_trasporto_id`,
+  `causale_trasporto_id`, `aspetto_bene_id`, `modalita_pagamento_id` — **esistono oggi su
+  `ddt` e `fatture`**. Corretti anche i riferimenti in prosa, non solo i link.
+* `fn_crea_operatore` → **`fn_crea_operatore_v2`**, `fn_crea_risorsa_umana` →
+  **`fn_crea_risorsa_umana_v2`**. Doppio difetto: nome vecchio *e* path verso `/manual/`
+  invece di `/funzioni/`.
+* `config.stato_approvazione_prezzo` → **link tolto**: è una colonna.
+* `vendite.attivita_fatturabili_lotti` → **link tolto**, con la data. Non è un'ipotesi:
+  `80_data/changelog/20260804-50` la dichiara *«droppata il 2026-02-27»*.
+
+⭐ Il criterio per «togliere invece di redirigere»: se l'oggetto non esiste **e non ha un
+successore**, un link non può che essere rotto — ma l'informazione va conservata, perché il
+nome vecchio è ciò che permette di ritrovare la storia. Da qui la forma
+`` `vendite.attivita_fatturabili_lotti` (tabella rimossa il 2026-02-27) ``.
+
+**Residuo: 37 link rotti**, tutti da decidere caso per caso. Non sono meccanici: puntano a
 oggetti che **non esistono affatto** — `ddt_testata`, `fatture_testata`,
 `attivita_fatturabili_lotti`, `stato_approvazione_prezzo`, `fn_crea_operatore`,
 `fn_crea_risorsa_umana`. ⚠️ Diversi di questi non sono refusi: sono i nomi di un **modello

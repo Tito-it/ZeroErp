@@ -5,7 +5,7 @@
 Approfondimenti tabelle:   
 >
 [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)    
-> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)     
+> [vendite.ddt](/dbzero/vendite/tabelle/ddt)     
 > [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)    
 >
 
@@ -71,7 +71,7 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
 
 * **DDT**:
 
-  * Campi come `causale_trasporto_id` in `vendite.ddt_testata` (e, se previsto, in altri documenti logistici).
+  * Campi come `causale_trasporto_id` in `vendite.ddt` (e, se previsto, in altri documenti logistici).
   * La causale selezionata descrive il *motivo operativo* con cui i beni vengono movimentati.
 
 * **Altri documenti di movimento**:

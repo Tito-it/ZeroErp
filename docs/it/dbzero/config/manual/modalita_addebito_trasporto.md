@@ -5,8 +5,8 @@
 Approfondimenti tabelle:
 >
 [config.causali_trasporto](/dbzero/config/tabelle/causali_trasporto)
-> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)
-> [vendite.fatture_testata](/dbzero/vendite/tabelle/fatture_testata)
+> [vendite.ddt](/dbzero/vendite/tabelle/ddt)
+> [vendite.fatture](/dbzero/vendite/tabelle/fatture)
 >
 Approfondimenti funzioni/trigger generici:
 >
@@ -74,7 +74,7 @@ Esempi tipici: **FRANCO**, **ASSEGNATO**, **TERZI**, con comportamenti diversi r
 
 * **Documenti di trasporto e vendita**:
 
-  * campi tipo `modalita_addebito_trasporto_id` in `vendite.ddt_testata` o `vendite.fatture_testata`;
+  * campi tipo `modalita_addebito_trasporto_id` in `vendite.ddt` o `vendite.fatture`;
   * influenza le logiche di calcolo e addebito delle spese di trasporto.
 
 * **Anagrafiche clienti/fornitori** (in prospettiva):
