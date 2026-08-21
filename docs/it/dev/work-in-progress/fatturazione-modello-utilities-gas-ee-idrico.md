@@ -14,7 +14,7 @@ Riferimenti correlati:
 
 - `docs/it/dev/work-done/gestione-commesse-v2.md`
 - `docs/it/dev/work-in-progress/sviluppo-listini.md`
-- `docs/it/dev/work-in-progress/pipeline-domini-engine.md`
+- `docs/it/dev/work-done/pipeline-domini-engine.md`
 
 ---
 

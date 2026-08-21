@@ -231,5 +231,5 @@ make db-setup         # entrambi
 - Convenzioni trigger: `docs/it/linee-guida-trigger.md`
 - Guida fatturazione: `docs/it/guide/fatturazione.md`
 - WIP pipeline: `docs/it/dev/work-done/fatturazione-attivita-progetto.md`
-- WIP domini engine: `docs/it/dev/work-in-progress/pipeline-domini-engine.md`
+- Domini engine (archiviato 2026-08-22, con la verifica dei concetti in testa): `docs/it/dev/work-done/pipeline-domini-engine.md`
 - Template doc backend: `docs/it/backend/_templates/manual-standard.md`

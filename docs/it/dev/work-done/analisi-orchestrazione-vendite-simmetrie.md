@@ -60,7 +60,7 @@
   di dominio ~zero**: risolvono gli step da tabella, fallback (utility/tipo_doc), tracing
   task-run, rollback. Unico accoppiamento: `VenditePipelineRepository.DOMINIO_CODE =
   "FATTURAZIONE"` come default + la `handler_registry` (10 handler di fatturazione).
-- Visione documentata in [pipeline-domini-engine.md](../work-in-progress/pipeline-domini-engine.md):
+- Visione documentata in [pipeline-domini-engine.md](pipeline-domini-engine.md):
   "pipeline DB separate per dominio, engine applicativo unico".
 
 **Lezione storica decisiva** (`db/changelog/.../20260227-16-drop-attivita-pipeline-deprecated`):
