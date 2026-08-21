@@ -35,6 +35,30 @@
 >
 > **Fonti**: `brief-db-generazione-scadenze-fattura.md` §6 e §7 (chiuso),
 > `dbzero/vendite/manual/fatture_scadenze.md`, `guide/gestione-dei-pagamenti.md`.
+>
+> ---
+>
+> ⭐ **Dal 2026-08-21 il PIANO DB sta altrove**:
+> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md).
+> **Questo documento resta la sede delle decisioni di dominio**; là stanno i
+> passi, le misure aggiornate e le domande aperte prima dello sviluppo.
+> ⚠️ **Divisione del lavoro, per non far divergere le due sedi**: una decisione
+> di dominio si aggiorna **qui**; una misura del terreno o un passo si aggiorna
+> **là**. Mai il contrario.
+>
+> 🔴 **E quel documento corregge tre cose che qui sono scritte al presente e non
+> lo sono più** (rimisurate il 2026-08-21):
+>
+> | Dove | Cosa non regge più |
+> | --- | --- |
+> | §1-bis, §6 | `vendite.fn_sync_pagamento_fondo_fattura` — «il guscio vuoto che sembra il posting» — **non esiste più**: ritirata con la Fase E del cantiere fondi il 2026-08-15 |
+> | §1-bis **B-2** | «postare una riga non abbinata produrrebbe una violazione NOT NULL (23502)» è **falso**: il trigger di mirror ha **già** il guard e solleva un `P0001`. 🔴 Il difetto vero è un altro — solleva `E_GENERICO`, come **tutte e quattro** le funzioni di `pagamenti` |
+> | §7 | La «metà fondi» della slice 1 **è fatta** (Fasi A/B/C/E/F applicate il 15-16/08), e con essa cade il riquadro rosso sulla sua scadenza. ⭐ **La dipendenza si è invertita**: ora è la **Fase D** del cantiere fondi ad aspettare il processo rimborsi di `pagamenti` (§4-bis **D8 b**) |
+>
+> 🔴 E aggiunge **cinque difetti nuovi** che questo brief non conosce, tre dei
+> quali **bloccano la slice 1** — il più grave: `pagamenti.centri_riscossione`
+> **non può contenere più di due righe**, quindi il passo 3 di §2-bis D9-d-1
+> («aggiungere banca, poste, cassa») oggi non è eseguibile. Vedi §1.4 di là.
 
 ---
 
@@ -71,9 +95,15 @@ funzione di ogni schema: **zero risultati**. Il **posting** — il passaggio
 Ne segue che oggi `pagamenti.fn_get_saldo_fattura` restituisce, per costruzione,
 **sempre `totale_a_pagare`**: sottrae movimenti che nessuno crea.
 
-### ⚠️ Attenzione a una funzione il cui nome dice il contrario
+### ~~⚠️ Attenzione a una funzione il cui nome dice il contrario~~
 
-Cercando il posting si incontra
+> ✅ **CHIUSA il 2026-08-15, verificata il 2026-08-21**: la funzione è stata
+> **ritirata** (`DROP`) con la coda della Fase E del cantiere fondi, e **non
+> esiste più** nel database. Il paragrafo resta perché spiega *perché* la guida
+> descriveva il posting come se esistesse — non perché ci sia ancora qualcosa da
+> fare.
+
+Cercando il posting si incontrava
 `vendite.fn_sync_pagamento_fondo_fattura(p_fattura_figlia_id)`, che restituisce
 `TABLE(inserted_movimenti, updated_movimenti, annullati_source)`. Nome e colonne
 dicono **movimenti**: sembra il pezzo che stiamo cercando.
@@ -156,10 +186,27 @@ Ed è coerente col dominio: `DA_ABBINARE` significa letteralmente *«l'importo �
 arrivato, non so ancora a chi attribuirlo»*, cioè `fattura_id IS NULL`.
 L'abbinamento **è** la scrittura di quella FK.
 
-Ma il trigger `trgfn_vendite_movimenti_sync_contabile_from_riga` copia i tre
+~~Ma il trigger `trgfn_vendite_movimenti_sync_contabile_from_riga` copia i tre
 campi dalla riga al movimento: postare una riga non abbinata produrrebbe una
-**violazione NOT NULL (23502)**, non un errore di dominio parlante. Il posting
-deve quindi rifiutare *prima*, con un codice suo.
+**violazione NOT NULL (23502)**, non un errore di dominio parlante.~~
+
+> 🔴 **Sbagliato, rimisurato il 2026-08-21.** Il trigger **ha già** il guard: se
+> la riga non ha `fattura_id` o `billing_account_id` chiama
+> `script.fn_log_and_raise_error` e solleva un `P0001` *prima* che la `NOT NULL`
+> entri in gioco. La `23502` non si vede mai su quel percorso.
+>
+> **Il difetto vero è di specie diversa, e peggiore: il codice è `E_GENERICO`** —
+> e non solo lì: **tutte e quattro** le funzioni di `pagamenti` sollevano
+> `E_GENERICO`, su una quindicina di punti.
+>
+> ⚠️ Il guard esistente ha però un buco proprio: scatta **solo** se
+> `contabile_riga_id IS NOT NULL`. Un movimento scritto senza riga — la colonna è
+> nullable — non incontra nessun controllo.
+
+**Il requisito resta, cambiando forma**: il posting deve rifiutare *prima*, con
+un codice suo — ma non è «aggiungere un guard che manca», è **dare un nome** a un
+rifiuto che già esiste e **bonificare i vicini**. Passi P-6 e P-7 del
+[piano DB](brief-db-posting-e-abbinamento-rata.md).
 
 🔴 **E non esiste alcun vincolo che leghi lo stato ai dati.** Oggi si può
 scrivere `ABBINATA` con `fattura_id` NULL, o `DA_ABBINARE` con la fattura già
@@ -749,7 +796,26 @@ attribuire ad altro. *È esattamente la trappola «il DB di sviluppo non è un D
 ricostruito da zero»: verificando solo su dev si misura una macchina, non la
 riproducibilità.*
 
-#### La soluzione — quattro passi, non uno
+#### La soluzione — ~~quattro~~ **cinque** passi, non uno
+
+> 🔴 **Ne manca uno davanti, scoperto il 2026-08-21: il passo 3 oggi non è
+> eseguibile.** `uq_centri_riscossione_compensazione` è un UNIQUE **totale** su
+> una colonna booleana — il `where: "is_compensazione = true"` fu scritto su un
+> `addUniqueConstraint`, che quell'attributo **non ha**, ed è stato ignorato in
+> silenzio. Conseguenza: la tabella può contenere **al massimo due righe**, una
+> per valore del flag. Sono esattamente le due che ci sono, il che rende il
+> vincolo **saturo e indistinguibile da uno rispettato**.
+>
+> Prima dei quattro passi qui sotto va quindi un **passo 0**: sostituire il
+> vincolo con un **indice unico parziale** (`WHERE is_compensazione`) e dargli il
+> gemello su `is_fondo_fattura`, che oggi non ha nessuna unicità. Dettaglio e
+> lezione in [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+> §1.4 C-1; passo **P-1** del piano.
+>
+> ⚠️ E un **passo 5** in coda: `id` è `GENERATED BY DEFAULT AS IDENTITY`, e un
+> loader con id espliciti **non avanza la sequenza**. `pagamenti` non è coperto
+> da nessun resync (`20260616-02` copre solo `config`): senza, il primo insert
+> automatico collide con la pkey.
 
 Il modello da copiare è a due file di distanza: `vendite_contabili_stati` ha già
 CSV + mirror `loadUpdateData` (`runOnChange: true` + `validCheckSums: ANY`).
@@ -1413,12 +1479,31 @@ successiva dà per scontata.
 | **2** | **Abbinamento alla rata** | `scadenza_id` sulla riga + mirror sul movimento; guard di quadratura (**con forzatura motivata e gated sul limite superiore**, D1-bis) e di coerenza; `fn_get_saldo_rata`; elenco delle rate sovra-incassate | D1, D1-bis, D2. Rende derivabile «questa rata è pagata» — la domanda da cui dipendono 3.2, 3.3 e 3.4 |
 | **3** | **Perimetro e coda operativa** | conto sull'ente di incasso, vincolo di unicità conto → emittente, RLS in lettura; poi BE e FE | D5, B-3. Rende la coda «da abbinare» **visibile a chi deve** |
 
-🔴 **La scadenza della metà «fondi» non è la slice 1** (rimisurato il
+~~🔴 **La scadenza della metà «fondi» non è la slice 1** (rimisurato il
 2026-08-15, §2-bis D1-bis). La finestra del fondo negativo la apre il **primo che
 scrive righe contabili** — l'import del flusso, una correzione a mano, o la
 slice 1: quello che arriva prima. La collocazione qui resta giusta perché è qui
 che si mette mano a quel terreno, ma se un altro lavoro ci arriva prima, il
-tampone va **con lui**, non aspetta il suo turno.
+tampone va **con lui**, non aspetta il suo turno.~~
+
+> ✅ **CHIUSO il 2026-08-15, verificato il 2026-08-21.** La metà «fondi» **non è
+> più della slice 1: è fatta.** Fasi A, B, C, E ed F del cantiere fondi
+> applicate il 15-16/08 (changeSet `20260815-03`…`-23`), pgTAP verdi, baseline
+> `vendite` senza regressioni. La colonna «Contenuto» della slice 1 qui sopra va
+> letta **senza** il suo ultimo blocco.
+>
+> ⭐ **E la dipendenza si è invertita**: del cantiere fondi resta la sola
+> **Fase D** (l'atto manuale), ferma **per scelta finché `pagamenti` non ha un
+> processo rimborsi** — cioè finché non si chiude la **D8 (b)** di §4-bis. Non è
+> più questo cantiere a portarsi dietro lavoro di `vendite`: è `vendite` ad
+> aspettare questo.
+>
+> ⚠️ **Ma il posting arma due difetti in `vendite` che nessuno aveva visto**, ed
+> entrambi vanno nella slice 1 insieme alla madre: il sync dei fondi
+> **riscriverebbe righe già postate**, e un fondo interamente postato **si
+> auto-annullerebbe**. Misure e passi in
+> [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md)
+> §1.4 C-2 e C-3.
 
 ⚠️ **La slice 1 non tocca le rate**, e va bene così: è il gradino sotto tutto il
 resto, e si può collaudare senza aver deciso niente della 2.
@@ -1448,6 +1533,7 @@ stub vuoti.
 
 | Data | Cosa è cambiato |
 | --- | --- |
+| 2026-08-21 | ⭐ **Estratto il piano DB in un brief suo**: [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md). Qui restano le **decisioni di dominio**, là i **passi e le misure** — con la regola esplicita di quale sede si aggiorna per cosa, perché due documenti sullo stesso cantiere aperto divergono al primo aggiornamento (lezione già pagata dal cantiere fondi). 🔴 **Tre punti di questo brief corretti perché parlavano al presente di cose non più vere**: `fn_sync_pagamento_fondo_fattura` **non esiste più** (ritirata il 15/08); **B-2 era sbagliato a metà** — il trigger di mirror ha **già** il guard e solleva `P0001`, e il difetto vero è che tutte e quattro le funzioni di `pagamenti` sollevano `E_GENERICO`; il riquadro sulla **scadenza della metà «fondi»** è chiuso, perché quella metà è **fatta** (Fasi A/B/C/E/F applicate il 15-16/08) e **la dipendenza si è invertita** — la Fase D del cantiere fondi aspetta il processo rimborsi di `pagamenti`, cioè la **D8 (b)** di §4-bis. 🔴 **Cinque difetti nuovi misurati** e scritti là, tre bloccanti: `centri_riscossione` **non può contenere più di due righe** (il `where:` su `addUniqueConstraint` fu ignorato: il passo 3 di D9-d-1 oggi non è eseguibile, annotato in loco); `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate**; un fondo interamente postato **si auto-annullerebbe**. ⭐ La lezione trasversale ai due: *verificare che un'identità algebrica si conservi non è verificare che i consumatori la usino ancora bene* — §1-bis prova che «la bilancia regge da sé» ed è vero, ma il codice che quei termini li **riscrive** non regge |
 | 2026-08-15 (sera) | 🔴 **Il tampone di D1-bis era sbagliato, e l'ha smontato Tid spiegando cosa sono davvero le due soglie.** *«Il verso opposto non è un fondo»* è **falso**: `minimo_soglia_min` e `minimo_soglia_max` sono i **due capi di una banda che contiene lo zero** (esempio reale: `−500 / +10`), e il capo inferiore esiste **apposta** per riportare avanti i **crediti**. Un filtro `importo_target > 0` avrebbe spento metà del meccanismo, in silenzio. Il controllo giusto è la **corrispondenza col documento** (stesso segno del totale della sorgente, non superiore in valore assoluto), in un **guard trigger** perché un CHECK non può leggere `vendite.fatture`. 🔴 Seconda scoperta: **«soglia non impostata = meccanismo spento» vale solo a metà** — se manca il *massimo* la condizione diventa vera per tutti e **ogni** fattura diventa di minimo: configurazione incompleta = meccanismo **spalancato**. Deciso da Tid: dev'essere un errore di configurazione (CHECK «entrambe o nessuna»). Ritirata la trappola *«un automatismo tarato su un verso»* di §5, che era essa stessa l'errore, e sostituita con le due lezioni vere: **leggere la configurazione prima di dedurre l'intenzione**, e **un difetto e un comportamento voluto possono avere lo stesso sintomo**. ✅ Confermato il perimetro del processo rimborsi (in `pagamenti`, tre uscite, passaggio **passivo**: se le va a cercare da sé) |
 | 2026-08-15 | 🔴 **Rimisurata la tabella delle «due serrature» di D1-bis: sbagliata su entrambe le righe.** Il fondo si genera sulla **differenza** `saldo − saldo_contabile` e il secondo termine non dipende dai movimenti: la seconda serratura **non è la slice 1**, è **l'assenza di scrittori di righe contabili** (il guard di quadratura è la slice **2**), e si apre col primo altro scrittore — import del flusso, correzione a mano, o slice 1. E `minimo` non è una configurazione: lo **riscrive** `fn_ricalcola_totali_fattura` dal confronto fra totale e soglie dell'emittente, quindi si accende da solo. La conclusione operativa non cambia (il limite inferiore resta nella slice 1), cambia la **scadenza**. 🔴 Aggiunto che **il limite inferiore da solo peggiora le cose**: senza l'`ANNULLATO` automatico un fondo non più dovuto resta `DISPONIBILE` e viene comunque **applicato** — serve nello stesso lotto il guard che rilegge la capienza al momento dell'atto. ✅ Chiusa la domanda lasciata aperta in D1-bis (fondo esistente con target negativo: **si lascia com'è**) e decisa F-4 (`fn_sync_pagamento_fondo_fattura` si **ritira**). ⭐ Verificato che con un posting **atomico** la bilancia di B-1 **regge da sé** (i due termini si scambiano lo stesso importo): il rischio è tutto nella non-atomicità. ⚠️ Nuovo limite di dominio in §4: «incassato» ≠ «postato» — le misure di cassa devono **escludere i centri non-cassa** (`is_fondo_fattura`, `is_compensazione`), perché il fondo diventerà un movimento vero ma per **trasferimento**. Quattro trappole nuove in §5. Fonte: il piano del cantiere fondi, [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
 | 2026-08-02 | Stesura originale alla chiusura del cantiere satelliti fattura |
