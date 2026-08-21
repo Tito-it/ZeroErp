@@ -17,7 +17,15 @@
 > il 1° lotto il 31-07; dal 2° al 5° l'01-08; il 6° fra l'1 e il 2 agosto
 > (`storico.audit_log` compresa); il **7°** (2 code + approvazioni prezzo +
 > `VersioneDrawer`) e l'**8°** (drawer commessa + le 5 liste delle 3 dashboard)
-> il **03-08**. Registro del presidio a **43/43**.
+> il **03-08**. Registro del presidio a **43/43** — cioè le liste *montate
+> dal frontend*. ⚠️ Nel seed le definizioni sono **44**: la 44 è
+> `vendite.fondi_fattura_da_decidere` (seedata il 2026-08-15 da un altro
+> cantiere, nessun consumatore FE, per questo non è nel registro `_LISTE`;
+> nella whitelist del generatore è entrata il 2026-08-22).
+> ⚠️ **Qui si contano FILE, il presidio conta CODICI lista**: sono due unità
+> di misura diverse e divergono già oggi (le 3 dashboard valgono 5 codici).
+> `LottoDrawer` è 1 file = 3 codici, quindi alla sua conversione il piano
+> passa a 31/35 e il presidio a 46.
 >
 > Il rapporto che il piano voleva invertire — 14 liste sullo standard contro 71
 > con `DataTable` grezza (§8-bis, «il numero scomodo») — **è invertito**: 40
