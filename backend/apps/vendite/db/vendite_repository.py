@@ -248,7 +248,36 @@ class VenditeRepository:
                 fl.emittente_soggetto_ruolo_id,
                 fl.data_insert,
                 fl.user_insert,
-                s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                -- ⭐ «C'e' un errore grave nel dettaglio»: UN SOLO documento
+                -- fallito basta ad accendere il segnale sulla riga del lotto
+                -- (richiesta di Tid, 2026-08-21). E' la forma dei gestionali a
+                -- lotti: la testata avvisa, il dettaglio spiega.
+                -- ⚠️ EXISTS e non un COUNT: la riga di lista deve dire SE, non
+                -- QUANTI — e un EXISTS si ferma al primo che trova invece di
+                -- percorrere tutti i log di tutte le fatture del lotto.
+                -- ⚠️ Due sorgenti come la guardia PRE-1: il ponte in ERRORE
+                -- **oppure** un log critico non ritirato. Guardarne una sola
+                -- lascerebbe spenta la spia proprio nei casi che l'altra copre.
+                -- 📌 Costo misurato con EXPLAIN ANALYZE (2026-08-21): il
+                -- pianificatore trasforma l'EXISTS interno in un SubPlan
+                -- HASHATO eseguito UNA volta (`loops=1`), non per riga — 0,177
+                -- ms su 46 lotti. Non e' una N+1 travestita.
+                EXISTS (
+                    SELECT 1
+                      FROM vendite.fatturazione_lotti_fatture lf_err
+                     WHERE lf_err.lotto_id = fl.id
+                       AND (
+                            lf_err.stato_esecuzione = 'ERRORE'
+                            OR EXISTS (
+                                SELECT 1
+                                  FROM vendite.fatture_log fl_log
+                                 WHERE fl_log.fattura_id = lf_err.fattura_id
+                                   AND fl_log.status = 'C'
+                                   AND fl_log.disabilitato IS FALSE
+                            )
+                       )
+                ) AS ha_errori_gravi
     """
 
     _LOTTO_JOINS = """
@@ -300,6 +329,7 @@ class VenditeRepository:
             # vuota — cioe' SEMBRA la garanzia che il flag `multi_emittente`
             # pretende, senza esserlo.
             "emittente_ragione_sociale": row[18],
+            "ha_errori_gravi": bool(row[19]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -2140,6 +2170,30 @@ class VenditeRepository:
                 ON ndf.id = f.natura_doc_id
         """
 
+        # ⭐ L'ULTIMO ERRORE ATTACCATO ALLA RIGA (2026-08-21, richiesta di Tid).
+        # La colonna `stato_esecuzione` dice CHE la fattura e' fallita; da sola
+        # non dice perche', e il motivo lo aveva solo il toast del momento —
+        # cioe' nessuno, un minuto dopo.
+        # ⚠️ LATERAL e non un JOIN semplice: di log critici una fattura ne ha
+        # 0..n e ne serve UNO, il piu' recente. Con un JOIN normale una fattura
+        # con tre errori comparirebbe tre volte nell'elenco del lotto.
+        # ⚠️ Sta FUORI da `joins` di proposito: `count_sql` conta le righe del
+        # lotto e non ha bisogno del messaggio — un LATERAL nel COUNT sarebbe
+        # lavoro per niente su ogni pagina.
+        # 📌 `disabilitato IS NOT TRUE`: «chi alza la bandiera la abbassa» —
+        # un log ritirato dal task che l'ha scritto non deve piu' comparire.
+        errore_lateral = """
+            LEFT JOIN LATERAL (
+                SELECT fl.messaggio, fl.data_ora, fl.meta
+                  FROM vendite.fatture_log fl
+                 WHERE fl.fattura_id = fllf.fattura_id
+                   AND fl.status = 'C'
+                   AND fl.disabilitato IS NOT TRUE
+                 ORDER BY fl.data_ora DESC, fl.id DESC
+                 LIMIT 1
+            ) err ON TRUE
+        """
+
         count_sql = f"""
             SELECT COUNT(*)
             FROM vendite.fatturazione_lotti_fatture fllf
@@ -2173,9 +2227,13 @@ class VenditeRepository:
                 -- (§12.4-bis.8). Senza questa decodifica il drawer del lotto
                 -- non «assume» che siano tutte fatture: non ha il dato.
                 ndf.codice_interno      AS natura_doc_codice,
-                ndf.descrizione         AS natura_doc_descrizione
+                ndf.descrizione         AS natura_doc_descrizione,
+                err.messaggio           AS errore_messaggio,
+                err.data_ora            AS errore_data_ora,
+                err.meta                AS errore_meta
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
+            {errore_lateral}
             {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
@@ -2214,6 +2272,12 @@ class VenditeRepository:
                     "stato_doc_fiscale_codice": row[17],
                     "natura_doc_codice": row[18],
                     "natura_doc_descrizione": row[19],
+                    "errore_messaggio": row[20],
+                    "errore_data_ora": row[21].isoformat() if row[21] is not None else None,
+                    # Il `code` sta nel meta scritto da `marca_fattura_in_errore`:
+                    # serve al FE per dire di che errore si tratta, non solo che
+                    # c'e'. `jsonb_out` perche' dal cursore RAW arriva stringa.
+                    "errore_code": (jsonb_out(row[22]) or {}).get("code"),
                 }
             )
         return result, total_count

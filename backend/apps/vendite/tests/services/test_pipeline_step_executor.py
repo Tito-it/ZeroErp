@@ -57,6 +57,7 @@ Indice test eseguiti:
 43) PipelineStepExecutorUnitTests.test_popola_fatture_rettifiche_agganciata_al_registry_reale
 """
 
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -67,6 +68,28 @@ from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
 
 class PipelineStepExecutorUnitTests(SimpleTestCase):
+    # Scopo: ⚠️ `transaction.atomic` NEUTRALIZZATO per tutta la classe.
+    #        `_run_per_fattura_task` apre un SAVEPOINT per fattura (vedi il suo
+    #        commento: senza, l'errore della madre DB abortisce la transazione e
+    #        distrugge il proprio messaggio). Qui il repository e' un mock e non
+    #        c'e' database: un `SAVEPOINT` vero e' una query, e `SimpleTestCase`
+    #        le vieta — vincolo CI, gli stessi test girano dove il DB non c'e'.
+    #        Convenzione gia' in uso nel repo (`_atomic_noop` di
+    #        `test_commesse_source_handlers`), qui alzata a livello di classe
+    #        perche' il savepoint sta in un helper che quasi ogni test attraversa.
+    #        ⭐ Che il savepoint ci SIA e' presidiato a parte, da
+    #        `test_ogni_fattura_gira_nel_suo_savepoint`: neutralizzarlo ovunque
+    #        senza un test che lo pretende sarebbe il modo di perderlo al primo
+    #        refactor.
+    def setUp(self):
+        super().setUp()
+        patcher = patch(
+            "apps.vendite.services.pipeline_step_executor.transaction.atomic",
+            new=lambda *a, **k: nullcontext(),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     # Scopo: Gestisce `_build_executor` nel flusso applicativo del modulo.
     def _build_executor(self, processi):
         repo = MagicMock()
@@ -416,6 +439,60 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         self.assertEqual(kwargs["scope"], "FATTURA")
         self.assertEqual(kwargs["fattura_id"], 102)
         self.assertEqual(kwargs["lotto_id"], 9)
+
+    # Scopo: 🔴 OGNI FATTURA GIRA NEL SUO SAVEPOINT — il presidio del difetto
+    #        misurato in-app il 2026-08-21 (collaudo nota di credito).
+    #
+    #        Quando una madre DB solleva, la transazione PostgreSQL entra in
+    #        stato ABORTITO e ogni istruzione successiva risponde «la
+    #        transazione corrente e' interrotta». Le due scritture del percorso
+    #        d'errore — il log di scope FATTURA e il diario — sono istruzioni
+    #        SQL: fallivano, e il loro fallimento SOSTITUIVA l'errore di
+    #        dominio. All'operatore arrivava `E_PIPELINE`, «Errore nella
+    #        pipeline di fatturazione», mentre il DB aveva scritto «numera prima
+    #        la fattura 835».
+    #
+    #        ⚠️ Il test guarda la FORMA (un `atomic()` per fattura) e non
+    #        l'effetto, perche' l'effetto e' un comportamento di PostgreSQL che
+    #        senza database non si puo' riprodurre. E' il motivo per cui il
+    #        `setUp` di questa classe neutralizza `atomic`: qui invece si
+    #        conta, ed e' l'unico posto dove il savepoint esiste per i test.
+    def test_ogni_fattura_gira_nel_suo_savepoint(self):
+        processi = [{"task": "numera_fatture", "fase": "Numerazione", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "numera_fatture_default"
+        repo.list_fatture_by_lotto.return_value = [101, 102, 103]
+
+        aperti = []
+        repo.numera_fattura_opz_emessa.side_effect = lambda fid: aperti.append(("numera", fid))
+
+        def _atomic_contato(*_a, **_k):
+            aperti.append(("savepoint", None))
+            return nullcontext()
+
+        with patch(
+            "apps.vendite.services.pipeline_step_executor.transaction.atomic",
+            new=_atomic_contato,
+        ):
+            executor.execute_step(
+                lotto_id=9,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=False,
+                dry_run=False,
+            )
+
+        # Un savepoint PRIMA di ogni numerazione, non uno solo per tutto il giro:
+        # con un savepoint unico la prima fattura caduta porterebbe con se' la
+        # leggibilita' di tutte le altre.
+        self.assertEqual(
+            aperti,
+            [
+                ("savepoint", None), ("numera", 101),
+                ("savepoint", None), ("numera", 102),
+                ("savepoint", None), ("numera", 103),
+            ],
+        )
 
     # Scopo: 🔴 IL CODICE DEL DATABASE ARRIVA INTATTO ALL'OPERATORE. Il giro
     #        per-fattura appiattiva ogni `DatabaseError` su `E_TASK_FATTURA`

@@ -180,6 +180,28 @@ parla d'altro.
 esserlo: se la fattura rettificata sta in un lotto ancora in bozza, il rifiuto
 della madre DB è la risposta giusta.
 
+### Anche i task FALLITI finiscono nel diario (2026-08-21)
+
+`fn_fail_lotto_task_run` gira **dentro** la transazione dello step, che il
+fallimento annulla: la riga «questo task è andato in errore» spariva insieme al
+task. Il diario registrava quindi solo ciò che era andato bene — misurato prima
+del fix: **128 COMPLETATO, 56 ANNULLATO, zero ERRORE** su 184 run, mentre i
+fallimenti c'erano.
+
+Ora il gestore d'eccezione del runner (`_persist_task_run_error_safely`, fuori
+dalla transazione) **riscrive** il run fallito: rifà la coppia `start` + `fail`,
+perché `fn_start_lotto_task_run` è la sola che sa calcolare il `tentativo` e
+ricrearlo a mano significherebbe copiarne la regola in un secondo posto.
+
+⚠️ Solo dove il **tracing è attivo**: le coordinate viaggiano sull'eccezione e
+vengono attaccate solo se il task aveva un `task_run` aperto. Dove non c'è
+`task_policy` non c'è diario, ed è una scelta di configurazione — non va
+aggirata scrivendo righe che il giro riuscito non scriverebbe.
+
+📌 A differenza della marcatura sulla fattura, i run **si accumulano**: la
+bandiera racconta l'ultimo tentativo, lo storico dei tentativi li racconta
+tutti.
+
 ### Tracing e resume (`task_policy`)
 
 Il tracing esiste **solo se** c'è una riga in

@@ -95,6 +95,35 @@ class LottoSegnalazioniSummary(TypedDict):
     fatture_stato_esecuzione_errore_count: int
 
 
+class LottoSegnalazioneRow(TypedDict):
+    # Una segnalazione del lotto, nella forma in cui si LEGGE — i conteggi del
+    # riepilogo dicono quante sono, questa dice cosa sono.
+    #
+    # ⚠️ DUE ORIGINI in un elenco solo, e non e' una comodita': i conteggi che
+    # il riepilogo espone sommano gia' `fatture_log` e `fatturazione_lotti_log`
+    # (`fn_get_lotto_segnalazioni_summary`). Un elenco che ne mostrasse una sola
+    # direbbe un numero diverso dal banner sopra — ed e' il tipo di divergenza
+    # che si scopre solo quando qualcuno la conta a mano.
+    # Chiave di riga per il rendering: `<origine>:<id>`. ⚠️ Non si usa
+    # `data_ora` — non e' univoco (sei righe con lo stesso microsecondo,
+    # misurato) — ne' il solo `id`, che le due tabelle generano da sequenze
+    # indipendenti.
+    riga_key: str
+    origine: str          # 'FATTURA' | 'LOTTO'
+    livello: str          # 'C' | 'W' | 'I'
+    messaggio: str | None
+    data_ora: str | None
+    codice: str | None    # dal `meta`, quando la segnalazione lo porta
+    fase: str | None      # solo origine LOTTO
+    # Le tre colonne che rendono la riga LEGGIBILE da un operatore. Un id
+    # interno non e' visibile da nessuna parte nell'interfaccia: senza nome e
+    # importo, «documento 835» non identifica niente (rilievo di Tid,
+    # 2026-08-21). NULL sulle segnalazioni di LOTTO, che non hanno documento.
+    fattura_id: int | None
+    ragione_sociale_completa: str | None
+    totale_doc: str | None
+
+
 class LottoTaskRunRow(TypedDict):
     id: int
     lotto_id: int
@@ -134,6 +163,13 @@ class LottoFattureRow(TypedDict):
     # puo' contenere di diverse, quindi «N fatture» e' «N documenti».
     natura_doc_codice: str | None
     natura_doc_descrizione: str | None
+    # ⭐ L'ULTIMO errore CRITICO attaccato a questa fattura (`fatture_log`
+    # status='C' non ritirato), NULL quando non ce n'e'. `stato_esecuzione` dice
+    # CHE la riga e' fallita; questi tre dicono perche', quando e con quale
+    # codice — l'informazione che prima viveva solo nel toast del momento.
+    errore_messaggio: str | None
+    errore_data_ora: str | None
+    errore_code: str | None
 
 
 class LottoListRow(TypedDict):
@@ -162,6 +198,10 @@ class LottoListRow(TypedDict):
     # `emittente_soggetto_ruolo_id`, che pure c'e' due righe sopra: un id a
     # video non dichiara l'emittente, sposta l'ambiguita' di un passo.
     emittente_ragione_sociale: str | None
+    # ⭐ C'e' almeno UN documento in errore grave nel dettaglio del lotto: basta
+    # uno ad accendere la spia sulla riga di lista. SE, non quanti — il numero
+    # e il motivo stanno nel drawer, scheda «Segnalazioni».
+    ha_errori_gravi: bool
 
 
 class CommessaEmitResult(TypedDict):

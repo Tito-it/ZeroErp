@@ -142,6 +142,36 @@ export function useLottoAzioni({ onDone } = {}) {
       .join('\n')
   }
 
+// I motivi di arresto del driver pipeline (`_drive_lotto_until_done`) che sono
+// un ESITO BUONO. Tutto il resto — `ERRORE`, `BLOCCATO_CRITICITA`,
+// `GUARD_MAX_ITER` — è un fallimento.
+//
+// 🔴 PERCHE' QUESTA LISTA ESISTE (difetto trovato in-app il 2026-08-21). Gli
+// endpoint del runner rispondono **200 anche quando la catena si ferma per
+// errore**: il fallimento non è un errore HTTP, è un campo dell'esito
+// (`motivo_stop` + `errore`), perché la catena può aver eseguito qualche step
+// prima di fermarsi e quel lavoro va raccontato. `useApiHandler` vede un 200 e
+// non ha niente da segnalare — quindi chi legge l'esito DEVE guardare
+// `motivo_stop`, altrimenti annuncia come riuscita un'operazione fallita.
+//
+// Misurato: «Rendi definitive» su un lotto con una nota di credito la cui
+// fattura non è ancora numerata mostrava il toast verde «Fatture numerate».
+// Il documento non era numerato, il DB aveva rifiutato con il suo motivo, e
+// all'operatore non arrivava niente.
+const MOTIVI_STOP_OK = ['COMPLETATO', 'FERMATO_A_STATO']
+
+// Scopo: il verdetto su una risposta del runner. Chi non porta `motivo_stop`
+//   (ristampa, annulla, riporta a draft) non è un esito di catena: per quelli
+//   il 200 è già la risposta, e si resta su «riuscito».
+//   `messaggio` è quello del DB quando c'è — è l'unico che dice QUALE
+//   documento sblocca la strada — con ripiego sul codice di arresto, mai su
+//   una frase generica che nasconde il motivo.
+function verdettoRunner(res) {
+  const motivo = res?.motivo_stop
+  if (!motivo || MOTIVI_STOP_OK.includes(motivo)) return { ok: true }
+  return { ok: false, messaggio: res?.errore?.message || motivo }
+}
+
   // Scopo: esegue un verbo su un lotto — conferma, chiamata, toast, refresh.
   //   Usato dal drawer, che ha già il blob capability e quindi mostra
   //   disabilitate le azioni non eseguibili.
@@ -161,10 +191,17 @@ export function useLottoAzioni({ onDone } = {}) {
         const res = await execute(() => verbo.api(lottoId))
         // `!== null` e non `if (res)`: un esito vuoto è comunque un successo
         // (memoria feedback_drawer_result_check).
-        if (res !== null) {
-          notify.success(verbo.esito(res))
+        if (res === null) return
+        const verdetto = verdettoRunner(res)
+        if (!verdetto.ok) {
+          // ⚠️ Si ricarica LO STESSO: la catena può essersi fermata DOPO aver
+          // eseguito qualche step, e la lista deve mostrare dove è arrivata.
+          notify.error(verdetto.messaggio)
           if (!verbo.skipDone) await onDone?.()
+          return
         }
+        notify.success(verbo.esito(res))
+        if (!verbo.skipDone) await onDone?.()
       },
     })
   }

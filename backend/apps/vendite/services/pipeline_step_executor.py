@@ -10,6 +10,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from django.db import transaction
+
 from apps.core.services.db_error_fields import (
     db_diag,
     db_error_code,
@@ -418,6 +420,44 @@ class PipelineStepExecutor:
             )
         except Exception as exc:
             self._fail_task_run_safely(task_run_id, exc)
+            # 🔴 IL TASK RUN IN ERRORE NON SOPRAVVIVE ALLA RIGA SOPRA, e non e'
+            # colpa sua: `fn_fail_lotto_task_run` scrive DENTRO la transazione
+            # dello step, che il rilancio annulla. Il diario dei task registrava
+            # quindi solo cio' che era andato bene — misurato il 2026-08-21:
+            # 128 COMPLETATO, 56 ANNULLATO, **zero ERRORE** su 184 run, mentre
+            # i fallimenti c'erano eccome.
+            # Qui si appendono all'eccezione le coordinate per RISCRIVERLO dopo
+            # il rollback: lo fa il runner, che e' l'unico punto FUORI dalla
+            # transazione (`_persist_task_run_error_safely`).
+            # ⚠️ Attributo sull'eccezione e non `context` del ServiceError: la
+            # riscrittura serve anche per le eccezioni NON di dominio, che un
+            # `context` non ce l'hanno.
+            # ⚠️ Solo se il tracing e' attivo (`task_run_id`): dove non c'e'
+            # policy non c'e' diario, ed e' una scelta di configurazione — non
+            # va aggirata scrivendo righe che il giro riuscito non scriverebbe.
+            # ⚠️ `try` sull'ASSEGNAZIONE, non un di piu': non tutte le
+            # eccezioni accettano attributi nuovi (una classe con `__slots__`
+            # solleva `AttributeError`), e qui siamo dentro la gestione di un
+            # fallimento — un secondo errore prenderebbe il posto del primo,
+            # che e' l'unico che l'operatore sta aspettando. Perdere la riga di
+            # diario e' accettabile; perdere il messaggio no.
+            if task_run_id is not None and pipeline_id is not None:
+                try:
+                    exc.zeroerp_task_run_fallito = {
+                        "lotto_id": lotto_id,
+                        "pipeline_id": pipeline_id,
+                        "stato_doc_fiscale_id": stato_doc_fiscale_id,
+                        "task_code": task,
+                        "fase": fase,
+                        "error_code": (
+                            exc.code
+                            if isinstance(exc, ServiceError)
+                            else db_error_code(exc) or "E_TASK"
+                        ),
+                        "error_message": messaggio_eccezione(exc),
+                    }
+                except Exception:  # noqa: S110 - vedi commento sopra
+                    pass
             raise
         if task_run_id is not None:
             # D-Q p.3: un esito PARZIALE (giro completato, alcune fatture in
@@ -518,7 +558,39 @@ class PipelineStepExecutor:
         # Helper riusabile: esecuzione task per-fattura con logging scope FATTURA.
         for fattura_id in fattura_ids:
             try:
-                action(fattura_id)
+                # 🔴 SAVEPOINT PER FATTURA — SENZA, IL PERCORSO D'ERRORE SI
+                # DISTRUGGE DA SOLO. Quando una madre DB solleva, la
+                # transazione PostgreSQL entra in stato ABORTITO: da quel
+                # momento QUALUNQUE istruzione risponde «la transazione
+                # corrente e' interrotta». Le due righe sotto — il log di scope
+                # FATTURA e la scrittura del diario — sono istruzioni SQL:
+                # fallivano entrambe, e il loro fallimento SOSTITUIVA l'errore
+                # di dominio. L'operatore riceveva `E_PIPELINE`, «Errore nella
+                # pipeline di fatturazione», e il codice vero non arrivava
+                # nemmeno al diario del lotto.
+                #
+                # 🔴 Misurato in-app il 2026-08-21 (collaudo nota di credito,
+                # lotto 6034): il DB aveva scritto la sua riga con tutto —
+                # «Non si puo' numerare il documento 15353: la fattura che
+                # rettifica non e' ancora numerata (documento 835)» — e a video
+                # non arrivava niente. In cascata fallivano anche il marcatore
+                # di errore del lotto (`_mark_lotto_error_safely`) e il
+                # passaggio di stato a ERRORE: il lotto restava COMPLETATO,
+                # cioe' raccontava il contrario di quello che era successo.
+                #
+                # Con il savepoint, `ROLLBACK TO SAVEPOINT` riporta la
+                # transazione in stato utilizzabile: l'errore resta, ma si puo'
+                # ancora scrivere. E' la stessa disciplina del BB `run_fan_out`
+                # (`isola_in_transazione=True`), che qui non si puo' riusare
+                # perche' quello raccoglie tutti gli esiti e questo giro e'
+                # FAIL-FAST: si ferma al primo che cade.
+                #
+                # ⚠️ Non cambia cosa viene scritto: il rilancio propaga e la
+                # transazione dello step viene comunque annullata a monte. Il
+                # savepoint serve alla LEGGIBILITA' del fallimento, non a
+                # salvarne il lavoro.
+                with transaction.atomic():
+                    action(fattura_id)
             except ServiceError as exc:
                 self._log_fattura_task_error(
                     task=task,

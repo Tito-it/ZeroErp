@@ -54,6 +54,7 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.vendite.services.lotto_segnalazioni_service import LottoSignalStatus
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 
 
@@ -197,6 +198,14 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             self.disattiva_calls = getattr(self, "disattiva_calls", 0) + 1
             return 0
 
+        # Scopo: Stub del ritiro delle marcature per-fattura scritte dal BE.
+        #        Registra l'ORDINE rispetto al verdetto: e' l'unica cosa che
+        #        conta di questo metodo (vedi il test dedicato).
+        def ritira_marcature_fatture_be(self, lotto_id):
+            self.eventi = getattr(self, "eventi", [])
+            self.eventi.append("ritira")
+            return 0
+
         # Scopo: Stub `sync_lotto_fatture_stato` con tracking delle chiamate (lotto, stato).
         def sync_lotto_fatture_stato(self, *, lotto_id, stato_doc_fiscale_id=None):
             if not hasattr(self, "sync_calls"):
@@ -329,6 +338,135 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
         self.assertEqual(repo.last_stato, "ERRORE")
+
+    # Scopo: 🔴 LA BANDIERA SI ABBASSA PRIMA DEL VERDETTO — il presidio della
+    #        porta a senso unico.
+    #
+    #        Dal 2026-08-21 il BE marca le fatture fallite perché l'operatore
+    #        legga il motivo sulla riga. Quelle marcature entrano nella guardia
+    #        unificata PRE-1 (`blocks_next_step` conta critici **e** righe in
+    #        ERRORE): se il verdetto le vedesse ancora alzate dal tentativo
+    #        precedente, il primo fallimento chiuderebbe il lotto per sempre —
+    #        l'operatore corregge la causa, ripreme «Rendi definitive» e trova
+    #        «Lotto bloccato per segnalazioni critiche attive», un messaggio
+    #        che parla d'altro.
+    #
+    #        ⚠️ Il test guarda l'ORDINE, non l'effetto: l'effetto è un conteggio
+    #        del database. È l'ordine la cosa fragile — invertirlo non rompe
+    #        niente di visibile e rimette in scena esattamente quel difetto.
+    def test_ritira_le_proprie_marcature_prima_di_chiedere_il_verdetto(self):
+        eventi = []
+
+        class _RepoOrdine(self._RepoMock):
+            def ritira_marcature_fatture_be(self, lotto_id):
+                eventi.append("ritira")
+                return 0
+
+        class _ServizioSegnalazioni:
+            def evaluate_lotto_status(self, lotto_id):
+                eventi.append("verdetto")
+                return LottoSignalStatus(
+                    critical_count=0, warning_count=0, attention_count=0,
+                    fatture_stato_esecuzione_errore_count=0,
+                    is_error=False, blocks_next_step=False, summary={},
+                )
+
+        runner = LottoPipelineRunner(
+            repository=_RepoOrdine(), step_executor=self._StepExecutorMock(),
+        )
+        runner.lotto_segnalazioni_service = _ServizioSegnalazioni()
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(dry_run=False))
+
+        self.assertEqual(eventi[:2], ["ritira", "verdetto"])
+
+    # Scopo: ⭐ IL FALLIMENTO RESTA ATTACCATO ALLA RIGA — e la scrittura avviene
+    #        FUORI dalla transazione dello step, che e' l'unica ragione per cui
+    #        sopravvive.
+    #
+    #        Il giro per-fattura e' fail-fast: rilancia, e lo step viene
+    #        annullato. Una riga di log scritta li' dentro spariva col rollback
+    #        insieme all'errore che descriveva — misurato in-app il 2026-08-21:
+    #        il toast diceva il motivo, e un minuto dopo il motivo non esisteva
+    #        piu' da nessuna parte (`stato_esecuzione` restava 'COMPLETED',
+    #        `fatture_log` vuoto). Il valore 'ERRORE' era nel CHECK della
+    #        tabella dal primo giorno e non lo scriveva nessuno.
+    #
+    #        ⚠️ Il `fattura_id` arriva dal `context` del ServiceError: e' il
+    #        canale che `_run_per_fattura_task` riempie gia' per il diario.
+    def test_runner_attacca_l_errore_alla_fattura_che_lo_ha_causato(self):
+        class _RepoConMarca(self._RepoMock):
+            marcate = None
+
+            def marca_fattura_in_errore(self, *, lotto_id, fattura_id, code, messaggio, meta=None):
+                self.marcate = {
+                    "lotto_id": lotto_id, "fattura_id": fattura_id,
+                    "code": code, "messaggio": messaggio,
+                }
+
+        class _StepConErroreDiFattura:
+            def execute_step(self, **kwargs):
+                raise ServiceError(
+                    code="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+                    message="Non si puo' numerare il documento 15353: ...",
+                    detail="Task numera_fatture fallito su fattura_id=15353",
+                    context={"lotto_id": 6034, "fattura_id": 15353, "task": "numera_fatture"},
+                )
+
+        repo = _RepoConMarca()
+        runner = LottoPipelineRunner(repository=repo, step_executor=_StepConErroreDiFattura())
+        with _fake_tx():
+            with self.assertRaises(ServiceError):
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+
+        self.assertIsNotNone(repo.marcate, "il fallimento non e' stato attaccato alla riga")
+        self.assertEqual(repo.marcate["fattura_id"], 15353)
+        self.assertEqual(repo.marcate["code"], "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
+        self.assertIn("15353", repo.marcate["messaggio"])
+
+    # Scopo: un errore di LOTTO non ha una riga a cui attaccarsi, e non deve
+    #        inventarsene una. Senza questo ramo il `context` senza
+    #        `fattura_id` finirebbe in una marcatura su `None`.
+    def test_errore_senza_fattura_non_marca_nessuna_riga(self):
+        class _RepoConMarca(self._RepoMock):
+            chiamate = 0
+
+            def marca_fattura_in_errore(self, **kwargs):
+                self.chiamate += 1
+
+        repo = _RepoConMarca()
+        runner = LottoPipelineRunner(
+            repository=repo, step_executor=self._ServiceFailingStepExecutorMock(),
+        )
+        with _fake_tx():
+            with self.assertRaises(ServiceError):
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(repo.chiamate, 0)
+
+    # Scopo: la marcatura e' best-effort come il gemello sul lotto: se fallisce
+    #        NON deve mascherare l'eccezione vera, che e' l'unica cosa che
+    #        l'operatore sta aspettando.
+    def test_marcatura_fallita_non_maschera_l_errore_vero(self):
+        class _RepoRotto(self._RepoMock):
+            def marca_fattura_in_errore(self, **kwargs):
+                raise RuntimeError("marca-fallita")
+
+        class _StepConErroreDiFattura:
+            def execute_step(self, **kwargs):
+                raise ServiceError(
+                    code="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+                    message="msg",
+                    detail="d",
+                    context={"fattura_id": 15353},
+                )
+
+        runner = LottoPipelineRunner(
+            repository=_RepoRotto(), step_executor=_StepConErroreDiFattura(),
+        )
+        with _fake_tx():
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(exc.exception.code, "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
 
     # Scopo: Verifica il caso `test_runner_does_not_mask_error_when_mark_fails`.
     def test_runner_does_not_mask_error_when_mark_fails(self):

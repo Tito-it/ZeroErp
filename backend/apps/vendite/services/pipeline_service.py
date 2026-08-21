@@ -15,7 +15,11 @@ from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
-from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
+from apps.vendite.services.lotto_segnalazioni_service import (
+    LIVELLI_SEGNALAZIONE,
+    LIVELLO_CRITICO,
+    LottoSegnalazioniService,
+)
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
@@ -519,7 +523,9 @@ def fn_elimina_fattura_da_lotto(
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.
-def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
+def fn_get_lotto_segnalazioni_summary(
+    *, lotto_id: int, livello: str = LIVELLO_CRITICO,
+) -> dict[str, object]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",
@@ -528,6 +534,15 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
         context={"lotto_id": lotto_id},
         function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
         log_to_db=True,
+    )
+    ErrorManager.require(
+        livello in LIVELLI_SEGNALAZIONE,
+        code="E_PIPELINE_VALIDATION",
+        message="Livello segnalazione non valido.",
+        detail=f"livello={livello!r} non in {sorted(LIVELLI_SEGNALAZIONE)}",
+        context={"lotto_id": lotto_id, "livello": livello},
+        function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
+        log_to_db=False,
     )
     service = LottoSegnalazioniService()
     status = service.evaluate_lotto_status(lotto_id)
@@ -539,6 +554,14 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
         "is_error": status.is_error,
         "blocks_next_step": status.blocks_next_step,
         "summary": status.summary,
+        # ⭐ L'elenco, non solo i numeri. Viaggia con i conteggi in UNA risposta
+        # perche' i due li legge la stessa scheda e devono raccontare lo stesso
+        # istante: due chiamate separate potrebbero cadere a cavallo di un giro
+        # e mostrare «2 critiche» sopra un elenco di tre.
+        "livello": livello,
+        "segnalazioni": service.repository.list_lotto_segnalazioni(
+            lotto_id=lotto_id, livello=livello,
+        ),
     }
 
 
