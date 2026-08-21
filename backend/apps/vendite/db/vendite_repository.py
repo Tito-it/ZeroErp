@@ -248,7 +248,36 @@ class VenditeRepository:
                 fl.emittente_soggetto_ruolo_id,
                 fl.data_insert,
                 fl.user_insert,
-                s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                -- ⭐ «C'e' un errore grave nel dettaglio»: UN SOLO documento
+                -- fallito basta ad accendere il segnale sulla riga del lotto
+                -- (richiesta di Tid, 2026-08-21). E' la forma dei gestionali a
+                -- lotti: la testata avvisa, il dettaglio spiega.
+                -- ⚠️ EXISTS e non un COUNT: la riga di lista deve dire SE, non
+                -- QUANTI — e un EXISTS si ferma al primo che trova invece di
+                -- percorrere tutti i log di tutte le fatture del lotto.
+                -- ⚠️ Due sorgenti come la guardia PRE-1: il ponte in ERRORE
+                -- **oppure** un log critico non ritirato. Guardarne una sola
+                -- lascerebbe spenta la spia proprio nei casi che l'altra copre.
+                -- 📌 Costo misurato con EXPLAIN ANALYZE (2026-08-21): il
+                -- pianificatore trasforma l'EXISTS interno in un SubPlan
+                -- HASHATO eseguito UNA volta (`loops=1`), non per riga — 0,177
+                -- ms su 46 lotti. Non e' una N+1 travestita.
+                EXISTS (
+                    SELECT 1
+                      FROM vendite.fatturazione_lotti_fatture lf_err
+                     WHERE lf_err.lotto_id = fl.id
+                       AND (
+                            lf_err.stato_esecuzione = 'ERRORE'
+                            OR EXISTS (
+                                SELECT 1
+                                  FROM vendite.fatture_log fl_log
+                                 WHERE fl_log.fattura_id = lf_err.fattura_id
+                                   AND fl_log.status = 'C'
+                                   AND fl_log.disabilitato IS FALSE
+                            )
+                       )
+                ) AS ha_errori_gravi
     """
 
     _LOTTO_JOINS = """
@@ -300,6 +329,7 @@ class VenditeRepository:
             # vuota — cioe' SEMBRA la garanzia che il flag `multi_emittente`
             # pretende, senza esserlo.
             "emittente_ragione_sociale": row[18],
+            "ha_errori_gravi": bool(row[19]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -2140,6 +2170,30 @@ class VenditeRepository:
                 ON ndf.id = f.natura_doc_id
         """
 
+        # ⭐ L'ULTIMO ERRORE ATTACCATO ALLA RIGA (2026-08-21, richiesta di Tid).
+        # La colonna `stato_esecuzione` dice CHE la fattura e' fallita; da sola
+        # non dice perche', e il motivo lo aveva solo il toast del momento —
+        # cioe' nessuno, un minuto dopo.
+        # ⚠️ LATERAL e non un JOIN semplice: di log critici una fattura ne ha
+        # 0..n e ne serve UNO, il piu' recente. Con un JOIN normale una fattura
+        # con tre errori comparirebbe tre volte nell'elenco del lotto.
+        # ⚠️ Sta FUORI da `joins` di proposito: `count_sql` conta le righe del
+        # lotto e non ha bisogno del messaggio — un LATERAL nel COUNT sarebbe
+        # lavoro per niente su ogni pagina.
+        # 📌 `disabilitato IS NOT TRUE`: «chi alza la bandiera la abbassa» —
+        # un log ritirato dal task che l'ha scritto non deve piu' comparire.
+        errore_lateral = """
+            LEFT JOIN LATERAL (
+                SELECT fl.messaggio, fl.data_ora, fl.meta
+                  FROM vendite.fatture_log fl
+                 WHERE fl.fattura_id = fllf.fattura_id
+                   AND fl.status = 'C'
+                   AND fl.disabilitato IS NOT TRUE
+                 ORDER BY fl.data_ora DESC, fl.id DESC
+                 LIMIT 1
+            ) err ON TRUE
+        """
+
         count_sql = f"""
             SELECT COUNT(*)
             FROM vendite.fatturazione_lotti_fatture fllf
@@ -2173,9 +2227,13 @@ class VenditeRepository:
                 -- (§12.4-bis.8). Senza questa decodifica il drawer del lotto
                 -- non «assume» che siano tutte fatture: non ha il dato.
                 ndf.codice_interno      AS natura_doc_codice,
-                ndf.descrizione         AS natura_doc_descrizione
+                ndf.descrizione         AS natura_doc_descrizione,
+                err.messaggio           AS errore_messaggio,
+                err.data_ora            AS errore_data_ora,
+                err.meta                AS errore_meta
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
+            {errore_lateral}
             {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
@@ -2214,6 +2272,12 @@ class VenditeRepository:
                     "stato_doc_fiscale_codice": row[17],
                     "natura_doc_codice": row[18],
                     "natura_doc_descrizione": row[19],
+                    "errore_messaggio": row[20],
+                    "errore_data_ora": row[21].isoformat() if row[21] is not None else None,
+                    # Il `code` sta nel meta scritto da `marca_fattura_in_errore`:
+                    # serve al FE per dire di che errore si tratta, non solo che
+                    # c'e'. `jsonb_out` perche' dal cursore RAW arriva stringa.
+                    "errore_code": (jsonb_out(row[22]) or {}).get("code"),
                 }
             )
         return result, total_count
@@ -2684,10 +2748,23 @@ class VenditeRepository:
                 l.n_discendenti_attivi,
                 l.is_transitato,
                 l.n_sorgenti,
-                l.root_codice
+                l.root_codice,
+                l.natura_doc_codice,
+                -- ⚠️ La natura della FRONTIERA si legge dal SUO nodo, non da
+                -- questa riga: la summary porta solo la natura del documento
+                -- stesso. E serve davvero — la frontiera PUO' essere una nota
+                -- di credito (arco G dalla commessa, che non e' un ramo di
+                -- ritorno): misurato il 2026-08-21, e' gia' la frontiera
+                -- dell'ordine 240 e della commessa 322. Senza questa colonna
+                -- il pannello la etichetta «Fattura». Stesso JOIN alla vista
+                -- nodi del traversal qui sotto.
+                nfr.natura_doc_codice          AS frontiera_natura_doc_codice
             FROM vendite.vw_documento_lineage l
             JOIN config.sorgenti s ON s.id = l.tipo_id
             LEFT JOIN config.sorgenti sf ON sf.id = l.frontiera_tipo_id
+            LEFT JOIN vendite.vw_documento_lineage_nodi nfr
+                   ON nfr.tipo_id = l.frontiera_tipo_id
+                  AND nfr.uid = l.frontiera_uid
             WHERE l.tipo_id = %s
               AND l.uid = %s
         """
@@ -2720,6 +2797,8 @@ class VenditeRepository:
             "is_transitato": bool(row[20]),
             "n_sorgenti": int(row[21]),
             "root_codice": row[22],
+            "natura_doc_codice": row[23],
+            "frontiera_natura_doc_codice": row[24],
         }
 
     # Scopo: Catena dei passaggi di un documento via
@@ -2744,7 +2823,9 @@ class VenditeRepository:
                 -- Id numerico apribile nel drawer di dettaglio: uid::bigint
                 -- per i tipi id-keyed; traduzione uuid->id per preventivo/
                 -- offerta (unici key_selector='uid'). NULL = fuori scope RLS
-                -- o nodo senza drawer (fattura/commessa) -> FE non apre.
+                -- -> tappa consultiva, il FE non apre. (Fattura e commessa un
+                -- drawer ce l'hanno: dal 2026-07-29 il grafo non ha piu' nodi
+                -- senza superficie.)
                 COALESCE(pfrom.id, ofrom.id,
                     CASE WHEN sf.key_selector = 'id'
                          THEN NULLIF(p.from_uid, '')::bigint END) AS from_doc_id,
@@ -2758,7 +2839,12 @@ class VenditeRepository:
                 COALESCE(pto.id, oto.id,
                     CASE WHEN st.key_selector = 'id'
                          THEN NULLIF(p.to_uid, '')::bigint END) AS to_doc_id,
-                p.is_ramo_inverso
+                p.is_ramo_inverso,
+                -- La natura dei due estremi: distingue una nota di credito da
+                -- una fattura quando la tappa e' la seconda di fila sotto lo
+                -- stesso tipo documento (arco N).
+                p.from_natura_doc_codice,
+                p.to_natura_doc_codice
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
@@ -2802,6 +2888,8 @@ class VenditeRepository:
                     "to_is_abortito": bool(row[17]),
                     "to_doc_id": None if row[18] is None else int(row[18]),
                     "is_ramo_inverso": bool(row[19]),
+                    "from_natura_doc_codice": row[20],
+                    "to_natura_doc_codice": row[21],
                 }
             )
         return result

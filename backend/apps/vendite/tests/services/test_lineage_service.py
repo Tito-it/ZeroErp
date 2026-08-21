@@ -20,6 +20,7 @@ Indice test eseguiti:
 10) LineagePassaggiServiceTests.test_frontiera_none_se_non_transitato
 11) LineagePassaggiServiceTests.test_frontiera_none_se_self
 12) LineagePassaggiServiceTests.test_frontiera_valorizzata
+13) LineagePassaggiServiceTests.test_frontiera_nota_di_credito_porta_la_natura
 13) LineagePassaggiServiceTests.test_is_ramo_inverso_passthrough
 """
 
@@ -69,6 +70,11 @@ def _nodo(**overrides):
         "is_transitato": True,
         "n_sorgenti": 1,
         "root_codice": "PRV0000185",
+        # NULL su un ordine: la natura esiste solo sui documenti fiscali.
+        "natura_doc_codice": None,
+        # Frontiera DDT: nemmeno lei ha natura. Il caso valorizzato (frontiera
+        # = nota di credito) ha il suo test dedicato.
+        "frontiera_natura_doc_codice": None,
     }
     base.update(overrides)
     return base
@@ -96,6 +102,8 @@ def _passaggio(**overrides):
         "to_is_abortito": False,
         "to_doc_id": 31,
         "is_ramo_inverso": False,
+        "from_natura_doc_codice": None,
+        "to_natura_doc_codice": None,
     }
     base.update(overrides)
     return base
@@ -103,9 +111,13 @@ def _passaggio(**overrides):
 
 class LineagePassaggiServiceTests(TestCase):
     # Scopo: Tipo documento fuori whitelist -> E_VENDITE_VALIDATION.
+    # ⚠️ L'esempio era "FATTURA" e il 2026-08-21 e' entrata in whitelist: il
+    # test restava verde per la ragione sbagliata (arrivava fino al repository e
+    # falliva con NOT_FOUND). Ora usa un codice che non esiste in
+    # `config.sorgenti` e non puo' entrarci per distrazione.
     def test_tipo_fuori_whitelist(self):
         with self.assertRaises(ServiceError) as ctx:
-            get_documento_passaggi("FATTURA", 1)
+            get_documento_passaggi("TIPO_INESISTENTE", 1)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: documento_id nullo/negativo/non-int -> E_VENDITE_VALIDATION.
@@ -243,6 +255,7 @@ class LineagePassaggiServiceTests(TestCase):
             data["frontiera"],
             {
                 "tipo_codice": "DDT_VENDITA",
+                "natura_doc_codice": None,
                 "codice": "DDT0000031",
                 "stato_codice_interno": "SPEDITO",
                 "fase": "IN_CORSO",
@@ -250,13 +263,60 @@ class LineagePassaggiServiceTests(TestCase):
             },
         )
 
-    # Scopo: COMMESSA è nella whitelist passaggi (Fase C, genealogia inversa
-    #        via drawer leggero); FATTURA resta esclusa (nodo terminale senza
-    #        superficie propria, Q4).
-    def test_commessa_in_whitelist_fattura_esclusa(self):
+    # Scopo: 🔴 LA FRONTIERA PUO' ESSERE UNA NOTA DI CREDITO, e la natura deve
+    #        arrivare al FE. Non e' un caso di scuola: l'arco G dalla commessa
+    #        NON e' un ramo di ritorno, e al 2026-08-21 la NC 15353 e' gia' la
+    #        frontiera dell'ordine 240 e della commessa 322 (misurato). Senza
+    #        la natura il pannello etichetta «Fattura» il documento sbagliato —
+    #        ed e' l'invariante falsa («una NC non e' mai frontiera») che il
+    #        pgTAP del DB ha corretto (§44.5 del brief).
+    #        `codice=None` nel fixture e' fedele: la NC frontiera non e' ancora
+    #        numerata, ed e' il caso che ha scoperto anche la fallback
+    #        «non ancora numerato» su frontiera e chip lista.
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi", return_value=[])
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "get_lineage_nodo",
+        return_value=_nodo(
+            frontiera_tipo_id=10,
+            frontiera_tipo_codice="FATTURA",
+            frontiera_uid="15353",
+            frontiera_codice=None,
+            frontiera_stato_codice_interno="EMESSA",
+            frontiera_natura_doc_codice="NOTA_CREDITO",
+        ),
+    )
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_frontiera_nota_di_credito_porta_la_natura(self, _mock_sorg, _mock_nodo, _mock_p):
+        data = get_documento_passaggi("ORDINE_VENDITA", 240)
+        self.assertEqual(data["frontiera"]["tipo_codice"], "FATTURA")
+        self.assertEqual(data["frontiera"]["natura_doc_codice"], "NOTA_CREDITO")
+        self.assertIsNone(data["frontiera"]["codice"])
+
+    # Scopo: gli OTTO tipi con endpoint /passaggi/. La lista si scrive per
+    #        intero e non per appartenenza: un tipo aggiunto senza la sua rotta
+    #        (o una rotta senza il tipo) e' un 404 che nessun test vedrebbe.
+    #
+    #        ⚠️ FATTURA c'e' dal 2026-08-21 e prima questo test ne presidiava
+    #        l'ASSENZA («capolinea senza superficie propria», Q4). Le due meta'
+    #        di quella frase sono cadute in momenti diversi: il drawer di
+    #        consultazione esiste dal 2026-07-29, e l'arco N (fattura
+    #        rettificata -> nota di credito) le ha dato un discendente.
+    def test_whitelist_passaggi_otto_tipi(self):
         from apps.vendite.services.vendite_service import LINEAGE_TIPI_DOCUMENTO
-        self.assertIn("COMMESSA", LINEAGE_TIPI_DOCUMENTO)
-        self.assertNotIn("FATTURA", LINEAGE_TIPI_DOCUMENTO)
+        self.assertEqual(
+            sorted(LINEAGE_TIPI_DOCUMENTO),
+            [
+                "COMMESSA",
+                "CONTRATTO",
+                "DDT_VENDITA",
+                "FATTURA",
+                "OFFERTA_COMMERCIALE",
+                "ORDINE_VENDITA",
+                "PREVENTIVO",
+                "RESO_VENDITA",
+            ],
+        )
 
     # Scopo: L'arco R (DDT->Reso) arriva al FE con is_ramo_inverso=true.
     @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi")

@@ -305,8 +305,25 @@ const azioniPagina = computed(() =>
           <template #cell-tipo_lotto="{ data }">
             <Tag :value="data.tipo_lotto" severity="secondary" />
           </template>
+          <!-- ⭐ La spia degli errori gravi vive SULLO STATO (richiesta di Tid,
+               2026-08-21): basta UN documento fallito nel dettaglio per
+               accenderla. È la forma dei gestionali a lotti — la testata
+               avvisa, il dettaglio spiega — e il dettaglio è a un click: si
+               apre il drawer e la scheda «Segnalazioni» dice quale documento e
+               perché.
+               📌 Sullo stato e non in una colonna nuova: la lista è a catalogo
+               (`ui.lista_colonna`), quindi una colonna in più è un seed del
+               team DB e una casella in più da spuntare per ogni utente. La
+               spia qui si vede da subito e non chiede configurazione. -->
           <template #cell-stato_lotto="{ data }">
-            <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
+            <span class="app-lotto-stato-cella">
+              <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
+              <i
+                v-if="data.ha_errori_gravi"
+                class="pi pi-exclamation-triangle app-lotto-spia-errore"
+                v-tooltip.top="t('vendite.lotti.spia_errori_gravi')"
+              />
+            </span>
           </template>
           <!-- Stato operativo: informazione interna della pipeline, resa come
                Tag neutro — non è uno stato di dominio come `stato_lotto` e non
@@ -363,6 +380,16 @@ const azioniPagina = computed(() =>
 </template>
 
 <style scoped>
+.app-lotto-stato-cella {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* Rosso dal token PrimeVue, mai un esadecimale a mano: e' la convenzione gia'
+   in uso per le spie di stato (`CodaStampaTab`). */
+.app-lotto-spia-errore {
+  color: var(--p-red-500);
+}
 /* Badge "numero lotti generati" nel mese (sidebar/stepper anno-mese). Neutro:
  * è un conteggio informativo, non un allarme (diverso dai badge errori/fermi
  * della Lente Competenza). */

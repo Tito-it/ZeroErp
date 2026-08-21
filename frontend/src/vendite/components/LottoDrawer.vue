@@ -18,10 +18,13 @@ import TabPanel from 'primevue/tabpanel'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
+import Button from 'primevue/button'
+import SelectButtonGravita from '../../core/components/SelectButtonGravita.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
+import ErroreRigaInfo from '../../core/components/ErroreRigaInfo.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import FatturaDrawer from './FatturaDrawer.vue'
@@ -121,6 +124,57 @@ const availableActions = computed(() => lotto.value?.available_actions ?? [])
 // Segnalazioni bloccanti: mostra il banner se il lotto ha criticità.
 const haSegnalazioniCritiche = computed(() => (segnalazioni.value?.critical_count ?? 0) > 0)
 
+// Tab attiva CONTROLLATA (era fissa a "fatture"): serve al link del banner, che
+// porta l'operatore sulla scheda invece di dirgli dove guardare.
+const tabAttiva = ref('fatture')
+
+// Livello dell'elenco segnalazioni. Parte dalle CRITICHE perché sono quelle che
+// fermano il lotto — chi apre la scheda ci arriva per quelle.
+const LIVELLI_SEGNALAZIONE = { CRITICHE: 'C', AVVISI: 'W', ATTENZIONI: 'I' }
+const livelloSegnalazioni = ref(LIVELLI_SEGNALAZIONE.CRITICHE)
+// Il livello di cui abbiamo GIA' l'elenco in mano. Serve al watch qui sotto per
+// non rifare la stessa domanda: alla riapertura il drawer rimette il filtro sul
+// default e ricarica tutto — senza questo confronto la scheda partirebbe con
+// due chiamate identiche.
+const livelloCaricato = ref(null)
+
+// Le tre voci del filtro, con il CONTEGGIO nell'etichetta: il numero non è un
+// di più, è ciò che dice se vale la pena guardare quel livello — e così i
+// conteggi non hanno bisogno di una riga tutta loro.
+// ⚠️ `severity` e non il livello grezzo: il BB parla il linguaggio delle
+// severity PrimeVue (le stesse di `core/utils/severity.js`), e la traduzione
+// dal vocabolario del DB (`status` di `fatture_log`) si fa QUI, una volta sola.
+const opzioniLivello = computed(() => [
+  {
+    value: LIVELLI_SEGNALAZIONE.CRITICHE,
+    severity: 'danger',
+    label: `${t('vendite.lotti.critical')} (${segnalazioni.value?.critical_count ?? 0})`,
+  },
+  {
+    value: LIVELLI_SEGNALAZIONE.AVVISI,
+    severity: 'warn',
+    label: `${t('vendite.lotti.warning')} (${segnalazioni.value?.warning_count ?? 0})`,
+  },
+  {
+    value: LIVELLI_SEGNALAZIONE.ATTENZIONI,
+    severity: 'info',
+    label: `${t('vendite.lotti.attention')} (${segnalazioni.value?.attention_count ?? 0})`,
+  },
+])
+
+const elencoSegnalazioni = computed(() => segnalazioni.value?.segnalazioni ?? [])
+
+// Scopo: il link del banner — porta sulla scheda già filtrata sulle critiche.
+//        Rimette il livello anche se l'operatore l'aveva cambiato prima: il
+//        banner parla di quelle, e atterrare sugli avvisi sarebbe una risposta
+//        a un'altra domanda.
+async function apriSegnalazioni() {
+  tabAttiva.value = 'segnalazioni'
+  if (livelloSegnalazioni.value !== LIVELLI_SEGNALAZIONE.CRITICHE) {
+    livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
+  }
+}
+
 // ------------------------------------------------------------------ load
 async function loadLotto() {
   const res = await loadDetailOrClose(() => getLotto(props.lottoId))
@@ -139,11 +193,12 @@ async function loadTabs() {
   try {
     const [tRes, sRes] = await Promise.all([
       listLottoTaskRuns(props.lottoId, { limit: 100 }),
-      getLottoSegnalazioni(props.lottoId),
+      getLottoSegnalazioni(props.lottoId, { livello: livelloSegnalazioni.value }),
       loadFatture(),
     ])
     taskRuns.value = tRes.data?.data?.task_runs ?? []
     segnalazioni.value = sRes.data?.data ?? null
+    livelloCaricato.value = livelloSegnalazioni.value
   } catch (err) {
     // Fail-visible: un tab vuoto per errore non deve sembrare "nessun dato".
     notify.error(extractApiError(err, t('common.error')))
@@ -155,6 +210,26 @@ async function loadTabs() {
 async function reloadAll() {
   if (await loadLotto()) await loadTabs()
 }
+
+// Cambio livello = nuova domanda al backend. ⚠️ NON si filtra in memoria: la
+// risposta porta l'elenco di UN livello per volta, quindi filtrare qui
+// mostrerebbe solo ciò che è già stato scaricato — cioè, su un livello mai
+// chiesto, un elenco vuoto accanto a un contatore che dice il contrario.
+watch(livelloSegnalazioni, async (livello) => {
+  if (!props.visible || !props.lottoId) return
+  if (livello === livelloCaricato.value) return
+  // ⚠️ `execute` restituisce GIA' il contenuto di `data` dell'envelope, non la
+  // response axios: spacchettarlo un'altra volta (`res.data?.data`) dava
+  // `undefined` → `segnalazioni = null` → la scheda si svuotava al primo click
+  // sul filtro, e tornava solo riaprendo il drawer (dove la fetch passa da
+  // `loadTabs`, che invece la response ce l'ha davvero).
+  const res = await execute(() =>
+    getLottoSegnalazioni(props.lottoId, { livello: livelloSegnalazioni.value }))
+  if (res !== null) {
+    segnalazioni.value = res
+    livelloCaricato.value = livelloSegnalazioni.value
+  }
+})
 
 // Scopo: reload mirato post reset-fattura — cambiano solo testata (step/stato)
 //        e lista fatture; task-run e segnalazioni restano com'erano.
@@ -182,6 +257,14 @@ watch(
     fatture.value = []
     taskRuns.value = []
     segnalazioni.value = null
+    // Riapertura = si riparte dai DOCUMENTI, sempre. Senza questo reset il
+    // drawer riapriva sulla scheda dove l'operatore era finito l'ultima volta
+    // (tipicamente «Segnalazioni», dove l'aveva portato il link del banner):
+    // un drawer che si apre in un punto diverso a ogni giro fa perdere il
+    // riferimento. Stessa ragione per il livello del filtro.
+    tabAttiva.value = 'fatture'
+    livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
+    livelloCaricato.value = null
     await reloadAll()
   },
   { immediate: true },
@@ -350,11 +433,21 @@ function buildFatturaActions(row) {
     actions.push({
       key: 'elimina',
       label: t('vendite.lotti.azione_reset_fattura'),
-      // Distruttiva e irreversibile (RD-7: il contenuto non e' recuperabile,
-      // `vendite.fatture` non e' storicizzata) → cestino + rosso, come impone
-      // lo standard per le azioni di riga distruttive. L'icona «undo» di prima
-      // raccontava il verbo vecchio («riporta a bozza»), non questo.
-      icon: MANAGE_ICONS.DELETE,
+      // ⭐ «Riporta in lavorazione», non «Elimina dal lotto» (rilievo di Tid,
+      // 2026-08-21): quel nome descriveva il MECCANISMO e suggeriva uno
+      // sgancio — «tolgo il documento dal lotto, poi lo rimetto in un altro» —
+      // che non esiste. Il verbo si chiama ora come l'INTENZIONE, la stessa
+      // del gemello sul lotto intero: questo va rifatto.
+      // ⚠️ L'intenzione e' la stessa, l'effetto NO, e lo dice la conferma: qui
+      // il lavoro rientra nel giro SUCCESSIVO, mentre sul lotto intero e' lo
+      // stesso lotto a rigenerare. Icona `UNDO` come il gemello — stesso
+      // verbo, granularita' diversa.
+      // 📌 Il cestino se n'e' andato con la frase che lo motivava: «il
+      // contenuto non e' recuperabile, `vendite.fatture` non e' storicizzata».
+      // Misurato il 2026-08-21: `storicizza` e' TRUE su 16 fatture su 16, il
+      // trigger `trg_fatture_z90_storico_upd_dlt` c'e', e `storico.fatture`
+      // conserva 9 snapshot da DELETE. Il contenuto si recupera a DB.
+      icon: MANAGE_ICONS.UNDO,
       severity: 'danger',
       command: () => eliminaFattura(row),
     })
@@ -405,7 +498,17 @@ function fatturaNumero(row) {
         <!-- Banner segnalazioni critiche (blocca l'avanzamento). -->
         <Message v-if="haSegnalazioniCritiche" severity="error" :closable="false" class="app-mt-1">
           {{ t('vendite.lotti.segnalazioni_bloccanti', { n: segnalazioni.critical_count }) }}
+          <!-- Il banner dice QUANTE sono; il dettaglio sta in una scheda sola,
+               e il link ci porta invece di chiedere all'operatore di cercarla.
+               Apre già filtrata sulle critiche: sono quelle di cui parla. -->
+          <Button
+            link
+            size="small"
+            class="app-lotto-segn-link"
+            :label="t('vendite.lotti.segnalazioni_apri')"
+            @click="apriSegnalazioni" />
         </Message>
+
 
         <!-- Azioni di governo del lotto. Quali esistono, quali sono abilitate e
              perché no lo dice il BE (`available_actions`): qui si rende e si
@@ -416,7 +519,7 @@ function fatturaNumero(row) {
           :disabled="loading || azioniLoading"
         />
 
-        <Tabs value="fatture" class="app-mt-1">
+        <Tabs v-model:value="tabAttiva" class="app-mt-1">
           <TabList>
             <!-- ⚠️ «Documenti», non «fatture»: dal 2026-08 un lotto puo'
                  contenere anche NOTE DI CREDITO, e il verbo «numera» le numera
@@ -462,9 +565,21 @@ function fatturaNumero(row) {
                     <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
                   </template>
                 </Column>
-                <Column field="stato_esecuzione" :header="t('vendite.lotti.col_esecuzione')" style="width: 120px;">
+                <Column field="stato_esecuzione" :header="t('vendite.lotti.col_esecuzione')" style="width: 150px;">
                   <template #body="{ data }">
-                    <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneFatturaSeverity(data.stato_esecuzione)" />
+                    <span class="app-lotto-esecuzione-cella">
+                      <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneFatturaSeverity(data.stato_esecuzione)" />
+                      <!-- Il PERCHÉ accanto al CHE COSA: senza, «ERRORE» è una
+                           bandiera senza messaggio (rilievo di Tid 2026-08-21).
+                           Il componente si nasconde da solo quando non c'è
+                           errore: nessun `v-if` da ricopiare qui. -->
+                      <ErroreRigaInfo
+                        :messaggio="data.errore_messaggio"
+                        :codice="data.errore_code"
+                        :quando="data.errore_data_ora"
+                        :titolo="t('vendite.lotti.errore_documento_titolo')"
+                      />
+                    </span>
                   </template>
                 </Column>
                 <Column field="totale_doc" :header="t('vendite.lotti.col_totale')" style="width: 110px;">
@@ -514,6 +629,14 @@ function fatturaNumero(row) {
                     <span v-else>—</span>
                   </template>
                 </Column>
+                <!-- Inizio E fine: con il solo istante finale un task fallito
+                     e uno lungo si leggono uguali, e il diario dei tentativi
+                     serve proprio a distinguerli. -->
+                <Column field="started_at" :header="t('vendite.lotti.col_inizio')" style="width: 150px;">
+                  <template #body="{ data }">
+                    {{ data.started_at ? displayTimestamp(data.started_at) : '—' }}
+                  </template>
+                </Column>
                 <Column field="ended_at" :header="t('vendite.lotti.col_fine')" style="width: 150px;">
                   <template #body="{ data }">
                     {{ data.ended_at ? displayTimestamp(data.ended_at) : '—' }}
@@ -527,22 +650,71 @@ function fatturaNumero(row) {
 
             <!-- Segnalazioni (riepilogo). -->
             <TabPanel value="segnalazioni">
-              <div v-if="segnalazioni" class="app-lotto-segnalazioni">
-                <div class="app-lotto-segn-row">
-                  <Tag :value="String(segnalazioni.critical_count ?? 0)" severity="danger" />
-                  <span>{{ t('vendite.lotti.critical') }}</span>
-                </div>
-                <div class="app-lotto-segn-row">
-                  <Tag :value="String(segnalazioni.warning_count ?? 0)" severity="warn" />
-                  <span>{{ t('vendite.lotti.warning') }}</span>
-                </div>
-                <div class="app-lotto-segn-row">
-                  <Tag :value="String(segnalazioni.attention_count ?? 0)" severity="info" />
-                  <span>{{ t('vendite.lotti.attention') }}</span>
-                </div>
-                <Message v-if="segnalazioni.blocks_next_step" severity="warn" :closable="false">
+              <div v-if="segnalazioni">
+                <!-- Filtro per livello. Il CONTEGGIO sta nell'etichetta: dice
+                     se vale la pena guardare quel livello, e toglie la riga di
+                     soli numeri che stava qui prima — che diceva quante sono
+                     senza mai dire cosa sono. -->
+                <!-- Filtro per gravità: il colore è la scala, e il BB lo
+                     rende uguale ovunque ricapiti (code, diari, cruscotti). -->
+                <SelectButtonGravita
+                  v-model="livelloSegnalazioni"
+                  :options="opzioniLivello"
+                  class="app-mb-1"
+                />
+
+                <Message
+                  v-if="segnalazioni.blocks_next_step"
+                  severity="warn"
+                  :closable="false"
+                  class="app-mb-1"
+                >
                   {{ t('vendite.lotti.blocca_step') }}
                 </Message>
+
+                <DataTable
+                  :value="elencoSegnalazioni"
+                  :loading="tabLoading || loading"
+                  class="app-datatable app-datatable--inner"
+                  striped-rows
+                  size="small"
+                  data-key="riga_key"
+                >
+                  <!-- Il documento, in termini che l'operatore VEDE: un id
+                       interno non compare da nessuna parte nell'interfaccia.
+                       Sulle segnalazioni di LOTTO non c'è documento, e la
+                       colonna dice la fase invece di un trattino muto. -->
+                  <Column :header="t('vendite.lotti.col_segn_documento')" style="width: 220px;">
+                    <template #body="{ data }">
+                      <span v-if="data.ragione_sociale_completa">{{ data.ragione_sociale_completa }}</span>
+                      <span v-else class="text-color-secondary">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
+                    </template>
+                  </Column>
+                  <Column :header="t('vendite.lotti.col_totale')" style="width: 110px;">
+                    <template #body="{ data }">
+                      {{ data.totale_doc != null ? formatCurrency(Number(data.totale_doc)) : '—' }}
+                    </template>
+                  </Column>
+                  <Column :header="t('vendite.lotti.col_segn_quando')" style="width: 150px;">
+                    <template #body="{ data }">
+                      {{ data.data_ora ? displayTimestamp(data.data_ora) : '—' }}
+                    </template>
+                  </Column>
+                  <Column :header="t('vendite.lotti.col_segn_messaggio')">
+                    <template #body="{ data }">
+                      <div class="app-lotto-segn-messaggio">
+                        <Tag v-if="data.codice" :value="data.codice" severity="danger" />
+                        <span>{{ data.messaggio || '—' }}</span>
+                      </div>
+                    </template>
+                  </Column>
+                  <template #empty>
+                    <div class="app-empty-state">
+                      <i class="pi pi-check-circle" />
+                      <p>{{ t('vendite.lotti.nessuna_segnalazione_livello') }}</p>
+                    </div>
+                  </template>
+                </DataTable>
               </div>
               <div v-else class="app-empty-state"><i class="pi pi-check-circle" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
             </TabPanel>
@@ -578,6 +750,27 @@ function fatturaNumero(row) {
 }
 .app-mt-1 {
   margin-top: 1rem;
+}
+.app-lotto-segn-link {
+  padding: 0 0 0 0.35rem;
+}
+.app-lotto-segn-messaggio {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  /* I messaggi del DB portano DETAIL e HINT su righe proprie: schiacciarli
+     toglierebbe la separazione fra «cos'è successo» e «cosa fare». */
+  white-space: pre-line;
+}
+.app-lotto-esecuzione-cella {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.app-lotto-errori-testata {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 .app-lotto-segnalazioni {
   display: flex;

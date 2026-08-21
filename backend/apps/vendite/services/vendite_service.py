@@ -1299,8 +1299,21 @@ def fn_dash_competenza_errori(
 # Tipi documento con endpoint /passaggi/ (nodo lineage con vista di dominio).
 # COMMESSA aggiunta nella Fase C (genealogia inversa, design §7.3): non ha una
 # lista/CRUD propria, ma il suo nodo lineage è consultabile via drawer leggero
-# (sorgenti che l'hanno generata + fatture a valle). FATTURA resta nodo
-# terminale senza endpoint (Q4: capolinea, nessuna superficie propria).
+# (sorgenti che l'hanno generata + fatture a valle).
+#
+# ⭐ FATTURA entra il 2026-08-21, e la decisione Q4 che la teneva fuori
+# («capolinea, nessuna superficie propria») era vera quando è stata presa e non
+# lo è più, per DUE ragioni indipendenti:
+#   1. la superficie ora c'è — il drawer di consultazione della fattura esiste
+#      dal 2026-07-29, ed è già la destinazione delle tappe FATTURA negli altri
+#      pannelli: mancava solo il pannello sul documento stesso;
+#   2. il capolinea non è più tale — l'arco N (fattura rettificata → nota di
+#      credito, changeSet 20260821-02) le dà un discendente.
+# ⚠️ Resta vero che la fattura non ha discendenti nel grafo FORWARD: l'arco N è
+# un ramo di ritorno. Il valore del pannello qui è quindi la direzione INDIETRO
+# — «da dove viene questo documento» — non la frontiera, che per una fattura
+# indica sempre sé stessa. Misurato sulla fattura 835: 7 archi indietro (tre
+# commesse, tre ordini, un preventivo), 1 avanti (la nota di credito).
 LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
     "PREVENTIVO",
     "OFFERTA_COMMERCIALE",
@@ -1309,6 +1322,7 @@ LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
     "DDT_VENDITA",
     "RESO_VENDITA",
     "COMMESSA",
+    "FATTURA",
 )
 
 
@@ -1398,6 +1412,11 @@ def get_documento_passaggi(
     if nodo["is_transitato"] and nodo["frontiera_tipo_id"] is not None and not is_self:
         frontiera = {
             "tipo_codice": nodo["frontiera_tipo_codice"],
+            # ⚠️ La frontiera puo' essere una nota di credito (arco G dalla
+            # commessa): senza la natura il FE la etichetterebbe «Fattura».
+            # E' l'invariante che il pgTAP del DB ha corretto (§44.5): «una NC
+            # non e' mai frontiera di un altro nodo» e' FALSO.
+            "natura_doc_codice": nodo["frontiera_natura_doc_codice"],
             "codice": nodo["frontiera_codice"],
             "stato_codice_interno": nodo["frontiera_stato_codice_interno"],
             "fase": nodo["frontiera_fase"],
@@ -1423,6 +1442,14 @@ def get_documento_passaggi(
             "n_discendenti_diretti": nodo["n_discendenti_diretti"],
             "n_discendenti_attivi": nodo["n_discendenti_attivi"],
             "n_sorgenti": nodo["n_sorgenti"],
+            # La natura distingue la nota di credito dalla fattura: sono lo
+            # stesso tipo documento e, senza, il pannello scrive due volte
+            # «Fattura · EMESSA» per due documenti diversi.
+            "natura_doc_codice": nodo["natura_doc_codice"],
+            # ⭐ Il codice della radice: per una fattura e' l'informazione che
+            # conta davvero, perche' la frontiera indica sempre se stessa (nodo
+            # terminale del grafo forward). Dice «da dove viene».
+            "root_codice": nodo["root_codice"],
         },
         "pratica": pratica,
         "frontiera": frontiera,

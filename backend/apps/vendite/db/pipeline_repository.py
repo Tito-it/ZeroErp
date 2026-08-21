@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Any
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
@@ -34,12 +34,19 @@ from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
     EliminaFatturaDaLottoResult,
     LottoPipelineMeta,
+    LottoSegnalazioneRow,
     LottoSegnalazioniSummary,
     LottoTaskRunRow,
     RiportaLottoADraftResult,
 )
 
 logger = logging.getLogger(__name__)
+
+# Firma delle segnalazioni scritte dal BACKEND sulle fatture (marcatura di
+# fallimento di un task per-fattura). Serve a distinguerle da quelle dei task
+# DB al momento del ritiro: «chi alza la bandiera la abbassa» vale per padrone,
+# non per tabella.
+_ORIGINE_SEGNALAZIONE_BE = "BE_PIPELINE"
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
@@ -448,6 +455,120 @@ class VenditePipelineRepository:
             "lotto_info_count": int(row[4]),
             "fatture_stato_esecuzione_errore_count": int(row[5]),
         }
+
+    # Scopo: L'ELENCO delle segnalazioni del lotto per livello — quello che il
+    #        riepilogo conta soltanto.
+    #
+    # ⭐ STESSA FONTE E STESSI FILTRI di `fn_get_lotto_segnalazioni_summary`, e
+    #    va tenuto cosi': `fatture_log` attraverso il ponte del lotto +
+    #    `fatturazione_lotti_log`, entrambe con `disabilitato IS FALSE`. Se
+    #    l'elenco leggesse una fonte sola, il banner direbbe «1 critica» e la
+    #    scheda ne mostrerebbe zero — la divergenza fra un contatore e il suo
+    #    dettaglio e' peggio di non avere il dettaglio.
+    #    📌 Il filtro `disabilitato` e' «chi alza la bandiera la abbassa»: una
+    #    segnalazione ritirata dal task che l'aveva scritta non deve ricomparire.
+    #
+    # ⚠️ Il livello 'I' esiste SOLO sul lotto — il riepilogo infatti conta
+    #    `lotto_info_count` e non ha un gemello per le fatture. Il ramo fatture
+    #    resta nella query e per 'I' non produce righe da se': scriverlo come
+    #    eccezione sarebbe una regola in piu' da ricordare, e il risultato e'
+    #    identico.
+    #
+    # ⚠️ `messaggio` NON si riscrive qui. Contiene la frase del database, che e'
+    #    l'unica a nominare il documento bloccante e la via d'uscita: nome e
+    #    importo si AFFIANCANO in colonne proprie, non lo sostituiscono.
+    def list_lotto_segnalazioni(
+        self, *, lotto_id: int, livello: str, limit: int = 200,
+    ) -> list[LottoSegnalazioneRow]:
+        safe_limit = max(1, min(int(limit), 500))
+        sql = """
+            SELECT
+                -- ⭐ CHIAVE DI RIGA, e serve davvero: `data_ora` NON e' univoco
+                -- (misurato sul lotto 6034: SEI segnalazioni con lo stesso
+                -- timestamp al microsecondo, scritte dallo stesso giro). Usarlo
+                -- come `data-key` della tabella a video significa righe che si
+                -- sovrascrivono nel rendering.
+                -- ⚠️ Composita e non il solo `id`: le due tabelle hanno
+                -- sequenze indipendenti, quindi un `id` puo' esistere in
+                -- entrambe e la collisione sarebbe silenziosa.
+                'FATTURA:' || fl.id::text AS riga_key,
+                'FATTURA'::text          AS origine,
+                fl.status                AS livello,
+                fl.messaggio,
+                fl.data_ora,
+                fl.meta,
+                NULL::text               AS fase,
+                lf.fattura_id,
+                srd.ragione_sociale_completa,
+                f.totale_doc
+              FROM vendite.fatturazione_lotti_fatture lf
+              JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+              JOIN vendite.fatture f      ON f.id = lf.fattura_id
+              JOIN anagrafiche.billing_account ba
+                ON ba.id = f.billing_account_id
+              JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
+             WHERE lf.lotto_id = %s
+               AND fl.disabilitato IS FALSE
+               AND fl.status = %s
+
+            UNION ALL
+
+            SELECT
+                'LOTTO:' || ll.id::text  AS riga_key,
+                'LOTTO'::text            AS origine,
+                ll.status                AS livello,
+                ll.messaggio,
+                ll.data_ora,
+                ll.meta,
+                ll.fase,
+                NULL::bigint             AS fattura_id,
+                NULL::text               AS ragione_sociale_completa,
+                NULL::numeric            AS totale_doc
+              FROM vendite.fatturazione_lotti_log ll
+             WHERE ll.lotto_id = %s
+               AND ll.disabilitato IS FALSE
+               AND ll.status = %s
+
+             -- ⚠️ Per NOME e non per ordinale (`ORDER BY 4`): in una UNION
+             -- l'ordinale si riferisce alla posizione, quindi una colonna
+             -- aggiunta in testa cambierebbe silenziosamente l'ordinamento.
+             -- Tiebreak sulla chiave: a parita' di istante — che qui capita
+             -- di continuo — l'ordine dev'essere comunque deterministico,
+             -- altrimenti due letture della stessa pagina si scambiano righe.
+             ORDER BY data_ora DESC NULLS LAST, riga_key DESC
+             LIMIT %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [lotto_id, livello, lotto_id, livello, safe_limit])
+            rows = cursor.fetchall()
+        # ⚠️ NESSUN TAGLIO SILENZIOSO: un elenco troncato al `limit` somiglia in
+        # tutto a un elenco completo, e sopra c'e' un contatore che dice un
+        # numero diverso — chi guarda concluderebbe che il contatore sbaglia.
+        # Finche' la scheda non ha la paginazione (prerequisito: catalogo lista)
+        # la traccia resta nei log, che e' meglio di niente e molto meglio di un
+        # numero che non torna.
+        if len(rows) == safe_limit:
+            logger.warning(
+                "list_lotto_segnalazioni: risultato troncato al limit=%s "
+                "per lotto_id=%s livello=%s",
+                safe_limit, lotto_id, livello,
+            )
+        return [
+            {
+                "riga_key": str(row[0]),
+                "origine": str(row[1]),
+                "livello": str(row[2]),
+                "messaggio": row[3],
+                "data_ora": row[4].isoformat() if row[4] is not None else None,
+                "codice": (jsonb_out(row[5]) or {}).get("code"),
+                "fase": row[6],
+                "fattura_id": None if row[7] is None else int(row[7]),
+                "ragione_sociale_completa": row[8],
+                "totale_doc": str(row[9]) if row[9] is not None else None,
+            }
+            for row in rows
+        ]
 
     # Scopo: Restituisce i task run runtime del lotto ordinati dal più recente per consultazione API/UI.
     def list_lotto_task_runs(self, lotto_id: int, *, limit: int = 100) -> list[LottoTaskRunRow]:
@@ -991,6 +1112,60 @@ class VenditePipelineRepository:
             meta=meta,
         )
 
+    # Scopo: Marca UNA fattura del lotto come fallita (`stato_esecuzione='ERRORE'`)
+    #        e ci attacca il messaggio, in `vendite.fatture_log`.
+    #
+    # ⭐ IL VALORE 'ERRORE' ESISTE NEL MODELLO DA SEMPRE — CHECK della tabella e
+    #    contatore `fatture_stato_esecuzione_errore_count` nella summary — e
+    #    NESSUNO LO SCRIVEVA MAI: misurato il 2026-08-21, 16 righe su 16 a
+    #    'COMPLETED', comprese quelle di un lotto il cui documento era stato
+    #    rifiutato. Il posto per raccontarlo c'era; mancava chi lo riempisse.
+    #
+    # ⚠️ SI CHIAMA FUORI DALLA TRANSAZIONE DELLO STEP, ed è tutto il punto: il
+    #    giro per-fattura è fail-fast, quindi lo step viene annullato: una riga
+    #    scritta dentro sparirebbe col rollback insieme all'errore che
+    #    descrive. È il motivo per cui, fino al 2026-08-21, un fallimento non
+    #    lasciava traccia da nessuna parte — né sulla riga, né in testata.
+    # ⚠️ `atomic()`: la marcatura sul ponte e il messaggio sul log sono la
+    # stessa informazione in due tabelle — una spia accesa senza il suo motivo
+    # e' peggio di nessuna spia, ed e' proprio il difetto che questo metodo
+    # esiste per chiudere.
+    def marca_fattura_in_errore(
+        self,
+        *,
+        lotto_id: int,
+        fattura_id: int,
+        code: str,
+        messaggio: str,
+        meta: LottoPipelineMeta | None = None,
+    ) -> None:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE vendite.fatturazione_lotti_fatture
+                       SET stato_esecuzione = 'ERRORE'
+                     WHERE lotto_id = %s
+                       AND fattura_id = %s
+                    """,
+                    [int(lotto_id), int(fattura_id)],
+                )
+            self.log_fattura(
+                fattura_id=fattura_id,
+                status="C",
+                messaggio=messaggio,
+                critical=True,
+                # ⭐ `origine` FIRMA la riga: e' cio' che permette al giro
+                # successivo di ritirare le SUE bandiere senza toccare quelle
+                # alzate dai task DB, che hanno un altro padrone e un'altra vita.
+                meta={
+                    **(meta or {}),
+                    "code": code,
+                    "lotto_id": lotto_id,
+                    "origine": _ORIGINE_SEGNALAZIONE_BE,
+                },
+            )
+
     # Scopo: Gestisce `log_lotto_esito_fatture` nel flusso applicativo del modulo.
     def log_lotto_esito_fatture(self, lotto_id: int) -> None:
         # Deriva severita` lotto da fatture_log (C > W > I) e scrive su fatturazione_lotti_log.
@@ -1387,6 +1562,10 @@ class VenditePipelineRepository:
 
     # Scopo: Restituisce elenco `fatture_by_lotto` in base ai filtri disponibili.
     # Safety-net: LIMIT con default alto per evitare memory explosion su lotti massivi.
+    # 📌 L'`ORDER BY f.id` serve alla stabilita' del risultato (due chiamanti, e il
+    # troncamento al limit deve tagliare sempre dalla stessa parte). NON e' il
+    # presidio dell'ordine di numerazione: quel requisito vive dove serve, in
+    # `_handle_numera_fatture_task`, che riordina per conto suo.
     def list_fatture_by_lotto(self, lotto_id: int, *, limit: int = 50000) -> list[int]:
         safe_limit = max(1, min(int(limit), 100000))
         with connection.cursor() as cursor:
@@ -1621,6 +1800,68 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
             return cursor.rowcount
+
+    # Scopo: RITIRA le marcature di fallimento che il BE ha messo sulle fatture
+    #        di questo lotto — la bandiera per riga, gemella di
+    #        `disattiva_segnalazioni_lotto_be` che fa lo stesso sul lotto.
+    #
+    # ⭐ «CHI ALZA LA BANDIERA LA ABBASSA», e senza questo pezzo la regola era
+    #    rotta a meta': dal 2026-08-21 il BE ALZA `stato_esecuzione='ERRORE'` e
+    #    scrive un log critico quando un documento fallisce — ma nessuno li
+    #    toglieva piu'. Il primo fallimento rendeva quindi il lotto
+    #    definitivamente non avanzabile: la guardia unificata (PRE-1) conta sia
+    #    i log critici sia le righe in ERRORE, quindi il tentativo successivo
+    #    trovava `blocks_next_step` e si fermava con «Lotto bloccato per
+    #    segnalazioni critiche» — cioe' con un messaggio che parla d'altro,
+    #    dopo che l'operatore aveva corretto la causa. Una porta a senso unico.
+    #
+    # ⚠️ Ritira SOLO cio' che ha scritto il BE (`meta->>'origine'`): le
+    #    segnalazioni dei task DB hanno un altro padrone e le ritira lui quando
+    #    il suo problema e' risolto. Spegnerle qui vorrebbe dire nascondere un
+    #    problema che nessuno ha toccato.
+    # ⚠️ `stato_esecuzione` torna a 'COMPLETED' e non a 'PENDING': e' il valore
+    #    che quelle righe avevano prima del fallimento — il ponte descrive
+    #    l'esito dell'ULTIMO giro, e il giro nuovo non e' ancora andato male.
+    # ⚠️ E si sblocca SOLO cio' che questo ritiro ha davvero in carico: le
+    #    fatture con una marcatura firmata BE. Una riga in 'ERRORE' messa da un
+    #    task DB non e' nostra e resta dov'e' — il filtro sull'origine c'era sui
+    #    log e mancava sul ponte, un'asimmetria che nessun test avrebbe visto
+    #    finche' i task DB non cominciano a scrivere 'ERRORE' (oggi non lo
+    #    fanno, domani si').
+    # ⚠️ Le due scritture sono UNA cosa sola: ritirare i log senza rimettere a
+    # posto il ponte (o viceversa) lascerebbe il lotto in uno stato che la
+    # guardia PRE-1 legge a meta' — bloccato da una sorgente e libero
+    # dall'altra. `atomic()` qui e' un savepoint quando siamo dentro una
+    # transazione e una transazione vera quando non lo siamo: in entrambi i
+    # casi le due righe stanno o cadono insieme.
+    def ritira_marcature_fatture_be(self, lotto_id: int) -> int:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_log fl
+                   SET disabilitato = TRUE,
+                       data_update = now(),
+                       user_update = current_user
+                  FROM vendite.fatturazione_lotti_fatture lf
+                 WHERE lf.lotto_id = %s
+                   AND fl.fattura_id = lf.fattura_id
+                   AND fl.disabilitato IS FALSE
+                   AND fl.status = 'C'
+                   AND fl.meta->>'origine' = %s
+                """,
+                [int(lotto_id), _ORIGINE_SEGNALAZIONE_BE],
+            )
+            ritirate = cursor.rowcount
+            cursor.execute(
+                """
+                UPDATE vendite.fatturazione_lotti_fatture
+                   SET stato_esecuzione = 'COMPLETED'
+                 WHERE lotto_id = %s
+                   AND stato_esecuzione = 'ERRORE'
+                """,
+                [int(lotto_id)],
+            )
+        return ritirate
 
     # Scopo: Prepara e restituisce il dataset SDI del lotto mappato in oggetti tipizzati.
     def run_prepare_sdi_payload_lotto_task(

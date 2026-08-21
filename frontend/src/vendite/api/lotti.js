@@ -46,9 +46,19 @@ export function listLottoTaskRuns(lottoId, { limit = 100 } = {}) {
   return api.get(`${BASE}/${lottoId}/task-runs/`, { params: { limit } })
 }
 
-// GET riepilogo segnalazioni del lotto (critical/warning/attention + blocco step).
-export function getLottoSegnalazioni(lottoId) {
-  return api.get(`${BASE}/${lottoId}/segnalazioni/`)
+// GET segnalazioni del lotto: conteggi (critical/warning/attention + blocco
+// step) **e** l'elenco del livello richiesto, in una risposta sola.
+//
+// `livello`: 'C' critiche · 'W' avvisi · 'I' attenzioni. Assente = 'C', che è
+// la domanda con cui si arriva alla scheda (sono le critiche a fermare il lotto).
+//
+// ⚠️ Conteggi ed elenco viaggiano INSIEME di proposito: sono la stessa
+// informazione a due granularità e li legge la stessa scheda. Due chiamate
+// separate potrebbero cadere a cavallo di un giro e mostrare «2 critiche» sopra
+// un elenco di tre.
+export function getLottoSegnalazioni(lottoId, { livello = null } = {}) {
+  const params = livello ? { livello } : {}
+  return api.get(`${BASE}/${lottoId}/segnalazioni/`, { params })
 }
 
 // POST avanza pipeline lotto di UN step (com'è il motore). Riusata anche per il

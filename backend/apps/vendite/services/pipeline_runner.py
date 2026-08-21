@@ -8,6 +8,7 @@
 
 from dataclasses import dataclass, replace
 from datetime import date
+from collections.abc import Callable
 from typing import Any
 
 from django.db import transaction
@@ -98,6 +99,35 @@ class LottoPipelineRunner:
             )
 
     # Scopo: Prova a marcare il lotto in errore senza mascherare l'eccezione principale.
+    # Scopo: ⭐ IL TELAIO DELLE SCRITTURE DI DIAGNOSI — «fuori dalla
+    #        transazione, best-effort, mai mascherare l'errore vero».
+    #
+    #        Tre scritture lo seguono e sono nate a poche ore di distanza
+    #        (2026-08-21): il marcatore di errore del LOTTO, la marcatura della
+    #        FATTURA che ha fallito e la riscrittura del TASK RUN. Tutte e tre
+    #        vivono nel gestore d'eccezione, tutte e tre devono sopravvivere al
+    #        rollback dello step, e tutte e tre non devono MAI sostituire
+    #        l'errore che l'operatore sta aspettando con il proprio.
+    #        Alla terza copia il `try/except/log_error_only` e' diventato
+    #        questo (regola del 2): scritto tre volte, sarebbe bastato che una
+    #        dimenticasse il `try` perche' un difetto del diario diventasse il
+    #        messaggio a video.
+    #
+    # ⚠️ Ingoia QUALUNQUE eccezione di proposito: qui si sta gia' gestendo un
+    #    fallimento, e il secondo non ha diritto di prendere il posto del primo.
+    def _diagnostica_best_effort(
+        self, azione: Callable[[], None], *, contesto: dict[str, Any]
+    ) -> None:
+        try:
+            azione()
+        except Exception as exc:
+            ErrorManager.log_error_only(
+                code="E_PIPELINE_MARK_ERROR",
+                context={**contesto, "mark_error": str(exc)},
+                area="backend",
+                function_name="vendite.run_lotto_pipeline",
+            )
+
     def _mark_lotto_error_safely(
         self,
         *,
@@ -108,26 +138,101 @@ class LottoPipelineRunner:
         correlation_id: str | None = None,
     ) -> None:
         # Il mark errore non deve mai mascherare l'eccezione principale.
-        try:
-            self._mark_lotto_error(
+        self._diagnostica_best_effort(
+            lambda: self._mark_lotto_error(
                 lotto_id=lotto_id,
                 code=code,
                 tipo_lotto=tipo_lotto,
                 detail=detail,
                 correlation_id=correlation_id,
+            ),
+            contesto={"lotto_id": lotto_id, "tipo_lotto": tipo_lotto, "detail": detail},
+        )
+
+    # Scopo: Attacca il fallimento ALLA RIGA della fattura che l'ha causato —
+    #        `stato_esecuzione='ERRORE'` + il messaggio in `vendite.fatture_log`.
+    #
+    # ⭐ PERCHE' QUI E NON DOVE L'ERRORE NASCE (rilievo di Tid, 2026-08-21). Il
+    #    giro per-fattura e' FAIL-FAST: rilancia, e la transazione dello step
+    #    viene annullata. Una riga di log scritta li' dentro sparirebbe insieme
+    #    all'errore che descrive — ed e' esattamente cio' che succedeva: il
+    #    toast diceva il motivo e poi il motivo non esisteva piu' da nessuna
+    #    parte. Questo handler sta FUORI dall'`atomic` dello step, come
+    #    `_mark_lotto_error_safely`: quello che scrive resta.
+    #
+    #    E' la stessa forma dei gestionali a lotti: la testata segnala che nel
+    #    dettaglio c'e' un errore grave, la riga dice quale.
+    #
+    # ⚠️ Best-effort come il gemello sul lotto: se non riesce a scrivere non
+    #    deve MAI mascherare l'eccezione vera, che e' l'unica cosa che
+    #    l'operatore sta aspettando.
+    # ⚠️ `fattura_id` arriva dal `context` del ServiceError, dove
+    #    `_run_per_fattura_task` lo mette gia' per il diario: nessun canale
+    #    nuovo da tenere allineato. Se manca — errore di lotto, non di riga —
+    #    non c'e' niente da attaccare e si esce in silenzio.
+    def _persist_fattura_error_safely(
+        self, *, lotto_id: int, exc: ServiceError
+    ) -> None:
+        context = getattr(exc, "context", None) or {}
+        fattura_id = context.get("fattura_id")
+        if not isinstance(fattura_id, int):
+            return
+        self._diagnostica_best_effort(
+            lambda: self.repository.marca_fattura_in_errore(
+                lotto_id=lotto_id,
+                fattura_id=fattura_id,
+                code=exc.code,
+                messaggio=getattr(exc, "message", None) or str(exc),
+                meta={"task": context.get("task"), "detail": exc.detail},
+            ),
+            contesto={"lotto_id": lotto_id, "fattura_id": fattura_id},
+        )
+
+    # Scopo: RISCRIVE il task run fallito dopo il rollback dello step.
+    #
+    # 🔴 IL DIARIO DEI TASK REGISTRAVA SOLO I SUCCESSI (rilievo di Tid,
+    #    2026-08-21). `fn_fail_lotto_task_run` gira dentro la transazione dello
+    #    step, che il fallimento annulla: la riga «questo task e' andato in
+    #    errore» spariva insieme al task. Misurato prima del fix: **zero
+    #    ERRORE** su 184 run (128 COMPLETATO, 56 ANNULLATO) — e i fallimenti
+    #    c'erano.
+    #
+    #    Qui siamo FUORI dall'`atomic` dello step, quindi quello che si scrive
+    #    resta. Si rifa' la coppia `start` + `fail`: `fn_start_lotto_task_run`
+    #    e' la sola che sa calcolare il `tentativo`, e ricrearlo a mano
+    #    significherebbe copiarne la regola in un secondo posto.
+    #
+    # ⚠️ Best-effort come gli altri due gemelli: un diario che non si scrive non
+    #    deve MAI mascherare l'errore vero.
+    # ⚠️ Le coordinate arrivano dall'eccezione (`zeroerp_task_run_fallito`), che
+    #    le porta solo quando il tracing per quel task e' attivo: dove non c'e'
+    #    policy non c'e' diario, e non va inventato qui.
+    def _persist_task_run_error_safely(self, exc: BaseException) -> None:
+        coord = getattr(exc, "zeroerp_task_run_fallito", None)
+        if not isinstance(coord, dict):
+            return
+        def _riscrivi() -> None:
+            run = self.repository.start_lotto_task_run(
+                lotto_id=coord["lotto_id"],
+                pipeline_id=coord["pipeline_id"],
+                stato_doc_fiscale_id=coord["stato_doc_fiscale_id"],
+                task_code=coord["task_code"],
+                fase=coord["fase"],
+                meta={"rollback": False},
             )
-        except Exception as mark_exc:
-            ErrorManager.log_error_only(
-                code="E_PIPELINE_MARK_ERROR",
-                context={
-                    "lotto_id": lotto_id,
-                    "tipo_lotto": tipo_lotto,
-                    "detail": detail,
-                    "mark_error": str(mark_exc),
-                },
-                area="backend",
-                function_name="vendite.run_lotto_pipeline",
+            self.repository.fail_lotto_task_run(
+                run.task_run_id,
+                coord["error_code"],
+                coord["error_message"],
             )
+
+        self._diagnostica_best_effort(
+            _riscrivi,
+            contesto={
+                "lotto_id": coord.get("lotto_id"),
+                "task_code": coord.get("task_code"),
+            },
+        )
 
     # Scopo: Normalizza lotto_id (0/None = "nuovo lotto", crea) → None oppure id reale.
     @staticmethod
@@ -351,6 +456,38 @@ class LottoPipelineRunner:
             # Il lotto persiste anche se la fase di esecuzione fallisce,
             # consentendo a _mark_lotto_error_safely di trovarlo e marcarlo.
             lotto_id, is_existing_lotto_request = self._resolve_lotto(params)
+
+            # ⭐ SI RITIRANO LE PROPRIE BANDIERE PRIMA DI RIPROVARE, e FUORI
+            # dalla transazione dello step. Due ragioni, entrambe misurate il
+            # 2026-08-21:
+            #
+            # 🔴 PRIMA del verdetto. Dal 2026-08-21 il BE marca le fatture
+            #    fallite (`stato_esecuzione='ERRORE'` + log critico) perché
+            #    l'operatore legga il motivo sulla riga — e quelle marcature
+            #    entrano nella guardia unificata PRE-1. Se il verdetto le
+            #    trovasse ancora alzate dal tentativo precedente, il primo
+            #    fallimento chiuderebbe il lotto per sempre: l'operatore
+            #    corregge la causa, ripreme «Rendi definitive» e trova «Lotto
+            #    bloccato per segnalazioni critiche attive», cioè un messaggio
+            #    che parla d'altro. Una porta a senso unico.
+            #
+            # 🔴 FUORI dalla transazione. Dentro, il ritiro sarebbe annullato
+            #    dal rollback del tentativo fallito mentre la marcatura nuova —
+            #    che vive fuori apposta — resterebbe: misurato, i log critici
+            #    crescevano 1 → 2 → 3 a ogni tentativo, e la scheda
+            #    «Segnalazioni» avrebbe mostrato N copie dello stesso errore.
+            #    Qui il ritiro è definitivo: vive esattamente una riga per
+            #    fattura, quella dell'ULTIMO tentativo.
+            #
+            # ⚠️ Ritira SOLO ciò che ha scritto il BE (firma `origine` nel meta):
+            #    le segnalazioni dei task DB hanno un altro padrone e le ritira
+            #    lui quando il suo problema è risolto.
+            # 📌 Diverso da `disattiva_segnalazioni_lotto_be` più sotto, che sta
+            #    dentro la transazione apposta: quelle bandiere il rollback deve
+            #    ripristinarle, perché descrivono uno stato che il fallimento
+            #    non ha cambiato.
+            if lotto_id is not None:
+                self.repository.ritira_marcature_fatture_be(lotto_id)
 
             # Fase 2: esecuzione pipeline in transazione separata.
             with transaction.atomic():
@@ -613,6 +750,11 @@ class LottoPipelineRunner:
                     detail=exc.detail or str(exc),
                     correlation_id=correlation_id,
                 )
+                # La testata dice CHE c'e' un errore grave nel dettaglio; questa
+                # riga dice QUALE documento, e perche'.
+                self._persist_fattura_error_safely(lotto_id=lotto_id, exc=exc)
+            # E il diario dei task registra anche i falliti, non solo i riusciti.
+            self._persist_task_run_error_safely(exc)
             raise
         except Exception as exc:
             if lotto_id is not None:
@@ -623,6 +765,9 @@ class LottoPipelineRunner:
                     detail=str(exc),
                     correlation_id=correlation_id,
                 )
+            # Anche il ramo NON di dominio: un guasto tecnico e' comunque un
+            # task che e' fallito, e il diario deve saperlo.
+            self._persist_task_run_error_safely(exc)
             ErrorManager.raise_error(
                 code="E_PIPELINE",
                 message="Errore nella pipeline di fatturazione.",

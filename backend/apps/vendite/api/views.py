@@ -52,6 +52,7 @@ from apps.vendite.services.commesse_service import (
     fn_variazione_prezzo_eccezionale,
     pr_run_commesse_push,
 )
+from apps.vendite.services.lotto_segnalazioni_service import LIVELLO_CRITICO
 from apps.vendite.services.pipeline_service import (
     esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
@@ -234,9 +235,15 @@ class ApiLottoSegnalazioniSummary(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET il riepilogo segnalazioni del lotto per uso operativo/UI.
+    # Scopo: Restituisce via GET il riepilogo segnalazioni del lotto + l'ELENCO
+    #        del livello richiesto (default: le critiche, che sono quelle che
+    #        fermano il lotto e quindi la domanda con cui si apre la scheda).
+    # ⚠️ `livello` e non `severity`/`status`: nome italiano come il resto dei
+    #    query param di dominio, e comunque MAI `format` o altri nomi che DRF
+    #    intercetta (memoria feedback_drf_format_magic_param).
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        data = fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id)
+        livello = (request.query_params.get("livello") or LIVELLO_CRITICO).strip().upper()
+        data = fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id, livello=livello)
         return success_response(data)
 
 

@@ -23,6 +23,22 @@ class LottoSignalStatus:
     summary: LottoSegnalazioniSummary
 
 
+# I tre livelli di segnalazione, nel vocabolario del DB (`status` di
+# `fatture_log` / `fatturazione_lotti_log`). Stanno QUI, accanto a chi li
+# aggrega, e non nella view o nel client: sono la stessa scala che i conteggi
+# del riepilogo separano (`critical` / `warning` / `attention`).
+# ⚠️ 'I' esiste solo sulle segnalazioni di LOTTO — il riepilogo conta
+# `lotto_info_count` e non ha il gemello per le fatture.
+LIVELLO_CRITICO = "C"
+LIVELLO_AVVISO = "W"
+LIVELLO_ATTENZIONE = "I"
+LIVELLI_SEGNALAZIONE: tuple[str, ...] = (
+    LIVELLO_CRITICO,
+    LIVELLO_AVVISO,
+    LIVELLO_ATTENZIONE,
+)
+
+
 class LottoSegnalazioniService:
     """Valuta lo stato segnalazioni del lotto per decidere se bloccare lo step successivo."""
 

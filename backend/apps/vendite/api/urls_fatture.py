@@ -20,6 +20,7 @@ from apps.vendite.api.fatture_documenti_views import (
     ApiFatturaDocumentoGenera,
 )
 from apps.vendite.api.fatture_views import ApiFatturaDetail
+from apps.vendite.api.lineage_views import ApiFatturaPassaggi
 from apps.vendite.api.note_views import ApiFatturaNoteDetail, ApiFatturaNoteList
 
 urlpatterns = [
@@ -54,6 +55,10 @@ urlpatterns = [
     path("<int:sorgente_id>/documenti/<int:documento_id>/ristampa/",
          ApiFatturaDocumentoRistampa.as_view(),
          name="vendite-fattura-documenti-ristampa"),
+    # Passaggi (genealogia): stessa factory degli altri sei domini.
+    # ⚠️ PRIMA del dettaglio, come `note/` e `documenti/`.
+    path("<int:fattura_id>/passaggi/", ApiFatturaPassaggi.as_view(),
+         name="vendite-fattura-passaggi"),
     # Dettaglio di consultazione (drawer fattura): testata + righe + riepilogo
     # IVA + scadenze in un round-trip. ULTIMA della lista: `<int:fattura_id>/`
     # è il pattern più generico e deve cedere il passo a `note/` e `documenti/`.

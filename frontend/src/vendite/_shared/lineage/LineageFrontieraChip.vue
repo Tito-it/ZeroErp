@@ -27,10 +27,15 @@ function tipoLabel(codice) {
 </script>
 
 <template>
-  <span v-if="isTransitato && codice" class="lineage-cell-chip">
+  <!-- ⚠️ Il gate e' sul TIPO, non sul codice: una frontiera EMESSA ma non
+       ancora numerata (fattura o nota di credito prima di «Rendi definitive»)
+       ha `codice` NULL — col vecchio gate la cella mostrava «—», cioe' «non
+       transitato», per un documento che in esecuzione c'e' eccome. Stessa
+       fallback `non_numerato` delle tappe del pannello (2026-08-20/21). -->
+  <span v-if="isTransitato && tipoCodice" class="lineage-cell-chip">
     <i class="pi pi-arrow-right lineage-cell-arrow" />
     <Tag :value="tipoLabel(tipoCodice)" severity="secondary" />
-    <span class="lineage-cell-codice">{{ codice }}</span>
+    <span class="lineage-cell-codice">{{ codice || t('vendite.lineage.non_numerato') }}</span>
     <Tag
       v-if="stato || fase"
       :value="stato ?? fase"

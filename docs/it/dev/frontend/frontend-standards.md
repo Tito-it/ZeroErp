@@ -1745,6 +1745,26 @@ Il tema supporta dark e light mode tramite la classe `.p-dark` su `<html>`.
 | Pulsante | Topbar — icona sole (dark) / luna (light), tooltip i18n |
 | Variabili | Tutte le `--app-*` in `theme.css` hanno override nel blocco `:root:not(.p-dark)` |
 
+#### Gravità (severity) — il colore come scorciatoia
+
+I token `--app-severity-*` sono il colore con cui l'interfaccia dice **quanto è
+grave**, nello stesso vocabolario dei `Tag :severity` di PrimeVue: `danger`,
+`warn`, `info`, `success`, `secondary`, più `--app-severity-fill` (quanta tinta
+prende uno sfondo acceso ma non invadente). Il BB che li consuma è
+[`SelectButtonGravita`](../../../frontend/src/core/components/SelectButtonGravita.vue).
+
+⚠️ **`warn` è GIALLO e non arancio**, e non è una preferenza estetica: su una
+resa **tenue** — un pallino, un chip non selezionato, un bordo — l'arancio si
+legge come un rosso spento, e i due livelli che contano di più finiscono per
+dare lo stesso segnale proprio dove il colore deve fare da scorciatoia
+(rilievo in-app, 2026-08-21). Sui `Tag` a fondo pieno la distinzione regge:
+quelli restano i colori di PrimeVue, e questi token governano la resa tenue,
+che è l'unica dove il problema esiste.
+
+⚠️ **In light mode scendono di tonalità**: le `-500` nascono per fondi scuri e
+su bianco il giallo cede per primo — cedendo, riporterebbe esattamente il
+difetto per cui era stato scelto.
+
 **Regola**: nessun componente deve usare direttamente `--p-surface-700/800/900` per sfondi o bordi.
 Usare sempre le variabili `--app-*` corrispondenti che si adattano automaticamente al modo attivo.
 Per aggiungere un componente theme-aware: definire le variabili in `:root` (dark) e sovrascriverle
