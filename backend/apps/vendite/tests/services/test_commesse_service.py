@@ -407,13 +407,33 @@ class CommesseServiceTests(TestCase):
         # Classificazione: solo la commessa 1 nel gruppo tipo_doc mancante.
         self.assertEqual(result["emittibilita_tipo_doc_mancante"], [1])
         self.assertEqual(len(result["emittibilita_errors"]), 2)
-        # Evento durevole emesso con il riepilogo (incluso il tipo_doc mancante).
-        mock_repo.log_event.assert_called_once()
-        kw = mock_repo.log_event.call_args.kwargs
-        self.assertEqual(kw["event_code"], "EMITTIBILITA_FALLITA")
-        self.assertEqual(kw["severity"], "WARNING")
-        self.assertEqual(kw["payload"]["tipo_doc_mancante_commesse"], [1])
-        self.assertEqual(kw["payload"]["totale_falliti"], 2)
+        # ⭐ UNA RIGA DI GIORNALE PER COMMESSA FALLITA (BE-4), non piu' un
+        #    evento aggregato con dentro la lista degli id. Le commesse rotte
+        #    sono due: due righe, ciascuna legata ALLA PROPRIA commessa.
+        self.assertEqual(mock_repo.log_event.call_count, 2)
+        per_commessa = {
+            c.kwargs["entity_id"]: c.kwargs for c in mock_repo.log_event.call_args_list
+        }
+        self.assertEqual(sorted(per_commessa), [1, 2])
+
+        for kw in per_commessa.values():
+            self.assertEqual(kw["event_code"], "EMITTIBILITA_FALLITA")
+            # ⛔ `TASK_RUN` non e' piu' ammesso dal giornale (D-3): un giro non
+            #    ha un emittente da cui derivare il perimetro. L'evento si lega
+            #    alla COMMESSA, che ce l'ha.
+            self.assertEqual(kw["entity_type"], "COMMESSA")
+            # 🔴 "WARN", non "WARNING": e' l'unico valore che il CHECK
+            #    `chk_event_log_severity` ammette (INFO | WARN | ERROR). Questa
+            #    asserzione blindava il valore ROTTO — su un mock, che il CHECK
+            #    non ce l'ha — ed e' il motivo per cui il difetto e' vissuto per
+            #    mesi con zero righe in tabella.
+            self.assertEqual(kw["severity"], "WARN")
+
+        # La categoria tipo_doc resta osservabile, ma sulla riga della commessa
+        # che ce l'ha: e' la 1, non la 2.
+        self.assertTrue(per_commessa[1]["payload"]["tipo_doc_mancante"])
+        self.assertFalse(per_commessa[2]["payload"]["tipo_doc_mancante"])
+        self.assertIn("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO", per_commessa[1]["payload"]["errore"])
 
     # Scopo: codice sorgente non riconosciuto → ServiceError validazione.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")

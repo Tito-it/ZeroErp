@@ -19,10 +19,10 @@ Indice test eseguiti:
 9) CommessePushOrchestratorTests.test_run_risultato_jsonb_include_tutti_handler
 10) CommessePushOrchestratorTests.test_run_skipped_quando_lock_non_acquisito
 11) CommessePushOrchestratorTests.test_run_rilascia_lock_dopo_esecuzione
-12) CommessePushOrchestratorTests.test_run_emits_push_started_and_completed_events
-13) CommessePushOrchestratorTests.test_run_with_sorgente_uid_propagated_to_handlers_and_events
+12) CommessePushOrchestratorTests.test_run_non_scrive_su_event_log
+13) CommessePushOrchestratorTests.test_run_with_sorgente_uid_propagated_to_handlers_and_perimetro
 14) CommessePushOrchestratorTests.test_run_without_sorgente_uid_passes_none_to_handlers
-15) CommessePushOrchestratorTests.test_run_with_righe_ids_propagated_to_handlers_and_events
+15) CommessePushOrchestratorTests.test_run_with_righe_ids_propagated_to_handlers_and_perimetro
 """
 
 from unittest import TestCase
@@ -201,7 +201,9 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(risultato["HandlerA"]["created"], 2)
         self.assertEqual(risultato["HandlerB"]["skipped"], 5)
         call_kwargs = repo.log_push_run.call_args.kwargs
-        self.assertIn("HandlerA", call_kwargs["risultato"])
+        # ⭐ Il `risultato` scritto e' annidato: `handlers` + `perimetro`
+        #    (BE-3a). `as_risultato()` resta la sola mappa degli handler.
+        self.assertIn("HandlerA", call_kwargs["risultato"]["handlers"])
 
     # Scopo: lock non acquisito → PushReport SKIPPED, nessun handler eseguito, nessun log.
     def test_run_skipped_quando_lock_non_acquisito(self):
@@ -233,30 +235,37 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(report.stato, "ERRORE")
         self._mock_release.assert_called()
 
-    # Scopo: Verifica che _run_locked emetta PUSH_STARTED e PUSH_COMPLETED su event_log.
-    def test_run_emits_push_started_and_completed_events(self):
+    # Scopo: ⛔ IL GIRO DI PUSH NON SCRIVE SUL GIORNALE (BE-3a, D-3).
+    #
+    #        Il verso e' l'ASSENZA, e va presidiato proprio perche' l'assenza
+    #        non si nota: `PUSH_STARTED`/`PUSH_COMPLETED` scrivevano
+    #        `entity_type='TASK_RUN'`, che dal 2026-08-22 e' a catalogo con
+    #        `modo_risoluzione_emittente = NULL` — il giornale lo rifiuta, e
+    #        con `entity_id = 0` lo rifiuterebbe comunque. Rimetterle qui «per
+    #        avere piu' tracciabilita'» farebbe fallire il push all'AVVIO,
+    #        cioe' esattamente il difetto da cui si viene.
+    #
+    #        Che l'esito del giro resti registrato lo dicono il test 7
+    #        (`push_log_id` valorizzato) e il 9 (il risultato per handler).
+    def test_run_non_scrive_su_event_log(self):
         repo = _mock_repo(push_log_id=42)
         h = _mock_handler("HandlerA", _ok_result("HandlerA"))
         orch = CommessaPushOrchestrator(repo, [h])
 
         report = orch.run()
 
-        event_calls = repo.log_event.call_args_list
-        self.assertEqual(len(event_calls), 2)
-        started = event_calls[0].kwargs
-        self.assertEqual(started["event_code"], "PUSH_STARTED")
-        self.assertEqual(started["domain"], "COMMESSE")
-        self.assertEqual(started["entity_type"], "TASK_RUN")
-        self.assertEqual(started["entity_id"], 0)
-        completed = event_calls[1].kwargs
-        self.assertEqual(completed["event_code"], "PUSH_COMPLETED")
-        self.assertEqual(completed["entity_id"], 42)
-        self.assertEqual(completed["severity"], "INFO")
-        self.assertEqual(completed["payload"]["stato"], "COMPLETATO")
+        repo.log_event.assert_not_called()
+        # Il giro resta registrato dove ha un senso: nel suo log di run.
+        repo.log_push_run.assert_called_once()
+        self.assertEqual(report.push_log_id, 42)
+        self.assertEqual(report.stato, "COMPLETATO")
 
-    # Scopo: sorgente_uid valorizzato → propagato agli handler.run e nel payload
-    # event_log (PUSH_STARTED + PUSH_COMPLETED) per tracciabilita' del push singolo.
-    def test_run_with_sorgente_uid_propagated_to_handlers_and_events(self):
+    # Scopo: sorgente_uid valorizzato → propagato agli handler.run e nel
+    # `risultato.perimetro` di commesse_push_log, per tracciabilita' del push
+    # singolo. ⭐ Prima viveva nel payload di `PUSH_STARTED`: uscito l'evento
+    # dal giornale (BE-3a), «su quale documento era stato chiesto il push»
+    # sarebbe sparito senza questa sede.
+    def test_run_with_sorgente_uid_propagated_to_handlers_and_perimetro(self):
         repo = _mock_repo(push_log_id=99)
         h = _mock_handler("HandlerPreventivi", _ok_result("HandlerPreventivi", sorgente_codice="PREVENTIVO"), sorgente_codice="PREVENTIVO")
         orch = CommessaPushOrchestrator(repo, [h])
@@ -267,12 +276,10 @@ class CommessePushOrchestratorTests(TestCase):
         # nessun filtro sottoinsieme righe in questo run).
         h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=None)
 
-        # Payload event_log contiene sorgente_uid in entrambi gli eventi.
-        event_calls = repo.log_event.call_args_list
-        started_payload = event_calls[0].kwargs["payload"]
-        completed_payload = event_calls[1].kwargs["payload"]
-        self.assertEqual(started_payload["sorgente_uid"], 42)
-        self.assertEqual(completed_payload["sorgente_uid"], 42)
+        # Il perimetro del giro finisce in commesse_push_log.risultato.
+        perimetro = repo.log_push_run.call_args.kwargs["risultato"]["perimetro"]
+        self.assertEqual(perimetro["sorgente_uid"], 42)
+        self.assertEqual(perimetro["source_types"], ["PREVENTIVO"])
 
     # Scopo: sorgente_uid omesso → handler.run riceve sorgente_uid=None
     # (regressione: comportamento batch invariato).
@@ -286,8 +293,8 @@ class CommessePushOrchestratorTests(TestCase):
         h.run.assert_called_once_with(dry_run=False, sorgente_uid=None, righe_ids=None)
 
     # Scopo: righe_ids valorizzato (smistamento selettivo) → propagato a
-    # handler.run e nel payload event_log PUSH_STARTED.
-    def test_run_with_righe_ids_propagated_to_handlers_and_events(self):
+    # handler.run e nel `risultato.perimetro` di commesse_push_log.
+    def test_run_with_righe_ids_propagated_to_handlers_and_perimetro(self):
         repo = _mock_repo()
         h = _mock_handler("HandlerPreventivi", _ok_result("HandlerPreventivi", sorgente_codice="PREVENTIVO"), sorgente_codice="PREVENTIVO")
         orch = CommessaPushOrchestrator(repo, [h])
@@ -295,5 +302,5 @@ class CommessePushOrchestratorTests(TestCase):
         orch.run(source_types=["PREVENTIVO"], sorgente_uid=42, righe_ids=[7, 9])
 
         h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=[7, 9])
-        started_payload = repo.log_event.call_args_list[0].kwargs["payload"]
-        self.assertEqual(started_payload["righe_ids"], [7, 9])
+        perimetro = repo.log_push_run.call_args.kwargs["risultato"]["perimetro"]
+        self.assertEqual(perimetro["righe_ids"], [7, 9])

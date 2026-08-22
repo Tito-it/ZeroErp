@@ -25,6 +25,7 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
 from apps.vendite.db.commesse_repository import (
     TIPO_MOVIMENTO_NORMALE,
     TIPO_MOVIMENTO_RETTIFICA,
@@ -283,7 +284,7 @@ def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
     )
 
 
-class VenditePipelineRepository:
+class VenditePipelineRepository(EventLogRepositoryMixin):
     """Wrapper SQL a basso livello per l'orchestrazione pipeline vendite."""
 
     DOMINIO_CODE = "FATTURAZIONE"
@@ -1177,42 +1178,10 @@ class VenditePipelineRepository:
                 [lotto_id],
             )
 
-    # Scopo: Scrive un evento su vendite.event_log tramite fn_log_event.
-    def log_event(
-        self,
-        *,
-        domain: str,
-        entity_type: str,
-        entity_id: int,
-        event_code: str,
-        severity: str = "INFO",
-        correlation_id: str | None = None,
-        actor: str = "service:django",
-        source: str = "django",
-        payload: dict[str, Any] | None = None,
-    ) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT vendite.fn_log_event(
-                    %s, %s, %s, %s, %s, %s::uuid, %s, %s, %s::jsonb
-                )
-                """,
-                [
-                    domain,
-                    entity_type,
-                    entity_id,
-                    event_code,
-                    severity,
-                    correlation_id,
-                    actor,
-                    source,
-                    self._to_jsonb_param(payload or {}),
-                ],
-            )
-            row = cursor.fetchone()
-        assert row is not None
-        return int(row[0])
+    # `log_event` NON sta piu' qui: e' il building block
+    # `EventLogRepositoryMixin` (`_event_log_repo_mixin.py`), estratto con la
+    # consegna BE-6 perche' era copia carbone in questo repository e in
+    # `commesse_repository`. La firma e' passata da nove parametri a SEI.
 
     # Scopo: Scrive un log massivo su tutte le fatture collegate al lotto.
     def log_fatture_lotto(

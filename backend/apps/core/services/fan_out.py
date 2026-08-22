@@ -121,7 +121,7 @@ class FanOutRunLogger:
 
     E' la parte che, lasciata fuori dal BB, il prossimo chiamante
     dimenticherebbe di replicare — ma tenerla dentro per intero costringerebbe
-    `core` a conoscere `event_log`, `commesse_push_log` e i logger di dominio.
+    `core` a conoscere `commesse_push_log` e i logger di dominio.
     """
 
     # Scopo: Inizio giro, con la dimensione del lavoro scoperto.

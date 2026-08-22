@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
@@ -89,7 +90,6 @@ class LottoPipelineRunner:
             self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
             self.repository.log_lotto_esito_fatture(lotto_id)
             self.repository.log_event(
-                domain="PIPELINE",
                 entity_type="LOTTO",
                 entity_id=lotto_id,
                 event_code="PIPELINE_ERROR",
@@ -98,35 +98,28 @@ class LottoPipelineRunner:
                 payload={"code": code, "detail": detail, "tipo_lotto": tipo_lotto},
             )
 
-    # Scopo: Prova a marcare il lotto in errore senza mascherare l'eccezione principale.
-    # Scopo: ⭐ IL TELAIO DELLE SCRITTURE DI DIAGNOSI — «fuori dalla
-    #        transazione, best-effort, mai mascherare l'errore vero».
+    # Scopo: Adatta il telaio condiviso `diagnostica_best_effort` fissando il
+    #        `function_name` di questo runner, cosi' i call site restano corti.
     #
-    #        Tre scritture lo seguono e sono nate a poche ore di distanza
-    #        (2026-08-21): il marcatore di errore del LOTTO, la marcatura della
-    #        FATTURA che ha fallito e la riscrittura del TASK RUN. Tutte e tre
-    #        vivono nel gestore d'eccezione, tutte e tre devono sopravvivere al
-    #        rollback dello step, e tutte e tre non devono MAI sostituire
-    #        l'errore che l'operatore sta aspettando con il proprio.
-    #        Alla terza copia il `try/except/log_error_only` e' diventato
-    #        questo (regola del 2): scritto tre volte, sarebbe bastato che una
-    #        dimenticasse il `try` perche' un difetto del diario diventasse il
-    #        messaggio a video.
+    # ⭐ IL TELAIO NON VIVE PIU' QUI: e' salito in
+    #    `apps/core/services/diagnostica_best_effort.py` quando
+    #    `commesse_service` ha avuto lo stesso bisogno sul ramo push (consegna
+    #    BE-7). Era nato qui il 2026-08-21 alla terza copia dello stesso
+    #    `try/except/log_error_only` — marcatore di errore del LOTTO,
+    #    marcatura della FATTURA fallita, riscrittura del TASK RUN — e un
+    #    telaio che vive dentro uno dei suoi utenti si copia al primo utente
+    #    che sta altrove.
     #
     # ⚠️ Ingoia QUALUNQUE eccezione di proposito: qui si sta gia' gestendo un
     #    fallimento, e il secondo non ha diritto di prendere il posto del primo.
     def _diagnostica_best_effort(
         self, azione: Callable[[], None], *, contesto: dict[str, Any]
     ) -> None:
-        try:
-            azione()
-        except Exception as exc:
-            ErrorManager.log_error_only(
-                code="E_PIPELINE_MARK_ERROR",
-                context={**contesto, "mark_error": str(exc)},
-                area="backend",
-                function_name="vendite.run_lotto_pipeline",
-            )
+        diagnostica_best_effort(
+            azione,
+            contesto=contesto,
+            function_name="vendite.run_lotto_pipeline",
+        )
 
     def _mark_lotto_error_safely(
         self,
@@ -366,17 +359,28 @@ class LottoPipelineRunner:
             stato_doc_fiscale_id=step.stato_doc_fiscale_id,
         )
         self.repository.log_lotto_esito_fatture(lotto_id)
-        self.repository.log_event(
-            domain="PIPELINE",
-            entity_type="LOTTO",
-            entity_id=lotto_id,
-            event_code="STEP_COMPLETED",
-            correlation_id=correlation_id,
-            payload={
+        # ⚠️ NEL TELAIO (BE-7 / D-15): siamo DENTRO l'`atomic` dello step, e
+        #    dal 2026-08-22 questa scrittura PUO' fallire — il giornale rifiuta
+        #    una riga di cui non sa dire di chi e'. Senza telaio un difetto del
+        #    diario porterebbe giu' lo step che sta descrivendo, cioe' il
+        #    lavoro vero. Il savepoint e' cio' che tiene sana la transazione.
+        self._diagnostica_best_effort(
+            lambda: self.repository.log_event(
+                entity_type="LOTTO",
+                entity_id=lotto_id,
+                event_code="STEP_COMPLETED",
+                correlation_id=correlation_id,
+                payload={
+                    "step_ordine": step.ordine,
+                    "step_desc": step.descrizione,
+                    "stato_doc_fiscale_id": step.stato_doc_fiscale_id,
+                    "dry_run": dry_run,
+                },
+            ),
+            contesto={
+                "lotto_id": lotto_id,
+                "evento": "STEP_COMPLETED",
                 "step_ordine": step.ordine,
-                "step_desc": step.descrizione,
-                "stato_doc_fiscale_id": step.stato_doc_fiscale_id,
-                "dry_run": dry_run,
             },
         )
         self._process_close_lotto_by_flag(
@@ -615,16 +619,20 @@ class LottoPipelineRunner:
                     if getattr(lotto_context, "lock_batch_id", None)
                     else None
                 )
-                self.repository.log_event(
-                    domain="PIPELINE",
-                    entity_type="LOTTO",
-                    entity_id=lotto_id,
-                    event_code="PIPELINE_STARTED",
-                    correlation_id=correlation_id,
-                    payload={
-                        "tipo_lotto": effective_tipo_lotto,
-                        "dry_run": params.dry_run,
-                    },
+                # ⚠️ Nel telaio (BE-7): dentro l'`atomic` del giro. Un evento
+                #    d'avvio rifiutato non deve impedire l'avvio.
+                self._diagnostica_best_effort(
+                    lambda: self.repository.log_event(
+                        entity_type="LOTTO",
+                        entity_id=lotto_id,
+                        event_code="PIPELINE_STARTED",
+                        correlation_id=correlation_id,
+                        payload={
+                            "tipo_lotto": effective_tipo_lotto,
+                            "dry_run": params.dry_run,
+                        },
+                    ),
+                    contesto={"lotto_id": lotto_id, "evento": "PIPELINE_STARTED"},
                 )
 
                 for step in steps:
@@ -703,26 +711,29 @@ class LottoPipelineRunner:
                     )
                 else:
                     self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
-                self.repository.log_event(
-                    domain="PIPELINE",
-                    entity_type="LOTTO",
-                    entity_id=lotto_id,
-                    event_code="PIPELINE_COMPLETED",
-                    correlation_id=correlation_id,
-                    payload={
-                        "tipo_lotto": effective_tipo_lotto,
-                        "con_errori": step_con_errori,
-                        **(
-                            {
-                                "critical_count": stato_finale.critical_count,
-                                "stato_esecuzione_errore_count": (
-                                    stato_finale.fatture_stato_esecuzione_errore_count
-                                ),
-                            }
-                            if step_con_errori and stato_finale is not None
-                            else {}
-                        ),
-                    },
+                # ⚠️ Nel telaio (BE-7): dentro l'`atomic` del giro.
+                self._diagnostica_best_effort(
+                    lambda: self.repository.log_event(
+                        entity_type="LOTTO",
+                        entity_id=lotto_id,
+                        event_code="PIPELINE_COMPLETED",
+                        correlation_id=correlation_id,
+                        payload={
+                            "tipo_lotto": effective_tipo_lotto,
+                            "con_errori": step_con_errori,
+                            **(
+                                {
+                                    "critical_count": stato_finale.critical_count,
+                                    "stato_esecuzione_errore_count": (
+                                        stato_finale.fatture_stato_esecuzione_errore_count
+                                    ),
+                                }
+                                if step_con_errori and stato_finale is not None
+                                else {}
+                            ),
+                        },
+                    ),
+                    contesto={"lotto_id": lotto_id, "evento": "PIPELINE_COMPLETED"},
                 )
                 # DRY-RUN = NESSUNA PERSISTENZA (fix 2026-07-22, segnalazione team DB).
                 # Prima lo stato fiscale del lotto veniva avanzato in modo

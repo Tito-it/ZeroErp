@@ -876,6 +876,26 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 
 > **Perimetro DB:** questo cantiere non modifica `backend/`. Le richieste si
 > scrivono, non si implementano.
+>
+> ✅ **Stato al 2026-08-22 (sera), scritto dal backend.** Sette consegne su nove
+> sono **fatte**: BE-1, BE-3a, BE-4, BE-5, BE-6, BE-7, BE-9. Restano **BE-2** e
+> **BE-3b**, ferme su un prerequisito DB — i changeSet 61 e 62 hanno consegnato
+> le **colonne**, ma nessuna funzione le scrive e `fn_log_commessa_push_run`
+> **rifiuta** `IN_ESECUZIONE` con un guard suo. La richiesta è in
+> [brief-db-scrittori-del-giro-push-e-task-run.md](brief-db-scrittori-del-giro-push-e-task-run.md).
+>
+> ⭐ **Il rischio 3 del §9.3 è chiuso a metà**: il registro ha di nuovo delle
+> righe scritte dal backend vero — perimetro derivato, `cleanup_at` a 750
+> giorni, entrambi verificati contro il DB. Resta aperto il `correlation_id`,
+> che è la parte che dipende da BE-2.
+>
+> ⚠️ **E una consegna che questo §5 non elencava**, trovata eseguendo i
+> cancelli: i due codici nuovi (`E_EVENT_LOG_SCOPE_NON_RISOLTO`,
+> `E_EVENT_LOG_ENTITY_TYPE_IGNOTO`) più `E_UPDATE_NOT_ALLOWED` mandavano in
+> rosso il **cancello del terzo lato** e quello della **divergenza**, perché
+> `error_policies_generated.py` non era stato rigenerato dopo il seed. Un codice
+> errore nuovo costa **due** cose lato BE, non una: la policy generata **e** il
+> messaggio di ripiego senza `%s`.
 
 | # | Consegna | Blocca? |
 | --- | --- | --- |

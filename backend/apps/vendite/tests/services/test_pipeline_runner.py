@@ -38,6 +38,7 @@ Indice test eseguiti:
 36) test_lotto_riaperto_non_azzera_se_nessuno_step_eseguito (Fase 6)
 37) test_lotto_riaperto_non_innesca_rollback_automatico (Fase 6)
 38) test_lotto_riaperto_non_azzera_se_il_giro_non_ha_prodotto_fatture (Fase 6)
+39) test_giornale_rotto_non_ferma_la_pipeline (BE-7 / D-15)
 
 Nota Fase 6 (2026-08-03): i test 33-37 presidiano il ritorno del lotto a
 DRAFT. Il 33 e il 34 vanno letti in COPPIA: da soli non distinguono un ramo
@@ -867,6 +868,47 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
 
+    # Scopo: ⭐ UN DIFETTO DEL DIARIO NON FERMA IL LAVORO CHE DESCRIVE
+    #        (consegna BE-7, decisione D-15 del brief
+    #        `brief-db-event-log-scope-e-riga-parlante.md`).
+    #
+    #        E' il verso che nessuno verificava, ed e' quello che conta: dal
+    #        2026-08-22 `fn_log_event` PUO' rifiutare una riga — il giornale
+    #        non accetta eventi di cui non sappia dire di chi sono. Le tre
+    #        scritture di `PIPELINE_STARTED` / `STEP_COMPLETED` /
+    #        `PIPELINE_COMPLETED` stanno DENTRO l'`atomic` del giro: senza il
+    #        telaio best-effort, un evento rifiutato portava giu' l'intera
+    #        pipeline di fatturazione — cioe' il difetto BE-1 in grande.
+    #
+    # ⚠️ Non basta che non sollevi: la pipeline deve ARRIVARE IN FONDO. Un
+    #    test che si fermasse a `assertNoRaises` passerebbe anche se il giro
+    #    uscisse a meta' in silenzio, che e' il modo in cui questo difetto
+    #    sarebbe tornato.
+    def test_giornale_rotto_non_ferma_la_pipeline(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        # Il giornale rifiuta OGNI riga, come farebbe il trigger di derivazione
+        # su un'entita' che non sa collocare.
+        repo.log_event.side_effect = RuntimeError(
+            "E_EVENT_LOG_SCOPE_NON_RISOLTO: il giornale non registra righe senza perimetro"
+        )
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+
+        with _fake_tx():
+            result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
+
+        # Il giro e' arrivato in fondo: lotto restituito e step eseguito.
+        self.assertEqual(result, 10)
+        self.assertTrue(step_executor.called)
+        # E il diario ci ha PROVATO su tutti e tre i momenti: il telaio
+        # assorbe, non salta le scritture successive.
+        codici = {
+            c.kwargs.get("event_code") for c in repo.log_event.call_args_list
+        }
+        self.assertEqual(
+            codici, {"PIPELINE_STARTED", "STEP_COMPLETED", "PIPELINE_COMPLETED"}
+        )
+
     # Scopo: Verifica che run_pipeline emetta PIPELINE_STARTED su event_log.
     def test_runner_emits_pipeline_started_event(self):
         repo = MagicMock(wraps=self._RepoMock())
@@ -879,7 +921,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             if c.kwargs.get("event_code") == "PIPELINE_STARTED"
         ]
         self.assertEqual(len(started_calls), 1)
-        self.assertEqual(started_calls[0].kwargs["domain"], "PIPELINE")
         self.assertEqual(started_calls[0].kwargs["entity_type"], "LOTTO")
         self.assertEqual(started_calls[0].kwargs["entity_id"], 10)
 
@@ -895,7 +936,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             if c.kwargs.get("event_code") == "PIPELINE_COMPLETED"
         ]
         self.assertEqual(len(completed_calls), 1)
-        self.assertEqual(completed_calls[0].kwargs["domain"], "PIPELINE")
         self.assertEqual(completed_calls[0].kwargs["payload"]["tipo_lotto"], "MASSIVO")
 
     # Scopo: Verifica che _execute_pipeline_step emetta STEP_COMPLETED su event_log.
@@ -926,7 +966,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         ]
         self.assertEqual(len(error_calls), 1)
         self.assertEqual(error_calls[0].kwargs["severity"], "ERROR")
-        self.assertEqual(error_calls[0].kwargs["domain"], "PIPELINE")
 
     # Scopo: F1 — su lotto ESISTENTE in successo, il runner AVANZA allo step
     # successivo a quello corrente (non ri-esegue il primo). Catalogo [1,2,8],

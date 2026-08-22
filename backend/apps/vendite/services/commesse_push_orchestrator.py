@@ -11,7 +11,10 @@ CommessaPushOrchestrator:
     specificato via source_types).
   - Isola gli errori per handler: un fallimento non blocca gli altri.
   - Scrive sempre il log in commesse_push_log al completamento
-    (dry_run incluso, con flag dry_run=True sul record).
+    (dry_run incluso, con flag dry_run=True sul record), col perimetro del
+    giro (source_types/sorgente_uid/righe_ids) sotto `risultato.perimetro`.
+  - ⛔ NON scrive su vendite.event_log: un giro non e' un'entita' e non ha un
+    emittente da cui derivare il perimetro del giornale (BE-3a / D-3).
   - Non usa pipeline, lotti o task-state-machine.
 """
 
@@ -177,21 +180,33 @@ class CommessaPushOrchestrator:
         t0 = time.monotonic()
         results: list[HandlerResult] = []
 
-        # `sorgente_uid`/`righe_ids` propagati nel payload event_log per
-        # tracciabilita' del push singolo/selettivo (correlation con la riga
-        # sorgente specifica e il sottoinsieme scelto dall'operatore).
-        self._repo.log_event(
-            domain="COMMESSE",
-            entity_type="TASK_RUN",
-            entity_id=0,
-            event_code="PUSH_STARTED",
-            payload={
-                "source_types": source_types,
-                "dry_run": dry_run,
-                "sorgente_uid": sorgente_uid,
-                "righe_ids": righe_ids,
-            },
-        )
+        # ⛔ QUI NON SI SCRIVE PIU' SU `event_log` (consegna BE-3a, D-3 del
+        #    brief `brief-db-event-log-scope-e-riga-parlante.md`).
+        #
+        #    Il giornale registra fatti accaduti a un'ENTITA' di cui sappia
+        #    dire di chi e': deriva il perimetro da `entity_type`+`entity_id`,
+        #    e se non ci riesce rifiuta la riga. Un GIRO di push non e'
+        #    un'entita' e non ha un emittente — attraversa piu' sorgenti e
+        #    quindi, potenzialmente, piu' emittenti. `TASK_RUN` e' rimasto a
+        #    catalogo (`config.tipi_entita`) perche' l'errore di qualcun altro
+        #    puo' PUNTARCI, ma con `modo_risoluzione_emittente = NULL`: nel
+        #    giornale non entra, e il trigger lo rifiuta anche con un
+        #    `entity_id` valido.
+        #
+        # 🔴 E l'`entity_id = 0` di prima non era un segnaposto: era un id che
+        #    NON ESISTEVA ANCORA, perche' la riga di `commesse_push_log`
+        #    nasceva a FINE giro. Un segnaposto e' una convenzione da
+        #    interpretare, un id inesistente e' una sequenza sbagliata.
+        #
+        # ⏳ Il posto giusto di questo momento e' `commesse_push_log`, con la
+        #    riga creata IN TESTA allo stato IN_ESECUZIONE — ed e' la consegna
+        #    BE-3b, ferma sul prerequisito DB: `fn_log_commessa_push_run`
+        #    rifiuta `IN_ESECUZIONE` con un guard suo e non ha un
+        #    `p_correlation_id`, e non esiste una funzione per chiudere un giro
+        #    aperto. Finche' non arriva, l'avvio non lascia traccia.
+        #    ⚠️ Il perimetro del giro NON si perde comunque: `source_types`,
+        #    `sorgente_uid` e `righe_ids` scendono nel `risultato` scritto in
+        #    coda, sotto la chiave `perimetro` (sotto).
 
         for handler in self._resolve_handlers(source_types):
             try:
@@ -216,30 +231,27 @@ class CommessaPushOrchestrator:
             durata_ms=durata_ms,
         )
 
+        # ⭐ IL `risultato` PORTA ANCHE IL PERIMETRO DEL GIRO (BE-3a).
+        #    `sorgente_uid` e `righe_ids` vivevano SOLO nel payload di
+        #    `PUSH_STARTED`: togliendo l'evento senza questa riga si sarebbe
+        #    perso «su quale documento, e su quali sue righe» era stato chiesto
+        #    il push — cioe' l'unica cosa che distingue un push singolo da un
+        #    batch. `stato`, `durata_ms` e l'esito per handler erano gia' qui,
+        #    ed e' il motivo per cui `PUSH_COMPLETED` non lascia un buco.
         push_log_id = self._repo.log_push_run(
             stato=stato,
             dry_run=dry_run,
             source_types=report.source_type_names() or None,
-            risultato=report.as_risultato() or None,
+            risultato={
+                "handlers": report.as_risultato(),
+                "perimetro": {
+                    "source_types": source_types,
+                    "sorgente_uid": sorgente_uid,
+                    "righe_ids": righe_ids,
+                },
+            },
             durata_ms=durata_ms,
         )
         report.push_log_id = push_log_id
-
-        errors_count = sum(len(r.errors) for r in results)
-        self._repo.log_event(
-            domain="COMMESSE",
-            entity_type="TASK_RUN",
-            entity_id=push_log_id,
-            event_code="PUSH_COMPLETED",
-            severity="WARN" if stato != "COMPLETATO" else "INFO",
-            payload={
-                "stato": stato,
-                "durata_ms": durata_ms,
-                "push_log_id": push_log_id,
-                "handlers_count": len(results),
-                "errors_count": errors_count,
-                "sorgente_uid": sorgente_uid,
-            },
-        )
 
         return report
