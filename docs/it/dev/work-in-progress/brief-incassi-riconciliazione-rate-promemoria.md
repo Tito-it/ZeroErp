@@ -1795,7 +1795,26 @@ Girandolo, la colonna su `vendite_contabili` **sparisce** invece di essere
 rinominata, e con lei il parametro `p_compensazione_id` di
 `fn_get_or_create_vendite_contabile`. **Meno pezzi, non di più.**
 
-🔵 **Non ancora deciso da Tid**: proposto il 2026-08-21, in attesa.
+✅ **DECISO da Tid il 2026-08-22: si gira.** Il legame vive su
+`sistemazioni.contabile_id`, e su `vendite_contabili` sono spariti la colonna, la
+sua FK e il suo unico — piu' il parametro `p_compensazione_id` di
+`fn_get_or_create_vendite_contabile`. ⭐ **Tre oggetti in meno e nessuna garanzia
+persa**: l'unicita' «una contabile per atto» ha cambiato lato
+(`uq_sistemazioni_contabile`).
+
+⚠️ **Costo misurato prima di decidere**: zero righe ovunque, e in tutto
+`backend/` e `frontend/` **nessuna riga di codice** nominava la tabella o la
+colonna — solo commenti e stringhe di messaggi. La stessa decisione fra sei mesi
+sarebbe stata una migrazione.
+
+📌 E il giro ha portato con se' una **conseguenza che il ragionamento non aveva
+previsto**: la regola *«una contabile di compensazione sta sul centro dedicato»*
+e il divieto di agganciarla a un lotto vivevano su `vendite_contabili`, appesi
+alla colonna. Girato il verso, quel guard **perde il momento in cui puo'
+scattare** — alla nascita della distinta nessun atto la cita ancora. Le due
+regole non sono sparite: sono andate dove il dato che le rende decidibili esiste
+davvero (l'atto, e la porta del lotto). ⭐ *Un controllo che scatta quando
+l'informazione non c'e' ancora non e' un presidio: e' una decorazione.*
 
 #### f) Dove va a finire, come lavoro
 

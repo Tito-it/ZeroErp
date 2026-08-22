@@ -1,0 +1,370 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FUNZIONE PERDE UN PARAMETRO — passo S4-2 (lotto 7)
+#   pagamenti.fn_get_or_create_vendite_contabile
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-2 · Decisione: brief madre D15-e
+#
+# ── ⭐ COSA SPARISCE, E PERCHE' E' UN GUADAGNO ───────────────────────
+#   `p_compensazione_id`, e con lui **tre** pezzi:
+#
+#   | Pezzo | Perché non serve più |
+#   | --- | --- |
+#   | il guard di parametro `<= 0` | non c'è più un parametro da guardare |
+#   | la mutua esclusione con `p_lotto_id` | le due cose non arrivano più insieme |
+#   | il ramo di riuso «una testata per atto» | l'atto **tiene** l'id della sua contabile: se ce l'ha, non ne chiede un'altra |
+#
+#     > ⭐ Chiedere una compensazione **qui** voleva dire far nascere la testata
+#     > **sapendo già di chi sarebbe stata** — cioè il verso opposto a come
+#     > funziona il processo. Girato il legame (D15-e), la testata nasce e
+#     > **poi** l'atto se la prende.
+#
+#   ⚠️ L'unicità *«una contabile per atto»* non si perde: era
+#   `uq_vendite_contabili_compensazione`, adesso è `uq_sistemazioni_contabile`.
+#   E il messaggio parlante che mancava — riconfermare un atto già eseguito — lo
+#   dà `E_SISTEMAZIONE_NON_CONFERMABILE`, che dice anche in che stato si trova.
+#
+# ── 🔴 CAMBIA LA FIRMA: si elimina e si ricrea ──────────────────────
+#   `CREATE OR REPLACE` con una lista di parametri diversa **non sostituisce**:
+#   affianca un **overload**. E con i valori di default le chiamate diventerebbero
+#   ambigue — un errore che compare a runtime, sul primo chiamante.
+#
+# ── ✅ CHI CHIAMA, E PERCHE' NON SI ROMPE ───────────────────────────
+#   Misurato il 2026-08-22:
+#
+#   * **`vendite.fn_sync_contabili_fondo_fattura`** — unico chiamante DB, usa
+#     **argomenti nominali** e **non** passa `p_compensazione_id`. Invariato;
+#   * **`backend/` e `frontend/`** — nessuna riga di codice chiama la funzione né
+#     nomina la colonna: solo commenti e stringhe di messaggi;
+#   * i **pgTAP** che la chiamano per posizione vanno allineati, e falliscono in
+#     modo rumoroso (*«function does not exist»*) invece di legare male gli
+#     argomenti. ⭐ È il modo giusto di rompersi.
+#
+# ── ⚠️ DUE CODICI ERRORE RESTANO SENZA CHI LI SOLLEVA ───────────────
+#   `E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE` e
+#   `E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI` sono marcati `obsoleto_dal`, non
+#   cancellati: è il pattern del progetto per deprecare una voce di catalogo
+#   senza rompere chi la cita. 📮 Il ripiego lato backend va allineato (BE-1).
+#
+# Verifica: db/pgtap/pagamenti/test-fn-get-or-create-vendite-contabile.sql
+#           + baseline `pagamenti`
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-33-recreate-fn-get-or-create-contabile-senza-compensazione-mctit.yaml
+
+  - changeSet:
+      id: 20260822-33-recreate-fn-get-or-create-contabile-senza-compensazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_get_or_create_vendite_contabile perde p_compensazione_id, e con lui il guard di
+        parametro, la mutua esclusione con p_lotto_id e il ramo di riuso «una testata per
+        atto». Girato il verso del legame (D15-e) e' l'ATTO a tenere l'id della sua contabile:
+        chiederla qui voleva dire far nascere la testata sapendo gia' di chi sarebbe stata.
+        🔴 Si elimina e si ricrea invece di sostituire: cambiare la lista dei parametri
+        affianca un overload, e coi default le chiamate diventano ambigue. ✅ L'unico chiamante
+        DB (vendite.fn_sync_contabili_fondo_fattura) usa argomenti nominali e non passa quel
+        parametro; backend e frontend non la chiamano affatto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: sistemazioni
+                columnName: contabile_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'fn_get_or_create_vendite_contabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 🔴 Si elimina prima: con una lista di parametri diversa, una
+              --    sostituzione affiancherebbe un overload invece di sostituire.
+              DROP FUNCTION IF EXISTS pagamenti.fn_get_or_create_vendite_contabile(
+                  bigint, date, date, bigint, bigint, bigint, text, jsonb, character varying);
+
+              CREATE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(
+                  p_centro_riscossione_id pagamenti.vendite_contabili.centro_riscossione_id%TYPE,
+                  p_data_contabile        pagamenti.vendite_contabili.data_contabile%TYPE,
+                  p_data_registrazione    pagamenti.vendite_contabili.data_registrazione%TYPE DEFAULT CURRENT_DATE,
+                  p_ente_incasso_id       pagamenti.vendite_contabili.ente_incasso_id%TYPE DEFAULT NULL,
+                  p_lotto_id              pagamenti.vendite_contabili_lotti.lotto_id%TYPE DEFAULT NULL,
+                  p_codice_stato_interno  text DEFAULT 'BOZZA',
+                  p_meta                  pagamenti.vendite_contabili.meta%TYPE DEFAULT '{}'::jsonb,
+                  p_origine               pagamenti.vendite_contabili.origine%TYPE DEFAULT 'GENERATA'
+              )
+              RETURNS pagamenti.vendite_contabili.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
+                v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_codice pagamenti.vendite_contabili.codice%TYPE;
+                v_operatore pagamenti.vendite_contabili.user_insert%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recuperare o creare una testata contabile vendite.
+                --
+                -- Regole principali:
+                --   - ⭐ una distinta MANUALE e' il LOTTO DI LAVORO DI UN OPERATORE:
+                --     il riuso comprende CHI STA LAVORANDO, non solo la giornata.
+                --     Cosi' la contesa fra due operatori non esiste, e il lock che
+                --     sarebbe servito a governarla non si costruisce (D12-a).
+                --
+                -- Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e
+                --   con lui il ramo di riuso «una testata per atto», la mutua
+                --   esclusione con p_lotto_id e la colonna nell'INSERT.
+                --   ⭐ Girato il verso del legame e' l'ATTO a generare la contabile e
+                --   a tenerne l'id: chiederla qui voleva dire far nascere la testata
+                --   SAPENDO gia' di chi sarebbe stata, cioe' il verso opposto a come
+                --   funziona il processo. L'unicita' «una contabile per atto» vive
+                --   adesso su uq_sistemazioni_contabile.
+                --   ⚠️ Nessun chiamante passava quel parametro: misurato il
+                --   2026-08-22 su tutte le funzioni DB e su backend/ + frontend/.
+                --
+                -- Rev 2026-08-21 (passo P-7): i nove E_GENERICO passano ai codici
+                -- registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                -- ⭐ I DUE guard che un OPERATORE puo' far scattare davvero: il
+                --    centro e la data li sceglie lui in un form. Codice di dominio,
+                --    non un codice trasversale, perche' il messaggio lo legge una
+                --    persona e non deve nominare un parametro PL/pgSQL.
+                IF p_centro_riscossione_id IS NULL OR p_centro_riscossione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_centro_riscossione_id obbligatorio > 0',
+                      'campo', 'centro_riscossione_id',
+                      'p_centro_riscossione_id', p_centro_riscossione_id
+                    ),
+                    NULL::uuid,
+                    'il centro di riscossione'
+                  );
+                END IF;
+
+                IF p_data_contabile IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_data_contabile obbligatoria',
+                      'campo', 'data_contabile'
+                    ),
+                    NULL::uuid,
+                    'la data contabile'
+                  );
+                END IF;
+
+                -- ⚠️ Da qui in giu' i guard non difendono un DATO dell'operatore:
+                --    difendono un'INVARIANTE DELLA CHIAMATA. Su questi il NULL e'
+                --    AMMESSO, e un id <= 0 o uno stato vuoto non escono da nessuna
+                --    interfaccia — li produce solo un chiamante rotto. Per questo il
+                --    codice e' E_PAGAMENTI_CHIAMATA_NON_VALIDA, classe TECNICO (500):
+                --    l'operatore non ha niente da correggere, e il messaggio nomina il
+                --    parametro perche' il suo lettore e' chi ha scritto la chiamata.
+                --    ⛔ NON E_PARAMETRO_INVALIDO: quello e' uno split rimandato
+                --    (D11 di brief-db-be-classe-codici-errore) che sopravvive per le
+                --    funzioni vecchie, non una sede per il codice nuovo.
+
+                IF p_ente_incasso_id IS NOT NULL AND p_ente_incasso_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_ente_incasso_id deve essere > 0 se valorizzato',
+                      'p_ente_incasso_id', p_ente_incasso_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_ente_incasso_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_lotto_id deve essere > 0 se valorizzato',
+                      'p_lotto_id', p_lotto_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_lotto_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_codice_stato_interno IS NULL OR btrim(p_codice_stato_interno) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_codice_stato_interno obbligatorio'
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_codice_stato_interno (obbligatorio, non vuoto)'
+                  );
+                END IF;
+
+                -- Il vocabolario e' presidiato anche dal CHECK, ma un 23514 non dice
+                -- quale colonna: un valore fuori vocabolario lo produce solo un
+                -- chiamante rotto, quindi TECNICO.
+                IF p_origine IS NULL OR p_origine NOT IN ('MANUALE', 'AUTOMATICA', 'GENERATA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_origine fuori vocabolario',
+                      'p_origine', p_origine
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile',
+                    'p_origine (MANUALE, AUTOMATICA o GENERATA)'
+                  );
+                END IF;
+
+                -- Chi sta lavorando: la STESSA espressione con cui
+                -- script.trgfn_audit_data_user_generic valorizza user_insert, cosi' la
+                -- chiave di riuso e la colonna scritta non possono divergere.
+                v_operatore := COALESCE(
+                    NULLIF(current_setting('app.jwt_user', true), ''),
+                    CURRENT_USER
+                );
+
+                SELECT s.id
+                  INTO v_stato_id
+                  FROM pagamenti.vendite_contabili_stati s
+                 WHERE s.codice_interno = p_codice_stato_interno
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                -- ⚠️ Non e' un parametro sbagliato: e' il catalogo degli stati a
+                -- non avere quella riga, o ad averla spenta. Classe TECNICO.
+                IF v_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_STATO_NON_CONFIGURATO',
+                    jsonb_build_object(
+                      'detail', 'stato contabile non trovato/attivo',
+                      'codice_interno', p_codice_stato_interno
+                    ),
+                    NULL::uuid,
+                    p_codice_stato_interno
+                  );
+                END IF;
+
+                v_data_registrazione := COALESCE(p_data_registrazione, current_date);
+
+                IF p_lotto_id IS NULL THEN
+                  -- ⭐ D12-a: su una distinta MANUALE la chiave di riuso comprende
+                  --    l'OPERATORE. Il raggruppamento «giornata + canale» non ha un
+                  --    referente nel mondo — nessun documento reale corrisponde a «tutti
+                  --    gli incassi banca di lunedi' digitati a mano» — mentre il lotto di
+                  --    lavoro di una persona ce l'ha. E con questo la contesa fra due
+                  --    operatori non esiste: niente colonne di blocco, niente scadenze del
+                  --    lock, niente sblocco d'emergenza.
+                  -- ⚠️ Sulle altre due origini la chiave resta quella di prima: una
+                  --    distinta GENERATA non e' il lotto di lavoro di nessuno, e una
+                  --    AUTOMATICA e' il file.
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.origine = p_origine
+                     AND (p_origine <> 'MANUALE' OR vc.user_insert = v_operatore)
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                ELSE
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                    JOIN pagamenti.vendite_contabili_lotti vcl
+                      ON vcl.contabile_id = vc.id
+                   WHERE vcl.lotto_id = p_lotto_id
+                     AND vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.origine = p_origine
+                     AND (p_origine <> 'MANUALE' OR vc.user_insert = v_operatore)
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                END IF;
+
+                IF v_contabile_id IS NULL THEN
+                  v_codice := concat(
+                    'VC_',
+                    to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+                    '_',
+                    substr(md5(random()::text || clock_timestamp()::text), 1, 8)
+                  );
+
+                  INSERT INTO pagamenti.vendite_contabili (
+                    codice,
+                    centro_riscossione_id,
+                    ente_incasso_id,
+                    data_contabile,
+                    data_registrazione,
+                    stato_id,
+                    origine,
+                    meta
+                  ) VALUES (
+                    v_codice,
+                    p_centro_riscossione_id,
+                    p_ente_incasso_id,
+                    p_data_contabile,
+                    v_data_registrazione,
+                    v_stato_id,
+                    p_origine,
+                    COALESCE(p_meta, '{}'::jsonb)
+                  )
+                  RETURNING id INTO v_contabile_id;
+                END IF;
+
+                IF p_lotto_id IS NOT NULL THEN
+                  INSERT INTO pagamenti.vendite_contabili_lotti (
+                    lotto_id,
+                    contabile_id,
+                    meta
+                  ) VALUES (
+                    p_lotto_id,
+                    v_contabile_id,
+                    jsonb_build_object('source','fn_get_or_create_vendite_contabile')
+                  )
+                  ON CONFLICT (lotto_id, contabile_id) DO NOTHING;
+                END IF;
+
+                RETURN v_contabile_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(bigint, date, date, bigint, bigint, text, jsonb, character varying) IS
+                'Recupera o crea la testata contabile per un centro, un canale e una giornata. ⭐ Su una distinta MANUALE la chiave di riuso comprende CHI STA LAVORANDO (D12-a): il raggruppamento «giornata + canale» non ha un referente nel mondo, il lotto di lavoro di una persona si'' — e con quello la contesa fra due operatori non esiste, quindi il lock che sarebbe servito a governarla non si costruisce. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e con lui il guard di parametro, la mutua esclusione con p_lotto_id e il ramo di riuso «una testata per atto». Girato il verso del legame e'' l''ATTO a tenere l''id della sua contabile: chiederla qui voleva dire far nascere la testata sapendo gia'' di chi sarebbe stata — il verso opposto a come funziona il processo. L''unicita'' «una contabile per atto» vive su uq_sistemazioni_contabile. 🔴 La firma e'' cambiata, quindi la funzione e'' stata eliminata e ricreata: una sostituzione con parametri diversi affianca un overload, e coi default le chiamate diventano ambigue.';
+
+              GRANT EXECUTE ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(bigint, date, date, bigint, bigint, text, jsonb, character varying) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non rimette la forma vecchia: quella scriveva
+              --    vendite_contabili.compensazione_id, che il changeSet -34
+              --    elimina. Per risalire davvero serve prima il passo -34.
+              DROP FUNCTION IF EXISTS pagamenti.fn_get_or_create_vendite_contabile(
+                  bigint, date, date, bigint, bigint, text, jsonb, character varying);

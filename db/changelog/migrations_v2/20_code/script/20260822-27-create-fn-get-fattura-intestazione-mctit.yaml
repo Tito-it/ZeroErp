@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DI CHI E' E A CHI E' — passo S4-1 (lotto 7)
+#   script.fn_get_fattura_intestazione
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-1
+#
+# ── ⭐ UNA DOMANDA DI FATTO, FUORI DALLA ROW SECURITY ────────────────
+#   Risponde **due soggetti**: l'emittente della fattura e il suo cliente.
+#   Nient'altro: nessun importo, nessuna riga, nessun elenco.
+#
+#   Serve al guard delle sistemazioni, che deve poter dire *«questi due documenti
+#   non sono dello stesso cliente»* — una frase **vera** — e non *«non li vedo»*,
+#   che è un'altra cosa e porterebbe a rifiutare per la ragione sbagliata.
+#
+# ── 🔴 LA LEZIONE CHE QUESTA FUNZIONE APPLICA ────────────────────────
+#   È la stessa del lotto 6, e vale la pena scriverla di nuovo perché il difetto
+#   che chiude è **ricaduto due volte**:
+#
+#     > Un guard è `SECURITY INVOKER`. Se legge sotto la row security una tabella
+#     > che l'utente non vede per intero, **non distingue «è diverso» da «non
+#     > c'è»** — e giudica su un `NULL`. A seconda di come è scritto il confronto,
+#     > o rifiuta nominando la causa sbagliata, o **lascia passare**.
+#
+#   `vendite.fatture` ha la RLS dal 2026-06. Un guard che confrontasse i clienti
+#   leggendola direttamente direbbe *«non sono dello stesso cliente»* anche
+#   quando lo sono — perché una delle due non si vede.
+#
+#   ⭐ **Chi risolve non è chi applica.** Che poi l'utente possa scrivere su quei
+#   documenti lo decide il guard di scope (`trgfn_guard_emittente_scope`), che su
+#   `sistemazioni` presidia entrambe le colonne di fattura. Le due domande sono
+#   diverse e hanno due risposte diverse.
+#
+# ── ⚠️ NON ALLARGA NESSUN PERIMETRO ─────────────────────────────────
+#   Risponde **due id** su una fattura che il chiamante ha **già nominato**:
+#   nessuna riga esce, nessun elenco si popola, nessun dato del documento viene
+#   raccontato. E i due id da soli non dicono niente che l'operatore possa usare
+#   — non un numero, non un importo, non un nome.
+#
+# ── ⚠️ LA DIPENDENZA DA DICHIARARE: `NO FORCE` ──────────────────────
+#   Gira come **proprietario**, e le tabelle hanno la RLS **abilitata ma non
+#   forzata**. Con un `FORCE ROW LEVEL SECURITY` tornerebbe a leggere filtrata e
+#   andrebbe rivista — come `fn_resolve_emittente_fiscale_id` e
+#   `fn_check_scadenza_di_fattura`.
+#
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-registro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-27-create-fn-get-fattura-intestazione-mctit.yaml
+
+  - changeSet:
+      id: 20260822-27-create-fn-get-fattura-intestazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_get_fattura_intestazione(p_fattura_id): risponde l'emittente e il cliente di
+        una fattura, FUORI dalla row security. Serve al guard delle sistemazioni, che deve
+        poter dire «questi due documenti non sono dello stesso cliente» — una frase vera — e
+        non «non li vedo». E' la lezione del lotto 6 applicata prima di ricascarci: un guard
+        SECURITY INVOKER che legge vendite.fatture sotto RLS non distingue «e' diverso» da
+        «non c'e'», e giudica su un NULL. Non allarga nessun perimetro: due id su una fattura
+        che il chiamante ha gia' nominato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_fattura_intestazione(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE (
+                  emittente_soggetto_ruolo_id vendite.fatture.emittente_soggetto_ruolo_id%TYPE,
+                  cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire DI CHI E' e A CHI E' una fattura, e nient'altro.
+                  --
+                  -- ⭐ Perche' SECURITY DEFINER: vendite.fatture ha la row
+                  --   security. Un guard SECURITY INVOKER che confrontasse i
+                  --   clienti leggendola direttamente direbbe «non sono dello
+                  --   stesso cliente» anche quando LO SONO — perche' una delle
+                  --   due non si vede. La domanda di FATTO va risposta per
+                  --   intero; il permesso lo decide il guard di scope.
+                  --
+                  -- ⚠️ Non allarga niente: due id su una fattura che il
+                  --   chiamante ha gia' nominato, e due id da soli non dicono
+                  --   niente di usabile — non un numero, non un importo.
+                  --
+                  -- ⚠️ Dipende dalla RLS abilitata e NON forzata (il
+                  --   proprietario la salta). Con un FORCE va rivista, come
+                  --   fn_resolve_emittente_fiscale_id.
+                  --
+                  -- Nessuna riga se la fattura non esiste: chi chiama decide
+                  -- che farne, ed e' l'unico che sa quale messaggio dare.
+                  -- =========================================================
+                  RETURN QUERY
+                  SELECT f.emittente_soggetto_ruolo_id,
+                         ba.soggetto_ruolo_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.billing_account ba
+                      ON ba.id = f.billing_account_id
+                   WHERE f.id = p_fattura_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_fattura_intestazione(bigint) IS
+                'Risponde l''emittente e il cliente di una fattura, FUORI dalla row security. ⭐ Serve ai guard che devono confrontare due documenti: vendite.fatture ha la RLS, e un guard SECURITY INVOKER che la leggesse direttamente non distinguerebbe «e'' di un altro cliente» da «non lo vedo» — direbbe la prima frase anche nel secondo caso. La domanda di FATTO va risposta per intero; il PERMESSO lo decide il guard di scope, che e'' un''altra cosa. ⚠️ Non allarga nessun perimetro: due id su una fattura che il chiamante ha gia'' nominato, e due id da soli non raccontano niente. ⚠️ Dipende dalla RLS abilitata e NON forzata: con un FORCE va rivista, come fn_resolve_emittente_fiscale_id e fn_check_scadenza_di_fattura. Nessuna riga se la fattura non esiste.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_fattura_intestazione(bigint) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_fattura_intestazione(bigint);

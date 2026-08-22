@@ -165,16 +165,24 @@ SELECT max(id) FILTER (WHERE codice = 'PGTAP_PERIM_A') AS ente_a,
 --    e una distinta creata dall'operatore sbagliato verrebbe rifiutata dal
 --    guard prima ancora che dalla policy.
 CREATE TEMP TABLE tmp_dist AS
+-- ⚠️ Argomenti NOMINALI: dal lotto 7 la funzione ha otto parametri e non nove
+--    (p_compensazione_id e' sparito girando il verso del legame, D15-e). Una
+--    chiamata posizionale sarebbe da riscrivere a ogni cambio di firma.
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
-           (SELECT centro_banca FROM tmp_ab), current_date, current_date,
-           (SELECT ente_a FROM tmp_enti), NULL, NULL, 'BOZZA',
-           jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
-           'GENERATA') AS dist_a,
+           p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
+           p_data_contabile        => current_date,
+           p_data_registrazione    => current_date,
+           p_ente_incasso_id       => (SELECT ente_a FROM tmp_enti),
+           p_codice_stato_interno  => 'BOZZA',
+           p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
+           p_origine               => 'GENERATA') AS dist_a,
        pagamenti.fn_get_or_create_vendite_contabile(
-           (SELECT centro_fondo FROM tmp_ab), current_date, current_date,
-           NULL, NULL, NULL, 'BOZZA',
-           jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
-           'GENERATA') AS dist_interna;
+           p_centro_riscossione_id => (SELECT centro_fondo FROM tmp_ab),
+           p_data_contabile        => current_date,
+           p_data_registrazione    => current_date,
+           p_codice_stato_interno  => 'BOZZA',
+           p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
+           p_origine               => 'GENERATA') AS dist_interna;
 
 -- Riga «da abbinare» sulla distinta di A: nessuna fattura, ed e' il caso per
 -- cui il perimetro dal conto esiste.
@@ -198,10 +206,12 @@ SELECT (SELECT dist_interna FROM tmp_dist), 'PGTAP_PERIM_INTERNA', 15.00,
 --   aveva rotto alla prima stesura.
 CREATE TEMP TABLE tmp_dist_manuale AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
-           (SELECT centro_banca FROM tmp_ab), current_date, current_date,
-           NULL, NULL, NULL, 'BOZZA',
-           jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
-           'MANUALE') AS dist_man;
+           p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
+           p_data_contabile        => current_date,
+           p_data_registrazione    => current_date,
+           p_codice_stato_interno  => 'BOZZA',
+           p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
+           p_origine               => 'MANUALE') AS dist_man;
 
 -- Ora il lato B, nei suoi panni.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
@@ -209,10 +219,13 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 
 CREATE TEMP TABLE tmp_dist_b AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
-           (SELECT centro_banca FROM tmp_ab), current_date, current_date,
-           (SELECT ente_b FROM tmp_enti), NULL, NULL, 'BOZZA',
-           jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
-           'GENERATA') AS dist_b;
+           p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
+           p_data_contabile        => current_date,
+           p_data_registrazione    => current_date,
+           p_ente_incasso_id       => (SELECT ente_b FROM tmp_enti),
+           p_codice_stato_interno  => 'BOZZA',
+           p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
+           p_origine               => 'GENERATA') AS dist_b;
 
 -- ============================================================
 -- 2/3. Il lato A vede la propria distinta e non quella dell'altro

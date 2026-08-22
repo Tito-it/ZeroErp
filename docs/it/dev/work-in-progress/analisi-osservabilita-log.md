@@ -8,9 +8,20 @@
 > **Stato:** WIP — stato misurato il 2026-08-03, **piano rivisto il 2026-08-22**:
 > i log servono prima a *trovare* un problema (§0-bis), lo scope emittente
 > smette di essere una decisione rinviata e diventa il **Passo 0** (§4).
+> ⭐ **Sempre il 2026-08-22, seconda passata:** lo stato è stato **riletto sul
+> database e sul codice** prima di scrivere il brief — §0-ter. Tre premesse del
+> piano non reggono più (il 67% di B1, il caveat sul `FORCE`, il rischio sul
+> canale batch), ne emergono due buchi nuovi (**B10** `tx_id`, **B11** colonne
+> morte di `request_log`) e un difetto di scrittura. **Leggere il §1 attraverso
+> il §0-ter.**
 >
 > **Origine:** richiesta di Tid (2026-08-03): *«dobbiamo fornire uno strumento
 > per accedere velocemente ai log, specialmente a quelli della fatturazione»*.
+>
+> ⭐ **Il brief del Passo 0 è scritto** (2026-08-22):
+> [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
+> — 11 decisioni chiuse, 12 changeSet in 3 lotti, 4 pgTAP, 8 consegne BE.
+> Niente applicato.
 >
 > **Cosa NON è.** Non è la guida al modello di logging — quella è
 > [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md),
@@ -100,6 +111,55 @@ volumi: la crescita reale non è nota.
 
 ---
 
+## 0-ter. Verifiche sul DB e sul codice (2026-08-22, sessione DB)
+
+Prima di scrivere il brief del Passo 0 lo stato è stato **riletto sul database e
+sul codice**, non ripreso dal §1. Sette misure cambiano il piano; sono qui in
+blocco perché il §1 resta com'era (è una fotografia del 3 agosto) e va letto
+attraverso questa sezione.
+
+| # | Verifica | Esito | Cosa cambia |
+| --- | --- | --- | --- |
+| V1 | Chi è l'owner delle tabelle `vendite` | **`titodb`**; l'applicazione è `zeroerp_app`, che **non** è owner, non è superuser e non ha `BYPASSRLS` | ⛔ **La RLS morde già il canale web.** Il caveat «l'owner applicativo la bypassa» del §4 nasce da un commento sbagliato in `20260720-05` (dice «l'owner (zeroerp_app)»); `20260730-05` dice la cosa giusta («l'owner della tabella (titodb)»). La decisione 5 non è un bivio: vedi sotto |
+| V2 | Canale batch | `zeroerp_batch_fatturazione` ha `BYPASSRLS` **e** i GRANT su tutte e 84 le tabelle `vendite` (su `event_log`: `INSERT`+`SELECT`) | Il precedente `vendite.note` **non** si ripete: là mancava il GRANT, qui c'è. Resta da presidiare con un pgTAP, non da progettare |
+| V3 | `E_MESSAGGIO_NON_DEFINITO` in `error_log` | **327 su 116.569 = 0,3%** (era il 67%) | Il seed dei codici legacy **è applicato** (`20260805-07`, eseguito il 2026-08-07) e la retention ha portato via le righe degradate. **B1 è chiuso di fatto**; del Passo 1 resta il solo rubinetto (check CI) |
+| V4 | Cosa domina oggi `error_log` | `E_PARAMETRO_INVALIDO` 18.780 righe (16%), `E_GENERICO` 1.913 — ma su **70 `function_name` distinti**, e la colonna è `NOT NULL` | ⚠️ **Rettifica del 22/08 (seconda lettura):** *non* blocca il Passo B, come avevo scritto prima. L'aggregato si raggruppa per *(area, `function_name`, codice)* e `function_name` discrimina già. Lo split di `E_PARAMETRO_INVALIDO` è un problema di **qualità della frase che legge l'operatore**, e ha un brief suo (Aperte #14). **Il Passo B non è bloccato da niente** |
+| V4-bis | Recinto fra test ed esercizio su `error_log` | assente (la suite Django ci scrive: punte settimanali da 54k e 40k righe) | ⚠️ Difetto vero e già a memoria, ma **fuori dal percorso critico**: `error_log` non è append-only e ha retention, quindi una colonna aggiunta domani inizia a popolarsi domani. **Non è un now-or-never** |
+| V5 | `fatture_log` | **3 righe** (erano 0) | §1.4 sciolto: il canale scrive, non era rotto |
+| V6 | `event_log` non ha `tx_id` | tutti gli altri registri ce l'hanno (`error_log`, `audit_log`, `request_log`, `fatture_log`, `fatturazione_lotti_log`, `fatturazione_lotti_task_runs`, `commesse_attivita_log`, `pratiche.giornale`) | 🔴 **Buco nuovo, B10.** La timeline di un caso è cross-registro: senza `tx_id` `event_log` non si aggancia a `error_log`. Ed è **non recuperabile**: vedi V7 |
+| V7 | Il trigger append-only | `trgfn_event_log_append_only` vieta `UPDATE` **e `DELETE`** | Nessun backfill è possibile su questa tabella, **mai**. L'unica via è `TRUNCATE` (i trigger di riga non scattano; il privilegio `D` ce l'ha `titodb`, non `zeroerp_app`). Chiude la decisione 6 sul piano tecnico: o si azzera, o le righe restano mute per sempre |
+
+### La regola d'ordine che ne discende
+
+> **Su una tabella append-only la linea di taglio non è DB/BE, né forense/aggregato:
+> è *lato scrittura* contro *lato lettura*.**
+
+| | Contenuto | Recuperabile dopo? |
+| --- | --- | --- |
+| **Lato scrittura** | `emittente_fiscale_id`, `tx_id`, `correlation_id`, `actor`, `entity_id` | ❌ **mai** (V7). Ogni giorno di rinvio è un giorno di righe inutilizzabili |
+| **Lato lettura** | policy, indici, `cleanup_at`, endpoint, viste, UI, notifiche | ✅ sempre, senza ricostruire nulla |
+
+Conseguenza operativa: **tutto ciò che sta nella riga entra in una passata sola.**
+Il rischio del Passo 0 non è che l'emittente costi troppo — costa poco (V1/V2 tolgono
+due incognite, il cantiere gemello `brief-db-rls-commesse` è stato 3 changeSet più un
+pgTAP) — è che si faccia l'emittente e si **dimentichi il `tx_id`**.
+
+### Il difetto trovato strada facendo
+
+`backend/apps/vendite/services/commesse_service.py:221` scrive
+`severity="WARNING"`, ma `chk_event_log_severity` ammette solo
+`INFO | WARN | ERROR`. Quindi **`EMITTIBILITA_FALLITA` non è mai scrivibile**:
+solleva `23514` e — non essendo in `try` — fa saltare `pr_run_commesse_push`
+**proprio nel ramo in cui qualcosa era già andato storto**. In tabella: zero
+righe. Il test `test_pr_run_commesse_push_emittibilita_tipo_doc_mancante_osservabile`
+asserisce `severity == "WARNING"` su un mock, quindi blinda il valore rotto.
+
+È il §0-bis dimostrato: un registro che nessuno rilegge non si accorge di non
+essere scritto. Correzione BE di una parola più il test (`WARN`), da fare nella
+stessa passata del Passo 0.
+
+---
+
 ## 1. Stato misurato (2026-08-03)
 
 Tutti i numeri sono stati letti dal database di sviluppo, non stimati.
@@ -120,7 +180,13 @@ Tutti i numeri sono stati letti dal database di sviluppo, non stimati.
 | `vendite.attivita_fatturabili_log` | **0** | |
 | log applicativi Python | 3,2 MB + 5 backup da 10 MB | solo su filesystem |
 
-### 1.2 🔴 Il registro errori non sa nominare due terzi degli errori
+### 1.2 ~~🔴 Il registro errori non sa nominare due terzi degli errori~~ — SUPERATA
+
+> ⛔ **Superata il 2026-08-22 (V3 del §0-ter): 327 righe su 116.569, cioè lo 0,3%.**
+> Il seed dei codici legacy è applicato dal 2026-08-07 e la retention ha portato
+> via le righe degradate. Il testo resta perché descrive il *meccanismo* — un
+> codice fuori catalogo diventa un errore non più attribuibile — che è ancora
+> vero e che il check CI deve chiudere. La misura sotto no.
 
 **41.885 righe su 62.418 (67%)** hanno codice `MESSAGGIO_NON_DEFINITO`: il
 codice usato dal chiamante non è in `config.messaggi_errore` e la funzione di
@@ -169,7 +235,10 @@ valore costante che non informa. `fn_log_event` accetta l'`actor`, il
 repository ha il default `"service:django"`, **nessun chiamante lo
 sovrascrive** — l'audit dice «è stato il servizio», mai chi.
 
-### 1.4 ⚠️ `fatture_log` è vuota
+### 1.4 ~~⚠️ `fatture_log` è vuota~~ — SCIOLTA
+
+> ✅ **Sciolta il 2026-08-22 (V5 del §0-ter): 3 righe.** Il canale scrive; era
+> l'ipotesi buona delle due. Nessun filo staccato.
 
 La tabella dei log per fattura ha **0 righe**, e di conseguenza il pannello
 errori della dashboard competenza trova 0 record. Da capire se è fisiologico
@@ -211,7 +280,7 @@ quella parte, è già pagato.
 
 | # | Buco | Effetto |
 | --- | --- | --- |
-| B1 | Il 67% di `error_log` non è attribuibile | qualunque strumento di consultazione mostra soprattutto rumore |
+| ~~B1~~ | ~~Il 67% di `error_log` non è attribuibile~~ ✅ **chiuso** (V3) | resta il **rubinetto**: 327 righe residue e il check CI ancora da fare |
 | B2 | `event_log` non è leggibile da nessuna parte | manca la timeline per entità; l'alerting non ha sorgente; il `correlation_id` non ha consumatori che ne dimostrino il valore |
 | B3 | Identità non tracciata sugli eventi | l'audit non dice **chi**: requisito di compliance non soddisfatto |
 | B4 | `correlation_id` assente sul ramo push | «una query ricostruisce la timeline» vale solo per la pipeline |
@@ -220,6 +289,8 @@ quella parte, è già pagato.
 | B7 | Nessuna notifica | un lotto fermo in errore resta invisibile finché qualcuno non guarda |
 | B8 | Retention assente sui log di dominio | crescita non governata |
 | **B9** | **`event_log` non ha scope emittente né RLS** *(aggiunto 22/08)* | qualunque endpoint di lettura mostrerebbe gli eventi di **tutti** gli emittenti: è il buco che manda il Passo 0 in testa al piano |
+| **B10** | **`event_log` è l'unico registro senza `tx_id`** *(aggiunto 22/08, V6)* | la timeline di un caso è cross-registro e `event_log` non si aggancia a `error_log`. Costa una colonna (il trigger generico `dbops.trgfn_tx_id_managed` lo attacca l'automazione) e **non è recuperabile dopo**: append-only, nessun backfill (V7) |
+| **B11** | **`request_log.emittente_attivo_id` e `tx_id` sono colonne morte** *(aggiunto 22/08)* | 0 valorizzate su 353.758: le colonne ci sono, l'`INSERT` del middleware non le elenca. Il «per chi» a livello di richiesta è già progettato e non collegato |
 
 ---
 
@@ -232,8 +303,8 @@ vecchio Passo 3 si divide in **A** (forense) e **B** (aggregato).
 
 | Passo | Chi | Blocca |
 | --- | --- | --- |
-| **0** — la riga dice chi, per chi, in che giro | 🔴 team DB | A e B |
-| **1** — rendere nominabili gli errori | team DB (seed già pronto) | **solo B** |
+| **0** — la riga dice chi, per chi, in che giro *(+ `tx_id`, 22/08)* | 🔴 team DB **+ BE** | A e B |
+| ~~**1**~~ — rendere nominabili gli errori | ✅ **seed applicato** il 2026-08-07 (V3); resta il **check CI** | niente: non blocca più B |
 | **2** — `request_id` nei log Python | backend | niente (indipendente) |
 | **A** — la timeline di un caso | backend + frontend | C |
 | **B** — le superfici aggregate | backend + frontend | — |
@@ -265,13 +336,26 @@ Oggi la riga di `event_log` non sa dire nessuna delle tre cose:
 | **per chi** — `emittente_fiscale_id` | ❌ **la colonna non esiste** | verificato sulla doc auto-gen della tabella: nessuna colonna emittente, nessuna policy |
 | **chi** — `actor` | ⚠️ esiste, vale sempre `service:django` | l'audit dice «è stato il servizio», mai chi |
 | **in che giro** — `correlation_id` | 🟡 metà: pipeline sì, push no | fatto di codice, non di dati (§0-bis) |
-| *(e un quarto)* `entity_id` | ⚠️ `0` segnaposto sul ramo push | un evento che non si lega a nessuna entità |
+| *(e un quarto)* `entity_id` | ⚠️ `0` segnaposto sul ramo push | non è un segnaposto: è un id **che non esiste ancora**, perché `commesse_push_log` nasce a fine giro (verificato 22/08 su `commesse_push_orchestrator._run_locked`) |
+| *(e un quinto, 22/08)* **`tx_id`** | ❌ **la colonna non esiste** | è l'unico registro del progetto senza. Vedi **B10** e V6 del §0-ter |
 
-Sono **quattro difetti dello stesso lato** — il lato **scrittura** — e toccano
+Sono **cinque difetti dello stesso lato** — il lato **scrittura** — e toccano
 gli stessi due punti: `vendite.fn_log_event` e i suoi due chiamanti
 (`pipeline_repository.log_event`, `commesse_repository.log_event`). Vanno in un
 **cantiere solo**: farli in due passaggi vuol dire riaprire due volte gli stessi
 file e rimettere due volte le mani su una funzione che tutti chiamano.
+
+⛔ **E c'è una ragione più stringente della comodità (22/08).** La tabella è
+append-only *per trigger*, e quel trigger vieta `UPDATE` **e `DELETE`** (V7): su
+questi cinque campi **non esiste nessun rimedio a posteriori**, né oggi né fra un
+anno. Il lato lettura — policy, indici, `cleanup_at`, endpoint, viste, UI — si
+aggiunge invece in qualsiasi momento senza ricostruire niente. **È questa, e non
+la ripartizione DB/BE, la linea che decide cosa va per primo.**
+
+⚠️ **I due `log_event` sono copia carbone.** `pipeline_repository.log_event` e
+`commesse_repository.log_event` sono identici carattere per carattere: la regola
+del 2 dice che è un BB da estrarre, e comunque **qualunque cosa si aggiunga qui
+va scritta due volte** finché resta così.
 
 **Cosa chiedere al team DB** — brief dedicato, questo documento non è il brief:
 
@@ -280,10 +364,22 @@ file e rimettere due volte le mani su una funzione che tutti chiamano.
    gate `OPERATORE`) e guard di scrittura `script.trgfn_guard_emittente_scope`,
    come su DDT, ordini, preventivi, fatture e resi. Niente di inventato: è
    l'ondata a cui la tabella non ha partecipato;
-2. `fn_log_event` con il parametro nuovo, più la decisione su **come si
-   valorizza** (sotto);
-3. nella stessa passata: `correlation_id` sul ramo push, `actor` reale al posto
+2. ~~`fn_log_event` con il parametro nuovo~~, più la decisione su **come si
+   valorizza** (sotto). ⭐ *22/08: se a derivare è il trigger (decisione 3), la
+   firma non cambia — e si evita la trappola dell'overload;*
+3. **`tx_id`** nello stesso `ALTER TABLE` (B10): il trigger generico
+   `dbops.trgfn_tx_id_managed` lo attacca l'automazione, quindi costa la sola
+   colonna — ⚠️ ma sul migrate manuale l'automazione gira col pgagent, non subito;
+4. **`cleanup_at`** nello stesso `ALTER TABLE` (Passo D): stesso lucchetto, costo
+   zero, e i termini si decidono dopo;
+5. nella stessa passata: `correlation_id` sul ramo push, `actor` reale al posto
    della costante, `entity_id` reale al posto dello `0`.
+
+⚠️ **Due cose che il brief NON deve dare per scontate, perché sono già risolte**
+(V1/V2 del §0-ter): il canale batch **non** è a rischio — `zeroerp_batch_fatturazione`
+ha `BYPASSRLS` e i GRANT su `event_log` (`INSERT`+`SELECT`) — e la RLS **non** è
+decorativa, perché l'applicazione non è owner. Restano da presidiare con pgTAP,
+non da progettare.
 
 **Le domande che il brief deve porre**, perché nessuna ha risposta ovvia:
 
@@ -297,26 +393,49 @@ file e rimettere due volte le mani su una funzione che tutti chiamano.
   della coda, eventi di sistema. `NOT NULL` li rende non scrivibili; nullable
   obbliga la policy a dire **chi vede i NULL** — e fail-closed significa
   «nessuno», cioè eventi di sistema invisibili a tutti;
-* **Il canale batch.** I worker scrivono con un ruolo proprio. Una RLS che non
+* ~~**Il canale batch.**~~ ✅ **verificato il 22/08 (V2): non è un rischio.** Il
+  ruolo `zeroerp_batch_fatturazione` ha `BYPASSRLS` **e** i GRANT
+  (`INSERT`+`SELECT`) su `event_log` — sul canale batch la policy non si applica
+  proprio. Resta un **pgTAP che lo dimostri**, non una decisione da prendere. Il
+  testo sotto resta perché il ramo «`app.current_user_id` non settato» del guard
+  va comunque deciso, ed è un'altra cosa dal ruolo. *(originale: I worker scrivono
+  con un ruolo proprio. Una RLS che non
   contempla quel canale rompe la scrittura **solo da lì**: è esattamente il
   difetto già capitato con `vendite.note`
   ([brief-db-grant-batch-cleanup-note.md](../work-done/brief-db-grant-batch-cleanup-note.md)),
-  e fu trovato per caso da una prova reale, non da un test. Il guard DDT skippa
-  quando `app.current_user_id` non è settato: quel ramo va **deciso**, non
-  ereditato per copia;
+  e fu trovato per caso da una prova reale, non da un test.)* Il guard DDT skippa
+  quando `app.current_user_id` non è settato: **quel ramo va deciso**, non
+  ereditato per copia — ed è la parte di questo punto che resta viva;
 * **Le 309 righe esistenti.** La tabella è append-only per trigger — `UPDATE`
   vietato — quindi un backfill ordinario non esiste. E per il §0-bis quelle
   righe non hanno valore probatorio. Proposta: non convertirle, **azzerare la
   tabella**. ⚠️ È una cancellazione: serve l'ok esplicito di Tid, e va nel brief
   come richiesta, non come fatto compiuto.
 
-⚠️ **Attenzione al «attivo senza FORCE».** Sulle tabelle gemelle la policy è
+⚠️ ~~**Attenzione al «attivo senza FORCE».** Sulle tabelle gemelle la policy è
 `ENABLE` **senza** `FORCE`, e l'owner applicativo la bypassa: la protezione che
 agisce oggi è il filtro applicativo del BE. Se `event_log` nasce con la stessa
 configurazione, l'endpoint del Passo A **non può** considerare la RLS come sua
 unica difesa. O il brief chiede il `FORCE` per questa tabella, o l'endpoint
 filtra anche lui — e va scritto quale delle due, perché è la differenza fra uno
-strumento di diagnosi e una fuga di dati fra emittenti.
+strumento di diagnosi e una fuga di dati fra emittenti.~~
+
+⛔ **Rettificato il 2026-08-22 (V1 del §0-ter): la premessa era falsa.** L'owner
+delle tabelle `vendite` è **`titodb`**; l'applicazione gira come `zeroerp_app`,
+che non è owner, non è superuser e non ha `BYPASSRLS` — quindi **la RLS morde
+già** il canale web, `FORCE` o no. Il `FORCE` cambierebbe qualcosa solo per
+`titodb` (il ruolo di migrazione), e romperebbe le `SECURITY DEFINER` di
+proprietà di `titodb` che leggono fuori dalla row security — in testa
+`script.fn_resolve_emittente_fiscale_id`, che lo dichiara nel proprio commento.
+Il paragrafo nasce da un commento sbagliato in
+`20260720-05-enable-rls-commesse-ef-whitelist` («l'owner (zeroerp_app)»);
+`20260730-05-enable-rls-fatture-indirizzi` dice la cosa giusta. **Va corretto
+anche il commento**, o rifarà lo stesso danno al prossimo che lo legge.
+
+➡️ Quindi la decisione 5 non è un bivio: **parità con la famiglia (`ENABLE`, no
+`FORCE`) e filtro applicativo lo stesso**, che è già la regola scritta in
+[api.md §Scope emittente](../api.md) — *«i filtri applicativi restano come
+defense-in-depth e si sommano»*.
 
 ### Passo 1 — Rendere nominabili gli errori *(prerequisito del solo Passo B)*
 
@@ -330,12 +449,36 @@ tutto. Per il §0-bis non lo è più della metà forense: nella timeline di un c
 singolo, un evento innominabile si legge lo stesso dal contesto degli altri.
 Resta prerequisito **stretto** del Passo B, dove un codice muto falsa il conto.
 
+⭐⭐ **Seconda revisione, stesso giorno (V3/V4).** Il seed **è già applicato** —
+`20260805-07-seed-messaggi-errore-codici-legacy`, eseguito il 2026-08-07 — e il
+segnaposto è sceso a **327 righe su 116.569 (0,3%)**. Del Passo 1 resta quindi
+**solo il rubinetto**: le 327 residue dimostrano che il disallineamento continua
+a produrne, ed è il check CI a doverlo chiudere.
+⚠️ **E il Passo B non ha più nessun prerequisito**, ed è la parte da non perdere.
+Avevo scritto che lo bloccavano lo split D11 di `E_PARAMETRO_INVALIDO` e il
+recinto test/esercizio: **è sbagliato**. `error_log.function_name` è `NOT NULL` e
+per quel codice ha **70 valori distinti**: l'aggregato si raggruppa per *(area,
+`function_name`, codice)* e discrimina già. Lo split resta una cosa da fare — per
+la **frase che legge l'operatore**, non per la leggibilità di un cruscotto — e ha
+un brief suo (§5, Aperte #14). Il recinto test/esercizio è un difetto vero ma non
+è un now-or-never (V4-bis).
+
 ### Passo 2 — `request_id` nei log Python
 
 L'unico pezzo di correlazione che **non** entra nel Passo 0, perché non tocca il
 DB: `request_id` nel formatter di logging (**B5**, Fase 0 della diagnostica —
 una riga di `settings.py` più il filtro). Indipendente da tutto il resto, si può
 fare in qualsiasi momento.
+
+⭐ **E già che si è lì (2026-08-22, B11).** `request_id` esiste già come
+contextvar (`apps/core/services/request_context.py`, assegnato da
+`RequestContextMiddleware`) ed è **valorizzato al 100%** su `dbops.request_log`:
+il pezzo mancante è davvero solo il filtro di logging. Ma nello stesso `INSERT`
+(`request_log_middleware.py`) mancano **due colonne che esistono in tabella e
+nessuno scrive**: `emittente_attivo_id` (0 su 353.758 — e il valore ce l'ha già
+il JWT, `JWT_CLAIM_EMITTENTE_ATTIVO_ID`) e `tx_id`. O si valorizzano — e allora
+il «per chi» è tracciato a livello di richiesta, gratis — o si tolgono: una
+colonna che nessuno scrive è un invito a fidarsene.
 
 ### Passo A — La timeline di un caso *(la metà forense)*
 
@@ -387,6 +530,11 @@ Estendere `cleanup_at` a `event_log` e ai log funzionali, con i termini decisi
 da chi di dovere (per i documenti fiscali il riferimento è 10 anni). È azione
 DB: brief dedicato. ⚠️ I termini **non** si dimensionano sui volumi del §1 (§0-bis).
 
+⭐ **Proposta 2026-08-22:** la **colonna** `cleanup_at` su `event_log` entra nello
+stesso `ALTER TABLE` del Passo 0 — è lo stesso lucchetto aperto una volta sola, e
+costa zero. Restano di qui i **termini**, che sono un dato e non un codice: si
+decidono con calma senza riaprire niente.
+
 ---
 
 ### Binario parallelo — i fallimenti visibili nelle liste
@@ -418,21 +566,96 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    Passo 0.
 2. ✅ **Ordine dell'endpoint** — *2026-08-22*: prima la timeline per entità
    (Passo A), poi l'aggregato (Passo B). Motivo nel §0-bis.
+3. ✅ **Eventi senza padrone fuori da `event_log`** — *decisa il 2026-08-22 da
+   Tid*: `emittente_fiscale_id` **`NOT NULL`**; `PUSH_STARTED`/`PUSH_COMPLETED`
+   restano nel loro registro di giro (`commesse_push_log`, creato in testa allo
+   stato `IN_ESECUZIONE` così da avere `entity_id` vero e id del giro), ed
+   `EMITTIBILITA_FALLITA` diventa **per commessa**. `event_log` resta
+   uniformemente **per entità**: nessun NULL, nessun ramo speciale nella policy.
+   *(era la #4 delle aperte)*
+4. ✅ **`TRUNCATE` di `event_log`** — *autorizzata da Tid il 2026-08-22*. È
+   l'unica via: il trigger append-only vieta `UPDATE` e `DELETE` (V7).
+   *(era la #6)*
+5. ✅ **La vista `vw_giornale_entita` entra nel Passo 0 come disegno** —
+   *2026-08-22*: il Passo A legge una vista normalizzata su più registri, non il
+   solo `event_log` (che da solo darebbe **quattro** codici per lotto). Il
+   disegno sta nel Passo 0 perché decide **cosa deve reggere la riga** di
+   `event_log`, che è l'unica cosa non rifacibile.
+6. ✅ **`FORCE` sulla policy** — non è un bivio: parità con la famiglia
+   (`ENABLE`, no `FORCE`) più filtro applicativo. Vedi la rettifica nel Passo 0
+   (V1). *(era la #5)*
 
 ### Aperte
 
-3. **Chi valorizza `emittente_fiscale_id`** — trigger con dispatch per
-   `entity_type`, o parametro del chiamante? (Passo 0, blocca il brief DB)
-4. **Eventi senza emittente** — colonna nullable e policy che decide chi vede i
-   NULL, oppure `NOT NULL` con un emittente convenzionale di sistema? (Passo 0)
-5. **`FORCE` sulla policy** — per questa tabella sì, o si resta a parità con le
-   gemelle e l'endpoint filtra comunque? (Passo 0 → condiziona il Passo A)
-6. **Le 309 righe esistenti** — azzerare la tabella? ⚠️ cancellazione, ok
-   esplicito di Tid (Passo 0)
+> ⚠️ Le vecchie **3, 4, 5 e 6** sono state decise il 2026-08-22 e sono passate
+> fra le Chiuse. Le voci qui sotto sono quelle **residue**, più quelle nate dalla
+> verifica sul DB dello stesso giorno.
+
 7. **Check CI** sul disallineamento codici — solo sui codici nuovi o su tutti?
-   (Passo 1, §4.2 del brief)
-8. **Retention dei log di dominio** — quali termini e quali tabelle (Passo D)
-9. **Notifiche** — canale email o solo badge in-app in prima battuta? (Passo C)
+   (Passo 1, che ormai è solo questo)
+8. **Notifiche** — canale email o solo badge in-app in prima battuta? (Passo C)
+> ✅ **Le voci 9, 10, 11, 12 e 13 sono state decise il 2026-08-22 e sono
+> confluite nel [brief del Passo 0](brief-db-event-log-scope-e-riga-parlante.md)
+> come D-6 (`actor`/`source` via), D-7 (il giro), D-8 (retention),
+> D-9 (`entity_type` → `config.sorgenti`) e D-10 (niente guard). Restano qui
+> in forma abbreviata come storia; le motivazioni complete stanno nel brief,
+> insieme alle **sei domande nuove** che la scrittura del brief ha fatto
+> emergere (§8 di là).**
+
+9. 🔴 **`actor` è ridondante, e B3 non è vero come scritto.** `event_log.user_insert`
+   **dice già chi**: il trigger generico `script.trgfn_audit_data_user_generic` lo
+   riempie da `app.jwt_user`, e in tabella ci sono `tid`, `pochi`, `fara`,
+   `BATCH_FATTURAZIONE` — non `zeroerp_app`. La colonna costante e inutile è
+   `actor` (`service:django` su tutte le righe), che duplica male `source`
+   (`django` su tutte le righe). *Proposta: si eliminano `actor` e `source`* —
+   siamo in `TRUNCATE`, togliere una colonna costa zero — *e «chi» resta dove il
+   progetto lo mette già su 806 colonne.* Decisione di Tid.
+10. 🔴 **`correlation_id` non identifica un giro: identifica il lotto.** Sul ramo
+    pipeline vale `fatturazione_lotti.lock_batch_id`, che nasce col lotto
+    (`COALESCE(p_lock_batch_id, uuidv7())`) e **non cambia mai** — mentre lo
+    stesso lotto ha fino a **27 `task_runs`**. Quindi oggi duplica `entity_id` e
+    la domanda «in che giro» resta senza risposta anche dopo il Passo 0, se non
+    si decide **cosa sia un giro**: un `uuid` nuovo generato dal runner a ogni
+    `run_pipeline`, il `tx_id` della transazione, o l'id del `task_run`.
+    ⚠️ È lato scrittura: non è recuperabile dopo.
+11. 🔴 **La retention standard NON funziona su una tabella append-only.**
+    `dbops.fn_apply_cleanup_at` valorizza `cleanup_at` con un **`UPDATE`**, e
+    `dbops.fn_purge_cleanup_expired` cancella con un **`DELETE`**: il trigger
+    `trgfn_event_log_append_only` li vieta **entrambi**. Aggiungere la colonna e
+    basta non produce retention: produce un job che fallisce. Tre vie:
+    (a) `cleanup_at` calcolato **all'INSERT** più un'eccezione al veto sul solo
+    `DELETE` di purge (riconoscibile da una GUC o dal ruolo di manutenzione);
+    (b) **partizionamento per `event_time`** e retention per `DROP PARTITION` —
+    i trigger di riga non c'entrano; costa poco **ora** che la tabella è vuota e
+    molto dopo, ma la PK diventa `(id, event_time)`;
+    (c) nessuna retention, finché il volume non la chiede.
+    *Proposta: (a).* Il volume di `event_log` è basso per costruzione (quattro
+    righe per giro di pipeline) e (b) è complessità comprata su un rischio non
+    misurato. Ma è una scelta, e va scritta.
+12. **`entity_type`: vocabolario libero, `CHECK`, o `config.sorgenti`?** Oggi è
+    `text` senza vincolo. Il progetto **ha già** un registro polimorfo,
+    `config.sorgenti` (15 voci, con `target_table` e `key_selector`), che però
+    non conosce `LOTTO`. Legarlo darebbe alla derivazione un dispatch **guidato
+    dai dati** invece che da un `CASE`. ⚠️ Ma `config.sorgenti.key_selector`
+    ammette `uid` (preventivi, offerte) mentre `event_log.entity_id` è `bigint`:
+    la regola resta **`entity_id` = la PK `id` della tabella, sempre** — il
+    `key_selector` serve al grafo di lineage, non al giornale.
+13. **Serve il guard di scrittura `trgfn_guard_emittente_scope`?** Se l'emittente
+    lo **deriva il DB** dall'entità, il guard verificherebbe un valore che il DB
+    ha appena calcolato, e direbbe la stessa cosa del `WITH CHECK` della policy.
+    *Proposta: non attaccarlo*, e scrivere nel brief **perché** — così il
+    prossimo non lo aggiunge «per simmetria con DDT».
+14. 📌 **Nota — `E_PARAMETRO_INVALIDO`: brief a parte, dopo** *(decisione di Tid,
+    2026-08-22)*. Non è meccanico: lo sollevano **126 funzioni in 7 schemi** (88
+    in `vendite`, 18 in `script`), e la scelta del codice sostitutivo si fa
+    **parametro per parametro** sulla domanda «chi può rimediare». Fuori da
+    questo cantiere, e **non** è prerequisito del Passo B (`error_log.function_name`
+    è `NOT NULL` e ha 70 valori distinti su quel codice: l'aggregato discrimina).
+    Materiale già pronto per quel brief: `config.codici_errore` ha già la colonna
+    **`obsoleto_dal`** (il pattern di deprecabilità del progetto, non
+    `attivo=false`), esiste `dbops.vw_codici_errore_da_dichiarare` e il suo test
+    di guardia lato Django. ⚠️ **Il rubinetto va prima della rincorsa**, non
+    dopo — §9.1 del brief classi.
 
 ---
 

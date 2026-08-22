@@ -97,6 +97,12 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
   -- ── BLOCCO_VOLUTO: il rifiuto E la funzionalita ────────────────────
   ('pagamenti.vendite_movimenti',          'BLOCCO_VOLUTO', 'una fattura con un incasso registrato NON si deve poter disfare'),
   ('vendite.fatture_sdi',                  'BLOCCO_VOLUTO', 'una fattura gia trasmessa allo SDI NON si deve poter disfare'),
+  -- ⭐ rev 2026-08-22 (cantiere incassi, lotto 7 / D15): la tabella e nata
+  --   rinominando pagamenti.compensazioni, che con vendite.fatture non aveva
+  --   nessun legame — l inventario non la conosceva perche NON ERA una figlia.
+  --   Adesso ne ha DUE (origine e destinazione), ed e questo file ad averlo
+  --   detto: e esattamente il lavoro per cui esiste.
+  ('pagamenti.sistemazioni',               'BLOCCO_VOLUTO', 'una fattura su cui e stata REGISTRATA una decisione di sistemazione NON si deve poter disfare: se l atto e CONFERMATO ha gia generato una distinta o un fondo, e cancellare il documento lascerebbe quel denaro senza origine; se e in BOZZA e comunque una decisione che qualcuno ha preso e che va ritrovata. ⚠️ Sul percorso vero il blocco non scatta mai - il cleanup lavora su fatture in DRAFT, e una sistemazione nasce da un sovra-incasso, cioe da movimenti su un documento gia emesso - ma il giorno che quel percorso cambiasse, il rifiuto e la risposta giusta'),
 
   -- ── SCOPERTA_NOTA: eccezione a tempo ───────────────────────────────
   ('vendite.attivita_consumi',             'SCOPERTA_NOTA', 'flusso consumi non ancora acceso: 0 righe e nessuno scrittore (solo fn_list_consumi_da_pushare, che legge). fattura_id e NULLABLE apposta, quindi il giorno che si accende il ripristino dovra azzerarlo, non cancellare il consumo');

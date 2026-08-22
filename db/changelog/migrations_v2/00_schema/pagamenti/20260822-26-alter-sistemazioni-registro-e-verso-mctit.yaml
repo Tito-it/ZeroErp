@@ -1,0 +1,313 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO SI RIEMPIE, E IL LEGAME SI GIRA — passi S4-1/S4-2 (lotto 7)
+#   pagamenti.sistemazioni
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-1/S4-2 · Decisioni: brief madre D15-c, D15-e
+#
+# ── ⭐ CHE COS'ERA, E CHE COSA DIVENTA ────────────────────────────────
+#   Era un **guscio**: id, una data, `meta`. Nessun importo, nessun riferimento
+#   ai documenti, nessuno stato, nessun motivo — e zero righe, perché nessuno
+#   poteva scriverci niente di utile.
+#
+#   Diventa il registro dell'atto: **chi**, **quanto**, **da dove a dove**, **con
+#   che destinazione**, **a che punto è** e **che cosa ne è venuto fuori**.
+#
+# ── 🔴 IL VERSO DEL LEGAME SI GIRA (D15-e, deciso da Tid il 2026-08-22) ─
+#   Oggi il legame va **dalla contabile all'atto**
+#   (`vendite_contabili.compensazione_id`). Ma nel giro reale è l'**atto a
+#   generare** la contabile:
+#
+#       la vista mostra un'eccedenza
+#          → una PERSONA sceglie la destinazione
+#          → l'atto si registra qui
+#          → alla conferma GENERA una contabile (o un fondo)
+#          → la contabile registrata genera i movimenti
+#
+#   Girandolo, su `vendite_contabili` **spariscono** la colonna, la sua FK e il
+#   suo unico, e da `fn_get_or_create_vendite_contabile` sparisce il parametro
+#   `p_compensazione_id`. ⭐ **Meno pezzi, non di più.** L'unicità «una contabile
+#   per atto» non si perde: cambia lato (`uq_sistemazioni_contabile`).
+#
+#   ⚠️ Costo zero oggi: **zero righe** ovunque, e in tutto `backend/` e
+#   `frontend/` **nessuna riga di codice** nomina la tabella o la colonna —
+#   solo commenti e stringhe di messaggi (misurato il 2026-08-22).
+#
+# ── ⭐ DUE COLONNE DI ESITO, E NON UNA ───────────────────────────────
+#   Le tre destinazioni producono **due specie diverse** di oggetto:
+#
+#   | Destinazione | Che cosa genera |
+#   | --- | --- |
+#   | `RIPORTO` | un **fondo fattura** con `origine = MANUALE` → `fondo_source_id` |
+#   | `RIMBORSO` | una **contabile a importi negativi** → `contabile_id` |
+#   | `COMPENSAZIONE` | una **contabile sul centro dedicato** → `contabile_id` |
+#
+#   ⚠️ Una colonna sola, polimorfa, avrebbe richiesto una colonna «tipo» accanto
+#   per sapere dove guardare — cioè la stessa informazione di `destinazione`,
+#   scritta due volte. Due colonne con un `CHECK` che le lega alla destinazione
+#   dicono la stessa cosa senza ripeterla, e ciascuna porta la **sua** chiave
+#   esterna vera.
+#
+# ── ⚠️ `data_esecuzione` PERDE IL SUO DEFAULT, e non è un dettaglio ──
+#   Nasceva `NOT NULL DEFAULT now()`: si valorizzava all'**inserimento**, cioè
+#   quando la persona *decide*, e si chiamava «esecuzione». Il nome era giusto e
+#   il momento sbagliato.
+#   ⭐ Adesso è **nulla finché l'atto non è eseguito**, e la scrive la conferma
+#   insieme a `user_esecuzione`. Quando l'atto è stato *deciso* lo dicono le
+#   colonne di audit, che ci sono già.
+#
+# ── ⭐ `emittente_soggetto_ruolo_id`: il perimetro, com'è per tutti ──
+#   Mirror di `vendite.fatture`: una colonna sulla riga, e la policy del lotto 6
+#   la legge direttamente. Una sistemazione **è dentro un solo emittente** per
+#   natura — non si compensano i documenti di due aziende diverse — quindi la
+#   colonna non è una denormalizzazione comoda, è un fatto.
+#
+# ── ⚠️ COSA NON ENTRA NEI `CHECK`, E PERCHE' ─────────────────────────
+#   I due `CHECK` compositi qui sotto sono la **rete**, non il presidio: un
+#   `23514` non dice quale delle tre regole è caduta. A parlare è
+#   `trgfn_sistemazioni_guard_dati` (changeSet -28), che gira **prima** — i
+#   `BEFORE ROW` precedono i `CHECK` — e nomina il campo.
+#
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-registro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-26-alter-sistemazioni-registro-e-verso-mctit.yaml
+
+  - changeSet:
+      id: 20260822-26-alter-sistemazioni-registro-e-verso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.sistemazioni da guscio a registro: destinazione, stato, cliente, emittente,
+        importo, i due documenti coinvolti, il motivo, e DUE colonne di esito (contabile_id
+        per rimborso e compensazione, fondo_source_id per il riporto) perche' le tre
+        destinazioni producono due specie diverse di oggetto. ⭐ E il legame si GIRA (D15-e):
+        contabile_id sta qui, e su vendite_contabili la colonna sparira' col changeSet -34 —
+        nel giro reale e' l'ATTO a generare la contabile, non il contrario. data_esecuzione
+        perde il default now(): si valorizzava alla DECISIONE e si chiamava «esecuzione».
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: sistemazioni
+            - not:
+                - columnExists:
+                    schemaName: pagamenti
+                    tableName: sistemazioni
+                    columnName: destinazione
+            - sqlCheck:
+                expectedResult: 0
+                sql: SELECT count(*) FROM pagamenti.sistemazioni;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- ── L'ATTO ────────────────────────────────────────────────
+              ALTER TABLE pagamenti.sistemazioni
+                ADD COLUMN destinazione character varying(20) NOT NULL;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_destinazione
+                CHECK (destinazione IN ('RIPORTO', 'RIMBORSO', 'COMPENSAZIONE'));
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD COLUMN stato character varying(20) NOT NULL DEFAULT 'BOZZA';
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_stato
+                CHECK (stato IN ('BOZZA', 'CONFERMATA', 'ANNULLATA'));
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD COLUMN importo numeric(14,2) NOT NULL;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_importo_non_zero CHECK (importo <> 0);
+
+              ALTER TABLE pagamenti.sistemazioni ADD COLUMN motivo text;
+
+              -- ── CHI ───────────────────────────────────────────────────
+              ALTER TABLE pagamenti.sistemazioni
+                ADD COLUMN cliente_soggetto_ruolo_id bigint NOT NULL;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT fk_sistemazioni_cliente
+                FOREIGN KEY (cliente_soggetto_ruolo_id)
+                REFERENCES anagrafiche.soggetti_ruoli (id)
+                ON UPDATE NO ACTION ON DELETE NO ACTION;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD COLUMN emittente_soggetto_ruolo_id bigint NOT NULL;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT fk_sistemazioni_emittente
+                FOREIGN KEY (emittente_soggetto_ruolo_id)
+                REFERENCES anagrafiche.soggetti_ruoli (id)
+                ON UPDATE NO ACTION ON DELETE NO ACTION;
+
+              -- ── DA DOVE A DOVE ────────────────────────────────────────
+              ALTER TABLE pagamenti.sistemazioni
+                ADD COLUMN fattura_origine_id bigint NOT NULL;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT fk_sistemazioni_fattura_origine
+                FOREIGN KEY (fattura_origine_id)
+                REFERENCES vendite.fatture (id)
+                ON UPDATE NO ACTION ON DELETE NO ACTION;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD COLUMN fattura_destinazione_id bigint;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT fk_sistemazioni_fattura_destinazione
+                FOREIGN KEY (fattura_destinazione_id)
+                REFERENCES vendite.fatture (id)
+                ON UPDATE NO ACTION ON DELETE NO ACTION;
+
+              -- ── L'ESITO — due colonne, due specie ─────────────────────
+              ALTER TABLE pagamenti.sistemazioni ADD COLUMN contabile_id bigint;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT fk_sistemazioni_contabile
+                FOREIGN KEY (contabile_id)
+                REFERENCES pagamenti.vendite_contabili (id)
+                ON UPDATE NO ACTION ON DELETE NO ACTION;
+
+              -- ⭐ L'unicita' «una contabile per atto» non si perde girando il
+              --    verso: cambia lato. Era uq_vendite_contabili_compensazione.
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT uq_sistemazioni_contabile UNIQUE (contabile_id);
+
+              ALTER TABLE pagamenti.sistemazioni ADD COLUMN fondo_source_id bigint;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT fk_sistemazioni_fondo_source
+                FOREIGN KEY (fondo_source_id)
+                REFERENCES vendite.fatture_fondi_fattura_source (id)
+                ON UPDATE NO ACTION ON DELETE NO ACTION;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT uq_sistemazioni_fondo_source UNIQUE (fondo_source_id);
+
+              -- ── QUANDO E' DIVENTATO UN FATTO ──────────────────────────
+              ALTER TABLE pagamenti.sistemazioni
+                ALTER COLUMN data_esecuzione DROP DEFAULT;
+
+              ALTER TABLE pagamenti.sistemazioni
+                ALTER COLUMN data_esecuzione DROP NOT NULL;
+
+              ALTER TABLE pagamenti.sistemazioni ADD COLUMN user_esecuzione text;
+
+              -- ── LE RETI ───────────────────────────────────────────────
+              -- ⚠️ Reti, non presidi: un 23514 non dice quale regola e' caduta.
+              --    A parlare e' trgfn_sistemazioni_guard_dati, che gira prima.
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_documenti
+                CHECK (
+                    (destinazione = 'RIMBORSO' AND fattura_destinazione_id IS NULL)
+                    OR (destinazione IN ('RIPORTO', 'COMPENSAZIONE')
+                        AND fattura_destinazione_id IS NOT NULL
+                        AND fattura_destinazione_id <> fattura_origine_id)
+                );
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_esito
+                CHECK (
+                    (destinazione = 'RIPORTO'  AND contabile_id IS NULL)
+                    OR (destinazione IN ('RIMBORSO', 'COMPENSAZIONE') AND fondo_source_id IS NULL)
+                );
+
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_eseguita
+                CHECK (
+                    (stato <> 'CONFERMATA'
+                     AND data_esecuzione IS NULL
+                     AND contabile_id IS NULL AND fondo_source_id IS NULL)
+                    OR (stato = 'CONFERMATA'
+                        AND data_esecuzione IS NOT NULL
+                        AND (contabile_id IS NOT NULL OR fondo_source_id IS NOT NULL))
+                );
+
+              -- ⚠️ Il motivo e' obbligatorio in DUE casi, e il secondo non e'
+              --    una scelta di stile: un RIPORTO genera un fondo fattura con
+              --    origine MANUALE, e chk_fondi_source_motivo_obbligatorio LO
+              --    PRETENDE. Chiederlo qui, alla registrazione, evita di
+              --    rifiutare alla CONFERMA una cosa che si poteva sistemare
+              --    quando l'operatore era ancora nel flusso.
+              -- ⭐ E' un CHECK e non un guard parlante, per simmetria col
+              --    gemello sui fondi: stessa regola, stessa forma.
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_motivo_obbligatorio
+                CHECK (
+                    (stato <> 'ANNULLATA' AND destinazione <> 'RIPORTO')
+                    OR (motivo IS NOT NULL AND btrim(motivo) <> '')
+                );
+
+              -- ── I COMMENTI ────────────────────────────────────────────
+              COMMENT ON COLUMN pagamenti.sistemazioni.motivo IS
+                'Perche'' si e'' deciso cosi''. ⚠️ OBBLIGATORIO in due casi: su un atto ANNULLATO (una decisione scartata senza una ragione non si ricostruisce) e su un RIPORTO — e il secondo non e'' una scelta di stile: il riporto genera un fondo fattura con origine MANUALE, e chk_fondi_source_motivo_obbligatorio lo pretende. ⭐ Chiederlo qui, alla registrazione, evita di rifiutare alla CONFERMA una cosa che si poteva sistemare quando l''operatore era ancora nel flusso.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.destinazione IS
+                'Che cosa si e'' deciso di fare dell''eccedenza: RIPORTO (su un''altra fattura, via fondo fattura MANUALE), RIMBORSO (bonifico, via contabile a importi negativi), COMPENSAZIONE (fra due documenti, via contabile sul centro dedicato). ⭐ Nessuna delle tre e'' una macchina nuova: i meccanismi esistevano gia'' tutti, mancavano l''elenco e il registro (D15-a).';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.stato IS
+                'BOZZA -> CONFERMATA | ANNULLATA, e i due esiti sono terminali. ⭐ La conferma e'' il momento in cui l''atto diventa un FATTO: genera la contabile o il fondo, e da li'' non si torna indietro — come per la distinta contabile, il denaro registrato non si annulla, si corregge con un atto nuovo.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.importo IS
+                'Quanto si sistema. ⚠️ Diverso da zero (CHECK) e NON necessariamente uguale all''eccedenza: si puo'' rimborsare una parte e riportare il resto, ed e'' il motivo per cui su una fattura possono esistere piu'' sistemazioni.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.fattura_origine_id IS
+                'La fattura CHE HA L''ECCEDENZA — quella che compare in vw_eccedenze_da_sistemare. Sempre valorizzata: senza un documento da cui parte, non c''e'' niente da sistemare.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.fattura_destinazione_id IS
+                'La fattura DOVE VA il denaro. ⚠️ Obbligatoria su RIPORTO e COMPENSAZIONE, VIETATA su RIMBORSO — perche'' in un rimborso il denaro esce dal sistema e non ha un secondo documento. E non puo'' coincidere con l''origine: spostare denaro da un documento a se stesso non e'' una sistemazione.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.contabile_id IS
+                'La distinta contabile GENERATA dalla conferma (rimborso e compensazione). ⭐ Il legame sta QUI e non su vendite_contabili, ed e'' la decisione D15-e: nel giro reale e'' l''atto a generare la contabile, non la contabile a citare l''atto. Girandolo sono spariti una colonna, una FK, un unico e un parametro di funzione — meno pezzi, non di piu''. L''unicita'' «una contabile per atto» e'' uq_sistemazioni_contabile.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.fondo_source_id IS
+                'L''atto di fondo fattura GENERATO dalla conferma (solo RIPORTO). ⭐ Due colonne di esito e non una polimorfa: le tre destinazioni producono due specie diverse di oggetto, e una colonna sola avrebbe richiesto un «tipo» accanto — cioe'' `destinazione` scritta due volte. Cosi'' ciascuna porta la sua chiave esterna vera.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.data_esecuzione IS
+                'Quando l''atto e'' diventato un fatto. ⚠️ Nulla finche'' lo stato non e'' CONFERMATA, e la scrive la conferma insieme a user_esecuzione. Fino al 2026-08-22 era NOT NULL DEFAULT now(): si valorizzava all''INSERIMENTO, cioe'' quando la persona decide — il nome era giusto e il momento sbagliato. Quando l''atto e'' stato deciso lo dicono le colonne di audit.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.emittente_soggetto_ruolo_id IS
+                'L''emittente della sistemazione: e'' il PERIMETRO, e la policy RLS lo legge direttamente da questa colonna (mirror di vendite.fatture). ⭐ Non e'' una denormalizzazione comoda ma un fatto: una sistemazione sta dentro un solo emittente per natura — non si compensano i documenti di due aziende diverse.';
+
+              COMMENT ON COLUMN pagamenti.sistemazioni.cliente_soggetto_ruolo_id IS
+                'Il cliente a cui l''eccedenza appartiene. ⭐ Sta qui perche'' la decisione si prende GUARDANDO IL CLIENTE (D15-b): un cliente puo'' avere credito su una fattura e debito su un''altra, e la compensazione ha senso solo a quel livello — compensare significa mettere insieme due documenti suoi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pagamenti.sistemazioni DROP CONSTRAINT chk_sistemazioni_motivo_obbligatorio;
+              ALTER TABLE pagamenti.sistemazioni DROP CONSTRAINT chk_sistemazioni_eseguita;
+              ALTER TABLE pagamenti.sistemazioni DROP CONSTRAINT chk_sistemazioni_esito;
+              ALTER TABLE pagamenti.sistemazioni DROP CONSTRAINT chk_sistemazioni_documenti;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN user_esecuzione;
+              UPDATE pagamenti.sistemazioni SET data_esecuzione = now() WHERE data_esecuzione IS NULL;
+              ALTER TABLE pagamenti.sistemazioni ALTER COLUMN data_esecuzione SET NOT NULL;
+              ALTER TABLE pagamenti.sistemazioni ALTER COLUMN data_esecuzione SET DEFAULT now();
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN fondo_source_id;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN contabile_id;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN fattura_destinazione_id;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN fattura_origine_id;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN emittente_soggetto_ruolo_id;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN cliente_soggetto_ruolo_id;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN motivo;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN importo;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN stato;
+              ALTER TABLE pagamenti.sistemazioni DROP COLUMN destinazione;

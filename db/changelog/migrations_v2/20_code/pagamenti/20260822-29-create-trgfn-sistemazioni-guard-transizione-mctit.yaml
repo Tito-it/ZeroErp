@@ -1,0 +1,199 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERCORSO DELL'ATTO — passo S4-1 (lotto 7)
+#   pagamenti.trgfn_sistemazioni_guard_transizione
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-1 · Decisione: brief madre D15-d
+#
+# ── ⭐ IL PERCORSO E' CORTISSIMO, E FINISCE SUBITO ───────────────────
+#
+#       BOZZA ──► CONFERMATA   (l'atto diventa un fatto: genera contabile o fondo)
+#         └────► ANNULLATA     (la decisione si scarta)
+#
+#   Entrambi gli esiti sono **terminali**. Non c'è ritorno da `CONFERMATA`
+#   perché a quel punto **il denaro si è già mosso**: la correzione è una
+#   sistemazione **nuova**, non un passo indietro su questa — la stessa regola
+#   della distinta contabile chiusa, e per la stessa ragione.
+#
+# ── ⛔ NIENTE TABELLA-MATRICE, E NON E' UNA DIMENTICANZA ─────────────
+#   `vendite_contabili` e le sue righe hanno una **matrice** di transizioni
+#   (`transizioni_stati_contabile*`), seminata a dato. Qui no, di proposito:
+#
+#   * tre stati e **due** passaggi: una matrice sarebbe una tabella di due righe
+#     che nessuno interroga;
+#   * la matrice esiste anche perché il **frontend** legge da lì le azioni con la
+#     loro etichetta. Qui le azioni **sono i due verbi**
+#     (`fn_conferma_sistemazione`, `fn_annulla_sistemazione`), e non c'è una
+#     terza via da scoprire leggendo una tabella.
+#
+#   ⚠️ Chi cerca la regola guardando i dati non la troverà: è **qui**, ed è il
+#   motivo per cui il codice errore la nomina per esteso.
+#
+# ── ⭐ DUE REGOLE, DUE CODICI — e la differenza conta ────────────────
+#
+#   | Che cosa si sta facendo | Codice |
+#   | --- | --- |
+#   | cambiare **stato** lungo un passaggio che non esiste | `E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA` |
+#   | toccare **qualunque cosa** di un atto già terminale | `E_SISTEMAZIONE_IMMUTABILE` |
+#
+#   ⚠️ Servono entrambi perché dicono due cose diverse a chi legge. *«Non può
+#   passare da CONFERMATA a BOZZA»* è vero; ma se qualcuno prova a correggere
+#   l'importo di un atto già eseguito, quella frase non lo aiuta — il problema
+#   non è lo stato, è che **quel denaro si è già mosso**.
+#
+# ── ⚠️ SU UN ATTO TERMINALE SI RIFIUTA *OGNI* UPDATE ────────────────
+#   Non solo quelli che cambiano stato. Un atto confermato ha generato un
+#   documento: se il registro potesse cambiare sotto, racconterebbe una cosa e
+#   il documento un'altra. ⭐ E la conferma stessa **non ci inciampa**: quella
+#   parte da `BOZZA`.
+#
+# ── ⚠️ L'ORDINE DEI `BEFORE ROW`, che qui decide QUALE frase si legge ─
+#   Alfabetico: `a10_guard_scope_*` → **`a15_guard_transizione`** →
+#   `a20_guard_dati`. È voluto in quest'ordine, ed è una precedenza di senso:
+#
+#       «puoi toccarlo?» → «è ancora aperto?» → «il contenuto sta in piedi?»
+#
+#   ⚠️ Con il guard dei dati davanti, chi prova a correggere l'importo di un atto
+#   già eseguito si sentirebbe rispondere su un campo — vero e fuorviante,
+#   perché il problema non è il campo: è che quel denaro si è già mosso.
+#
+# Codici: E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA (972), E_SISTEMAZIONE_IMMUTABILE (975)
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-registro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-29-create-trgfn-sistemazioni-guard-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260822-29-create-trgfn-sistemazioni-guard-transizione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il percorso dell'atto: BOZZA -> CONFERMATA oppure BOZZA -> ANNULLATA, entrambi
+        terminali. Nessuna tabella-matrice, di proposito: tre stati e due passaggi sarebbero
+        una tabella di due righe che nessuno interroga, e le azioni del frontend sono i due
+        verbi stessi — la regola vive nel guard, e il codice errore la nomina perche' chi
+        cerca nei dati non la trova. Due codici e non uno: «non puo' passare da CONFERMATA a
+        BOZZA» e' vero, ma non aiuta chi sta provando a correggere l'importo di un atto gia'
+        eseguito — li' il problema non e' lo stato, e' che quel denaro si e' gia' mosso.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: pagamenti
+            tableName: sistemazioni
+            columnName: stato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il percorso dell'atto, che e' cortissimo:
+                  --     BOZZA -> CONFERMATA | ANNULLATA, ed entrambi finiscono.
+                  --
+                  -- ⛔ Nessuna tabella-matrice, di proposito: due passaggi
+                  --   sarebbero due righe che nessuno interroga, e le azioni
+                  --   del frontend sono i due verbi stessi. Chi cerca la regola
+                  --   nei dati non la trova: e' qui, e per questo il codice
+                  --   errore la nomina per esteso.
+                  -- =========================================================
+
+                  IF TG_OP = 'INSERT' THEN
+                      -- ⭐ Un atto non nasce gia' fatto: nasce come DECISIONE, e
+                      --   diventa un fatto quando qualcuno lo conferma.
+                      IF NEW.stato <> 'BOZZA' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_sistemazioni_guard_transizione',
+                              'E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA',
+                              jsonb_build_object(
+                                  'detail', 'una sistemazione nasce in BOZZA',
+                                  'campo',  'stato',
+                                  'stato_richiesto', NEW.stato
+                              ),
+                              NULL::uuid,
+                              'BOZZA', NEW.stato::text
+                          );
+                      END IF;
+
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── UPDATE ──────────────────────────────────────────────
+                  -- ⭐ Su un atto TERMINALE si rifiuta OGNI modifica, non solo
+                  --   quelle che cambiano stato: un atto confermato ha generato
+                  --   un documento, e se il registro potesse cambiare sotto
+                  --   racconterebbe una cosa e il documento un'altra.
+                  IF OLD.stato IN ('CONFERMATA', 'ANNULLATA') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_sistemazioni_guard_transizione',
+                          'E_SISTEMAZIONE_IMMUTABILE',
+                          jsonb_build_object(
+                              'detail', 'atto terminale: nessuna modifica ammessa',
+                              'sistemazione_id', OLD.id,
+                              'stato', OLD.stato
+                          ),
+                          NULL::uuid,
+                          OLD.id::text, OLD.stato::text
+                      );
+                  END IF;
+
+                  -- Da BOZZA si va a CONFERMATA o ad ANNULLATA, e basta.
+                  IF NEW.stato IS DISTINCT FROM OLD.stato
+                     AND NEW.stato NOT IN ('CONFERMATA', 'ANNULLATA')
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_sistemazioni_guard_transizione',
+                          'E_SISTEMAZIONE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'detail', 'passaggio di stato non previsto',
+                              'campo',  'stato',
+                              'sistemazione_id', OLD.id,
+                              'stato_da', OLD.stato,
+                              'stato_a',  NEW.stato
+                          ),
+                          NULL::uuid,
+                          OLD.stato::text, NEW.stato::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione() IS
+                'Il percorso dell''atto di sistemazione: nasce in BOZZA, e da li'' va a CONFERMATA (diventa un fatto: genera la contabile o il fondo) oppure ad ANNULLATA. ⭐ Entrambi gli esiti sono TERMINALI: da CONFERMATA non si torna perche'' il denaro si e'' gia'' mosso, e la correzione e'' una sistemazione NUOVA — la stessa regola della distinta contabile chiusa. ⛔ Nessuna tabella-matrice come per la contabile, di proposito: tre stati e due passaggi sarebbero due righe che nessuno interroga, e la matrice esiste anche perche'' il frontend ci legge le azioni — qui le azioni sono i due verbi stessi. Chi cerca la regola nei dati non la trova: e'' qui. ⚠️ Su un atto terminale rifiuta OGNI update e non solo quelli di stato, con un codice diverso (E_SISTEMAZIONE_IMMUTABILE): «non puo'' passare da CONFERMATA a BOZZA» e'' vero ma non aiuta chi sta provando a correggere un importo gia'' eseguito.';
+
+              DROP TRIGGER IF EXISTS trg_sistemazioni_a15_guard_transizione_ins_upd
+                  ON pagamenti.sistemazioni;
+
+              CREATE TRIGGER trg_sistemazioni_a15_guard_transizione_ins_upd
+                  BEFORE INSERT OR UPDATE ON pagamenti.sistemazioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_sistemazioni_a15_guard_transizione_ins_upd
+                  ON pagamenti.sistemazioni;
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_sistemazioni_guard_transizione();
