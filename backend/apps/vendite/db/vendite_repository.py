@@ -306,7 +306,18 @@ class VenditeRepository:
                                    AND fl_log.disabilitato IS FALSE
                             )
                        )
-                ) AS ha_errori_gravi
+                ) AS ha_errori_gravi,
+                -- ⭐ Il lotto e' stato riportato in lavorazione e il giro non ha
+                -- ancora rifatto lo step (`riaperto_il` si spegne appena il
+                -- runner lo onora, `azzera_riaperto_il`). Serve al FE per
+                -- NOMINARE giusto la prossima esecuzione: su un lotto riaperto
+                -- il prossimo run RIFA' lo step corrente e il lotto resta in
+                -- DRAFT — chiamarlo «Avanza step» e rispondere «Pipeline
+                -- avanzata» dice una cosa falsa (collaudo NC resi, 2026-08-22).
+                -- ⚠️ Il verdetto resta del runner (`is_lotto_riaperto`): questo
+                -- e' lo STESSO predicato letto per la presentazione, non una
+                -- seconda regola. Se il criterio cambiasse, cambia di la'.
+                (fl.riaperto_il IS NOT NULL) AS riaperto
     """
 
     _LOTTO_JOINS = """
@@ -359,6 +370,7 @@ class VenditeRepository:
             # pretende, senza esserlo.
             "emittente_ragione_sociale": row[18],
             "ha_errori_gravi": bool(row[19]),
+            "riaperto": bool(row[20]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione

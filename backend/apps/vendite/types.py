@@ -210,6 +210,12 @@ class LottoListRow(TypedDict):
     # uno ad accendere la spia sulla riga di lista. SE, non quanti — il numero
     # e il motivo stanno nel drawer, scheda «Segnalazioni».
     ha_errori_gravi: bool
+    # ⭐ Lotto riportato in lavorazione e step non ancora rifatto. Non e' uno
+    # stato: e' un SEGNALE di un giro solo (`vendite.fatturazione_lotti.riaperto_il`,
+    # spento dal runner appena lo onora). Esiste per la presentazione — sul
+    # lotto riaperto la prossima esecuzione RIFA' lo step corrente invece di
+    # avanzare, e il lotto resta in DRAFT.
+    riaperto: bool
 
 
 class CommessaEmitResult(TypedDict):

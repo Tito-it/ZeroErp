@@ -39,6 +39,10 @@ import {
 // ha — stampare è leggere (I-4).
 export const LOTTO_AZIONE_PERMESSO = {
   avanza_step: 'genera_fatture_lotti',
+  // Stessa chiamata e stesso potere di `avanza_step`: cambia solo COME si
+  // chiama davanti all'operatore (vedi `verbiPipeline`). Un permesso proprio
+  // direbbe che e' un'altra facolta', e non lo e'.
+  rigenera_bozza: 'genera_fatture_lotti',
   rilancia_step: 'genera_fatture_lotti',
   numera: 'numera_fatture_lotti',
   annulla: 'reset_lotto_draft',
@@ -49,6 +53,9 @@ export const LOTTO_AZIONE_PERMESSO = {
 // delle azioni prende label/icona/severity dal `meta` di catalogo.
 export const LOTTO_AZIONE_PIPELINE_UI = {
   avanza_step: { label_key: 'vendite.lotti.avanza', icon: 'pi pi-forward', severity: undefined },
+  // ⚠️ Icona DIVERSA da `avanza_step` di proposito: la freccia in avanti su un
+  // gesto che non avanza e' la stessa bugia dell'etichetta.
+  rigenera_bozza: { label_key: 'vendite.lotti.rigenera', icon: 'pi pi-refresh', severity: undefined },
   rilancia_step: { label_key: 'vendite.lotti.rerun', icon: 'pi pi-replay', severity: 'warn' },
 }
 
@@ -85,6 +92,15 @@ export function useLottoAzioni({ onDone } = {}) {
       title: 'vendite.lotti.avanza_header',
       message: 'vendite.lotti.avanza_conferma',
       esito: () => t('vendite.lotti.avanza_esito'),
+    },
+    // Stessa API di `avanza_step`, testi propri: su un lotto riaperto quella
+    // chiamata RIFA' lo step corrente e il lotto resta in DRAFT — annunciare
+    // «Pipeline avanzata» sarebbe falso (collaudo NC resi, 2026-08-22).
+    rigenera_bozza: {
+      api: (id) => runLottoPipeline(id),
+      title: 'vendite.lotti.rigenera_header',
+      message: 'vendite.lotti.rigenera_conferma',
+      esito: () => t('vendite.lotti.rigenera_esito'),
     },
     rilancia_step: {
       api: (id) => runLottoPipeline(id),
@@ -218,7 +234,7 @@ function verdettoRunner(res) {
   //   I due verbi di pipeline non sono nel blob per costruzione: per loro non
   //   c'è verdetto da chiedere e si procede diretti.
   async function eseguiVerificato(lottoId, key) {
-    if (key === 'avanza_step' || key === 'rilancia_step') {
+    if (key === 'avanza_step' || key === 'rigenera_bozza' || key === 'rilancia_step') {
       esegui(lottoId, key)
       return
     }
@@ -249,10 +265,24 @@ function verdettoRunner(res) {
   //   step. Prima la condizione era `!isEmessa`, e proponeva «Avanza step»
   //   anche sui lotti DEFINITIVA — invisibile nel drawer di un lotto alla
   //   volta, evidente in una lista dove i chiusi sono la maggioranza.
+  //
+  //   ⭐ Da DRAFT i verbi sono DUE e si escludono, perché la stessa chiamata
+  //   fa due cose diverse (runner, `deve_rifare_step_corrente`):
+  //     · lotto RIAPERTO → il run RIFA' lo step corrente, il lotto resta in
+  //       DRAFT      → «Rigenera la bozza»
+  //     · lotto normale → il run AVANZA, DRAFT→EMESSA → «Avanza step»
+  //   Trovato in collaudo (NC resi, 2026-08-22): dopo «Riporta in lavorazione»
+  //   servono due pressioni — la prima rigenera, la seconda avanza — ed è
+  //   corretto; a essere sbagliato era che il pulsante le chiamasse uguali e
+  //   annunciasse «Pipeline avanzata» anche quando non era avanzato niente.
+  //   ⚠️ Il flag `riaperto` arriva dal BE (`fatturazione_lotti.riaperto_il`):
+  //   NON si deduce qui, o diventerebbe una seconda regola accanto a quella
+  //   del runner.
   function verbiPipeline(lotto) {
     if (lotto?.stato_lotto === 'ERRORE') return ['rilancia_step']
     if (lotto?.stato_lotto === 'IN_ESECUZIONE') return []
-    return lotto?.stato_doc_fiscale_codice === 'DRAFT' ? ['avanza_step'] : []
+    if (lotto?.stato_doc_fiscale_codice !== 'DRAFT') return []
+    return lotto?.riaperto ? ['rigenera_bozza'] : ['avanza_step']
   }
 
   // Scopo: verbi PLAUSIBILI per una riga di lista, dai soli campi che la riga

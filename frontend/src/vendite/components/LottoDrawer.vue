@@ -421,6 +421,11 @@ const drawerActions = computed(() => {
   // monte e si ri-esegue. L'avanzamento no, quello lo blocca il runner.
   for (const key of verbiPipeline(lotto.value)) {
     const ui = LOTTO_AZIONE_PIPELINE_UI[key]
+    // ⚠️ SOLO `avanza_step`, ed è una condizione scritta apposta e non un
+    // effetto di come è scritta: `rigenera_bozza` è un rilancio dello STESSO
+    // step, che con criticità attive il runner ammette (è la via d'uscita).
+    // Bloccarlo qui toglierebbe l'unica strada per uscire dalle criticità
+    // proprio ai lotti riaperti.
     const bloccato = key === 'avanza_step' && haSegnalazioniCritiche.value
     azioni.unshift({
       key,
