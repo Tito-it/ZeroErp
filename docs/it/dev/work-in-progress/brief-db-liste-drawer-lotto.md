@@ -511,11 +511,28 @@ rotto, ma l'ordine dei due passi è l'opposto.** Registrandola in `WHITELIST_BE`
 il BE ha scoperto che `stato_atto` è a catalogo `ordinabile = f`, quindi il
 concetto «stato» non è coperto e il presidio è KO. Verificato: la colonna 466 è
 `f`, e `FONDI_DA_DECIDERE_SORT_COLUMNS` ha **7 voci senza `stato_atto`**.
-⚠️ **Il flag NON si alza adesso.** La regola del cantiere è *prima la voce BE,
-poi il ribaltone del flag — mai `t` con la speranza*: un `ordinabile = t` senza
-la voce nel repository è una freccia bugiarda, cioè esattamente il difetto che
-il presidio esiste per trovare. Il DB fa la sua metà **quando** `stato_atto`
-compare nella whitelist.
+⚠️ **Il flag NON si alza adesso**, e dal 2026-08-22 non è più solo la regola:
+è una misura. Simulando le tre configurazioni sulla lista 44 (whitelist letta
+da `origine/dev/backend-tid`):
+
+| Configurazione | bugiarde | irraggiungibili | nucleo rotto |
+| --- | --- | --- | --- |
+| **oggi** | — | — | `stato` |
+| **voce BE + flag** | — | — | — ✅ |
+| ⛔ **solo il flag** | `stato_atto` | — | `stato` |
+
+Il flag da solo **non chiude niente e aggiunge un difetto**: il nucleo resta
+rotto (la whitelist non conosce la colonna) e nasce una freccia bugiarda. E
+sarebbe la variante silenziosa: `list_fondi_da_decidere` fa
+`FONDI_DA_DECIDERE_SORT_COLUMNS.get(order_by or "")` e **ripiega su `data`**,
+quindi l'operatore ordinerebbe per stato ottenendo un ordine per data, senza
+nessun errore a dirglielo.
+
+✅ **Verificato anche il resto**: la lista 44 non ha altri difetti: `stato_atto`
+è l'unica cosa che la separa da zero KO. La riga di seed è pronta e si alza
+**nello stesso giro** in cui `stato_atto` entra in
+`FONDI_DA_DECIDERE_SORT_COLUMNS` (al 2026-08-22 la whitelist ha 7 voci e non
+la contiene).
 ⭐ E il rosso resta esposto di proposito: era la dimostrazione della regola —
 *una lista non registrata è dichiarata a posto senza essere stata guardata*.
 

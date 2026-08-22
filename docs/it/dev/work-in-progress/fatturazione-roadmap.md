@@ -15,7 +15,7 @@
 
 ---
 
-## 📊 Stato in una pagina (2026-08-03, item 1 al 2026-08-21)
+## 📊 Stato in una pagina (2026-08-03, item 1 al 2026-08-21, item 10 al 2026-08-22)
 
 | # | Item | Priorità dichiarata (feb) | Stato verificato |
 | --- | --- | --- | --- |
@@ -28,6 +28,7 @@
 | 7 | `correlation_id` | P0 | 🟡 metà: pipeline sì, push no |
 | 8 | Diagrammi di stato | P2 | 🔴 zero `stateDiagram-v2` nel repo |
 | 9 | Passo SDI: prepara il payload, nessuno lo invia | — (nuovo, 05/08) | 🟡 **sospeso per decisione** — la pipeline ora scrive in `fatture_sdi`, manca il builder XML a valle |
+| 10 | Preview di fatturazione del contratto | — (assorbito, 22/08) | 🔴 non esiste — il dato c'è nel motore, manca chi lo presenta |
 
 ### 🔑 La scoperta trasversale: `event_log` è **write-only**
 
@@ -435,6 +436,41 @@ sulla pipeline, questo è il passo da includere per primo.
 
 ---
 
+## 10. Preview di fatturazione del contratto (UI mancante) — verificato 2026-08-22
+
+Assorbito da `sviluppo-fatturazione.md`, che conteneva **solo questo** ed è
+stato tolto: due sedi sullo stesso argomento divergono al primo aggiornamento.
+Nasce come promemoria **PROMO-1 del 2026-05-19**.
+
+**Il buco.** Non esiste un punto in cui l'operatore veda, per un contratto
+ATTIVO, *«sulla competenza di questo mese fatturerà queste righe, per un totale
+di X»*. Il dato c'è nel motore — `vendite.fn_list_contratti_da_pushare` produce
+un payload per riga × mese — e non c'è nessun componente che lo presenti.
+
+**Che cosa è cambiato dal 2026-05-19, misurato oggi.**
+
+- ⭐ **La condizione «quando affrontarlo» è caduta**: il promemoria diceva
+  «probabilmente dopo il motore commesse, `HandlerContratti` è ancora uno
+  scheletro vuoto». Non lo è più — è registrato e vivo in
+  `commesse_service.py`. L'attesa è finita, il buco no.
+- ⚠️ **Esiste una preview di contratto, ma risponde a un'altra domanda.**
+  `/contratti/<id>/righe-preview/` è la preview di **pricing**: *quali righe si
+  applicano e a che prezzo finale*. Quella che manca è di **fatturazione**:
+  *che cosa esce, su quale competenza, per quanto*. Sono adiacenti — ed è
+  proprio l'adiacenza che le rende facili da confondere: chi cerca la seconda
+  trova la prima e crede che ci sia.
+
+**Perché non è solo una comodità.** Oggi il drawer riga è l'unico posto in cui
+l'utente vede la `quantita` di una riga di contratto, e questo pesa sulla
+decisione UX aperta su `vendite.contratti_righe` (mostrare o nascondere
+`quantita`, esporre `fonte_quantita_attesa`). Con una preview di fatturazione il
+drawer riga potrebbe limitarsi alle **regole**, senza dover comunicare il
+**totale periodico**. Riferimenti:
+[refactor-contratti-fonte-quantita.md](../work-done/refactor-contratti-fonte-quantita.md),
+[gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md).
+
+---
+
 ## Ordine di attacco — ORIGINALE (28/02/2026, storico)
 
  i P0 sono cose che puoi fare in poche ore e sbloccano molto, i P1 sono bloccanti per andare in produzione reale, i P2-P3 possono crescere incrementalmente.
@@ -472,6 +508,7 @@ funzionale ma perché ha già fatto danno.
 | **P2** | Diagrammi di stato (#8) | Trasposizione, non analisi. Da fare **dopo** #1, così mostra anche la via d'uscita |
 | **P3** | Esercizio fiscale (#3) | La parte normativa (numerazione) è coperta; questa serve al **primo bilancio**, non al primo ciclo |
 | **P3** | Contabilità (#2) | Schema vuoto: è un modulo, non un item. Prima serve decidere se consuma eventi o vive nella pipeline |
+| **P3** | **Preview di fatturazione del contratto (#10)** *(nuovo)* | Entrata il 22/08 assorbendo `sviluppo-fatturazione.md`. Non blocca nessun altro item e niente si rompe senza — ma **sblocca una decisione UX ferma** su `contratti_righe`, e la condizione che la teneva sospesa (motore commesse) è caduta. ⚠️ Da non confondere con `/righe-preview/`, che è la preview di *pricing* |
 
 ### Voci uscite dall'elenco
 

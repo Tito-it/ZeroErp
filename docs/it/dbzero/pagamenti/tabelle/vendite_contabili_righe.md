@@ -27,6 +27,9 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | fondo_source_id | bigint | YES |  |
+| scadenza_id | bigint | YES |  |
+| forzata | boolean | NO | false |
+| motivo_forzatura | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -36,28 +39,34 @@
 | FOREIGN KEY | fk_vendite_contabili_righe_contabile | contabile_id |
 | FOREIGN KEY | fk_vendite_contabili_righe_fattura | fattura_id |
 | FOREIGN KEY | fk_vendite_contabili_righe_fondo_source | fondo_source_id |
+| FOREIGN KEY | fk_vendite_contabili_righe_scadenza | scadenza_id |
 | FOREIGN KEY | fk_vendite_contabili_righe_stato | stato_id |
 | PRIMARY KEY | pk_vendite_contabili_righe | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_vendite_contabili_righe_contabile_id | `CREATE INDEX ix_vendite_contabili_righe_contabile_id ON pagamenti.vendite_contabili_righe USING btree (contabile_id)` |
+| ix_vendite_contabili_righe_fattura_id | `CREATE INDEX ix_vendite_contabili_righe_fattura_id ON pagamenti.vendite_contabili_righe USING btree (fattura_id) WHERE (fattura_id IS NOT NULL)` |
 | ix_vendite_contabili_righe_fondo_source_id | `CREATE INDEX ix_vendite_contabili_righe_fondo_source_id ON pagamenti.vendite_contabili_righe USING btree (fondo_source_id) WHERE (fondo_source_id IS NOT NULL)` |
+| ix_vendite_contabili_righe_scadenza_id | `CREATE INDEX ix_vendite_contabili_righe_scadenza_id ON pagamenti.vendite_contabili_righe USING btree (scadenza_id) WHERE (scadenza_id IS NOT NULL)` |
 | pk_vendite_contabili_righe | `CREATE UNIQUE INDEX pk_vendite_contabili_righe ON pagamenti.vendite_contabili_righe USING btree (id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()` |
 | trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()` |
+| trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()` |
+| trg_vendite_contabili_righe_a10_guard_rata_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_rata()` |
+| trg_vendite_contabili_righe_a10_guard_rata_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_rata()` |
 | trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()` |
 | trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()` |
 | trg_vendite_contabili_righe_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione()` |
-| trg_vendite_contabili_righe_a10_vendite_contabili_righe__73024a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_id', 'id')` |
 | trg_vendite_contabili_righe_a10_vendite_contabili_righe__73024a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_id', 'id')` |
+| trg_vendite_contabili_righe_a10_vendite_contabili_righe__73024a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_id', 'id')` |
 | trg_vendite_contabili_righe_a10_vendite_movimenti_block__236436 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_movimenti', 'contabile_riga_id', 'id', 'attivo')` |
-| trg_vendite_contabili_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_vendite_contabili_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vendite_contabili_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vendite_contabili_righe_z90_marca_fondo_eseguito_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()` |

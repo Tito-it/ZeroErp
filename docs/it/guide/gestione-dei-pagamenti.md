@@ -85,6 +85,13 @@ vede.*
 * [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile) — creazione o recupero testata
 * [pagamenti.fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili) — saldo contabile in lavorazione
 * [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) — saldo finanziario effettivo
+* [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — ⭐ **la registrazione**: le righe pronte diventano movimenti, e la distinta si chiude
+* [pagamenti.fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) — il saldo per **rata**, che distingue il registrato dal dichiarato e l'incassato dal postato
+* [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura) — «questa rata e' di questa fattura?», chiesto **fuori** dalla row security
+
+**Viste:**
+
+* [pagamenti.vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) — le rate il cui residuo e' uscito dalla banda: l'elenco senza il quale la forzatura sarebbe un modo di nascondere denaro
 
 ---
 
@@ -96,7 +103,7 @@ pagamenti
 │   └── enti_incasso                -- canali fisici (filiale, ufficio postale, PSP)
 ├── compensazioni                   -- processo di compensazione fatture
 ├── vendite_contabili               -- testata contabile (punto unico d'ingresso)
-│   ├── vendite_contabili_righe     -- dettaglio per fattura/BA/importo
+│   ├── vendite_contabili_righe     -- dettaglio per fattura/BA/rata/importo
 │   │   └── vendite_movimenti      -- movimento effettivo 1:1 con riga
 │   └── vendite_contabili_lotti     -- legame N:M con lotti di fatturazione
 ├── vendite_contabili_stati         -- lookup stati testata (con is_final)
@@ -111,68 +118,92 @@ vendite
 
 ---
 
-## Il piano rate e gli incassi: due metà che non si toccano ancora
+## Il piano rate e gli incassi: adesso si parlano
 
-> Sezione aggiunta il **2026-08-02**, quando il piano rate è entrato in esercizio.
-> Fino ad allora `vendite.fatture_scadenze` era vuota per costruzione e questa
-> guida non aveva motivo di nominarla.
+> Sezione aggiunta il **2026-08-02**, quando il piano rate e' entrato in
+> esercizio. ⭐ **Riscritta il 2026-08-22**: fino a quel giorno le due meta' non
+> si toccavano, e la sezione esisteva per dirlo.
 
-Da oggi una fattura porta il proprio **piano rate**: quante rate, a quale data,
-per quale importo. Lo genera la pipeline nello step EMESSA e vive in
+Una fattura porta il proprio **piano rate**: quante rate, a quale data, per quale
+importo. Lo genera la pipeline nello step EMESSA e vive in
 [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze).
 
-**Chi decide quante rate e con che scadenze** non è questa guida: è il *termine
+**Chi decide quante rate e con che scadenze** non e' questa guida: e' il *termine
 di pagamento* del documento, scelto da un catalogo e risolto lungo la catena
-documento → commessa → cliente → *unica rata*. Regole, catalogo di oggi e
+documento -> commessa -> cliente -> *unica rata*. Regole, catalogo di oggi e
 conseguenze (fra cui il fatto che il termine decide anche **quante fatture**
 nascono) in [Termini di pagamento](/guide/termini-di-pagamento).
 
-### 🔴 Un incasso è agganciato alla FATTURA, non alla RATA
+### ⭐ Un incasso si aggancia alla RATA — dal 2026-08-22
 
-È il punto da avere chiaro prima di progettare qualsiasi cosa in quest'area.
-`pagamenti.vendite_movimenti` porta `fattura_id` e `billing_account_id`, e si
-ferma lì: nell'intero database **non esiste alcuna colonna `scadenza_id`**.
+~~Un incasso e' agganciato alla FATTURA, non alla RATA.~~ Era vero fino al lotto
+5 del cantiere incassi: `vendite_movimenti` portava la fattura e si fermava li',
+e nell'intero database non esisteva nessuna colonna `scadenza_id`.
 
-Le due metà quindi **non si parlano**:
+Adesso la porta la **riga contabile**, ed e' li' che l'abbinamento vive:
 
 ```text
-vendite.fatture_scadenze     "questa fattura si paga in 2 rate, il 30/09 e il 31/10"
-                                          ⟂  nessun collegamento
-pagamenti.vendite_movimenti  "su questa fattura sono entrati 500 €"
+vendite.fatture_scadenze           "questa fattura si paga in 2 rate, il 30/09 e il 31/10"
+                                                |
+pagamenti.vendite_contabili_righe   scadenza_id -> l'incasso dice A QUALE RATA va
+                                                |
+pagamenti.vendite_movimenti         scadenza_id -> copiata dalla riga quando si registra
 ```
 
-### Cosa si può e cosa NON si può rispondere oggi
+⭐ **Niente tabella in mezzo**: la riga contabile *e' gia'* l'unita' di
+allocazione, e chi paga due rate con un bonifico solo fa **due righe** — che e'
+anche il modo in cui la banca lo racconta.
+
+⚠️ **La rata resta facoltativa**: ci sono righe che saldano un documento senza
+riferirsi a una scadenza precisa, e quella del fondo fattura e' il caso vivo
+(salda per **trasferimento**).
+
+### Che cosa si puo' chiedere adesso
 
 | Domanda | Risposta |
 |---|---|
-| Quanto resta da incassare su una fattura? | ✅ `pagamenti.fn_get_saldo_fattura` — residuo = `totale_a_pagare` − movimenti attivi |
-| Come è rateizzata questa fattura? | ✅ `vendite.fatture_scadenze` |
-| **Questa rata è stata pagata?** | ❌ **non derivabile** |
-| Quali rate sono scadute o insolute? | ❌ **non derivabile** |
+| Quanto resta da incassare su una fattura? | ✅ `pagamenti.fn_get_saldo_fattura` |
+| Come e' rateizzata questa fattura? | ✅ `vendite.fatture_scadenze` |
+| **Questa rata e' stata pagata?** | ✅ `pagamenti.fn_get_saldo_rata` — e distingue il **registrato** dal **dichiarato** |
+| Quanto di quel che risulta pagato e' **denaro davvero arrivato**? | ✅ la colonna `incassato`: i centri interni (fondo fattura, compensazione) non sono cassa |
+| Quali rate hanno incassato piu' del dovuto? | ✅ [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) |
+| Quali rate sono scadute o insolute? | 🟠 **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca |
 
-Ne segue una regola pratica: **nessuna colonna «scaduta / insoluta / da
-incassare», nessuna colorazione di sollecito, nessun filtro «da incassare»**. Su
-una fattura già incassata sarebbero tutte false, e un dato che mente è peggio di
-un dato assente.
+### ⭐ Le due domande che il database tiene separate
 
-Si può fare l'elenco del **piano rate**; uno **scadenzario** è un'altra cosa, e il
-modello oggi non può sostenerlo.
+Quando si abbina un incasso a una rata il database ne fa **due**, e risponde in
+modo opposto:
 
-### ⚠️ Due avvertenze per chi costruirà l'aggancio
+| | Domanda | Che cosa fa |
+| --- | --- | --- |
+| **Coerenza** | «questa rata e' di questa fattura?» | 🔒 **rifiuta** — e' un'incoerenza logica, nessun cliente puo' provocarla |
+| **Capienza** | «c'e' ancora spazio su questa rata?» | ⚠️ **segnala** — che un cliente paghi due volte e' un fatto del mondo |
 
-* **Il piano rate è uno snapshot congelato.** Oltre `DRAFT`/`EMESSA` le rate non
-  si toccano più (guard sui satelliti della fattura). La riconciliazione dovrà
-  quindi scrivere **altrove** — una tabella di allocazione, o `vendite_movimenti`
-  — e **mai** «marcare la rata come pagata» aggiornando `fatture_scadenze`.
-* **«Prossima rata» è un concetto temporale, non di pagamento**: la prossima per
-  data, e se sono tutte passate l'ultima. La regola vive già nel frontend ed è una
-  per tutto il prodotto — chi la ricalcolasse per conto proprio farebbe dire a due
-  schermate cose diverse sullo stesso documento.
+> ⭐ **La capienza si puo' forzare, e la forzatura resta scritta.** Il primo
+> tentativo viene rifiutato con i numeri («restano 40, questo importo e' 90»);
+> chi conferma registra lo stesso, e sulla riga rimane il segno di quella
+> decisione con un motivo facoltativo. ⛔ Nessun permesso e nessuna azione di
+> processo: l'operatore non e' mai bloccato.
+>
+> ⚠️ Ed e' per questo che esiste l'elenco a valle: **una forzatura senza un
+> elenco e' un modo per nascondere, non per registrare**.
 
-Le attività aperte e il loro ordine sono in
+### ⚠️ Due avvertenze che restano valide
+
+* **Il piano rate e' uno snapshot congelato.** Oltre `DRAFT`/`EMESSA` le rate non
+  si toccano piu' (guard sui satelliti della fattura). L'abbinamento infatti
+  **non scrive mai** su `fatture_scadenze`: scrive sulla riga contabile, e lo
+  stato della rata si **legge**, non si marca.
+* **«Prossima rata» e' un concetto temporale, non di pagamento**: la prossima per
+  data, e se sono tutte passate l'ultima. La regola vive gia' nel frontend ed e'
+  una per tutto il prodotto — chi la ricalcolasse per conto proprio farebbe dire
+  a due schermate cose diverse sullo stesso documento.
+
+Le attivita' aperte e il loro ordine sono in
 [brief-incassi-riconciliazione-rate-promemoria.md](../dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md).
 
 ---
+
 
 ## Centri di riscossione e enti di incasso
 
@@ -187,14 +218,16 @@ Due flag booleani distinguono i centri speciali:
 
 Un centro non puo essere contemporaneamente di compensazione e di fondo fattura.
 
-> 🔴 **Oggi questo NON e vero, e non e una svista di scrittura: e il vincolo che
-> manca.** Il `CHECK chk_centri_riscossione_ruolo_esclusivo` e dichiarato nella
-> migrazione `20260211-21` ma **non esiste nel database** — il blocco che lo crea
-> e annidato dentro l'elenco delle colonne di un `addColumn`, e li dentro non
-> viene eseguito. La colonna e nata, il vincolo no.
-> Rimessa in piedi dal passo **P-1** di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
-> — ⛔ **non ancora applicato**.
+> ✅ **Adesso e vero. Fino al 21-08-2026 non lo era**, e non per una svista di
+> scrittura: il `CHECK chk_centri_riscossione_ruolo_esclusivo` era dichiarato
+> nella migrazione `20260211-21` e **non esisteva nel database** — il blocco che
+> lo crea era annidato dentro l'elenco delle colonne di un `addColumn`, e li
+> dentro non viene eseguito. La colonna era nata, il vincolo no.
+> Rimesso in piedi dal passo **P-1** di
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata),
+> applicato il 21-08-2026 insieme ai due indici unici **parziali** che rendono
+> unico ciascuno dei due ruoli (prima uno dei due era un unico **totale** su un
+> booleano, e teneva la tabella a due righe in tutto).
 
 > ⚠️ **Questi due centri non sono cassa, e chi misura gli incassi deve saperlo.**
 > Un movimento su `is_fondo_fattura` o `is_compensazione` non e denaro arrivato:
@@ -694,6 +727,50 @@ Da un punto di vista tecnico:
 
 ---
 
+### `fn_posta_contabile`
+
+⭐ **La funzione che registra.** Trasforma in movimenti contabili le righe di una
+distinta che sono pronte a diventarlo, e chiude la distinta.
+
+E' il punto in cui **nasce il primo movimento** del progetto: fino al
+22-08-2026 nessuna funzione del database scriveva `vendite_movimenti`, quindi il
+residuo di una fattura coincideva col totale *per costruzione* — non perche'
+nessuno avesse pagato, ma perche' non c'era modo di registrarlo.
+
+| Parametro | Tipo | Descrizione |
+| --- | --- | --- |
+| `p_contabile_id` | BIGINT | La distinta da registrare (obbligatorio) |
+| `p_righe_attese` | INTEGER | Quante righe pronte aveva davanti chi conferma (facoltativo) |
+| `p_totale_atteso` | NUMERIC | ...e per che totale (facoltativo, ma insieme al precedente) |
+
+**Restituisce:** `TABLE(movimenti_creati INTEGER, righe_postate INTEGER, righe_saltate INTEGER, totale_postato NUMERIC, esito TEXT)`
+
+**In sintesi, che cosa fa e in che ordine:** blocca la distinta, pretende che sia
+**validata**, quadra le righe col totale dichiarato, verifica la dichiarazione di
+chi conferma, rifiuta parlando se una riga pronta non dice a quale fattura e
+cliente appartiene, scrive i movimenti, porta le righe a «registrata», scrive la
+conferma e chiude.
+
+> ⭐ **Tre cose non ovvie, e conviene saperle prima di usarla.**
+>
+> 1. **La dichiarazione di chi conferma** (`p_righe_attese` / `p_totale_atteso`)
+>    serve perche' fra il momento in cui una persona guarda l'elenco e il momento
+>    in cui preme «registra» la distinta puo' cambiare. Registrare qualcosa di
+>    diverso da cio' che e' stato approvato sarebbe **irreversibile**: la
+>    funzione confronta e, se non torna, **rifiuta prima di scrivere**.
+> 2. **«Niente da registrare» non e' un errore**: la funzione risponde
+>    `NULLA_DA_POSTARE` e non solleva. Il messaggio «l'hai gia' fatto» lo mette
+>    l'interfaccia leggendo l'esito.
+> 3. **La chiusura e' una conseguenza, non una scelta**: registrato, la distinta
+>    e' chiusa. Le righe di cui nessuno ha ancora detto che cosa ne e' stato
+>    restano li' e vengono contate in `righe_saltate` — ma da quel momento **non
+>    possono piu' diventare pronte**, o sarebbe denaro dichiarato che non si
+>    registrera' mai.
+
+> Documentazione dettagliata: [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile)
+
+---
+
 ## Saldi: due livelli di lettura
 
 Il modello espone due livelli di saldo per ogni fattura, che rispondono a domande diverse:
@@ -757,10 +834,11 @@ flowchart TD
   E --> F
   F --> G[vendite_contabili_righe<br/>dettaglio per fattura/BA]
   G --> H{Stato riga<br/>is_postabile?}
-  H -->|Si| I[Posting]
+  H -->|Si| I[fn_posta_contabile<br/>la registrazione]
   H -->|No| J[Validazione/Sospeso]
   J --> H
   I --> K[vendite_movimenti<br/>1:1 con riga]
+  I --> M[distinta CHIUSA<br/>+ data_conferma]
   K --> L[fn_get_saldo_fattura<br/>aggiornamento saldo]
 ```
 
