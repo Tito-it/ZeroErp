@@ -1,0 +1,233 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CORREZIONE IN AVANTI — la riga senza documento su una distinta senza canale
+#   pagamenti.vendite_contabili_righe · rls_vendite_contabili_righe_perimetro_incasso
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-5 · lotto 6
+#
+# ── 🔴 IL DIFETTO, e non era dei test ────────────────────────────────
+#   Il changeSet `-21` dava alla riga contabile due strade: il **canale** della
+#   sua distinta, oppure la **fattura** che porta. ⚠️ Restava fuori un caso che
+#   non e' un residuo, e' **la lavorazione normale**:
+#
+#     > una riga **`DA_ABBINARE`** — che fattura non ha, e' il suo stato — su una
+#     > distinta **`MANUALE` senza canale**, cioe' il lotto di lavoro di un
+#     > operatore che sta digitando incassi.
+#
+#   Nessuna delle due strade la copriva, e il `WITH CHECK` la **rifiutava**:
+#   `42501 · la nuova riga viola la regola di sicurezza per riga`.
+#
+#   ⭐ Non e' un caso di confine inventato: e' **D12-a**, applicata nel lotto 2 —
+#   la chiave di riuso di `fn_get_or_create_vendite_contabile` comprende
+#   `user_insert` proprio perche' una distinta manuale e' il lotto di lavoro di
+#   una persona. E l'hanno segnalato **due** pgTAP gia' verdi da giorni
+#   (`test-contabili-origine-e-quadratura`, `test-righe-contabili-guard-dati`),
+#   che il perimetro nuovo ha spento.
+#
+#     > 📌 La lezione: un perimetro si misura sui **percorsi che esistono**, non
+#     > su quelli che il disegno immagina. Le due strade coprivano il denaro che
+#     > arriva da un canale e il denaro gia' attribuito a un documento — e in
+#     > mezzo c'e' il momento in cui non e' ancora ne' l'uno ne' l'altro, che e'
+#     > esattamente il lavoro che questo cantiere serve a rendere possibile.
+#
+# ── ⭐ LA TERZA STRADA: cio' che non e' di nessuno non si nega a nessuno ─
+#   Una riga **senza documento**, su una distinta **senza canale**, non porta
+#   nessuna attribuzione: non c'e' niente in essa che dica di chi sia. Nasconderla
+#   a tutti non protegge nessuno e **impedisce di lavorarla** — ed e' la stessa
+#   ragione per cui la testata di quella distinta e' visibile.
+#
+#   ⚠️ La condizione e' scritta **con le stesse parole della policy della
+#   testata** (`ente_incasso_id IS NULL`), e non con una funzione: le due policy
+#   devono potersi leggere insieme.
+#
+#   ⛔ E resta **stretta**: appena la riga prende una `fattura_id`, la terza
+#   strada si spegne e decide la fattura. Una riga con la fattura **di un altro**
+#   su una distinta senza canale resta invisibile e non scrivibile, come prima.
+#
+# ── 🔵 LA DECISIONE CHE QUESTO RINVIA, e va presa ────────────────────
+#   Una distinta manuale **senza canale non ha perimetro**: non c'e' colonna che
+#   dica a chi appartiene. Le due uscite sono:
+#     * **rendere il canale obbligatorio** anche sulle distinte manuali — la
+#       lettura piu' fedele a D5 («il denaro ha un padrone dal primo istante»),
+#       ma ⛔ oggi impraticabile: `enti_incasso` e' a **zero righe** finche' non
+#       si configurano i conti dei due emittenti (passo S3-3, che e' dato);
+#     * **accettare che sia condivisa**, che e' cio' che questo changeSet fa.
+#   Annotata nel brief: e' progettazione, non rifinitura.
+#
+# ⚠️ Correzione **in avanti**: `-21` e' applicato e non si tocca.
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql
+#           + db/pgtap/pagamenti/test-contabili-origine-e-quadratura.sql
+#           + db/pgtap/pagamenti/test-righe-contabili-guard-dati.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-24-fix-rls-righe-distinta-senza-canale-mctit.yaml
+
+  - changeSet:
+      id: 20260822-24-fix-rls-righe-distinta-senza-canale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Correzione in avanti della policy delle righe contabili: si aggiunge la terza strada,
+        la riga SENZA documento su una distinta SENZA canale. Il changeSet -21 la rifiutava
+        con 42501, e non e' un caso di confine: e' la riga DA_ABBINARE su una distinta MANUALE,
+        cioe' il lotto di lavoro di un operatore che sta digitando incassi (D12-a, applicata
+        nel lotto 2). Una riga cosi' non porta nessuna attribuzione — nasconderla a tutti non
+        protegge nessuno e impedisce di lavorarla. Appena prende una fattura_id la terza
+        strada si spegne e decide la fattura.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_policies
+               WHERE schemaname = 'pagamenti'
+                 AND tablename = 'vendite_contabili_righe'
+                 AND policyname = 'rls_vendite_contabili_righe_perimetro_incasso';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE POLICY rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          -- 1. IL CANALE della distinta: il conto su cui il denaro
+                          --    e' arrivato (D5). Copre la riga DA ABBINARE di un
+                          --    flusso bancario, che fattura non ne ha.
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id
+                          )
+                          -- 2. LA FATTURA, quando c'e'. E' quella che da' il
+                          --    perimetro alle righe delle distinte interne, e che
+                          --    fa vedere la riga sul proprio documento finita sulla
+                          --    distinta di un altro.
+                          OR (
+                              fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id
+                              )
+                          )
+                          -- 3. ⭐ NE' DOCUMENTO NE' CANALE: non c'e' niente in questa
+                          --    riga che dica di chi sia, e nasconderla a tutti non
+                          --    protegge nessuno — impedisce solo di lavorarla. E' la
+                          --    riga DA_ABBINARE sul lotto di lavoro di un operatore
+                          --    (distinta MANUALE senza canale, D12-a). ⚠️ La
+                          --    condizione e' scritta con le stesse parole della policy
+                          --    della testata: le due si devono leggere insieme.
+                          OR (
+                              fattura_id IS NULL
+                              AND EXISTS (
+                                  SELECT 1
+                                    FROM pagamenti.vendite_contabili c
+                                   WHERE c.id = contabile_id
+                                     AND c.ente_incasso_id IS NULL
+                              )
+                          )
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id
+                          )
+                          OR (
+                              fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id
+                              )
+                          )
+                          OR (
+                              fattura_id IS NULL
+                              AND EXISTS (
+                                  SELECT 1
+                                    FROM pagamenti.vendite_contabili c
+                                   WHERE c.id = contabile_id
+                                     AND c.ente_incasso_id IS NULL
+                              )
+                          )
+                      )
+                  );
+
+              COMMENT ON POLICY rls_vendite_contabili_righe_perimetro_incasso
+                   ON pagamenti.vendite_contabili_righe IS
+                  'RLS: l''operatore vede e scrive le righe contabili del proprio perimetro, per '
+                  'TRE strade in OR. (1) IL CANALE della distinta, cioe'' il conto su cui il denaro '
+                  'e'' arrivato (D5): copre la riga «da abbinare» di un flusso bancario, che fattura '
+                  'non ne ha — con la sola fattura quella coda sarebbe invisibile a tutti. Su una '
+                  'distinta INTERNA risponde false apposta: la sua testata e'' di tutti, le sue righe '
+                  'no. (2) LA FATTURA della riga quando c''e'': da'' il perimetro alle righe delle '
+                  'distinte interne e fa vedere la riga sul PROPRIO documento finita sulla distinta '
+                  'di un altro — senza, il saldo direbbe che quel denaro non e'' arrivato e non ci '
+                  'sarebbe modo di scoprire perche''. ⭐ E serve anche alla BILANCIA: una riga che '
+                  'sparisse dalla propria distinta romperebbe la quadratura col totale dichiarato. '
+                  '(3) ⭐ NE'' DOCUMENTO NE'' CANALE (rev 2026-08-22, correzione in avanti): la riga '
+                  'DA_ABBINARE sul lotto di lavoro di un operatore, cioe'' una distinta MANUALE senza '
+                  'canale (D12-a). Non porta nessuna attribuzione: nasconderla a tutti non protegge '
+                  'nessuno e impedisce solo di lavorarla. Appena prende una fattura_id la terza '
+                  'strada si spegne e decide la fattura. ⚠️ La seconda strada legge vendite.fatture '
+                  'SOTTO la row security, e qui e'' giusto: non vedere la fattura E'' gia'' la '
+                  'risposta — nel guard di SCRITTURA la stessa lettura era un difetto, perche'' li'' '
+                  'la domanda e'' «di chi e''» e va saputa per intero. 🔵 Resta aperta la decisione '
+                  'se rendere il canale OBBLIGATORIO anche sulle distinte manuali: sarebbe la '
+                  'lettura piu'' fedele a D5, ma oggi enti_incasso e'' a zero righe.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rimette la forma a DUE strade del changeSet -21, che rifiuta la
+              --    riga DA_ABBINARE sulle distinte manuali senza canale.
+              DROP POLICY IF EXISTS rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE POLICY rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          OR (fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id))
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id)
+                          OR (fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id))
+                      )
+                  );

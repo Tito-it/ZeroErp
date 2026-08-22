@@ -54,7 +54,7 @@
 | ✅ **Difetti nuovi — tutti chiusi** | Erano otto, misurati scrivendo il piano. Al 2026-08-22 restano aperti **zero**: C-1 e C-1-bis (i due vincoli mai nati) col lotto 1, C-5 (le due porte) e la metà azionabile di C-8 col lotto 2, C-2/C-3/C-6 col lotto 3, C-7 col lotto 4 — e la **terza porta** di C-5, che nessuno aveva nominato, col lotto 4 insieme alla chiusura automatica che la rendeva raggiungibile. ⭐ Ogni sezione di §1.4 porta in testa quando e come | §1.4 |
 | 📋 **Il piano, logico** | Slice **0** (terreno) → **1** (posting) → **2** (rata) → **3** (perimetro) → **4** (sistemazioni) | §2 |
 | ⭐ **Il piano, operativo** | **Sette lotti** — che cosa si scrive, si prova e si applica insieme. Non coincidono con le slice | §6 |
-| ✅ **Stato** | **LOTTI 1, 2, 3, 4 e 5 CHIUSI** — 44 changeSet applicati (`20260821-11`…`-34`, `20260821-48`…`-55`, `20260822-01`…`-12`), 9 pgTAP nuovi, doc manuale completa. ⭐ `pagamenti` ha un **vocabolario, due matrici e sette guard**; il fondo fattura ha il suo **quarto stato**; C-2, C-3, C-5 e C-6 sono chiusi. ⭐ **E il primo movimento esiste**, ⭐ **e adesso sa a quale RATA appartiene**. **Prossimo: lotto 6 — il perimetro** | §6.7 · §6.9 · §6.10 · §6.11 · §6.12 |
+| ✅ **Stato** | **LOTTI 1, 2, 3, 4, 5 e 6 CHIUSI** — 56 changeSet applicati (`20260821-11`…`-34`, `20260821-48`…`-55`, `20260822-01`…`-24`), 12 pgTAP nuovi, doc manuale completa. ⭐ `pagamenti` ha un **vocabolario, due matrici e undici guard**; il fondo fattura ha il suo **quarto stato**; C-2, C-3, C-5 e C-6 sono chiusi. ⭐ **E il primo movimento esiste**, ⭐ **sa a quale RATA appartiene**, ⭐ **e adesso sa anche DI CHI È**. **Prossimo: lotto 7 — le sistemazioni** | §6.7 · §6.9 · §6.10 · §6.11 · §6.12 · §6.13 |
 | ✅ **Domande aperte** | **Zero** — tutte e nove chiuse il 21/08, tre **senza essere decise**. Resta il solo dettaglio **D15-e** | §5 |
 
 ---
@@ -1153,12 +1153,12 @@ Chiude: **D5**, **B-3**.
 
 | | Passo | Fase | Cosa fa |
 | --- | --- | --- | --- |
-| **S3-1** | `enti_incasso.soggetto_ruolo_conto_bancario_id` | `00_schema` | Colonna + FK, **obbligatoria per `tipo = BANCA`** come già lo è `bank_branch_id` (il modello è `chk_enti_incasso_bank_branch_tipo`). ⚠️ Un ente senza conto produce una coda invisibile: si fallisce alla **configurazione**, dove se ne accorge chi può rimediare |
-| **S3-2** | 🔴 Unicità **conto `INCASSO` → un solo soggetto** | `00_schema` | Indice unico parziale su `soggetti_ruoli_conti_bancari (conto_bancario_id) WHERE uso = 'INCASSO'`. È **il pezzo che regge il perimetro**: una verità di dominio su cui poggia la sicurezza dev'essere un vincolo, non un'assunzione. ⚠️ Da verificare sui dati esistenti prima — 8 legami in archivio |
-| **S3-3** | Configurazione dei conti dei due emittenti | dato | Non è un passo di codice, è configurazione. Ma senza, S3-1 rende inconfigurabile ogni ente |
-| **S3-4** | Guard di scope in **scrittura** su `vendite_contabili_righe` | `20_code` | `script.trgfn_guard_emittente_scope('fattura','fattura_id')`, come già su `vendite_movimenti`. ⚠️ Ma **solo quando `fattura_id` è valorizzato**: il caso `DA_ABBINARE` è per definizione senza fattura, e lì il perimetro si deriva dal **conto** |
-| **S3-5** | RLS in **lettura** su `pagamenti.*` | `00_schema` | Le tre transazionali. ⚠️ Il predicato non può essere solo «via fattura»: la coda «da abbinare» ha `fattura_id` NULL e sparirebbe **per tutti** — ed è **esattamente** il difetto che D5 esiste per evitare. ⚠️ Memoria: uno zero può essere fail-closed, non un dato |
-| **S3-6** | pgTAP di scope + doc | test | ⚠️ Un test di scope **non** si scrive svuotando `app.current_user_id`: non è fail-closed. Il cancello è `app.ruolo_applicativo` |
+| **S3-1** | ✅ **APPLICATO** (`20260822-13` la colonna, `-14` il guard) — `enti_incasso.soggetto_ruolo_conto_bancario_id` | `00_schema` + `20_code` | ⚠️ **Fatto più stretto del piano**: `NOT NULL` su **tutti** i tipi e non solo su `BANCA`. Scritta come diceva il piano, sarebbe stata lo stesso difetto travestito — un ente `POSTE`/`PSP`/`ALTRO` senza conto avrebbe avuto la coda invisibile a tutti. E il dato c'è: il denaro di ogni canale atterra su un conto dell'azienda. ⭐ Più un guard: la FK sa che la riga **esiste**, non che il suo `uso` sia `INCASSO` — e l'unicità di S3-2 vive **solo** sulle righe `INCASSO` |
+| **S3-2** | ✅ **APPLICATO** (`-15`) — 🔴 Unicità **conto `INCASSO` → un solo soggetto** | `00_schema` | ⚠️ **Non è l'indice unico che diceva il piano**: `EXCLUDE USING gist (conto_bancario_id WITH =, soggetto_ruolo_id WITH <>) WHERE uso = 'INCASSO'`. L'unico su `(conto)` avrebbe vietato anche lo **stesso** conto sullo **stesso** soggetto a livello di ruolo e di istanza — configurazione che due indici della tabella dichiarano legittima. La regola nomina **due** colonne. ⚠️ Dati verificati prima: **4 righe** in tutto (non 8), 2 `INCASSO`, conti distinti, zero violazioni |
+| **S3-3** | 📮 **RESTA APERTO — è dato, non codice** | dato | Nessuno dei due emittenti (SR 72 e 159) ha un conto `INCASSO` censito: i due esistenti sono di un terzo soggetto (SR 64). ⛔ **Finché non si configura, nessun ente di incasso è creabile** — ed è voluto (D5: si fallisce alla configurazione). ⚠️ Non lo si può seminare da qui: sono gli IBAN veri di due aziende |
+| **S3-4** | ✅ **APPLICATO** (`-16` il risolutore, `-17` il guard, `-18` i tre trigger) — Guard di scope in **scrittura** | `20_code` | ⚠️ **Sono TRE trigger e non uno**: `ente_incasso` sulla testata (senza, si aprirebbe una distinta sul canale di un altro), `fattura` e `contabile` sulla riga — e sulla riga nessuno dei due copre l'altro. 🔴 **E ha chiuso un fail-open preesistente su 12 tabelle**: la risoluzione dell'emittente girava sotto RLS, e per un utente fuori perimetro dava `NULL` → «non risolvibile» → passa. Il guard si spegneva **esattamente nel caso che esiste per coprire** |
+| **S3-5** | ✅ **APPLICATO** (`-19` i due adapter, `-20`/`-21`/`-22` le policy, `-24` la correzione) — RLS in **lettura** su `pagamenti.*` | `00_schema` + `20_code` | ⚠️ **Le policy sono `FOR ALL`, non `FOR SELECT`**: la RLS nega ciò che nessuna policy permette, e `INSERT ... RETURNING` passa dalla `USING`. Con la sola lettura le tre tabelle sarebbero diventate **di sola scrittura impossibile**. ⭐ Il predicato non è «via fattura»: viene dal **conto**, e le distinte **interne** restano condivise perché non sono di nessuno |
+| **S3-6** | ✅ **APPLICATO** — pgTAP di scope + doc | test | Tre pgTAP nuovi (6 + 7 + 14 asserzioni), 4 `manual/` nuovi, 6 aggiornati, una sezione nuova nella guida. ⚠️ Il test del perimetro **non usa il `FORCE`** e gira come **utente applicativo**: col `FORCE` il risolutore `SECURITY DEFINER` rientrerebbe sotto la policy che regge, e sarebbe una **ricorsione** |
 
 ---
 
@@ -1301,6 +1301,10 @@ non si eseguono.
 | **BE-3** | Mappare l'esito «niente da postare» su un messaggio che **si vede**: D3-c dice che il replay tecnico tace e la seconda azione voluta parla, e questa distinzione la fa il BE | S1-10 |
 | **BE-4** | L'app `apps/pagamenti/` è uno **stub vuoto** (`views.py` = una riga di commento) e `frontend/src/pagamenti/` sono due `.gitkeep`: prima di un posting usabile serve tutto il giro | slice 1 |
 | **BE-5** | L'endpoint dell'elenco rate sovra-incassate | S2-7 |
+| **BE-6** | I **due verbi** dell'abbinamento: `POST …/righe/<id>/abbina/` (imputa una riga a una rata) e la **riproposta della forzatura**. ⚠️ Il secondo tentativo deve passare `forzata = true`, o il meccanismo a due tempi non scatta mai e l'operatore vede solo un rifiuto | S2-3/S2-5 |
+| **BE-7** | 🔴 **Il contesto applicativo su `pagamenti.*`.** Dal lotto 6 quelle tabelle pretendono `app.ruolo_applicativo = 'OPERATORE'` per leggere **e per scrivere**: un percorso che le tocchi senza quella GUC non vede niente e non scrive niente. ⚠️ È la stessa postura che `vendite.fatture` ha da giugno — il middleware la imposta già — ma i **comandi di servizio** e i job che girano con l'utenza applicativa **fuori** dal ciclo di richiesta vanno verificati uno a uno. (`zeroerp_batch_fatturazione` ha `BYPASSRLS`: quelli non cambiano.) | S3-5 |
+| **BE-8** | La schermata di **configurazione dei canali di incasso** deve chiedere il **conto** e mostrare solo i conti con `uso = 'INCASSO'` dell'emittente: il database rifiuta gli altri, ma un elenco che li propone fa sbagliare | S3-1 |
+| **DATO-1** | 📮 **Non è una richiesta al BE, è configurazione**: censire per ciascuno dei due emittenti il proprio conto con `uso = 'INCASSO'`. ⛔ Finché manca, **nessun ente di incasso è creabile** — ed è voluto | S3-3 |
 
 ---
 
@@ -1627,7 +1631,7 @@ ricomporre lo script perdendo il wrapper significa scrivere davvero.
 | **3** | ✅ **CHIUSO** (22/08, applicato alle 00:36) · **Il fondo si difende** | S1-14…S1-17 · S1-8 · S1-9 · 🔴 **+ il fail-open di C-6** | Tutto `vendite`. ⭐ **Deve precedere il lotto 4**: la difesa atterra prima della cosa da cui difende. ⚠️ **Aggiunto il 2026-08-21**: lo spegnimento del fallback fail-open del lookup stato (C-6) sta **qui** e non nel lotto 2, benché C-6 lo leghi al ritiro di `STORNATA`. Motivo: è dentro `fn_sync_contabili_fondo_fattura`, che **S1-8 riscrive comunque** — farlo due volte in due lotti consecutivi è spreco e rischio. 🔴 E il lotto 2 lo ha reso **peggiore**: con `richiede_abbinamento` una riga che ripiegasse su `IMPORTATA` (bandiera `false`) sfuggirebbe anche al guard nuovo, e resterebbe non registrabile per sempre senza che nessun errore lo dica | ~~dopo 2~~ → **fatto il 2026-08-22**, §6.10 |
 | **4** | ✅ **CHIUSO** (22/08, applicato alle 01:29) · **La madre** | S1-10 · S1-11 · S1-12 · S1-13 | ⭐ È il lotto in cui **nasce il primo movimento**, e da lì `fn_get_saldo_fattura` smette di mentire | dopo 3 |
 | **5** | ✅ **CHIUSO** (22/08) · **La rata** | S2-1 … S2-8 | Slice 2 per intero | ~~dopo 4~~ → **fatto**, §6.12 |
-| **6** | **Il perimetro** | S3-1 … S3-6 | Slice 3 per intero. ⚠️ La RLS su tabelle vuote non si collauda: conviene **dopo** che il lotto 4 ha prodotto dati | dopo 5 |
+| **6** | ✅ **CHIUSO** (22/08, applicato alle 10:17 + la correzione `-24`) · **Il perimetro** | S3-1 … S3-6 (S3-3 resta **dato**) | Slice 3 per intero. ⚠️ La RLS su tabelle vuote non si collauda: conviene **dopo** che il lotto 4 ha prodotto dati | ~~dopo 5~~ → **fatto**, §6.13 |
 | **7** | **Le sistemazioni** | S4-1 … S4-5 | Slice 4. 📮 Chiude **BE-4** e sblocca la **Fase D** del cantiere fondi | dopo 5 |
 
 ⚠️ **Il lotto 3 non si spezza e non si salta.** Applicare la madre (4) senza la
@@ -2383,10 +2387,208 @@ segue), **P-6/P-7** (codici errore, poi la bonifica degli `E_GENERICO`), **P-8**
 
 ---
 
+### 6.13 ✅ Lotto 6 — CHIUSO: **il denaro sa di chi è**
+
+**Dodici changeSet** (`20260822-13` … `-24`, l'ultimo è una correzione in
+avanti), **tre pgTAP nuovi** (6 + 7 + 14 asserzioni), un codice errore (967),
+quattro `manual/` nuovi e sei aggiornati. ✅ **Applicati da Tid il 2026-08-22**
+(le 10:17 il grosso, poi la correzione), auto-gen rigenerata.
+
+⭐ **Che cosa è cambiato, in una riga:** fino a stamattina lo schema `pagamenti`
+aveva **zero policy** e la row security spenta su tutte e dodici le tabelle. Il
+denaro che arriva prima di avere una fattura non aveva padrone — e con due
+emittenti attivi questo voleva dire che o lo vedevano tutti, o non lo vedeva
+nessuno.
+
+| Passo | File |
+| --- | --- |
+| **S3-1** | `00_schema/pagamenti/20260822-13-alter-enti-incasso-conto-incasso` + `20_code/…-14-create-trgfn-enti-incasso-guard-conto-incasso` |
+| **S3-2** | `00_schema/anagrafiche/20260822-15-add-exclude-src-bancari-conto-incasso` |
+| **S3-4** | `20_code/script/…-16-create-fn-resolve-emittente-fiscale-id` · `…-17-update-trgfn-guard-emittente-scope-fail-closed` · `20_code/pagamenti/…-18-create-trigger-scope-vendite-contabili-righe` |
+| **S3-5** | `20_code/script/…-19-create-fn-scope-ef-whitelist-via-contabile` · `00_schema/pagamenti/…-20/-21/-22` le tre policy · `…-24` la correzione |
+| **S3-1** | `80_data/changelog/…-23-upsert-dbops-fk-index-policy-ente-conto` + CSV |
+| **P-6** | 1 codice nuovo: 967 `E_ENTE_INCASSO_CONTO_NON_DI_INCASSO` |
+| test | `db/pgtap/anagrafiche/test-conto-incasso-un-solo-soggetto.sql` (6) · `db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql` (7) · `db/pgtap/rls/test-rls-pagamenti-perimetro.sql` (14) |
+| doc | 4 `manual/` nuovi + 6 aggiornati + una sezione nuova nella guida dei pagamenti |
+
+#### 🔴 Il difetto che il lotto ha **trovato**, e non era del lotto
+
+`script.trgfn_guard_emittente_scope` è il guard di scope in scrittura di **dodici
+tabelle**. Risolveva l'emittente della riga e, se non ci riusciva, lasciava
+passare — un ramo pensato per i *dati non ancora collegati*. Ma il guard è
+`SECURITY INVOKER`, e nel modo `fattura` legge `vendite.fatture`, **che ha la row
+security accesa**:
+
+> 🔴 per un utente fuori perimetro la fattura **non c'è**, l'emittente resta
+> `NULL`, e il guard **lascia passare**. Il presidio che deve impedire di
+> scrivere sui documenti di un altro emittente **si spegneva esattamente quando
+> il documento era di un altro emittente.**
+
+⚠️ E la chiave esterna non si oppone: i controlli di integrità referenziale
+girano **già** fuori dalla row security, quindi la riga entrava — e la vedeva poi
+il proprietario del documento, come sua.
+
+Non è nuovo: c'è da quando la RLS è stata accesa su `vendite.fatture`. È emerso
+adesso perché il modo `contabile` sarebbe stato fail-open **per costruzione**,
+cioè un guard che si sa in partenza non funzionare.
+
+⭐ **Rimedio**: la risoluzione esce dal guard e diventa
+`script.fn_resolve_emittente_fiscale_id`, `SECURITY DEFINER`, che risponde **un
+id**. Chi *risolve* non è chi *applica* — la stessa mossa del lotto 5 con
+`fn_check_scadenza_di_fattura`. ⚠️ Guard più restrittivo su 12 tabelle: misurato
+con la baseline completa (`vendite` 204, `anagrafiche` 58, `script` 60,
+`pratiche` 43, `rls` 15, `documenti` 11, `dbops` 16) → **nessuna regressione**.
+
+#### 🔴 Il difetto che il lotto ha **causato**, e la prova che lo ha preso
+
+Le policy della riga contabile avevano **due** strade: il canale della distinta,
+oppure la fattura. Restava fuori un caso che non è un residuo, è **la lavorazione
+normale**:
+
+> una riga `DA_ABBINARE` — che fattura non ha, è il suo stato — su una distinta
+> `MANUALE` **senza canale**, cioè il lotto di lavoro di un operatore che sta
+> digitando incassi (**D12-a**, applicata nel lotto 2).
+
+Il `WITH CHECK` la rifiutava: `42501`. ⚠️ **Un perimetro che impedisce la
+lavorazione invece di proteggerla.**
+
+📌 L'hanno preso **due pgTAP già verdi da giorni** — `test-contabili-origine-e-quadratura`
+e `test-righe-contabili-guard-dati` — fatti girare da Tid subito dopo l'apply. Il
+pgTAP **nuovo** del perimetro non lo copriva: le sue distinte avevano tutte un
+canale. È la ragione per cui i test 9 e 10 di quel file adesso esistono.
+
+> 📌 **La lezione**: un perimetro si misura sui **percorsi che esistono**, non su
+> quelli che il disegno immagina. Le due strade coprivano il denaro che arriva da
+> un canale e il denaro già attribuito a un documento — e in mezzo c'è il momento
+> in cui non è ancora né l'uno né l'altro, che è **esattamente il lavoro che
+> questo cantiere serve a rendere possibile**.
+
+Correzione **in avanti** (`20260822-24`): la terza strada. Una riga senza
+documento su una distinta senza canale non porta nessuna attribuzione —
+nasconderla a tutti non protegge nessuno. ⛔ E resta stretta: appena prende una
+`fattura_id`, la terza strada si spegne e decide la fattura.
+
+#### ⭐ Le decisioni prese scrivendo
+
+1. 🔴 **Le policy sono `FOR ALL`, non `FOR SELECT`** — e la prima stesura di
+   questo lotto sbagliava. Verificato il 2026-08-22 in transazione annullata,
+   **due** errori distinti: *(a)* la RLS **nega ciò che nessuna policy permette**,
+   quindi con la sola `FOR SELECT` le tre tabelle diventano di sola lettura per
+   l'applicazione; *(b)* **`INSERT ... RETURNING` passa dalla `USING`** — una riga
+   che la `USING` non copre fa fallire l'`INSERT`, e
+   `fn_get_or_create_vendite_contabile` restituisce l'id proprio con un
+   `RETURNING`.
+   > ⭐ Ne segue una regola oltre il caso: **ciò che l'applicazione scrive e poi
+   > rilegge deve essere visibile a chi l'ha scritto, nello stesso istante.** Un
+   > perimetro che si chiude su una riga appena creata non nasconde: **rompe**.
+   > In particolare, un predicato che dipende dalle **righe figlie** non può
+   > stare nella `USING` del padre: quando il padre nasce, di figlie non ce n'è
+   > nessuna.
+   ⚠️ **E metà di questo era già scritto nel progetto**, e non l'ho letto: il
+   punto *(a)* sta in `guide/architettura-multi-face-auth.md` §6.1, con tanto di
+   brief dedicato (`db-brief-rls-ondata2-insert-bloccati.md`) — è successo
+   **identico** all'Ondata 2 operatore. Il punto *(b)*, quello del `RETURNING`,
+   è invece nuovo, e adesso è scritto lì accanto.
+2. ⭐ **La colonna del conto è obbligatoria su TUTTI i tipi**, non solo su
+   `BANCA` come diceva S3-1. Scritta come da piano sarebbe stata lo stesso
+   difetto travestito: un ente `POSTE`/`PSP`/`ALTRO` senza conto avrebbe avuto la
+   coda invisibile a tutti. E il dato c'è — un conto postale ha un IBAN, il saldo
+   di un PSP arriva sul conto di accredito.
+3. ⭐ **S3-2 è un'esclusione, non l'indice unico del piano.** `EXCLUDE USING gist
+   (conto_bancario_id WITH =, soggetto_ruolo_id WITH <>) WHERE uso = 'INCASSO'`.
+   L'unico su `(conto)` avrebbe vietato **anche** lo stesso conto sullo **stesso**
+   soggetto a livello di ruolo e per istanza utility — configurazione che
+   `uq_src_bancari_ruolo_conto_uso_no_istanza` e la sua gemella dichiarano
+   legittima. ⚠️ La regola di dominio nomina **due** colonne, non una: *stesso
+   conto **e** soggetto diverso*. E un vincolo che vieta più della sua regola si
+   scopre il giorno in cui rifiuta qualcosa di giusto — presidiato dal test 4.
+4. ⛔ **Il periodo di validità non entra nel vincolo**, di proposito: in Italia un
+   IBAN non passa di mano, e ammettere la sovrapposizione nel tempo costringerebbe
+   il perimetro a risolvere il conto **alla data** — cioè a rispondere in modo
+   diverso ieri e oggi alla domanda «di chi sono questi soldi?».
+5. ⭐ **La distinta senza canale è visibile a tutti, e la condizione sta in chiaro
+   nella policy** (`ente_incasso_id IS NULL`), non dentro una funzione: chi legge
+   la policy deve **vedere** l'eccezione. Non è generosità, è la verità del
+   modello — la chiave di riuso di `fn_get_or_create_vendite_contabile` per una
+   `GENERATA` **non nomina l'emittente**, quindi una distinta interna raccoglie i
+   fondi di *tutti*. Dichiararla «di qualcuno» sarebbe una bugia.
+   ⚠️ Le sue **righe** non ereditano niente: le filtra la fattura che portano.
+6. ⭐ **Un solo posto dove la catena è scritta.** `ente → conto → soggetto →
+   emittente` vive tutta nel risolutore, che usano **sia** il guard di scrittura
+   **sia** i due adapter di lettura. Due copie della stessa catena sono il modo in
+   cui un perimetro comincia a rispondere in modo diverso a seconda di chi chiede.
+7. ⭐ **La stessa lettura è un difetto in un posto e la risposta giusta in un
+   altro.** `fn_scope_ef_whitelist_via_fattura` legge `vendite.fatture` sotto RLS:
+   nel **guard** era il fail-open del punto sopra, nella **policy** delle righe è
+   esattamente ciò che serve. La differenza non è nella funzione, è nella
+   **domanda** — un guard chiede «di chi è» e deve saperlo per intero, una policy
+   chiede «devo mostrargliela», e non vedere *è già* la risposta.
+8. ⚠️ **`vendite_movimenti` ha un predicato solo, e l'asimmetria è voluta.** Un
+   movimento appartiene al **documento che paga**; il conto racconta *da dove* il
+   denaro è arrivato, che è una domanda sulla **lavorazione** e si fa sulla riga.
+9. ⛔ **Il pgTAP del perimetro non usa il `FORCE`** locale alla transazione, che è
+   la tecnica dei test RLS più vecchi: il predicato poggia su una `SECURITY
+   DEFINER` che gira come proprietario, e col `FORCE` rientrerebbe sotto la policy
+   della tabella che sta leggendo — una **ricorsione**. Gira come **utente
+   applicativo**, che è insieme più fedele e l'unico modo che funziona.
+10. ⭐ **`enti_incasso` ha un guard e non una FK composita.** La FK sa che la riga
+    puntata esiste, non che il suo `uso` sia `INCASSO` — e l'unicità che regge
+    tutto vive **solo** sulle righe `INCASSO`: un ente appeso al conto dei
+    *pagamenti* sarebbe fuori da quella garanzia, senza nessun errore.
+    ⛔ Il guard **non** guarda `bloccato` né `valido_al`: sono stati che cambiano
+    per ragioni che non riguardano l'ente, e rifiutare il blocco di un conto
+    perché «c'è un ente che lo cita» sposterebbe l'errore sul gesto sbagliato.
+
+#### 📮 Le code che il lotto lascia aperte
+
+* 📮 **S3-3 non è fatto, ed è dato**: nessuno dei due emittenti ha un conto
+  `INCASSO` censito — i due esistenti sono di un terzo soggetto (SR 64). ⛔ Finché
+  non si configura, **nessun ente di incasso è creabile**, ed è voluto. Non lo si
+  può seminare da qui: sono gli IBAN veri di due aziende.
+* **BE-1** (cumulativa) — rigenerare `error_policies_generated.py` per il 967;
+* 📮 **BE, e va detto con precisione**: da adesso `pagamenti.*` **pretende**
+  `app.ruolo_applicativo = 'OPERATORE'` per leggere **e per scrivere**. Un
+  percorso applicativo che tocchi queste tabelle senza quella GUC non vede niente
+  e non scrive niente. ⚠️ È la stessa postura che `vendite.fatture` ha da giugno,
+  quindi il middleware la imposta già — ma i comandi di servizio e i job che
+  girano con l'utenza applicativa **fuori** dal ciclo di richiesta vanno
+  verificati. (`zeroerp_batch_fatturazione` ha `BYPASSRLS`: quelli non cambiano.)
+* 🔵 **Una decisione nuova, e va presa**: una distinta **manuale senza canale**
+  non ha perimetro — non c'è colonna che dica a chi appartiene. Le uscite sono
+  **due**: rendere il canale obbligatorio anche sulle manuali (la lettura più
+  fedele a D5, ⛔ oggi impraticabile perché `enti_incasso` è a zero righe), oppure
+  accettare che sia condivisa, che è ciò che `-24` fa. È progettazione, non
+  rifinitura.
+* 🔵 **Una seconda, minore**: `enti_incasso`, `centri_riscossione` e i vocabolari
+  degli stati **restano senza RLS**. Sono configurazione e le liste le leggono
+  tutti per costruire i filtri — ma l'elenco dei canali dice a un emittente su
+  quale banca incassa l'altro.
+* 🔵 **Una terza, di modello**: le distinte **interne** nascono una per giornata e
+  raccolgono i fondi di *tutti* gli emittenti. Farle nascere **una per emittente**
+  renderebbe il perimetro uniforme e toglierebbe l'eccezione dalla policy — ma
+  cambia una chiave di riuso, quindi è una decisione.
+* 🔵 restano le due decisioni ereditate dal lotto 3 (il rubinetto
+  `E_PARAMETRO_INVALIDO` in `vendite`, `ASSEGNATO → DISPONIBILE`) e quella del
+  lotto 5 (la capienza a livello di fattura).
+
+#### ✅ La verifica
+
+| Che cosa | Esito |
+| --- | --- |
+| `pagamenti` | **0 rossi su 13** (13 file: 3 nuovi) |
+| `rls` | 15 file, l'unico rosso era il test nuovo prima di `-24`, **poi verde** |
+| `vendite` · `anagrafiche` · `script` · `pratiche` · `documenti` · `dbops` | **nessuna regressione**, ogni rosso già noto |
+| `dbops/test-riferimenti-morti-v1` | verde |
+| `vw_fk_senza_indice` (`pagamenti` + `anagrafiche`) | **0 righe** |
+| cancelli statici | preambolo pgTAP ✅ · `runOnChange` ✅ · baseline codici errore ✅ |
+
+---
+
 ## 7. Registro delle revisioni
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-22 (mattina) | ✅ **LOTTO 6 CHIUSO E APPLICATO** (10:17, più la correzione `-24`) — dodici changeSet (`20260822-13` … `-24`), **tre** pgTAP nuovi (6 + 7 + 14), un codice errore (967), 4 `manual/` nuovi e 6 aggiornati, una sezione nuova nella guida dei pagamenti. ⭐ **IL DENARO SA DI CHI È**: fino a stamattina lo schema `pagamenti` aveva **zero policy** e la row security spenta su tutte e dodici le tabelle, e il denaro che arriva prima di avere una fattura non aveva padrone — con due emittenti attivi voleva dire che o lo vedevano tutti o non lo vedeva nessuno. Il perimetro adesso viene dal **conto di incasso** (D5), e la verità di dominio «due partite IVA, due conti» è diventata un **vincolo** invece di restare un'assunzione. 🔴 **Il lotto ha TROVATO un difetto che non era suo, su 12 tabelle**: `trgfn_guard_emittente_scope` risolveva l'emittente da `SECURITY INVOKER` leggendo `vendite.fatture`, che ha la RLS — per un utente fuori perimetro la fattura non c'è, l'emittente resta NULL, e il ramo «non risolvibile» **lascia passare**. Il guard si spegneva **esattamente nel caso che esiste per coprire**, e la FK non si opponeva perché i controlli referenziali girano già fuori dalla row security. Rimedio: la risoluzione esce e diventa una `SECURITY DEFINER` — chi RISOLVE non è chi APPLICA, la stessa mossa del lotto 5. Guard più restrittivo su 12 tabelle, misurato con la baseline completa: **nessuna regressione**. 🔴 **E ne ha CAUSATO uno, che due pgTAP già verdi hanno preso subito**: le policy della riga avevano due strade (il canale, la fattura) e restava fuori la riga `DA_ABBINARE` su una distinta `MANUALE` **senza canale** — cioè il lotto di lavoro di un operatore che digita incassi, D12-a, applicata nel lotto 2. Il `WITH CHECK` la rifiutava con 42501: **un perimetro che impedisce la lavorazione invece di proteggerla**. 📌 Il pgTAP nuovo del perimetro NON lo copriva (le sue distinte avevano tutte un canale): è la ragione per cui i test 9 e 10 adesso esistono. 📌 *Un perimetro si misura sui percorsi che ESISTONO, non su quelli che il disegno immagina.* Correzione in avanti (`-24`), terza strada. ⭐ **Dieci decisioni prese scrivendo** (§6.13), e tre meritano di essere lette: (1) 🔴 le policy sono **`FOR ALL` e non `FOR SELECT`**, e la prima stesura sbagliava — verificato in transazione annullata che la RLS **nega ciò che nessuna policy permette** (sola lettura per l'applicazione) e che **`INSERT ... RETURNING` passa dalla `USING`**, mentre `fn_get_or_create_vendite_contabile` restituisce l'id proprio così: *ciò che l'applicazione scrive e poi rilegge deve essere visibile a chi l'ha scritto, nello stesso istante — un perimetro che si chiude su una riga appena creata non nasconde, ROMPE*; (2) **S3-2 è un'esclusione e non l'indice unico del piano**: `(conto =, soggetto <>)` invece di `(conto)`, perché l'unico avrebbe vietato anche lo stesso conto sullo STESSO soggetto fra ruolo e istanza — configurazione che due indici della tabella dichiarano legittima, e un vincolo che vieta più della sua regola si scopre il giorno in cui rifiuta qualcosa di giusto; (3) **la colonna del conto è obbligatoria su TUTTI i tipi** e non solo su BANCA come diceva il piano, altrimenti la coda invisibile si sarebbe solo spostata su un altro `tipo`. 📮 **S3-3 resta aperto ed è DATO**: nessuno dei due emittenti ha un conto `INCASSO` censito, quindi **nessun ente di incasso è creabile** finché non si configura — ed è voluto (si fallisce alla configurazione, non in esercizio). 📮 E una richiesta BE da leggere con attenzione: da adesso `pagamenti.*` pretende `app.ruolo_applicativo = 'OPERATORE'` **anche per scrivere**; è la stessa postura di `vendite.fatture` da giugno, ma i job che girano con l'utenza applicativa fuori dal ciclo di richiesta vanno verificati. 🔵 Tre decisioni nuove: la distinta manuale senza canale (canale obbligatorio o condivisa?), la RLS sui cataloghi di configurazione, e le distinte interne una-per-emittente |
 | 2026-08-22 (notte, 2) | ✅ **LOTTO 5 CHIUSO E APPLICATO** — nove changeSet (`20260822-04` … `-12`), un pgTAP nuovo da 18 asserzioni, tre codici errore (964…966). ⭐ **L'INCASSO ARRIVA ALLA RATA**: fino a ieri nell'intero database non esisteva nessuna colonna `scadenza_id`, e la guida dei pagamenti aveva una sezione intitolata «due metà che non si toccano ancora» — riscritta. L'abbinamento vive **sulla riga contabile** e non in una tabella N:N (D1): chi paga due rate con un bonifico solo fa due righe, che è anche il modo in cui la banca lo racconta. 🔴 **La coerenza si chiede FUORI dalla row security**, con una SECURITY DEFINER minuscola che risponde un booleano: un guard che leggesse le scadenze sotto RLS non distinguerebbe «non appartiene» da «non la vedo» — due verità opposte che danno lo stesso EXISTS falso, e rifiutarle con lo stesso messaggio significa dirne una falsa. ⚠️ E il messaggio porta l'**id** della rata e non i suoi dati: quella rata è di un altro documento, e raccontarli disferebbe la ragione per cui la domanda si fa così. ⭐ **Sette decisioni prese scrivendo** (§6.12), e tre meritano di essere lette: (1) 🔴 **il caso che si sbaglia facile** — la capienza si verifica SOLO se la riga occupa spazio davvero, altrimenti portare a SCARTATA una riga sospesa, cioè *toglierla di mezzo*, verrebbe rifiutato perché un'altra riga ha nel frattempo occupato lo spazio: si rifiuterebbe un gesto che LIBERA (presidiato dal test 16); (2) una rata **senza fattura** non è incoerente ma incompleta, e il guard della rata **tace apposta** per non coprire il messaggio del guard sui dati, che parla dopo di lui nell'ordine alfabetico dei BEFORE ROW; (3) la vista **non si chiama come diceva il piano** — `vw_rate_sovra_incassate` avrebbe detto meno di ciò che contiene, perché fuori capienza si esce in due versi e il secondo (un rimborso dove non era entrato niente) è esattamente il caso che ha fatto cadere l'asimmetria di D1-bis. ⚠️ **S2-4 del piano era scaduto** e va letto sapendolo: diceva «asimmetrico, il limite inferiore non è forzabile» citando D1-bis, ma D14-e l'ha superato — la regola è simmetrica, senza permessi, e non ha estremi fissi da invertire. 🔴 **La prova ha trovato un difetto vero, ed era mio**: il ramo della coerenza chiamava `fn_log_and_raise_error` senza valori, ma il VARIADIC non ha default — il `CREATE FUNCTION` passava, il guard funzionava, e l'unico caso rotto era **proprio quello che il guard esiste per gestire**. 📌 L'hanno preso due presidi: il `throws_like` sulla FRASE del test 2 (con un `throws_ok` su P0001 sarebbe stato verde — anche «la funzione non esiste» è un errore) e il cancello statico `test-riferimenti-morti-v1.sql`, fatto girare da Tid. Correzione **in avanti** (`20260822-12`). 📮 Restano tre richieste BE (i due verbi dell'abbinamento e della forzatura, e la schermata dell'elenco), le due decisioni di dominio ereditate dal lotto 3, e una nuova: 🔵 la stessa regola di capienza vale anche a livello di FATTURA (D14-c), ma qui è stata messa solo sulla rata perché al livello di fattura passerebbe il sync dei fondi, che gira dentro il ricalcolo della pipeline e non ha nessuno che possa «confermare» |
 | 2026-08-22 (notte) | ✅ **LOTTO 4 CHIUSO E APPLICATO** (01:29) — tre changeSet (`20260822-01` … `-03`), un pgTAP nuovo da 20 asserzioni, tre codici errore (961…963) e un messaggio allargato. ⭐ **NASCE IL PRIMO MOVIMENTO DEL PROGETTO**: fino a ieri nessuna funzione scriveva `vendite_movimenti`, quindi `fn_get_saldo_fattura` rispondeva «residuo = totale» **per costruzione** — non perché nessuno avesse pagato, ma perché non c'era modo di registrarlo. Il test 13 del nuovo pgTAP è la prova che la slice serviva: il saldo cala di quanto è stato registrato. Verifica: 20/20, baseline `pagamenti` 0 su 11, i sei file del perimetro fuori da `pagamenti/` verdi, `vw_fk_senza_indice` per `pagamenti` a **zero righe**, firma unica senza overload. 🔵→✅ **Chiusa da Tid la domanda che il brief lasciava aperta in §S1-10 punto 7: la chiusura della distinta è una CONSEGUENZA del registrare, non un gesto a parte.** ⭐ **E il prezzo si paga nello stesso lotto**: la **quarta mossa** del guard sulla distinta finale. Le tre esistenti (nascere, riattivare, spostare) non coprivano *«una riga che sta già lì e diventa pronta»* — caso che fino a ieri non era raggiungibile, perché a chiudere era una persona che sapeva che cosa ci lasciava dentro; con la chiusura automatica una riga `DA_ABBINARE` abbinata il giorno dopo sarebbe denaro pronto sotto una distinta che il posting rifiuta. ⛔ Senza quel guard la decisione avrebbe aperto la terza porta di C-5. ⭐ **Sette decisioni di forma** (§6.11), e tre meritano di essere lette: (1) il messaggio 958 si **allarga** invece di spezzarsi — il codice nasce quando cambia il *rimedio*, e il rimedio è lo stesso; (2) la dichiarazione di D13 è **facoltativa ma legata**, o tutti e due i parametri o nessuno, perché mezza dichiarazione non si può verificare e accettarla significherebbe registrare senza controllo *credendo* di averlo fatto; (3) i due statement imposti dalla RLS sono legati da un **array di id** e non dal ripetere il predicato — ripeterlo avrebbe portato a `POSTATA` anche una riga aggiunta nel frattempo, **senza il suo movimento**. ⭐ **S1-11 ha chiuso il registro delle FK, non solo aggiunto tre indici**: sei vincoli di `pagamenti` non avevano nessuna riga di policy (quattro nati col lotto 2) e `vw_fk_senza_indice` conta come «da coprire» tutto ciò che nessuno ha deciso. ⚠️ **L'unico rosso della prova era della prova**: `rls/test-role-batch-fatturazione-postura.sql` falliva l'asserzione «no over-grant» nella simulazione, che gira come **owner** perché il DDL lo pretende, e quel test legge `information_schema.role_table_grants` — filtrata per utente. Verificato come owner *senza* il lotto: stesso rosso. 📌 *Un rosso in una simulazione va attribuito prima di essere inseguito.* 📮 Restano **tre richieste BE** (rigenerare le policy, allineare il ripiego del 958, e il verbo che chiama la madre — che oggi è pronta e non la chiama nessuno: ⚠️ chi la cabla deve passare la dichiarazione, o il controllo di D13 è un meccanismo che non scatta mai) e le due decisioni di dominio ereditate dal lotto 3 |
 | 2026-08-22 | ✅ **LOTTO 3 CHIUSO E APPLICATO** (00:36) — otto changeSet (`20260821-48` … `-55`), un pgTAP nuovo (13 asserzioni), uno riscritto (21 → 22), due codici `W_`. ⭐ **Il fondo fattura ha il suo quarto stato, `ESEGUITO`**, e con esso i difetti **C-2, C-3 e C-6 smettono di essere raggiungibili** invece di essere tamponati: i tre lettori dei fondi filtrano tutti sullo stato, quindi un atto che esce da `ASSEGNATO` esce da tutti e tre senza che nessuno di loro cambi. Il legame riga → atto è diventato una **colonna con FK** (`fondo_source_id`) e il reset **cancella** l'atto non eseguito invece di riaprirlo. Verifica: 13/13 e 22/22, gli **11 altri** pgTAP che nominano gli oggetti toccati tutti verdi, baseline `pagamenti` 0 su 10 e `vendite` 5 su 204 tutti già noti — **nessuna regressione** (riverificata da Tid). ⭐ **Il perimetro della prova è stato costruito col `grep` e non con l'`ls`**, che è la lezione pagata dal lotto 2. 🔵→✅ **La domanda di dominio del caso 14 è chiusa da Tid: si SDOPPIA** — la *contabilizzazione* (distinta chiusa, denaro mai registrato) resta in `test-fondi-fattura.sql` e lì `SOSPESA` smette di essere un rattoppo e diventa la fixture giusta; la *registrazione* (riga `POSTATA` col suo movimento, atto `ESEGUITO`, reset che non lo tocca) vive in `test-fondo-fattura-eseguito.sql`. ⭐ **Sette decisioni di forma prese scrivendo** (§6.10), e due meritano di essere lette: (1) la **rete di S1-8 interroga la matrice** delle transizioni invece di un elenco di stati, e per questo copre un caso che nessuno aveva visto — una riga `SCARTATA`, da cui `ABBINATA` non è raggiungibile, avrebbe fatto **cadere il ricalcolo della fattura**; (2) la frase del reset bloccato **diceva il falso** — «gia postato» dove il denaro *non* era stato registrato — e adesso i due casi hanno due frasi e due codici. ⚠️ **`%TYPE` esteso a firma e RETURNS su richiesta di Tid**, con l'anti-overload verificato eseguendo la forma nuova in una transazione annullata (un `%TYPE` in firma è una fotografia: se risolvesse a un tipo diverso affiancherebbe invece di sostituire). 📮 Restano **tre code**: BE-1 cumulativa (rigenerare `error_policies_generated.py`) e due decisioni di dominio — togliere `ASSEGNATO → DISPONIBILE`, che ormai non percorre più nessuno, e il **rubinetto `E_PARAMETRO_INVALIDO` in `vendite`**, dove le tre funzioni toccate passano ancora il nome del parametro come valore del messaggio |

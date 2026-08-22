@@ -1,0 +1,268 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RISOLUZIONE DELL'EMITTENTE, FUORI DALLA ROW SECURITY — passo S3-4 (lotto 6)
+#   script.fn_resolve_emittente_fiscale_id
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-4 · Decisione: brief madre D5
+#
+# ── 🔴 IL DIFETTO CHE QUESTA FUNZIONE CHIUDE — misurato il 2026-08-22 ─
+#   `script.trgfn_guard_emittente_scope` e' il guard di scope in scrittura di
+#   **dodici** tabelle. Risolve l'emittente della riga e, se non ci riesce,
+#   **lascia passare**:
+#
+#       IF v_emittente_fiscale_id IS NULL THEN
+#           RETURN NEW;   -- «emittente non risolvibile»
+#       END IF;
+#
+#   ⚠️ Quel ramo era pensato per i **dati non ancora collegati**. Ma il guard e'
+#   `SECURITY INVOKER`, e nel modo `fattura` legge `vendite.fatture` — che **ha
+#   la row security accesa**. Per un utente fuori perimetro quella lettura
+#   restituisce **zero righe**, l'emittente resta `NULL`, e il guard **lascia
+#   passare**.
+#
+#     > 🔴 Cioe': il guard che deve impedire di scrivere sui documenti di un
+#     > altro emittente **si spegne esattamente quando il documento e' di un
+#     > altro emittente**. E' la forma piu' pericolosa di errore: non un buco
+#     > residuo, ma un buco che si apre **solo nel caso che il guard esiste per
+#     > coprire**.
+#
+#   Il controllo di integrita' referenziale gira **fuori** dalla row security,
+#   quindi la FK non si oppone: la riga entra. La si vedra' poi il proprietario
+#   del documento, come sua.
+#
+#   ⚠️ Non e' un difetto teorico e non e' nuovo: c'e' da quando la RLS e' stata
+#   accesa su `vendite.fatture`. Emerge adesso perche' il lotto 6 mette lo stesso
+#   guard su `pagamenti.vendite_contabili_righe` e accende la RLS su
+#   `pagamenti.*` — e il modo nuovo (`contabile`) sarebbe stato fail-open **per
+#   costruzione**, cioe' un guard che si sa in partenza non funzionare.
+#
+# ── ⭐ IL RIMEDIO: chi RISOLVE non e' chi APPLICA ─────────────────────
+#   Una `SECURITY DEFINER` minuscola che risponde **un id**, e nient'altro. E' la
+#   stessa mossa gia' fatta nel lotto 5 con `script.fn_check_scadenza_di_fattura`,
+#   e la ragione e' identica: **la domanda di fatto e la domanda di permesso sono
+#   due domande diverse**, e chiederle allo stesso lettore fa dare la risposta
+#   sbagliata alla prima.
+#
+#   Qui la risposta e' «di chi e' questa riga», e va data per intero. Che poi
+#   l'utente possa scriverci lo decide `fn_check_user_emittente_scope`, che e'
+#   il posto dove quella decisione vive.
+#
+# ── ⚠️ LA DIPENDENZA CHE VA DETTA: `NO FORCE` ────────────────────────
+#   La `SECURITY DEFINER` gira come il **proprietario** degli oggetti, e le
+#   tabelle di questo database hanno la RLS **abilitata ma non forzata**: il
+#   proprietario la salta. ⚠️ Il giorno in cui arriva un `FORCE ROW LEVEL
+#   SECURITY` — l'ondata coordinata di cui parlano i changeSet della RLS — questa
+#   funzione va rivista, perche' tornerebbe a leggere filtrata.
+#   Vale identico per `script.fn_check_scadenza_di_fattura`.
+#
+# ── ⭐ I CINQUE MODI, E PERCHE' GLI ULTIMI DUE ────────────────────────
+#   | Modo | La colonna contiene | Come si risolve |
+#   | --- | --- | --- |
+#   | `fiscale` | gia' `emittente_fiscale_id` | niente da fare |
+#   | `soggetto_ruolo` | `emittente_soggetto_ruolo_id` | via `emittenti_fiscali` |
+#   | `fattura` | `fattura_id` | via `vendite.fatture` |
+#   | **`ente_incasso`** | `ente_incasso_id` | ⭐ **nuovo**: via il **conto di incasso** |
+#   | **`contabile`** | `contabile_id` | ⭐ **nuovo**: la distinta, poi il suo canale |
+#
+#   Gli ultimi due sono D5 in una riga: una riga contabile ancora **da abbinare**
+#   non ha fattura — e' il caso normale, non l'eccezione — e il suo padrone lo
+#   dice il conto su cui il denaro e' arrivato. Sono **due** e non uno perche' i
+#   due presidi partono da due colonne diverse: la **testata** conosce il proprio
+#   canale (`ente_incasso_id`), la **riga** conosce solo la testata.
+#
+#   ⚠️ Le `JOIN` di quei due modi sono **interne apposta**: una distinta **senza
+#   canale** (fondo fattura, compensazione: nascono cosi', per disegno) risolve a
+#   `NULL`, e il guard la lascia stare. E' giusto: una distinta interna non e' il
+#   canale di nessuno, e pretendere un perimetro da li' rifiuterebbe la prima
+#   riga scritta dalla pipeline dei fondi.
+#
+# ── ⛔ UN MODO SCONOSCIUTO SOLLEVA, NON RESTITUISCE NULL ──────────────
+#   Restituire `NULL` significherebbe «lascia passare»: un errore di battitura in
+#   un `CREATE TRIGGER` spegnerebbe il guard **in silenzio**. Si solleva.
+#
+# Codici: E_PARAMETRO_INVALIDO (esistente)
+# Verifica: db/pgtap/rls/test-guard-emittente-scope-fail-closed.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-16-create-fn-resolve-emittente-fiscale-id-mctit.yaml
+
+  - changeSet:
+      id: 20260822-16-create-fn-resolve-emittente-fiscale-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_resolve_emittente_fiscale_id(modo, valore): risolve l'emittente fiscale di
+        una riga FUORI dalla row security, con una SECURITY DEFINER. Chiude un fail-open del
+        guard di scope: trgfn_guard_emittente_scope legge vendite.fatture da SECURITY
+        INVOKER, e per un utente fuori perimetro quella lettura da' zero righe -> emittente
+        NULL -> «non risolvibile» -> passa. Il guard si spegneva esattamente nel caso che
+        esiste per coprire. Cinque modi: fiscale, soggetto_ruolo, fattura e i due nuovi
+        ente_incasso e contabile, che risolvono via il conto di incasso (D5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+            - columnExists:
+                schemaName: pagamenti
+                tableName: enti_incasso
+                columnName: soggetto_ruolo_conto_bancario_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_fiscale_id(
+                  p_modo   text,
+                  p_valore bigint
+              )
+              RETURNS anagrafiche.emittenti_fiscali.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire DI CHI E' una riga, e nient'altro. Risponde un id di
+                  --   emittente fiscale, o NULL se il riferimento non porta a
+                  --   nessun emittente.
+                  --
+                  -- ⭐ Perche' SECURITY DEFINER (ed e' il punto):
+                  --   il chiamante e' un guard di scrittura, che gira con i
+                  --   permessi di chi scrive. Due delle catene passano da
+                  --   tabelle con la ROW SECURITY ACCESA (vendite.fatture,
+                  --   pagamenti.vendite_contabili): letta da un utente fuori
+                  --   perimetro, la riga NON C'E' — e un guard che non trova
+                  --   l'emittente lascia passare. Il guard si spegnerebbe
+                  --   esattamente nel caso che esiste per coprire.
+                  --   La domanda di FATTO («di chi e'») e la domanda di
+                  --   PERMESSO («posso scriverci») sono due domande diverse:
+                  --   qui si risponde solo alla prima, la seconda resta a
+                  --   script.fn_check_user_emittente_scope.
+                  --
+                  -- ⚠️ Dipende dal fatto che le tabelle abbiano la RLS
+                  --   ABILITATA ma NON FORZATA: il proprietario la salta. Con
+                  --   un FORCE ROW LEVEL SECURITY questa funzione tornerebbe a
+                  --   leggere filtrata e andrebbe rivista. Stessa nota su
+                  --   script.fn_check_scadenza_di_fattura.
+                  --
+                  -- ⚠️ search_path bloccato: una SECURITY DEFINER senza
+                  --   search_path fisso e' un'iniezione che aspetta.
+                  -- =========================================================
+
+                  IF p_valore IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF p_modo = 'fiscale' THEN
+                      -- Convenzione PK: la colonna E' gia' emittente_fiscale_id.
+                      -- Si verifica comunque che esista: un id che non c'e' non
+                      -- deve valere come «emittente noto».
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.id = p_valore;
+
+                  ELSIF p_modo = 'soggetto_ruolo' THEN
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.soggetto_ruolo_id = p_valore;
+
+                  ELSIF p_modo = 'fattura' THEN
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM vendite.fatture f
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                       WHERE f.id = p_valore;
+
+                  ELSIF p_modo = 'ente_incasso' THEN
+                      -- ⭐ D5: il canale conosce il CONTO su cui atterra il suo
+                      --   denaro, e quel conto ha un solo padrone (lo garantisce
+                      --   ex_src_bancari_conto_incasso_un_solo_soggetto).
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM pagamenti.enti_incasso e
+                        JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+                          ON src.id = e.soggetto_ruolo_conto_bancario_id
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = src.soggetto_ruolo_id
+                       WHERE e.id = p_valore;
+
+                  ELSIF p_modo = 'contabile' THEN
+                      -- ⭐ D5: una riga ancora DA ABBINARE non ha fattura — ed e'
+                      --   il caso normale, non l'eccezione. Il padrone di quel
+                      --   denaro lo dice il CONTO su cui e' arrivato, e la riga
+                      --   lo raggiunge passando dalla sua testata.
+                      -- ⚠️ JOIN interne apposta: una distinta INTERNA (fondo
+                      --   fattura, compensazione) nasce senza canale e risolve a
+                      --   NULL. E' giusto: non e' il canale di nessuno, e
+                      --   pretendere un perimetro da li' rifiuterebbe la prima
+                      --   riga scritta dalla pipeline dei fondi.
+                      SELECT ef.id
+                        INTO v_emittente_fiscale_id
+                        FROM pagamenti.vendite_contabili c
+                        JOIN pagamenti.enti_incasso e
+                          ON e.id = c.ente_incasso_id
+                        JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+                          ON src.id = e.soggetto_ruolo_conto_bancario_id
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = src.soggetto_ruolo_id
+                       WHERE c.id = p_valore;
+
+                  ELSE
+                      -- ⛔ Non si restituisce NULL: NULL vuol dire «lascia
+                      --    passare», e un errore di battitura in un CREATE
+                      --    TRIGGER spegnerebbe il guard in silenzio.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_resolve_emittente_fiscale_id',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'Modo di risoluzione sconosciuto',
+                              'modo',   p_modo,
+                              'valore', p_valore
+                          ),
+                          NULL::uuid,
+                          format(
+                              'il modo di risoluzione dell''emittente «%s» non esiste: '
+                              'sono ammessi fiscale, soggetto_ruolo, fattura, ente_incasso e contabile',
+                              p_modo
+                          )
+                      );
+                  END IF;
+
+                  RETURN v_emittente_fiscale_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_emittente_fiscale_id(text, bigint) IS
+                'Risolve l''emittente fiscale di una riga FUORI dalla row security, e risponde un id. ⭐ Esiste perche'' il guard di scope in scrittura e'' SECURITY INVOKER e due delle catene passano da tabelle con la RLS accesa (vendite.fatture, pagamenti.vendite_contabili): letta da un utente fuori perimetro la riga non c''e'', l''emittente resta NULL, e il guard interpreta «non risolvibile» come «lascia passare» — cioe'' si spegne esattamente nel caso che esiste per coprire. La domanda di FATTO («di chi e''») e quella di PERMESSO («posso scriverci») sono due domande diverse: qui si risponde solo alla prima. ⚠️ Dipende dal fatto che la RLS sia abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista, come script.fn_check_scadenza_di_fattura. Modi: fiscale | soggetto_ruolo | fattura | ente_incasso | contabile (gli ultimi due via il conto di incasso, D5: la testata conosce il proprio canale, la riga solo la testata). ⛔ Un modo sconosciuto SOLLEVA: restituire NULL spegnerebbe il guard in silenzio.';
+
+              -- Le policy e i guard la chiamano con i permessi di chiunque
+              -- scriva: senza questo GRANT il perimetro fallirebbe sul permesso
+              -- di esecuzione invece che sulla regola.
+              GRANT EXECUTE ON FUNCTION script.fn_resolve_emittente_fiscale_id(text, bigint) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_resolve_emittente_fiscale_id(text, bigint);

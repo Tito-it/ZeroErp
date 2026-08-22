@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RLS SULLA DISTINTA — passo S3-5 (lotto 6)
+#   pagamenti.vendite_contabili
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-5 · Decisione: brief madre D5
+#
+# ── 🔴 IL PREDICATO NON PUO' ESSERE «VIA FATTURA», E QUI SI VEDE ─────
+#   Una distinta contabile **non ha una fattura**: e' un estratto conto, un
+#   elenco di denaro arrivato. Il perimetro glielo da' il **canale**, cioe' il
+#   conto su cui il denaro e' atterrato (D5).
+#
+#     > ⚠️ Un predicato «via fattura» avrebbe reso la coda «da abbinare»
+#     > invisibile **a tutti**. E una lista vuota sembra una lista di cose
+#     > finite: e' lo zero che e' fail-closed e non un dato.
+#
+# ── ⭐ LA DISTINTA SENZA CANALE E' CONDIVISA, E IL PREDICATO LO DICE ─
+#   `ente_incasso_id IS NULL` = distinta **interna**: fondo fattura,
+#   compensazione. Non arriva da nessun canale, la fabbrica il sistema — e non e'
+#   di nessuno. La policy la lascia **visibile**, e la condizione sta **in
+#   chiaro nel predicato**, non nascosta dentro una funzione: chi legge la policy
+#   deve vedere l'eccezione, non scoprirla.
+#
+#   ⚠️ Non e' generosita': e' la **verita' del modello**. La chiave di riuso di
+#   `fn_get_or_create_vendite_contabile` per una distinta `GENERATA` e'
+#   `(centro, ente, data contabile, data registrazione, stato, origine)` —
+#   **l'emittente non c'e'**. Una distinta interna raccoglie percio' i fondi di
+#   *tutti* gli emittenti dello stesso giorno: dichiararla «di qualcuno» sarebbe
+#   una bugia, e nasconderla a tutti spegnerebbe la pipeline.
+#   🔵 Che le distinte interne debbano invece nascere **una per emittente** e'
+#   una decisione aperta, annotata nel brief: cambierebbe una chiave di riuso, e
+#   quella e' progettazione, non rifinitura.
+#
+#   ⭐ E le **righe** di quella distinta non ereditano niente: la loro policy
+#   (changeSet -21) le filtra una per una sulla fattura che portano.
+#
+# ── 🔴 `FOR ALL`, E LA RAGIONE E' STATA MISURATA ─────────────────────
+#   La prima stesura di questo lotto usava `FOR SELECT`, con l'idea che la
+#   scrittura la presidiassero i trigger. ⛔ **Sbagliata, e di due errori
+#   diversi**, verificati il 2026-08-22 in una transazione annullata:
+#
+#     1. **La RLS nega cio' che nessuna policy permette.** Con la sola
+#        `FOR SELECT`, `INSERT`/`UPDATE`/`DELETE` restano senza nessuna policy
+#        permissiva e vengono **rifiutati in blocco**: le tre tabelle sarebbero
+#        diventate di sola lettura per l'applicazione.
+#     2. **`INSERT ... RETURNING` passa dalla `USING`.** Una riga che la
+#        clausola `USING` non copre fa fallire l'`INSERT` con
+#        *«la nuova riga viola la regola di sicurezza per riga»* — anche se il
+#        `WITH CHECK` la ammette. E `fn_get_or_create_vendite_contabile`
+#        restituisce l'id con un `RETURNING`.
+#
+#   ⭐ Ne segue una regola che vale oltre questo caso:
+#
+#     > **Cio' che l'applicazione scrive e poi rilegge deve essere visibile a chi
+#     > l'ha scritto, nello stesso istante.** Un perimetro che si chiude su una
+#     > riga appena creata non nasconde: **rompe**.
+#
+#   E' anche il motivo per cui il ramo `ente_incasso_id IS NULL` non poteva
+#   essere «visibile solo se ha gia' delle righe in perimetro»: nell'istante in
+#   cui la testata nasce, di righe non ce n'e' nessuna.
+#
+#   ⭐ I trigger di scrittura (changeSet -18) **restano** e non sono un doppione:
+#   la policy fa sparire, il trigger **rifiuta e spiega**. Un `WITH CHECK` da
+#   solo direbbe «new row violates row-level security policy», che e' vero e
+#   inservibile.
+#
+# ── ⚠️ `ENABLE` MA NON `FORCE` ──────────────────────────────────────
+#   Parita' con `fatture`, `ddt`, `ordini`, `preventivi`, `resi`: il
+#   **proprietario** salta la policy finche' non arriva il `FORCE` dell'ondata
+#   coordinata. ⛔ E qui il `FORCE` non e' solo «piu' avanti»: il risolutore che
+#   regge il predicato e' `SECURITY DEFINER` e gira **come proprietario** — con
+#   il `FORCE` rientrerebbe sotto la policy della tabella che sta leggendo, e
+#   nascerebbe una **ricorsione**. Quando quell'ondata arrivera', queste tre
+#   policy vanno ripensate insieme.
+#   ⚠️ Ed e' il motivo per cui il pgTAP di questo lotto **non** usa il `FORCE`
+#   locale alla transazione, che e' invece la tecnica dei test RLS piu' vecchi:
+#   gira come **utente applicativo**, che e' come gira l'applicazione vera.
+#
+# ── ⚠️ CIO' CHE RESTA SCOPERTO, DETTO QUI E NON SCOPERTO DOPO ────────
+#   * `enti_incasso`, `centri_riscossione` e i vocabolari degli stati **restano
+#     senza RLS**: sono configurazione, e le liste le leggono tutti per costruire
+#     i filtri. 🔵 Che l'elenco dei canali dica a un emittente che l'altro
+#     incassa su una certa banca e' una decisione, annotata nel brief.
+#   * `vendite_contabili_lotti` (il legame distinta ↔ lotto di fatturazione)
+#     resta fuori: e' un ponte, e i due capi sono presidiati.
+#   * `zeroerp_batch_fatturazione` ha `BYPASSRLS`: i percorsi batch non cambiano.
+#
+# Dipendenze: script.fn_scope_ef_whitelist_via_ente_incasso (changeSet -19).
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-20-enable-rls-vendite-contabili-mctit.yaml
+
+  - changeSet:
+      id: 20260822-20-enable-rls-vendite-contabili
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy rls_vendite_contabili_perimetro_incasso su pagamenti.vendite_contabili (FOR
+        ALL, gate OPERATORE fail-closed) + ENABLE ROW LEVEL SECURITY senza FORCE, a parita'
+        con fatture/ddt/ordini. Il perimetro viene dal CONTO DI INCASSO e non dalla fattura:
+        una distinta non ha fattura, e un predicato «via fattura» avrebbe reso la coda da
+        abbinare invisibile a tutti (D5). Le distinte INTERNE (ente_incasso_id NULL: fondo
+        fattura, compensazione) restano visibili, e la condizione sta in chiaro nel
+        predicato: non arrivano da nessun canale e la chiave di riuso non nomina l'emittente,
+        quindi raccolgono i fondi di tutti — dichiararle di qualcuno sarebbe una bugia.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist_via_ente_incasso';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_vendite_contabili_perimetro_incasso
+                  ON pagamenti.vendite_contabili;
+
+              CREATE POLICY rls_vendite_contabili_perimetro_incasso
+                  ON pagamenti.vendite_contabili
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          -- ⭐ La distinta INTERNA non e' di nessuno: fondo fattura
+                          --    e compensazione non arrivano da nessun canale, e la
+                          --    chiave di riuso non nomina l'emittente — raccolgono i
+                          --    fondi di tutti. La condizione sta QUI e non dentro una
+                          --    funzione: chi legge la policy deve vedere l'eccezione.
+                          ente_incasso_id IS NULL
+                          -- Il perimetro vero: il conto su cui il denaro e' atterrato.
+                          OR script.fn_scope_ef_whitelist_via_ente_incasso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ente_incasso_id
+                          )
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          ente_incasso_id IS NULL
+                          OR script.fn_scope_ef_whitelist_via_ente_incasso(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              ente_incasso_id
+                          )
+                      )
+                  );
+
+              COMMENT ON POLICY rls_vendite_contabili_perimetro_incasso
+                   ON pagamenti.vendite_contabili IS
+                  'RLS: l''operatore vede e scrive solo le distinte contabili del proprio '
+                  'perimetro. ⭐ Il perimetro viene dal CONTO DI INCASSO e non dalla fattura '
+                  '(D5): una distinta e'' un estratto conto e la fattura non ce l''ha — un '
+                  'predicato via fattura avrebbe reso la coda «da abbinare» invisibile A TUTTI, '
+                  'che e'' peggio che visibile a chi non dovrebbe. ⭐ La distinta INTERNA '
+                  '(ente_incasso_id NULL: fondo fattura, compensazione) resta VISIBILE, e la '
+                  'condizione sta in chiaro nel predicato invece che dentro una funzione: non '
+                  'arriva da nessun canale e la chiave di riuso di fn_get_or_create_vendite_contabile '
+                  'non nomina l''emittente, quindi raccoglie i fondi di TUTTI — dichiararla di '
+                  'qualcuno sarebbe una bugia, nasconderla a tutti spegnerebbe la pipeline. Le sue '
+                  'RIGHE non ereditano niente: la loro policy le filtra una per una sulla fattura. '
+                  '🔴 FOR ALL e non FOR SELECT, e la ragione e'' misurata: la RLS nega cio'' che '
+                  'nessuna policy permette (con la sola FOR SELECT la tabella diventa di sola '
+                  'lettura per l''applicazione), e INSERT ... RETURNING passa dalla USING — una '
+                  'riga che la USING non copre fa fallire l''INSERT, e fn_get_or_create_vendite_contabile '
+                  'restituisce l''id proprio con un RETURNING. ⭐ Cio'' che l''applicazione scrive e '
+                  'poi rilegge deve essere visibile a chi l''ha scritto nello stesso istante: un '
+                  'perimetro che si chiude su una riga appena creata non nasconde, ROMPE. '
+                  'rev 2026-08-22 (lotto 6, S3-5).';
+
+              -- Parita' con fatture/ddt/ordini/preventivi/resi: RLS abilitata ma
+              -- NON forzata. ⛔ Qui il FORCE non e' solo «piu' avanti»: il
+              -- risolutore che regge il predicato e' SECURITY DEFINER e gira come
+              -- proprietario — con il FORCE rientrerebbe sotto la policy della
+              -- tabella che sta leggendo e nascerebbe una ricorsione.
+              ALTER TABLE pagamenti.vendite_contabili ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_vendite_contabili_perimetro_incasso
+                  ON pagamenti.vendite_contabili;

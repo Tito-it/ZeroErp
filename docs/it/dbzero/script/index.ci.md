@@ -99,6 +99,7 @@
 - [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
+- [fn_resolve_emittente_fiscale_id](manual/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
 - [fn_resolve_emittente_for_user](manual/fn_resolve_emittente_for_user.md)
 - [fn_resolve_indirizzo_documento](manual/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](manual/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
@@ -109,7 +110,9 @@
 - [fn_scope_cliente_ownership](manual/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
 - [fn_scope_ef_whitelist](manual/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
 - [fn_scope_ef_whitelist_via_commessa](manual/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)
+- [fn_scope_ef_whitelist_via_contabile](manual/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22)
 - [fn_scope_ef_whitelist_via_efba](manual/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
+- [fn_scope_ef_whitelist_via_ente_incasso](manual/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
 - [fn_scope_ef_whitelist_via_fattura](manual/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_sr](manual/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_fornitore_ownership](manual/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
@@ -134,7 +137,7 @@
 - [trgfn_componenti_ricalcola_padre](manual/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](manual/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_delete_block_by_guc](manual/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
-- [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md) — (rev 2026-06-01 — aggiunta modalità `fiscale` PK; delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
+- [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md) — (rev 2026-08-22 — la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open; aggiunte le modalità `ente_incasso` e `contabile`. Prima: rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](manual/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
 - [trgfn_guard_sorgente_polimorfa_tipizzata](manual/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](manual/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.

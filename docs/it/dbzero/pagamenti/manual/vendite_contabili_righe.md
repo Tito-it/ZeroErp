@@ -85,6 +85,60 @@ e riferimenti di abbinamento (fattura, billing account).
 
 ---
 
+### 🔒 Chi la vede — la RLS del perimetro incassi (2026-08-22)
+
+Policy `rls_vendite_contabili_righe_perimetro_incasso`, **`FOR ALL`**, gate
+`OPERATORE` fail-closed, con **tre strade in OR** e nessuna ridondante.
+
+| | Strada | Copre |
+| --- | --- | --- |
+| **1** | il **canale** della distinta (`fn_scope_ef_whitelist_via_contabile`) | la riga `DA_ABBINARE` di un flusso bancario, che fattura non ha |
+| **2** | la **fattura** della riga, quando c'è | le righe delle distinte **interne**, e la riga sul proprio documento finita sulla distinta di un altro |
+| **3** | **né documento né canale** | la riga `DA_ABBINARE` sul lotto di lavoro di un operatore |
+
+⭐ **La prima è la ragione per cui il perimetro dal conto esiste**: con la sola
+fattura, la coda «da abbinare» sarebbe invisibile a tutti. Su una distinta
+**interna** risponde `false` apposta — la sua testata è di tutti, le sue righe no.
+
+⚠️ **La seconda serve a due casi, e uno è strutturale.** Dà il perimetro alle
+righe delle distinte interne (fondo fattura, compensazione), e fa vedere la
+**riga sul proprio documento finita sulla distinta di un altro**, cioè un
+abbinamento sbagliato: senza, il saldo direbbe che quel denaro non è arrivato **e
+non ci sarebbe modo di scoprire perché**. ⭐ E serve anche alla **bilancia**: una
+riga che sparisse dalla propria distinta romperebbe la quadratura col totale
+dichiarato, e la verifica darebbe un allarme falso ogni volta.
+
+⚠️ La seconda strada legge `vendite.fatture` **sotto** la row security, e **qui è
+giusto**: non vedere la fattura *è già* la risposta. Nel guard di **scrittura** la
+stessa lettura era un difetto, perché lì la domanda è «di chi è» e va saputa per
+intero — vedi
+[fn_resolve_emittente_fiscale_id](/dbzero/script/funzioni/fn_resolve_emittente_fiscale_id).
+
+> 🔴 **La terza strada è una correzione in avanti** (`20260822-24`), ed è nata da
+> un difetto vero: le prime due non coprivano la riga `DA_ABBINARE` su una
+> distinta **`MANUALE` senza canale** — cioè un operatore che sta digitando
+> incassi (D12-a) — e il `WITH CHECK` la **rifiutava** con `42501`. Un perimetro
+> che impedisce la lavorazione invece di proteggerla.
+>
+> ⭐ Una riga senza documento su una distinta senza canale **non porta nessuna
+> attribuzione**: non c'è niente in essa che dica di chi sia, e nasconderla a
+> tutti non protegge nessuno. ⛔ Resta stretta: appena la riga prende una
+> `fattura_id`, la terza strada si spegne e decide la fattura.
+>
+> 🔵 Resta aperta la decisione se rendere il canale **obbligatorio** anche sulle
+> distinte manuali — la lettura più fedele a D5 — oggi impraticabile perché
+> `enti_incasso` è a zero righe finché non si configurano i conti dei due
+> emittenti.
+
+⭐ **La policy nasconde, i trigger rifiutano.** Due guard di scrittura, perché
+nessuno dei due copre l'altro: `('fattura','fattura_id')` — mirror di quello che
+`vendite_movimenti` ha già — e `('contabile','contabile_id')`, l'unico che copre
+la coda «da abbinare». Col solo primo il presidio si accenderebbe *dopo* che il
+lavoro è finito; col solo secondo si potrebbe abbinare denaro **proprio** alla
+fattura **di un altro**.
+
+---
+
 ### Esempio d’uso
 
 ```sql

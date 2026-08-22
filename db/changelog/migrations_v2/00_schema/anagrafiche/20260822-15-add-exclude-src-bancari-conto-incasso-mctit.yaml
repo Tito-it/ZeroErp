@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN CONTO DI INCASSO E' DI UN SOGGETTO SOLO — passo S3-2 (lotto 6)
+#   anagrafiche.soggetti_ruoli_conti_bancari
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-2 · Decisione: brief madre D5
+#
+# ── 🔴 E' IL PEZZO CHE REGGE IL PERIMETRO ─────────────────────────────
+#   La catena **azienda → conto** e' gia' garantita: indici unici parziali sul
+#   conto `predefinito`. Ma a noi serve **al contrario**, e in quel verso non c'e'
+#   niente:
+#
+#     | Verso | Domanda | Garanzia PRIMA di oggi |
+#     | --- | --- | --- |
+#     | azienda → conto | «qual e' il conto di incasso di X?» | ✅ unica |
+#     | **conto → azienda** | «questi soldi, di chi sono?» | ❌ **nessuna** |
+#
+#   La regola di dominio e' vera nel mondo — due partite IVA, due conti — **ma il
+#   database non la sapeva**. Finche' quel legame serviva a stampare un IBAN in
+#   fattura, l'ambiguita' era un fastidio. Nel momento in cui ci si appoggia il
+#   **perimetro di sicurezza**, una riga ambigua diventa un varco: due aziende
+#   sullo stesso conto e ciascuna vede i soldi dell'altra, **senza che compaia
+#   nessun errore da nessuna parte**.
+#
+#     > ⭐ Regola generale, oltre questo caso: una verita' di dominio su cui si
+#     > appoggia un perimetro di sicurezza deve diventare un **vincolo**, non
+#     > restare un'assunzione. Il costo di scriverla e' un indice; il costo di
+#     > non scriverla non si vede finche' non e' successo.
+#
+# ── 🔴 PERCHE' UN'ESCLUSIONE E NON L'INDICE UNICO CHE DICEVA IL PIANO ─
+#   Il piano (S3-2) chiedeva un indice unico parziale su
+#   `(conto_bancario_id) WHERE uso = 'INCASSO'`. ⚠️ **Quello vieta piu' di quello
+#   che la regola dice**, e vieta una configurazione che questa stessa tabella
+#   dichiara legittima con due indici propri:
+#
+#     * `uq_src_bancari_ruolo_conto_uso_no_istanza`  → (ruolo, conto, uso) senza istanza
+#     * `uq_src_bancari_ruolo_istanza_conto_uso`     → (ruolo, istanza, conto, uso)
+#
+#   Sono partizionati sulla **presenza dell'istanza utility** apposta: lo stesso
+#   soggetto puo' legare lo stesso conto una volta a livello di ruolo e una volta
+#   per una istanza. Un unico su `conto_bancario_id` lo renderebbe impossibile —
+#   e rifiuterebbe **una configurazione che non c'entra niente con la sicurezza**.
+#
+#   ⭐ La regola vera nomina **due** colonne, non una:
+#
+#     > lo stesso conto `INCASSO` non puo' stare su **due soggetti diversi**.
+#
+#   E' esattamente cio' che un'esclusione sa dire e un indice unico no:
+#   `conto_bancario_id WITH =` **e** `soggetto_ruolo_id WITH <>`. Stesso conto e
+#   soggetto diverso = collisione; stesso conto e stesso soggetto = permesso.
+#
+#   ⭐ Non e' un'eccentricita': in questo database ci sono gia' **nove** vincoli di
+#   esclusione (contratti, listini, promo, sospensioni, template), e `btree_gist`
+#   e' installato da prima. E' l'idioma di casa per «questo non convive con
+#   quello».
+#
+# ── ⛔ COSA NON ENTRA NEL VINCOLO, E PERCHE' ──────────────────────────
+#   **Il periodo di validita'.** Si sarebbe potuto aggiungere
+#   `daterange(valido_dal, valido_al) WITH &&`, cioe' «non due soggetti *nello
+#   stesso periodo*». ⛔ Non si fa, e la ragione e' di dominio: in Italia un IBAN
+#   **non passa di mano**. Ammettere la sovrapposizione-nel-tempo vorrebbe dire
+#   modellare un caso che non esiste, e in cambio il perimetro dovrebbe risolvere
+#   il conto **alla data** invece che per identita' — cioe' rispondere in modo
+#   diverso ieri e oggi alla domanda «di chi sono questi soldi?».
+#
+# ── ⚠️ VERIFICATO SUI DATI PRIMA DI SCRIVERLO ─────────────────────────
+#   Misura del 2026-08-22: **4 righe** in tutta la tabella, di cui **2** con
+#   `uso = 'INCASSO'`, sui conti 644 e 645, **entrambe del soggetto-ruolo 64** e
+#   su conti **diversi**. Nessuna violazione, il vincolo entra su dati puliti.
+#   ⚠️ Il piano diceva «8 legami in archivio»: era una misura vecchia.
+#   ⚠️ E i due conti `INCASSO` esistenti **non sono degli emittenti** (SR 72 e
+#   159): e' il passo S3-3, che e' configurazione.
+#
+# Dipendenze: estensione btree_gist.
+# Verifica: db/pgtap/anagrafiche/test-conto-incasso-un-solo-soggetto.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260822-15-add-exclude-src-bancari-conto-incasso-mctit.yaml
+
+  - changeSet:
+      id: 20260822-15-add-exclude-src-bancari-conto-incasso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Vincolo di esclusione: lo stesso conto bancario con uso INCASSO non puo' stare su due
+        soggetti-ruolo diversi. E' il pezzo che regge il perimetro di D5 — senza, due aziende
+        sullo stesso conto si vedrebbero i soldi a vicenda senza nessun errore da nessuna
+        parte. Esclusione e non indice unico: l'unico su (conto) WHERE uso=INCASSO vieterebbe
+        anche lo stesso conto sullo STESSO soggetto a livello di ruolo e di istanza utility,
+        che due indici di questa tabella dichiarano legittimo. Verificato sui dati: 2 righe
+        INCASSO, conti distinti, nessuna violazione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_ruoli_conti_bancari
+            - sqlCheck:
+                expectedResult: 1
+                sql: SELECT COUNT(*) FROM pg_extension WHERE extname = 'btree_gist';
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM (
+                    SELECT conto_bancario_id
+                      FROM anagrafiche.soggetti_ruoli_conti_bancari
+                     WHERE (uso)::text = 'INCASSO'
+                     GROUP BY conto_bancario_id
+                    HAVING COUNT(DISTINCT soggetto_ruolo_id) > 1
+                  ) AS violazioni;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+                ADD CONSTRAINT ex_src_bancari_conto_incasso_un_solo_soggetto
+                EXCLUDE USING gist (
+                    conto_bancario_id WITH =,
+                    soggetto_ruolo_id WITH <>
+                )
+                WHERE ((uso)::text = 'INCASSO');
+
+              COMMENT ON CONSTRAINT ex_src_bancari_conto_incasso_un_solo_soggetto
+                   ON anagrafiche.soggetti_ruoli_conti_bancari IS
+                'Lo stesso conto con uso INCASSO non puo'' appartenere a due soggetti-ruolo diversi. ⭐ E'' IL PEZZO CHE REGGE IL PERIMETRO degli incassi (D5): quando il denaro arriva in banca non ha ancora una fattura, e chi sia il suo padrone lo dice il CONTO. La regola e'' vera nel mondo — due partite IVA, due conti correnti — ma il database non la sapeva, e finche'' quel legame serviva solo a stampare un IBAN l''ambiguita'' era un fastidio: appoggiandoci la sicurezza diventa un varco, e un varco silenzioso (due aziende sullo stesso conto vedono i soldi l''una dell''altra senza nessun errore). ⚠️ ESCLUSIONE e non indice unico su (conto) WHERE uso=INCASSO: quello vieterebbe anche lo stesso conto sullo STESSO soggetto una volta a livello di ruolo e una per istanza utility, che uq_src_bancari_ruolo_conto_uso_no_istanza e uq_src_bancari_ruolo_istanza_conto_uso dichiarano legittimo. La regola nomina DUE colonne: stesso conto E soggetto diverso. ⛔ Il periodo di validita'' NON entra nel vincolo di proposito: un IBAN non passa di mano, e ammettere la sovrapposizione nel tempo costringerebbe il perimetro a risolvere il conto ALLA DATA — cioe'' a rispondere in modo diverso ieri e oggi alla domanda «di chi sono questi soldi?».';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+                DROP CONSTRAINT IF EXISTS ex_src_bancari_conto_incasso_un_solo_soggetto;

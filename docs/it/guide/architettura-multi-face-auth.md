@@ -329,6 +329,20 @@ policy va dichiarata **`FOR ALL` con `WITH CHECK`** (di norma identico alla
 job batch non sono toccati: girano come `postgres` (superuser) e — non essendoci
 `FORCE` — bypassano la RLS.
 
+**E c'e' una seconda meta', meno nota** *(misurata il 2026-08-22, cantiere
+incassi)*: **`INSERT ... RETURNING` passa dalla clausola `USING`**, non solo dal
+`WITH CHECK`. Una riga che il `WITH CHECK` ammette ma che la `USING` non copre fa
+fallire l'`INSERT` con lo stesso messaggio (`new row violates row-level security
+policy`). Conta ovunque una funzione DB restituisca l'id di cio' che ha appena
+creato — `fn_get_or_create_*` e' il caso tipico.
+
+> ⭐ La regola da tenere a mente scrivendo una policy: **cio' che l'applicazione
+> scrive e poi rilegge deve essere visibile a chi l'ha scritto, nello stesso
+> istante.** Un perimetro che si chiude su una riga appena creata non nasconde:
+> **rompe**. In particolare, un predicato che dipende dalle **righe figlie** non
+> puo' stare nella `USING` del padre: quando il padre nasce, di figlie non ce
+> n'e' nessuna.
+
 ### 6.2 Come si alimentano le RLS
 
 Il middleware esistente [JwtAuditAuthentication](/guide/risorse-umane-e-accessi#propagazione-identita-utente-al-database-guc-app)

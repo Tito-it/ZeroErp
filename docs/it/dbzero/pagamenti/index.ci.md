@@ -20,6 +20,7 @@
 - [fn_get_saldo_fattura_contabili](manual/fn_get_saldo_fattura_contabili.md) — (latest review 13-02-2026)   La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il saldo contabile di una fattura calcolato sulle sole righe in stato `is_postabile = true`.
 - [fn_get_saldo_rata](manual/fn_get_saldo_rata.md) — (rev 2026-08-22)
 - [fn_posta_contabile](manual/fn_posta_contabile.md) — (rev 2026-08-22)
+- [trgfn_enti_incasso_guard_conto_incasso](manual/trgfn_enti_incasso_guard_conto_incasso.md) — (rev 2026-08-22)
 - [trgfn_enti_incasso_guard_psp](manual/trgfn_enti_incasso_guard_psp.md) — Garantire la coerenza applicativa dei record `pagamenti.enti_incasso` quando il canale e` di tipo `PSP`.
 - [trgfn_vendite_contabili_guard_chiusura](manual/trgfn_vendite_contabili_guard_chiusura.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_ente_centro](manual/trgfn_vendite_contabili_guard_ente_centro.md) — Validare la coerenza tra `centro_riscossione_id` della testata e `ente_incasso_id` quando presente, e applicare i vincoli della compensazione.
