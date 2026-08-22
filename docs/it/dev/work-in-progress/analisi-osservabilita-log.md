@@ -20,8 +20,13 @@
 >
 > ⭐ **Il brief del Passo 0 è scritto** (2026-08-22):
 > [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
-> — 11 decisioni chiuse, 12 changeSet in 3 lotti, 4 pgTAP, 8 consegne BE.
-> Niente applicato.
+> — **16 decisioni chiuse, zero domande aperte**, 11 changeSet in 3 lotti,
+> 4 pgTAP, 8 consegne BE. Niente applicato.
+>
+> ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
+> si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
+> `emittente_soggetto_ruolo_id` (non la PK) e il vocabolario è un `CHECK` (non
+> una FK) — così i lucchetti `require_attivo` non nascono proprio.
 >
 > **Cosa NON è.** Non è la guida al modello di logging — quella è
 > [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md),

@@ -130,6 +130,7 @@
 - [fn_emit_attivita_fatturabili_da_commessa](funzioni/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_esito_gruppi_giro](funzioni/fn_esito_gruppi_giro.md) — (latest review 15-08-2026)
 - [fn_espandi_listino_versione](funzioni/fn_espandi_listino_versione.md)
+- [fn_event_log_ttl_days](funzioni/fn_event_log_ttl_days.md)
 - [fn_fail_lotto_task_run](funzioni/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
 - [fn_fondo_fattura_proponibile](funzioni/fn_fondo_fattura_proponibile.md) — (latest review 15-08-2026)
 - [fn_genera_ddt_da_ordine](funzioni/fn_genera_ddt_da_ordine.md) — (rev 2026-07-09)
@@ -262,6 +263,7 @@
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md) — La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la cancellazione fisica di righe ordine/DDT per preservare la coerenza del fulfillment e la tracciabilità operativa.
 - [trgfn_documenti_sync_canali](funzioni/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.
 - [trgfn_event_log_append_only](funzioni/trgfn_event_log_append_only.md) — (rev 2026-08-21)
+- [trgfn_event_log_deriva_scope](funzioni/trgfn_event_log_deriva_scope.md)
 - [trgfn_fattura_satellite_guard_congelamento](funzioni/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
 - [trgfn_fatturazione_lotti_gen_codice](funzioni/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_guard_stato](funzioni/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.

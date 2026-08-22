@@ -16,18 +16,22 @@
 | event_code | text | NO |  |
 | severity | text | NO | 'INFO'::text |
 | correlation_id | uuid | YES |  |
-| actor | text | YES |  |
-| source | text | YES |  |
 | payload | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| emittente_soggetto_ruolo_id | bigint | NO |  |
+| auth_user_id | bigint | YES |  |
+| tx_id | uuid | YES |  |
+| cleanup_at | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_event_log_entity_type |  |
 | CHECK | chk_event_log_severity |  |
+| FOREIGN KEY | fk_event_log_emittente | emittente_soggetto_ruolo_id |
 | PRIMARY KEY | pk_event_log | id |
 
 ## 📑 Indici
@@ -41,6 +45,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_event_log_a10_deriva_scope_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_event_log_deriva_scope()` |
 | trg_event_log_append_only_ud | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_event_log_append_only()` |
 | trg_event_log_append_only_ud | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_event_log_append_only()` |
 | trg_event_log_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DI CHI E' QUESTA RIGA, DETTO IN CONVENZIONE SR — L1 del Passo 0
+#   script.fn_resolve_emittente_sr_id
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.2 · Decisione D-1
+#
+# ── ⭐ E' UN GEMELLO, NON UNA DUPLICAZIONE ───────────────────────────
+#   `script.fn_resolve_emittente_fiscale_id` (20260822-16) risponde la stessa
+#   domanda nell'altra convenzione, la PK. Il progetto tiene gia' le coppie
+#   `fn_scope_ef_whitelist` / `..._via_sr` e `fn_get_emittenti_scope_pk_ids` /
+#   `_sr_ids`, e la decisione `work-done/refactor-emittente-id-canonico.md`
+#   (2026-05-02) dice testualmente che **il doppio binario e' corretto e va
+#   supportato**. Questo e' il gemello mancante.
+#
+#   ⛔ `fn_resolve_emittente_fiscale_id` NON si tocca: ha dodici chiamanti
+#   (`trgfn_guard_emittente_scope` su altrettante tabelle) e cinque modi che
+#   non c'entrano niente col giornale.
+#
+# ── ⭐ QUI E' UNA COPIA, NON UNA RICERCA ─────────────────────────────
+#   Lotti, commesse e fatture portano gia' `emittente_soggetto_ruolo_id`:
+#   non serve nessun JOIN ad `anagrafiche.emittenti_fiscali`. E' esattamente
+#   il motivo per cui il giornale usa la convenzione SR (brief D-1).
+#
+# ── ⚠️ PERCHE' SECURITY DEFINER — la stessa ragione del gemello ──────
+#   `vendite.fatturazione_lotti`, `vendite.commesse` e `vendite.fatture` hanno
+#   la ROW SECURITY **accesa**. Letta da un utente fuori perimetro la riga NON
+#   C'E', e chi chiama non deve poter confondere «non lo vedo» con «non
+#   esiste»: sono due risposte diverse, e la seconda e' l'unica onesta.
+#
+#     > La domanda di FATTO («di chi e'») e quella di PERMESSO («posso
+#     > scriverci») sono due domande diverse. Qui si risponde solo alla prima;
+#     > la seconda la decide il WITH CHECK della policy.
+#
+#   ⚠️ Dipende dal fatto che la RLS sia **abilitata e NON forzata**: il
+#   proprietario (`titodb`) la salta. Il giorno in cui arrivasse un
+#   `FORCE ROW LEVEL SECURITY` questa funzione andrebbe rivista, esattamente
+#   come `fn_resolve_emittente_fiscale_id` e `fn_check_scadenza_di_fattura`.
+#
+#   ⚠️ `search_path` bloccato: una SECURITY DEFINER senza search_path fisso e'
+#   un'iniezione che aspetta.
+#
+# ── ⛔ UN MODO SCONOSCIUTO SOLLEVA ───────────────────────────────────
+#   Restituire NULL spegnerebbe il chiamante in silenzio: nel giornale un NULL
+#   significa «riga rifiutata», e un errore di battitura in un CREATE TRIGGER
+#   diventerebbe un diario che smette di scrivere senza dirlo.
+#
+# Dipendenze: vendite.fatturazione_lotti, vendite.commesse, vendite.fatture
+#             (colonna emittente_soggetto_ruolo_id su tutte e tre).
+# Verifica: db/pgtap/vendite/test-event-log-deriva-scope.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-42-create-fn-resolve-emittente-sr-id-mctit.yaml
+
+  - changeSet:
+      id: 20260822-42-create-fn-resolve-emittente-sr-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_resolve_emittente_sr_id(modo, valore): dice di chi e' una riga
+        rispondendo un soggetto_ruolo_id, FUORI dalla row security. Gemello in convenzione
+        SR di fn_resolve_emittente_fiscale_id (che non si tocca). Tre modi — lotto,
+        commessa, fattura — e in tutti e tre e' una copia della colonna del padre, non una
+        ricerca. SECURITY DEFINER perche' le tre tabelle hanno la RLS accesa e un lettore
+        fuori perimetro vedrebbe zero righe, confondendo «non lo vedo» con «non esiste».
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti
+                columnName: emittente_soggetto_ruolo_id
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse
+                columnName: emittente_soggetto_ruolo_id
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture
+                columnName: emittente_soggetto_ruolo_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_sr_id(
+                  p_modo   text,
+                  -- ⚠️ %TYPE anche in FIRMA (linee-guida-sql §5). La colonna di
+                  --    riferimento e' quella da cui il valore ARRIVA:
+                  --    vendite.event_log.entity_id. Le tre entita' risolte
+                  --    hanno tutte `id` bigint, quindi la fotografia e'
+                  --    coerente con tutte e tre.
+                  -- ⚠️ In firma %TYPE e' una FOTOGRAFIA, non un link: si
+                  --    risolve alla creazione. Verificare con
+                  --    pg_get_function_identity_arguments che resti
+                  --    (text, bigint) e non nasca un overload.
+                  p_valore vendite.event_log.entity_id%TYPE
+              )
+              RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_sr_id anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire DI CHI E' una riga, in convenzione SR, e nient'altro.
+                  --   Risponde un soggetto_ruolo_id, oppure NULL se il
+                  --   riferimento non porta a nessuna entita'.
+                  --
+                  -- ⭐ Gemello di script.fn_resolve_emittente_fiscale_id sulla
+                  --   convenzione SR. Il doppio binario PK/SR e' una scelta
+                  --   dichiarata del progetto (refactor-emittente-id-canonico,
+                  --   2026-05-02), non un residuo.
+                  --
+                  -- ⭐ Qui e' una COPIA, non una ricerca: lotti, commesse e
+                  --   fatture portano gia' la colonna. Nessun JOIN.
+                  --
+                  -- ⚠️ SECURITY DEFINER: le tre tabelle hanno la ROW SECURITY
+                  --   accesa. Letta da un utente fuori perimetro la riga non
+                  --   c'e', e «non la vedo» non e' «non esiste».
+                  --
+                  -- ⚠️ Dipende dalla RLS abilitata e NON forzata (il
+                  --   proprietario la salta). Con un FORCE va rivista.
+                  -- =========================================================
+
+                  IF p_valore IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF p_modo = 'lotto' THEN
+                      SELECT l.emittente_soggetto_ruolo_id
+                        INTO v_sr_id
+                        FROM vendite.fatturazione_lotti l
+                       WHERE l.id = p_valore;
+
+                  ELSIF p_modo = 'commessa' THEN
+                      SELECT c.emittente_soggetto_ruolo_id
+                        INTO v_sr_id
+                        FROM vendite.commesse c
+                       WHERE c.id = p_valore;
+
+                  ELSIF p_modo = 'fattura' THEN
+                      SELECT f.emittente_soggetto_ruolo_id
+                        INTO v_sr_id
+                        FROM vendite.fatture f
+                       WHERE f.id = p_valore;
+
+                  ELSE
+                      -- ⛔ Non si restituisce NULL: nel giornale un NULL vuol
+                      --    dire «riga rifiutata», e un refuso in un CREATE
+                      --    TRIGGER diventerebbe un diario che smette di
+                      --    scrivere senza dirlo.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_resolve_emittente_sr_id',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'Modo di risoluzione sconosciuto',
+                              'modo',   p_modo,
+                              'valore', p_valore
+                          ),
+                          NULL::uuid,
+                          format(
+                              'il modo di risoluzione dell''emittente «%s» non esiste: '
+                              'sono ammessi lotto, commessa e fattura',
+                              p_modo
+                          )
+                      );
+                  END IF;
+
+                  RETURN v_sr_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_emittente_sr_id(text, bigint)
+              IS 'Risolve il soggetto_ruolo_id dell''emittente di una riga FUORI dalla row security. ⭐ Gemello in convenzione SR di script.fn_resolve_emittente_fiscale_id: il doppio binario PK/SR e'' una scelta dichiarata del progetto (refactor-emittente-id-canonico, 2026-05-02). Modi: lotto | commessa | fattura — e in tutti e tre e'' una COPIA della colonna del padre, non una ricerca. ⚠️ SECURITY DEFINER perche'' le tre tabelle hanno la RLS accesa: per un utente fuori perimetro la riga non c''e'', e «non la vedo» non e'' «non esiste». ⚠️ Dipende dalla RLS abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista. ⛔ Un modo sconosciuto SOLLEVA: restituire NULL farebbe smettere di scrivere il giornale in silenzio.';
+
+              -- Il trigger di derivazione la chiama con i permessi di chiunque
+              -- scriva un evento: senza questo GRANT il giornale fallirebbe sul
+              -- permesso di esecuzione invece che sulla regola.
+              GRANT EXECUTE ON FUNCTION script.fn_resolve_emittente_sr_id(text, bigint) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_resolve_emittente_sr_id(text, bigint);

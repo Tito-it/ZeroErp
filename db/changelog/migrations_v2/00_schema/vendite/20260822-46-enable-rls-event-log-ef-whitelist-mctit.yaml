@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO DEL GIORNALE — L1 del Passo 0
+#   rls_event_log_ef_whitelist su vendite.event_log
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.3 · Decisione D-1
+#
+#   Mirror **esatto** di `rls_commesse_ef_whitelist` (20260720-05): stessa
+#   convenzione SR, stesso adapter `script.fn_scope_ef_whitelist_via_sr`, stesso
+#   gate OPERATORE fail-closed, stesso `ENABLE` senza `FORCE`.
+#
+# ── ⛔ MA `linee-guida-sql` §10.1 DICE DI NON METTERE LA RLS SUI LOG ─
+#   Testualmente: non abilitarla su «tabelle di sola scrittura tecnica
+#   (dbops.*, log, storico **gia' filtrato a monte**)». Va affrontato, non
+#   aggirato — e la risposta sta nell'ultima clausola.
+#
+#   Quella clausola descrive il modello reale del progetto: 70 tabelle
+#   `vendite` su 84 non hanno RLS, e i satelliti sono protetti
+#   dall'**ancoraggio della query alla testata**. `vendite.fatture_log` si legge
+#   sempre via `fatture` o `fatturazione_lotti`, che hanno la policy;
+#   `documenti.documenti_generati_eventi` — il gemello append-only meglio
+#   riuscito — e' satellite di `documenti_generati` e infatti **non ha RLS**.
+#
+#   `vendite.event_log` e' **l'unico registro polimorfo**: non ha una testata a
+#   cui ancorarsi, quindi **non puo' ereditare la protezione per join**. La
+#   precondizione della regola e' falsa, e per questo l'eccezione non si
+#   applica.
+#
+#     > ➡️ Precisazione da riportare in §10.1, perche' generalizza: un registro
+#     > POLIMORFO non e' «filtrato a monte» — non ha un monte. Se raccoglie
+#     > righe di piu' emittenti, la colonna di perimetro ce l'ha lui o non ce
+#     > l'ha nessuno.
+#
+# ── ⚠️ SULLA FORMA `FOR ALL` ────────────────────────────────────────
+#   §10.2 sconsiglia `FOR ALL` «quando servono semantiche diverse fra SELECT e
+#   scrittura». Qui la semantica e' **la stessa**, e una `FOR SELECT` sarebbe
+#   attivamente sbagliata: e' deny-all in scrittura, e `INSERT ... RETURNING`
+#   passa comunque dalla `USING`. Quindi `FOR ALL`, come tutta la famiglia.
+#
+# ── ⚠️ `ENABLE` SENZA `FORCE`, E PERCHE' NON E' UN BIVIO ────────────
+#   Misurato il 2026-08-22: l'owner delle tabelle `vendite` e' **titodb**;
+#   l'applicazione gira come `zeroerp_app`, che **non** e' owner, **non** e'
+#   superuser e **non** ha BYPASSRLS. Quindi **la RLS morde gia'** sul canale
+#   web, `FORCE` o no. Un `FORCE` inciderebbe solo su `titodb` e romperebbe le
+#   SECURITY DEFINER di sua proprieta' che leggono fuori dalla row security —
+#   in testa `script.fn_resolve_emittente_sr_id`, che questo stesso giornale
+#   usa per derivare il perimetro.
+#   ⚠️ Il caveat opposto, che gira nei commenti di `20260720-05` («l'owner
+#   (zeroerp_app) bypassa»), e' **sbagliato**: `20260730-05` dice la cosa giusta.
+#
+# ── ✅ IL CANALE BATCH NON E' A RISCHIO ─────────────────────────────
+#   `zeroerp_batch_fatturazione` ha BYPASSRLS **e** i GRANT su event_log
+#   (INSERT+SELECT). Il precedente `vendite.note` era un GRANT mancante, non una
+#   policy: qui il GRANT c'e'. Presidiato da
+#   db/pgtap/vendite/test-event-log-canale-batch.sql — che e' un test
+#   **strutturale**, e lo dichiara: il runner pgTAP gira come owner o come app,
+#   mai come il ruolo batch.
+#
+# ── ⛔ NESSUN trgfn_guard_emittente_scope QUI ───────────────────────
+#   Sulle tabelle gemelle il guard di scrittura affianca la policy. Qui no, ed
+#   e' deliberato (D-10): il perimetro lo **deriva il database** dall'entita',
+#   quindi il guard verificherebbe un valore appena calcolato dal database
+#   stesso, dicendo esattamente cio' che dice gia' il `WITH CHECK`.
+#   ⚠️ Scritto perche' il prossimo non lo aggiunga «per simmetria con DDT».
+#
+# Dipendenze: vendite.event_log.emittente_soggetto_ruolo_id (20260822-40),
+#             script.fn_scope_ef_whitelist_via_sr.
+# Verifica: db/pgtap/rls/test-rls-event-log-ef-whitelist-write.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260822-46-enable-rls-event-log-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260822-46-create-policy-rls-event-log-ef-whitelist
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy rls_event_log_ef_whitelist su vendite.event_log (FOR ALL, scope emittente
+        operatore via fn_scope_ef_whitelist_via_sr) + ENABLE ROW LEVEL SECURITY (NO FORCE),
+        a parita' con la famiglia. Mirror esatto di rls_commesse_ef_whitelist. ⛔ Deroga
+        motivata a linee-guida-sql §10.1 («niente RLS sui log»): quella regola vale per i
+        log GIA' FILTRATI A MONTE, cioe' i satelliti che si leggono via la testata
+        protetta. event_log e' l'unico registro POLIMORFO e non ha un monte: la colonna di
+        perimetro ce l'ha lui o non ce l'ha nessuno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: event_log
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist_via_sr';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_event_log_ef_whitelist ON vendite.event_log;
+              CREATE POLICY rls_event_log_ef_whitelist ON vendite.event_log
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_event_log_ef_whitelist ON vendite.event_log IS
+                  'RLS: operatore vede/scrive solo eventi con emittente in whitelist '
+                  '(adapter SR fn_scope_ef_whitelist_via_sr), gate OPERATORE fail-closed. '
+                  'Mirror rls_commesse_ef_whitelist. ⛔ Deroga motivata a linee-guida-sql '
+                  '§10.1: quella regola esenta i log GIA'' FILTRATI A MONTE, cioe'' i '
+                  'satelliti che si leggono via la testata protetta. event_log e'' l''unico '
+                  'registro POLIMORFO e non ha un monte a cui ancorarsi. ⛔ Nessun '
+                  'trgfn_guard_emittente_scope: il perimetro lo deriva il DB dall''entita'', '
+                  'quindi il guard direbbe cio'' che dice gia'' il WITH CHECK. rev 2026-08-22.';
+
+              -- Parita' con ddt/ordini/preventivi/fatture/resi/commesse
+              -- (relrowsecurity=t, relforcerowsecurity=f). ⚠️ Un FORCE qui
+              -- romperebbe script.fn_resolve_emittente_sr_id, che e' SECURITY
+              -- DEFINER di titodb e deve leggere fuori dalla row security per
+              -- derivare il perimetro di questa stessa tabella.
+              ALTER TABLE vendite.event_log ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.event_log DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_event_log_ef_whitelist ON vendite.event_log;

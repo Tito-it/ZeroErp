@@ -244,6 +244,8 @@ E_ERRORE_PARAMETRI,DATO_ERRATO,NULL,<- ERRORE_PARAMETRI  (vivo)
 E_ERRORE_PARAMETRI_TABELLA,DATO_ERRATO,NULL,<- ERRORE_PARAMETRI_TABELLA  (vivo)
 E_EVENTO_DOCUMENTO_DELETE_VIETATA,CONFLITTO_STATO,NULL,Sollevati dai trigger DB trgfn_documenti_generati_eventi_a10_*.
 E_EVENTO_DOCUMENTO_UPDATE_VIETATA,CONFLITTO_STATO,NULL,NULL
+E_EVENT_LOG_ENTITY_TYPE_IGNOTO,TECNICO,NULL,"vendite.trgfn_event_log_deriva_scope: il tipo di entita' non e' fra quelli · che il giornale sa collocare (LOTTO, COMMESSA, FATTURA), quindi non c'e' · modo di ricavare il perimetro. Distinto da E_EVENT_LOG_SCOPE_NON_RISOLTO · perche' il RIMEDIO e' diverso: li' l'entita' non esiste, qui il tipo non · e' ammesso. ⚠️ Il CHECK chk_event_log_entity_type non lo intercetta: i · BEFORE ROW girano prima dei CHECK (20260822-47)."
+E_EVENT_LOG_SCOPE_NON_RISOLTO,TECNICO,NULL,"vendite.trgfn_event_log_deriva_scope: l'entita' citata dall'evento non esiste, · quindi non c'e' modo di dire DI CHI sia la riga e il giornale la rifiuta. · TECNICO e non DATO_ERRATO: nessuna persona compila entity_type/entity_id in · un form, li mette il codice che scrive il diario — solo un chiamante rotto · ci arriva. ⚠️ E' l'UNICO caso in cui il diario rifiuta: un emittente · disattivato o un documento annullato si registrano lo stesso (D-12)."
 E_FATTURAZIONE_GIRO_NESSUN_LOTTO,NON_ESEGUIBILE,NULL,"Richiesta valida, esito nullo: nessun lotto nel perimetro chiesto."
 E_FATTURAZIONE_GIRO_PAYLOAD,DATO_ERRATO,NULL,NULL
 E_FATTURAZIONE_NUMERA_PAYLOAD,DATO_ERRATO,NULL,NULL
@@ -258,6 +260,7 @@ E_FATTURA_NON_TROVATA,NON_TROVATO,NULL,--- Not found (404) ---
 E_FATTURA_RIGA_CONGELATA,CONFLITTO_STATO,NULL,NULL
 E_FATTURA_SATELLITE_CONGELATO,CONFLITTO_STATO,NULL,NULL
 E_FATTURA_SENZA_RIGHE,CONFLITTO_STATO,NULL,NULL
+E_FATTURE_RIGHE_RETTIFICATE,CONFLITTO_STATO,NULL,"script.fn_check_fatture_con_rettifiche + il guard in · vendite.fn_cleanup_fatture_by_ids. Su una riga di fattura e' gia' stato · registrato un accredito, e disfare la fattura toglierebbe il SECONDO · TETTO di quell'accredito (20260818-27 punto 2) e il DatiFattureCollegate · della TD04. CONFLITTO_STATO e non NON_PERMESSO: il diritto c'e', e' la · situazione a non consentirlo — tolto l'accredito · (fn_annulla_accredito_riga_reso) l'operazione passa. ⚠️ Il gemello · E_LOTTO_FATTURE_NUMERATE NON copre questo caso: l'accredito si registra · PRIMA della numerazione, perche' e' ancorato alla coda dei resi."
 E_FATT_IMMEDIATA_NON_MODIFICABILE,CONFLITTO_STATO,NULL,"Corsia di instradamento non piu' modificabile: il documento e' gia' · stato inviato in commessa, dove il flag entra nella chiave di dedup — · cambiarlo dopo non sposta nulla, sarebbe solo un campo che INGANNA. · Sollevato dal guard DB `trgfn_guard_fatturazione_immediata_immutabile` · su ordini/contratti/DDT/preventivi (codice DB messaggi_errore 561). · Trasversale ai 4 domini: il codice e' uno solo, come lo e' la regola."
 E_FLUSSI_COMPETENZA_MANCANTE,NON_PERMESSO,NULL,<- FLUSSI_COMPETENZA_MANCANTE  (vivo)
 E_FLUSSI_ESITO_NON_AMMESSO,DATO_ERRATO,NULL,NULL
@@ -610,6 +613,7 @@ E_UI_PRESET_VALIDAZIONE,DATO_ERRATO,NULL,NULL
 E_UI_VISTA_SQL_NON_TROVATA,DATO_ERRATO,NULL,NULL
 E_UOM_MISMATCH,CONFLITTO_STATO,NULL,NULL
 E_UOM_MISSING,DATO_ERRATO,NULL,NULL
+E_UPDATE_NOT_ALLOWED,NON_PERMESSO,NULL,"Gemello di E_DELETE_NOT_ALLOWED per i registri append-only · (vendite.trgfn_event_log_append_only). La storia non si modifica, e non · dipende dallo stato della riga: non cambia riprovando piu' tardi, quindi · NON_PERMESSO e non CONFLITTO_STATO. ⭐ Ed e' proprio questo veto a rendere · immutabile cleanup_at, cioe' la scadenza di retention della riga stessa."
 E_USER_DISABILITATO,NON_PERMESSO,NULL,NULL
 E_USER_EMITTENTE_DELETE_VIETATO,DATO_ERRATO,NULL,NULL
 E_UTENTE_BLOCCATO,NON_PERMESSO,NULL,"423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock · WebDAV di una RISORSA (RFC 4918), non di un account: qui e' un · blocco temporaneo dopo troppi tentativi, sollevato da · script.fn_check_blocco_login. Il gemello E_USER_DISABILITATO e' · gia' 403. Il frontend aggancia il CODICE, non lo status · (LoginView.resolveLoginError), quindi a video non cambia nulla. · ⚠️ E NON 429, che sembrerebbe il candidato ovvio: LoginView · intercetta il 429 PRIMA di leggere il codice (e' il throttle per · IP) e il messaggio del DB coi minuti rimanenti andrebbe perso."

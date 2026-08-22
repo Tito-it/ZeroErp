@@ -15,7 +15,8 @@
 > **rimisurato sul DB e sul codice** lo stesso giorno (§0-ter dell'analisi).
 > Decisioni di Tid del 2026-08-22, tutte in §2.
 >
-> **Stato:** 🟡 **PIANO SCRITTO — niente applicato.** Nessuna migrazione eseguita.
+> **Stato:** 🟡 **L1 SCRITTO — niente applicato.** I sette changeSet e i tre append
+> a CSV sono nel repo e passano i cancelli statici. Nessuna migrazione eseguita.
 >
 > **Correlati:**
 > [analisi-osservabilita-log.md](analisi-osservabilita-log.md) (il documento madre) ·
@@ -33,16 +34,16 @@
 | | Cosa | Dove |
 | --- | --- | --- |
 | ✅ **Regge, e non si riapre** | Il pattern RLS è in casa e collaudato (`rls_*_ef_whitelist` + `fn_scope_ef_whitelist`) · il dispatcher «di chi è questa riga» **esiste già** (`script.fn_resolve_emittente_fiscale_id`, 5 modi) · il canale batch è già coperto (`BYPASSRLS` + GRANT) | §1.1 |
-| 🔴 **Cinque difetti, tutti dello stesso lato** | `emittente_fiscale_id` assente · `tx_id` assente · `correlation_id` identifica il **lotto**, non il giro · `entity_id = 0` · `actor` costante | §1.2 |
+| 🔴 **Cinque difetti, tutti dello stesso lato** | colonna di perimetro assente · `tx_id` assente · `correlation_id` identifica il **lotto**, non il giro · `entity_id = 0` · `actor` costante | §1.2 |
 | ⛔ **Il vincolo che governa tutto** | Append-only per trigger: `UPDATE` **e** `DELETE` vietati ⇒ **nessun backfill, mai**. Unica via: `TRUNCATE` | §1.3 |
 | ⛔ **Tre premesse dell'analisi cadute** | La RLS **morde già** (l'app non è owner) · il canale batch non è a rischio · B1 (il 67%) è chiuso | §1.4 |
-| ✅ **Decisioni** | D-1…D-11, tutte prese con Tid il 2026-08-22. **Zero decisioni pendenti che blocchino la scrittura dei changeSet** | §2 |
+| ✅ **Decisioni** | **D-1…D-16**, tutte prese con Tid il 2026-08-22 — D-1 e D-9 **riviste** in coda al rilievo sui lucchetti | §2 |
 | 🧩 **Il disegno** | Derivazione nel trigger (la firma di `fn_log_event` **non cambia**) · policy a parità di famiglia · retention che convive con l'append-only · `vw_giornale_entita` | §3 |
-| 📋 **Il piano** | **L1** la riga parlante (9 changeSet) → **L2** l'identità del giro (2) → **L3** la vista (1, ma si accende col Passo A) | §4 |
+| 📋 **Il piano** | **L1** la riga parlante — ✅ **SCRITTO** (7 changeSet + 3 append a CSV, niente applicato) → **L2** l'identità del giro (2) → **L3** la vista (1, si accende col Passo A) | §4 |
 | 🔵 **A carico del BE** | 8 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
-| 🧪 **Presidio** | 4 file pgTAP, uno dei quali **strutturale e non comportamentale** — ed è dichiarato | §6 |
-| ❓ **Domande aperte** | 6, **nessuna bloccante per L1** salvo la Q-1 (il TTL) | §8 |
-| ⭐ **Il perno da non perdere** | «Chi» è **già nella riga** (`user_insert`, da `app.jwt_user`): B3 non era vero. Quello che non c'è è **il perimetro**, e serve perché `event_log` è **l'unico registro polimorfo** — l'unico che non ha una testata a cui ancorarsi | §1.4 · §3.3 |
+| 🧪 **Presidio** | ✅ **26 asserzioni verdi, zero skip** su 5 file — 3 nuovi e 2 preesistenti adeguati. Il quarto file previsto **non** è stato scritto: esisteva già | §6 |
+| ✅ **Domande aperte** | **Zero.** Le sei del primo giro chiuse il 2026-08-22 | §8 |
+| ⭐ **I due perni** | (1) «Chi» è **già nella riga** (`user_insert`): B3 non era vero — manca **il perimetro**, e serve perché `event_log` è **l'unico registro polimorfo**, l'unico senza una testata a cui ancorarsi. (2) **Un diario non si blocca mai**: rifiuta solo ciò di cui non sa dire di chi è | §3.2 · §3.3 |
 
 ---
 
@@ -66,7 +67,7 @@ Rimisurata il **2026-08-22** contro il database vivo, la doc auto-generata
 
 | # | Difetto | Misura |
 | --- | --- | --- |
-| S1 | **`emittente_fiscale_id` non esiste** | nessuna colonna emittente, nessuna policy, `relrowsecurity = f` |
+| S1 | **Nessuna colonna di perimetro** | nessuna colonna emittente, nessuna policy, `relrowsecurity = f` |
 | S2 | **`tx_id` non esiste** | è l'**unico** registro del progetto senza: ce l'hanno `dbops.error_log`, `audit_log`, `request_log`, `vendite.fatture_log`, `fatturazione_lotti_log`, `fatturazione_lotti_task_runs`, `commesse_attivita_log`, `documenti.documenti_generati_eventi`, `pratiche.giornale` |
 | S3 | **`correlation_id` identifica il lotto, non il giro** | vale `fatturazione_lotti.lock_batch_id`, che nasce col lotto (`COALESCE(p_lock_batch_id, uuidv7())`) e **non cambia mai** — mentre il lotto 6260 ha **27 `task_runs`**. Duplica `entity_id`. E sul ramo push non è passato affatto |
 | S4 | **`entity_id = 0`** su `PUSH_STARTED` | non è un segnaposto: è un id **che non esiste ancora**, perché la riga di `commesse_push_log` nasce a fine giro (`_run_locked`) |
@@ -148,7 +149,7 @@ solleva **incondizionatamente**. Conseguenze, tutte verificate:
 | `id` | `bigint` | = | PK |
 | `event_time` | `timestamptz` | = | `DEFAULT now()` |
 | `domain` | `text` | = | |
-| `entity_type` | `text` | **FK** | → `config.sorgenti(codice_interno)` (D-9) |
+| `entity_type` | `text` | **`CHECK`** | `IN ('LOTTO','COMMESSA','FATTURA')` (D-9) |
 | `entity_id` | `bigint` | = | la PK `id` della tabella puntata, **sempre** |
 | `event_code` | `text` | = | |
 | `severity` | `text` | = | `CHECK (INFO/WARN/ERROR)` — invariato, ed è BE-1 ad adeguarsi |
@@ -156,72 +157,122 @@ solleva **incondizionatamente**. Conseguenze, tutte verificate:
 | ~~`actor`~~ | | ⛔ **rimossa** | D-6 |
 | ~~`source`~~ | | ⛔ **rimossa** | D-6 |
 | `payload` | `jsonb` | = | |
-| **`emittente_fiscale_id`** | `bigint` | ➕ **NOT NULL** | FK → `anagrafiche.emittenti_fiscali(id)`, derivata (D-1, D-2) |
+| **`emittente_soggetto_ruolo_id`** | `bigint` | ➕ **NOT NULL** | FK → `anagrafiche.soggetti_ruoli(id)`, derivata (D-1, D-2) |
+| **`auth_user_id`** | `bigint` | ➕ | da `app.current_user_id` (D-14). Nessuna FK: `django.auth_user` è fuori dal perimetro dei vincoli |
 | **`tx_id`** | `uuid` | ➕ | D-5, trigger dall'automazione |
-| **`cleanup_at`** | `timestamptz` | ➕ | valorizzata **all'INSERT** (D-8) |
-| `data_insert` / `user_insert` / `data_update` / `user_update` | | = | ⭐ `user_insert` **è** «chi» |
+| **`cleanup_at`** | `timestamptz` | ➕ | `event_time + 750 giorni`, valorizzata **all'INSERT** (D-13) |
+| `data_insert` / `user_insert` / `data_update` / `user_update` | | = | ⭐ `user_insert` è il **nome**; `auth_user_id` è **chi** |
 
-### 3.2 La derivazione dell'emittente
+### 3.2 La derivazione del perimetro — e l'unica cosa che il diario rifiuta
 
-Due oggetti, uno esteso e uno nuovo.
+**La regola, in una frase** (D-12), e va scritta perché il prossimo sarà tentato
+di «rafforzarla»:
 
-**a) `script.fn_resolve_emittente_fiscale_id` — revisione, due modi in più**
+> **Il diario rifiuta una riga solo quando non riesce a dire *di chi è*.
+> Tutto il resto lo registra.**
+
+In concreto:
+
+| Situazione | Il diario |
+| --- | --- |
+| `entity_type` fuori vocabolario | ⛔ **rifiuta** — non c'è modo di ricavare il perimetro, ed è un errore di programmazione: si scopre in test |
+| entità inesistente (`entity_id` che non trova niente) | ⛔ **rifiuta** — stessa ragione |
+| entità reale, ma **emittente disattivato** | ✅ **registra** — il perimetro si ricava benissimo, e quella riga è **proprio** quella che serve: un emittente cessato ha ancora note di credito, incassi e stampe da chiudere |
+| entità reale, ma **documento annullato** | ✅ **registra** — «qualcuno ha agito su un documento annullato» è un fatto da conservare, non da nascondere. Se quell'azione non deve essere permessa, la si blocca **sul documento**, non sul suo diario |
+
+⭐ **Perché un lucchetto sul diario sarebbe autolesionista.** Il fatto è già
+accaduto: rifiutare la riga distrugge l'unica prova che lo spiegherebbe. E
+l'anomalia che verrebbe da temere — attività *nuova* su un emittente disattivato
+— **è già bloccata a monte**: `vendite.ddt`, `ordini`, `preventivi`, `contratti`
+e `resi` hanno il lucchetto `require_attivo` verso `anagrafiche.emittenti_fiscali`
+(verificato: 7 tabelle). Quindi un lucchetto sul diario rifiuterebbe **solo righe
+legittime**.
+⚠️ E non si segnala l'anomalia sulla riga: un avviso che scatta sul caso
+**normale** — la chiusura dei documenti di un emittente cessato — diventa rumore,
+e un presidio che tutti ignorano è peggio di uno che non c'è. Il posto di quel
+presidio è sul documento, ed è materia di
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
+
+**Come si realizza, senza combattere con l'automazione.** Il lucchetto
+`require_attivo` lo genera `dbops.fn_run_automations_attivo`, che gira su
+`*all`/`*all` e **non ha esclusioni per tabella figlia** (l'unico override,
+`dbops.automation_overrides_cols` con `col_role = 'ATTIVO_COL'`, è per tabella
+**padre**, e varrebbe per tutte le 18 tabelle che puntano a `config.sorgenti`).
+Quindi non si disattiva: **si evita di crearlo**, e le due decisioni D-1 e D-9
+sono esattamente questo.
+
+| Scelta | Effetto |
+| --- | --- |
+| `emittente_soggetto_ruolo_id` invece di `emittente_fiscale_id` | `anagrafiche.soggetti_ruoli` **non ha la colonna `attivo`** ⇒ l'automazione salta (`ATTIVO_SKIP_PARENT_NO_ATTIVO`). Verificato: **zero** trigger `*_soggetti_ruoli_require_attivo_*` in tutto il database |
+| `CHECK` invece della FK a `config.sorgenti` | Nessuna FK, nessun lucchetto. E il vocabolario resta **nello stesso changeSet** del dispatch che lo risolve |
+
+**L'oggetto nuovo: `script.fn_resolve_emittente_sr_id(p_modo, p_valore)`**
+
+Gemello sull'altra convenzione di `fn_resolve_emittente_fiscale_id` — ed è il
+pattern di casa, non una duplicazione: il progetto tiene già le coppie
+`fn_scope_ef_whitelist` / `..._via_sr` e `fn_get_emittenti_scope_pk_ids` /
+`_sr_ids` (decisione `refactor-emittente-id-canonico`, 2026-05-02: *il doppio
+binario è corretto e va supportato*).
 
 ```sql
--- ... modi esistenti: fiscale | soggetto_ruolo | fattura | ente_incasso | contabile
+CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_sr_id(
+    p_modo   text,
+    p_valore bigint
+) RETURNS bigint
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'pg_temp'
+AS $function$
+DECLARE
+    v_sr_id anagrafiche.soggetti_ruoli.id%TYPE;
+BEGIN
+    -- ⭐ SECURITY DEFINER per la stessa ragione del gemello: lotti, commesse e
+    --    fatture hanno la ROW SECURITY accesa. Letta da un utente fuori
+    --    perimetro la riga NON C'E', e il chiamante non deve poter confondere
+    --    «non lo vedo» con «non esiste».
+    IF p_valore IS NULL THEN RETURN NULL; END IF;
 
-ELSIF p_modo = 'lotto' THEN
-    -- Il lotto porta l'emittente come SR (colonna NOT NULL).
-    SELECT ef.id
-      INTO v_emittente_fiscale_id
-      FROM vendite.fatturazione_lotti l
-      JOIN anagrafiche.emittenti_fiscali ef
-        ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
-     WHERE l.id = p_valore;
+    IF p_modo = 'lotto' THEN
+        SELECT l.emittente_soggetto_ruolo_id INTO v_sr_id
+          FROM vendite.fatturazione_lotti l WHERE l.id = p_valore;
+    ELSIF p_modo = 'commessa' THEN
+        SELECT c.emittente_soggetto_ruolo_id INTO v_sr_id
+          FROM vendite.commesse c WHERE c.id = p_valore;
+    ELSIF p_modo = 'fattura' THEN
+        SELECT f.emittente_soggetto_ruolo_id INTO v_sr_id
+          FROM vendite.fatture f WHERE f.id = p_valore;
+    ELSE
+        -- ⛔ Non si restituisce NULL: spegnerebbe il chiamante in silenzio.
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_resolve_emittente_sr_id',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('modo', p_modo, 'valore', p_valore),
+            NULL::uuid,
+            format('il modo di risoluzione «%s» non esiste: '
+                   'sono ammessi lotto, commessa e fattura', p_modo));
+    END IF;
 
-ELSIF p_modo = 'commessa' THEN
-    SELECT ef.id
-      INTO v_emittente_fiscale_id
-      FROM vendite.commesse c
-      JOIN anagrafiche.emittenti_fiscali ef
-        ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
-     WHERE c.id = p_valore;
+    RETURN v_sr_id;
+END
+$function$;
 ```
 
-⚠️ **`vendite.fatturazione_lotti` e `vendite.commesse` hanno la RLS accesa**: è
-esattamente il motivo per cui questa funzione è `SECURITY DEFINER` di proprietà di
-`titodb` e legge fuori dalla row security. Il commento della funzione lo dichiara
-già, e va **esteso ai due modi nuovi** — la dipendenza dal «no `FORCE`» cresce di
-due catene.
+⭐ È una **copia**, non una ricerca: le tre tabelle portano già la colonna SR.
+Nessun `JOIN` a `emittenti_fiscali`, e `fn_resolve_emittente_fiscale_id` **non
+va toccata**.
 
-⛔ Il ramo `ELSE` che solleva su un modo sconosciuto **resta**: restituire `NULL`
-spegnerebbe il chiamante in silenzio.
-
-**b) `vendite.trgfn_event_log_deriva_scope` — `BEFORE INSERT`, nuovo**
-
-Responsabilità, e nient'altro: mappare `entity_type` → modo, chiamare il
-risolutore, e **rifiutare la riga** se non ne esce un emittente.
+**Il trigger: `vendite.trgfn_event_log_deriva_scope`** — `BEFORE INSERT`
 
 ```sql
 v_modo := CASE NEW.entity_type
               WHEN 'LOTTO'    THEN 'lotto'
               WHEN 'COMMESSA' THEN 'commessa'
               WHEN 'FATTURA'  THEN 'fattura'
-          END;
+          END;   -- il CHECK garantisce che una delle tre ci sia
 
-IF v_modo IS NULL THEN
-  PERFORM script.fn_log_and_raise_error(
-    'vendite', 'trgfn_event_log_deriva_scope', 'E_EVENT_LOG_SCOPE_NON_RISOLTO',
-    jsonb_build_object('entity_type', NEW.entity_type, 'entity_id', NEW.entity_id),
-    NEW.tx_id,
-    format('il giornale non sa a quale emittente appartiene un evento di tipo «%s»',
-           NEW.entity_type));
-END IF;
+NEW.emittente_soggetto_ruolo_id :=
+    script.fn_resolve_emittente_sr_id(v_modo, NEW.entity_id);
 
-NEW.emittente_fiscale_id :=
-    script.fn_resolve_emittente_fiscale_id(v_modo, NEW.entity_id);
-
-IF NEW.emittente_fiscale_id IS NULL THEN
+IF NEW.emittente_soggetto_ruolo_id IS NULL THEN
   PERFORM script.fn_log_and_raise_error(
     'vendite', 'trgfn_event_log_deriva_scope', 'E_EVENT_LOG_SCOPE_NON_RISOLTO',
     jsonb_build_object('entity_type', NEW.entity_type, 'entity_id', NEW.entity_id),
@@ -230,20 +281,27 @@ IF NEW.emittente_fiscale_id IS NULL THEN
            'il giornale non accetta righe senza perimetro',
            NEW.entity_type, NEW.entity_id));
 END IF;
+
+-- Identità e scadenza, nello stesso passaggio.
+NEW.auth_user_id := NULLIF(current_setting('app.current_user_id', true), '')::bigint;
+NEW.cleanup_at   := COALESCE(NEW.event_time, now()) + make_interval(days => v_ttl_days);
 ```
 
-Note che valgono più del codice:
+⚠️ Note che valgono più del codice:
 
-- ⭐ **La mappa `entity_type` → modo sta nel trigger, non in una tabella.** È
-  locale a questo trigger e la lista è di tre voci: una `config.*` in più sarebbe
-  una sede da mantenere per niente. La **FK a `config.sorgenti`** garantisce già
-  che il tipo esista; questo `CASE` dice solo *da che parte si guarda*.
-- ⚠️ **Il messaggio nomina il tipo e l'id, non un parametro PL/pgSQL.** Il codice
-  è `TECNICO` (500): lo produce solo un chiamante rotto, e su un `TECNICO` la
+- **La mappa `entity_type` → modo sta nel trigger**, accanto al `CHECK` che
+  definisce il vocabolario: sono la stessa decisione e cambiano insieme.
+- **Il messaggio nomina il tipo e l'id, non un parametro PL/pgSQL.** Il codice è
+  `TECNICO` (500): lo produce solo un chiamante rotto, e su un `TECNICO` la
   chiave `campo` **non** entra nel contesto.
-- ⚠️ `%TYPE` su tutte le variabili che riflettono colonne.
+- `v_ttl_days` si legge da `dbops.automation_rules_tbl` (§3.4), non da una
+  costante: una sede sola.
+- `%TYPE` su tutte le variabili che riflettono colonne.
 
 ### 3.3 La policy — e una precisazione da fare a `linee-guida-sql` §10.1
+
+Mirror **esatto** di `rls_commesse_ef_whitelist` (`20260720-05`), che è la
+gemella più vicina: stessa convenzione SR, stesso adapter.
 
 ```sql
 CREATE POLICY rls_event_log_ef_whitelist ON vendite.event_log
@@ -251,9 +309,9 @@ CREATE POLICY rls_event_log_ef_whitelist ON vendite.event_log
     FOR ALL
     USING (
         current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
-        AND script.fn_scope_ef_whitelist(
+        AND script.fn_scope_ef_whitelist_via_sr(
                 NULLIF(current_setting('app.current_user_id', true), '')::integer,
-                emittente_fiscale_id)
+                emittente_soggetto_ruolo_id)
     )
     WITH CHECK ( ...la stessa condizione... );
 
@@ -290,11 +348,11 @@ dalla `USING`.*
 
 Tre pezzi, e vanno **insieme** o il job settimanale si rompe (§1.3).
 
-1. **`cleanup_at` valorizzata all'INSERT**, dallo stesso trigger di §3.2, leggendo
-   il TTL **dalla stessa sorgente che usa l'automazione** —
-   `dbops.automation_rules_tbl`, regola `CLEANUP_AT` più specifica per
-   `vendite`/`event_log`, con fallback alla `*all`. Una sola sede: se domani il
-   termine cambia, cambia in un posto e vale per entrambi.
+1. **`cleanup_at` valorizzata all'INSERT** dal trigger di §3.2, leggendo il TTL
+   **dalla stessa sorgente che usa l'automazione** — `dbops.automation_rules_tbl`,
+   regola `CLEANUP_AT` più specifica per `vendite`/`event_log`, con fallback alla
+   `*all`. Una sola sede: se domani il termine cambia, cambia in un posto e vale
+   per entrambi.
    ⭐ **Effetto collaterale desiderato:** con `apply_on_update: false` la regola
    `*all` costruisce `UPDATE ... WHERE cleanup_at IS NULL`. Se nessuna riga ha
    `cleanup_at` nullo, l'`UPDATE` **non tocca nessuna riga**, nessun trigger di
@@ -307,7 +365,7 @@ Tre pezzi, e vanno **insieme** o il job settimanale si rompe (§1.3).
 
    | Operazione | Prima | Dopo |
    | --- | --- | --- |
-   | `UPDATE` | eccezione senza codice | `E_EVENTO_DOCUMENTO_UPDATE_VIETATA`-style, **codice registrato** |
+   | `UPDATE` | eccezione senza codice | **codice registrato** |
    | `DELETE` di riga **non** scaduta | eccezione senza codice | `E_DELETE_NOT_ALLOWED` (già a catalogo) |
    | `DELETE` di riga **scaduta** (`cleanup_at <= now()`) | ⛔ vietato | ✅ **ammesso** |
    | `DELETE` con GUC `zeroerp.maintenance_allow_delete_logs` | ⛔ vietato | ✅ ammesso, **a parità** con `script.trgfn_logs_guard_delete` dei log gemelli |
@@ -319,32 +377,29 @@ Tre pezzi, e vanno **insieme** o il job settimanale si rompe (§1.3).
    **cancellare la storia**; non vuol dire che non puoi **ritirare ciò che ha
    passato la sua scadenza**.*
 
-3. **Seed di una regola `CLEANUP_AT` esplicita** per `vendite`/`event_log` in
-   `dbops.automation_rules_tbl` col `ttl_days` deciso (**Q-1**), così il registro
-   non eredita in silenzio i **30 giorni** della regola `*all`.
+3. **Seed della regola `CLEANUP_AT`** per `vendite`/`event_log` con
+   **`ttl_days: 750`** (D-13), così il registro non eredita in silenzio i **30
+   giorni** della regola `*all`.
 
-### 3.5 L'ordine dei `BEFORE ROW` — è portante, non un dettaglio
+### 3.5 L'ordine dei `BEFORE ROW`
 
-I `BEFORE ROW` scattano in **ordine alfabetico di nome**. Le due FK nuove fanno
-nascere da sole due guard generici `trgfn_child_requires_active_parent`:
+Con D-1 e D-9 le due FK «pericolose» non nascono, quindi la tabella resta con
+pochi trigger e in ordine alfabetico:
 
 ```
-trg_event_log_a10_deriva_scope_ins                        <-- NOSTRO, deve stare qui
-trg_event_log_a10_emittenti_fiscali_require_attivo_ins_upd   (dalla FK emittente)
-trg_event_log_a10_sorgenti_require_attivo_ins_upd            (dalla FK entity_type)
+trg_event_log_a10_deriva_scope_ins        <-- il nostro
+trg_event_log_append_only_ud              (solo UPDATE/DELETE: non concorre)
 trg_event_log_audit_data_user_upd
 trg_event_log_gen_tx_id_ins_upd
 ```
 
-`deriva` < `emittenti_fiscali` < `sorgenti`: la derivazione gira **per prima**, e
-il guard sull'emittente trova un valore valorizzato invece di un `NULL` che lo
-farebbe saltare. **Il nome del trigger è load-bearing**: cambiarlo in
-`trg_event_log_a10_scope_deriva_ins` lo manderebbe dopo `sorgenti` — e il difetto
-non si vedrebbe finché un emittente non viene disattivato.
-
-⚠️ **E i due guard `require_attivo` hanno una conseguenza da conoscere**:
-disattivare una riga di `config.sorgenti`, o un emittente fiscale, **spegne il
-diario** per quel tipo di entità. Vedi Q-4 e Q-5.
+⚠️ **Resta comunque una regola da scrivere**: se un domani qualcuno aggiunge una
+FK verso una tabella con `attivo`, l'automazione genererà
+`trg_event_log_a10_<padre>_require_attivo_ins_upd`, e i `BEFORE ROW` scattano in
+**ordine alfabetico**. `deriva` deve continuare a stare prima, o il lucchetto
+troverebbe un `NULL` e si spegnerebbe da solo. **Il nome del trigger è
+load-bearing**: rinominarlo `..._a10_scope_deriva_ins` lo manderebbe dopo la `s`
+di `sorgenti`, e il difetto non si vedrebbe finché non si disattiva qualcosa.
 
 ### 3.6 `vendite.vw_giornale_entita` — il disegno (si implementa al Passo A)
 
@@ -354,7 +409,7 @@ diario** per quel tipo di entità. Vedi Q-4 e Q-5.
 altrove: 426 righe in `fatturazione_lotti_log`, 194 in
 `fatturazione_lotti_task_runs`, i log per fattura.
 
-**La forma normalizzata** — sei colonne, e nient'altro:
+**La forma normalizzata** — sette colonne, e nient'altro:
 
 | Colonna | Da dove |
 | --- | --- |
@@ -364,7 +419,15 @@ altrove: 426 righe in `fatturazione_lotti_log`, 194 in
 | `cosa` | `event_code` · `messaggio` · `task_code` + `task_stato` |
 | `tx_id` | nativo ovunque tranne `commesse_push_log` (L2 gliela aggiunge) |
 | `correlation_id` | il giro (D-7) |
-| `chi` | `user_insert` |
+| `chi` | `auth_user_id` + `user_insert` |
+
+**Le quattro sorgenti del primo giro** (D-16): `event_log`,
+`fatturazione_lotti_log`, `fatturazione_lotti_task_runs`, `fatture_log`.
+
+⛔ **`attivita_fatturabili_log` resta fuori, e va scritto nella vista**: né lui né
+`vendite.attivita_fatturabili` hanno un filtro di perimetro, quindi quel ramo
+mostrerebbe righe di altri emittenti. Entra quando il padre avrà la sua policy —
+non prima, e non «per simmetria».
 
 **Perché non si unificano le tabelle.** La specificità serve e non è ridondanza:
 `disabilitato` è «chi accende il segnale lo spegne», `fase` e
@@ -373,12 +436,9 @@ scrittura — nessun trigger che ricopia, nessuna logica in due posti.
 
 **Come si protegge.** `security_invoker`, e ogni ramo si ancora alla propria
 testata protetta: `fatture_log` → `fatture`, `fatturazione_lotti_log` e
-`task_runs` → `fatturazione_lotti`, `commesse_attivita_log` →
-`commesse_attivita`, tutte con policy. Il ramo `event_log` si protegge da sé,
-sulla colonna nuova — **che è esattamente il motivo per cui quella colonna
-esiste**.
-⚠️ Il solo ramo `attivita_fatturabili_log` **non ha ancora un'ancora protetta**:
-né lui né `attivita_fatturabili` hanno RLS. Vedi Q-6.
+`task_runs` → `fatturazione_lotti`, tutte con policy. Il ramo `event_log` si
+protegge da sé, sulla colonna nuova — **che è esattamente il motivo per cui quella
+colonna esiste**.
 
 **E `error_log` non entra nella vista**: non ha un'entità, solo `tx_id` e un
 `context` jsonb. Ci si arriva **per `tx_id`**, come approfondimento di una riga —
@@ -396,37 +456,51 @@ ed è la ragione concreta per cui D-5 non era rinviabile.
 > ⛔ `runOnChange: false` ovunque in `00_schema` e `20_code`, `validCheckSums`
 > **al plurale**, `logicalFilePath` sempre, **un changeSet per file**.
 
-### L1 — La riga parlante *(il cuore: senza questo, niente si recupera)*
+### L1 — La riga parlante — ✅ **SCRITTO il 2026-08-22** *(niente applicato)*
+
+**Sette changeSet più tre append a CSV.** I codici errore e la regola di
+retention **non** hanno un changeSet proprio: i mirror `runOnChange` esistenti
+rileggono i CSV a ogni migrate, e un loader nuovo sarebbe una seconda sorgente
+di verità.
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| 40 | `truncate-event-log-e-riga-parlante` | `00_schema/vendite` | `TRUNCATE` (D-4) · `DROP` di `actor` e `source` (D-6) · `ADD emittente_fiscale_id bigint NOT NULL` + FK a `anagrafiche.emittenti_fiscali(id)` · `ADD tx_id uuid` · `ADD cleanup_at timestamptz` · FK `entity_type` → `config.sorgenti(codice_interno)` (D-9) |
-| 41 | `seed-sorgenti-lotto` | `80_data` | **append al CSV** `config/sorgenti.csv`: `LOTTO` → `target_table = vendite.fatturazione_lotti`, `key_selector = id`. ⛔ Nessun loader nuovo: il mirror `loadUpdateData` esistente rilegge |
-| 42 | `upsert-fk-index-policy-event-log` | `80_data` | Le due FK nuove. ⚠️ La policy è **OPT-IN**: senza seed `consentito=true` l'indice non nasce. ⚠️ `dll_command` **sempre valorizzato**, anche a `consentito=false` |
-| 43 | `seed-codici-errore-event-log` | `80_data` | **append** a `codici_errore.csv` + `messaggi_errore.csv`: `E_EVENT_LOG_SCOPE_NON_RISOLTO` (**`TECNICO`**) e il codice per l'`UPDATE` vietato. ⛔ Nessun loader upsert nuovo |
-| 44 | `update-fn-resolve-emittente-fiscale-id-lotto-commessa` | `20_code/script` | I due modi in più (§3.2a) + commento esteso sulla dipendenza dal «no `FORCE`» |
-| 45 | `create-trgfn-event-log-deriva-scope` | `20_code/vendite` | La funzione + `trg_event_log_a10_deriva_scope_ins`. ⚠️ Nome load-bearing (§3.5) |
-| 46 | `update-trgfn-event-log-append-only` | `20_code/vendite` | Codici registrati al posto del `RAISE` nudo + ramo «riga scaduta» + parità con la GUC di manutenzione (§3.4.2) |
-| 47 | `enable-rls-event-log-ef-whitelist` | `00_schema/vendite` | Policy + `ENABLE ROW LEVEL SECURITY` (§3.3). Mirror di `20260720-05` |
-| 48 | `upsert-automation-rule-cleanup-event-log` | `80_data` | Regola `CLEANUP_AT` esplicita con il `ttl_days` di **Q-1** (§3.4.3) |
+| 40 | `truncate-event-log-e-riga-parlante` | `00_schema/vendite` | `TRUNCATE RESTART IDENTITY` (D-4) · `DROP` di `actor` e `source` (D-6) · `ADD emittente_soggetto_ruolo_id bigint NOT NULL` + FK `fk_event_log_emittente` → `anagrafiche.soggetti_ruoli(id)` (D-1) · `ADD auth_user_id bigint` (D-14) · `ADD tx_id uuid` (D-5) · `ADD cleanup_at timestamptz` (D-13) · `chk_event_log_entity_type` (D-9) · commenti sull'oggetto |
+| 41 | `upsert-fk-index-policy-event-log` | `80_data` | La FK nuova sotto governo, a **`consentito = false`** con la ragione scritta: la query forense filtra per entità (`ix_event_log_entity_time`), il perimetro entra nel piano come **chiamata di funzione** e non come confronto indicizzabile, e il padre è un'anagrafica stabile. ⚠️ `dll_command` valorizzato lo stesso |
+| 42 | `create-fn-resolve-emittente-sr-id` | `20_code/script` | Il gemello SR del risolutore, `SECURITY DEFINER` + `search_path` bloccato (§3.2). ⛔ `fn_resolve_emittente_fiscale_id` **non si tocca** |
+| 43 | `create-trgfn-event-log-deriva-scope` | `20_code/vendite` | `fn_event_log_ttl_days()` (il TTL da `automation_rules_tbl`, una sede sola) + `trgfn_event_log_deriva_scope()` + `trg_event_log_a10_deriva_scope_ins`. ⚠️ Nome load-bearing (§3.5) |
+| 44 | `update-trgfn-event-log-append-only` | `20_code/vendite` | Codici registrati al posto del `RAISE` nudo · `DELETE` ammesso su riga **scaduta** o con la GUC di manutenzione (§3.4.2) |
+| 45 | `update-fn-log-event-senza-actor-source` | `20_code/vendite` | ⭐ **Non era nel piano.** `fn_log_event` elenca `actor` e `source` nel proprio `INSERT`: senza questa revisione fallirebbe a runtime dopo il `DROP COLUMN`. ⛔ E toglie parametri, quindi serve il **`DROP` esplicito** della firma a nove: `CREATE OR REPLACE` con meno parametri non sostituisce, e due firme con `DEFAULT` rendono ambigua ogni chiamata (precedente `20260727-25`) |
+| 46 | `enable-rls-event-log-ef-whitelist` | `00_schema/vendite` | Policy + `ENABLE ROW LEVEL SECURITY` (§3.3). Mirror **esatto** di `20260720-05` |
+| — | `config/codici_errore.csv` | `80_data` (CSV) | **+2**, in posizione: `E_EVENT_LOG_SCOPE_NON_RISOLTO` (**`TECNICO`**) e `E_UPDATE_NOT_ALLOWED` (**`NON_PERMESSO`**, gemello di `E_DELETE_NOT_ALLOWED`) |
+| — | `config/messaggi_errore.csv` | `80_data` (CSV) | **+2** (id 978, 979), con `causa` e `soluzione` scritte per chi legge. ⚠️ Arità verificata: due `%s`, due valori nel `VARIADIC` |
+| — | `dbops/automation_rules_tbl.csv` | `80_data` (CSV) | **+1** (id 15): `CLEANUP_AT` su `vendite`/`event_log`, **`ttl_days: 750`**, priority 190 |
 
-⚠️ **Dipendenze d'ordine:** 40 prima di 45 e 47 (la colonna deve esistere); 44
-prima di 45; 41 prima della **prima scrittura** (non della migrazione: la tabella
-è vuota, la FK valida su zero righe). L'autogen ordina `00_schema` e `20_code`
-**per numero**, mescolandoli.
+⚠️ **Dipendenze d'ordine:** 40 prima di 43, 45 e 46 (le colonne devono
+esistere); 42 prima di 43. L'autogen ordina `00_schema` e `20_code` **per
+numero**, mescolandoli, quindi la sequenza regge da sé.
+
+✅ **Verificato staticamente:** i sette file passano `yaml.safe_load`, hanno **un
+solo `changeSet`** ciascuno, `logicalFilePath` sempre, `runOnChange: false` in
+`00_schema`/`20_code` (guardrail verde), `validCheckSums` **al plurale** in tutti
+(zero occorrenze del refuso singolare), e i tre CSV hanno arità di colonne
+corretta.
+
+⛔ **Niente è stato applicato.** Nessun `liquibase update`, nessun `make
+db-migrate`.
 
 ### L2 — L'identità del giro
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| 49 | `alter-task-runs-add-correlation-id` | `00_schema/vendite` | `fatturazione_lotti_task_runs.correlation_id uuid` (§1.3 dell'analisi: la colonna «assente») |
-| 50 | `alter-commesse-push-log-run-in-testa` | `00_schema/vendite` | `commesse_push_log`: `correlation_id uuid` + `tx_id uuid` + lo stato `IN_ESECUZIONE` ammesso, perché la riga nasca **in testa** al giro (D-3) |
+| 48 | `alter-task-runs-add-correlation-id` | `00_schema/vendite` | `fatturazione_lotti_task_runs.correlation_id uuid` (§1.3 dell'analisi: la colonna «assente») |
+| 49 | `alter-commesse-push-log-run-in-testa` | `00_schema/vendite` | `commesse_push_log`: `correlation_id uuid` + `tx_id uuid` + lo stato `IN_ESECUZIONE` ammesso, perché la riga nasca **in testa** al giro (D-3) |
 
 ### L3 — La vista *(si accende col Passo A, non prima)*
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| 51 | `create-vw-giornale-entita` | `20_code/vendite` | §3.6, `security_invoker` |
+| 50 | `create-vw-giornale-entita` | `20_code/vendite` | §3.6, `security_invoker` |
 
 ---
 
@@ -453,9 +527,9 @@ prima di 45; 41 prima della **prima scrittura** (non della migrazione: la tabell
 | File | Cosa dimostra |
 | --- | --- |
 | `db/pgtap/rls/test-rls-event-log-ef-whitelist-write.sql` | Mirror di `test-rls-commesse-ef-whitelist-write.sql`: l'operatore **non** vede né scrive eventi di un emittente fuori whitelist |
-| `db/pgtap/vendite/test-event-log-deriva-scope.sql` | La derivazione funziona su `LOTTO`, `COMMESSA`, `FATTURA`; un `entity_type` fuori mappa e un `entity_id` inesistente **sollevano `P0001`** con `E_EVENT_LOG_SCOPE_NON_RISOLTO` |
+| `db/pgtap/vendite/test-event-log-deriva-scope.sql` | La derivazione funziona su `LOTTO`, `COMMESSA`, `FATTURA` · `auth_user_id` e `cleanup_at` valorizzati · un `entity_id` inesistente **solleva `P0001`** con `E_EVENT_LOG_SCOPE_NON_RISOLTO` · un `entity_type` fuori vocabolario è respinto dal `CHECK` (**`23514`**, non `P0001`: sono due cancelli diversi e il test deve dire quale) · ⭐ **e un evento su un'entità di un emittente DISATTIVATO viene scritto lo stesso** — è D-12, ed è la cosa che un pgTAP deve presidiare perché è controintuitiva |
 | `db/pgtap/vendite/test-event-log-append-only.sql` | `UPDATE` vietato · `DELETE` di riga viva vietato · `DELETE` di riga **scaduta ammesso** · `TRUNCATE` non passa dai trigger |
-| `db/pgtap/vendite/test-event-log-canale-batch.sql` | ⚠️ **Test strutturale, e va dichiarato tale**: il runner pgTAP gira come `owner` o come `app` (`PGTAP_RUNNER`), **non** come `zeroerp_batch_fatturazione`. Il test asserisce il **meccanismo** — `rolbypassrls` sul ruolo e i GRANT su `event_log` — non il comportamento. Un test che dicesse di provare la scrittura batch mentirebbe |
+| ~~`db/pgtap/vendite/test-event-log-canale-batch.sql`~~ | ⛔ **Non scritto, ed è giusto così (2026-08-22).** Duplicava `rls/test-role-batch-fatturazione-postura.sql`, che già presidia il ruolo, il `BYPASSRLS`, il **grado `i` (INSERT-only)** su `event_log` e la controprova «nessun `DELETE`» — meglio di quanto avrei fatto io. La regola del 2 vale anche per i test: una seconda sede si sarebbe disallineata alla prima modifica |
 
 ⚠️ Regole non negoziabili: le tre righe di preambolo (`BEGIN;`, riga di contesto,
 `SET CONSTRAINTS ALL IMMEDIATE`), **`throws_ok` sempre con lo SQLSTATE**
@@ -474,19 +548,27 @@ di attribuire un rosso a questo cantiere: `scripts/pgtap-baseline.sh vendite`.
 | **Toccare `E_PARAMETRO_INVALIDO`** | 126 funzioni in 7 schemi, e la sostituzione **non è meccanica**: il codice si sceglie parametro per parametro. **Brief suo** (analisi §5, Aperte #14) |
 | **Il recinto test/esercizio su `error_log`** | Difetto vero, ma `error_log` non è append-only e ha retention: una colonna aggiunta domani inizia a popolarsi domani. Non è un now-or-never |
 | **Un `trgfn_guard_emittente_scope` su questa tabella** | D-10 |
+| **Estendere `script.fn_resolve_emittente_fiscale_id`** | Con la colonna SR la derivazione è una **copia** dal padre: nasce il gemello `fn_resolve_emittente_sr_id` e la funzione esistente **non si tocca** (D-1) |
+| **Seedare `LOTTO` in `config.sorgenti`** | Serviva alla FK, che non c'è più (D-9). Se un domani il lineage vorrà il lotto come nodo, sarà una decisione sua |
+| **Segnalare come anomalia un evento su un padre disattivato** | L'avviso scatterebbe sul caso **normale** (la chiusura dei documenti di un emittente cessato) e diventerebbe rumore. Il presidio giusto sta **sul documento** — [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md) |
 
 ---
 
-## 8. Domande aperte
+## 8. Domande — tutte chiuse il 2026-08-22
 
-| # | Domanda | Blocca | Proposta |
-| --- | --- | --- | --- |
-| **Q-1** | **Il `ttl_days` di `event_log`.** Senza una regola esplicita eredita i **30 giorni** della `*all`, che per un registro adiacente al fiscale è quasi certamente sbagliato | 🔴 il changeSet **48** (solo quello) | Da decidere. Il riferimento dei documenti fiscali è 10 anni, ma questo è un diario tecnico *su* documenti fiscali, non il documento |
-| **Q-2** | **«Chi»: il nome o l'id?** `user_insert` è un `text` (lo *username*). Il gemello meglio riuscito, `documenti.documenti_generati_eventi`, tiene un **`user_id`** accanto. Se l'identità deve reggere a un rename dell'utente, serve l'id — ed è **lato scrittura**, quindi è adesso o mai | 🟡 il changeSet **40** | Aggiungere `auth_user_id bigint` derivato da `app.current_user_id` nello stesso trigger. Costa una colonna e chiude B3 per davvero |
-| **Q-3** | **Un difetto del diario può far fallire l'operazione?** Dopo L1 una `log_event` **può** sollevare (`NOT NULL`, FK, `WITH CHECK`), mentre oggi no | No, ma va deciso prima di BE-7 | **Fail-loud nel DB** (un chiamante sbagliato si scopre in test) **+ best-effort nel BE** (il telaio `_diagnostica_best_effort` esiste già). Le due cose non sono in contraddizione: sono i due lati dello stesso difetto |
-| **Q-4** | La FK a `config.sorgenti` fa nascere un guard `require_attivo`: **disattivare una sorgente spegne il diario** per quel tipo. Voluto? | No | Sì, ed è coerente — ma va scritto. E rafforza la regola di casa: si deprecano i cataloghi con `obsoleto_dal`, **non** con `attivo = false` |
-| **Q-5** | Stessa cosa per `emittenti_fiscali.attivo`: eventi su documenti di un emittente disattivato verrebbero **rifiutati** | No | Da guardare: un emittente cessato ha ancora documenti in coda, e il diario di quella coda serve proprio allora |
-| **Q-6** | `vw_giornale_entita`: quali sorgenti nel primo giro? E il ramo `attivita_fatturabili_log`, che **non ha un'ancora protetta** | No (è L3/Passo A) | Primo giro: `event_log` + `fatturazione_lotti_log` + `task_runs` + `fatture_log`. `attivita_fatturabili_log` entra quando ha un'ancora — oggi sarebbe un buco nella vista |
+| # | Era | Come si è chiusa |
+| --- | --- | --- |
+| **Q-1** | Il `ttl_days` di `event_log` (i 30 giorni della regola `*all` coprivano solo il mese in corso) | ✅ **750 giorni** — D-13. La data si scrive nella riga e non è più modificabile: sbagliare per eccesso è recuperabile, per difetto no |
+| **Q-2** | «Chi»: il nome (`user_insert`) o il numero? | ✅ **Tutti e due** — D-14. Il nome si legge senza cercare, il numero regge a un rename |
+| **Q-3** | Un difetto del diario può far fallire il lavoro? | ✅ **Fail-loud nel DB, best-effort nel BE** — D-15. E la riga nel log tecnico è la differenza fra «best-effort» e «silenzio» |
+| **Q-4 · Q-5** | I lucchetti `require_attivo` verso `config.sorgenti` e `emittenti_fiscali` spegnerebbero il diario | ✅ **Rovesciata da un rilievo di Tid**: *«invece di smettere di scrivere, non dovrebbe continuare e semmai segnalare?»*. Risposta: sul diario **non si blocca mai** (D-12), e il lucchetto non si disattiva — **si evita di crearlo**, scegliendo la colonna SR (D-1) e il `CHECK` invece della FK (D-9). ⚠️ Non si segnala nemmeno: l'avviso scatterebbe sul caso normale |
+| **Q-6** | Quali sorgenti nella vista | ✅ **Quattro** — D-16, con `attivita_fatturabili_log` fuori e il motivo scritto nella vista |
+
+> ⚠️ **Il rilievo di Q-4/Q-5 vale oltre questo cantiere.** «Chi continua a
+> scrivere su una riga annullata» è un'anomalia da **presidiare sul documento**,
+> non da nascondere spegnendo il suo diario. È materia di
+> [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md), e il
+> diario — una volta leggibile — è ciò che permette di **accorgersene**.
 
 ---
 
@@ -508,3 +590,56 @@ Il brief nasce da due giri con Tid sullo stesso giorno.
   `NOT NULL` e ha 70 valori distinti) ed esce la vista `vw_giornale_entita`,
   perché il Passo A sul solo `event_log` consegnerebbe quattro righe.
 - **Le undici decisioni** di §2 sono di Tid, prese lo stesso giorno.
+
+### 2026-08-22 (terzo giro) · L1 scritto
+
+Sette changeSet e tre append a CSV, elencati in §4. **Due cose che il piano non
+aveva previsto**, emerse scrivendo:
+
+1. ⭐ **`fn_log_event` andava rivista comunque** (changeSet 45). Il suo `INSERT`
+   elenca `actor` e `source`: il `DROP COLUMN` riesce lo stesso — un corpo
+   plpgsql non è tracciato come dipendenza dal DDL — e il difetto si sarebbe
+   scoperto **alla prima scrittura**, con un «column does not exist» che non
+   dice niente a nessuno. E togliendo parametri serve il **`DROP` esplicito**
+   della firma vecchia: due firme con `DEFAULT` rendono ambigua ogni chiamata.
+2. ⚠️ **La finestra di applicazione è vincolata.** Dopo il changeSet 40 il ramo
+   push scrive `entity_type = 'TASK_RUN'`, che il `CHECK` non ammette: quelle
+   scritture **falliscono**. È voluto (D-3 le sposta su `commesse_push_log`), ma
+   vuol dire che **L1 e le consegne BE-1/BE-3/BE-4/BE-5/BE-7 vanno applicate
+   nella stessa finestra**. Non applicare L1 su un ambiente il cui backend è
+   indietro.
+
+Su richiesta di Tid, verificato `%TYPE` in **firma, `RETURNS` e `DECLARE`**:
+corretto `p_valore` di `fn_resolve_emittente_sr_id` (era `bigint` nudo) e
+`v_auth_user_id` nel trigger. Restano deliberatamente senza `%TYPE` solo
+`v_modo` (letterale di dispatch) e `v_ttl_days` (esce da un `jsonb`, non da una
+colonna).
+
+### 2026-08-22 (secondo giro) · Le sei domande, e un rilievo che ha rovesciato il disegno
+
+Chiuse Q-1…Q-6 (§8). Cinque risposte hanno confermato il disegno; **una lo ha
+cambiato**.
+
+> Tid, sui lucchetti `require_attivo`: *«ma se invece di smettere di scrivere
+> continuasse a scrivere segnalando anche l'anomalia? Se qualcuno continua a
+> scrivere su una riga annullata c'è un problema, non è così?»*
+
+Il rilievo è giusto e più forte di come era posto: un guard su un **diario** è
+autolesionista — il fatto è già accaduto, e rifiutare la riga distrugge l'unica
+prova che lo spiegherebbe. Verificando, l'anomalia temuta risulta **già bloccata
+a monte** sui documenti, quindi il lucchetto sul diario avrebbe rifiutato **solo
+righe legittime**.
+
+Conseguenze, tutte nate da lì:
+
+- nasce **D-12**, la regola in una frase: *il diario rifiuta solo ciò di cui non
+  sa dire di chi è*;
+- il lucchetto non si può disattivare per tabella (l'automazione gira su
+  `*all`/`*all`, l'unico override è per tabella **padre**), quindi **si evita di
+  crearlo**: **D-1** passa da `emittente_fiscale_id` a
+  `emittente_soggetto_ruolo_id` (il padre non ha `attivo`) e **D-9** dalla FK a
+  un `CHECK`;
+- il disegno **si semplifica**: due changeSet in meno, `fn_resolve_emittente_fiscale_id`
+  non va toccata, e la colonna diventa la stessa che usa tutta la famiglia vendite;
+- ⚠️ **non** si segnala l'anomalia sulla riga: scatterebbe sul caso normale. Il
+  presidio giusto sta sul documento, ed è di un altro documento.

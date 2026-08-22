@@ -1,0 +1,191 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PORTA 3 DI 3 — l'eliminazione di UNA fattura impara a vedere gli accrediti
+#   script.fn_check_fattura_eliminabile_da_lotto — MOTIVO 5
+#   Contesto e misura: 20260822-48
+#
+# ⚠️ Questa e' la porta piu' esposta delle tre: lavora su una fattura sola, e
+#   la ammette anche a lotto EMESSA (allargamento RD-7). Cioe' proprio lo stato
+#   in cui vive un accredito registrato prima della numerazione.
+#
+# ⚠️ Il corpo e' ripreso dalla doc auto-generata (l'oggetto VIVO), non da uno
+#   YAML.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-51-update-fn-check-fattura-eliminabile-rettifiche-mctit.yaml
+
+  - changeSet:
+      id: 20260822-51-update-fn-check-fattura-eliminabile-rettifiche
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_check_fattura_eliminabile_da_lotto: MOTIVO 5 — righe gia' rettificate,
+        delegato a script.fn_check_fatture_con_rettifiche. E' la porta piu' esposta: lavora
+        su una fattura sola e la ammette anche a lotto EMESSA, cioe' esattamente lo stato in
+        cui vive un accredito registrato prima della numerazione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_fatture_con_rettifiche';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_fattura_eliminabile_da_lotto(
+                  p_lotto_id bigint, p_fattura_id bigint)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono di togliere UNA fattura
+              --   da un lotto. Togliere = CANCELLARE (RD-7): non esiste piu' il
+              --   modello «reperto». Funzione PURA (fn_check_*): nessun raise di
+              --   dominio, nessuna scrittura.
+              -- Consumatori: vendite.fn_elimina_fattura_da_lotto (solleva il
+              --   codice del primo motivo) e il BE, per spiegare invece di
+              --   far fallire.
+              -- Ritorna: [] se la fattura si puo' togliere; altrimenti array
+              --   ordinato di {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi        jsonb := '[]'::jsonb;
+                v_lotto_stato   config.stati_doc_fiscale.codice_interno%TYPE;
+                v_fatt_stato    config.stati_doc_fiscale.codice_interno%TYPE;
+                v_fatt_numero   vendite.fatture.numero%TYPE;
+                v_trovato       boolean;
+                v_collegata     boolean;
+              BEGIN
+                -- Guard parametri (AGENTS.md): id assenti o non validi sono
+                -- errori di programmazione, non condizioni di dominio.
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_fattura_eliminabile_da_lotto','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_fattura_eliminabile_da_lotto','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','fattura_id','valore',p_fattura_id),
+                    NULL::uuid, 'fattura_id obbligatorio (>0)');
+                END IF;
+
+                -- Stato del LOTTO, per codice: il codice_interno e' la chiave
+                -- stabile, l'id no (lezione B-4). LEFT JOIN perche' un lotto
+                -- senza stato deve arrivare al confronto e fallirlo.
+                SELECT true, sdf.codice_interno
+                  INTO v_trovato, v_lotto_stato
+                  FROM vendite.fatturazione_lotti fl
+                  LEFT JOIN config.stati_doc_fiscale sdf
+                    ON sdf.id = fl.stato_doc_fiscale_id
+                 WHERE fl.id = p_lotto_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_fattura_eliminabile_da_lotto','E_LOTTO_NON_TROVATO',
+                    jsonb_build_object('lotto_id',p_lotto_id),
+                    NULL::uuid, p_lotto_id::text);
+                END IF;
+
+                v_trovato := NULL;
+                SELECT true, sdf.codice_interno, f.numero
+                  INTO v_trovato, v_fatt_stato, v_fatt_numero
+                  FROM vendite.fatture f
+                  LEFT JOIN config.stati_doc_fiscale sdf
+                    ON sdf.id = f.stato_doc_fiscale_id
+                 WHERE f.id = p_fattura_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_fattura_eliminabile_da_lotto','E_FATTURA_NON_TROVATA',
+                    jsonb_build_object('fattura_id',p_fattura_id),
+                    NULL::uuid, p_fattura_id::text);
+                END IF;
+
+                -- MOTIVO 1 — il LOTTO e' oltre il pre-fiscale.
+                -- ⚠️ Qui sta l'allargamento di RD-7: prima si pretendeva il
+                -- lotto in DRAFT. Il confine giusto e' lo stesso delle due
+                -- sorelle (non numerato), ed e' anche quello che il FE
+                -- applica gia' — il vecchio guard produceva una voce di menu
+                -- che falliva sui lotti EMESSA.
+                IF COALESCE(v_lotto_stato, '') NOT IN ('DRAFT', 'EMESSA') THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_NON_PRE_FISCALE',
+                    'reason',     'STATO_LOTTO_NON_PRE_FISCALE',
+                    'reason_key', 'vendite.lotti.azione_reason.lotto_non_pre_fiscale',
+                    'dettaglio',  COALESCE(v_lotto_stato, '-'));
+                END IF;
+
+                -- MOTIVO 2 — la fattura non e' collegata a QUESTO lotto.
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM vendite.fatturazione_lotti_fatture lf
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND lf.fattura_id = p_fattura_id
+                ) INTO v_collegata;
+
+                IF NOT COALESCE(v_collegata, false) THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_FATTURA_NON_COLLEGATA_AL_LOTTO',
+                    'reason',     'FATTURA_NON_COLLEGATA',
+                    'reason_key', 'vendite.lotti.azione_reason.fattura_non_collegata',
+                    'dettaglio',  p_fattura_id);
+                END IF;
+
+                -- MOTIVO 3 — la FATTURA e' oltre il pre-fiscale.
+                -- Gate fiscale, non un'asimmetria: le DEFINITIVA+ restano
+                -- rifiutate anche se il lotto che le contiene sarebbe aperto.
+                IF COALESCE(v_fatt_stato, '') NOT IN ('DRAFT', 'EMESSA') THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_FATTURA_GIA_FISCALE',
+                    'reason',     'FATTURA_NON_PRE_FISCALE',
+                    'reason_key', 'vendite.lotti.azione_reason.fattura_non_pre_fiscale',
+                    'dettaglio',  COALESCE(v_fatt_stato, '-'));
+                END IF;
+
+                -- MOTIVO 4 — la fattura ha gia' un numero.
+                -- ⚠️ Ridondante per costruzione rispetto al 3 (a EMESSA la
+                -- fattura non e' numerata, C-19) e va tenuto lo stesso: il
+                -- danno sarebbe irreversibile, quindi si guarda il FATTO e
+                -- non lo stato che dovrebbe implicarlo. Stesso principio di
+                -- script.fn_check_lotto_riportabile_a_draft.
+                IF v_fatt_numero IS NOT NULL THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_FATTURA_GIA_NUMERATA',
+                    'reason',     'FATTURA_NUMERATA',
+                    'reason_key', 'vendite.lotti.azione_reason.fattura_numerata',
+                    'dettaglio',  v_fatt_numero);
+                END IF;
+
+                -- ⭐ MOTIVO 5 (2026-08-22) — righe gia' RETTIFICATE.
+                -- ⚠️ Questa e' la porta piu' esposta delle tre: lavora su UNA
+                -- fattura e la ammette anche a lotto EMESSA (motivo 1), cioe'
+                -- proprio lo stato in cui vive un accredito registrato prima
+                -- della numerazione. Il motivo 4 non lo copre: l'accredito e'
+                -- ancorato alla coda dei resi, non al numero.
+                v_motivi := v_motivi
+                          || script.fn_check_fatture_con_rettifiche(ARRAY[p_fattura_id]);
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_fattura_eliminabile_da_lotto(p_lotto_id bigint, p_fattura_id bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi all''eliminazione di UNA fattura da un lotto. Togliere = CANCELLARE (RD-7, 2026-08-04). Ritorna [] oppure array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (831) — allargamento RD-7. Motivo 2: fattura non collegata a questo lotto (832). Motivo 3: fattura oltre il pre-fiscale (833). Motivo 4: fattura gia'' NUMERATA (834), deliberatamente ridondante rispetto al 3. ⭐ Motivo 5 (2026-08-22): righe gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ e'' la porta piu'' esposta delle tre, perche'' lavora su UNA fattura e la ammette anche a lotto EMESSA, cioe'' proprio lo stato in cui vive un accredito registrato prima della numerazione; il motivo 4 non lo copre, l''accredito e'' ancorato alla coda dei resi e non al numero. Sorgente UNICA letta da vendite.fn_elimina_fattura_da_lotto. rev 2026-08-22.';
+      rollback:
+        - empty: {}

@@ -24,6 +24,7 @@
 - [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
+- [fn_check_fatture_con_rettifiche](funzioni/fn_check_fatture_con_rettifiche.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
 - [fn_check_lotto_annullabile](funzioni/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
 - [fn_check_lotto_fatture_pre_fiscali](funzioni/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
@@ -105,6 +106,7 @@
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
+- [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md)
 - [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
