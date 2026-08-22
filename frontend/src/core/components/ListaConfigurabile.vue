@@ -49,6 +49,7 @@ import Column from 'primevue/column'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
 import { PAGINATION } from '../constants'
+import { etichettaColonna } from '../utils/i18nLabel'
 import { useListaConfig } from '../composables/useListaConfig'
 import { useResponsiveColumns } from '../composables/useResponsiveColumns'
 import CellaConfigurabile from './CellaConfigurabile.vue'
@@ -193,17 +194,13 @@ const colonneRender = computed(() => {
     .filter((c) => c.visibile !== false)
     .map((c) => {
       const m = meta.get(c.codice) || {}
-      // Risoluzione header multilingua: se il catalogo dichiara una
-      // chiave i18n esistente (`etichetta_i18n_key`), risolviamo via
-      // vue-i18n; altrimenti fallback all'`etichetta` letterale del
-      // catalogo; ultimo fallback al `codice` (catalogo non ancora
-      // caricato — caso teorico oggi che il catalogo e' eager).
-      // `te` (translation-exists) evita di mostrare la chiave grezza
-      // quando il seed dichiara una key non ancora aggiunta ai locale.
-      let header = m.etichetta || c.codice
-      if (m.etichetta_i18n_key && te(m.etichetta_i18n_key)) {
-        header = t(m.etichetta_i18n_key)
-      }
+      // Risoluzione header multilingua: sede unica in `etichettaColonna`
+      // (chiave dalla CONFIG, poi dal catalogo, poi le etichette letterali).
+      // ⚠️ Prima la chiave si cercava SOLO nei metadati del catalogo, che
+      // l'endpoint non restituiva: nessuna colonna si e' mai tradotta, in
+      // nessuna lista — e il guard `te` lo rendeva silenzioso. La chiave
+      // della config arriva invece a ogni richiesta (`fn_resolve_lista_config`).
+      const header = etichettaColonna(t, te, { config: c, meta: m })
       return {
         codice: c.codice,
         ordine: c.ordine,

@@ -262,6 +262,11 @@ _LISTE: tuple[tuple[str, object], ...] = (
      _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_task_runs.md")),
     ("vendite.lotto_segnalazioni",
      _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni.md")),
+    # Montata il 2026-08-22 (Vendite -> Tool fatturazione, primo tab). Era
+    # seedata dal 15-08 e SENZA consumatore frontend: il registro contava 46
+    # liste montate contro 47 codici a catalogo, e la differenza era questa.
+    ("vendite.fondi_fattura_da_decidere",
+     _whitelist_di_classe("FONDI_DA_DECIDERE_SORT_COLUMNS")),
     ("vendite.dash_aperto_documenti", _whitelist_di_classe("DASH_APERTO_SORT_COLUMNS")),
     ("vendite.dash_backlog_documenti", _whitelist_di_classe("DASH_BACKLOG_SORT_COLUMNS")),
     ("vendite.dash_competenza_errori", _whitelist_di_classe("DASH_COMPETENZA_ERRORI_SORT_COLUMNS")),

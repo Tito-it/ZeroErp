@@ -19,6 +19,9 @@
 #   9. richiede_scelta_emittente_falso_se_la_lista_e_certificata
 #  10. flag_di_catalogo_assente_vale_come_non_certificata
 #  11. perimetro_risolto_una_volta_sola_per_istanza
+#   Guardrail multilingua colonne (2026-08-22)
+#  12. sql_del_catalogo_seleziona_la_chiave_i18n
+#  13. catalogo_reale_porta_la_chiave_valorizzata (e2e, opt-in)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -30,6 +33,9 @@ from django.db import DatabaseError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from unittest import TestCase as UnittestTestCase
+
+from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.ui.services.ui_service import (
     E_UI_GENERIC_FAILED,
     E_UI_LISTA_NON_TROVATA,
@@ -316,3 +322,55 @@ class UiServicePerimetroEmittenteTests(SimpleTestCase):
         ) as mock_scope:
             UiService(repository=repo).get_catalogo(_make_user(), "vendite.x")
         self.assertEqual(mock_scope.call_count, 1)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Guardrail multilingua delle colonne (2026-08-22)
+# ══════════════════════════════════════════════════════════════════
+class CatalogoColonneI18nGuardrailTests(UnittestTestCase):
+    """⭐ Il catalogo colonne deve portare `etichetta_i18n_key`.
+
+    ⚠️ NASCE DA UN DIFETTO REALE, e da uno che i mock non potevano vedere.
+    `list_colonne_by_codice` selezionava 19 colonne e NON quella: il frontend
+    cercava li' la chiave i18n, non la trovava, e ripiegava sull'etichetta
+    italiana del seed — per OGNI colonna di OGNI lista, in qualunque lingua.
+    I test di servizio qui sopra passavano tutti: girano su un repository
+    MagicMock, che risponde quello che gli si dice.
+
+    Per questo il presidio e' su DUE piani e non su uno:
+      1. il TESTO dell'SQL — deterministico, gira sempre, e cade il giorno in
+         cui qualcuno riscrive la SELECT dimenticando la colonna;
+      2. il DATO vero (opt-in `ZEROERP_TEST_DB_E2E=1`) — perche' una colonna
+         puo' esistere nella SELECT e arrivare comunque vuota se il seed non
+         la valorizza.
+    """
+
+    # Scopo: la SELECT del catalogo cita `etichetta_i18n_key`.
+    def test_sql_del_catalogo_seleziona_la_chiave_i18n(self) -> None:
+        import inspect
+
+        from apps.ui.db.ui_repository import UiRepository
+
+        sorgente = inspect.getsource(UiRepository.list_colonne_by_codice)
+        self.assertIn(
+            "etichetta_i18n_key",
+            sorgente,
+            "Il catalogo colonne non espone `etichetta_i18n_key`: le "
+            "intestazioni tornerebbero all'etichetta italiana del seed in "
+            "qualunque lingua, e in silenzio (il guard `te` del frontend "
+            "ripiega senza dire niente).",
+        )
+
+    # Scopo: sul DB vero la chiave arriva VALORIZZATA (non solo selezionata).
+    def test_catalogo_reale_porta_la_chiave_valorizzata(self) -> None:
+        richiedi_db_provvisto()
+        from apps.ui.db.ui_repository import UiRepository
+
+        colonne = UiRepository().list_colonne_by_codice("vendite.lotti")
+        self.assertTrue(colonne, "catalogo vuoto: lista di prova non seedata?")
+        self.assertIn("etichetta_i18n_key", colonne[0])
+        senza_chiave = [c["codice"] for c in colonne if not c.get("etichetta_i18n_key")]
+        self.assertEqual(
+            senza_chiave, [],
+            f"colonne senza chiave i18n su vendite.lotti: {senza_chiave}",
+        )

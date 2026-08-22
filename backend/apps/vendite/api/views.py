@@ -873,6 +873,9 @@ class ApiLottoDetail(DomainAPIView):
                             "emittente_soggetto_ruolo_id": serializers.IntegerField(allow_null=True),
                             "data_insert": serializers.CharField(allow_null=True),
                             "user_insert": serializers.CharField(),
+                            # Segnale di un giro solo: il prossimo run RIFA' lo
+                            # step corrente invece di avanzare (vedi types.py).
+                            "riaperto": serializers.BooleanField(),
                             # Blob capability (script.fn_available_actions_lotto):
                             # assente se il capability layer e' rotto (fallback
                             # graceful nel service) → required=False.

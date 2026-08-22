@@ -18,14 +18,19 @@
 > (`storico.audit_log` compresa); il **7°** (2 code + approvazioni prezzo +
 > `VersioneDrawer`) e l'**8°** (drawer commessa + le 5 liste delle 3 dashboard)
 > il **03-08**; il **9°** (`LottoDrawer`, 3 liste su 3 tab) il **22-08**.
-> Registro del presidio a **46/46** — cioè le liste *montate dal frontend*. ⚠️ Nel seed le definizioni sono **44**: la 44 è
-> `vendite.fondi_fattura_da_decidere` (seedata il 2026-08-15 da un altro
-> cantiere, nessun consumatore FE, per questo non è nel registro `_LISTE`;
-> nella whitelist del generatore è entrata il 2026-08-22).
+> Registro del presidio a **47/47** — cioè le liste *montate dal frontend*.
+> ⭐ Il 47° è `vendite.fondi_fattura_da_decidere` (definizione 44), che il
+> 2026-08-22 ha smesso di essere l'eccezione: era seedata dal 15-08 da un altro
+> cantiere e **non la montava nessuno**, cioè esisteva e nessun operatore poteva
+> aprirla. Ora ha la sua pagina — *Vendite → Tool fatturazione*, primo tab —
+> e il registro non ha più righe scoperte.
 > ⚠️ **Qui si contano FILE, il presidio conta CODICI lista**: sono due unità
 > di misura diverse e divergono già oggi (le 3 dashboard valgono 5 codici).
 > `LottoDrawer` è 1 file = 3 codici, quindi con la sua conversione il piano
-> è passato a **31/35** e il registro `_LISTE` a **46**.
+> è passato a **31/35**. La pagina «Tool fatturazione» **non muove il
+> rapporto**: non è una conversione, è un file NUOVO che nasce standard — il
+> denominatore 35 è il censimento delle liste *già scritte a mano*, e gonfiarlo
+> con le nuove farebbe sembrare il debito più grande di quello che è.
 >
 > Il rapporto che il piano voleva invertire — 14 liste sullo standard contro 71
 > con `DataTable` grezza (§8-bis, «il numero scomodo») — **è invertito**: 40
@@ -2350,18 +2355,29 @@ parametri. Baseline `vendite`: 36 rossi, 36 noti, **nessuna regressione**.
 
 #### 📌 Cosa resta aperto sul binario delle liste — ✅ NIENTE (2026-08-03)
 
-**31/35 convertite · 47 codici seedati · presidio 46/46 · 1 KO.**
+**31/35 convertite · 47 codici seedati · presidio 47/47 · ✅ zero KO.**
 
-⚠️ Il KO è `vendite.fondi_fattura_da_decidere`, ed è **preesistente**: era
-l'unica lista seedata a non essere registrata nella whitelist del generatore,
-quindi veniva *saltata* — cioè dichiarata a posto senza essere guardata.
-Mappata il 2026-08-22 registrando le tre del drawer lotto, e appena mappata ha
-detto la verità: il nucleo «stato» non ordina (`stato_atto` è a catalogo con
-`ordinabile=f`). Serve una riga di seed dal team DB più la voce nella whitelist
-del repository.
-📌 47 codici seedati contro 46 nel presidio: la 44
-(`vendite.fondi_fattura_da_decidere`) non ha un consumatore frontend, quindi
-non è nel registro `_LISTE` — che conta le liste *montate*.
+✅ L'ultimo KO era `vendite.fondi_fattura_da_decidere`, ed era **preesistente**:
+era l'unica lista seedata a non essere registrata nella whitelist del
+generatore, quindi veniva *saltata* — cioè dichiarata a posto senza essere
+guardata. Mappata il 2026-08-22 registrando le tre del drawer lotto, e appena
+mappata ha detto la verità: il nucleo «stato» non ordinava (`stato_atto` a
+catalogo con `ordinabile=f`). **Chiuso in giornata con i due passi insieme** —
+riga di seed dal team DB (`ordinabile` `f` → `t`) e voce `stato_atto` in
+`FONDI_DA_DECIDERE_SORT_COLUMNS` — perché separati si peggiorava: il solo flag
+avrebbe prodotto una freccia che ordina per stato e ottiene `data`, senza
+nessun errore a dirlo. `--verifica-ordinamento`: **47 liste allineate in tutte
+e tre le direzioni**. Dettaglio in
+[brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md)
+§4-bis B.
+✅ **E il 2026-08-22 i due numeri hanno smesso di divergere**: erano 47 codici
+seedati contro 46 nel presidio, e la differenza era una sola — la 44
+(`vendite.fondi_fattura_da_decidere`), l'unica lista **senza consumatore
+frontend**. Ora è montata (*Vendite → Tool fatturazione*, primo tab) e il
+registro `_LISTE` — che conta le liste *montate* — arriva a **47**.
+📌 La pagina è nuova, non convertita: il rapporto 31/35 resta quello che è.
+Vale la pena tenerlo a mente come metro — un catalogo con più righe di quante
+il frontend ne mostri non è un catalogo pronto, è una lista che nessuno guarda.
 
 I 4 file non convertiti sono i cassetti fermi per **decisione 4**, non debito:
 caricano tutto in una volta e servirebbero quattro endpoint paginati nuovi

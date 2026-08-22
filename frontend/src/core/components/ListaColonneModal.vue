@@ -23,6 +23,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import InputNumber from 'primevue/inputnumber'
 import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
+import { etichettaColonna } from '../utils/i18nLabel'
 import { DRAWER_WIDTH } from '../constants'
 import { useConfirmAction } from '../composables/useConfirmAction'
 const { confirmAction } = useConfirmAction()
@@ -47,7 +48,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:visible', 'apply', 'reset'])
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 // Copia locale modificabile della config. Resetata ad ogni open per
 // scartare modifiche di una sessione precedente di apertura modale.
@@ -194,8 +195,14 @@ function onReset() {
             @update:model-value="(v) => updateColonna(col.codice, (c) => (c.visibile = v))"
           />
           <div class="lista-config-row-label">
+            <!-- ⚠️ NON `col._meta.etichetta`: quella e' l'etichetta italiana
+                 del seed, e la modale restava in italiano in qualunque lingua.
+                 La chiave i18n arriva sia dalla config sia (dal 2026-08-22) dal
+                 catalogo: la sceglie `etichettaColonna`, la stessa funzione che
+                 intesta le colonne della tabella — altrimenti la modale e la
+                 lista chiamerebbero la stessa colonna in due modi. -->
             <span :title="col._meta?.etichetta_estesa || ''">
-              {{ col._meta?.etichetta || col.codice }}
+              {{ etichettaColonna(t, te, { config: col, meta: col._meta }) }}
             </span>
             <Tag
               v-if="col._meta?.sensibile"

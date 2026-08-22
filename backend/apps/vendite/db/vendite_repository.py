@@ -306,7 +306,18 @@ class VenditeRepository:
                                    AND fl_log.disabilitato IS FALSE
                             )
                        )
-                ) AS ha_errori_gravi
+                ) AS ha_errori_gravi,
+                -- ⭐ Il lotto e' stato riportato in lavorazione e il giro non ha
+                -- ancora rifatto lo step (`riaperto_il` si spegne appena il
+                -- runner lo onora, `azzera_riaperto_il`). Serve al FE per
+                -- NOMINARE giusto la prossima esecuzione: su un lotto riaperto
+                -- il prossimo run RIFA' lo step corrente e il lotto resta in
+                -- DRAFT — chiamarlo «Avanza step» e rispondere «Pipeline
+                -- avanzata» dice una cosa falsa (collaudo NC resi, 2026-08-22).
+                -- ⚠️ Il verdetto resta del runner (`is_lotto_riaperto`): questo
+                -- e' lo STESSO predicato letto per la presentazione, non una
+                -- seconda regola. Se il criterio cambiasse, cambia di la'.
+                (fl.riaperto_il IS NOT NULL) AS riaperto
     """
 
     _LOTTO_JOINS = """
@@ -359,6 +370,7 @@ class VenditeRepository:
             # pretende, senza esserlo.
             "emittente_ragione_sociale": row[18],
             "ha_errori_gravi": bool(row[19]),
+            "riaperto": bool(row[20]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -1967,6 +1979,15 @@ class VenditeRepository:
     # `sql_order_direction` mette i NULL — in fondo ordinando DESC, che e'
     # quello che serve a chi cerca gli importi. `capienza_attuale` invece e'
     # calcolata su TUTTI i rami (fn_saldo_sorgente_fondo fa COALESCE): mai NULL.
+    # ⚠️ `stato_atto` vale `'DISPONIBILE'` sul solo ramo NON_PIU_CAPIENTE (dove
+    # la vista filtra `s.stato = 'DISPONIBILE'`) ed e' `NULL::varchar` per
+    # COSTRUZIONE sugli altri: la colonna ha DUE valori, non uno, e ordinarla
+    # separa le righe con un atto vivo da quelle senza — che e' informazione
+    # vera, non un flag alzato per far tacere il presidio dei seed.
+    # 📌 Sui NULL non serve nessun `NULLS LAST` scritto a mano: la direzione la
+    # produce `sql_order_direction`, che ritorna gia' `ASC NULLS FIRST` /
+    # `DESC NULLS LAST` (il vuoto sta dove starebbe lo zero) proprio perche' i
+    # default di PostgreSQL sono l'opposto.
     FONDI_DA_DECIDERE_SORT_COLUMNS: dict[str, str] = {
         "data": "data",
         "motivo": "motivo",
@@ -1975,6 +1996,7 @@ class VenditeRepository:
         "totale_a_pagare": "totale_a_pagare",
         "importo_proposto": "importo_proposto",
         "capienza_attuale": "capienza_attuale",
+        "stato_atto": "stato_atto",
     }
 
     # Colonne dell'elenco, NELL'ORDINE: un'unica tupla costruisce sia il SELECT
