@@ -240,6 +240,15 @@ vecchio Passo 3 si divide in **A** (forense) e **B** (aggregato).
 > lunga. La ragione è che tutto il resto ci si appoggia — un endpoint scritto
 > prima nascerebbe con lo scope applicato in Python, e andrebbe disfatto
 > all'arrivo della RLS.
+>
+> ⭐ **E c'è una ragione più forte di quella**, emersa parlandone: il Passo 0
+> **paga prima che esista qualunque schermata**. Oggi il diario è illeggibile
+> anche per chi ha accesso diretto al database — `entity_id` a zero su un terzo
+> delle righe, `actor` costante, `correlation_id` assente sul ramo push: una
+> `SELECT` a mano non ricostruisce niente. La query esiste già ed è indicizzata
+> (`ix_event_log_entity_time`); quello che manca è che le righe **dicano
+> qualcosa**. Il Passo 0 non è quindi un investimento sull'endpoint futuro: è la
+> cosa che rende utile il registro **subito**, a chi sta sviluppando.
 
 Oggi la riga di `event_log` non sa dire nessuna delle tre cose:
 
