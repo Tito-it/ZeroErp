@@ -119,7 +119,59 @@ conferma la distinta si annulla, dopo no — una testata *senza* stato non sareb
 né l'uno né l'altro, e passerebbe i filtri di entrambi. Dal 2026-08-21 la colonna
 è `NOT NULL` con default `BOZZA`.
 
-### I quattro guard che la difendono
+### 🔒 Chi la vede — la RLS del perimetro incassi (2026-08-22)
+
+Policy `rls_vendite_contabili_perimetro_incasso`, **`FOR ALL`**, gate
+`OPERATORE` fail-closed. Il perimetro viene dal **conto di incasso** e non dalla
+fattura (**D5**): una distinta è un estratto conto e la fattura non ce l'ha — un
+predicato «via fattura» avrebbe reso la coda «da abbinare» invisibile **a
+tutti**, che è peggio di visibile a chi non dovrebbe.
+
+```text
+vendite_contabili.ente_incasso_id
+    → enti_incasso.soggetto_ruolo_conto_bancario_id
+        → soggetti_ruoli_conti_bancari.soggetto_ruolo_id
+            → emittenti_fiscali → whitelist dell'operatore
+```
+
+⭐ **La distinta senza canale (`ente_incasso_id IS NULL`) resta visibile a tutti**,
+e la condizione sta **in chiaro nel predicato**, non dentro una funzione: chi
+legge la policy deve vedere l'eccezione. Non è generosità, è la **verità del
+modello** — le distinte interne (fondo fattura, compensazione) le fabbrica il
+sistema e la chiave di riuso non nomina l'emittente, quindi ne raccolgono di
+tutti: dichiararle «di qualcuno» sarebbe una bugia, nasconderle a tutti
+spegnerebbe la pipeline. ⚠️ Le sue **righe** non ereditano niente: la loro policy
+le filtra una per una sulla fattura che portano.
+
+> 🔴 **Perché `FOR ALL` e non `FOR SELECT`** — misurato, non supposto:
+> 1. la RLS **nega ciò che nessuna policy permette**: con la sola `FOR SELECT` la
+>    tabella diventa **di sola lettura** per l'applicazione;
+> 2. **`INSERT ... RETURNING` passa dalla `USING`**: una riga che la `USING` non
+>    copre fa fallire l'`INSERT` con *«la nuova riga viola la regola di sicurezza
+>    per riga»* — e `fn_get_or_create_vendite_contabile` restituisce l'id proprio
+>    con un `RETURNING`.
+>
+> ⭐ Ne segue una regola che vale oltre questo caso: **ciò che l'applicazione
+> scrive e poi rilegge deve essere visibile a chi l'ha scritto, nello stesso
+> istante.** Un perimetro che si chiude su una riga appena creata non nasconde:
+> **rompe**.
+
+⚠️ `ENABLE` ma **non** `FORCE`, a parità col resto del database — e qui il `FORCE`
+non è solo «più avanti»: il risolutore che regge il predicato è `SECURITY
+DEFINER` e gira come proprietario, quindi con il `FORCE` rientrerebbe sotto la
+policy della tabella che sta leggendo e nascerebbe una **ricorsione**.
+
+⚠️ `zeroerp_batch_fatturazione` ha `BYPASSRLS`: i percorsi batch non cambiano.
+
+⭐ **La policy nasconde, il trigger rifiuta.** Il guard di scrittura
+`trg_vendite_contabili_a10_guard_emittente_scope_ins_upd` (modo `ente_incasso`)
+impedisce di **aprire una distinta sul canale di un altro emittente** e lo
+**spiega**; un `WITH CHECK` da solo direbbe «new row violates row-level security
+policy», che è vero e inservibile.
+
+---
+
+### I cinque guard che la difendono
 
 | Guard | Impedisce |
 | --- | --- |
@@ -127,6 +179,7 @@ né l'uno né l'altro, e passerebbe i filtri di entrambi. Dal 2026-08-21 la colo
 | `trgfn_vendite_contabili_guard_chiusura` | di **chiudere** una distinta che ha ancora righe pronte |
 | `trgfn_vendite_contabili_guard_validazione` | di validare con un totale che non quadra, e di riaprire una distinta non manuale |
 | `trgfn_vendite_contabili_guard_ente_centro` | le incoerenze fra centro, ente e compensazione |
+| `script.trgfn_guard_emittente_scope('ente_incasso','ente_incasso_id')` | di **aprire una distinta sul canale di un altro emittente** *(2026-08-22)* |
 
 ---
 

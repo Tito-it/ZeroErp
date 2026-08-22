@@ -528,11 +528,29 @@ sarebbe la variante silenziosa: `list_fondi_da_decidere` fa
 quindi l'operatore ordinerebbe per stato ottenendo un ordine per data, senza
 nessun errore a dirglielo.
 
-✅ **Verificato anche il resto**: la lista 44 non ha altri difetti: `stato_atto`
-è l'unica cosa che la separa da zero KO. La riga di seed è pronta e si alza
-**nello stesso giro** in cui `stato_atto` entra in
-`FONDI_DA_DECIDERE_SORT_COLUMNS` (al 2026-08-22 la whitelist ha 7 voci e non
-la contiene).
+✅ **Verificato anche il resto**: la lista 44 non ha altri difetti — `stato_atto`
+è l'unica cosa che la separa da zero KO.
+
+✅ **METÀ DB FATTA il 2026-08-22** (riga 466: `ordinabile` `f` → `t`), su
+richiesta del BE che si è impegnato ad aggiungere `"stato_atto": "stato_atto"`
+nello stesso giro. ⚠️ **Finché la loro voce non atterra, il presidio accusa
+l'altra metà** (`stato_atto` fra le bugiarde, nucleo ancora rotto): è il
+transitorio dichiarato, non uno stato di riposo.
+
+⭐ **E leggendo la vista per decidere è saltato fuori che l'etichetta mentiva.**
+Diceva *«Sempre DISPONIBILE: la vista mostra solo atti vivi non applicabili»*.
+Falso: `vw_fondi_fattura_da_decidere` è una UNION di **tre rami** e
+`stato_atto` è `s.stato` (filtrato a `'DISPONIBILE'`) **solo sul secondo** —
+sugli altri due è `NULL::character varying` **per costruzione**. Quindi la
+colonna ha due valori, non uno, e ordinare per essa **separa i casi con un atto
+vivo da quelli senza**: `ordinabile = t` sta in piedi sul merito, non solo per
+far tacere il presidio. Etichetta corretta nello stesso giro.
+
+🔵 **Conseguenza per il BE, e non è teorica**: due rami su tre danno NULL, e
+`list_fondi_da_decidere` costruisce l'`ORDER BY` **senza `NULLS LAST`**. Su
+`desc` PostgreSQL mette i NULL in testa, quindi «ordina per stato, decrescente»
+comincerebbe dalle righe che uno stato non ce l'hanno. È la stessa lezione già
+pagata due volte in questo cantiere (lista 47, `fn_list_commessa_attivita`).
 ⭐ E il rosso resta esposto di proposito: era la dimostrazione della regola —
 *una lista non registrata è dichiarata a posto senza essere stata guardata*.
 

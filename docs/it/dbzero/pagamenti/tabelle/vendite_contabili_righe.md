@@ -57,8 +57,12 @@
 |------|--------|--------|--------|
 | trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()` |
 | trg_vendite_contabili_righe_a10_guard_distinta_finale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()` |
+| trg_vendite_contabili_righe_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_id')` |
+| trg_vendite_contabili_righe_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_id')` |
 | trg_vendite_contabili_righe_a10_guard_rata_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_rata()` |
 | trg_vendite_contabili_righe_a10_guard_rata_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_rata()` |
+| trg_vendite_contabili_righe_a10_guard_scope_conto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('contabile', 'contabile_id')` |
+| trg_vendite_contabili_righe_a10_guard_scope_conto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('contabile', 'contabile_id')` |
 | trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()` |
 | trg_vendite_contabili_righe_a10_guard_stato_dati_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati()` |
 | trg_vendite_contabili_righe_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione()` |
@@ -69,8 +73,8 @@
 | trg_vendite_contabili_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vendite_contabili_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_vendite_contabili_righe_z90_marca_fondo_eseguito_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()` |
 | trg_vendite_contabili_righe_z90_marca_fondo_eseguito_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()` |
+| trg_vendite_contabili_righe_z90_marca_fondo_eseguito_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -287,6 +287,12 @@ Il campo `tipo` ammette quattro valori: `BANCA`, `POSTE`, `PSP`, `ALTRO`. Le reg
 * Se `tipo = PSP`: `soggetto_ruolo_id` obbligatorio, con validazione del ruolo tramite `trgfn_enti_incasso_guard_psp`
 * Negli altri casi: `bank_branch_id` deve essere NULL
 
+⭐ **E dal 2026-08-22 ogni canale, di qualunque tipo, deve dire su quale conto
+dell'azienda atterra il suo denaro** (`soggetto_ruolo_conto_bancario_id`). Non e'
+un dettaglio anagrafico: e' il modo in cui il sistema sa **di chi sono** i soldi
+che arrivano prima ancora che siano attribuiti a una fattura. Si spiega piu'
+avanti, in «Chi vede che cosa».
+
 Da un punto di vista tecnico:
 
 | Colonna                 | Tipo         | Nullable | Descrizione                                                         |
@@ -299,6 +305,7 @@ Da un punto di vista tecnico:
 | `centro_riscossione_id` | BIGINT, FK   |    si    | Centro di riscossione di appartenenza                               |
 | `soggetto_ruolo_id`     | BIGINT, FK   |    si    | Soggetto con ruolo anagrafico                                       |
 | `bank_branch_id`        | BIGINT, FK   |    si    | Filiale bancaria (obbligatoria per `BANCA`)                         |
+| `soggetto_ruolo_conto_bancario_id` | BIGINT, FK |  **no**  | ⭐ Il conto dell'azienda su cui atterra il denaro del canale — e' il perimetro |
 | `formato_flusso`        | TEXT         |    si    | Formato del flusso importato                                        |
 | `regole_match`          | JSONB        |    no    | Regole di abbinamento flusso                                        |
 | `attivo`                | BOOLEAN      |    no    | Flag attivo/disattivo (default: true)                               |
@@ -311,6 +318,17 @@ Da un punto di vista tecnico:
 * `chk_enti_incasso_bank_branch_tipo` — `bank_branch_id` obbligatorio se e solo se `tipo = BANCA`
 
 **Trigger di guardia PSP:** il trigger `trgfn_enti_incasso_guard_psp` (BEFORE INSERT/UPDATE) verifica che per `tipo = PSP` il `soggetto_ruolo_id` appartenga a un ruolo con `codice_interno = 'PSP'` e che esista un record attivo in `anagrafiche.psp`.
+
+**Trigger di guardia sul conto:** `trgfn_enti_incasso_guard_conto_incasso` verifica
+che il conto agganciato sia registrato **per gli incassi** e non per altro (i
+pagamenti, i rimborsi). Non e' una formalita': e' su quel legame che poggia il
+riconoscimento di chi sono i soldi in arrivo.
+
+> 📮 **Conseguenza pratica**: finche' le due aziende non hanno un conto «di
+> incasso» censito in anagrafica, **nessun canale e' configurabile**. E' voluto:
+> un canale senza conto produrrebbe una coda di incassi che nessuno vede, e
+> quell'errore si scopre mesi dopo. Meglio fermarsi alla configurazione, dove chi
+> se ne accorge puo' rimediare subito.
 
 > Documentazione dettagliata: [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)
 
@@ -783,6 +801,77 @@ Il modello espone due livelli di saldo per ogni fattura, che rispondono a domand
 Il saldo finanziario dice "quanto resta da incassare"; il saldo contabile dice "quanto e gia registrato nelle contabili ma non ancora diventato movimento". La differenza tra i due indica il margine di lavoro operativo.
 
 Questa separazione e fondamentale per evitare duplicazioni nei processi automatici (generazione fondi fattura, sincronizzazione contabili) e per dare visibilita sullo stato di avanzamento degli incassi.
+
+---
+
+## Chi vede che cosa — il perimetro degli incassi
+
+> Sezione aggiunta il **2026-08-22**. Riguarda le installazioni in cui convivono
+> **piu' aziende** (in questo sistema sono due, entrambe attive): chi lavora per
+> l'una non deve vedere i soldi dell'altra.
+
+### Il problema, in una frase
+
+Il sistema capisce a chi appartiene un documento **guardando il documento**: una
+fattura dice qual e' l'azienda che l'ha emessa, e da li' si decide chi puo'
+vederla. ⚠️ **Ma quando mille euro arrivano in banca non hanno ancora una
+fattura.** Applicare la regola normale li renderebbe invisibili — non «visibili
+a chi non dovrebbe»: invisibili **a tutti**. E un elenco vuoto sembra un elenco
+di cose finite, non un lavoro che nessuno riesce a vedere.
+
+### La risposta: il conto
+
+> Un'azienda ha una partita IVA propria, e due aziende diverse **non incassano
+> sullo stesso conto corrente**. Quindi il denaro ha un padrone **dal primo
+> istante**: l'ha deciso il cliente scegliendo su quale conto pagare.
+
+⭐ Il sistema ora usa proprio questo. Ogni **canale di incasso** dichiara su quale
+conto atterra il suo denaro; da quel conto si risale all'azienda; e da li' si
+decide chi vede la distinta e le sue righe.
+
+⭐ **E quella regola non e' rimasta una consuetudine: e' diventata un vincolo.**
+Lo stesso conto «di incasso» non puo' piu' essere registrato su due soggetti
+diversi — il sistema lo rifiuta. Finche' quel legame serviva solo a stampare un
+IBAN in fattura l'ambiguita' era un fastidio; appoggiandoci il riconoscimento del
+denaro, sarebbe diventata un varco che **non produce nessun errore visibile**.
+
+### Che cosa si vede, in concreto
+
+| Che cosa | Chi la vede |
+|---|---|
+| Una **distinta** arrivata da un canale | chi lavora per l'azienda titolare di quel conto |
+| Le sue **righe** | gli stessi — anche quelle non ancora abbinate a una fattura |
+| Una riga gia' abbinata a una **fattura** | anche chi ha quella fattura, se e' di un'altra azienda ⚠️ |
+| I **movimenti** (il denaro registrato) | chi ha la fattura che quel movimento paga |
+| Le distinte **interne** del sistema (fondi fattura, compensazioni) | tutti — non sono di nessuno |
+| Le **righe** di quelle distinte interne | solo chi ha la fattura che la riga porta |
+
+⚠️ **La terza riga della tabella non e' una svista.** Se una riga finisce per
+sbaglio sulla distinta dell'azienda sbagliata, chi possiede la fattura **deve
+poterla vedere**: altrimenti il suo saldo direbbe che quel denaro non e' arrivato
+e non ci sarebbe modo di scoprire perche'. La riga di un errore va vista da chi
+ne subisce l'effetto.
+
+⚠️ **E una riga che non ha ne' fattura ne' canale la vedono tutti**: e' il caso
+di un operatore che sta digitando incassi in un proprio blocco di lavoro. Non
+c'e' nulla, in quella riga, che dica di chi sia — nasconderla non protegge
+nessuno e impedisce solo di lavorarla. Appena viene abbinata a una fattura,
+rientra nelle regole normali.
+
+### Due presidi, e fanno cose diverse
+
+| | Che cosa fa | Che cosa vede l'operatore |
+|---|---|---|
+| **Il filtro in lettura** | fa **sparire** dagli elenchi cio' che non e' suo | niente: gli elenchi mostrano il suo lavoro |
+| **Il blocco in scrittura** | **rifiuta** di scrivere fuori dal proprio perimetro | un messaggio che dice cosa e' successo |
+
+⭐ Servono insieme, e la ragione e' semplice: **un silenzio dove serve
+riservatezza, un messaggio dove serve un rimedio**. Se ci fosse solo il filtro,
+un tentativo sbagliato produrrebbe un errore tecnico incomprensibile; se ci fosse
+solo il blocco, i dati altrui comparirebbero negli elenchi.
+
+⚠️ **I lavori automatici notturni non sono toccati**: girano con un'utenza di
+sistema che il filtro non riguarda, perche' devono vedere tutto per definizione.
 
 ---
 

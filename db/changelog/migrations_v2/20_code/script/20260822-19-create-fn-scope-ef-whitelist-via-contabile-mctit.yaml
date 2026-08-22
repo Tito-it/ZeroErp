@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE ADAPTER DI LETTURA DEL PERIMETRO INCASSI — passo S3-5 (lotto 6)
+#   script.fn_scope_ef_whitelist_via_ente_incasso
+#   script.fn_scope_ef_whitelist_via_contabile
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-5 · Decisione: brief madre D5
+#
+# ── ⭐ DUE MEMBRI NUOVI DELLA FAMIGLIA `fn_scope_ef_whitelist_via_*` ──
+#   `_via_fattura`, `_via_commessa`, `_via_efba`, `_via_sr`: ciascuna prende un
+#   riferimento, lo risolve in un emittente e delega alla canonica
+#   `fn_check_user_emittente_scope`. Queste due fanno lo stesso partendo dal
+#   **canale di incasso** e dalla **distinta**.
+#
+#     | Adapter | Parte da | Serve a |
+#     | --- | --- | --- |
+#     | `_via_ente_incasso` | `ente_incasso_id` | la policy della **testata**, che il proprio canale ce l'ha in colonna |
+#     | `_via_contabile` | `contabile_id` | la policy della **riga**, che il canale lo raggiunge solo passando dalla testata |
+#
+# ── ⭐ SONO DUE RIGHE, E QUESTO E' IL PUNTO ──────────────────────────
+#   Tutta la catena `ente → conto → soggetto-ruolo → emittente` e' scritta **una
+#   volta sola**, in `script.fn_resolve_emittente_fiscale_id` (changeSet -16),
+#   che e' anche quella che usa il guard di **scrittura**. Lettura e scrittura
+#   rispondono percio' alla stessa domanda con lo stesso codice: ⚠️ due copie
+#   della stessa catena e' il modo in cui un perimetro comincia a dire due cose
+#   diverse a seconda di chi chiede.
+#
+#   ⭐ E per la stessa ragione questi due adapter possono restare `SECURITY
+#   INVOKER` come le sorelle: e' il **risolutore** a essere `SECURITY DEFINER`, e
+#   a leggere fuori dalla row security. Senza quello, `_via_contabile` — che
+#   legge `pagamenti.vendite_contabili`, cioe' una tabella la cui policy chiama
+#   **questa stessa funzione** — sarebbe una **ricorsione infinita**.
+#
+# ── ⭐ FAIL-CLOSED, e lo eredita senza doverlo scrivere ──────────────
+#   Catena interrotta (una distinta **interna**, che canale non ha) → il
+#   risolutore risponde `NULL`, e `fn_check_user_emittente_scope` con emittente
+#   `NULL` risponde **`false`** — a meno di un super admin. E' la stessa postura
+#   di `_via_fattura` su una fattura inesistente.
+#
+#   ⚠️ **Ed e' cio' che serve alla policy della riga**: le righe di una distinta
+#   interna **non** devono essere visibili a tutti. Il fatto che la *testata* di
+#   quella distinta lo sia e' una decisione a parte, scritta **nella policy** e
+#   non qui dentro — cosi' chi legge la policy la vede.
+#
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-19-create-fn-scope-ef-whitelist-via-contabile-mctit.yaml
+
+  - changeSet:
+      id: 20260822-19-create-fn-scope-ef-whitelist-via-contabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Due adapter di scope nuovi nella famiglia script.fn_scope_ef_whitelist_via_*:
+        _via_ente_incasso (per la policy della testata, che il canale ce l'ha in colonna) e
+        _via_contabile (per la policy della riga, che al canale arriva passando dalla
+        testata). Sono due righe: la catena ente -> conto -> soggetto-ruolo -> emittente e'
+        scritta una volta sola in fn_resolve_emittente_fiscale_id, la stessa che usa il guard
+        di SCRITTURA — lettura e scrittura rispondono alla stessa domanda con lo stesso
+        codice. Restano SECURITY INVOKER come le sorelle perche' e' il risolutore a essere
+        DEFINER: senza, _via_contabile sarebbe una ricorsione infinita.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_resolve_emittente_fiscale_id';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_user_emittente_scope';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ente_incasso(
+                  p_auth_user_id   anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE,
+                  p_ente_incasso_id pagamenti.enti_incasso.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Risolve il canale -> il CONTO su cui atterra il suo denaro ->
+                  -- il soggetto -> l'emittente, e delega alla canonica. E' D5:
+                  -- quando il denaro arriva non ha ancora una fattura, e il suo
+                  -- padrone lo dice il conto.
+                  -- ⚠️ La catena vive TUTTA in fn_resolve_emittente_fiscale_id,
+                  --   che e' SECURITY DEFINER e la stessa usata dal guard di
+                  --   scrittura: due copie della catena sono il modo in cui un
+                  --   perimetro comincia a rispondere in modo diverso a seconda
+                  --   di chi chiede.
+                  -- Canale senza conto risolvibile -> emittente NULL -> la
+                  -- canonica risponde false (fail-closed).
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('ente_incasso', p_ente_incasso_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_ente_incasso(integer, bigint) IS
+                'Scope dell''operatore su un CANALE di incasso: risolve canale -> conto -> soggetto -> emittente e delega alla canonica. ⭐ E'' D5 in una riga: quando il denaro arriva in banca non ha ancora una fattura, e il suo padrone lo dice il conto. La catena vive tutta in script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER e la stessa che usa il guard di SCRITTURA — cosi'' lettura e scrittura non possono divergere. Fail-closed su catena interrotta.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_scope_ef_whitelist_via_ente_incasso(integer, bigint) TO PUBLIC;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_contabile(
+                  p_auth_user_id anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE,
+                  p_contabile_id pagamenti.vendite_contabili.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Come la gemella, ma partendo dalla DISTINTA: la riga
+                  -- contabile il canale non ce l'ha in colonna, ce l'ha la sua
+                  -- testata.
+                  -- ⚠️ Distinta INTERNA (fondo fattura, compensazione): canale
+                  --   non ce n'e', l'emittente resta NULL e la risposta e'
+                  --   FALSE. ⭐ Ed e' esattamente cio' che serve: le RIGHE di una
+                  --   distinta interna non devono vedersi in giro. Che la
+                  --   TESTATA di quella distinta sia invece visibile e'
+                  --   una decisione diversa, e sta scritta nella policy — non
+                  --   qui dentro, cosi' chi legge la policy la vede.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('contabile', p_contabile_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_contabile(integer, bigint) IS
+                'Scope dell''operatore su una DISTINTA contabile: risolve distinta -> canale -> conto -> soggetto -> emittente e delega alla canonica. Serve alla policy della RIGA, che il canale lo raggiunge solo passando dalla testata. ⚠️ Su una distinta INTERNA (fondo fattura, compensazione), che canale non ha, risponde FALSE — ed e'' cio'' che serve: le righe di una distinta interna non devono vedersi in giro, e il loro perimetro lo da'' la fattura che portano. Che la TESTATA di quella distinta sia invece visibile e'' una decisione diversa, scritta nella policy. ⭐ Resta SECURITY INVOKER come le sorelle perche'' e'' il risolutore a essere DEFINER: leggendo pagamenti.vendite_contabili, la cui policy chiama questa funzione, da INVOKER sarebbe una ricorsione infinita.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_scope_ef_whitelist_via_contabile(integer, bigint) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_contabile(integer, bigint);
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_ente_incasso(integer, bigint);
