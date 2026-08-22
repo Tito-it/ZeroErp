@@ -12,8 +12,16 @@
 > sue righe no. Il lavoro DB è reale, e questo documento è la ragione per cui
 > non lo si è fatto al volo.
 >
-> ⛔ **Niente è stato applicato.** Nessuna migrazione, nessuna scrittura sul
-> database, nessun CSV toccato. Questo documento è un piano.
+> ✅ **CANTIERE CHIUSO il 2026-08-22.** L1, L2 e L3 applicati dal team DB;
+> BE-1…BE-5, FE-1 e FE-2 consegnati dal team BE/FE. Le tre liste sono a video
+> con paginazione, ordinamento server-side, colonne personalizzabili ed export
+> CSV/XLSX; il presidio le dà `ok` su tutte e tre. Consuntivo BE/FE in §7.
+>
+> ⚠️ **Una cosa resta aperta e NON è di questo cantiere**: il nucleo *stato* di
+> `vendite.fondi_fattura_da_decidere` (§4-bis B) — una lista che questo cantiere
+> ha solo *scoperto*, registrandola. Vive nel consuntivo di
+> [piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md), che dichiara
+> **1 KO** finché i due passi non atterrano insieme.
 >
 > **Correlati:** [piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md)
 > §8-bis/§9 (inventario e registro delle liste) ·
@@ -36,7 +44,7 @@
 | 🔵 **A carico del BE/FE** | 6 consegne, di cui **3 bloccano** la nascita delle liste. Da concordare **prima** di L3, non in consegna | §4 |
 | ✅ **Domande aperte** | **Zero.** Q-1 e Q-2 chiuse il 2026-08-21 | §6 |
 | ⭐ **Il perno da non perdere** | «Job» ha un'ancora e non serve una colonna nuova: l'`event_time` dell'ultimo `PIPELINE_STARTED` in `vendite.event_log`. ⚠️ Non il `correlation_id`, che due corse condividono | §3 D-6 |
-| ⭐ **STATO** | ✅ **L1, L2 e L3 CHIUSI.** L1 (`-38`…`-43` + 2 `W_`) e L2 (`-44`) **applicati**. L3: 76 righe sui 4 CSV, presidio `ok` su tutte e tre — **attende il migrate**. Poi tocca al BE/FE: `_LISTE`, BE-4 e la conversione dei `.vue` | §4 · §5 · §7 |
+| ⭐ **STATO** | ✅ **CANTIERE CHIUSO (2026-08-22).** L1, L2, L3 applicati · BE-1…BE-5, FE-1 e FE-2 consegnati · tre liste a video con paginazione, export e colonne personalizzabili · presidio `ok` su tutte e tre | §4 · §5 · §7 |
 
 ---
 
@@ -865,6 +873,46 @@ non è scritto da nessuno** (C-1), `fn_list_lotto_task_runs` è codice morto e
 divergente (C-2), i log non hanno RLS (C-3, innocuo qui ma da dichiarare).
 
 ⛔ Nulla applicato.
+
+### 2026-08-22 (sesto giro) · ✅ **CANTIERE CHIUSO** — consuntivo BE/FE
+
+Le sei consegne del §4, tutte fatte, con quello che è emerso strada facendo.
+Le due che il giro precedente cita dal lato DB (seconda copia della whitelist,
+divergenza di chiave) sono qui col dettaglio tecnico, non raccontate una
+seconda volta.
+
+| | Consegna | Esito |
+| --- | --- | --- |
+| **BE-1** | whitelist ordinamento dei documenti | da **3 voci a 11**; `nominativo` → `ragione_sociale_completa`. ⭐ E `_SORT_BY_VALIDI` del service ora **deriva** dalla mappa del repository invece di riscriverne i nomi: alla terza aggiunta copiarli a mano era il modo sicuro per farne divergere uno |
+| **BE-2** | `fn_list_lotto_task_runs` come sorgente | la `SELECT` scritta a mano **non esiste più**: una verità sola. Envelope paginato con `total_count`. ⚠️ La whitelist NON è stata specchiata nel BE — sarebbe stata la terza verità |
+| **BE-3** | i tre campi errore sulla riga | fatti, con la regola D-6 («l'ultima viva, dalle più gravi»: tutti i livelli, gravità prima della data). ⭐ **Quarto campo aggiunto**, `errore_livello`: senza, l'icona di riga sarebbe rossa anche su un avviso — e con la regola nuova gli avvisi entrano eccome. Il seed lo ha poi accolto come colonna di supporto |
+| **BE-4** | endpoint righe segnalazioni | `/segnalazioni/rows/` su `fn_list_lotto_segnalazioni`; `/segnalazioni/` è tornato ai **soli conteggi** per il banner. La UNION provvisoria scritta dal BE è sparita |
+| **BE-5** | `error_code` nei log del BE | fatto. 📌 Dei «2 call site» di `_insert_fatture_log` **uno è codice morto**: `log_fatture_lotto` lo chiama solo un test |
+| **FE-1** | registro dei seed | tre liste in `WHITELIST_BE` e in `_LISTE`. Per la 46 e la 47 il resolver **riusa `whitelist_funzione_db`** del generatore invece di ricopiarne la regex: due letture gemelle divergono al primo cambio di forma |
+| **FE-2** | conversione dei `.vue` | tre `<ListaConfigurabile>` con paginazione, ordinamento server-side, colonne personalizzabili, **export CSV/XLSX** e ricarica. Registro PrimeVue a **31/35**, presidio a **46/46** |
+
+⭐ **Il dettaglio della divergenza di chiave.** Il BE scriveva il codice in
+`meta->>'code'`; le quattro funzioni DB (D-7) e il seed della 47 usano
+**`error_code`**. Le righe scritte dal backend sarebbero state *presenti in
+tabella e vuote a video* — il modo peggiore di sbagliare. Allineato, e rinominata
+anche la firma del BE da `origine` a **`scritto_da`**, perché `origine` è già il
+nome di una colonna della 47.
+
+⭐ **Export: nessun lavoro DB.** Il seed marcava già `esportabile = t` su tutte
+le colonne dati (solo `azioni` è `f`, ed è giusto). ⚠️ `max_rows` e non
+`page_size`: l'export **salta** la paginazione invece di violarne il tetto.
+
+⭐ **E lo stato paginato è un composable, non tre copie**
+(`useListaDrawerPaginata`): tre liste nello stesso file volevano dire tre
+`onPage`/`onSort` identici, cioè tre occasioni di dimenticare l'azzeramento
+della pagina al cambio ordinamento.
+
+⛔ **Resta fuori, e non è di questo cantiere**: `vendite.fondi_fattura_da_decidere`
+(§4-bis B). I due passi — voce in `FONDI_DA_DECIDERE_SORT_COLUMNS` e flag sul
+seed — **devono atterrare insieme**: la simulazione del team DB mostra che il
+flag da solo produce una freccia bugiarda che ripiega su `data` senza dirlo, e
+la sola voce BE produce l'accusa opposta. Tracciato nel consuntivo del piano
+PrimeVue.
 
 ### 2026-08-22 (quinto giro) · ✅ **L3 CHIUSO — e il cantiere DB con lui**
 
