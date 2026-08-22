@@ -12,7 +12,7 @@
 > ⭐ **Dal 2026-08-22 il Gruppo A è 31/35**: `LottoDrawer.vue` è stato
 > riclassificato dal Gruppo B (i suoi tre tab sono tre liste, non tre
 > dettagli di un master) e **convertito**. Il lavoro DB che lo precedeva sta in
-> [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
+> [brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
 > Cronologia: `vendite.lotti` e
 > il 1° lotto il 31-07; dal 2° al 5° l'01-08; il 6° fra l'1 e il 2 agosto
 > (`storico.audit_log` compresa); il **7°** (2 code + approvazioni prezzo +
@@ -1106,7 +1106,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 > (`EXPORT_MAX_ROWS`) lo presidia il BB, che confronta il `count` esatto.
 >
 > Piano DB, passata BE e ordine dei lotti:
-> [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
+> [brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
 
 ##### `vendite.lotti` — ✅ CONVERTITA il 2026-07-31, validata in-app da Tid
 
@@ -2022,7 +2022,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 > (documenti, tentativi dei task, segnalazioni) **passano al Gruppo A**.
 > Il seed e il lavoro DB che li precede — due dei tre tab oggi non hanno un
 > endpoint paginato, e uno non ha nemmeno una sorgente di righe — stanno in
-> [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
+> [brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
 > ⚠️ Se ne emergesse un secondo, la regola del 2 dice di **riscrivere il
 > criterio del gruppo**, non di spostare un'altra riga a mano.
 
@@ -2119,7 +2119,7 @@ dominio lo sqlstate è sempre `P0001`. La colonna «codice» chiesta su due dell
 tre liste non ha una sorgente, e non è recuperabile sullo storico.
 
 Piano DB, le sei consegne BE/FE (di cui **tre bloccanti**) e l'ordine dei lotti:
-[brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
+[brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
 Vale ancora il metodo delle volte precedenti: **la passata BE si chiede prima di
 comporre il lotto, non in consegna.**
 
