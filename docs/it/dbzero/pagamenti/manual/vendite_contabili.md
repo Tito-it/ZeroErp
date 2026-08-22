@@ -26,7 +26,10 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 * `compensazione_id`: testata processo compensazione (opzionale, univoca).
 * `stato_id`: stato della testata contabile.
 * `data_contabile`: data contabile di riferimento.
-* `data_conferma` / `user_conferma`: tracciamento conferma testata.
+* `data_conferma` / `user_conferma`: tracciamento conferma testata. ⭐ **Dal
+  2026-08-22 le scrive `pagamenti.fn_posta_contabile`**: prima esistevano e
+  restavano vuote. La conferma è l'atto di **registrare**, e il `COALESCE` tiene
+  la prima volta che è successo.
 
 ---
 

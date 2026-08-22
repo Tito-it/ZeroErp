@@ -27,7 +27,32 @@ e riferimenti di abbinamento (fattura, billing account).
 * `fondo_source_id`: l'**atto di fondo fattura** da cui la riga nasce
   (`vendite.fatture_fondi_fattura_source`). `NULL` su ogni riga che non viene da
   un fondo, cioè sulla maggior parte.
+* `scadenza_id`: la **rata** a cui questo denaro è imputato
+  (`vendite.fatture_scadenze`). ⭐ L'abbinamento vive **qui**, e non in una
+  tabella N:N: la riga è già l'unità di allocazione, e chi paga due rate con un
+  bonifico solo fa **due righe** — che è anche il modo in cui la banca lo
+  racconta.
+* `forzata` / `motivo_forzatura`: la riga è stata registrata **fuori dalla
+  capienza**, e qualcuno l'ha confermato. Il motivo è facoltativo.
 
+> ⚠️ **`scadenza_id` è facoltativo di proposito**, e non è una dimenticanza: ci
+> sono righe che saldano un documento **senza riferirsi a una rata**. La riga del
+> fondo fattura è esattamente quella — è un saldo per trasferimento, ha fattura
+> sì e rata no. Il guard sui dati dello stato **non la pretende**, ed è scritto
+> così da prima che la colonna esistesse: chi lo legge non deve pensare a una
+> svista.
+>
+> ⭐ **`forzata` è il prezzo di una decisione**: che un cliente paghi più del
+> dovuto, o paghi due volte, è un **fatto del mondo** e il database non lo
+> dichiara impossibile — lo **segnala**, e se qualcuno conferma registra e lascia
+> scritto. Senza traccia, una forzatura è un modo di *nascondere* denaro, non di
+> registrarlo. L'elenco a valle è
+> [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza).
+>
+> ⚠️ Da non confondere `motivo_forzatura` con `motivo_sospeso`: il secondo dice
+> perché una riga **non** è stata lavorata, il primo perché è stata lavorata **lo
+> stesso**.
+>
 > ⭐ **`fondo_source_id` è nuova del 21-08-2026, e prima era una stringa dentro
 > un JSON** (`meta ->> 'fondo_source_id'`). Non era una relazione: nessuna
 > integrità, nessun indice, nessuna garanzia che il valore fosse un id

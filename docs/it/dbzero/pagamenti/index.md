@@ -18,16 +18,20 @@
 - [fn_get_or_create_vendite_contabile](funzioni/fn_get_or_create_vendite_contabile.md) — Recuperare una testata contabile vendite esistente oppure crearne una nuova, con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.
 - [fn_get_saldo_fattura](funzioni/fn_get_saldo_fattura.md) — (latest review 13-02-2026)   La funzione **`pagamenti.fn_get_saldo_fattura()`** restituisce il **residuo** della fattura:
 - [fn_get_saldo_fattura_contabili](funzioni/fn_get_saldo_fattura_contabili.md) — (latest review 13-02-2026)   La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il saldo contabile di una fattura calcolato sulle sole righe in stato `is_postabile = true`.
+- [fn_get_saldo_rata](funzioni/fn_get_saldo_rata.md) — (rev 2026-08-22)
+- [fn_posta_contabile](funzioni/fn_posta_contabile.md) — (rev 2026-08-22)
 - [trgfn_enti_incasso_guard_psp](funzioni/trgfn_enti_incasso_guard_psp.md) — Garantire la coerenza applicativa dei record `pagamenti.enti_incasso` quando il canale e` di tipo `PSP`.
 - [trgfn_vendite_contabili_guard_chiusura](funzioni/trgfn_vendite_contabili_guard_chiusura.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_ente_centro](funzioni/trgfn_vendite_contabili_guard_ente_centro.md) — Validare la coerenza tra `centro_riscossione_id` della testata e `ente_incasso_id` quando presente, e applicare i vincoli della compensazione.
 - [trgfn_vendite_contabili_guard_transizione](funzioni/trgfn_vendite_contabili_guard_transizione.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_guard_validazione](funzioni/trgfn_vendite_contabili_guard_validazione.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_lotti_guard_compensazione](funzioni/trgfn_vendite_contabili_lotti_guard_compensazione.md) — Impedire l'associazione di testate contabili di compensazione alla tabella ponte dei lotti (`pagamenti.vendite_contabili_lotti`).
-- [trgfn_vendite_contabili_righe_guard_distinta_finale](funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale.md) — (rev 2026-08-21)
+- [trgfn_vendite_contabili_righe_guard_distinta_finale](funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale.md) — (rev 2026-08-22)
+- [trgfn_vendite_contabili_righe_guard_rata](funzioni/trgfn_vendite_contabili_righe_guard_rata.md) — (rev 2026-08-22)
 - [trgfn_vendite_contabili_righe_guard_stato_dati](funzioni/trgfn_vendite_contabili_righe_guard_stato_dati.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_righe_guard_transizione](funzioni/trgfn_vendite_contabili_righe_guard_transizione.md) — (rev 2026-08-21)
 - [trgfn_vendite_contabili_righe_marca_fondo_eseguito](funzioni/trgfn_vendite_contabili_righe_marca_fondo_eseguito.md) — (rev 2026-08-22)
 - [trgfn_vendite_movimenti_sync_contabile_from_riga](funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga.md) — Mantenere coerenti `contabile_id`, `fattura_id` e `billing_account_id` su `pagamenti.vendite_movimenti` quando viene usato il riferimento a riga (`contabile_riga_id`).
 
 ## 🔍 Views
+- [vw_rate_fuori_capienza](views/vw_rate_fuori_capienza.md) — (rev 2026-08-22)

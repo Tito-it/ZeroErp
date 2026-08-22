@@ -1,10 +1,10 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale`
 
 ### 🎯 Scopo Principale
-(rev 2026-08-21)
+(rev 2026-08-22)
 
-Impedire che una riga contabile finisca sotto una distinta in stato **finale**
-(`CHIUSA` o `ANNULLATA`).
+Impedire che una riga contabile finisca — o **torni utile** — sotto una distinta
+in stato **finale** (`CHIUSA` o `ANNULLATA`).
 
 ### 🔴 Il difetto, in tre negazioni
 Una riga appesa lì dentro:
@@ -23,17 +23,40 @@ chiusa sono già registrate, quindi escluse comunque. L'unica cosa che quel filt
 riesce a escludere è **proprio la riga anomala**. *Un filtro che nasconde ciò che
 non sa gestire sembra un presidio finché non si guarda che cosa esclude davvero.*
 
-### Regole applicate — tre mosse, non una
-Sotto una distinta finale una riga può arrivare in tre modi, e chiuderne uno solo
-non serve a niente:
+### Regole applicate — quattro mosse, non una
+Sotto una distinta finale una riga può diventare un problema in quattro modi, e
+chiuderne uno solo non serve a niente:
 
 1. **nascendoci** (INSERT di una riga attiva);
 2. essendo **riattivata** (`attivo` da falso a vero);
-3. essendo **spostata** lì da un'altra distinta (`contabile_id` cambiato).
+3. essendo **spostata** lì da un'altra distinta (`contabile_id` cambiato);
+4. ⭐ **diventandoci pronta da registrare** — restando dov'è (dal 2026-08-22).
+
+> ⭐ **La quarta è nata con la madre del posting.** Fino al lotto 4 non era
+> raggiungibile: una distinta si chiudeva a mano, e chi la chiudeva sapeva che
+> cosa ci lasciava dentro. Adesso la chiusura è la **conseguenza** del
+> registrare, e sotto possono restare righe «da abbinare» — che il guard di
+> chiusura non considera un ostacolo, deliberatamente, *«o la distinta non si
+> chiuderebbe mai»*.
+>
+> Abbinarne una il giorno dopo produrrebbe **denaro dichiarato e pronto sotto
+> una distinta che non si registra più**: il posting parte dalla testata, e una
+> chiusa la rifiuta. È il danno di sempre, dalla porta che il difetto originale
+> non aveva nominato.
 
 ⚠️ **Ciò che non si rifiuta**: le altre scritture su una riga già lì. Rifiutare
 tutto impedirebbe perfino di correggere il motivo di sospensione di una riga di una
-distinta annullata.
+distinta annullata — e, dalla quarta mossa in poi, impedirebbe di **dire che cosa
+ne è stato** di quel denaro (sospenderla, scartarla), che è l'unica cosa che
+resta da fare.
+
+⚠️ **Non blocca il posting**, e vale la pena saperlo per due ragioni
+indipendenti: lo stato «registrata» **non è** uno stato pronto, e la distinta è
+ancora `VALIDATA` quando la madre muove le righe.
+
+ℹ️ La domanda *«questo stato è pronto da registrare?»* si fa al **catalogo**
+(`is_postabile`), non a un elenco di stati scritto dentro il guard: è la stessa
+scelta del guard gemello sui dati (`richiede_abbinamento`).
 
 ### Le porte sono due
 Questa è la porta d'**ingresso**. La porta d'**uscita** — *chiudere* una distinta

@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'INCASSO ARRIVA ALLA RATA — passi S2-1 e S2-5 (lotto 5)
+#   pagamenti.vendite_contabili_righe: scadenza_id, forzata, motivo_forzatura
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.2 S2-1 / S2-5 · Decisioni: brief madre D1, D14-b/c/d
+#
+# ── ⭐ PERCHE' SULLA RIGA, E NON IN UNA TABELLA DI MEZZO ───────────────
+#   D1: l'abbinamento vive **sulla riga contabile**, e non serve nessuna
+#   tabella N:N fra incassi e rate. Una riga di distinta e' gia' l'unita' di
+#   allocazione — porta importo, fattura e cliente — e chi paga due rate con un
+#   bonifico solo fa **due righe**, che e' anche il modo in cui la banca lo
+#   racconta.
+#
+#   ⚠️ **`scadenza_id` resta FACOLTATIVO**, ed e' una decisione, non una
+#   mancanza: ci sono righe che saldano un documento **senza riferirsi a una
+#   rata**. La riga del fondo fattura e' esattamente quella — e' un saldo per
+#   trasferimento, ha fattura si' e rata no. Il guard dei dati (`S1-6`,
+#   changeSet `20260821-27`) e' stato scritto nel lotto 2 gia' prevedendo
+#   questo, e **non va toccato**: chi lo legge non deve pensare a una
+#   dimenticanza.
+#
+# ── ⚠️ LA FK PUNTA A UNA TABELLA CON LA RLS, E VA SAPUTO COME SI COMPORTA
+#   `vendite.fatture_scadenze` ha la Row Level Security attiva (due policy).
+#   ✅ **La FK funziona lo stesso**, e non per fortuna: PostgreSQL esegue i
+#   controlli di integrita' referenziale **fuori** dalla row security — e' scritto
+#   nella documentazione ufficiale. Quindi l'integrita' e' identica per
+#   l'operatore e per il canale di sistema, che e' cio' che il piano chiedeva di
+#   collaudare prima di impegnarsi.
+#
+#   🔴 **Ma la lettura di un GUARD non e' un controllo di integrita'**: quella la
+#   RLS la filtra eccome. Il guard di coerenza (S2-3) non puo' quindi leggere
+#   `fatture_scadenze` direttamente, o non distinguerebbe «non appartiene a
+#   questa fattura» da «non la vedo» — e rifiuterebbe una cosa vera dicendo una
+#   cosa falsa. Per quello nasce una `SECURITY DEFINER` dedicata (changeSet
+#   `20260822-06`).
+#
+# ── ⭐ `forzata` / `motivo_forzatura`: la forma della D14-d ────────────
+#   La capienza **non e' un rifiuto**, e' una **segnalazione**: che un cliente
+#   paghi piu' del dovuto, o paghi due volte, e' un fatto del mondo — il
+#   database non puo' dichiararlo impossibile. La forma decisa (D14-d) e' quella
+#   gia' scelta per la registrazione della distinta: *chi fa una cosa fuori
+#   dall'ordinario lo dice*.
+#
+#       1° tentativo, senza dichiarazione → RIFIUTATO, con la ragione
+#       2° tentativo, con `forzata = true` → ACCETTATO, e resta scritto
+#
+#   ⛔ **Nessuna azione di processo e nessun permesso**, ed e' una decisione
+#   esplicita (D14-e, che supera D1-bis): l'operatore non e' mai bloccato, e la
+#   forzatura e' **un dato**, non un ricordo. Senza traccia, fra sei mesi quei
+#   pagamenti non li ritrova nessuno.
+#
+#   ⚠️ `motivo_forzatura` e' **facoltativo** di proposito: obbligarlo
+#   trasformerebbe una dichiarazione in un modulo, e chi ha fretta scriverebbe
+#   un punto. Il flag e' il dato che conta; il motivo e' un regalo a chi
+#   leggera' dopo.
+#
+# ── ⭐ BACKFILL: le righe ci sono, e nessuna e' abbinata a una rata ────
+#   `pagamenti.vendite_contabili_righe` ha righe solo dal lotto 4 in avanti e
+#   nessuna di esse nasce da una rata: le tre colonne nascono vuote e le
+#   riempira' chi abbina. `forzata` NOT NULL DEFAULT false, che e' la verita'
+#   su tutte le righe esistenti.
+#
+# Verifica: db/pgtap/pagamenti/test-abbinamento-rata.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-04-alter-vendite-contabili-righe-rata-mctit.yaml
+
+  - changeSet:
+      id: 20260822-04-alter-vendite-contabili-righe-rata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Tre colonne su pagamenti.vendite_contabili_righe. scadenza_id (nullable, FK a
+        vendite.fatture_scadenze) porta l'abbinamento fino alla rata restando SULLA RIGA,
+        senza nessuna tabella N:N: la riga e' gia' l'unita' di allocazione, e chi paga due
+        rate con un bonifico solo fa due righe. Resta facoltativo perche' ci sono righe che
+        saldano un documento senza riferirsi a una rata — quella del fondo fattura e'
+        esattamente cosi'. forzata + motivo_forzatura sono la forma della D14-d: la capienza
+        non si rifiuta, si segnala, e chi registra comunque lo dichiara e resta scritto.
+        Nessun permesso e nessuna azione di processo: l'operatore non e' mai bloccato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_scadenze
+            - not:
+                - columnExists:
+                    schemaName: pagamenti
+                    tableName: vendite_contabili_righe
+                    columnName: scadenza_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                ADD COLUMN scadenza_id bigint;
+
+              -- ⚠️ NO ACTION esplicito. Le rate si rigenerano quando una fattura
+              --    torna in lavorazione, e una rata cancellata mentre una riga
+              --    contabile la cita e' una situazione che va VISTA, non risolta
+              --    in silenzio da un CASCADE o da un SET NULL — quel SET NULL
+              --    farebbe sparire un abbinamento senza che nessuno lo sappia.
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                ADD CONSTRAINT fk_vendite_contabili_righe_scadenza
+                FOREIGN KEY (scadenza_id)
+                REFERENCES vendite.fatture_scadenze (id)
+                ON UPDATE NO ACTION
+                ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_righe.scadenza_id IS
+                'La RATA a cui questo denaro e'' imputato (vendite.fatture_scadenze). ⭐ L''abbinamento vive QUI e non in una tabella N:N (D1): la riga contabile e'' gia'' l''unita'' di allocazione, e chi paga due rate con un bonifico solo fa due righe — che e'' anche il modo in cui la banca lo racconta. ⚠️ FACOLTATIVO di proposito: ci sono righe che saldano un documento senza riferirsi a una rata, e la riga del fondo fattura e'' esattamente quella (saldo per trasferimento: fattura si'', rata no). Il guard sui dati dello stato NON la pretende, ed e'' scritto cosi'' dal lotto 2. ⚠️ La coerenza «questa rata e'' della fattura di questa riga?» la impone un guard, non la FK: la FK sa solo che la rata esiste. ⚠️ La tabella puntata ha la RLS: l''integrita'' referenziale la attraversa (PostgreSQL esegue i controlli RI fuori dalla row security), ma la LETTURA di un guard no — per quello serve una SECURITY DEFINER.';
+
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                ADD COLUMN forzata boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_righe.forzata IS
+                'La riga e'' stata registrata FUORI DALLA CAPIENZA, e qualcuno l''ha confermato. ⭐ Che un cliente paghi piu'' del dovuto, o paghi due volte, e'' un fatto del mondo: il database non lo dichiara impossibile, lo SEGNALA (D14-b/c). La forma e'' a due tempi — primo tentativo rifiutato con la ragione, secondo accettato con questo flag — la stessa gia'' scelta per la registrazione della distinta: chi fa una cosa fuori dall''ordinario lo dice. ⛔ Nessuna azione di processo e nessun permesso (D14-e, che supera D1-bis): l''operatore non e'' mai bloccato. ⚠️ Serve perche'' una forzatura senza traccia e'' un modo di NASCONDERE denaro, non di registrarlo: fra sei mesi quei pagamenti non li ritrova nessuno. La vista delle rate sovra-incassate parte da qui.';
+
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                ADD COLUMN motivo_forzatura text;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_righe.motivo_forzatura IS
+                'Perche'' si e'' registrato fuori dalla capienza. ⚠️ FACOLTATIVO di proposito (D14-d): obbligarlo trasformerebbe una dichiarazione in un modulo, e chi ha fretta scriverebbe un punto. Il dato che conta e'' il flag `forzata`; questo e'' un regalo a chi leggera'' dopo. ⚠️ Da non confondere con `motivo_sospeso`, che dice perche'' una riga NON e'' stata lavorata: questo dice perche'' e'' stata lavorata lo stesso.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                DROP COLUMN motivo_forzatura;
+
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                DROP COLUMN forzata;
+
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                DROP CONSTRAINT fk_vendite_contabili_righe_scadenza;
+
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                DROP COLUMN scadenza_id;

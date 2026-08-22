@@ -1,0 +1,223 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUANTO RESTA SU UNA RATA — passo S2-6 (lotto 5)
+#   pagamenti.fn_get_saldo_rata
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.2 S2-6 · Decisioni: brief madre §4 (incassato ≠ postato), D2
+#
+# ── ⭐ TRE NUMERI, NON UNO — E OGNUNO RISPONDE A UNA DOMANDA DIVERSA ───
+#
+#   | Colonna | Domanda |
+#   | --- | --- |
+#   | `saldo` | quanto manca ancora da REGISTRARE su questa rata |
+#   | `in_lavorazione` | quanto e' gia' stato dichiarato ma non ancora registrato |
+#   | `incassato` | quanto di cio' che e' registrato e' **denaro davvero arrivato** |
+#
+#   ⭐ **La terza non e' un lusso, ed e' §4 del brief madre**: i centri
+#   `is_fondo_fattura` e `is_compensazione` **non sono cassa**. Un movimento su
+#   quei centri salda il documento — ed e' corretto, il denaro si e' mosso per
+#   trasferimento — ma **non e' entrato niente in banca**. Chi misura gli
+#   incassi e somma tutti i movimenti sta misurando un'altra cosa e non lo sa.
+#
+#   ⚠️ Un movimento **senza centro** non entra in `incassato`: «canale non
+#   dichiarato» non e' «denaro arrivato». Su una misura di cassa si sta dalla
+#   parte prudente.
+#
+# ── ⚠️ `saldo` E `in_lavorazione` SONO SEPARATI, e non e' pedanteria ───
+#   E' la stessa distinzione che a livello di fattura vive in due funzioni
+#   diverse (`fn_get_saldo_fattura` e `fn_get_saldo_fattura_contabili`): il
+#   **registrato** e il **dichiarato** non si sommano in un numero solo, o non
+#   si capisce piu' che cosa si sta guardando. Qui stanno nella stessa riga di
+#   risposta perche' chi chiede il saldo di una rata li vuole quasi sempre
+#   entrambi — ma restano **due colonne**.
+#
+#   ⭐ Chi deve sapere «quanto spazio c'e' ancora» fa `saldo - in_lavorazione`,
+#   ed e' esattamente cio' che fa il guard di capienza.
+#
+# ── ⭐ `p_escludi_contabile_riga_id`: il contributo proprio si scorpora ──
+#   Stesso mestiere del `p_source_id` di `vendite.fn_saldo_sorgente_fondo`, e
+#   per la stessa ragione: chi sta scrivendo una riga deve poter chiedere
+#   «quanto spazio c'era **prima di me**», altrimenti si troverebbe a
+#   confrontarsi con se' stesso. Assente, la risposta e' su tutto.
+#
+# ── ⚠️ Le righe in lavorazione escludono le distinte finali ────────────
+#   Come fa gia' la gemella di fattura: una riga sotto una distinta chiusa o
+#   annullata non e' in lavorazione, e' ferma. ℹ️ Dal lotto 4 non puo' nemmeno
+#   piu' diventare pronta, ma il filtro resta perche' dice **perche'** quelle
+#   righe non contano.
+#
+# ── ⚠️ NON e' STABLE, e la ragione e' la stessa della sorella dei fondi ─
+#   Il ramo d'errore scrive nel registro degli errori. Promettere stabilita' su
+#   una funzione che in un ramo scrive autorizza il planner a scelte che quel
+#   ramo non regge.
+#
+# Dipendenze: codice `E_RATA_NON_TROVATA` (966, NON_TROVATO) e il gia' presente
+#   `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (953). ⚠️ `80_data` gira dopo `20_code`.
+# Verifica: db/pgtap/pagamenti/test-abbinamento-rata.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-07-create-fn-get-saldo-rata-mctit.yaml
+
+  - changeSet:
+      id: 20260822-07-create-fn-get-saldo-rata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il saldo di una rata, in tre numeri: quanto manca da registrare, quanto e' gia'
+        dichiarato e non ancora registrato, e quanto di cio' che e' registrato e' denaro
+        davvero arrivato. La terza colonna e' §4 del brief madre: i centri fondo fattura e
+        compensazione non sono cassa, quindi chi misura gli incassi sommando tutti i
+        movimenti misura un'altra cosa e non lo sa. Il parametro di esclusione ha lo stesso
+        mestiere del p_source_id dei fondi: chi sta scrivendo una riga chiede quanto spazio
+        c'era prima di se'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_movimenti
+                columnName: scadenza_id
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+                columnName: scadenza_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_rata(
+                  p_scadenza_id               vendite.fatture_scadenze.id%TYPE,
+                  p_escludi_contabile_riga_id pagamenti.vendite_contabili_righe.id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(
+                  saldo          vendite.fatture_scadenze.importo%TYPE,
+                  in_lavorazione pagamenti.vendite_contabili_righe.importo%TYPE,
+                  incassato      pagamenti.vendite_contabili_righe.importo%TYPE,
+                  has_movimenti  boolean
+               )
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_importo        vendite.fatture_scadenze.importo%TYPE;
+                  v_movimenti      pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_incassato      pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_in_lavorazione pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_has_movimenti  boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Guard di parametro: un id nullo o non positivo non esce da
+                  -- nessuna interfaccia — lo produce solo un chiamante rotto.
+                  -- =========================================================
+                  IF p_scadenza_id IS NULL OR p_scadenza_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_get_saldo_rata',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_scadenza_id', 'valore', p_scadenza_id),
+                          NULL::uuid,
+                          'pagamenti.fn_get_saldo_rata',
+                          'p_scadenza_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  IF p_escludi_contabile_riga_id IS NOT NULL AND p_escludi_contabile_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_get_saldo_rata',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_escludi_contabile_riga_id',
+                                             'valore', p_escludi_contabile_riga_id),
+                          NULL::uuid,
+                          'pagamenti.fn_get_saldo_rata',
+                          'p_escludi_contabile_riga_id, se fornito, deve essere maggiore di zero');
+                  END IF;
+
+                  -- =========================================================
+                  -- L'importo della rata.
+                  -- ⚠️ La tabella ha la RLS: «non esiste» e «non la vedi»
+                  --    arrivano qui allo stesso modo, ed e' la stessa scelta
+                  --    gia' fatta da fn_get_saldo_fattura. Dove la differenza
+                  --    conta — il guard di coerenza — la domanda si fa fuori
+                  --    dalla row security con script.fn_check_scadenza_di_fattura.
+                  -- =========================================================
+                  SELECT s.importo
+                    INTO v_importo
+                    FROM vendite.fatture_scadenze s
+                   WHERE s.id = p_scadenza_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_get_saldo_rata',
+                          'E_RATA_NON_TROVATA',
+                          jsonb_build_object('scadenza_id', p_scadenza_id),
+                          NULL::uuid,
+                          p_scadenza_id::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- Cio' che e' REGISTRATO, e quanto di quello e' cassa vera.
+                  -- ⚠️ `incassato` pretende che il centro ci sia e che non sia
+                  --    ne' fondo fattura ne' compensazione: un movimento senza
+                  --    centro non e' «denaro arrivato», e' un canale non
+                  --    dichiarato. Su una misura di cassa si sta dalla parte
+                  --    prudente.
+                  -- =========================================================
+                  SELECT COALESCE(SUM(m.importo), 0),
+                         COALESCE(SUM(m.importo) FILTER (
+                             WHERE c.id IS NOT NULL
+                               AND c.is_fondo_fattura IS FALSE
+                               AND c.is_compensazione IS FALSE), 0),
+                         COUNT(*) > 0
+                    INTO v_movimenti, v_incassato, v_has_movimenti
+                    FROM pagamenti.vendite_movimenti m
+                    LEFT JOIN pagamenti.centri_riscossione c ON c.id = m.centro_riscossione_id
+                   WHERE m.scadenza_id = p_scadenza_id
+                     AND m.attivo IS TRUE
+                     AND (p_escludi_contabile_riga_id IS NULL
+                          OR m.contabile_riga_id IS DISTINCT FROM p_escludi_contabile_riga_id);
+
+                  -- =========================================================
+                  -- Cio' che e' DICHIARATO e non ancora registrato.
+                  -- ⚠️ Come la gemella di fattura: righe postabili sotto una
+                  --    testata NON finale. Una riga sotto una distinta chiusa
+                  --    non e' in lavorazione, e' ferma.
+                  -- =========================================================
+                  SELECT COALESCE(SUM(cr.importo), 0)
+                    INTO v_in_lavorazione
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                    JOIN pagamenti.vendite_contabili co ON co.id = cr.contabile_id
+                    JOIN pagamenti.vendite_contabili_stati cs ON cs.id = co.stato_id
+                   WHERE cr.scadenza_id = p_scadenza_id
+                     AND cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE
+                     AND cs.is_final IS NOT TRUE
+                     AND (p_escludi_contabile_riga_id IS NULL
+                          OR cr.id <> p_escludi_contabile_riga_id);
+
+                  RETURN QUERY SELECT
+                      COALESCE(v_importo, 0) - COALESCE(v_movimenti, 0),
+                      COALESCE(v_in_lavorazione, 0),
+                      COALESCE(v_incassato, 0),
+                      COALESCE(v_has_movimenti, false);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_saldo_rata(vendite.fatture_scadenze.id%TYPE, pagamenti.vendite_contabili_righe.id%TYPE)
+              IS 'Il saldo di una RATA, in tre numeri: `saldo` = importo della rata meno i movimenti registrati; `in_lavorazione` = quanto e'' gia'' dichiarato su righe contabili pronte ma non ancora registrato; `incassato` = quanto di cio'' che e'' registrato e'' DENARO DAVVERO ARRIVATO. ⭐ La terza colonna e'' §4 del brief madre e non e'' un lusso: i centri is_fondo_fattura e is_compensazione NON SONO CASSA — un movimento su quei centri salda il documento (il denaro si e'' mosso per trasferimento) ma in banca non e'' entrato niente, e chi misura gli incassi sommando tutti i movimenti misura un''altra cosa senza saperlo. ⚠️ Un movimento SENZA centro non entra in `incassato`: «canale non dichiarato» non e'' «denaro arrivato», e su una misura di cassa si sta dalla parte prudente. ⚠️ `saldo` e `in_lavorazione` restano DUE colonne, com''e'' due funzioni a livello di fattura (fn_get_saldo_fattura e fn_get_saldo_fattura_contabili): il registrato e il dichiarato non si sommano in un numero solo o non si capisce piu'' che cosa si guarda. Chi vuole sapere «quanto spazio c''e'' ancora» fa `saldo - in_lavorazione`, ed e'' cio'' che fa il guard di capienza. ⭐ p_escludi_contabile_riga_id ha lo stesso mestiere del p_source_id di vendite.fn_saldo_sorgente_fondo: chi sta scrivendo una riga chiede quanto spazio c''era PRIMA di se'', o si troverebbe a confrontarsi con se'' stesso. ⚠️ Le righe in lavorazione escludono le distinte finali, come la gemella di fattura: una riga sotto una distinta chiusa non e'' in lavorazione, e'' ferma. ⚠️ La tabella delle rate ha la RLS: «non esiste» e «non la vedi» danno lo stesso E_RATA_NON_TROVATA, stessa scelta di E_FATTURA_NON_TROVATA — dove la differenza conta si usa script.fn_check_scadenza_di_fattura, che gira fuori dalla row security. ⚠️ NON e'' dichiarata STABLE: il ramo d''errore scrive nel registro, e promettere stabilita'' su una funzione che in un ramo scrive autorizza il planner a scelte che quel ramo non regge. S2-6 del cantiere incassi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP FUNCTION IF EXISTS pagamenti.fn_get_saldo_rata(bigint, bigint);
