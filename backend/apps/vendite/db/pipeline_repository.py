@@ -48,6 +48,11 @@ logger = logging.getLogger(__name__)
 # non per tabella.
 _ORIGINE_SEGNALAZIONE_BE = "BE_PIPELINE"
 
+# Il tetto delle righe ESPORTABILI dei due elenchi del drawer lotto. Il tetto di
+# PAGINA (500) resta quello di sempre: sono due limiti per due usi diversi, e
+# confonderli significa o una pagina enorme o un file troncato in silenzio.
+_DRAWER_EXPORT_MAX_ROWS = 10_000
+
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
 # Chiave nel `meta` jsonb del lotto che porta la corsia (filtro fatturazione_immediata)
@@ -456,122 +461,85 @@ class VenditePipelineRepository:
             "fatture_stato_esecuzione_errore_count": int(row[5]),
         }
 
-    # Scopo: L'ELENCO delle segnalazioni del lotto per livello — quello che il
-    #        riepilogo conta soltanto.
+    # Scopo: L'ELENCO delle segnalazioni del lotto — quello che il riepilogo
+    #        conta soltanto.
     #
-    # ⭐ STESSA FONTE E STESSI FILTRI di `fn_get_lotto_segnalazioni_summary`, e
-    #    va tenuto cosi': `fatture_log` attraverso il ponte del lotto +
-    #    `fatturazione_lotti_log`, entrambe con `disabilitato IS FALSE`. Se
-    #    l'elenco leggesse una fonte sola, il banner direbbe «1 critica» e la
-    #    scheda ne mostrerebbe zero — la divergenza fra un contatore e il suo
-    #    dettaglio e' peggio di non avere il dettaglio.
-    #    📌 Il filtro `disabilitato` e' «chi alza la bandiera la abbassa»: una
-    #    segnalazione ritirata dal task che l'aveva scritta non deve ricomparire.
+    # ⭐ LA SORGENTE E' `vendite.fn_list_lotto_segnalazioni` (L2 del brief liste
+    #    drawer lotto). La prima versione di questo metodo era una UNION scritta
+    #    a mano qui: funzionava, ma era una SECONDA verita' sullo stesso elenco
+    #    — e la funzione DB fa di piu' (documento gia' composto, importo, job
+    #    corrente, chiave di riga) e tiene la whitelist di ordinamento dove sta
+    #    anche la paginazione.
     #
-    # ⚠️ Il livello 'I' esiste SOLO sul lotto — il riepilogo infatti conta
-    #    `lotto_info_count` e non ha un gemello per le fatture. Il ramo fatture
-    #    resta nella query e per 'I' non produce righe da se': scriverlo come
-    #    eccezione sarebbe una regola in piu' da ricordare, e il risultato e'
-    #    identico.
-    #
-    # ⚠️ `messaggio` NON si riscrive qui. Contiene la frase del database, che e'
-    #    l'unica a nominare il documento bloccante e la via d'uscita: nome e
-    #    importo si AFFIANCANO in colonne proprie, non lo sostituiscono.
+    # ⚠️ `total_count` e `fuori_job_count` arrivano RIPETUTI su ogni riga: e' la
+    #    forma della funzione. Si leggono dalla prima; su zero righe non c'e'
+    #    nessuna riga da cui leggerli, quindi valgono zero per costruzione.
+    # ⚠️ `order_by` NON si valida qui: la funzione ha la sua whitelist e su un
+    #    nome ignoto ripiega sul default. Ricopiarla sarebbe la terza verita'.
     def list_lotto_segnalazioni(
-        self, *, lotto_id: int, livello: str, limit: int = 200,
-    ) -> list[LottoSegnalazioneRow]:
-        safe_limit = max(1, min(int(limit), 500))
-        sql = """
-            SELECT
-                -- ⭐ CHIAVE DI RIGA, e serve davvero: `data_ora` NON e' univoco
-                -- (misurato sul lotto 6034: SEI segnalazioni con lo stesso
-                -- timestamp al microsecondo, scritte dallo stesso giro). Usarlo
-                -- come `data-key` della tabella a video significa righe che si
-                -- sovrascrivono nel rendering.
-                -- ⚠️ Composita e non il solo `id`: le due tabelle hanno
-                -- sequenze indipendenti, quindi un `id` puo' esistere in
-                -- entrambe e la collisione sarebbe silenziosa.
-                'FATTURA:' || fl.id::text AS riga_key,
-                'FATTURA'::text          AS origine,
-                fl.status                AS livello,
-                fl.messaggio,
-                fl.data_ora,
-                fl.meta,
-                NULL::text               AS fase,
-                lf.fattura_id,
-                srd.ragione_sociale_completa,
-                f.totale_doc
-              FROM vendite.fatturazione_lotti_fatture lf
-              JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
-              JOIN vendite.fatture f      ON f.id = lf.fattura_id
-              JOIN anagrafiche.billing_account ba
-                ON ba.id = f.billing_account_id
-              JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
-                ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
-             WHERE lf.lotto_id = %s
-               AND fl.disabilitato IS FALSE
-               AND fl.status = %s
-
-            UNION ALL
-
-            SELECT
-                'LOTTO:' || ll.id::text  AS riga_key,
-                'LOTTO'::text            AS origine,
-                ll.status                AS livello,
-                ll.messaggio,
-                ll.data_ora,
-                ll.meta,
-                ll.fase,
-                NULL::bigint             AS fattura_id,
-                NULL::text               AS ragione_sociale_completa,
-                NULL::numeric            AS totale_doc
-              FROM vendite.fatturazione_lotti_log ll
-             WHERE ll.lotto_id = %s
-               AND ll.disabilitato IS FALSE
-               AND ll.status = %s
-
-             -- ⚠️ Per NOME e non per ordinale (`ORDER BY 4`): in una UNION
-             -- l'ordinale si riferisce alla posizione, quindi una colonna
-             -- aggiunta in testa cambierebbe silenziosamente l'ordinamento.
-             -- Tiebreak sulla chiave: a parita' di istante — che qui capita
-             -- di continuo — l'ordine dev'essere comunque deterministico,
-             -- altrimenti due letture della stessa pagina si scambiano righe.
-             ORDER BY data_ora DESC NULLS LAST, riga_key DESC
-             LIMIT %s
-        """
+        self,
+        *,
+        lotto_id: int,
+        livello: str | None = None,
+        origine: str | None = None,
+        solo_attive: bool = True,
+        solo_job_corrente: bool = False,
+        limit: int = 200,
+        offset: int = 0,
+        order_by: str | None = None,
+        order_dir: str = "desc",
+        max_rows: int | None = None,
+    ) -> tuple[list[LottoSegnalazioneRow], int, int]:
+        tetto = _DRAWER_EXPORT_MAX_ROWS if max_rows else 500
+        safe_limit = max(1, min(int(max_rows or limit), tetto))
+        safe_offset = max(0, int(offset))
         with connection.cursor() as cursor:
-            cursor.execute(sql, [lotto_id, livello, lotto_id, livello, safe_limit])
-            rows = cursor.fetchall()
-        # ⚠️ NESSUN TAGLIO SILENZIOSO: un elenco troncato al `limit` somiglia in
-        # tutto a un elenco completo, e sopra c'e' un contatore che dice un
-        # numero diverso — chi guarda concluderebbe che il contatore sbaglia.
-        # Finche' la scheda non ha la paginazione (prerequisito: catalogo lista)
-        # la traccia resta nei log, che e' meglio di niente e molto meglio di un
-        # numero che non torna.
-        if len(rows) == safe_limit:
-            logger.warning(
-                "list_lotto_segnalazioni: risultato troncato al limit=%s "
-                "per lotto_id=%s livello=%s",
-                safe_limit, lotto_id, livello,
+            cursor.execute(
+                """
+                SELECT
+                    riga_key, origine, data_ora, livello, messaggio, error_code,
+                    fase, fattura_id, documento_display, importo,
+                    disabilitato, job_corrente, total_count, fuori_job_count
+                FROM vendite.fn_list_lotto_segnalazioni(
+                    p_lotto_id          => %s,
+                    p_origine           => %s,
+                    p_livello           => %s,
+                    p_solo_attive       => %s,
+                    p_solo_job_corrente => %s,
+                    p_limit             => %s,
+                    p_offset            => %s,
+                    p_order_by          => %s,
+                    p_order_dir         => %s
+                )
+                """,
+                [
+                    int(lotto_id), origine, livello,
+                    bool(solo_attive), bool(solo_job_corrente),
+                    safe_limit, safe_offset, order_by or None, order_dir,
+                ],
             )
-        return [
+            rows = cursor.fetchall()
+
+        total_count = int(rows[0][12]) if rows else 0
+        fuori_job = int(rows[0][13]) if rows else 0
+        risultato: list[LottoSegnalazioneRow] = [
             {
                 "riga_key": str(row[0]),
                 "origine": str(row[1]),
-                "livello": str(row[2]),
-                "messaggio": row[3],
-                "data_ora": row[4].isoformat() if row[4] is not None else None,
-                # ⚠️ `error_code`: la chiave di D-7, scritta sia dalle quattro
-                # funzioni DB sia dal backend. Leggere `code` avrebbe mostrato
-                # solo meta' delle righe.
-                "codice": (jsonb_out(row[5]) or {}).get("error_code"),
+                "data_ora": row[2].isoformat() if row[2] is not None else None,
+                "livello": str(row[3]),
+                "messaggio": row[4],
+                "error_code": row[5],
                 "fase": row[6],
                 "fattura_id": None if row[7] is None else int(row[7]),
-                "ragione_sociale_completa": row[8],
-                "totale_doc": str(row[9]) if row[9] is not None else None,
+                "documento_display": row[8],
+                "importo": str(row[9]) if row[9] is not None else None,
+                "disabilitato": bool(row[10]),
+                "job_corrente": bool(row[11]),
             }
             for row in rows
         ]
+        return risultato, total_count, fuori_job
 
     # Scopo: Restituisce i task run runtime del lotto ordinati dal più recente per consultazione API/UI.
     def list_lotto_task_runs(
@@ -583,6 +551,7 @@ class VenditePipelineRepository:
         order_by: str | None = None,
         order_dir: str = "desc",
         solo_attivi: bool = True,
+        max_rows: int | None = None,
     ) -> tuple[list[LottoTaskRunRow], int]:
         # ⭐ LA SORGENTE E' LA FUNZIONE DB, non una query nostra (BE-2 del brief
         # liste drawer lotto, 2026-08-22). Prima c'erano DUE verita' sullo
@@ -598,7 +567,8 @@ class VenditePipelineRepository:
         # ⚠️ `order_by` NON si valida qui: la funzione ha la sua whitelist e su
         # un nome sconosciuto ripiega sul default. Ricopiarla nel backend
         # sarebbe la terza verita'.
-        safe_limit = max(1, min(int(limit), 500))
+        tetto = _DRAWER_EXPORT_MAX_ROWS if max_rows else 500
+        safe_limit = max(1, min(int(max_rows or limit), tetto))
         safe_offset = max(0, int(offset))
         with connection.cursor() as cursor:
             cursor.execute(

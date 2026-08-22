@@ -32,6 +32,7 @@ from apps.core.api.payload_validators import (
     qp_str,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
@@ -52,11 +53,11 @@ from apps.vendite.services.commesse_service import (
     fn_variazione_prezzo_eccezionale,
     pr_run_commesse_push,
 )
-from apps.vendite.services.lotto_segnalazioni_service import LIVELLO_CRITICO
 from apps.vendite.services.pipeline_service import (
     esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
+    fn_list_lotto_segnalazioni,
     fn_annulla_lotto_da_draft,
     fn_riporta_lotto_a_draft,
     fn_elimina_fattura_da_lotto,
@@ -235,22 +236,166 @@ class ApiLottoSegnalazioniSummary(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET il riepilogo segnalazioni del lotto + l'ELENCO
-    #        del livello richiesto (default: le critiche, che sono quelle che
-    #        fermano il lotto e quindi la domanda con cui si apre la scheda).
-    # ⚠️ `livello` e non `severity`/`status`: nome italiano come il resto dei
-    #    query param di dominio, e comunque MAI `format` o altri nomi che DRF
-    #    intercetta (memoria feedback_drf_format_magic_param).
+    # Scopo: Restituisce via GET il RIEPILOGO segnalazioni del lotto (conteggi
+    #        + blocco avanzamento). Alimenta il banner di testata.
+    # ⚠️ Le RIGHE stanno su un endpoint suo (`/segnalazioni/rows/`): questo lo
+    #    chiede il drawer a ogni apertura, e portarsi dietro l'elenco per
+    #    mostrarne un numero sarebbe lavoro a ogni giro.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        livello = (request.query_params.get("livello") or LIVELLO_CRITICO).strip().upper()
-        data = fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id, livello=livello)
+        return success_response(fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id))
+
+
+
+
+class ApiLottoSegnalazioniRows(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/segnalazioni/rows/ — elenco PAGINATO delle
+    segnalazioni del lotto (`vendite.fn_list_lotto_segnalazioni`): le due origini
+    — log di fattura e log di lotto — in un elenco solo, col documento e
+    l'importo gia' composti.
+
+    Filtri opzionali: `livello` (C/W/I), `origine` (FATTURA/LOTTO),
+    `solo_attive` (default true: le ritirate non si mostrano), `solo_job_corrente`
+    (default false). `fuori_job_count` dice quante restano fuori dall'ultima
+    corsa: senza, un elenco filtrato e uno vuoto si leggono uguali."""
+
+    area_funzionale = "vendite"
+    # Lista configurabile 47.
+    lista_codice = "vendite.lotto_segnalazioni"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="livello", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="origine", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="solo_attive", type=bool, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="solo_job_corrente", type=bool, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY),
+        ],
+        responses={200: inline_serializer(
+            name="LottoSegnalazioniRowsResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: elenco paginato delle segnalazioni del lotto.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        q = request.query_params
+        data = fn_list_lotto_segnalazioni(
+            lotto_id=lotto_id,
+            livello=(q.get("livello") or None),
+            origine=(q.get("origine") or None),
+            solo_attive=as_bool(q.get("solo_attive"), default=True),
+            solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
+            page=optional_int({"page": q.get("page", "1")}, "page") or 1,
+            page_size=optional_int({"page_size": q.get("page_size", "50")}, "page_size") or 50,
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+        )
         return success_response(data)
 
 
+class ApiLottoSegnalazioniExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/segnalazioni/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista di segnalazioni della scheda, con gli STESSI filtri
+    e lo STESSO ordinamento: il file rispecchia cio' che l'operatore sta
+    guardando, non una seconda lista che gli somiglia.
+
+    Le colonne le decide il catalogo `vendite.lotto_segnalazioni` attraverso
+    `UiService.get_lista_config`: nascoste escluse, ordine e permessi rispettati.
+
+    NB: il parametro si chiama `formato` e NON `format`, che DRF intercetta
+    come magic parameter prima della view.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_segnalazioni"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="livello", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="origine", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX delle segnalazioni del lotto.
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        # Formato PRIMA della query: su formato invalido non si paga il fetch.
+        fmt = parse_export_format(request)
+        q = request.query_params
+        filtri = {"livello": q.get("livello") or None, "origine": q.get("origine") or None}
+        data = fn_list_lotto_segnalazioni(
+            lotto_id=lotto_id,
+            **filtri,
+            solo_attive=as_bool(q.get("solo_attive"), default=True),
+            solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+            # ⚠️ `max_rows` e non `page_size`: l'export salta la paginazione
+            # invece di violarne il tetto. Il `+1` non tronca — serve al guard
+            # di `build_export_response`, che confronta il `count` ESATTO.
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_segnalazioni",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati={
+                "lotto_id": str(lotto_id),
+                **{k: str(v) for k, v in filtri.items() if v is not None},
+            },
+            fmt=fmt,
+        )
+
+
+class ApiLottoTaskRunsExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/task-runs/export/?formato=csv|xlsx
+
+    I tentativi dei task del lotto, colonne dal catalogo
+    `vendite.lotto_task_runs`."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_task_runs"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX dei tentativi dei task del lotto.
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        q = request.query_params
+        data = fn_get_lotto_task_runs(
+            lotto_id=lotto_id,
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_task_runs",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati={"lotto_id": str(lotto_id)},
+            fmt=fmt,
+        )
 
 
 class ApiLottoTaskRuns(DomainAPIView):
     area_funzionale = "vendite"
+    # Lista configurabile 46.
+    lista_codice = "vendite.lotto_task_runs"
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -752,8 +897,55 @@ class ApiLottoDetail(DomainAPIView):
         return success_response(data)
 
 
+class ApiLottoFattureExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/fatture/export/?formato=csv|xlsx
+
+    I documenti del lotto (fatture E note di credito), colonne dal catalogo
+    `vendite.lotto_fatture`: nascoste escluse, ordine e permessi rispettati."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_fatture"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX dei documenti del lotto.
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        q = request.query_params
+        stato = q.get("stato_esecuzione") or None
+        data = fn_list_lotto_fatture(
+            lotto_id=lotto_id,
+            stato_esecuzione=stato,
+            auth_user_id=get_scope_user_id(request),
+            sort_by=(q.get("sort_by") or "fattura_id"),
+            sort_dir=(q.get("sort_dir") or "asc"),
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_fatture",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati={
+                "lotto_id": str(lotto_id),
+                **({"stato_esecuzione": stato} if stato else {}),
+            },
+            fmt=fmt,
+        )
+
+
 class ApiLottoFattureList(DomainAPIView):
     area_funzionale = "vendite"
+    # Lista configurabile 45: il codice dichiara da quale catalogo arrivano le colonne (e per chi ha piu' emittenti, da quale perimetro le righe).
+    lista_codice = "vendite.lotto_fatture"
     is_search_endpoint = True
 
     @extend_schema(

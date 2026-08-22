@@ -15,11 +15,7 @@ from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
-from apps.vendite.services.lotto_segnalazioni_service import (
-    LIVELLI_SEGNALAZIONE,
-    LIVELLO_CRITICO,
-    LottoSegnalazioniService,
-)
+from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.fatture_righe_service import FattureRigheService
@@ -285,6 +281,86 @@ def numera_lotto(
     )
 
 
+# Scopo: L'ELENCO paginato delle segnalazioni di un lotto (BE-4 del brief liste
+#        drawer lotto). Sorgente: `vendite.fn_list_lotto_segnalazioni`.
+#
+# ⭐ SEPARATO DA `fn_get_lotto_segnalazioni_summary`, e non e' una duplicazione:
+#    quello CONTA e alimenta il banner di testata — una risposta piccola che il
+#    drawer chiede sempre; questo ELENCA, e' paginato e ordinabile, e serve alla
+#    scheda. Farne uno solo avrebbe voluto dire portarsi dietro l'elenco a ogni
+#    apertura del drawer per mostrarne un numero.
+#
+# ⚠️ `livello` e `origine` sono filtri OPZIONALI: assenti = tutto. Il vocabolario
+#    lo valida la funzione DB, qui si controlla solo cio' che il DB non puo'
+#    dire con un messaggio utile (paginazione e direzione).
+def fn_list_lotto_segnalazioni(
+    *,
+    lotto_id: int,
+    livello: str | None = None,
+    origine: str | None = None,
+    solo_attive: bool = True,
+    solo_job_corrente: bool = False,
+    page: int = 1,
+    page_size: int = 50,
+    order_by: str | None = None,
+    order_dir: str = "desc",
+    max_rows: int | None = None,
+) -> dict[str, object]:
+    ErrorManager.require(
+        bool(lotto_id and lotto_id > 0),
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail="lotto_id obbligatorio e > 0",
+        context={"lotto_id": lotto_id},
+        function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
+        log_to_db=False,
+    )
+    # ⚠️ L'export non ha una pagina da validare: salta la paginazione.
+    ErrorManager.require(
+        bool(max_rows) or (page >= 1 and 1 <= page_size <= 500),
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail=f"page={page} page_size={page_size} fuori dai limiti ammessi",
+        context={"lotto_id": lotto_id, "page": page, "page_size": page_size},
+        function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
+        log_to_db=False,
+    )
+    ErrorManager.require(
+        order_dir.lower() in ("asc", "desc"),
+        code="E_PIPELINE_VALIDATION",
+        message="Parametri pipeline non validi.",
+        detail=f"order_dir={order_dir!r} non ammesso",
+        context={"lotto_id": lotto_id, "order_dir": order_dir},
+        function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
+        log_to_db=False,
+    )
+    righe, total_count, fuori_job = VenditePipelineRepository().list_lotto_segnalazioni(
+        lotto_id=lotto_id,
+        livello=livello,
+        origine=origine,
+        solo_attive=solo_attive,
+        solo_job_corrente=solo_job_corrente,
+        limit=page_size,
+        offset=0 if max_rows else (page - 1) * page_size,
+        order_by=order_by,
+        order_dir=order_dir,
+        max_rows=max_rows,
+    )
+    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
+    return {
+        "lotto_id": lotto_id,
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        # ⭐ Quante segnalazioni restano FUORI dal job corrente: e' il numero che
+        # rende onesto il filtro «solo l'ultima corsa». Senza, un elenco filtrato
+        # e uno vuoto si leggono uguali.
+        "fuori_job_count": fuori_job,
+        "results": righe,
+    }
+
+
 # Scopo: C-8 — Ristampa MASSIVA di un lotto DEFINITIVA: accoda in
 #        `vendite.fatture_stampa_coda` una riga per ogni fattura del
 #        lotto (`fn_accoda_stampe_lotto`, idempotente sui work-item vivi); il
@@ -523,9 +599,7 @@ def fn_elimina_fattura_da_lotto(
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.
-def fn_get_lotto_segnalazioni_summary(
-    *, lotto_id: int, livello: str = LIVELLO_CRITICO,
-) -> dict[str, object]:
+def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",
@@ -534,15 +608,6 @@ def fn_get_lotto_segnalazioni_summary(
         context={"lotto_id": lotto_id},
         function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
         log_to_db=True,
-    )
-    ErrorManager.require(
-        livello in LIVELLI_SEGNALAZIONE,
-        code="E_PIPELINE_VALIDATION",
-        message="Livello segnalazione non valido.",
-        detail=f"livello={livello!r} non in {sorted(LIVELLI_SEGNALAZIONE)}",
-        context={"lotto_id": lotto_id, "livello": livello},
-        function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
-        log_to_db=False,
     )
     service = LottoSegnalazioniService()
     status = service.evaluate_lotto_status(lotto_id)
@@ -554,14 +619,6 @@ def fn_get_lotto_segnalazioni_summary(
         "is_error": status.is_error,
         "blocks_next_step": status.blocks_next_step,
         "summary": status.summary,
-        # ⭐ L'elenco, non solo i numeri. Viaggia con i conteggi in UNA risposta
-        # perche' i due li legge la stessa scheda e devono raccontare lo stesso
-        # istante: due chiamate separate potrebbero cadere a cavallo di un giro
-        # e mostrare «2 critiche» sopra un elenco di tre.
-        "livello": livello,
-        "segnalazioni": service.repository.list_lotto_segnalazioni(
-            lotto_id=lotto_id, livello=livello,
-        ),
     }
 
 
@@ -573,6 +630,7 @@ def fn_get_lotto_task_runs(
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str = "desc",
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
@@ -584,7 +642,7 @@ def fn_get_lotto_task_runs(
         log_to_db=True,
     )
     ErrorManager.require(
-        1 <= int(page_size) <= 500,
+        bool(max_rows) or 1 <= int(page_size) <= 500,
         code="E_PIPELINE_VALIDATION",
         message="Parametri pipeline non validi.",
         detail="page_size deve essere compreso tra 1 e 500",
@@ -618,6 +676,7 @@ def fn_get_lotto_task_runs(
         offset=offset,
         order_by=order_by,
         order_dir=order_dir,
+        max_rows=max_rows,
     )
     # ⚠️ ENVELOPE PAGINATO, non piu' `{lotto_id, count, task_runs}`: `count`
     # diceva quante righe erano ARRIVATE, cioe' la dimensione della pagina, e

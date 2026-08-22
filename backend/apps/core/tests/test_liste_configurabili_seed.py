@@ -74,6 +74,29 @@ def _repo_root() -> Path:
 _SEED_DIR = _repo_root() / "db/changelog/migrations_v2/80_data/sql/ui"
 
 
+# Scopo: whitelist di ordinamento di una lista il cui ORDINE vive nella funzione
+#        DB, non in Python — letta dalla doc auto-gen della funzione.
+#
+# ⭐ RIUSA il lettore di `scripts/gen_seed_lista.py` invece di ricopiarne la
+#    regex: le due letture devono dare lo stesso insieme, e due regex gemelle
+#    sono il modo classico per farle divergere quando una delle due funzioni
+#    cambia forma. Il generatore e' gia' la sede di quel parsing.
+# ⚠️ Import per percorso e non `from scripts...`: `scripts/` non e' un package
+#    e non sta sul path del runner Django.
+def _whitelist_da_funzione_db(percorso_doc: str):
+    def risolvi() -> set[str]:
+        import importlib.util
+
+        sorgente = _repo_root() / "scripts" / "gen_seed_lista.py"
+        spec = importlib.util.spec_from_file_location("_gen_seed_lista", sorgente)
+        assert spec and spec.loader
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        return modulo.whitelist_funzione_db(percorso_doc)
+
+    return risolvi
+
+
 # Scopo: whitelist di ordinamento di ogni lista convertita, risolta pigramente
 #        (import dentro la lambda) per non legare l'import di questo modulo a
 #        tutti i repository coinvolti.
@@ -220,6 +243,25 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # che il presidio confronta col seed: se i due divergessero, il BE
     # rifiuterebbe una colonna che la funzione accetta (o viceversa).
     ("vendite.commesse_attivita", _da_costante("apps.vendite.db.commesse_repository", "ATTIVITA_SORT_COLUMNS")),
+    # ══════════════════════════════════════════════════════════════════
+    # Le tre liste del drawer lotto di fatturazione (L3 del team DB,
+    # seed 2026-08-22). Registrate PRIMA della conversione dei `.vue`
+    # (FE-2): il registro copre gia' i test 1-6, che leggono il seed e
+    # non il frontend — e una lista che nasce senza presidio viene
+    # dichiarata a posto senza essere stata guardata.
+    # ══════════════════════════════════════════════════════════════════
+    ("vendite.lotto_fatture",
+     _da_costante("apps.vendite.db.vendite_repository", "LOTTO_FATTURE_SORT_COLUMNS")),
+    # ⭐ Le due sotto NON hanno una whitelist Python, e non e' una dimenticanza:
+    # ordine e paginazione stanno nella stessa funzione DB (ordinare a valle
+    # ordinerebbe la pagina gia' estratta), e tenerne uno specchio nel backend
+    # sarebbe una seconda verita' da riallineare a mano a ogni colonna nuova.
+    # Si legge quindi dalla doc auto-gen della funzione — la stessa sorgente che
+    # usa `gen_seed_lista.py`.
+    ("vendite.lotto_task_runs",
+     _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_task_runs.md")),
+    ("vendite.lotto_segnalazioni",
+     _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni.md")),
     ("vendite.dash_aperto_documenti", _whitelist_di_classe("DASH_APERTO_SORT_COLUMNS")),
     ("vendite.dash_backlog_documenti", _whitelist_di_classe("DASH_BACKLOG_SORT_COLUMNS")),
     ("vendite.dash_competenza_errori", _whitelist_di_classe("DASH_COMPETENZA_ERRORI_SORT_COLUMNS")),

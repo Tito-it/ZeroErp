@@ -175,6 +175,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE": "La compensazione ha gia' una testata contabile, creata con parametri diversi da quelli richiesti.",
     "E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI": "Una testata contabile appartiene a una compensazione oppure a un lotto di fatturazione, mai a entrambi.",
     "E_CONTABILE_DATI_OBBLIGATORI": "Per aprire una distinta contabile mancano dei dati obbligatori.",
+    "E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE": "La distinta contabile e' cambiata da quando e' stata dichiarata: righe o totale non corrispondono piu'.",
+    "E_CONTABILE_NON_REGISTRABILE": "La distinta contabile non e' registrabile: si registra solo una distinta validata.",
+    "E_CONTABILE_NON_TROVATA": "Distinta contabile non trovata.",
     "E_CONTABILE_RIAPERTURA_NON_MANUALE": "La distinta contabile non si riapre: non e' stata compilata a mano.",
     "E_CONTABILE_STATO_NON_CONFIGURATO": "Stato contabile non configurato: non esiste, oppure non e' attivo.",
     "E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA": "Il totale dichiarato sulla distinta contabile non quadra con la somma delle sue righe.",
@@ -813,7 +816,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # quel codice arrivasse comunque da un percorso non previsto.
     # 📌 Sono AVVISI: si registrano e il giro prosegue. Un `W_` sollevato
     # sarebbe un 500, ed e' esattamente cio' che non devono fare.
+    "W_FONDO_ESEGUITO_NON_RESETTABILE": "Fondo gia' eseguito: non si azzera, e la riga resta com'e'.",
     "W_FONDO_MINIMO_NON_RIPRISTINABILE": "Minimo del fondo non ripristinabile: la quota resta come e'.",
+    "W_FONDO_RIGA_CONTABILE_NON_AGGIORNABILE": "Riga contabile non aggiornabile: il fondo resta legato a quella che c'e'.",
     "W_MESSAGGIO_ARITA": "Messaggio di errore con segnaposti non valorizzati: anomalia tecnica di catalogo.",
     "W_SCADENZE_TOTALE_NEGATIVO": "Totale a pagare negativo: nessun piano rate generato.",
     "W_TXID_NOT_REGISTERED": "Transazione non registrata: anomalia tecnica di tracciamento.",

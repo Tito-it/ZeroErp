@@ -15,8 +15,6 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
 import SelectButtonGravita from '../../core/components/SelectButtonGravita.vue'
@@ -25,6 +23,12 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ErroreRigaInfo from '../../core/components/ErroreRigaInfo.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import PageActionsBar from '../../core/components/PageActionsBar.vue'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
+import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import FatturaDrawer from './FatturaDrawer.vue'
@@ -46,8 +50,7 @@ import {
 } from '../composables/useLottoAzioni'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
-import { displayDate, displayTimestamp } from '../../core/utils/date'
-import { formatCurrency } from '../../core/utils/format'
+import { displayDate } from '../../core/utils/date'
 import { extractApiError } from '../../core/utils/apiError'
 import {
   naturaDocSeverity,
@@ -60,6 +63,10 @@ import {
   listLottoFatture,
   listLottoTaskRuns,
   getLottoSegnalazioni,
+  listLottoSegnalazioni,
+  exportLottoFatture,
+  exportLottoTaskRuns,
+  exportLottoSegnalazioni,
   eliminaFatturaDaLotto,
 } from '../api/lotti'
 
@@ -95,8 +102,94 @@ const isReadonly = computed(() => parentReadonly.value || props.readonly)
 const { isAllowed: canResetFattura } = useActionPermission('reset_lotto_fattura_draft')
 
 const lotto = ref(null)
-const fatture = ref([])
-const taskRuns = ref([])
+// ⭐ I TRE TAB SONO TRE LISTE, non tre dettagli di un master: dal 2026-08-22
+// montano `<ListaConfigurabile>` (seed 45/46/47), quindi paginazione,
+// ordinamento server-side e colonne personalizzabili come tutte le altre.
+// Lo stato paginato lo tiene un composable solo, usato tre volte: scritto a
+// mano tre volte sarebbero state tre occasioni di dimenticare l'azzeramento
+// della pagina al cambio ordinamento.
+const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+  listLottoFatture(props.lottoId, {
+    page, page_size: pageSize, ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
+  }))
+const listaTask = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+  listLottoTaskRuns(props.lottoId, { page, pageSize, orderBy: sortBy, orderDir: sortDir }))
+const listaSegnalazioni = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+  listLottoSegnalazioni(props.lottoId, {
+    livello: livelloSegnalazioni.value, page, pageSize, orderBy: sortBy, orderDir: sortDir,
+  }))
+
+const fatture = computed(() => listaDocumenti.righe.value)
+
+// Azioni di lista (personalizza colonne + esporta): lo stesso BB delle altre
+// liste standard, una istanza per tab.
+// ⭐ L'export riceve gli STESSI filtri e lo STESSO ordinamento della lista a
+// video: il file E' la lista, non una seconda query che le somiglia.
+const listaDocumentiRef = ref(null)
+const listaTaskRef = ref(null)
+const listaSegnalazioniRef = ref(null)
+
+// Scopo: la voce «ricarica» che ogni lista dell'applicazione ha, composta con
+//        quelle del BB. ⚠️ `kind: 'utility'`: sul piccolo schermo finisce nel
+//        kebab insieme alle altre — e' il meccanismo standard di
+//        `PageActionsBar`, non una scelta di questa schermata.
+function conRicarica(azioniBB, ricarica) {
+  return computed(() => [
+    {
+      key: 'reload',
+      kind: 'utility',
+      label: t('common.reload_list'),
+      icon: MANAGE_ICONS.RELOAD,
+      command: ricarica,
+    },
+    ...azioniBB.value,
+  ])
+}
+
+const azioniDocumenti = useListaAzioni(() => listaDocumentiRef.value, {
+  exportFn: (params) => exportLottoFatture(props.lottoId, params),
+  getExportParams: (formato) => ({
+    formato,
+    ...(listaDocumenti.sortField.value
+      ? {
+          sort_by: listaDocumenti.sortField.value,
+          sort_dir: listaDocumenti.sortOrder.value === -1 ? 'desc' : 'asc',
+        }
+      : {}),
+  }),
+})
+const azioniTask = useListaAzioni(() => listaTaskRef.value, {
+  exportFn: (params) => exportLottoTaskRuns(props.lottoId, params),
+  getExportParams: (formato) => ({
+    formato,
+    ...(listaTask.sortField.value
+      ? {
+          order_by: listaTask.sortField.value,
+          order_dir: listaTask.sortOrder.value === -1 ? 'desc' : 'asc',
+        }
+      : {}),
+  }),
+})
+const azioniSegnalazioni = useListaAzioni(() => listaSegnalazioniRef.value, {
+  exportFn: (params) => exportLottoSegnalazioni(props.lottoId, params),
+  getExportParams: (formato) => ({
+    formato,
+    // ⚠️ Il livello e' un FILTRO della scheda: senza, il file conterrebbe
+    // tutte le segnalazioni mentre a video se ne vede un livello solo.
+    ...(livelloSegnalazioni.value ? { livello: livelloSegnalazioni.value } : {}),
+    ...(listaSegnalazioni.sortField.value
+      ? {
+          order_by: listaSegnalazioni.sortField.value,
+          order_dir: listaSegnalazioni.sortOrder.value === -1 ? 'desc' : 'asc',
+        }
+      : {}),
+  }),
+})
+
+// Le tre barre a video: «ricarica» davanti, poi personalizza e esporta.
+const barraDocumenti = conRicarica(azioniDocumenti.azioniLista, () => listaDocumenti.carica())
+const barraTask = conRicarica(azioniTask.azioniLista, () => listaTask.carica())
+const barraSegnalazioni = conRicarica(azioniSegnalazioni.azioniLista, caricaSegnalazioni)
 const segnalazioni = ref(null)
 const tabLoading = ref(false)
 // Dialog archivio documenti fattura (C-8). Dichiarati QUI, PRIMA del watch
@@ -162,7 +255,22 @@ const opzioniLivello = computed(() => [
   },
 ])
 
-const elencoSegnalazioni = computed(() => segnalazioni.value?.segnalazioni ?? [])
+// Le RIGHE arrivano da un endpoint suo, separato dai conteggi: quello alimenta
+// il banner ed e' piccolo, questo pagina e ordina e serve solo a scheda aperta.
+const elencoSegnalazioni = computed(() => listaSegnalazioni.righe.value)
+
+// Scopo: la severity di un livello di segnalazione. ⚠️ Stessa scala del filtro
+//        (`SelectButtonGravita`) e dell'icona di riga (`ErroreRigaInfo`): tre
+//        rese diverse dello stesso dato devono dire lo stesso colore.
+const SEVERITY_PER_LIVELLO = { C: 'danger', W: 'warn', I: 'info' }
+function severitaLivelloSegnalazione(livello) {
+  return SEVERITY_PER_LIVELLO[livello] || 'secondary'
+}
+// Quante segnalazioni restano fuori dall'ultima corsa di pipeline: senza questo
+// numero un elenco filtrato e uno vuoto si leggono uguali.
+// ⚠️ Non e' `count`, che e' il totale della pagina corrente di filtro: e' un
+// conteggio a parte che la funzione DB ripete su ogni riga.
+const segnalazioniFuoriJob = ref(0)
 
 // Scopo: il link del banner — porta sulla scheda già filtrata sulle critiche.
 //        Rimette il livello anche se l'operatore l'aveva cambiato prima: il
@@ -183,22 +291,27 @@ async function loadLotto() {
   return true
 }
 
-async function loadFatture() {
-  const res = await listLottoFatture(props.lottoId, { page: 1, page_size: 100 })
-  fatture.value = res.data?.data?.results ?? []
+// Scopo: l'elenco segnalazioni + il contatore «fuori dall'ultima corsa», che
+//        viaggia con le righe e non con i conteggi di testata.
+async function caricaSegnalazioni() {
+  await listaSegnalazioni.carica()
+  const res = await listLottoSegnalazioni(props.lottoId, {
+    livello: livelloSegnalazioni.value, page: 1, pageSize: 1,
+  })
+  segnalazioniFuoriJob.value = res.data?.data?.fuori_job_count ?? 0
+  livelloCaricato.value = livelloSegnalazioni.value
 }
 
 async function loadTabs() {
   tabLoading.value = true
   try {
-    const [tRes, sRes] = await Promise.all([
-      listLottoTaskRuns(props.lottoId, { limit: 100 }),
-      getLottoSegnalazioni(props.lottoId, { livello: livelloSegnalazioni.value }),
-      loadFatture(),
+    const [sRes] = await Promise.all([
+      getLottoSegnalazioni(props.lottoId),
+      listaDocumenti.carica(),
+      listaTask.carica(),
+      caricaSegnalazioni(),
     ])
-    taskRuns.value = tRes.data?.data?.task_runs ?? []
     segnalazioni.value = sRes.data?.data ?? null
-    livelloCaricato.value = livelloSegnalazioni.value
   } catch (err) {
     // Fail-visible: un tab vuoto per errore non deve sembrare "nessun dato".
     notify.error(extractApiError(err, t('common.error')))
@@ -218,17 +331,10 @@ async function reloadAll() {
 watch(livelloSegnalazioni, async (livello) => {
   if (!props.visible || !props.lottoId) return
   if (livello === livelloCaricato.value) return
-  // ⚠️ `execute` restituisce GIA' il contenuto di `data` dell'envelope, non la
-  // response axios: spacchettarlo un'altra volta (`res.data?.data`) dava
-  // `undefined` → `segnalazioni = null` → la scheda si svuotava al primo click
-  // sul filtro, e tornava solo riaprendo il drawer (dove la fetch passa da
-  // `loadTabs`, che invece la response ce l'ha davvero).
-  const res = await execute(() =>
-    getLottoSegnalazioni(props.lottoId, { livello: livelloSegnalazioni.value }))
-  if (res !== null) {
-    segnalazioni.value = res
-    livelloCaricato.value = livelloSegnalazioni.value
-  }
+  // ⚠️ Si torna a pagina 1: cambiare filtro stando a pagina 3 lascerebbe
+  // l'operatore in mezzo a un elenco che non e' piu' quello di prima.
+  listaSegnalazioni.page.value = 1
+  await caricaSegnalazioni()
 })
 
 // Scopo: reload mirato post reset-fattura — cambiano solo testata (step/stato)
@@ -236,7 +342,7 @@ watch(livelloSegnalazioni, async (livello) => {
 async function reloadFatture() {
   tabLoading.value = true
   try {
-    if (await loadLotto()) await loadFatture()
+    if (await loadLotto()) await listaDocumenti.carica()
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))
   } finally {
@@ -254,9 +360,11 @@ watch(
     fatturaDrawerVisible.value = false
     if (!visible || !props.lottoId) return
     lotto.value = null
-    fatture.value = []
-    taskRuns.value = []
     segnalazioni.value = null
+    segnalazioniFuoriJob.value = 0
+    listaDocumenti.reset()
+    listaTask.reset()
+    listaSegnalazioni.reset()
     // Riapertura = si riparte dai DOCUMENTI, sempre. Senza questo reset il
     // drawer riapriva sulla scheda dove l'operatore era finito l'ultima volta
     // (tipicamente «Segnalazioni», dove l'aveva portato il link del banner):
@@ -526,144 +634,141 @@ function fatturaNumero(row) {
                  entrambe sui rispettivi registri (§12.4-bis.8 del brief nota di
                  credito). Un conteggio che dice «3 fatture» su 2 fatture e una
                  nota e' un numero giusto con il nome sbagliato. -->
-            <Tab value="fatture">{{ t('vendite.lotti.tab_documenti') }} ({{ fatture.length }})</Tab>
-            <Tab value="task">{{ t('vendite.lotti.tab_task') }} ({{ taskRuns.length }})</Tab>
+            <!-- ⚠️ Il conteggio e' il TOTALE del server, non le righe caricate:
+                 con la paginazione «(25)» su 137 documenti sarebbe la
+                 dimensione della pagina spacciata per quantita'. -->
+            <Tab value="fatture">{{ t('vendite.lotti.tab_documenti') }} ({{ listaDocumenti.totale.value }})</Tab>
+            <Tab value="task">{{ t('vendite.lotti.tab_task') }} ({{ listaTask.totale.value }})</Tab>
             <Tab value="segnalazioni">{{ t('vendite.lotti.tab_segnalazioni') }}</Tab>
           </TabList>
           <TabPanels>
-            <!-- Fatture del lotto. -->
+            <!-- ⭐ I TRE TAB SONO TRE LISTE CONFIGURABILI (seed 45/46/47, FE-2
+                 del brief liste drawer lotto). Le colonne arrivano dal
+                 catalogo: qui restano solo gli slot delle celle che hanno una
+                 resa propria (Tag, icona errore, kebab). Aggiungere una
+                 colonna e' ora un seed, non una riga di `.vue`. -->
             <TabPanel value="fatture">
-              <DataTable
-                :value="fatture"
-                :loading="tabLoading"
-                class="app-datatable app-datatable--inner"
-                striped-rows
-                size="small"
+              <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
+                   destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
+                   stesso di ogni pagina lista, quindi queste tre si comportano come le
+                   altre anche quando la regola cambia.
+                   ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
+                   `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
+              <div class="app-page-toolbar">
+                <!-- Spaziatore: `space-between` con un figlio solo allineerebbe
+                     a SINISTRA. Queste due liste non hanno filtri propri. -->
+                <span class="app-page-filters" />
+                <PageActionsBar :actions="barraDocumenti">
+                  <template #suffix>
+                    <ListaConfigStatusTag :dirty="azioniDocumenti.dirty.value" />
+                  </template>
+                </PageActionsBar>
+              </div>
+              <ListaConfigurabile
+                ref="listaDocumentiRef"
+                codice="vendite.lotto_fatture"
                 data-key="fattura_id"
+                :rows="listaDocumenti.righe.value"
+                :total="listaDocumenti.totale.value"
+                :loading="tabLoading || listaDocumenti.loading.value"
+                :paginator-options="listaDocumenti.paginatorOptions.value"
+                :page="listaDocumenti.page.value"
+                :sort-field="listaDocumenti.sortField.value"
+                :sort-order="listaDocumenti.sortOrder.value"
+                @page="listaDocumenti.onPage"
+                @sort="listaDocumenti.onSort"
+                @config-loaded="listaDocumenti.onConfigLoaded"
               >
-                <Column field="numero" :header="t('vendite.lotti.col_numero')" style="width: 110px;">
-                  <template #body="{ data }">{{ fatturaNumero(data) }}</template>
-                </Column>
-                <!-- Natura del documento: arriva GIA' decodificata dal
-                     backend (display field via JOIN, B5). ⚠️ La nota di credito
-                     non e' un'anomalia: severity neutra, mai `danger` — e il
-                     totale negativo si mostra com'e', perche' e' il documento a
-                     essere di segno opposto. -->
-                <Column field="natura_doc_codice" :header="t('vendite.lotti.col_natura')" style="width: 130px;">
-                  <template #body="{ data }">
-                    <Tag v-if="data.natura_doc_codice"
-                      :value="data.natura_doc_descrizione || data.natura_doc_codice"
-                      :severity="naturaDocSeverity(data.natura_doc_codice)" />
-                    <span v-else>—</span>
-                  </template>
-                </Column>
-                <Column field="ragione_sociale_completa" :header="t('vendite.lotti.col_cliente')">
-                  <template #body="{ data }">{{ data.ragione_sociale_completa ?? '—' }}</template>
-                </Column>
-                <Column field="stato_doc_fiscale_descrizione" :header="t('vendite.lotti.col_stato_doc')" style="width: 130px;">
-                  <template #body="{ data }">
-                    <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
-                  </template>
-                </Column>
-                <Column field="stato_esecuzione" :header="t('vendite.lotti.col_esecuzione')" style="width: 150px;">
-                  <template #body="{ data }">
-                    <span class="app-lotto-esecuzione-cella">
-                      <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneFatturaSeverity(data.stato_esecuzione)" />
-                      <!-- Il PERCHÉ accanto al CHE COSA: senza, «ERRORE» è una
-                           bandiera senza messaggio (rilievo di Tid 2026-08-21).
-                           Il componente si nasconde da solo quando non c'è
-                           errore: nessun `v-if` da ricopiare qui. -->
-                      <ErroreRigaInfo
-                        :messaggio="data.errore_messaggio"
-                        :codice="data.errore_codice"
-                        :quando="data.errore_quando"
-                        :livello="data.errore_livello"
-                        :titolo="t('vendite.lotti.errore_documento_titolo')"
-                      />
-                    </span>
-                  </template>
-                </Column>
-                <Column field="totale_doc" :header="t('vendite.lotti.col_totale')" style="width: 110px;">
-                  <template #body="{ data }">
-                    {{ data.totale_doc != null ? formatCurrency(Number(data.totale_doc)) : '—' }}
-                  </template>
-                </Column>
-                <!-- Azioni sempre presenti: la stampa (anteprima/documenti) è
-                     una lettura, disponibile anche in sola lettura. -->
-                <Column class="app-col-actions" :exportable="false">
-                  <template #body="{ data }">
-                    <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" />
-                  </template>
-                </Column>
+                <!-- Numero componibile serie+numero: il seed dichiara `numero`,
+                     l'etichetta a video la compone il FE (come su
+                     `dash_competenza_errori`). -->
+                <template #cell-numero="{ data }">{{ fatturaNumero(data) }}</template>
+                <!-- ⚠️ La nota di credito non e' un'anomalia: severity neutra,
+                     mai `danger` — e il totale negativo si mostra com'e',
+                     perche' e' il documento a essere di segno opposto. -->
+                <template #cell-natura_doc_descrizione="{ data }">
+                  <Tag v-if="data.natura_doc_codice"
+                    :value="data.natura_doc_descrizione || data.natura_doc_codice"
+                    :severity="naturaDocSeverity(data.natura_doc_codice)" />
+                  <span v-else>—</span>
+                </template>
+                <template #cell-stato_doc_fiscale_descrizione="{ data }">
+                  <Tag :value="data.stato_doc_fiscale_descrizione ?? '—'" severity="info" />
+                </template>
+                <template #cell-stato_esecuzione="{ data }">
+                  <span class="app-lotto-esecuzione-cella">
+                    <Tag :value="data.stato_esecuzione" :severity="statoEsecuzioneFatturaSeverity(data.stato_esecuzione)" />
+                    <!-- Il PERCHE' accanto al CHE COSA: senza, «ERRORE» e' una
+                         bandiera senza messaggio. Il componente si nasconde da
+                         solo quando non c'e' errore. -->
+                    <ErroreRigaInfo
+                      :messaggio="data.errore_messaggio"
+                      :codice="data.errore_codice"
+                      :quando="data.errore_quando"
+                      :livello="data.errore_livello"
+                      :titolo="t('vendite.lotti.errore_documento_titolo')"
+                    />
+                  </span>
+                </template>
+                <template #cell-azioni="{ data }">
+                  <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" />
+                </template>
+                <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il
+                     default PrimeVue, che e' in inglese. -->
                 <template #empty>
                   <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessuna_fattura') }}</p></div>
                 </template>
-              </DataTable>
+              </ListaConfigurabile>
             </TabPanel>
 
-            <!-- Task-run (tentativi ed esiti per step). -->
+            <!-- Tentativi dei task (uno per corsa di ogni passo dello step). -->
             <TabPanel value="task">
-              <DataTable
-                :value="taskRuns"
-                :loading="tabLoading"
-                class="app-datatable app-datatable--inner"
-                striped-rows
-                size="small"
+              <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
+                   destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
+                   stesso di ogni pagina lista, quindi queste tre si comportano come le
+                   altre anche quando la regola cambia.
+                   ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
+                   `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
+              <div class="app-page-toolbar">
+                <!-- Spaziatore: `space-between` con un figlio solo allineerebbe
+                     a SINISTRA. Queste due liste non hanno filtri propri. -->
+                <span class="app-page-filters" />
+                <PageActionsBar :actions="barraTask">
+                  <template #suffix>
+                    <ListaConfigStatusTag :dirty="azioniTask.dirty.value" />
+                  </template>
+                </PageActionsBar>
+              </div>
+              <ListaConfigurabile
+                ref="listaTaskRef"
+                codice="vendite.lotto_task_runs"
                 data-key="id"
+                :rows="listaTask.righe.value"
+                :total="listaTask.totale.value"
+                :loading="tabLoading || listaTask.loading.value"
+                :paginator-options="listaTask.paginatorOptions.value"
+                :page="listaTask.page.value"
+                :sort-field="listaTask.sortField.value"
+                :sort-order="listaTask.sortOrder.value"
+                @page="listaTask.onPage"
+                @sort="listaTask.onSort"
+                @config-loaded="listaTask.onConfigLoaded"
               >
-                <Column field="task_code" :header="t('vendite.lotti.col_task')">
-                  <template #body="{ data }">{{ data.fase || data.task_code }}</template>
-                </Column>
-                <Column field="tentativo" :header="t('vendite.lotti.col_tentativo')" style="width: 90px;">
-                  <template #body="{ data }">{{ data.tentativo }}</template>
-                </Column>
-                <Column field="task_stato" :header="t('vendite.lotti.col_esito')" style="width: 120px;">
-                  <template #body="{ data }">
-                    <Tag :value="data.task_stato" :severity="statoTaskRunSeverity(data.task_stato)" />
-                  </template>
-                </Column>
-                <Column field="error_message" :header="t('vendite.lotti.col_errore')">
-                  <template #body="{ data }">
-                    <span v-if="data.error_code" class="app-dash-ritardo">
-                      {{ data.error_code }}: {{ data.error_message ?? '' }}
-                    </span>
-                    <span v-else>—</span>
-                  </template>
-                </Column>
-                <!-- Inizio E fine: con il solo istante finale un task fallito
-                     e uno lungo si leggono uguali, e il diario dei tentativi
-                     serve proprio a distinguerli. -->
-                <Column field="started_at" :header="t('vendite.lotti.col_inizio')" style="width: 150px;">
-                  <template #body="{ data }">
-                    {{ data.started_at ? displayTimestamp(data.started_at) : '—' }}
-                  </template>
-                </Column>
-                <Column field="ended_at" :header="t('vendite.lotti.col_fine')" style="width: 150px;">
-                  <template #body="{ data }">
-                    {{ data.ended_at ? displayTimestamp(data.ended_at) : '—' }}
-                  </template>
-                </Column>
+                <!-- La fase e' l'etichetta leggibile del passo; su un task senza
+                     fase a catalogo si ripiega sul codice, che almeno lo
+                     identifica. -->
+                <template #cell-fase="{ data }">{{ data.fase || data.task_code }}</template>
+                <template #cell-task_stato="{ data }">
+                  <Tag :value="data.task_stato" :severity="statoTaskRunSeverity(data.task_stato)" />
+                </template>
                 <template #empty>
                   <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessun_task') }}</p></div>
                 </template>
-              </DataTable>
+              </ListaConfigurabile>
             </TabPanel>
 
-            <!-- Segnalazioni (riepilogo). -->
             <TabPanel value="segnalazioni">
               <div v-if="segnalazioni">
-                <!-- Filtro per livello. Il CONTEGGIO sta nell'etichetta: dice
-                     se vale la pena guardare quel livello, e toglie la riga di
-                     soli numeri che stava qui prima — che diceva quante sono
-                     senza mai dire cosa sono. -->
-                <!-- Filtro per gravità: il colore è la scala, e il BB lo
-                     rende uguale ovunque ricapiti (code, diari, cruscotti). -->
-                <SelectButtonGravita
-                  v-model="livelloSegnalazioni"
-                  :options="opzioniLivello"
-                  class="app-mb-1"
-                />
-
                 <Message
                   v-if="segnalazioni.blocks_next_step"
                   severity="warn"
@@ -673,49 +778,73 @@ function fatturaNumero(row) {
                   {{ t('vendite.lotti.blocca_step') }}
                 </Message>
 
-                <DataTable
-                  :value="elencoSegnalazioni"
-                  :loading="tabLoading || loading"
-                  class="app-datatable app-datatable--inner"
-                  striped-rows
-                  size="small"
-                  data-key="riga_key"
+                <!-- ⚠️ Il numero che rende onesto l'elenco: senza, una lista che
+                     mostra solo l'ultima corsa e una lista vuota si leggono
+                     uguali. -->
+                <Message
+                  v-if="segnalazioniFuoriJob > 0"
+                  severity="secondary"
+                  :closable="false"
+                  class="app-mb-1"
                 >
-                  <!-- Il documento, in termini che l'operatore VEDE: un id
-                       interno non compare da nessuna parte nell'interfaccia.
-                       Sulle segnalazioni di LOTTO non c'è documento, e la
-                       colonna dice la fase invece di un trattino muto. -->
-                  <Column :header="t('vendite.lotti.col_segn_documento')" style="width: 220px;">
-                    <template #body="{ data }">
-                      <span v-if="data.ragione_sociale_completa">{{ data.ragione_sociale_completa }}</span>
-                      <span v-else class="text-color-secondary">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
+                  {{ t('vendite.lotti.segn_fuori_job', { n: segnalazioniFuoriJob }) }}
+                </Message>
+
+                <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
+                     destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
+                     stesso di ogni pagina lista, quindi queste tre si comportano come le
+                     altre anche quando la regola cambia.
+                     ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
+                     `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
+                <div class="app-page-toolbar">
+                  <div class="app-page-filters">
+                    <!-- Filtro per livello, a sinistra come i filtri di ogni
+                         lista. Il CONTEGGIO sta nell'etichetta: dice se vale la
+                         pena guardare quel livello. -->
+                    <SelectButtonGravita
+                      v-model="livelloSegnalazioni"
+                      :options="opzioniLivello"
+                    />
+                  </div>
+                  <PageActionsBar :actions="barraSegnalazioni">
+                    <template #suffix>
+                      <ListaConfigStatusTag :dirty="azioniSegnalazioni.dirty.value" />
                     </template>
-                  </Column>
-                  <Column :header="t('vendite.lotti.col_totale')" style="width: 110px;">
-                    <template #body="{ data }">
-                      {{ data.totale_doc != null ? formatCurrency(Number(data.totale_doc)) : '—' }}
-                    </template>
-                  </Column>
-                  <Column :header="t('vendite.lotti.col_segn_quando')" style="width: 150px;">
-                    <template #body="{ data }">
-                      {{ data.data_ora ? displayTimestamp(data.data_ora) : '—' }}
-                    </template>
-                  </Column>
-                  <Column :header="t('vendite.lotti.col_segn_messaggio')">
-                    <template #body="{ data }">
-                      <div class="app-lotto-segn-messaggio">
-                        <Tag v-if="data.codice" :value="data.codice" severity="danger" />
-                        <span>{{ data.messaggio || '—' }}</span>
-                      </div>
-                    </template>
-                  </Column>
+                  </PageActionsBar>
+                </div>
+                <ListaConfigurabile
+                  ref="listaSegnalazioniRef"
+                  codice="vendite.lotto_segnalazioni"
+                  data-key="riga_key"
+                  :rows="listaSegnalazioni.righe.value"
+                  :total="listaSegnalazioni.totale.value"
+                  :loading="tabLoading || listaSegnalazioni.loading.value"
+                  :paginator-options="listaSegnalazioni.paginatorOptions.value"
+                  :page="listaSegnalazioni.page.value"
+                  :sort-field="listaSegnalazioni.sortField.value"
+                  :sort-order="listaSegnalazioni.sortOrder.value"
+                  @page="listaSegnalazioni.onPage"
+                  @sort="listaSegnalazioni.onSort"
+                  @config-loaded="listaSegnalazioni.onConfigLoaded"
+                >
+                  <!-- Il livello col colore della sua gravita', la stessa scala
+                       del filtro qui sopra. -->
+                  <template #cell-livello="{ data }">
+                    <Tag :value="data.livello" :severity="severitaLivelloSegnalazione(data.livello)" />
+                  </template>
+                  <!-- Sulle righe di LOTTO non c'e' documento: si mostra la
+                       fase invece di un trattino muto. -->
+                  <template #cell-documento_display="{ data }">
+                    <span v-if="data.documento_display">{{ data.documento_display }}</span>
+                    <span v-else class="text-color-secondary">{{ data.fase || t('vendite.lotti.segn_origine_lotto') }}</span>
+                  </template>
                   <template #empty>
                     <div class="app-empty-state">
                       <i class="pi pi-check-circle" />
                       <p>{{ t('vendite.lotti.nessuna_segnalazione_livello') }}</p>
                     </div>
                   </template>
-                </DataTable>
+                </ListaConfigurabile>
               </div>
               <div v-else class="app-empty-state"><i class="pi pi-check-circle" /><p>{{ t('vendite.lotti.nessuna_segnalazione') }}</p></div>
             </TabPanel>
@@ -726,7 +855,26 @@ function fatturaNumero(row) {
       <FormFooter close-only @cancel="onClose" />
     </div>
 
-    <!-- Archivio documenti generati della fattura selezionata (sorgente FATTURA). -->
+    <!-- I tre dialog di export (uno per lista): scelta del formato e download.
+       ⚠️ Fuori dal drawer nel markup ma dentro il componente: sono teleported
+       e devono sopravvivere al cambio di tab. -->
+  <ExportDialog
+    v-model:visible="azioniDocumenti.exportDialogVisible.value"
+    :loading="azioniDocumenti.exportLoading.value"
+    @export="azioniDocumenti.onExportConfirm"
+  />
+  <ExportDialog
+    v-model:visible="azioniTask.exportDialogVisible.value"
+    :loading="azioniTask.exportLoading.value"
+    @export="azioniTask.onExportConfirm"
+  />
+  <ExportDialog
+    v-model:visible="azioniSegnalazioni.exportDialogVisible.value"
+    :loading="azioniSegnalazioni.exportLoading.value"
+    @export="azioniSegnalazioni.onExportConfirm"
+  />
+
+  <!-- Archivio documenti generati della fattura selezionata (sorgente FATTURA). -->
     <PdfDocumentiSorgenteDialog
       v-model:visible="pdfDialogVisible"
       :sorgente-code="SORGENTE_CODES.FATTURA"
