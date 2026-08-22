@@ -191,6 +191,7 @@ nominano sono verdi.
 | --- | --- | --- |
 | **FE-1** | frontend | La `reason_key` **`vendite.lotti.azione_reason.righe_rettificate`** non ha ancora la voce i18n. Finché manca, `fn_available_actions_lotto` espone un motivo che il drawer non sa scrivere — ⚠️ è il debito che le `reason_key` portano per costruzione, non una dimenticanza di questo cantiere |
 | **BE-1** | backend | Il nuovo codice `E_FATTURE_RIGHE_RETTIFICATE` va mappato in `error_policies.py` (`CONFLITTO_STATO` → 409). Senza, l'envelope lo tratta come non riconosciuto |
+| **DB-1** | team DB | ⚠️ **Debito `%TYPE` dichiarato.** Le quattro funzioni riscritte da questo cantiere hanno la firma a **tipi nudi**, ereditata dal corpo vivo che è stato riprodotto: `p_lotto_id bigint` (su tre `fn_check_*`) e `p_lock_batch_id uuid` (su `fn_cleanup_fatture_by_ids`). Cinque parametri in tutto, tutti id. ⛔ **Non si sanano con un changeSet apposta**: costringerebbe a riprodurre quattro corpi lunghi per cambiare cinque parole, e la riproduzione è proprio il gesto che genera l'errore. Si ancorano **alla prossima volta che una di quelle funzioni si tocca** |
 
 ---
 

@@ -62,7 +62,7 @@ SELECT
 --    controlla nello stesso comando accuserebbe la funzione al posto del test.
 CREATE TEMP TABLE _ev AS
 SELECT vendite.fn_log_event(
-           'TEST_RLS', 'COMMESSA', (SELECT commessa_id FROM _rif),
+           'COMMESSA', (SELECT commessa_id FROM _rif),
            'PGTAP_RLS_EVENT'
        ) AS event_id
  WHERE (SELECT commessa_id FROM _rif) IS NOT NULL;
@@ -110,8 +110,8 @@ SELECT CASE
       THEN skip('serve un secondo operatore su un emittente diverso', 1)
     ELSE throws_ok(
         format(
-            'SELECT vendite.fn_log_event(%L, %L, %s, %L)',
-            'TEST_RLS', 'COMMESSA', (SELECT commessa_id FROM _rif), 'PGTAP_RLS_OFFSCOPE'
+            'SELECT vendite.fn_log_event(%L, %s, %L)',
+            'COMMESSA', (SELECT commessa_id FROM _rif), 'PGTAP_RLS_OFFSCOPE'
         ),
         '42501',
         NULL,

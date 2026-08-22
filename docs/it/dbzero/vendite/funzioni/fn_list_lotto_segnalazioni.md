@@ -77,8 +77,13 @@ BEGIN
     SELECT max(e.event_time)
       INTO v_ancora
       FROM vendite.event_log e
-     WHERE e.domain      = 'PIPELINE'
-       AND e.entity_type = 'LOTTO'
+     -- ⚠️ Rev 2026-08-22 (L4): via il filtro `e.domain = 'PIPELINE'`.
+     --   Era RIDONDANTE — la query filtra gia' `event_code =
+     --   'PIPELINE_STARTED'`, e un codice appartiene a un dominio solo —
+     --   e la colonna non esiste piu': il dominio e' una proprieta' del
+     --   codice e vive in config.eventi_dominio, non copiata su ogni riga
+     --   dove potrebbe dissentire.
+     WHERE e.entity_type = 'LOTTO'
        AND e.entity_id   = p_lotto_id
        AND e.event_code  = 'PIPELINE_STARTED';
 

@@ -48,7 +48,7 @@ SELECT (SELECT c.id
 
 -- Riga VIVA: `cleanup_at` lo calcola il trigger su `now()`.
 CREATE TEMP TABLE _viva AS
-SELECT vendite.fn_log_event('TEST_APPEND', 'COMMESSA',
+SELECT vendite.fn_log_event('COMMESSA',
                             (SELECT commessa_id FROM _rif), 'PGTAP_VIVA') AS id
  WHERE (SELECT commessa_id FROM _rif) IS NOT NULL;
 
@@ -58,9 +58,9 @@ SELECT vendite.fn_log_event('TEST_APPEND', 'COMMESSA',
 -- lascia scegliere al chiamante quando e' successo).
 CREATE TEMP TABLE _scaduta AS
 WITH ins AS (
-    INSERT INTO vendite.event_log (event_time, domain, entity_type, entity_id, event_code)
+    INSERT INTO vendite.event_log (event_time, entity_type, entity_id, event_code)
     SELECT now() - make_interval(days => COALESCE(vendite.fn_event_log_ttl_days(), 750) + 50),
-           'TEST_APPEND', 'COMMESSA', r.commessa_id, 'PGTAP_SCADUTA'
+           'COMMESSA', r.commessa_id, 'PGTAP_SCADUTA'
       FROM _rif r
      WHERE r.commessa_id IS NOT NULL
     RETURNING id

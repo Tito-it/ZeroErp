@@ -10,7 +10,6 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | event_time | timestamp with time zone | NO | now() |
-| domain | text | NO |  |
 | entity_type | text | NO |  |
 | entity_id | bigint | NO |  |
 | event_code | text | NO |  |
@@ -29,16 +28,15 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_event_log_entity_type |  |
 | CHECK | chk_event_log_severity |  |
 | FOREIGN KEY | fk_event_log_emittente | emittente_soggetto_ruolo_id |
+| FOREIGN KEY | fk_event_log_tipo_entita | entity_type |
 | PRIMARY KEY | pk_event_log | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_event_log_corr_time | `CREATE INDEX ix_event_log_corr_time ON vendite.event_log USING btree (correlation_id, event_time DESC)` |
-| ix_event_log_domain_time | `CREATE INDEX ix_event_log_domain_time ON vendite.event_log USING btree (domain, event_time DESC)` |
 | ix_event_log_entity_time | `CREATE INDEX ix_event_log_entity_time ON vendite.event_log USING btree (entity_type, entity_id, event_time DESC)` |
 | pk_event_log | `CREATE UNIQUE INDEX pk_event_log ON vendite.event_log USING btree (id)` |
 

@@ -15,10 +15,14 @@
 > **rimisurato sul DB e sul codice** lo stesso giorno (§0-ter dell'analisi).
 > Decisioni di Tid del 2026-08-22, tutte in §2.
 >
-> **Stato:** ✅ **L1 APPLICATO E VERDE (2026-08-22).** Otto changeSet applicati
-> (i sette del piano più la correzione `47`), tre append a CSV, **33 asserzioni
-> pgTAP verdi con zero skip** su cinque file. Restano **L2** (l'identità del giro)
-> e **L3** (la vista), più le otto consegne BE del §5.
+> **Stato:** ✅ **L1, L4 e L2 APPLICATI E VERDI (2026-08-22).** Diciotto changeSet,
+> cinque CSV, **33 asserzioni pgTAP con zero skip**, baseline `vendite`+`rls` senza
+> regressioni. ⭐ **La parte DB della fondamenta è posata**: §9.4 dichiarava L4
+> come l'ultimo intervento strutturale su questo registro, e da qui in avanti la
+> tabella si tocca solo **aggiungendo righe ai cataloghi**.
+> 🔵 Resta **L3** (la vista, che si accende col Passo A) e le **nove consegne BE**
+> del §5 — senza le quali il registro resta a **zero righe**, ed è il rischio 3
+> del §9.3: l'unico che nessuna riga di documentazione può chiudere.
 >
 > **Correlati:**
 > [analisi-osservabilita-log.md](analisi-osservabilita-log.md) (il documento madre) ·
@@ -27,7 +31,10 @@
 > [brief-db-grant-batch-cleanup-note.md](../work-done/brief-db-grant-batch-cleanup-note.md)
 > (il precedente del canale batch, che qui **non** si ripete) ·
 > [linee-guida-sql.md](../../linee-guida-sql.md) §10 (RLS) — di cui questo brief
-> propone una **precisazione**, §3.3.
+> propone una **precisazione**, §3.3 ·
+> ⭐ [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) — **da esso
+> questo brief ASSORBE T-1 e T-1b** (il catalogo dei tipi di entità), che di là
+> non si gestiscono più: §4-bis. Tutto il resto di quel cantiere resta suo.
 
 ---
 
@@ -39,12 +46,14 @@
 | 🔴 **Cinque difetti, tutti dello stesso lato** | colonna di perimetro assente · `tx_id` assente · `correlation_id` identifica il **lotto**, non il giro · `entity_id = 0` · `actor` costante | §1.2 |
 | ⛔ **Il vincolo che governa tutto** | Append-only per trigger: `UPDATE` **e** `DELETE` vietati ⇒ **nessun backfill, mai**. Unica via: `TRUNCATE` | §1.3 |
 | ⛔ **Tre premesse dell'analisi cadute** | La RLS **morde già** (l'app non è owner) · il canale batch non è a rischio · B1 (il 67%) è chiuso | §1.4 |
-| ✅ **Decisioni** | **D-1…D-16**, tutte prese con Tid il 2026-08-22 — D-1 e D-9 **riviste** in coda al rilievo sui lucchetti | §2 |
+| ✅ **Decisioni** | **D-1…D-18**, tutte applicate. D-1 e D-9 riviste in coda al rilievo sui lucchetti; **D-9 poi superata dalla D-17**, che assorbe il catalogo dei tipi dall'altro cantiere | §2 · §3.7 |
 | 🧩 **Il disegno** | Derivazione nel trigger (la firma di `fn_log_event` **non cambia**) · policy a parità di famiglia · retention che convive con l'append-only · `vw_giornale_entita` | §3 |
-| 📋 **Il piano** | **L1** la riga parlante — ✅ **APPLICATO E VERDE** (8 changeSet + 3 append a CSV) → **L2** l'identità del giro (2) → **L3** la vista (1, si accende col Passo A) | §4 |
+| 📋 **Il piano** | **L1 · L4 · L2** ✅ **applicati e verdi** (18 changeSet) → resta **L3**, la vista cross-schema, che si accende col Passo A | §4 · §9.4 |
 | 🔵 **A carico del BE** | 8 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
 | 🧪 **Presidio** | ✅ **33 asserzioni verdi, zero skip** su 5 file — 3 nuovi e 2 preesistenti adeguati. Il quarto file previsto **non** è stato scritto: esisteva già | §6 |
 | ✅ **Domande aperte** | **Zero.** Le sei del primo giro chiuse il 2026-08-22 | §8 |
+| 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
+| ⭐ **Un solo documento** | Da qui in avanti chi lavora su `event_log` legge **questo** brief: T-1/T-1b di `brief-db-bersaglio-errore` sono **assorbiti** e di là non si gestiscono più | §4-bis |
 | ⭐ **I due perni** | (1) «Chi» è **già nella riga** (`user_insert`): B3 non era vero — manca **il perimetro**, e serve perché `event_log` è **l'unico registro polimorfo**, l'unico senza una testata a cui ancorarsi. (2) **Un diario non si blocca mai**: rifiuta solo ciò di cui non sa dire di chi è | §3.2 · §3.3 |
 
 ---
@@ -131,7 +140,9 @@ solleva **incondizionatamente**. Conseguenze, tutte verificate:
 | **D-6** | Si **eliminano `actor` e `source`** | Costanti e mute; «chi» è `user_insert`, che funziona anche sul canale batch (`app.jwt_user = 'BATCH_FATTURAZIONE'`). Siamo in `TRUNCATE`: togliere una colonna costa zero |
 | **D-7** | `correlation_id` = **un `uuid` nuovo per giro**, generato dal runner, scritto **anche** su `fatturazione_lotti_task_runs` e `commesse_push_log` | Il `tx_id` non basta (un giro attraversa più transazioni, una per step) e il `task_run` è per-task. È il filo che cuce i registri nella vista di §3.6 |
 | **D-8** | Retention **via (a)**: `cleanup_at` calcolato **all'INSERT**, più un'eccezione al veto sul solo `DELETE` di una riga **già scaduta** | Il volume è basso per costruzione (quattro righe per giro). Il partizionamento per `event_time` è stato **considerato e scartato**: complessità comprata su un rischio non misurato — vedi §7 |
-| **D-9** | ⭐ **`entity_type` con `CHECK`** *(rev. 2026-08-22, era una FK a `config.sorgenti`)*: `CHECK (entity_type IN ('LOTTO','COMMESSA','FATTURA'))`. `entity_id` = **la PK `id` della tabella, sempre** | Un tipo ignoto resta **rifiutato**, che era lo scopo. ⛔ **Perché non la FK:** (a) genererebbe il lucchetto `require_attivo`, e un diario non deve smettere di scrivere (D-12); (b) la FK permetterebbe di **seedare un tipo nuovo in `config.sorgenti` che il trigger non sa risolvere** — una configurazione che dice sì e un trigger che dice no. Col `CHECK`, vocabolario e dispatch cambiano **nello stesso changeSet**. Stessa forma di `chk_event_log_severity`, già sulla tabella. ⚠️ Il `key_selector` (`uid` per preventivi e offerte) serve al **grafo di lineage**, non al giornale |
+| ~~**D-9**~~ | ~~`entity_type` con `CHECK (IN ('LOTTO','COMMESSA','FATTURA'))`~~ ⛔ **SUPERATA dalla D-17** *(2026-08-22, quinto giro)* — resta a registro perché il `CHECK` **è stato applicato** ed è ciò che la D-17 sostituisce. `entity_id` = **la PK `id` della tabella, sempre**: quella parte regge | La motivazione originale — «una FK a `config.sorgenti` genererebbe il lucchetto `require_attivo`, e permetterebbe di seedare un tipo che il trigger non sa risolvere» — era **giusta su `config.sorgenti`** e sbagliata come conclusione: il difetto stava in *quel* catalogo, non nell'idea di catalogo. Vedi D-17 |
+| **D-17** | ⭐ **`entity_type` punta a un catalogo `config.tipi_entita`**, che porta il **modo di risoluzione dell'emittente**. Il vincolo diventa «un tipo del catalogo **che abbia un modo**» *(2026-08-22)* | ⭐ **Assorbe T-1/T-1b di [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md)**, che decideva la stessa cosa sulla stessa colonna. Il catalogo nasce **senza `attivo`** (deprecazione con `obsoleto_dal`), quindi l'automazione non genera nessun lucchetto: l'obiezione (a) della D-9 cade. E portando il modo **nella stessa riga**, configurazione e trigger non possono più dissentire: l'obiezione (b) si risolve **meglio** del `CHECK`, perché aggiungere un tipo diventa **un seed** invece di tre modifiche coordinate. Disegno in §3.7 |
+| **D-18** | ⭐ **Anche `domain` e `event_code` si governano** — con un catalogo `config.eventi_dominio`, ma ⛔ **senza FK**: il presidio è un **cancello di CI**, non un veto a runtime *(2026-08-22)* | Sono le **ultime due colonne di testo che nessuno governa** in questo registro, ed è la forma esatta del difetto che ci ha riportati qui due volte in venti giorni (§10). ⛔ Niente FK perché una scrittura rifiutata per un codice non ancora a catalogo **violerebbe la D-12**: il diario rifiuta solo ciò di cui non sa dire *di chi è*. Il codice ignoto entra, e a protestare è la **build** — è la stessa forma con cui il cantiere dei codici errore ha chiuso il proprio rubinetto. Disegno in §3.8 |
 | **D-10** | **Nessun** `script.trgfn_guard_emittente_scope` su questa tabella | Se l'emittente lo deriva il DB dall'entità, il guard verificherebbe un valore appena calcolato dal DB stesso e direbbe la **stessa cosa** del `WITH CHECK` della policy, che sul canale web è già attivo (§1.4). Scritto qui perché il prossimo non lo aggiunga «per simmetria con DDT» |
 | **D-11** | La vista **`vw_giornale_entita`** si **disegna qui** e si **implementa al Passo A** | È la vista a decidere se `event_log` deve reggere tutto da solo o solo la sua parte — e quella decisione cambia cosa scriviamo nella riga, che è l'unica cosa non rifacibile |
 | **D-12** | ⭐ **Il diario non si blocca mai per lo stato di un padre.** Rifiuta una riga **solo** quando non riesce a dire *di chi è* | *Rilievo di Tid, 2026-08-22.* Un guard su un diario è autolesionista: il fatto è accaduto, e bloccare la riga distrugge l'unica prova che lo spiegherebbe. E l'anomalia temuta — attività nuova su un emittente disattivato — **è già bloccata a monte**, sui documenti (`ddt`, `ordini`, `preventivi`, `contratti`, `resi` hanno il lucchetto verso `emittenti_fiscali`): il lucchetto sul diario rifiuterebbe **solo righe legittime**, cioè la chiusura dei documenti di un emittente cessato. D-1 e D-9 sono i due modi in cui questa regola si realizza |
@@ -403,13 +414,39 @@ troverebbe un `NULL` e si spegnerebbe da solo. **Il nome del trigger è
 load-bearing**: rinominarlo `..._a10_scope_deriva_ins` lo manderebbe dopo la `s`
 di `sorgenti`, e il difetto non si vedrebbe finché non si disattiva qualcosa.
 
-### 3.6 `vendite.vw_giornale_entita` — il disegno (si implementa al Passo A)
+### 3.6 `script.vw_giornale_entita` — il disegno (si implementa al Passo A)
 
 **Il problema che risolve.** Una timeline letta dal solo `event_log` mostra
 **quattro** codici per lotto (`PIPELINE_STARTED`, `STEP_COMPLETED`,
 `PIPELINE_COMPLETED`, `PIPELINE_ERROR`). Il resto della storia di quel lotto sta
 altrove: 426 righe in `fatturazione_lotti_log`, 194 in
 `fatturazione_lotti_task_runs`, i log per fattura.
+
+#### ⭐ Vive in `script`, e nasce **cross-schema** anche se parte da `vendite`
+
+*(rev. 2026-08-22 — §10, rischio 2.)* La prima stesura la metteva in `vendite`.
+Sarebbe stato il seme della terza ristrutturazione: misurato, i registri di
+eventi del progetto sono **sei**, non uno —
+
+```
+vendite.event_log                     pratiche.giornale
+vendite.fatture_sdi_eventi            documenti.documenti_generati_eventi
+magazzino.eventi_assets               + i log funzionali di vendite
+```
+
+— e la domanda «cosa è successo a **questa** pratica / a **questo** documento»
+arriverà. Se la vista nascesse come union di sole tabelle `vendite`, a doversi
+rifare non sarebbe il registro: **sarebbe la vista**, cioè la cosa che tutti
+avranno già in mano.
+
+Costa zero deciderlo adesso, e sono tre scelte:
+
+1. **vive in `script`**, che è la sede delle viste applicative riusabili — non in
+   `vendite`, che è uno dei domini che vi si affacciano;
+2. **l'asse delle entità è `config.tipi_entita`** (§3.7), non un elenco locale:
+   è ciò che permette a un ramo `pratiche` di entrare senza toccare le colonne;
+3. **la forma normalizzata è quella e non cambia** quando arrivano rami nuovi:
+   un registro che non sa riempirla lascia `NULL`, non allarga la vista.
 
 **La forma normalizzata** — sette colonne, e nient'altro:
 
@@ -425,6 +462,9 @@ altrove: 426 righe in `fatturazione_lotti_log`, 194 in
 
 **Le quattro sorgenti del primo giro** (D-16): `event_log`,
 `fatturazione_lotti_log`, `fatturazione_lotti_task_runs`, `fatture_log`.
+⭐ **Quattro rami, ma la forma è già quella dei sei**: `pratiche.giornale` e
+`documenti.documenti_generati_eventi` entrano aggiungendo un `UNION ALL`, non
+rinegoziando le colonne. È tutta la differenza fra allargare e rifare.
 
 ⛔ **`attivita_fatturabili_log` resta fuori, e va scritto nella vista**: né lui né
 `vendite.attivita_fatturabili` hanno un filtro di perimetro, quindi quel ramo
@@ -445,6 +485,206 @@ colonna esiste**.
 **E `error_log` non entra nella vista**: non ha un'entità, solo `tx_id` e un
 `context` jsonb. Ci si arriva **per `tx_id`**, come approfondimento di una riga —
 ed è la ragione concreta per cui D-5 non era rinviabile.
+
+---
+
+### 3.7 `config.tipi_entita` — il catalogo dei tipi *(D-17, assorbito da `brief-db-bersaglio-errore`)*
+
+> ⭐ **Questa sezione arriva da un altro cantiere.** `brief-db-bersaglio-errore`
+> aveva deciso, lo stesso giorno, che `event_log.entity_type` dovesse adottare un
+> catalogo chiuso (i suoi passi **T-1** e **T-1b**). Decideva sulla **nostra**
+> colonna, e noi avevamo già applicato la scelta opposta. La materia è stata
+> portata **qui**, dove vive l'oggetto; di là resta una dipendenza. Vedi §4-bis.
+
+**Perché il catalogo è meglio del `CHECK` che abbiamo applicato.** Non per
+uniformità: perché il `CASE` scritto a mano nel trigger di derivazione diventa
+**inutile**.
+
+Oggi aggiungere un tipo di entità al giornale costa **tre modifiche coordinate**
+— il `CHECK` sulla colonna, il ramo nel `CASE` di
+`trgfn_event_log_deriva_scope`, il modo in `script.fn_resolve_emittente_sr_id` —
+e se una delle tre resta indietro il difetto è muto. Col catalogo costa **un
+seed**, perché il modo sta nella stessa riga del tipo: **configurazione e trigger
+non possono dissentire, sono lo stesso dato**.
+
+| Colonna | Perché |
+| --- | --- |
+| `codice` | la chiave stabile, quella che finisce in `entity_type` e nel bersaglio di un errore |
+| `etichetta_key` | chiave i18n: il nome lo scrive il frontend, non il database |
+| `modo_risoluzione_emittente` | **nullable** — è la colonna che distingue le due letture (sotto) e che il trigger legge al posto del `CASE` |
+| `obsoleto_dal` | ⛔ **e NON `attivo`** — vedi sotto: è la ragione per cui questo catalogo si può usare e `config.sorgenti` no |
+
+```
+codice     obsoleto_dal  modo_risoluzione_emittente
+LOTTO      NULL          'lotto'      ← giornalabile: l'emittente si deriva
+COMMESSA   NULL          'commessa'   ←
+FATTURA    NULL          'fattura'    ←
+TASK_RUN   NULL           NULL        ← puntabile da un errore, NON giornalabile
+SOGGETTO   NULL           NULL        ←
+```
+
+#### ⭐ Due letture dello stesso catalogo, e perché una sola non basterebbe
+
+È la scoperta che ha reso possibile l'unificazione: **i due vocabolari non sono
+lo stesso insieme.**
+
+| Lettura | Chi | Selezionata da | Contiene |
+| --- | --- | --- | --- |
+| **Giornale** | `event_log.entity_type` | *l'emittente dev'essere **derivabile** dall'entità* | solo i tipi con `modo_risoluzione_emittente NOT NULL` |
+| **Bersaglio** | il `target` di un errore, e le rotte della timeline | *il frontend ha una **rotta** per arrivarci* | **tutto** il catalogo |
+
+Il giornale è un **sottoinsieme proprio** del bersaglio. È esattamente perché
+`TASK_RUN` non ha un padrone che la D-3 l'ha espulso da `event_log` — ma un
+errore può benissimo puntare a un task run, ed è metà del caso d'uso del
+bersaglio. Un catalogo tagliato sui soli tipi del giornale renderebbe il
+bersaglio inutilizzabile; due cataloghi separati sarebbero la stessa nozione
+governata in due modi.
+
+⚠️ **Il vincolo su `event_log` non è quindi «esiste nel catalogo»**, ma «esiste
+nel catalogo **e ha un modo**». Un `TASK_RUN` scritto nel giornale resta
+rifiutato, come oggi — e con lo stesso messaggio.
+
+#### ⛔ Senza `attivo`, ed è la condizione che rende tutto possibile
+
+L'obiezione originale della D-9 era corretta: una FK verso un catalogo con la
+colonna `attivo` fa generare da `dbops.fn_run_automations_attivo` il lucchetto
+`trg_event_log_a10_<padre>_require_attivo_ins_upd`, e **il diario tornerebbe a
+poter smettere di scrivere** perché qualcuno ha disattivato una voce di elenco.
+È la D-12, che è il perno di questo cantiere.
+
+Il difetto però stava in **quel** catalogo, non nell'idea di catalogo. Un
+catalogo nuovo che deprechi con **`obsoleto_dal`** — che è già la regola di casa
+per i cataloghi, non un'invenzione — l'automazione lo **salta**
+(`ATTIVO_SKIP_PARENT_NO_ATTIVO`), e il lucchetto non nasce.
+
+📌 Verificato che il meccanismo è quello: `anagrafiche.soggetti_ruoli` non ha
+`attivo`, ed è per questo che la FK dell'emittente (D-1) non ha generato nessun
+guard. **Zero** trigger `*_soggetti_ruoli_require_attivo_*` in tutto il database.
+
+⚠️ **Da presidiare**: il giorno che qualcuno aggiunge `attivo` a
+`config.tipi_entita`, il lucchetto nasce da solo alle 21:00 e nessuno lo collega
+al diario che smette di scrivere. Il test `test-event-log-deriva-scope`
+asserisce già l'**assenza** di lucchetti su `event_log`: diventerà rosso, ed è il
+motivo per cui quel test esiste.
+
+#### ⚠️ E `config.sorgenti`? La sovrapposizione si dichiara, non si linka
+
+`config.sorgenti` **è già** un registro polimorfo: 15 righe, con `target_table` e
+`key_selector`, usato dal grafo di lineage e dal push. Contiene `COMMESSA`,
+`FATTURA`, `DDT_VENDITA`, `ORDINE_VENDITA`, `PREVENTIVO`… ma **non** `LOTTO`,
+**non** `TASK_RUN`. Nessuno dei due insiemi contiene l'altro.
+
+Due registri di «tipi di entità polimorfa» è una cosa da guardare in faccia, non
+da lasciar succedere. Le tre vie, e perché **non** si estende `sorgenti`:
+
+| | Via | Esito |
+| --- | --- | --- |
+| A | Estendere `config.sorgenti` | ⛔ **ha `attivo`**: la FK rigenererebbe il lucchetto. È il difetto della D-9, per la porta di servizio |
+| **B** | Catalogo nuovo, sovrapposizione **dichiarata** | ✅ *scelta di Tid, 2026-08-22* |
+| C | Catalogo nuovo con FK a `sorgenti` dove il tipo è anche sorgente | ⛔ rimette il lucchetto, un salto più in là |
+
+⚠️ **E una regola operativa che discende dalla convivenza, misurata il
+2026-08-22:** dove un codice esiste in **entrambi** i cataloghi, **deve essere
+scritto identico**. Oggi coincidono `COMMESSA` e `FATTURA`; `LOTTO` e `TASK_RUN`
+esistono solo qui. Il giorno che si seminasse `DDT` dove `config.sorgenti` dice
+`DDT_VENDITA`, la «sovrapposizione dichiarata» diventerebbe **la stessa cosa
+chiamata in due modi** — che è peggio di due cataloghi separati, perché nessuno
+dei due sembrerebbe sbagliato.
+
+⭐ **La ragione che regge, e che va lasciata scritta perché il prossimo non
+«semplifichi»:** rispondono a **due domande diverse**. `config.sorgenti` dice
+*«da dove nasce questo documento»* — è il lineage e il push, e per questo porta
+la chiave `id`-vs-`uid`. `config.tipi_entita` dice *«che cosa è questa entità»* —
+è il perimetro e il bersaglio. Vocabolari che si intersecano, domande che no.
+Unirli significherebbe far dipendere il diario dalla disattivazione di una
+sorgente di lineage.
+
+---
+
+### 3.8 `domain` e `event_code` — le ultime due colonne non governate *(D-18)*
+
+**Misurato il 2026-08-22**, sulle colonne di testo di `vendite.event_log`:
+
+| Colonna | Governata? |
+| --- | --- |
+| `severity` | ✅ `CHECK` |
+| `entity_type` | ✅ `CHECK` → catalogo con **L4** |
+| **`domain`** | ⛔ **niente** |
+| **`event_code`** | ⛔ **niente** |
+
+⚠️ Sono la forma **esatta** del difetto che ha già prodotto due interventi in
+venti giorni (§10). E `event_code` è **l'asse su cui il Passo B raggruppa**:
+chiederà un catalogo, e lo chiederà quando ci saranno dentro i dati — cioè
+quando costa.
+
+📌 Il progetto sa già farlo: `config.tipi_evento_assets` è il catalogo dei tipi
+evento del magazzino. Non è un'invenzione.
+
+#### Un catalogo solo, perché `domain` è una denormalizzazione di `event_code`
+
+`PIPELINE_STARTED` appartiene a `PIPELINE`, `EMITTIBILITA_FALLITA` a `COMMESSE`:
+il dominio è **una proprietà del codice**, non un secondo asse indipendente. Un
+codice che appartenesse a due domini vorrebbe dire due cose — che è il difetto
+contro cui il cantiere dei codici errore ha combattuto.
+
+```
+config.eventi_dominio(codice PK, dominio, etichetta_key, obsoleto_dal)
+   PIPELINE_STARTED     PIPELINE
+   STEP_COMPLETED       PIPELINE
+   PIPELINE_COMPLETED   PIPELINE
+   PIPELINE_ERROR       PIPELINE
+   EMITTIBILITA_FALLITA COMMESSE
+```
+
+⚠️ `dominio` resta **testo governato dal catalogo**, non una seconda tabella: i
+domini sono cinque parole e una tabella di cinque parole con una FK sopra è
+cerimonia, non governo. Se un giorno servisse un'anagrafica dei domini — con
+etichette, permessi, colori — nascerà allora, e il catalogo la referenzierà.
+
+➡️ ⛔ **`event_log.domain` si TOGLIE**, e con lui il parametro `p_domain` di
+`fn_log_event`.
+
+⚠️ **Prima stesura di questa sezione: «la colonna non si toglie, perché
+`ix_event_log_domain_time` la usa e `fn_list_lotto_segnalazioni` filtra su di
+essa». Era una scelta guidata dai dati e dall'esistente, ed era sbagliata**
+(rilievo di Tid, 2026-08-22: *«non abbiamo produzione, decidiamo sempre la cosa
+migliore»*). Verificato:
+
+* il filtro in `fn_list_lotto_segnalazioni` è **ridondante** — la query filtra
+  già `event_code = 'PIPELINE_STARTED'`, e un codice appartiene a un dominio
+  solo: si toglie **una riga**;
+* `ix_event_log_domain_time` non serve a nessun accesso reale: la query forense
+  passa da `ix_event_log_entity_time`, quella del giro da `ix_event_log_corr_time`;
+* il BE deve comunque riscrivere le chiamate (**BE-5**), quindi un parametro in
+  meno non costa niente in più.
+
+⭐ **E tenerla sarebbe stato attivamente peggio**: una colonna derivabile scritta
+su ogni riga è una copia che può **dissentire** dal catalogo, e nessun vincolo
+può impedirlo. Il dominio si legge dal catalogo — nella vista (§3.6) e in
+qualunque query — che è l'unico modo perché non ci siano due verità.
+
+⚠️ Se un giorno servisse una lettura per dominio abbastanza calda da volere un
+indice, l'indice va su `event_code`: il catalogo fa il resto.
+
+#### ⛔ Niente FK su `event_code`, ed è la D-12 a imporlo
+
+La mossa ovvia sarebbe una FK. **Sarebbe sbagliata**, e vale la pena dire perché
+per non vederla riproposta:
+
+> Una scrittura rifiutata perché il codice non è ancora a catalogo è **il diario
+> che smette di scrivere per un problema di configurazione** — cioè esattamente
+> ciò che la **D-12** vieta. Il diario rifiuta solo quando non sa dire *di chi è*
+> la riga; un codice ignoto non gli impedisce di saperlo.
+
+➡️ Il presidio è un **cancello di CI**: una vista `dbops.vw_eventi_da_dichiarare`
+che elenca i codici scritti dal codice applicativo e assenti dal catalogo, più un
+test che fallisce la build. È **la stessa forma** con cui il cantiere dei codici
+errore ha chiuso il proprio rubinetto (`dbops.vw_codici_errore_da_dichiarare`),
+ed è già in casa.
+
+⚠️ Conseguenza operativa da mettere in conto: **BE-3 e BE-4 dovranno seminare i
+propri codici**. È un costo, ed è il costo giusto — un codice che nessuno ha
+dichiarato è un codice che nessuno sa leggere.
 
 ---
 
@@ -503,7 +743,132 @@ esistenti, senza nessun loader nuovo.
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| 50 | `create-vw-giornale-entita` | `20_code/vendite` | §3.6, `security_invoker` |
+| 50 | `create-vw-giornale-entita` | `20_code/script` | §3.6, `security_invoker` |
+
+---
+
+### L4 — I vocabolari: catalogo dei tipi **e** dei codici — ✅ **APPLICATO il 2026-08-22**
+
+> Chiude le **ultime due colonne non governate** del registro: è la correzione
+> che rende L4 *l'ultimo intervento strutturale* (§9.4), non il terzo di N.
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| 53 | `create-config-tipi-entita` | `00_schema/config` | `codice` (PK), `etichetta_key`, `modo_risoluzione_emittente` **nullable**, `obsoleto_dal`. ⛔ **Nessuna colonna `attivo`** — §3.7 |
+| 54 | `create-config-eventi-dominio` | `00_schema/config` | `codice` (PK), `dominio`, `etichetta_key`, `obsoleto_dal` — §3.8 |
+| 55 | `seed-tipi-entita-e-eventi-dominio` | `80_data` | I due CSV più i mirror. `TASK_RUN` entra **col modo a NULL**: puntabile da un errore, non giornalabile |
+| 56 | `event-log-vocabolari` | `00_schema/vendite` | `DROP` del `CHECK` + FK a `config.tipi_entita` (`ON UPDATE CASCADE`, ⛔ non `ON DELETE`) · **`DROP COLUMN domain`** · ⛔ nessuna FK su `event_code` |
+| 57 | `update-fn-log-event-senza-domain` | `20_code/vendite` | Sette parametri → **sei**, con `DROP` esplicito della firma vecchia |
+| 58 | `trgfn-event-log-modo-da-catalogo` | `20_code/vendite` | Il `CASE` scritto a mano **sparisce**: il modo si legge dal catalogo. ⭐ E l'elenco dei tipi ammessi nel messaggio si legge dal catalogo, così la frase non invecchia |
+| 59 | `fn-list-lotto-segnalazioni-senza-domain` | `20_code/vendite` | Via il filtro `e.domain`, **ridondante** |
+| 60 | `create-vw-eventi-non-dichiarati` | `20_code/dbops` | ⚠️ **Non è il gemello di `vw_codici_errore_da_dichiarare`, e non può esserlo** — vedi sotto |
+| — | `config/messaggi_errore.csv` | `80_data` (CSV) | Il messaggio **980** passa da **uno a due segnaposto**: l'elenco dei tipi ammessi arriva dal catalogo. ⚠️ Arità verificata — due `%s`, due valori nel `VARIADIC` |
+
+⛔ **Il changeSet della `fk_index_policy` non serve, ed è la risposta giusta.**
+La FK è su `entity_type`, che è **già la prima colonna di
+`ix_event_log_entity_time`**: per la regola della policy è **coperta per
+prefisso**. Registrarla puntando il `dll_command` su quell'indice sarebbe
+attivamente dannoso — il ramo `consentito=false` ne estrae il nome per il `DROP`,
+e cancellerebbe un indice **non dedicato** che serve alla query forense.
+
+#### ⚠️ Il cancello dei codici evento non poteva essere quello dei codici errore
+
+Scrivendo il **60** è emerso che il piano diceva una cosa impossibile:
+
+| | Chi scrive il codice | Dove si guarda |
+| --- | --- | --- |
+| codici **errore** | il **database**, dentro funzioni PL/pgSQL | `pg_proc`: si vede la **sorgente**, prima che accada niente |
+| codici **evento** | il **backend**, in Python | ⛔ in `pg_proc` non c'è niente da leggere |
+
+Una vista su `pg_proc` per i codici evento tornerebbe **vuota per sempre**: il
+peggior tipo di presidio, quello che dice sempre «tutto a posto» perché guarda
+nel posto sbagliato.
+
+➡️ **Il cancello vero sta lato Python (BE-9)**, dove i codici sono scritti. Il
+**60** fa un lavoro diverso e complementare: i codici **già finiti nel registro**
+senza essere dichiarati — la deriva che nessun controllo sul sorgente vede.
+⚠️ Ed è **data-dependent**: su un ambiente senza traffico è cieca. È una spia da
+guardare, non un semaforo che ferma.
+
+#### L'ordine, e perché non serve nessuna eccezione
+
+`80_data` gira **dopo** `00_schema`, quindi il **56** posa la FK prima che il
+**55** semini il catalogo. Non è un problema: `event_log` è **vuoto**, e la FK
+valida su zero righe.
+
+⚠️ La prima stesura prevedeva un'eccezione alla regola «i dati di `80_data` si
+cambiano dal CSV» *«perché su questo database `event_log` ha righe»*. **Tolta**:
+il registro è vuoto, e se non lo fosse la risposta è quella già presa una volta —
+azzerarlo (D-4). Nessuna riga di questo registro vale un'eccezione a una regola
+di progetto.
+
+⚠️ **Rotture temporanee dentro la stessa passata**: il `DROP COLUMN domain` del
+**56** rompe `fn_log_event` e `fn_list_lotto_segnalazioni` finché il **57** e il
+**59** non le riscrivono. Un corpo plpgsql non è tracciato come dipendenza dal
+DDL, quindi il `DROP` riesce e il difetto si vedrebbe alla prima chiamata.
+
+---
+
+### L2 — L'identità del giro — ✅ **APPLICATO il 2026-08-22**
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| 61 | `task-runs-correlation-id` | `00_schema/vendite` | `correlation_id` sul registro dei tentativi, più l'indice parziale |
+| 62 | `commesse-push-log-run-in-testa` | `00_schema/vendite` | `correlation_id` + `tx_id` + lo stato **`IN_ESECUZIONE`** ammesso, perché la riga nasca **in testa** al giro |
+
+⭐ **Il difetto `entity_id = 0` non era un segnaposto**, ed è la scoperta che dà
+forma al **62**: la riga di `commesse_push_log` nasceva a **fine** giro, quindi
+all'avvio non c'era niente da citare. Un segnaposto è una convenzione da
+interpretare; un id inesistente è una **sequenza sbagliata**, e si corregge
+invertendo l'ordine.
+
+⭐ **E ne esce un guadagno che non era nel piano**: un giro **interrotto** oggi
+non lascia traccia — muore e sparisce. Con la riga creata in testa, quella
+rimasta a `IN_ESECUZIONE` è l'unica prova che qualcosa è partito e non è tornato.
+
+⚠️ Il `correlation_id` di oggi vale `lock_batch_id`, che **nasce col lotto e non
+cambia mai**: due corse dello stesso lotto lo condividono. Non è una deduzione —
+lo asserisce già il **test 6** di `test-fn-list-lotto-segnalazioni-job`, ed è il
+motivo per cui l'àncora del «job corrente» è l'`event_time` e non quel campo.
+
+## 4-bis. ⭐ Cosa questo brief ASSORBE — e che non si gestisce più altrove
+
+> **Serve a una cosa sola:** chi lavora su `event_log` legge **questo**
+> documento e basta. E chi apre l'altro non deve chiedersi se una voce è ancora
+> sua.
+
+| Voce assorbita | Da dove | Dove vive ora | Stato |
+| --- | --- | --- | --- |
+| **T-1** — il catalogo chiuso dei tipi di entità | `brief-db-bersaglio-errore` §5.1 | **D-17** e **§3.7**, lotto **L4** (changeSet 53-54) | ✅ **fatto e applicato** |
+| **T-1b** — `event_log.entity_type` adotta il catalogo | `brief-db-bersaglio-errore` §5.1 | **§3.7**, lotto **L4** (changeSet 55-58) | ✅ **fatto e applicato** — ⭐ il prerequisito di quel cantiere è **sciolto**: T-2…T-5 possono partire |
+| **Q-1 chiusa** — «il vocabolario dei tipi: catalogo chiuso» | `brief-db-bersaglio-errore` §7 | **D-17** | ✅ decisa, invariata |
+
+⛔ **Di là quelle voci non si gestiscono più**: restano come **dipendenza**, non
+come passi. Il loro brief conserva tutto ciò che è suo — i tre strati del
+messaggio, la forma `target`, il pilota 937, la trappola dei `%s`, il roll-out e
+le consegne BE/FE.
+
+### Perché il confine sta qui e non altrove
+
+Non è una spartizione di comodo. I due cantieri hanno **mestieri diversi** — il
+nostro è *«la riga del giornale dice chi, per chi, in che giro»*, il loro è
+*«l'errore porta un bersaglio»* — e si toccano su **un oggetto solo**:
+`event_log.entity_type`, che è **nostro**. Una decisione su una colonna deve
+stare dove vive la colonna, o diventa la seconda sede che entrambi i brief
+dicono di evitare.
+
+⚠️ **Cosa NON è stato assorbito, e perché** — portare qui anche il bersaglio
+farebbe di questo documento il contenitore di due mestieri: è esattamente ciò
+che il §0 di [analisi-osservabilita-log.md](analisi-osservabilita-log.md) dice
+di non fare con la diagnostica di produzione, e la ragione è la stessa.
+
+### Cosa questo cantiere REGALA all'altro, senza costo
+
+| | Cosa |
+| --- | --- |
+| ⭐ | I due codici nati con L1 — `E_EVENT_LOG_SCOPE_NON_RISOLTO` ed `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` — mettono già `entity_type` + `entity_id` nel `context`: hanno **già la forma del bersaglio**, solo non sotto la chiave `target`. Convertirli è una riga, e sono i primi adottanti gratuiti del loro **T-5** |
+| ⭐ | La vista `script.vw_giornale_entita` (§3.6) e le rotte del bersaglio (loro **B-2**) usano **lo stesso** vocabolario `config.tipi_entita`: la tabella tipo → schermata si scrive una volta |
+| ⚠️ | Il guard `E_FATTURE_RIGHE_RETTIFICATE` di [brief-db-guard-righe-fattura-rettificate.md](brief-db-guard-righe-fattura-rettificate.md) dice «su %s righe» — un conteggio, **nessun id in prosa**, che è già la regola giusta. Ma un `target` sulle righe bloccate lo renderebbe azionabile: buon candidato **T-5** |
 
 ---
 
@@ -518,7 +883,8 @@ esistenti, senza nessun loader nuovo.
 | **BE-2** | `correlation_id` = **un `uuid` nuovo per giro**, generato dal runner e dall'orchestratore push; scritto anche su `task_runs` e `commesse_push_log` (D-7) | Sì, dopo L2 |
 | **BE-3** | La riga di `commesse_push_log` nasce **in testa** al giro (`IN_ESECUZIONE`) e si chiude alla fine; `PUSH_STARTED`/`PUSH_COMPLETED` **escono da `event_log`** (D-3) | Sì — senza, quelle scritture falliscono sul `NOT NULL` |
 | **BE-4** | `EMITTIBILITA_FALLITA` diventa **per commessa** (`entity_type = 'COMMESSA'`, `entity_id = commessa_id`), una riga per commessa fallita invece di un evento aggregato con dentro una lista di id (D-3) | Sì |
-| **BE-5** | Smettere di passare `actor` e `source`: **le colonne non esistono più** (D-6) | Sì |
+| **BE-5** | Smettere di passare `actor` e `source`: **le colonne non esistono più** (D-6). ⭐ **E con L4 anche `domain`**, che scende dalla firma: la chiamata passa da 9 a **6** parametri. ⚠️ Un solo adeguamento, se BE-5 e L4 viaggiano insieme — due se si separano | Sì |
+| **BE-9** | *(da L4)* Seminare i **codici evento** nel catalogo `config.eventi_dominio`. ⚠️ Un codice non dichiarato **non blocca la scrittura** (D-12) ma fa fallire la build: il cancello è `dbops.vw_eventi_da_dichiarare` | No, ma rompe la CI |
 | **BE-6** | ⚠️ **Estrarre il BB unico di `log_event`.** `pipeline_repository.log_event` e `commesse_repository.log_event` sono **copia carbone**: finché restano due, ogni modifica si scrive due volte | No, ma è il momento giusto |
 | **BE-7** | Le scritture di diario passano dal telaio **`_diagnostica_best_effort`** già presente in `pipeline_runner`. ⭐ Dopo L1 una `log_event` **può fallire** (`NOT NULL`, FK, `WITH CHECK`), e un difetto del diario non deve mai diventare il messaggio che legge l'operatore — è **la stessa classe** di BE-1. Vedi **Q-3** | Sì, di fatto |
 | **BE-8** | *(Passo 2, indipendente da tutto)* `request_id` nel formatter di logging — esiste già come contextvar. **E già che si è lì**: `dbops.request_log.emittente_attivo_id` e `tx_id` sono **due colonne morte** (0 valorizzate su 353.758) e il valore dell'emittente ce l'ha già il JWT: o si collegano o si tolgono | No |
@@ -585,7 +951,64 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 
 ---
 
-## 9. Registro
+## 9. Cosa renderebbe necessario un terzo giro
+
+> **Perché questa sezione esiste.** Domanda di Tid, 2026-08-22: *«siamo sicuri
+> che sia definitiva? In venti giorni è già la seconda volta sui log»*. È la
+> domanda giusta, e la risposta non è una rassicurazione: è l'elenco di ciò che
+> ci riporterebbe qui, con accanto cosa lo chiude.
+
+### 9.1 Le due volte in venti giorni sono lo STESSO difetto
+
+Non è sfortuna, ed è nominabile:
+
+> **Una colonna di testo che tutti scrivono e nessuno governa.**
+
+Inizio agosto: 207 codici errore fuori catalogo → seed più tassonomia delle
+classi. Oggi: `entity_type` testo libero → catalogo. **Stesso difetto, altra
+colonna.** E al 2026-08-22 lo stesso registro ne aveva **altre due** nella stessa
+condizione (`domain`, `event_code`): è il motivo per cui la **D-18** le chiude
+adesso, invece di aspettare il terzo giro.
+
+### 9.2 Cosa è solido, e non torna
+
+| | Perché non torna |
+| --- | --- |
+| I sei campi del **lato scrittura** | Sono i non-recuperabili, sono tutti dentro, e 33 asserzioni li presidiano. Era l'unica cosa che *doveva* essere giusta al primo colpo |
+| Il **perimetro** (SR + whitelist + policy) | Rispecchia 14 tabelle: se cambia, cambia per tutte, non per questo registro |
+| **Append-only contro retention** | Il conflitto è risolto nel merito, non aggirato |
+| **D-12** — «il diario non si blocca mai» | È una regola, non un'implementazione: sopravvive a chi la implementa |
+
+### 9.3 Cosa NON è ancora fondamenta, in ordine di probabilità
+
+| # | Rischio | Cosa lo chiude |
+| --- | --- | --- |
+| **1** | 🔴 ~~`domain` e `event_code` non governati~~ | ✅ **D-18 / L4.** Era il più probabile: stessa forma del difetto che ci ha riportati qui due volte, e `event_code` è l'asse su cui il Passo B raggruppa |
+| **2** | 🔴 ~~La vista nasce come union di sole tabelle `vendite`~~ | ✅ **§3.6 rev.** I registri di eventi del progetto sono **sei**: se la cucitura nascesse locale, a rifarsi sarebbe la vista — cioè la cosa che tutti avrebbero già in mano |
+| **3** | 🟡 **Il modello non ha ancora incontrato la realtà** | ⛔ **Non si chiude a tavolino.** `event_log` ha **zero righe**: dopo il `TRUNCATE` nessuno ha più scritto, perché il BE non è allineato. «`correlation_id` = un uuid per giro» oggi è un disegno; diventa un fatto quando il runner lo genera. Il modo di non tornare indietro è fare **BE-2/BE-3 presto**, non farli perfetti |
+| **4** | 🟡 `FORCE ROW LEVEL SECURITY` | Se arriva l'ondata, `fn_resolve_emittente_sr_id` va rivista — insieme a una dozzina di funzioni gemelle. Dichiarato nel changeSet: **non sarà una ristrutturazione di questo registro** |
+| **5** | 🟡 Il **Passo B** poggia sulla qualità dei codici errore | Lo split di `E_PARAMETRO_INVALIDO` (126 funzioni, 7 schemi) ha un brief suo. Non blocca il Passo A |
+
+### 9.4 I due impegni
+
+Sono verificabili, ed è per questo che stanno scritti:
+
+1. ⭐ **L4 è l'ultimo intervento strutturale su `vendite.event_log`** — ✅ **posato
+   il 2026-08-22**. Da qui in avanti la tabella si tocca solo per **aggiungere
+   righe ai cataloghi**, cioè con un seed, non con una migrazione di schema.
+   ⏳ **L'impegno decorre da oggi**: se servisse un'altra colonna, questa sezione
+   ha sbagliato qualcosa e va scritto **qui** cosa, con la data.
+2. ⭐ **La vista è la cucitura, e nasce già larga.** Un registro nuovo entra con
+   un `UNION ALL`; se un giorno entrasse rinegoziando le colonne, il difetto è
+   nella forma normalizzata di §3.6.
+
+⚠️ **E una cosa che non si può promettere**, perché prometterla sarebbe la bugia
+più facile: il contatto col backend. Finché `event_log` non ha righe scritte
+dalla pipeline vera, questo piano è verificato dai pgTAP e da nient'altro.
+
+---
+
+## 10. Registro
 
 ### 2026-08-22 · Nascita
 
@@ -603,6 +1026,141 @@ Il brief nasce da due giri con Tid sullo stesso giorno.
   `NOT NULL` e ha 70 valori distinti) ed esce la vista `vw_giornale_entita`,
   perché il Passo A sul solo `event_log` consegnerebbe quattro righe.
 - **Le undici decisioni** di §2 sono di Tid, prese lo stesso giorno.
+
+### 2026-08-22 (ottavo giro) · ✅ L4 e L2 applicati — la fondamenta DB è posata
+
+Applicati, autogen rigenerata, **baseline `vendite`+`rls` senza regressioni**.
+I cinque pgTAP adeguati in anticipo sono **33 asserzioni verdi con zero skip** —
+verificato leggendo il TAP, perché è l'unica cosa che una baseline non vede: un
+file può passare *smettendo di verificare*.
+
+⭐ **E il catalogo guida davvero il trigger**, non solo in teoria. Provato in
+transazione:
+
+```
+config.tipi_entita     COMMESSA/FATTURA/LOTTO → giornalabili
+                       TASK_RUN               → a catalogo, NON giornalabile
+
+fn_log_event('PIPPO',    1, …) → «…di tipo «PIPPO»: sono ammessi COMMESSA, FATTURA, LOTTO»
+fn_log_event('TASK_RUN', 1, …) → stesso rifiuto, stesso messaggio
+```
+
+Due cose che valgono più della riga verde:
+
+* **l'elenco nel messaggio lo compone il catalogo**, non è più scritto nella
+  frase: cresce da solo e non può invecchiare;
+* **`TASK_RUN` è rifiutato pur essendo a catalogo**, ed è il disegno che
+  funziona: il giornale ammette solo i tipi *con un modo*, il bersaglio tutto il
+  catalogo. Le due letture non sono una teoria, sono due `WHERE` diversi sulla
+  stessa tabella.
+
+`event_log.domain`: **zero colonne**. La firma è a sei parametri.
+
+⭐ **Cosa significa per §9.4.** L'impegno «L4 è l'ultimo intervento strutturale su
+questo registro» **decorre da oggi**. La parte DB della fondamenta è posata: da
+qui la tabella si tocca solo con un seed.
+⚠️ E resta in piedi, intatto, il rischio 3 del §9.3 — **il modello non ha ancora
+incontrato la realtà**. `event_log` ha zero righe perché il backend non è
+allineato: nove consegne, zero fatte. Nessuna riga di documentazione può
+chiudere quel punto.
+
+### 2026-08-22 (settimo giro) · L4 e L2 scritti, e un `%TYPE` ricascato
+
+L4 (8 changeSet) e L2 (2) scritti, più i **cinque pgTAP adeguati in anticipo**:
+applicare L4 li avrebbe resi rossi, e qualcuno li avrebbe attribuiti alla
+migrazione. Uno non era meccanico — `test-event-log-deriva-scope` agganciava la
+frase `'%sono ammessi LOTTO, COMMESSA e FATTURA%'`, che ora la compone il
+catalogo in ordine alfabetico.
+
+Tre cose che il piano dava per buone e che scrivendo si sono rivelate sbagliate:
+
+1. ⛔ **Il cancello dei codici evento non poteva essere il gemello di quello dei
+   codici errore.** Quello legge `pg_proc` perché i codici errore li solleva il
+   *database*; i codici evento li scrive *Python*. Una vista su `pg_proc`
+   sarebbe tornata **vuota per sempre** — il peggior presidio, quello che dice
+   sempre «tutto a posto» guardando nel posto sbagliato. Il changeSet 60 ha
+   cambiato natura: è una **spia** sulla deriva già avvenuta, dichiarata
+   data-dependent, e il cancello vero è **BE-9**.
+2. ⛔ **Il changeSet della `fk_index_policy` non serviva, e registrarlo sarebbe
+   stato dannoso**: la FK è su `entity_type`, già prima colonna di
+   `ix_event_log_entity_time` — coperta *per prefisso* — e il `dll_command`
+   avrebbe puntato il `DROP` su un indice **non dedicato**.
+3. ⭐ **`entity_id = 0` non era un segnaposto**: la riga di `commesse_push_log`
+   nasceva a *fine* giro, quindi era un id **che non esisteva ancora**. Un
+   segnaposto è una convenzione da interpretare, un id inesistente è una
+   sequenza sbagliata. Correggendola si guadagna anche una cosa non prevista:
+   un giro **interrotto** smette di sparire.
+
+⛔ **E un rilievo di Tid già ricevuto il 2026-08-21, ripetuto oggi**: `%TYPE`
+mancante in firma e `RETURNS TABLE`. Il meccanismo ha un nome, ed è la ragione
+per cui si ripete: **riprodurre il corpo vivo di una funzione porta con sé il
+suo debito**, in una forma che sembra corretta perché combacia col database.
+Sanato sul changeSet 59 — sette campi della `RETURNS TABLE` e due parametri,
+con `pg_get_function_identity_arguments` e `pg_get_function_result` verificati
+**byte-identici** al vivo, quindi nessun overload e nessun chiamante rotto.
+⚠️ E una trappola dentro la trappola: mentre si ancora **non si riordina** la
+`RETURNS TABLE` — cambierebbe l'ordine del result set, e `CREATE OR REPLACE` la
+rifiuterebbe comunque.
+
+### 2026-08-22 (sesto giro) · «È una fondamenta?» — e due scelte corrette
+
+Domanda di Tid: *«siamo sicuri che sia definitiva? In venti giorni è già la
+seconda volta sui log»*. Da lì il **§9**, che invece di rassicurare elenca cosa
+ci riporterebbe qui — e ha prodotto due allargamenti (`domain`/`event_code`
+governati; la vista cucitura cross-schema) più due impegni verificabili.
+
+⭐ **La cosa utile è stata nominare il pattern**: le due volte sono lo **stesso
+difetto** — una colonna di testo che tutti scrivono e nessuno governa — e lo
+stesso registro ne aveva altre due nella stessa condizione. Chiuderle mentre la
+tabella è già aperta è la differenza fra un terzo giro e nessuno.
+
+🔴 **E un richiamo di Tid che ha corretto due scelte già scritte**: *«non abbiamo
+produzione, decidiamo sempre la cosa migliore; i log attuali possiamo buttarli
+se serve a costruire meglio»*. Avevo lasciato che i dati decidessero, due volte:
+
+1. **`domain` "non si toglie perché l'indice e una funzione la usano"** →
+   verificato: il filtro in `fn_list_lotto_segnalazioni` è **ridondante**
+   (filtra già `event_code`), l'indice non serve a nessun accesso reale, e il BE
+   deve comunque riscrivere le chiamate. ⛔ **La colonna si toglie** — tenerla
+   sarebbe stato peggio: una copia derivabile che può dissentire dal catalogo;
+2. **un'eccezione alla regola dei CSV** per seminare il catalogo prima della FK,
+   *«perché su questo database `event_log` ha righe»* → il registro è **vuoto**,
+   e se non lo fosse si azzera (D-4). ⛔ **Eccezione tolta.**
+
+⚠️ Vale la pena tenerlo scritto: in entrambi i casi la misura era corretta e la
+**conclusione** no. Un dato di sviluppo può dire cosa c'è, non cosa è giusto.
+
+### 2026-08-22 (quinto giro) · Il catalogo dei tipi arriva qui
+
+`brief-db-bersaglio-errore`, scritto lo stesso giorno da un altro tavolo, aveva
+**deciso sulla nostra colonna**: `event_log.entity_type` doveva adottare un
+catalogo chiuso (T-1/T-1b). Il suo registro aveva anche previsto il rischio —
+*«stessa tabella, stessa funzione di scrittura: un apply solo, e chi arriva
+secondo eredita il lavoro del primo»*. Il coordinamento non c'è stato, e **noi
+avevamo già applicato la scelta opposta** (D-9, il `CHECK`).
+
+⭐ **La collisione si è sciolta verso il loro disegno, e ha migliorato il nostro.**
+La mia obiezione al catalogo era in due parti: la prima **cade** (il lucchetto
+`require_attivo` lo genera `config.sorgenti` perché ha `attivo`; un catalogo
+nuovo che deprechi con `obsoleto_dal` l'automazione lo salta), la seconda si
+risolve **meglio** del `CHECK` — portando il modo di risoluzione nella stessa
+riga del tipo, configurazione e trigger non possono più dissentire, e il `CASE`
+scritto a mano nel trigger diventa inutile.
+
+⭐ **E la scoperta che ha reso possibile unificare**: i due vocabolari **non sono
+lo stesso insieme**. Quello del giornale è selezionato da *«l'emittente
+dev'essere derivabile»* — per questo la D-3 ha espulso `TASK_RUN`; quello del
+bersaglio da *«il frontend ha una rotta»*, e comprende i task run. Sottoinsieme
+proprio, non insiemi diversi: **un catalogo solo, due letture**, distinte dalla
+colonna `modo_risoluzione_emittente`.
+
+⚠️ Trovata scrivendo il piano una trappola che nessuno dei due brief aveva:
+`80_data` gira **dopo** `00_schema`, quindi la FK arriverebbe prima del seme —
+invisibile su un DB ricostruito da zero, fatale su questo. Risolta nel L4.
+
+*Decisione di Tid, 2026-08-22: via **B** (catalogo nuovo, sovrapposizione con
+`config.sorgenti` dichiarata e non linkata), e assorbimento evidenziato su
+entrambi i brief.*
 
 ### 2026-08-22 (quarto giro) · L1 applicato, e due difetti trovati dai test
 

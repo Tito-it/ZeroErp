@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SETTE PARAMETRI DIVENTANO SEI — lotto L4
+#   vendite.fn_log_event
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.8
+#
+#   `20260822-56` toglie la colonna `domain`. Il corpo di questa funzione la
+#   elenca nel proprio INSERT: senza questa revisione fallirebbe **a runtime**
+#   su ogni evento, con un «column does not exist».
+#   ⚠️ Un corpo plpgsql non e' tracciato come dipendenza dal DDL: il DROP
+#   COLUMN riesce lo stesso, e il difetto si scopre alla prima scrittura. E' il
+#   motivo per cui i due changeSet vanno nella stessa passata.
+#
+# ── ⛔ SI TOGLIE UN PARAMETRO: SERVE UN DROP ESPLICITO ──────────────
+#   `CREATE OR REPLACE` con meno parametri **non sostituisce**: crea una
+#   funzione NUOVA e lascia in vita la vecchia. Restando entrambe, e avendo
+#   entrambe parametri con `DEFAULT`, una chiamata a sei argomenti diventa
+#   **ambigua** (42725) — e l'ambiguita' non si vede al migrate, si vede al
+#   primo evento. Precedente in casa: `20260727-25`.
+#
+# ── ⭐ E' LA SECONDA E ULTIMA VOLTA CHE QUESTA FIRMA CAMBIA ─────────
+#   L1 l'ha portata da nove a sette (via `p_actor` e `p_source`, colonne
+#   costanti); L4 la porta a sei. Sono due cambi in un giorno, e non tre
+#   perche' il BE non ha ancora fatto l'adeguamento: **BE-5 si adegua una volta
+#   sola, alla forma finale**, se viaggia con questo lotto.
+#   Dopo di qui la firma non cambia piu': §9.4 del brief lo dichiara come
+#   impegno verificabile.
+#
+# ── PERCHE' NON ARRIVA UN PARAMETRO PER IL DOMINIO ─────────────────
+#   Perche' il dominio non e' un dato dell'evento: e' una **proprieta' del suo
+#   codice**, e vive in `config.eventi_dominio`. Chiederlo al chiamante
+#   significherebbe permettergli di scrivere un dominio diverso da quello del
+#   codice — cioe' due verita'. Lo stesso motivo per cui il perimetro non e'
+#   un parametro ma lo deriva il trigger.
+#
+# Dipendenze: vendite.event_log senza `domain` (20260822-56).
+# Verifica: db/pgtap/vendite/test-event-log-function-v1.sql (da adeguare)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260822-57-update-fn-log-event-senza-domain-mctit.yaml
+
+  - changeSet:
+      id: 20260822-57-update-fn-log-event-senza-domain
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_log_event passa da sette parametri a sei: via p_domain, perche' il
+        dominio e' una proprieta' del codice evento (config.eventi_dominio) e non un dato
+        che il chiamante possa scegliere — chiederglielo permetterebbe di scriverne uno
+        diverso da quello del codice. ⛔ DROP esplicito della firma a sette: due firme con
+        DEFAULT rendono ambigua ogni chiamata. ⭐ Seconda e ULTIMA volta che questa firma
+        cambia (§9.4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: event_log
+                    columnName: domain
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_log_event';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Prima si toglie la vecchia: due firme con DEFAULT rendono
+              --    ambigua ogni chiamata a sei argomenti.
+              DROP FUNCTION IF EXISTS vendite.fn_log_event(
+                  text, text, bigint, text, text, uuid, jsonb
+              );
+
+              -- ⚠️ %TYPE anche in FIRMA e in RETURNS (linee-guida-sql §5):
+              --    ogni parametro riflette la colonna che andra' a riempire.
+              --    In firma e' una FOTOGRAFIA, non un link — si risolve alla
+              --    creazione. Verificare con pg_get_function_identity_arguments
+              --    che l'identita' resti (text, bigint, text, text, uuid, jsonb)
+              --    e che non sia rimasta viva la firma a sette.
+              CREATE OR REPLACE FUNCTION vendite.fn_log_event(
+                  p_entity_type    vendite.event_log.entity_type%TYPE,
+                  p_entity_id      vendite.event_log.entity_id%TYPE,
+                  p_event_code     vendite.event_log.event_code%TYPE,
+                  p_severity       vendite.event_log.severity%TYPE DEFAULT 'INFO',
+                  p_correlation_id vendite.event_log.correlation_id%TYPE DEFAULT NULL,
+                  p_payload        vendite.event_log.payload%TYPE DEFAULT '{}'::jsonb
+              )
+              RETURNS vendite.event_log.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_event_id vendite.event_log.id%TYPE;
+                  v_severity vendite.event_log.severity%TYPE;
+                  v_payload  vendite.event_log.payload%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Inserire un evento append-only in vendite.event_log
+                  --   e restituire l'identificativo generato.
+                  --
+                  -- Regole:
+                  --   - nessuna logica di orchestrazione interna
+                  --   - validazioni di severita' delegate al CHECK su tabella
+                  --   - ⭐ PERIMETRO, CHI e SCADENZA non si passano: li scrive
+                  --     trg_event_log_a10_deriva_scope_ins, perche' sono fatti
+                  --     che il database conosce e il chiamante no.
+                  --   - ⭐ E nemmeno il DOMINIO: e' una proprieta' del codice
+                  --     evento (config.eventi_dominio). Chiederlo al chiamante
+                  --     vorrebbe dire permettergli di scriverne uno diverso da
+                  --     quello del codice, cioe' due verita'.
+                  --
+                  -- ⚠️ Rev 2026-08-22 (L4): via p_domain, e la colonna con lui.
+                  --   Rev precedente (L1): via p_actor e p_source, che
+                  --   riempivano due colonne costanti — «chi» e' user_insert.
+                  -- =========================================================
+                  v_severity := COALESCE(p_severity, 'INFO');
+                  v_payload  := COALESCE(p_payload, '{}'::jsonb);
+
+                  INSERT INTO vendite.event_log (
+                      entity_type,
+                      entity_id,
+                      event_code,
+                      severity,
+                      correlation_id,
+                      payload
+                  )
+                  VALUES (
+                      p_entity_type,
+                      p_entity_id,
+                      p_event_code,
+                      v_severity,
+                      p_correlation_id,
+                      v_payload
+                  )
+                  RETURNING id INTO v_event_id;
+
+                  RETURN v_event_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_log_event(text, bigint, text, text, uuid, jsonb)
+              IS 'Inserisce un evento append-only in vendite.event_log e ritorna id evento. ⭐ Perimetro (emittente_soggetto_ruolo_id), identita'' (auth_user_id) e scadenza (cleanup_at) NON sono parametri: li deriva trg_event_log_a10_deriva_scope_ins, perche'' sono fatti del database. ⭐ E nemmeno il DOMINIO: e'' una proprieta'' del codice evento e vive in config.eventi_dominio — chiederlo al chiamante gli permetterebbe di scriverne uno diverso da quello del codice, cioe'' due verita''. ⚠️ Rev 2026-08-22 (L4): tolto p_domain, sei parametri. Rev precedente dello stesso giorno (L1): tolti p_actor e p_source. Entrambe le volte la firma vecchia e'' stata DROPpata esplicitamente: con i DEFAULT due firme rendono ambigua ogni chiamata. ⭐ §9.4 del brief dichiara questa come la forma FINALE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_log_event(
+                  text, bigint, text, text, uuid, jsonb
+              );

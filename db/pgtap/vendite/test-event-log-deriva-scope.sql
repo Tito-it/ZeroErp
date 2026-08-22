@@ -57,8 +57,8 @@ SELECT
 CREATE TEMP TABLE _ev AS
 WITH ins AS (
     INSERT INTO vendite.event_log
-        (domain, entity_type, entity_id, event_code, emittente_soggetto_ruolo_id, auth_user_id)
-    SELECT 'TEST_DERIVA', 'COMMESSA', r.commessa_id, 'PGTAP_DERIVA',
+        (entity_type, entity_id, event_code, emittente_soggetto_ruolo_id, auth_user_id)
+    SELECT 'COMMESSA', r.commessa_id, 'PGTAP_DERIVA',
            -9,      -- perimetro finto: il trigger deve sovrascriverlo
            -1       -- identita' finta: idem
       FROM _rif r
@@ -123,14 +123,14 @@ END;
 -- 5) Tipo fuori vocabolario: la frase nomina il TIPO PASSATO.
 --    ⚠️ Il pattern non attraversa il segnaposto: si aggancia alla coda fissa.
 SELECT throws_like(
-    'SELECT vendite.fn_log_event(''TEST_DERIVA'', ''PIPPO'', 1, ''PGTAP_IGNOTO'')',
-    '%sono ammessi LOTTO, COMMESSA e FATTURA%',
-    'entity_type fuori vocabolario: rifiutato, e la frase elenca i tipi ammessi'
+    'SELECT vendite.fn_log_event(''PIPPO'', 1, ''PGTAP_IGNOTO'')',
+    '%non sa dove collocare%',
+    'entity_type fuori vocabolario: rifiutato, e la frase nomina il tipo passato'
 );
 
 -- 6) Entita' inesistente: frase DIVERSA, perche' il rimedio e' diverso.
 SELECT throws_like(
-    'SELECT vendite.fn_log_event(''TEST_DERIVA'', ''COMMESSA'', 999999999, ''PGTAP_ORFANO'')',
+    'SELECT vendite.fn_log_event(''COMMESSA'', 999999999, ''PGTAP_ORFANO'')',
     '%non si lega a nessun emittente%',
     'entita'' inesistente: rifiutato con un messaggio distinto dal tipo ignoto'
 );
