@@ -15,8 +15,10 @@
 > **rimisurato sul DB e sul codice** lo stesso giorno (§0-ter dell'analisi).
 > Decisioni di Tid del 2026-08-22, tutte in §2.
 >
-> **Stato:** 🟡 **L1 SCRITTO — niente applicato.** I sette changeSet e i tre append
-> a CSV sono nel repo e passano i cancelli statici. Nessuna migrazione eseguita.
+> **Stato:** ✅ **L1 APPLICATO E VERDE (2026-08-22).** Otto changeSet applicati
+> (i sette del piano più la correzione `47`), tre append a CSV, **33 asserzioni
+> pgTAP verdi con zero skip** su cinque file. Restano **L2** (l'identità del giro)
+> e **L3** (la vista), più le otto consegne BE del §5.
 >
 > **Correlati:**
 > [analisi-osservabilita-log.md](analisi-osservabilita-log.md) (il documento madre) ·
@@ -39,9 +41,9 @@
 | ⛔ **Tre premesse dell'analisi cadute** | La RLS **morde già** (l'app non è owner) · il canale batch non è a rischio · B1 (il 67%) è chiuso | §1.4 |
 | ✅ **Decisioni** | **D-1…D-16**, tutte prese con Tid il 2026-08-22 — D-1 e D-9 **riviste** in coda al rilievo sui lucchetti | §2 |
 | 🧩 **Il disegno** | Derivazione nel trigger (la firma di `fn_log_event` **non cambia**) · policy a parità di famiglia · retention che convive con l'append-only · `vw_giornale_entita` | §3 |
-| 📋 **Il piano** | **L1** la riga parlante — ✅ **SCRITTO** (7 changeSet + 3 append a CSV, niente applicato) → **L2** l'identità del giro (2) → **L3** la vista (1, si accende col Passo A) | §4 |
+| 📋 **Il piano** | **L1** la riga parlante — ✅ **APPLICATO E VERDE** (8 changeSet + 3 append a CSV) → **L2** l'identità del giro (2) → **L3** la vista (1, si accende col Passo A) | §4 |
 | 🔵 **A carico del BE** | 8 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
-| 🧪 **Presidio** | ✅ **26 asserzioni verdi, zero skip** su 5 file — 3 nuovi e 2 preesistenti adeguati. Il quarto file previsto **non** è stato scritto: esisteva già | §6 |
+| 🧪 **Presidio** | ✅ **33 asserzioni verdi, zero skip** su 5 file — 3 nuovi e 2 preesistenti adeguati. Il quarto file previsto **non** è stato scritto: esisteva già | §6 |
 | ✅ **Domande aperte** | **Zero.** Le sei del primo giro chiuse il 2026-08-22 | §8 |
 | ⭐ **I due perni** | (1) «Chi» è **già nella riga** (`user_insert`): B3 non era vero — manca **il perimetro**, e serve perché `event_log` è **l'unico registro polimorfo**, l'unico senza una testata a cui ancorarsi. (2) **Un diario non si blocca mai**: rifiuta solo ciò di cui non sa dire di chi è | §3.2 · §3.3 |
 
@@ -456,7 +458,7 @@ ed è la ragione concreta per cui D-5 non era rinviabile.
 > ⛔ `runOnChange: false` ovunque in `00_schema` e `20_code`, `validCheckSums`
 > **al plurale**, `logicalFilePath` sempre, **un changeSet per file**.
 
-### L1 — La riga parlante — ✅ **SCRITTO il 2026-08-22** *(niente applicato)*
+### L1 — La riga parlante — ✅ **APPLICATO il 2026-08-22, tutto verde**
 
 **Sette changeSet più tre append a CSV.** I codici errore e la regola di
 retention **non** hanno un changeSet proprio: i mirror `runOnChange` esistenti
@@ -486,8 +488,9 @@ solo `changeSet`** ciascuno, `logicalFilePath` sempre, `runOnChange: false` in
 (zero occorrenze del refuso singolare), e i tre CSV hanno arità di colonne
 corretta.
 
-⛔ **Niente è stato applicato.** Nessun `liquibase update`, nessun `make
-db-migrate`.
+✅ **Applicato il 2026-08-22**, insieme alla correzione **47** nata scrivendo i
+test (§9). Le tre righe di CSV sono state rilette dai mirror `runOnChange`
+esistenti, senza nessun loader nuovo.
 
 ### L2 — L'identità del giro
 
@@ -522,21 +525,31 @@ db-migrate`.
 
 ---
 
-## 6. Il presidio pgTAP
+## 6. Il presidio pgTAP — ✅ **33 asserzioni verdi, zero skip**
 
-| File | Cosa dimostra |
-| --- | --- |
-| `db/pgtap/rls/test-rls-event-log-ef-whitelist-write.sql` | Mirror di `test-rls-commesse-ef-whitelist-write.sql`: l'operatore **non** vede né scrive eventi di un emittente fuori whitelist |
-| `db/pgtap/vendite/test-event-log-deriva-scope.sql` | La derivazione funziona su `LOTTO`, `COMMESSA`, `FATTURA` · `auth_user_id` e `cleanup_at` valorizzati · un `entity_id` inesistente **solleva `P0001`** con `E_EVENT_LOG_SCOPE_NON_RISOLTO` · un `entity_type` fuori vocabolario è respinto dal `CHECK` (**`23514`**, non `P0001`: sono due cancelli diversi e il test deve dire quale) · ⭐ **e un evento su un'entità di un emittente DISATTIVATO viene scritto lo stesso** — è D-12, ed è la cosa che un pgTAP deve presidiare perché è controintuitiva |
-| `db/pgtap/vendite/test-event-log-append-only.sql` | `UPDATE` vietato · `DELETE` di riga viva vietato · `DELETE` di riga **scaduta ammesso** · `TRUNCATE` non passa dai trigger |
-| ~~`db/pgtap/vendite/test-event-log-canale-batch.sql`~~ | ⛔ **Non scritto, ed è giusto così (2026-08-22).** Duplicava `rls/test-role-batch-fatturazione-postura.sql`, che già presidia il ruolo, il `BYPASSRLS`, il **grado `i` (INSERT-only)** su `event_log` e la controprova «nessun `DELETE`» — meglio di quanto avrei fatto io. La regola del 2 vale anche per i test: una seconda sede si sarebbe disallineata alla prima modifica |
+Verificato leggendo il TAP riga per riga, non solo l'esito: un file verde per
+sottrazione — con le asserzioni finite nei rami `skip` — sarebbe indistinguibile
+da uno verde davvero se ci si ferma al `Result: PASS`.
 
-⚠️ Regole non negoziabili: le tre righe di preambolo (`BEGIN;`, riga di contesto,
-`SET CONSTRAINTS ALL IMMEDIATE`), **`throws_ok` sempre con lo SQLSTATE**
-(`'P0001'` per il dominio), `LIMIT 1` mai senza `ORDER BY` nelle fixture. E prima
-di attribuire un rosso a questo cantiere: `scripts/pgtap-baseline.sh vendite`.
+| File | Test | Nota |
+| --- | ---: | --- |
+| `db/pgtap/rls/test-rls-event-log-ef-whitelist-write.sql` | 5 | ⭐ **Senza DDL**, a differenza dei gemelli in `rls/`: là il test gira come owner e deve accendere `FORCE` per farsi mordere dalle policy, qui il runner è `zeroerp_app`, che **non** è owner — si collauda la configurazione di esercizio |
+| `db/pgtap/vendite/test-event-log-deriva-scope.sql` | 7 | Include il presidio dell'**assenza** del lucchetto `require_attivo` (D-12): una regressione che non introdurrebbe una persona ma un'automazione, alle 21:00 |
+| `db/pgtap/vendite/test-event-log-append-only.sql` | 5 | Include la prova che `cleanup_at` è **immutabile** — senza, il veto sul `DELETE` si aggirerebbe portando la scadenza nel passato |
+| `db/pgtap/vendite/test-event-log-function-v1.sql` | 8 | **Adeguato**: chiamava la firma a nove e usava `entity_id` inventati, che ora la derivazione rifiuta |
+| `db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql` | 8 | **Adeguato**: inseriva `actor`/`source` |
 
----
+⛔ **Il file sul canale batch non è stato scritto, ed è la scelta giusta.**
+Duplicava `db/pgtap/rls/test-role-batch-fatturazione-postura.sql`, che già
+presidia il ruolo, il `BYPASSRLS`, il **grado `i` (INSERT-only)** su `event_log`
+e la controprova «nessun `DELETE`» — con 18 asserzioni, meglio di quanto avrei
+scritto. La regola del 2 vale anche per i test: una seconda sede si sarebbe
+disallineata alla prima modifica.
+
+⚠️ Regole rispettate e verificate col cancello: le tre righe di preambolo
+(`BEGIN;`, contesto, `SET CONSTRAINTS ALL IMMEDIATE`), `throws_ok` sempre con lo
+SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
+`LIMIT 1` sempre con `ORDER BY`.
 
 ## 7. Cosa NON si fa
 
@@ -590,6 +603,37 @@ Il brief nasce da due giri con Tid sullo stesso giorno.
   `NOT NULL` e ha 70 valori distinti) ed esce la vista `vw_giornale_entita`,
   perché il Passo A sul solo `event_log` consegnerebbe quattro righe.
 - **Le undici decisioni** di §2 sono di Tid, prese lo stesso giorno.
+
+### 2026-08-22 (quarto giro) · L1 applicato, e due difetti trovati dai test
+
+L1 applicato (8 changeSet, 3 append a CSV) e **33 asserzioni pgTAP verdi con
+zero skip**. I test hanno fatto il loro mestiere due volte:
+
+1. ⛔ **Un difetto nel codice appena scritto** — changeSet **47**. Il changeSet
+   43 si affidava al `CHECK` sulla colonna per intercettare un `entity_type`
+   fuori vocabolario, ma **i `BEFORE ROW` girano prima dei `CHECK`**: il `CASE`
+   cadeva a NULL e il risolutore rispondeva *«Parametro non valido: il modo di
+   risoluzione dell'emittente «» non esiste»* — codice sbagliato
+   (`E_PARAMETRO_INVALIDO`, che AGENTS.md vieta di riusare) e messaggio che
+   nomina un concetto interno al database invece del dato passato, per giunta
+   vuoto. Misurato in transazione **prima** di scrivere il test, corretto in
+   avanti. Adesso dice: *«Il giornale non sa dove collocare un evento di tipo
+   «PIPPO»: sono ammessi LOTTO, COMMESSA e FATTURA»*.
+
+2. ⛔ **Due regressioni mie su test preesistenti**, entrambe sanate e **non**
+   messe in baseline: `test-event-log-function-v1` chiamava la firma a nove e
+   inventava gli `entity_id`; `test-fn-list-lotto-segnalazioni-job` inseriva
+   `actor`/`source`. Il secondo, per inciso, contiene già la prova che il
+   `correlation_id` è per-lotto e non per-giro (suo test 6) — cioè D-7 misurato
+   da qualcun altro prima di noi.
+
+⭐ E un file **non** scritto: quello sul canale batch, che duplicava un presidio
+esistente e migliore (§6).
+
+⚠️ **Fuori cantiere, trovato dalla baseline**: `fn_cleanup_fatture_by_ids`
+esplodeva con un `23503` grezzo su una figlia di `fatture_righe` che nessuno
+sorvegliava. Non c'entra con l'osservabilità e ha un brief suo,
+[brief-db-guard-righe-fattura-rettificate.md](brief-db-guard-righe-fattura-rettificate.md).
 
 ### 2026-08-22 (terzo giro) · L1 scritto
 
