@@ -1,0 +1,265 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COLONNA C'ERA, NESSUNO LA SCRIVEVA — lotto L5, prima meta'
+#   vendite.fn_start_lotto_task_run
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §5-bis (richiesta del backend, 2026-08-22) · Decisione D-7
+#
+# ── IL DIFETTO, MISURATO DAL BACKEND SU pg_proc ────────────────────
+#   Il changeSet `20260822-61` ha consegnato la colonna
+#   `fatturazione_lotti_task_runs.correlation_id`. ⛔ Ma **nessuna funzione la
+#   scrive**, e il BE non puo' scriverla da se' senza aggirare la funzione che
+#   possiede quella tabella. Una colonna che nessuno riempie non e' meta'
+#   lavoro: e' un buco che sembra chiuso.
+#
+# ── ⛔ E QUI IL `DROP` SERVE, AL CONTRARIO DI QUANTO SEMBRA ────────
+#   La richiesta del backend diceva: «con `DEFAULT NULL` in coda non serve un
+#   DROP della firma vecchia e non nasce nessun overload ambiguo». ⛔ **E'
+#   falso**, ed e' stato misurato in transazione su questo database prima di
+#   scrivere il changeSet:
+#
+#     CREATE FUNCTION f(a bigint, b bigint DEFAULT NULL) ...
+#     CREATE FUNCTION f(a bigint, b bigint DEFAULT NULL, c uuid DEFAULT NULL) ...
+#     SELECT f(1::bigint, 2::bigint);
+#     -- ERRORE: la funzione f(bigint, bigint) non e' unica
+#
+#   `CREATE OR REPLACE` con un parametro in **piu'** non sostituisce niente:
+#   crea una funzione NUOVA e lascia viva la vecchia. Le due convivono, e una
+#   chiamata a sei argomenti soddisfa entrambe. ⚠️ Il chiamante vero —
+#   `pipeline_repository.start_lotto_task_run` — passa **sei argomenti
+#   posizionali**: si romperebbe alla prima corsa della pipeline, non al
+#   migrate. E' la stessa trappola del `20260822-57`, che di parametri ne
+#   toglieva: la direzione non cambia la conclusione.
+#
+# ── ⚠️ COSA NON CAMBIA, DI PROPOSITO ──────────────────────────────
+#   * la `RETURNS TABLE (task_run_id, tentativo)` — verificata **byte-identica**
+#     al vivo con `pg_get_function_result`: nessun chiamante si accorge;
+#   * il calcolo del `tentativo`, che resta per (lotto, task, stato documento);
+#   * `p_stato_doc_fiscale_id`, che resta **bigint** e NON viene ancorato con
+#     `%TYPE`: in tabella la colonna e' `integer`, e `bigint -> integer` non e'
+#     una conversione implicita — il pgTAP che passa una variabile bigint
+#     (`test-fn-list-lotto-task-runs-paginata`) smetterebbe di trovare la
+#     funzione. E' il caso in cui «%TYPE ovunque» sarebbe la cosa sbagliata.
+#
+# ── ⚠️ E I TRE GUARD DI CHIAMATA CAMBIANO CODICE ──────────────────
+#   Erano `E_PARAMETRO_INVALIDO`, col nome del parametro dentro la frase
+#   dell'operatore. Riscrivendo il corpo il messaggio va guardato, non dato per
+#   buono perche' il codice e' registrato (AGENTS.md): li' il valore lo produce
+#   **solo un chiamante rotto**, quindi la classe e' `TECNICO` e il codice e'
+#   `E_VENDITE_CHIAMATA_NON_VALIDA` — il gemello vendite di
+#   `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (2026-08-21). ⛔ `E_PARAMETRO_INVALIDO`
+#   non si riusa: e' uno split rimandato, un debito e non una sede.
+#
+# Dipendenze: la colonna correlation_id (20260822-61) · i codici a CSV.
+# Consumo: BE-2. Verifica: db/pgtap/vendite/test-fatturazione-pipeline-task-runtime.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260822-67-update-fn-start-lotto-task-run-correlation-id-mctit.yaml
+
+  - changeSet:
+      id: 20260822-67-update-fn-start-lotto-task-run-correlation-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_start_lotto_task_run impara a scrivere il correlation_id: la colonna
+        esiste dal 20260822-61 e nessuna funzione la riempiva. ⛔ La firma a sei parametri
+        viene DROPpata nello stesso changeSet — un settimo parametro con DEFAULT non
+        sostituisce, affianca, e una chiamata a sei argomenti soddisferebbe entrambe («la
+        funzione non e' unica», misurato in transazione). ⚠️ p_stato_doc_fiscale_id resta
+        bigint e non ancorato: in tabella e' integer, e bigint -> integer non e' implicito.
+        I tre guard di chiamata passano da E_PARAMETRO_INVALIDO a
+        E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_task_runs
+                columnName: correlation_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_start_lotto_task_run';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ IL DROP NON E' UNA PRECAUZIONE: SENZA, OGNI CHIAMATA DIVENTA AMBIGUA.
+              --   Aggiungere un parametro — anche in coda, anche con DEFAULT — non
+              --   sostituisce la funzione: ne crea una SECONDA con una firma diversa. Le
+              --   due convivono, e una chiamata a sei argomenti le soddisfa entrambe.
+              --   Misurato in transazione su questo database:
+              --     ERRORE: la funzione tmp.f(bigint, bigint) non e' unica
+              --   Il chiamante vero (pipeline_repository.start_lotto_task_run) passa SEI
+              --   argomenti posizionali: si romperebbe alla prima corsa.
+              DROP FUNCTION IF EXISTS vendite.fn_start_lotto_task_run(
+                  bigint, bigint, bigint, character varying, character varying, jsonb);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_start_lotto_task_run(
+                  p_lotto_id             vendite.fatturazione_lotti_task_runs.lotto_id%TYPE,
+                  p_pipeline_id          vendite.fatturazione_lotti_task_runs.pipeline_id%TYPE,
+                  -- ⚠️ bigint E NON `%TYPE`, DI PROPOSITO: in tabella la colonna e'
+                  --   `integer`, e ancorarla cambierebbe la firma. bigint -> integer non e'
+                  --   una conversione implicita, quindi il pgTAP che passa una variabile
+                  --   bigint (test-fn-list-lotto-task-runs-paginata) smetterebbe di trovare
+                  --   la funzione. Il cast al valore giusto lo fa il corpo, come prima.
+                  p_stato_doc_fiscale_id bigint,
+                  p_task_code            vendite.fatturazione_lotti_task_runs.task_code%TYPE,
+                  p_fase                 vendite.fatturazione_lotti_task_runs.fase%TYPE DEFAULT NULL,
+                  p_meta                 vendite.fatturazione_lotti_task_runs.meta%TYPE DEFAULT '{}'::jsonb,
+                  -- ⭐ IL SETTIMO, ED E' L'UNICA COSA CHE QUESTO CHANGESET AGGIUNGE.
+                  --   Nullable e senza guard: le righe anteriori a BE-2 non hanno un giro, e
+                  --   un uuid inventato qui sarebbe un filo che non lega niente — peggio di
+                  --   un buco dichiarato (stessa scelta del changeSet 61, che ha creato la
+                  --   colonna).
+                  p_correlation_id       vendite.fatturazione_lotti_task_runs.correlation_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  task_run_id vendite.fatturazione_lotti_task_runs.id%TYPE,
+                  tentativo   vendite.fatturazione_lotti_task_runs.tentativo%TYPE
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_tentativo vendite.fatturazione_lotti_task_runs.tentativo%TYPE;
+              BEGIN
+                  -- Scopo: apre un tentativo di task sul lotto (stato IN_ESECUZIONE),
+                  --        numerandolo, e — dal 2026-08-22 — legandolo al GIRO che lo ha
+                  --        prodotto. Il numero di tentativo si conta per (lotto, task,
+                  --        stato_doc_fiscale): e' la chiave con cui la pipeline decide se
+                  --        riprendere o saltare.
+
+                  -- ── I tre guard di chiamata ──────────────────────────────────────────
+                  --   ⚠️ Erano `E_PARAMETRO_INVALIDO` con dentro «p_lotto_id obbligatorio e
+                  --   > 0» come frase per l'operatore. Il codice e' un debito dichiarato
+                  --   (D11 di brief-db-be-classe-codici-errore: split rimandato) e non e' la
+                  --   sede del nuovo: qui il dato lo produce SOLO un chiamante rotto, quindi
+                  --   la classe e' TECNICO e il codice e' il gemello vendite di
+                  --   E_PAGAMENTI_CHIAMATA_NON_VALIDA (2026-08-21). Il messaggio nomina il
+                  --   parametro DI PROPOSITO: il suo lettore e' chi ha scritto la chiamata.
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_start_lotto_task_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid,
+                          'vendite.fn_start_lotto_task_run',
+                          'p_lotto_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_start_lotto_task_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_pipeline_id', 'valore', p_pipeline_id),
+                          NULL::uuid,
+                          'vendite.fn_start_lotto_task_run',
+                          'p_pipeline_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_start_lotto_task_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_task_code', 'valore', p_task_code),
+                          NULL::uuid,
+                          'vendite.fn_start_lotto_task_run',
+                          'p_task_code obbligatorio');
+                  END IF;
+
+                  -- Il tentativo successivo per questa terna. `IS NOT DISTINCT FROM` perche'
+                  -- lo stato documento e' nullable: con `=` una terna a stato NULL non si
+                  -- ritroverebbe mai e ogni corsa ripartirebbe da 1.
+                  SELECT COALESCE(MAX(r.tentativo), 0)::SMALLINT + 1
+                    INTO v_tentativo
+                    FROM vendite.fatturazione_lotti_task_runs r
+                   WHERE r.lotto_id = p_lotto_id
+                     AND r.task_code = p_task_code
+                     AND r.stato_doc_fiscale_id IS NOT DISTINCT FROM p_stato_doc_fiscale_id::INTEGER;
+
+                  RETURN QUERY
+                  INSERT INTO vendite.fatturazione_lotti_task_runs AS r (
+                      lotto_id, pipeline_id, stato_doc_fiscale_id, task_code, fase, tentativo,
+                      task_stato, started_at, ended_at, error_code, error_message, meta,
+                      correlation_id,
+                      attivo, data_insert, user_insert, data_update, user_update
+                  ) VALUES (
+                      p_lotto_id, p_pipeline_id, p_stato_doc_fiscale_id::INTEGER, p_task_code, p_fase, v_tentativo,
+                      'IN_ESECUZIONE', now(), NULL, NULL, NULL, COALESCE(p_meta, '{}'::JSONB),
+                      p_correlation_id,
+                      TRUE, now(), current_user, now(), current_user
+                  ) RETURNING r.id, r.tentativo;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_start_lotto_task_run(
+                  bigint, bigint, bigint, character varying, character varying, jsonb, uuid)
+              IS 'Apre un task run del lotto in stato IN_ESECUZIONE e incrementa il tentativo. rev 2026-08-22: ⭐ prende p_correlation_id — l''identita'' del GIRO (D-7 di brief-db-event-log-scope-e-riga-parlante), generata dal runner e condivisa con gli eventi e con la riga di commesse_push_log. Nullable: le righe anteriori a BE-2 non hanno un giro e un uuid inventato sarebbe un filo che non lega niente. ⛔ La firma vecchia a sei parametri e'' stata DROPpata nello stesso changeSet: un settimo parametro con DEFAULT non sostituisce, affianca — e una chiamata a sei argomenti soddisferebbe entrambe («la funzione non e'' unica»). ⚠️ p_stato_doc_fiscale_id resta bigint e non e'' ancorato con %TYPE: in tabella la colonna e'' integer, e bigint -> integer non e'' implicito. I tre guard di chiamata sono passati da E_PARAMETRO_INVALIDO a E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO): li'' il valore lo produce solo un chiamante rotto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback riporta la firma a SEI parametri: la colonna
+              --    correlation_id resta, semplicemente torna a non essere scritta
+              --    da nessuno (lo stato in cui il backend l'ha trovata).
+              DROP FUNCTION IF EXISTS vendite.fn_start_lotto_task_run(
+                  bigint, bigint, bigint, character varying, character varying, jsonb, uuid);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_start_lotto_task_run(
+                  p_lotto_id bigint,
+                  p_pipeline_id bigint,
+                  p_stato_doc_fiscale_id bigint,
+                  p_task_code character varying,
+                  p_fase character varying DEFAULT NULL::character varying,
+                  p_meta jsonb DEFAULT '{}'::jsonb
+              )
+              RETURNS TABLE(task_run_id bigint, tentativo smallint)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tentativo vendite.fatturazione_lotti_task_runs.tentativo%TYPE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_start_lotto_task_run', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+                  IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_start_lotto_task_run', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_pipeline_id', 'valore', p_pipeline_id), NULL::uuid, 'p_pipeline_id obbligatorio e > 0');
+                  END IF;
+                  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_start_lotto_task_run', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_task_code', 'valore', p_task_code), NULL::uuid, 'p_task_code obbligatorio');
+                  END IF;
+
+                  SELECT COALESCE(MAX(r.tentativo), 0)::SMALLINT + 1 INTO v_tentativo
+                    FROM vendite.fatturazione_lotti_task_runs r
+                   WHERE r.lotto_id = p_lotto_id AND r.task_code = p_task_code
+                     AND r.stato_doc_fiscale_id IS NOT DISTINCT FROM p_stato_doc_fiscale_id::INTEGER;
+
+                  RETURN QUERY
+                  INSERT INTO vendite.fatturazione_lotti_task_runs AS r (
+                      lotto_id, pipeline_id, stato_doc_fiscale_id, task_code, fase, tentativo,
+                      task_stato, started_at, ended_at, error_code, error_message, meta,
+                      attivo, data_insert, user_insert, data_update, user_update
+                  ) VALUES (
+                      p_lotto_id, p_pipeline_id, p_stato_doc_fiscale_id::INTEGER, p_task_code, p_fase, v_tentativo,
+                      'IN_ESECUZIONE', now(), NULL, NULL, NULL, COALESCE(p_meta, '{}'::JSONB),
+                      TRUE, now(), current_user, now(), current_user
+                  ) RETURNING r.id, r.tentativo;
+              END;
+              $function$;

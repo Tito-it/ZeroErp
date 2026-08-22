@@ -20,14 +20,23 @@
 >
 > ⭐ **Il brief del Passo 0 è scritto** (2026-08-22):
 > [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
-> — **16 decisioni chiuse, zero domande aperte**. ✅ **L1 APPLICATO E VERDE il
-> 2026-08-22**: 8 changeSet, 3 append a CSV, 33 asserzioni pgTAP con zero skip.
-> Restano L2 (l'identità del giro), L3 (la vista) e le 8 consegne BE.
+> — **18 decisioni chiuse, zero domande aperte**. ✅ **L1, L2 e L4 APPLICATI E
+> VERDI il 2026-08-22**: 18 changeSet, 5 CSV, 33 asserzioni pgTAP con zero skip.
+> ⭐ **La riga del giornale è parlante e i suoi vocabolari sono governati**:
+> `entity_type` punta a `config.tipi_entita`, `domain` è stata **tolta** e i
+> codici evento hanno il loro catalogo. Restano **L3** (la vista, che si accende
+> col Passo A) e le **9 consegne BE** del suo §5 — senza le quali il registro
+> resta a zero righe.
 >
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
-> `emittente_soggetto_ruolo_id` (non la PK) e il vocabolario è un `CHECK` (non
-> una FK) — così i lucchetti `require_attivo` non nascono proprio.
+> `emittente_soggetto_ruolo_id` (non la PK) ~~e il vocabolario è un `CHECK` (non
+> una FK)~~ — così i lucchetti `require_attivo` non nascono proprio.
+> ⚠️ **La seconda metà è stata superata** (D-17, applicata il 2026-08-22): il
+> vocabolario **è** una FK, verso un catalogo che nasce **senza la colonna
+> `attivo`** — che è ciò che impedisce al lucchetto di nascere. Il difetto stava
+> in *quel* catalogo (`config.sorgenti`, che `attivo` ce l'ha), non nell'idea di
+> catalogo.
 >
 > **Cosa NON è.** Non è la guida al modello di logging — quella è
 > [Messaggi-di-Errore-e-Generazione-Log.md](../../guide/Messaggi-di-Errore-e-Generazione-Log.md),
@@ -638,8 +647,18 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
     *Proposta: (a).* Il volume di `event_log` è basso per costruzione (quattro
     righe per giro di pipeline) e (b) è complessità comprata su un rischio non
     misurato. Ma è una scelta, e va scritta.
-12. **`entity_type`: vocabolario libero, `CHECK`, o `config.sorgenti`?** Oggi è
-    `text` senza vincolo. Il progetto **ha già** un registro polimorfo,
+12. ✅ **CHIUSA il 2026-08-22 — nessuna delle tre: un catalogo suo.**
+    `config.tipi_entita`, con dentro il **modo di risoluzione dell'emittente**,
+    e `entity_type` che ci punta con una FK (D-17 del brief). ⭐ La ragione per
+    cui non è `config.sorgenti`: quel catalogo ha la colonna `attivo`, e una FK
+    verso un padre con `attivo` fa **generare all'automazione** il lucchetto che
+    spegnerebbe il diario. ⭐ E la nota qui sotto sul `key_selector` **aveva
+    ragione e resta valida**: per il giornale `entity_id` è la PK `id`, sempre;
+    la chiave `uid` serve a chi *punta* a un'entità da fuori — il **bersaglio**
+    di un errore — e il catalogo la dichiarerà per quello
+    ([brief-db-bersaglio-errore](brief-db-bersaglio-errore.md) §6, changeSet 63).
+    ~~**`entity_type`: vocabolario libero, `CHECK`, o `config.sorgenti`?** Oggi è
+    `text` senza vincolo.~~ Il progetto **ha già** un registro polimorfo,
     `config.sorgenti` (15 voci, con `target_table` e `key_selector`), che però
     non conosce `LOTTO`. Legarlo darebbe alla derivazione un dispatch **guidato
     dai dati** invece che da un `CASE`. ⚠️ Ma `config.sorgenti.key_selector`

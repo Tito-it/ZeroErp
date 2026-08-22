@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Log append-only dei run orchestratore push commesse; nessuno stato inter-run.
+> Registro dei giri dell'orchestratore push commesse. ⭐ Dal 2026-08-22 la riga nasce in TESTA al giro (vendite.fn_start_commessa_push_run, stato IN_ESECUZIONE) e si chiude alla fine (vendite.fn_close_commessa_push_run): prima veniva creata a fine corsa, ed e' il motivo per cui l'evento d'avvio citava entity_id = 0 — un id che non esisteva ancora. Ne discendono tre cose: l'evento d'avvio ha un'entita' vera, il correlation_id del giro ha dove stare prima che il giro produca qualcosa, e un giro INTERROTTO lascia una traccia (la riga rimasta IN_ESECUZIONE). ⚠️ Non e' piu' append-only: la chiusura e' un UPDATE della stessa riga, e non c'e' nessun veto che lo impedisca. ⚠️ E lo stato inter-run ora ESISTE: chi conta i giri deve decidere cosa farne, perche' IN_ESECUZIONE non e' un esito.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

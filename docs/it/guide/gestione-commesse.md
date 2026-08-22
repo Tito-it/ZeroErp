@@ -328,7 +328,19 @@ FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
 | Funzione | Scopo |
 |----------|-------|
 | [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente) | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO` (dal 2026-06-09; superato il vecchio modello mono-ROOT, non più "CONTRIBUENTE") |
-| [`fn_log_commessa_push_run`](/dbzero/vendite/funzioni/fn_log_commessa_push_run) | Registra esito push sorgente -> commessa |
+| [`fn_start_commessa_push_run`](/dbzero/vendite/funzioni/fn_start_commessa_push_run) | **Apre** il giro di push: la riga nasce in testa alla corsa, in stato `IN_ESECUZIONE` |
+| [`fn_close_commessa_push_run`](/dbzero/vendite/funzioni/fn_close_commessa_push_run) | **Chiude** lo stesso giro con il suo esito, il risultato per handler e la durata |
+
+> ⭐ **Dal 2026-08-22 il giro di push si apre e si chiude, invece di essere
+> registrato alla fine.** La funzione unica `fn_log_commessa_push_run` è stata
+> tolta: scriveva una riga di un giro *già finito*, quindi un push interrotto
+> non lasciava nessuna traccia — moriva e spariva. Con la riga creata
+> all'inizio, quella rimasta a `IN_ESECUZIONE` è la prova che qualcosa è
+> partito e non è tornato.
+>
+> ⚠️ Il guadagno vale sul **batch**, che gira in autocommit. Il push singolo dal
+> drawer avvolge tutta la corsa in una transazione unica: lì anche la riga
+> d'apertura viene annullata insieme al resto.
 
 ---
 
@@ -405,13 +417,21 @@ for riga in righe_documento:
         ...
     )
 
-# 4. Log esito push
-db.call_fn("vendite.fn_log_commessa_push_run",
-    p_commessa_id=commessa_id,
-    p_sorgente_tipo_id=sorgente_id,
-    ...
+# 4. Chiusura del giro (aperto PRIMA del punto 1 con fn_start_commessa_push_run)
+db.call_fn("vendite.fn_close_commessa_push_run",
+    p_id=push_log_id,          # l'id restituito dall'apertura
+    p_stato="COMPLETATO",      # oppure PARZIALE / ERRORE
+    p_risultato=esiti_per_handler,
+    p_durata_ms=durata,
 )
 ```
+
+> ⚠️ **Il giro si apre prima, non si registra dopo.** L'esempio sopra mostra solo
+> la chiusura: l'apertura (`fn_start_commessa_push_run`) è la prima cosa che fa
+> l'orchestratore, prima ancora della discovery, ed è ciò che dà un
+> identificativo vero all'evento d'avvio. Se la corsa muore nel mezzo, quella
+> riga resta a `IN_ESECUZIONE` — ed è tutto ciò che si ha per sapere che era
+> partita.
 
 ---
 
