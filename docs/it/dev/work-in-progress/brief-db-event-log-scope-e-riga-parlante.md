@@ -15,12 +15,16 @@
 > **rimisurato sul DB e sul codice** lo stesso giorno (§0-ter dell'analisi).
 > Decisioni di Tid del 2026-08-22, tutte in §2.
 >
-> **Stato:** ✅ **L1, L4 e L2 APPLICATI E VERDI (2026-08-22).** Diciotto changeSet,
-> cinque CSV, **33 asserzioni pgTAP con zero skip**, baseline `vendite`+`rls` senza
+> **Stato:** ✅ **L1, L4, L2 e L5 APPLICATI E VERDI (2026-08-22).** Ventun changeSet,
+> cinque CSV (L5 non ne apre di nuovi: appende ai due dei codici errore),
+> **64 asserzioni pgTAP con zero skip**, baseline `vendite`+`rls` senza
 > regressioni. ⭐ **La parte DB della fondamenta è posata**: §9.4 dichiarava L4
 > come l'ultimo intervento strutturale su questo registro, e da qui in avanti la
 > tabella si tocca solo **aggiungendo righe ai cataloghi**.
-> 🔵 Resta **L3** (la vista, che si accende col Passo A) e le **nove consegne BE**
+> ⭐ **L5 è la risposta a una richiesta del backend** (§5-bis): i changeSet 61 e 62
+> avevano consegnato le **colonne**, e nessuna funzione le scriveva. Adesso le
+> scrivono — ed è ciò che sblocca **BE-2** e **BE-3b**.
+> 🔵 Resta **L3** (la vista, che si accende col Passo A) e le **consegne BE**
 > del §5 — senza le quali il registro resta a **zero righe**, ed è il rischio 3
 > del §9.3: l'unico che nessuna riga di documentazione può chiudere.
 >
@@ -48,9 +52,10 @@
 | ⛔ **Tre premesse dell'analisi cadute** | La RLS **morde già** (l'app non è owner) · il canale batch non è a rischio · B1 (il 67%) è chiuso | §1.4 |
 | ✅ **Decisioni** | **D-1…D-18**, tutte applicate. D-1 e D-9 riviste in coda al rilievo sui lucchetti; **D-9 poi superata dalla D-17**, che assorbe il catalogo dei tipi dall'altro cantiere | §2 · §3.7 |
 | 🧩 **Il disegno** | Derivazione nel trigger (la firma di `fn_log_event` **non cambia**) · policy a parità di famiglia · retention che convive con l'append-only · `vw_giornale_entita` | §3 |
-| 📋 **Il piano** | **L1 · L4 · L2** ✅ **applicati e verdi** (18 changeSet) → resta **L3**, la vista cross-schema, che si accende col Passo A | §4 · §9.4 |
-| 🔵 **A carico del BE** | 8 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
-| 🧪 **Presidio** | ✅ **33 asserzioni verdi, zero skip** su 5 file — 3 nuovi e 2 preesistenti adeguati. Il quarto file previsto **non** è stato scritto: esisteva già | §6 |
+| 📋 **Il piano** | **L1 · L4 · L2 · L5** ✅ **applicati e verdi** (21 changeSet) → resta **L3**, la vista cross-schema, che si accende col Passo A | §4 · §9.4 |
+| 🔵 **A carico del BE** | 10 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
+| ⭐ **La richiesta del backend** | I changeSet 61 e 62 avevano consegnato le **colonne**, e **nessuna funzione le scriveva**. L5 mette i due scrittori — e corregge una premessa della richiesta che era **falsa**, misurandola | §5-bis |
+| 🧪 **Presidio** | ✅ **64 asserzioni verdi, zero skip** su 7 file — 4 nuovi/riscritti e 3 preesistenti adeguati. Un file previsto **non** è stato scritto: esisteva già | §6 |
 | ✅ **Domande aperte** | **Zero.** Le sei del primo giro chiuse il 2026-08-22 | §8 |
 | 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
 | ⭐ **Un solo documento** | Da qui in avanti chi lavora su `event_log` legge **questo** brief: T-1/T-1b di `brief-db-bersaglio-errore` sono **assorbiti** e di là non si gestiscono più | §4-bis |
@@ -161,8 +166,8 @@ solleva **incondizionatamente**. Conseguenze, tutte verificate:
 | --- | --- | --- | --- |
 | `id` | `bigint` | = | PK |
 | `event_time` | `timestamptz` | = | `DEFAULT now()` |
-| `domain` | `text` | = | |
-| `entity_type` | `text` | **`CHECK`** | `IN ('LOTTO','COMMESSA','FATTURA')` (D-9) |
+| ~~`domain`~~ | | ⛔ **rimossa con L4** | D-18, §3.8 — il dominio si legge dal catalogo |
+| `entity_type` | `text` | **FK** *(rev. L4)* | ~~`CHECK IN ('LOTTO','COMMESSA','FATTURA')` (D-9)~~ → `fk_event_log_tipo_entita` → `config.tipi_entita(codice)`, `ON UPDATE CASCADE` (D-17). Il `CHECK` è stato tolto nello stesso changeSet **56** |
 | `entity_id` | `bigint` | = | la PK `id` della tabella puntata, **sempre** |
 | `event_code` | `text` | = | |
 | `severity` | `text` | = | `CHECK (INFO/WARN/ERROR)` — invariato, ed è BE-1 ad adeguarsi |
@@ -274,6 +279,12 @@ Nessun `JOIN` a `emittenti_fiscali`, e `fn_resolve_emittente_fiscale_id` **non
 va toccata**.
 
 **Il trigger: `vendite.trgfn_event_log_deriva_scope`** — `BEFORE INSERT`
+
+> ⚠️ **Il blocco qui sotto è il disegno del L1, e il L4 lo ha superato**
+> *(allineamento 2026-08-22)*: il `CASE` scritto a mano **non c'è più** — il
+> trigger legge `modo_risoluzione_emittente` **dal catalogo** (changeSet **58**,
+> D-17). Il testo resta perché spiega *perché* la mappa stava lì, ed è la
+> ragione per cui portarla nel catalogo è stato un guadagno e non un giro.
 
 ```sql
 v_modo := CASE NEW.entity_type
@@ -405,6 +416,14 @@ trg_event_log_append_only_ud              (solo UPDATE/DELETE: non concorre)
 trg_event_log_audit_data_user_upd
 trg_event_log_gen_tx_id_ins_upd
 ```
+
+⏱️ **Verifica del 2026-08-22, dopo l'apply**: in tabella i trigger sono **tre** —
+`trg_event_log_a10_deriva_scope_ins`, `trg_event_log_append_only_ud`,
+`trg_event_log_audit_data_user_upd`. ⚠️ **`trg_event_log_gen_tx_id_ins_upd` non
+c'è ancora**, e non è un difetto: la colonna `tx_id` è nata oggi e i trigger
+delle automazioni li genera il passaggio `ci_apply`, che sul migrate manuale non
+gira — ci pensa il pgagent alle 21:00. **Da riverificare domani**: finché non
+c'è, `tx_id` resta NULL su ogni riga scritta.
 
 ⚠️ **Resta comunque una regola da scrivere**: se un domani qualcuno aggiunge una
 FK verso una tabella con `attivo`, l'automazione genererà
@@ -676,7 +695,7 @@ per non vederla riproposta:
 > ciò che la **D-12** vieta. Il diario rifiuta solo quando non sa dire *di chi è*
 > la riga; un codice ignoto non gli impedisce di saperlo.
 
-➡️ Il presidio è un **cancello di CI**: una vista `dbops.vw_eventi_da_dichiarare`
+➡️ Il presidio è un **cancello di CI**: una vista ~~`dbops.vw_eventi_da_dichiarare`~~ — ⚠️ **il nome vero, applicato col changeSet 60, è `dbops.vw_eventi_non_dichiarati`** —
 che elenca i codici scritti dal codice applicativo e assenti dal catalogo, più un
 test che fallisce la build. È **la stessa forma** con cui il cantiere dei codici
 errore ha chiuso il proprio rubinetto (`dbops.vw_codici_errore_da_dichiarare`),
@@ -831,6 +850,41 @@ cambia mai**: due corse dello stesso lotto lo condividono. Non è una deduzione 
 lo asserisce già il **test 6** di `test-fn-list-lotto-segnalazioni-job`, ed è il
 motivo per cui l'àncora del «job corrente» è l'`event_time` e non quel campo.
 
+---
+
+### L5 — I due **scrittori** delle colonne del giro — ✅ **APPLICATO il 2026-08-22**
+
+> ⭐ **Non è un lotto del piano originale: è la risposta a una richiesta del
+> backend**, che ha misurato su `pg_proc` ciò che L2 aveva lasciato a metà. Il
+> perché, per intero, sta in **§5-bis**.
+>
+> **In una riga:** L2 aveva consegnato le **colonne**, e nessuna funzione le
+> scriveva. Una colonna che nessuno riempie non è mezzo lavoro — è un buco che
+> sembra chiuso.
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| 67 | `update-fn-start-lotto-task-run-correlation-id` | `20_code/vendite` | `fn_start_lotto_task_run` prende `p_correlation_id` e lo scrive. ⛔ Col **`DROP` esplicito** della firma a sei — vedi §5-bis, è la premessa della richiesta che era falsa. ⚠️ E i tre guard passano da `E_PARAMETRO_INVALIDO` a `E_VENDITE_CHIAMATA_NON_VALIDA` |
+| 68 | `create-fn-commessa-push-run-apri-chiudi` | `20_code/vendite` | La coppia `fn_start_commessa_push_run` / `fn_close_commessa_push_run`, sul pattern dei `task_runs`. Due rifiuti alla chiusura (stato non finale, riga non aperta) e la **descrizione della tabella** riscritta: diceva «append-only, nessuno stato inter-run», e dal 62 non è più vero |
+| 69 | `drop-fn-log-commessa-push-run` | `20_code/vendite` | ⛔ Via la funzione che inseriva un giro **già finito**: con la riga che nasce in testa, quell'operazione non esiste più. Un changeSet suo perché è l'unica cosa **irreversibile per il BE** del lotto |
+| — | `config/codici_errore.csv` | `80_data` (CSV) | **+3** codici, tutti **`TECNICO`**: `E_VENDITE_CHIAMATA_NON_VALIDA` (il gemello vendite di `E_PAGAMENTI_CHIAMATA_NON_VALIDA`), `E_COMMESSA_PUSH_RUN_STATO_NON_FINALE`, `E_COMMESSA_PUSH_RUN_NON_APERTO` |
+| — | `config/messaggi_errore.csv` | `80_data` (CSV) | **+3** (id **983, 984, 985**). ⚠️ Arità verificata: due `%s` e due valori in ciascuno |
+
+⚠️ **Numerazione: si parte da 67 e non da 63.** I numeri **63-66 sono prenotati
+dal §6 di [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md)**, che li
+ha già scritti nel proprio piano e li cita altrove; lo stesso vale per il
+messaggio **982**. Prenderli avrebbe costretto quel cantiere a rinumerare un
+piano già referenziato — un buco nella sequenza costa meno di un riferimento che
+mente.
+
+⭐ **E una cosa che si vede solo qui: il difetto non era misurabile da nessuno dei
+due lati.** Il changeSet 62 aveva allargato il `CHECK` a quattro stati; la
+funzione che scriveva quella tabella ne ammetteva tre. *Il vincolo non sa chi lo
+scrive, e la funzione non legge il vincolo* — la migrazione passa, e a fallire è
+la prima scrittura. Il presidio nuovo è l'**asserzione 13** del pgTAP, che
+rilegge `pg_get_constraintdef` e confronta i due insiemi: è l'unico posto dove si
+guardano in faccia.
+
 ## 4-bis. ⭐ Cosa questo brief ASSORBE — e che non si gestisce più altrove
 
 > **Serve a una cosa sola:** chi lavora su `event_log` legge **questo**
@@ -866,7 +920,7 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 
 | | Cosa |
 | --- | --- |
-| ⭐ | I due codici nati con L1 — `E_EVENT_LOG_SCOPE_NON_RISOLTO` ed `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` — mettono già `entity_type` + `entity_id` nel `context`: hanno **già la forma del bersaglio**, solo non sotto la chiave `target`. Convertirli è una riga, e sono i primi adottanti gratuiti del loro **T-5** |
+| ⛔ | ~~I due codici nati con L1 — `E_EVENT_LOG_SCOPE_NON_RISOLTO` ed `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` — hanno già la forma del bersaglio: convertirli è una riga, e sono i **primi adottanti gratuiti** del loro T-5.~~ **SUPERATA il 2026-08-22**, e il regalo non era accettabile — tre ragioni indipendenti, misurate sui CSV applicati: `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` porta **per definizione** un tipo **fuori catalogo**, quindi farebbe fallire il presidio che loro devono scrivere; `E_EVENT_LOG_SCOPE_NON_RISOLTO` punta a **un'entità che non esiste**, quindi il pulsante non comparirebbe **mai**; e sono entrambi **`TECNICO` (500)**, la classe in cui *noi stessi* non mettiamo `campo` nel contesto. ➡️ **Ne è uscita la regola che a quel brief mancava** — *il bersaglio si mette sugli errori rimediabili, mai sui `TECNICO`* — che è un regalo migliore di quello che avevamo offerto. Vedi `brief-db-bersaglio-errore` §5.5 |
 | ⭐ | La vista `script.vw_giornale_entita` (§3.6) e le rotte del bersaglio (loro **B-2**) usano **lo stesso** vocabolario `config.tipi_entita`: la tabella tipo → schermata si scrive una volta |
 | ⚠️ | Il guard `E_FATTURE_RIGHE_RETTIFICATE` di [brief-db-guard-righe-fattura-rettificate.md](brief-db-guard-righe-fattura-rettificate.md) dice «su %s righe» — un conteggio, **nessun id in prosa**, che è già la regola giusta. Ma un `target` sulle righe bloccate lo renderebbe azionabile: buon candidato **T-5** |
 
@@ -900,18 +954,114 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 | # | Consegna | Blocca? |
 | --- | --- | --- |
 | **BE-1** | ⛔ **`severity="WARNING"` → `"WARN"`** in `commesse_service.py:221`, **e il test che asserisce il valore rotto**. È un difetto **già vivo** (§1.2) | No — **e va fatto subito, prima di L1** |
-| **BE-2** | `correlation_id` = **un `uuid` nuovo per giro**, generato dal runner e dall'orchestratore push; scritto anche su `task_runs` e `commesse_push_log` (D-7) | Sì, dopo L2 |
-| **BE-3** | La riga di `commesse_push_log` nasce **in testa** al giro (`IN_ESECUZIONE`) e si chiude alla fine; `PUSH_STARTED`/`PUSH_COMPLETED` **escono da `event_log`** (D-3) | Sì — senza, quelle scritture falliscono sul `NOT NULL` |
+| **BE-2** | `correlation_id` = **un `uuid` nuovo per giro**, generato dal runner e dall'orchestratore push; scritto anche su `task_runs` e `commesse_push_log` (D-7). ✅ **Il DB è pronto dal 2026-08-22**: `fn_start_lotto_task_run` ha il settimo parametro e `fn_start_commessa_push_run` il terzo (L5) | ~~Sì, dopo L2~~ → **sbloccata** |
+| **BE-3** | La riga di `commesse_push_log` nasce **in testa** al giro (`IN_ESECUZIONE`) e si chiude alla fine; `PUSH_STARTED`/`PUSH_COMPLETED` **escono da `event_log`** (D-3). ✅ **Il DB è pronto**: la coppia `fn_start_commessa_push_run` / `fn_close_commessa_push_run` (L5). ⛔ **E `fn_log_commessa_push_run` non esiste più**: `commesse_repository.log_push_run` va riscritto nello stesso giro, non è opzionale | ~~Sì~~ → **sbloccata, e ora è un breaking** |
 | **BE-4** | `EMITTIBILITA_FALLITA` diventa **per commessa** (`entity_type = 'COMMESSA'`, `entity_id = commessa_id`), una riga per commessa fallita invece di un evento aggregato con dentro una lista di id (D-3) | Sì |
 | **BE-5** | Smettere di passare `actor` e `source`: **le colonne non esistono più** (D-6). ⭐ **E con L4 anche `domain`**, che scende dalla firma: la chiamata passa da 9 a **6** parametri. ⚠️ Un solo adeguamento, se BE-5 e L4 viaggiano insieme — due se si separano | Sì |
-| **BE-9** | *(da L4)* Seminare i **codici evento** nel catalogo `config.eventi_dominio`. ⚠️ Un codice non dichiarato **non blocca la scrittura** (D-12) ma fa fallire la build: il cancello è `dbops.vw_eventi_da_dichiarare` | No, ma rompe la CI |
+| **BE-9** | *(da L4)* Seminare i **codici evento** nel catalogo `config.eventi_dominio`. ⚠️ Un codice non dichiarato **non blocca la scrittura** (D-12) ma fa fallire la build: il cancello è `dbops.vw_eventi_non_dichiarati` (changeSet 60) | No, ma rompe la CI |
 | **BE-6** | ⚠️ **Estrarre il BB unico di `log_event`.** `pipeline_repository.log_event` e `commesse_repository.log_event` sono **copia carbone**: finché restano due, ogni modifica si scrive due volte | No, ma è il momento giusto |
 | **BE-7** | Le scritture di diario passano dal telaio **`_diagnostica_best_effort`** già presente in `pipeline_runner`. ⭐ Dopo L1 una `log_event` **può fallire** (`NOT NULL`, FK, `WITH CHECK`), e un difetto del diario non deve mai diventare il messaggio che legge l'operatore — è **la stessa classe** di BE-1. Vedi **Q-3** | Sì, di fatto |
 | **BE-8** | *(Passo 2, indipendente da tutto)* `request_id` nel formatter di logging — esiste già come contextvar. **E già che si è lì**: `dbops.request_log.emittente_attivo_id` e `tx_id` sono **due colonne morte** (0 valorizzate su 353.758) e il valore dell'emittente ce l'ha già il JWT: o si collegano o si tolgono | No |
+| **BE-10** | ⚠️ *(da L1/L4/L5, trovata misurando)* **Rigenerare `apps/core/services/error_policies_generated.py`** (`manage.py genera_error_policies`) e committarlo. Il file mappa codice → classe, si rigenera **a ogni seed**, e misurato il 2026-08-22 è indietro di **21 codici su 776**: 3 di L5, 3 di L1/L4, 1 del cantiere delle righe rettificate e **14 di `pagamenti`**. ⭐ Non è un debito di questo cantiere — è un debito di **giornata**, e si paga in un comando solo | ⛔ **Rompe la CI**: `test_error_policies_divergenza_db` confronta il file col catalogo **letto dal database**, quindi diventa rosso appena i CSV arrivano in CI — in una PR che può non c'entrare niente |
 
 ---
 
-## 6. Il presidio pgTAP — ✅ **33 asserzioni verdi, zero skip**
+## 5-bis. ⭐ La richiesta del backend, e le due cose che ha corretto
+
+> **Cos'è.** Il 2026-08-22, applicati L1+L4+L2, il backend ha misurato su
+> `pg_proc` — non sugli YAML — e ha trovato che **le colonne c'erano e nessuna
+> funzione le scriveva**. La richiesta è arrivata come brief, e questo lotto (L5)
+> è la risposta.
+>
+> ⭐ **Ha la precedenza sul resto della coda DB** (la vista L3, la retention dei
+> log gemelli) per una ragione sola: è l'**unica** cosa che sblocca qualcun altro.
+> Le altre due sbloccano me.
+
+### Cosa era stato chiesto, e cosa è stato consegnato
+
+| Chiesto | Consegnato |
+| --- | --- |
+| `fn_start_lotto_task_run`: un parametro `p_correlation_id uuid DEFAULT NULL` | ✅ changeSet **67** — ⚠️ ma **con** il `DROP` della firma vecchia, vedi sotto |
+| `fn_start_commessa_push_run(dry_run, source_types, correlation_id)` | ✅ changeSet **68**, restituisce l'`id` del giro |
+| `fn_close_commessa_push_run(id, stato, risultato, durata_ms, source_types)` | ✅ changeSet **68** |
+| I due guard della chiusura, classe **`TECNICO`**, ⛔ **senza riusare `E_PARAMETRO_INVALIDO`** | ✅ `E_COMMESSA_PUSH_RUN_STATO_NON_FINALE` e `E_COMMESSA_PUSH_RUN_NON_APERTO` |
+| ⛔ `fn_log_commessa_push_run` si toglie | ✅ changeSet **69**, senza `CASCADE` |
+
+⭐ **E una cosa in più che non era chiesta, ma che riscrivere il corpo imponeva
+di guardare**: i tre guard di `fn_start_lotto_task_run` sollevavano
+`E_PARAMETRO_INVALIDO` con dentro la frase «p_lotto_id obbligatorio e > 0».
+AGENTS.md è esplicito — *toccando una funzione vecchia il messaggio va guardato,
+non dato per buono perché il codice è registrato* — e quel codice è **uno split
+rimandato**, non una sede. Da qui il terzo codice nuovo,
+**`E_VENDITE_CHIAMATA_NON_VALIDA`**: è il **gemello vendite** di
+`E_PAGAMENTI_CHIAMATA_NON_VALIDA`, nato il giorno prima nel cantiere incassi per
+la stessa identica ragione. Non è un'invenzione: è la seconda applicazione di un
+criterio già deciso.
+
+### ⛔ La premessa della richiesta che era falsa — e come si è vista
+
+Il brief del backend diceva, in §2.1:
+
+> «⚠️ Con `DEFAULT NULL` in coda **non serve un `DROP`** della firma vecchia e
+> non nasce nessun overload ambiguo, perché nessun chiamante passa argomenti
+> posizionali oltre il sesto.»
+
+**È falso**, e non per un dettaglio di sintassi: `CREATE OR REPLACE` con un
+parametro in **più** non sostituisce niente — crea una funzione **nuova** e lascia
+viva la vecchia. Le due convivono, e una chiamata a sei argomenti soddisfa
+**entrambe**. Misurato in transazione su questo database, prima di scrivere il
+changeSet:
+
+```text
+CREATE FUNCTION f(a bigint, b bigint DEFAULT NULL) ...
+CREATE FUNCTION f(a bigint, b bigint DEFAULT NULL, c uuid DEFAULT NULL) ...
+SELECT f(1::bigint, 2::bigint);
+  ERRORE: la funzione f(bigint, bigint) non è unica
+```
+
+⚠️ **E il chiamante rotto sarebbe stato proprio il suo**:
+`pipeline_repository.start_lotto_task_run` passa **sei argomenti posizionali**.
+Il migrate sarebbe passato pulito, e a rompersi sarebbe stata la prima corsa
+della pipeline.
+
+⭐ **Il ragionamento sbagliato è comprensibile, e vale la pena nominarlo**: la
+regola nota in casa riguarda le firme che **perdono** parametri (`20260727-25`,
+poi il changeSet 57 di questo stesso cantiere). Sembra naturale che *aggiungere*
+sia il caso benigno. Non lo è: la direzione non c'entra — **conta che le firme
+restino due**.
+
+### ⚠️ La numerazione: 67-69, non 63-66
+
+I numeri **63-66** e il messaggio **982** sono prenotati dal piano di
+[brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) §6, scritto lo
+stesso giorno e già citato altrove. Prenderli avrebbe costretto quel cantiere a
+rinumerare un piano referenziato: **un buco nella sequenza costa meno di un
+riferimento che mente**. È lo stesso criterio con cui il quinto giro ha sciolto
+la collisione su `entity_type`.
+
+### 🔵 Cosa resta al backend, adesso
+
+1. **BE-2** e **BE-3b** possono partire: il DB ha i due scrittori.
+2. ⛔ **`commesse_repository.log_push_run` non compila più contro il DB**: la
+   funzione che chiamava non esiste. Va spezzata in `start` (in testa a
+   `_run_locked`) e `close` (alla fine), come dice il loro §3.
+3. ⚠️ **BE-10**, che non era nel loro elenco: `error_policies_generated.py` è
+   indietro di **21 codici**. Non è debito di questo lotto, ma è ciò che rende
+   rossa la CI.
+
+### 🔎 Due misure fatte scrivendo, che non erano richieste
+
+Nessuna delle due blocca. Si scrivono perché sono state misurate.
+
+| | Cosa |
+| --- | --- |
+| ⚠️ **Il ruolo batch non può aprire un giro di push** | `zeroerp_batch_fatturazione` ha su `commesse_push_log` il solo grado **`r` (SELECT)**, mentre su `fatturazione_lotti_task_runs` ha `arw`. Oggi non è un difetto — il push gira come `zeroerp_app` — ma il giorno che passasse sul canale batch, l'apertura fallirebbe sul **GRANT**, non sulla RLS. E un `BYPASSRLS` non aiuta: salta le policy, non i permessi. È lo stesso disallineamento del precedente `vendite.note` |
+| ⏱️ **Il `tx_id` non è ancora attaccato** | Riverificato dopo l'apply: né `commesse_push_log` né `event_log` hanno il trigger `..._gen_tx_id_*`. È coerente con §3.5 — lo genera `dbops.fn_run_automations_tx_id`, che gira in `ci_apply`; sul migrate manuale arriva col pgagent la sera. **Finché non c'è, `tx_id` resta NULL su ogni riga**, e la D-5 è viva come colonna ma non come dato |
+| ⚠️ **La baseline B-7 dei codici errore è indietro, e non la aggiorno io** | Il cancello è **verde** (`accumuli nuovi: 0`), ma `db/baseline-codici-errore-famiglie.tsv` è fermo al cantiere che l'ha creata: rigenerarla oggi farebbe entrare **9 righe di tre cantieri diversi** — le mie due (`E_VENDITE_CHIAMATA_NON_VALIDA` → `PARAMETRO`, `E_COMMESSA_PUSH_RUN_NON_APERTO` → `NOT_FOUND`), quelle di `pagamenti` e quella del pricing. ⭐ Il file dice di sé che aggiornarlo *«è una DECISIONE, non una formalità: ogni riga che cambia dice che un codice ha cambiato significato»*: prendere quella decisione per conto di altri due cantieri sarebbe il modo di svuotarla di senso. Va fatta in **una passata sola e deliberata** |
+
+---
+
+## 6. Il presidio pgTAP — ✅ **64 asserzioni verdi, zero skip**
 
 Verificato leggendo il TAP riga per riga, non solo l'esito: un file verde per
 sottrazione — con le asserzioni finite nei rami `skip` — sarebbe indistinguibile
@@ -924,6 +1074,15 @@ da uno verde davvero se ci si ferma al `Result: PASS`.
 | `db/pgtap/vendite/test-event-log-append-only.sql` | 5 | Include la prova che `cleanup_at` è **immutabile** — senza, il veto sul `DELETE` si aggirerebbe portando la scadenza nel passato |
 | `db/pgtap/vendite/test-event-log-function-v1.sql` | 8 | **Adeguato**: chiamava la firma a nove e usava `entity_id` inventati, che ora la derivazione rifiuta |
 | `db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql` | 8 | **Adeguato**: inseriva `actor`/`source` |
+| `db/pgtap/vendite/test-commesse-push-log-function-v1.sql` | 13 | *(L5)* **Riscritto, non adeguato**: il soggetto è cambiato — prima era «una riga di log si scrive», ora è «un giro si apre e si chiude una volta sola». Era a 7 |
+| `db/pgtap/vendite/test-fatturazione-pipeline-task-runtime.sql` | 18 | *(L5)* **Esteso di una**: il `correlation_id` passato all'apertura arriva sulla riga del tentativo. Era a 17 |
+
+⭐ **L'asserzione che vale più delle altre dodici è la 13**, e non collauda una
+funzione: rilegge `chk_commesse_push_log_stato` dalla tabella e lo confronta con
+l'elenco che la chiusura conosce. È l'unico posto in cui i **due** vocabolari si
+guardano in faccia — il difetto che ha prodotto il lotto è esattamente che non lo
+facevano. ⚠️ Se diventa rossa non si aggiorna l'atteso: si guarda prima se
+`fn_close_commessa_push_run` sa cosa farsene del valore nuovo.
 
 ⛔ **Il file sul canale batch non è stato scritto, ed è la scelta giusta.**
 Duplicava `db/pgtap/rls/test-role-batch-fatturazione-postura.sql`, che già
@@ -1018,6 +1177,15 @@ Sono verificabili, ed è per questo che stanno scritti:
    righe ai cataloghi**, cioè con un seed, non con una migrazione di schema.
    ⏳ **L'impegno decorre da oggi**: se servisse un'altra colonna, questa sezione
    ha sbagliato qualcosa e va scritto **qui** cosa, con la data.
+
+   > ⏱️ **Primo controllo, 2026-08-22 — l'impegno regge, ma va letto per intero.**
+   > Il cantiere del bersaglio aggiungerà **una colonna a `config.tipi_entita`**:
+   > la chiave con cui si raggiunge l'entità (`id` oppure `uid`, la convenzione
+   > di `config.sorgenti.key_selector`). ⭐ **Non è una violazione** — la promessa
+   > è su `event_log`, che non si tocca. ⚠️ Ma vale la pena dirlo qui, perché
+   > «da qui solo seed» è vero **della tabella del giornale**, non del catalogo
+   > che il giornale usa: quello ha **due padroni**, e il secondo è appena
+   > arrivato. Vedi `brief-db-bersaglio-errore` §6, changeSet 63.
 2. ⭐ **La vista è la cucitura, e nasce già larga.** Un registro nuovo entra con
    un `UNION ALL`; se un giorno entrasse rinegoziando le colonne, il difetto è
    nella forma normalizzata di §3.6.
@@ -1046,6 +1214,51 @@ Il brief nasce da due giri con Tid sullo stesso giorno.
   `NOT NULL` e ha 70 valori distinti) ed esce la vista `vw_giornale_entita`,
   perché il Passo A sul solo `event_log` consegnerebbe quattro righe.
 - **Le undici decisioni** di §2 sono di Tid, prese lo stesso giorno.
+
+### 2026-08-22 (nono giro) · ✅ L5 — i due scrittori, chiesti dal backend
+
+Il backend, applicati L1+L4+L2, ha misurato su `pg_proc` e ha trovato che **le
+colonne del giro c'erano e nessuna funzione le scriveva**. Da lì L5: tre
+changeSet (**67-69**), tre codici errore, due file pgTAP — **31 asserzioni verdi
+con zero skip**, baseline `vendite` senza regressioni (5 rossi, tutti già noti).
+
+⭐ **Perché ha scavalcato la coda.** In coda c'erano la vista `vw_giornale_entita`
+(L3) e la retention dei log gemelli. Sono due cose mie: sbloccano me. Questa
+sblocca **BE-2 e BE-3b**, cioè le uniche due consegne ferme *per causa nostra*.
+Il criterio non è l'importanza, è **chi resta fermo**.
+
+Tre cose che scrivendo si sono rivelate diverse da come erano nel piano:
+
+1. ⛔ **La premessa della richiesta era falsa, e l'ha detta una misura.** «Con
+   `DEFAULT NULL` in coda non serve il `DROP`»: **`CREATE OR REPLACE` con un
+   parametro in più non sostituisce, affianca**, e una chiamata a sei argomenti
+   soddisfa entrambe le firme (`la funzione non è unica`). Il chiamante che si
+   sarebbe rotto è proprio il suo — `pipeline_repository` passa sei argomenti
+   posizionali — e si sarebbe rotto **alla prima corsa**, non al migrate.
+   ⭐ La regola nota in casa parla di firme che *perdono* parametri: sembra che
+   aggiungere sia il caso benigno. **La direzione non c'entra — conta che le
+   firme restino due.** Dettaglio in §5-bis.
+2. ⭐ **Il difetto che il backend ha trovato non era visibile da nessuno dei due
+   lati.** Il changeSet 62 aveva allargato il `CHECK` a quattro stati; la funzione
+   che scriveva quella tabella ne ammetteva tre. *Il vincolo non sa chi lo scrive,
+   e la funzione non legge il vincolo.* Il presidio nuovo è l'**asserzione 13**
+   del pgTAP, che rilegge `pg_get_constraintdef`: è l'unico posto dove i due
+   insiemi si guardano in faccia.
+3. ⚠️ **Riscrivere un corpo vecchio obbliga a guardarne i messaggi.** I tre guard
+   di `fn_start_lotto_task_run` sollevavano `E_PARAMETRO_INVALIDO` con dentro
+   «p_lotto_id obbligatorio e > 0». Ne è nato
+   **`E_VENDITE_CHIAMATA_NON_VALIDA`**, gemello vendite del codice che
+   `pagamenti` ha coniato **il giorno prima** per la stessa ragione. Due cantieri,
+   due schemi, stesso criterio: è il segno che il criterio regge.
+
+⏱️ **Controllo del §9.4, e l'impegno regge**: L5 non tocca `vendite.event_log` —
+lavora su `fatturazione_lotti_task_runs` e `commesse_push_log`. La promessa era
+sulla tabella del giornale, e la tabella del giornale non è stata toccata.
+
+⚠️ **E due misure fatte di passaggio, scritte in §5-bis perché tacerle sarebbe
+peggio**: il ruolo batch ha solo `SELECT` su `commesse_push_log` (non potrebbe
+aprire un giro), e il trigger del `tx_id` **non è ancora nato** né lì né su
+`event_log` — lo genera `ci_apply`, e sul migrate manuale arriva col pgagent.
 
 ### 2026-08-22 (ottavo giro) · ✅ L4 e L2 applicati — la fondamenta DB è posata
 
@@ -1121,6 +1334,27 @@ con `pg_get_function_identity_arguments` e `pg_get_function_result` verificati
 ⚠️ E una trappola dentro la trappola: mentre si ancora **non si riordina** la
 `RETURNS TABLE` — cambierebbe l'ordine del result set, e `CREATE OR REPLACE` la
 rifiuterebbe comunque.
+
+### 2026-08-22 (settimo giro) · Allineamento post-apply, e un regalo ritirato
+
+Riletto **contro il database** dopo l'apply di L1/L2/L4, e allineato ciò che era
+rimasto al disegno:
+
+* **§3.1** — la tabella «dopo» dava ancora `domain` presente e `entity_type` con
+  il `CHECK`: oggi la colonna è **rimossa** e il vincolo è la **FK** al catalogo;
+* **§3.2** — il blocco col `CASE` scritto a mano è marcato: il trigger legge il
+  modo **dal catalogo** (changeSet 58), ed è il guadagno che la D-17 prometteva;
+* **§3.5** — verificato l'ordine dei `BEFORE ROW`: i trigger in tabella sono
+  **tre**, e ⏱️ **`trg_event_log_gen_tx_id_ins_upd` non è ancora nato** — lo
+  genera l'automazione delle 21:00, e finché non c'è `tx_id` resta NULL;
+* **§3.8** — il nome della vista: `vw_eventi_non_dichiarati`, non
+  `vw_eventi_non_dichiarati`.
+
+⛔ **E il «regalo» del §4-bis è stato ritirato** (rilievo del cantiere gemello):
+i due codici di L1 non sono primi adottanti del bersaglio — uno porta per
+definizione un tipo fuori catalogo, l'altro punta a un'entità inesistente, e sono
+entrambi `TECNICO`. ⭐ **Al loro posto è nata una regola**, che vale più del
+regalo: *il bersaglio si mette sugli errori rimediabili, mai sui `TECNICO`*.
 
 ### 2026-08-22 (sesto giro) · «È una fondamenta?» — e due scelte corrette
 

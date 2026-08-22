@@ -5,18 +5,25 @@
 > gesto («vai lì») e che chi diagnostica possa leggere come coordinata esatta.
 >
 > **Perimetro: DB per primo** (decisione di Tid, 2026-08-22). La convenzione
-> nasce dove l'errore viene sollevato; il consumo lato BE/FE è dichiarato in §6
+> nasce dove l'errore viene sollevato; il consumo lato BE/FE è dichiarato in §7
 > ma **non** è questo brief.
 >
-> ⛔ **Niente è stato applicato.** Nessuna migrazione, nessun CSV toccato.
-> Questo documento è un piano.
+> ⛔ **Di questo brief non è stato applicato niente**: nessuna migrazione,
+> nessun CSV. Il piano, con i changeSet numerati, è il §6. ⚠️ **Il catalogo dei
+> tipi invece esiste**, ed è stato applicato dall'altro cantiere il 2026-08-22:
+> è il prerequisito, non un passo di qui.
 >
-> 🔴 **E dal quarto giro (2026-08-22) non è ancora scrivibile: cinque domande
-> aperte lo bloccano** — §7, `Q-A`…`Q-E`. Due sono di forma (il canale verso il
-> frontend, il nome della chiave), due hanno una **scadenza** (le colonne e il
-> seed del catalogo, finché il L4 dell'altro cantiere non è applicato), una è la
-> regola che mancava (su quali classi si mette un bersaglio). ⭐ Il disegno dei
-> tre strati **non cambia**: cambia ciò che serve per realizzarlo.
+> ✅ **Ed è SCRIVIBILE dal quinto giro (2026-08-22): le cinque domande che il
+> quarto aveva aperto sono tutte chiuse** — §8, `Q-A`…`Q-E`. In breve: il
+> bersaglio esce dal `RAISE` su **una casella strutturata nuova**, l'appunto si
+> chiama **`bersaglio`**, la chiave dell'entità **la dichiara il catalogo**, il
+> catalogo **cresce col roll-out** una voce per volta, e il bersaglio si mette
+> **solo sugli errori rimediabili, mai sui `TECNICO`**.
+>
+> ⚠️ **Il L4 dell'altro cantiere è stato applicato il 2026-08-22** (changeSet
+> 53-60, più 61-62 del suo L2): la colonna che il `T-1d` chiede a
+> `config.tipi_entita` è quindi **un changeSet nuovo**, non più una riga
+> aggiunta a una DDL non ancora eseguita.
 >
 > **Origine.** Collaudo della nota di credito resi, 2026-08-22. Il messaggio
 > **937** dice all'operatore *«Non si può numerare il documento 835»*: una chiave
@@ -120,8 +127,15 @@ bersaglio portasse il nome della tabella, servirebbe una seconda mappa
 tabella → schermata: la stessa conoscenza in due posti, cioè il modo in cui
 divergono.
 
-⚠️ **Oggi quel vocabolario non è un vocabolario**: `entity_type` è `text` libero,
-senza CHECK né catalogo.
+~~⚠️ **Oggi quel vocabolario non è un vocabolario**: `entity_type` è `text`
+libero, senza CHECK né catalogo.~~
+
+✅ **Non è più vero dal 2026-08-22 (allineamento del quinto giro).** Il catalogo
+`config.tipi_entita` è **applicato** e `vendite.event_log.entity_type` è una **FK
+verso di lui** (`fk_event_log_tipo_entita`, `ON UPDATE CASCADE`); il `CHECK`
+intermedio è stato tolto nello stesso passaggio. ⭐ **Il prerequisito di questo
+brief quindi c'è**: il `tipo` ha un vocabolario, e resta da dargli la chiave
+(§5.1, T-1d) e i tipi che serviranno al roll-out, uno per volta (T-1c).
 
 > ✅ **DECISO (Tid, 2026-08-22): catalogo chiuso, e `event_log` lo adotta.**
 > Non solo il bersaglio: la stessa nozione — *«che cosa è questa entità»* —
@@ -323,7 +337,7 @@ canali strutturati sono **cinque, tutti già occupati**:
 | `DETAIL` | la `causa` di catalogo → `error.detail` | — |
 | `HINT` | la `soluzione` di catalogo → `error.hint` | 2026-08-18 |
 
-⛔ **Quindi `B-1` come è scritta in §6 non è eseguibile**: al backend non arriva
+⛔ **Quindi `B-1` come è scritta in §7 non è eseguibile**: al backend non arriva
 niente da mettere nell'envelope. Il bersaglio, scritto solo nel `context`, serve
 **il terzo lettore** (chi diagnostica) e **non il primo gesto** — cioè non la
 ragione per cui questo brief esiste.
@@ -454,7 +468,7 @@ il consumatore**. Perché in mezzo c'è un intervallo in cui:
 
 * il messaggio non nomina più il documento;
 * il bersaglio viaggia, ma **il frontend non lo legge** — B-2 non è scritta, e
-  `ui_action` è ferma da mesi nella stessa condizione (§6);
+  `ui_action` è ferma da mesi nella stessa condizione (§7);
 * la `soluzione` a catalogo del 937 dice *«Numerare prima il documento
   indicato»* — e **non c'è più niente di indicato**.
 
@@ -471,7 +485,7 @@ distinti — **T-3a** e **T-3b** — e questo brief non può chiudere il secondo
 - ⛔ **Non si riscrivono i 756 messaggi.** Il bersaglio si aggiunge solo dove un
   identificativo serve davvero — cioè dove oggi c'è un id nella prosa;
 - ⛔ **Non si tocca `error_log`**: la colonna `context` c'è già ed è jsonb;
-- ⛔ **Non si tocca l'envelope API**: è §6, lato BE.
+- ⛔ **Non si tocca l'envelope API**: è §7, lato BE.
 
 ### 5.5 ⛔ Chi NON è un primo adottante *(l'unico punto in cui i due brief si contrappongono)*
 
@@ -511,7 +525,139 @@ vero della fusione.
 
 ---
 
-## 6. Cosa tocca dopo, e a chi *(dichiarato, non pianificato qui)*
+## 6. Il piano di sviluppo
+
+> ⚠️ **Numerazione.** La sequenza `NN` è **globale per data** fra tutte le
+> cartelle. Al 2026-08-22, dopo l'apply del L4/L2 dell'altro cantiere, sono
+> occupati fino a **`20260822-62`**: qui si parte da **63**. Da **riverificare**
+> al momento della scrittura.
+>
+> ⛔ `runOnChange: false` ovunque in `00_schema` e `20_code`, `validCheckSums`
+> **al plurale**, `logicalFilePath` sempre, **un changeSet per file**. L'unico
+> `runOnChange: true` è il mirror CSV già esistente (il **55** dell'altro
+> cantiere), che si **estende in place** e non si duplica.
+
+### L1 — Il canale, e la casella dove viaggia
+
+È il lotto che rende esistente il bersaglio. Da solo non produce ancora nessun
+pulsante, ma è quello su cui poggiano tutti gli altri.
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| **63** | `alter-config-tipi-entita-key-selector` | `00_schema/config` | La colonna della **chiave dell'entità** (Q-C): `key_selector text NOT NULL` con `CHECK (IN ('id','uid'))`. ⭐ **Stesso nome che porta `config.sorgenti`**, di proposito: è la stessa convenzione, e chi cerca l'una trova l'altra. ⚠️ **Nasce con `DEFAULT 'id'` e il default si toglie nello stesso changeSet**: serve a riempire le 4 righe esistenti — che sono tutte a chiave numerica — senza lasciare a chi semina un valore che eredita in silenzio. ⛔ **E non tocca il giornale**: per `event_log` l'`entity_id` resta **la PK `id`, sempre** — la colonna serve a chi *punta* a un'entità da fuori, che è il bersaglio. La distinzione l'aveva già scritta l'[analisi](analisi-osservabilita-log.md) alla sua domanda 12 |
+| — | `config/tipi_entita.csv` + il changeSet **55** | `80_data` (CSV) | La colonna nuova nel CSV **e** nella lista `columns:` del mirror. ⛔ **Non nasce un loader nuovo**: il 55 è `runOnChange`, si estende in place e alla prossima passata rilegge il file |
+| **64** | `update-fn-log-and-raise-error-bersaglio` | `20_code/script` | ⭐ **Il cuore.** `script.fn_log_and_raise_error` legge `p_context->'bersaglio'`, ne compone la forma compatta e la fa uscire sulla casella strutturata. **La firma non cambia** (§4.4): i 1.093 punti di sollevamento vivi non si toccano |
+| — | `config/codici_errore.csv` + `messaggi_errore.csv` | `80_data` (CSV) | **+1 codice** `W_BERSAGLIO_MALFORMATO` (classe `AVVISO`, gemello di `W_MESSAGGIO_ARITA`) e **+1 messaggio** (id **982**, il primo libero). ⚠️ Solo append: i mirror `runOnChange` esistenti li ripescano |
+| — | `scripts/sql/guardrail_codice_errore_strutturato.sql` | CI | Il controllo **(G)**, gemello di (A) per `CONSTRAINT` e (F) per `COLUMN`: **un solo mittente** sulla casella nuova. Nasce **subito e con zero violazioni**, per la stessa ragione per cui nacque (F) |
+| — | `db/pgtap/script/test-bersaglio-canale-strutturato.sql` | test | Il canale porta ciò che deve; un bersaglio malformato **non** distrugge l'errore di dominio; la casella resta vuota quando il bersaglio non c'è |
+
+**La forma compatta, e perché non è jsonb.** La casella dell'eccezione è
+**testo**: il bersaglio ci viaggia come `TIPO:id`, più elementi separati da
+virgola.
+
+```text
+FATTURA:835                    un bersaglio
+FATTURA:835,FATTURA:820        due
+```
+
+⚠️ **Il ricco resta nel contesto, il compatto viaggia.** `p_context->'bersaglio'`
+è l'array di oggetti del §4.2 e finisce in `dbops.error_log` per chi diagnostica;
+la casella porta la versione minima per il gesto. **Li scrive lo stesso
+chiamante, una volta sola**: non sono due verità, è la stessa proiettata su due
+lettori.
+
+⛔ **Massimo cinque elementi.** Oltre, il frontend non disegna più un gesto ma un
+elenco — e *quanti* sono lo dice già la frase (sul 937 c'è `v_n_bloccanti`).
+
+#### ⛔ Tre cose che la funzione NON fa, e sono decisioni
+
+| Non fa | Perché |
+| --- | --- |
+| **Non legge il catalogo a runtime** | Sarebbe una query in più dentro il percorso d'errore, e un catalogo irraggiungibile diventerebbe un errore dentro l'errore. La funzione **valida solo la forma** (`^[A-Z][A-Z0-9_]*$` per il tipo, id non vuoto) — esattamente come fa già col nome del campo. ⭐ **Il vocabolario lo presidia la CI** (L3), che è dove un errore di programmazione va scoperto |
+| **Non fallisce mai per colpa del bersaglio** | Un bersaglio malformato lascia la casella **vuota** e scrive `W_BERSAGLIO_MALFORMATO` nel log. È la lezione del 18/08 tradotta: *la funzione che serve a riportare un errore non può essere quella che lo distrugge*. ⛔ E il `W_` **resta un `W_`**: si logga, non si solleva |
+| **Non deriva niente da sola** | Nessuna composizione automatica dalle chiavi `<tipo>_id` già presenti nel contesto: è il **L5**, ed è una proposta, non questo lotto |
+
+### L2 — Il pilota: il 937
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| **65** | `update-fn-numera-fattura-bersaglio` | `20_code/vendite` | `vendite.fn_numera_fattura_opz_emessa` costruisce il bersaglio **per ramo** (§4.3): `FATTURA` con l'id del padre quando il padre è **visibile**, **nessun bersaglio** quando non lo è. ⛔ **Il messaggio non si tocca**: è il T-3a, additivo per costruzione |
+| — | `db/pgtap/vendite/test-numera-nota-credito-riferimento-v1.sql` | test | Si estende: il ramo visibile porta il bersaglio, il ramo fail-closed **non** lo porta, e in entrambi il codice e la frase restano quelli di oggi |
+
+⭐ **Il pilota non chiede nessun seed**: punta a `FATTURA`, che è già a catalogo
+dal L4 dell'altro cantiere. È la prova che la strada «una voce per volta» (Q-D)
+parte in discesa.
+
+⚠️ **La guardia oggi produce un valore polimorfo** — `rif.id::text` oppure la
+stringa `'riga N'` — e va **spezzata in due variabili**: una per la frase, una
+per il bersaglio. Sono due lettori, e questo brief esiste per non farli più
+condividere lo stesso canale.
+
+### L3 — Il presidio del vocabolario
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| **66** | `create-vw-bersagli-non-dichiarati` | `20_code/dbops` | I tipi scritti nei **corpi delle funzioni vive** e assenti da `config.tipi_entita`. Gemella di `dbops.vw_eventi_non_dichiarati` (nata col L4) e di `vw_codici_errore_da_dichiarare` |
+| — | `db/pgtap/dbops/test-vw-bersagli-non-dichiarati.sql` | test | La vista è **vuota**: se non lo è, la build è rossa e dice quale tipo manca |
+
+⭐ **È questo cancello a rendere sicura la Q-D.** Il catalogo cresce una voce per
+volta *perché* dimenticarsene non è possibile: chi scrive un bersaglio su un tipo
+non dichiarato lo scopre in CI, non in esercizio.
+
+⚠️ **Statico, non sui dati** (§5.1, T-4): si legge `pg_proc.prosrc`, **non**
+`dbops.error_log` — che non dice né se un ramo è mai stato percorso né se conti
+qualcosa.
+
+### L4 — La convenzione scritta
+
+| File | Cosa |
+| --- | --- |
+| `docs/it/linee-guida-sql.md` §5 | ⭐ **La quarta riga della tabella dei canali**, che oggi ne ha tre (`p_error_code` → backend, `p_context->>'campo'` → frontend, `VARIADIC` → operatore). Il bersaglio è il quarto destinatario, e va **in quella tabella**: è il posto dove chi scrive una guard va a guardare |
+| idem | La regola delle classi (Q-E) e la forma dell'array (§4.2), **con l'avvertenza del nome**: `bersaglio`, non `target` — che in 16 punti significa già un'altra cosa |
+
+### L5 — La derivazione automatica *(proposta, NON decisa)*
+
+Due punti di sollevamento vivi su tre scrivono già una chiave `<tipo>_id` nel
+contesto (§4.1). La tentazione è comporre il bersaglio da lì, senza toccare
+nessun chiamante — è ciò che l'08/08 ha fatto con `parametro`→`COLUMN`.
+
+⚠️ **Ma le due decisioni di oggi le tolgono metà del guadagno**, e va detto prima
+di scriverla:
+
+* con la **Q-E** la derivazione dovrebbe conoscere la **classe** del codice, cioè
+  leggere `config.codici_errore` dentro il percorso d'errore — la query che il
+  L1 ha deciso di non fare;
+* con la **Q-D** varrebbe solo per i tipi già a catalogo, cioè oggi tre;
+* ⛔ e soprattutto: sul canale `COLUMN` un valore sbagliato è **inerte** (il
+  frontend non trova quel campo e non evidenzia niente); un **bersaglio**
+  sbagliato è **attivo** — porta l'operatore in un posto che non c'entra. Non è
+  lo stesso rischio, e non merita la stessa scorciatoia.
+
+➡️ **Si valuta dopo il pilota**, misurando su un campione quante volte la chiave
+`<tipo>_id` più ovvia è davvero l'entità dove si vorrebbe andare. Fino ad allora
+il roll-out è **esplicito, uno alla volta**.
+
+### Ordine, dipendenze e cosa resta fuori
+
+```text
+63 ──► 55 (CSV)          la chiave dell'entità, e il seme che la riempie
+64 ──► 65 ──► 66         il canale, il primo che ci scrive, il cancello
+```
+
+* **64 prima di 65**: il pilota scrive in una casella che dev'esistere;
+* **63 è indipendente** dagli altri tre: non blocca il pilota, che punta a un
+  tipo a chiave numerica;
+* **66 dopo 65**, per nascere con qualcosa da misurare — ma non è un vincolo
+  tecnico.
+
+⛔ **Cosa NON entra in questo piano**, e sono conferme del §5.4: nessuna FK su
+niente, `dbops.error_log` non si tocca, l'envelope API è del backend (§7), e i
+756 messaggi **non** si riscrivono — il T-3b, cioè l'id che esce dalla prosa,
+resta appeso a B-1/B-2 e non lo chiude questo brief.
+
+---
+
+## 7. Cosa tocca dopo, e a chi *(dichiarato, non pianificato qui)*
 
 | | Chi | Cosa |
 | --- | --- | --- |
@@ -528,7 +674,7 @@ presidio **C2** di
 
 ---
 
-## 7. Domande
+## 8. Domande
 
 ### Chiuse — 2026-08-22, da Tid
 
@@ -543,7 +689,7 @@ presidio **C2** di
    casi a due bersagli esistono già (il 937), e cambiare la forma di una chiave
    in servizio costa più che nascere larghi. Forma in §4.2.
 
-### 🔴 Aperte — e queste BLOCCANO *(nate dal quarto giro, 2026-08-22)*
+### ✅ Chiuse — le cinque del quarto giro, decise da Tid il 2026-08-22
 
 | # | Domanda | Dove |
 | --- | --- | --- |
@@ -551,7 +697,7 @@ presidio **C2** di
 | ~~**Q-B**~~ | ✅ **CHIUSA (Tid, 2026-08-22): la chiave è `bersaglio`.** `target` resta ai 16 punti che la usano già per il nome di una tabella: nessuna riscrittura, nessuna parola con due significati | §4.2 |
 | ~~**Q-C**~~ | ✅ **CHIUSA (Tid, 2026-08-22): lo dichiara il catalogo.** `config.tipi_entita` prende una colonna per la chiave (`id` \| `uid`), sulla convenzione già in uso in `config.sorgenti.key_selector`. ⭐ Il motivo che ha deciso: la regola vive **accanto al tipo**, non nella testa di chi scrive il frontend — e un pulsante che porta nel posto sbagliato è peggio di nessun pulsante | §5.1-bis · T-1d |
 | ~~**Q-D**~~ | ✅ **CHIUSA (Tid, 2026-08-22): il catalogo cresce col roll-out**, una voce per volta, insieme al messaggio che la usa. ⭐ Niente voci che promettono una destinazione che nessuna schermata raggiunge, e il presidio T-4 impedisce di dimenticarsene | §5.1-bis · T-1c |
-| **Q-E** | Conferma della regola **«bersaglio sì sulle classi rimediabili, no sui `TECNICO`»** | §5.5 |
+| ~~**Q-E**~~ | ✅ **CHIUSA (Tid, 2026-08-22): sì sulle classi rimediabili, NO sui `TECNICO`.** Il bersaglio è un gesto per l'operatore, e su un 500 non c'è gesto: l'entità resta negli appunti, per chi indaga. Stessa logica già in servizio per il campo da evidenziare | §5.5 |
 
 ### Aperte — non bloccano la scrittura
 
@@ -565,10 +711,12 @@ presidio **C2** di
 
 ---
 
-## 8. Registro
+## 9. Registro
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-22 (sesto giro) | 📋 **Scritto il piano (§6)**: cinque lotti, quattro changeSet numerati (**63-66**), due append ai CSV, un controllo di CI, tre file pgTAP e una tabella da estendere in `linee-guida-sql`. ⭐ **Le tre decisioni che il piano ha dovuto prendere per essere scrivibile**, e stanno tutte nel L1: (1) **il ricco resta nel contesto, il compatto viaggia** — `p_context->'bersaglio'` è l'array del §4.2 e finisce in `error_log`, la casella dell'eccezione porta `TIPO:id`, e li scrive **lo stesso chiamante una volta sola**; (2) **la funzione non legge il catalogo a runtime** — valida solo la forma, il vocabolario lo presidia la CI (L3), perché una query dentro il percorso d'errore è una dipendenza che non si vuole; (3) **un bersaglio malformato non distrugge mai l'errore di dominio** — casella vuota e `W_BERSAGLIO_MALFORMATO` nel log, che è la lezione del 18/08 tradotta. ⚠️ **Il L5 (derivazione automatica dalle chiavi `<tipo>_id`) è retrocesso a proposta**: con la Q-E servirebbe leggere la classe a runtime e con la Q-D varrebbe per tre tipi — ma la ragione vera è che un bersaglio sbagliato è **attivo** (porta l'operatore altrove), mentre un `COLUMN` sbagliato è inerte: non merita la stessa scorciatoia. 🔧 **Allineati i riferimenti superati** dopo l'apply dell'altro cantiere, di qua e di là (§3 di questo brief; §3.1, §3.2, §3.5, §3.8 e §4-bis dell'altro) |
+| 2026-08-22 (quinto giro) | ✅ **Chiuse tutte e cinque le domande del quarto giro, e il brief diventa scrivibile.** ⭐ **Q-A: via A** — il bersaglio esce dal `RAISE` su una **casella strutturata nuova**, terza volta che questa casa fa la stessa mossa (`CONSTRAINT` 05/08, `COLUMN` 08/08), con la composizione in **una sede sola** dentro `fn_log_and_raise_error`. ⭐ **Q-B: la chiave è `bersaglio`** — i 16 punti che usano `target` per il nome di una tabella non si toccano, e nessuna parola resta con due significati. ⭐ **Q-C: la chiave dell'entità la dichiara il catalogo**, sulla convenzione di `config.sorgenti.key_selector`: la regola vive accanto al tipo, non nella testa di chi scrive il frontend. ⭐ **Q-D: il catalogo cresce col roll-out**, una voce per volta insieme al messaggio che la usa — niente voci che promettono una destinazione irraggiungibile, e il presidio **T-4** impedisce di dimenticarsene. ⭐ **Q-E: bersaglio solo sugli errori rimediabili, mai sui `TECNICO`** — su un 500 non c'è gesto, e l'entità resta negli appunti per chi indaga. ⏱️ **Nel frattempo il L4 dell'altro cantiere è stato applicato** (53-60, più 61-62 del suo L2): la colonna del **T-1d** è ora un changeSet nuovo. ❌ **E una segnalazione mia che era sbagliata**: avevo dato per «residuo» la FK `fk_event_log_tipo_entita` senza riga in `dbops.fk_index_policy`. **Non è un residuo, è una decisione scritta** (loro §4, L4): la FK è su `entity_type`, che è **già la prima colonna di `ix_event_log_entity_time`** — coperta per prefisso — e registrarla a `consentito=false` sarebbe **attivamente dannoso**, perché il ramo del `DROP` estrae il nome dal `dll_command` e cancellerebbe un indice non dedicato che serve alla query forense. ⭐ Avevo guardato la tabella e non il brief: la regola «gli indici FK sono opt-in» ha un'eccezione per prefisso, e loro l'avevano già vista |
 | 2026-08-22 (quarto giro) | 🔎 **Rilettura critica contro il cantiere `event_log`**, misurando sul database e sul codice invece che sul testo. ⭐ **Il disegno regge; a non reggere è la sua premessa operativa**, e sono quattro rilievi. 🔴 **(1) Il canale del §4.1 non arriva al frontend**: `p_context` va solo in `error_log`, e i cinque canali strutturati del `RAISE` sono **tutti occupati** (`ERRCODE`, `CONSTRAINT`, `COLUMN`, `DETAIL`, `HINT`) — quindi «serve solo una convenzione» vale per chi diagnostica e **non** per il gesto, che è la ragione del brief. Nasce il §4.4 e con lui **Q-A**; **B-1 non è eseguibile** com'era scritta. 🔴 **(2) La chiave `target` è già in uso**: **16 punti di sollevamento in 6 file** la scrivono come **stringa**, e dentro c'è `schema.tabella` — cioè proprio ciò che il §4.2 vieta. Proposta: `bersaglio` (**Q-B**). 🔴 **(3) Contrapposizione vera con l'altro brief**: i due codici che il suo §4-bis regala come «primi adottanti gratuiti» **non lo sono** — uno porta per definizione un tipo fuori catalogo (farebbe fallire il T-4), l'altro punta a un'entità inesistente, e sono entrambi `TECNICO`. Da lì la regola mancante: **il bersaglio è per gli errori rimediabili, non per i 500** (§5.5, **Q-E**). 🔴 **(4) C'è una scadenza**: i changeSet 53-60 del L4 sono **scritti e non applicati**, quindi ogni colonna che il bersaglio vuole nel catalogo costa **zero oggi** e una migrazione domani — e la misura dice che il seed ha 4 tipi (manca `SOGGETTO`) e che le due letture **non concordano sull'identificativo** (`entity_id` è `bigint`, ma `soggetti.id` è `uuid` e `sorgenti` ha `key_selector = uid`). Nascono **T-1d**, §5.1-bis, **Q-C** e **Q-D**. ⚠️ Corretti inoltre due punti che dicevano il falso: il §5.3 (dal 18/08 la `format()` è protetta: il difetto **degrada**, non alza più `22023` — e un cancello statico esiste già) e il §4.3 sul 937 (il secondo valore **non è sempre un id di fattura**: nel ramo fail-closed è la stringa `riga N` di un documento invisibile). ⭐ **E una scoperta che vale il giro**: **due punti di sollevamento vivi su tre** scrivono già una chiave `<tipo>_id` nel contesto — il bersaglio si può **derivare in una sede sola**, come l'08/08 ha fatto con `parametro`→`COLUMN` (nuovo **T-5b**). ⚠️ **Nota di metodo, richiamata da Tid nello stesso giro**: le misure di questo brief sono sul **codice** (`pg_proc.prosrc`, i file di `20_code`), non sulle righe di `dbops.error_log` — un registro di sviluppo senza recinto fra test ed esercizio, che non misura né frequenza né gravità. Le due misure che erano nate «a conteggio di righe» sono state rifatte sui corpi delle funzioni (§4.1) e ridotte a eco (§4.2). ⛔ Nulla applicato, nessun file di migrazione toccato |
 | 2026-08-22 (terzo giro) | ⛔ **T-1 e T-1b escono da questo brief**: sono stati assorbiti da [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md) (**D-17**, §3.7, lotto **L4**). ⭐ **La decisione di Tid non cambia — cambia dove si esegue**: decidevano su `event_log.entity_type`, e una decisione su una colonna deve stare dove vive la colonna. ⚠️ Il rischio che il secondo giro aveva previsto si è avverato al contrario: quel cantiere ha **applicato per primo** una scelta opposta (un `CHECK` invece del catalogo), quindi non c'è un apply da coordinare ma una correzione in avanti da scrivere — la scrive lui. ⭐ **E la collisione ha prodotto due cose utili**: il catalogo porterà `modo_risoluzione_emittente`, che rende inutile il `CASE` scritto a mano nel loro trigger; e si è capito che **i due vocabolari non sono lo stesso insieme** — il giornale è un sottoinsieme proprio del bersaglio, selezionato da «l'emittente dev'essere derivabile». Da lì il nuovo **T-1c**. 🔴 Rettificato il §3, che dava `TASK_RUN` per presente in `event_log`: non lo è più dal 2026-08-22 |
 | 2026-08-22 (secondo giro) | ✅ **Chiuse le due domande che bloccavano la scrittura**, entrambe verso la forma più larga: **catalogo chiuso** per i tipi (con `event_log.entity_type` che lo adotta — nasce **T-1b**) e **`target` sempre array**. ⭐ Nessuna delle due è una preferenza di stile: la prima evita due vocabolari per la stessa nozione, la seconda evita di cambiare la forma di una chiave **già in servizio** il giorno del secondo bersaglio — e il secondo bersaglio esiste già oggi, sul messaggio pilota. 🔴 **Ne discende un vincolo di coordinamento che prima non c'era**: T-1b tocca `event_log`, che è anche l'oggetto del **Passo 0** dell'osservabilità (emittente + RLS + correlation + actor). Stessa tabella, stessa funzione di scrittura: **un apply solo**, e la sorte delle righe storiche si decide di là, non qui |

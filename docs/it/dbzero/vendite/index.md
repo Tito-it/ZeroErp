@@ -14,7 +14,7 @@
 - [commesse](tabelle/commesse.md) — (latest review 26-02-2026)   `vendite.commesse` e` la testata di governo del ciclo operativo `sorgente -> commessa -> commesse_attivita -> attivita_fatturabili`.
 - [commesse_attivita](tabelle/commesse_attivita.md) — La tabella `vendite.commesse_attivita` e` la sorgente di verita` operativa delle righe da emettere verso `attivita_fatturabili`.
 - [commesse_attivita_log](tabelle/commesse_attivita_log.md) — La tabella `vendite.commesse_attivita_log` registra eventi di dominio sulle righe `commesse_attivita`, come audit persistente indipendente dal layer applicativo.
-- [commesse_push_log](tabelle/commesse_push_log.md) — `vendite.commesse_push_log` traccia ogni esecuzione dell'orchestratore di push sorgenti verso commesse/attivita` con un audit minimale ma operativo.
+- [commesse_push_log](tabelle/commesse_push_log.md) — `vendite.commesse_push_log` tiene il registro dei **giri** dell'orchestratore che spinge le sorgenti verso commesse e attività: uno per corsa, non uno per riga.
 - [commesse_sorgenti](tabelle/commesse_sorgenti.md) — La tabella `vendite.commesse_sorgenti` traccia la sorgente ROOT della commessa e garantisce idempotenza sorgente a livello commessa.
 - [contratti](tabelle/contratti.md) — (Initial version - 19-01-26) `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
 - [contratti_indirizzi](tabelle/contratti_indirizzi.md) — Snapshot degli indirizzi collegati alla testata di un **contratto**, uno per tipo (univocità `contratto_id, tipo_indirizzo_id`). Struttura **identica** alle altre tabelle `*_indirizzi` documento (snapshot JSONB congelato + `origine_indirizzo_id` / `origine_soggetto_ruolo_id` soft FK `SET NULL`, `tx_id`).
@@ -110,6 +110,7 @@
 - [fn_chiudi_contratto_per_successione](funzioni/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_riconsegna_reso](funzioni/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
 - [fn_cleanup_fatture_by_ids](funzioni/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
+- [fn_close_commessa_push_run](funzioni/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
@@ -170,7 +171,6 @@
 - [fn_list_lotto_task_runs](funzioni/fn_list_lotto_task_runs.md) — Elenca i task run di un lotto, con filtri opzionali per step e task.
 - [fn_list_ordini_da_pushare](funzioni/fn_list_ordini_da_pushare.md) — `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_list_preventivi_da_pushare](funzioni/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
-- [fn_log_commessa_push_run](funzioni/fn_log_commessa_push_run.md) — `vendite.fn_log_commessa_push_run` registra in modo uniforme il risultato di un run dell'orchestratore push commesse scrivendo una riga in `commesse_push_log`.
 - [fn_log_event](funzioni/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](funzioni/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
 - [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
@@ -219,6 +219,7 @@
 - [fn_snapshot_fattura_lotto](funzioni/fn_snapshot_fattura_lotto.md) — (latest review 02-08-2026)
 - [fn_snapshot_indirizzi_fattura](funzioni/fn_snapshot_indirizzi_fattura.md) — (latest review 02-08-2026)
 - [fn_snapshot_intestazione_fattura](funzioni/fn_snapshot_intestazione_fattura.md) — (latest review 02-08-2026)
+- [fn_start_commessa_push_run](funzioni/fn_start_commessa_push_run.md) — `vendite.fn_start_commessa_push_run` **apre** un giro dell'orchestratore push: scrive la riga in `commesse_push_log` all'inizio della corsa, in stato `IN_ESECUZIONE`, e ne restituisce l'identificativo. Quell'identificativo è ciò che il chiamante conserva per chiudere il giro quando ha finito.
 - [fn_start_lotto_task_run](funzioni/fn_start_lotto_task_run.md) — Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 - [fn_sync_contabili_fondo_fattura](funzioni/fn_sync_contabili_fondo_fattura.md) — Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`), senza scrivere movimenti pagamenti diretti.
 - [fn_sync_fattura_critical](funzioni/fn_sync_fattura_critical.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_sync_fattura_critical()`** aggiorna il flag `fatture.critical` in base ai log attivi della fattura.

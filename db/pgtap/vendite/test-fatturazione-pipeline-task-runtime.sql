@@ -21,10 +21,18 @@
 -- 15) fail run RESET #1
 -- 16) resolve mode su ERRORE (RESET_STEP) = RESET_REQUIRED
 -- 17) ultimo run RESET in stato ERRORE
+-- 18) il correlation_id del giro finisce sulla riga del tentativo
 --
 -- ⚠️ Era 18: la vecchia 4 («check policy RESUME true») e' stata tolta il
 --   2026-08-18 perche' `vendite.fn_check_pipeline_task_policy` non esiste piu'.
 --   La proprieta' resta coperta dalla 3, che la legge dalla `get`.
+--
+-- ⭐ 2026-08-22: il run #1 passa un `p_correlation_id` e nasce il test 18.
+--   La colonna esiste dal changeSet 20260822-61 e NESSUNA funzione la scriveva
+--   (misura del backend su pg_proc): il settimo parametro di
+--   `fn_start_lotto_task_run` — changeSet 20260822-67 — e' la meta' che
+--   mancava. ⚠️ Il run #2 resta volutamente SENZA: la colonna e' nullable, e
+--   il test 18 verifica il filo dove c'e', non che ci sia sempre.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -44,7 +52,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+SELECT plan(18);
 
 -- ============================================================
 -- 0) Costanti e riferimenti
@@ -195,7 +203,12 @@ FROM vendite.fn_start_lotto_task_run(
   p_stato_doc_fiscale_id => (SELECT stato_doc_fiscale_id FROM tmp_refs_ptr),
   p_task_code => (SELECT task_resume FROM tmp_costanti_ptr),
   p_fase => 'Test runtime task #1',
-  p_meta => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ptr))
+  p_meta => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ptr)),
+  -- ⭐ Il filo del GIRO (D-7): lo genera il runner a ogni corsa e lo scrive su
+  --   eventi, task_runs e commesse_push_log. Qui e' un valore fisso perche' al
+  --   test serve solo che la funzione lo porti fino alla riga — che e' la cosa
+  --   che prima non faceva nessuno.
+  p_correlation_id => '0198f000-0000-7000-8000-0000000000c1'::uuid
 );
 
 SELECT is(
@@ -405,6 +418,22 @@ SELECT is(
   ),
   'ERRORE'::varchar,
   'ultimo run RESET in stato ERRORE'
+);
+
+-- ============================================================
+-- 18) Il filo del giro arriva sulla riga
+-- ============================================================
+--   ⛔ La colonna esisteva dal 20260822-61 e nessuna funzione la scriveva: una
+--   colonna che nessuno riempie non e' meta' lavoro, e' un buco che sembra
+--   chiuso. Questo test e' cio' che impedisce che torni a esserlo.
+SELECT is(
+  (
+    SELECT r.correlation_id
+    FROM vendite.fatturazione_lotti_task_runs r
+    WHERE r.id = (SELECT task_run_id FROM tmp_run1_ptr)
+  ),
+  '0198f000-0000-7000-8000-0000000000c1'::uuid,
+  'correlation_id del giro scritto sul task run'
 );
 
 SELECT * FROM finish();
