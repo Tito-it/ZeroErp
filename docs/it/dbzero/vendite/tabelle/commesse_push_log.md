@@ -19,6 +19,8 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| correlation_id | uuid | YES |  |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,6 +32,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_commesse_push_log_correlation | `CREATE INDEX ix_commesse_push_log_correlation ON vendite.commesse_push_log USING btree (correlation_id) WHERE (correlation_id IS NOT NULL)` |
 | ix_commesse_push_log_run_at | `CREATE INDEX ix_commesse_push_log_run_at ON vendite.commesse_push_log USING btree (run_at)` |
 | pk_commesse_push_log | `CREATE UNIQUE INDEX pk_commesse_push_log ON vendite.commesse_push_log USING btree (id)` |
 

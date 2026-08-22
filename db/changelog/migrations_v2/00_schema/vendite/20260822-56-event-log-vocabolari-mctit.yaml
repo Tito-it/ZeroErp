@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA SMETTE DI PORTARE COSE CHE NON DEVE — lotto L4
+#   vendite.event_log: il vocabolario passa al catalogo, `domain` esce
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.7, §3.8 · Decisioni D-17 e D-18
+#
+# ── 1) `entity_type`: dal CHECK al CATALOGO ────────────────────────
+#   Il `CHECK` posato con L1 (`20260822-40`) funzionava, ma teneva il
+#   vocabolario in TRE posti che dovevano restare d'accordo fra loro: il
+#   vincolo sulla colonna, il `CASE` nel trigger di derivazione, i modi in
+#   `script.fn_resolve_emittente_sr_id`. Se uno dei tre restava indietro, il
+#   difetto era muto.
+#   ⭐ Col catalogo il modo sta nella STESSA RIGA del tipo: aggiungere un tipo
+#   diventa **un seed**, e configurazione e trigger non possono dissentire.
+#
+# ── 2) ⛔ `domain` SI TOGLIE, e non e' una semplificazione ──────────
+#   Il dominio e' una **proprieta' del codice evento**, non un secondo asse:
+#   `PIPELINE_STARTED` appartiene a PIPELINE e basta. Tenerlo denormalizzato su
+#   ogni riga significa tenere una copia che **puo' dissentire** dal catalogo,
+#   e nessun vincolo puo' impedirlo.
+#
+#   ⚠️ La prima stesura del piano diceva «la colonna non si toglie, perche'
+#   `ix_event_log_domain_time` la usa e `fn_list_lotto_segnalazioni` filtra su
+#   di essa». Era una scelta guidata dall'esistente, ed era sbagliata (rilievo
+#   di Tid, 2026-08-22: «non abbiamo produzione, decidiamo sempre la cosa
+#   migliore»). Verificato:
+#
+#     * il filtro in `fn_list_lotto_segnalazioni` e' **ridondante** — la query
+#       filtra gia' `event_code = 'PIPELINE_STARTED'`, e un codice appartiene a
+#       un dominio solo: si toglie UNA riga (20260822-59);
+#     * `ix_event_log_domain_time` non serve a nessun accesso reale: la query
+#       forense passa da `ix_event_log_entity_time`, quella del giro da
+#       `ix_event_log_corr_time`. Muore col DROP COLUMN, ed e' giusto;
+#     * il BE deve comunque riscrivere le chiamate (BE-5), quindi un parametro
+#       in meno non costa niente in piu'.
+#
+#   ⚠️ Il dominio non si perde: si legge dal catalogo, nella vista del Passo A
+#   e in qualunque query. E' l'unico modo perche' non ci siano due verita'.
+#
+# ── 3) ⛔ NESSUNA FK SU `event_code`, ED E' LA D-12 A IMPORLO ───────
+#   La mossa ovvia sarebbe una FK verso `config.eventi_dominio`. Sarebbe
+#   sbagliata:
+#
+#     > Una scrittura rifiutata perche' il codice non e' ancora a catalogo e'
+#     > **il diario che smette di scrivere per un problema di configurazione**
+#     > — cioe' la D-12 violata. Il diario rifiuta solo quando non sa dire DI
+#     > CHI E' la riga; un codice ignoto non glielo impedisce.
+#
+#   Il presidio e' un cancello che fallisce la BUILD (20260822-60 + BE-9), non
+#   la scrittura.
+#
+# ── ⚠️ ORDINE E ROTTURE TEMPORANEE ─────────────────────────────────
+#   Il DROP COLUMN rompe `fn_log_event` e `fn_list_lotto_segnalazioni` finche'
+#   i changeSet 57 e 59 non le riscrivono. Un corpo plpgsql non e' tracciato
+#   come dipendenza dal DDL, quindi il DROP riesce lo stesso e il difetto si
+#   vedrebbe alla prima chiamata: **i tre changeSet vanno nella stessa passata**.
+#
+#   ⚠️ La FK e' posata PRIMA che `80_data` semini il catalogo. Non e' un
+#   problema: `event_log` e' vuoto e la FK valida su zero righe. Vedi la
+#   testata di 20260822-55.
+#
+# Dipendenze: config.tipi_entita (20260822-53).
+# Verifica: db/pgtap/vendite/test-event-log-deriva-scope.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260822-56-event-log-vocabolari-mctit.yaml
+
+  - changeSet:
+      id: 20260822-56-event-log-vocabolari
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.event_log: entity_type passa dal CHECK alla FK verso config.tipi_entita
+        (il vocabolario smette di stare in tre posti che devono restare d'accordo), e la
+        colonna domain VIENE TOLTA perche' il dominio e' una proprieta' del codice evento
+        e una copia derivabile su ogni riga puo' dissentire dal catalogo. ⛔ Nessuna FK su
+        event_code: rifiutare una scrittura per un codice non dichiarato violerebbe la
+        D-12. ⚠️ Rompe fn_log_event e fn_list_lotto_segnalazioni finche' 57 e 59 non le
+        riscrivono: stessa passata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_entita
+            - columnExists:
+                schemaName: vendite
+                tableName: event_log
+                columnName: domain
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1) Il vocabolario dei tipi passa al catalogo ─────────────
+              ALTER TABLE vendite.event_log
+                  DROP CONSTRAINT IF EXISTS chk_event_log_entity_type;
+
+              ALTER TABLE vendite.event_log
+                  ADD CONSTRAINT fk_event_log_tipo_entita
+                  FOREIGN KEY (entity_type)
+                  REFERENCES config.tipi_entita (codice)
+                  ON UPDATE CASCADE;
+
+              -- ⚠️ ON UPDATE CASCADE e non ON DELETE: un codice di catalogo si
+              --   RINOMINA (e allora le righe seguono), non si cancella — si
+              --   deprecca con `obsoleto_dal`. Un ON DELETE CASCADE qui
+              --   cancellerebbe storia per una riga di configurazione.
+
+              -- ── 2) La colonna derivabile se ne va ────────────────────────
+              --   ⚠️ Con lei muore ix_event_log_domain_time, ed e' voluto: la
+              --   query forense passa da ix_event_log_entity_time, quella del
+              --   giro da ix_event_log_corr_time.
+              ALTER TABLE vendite.event_log DROP COLUMN domain;
+
+              -- ── 3) Documentazione sull'oggetto ───────────────────────────
+              COMMENT ON CONSTRAINT fk_event_log_tipo_entita ON vendite.event_log IS
+                  'Il vocabolario dei tipi di entita'' vive in config.tipi_entita, non in '
+                  'un CHECK: cosi'' il modo di risoluzione dell''emittente sta nella stessa '
+                  'riga del tipo e aggiungere un tipo e'' un seed, non tre modifiche '
+                  'coordinate (CHECK + CASE nel trigger + modo nel risolutore). ⚠️ Il '
+                  'catalogo non ha la colonna attivo apposta: con quella, l''automazione '
+                  'genererebbe un lucchetto require_attivo e il diario smetterebbe di '
+                  'scrivere per una voce disattivata (D-12). ⚠️ ON UPDATE CASCADE e non ON '
+                  'DELETE: un codice si rinomina o si depreca, non si cancella.';
+
+              COMMENT ON COLUMN vendite.event_log.event_code IS
+                  'Codice dell''evento. Il suo catalogo e'' config.eventi_dominio, che porta '
+                  'anche il DOMINIO — ed e'' il motivo per cui la colonna domain non esiste '
+                  'piu'': era una copia derivabile che poteva dissentire. ⛔ NESSUNA FK '
+                  'verso il catalogo, e non e'' una dimenticanza: rifiutare la scrittura di '
+                  'un evento perche'' il suo codice non e'' ancora dichiarato sarebbe il '
+                  'diario che smette di scrivere per un problema di configurazione, cioe'' '
+                  'la D-12 violata. Il presidio e'' un cancello che fallisce la build.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.event_log DROP CONSTRAINT IF EXISTS fk_event_log_tipo_entita;
+              ALTER TABLE vendite.event_log ADD COLUMN domain text;
+              ALTER TABLE vendite.event_log
+                  ADD CONSTRAINT chk_event_log_entity_type
+                  CHECK (entity_type IN ('LOTTO', 'COMMESSA', 'FATTURA'));
+              CREATE INDEX IF NOT EXISTS ix_event_log_domain_time
+                  ON vendite.event_log USING btree (domain, event_time DESC);

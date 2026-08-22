@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DEL GIRO NASCE IN TESTA, NON IN CODA — L2, seconda meta'
+#   vendite.commesse_push_log: correlation_id, tx_id, stato IN_ESECUZIONE
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §1.2 (difetto S4) · Decisioni D-3 e D-7
+#
+# ── 🔴 IL DIFETTO: `entity_id = 0` NON ERA UN SEGNAPOSTO ────────────
+#   `PUSH_STARTED` scriveva in `event_log` con `entity_id = 0`, e la lettura
+#   ovvia era «un segnaposto per un'entita' che non c'e'». Misurato leggendo
+#   `commesse_push_orchestrator._run_locked`, e' un'altra cosa:
+#
+#     > E' un id **che non esiste ancora**. La riga di `commesse_push_log`
+#     > viene creata a FINE giro, quindi all'avvio non c'e' niente da citare.
+#
+#   ⭐ La differenza conta: un segnaposto e' una convenzione da interpretare,
+#   un id inesistente e' una **sequenza sbagliata**. E si corregge invertendo
+#   l'ordine, non decidendo cosa significhi lo zero.
+#
+# ── ⭐ IL RIMEDIO (D-3): il registro del giro registra ANCHE l'avvio ─
+#   La riga nasce in testa allo stato `IN_ESECUZIONE` e si chiude alla fine.
+#   Ne discendono tre cose, tutte gratis:
+#
+#     1. `entity_id` reale fin dal primo evento;
+#     2. l'identita' del giro (`correlation_id`, D-7) ha dove stare **prima**
+#        che il giro produca qualcosa;
+#     3. ⭐ e un giro **interrotto** lascia una traccia. Oggi un push che muore
+#        a meta' non scrive niente: sparisce, e nessuno sa che e' stato
+#        tentato. La riga `IN_ESECUZIONE` rimasta li' e' l'unica prova che
+#        qualcosa e' partito e non e' tornato.
+#
+#   ⚠️ Ed e' anche cio' che permette a `PUSH_STARTED`/`PUSH_COMPLETED` di
+#   USCIRE da `event_log` (D-3): un giro non ha un emittente da cui derivare
+#   il perimetro, quindi nel giornale non entra. Il suo posto e' qui, dove
+#   c'era gia' meta' della sua storia.
+#
+# ── SUL `tx_id` ────────────────────────────────────────────────────
+#   Questa tabella e' l'unico registro di `vendite` che non ce l'aveva. Il
+#   trigger `dbops.trgfn_tx_id_managed` lo attacca l'automazione — ⚠️ che gira
+#   in `ci_apply`: su un migrate manuale ci pensa il pgagent la sera, e fino ad
+#   allora la colonna resta vuota.
+#
+# ── ⚠️ IL CHECK SULLO STATO ────────────────────────────────────────
+#   `chk_commesse_push_log_stato` ammette COMPLETATO | PARZIALE | ERRORE — cioe'
+#   i tre esiti di `FanOutEsito`, che sono esiti di un giro **finito**. Serve il
+#   quarto valore, e va aggiunto **prima** che il BE provi a scriverlo:
+#   altrimenti la riga in testa fallisce sul CHECK, e il push si rompe
+#   all'avvio invece che alla fine.
+#
+# Dipendenze: nessuna. Consumo: BE-2, BE-3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260822-62-commesse-push-log-run-in-testa-mctit.yaml
+
+  - changeSet:
+      id: 20260822-62-commesse-push-log-run-in-testa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.commesse_push_log impara a registrare l'AVVIO di un giro e non solo il suo
+        esito: stato IN_ESECUZIONE ammesso, piu' correlation_id (D-7) e tx_id. Chiude il
+        difetto entity_id = 0, che non era un segnaposto ma un id che non esisteva ancora —
+        la riga nasceva a fine giro. ⭐ E un giro interrotto smette di sparire: la riga
+        IN_ESECUZIONE rimasta li' e' l'unica prova che qualcosa e' partito e non e' tornato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_push_log
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: commesse_push_log
+                    columnName: correlation_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1) Il filo del giro ──────────────────────────────────────
+              ALTER TABLE vendite.commesse_push_log
+                  ADD COLUMN correlation_id uuid;
+
+              -- ── 2) Il filo della transazione ─────────────────────────────
+              --   ⚠️ Il trigger lo attacca dbops.fn_run_automations_tx_id, che
+              --   gira in ci_apply: su un migrate manuale arriva col pgagent.
+              ALTER TABLE vendite.commesse_push_log
+                  ADD COLUMN tx_id uuid;
+
+              -- ── 3) Lo stato di un giro APERTO ────────────────────────────
+              --   I tre valori precedenti sono gli esiti di FanOutEsito, cioe'
+              --   di un giro finito. Un giro che comincia non ne ha nessuno.
+              ALTER TABLE vendite.commesse_push_log
+                  DROP CONSTRAINT IF EXISTS chk_commesse_push_log_stato;
+
+              ALTER TABLE vendite.commesse_push_log
+                  ADD CONSTRAINT chk_commesse_push_log_stato
+                  CHECK (stato::text IN ('IN_ESECUZIONE', 'COMPLETATO', 'PARZIALE', 'ERRORE'));
+
+              -- L'accesso e' «il giro con questo filo», per cucire gli eventi.
+              CREATE INDEX ix_commesse_push_log_correlation
+                  ON vendite.commesse_push_log (correlation_id)
+               WHERE correlation_id IS NOT NULL;
+
+              COMMENT ON COLUMN vendite.commesse_push_log.correlation_id IS
+                  'Identita'' del giro, condivisa con gli eventi e con i task_runs (D-7). '
+                  'Ha senso qui perche'' dal 2026-08-22 la riga nasce in TESTA al giro: '
+                  'prima veniva creata a fine corsa, ed e'' il motivo per cui PUSH_STARTED '
+                  'scriveva entity_id = 0 — non un segnaposto, un id che non esisteva '
+                  'ancora.';
+
+              COMMENT ON CONSTRAINT chk_commesse_push_log_stato ON vendite.commesse_push_log IS
+                  'I tre valori storici sono gli esiti di FanOutEsito, cioe'' di un giro '
+                  'FINITO. IN_ESECUZIONE e'' lo stato di un giro aperto, e serve perche'' la '
+                  'riga nasce in testa: da li'' l''evento d''avvio ha un entity_id vero, il '
+                  'correlation_id ha dove stare prima che il giro produca qualcosa, e ⭐ un '
+                  'giro INTERROTTO smette di sparire — la riga IN_ESECUZIONE rimasta e'' '
+                  'l''unica prova che qualcosa e'' partito e non e'' tornato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_commesse_push_log_correlation;
+              ALTER TABLE vendite.commesse_push_log DROP CONSTRAINT IF EXISTS chk_commesse_push_log_stato;
+              ALTER TABLE vendite.commesse_push_log
+                  ADD CONSTRAINT chk_commesse_push_log_stato
+                  CHECK (stato::text IN ('COMPLETATO', 'PARZIALE', 'ERRORE'));
+              ALTER TABLE vendite.commesse_push_log DROP COLUMN IF EXISTS tx_id;
+              ALTER TABLE vendite.commesse_push_log DROP COLUMN IF EXISTS correlation_id;

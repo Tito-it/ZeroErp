@@ -20,6 +20,7 @@ DECLARE
     v_sr_id        vendite.event_log.emittente_soggetto_ruolo_id%TYPE;
     v_auth_user_id vendite.event_log.auth_user_id%TYPE;
     v_ttl_days     integer;
+    v_ammessi      text;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -41,11 +42,21 @@ BEGIN
     -- =========================================================
 
     -- 1. Da che parte si guarda.
-    v_modo := CASE NEW.entity_type
-                  WHEN 'LOTTO'    THEN 'lotto'
-                  WHEN 'COMMESSA' THEN 'commessa'
-                  WHEN 'FATTURA'  THEN 'fattura'
-              END;
+    -- ⭐ Rev 2026-08-22 (L4). Qui c'era un CASE scritto a mano con i tre
+    --   tipi. Il modo vive adesso nella STESSA RIGA del tipo, in
+    --   config.tipi_entita: aggiungere un tipo giornalabile e' un seed,
+    --   non tre modifiche coordinate (CHECK + questo CASE + il modo in
+    --   fn_resolve_emittente_sr_id). Configurazione e trigger non
+    --   possono piu' dissentire, perche' sono lo stesso dato.
+    -- ⚠️ NULL qui significa DUE cose, e vanno entrambe rifiutate allo
+    --   stesso modo: il tipo non esiste a catalogo, oppure esiste ma NON
+    --   e' giornalabile (modo NULL, come TASK_RUN — puntabile da un
+    --   errore, senza un padrone da cui derivare il perimetro).
+    SELECT te.modo_risoluzione_emittente
+      INTO v_modo
+      FROM config.tipi_entita te
+     WHERE te.codice = NEW.entity_type
+       AND (te.obsoleto_dal IS NULL OR te.obsoleto_dal > CURRENT_DATE);
 
     -- ⛔ Rev 2026-08-22 (20260822-47). Questo ramo mancava, e la
     --   versione precedente si affidava al CHECK sulla colonna.
@@ -57,6 +68,17 @@ BEGIN
     --   Il CHECK resta come invariante della colonna; qui si
     --   presidia il PERCORSO.
     IF v_modo IS NULL THEN
+        -- ⭐ L'elenco dei tipi ammessi si legge dal CATALOGO, non si
+        --   scrive nel messaggio: cosi' la frase resta vera il giorno che
+        --   il catalogo cresce. E' il motivo per cui il messaggio 980 e'
+        --   passato da uno a due segnaposto nella stessa passata
+        --   (arita': due `%s`, due valori nel VARIADIC).
+        SELECT string_agg(te.codice, ', ' ORDER BY te.codice)
+          INTO v_ammessi
+          FROM config.tipi_entita te
+         WHERE te.modo_risoluzione_emittente IS NOT NULL
+           AND (te.obsoleto_dal IS NULL OR te.obsoleto_dal > CURRENT_DATE);
+
         PERFORM script.fn_log_and_raise_error(
             'vendite',
             'trgfn_event_log_deriva_scope',
@@ -68,7 +90,8 @@ BEGIN
                 'event_code',  NEW.event_code
             ),
             NULL::uuid,
-            NEW.entity_type
+            NEW.entity_type,
+            v_ammessi
         );
     END IF;
 

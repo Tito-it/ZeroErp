@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RUBINETTO DEI CODICI EVENTO — ma da questo lato e' solo una spia
+#   dbops.vw_eventi_non_dichiarati
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.8
+#
+# ── ⚠️ PERCHE' NON E' IL GEMELLO DI vw_codici_errore_da_dichiarare ──
+#   Il piano prevedeva «una vista gemella di `dbops.vw_codici_errore_da_dichiarare`».
+#   Scrivendola e' emerso che **non puo' esserlo**, e la ragione e' strutturale:
+#
+#     codici errore   li solleva il DATABASE, dentro funzioni PL/pgSQL.
+#                     Quella vista legge `pg_proc` e trova i letterali 'E_...'
+#                     nel sorgente: vede la SORGENTE, prima che accada niente
+#     codici evento   li scrive il BACKEND, in Python. In `pg_proc` non c'e'
+#                     niente da leggere
+#
+#   ⛔ Una vista che leggesse `pg_proc` cercando codici evento tornerebbe
+#   **vuota per sempre**, e sarebbe il peggior tipo di presidio: uno che dice
+#   sempre «tutto a posto» perche' guarda nel posto sbagliato.
+#
+# ── ⭐ QUINDI: IL CANCELLO STA DI LA', QUESTA E' UNA SPIA ───────────
+#   Il presidio vero e' **BE-9**, lato Python, dove i codici sono scritti: un
+#   test che confronta i letterali del sorgente con questo catalogo e fallisce
+#   la build. E' la stessa forma del cancello dei codici errore — cambia solo
+#   il lato da cui si guarda, perche' e' cambiato chi scrive.
+#
+#   Questa vista fa un lavoro **diverso e complementare**: dice quali codici
+#   sono FINITI NEL REGISTRO senza essere dichiarati. Cioe' la deriva **gia'
+#   avvenuta**, che nessun controllo sul sorgente puo' vedere — un codice
+#   costruito a runtime, o scritto da qualcosa che non e' il backend.
+#
+#   ⚠️ **Ed e' data-dependent, il che va detto**: su un ambiente senza traffico
+#   e' cieca. Non e' un cancello e non va usata come tale — e' una spia da
+#   guardare, non un semaforo che ferma.
+#
+# ── ⛔ E RIBADITO: NESSUNA FK ─────────────────────────────────────
+#   Non si chiude il rubinetto con un vincolo su `event_log.event_code`.
+#   Rifiutare una scrittura perche' il codice non e' dichiarato sarebbe **il
+#   diario che smette di scrivere per un problema di configurazione**, cioe' la
+#   D-12 violata. Il diario rifiuta solo cio' di cui non sa dire *di chi e'*.
+#
+# Dipendenze: config.eventi_dominio (20260822-54).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260822-60-create-vw-eventi-non-dichiarati-mctit.yaml
+
+  - changeSet:
+      id: 20260822-60-create-vw-eventi-non-dichiarati
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.vw_eventi_non_dichiarati: i codici evento finiti in vendite.event_log e
+        assenti da config.eventi_dominio. ⚠️ NON e' il gemello di
+        vw_codici_errore_da_dichiarare e non puo' esserlo: quella legge pg_proc perche' i
+        codici errore li solleva il database, mentre i codici evento li scrive Python — una
+        vista su pg_proc tornerebbe vuota per sempre. Il cancello vero e' BE-9, lato
+        Python; questa e' una SPIA sulla deriva gia' avvenuta, ed e' data-dependent.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: eventi_dominio
+            - tableExists:
+                schemaName: vendite
+                tableName: event_log
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_eventi_non_dichiarati
+              WITH (security_invoker = true) AS
+              SELECT e.event_code,
+                     count(*)                     AS righe,
+                     min(e.event_time)            AS primo,
+                     max(e.event_time)            AS ultimo,
+                     count(DISTINCT e.entity_type) AS tipi_entita_toccati
+                FROM vendite.event_log e
+               WHERE NOT EXISTS (
+                       SELECT 1
+                         FROM config.eventi_dominio ed
+                        WHERE ed.codice = e.event_code)
+               GROUP BY e.event_code;
+
+              COMMENT ON VIEW dbops.vw_eventi_non_dichiarati IS
+                  'I codici evento finiti in vendite.event_log e assenti da '
+                  'config.eventi_dominio. ⚠️ NON e'' il gemello di '
+                  'dbops.vw_codici_errore_da_dichiarare, e non puo'' esserlo: quella legge '
+                  'pg_proc perche'' i codici errore li solleva il DATABASE, mentre i codici '
+                  'evento li scrive PYTHON — una vista su pg_proc tornerebbe vuota per '
+                  'sempre, cioe'' direbbe sempre «tutto a posto» guardando nel posto '
+                  'sbagliato. Il cancello vero e'' lato backend (consegna BE-9), dove i '
+                  'codici sono scritti. ⭐ Questa fa un lavoro complementare: la deriva '
+                  'GIA'' AVVENUTA, che nessun controllo sul sorgente vede — un codice '
+                  'costruito a runtime, o scritto da qualcosa che non e'' il backend. '
+                  '⚠️ E'' data-dependent: su un ambiente senza traffico e'' cieca. E'' una '
+                  'spia da guardare, non un semaforo che ferma. ⛔ E il rubinetto NON si '
+                  'chiude con una FK su event_code: sarebbe il diario che smette di '
+                  'scrivere per un problema di configurazione, cioe'' la D-12 violata.';
+
+              -- security_invoker: la vista legge event_log, che ha la RLS
+              -- accesa. Chi la interroga vede il proprio perimetro — ed e'
+              -- giusto: un amministratore che indaga la deriva la vede tutta,
+              -- perche' e' super admin, non perche' la vista aggira la policy.
+              GRANT SELECT ON dbops.vw_eventi_non_dichiarati TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_eventi_non_dichiarati;

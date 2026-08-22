@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE CATALOGHI, SEMINATI — lotto L4
+#   config.tipi_entita + config.eventi_dominio
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.7 e §3.8
+#
+# ── ⚠️ SULL'ORDINE DELLE FASI, E PERCHE' NON SERVE NESSUNA ECCEZIONE
+#   `80_data` gira DOPO `00_schema`: la FK di `20260822-56` viene posata prima
+#   che questo file semini il catalogo. Non e' un problema, perche'
+#   `vendite.event_log` e' VUOTO e la FK valida su zero righe.
+#
+#   ⛔ La prima stesura del piano prevedeva un'eccezione — le righe di
+#   bootstrap dentro la DDL — «perche' su questo database event_log ha righe».
+#   E' stata tolta (rilievo di Tid, 2026-08-22): il registro e' vuoto, e se un
+#   giorno non lo fosse la risposta e' quella gia' presa una volta, cioe'
+#   azzerarlo (D-4). **Nessuna riga di questo registro vale un'eccezione a una
+#   regola di progetto.**
+#
+# ── SUL CONTENUTO DI `tipi_entita`: TRE GIORNALABILI E UNO NO ───────
+#   `TASK_RUN` entra col modo a NULL, ed e' la riga che spiega il disegno:
+#   non e' giornalabile (un giro non ha padrone, D-3), ma il BERSAGLIO di un
+#   errore puo' puntarci. E' il caso che dimostra perche' il giornale e' un
+#   **sottoinsieme proprio** del bersaglio, e perche' il catalogo non va
+#   tagliato sui soli tipi con un modo.
+#
+#   ⚠️ Non si seminano tipi speculativi (SOGGETTO, DDT_VENDITA, ...): entrano
+#   quando il cantiere del bersaglio ne avra' bisogno davvero. Un catalogo che
+#   nasce pieno di righe che nessuno usa smette di dire qualcosa.
+#   Riferimento: `brief-db-bersaglio-errore.md`, passo T-1c.
+#
+# ── SUL CONTENUTO DI `eventi_dominio` ──────────────────────────────
+#   Solo i codici che il giornale scrive DAVVERO dopo la D-3. ⛔ `PUSH_STARTED`
+#   e `PUSH_COMPLETED` NON ci sono: sono usciti da `event_log` e sono tornati
+#   sul registro del proprio giro, `vendite.commesse_push_log`.
+#
+# ⚠️ `nullValue: "NULL"` — il token letterale, non la cella vuota: una cella
+#   vuota genererebbe la stringa '', che i CHECK rifiutano.
+#
+# Dipendenze: config.tipi_entita (20260822-53), config.eventi_dominio (-54).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260822-55-seed-tipi-entita-e-eventi-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20260822-55-seed-tipi-entita-e-eventi-dominio
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror CSV dei due cataloghi del giornale: config.tipi_entita (tre tipi
+        giornalabili piu' TASK_RUN col modo a NULL, che e' puntabile da un errore ma non
+        scrivibile nel registro) e config.eventi_dominio (i codici che il giornale scrive
+        davvero dopo la D-3: PUSH_* sono usciti). runOnChange perche' e' un mirror: la sede
+        dei valori sono i CSV.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_entita
+            - tableExists:
+                schemaName: config
+                tableName: eventi_dominio
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/tipi_entita.csv
+            tableName: tipi_entita
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice,                     type: STRING }
+              - column: { name: etichetta_key,              type: STRING }
+              - column: { name: modo_risoluzione_emittente, type: STRING }
+              - column: { name: obsoleto_dal,               type: DATE }
+              - column: { name: note,                       type: STRING }
+
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/eventi_dominio.csv
+            tableName: eventi_dominio
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice,        type: STRING }
+              - column: { name: dominio,       type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: obsoleto_dal,  type: DATE }
+              - column: { name: note,          type: STRING }

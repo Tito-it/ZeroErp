@@ -148,9 +148,9 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_corr_jb AS SELECT uuidv7() AS correlation_id;
 
-INSERT INTO vendite.event_log (event_time, domain, entity_type, entity_id,
+INSERT INTO vendite.event_log (event_time, entity_type, entity_id,
                                event_code, severity, correlation_id, payload)
-SELECT now() - interval '50 min', 'PIPELINE', 'LOTTO', (SELECT lotto_id FROM tmp_lotto_jb),
+SELECT now() - interval '50 min', 'LOTTO', (SELECT lotto_id FROM tmp_lotto_jb),
        'PIPELINE_STARTED', 'INFO', (SELECT correlation_id FROM tmp_corr_jb),
        '{}'::jsonb;
 
@@ -167,9 +167,9 @@ SELECT is(
 --    ⛔ STESSO correlation_id della prima: e' il lock_batch_id, che nasce col
 --       lotto. Se l'ancora fosse quello, le due corse sarebbero la stessa cosa.
 -- ============================================================
-INSERT INTO vendite.event_log (event_time, domain, entity_type, entity_id,
+INSERT INTO vendite.event_log (event_time, entity_type, entity_id,
                                event_code, severity, correlation_id, payload)
-SELECT now() - interval '20 min', 'PIPELINE', 'LOTTO', (SELECT lotto_id FROM tmp_lotto_jb),
+SELECT now() - interval '20 min', 'LOTTO', (SELECT lotto_id FROM tmp_lotto_jb),
        'PIPELINE_STARTED', 'INFO', (SELECT correlation_id FROM tmp_corr_jb),
        '{}'::jsonb;
 
@@ -184,7 +184,7 @@ SELECT is(
 SELECT is(
   (SELECT count(DISTINCT e.correlation_id)::int || '|' || count(*)::int
      FROM vendite.event_log e
-    WHERE e.domain = 'PIPELINE' AND e.entity_type = 'LOTTO'
+    WHERE e.entity_type = 'LOTTO'
       AND e.entity_id = (SELECT lotto_id FROM tmp_lotto_jb)
       AND e.event_code = 'PIPELINE_STARTED'),
   '1|2',

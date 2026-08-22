@@ -1,0 +1,5 @@
+codice,etichetta_key,modo_risoluzione_emittente,obsoleto_dal,note
+LOTTO,config.tipi_entita.lotto,lotto,NULL,"Lotto di fatturazione. L'emittente e' su fatturazione_lotti.emittente_soggetto_ruolo_id (NOT NULL)."
+COMMESSA,config.tipi_entita.commessa,commessa,NULL,"Commessa. L'emittente e' su commesse.emittente_soggetto_ruolo_id."
+FATTURA,config.tipi_entita.fattura,fattura,NULL,"Fattura di vendita. L'emittente e' su fatture.emittente_soggetto_ruolo_id."
+TASK_RUN,config.tipi_entita.task_run,NULL,NULL,"⛔ NON giornalabile: un giro non ha un padrone, e per questo la D-3 l'ha espulso da event_log (i suoi eventi sono tornati su commesse_push_log). Resta a catalogo perche' il BERSAGLIO di un errore puo' puntarci: e' il caso che dimostra perche' il giornale e' un sottoinsieme proprio del bersaglio."

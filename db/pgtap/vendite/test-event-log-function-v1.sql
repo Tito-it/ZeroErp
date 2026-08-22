@@ -6,6 +6,11 @@
 -- ⚠️ ADEGUATO IL 2026-08-22 (L1 del Passo 0 osservabilita').
 --   Tre cose sono cambiate sotto questo test, e ognuna lo avrebbe reso rosso:
 --
+--   ⚠️ E dal lotto L4 (stesso giorno) la firma e' scesa ancora, a SEI: via
+--   anche `p_domain`, perche' il dominio e' una proprieta' del CODICE evento
+--   (config.eventi_dominio) e non un dato che il chiamante possa scegliere.
+--   La colonna `domain` non esiste piu'.
+--
 --   1. `fn_log_event` e' passata da NOVE parametri a SETTE: `p_actor` e
 --      `p_source` non esistono piu' — riempivano due colonne costanti
 --      (`service:django` e `django` su 386 righe su 386), mentre «chi» era gia'
@@ -26,7 +31,7 @@
 --
 -- Indice test (1..8):
 -- 1) tabella event_log presente
--- 2) funzione fn_log_event presente (firma a sette parametri)
+-- 2) funzione fn_log_event presente (firma a SEI parametri)
 -- 3) insert base via fn_log_event -> id valorizzato
 -- 4) evento base persistito correttamente
 -- 5) severity default = INFO quando NULL
@@ -57,17 +62,18 @@ SELECT ok(
     'tabella event_log presente'
   );
 
--- ⚠️ Non basta «la funzione esiste»: dal 2026-08-22 esiste con SETTE parametri,
---   e la firma a nove e' stata DROPpata apposta (due firme con DEFAULT rendono
---   ambigua ogni chiamata). Qui si asserisce l'identita' esatta.
+-- ⚠️ Non basta «la funzione esiste»: dal 2026-08-22 esiste con SEI parametri, e
+--   le due firme precedenti (nove, poi sette) sono state DROPpate apposta —
+--   due firme con DEFAULT rendono ambigua ogni chiamata. Qui si asserisce
+--   l'identita' esatta, che e' l'unico modo di accorgersene.
 SELECT is(
     (SELECT pg_get_function_identity_arguments(p.oid)
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'vendite' AND p.proname = 'fn_log_event'),
-    'p_domain text, p_entity_type text, p_entity_id bigint, p_event_code text, '
+    'p_entity_type text, p_entity_id bigint, p_event_code text, '
     || 'p_severity text, p_correlation_id uuid, p_payload jsonb',
-    'funzione fn_log_event presente, e con la firma a sette parametri'
+    'funzione fn_log_event presente, e con la firma a SEI parametri'
   );
 
 -- ============================================================
@@ -86,7 +92,6 @@ SELECT
 
 CREATE TEMP TABLE tmp_event_log_base AS
 SELECT vendite.fn_log_event(
-    p_domain         => 'PIPELINE',
     p_entity_type    => 'LOTTO',
     p_entity_id      => r.lotto_id,
     p_event_code     => 'STEP_STARTED',
@@ -114,7 +119,6 @@ SELECT CASE
           SELECT 1
           FROM vendite.event_log e
           WHERE e.id = (SELECT event_id FROM tmp_event_log_base)
-            AND e.domain      = 'PIPELINE'
             AND e.entity_type = 'LOTTO'
             AND e.entity_id   = (SELECT lotto_id FROM tmp_event_log_rif)
             AND e.event_code  = 'STEP_STARTED'
@@ -127,10 +131,13 @@ END;
 
 CREATE TEMP TABLE tmp_event_log_defaults AS
 SELECT vendite.fn_log_event(
-    p_domain         => 'COMMESSE',
     p_entity_type    => 'COMMESSA',
     p_entity_id      => r.commessa_id,
-    p_event_code     => 'PUSH_COMPLETED',
+    -- ⚠️ Un codice che il giornale scrive DAVVERO: PUSH_COMPLETED e' uscito
+    --   da event_log con la D-3 (un giro non ha padrone) ed e' tornato su
+    --   commesse_push_log. Usarlo qui sarebbe collaudare con un codice che
+    --   il catalogo non conosce piu'.
+    p_event_code     => 'EMITTIBILITA_FALLITA',
     p_severity       => NULL,
     p_correlation_id => NULL::uuid,
     p_payload        => NULL
@@ -168,8 +175,8 @@ SELECT CASE
       THEN skip('fixture non costruibile', 1)
     ELSE throws_ok(
         format(
-            'SELECT vendite.fn_log_event(%L, %L, %s, %L, %L, NULL::uuid, %L::jsonb)',
-            'PIPELINE', 'LOTTO', (SELECT lotto_id FROM tmp_event_log_rif),
+            'SELECT vendite.fn_log_event(%L, %s, %L, %L, NULL::uuid, %L::jsonb)',
+            'LOTTO', (SELECT lotto_id FROM tmp_event_log_rif),
             'STEP_FAILED', 'KO', '{}'
         ),
         '23514',
