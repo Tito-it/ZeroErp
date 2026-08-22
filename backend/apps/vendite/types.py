@@ -98,30 +98,31 @@ class LottoSegnalazioniSummary(TypedDict):
 class LottoSegnalazioneRow(TypedDict):
     # Una segnalazione del lotto, nella forma in cui si LEGGE — i conteggi del
     # riepilogo dicono quante sono, questa dice cosa sono.
+    # Sorgente: `vendite.fn_list_lotto_segnalazioni` (L2), che unisce le due
+    # origini e compone gia' documento e importo.
     #
-    # ⚠️ DUE ORIGINI in un elenco solo, e non e' una comodita': i conteggi che
-    # il riepilogo espone sommano gia' `fatture_log` e `fatturazione_lotti_log`
-    # (`fn_get_lotto_segnalazioni_summary`). Un elenco che ne mostrasse una sola
-    # direbbe un numero diverso dal banner sopra — ed e' il tipo di divergenza
-    # che si scopre solo quando qualcuno la conta a mano.
-    # Chiave di riga per il rendering: `<origine>:<id>`. ⚠️ Non si usa
-    # `data_ora` — non e' univoco (sei righe con lo stesso microsecondo,
-    # misurato) — ne' il solo `id`, che le due tabelle generano da sequenze
-    # indipendenti.
+    # ⚠️ I nomi sono quelli che il seed della lista 47 dichiara come
+    # `campo_sorgente`: se divergono, la colonna si spunta a catalogo e resta
+    # vuota a video.
+    #
+    # `riga_key`: chiave di riga per il rendering. Serve perche' `data_ora` NON
+    # e' univoco — misurato, sei segnalazioni con lo stesso microsecondo — e il
+    # solo `id` nemmeno, dato che le due origini hanno sequenze indipendenti.
     riga_key: str
-    origine: str          # 'FATTURA' | 'LOTTO'
-    livello: str          # 'C' | 'W' | 'I'
-    messaggio: str | None
+    origine: str              # 'FATTURA' | 'LOTTO'
     data_ora: str | None
-    codice: str | None    # dal `meta`, quando la segnalazione lo porta
-    fase: str | None      # solo origine LOTTO
-    # Le tre colonne che rendono la riga LEGGIBILE da un operatore. Un id
-    # interno non e' visibile da nessuna parte nell'interfaccia: senza nome e
-    # importo, «documento 835» non identifica niente (rilievo di Tid,
-    # 2026-08-21). NULL sulle segnalazioni di LOTTO, che non hanno documento.
+    livello: str              # 'C' | 'W' | 'I'
+    messaggio: str | None
+    error_code: str | None
+    fase: str | None          # solo origine LOTTO
     fattura_id: int | None
-    ragione_sociale_completa: str | None
-    totale_doc: str | None
+    documento_display: str | None   # NULL sulle righe LOTTO
+    importo: str | None             # NULL sulle righe LOTTO
+    disabilitato: bool        # ritirata: e' il filtro, non la colonna
+    # ⭐ La segnalazione appartiene all'ULTIMA corsa di pipeline (D-6): un job
+    # contiene piu' step e uno step piu' task, e senza questo flag una
+    # segnalazione di tre giri fa si legge come se fosse di adesso.
+    job_corrente: bool
 
 
 class LottoTaskRunRow(TypedDict):

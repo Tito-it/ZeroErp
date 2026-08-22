@@ -5,7 +5,32 @@
 > [consuntivo in work-done](../work-done/consuntivo-personalizzazioni-liste-def.md),
 > con i numeri misurati e le convenzioni da rispettare per ogni lista nuova.
 > **Piano madre**: [sviluppo-personalizzazioni-liste.md](../work-done/sviluppo-personalizzazioni-liste.md) (Blocchi A..F).
-> **Ultima verifica contro il sistema vivo**: 2026-08-09.
+> **Ultima verifica contro il sistema vivo**: 2026-08-09 (DEF-3/DEF-4);
+> revisione del perimetro 2026-08-22.
+
+<!-- markdownlint-disable-next-line MD028 -->
+> ⭐ **Dove è finito il lavoro sulle liste (2026-08-22).** Il roll-out non passa
+> più da qui. Il binario operativo è **§8-bis del
+> [piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md)**, che ha
+> assorbito per intero quello che questo documento chiamava DEF-8: liste
+> convertite a `<ListaConfigurabile>` **31/35** file (i 4 residui fermi per la
+> «decisione 4», non per debito), **46/46** codici nel presidio, binario
+> dichiarato chiuso il 2026-08-03. Da lì in avanti la regola non è più un
+> arretrato da consumare: *quando si tocca una lista per altri motivi, la si fa
+> passare dal building block*. Chi cerca lo stato delle liste guarda quel piano,
+> non questo file.
+>
+> Anche **DEF-10** (colonne composte FE-only) si è chiuso di là: `campo_sorgente`
+> vuoto a catalogo + slot `cell-{codice}` nel caller è oggi una **regola scritta
+> nel generatore di seed**, non un'ipotesi (piano PrimeVue §8-bis, riga della
+> tabella «cosa il generatore non deve dedurre», e i lotti del 2026-08-02).
+> È il precedente che chiude anche DEF-7 — vedi sotto.
+>
+> **Quello che resta qui è solo ciò che il piano PrimeVue non tocca**: viste
+> nominate (DEF-3), condivisione (DEF-4) e la domanda sulle dashboard
+> configurabili. Verificato: in tutto il piano PrimeVue non compare una sola
+> occorrenza di *vista nominata*, *condivisione*, `lista_preferenza_utente` o
+> `tipo_colonna='calcolata'`. Non sono «già fatte altrove»: sono **non fatte**.
 
 <!-- markdownlint-disable-next-line MD028 -->
 > ℹ️ **Perché questo documento si è accorciato.** Fino al 2026-08-09 conteneva
@@ -13,7 +38,7 @@
 > ~7 residue». Le liste a catalogo erano già **43**, e tutte e sette le
 > «residue» erano dentro da tempo. Un documento che descrive come da fare cose
 > fatte non è incompleto: è **fuorviante**, perché chi lo apre crede di avere
-> davanti un lavoro che non esiste. Le tre voci qui sotto sono invece vere, e
+> davanti un lavoro che non esiste. Le voci qui sotto sono invece vere, e
 > verificate sul database.
 
 ---
@@ -24,13 +49,13 @@
 | --- | --- | --- | --- | --- | --- |
 | DEF-3 | Viste nominate multiple per utente | 🔴 Todo | L | Bassa | migration `lista_preferenza_utente` |
 | DEF-4 | Condivisione viste tra utenti | 🔴 Todo | M | Bassa | DEF-3 (hard) |
-| DEF-7 | Colonne calcolate (`tipo_colonna='calcolata'`) | 🔴 Todo | L | Futura | contratto formula stabile |
+| DEF-7 | Colonne calcolate (`tipo_colonna='calcolata'`) | ⚪ **Chiusa — non necessaria** (2026-08-22) | — | — | — |
 | — | Le dashboard configurabili seguono questa roadmap? | ❓ Da decidere | — | — | vedi ultima sezione |
 
 **Verificato il 2026-08-09**: `ui.lista_preferenza_utente` ha 7 righe con una sola
 preferenza per coppia utente/lista (DEF-3 non c'è); i `tipo_colonna` in uso sono
 `informazione` 388, `identificatore` 43, `azione` 26 — **nessuna `calcolata`**
-(DEF-7 non c'è).
+(DEF-7 non c'è, e da oggi non ci deve essere).
 
 ---
 
@@ -101,45 +126,43 @@ adottarla (copia personale modificabile).
 
 ---
 
-## DEF-7 — Colonne calcolate lato client (e la fusione con DEF-10)
+## DEF-7 — Colonne calcolate lato client ⚪ CHIUSA — non necessaria (2026-08-22)
 
-**Stato:** 🔴 Todo · **Sforzo:** L
+**Cosa chiedeva.** Informazioni che non esistono come colonna nella view SQL ma
+si derivano (es. «giorni alla scadenza» = `CURRENT_DATE - data_scadenza`),
+dichiarate a **dato** con `tipo_colonna='calcolata'` + `formula_client` e un
+registry di funzioni lato Vue.
 
-**Cosa serve**
+**Perché si chiude.** Il gemello DEF-10 («colonne composte FE-only») si è
+risolto da solo, e nel frattempo il pattern che lo ha risolto è diventato la
+prassi scritta: `campo_sorgente` vuoto a catalogo + slot `cell-{codice}` nel
+caller è oggi una **regola del generatore di seed**
+([piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md) §8-bis) ed è
+in uso su più liste. Una colonna «giorni alla scadenza» si scrive già oggi così,
+senza `formula_client` e senza registry.
 
-Informazioni che non esistono come colonna nella view SQL ma si derivano (es.
-«giorni alla scadenza» = `CURRENT_DATE - data_scadenza`). Proposta:
-`tipo_colonna='calcolata'` + `formula_client VARCHAR(80)` con chiave di funzione
-registrata in un registry Vue.
+Restavano due sole cose che `tipo_colonna='calcolata'` avrebbe aggiunto rispetto
+al pattern composte, e nessuna delle due regge il proprio costo:
 
-**Decisioni operative aperte**
+1. **Dichiarare la formula a dato invece che a codice.** Vantaggio nullo
+   nell'uso reale — la formula la scrive comunque uno sviluppatore, e a codice
+   è tipizzata, testabile e versionata con il caller. A dato diventa una
+   micro-lingua da progettare, validare e mantenere.
+2. **Renderla esportabile.** L'export è lato BE: la formula andrebbe valutata
+   **anche** in Python, cioè scritta due volte. Due verità sullo stesso valore è
+   esattamente il difetto che il progetto evita per regola
+   ([[feedback_duplicazione_nasconde_il_bug]]). L'alternativa coerente — non
+   esportabili, come `tipo_colonna='azione'` — è già ciò che fa il pattern
+   composte, gratis.
 
-1. **Contratto della formula**: registry centralizzato
-   (`{ 'giorni_scadenza': (row) => … }`), per dominio o globale?
-2. **Esportabilità**: se le calcolate finiscono nell'export, la formula andrebbe
-   valutata anche lato BE (replicarla costa e crea due verità). Alternativa:
-   non esportabili, come `tipo_colonna='azione'`.
-3. **Ordinabilità**: ordinare un valore calcolato lato FE richiede calcolarlo su
-   tutte le pagine — non regge con LIMIT/OFFSET. Ipotesi: `ordinabile=false` per
-   default.
+A queste si aggiungeva un vincolo mai risolto: **ordinare** un valore calcolato
+lato FE richiederebbe calcolarlo su tutte le pagine, incompatibile con
+LIMIT/OFFSET.
 
-### ⚠️ La domanda vera è se serve ancora
-
-DEF-10 («colonne composte FE-only») era il gemello di questa voce e **si è
-risolto da solo**: `campo_sorgente` vuoto a catalogo + slot `cell-{codice}` nel
-caller è oggi un pattern in uso in almeno quattro liste. Quel pattern **compone**
-campi esistenti; DEF-7 vuole **calcolare** valori nuovi.
-
-Ma implementativamente finiscono nello stesso posto — lo slot del caller — e una
-colonna «giorni alla scadenza» si può già fare oggi, senza `formula_client` e
-senza registry, esattamente come si fa `sosp_riatt`.
-
-Quindi prima di progettare DEF-7 va risposto: **che cosa aggiunge un
-`tipo_colonna='calcolata'` rispetto a ciò che il pattern composte già consente?**
-Le risposte plausibili sono due — poter dichiarare la formula a **dato** invece
-che a codice, e renderla esportabile lato BE — ed entrambe hanno un costo alto
-(punto 2 qui sopra). Se nessuna delle due serve davvero, DEF-7 **si chiude come
-non necessaria**, non come «da fare un giorno».
+**Conseguenza operativa.** Nessuna riga con `tipo_colonna='calcolata'` va
+seedata. Una colonna derivata si fa con lo slot del caller; se deve essere
+**ordinabile o esportabile**, non è una colonna calcolata: è una colonna che
+manca nella `vista_sql` e va chiesta al team DB.
 
 ---
 

@@ -334,8 +334,15 @@ def fn_list_lotto_fatture(
     sort_dir: str = "asc",
     page: int = 1,
     page_size: int = 50,
+    max_rows: int | None = None,
 ) -> dict[str, object]:
-    offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotto_fatture")
+    # ⭐ L'helper condiviso, non un `if` scritto qui: l'export SALTA la
+    # paginazione invece di violarne il tetto, ed e' la stessa regola di tutte
+    # le altre liste esportabili del modulo.
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_list_lotto_fatture",
+    )
     _validate_enum(
         sort_by,
         allowed=_SORT_BY_VALIDI,
@@ -360,8 +367,9 @@ def fn_list_lotto_fatture(
         auth_user_id=auth_user_id,
         sort_by=sort_by,
         sort_dir=sort_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
+        max_rows=max_rows,
     )
     return _build_list_response(results, total_count, page, page_size)
 

@@ -16,7 +16,7 @@ Indice test eseguiti:
 14) VenditePipelineApiTests.test_run_lotto_pipeline_converts_zero_optional_ids_to_none
 15) VenditePipelineApiTests.test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok
 16) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_ok
-17) VenditePipelineApiTests.test_get_lotto_segnalazioni_livello_dal_query_param
+17) VenditePipelineApiTests.test_get_lotto_segnalazioni_rows_filtri_dal_query_param
 18) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_v1_requires_jwt
 19) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_rejects_invalid_lotto_id
 20) VenditePipelineApiTests.test_get_lotto_task_runs_ok
@@ -368,19 +368,29 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         self.assertEqual(data["lotto_id"], 80)
         self.assertTrue(data["blocks_next_step"])
         self.assertEqual(data["critical_count"], 1)
-        # ⭐ Senza `livello` la scheda si apre sulle CRITICHE: sono quelle che
-        # fermano il lotto, cioe' la domanda con cui ci si arriva.
-        mocked_summary.assert_called_once_with(lotto_id=80, livello="C")
+        # Il riepilogo CONTA e basta: le righe hanno un endpoint suo
+        # (`/segnalazioni/rows/`), cosi' il drawer non si porta dietro l'elenco
+        # a ogni apertura per mostrarne un numero.
+        mocked_summary.assert_called_once_with(lotto_id=80)
 
-    # Scopo: il livello arriva dal query param, normalizzato (maiuscolo, senza
-    #        spazi): il client puo' scrivere `?livello=w` e non deve saperlo.
+    # Scopo: ⭐ L'ELENCO delle segnalazioni sta su una rotta SUA, e i filtri
+    #        arrivano dal query string. Presidia anche i due default che non
+    #        sono neutri: `solo_attive=True` (una segnalazione ritirata non si
+    #        mostra) e `solo_job_corrente=False` (si vede tutto lo storico
+    #        finche' qualcuno non chiede l'ultima corsa).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.fn_get_lotto_segnalazioni_summary")
-    def test_get_lotto_segnalazioni_livello_dal_query_param(self, mocked_summary, _mock_auth):
-        mocked_summary.return_value = {"lotto_id": 80, "segnalazioni": []}
-        response = self.client.get("/api/v1/vendite/lotti/80/segnalazioni/?livello=w")
+    @patch("apps.vendite.api.views.fn_list_lotto_segnalazioni")
+    def test_get_lotto_segnalazioni_rows_filtri_dal_query_param(self, mocked_rows, _mock_auth):
+        mocked_rows.return_value = {"lotto_id": 80, "results": []}
+        response = self.client.get(
+            "/api/v1/vendite/lotti/80/segnalazioni/rows/?livello=W&origine=LOTTO&page=2&page_size=10"
+        )
         self.assertEqual(response.status_code, 200)
-        mocked_summary.assert_called_once_with(lotto_id=80, livello="W")
+        mocked_rows.assert_called_once_with(
+            lotto_id=80, livello="W", origine="LOTTO",
+            solo_attive=True, solo_job_corrente=False,
+            page=2, page_size=10, order_by=None, order_dir="desc",
+        )
 
     # Scopo: Verifica il caso `test_get_lotto_segnalazioni_summary_v1_requires_jwt`.
     def test_get_lotto_segnalazioni_summary_v1_requires_jwt(self):

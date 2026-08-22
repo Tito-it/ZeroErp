@@ -69,6 +69,11 @@ logger = logging.getLogger(__name__)
 # ⚠️ Il NUCLEO ordina sempre (regola delle liste standard): numero, data,
 # identificativo fiscale e stati. Prima ne erano ordinabili 3 su 11, cioe' la
 # lista sarebbe nata con cinque colonne di nucleo rotte.
+# Il tetto delle righe esportabili dei documenti di un lotto. Il tetto di
+# PAGINA (`LIST_MAX_LIMIT`, 200) resta dov'e': sono due limiti diversi per due
+# usi diversi, e confonderli significa o una pagina enorme o un file troncato.
+_LOTTO_FATTURE_EXPORT_MAX_ROWS = 10_000
+
 LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "fattura_id": "fllf.fattura_id",
     "numero": "f.numero",
@@ -2154,8 +2159,15 @@ class VenditeRepository:
         sort_dir: str,
         limit: int,
         offset: int,
+        max_rows: int | None = None,
     ) -> tuple[list[LottoFattureRow], int]:
-        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
+        # ⚠️ DUE TETTI, e la differenza e' voluta: la PAGINA si ferma a
+        # `LIST_MAX_LIMIT` (200), l'EXPORT salta la paginazione e arriva al tetto
+        # dell'esportazione. Senza `max_rows` un file di 3.000 righe uscirebbe
+        # troncato a 200 senza dirlo — e un export troncato in silenzio somiglia
+        # in tutto a un export completo.
+        tetto = _LOTTO_FATTURE_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
+        safe_limit = max(1, min(int(max_rows or limit), tetto))
         safe_offset = max(0, int(offset))
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.

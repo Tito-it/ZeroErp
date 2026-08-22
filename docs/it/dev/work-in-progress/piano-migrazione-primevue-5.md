@@ -9,23 +9,23 @@
 > ✅ **Il binario §8-bis è arrivato in fondo: Gruppo A 30/34 il 2026-08-03**, e
 > i **4 file rimasti sono fermi per decisione** (i cassetti senza endpoint
 > paginato, §8-bis decisione 4), non per debito.
-> ⭐ **Dal 2026-08-21 il bersaglio è 30/35**: `LottoDrawer.vue` è stato
+> ⭐ **Dal 2026-08-22 il Gruppo A è 31/35**: `LottoDrawer.vue` è stato
 > riclassificato dal Gruppo B (i suoi tre tab sono tre liste, non tre
-> dettagli di un master) e il lavoro DB che lo precede sta in
+> dettagli di un master) e **convertito**. Il lavoro DB che lo precedeva sta in
 > [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
 > Cronologia: `vendite.lotti` e
 > il 1° lotto il 31-07; dal 2° al 5° l'01-08; il 6° fra l'1 e il 2 agosto
 > (`storico.audit_log` compresa); il **7°** (2 code + approvazioni prezzo +
 > `VersioneDrawer`) e l'**8°** (drawer commessa + le 5 liste delle 3 dashboard)
-> il **03-08**. Registro del presidio a **43/43** — cioè le liste *montate
-> dal frontend*. ⚠️ Nel seed le definizioni sono **44**: la 44 è
+> il **03-08**; il **9°** (`LottoDrawer`, 3 liste su 3 tab) il **22-08**.
+> Registro del presidio a **46/46** — cioè le liste *montate dal frontend*. ⚠️ Nel seed le definizioni sono **44**: la 44 è
 > `vendite.fondi_fattura_da_decidere` (seedata il 2026-08-15 da un altro
 > cantiere, nessun consumatore FE, per questo non è nel registro `_LISTE`;
 > nella whitelist del generatore è entrata il 2026-08-22).
 > ⚠️ **Qui si contano FILE, il presidio conta CODICI lista**: sono due unità
 > di misura diverse e divergono già oggi (le 3 dashboard valgono 5 codici).
-> `LottoDrawer` è 1 file = 3 codici, quindi alla sua conversione il piano
-> passa a 31/35 e il presidio a 46.
+> `LottoDrawer` è 1 file = 3 codici, quindi con la sua conversione il piano
+> è passato a **31/35** e il registro `_LISTE` a **46**.
 >
 > Il rapporto che il piano voleva invertire — 14 liste sullo standard contro 71
 > con `DataTable` grezza (§8-bis, «il numero scomodo») — **è invertito**: 40
@@ -1066,18 +1066,46 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✅ 03-08 | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
 | ✅ 01-08 | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
 | ✅ 03-08 | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
-| ⏳ 21-08 | `vendite/components/LottoDrawer.vue` — **3 liste su 3 tab**, dal Gruppo B | 11 | no |
+| ✅ 22-08 | `vendite/components/LottoDrawer.vue` — **3 liste su 3 tab**, dal Gruppo B | 11 | no |
 
-> ⏳ **`LottoDrawer` (2026-08-21) — riclassificato, non ancora convertibile.**
-> È il **35°** file del gruppo: i tre tab diventano tre liste
-> (`vendite.lotto_fatture`, `vendite.lotto_task_runs`,
-> `vendite.lotto_segnalazioni`), e il totale passa da 34 a 35.
-> ⛔ **Non è pronto, e per tre ragioni diverse**: il tab documenti ha
-> l'endpoint paginato ma una whitelist di **3 voci** (5 nuclei rotti); quello
-> dei task **non è paginato** e ha due sorgenti divergenti (una funzione DB
-> mai chiamata che ordina al contrario del BE); quello delle segnalazioni
-> **non ha righe** — esistono solo sei contatori.
-> Piano DB, passata BE richiesta e ordine dei lotti:
+> ✅ **`LottoDrawer` — CONVERTITO il 2026-08-22.** È il **35°** file del
+> gruppo: i tre tab sono ora tre liste configurabili
+> (`vendite.lotto_fatture` 45, `vendite.lotto_task_runs` 46,
+> `vendite.lotto_segnalazioni` 47), con paginazione, ordinamento server-side e
+> colonne personalizzabili. Il totale passa da 34 a 35 file e il registro del
+> presidio da 43 a **46 codici**.
+>
+> ⛔ **Le tre ragioni per cui non era convertibile sono state tolte una per
+> una**, ed è il motivo per cui questo file è rimasto fermo un giorno invece di
+> essere convertito male:
+> * il tab **documenti** aveva l'endpoint paginato ma una whitelist di **3
+>   voci** su 11 — cinque colonne di nucleo non ordinavano. Ora sono 11, e la
+>   chiave `nominativo` è diventata `ragione_sociale_completa` perché la
+>   freccia ordina solo se la chiave coincide col campo del payload;
+> * il tab **task** non era paginato e aveva **due sorgenti divergenti** (una
+>   funzione DB mai chiamata che ordinava al contrario del backend). Ora la
+>   sorgente è la funzione, e la `SELECT` scritta a mano non c'è più;
+> * il tab **segnalazioni** non aveva righe — solo sei contatori. Ora ha
+>   `vendite.fn_list_lotto_segnalazioni`, che unisce le due origini.
+>
+> ⭐ **Lo stato paginato è un composable, non tre copie**:
+> [`useListaDrawerPaginata`](../../../../frontend/src/core/composables/useListaDrawerPaginata.js)
+> — tre liste nello stesso file volevano dire tre `onPage`/`onSort`
+> identici, cioè tre occasioni di dimenticare l'azzeramento della pagina al
+> cambio ordinamento. Quarto consumatore naturale: `CommessaGestioneDrawer`,
+> che ha la stessa forma scritta a mano.
+>
+> ✅ **Export CSV/XLSX su tutte e tre** (2026-08-22): tre endpoint
+> `/lotti/<id>/{fatture,task-runs,segnalazioni}/export/` sul BB condiviso
+> (`parse_export_format` + `build_export_response`), colonne dal catalogo.
+> ⛔ **Nessun lavoro DB**: il seed marca già `esportabile=t` su tutte le
+> colonne dati (solo `azioni` è `f`, ed è giusto).
+> ⚠️ **`max_rows` e non `page_size`**: l'export SALTA la paginazione invece di
+> violarne il tetto — due limiti per due usi diversi, e confonderli significa o
+> una pagina enorme o un file troncato in silenzio. Il tetto vero
+> (`EXPORT_MAX_ROWS`) lo presidia il BB, che confronta il `count` esatto.
+>
+> Piano DB, passata BE e ordine dei lotti:
 > [brief-db-liste-drawer-lotto.md](brief-db-liste-drawer-lotto.md).
 
 ##### `vendite.lotti` — ✅ CONVERTITA il 2026-07-31, validata in-app da Tid
@@ -2322,7 +2350,18 @@ parametri. Baseline `vendite`: 36 rossi, 36 noti, **nessuna regressione**.
 
 #### 📌 Cosa resta aperto sul binario delle liste — ✅ NIENTE (2026-08-03)
 
-**30/34 convertite · 43 codici seedati · presidio 43/43 · 0 KO.**
+**31/35 convertite · 47 codici seedati · presidio 46/46 · 1 KO.**
+
+⚠️ Il KO è `vendite.fondi_fattura_da_decidere`, ed è **preesistente**: era
+l'unica lista seedata a non essere registrata nella whitelist del generatore,
+quindi veniva *saltata* — cioè dichiarata a posto senza essere guardata.
+Mappata il 2026-08-22 registrando le tre del drawer lotto, e appena mappata ha
+detto la verità: il nucleo «stato» non ordina (`stato_atto` è a catalogo con
+`ordinabile=f`). Serve una riga di seed dal team DB più la voce nella whitelist
+del repository.
+📌 47 codici seedati contro 46 nel presidio: la 44
+(`vendite.fondi_fattura_da_decidere`) non ha un consumatore frontend, quindi
+non è nel registro `_LISTE` — che conta le liste *montate*.
 
 I 4 file non convertiti sono i cassetti fermi per **decisione 4**, non debito:
 caricano tutto in una volta e servirebbero quattro endpoint paginati nuovi
@@ -2340,6 +2379,16 @@ prima di toccare la parte visibile.
 ➡️ **Il binario è chiuso.** Da qui in avanti la regola resta quella di §8-bis:
 quando si tocca una lista per altri motivi, la si fa passare dal building
 block. Non c'è più un arretrato da consumare.
+
+📎 **Cosa questo binario NON copre.** Il roll-out è il *contenitore*; le
+funzionalità di personalizzazione ancora aperte stanno altrove e nessuna passa
+di qui: viste nominate per utente (DEF-3) e loro condivisione (DEF-4), più la
+domanda se le **dashboard configurabili** debbano seguire la stessa roadmap.
+Vivono in
+[sviluppo-personalizzazioni-liste_def.md](sviluppo-personalizzazioni-liste_def.md),
+che dal 2026-08-22 contiene **solo** quelle (DEF-8 e DEF-10 li ha assorbiti
+questo piano, DEF-7 è chiusa come non necessaria proprio in forza della regola
+sulle calcolate FE scritta qui sopra).
 
 ---
 
