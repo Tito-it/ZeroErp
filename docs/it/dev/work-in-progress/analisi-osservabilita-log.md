@@ -20,8 +20,9 @@
 >
 > ⭐ **Il brief del Passo 0 è scritto** (2026-08-22):
 > [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
-> — **16 decisioni chiuse, zero domande aperte**, 11 changeSet in 3 lotti,
-> 4 pgTAP, 8 consegne BE. Niente applicato.
+> — **16 decisioni chiuse, zero domande aperte**. ✅ **L1 APPLICATO E VERDE il
+> 2026-08-22**: 8 changeSet, 3 append a CSV, 33 asserzioni pgTAP con zero skip.
+> Restano L2 (l'identità del giro), L3 (la vista) e le 8 consegne BE.
 >
 > ⭐ Il secondo giro di domande ha **rovesciato due decisioni**: un diario non
 > si blocca mai per lo stato di un padre, quindi la colonna di perimetro è
