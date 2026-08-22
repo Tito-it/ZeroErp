@@ -280,7 +280,8 @@
       "listini": "Price Lists",
       "contratti": "Contracts",
       "promo-articoli": "Promo articles",
-      "approvazioni-prezzo": "Price approvals"
+      "approvazioni-prezzo": "Price approvals",
+      "tool-fatturazione": "Invoicing tools"
     },
     "pratiche": {
       "home": "Cases Home",
@@ -3371,6 +3372,38 @@
       "col_messaggio": "Message",
       "col_origine": "Source",
       "col_ritirata": "Withdrawn"
+    },
+    "fondi_fattura_da_decidere": {
+      "filtro_motivo": "Reason",
+      "motivo_tutti": "All reasons",
+      "nessuna_riga": "No fund is waiting for a decision.",
+      "motivo": {
+        "PROPOSTA_SENZA_ATTO": "Fund available, not issued",
+        "NON_PIU_CAPIENTE": "Invoice no longer covers it",
+        "IMPORTO_NON_CORRISPONDENTE": "Amount does not match",
+        "UTILITY_NON_ATTRIBUIBILE": "Missing utility"
+      },
+      "col_motivo": "Reason",
+      "col_numero": "Number",
+      "col_data": "Date",
+      "col_totale_a_pagare": "Total due",
+      "col_importo_proposto": "Proposed fund",
+      "col_capienza_attuale": "Current headroom",
+      "col_importo_atto": "Act amount",
+      "col_stato_atto": "Act status",
+      "col_anno": "Year",
+      "col_serie": "Series",
+      "col_origine": "Act origin",
+      "col_atto_motivo": "Act reason",
+      "col_atto_data": "Act date",
+      "col_tipo_fondo_codice_interno": "Fund type",
+      "col_fattura_sorgente_id": "Invoice id",
+      "col_fondo_source_id": "Act id"
+    },
+    "tool_fatturazione": {
+      "page_title": "Invoicing tools",
+      "page_description": "The lists the automatic run produces but cannot close by itself: a person decides them here.",
+      "tab_fondi_da_decidere": "Funds to decide"
     }
   },
   "dash_mesi": {

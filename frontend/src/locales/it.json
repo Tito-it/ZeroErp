@@ -280,7 +280,8 @@
       "listini": "Listini",
       "contratti": "Contratti",
       "promo-articoli": "Promo articoli",
-      "approvazioni-prezzo": "Approvazioni prezzo"
+      "approvazioni-prezzo": "Approvazioni prezzo",
+      "tool-fatturazione": "Tool fatturazione"
     },
     "pratiche": {
       "home": "Home Pratiche",
@@ -3371,6 +3372,38 @@
       "col_messaggio": "Messaggio",
       "col_origine": "Origine",
       "col_ritirata": "Ritirata"
+    },
+    "fondi_fattura_da_decidere": {
+      "filtro_motivo": "Motivo",
+      "motivo_tutti": "Tutti i motivi",
+      "nessuna_riga": "Nessun fondo in attesa di una decisione.",
+      "motivo": {
+        "PROPOSTA_SENZA_ATTO": "Fondo proponibile, non emesso",
+        "NON_PIU_CAPIENTE": "Fattura non piu' capiente",
+        "IMPORTO_NON_CORRISPONDENTE": "Importo non corrispondente",
+        "UTILITY_NON_ATTRIBUIBILE": "Utility mancante"
+      },
+      "col_motivo": "Motivo",
+      "col_numero": "Numero",
+      "col_data": "Data",
+      "col_totale_a_pagare": "Totale a pagare",
+      "col_importo_proposto": "Fondo proposto",
+      "col_capienza_attuale": "Capienza attuale",
+      "col_importo_atto": "Importo atto",
+      "col_stato_atto": "Stato atto",
+      "col_anno": "Anno",
+      "col_serie": "Serie",
+      "col_origine": "Origine atto",
+      "col_atto_motivo": "Ragione dell'atto",
+      "col_atto_data": "Data atto",
+      "col_tipo_fondo_codice_interno": "Tipo fondo",
+      "col_fattura_sorgente_id": "Id fattura",
+      "col_fondo_source_id": "Id atto"
+    },
+    "tool_fatturazione": {
+      "page_title": "Tool fatturazione",
+      "page_description": "Gli elenchi che il giro automatico produce e non puo' chiudere da solo: qui li decide una persona.",
+      "tab_fondi_da_decidere": "Fondi da decidere"
     }
   },
   "dash_mesi": {

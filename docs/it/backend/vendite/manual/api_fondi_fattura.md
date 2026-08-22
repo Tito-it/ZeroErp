@@ -8,6 +8,8 @@ fermato**, e la decisione resta a un operatore.
 ```text
 GET /api/v1/vendite/fondi-fattura/da-decidere/
       ?motivo=&order_by=&order_dir=&page=&page_size=
+GET /api/v1/vendite/fondi-fattura/da-decidere/export/
+      ?formato=csv|xlsx&motivo=&order_by=&order_dir=
 ```
 
 ## Contesto
@@ -35,7 +37,7 @@ creare un fondo, tanto meno a cancellarlo*.
 | Parametro | Tipo | Default | Note |
 | --- | --- | --- | --- |
 | `motivo` | enum | tutti | Whitelist **chiusa** dei quattro motivi (sotto). Fuori vocabolario → **400** `E_VENDITE_VALIDATION` |
-| `order_by` | enum | `data` | `data`, `motivo`, `anno`, `numero`, `totale_a_pagare`, `importo_proposto`, `capienza_attuale`. Fuori whitelist → **400** |
+| `order_by` | enum | `data` | `data`, `motivo`, `anno`, `numero`, `totale_a_pagare`, `importo_proposto`, `capienza_attuale`, `stato_atto`. Fuori whitelist → **400**. ⚠️ `stato_atto` (aggiunto il 2026-08-22) è valorizzato sul solo ramo `NON_PIU_CAPIENTE`: ordinarlo **separa i casi con un atto vivo da quelli senza**, e i vuoti vanno in coda su `desc` (`sql_order_direction`, che emette sempre i `NULLS` espliciti) |
 | `order_dir` | `asc`/`desc` | `desc` | Le fatture più recenti prima. Altro valore → **400** |
 | `page` | int | 1 | |
 | `page_size` | int | 50 | max 200 |
@@ -68,6 +70,20 @@ una proposta c'è.
 
 Le **etichette** dei motivi le mette il frontend con `labelOrCode` (fail-visible):
 il backend spedisce il codice.
+
+### Export (`/export/`)
+
+Stessa lista, stessi filtri, stesso ordinamento — in CSV o XLSX. **Colonne,
+ordine e visibilità vengono dalla configurazione dell'operatore** sul catalogo
+`vendite.fondi_fattura_da_decidere` (BB `ListaExportService`), non da un elenco
+scritto nella view: un file con colonne diverse da quelle a video sarebbe un
+secondo elenco da riconciliare a mano.
+
+| Cosa | Regola |
+| --- | --- |
+| `formato` | `csv` (default) o `xlsx`. ⚠️ **`formato`, non `format`**: quest'ultimo è magic per la content-negotiation DRF e intercetterebbe la chiamata prima della view |
+| Righe | tetto `EXPORT_MAX_ROWS` (10.000). Il servizio chiede `max_rows + 1` per far **scattare** il guard invece di troncare in silenzio |
+| Paginazione | **saltata**, non allargata: `max_rows` non passa dal validatore di pagina (tetto 200), che resta un guard d'interfaccia per tutte le liste del progetto |
 
 ## Regole
 
@@ -125,5 +141,5 @@ proprio.
 | | Cosa manca |
 | --- | --- |
 | **BE-4** (atto manuale: `POST fondi-fattura/`, `POST fondi-fattura/<id>/annulla/`) | la **Fase D** non è applicata: `fn_crea_fondo_fattura_manuale` e `fn_annulla_fondo_fattura` non esistono, e l'azione di processo `governa_fondo_fattura` non è a catalogo. E comunque la porta va aperta **dopo** che `pagamenti` ha un processo rimborsi da cui chiamarla |
-| ~~**Frontend** (la lista)~~ | 🔵 **non più bloccato**: il seed `ui.lista_*` è stato applicato dal team DB il 2026-08-15. Restano il `migrate` e la pagina Vue |
+| ~~**Frontend** (la lista)~~ | ✅ **FATTO il 2026-08-22**: **Vendite → Tool fatturazione**, primo tab (`ToolFatturazioneView.vue` + `FondiFatturaDaDecidereTab.vue`, store `fondiFatturaDaDecidere.js`). Lista configurabile standard: paginazione e ordinamento server-side, colonne personalizzabili, export CSV/XLSX, click di riga → `FatturaDrawer`. ⭐ Fino a quel giorno la lista **esisteva e non era raggiungibile**: vista, catalogo ed endpoint c'erano dal 15-08 e nessun `.vue` la montava — è la differenza fra i 47 codici a catalogo e le 46 liste nel registro `_LISTE` |
 | ~~**R-3** (madre DB per lotto)~~ | ✅ **FATTA il 2026-08-15**, DB e BE. I due giri passano da `fn_genera_fondi_fattura_lotto` / `fn_applica_fondi_lotto` (firma col **codice interno** del tipo fondo): **una `SELECT` per task**, lookup e scope dentro il database. 🔴 Con lo spostamento i tre errori del giro sono passati da `ServiceError` Python a `DatabaseError`, e `_fail_task_run_safely` li appiattiva su `E_TASK`: chiuso leggendo il codice strutturato con `db_error_code` — vale per ogni task che delega a una funzione DB. Dettaglio: brief fondo fattura §8.3-bis (DB) e §8.3-ter (BE) |

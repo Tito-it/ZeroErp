@@ -114,12 +114,12 @@ const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir
   }))
 const listaTask = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
   listLottoTaskRuns(props.lottoId, { page, pageSize, orderBy: sortBy, orderDir: sortDir }))
+// Le RIGHE arrivano da un endpoint suo, separato dai conteggi: quello alimenta
+// il banner ed e' piccolo, questo pagina e ordina e serve solo a scheda aperta.
 const listaSegnalazioni = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
   listLottoSegnalazioni(props.lottoId, {
     livello: livelloSegnalazioni.value, page, pageSize, orderBy: sortBy, orderDir: sortDir,
   }))
-
-const fatture = computed(() => listaDocumenti.righe.value)
 
 // Azioni di lista (personalizza colonne + esporta): lo stesso BB delle altre
 // liste standard, una istanza per tab.
@@ -254,10 +254,6 @@ const opzioniLivello = computed(() => [
     label: `${t('vendite.lotti.attention')} (${segnalazioni.value?.attention_count ?? 0})`,
   },
 ])
-
-// Le RIGHE arrivano da un endpoint suo, separato dai conteggi: quello alimenta
-// il banner ed e' piccolo, questo pagina e ordina e serve solo a scheda aperta.
-const elencoSegnalazioni = computed(() => listaSegnalazioni.righe.value)
 
 // Scopo: la severity di un livello di segnalazione. ⚠️ Stessa scala del filtro
 //        (`SelectButtonGravita`) e dell'icona di riga (`ErroreRigaInfo`): tre

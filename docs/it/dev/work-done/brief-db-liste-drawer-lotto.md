@@ -17,17 +17,17 @@
 > con paginazione, ordinamento server-side, colonne personalizzabili ed export
 > CSV/XLSX; il presidio le dà `ok` su tutte e tre. Consuntivo BE/FE in §7.
 >
-> ⚠️ **Una cosa resta aperta e NON è di questo cantiere**: il nucleo *stato* di
+> ✅ **Chiuso anche lo strascico**: il nucleo *stato* di
 > `vendite.fondi_fattura_da_decidere` (§4-bis B) — una lista che questo cantiere
-> ha solo *scoperto*, registrandola. Vive nel consuntivo di
-> [piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md), che dichiara
-> **1 KO** finché i due passi non atterrano insieme.
+> ha solo *scoperto*, registrandola, e che è arrivata a zero KO il 2026-08-22 con
+> i due passi atterrati insieme (flag di seed + voce di whitelist). Il presidio
+> dà **47/47 in tutte e tre le direzioni**.
 >
-> **Correlati:** [piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md)
+> **Correlati:** [piano-migrazione-primevue-5.md](../work-in-progress/piano-migrazione-primevue-5.md)
 > §8-bis/§9 (inventario e registro delle liste) ·
-> [brief-db-seed-liste-dashboard-e-commessa.md](../work-done/brief-db-seed-liste-dashboard-e-commessa.md)
+> [brief-db-seed-liste-dashboard-e-commessa.md](brief-db-seed-liste-dashboard-e-commessa.md)
 > (l'8° lotto, il precedente più vicino) ·
-> [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
+> [brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)
 > (`multi_emittente`).
 
 ---
@@ -44,7 +44,7 @@
 | 🔵 **A carico del BE/FE** | 6 consegne, di cui **3 bloccano** la nascita delle liste. Da concordare **prima** di L3, non in consegna | §4 |
 | ✅ **Domande aperte** | **Zero.** Q-1 e Q-2 chiuse il 2026-08-21 | §6 |
 | ⭐ **Il perno da non perdere** | «Job» ha un'ancora e non serve una colonna nuova: l'`event_time` dell'ultimo `PIPELINE_STARTED` in `vendite.event_log`. ⚠️ Non il `correlation_id`, che due corse condividono | §3 D-6 |
-| ⭐ **STATO** | ✅ **CANTIERE CHIUSO (2026-08-22).** L1, L2, L3 applicati · BE-1…BE-5, FE-1 e FE-2 consegnati · tre liste a video con paginazione, export e colonne personalizzabili · presidio `ok` su tutte e tre | §4 · §5 · §7 |
+| ⭐ **STATO** | ✅ **CANTIERE CHIUSO (2026-08-22).** L1, L2, L3 applicati · BE-1…BE-5, FE-1 e FE-2 consegnati · tre liste a video con paginazione, export e colonne personalizzabili · presidio **47/47, zero KO** (compreso lo strascico `fondi_fattura_da_decidere`, §4-bis B) | §4 · §5 · §7 |
 
 ---
 
@@ -541,9 +541,14 @@ nessun errore a dirglielo.
 
 ✅ **METÀ DB FATTA il 2026-08-22** (riga 466: `ordinabile` `f` → `t`), su
 richiesta del BE che si è impegnato ad aggiungere `"stato_atto": "stato_atto"`
-nello stesso giro. ⚠️ **Finché la loro voce non atterra, il presidio accusa
-l'altra metà** (`stato_atto` fra le bugiarde, nucleo ancora rotto): è il
-transitorio dichiarato, non uno stato di riposo.
+nello stesso giro.
+
+✅ **E L'ALTRA METÀ È ATTERRATA LO STESSO GIORNO**: `FONDI_DA_DECIDERE_SORT_COLUMNS`
+passa da 7 a 8 voci con `"stato_atto": "stato_atto"`. Il transitorio è durato
+il tempo di un commit, ed è finito **misurato**, non dichiarato:
+`gen_seed_lista.py --verifica-ordinamento` → **`vendite.fondi_fattura_da_decidere ok`
+(16 colonne, whitelist 8)** e `[ok] 47 liste allineate col backend in tutte e
+tre le direzioni`. **Zero KO.** 1645 test verdi.
 
 ⭐ **E leggendo la vista per decidere è saltato fuori che l'etichetta mentiva.**
 Diceva *«Sempre DISPONIBILE: la vista mostra solo atti vivi non applicabili»*.
@@ -554,13 +559,33 @@ colonna ha due valori, non uno, e ordinare per essa **separa i casi con un atto
 vivo da quelli senza**: `ordinabile = t` sta in piedi sul merito, non solo per
 far tacere il presidio. Etichetta corretta nello stesso giro.
 
-🔵 **Conseguenza per il BE, e non è teorica**: due rami su tre danno NULL, e
-`list_fondi_da_decidere` costruisce l'`ORDER BY` **senza `NULLS LAST`**. Su
-`desc` PostgreSQL mette i NULL in testa, quindi «ordina per stato, decrescente»
-comincerebbe dalle righe che uno stato non ce l'hanno. È la stessa lezione già
+🔵 **Conseguenza per il BE**, sollevata dal team DB: due rami su tre danno NULL,
+e `list_fondi_da_decidere` costruirebbe l'`ORDER BY` **senza `NULLS LAST`**, così
+che su `desc` PostgreSQL metterebbe i NULL in testa. È la stessa lezione già
 pagata due volte in questo cantiere (lista 47, `fn_list_commessa_attivita`).
-⭐ E il rosso resta esposto di proposito: era la dimostrazione della regola —
-*una lista non registrata è dichiarata a posto senza essere stata guardata*.
+✅ **Verificato, e qui il difetto non c'è: era già stato chiuso alla radice.** Il
+`NULLS LAST` non è scritto a mano perché la direzione **non è una stringa
+scritta a mano**: la produce `core.db._helpers.sql_order_direction`, che ritorna
+`'DESC NULLS LAST'` / `'ASC NULLS FIRST'` — cioè *il vuoto sta dove starebbe lo
+zero* — **proprio perché** i default di PostgreSQL sono l'opposto (decisione Tid
+del 2026-07-19, nata sui `numero` NULL delle bozze DDT; il BB unifica 29
+call-site, 3 dei quali avevano un `NULLS LAST` fisso incollato al template).
+`list_fondi_fattura_da_decidere` lo usa con `default_desc=True`.
+📌 Prova sul database, non sul codice — `EXPLAIN (COSTS OFF)` della query reale:
+
+```
+Sort Key: v.stato_atto DESC NULLS LAST, v.fattura_sorgente_id DESC,
+          (COALESCE(v.fondo_source_id, '0'::bigint)) DESC
+```
+
+⭐ Il motivo per cui vale la pena scriverlo qui: la terza lezione **non è stata
+pagata una terza volta** perché era diventata un building block. Un `NULLS LAST`
+aggiunto a mano su questo call-site sarebbe stato inerte nel migliore dei casi e
+un doppione divergente nel peggiore.
+⭐ **Cosa lascia questo rosso, ora che è verde**: era la dimostrazione della
+regola — *una lista non registrata è dichiarata a posto senza essere stata
+guardata*. La 44 è stata scoperta rotta solo il giorno in cui qualcuno l'ha
+messa nella whitelist del generatore, sette giorni dopo il suo seed.
 
 **C — le righe di log con la chiave vecchia, misurate.** Il BE segnala che le
 righe scritte con `meta->>'code'` restano e non sono riconosciute dal ritiro.
@@ -907,12 +932,15 @@ le colonne dati (solo `azioni` è `f`, ed è giusto). ⚠️ `max_rows` e non
 `onPage`/`onSort` identici, cioè tre occasioni di dimenticare l'azzeramento
 della pagina al cambio ordinamento.
 
-⛔ **Resta fuori, e non è di questo cantiere**: `vendite.fondi_fattura_da_decidere`
-(§4-bis B). I due passi — voce in `FONDI_DA_DECIDERE_SORT_COLUMNS` e flag sul
-seed — **devono atterrare insieme**: la simulazione del team DB mostra che il
+✅ **E anche l'unica cosa che restava fuori si è chiusa lo stesso giorno**:
+`vendite.fondi_fattura_da_decidere` (§4-bis B). I due passi — flag `ordinabile`
+sul seed (team DB) e voce in `FONDI_DA_DECIDERE_SORT_COLUMNS` (BE) — sono
+atterrati **insieme**, com'era stato pattuito: la simulazione mostrava che il
 flag da solo produce una freccia bugiarda che ripiega su `data` senza dirlo, e
-la sola voce BE produce l'accusa opposta. Tracciato nel consuntivo del piano
-PrimeVue.
+la sola voce BE l'accusa opposta. Presidio a **47/47, zero KO**.
+📌 Del terzo punto della nota DB (il `NULLS LAST` mancante) resta la verifica in
+§4-bis B: non mancava — lo mette `sql_order_direction`, ed è confermato dal
+piano di esecuzione.
 
 ### 2026-08-22 (quinto giro) · ✅ **L3 CHIUSO — e il cantiere DB con lui**
 

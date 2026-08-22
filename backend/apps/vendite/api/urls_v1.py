@@ -66,7 +66,10 @@ from apps.vendite.api.views_dashboard_aperto import (
     ApiDashboardApertoDocumenti,
     ApiDashboardApertoDocumentiExport,
 )
-from apps.vendite.api.views_fondi_fattura import ApiFondiFatturaDaDecidere
+from apps.vendite.api.views_fondi_fattura import (
+    ApiFondiFatturaDaDecidere,
+    ApiFondiFatturaDaDecidereExport,
+)
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
     ApiListiniSelezionabiliContrattoLookup,
@@ -234,6 +237,14 @@ urlpatterns = [
         "fondi-fattura/da-decidere/",
         ApiFondiFatturaDaDecidere.as_view(),
         name="vendite-fondi-fattura-da-decidere",
+    ),
+    # Export CSV/XLSX della stessa lista (colonne dal catalogo
+    # `vendite.fondi_fattura_da_decidere`, risolte sulla configurazione
+    # dell'operatore).
+    path(
+        "fondi-fattura/da-decidere/export/",
+        ApiFondiFatturaDaDecidereExport.as_view(),
+        name="vendite-fondi-fattura-da-decidere-export",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     # Export CSV/XLSX della lista (colonne dal catalogo `vendite.lotti`).

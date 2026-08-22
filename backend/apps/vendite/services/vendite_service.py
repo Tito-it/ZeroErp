@@ -1599,6 +1599,9 @@ def fn_fondi_fattura_da_decidere(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    # Export: valorizzato = perimetro intero in una volta, paginazione saltata
+    # (BB `_paging_o_export`). Assente = la lista paginata di sempre.
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     # Filtro motivo sulla whitelist ORDINATA dei quattro motivi della vista:
     # fail-fast 400 invece di una lista vuota silenziosa, che su un vocabolario
@@ -1619,7 +1622,10 @@ def fn_fondi_fattura_da_decidere(
         error_code="E_VENDITE_VALIDATION",
         function_name=_FN_FONDI_DA_DECIDERE,
     )
-    offset = _validate_pagination(page, page_size, _FN_FONDI_DA_DECIDERE)
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name=_FN_FONDI_DA_DECIDERE,
+    )
 
     repository = VenditeRepository()
     results: list[FondoFatturaDaDecidereRow]
@@ -1628,7 +1634,7 @@ def fn_fondi_fattura_da_decidere(
         auth_user_id=auth_user_id,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     return _build_list_response(

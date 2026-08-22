@@ -201,6 +201,14 @@ class UiRepository:
                        lc.codice,
                        lc.etichetta,
                        lc.etichetta_estesa,
+                       -- ⚠️ Senza questa colonna il catalogo torna al frontend
+                       -- con la sola etichetta ITALIANA del seed, e la modale
+                       -- «personalizza colonne» resta in italiano in qualunque
+                       -- lingua (difetto misurato il 2026-08-22: 506 colonne su
+                       -- 47 liste, tutte con la chiave a catalogo e nessuna
+                       -- tradotta). La chiave e' gia' nel seed: mancava solo
+                       -- qui.
+                       lc.etichetta_i18n_key,
                        lc.campo_sorgente,
                        lc.tipo_colonna::text     AS tipo_colonna,
                        lc.tipo_dato::text        AS tipo_dato,

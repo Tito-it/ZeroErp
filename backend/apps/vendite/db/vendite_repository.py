@@ -1967,6 +1967,15 @@ class VenditeRepository:
     # `sql_order_direction` mette i NULL — in fondo ordinando DESC, che e'
     # quello che serve a chi cerca gli importi. `capienza_attuale` invece e'
     # calcolata su TUTTI i rami (fn_saldo_sorgente_fondo fa COALESCE): mai NULL.
+    # ⚠️ `stato_atto` vale `'DISPONIBILE'` sul solo ramo NON_PIU_CAPIENTE (dove
+    # la vista filtra `s.stato = 'DISPONIBILE'`) ed e' `NULL::varchar` per
+    # COSTRUZIONE sugli altri: la colonna ha DUE valori, non uno, e ordinarla
+    # separa le righe con un atto vivo da quelle senza — che e' informazione
+    # vera, non un flag alzato per far tacere il presidio dei seed.
+    # 📌 Sui NULL non serve nessun `NULLS LAST` scritto a mano: la direzione la
+    # produce `sql_order_direction`, che ritorna gia' `ASC NULLS FIRST` /
+    # `DESC NULLS LAST` (il vuoto sta dove starebbe lo zero) proprio perche' i
+    # default di PostgreSQL sono l'opposto.
     FONDI_DA_DECIDERE_SORT_COLUMNS: dict[str, str] = {
         "data": "data",
         "motivo": "motivo",
@@ -1975,6 +1984,7 @@ class VenditeRepository:
         "totale_a_pagare": "totale_a_pagare",
         "importo_proposto": "importo_proposto",
         "capienza_attuale": "capienza_attuale",
+        "stato_atto": "stato_atto",
     }
 
     # Colonne dell'elenco, NELL'ORDINE: un'unica tupla costruisce sia il SELECT

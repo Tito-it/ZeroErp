@@ -21,7 +21,7 @@
 # riga per riga. Il gating delle azioni lo fa il FE sui codici che la vista
 # porta gia' in riga (`motivo`, e lo stato dell'atto dove esiste).
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -34,6 +34,8 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id
 from apps.core.api.payload_validators import qp_int_strict, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.vendite_service import fn_fondi_fattura_da_decidere
 
 
@@ -71,8 +73,12 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
                 description=(
                     "Colonna di ordinamento (whitelist): data (default) | "
                     "motivo | anno | numero | totale_a_pagare | "
-                    "importo_proposto | capienza_attuale. "
-                    "Colonna non ammessa -> 400."
+                    "importo_proposto | capienza_attuale | stato_atto. "
+                    "Colonna non ammessa -> 400. "
+                    "⚠️ `stato_atto` e' valorizzato sul solo ramo "
+                    "NON_PIU_CAPIENTE e NULL sugli altri: ordinarlo separa i "
+                    "casi con un atto vivo da quelli senza (i vuoti in coda "
+                    "su desc, in testa su asc — regola unica di progetto)."
                 ),
             ),
             OpenApiParameter(
@@ -140,3 +146,74 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
             page_size=page_size,
         )
         return success_response(data)
+
+
+class ApiFondiFatturaDaDecidereExport(DomainAPIView):
+    """GET /api/v1/vendite/fondi-fattura/da-decidere/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista, con gli stessi filtri e lo stesso ordinamento.
+    Colonne, ordine e visibilita' vengono dalla configurazione dell'operatore
+    sul catalogo `vendite.fondi_fattura_da_decidere` — non da un elenco fisso
+    scritto qui: un export che mostra colonne diverse da quelle a video e' un
+    secondo elenco da riconciliare a mano.
+
+    ⚠️ Il parametro e' `formato` (italiano) e NON `format`: quest'ultimo e'
+    magic per la content-negotiation DRF e intercetterebbe la chiamata prima
+    della view.
+
+    ⚠️ Nessun canale di sistema: come il GET di lista, la vista e'
+    `security_invoker` e va letta con l'identita' della richiesta.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.fondi_fattura_da_decidere"
+
+    @extend_schema(
+        operation_id="vendite_fondi_fattura_da_decidere_export",
+        parameters=[
+            OpenApiParameter(
+                name="formato", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="csv (default) | xlsx",
+            ),
+            OpenApiParameter(
+                name="motivo", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description="Stesso filtro del GET di lista (whitelist chiusa).",
+            ),
+            OpenApiParameter(
+                name="order_by", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="Stessa whitelist del GET di lista.",
+            ),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="asc | desc (default desc).",
+            ),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: Genera il file (CSV/XLSX) dell'elenco «da decidere».
+    def get(self, request: Request) -> HttpResponse:
+        # Formato PRIMA della query: su formato invalido non si paga il fetch.
+        fmt = parse_export_format(request)
+        qp = request.query_params
+        motivo = qp_str_upper(qp.get("motivo"))
+        data = fn_fondi_fattura_da_decidere(
+            motivo=motivo,
+            auth_user_id=get_scope_user_id(request),
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            # `max_rows` e non `page_size`: l'export SALTA la paginazione
+            # invece di violarne il tetto. Il +1 fa scattare il guard di
+            # limite del BB quando il perimetro supera EXPORT_MAX_ROWS,
+            # invece di troncare in silenzio.
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        return build_export_response(
+            request,
+            lista_codice="vendite.fondi_fattura_da_decidere",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati={"motivo": motivo} if motivo else {},
+            fmt=fmt,
+        )

@@ -31,6 +31,9 @@ export const NAV_ICONS = Object.freeze({
   DASHBOARD_COMPETENZA: 'pi pi-chart-bar',
   DASHBOARD_BACKLOG: 'pi pi-inbox',
   LOTTI: 'pi pi-server',
+  // Tool della fatturazione (vendite): cassetta attrezzi del giro, distinta
+  // dal dominio Strumenti (pi-wrench) che raccoglie le viste trasversali.
+  TOOL_FATTURAZIONE: 'pi pi-sliders-v',
   PROMO_ARTICOLI: 'app-nav-icon app-nav-icon-promo-articoli',
   PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
   // Dominio Strumenti (viste operative trasversali: code di lavoro, in
@@ -183,7 +186,15 @@ export const DOMAIN_MENUS = {
     { key: 'contratti', icon: NAV_ICONS.CONTRATTI, to: '/vendite/contratti' },
     { key: 'listini', icon: NAV_ICONS.LISTINI, to: '/vendite/listini' },
     { key: 'promo-articoli', icon: NAV_ICONS.PROMO_ARTICOLI, to: '/vendite/promo-articoli' },
-    { key: 'approvazioni-prezzo', icon: NAV_ICONS.APPROVAZIONI_PREZZO, to: '/vendite/approvazioni-prezzo' }
+    { key: 'approvazioni-prezzo', icon: NAV_ICONS.APPROVAZIONI_PREZZO, to: '/vendite/approvazioni-prezzo' },
+    // ⭐ IN FONDO di proposito (scelta di Tid): i tool non sono un percorso
+    // quotidiano — sono dove si va quando il giro automatico ha lasciato
+    // qualcosa indietro. Gli elenchi che chiedono una persona vivono qui.
+    {
+      key: 'tool-fatturazione',
+      icon: NAV_ICONS.TOOL_FATTURAZIONE,
+      to: '/vendite/tool-fatturazione',
+    }
   ],
   'acquisti': [],
   'magazzino': [],
