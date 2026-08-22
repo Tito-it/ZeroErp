@@ -15,6 +15,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import call_jsonb_fn
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
 from apps.vendite.db.vendite_repository import DASH_STADIO_DA_APPROVARE
 from apps.vendite.types import (
     CommessaEmitResult,
@@ -372,7 +373,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
     )
 
 
-class CommesseRepository:
+class CommesseRepository(EventLogRepositoryMixin):
     """Wrapper SQL a basso livello per il dominio commesse."""
 
     @staticmethod
@@ -1698,40 +1699,9 @@ class CommesseRepository:
             )
 
     # --- Gruppo 6: Event log ---
+    #
+    # `log_event` NON sta piu' qui: e' il building block
+    # `EventLogRepositoryMixin` (`_event_log_repo_mixin.py`), estratto con la
+    # consegna BE-6 perche' era copia carbone in questo repository e in
+    # `pipeline_repository`. La firma e' passata da nove parametri a SEI.
 
-    # Scopo: Scrive un evento su vendite.event_log tramite fn_log_event.
-    def log_event(
-        self,
-        *,
-        domain: str,
-        entity_type: str,
-        entity_id: int,
-        event_code: str,
-        severity: str = "INFO",
-        correlation_id: str | None = None,
-        actor: str = "service:django",
-        source: str = "django",
-        payload: dict[str, Any] | None = None,
-    ) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT vendite.fn_log_event(
-                    %s, %s, %s, %s, %s, %s::uuid, %s, %s, %s::jsonb
-                )
-                """,
-                [
-                    domain,
-                    entity_type,
-                    entity_id,
-                    event_code,
-                    severity,
-                    correlation_id,
-                    actor,
-                    source,
-                    self._to_jsonb_param(payload or {}),
-                ],
-            )
-            row = cursor.fetchone()
-        assert row is not None
-        return int(row[0])
