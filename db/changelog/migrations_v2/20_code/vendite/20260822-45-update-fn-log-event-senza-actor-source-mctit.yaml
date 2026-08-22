@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CANALE DI SCRITTURA SI ALLINEA ALLA RIGA — L1 del Passo 0
+#   vendite.fn_log_event — nove parametri diventano sette
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.1 · Decisioni D-2, D-6
+#
+# ── PERCHE' ESISTE QUESTO CHANGESET (e il brief non lo aveva previsto) ─
+#   `20260822-40` toglie le colonne `actor` e `source`. Il corpo di
+#   `fn_log_event` le elenca nel proprio INSERT: senza questa revisione la
+#   funzione fallirebbe **a runtime** su ogni evento, con un «column does not
+#   exist» che non dice niente a nessuno.
+#   ⚠️ Un corpo plpgsql non e' tracciato come dipendenza dal DDL: il DROP COLUMN
+#   riesce lo stesso, e il difetto si scopre alla prima scrittura. E' il motivo
+#   per cui i due changeSet vanno nella **stessa passata**.
+#
+# ── ⛔ SI TOGLIE UN PARAMETRO: SERVE UN DROP ESPLICITO ──────────────
+#   `CREATE OR REPLACE` con meno parametri **non sostituisce**: crea una
+#   funzione NUOVA e lascia in vita la vecchia. Restando entrambe, e avendo
+#   entrambe parametri con DEFAULT, una chiamata a sette argomenti diventa
+#   **ambigua** (42725) — e l'ambiguita' non si vede al migrate, si vede al
+#   primo evento.
+#   Precedente in casa: `20260727-25-drop-fn-get-parameter-full-overload-ambiguo`.
+#
+#   Quindi: DROP della firma a nove, poi CREATE di quella a sette.
+#
+# ── ⭐ LA FIRMA NON CAMBIA PER L'EMITTENTE ──────────────────────────
+#   Il perimetro **non** e' un parametro nuovo: lo deriva il trigger
+#   `trg_event_log_a10_deriva_scope_ins` dall'entita' (D-2). E' la ragione per
+#   cui questa revisione toglie soltanto, e non aggiunge: un parametro in piu'
+#   avrebbe fatto nascere l'overload che qui si sta chiudendo, e avrebbe
+#   chiesto a Django di calcolare un fatto che il database conosce gia'.
+#
+# ── ⚠️ COSA SI ROMPE FINCHE' IL BE NON ARRIVA ───────────────────────
+#   I due repository Python chiamano con nove argomenti posizionali. Dopo
+#   questo changeSet quella chiamata **non esiste piu'**: e' la consegna BE-5
+#   del brief, e va nella stessa finestra di L1 — insieme a BE-3 e BE-4, senza
+#   le quali il ramo push scriverebbe comunque `entity_type = 'TASK_RUN'`, che
+#   il CHECK non ammette.
+#
+# Dipendenze: vendite.event_log senza actor/source (20260822-40).
+# Verifica: db/pgtap/vendite/test-event-log-function-v1.sql (da adeguare),
+#           db/pgtap/vendite/test-event-log-deriva-scope.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260822-45-update-fn-log-event-senza-actor-source-mctit.yaml
+
+  - changeSet:
+      id: 20260822-45-update-fn-log-event-senza-actor-source
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_log_event passa da nove parametri a sette: via p_actor e p_source, che
+        scrivevano due colonne rimosse da 20260822-40 perche' costanti e mute («chi» e'
+        user_insert). ⛔ DROP esplicito della firma vecchia: CREATE OR REPLACE con meno
+        parametri non sostituisce, lascia in vita entrambe, e con i DEFAULT le chiamate
+        diventano ambigue (precedente 20260727-25). ⭐ Nessun parametro NUOVO: il perimetro
+        lo deriva il trigger dall'entita', non lo passa il chiamante.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: event_log
+                    columnName: actor
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_log_event';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Prima si toglie la vecchia: due firme con DEFAULT rendono
+              --    ambigua ogni chiamata a sette argomenti.
+              DROP FUNCTION IF EXISTS vendite.fn_log_event(
+                  text, text, bigint, text, text, uuid, text, text, jsonb
+              );
+
+              -- ⚠️ %TYPE anche in FIRMA e in RETURNS (linee-guida-sql §5):
+              --    ogni parametro riflette la colonna che andra' a riempire.
+              --    In firma e' una FOTOGRAFIA, non un link — si risolve alla
+              --    creazione. Verificare con pg_get_function_identity_arguments
+              --    che l'identita' resti (text, text, bigint, text, text, uuid,
+              --    jsonb) e che non sia rimasta viva la firma a nove.
+              CREATE OR REPLACE FUNCTION vendite.fn_log_event(
+                  p_domain         vendite.event_log.domain%TYPE,
+                  p_entity_type    vendite.event_log.entity_type%TYPE,
+                  p_entity_id      vendite.event_log.entity_id%TYPE,
+                  p_event_code     vendite.event_log.event_code%TYPE,
+                  p_severity       vendite.event_log.severity%TYPE DEFAULT 'INFO',
+                  p_correlation_id vendite.event_log.correlation_id%TYPE DEFAULT NULL,
+                  p_payload        vendite.event_log.payload%TYPE DEFAULT '{}'::jsonb
+              )
+              RETURNS vendite.event_log.id%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_event_id vendite.event_log.id%TYPE;
+                  v_severity vendite.event_log.severity%TYPE;
+                  v_payload  vendite.event_log.payload%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Inserire un evento append-only in vendite.event_log
+                  --   e restituire l'identificativo generato.
+                  --
+                  -- Regole:
+                  --   - nessuna logica di orchestrazione interna
+                  --   - validazioni di severita' delegate al CHECK su tabella
+                  --   - ⭐ il PERIMETRO, CHI e la SCADENZA non si passano:
+                  --     li scrive trg_event_log_a10_deriva_scope_ins, perche'
+                  --     sono fatti che il database conosce e il chiamante no.
+                  --     Chiedere a Django di calcolarli sarebbe la stessa
+                  --     logica in due livelli.
+                  --
+                  -- ⚠️ Rev 2026-08-22: via p_actor e p_source. Valevano
+                  --   'service:django' e 'django' su 386 righe su 386 — due
+                  --   colonne per lo stesso mestiere, entrambe senza
+                  --   informazione, mentre `user_insert` (da app.jwt_user)
+                  --   diceva gia' chi fosse. Il buco B3 dell'analisi
+                  --   osservabilita' non era vero come scritto.
+                  -- =========================================================
+                  v_severity := COALESCE(p_severity, 'INFO');
+                  v_payload  := COALESCE(p_payload, '{}'::jsonb);
+
+                  INSERT INTO vendite.event_log (
+                      domain,
+                      entity_type,
+                      entity_id,
+                      event_code,
+                      severity,
+                      correlation_id,
+                      payload
+                  )
+                  VALUES (
+                      p_domain,
+                      p_entity_type,
+                      p_entity_id,
+                      p_event_code,
+                      v_severity,
+                      p_correlation_id,
+                      v_payload
+                  )
+                  RETURNING id INTO v_event_id;
+
+                  RETURN v_event_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_log_event(text, text, bigint, text, text, uuid, jsonb)
+              IS 'Inserisce un evento append-only in vendite.event_log e ritorna id evento. ⭐ Perimetro (emittente_soggetto_ruolo_id), identita'' (auth_user_id) e scadenza (cleanup_at) NON sono parametri: li deriva trg_event_log_a10_deriva_scope_ins, perche'' sono fatti del database e chiederli al chiamante duplicherebbe la logica fra due livelli. ⚠️ Rev 2026-08-22: tolti p_actor e p_source, che riempivano due colonne costanti («chi» e'' user_insert, da app.jwt_user). La firma a nove parametri e'' stata DROPpata esplicitamente: con i DEFAULT due firme rendono ambigua ogni chiamata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback ripristina la firma a nove, ma ha senso SOLO se
+              --    si e' fatto rollback anche di 20260822-40: senza le colonne
+              --    actor e source l'INSERT fallirebbe a runtime.
+              DROP FUNCTION IF EXISTS vendite.fn_log_event(
+                  text, text, bigint, text, text, uuid, jsonb
+              );

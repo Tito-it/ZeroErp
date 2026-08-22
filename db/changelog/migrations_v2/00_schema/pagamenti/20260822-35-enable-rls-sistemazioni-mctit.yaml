@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RLS SUL REGISTRO — passo S4-1 (lotto 7)
+#   pagamenti.sistemazioni
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-1 · Decisioni: brief madre D5, D15
+#
+# ── ⭐ QUI IL PERIMETRO E' LA COSA PIU' SEMPLICE DEL LOTTO 6 ─────────
+#   `emittente_soggetto_ruolo_id` è **sulla riga**, `NOT NULL`, e la policy la
+#   legge direttamente: è il **mirror esatto** di `rls_fatture_ef_whitelist`.
+#
+#   ⭐ Non serve nessuna catena e nessuna `SECURITY DEFINER`, e la ragione è di
+#   dominio prima che tecnica: **una sistemazione sta dentro un solo emittente
+#   per natura** — non si compensano i documenti di due aziende diverse — quindi
+#   la colonna non è una denormalizzazione comoda, è un fatto.
+#
+#     > ⚠️ Il confronto con la **distinta contabile** è istruttivo: là il
+#     > perimetro va cercato (canale → conto → soggetto) perché il denaro arriva
+#     > *prima* di avere un padrone dichiarato. Qui l'atto **nasce da una
+#     > decisione**, e chi decide sa già per chi.
+#
+# ── 🔴 `FOR ALL`, per le due ragioni misurate nel lotto 6 ───────────
+#   1. la RLS **nega ciò che nessuna policy permette**: con la sola `FOR SELECT`
+#      la tabella sarebbe di sola lettura per l'applicazione;
+#   2. **`INSERT ... RETURNING` passa dalla `USING`**.
+#
+#   ⭐ E qui il `WITH CHECK` può essere il **predicato intero** senza sconti: la
+#   colonna dell'emittente è sulla riga che si sta scrivendo, quindi non esiste
+#   nessun istante in cui il perimetro non sia risolvibile — a differenza della
+#   distinta e della riga contabile, dove qualcosa arriva *dopo*.
+#
+# ── ⚠️ `ENABLE` MA NON `FORCE` ──────────────────────────────────────
+#   Parità col resto del database. ⛔ E qui il `FORCE` avrebbe un effetto in più
+#   da ricordare: `script.fn_get_sistemazione_di_contabile` è `SECURITY DEFINER`
+#   e legge **questa** tabella per conto del guard sui lotti — con il `FORCE`
+#   rientrerebbe sotto questa stessa policy.
+#
+# ── ⭐ E COSI' IL PERIMETRO DEGLI INCASSI E' COMPLETO ────────────────
+#   Le tre transazionali del lotto 6 più il registro: dal 2026-08-22 **tutto ciò
+#   che in `pagamenti` porta denaro o decisioni sul denaro ha una policy**.
+#   Restano fuori solo i cataloghi di configurazione, che è la decisione 🔵 già
+#   annotata.
+#
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-35-enable-rls-sistemazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260822-35-enable-rls-sistemazioni
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy rls_sistemazioni_ef_whitelist su pagamenti.sistemazioni (FOR ALL, gate
+        OPERATORE fail-closed) + ENABLE ROW LEVEL SECURITY senza FORCE. Mirror esatto di
+        rls_fatture_ef_whitelist: l'emittente e' sulla riga, NOT NULL, e la policy lo legge
+        direttamente — nessuna catena e nessuna SECURITY DEFINER, perche' una sistemazione sta
+        dentro un solo emittente per natura. FOR ALL per le due ragioni misurate nel lotto 6
+        (la RLS nega cio' che nessuna policy permette, e INSERT ... RETURNING passa dalla
+        USING), e qui il WITH CHECK e' il predicato intero senza sconti: la colonna e' sulla
+        riga che si sta scrivendo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: sistemazioni
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist_via_sr';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_sistemazioni_ef_whitelist
+                  ON pagamenti.sistemazioni;
+
+              CREATE POLICY rls_sistemazioni_ef_whitelist
+                  ON pagamenti.sistemazioni
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_sistemazioni_ef_whitelist
+                   ON pagamenti.sistemazioni IS
+                  'RLS: l''operatore vede e scrive solo le sistemazioni del proprio emittente. '
+                  '⭐ Mirror esatto di rls_fatture_ef_whitelist, e qui e'' la cosa piu'' semplice '
+                  'del perimetro incassi: l''emittente e'' SULLA RIGA, NOT NULL, e la policy lo '
+                  'legge direttamente — nessuna catena, nessuna SECURITY DEFINER. La ragione e'' '
+                  'di dominio prima che tecnica: una sistemazione sta dentro un solo emittente '
+                  'per natura, perche'' non si compensano i documenti di due aziende diverse. '
+                  '⚠️ Il confronto con la distinta contabile e'' istruttivo: la'' il perimetro va '
+                  'CERCATO (canale -> conto -> soggetto) perche'' il denaro arriva prima di avere '
+                  'un padrone dichiarato; qui l''atto nasce da una DECISIONE, e chi decide sa '
+                  'gia'' per chi. ⭐ Il WITH CHECK e'' il predicato intero senza sconti: la colonna '
+                  'e'' sulla riga che si sta scrivendo, quindi non c''e'' nessun istante in cui il '
+                  'perimetro non sia risolvibile. rev 2026-08-22 (lotto 7, S4-1).';
+
+              ALTER TABLE pagamenti.sistemazioni ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pagamenti.sistemazioni DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_sistemazioni_ef_whitelist
+                  ON pagamenti.sistemazioni;

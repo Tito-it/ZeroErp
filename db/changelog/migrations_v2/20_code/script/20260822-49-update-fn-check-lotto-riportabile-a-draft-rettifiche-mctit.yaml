@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PORTA 1 DI 3 — il ritorno in bozza impara a vedere gli accrediti
+#   script.fn_check_lotto_riportabile_a_draft — MOTIVO 4
+#   Contesto e misura: 20260822-48
+#
+#   Senza questo motivo l'operatore vede un pulsante abilitato e riceve, dopo
+#   il click, una violazione di chiave esterna grezza. E' esattamente il difetto
+#   che questa funzione esiste per non avere: il suo commento dice che
+#   «sostituisce il gate !isDraft scritto a mano nel drawer, che su un lotto
+#   DEFINITIVA mostrava un pulsante destinato a fallire».
+#
+# ⚠️ Il corpo e' ripreso dalla doc auto-generata (l'oggetto VIVO), non da uno
+#   YAML: questa funzione e' stata riscritta piu' volte e un singolo changeSet
+#   precedente sarebbe stale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-49-update-fn-check-lotto-riportabile-a-draft-rettifiche-mctit.yaml
+
+  - changeSet:
+      id: 20260822-49-update-fn-check-lotto-riportabile-a-draft-rettifiche
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_check_lotto_riportabile_a_draft: MOTIVO 4 — righe di fattura gia'
+        rettificate, delegato a script.fn_check_fatture_con_rettifiche. Senza, il reset
+        passa il gate e poi esplode con un 23503 dentro fn_cleanup_fatture_by_ids.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_fatture_con_rettifiche';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id bigint)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono il RITORNO IN BOZZA di
+              --   un lotto. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: vendite.fn_riporta_lotto_a_draft
+              --   (che solleva il codice del primo motivo) e
+              --   script.fn_available_actions_lotto (che espone enabled + reasons).
+              -- Ritorna: [] se riportabile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi    jsonb := '[]'::jsonb;
+                v_stato_cod config.stati_doc_fiscale.codice_interno%TYPE;
+                v_trovato   boolean;
+                v_numerate  integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md).
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','lotto_id','valore',p_lotto_id),
+                    NULL::uuid, 'lotto_id obbligatorio (>0)');
+                END IF;
+
+                SELECT true, sdf.codice_interno
+                  INTO v_trovato, v_stato_cod
+                  FROM vendite.fatturazione_lotti fl
+                  LEFT JOIN config.stati_doc_fiscale sdf
+                    ON sdf.id = fl.stato_doc_fiscale_id
+                 WHERE fl.id = p_lotto_id;
+
+                IF NOT COALESCE(v_trovato, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_lotto_riportabile_a_draft','E_LOTTO_NON_TROVATO',
+                    jsonb_build_object('lotto_id',p_lotto_id),
+                    NULL::uuid, p_lotto_id::text);
+                END IF;
+
+                -- MOTIVO 1 — il lotto e' oltre il pre-fiscale.
+                -- Oltre EMESSA c'e' la numerazione: il punto di non ritorno
+                -- del documento fiscale, non una scelta di questa funzione.
+                IF COALESCE(v_stato_cod, '') NOT IN ('DRAFT', 'EMESSA') THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_NON_RIPORTABILE_A_DRAFT',
+                    'reason',     'STATO_NON_PRE_FISCALE',
+                    'reason_key', 'vendite.lotti.azione_reason.stato_non_pre_fiscale',
+                    'dettaglio',  COALESCE(v_stato_cod, '-'));
+                END IF;
+
+                -- MOTIVO 2 — fatture oltre il pre-fiscale (sede unica).
+                v_motivi := v_motivi
+                          || script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id);
+
+                -- MOTIVO 3 — fatture gia' numerate.
+                -- ⚠️ Ridondante per costruzione rispetto al motivo 2 (a EMESSA
+                -- la fattura non e' numerata, C-19) e va tenuto lo stesso: il
+                -- danno sarebbe irreversibile, quindi si guarda il FATTO e non
+                -- lo stato che dovrebbe implicarlo.
+                SELECT count(*)
+                  INTO v_numerate
+                  FROM vendite.fatture f
+                  JOIN vendite.fatturazione_lotti_fatture lf
+                    ON lf.fattura_id = f.id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND f.numero IS NOT NULL;
+
+                IF v_numerate > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_LOTTO_FATTURE_NUMERATE',
+                    'reason',     'FATTURE_NUMERATE',
+                    'reason_key', 'vendite.lotti.azione_reason.fatture_numerate',
+                    'dettaglio',  v_numerate);
+                END IF;
+
+                -- ⭐ MOTIVO 4 (2026-08-22) — righe gia' RETTIFICATE.
+                -- Delegato: la domanda vive in un posto solo, condiviso dalle
+                -- tre porte di reset.
+                -- ⚠️ NON e' coperto dal motivo 3, ed e' il punto: la
+                -- protezione dei documenti numerati non arriva qui, perche'
+                -- l'accredito si registra PRIMA della numerazione — e' ancorato
+                -- alla coda dei resi, non al numero. Senza questo motivo il
+                -- reset passa il gate e poi esplode con una violazione di
+                -- chiave esterna grezza dentro fn_cleanup_fatture_by_ids.
+                v_motivi := v_motivi
+                          || script.fn_check_fatture_con_rettifiche(
+                                 ARRAY(SELECT lf.fattura_id
+                                         FROM vendite.fatturazione_lotti_fatture lf
+                                        WHERE lf.lotto_id = p_lotto_id));
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (codice 800). Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: guarda il numero e non lo stato che dovrebbe implicarlo. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ NON e'' coperto dal motivo 3, ed e'' il punto: l''accredito si registra PRIMA della numerazione (e'' ancorato alla coda dei resi), quindi la protezione dei documenti numerati non arriva fin li''. Senza, il reset passava il gate e poi esplodeva con un 23503 dentro fn_cleanup_fatture_by_ids. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons). rev 2026-08-22.';
+      rollback:
+        - empty: {}

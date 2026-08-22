@@ -24,6 +24,7 @@
 - [fn_check_commessa_pronta_fatturazione](funzioni/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
+- [fn_check_fatture_con_rettifiche](funzioni/fn_check_fatture_con_rettifiche.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
 - [fn_check_lotto_annullabile](funzioni/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
 - [fn_check_lotto_fatture_pre_fiscali](funzioni/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 04-08-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
@@ -54,6 +55,7 @@
 - [fn_get_emittenti_scope_sr_effettivo](funzioni/fn_get_emittenti_scope_sr_effettivo.md) — (latest review 18-08-26)
 - [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
 - [fn_get_entita_ruolo_detail](funzioni/fn_get_entita_ruolo_detail.md) — * **Dati entita' per ruolo**: dato un `soggetto_ruolo_id`, recupera automaticamente il tipo ruolo e interroga la tabella/vista configurata in `tipi_ruoli.entita_tabella`.
+- [fn_get_fattura_intestazione](funzioni/fn_get_fattura_intestazione.md) — (rev 2026-08-22)
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md) — (latest review 25-03-26) Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con filtro opzionale per **istanza utility**, producendo per ciascuno:
 - [fn_get_indirizzi_by_soggetto](funzioni/fn_get_indirizzi_by_soggetto.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista `anagrafiche.vw_indirizzi_resolved_soggetto` per ottenere un output **uniforme e human-readable**.
 - [fn_get_indirizzo](funzioni/fn_get_indirizzo.md) — *(latest review 25-03-26)* La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`) e opzionalmente per **istanza utility** (`anagrafiche.istanze_utilities.id`).
@@ -69,6 +71,7 @@
 - [fn_get_record_id_as_of](funzioni/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_search_detail](funzioni/fn_get_search_detail.md) — * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
 - [fn_get_setup_status](funzioni/fn_get_setup_status.md)
+- [fn_get_sistemazione_di_contabile](funzioni/fn_get_sistemazione_di_contabile.md) — (rev 2026-08-22)
 - [fn_get_snapshot_as_of](funzioni/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 - [fn_get_soggetto_dati_by_ruolo](funzioni/fn_get_soggetto_dati_by_ruolo.md) — * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
 - [fn_get_stato_cliente_by_istanza](funzioni/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
@@ -103,6 +106,7 @@
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
+- [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md)
 - [fn_resolve_indirizzo_documento](funzioni/fn_resolve_indirizzo_documento.md) — (latest review 02-08-2026)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).

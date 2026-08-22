@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «QUESTA DISTINTA E' NATA DA UN ATTO?» — passo S4-2 (lotto 7)
+#   script.fn_get_sistemazione_di_contabile
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-2 · Decisione: brief madre D15-e
+#
+# ── ⭐ PERCHE' ESISTE: girando il verso, la domanda si e' capovolta ──
+#   Prima la contabile **portava** il riferimento all'atto
+#   (`vendite_contabili.compensazione_id`), e chiedersi «è nata da una
+#   compensazione?» voleva dire guardare una colonna della riga.
+#
+#   Girato il verso (D15-e) quella colonna non c'è più: **lo sa l'atto**. La
+#   domanda diventa una lettura su un'altra tabella — e quell'altra tabella ha la
+#   row security.
+#
+# ── 🔴 E LI' C'E' UN VARCO CHE VA CHIUSO PRIMA DI APRIRLO ────────────
+#   Il guard che ne ha bisogno gira su `pagamenti.vendite_contabili_lotti` ed è
+#   `SECURITY INVOKER`. Leggendo `sistemazioni` sotto RLS, per un utente fuori
+#   perimetro l'atto **non c'è** → il guard **lascia passare**.
+#
+#   ⚠️ E non è teorico, per una ragione che viene proprio dal lotto 6: la
+#   contabile di una **compensazione** è una distinta **interna** — centro
+#   dedicato, nessun canale — e le distinte interne sono **visibili a tutti**.
+#
+#     > 🔴 Quindi un operatore dell'azienda B **vede** la distinta di
+#     > compensazione dell'azienda A, e senza questa funzione potrebbe
+#     > agganciarla a un proprio lotto di fatturazione: il guard non vedrebbe
+#     > l'atto che c'è dietro, e tacerebbe.
+#
+#   ⭐ Chi risolve non è chi applica: qui si risponde **un id**, fuori dalla row
+#   security. Che l'utente possa poi toccare quella distinta lo decidono le
+#   policy e i guard di scope, che sono un'altra cosa.
+#
+# ── ⚠️ NON ALLARGA NIENTE ────────────────────────────────────────────
+#   Un id su una distinta che il chiamante ha **già nominato**. Nessun importo,
+#   nessun documento, nessun cliente: il chiamante scopre solo che quella
+#   distinta *è impegnata*, che è esattamente ciò che gli serve sapere per non
+#   impegnarla due volte.
+#
+# ── ⚠️ LA SOLITA DIPENDENZA: `NO FORCE` ─────────────────────────────
+#   Gira come proprietario e la RLS è abilitata ma non forzata. Con un `FORCE`
+#   va rivista, come `fn_resolve_emittente_fiscale_id`,
+#   `fn_get_fattura_intestazione` e `fn_check_scadenza_di_fattura`.
+#
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-30-create-fn-get-sistemazione-di-contabile-mctit.yaml
+
+  - changeSet:
+      id: 20260822-30-create-fn-get-sistemazione-di-contabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_get_sistemazione_di_contabile(p_contabile_id): dice se una distinta contabile
+        e' nata da un atto di sistemazione, leggendo FUORI dalla row security. Serve perche'
+        girando il verso del legame (D15-e) la domanda e' passata da «guarda una colonna della
+        riga» a «leggi un'altra tabella» — e quell'altra tabella ha la RLS. 🔴 Il varco e'
+        reale e viene dal lotto 6: la contabile di una compensazione e' una distinta INTERNA,
+        e quelle sono visibili a tutti — un operatore dell'azienda B vede la distinta di
+        compensazione dell'azienda A, e senza questa funzione potrebbe agganciarla a un
+        proprio lotto senza che il guard se ne accorga.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: sistemazioni
+            - columnExists:
+                schemaName: pagamenti
+                tableName: sistemazioni
+                columnName: contabile_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_sistemazione_di_contabile(
+                  p_contabile_id pagamenti.vendite_contabili.id%TYPE
+              )
+              RETURNS pagamenti.sistemazioni.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_sistemazione_id pagamenti.sistemazioni.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire se una distinta contabile e' nata da un atto di
+                  --   sistemazione, e quale. Un id, e nient'altro.
+                  --
+                  -- 🔴 Perche' SECURITY DEFINER: pagamenti.sistemazioni ha la
+                  --   row security. Il guard che chiama e' SECURITY INVOKER, e
+                  --   per un utente fuori perimetro l'atto NON C'E' — quindi
+                  --   lascerebbe passare. ⚠️ E il caso e' raggiungibile: la
+                  --   contabile di una compensazione e' una distinta INTERNA
+                  --   (centro dedicato, nessun canale), e le distinte interne
+                  --   sono visibili a TUTTI gli operatori.
+                  --
+                  -- ⚠️ Non allarga niente: un id su una distinta che il
+                  --   chiamante ha gia' nominato. Chi chiede scopre solo che
+                  --   quella distinta e' impegnata — cioe' esattamente cio' che
+                  --   gli serve per non impegnarla due volte.
+                  --
+                  -- ⚠️ Dipende dalla RLS abilitata e NON forzata. Con un FORCE
+                  --   va rivista, come le sorelle.
+                  --
+                  -- ⭐ uq_sistemazioni_contabile garantisce che la riga sia una
+                  --   sola: niente ORDER BY da scegliere, niente scommesse.
+                  -- =========================================================
+
+                  IF p_contabile_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT s.id
+                    INTO v_sistemazione_id
+                    FROM pagamenti.sistemazioni s
+                   WHERE s.contabile_id = p_contabile_id;
+
+                  RETURN v_sistemazione_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_sistemazione_di_contabile(bigint) IS
+                'Dice se una distinta contabile e'' nata da un atto di sistemazione, e quale: un id, fuori dalla row security. ⭐ Esiste perche'' girando il verso del legame (D15-e) la domanda e'' passata da «guarda una colonna della riga» a «leggi un''altra tabella» — e pagamenti.sistemazioni ha la RLS. 🔴 Il varco che chiude e'' raggiungibile: la contabile di una compensazione e'' una distinta INTERNA, e quelle sono visibili a tutti gli operatori — quindi un operatore di un''altra azienda potrebbe agganciarla a un proprio lotto di fatturazione, e un guard che leggesse l''atto sotto RLS non vedrebbe niente e tacerebbe. ⚠️ Non allarga niente: chi chiede scopre solo che quella distinta e'' impegnata. ⚠️ Dipende dalla RLS abilitata e NON forzata.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_sistemazione_di_contabile(bigint) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_sistemazione_di_contabile(bigint);

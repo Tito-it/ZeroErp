@@ -149,10 +149,10 @@ SELECT is(
 CREATE TEMP TABLE tmp_corr_jb AS SELECT uuidv7() AS correlation_id;
 
 INSERT INTO vendite.event_log (event_time, domain, entity_type, entity_id,
-                               event_code, severity, correlation_id, actor, source, payload)
+                               event_code, severity, correlation_id, payload)
 SELECT now() - interval '50 min', 'PIPELINE', 'LOTTO', (SELECT lotto_id FROM tmp_lotto_jb),
        'PIPELINE_STARTED', 'INFO', (SELECT correlation_id FROM tmp_corr_jb),
-       'pgtap', 'pgtap', '{}'::jsonb;
+       '{}'::jsonb;
 
 SELECT is(
   (SELECT string_agg(s.messaggio, ',' ORDER BY s.messaggio)
@@ -168,10 +168,10 @@ SELECT is(
 --       lotto. Se l'ancora fosse quello, le due corse sarebbero la stessa cosa.
 -- ============================================================
 INSERT INTO vendite.event_log (event_time, domain, entity_type, entity_id,
-                               event_code, severity, correlation_id, actor, source, payload)
+                               event_code, severity, correlation_id, payload)
 SELECT now() - interval '20 min', 'PIPELINE', 'LOTTO', (SELECT lotto_id FROM tmp_lotto_jb),
        'PIPELINE_STARTED', 'INFO', (SELECT correlation_id FROM tmp_corr_jb),
-       'pgtap', 'pgtap', '{}'::jsonb;
+       '{}'::jsonb;
 
 SELECT is(
   (SELECT string_agg(s.messaggio, ',' ORDER BY s.messaggio)

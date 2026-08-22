@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD PERDE IL RAMO CHE NON HA PIU' UN DATO — passo S4-2 (lotto 7)
+#   pagamenti.trgfn_vendite_contabili_guard_ente_centro
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-2 · Decisione: brief madre D15-e
+#
+# ── ⭐ COSA SPARISCE, E PERCHE' NON E' UNA PERDITA ───────────────────
+#   Il ramo **2)** del guard si apriva su `NEW.compensazione_id IS NOT NULL` e
+#   faceva due controlli:
+#
+#   | Controllo | Dove va adesso |
+#   | --- | --- |
+#   | il centro dev'essere quello di compensazione | ⭐ su **`sistemazioni`** (`trgfn_sistemazioni_guard_dati`, changeSet -28) |
+#   | la contabile non dev'essere legata a un lotto | ⭐ resta **una** porta sola, su `vendite_contabili_lotti` (changeSet -31) |
+#
+#   Girato il verso del legame (D15-e), **la contabile non sa più di essere nata
+#   da un atto**: lo sa l'atto. Questo ramo non ha più né il dato su cui
+#   appoggiarsi né un momento in cui scattare — alla nascita della distinta
+#   nessun atto la cita ancora.
+#
+#     > ⭐ Le due regole non spariscono: **cambiano casa**, e vanno dove il dato
+#     > che le rende decidibili esiste davvero. Un controllo che scatta quando
+#     > l'informazione non c'è ancora non è un presidio: è una decorazione.
+#
+# ── 🔴 E IL TRIGGER VA RICREATO, NON SOLO LA FUNZIONE ───────────────
+#   La lista `UPDATE OF` del trigger nomina `compensazione_id`, e **una lista di
+#   colonne crea una dipendenza vera nel catalogo**. Senza ricrearlo, il
+#   `DROP COLUMN` del changeSet `-34` fallisce:
+#
+#       ⛔ «non è possibile eliminare colonna compensazione_id ... perché altri
+#          oggetti dipendono da esso»
+#
+#     > ⚠️ **Il corpo di una `plpgsql` non crea dipendenze** — i riferimenti si
+#     > risolvono all'esecuzione — **ma la lista di colonne di un trigger sì.**
+#     > Sono due cose diverse, e solo la seconda si vede *prima* di provarci.
+#     > 📌 Trovato dalla simulazione in transazione annullata, non dal
+#     > ragionamento: è la ragione per cui quel passo esiste.
+#
+# ── ⚠️ QUESTO CHANGESET DEVE PRECEDERE IL `DROP` DELLA COLONNA ──────
+#   Il corpo vecchio nomina `NEW.compensazione_id`. Togliendo la colonna prima di
+#   riscrivere il corpo, la funzione resterebbe **verde a riposo e rossa alla
+#   prima chiamata** — plpgsql risolve i riferimenti all'esecuzione, non alla
+#   creazione. L'ordine è garantito dalla numerazione: `-32` riscrive, `-34`
+#   toglie.
+#
+# ── ⭐ IL RAMO 1 RESTA IDENTICO, PAROLA PER PAROLA ──────────────────
+#   La coerenza `ente → centro` non c'entra niente con le sistemazioni ed è viva:
+#   dal lotto 6 ogni canale ha anche un conto, e questo guard è ciò che tiene
+#   insieme canale e centro.
+#
+# Verifica: db/pgtap/pagamenti/test-compensazioni-contabili-model.sql (riscritto)
+#           + baseline `pagamenti`
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-32-update-trgfn-contabili-guard-ente-centro-senza-compensazione-mctit.yaml
+
+  - changeSet:
+      id: 20260822-32-update-trgfn-contabili-guard-ente-centro-senza-compensazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_vendite_contabili_guard_ente_centro perde il ramo 2 (le regole di
+        compensazione), che si apriva su NEW.compensazione_id: girato il verso del legame
+        (D15-e) quella colonna sparisce, e con lei il momento in cui il ramo poteva scattare —
+        alla nascita della distinta nessun atto la cita ancora. Le due regole non spariscono,
+        cambiano casa: il centro dedicato va sul guard delle sistemazioni, il divieto di lotto
+        resta sull'unica porta che conta, vendite_contabili_lotti. Il ramo 1 (coerenza ente ->
+        centro) resta identico parola per parola. 🔴 E si ricrea anche il TRIGGER, non solo la
+        funzione: la sua lista UPDATE OF nomina compensazione_id, e una lista di colonne crea
+        una dipendenza vera nel catalogo — senza, il DROP COLUMN del changeSet -34 fallisce.
+        Il corpo di una plpgsql non crea dipendenze, la lista di un trigger si'.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: pagamenti
+            tableName: vendite_contabili
+            columnName: compensazione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_centro_ente pagamenti.enti_incasso.centro_riscossione_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Coerenza fra il CANALE e il CENTRO della testata contabile.
+                --
+                -- Rev 2026-08-22 (lotto 7, D15-e): il ramo 2 — «regole
+                --   specifiche compensazione» — e' stato tolto. Si apriva su
+                --   NEW.compensazione_id, e quella colonna non esiste piu':
+                --   girato il verso del legame, la contabile non sa piu' di
+                --   essere nata da un atto, lo sa l'atto. Le due regole non
+                --   sono sparite, hanno cambiato casa:
+                --     * il centro dedicato -> pagamenti.trgfn_sistemazioni_guard_dati
+                --     * il divieto di lotto -> pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione
+                --   ⭐ Vanno dove il dato che le rende decidibili esiste
+                --   davvero: un controllo che scatta quando l'informazione non
+                --   c'e' ancora non e' un presidio, e' una decorazione.
+                --
+                -- Rev 2026-08-21 (passo P-7): i quattro E_GENERICO passano ai
+                -- codici registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                -- 1) Coerenza ente_incasso -> centro_riscossione.
+                IF NEW.ente_incasso_id IS NOT NULL THEN
+                  SELECT ei.centro_riscossione_id
+                    INTO v_centro_ente
+                    FROM pagamenti.enti_incasso ei
+                   WHERE ei.id = NEW.ente_incasso_id;
+
+                  -- ⚠️ Due cause, un codice: l'ente non esiste, oppure esiste e
+                  --    non ha centro (la colonna e' nullable). Stesso rimedio:
+                  --    si va a guardare l'ente.
+                  IF v_centro_ente IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_ENTE_INCASSO_SENZA_CENTRO',
+                      jsonb_build_object(
+                        'detail', 'ente_incasso senza centro_riscossione valido',
+                        'campo', 'ente_incasso_id',
+                        'ente_incasso_id', NEW.ente_incasso_id
+                      ),
+                      NULL::uuid,
+                      NEW.ente_incasso_id::text
+                    );
+                  END IF;
+
+                  IF NEW.centro_riscossione_id IS DISTINCT FROM v_centro_ente THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_CONTABILE_CENTRO_ENTE_INCOERENTE',
+                      jsonb_build_object(
+                        'detail', 'coerenza centro/ente non rispettata',
+                        'campo', 'centro_riscossione_id',
+                        'contabile_id', NEW.id,
+                        'centro_riscossione_id', NEW.centro_riscossione_id,
+                        'ente_incasso_id', NEW.ente_incasso_id,
+                        'centro_riscossione_ente', v_centro_ente
+                      ),
+                      NULL::uuid,
+                      NEW.centro_riscossione_id::text,
+                      NEW.ente_incasso_id::text,
+                      v_centro_ente::text
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro() IS
+                'Coerenza fra il CANALE e il CENTRO della testata contabile: un ente di incasso deve avere un centro, e dev''essere quello della distinta. ⭐ Dal lotto 6 il canale porta anche il CONTO su cui atterra il denaro, ed e'' il perimetro: questo guard e'' cio'' che tiene insieme le due cose. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): tolto il ramo «regole specifiche compensazione», che si apriva su NEW.compensazione_id — colonna sparita girando il verso del legame. Le due regole hanno cambiato casa e non sono state perse: il centro dedicato vive su trgfn_sistemazioni_guard_dati, il divieto di aggancio al lotto su trgfn_vendite_contabili_lotti_guard_sistemazione. Un controllo che scatta quando l''informazione non c''e'' ancora non e'' un presidio: alla nascita della distinta nessun atto la cita.';
+
+              -- 🔴 E IL TRIGGER VA RICREATO, non solo la funzione: la sua lista
+              --    `UPDATE OF` nomina `compensazione_id`, e una lista di colonne
+              --    crea una DIPENDENZA VERA nel catalogo — il `DROP COLUMN` del
+              --    changeSet -34 fallirebbe con
+              --    «non e' possibile eliminare colonna ... perche' altri oggetti
+              --    dipendono da esso».
+              -- ⚠️ Il corpo di una plpgsql non crea dipendenze (i riferimenti si
+              --    risolvono all'esecuzione); la lista di un trigger SI'. Sono due
+              --    cose diverse, e solo la seconda si vede prima di provarci.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_ente_centro_ins_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_ente_centro_ins_upd
+                  BEFORE INSERT OR UPDATE OF centro_riscossione_id, ente_incasso_id
+                  ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Non rimette il ramo 2: senza la colonna compensazione_id
+              --    quel corpo non compilerebbe. Per risalire davvero serve
+              --    prima il passo -34.
+              SELECT 1;

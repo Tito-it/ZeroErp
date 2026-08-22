@@ -5,7 +5,21 @@ con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.
 
 ### Regole principali
 * Valida parametri obbligatori (`centro_riscossione_id`, `data_contabile`, stato).
-* Supporta `p_compensazione_id` opzionale:
+> ⚠️ **Dal 2026-08-22 `p_compensazione_id` non esiste più**, e con lui il ramo di
+> riuso «una testata per atto» e la mutua esclusione con `p_lotto_id`. ⭐ Girato
+> il verso del legame (D15-e) è l'**atto** a tenere l'id della sua contabile:
+> chiederla qui voleva dire far nascere la testata **sapendo già di chi sarebbe
+> stata**, cioè il verso opposto a come funziona il processo. L'unicità *«una
+> contabile per atto»* vive su `uq_sistemazioni_contabile`, e le sistemazioni
+> creano la loro distinta **da sé** — questa funzione è costruita per
+> **condividere**, e due rimborsi nello stesso giorno riuserebbero la stessa
+> testata.
+>
+> 🔴 La firma è cambiata: la funzione è stata **eliminata e ricreata**, perché
+> una sostituzione con parametri diversi affianca un **overload** e con i valori
+> di default le chiamate diventano ambigue.
+
+⛔ *(storico, non più valido)* Supportava `p_compensazione_id` opzionale:
   * se valorizzato, identifica in modo univoco la testata contabile
   * non e` compatibile con `p_lotto_id`.
 * Risolve lo stato da `pagamenti.vendite_contabili_stati.codice_interno`.
@@ -19,7 +33,6 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
   p_centro_riscossione_id => 1,
   p_data_contabile => current_date,
   p_ente_incasso_id => NULL,
-  p_compensazione_id => NULL,
   p_lotto_id => 123,
   p_codice_stato_interno => 'BOZZA'
 );

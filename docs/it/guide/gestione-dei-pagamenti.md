@@ -47,7 +47,8 @@ Il principio fondamentale e che la scrittura diretta in `vendite_movimenti` e un
 * [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili) — testata contabile
 * [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) — dettaglio righe
 * [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti) — movimenti effettivi
-* [pagamenti.compensazioni](/dbzero/pagamenti/tabelle/compensazioni) — testate di compensazione
+* [pagamenti.sistemazioni](/dbzero/pagamenti/tabelle/sistemazioni) — il registro delle sistemazioni (riporti, rimborsi, compensazioni)
+* [pagamenti.vw_eccedenze_da_sistemare](/dbzero/pagamenti/views/vw_eccedenze_da_sistemare) — l'elenco dei documenti che hanno incassato piu' del dovuto
 * [pagamenti.vendite_contabili_lotti](/dbzero/pagamenti/tabelle/vendite_contabili_lotti) — legame contabile-lotto
 
 **Lookup stati:**
@@ -338,7 +339,7 @@ riconoscimento di chi sono i soldi in arrivo.
 
 La testata contabile e il punto unico d'ingresso per ogni pagamento, sia che provenga da un flusso bancario, da una compensazione automatica o da un fondo fattura. Ogni testata identifica un'operazione contabile con la sua data, il centro di riscossione, l'eventuale ente di incasso e lo stato di lavorazione.
 
-La testata puo essere collegata a una compensazione (`compensazione_id`) oppure a uno o piu lotti di fatturazione (tramite la tabella di legame `vendite_contabili_lotti`), ma **mai a entrambi**: questa mutua esclusione e applicata dai trigger di guardia.
+⚠️ **Dal 2026-08-22 la testata non porta piu' il riferimento all'atto di sistemazione**: e' l'atto a tenere l'id della sua distinta. La testata puo essere collegata a uno o piu lotti di fatturazione (tramite la tabella di legame `vendite_contabili_lotti`), ma **mai a entrambi**: questa mutua esclusione e applicata dai trigger di guardia.
 
 Da un punto di vista tecnico:
 
@@ -351,7 +352,7 @@ Da un punto di vista tecnico:
 | `data_contabile`        | DATE               |    no    | Data contabile dell'operazione                                      |
 | `data_registrazione`    | DATE               |    no    | Data di registrazione                                               |
 | `stato_id`              | SMALLINT, FK       |    si    | Stato della testata                                                 |
-| `compensazione_id`      | BIGINT, FK, UNIQUE |    si    | Compensazione collegata (1:1)                                       |
+| ~~`compensazione_id`~~  | —                  |    —     | ⛔ **Rimossa il 2026-08-22**: il legame vive su `sistemazioni.contabile_id` (1:1)                                       |
 | `data_conferma`         | TIMESTAMPTZ        |    si    | Data di conferma/posting                                            |
 | `user_conferma`         | TEXT               |    si    | Utente che ha confermato                                            |
 | `meta`                  | JSONB              |    no    | Metadati estensibili                                                |
@@ -360,7 +361,7 @@ Da un punto di vista tecnico:
 **Vincoli UNIQUE:**
 
 * `uq_vendite_contabili_codice` su `(codice)` — codice univoco per testata
-* `uq_vendite_contabili_compensazione` su `(compensazione_id)` — una sola testata per compensazione
+* ~~`uq_vendite_contabili_compensazione`~~ — ⛔ rimosso: l'unicita' «una distinta per atto» vive su `uq_sistemazioni_contabile`, cioe' dall'altro lato. Una sola testata per compensazione
 
 **Trigger principali:**
 
@@ -495,43 +496,91 @@ Gli stati delle righe contabili includono un flag cruciale per il processo di po
 
 ---
 
-## Compensazioni
+## Le sistemazioni: quando un cliente ha pagato piu' del dovuto
 
-La compensazione e un processo automatico che genera una testata contabile per pareggiare importi tra fatture. La tabella `compensazioni` e leggera: registra solo `data_esecuzione` e metadati. La logica operativa passa interamente dalla testata contabile collegata.
+> Sezione **riscritta il 2026-08-22**. ~~Si intitolava «Compensazioni»~~ e
+> descriveva un processo automatico che non esisteva ancora davvero: adesso il
+> giro c'e' per intero, e la compensazione e' **una delle tre strade**, non il
+> nome di tutto.
 
-> ⭐ **Oggi e cosi; dal cantiere incassi diventera un'altra cosa, e piu grande.**
-> Decisione **D15** del 2026-08-21: la compensazione smette di essere **un
-> processo automatico** e diventa **una delle tre destinazioni** che una persona
-> puo scegliere per un saldo in eccesso — riporto su una fattura futura, rimborso
-> con bonifico, compensazione fra documenti.
->
-> Di conseguenza la tabella **si allarga e si rinomina in
-> `pagamenti.sistemazioni`**, con una colonna `destinazione` a vocabolario chiuso
-> (`RIPORTO` / `RIMBORSO` / `COMPENSAZIONE`): chiamare «compensazione» un bonifico
-> di rimborso sarebbe falso. Il giro resta quello descritto qui — l'atto genera
-> una contabile, la contabile registrata genera i movimenti — ma a monte c'e una
-> **vista** che mostra le eccedenze da sistemare, raggruppate **per cliente**, e
-> una **persona** che decide.
->
-> ⚠️ `centri_riscossione.is_compensazione` **non cambia**: parla del *centro*, non
-> dell'atto, e la compensazione resta uno dei tre centri non-cassa.
->
-> Piano: slice 4 di
-> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
-> — ⛔ **non ancora applicato**.
+### Il problema, in una frase
 
-Da un punto di vista tecnico:
+Capita che su un documento entri **piu' denaro di quanto era dovuto**: un cliente
+paga due volte, o paga un importo tondo, o si e' fatta una nota di credito dopo
+che aveva gia' saldato. Quel credito e' suo, e prima o poi qualcuno deve
+decidere che farne.
 
-| Colonna           | Tipo        | Nullable | Descrizione                                                         |
-| ----------------- | ----------- | :------: | ------------------------------------------------------------------- |
-| `id`              | BIGINT, PK  |    no    | Chiave primaria                                                     |
-| `data_esecuzione` | TIMESTAMPTZ |    no    | Data e ora dell'esecuzione (default: `now()`)                       |
-| `meta`            | JSONB       |    no    | Metadati estensibili                                                |
-| Campi audit       | —           |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+⚠️ Fino a oggi il sistema **non lo mostrava a nessuno**: il denaro restava sul
+documento e chi lo cercava doveva sapere gia' dove guardare.
 
-Il legame con la testata contabile e 1:1 (vincolo UNIQUE su `vendite_contabili.compensazione_id`). La testata creata per una compensazione deve appartenere a un centro riscossione con `is_compensazione = true`, e non puo essere associata a lotti di fatturazione.
+### Le due meta': un elenco e un registro
 
-> Documentazione dettagliata: [pagamenti.compensazioni](/dbzero/pagamenti/tabelle/compensazioni)
+```text
+vw_eccedenze_da_sistemare   →  che cosa c'e' DA FARE
+sistemazioni                →  che cosa e' STATO FATTO
+```
+
+⭐ **L'elenco** raccoglie i documenti che hanno incassato piu' del dovuto, li
+mostra **raggruppati per cliente** — perche' e' guardando il cliente che si
+decide, e perche' un credito su una fattura puo' coprire un debito su un'altra —
+e dice **chi e' in credito**: normalmente il cliente, ma su una nota di credito
+restituita in eccesso e' l'azienda. ⚠️ Sbagliare quel verso significa rimborsare
+denaro che si deve incassare, e per questo il sistema lo scrive invece di
+lasciarlo dedurre.
+
+⭐ **Il registro** tiene traccia di ogni decisione presa: che cosa si e' scelto
+di fare, per quanto, su quali documenti, quando e da chi.
+
+### Le tre strade
+
+| Si sceglie | Che cosa succede |
+|---|---|
+| **Riporto** | il credito va su un'**altra fattura** del cliente, come sconto gia' disponibile |
+| **Rimborso** | il denaro **esce**: si prepara un movimento in uscita da un conto dell'azienda |
+| **Compensazione** | il credito di un documento copre il debito di un altro, **dello stesso cliente** |
+
+⭐ **Nessuna di queste e' un meccanismo nuovo**: il riporto usa i fondi fattura,
+il rimborso e la compensazione usano le distinte contabili — le stesse con cui si
+registrano gli incassi, solo con gli importi al contrario. *Mancavano l'elenco e
+il registro, non le macchine.*
+
+### Il giro, per intero
+
+```text
+l'elenco mostra un'eccedenza
+   → una PERSONA sceglie che farne          (nessun automatismo decide da solo)
+   → la decisione si registra
+   → alla conferma nasce il documento       (un fondo, oppure una distinta)
+   → registrando quel documento il denaro si muove davvero
+```
+
+⚠️ **Fra la decisione e l'effetto ci sono due passi**, e l'elenco li distingue:
+finche' la decisione e' in bozza non e' successo niente; una volta confermata il
+documento c'e' ma l'eccedenza cala solo quando quel documento viene **registrato**.
+⭐ E a quel punto la riga sparisce dall'elenco **da sola**: i saldi si leggono,
+non si conservano.
+
+### Tre cose che vale la pena sapere
+
+* ⭐ **Si puo' sistemare solo una parte.** Su una fattura possono esistere piu'
+  sistemazioni: si rimborsa una quota e si riporta il resto.
+* ⚠️ **La verifica si fa al momento di confermare, non di decidere.** Fra i due
+  momenti puo' arrivare un altro incasso, o un collega puo' aver gia' usato lo
+  stesso credito: controllare prima darebbe una garanzia che scade.
+* ⛔ **Una decisione confermata non si corregge: se ne registra un'altra.** Il
+  denaro si e' gia' mosso, e il registro deve continuare a raccontare cio' che e'
+  successo davvero. Annullare invece si puo', finche' non si e' confermato — e
+  l'atto resta scritto, con la sua ragione: *annullare non e' cancellare*.
+
+### ⚠️ Da non confondere: il centro «compensazione»
+
+`centri_riscossione.is_compensazione` **non e' cambiato**, e parla di un'altra
+cosa: e' il *luogo contabile* dove finiscono le compensazioni, non l'atto con cui
+si decidono. Resta uno dei centri che **non sono cassa**.
+
+> Documentazione dettagliata:
+> [pagamenti.sistemazioni](/dbzero/pagamenti/tabelle/sistemazioni) ·
+> [pagamenti.vw_eccedenze_da_sistemare](/dbzero/pagamenti/views/vw_eccedenze_da_sistemare)
 
 ---
 
@@ -552,7 +601,7 @@ Da un punto di vista tecnico:
 
 **Vincolo UNIQUE:** `uq_vendite_contabili_lotti_lotto_contabile` su `(lotto_id, contabile_id)` — una coppia lotto-contabile non puo essere duplicata.
 
-**Trigger di guardia:** `trgfn_vendite_contabili_lotti_guard_compensazione` blocca l'inserimento se la testata ha `compensazione_id IS NOT NULL`.
+**Trigger di guardia:** `trgfn_vendite_contabili_lotti_guard_sistemazione` *(dal 2026-08-22; si chiamava `..._guard_compensazione` e copriva le sole compensazioni)* blocca l'inserimento se la testata ha `compensazione_id IS NOT NULL`.
 
 > Documentazione dettagliata: [pagamenti.vendite_contabili_lotti](/dbzero/pagamenti/tabelle/vendite_contabili_lotti)
 
@@ -677,7 +726,7 @@ Da un punto di vista tecnico:
 | `p_data_contabile`        | DATE   | —              | Data contabile (obbligatoria)             |
 | `p_data_registrazione`    | DATE   | `CURRENT_DATE` | Data registrazione                        |
 | `p_ente_incasso_id`       | BIGINT | NULL           | Ente di incasso (> 0 se valorizzato)      |
-| `p_compensazione_id`      | BIGINT | NULL           | Compensazione collegata                   |
+| ~~`p_compensazione_id`~~  | —      | —              | ⛔ **Rimosso il 2026-08-22**: le sistemazioni creano la loro distinta da se'                   |
 | `p_lotto_id`              | BIGINT | NULL           | Lotto di fatturazione                     |
 | `p_codice_stato_interno`  | TEXT   | `'BOZZA'`      | Codice interno dello stato iniziale       |
 | `p_meta`                  | JSONB  | `'{}'`         | Metadati                                  |
@@ -686,13 +735,13 @@ Da un punto di vista tecnico:
 
 **Strategia di ricerca:**
 
-1. Se `p_compensazione_id` e valorizzato: cerca per `compensazione_id` (relazione 1:1 UNIQUE). Se trovata, verifica coerenza dei parametri.
+1. ⛔ *(rimosso il 2026-08-22)* Se `p_compensazione_id` era valorizzato: cercava per `compensazione_id` (relazione 1:1 UNIQUE). Se trovata, verifica coerenza dei parametri.
 2. Se `p_lotto_id` e NULL: cerca per combinazione `(centro, ente, data_contabile, data_registrazione, stato)` senza compensazione.
 3. Se `p_lotto_id` e valorizzato: cerca tramite JOIN su `vendite_contabili_lotti` con la stessa combinazione.
 4. Se non trovata: INSERT con codice auto-generato `VC_<timestamp>_<random8>`.
 5. Se `p_lotto_id` e valorizzato: INSERT in `vendite_contabili_lotti` con `ON CONFLICT DO NOTHING`.
 
-**Vincolo di mutua esclusione:** `p_compensazione_id` e `p_lotto_id` sono mutuamente esclusivi (errore se entrambi valorizzati).
+**Vincolo di mutua esclusione:** ⛔ *(non piu' applicabile dal 2026-08-22, il primo parametro non esiste)* `p_compensazione_id` e `p_lotto_id` erano mutuamente esclusivi (errore se entrambi valorizzati).
 
 > Documentazione dettagliata: [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile)
 
@@ -887,7 +936,7 @@ Se `ente_incasso_id` e valorizzato, verifica che il `centro_riscossione_id` dell
 
 **Blocco 2 — Regole compensazione:**
 
-Se `compensazione_id` e valorizzato:
+⛔ *(rimosso il 2026-08-22, lotto 7)* Se `compensazione_id` era valorizzato:
 
 * Il centro di riscossione deve avere `is_compensazione = true`
 * La testata non deve avere link in `vendite_contabili_lotti` (mutua esclusione)
@@ -904,9 +953,9 @@ Questo trigger (BEFORE INSERT/UPDATE su `vendite_movimenti`) garantisce la coere
 
 ---
 
-### Mutua esclusione lotto/compensazione: `trgfn_vendite_contabili_lotti_guard_compensazione`
+### Mutua esclusione lotto/sistemazione: `trgfn_vendite_contabili_lotti_guard_sistemazione`
 
-Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata con `compensazione_id IS NOT NULL` venga associata a un lotto. Lavora in coppia con il blocco 2 del guard ente/centro per applicare la mutua esclusione da entrambi i lati.
+Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata **nata da una sistemazione** — la domanda si fa all'atto, non piu' alla testata — ~~con `compensazione_id IS NOT NULL` venga associata a un lotto. Lavora in coppia con il blocco 2 del guard ente/centro per applicare la mutua esclusione da entrambi i lati.
 
 ---
 
@@ -939,7 +988,7 @@ flowchart TD
 
 2. **Coerenza ente/centro**: se una testata ha un ente incasso, il `centro_riscossione_id` dell'ente deve coincidere con quello della testata (guard: `trgfn_vendite_contabili_guard_ente_centro`).
 
-3. **Mutua esclusione compensazione/lotto**: una testata con `compensazione_id` non puo avere link in `vendite_contabili_lotti`, e viceversa. Applicata da due trigger simmetrici.
+3. **Mutua esclusione sistemazione/lotto**: una testata **nata da una sistemazione** non puo avere link in ~~`vendite_contabili_lotti`, e viceversa. Applicata da due trigger simmetrici.
 
 4. **Centro compensazione obbligatorio**: una testata con `compensazione_id` deve appartenere a un centro con `is_compensazione = true`. Un solo centro nel sistema puo avere questo flag.
 
@@ -1011,7 +1060,6 @@ erDiagram
         bigint ente_incasso_id FK
         date data_contabile
         smallint stato_id FK
-        bigint compensazione_id FK
     }
 
     vendite_contabili_righe {
@@ -1072,7 +1120,6 @@ erDiagram
     vendite_contabili {
         bigint id PK
         varchar codice
-        bigint compensazione_id FK
     }
 
     vendite_contabili_lotti {
@@ -1123,7 +1170,7 @@ Per il dettaglio delle singole tabelle e funzioni:
 * [pagamenti.vendite_contabili (manual)](/dbzero/pagamenti/manual/vendite_contabili) — contesto e semantica
 * [pagamenti.vendite_contabili_righe (manual)](/dbzero/pagamenti/manual/vendite_contabili_righe) — dettaglio righe
 * [pagamenti.vendite_movimenti (manual)](/dbzero/pagamenti/manual/vendite_movimenti) — movimenti effettivi
-* [pagamenti.compensazioni (manual)](/dbzero/pagamenti/manual/compensazioni) — compensazioni
+* [pagamenti.sistemazioni (manual)](/dbzero/pagamenti/manual/sistemazioni) — il registro delle sistemazioni
 * [vendite.fatture_fondi_fattura_source (manual)](/dbzero/vendite/manual/fatture_fondi_fattura_source) — fondi fattura
 
 ---

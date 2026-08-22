@@ -23,7 +23,6 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 * `codice`: identificativo testata contabile.
 * `centro_riscossione_id`: riferimento principale al centro riscossione.
 * `ente_incasso_id`: ente/canale specifico (opzionale).
-* `compensazione_id`: testata processo compensazione (opzionale, univoca).
 * `stato_id`: stato della testata contabile.
 * `data_contabile`: data contabile di riferimento.
 * `data_conferma` / `user_conferma`: tracciamento conferma testata. ⭐ **Dal
@@ -39,9 +38,14 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 * Ogni testata e` collegata a un solo centro riscossione.
 * Se `ente_incasso_id` e` valorizzato, deve essere coerente con
   `centro_riscossione_id` della testata (guard applicativa).
-* Se `compensazione_id` e` valorizzato:
-  * il centro riscossione deve avere `is_compensazione = true`
-  * la testata non puo` essere collegata a lotti (`vendite_contabili_lotti`).
+* ⚠️ Una distinta **nata da una sistemazione** non si collega a un lotto di
+  fatturazione. ⭐ Dal 2026-08-22 la regola non vive più qui: girato il verso del
+  legame (D15-e), **la contabile non sa più di essere nata da un atto** — lo sa
+  l'atto. Il presidio è rimasto **uno solo**, e sulla porta che conta:
+  `trgfn_vendite_contabili_lotti_guard_sistemazione`. E la regola *«una
+  compensazione sta sul centro dedicato»* è passata a
+  [trgfn_sistemazioni_guard_dati](/dbzero/pagamenti/funzioni/trgfn_sistemazioni_guard_dati),
+  dove il dato che la rende decidibile esiste davvero.
 * `stato_id` punta al lookup `pagamenti.vendite_contabili_stati`.
 
 ---
@@ -178,7 +182,7 @@ policy», che è vero e inservibile.
 | `trgfn_vendite_contabili_guard_transizione` | i salti di stato che la matrice non ammette |
 | `trgfn_vendite_contabili_guard_chiusura` | di **chiudere** una distinta che ha ancora righe pronte |
 | `trgfn_vendite_contabili_guard_validazione` | di validare con un totale che non quadra, e di riaprire una distinta non manuale |
-| `trgfn_vendite_contabili_guard_ente_centro` | le incoerenze fra centro, ente e compensazione |
+| `trgfn_vendite_contabili_guard_ente_centro` | le incoerenze fra **centro** ed **ente** *(dal 2026-08-22 non guarda più le sistemazioni: la colonna che le nominava non esiste)* |
 | `script.trgfn_guard_emittente_scope('ente_incasso','ente_incasso_id')` | di **aprire una distinta sul canale di un altro emittente** *(2026-08-22)* |
 
 ---

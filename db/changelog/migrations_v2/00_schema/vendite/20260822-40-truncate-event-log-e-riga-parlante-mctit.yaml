@@ -1,0 +1,215 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI event_log IMPARA A PARLARE — L1 del Passo 0
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.1 · Decisioni D-1, D-4, D-6, D-9, D-13, D-14
+#
+# ── ⛔ PERCHE' UN TRUNCATE, E PERCHE' ADESSO ─────────────────────────
+#   `vendite.trgfn_event_log_append_only` e' BEFORE UPDATE OR DELETE FOR EACH
+#   ROW e solleva **incondizionatamente**. Conseguenza misurata il 2026-08-22:
+#   su questa tabella **non esiste nessun backfill**, ne' oggi ne' mai. I campi
+#   che una riga non ha alla nascita non li avra' piu'.
+#
+#     > Quindi la colonna di perimetro, il tx_id, l'identita' di chi e la
+#     > scadenza entrano TUTTI in una passata sola. Il lato lettura — policy,
+#     > indici, endpoint, viste — si aggiunge quando si vuole.
+#
+#   Le 386 righe presenti sono di sviluppo, senza valore probatorio (§0-bis
+#   dell'analisi), e non sono convertibili: `UPDATE` e `DELETE` sono vietati,
+#   quindi l'unica via e' `TRUNCATE` — che NON passa dai trigger di riga.
+#   ⚠️ **Cancellazione autorizzata esplicitamente da Tid il 2026-08-22** (D-4).
+#   Il privilegio `TRUNCATE` ce l'ha `titodb`, non `zeroerp_app`.
+#
+# ── ⭐ PERCHE' LA COLONNA E' `emittente_soggetto_ruolo_id` E NON LA PK ─
+#   Tre ragioni, e la terza e' decisiva (D-1, rev. dopo il rilievo di Tid sui
+#   lucchetti):
+#     1. e' la colonna che usano GIA' lotti, commesse, fatture, DDT, ordini,
+#        preventivi, contratti e resi: il diario parla la lingua del resto;
+#     2. rende la derivazione una **copia** dal padre invece di una ricerca —
+#        nessun JOIN a `anagrafiche.emittenti_fiscali`;
+#     3. ⛔ `anagrafiche.soggetti_ruoli` **non ha la colonna `attivo`**, quindi
+#        `dbops.fn_run_automations_attivo` salta (ATTIVO_SKIP_PARENT_NO_ATTIVO)
+#        e **non genera il lucchetto `require_attivo`**. Verificato: zero
+#        trigger `*_soggetti_ruoli_require_attivo_*` in tutto il database.
+#        Con la PK il lucchetto sarebbe nato, e **un diario non deve smettere
+#        di scrivere**: un emittente cessato ha ancora note di credito, incassi
+#        e stampe da chiudere, ed e' proprio li' che il diario serve (D-12).
+#
+# ── ⭐ PERCHE' UN CHECK E NON UNA FK VERSO config.sorgenti ───────────
+#   Stessa ragione (il lucchetto), piu' una che vale da sola: con la FK si
+#   potrebbe **seedare un tipo nuovo in `config.sorgenti` che il trigger di
+#   derivazione non sa risolvere** — una configurazione che dice si' e un
+#   trigger che dice no. Col `CHECK`, vocabolario e dispatch cambiano nello
+#   **stesso changeSet**. E' anche la forma gia' in casa: `chk_event_log_severity`.
+#
+# ── ⚠️ COSA SI ROMPE FINCHE' IL BE NON ARRIVA ───────────────────────
+#   Dopo questo changeSet il ramo push scrive `entity_type = 'TASK_RUN'`, che
+#   il CHECK non ammette: quelle scritture **falliscono**. E' voluto e atteso —
+#   D-3 le sposta su `commesse_push_log` — ma vuol dire che L1 e le consegne
+#   BE-1/BE-3/BE-4/BE-5/BE-7 vanno applicate **nella stessa finestra**.
+#   Non applicare questo changeSet su un ambiente il cui backend e' indietro.
+#
+# ── Colonne aggiunte ────────────────────────────────────────────────
+#   emittente_soggetto_ruolo_id  NOT NULL, derivata dal trigger a10 (D-1)
+#   auth_user_id                 chi, come NUMERO: `user_insert` e' lo username
+#                                e non regge a un rename (D-14). Nessuna FK:
+#                                django.auth_user e' fuori dal perimetro dei
+#                                vincoli, come su dbops.request_log
+#   tx_id                        l'unico registro del progetto che non l'aveva;
+#                                il trigger glielo attacca l'automazione (D-5)
+#   cleanup_at                   valorizzata ALL'INSERT dal trigger a10, non
+#                                dall'automazione: `fn_apply_cleanup_at` fa un
+#                                UPDATE, che qui e' vietato (D-13, §3.4)
+#
+# ── Colonne rimosse ─────────────────────────────────────────────────
+#   actor, source — costanti su 386 righe su 386 (`service:django` e `django`).
+#   «Chi» era gia' nella riga: `user_insert`, riempito da
+#   `script.trgfn_audit_data_user_generic` leggendo `app.jwt_user` (in tabella:
+#   tid, pochi, fara, BATCH_FATTURAZIONE). Il buco B3 dell'analisi non era vero
+#   come scritto (D-6).
+#
+# Dipendenze: anagrafiche.soggetti_ruoli (id).
+# Verifica: db/pgtap/vendite/test-event-log-deriva-scope.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260822-40-truncate-event-log-e-riga-parlante-mctit.yaml
+
+  - changeSet:
+      id: 20260822-40-truncate-event-log-e-riga-parlante
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.event_log: TRUNCATE (autorizzato da Tid, D-4 — la tabella e' append-only
+        per trigger e nessun backfill e' possibile) + colonne del lato scrittura in una
+        passata sola: emittente_soggetto_ruolo_id NOT NULL (SR e non PK, cosi'
+        l'automazione ATTIVO non genera il lucchetto require_attivo), auth_user_id, tx_id,
+        cleanup_at. Rimosse actor e source, costanti e mute: «chi» e' gia' user_insert.
+        CHECK su entity_type al posto di una FK a config.sorgenti, per la stessa ragione
+        del lucchetto e perche' vocabolario e dispatch devono cambiare insieme.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: event_log
+            - columnExists:
+                schemaName: vendite
+                tableName: event_log
+                columnName: actor
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_ruoli
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1) Il tavolo si sgombra ──────────────────────────────────
+              --   RESTART IDENTITY: gli id ripartono da 1. Non ci sono
+              --   riferimenti esterni a event_log.id (verificato su
+              --   pg_constraint), quindi non si rompe nessun puntatore.
+              --   ⚠️ TRUNCATE non fa scattare i trigger di riga: e' l'unico
+              --   modo di svuotare una tabella il cui DELETE e' vietato.
+              TRUNCATE TABLE vendite.event_log RESTART IDENTITY;
+
+              -- ── 2) Via le due colonne mute ───────────────────────────────
+              --   `actor` valeva 'service:django' su 386 righe su 386 e
+              --   `source` valeva 'django' su 386 su 386: due colonne per lo
+              --   stesso mestiere, entrambe senza informazione, mentre
+              --   `user_insert` diceva la verita'.
+              ALTER TABLE vendite.event_log DROP COLUMN IF EXISTS actor;
+              ALTER TABLE vendite.event_log DROP COLUMN IF EXISTS source;
+
+              -- ── 3) Il perimetro ──────────────────────────────────────────
+              --   NOT NULL senza DEFAULT: la tabella e' vuota, e da qui in poi
+              --   la valorizza il trigger a10 prima che il vincolo si guardi.
+              ALTER TABLE vendite.event_log
+                  ADD COLUMN emittente_soggetto_ruolo_id bigint NOT NULL;
+
+              ALTER TABLE vendite.event_log
+                  ADD CONSTRAINT fk_event_log_emittente
+                  FOREIGN KEY (emittente_soggetto_ruolo_id)
+                  REFERENCES anagrafiche.soggetti_ruoli (id);
+
+              -- ── 4) Chi, come numero ──────────────────────────────────────
+              --   Nullable: sul canale batch non c'e' un utente, e li' «chi»
+              --   resta `user_insert` = 'BATCH_FATTURAZIONE'.
+              ALTER TABLE vendite.event_log
+                  ADD COLUMN auth_user_id bigint;
+
+              -- ── 5) Il filo che lega i registri ───────────────────────────
+              --   Il trigger `trg_event_log_gen_tx_id_ins_upd` lo attacca
+              --   l'automazione (dbops.fn_run_automations_tx_id), che gira in
+              --   ci_apply. ⚠️ Su un migrate manuale ci pensa il pgagent la
+              --   sera: la colonna resta NULL fino ad allora.
+              ALTER TABLE vendite.event_log
+                  ADD COLUMN tx_id uuid;
+
+              -- ── 6) La scadenza ───────────────────────────────────────────
+              --   La valorizza il trigger a10 all'INSERT, non l'automazione:
+              --   `dbops.fn_apply_cleanup_at` la scriverebbe con un UPDATE,
+              --   che qui e' vietato. ⭐ E il veto sull'UPDATE diventa una
+              --   garanzia: la data di scadenza, una volta scritta, non e' piu'
+              --   modificabile da nessuno.
+              ALTER TABLE vendite.event_log
+                  ADD COLUMN cleanup_at timestamptz;
+
+              -- ── 7) Il vocabolario delle entita' ──────────────────────────
+              --   ⛔ TASK_RUN NON e' qui: gli eventi di un giro senza padrone
+              --   tornano al loro registro (commesse_push_log), D-3.
+              ALTER TABLE vendite.event_log
+                  ADD CONSTRAINT chk_event_log_entity_type
+                  CHECK (entity_type IN ('LOTTO', 'COMMESSA', 'FATTURA'));
+
+              -- ── 8) Documentazione sull'oggetto ───────────────────────────
+              COMMENT ON COLUMN vendite.event_log.emittente_soggetto_ruolo_id IS
+                  'Perimetro della riga: soggetto_ruolo_id dell''emittente, derivato '
+                  'dall''entita'' da trg_event_log_a10_deriva_scope_ins. Convenzione SR '
+                  'come tutta la famiglia vendite. ⭐ SR e non PK anche perche'' '
+                  'anagrafiche.soggetti_ruoli non ha la colonna attivo: cosi'' '
+                  'l''automazione ATTIVO non genera un lucchetto require_attivo, e il '
+                  'diario continua a scrivere anche per un emittente cessato (D-12).';
+
+              COMMENT ON COLUMN vendite.event_log.auth_user_id IS
+                  'Chi, come NUMERO (app.current_user_id). Affianca user_insert, che e'' '
+                  'lo username e non regge a un rename o a un nome riassegnato. NULL sul '
+                  'canale batch, dove chi e'' user_insert = BATCH_FATTURAZIONE.';
+
+              COMMENT ON COLUMN vendite.event_log.cleanup_at IS
+                  'Scadenza di retention, valorizzata ALL''INSERT dal trigger a10 con il '
+                  'TTL letto da dbops.automation_rules_tbl (una sede sola). ⛔ NON la '
+                  'scrive dbops.fn_apply_cleanup_at, che userebbe un UPDATE: qui e'' '
+                  'vietato. ⭐ Ed e'' proprio quel veto a renderla immutabile.';
+
+              COMMENT ON CONSTRAINT chk_event_log_entity_type ON vendite.event_log IS
+                  'Vocabolario delle entita'' del giornale. ⭐ Un CHECK e non una FK a '
+                  'config.sorgenti: la FK genererebbe il lucchetto require_attivo (un '
+                  'diario non deve smettere di scrivere) e permetterebbe di seedare un '
+                  'tipo che il trigger di derivazione non sa risolvere. Qui vocabolario e '
+                  'dispatch cambiano nello stesso changeSet.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback NON restituisce le 386 righe: il TRUNCATE e'
+              --    definitivo. Riporta solo la forma della tabella.
+              ALTER TABLE vendite.event_log DROP CONSTRAINT IF EXISTS chk_event_log_entity_type;
+              ALTER TABLE vendite.event_log DROP CONSTRAINT IF EXISTS fk_event_log_emittente;
+              ALTER TABLE vendite.event_log DROP COLUMN IF EXISTS cleanup_at;
+              ALTER TABLE vendite.event_log DROP COLUMN IF EXISTS tx_id;
+              ALTER TABLE vendite.event_log DROP COLUMN IF EXISTS auth_user_id;
+              ALTER TABLE vendite.event_log DROP COLUMN IF EXISTS emittente_soggetto_ruolo_id;
+              ALTER TABLE vendite.event_log ADD COLUMN actor text;
+              ALTER TABLE vendite.event_log ADD COLUMN source text;

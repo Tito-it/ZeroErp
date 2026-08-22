@@ -59,7 +59,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- ============================================================
 -- Strutturali (girano sempre)
@@ -114,10 +114,17 @@ SELECT fl.id,
   JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
  WHERE s.codice_interno IN ('DRAFT', 'EMESSA')
    AND EXISTS (SELECT 1 FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = fl.id)
-   AND NOT EXISTS (
-         SELECT 1 FROM vendite.fatturazione_lotti_fatture lf
-           JOIN vendite.fatture f ON f.id = lf.fattura_id
-          WHERE lf.lotto_id = fl.id AND f.numero IS NOT NULL)
+   -- ⭐ rev 2026-08-22: la fixture NON ri-elenca i motivi ostativi, li CHIEDE.
+   --   Prima qui c'era la copia a mano di uno solo di essi (fatture numerate),
+   --   e ha smesso di bastare il giorno in cui ne e' nato un quarto — righe
+   --   gia' rettificate: la fixture sceglieva un lotto che la funzione
+   --   legittimamente rifiuta, e il test diventava rosso accusando il codice
+   --   invece della propria selezione.
+   --   Chiedendolo alla stessa funzione che il test collauda, un motivo nuovo
+   --   non rompe piu' la scelta del soggetto. ⚠️ E non rende il test cieco:
+   --   cio' che si verifica sotto e' il COMPORTAMENTO del ritorno in bozza,
+   --   non l'elenco dei motivi — quello ha i suoi test.
+   AND script.fn_check_lotto_riportabile_a_draft(fl.id) = '[]'::jsonb
  ORDER BY fl.id DESC
  LIMIT 1;
 
@@ -253,6 +260,40 @@ SELECT CASE
     AND (SELECT count(*) FROM vendite.fatturazione_lotti_task_runs
           WHERE lotto_id = (SELECT id FROM tmp_lotto_rld)) >= (SELECT n FROM tmp_runs_rld),
     '10) I task_run del lotto sono chiusi ad ANNULLATO (il rilancio torna RUN, non SKIP) e la storia resta')
+END;
+
+
+-- ============================================================
+-- 11) La porta rifiuta un lotto le cui righe sono gia' accreditate
+-- ============================================================
+-- ⚠️ E' il motivo 4, nato il 2026-08-22 dopo un 23503 grezzo dentro
+--   fn_cleanup_fatture_by_ids. Il gemello sulle fatture NUMERATE non lo
+--   copriva: l'accredito si registra PRIMA della numerazione, perche' e'
+--   ancorato alla coda dei resi e non al numero.
+-- ⚠️ throws_like e non throws_ok('P0001'): qui il punto non e' «e' un errore
+--   di dominio» ma QUALE — un rifiuto per stato non pre-fiscale sarebbe
+--   altrettanto P0001 e passerebbe lo stesso.
+CREATE TEMP TABLE tmp_lotto_rett_rld AS
+SELECT fl.id
+  FROM vendite.fatturazione_lotti fl
+ WHERE EXISTS (
+         SELECT 1
+           FROM vendite.fatturazione_lotti_fatture lf
+           JOIN vendite.fatture_righe fr ON fr.fattura_id = lf.fattura_id
+          WHERE lf.lotto_id = fl.id
+            AND EXISTS (SELECT 1 FROM vendite.commesse_attivita ca
+                         WHERE ca.fattura_riga_rettificata_id = fr.id))
+ ORDER BY fl.id DESC
+ LIMIT 1;
+
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rett_rld)
+    THEN skip('nessun lotto con righe gia rettificate: caso non riproducibile sui dati presenti', 1)
+  ELSE throws_like(
+         format($$ SELECT * FROM vendite.fn_riporta_lotto_a_draft(%s) $$,
+                (SELECT id FROM tmp_lotto_rett_rld)),
+         '%e'' gia'' stato registrato un accredito%',
+         '11) un lotto con righe gia accreditate viene rifiutato, e il messaggio lo dice')
 END;
 
 SELECT * FROM finish();

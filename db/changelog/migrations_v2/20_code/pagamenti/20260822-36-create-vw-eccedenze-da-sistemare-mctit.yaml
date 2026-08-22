@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ELENCO — passo S4-3 (lotto 7)
+#   pagamenti.vw_eccedenze_da_sistemare
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-3 · Decisione: brief madre D15-b
+#
+# ── ⭐ CHE COS'E': la metà che mancava ───────────────────────────────
+#   Le tre azioni del processo rimborsi **avevano già tutte il loro meccanismo**
+#   (D15-a). Mancavano **l'elenco** e **il registro**. Questa è l'elenco.
+#
+#       vista    →  che cosa c'è da fare
+#       tabella  →  che cosa è stato fatto        (`pagamenti.sistemazioni`)
+#
+# ── ⭐ LA CONDIZIONE E' «IL RESIDUO HA CAMBIATO SEGNO» ───────────────
+#   La definizione di Tid — *documenti che in valore assoluto hanno incassato più
+#   del totale* — è **esattamente** ciò che D14 segnala al momento in cui succede:
+#
+#       D14 segnala        →  a chi sta registrando, mentre registra
+#       questa raccoglie   →  nel tempo, per chi deve decidere che farne
+#
+#   ⭐ E si scrive **senza estremi fissi**, come la regola di capienza del lotto 5:
+#   `sign(saldo) = -sign(totale_a_pagare)`. Su una fattura normale vuol dire
+#   *saldo negativo*; su una **nota di credito** vuol dire *saldo positivo* — e la
+#   formula è la stessa, perché non nomina né l'una né l'altra. ⚠️ Un intervallo
+#   `0 ≤ x ≤ totale` su un documento a credito diventa vuoto: è la trappola che
+#   questa forma evita per costruzione.
+#
+# ── ⭐ «PER CLIENTE» SENZA PERDERE IL DOCUMENTO ──────────────────────
+#   D15-b dice di raggruppare **per cliente**: *«un modo di interrogare i saldi
+#   del cliente»*, e la compensazione ha senso solo a quel livello. Ma l'azione
+#   si fa **su un documento**.
+#
+#   ⭐ La vista fa **entrambe**: una riga per documento, e le colonne del cliente
+#   calcolate **in finestra** (`OVER (PARTITION BY cliente, emittente)`).
+#   Ordinata per cliente, si legge come un elenco per cliente; e ogni riga resta
+#   azionabile. ⚠️ Una vista già aggregata avrebbe perso proprio ciò che serve
+#   per agire.
+#
+# ── ⭐ `chi_e_in_credito`: la colonna che evita l'errore di verso ────
+#   Un saldo negativo su una fattura e un saldo positivo su una nota di credito
+#   sono **due situazioni opposte**, e i numeri da soli non lo dicono:
+#
+#   | Documento | Residuo | Chi è in credito |
+#   | --- | --- | --- |
+#   | fattura (totale > 0) | negativo → ha incassato **di più** | il **cliente** |
+#   | nota di credito (totale < 0) | positivo → ha restituito **di più** | l'**azienda** |
+#
+#   Farlo dedurre a chi legge è chiedergli di rifare il ragionamento ogni volta,
+#   e sbagliarlo significa rimborsare denaro che si deve incassare.
+#
+# ── ⚠️ I DUE CONTATORI SEGNALANO, NON FILTRANO ──────────────────────
+#   Un documento con un atto in `BOZZA` **resta nell'elenco**: la decisione è
+#   presa ma il denaro non si è mosso, quindi l'eccedenza c'è ancora. ⛔ Toglierlo
+#   sarebbe nascondere, ed è esattamente ciò che §3-bis evita: *la vista presenta,
+#   la persona decide*.
+#
+#   ⭐ E ne servono **due**, perché fra la decisione e l'effetto ci sono **due**
+#   passi, non uno:
+#
+#       BOZZA        →  nessuno ha ancora fatto niente
+#       CONFERMATA   →  il documento c'è, ma non è ancora **registrato**
+#       (registrato) →  i movimenti esistono, e la riga sparisce **da sola**
+#
+#   ⚠️ Con un solo `EXISTS` sulla bozza, una fattura con l'atto già confermato e
+#   la distinta ancora da registrare sarebbe comparsa **senza nessun segno** —
+#   indistinguibile da una su cui nessuno ha mai guardato. ⭐ E la sparizione
+#   finale non la fa la vista: *i saldi si leggono, non si conservano.*
+#
+# ── ⚠️ E' UNA VISTA, NON UNA TABELLA ────────────────────────────────
+#   Materializzarla richiederebbe un automatismo che la tiene aggiornata, cioè
+#   **la rincorsa che questo cantiere ha chiuso per costruzione**.
+#
+# ── ⚠️ `security_invoker = on` ──────────────────────────────────────
+#   La vista legge `vendite.fatture`, `pagamenti.vendite_movimenti` e
+#   `pagamenti.sistemazioni`, che dai lotti 6 e 7 hanno tutte le policy. Senza
+#   `security_invoker` girerebbe come **proprietario** e le salterebbe tutte: un
+#   elenco che mostra a ciascuno i documenti dell'altro.
+#
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-36-create-vw-eccedenze-da-sistemare-mctit.yaml
+
+  - changeSet:
+      id: 20260822-36-create-vw-eccedenze-da-sistemare
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.vw_eccedenze_da_sistemare: l'elenco dei documenti il cui residuo ha CAMBIATO
+        SEGNO, cioe' che in valore assoluto hanno incassato piu' del totale. La condizione si
+        scrive senza estremi fissi — sign(saldo) = -sign(totale_a_pagare) — quindi vale
+        identica su fatture e note di credito, e non ricade nella trappola dell'intervallo che
+        su un documento a credito diventa vuoto. ⭐ Una riga per DOCUMENTO con le colonne del
+        cliente calcolate in finestra: D15-b chiede di raggruppare per cliente, ma l'azione si
+        fa su un documento — una vista gia' aggregata avrebbe perso cio' che serve per agire.
+        I due contatori SEGNALANO e non filtrano: un atto in bozza non ha ancora mosso denaro,
+        e nasconderlo sarebbe l'opposto di «la vista presenta, la persona decide»; uno confermato
+        dice che il documento c'e' ma non e' ancora registrato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: sistemazioni
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti' AND p.proname = 'fn_get_saldo_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW pagamenti.vw_eccedenze_da_sistemare
+              WITH (security_invoker = on) AS
+              WITH candidate AS (
+                  -- ⚠️ Si parte dai documenti che hanno ALMENO UN MOVIMENTO: senza
+                  --    denaro registrato il residuo coincide col totale e non puo'
+                  --    aver cambiato segno. E' il filtro che evita di chiamare la
+                  --    funzione del saldo su tutte le fatture del sistema.
+                  SELECT f.id                          AS fattura_id,
+                         f.numero,
+                         f.data,
+                         f.totale_a_pagare,
+                         f.emittente_soggetto_ruolo_id,
+                         f.billing_account_id,
+                         ba.soggetto_ruolo_id          AS cliente_soggetto_ruolo_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.billing_account ba
+                      ON ba.id = f.billing_account_id
+                   WHERE f.totale_a_pagare IS NOT NULL
+                     AND f.totale_a_pagare <> 0
+                     AND EXISTS (
+                         SELECT 1
+                           FROM pagamenti.vendite_movimenti m
+                          WHERE m.fattura_id = f.id
+                            AND m.attivo IS TRUE
+                     )
+              ), con_saldo AS (
+                  -- ⭐ Il saldo lo da' la funzione, non una somma riscritta qui:
+                  --    due definizioni della stessa cosa divergono al primo
+                  --    aggiustamento. Stessa scelta di vw_rate_fuori_capienza.
+                  SELECT c.*, s.saldo
+                    FROM candidate c
+                    CROSS JOIN LATERAL pagamenti.fn_get_saldo_fattura(c.fattura_id) s
+              )
+              SELECT
+                  cs.fattura_id,
+                  cs.numero                                             AS fattura_numero,
+                  cs.data                                               AS fattura_data,
+                  cs.emittente_soggetto_ruolo_id,
+                  cs.cliente_soggetto_ruolo_id,
+                  cs.billing_account_id,
+                  cs.totale_a_pagare,
+                  cs.saldo                                              AS residuo,
+                  -- Quanto c'e' da sistemare su QUESTO documento, sempre positivo:
+                  -- il verso lo dice `chi_e_in_credito`, non il segno.
+                  abs(cs.saldo)                                         AS eccedenza,
+                  -- ⭐ La colonna che evita l'errore di verso: un saldo negativo su
+                  --    una fattura e uno positivo su una nota di credito sono due
+                  --    situazioni OPPOSTE, e i numeri da soli non lo dicono.
+                  CASE WHEN cs.totale_a_pagare > 0 THEN 'CLIENTE' ELSE 'AZIENDA' END
+                                                                        AS chi_e_in_credito,
+                  -- ⭐ «Per cliente» senza perdere il documento: le colonne di
+                  --    raggruppamento sono calcolate in finestra, e ogni riga resta
+                  --    azionabile (D15-b).
+                  sum(abs(cs.saldo)) OVER (
+                      PARTITION BY cs.cliente_soggetto_ruolo_id, cs.emittente_soggetto_ruolo_id
+                  )                                                     AS eccedenza_cliente,
+                  count(*) OVER (
+                      PARTITION BY cs.cliente_soggetto_ruolo_id, cs.emittente_soggetto_ruolo_id
+                  )                                                     AS documenti_cliente,
+                  -- ⚠️ SEGNALANO, non filtrano: un atto in BOZZA non ha ancora
+                  --    mosso denaro, quindi l'eccedenza c'e' ancora, e toglierla
+                  --    dall'elenco sarebbe nascondere.
+                  (SELECT count(*) FROM pagamenti.sistemazioni s
+                    WHERE s.fattura_origine_id = cs.fattura_id
+                      AND s.stato = 'BOZZA')                            AS sistemazioni_in_bozza,
+                  -- ⚠️ Un atto CONFERMATO ha gia' generato il suo documento, ma
+                  --    l'eccedenza cala solo quando quel documento viene
+                  --    REGISTRATO: fino ad allora la riga resta qui, e questo
+                  --    contatore dice perche'.
+                  (SELECT count(*) FROM pagamenti.sistemazioni s
+                    WHERE s.fattura_origine_id = cs.fattura_id
+                      AND s.stato = 'CONFERMATA')                       AS sistemazioni_confermate
+                FROM con_saldo cs
+               WHERE sign(cs.saldo) = -sign(cs.totale_a_pagare);
+
+              COMMENT ON VIEW pagamenti.vw_eccedenze_da_sistemare IS
+                'L''ELENCO del processo rimborsi: i documenti il cui residuo ha CAMBIATO SEGNO, cioe'' che in valore assoluto hanno incassato piu'' del totale (D15-b). Si accoppia con pagamenti.sistemazioni: la vista dice CHE COSA C''E'' DA FARE, la tabella CHE COSA E'' STATO FATTO. ⭐ La condizione non ha estremi fissi — sign(saldo) = -sign(totale_a_pagare) — quindi vale identica su fatture e note di credito senza nominare ne'' l''una ne'' l''altra: un intervallo 0..totale su un documento a credito diventa vuoto, ed e'' la trappola che questa forma evita per costruzione. Stessa famiglia della regola di capienza del lotto 5. ⭐ Una riga per DOCUMENTO, con le colonne del cliente calcolate in finestra: D15-b chiede di raggruppare per cliente — la compensazione ha senso solo a quel livello — ma l''azione si fa su un documento, e una vista gia'' aggregata avrebbe perso cio'' che serve per agire. ⭐ chi_e_in_credito esiste perche'' un saldo negativo su una fattura e uno positivo su una nota di credito sono situazioni OPPOSTE, e sbagliare il verso significa rimborsare denaro che si deve incassare. ⚠️ ha_sistemazione_aperta SEGNALA e non filtra: un atto in bozza non ha mosso niente, e nasconderlo sarebbe l''opposto di «la vista presenta, la persona decide». Un atto confermato invece sparisce da solo — i saldi si leggono, non si conservano. ⚠️ security_invoker = on: la vista legge tre tabelle con le policy, e senza girerebbe come proprietario mostrando a ciascuno i documenti dell''altro.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS pagamenti.vw_eccedenze_da_sistemare;

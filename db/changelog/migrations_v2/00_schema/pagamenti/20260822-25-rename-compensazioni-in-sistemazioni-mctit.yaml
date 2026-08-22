@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA TABELLA CAMBIA NOME — passo S4-1 (lotto 7)
+#   pagamenti.compensazioni → pagamenti.sistemazioni
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-1 · Decisione: brief madre D15-c
+#
+# ── ⭐ PERCHE' IL NOME CAMBIA ────────────────────────────────────────
+#   La tabella diventa il **registro delle sistemazioni**, e le sistemazioni
+#   sono **tre**: `RIPORTO` su un'altra fattura, `RIMBORSO` con bonifico,
+#   `COMPENSAZIONE` fra due documenti.
+#
+#   ⚠️ Chiamare «compensazione» un bonifico di rimborso sarebbe **falso**. Se la
+#   tabella copre tre azioni, il nome deve dirlo.
+#
+#   ⛔ **Non `regolazioni`**, che in italiano contabile sarebbe la parola più
+#   esatta: questo è un ERP orientato alle **utilities**, e lì «regolazione»
+#   significa un'altra cosa. *Un nome che in un dominio vuol dire due cose è un
+#   nome che confonde.*
+#
+#   ⭐ E il nome si accoppia con la vista, che è la ragione principale della
+#   scelta:
+#
+#       vista    →  vw_eccedenze_da_sistemare     ← che cosa c'è da fare
+#       tabella  →  sistemazioni                  ← che cosa è stato fatto
+#
+# ── ⭐ PERCHE' SI RINOMINA E NON SI RIFA' ────────────────────────────
+#   Due tabelle per lo stesso mestiere divergono al primo aggiornamento. E con
+#   **zero righe** la rinomina costa oggi quanto un'ora di lavoro, fra sei mesi
+#   una migrazione.
+#
+#   ⚠️ E c'è una ragione tecnica che pesa quanto quella di disegno: una tabella
+#   **nuova** non ha i trigger di audit e `tx_id` finché non passa `ci_apply`
+#   (sul migrate manuale ci pensa il pgagent la sera). Una tabella **rinominata**
+#   se li porta dietro, e resta scrivibile senza buchi di tracciamento dal primo
+#   istante.
+#
+# ── 🔴 MA SI RINOMINA TUTTO, NON SOLO LA TABELLA ─────────────────────
+#   `dbops.automation_scope` per `pagamenti` è `*all`: le automazioni lavorano
+#   **per pattern**, non per elenco, quindi alla prossima passata rigenererebbero
+#   i trigger col nome nuovo — **accanto** a quelli vecchi, che restano.
+#
+#     > ⚠️ Due trigger di audit sulla stessa tabella non danno errore: scrivono
+#     > due volte. Un difetto che non si vede finché non si legge il diario.
+#
+#   Per questo qui dentro si rinominano **anche** vincolo primario, sequenza,
+#   vincoli `NOT NULL` e i due trigger: dopo questo changeSet **nessun oggetto
+#   di questa tabella nomina più `compensazioni`**.
+#
+# ⛔ Non tocca `centri_riscossione.is_compensazione`: quello parla del **centro**,
+#    non dell'atto, e la compensazione resta uno dei tre centri non-cassa.
+#
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-registro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-25-rename-compensazioni-in-sistemazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260822-25-rename-compensazioni-in-sistemazioni
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.compensazioni diventa pagamenti.sistemazioni: il registro copre TRE azioni
+        (RIPORTO, RIMBORSO, COMPENSAZIONE) e chiamare «compensazione» un bonifico di rimborso
+        sarebbe falso. Si rinomina e non si rifà: due tabelle per lo stesso mestiere divergono,
+        e una tabella nuova resterebbe senza trigger di audit e tx_id fino alla prossima
+        passata di ci_apply. Si rinominano ANCHE PK, sequenza, vincoli NOT NULL e i due
+        trigger: le automazioni di pagamenti lavorano per pattern (*all), quindi alla prossima
+        passata rigenererebbero i trigger col nome nuovo ACCANTO a quelli vecchi — due trigger
+        di audit che scrivono due volte, senza nessun errore.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: compensazioni
+            - not:
+                - tableExists:
+                    schemaName: pagamenti
+                    tableName: sistemazioni
+            - sqlCheck:
+                expectedResult: 0
+                sql: SELECT count(*) FROM pagamenti.compensazioni;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.compensazioni RENAME TO sistemazioni;
+
+              -- La chiave primaria, e con lei il suo indice.
+              ALTER TABLE pagamenti.sistemazioni
+                RENAME CONSTRAINT pk_compensazioni TO pk_sistemazioni;
+
+              ALTER SEQUENCE pagamenti.compensazioni_id_seq RENAME TO sistemazioni_id_seq;
+
+              -- ⚠️ Da PostgreSQL 17 i NOT NULL sono vincoli di catalogo con un
+              --    nome proprio: lasciarli avrebbe tenuto in giro sette oggetti
+              --    che dicono «compensazioni» su una tabella che non si chiama
+              --    più così.
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT compensazioni_id_not_null              TO sistemazioni_id_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT compensazioni_data_esecuzione_not_null TO sistemazioni_data_esecuzione_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT compensazioni_meta_not_null            TO sistemazioni_meta_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT compensazioni_data_insert_not_null     TO sistemazioni_data_insert_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT compensazioni_user_insert_not_null     TO sistemazioni_user_insert_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT compensazioni_data_update_not_null     TO sistemazioni_data_update_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT compensazioni_user_update_not_null     TO sistemazioni_user_update_not_null;
+
+              -- 🔴 I due trigger generati dal framework: senza questa rinomina,
+              --    alla prossima passata di ci_apply ne nascerebbero altri due
+              --    col nome nuovo, e la tabella avrebbe DUE audit e DUE tx_id.
+              ALTER TRIGGER trg_compensazioni_audit_data_user_upd
+                ON pagamenti.sistemazioni RENAME TO trg_sistemazioni_audit_data_user_upd;
+
+              ALTER TRIGGER trg_compensazioni_gen_tx_id_ins_upd
+                ON pagamenti.sistemazioni RENAME TO trg_sistemazioni_gen_tx_id_ins_upd;
+
+              COMMENT ON TABLE pagamenti.sistemazioni IS
+                'Il REGISTRO delle sistemazioni: che cosa e'' stato deciso di fare di un''eccedenza, e che cosa ne e'' venuto fuori. ⭐ Tre destinazioni — RIPORTO su un''altra fattura, RIMBORSO con bonifico, COMPENSAZIONE fra due documenti — e nessuna macchina nuova sotto: il riporto e'' un fondo fattura con origine MANUALE, il rimborso e'' una contabile a importi negativi, la compensazione e'' una contabile sul centro dedicato (D15-a). ⭐ Si accoppia con vw_eccedenze_da_sistemare: la vista dice CHE COSA C''E'' DA FARE, questa tabella CHE COSA E'' STATO FATTO. ⚠️ Si chiamava `compensazioni` fino al 2026-08-22: il nome copriva una sola delle tre azioni, e chiamare «compensazione» un bonifico di rimborso sarebbe stato falso. ⛔ Scartato `regolazioni`, che in contabilita'' sarebbe la parola piu'' esatta: in un ERP per le utilities «regolazione» vuol dire un''altra cosa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TRIGGER trg_sistemazioni_gen_tx_id_ins_upd
+                ON pagamenti.sistemazioni RENAME TO trg_compensazioni_gen_tx_id_ins_upd;
+              ALTER TRIGGER trg_sistemazioni_audit_data_user_upd
+                ON pagamenti.sistemazioni RENAME TO trg_compensazioni_audit_data_user_upd;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT sistemazioni_user_update_not_null     TO compensazioni_user_update_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT sistemazioni_data_update_not_null     TO compensazioni_data_update_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT sistemazioni_user_insert_not_null     TO compensazioni_user_insert_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT sistemazioni_data_insert_not_null     TO compensazioni_data_insert_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT sistemazioni_meta_not_null            TO compensazioni_meta_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT sistemazioni_data_esecuzione_not_null TO compensazioni_data_esecuzione_not_null;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT sistemazioni_id_not_null              TO compensazioni_id_not_null;
+              ALTER SEQUENCE pagamenti.sistemazioni_id_seq RENAME TO compensazioni_id_seq;
+              ALTER TABLE pagamenti.sistemazioni RENAME CONSTRAINT pk_sistemazioni TO pk_compensazioni;
+              ALTER TABLE pagamenti.sistemazioni RENAME TO compensazioni;

@@ -23,7 +23,6 @@
 | stato_id | smallint | NO | 1 |
 | data_conferma | timestamp with time zone | YES |  |
 | user_conferma | text | YES |  |
-| compensazione_id | bigint | YES |  |
 | origine | character varying | NO | 'GENERATA'::character varying |
 | importo_dichiarato | numeric | YES |  |
 
@@ -34,19 +33,16 @@
 | CHECK | chk_vendite_contabili_generata_non_dichiara |  |
 | CHECK | chk_vendite_contabili_origine |  |
 | FOREIGN KEY | fk_vendite_contabili_centro_riscossione | centro_riscossione_id |
-| FOREIGN KEY | fk_vendite_contabili_compensazione | compensazione_id |
 | FOREIGN KEY | fk_vendite_contabili_ente_incasso | ente_incasso_id |
 | FOREIGN KEY | fk_vendite_contabili_stato | stato_id |
 | PRIMARY KEY | pk_vendite_contabili | id |
 | UNIQUE | uq_vendite_contabili_codice | codice |
-| UNIQUE | uq_vendite_contabili_compensazione | compensazione_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_vendite_contabili | `CREATE UNIQUE INDEX pk_vendite_contabili ON pagamenti.vendite_contabili USING btree (id)` |
 | uq_vendite_contabili_codice | `CREATE UNIQUE INDEX uq_vendite_contabili_codice ON pagamenti.vendite_contabili USING btree (codice)` |
-| uq_vendite_contabili_compensazione | `CREATE UNIQUE INDEX uq_vendite_contabili_compensazione ON pagamenti.vendite_contabili USING btree (compensazione_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

@@ -84,12 +84,27 @@ BEGIN
       'dettaglio',  v_numerate);
   END IF;
 
+  -- ⭐ MOTIVO 4 (2026-08-22) — righe gia' RETTIFICATE.
+  -- Delegato: la domanda vive in un posto solo, condiviso dalle
+  -- tre porte di reset.
+  -- ⚠️ NON e' coperto dal motivo 3, ed e' il punto: la
+  -- protezione dei documenti numerati non arriva qui, perche'
+  -- l'accredito si registra PRIMA della numerazione — e' ancorato
+  -- alla coda dei resi, non al numero. Senza questo motivo il
+  -- reset passa il gate e poi esplode con una violazione di
+  -- chiave esterna grezza dentro fn_cleanup_fatture_by_ids.
+  v_motivi := v_motivi
+            || script.fn_check_fatture_con_rettifiche(
+                   ARRAY(SELECT lf.fattura_id
+                           FROM vendite.fatturazione_lotti_fatture lf
+                          WHERE lf.lotto_id = p_lotto_id));
+
   RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_lotto_riportabile_a_draft(p_lotto_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale, cioe'' non in DRAFT ne'' EMESSA (codice 800) — oltre EMESSA c''e'' la numerazione e da li'' non si torna. Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: il controllo guarda il numero e non lo stato che dovrebbe implicarlo, perche'' cancellare una fattura numerata aprirebbe un buco nella numerazione fiscale. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons): sostituisce il gate !isDraft scritto a mano nel drawer, che su un lotto DEFINITIVA mostrava un pulsante destinato a fallire. rev 2026-08-04.';
+IS 'Funzione PURA (fn_check_*): motivi ostativi al ritorno in bozza di un lotto. Ritorna [] se riportabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (codice 800). Motivo 2: fatture oltre il pre-fiscale (codice 799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3: fatture gia'' NUMERATE (codice 801) — ⚠️ deliberatamente ridondante rispetto al 2 e da NON semplificare via: guarda il numero e non lo stato che dovrebbe implicarlo. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ NON e'' coperto dal motivo 3, ed e'' il punto: l''accredito si registra PRIMA della numerazione (e'' ancorato alla coda dei resi), quindi la protezione dei documenti numerati non arriva fin li''. Senza, il reset passava il gate e poi esplodeva con un 23503 dentro fn_cleanup_fatture_by_ids. Sorgente UNICA condivisa da vendite.fn_riporta_lotto_a_draft (solleva) e script.fn_available_actions_lotto (espone enabled/reasons). rev 2026-08-22.';
 ```
 
 ---

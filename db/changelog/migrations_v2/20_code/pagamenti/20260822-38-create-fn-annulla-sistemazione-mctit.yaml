@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO CHE SCARTA — passo S4-4 (lotto 7)
+#   pagamenti.fn_annulla_sistemazione
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-4 · Decisione: brief madre D15-d
+#
+# ── ⭐ E' PICCOLO, E DEVE RESTARLO ───────────────────────────────────
+#   Non è una madre: scrive **una riga sola**. Esiste per due ragioni, non per
+#   tre:
+#
+#   1. dare un messaggio giusto a *«quell'atto non c'è»* — che sotto la row
+#      security vuol dire anche *«non è tuo»*, e le due cose devono restare
+#      indistinguibili;
+#   2. far arrivare il **motivo** nello stesso gesto in cui si annulla, invece di
+#      chiedere a chi chiama di scriverlo prima con un `UPDATE` a parte.
+#
+#   ⛔ **Non ricontrolla lo stato**: se l'atto è già terminale a parlare è
+#   `trgfn_sistemazioni_guard_transizione`, con `E_SISTEMAZIONE_IMMUTABILE` — che
+#   dice *anche in che stato si trova*. Ripetere qui quel controllo vorrebbe dire
+#   due sedi per la stessa regola, e il giorno in cui una cambia l'altra mente.
+#
+# ── ⭐ IL MOTIVO SI FONDE, NON SI SOVRASCRIVE ────────────────────────
+#   Se l'atto ne aveva già uno e la chiamata arriva vuota, **si tiene quello che
+#   c'era**: `COALESCE(NULLIF(btrim(p_motivo), ''), motivo)`.
+#   ⚠️ E se restano entrambi vuoti non passa: il guard dei dati pretende il
+#   motivo su un annullamento, perché *una decisione scartata senza una ragione
+#   non si ricostruisce* — fra sei mesi nessuno saprebbe se è stata una scelta o
+#   una dimenticanza.
+#
+# ── ⚠️ ANNULLARE NON E' CANCELLARE ──────────────────────────────────
+#   L'atto **resta a registro**, con la sua ragione. È il senso stesso di avere
+#   un registro: `vw_eccedenze_da_sistemare` continuerà a mostrare quel credito —
+#   che è vero, non se n'è andato — e chi guarda troverà scritto perché la volta
+#   scorsa si è deciso di lasciarlo lì.
+#
+# Codici: E_SISTEMAZIONE_NON_TROVATA (970); lo stato lo presidia il guard
+#         di transizione con E_SISTEMAZIONE_IMMUTABILE (975)
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-38-create-fn-annulla-sistemazione-mctit.yaml
+
+  - changeSet:
+      id: 20260822-38-create-fn-annulla-sistemazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.fn_annulla_sistemazione: il verbo che scarta un atto. Non e' una madre —
+        scrive una riga sola — ed esiste per due ragioni: dare il messaggio giusto a «quell'atto
+        non c'e'» (che sotto la row security vuol dire anche «non e' tuo», e le due cose devono
+        restare indistinguibili) e far arrivare il motivo nello stesso gesto. ⛔ Non ricontrolla
+        lo stato: se l'atto e' gia' terminale parla il guard di transizione, che dice anche in
+        che stato si trova — due sedi per la stessa regola sono due sedi che prima o poi
+        divergono. Annullare non e' cancellare: l'atto resta a registro con la sua ragione.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: pagamenti
+            tableName: sistemazioni
+            columnName: stato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_annulla_sistemazione(
+                  p_sistemazione_id pagamenti.sistemazioni.id%TYPE,
+                  p_motivo          pagamenti.sistemazioni.motivo%TYPE DEFAULT NULL
+              )
+              RETURNS pagamenti.sistemazioni.stato%TYPE
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato pagamenti.sistemazioni.stato%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scartare un atto di sistemazione, lasciandolo a registro
+                  --   con la ragione per cui e' stato scartato.
+                  --
+                  -- ⛔ NON ricontrolla lo stato: su un atto gia' terminale parla
+                  --   trgfn_sistemazioni_guard_transizione, che dice anche in
+                  --   che stato si trova. Due sedi per la stessa regola sono
+                  --   due sedi che prima o poi divergono.
+                  -- =========================================================
+
+                  UPDATE pagamenti.sistemazioni s
+                     SET stato  = 'ANNULLATA',
+                         -- ⭐ Il motivo si FONDE: se l'atto ne aveva gia' uno e la
+                         --   chiamata arriva vuota, si tiene quello che c'era.
+                         --   Se restano entrambi vuoti non passa — il guard dei
+                         --   dati lo pretende, perche' una decisione scartata
+                         --   senza una ragione non si ricostruisce.
+                         motivo = COALESCE(NULLIF(btrim(p_motivo), ''), s.motivo)
+                   WHERE s.id = p_sistemazione_id
+                  RETURNING s.stato INTO v_stato;
+
+                  -- ⚠️ Zero righe vuol dire due cose che devono restare
+                  --   indistinguibili: l'atto non esiste, oppure la row security
+                  --   non lo fa vedere a chi sta chiedendo. Distinguerle direbbe
+                  --   a chi e' fuori perimetro che quell'atto c'e'.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_annulla_sistemazione',
+                          'E_SISTEMAZIONE_NON_TROVATA',
+                          jsonb_build_object('detail', 'sistemazione inesistente o fuori perimetro',
+                                             'sistemazione_id', p_sistemazione_id),
+                          NULL::uuid,
+                          p_sistemazione_id::text
+                      );
+                  END IF;
+
+                  RETURN v_stato;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_annulla_sistemazione(bigint, text) IS
+                'Scarta un atto di sistemazione lasciandolo a REGISTRO con la ragione per cui e'' stato scartato — annullare non e'' cancellare, ed e'' il senso stesso di avere un registro: l''eccedenza continuera'' a comparire nell''elenco (e'' vera, non se n''e'' andata) e chi guarda trovera'' scritto perche'' la volta scorsa si e'' deciso di lasciarla li''. ⭐ Non e'' una madre: scrive una riga sola. Esiste per due ragioni — dare il messaggio giusto a «quell''atto non c''e''», che sotto la row security vuol dire anche «non e'' tuo» e le due cose devono restare indistinguibili, e far arrivare il motivo nello stesso gesto invece di chiederlo con un UPDATE a parte. ⛔ NON ricontrolla lo stato: su un atto gia'' terminale parla trgfn_sistemazioni_guard_transizione con E_SISTEMAZIONE_IMMUTABILE, che dice anche in che stato si trova. ⭐ Il motivo si fonde e non si sovrascrive: se l''atto ne aveva gia'' uno e la chiamata arriva vuota, si tiene quello che c''era.';
+
+              GRANT EXECUTE ON FUNCTION pagamenti.fn_annulla_sistemazione(bigint, text) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pagamenti.fn_annulla_sistemazione(bigint, text);
