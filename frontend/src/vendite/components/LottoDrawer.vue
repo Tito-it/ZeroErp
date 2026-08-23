@@ -707,6 +707,7 @@ function fatturaNumero(row) {
                       :codice="data.errore_codice"
                       :quando="data.errore_quando"
                       :livello="data.errore_livello"
+                      :bersagli="data.errore_bersagli || []"
                       :titolo="t('vendite.lotti.errore_documento_titolo')"
                     />
                   </span>

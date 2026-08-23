@@ -791,6 +791,12 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             stato_corrente = str(row[0]) if row[0] is not None else ""
             if stato_corrente == stato_input:
                 return
+            # ⚠️ Oggi questo ramo e' IRRAGGIUNGIBILE, ed e' bene saperlo invece
+            #    di leggerlo come un presidio attivo: `stato_input` e' gia'
+            #    validato sui tre valori qui sopra, e `IN_ESECUZIONE ->
+            #    IN_ESECUZIONE` esce prima come no-op. Resta perche' e' la
+            #    regola che servirebbe il giorno in cui gli stati diventassero
+            #    quattro — non perche' stia bloccando qualcosa adesso.
             if stato_corrente == "IN_ESECUZIONE" and stato_input not in {"COMPLETATO", "ERRORE"}:
                 ErrorManager.raise_error(
                     code="E_PIPELINE_STATO_LOTTO",
@@ -817,19 +823,37 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     function_name="vendite.pipeline_repository.set_lotto_job_stato",
                     log_to_db=True,
                 )
-            if stato_corrente == "COMPLETATO" and stato_input != "IN_ESECUZIONE":
-                ErrorManager.raise_error(
-                    code="E_PIPELINE_STATO_LOTTO",
-                    message="Transizione stato_lotto non ammessa.",
-                    detail=f"Transizione non ammessa: {stato_corrente} -> {stato_input}",
-                    context={
-                        "lotto_id": lotto_id,
-                        "stato_corrente": stato_corrente,
-                        "stato_target": stato_input,
-                    },
-                    function_name="vendite.pipeline_repository.set_lotto_job_stato",
-                    log_to_db=True,
-                )
+            # ⭐ `COMPLETATO -> ERRORE` E' AMMESSA, e prima non lo era.
+            #
+            # 🔴 IL DIFETTO, misurato su un giro vero il 2026-08-23 (lotto 6260,
+            #    decisione di Tid il 2026-08-24). Un lotto gia' COMPLETATO
+            #    rilanciato e andato storto **non si poteva marcare**: il rifiuto
+            #    arrivava qui, l'eccezione usciva dal marcatore, e il lotto
+            #    restava COMPLETATO pur avendo una fattura che non si era
+            #    numerata. Cioe' un errore reale che il registro non poteva dire.
+            #
+            # ⚠️ E il divieto non proteggeva niente, perche' colpiva **solo**
+            #    quel caso: l'avvio del giro scrive `IN_ESECUZIONE` DENTRO la
+            #    transazione del giro, quindi un fallimento la rolla indietro e
+            #    il marcatore — che gira fuori transazione — ritrova lo stato
+            #    precedente. Il lotto era COMPLETATO non perche' fosse a posto,
+            #    ma perche' il fallimento aveva cancellato la prova di essere
+            #    partito.
+            #
+            # ⛔ NON si apre anche `ERRORE -> COMPLETATO`, e non e' un'asimmetria
+            #    da sanare: le due transizioni non sono la stessa cosa girata al
+            #    contrario. «E' andata bene» e' una CONCLUSIONE, e va guadagnata
+            #    con un giro — che infatti passa da `IN_ESECUZIONE` e riporta il
+            #    lotto a COMPLETATO da se'. «E' andata male» e' un FATTO
+            #    OSSERVATO: rifiutarne la registrazione non lo rende meno vero,
+            #    lo rende solo invisibile. E' la stessa regola del diario (D-12).
+            #
+            # ⭐ E lo spegnimento resta automatico: a fine di **ogni** giro il
+            #    runner ricalcola con `evaluate_lotto_status` — che conta le
+            #    segnalazioni ATTUALI — e riporta il lotto a COMPLETATO se non
+            #    ci sono piu' errori. Tolte le righe rotte e rilanciato, il
+            #    segnale si spegne da solo: nessuna seconda sede che decide lo
+            #    stato del lotto.
             cursor.execute(
                 """
                 UPDATE vendite.fatturazione_lotti

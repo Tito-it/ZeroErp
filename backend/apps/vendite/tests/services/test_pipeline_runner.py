@@ -42,6 +42,7 @@ Indice test eseguiti:
 40) test_il_filo_del_giro_e_nuovo_a_ogni_corsa (BE-2 / D-7)
 41) test_il_filo_del_giro_arriva_allo_step_executor (BE-2 / D-7)
 42) test_giornale_rotto_non_annulla_la_marcatura_di_errore (BE-7, il verso mancante)
+43) test_marcatura_rifiutata_non_impedisce_il_diario (lotto 6260, giro vero 2026-08-23)
 
 Nota Fase 6 (2026-08-03): i test 33-37 presidiano il ritorno del lotto a
 DRAFT. Il 33 e il 34 vanno letti in COPPIA: da soli non distinguono un ramo
@@ -870,6 +871,50 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
+
+    # Scopo: 🔴 UNA MARCATURA RIFIUTATA NON IMPEDISCE IL DIARIO.
+    #
+    #        Lo SPECCHIO del test qui sotto, e non è un caso di scuola: è
+    #        successo su un giro vero il 2026-08-23, lotto 6260. La pipeline era
+    #        fallita per un motivo di dominio legittimo (nota di credito non
+    #        numerabile), poi:
+    #
+    #          set_lotto_job_stato(6260, 'ERRORE')
+    #            -> «Transizione non ammessa: COMPLETATO -> ERRORE»
+    #
+    #        Il lotto era gia' COMPLETATO da una corsa precedente. L'eccezione
+    #        usciva prima che il diario venisse tentato, e in `event_log`
+    #        restavano ZERO righe: dell'unico giro andato storto non c'era
+    #        traccia nel registro fatto apposta per raccontarlo.
+    #
+    # ⚠️ Il verso è che `log_event` venga chiamato COMUNQUE. Un test che si
+    #    limitasse a «non solleva» passerebbe anche col difetto — non sollevava
+    #    nemmeno prima, perché il telaio ingoiava.
+    def test_marcatura_rifiutata_non_impedisce_il_diario(self):
+        repo = MagicMock()
+        # La transizione di stato è rifiutata dal guard di dominio, come sul 6260.
+        repo.set_lotto_job_stato.side_effect = RuntimeError(
+            "Transizione non ammessa: COMPLETATO -> ERRORE"
+        )
+        runner = LottoPipelineRunner(repository=repo, error_logger=MagicMock())
+
+        with _fake_tx():
+            runner._mark_lotto_error_safely(
+                lotto_id=6260, code="E_PIPELINE", tipo_lotto="MASSIVO",
+                detail="nota di credito non numerabile",
+                correlation_id="7f3a1c22-0000-4000-8000-000000000003",
+            )
+
+        repo.log_event.assert_called_once()
+        kw = repo.log_event.call_args.kwargs
+        self.assertEqual(kw["event_code"], "PIPELINE_ERROR")
+        self.assertEqual(kw["entity_id"], 6260)
+        self.assertEqual(kw["severity"], "ERROR")
+        # ⭐ E il filo del giro sopravvive: è il modo in cui questa riga si
+        #    ricollega al resto della corsa che è andata storta.
+        self.assertEqual(
+            kw["correlation_id"], "7f3a1c22-0000-4000-8000-000000000003"
+        )
 
     # Scopo: 🔴 UN GIORNALE ROTTO NON ANNULLA LA MARCATURA DI ERRORE.
     #

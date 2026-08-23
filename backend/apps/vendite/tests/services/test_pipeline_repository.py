@@ -29,6 +29,8 @@ Indice test eseguiti:
 20) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_updates_only_stato_lotto
 21) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_target_state
 22) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_rejects_invalid_transition
+22b) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_completato_puo_andare_in_errore
+22c) VenditePipelineRepositoryUnitTests.test_set_lotto_job_stato_errore_non_va_in_completato
 23) VenditePipelineRepositoryUnitTests.test_list_lotto_task_runs_maps_rows
 24) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_chiama_la_fn_e_ritorna_le_coppie
 25) VenditePipelineRepositoryUnitTests.test_popola_fatture_rettifiche_casta_id_a_intero
@@ -480,6 +482,60 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         second_sql, _ = cursor.execute.call_args_list[1].args
         self.assertIn("SELECT stato_lotto", first_sql)
         self.assertIn("fn_log_error_only", second_sql)
+
+    # Scopo: ⭐ UN LOTTO COMPLETATO PUO' ESSERE MARCATO IN ERRORE.
+    #
+    # 🔴 Fino al 2026-08-24 non poteva, e il difetto e' stato visto su un giro
+    #    VERO (lotto 6260): rilanciato un lotto gia' COMPLETATO, la pipeline e'
+    #    fallita su una nota di credito non numerabile, e la marcatura d'errore
+    #    e' stata RIFIUTATA qui. Il lotto e' rimasto COMPLETATO pur avendo una
+    #    fattura che non si era numerata — un errore reale che il registro non
+    #    poteva dire.
+    #
+    # ⚠️ Il divieto colpiva SOLO quel caso: l'avvio del giro scrive
+    #    `IN_ESECUZIONE` dentro la transazione del giro, quindi un fallimento la
+    #    rolla indietro e il marcatore ritrova lo stato precedente. Il lotto era
+    #    COMPLETATO non perche' fosse a posto, ma perche' il fallimento aveva
+    #    cancellato la prova di essere partito.
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_set_lotto_job_stato_completato_puo_andare_in_errore(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = ("COMPLETATO",)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        repo.set_lotto_job_stato(6260, "ERRORE", "Errore pipeline")
+
+        # Nessun rifiuto: due execute, la lettura e l'UPDATE (non il log errore).
+        self.assertEqual(cursor.execute.call_count, 2)
+        update_sql, params = cursor.execute.call_args_list[1].args
+        self.assertIn("UPDATE vendite.fatturazione_lotti", update_sql)
+        self.assertEqual(params[0], "ERRORE")
+        self.assertEqual(params[-1], 6260)
+
+    # Scopo: ⛔ IL VERSO OPPOSTO RESTA CHIUSO, e non e' un'asimmetria da sanare.
+    #
+    #        «E' andata bene» e' una CONCLUSIONE e va guadagnata con un giro —
+    #        che passa da IN_ESECUZIONE e riporta il lotto a COMPLETATO da se'.
+    #        «E' andata male» e' un FATTO OSSERVATO: rifiutarne la registrazione
+    #        non lo rende meno vero, lo rende solo invisibile.
+    #
+    # ⚠️ Il test esiste per fermare chi, vedendo la coppia, volesse
+    #    «simmetrizzarla»: aprire questo verso permetterebbe di dichiarare
+    #    riuscito un lotto senza che nulla lo abbia verificato.
+    @override_settings(ERROR_LOG_DB_ENABLED=True)
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_set_lotto_job_stato_errore_non_va_in_completato(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchone.return_value = ("ERRORE",)
+        mocked_cursor_factory.return_value = cursor
+
+        repo = VenditePipelineRepository()
+        with self.assertRaises(ServiceError) as exc:
+            repo.set_lotto_job_stato(10, "COMPLETATO", "scorciatoia")
+        self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
 
     # Scopo: Verifica che list_lotto_task_runs mappi correttamente righe runtime task da DB.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")

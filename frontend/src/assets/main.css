@@ -2082,6 +2082,27 @@ a {
   min-height: var(--app-dash-lista-min-h);
 }
 
+/* I due elenchi della lente Competenza stanno in TAB, non impilati: prima il
+ * pannello errori restava sopra e spingeva in basso l'area appena selezionata
+ * (rilievo in app, 2026-08-24).
+ *
+ * ⚠️ Questi tab NON sono intercettati dalla catena flex di `.app-page > .p-tabs`
+ * (che vuole il contenitore come FIGLIO DIRETTO della pagina): qui i tab vivono
+ * dentro il corpo del cruscotto, che scorre come pagina. E' voluto — imporre
+ * qui l'altezza flex comprimerebbe le card degli stadi sopra di loro.
+ */
+.app-dash-tabs {
+  margin-top: 0.5rem;
+  min-height: 0;
+}
+
+/* Il pannello attivo non aggiunge un secondo padding: quello del cruscotto
+ * basta, e sommandoli la lista si stringerebbe rispetto alle card sopra. */
+.app-dash-tabs > .p-tabpanels {
+  padding: 0.75rem 0 0;
+  background: transparent;
+}
+
 .app-dash-fermi-title {
   margin: 0;
   font-size: 1rem;

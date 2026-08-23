@@ -31,6 +31,9 @@ import Button from 'primevue/button'
 import Popover from 'primevue/popover'
 import Tag from 'primevue/tag'
 import { displayTimestamp } from '../utils/date'
+import { useAuthStore } from '../../stores/auth'
+import { normalizzaBersagli } from '../bersagli'
+import { azioniDaBersagli } from '../bersaglioGesto'
 
 const props = defineProps({
   // Il messaggio dell'errore. Assente/vuoto = niente icona: la riga non ha
@@ -51,9 +54,24 @@ const props = defineProps({
   // Assente o sconosciuto → si assume il caso piu' grave: una segnalazione che
   // non sa dire quanto pesa e' meglio mostrarla forte che sottovoce.
   livello: { type: String, default: null },
+  // ⭐ IL BERSAGLIO dell'errore: su QUALE cosa è successo, nella forma
+  // `[{type, id}]` che il backend persiste in `fatture_log.meta.bersagli` e
+  // rende come `errore_bersagli` nella riga.
+  //
+  // ⭐ PERCHÉ QUI, ed è il caso che conta più del toast (2026-08-24). Un giro di
+  // fatturazione può partire da solo — worker, batch notturno — e fallire
+  // quando davanti allo schermo non c'è nessuno: chi legge quell'errore lo
+  // legge ORE DOPO, da questa icona. È esattamente «l'operatore cinque minuti
+  // dopo, che sta rimediando» del brief. Il toast è il caso facile.
+  //
+  // ⚠️ Assente o irraggiungibile → nessun pulsante, e il messaggio resta quello
+  // di prima: il bersaglio è un'offerta, non una promessa. Mai un pulsante che
+  // porta in un vicolo cieco.
+  bersagli: { type: Array, default: () => [] },
 })
 
 const { t } = useI18n()
+const auth = useAuthStore()
 const popover = ref(null)
 
 const haErrore = computed(() => Boolean(String(props.messaggio ?? '').trim()))
@@ -69,8 +87,30 @@ const icona = computed(
   () => (props.livello === 'I' ? 'pi pi-info-circle' : 'pi pi-exclamation-triangle'),
 )
 
+// I gesti offerti, già filtrati di ciò che questo operatore non può aprire.
+//
+// ⛔ `normalizzaBersagli` NON È OPZIONALE, ed è un bug già commesso una volta.
+// La prop arriva dal payload della lista, cioè nella forma dell'envelope
+// (`{type, id}`, chiavi inglesi); il resolver legge `tipo`. Passandola grezza
+// non risolve niente e **il pulsante non compare mai** — senza errori, senza
+// avvisi. La normalizzazione la fa il componente e non il chiamante, così
+// nessuna delle liste che monteranno questa icona può sbagliarla.
+//
+// ⚠️ `computed` e non un calcolo nel template: la risoluzione legge i permessi,
+// e ripeterla a ogni render sarebbe lavoro sprecato su una tabella di righe.
+const azioni = computed(() =>
+  azioniDaBersagli(normalizzaBersagli(props.bersagli), auth),
+)
+
 function toggle(event) {
   popover.value?.toggle(event)
+}
+
+// Dopo aver agito il popover si chiude: resterebbe aperto davanti alla cosa
+// che ha appena aperto.
+function esegui(azione) {
+  popover.value?.hide()
+  azione.esegui()
 }
 </script>
 
@@ -99,6 +139,21 @@ function toggle(event) {
          (DETAIL e HINT su righe proprie), e schiacciarli in un paragrafo unico
          toglierebbe proprio la separazione fra «cos'è successo» e «cosa fare». -->
     <p class="app-errore-riga-testo">{{ messaggio }}</p>
+
+    <!-- Il GESTO, quando c'è dove andare. Sotto il messaggio e non accanto al
+         titolo: prima si legge cosa è successo, poi si decide di muoversi. -->
+    <div v-if="azioni.length" class="app-errore-riga-azioni">
+      <Button
+        v-for="(azione, i) in azioni"
+        :key="i"
+        :label="azione.label"
+        :icon="azione.icon"
+        size="small"
+        severity="secondary"
+        outlined
+        @click="esegui(azione)"
+      />
+    </div>
   </Popover>
 </template>
 
@@ -121,5 +176,12 @@ function toggle(event) {
   margin: 0;
   white-space: pre-line;
   line-height: 1.45;
+}
+/* `wrap`: i bersagli possono essere fino a cinque, e il popover è stretto. */
+.app-errore-riga-azioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
 }
 </style>

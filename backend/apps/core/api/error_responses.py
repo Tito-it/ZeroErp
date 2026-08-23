@@ -43,14 +43,18 @@ def invalid_payload_response() -> JsonResponse:
 # all'utente al problema reale. Differenzia due livelli per non inquinare il log:
 # - errori tecnici (E_DATABASE/E_PIPELINE/E_GENERICO) -> exception con stack trace
 # - errori business (E_*_NOT_FOUND, E_*_VALIDAZIONE, ...) -> warning senza stack
+#
+# ⭐ IL `request_id` NON SI SCRIVE PIU' QUI (consegna BE-8): lo mette il
+#    formatter su OGNI riga, come `req=...`. Questo era l'unico punto del
+#    progetto che se lo ricordava — cioe' la prova che scriverlo a mano copre
+#    solo dove qualcuno ci ha pensato. Lasciarlo avrebbe stampato la stessa
+#    informazione due volte sulla stessa riga.
 def exception_to_error_response(exc: Exception) -> JsonResponse:
     api_error = ErrorTranslator.to_api_error(exc)
     status_code = ErrorTranslator.get_http_status(api_error)
-    request_id = get_request_id() or "-"
     if ErrorTranslator.is_technical_code(api_error.code):
         logger.exception(
-            "api_exception[tech] request_id=%s code=%s http=%s message=%s",
-            request_id,
+            "api_exception[tech] code=%s http=%s message=%s",
             api_error.code,
             status_code,
             api_error.message,
@@ -58,8 +62,7 @@ def exception_to_error_response(exc: Exception) -> JsonResponse:
         )
     else:
         logger.warning(
-            "api_exception[biz] request_id=%s code=%s http=%s message=%s",
-            request_id,
+            "api_exception[biz] code=%s http=%s message=%s",
             api_error.code,
             status_code,
             api_error.message,

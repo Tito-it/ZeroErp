@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.services.db_error_fields import bersagli_envelope
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
@@ -48,6 +49,26 @@ class LottoPipelineParams:
     gruppi: tuple[str, ...] | None = None
 
 
+# Scopo: Il `meta` della riga di `vendite.fatture_log` che racconta un
+#        fallimento per-fattura.
+#
+# ⚠️ La chiave `bersagli` si mette SOLO se c'e' qualcosa da dire — mai a `null`.
+#    E' la stessa disciplina che il team DB ha scritto nel pilota: una chiave
+#    presente e inutilizzabile non vuol dire «nessun bersaglio», vuol dire
+#    «bersaglio rotto», ed e' un difetto segnalato su un ramo che funziona.
+def _meta_errore_fattura(
+    context: dict[str, Any], exc: ServiceError
+) -> LottoPipelineMeta:
+    meta: LottoPipelineMeta = {
+        "task": context.get("task"),
+        "detail": exc.detail,
+    }
+    bersagli = bersagli_envelope(exc.targets)
+    if bersagli:
+        meta["bersagli"] = bersagli
+    return meta
+
+
 class LottoPipelineRunner:
     """Orchestratore Django della pipeline lotto vendite."""
 
@@ -74,12 +95,11 @@ class LottoPipelineRunner:
         code: str,
         tipo_lotto: str,
         detail: str | None,
-        correlation_id: str | None = None,
     ) -> None:
         # Mantiene stato lotto coerente e traccia errore con codice uniforme.
         #
-        # ⛔ LE TRE SCRITTURE CHE CONTANO STANNO QUI DENTRO, IL DIARIO NO — e la
-        #    riga sotto e' la ragione per cui questo blocco finisce prima.
+        # ⛔ QUI DENTRO CI SONO SOLO LE TRE SCRITTURE DELLA MARCATURA. Il diario
+        #    e' un passo A PARTE, e indipendente: vedi `_mark_lotto_error_safely`.
         with transaction.atomic():
             self.error_logger.log_error(
                 scope="LOTTO",
@@ -94,34 +114,6 @@ class LottoPipelineRunner:
             self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
             self.repository.log_lotto_esito_fatture(lotto_id)
 
-        # 🔴 IL DIARIO FUORI DALL'`atomic`, E NON E' UN DETTAGLIO DI STILE.
-        #    Finche' `log_event` stava DENTRO il blocco qui sopra, una riga di
-        #    giornale rifiutata rollava indietro **anche la marcatura**: il
-        #    lotto restava senza stato ERRORE e senza segnalazione, e il telaio
-        #    best-effort del chiamante ingoiava tutto. Cioe' il diario che si
-        #    rompe distruggeva la cosa che il diario doveva descrivere — la
-        #    stessa classe di BE-1, un gradino piu' in alto.
-        #
-        # ⚠️ Il telaio non bastava a proteggerlo: avvolge `_mark_lotto_error`
-        #    per INTERO (`_mark_lotto_error_safely`), quindi vede il fallimento
-        #    ma solo dopo che l'`atomic` ha gia' annullato tutto. Il rimedio non
-        #    e' un savepoint in piu': e' che il diario non stia nella stessa
-        #    transazione di cio' che racconta.
-        #
-        # ⭐ E l'ORDINE e' parte del rimedio: prima si mette in salvo lo stato
-        #    del lotto, poi si prova a raccontarlo. Al contrario non servirebbe
-        #    a niente.
-        self._diagnostica_best_effort(
-            lambda: self.repository.log_event(
-                entity_type="LOTTO",
-                entity_id=lotto_id,
-                event_code="PIPELINE_ERROR",
-                severity="ERROR",
-                correlation_id=correlation_id,
-                payload={"code": code, "detail": detail, "tipo_lotto": tipo_lotto},
-            ),
-            contesto={"lotto_id": lotto_id, "evento": "PIPELINE_ERROR"},
-        )
 
     # Scopo: Adatta il telaio condiviso `diagnostica_best_effort` fissando il
     #        `function_name` di questo runner, cosi' i call site restano corti.
@@ -156,15 +148,55 @@ class LottoPipelineRunner:
         correlation_id: str | None = None,
     ) -> None:
         # Il mark errore non deve mai mascherare l'eccezione principale.
+        #
+        # ⛔ DUE PASSI INDIPENDENTI, e non uno solo: il fallimento del primo non
+        #    deve impedire il secondo.
+        #
+        # 🔴 IL DIFETTO CHE HA IMPOSTO QUESTA FORMA, misurato su un giro vero il
+        #    2026-08-23 (lotto 6260). La pipeline era fallita per un motivo di
+        #    dominio legittimo — una nota di credito non numerabile perche' la
+        #    fattura che rettifica non ha ancora un numero. Poi:
+        #
+        #      set_lotto_job_stato(6260, 'ERRORE')
+        #        -> ⛔ «Transizione non ammessa: COMPLETATO -> ERRORE»
+        #
+        #    Il lotto era gia' COMPLETATO da una corsa precedente, e il guard di
+        #    dominio rifiuta quella transizione. L'eccezione usciva da
+        #    `_mark_lotto_error` **prima** di arrivare al diario, quindi
+        #    `PIPELINE_ERROR` non veniva mai scritto: in `event_log` **zero
+        #    righe**, e dell'unico giro andato storto non restava traccia nel
+        #    registro fatto apposta per raccontarlo.
+        #
+        # ⭐ E' lo SPECCHIO del difetto corretto poco prima (il diario dentro
+        #    l'`atomic` della marcatura, che rollava indietro lo stato del
+        #    lotto). Li' la marcatura moriva per colpa del diario; qui il diario
+        #    moriva per colpa della marcatura. La regola che li chiude entrambi
+        #    e' una sola, ed e' la **D-12**: *il diario registra il fatto, e
+        #    l'unica cosa che lo ferma e' non sapere di chi e' la riga*. Il fatto
+        #    era accaduto; che un'altra scrittura non sia passata non lo cancella.
+        #
+        # ⚠️ L'ORDINE resta questo — prima si prova a mettere in salvo lo stato,
+        #    poi lo si racconta — ma adesso e' una preferenza, non una
+        #    dipendenza.
         self._diagnostica_best_effort(
             lambda: self._mark_lotto_error(
                 lotto_id=lotto_id,
                 code=code,
                 tipo_lotto=tipo_lotto,
                 detail=detail,
-                correlation_id=correlation_id,
             ),
             contesto={"lotto_id": lotto_id, "tipo_lotto": tipo_lotto, "detail": detail},
+        )
+        self._diagnostica_best_effort(
+            lambda: self.repository.log_event(
+                entity_type="LOTTO",
+                entity_id=lotto_id,
+                event_code="PIPELINE_ERROR",
+                severity="ERROR",
+                correlation_id=correlation_id,
+                payload={"code": code, "detail": detail, "tipo_lotto": tipo_lotto},
+            ),
+            contesto={"lotto_id": lotto_id, "evento": "PIPELINE_ERROR"},
         )
 
     # Scopo: Attacca il fallimento ALLA RIGA della fattura che l'ha causato —
@@ -201,7 +233,22 @@ class LottoPipelineRunner:
                 fattura_id=fattura_id,
                 code=exc.code,
                 messaggio=getattr(exc, "message", None) or str(exc),
-                meta={"task": context.get("task"), "detail": exc.detail},
+                # ⭐ IL BERSAGLIO SI PERSISTE QUI, e questa e' la strada che
+                #    conta piu' del toast (2026-08-24). Un giro di fatturazione
+                #    puo' partire da solo — worker, batch notturno — e fallire
+                #    quando davanti allo schermo non c'e' nessuno: li' non c'e'
+                #    nessuna risposta da riempire, e l'unica cosa che resta e'
+                #    questa riga. Il §1 del brief lo dice: il lettore che conta
+                #    e' «l'operatore cinque minuti dopo, che sta rimediando».
+                # ⚠️ Nel `meta`, che e' gia' `jsonb NOT NULL`: nessuna colonna
+                #    nuova, e la lista fatture del lotto quel `meta` lo legge
+                #    gia' (ne estrae `error_code`).
+                # ⚠️ La chiave `bersagli` si mette SOLO se c'e' qualcosa da
+                #    dire — mai a `null`. E' la stessa disciplina che il team DB
+                #    ha scritto nel pilota: una chiave presente e inutilizzabile
+                #    non vuol dire «nessun bersaglio», vuol dire «bersaglio
+                #    rotto», ed e' un difetto segnalato su un ramo che funziona.
+                meta=_meta_errore_fattura(context, exc),
             ),
             contesto={"lotto_id": lotto_id, "fattura_id": fattura_id},
         )
@@ -934,10 +981,34 @@ class LottoPipelineRunner:
                 # Conserva l'errore parlante prima di degradare a esito
                 # strutturato (il `detail` porta il messaggio del DB: guard di
                 # transizione, vincoli, ecc.).
+                #
+                # 🔴 QUESTO E' UN QUINTO PUNTO DI APPIATTIMENTO, e per il
+                #    bersaglio e' IL punto (2026-08-24). Gli endpoint del runner
+                #    rispondono **200 anche quando la catena si ferma**: il
+                #    fallimento e' un campo del payload, non uno status — perche'
+                #    la catena puo' aver eseguito qualche step prima di fermarsi
+                #    e quel lavoro va raccontato. Conseguenza: `useApiHandler`
+                #    lato frontend vede un 200 e NON legge l'envelope d'errore,
+                #    quindi tutto cio' che non entra in questo dizionario a video
+                #    non arriva.
+                #    ⭐ I nomi sono gli STESSI dell'envelope (`hint`, `fields`,
+                #    `targets`) di proposito: a video il gesto lo disegna un
+                #    consumatore solo, e due nomi diversi per la stessa cosa
+                #    sarebbero due strade da tenere allineate a mano.
                 errore = {
                     "code": exc.code,
                     "message": getattr(exc, "message", None) or str(exc),
                     "detail": getattr(exc, "detail", None),
+                    # La SOLUZIONE a catalogo: cosa puo' fare l'operatore adesso.
+                    "hint": exc.hint,
+                    "fields": list(exc.fields) if exc.fields else None,
+                    # ⭐ IL BERSAGLIO: su quale cosa. Sul 937 e' la fattura da
+                    #    numerare prima — cioe' l'unica informazione che dice
+                    #    all'operatore DOVE andare.
+                    # ⚠️ Stessa conversione dell'envelope, e dallo STESSO posto:
+                    #    il consumatore a video e' uno solo, e due forme
+                    #    sarebbero due strade da tenere allineate a mano.
+                    "targets": bersagli_envelope(exc.targets),
                 }
                 if lotto_id is None:
                     # Primo run su lotto nuovo fallito: nessun id da riportare → propaga.

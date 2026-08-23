@@ -16,6 +16,7 @@ Indice test eseguiti:
 6) RequestLogMiddlewareTests.test_anonymous_user_logged_with_null_user
 7) RequestLogMiddlewareTests.test_error_code_extracted_from_response
 8) RequestLogMiddlewareTests.test_db_error_silent
+9) RequestLogMiddlewareTests.test_emittente_attivo_id_letto_dalla_sessione (BE-8)
 """
 
 from unittest import TestCase
@@ -101,6 +102,42 @@ class RequestLogMiddlewareTests(TestCase):
         mock_cursor.execute.assert_called_once()
         sql = mock_cursor.execute.call_args[0][0]
         self.assertIn("INSERT INTO dbops.request_log", sql)
+
+    # Scopo: ⭐ `emittente_attivo_id` SI SCRIVE, e si legge dalla SESSIONE.
+    #
+    #        Era una delle due colonne morte di `dbops.request_log` — 0 righe
+    #        valorizzate su 354.595 — ed e' la consegna BE-8. Il valore non
+    #        passa dal Python: la `INSERT` lo prende dalla GUC
+    #        `app.current_emittente_id`, la stessa che le policy RLS leggono
+    #        per decidere cosa l'utente vede.
+    #
+    # ⚠️ Il test guarda l'SQL e non un parametro, ed e' il punto: se qualcuno
+    #    "semplificasse" passando il valore come `%s` letto dal JWT, si
+    #    perderebbe la verifica che l'autenticazione ha gia' fatto (che
+    #    l'emittente esista e sia attivo) e il log potrebbe riportare un
+    #    emittente diverso da quello che la richiesta ha davvero usato.
+    # ⛔ E si presidia anche l'ASSENZA di `tx_id`: quella colonna non si puo'
+    #    collegare da qui — la riga si scrive quando la transazione di lavoro
+    #    ha gia' chiuso — e va tolta a DB, non riempita con un valore inventato.
+    @patch(_GET_UA, return_value="TestBrowser/1.0")
+    @patch(_GET_IP, return_value="192.168.1.1")
+    @patch(_GET_REQ_ID, return_value="550e8400-e29b-41d4-a716-446655440000")
+    @patch(_CONNECTION)
+    def test_emittente_attivo_id_letto_dalla_sessione(self, mock_conn, _rid, _ip, _ua):
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        request = _mock_request()
+        self.middleware.process_request(request)
+        self.middleware.process_response(request, _mock_response())
+
+        sql, params = mock_cursor.execute.call_args[0]
+        self.assertIn("emittente_attivo_id", sql)
+        self.assertIn("current_setting('app.current_emittente_id', true)", sql)
+        # La colonna non viaggia fra i parametri: il valore lo prende il DB.
+        self.assertEqual(len(params), 12)
+        self.assertNotIn("tx_id", sql)
 
     # Scopo: Verifica che request non-API non venga loggata.
     @patch(_CONNECTION)

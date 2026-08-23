@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Lettura unica del codice errore di dominio da un'eccezione DB.
+# Scopo: Lettura unica della diagnostica di dominio da un'eccezione DB —
+#        codice (CONSTRAINT), campo da correggere (COLUMN) e bersaglio
+#        (DATATYPE), piu' il BB `diagnostica_db` che li legge in una volta.
 # Note: Modulo volutamente senza dipendenze interne (lo importano
 #       error_translator, error_manager e payload_helpers: qualsiasi import
 #       verso quei moduli creerebbe un ciclo).
@@ -30,12 +32,20 @@ sono ~135 `RAISE EXCEPTION` diretti in ~46 funzioni che non passano dall'helper.
 Per quelli il campo esce vuoto e il testo e' l'unica strada. Si potra' togliere
 il giorno in cui quei RAISE saranno zero — cantiere a se'.
 
-Riferimento: `docs/it/dev/work-in-progress/brief-db-codice-errore-strutturato.md`.
+⭐ **I canali strutturati sono TRE**, e sono nati uno per volta dalla stessa
+mossa: `CONSTRAINT` porta il **codice** (2026-08-05), `COLUMN` porta il **campo
+da correggere** (2026-08-08), `DATATYPE` porta il **bersaglio** — su quale cosa
+l'errore e' successo (2026-08-23). Chi ne aggiunge un quarto guardi questi tre:
+il patto e' sempre lo stesso, «`P0001` + casella valorizzata».
+
+Riferimenti: `docs/it/dev/work-done/brief-db-codice-errore-strutturato.md` e
+`docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md` (§4.4, §7-bis).
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 # Convenzione codici applicativi: `E_<DOMINIO>_<DETTAGLIO>`.
@@ -136,3 +146,175 @@ def db_error_code(exc: BaseException, *, text: str | None = None) -> str | None:
 #        ripetevano per leggere message_primary/detail/hint.
 def db_diag(exc: BaseException) -> Any | None:
     return getattr(getattr(exc, "__cause__", None), "diag", None)
+
+
+# ⭐ IL BERSAGLIO — terzo canale strutturato, dal 2026-08-23 lato DB.
+#
+# Un tipo di entita' logica e' MAIUSCOLO_CON_UNDERSCORE (`FATTURA`, `TASK_RUN`,
+# `DDT_VENDITA`): e' un codice di `config.tipi_entita`, non un nome di tabella —
+# il §4.2 del brief vieta espressamente che il nome della tabella esca di qui.
+_TIPO_ENTITA_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
+# L'identificativo e' un intero oppure un uuid: `config.tipi_entita.key_selector`
+# dichiara quale dei due, ma qui non serve saperlo — serve solo che non sia
+# testo arbitrario in viaggio verso il client.
+#
+# ⚠️ E' la regex che scrive il database, con UNA differenza deliberata: qui si
+# pretende almeno un carattere alfanumerico. La sua ammette un `-` nudo, e un
+# `FATTURA:-` produrrebbe un pulsante «Apri Fattura -» che apre un pannello
+# vuoto — cioe' precisamente il vicolo cieco che il §4.3 vieta. Un bersaglio
+# scartato non fa danno; uno che promette una destinazione inesistente si'.
+_ID_ENTITA_RE = re.compile(r"^(?=.*[0-9a-fA-F])[0-9a-fA-F-]{1,36}$")
+
+# ⛔ Il tetto e' CINQUE, ed e' lo stesso numero scritto dentro
+# `script.fn_log_and_raise_error`: oltre, il frontend non disegna piu' un gesto
+# ma un elenco. Si ripete qui perche' le due meta' dello stesso canale vanno
+# guardate uguale — come gia' per la regex di `COLUMN`.
+MAX_BERSAGLI = 5
+
+
+@dataclass(frozen=True)
+class Bersaglio:
+    """Su QUALE cosa l'errore e' successo: un tipo logico e un identificativo."""
+
+    tipo: str
+    id: str
+
+    # Scopo: La forma che viaggia nell'envelope API. ⚠️ Le chiavi sono INGLESI
+    #        (`type`/`id`) come tutte quelle dell'envelope, e la traduzione
+    #        avviene qui e in nessun altro posto.
+    def to_envelope(self) -> dict[str, str]:
+        return {"type": self.tipo, "id": self.id}
+
+
+# Scopo: ⭐ IL BERSAGLIO dell'errore, dal campo strutturato `DATATYPE`
+#        dell'eccezione. Terzo della famiglia, dopo il codice (`CONSTRAINT`,
+#        05/08) e il campo da correggere (`COLUMN`, 08/08).
+#
+#        Forma sul canale: `TIPO:id[,TIPO:id]`, al massimo cinque elementi.
+#        Stringa vuota = nessun bersaglio (e' il caso normale, non un difetto).
+#
+#        ⛔ QUI IL GUARD SULLO SQLSTATE SERVE, al contrario di `COLUMN`, e la
+#        ragione e' la stessa che lo rende necessario su `CONSTRAINT`: fuori da
+#        `P0001` quel campo lo riempie PostgreSQL da se'. Su un `22P02`
+#        («invalid input syntax for type integer») `datatype_name` contiene il
+#        nome di un tipo PostgreSQL, non un tipo di entita' logica: senza guard
+#        si manderebbe il frontend ad aprire un `integer`.
+#        Il patto e' quello gia' scritto due volte: «`P0001` + casella
+#        valorizzata = bersaglio».
+#
+#        ⚠️ Un elemento malformato si SCARTA e non fa perdere gli altri: la
+#        meta' che scrive ha la stessa regola (un bersaglio storto lascia la
+#        casella vuota e non distrugge mai l'errore di dominio). Un canale
+#        d'errore non puo' essere quello che rompe l'errore.
+def structured_db_error_target(exc: BaseException) -> tuple[Bersaglio, ...]:
+    cause = getattr(exc, "__cause__", None)
+    sqlstate = getattr(cause, "sqlstate", None) or getattr(cause, "pgcode", None)
+    if sqlstate != SQLSTATE_RAISE_EXCEPTION:
+        return ()
+    diag = getattr(cause, "diag", None)
+    # `or ""`: come per il codice e per il campo, un valore che nasce da
+    # un'espressione NULL arriva come STRINGA VUOTA, non come None.
+    grezzo = getattr(diag, "datatype_name", None) or ""
+    if not grezzo:
+        return ()
+    bersagli: list[Bersaglio] = []
+    for pezzo in grezzo.split(","):
+        tipo, separatore, identificativo = pezzo.partition(":")
+        if not separatore:
+            continue
+        if not _TIPO_ENTITA_RE.match(tipo) or not _ID_ENTITA_RE.match(identificativo):
+            continue
+        bersagli.append(Bersaglio(tipo=tipo, id=identificativo))
+        if len(bersagli) >= MAX_BERSAGLI:
+            break
+    return tuple(bersagli)
+
+
+# Scopo: I bersagli nella forma che esce dal confine — `[{"type", "id"}]` —
+#        oppure `None` quando non ce ne sono.
+#
+# ⭐ ESISTE PERCHE' ERA IN TRE COPIE (rilevato in revisione, 2026-08-24):
+#    l'envelope, il blob del runner e il `meta` della riga persistita facevano
+#    ognuno la propria `[b.to_envelope() for b in ...] or None`. Tre produttori
+#    diversi della stessa forma sono tre punti in cui divergere — proprio dove
+#    il consumatore a video e' UNO SOLO.
+#
+# ⚠️ `None` e non `[]`, ed e' la stessa disciplina che il team DB ha scritto nel
+#    pilota: una chiave presente e vuota non vuol dire «nessun bersaglio», e chi
+#    la riceve dovrebbe interrogarla prima di usarla. L'assenza si dice
+#    togliendo la chiave.
+def bersagli_envelope(
+    targets: tuple[Bersaglio, ...] | None,
+) -> list[dict[str, str]] | None:
+    return [b.to_envelope() for b in targets] if targets else None
+
+
+@dataclass(frozen=True)
+class DiagnosticaDb:
+    """Tutto cio' che un errore del database dice, letto UNA volta.
+
+    ⭐ Perche' esiste, ed e' un difetto misurato il 2026-08-24. I punti in cui
+    un `DatabaseError` diventa un `ServiceError` sono QUATTRO — il translator
+    del middleware, `translate_db_errors` (46 chiamate), `raise_from_database_error`
+    (9) e `_run_per_fattura_task` della pipeline — e ognuno leggeva un
+    sottoinsieme diverso della diagnostica. (C'e' un QUINTO punto che non passa
+    di qui perche' non produce un envelope: il blob `errore` del runner di
+    pipeline, che appiattisce un `ServiceError` dentro una risposta 200.) Conseguenza: `hint` arrivava
+    all'envelope da due strade su quattro e `fields` da UNA, quindi i 136
+    binding di `campiErrati` sul frontend non si illuminavano mai su un errore
+    nato in PL/pgSQL. Il canale c'era, era il trasporto a perderlo.
+
+    ⚠️ Nessun campo qui e' «nuovo»: sono le stesse letture di prima, messe in
+    una sede sola perche' non possano piu' divergere.
+    """
+
+    testo: str
+    sqlstate: str | None
+    codice_strutturato: str | None
+    codice: str | None
+    messaggio: str | None
+    detail: str | None
+    hint: str | None
+    campo: str | None
+    bersagli: tuple[Bersaglio, ...]
+
+    # Scopo: `True` quando il codice viene dal campo strutturato, cioe' quando
+    #        `script.fn_log_and_raise_error` ha GIA' scritto la sua riga in
+    #        `dbops.error_log`. Chi logga deve saperlo per non fare il doppione
+    #        (decisione DB+BE del 2026-08-19).
+    @property
+    def gia_scritto_dal_database(self) -> bool:
+        return self.codice_strutturato is not None
+
+    # Scopo: Ritentabile: serializzazione e deadlock, e nient'altro.
+    @property
+    def retryable(self) -> bool:
+        return self.sqlstate in {"40001", "40P01"}
+
+    # Scopo: I campi del form da correggere, nella forma dell'envelope.
+    @property
+    def fields(self) -> tuple[str, ...] | None:
+        return (self.campo,) if self.campo else None
+
+
+# Scopo: ⭐ IL BB: la diagnostica di dominio di un'eccezione DB, letta una volta
+#        sola. Sostituisce le quattro letture parziali che i punti di
+#        traduzione facevano ciascuno per conto proprio.
+#
+#        ⚠️ `text` esplicito per i chiamanti che hanno gia' il testo in mano.
+def diagnostica_db(exc: BaseException, *, text: str | None = None) -> DiagnosticaDb:
+    cause = getattr(exc, "__cause__", None)
+    diag = getattr(cause, "diag", None)
+    testo = text if text is not None else (str(exc) or "")
+    codice_strutturato = structured_db_error_code(exc)
+    return DiagnosticaDb(
+        testo=testo,
+        sqlstate=getattr(cause, "sqlstate", None) or getattr(cause, "pgcode", None),
+        codice_strutturato=codice_strutturato,
+        codice=codice_strutturato or app_error_code_from_text(testo),
+        messaggio=getattr(diag, "message_primary", None) or None,
+        detail=getattr(diag, "message_detail", None) or None,
+        hint=getattr(diag, "message_hint", None) or None,
+        campo=structured_db_error_field(exc),
+        bersagli=structured_db_error_target(exc),
+    )

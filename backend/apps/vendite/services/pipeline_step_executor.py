@@ -12,11 +12,7 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.core.services.db_error_fields import (
-    db_diag,
-    db_error_code,
-    structured_db_error_code,
-)
+from apps.core.services.db_error_fields import db_error_code, diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, messaggio_eccezione, run_fan_out
 from apps.core.services.service_errors import ServiceError
@@ -637,16 +633,19 @@ class PipelineStepExecutor:
                 # Letto UNA volta: la stessa risposta decide codice, messaggio
                 # e `log_to_db` — tre letture separate dello stesso fatto sono
                 # tre punti in cui divergere per errore.
-                codice_strutturato = structured_db_error_code(exc)
-                codice_db = codice_strutturato or db_error_code(exc)
-                code = codice_db or "E_TASK_FATTURA"
+                # ⭐ UNA lettura sola (BB `diagnostica_db`, 2026-08-24): prima
+                # erano tre chiamate separate sullo stesso fatto, piu' un quarto
+                # `db_diag` qui sotto — e il campo da correggere e il bersaglio
+                # non li leggeva nessuno.
+                diag_dominio = diagnostica_db(exc)
+                codice_strutturato = diag_dominio.codice_strutturato
+                code = diag_dominio.codice or "E_TASK_FATTURA"
                 # `message_primary` e' il solo RAISE, senza lo stack PL/pgSQL:
                 # e' cio' che si mostra. Senza codice di dominio non c'e' niente
                 # da mostrare di meglio della frase generica — un `str(exc)`
                 # tecnico a video non aiuterebbe nessuno.
-                diag = db_diag(exc) if codice_db else None
                 message = (
-                    getattr(diag, "message_primary", None)
+                    (diag_dominio.messaggio if diag_dominio.codice else None)
                     or "Errore su singola fattura durante task pipeline."
                 )
                 self._log_fattura_task_error(
@@ -657,9 +656,19 @@ class PipelineStepExecutor:
                     code=code,
                     detail=str(exc),
                 )
+                # ⭐ IL BERSAGLIO PASSA DI QUI, ed e' la ragione per cui questo
+                # punto conta piu' degli altri tre: il messaggio pilota del
+                # cantiere — `E_FATTURA_RETTIFICATA_SENZA_NUMERO`, «numera prima
+                # il documento 820» — nasce dentro un task per-fattura, quindi
+                # e' QUESTA la strada che deve portarlo. Insieme al bersaglio
+                # passano il campo da correggere e la soluzione a catalogo, che
+                # da qui non erano mai usciti.
                 ErrorManager.raise_error(
                     code=code,
                     message=message,
+                    hint=diag_dominio.hint,
+                    fields=diag_dominio.fields,
+                    targets=diag_dominio.bersagli or None,
                     detail=f"Task {task} fallito su fattura_id={fattura_id}: {exc}",
                     context={
                         "lotto_id": lotto_id,
