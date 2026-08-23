@@ -96,7 +96,7 @@ L'analisi di giugno accoppiava «push» e «pull». Rileggendo il codice per que
 
 | Sito | File | Itera su | Discovery | Isolamento | Aggregazione | Log |
 |---|---|---|---|---|---|---|
-| **A** | `commesse_push_orchestrator.py` `_run_locked` | **handler** | `_resolve_handlers` | `try/except` — **niente savepoint** | `_compute_stato` → `COMPLETATO`/`PARZIALE`/`ERRORE` | `PUSH_STARTED`/`PUSH_COMPLETED` + `log_push_run` |
+| **A** | `commesse_push_orchestrator.py` `_run_locked` | **handler** | `_resolve_handlers` | `try/except` — **niente savepoint** | `_compute_stato` → `COMPLETATO`/`PARZIALE`/`ERRORE` | ⭐ *(rev. 2026-08-22)* `start_push_run` in testa + `close_push_run` in coda. ⛔ Niente piu' `PUSH_STARTED`/`PUSH_COMPLETED` su `event_log` (BE-3a: un giro non ha un emittente) e niente piu' `log_push_run` (la funzione DB e' stata DROPpata) |
 | **B** | `commesse_source_handlers.py` `BaseSourceHandler._process_rows` | **righe sorgente** | `fetch_pushable_rows` | `transaction.atomic()` per riga | contatori `created/updated/skipped` + `errors[]` su `HandlerResult` | `logger.exception` per riga |
 | **C** | `pipeline_step_executor.py` `_handle_pull_attivita_da_commessa_task` | **commesse** | `list_commesse_emittibili` | `transaction.atomic()` per commessa | `errors[]` + raise **solo** se falliscono tutte | `event_log` + `PipelineErrorLogger` per item |
 

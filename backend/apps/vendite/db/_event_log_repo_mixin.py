@@ -64,16 +64,6 @@ class EventLogRepositoryMixin:
     sull'entita' che sta lavorando.
     """
 
-    # Scopo: Serializza il payload per il parametro `jsonb`. Locale al mixin e
-    #        NON preso dalle sottoclassi: `pipeline_repository` tipizza il
-    #        proprio `_to_jsonb_param` su `LottoPipelineMeta`, che qui non
-    #        c'entra — un payload di evento e' un dict qualunque. Appoggiarsi
-    #        al metodo della sottoclasse avrebbe legato il building block alla
-    #        forma di uno dei due chiamanti.
-    @staticmethod
-    def _event_payload_param(payload: dict[str, Any] | None) -> str:
-        return json.dumps(payload or {})
-
     # Scopo: Scrive un evento sul giornale `vendite.event_log` e ne
     #        restituisce l'id.
     #
@@ -118,7 +108,14 @@ class EventLogRepositoryMixin:
                     event_code,
                     severity,
                     correlation_id,
-                    self._event_payload_param(payload),
+                    # ⚠️ Serializzato QUI e non col `_to_jsonb_param` della
+                    #    sottoclasse: `pipeline_repository` tipizza il suo su
+                    #    `LottoPipelineMeta` e restituisce `None` sul vuoto,
+                    #    mentre un payload di evento e' un dict qualunque e il
+                    #    vuoto e' `{}`. Appoggiarsi al metodo dell'ospite
+                    #    legherebbe il building block alla forma di uno dei due
+                    #    chiamanti — ed e' una riga, non un helper.
+                    json.dumps(payload or {}),
                 ],
             )
             row = cursor.fetchone()

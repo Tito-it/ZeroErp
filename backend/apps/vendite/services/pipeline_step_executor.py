@@ -152,6 +152,11 @@ class PipelineStepExecutor:
         }
 
     # Scopo: Gestisce uno step pipeline validando input, risolvendo processi da configurazione DB e dispatch dei task
+    # ⚠️ `correlation_id` e' l'identita' del GIRO (D-7), non del lotto: la
+    #    genera il runner a ogni corsa e attraversa di qui per finire sulla riga
+    #    del tentativo. Facoltativa per disegno — chi esegue uno step fuori da
+    #    un giro (rollback puntuale, rilancio manuale) non ne ha uno, e un uuid
+    #    coniato qui sarebbe un filo che non lega niente.
     def execute_step(
         self,
         lotto_id: int,
@@ -160,6 +165,7 @@ class PipelineStepExecutor:
         *,
         rollback: bool = False,
         dry_run: bool = False,
+        correlation_id: str | None = None,
     ) -> None:
         ErrorManager.require(
             bool(lotto_id and stato_doc_fiscale_id and tipo_lotto and tipo_lotto.strip()),
@@ -236,6 +242,7 @@ class PipelineStepExecutor:
                 rollback=rollback,
                 dry_run=dry_run,
                 pipeline_id=pipeline_id,
+                correlation_id=correlation_id,
             )
 
     # Scopo: Verifica le dipendenze d'ordine di `_TASK_ORDER_DEPENDENCIES` sulla
@@ -296,6 +303,7 @@ class PipelineStepExecutor:
         rollback: bool,
         dry_run: bool,
         pipeline_id: int | None = None,
+        correlation_id: str | None = None,
     ) -> None:
         task = str(process.get("task", "")).strip()
         fase = process.get("fase") or "Esecuzione step"
@@ -405,6 +413,7 @@ class PipelineStepExecutor:
                 task_code=task,
                 fase=fase,
                 meta={"rollback": rollback},
+                correlation_id=correlation_id,
             )
             task_run_id = task_run_result.task_run_id
 
@@ -449,6 +458,13 @@ class PipelineStepExecutor:
                         "stato_doc_fiscale_id": stato_doc_fiscale_id,
                         "task_code": task,
                         "fase": fase,
+                        # Il filo del giro viaggia con l'eccezione: chi riscrive
+                        # la riga fuori dalla transazione (il telaio best-effort
+                        # del runner) non ha altro modo di conoscerlo, e senza
+                        # il tentativo fallito resterebbe l'unico del giro
+                        # senza `correlation_id` — cioe' l'unico che la
+                        # diagnostica non ritroverebbe.
+                        "correlation_id": correlation_id,
                         "error_code": (
                             exc.code
                             if isinstance(exc, ServiceError)

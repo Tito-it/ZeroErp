@@ -932,24 +932,36 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 > scrivono, non si implementano.
 >
 > ✅ **Stato al 2026-08-22 (sera), scritto dal backend.** Sette consegne su nove
-> sono **fatte**: BE-1, BE-3a, BE-4, BE-5, BE-6, BE-7, BE-9. Restano **BE-2** e
-> **BE-3b**, ferme su un prerequisito DB — i changeSet 61 e 62 hanno consegnato
-> le **colonne**, ma nessuna funzione le scrive e `fn_log_commessa_push_run`
-> **rifiuta** `IN_ESECUZIONE` con un guard suo. La richiesta è in
-> [brief-db-scrittori-del-giro-push-e-task-run.md](brief-db-scrittori-del-giro-push-e-task-run.md).
+> fatte in un primo giro — BE-1, BE-3a, BE-4, BE-5, BE-6, BE-7, BE-9 — e le
+> ultime due, **BE-2** e **BE-3b**, chiuse appena il team DB ha consegnato i
+> due scrittori mancanti (changeSet **67, 68, 69**). ⭐ **Nove su nove.**
+> Il prerequisito e la sua richiesta sono in
+> [brief-db-scrittori-del-giro-push-e-task-run.md](../work-done/brief-db-scrittori-del-giro-push-e-task-run.md),
+> ora in `work-done`.
 >
 > ⭐ **Il rischio 3 del §9.3 è chiuso a metà**: il registro ha di nuovo delle
 > righe scritte dal backend vero — perimetro derivato, `cleanup_at` a 750
 > giorni, entrambi verificati contro il DB. Resta aperto il `correlation_id`,
 > che è la parte che dipende da BE-2.
 >
-> ⚠️ **E una consegna che questo §5 non elencava**, trovata eseguendo i
-> cancelli: i due codici nuovi (`E_EVENT_LOG_SCOPE_NON_RISOLTO`,
-> `E_EVENT_LOG_ENTITY_TYPE_IGNOTO`) più `E_UPDATE_NOT_ALLOWED` mandavano in
-> rosso il **cancello del terzo lato** e quello della **divergenza**, perché
-> `error_policies_generated.py` non era stato rigenerato dopo il seed. Un codice
-> errore nuovo costa **due** cose lato BE, non una: la policy generata **e** il
-> messaggio di ripiego senza `%s`.
+> ⚠️ **E una consegna che questo §5 non elencava** — la **BE-10** che L5
+> nomina: `error_policies_generated.py` va rigenerato dopo ogni seed di codici.
+> Fatta due volte, ai due giri. ⭐ Un codice errore nuovo costa **due** cose
+> lato BE, non una: la policy generata **e** il messaggio di ripiego senza
+> `%s` (`error_messages_fallback.py`) — il secondo verso lo presidia
+> `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`, ed è quello che si
+> dimentica.
+>
+> ⛔ **Il `tx_id` resta NULL**, riverificato dopo L5: `event_log` e
+> `commesse_push_log` non hanno il trigger `..._gen_tx_id_*`. Coerente con
+> §3.5 — lo attacca l'automazione in `ci_apply`. **La D-5 è viva come colonna,
+> non come dato**, e finché è così `event_log` non si aggancia a `error_log`.
+>
+> ⚠️ **E il GRANT del canale batch è confermato dal vivo**: aperto un giro di
+> push dentro `system_process_context(alias='system_fatturazione')`, il DB
+> risponde *«permesso negato per la tabella commesse_push_log»*. Oggi non morde
+> — il push gira come `zeroerp_app` — ed è esattamente la misura scritta nel
+> §5-bis.
 
 | # | Consegna | Blocca? |
 | --- | --- | --- |

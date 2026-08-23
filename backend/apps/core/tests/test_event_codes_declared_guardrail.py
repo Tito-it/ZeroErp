@@ -54,8 +54,12 @@
        il verso gemello di quello dei codici errore: un codice che il catalogo
        ha deprecato con `obsoleto_dal` non deve comparire in un punto di
        scrittura.
- 3) test_la_misura_non_e_degradata
-       sanity: catalogo e punti di scrittura non vuoti. Senza, un'estrazione
+ 3) test_ogni_entity_type_usato_e_GIORNALABILE
+       ⭐ l'altra colonna a catalogo, e il buco piu' facile: un refuso in
+       `entity_type` passa OGNI cancello e fallisce solo a runtime. Non basta
+       «esiste nel catalogo»: deve avere un modo di risoluzione dell'emittente.
+ 4) test_la_misura_non_e_degradata
+       sanity: cataloghi e punti di scrittura non vuoti. Senza, un'estrazione
        che si rompe rende il cancello silenziosamente verde — che e'
        l'etichetta rassicurante peggiore di un presidio assente.
 """
@@ -71,15 +75,18 @@ from unittest import TestCase
 # .../backend/apps/core/tests/<file> -> parents[3] = backend, parents[4] = repo
 _BACKEND = Path(__file__).resolve().parents[3]
 _APPS = _BACKEND / "apps"
-_CATALOGO = (
-    _BACKEND.parent
-    / "db/changelog/migrations_v2/80_data/sql/config/eventi_dominio.csv"
-)
+_SEED = _BACKEND.parent / "db/changelog/migrations_v2/80_data/sql/config"
+_CATALOGO = _SEED / "eventi_dominio.csv"
+_CATALOGO_TIPI = _SEED / "tipi_entita.csv"
 
 # Il kwarg che veicola un codice evento verso il giornale. Uno solo, ed e' il
 # nome del parametro di `EventLogRepositoryMixin.log_event`: se un giorno
 # cambiasse, il test 3 se ne accorge (l'estrazione tornerebbe vuota).
 _CODE_KWARG = "event_code"
+
+# Il kwarg del TIPO DI ENTITA'. Stessa provenienza: e' il parametro di
+# `EventLogRepositoryMixin.log_event`.
+_TIPO_KWARG = "entity_type"
 
 # Codici ammessi pur non essendo a catalogo. Vuota per scelta: ogni voce
 # andrebbe motivata in una riga, altrimenti il cancello diventa un elenco di
@@ -96,6 +103,36 @@ def _catalogo() -> dict[str, str]:
             for riga in csv.DictReader(fh)
             if riga.get("codice")
         }
+
+
+# Scopo: il catalogo dei tipi di entita', letto dal CSV di `80_data`.
+#        Ritorna {codice: modo_risoluzione_emittente_grezzo}.
+#
+# ⭐ La colonna `modo_risoluzione_emittente` NON e' un dettaglio: e' cio' che
+#    distingue le DUE LETTURE dello stesso catalogo. Il *bersaglio* di un errore
+#    puo' puntare a qualunque tipo; il *giornale* accetta solo quelli da cui
+#    l'emittente si sa derivare. `TASK_RUN` sta a catalogo col modo a NULL, ed e'
+#    il caso che dimostra la differenza: scriverlo in `event_log` viene
+#    rifiutato dal trigger — che e' esattamente il difetto da cui si viene.
+def _catalogo_tipi() -> dict[str, str]:
+    with _CATALOGO_TIPI.open(encoding="utf-8", newline="") as fh:
+        return {
+            riga["codice"]: _valore_o_vuoto(riga.get("modo_risoluzione_emittente"))
+            for riga in csv.DictReader(fh)
+            if riga.get("codice")
+        }
+
+
+# Scopo: normalizza una cella del CSV che puo' valere il LETTERALE "NULL".
+#
+# ⛔ E' il letterale del loader Liquibase, non una stringa di dominio — ma per
+#    Python e' una stringa piena, quindi verissima. Senza questa normalizzazione
+#    `TASK_RUN` (modo = NULL) risultava GIORNALABILE e il cancello lo avrebbe
+#    lasciato passare: cioe' avrebbe mancato l'unico caso per cui esiste.
+#    Trovato dal test di sanity, non a occhio.
+def _valore_o_vuoto(cella: str | None) -> str:
+    valore = (cella or "").strip()
+    return "" if valore == "NULL" else valore
 
 
 # Scopo: costanti di modulo che valorizzano un codice evento
@@ -120,7 +157,7 @@ def _costanti_modulo(tree: ast.Module) -> dict[str, str]:
 #        del primo uso. La posizione non e' decorativa: un elenco di codici
 #        senza posizione non e' azionabile, e un cancello non azionabile viene
 #        spento.
-def _codici_usati() -> dict[str, str]:
+def _codici_usati(kwarg: str = _CODE_KWARG) -> dict[str, str]:
     usati: dict[str, str] = {}
     for file in sorted(_APPS.rglob("*.py")):
         if "/tests/" in file.as_posix() or file.name.startswith("test_"):
@@ -134,7 +171,7 @@ def _codici_usati() -> dict[str, str]:
             if not isinstance(nodo, ast.Call):
                 continue
             for kw in nodo.keywords:
-                if kw.arg != _CODE_KWARG:
+                if kw.arg != kwarg:
                     continue
                 codice = None
                 if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
@@ -180,10 +217,8 @@ class EventCodesDeclaredGuardrail(TestCase):
         obsoleti = {
             codice
             for codice, obsoleto_dal in _catalogo().items()
-            # Il CSV scrive "NULL" per «non deprecato»: e' il letterale del
-            # loader, non un valore. Confronto lessicografico su ISO-8601, che
-            # ordina come le date.
-            if obsoleto_dal and obsoleto_dal != "NULL" and obsoleto_dal <= oggi
+            # Confronto lessicografico su ISO-8601, che ordina come le date.
+            if _valore_o_vuoto(obsoleto_dal) and obsoleto_dal.strip() <= oggi
         }
         usati_obsoleti = {
             codice: posizione
@@ -199,6 +234,46 @@ class EventCodesDeclaredGuardrail(TestCase):
                 f"scritti dal backend:\n{righe}\n\n"
                 "Sostituirli col codice che li ha rimpiazzati, oppure — se la "
                 "deprecazione era prematura — riaprirli nel catalogo."
+            )
+
+    # Scopo: ⭐ IL TIPO DI ENTITA' DEVE ESSERE GIORNALABILE, non solo esistere.
+    #
+    #        E' il buco piu' facile del giro: `entity_type` e' una stringa che
+    #        nessun cancello guardava. Un refuso — «LOTTTO» — passa i test, passa
+    #        la CI, e fallisce alla prima scrittura vera con
+    #        `E_EVENT_LOG_ENTITY_TYPE_IGNOTO`; in un ramo d'errore (dove il
+    #        diario tipicamente scrive) lo si scopre mesi dopo, che e' la storia
+    #        di BE-1.
+    #
+    # ⚠️ E il criterio NON e' «esiste nel catalogo», ma «esiste **e ha un modo**»:
+    #    `TASK_RUN` e' a catalogo e il giornale lo rifiuta lo stesso. Un
+    #    controllo di sola esistenza avrebbe lasciato passare proprio la riga
+    #    che la D-3 ha espulso da `event_log`.
+    def test_ogni_entity_type_usato_e_giornalabile(self):
+        tipi = _catalogo_tipi()
+        usati = _codici_usati(_TIPO_KWARG)
+
+        ignoti = {t: p for t, p in usati.items() if t not in tipi}
+        senza_modo = {
+            t: p for t, p in usati.items() if t in tipi and not tipi[t]
+        }
+        if ignoti or senza_modo:
+            righe = "\n".join(
+                [f"  - {t}  ({p})  → non e' a catalogo" for t, p in sorted(ignoti.items())]
+                + [
+                    f"  - {t}  ({p})  → a catalogo ma SENZA modo di risoluzione: "
+                    "il giornale lo rifiuta"
+                    for t, p in sorted(senza_modo.items())
+                ]
+            )
+            self.fail(
+                f"{len(ignoti) + len(senza_modo)} `entity_type` scritti dal "
+                f"backend che il giornale non accetta:\n{righe}\n\n"
+                f"I tipi giornalabili sono: "
+                f"{', '.join(sorted(t for t, m in tipi.items() if m))}. "
+                f"Un tipo nuovo si aggiunge in {_CATALOGO_TIPI.name} CON il suo "
+                "`modo_risoluzione_emittente`, e il modo va insegnato a "
+                "`script.fn_resolve_emittente_sr_id` (team DB)."
             )
 
     # Scopo: sanity. Se l'estrazione si rompe (kwarg rinominato, CSV spostato)
@@ -217,4 +292,22 @@ class EventCodesDeclaredGuardrail(TestCase):
             4,
             "nessun punto di scrittura trovato: l'estrazione AST non misura "
             f"piu' niente (kwarg '{_CODE_KWARG}' rinominato?)",
+        )
+        self.assertTrue(
+            _CATALOGO_TIPI.is_file(),
+            f"catalogo dei tipi di entita' non trovato: {_CATALOGO_TIPI}",
+        )
+        # ⚠️ Almeno un tipo giornalabile: se la colonna del modo sparisse o
+        #    cambiasse nome, il test 3 diventerebbe verde per sottrazione —
+        #    «nessun tipo ha un modo» e quindi «nessun uso e' valido» sarebbe
+        #    un rosso, ma «la colonna non esiste» darebbe stringhe vuote ovunque.
+        self.assertTrue(
+            any(_catalogo_tipi().values()),
+            "nessun tipo giornalabile: la colonna `modo_risoluzione_emittente` "
+            "non si sta leggendo",
+        )
+        self.assertGreaterEqual(
+            len(_codici_usati(_TIPO_KWARG)),
+            2,
+            f"nessun `{_TIPO_KWARG}` trovato: estrazione degradata",
         )

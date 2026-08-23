@@ -9,6 +9,7 @@
 from dataclasses import dataclass, replace
 from datetime import date
 from collections.abc import Callable
+from uuid import uuid4
 from typing import Any
 
 from django.db import transaction
@@ -76,6 +77,9 @@ class LottoPipelineRunner:
         correlation_id: str | None = None,
     ) -> None:
         # Mantiene stato lotto coerente e traccia errore con codice uniforme.
+        #
+        # ⛔ LE TRE SCRITTURE CHE CONTANO STANNO QUI DENTRO, IL DIARIO NO — e la
+        #    riga sotto e' la ragione per cui questo blocco finisce prima.
         with transaction.atomic():
             self.error_logger.log_error(
                 scope="LOTTO",
@@ -89,14 +93,35 @@ class LottoPipelineRunner:
             )
             self.repository.set_lotto_job_stato(lotto_id, "ERRORE", "Errore pipeline")
             self.repository.log_lotto_esito_fatture(lotto_id)
-            self.repository.log_event(
+
+        # 🔴 IL DIARIO FUORI DALL'`atomic`, E NON E' UN DETTAGLIO DI STILE.
+        #    Finche' `log_event` stava DENTRO il blocco qui sopra, una riga di
+        #    giornale rifiutata rollava indietro **anche la marcatura**: il
+        #    lotto restava senza stato ERRORE e senza segnalazione, e il telaio
+        #    best-effort del chiamante ingoiava tutto. Cioe' il diario che si
+        #    rompe distruggeva la cosa che il diario doveva descrivere — la
+        #    stessa classe di BE-1, un gradino piu' in alto.
+        #
+        # ⚠️ Il telaio non bastava a proteggerlo: avvolge `_mark_lotto_error`
+        #    per INTERO (`_mark_lotto_error_safely`), quindi vede il fallimento
+        #    ma solo dopo che l'`atomic` ha gia' annullato tutto. Il rimedio non
+        #    e' un savepoint in piu': e' che il diario non stia nella stessa
+        #    transazione di cio' che racconta.
+        #
+        # ⭐ E l'ORDINE e' parte del rimedio: prima si mette in salvo lo stato
+        #    del lotto, poi si prova a raccontarlo. Al contrario non servirebbe
+        #    a niente.
+        self._diagnostica_best_effort(
+            lambda: self.repository.log_event(
                 entity_type="LOTTO",
                 entity_id=lotto_id,
                 event_code="PIPELINE_ERROR",
                 severity="ERROR",
                 correlation_id=correlation_id,
                 payload={"code": code, "detail": detail, "tipo_lotto": tipo_lotto},
-            )
+            ),
+            contesto={"lotto_id": lotto_id, "evento": "PIPELINE_ERROR"},
+        )
 
     # Scopo: Adatta il telaio condiviso `diagnostica_best_effort` fissando il
     #        `function_name` di questo runner, cosi' i call site restano corti.
@@ -212,6 +237,12 @@ class LottoPipelineRunner:
                 task_code=coord["task_code"],
                 fase=coord["fase"],
                 meta={"rollback": False},
+                # ⚠️ Il filo arriva dall'eccezione, non da qui: siamo fuori
+                #    dalla transazione dello step e il giro non e' piu' nello
+                #    scope. Senza, il tentativo FALLITO sarebbe l'unico del giro
+                #    senza `correlation_id` — cioe' proprio quello che si va a
+                #    cercare.
+                correlation_id=coord.get("correlation_id"),
             )
             self.repository.fail_lotto_task_run(
                 run.task_run_id,
@@ -339,6 +370,7 @@ class LottoPipelineRunner:
             tipo_lotto=effective_tipo_lotto,
             rollback=False,
             dry_run=dry_run,
+            correlation_id=correlation_id,
         )
         # Allineamento fatture allo stato dello step (parametrico, per-step): la fattura
         # segue il lotto 1→2→8→3, così EMESSA congela l'IVA prima della numerazione in
@@ -614,11 +646,29 @@ class LottoPipelineRunner:
                 if steps:
                     self.repository.disattiva_segnalazioni_lotto_be(lotto_id)
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
-                correlation_id = (
-                    str(lotto_context.lock_batch_id)
-                    if getattr(lotto_context, "lock_batch_id", None)
-                    else None
-                )
+                # ⭐ L'IDENTITA' DEL GIRO NASCE QUI, ED E' NUOVA A OGNI CORSA
+                #    (consegna BE-2, decisione D-7).
+                #
+                # 🔴 Prima valeva `lotto_context.lock_batch_id`, e non
+                #    identificava un giro: quel campo nasce col LOTTO
+                #    (`COALESCE(p_lock_batch_id, uuidv7())`) e **non cambia
+                #    mai**. Diceva «di che lotto», che `entity_id` diceva gia' —
+                #    e due corse dello stesso lotto erano indistinguibili
+                #    proprio sulla domanda per cui il campo esiste. Non e' una
+                #    deduzione: lo asserisce il test 6 di
+                #    `test-fn-list-lotto-segnalazioni-job`, ed e' il motivo per
+                #    cui l'ancora del «job corrente» e' l'`event_time`.
+                #
+                # ⚠️ Perche' non il `tx_id`: un giro attraversa PIU'
+                #    transazioni, una per step. Il `tx_id` cuce cio' che accade
+                #    nella stessa transazione, che e' un'altra domanda — servono
+                #    entrambi. E perche' non l'id del `task_run`: quello e'
+                #    per-task, non per-giro.
+                #
+                # ⭐ Da qui scende su tutte e tre le sedi: gli eventi del giro,
+                #    i suoi `task_runs` (via lo step executor) e — sul ramo push
+                #    — la riga di `commesse_push_log`.
+                correlation_id = str(uuid4())
                 # ⚠️ Nel telaio (BE-7): dentro l'`atomic` del giro. Un evento
                 #    d'avvio rifiutato non deve impedire l'avvio.
                 self._diagnostica_best_effort(
@@ -650,6 +700,10 @@ class LottoPipelineRunner:
                             tipo_lotto=effective_tipo_lotto,
                             rollback=True,
                             dry_run=params.dry_run,
+                            # Il rollback automatico fa parte DI QUESTO giro:
+                            # senza il filo, i suoi tentativi sarebbero gli
+                            # unici della corsa a non ritrovarsi.
+                            correlation_id=correlation_id,
                         )
 
                     self._execute_pipeline_step(

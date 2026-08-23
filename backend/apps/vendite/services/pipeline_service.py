@@ -528,6 +528,15 @@ def fn_execute_pipeline_step(
 ) -> None:
     """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_execute_pipeline_step."""
     # Facade usata da API/test e futuri handler applicativi.
+    #
+    # ⚠️ NESSUN `correlation_id`, ed e' deliberato (D-7). Qui si esegue UNO step
+    #    fuori da un giro: non c'e' nessun altro registro — eventi, altri
+    #    tentativi, riga di push — che condividerebbe il filo, quindi un uuid
+    #    coniato qui non cucirebbe niente e sembrerebbe soltanto un filo.
+    #    E' la stessa scelta che il DB ha fatto su `fn_start_commessa_push_run`:
+    #    *un buco dichiarato si conta, un filo che non lega sembra un filo*.
+    #    Il giorno in cui questa facade diventasse essa stessa un giro (piu'
+    #    step, o eventi propri), il filo si genera QUI e non nello step executor.
     executor = PipelineStepExecutor()
     executor.execute_step(
         lotto_id=lotto_id,

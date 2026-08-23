@@ -1529,39 +1529,88 @@ class CommesseRepository(EventLogRepositoryMixin):
 
     # --- Gruppo 4: Push log ---
 
-    def log_push_run(
+    # ⭐ IL GIRO SI APRE E SI CHIUDE, e non e' una preferenza di stile: e' il
+    #    modo in cui un giro INTERROTTO smette di sparire (consegna BE-3b,
+    #    decisione D-3). Fino al 2026-08-22 la riga nasceva a fine corsa con
+    #    `fn_log_commessa_push_run` — che per questo ⛔ **non esiste piu'**, e
+    #    il changeSet 69 l'ha tolta.
+    #
+    #    Ne discendono tre cose, tutte gratis:
+    #      1. l'`id` del giro esiste dal primo istante (era lo zero di
+    #         `PUSH_STARTED`, che non era un segnaposto ma un id **che non
+    #         esisteva ancora**);
+    #      2. il `correlation_id` ha dove stare **prima** che il giro produca
+    #         qualcosa;
+    #      3. un push che muore a meta' lascia una riga `IN_ESECUZIONE`, che e'
+    #         l'unica prova che qualcosa e' partito e non e' tornato.
+    #
+    # ⚠️ La coppia va usata SEMPRE insieme. Chi apre e non chiude lascia un
+    #    giro che ogni conteggio leggera' come in corso; chi chiude due volte
+    #    prende `E_COMMESSA_PUSH_RUN_NON_APERTO`, ed e' voluto — il secondo
+    #    esito verrebbe da un'altra corsa, e a perdersi sarebbe la storia di
+    #    entrambe.
+
+    # Scopo: Apre il giro di push — riga `IN_ESECUZIONE` in testa alla corsa —
+    #        e restituisce il `push_log_id` che il chiamante conserva per la
+    #        chiusura.
+    def start_push_run(
         self,
         *,
-        stato: str,
         dry_run: bool = False,
         source_types: list[str] | None = None,
-        risultato: dict[str, Any] | None = None,
-        durata_ms: int | None = None,
+        correlation_id: str | None = None,
     ) -> int:
-        """Registra il risultato di un run dell'orchestratore push.
-        Restituisce push_log_id."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT vendite.fn_log_commessa_push_run(
+                SELECT vendite.fn_start_commessa_push_run(
                     p_dry_run => %s,
                     p_source_types => %s,
-                    p_risultato => %s::jsonb,
-                    p_stato => %s,
-                    p_durata_ms => %s
+                    p_correlation_id => %s::uuid
                 )
                 """,
-                [
-                    dry_run,
-                    source_types,
-                    self._to_jsonb_param(risultato),
-                    stato,
-                    durata_ms,
-                ],
+                [dry_run, source_types, correlation_id],
             )
             row = cursor.fetchone()
         assert row is not None
         return int(row[0])
+
+    # Scopo: Chiude il giro aperto da `start_push_run` con il suo esito, il
+    #        risultato per handler e la durata.
+    #
+    # ⚠️ `stato` ammette solo i tre esiti FINALI (COMPLETATO | PARZIALE |
+    #    ERRORE): `IN_ESECUZIONE` e' lo stato di un giro aperto, non un esito,
+    #    e la funzione lo rifiuta con `E_COMMESSA_PUSH_RUN_STATO_NON_FINALE`.
+    # ⚠️ `source_types` si ripassa solo se cambia: a DB c'e' un `COALESCE`, cosi'
+    #    chiudere senza ripeterli non cancella quelli dichiarati all'apertura.
+    def close_push_run(
+        self,
+        *,
+        push_log_id: int,
+        stato: str,
+        risultato: dict[str, Any] | None = None,
+        durata_ms: int | None = None,
+        source_types: list[str] | None = None,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_close_commessa_push_run(
+                    p_id => %s,
+                    p_stato => %s,
+                    p_risultato => %s::jsonb,
+                    p_durata_ms => %s,
+                    p_source_types => %s
+                )
+                """,
+                [
+                    push_log_id,
+                    stato,
+                    self._to_jsonb_param(risultato),
+                    durata_ms,
+                    source_types,
+                ],
+            )
 
     def get_push_log(self, push_log_id: int) -> CommessaPushLogRow | None:
         """Legge un record di push log per id."""
