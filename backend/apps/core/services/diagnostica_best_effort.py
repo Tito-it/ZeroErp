@@ -45,6 +45,20 @@ from apps.core.services.error_manager import ErrorManager
 # Il codice con cui il fallimento di una scrittura di diagnosi si presenta nel
 # log tecnico. Uno solo, e volutamente generico: la cosa che identifica il
 # guasto e' il `contesto` passato dal chiamante, non un codice per ogni sede.
+#
+# ⚠️ IL NOME DEL CODICE ORA MENTE, ed e' un debito dichiarato. Nasce quando il
+#    telaio viveva dentro `pipeline_runner`; da quando lo usa anche il push
+#    commesse, un guasto del diario del PUSH si presenta in `dbops.error_log`
+#    sotto un codice che dice «PIPELINE». Chi cerchera' i problemi del push per
+#    codice non li trovera'.
+#    ⛔ Non si rimedia lato backend: un codice errore e' una riga di
+#    `config.codici_errore` e la mette il team DB. Serve un codice nuovo
+#    (`E_DIAGNOSTICA_NON_SCRITTA` o simile) di classe **TECNICO** — e la classe
+#    e' il secondo pezzo del debito: `E_PIPELINE_MARK_ERROR` oggi e'
+#    `DATO_ERRATO`, cioe' 400, mentre qui non c'e' nessun dato sbagliato di
+#    nessuna persona: c'e' una scrittura di servizio che non e' passata.
+#    ⭐ Finche' non arriva, il discriminante utile e' il `function_name`, che
+#    ogni chiamante e' tenuto a passare specifico (vedi la firma).
 CODICE_DIAGNOSTICA_FALLITA = "E_PIPELINE_MARK_ERROR"
 
 

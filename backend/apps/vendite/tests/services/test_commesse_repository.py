@@ -17,7 +17,8 @@ Indice test eseguiti:
 6) CommesseRepositoryUnitTests.test_emit_attivita_fatturabili_dry_run_zero_writes
 7) CommesseRepositoryUnitTests.test_get_commessa_stato_maps_contatori
 8) CommesseRepositoryUnitTests.test_get_commessa_stato_returns_none_when_not_found
-9) CommesseRepositoryUnitTests.test_log_push_run_returns_int
+9) CommesseRepositoryUnitTests.test_start_push_run_apre_il_giro
+9b) CommesseRepositoryUnitTests.test_close_push_run_chiude_il_giro
 10) CommesseRepositoryUnitTests.test_get_push_log_maps_row
 11) CommesseRepositoryUnitTests.test_get_push_log_returns_none_when_not_found
 12) CommesseRepositoryUnitTests.test_fetch_pushable_rows_calls_correct_fn
@@ -311,21 +312,48 @@ class CommesseRepositoryUnitTests(TestCase):
         result = repo.get_commessa_stato(commessa_id=999)
         self.assertIsNone(result)
 
-    # Scopo: Verifica che log_push_run chiami fn_log_commessa_push_run e restituisca int.
+    # Scopo: l'APERTURA del giro chiama fn_start_commessa_push_run e restituisce
+    #        l'id che il chiamante conservera' per la chiusura.
+    #
+    # ⚠️ `fn_log_commessa_push_run` NON esiste piu': il changeSet 69 l'ha
+    #    DROPpata quando la riga ha smesso di nascere a fine corsa (BE-3b).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
-    def test_log_push_run_returns_int(self, mock_cursor_factory):
+    def test_start_push_run_apre_il_giro(self, mock_cursor_factory):
         mock_cursor_factory.return_value = _mock_cursor(fetchone=(55,))
         repo = CommesseRepository()
-        result = repo.log_push_run(
-            stato="COMPLETATO",
+        result = repo.start_push_run(
             dry_run=False,
             source_types=["PREVENTIVO"],
-            risultato={"HandlerPreventivi": {"created": 3, "errors": []}},
-            durata_ms=1200,
+            correlation_id="0199a0f0-0000-7000-8000-000000000000",
         )
         self.assertEqual(result, 55)
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
-        self.assertIn("fn_log_commessa_push_run", sql)
+        self.assertIn("fn_start_commessa_push_run", sql)
+        # Il filo del giro arriva a DB: senza, la colonna resterebbe NULL e il
+        # giro non si cucirebbe con nient'altro.
+        self.assertIn(
+            "0199a0f0-0000-7000-8000-000000000000",
+            mock_cursor_factory.return_value.execute.call_args[0][1],
+        )
+
+    # Scopo: la CHIUSURA chiama fn_close_commessa_push_run con l'id del giro e
+    #        il suo esito finale.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_close_push_run_chiude_il_giro(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=None)
+        repo = CommesseRepository()
+        repo.close_push_run(
+            push_log_id=55,
+            stato="COMPLETATO",
+            risultato={"handlers": {"HandlerPreventivi": {"created": 3}}},
+            durata_ms=1200,
+            source_types=["PREVENTIVO"],
+        )
+        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        self.assertIn("fn_close_commessa_push_run", sql)
+        params = mock_cursor_factory.return_value.execute.call_args[0][1]
+        self.assertEqual(params[0], 55)
+        self.assertEqual(params[1], "COMPLETATO")
 
     # Scopo: Verifica mapping CommessaPushLogRow da SELECT commesse_push_log.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

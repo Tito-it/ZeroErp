@@ -372,6 +372,16 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         self.assertEqual(execute_params[0], 1)
         self.assertEqual(execute_params[1], 100)
         self.assertEqual(execute_params[3], "generate_fatture_righe")
+        # ⚠️ ARGOMENTI NOMINATI, e il presidio non e' pedanteria: il changeSet
+        #    67 ha aggiunto `p_correlation_id` e ha DROPpato la firma a sei,
+        #    perche' `CREATE OR REPLACE` con un parametro in PIU' non sostituisce
+        #    — affianca, e una chiamata a sei argomenti soddisfa entrambe le
+        #    firme («la funzione non e' unica»). Coi nomi, una prossima
+        #    revisione non puo' scivolare su un parametro adiacente.
+        self.assertIn("p_correlation_id =>", execute_sql)
+        # Il settimo posto e' il filo del giro, qui non passato.
+        self.assertEqual(len(execute_params), 7)
+        self.assertIsNone(execute_params[6])
 
     # Scopo: Verifica il caso `test_complete_lotto_task_run_calls_sql_function`.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")

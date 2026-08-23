@@ -966,6 +966,14 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         )
 
     # Scopo: Apre un nuovo task run in stato IN_ESECUZIONE delegando al DB.
+    #
+    # ⚠️ ARGOMENTI NOMINATI, e non e' cosmesi. Il changeSet 67 ha aggiunto
+    #    `p_correlation_id` e ha DROPpato la firma a sei nello stesso giro,
+    #    perche' `CREATE OR REPLACE` con un parametro in PIU' non sostituisce:
+    #    crea una funzione nuova e lascia viva la vecchia, e una chiamata a sei
+    #    argomenti le soddisfa **entrambe** («la funzione non e' unica»). Con i
+    #    nomi, un'altra revisione della firma si vede in fase di chiamata invece
+    #    di scivolare su un parametro adiacente dello stesso tipo.
     def start_lotto_task_run(
         self,
         *,
@@ -975,12 +983,21 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         task_code: str,
         fase: str | None,
         meta: LottoPipelineMeta | None,
+        correlation_id: str | None = None,
     ) -> TaskRunResult:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT task_run_id, tentativo
-                FROM vendite.fn_start_lotto_task_run(%s, %s, %s, %s, %s, %s::jsonb)
+                FROM vendite.fn_start_lotto_task_run(
+                    p_lotto_id => %s,
+                    p_pipeline_id => %s,
+                    p_stato_doc_fiscale_id => %s,
+                    p_task_code => %s,
+                    p_fase => %s,
+                    p_meta => %s::jsonb,
+                    p_correlation_id => %s::uuid
+                )
                 """,
                 [
                     lotto_id,
@@ -989,6 +1006,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     task_code,
                     fase,
                     self._to_jsonb_param(meta),
+                    correlation_id,
                 ],
             )
             row = cursor.fetchone()

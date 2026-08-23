@@ -201,9 +201,12 @@ def pr_run_commesse_push(
                         righe_ids=attivita_per_commessa.get(commessa_id, []),
                     )
             except Exception as exc:  # noqa: BLE001 — best-effort, report-driven
-                emittibilita_errors.append(
-                    f"commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
-                )
+                # Una sola composizione del messaggio: finisce sia nel report
+                # (con le coordinate davanti) sia nel payload dell'evento. Due
+                # `f"{type(exc).__name__}: {exc}"` scritti a mano avrebbero
+                # potuto divergere alla prima modifica.
+                errore = f"{type(exc).__name__}: {exc}"
+                emittibilita_errors.append(f"commessa_id={commessa_id}: {errore}")
                 # Categoria a sé: il guard tipo_doc (497) segnala righe approvabili
                 # con tipo_doc_fiscale_id mancante → altrimenti fatturato perso in
                 # silenzio. Lo isoliamo per renderlo osservabile (dashboard/alert).
@@ -235,16 +238,28 @@ def pr_run_commesse_push(
                 #    fallimento, e un difetto del diario non deve prendere il
                 #    posto dell'errore che sta descrivendo. Fuori
                 #    dall'`atomic` per costruzione — quello e' gia' rollbackato.
+                # ⛔ `entity_type` ed `event_code` restano ARGOMENTI ESPLICITI,
+                #    e non e' una preferenza: il cancello di CI che li confronta
+                #    coi cataloghi (`test_event_codes_declared_guardrail`) legge
+                #    l'AST dei punti di chiamata. Raccoglierli in un dict e
+                #    passarlo con `**` — che sembra piu' pulito — rende il
+                #    cancello CIECO su questa riga, in silenzio. Provato: dopo
+                #    quella "semplificazione" il gate vedeva un `entity_type`
+                #    invece di due.
+                #
+                # ⚠️ La lambda non ha argomenti di default e non ne ha bisogno:
+                #    il telaio la invoca SUBITO, prima che il giro successivo
+                #    rileghi `commessa_id`.
                 diagnostica_best_effort(
-                    lambda cid=commessa_id, err=exc, td=tipo_doc_mancante_qui: repo.log_event(
+                    lambda: repo.log_event(
                         entity_type="COMMESSA",
-                        entity_id=cid,
+                        entity_id=commessa_id,
                         event_code="EMITTIBILITA_FALLITA",
                         severity="WARN",
                         payload={
                             "push_log_id": report.push_log_id,
-                            "tipo_doc_mancante": td,
-                            "errore": f"{type(err).__name__}: {err}",
+                            "tipo_doc_mancante": tipo_doc_mancante_qui,
+                            "errore": errore,
                         },
                     ),
                     contesto={"commessa_id": commessa_id},

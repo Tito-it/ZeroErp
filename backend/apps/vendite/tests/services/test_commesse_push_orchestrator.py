@@ -23,6 +23,9 @@ Indice test eseguiti:
 13) CommessePushOrchestratorTests.test_run_with_sorgente_uid_propagated_to_handlers_and_perimetro
 14) CommessePushOrchestratorTests.test_run_without_sorgente_uid_passes_none_to_handlers
 15) CommessePushOrchestratorTests.test_run_with_righe_ids_propagated_to_handlers_and_perimetro
+16) CommessePushOrchestratorTests.test_run_apre_il_giro_prima_di_eseguire_gli_handler
+17) CommessePushOrchestratorTests.test_run_chiude_il_giro_che_ha_aperto
+18) CommessePushOrchestratorTests.test_giro_interrotto_resta_aperto
 """
 
 from unittest import TestCase
@@ -35,7 +38,10 @@ from apps.vendite.services.commesse_source_handlers import BaseSourceHandler, Ha
 
 def _mock_repo(push_log_id: int = 1) -> MagicMock:
     repo = MagicMock(spec=CommesseRepository)
-    repo.log_push_run.return_value = push_log_id
+    # ⭐ Il giro si APRE e si CHIUDE (BE-3b): `log_push_run` non esiste piu',
+    #    e nemmeno a DB — `fn_log_commessa_push_run` e' stata DROPpata dal
+    #    changeSet 69. E' l'apertura a restituire il `push_log_id`.
+    repo.start_push_run.return_value = push_log_id
     repo.log_event.return_value = 1
     return repo
 
@@ -78,7 +84,7 @@ class CommessePushOrchestratorTests(TestCase):
 
         self.assertEqual(report.stato, "COMPLETATO")
         self.assertEqual(len(report.handlers), 2)
-        repo.log_push_run.assert_called_once()
+        repo.close_push_run.assert_called_once()
 
     # Scopo: un handler lancia eccezione → stato PARZIALE, errore catturato nel risultato.
     def test_run_parziale_un_handler_fallisce(self):
@@ -114,7 +120,7 @@ class CommessePushOrchestratorTests(TestCase):
         report = orch.run()
 
         self.assertEqual(report.stato, "ERRORE")
-        repo.log_push_run.assert_called_once()
+        repo.close_push_run.assert_called_once()
 
     # Scopo: nessun handler registrato → stato ERRORE, log scritto.
     def test_run_errore_nessun_handler(self):
@@ -125,7 +131,7 @@ class CommessePushOrchestratorTests(TestCase):
 
         self.assertEqual(report.stato, "ERRORE")
         self.assertEqual(report.handlers, [])
-        repo.log_push_run.assert_called_once()
+        repo.close_push_run.assert_called_once()
 
     # Scopo: source_types=[codice_sorgente] esegue solo l'handler corrispondente.
     def test_run_source_types_filtra_handler(self):
@@ -151,15 +157,18 @@ class CommessePushOrchestratorTests(TestCase):
         report = orch.run(dry_run=True)
 
         self.assertTrue(report.dry_run)
-        repo.log_push_run.assert_called_once()
-        call_kwargs = repo.log_push_run.call_args.kwargs
-        self.assertTrue(call_kwargs["dry_run"])
+        # ⚠️ `dry_run` si dichiara all'APERTURA: e' una proprieta' del giro, nota
+        #    prima che il giro produca qualcosa. La chiusura porta solo l'esito.
+        repo.start_push_run.assert_called_once()
+        self.assertTrue(repo.start_push_run.call_args.kwargs["dry_run"])
+        repo.close_push_run.assert_called_once()
         # `sorgente_uid=None` aggiunto alla signature handler.run dopo
         # introduzione del push singolo (PR1 sviluppo-push-singolo-preventivo);
         # `righe_ids=None` dopo lo smistamento selettivo (Pannello Smistamento).
         h.run.assert_called_once_with(dry_run=True, sorgente_uid=None, righe_ids=None)
 
-    # Scopo: push_log_id nel report corrisponde al valore restituito da log_push_run.
+    # Scopo: push_log_id nel report corrisponde all'id restituito dall'APERTURA
+    # del giro — che ora esiste fin dal primo istante, non a fine corsa.
     def test_run_push_log_id_valorizzato(self):
         repo = _mock_repo(push_log_id=42)
         h = _mock_handler("HandlerA", _ok_result("HandlerA"))
@@ -200,7 +209,7 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertIn("HandlerB", risultato)
         self.assertEqual(risultato["HandlerA"]["created"], 2)
         self.assertEqual(risultato["HandlerB"]["skipped"], 5)
-        call_kwargs = repo.log_push_run.call_args.kwargs
+        call_kwargs = repo.close_push_run.call_args.kwargs
         # ⭐ Il `risultato` scritto e' annidato: `handlers` + `perimetro`
         #    (BE-3a). `as_risultato()` resta la sola mappa degli handler.
         self.assertIn("HandlerA", call_kwargs["risultato"]["handlers"])
@@ -219,7 +228,12 @@ class CommessePushOrchestratorTests(TestCase):
         self.assertEqual(report.handlers, [])
         self.assertIsNone(report.push_log_id)
         h.run.assert_not_called()
-        repo.log_push_run.assert_not_called()
+        # ⭐ Un giro saltato per lock occupato non lascia NESSUNA riga: non si
+        #    apre e non si chiude. Diversamente da un giro interrotto, che la
+        #    riga IN_ESECUZIONE la lascia — ed e' la distinzione che il registro
+        #    deve saper fare.
+        repo.start_push_run.assert_not_called()
+        repo.close_push_run.assert_not_called()
 
     # Scopo: lock rilasciato dopo run (anche se handler fallisce).
     def test_run_rilascia_lock_dopo_esecuzione(self):
@@ -234,6 +248,78 @@ class CommessePushOrchestratorTests(TestCase):
 
         self.assertEqual(report.stato, "ERRORE")
         self._mock_release.assert_called()
+
+    # Scopo: ⭐ IL GIRO SI APRE PRIMA DI PRODURRE QUALCOSA (BE-3b, D-3).
+    #
+    #        E' l'ordine il punto, non la scrittura: fino al 2026-08-22 la riga
+    #        nasceva a FINE corsa, ed e' la ragione per cui l'evento d'avvio
+    #        citava `entity_id = 0` — non un segnaposto, un id che non esisteva
+    #        ancora. Un test che si limitasse a «la riga viene scritta»
+    #        passerebbe anche con la sequenza vecchia.
+    def test_run_apre_il_giro_prima_di_eseguire_gli_handler(self):
+        ordine: list[str] = []
+        repo = _mock_repo(push_log_id=7)
+        repo.start_push_run.side_effect = lambda **kw: (ordine.append("apre"), 7)[1]
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        h.run.side_effect = lambda **kw: (
+            ordine.append("handler"), _ok_result("HandlerA")
+        )[1]
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        orch.run()
+
+        self.assertEqual(ordine, ["apre", "handler"])
+
+    # Scopo: si chiude ESATTAMENTE il giro che si e' aperto, con un esito finale.
+    #
+    # ⚠️ L'`id` non e' un dettaglio: `fn_close_commessa_push_run` chiude solo
+    #    una riga IN_ESECUZIONE, e su un id sbagliato solleva
+    #    `E_COMMESSA_PUSH_RUN_NON_APERTO`. Passare l'id giusto e' la meta' del
+    #    contratto della coppia.
+    def test_run_chiude_il_giro_che_ha_aperto(self):
+        repo = _mock_repo(push_log_id=99)
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        report = orch.run()
+
+        kw = repo.close_push_run.call_args.kwargs
+        self.assertEqual(kw["push_log_id"], 99)
+        self.assertEqual(kw["push_log_id"], report.push_log_id)
+        # ⛔ Mai IN_ESECUZIONE in chiusura: la funzione DB lo rifiuta con
+        #    E_COMMESSA_PUSH_RUN_STATO_NON_FINALE.
+        # ⚠️ Non si ri-elenca qui il vocabolario dei tre esiti: sarebbe la
+        #    quarta copia di un elenco che vive gia' nel CHECK di tabella, nel
+        #    guard della funzione e in `_compute_stato`. Si asserisce invece che
+        #    lo stato scritto sia ESATTAMENTE quello calcolato — che e' la cosa
+        #    che questo test deve sapere.
+        self.assertNotEqual(kw["stato"], "IN_ESECUZIONE")
+        self.assertEqual(kw["stato"], report.stato)
+
+    # Scopo: ⭐ UN GIRO INTERROTTO RESTA APERTO, e non sparisce.
+    #
+    #        E' il guadagno che la riga-in-testa porta con se': prima, un push
+    #        che moriva a meta' non scriveva niente — nessuno sapeva che fosse
+    #        stato tentato. Ora la riga IN_ESECUZIONE rimasta li' e' l'unica
+    #        prova che qualcosa e' partito e non e' tornato.
+    #
+    # ⚠️ Il verso e' che la chiusura NON avviene: se un domani qualcuno
+    #    avvolgesse il ciclo in un `try/finally` che chiude comunque, il giro
+    #    interrotto tornerebbe a somigliare a uno concluso — e questo test
+    #    diventerebbe rosso, che e' esattamente il suo mestiere.
+    def test_giro_interrotto_resta_aperto(self):
+        repo = _mock_repo(push_log_id=13)
+        h = _mock_handler("HandlerA", _ok_result("HandlerA"))
+        # Non un errore di handler (quello e' isolato e diventa PARZIALE): un
+        # guasto del giro stesso, come un processo che muore.
+        h.run.side_effect = KeyboardInterrupt("il processo muore")
+        orch = CommessaPushOrchestrator(repo, [h])
+
+        with self.assertRaises(KeyboardInterrupt):
+            orch.run()
+
+        repo.start_push_run.assert_called_once()
+        repo.close_push_run.assert_not_called()
 
     # Scopo: ⛔ IL GIRO DI PUSH NON SCRIVE SUL GIORNALE (BE-3a, D-3).
     #
@@ -256,7 +342,7 @@ class CommessePushOrchestratorTests(TestCase):
 
         repo.log_event.assert_not_called()
         # Il giro resta registrato dove ha un senso: nel suo log di run.
-        repo.log_push_run.assert_called_once()
+        repo.close_push_run.assert_called_once()
         self.assertEqual(report.push_log_id, 42)
         self.assertEqual(report.stato, "COMPLETATO")
 
@@ -277,7 +363,7 @@ class CommessePushOrchestratorTests(TestCase):
         h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=None)
 
         # Il perimetro del giro finisce in commesse_push_log.risultato.
-        perimetro = repo.log_push_run.call_args.kwargs["risultato"]["perimetro"]
+        perimetro = repo.close_push_run.call_args.kwargs["risultato"]["perimetro"]
         self.assertEqual(perimetro["sorgente_uid"], 42)
         self.assertEqual(perimetro["source_types"], ["PREVENTIVO"])
 
@@ -302,5 +388,5 @@ class CommessePushOrchestratorTests(TestCase):
         orch.run(source_types=["PREVENTIVO"], sorgente_uid=42, righe_ids=[7, 9])
 
         h.run.assert_called_once_with(dry_run=False, sorgente_uid=42, righe_ids=[7, 9])
-        perimetro = repo.log_push_run.call_args.kwargs["risultato"]["perimetro"]
+        perimetro = repo.close_push_run.call_args.kwargs["risultato"]["perimetro"]
         self.assertEqual(perimetro["righe_ids"], [7, 9])

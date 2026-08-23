@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 773, di cui 84 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 776, di cui 84 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -222,6 +222,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMMESSA_NOT_FOUND": "NON_TROVATO",
     "E_COMMESSA_PUSH_LOG_NOT_FOUND": "NON_TROVATO",
     "E_COMMESSA_PUSH_PARZIALE_VIETATO": "NON_ESEGUIBILE",
+    # vendite.fn_close_commessa_push_run: si sta chiudendo un giro di push che non risulta in esecuzione. Due casi, un codice: la riga non esiste, oppure qualcuno l'ha gia' chiusa - e per chi legge sono la stessa cosa, il chiamante ha perso il filo della propria corsa. Il valore nel messaggio dice quale dei due. ⛔ La doppia chiusura si rifiuta invece di sovrascrivere: l'esito gia' registrato verrebbe da un'altra corsa, e a perdersi sarebbe la storia di entrambe. TECNICO: l'identificativo del giro lo restituisce vendite.fn_start_commessa_push_run al programma, nessuna persona lo digita.
+    "E_COMMESSA_PUSH_RUN_NON_APERTO": "TECNICO",
+    # vendite.fn_close_commessa_push_run: si sta chiudendo un giro di push con uno stato che non e' un esito - IN_ESECUZIONE, vuoto, oppure sconosciuto. Dal 2026-08-22 la riga di commesse_push_log nasce in TESTA al giro e la chiusura e' il momento in cui prende il suo esito: un giro chiuso in IN_ESECUZIONE resterebbe aperto per sempre agli occhi di chiunque lo conti, e assomiglierebbe a un giro interrotto senza esserlo. ⭐ Nasce col lotto L5 di brief-db-event-log-scope-e-riga-parlante, dal difetto misurato dal backend: il changeSet 20260822-62 aveva allargato chk_commesse_push_log_stato a quattro valori e la funzione che ci scriveva ne ammetteva tre, senza che nessuno dei due lo sapesse. TECNICO perche' quello stato lo sceglie un programma, non una persona.
+    "E_COMMESSA_PUSH_RUN_STATO_NON_FINALE": "TECNICO",
     "E_COMMESSA_ROOT_CONFLITTO": "CONFLITTO_STATO",
     "E_COMMESSA_SORGENTE_ALTRA_COMMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_SORGENTE_SCONOSCIUTA": "DATO_ERRATO",
@@ -1053,6 +1057,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA": "DATO_ERRATO",
     # Pratica preventivi: completamento SMISTAMENTO senza aver smistato la · merce (nessun ordine, residuo merce). 422: lo step non e' processabile · finche' l'operatore non genera l'ordine dal Pannello Smistamento.
     "E_VENDITA_SMISTAMENTO_NON_ESEGUITO": "NON_ESEGUIBILE",
+    # Guard di parametro delle funzioni di vendite su valori che NESSUNA interfaccia puo' produrre: un id <= 0, un codice obbligatorio vuoto, una durata negativa. Se arrivano, e' rotto il chiamante: l'operatore non ha niente da correggere, ed e' per questo che la classe e' TECNICO e non DATO_ERRATO. Nasce il 2026-08-22 (cantiere event_log, lotto L5) come GEMELLO VENDITE di E_PAGAMENTI_CHIAMATA_NON_VALIDA (2026-08-21), e per la stessa ragione: E_PARAMETRO_INVALIDO e' uno SPLIT RIMANDATO - decisione D11 di brief-db-be-classe-codici-errore - e sopravvive perche' il BE deve ancora poter gestire le funzioni vecchie, non perche' sia la sede del nuovo. Primi adottanti: vendite.fn_start_lotto_task_run (tre guard convertiti riscrivendone il corpo) e vendite.fn_close_commessa_push_run. ⚠️ Il messaggio nomina il parametro DI PROPOSITO: il suo lettore e' chi ha scritto la chiamata, non chi compila un form - e' l'eccezione dichiarata nella guida Messaggi-di-Errore, non una violazione della regola sul VARIADIC.
+    "E_VENDITE_CHIAMATA_NON_VALIDA": "TECNICO",
     # Codici sollevati dai trigger DB trgfn_contratti_guard_modalita_c_* · e trgfn_contratti_utilities_guard_tipo_classe.
     "E_VENDITE_CONTRATTO_OVERLAP": "CONFLITTO_STATO",
     # Diagnostico di sola TRACCIA (2026-08-03): registrato con · `ErrorManager.log_error_only`, non sollevato mai — la previsione · fatture della Lente 1 e' una misura secondaria e un suo guasto non · deve far cadere il cruscotto. La policy esiste comunque perche' ogni · codice va registrato prima dell'uso, e perche' se un domani questo · diventasse sollevabile la risposta e' gia' definita: 200-with-warning · non esiste, quindi 500 con banner (il numero manca per un guasto, · non per progetto).

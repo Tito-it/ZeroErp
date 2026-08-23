@@ -10,9 +10,12 @@ CommessaPushOrchestrator:
   - Esegue in sequenza tutti gli handler registrati (o un sottoinsieme
     specificato via source_types).
   - Isola gli errori per handler: un fallimento non blocca gli altri.
-  - Scrive sempre il log in commesse_push_log al completamento
-    (dry_run incluso, con flag dry_run=True sul record), col perimetro del
-    giro (source_types/sorgente_uid/righe_ids) sotto `risultato.perimetro`.
+  - APRE il giro in commesse_push_log (stato IN_ESECUZIONE, con l'identita'
+    del giro) e lo CHIUDE col suo esito, dry_run incluso. ⭐ Un push che muore
+    a meta' lascia cosi' la riga IN_ESECUZIONE, che e' l'unica prova che
+    qualcosa e' partito e non e' tornato (BE-3b / D-3).
+  - Il perimetro del giro (source_types/sorgente_uid/righe_ids) sta sotto
+    `risultato.perimetro`.
   - ⛔ NON scrive su vendite.event_log: un giro non e' un'entita' e non ha un
     emittente da cui derivare il perimetro del giornale (BE-3a / D-3).
   - Non usa pipeline, lotti o task-state-machine.
@@ -20,6 +23,7 @@ CommessaPushOrchestrator:
 
 import time
 from dataclasses import dataclass, field
+from uuid import uuid4
 from typing import Any
 
 from django.db import connection
@@ -198,15 +202,26 @@ class CommessaPushOrchestrator:
         #    nasceva a FINE giro. Un segnaposto e' una convenzione da
         #    interpretare, un id inesistente e' una sequenza sbagliata.
         #
-        # ⏳ Il posto giusto di questo momento e' `commesse_push_log`, con la
-        #    riga creata IN TESTA allo stato IN_ESECUZIONE — ed e' la consegna
-        #    BE-3b, ferma sul prerequisito DB: `fn_log_commessa_push_run`
-        #    rifiuta `IN_ESECUZIONE` con un guard suo e non ha un
-        #    `p_correlation_id`, e non esiste una funzione per chiudere un giro
-        #    aperto. Finche' non arriva, l'avvio non lascia traccia.
-        #    ⚠️ Il perimetro del giro NON si perde comunque: `source_types`,
-        #    `sorgente_uid` e `righe_ids` scendono nel `risultato` scritto in
-        #    coda, sotto la chiave `perimetro` (sotto).
+        # ⭐ Il momento dell'avvio si registra QUI, in `commesse_push_log`, con
+        #    la riga creata IN TESTA allo stato IN_ESECUZIONE (consegna BE-3b).
+        #    E' il posto giusto: e' il registro del GIRO, dove stava gia' meta'
+        #    della sua storia.
+
+        # ⭐ L'IDENTITA' DEL GIRO (D-7): un uuid nuovo a ogni corsa, coniato
+        #    prima che il giro produca qualcosa. Ha dove stare proprio perche'
+        #    la riga nasce adesso e non a fine corsa.
+        correlation_id = str(uuid4())
+
+        # ⛔ FUORI DAL TELAIO BEST-EFFORT, e la differenza e' sostanziale: qui
+        #    non si sta scrivendo un appunto SU un lavoro, si sta aprendo il
+        #    registro CHE E' quel lavoro. Il `push_log_id` che torna serve alla
+        #    chiusura: se l'apertura fallisse e la si ingoiasse, il giro
+        #    proseguirebbe senza un posto dove riferire com'e' andato.
+        push_log_id = self._repo.start_push_run(
+            dry_run=dry_run,
+            source_types=source_types,
+            correlation_id=correlation_id,
+        )
 
         for handler in self._resolve_handlers(source_types):
             try:
@@ -229,6 +244,7 @@ class CommessaPushOrchestrator:
             stato=stato,
             handlers=results,
             durata_ms=durata_ms,
+            push_log_id=push_log_id,
         )
 
         # ⭐ IL `risultato` PORTA ANCHE IL PERIMETRO DEL GIRO (BE-3a).
@@ -238,9 +254,13 @@ class CommessaPushOrchestrator:
         #    il push — cioe' l'unica cosa che distingue un push singolo da un
         #    batch. `stato`, `durata_ms` e l'esito per handler erano gia' qui,
         #    ed e' il motivo per cui `PUSH_COMPLETED` non lascia un buco.
-        push_log_id = self._repo.log_push_run(
+        #
+        # ⚠️ `source_types` si ripassa perche' ora e' quello EFFETTIVO (gli
+        #    handler risolti), non quello richiesto: e' l'unico dei tre campi
+        #    che l'apertura non poteva conoscere.
+        self._repo.close_push_run(
+            push_log_id=push_log_id,
             stato=stato,
-            dry_run=dry_run,
             source_types=report.source_type_names() or None,
             risultato={
                 "handlers": report.as_risultato(),
@@ -252,6 +272,5 @@ class CommessaPushOrchestrator:
             },
             durata_ms=durata_ms,
         )
-        report.push_log_id = push_log_id
 
         return report

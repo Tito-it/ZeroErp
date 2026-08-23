@@ -39,6 +39,9 @@ Indice test eseguiti:
 37) test_lotto_riaperto_non_innesca_rollback_automatico (Fase 6)
 38) test_lotto_riaperto_non_azzera_se_il_giro_non_ha_prodotto_fatture (Fase 6)
 39) test_giornale_rotto_non_ferma_la_pipeline (BE-7 / D-15)
+40) test_il_filo_del_giro_e_nuovo_a_ogni_corsa (BE-2 / D-7)
+41) test_il_filo_del_giro_arriva_allo_step_executor (BE-2 / D-7)
+42) test_giornale_rotto_non_annulla_la_marcatura_di_errore (BE-7, il verso mancante)
 
 Nota Fase 6 (2026-08-03): i test 33-37 presidiano il ritorno del lotto a
 DRAFT. Il 33 e il 34 vanno letti in COPPIA: da soli non distinguono un ramo
@@ -867,6 +870,138 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
+
+    # Scopo: 🔴 UN GIORNALE ROTTO NON ANNULLA LA MARCATURA DI ERRORE.
+    #
+    #        Il verso che mancava, e il difetto era reale: `log_event` stava
+    #        DENTRO l'`atomic` di `_mark_lotto_error`, insieme alle tre
+    #        scritture che contano (segnalazione di lotto, stato ERRORE,
+    #        fotografia esito fatture). Una riga di giornale rifiutata rollava
+    #        indietro **anche quelle**, e il telaio best-effort del chiamante
+    #        ingoiava — quindi il lotto restava senza stato ERRORE, in silenzio,
+    #        proprio nel ramo in cui qualcosa era gia' andato storto.
+    #
+    # ⚠️ Il telaio NON bastava: avvolge `_mark_lotto_error` per intero, quindi
+    #    vede il guasto solo dopo che la transazione ha gia' annullato tutto.
+    #    Per questo il test guarda l'ORDINE — la marcatura deve avvenire prima
+    #    che il diario ci provi — e non solo «non solleva».
+    def test_giornale_rotto_non_annulla_la_marcatura_di_errore(self):
+        # Traccia APERTURA e CHIUSURA di ogni blocco transazionale, cosi' si puo'
+        # dire in quale blocco cade ciascuna scrittura. ⚠️ Un test che guardasse
+        # solo l'ORDINE delle chiamate non distinguerebbe le due versioni: anche
+        # col difetto il diario veniva dopo la marcatura — solo, nello STESSO
+        # blocco. E' la profondita' che conta, non la sequenza.
+        # Ogni blocco transazionale ha un ID PROPRIO (non la profondita': due
+        # blocchi fratelli hanno la stessa profondita' e sarebbero
+        # indistinguibili). Cosi' si puo' chiedere la cosa giusta: «il blocco in
+        # cui e' avvenuta la marcatura era gia' chiuso quando il diario ci ha
+        # provato?».
+        eventi: list[str] = []
+        aperti: list[int] = []
+        prossimo = {"id": 0}
+
+        class _AtomicSpia:
+            def __enter__(self_inner):
+                prossimo["id"] += 1
+                aperti.append(prossimo["id"])
+                eventi.append(f"apre#{prossimo['id']}")
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                eventi.append(f"chiude#{aperti.pop()}")
+                return False
+
+        repo = MagicMock()
+        repo.set_lotto_job_stato.side_effect = lambda *a, **k: eventi.append(
+            f"marca#{aperti[-1]}"
+        )
+
+        def _diario_rifiutato(**_kwargs):
+            eventi.append(f"diario#{aperti[-1]}")
+            raise RuntimeError("E_EVENT_LOG_SCOPE_NON_RISOLTO")
+
+        repo.log_event.side_effect = _diario_rifiutato
+        runner = LottoPipelineRunner(repository=repo, error_logger=MagicMock())
+
+        with patch(
+            "apps.vendite.services.pipeline_runner.transaction.atomic",
+            side_effect=lambda *a, **k: _AtomicSpia(),
+        ):
+            # Non deve sollevare: e' best-effort per costruzione.
+            runner._mark_lotto_error_safely(
+                lotto_id=1, code="E_X", tipo_lotto="MASSIVO", detail="dettaglio",
+            )
+
+        blocco_marcatura = next(e for e in eventi if e.startswith("marca#")).split("#")[1]
+        diario = next(e for e in eventi if e.startswith("diario#"))
+        # ⭐ Il blocco in cui e' avvenuta la marcatura DEVE essere gia' chiuso
+        #    quando il diario ci prova. Se lo condividessero, il rifiuto della
+        #    riga di giornale rollerebbe indietro anche lo stato ERRORE — ed e'
+        #    esattamente cio' che faceva.
+        self.assertLess(
+            eventi.index(f"chiude#{blocco_marcatura}"), eventi.index(diario),
+            f"il diario scrive dentro la transazione della marcatura: {eventi}",
+        )
+        # E le tre scritture che contano sono state fatte tutte.
+        repo.log_lotto_esito_fatture.assert_called_once()
+
+    # Scopo: ⭐ IL FILO DEL GIRO E' NUOVO A OGNI CORSA (BE-2, D-7).
+    #
+    # 🔴 E' il difetto che questa consegna chiude, ed e' invisibile a un test
+    #    che guardi una corsa sola: il `correlation_id` valeva
+    #    `lotto_context.lock_batch_id`, che nasce col LOTTO e **non cambia
+    #    mai**. Diceva «di che lotto», che `entity_id` diceva gia' — e due
+    #    corse dello stesso lotto erano indistinguibili proprio sulla domanda
+    #    per cui il campo esiste.
+    #
+    # ⚠️ Per questo il test fa DUE corse sullo stesso lotto e confronta: con
+    #    l'implementazione vecchia i due valori erano uguali e il test sarebbe
+    #    rosso. Una corsa sola non distinguerebbe le due implementazioni.
+    def test_il_filo_del_giro_e_nuovo_a_ogni_corsa(self):
+        fili: list[str | None] = []
+
+        def _corri() -> None:
+            repo = MagicMock(wraps=self._RepoMock())
+            step_executor = self._StepExecutorMock()
+            runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+            with _fake_tx():
+                runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
+            fili.append(step_executor.last_kwargs.get("correlation_id"))
+
+        _corri()
+        _corri()
+
+        self.assertEqual(len(fili), 2)
+        self.assertTrue(all(fili), "il giro deve avere un filo")
+        self.assertNotEqual(
+            fili[0], fili[1],
+            "due corse dello stesso lotto condividono il filo: e' il difetto "
+            "di `lock_batch_id`, che nasce col lotto e non cambia mai",
+        )
+
+    # Scopo: lo STESSO filo scende sugli eventi e sullo step executor — che e'
+    #        poi la via per cui arriva ai `task_runs`.
+    #
+    # ⚠️ Il verso «lo stesso» conta quanto «c'e'»: due fili diversi nella stessa
+    #    corsa non cucirebbero niente, ed e' un difetto che si vede solo
+    #    confrontandoli fra loro.
+    def test_il_filo_del_giro_arriva_allo_step_executor(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
+
+        filo_step = step_executor.last_kwargs.get("correlation_id")
+        self.assertTrue(filo_step)
+        fili_eventi = {
+            c.kwargs.get("correlation_id") for c in repo.log_event.call_args_list
+        }
+        self.assertEqual(
+            fili_eventi, {filo_step},
+            "eventi e task_runs dello stesso giro devono portare lo stesso filo",
+        )
 
     # Scopo: ⭐ UN DIFETTO DEL DIARIO NON FERMA IL LAVORO CHE DESCRIVE
     #        (consegna BE-7, decisione D-15 del brief
