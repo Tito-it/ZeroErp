@@ -14,9 +14,10 @@ from django.conf import settings
 from django.db import DatabaseError
 
 from apps.core.services.db_error_fields import (
+    Bersaglio,
     app_error_code_from_text,
-    db_error_code,
-    structured_db_error_field,
+    bersagli_envelope,
+    diagnostica_db,
 )
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.request_context import get_request_id
@@ -33,8 +34,11 @@ from apps.core.services.service_errors import ServiceError
 _FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.\-]{0,63}$")
 
 
-# Scopo: un nome di campo in tupla, o None. Tiene fuori dal translator il
-#        `(x,) if x else None` ripetuto nei due punti che valorizzano `fields`.
+# Scopo: un nome di campo in tupla, o None. ⚠️ Dal 2026-08-24 il punto che
+#        valorizzava `fields` dal database non passa piu' di qui (legge
+#        `DiagnosticaDb.fields`): resta il solo lato Python, e la funzione
+#        resta perche' e' li' che la convenzione `context={"field": ...}` si
+#        traduce in envelope.
 def _campi(nome: str | None) -> tuple[str, ...] | None:
     return (nome,) if nome else None
 
@@ -53,6 +57,12 @@ class ApiError:
     # la quale `ui_action = highlight_form_fields` non e' azionabile: dice
     # «evidenzia il campo» senza dire quale. Vedi §12 del piano.
     fields: tuple[str, ...] | None = None
+    # ⭐ IL BERSAGLIO: su QUALE cosa l'errore e' successo, dal 2026-08-24.
+    # `fields` dice quale campo correggere DENTRO la pagina in cui l'operatore
+    # gia' si trova; `targets` dice a quale ALTRA cosa deve andare — ed e' la
+    # differenza fra evidenziare un input e disegnare un gesto.
+    # Brief: `brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
+    targets: tuple[Bersaglio, ...] | None = None
 
     # Scopo: Converte ServiceError in struttura dict serializzabile per envelope API.
     def to_dict(self) -> dict[str, Any]:
@@ -60,6 +70,15 @@ class ApiError:
         # `fields` come lista: un JSON non ha le tuple, e il client legge un array.
         if data.get("fields") is not None:
             data["fields"] = list(data["fields"])
+        # ⚠️ `asdict` scende ricorsivamente nelle dataclass annidate, quindi
+        # `targets` qui e' gia' una lista di dict — ma con le chiavi ITALIANE
+        # dell'oggetto interno (`tipo`/`id`). L'envelope parla inglese, e la
+        # traduzione vive in un posto solo: `bersagli_envelope`.
+        # ⚠️ Si riassegna SEMPRE, anche a `None`: una tupla VUOTA passerebbe il
+        # `is not None` e finirebbe nell'envelope come `"targets": []`, cioe'
+        # una chiave presente che non dice niente. Il filtro qui sotto la toglie
+        # solo se e' None.
+        data["targets"] = bersagli_envelope(self.targets)
         return {k: v for k, v in data.items() if v is not None}
 
 
@@ -79,7 +98,12 @@ class ErrorTranslator:
                 hint=exc.hint,
                 tx_id=exc.tx_id,
                 retryable=exc.retryable,
-                fields=ErrorTranslator._campi_da_correggere(exc.context),
+                # ⚠️ PRECEDENZA: il `context={"field": ...}` scritto a mano dal
+                # service vince sul campo derivato dal database. E' l'esplicito
+                # del chiamante contro un ripiego — la stessa regola che il DB
+                # applica dando la precedenza a `campo` su `parametro`.
+                fields=ErrorTranslator._campi_da_correggere(exc.context) or exc.fields,
+                targets=exc.targets,
                 )
             )
 
@@ -162,6 +186,33 @@ class ErrorTranslator:
             # quello che non si nomina qui sparisce. E' il punto in cui il campo
             # si perdeva prima ed e' il punto in cui si perderebbe di nuovo.
             fields=api_error.fields,
+            # ⛔ SUL 5xx IL BERSAGLIO NON ESCE. E' la regola Q-E del brief letta
+            # dal lato che consegna: il bersaglio e' un GESTO per l'operatore, e
+            # dove il guasto non e' suo non c'e' nessun gesto da offrirgli.
+            #
+            # ⚠️ DUE MISURE, E SERVONO ENTRAMBE — la prima stesura ne usava una
+            # sola ed era sbagliata. Non sono ridondanti: rispondono a domande
+            # diverse, e nessuna delle due contiene l'altra.
+            #   · `policy.http_status >= 500` e' la regola Q-E vera, quella che
+            #     parla della CLASSE di catalogo: i codici di classe `TECNICO`
+            #     sono **79**, piu' `NON_DISPONIBILE` (501) ed `ERRORE_ESTERNO`
+            #     (502), che hanno la stessa proprieta'. `policy` e' gia' stata
+            #     risolta qui sopra, quindi non costa niente.
+            #   · `is_technical` e' l'insieme di TRE codici scritti a mano che
+            #     decide se NASCONDERE il dettaglio. Offrire un gesto su un
+            #     errore di cui rifiutiamo di mostrare il dettaglio sarebbe
+            #     incoerente — e sono codici che di classe non sono `TECNICO`:
+            #     misurato, `E_DATABASE` ed `E_PIPELINE` sono `DATO_ERRATO`,
+            #     cioe' **400**. (E' un'incoerenza di catalogo che precede
+            #     questo cantiere: qui non si corregge, si tiene solo conto che
+            #     lo status da solo non li prende.)
+            # ⛔ Con la sola prima misura il bersaglio sarebbe uscito su
+            #    `E_DATABASE`; con la sola seconda, su 76 codici `TECNICO` su 79.
+            targets=(
+                None
+                if is_technical or policy.http_status >= 500
+                else api_error.targets
+            ),
         )
 
     # Scopo: Sanitizza i dettagli tecnici non esponibili in risposta pubblica.
@@ -187,45 +238,40 @@ class ErrorTranslator:
     # i codici lanciati da fn_log_and_raise_error e applicare le policy corrette.
     @staticmethod
     def _from_database_error(exc: DatabaseError) -> ApiError:
-        cause = getattr(exc, "__cause__", None)
-        diag = getattr(cause, "diag", None)
-
-        detail = getattr(diag, "message_detail", None)
-        hint = getattr(diag, "message_hint", None)
         # message_primary contiene solo il messaggio RAISE, senza stack PL/pgSQL
         raw_message = str(exc) or "Errore durante l'operazione database."
-        primary_message = getattr(diag, "message_primary", None)
-        sqlstate = getattr(cause, "sqlstate", None) or getattr(cause, "pgcode", None)
-
-        # Heuristica retryable: serializzazione/deadlock possono essere ritentati.
-        retryable = sqlstate in {"40001", "40P01"}
+        # ⭐ UNA lettura sola (BB `diagnostica_db`, 2026-08-24): questo metodo
+        #    era l'unico dei quattro punti di traduzione a leggere TUTTO — ed e'
+        #    anche l'unico che quasi nessun errore percorre, perche' vale solo
+        #    per il `DatabaseError` che arriva NUDO al middleware. Da qui in poi
+        #    leggono tutti la stessa cosa.
+        diag = diagnostica_db(exc, text=raw_message)
 
         # Codice di dominio: campo strutturato per primo (`CONSTRAINT` su
         # SQLSTATE P0001, dal 2026-08-05), testo come ripiego per i RAISE
         # diretti che non passano da `script.fn_log_and_raise_error`.
         # Vedi `apps/core/services/db_error_fields.py` per il contratto.
-        app_code = db_error_code(exc, text=raw_message)
-        if app_code:
-            code = app_code
+        if diag.codice:
+            code = diag.codice
             # Per errori applicativi usa il messaggio pulito (senza stack)
-            message = primary_message or raw_message
+            message = diag.messaggio or raw_message
         else:
-            code = "E_DATABASE_RETRYABLE" if retryable else "E_DATABASE"
+            code = "E_DATABASE_RETRYABLE" if diag.retryable else "E_DATABASE"
             message = raw_message
 
         return ApiError(
             code=code,
             message=message,
-            detail=detail,
-            hint=hint,
-            retryable=retryable,
+            detail=diag.detail,
+            hint=diag.hint,
+            retryable=diag.retryable,
             # Il campo da correggere, se il DB l'ha detto: `RAISE ... USING
             # COLUMN` nelle funzioni PL/pgSQL, oppure PostgreSQL stesso su una
-            # violazione NOT NULL. Oggi quasi nessuna funzione lo valorizza —
-            # resta None e non cambia niente — ma il lato che riceve e' pronto:
-            # il giorno in cui il DB comincia a mandarlo, non serve toccare
-            # altro (piano BE §12, passo 4).
-            fields=_campi(structured_db_error_field(exc)),
+            # violazione NOT NULL.
+            fields=diag.fields,
+            # Il bersaglio, se il DB l'ha detto: `RAISE ... USING DATATYPE`,
+            # forma `TIPO:id[,TIPO:id]`. Contratto valido solo dentro `P0001`.
+            targets=diag.bersagli or None,
         )
 
     # Scopo: Estrae un codice errore applicativo E_* dal messaggio di eccezione DB.

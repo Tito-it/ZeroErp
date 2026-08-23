@@ -21,6 +21,9 @@
 import { unref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useAuthStore } from '../../stores/auth'
+import { estraiBersagli } from '../../core/bersagli'
+import { azioniDaBersagli } from '../../core/bersaglioGesto'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useNotify } from '../../core/composables/useNotify'
 import { labelOrCode } from '../../core/utils/i18nLabel'
@@ -81,6 +84,8 @@ const LOTTO_AZIONE_SEVERITY = {
 export function useLottoAzioni({ onDone } = {}) {
   const { t, te } = useI18n()
   const { execute, loading } = useApiHandler()
+  // Serve al degrado del bersaglio (area BLOCCATA → nessun pulsante).
+  const auth = useAuthStore()
   const notify = useNotify()
   const { confirmAction } = useConfirmAction()
 
@@ -185,7 +190,20 @@ const MOTIVI_STOP_OK = ['COMPLETATO', 'FERMATO_A_STATO']
 function verdettoRunner(res) {
   const motivo = res?.motivo_stop
   if (!motivo || MOTIVI_STOP_OK.includes(motivo)) return { ok: true }
-  return { ok: false, messaggio: res?.errore?.message || motivo }
+  return {
+    ok: false,
+    messaggio: res?.errore?.message || motivo,
+    // ⭐ IL BERSAGLIO ARRIVA DA QUI, e non dall'envelope (2026-08-24). Questi
+    // endpoint rispondono 200 anche quando falliscono, quindi `useApiHandler`
+    // non vede nessun errore e il canale che disegna il gesto altrove — l'
+    // envelope `error.targets` — qui non passa proprio. `errore` porta gli
+    // STESSI nomi, e da lì si prende.
+    // ⚠️ È il messaggio PILOTA del cantiere a passare di qua
+    // (`E_FATTURA_RETTIFICATA_SENZA_NUMERO`, «numera prima il documento 820»):
+    // senza questa riga il caso che ha fatto nascere tutto resterebbe l'unico
+    // senza pulsante.
+    bersagli: estraiBersagli(res?.errore),
+  }
 }
 
   // Scopo: esegue un verbo su un lotto — conferma, chiamata, toast, refresh.
@@ -212,7 +230,12 @@ function verdettoRunner(res) {
         if (!verdetto.ok) {
           // ⚠️ Si ricarica LO STESSO: la catena può essersi fermata DOPO aver
           // eseguito qualche step, e la lista deve mostrare dove è arrivata.
-          notify.error(verdetto.messaggio)
+          // Il gesto se c'è, il toast di prima se non c'è: `errorConAzioni`
+          // ricade da sé su `error` con un array vuoto.
+          notify.errorConAzioni(
+            verdetto.messaggio,
+            azioniDaBersagli(verdetto.bersagli, auth),
+          )
           if (!verbo.skipDone) await onDone?.()
           return
         }

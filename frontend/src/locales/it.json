@@ -320,7 +320,9 @@
     "forbidden_title": "Accesso negato",
     "forbidden_message": "Non hai i permessi per accedere a questa area.",
     "back_home": "Torna alla Home",
-    "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore."
+    "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore.",
+    "bersaglio_apri": "Apri {entita} {id}",
+    "bersaglio_apri_senza_id": "Apri {entita}"
   },
   "placeholder": {
     "wip_title": "Area in costruzione",
@@ -3894,6 +3896,12 @@
     "documenti": {
       "tab_modelli": "Modelli documenti",
       "tab_asset": "Asset documentali"
+    },
+    "tipi_entita": {
+      "fattura": "Fattura",
+      "commessa": "Commessa",
+      "lotto": "Lotto",
+      "task_run": "Giro"
     }
   },
   "lista_config": {

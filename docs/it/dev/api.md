@@ -440,7 +440,8 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
     "detail": "tipo_doc_fiscale_id=42 non trovato",
     "retryable": false,
     "ui_action": "highlight_form_fields",
-    "fields": ["tipo_doc_fiscale_id"]
+    "fields": ["tipo_doc_fiscale_id"],
+    "targets": [{ "type": "FATTURA", "id": "820" }]
   },
   "meta": { "request_id": "uuid-..." }
 }
@@ -455,6 +456,7 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
 | `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Il frontend non lo legge ancora** |
 | `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
+| `targets`           | no              | **Su quale cosa**: `[{type, id}]`, al massimo cinque                |
 | `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso            |
 
 ⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
@@ -487,12 +489,85 @@ diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
 client di evidenziare cose che sullo schermo non esistono. E il **valore** non
 esce mai: è il dato che l'operatore ha appena scritto.
 
+⭐ **`targets` — dal 2026-08-24.** È l'**altra metà** di `fields`, e la
+differenza vale la riga: `fields` dice quale campo correggere **dentro la
+pagina in cui l'operatore già si trova**; `targets` dice a quale **altra cosa**
+deve andare. Il primo evidenzia un input, il secondo fa disegnare un **gesto** —
+*«Apri la fattura 820»*.
+
+Forma: un array di `{type, id}`, al massimo cinque. `type` è un codice di
+`config.tipi_entita` (`FATTURA`, `COMMESSA`, `LOTTO`…), **mai** un nome di
+tabella — il catalogo dei messaggi serve anche il portale cliente e lo shop, e
+lì i nomi delle tabelle sarebbero ricognizione regalata.
+
+⚠️ **È un'offerta, non una promessa.** Il bersaglio può puntare a qualcosa che
+chi legge non può aprire (permessi, perimetro emittente, record cancellato): il
+messaggio si mostra lo stesso, **il pulsante non compare**. Mai un pulsante che
+porta in un vicolo cieco.
+
+⛔ **Mai su un codice `TECNICO`.** Su un 500 l'operatore non ha niente da fare,
+quindi non c'è nessun gesto da offrirgli: `_apply_policy` lo toglie, anche se il
+database ce l'avesse messo.
+
+Brief: `docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
+
+### 🔴 I quattro punti di traduzione, e perché contano
+
+Un errore sollevato da `script.fn_log_and_raise_error` porta tutto: codice,
+campo, bersaglio, causa, soluzione. **Poi qualcuno lo traduce in `ServiceError`,
+e la traduzione decide cosa sopravvive.** Misurato il 2026-08-24: i punti sono
+quattro (più un quinto che non passa nemmeno dall'envelope), e tre su quattro
+buttavano via la diagnostica strutturata.
+
+| | Dove | Prima del 2026-08-24 |
+| --- | --- | --- |
+| 1 | `ErrorTranslator._from_database_error` — il `DatabaseError` **nudo** al middleware | `hint` + `fields` ✅ |
+| 2 | `payload_helpers.translate_db_errors` — **46** punti di chiamata | il solo `hint` |
+| 3 | `ErrorManager.raise_from_database_error` — **9** punti | niente |
+| 4 | `pipeline_step_executor._run_per_fattura_task` | il solo `message_primary` |
+| 5 | `pipeline_runner._drive_lotto_until_done` → `errore` del payload | ⚠️ **non è un envelope**: vedi sotto |
+
+⭐ **Ne discendeva un difetto già vivo, non del bersaglio**: il canale `COLUMN`
+viaggia dall'08/08 ed è valorizzato da quasi tutti i punti di sollevamento — ma
+`fields` arrivava all'envelope **solo dal punto 1**, cioè quasi mai. I 136
+binding di `campiErrati` sul frontend non si illuminavano su nessun errore nato
+in PL/pgSQL.
+
+➡️ **La lettura ora è UNA**, il BB `diagnostica_db(exc)` in
+`apps/core/services/db_error_fields.py`: ritorna codice, messaggio, causa,
+soluzione, campo e bersagli in un colpo solo. I quattro punti la usano, e
+`ServiceError` porta `fields` e `targets` fino all'envelope.
+⚠️ **Il BB unifica la lettura, non il trasporto**: che il valore arrivi
+all'envelope resta scritto in ciascun punto — ed è presidiato da
+`apps/core/tests/services/test_db_error_target.py`, che ha **un test per punto**.
+
+### ⚠️ Il runner risponde 200 anche quando fallisce
+
+Gli endpoint di pipeline (`run_lotto_pipeline_until_done`, `numera_lotto`)
+rispondono **200 anche quando la catena si ferma per errore**: il fallimento è
+un campo del payload — `motivo_stop` più `errore` — perché la catena può aver
+eseguito qualche step prima di fermarsi e quel lavoro va raccontato.
+
+```json
+{ "data": { "motivo_stop": "ERRORE",
+            "errore": { "code": "...", "message": "...", "detail": "...",
+                        "hint": "...", "fields": [...], "targets": [...] } } }
+```
+
+⛔ **Chi legge DEVE guardare `motivo_stop`**: un 200 non è un successo. Difetto
+misurato in-app il 2026-08-21 — «Rendi definitive» mostrava il toast verde su un
+lotto che il database aveva rifiutato.
+
+⭐ **I nomi dentro `errore` sono gli stessi dell'envelope**, di proposito: a
+video il gesto lo disegna un consumatore solo. Due nomi per la stessa cosa
+sarebbero due strade da tenere allineate a mano.
+
 **Da dove arriva `fields`, due strade:**
 
 | Origine | Contratto | Stato |
 |---|---|---|
 | errori nati in **Python** | `context={"field": <nome>}` nel `ServiceError` | ✅ attivo (42 codici) |
-| errori nati in **PL/pgSQL** | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | 🔵 **il backend lo legge già**; le funzioni non lo mandano ancora |
+| errori nati in **PL/pgSQL** | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | ✅ **attivo dal 2026-08-24.** ⚠️ Prima diceva *«il backend lo legge già; le funzioni non lo mandano ancora»*, ed erano **due affermazioni false**: le funzioni lo mandano dall'08/08 (il ripiego su `parametro` copre quasi tutti i punti di sollevamento), ed è il **backend** a perderlo — su tre delle quattro strade di traduzione |
 | **violazione NOT NULL** (23502) | `column_name` lo valorizza PostgreSQL da solo | ✅ attivo, senza che nessuno scriva niente |
 
 ⭐ **Il canale del DB non è da inventare**: `COLUMN` è un campo strutturato del

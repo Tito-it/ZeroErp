@@ -248,6 +248,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DELETE_BLOCK": "Generazione del trigger di blocco cancellazione fallita.",
     "E_DELETE_BLOCKED_FUL": "Cancellazione bloccata: esistono legami fulfillment.",
     "E_DELETE_NOT_ALLOWED": "Cancellazione non permessa su questi dati.",
+    "E_DIAGNOSTICA_NON_REGISTRATA": "Una scrittura di diagnosi non e' andata a buon fine: il lavoro e' proseguito lo stesso.",
     "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": "Parent non rimovibile: esistono attivita' non fatturate sul billing account.",
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "Eliminazione asset non consentita. Disattivare l'asset impostando valido_al.",
     "E_DOCUMENTI_ASSET_FILE_IMMUTABILE": "File asset immutabile: storage_key/sha256/file_size/mime/file_name non modificabili. Crea un nuovo asset.",
@@ -837,6 +838,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # quel codice arrivasse comunque da un percorso non previsto.
     # 📌 Sono AVVISI: si registrano e il giro prosegue. Un `W_` sollevato
     # sarebbe un 500, ed e' esattamente cio' che non devono fare.
+    "W_BERSAGLIO_MALFORMATO": "Avviso tecnico - il bersaglio dell'errore non e' utilizzabile: l'errore parte lo stesso, ma senza l'indicazione di quale cosa riguardi.",
     "W_FONDO_ESEGUITO_NON_RESETTABILE": "Fondo gia' eseguito: non si azzera, e la riga resta com'e'.",
     "W_FONDO_MINIMO_NON_RIPRISTINABILE": "Minimo del fondo non ripristinabile: la quota resta come e'.",
     "W_FONDO_RIGA_CONTABILE_NON_AGGIORNABILE": "Riga contabile non aggiornabile: il fondo resta legato a quella che c'e'.",

@@ -34,7 +34,24 @@ export function useDashMesiNav({ anno, meseIdx, onMeseChange, onAnnoChange }) {
     () => `${anno.value}-${String(meseIdx.value + 1).padStart(2, '0')}-01`
   )
 
+  // Scopo: seleziona un mese del pannello 12 mesi.
+  //
+  // 🔴 RI-CLICCARE IL MESE GIA' SELEZIONATO NON E' UN CAMBIO, e prima lo era.
+  //    `meseIdx.value = idx` con lo STESSO valore non fa scattare niente in
+  //    Vue — `competenzaCorrente` non cambia, e i watch agganciati a lei
+  //    restano fermi — ma `onMeseChange` veniva chiamato lo stesso. Quel
+  //    callback AZZERA drill-down ed errori: risultato, il secondo click sullo
+  //    stesso mese svuotava le liste e **niente le ricaricava**, perche' il
+  //    watch che le ripopola non era scattato.
+  //    Difetto visto in app da Tid il 2026-08-24 sul pannello errori: «clicco
+  //    agosto, la prima volta mostra gli errori, la seconda la lista si vuota».
+  //
+  // ⚠️ L'uscita anticipata e' qui e non nel callback perche' e' una proprieta'
+  //    della NAVIGAZIONE, non di cio' che il consumer fa dopo: chiunque si
+  //    agganci a `onMeseChange` ha lo stesso diritto di non essere svegliato
+  //    per un cambio che non e' avvenuto.
   function selezionaMese(idx) {
+    if (meseIdx.value === idx) return
     meseIdx.value = idx
     onMeseChange?.()
   }

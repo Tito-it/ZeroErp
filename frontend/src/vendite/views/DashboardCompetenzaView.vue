@@ -14,6 +14,11 @@ import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -329,6 +334,26 @@ async function loadErrori() {
 // Ref alla sezione drill-down per l'auto-scroll post-selezione.
 const commesseSection = ref(null)
 
+// ── Le due liste della pagina stanno in TAB, non impilate ────────────────
+//
+// 🔴 PRIMA ERANO SOVRAPPOSTE, e il difetto era di lettura: il pannello errori
+//    apriva il mese (giusto), ma poi restava SOPRA e spingeva in basso l'area
+//    che l'operatore selezionava — clicchi «Da emettere» e la tua lista compare
+//    sotto un blocco che non stavi guardando. Rilievo di Tid, 2026-08-24.
+//
+// ⭐ La regola e' «in primo piano cio' che hai scelto»: il tab dell'AREA e' il
+//    primo, e la selezione di uno stadio ce lo porta davanti da sola. Gli
+//    errori restano a un click, con il loro conteggio sempre visibile
+//    nell'etichetta — non spariscono, smettono di intromettersi.
+//
+// ⚠️ I due tab ci sono SEMPRE, anche a zero errori. Un tab che appare e
+//    scompare col dato farebbe saltare il layout a ogni cambio mese, ed e' lo
+//    stesso difetto un gradino piu' in la': «zero errori nel mese» e'
+//    un'informazione, non un motivo per cambiare la forma della pagina.
+const TAB_AREA = 'area'
+const TAB_ERRORI = 'errori'
+const tabAttiva = ref(TAB_ERRORI)
+
 function selezionaStadio(stadio) {
   if (stadioSelezionato.value === stadio) {
     store.resetCommesse()
@@ -337,6 +362,8 @@ function selezionaStadio(stadio) {
   store.resetCommesse()
   azzeraStatoGruppi()
   stadioSelezionato.value = stadio
+  // ⭐ Scegliere un'area la porta davanti: e' il senso della modifica.
+  tabAttiva.value = TAB_AREA
   loadDrillDown()
   // Su schermi piccoli la sezione renderizza sotto il fold: senza auto-scroll
   // il click sembra non fare nulla. Scroll dopo il re-render.
@@ -354,6 +381,13 @@ watch([competenzaCorrente, mesi], () => {
   } else {
     store.resetErrori()
   }
+})
+
+// Cambiando mese nessuna area resta selezionata (`onMeseChange` azzera il
+// drill-down): il tab dell'area mostrerebbe il vuoto. Si torna agli errori,
+// che e' il modo in cui il mese si apre.
+watch(competenzaCorrente, () => {
+  tabAttiva.value = TAB_ERRORI
 })
 
 // Scopo: toggle filtro recuperi tardivi del drill-down (riparte da pagina 1).
@@ -746,15 +780,29 @@ function fatturaDisplay(row) {
 // l'operatore sta davvero guardando, altrimenti personalizzerebbe o
 // esporterebbe una lista che non ha davanti.
 //
-// La precedenza NON e' «il drill-down, se c'e'»: il pannello ERRORI vive di
-// vita propria (`v-if="nErroriMese > 0"`) e senza stadio selezionato e'
-// l'unica lista a video. Legare le azioni al solo `stadioSelezionato` le
-// faceva sparire proprio li' — difetto misurato in app il 2026-08-15.
+// ⭐ DAL 2026-08-24 LA DOMANDA HA UNA RISPOSTA SOLA: **quale tab e' aperto**.
+//    Prima era una precedenza dedotta («il drill-down se c'e', altrimenti gli
+//    errori»), ed era il meglio che si potesse fare con due liste impilate:
+//    entrambe potevano essere a video insieme, e bisognava indovinare quale
+//    l'operatore stesse guardando. Coi tab non c'e' piu' niente da indovinare —
+//    e una sola delle due e' montata per davvero (`lazy`).
 //
-// Ordine: il drill-down quando c'e' (e' cio' su cui l'operatore sta
-// lavorando), altrimenti gli errori se sono a video, altrimenti nessuna lista
-// e nessuna azione.
+// ⚠️ Resta il difetto che questa computed esiste per evitare, misurato in app
+//    il 2026-08-15: le azioni NON vanno legate al solo `stadioSelezionato`,
+//    perche' sul tab errori non c'e' nessuno stadio e sparirebbero proprio li'.
 const contestoLista = computed(() => {
+  if (tabAttiva.value === TAB_ERRORI) {
+    return {
+      lista: listaErroriRef.value,
+      exportFn: exportDashboardCompetenzaErrori,
+      params: (formato) => ({
+        formato,
+        competenza_mese: competenzaCorrente.value,
+        order_by: erroriOrderBy.value,
+        order_dir: erroriOrderDir.value,
+      }),
+    }
+  }
   if (stadioSelezionato.value === STADIO_GRUPPI) {
     return {
       lista: listaGruppiRef.value,
@@ -792,18 +840,7 @@ const contestoLista = computed(() => {
       }),
     }
   }
-  if (nErroriMese.value > 0) {
-    return {
-      lista: listaErroriRef.value,
-      exportFn: exportDashboardCompetenzaErrori,
-      params: (formato) => ({
-        formato,
-        competenza_mese: competenzaCorrente.value,
-        order_by: erroriOrderBy.value,
-        order_dir: erroriOrderDir.value,
-      }),
-    }
-  }
+  // Tab area senza nessuno stadio scelto: non c'e' lista, non ci sono azioni.
   return null
 })
 
@@ -1732,352 +1769,381 @@ onActivated(() => {
           </span>
         </div>
 
-        <!-- Pannello errori vivi del mese (blocco 4). -->
-        <div v-if="nErroriMese > 0" class="app-dash-fermi">
-          <h4 class="app-dash-fermi-title">
-            <i class="pi pi-times-circle app-dash-mese-errori" />
-            {{ t('vendite.dashboard_competenza.errori_titolo', { n: erroriCount }) }}
-          </h4>
-          <ListaConfigurabile
-            ref="listaErroriRef"
-            codice="vendite.dash_competenza_errori"
-            data-key="row_key_errore"
-            :rows="erroriConChiave"
-            :total="erroriCount"
-            :loading="erroriLoading"
-            :paginator-options="erroriPaginatorOptions"
-            :page="erroriPage"
-            :sort-field="erroriOrderBy"
-            :sort-order="erroriSortOrder"
-            @page="onErroriPage"
-            @sort="onErroriSort"
-          >
-            <template #cell-tipo_evento="{ data }">
-              <Tag :value="tipoEventoLabel(data.tipo_evento)" severity="danger" />
-            </template>
-            <template #cell-lotto_codice="{ data }">
-              <Button
-                v-if="data.lotto_id"
-                link
-                class="app-cell-link"
-                :label="data.lotto_codice ?? String(data.lotto_id)"
-                v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
-                @click="apriLotto(data.lotto_id)"
+        <!-- Le due liste della pagina, in tab (blocco 4 + drill-down).
+             ⭐ L'AREA e' il primo tab e la selezione di uno stadio ce la porta
+             davanti: prima gli errori restavano SOPRA e spingevano in basso
+             l'area appena scelta. Gli errori non spariscono — stanno a un
+             click, col conteggio sempre in etichetta.
+             ⚠️ `lazy`: monta solo il pannello attivo, ed e' cio' che rende
+             `contestoLista` esatto invece che dedotto. -->
+        <Tabs v-model:value="tabAttiva" lazy class="app-dash-tabs">
+          <TabList>
+            <Tab :value="TAB_AREA">
+              <i class="pi pi-list" />
+              {{ stadioSelezionato
+                  ? t('vendite.dashboard_competenza.tab_area', { stadio: stadioSelezionatoLabel })
+                  : t('vendite.dashboard_competenza.tab_area_vuota') }}
+            </Tab>
+            <Tab :value="TAB_ERRORI">
+              <i
+                class="pi pi-times-circle"
+                :class="{ 'app-dash-mese-errori': nErroriMese > 0 }"
               />
-              <span v-else>{{ data.lotto_codice ?? '—' }}</span>
-            </template>
-            <template #cell-fattura_numero="{ data }">
-              {{ fatturaDisplay(data) }}
-            </template>
-            <template #cell-error_code="{ data }">
-              {{ data.error_code ?? data.task_code ?? '—' }}
-            </template>
-            <template #cell-messaggio="{ data }">
-              {{ data.messaggio ?? '—' }}
-            </template>
-            <!-- data_evento non ha slot: il seed dichiara `datetime_short`. -->
-          </ListaConfigurabile>
-        </div>
+              {{ t('vendite.dashboard_competenza.tab_errori', { n: nErroriMese }) }}
+            </Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel :value="TAB_ERRORI">
+            <div v-if="nErroriMese > 0" class="app-dash-fermi">
+              <ListaConfigurabile
+                ref="listaErroriRef"
+                codice="vendite.dash_competenza_errori"
+                data-key="row_key_errore"
+                :rows="erroriConChiave"
+                :total="erroriCount"
+                :loading="erroriLoading"
+                :paginator-options="erroriPaginatorOptions"
+                :page="erroriPage"
+                :sort-field="erroriOrderBy"
+                :sort-order="erroriSortOrder"
+                @page="onErroriPage"
+                @sort="onErroriSort"
+              >
+                <template #cell-tipo_evento="{ data }">
+                  <Tag :value="tipoEventoLabel(data.tipo_evento)" severity="danger" />
+                </template>
+                <template #cell-lotto_codice="{ data }">
+                  <Button
+                    v-if="data.lotto_id"
+                    link
+                    class="app-cell-link"
+                    :label="data.lotto_codice ?? String(data.lotto_id)"
+                    v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
+                    @click="apriLotto(data.lotto_id)"
+                  />
+                  <span v-else>{{ data.lotto_codice ?? '—' }}</span>
+                </template>
+                <template #cell-fattura_numero="{ data }">
+                  {{ fatturaDisplay(data) }}
+                </template>
+                <template #cell-error_code="{ data }">
+                  {{ data.error_code ?? data.task_code ?? '—' }}
+                </template>
+                <template #cell-messaggio="{ data }">
+                  {{ data.messaggio ?? '—' }}
+                </template>
+                <!-- data_evento non ha slot: il seed dichiara `datetime_short`. -->
+              </ListaConfigurabile>
+            </div>
+            <div v-else class="app-empty-state">
+              <i class="pi pi-check-circle" />
+              <p>{{ t('vendite.dashboard_competenza.errori_nessuno') }}</p>
+            </div>
+            </TabPanel>
 
         <!-- Drill-down per COMMESSA in pagina (click su card stadio, DEC-4):
              una riga per commessa; il dettaglio a grana attivita' e' nel
              drawer di gestione (kebab «Apri commessa»). -->
-        <div ref="commesseSection" class="app-dash-fermi">
-          <!-- Card «Da emettere»: il drill-down scende sui GRUPPI FATTURABILI,
-               non sulle commesse. Motivo: il verbo qui e' «Fattura», e si
-               fattura un documento (o gli oneri di una commessa) — la commessa
-               e' multi-sorgente e selezionarla non isola nulla. -->
-          <template v-if="stadioSelezionato === STADIO_GRUPPI">
-            <div class="app-page-toolbar">
-              <h4 class="app-dash-fermi-title">
-                {{ t('vendite.dashboard_competenza.gruppi_titolo') }}
-              </h4>
-              <div class="app-dash-filtri">
-                <!-- Filtro tipo documento/sorgente: «Tutti» di default. Le voci
-                     sono quelle presenti nel perimetro, col conteggio: una
-                     tendina che offre opzioni da zero risultati sarebbe peggio
-                     di nessun filtro. -->
-                <Select
-                  v-model="gruppiTipo"
-                  :options="opzioniTipoGruppo"
-                  option-label="label"
-                  option-value="value"
-                  class="app-form-select"
-                  :placeholder="t('vendite.dashboard_competenza.filtro_tipo')"
-                  v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_tipo')"
-                  @change="applicaFiltroGruppi"
-                />
-                <!-- Filtro CLIENTE: scelta strutturata, mai testo libero. Il
-                     valore è l'id del BA di FATTURAZIONE — lo stesso elemento
-                     che il DB mette nella chiave della fattura — e l'etichetta
-                     porta il codice BA accanto al nome perché lo stesso
-                     soggetto può avere più alberi omonimi che finiscono su
-                     fatture diverse. `filter` perché su un mese pieno la
-                     tendina è lunga. -->
-                <Select
-                  v-model="gruppiCliente"
-                  :options="opzioniCliente"
-                  option-label="label"
-                  option-value="value"
-                  filter
-                  :filter-placeholder="t('vendite.dashboard_competenza.filtro_cliente_cerca')"
-                  class="app-form-select app-dash-filtro-cliente"
-                  :placeholder="t('vendite.dashboard_competenza.filtro_cliente')"
-                  v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_cliente_tooltip')"
-                  @change="applicaFiltroGruppi"
-                />
-                <!-- Ricerca libera: risponde a «dov'è finito ORD0005174», che è
-                     una domanda diversa da «dammi tutto di Rossi» — per quella
-                     c'è il filtro qui accanto. Sotto i 3 caratteri il backend la
-                     ignora: la lista resta quella di prima invece di svuotarsi
-                     dicendo «non c'è niente» mentre si sta ancora digitando. -->
-                <InputText
-                  v-model="gruppiSearch"
-                  class="app-dash-ricerca-gruppi"
-                  :placeholder="t('vendite.dashboard_competenza.ricerca_gruppi')"
-                  v-tooltip.bottom="t('vendite.dashboard_competenza.ricerca_gruppi_tooltip')"
-                  @input="onGruppiSearchInput"
-                />
-                <!-- ⚠️ Il tooltip sta sul WRAPPER e non sul Button: un bottone
-                     disabilitato non riceve eventi del mouse, quindi il
-                     tooltip appeso a lui non comparirebbe mai — ed è proprio
-                     quando è spento che il motivo serve. -->
-                <span
-                  v-if="canFatturare"
-                  v-tooltip.bottom="tooltipFatturaSelezionati"
-                  class="app-dash-fattura-wrap"
+            <TabPanel :value="TAB_AREA">
+            <div ref="commesseSection" class="app-dash-fermi">
+              <!-- Card «Da emettere»: il drill-down scende sui GRUPPI FATTURABILI,
+                   non sulle commesse. Motivo: il verbo qui e' «Fattura», e si
+                   fattura un documento (o gli oneri di una commessa) — la commessa
+                   e' multi-sorgente e selezionarla non isola nulla. -->
+              <template v-if="stadioSelezionato === STADIO_GRUPPI">
+                <div class="app-page-toolbar">
+                  <h4 class="app-dash-fermi-title">
+                    {{ t('vendite.dashboard_competenza.gruppi_titolo') }}
+                  </h4>
+                  <div class="app-dash-filtri">
+                    <!-- Filtro tipo documento/sorgente: «Tutti» di default. Le voci
+                         sono quelle presenti nel perimetro, col conteggio: una
+                         tendina che offre opzioni da zero risultati sarebbe peggio
+                         di nessun filtro. -->
+                    <Select
+                      v-model="gruppiTipo"
+                      :options="opzioniTipoGruppo"
+                      option-label="label"
+                      option-value="value"
+                      class="app-form-select"
+                      :placeholder="t('vendite.dashboard_competenza.filtro_tipo')"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_tipo')"
+                      @change="applicaFiltroGruppi"
+                    />
+                    <!-- Filtro CLIENTE: scelta strutturata, mai testo libero. Il
+                         valore è l'id del BA di FATTURAZIONE — lo stesso elemento
+                         che il DB mette nella chiave della fattura — e l'etichetta
+                         porta il codice BA accanto al nome perché lo stesso
+                         soggetto può avere più alberi omonimi che finiscono su
+                         fatture diverse. `filter` perché su un mese pieno la
+                         tendina è lunga. -->
+                    <Select
+                      v-model="gruppiCliente"
+                      :options="opzioniCliente"
+                      option-label="label"
+                      option-value="value"
+                      filter
+                      :filter-placeholder="t('vendite.dashboard_competenza.filtro_cliente_cerca')"
+                      class="app-form-select app-dash-filtro-cliente"
+                      :placeholder="t('vendite.dashboard_competenza.filtro_cliente')"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_cliente_tooltip')"
+                      @change="applicaFiltroGruppi"
+                    />
+                    <!-- Ricerca libera: risponde a «dov'è finito ORD0005174», che è
+                         una domanda diversa da «dammi tutto di Rossi» — per quella
+                         c'è il filtro qui accanto. Sotto i 3 caratteri il backend la
+                         ignora: la lista resta quella di prima invece di svuotarsi
+                         dicendo «non c'è niente» mentre si sta ancora digitando. -->
+                    <InputText
+                      v-model="gruppiSearch"
+                      class="app-dash-ricerca-gruppi"
+                      :placeholder="t('vendite.dashboard_competenza.ricerca_gruppi')"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.ricerca_gruppi_tooltip')"
+                      @input="onGruppiSearchInput"
+                    />
+                    <!-- ⚠️ Il tooltip sta sul WRAPPER e non sul Button: un bottone
+                         disabilitato non riceve eventi del mouse, quindi il
+                         tooltip appeso a lui non comparirebbe mai — ed è proprio
+                         quando è spento che il motivo serve. -->
+                    <span
+                      v-if="canFatturare"
+                      v-tooltip.bottom="tooltipFatturaSelezionati"
+                      class="app-dash-fattura-wrap"
+                    >
+                    <!-- ⚠️ `loading` sul solo `azioneLoading` (la POST), NON sui
+                         giri in corso: da oggi il verbo resta PREMIBILE con giri
+                         vivi (decisione D1, nessun tetto), e un pulsante «in
+                         caricamento» che però si può premere è una contraddizione
+                         a video. -->
+                    <Button
+                      :label="t('vendite.dashboard_competenza.fattura_selezionati', { n: selezioneGruppi.length })"
+                      icon="pi pi-file-export"
+                      size="small"
+                      :loading="azioneLoading"
+                      :disabled="selezioneGruppi.length === 0 || azioneLoading || giroMeseInCorso"
+                      @click="fatturaGruppi(selezioneGruppi)"
+                    />
+                    </span>
+                    <!-- Quante fatturazioni sono in volo. Senza tetto è l'UNICA cosa
+                         che lo dice: le marcature stanno sulle righe, e quelle
+                         scorrono di pagina a ogni ricarica post-esito. Sta in
+                         testata proprio perché non dipende da cosa si ha davanti. -->
+                    <span v-if="giriMirataInCorso" class="app-dash-giri-in-corso">
+                      <i class="pi pi-spin pi-spinner" />
+                      {{ t('vendite.dashboard_competenza.giri_in_corso', nGiriMirata, { n: nGiriMirata }) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Aggancio al lotto (§5.2): dopo l'emissione l'operatore deve
+                     poterci arrivare per numerare. Sono N e non uno: un gruppo con
+                     righe di tipo doc fiscale diverso finisce in lotti diversi. -->
+                <div v-if="lottiEmessiVisibili.length" class="app-dash-lotti-emessi">
+                  <span>{{ t('vendite.dashboard_competenza.lotti_emessi', { n: lottiEmessiVisibili.length }) }}</span>
+                  <Button
+                    v-for="lotto in lottiEmessiVisibili"
+                    :key="lotto.lotto_id"
+                    link
+                    class="app-cell-link"
+                    :label="t('vendite.dashboard_competenza.vai_al_lotto', { id: lotto.lotto_id })"
+                    @click="apriLotto(lotto.lotto_id)"
+                  />
+                </div>
+
+                <!-- Riga di totali: viene dal BE (aggrega la stessa vista della
+                     lista), non dalla somma della pagina corrente — che sarebbe un
+                     parziale con l'aria di un totale. -->
+                <div class="app-dash-totali app-dash-totali--inner">
+                  <span>
+                    {{ t('vendite.dashboard_competenza.tot_gruppi') }}
+                    <strong>{{ gruppiRiepilogo.n_gruppi }}</strong>
+                  </span>
+                  <span>
+                    {{ t('vendite.dashboard_competenza.tot_attivita') }}
+                    <strong>{{ gruppiRiepilogo.n_attivita }}</strong>
+                  </span>
+                  <span>
+                    {{ t('vendite.dashboard_competenza.tot_valore') }}
+                    <strong>{{ formatCurrency(Number(gruppiRiepilogo.valore ?? 0)) }}</strong>
+                  </span>
+                  <span v-if="gruppiRiepilogo.n_gruppi_oneri > 0">
+                    {{ t('vendite.dashboard_competenza.tot_gruppi_oneri') }}
+                    <strong>{{ gruppiRiepilogo.n_gruppi_oneri }}</strong>
+                  </span>
+                </div>
+
+                <ListaConfigurabile
+                  v-if="gruppiCount > 0 || gruppiLoading"
+                  ref="listaGruppiRef"
+                  codice="vendite.dash_competenza_gruppi"
+                  data-key="gruppo_key"
+                  :rows="gruppi"
+                  :total="gruppiCount"
+                  :loading="gruppiLoading"
+                  :paginator-options="gruppiPaginatorOptions"
+                  :page="gruppiPage"
+                  :sort-field="gruppiOrderBy"
+                  :sort-order="gruppiSortOrder"
+                  @page="onGruppiPage"
+                  @sort="onGruppiSort"
                 >
-                <!-- ⚠️ `loading` sul solo `azioneLoading` (la POST), NON sui
-                     giri in corso: da oggi il verbo resta PREMIBILE con giri
-                     vivi (decisione D1, nessun tetto), e un pulsante «in
-                     caricamento» che però si può premere è una contraddizione
-                     a video. -->
-                <Button
-                  :label="t('vendite.dashboard_competenza.fattura_selezionati', { n: selezioneGruppi.length })"
-                  icon="pi pi-file-export"
-                  size="small"
-                  :loading="azioneLoading"
-                  :disabled="selezioneGruppi.length === 0 || azioneLoading || giroMeseInCorso"
-                  @click="fatturaGruppi(selezioneGruppi)"
-                />
-                </span>
-                <!-- Quante fatturazioni sono in volo. Senza tetto è l'UNICA cosa
-                     che lo dice: le marcature stanno sulle righe, e quelle
-                     scorrono di pagina a ogni ricarica post-esito. Sta in
-                     testata proprio perché non dipende da cosa si ha davanti. -->
-                <span v-if="giriMirataInCorso" class="app-dash-giri-in-corso">
-                  <i class="pi pi-spin pi-spinner" />
-                  {{ t('vendite.dashboard_competenza.giri_in_corso', nGiriMirata, { n: nGiriMirata }) }}
-                </span>
+                  <!-- Selezione dell'emissione mirata: chrome del BB (slot
+                       dedicato), non colonna di catalogo. PrimeVue 4 non ha piu'
+                       il predicato per-riga sul selectionMode: la checkbox e'
+                       custom (BB useSelezioneToggle). -->
+                  <template v-if="canFatturare" #selection-header>
+                    <!-- Pagina senza righe selezionabili (tutte bloccate): il
+                         toggle sarebbe un no-op silenzioso — meglio spento che
+                         un click che «sembra non fare nulla». -->
+                    <Checkbox
+                      binary
+                      :model-value="tuttiGruppiSelezionati"
+                      :indeterminate="alcuniGruppiSelezionati"
+                      :disabled="!gruppiSelezionabili.length"
+                      @update:model-value="toggleTuttiGruppi"
+                    />
+                  </template>
+                  <template v-if="canFatturare" #selection="{ data }">
+                    <!-- Riga a testata bloccata: non spuntabile (il guard del BB
+                         la tiene comunque fuori dalla selezione). -->
+                    <Checkbox
+                      binary
+                      :model-value="isGruppoSelezionato(data)"
+                      :disabled="!isGruppoEmittibile(data)"
+                      @update:model-value="toggleGruppo(data)"
+                    />
+                  </template>
+
+                  <template #cell-riferimento="{ data }">
+                    <strong>{{ gruppoRiferimento(data) }}</strong>
+                    <!-- Segnalare, non nascondere (brief emittibilita' §3.1): la
+                         testata non ammette fatturazione — lucchetto col motivo,
+                         accanto al nome che l'operatore sta gia' leggendo. -->
+                    <i
+                      v-if="!isGruppoEmittibile(data)"
+                      class="pi pi-lock app-dash-gruppo-bloccato"
+                      v-tooltip.bottom="tooltipBloccato(data)"
+                    />
+                    <!-- Fatturazione in corso su QUESTA riga: il verbo è asincrono
+                         (accoda + polling) e senza un segno qui la riga restava
+                         identica per tutta la durata, spunta compresa. Sta accanto
+                         al nome, dove l'occhio è già posato. -->
+                    <i
+                      v-if="gruppiInCorso.has(data.gruppo_key)"
+                      class="pi pi-spin pi-spinner app-dash-gruppo-in-corso"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')"
+                    />
+                  </template>
+                  <template #cell-tipo_gruppo="{ data }">
+                    <Tag
+                      :value="gruppoTipoLabel(data)"
+                      :severity="data.ha_oneri ? 'warn' : 'secondary'"
+                    />
+                  </template>
+                  <template #cell-cliente_display="{ data }">
+                    {{ data.cliente_display ?? '—' }}
+                  </template>
+                  <template #cell-commessa_codice="{ data }">
+                    {{ data.commessa_codice ?? '—' }}
+                  </template>
+                  <template #cell-n_attivita="{ data }">
+                    <Tag
+                      :value="String(data.n_attivita)"
+                      severity="secondary"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })"
+                    />
+                  </template>
+                  <!-- valore non ha slot: il seed dichiara `currency_eur`. -->
+                  <template #cell-data_attivita_max="{ data }">
+                    <span v-if="data.data_attivita_min">
+                      {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
+                    </span>
+                    <span v-else>—</span>
+                  </template>
+
+                  <template #actions="{ data, compact }">
+                    <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
+                  </template>
+                </ListaConfigurabile>
+                <!-- Empty-state ONESTO (regola del BB usePagedDashFetch): «nessun
+                     gruppo» si dice solo dopo una fetch RIUSCITA. Prima — o dopo un
+                     errore di rete — la lista e' vuota per ignoranza, non per
+                     assenza di lavoro, e dichiararlo sarebbe una bugia che invita a
+                     chiudere il mese. -->
+                <div v-else-if="gruppiLoaded" class="app-empty-state">
+                  <i class="pi pi-check-circle" />
+                  <p>{{ t('vendite.dashboard_competenza.nessun_gruppo') }}</p>
+                </div>
+              </template>
+
+              <template v-else-if="stadioSelezionato">
+                <div class="app-page-toolbar">
+                  <h4 class="app-dash-fermi-title">
+                    {{ t('vendite.dashboard_competenza.commesse_titolo', { stadio: stadioSelezionatoLabel }) }}
+                  </h4>
+                  <label class="app-dash-filter-toggle">
+                    <Checkbox v-model="soloRitardo" binary @change="onSoloRitardoChange" />
+                    {{ t('vendite.dashboard_competenza.solo_ritardo') }}
+                  </label>
+                </div>
+                <ListaConfigurabile
+                  v-if="commesseCount > 0 || commesseLoading"
+                  ref="listaCommesseRef"
+                  codice="vendite.dash_competenza_commesse"
+                  data-key="commessa_id"
+                  :rows="commesse"
+                  :total="commesseCount"
+                  :loading="commesseLoading"
+                  :paginator-options="commessePaginatorOptions"
+                  :page="commessePage"
+                  :sort-field="commesseOrderBy"
+                  :sort-order="commesseSortOrder"
+                  @page="onCommessePage"
+                  @sort="onCommesseSort"
+                >
+                  <template #cell-commessa_codice="{ data }">
+                    {{ data.commessa_codice ?? `#${data.commessa_id}` }}
+                  </template>
+                  <template #cell-cliente_display="{ data }">
+                    {{ data.cliente_display ?? '—' }}
+                  </template>
+                  <template #cell-n_attivita="{ data }">
+                    <Tag :value="String(data.n_attivita)" severity="secondary" v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })" />
+                  </template>
+                  <!-- valore_tot e valore_fatturato_tot non hanno slot: il seed
+                       dichiara `currency_eur` per entrambe. -->
+                  <template #cell-data_attivita_max="{ data }">
+                    <span v-if="data.data_attivita_min">
+                      {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
+                    </span>
+                    <span v-else>—</span>
+                  </template>
+                  <template #cell-n_in_ritardo="{ data }">
+                    <span v-if="data.n_in_ritardo > 0" class="app-dash-ritardo">
+                      <i class="pi pi-clock" /> {{ data.n_in_ritardo }}
+                    </span>
+                    <span v-else>—</span>
+                  </template>
+
+                  <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE,
+                       l'intera commessa) + Apri commessa (drawer col dettaglio). -->
+                  <template #actions="{ data, compact }">
+                    <RowActionsMenu :row="data" :actions="buildCommessaRowActions(data)" :force-compact="compact" />
+                  </template>
+                </ListaConfigurabile>
+                <div v-else class="app-empty-state">
+                  <i class="pi pi-check-circle" />
+                  <p>{{ t('vendite.dashboard_competenza.nessuna_commessa') }}</p>
+                </div>
+              </template>
+              <div v-else class="app-empty-state">
+                <i class="pi pi-chart-pie" />
+                <p>{{ t('vendite.dashboard_competenza.commesse_hint') }}</p>
               </div>
             </div>
-
-            <!-- Aggancio al lotto (§5.2): dopo l'emissione l'operatore deve
-                 poterci arrivare per numerare. Sono N e non uno: un gruppo con
-                 righe di tipo doc fiscale diverso finisce in lotti diversi. -->
-            <div v-if="lottiEmessiVisibili.length" class="app-dash-lotti-emessi">
-              <span>{{ t('vendite.dashboard_competenza.lotti_emessi', { n: lottiEmessiVisibili.length }) }}</span>
-              <Button
-                v-for="lotto in lottiEmessiVisibili"
-                :key="lotto.lotto_id"
-                link
-                class="app-cell-link"
-                :label="t('vendite.dashboard_competenza.vai_al_lotto', { id: lotto.lotto_id })"
-                @click="apriLotto(lotto.lotto_id)"
-              />
-            </div>
-
-            <!-- Riga di totali: viene dal BE (aggrega la stessa vista della
-                 lista), non dalla somma della pagina corrente — che sarebbe un
-                 parziale con l'aria di un totale. -->
-            <div class="app-dash-totali app-dash-totali--inner">
-              <span>
-                {{ t('vendite.dashboard_competenza.tot_gruppi') }}
-                <strong>{{ gruppiRiepilogo.n_gruppi }}</strong>
-              </span>
-              <span>
-                {{ t('vendite.dashboard_competenza.tot_attivita') }}
-                <strong>{{ gruppiRiepilogo.n_attivita }}</strong>
-              </span>
-              <span>
-                {{ t('vendite.dashboard_competenza.tot_valore') }}
-                <strong>{{ formatCurrency(Number(gruppiRiepilogo.valore ?? 0)) }}</strong>
-              </span>
-              <span v-if="gruppiRiepilogo.n_gruppi_oneri > 0">
-                {{ t('vendite.dashboard_competenza.tot_gruppi_oneri') }}
-                <strong>{{ gruppiRiepilogo.n_gruppi_oneri }}</strong>
-              </span>
-            </div>
-
-            <ListaConfigurabile
-              v-if="gruppiCount > 0 || gruppiLoading"
-              ref="listaGruppiRef"
-              codice="vendite.dash_competenza_gruppi"
-              data-key="gruppo_key"
-              :rows="gruppi"
-              :total="gruppiCount"
-              :loading="gruppiLoading"
-              :paginator-options="gruppiPaginatorOptions"
-              :page="gruppiPage"
-              :sort-field="gruppiOrderBy"
-              :sort-order="gruppiSortOrder"
-              @page="onGruppiPage"
-              @sort="onGruppiSort"
-            >
-              <!-- Selezione dell'emissione mirata: chrome del BB (slot
-                   dedicato), non colonna di catalogo. PrimeVue 4 non ha piu'
-                   il predicato per-riga sul selectionMode: la checkbox e'
-                   custom (BB useSelezioneToggle). -->
-              <template v-if="canFatturare" #selection-header>
-                <!-- Pagina senza righe selezionabili (tutte bloccate): il
-                     toggle sarebbe un no-op silenzioso — meglio spento che
-                     un click che «sembra non fare nulla». -->
-                <Checkbox
-                  binary
-                  :model-value="tuttiGruppiSelezionati"
-                  :indeterminate="alcuniGruppiSelezionati"
-                  :disabled="!gruppiSelezionabili.length"
-                  @update:model-value="toggleTuttiGruppi"
-                />
-              </template>
-              <template v-if="canFatturare" #selection="{ data }">
-                <!-- Riga a testata bloccata: non spuntabile (il guard del BB
-                     la tiene comunque fuori dalla selezione). -->
-                <Checkbox
-                  binary
-                  :model-value="isGruppoSelezionato(data)"
-                  :disabled="!isGruppoEmittibile(data)"
-                  @update:model-value="toggleGruppo(data)"
-                />
-              </template>
-
-              <template #cell-riferimento="{ data }">
-                <strong>{{ gruppoRiferimento(data) }}</strong>
-                <!-- Segnalare, non nascondere (brief emittibilita' §3.1): la
-                     testata non ammette fatturazione — lucchetto col motivo,
-                     accanto al nome che l'operatore sta gia' leggendo. -->
-                <i
-                  v-if="!isGruppoEmittibile(data)"
-                  class="pi pi-lock app-dash-gruppo-bloccato"
-                  v-tooltip.bottom="tooltipBloccato(data)"
-                />
-                <!-- Fatturazione in corso su QUESTA riga: il verbo è asincrono
-                     (accoda + polling) e senza un segno qui la riga restava
-                     identica per tutta la durata, spunta compresa. Sta accanto
-                     al nome, dove l'occhio è già posato. -->
-                <i
-                  v-if="gruppiInCorso.has(data.gruppo_key)"
-                  class="pi pi-spin pi-spinner app-dash-gruppo-in-corso"
-                  v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')"
-                />
-              </template>
-              <template #cell-tipo_gruppo="{ data }">
-                <Tag
-                  :value="gruppoTipoLabel(data)"
-                  :severity="data.ha_oneri ? 'warn' : 'secondary'"
-                />
-              </template>
-              <template #cell-cliente_display="{ data }">
-                {{ data.cliente_display ?? '—' }}
-              </template>
-              <template #cell-commessa_codice="{ data }">
-                {{ data.commessa_codice ?? '—' }}
-              </template>
-              <template #cell-n_attivita="{ data }">
-                <Tag
-                  :value="String(data.n_attivita)"
-                  severity="secondary"
-                  v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })"
-                />
-              </template>
-              <!-- valore non ha slot: il seed dichiara `currency_eur`. -->
-              <template #cell-data_attivita_max="{ data }">
-                <span v-if="data.data_attivita_min">
-                  {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
-                </span>
-                <span v-else>—</span>
-              </template>
-
-              <template #actions="{ data, compact }">
-                <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
-              </template>
-            </ListaConfigurabile>
-            <!-- Empty-state ONESTO (regola del BB usePagedDashFetch): «nessun
-                 gruppo» si dice solo dopo una fetch RIUSCITA. Prima — o dopo un
-                 errore di rete — la lista e' vuota per ignoranza, non per
-                 assenza di lavoro, e dichiararlo sarebbe una bugia che invita a
-                 chiudere il mese. -->
-            <div v-else-if="gruppiLoaded" class="app-empty-state">
-              <i class="pi pi-check-circle" />
-              <p>{{ t('vendite.dashboard_competenza.nessun_gruppo') }}</p>
-            </div>
-          </template>
-
-          <template v-else-if="stadioSelezionato">
-            <div class="app-page-toolbar">
-              <h4 class="app-dash-fermi-title">
-                {{ t('vendite.dashboard_competenza.commesse_titolo', { stadio: stadioSelezionatoLabel }) }}
-              </h4>
-              <label class="app-dash-filter-toggle">
-                <Checkbox v-model="soloRitardo" binary @change="onSoloRitardoChange" />
-                {{ t('vendite.dashboard_competenza.solo_ritardo') }}
-              </label>
-            </div>
-            <ListaConfigurabile
-              v-if="commesseCount > 0 || commesseLoading"
-              ref="listaCommesseRef"
-              codice="vendite.dash_competenza_commesse"
-              data-key="commessa_id"
-              :rows="commesse"
-              :total="commesseCount"
-              :loading="commesseLoading"
-              :paginator-options="commessePaginatorOptions"
-              :page="commessePage"
-              :sort-field="commesseOrderBy"
-              :sort-order="commesseSortOrder"
-              @page="onCommessePage"
-              @sort="onCommesseSort"
-            >
-              <template #cell-commessa_codice="{ data }">
-                {{ data.commessa_codice ?? `#${data.commessa_id}` }}
-              </template>
-              <template #cell-cliente_display="{ data }">
-                {{ data.cliente_display ?? '—' }}
-              </template>
-              <template #cell-n_attivita="{ data }">
-                <Tag :value="String(data.n_attivita)" severity="secondary" v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })" />
-              </template>
-              <!-- valore_tot e valore_fatturato_tot non hanno slot: il seed
-                   dichiara `currency_eur` per entrambe. -->
-              <template #cell-data_attivita_max="{ data }">
-                <span v-if="data.data_attivita_min">
-                  {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
-                </span>
-                <span v-else>—</span>
-              </template>
-              <template #cell-n_in_ritardo="{ data }">
-                <span v-if="data.n_in_ritardo > 0" class="app-dash-ritardo">
-                  <i class="pi pi-clock" /> {{ data.n_in_ritardo }}
-                </span>
-                <span v-else>—</span>
-              </template>
-
-              <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE,
-                   l'intera commessa) + Apri commessa (drawer col dettaglio). -->
-              <template #actions="{ data, compact }">
-                <RowActionsMenu :row="data" :actions="buildCommessaRowActions(data)" :force-compact="compact" />
-              </template>
-            </ListaConfigurabile>
-            <div v-else class="app-empty-state">
-              <i class="pi pi-check-circle" />
-              <p>{{ t('vendite.dashboard_competenza.nessuna_commessa') }}</p>
-            </div>
-          </template>
-          <div v-else class="app-empty-state">
-            <i class="pi pi-chart-pie" />
-            <p>{{ t('vendite.dashboard_competenza.commesse_hint') }}</p>
-          </div>
-        </div>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       </div>
     </div>
 
