@@ -46,8 +46,10 @@
 | trg_event_log_a10_deriva_scope_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_event_log_deriva_scope()` |
 | trg_event_log_append_only_ud | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_event_log_append_only()` |
 | trg_event_log_append_only_ud | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_event_log_append_only()` |
-| trg_event_log_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_event_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_event_log_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_event_log_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_event_log_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

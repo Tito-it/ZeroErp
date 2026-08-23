@@ -8,10 +8,14 @@
 > nasce dove l'errore viene sollevato; il consumo lato BE/FE è dichiarato in §7
 > ma **non** è questo brief.
 >
-> ⛔ **Di questo brief non è stato applicato niente**: nessuna migrazione,
-> nessun CSV. Il piano, con i changeSet numerati, è il §6. ⚠️ **Il catalogo dei
-> tipi invece esiste**, ed è stato applicato dall'altro cantiere il 2026-08-22:
-> è il prerequisito, non un passo di qui.
+> 🛠️ **Stato al 2026-08-23: il lotto è SCRITTO, e non applicato.** Quattro
+> changeSet (`20260823-01…04`), tre CSV, tre file pgTAP, il controllo (G) del
+> guardrail di CI e la quarta riga della tabella dei canali in
+> `linee-guida-sql`. ⛔ **L'apply è di Tid** — e finché non avviene, i tre file
+> pgTAP nuovi o estesi **non sono mai stati eseguiti**: gli oggetti che
+> collaudano non esistono ancora.
+> ⚠️ **Il catalogo dei tipi invece esiste**, applicato dall'altro cantiere il
+> 2026-08-22: è il prerequisito, non un passo di qui.
 >
 > ✅ **Ed è SCRIVIBILE dal quinto giro (2026-08-22): le cinque domande che il
 > quarto aveva aperto sono tutte chiuse** — §8, `Q-A`…`Q-E`. In breve: il
@@ -527,10 +531,15 @@ vero della fusione.
 
 ## 6. Il piano di sviluppo
 
-> ⚠️ **Numerazione.** La sequenza `NN` è **globale per data** fra tutte le
-> cartelle. Al 2026-08-22, dopo l'apply del L4/L2 dell'altro cantiere, sono
-> occupati fino a **`20260822-62`**: qui si parte da **63**. Da **riverificare**
-> al momento della scrittura.
+> ✅ **SCRITTO IL 2026-08-23 — quattro changeSet, tre CSV, due file pgTAP
+> nuovi, uno esteso, un controllo di CI e la tabella dei canali nelle linee
+> guida.** ⛔ **Non applicato**: l'apply è di Tid.
+>
+> ⚠️ **Numerazione.** La sequenza `NN` è globale **per data**, e la data è
+> cambiata: i changeSet sono `20260823-01…04`, non i 63-66 previsti quando il
+> piano è stato scritto. ⚠️ E il numero **06** di oggi è già di un altro
+> cantiere (`fn_run_automations` resiliente): la sequenza è condivisa, e va
+> riletta prima di ogni file — non dedotta dal proprio lotto.
 >
 > ⛔ `runOnChange: false` ovunque in `00_schema` e `20_code`, `validCheckSums`
 > **al plurale**, `logicalFilePath` sempre, **un changeSet per file**. L'unico
@@ -544,9 +553,9 @@ pulsante, ma è quello su cui poggiano tutti gli altri.
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| **63** | `alter-config-tipi-entita-key-selector` | `00_schema/config` | La colonna della **chiave dell'entità** (Q-C): `key_selector text NOT NULL` con `CHECK (IN ('id','uid'))`. ⭐ **Stesso nome che porta `config.sorgenti`**, di proposito: è la stessa convenzione, e chi cerca l'una trova l'altra. ⚠️ **Nasce con `DEFAULT 'id'` e il default si toglie nello stesso changeSet**: serve a riempire le 4 righe esistenti — che sono tutte a chiave numerica — senza lasciare a chi semina un valore che eredita in silenzio. ⛔ **E non tocca il giornale**: per `event_log` l'`entity_id` resta **la PK `id`, sempre** — la colonna serve a chi *punta* a un'entità da fuori, che è il bersaglio. La distinzione l'aveva già scritta l'[analisi](analisi-osservabilita-log.md) alla sua domanda 12 |
+| **01** | `alter-config-tipi-entita-key-selector` | `00_schema/config` | La colonna della **chiave dell'entità** (Q-C): `key_selector text NOT NULL` con `CHECK (IN ('id','uid'))`. ⭐ **Stesso nome che porta `config.sorgenti`**, di proposito: è la stessa convenzione, e chi cerca l'una trova l'altra. ⚠️ **Nasce con `DEFAULT 'id'` e il default si toglie nello stesso changeSet**: serve a riempire le 4 righe esistenti — che sono tutte a chiave numerica — senza lasciare a chi semina un valore che eredita in silenzio. ⛔ **E non tocca il giornale**: per `event_log` l'`entity_id` resta **la PK `id`, sempre** — la colonna serve a chi *punta* a un'entità da fuori, che è il bersaglio. La distinzione l'aveva già scritta l'[analisi](analisi-osservabilita-log.md) alla sua domanda 12 |
 | — | `config/tipi_entita.csv` + il changeSet **55** | `80_data` (CSV) | La colonna nuova nel CSV **e** nella lista `columns:` del mirror. ⛔ **Non nasce un loader nuovo**: il 55 è `runOnChange`, si estende in place e alla prossima passata rilegge il file |
-| **64** | `update-fn-log-and-raise-error-bersaglio` | `20_code/script` | ⭐ **Il cuore.** `script.fn_log_and_raise_error` legge `p_context->'bersaglio'`, ne compone la forma compatta e la fa uscire sulla casella strutturata. **La firma non cambia** (§4.4): i 1.093 punti di sollevamento vivi non si toccano |
+| **02** | `update-fn-log-and-raise-error-bersaglio` | `20_code/script` | ⭐ **Il cuore.** `script.fn_log_and_raise_error` legge `p_context->'bersaglio'`, ne compone la forma compatta e la fa uscire sulla casella strutturata. **La firma non cambia** (§4.4): i 1.093 punti di sollevamento vivi non si toccano |
 | — | `config/codici_errore.csv` + `messaggi_errore.csv` | `80_data` (CSV) | **+1 codice** `W_BERSAGLIO_MALFORMATO` (classe `AVVISO`, gemello di `W_MESSAGGIO_ARITA`) e **+1 messaggio** (id **982**, il primo libero). ⚠️ Solo append: i mirror `runOnChange` esistenti li ripescano |
 | — | `scripts/sql/guardrail_codice_errore_strutturato.sql` | CI | Il controllo **(G)**, gemello di (A) per `CONSTRAINT` e (F) per `COLUMN`: **un solo mittente** sulla casella nuova. Nasce **subito e con zero violazioni**, per la stessa ragione per cui nacque (F) |
 | — | `db/pgtap/script/test-bersaglio-canale-strutturato.sql` | test | Il canale porta ciò che deve; un bersaglio malformato **non** distrugge l'errore di dominio; la casella resta vuota quando il bersaglio non c'è |
@@ -581,7 +590,7 @@ elenco — e *quanti* sono lo dice già la frase (sul 937 c'è `v_n_bloccanti`).
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| **65** | `update-fn-numera-fattura-bersaglio` | `20_code/vendite` | `vendite.fn_numera_fattura_opz_emessa` costruisce il bersaglio **per ramo** (§4.3): `FATTURA` con l'id del padre quando il padre è **visibile**, **nessun bersaglio** quando non lo è. ⛔ **Il messaggio non si tocca**: è il T-3a, additivo per costruzione |
+| **03** | `update-fn-numera-fattura-bersaglio` | `20_code/vendite` | `vendite.fn_numera_fattura_opz_emessa` costruisce il bersaglio **per ramo** (§4.3): `FATTURA` con l'id del padre quando il padre è **visibile**, **nessun bersaglio** quando non lo è. ⛔ **Il messaggio non si tocca**: è il T-3a, additivo per costruzione |
 | — | `db/pgtap/vendite/test-numera-nota-credito-riferimento-v1.sql` | test | Si estende: il ramo visibile porta il bersaglio, il ramo fail-closed **non** lo porta, e in entrambi il codice e la frase restano quelli di oggi |
 
 ⭐ **Il pilota non chiede nessun seed**: punta a `FATTURA`, che è già a catalogo
@@ -597,7 +606,7 @@ condividere lo stesso canale.
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| **66** | `create-vw-bersagli-non-dichiarati` | `20_code/dbops` | I tipi scritti nei **corpi delle funzioni vive** e assenti da `config.tipi_entita`. Gemella di `dbops.vw_eventi_non_dichiarati` (nata col L4) e di `vw_codici_errore_da_dichiarare` |
+| **04** | `create-vw-bersagli-non-dichiarati` | `20_code/dbops` | I tipi scritti nei **corpi delle funzioni vive** e assenti da `config.tipi_entita`. Gemella di `dbops.vw_eventi_non_dichiarati` (nata col L4) e di `vw_codici_errore_da_dichiarare` |
 | — | `db/pgtap/dbops/test-vw-bersagli-non-dichiarati.sql` | test | La vista è **vuota**: se non lo è, la build è rossa e dice quale tipo manca |
 
 ⭐ **È questo cancello a rendere sicura la Q-D.** Il catalogo cresce una voce per
@@ -640,14 +649,14 @@ il roll-out è **esplicito, uno alla volta**.
 ### Ordine, dipendenze e cosa resta fuori
 
 ```text
-63 ──► 55 (CSV)          la chiave dell'entità, e il seme che la riempie
-64 ──► 65 ──► 66         il canale, il primo che ci scrive, il cancello
+01 ──► 55 (CSV)          la chiave dell'entità, e il seme che la riempie
+02 ──► 03 ──► 04         il canale, il primo che ci scrive, il cancello
 ```
 
-* **64 prima di 65**: il pilota scrive in una casella che dev'esistere;
-* **63 è indipendente** dagli altri tre: non blocca il pilota, che punta a un
+* **02 prima di 03**: il pilota scrive in una casella che dev'esistere;
+* **01 è indipendente** dagli altri tre: non blocca il pilota, che punta a un
   tipo a chiave numerica;
-* **66 dopo 65**, per nascere con qualcosa da misurare — ma non è un vincolo
+* **04 dopo 03**, per nascere con qualcosa da misurare — ma non è un vincolo
   tecnico.
 
 ⛔ **Cosa NON entra in questo piano**, e sono conferme del §5.4: nessuna FK su
@@ -661,7 +670,7 @@ resta appeso a B-1/B-2 e non lo chiude questo brief.
 
 | | Chi | Cosa |
 | --- | --- | --- |
-| **B-1** | BE | portare `target` nell'envelope d'errore, accanto a `code` / `message` / `ui_action` / `fields`. 🔴 **NON è eseguibile finché il DB non apre il canale (§4.4)**: oggi al backend non arriva niente da mettere nell'envelope, perché `p_context` si ferma a `dbops.error_log`. ⭐ Quando il canale ci sarà, il lato BE è **lo stesso lavoro già fatto due volte** — `CONSTRAINT`→`code` (05/08) e `COLUMN`→`fields` (08/08) |
+| **B-1** | BE | ✅ **Ora è eseguibile: il canale c'è** (`20260823-02`, scritto il 2026-08-23). Si legge **`diag.datatype_name`** — lo stesso posto da cui il backend legge già `constraint_name` per il codice e `column_name` per i campi — e si porta nell'envelope accanto a `code` / `message` / `ui_action` / `fields`. ⚠️ **Il contratto vale solo dentro `P0001`**, come per `CONSTRAINT`: fuori di lì quel campo lo riempie PostgreSQL da sé. Forma: `TIPO:id[,TIPO:id]`, al massimo cinque; stringa vuota = nessun bersaglio. ⭐ È **lo stesso lavoro già fatto due volte** — `CONSTRAINT`→`code` (05/08) e `COLUMN`→`fields` (08/08) |
 | **B-2** | FE | il gesto: da `target` a una rotta. ⭐ È la **stessa** tabella di rotte della timeline per entità (§3): si scrive una volta |
 | **B-3** | FE | il degrado di §4.3 — bersaglio non risolvibile → nessun pulsante, messaggio invariato |
 
@@ -715,6 +724,7 @@ presidio **C2** di
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-23 | 🛠️ **SCRITTO IL LOTTO — quattro changeSet (`20260823-01…04`), tre CSV, tre file pgTAP, il controllo (G) del guardrail e la quarta riga della tabella dei canali in `linee-guida-sql`. ⛔ Nulla applicato: l'apply è di Tid.** ⭐ **Le cose verificate PRIMA di scrivere, non dedotte**: che il canale `DATATYPE` sopravviva al giro (`GET STACKED DIAGNOSTICS PG_DATATYPE_NAME`); che la logica di composizione regga su sette casi (due validi, uuid, uno storto, tutti storti, sette, vuoto, chiave assente); che le colonne da ancorare col `%TYPE` abbiano **esattamente** i tipi di adesso (`atttypid::regtype`, che ignora il typmod) — quindi né firma né `RETURNS TABLE` cambiano e non serve nessun `DROP`; e che il guardrail col controllo (G) resti **verde** (girato sul database: unico mittente su tutti e tre i canali). ⚠️ **Due cose scoperte scrivendo, che il piano non aveva**: (1) `fn_log_error_only` scrive via **dblink**, cioè in transazione autonoma — le righe di `error_log` dei test **sopravvivono al ROLLBACK**, e ora è scritto nel file di test invece di essere creduto il contrario; (2) `jsonb_build_object('bersaglio', NULL)` **non** vuol dire «nessun bersaglio»: sarebbe una chiave presente e inutilizzabile, cioè un `W_` su un ramo che funziona — da cui il `CASE` nel pilota. 🔴 **Un richiamo di Tid, ed è la terza volta**: `%TYPE` in firma, `RETURNS TABLE` e `DECLARE`. Il meccanismo ha un nome ed è scritto in memoria — **riprodurre il corpo vivo porta con sé il debito della funzione** in una forma che sembra corretta perché combacia col database. Sanato in entrambe le funzioni, e dove il tipo resta esplicito ora c'è scritto **perché** (un conteggio, un interruttore, il nome di una colonna, una colonna che non esiste). ⏱️ **Chiusa la verifica lasciata in sospeso ieri**: `trg_event_log_gen_tx_id_ins_upd` **è nato** con l'automazione delle 21:00, e `event_log` ha le sue prime 12 righe scritte dalla pipeline vera |
 | 2026-08-22 (sesto giro) | 📋 **Scritto il piano (§6)**: cinque lotti, quattro changeSet numerati (**63-66**), due append ai CSV, un controllo di CI, tre file pgTAP e una tabella da estendere in `linee-guida-sql`. ⭐ **Le tre decisioni che il piano ha dovuto prendere per essere scrivibile**, e stanno tutte nel L1: (1) **il ricco resta nel contesto, il compatto viaggia** — `p_context->'bersaglio'` è l'array del §4.2 e finisce in `error_log`, la casella dell'eccezione porta `TIPO:id`, e li scrive **lo stesso chiamante una volta sola**; (2) **la funzione non legge il catalogo a runtime** — valida solo la forma, il vocabolario lo presidia la CI (L3), perché una query dentro il percorso d'errore è una dipendenza che non si vuole; (3) **un bersaglio malformato non distrugge mai l'errore di dominio** — casella vuota e `W_BERSAGLIO_MALFORMATO` nel log, che è la lezione del 18/08 tradotta. ⚠️ **Il L5 (derivazione automatica dalle chiavi `<tipo>_id`) è retrocesso a proposta**: con la Q-E servirebbe leggere la classe a runtime e con la Q-D varrebbe per tre tipi — ma la ragione vera è che un bersaglio sbagliato è **attivo** (porta l'operatore altrove), mentre un `COLUMN` sbagliato è inerte: non merita la stessa scorciatoia. 🔧 **Allineati i riferimenti superati** dopo l'apply dell'altro cantiere, di qua e di là (§3 di questo brief; §3.1, §3.2, §3.5, §3.8 e §4-bis dell'altro) |
 | 2026-08-22 (quinto giro) | ✅ **Chiuse tutte e cinque le domande del quarto giro, e il brief diventa scrivibile.** ⭐ **Q-A: via A** — il bersaglio esce dal `RAISE` su una **casella strutturata nuova**, terza volta che questa casa fa la stessa mossa (`CONSTRAINT` 05/08, `COLUMN` 08/08), con la composizione in **una sede sola** dentro `fn_log_and_raise_error`. ⭐ **Q-B: la chiave è `bersaglio`** — i 16 punti che usano `target` per il nome di una tabella non si toccano, e nessuna parola resta con due significati. ⭐ **Q-C: la chiave dell'entità la dichiara il catalogo**, sulla convenzione di `config.sorgenti.key_selector`: la regola vive accanto al tipo, non nella testa di chi scrive il frontend. ⭐ **Q-D: il catalogo cresce col roll-out**, una voce per volta insieme al messaggio che la usa — niente voci che promettono una destinazione irraggiungibile, e il presidio **T-4** impedisce di dimenticarsene. ⭐ **Q-E: bersaglio solo sugli errori rimediabili, mai sui `TECNICO`** — su un 500 non c'è gesto, e l'entità resta negli appunti per chi indaga. ⏱️ **Nel frattempo il L4 dell'altro cantiere è stato applicato** (53-60, più 61-62 del suo L2): la colonna del **T-1d** è ora un changeSet nuovo. ❌ **E una segnalazione mia che era sbagliata**: avevo dato per «residuo» la FK `fk_event_log_tipo_entita` senza riga in `dbops.fk_index_policy`. **Non è un residuo, è una decisione scritta** (loro §4, L4): la FK è su `entity_type`, che è **già la prima colonna di `ix_event_log_entity_time`** — coperta per prefisso — e registrarla a `consentito=false` sarebbe **attivamente dannoso**, perché il ramo del `DROP` estrae il nome dal `dll_command` e cancellerebbe un indice non dedicato che serve alla query forense. ⭐ Avevo guardato la tabella e non il brief: la regola «gli indici FK sono opt-in» ha un'eccezione per prefisso, e loro l'avevano già vista |
 | 2026-08-22 (quarto giro) | 🔎 **Rilettura critica contro il cantiere `event_log`**, misurando sul database e sul codice invece che sul testo. ⭐ **Il disegno regge; a non reggere è la sua premessa operativa**, e sono quattro rilievi. 🔴 **(1) Il canale del §4.1 non arriva al frontend**: `p_context` va solo in `error_log`, e i cinque canali strutturati del `RAISE` sono **tutti occupati** (`ERRCODE`, `CONSTRAINT`, `COLUMN`, `DETAIL`, `HINT`) — quindi «serve solo una convenzione» vale per chi diagnostica e **non** per il gesto, che è la ragione del brief. Nasce il §4.4 e con lui **Q-A**; **B-1 non è eseguibile** com'era scritta. 🔴 **(2) La chiave `target` è già in uso**: **16 punti di sollevamento in 6 file** la scrivono come **stringa**, e dentro c'è `schema.tabella` — cioè proprio ciò che il §4.2 vieta. Proposta: `bersaglio` (**Q-B**). 🔴 **(3) Contrapposizione vera con l'altro brief**: i due codici che il suo §4-bis regala come «primi adottanti gratuiti» **non lo sono** — uno porta per definizione un tipo fuori catalogo (farebbe fallire il T-4), l'altro punta a un'entità inesistente, e sono entrambi `TECNICO`. Da lì la regola mancante: **il bersaglio è per gli errori rimediabili, non per i 500** (§5.5, **Q-E**). 🔴 **(4) C'è una scadenza**: i changeSet 53-60 del L4 sono **scritti e non applicati**, quindi ogni colonna che il bersaglio vuole nel catalogo costa **zero oggi** e una migrazione domani — e la misura dice che il seed ha 4 tipi (manca `SOGGETTO`) e che le due letture **non concordano sull'identificativo** (`entity_id` è `bigint`, ma `soggetti.id` è `uuid` e `sorgenti` ha `key_selector = uid`). Nascono **T-1d**, §5.1-bis, **Q-C** e **Q-D**. ⚠️ Corretti inoltre due punti che dicevano il falso: il §5.3 (dal 18/08 la `format()` è protetta: il difetto **degrada**, non alza più `22023` — e un cancello statico esiste già) e il §4.3 sul 937 (il secondo valore **non è sempre un id di fattura**: nel ramo fail-closed è la stringa `riga N` di un documento invisibile). ⭐ **E una scoperta che vale il giro**: **due punti di sollevamento vivi su tre** scrivono già una chiave `<tipo>_id` nel contesto — il bersaglio si può **derivare in una sede sola**, come l'08/08 ha fatto con `parametro`→`COLUMN` (nuovo **T-5b**). ⚠️ **Nota di metodo, richiamata da Tid nello stesso giro**: le misure di questo brief sono sul **codice** (`pg_proc.prosrc`, i file di `20_code`), non sulle righe di `dbops.error_log` — un registro di sviluppo senza recinto fra test ed esercizio, che non misura né frequenza né gravità. Le due misure che erano nate «a conteggio di righe» sono state rifatte sui corpi delle funzioni (§4.1) e ridotte a eco (§4.2). ⛔ Nulla applicato, nessun file di migrazione toccato |

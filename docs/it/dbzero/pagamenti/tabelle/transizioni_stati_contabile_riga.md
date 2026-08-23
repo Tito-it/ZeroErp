@@ -34,5 +34,15 @@
 | pk_transizioni_stati_contabile_riga | `CREATE UNIQUE INDEX pk_transizioni_stati_contabile_riga ON pagamenti.transizioni_stati_contabile_riga USING btree (id)` |
 | uq_transizioni_stati_contabile_riga | `CREATE UNIQUE INDEX uq_transizioni_stati_contabile_riga ON pagamenti.transizioni_stati_contabile_riga USING btree (stato_da_id, stato_a_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_transizioni_stati_contabile_riga_a10_vendite_contabi_232dd2 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_contabile_riga_a10_vendite_contabi_232dd2 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_contabile_riga_a10_vendite_contabi_26ab28 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_da_id', 'id')` |
+| trg_transizioni_stati_contabile_riga_a10_vendite_contabi_26ab28 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_righe_stati', 'attivo', 'stato_da_id', 'id')` |
+| trg_transizioni_stati_contabile_riga_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_transizioni_stati_contabile_riga_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

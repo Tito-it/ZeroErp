@@ -596,6 +596,12 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    solo `event_log` (che da solo darebbe **quattro** codici per lotto). Il
    disegno sta nel Passo 0 perché decide **cosa deve reggere la riga** di
    `event_log`, che è l'unica cosa non rifacibile.
+   ⏱️ **E dal 2026-08-23 non è più solo un disegno**: `script.vw_giornale_entita`
+   è scritta (changeSet `20260822-70`, 12 asserzioni pgTAP verdi) e mostra **767
+   righe da quattro registri** — di cui solo 12 vengono da `event_log`. ⭐ È la
+   conferma di ciò che motivava la vista: il Passo A sul solo diario avrebbe
+   consegnato l'1,6% della storia. Dettagli nel
+   [brief del Passo 0](brief-db-event-log-scope-e-riga-parlante.md) §3.6 e §4.
 6. ✅ **`FORCE` sulla policy** — non è un bivio: parità con la famiglia
    (`ENABLE`, no `FORCE`) più filtro applicativo. Vedi la rettifica nel Passo 0
    (V1). *(era la #5)*

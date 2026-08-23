@@ -85,6 +85,12 @@ databaseChangeLog:
               - column: { name: codice,                     type: STRING }
               - column: { name: etichetta_key,              type: STRING }
               - column: { name: modo_risoluzione_emittente, type: STRING }
+              # ⭐ Aggiunta il 2026-08-23 dal cantiere del bersaglio (changeSet
+              #   20260823-01): con quale chiave si raggiunge l'entita', id | uid.
+              #   Il loader si ESTENDE IN PLACE — e' un mirror runOnChange, e la
+              #   sede dei valori resta il CSV: un secondo loader sarebbe una
+              #   seconda sorgente di verita'.
+              - column: { name: key_selector,               type: STRING }
               - column: { name: obsoleto_dal,               type: DATE }
               - column: { name: note,                       type: STRING }
 

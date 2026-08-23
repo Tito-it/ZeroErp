@@ -16,10 +16,12 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| key_selector | text | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_tipi_entita_key_selector |  |
 | CHECK | chk_tipi_entita_modo |  |
 | PRIMARY KEY | pk_tipi_entita | codice |
 
@@ -27,6 +29,12 @@
 | Nome | Definizione |
 |------|-------------|
 | pk_tipi_entita | `CREATE UNIQUE INDEX pk_tipi_entita ON config.tipi_entita USING btree (codice)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_entita_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_entita_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

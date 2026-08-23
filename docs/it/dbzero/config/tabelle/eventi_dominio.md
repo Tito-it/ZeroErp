@@ -28,5 +28,11 @@
 | ix_eventi_dominio_dominio | `CREATE INDEX ix_eventi_dominio_dominio ON config.eventi_dominio USING btree (dominio)` |
 | pk_eventi_dominio | `CREATE UNIQUE INDEX pk_eventi_dominio ON config.eventi_dominio USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_eventi_dominio_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_eventi_dominio_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

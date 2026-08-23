@@ -15,18 +15,30 @@
 > **rimisurato sul DB e sul codice** lo stesso giorno (§0-ter dell'analisi).
 > Decisioni di Tid del 2026-08-22, tutte in §2.
 >
-> **Stato:** ✅ **L1, L4, L2 e L5 APPLICATI E VERDI (2026-08-22).** Ventun changeSet,
+> **Stato:** ✅ **PIANO DB FINITO — L1, L4, L2, L5 e L3 applicati e verdi**
+> (L1/L4/L2/L5 il 2026-08-22, L3 il **2026-08-23**). Ventidue changeSet,
 > cinque CSV (L5 non ne apre di nuovi: appende ai due dei codici errore),
-> **64 asserzioni pgTAP con zero skip**, baseline `vendite`+`rls` senza
+> **76 asserzioni pgTAP con zero skip**, baseline `vendite`+`rls`+`script` senza
 > regressioni. ⭐ **La parte DB della fondamenta è posata**: §9.4 dichiarava L4
 > come l'ultimo intervento strutturale su questo registro, e da qui in avanti la
 > tabella si tocca solo **aggiungendo righe ai cataloghi**.
 > ⭐ **L5 è la risposta a una richiesta del backend** (§5-bis): i changeSet 61 e 62
 > avevano consegnato le **colonne**, e nessuna funzione le scriveva. Adesso le
 > scrivono — ed è ciò che sblocca **BE-2** e **BE-3b**.
-> 🔵 Resta **L3** (la vista, che si accende col Passo A) e le **consegne BE**
-> del §5 — senza le quali il registro resta a **zero righe**, ed è il rischio 3
-> del §9.3: l'unico che nessuna riga di documentazione può chiudere.
+> ✅ **L3 — la vista `script.vw_giornale_entita` — è applicata** (changeSet
+> **70**, 12 asserzioni verdi come applicazione).
+> ✅ **E la domanda «lato DB è completo?» ha aperto un lotto in più: L6**
+> (changeSet `20260823-06`, applicato il 2026-08-23, baseline `dbops` verde) —
+> *una tabella che rifiuta di essere pulita non fa più morire l'intero giro del
+> cleanup*. ⚠️ Resta
+> aperta, e giustamente, la **retention dei due log gemelli** (§1.3): quella è
+> una decisione di dominio, non un difetto — ma da L6 in poi la decisione di
+> qualcun altro non può più rompere il lavoro di tutti.
+> 🔵 Restano le sole **consegne BE** del §5. ⭐ E il rischio 3 del §9.3 — «il modello
+> non ha ancora incontrato la realtà» — **si è mosso**: `event_log` non è più
+> vuoto (12 righe scritte dalla pipeline vera), e quelle righe confermano
+> insieme che la scrittura funziona e che **D-7 è ancora aperta**. Vedi il
+> registro del 2026-08-23.
 >
 > **Correlati:**
 > [analisi-osservabilita-log.md](analisi-osservabilita-log.md) (il documento madre) ·
@@ -52,10 +64,10 @@
 | ⛔ **Tre premesse dell'analisi cadute** | La RLS **morde già** (l'app non è owner) · il canale batch non è a rischio · B1 (il 67%) è chiuso | §1.4 |
 | ✅ **Decisioni** | **D-1…D-18**, tutte applicate. D-1 e D-9 riviste in coda al rilievo sui lucchetti; **D-9 poi superata dalla D-17**, che assorbe il catalogo dei tipi dall'altro cantiere | §2 · §3.7 |
 | 🧩 **Il disegno** | Derivazione nel trigger (la firma di `fn_log_event` **non cambia**) · policy a parità di famiglia · retention che convive con l'append-only · `vw_giornale_entita` | §3 |
-| 📋 **Il piano** | **L1 · L4 · L2 · L5** ✅ **applicati e verdi** (21 changeSet) → resta **L3**, la vista cross-schema, che si accende col Passo A | §4 · §9.4 |
+| 📋 **Il piano** | ✅ **Tutti e cinque i lotti applicati e verdi** — L1 · L4 · L2 · L5 (22/08) · **L3** (23/08), 22 changeSet: il piano DB è **finito** | §4 · §9.4 |
 | 🔵 **A carico del BE** | 10 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
 | ⭐ **La richiesta del backend** | I changeSet 61 e 62 avevano consegnato le **colonne**, e **nessuna funzione le scriveva**. L5 mette i due scrittori — e corregge una premessa della richiesta che era **falsa**, misurandola | §5-bis |
-| 🧪 **Presidio** | ✅ **64 asserzioni verdi, zero skip** su 7 file — 4 nuovi/riscritti e 3 preesistenti adeguati. Un file previsto **non** è stato scritto: esisteva già | §6 |
+| 🧪 **Presidio** | ✅ **80 asserzioni verdi, zero skip** su 9 file — 5 nuovi/riscritti e 4 preesistenti adeguati. ⭐ E due asserzioni che passavano **dichiarandosi cieche** adesso verificano | §6 |
 | ✅ **Domande aperte** | **Zero.** Le sei del primo giro chiuse il 2026-08-22 | §8 |
 | 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
 | ⭐ **Un solo documento** | Da qui in avanti chi lavora su `event_log` legge **questo** brief: T-1/T-1b di `brief-db-bersaglio-errore` sono **assorbiti** e di là non si gestiscono più | §4-bis |
@@ -122,6 +134,23 @@ solleva **incondizionatamente**. Conseguenze, tutte verificate:
 > `DELETE` sbloccabile solo dalla GUC `zeroerp.maintenance_allow_delete_logs`) e
 > **non hanno `cleanup_at`**. Il giorno in cui qualcuno gliela aggiunge, la regola
 > `*all` prova a purgarle e trova il veto. **Registrato qui, non risolto qui.**
+>
+> ⛔ **E il danno era più largo di «quella tabella non si pulisce»** — rilievo di
+> Tid, 2026-08-23. ⚠️ **Prima misura sbagliata, corretta**: avevo scritto che a
+> ciclare sulle tabelle fosse `dbops.fn_purge_cleanup_expired`; quella funzione
+> lavora su **una tabella sola** e il suo `LOOP` è il batch delle righe. Il ciclo
+> vero è in **`dbops.fn_run_automations_cleanup`**, e lì il difetto c'era davvero:
+> due cicli annidati (tabelle × regole) **senza nessun `EXCEPTION`**. Un solo veto
+> e la funzione **muore lì**: le tabelle che venivano dopo, in quel giro, non
+> venivano pulite affatto — e nessuno lo sapeva, perché non è un errore che
+> qualcuno legge, è una cosa che *smette di succedere*.
+>
+> ✅ **Risolto il 2026-08-23 (lotto L6, changeSet `20260823-06`)**: una tabella
+> che rifiuta viene **saltata**, e il rifiuto lascia una riga `ERROR` in
+> `dbops.audit_log` con lo SQLSTATE. ⭐ Resta vero che la **retention** dei due
+> gemelli non è decisa qui — quella è una scelta di dominio — ma da oggi la
+> decisione di qualcun altro non può più rompere il lavoro di tutti.
+> ⚠️ Il guard è `vendite.trgfn_logs_guard_delete` (non `script.`).
 
 ### 1.4 Tre premesse dell'analisi che non reggono
 
@@ -149,7 +178,7 @@ solleva **incondizionatamente**. Conseguenze, tutte verificate:
 | **D-17** | ⭐ **`entity_type` punta a un catalogo `config.tipi_entita`**, che porta il **modo di risoluzione dell'emittente**. Il vincolo diventa «un tipo del catalogo **che abbia un modo**» *(2026-08-22)* | ⭐ **Assorbe T-1/T-1b di [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md)**, che decideva la stessa cosa sulla stessa colonna. Il catalogo nasce **senza `attivo`** (deprecazione con `obsoleto_dal`), quindi l'automazione non genera nessun lucchetto: l'obiezione (a) della D-9 cade. E portando il modo **nella stessa riga**, configurazione e trigger non possono più dissentire: l'obiezione (b) si risolve **meglio** del `CHECK`, perché aggiungere un tipo diventa **un seed** invece di tre modifiche coordinate. Disegno in §3.7 |
 | **D-18** | ⭐ **Anche `domain` e `event_code` si governano** — con un catalogo `config.eventi_dominio`, ma ⛔ **senza FK**: il presidio è un **cancello di CI**, non un veto a runtime *(2026-08-22)* | Sono le **ultime due colonne di testo che nessuno governa** in questo registro, ed è la forma esatta del difetto che ci ha riportati qui due volte in venti giorni (§10). ⛔ Niente FK perché una scrittura rifiutata per un codice non ancora a catalogo **violerebbe la D-12**: il diario rifiuta solo ciò di cui non sa dire *di chi è*. Il codice ignoto entra, e a protestare è la **build** — è la stessa forma con cui il cantiere dei codici errore ha chiuso il proprio rubinetto. Disegno in §3.8 |
 | **D-10** | **Nessun** `script.trgfn_guard_emittente_scope` su questa tabella | Se l'emittente lo deriva il DB dall'entità, il guard verificherebbe un valore appena calcolato dal DB stesso e direbbe la **stessa cosa** del `WITH CHECK` della policy, che sul canale web è già attivo (§1.4). Scritto qui perché il prossimo non lo aggiunga «per simmetria con DDT» |
-| **D-11** | La vista **`vw_giornale_entita`** si **disegna qui** e si **implementa al Passo A** | È la vista a decidere se `event_log` deve reggere tutto da solo o solo la sua parte — e quella decisione cambia cosa scriviamo nella riga, che è l'unica cosa non rifacibile |
+| **D-11** | La vista **`vw_giornale_entita`** si **disegna qui** e ~~si implementa al Passo A~~ ⏱️ **è stata implementata subito** *(2026-08-23, anticipo deciso da Tid)* | È la vista a decidere se `event_log` deve reggere tutto da solo o solo la sua parte — e quella decisione cambia cosa scriviamo nella riga, che è l'unica cosa non rifacibile. ⭐ L'anticipo regge su una misura: `event_log` ha 12 righe, gli altri tre registri **755** — la vista paga oggi, senza aspettare nessuno |
 | **D-12** | ⭐ **Il diario non si blocca mai per lo stato di un padre.** Rifiuta una riga **solo** quando non riesce a dire *di chi è* | *Rilievo di Tid, 2026-08-22.* Un guard su un diario è autolesionista: il fatto è accaduto, e bloccare la riga distrugge l'unica prova che lo spiegherebbe. E l'anomalia temuta — attività nuova su un emittente disattivato — **è già bloccata a monte**, sui documenti (`ddt`, `ordini`, `preventivi`, `contratti`, `resi` hanno il lucchetto verso `emittenti_fiscali`): il lucchetto sul diario rifiuterebbe **solo righe legittime**, cioè la chiusura dei documenti di un emittente cessato. D-1 e D-9 sono i due modi in cui questa regola si realizza |
 | **D-13** | `cleanup_at` = `event_time + 750 giorni` | *Tid, 2026-08-22.* La data si scrive nella riga e **non è più modificabile**: accorciare dopo vale solo per il nuovo, allungare dopo non salva niente. Sbagliare per eccesso è recuperabile, per difetto è definitivo — e 750 giorni coprono due chiusure annuali. I 30 giorni della regola `*all` coprivano solo il mese in corso |
 | **D-14** | ➕ **`auth_user_id bigint`** accanto a `user_insert`, derivato da `app.current_user_id` | *Tid, 2026-08-22.* `user_insert` è lo **username**: un rename, o un nome riassegnato, e le righe vecchie indicano la persona sbagliata. Il numero interno no. Il nome resta (si legge senza cercare), il numero garantisce chi era davvero. È lato scrittura: adesso o mai. Stessa scelta del gemello `documenti.documenti_generati_eventi` |
@@ -433,7 +462,7 @@ troverebbe un `NULL` e si spegnerebbe da solo. **Il nome del trigger è
 load-bearing**: rinominarlo `..._a10_scope_deriva_ins` lo manderebbe dopo la `s`
 di `sorgenti`, e il difetto non si vedrebbe finché non si disattiva qualcosa.
 
-### 3.6 `script.vw_giornale_entita` — il disegno (si implementa al Passo A)
+### 3.6 `script.vw_giornale_entita` — il disegno ✅ *(implementato il 2026-08-23, changeSet 70: vedi l'allineamento in coda)*
 
 **Il problema che risolve.** Una timeline letta dal solo `event_log` mostra
 **quattro** codici per lotto (`PIPELINE_STARTED`, `STEP_COMPLETED`,
@@ -504,6 +533,42 @@ colonna esiste**.
 **E `error_log` non entra nella vista**: non ha un'entità, solo `tx_id` e un
 `context` jsonb. Ci si arriva **per `tx_id`**, come approfondimento di una riga —
 ed è la ragione concreta per cui D-5 non era rinviabile.
+
+#### ⏱️ Allineamento post-scrittura *(2026-08-23, changeSet 70)*
+
+Il disegno qui sopra regge; **quattro cose sono state decise scrivendo**, e
+stanno qui perché il disegno da solo non le conteneva.
+
+| | Cosa cambia rispetto a §3.6 | Perché |
+| --- | --- | --- |
+| ➕ | **Tre colonne tecniche** oltre ai sette concetti: `registro`, `riga_id`, `riga_key` | I quattro spazi di id **si sovrappongono**: senza la coppia (registro, id) non esiste nessuna chiave stabile per paginare, deduplicare o aprire la riga sorgente. ⭐ È la stessa scelta già fatta da `fn_list_lotto_segnalazioni` (`origine` + `riga_key`); qui la colonna nomina il **registro** e non l'entità, perché l'entità la dice già `entity_type` |
+| 🔄 | `quando` del `task_run` = **`COALESCE(ended_at, started_at)`**, non `started_at` | La riga porta lo stato **finale** del tentativo: col solo `started_at`, un task durato tre minuti e finito male comparirebbe **prima** degli eventi che lo spiegano, già marcato `ERRORE`. Un tentativo ancora aperto ha solo l'avvio, e lì compare |
+| ⭐ | La mappa della gravità **non ha `ELSE`** | Tre vocabolari chiusi da altrettanti `CHECK` entrano in uno. Un `ELSE 'INFO'` seppellirebbe un valore nuovo fra le righe innocue; senza, esce **NULL** e un'asserzione pgTAP lo vede. È la lezione del **L5** applicata *prima* che il danno accada |
+| ⛔ | La vista **non filtra** `disabilitato` né `attivo` | Un diario dice cosa è **successo**, non cosa è ancora aperto. «Cosa è ancora aperto» ha già la sua sede — `fn_list_lotto_segnalazioni`, che il filtro ce l'ha. Un secondo filtro qui sarebbe una seconda risposta alla stessa domanda |
+
+⛔ **E una trappola che vale la pena conoscere prima di toccare la vista**, e che
+la doc auto-generata dichiara da sé: `security_invoker` è una **reloption**, non
+si vede in `pg_get_viewdef`, e **va ri-specificata in ogni
+`CREATE OR REPLACE VIEW`** — altrimenti PostgreSQL la azzera. Chi domani
+aggiungesse un ramo copiando il corpo dalla doc auto-generata otterrebbe una
+vista che gira come **proprietario**: il perimetro sparirebbe **tutto in una
+volta**, senza un errore. ⭐ È il motivo per cui la **prima** asserzione del
+pgTAP non collauda un dato ma una *proprietà dell'oggetto*: è l'unica cosa che
+rende quella dimenticanza rumorosa.
+
+⚠️ **E una cosa che la vista ha reso visibile senza risolverla: manca un
+indice.** L'accesso vero è «la linea del tempo di *questa* entità», e l'`EXPLAIN`
+dice due cose opposte: il filtro sul tipo **pota interi rami** (chiedendo un
+`LOTTO`, il ramo `fatture_log` non viene nemmeno aperto — è il guadagno gratis
+dei letterali), ma su `fatturazione_lotti_log` il filtro `lotto_id` fa un **seq
+scan**: la FK è in `dbops.fk_index_policy` a `consentito = false`, ed è il
+registro **più scritto** dei quattro (504 righe su 767).
+
+⛔ **Non si crea l'indice a mano e non si ribalta la policy qui.** La policy è
+opt-in per disegno, e L3 è la vista — non ancora un consumo. La decisione ha una
+sede (il seed della policy) e un momento: il **Passo A**, quando l'endpoint
+esisterà e si potrà misurare invece di indovinare. ⚠️ Se il Passo A arriva e
+questa riga non è stata riletta, il difetto è qui.
 
 ---
 
@@ -758,11 +823,35 @@ esistenti, senza nessun loader nuovo.
 | 48 | `alter-task-runs-add-correlation-id` | `00_schema/vendite` | `fatturazione_lotti_task_runs.correlation_id uuid` (§1.3 dell'analisi: la colonna «assente») |
 | 49 | `alter-commesse-push-log-run-in-testa` | `00_schema/vendite` | `commesse_push_log`: `correlation_id uuid` + `tx_id uuid` + lo stato `IN_ESECUZIONE` ammesso, perché la riga nasca **in testa** al giro (D-3) |
 
-### L3 — La vista *(si accende col Passo A, non prima)*
+### L3 — La vista — ✅ **APPLICATA il 2026-08-23**
+
+> ⚠️ **Il piano diceva «si accende col Passo A, non prima», e la data è stata
+> anticipata da Tid** *(2026-08-23)*. La ragione regge: è l'unica cosa in coda
+> che **paga senza aspettare nessuno**. `event_log` ha 12 righe, ma gli altri
+> tre registri ne hanno **755** — la vista produce qualcosa di leggibile oggi,
+> non quando il BE si allineerà.
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
-| 50 | `create-vw-giornale-entita` | `20_code/script` | §3.6, `security_invoker` |
+| ~~50~~ **70** | `create-vw-giornale-entita` | `20_code/script` | §3.6 · `security_invoker` · i quattro rami di D-16 · il `JOIN` alla testata come perimetro · la mappa della gravità **senza `ELSE`** |
+| — | `db/pgtap/script/test-vw-giornale-entita.sql` | test | **12 asserzioni**, di cui due canarini (§6) |
+
+⭐ **Cosa la vista mostra il primo giorno**, misurato prima di scriverla:
+
+```text
+event_log                        12 righe      ← il diario, appena ripartito
+fatturazione_lotti_log          504            ← il racconto per fase
+fatturazione_lotti_task_runs    249            ← ogni tentativo di ogni task
+fatture_log                       2
+                                 ───
+                                 767 righe, 4 registri, gravità mai vuota
+```
+
+E la linea del tempo del lotto 6260 si legge davvero — la riga che spiega
+l'ultima corsa è un `TASK_RUN` in `ERROR`
+(`numera_fatture · ERRORE · E_FATTURA_RETTIFICATA_SENZA_NUMERO`), seguita dalle
+righe di fase e dai tre eventi della pipeline. **Nessuno dei quattro registri,
+da solo, la raccontava.**
 
 ---
 
@@ -885,6 +974,73 @@ la prima scrittura. Il presidio nuovo è l'**asserzione 13** del pgTAP, che
 rilegge `pg_get_constraintdef` e confronta i due insiemi: è l'unico posto dove si
 guardano in faccia.
 
+---
+
+### L6 — «una tabella che rifiuta non ferma il giro» — ✅ **APPLICATO il 2026-08-23**
+
+> ⚠️ **Non era in piano, e non è un ripensamento: è un rilievo di chiusura.**
+> Alla domanda «lato DB è completo?» la risposta elencava fra le cose aperte la
+> retention dei due log gemelli. Tid ha visto il punto vero: *«bisogna risolvere
+> almeno il fatto che le tabelle col lucchetto non blocchino l'intero processo,
+> ma siano saltate»*. Ha ragione — e sono due problemi diversi, non uno.
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| **20260823-06** | `update-fn-run-automations-cleanup-resiliente` | `20_code/dbops` | Una tabella che rifiuta viene **saltata**; il rifiuto lascia una riga `ERROR` in `audit_log` con SQLSTATE e contesto (`skip_reason = BLOCKED_BY_TABLE`) |
+| — | `db/pgtap/dbops/test-cleanup-framework.sql` | test | **12 → 16 asserzioni**, col guard **vero** dei log gemelli |
+
+⚠️ **Il numero è `06` e non `03`**: mentre scrivevo, il cantiere del bersaglio
+ha preso 03, 04 e 05. Il file è stato rinumerato **prima** dell'apply — id,
+`logicalFilePath` e nome del file insieme, che è l'unico modo di farlo senza
+lasciare a Liquibase due verità.
+
+**I due problemi, che vanno tenuti separati:**
+
+| | Chi decide | Stato |
+| --- | --- | --- |
+| *Quanto a lungo deve vivere la storia di una fattura* | il **dominio** (ha implicazioni fiscali) | 🟡 aperto, e giusto che lo sia |
+| *Se la scelta di una tabella possa rompere il giro di tutte le altre* | il **framework** | ✅ chiuso da L6 |
+
+⭐ **La cura è il quarto membro di una famiglia che esisteva già.** La funzione
+sapeva già saltare una tabella e dirlo — `EXCLUDED`, `NO_CLEANUP_COLUMN`,
+`MISSING_TTL_DAYS`, `MISSING_BASE_TS_COLUMN`, ognuno con la sua riga `WARN` in
+`audit_log`. Mancava il caso «la tabella si è opposta». Non è un `try/catch`
+appiccicato sopra: è il ramo che quella famiglia non aveva. ⭐ E il canale era
+già pronto: `fn_audit_log_once` ha da sempre `p_sqlstate` e `p_error_context`, e
+qui non li usava nessuno.
+
+**Due scelte dentro il rimedio**, entrambe verificate dal test:
+
+1. **`ERROR` e non `WARN`.** I `WARN` di questa funzione sono salti
+   **dichiarati**: cose che qualcuno ha deciso. Questo non è dichiarato — è una
+   tabella che si è opposta — e deve distinguersi a colpo d'occhio. In
+   `audit_log` le righe `ERROR` oggi sono **zero**: la prima che comparirà vorrà
+   dire qualcosa.
+2. **`query_canceled` si ri-solleva.** Se qualcuno ferma il job, il job si
+   ferma: inghiottire un annullamento trasformerebbe uno stop in un giro che
+   finge di lavorare.
+
+⚠️ **Il costo, detto:** ogni regola gira ora in una **sottotransazione** — è ciò
+che un blocco `EXCEPTION` implica in PL/pgSQL. Su qualche centinaio di tabelle
+non si misura.
+
+🧪 **La controprova, misurata prima e dopo** — perché un test che non sa
+fallire non prova niente:
+
+```text
+senza questa revisione → not ok 13, 15, 16   (e la 14 VERDE: il veto morde davvero)
+con questa revisione   → 16 su 16
+```
+
+⭐ **E il test ha trovato un secondo difetto, suo.** Le due asserzioni
+sull'orchestratore erano **cieche**: `dbops.automation_scope` elenca per lo
+schema `dbops` tre sole tabelle, quindi quella di prova restava fuori e le
+asserzioni cadevano nel ramo `ok(true, 'Scope non include tabella test')`.
+Verdi **per dichiarazione di cecità**, da sempre: l'orchestratore non era
+esercitato mai. Adesso la fixture mette in scope le proprie tabelle — ed è la
+stessa classe di difetto del §6 di questo brief, *un file che passa smettendo di
+verificare*.
+
 ## 4-bis. ⭐ Cosa questo brief ASSORBE — e che non si gestisce più altrove
 
 > **Serve a una cosa sola:** chi lavora su `event_log` legge **questo**
@@ -965,7 +1121,7 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 
 | # | Consegna | Blocca? |
 | --- | --- | --- |
-| **BE-1** | ⛔ **`severity="WARNING"` → `"WARN"`** in `commesse_service.py:221`, **e il test che asserisce il valore rotto**. È un difetto **già vivo** (§1.2) | No — **e va fatto subito, prima di L1** |
+| ~~**BE-1**~~ | ✅ **FATTA** *(verificato il 2026-08-23: `commesse_service.py:243` scrive `severity="WARN"`)*. Era il difetto già vivo del §1.2: `EMITTIBILITA_FALLITA` non era mai scrivibile | — |
 | **BE-2** | `correlation_id` = **un `uuid` nuovo per giro**, generato dal runner e dall'orchestratore push; scritto anche su `task_runs` e `commesse_push_log` (D-7). ✅ **Il DB è pronto dal 2026-08-22**: `fn_start_lotto_task_run` ha il settimo parametro e `fn_start_commessa_push_run` il terzo (L5) | ~~Sì, dopo L2~~ → **sbloccata** |
 | **BE-3** | La riga di `commesse_push_log` nasce **in testa** al giro (`IN_ESECUZIONE`) e si chiude alla fine; `PUSH_STARTED`/`PUSH_COMPLETED` **escono da `event_log`** (D-3). ✅ **Il DB è pronto**: la coppia `fn_start_commessa_push_run` / `fn_close_commessa_push_run` (L5). ⛔ **E `fn_log_commessa_push_run` non esiste più**: `commesse_repository.log_push_run` va riscritto nello stesso giro, non è opzionale | ~~Sì~~ → **sbloccata, e ora è un breaking** |
 | **BE-4** | `EMITTIBILITA_FALLITA` diventa **per commessa** (`entity_type = 'COMMESSA'`, `entity_id = commessa_id`), una riga per commessa fallita invece di un evento aggregato con dentro una lista di id (D-3) | Sì |
@@ -974,6 +1130,7 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 | **BE-6** | ⚠️ **Estrarre il BB unico di `log_event`.** `pipeline_repository.log_event` e `commesse_repository.log_event` sono **copia carbone**: finché restano due, ogni modifica si scrive due volte | No, ma è il momento giusto |
 | **BE-7** | Le scritture di diario passano dal telaio **`_diagnostica_best_effort`** già presente in `pipeline_runner`. ⭐ Dopo L1 una `log_event` **può fallire** (`NOT NULL`, FK, `WITH CHECK`), e un difetto del diario non deve mai diventare il messaggio che legge l'operatore — è **la stessa classe** di BE-1. Vedi **Q-3** | Sì, di fatto |
 | **BE-8** | *(Passo 2, indipendente da tutto)* `request_id` nel formatter di logging — esiste già come contextvar. **E già che si è lì**: `dbops.request_log.emittente_attivo_id` e `tx_id` sono **due colonne morte** (0 valorizzate su 353.758) e il valore dell'emittente ce l'ha già il JWT: o si collegano o si tolgono | No |
+| **BE-11** | *(da §5-ter)* Spostare `CODICE_DIAGNOSTICA_FALLITA` su **`E_DIAGNOSTICA_NON_REGISTRATA`** in `apps/core/services/diagnostica_best_effort.py`, aggiungere la voce in `error_messages_fallback.py` e rigenerare le policy (è lo stesso comando di BE-10). ⚠️ **Finché non arriva, il discriminante resta il `function_name`**, che ogni chiamante passa specifico | No — ma ogni guasto del diario del push continua a presentarsi sotto un codice che dice «PIPELINE» |
 | **BE-10** | ⚠️ *(da L1/L4/L5, trovata misurando)* **Rigenerare `apps/core/services/error_policies_generated.py`** (`manage.py genera_error_policies`) e committarlo. Il file mappa codice → classe, si rigenera **a ogni seed**, e misurato il 2026-08-22 è indietro di **21 codici su 776**: 3 di L5, 3 di L1/L4, 1 del cantiere delle righe rettificate e **14 di `pagamenti`**. ⭐ Non è un debito di questo cantiere — è un debito di **giornata**, e si paga in un comando solo | ⛔ **Rompe la CI**: `test_error_policies_divergenza_db` confronta il file col catalogo **letto dal database**, quindi diventa rosso appena i CSV arrivano in CI — in una PR che può non c'entrare niente |
 
 ---
@@ -1068,12 +1225,57 @@ Nessuna delle due blocca. Si scrivono perché sono state misurate.
 | | Cosa |
 | --- | --- |
 | ⚠️ **Il ruolo batch non può aprire un giro di push** | `zeroerp_batch_fatturazione` ha su `commesse_push_log` il solo grado **`r` (SELECT)**, mentre su `fatturazione_lotti_task_runs` ha `arw`. Oggi non è un difetto — il push gira come `zeroerp_app` — ma il giorno che passasse sul canale batch, l'apertura fallirebbe sul **GRANT**, non sulla RLS. E un `BYPASSRLS` non aiuta: salta le policy, non i permessi. È lo stesso disallineamento del precedente `vendite.note` |
-| ⏱️ **Il `tx_id` non è ancora attaccato** | Riverificato dopo l'apply: né `commesse_push_log` né `event_log` hanno il trigger `..._gen_tx_id_*`. È coerente con §3.5 — lo genera `dbops.fn_run_automations_tx_id`, che gira in `ci_apply`; sul migrate manuale arriva col pgagent la sera. **Finché non c'è, `tx_id` resta NULL su ogni riga**, e la D-5 è viva come colonna ma non come dato |
+| ✅ **Il `tx_id` è attaccato — ⚠️ ma non alle righe già scritte** | ~~Né `commesse_push_log` né `event_log` hanno il trigger~~ → **rimisurato il 2026-08-23: ci sono entrambi** (`trg_event_log_gen_tx_id_ins_upd`, `trg_commesse_push_log_gen_tx_id_ins_upd`), li ha generati il pgagent come previsto, e una riga **nuova** prende il suo `tx_id`. ⛔ **Le 12 righe già scritte restano NULL per sempre**: la tabella è append-only e il backfill non esiste — è il prezzo dichiarato in §1.3, non un difetto da correggere. Chi guarderà *quelle* righe non troverà il ponte verso `error_log`; se un giorno desse fastidio, l'unica via è quella già usata una volta (azzerare) |
 | ⚠️ **La baseline B-7 dei codici errore è indietro, e non la aggiorno io** | Il cancello è **verde** (`accumuli nuovi: 0`), ma `db/baseline-codici-errore-famiglie.tsv` è fermo al cantiere che l'ha creata: rigenerarla oggi farebbe entrare **9 righe di tre cantieri diversi** — le mie due (`E_VENDITE_CHIAMATA_NON_VALIDA` → `PARAMETRO`, `E_COMMESSA_PUSH_RUN_NON_APERTO` → `NOT_FOUND`), quelle di `pagamenti` e quella del pricing. ⭐ Il file dice di sé che aggiornarlo *«è una DECISIONE, non una formalità: ogni riga che cambia dice che un codice ha cambiato significato»*: prendere quella decisione per conto di altri due cantieri sarebbe il modo di svuotarla di senso. Va fatta in **una passata sola e deliberata** |
 
 ---
 
-## 6. Il presidio pgTAP — ✅ **64 asserzioni verdi, zero skip**
+## 5-ter. ⭐ La seconda richiesta del backend — un codice che aveva smesso di dire la verità
+
+> **Cosa chiedeva** *(2026-08-23)*. Il telaio best-effort del BE
+> (`diagnostica_best_effort.py`, la D-15 realizzata) marca i propri guasti con
+> `CODICE_DIAGNOSTICA_FALLITA = "E_PIPELINE_MARK_ERROR"`. Da quando il telaio
+> serve **anche il push commesse**, quel codice mente due volte.
+
+| | Cosa mentiva | |
+| --- | --- | --- |
+| **il nome** | dice `PIPELINE`, ma raccoglie anche i guasti del diario del **push** | chi cercasse per codice i problemi del push **non li troverebbe** |
+| **la classe** | `DATO_ERRATO` → **400** | ma qui non c'è nessun dato sbagliato di nessuna persona: è un guasto interno, e chi ha fatto la richiesta non può farci niente |
+
+✅ **Consegnato: `E_DIAGNOSTICA_NON_REGISTRATA`, classe `TECNICO`** (messaggio
+**987**). ⛔ **Nessun changeSet**: i codici errore si aggiungono **solo** in
+append ai due CSV, e i mirror `runOnChange` li rileggono a ogni migrate.
+
+⭐ **Perché «non registrata» e non «fallita»** — che sarebbe stato il calco del
+nome della costante: *fallita* dice solo che qualcosa non ha funzionato, *non
+registrata* dice **che cosa non è successo**. In un log tecnico serve la
+seconda. Il legame con la costante del BE è scritto nella `note` del codice, così
+chi cerca da una parte trova l'altra.
+
+⭐ **Ed è volutamente UNO SOLO per tutte le sedi.** La tentazione sarebbe un
+codice per punto di scrittura; ma ciò che identifica il guasto è il
+**`function_name`** — che ogni chiamante passa specifico — più il contesto, dove
+la causa vera viaggia nella chiave `mark_error`. Verificato con la chiamata
+esatta del telaio (`log_error_only`, VARIADIC vuoto):
+
+```text
+backend · vendite.commesse_service._push_una_commessa · E_DIAGNOSTICA_NON_REGISTRATA
+   messaggio:  Una scrittura di diagnosi non e' andata a buon fine: il lavoro e' proseguito lo stesso.
+   causa vera: chk_event_log_severity violato        ← context->>'mark_error'
+```
+
+⚠️ **Il messaggio non ha segnaposto, e non è un caso**: il telaio logga senza
+valori, e un `%s` senza qualcosa da metterci dentro è la trappola dell'arità già
+registrata (`W_MESSAGGIO_ARITA`).
+
+⛔ **`E_PIPELINE_MARK_ERROR` NON si ritira adesso.** L'`obsoleto_dal` si mette
+quando il BE avrà spostato la costante: **un codice ritirato che qualcuno
+solleva ancora è peggio di un nome che mente**. È BE-11, e il ritiro è il passo
+DB che segue — non lo precede.
+
+---
+
+## 6. Il presidio pgTAP — ✅ **80 asserzioni verdi, zero skip**
 
 Verificato leggendo il TAP riga per riga, non solo l'esito: un file verde per
 sottrazione — con le asserzioni finite nei rami `skip` — sarebbe indistinguibile
@@ -1088,6 +1290,8 @@ da uno verde davvero se ci si ferma al `Result: PASS`.
 | `db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql` | 8 | **Adeguato**: inseriva `actor`/`source` |
 | `db/pgtap/vendite/test-commesse-push-log-function-v1.sql` | 13 | *(L5)* **Riscritto, non adeguato**: il soggetto è cambiato — prima era «una riga di log si scrive», ora è «un giro si apre e si chiude una volta sola». Era a 7 |
 | `db/pgtap/vendite/test-fatturazione-pipeline-task-runtime.sql` | 18 | *(L5)* **Esteso di una**: il `correlation_id` passato all'apertura arriva sulla riga del tentativo. Era a 17 |
+| `db/pgtap/dbops/test-cleanup-framework.sql` | 16 | *(L6)* **Esteso di quattro** (era 12). ⭐ E le due asserzioni sull'orchestratore erano **cieche**: la tabella di prova restava fuori da `automation_scope` e cadevano nel ramo «ok(true, scope non include tabella test)». Da oggi verificano |
+| `db/pgtap/script/test-vw-giornale-entita.sql` | 12 | *(L3)* **Nuovo.** Due asserzioni non collaudano la vista di oggi: sono **canarini** — la gravità mai vuota e l'asse che resta il catalogo. Si accendono il giorno che un `CHECK` si allarga o che un registro cita un tipo che il catalogo non conosce |
 
 ⭐ **L'asserzione che vale più delle altre dodici è la 13**, e non collauda una
 funzione: rilegge `chk_commesse_push_log_stato` dalla tabella e lo confronta con
@@ -1176,7 +1380,7 @@ adesso, invece di aspettare il terzo giro.
 | --- | --- | --- |
 | **1** | 🔴 ~~`domain` e `event_code` non governati~~ | ✅ **D-18 / L4.** Era il più probabile: stessa forma del difetto che ci ha riportati qui due volte, e `event_code` è l'asse su cui il Passo B raggruppa |
 | **2** | 🔴 ~~La vista nasce come union di sole tabelle `vendite`~~ | ✅ **§3.6 rev.** I registri di eventi del progetto sono **sei**: se la cucitura nascesse locale, a rifarsi sarebbe la vista — cioè la cosa che tutti avrebbero già in mano |
-| **3** | 🟡 **Il modello non ha ancora incontrato la realtà** | ⛔ **Non si chiude a tavolino.** `event_log` ha **zero righe**: dopo il `TRUNCATE` nessuno ha più scritto, perché il BE non è allineato. «`correlation_id` = un uuid per giro» oggi è un disegno; diventa un fatto quando il runner lo genera. Il modo di non tornare indietro è fare **BE-2/BE-3 presto**, non farli perfetti |
+| **3** | 🟡 **Il modello non ha ancora incontrato la realtà** — ⏱️ **mezzo passo fatto, 2026-08-23** | ~~`event_log` ha **zero righe**~~ → **ne ha 12**, scritte dalla pipeline vera. ⭐ **Il percorso di scrittura ha retto**: perimetro derivato, `auth_user_id` valorizzato, `cleanup_at` a 750 giorni. ⛔ **Il significato di un campo no**: le quattro corse condividono **un solo** `correlation_id`, che è il `lock_batch_id` del lotto — la S3 non più dedotta ma **misurata**. Il DB ha fatto la sua parte (61 e 67); resta **BE-2**, e nessuna migrazione può chiuderla. ⏱️ E `tx_id` è NULL su tutte: il trigger lo genera `ci_apply` |
 | **4** | 🟡 `FORCE ROW LEVEL SECURITY` | Se arriva l'ondata, `fn_resolve_emittente_sr_id` va rivista — insieme a una dozzina di funzioni gemelle. Dichiarato nel changeSet: **non sarà una ristrutturazione di questo registro** |
 | **5** | 🟡 Il **Passo B** poggia sulla qualità dei codici errore | Lo split di `E_PARAMETRO_INVALIDO` (126 funzioni, 7 schemi) ha un brief suo. Non blocca il Passo A |
 
@@ -1202,6 +1406,19 @@ Sono verificabili, ed è per questo che stanno scritti:
    un `UNION ALL`; se un giorno entrasse rinegoziando le colonne, il difetto è
    nella forma normalizzata di §3.6.
 
+   > ⏱️ **Secondo controllo, 2026-08-23 — entrambi gli impegni reggono.**
+   > **(1)** L3 non ha toccato `vendite.event_log`: la vista legge, non scrive, e
+   > i due lotti applicati dopo l'impegno (L5 e L3) hanno lavorato su altre
+   > tabelle. La promessa era sulla tabella del giornale, e la tabella del
+   > giornale non è stata toccata.
+   > **(2)** La forma normalizzata **non è stata rinegoziata**: le tre colonne
+   > aggiunte scrivendo (`registro`, `riga_id`, `riga_key`) non sono un concetto
+   > nuovo del giornale — sono la **chiave della riga**, cioè ciò che rende
+   > possibile l'`UNION ALL` stesso. ⚠️ Ma è il primo scostamento dal disegno di
+   > §3.6, ed è scritto lì per intero: il prossimo che lo legge deve poter
+   > distinguere «ho aggiunto una chiave» da «ho aggiunto una colonna di
+   > dominio». La seconda è la cosa che l'impegno vieta.
+
 ⚠️ **E una cosa che non si può promettere**, perché prometterla sarebbe la bugia
 più facile: il contatto col backend. Finché `event_log` non ha righe scritte
 dalla pipeline vera, questo piano è verificato dai pgTAP e da nient'altro.
@@ -1226,6 +1443,128 @@ Il brief nasce da due giri con Tid sullo stesso giorno.
   `NOT NULL` e ha 70 valori distinti) ed esce la vista `vw_giornale_entita`,
   perché il Passo A sul solo `event_log` consegnerebbe quattro righe.
 - **Le undici decisioni** di §2 sono di Tid, prese lo stesso giorno.
+
+### 2026-08-23 (undicesimo giro) · 🟢 L6 — il difetto trovato dalla domanda «è completo?»
+
+⭐ **Il lotto che non doveva esistere, e che è il più importante di oggi.** Alla
+domanda di Tid «lato DB questo brief è completo?» la risposta elencava fra le
+cose aperte la retention dei due log gemelli. Tid ha letto la spiegazione e ha
+visto il punto vero, che io avevo trattato come contorno:
+
+> *«ma questa è la parte brutta: bisogna risolvere almeno il fatto che le
+> tabelle che hanno il lucchetto non blocchino l'intero processo, ma siano
+> saltate».*
+
+Sono **due problemi diversi**, e li avevo impacchettati come uno solo. *Quanto a
+lungo vive la storia di una fattura* è una decisione di dominio e può aspettare.
+*Se la scelta di una tabella possa fermare il giro di tutte le altre* è un
+difetto del framework, e non c'entra niente col dominio. Il secondo si chiude
+oggi (§4, lotto L6): la tabella che rifiuta viene **saltata**, e il rifiuto
+lascia una riga `ERROR` con lo SQLSTATE.
+
+⚠️ **E una mia misura sbagliata, corretta**: avevo scritto che a ciclare sulle
+tabelle fosse `fn_purge_cleanup_expired`. Quella funzione lavora su **una
+tabella sola** — il suo `LOOP` è il batch delle righe. Il ciclo vero è in
+`fn_run_automations_cleanup`, e il difetto lì c'era davvero. La conclusione
+reggeva, la prova no: l'ho rifatta.
+
+⭐ **Tre cose imparate scrivendolo**, e nessuna era nel piano:
+
+1. **La cura era già in casa.** La funzione sapeva già saltare una tabella e
+   dirlo (`EXCLUDED`, `NO_CLEANUP_COLUMN`, `MISSING_TTL_DAYS`…): mancava il
+   caso «si è opposta». E `fn_audit_log_once` aveva **già** i parametri
+   `p_sqlstate` e `p_error_context`, mai usati qui. Il rimedio è stato
+   *aggiungere il quarto membro di una famiglia*, non inventare un meccanismo.
+2. ⛔ **Il test dell'orchestratore era cieco.** Le due asserzioni esistenti
+   cadevano nel ramo «scope non include tabella test» e passavano **dichiarando
+   di non verificare**: su questo database l'orchestratore non era esercitato
+   *mai*. La fixture ora mette in scope le proprie tabelle. È la stessa classe
+   di difetto che il §6 di questo brief nomina da giorni — *un file che passa
+   smettendo di verificare* — trovata in casa d'altri.
+3. ⚠️ **E sono ricascato in una trappola che avevo già in memoria**: il corpo
+   preso dalla doc auto-generata **non ha il `;` dopo `$function$`**, e il primo
+   changeSet non compilava. La memoria c'era; l'ho riletta dopo l'errore invece
+   che prima.
+
+🧪 La controprova è misurata in entrambi i versi: **senza** la rete `not ok 13,
+15, 16` (con la 14 verde — il veto morde davvero), **con** la rete 16 su 16.
+
+### 2026-08-23 (decimo giro) · ✅ L3 — la cucitura, e il modello incontra la realtà
+
+Scritta e **applicata** `script.vw_giornale_entita` (changeSet **70**, applicato
+alle 23:18) col suo pgTAP: **12 asserzioni verdi come applicazione, zero skip**,
+baseline `script` senza regressioni, doc auto-generata rigenerata.
+⭐ **Il piano DB di questo cantiere è finito**: restano solo le consegne BE.
+
+⚠️ Le 12 asserzioni sono state rilette **una per una nel TAP**, e non solo
+attraverso la baseline: quella vede un rosso, non un file che passa *smettendo
+di verificare*. La prima — «la vista è `security_invoker`» — ha senso solo
+girando come applicazione, ed è la precondizione di tutte le altre: senza,
+ognuno vedrebbe i documenti degli altri. Verificato anche sull'oggetto vivo:
+`reloptions = {security_invoker=true}`.
+
+⭐ **La misura che vale più della vista**: `event_log` **non è più vuoto**. Dodici
+righe, scritte dalla pipeline vera sul lotto 6260, e dicono quattro cose insieme:
+
+```text
+emittente derivato dal trigger        ✅  1 emittente su 12 righe, nessun rifiuto
+auth_user_id (D-14)                   ✅  valorizzato, e user_insert dice «tid»
+cleanup_at (D-13)                     ✅  2028-09-10 — i 750 giorni tornano
+tx_id (D-5)                           ⏱️  NULL su tutte: il trigger non è ancora nato
+correlation_id (D-7)                  ⛔  UNO SOLO per QUATTRO corse
+```
+
+⛔ **L'ultima riga è la S3 misurata sul vivo, non più dedotta.** Le quattro corse
+delle 18:49 e 18:50 condividono lo stesso `correlation_id`, che è il
+`lock_batch_id` del lotto: sulla domanda «in che giro» restano
+indistinguibili. Il DB ha fatto la sua parte (changeSet 61 e 67), il runner non
+ancora — è **BE-2**, ed è l'unica delle cinque righe che una migrazione non può
+chiudere.
+
+⭐ **Il rischio 3 del §9.3 quindi si è mosso di mezzo passo, e va letto così**:
+il percorso di scrittura ha incontrato la realtà e ha retto; il *significato* di
+un campo no. Era esattamente la distinzione che quel rischio faceva.
+
+Tre cose decise scrivendo la vista, tutte in §3.6 (allineamento):
+
+1. ⭐ **Tre colonne tecniche in più** (`registro`, `riga_id`, `riga_key`): i
+   quattro registri hanno spazi di id sovrapposti, e senza la coppia non esiste
+   nessuna chiave stabile. Stessa scelta di `fn_list_lotto_segnalazioni`.
+2. 🔄 **`quando` di un tentativo = `ended_at` quando c'è**: col solo
+   `started_at` un task fallito comparirebbe *prima* degli eventi che lo
+   spiegano, già marcato ERRORE.
+3. ⭐ **La mappa della gravità non ha `ELSE`**: un valore fuori vocabolario esce
+   NULL e il canarino canta. È la lezione del L5 applicata *prima* del danno.
+
+⚠️ **E un difetto che la vista ha reso visibile senza risolverlo**: manca
+l'indice su `fatturazione_lotti_log.lotto_id` — la FK è a `consentito = false` in
+`fk_index_policy`, e quel registro è il più scritto dei quattro. ⛔ Non si
+ribalta la policy qui: L3 è la vista, non ancora un consumo. La sede è il seed,
+il momento è il Passo A.
+
+⏱️ **Numerazione**: il file resta `20260822-70` benché scritto il 23 — sta in
+coda al lotto di ieri, e i suoi riferimenti (67-69) sono lì. I numeri 63-66
+restano prenotati dal cantiere del bersaglio.
+
+#### ⏱️ Rimisura di chiusura — «lato DB è completo?» *(2026-08-23)*
+
+Domanda di Tid. Risposta misurata sul database e sul codice, non riletta da qui.
+
+| | Cosa | Esito |
+| --- | --- | --- |
+| ✅ | I 22 changeSet del cantiere | tutti applicati |
+| ✅ | I sei campi del lato scrittura | perimetro derivato · `auth_user_id` · `cleanup_at` a 750 giorni · `entity_id` reale · `tx_id` **ora scritto** · `correlation_id` **scrivibile** (manca chi lo genera: BE-2) |
+| ✅ | I cataloghi e la retention | 4 tipi · 5 codici evento · regola `CLEANUP_AT` id 15 (750 giorni, attiva) · `fk_index_policy` registrata |
+| ✅ | Il presidio | 76 asserzioni verdi, e i quattro percorsi della retention (riga viva, scadenza immutabile, riga scaduta, GUC di manutenzione) sono tutti coperti |
+| ✅ | La spia dei codici evento | `dbops.vw_eventi_non_dichiarati` = **0** — e ⭐ **il cancello lato Python esiste già**: `apps/core/tests/test_event_codes_declared_guardrail.py`. **BE-9 risulta fatta** |
+| ⛔ | **Il BE è rotto adesso su un punto** | `commesse_repository.py:1546` chiama ancora `fn_log_commessa_push_run`, che il changeSet **69** ha tolto: il push commesse **fallisce** finché BE-3b non arriva. È la conseguenza **dichiarata** del breaking, non una sorpresa — ma va saputa oggi, non al primo push |
+
+⭐ **Quindi: lato DB il cantiere non ha più niente da consegnare.** Restano
+**quattro cose aperte, tutte dichiarate e nessuna dimenticata**: l'indice di
+`fatturazione_lotti_log` (al Passo A), la retention dei due log gemelli (§1.3,
+non di questo cantiere), la baseline B-7 (decisione che attraversa tre
+cantieri), e le righe già scritte senza `tx_id` — che append-only rende
+definitive, ed è il prezzo che la D-4 aveva già messo in conto.
 
 ### 2026-08-22 (nono giro) · ✅ L5 — i due scrittori, chiesti dal backend
 
