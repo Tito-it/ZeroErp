@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CON QUALE CHIAVE SI RAGGIUNGE QUESTA ENTITA'
+#   config.tipi_entita.key_selector
+#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md
+#          §6 lotto L1 · passo T-1d · domanda Q-C (chiusa da Tid il 2026-08-22)
+#
+# ── IL PROBLEMA, IN UNA RIGA ────────────────────────────────────────
+#   Il bersaglio di un errore dice due cose — CHE COSA (il tipo) e QUALE
+#   (l'identificativo) — e in questo progetto «quale» non ha una forma sola:
+#
+#     vendite.fatture.id            bigint      il numero progressivo
+#     anagrafiche.soggetti.id       uuid        un codice lungo
+#     vendite.preventivi            uid         si cita per uid, non per id
+#     vendite.offerte_commerciali   uid         idem
+#
+#   `config.sorgenti` questa cosa la dichiara gia', e si chiama `key_selector`
+#   (valori `id` | `uid`). Il catalogo dei tipi finora no: chi legge il
+#   bersaglio doveva indovinare.
+#
+#   ⛔ E indovinare male non e' innocuo. Sul canale COLUMN un valore sbagliato
+#   e' INERTE — il frontend non trova quel campo e non evidenzia niente. Un
+#   BERSAGLIO sbagliato invece e' ATTIVO: porta l'operatore in un posto che non
+#   c'entra. Un pulsante che apre la cosa sbagliata e' peggio di nessun
+#   pulsante.
+#
+# ── ⭐ STESSO NOME DI `config.sorgenti`, DI PROPOSITO ────────────────
+#   Non e' pigrizia lessicale: e' la stessa convenzione, con gli stessi due
+#   valori, e chi cerca l'una deve trovare l'altra. Due nomi diversi per la
+#   stessa nozione sono il modo in cui due cataloghi cominciano a divergere.
+#   ⚠️ I due cataloghi restano pero' SEPARATI e senza FK fra loro, per la
+#   ragione scritta nel 20260822-53: `config.sorgenti` dice «da dove NASCE
+#   questo documento» (lineage e push) e ha la colonna `attivo`; questo dice
+#   «CHE COSA E' questa entita'» e non ce l'ha, apposta.
+#
+# ── ⛔ IL GIORNALE NON E' TOCCATO ───────────────────────────────────
+#   Per `vendite.event_log` l'`entity_id` resta **la PK `id`, sempre** — e la
+#   colonna e' `bigint`, quindi non potrebbe essere altrimenti. `key_selector`
+#   serve a chi PUNTA a un'entita' da fuori: il bersaglio di un errore e, un
+#   domani, le rotte della timeline per entita'. La distinzione era gia' scritta
+#   nella domanda 12 di docs/it/dev/work-in-progress/analisi-osservabilita-log.md
+#   («il key_selector serve al grafo di lineage, non al giornale») ed e' esatta:
+#   qui si aggiunge il terzo lettore, non si cambia il primo.
+#
+# ── ⚠️ IL DEFAULT NASCE E MUORE DENTRO QUESTO CHANGESET ─────────────
+#   `NOT NULL DEFAULT 'id'` serve a riempire le quattro righe che il catalogo
+#   ha gia' (LOTTO, COMMESSA, FATTURA, TASK_RUN: tutte a chiave numerica,
+#   verificato). Subito dopo il default si TOGLIE, cosi' chi semina un tipo
+#   nuovo e' costretto a dichiarare la chiave invece di ereditarne una in
+#   silenzio — che e' esattamente il difetto che questa colonna esiste per
+#   chiudere.
+#
+# Dipendenze: config.tipi_entita (20260822-53), il cui mirror CSV
+#   (20260822-55, runOnChange) viene esteso IN PLACE con la colonna nuova —
+#   ⛔ nessun loader nuovo: la sede dei valori resta il CSV.
+# Verifica: db/pgtap/config/test-tipi-entita-key-selector.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260823-01-alter-config-tipi-entita-key-selector-mctit.yaml
+
+  - changeSet:
+      id: 20260823-01-alter-config-tipi-entita-key-selector
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.tipi_entita.key_selector: con quale chiave si raggiunge l'entita' — id
+        oppure uid, la stessa convenzione (e lo stesso nome) di config.sorgenti. Serve al
+        BERSAGLIO di un errore, che deve dire non solo CHE COSA ma anche QUALE: soggetti
+        e preventivi non si citano col numero progressivo. ⛔ Il giornale non e' toccato:
+        per event_log l'entity_id resta la PK id, sempre. ⚠️ Il DEFAULT 'id' riempie le
+        quattro righe esistenti e viene tolto nello stesso changeSet, cosi' chi semina un
+        tipo nuovo dichiara la chiave invece di ereditarla.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_entita
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: tipi_entita
+                    columnName: key_selector
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) La colonna, col default che riempie le righe gia' a catalogo.
+              ALTER TABLE config.tipi_entita
+                  ADD COLUMN key_selector text NOT NULL DEFAULT 'id';
+
+              -- 2) ⚠️ E il default se ne va SUBITO: un tipo nuovo deve dichiarare
+              --    la propria chiave. Ereditare 'id' in silenzio su un'entita'
+              --    che si cita per uid produce un bersaglio che punta a niente.
+              ALTER TABLE config.tipi_entita
+                  ALTER COLUMN key_selector DROP DEFAULT;
+
+              -- 3) I due valori ammessi sono quelli di config.sorgenti.key_selector.
+              --    ⚠️ Un CHECK e non una FK: sono due parole, non un'anagrafica —
+              --    e una FK verso config.sorgenti rimetterebbe in gioco la sua
+              --    colonna `attivo` (vedi 20260822-53).
+              ALTER TABLE config.tipi_entita
+                  ADD CONSTRAINT chk_tipi_entita_key_selector
+                  CHECK (key_selector IN ('id', 'uid'));
+
+              COMMENT ON COLUMN config.tipi_entita.key_selector IS
+                  'Con quale chiave si raggiunge questa entita'': ''id'' (la PK numerica) '
+                  'oppure ''uid'' (il codice lungo con cui si citano preventivi e offerte). '
+                  '⭐ Stesso nome e stessi valori di config.sorgenti.key_selector, di '
+                  'proposito: e'' la stessa convenzione, e due nomi per la stessa nozione '
+                  'sono il modo in cui due cataloghi divergono. Serve a chi PUNTA '
+                  'all''entita'' da fuori — il bersaglio di un errore, le rotte della '
+                  'timeline — perche'' un pulsante che apre la cosa sbagliata e'' peggio di '
+                  'nessun pulsante. ⛔ Il giornale non la usa: per vendite.event_log '
+                  'l''entity_id e'' la PK id, sempre. ⚠️ Nessun DEFAULT, ed e'' voluto: chi '
+                  'semina un tipo nuovo deve dichiarare la chiave invece di ereditarla.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_entita
+                  DROP CONSTRAINT IF EXISTS chk_tipi_entita_key_selector;
+              ALTER TABLE config.tipi_entita
+                  DROP COLUMN IF EXISTS key_selector;

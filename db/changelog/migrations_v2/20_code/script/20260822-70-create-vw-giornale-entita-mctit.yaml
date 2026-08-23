@@ -1,0 +1,302 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CUCITURA — lotto L3
+#   script.vw_giornale_entita
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.6 · Decisioni D-11 e D-16
+#
+# ── IL PROBLEMA CHE RISOLVE ────────────────────────────────────────
+#   Una linea del tempo letta dal solo `event_log` mostra QUATTRO codici per
+#   lotto (PIPELINE_STARTED, STEP_COMPLETED, PIPELINE_COMPLETED,
+#   PIPELINE_ERROR). Il resto della storia di quel lotto sta altrove — e
+#   misurato oggi su questo database e' la parte grossa:
+#
+#     event_log                        12 righe
+#     fatturazione_lotti_log          504
+#     fatturazione_lotti_task_runs    249
+#     fatture_log                       2
+#
+#   ⭐ La vista non aggiunge un dato: rende leggibile insieme cio' che c'e'
+#   gia' in quattro posti, e che oggi si legge solo sapendo dove guardare.
+#
+# ── ⭐ VIVE IN `script`, E NASCE CROSS-SCHEMA ──────────────────────
+#   La prima stesura la metteva in `vendite`. Sarebbe stato il seme della terza
+#   ristrutturazione: i registri di eventi del progetto sono SEI, non uno —
+#   `vendite.event_log`, `vendite.fatture_sdi_eventi`, `magazzino.eventi_assets`,
+#   `pratiche.giornale`, `documenti.documenti_generati_eventi`, piu' i log
+#   funzionali di vendite — e la domanda «cosa e' successo a QUESTA pratica»
+#   arrivera'. Se la cucitura nascesse locale, a doversi rifare non sarebbe il
+#   registro: sarebbe **la vista**, cioe' la cosa che tutti avranno gia' in mano.
+#
+#   Tre conseguenze, decise qui e non dopo:
+#     1. vive in `script`, la sede delle viste applicative riusabili;
+#     2. l'asse delle entita' e' `config.tipi_entita`, non un elenco locale;
+#     3. la forma normalizzata NON cambia quando arrivano rami nuovi: un
+#        registro che non sa riempire una colonna lascia NULL.
+#
+# ── ⛔ COME SI PROTEGGE, ED E' LA PARTE CHE NON VA TOCCATA ─────────
+#   `security_invoker = true`, e poi due meccanismi diversi:
+#
+#     · **event_log** ha una policy sua sulla colonna del perimetro. E' il
+#       registro POLIMORFO — non ha una testata a cui ancorarsi — ed e'
+#       esattamente il motivo per cui quella colonna esiste (§3.3);
+#     · **gli altri tre** una policy non ce l'hanno, e si ancorano alla testata
+#       protetta con un `JOIN`: `fatturazione_lotti_log` e `task_runs` al lotto,
+#       `fatture_log` alla fattura. ⛔ **INNER e non LEFT**: qui il join E' il
+#       perimetro, e con un LEFT le righe di lotti che non vedo resterebbero
+#       visibili. ⚠️ Dove il perimetro arriva gia' verificato da un parametro —
+#       come in `fn_list_lotto_segnalazioni`, che riceve il lotto — la scelta
+#       opposta e' legittima e serve a non perdere la riga. Qui non c'e'
+#       nessun parametro: la vista si legge com'e'.
+#
+# ── ⛔ CHI RESTA FUORI, E VA SCRITTO ───────────────────────────────
+#   `vendite.attivita_fatturabili_log` NON entra (D-16). Ne' lui ne' il suo
+#   padre hanno un filtro di perimetro, quindi quel ramo mostrerebbe righe di
+#   altri emittenti. Entra quando il padre avra' la sua policy — non prima, e
+#   non «per simmetria». E' scritto nel COMMENT della vista, non solo qui:
+#   fra sei mesi qualcuno lo aggiungera' pensando sia una dimenticanza.
+#
+# ── ⭐ TRE COLONNE PIU' DEI SETTE CONCETTI DI §3.6, E PERCHE' ──────
+#   Il disegno elencava sette CONCETTI (quando · entita' · gravita · cosa ·
+#   tx_id · correlation_id · chi). Qui diventano nove colonne fisiche — «chi»
+#   sono due: il nome e il numero — piu' **tre chiavi tecniche**:
+#
+#     `registro`  da quale dei quattro registri viene la riga
+#     `riga_id`   la PK DENTRO quel registro (i quattro spazi di id si
+#                 sovrappongono: da sola non identifica niente)
+#     `riga_key`  la coppia, nella forma `REGISTRO:id`
+#
+#   ⚠️ Senza, due rami possono produrre righe identiche su (quando, entita',
+#   cosa) e non esiste nessuna chiave stabile per paginare, deduplicare o
+#   aprire la riga sorgente. ⭐ E' la stessa scelta gia' fatta da
+#   `fn_list_lotto_segnalazioni`, che espone `origine` + `riga_key`: li'
+#   `origine` nomina l'ENTITA' (LOTTO/FATTURA), qui `entity_type` lo dice gia',
+#   quindi la colonna nomina il REGISTRO. Parola diversa perche' e' una cosa
+#   diversa.
+#
+# ── ⚠️ LA MAPPA DELLA GRAVITA' NON HA `ELSE`, DI PROPOSITO ─────────
+#   Tre vocabolari chiusi da altrettanti CHECK entrano in uno solo:
+#
+#     fatturazione_lotti_log.status  I | W | C
+#     fatture_log.status             W | C            (una INFO non esiste)
+#     task_runs.task_stato           IN_ESECUZIONE | COMPLETATO | ERRORE | ANNULLATO
+#     event_log.severity             INFO | WARN | ERROR   ← il bersaglio
+#
+#   Un `ELSE 'INFO'` seppellirebbe fra le righe innocue un valore nuovo. Senza
+#   ELSE il valore ignoto esce **NULL**, e un'asserzione pgTAP («gravita mai
+#   vuota») lo vede. ⭐ E' la lezione del lotto L5 applicata prima che il danno
+#   accada: due elenchi che possono dissentire vanno fatti gridare, non
+#   azzittire. Oggi le righe con gravita NULL sono **zero** su 767.
+#
+# ── ⚠️ COSA LA VISTA NON FILTRA ───────────────────────────────────
+#   Ne' le segnalazioni spente (`disabilitato`) ne' i tentativi non attivi.
+#   Un diario dice cosa e' SUCCESSO, non cosa e' ancora aperto — e «cosa e'
+#   ancora aperto» ha gia' la sua sede, `vendite.fn_list_lotto_segnalazioni`,
+#   che quel filtro ce l'ha (`p_solo_attive`). Aggiungerlo qui sarebbe una
+#   seconda risposta alla stessa domanda.
+#
+# ── ⚠️ UN INDICE CHE NON C'E', E NON SI CREA QUI ──────────────────
+#   L'accesso vero e' «la linea del tempo di QUESTA entita'». Verificato con
+#   EXPLAIN: il filtro sul tipo POTA interi rami — chiedendo un LOTTO, il ramo
+#   `fatture_log` non viene nemmeno aperto — ma su `fatturazione_lotti_log` il
+#   filtro `lotto_id` fa un **seq scan**: la FK e' registrata in
+#   `dbops.fk_index_policy` a `consentito = false`, ed e' il registro piu'
+#   scritto dei quattro. ⛔ Non si crea l'indice a mano e non si ribalta la
+#   policy qui: L3 e' la vista, non ancora un consumo. La decisione ha una
+#   sede (il seed della policy) e un momento (il Passo A, quando l'endpoint
+#   esistera' e si potra' misurare invece di indovinare). Registrata nel brief.
+#
+# Dipendenze: le quattro tabelle e le policy delle due testate.
+# Verifica: db/pgtap/script/test-vw-giornale-entita.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-70-create-vw-giornale-entita-mctit.yaml
+
+  - changeSet:
+      id: 20260822-70-create-vw-giornale-entita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.vw_giornale_entita — la cucitura della diagnostica: «cosa e' successo a
+        questa entita'», letta dai quattro registri che ne raccontano un pezzo ciascuno
+        (event_log 12 righe, fatturazione_lotti_log 504, task_runs 249, fatture_log 2).
+        ⭐ Vive in script e non in vendite perche' i registri di eventi del progetto sono
+        SEI: se la cucitura nascesse locale, a rifarsi sarebbe la vista — cioe' la cosa che
+        tutti avrebbero gia' in mano. ⛔ security_invoker + JOIN alla testata protetta: per
+        i tre registri senza policy il join E' il perimetro. attivita_fatturabili_log resta
+        fuori, e il perche' e' scritto nella vista. ⚠️ La mappa della gravita' non ha ELSE:
+        un valore nuovo esce NULL e il pgTAP lo vede.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: event_log
+            - columnExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_task_runs
+                columnName: correlation_id
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*) FROM pg_class
+                   WHERE oid IN ('vendite.fatture'::regclass,
+                                 'vendite.fatturazione_lotti'::regclass)
+                     AND relrowsecurity;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_giornale_entita
+              WITH (security_invoker = true) AS
+
+              -- ══════════════════════════════════════════════════════════════════
+              -- 1) vendite.event_log — il ramo NATIVO, e l'unico che si protegge da se'
+              -- ══════════════════════════════════════════════════════════════════
+              --   Non ha una testata a cui ancorarsi (e' il registro polimorfo), e infatti
+              --   ha una policy sua sulla colonna del perimetro. E' esattamente il motivo
+              --   per cui quella colonna esiste.
+              SELECT format('EVENT_LOG:%s', e.id)      AS riga_key,
+                     'EVENT_LOG'::text                 AS registro,
+                     e.id                              AS riga_id,
+                     e.event_time                      AS quando,
+                     e.entity_type                     AS entity_type,
+                     e.entity_id                       AS entity_id,
+                     e.severity                        AS gravita,
+                     e.event_code                      AS cosa,
+                     e.tx_id                           AS tx_id,
+                     e.correlation_id                  AS correlation_id,
+                     e.auth_user_id                    AS auth_user_id,
+                     e.user_insert                     AS user_insert
+                FROM vendite.event_log e
+
+              UNION ALL
+
+              -- ══════════════════════════════════════════════════════════════════
+              -- 2) vendite.fatturazione_lotti_log — ancorato al LOTTO
+              -- ══════════════════════════════════════════════════════════════════
+              --   ⛔ JOIN e non LEFT JOIN, ed e' una scelta di sicurezza: questa tabella
+              --      NON ha una policy sua, quindi il join alla testata **e'** il perimetro.
+              --      Con un LEFT le righe di lotti che non vedo resterebbero visibili.
+              --      ⚠️ Dove il perimetro arriva gia' verificato da un parametro — come in
+              --      vendite.fn_list_lotto_segnalazioni, che riceve il lotto — la scelta
+              --      opposta e' legittima e serve a non perdere la riga. Qui no: qui non
+              --      c'e' nessun parametro, la vista si legge com'e'.
+              SELECT format('LOTTO_LOG:%s', ll.id),
+                     'LOTTO_LOG'::text,
+                     ll.id,
+                     ll.data_ora,
+                     'LOTTO'::text,
+                     ll.lotto_id,
+                     -- ⚠️ NESSUN `ELSE`, di proposito. `chk_fatturazione_lotti_log_status`
+                     --   ammette I | W | C: se un domani ne arrivasse una quarta, un
+                     --   `ELSE 'INFO'` la seppellirebbe fra le righe innocue. Senza ELSE
+                     --   esce NULL, e il pgTAP (asserzione «gravita mai vuota») lo vede.
+                     --   E' la stessa lezione del lotto L5: due elenchi che possono
+                     --   dissentire vanno fatti gridare, non azzittire.
+                     CASE ll.status
+                          WHEN 'C' THEN 'ERROR'
+                          WHEN 'W' THEN 'WARN'
+                          WHEN 'I' THEN 'INFO'
+                     END,
+                     ll.messaggio,
+                     ll.tx_id,
+                     NULL::uuid,
+                     NULL::bigint,
+                     ll.user_insert
+                FROM vendite.fatturazione_lotti_log ll
+                JOIN vendite.fatturazione_lotti l ON l.id = ll.lotto_id
+
+              UNION ALL
+
+              -- ══════════════════════════════════════════════════════════════════
+              -- 3) vendite.fatturazione_lotti_task_runs — ancorato al LOTTO
+              -- ══════════════════════════════════════════════════════════════════
+              --   ⭐ E' l'unico ramo, oltre a event_log, che porta il `correlation_id`: dal
+              --      changeSet 20260822-67 la funzione che apre il tentativo lo scrive.
+              SELECT format('TASK_RUN:%s', tr.id),
+                     'TASK_RUN'::text,
+                     tr.id,
+                     -- ⭐ `ended_at` quando c'e', `started_at` altrimenti: la riga porta lo
+                     --   stato FINALE del tentativo, quindi il suo posto nella linea del
+                     --   tempo e' il momento in cui quello stato e' stato raggiunto. Con
+                     --   `started_at` un tentativo durato tre minuti e finito male
+                     --   comparirebbe PRIMA degli eventi che lo spiegano, gia' marcato
+                     --   ERRORE. Un tentativo ancora aperto ha solo l'avvio, ed e' giusto
+                     --   che compaia li'.
+                     COALESCE(tr.ended_at, tr.started_at),
+                     'LOTTO'::text,
+                     tr.lotto_id,
+                     -- ANNULLATO e' WARN e non INFO: nessuno annulla un tentativo per caso,
+                     -- ed e' proprio il genere di cosa che si cerca in una linea del tempo.
+                     CASE tr.task_stato
+                          WHEN 'ERRORE'        THEN 'ERROR'
+                          WHEN 'ANNULLATO'     THEN 'WARN'
+                          WHEN 'COMPLETATO'    THEN 'INFO'
+                          WHEN 'IN_ESECUZIONE' THEN 'INFO'
+                     END,
+                     -- ⭐ Il codice errore entra nel `cosa`, il messaggio no: la riga di
+                     --   triage vuole «quale task, in che stato, con che errore»; il testo
+                     --   lungo si legge aprendo la riga sorgente, che `riga_key` indirizza.
+                     concat_ws(' · ', tr.task_code, tr.task_stato, NULLIF(btrim(tr.error_code), '')),
+                     tr.tx_id,
+                     tr.correlation_id,
+                     NULL::bigint,
+                     tr.user_insert
+                FROM vendite.fatturazione_lotti_task_runs tr
+                JOIN vendite.fatturazione_lotti l ON l.id = tr.lotto_id
+
+              UNION ALL
+
+              -- ══════════════════════════════════════════════════════════════════
+              -- 4) vendite.fatture_log — ancorato alla FATTURA
+              -- ══════════════════════════════════════════════════════════════════
+              SELECT format('FATTURA_LOG:%s', fl.id),
+                     'FATTURA_LOG'::text,
+                     fl.id,
+                     fl.data_ora,
+                     'FATTURA'::text,
+                     fl.fattura_id,
+                     -- ⚠️ `chk_fatture_log_status` ammette solo W | C: qui una riga INFO non
+                     --   esiste per costruzione. Il ramo 'I' resta scritto lo stesso — se il
+                     --   vincolo si allargasse, la mappa e' gia' pronta e non serve tornarci.
+                     CASE fl.status
+                          WHEN 'C' THEN 'ERROR'
+                          WHEN 'W' THEN 'WARN'
+                          WHEN 'I' THEN 'INFO'
+                     END,
+                     fl.messaggio,
+                     fl.tx_id,
+                     NULL::uuid,
+                     NULL::bigint,
+                     fl.user_insert
+                FROM vendite.fatture_log fl
+                JOIN vendite.fatture f ON f.id = fl.fattura_id;
+
+              -- ⚠️ Il GRANT serve: dopo un migrate manuale la vista nasce senza permessi, e
+              --   il ciclo che li ridistribuisce gira in ci_apply. A PUBLIC non e' largo: con
+              --   `security_invoker` chi legge deve avere i propri permessi sulle tabelle
+              --   sotto, e li' la RLS decide riga per riga. Chi non puo' leggere event_log
+              --   non lo legge attraverso questa vista.
+              GRANT SELECT ON script.vw_giornale_entita TO PUBLIC;
+
+              COMMENT ON VIEW script.vw_giornale_entita IS
+                  'La CUCITURA della diagnostica: «che cosa e'' successo a questa entita''», letta dai quattro registri che oggi raccontano un pezzo di storia ciascuno — vendite.event_log, fatturazione_lotti_log, fatturazione_lotti_task_runs, fatture_log. ⭐ Vive in script e NON in vendite di proposito: i registri di eventi del progetto sono sei (ci sono anche pratiche.giornale, documenti.documenti_generati_eventi, magazzino.eventi_assets, vendite.fatture_sdi_eventi) e la domanda «cosa e'' successo a questa pratica» arrivera''. Un ramo nuovo entra con un UNION ALL: la forma normalizzata non si rinegozia, e un registro che non sa riempire una colonna lascia NULL. ⭐ security_invoker: il ramo event_log si protegge con la policy sulla propria colonna di perimetro, gli altri tre — che una policy non ce l''hanno — si ancorano alla testata protetta con un JOIN, e quel join E'' il perimetro. ⛔ vendite.attivita_fatturabili_log resta FUORI, e non e'' una dimenticanza: ne'' lui ne'' il suo padre hanno un filtro di perimetro, quindi quel ramo mostrerebbe righe di altri emittenti. Entra quando il padre avra'' la sua policy — non prima, e non per simmetria. ⚠️ La vista NON filtra le segnalazioni spente (disabilitato) ne'' i tentativi non attivi: un diario dice cosa e'' successo, non cosa e'' ancora aperto. Per «cosa e'' ancora aperto» esiste gia'' vendite.fn_list_lotto_segnalazioni, che quel filtro ce l''ha. ⚠️ gravita e'' l''unico posto dove i vocabolari C/W/I e i task_stato si mappano su INFO/WARN/ERROR: se esce NULL, un vincolo si e'' allargato e la mappa e'' rimasta indietro. Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §3.6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS script.vw_giornale_entita;

@@ -160,7 +160,49 @@ diversi, e confonderli è il difetto più facile da non vedere:
 | --- | --- | --- |
 | `p_error_code` | il **backend** (status HTTP, `ui_action`) | registrato a catalogo, con la sua classe |
 | `p_context ->> 'campo'` | il **frontend** (quale campo accendere) | il nome della colonna, mai il valore |
+| `p_context -> 'bersaglio'` | il **frontend** (dove portare l'operatore) | ⭐ **dal 2026-08-23** — array di `{tipo, id}`, **sempre**, anche con un elemento solo |
 | `VARIADIC p_valori` | **l'operatore** (la frase che legge) | ⛔ mai un nome di parametro o di colonna: la cosa che una persona riconosce |
+
+#### Il bersaglio — *«su quale cosa»*, e perché non va nella frase
+
+Un errore che riguarda **una cosa identificabile** la nomina nel contesto, non
+nel testo:
+
+```sql
+PERFORM script.fn_log_and_raise_error(
+    'vendite', 'fn_numera_fattura_opz_emessa', 'E_FATTURA_RETTIFICATA_SENZA_NUMERO',
+    jsonb_build_object('fattura_id', p_fattura_id,
+                       'bersaglio',  jsonb_build_array(
+                           jsonb_build_object('tipo', 'FATTURA', 'id', v_padre_id::text))),
+    NULL::uuid,
+    p_fattura_id::text, v_primo_bloccante);
+```
+
+Da lì esce nel canale `DATATYPE` dell'eccezione — contratto **«`P0001` +
+`DATATYPE` valorizzato = il bersaglio»**, gemello di quelli su `CONSTRAINT` e
+`COLUMN` — e il frontend ci disegna **un gesto**: *«vai al documento»*.
+L'operatore non legge nessun id e non ricopia niente.
+
+| Regola | Perché |
+| --- | --- |
+| **Array sempre**, anche con un elemento | i casi a due bersagli esistono già, e cambiare la forma di una chiave in servizio costa più che nascere larghi |
+| `tipo` è un **codice di `config.tipi_entita`** | è il vocabolario condiviso col giornale degli eventi e con le rotte del frontend: una mappa sola, non due |
+| `id` è la **chiave dichiarata dal catalogo** (`key_selector`: `id` \| `uid`) | soggetti, preventivi e offerte non si citano col numero progressivo |
+| ⛔ **mai il nome di una tabella** | il catalogo dei messaggi serve anche il portale cliente e lo shop: là i nomi delle tabelle sono ricognizione regalata |
+| ⛔ **solo sugli errori rimediabili** | su un `TECNICO` (500) non c'è nessun gesto da offrire: l'entità resta nel contesto, per chi diagnostica |
+| ⛔ **solo dove il lettore può arrivare** | un bersaglio verso una riga che l'operatore non vede è un pulsante in un vicolo cieco: meglio nessun pulsante |
+| Al massimo **cinque** | oltre, non è più un gesto ma un elenco — e *quanti* sono lo dice già la frase |
+
+⚠️ **Il vocabolario lo presidia la CI, non il runtime**:
+`dbops.vw_bersagli_non_dichiarati` fa fallire la build su un tipo non a
+catalogo. Un bersaglio malformato non fa mai fallire l'errore di dominio: si
+perde, e lascia un `W_BERSAGLIO_MALFORMATO` nel log.
+
+⚠️ **La chiave si chiama `bersaglio` e non `target`**: quest'ultima è già in uso
+in 16 punti, dove porta il **nome di una tabella**.
+
+Piano e decisioni:
+[brief-db-bersaglio-errore.md](dev/work-in-progress/brief-db-bersaglio-errore.md).
 
 ⚠️ Il terzo è quello che sfugge, perché **non lo vede nessun cancello**: il codice
 è registrato, la classe c'è, il campo viaggia — e il messaggio è illeggibile lo

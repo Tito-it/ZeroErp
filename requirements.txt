@@ -26,7 +26,7 @@ psycopg==3.3.4
 psycopg-binary==3.3.4
 psycopg2-binary==2.9.12
 Pygments==2.21.0
-pymdown-extensions==11.0.1
+pymdown-extensions==11.0.2
 python-dateutil==2.9.0.post0
 python-discovery==1.5.2
 python-dotenv==1.2.3
@@ -41,4 +41,4 @@ typing_extensions==4.16.0
 urllib3==2.7.0
 virtualenv==21.7.4
 wcmatch==11.0.1
-zensical==0.0.56
+zensical==0.0.57

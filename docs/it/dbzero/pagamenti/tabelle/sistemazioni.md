@@ -59,16 +59,18 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sistemazioni_a10_guard_scope_dest_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_destinazione_id')` |
+| trg_sistemazioni_a10_fatture_fondi_fattura_source_requir_4dd4fb | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'fatture_fondi_fattura_source', 'attivo', 'fondo_source_id', 'id')` |
+| trg_sistemazioni_a10_fatture_fondi_fattura_source_requir_4dd4fb | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'fatture_fondi_fattura_source', 'attivo', 'fondo_source_id', 'id')` |
 | trg_sistemazioni_a10_guard_scope_dest_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_destinazione_id')` |
-| trg_sistemazioni_a10_guard_scope_origine_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_origine_id')` |
+| trg_sistemazioni_a10_guard_scope_dest_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_destinazione_id')` |
 | trg_sistemazioni_a10_guard_scope_origine_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_origine_id')` |
+| trg_sistemazioni_a10_guard_scope_origine_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_origine_id')` |
 | trg_sistemazioni_a15_guard_transizione_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()` |
 | trg_sistemazioni_a15_guard_transizione_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()` |
-| trg_sistemazioni_a20_guard_dati_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_sistemazioni_guard_dati()` |
 | trg_sistemazioni_a20_guard_dati_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_sistemazioni_guard_dati()` |
-| trg_sistemazioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_sistemazioni_a20_guard_dati_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_sistemazioni_guard_dati()` |
 | trg_sistemazioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_sistemazioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_sistemazioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_sistemazioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

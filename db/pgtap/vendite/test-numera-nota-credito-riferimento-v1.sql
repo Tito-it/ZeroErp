@@ -57,6 +57,19 @@
 --    dal testo: e' il contratto di script.fn_log_and_raise_error, e cosi' il
 --    file e' verde anche prima che il mirror CSV di 80_data carichi la riga
 --    del codice nuovo.
+--
+-- ⭐ AGGIUNTO IL 2026-08-23 — i test 6 e 7: il rifiuto porta un BERSAGLIO.
+--   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L2.
+--
+-- ⛔ COSA QUESTO FILE **NON** MISURA, e va detto invece di lasciarlo credere:
+--   il ramo FAIL-CLOSED. Quando la fattura rettificata sta fuori dal perimetro
+--   emittente di chi opera, la guardia blocca lo stesso (LEFT JOIN, «non posso
+--   dimostrare che sia numerata») ma il bersaglio dev'essere VUOTO — a un
+--   documento che non si puo' aprire non si manda nessuno. Qui non e' coperto:
+--   servirebbe una seconda anagrafica emittente e una sessione fuori scope, e
+--   il perimetro non si puo' spostare con un UPDATE perche' la policy lo
+--   rifiuterebbe in scrittura. Il ramo e' presidiato dalla forma del codice
+--   (JOIN interni contro LEFT JOIN, changeSet 20260823-03) e da questa riga.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -65,7 +78,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(5);
+SELECT plan(7);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -115,6 +128,22 @@ BEGIN
   RETURNING id INTO v_r;
 
   RETURN QUERY SELECT v_f, v_r;
+END $$ LANGUAGE plpgsql;
+
+-- ⭐ Il gemello del verbo, e restituisce l'altro canale: il BERSAGLIO.
+--   Due funzioni e non una con due colonne, perche' i test esistenti chiamano
+--   gia' nnc_esito e cambiarle firma vorrebbe dire riscriverli tutti.
+--   ⚠️ `text` esplicito: e' un canale dell'eccezione, non il valore di una
+--   colonna.
+CREATE OR REPLACE FUNCTION pg_temp.nnc_bersaglio(p_fattura_id bigint)
+RETURNS text AS $$
+DECLARE v_bers text;
+BEGIN
+  PERFORM vendite.fn_numera_fattura_opz_emessa(p_fattura_id, false);
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_bers = PG_DATATYPE_NAME;
+  RETURN COALESCE(v_bers, '');
 END $$ LANGUAGE plpgsql;
 
 -- ⭐ L'esito della numerazione come CODICE di dominio (canale CONSTRAINT), o
@@ -214,6 +243,61 @@ SELECT isnt(
   (SELECT esito FROM tmp_esito_3),
   'E_FATTURA_RETTIFICATA_SENZA_NUMERO',
   '5) numerato il padre, la guardia non morde piu'''
+);
+
+-- ============================================================
+-- 6) ⭐ IL BERSAGLIO — il rifiuto dice ANCHE su quale documento.
+--    E' la ragione per cui il 20260823-03 esiste: fin qui il messaggio
+--    nominava un id dentro la frase e l'operatore doveva ricopiarselo; adesso
+--    accanto alla frase viaggia l'indicazione del documento, e il frontend ci
+--    disegna un pulsante.
+--    ⚠️ Il padre e' stato numerato dal test 5: gli si toglie il numero per
+--    tornare alla condizione bloccante. Il verbo, di nuovo, in un'istruzione
+--    separata dall'asserzione.
+-- ============================================================
+UPDATE vendite.fatture
+   SET numero = NULL
+ WHERE id = (SELECT fattura_id FROM tmp_padre);
+
+CREATE TEMP TABLE tmp_bers_1 AS
+SELECT pg_temp.nnc_bersaglio((SELECT fattura_id FROM tmp_nc)) AS bersaglio;
+
+SELECT is(
+  (SELECT bersaglio FROM tmp_bers_1),
+  'FATTURA:' || (SELECT fattura_id FROM tmp_padre)::text,
+  '6) il rifiuto porta il bersaglio: il documento da numerare prima'
+);
+
+-- ============================================================
+-- 7) ⭐ DUE BLOCCANTI, DUE BERSAGLI — ed e' il caso per cui la forma e'
+--    un ARRAY e non un oggetto solo. Una nota puo' rettificare righe di
+--    fatture DIVERSE, e ne basta una senza numero perche' il blocco fiscale
+--    resti incompleto: l'operatore deve poterle raggiungere tutte.
+--    ⚠️ La seconda riga della nota si scrive a mano perche' `nnc_mk_doc` ne
+--    crea una sola: senza, l'asserzione passerebbe senza aver misurato niente.
+-- ============================================================
+CREATE TEMP TABLE tmp_padre2 AS
+SELECT * FROM pg_temp.nnc_mk_doc((SELECT natura_fattura_id FROM tmp_refs_nnc), 7, 25);
+
+INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
+    uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, riga_rettificata_id)
+SELECT (SELECT fattura_id FROM tmp_nc), 2, r.articolo_id, 'Seconda riga pgTAP NC',
+       r.uom_id, -3, 25, r.iva_id, -75, (SELECT riga_id FROM tmp_padre2)
+  FROM tmp_refs_nnc r;
+
+CREATE TEMP TABLE tmp_bers_2 AS
+SELECT pg_temp.nnc_bersaglio((SELECT fattura_id FROM tmp_nc)) AS bersaglio;
+
+-- ⚠️ Si confronta l'INSIEME e non la stringa: l'ordine dentro il canale lo
+--    decide il confronto fra oggetti jsonb, che non e' l'ordine degli id e non
+--    e' una proprieta' su cui valga la pena legare un test.
+SELECT is(
+  (SELECT string_agg(t, ',' ORDER BY t)
+     FROM unnest(string_to_array((SELECT bersaglio FROM tmp_bers_2), ',')) AS t),
+  (SELECT string_agg(t, ',' ORDER BY t)
+     FROM unnest(ARRAY['FATTURA:' || (SELECT fattura_id FROM tmp_padre)::text,
+                       'FATTURA:' || (SELECT fattura_id FROM tmp_padre2)::text]) AS t),
+  '7) due padri senza numero, due bersagli: e'' per questo che la forma e'' un array'
 );
 
 SELECT * FROM finish();
