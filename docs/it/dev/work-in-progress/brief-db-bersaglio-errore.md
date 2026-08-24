@@ -21,14 +21,30 @@
 > **frontend** (B-2/B-3: toast con azioni, ospite globale, **8 destinazioni su
 > 9 tipi**). Il dettaglio è in §7-bis.
 >
-> 🔴 **Resta UNO solo, ed è sbloccato: il `T-3b`** — l'id che esce dalla prosa
-> del 937. Aspettava *«B-1 e B-2 in servizio»* (§5.3-bis) e lo sono: è l'ultima
-> cosa che separa questo cantiere dal proprio scopo — la frase che smette di
-> portare una chiave interna.
-> ➡️ **È del team DB, e il passaggio è scritto: §7-ter.** ⚠️ Non è una
-> sottrazione di `%s`: rileggendo il pilota contro il §4.2 sono emerse due cose
-> che il piano non aveva, e **una è una scelta di modello** — il 937 dichiara
-> due bersagli, il codice ne emette uno.
+> 🎉 **E il `T-3b` È FATTO — applicato e verde il 2026-08-24** (changeSet
+> `20260824-13` + la riga 937 di `messaggi_errore.csv`, nella **stessa
+> passata**). ⭐ **Il cantiere ha raggiunto il proprio scopo**: la frase che
+> l'operatore legge non porta più nessuna chiave interna.
+>
+> ```text
+> prima  «Non si puo' numerare il documento 19563: la fattura che rettifica
+>         non e' ancora numerata (documento 835). Numera prima quella.»
+> dopo   «Non si puo' numerare il documento: rettifica righe di altri documenti
+>         che non risultano ancora numerati. Documenti da numerare prima: 2.»
+>         + canale  FATTURA:19753,FATTURA:19752,FATTURA:19754
+> ```
+>
+> ⭐ **Le due domande del §7-ter sono state decise da Tid** (dettaglio in fondo
+> a quella sezione): **(1)** il bersaglio del 937 ha **due ruoli** — il
+> documento da numerare, **sempre e per primo**, poi i padri bloccanti visibili
+> — che è la forma dichiarata dal §4.2 e mai realizzata dal pilota; **(2)** una
+> **frase sola** per entrambi i rami, con un unico `%s` che porta il
+> **conteggio** dei bloccanti, e la `soluzione` riscritta perché regga anche
+> dove il pulsante non c'è.
+> ⚠️ **La testa dell'array è una garanzia, non un'estetica**: il canale compatto
+> tiene i primi cinque elementi, quindi il documento in testa è ciò che dice
+> *quale* anche quando i padri sono sette. Senza quel primo bersaglio il T-3b
+> non si sarebbe potuto fare. **8/8 pgTAP verdi come applicazione.**
 >
 > ✅ **COLLAUDATO IN-APP il 2026-08-24 (Tid) — su DUE superfici**, lotto
 > `LTF-0005803`: il **toast** porta il pulsante e il click apre la fattura; e
@@ -295,6 +311,18 @@ La forma del valore, invece, non è toccata dal rilievo e resta quella decisa:
 > significherebbe cambiare la forma di una chiave **già in servizio** il giorno
 > che serve il secondo. Il frontend con un elemento disegna un pulsante, con due
 > ne disegna due.
+>
+> 🎉 **E il 2026-08-24 questa frase è diventata vera anche nel codice.** Per due
+> giorni il §4.2 ha dichiarato due bersagli e il pilota ne ha emesso uno: la
+> divergenza l'ha trovata il BE rileggendo il codice contro il brief (§7-ter,
+> Rilievo 1), non un test. Il `T-3b` (`20260824-13`) l'ha chiusa, e la forma
+> definitiva del 937 è quella dichiarata qui.
+>
+> ⭐ **Ne è uscita una regola che questo paragrafo non aveva**, ora nelle
+> linee-guida §5: **in testa va la cosa SU CUI l'errore è successo**, poi quelle
+> da sistemare. Non è ordine estetico — il canale compatto tiene i primi cinque
+> elementi, quindi la testa è ciò che sopravvive al tetto, ed è l'unica cosa che
+> dice *quale* quando l'errore arriva dentro un'elaborazione massiva.
 
 ```sql
 jsonb_build_object(
@@ -422,7 +450,7 @@ derivazione si scrive **una volta**, nel punto in cui si compone la casella.
 | **T-1d** | ✅ *(nuovo, DECISO)* **Il catalogo dichiara la chiave dell'entità** | `00_schema/config` + `80_data` | ⚠️ `event_log.entity_id` è **`bigint`**; ma `anagrafiche.soggetti.id` è un **`uuid`**, e `config.sorgenti` dichiara `key_selector = uid` per `PREVENTIVO` e `OFFERTA_COMMERCIALE`: **le due letture dello stesso catalogo non concordano sull'identificativo**. ➡️ **Decisione di Tid (2026-08-22): lo dice il catalogo** — una colonna in `config.tipi_entita` sulla stessa convenzione di `key_selector`. ⏱️ **Costa un changeSet**: la tabella è stata applicata il 2026-08-22 (§5.1-bis) |
 | **T-2** | La forma `target` nelle linee guida | doc | `docs/it/linee-guida-sql.md` **§5, tabella dei tre canali** — non una sezione nuova: là è già scritto cosa va in `p_error_code`, in `p_context->>'campo'` e nel `VARIADIC`. Il bersaglio è **la quarta riga di quella tabella**, ed è l'unico posto dove chi scrive una guard la cerca |
 | **T-3a** | Il pilota, **parte additiva**: **937** porta il bersaglio | `20_code` | `E_FATTURA_RETTIFICATA_SENZA_NUMERO` — bersaglio tipato **per ramo** (§4.3 rettificato): `FATTURA` quando il padre è visibile, niente quando non lo è. ⚠️ Nessuna modifica al messaggio: è additivo e non può peggiorare nulla |
-| **T-3b** | Il pilota, **parte sottrattiva**: l'id esce dalla prosa | `20_code` + `80_data` | ⛔ **NON prima che B-1 e B-2 siano in servizio** — §5.3-bis. Finché il pulsante non c'è, togliere l'id lascia l'operatore con **meno** di oggi, e la `soluzione` a catalogo dice *«numerare prima il documento indicato»*: senza indicato |
+| **T-3b** | Il pilota, **parte sottrattiva**: l'id esce dalla prosa | `20_code` + `80_data` | ✅ **APPLICATO il 2026-08-24** — `20260824-13` e la riga 937 del CSV, nella stessa passata. La frase perde entrambi gli id e guadagna il **conteggio**; il bersaglio guadagna il **documento da numerare in testa**. ⭐ La condizione del §5.3-bis era «B-1 e B-2 in servizio», ed è stata rispettata: il pulsante esisteva e collaudato **prima** che l'id sparisse. Dettaglio e decisioni: §6 lotto **L7** e §7-ter |
 | **T-4** | Il presidio | pgTAP / CI | un `target` con `tipo` fuori vocabolario fa fallire. ⚠️ **Statico, non sui dati**: si misura sui punti di sollevamento (come il test 5 del catalogo messaggi), non su `error_log` — che mescola test ed esercizio e non prova che un ramo sia mai stato percorso |
 | **T-5** | Roll-out | vari | i messaggi che oggi mettono un id nella prosa, **uno alla volta** |
 | **T-5b** | ⭐ *(nuovo)* La **derivazione** dalle chiavi già scritte | `20_code/script` | Due punti di sollevamento vivi su tre scrivono già `fattura_id`, `commessa_id`, `lotto_id`… nel proprio contesto (§4.1, misura sul codice): `fn_log_and_raise_error` può comporre il bersaglio da lì, in **una sede sola**, senza toccare i punti di sollevamento — è la mossa dell'08/08 su `parametro`→`COLUMN`. ⚠️ **Opt-in per codice, mai globale**: un `soggetto_id` nel contesto non è sempre il soggetto dove mandare l'operatore, e un pulsante che porta nel posto sbagliato è peggio di nessun pulsante (stessa ragione già scritta per `COLUMN`) |
@@ -509,7 +537,20 @@ fattura fra molte, e l'id nella frase è oggi l'unica cosa che dice *quale*.
 ➡️ **Regola per tutto il roll-out, non solo per il pilota:** il bersaglio si
 **aggiunge** quando è pronto il DB (additivo, non peggiora nulla); l'id si
 **toglie** dalla prosa solo dopo che B-1 e B-2 sono in servizio. Sono due passi
-distinti — **T-3a** e **T-3b** — e questo brief non può chiudere il secondo.
+distinti — **T-3a** e **T-3b** — e ~~questo brief non può chiudere il secondo~~.
+
+> ✅ **La sequenza ha retto, e vale la pena registrare che è servita davvero.**
+> Il `T-3a` è del 23/08, B-1 e B-2 del 24/08 mattina, il `T-3b` del 24/08
+> pomeriggio: fra il momento in cui il pulsante è comparso e quello in cui l'id
+> è sparito dalla frase non c'è stato nessun intervallo scoperto.
+> ⭐ **E la trappola che questo paragrafo prevedeva si è manifestata al terzo
+> punto, non ai primi due**: la `soluzione` a catalogo diceva *«Numerare prima
+> il documento indicato»*, e senza id non aveva più referente. È stata riscritta
+> nello stesso changeSet, in una forma che regge **anche quando il pulsante non
+> c'è** — perimetro emittente, permessi, area bloccata (§4.3).
+> ⚠️ Il quarto rischio previsto — *«su un'emissione di lotto l'id nella frase è
+> oggi l'unica cosa che dice quale»* — **non è stato ignorato: è stato risolto**,
+> ed è la ragione del primo bersaglio del §7-ter.
 
 ### 5.4 Cosa NON si fa
 
@@ -569,6 +610,11 @@ vero della fusione.
 > piano è stato scritto. ⚠️ E il numero **06** di oggi è già di un altro
 > cantiere (`fn_run_automations` resiliente): la sequenza è condivisa, e va
 > riletta prima di ogni file — non dedotta dal proprio lotto.
+>
+> ⭐ **E il 2026-08-24 la stessa avvertenza si è ripagata due volte**: il
+> roll-out del L6 ha preso `01…10`, l'altro cantiere `11-12` e `14`, e il
+> **L7** — il `T-3b` — è il **13**. Il numero non si deduce dal proprio lotto
+> nemmeno a poche ore di distanza.
 >
 > ⛔ `runOnChange: false` ovunque in `00_schema` e `20_code`, `validCheckSums`
 > **al plurale**, `logicalFilePath` sempre, **un changeSet per file**. L'unico
@@ -914,6 +960,89 @@ stessa famiglia del pilota.
 ⚠️ Ogni conversione porta con sé, quando serve, **la riga di catalogo del tipo**
 (§5.1 T-1c): due file, e il presidio L3 fa fallire la build se ci si dimentica.
 
+### L7 — Il `T-3b`: l'id esce dalla prosa — 🎉 **APPLICATO E VERDE il 2026-08-24**
+
+È il passo per cui il cantiere esiste, ed è l'unico **sottrattivo**: fin qui si
+era sempre aggiunto. Passaggio, misure e domande sono in **§7-ter**; qui ci
+sono le decisioni e i file.
+
+| # | File | Fase | Cosa |
+| --- | --- | --- | --- |
+| **13** | `update-fn-numera-fattura-t3b` | `20_code/vendite` | `vendite.fn_numera_fattura_opz_emessa` costruisce il bersaglio a **due ruoli** — il documento da numerare **in testa**, poi i padri bloccanti visibili in ordine di id — e passa al `VARIADIC` **un solo valore**, `v_n_bloccanti`. ⚠️ Sparisce il `CASE WHEN v_bersagli IS NULL` del pilota: con il documento in testa l'array non è mai vuoto |
+| — | `config/messaggi_errore.csv`, riga **937** | `80_data` (CSV) | Il `messaggio` passa da **due** segnaposto a **uno** (il conteggio) e la `soluzione` si riscrive. ⛔ **Stessa passata del 13**, mai il CSV per primo (§5.3): il mirror `runOnChange` del changeSet **20260614-08** ripesca il file, non nasce nessun loader |
+| — | `db/pgtap/vendite/test-numera-nota-credito-riferimento-v1.sql` | test | Da 7 a **8 asserzioni**. I test 6 e 7 passano dall'**insieme** alla **stringa esatta** — l'ordine è diventato una proprietà — e il **test 8** è nuovo: la frase non nomina nessuno dei tre id e porta il conteggio |
+| — | `docs/it/linee-guida-sql.md` §5 | doc | L'esempio del bersaglio mostra ora la forma a due ruoli e il conteggio nel `VARIADIC`, e la tabella delle regole guadagna la riga **«in testa la cosa su cui l'errore è successo»** |
+
+#### ⭐ Le due decisioni, e perché non erano dettagli di stesura
+
+**1. Il bersaglio del 937 ha DUE RUOLI.** Il §4.2 lo dichiarava dal primo giro;
+il pilota emetteva il solo padre. ⛔ **È ciò che rende POSSIBILE il T-3b**:
+tolti entrambi gli id dalla frase con un bersaglio solo, dentro un giro di lotto
+— dove l'errore arriva su una fattura fra molte — *quale* non lo direbbe più
+nessuno. Il primo elemento è sempre presente **per costruzione**: se
+`p_fattura_id` non fosse visibile a chi opera, la `SELECT … FOR UPDATE` più in
+alto non l'avrebbe trovato e si sarebbe usciti con `E_FATTURA_NON_TROVATA`.
+
+**2. Una frase sola, col conteggio.** Un `%s` che porta `v_n_bloccanti`, non un
+identificativo: *«Documenti da numerare prima: 2»*. ⭐ Non è un ripiego — è
+esattamente ciò che le linee guida chiedono, dove giustificano il tetto di
+cinque bersagli dicendo *«quanti sono lo dice già la frase»*. Fino a ieri il 937
+era l'unico messaggio col bersaglio che quel conteggio non lo diceva.
+
+⛔ **Perché non due messaggi, uno per ramo.** Sarebbe stato più preciso in teoria
+— nel ramo fail-closed il rimedio è diverso, non «numera» ma «chiedi a chi
+gestisce quel perimetro» — e costava un codice nuovo a catalogo, la sua classe,
+le policy rigenerate lato BE e un secondo ramo di sollevamento. La differenza si
+dice nella `soluzione`, che è il posto dove questa casa scrive cosa fare.
+
+⚠️ **Il padre invisibile entra nel CONTEGGIO ma non fra i pulsanti**, e i due
+tipi di `JOIN` restano opposti come nel pilota: la frase dice *quanti* mancano,
+i pulsanti dicono *dove si può andare*. Sono due domande diverse sulle stesse
+righe.
+
+#### La prova, non la deduzione
+
+```text
+frase   Non si puo' numerare il documento: rettifica righe di altri documenti
+        che non risultano ancora numerati. Documenti da numerare prima: 2.
+canale  FATTURA:19753,FATTURA:19752,FATTURA:19754
+        ^ la nota (19753) NON è l'id più basso: è in testa perché è il soggetto
+```
+
+⭐ **Quel dettaglio è il test 7**, e non è un vezzo: la nota è stata creata fra i
+due padri apposta, così l'asserzione distingue *«primo perché è il soggetto»* da
+*«primo perché è il più piccolo»* — che sarebbe stata una coincidenza.
+
+📌 **Una nota per BE/FE, che non è un blocco.** Su `ErroreRigaInfo` — l'errore
+persistito, letto dalla lista fatture del lotto — la riga **è già** quella
+fattura, quindi il primo pulsante lì è ridondante; sul toast del runner, dove
+nessuno sa quale documento ha rifiutato, è invece l'informazione principale. Se
+desse fastidio si nasconde **a video** il bersaglio che coincide con la riga:
+non si toglie dal database, che non sa su quale superficie l'errore verrà letto.
+
+#### 📋 Il debito documentale che questo passo lascia fuori dal perimetro DB
+
+⚠️ **Quattro punti citano la frase VECCHIA del 937**, e da oggi descrivono un
+messaggio che non esiste più. Nessuno di loro **rompe** — i test lo fabbricano a
+mano, non lo leggono dal catalogo, e infatti restano verdi — ma una finta che
+imita una frase ritirata si legge come documentazione, ed è così che una casa si
+ritrova a credere in un messaggio che nessuno solleva:
+
+| Dove | Cosa c'è scritto |
+| --- | --- |
+| `docs/it/backend/vendite/manual/api_lotto_fatture_list.md` | un payload d'esempio con `errore_messaggio` nella forma vecchia |
+| `backend/apps/vendite/tests/services/test_bersaglio_pipeline.py` | `hint="Numerare prima il documento indicato…"` — la `soluzione` riscritta |
+| `backend/apps/core/tests/services/test_db_error_target.py` | idem, più il `message` a due id |
+| `backend/apps/vendite/tests/services/test_pipeline_step_executor.py` | il messaggio completo nella forma vecchia |
+
+➡️ **È del BE**: il perimetro DB non tocca `backend/`. Costa quattro stringhe, e
+la forma nuova è quella nel riquadro qui sopra.
+
+⚠️ **Un quinto punto NON va toccato**: la riga **R-3** di
+[brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
+cita la frase vecchia raccontando cosa si leggeva sul lotto 6260 il 2026-08-23.
+Lì è **storia**, ed è giusta com'è.
+
 ### Ordine, dipendenze e cosa resta fuori
 
 ```text
@@ -929,8 +1058,13 @@ stessa famiglia del pilota.
 
 ⛔ **Cosa NON entra in questo piano**, e sono conferme del §5.4: nessuna FK su
 niente, `dbops.error_log` non si tocca, l'envelope API è del backend (§7), e i
-756 messaggi **non** si riscrivono — il T-3b, cioè l'id che esce dalla prosa,
-resta appeso a B-1/B-2 e non lo chiude questo brief.
+756 messaggi **non** si riscrivono — ~~il T-3b, cioè l'id che esce dalla prosa,
+resta appeso a B-1/B-2 e non lo chiude questo brief~~.
+
+> ✅ **SUPERATA il 2026-08-24**: il T-3b è il lotto **L7** qui sopra, ed è
+> applicato. L'ordine è diventato `02 ──► 03 ──► 13`, cioè il canale, il primo
+> che ci scrive, e la sottrazione — con B-1/B-2 in mezzo, che è il vincolo di
+> sequenza del §5.3-bis e non una dipendenza di changeSet.
 
 ---
 
@@ -1479,6 +1613,46 @@ l'operatore con **meno di oggi**, e non c'è nessun pulsante a compensare.
 pulsanti senza modifiche — è il motivo per cui la decisione del 2026-08-22 volle
 l'array anche con un elemento solo.
 
+### ✅ Le risposte — decise da Tid il 2026-08-24, e già applicate
+
+| # | Decisione | Conseguenza sul codice |
+| --- | --- | --- |
+| **1** | ✅ **Due ruoli.** Il bersaglio del 937 porta il **documento da numerare** — sempre, e **in testa** — poi i **padri bloccanti visibili**, in ordine di id. È la forma che il §4.2 dichiarava e che il pilota non aveva | La `SELECT` del bersaglio compone `jsonb_build_array(<il documento>) \|\| <i padri>`. Sparisce il `CASE WHEN v_bersagli IS NULL`: l'array non è mai vuoto |
+| **2** | ✅ **Una frase sola per entrambi i rami, col conteggio.** Un `%s`, e ci va `v_n_bloccanti`. Nel ramo fail-closed la frase è la stessa; il pulsante del padre non compare, ma resta quello del proprio documento | Il `VARIADIC` passa **un solo valore**. La riga 937 del CSV passa da due segnaposto a uno, e la `soluzione` è riscritta |
+
+⭐ **Perché la prima non era una scelta di resa.** Il BE l'aveva vista giusta:
+con un bersaglio solo il `T-3b` **non si poteva fare**. Il primo elemento è ciò
+che risponde al Rilievo 1, ed è sempre disponibile per costruzione — se
+`p_fattura_id` non fosse visibile a chi opera, la funzione sarebbe già uscita
+con `E_FATTURA_NON_TROVATA` molto prima della guardia.
+
+⭐ **E l'ordine è una garanzia.** Il canale compatto tiene i **primi cinque**
+elementi per ordinalità: in testa, il documento sopravvive al tetto anche su una
+nota che rettifica righe di sette fatture diverse. In coda sarebbe stato il
+primo a cadere, proprio nel caso in cui serve di più. La regola è ora nelle
+linee-guida §5, perché non riguarda solo questo messaggio.
+
+⛔ **Perché non due messaggi** (l'altra strada della domanda 2): nel ramo
+fail-closed il rimedio è davvero diverso — non «numera», ma «chiedi a chi
+gestisce quel perimetro» — ma un codice nuovo costa la sua classe, le policy
+rigenerate lato BE e un secondo ramo di sollevamento. Quella differenza si dice
+nella `soluzione`, ed è dove questa casa scrive cosa fare.
+
+✅ **I tre vincoli del BE sono stati rispettati alla lettera**: catalogo e
+chiamante nella **stessa passata** (applicati insieme alle 13:28 del
+2026-08-24); nessun bersaglio nuovo altrove; nessun cambio all'envelope, che
+regge già due elementi senza una riga di modifica. E la `soluzione` è stata
+riscritta perché regga **anche quando il pulsante non c'è**.
+
+📋 **Cosa il DB restituisce al BE/FE**, e non è una richiesta: su
+`ErroreRigaInfo` il primo bersaglio coincide con la riga da cui si sta leggendo
+l'errore, quindi lì il pulsante è ridondante (sul toast del runner è invece
+l'informazione principale). Se dà fastidio si nasconde a video il bersaglio che
+coincide con la riga — dal database non si toglie, perché il database non sa su
+quale superficie l'errore verrà letto.
+
+➡️ **Il piano, i file e la prova**: §6 lotto **L7**.
+
 ---
 
 ## 8. Domande
@@ -1522,6 +1696,7 @@ l'array anche con un elemento solo.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-24 (T-3b eseguito) | 🎉 **IL `T-3b` È FATTO, E IL CANTIERE HA RAGGIUNTO IL PROPRIO SCOPO**: la frase del 937 non porta più nessuna chiave interna. Applicato alle 13:28 — changeSet `20260824-13` e la riga 937 di `messaggi_errore.csv` **nella stessa passata**, come il §5.3 pretende. ⭐ **Le due domande del §7-ter, decise da Tid.** *(1)* Il bersaglio ha **due ruoli**: il documento da numerare **in testa**, poi i padri bloccanti visibili in ordine di id. ⛔ **Non era una scelta di resa: era ciò che rendeva possibile il passo.** Con un bersaglio solo, tolti gli id dalla frase, dentro un giro di lotto *quale* fattura ha rifiutato non lo direbbe più nessuno — il Rilievo 1 del BE. Il primo elemento c'è sempre **per costruzione**: se il documento non fosse visibile a chi opera, la funzione sarebbe uscita con `E_FATTURA_NON_TROVATA` molto prima della guardia. *(2)* **Una frase sola** per entrambi i rami, con un `%s` che porta il **conteggio** — non un identificativo — e la `soluzione` riscritta perché regga **anche dove il pulsante non c'è**. ⭐ **E ne è uscita una regola generale**, ora nelle linee-guida §5: *in testa al bersaglio va la cosa **su cui** l'errore è successo*. Non è estetica — il canale compatto tiene i primi cinque elementi, quindi la testa è ciò che sopravvive al tetto, e dentro un'elaborazione massiva è l'unica cosa che dice *quale*. ✅ **Verde**: 8/8 sul pilota come applicazione (da 7, il test 8 è nuovo; i test 6 e 7 sono passati dall'insieme alla **stringa esatta**, perché l'ordine è diventato una proprietà), catalogo messaggi 6/6, bersagli-non-dichiarati 4/4, guardrail (G) muto, e **nessuna regressione su 222 file di `vendite`**. ⭐ **La prova, non la deduzione**: la frase è *«…Documenti da numerare prima: 2»* e il canale `FATTURA:19753,FATTURA:19752,FATTURA:19754` — dove `19753` è la nota, che **non è l'id più basso**: è in testa perché è il soggetto, ed è esattamente ciò che il test 7 distingue da una coincidenza. 📋 Restituito a BE/FE un rilievo che non blocca: su `ErroreRigaInfo` il primo bersaglio coincide con la riga, quindi lì il pulsante è ridondante (sul toast del runner è invece l'informazione principale) — si nasconde a video, non si toglie dal database |
 | 2026-08-24 (passaggio T-3b) | 📋 **Scritto il passaggio del `T-3b` al team DB (§7-ter)** — l'ultimo passo del cantiere, e da oggi sbloccato: B-1 e B-2 sono in servizio e collaudati su due superfici. 🔴 **E non è scrivibile com'era previsto.** Rileggendo il pilota contro il §4.2 sono emerse due cose che il piano non aveva. **(1)** Il messaggio ha due `%s` — il documento DA numerare e quello che BLOCCA — ma il bersaglio ne copre **uno solo**, il padre: togliere entrambi gli id lascia scoperto il primo, e dentro un giro di lotto **quale** non lo direbbe più né la prosa né il pulsante. È il rischio che il §5.3-bis aveva previsto, e la risposta doveva essere il bersaglio. ⭐ **Ne esce una divergenza fra questo brief e il codice**: il §4.2 dichiara che il 937 ha **due** bersagli — ed è la ragione per cui la forma è un array — mentre il pilota ne emette uno. Non è un difetto di ieri: il pilota è nato così e nessuno l'aveva riletto contro quella frase. **(2)** Nel ramo **fail-closed** il secondo valore non è nemmeno un id (`'riga N'`) e il bersaglio è assente per scelta (§4.3): lì togliere l'id lascerebbe l'operatore con **meno di oggi**, senza nessun pulsante a compensare. ➡️ Le due domande sono poste **come domande** — la prima è una scelta di modello, non di stesura. ⛔ Restano invece non negoziabili i vincoli del §5.3 (catalogo e chiamanti nello **stesso** changeSet, mai il CSV per primo; il test 5 li prende in CI solo se viaggiano insieme) e la revisione della `soluzione` a catalogo, che oggi dice «il documento **indicato**» e senza id non ha più referente. ⭐ Il frontend è già pronto alla risposta 1: con due bersagli disegna due pulsanti senza modifiche — è il motivo per cui l'array fu voluto anche con un elemento solo |
 | 2026-08-24 (segnalazioni) | ✅ **Il bersaglio è anche sulla scheda Segnalazioni del lotto, e collaudato in-app**: dal messaggio il documento è linkato e si apre. ⭐ È l'errore **persistito** — il lettore che il §1 chiama «l'operatore cinque minuti dopo»: il toast serve chi c'era, questa scheda chi non c'era. **DB** (loro): `fn_list_lotto_segnalazioni` ritorna `target jsonb`. **BE** (mio): la colonna in coda alla SELECT e nella riga, più il tipo. ⚠️ **E la loro nota era giusta dove io stavo per «correggerla»**: la firma della funzione mette `target` in 16ª posizione, ma il repository **non fa `SELECT *`** — nomina le colonne e non prende `id` — quindi lì è davvero `row[14]`. Due frame diversi, entrambi veri; l'unico modo di saperlo era leggere il repository invece della firma. ⚠️ **Due test sulla mappatura POSIZIONALE**, perché è il difetto che sarebbe silenzioso: un off-by-one metterebbe `fuori_job_count` dentro `target` — un numero al posto di un array, cioè **nessun pulsante senza nessun errore**. Uno dei due presidia anche che `target ≠ fattura_id`. 🔴 **Accolto il loro rilievo su `error_code`**: `PipelineErrorLogger` scriveva `code`, ora scrive `error_code`. ⭐ Ed era una lezione **già pagata una volta** — `marca_fattura_in_errore` ha lo stesso identico commento dal giorno in cui il difetto emerse su `fatture_log`, e non era stata applicata all'altro scrittore. Verificato prima di rinominare: nessun lettore di `meta->>'code'` oltre al loro COALESCE, nessuna vista né Python legge `error_log.context->>'code'`. Le 17 righe storiche restano leggibili, nessun backfill. 🆕 **Estratto `core/components/BersaglioAzioni.vue`** alla 2ª copia (regola del 2, dichiarato a Tid): la resa dei pulsanti, usata da `ErroreRigaInfo` e dalla cella del messaggio. ⛔ Il **toast non passa di lì** — riceve azioni già composte perché vive nel template PrimeVue col suo `closeCallback`, e condividerlo porterebbe i18n e store dentro un toast; il pezzo condiviso vero è `azioniDaBersagli`. ⛔ E la **normalizzazione la fa il componente**, non il chiamante: è il bug già commesso una volta (payload inglese, resolver che legge `tipo` → nessun pulsante, in silenzio). ✅ 3.927 test verdi, E2E compresa |
 | 2026-08-24 (collaudo in-app) | ✅ **PROVATO SULL'APPLICAZIONE VERA da Tid — sul pilota.** Lotto `LTF-0005803` (6260), «Rendi definitive» sulla fattura **19563**: il toast porta **«Apri Fattura 835»** e il click **apre il drawer della fattura**. Il bersaglio composto dal database è stato misurato in parallelo (`[{"tipo":"FATTURA","id":"835"}]`), non dedotto dal video. ⭐ **Ed è la strada DIFFICILE**: quell'endpoint risponde **200** col fallimento dentro il payload, quindi il canale dell'envelope non passa di lì — il pulsante esiste solo perché il bersaglio attraversa `_run_per_fattura_task` (il punto di traduzione 4) e il blob `errore` del runner (**B6**), cioè i due punti trovati e sanati in giornata. Un percorso felice non li tocca. ⛔ **E il collaudo ha prodotto un rilievo di Tid che vale oltre il cantiere**: *gli errori che portano un bersaglio sono, per costruzione, quelli che l'interfaccia cerca di impedire* — la classe è `CONFLITTO_STATO`, ed è lo stesso stato su cui il frontend spegne il pulsante (misurato: `can_genera_ordine` sul preventivo, livelli `PRENDIBILI` sulla coda flussi). Dal percorso felice **non ci si arriva**: restano i casi in cui il vincolo sta su un'ALTRA entità e quelli di **stato stantio**, che è poi il modo vero in cui scattano in esercizio. §7-bis.8. ⚠️ **Non provate** le altre due superfici (envelope su chiamata fallita, errore persistito di un giro asincrono) né gli altri sette tipi: sono strade più semplici e passano dallo stesso resolver, ma non sono state esercitate. ⚠️ E prima del collaudo è servito un `kill -HUP` su gunicorn: girava senza autoreload da prima del codice |
