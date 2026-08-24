@@ -1,0 +1,346 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA LISTA DEI TASK SI RESTRINGE A CIO' CHE CONTA
+#   vendite.fn_list_lotto_task_runs
+#   Richiesta del BACKEND, 2026-08-24 — senza brief: la richiesta era chiara e
+#   l'analisi sta qui, dove vive la funzione.
+#   ⚠️ Il limite dell'ancora rimanda alla Q-7 di
+#   docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §8
+#
+# ── IL PROBLEMA, MISURATO ───────────────────────────────────────────
+#   Lotto 6260, 90 righe a video: 80 ANNULLATO, 8 COMPLETATO, 2 ERRORE. Le
+#   annullate sono i residui delle passate precedenti — ogni ripresa annulla i
+#   task rimasti aperti e li lascia in elenco. Le righe che servono sono due su
+#   novanta, e stanno in mezzo.
+#
+#   ⛔ E il taglio non si puo' fare nel frontend: la lista e' paginata lato
+#   server, quindi filtrerebbe solo la pagina visibile.
+#
+# ── COSA ARRIVA ─────────────────────────────────────────────────────
+#   · `p_task_stato text[]`      — ERRORE / ANNULLATO / COMPLETATO, in ARRAY
+#   · `p_solo_giro_corrente`     — la finestra dell'ultima corsa
+#   · `giro_corrente` (colonna)  — perche' la riga si spieghi da se'
+#   · `esclusi_count` (colonna)  — quante righe i filtri hanno tolto
+#
+#   ⭐ **Il conteggio non e' un di piu'**, ed e' il backend ad averlo chiesto
+#   per primo: senza, una lista filtrata e una lista vuota si leggono uguali.
+#
+#   ⚠️ Si chiama `esclusi_count` e non «fuori_giro_count» — che sarebbe stato
+#   il gemello letterale delle segnalazioni — perche' qui i filtri sono DUE:
+#   gli esclusi sono quelli che *qualunque* filtro ha tolto. Un nome che parla
+#   del giro avrebbe costretto a inventarne un secondo il giorno dopo.
+#
+# ── ⭐ L'ANCORA E' LA STESSA DELLE SEGNALAZIONI, E NON E' PIGRIZIA ──
+#   `fn_list_lotto_segnalazioni` definisce «giro corrente» come *«tutto cio'
+#   che e' successo dall'ultimo PIPELINE_STARTED in poi»*. Qui si usa la stessa,
+#   letta dallo stesso posto.
+#
+#   Le due liste stanno **nello stesso drawer**: se dicessero «giro» in due modi
+#   diversi, l'operatore vedrebbe due elenchi che non tornano — e sarebbe la
+#   divergenza piu' difficile da attribuire alla causa giusta, perche' ognuna
+#   delle due sembra corretta da sola.
+#
+# ── ⛔ CHE COSA L'ANCORA NON FA, E VA SAPUTO PRIMA DI FIDARSENE ─────
+#   `run_lotto_pipeline_until_done` incatena piu' passate in **un solo giro
+#   dell'operatore**, e ognuna scrive il proprio PIPELINE_STARTED. L'ancora e'
+#   l'ULTIMA: su una catena il filtro mostra **l'ultima passata, non tutto il
+#   click**.
+#
+#   Misurato sul lotto 6260: il click delle 11:54 ha prodotto **10 righe su
+#   tre fili**, e il filtro ne mostrerebbe **1**.
+#
+#   ⭐ E' esattamente la domanda **Q-7** del cantiere `event_log` — *«il filo
+#   identifica la passata o l'azione dell'operatore?»* — che al 2026-08-24
+#   risulta **aperta**. Il giorno che si chiude, questa ancora e quella delle
+#   segnalazioni cambiano **insieme**, in due posti soli.
+#
+#   ⚠️ Finche' resta cosi', `esclusi_count` non e' una comodita': e' cio' che
+#   dice all'operatore che sta guardando una fetta.
+#
+# ── ⚠️ NESSUN DEFAULT CHE NASCONDE RIGHE ────────────────────────────
+#   `p_task_stato` nasce a NULL (tutto) e `p_solo_giro_corrente` a false: la
+#   funzione si comporta **esattamente come prima** per chi non chiede niente.
+#   Escludere gli ANNULLATO di default avrebbe risolto il caso 6260 in una
+#   riga — e avrebbe cambiato in silenzio cio' che vede chi chiama oggi. Il
+#   default della LISTA e' una decisione della UI, non della funzione che
+#   glielo permette.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────
+#   · ⛔ **DROP + CREATE, obbligatorio due volte**: il `RETURNS TABLE` cambia
+#     (PostgreSQL non lo altera con un CREATE OR REPLACE) e i parametri nuovi
+#     creerebbero un **overload** che, coi DEFAULT, renderebbe ambigua ogni
+#     chiamata. Il DROP nomina la firma a **otto** parametri.
+#   · ⭐ %TYPE in FIRMA, RETURNS TABLE e DECLARE. ⚠️ Con **un'eccezione
+#     misurata**: `p_stato_doc_fiscale_id` resta `bigint` e NON si ancora —
+#     la colonna e' `integer`, e ancorarlo cambierebbe il tipo della firma,
+#     cioe' l'identita' della funzione. E' il caso in cui il %TYPE non si
+#     mette, e si scrive perche'.
+#   · I due parametri nuovi vanno **in coda**: le chiamate posizionali
+#     esistenti continuano a valere.
+#   · La whitelist dell'ordinamento ora qualifica `x.` invece di `r.` (la
+#     query ha una CTE): i nomi ammessi non cambiano, e restano quelli dei
+#     `campo_sorgente` del seed di `ui.lista_colonna`.
+#   · Corpo dal vivo (pg_get_functiondef), col `;` dopo `$function$`.
+#
+# Dipendenze: vendite.event_log (l'ancora), che il runner popola con
+#   PIPELINE_STARTED. ⚠️ Su un lotto mai passato dal runner l'ancora e' NULL e
+#   tutto conta come corrente — nessuna corsa precedente da cui distinguersi.
+# Verifica: db/pgtap/vendite/test-fn-list-lotto-task-runs-filtri.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260824-11-fn-list-lotto-task-runs-filtri-mctit.yaml
+
+  - changeSet:
+      id: 20260824-11-fn-list-lotto-task-runs-filtri
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La lista dei task si restringe: p_task_stato (array) e p_solo_giro_corrente, piu'
+        le colonne giro_corrente ed esclusi_count. ⭐ L'ancora del giro e' la STESSA di
+        fn_list_lotto_segnalazioni — le due liste stanno nello stesso drawer e devono dire
+        «giro» nello stesso modo. ⛔ E mostra l'ultima PASSATA, non tutto il click, perche'
+        il runner ne incatena piu' d'una: e' la Q-7 di event_log, e il conteggio degli
+        esclusi e' cio' che lo rende visibile. ⚠️ Nessun default nasconde righe.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_list_lotto_task_runs'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Il DROP e' obbligatorio, per DUE ragioni indipendenti:
+              --    il RETURNS TABLE cambia (CREATE OR REPLACE non lo altera)
+              --    e i due parametri nuovi creerebbero un overload che coi
+              --    DEFAULT rende ambigua ogni chiamata (precedente 20260727-25).
+              DROP FUNCTION IF EXISTS vendite.fn_list_lotto_task_runs(
+                  bigint, bigint, character varying, boolean,
+                  integer, integer, text, text);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_task_runs(
+                  p_lotto_id             vendite.fatturazione_lotti_task_runs.lotto_id%TYPE,
+                  -- ⛔ `bigint` e NON ancorato, ed e' una scelta misurata: la colonna
+                  --    `stato_doc_fiscale_id` e' `integer`, il parametro e' `bigint` da
+                  --    sempre. Ancorarlo cambierebbe il TIPO DELLA FIRMA — cioe'
+                  --    l'identita' della funzione — e romperebbe ogni chiamata esistente.
+                  --    E' il caso in cui il %TYPE non si mette, e si scrive perche'.
+                  p_stato_doc_fiscale_id bigint DEFAULT NULL::bigint,
+                  p_task_code            vendite.fatturazione_lotti_task_runs.task_code%TYPE DEFAULT NULL::character varying,
+                  -- ⚠️ `boolean` espliciti: sono INTERRUTTORI del chiamante, non colonne.
+                  p_solo_attivi          boolean DEFAULT true,
+                  -- Idem: un limite e uno scostamento non sono un dato del dominio, sono
+                  --    la finestra con cui lo si guarda.
+                  p_limit                integer DEFAULT 500,
+                  p_offset               integer DEFAULT 0,
+                  -- ⚠️ `text` espliciti: sono il NOME di una colonna e un verso, non valori.
+                  p_order_by             text DEFAULT NULL::text,
+                  p_order_dir            text DEFAULT 'desc'::text,
+                  -- ⭐ I DUE PARAMETRI NUOVI (2026-08-24, richiesta del backend).
+                  --    In coda, perche' le chiamate posizionali esistenti continuino a
+                  --    valere. ⚠️ Aggiungere parametri crea un OVERLOAD e con i DEFAULT
+                  --    ogni chiamata diventerebbe ambigua: per questo il changeSet fa il
+                  --    DROP esplicito della firma a otto prima di creare questa.
+                  p_solo_giro_corrente   boolean DEFAULT false,
+                  -- ⛔ `text[]` esplicito: per gli array il %TYPE non esiste in PostgreSQL.
+                  --    ⚠️ Ed e' un ARRAY e non un valore singolo di proposito: «mostrami
+                  --    errori e annullati» e' una domanda legittima quanto «solo errori».
+                  p_task_stato           text[] DEFAULT NULL::text[])
+               RETURNS TABLE(id                   vendite.fatturazione_lotti_task_runs.id%TYPE,
+                             lotto_id             vendite.fatturazione_lotti_task_runs.lotto_id%TYPE,
+                             pipeline_id          vendite.fatturazione_lotti_task_runs.pipeline_id%TYPE,
+                             stato_doc_fiscale_id vendite.fatturazione_lotti_task_runs.stato_doc_fiscale_id%TYPE,
+                             task_code            vendite.fatturazione_lotti_task_runs.task_code%TYPE,
+                             fase                 vendite.fatturazione_lotti_task_runs.fase%TYPE,
+                             tentativo            vendite.fatturazione_lotti_task_runs.tentativo%TYPE,
+                             task_stato           vendite.fatturazione_lotti_task_runs.task_stato%TYPE,
+                             started_at           vendite.fatturazione_lotti_task_runs.started_at%TYPE,
+                             ended_at             vendite.fatturazione_lotti_task_runs.ended_at%TYPE,
+                             error_code           vendite.fatturazione_lotti_task_runs.error_code%TYPE,
+                             error_message        vendite.fatturazione_lotti_task_runs.error_message%TYPE,
+                             meta                 vendite.fatturazione_lotti_task_runs.meta%TYPE,
+                             attivo               vendite.fatturazione_lotti_task_runs.attivo%TYPE,
+                             -- ⚠️ Le tre colonne calcolate restano a tipo esplicito: una e'
+                             --    un giudizio derivato, le altre due sono CONTEGGI. Non
+                             --    riflettono nessuna colonna.
+                             giro_corrente        boolean,
+                             total_count          bigint,
+                             esclusi_count        bigint)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ `text` esplicito: sono FRAMMENTI DI SQL da interpolare,
+                  --    non valori di colonna. Non c'e' niente da ancorare.
+                  v_order_col    text;
+                  v_order_dir    text;
+                  v_solo_attivi  vendite.fatturazione_lotti_task_runs.attivo%TYPE;
+                  -- Idem: un limite e uno scostamento non sono un dato del
+                  --    dominio, sono la finestra con cui lo si guarda.
+                  v_limit        integer;
+                  v_offset       integer;
+                  -- ⭐ L'ancora del giro corrente. ⚠️ `timestamptz` esplicito: e' una
+                  --    SOGLIA calcolata, non il valore di una colonna.
+                  v_ancora       timestamptz;
+                  v_solo_giro    boolean;
+              BEGIN
+                  -- Guard sul parametro obbligatorio: id nullo o non positivo e'
+                  -- un chiamante rotto, non un dato che una persona ha digitato.
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_task_runs', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  -- Normalizzazioni. Il tetto di 500 e' lo stesso che il backend
+                  -- applica oggi: si sposta il clamp dove sta la query, non si
+                  -- alza. Un limite nullo vale il default, non «tutte».
+                  v_solo_attivi := COALESCE(p_solo_attivi, TRUE);
+                  v_limit       := LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500);
+                  v_offset      := GREATEST(COALESCE(p_offset, 0), 0);
+                  v_solo_giro   := COALESCE(p_solo_giro_corrente, FALSE);
+
+                  -- ⭐ L'ANCORA DEL GIRO CORRENTE — la STESSA di
+                  --    vendite.fn_list_lotto_segnalazioni, e non e' pigrizia: le due liste
+                  --    stanno nello stesso drawer, e se dicessero «giro» in due modi
+                  --    diversi l'operatore vedrebbe due elenchi che non tornano — con la
+                  --    causa impossibile da attribuire.
+                  --
+                  -- ⚠️ NULL = il lotto non e' mai passato dal runner: non c'e' nessuna
+                  --    corsa precedente da cui distinguersi, e tutto conta come corrente.
+                  --
+                  -- ⛔ CHE COSA QUESTA ANCORA **NON** FA, e va saputo prima di fidarsene:
+                  --    il runner incatena piu' passate in un solo giro dell'operatore
+                  --    (`run_lotto_pipeline_until_done`) e ognuna scrive il proprio
+                  --    PIPELINE_STARTED. L'ancora e' l'ULTIMA: su una catena il filtro
+                  --    mostra l'ultima PASSATA, non tutto il click. Misurato sul lotto
+                  --    6260: 1 riga su 90, mentre il click ne aveva prodotte 10.
+                  --    ⭐ E' esattamente la domanda Q-7 del cantiere `event_log` («il filo
+                  --    identifica la passata o l'azione?»): il giorno che si chiude, questa
+                  --    ancora e quella delle segnalazioni cambiano INSIEME, in due posti
+                  --    soli. ⚠️ Finche' resta cosi', il conteggio degli esclusi non e' un
+                  --    di piu': e' cio' che dice all'operatore che sta guardando una fetta.
+                  SELECT max(e.event_time)
+                    INTO v_ancora
+                    FROM vendite.event_log e
+                   WHERE e.entity_type = 'LOTTO'
+                     AND e.entity_id   = p_lotto_id
+                     AND e.event_code  = 'PIPELINE_STARTED';
+
+                  -- ⭐ WHITELIST CHIUSA. I nomi sono i `campo_sorgente` delle
+                  --    colonne di ui.lista_colonna della lista
+                  --    `vendite.lotto_task_runs`: e' con quelli che il presidio
+                  --    dei seed confronta il flag `ordinabile`.
+                  --    Il ramo '' e' il default (nessun ordinamento chiesto) e non
+                  --    e' una colonna: il lettore del presidio lo salta apposta.
+                  v_order_col := CASE lower(btrim(COALESCE(p_order_by, '')))
+                      WHEN ''              THEN 'x.started_at'
+                      WHEN 'fase'          THEN 'x.fase'
+                      WHEN 'task_code'     THEN 'x.task_code'
+                      WHEN 'tentativo'     THEN 'x.tentativo'
+                      WHEN 'task_stato'    THEN 'x.task_stato'
+                      WHEN 'started_at'    THEN 'x.started_at'
+                      WHEN 'ended_at'      THEN 'x.ended_at'
+                      WHEN 'error_code'    THEN 'x.error_code'
+                      WHEN 'error_message' THEN 'x.error_message'
+                      ELSE NULL
+                  END;
+
+                  -- Fail-loud: un nome fuori whitelist NON ripiega sul default.
+                  -- Ripiegare in silenzio produce una lista ordinata in un modo
+                  -- che nessuno ha chiesto e che nessuno sa spiegare — lo stesso
+                  -- difetto della freccia che non ordina, visto dall'altro lato.
+                  IF v_order_col IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_list_lotto_task_runs', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_order_by', 'valore', p_order_by),
+                          NULL::uuid, concat('p_order_by non ammesso: ', p_order_by));
+                  END IF;
+
+                  -- ⚠️ Il default e' DESC (ordine storico della lista), non ASC.
+                  v_order_dir := CASE WHEN lower(btrim(COALESCE(p_order_dir, 'desc'))) = 'asc'
+                                      THEN 'ASC' ELSE 'DESC' END;
+
+                  -- ⚠️ NULLS LAST esplicito in ENTRAMBI i versi: quattro delle
+                  --    colonne ordinabili sono nullable (fase, ended_at,
+                  --    error_code, error_message) e sul DESC PostgreSQL mette i
+                  --    NULL in TESTA — i task mai finiti salirebbero per primi.
+                  --    Il pareggio si rompe su r.id nella stessa direzione, cosi'
+                  --    la pagina 2 non ripete righe della pagina 1.
+                  RETURN QUERY EXECUTE format($q$
+                      WITH filtrata AS (
+                          SELECT r.*,
+                                 ($7::timestamptz IS NULL OR r.started_at >= $7::timestamptz)
+                                     AS giro_corrente
+                            FROM vendite.fatturazione_lotti_task_runs r
+                           WHERE r.lotto_id = $1
+                             AND ($2 IS NULL OR r.stato_doc_fiscale_id = $2::INTEGER)
+                             AND ($3 IS NULL OR r.task_code = $3)
+                             AND (NOT $4 OR r.attivo IS TRUE)
+                      )
+                      SELECT x.id,
+                             x.lotto_id,
+                             x.pipeline_id,
+                             x.stato_doc_fiscale_id,
+                             x.task_code,
+                             x.fase,
+                             x.tentativo,
+                             x.task_stato,
+                             x.started_at,
+                             x.ended_at,
+                             x.error_code,
+                             x.error_message,
+                             x.meta,
+                             x.attivo,
+                             x.giro_corrente,
+                             count(*) OVER ()::bigint                          AS total_count,
+                             -- ⭐ QUANTE RIGHE I FILTRI NUOVI HANNO TOLTO. Si conta su
+                             --    `filtrata`, cioe' PRIMA di applicarli: e' l'unico posto
+                             --    da cui si vedono.
+                             -- ⚠️ Si chiama `esclusi_count` e non «fuori_giro»: gli esclusi
+                             --    sono quelli che QUALUNQUE filtro nuovo ha tolto, giro o
+                             --    esito. Un nome che parla del giro avrebbe costretto a
+                             --    inventarne un secondo il giorno dopo.
+                             (SELECT count(*) FROM filtrata y
+                               WHERE NOT ( (NOT $8 OR y.giro_corrente)
+                                       AND ($9 IS NULL OR y.task_stato = ANY($9)) )
+                             )::bigint                                         AS esclusi_count
+                        FROM filtrata x
+                       WHERE (NOT $8 OR x.giro_corrente)
+                         AND ($9 IS NULL OR x.task_stato = ANY($9))
+                       ORDER BY %s %s NULLS LAST, x.id %s
+                       LIMIT $5 OFFSET $6
+                  $q$, v_order_col, v_order_dir, v_order_dir)
+                  USING p_lotto_id, p_stato_doc_fiscale_id, p_task_code,
+                        v_solo_attivi, v_limit, v_offset,
+                        v_ancora, v_solo_giro, p_task_stato;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_lotto_task_runs(bigint, bigint, character varying, boolean, integer, integer, text, text, boolean, text[])
+              IS 'Elenco PAGINATO dei task run di un lotto, con whitelist chiusa di ordinamento e fail-loud sul nome fuori whitelist. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-1): nasce per riunire DUE sorgenti che dicevano cose diverse — questa funzione (started_at ASC, nessun filtro su `attivo`, chiamata da nessuno) e la query diretta del backend (DESC, `attivo IS TRUE`, LIMIT 100 fisso), che e'' quella che il drawer mostrava. ⚠️ I nomi della whitelist sono i `campo_sorgente` delle colonne di ui.lista_colonna (task_stato, started_at, ended_at), NON i loro codici logici (esito, inizio, fine): e'' con i primi che scripts/gen_seed_lista.py confronta il flag `ordinabile`, e il presidio sa leggere una whitelist da funzione DB cercando i rami WHEN ... THEN in questa definizione. ⚠️ Il default di p_order_dir e'' `desc` e non `asc` come nella sorella fn_list_commessa_attivita: l''ordine storico di questa lista e'' discendente e rovesciarlo in silenzio sarebbe una regressione travestita da riordino. ⭐ `total_count` viaggia CON le righe (count(*) OVER (), valutato prima di LIMIT/OFFSET) invece che con un secondo SELECT: cosi'' i filtri sono scritti una volta sola — il difetto opposto e'' documentato dal repository delle attivita'' di commessa, dove ogni filtro va ripetuto nella query del conteggio. ⚠️ Il prezzo e'' che una pagina vuota non riporta il totale, come in _query_paged_view del backend. Il filtro `attivo` NON e'' decorativo: vendite.fn_riporta_lotto_a_draft spegne i task run della vita precedente del lotto, e senza il filtro riportare un lotto a DRAFT farebbe ricomparire i tentativi di un giro annullato; p_solo_attivi = false serve a guardarli di proposito. ⚠️ I tre parametri storici restano identici per nome, tipo e posizione: le chiamate esistenti non cambiano. ⭐ Tipi ancorati con %TYPE in FIRMA, RETURNS TABLE e DECLARE — con una scelta da leggere: p_stato_doc_fiscale_id e'' ancorato a config.stati_doc_fiscale.id (bigint) e NON alla colonna omonima della tabella, che e'' integer. Cio'' che il parametro riceve e'' un id di quel catalogo, quindi l''ancora semantica e'' quella; ed e'' anche l''unica che non cambia il tipo del parametro, quindi nessuna chiamata esistente smette di risolvere. Il corpo continua a castare a integer dove confronta. Restano espliciti, di proposito: p_limit / p_offset / p_order_by / p_order_dir (la finestra con cui si guarda un dato non e'' un dato, e p_order_by porta il NOME di una colonna, non il suo contenuto), total_count (un conteggio) e i due v_order_* (frammenti di SQL da interpolare). ⭐ rev 2026-08-24 (richiesta del backend): due filtri e un conteggio. p_solo_giro_corrente usa la STESSA ancora di fn_list_lotto_segnalazioni — l''ultimo PIPELINE_STARTED del lotto — perche'' le due liste stanno nello stesso drawer e devono dire «giro» nello stesso modo. p_task_stato e'' un ARRAY (mostrami errori E annullati e'' una domanda legittima). esclusi_count dice quante righe i filtri hanno tolto, e si chiama cosi'' e non «fuori giro» perche'' vale per qualunque filtro: senza quel numero una lista filtrata e una lista vuota si leggono uguali. ⛔ CHE COSA L''ANCORA NON FA: il runner incatena piu'' passate in un giro solo e ognuna scrive il proprio PIPELINE_STARTED, quindi il filtro mostra l''ultima PASSATA e non tutto il click — misurato sul 6260: 1 riga su 90 contro le 10 del click. E'' la domanda Q-7 del cantiere event_log; il giorno che si chiude, questa ancora e quella delle segnalazioni cambiano insieme. ⚠️ p_stato_doc_fiscale_id resta bigint e NON e'' ancorato: la colonna e'' integer, e ancorarlo cambierebbe l''identita'' della funzione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: si riapplica la revisione
+              --    precedente, sapendo che da quel momento la lista torna a
+              --    non avere nessun modo di restringersi.
+              SELECT 1;

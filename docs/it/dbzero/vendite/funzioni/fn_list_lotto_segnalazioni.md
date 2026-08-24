@@ -8,7 +8,7 @@ CREATE FUNCTION fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text DEFAULT NULL::text, p_livello character DEFAULT NULL::bpchar, p_solo_attive boolean DEFAULT true, p_solo_job_corrente boolean DEFAULT false, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'desc'::text)
- RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint)
+ RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -156,7 +156,23 @@ BEGIN
                    )                                                AS documento_display,
                    f.totale_doc                                     AS importo,
                    fl.disabilitato,
-                   ($2 IS NULL OR fl.data_ora >= $2)                AS job_corrente
+                   ($2 IS NULL OR fl.data_ora >= $2)                AS job_corrente,
+                   -- ⭐ IL BERSAGLIO, dalla stessa borsa da cui esce il
+                   --   codice: la strada esisteva gia'.
+                   -- ⚠️ La chiave scritta e' `bersagli`; la colonna si
+                   --   chiama `target` perche' e' il nome deciso dal brief
+                   --   del bersaglio (§4.2) e quello con cui il toast lo
+                   --   conosce. La normalizzazione sta QUI, in un posto
+                   --   solo: cosi' le due superfici usano lo stesso
+                   --   resolver, che e' la ragione della richiesta.
+                   -- ⛔ L'array passa INTATTO, elementi `{id, type}`: NON
+                   --   si traduce `type` in `tipo`. Dev'essere
+                   --   byte-identico a quello che il toast riceve
+                   --   dall'envelope, o per risolvere una seconda forma ne
+                   --   avremmo creata una terza. Il disallineamento
+                   --   `bersaglio`/`bersagli`/`target` si chiude a monte:
+                   --   qui si dichiara, non si nasconde.
+                   fl.meta -> 'bersagli'                            AS target
               FROM vendite.fatturazione_lotti_fatture lf
               JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
               -- LEFT: il log esiste anche se la fattura non e'
@@ -171,13 +187,32 @@ BEGIN
                    ll.data_ora,
                    ll.status,
                    ll.messaggio,
-                   NULLIF(btrim(ll.meta->>'error_code'), ''),
+                   -- 🔴 CORREZIONE 2026-08-24. Due scrittori, due chiavi:
+                   --   `fn_log_pipeline_fase` (DB) scrive `error_code`, il
+                   --   PipelineErrorLogger (backend) scrive `code`, e il
+                   --   lettore ne conosceva una sola.
+                   -- ⚠️ Le righe del backend sono 17 e TUTTE di livello `C`:
+                   --   il codice mancava esattamente dove serve. Nessuno se
+                   --   n'era accorto perche' il percorso DB funziona, quindi
+                   --   il meccanismo SEMBRA a posto.
+                   -- ⚠️ COALESCE e non sostituzione: regge entrambe, quindi
+                   --   non si rompe ne' oggi ne' il giorno che chi scrive
+                   --   si allinea.
+                   COALESCE(
+                       NULLIF(btrim(ll.meta->>'error_code'), ''),
+                       NULLIF(btrim(ll.meta->>'code'), '')
+                   ),
                    ll.fase,
                    NULL::bigint,
                    NULL::text,
                    NULL::numeric,
                    ll.disabilitato,
-                   ($2 IS NULL OR ll.data_ora >= $2)
+                   ($2 IS NULL OR ll.data_ora >= $2),
+                   -- ⚠️ Nessun bersaglio sul ramo LOTTO, e non e' un buco
+                   --   da riempire adesso: nessuno lo scrive (misurato: 14
+                   --   chiavi in `meta`, nessuna e' un bersaglio). Il patto
+                   --   e' offerta, non promessa — li' nessun pulsante.
+                   NULL::jsonb
               FROM vendite.fatturazione_lotti_log ll
              WHERE ll.lotto_id = $1
         ), filtrata AS (
@@ -205,7 +240,8 @@ BEGIN
                --    job. Si conta su `filtrata`, cioe' PRIMA del filtro
                --    sul job: e' l'unico posto da cui si vedono.
                (SELECT count(*) FROM filtrata y
-                 WHERE y.job_corrente IS FALSE)::bigint             AS fuori_job_count
+                 WHERE y.job_corrente IS FALSE)::bigint             AS fuori_job_count,
+               x.target
           FROM filtrata x
          WHERE (NOT $6 OR x.job_corrente)
          ORDER BY %s %s NULLS LAST, x.data_ora DESC, x.origine, x.id
@@ -215,9 +251,6 @@ BEGIN
           v_solo_attive, v_solo_job, v_limit, v_offset;
 END;
 $function$
-
-COMMENT ON FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_livello character, p_solo_attive boolean, p_solo_job_corrente boolean, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Le segnalazioni di un lotto come RIGHE, unendo vendite.fatture_log (per documento) e vendite.fatturazione_lotti_log (per lotto) con `origine` come discriminante. Nasce il 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L2/P-7) perche'' il terzo tab del drawer non era una tabella: rendeva i sei conteggi di fn_get_lotto_segnalazioni_summary, e le righe non esistevano da nessuna parte. ⚠️ Le due meta'' sono COMPLEMENTARI e non simmetriche: `documento_display` e `importo` esistono solo sulle righe FATTURA, `fase` solo su quelle LOTTO — da cui il NULLS LAST esplicito in entrambi i versi su ogni ordinamento, stessa lezione di vw_dash_competenza_errori. ⛔ E i due alfabeti del livello sono diversi: chk_fatture_log_status ammette (W,C), chk_fatturazione_lotti_log_status ammette (I,W,C), quindi una segnalazione INFO e'' PER COSTRUZIONE di origine LOTTO. ⭐ `job_corrente` risponde a «vale l''ultimo job?»: l''ancora e'' l''event_time dell''ultimo PIPELINE_STARTED in vendite.event_log — NON il correlation_id (che e'' il lock_batch_id, condiviso da due corse), NON tx_id (GUC di sessione che sopravvive alla corsa), NON tentativo (conta per task). Ancora NULL (lotto mai passato dal runner) = tutto corrente: senza una corsa precedente non c''e'' niente da considerare stantio. ⭐ `fuori_job_count` conta le righe VIVE che il filtro sul job lascia fuori, e si calcola prima di quel filtro: le segnalazioni per fattura attraversano i job finche'' sono vere (il runner azzera solo le C di lotto), quindi la lista deve poter dire «+N di corse precedenti» invece di ingoiarle. ⛔ La regola dell''ultimo job vale sulla LISTA, mai sul GUARD: fn_get_lotto_segnalazioni_summary resta com''e'' perche'' alimenta blocks_next_step, e restringerla farebbe avanzare un lotto con una critica irrisolta. ⚠️ Il perimetro viene DAL LOTTO: i due log e il ponte non hanno RLS, fatturazione_lotti si'', e se il lotto non e'' visibile la funzione SOLLEVA invece di rispondere zero righe — «non lo vedo» e «non ce ne sono» non devono leggersi uguali. Regge perche'' fatturazione_lotti.emittente_soggetto_ruolo_id e'' NOT NULL: un lotto ha un emittente, quindi lista e contatori del banner contano la stessa popolazione per costruzione. ⭐ `livello` si ordina per RANGO di gravita'' e non per valore (C prima di I in ordine alfabetico e'' un caso), e i tre letterali del rango sono MAIUSCOLI di necessita'': il lettore della whitelist dei seed cerca WHEN ''<nome>'' THEN con [a-z_0-9]+, e in minuscolo li scambierebbe per nomi di colonna. `messaggio` e `disabilitato` non sono in whitelist perche'' il seed li offre non ordinabili. L''identita'' del documento viene dallo snapshot sulla riga fattura e non da un join ad anagrafiche, che ha la RLS.';
 ```
 
 ---
