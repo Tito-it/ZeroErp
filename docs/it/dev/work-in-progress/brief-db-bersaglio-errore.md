@@ -21,14 +21,25 @@
 > **frontend** (B-2/B-3: toast con azioni, ospite globale, **8 destinazioni su
 > 9 tipi**). Il dettaglio è in §7-bis.
 >
-> 🔴 **Resta UNO solo, e adesso è sbloccato: il `T-3b`** — l'id che esce dalla
-> prosa del 937. Aspettava *«B-1 e B-2 in servizio»* (§5.3-bis) e lo sono: è un
-> passo **del team DB**, ed è l'ultima cosa che separa questo cantiere dal
-> proprio scopo — la frase che smette di portare una chiave interna.
+> 🔴 **Resta UNO solo, ed è sbloccato: il `T-3b`** — l'id che esce dalla prosa
+> del 937. Aspettava *«B-1 e B-2 in servizio»* (§5.3-bis) e lo sono: è l'ultima
+> cosa che separa questo cantiere dal proprio scopo — la frase che smette di
+> portare una chiave interna.
+> ➡️ **È del team DB, e il passaggio è scritto: §7-ter.** ⚠️ Non è una
+> sottrazione di `%s`: rileggendo il pilota contro il §4.2 sono emerse due cose
+> che il piano non aveva, e **una è una scelta di modello** — il 937 dichiara
+> due bersagli, il codice ne emette uno.
 >
-> 🔵 **E restano tre cose che non bloccano**: la **proposta L5** (derivazione
+> ✅ **COLLAUDATO IN-APP il 2026-08-24 (Tid) — su DUE superfici**, lotto
+> `LTF-0005803`: il **toast** porta il pulsante e il click apre la fattura; e
+> dal **messaggio della scheda Segnalazioni** il documento è linkato e si apre.
+> ⭐ La prima è la strada difficile (200 col fallimento nel payload), la seconda
+> è l'errore **persistito** — cioè il lettore che il §1 dice essere quello che
+> conta. §7-bis.8.
+>
+> 🔵 **Restano tre cose che non bloccano**: la **proposta L5** (derivazione
 > automatica, mai decisa), **due candidati T-5** rimasti (§L6, «fine corsa»), e
-> le due domande di fondo del §8. ⚠️ Più il collaudo in-app, che è di Tid.
+> le due domande di fondo del §8.
 >
 > ⚠️ **Il catalogo dei tipi** è il prerequisito, applicato dall'altro cantiere
 > il 2026-08-22; questo lotto gli ha aggiunto `key_selector` (T-1d).
@@ -537,9 +548,11 @@ sui CSV applicati:
 > materiale per chi diagnostica, e la chiave `target`/`bersaglio` non la
 > rivendica.
 
-🔵 **Richiesta all'altro cantiere** *(non applicata da qui: è il suo file)*: la
-riga «primi adottanti gratuiti» del suo §4-bis va marcata come superata, con
-questo motivo. ⭐ **Il resto di quel paragrafo regge e vale**: il vocabolario
+✅ **Richiesta all'altro cantiere — ACCOLTA** *(verificato il 2026-08-24)*: la
+riga «primi adottanti gratuiti» del suo §4-bis è ora barrata e marcata
+**SUPERATA**, con le tre ragioni riportate per intero. ⭐ E là hanno aggiunto
+una frase che vale più della rinuncia: *«ne è uscita una regola, che vale più
+del regalo»*. ⭐ **Il resto di quel paragrafo regge e vale**: il vocabolario
 condiviso e la tabella tipo→schermata scritta una volta sola restano il guadagno
 vero della fusione.
 
@@ -662,7 +675,7 @@ di scriverla:
 `<tipo>_id` più ovvia è davvero l'entità dove si vorrebbe andare. Fino ad allora
 il roll-out è **esplicito, uno alla volta**.
 
-### L6 — Il roll-out *(T-5)* — 🔵 **il solo passo DB che resta**
+### L6 — Il roll-out *(T-5)* — 🏁 **a FINE CORSA** *(il passo DB che resta è il `T-3b`)*
 
 > ⚠️ **Che cosa si «rolla», e cosa NO** *(domanda di Tid, 2026-08-24 — vale la
 > pena averla scritta, perché in questo progetto «log» sono due cose diverse).*
@@ -739,7 +752,9 @@ riquadro qui sotto.
 solo uno ha un posto dove mandare qualcuno. Presidiato dal test 11.
 
 ⚠️ Nella frase resta l'id numerico: **due canali, due lettori**. Toglierlo è il
-T-3b, e aspetta il frontend.
+`T-3b` — che ~~aspetta il frontend~~ ✅ **non aspetta più nessuno dal
+2026-08-24**: B-1 e B-2 sono in servizio (§7-bis), quindi il pulsante c'è e il
+§5.3-bis è soddisfatto.
 
 **I DDT chiudono la famiglia** — ✅ scritti (`20260824-03`):
 `E_DDT_ORDINE_STATO_NON_EVADIBILE` e `E_DDT_NIENTE_DA_EVADERE` portano il
@@ -1309,6 +1324,163 @@ può essere quella che lo distrugge*.
 
 ---
 
+### 7-bis.8 ✅ Il collaudo in-app — 2026-08-24
+
+> **Cosa è stato provato**, da Tid, sull'applicazione vera: il **pilota**, cioè
+> il caso che ha fatto nascere il cantiere.
+
+| | |
+| --- | --- |
+| Lotto | **6260** · `LTF-0005803`, verbo «Rendi definitive» |
+| Fattura da numerare | **19563** (senza numero) |
+| Bersaglio composto dal database | `[{"tipo": "FATTURA", "id": "835"}]` — misurato sulla guardia, non dedotto |
+| Esito | il toast porta **«Apri Fattura 835»**, e il click **apre il drawer della fattura** |
+
+⭐ **E non è la strada facile: è quella che nessun percorso felice tocca.**
+«Rendi definitive» risponde **200** col fallimento dentro il payload, quindi
+`useApiHandler` non vede nessun errore e il canale dell'envelope **non passa di
+lì**. Quel pulsante esiste solo perché il bersaglio attraversa, nell'ordine:
+
+```text
+fn_numera_fattura_opz_emessa   il bersaglio per ramo (padre visibile)
+  -> _run_per_fattura_task     punto di traduzione 4, che portava il solo message_primary
+  -> errore{} del runner       B6, il blob dentro la risposta 200
+  -> verdettoRunner            che prima leggeva solo code/message/detail
+  -> azioniDaBersagli          risoluzione + degrado
+  -> ospite globale in App.vue drawer aperto da qualunque schermata
+```
+
+#### ✅ Seconda superficie collaudata: la scheda **Segnalazioni** del lotto
+
+Stesso giorno, subito dopo. Dal **messaggio** della segnalazione il documento è
+linkato e **si apre**.
+
+⭐ **Ed è l'errore PERSISTITO**, cioè il lettore che il §1 chiama *«l'operatore
+cinque minuti dopo, che sta rimediando»* — quello che legge a giro finito,
+magari il mattino seguente, quando il toast non esiste più da un pezzo. Il toast
+serve chi c'era; questa scheda serve chi non c'era.
+
+⛔ **E il gesto NON è costruito su `fattura_id`**, che pure sta nella stessa
+riga: quello è il documento che ha **fallito** — nel collaudo la 19563, che
+l'operatore sta già guardando in quella lista — mentre il bersaglio è la
+**835**, dove deve andare. Due entità diverse, ed è la lezione del primo
+scaglione applicata alla superficie dove sarebbe stato più facile sbagliare.
+
+⚠️ **Cosa NON è ancora provato in-app**, e va detto perché la tentazione è di
+dichiarare tutto verde: la strada **dell'envelope** (una chiamata che fallisce
+davvero) e gli altri sette tipi. ⭐ Sono però le strade **più semplici** — quella
+dell'envelope è l'unica che già funzionava prima di questo cantiere — e tutte e
+tre passano dallo stesso resolver.
+
+⛔ **E la ragione per cui il collaudo è costato fatica va tenuta** *(rilievo di
+Tid)*: **gli errori che portano un bersaglio sono, per costruzione, quelli che
+l'interfaccia cerca di impedire.** La classe è `CONFLITTO_STATO` — *«questa cosa
+è in uno stato che non permette l'operazione»* — ed è lo stesso stato su cui il
+frontend disabilita il pulsante (misurato: `can_genera_ordine` sul preventivo,
+i livelli `PRENDIBILI` sulla coda flussi). Dal percorso felice non ci si arriva.
+➡️ Ne discende che i casi collaudabili sono due: quelli in cui il vincolo sta su
+**un'altra entità** (il 937, l'evasione massiva, il lotto dentro un giro) e
+quelli in cui l'operatore agisce su uno **stato stantio** — che è poi il modo
+vero in cui questi errori scattano in esercizio.
+
+---
+
+## 7-ter. 🔵 Il `T-3b` — passaggio al team DB *(scritto dal BE il 2026-08-24)*
+
+> **Cos'è.** L'ultimo passo del cantiere: **l'id esce dalla prosa del 937**.
+> Aspettava *«B-1 e B-2 in servizio»* (§5.3-bis) — e dal 2026-08-24 lo sono, con
+> due superfici collaudate in-app (§7-bis.8). Non aspetta più niente.
+>
+> ⛔ **Perimetro: è del team DB.** Tocca `20_code/vendite` (la funzione che
+> solleva) e `80_data` (il CSV dei messaggi). Il BE qui misura e chiede, non
+> scrive.
+>
+> 🔴 **Ma non è scrivibile com'è**, ed è la ragione di questa sezione: rileggendo
+> il pilota contro il §4.2 sono emerse **due cose che il piano non aveva**. La
+> **prima è una scelta di modello** — quanti bersagli ha davvero il 937 — non un
+> dettaglio di stesura; la seconda è un ramo che non può perdere l'id.
+
+### La misura — sul corpo della funzione viva, 2026-08-24
+
+Il messaggio **937** ha **due** `%s`, e il chiamante passa:
+
+```text
+p_fattura_id::text    ->  19563   il documento DA numerare
+v_primo_bloccante     ->  835     il documento che BLOCCA
+```
+
+Il **bersaglio** invece ne copre **uno solo**:
+
+```sql
+jsonb_build_object('tipo', 'FATTURA', 'id', rif.id::text)   -- il solo PADRE
+```
+
+### 🔴 Rilievo 1 — togliere entrambi gli id lascia scoperto il primo
+
+La frase diventerebbe *«Non si può numerare il documento: la fattura che
+rettifica non è ancora numerata»*. Dentro **un giro di lotto** — dove l'errore
+arriva su una fattura fra molte — **quale** non lo direbbe più né la prosa né il
+bersaglio.
+
+⚠️ È esattamente il rischio che il **§5.3-bis** aveva previsto: *«su un'emissione
+di lotto l'id nella frase è oggi l'unica cosa che dice quale»*. Il bersaglio
+doveva essere la risposta — ma risponde per il padre, non per il documento.
+
+⭐ **E c'è una divergenza fra questo brief e il codice.** Il §4.2 scrive che il
+937 *«ne ha due, il documento da numerare e la fattura rettificata»*, ed è
+**la ragione per cui la forma è un array**. Il pilota ne emette uno. Non è un
+difetto introdotto ieri: il pilota è nato così, e nessuno l'aveva riletto contro
+quella frase.
+
+### 🔴 Rilievo 2 — il ramo fail-closed non può perdere l'id
+
+Quando il padre **non è visibile** (RLS), il secondo valore non è nemmeno un id:
+
+```sql
+min(COALESCE(rif.id::text, 'riga ' || fr.riga_rettificata_id::text))
+```
+
+e in quel ramo **il bersaglio è assente per scelta** (§4.3: *a un padre
+invisibile non si può mandare nessuno*). Lì togliere l'id dalla prosa lascia
+l'operatore con **meno di oggi**, e non c'è nessun pulsante a compensare.
+
+### 🔵 Le due domande — poste come domande
+
+| # | Domanda | Perché non la decide il BE |
+| --- | --- | --- |
+| **1** | Il bersaglio del 937 diventa **due elementi** — il documento da numerare *e* il padre bloccante — come il §4.2 dichiara? | È una scelta su **cosa l'errore indica**, cioè modello. ⭐ E cambia il T-3b: con due bersagli gli id possono uscire entrambi; con uno solo, il primo `%s` deve restare |
+| **2** | Nel ramo **fail-closed** cosa resta nella frase? | Lì un bersaglio non c'è e non ci può essere. ⭐ Se la risposta è «l'id resta», il T-3b diventa **per ramo** — due messaggi o una frase che regge in entrambi — e non una sottrazione di `%s` |
+
+### ⛔ I vincoli, che invece non sono negoziabili
+
+* **Catalogo e chiamanti nello STESSO changeSet** (§5.3). Mai il CSV per primo:
+  meno valori dei segnaposto degrada a **`%s` letterale a video** più un
+  `W_MESSAGGIO_ARITA` nel log — brutto e semi-silenzioso;
+* ⭐ Il cancello c'è ed è **statico**: il **test 5** di
+  `test-catalogo-messaggi-errore-completo.sql` confronta i segnaposto del
+  catalogo con l'arità dei punti di sollevamento. Prende il difetto **in CI** —
+  ma solo se i due lati viaggiano nella stessa passata;
+* ⚠️ **Va rivista anche la `soluzione` a catalogo**, che oggi dice *«Numerare
+  prima il documento **indicato**»*: senza id in prosa, «indicato» non ha più
+  referente — a meno che il referente non diventi il pulsante, e allora la frase
+  va detta in modo che regga anche quando il pulsante **non c'è** (ramo
+  fail-closed, permessi, perimetro).
+
+### ⛔ Cosa il BE NON chiede
+
+* **Nessun bersaglio nuovo altrove**: il roll-out è a fine corsa (§L6), e questo
+  passo riguarda il solo 937;
+* **Nessun cambio all'envelope**: `targets` è in servizio e collaudato, la forma
+  regge già due elementi (il §4.2 l'aveva previsto proprio per questo caso);
+* **Nessun backfill**: le righe già scritte non si toccano — il messaggio si
+  compone al sollevamento.
+
+⭐ **Il frontend è già pronto per la risposta 1**: con due bersagli disegna due
+pulsanti senza modifiche — è il motivo per cui la decisione del 2026-08-22 volle
+l'array anche con un elemento solo.
+
+---
+
 ## 8. Domande
 
 ### Chiuse — 2026-08-22, da Tid
@@ -1350,6 +1522,9 @@ può essere quella che lo distrugge*.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-24 (passaggio T-3b) | 📋 **Scritto il passaggio del `T-3b` al team DB (§7-ter)** — l'ultimo passo del cantiere, e da oggi sbloccato: B-1 e B-2 sono in servizio e collaudati su due superfici. 🔴 **E non è scrivibile com'era previsto.** Rileggendo il pilota contro il §4.2 sono emerse due cose che il piano non aveva. **(1)** Il messaggio ha due `%s` — il documento DA numerare e quello che BLOCCA — ma il bersaglio ne copre **uno solo**, il padre: togliere entrambi gli id lascia scoperto il primo, e dentro un giro di lotto **quale** non lo direbbe più né la prosa né il pulsante. È il rischio che il §5.3-bis aveva previsto, e la risposta doveva essere il bersaglio. ⭐ **Ne esce una divergenza fra questo brief e il codice**: il §4.2 dichiara che il 937 ha **due** bersagli — ed è la ragione per cui la forma è un array — mentre il pilota ne emette uno. Non è un difetto di ieri: il pilota è nato così e nessuno l'aveva riletto contro quella frase. **(2)** Nel ramo **fail-closed** il secondo valore non è nemmeno un id (`'riga N'`) e il bersaglio è assente per scelta (§4.3): lì togliere l'id lascerebbe l'operatore con **meno di oggi**, senza nessun pulsante a compensare. ➡️ Le due domande sono poste **come domande** — la prima è una scelta di modello, non di stesura. ⛔ Restano invece non negoziabili i vincoli del §5.3 (catalogo e chiamanti nello **stesso** changeSet, mai il CSV per primo; il test 5 li prende in CI solo se viaggiano insieme) e la revisione della `soluzione` a catalogo, che oggi dice «il documento **indicato**» e senza id non ha più referente. ⭐ Il frontend è già pronto alla risposta 1: con due bersagli disegna due pulsanti senza modifiche — è il motivo per cui l'array fu voluto anche con un elemento solo |
+| 2026-08-24 (segnalazioni) | ✅ **Il bersaglio è anche sulla scheda Segnalazioni del lotto, e collaudato in-app**: dal messaggio il documento è linkato e si apre. ⭐ È l'errore **persistito** — il lettore che il §1 chiama «l'operatore cinque minuti dopo»: il toast serve chi c'era, questa scheda chi non c'era. **DB** (loro): `fn_list_lotto_segnalazioni` ritorna `target jsonb`. **BE** (mio): la colonna in coda alla SELECT e nella riga, più il tipo. ⚠️ **E la loro nota era giusta dove io stavo per «correggerla»**: la firma della funzione mette `target` in 16ª posizione, ma il repository **non fa `SELECT *`** — nomina le colonne e non prende `id` — quindi lì è davvero `row[14]`. Due frame diversi, entrambi veri; l'unico modo di saperlo era leggere il repository invece della firma. ⚠️ **Due test sulla mappatura POSIZIONALE**, perché è il difetto che sarebbe silenzioso: un off-by-one metterebbe `fuori_job_count` dentro `target` — un numero al posto di un array, cioè **nessun pulsante senza nessun errore**. Uno dei due presidia anche che `target ≠ fattura_id`. 🔴 **Accolto il loro rilievo su `error_code`**: `PipelineErrorLogger` scriveva `code`, ora scrive `error_code`. ⭐ Ed era una lezione **già pagata una volta** — `marca_fattura_in_errore` ha lo stesso identico commento dal giorno in cui il difetto emerse su `fatture_log`, e non era stata applicata all'altro scrittore. Verificato prima di rinominare: nessun lettore di `meta->>'code'` oltre al loro COALESCE, nessuna vista né Python legge `error_log.context->>'code'`. Le 17 righe storiche restano leggibili, nessun backfill. 🆕 **Estratto `core/components/BersaglioAzioni.vue`** alla 2ª copia (regola del 2, dichiarato a Tid): la resa dei pulsanti, usata da `ErroreRigaInfo` e dalla cella del messaggio. ⛔ Il **toast non passa di lì** — riceve azioni già composte perché vive nel template PrimeVue col suo `closeCallback`, e condividerlo porterebbe i18n e store dentro un toast; il pezzo condiviso vero è `azioniDaBersagli`. ⛔ E la **normalizzazione la fa il componente**, non il chiamante: è il bug già commesso una volta (payload inglese, resolver che legge `tipo` → nessun pulsante, in silenzio). ✅ 3.927 test verdi, E2E compresa |
+| 2026-08-24 (collaudo in-app) | ✅ **PROVATO SULL'APPLICAZIONE VERA da Tid — sul pilota.** Lotto `LTF-0005803` (6260), «Rendi definitive» sulla fattura **19563**: il toast porta **«Apri Fattura 835»** e il click **apre il drawer della fattura**. Il bersaglio composto dal database è stato misurato in parallelo (`[{"tipo":"FATTURA","id":"835"}]`), non dedotto dal video. ⭐ **Ed è la strada DIFFICILE**: quell'endpoint risponde **200** col fallimento dentro il payload, quindi il canale dell'envelope non passa di lì — il pulsante esiste solo perché il bersaglio attraversa `_run_per_fattura_task` (il punto di traduzione 4) e il blob `errore` del runner (**B6**), cioè i due punti trovati e sanati in giornata. Un percorso felice non li tocca. ⛔ **E il collaudo ha prodotto un rilievo di Tid che vale oltre il cantiere**: *gli errori che portano un bersaglio sono, per costruzione, quelli che l'interfaccia cerca di impedire* — la classe è `CONFLITTO_STATO`, ed è lo stesso stato su cui il frontend spegne il pulsante (misurato: `can_genera_ordine` sul preventivo, livelli `PRENDIBILI` sulla coda flussi). Dal percorso felice **non ci si arriva**: restano i casi in cui il vincolo sta su un'ALTRA entità e quelli di **stato stantio**, che è poi il modo vero in cui scattano in esercizio. §7-bis.8. ⚠️ **Non provate** le altre due superfici (envelope su chiamata fallita, errore persistito di un giro asincrono) né gli altri sette tipi: sono strade più semplici e passano dallo stesso resolver, ma non sono state esercitate. ⚠️ E prima del collaudo è servito un `kill -HUP` su gunicorn: girava senza autoreload da prima del codice |
 | 2026-08-24 (sesto giro BE/FE) | ✅ **`PREVENTIVO` chiuso dal team DB, e la mappa del frontend arriva a 8 tipi su 9.** La richiesta scritta ieri è stata accolta (`20260824-10`, applicato sul DB di prova): `pv.uid::text` → `pv.id::text` e `key_selector` da `uid` a `id`. ⭐ **E la regola che ne è uscita vale oltre il caso**, dalla testata del changeSet: *«il valore di `key_selector` si MISURA sulle rotte del frontend; non si eredita, e non si deduce dal fatto che una colonna `uid` esista»*. ⚠️ Adesso **nessuno dei nove tipi usa `uid`**; la colonna resta e il frontend tiene il campo `chiave`, perché il giorno che servirà cambierà **con un seed** invece che con codice. ✅ **Verificato dal vivo** contro il DB corretto: `[{"type": "PREVENTIVO", "id": "48"}]`, id numerico e coincidente con la riga. ⭐ **E si è visto per caso anche il degrado**: una mia sonda che codificava due volte il JSON ha prodotto `bersaglio` a stringa — il database ha scritto `W_BERSAGLIO_MALFORMATO` (`forma=string letti=0 validi=0`), lasciato la casella vuota e sollevato **lo stesso** l'errore di dominio. È la promessa del L1 mantenuta in esercizio, non in un test. ⛔ Resta fuori il solo `TASK_RUN`, e non è un ritardo: nessuna schermata mostra un giro per id. ⚠️ Il changeSet è arrivato a monte col merge del ramo DB (`17d69c17d`): al momento della scrittura non era ancora pushato, e il frontend degradava da sé (id non numerico → nessun pulsante) — l'allineamento non rompeva nulla su un DB indietro. ✅ 3.921 test verdi |
 | 2026-08-24 (undicesimo giro) | 🔴 **Correzione su rilievo del BACKEND, e ha ragione**: il bersaglio del preventivo citava l'**uid**, ma le rotte sono `<int:preventivo_id>` e gli endpoint che accettano un uid sono **zero** — sarebbe stato un pulsante che non apre niente. Scritto il `20260824-10` (una riga di corpo), corretto il CSV (`PREVENTIVO,…,uid` → `id`, mirror runOnChange) e allineato il test 10. ⭐ **L'errore ha un nome e va tenuto**: ho riempito `config.tipi_entita.key_selector` con la risposta di `config.sorgenti.key_selector` — stesso nome, scelto apposta, ma **due domande diverse** (il lineage contro le rotte), che è la distinzione che entrambi i brief dichiarano dal principio. ➡️ Regola scritta: **il valore si MISURA sulle rotte, non si eredita**. ⚠️ Verificato anche che l'uid non è un'identità cross-revisione (165 righe, 165 uid, 165 id): nessuna sfumatura di dominio proteggeva la scelta sbagliata. ⭐ **E il difetto l'ha trovato il primo consumatore**: è la prova che il canale serviva — un bersaglio scritto e mai letto non avrebbe mai detto di essere sbagliato |
 | 2026-08-24 (quinto giro BE/FE) | ✅ **Chiuso `FLUSSO`, e scritta la richiesta su `PREVENTIVO`.** **FLUSSO**: rotta nuova `GET /pratiche/flussi/<id>/pratica/` — l'unica dei flussi non annidata sotto la pratica, e risponde a una domanda sola («dove vive questa cosa?») invece di essere un secondo modo di leggerlo. Il deep-link della dashboard ora apre dal solo `flusso_id`, e ⭐ **vale oltre il bersaglio**: link, ricerca, notifiche. ⛔ **E il join sulla pratica non è decorativo — misurato**: `pratiche.flussi` **non ha RLS**, `pratiche.pratiche` sì; una lettura del solo `flussi` avrebbe risposto per qualunque flusso, anche fuori perimetro. ⚠️ **Non si riusa `get_flusso`** (nove join per una colonna, e la sua visibilità dipende da join che con la domanda non c'entrano): è la stessa lezione che questa casa aveva già scritto in `get_flusso_esito_config`. ✅ Provato dal vivo su **entrambi** i rami: senza contesto operatore il resolver rifiuta, col contesto risponde la pratica giusta. 🔵 **PREVENTIVO**: richiesta al team DB, due righe (`pv.uid::text` → `pv.id::text`, e `key_selector` da `uid` a `id`). ⭐ Il difetto che il §L6 temeva — *«un id numerico avrebbe prodotto un pulsante che non apre niente, e si sarebbe scoperto mesi dopo»* — **si è verificato al contrario, e si è scoperto in giornata**: nessun endpoint accetta un uid di preventivo (verificato), la rotta è `<int:preventivo_id>` e la prop del drawer è `Number`. La motivazione dell'uid è vera per `config.sorgenti` e **falsa per le schermate**. ⛔ L'alternativa (un endpoint pubblico che risolve l'uid) costa un contratto in più mantenuto per un caso solo. **Mappa del frontend: 7 tipi su 9.** ✅ 3.921 test verdi, E2E compresa |

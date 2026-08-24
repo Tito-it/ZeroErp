@@ -59,7 +59,7 @@ import { displayDate } from '../../core/utils/date'
 import { formatCurrency, formatIvaLabel, formatNumber } from '../../core/utils/format'
 import { naturaDocSeverity, statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { downloadBlob } from '../../core/utils/download'
-import { getFatturaDettaglio } from '../api/fatture'
+import { getFatturaDettaglio, getFatturaGiornale } from '../api/fatture'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -106,6 +106,17 @@ const scadenze = computed(() => dettaglio.value?.scadenze ?? [])
 // totale aggiornato ce l'ha già e lo passa con `@saved`. Il conteggio BE usa
 // lo stesso perimetro della lista note, quindi i due valori non divergono.
 const noteCount = ref(0)
+
+// ⭐ LA STORIA DEL DOCUMENTO (Passo A del filone osservabilità). Fetch SUA,
+// separata dal dettaglio: è un pannello di consultazione e non deve rallentare
+// l'apertura del documento — se fallisce, il documento si vede lo stesso.
+const giornale = ref([])
+const giornaleTotale = ref(0)
+const giornaleCaricato = ref(false)
+// Quante righe stanno in una pagina. ⚠️ Non c'è paginatore: su un documento gli
+// eventi sono pochi (misurato: 3 sul caso più mosso). Se un giorno saranno di
+// più, la riga «mostrati N di M» qui sotto lo dice invece di tacerlo.
+const GIORNALE_PAGE_SIZE = 50
 
 // Numero fiscale: una fattura in DRAFT ha `numero` NULL — il progressivo si
 // assegna alla numerazione. Renderlo esplicito, mai una cella vuota: in un
@@ -178,6 +189,29 @@ async function loadDettaglio() {
   }
 }
 
+// Scopo: carica la storia del documento. ⚠️ Silenziosa e best-effort: un
+//        giornale che non arriva non deve impedire di leggere la fattura, e il
+//        pannello lo dice da sé restando sullo stato «non caricato» invece di
+//        affermare «non è successo niente».
+// ⛔ `giornaleCaricato` non è un dettaglio: senza, un elenco vuoto perché la
+//    fetch è fallita e uno vuoto perché non è successo nulla si leggono uguali.
+async function loadGiornale() {
+  if (!props.fatturaId) return
+  const my = fv.tag()
+  try {
+    const res = await execute(
+      () => getFatturaGiornale(props.fatturaId, { pageSize: GIORNALE_PAGE_SIZE }),
+      { silent: true },
+    )
+    if (!fv.isCurrent(my) || res == null) return
+    giornale.value = res.data?.data?.results ?? []
+    giornaleTotale.value = Number(res.data?.data?.count ?? 0)
+    giornaleCaricato.value = true
+  } catch {
+    // Volutamente muto: vedi sopra.
+  }
+}
+
 watch(
   () => [props.visible, props.fatturaId],
   async ([visible]) => {
@@ -194,7 +228,13 @@ watch(
     }
     dettaglio.value = null
     noteCount.value = 0
+    giornale.value = []
+    giornaleTotale.value = 0
+    giornaleCaricato.value = false
     await loadDettaglio()
+    // Dopo il dettaglio, non insieme: se la fattura non è accessibile il
+    // drawer si è già chiuso, e questa non deve partire su un id negato.
+    if (dettaglio.value) await loadGiornale()
   },
   { immediate: true },
 )

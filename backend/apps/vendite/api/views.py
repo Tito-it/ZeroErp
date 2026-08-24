@@ -383,6 +383,24 @@ class ApiLottoSegnalazioniExport(DomainAPIView):
         )
 
 
+# Scopo: normalizza il filtro multi-valore `task_stato` della scheda Task del
+#        drawer lotto. Accetta sia la ripetizione (`?task_stato=A&task_stato=B`,
+#        forma naturale di DRF) sia l'elenco separato da virgole
+#        (`?task_stato=A,B`, quello che manda il client): un solo lettore per
+#        entrambe, invece di due contratti da tenere allineati.
+# ⚠️ MAIUSCOLO come ogni filtro a vocabolario del progetto (cfr. `qp_str_upper`).
+# ⛔ L'elenco degli stati AMMESSI non si dichiara qui: lo possiede
+#    `vendite.fn_list_lotto_task_runs`, e uno stato che non conosce non aggiunge
+#    e non toglie nulla. Ricopiarlo sarebbe la seconda verita' sullo stesso
+#    vocabolario — la stessa ragione per cui `order_by` passa intatto.
+def _qp_task_stato(query_params) -> list[str] | None:
+    grezzi: list[str] = []
+    for valore in query_params.getlist("task_stato"):
+        grezzi.extend(valore.split(","))
+    stati = [v.strip().upper() for v in grezzi if v.strip()]
+    return stati or None
+
+
 class ApiLottoTaskRunsExport(DomainAPIView):
     """GET /api/v1/vendite/lotti/<id>/task-runs/export/?formato=csv|xlsx
 
@@ -398,25 +416,44 @@ class ApiLottoTaskRunsExport(DomainAPIView):
             OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="task_stato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="solo_giro_corrente", type=bool, location=OpenApiParameter.QUERY, required=False
+            ),
         ],
         responses={(200, "text/csv"): bytes},
     )
     # Scopo: file CSV/XLSX dei tentativi dei task del lotto.
+    # ⚠️ I due filtri viaggiano anche qui, ed e' il punto: il file E' la lista.
+    #    Un export che ignorasse lo stato scelto conterrebbe le 90 righe mentre
+    #    a video se ne vedono 10 — e finirebbero in mano a qualcuno come «i
+    #    task di quel lotto».
     def get(self, request: Request, lotto_id: int) -> HttpResponse:
         fmt = parse_export_format(request)
         q = request.query_params
+        task_stato = _qp_task_stato(q)
+        solo_giro_corrente = as_bool(q.get("solo_giro_corrente"), default=False)
         data = fn_get_lotto_task_runs(
             lotto_id=lotto_id,
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
+            task_stato=task_stato,
+            solo_giro_corrente=solo_giro_corrente,
             max_rows=EXPORT_MAX_ROWS + 1,
         )
+        # I filtri finiscono nell'intestazione del file: chi lo riapre fra un
+        # mese deve poter sapere di quale fetta si tratta.
+        filtri_applicati: dict[str, str] = {"lotto_id": str(lotto_id)}
+        if task_stato:
+            filtri_applicati["task_stato"] = ",".join(task_stato)
+        if solo_giro_corrente:
+            filtri_applicati["solo_giro_corrente"] = "true"
         return build_export_response(
             request,
             lista_codice="vendite.lotto_task_runs",
             results=data["results"],
             total=data["count"],
-            filtri_applicati={"lotto_id": str(lotto_id)},
+            filtri_applicati=filtri_applicati,
             fmt=fmt,
         )
 
@@ -433,7 +470,33 @@ class ApiLottoTaskRuns(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Numero massimo task run restituiti (default 100, max 500).",
-            )
+            ),
+            OpenApiParameter(
+                name="task_stato",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filtro sullo stato del tentativo. Multi-valore: ripetibile "
+                    "(`task_stato=ERRORE&task_stato=COMPLETATO`) oppure separato da "
+                    "virgole (`task_stato=ERRORE,COMPLETATO`). Assente = nessun filtro. "
+                    "Il vocabolario ammesso lo possiede la funzione DB: uno stato che non "
+                    "conosce non aggiunge e non toglie nulla."
+                ),
+            ),
+            OpenApiParameter(
+                name="solo_giro_corrente",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Limita all'ultima PASSATA della pipeline (ancora: l'ultimo "
+                    "`PIPELINE_STARTED`). ⚠️ Passata, NON azione dell'operatore: "
+                    "`run_lotto_pipeline_until_done` ne incatena piu' d'una, quindi un solo "
+                    "click puo' restare tagliato a meta'. Leggere sempre `esclusi_count` "
+                    "insieme al risultato."
+                ),
+            ),
         ],
         responses={
             200: inline_serializer(
@@ -444,6 +507,7 @@ class ApiLottoTaskRuns(DomainAPIView):
                         fields={
                             "lotto_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
+                            "esclusi_count": serializers.IntegerField(),
                             "task_runs": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -470,6 +534,12 @@ class ApiLottoTaskRuns(DomainAPIView):
             offset=offset,
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
+            # ⭐ I due filtri del `20260824-11`. ⚠️ Nessuno dei due ha un default
+            #    che nasconde righe: chi chiama senza vede quello che vedeva
+            #    prima. La scelta di quale fetta mostrare all'apertura e' del
+            #    client, non dell'endpoint.
+            task_stato=_qp_task_stato(q),
+            solo_giro_corrente=as_bool(q.get("solo_giro_corrente"), default=False),
         )
         return success_response(data)
 

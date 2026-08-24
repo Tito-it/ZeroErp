@@ -17,12 +17,14 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
+import SelectButton from 'primevue/selectbutton'
 import SelectButtonGravita from '../../core/components/SelectButtonGravita.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ErroreRigaInfo from '../../core/components/ErroreRigaInfo.vue'
+import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -112,14 +114,65 @@ const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir
   listLottoFatture(props.lottoId, {
     page, page_size: pageSize, ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
   }))
-const listaTask = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
-  listLottoTaskRuns(props.lottoId, { page, pageSize, orderBy: sortBy, orderDir: sortDir }))
+// ⭐ Ordinamento iniziale «Fine» DESC: la diagnostica si legge dall'ULTIMA cosa
+//    successa. Senza, la funzione DB ripiega su `started_at` e il frontend manda
+//    `asc` — cioe' il piu' VECCHIO in cima, e su un lotto ripreso otto volte
+//    l'esito che interessa sta in fondo all'ultima pagina.
+// ⚠️ L'`ORDER BY` della funzione ha `NULLS LAST` in entrambi i versi e
+//    `ended_at` e' NULL su un task IN_ESECUZIONE: quello finirebbe ultimo,
+//    ed e' proprio quello che si vorrebbe vedere per primo. Oggi non morde
+//    (289 task_runs, zero senza fine); se un giorno mordesse, la colonna da
+//    usare e' `started_at`, che NULL non e' mai.
+// ⭐ LE TRE AMPIEZZE della scheda Task, e non sono una scala di gravità: sono
+//    QUANTO si guarda. Il default esclude gli ANNULLATO perché sono i residui
+//    delle passate precedenti — sul lotto 6260 sono 80 righe su 90, e l'unico
+//    errore vero sta in mezzo. È il taglio consigliato dal team DB col
+//    changeSet `20260824-11`, e non dipende da nessuna definizione di «giro».
+// ⚠️ `TUTTI` è `null` e non un elenco: «nessuno stato scelto» e «tutti gli
+//    stati» sono la stessa domanda, e mandare l'elenco completo obbligherebbe
+//    a tenerlo allineato al vocabolario del DB — che è esattamente ciò che il
+//    backend evita non validandolo.
+const AMPIEZZE_TASK = {
+  RILEVANTI: ['ERRORE', 'COMPLETATO', 'IN_ESECUZIONE'],
+  ERRORI: ['ERRORE'],
+  TUTTI: null,
+}
+const ampiezzaTask = ref('RILEVANTI')
+// Quante righe i filtri lasciano fuori. ⭐ È ciò che rende ONESTO un default
+// che nasconde: senza questo numero una lista filtrata e una lista vuota si
+// leggono uguali — lo stesso mestiere di `segnalazioniFuoriJob` qui sotto.
+const esclusiTask = ref(0)
+
+const listaTask = useListaDrawerPaginata(
+  async ({ page, pageSize, sortBy, sortDir }) => {
+    const res = await listLottoTaskRuns(props.lottoId, {
+      page, pageSize, orderBy: sortBy, orderDir: sortDir,
+      taskStato: AMPIEZZE_TASK[ampiezzaTask.value],
+    })
+    // Letto QUI e non nel composable: è un campo extra di questo endpoint, e
+    // il BB delle liste in drawer non deve sapere che questa è speciale.
+    esclusiTask.value = res?.data?.data?.esclusi_count ?? 0
+    return res
+  },
+  { sortBy: 'ended_at', sortDir: -1 },
+)
 // Le RIGHE arrivano da un endpoint suo, separato dai conteggi: quello alimenta
 // il banner ed e' piccolo, questo pagina e ordina e serve solo a scheda aperta.
-const listaSegnalazioni = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
-  listLottoSegnalazioni(props.lottoId, {
-    livello: livelloSegnalazioni.value, page, pageSize, orderBy: sortBy, orderDir: sortDir,
-  }))
+// ⭐ Ordinamento iniziale «Quando» DESC. ⚠️ Non cambia l'ordine a video, lo
+//    DICHIARA: il filtro per livello ha sempre una voce selezionata
+//    (`allowEmpty: false`), quindi il rango di gravita' del default DB e'
+//    costante e a decidere restava gia' il tiebreak `data_ora DESC`. Mancava
+//    la freccia sull'intestazione — cioe' l'operatore non poteva sapere con
+//    che criterio stava leggendo.
+// ⛔ Per questo si passa dal rango a `data_ora` senza perdere niente: la
+//    gravita' la fa il FILTRO, non l'ordinamento.
+const listaSegnalazioni = useListaDrawerPaginata(
+  ({ page, pageSize, sortBy, sortDir }) =>
+    listLottoSegnalazioni(props.lottoId, {
+      livello: livelloSegnalazioni.value, page, pageSize, orderBy: sortBy, orderDir: sortDir,
+    }),
+  { sortBy: 'data_ora', sortDir: -1 },
+)
 
 // Azioni di lista (personalizza colonne + esporta): lo stesso BB delle altre
 // liste standard, una istanza per tab.
@@ -162,6 +215,12 @@ const azioniTask = useListaAzioni(() => listaTaskRef.value, {
   exportFn: (params) => exportLottoTaskRuns(props.lottoId, params),
   getExportParams: (formato) => ({
     formato,
+    // ⚠️ L'ampiezza è un FILTRO della scheda: senza, il file conterrebbe le 90
+    // righe mentre a video se ne vedono 10 — e finirebbe in mano a qualcuno
+    // come «i task di quel lotto».
+    ...(AMPIEZZE_TASK[ampiezzaTask.value]
+      ? { task_stato: AMPIEZZE_TASK[ampiezzaTask.value].join(',') }
+      : {}),
     ...(listaTask.sortField.value
       ? {
           order_by: listaTask.sortField.value,
@@ -324,6 +383,24 @@ async function reloadAll() {
 // risposta porta l'elenco di UN livello per volta, quindi filtrare qui
 // mostrerebbe solo ciò che è già stato scaricato — cioè, su un livello mai
 // chiesto, un elenco vuoto accanto a un contatore che dice il contrario.
+// Le tre voci del filtro ampiezza. ⚠️ Niente `severity`: non sono livelli di
+// gravità e il BB del colore direbbe una cosa falsa — «Rilevanti» non è più
+// grave di «Tutti», è più stretto.
+const opzioniAmpiezzaTask = computed(() => [
+  { value: 'RILEVANTI', label: t('vendite.lotti.task_ampiezza_rilevanti') },
+  { value: 'ERRORI', label: t('vendite.lotti.task_ampiezza_errori') },
+  { value: 'TUTTI', label: t('vendite.lotti.task_ampiezza_tutti') },
+])
+
+watch(ampiezzaTask, async () => {
+  if (!props.visible || !props.lottoId) return
+  // ⚠️ Si torna a pagina 1, come sul filtro delle segnalazioni: cambiare
+  // ampiezza stando a pagina 3 lascerebbe l'operatore in mezzo a un elenco che
+  // non è più quello di prima.
+  listaTask.page.value = 1
+  await listaTask.carica()
+})
+
 watch(livelloSegnalazioni, async (livello) => {
   if (!props.visible || !props.lottoId) return
   if (livello === livelloCaricato.value) return
@@ -369,6 +446,9 @@ watch(
     tabAttiva.value = 'fatture'
     livelloSegnalazioni.value = LIVELLI_SEGNALAZIONE.CRITICHE
     livelloCaricato.value = null
+    // Stessa ragione del livello: il drawer riapre sempre dallo stesso punto.
+    ampiezzaTask.value = 'RILEVANTI'
+    esclusiTask.value = 0
     await reloadAll()
   },
   { immediate: true },
@@ -744,10 +824,33 @@ function fatturaNumero(row) {
                    altre anche quando la regola cambia.
                    ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
                    `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
+              <!-- ⚠️ Il numero che rende ONESTO il filtro: il default nasconde
+                   gli annullati (sul 6260 sono 80 righe su 90), e senza questa
+                   riga un elenco filtrato e un elenco corto si leggono uguali. -->
+              <Message
+                v-if="esclusiTask > 0"
+                severity="secondary"
+                :closable="false"
+                class="app-mb-1"
+              >
+                {{ t('vendite.lotti.task_esclusi', { n: esclusiTask }) }}
+              </Message>
+
               <div class="app-page-toolbar">
-                <!-- Spaziatore: `space-between` con un figlio solo allineerebbe
-                     a SINISTRA. Queste due liste non hanno filtri propri. -->
-                <span class="app-page-filters" />
+                <div class="app-page-filters">
+                  <!-- Filtro di AMPIEZZA, a sinistra come i filtri di ogni
+                       lista. Non è il gemello del filtro gravità delle
+                       segnalazioni: là si sceglie un livello, qui quanto si
+                       guarda. -->
+                  <SelectButton
+                    v-model="ampiezzaTask"
+                    :options="opzioniAmpiezzaTask"
+                    option-label="label"
+                    option-value="value"
+                    :allow-empty="false"
+                    size="small"
+                  />
+                </div>
                 <PageActionsBar :actions="barraTask">
                   <template #suffix>
                     <ListaConfigStatusTag :dirty="azioniTask.dirty.value" />
@@ -847,6 +950,21 @@ function fatturaNumero(row) {
                   <template #cell-livello="{ data }">
                     <Tag :value="data.livello" :severity="severitaLivelloSegnalazione(data.livello)" />
                   </template>
+                  <!-- ⭐ IL MESSAGGIO, E IL MODO DI ARRIVARCI. Questa scheda e'
+                       la superficie dove l'errore si legge DOPO — a giro
+                       finito, magari il mattino seguente: e' il lettore che il
+                       §1 del brief chiama «l'operatore cinque minuti dopo».
+                       ⛔ Il gesto NON si costruisce su `fattura_id`, che pure
+                       sta nella riga: quello e' il documento che ha FALLITO e
+                       che l'operatore sta gia' guardando qui; il bersaglio e'
+                       dove deve ANDARE. Sul caso collaudato sono due fatture
+                       diverse (19563 contro 835). -->
+                  <template #cell-messaggio="{ data }">
+                    <div class="app-segn-messaggio">
+                      <span>{{ data.messaggio }}</span>
+                      <BersaglioAzioni :bersagli="data.target" />
+                    </div>
+                  </template>
                   <!-- Sulle righe di LOTTO non c'e' documento: si mostra la
                        fase invece di un trattino muto. -->
                   <template #cell-documento_display="{ data }">
@@ -906,6 +1024,16 @@ function fatturaNumero(row) {
 </template>
 
 <style scoped>
+/* Il messaggio e il suo gesto: testo sopra, pulsanti sotto. Affiancarli
+   comprimerebbe la frase proprio dove serve leggerla — i nostri messaggi
+   citano numeri di documento e la via d'uscita. */
+.app-segn-messaggio {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+
 .app-lotto-step {
   display: flex;
   align-items: center;

@@ -537,6 +537,80 @@ class VenditePipelineRepositoryUnitTests(TestCase):
             repo.set_lotto_job_stato(10, "COMPLETATO", "scorciatoia")
         self.assertEqual(exc.exception.code, "E_PIPELINE_STATO_LOTTO")
 
+    # Scopo: ⭐ IL BERSAGLIO sulla riga di segnalazione, e la mappatura POSIZIONALE
+    #        che lo porta. Il repository non fa `SELECT *`: nomina le colonne e
+    #        NON prende `id`, quindi la posizione di `target` nella tupla non
+    #        coincide con la sua posizione nella funzione DB (li' e' la 16a).
+    #        Un off-by-one qui metterebbe `fuori_job_count` dentro `target`: un
+    #        numero al posto di un array, che a video diventa **nessun pulsante**
+    #        — senza errori e senza avvisi. E' il difetto che questo test esiste
+    #        per rendere impossibile.
+    #
+    # ⛔ E si presidia anche che `target` NON sia `fattura_id`: quello e' il
+    #    documento che ha FALLITO, il bersaglio e' dove andare. Sul caso
+    #    collaudato sono due fatture diverse (19563 contro 835).
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_list_lotto_segnalazioni_mappa_il_bersaglio(self, mocked_cursor_factory):
+        class _DT:
+            # Scopo: data/ora finta serializzabile, come negli altri test del file.
+            def __init__(self, value: str):
+                self._value = value
+
+            def isoformat(self):
+                return self._value
+
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [
+            (
+                "FATTURA:42",                       # 0  riga_key
+                "FATTURA",                          # 1  origine
+                _DT("2026-08-24T09:36:45+02:00"),   # 2  data_ora
+                "C",                                # 3  livello
+                "Non si puo' numerare il documento 19563.",  # 4  messaggio
+                "E_FATTURA_RETTIFICATA_SENZA_NUMERO",        # 5  error_code
+                None,                               # 6  fase
+                19563,                              # 7  fattura_id — il FALLITO
+                "NC 2/2026",                        # 8  documento_display
+                "100.00",                           # 9  importo
+                False,                              # 10 disabilitato
+                True,                               # 11 job_corrente
+                1,                                  # 12 total_count
+                0,                                  # 13 fuori_job_count
+                # ⚠️ 15a colonna della SELECT: il bersaglio. Come stringa,
+                #    perche' da un cursore RAW psycopg NON decodifica i jsonb.
+                '[{"id": "835", "type": "FATTURA"}]',        # 14 target
+            ),
+        ]
+        mocked_cursor_factory.return_value = cursor
+
+        righe, total, fuori = VenditePipelineRepository().list_lotto_segnalazioni(
+            lotto_id=6260,
+        )
+
+        self.assertEqual((total, fuori), (1, 0))
+        riga = righe[0]
+        self.assertEqual(riga["target"], [{"id": "835", "type": "FATTURA"}])
+        # Le due entita' sono diverse, ed e' tutto il punto.
+        self.assertEqual(riga["fattura_id"], 19563)
+        self.assertNotEqual(str(riga["fattura_id"]), riga["target"][0]["id"])
+
+    # Scopo: ⚠️ Nessun bersaglio = `None`, non `[]`. E' il caso NORMALE (oggi
+    #        tutte le righe di origine `LOTTO`), e il degrado a video e'
+    #        «nessun pulsante, messaggio invariato».
+    @patch("apps.vendite.db.pipeline_repository.connection.cursor")
+    def test_list_lotto_segnalazioni_senza_bersaglio(self, mocked_cursor_factory):
+        cursor = MagicMock()
+        cursor.__enter__.return_value = cursor
+        cursor.fetchall.return_value = [
+            ("LOTTO:7", "LOTTO", None, "C", "Errore pipeline", "E_PIPELINE",
+             "Numerazione", None, None, None, False, True, 1, 0, None),
+        ]
+        mocked_cursor_factory.return_value = cursor
+
+        righe, _, _ = VenditePipelineRepository().list_lotto_segnalazioni(lotto_id=6260)
+        self.assertIsNone(righe[0]["target"])
+
     # Scopo: Verifica che list_lotto_task_runs mappi correttamente righe runtime task da DB.
     @patch("apps.vendite.db.pipeline_repository.connection.cursor")
     def test_list_lotto_task_runs_maps_rows(self, mocked_cursor_factory):
@@ -565,19 +639,27 @@ class VenditePipelineRepositoryUnitTests(TestCase):
                 None,
                 None,
                 '{"rollback": false}',
-                # ⚠️ 14a colonna: `total_count`, che la funzione DB ripete su
+                # ⚠️ 14a colonna: `giro_corrente`, per riga (`20260824-11`).
+                True,
+                # ⚠️ 15a colonna: `total_count`, che la funzione DB ripete su
                 # OGNI riga. Il repository lo legge dalla prima — senza questa
                 # colonna nel finto, il test misurerebbe una forma che la
                 # funzione non ha (BE-2, 2026-08-22).
                 37,
+                # ⚠️ 16a: `esclusi_count`, ripetuto come il totale. Invariante
+                # dichiarata dal DB: `total_count + esclusi_count` = le righe
+                # che il lotto ha davvero (`20260824-11`).
+                12,
             )
         ]
         mocked_cursor_factory.return_value = cursor
 
         repo = VenditePipelineRepository()
-        result, total_count = repo.list_lotto_task_runs(80, limit=50)
+        result, total_count, esclusi_count = repo.list_lotto_task_runs(80, limit=50)
 
         self.assertEqual(total_count, 37)
+        self.assertEqual(esclusi_count, 12)
+        self.assertTrue(result[0]["giro_corrente"])
         self.assertEqual(len(result), 1)
         row = result[0]
         self.assertEqual(row["id"], 1001)
@@ -593,7 +675,12 @@ class VenditePipelineRepositoryUnitTests(TestCase):
         execute_sql, execute_params = cursor.execute.call_args.args
         self.assertIn("vendite.fn_list_lotto_task_runs", execute_sql)
         self.assertNotIn("FROM vendite.fatturazione_lotti_task_runs", execute_sql)
-        self.assertEqual(execute_params, [80, True, 50, 0, None, "desc"])
+        # ⭐ Gli ultimi due sono i filtri del `20260824-11`, e senza argomenti
+        # arrivano SPENTI: nessun default nasconde righe.
+        # ⚠️ La lista vuota degli stati diventa `None`, non `[]`: «nessuno
+        # stato scelto» e «tutti gli stati» sono la stessa domanda, e un array
+        # vuoto a DB non lo sarebbe.
+        self.assertEqual(execute_params, [80, True, 50, 0, None, "desc", False, None])
 
     # Scopo: il legame documentale delle note di credito (N10/BE-8) passa da una
     #        sola `SELECT fn_()` per fattura e ritorna quante coppie ha aggiunto.

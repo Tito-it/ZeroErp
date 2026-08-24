@@ -639,6 +639,8 @@ def fn_get_lotto_task_runs(
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str = "desc",
+    solo_giro_corrente: bool = False,
+    task_stato: list[str] | None = None,
     max_rows: int | None = None,
 ) -> dict[str, object]:
     ErrorManager.require(
@@ -679,12 +681,18 @@ def fn_get_lotto_task_runs(
     )
     repository = VenditePipelineRepository()
     runs: list[LottoTaskRunRow]
-    runs, total_count = repository.list_lotto_task_runs(
+    # ⚠️ Il vocabolario degli stati NON si valida qui: lo possiede la funzione
+    # DB, e uno stato che non conosce non aggiunge e non toglie nulla. Un
+    # elenco chiuso ricopiato nel backend sarebbe la seconda verita' sullo
+    # stesso vocabolario — la stessa ragione per cui `order_by` passa intatto.
+    runs, total_count, esclusi_count = repository.list_lotto_task_runs(
         lotto_id,
         limit=page_size,
         offset=offset,
         order_by=order_by,
         order_dir=order_dir,
+        solo_giro_corrente=solo_giro_corrente,
+        task_stato=task_stato,
         max_rows=max_rows,
     )
     # ⚠️ ENVELOPE PAGINATO, non piu' `{lotto_id, count, task_runs}`: `count`
@@ -703,6 +711,14 @@ def fn_get_lotto_task_runs(
         "page": pagina,
         "page_size": page_size,
         "total_pages": total_pages,
+        # ⭐ Quante righe i filtri lasciano FUORI — il gemello di
+        # `fuori_job_count` delle segnalazioni, con un nome piu' largo perche'
+        # qui i filtri sono DUE (stato e giro): un nome che parlasse del giro
+        # avrebbe costretto a inventarne un secondo alla prossima domanda.
+        # ⛔ Senza questo numero una lista filtrata e una lista vuota si
+        # leggono uguali — ed e' il difetto che il filtro «giro corrente»
+        # produrrebbe da solo, visto che sul lotto 6260 mostra 1 riga su 90.
+        "esclusi_count": esclusi_count,
         "results": runs,
         "task_runs": runs,
     }

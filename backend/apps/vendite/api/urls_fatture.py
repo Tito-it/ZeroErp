@@ -19,7 +19,7 @@ from apps.vendite.api.fatture_documenti_views import (
     ApiFatturaDocumentoRistampa,
     ApiFatturaDocumentoGenera,
 )
-from apps.vendite.api.fatture_views import ApiFatturaDetail
+from apps.vendite.api.fatture_views import ApiFatturaDetail, ApiFatturaGiornale
 from apps.vendite.api.lineage_views import ApiFatturaPassaggi
 from apps.vendite.api.note_views import ApiFatturaNoteDetail, ApiFatturaNoteList
 
@@ -59,6 +59,11 @@ urlpatterns = [
     # ⚠️ PRIMA del dettaglio, come `note/` e `documenti/`.
     path("<int:fattura_id>/passaggi/", ApiFatturaPassaggi.as_view(),
          name="vendite-fattura-passaggi"),
+    # Giornale (la storia del documento): come `passaggi/`, PRIMA del dettaglio.
+    # ⛔ Da non confondere con `passaggi/`: quello dice con quali altri documenti
+    # la fattura e' legata, questo cosa le e' successo.
+    path("<int:fattura_id>/giornale/", ApiFatturaGiornale.as_view(),
+         name="vendite-fattura-giornale"),
     # Dettaglio di consultazione (drawer fattura): testata + righe + riepilogo
     # IVA + scadenze in un round-trip. ULTIMA della lista: `<int:fattura_id>/`
     # è il pattern più generico e deve cedere il passo a `note/` e `documenti/`.

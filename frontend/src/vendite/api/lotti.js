@@ -45,9 +45,19 @@ export function listLottoFatture(lottoId, params = {}) {
 // (`vendite.fn_list_lotto_task_runs`), con il totale nell'envelope.
 // ⚠️ `order_by` va lasciato al DB: la whitelist vive nella funzione, e su un
 // nome ignoto ripiega sul default invece di rifiutare.
-export function listLottoTaskRuns(lottoId, { page = 1, pageSize = 25, orderBy = null, orderDir = 'desc' } = {}) {
+// ⭐ `taskStato` è un ARRAY di stati e viaggia separato da virgole: «errori e
+//    annullati» è una domanda legittima quanto «solo errori», e con un valore
+//    singolo non si potrebbe fare. Assente/vuoto = nessun filtro.
+// ⚠️ Il vocabolario ammesso NON sta qui: lo possiede la funzione DB, e uno
+//    stato che non conosce non aggiunge e non toglie nulla.
+export function listLottoTaskRuns(
+  lottoId,
+  { page = 1, pageSize = 25, orderBy = null, orderDir = 'desc', taskStato = null, soloGiroCorrente = false } = {},
+) {
   const params = { page_size: pageSize, offset: (page - 1) * pageSize, order_dir: orderDir }
   if (orderBy) params.order_by = orderBy
+  if (taskStato?.length) params.task_stato = taskStato.join(',')
+  if (soloGiroCorrente) params.solo_giro_corrente = true
   return api.get(`${BASE}/${lottoId}/task-runs/`, { params })
 }
 

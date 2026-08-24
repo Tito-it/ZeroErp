@@ -19,3 +19,16 @@ const BASE = '/vendite/fatture'
 export function getFatturaDettaglio(fatturaId) {
   return api.get(`${BASE}/${fatturaId}/`)
 }
+
+// ⭐ LA STORIA DEL DOCUMENTO: «cosa è successo a questa fattura, in ordine di
+//    tempo». Sorgente `script.vw_giornale_entita`, la vista che cuce i registri
+//    di evento del progetto — per la fattura oggi risponde `fatture_log`.
+// ⛔ Da non confondere con `passaggi/`: quello dice con quali ALTRI documenti la
+//    fattura è legata, questo cosa le è successo. Domande diverse, sorgenti
+//    diverse.
+// ⚠️ 404 unificato inesistente/fuori scope, come il dettaglio.
+export function getFatturaGiornale(fatturaId, { page = 1, pageSize = 50 } = {}) {
+  return api.get(`${BASE}/${fatturaId}/giornale/`, {
+    params: { page, page_size: pageSize },
+  })
+}

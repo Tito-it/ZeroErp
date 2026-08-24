@@ -68,9 +68,9 @@
 | 🔵 **A carico del BE** | 10 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
 | ⭐ **La richiesta del backend** | I changeSet 61 e 62 avevano consegnato le **colonne**, e **nessuna funzione le scriveva**. L5 mette i due scrittori — e corregge una premessa della richiesta che era **falsa**, misurandola | §5-bis |
 | 🧪 **Presidio** | ✅ **80 asserzioni verdi, zero skip** su 9 file — 5 nuovi/riscritti e 4 preesistenti adeguati. ⭐ E due asserzioni che passavano **dichiarandosi cieche** adesso verificano | §6 |
-| ⏭️ **Da dove si riparte** | Il **Passo A** (la timeline di un caso) **può iniziare**: i suoi tre prerequisiti sono chiusi e — per la prima volta — ci sono dati veri da mostrare. La proposta è di partire da una **ricognizione** sulla vista L3, non dall'endpoint: il suo primo consumatore ne è anche il collaudo. ⭐ Ed è il primo pezzo del filone con un **lato FE** | §12 |
+| ⏭️ **Da dove si riparte** | ✅ **La ricognizione è stata fatta, e la rotta è decisa**: il primo pannello approda sulla **FATTURA**, non sul lotto. ⭐ A deciderlo è stato un rilievo, non una preferenza — la storia di un lotto **non contiene** quella delle sue fatture, e sul caso sporco la frase leggibile sta solo di là. 🔴 Sette rilievi in tutto, e tre vanno risolti **prima** di scrivere l'endpoint: il tempo non ordina, il filo non copre due registri su quattro, il perimetro non è mai stato esercitato | §12 |
 | 🔵 **Da verificare, fuori cantiere** | Un prezzo **non negoziato sul contratto** dentro un push **riuscito** (ORD0016313): l'errore è in `error_log`, l'attività ha comunque un prezzo bloccato. ⚠️ È la categoria che nessuno controlla — un errore registrato dentro un'operazione andata bene | §11 |
-| 🔵 **Domande aperte** | **Una: la Q-7**, la granularità del filo — un `correlation_id` per *passata* o per *azione dell'operatore*? ⭐ L'hanno posta i **dati**, non il piano: un solo click su «Fattura» produce due giri. Rinviata da Tid, deliberatamente. Le sei del primo giro restano chiuse | §8 |
+| ✅ **Domande — tutte chiuse** | **La Q-7 è stata decisa il 2026-08-24: il filo è l'AZIONE DELL'OPERATORE**, non la passata. ⭐ A deciderla è stata una misura, non una preferenza: la lettura alternativa si reggeva sul `tx_id` come ripiego, e dentro una sola passata del lotto 6260 i `tx_id` sono **quattro**. 🔴 E la stessa distinzione ha scoperto un difetto **già vivo**: il filtro «Ultimo giro» delle segnalazioni taglia a metà un singolo click | §8 |
 | 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
 | ⭐ **Un solo documento** | Da qui in avanti chi lavora su `event_log` legge **questo** brief: T-1/T-1b di `brief-db-bersaglio-errore` sono **assorbiti** e di là non si gestiscono più | §4-bis |
 | ⭐ **I due perni** | (1) «Chi» è **già nella riga** (`user_insert`): B3 non era vero — manca **il perimetro**, e serve perché `event_log` è **l'unico registro polimorfo**, l'unico senza una testata a cui ancorarsi. (2) **Un diario non si blocca mai**: rifiuta solo ciò di cui non sa dire di chi è | §3.2 · §3.3 |
@@ -1411,7 +1411,7 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 
 ---
 
-## 8. Domande — le sei del primo giro chiuse, **una aperta** (Q-7)
+## 8. Domande — **tutte chiuse**: le sei del primo giro e la Q-7
 
 | # | Era | Come si è chiusa |
 | --- | --- | --- |
@@ -1420,7 +1420,51 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 | **Q-3** | Un difetto del diario può far fallire il lavoro? | ✅ **Fail-loud nel DB, best-effort nel BE** — D-15. E la riga nel log tecnico è la differenza fra «best-effort» e «silenzio» |
 | **Q-4 · Q-5** | I lucchetti `require_attivo` verso `config.sorgenti` e `emittenti_fiscali` spegnerebbero il diario | ✅ **Rovesciata da un rilievo di Tid**: *«invece di smettere di scrivere, non dovrebbe continuare e semmai segnalare?»*. Risposta: sul diario **non si blocca mai** (D-12), e il lucchetto non si disattiva — **si evita di crearlo**, scegliendo la colonna SR (D-1) e il `CHECK` invece della FK (D-9). ⚠️ Non si segnala nemmeno: l'avviso scatterebbe sul caso normale |
 | **Q-6** | Quali sorgenti nella vista | ✅ **Quattro** — D-16, con `attivita_fatturabili_log` fuori e il motivo scritto nella vista |
-| 🔵 **Q-7** | ⏸️ **APERTA** *(2026-08-24, rinviata da Tid a mente fresca)* — **la granularità del filo**: un `correlation_id` per **passata** o per **azione dell'operatore**? | ⭐ **La domanda l'hanno posta i dati, non il piano.** Rendendo definitivo LTF-0006586, un **solo** click su «Fattura» ha prodotto **due** giri (`c92b1cf5` alle 23:11:13 e `9084ac2b` alle 23:11:14): `run_lotto_pipeline_until_done` incatena più corse e ognuna conia il suo filo. Quindi oggi il filo risponde a *«in quale passata?»*, **non** a *«cosa ha prodotto il mio click?»*. Le due letture sono entrambe legittime: **(a)** com'è adesso — granularità fine, e per risalire al click si usa il `tx_id`; **(b)** `until_done` conia il filo **una volta** e lo passa a tutta la catena — risponde all'operatore, e per la singola passata resta il `task_run`. ⛔ **Nessuna delle due è stata implementata di fretta**: è una scelta di modello e cambia cosa significa quel campo. ⚠️ E attenzione a scegliere la (a) *«tanto c'è il tx_id»*: nel caso misurato i due giri condividevano il `tx_id` **per come è caduta la transazione**, non per garanzia |
+| ~~**Q-7**~~ | ✅ **CHIUSA (Tid, 2026-08-24): il filo è l'AZIONE DELL'OPERATORE**, lettura (b) — `run_lotto_pipeline_until_done` conia il `correlation_id` **una volta** e lo passa a tutta la catena; alla domanda *«in quale passata?»* risponde il `task_run`, che quel livello ce l'ha già | ⭐ **La domanda l'hanno posta i dati, non il piano.** Rendendo definitivo LTF-0006586, un **solo** click su «Fattura» ha prodotto **due** giri (`c92b1cf5` alle 23:11:13 e `9084ac2b` alle 23:11:14): `until_done` incatena più corse e ognuna coniava il suo filo — il campo rispondeva a *«in quale passata?»*, **non** a *«cosa ha prodotto il mio click?»*. ⛔ **A decidere è stata una misura, non una preferenza.** La lettura (a) — tenere la grana fine, *«tanto per risalire al click c'è il `tx_id`»* — **non regge**: sul lotto 6260, dentro **una sola passata**, i `tx_id` sono **quattro** (`…0e2a`, `…0f00`, `…9f07`, `…c727`). Il brief sospettava che il `tx_id` tenesse *«per come è caduta la transazione, non per garanzia»*: adesso è misurato che non tiene affatto. Scegliendo la (a), l'azione dell'operatore sarebbe rimasta **senza nessun identificativo** |
+
+### 🔴 La conseguenza della Q-7 è già viva: «Ultimo giro» taglia a metà un click
+
+> **Trovato il 2026-08-24 verificando la Q-7 sui dati**, e non è una previsione:
+> è un difetto di ciò che è già in servizio. Sta qui e non altrove perché è la
+> stessa cosa che la Q-7 descrive, vista dal lato di chi guarda lo schermo.
+
+Il terzo tab del drawer del lotto ha un filtro **«Ultimo giro»**, e il conteggio
+che lo accompagna dice *«+N di corse precedenti»*. L'ancora è l'`event_time`
+dell'**ultimo `PIPELINE_STARTED`** (`fn_list_lotto_segnalazioni`) — dichiarata
+così di proposito: ⛔ **non** il `correlation_id` (all'epoca era il
+`lock_batch_id`, condiviso da due corse), **non** il `tx_id`, **non** il
+`tentativo`.
+
+⛔ **Ma «ultimo giro» e «ultima cosa che ho fatto» non sono la stessa cosa**, ed
+è esattamente la distinzione della Q-7. Misurato sul lotto **7133**:
+
+```text
+01:11:13.970   filo c92b1cf5   tx 01a030e4-7645   ┐ un SOLO click su «Fattura»
+01:11:14.160   filo 9084ac2b   tx 01a030e4-7701   ┘
+01:18:52.339   filo 93e74f2c   tx 01a030eb-74cf     click diverso
+```
+
+Quel click ha scritto **12 righe** in `fatturazione_lotti_log`. L'ancora è il
+`PIPELINE_STARTED` più recente, cioè `01:11:14.160`: con «Ultimo giro» attivo
+l'operatore ne vede **6** e ne perde **6** — e le sei nascoste sono **la prima
+metà di quello che ha appena fatto lui**. Il contatore annuncia *«+6 di corse
+precedenti»*, che è **falso**: non è una corsa precedente, è la stessa azione.
+
+⚠️ **E nemmeno il `tx_id` le riunisce** (`…7645` contro `…7701`): prima della
+Q-7 non esisteva **niente** che identificasse il click. È lo stesso buco,
+osservato da due punti diversi — di qua rende il campo ambiguo, di là rende un
+filtro bugiardo.
+
+⭐ **Con la Q-7 decisa il rimedio ha un appiglio che prima non c'era**: se il
+filo è l'azione, l'ancora smette di dover indovinare dov'è il confine del giro.
+⛔ **Il come non si decide qui**: la funzione è del team DB, e la scelta va fatta
+sapendo che la stessa domanda arriverà sui **task runs**, che oggi un filtro
+«giro corrente» non ce l'hanno affatto.
+
+⚠️ **Non toccare `fn_get_lotto_segnalazioni_summary`**: quella alimenta
+`blocks_next_step` e la regola dell'ultimo giro lì **non vale** — è scritto nel
+commento della funzione, e restringerla farebbe avanzare un lotto con una
+critica irrisolta.
 
 > ⚠️ **Il rilievo di Q-4/Q-5 vale oltre questo cantiere.** «Chi continua a
 > scrivere su una riga annullata» è un'anomalia da **presidiare sul documento**,
@@ -1527,6 +1571,52 @@ Il brief nasce da due giri con Tid sullo stesso giorno.
   `NOT NULL` e ha 70 valori distinti) ed esce la vista `vw_giornale_entita`,
   perché il Passo A sul solo `event_log` consegnerebbe quattro righe.
 - **Le undici decisioni** di §2 sono di Tid, prese lo stesso giorno.
+
+### 2026-08-24 (ripartenza) · ✅ Ricognizione, **Q-7 decisa**, e il primo pezzo di FE
+
+Il cantiere DB era chiuso; questo giro è servito a **guardare i dati prima di
+scrivere l'endpoint**, come il §12 proponeva.
+
+- ✅ **RICOGNIZIONE FATTA** su `script.vw_giornale_entita`, che fino a stamattina
+  aveva **zero consumatori**. Sette rilievi, in §12. ⭐ **Tre cambiano il disegno
+  invece di confermarlo**: il tempo non ordina (default `now()` = timestamp di
+  transazione: 38 righe su 3 istanti), il filo è NULL su due registri su quattro,
+  e la storia di un lotto **non contiene** quella delle sue fatture.
+- ✅ **Q-7 CHIUSA da Tid: il filo è l'AZIONE DELL'OPERATORE.** ⭐ A deciderla è
+  stata una misura, non una preferenza: la lettura alternativa si reggeva sul
+  `tx_id` come ripiego, e dentro **una sola passata** del 6260 i `tx_id` sono
+  **quattro**. §8.
+- 🔴 **E verificando la Q-7 è emerso un difetto già vivo**: il filtro «Ultimo
+  giro» delle segnalazioni **taglia a metà un click** — un solo click su
+  «Fattura» scrive 12 righe su due corse, e l'ancora (l'ultimo
+  `PIPELINE_STARTED`) ne lascia fuori 6 annunciandole come «di corse
+  precedenti». §8. ⛔ Non è materia di questo brief risolverlo: è la funzione
+  del team DB, e la stessa ancora vive in due liste.
+- ✅ **Decisa la rotta del Passo A: si approda sulla FATTURA.** §12.
+- 🔧 **Due correzioni**: la nota di credito del 6260 è la **19205** (non la
+  18846, che non esiste); la policy legge **due** GUC, non tre.
+
+⭐ **E un pezzo di frontend è uscito per primo, senza aspettare il Passo A**, dal
+rilievo R-7 (segnale/rumore): la scheda **Task** del drawer del lotto mostrava 90
+righe di cui **80 annullate**, residui di otto passate, con l'unico errore in
+mezzo — e ordinate dal **più vecchio**. Chiesto al team DB *cosa* servisse (non
+come); risposto con il changeSet **`20260824-11`**: `p_solo_giro_corrente`,
+`p_task_stato` (array) e le colonne `giro_corrente` / `esclusi_count`.
+Cablati repository, service, endpoint, export e scheda; **collaudato in-app da
+Tid**. Il default esclude gli annullati — **90 → 10 righe** — e la riga «N escluse
+dai filtri» è ciò che lo rende onesto.
+⛔ **Il filtro «giro corrente» resta disponibile e NON usato come default**: com'è
+adesso mostrerebbe **1 riga su 90**, e lo sconsiglia il team DB stesso — è lo
+stesso difetto dell'ancora, visto dall'altra lista.
+⚠️ **Ordine di merge**: `20260824-11` è applicato sul DB di sviluppo ma non
+ancora in git. Il codice BE/FE non deve arrivare a `Tito-dev` prima di quel push
+— e la CI **non lo intercetta**, perché i test sono mockati.
+
+📌 Nello stesso giro, sulle due liste del drawer: ordinamento iniziale «Fine»
+DESC sui task (era `started_at` **ASC**, il più vecchio in cima) e «Quando» DESC
+sulle segnalazioni — dove non cambia l'ordine ma lo **dichiara**: il filtro ha
+sempre un livello selezionato, quindi a decidere era già il tiebreak, e mancava
+solo la freccia sull'intestazione.
 
 ### 2026-08-24 (sera) · ✅ Il modello incontra la realtà — **su entrambi i rami**
 
@@ -2100,7 +2190,7 @@ rumore.
 
 ---
 
-## 12. ⏭️ Il Passo A — la proposta per ripartire *(2026-08-24)*
+## 12. ⏭️ Il Passo A — ricognizione FATTA e rotta decisa *(2026-08-24)*
 
 > **Perché sta in questo brief e non in quello del Passo A.** Il Passo A non è
 > materia di questo cantiere — è il §498 di
@@ -2114,7 +2204,7 @@ rumore.
 | --- | --- |
 | La riga di `event_log` è **parlante** | perimetro derivato · `auth_user_id` · `tx_id` · `cleanup_at` · `correlation_id` per corsa — verificati su **7 giri veri** (§10, voce del 2026-08-24 sera) |
 | `event_log` è sotto **RLS** | L1, changeSet 46. È ciò che permette a un endpoint di lettura di non mostrare gli eventi di altri emittenti: era il rischio **B9** dell'analisi, ed è il motivo per cui il Passo 0 veniva prima |
-| La **cucitura** esiste | `script.vw_giornale_entita`, lotto L3 — ⚠️ con **zero consumatori** a oggi |
+| La **cucitura** esiste | `script.vw_giornale_entita`, lotto L3 — ⚠️ nata con **zero consumatori**; il primo l'ha interrogata il 2026-08-24, ed è la ricognizione qui sotto |
 
 ⭐ **E c'è la condizione che mancava fino a ieri: dati veri da mostrare.** Con il
 registro vuoto una timeline non si poteva collaudare — si sarebbe consegnata una
@@ -2127,50 +2217,83 @@ pagina che «funziona» perché non mostra niente.
 paginazione standard ([api.md](../api.md)). ⛔ Nessun aggregato, nessuna finestra
 temporale, nessun cruscotto: quelli sono il Passo B, e hanno prerequisiti loro.
 
-Approda dove il caso si guarda già: la **diagnostica del lotto** e il pannello
-**«Passaggi»** della fattura. ⭐ È **il primo pezzo di questo filone con un lato
-FE vero** — finora non ce n'era nessuno, ed è la ragione per cui il cantiere è
-stato tutto backend.
+✅ **Approda nel drawer della FATTURA** (decisione del 2026-08-24, motivi al
+punto 2 qui sotto), come sezione accanto a «Collegamenti» e «Situazione merce»:
+si apre il documento e lì dentro c'è anche la sua storia. Il **lotto** viene
+dopo. ⭐ È **il primo pezzo di questo filone con un lato FE vero** — finora non
+ce n'era nessuno, ed è la ragione per cui il cantiere è stato tutto backend.
 
 📌 La query che serve è quella per cui la tabella è **già indicizzata**
 (`ix_event_log_entity_time`): non c'è niente da ottimizzare, e non è un caso —
 §1.1 la registrava fra le cose che reggevano già.
 
-### ⚠️ Tre cose da decidere PRIMA di scrivere codice
+### ✅ Le tre cose da decidere prima di scrivere codice — **decise**
 
-1. **Il primo consumatore di `vw_giornale_entita` ne è anche il collaudo.** La
-   vista cuce quattro registri e non l'ha mai interrogata nessuno: il suo
-   perimetro (`security_invoker`, i JOIN alle testate protette) è **verificato
-   dal pgTAP, non dall'uso**. Chi scrive l'endpoint scopre per primo se regge.
-   ⛔ Da mettere in conto come lavoro, non da scoprire a metà.
-2. **Dove approda per prima**, lotto o fattura. Il **lotto** ha più materiale
-   (eventi + `task_runs` + log funzionali, cioè tutte e quattro le sorgenti);
-   la **fattura** è dove l'operatore si ferma più spesso. Sono due risposte
-   diverse alla stessa domanda «a chi serve prima».
-3. ⭐ **La Q-7 la incrocia** (§8). Se la timeline mostra il `correlation_id`
-   come «il giro», la domanda sulla granularità smette di essere teorica:
-   diventa **ciò che l'operatore legge**. Non blocca il Passo A — ma la risposta
-   è meglio darla prima di disegnare quella colonna che dopo.
+1. 🔴 **Il primo consumatore di `vw_giornale_entita` ne è anche il collaudo** — e
+   la ricognizione ha dato la risposta peggiore fra quelle possibili. Non «regge»
+   né «non regge»: **il perimetro non è mai stato messo alla prova**. Vedi R-4.
+2. ✅ **Approda sulla FATTURA** *(Tid, 2026-08-24)*. La domanda del primo giro era
+   *«lotto o fattura, a chi serve prima?»*; a deciderla è stato **R-3**, che l'ha
+   cambiata: la storia di un lotto **non contiene** quella delle sue fatture, e
+   sul caso sporco la frase leggibile sta solo di là. Le ragioni, in ordine:
+   il drawer della fattura oggi **non mostra nessuna storia** (cliente, documento,
+   righe, riepilogo IVA — e basta), mentre il lotto ha già tre schede che rendono
+   gli stessi tre registri; la storia di una fattura è **corta** (due righe che
+   contano contro 213); e non obbliga a decidere adesso come si cuce un «caso»,
+   che è una domanda di modello e non di schermata.
+   ⛔ **Il lotto non è rinviato per poco interesse**: è rinviato perché lì il
+   pannello dovrebbe prima rispondere a *«che cos'è un caso»*, e quella risposta
+   si scrive meglio dopo aver visto funzionare la forma semplice.
+3. ✅ **La Q-7 è stata risposta** *(2026-08-24)*, e la timeline non deve più
+   aspettarla: il `correlation_id` identifica **l'azione dell'operatore**. La
+   colonna del filo si può disegnare — e mostra ciò che l'operatore riconosce
+   come «quello che ho fatto io», non una passata interna della catena. §8.
 
-### ⭐ La proposta: un giro di RICOGNIZIONE prima del codice
+### ✅ La RICOGNIZIONE è stata fatta *(2026-08-24)* — sette rilievi
 
-Non partire dall'endpoint: partire **dalla vista, interrogata sui casi che
-abbiamo in mano**. Due, e sono complementari:
+> ⚠️ **Il contesto della misura, dichiarato** (lezione del 2026-08-24, §10):
+> connessione **`zeroerp_app`** — non owner, non `BYPASSRLS` — con
+> `app.ruolo_applicativo = 'OPERATORE'` e `app.current_user_id = 1` (utente
+> `tid`, che è **SUPER_ADMIN**), salvo dove indicato. Senza queste due GUC la
+> vista torna **zero righe**, e uno zero fail-closed somiglia in tutto a un dato.
+>
+> ⛔ **Nessuna scrittura**: solo `SELECT`. Casi: lotto **6260** (sporco, errore
+> vivo) e **7133** / LTF-0006586 (pulito, tre corse, fattura numerata).
 
-| Caso | Perché serve |
-| --- | --- |
-| **lotto 6260** | ha un **errore vivo** (nota di credito 18846 non numerabile) e una storia sporca: riporta-a-draft, due corse, un fallimento. È il caso *interessante* |
-| **lotto 7133** (LTF-0006586) | è andato **liscio** fino al definitivo: tre corse, tre fili, fattura numerata. È il caso *pulito*, e serve come metro |
+**Quello che blocca il disegno**
 
-Da lì il disegno dell'endpoint si scrive da sé — e si sa **prima** se L3 va
-corretta, invece di costruirci sopra e accorgersene dopo.
+| # | Rilievo | La misura |
+| --- | --- | --- |
+| **R-1** | 🔴 **Il tempo non ordina.** `event_time` e `data_ora` hanno default `now()`, che in PostgreSQL è il timestamp di **transazione**, non `clock_timestamp()` | Le **38 righe** del lotto 7133 stanno su **3 istanti** distinti — uno per corsa, identico al microsecondo su tutti e tre i registri. L'ordine che si vede è quello di `riga_id`, che è **per registro**: la timeline esce raggruppata per sorgente, non per accadimento. ⛔ Una schermata «in ordine di tempo» costruita su quella colonna racconta una sequenza che non è quella vera |
+| **R-2** | 🔴 **Il filo non copre tutto, e non copre la parte leggibile.** `LOTTO_LOG` e `FATTURA_LOG` hanno `correlation_id` **NULL per costruzione della vista** (`NULL::uuid`) | Filtrare per filo tiene `event_log` + `task_run` — `PIPELINE_STARTED`, `select_attivita · COMPLETATO` — e butta via «Numerazione fatture», «Chiusura lotto eseguita da flag chiude_lotto», che sono le uniche righe scritte per una persona |
+| **R-3** | 🔴 **La storia di un lotto non contiene le sue fatture**, ed è ciò che ha deciso dove approda il Passo A | Filtrando `entity_type = 'LOTTO'` il ramo `FATTURA_LOG` non compare **mai**: la sua entità è la fattura. Sul 6260 le 213 righe del lotto dicono **otto volte** «Esito fatture lotto · WARN», e la frase che serve non c'è — sta sulla fattura **19205**: *«Non si può numerare il documento 19205: la fattura che rettifica non è ancora numerata (documento 835). Numera prima quella.»* |
 
-⚠️ **E una trappola già nota, che in ricognizione morde subito**: quelle tabelle
-hanno la RLS. Interrogarle senza contesto operatore le fa apparire **vuote**, e
-uno zero fail-closed somiglia in tutto e per tutto a un dato — è l'errore che ho
-commesso il 2026-08-24 su `event_log` e che ho dovuto correggere in due punti di
-questo documento. Chi ricognisce imposti le GUC (`app.ruolo_applicativo`,
-`app.current_user_id`, `app.current_emittente_id`) o userà numeri inventati.
+**Quello che va saputo prima di scrivere l'endpoint**
+
+| # | Rilievo | La misura |
+| --- | --- | --- |
+| **R-4** | 🔴 **Il perimetro non è mai stato esercitato**, su nessuno dei quattro rami | `event_log` ha **un solo** `emittente_soggetto_ruolo_id` (**72**), e così `fatturazione_lotti` (48 lotti) e `fatture` (17). Esiste un secondo emittente (`ef_pk 44` / `sr 159`) che `fara` e `pochi` **non** hanno in whitelist — ma nessuna riga gli appartiene. ✅ Il **fail-closed** funziona (senza `app.ruolo_applicativo` la vista torna **0**); ⛔ la **discriminazione** non è mai avvenuta su dati veri. È il rischio del punto 1 qui sopra, adesso **misurato invece che temuto** |
+| **R-5** | ⚠️ **In `event_log` convivono due generazioni di righe** | 12 righe (corse del 22/08) hanno `tx_id` **NULL** e `correlation_id` = `01a0255a-0de9-…`, cioè il `lock_batch_id` del lotto — il difetto **S3** di prima di BE-2. Le righe dal 24/08 hanno tx valorizzato e un filo per corsa. ⛔ A video le due sono **indistinguibili**: la colonna «filo» mostrerebbe il lotto per le vecchie e il giro per le nuove |
+| **R-6** | ⚠️ **La riga `TASK_RUN` è incoerente con sé stessa** | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` viene scritto quando la corsa **successiva** annulla i task rimasti aperti. Il task 1182 è partito il **21/08 19:24** e appare in timeline il **22/08 11:37**, col `tx_id` della sera prima: **timestamp di un giro, transazione di un altro** |
+| **R-7** | ⚠️ **Il rapporto fra segnale e rumore, misurato** | Lotto 6260: **213 righe**, di cui 82 non-INFO — e 81 sono la stessa storia ripetuta **otto volte** (`task_code · ANNULLATO` per otto corse). L'errore vero è **una riga**. Sul 7133 (pulito) 38 righe, e `STEP_COMPLETED` / `task · COMPLETATO` / «Generazione righe fattura» raccontano **la stessa cosa tre volte** |
+
+**Due correzioni a questo documento**, trovate misurando:
+
+- 🔧 **La nota di credito del lotto 6260 è la 19205, non la 18846** (che non
+  esiste). Rettifica la **835**. Il numero sbagliato era qui e nel registro.
+- 🔧 **La policy legge DUE GUC, non tre.** `rls_event_log_ef_whitelist` usa
+  `app.ruolo_applicativo` e `app.current_user_id`; `app.current_emittente_id`
+  **non compare in nessuna delle quattro**. L'avvertenza sulla trappola resta
+  giusta, l'elenco no.
+
+### ⭐ Cosa la ricognizione ha comprato, in una riga
+
+Il disegno dell'endpoint **non parte più da zero**: si sa che l'ordinamento non
+può appoggiarsi al tempo (R-1), che il filo non è un filtro sufficiente (R-2),
+che la chiave `(entity_type, entity_id)` risponde a una domanda più stretta di
+quella dell'operatore (R-3) e che il perimetro va collaudato **apposta**, perché
+i dati non lo faranno (R-4). ⭐ Erano esattamente le cose che il §12 diceva di
+*«non scoprire a metà»*.
 
 ### Cosa NON fare partendo
 
