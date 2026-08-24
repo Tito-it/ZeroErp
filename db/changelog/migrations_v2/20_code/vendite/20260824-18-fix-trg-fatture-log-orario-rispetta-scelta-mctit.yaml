@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CORREZIONE DEL 20260824-17 — il trigger scriveva SEMPRE, e cancellava le
+#   linee del tempo fabbricate a mano.
+#
+# ── COSA E' SUCCESSO ────────────────────────────────────────────────
+#   Il 20260824-17 ha messo su `vendite.fatture_log` un BEFORE INSERT che
+#   imponeva `data_ora = clock_timestamp()` **senza guardare cosa avesse
+#   passato il chiamante**. La scelta era dichiarata nella sua testata —
+#   «non si potra' inserire una riga di log con un orario storico» — ma era
+#   dichiarata **in astratto**: non era stato verificato CHI, gia' oggi, si
+#   appoggia su quella possibilita'.
+#
+#   ⛔ Ci si appoggiano le fixture pgTAP che fabbricano una linea del tempo, e
+#   una di esse lo scrive perfino nella propria testata:
+#
+#     «⚠️ La linea del tempo si scrive a mano: `now()` e' costante dentro una
+#      transazione, quindi quattro righe nate qui avrebbero lo stesso istante e
+#      la finestra non misurerebbe niente.»
+#     (db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql)
+#
+#   Quel test scrive `now() - interval '40 min'` e `- '10 min'` su
+#   `fatture_log` per collocare due segnalazioni prima e dopo la seconda corsa.
+#   Con il trigger che sovrascriveva, le due righe finivano entrambe
+#   sull'adesso: la finestra dell'ultimo job smetteva di misurare, e i test
+#   5, 7 e 8 sono diventati rossi.
+#
+#   ⚠️ MISURATO, NON SUPPOSTO: anche `db/pgtap/script/test-vw-giornale-entita.sql`
+#   scrive un orario fabbricato su `fatture_log` (`now() - interval '15 min'`) ed
+#   era quindi ESPOSTO, ma e' rimasto VERDE — le sue asserzioni non dipendono
+#   dalla posizione relativa di quella riga. ⭐ Il raggio del danno e' «ovunque
+#   si scriva un orario fabbricato», non «ovunque un test sia diventato rosso»:
+#   il secondo insieme e' piu' piccolo del primo.
+#
+#   ⚠️ E' un difetto del changeSet, non dei test: quelle fixture facevano la
+#   cosa giusta, ed erano l'unico modo di collaudare una finestra temporale
+#   dentro una transazione.
+#
+# ── ⭐ LA REGOLA, DETTA MEGLIO ──────────────────────────────────────
+#   La versione precedente diceva «l'orario lo mette il database, punto». La
+#   correzione la rende precisa:
+#
+#     ⭐ Se il chiamante ha passato l'istante di INIZIO TRANSAZIONE, non ha
+#        scelto un orario: ha usato l'unico che aveva. Quello si sostituisce.
+#        Qualunque ALTRO valore e' una scelta, e si rispetta.
+#
+#   Non e' «fidarsi del chiamante», ed e' la differenza che conta: `now()`
+#   dentro una transazione e' una costante, quindi il confronto riconosce
+#   esattamente il caso «non ha deciso niente» — che e' quello dei sei
+#   scrittori veri (cinque funzioni piu' il backend), tutti con `now()`
+#   letterale. Il comportamento su di loro non cambia di una virgola.
+#
+#   ⚠️ `CURRENT_TIMESTAMP` e `transaction_timestamp()` sono lo stesso valore di
+#   `now()`: il confronto li copre senza nominarli.
+#
+#   ⚠️ E il ramo `IS NULL` resta, per una ragione sua: la colonna e' NOT NULL,
+#   quindi un chiamante che passasse NULL esplicito verrebbe respinto DOPO i
+#   BEFORE trigger. Riempirlo qui trasforma un errore di vincolo in un
+#   comportamento sensato, e non nasconde niente — nessuno passa NULL a un
+#   orario di log volendo dire qualcosa.
+#
+# ── ⛔ COSA NON CAMBIA ──────────────────────────────────────────────
+#   · i tre corpi riscritti dal 20260824-17 (`fn_log_pipeline_fase`,
+#     `fn_start_lotto_task_run`, `fn_set_runtime_task_run_esito`): li' il
+#     `clock_timestamp()` e' scritto nel codice, non c'e' nessun trigger di
+#     mezzo e nessuna fixture ne dipende;
+#   · i quattro DEFAULT del 20260824-16;
+#   · il nome del trigger e della funzione: e' la stessa cosa, corretta.
+#
+# ── 📌 LA LEZIONE, scritta perche' e' costata un rosso ──────────────
+#   Prima di scrivere il 20260824-17 sono stati misurati i consumatori in
+#   `pg_proc` — tutti — e non e' stata guardata la suite pgTAP. ⚠️ Una fixture
+#   e' un consumatore come un altro: fabbrica gli stati che il codice non sa
+#   produrre da solo, ed e' esattamente il posto dove un valore «anomalo» viene
+#   scritto di proposito. Un trigger che normalizza un valore va cercato anche
+#   li', con lo stesso grep.
+#
+# Dipendenze: 20260824-17 (il trigger che corregge), gia' applicato.
+# Verifica: db/pgtap/vendite/test-registri-log-orario-reale.sql        (8 test)
+#           db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql   (rientra)
+#           db/pgtap/script/test-vw-giornale-entita.sql   (era ESPOSTO ma verde: si rilancia lo stesso)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260824-18-fix-trg-fatture-log-orario-rispetta-scelta-mctit.yaml
+
+  - changeSet:
+      id: 20260824-18-fix-trg-fatture-log-orario-rispetta-scelta
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Corregge il trigger del 20260824-17, che imponeva data_ora SEMPRE e cosi' cancellava
+        le linee del tempo fabbricate a mano dalle fixture pgTAP (rossi su
+        test-fn-list-lotto-segnalazioni-job 5/7/8). ⭐ La regola diventa precisa: si
+        sostituisce SOLO l'istante di inizio transazione — chi passa now() non ha scelto un
+        orario, ha usato l'unico che aveva — e qualunque altro valore e' una scelta che si
+        rispetta. Sui sei scrittori veri, tutti con now() letterale, il comportamento e'
+        identico.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_trigger
+                   WHERE tgname = 'trg_fatture_log_a10_orario_reale_ins'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_log_a10_orario_reale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: mettere su `data_ora` l'istante della SCRITTURA e non
+              --   quello di inizio transazione — ma solo quando il chiamante
+              --   non ha scelto un orario suo.
+              --
+              -- ⭐ PERCHE' UN TRIGGER E NON CINQUE RISCRITTURE. Gli scrittori di
+              --   questo registro sono cinque funzioni per 957 righe di corpo
+              --   vivo — piu' il backend — e in nessuna di esse il log e' il
+              --   soggetto: e' una riga di servizio dentro un ramo di errore.
+              --   Riprodurre quei corpi per spostare cinque token vorrebbe dire
+              --   cinque occasioni di regredire qualcosa che non c'entra, e
+              --   lascerebbe comunque fuori l'INSERT del backend.
+              --
+              -- ⭐ LA REGOLA, e la sua correzione del 24-08-2026. La prima
+              --   versione scriveva SEMPRE, senza guardare NEW.data_ora, e
+              --   cancellava le linee del tempo che le fixture pgTAP
+              --   fabbricano a mano (`now() - interval '40 min'`) — l'unico
+              --   modo di collaudare una finestra temporale dentro una
+              --   transazione, dove `now()` e' costante.
+              --
+              --     Se il chiamante ha passato l'istante di INIZIO TRANSAZIONE
+              --     non ha scelto un orario: ha usato l'unico che aveva, e
+              --     quello si sostituisce. Qualunque ALTRO valore e' una
+              --     scelta, e si rispetta.
+              --
+              --   ⚠️ Non e' «fidarsi del chiamante»: `now()` dentro una
+              --   transazione e' una costante, quindi il confronto riconosce
+              --   esattamente il caso «non ha deciso niente» — che e' quello
+              --   dei sei scrittori veri, tutti con `now()` letterale.
+              --   `CURRENT_TIMESTAMP` e `transaction_timestamp()` sono lo
+              --   stesso valore e sono coperti senza nominarli.
+              --
+              -- ⚠️ Il ramo IS NULL ha una ragione sua: la colonna e' NOT NULL,
+              --   quindi un NULL esplicito verrebbe respinto DOPO i BEFORE
+              --   trigger. Riempirlo qui trasforma un errore di vincolo in un
+              --   comportamento sensato, e non nasconde niente.
+              --
+              -- ⚠️ Idioma gia' in casa: trgfn_audit_data_user_generic fa
+              --   qualcosa di simile sulle colonne di audit, su questa stessa
+              --   tabella. Qui la colonna e' di OSSERVABILITA', e per questo
+              --   l'orologio e' un altro.
+              BEGIN
+                  IF NEW.data_ora IS NULL OR NEW.data_ora = now() THEN
+                      NEW.data_ora := clock_timestamp();
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_log_a10_orario_reale()
+              IS 'BEFORE INSERT su vendite.fatture_log: mette data_ora = clock_timestamp(), cioe'' l''istante della SCRITTURA, quando il chiamante ha passato l''istante di INIZIO TRANSAZIONE (now(), CURRENT_TIMESTAMP, transaction_timestamp() — lo stesso valore) o non ha passato niente. ⭐ Nasce da R-1 (brief-db-event-log-scope-e-riga-parlante §13): con now() tutte le righe scritte nella stessa transazione escono con lo stesso timestamp al microsecondo, e la storia di un lotto — che legge tre registri — non e'' ordinabile. ⭐ E'' un trigger e non cinque riscritture perche'' gli scrittori di questo registro sono cinque funzioni per 957 righe di corpo vivo (fn_genera_scadenze_fattura, fn_genera_scadenze_lotto, fn_reset_fondi_fattura, fn_snapshot_fattura_lotto, fn_sync_contabili_fondo_fattura) piu'' l''INSERT del backend, e in nessuna di esse il log e'' il soggetto. ⚠️ rev 2026-08-24 (20260824-18): la prima versione scriveva SEMPRE, e cancellava le linee del tempo che le fixture pgTAP fabbricano a mano — l''unico modo di collaudare una finestra temporale dentro una transazione, dove now() e'' costante. Tre asserzioni di test-fn-list-lotto-segnalazioni-job sono diventate rosse. La regola corretta e'': chi passa l''istante di inizio transazione non ha SCELTO un orario, ha usato l''unico che aveva; qualunque altro valore e'' una scelta e si rispetta. Sui sei scrittori veri, tutti con now() letterale, il comportamento e'' identico. ⚠️ Il ramo IS NULL c''e'' perche'' la colonna e'' NOT NULL: un NULL esplicito verrebbe respinto dopo i BEFORE trigger, e riempirlo qui trasforma un errore di vincolo in un comportamento sensato. Fase a10: i BEFORE ROW scattano in ordine alfabetico e questo viene prima di trg_fatture_log_audit_data_user_upd e trg_fatture_log_gen_tx_id_ins_upd, nessuno dei quali legge data_ora.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Il ritorno indietro rimette il trigger che sovrascrive sempre,
+              --    cioe' riporta i rossi su test-fn-list-lotto-segnalazioni-job.
+              --    Si riapplica il corpo del 20260824-17 solo sapendolo.
+              SELECT 1;

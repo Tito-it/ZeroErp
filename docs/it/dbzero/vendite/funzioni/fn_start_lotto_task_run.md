@@ -73,8 +73,16 @@ BEGIN
         correlation_id,
         attivo, data_insert, user_insert, data_update, user_update
     ) VALUES (
+        -- ⭐ R-1 (24-08-2026): `started_at` all'orologio della scrittura.
+        --    ⛔ E la chiusura DEVE stare sullo stesso orologio: con
+        --    `ended_at = now()` un tentativo aperto e chiuso nella
+        --    stessa transazione finirebbe con la fine PRIMA
+        --    dell'inizio, e chk_fatt_lotti_task_runs_timestamps lo
+        --    rifiuterebbe. Vedi fn_set_runtime_task_run_esito, qui
+        --    sotto: i due si spostano insieme o non si spostano.
+        --    ⚠️ I `now()` in coda sono i campi di AUDIT e restano.
         p_lotto_id, p_pipeline_id, p_stato_doc_fiscale_id::INTEGER, p_task_code, p_fase, v_tentativo,
-        'IN_ESECUZIONE', now(), NULL, NULL, NULL, COALESCE(p_meta, '{}'::JSONB),
+        'IN_ESECUZIONE', clock_timestamp(), NULL, NULL, NULL, COALESCE(p_meta, '{}'::JSONB),
         p_correlation_id,
         TRUE, now(), current_user, now(), current_user
     ) RETURNING r.id, r.tentativo;

@@ -38,6 +38,13 @@ BEGIN
   --   esecuzione di quello statement, e i tre wrapper passavano
   --   tutti 'LOTTO' cablato: il ramo morto non e' mai stato
   --   nemmeno pianificato.
+  --
+  -- 📌 rev 2026-08-24 (R-1): cambia UN token, `ended_at`. Il resto
+  --   del corpo e' quello vivo, riprodotto senza toccarlo.
+  --   ⚠️ I tre `E_GENERICO` qui sotto sono debito NOTO e non di
+  --   questo cantiere: correggerli vuol dire coniare tre codici
+  --   registrati con la loro classe. Scritto perche' chi rilegge
+  --   sappia che sono stati guardati, non ignorati.
   -- =========================================================
   v_task_stato := upper(COALESCE(NULLIF(btrim(p_task_stato), ''), ''));
   v_error_code := NULLIF(btrim(p_error_code), '');
@@ -87,7 +94,14 @@ BEGIN
 
   UPDATE vendite.fatturazione_lotti_task_runs
      SET task_stato = v_task_stato,
-         ended_at = now(),
+         -- ⭐ R-1: lo STESSO orologio di `started_at`. Con `now()`
+         --    un tentativo aperto e chiuso nella stessa transazione
+         --    otterrebbe una fine ANTERIORE all'inizio, e
+         --    chk_fatt_lotti_task_runs_timestamps lo rifiuterebbe.
+         --    ⚠️ Misurato il 24-08-2026: 165 corse su 319 hanno
+         --    ended_at = started_at esatto, cioe' sono esattamente
+         --    quel caso — non un'ipotesi.
+         ended_at = clock_timestamp(),
          error_code = CASE
            WHEN v_task_stato = 'ERRORE' THEN COALESCE(v_error_code, 'E_GENERICO')
            ELSE error_code
@@ -97,6 +111,7 @@ BEGIN
            ELSE error_message
          END,
          meta = COALESCE(meta, '{}'::jsonb) || v_meta,
+         -- ⚠️ Audit: resta now(), come in tutta la casa.
          data_update = now(),
          user_update = current_user
    WHERE id = p_task_run_id;
