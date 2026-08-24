@@ -32,6 +32,13 @@
 4. test_colonna_azione_mai_ordinabile
    `tipo_colonna='azione'` non ha campo sorgente: ordinarla non significa nulla.
 
+4-bis. test_lo_slot_delle_azioni_si_chiama_actions
+   ⛔ Chi monta `<ListaConfigurabile>` deve fornire lo slot `#actions`, non
+   `#cell-azioni`. Il BB rende la colonna delle azioni solo se la config la
+   dichiara **e** il caller passa quello slot: col nome sbagliato la colonna
+   non viene resa affatto — nessun kebab e NESSUN errore. Difetto reale su
+   `LottoDrawer.vue`, visto solo in app il 2026-08-24.
+
 5. test_ogni_lista_del_seed_ha_un_preset_default
    Senza preset `is_default` la lista non ha una configurazione di partenza.
 
@@ -433,6 +440,39 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                             "una colonna azione non ha campo sorgente: "
                             "ordinarla non significa nulla.",
                         )
+
+    # Scopo: ⛔ LO SLOT DELLE AZIONI SI CHIAMA `actions`.
+    #
+    #        `<ListaConfigurabile>` rende la colonna delle azioni solo quando
+    #        `haAzioni` e' vero, e quella condizione ha DUE termini: la config
+    #        dichiara una colonna `tipo_colonna='azione'` **e** il caller
+    #        fornisce lo slot `#actions`. La colonna azioni NON passa dalla
+    #        catena `#cell-<campo>`, che serve alle colonne dati.
+    #
+    # 🔴 Col nome sbagliato non succede niente di visibile: nessun errore,
+    #    nessun warning, solo una colonna che non c'e'. Su `LottoDrawer.vue` il
+    #    seed dichiarava la colonna, i permessi erano a posto e la preferenza
+    #    utente non la nascondeva — tutto corretto tranne il nome dello slot, e
+    #    il kebab delle fatture non e' mai comparso. Trovato in app da Tid il
+    #    2026-08-24, su 19 consumatori era l'unico sbagliato.
+    #
+    # ⚠️ Il presidio guarda i `.vue`, non il seed: e' un difetto di CHIAMATA,
+    #    e nel database non se ne vede traccia.
+    def test_lo_slot_delle_azioni_si_chiama_actions(self) -> None:
+        src = _repo_root() / "frontend/src"
+        colpevoli: list[str] = []
+        for percorso in sorted(src.rglob("*.vue")):
+            testo = percorso.read_text(encoding="utf-8")
+            if "<ListaConfigurabile" not in testo:
+                continue
+            if "#cell-azioni" in testo:
+                colpevoli.append(str(percorso.relative_to(src)))
+        self.assertEqual(
+            colpevoli, [],
+            "slot `#cell-azioni` su un montaggio di <ListaConfigurabile>: il BB "
+            "si aspetta `#actions`, e col nome sbagliato la colonna delle "
+            f"azioni non viene resa (nessun kebab, nessun errore): {colpevoli}",
+        )
 
     def test_registro_copre_tutte_le_liste_montate_dal_frontend(self) -> None:
         # La fonte di verita' su "quali liste sono convertite" e' il frontend:

@@ -14,23 +14,33 @@
 > dominio si aggiorna **solo** nel brief madre; una misura del DB o un passo di
 > migrazione **solo** nel piano DB; un contratto API o una schermata **solo
 > qui**. Se una decisione cambia, si cambia là e qui si riporta il passo che ne
-> discende — mai il contrario. Il cantiere fondi ha già pagato questa lezione
-> (registro, notte 11): *due sedi sullo stesso argomento divergono al primo
-> aggiornamento*.
+> discende — mai il contrario.
 >
-> **Scritto il 2026-08-22**, rimisurando il terreno **BE e FE** contro il codice
-> vivo (non contro i due brief, che sul lato applicativo dicono solo «è uno
-> stub»).
+> 🎉 **REVISIONE DEL 2026-08-24 — il terreno è cambiato sotto il piano.** La
+> prima stesura (22/08) era scritta con il DB al **lotto 3 di 7** e diceva:
+> *«tre slice su sette si possono cominciare oggi, le altre aspettano»*.
+> ✅ **Il team DB ha chiuso tutti e sette i lotti il 2026-08-22**: 71 changeSet
+> applicati, 14 pgTAP nuovi, doc manuale completa. **Nessuna slice aspetta più
+> niente dal codice DB.** Il piano è stato rimisurato riga per riga contro il
+> database vivo e contro il codice BE/FE — non contro sé stesso.
 >
-> ⛔ **Niente è stato scritto.** Nessun endpoint, nessun componente, nessuna
-> riga di Python o di Vue. Questo documento è un piano.
+> ⛔ **Niente è ancora scritto lato applicativo**, e questo è **riverificato
+> oggi**: `apps/pagamenti/api/views.py` è ancora una riga di commento,
+> `/api/v1/pagamenti/` è ancora un 404 secco, `DOMAIN_MENUS['pagamenti']` è
+> ancora `[]`, e nessun modulo Python del progetto nomina una funzione di
+> `pagamenti`. Questo documento resta **un piano**.
 >
-> 🔴 **E non è ancora eseguibile per intero**: il DB è al **lotto 3 di 7**
-> (stato al 2026-08-22, comunicato da Tid). Tre slice su sette **si possono
-> cominciare oggi**; le altre aspettano un lotto preciso, e §3 dice quale.
+> ⭐ **Che cosa è cambiato nel piano, in tre righe.** Le sette slice non hanno
+> più dipendenze DB e si riordinano per **valore collaudabile**; i **nove
+> prerequisiti** al team DB **diventano tre** (due sono già stati consegnati
+> senza che nessuno li chiedesse, due non erano affatto del DB); e **cinque cose
+> che il piano del 22/08 dava per vere oggi sono sbagliate** — §1.5, ed è la
+> sezione da leggere per prima.
 >
-> ⭐ **Le domande aperte sono in §7**: nove, tutte con una mia proposta e col
-> motivo per cui non decido io. Sono la prima cosa da chiudere.
+> ⭐ **Le domande aperte sono in §7**: restano **nove** — una si è chiusa da sé
+> (Q-9), una nasce adesso (**Q-10**, un'asimmetria del modello che il lotto 5 ha
+> lasciato dietro) — ma **due sono crollate di prezzo**: Q-1 e Q-8 non hanno più
+> bisogno di niente dal team DB.
 
 ---
 
@@ -38,84 +48,132 @@
 
 | | Cosa | Dove |
 | --- | --- | --- |
-| ✅ **Già pronto, verificato** | `apps.pagamenti` è in `INSTALLED_APPS` · area funzionale `pagamenti` a catalogo (id 7) · dominio `pagamenti` già in `DOMAINS` del FE · i **21 codici errore** dei lotti 1-2 sono **già** in `error_policies_generated.py` (**BE-1 chiusa**) · i **quattro cataloghi** di `pagamenti` sono già nella whitelist della lookup generica · `fn_get_lookup_codici` **filtra già** `obsoleto_dal` (quindi `STORNATA` non compare in nessun menu a tendina) | §1.1 |
-| 🔴 **Da zero** | `apps/pagamenti/api/urls.py` è `urlpatterns = []`, `views.py` è **una riga di commento**, non esiste `urls_v1.py` e **non è montato** in `zeroerp_backend/urls.py`. `frontend/src/pagamenti/` sono **due `.gitkeep`**, e `DOMAIN_MENUS['pagamenti']` è **`[]`**: il dominio esiste nella sidebar e non porta da nessuna parte | §1.2 |
-| 🔴 **Il vincolo che governa tutto** | Il BE è **sottile per obbligo**, non per stile: il posting è **una sola `SELECT fn_posta_contabile(...)`**. Niente `transaction.atomic()` attorno a più scritture, niente orchestrazione Python (BE-2). E il FE **traduce l'esito in una frase** — il DB dice il fatto, chi parla con la persona decide come raccontarlo (Q-7) | §2 |
-| 📋 **Il piano** | **Sette slice** BE/FE, agganciate ai lotti DB. **S0, S1, S2 partono oggi**; S3 aspetta il lotto 4, S4 il 5, S5 il 6, S6 il 7 | §3 |
-| 🔌 **Il contratto** | 18 endpoint proposti, grammatica URL di `api.md` rispettata: nessun verbo dove basta il metodo, verbo solo per le azioni di dominio | §4 |
-| 🎨 **Il frontend** | 5 schermate, 2 drawer, 1 pannello. **17 building block riusati**, **4 da estrarre** — e tre di questi quattro **non sono di `pagamenti`**: servono a `vendite` prima che a noi | §5 |
-| 📮 **Al team DB** | **9 prerequisiti** che il piano DB non contiene, perché nascono dall'interfaccia e non dal modello: tre viste di lista, i seed `ui.lista_*`, una funzione di spezzatura riga, un lookup rate | §6 |
-| ❓ **Domande aperte** | **Nove.** Le due che bloccano davvero sono **Q-1** (come viaggia sul filo HTTP un rifiuto *confermabile*) e **Q-2** (spezzare una riga è un verbo o due gesti) | §7 |
+| ✅ **Il DB è finito** | **Sette lotti su sette chiusi** il 2026-08-22. `pagamenti` ha 12 tabelle, **8 funzioni pubbliche**, **2 viste**, 15 guard, 2 matrici di transizione e la **RLS accesa** su tutto. Il posting, la rata, il perimetro e le sistemazioni **esistono e sono provati** (14 pgTAP) | §1.3 · §1.4 |
+| ✅ **Già pronto lato BE** | `apps.pagamenti` in `INSTALLED_APPS` · area funzionale `pagamenti` (id 7) · dominio in `DOMAINS` del FE · **BE-1 chiusa e cumulativa**: verificato oggi che **778 codici su 778** del catalogo hanno la loro classe in `error_policies_generated.py` e che **tutti** i codici di questo cantiere hanno anche il ripiego · i **quattro cataloghi** di `pagamenti` sono in whitelist della lookup generica | §1.1 |
+| 🔴 **Da zero** | `urls_v1.py` non esiste e non è montato · `views.py` è una riga di commento · `frontend/src/pagamenti/` sono **due `.gitkeep`** · `DOMAIN_MENUS['pagamenti']` è `[]` · **nessuna** `ui.lista_definizione` è di `pagamenti` | §1.2 |
+| 🔴 **Cinque misure del 22/08 oggi sbagliate** | la vista **non si chiama** `vw_rate_sovra_incassate` · la forzatura **non è un flag di payload**, è una colonna della riga · il lookup delle rate **non è un prerequisito DB** · l'`ui_action` **non sta a catalogo DB** · `fn_get_or_create_vendite_contabile` ha **cambiato firma** | §1.5 |
+| 📋 **Il piano** | **Sette slice**, nessuna in attesa. Ordinate per valore: S0 telaio → S1 distinta e righe → **S2 la registrazione** → S3 rata e capienza → S4 perimetro e canali → S5 sistemazioni → S6 spezzatura | §3 |
+| 🔌 **Il contratto** | 19 endpoint, grammatica URL di `api.md`. ⭐ Il posting è **una sola `SELECT`**; l'abbinamento è **un verbo solo** che porta anche la forzatura | §4 |
+| 🎨 **Il frontend** | 5 schermate, 2 drawer, 3 pannelli. **17 building block riusati**, **4 candidati** all'estrazione (nessuno al primo colpo) | §5 |
+| 📮 **Al team DB** | **Tre**, non nove: i **seed delle liste** (che genero io in bozza), la **spezzatura di una riga** (Q-2) e l'**asimmetria del saldo fattura** (Q-10). ⚠️ Più un **dato**, non codice: senza il conto `INCASSO` dei due emittenti **nessun canale di incasso è creabile** | §6 |
+| ❓ **Domande aperte** | **Nove**: le otto ancora vive del 22/08 (Q-9 si è chiusa da sé) più **Q-10**, che è l'unica a toccare il modello. ⭐ Q-1 e Q-8 costano oggi una frazione di ieri | §7 |
 
 ---
 
-## 1. Il terreno, misurato il 2026-08-22
+## 1. Il terreno, rimisurato il 2026-08-24
 
-Misurato **sul codice**, non sui brief: i due documenti esistenti liquidano il
-lato applicativo con «è uno stub», ed è vero, ma «stub» non dice **quanto** già
-c'è intorno — e ce n'è più di quanto sembri.
+Misurato **sul codice e sul database vivo**, non sui brief.
 
 ### 1.1 ✅ Ciò che esiste già, e non va costruito
 
 | Cosa | Dove, verificato | Perché conta |
 | --- | --- | --- |
-| App Django registrata | `zeroerp_backend/settings.py:123` — `'apps.pagamenti'` in `INSTALLED_APPS` | non serve creare l'app: serve **riempirla** |
-| Area funzionale | `config/aree_funzionali.csv` riga 8 — id **7**, codice `pagamenti`, schema `pagamenti`, ordine 70 | `DomainAPIView.area_funzionale = "pagamenti"` funziona **da subito**: la catena permessi risolve |
-| Azione di processo | `config/azioni_processo.csv` riga 6 — id **5**, `approva_rimessa`, area 7 | ⚠️ ma **D14-d l'ha lasciata orfana**: la forzatura non è più gated. Vedi **Q-5** |
-| I 21 codici errore dei lotti 1-2 | tutti presenti in `apps/core/services/error_policies_generated.py` — verificati **uno per uno**, zero mancanti | ⭐ **BE-1 è chiusa.** Il piano DB la elenca ancora come richiesta aperta in due punti (§6.7 e §6.9): non lo è più |
-| Whitelist della lookup generica | `apps/core/db/dbops_repository.py:104-108` — `pagamenti.centri_riscossione`, `enti_incasso`, `vendite_contabili_stati`, `vendite_contabili_righe_stati` | ⭐ i quattro menu a tendina di `pagamenti` **non richiedono nessun endpoint nuovo**: `GET /core/lookup/codici/?rel=pagamenti.…` risponde già. È la memoria `feedback_lookup_whitelist_first` applicata **prima** di sbagliare |
-| Il filtro degli stati ritirati | `dbops.fn_get_lookup_codici`, riga 299 della doc auto-gen: `(t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)` | ⭐ **`STORNATA` non comparirà in nessun menu**, e non perché qualcuno se lo ricorda: perché la lookup generica sa già leggere la colonna che il lotto 2 ha aggiunto. **Verificato, non dedotto** |
-| Il dominio nella sidebar | `frontend/src/core/navigation.js:107` — `{ key: 'pagamenti', icon: NAV_ICONS.PAGAMENTI, to: '/pagamenti', schemaDb: 'pagamenti' }` | l'icona, la rotta radice e il legame con lo schema DB (per `useReadonlyMode`) ci sono già |
-| La chiave i18n del dominio | `frontend/src/locales/it.json:213` — `"pagamenti": "Pagamenti"` | la voce di menu ha già il suo nome |
+| App Django registrata | `zeroerp_backend/settings.py` — `'apps.pagamenti'` in `INSTALLED_APPS` | non serve creare l'app: serve **riempirla** |
+| Area funzionale | `config/aree_funzionali.csv` — id **7**, codice `pagamenti`, schema `pagamenti` | `DomainAPIView.area_funzionale = "pagamenti"` risolve **da subito** |
+| ⭐ **Tutti** i codici errore del cantiere | **rimisurato oggi con uno script**, non a campione: il catalogo ha **778 codici**, `error_policies_generated.py` ne ha **778**, zero mancanti. E per i codici di `pagamenti` (id ≥ 940) **anche il ripiego è completo**, zero mancanti | ⭐ **BE-1 è chiusa, e stavolta in modo cumulativo**: copre anche i 17 codici nati coi lotti 4-7 (961…977). Il piano DB la elenca ancora come coda aperta in cinque punti: **non lo è più** |
+| Whitelist della lookup generica | `apps/core/db/dbops_repository.py:104-108` — `centri_riscossione`, `enti_incasso`, `vendite_contabili_stati`, `vendite_contabili_righe_stati` | ⭐ i quattro menu a tendina **non richiedono nessun endpoint nuovo**: `GET /core/lookup/codici/?rel=pagamenti.…` risponde già |
+| Il filtro degli stati ritirati | `dbops.fn_get_lookup_codici` filtra `obsoleto_dal` | ⭐ `STORNATA` (ritirata il 2026-08-21, verificato nel CSV) **non compare in nessun menu**, e non perché qualcuno se lo ricorda |
+| Le rate di una fattura | `vendite_repository.list_fattura_scadenze()` (`vendite_repository.py:2740`) | 🔴 **rovescia un prerequisito**: il lookup delle rate non ha bisogno di niente dal DB. Vedi §1.5 e **Q-8** |
+| Il canale dell'`ui_action` fino al FE | `error_translator.py` la mette nell'envelope, `useApiHandler.js:115` la espone come `azioneUi` | 🔴 **rovescia un altro prerequisito**: la strada (a) di **Q-1** costa **una riga di Python e un ramo di Vue**, non un giro col team DB |
+| Il dominio nella sidebar + i18n | `core/navigation.js:110` e `locales/it.json` | icona, rotta radice e legame con lo schema DB (per `useReadonlyMode`) ci sono già |
+| La GUC `app.ruolo_applicativo` | la impostano **sia** `jwt_audit_middleware` **sia** `coda_lavori/context.py` | ⭐ **BE-7 è quasi chiusa**: i due percorsi che contano la mettono già. Resta da verificare ciò che gira **fuori** da entrambi (§2.6) |
 
-> ⭐ **Il conto di ciò che si risparmia è alto**: quattro lookup, ventuno codici
-> errore con la loro classe, l'area a catalogo, l'icona e la rotta. La ragione
-> per cui è così è che i cantieri DB hanno seminato **pensando all'interfaccia**
-> — e il caso di `obsoleto_dal` letto dalla lookup generica è la prova che
-> conviene misurare prima di stimare.
-
-### 1.2 🔴 Ciò che è vuoto per davvero
+### 1.2 🔴 Ciò che è vuoto per davvero *(riverificato il 2026-08-24)*
 
 | Cosa | Stato misurato |
 | --- | --- |
-| `backend/apps/pagamenti/api/urls.py` | `urlpatterns = []` — **due righe in tutto** |
-| `backend/apps/pagamenti/api/views.py` | `# Create your views here.` — **una riga di commento** |
-| `backend/apps/pagamenti/api/urls_v1.py` | **non esiste** |
-| Montaggio in `zeroerp_backend/urls.py` | **assente**: nessun `path("api/v1/pagamenti/", …)`. Oggi `/api/v1/pagamenti/…` è un 404 secco |
-| `backend/apps/pagamenti/{services,db}/` | esistono le cartelle con `__init__.py` e un `README.md`. **Zero moduli** |
-| `backend/apps/pagamenti/models.py` | il commento di scaffolding di Django |
-| `frontend/src/pagamenti/` | `components/.gitkeep` e `views/.gitkeep`. **Non esistono** `views/*.vue`, `stores/`, `api/` |
-| `DOMAIN_MENUS['pagamenti']` | `frontend/src/core/navigation.js:190` — **`[]`**. Il dominio si apre e la sidebar è vuota |
-| Rotte Vue del dominio | nessuna |
-| `ui.lista_definizione` per `pagamenti` | **nessuna riga**: le 44 definizioni a catalogo sono di `anagrafiche`, `vendite`, `catalogo`, `config`, `documenti`, `pratiche`, `storico`, `dbops`. 🔴 Ogni lista nuova ha quindi un **prerequisito DB**, non solo FE |
+| `backend/apps/pagamenti/api/urls.py` | `urlpatterns = []` |
+| `backend/apps/pagamenti/api/views.py` | `# Create your views here.` — **una riga** |
+| `urls_v1.py` e montaggio in `zeroerp_backend/urls.py` | **non esistono**. `/api/v1/pagamenti/…` è un 404 secco |
+| `apps/pagamenti/{services,db}/` | solo `__init__.py` e `README.md`. **Zero moduli** |
+| Chiamate alle funzioni DB di `pagamenti` da Python | **zero**, in tutto `backend/`: le uniche occorrenze della stringa sono la whitelist della lookup e i commenti dei codici errore |
+| `frontend/src/pagamenti/` | `components/.gitkeep` e `views/.gitkeep` |
+| `DOMAIN_MENUS['pagamenti']` | `core/navigation.js:201` — **`[]`** |
+| `ui.lista_definizione` per `pagamenti` | **nessuna riga**. 🔴 Ogni lista ha un **prerequisito di seed**, non solo FE |
 
-### 1.3 ⚠️ Lo stato del DB al 2026-08-22, e che cosa ne discende per noi
+### 1.3 ✅ Lo stato del DB: sette lotti su sette
 
-| Lotto DB | Contenuto | Stato | Che cosa sblocca **qui** |
+| Lotto | Contenuto | Stato | Che cosa sblocca **qui** |
 | --- | --- | --- | --- |
-| **1** | il terreno (centri, `stato_id` NOT NULL, codici errore) | ✅ applicato 21/08 | la lookup dei centri, i messaggi parlanti |
-| **2** | vocabolario, transizioni, sei guard, `origine`, `importo_dichiarato` | ✅ applicato 21/08 | ⭐ **tutta la gestione della distinta**: creare, compilare, validare, annullare |
-| **3** | «il fondo si difende» (`ESEGUITO`, `fondo_source_id`, reset che cancella) | ✅ **chiuso** (Tid, 22/08) | niente di diretto: è la **difesa** che deve precedere il posting |
-| **4** | ⭐ **la madre** `fn_posta_contabile` | 🔴 **da fare** | **la registrazione**. Senza, la slice 3 non esiste |
-| **5** | la rata (`scadenza_id`, quadratura, forzatura, `fn_get_saldo_rata`) | 🔴 da fare | l'abbinamento **alla rata** e la forzatura del sovra-incasso |
-| **6** | il perimetro (conto sull'ente, unicità, RLS in lettura) | 🔴 da fare | la coda «da abbinare» visibile **a chi deve** |
-| **7** | le sistemazioni (vista eccedenze + registro + tre verbi) | 🔴 da fare | il giro rimborsi/riporti/compensazioni |
+| **1** | terreno: centri, `stato_id` NOT NULL, codici errore | ✅ 21/08 | lookup dei centri, messaggi parlanti |
+| **2** | vocabolario, transizioni, sei guard, `origine`, `importo_dichiarato` | ✅ 21/08 | ⭐ tutta la gestione della distinta |
+| **3** | «il fondo si difende»: `ESEGUITO`, `fondo_source_id`, reset che cancella | ✅ 22/08 | la difesa che precede il posting |
+| **4** | ⭐ **la madre** `fn_posta_contabile` + chiusura automatica | ✅ 22/08 01:29 | **la registrazione** |
+| **5** | la rata: `scadenza_id`, capienza, forzatura, `fn_get_saldo_rata`, `vw_rate_fuori_capienza` | ✅ 22/08 | l'abbinamento alla rata e la **forzatura a due tempi** |
+| **6** | il perimetro: conto sull'ente, RLS su 12 tabelle, scope in scrittura | ✅ 22/08 10:17 | la coda visibile **a chi deve** |
+| **7** | le sistemazioni: `pagamenti.sistemazioni`, `vw_eccedenze_da_sistemare`, due verbi | ✅ 22/08 12:20 | il giro rimborsi/riporti/compensazioni |
 
-> 🔴 **La conseguenza operativa, e va detta in testa.** Il gesto che dà senso a
-> tutto — «registra» — è nel lotto **4**, che non c'è. Quindi le prime tre slice
-> BE/FE costruiscono un'interfaccia che sa **preparare** il lavoro e non sa
-> ancora **chiuderlo**. ⚠️ **Non è tempo perso e non è un mezzo prodotto**: la
-> distinta con le sue righe è già oggi l'unico modo di *vedere* ciò che il giro
-> dei fondi fattura scrive da mesi senza che nessuno lo guardi. Ma va saputo
-> prima di cominciare, perché cambia che cosa si può collaudare con Tid a
-> fine slice.
+> ⭐ **La conseguenza operativa, e va detta in testa.** Il 22/08 questo brief
+> apriva con *«il gesto che dà senso a tutto non c'è»*. **Adesso c'è**, e c'è
+> tutto il resto: il collo di bottiglia si è spostato **interamente** su BE/FE.
+> Da oggi ogni giorno che passa è un giorno in cui il database sa registrare
+> denaro e **nessuno può chiederglielo**.
+>
+> ⚠️ **Con una sola eccezione, e non è codice**: nessuno dei due emittenti ha un
+> conto con `uso = 'INCASSO'` censito (S3-3 del piano DB, DATO-1). Finché manca,
+> **nessun `ente_incasso` è creabile** — ed è voluto: si fallisce alla
+> configurazione, non in esercizio. Blocca la **slice 4**, non le altre.
+
+### 1.4 ⭐ La superficie DB, coi nomi veri
+
+Questo è il **contratto di chiamata** su cui si scrive il repository. Ogni firma
+è stata letta dalla doc auto-generata, non ricordata.
+
+| Oggetto | Firma / colonne | Note per chi la cabla |
+| --- | --- | --- |
+| `fn_get_or_create_vendite_contabile` | `(p_centro_riscossione_id, p_data_contabile, p_data_registrazione DEFAULT CURRENT_DATE, p_ente_incasso_id DEFAULT NULL, p_lotto_id DEFAULT NULL, p_codice_stato_interno DEFAULT 'BOZZA', p_meta DEFAULT '{}', p_origine DEFAULT 'GENERATA') → bigint` | 🔴 **firma cambiata il 22/08**: `p_compensazione_id` **non esiste più** (D15-e, verso girato). ⭐ Il BE **non passa l'operatore**: la funzione lo mette, e sulla `MANUALE` la chiave di riuso lo comprende (D12-a) |
+| `fn_posta_contabile` | `(p_contabile_id, p_righe_attese DEFAULT NULL, p_totale_atteso DEFAULT NULL)` → `movimenti_creati, righe_postate, righe_saltate, totale_postato, esito` | ⭐ **una sola `SELECT`**, atomica per costruzione. `esito ∈ {POSTATA, NULLA_DA_POSTARE}` e **non solleva** sul secondo caso. ⚠️ I due parametri della dichiarazione sono **facoltativi ma legati**: o tutti e due o nessuno |
+| `fn_get_saldo_rata` | `(p_scadenza_id, p_escludi_contabile_riga_id DEFAULT NULL)` → `saldo, in_lavorazione, incassato, has_movimenti` | ⭐ **tre numeri**, e il terzo è §2.4: `incassato` esclude i centri interni |
+| `fn_get_saldo_fattura` | `(p_fattura_id)` → `saldo, has_movimenti` | 🔴 **due numeri, non tre**: a livello di fattura l'«incassato» **non esiste**. È **Q-10** |
+| `fn_get_saldo_fattura_contabili` | `(p_fattura_id)` → `saldo_contabile, has_righe_postabili` | il **dichiarato** (righe `is_postabile` su distinte non finali) |
+| `fn_conferma_sistemazione` | `(p_sistemazione_id, p_ente_incasso_id DEFAULT NULL)` → `contabile_id, fondo_source_id, esito` | ⚠️ il **canale del rimborso si chiede qui**, non alla registrazione |
+| `fn_annulla_sistemazione` | `(p_sistemazione_id, p_motivo DEFAULT NULL)` → varchar | il motivo si **fonde** con quello già scritto |
+| `vw_rate_fuori_capienza` | `motivo, scadenza_id, fattura_id, anno, serie, fattura_numero, billing_account_id, emittente_soggetto_ruolo_id, numero_rata, data_scadenza, importo_rata, registrato, residuo, incassato, in_lavorazione, righe_forzate, motivi_forzatura` | 🔴 **non si chiama** `vw_rate_sovra_incassate`. `motivo ∈ {SOVRA_INCASSATA, MOVIMENTO_CONTRARIO}` |
+| `vw_eccedenze_da_sistemare` | `fattura_id, fattura_numero, fattura_data, emittente_…, cliente_…, billing_account_id, totale_a_pagare, residuo, eccedenza, chi_e_in_credito, eccedenza_cliente, documenti_cliente, sistemazioni_in_bozza, sistemazioni_confermate` | ⭐ porta **già** il raggruppamento per cliente in finestra: la schermata non deve sommare niente |
+| `pagamenti.sistemazioni` | `destinazione ∈ {RIPORTO, RIMBORSO, COMPENSAZIONE}` · `stato ∈ {BOZZA, CONFERMATA, ANNULLATA}` · `fattura_destinazione_id` obbligatoria su RIPORTO/COMPENSAZIONE e **vietata** su RIMBORSO · `motivo` obbligatorio su ANNULLATA e RIPORTO | ⭐ la **registrazione dell'atto è un `INSERT`**, non un verbo: una scrittura sola non ha bisogno di una madre |
+
+**I due vocabolari, letti dal CSV di seed** — ⛔ non si cablano nel FE:
+
+```text
+distinta : BOZZA · IMPORTATA · VALIDATA · CHIUSA(final) · ANNULLATA(final)
+riga     : IMPORTATA · DA_ABBINARE · ABBINATA(is_postabile, richiede_abbinamento)
+           SOSPESA · SCARTATA · POSTATA(final) · STORNATA(ritirata 21/08)
+```
+
+⭐ **`richiede_abbinamento` è una colonna del catalogo**, e vale una regola di
+interfaccia: *quali stati pretendono fattura e cliente lo dice il database*. Il
+form della riga legge quel flag, **non** un `if stato === 'ABBINATA'`.
+
+### 1.5 🔴 Cinque cose che il piano del 22/08 dava per vere, e oggi sono sbagliate
+
+Le scrivo per prime perché **due tolgono lavoro** e **tre lo spostano**.
+
+| | Diceva | Dice il codice oggi | Conseguenza |
+| --- | --- | --- | --- |
+| **1** | endpoint e schermata «rate sovra-incassate», vista omonima | la vista si chiama **`vw_rate_fuori_capienza`** e contiene **due motivi**: il sovra-incasso *e* il movimento contrario (un rimborso dove non era entrato niente) | cambiano il path (`/rate/fuori-capienza/`), il nome della schermata e **una colonna**: `motivo` è la prima cosa che si guarda, non un dettaglio |
+| **2** | *«il payload porta `forzatura_confermata` + `motivo`»* | la forzatura è **stato della riga**: colonne `forzata` (NOT NULL default false) e `motivo_forzatura`. Il secondo tentativo riscrive la riga con `forzata = true` | ⛔ niente parametro inventato: la conferma **resta scritta** sul dato, ed è ciò che `vw_rate_fuori_capienza` legge (`righe_forzate`, `motivi_forzatura`) |
+| **3** | DB-6: *«serve `vendite.fn_list_scadenze_fattura` o equivalente»* | `vendite_repository.list_fattura_scadenze()` **esiste dal cantiere stampa** e il saldo per rata lo dà `fn_get_saldo_rata` | ✅ **prerequisito annullato**: l'endpoint è BE puro. Vedi **Q-8** |
+| **4** | DB-7: *«un `ui_action` nuovo a catalogo, se Q-1 va così»* | le `ui_action` vivono in **`apps/core/services/error_ui_overrides.py`**, che è **scritto a mano** e dichiara di non essere generato | ✅ **prerequisito annullato**: Q-1 opzione (a) è **una riga** nell'override + un ramo su `azioneUi` in `useApiHandler` |
+| **5** | *«`POST /distinte/{id}/stato/` con `CHIUSA` fra i valori»* (implicito nella matrice) | la chiusura è **una conseguenza del registrare** (decisione di Tid, lotto 4): `fn_posta_contabile` porta la distinta a `CHIUSA` da sé | ⛔ **nessun gesto «chiudi»** nell'interfaccia. Gli stati chiedibili sono **tre**: `VALIDATA`, `BOZZA`, `ANNULLATA` |
+
+📮 **E due code lasciate dai lotti che sono lavoro BE vero, non revisione di
+piano** — vanno nella slice 0 perché sono minuti, non ore:
+
+- il ripiego di `E_RIGA_CONTABILE_DISTINTA_FINALE` porta ancora la frase vecchia
+  (*«non accetta altre righe»*), mentre il catalogo l'ha **allargata** il 22/08:
+  ora dice anche *«e quelle che ha non si lavorano più»*. ⚠️ Il ripiego va
+  riscritto **senza segnaposti** — il messaggio a catalogo ne ha due;
+- **BE-10**: tre codici marcati obsoleti il 22/08
+  (`E_CONTABILE_COMPENSAZIONE_CON_LOTTO`, `…_GIA_PRESENTE`, `…_LOTTO_ESCLUSIVI`)
+  sono **ancora** in `error_messages_fallback.py`. Nessuno li solleva più:
+  tenerli è tenere una frase pronta per un errore che non arriva.
 
 ---
 
-## 2. I cinque vincoli che governano questo cantiere
+## 2. I sei vincoli che governano questo cantiere
 
-Non sono buone pratiche generiche: sono **cinque decisioni già prese** che, se
-si dimenticano, si pagano con del codice da buttare.
+Non sono buone pratiche generiche: sono **decisioni già prese** che, se si
+dimenticano, si pagano con del codice da buttare.
 
 ### 2.1 🔴 Il backend è sottile **per obbligo**
 
@@ -123,22 +181,21 @@ si dimenticano, si pagano con del codice da buttare.
 
 ⛔ **Nessun `transaction.atomic()` attorno a più statement**, nessuna
 orchestrazione Python, nessun ciclo che posta le righe una a una. L'atomicità è
-**dentro la funzione** — e `api.md` §Atomicità dice esattamente questo per il
-caso «l'operazione compone **solo** scritture DB»: *una sola `SELECT fn_madre(...)`
-nel repository, atomica per costruzione*.
+**dentro la funzione**, e `api.md` §Atomicità dice esattamente questo per il
+caso «l'operazione compone **solo** scritture DB».
 
-⚠️ Il guardrail AST `apps/core/tests/test_transaction_atomicity_guardrail.py`
-gira in CI e vede il livello repository: un service che componesse due
-`cursor.execute` di scrittura fallirebbe la build. **È una rete, non la
-regola**: la regola è che quelle due scritture non devono esistere.
+⚠️ Il guardrail AST `test_transaction_atomicity_guardrail.py` gira in CI e vede
+il livello repository: un service che componesse due `cursor.execute` di
+scrittura fallirebbe la build. **È una rete, non la regola.**
+
+⭐ E la stessa forma vale per gli altri due verbi madre consegnati dal lotto 7:
+`fn_conferma_sistemazione` e `fn_annulla_sistemazione`. **Tre madri, tre
+`SELECT`.**
 
 ### 2.2 ⭐ Il database dice il **fatto**, il frontend racconta
 
-**Q-7, chiusa da Tid il 21/08 (opzione B)**: `fn_posta_contabile` **non solleva**
-quando non c'è niente da registrare. Risponde normalmente e dichiara l'esito
-(`POSTATA` / `NULLA_DA_POSTARE`) dentro la ricevuta.
-
-Ne discende una divisione di lavoro precisa, e vale **oltre il posting**:
+`fn_posta_contabile` **non solleva** quando non c'è niente da registrare:
+risponde e dichiara l'esito (`POSTATA` / `NULLA_DA_POSTARE`).
 
 | Livello | Che cosa fa |
 | --- | --- |
@@ -146,191 +203,223 @@ Ne discende una divisione di lavoro precisa, e vale **oltre il posting**:
 | **BE** | passa l'esito **senza interpretarlo**: non trasforma `NULLA_DA_POSTARE` in un 409, non lo inghiotte |
 | **FE** | decide **la frase**: replay tecnico → silenzio; seconda pressione voluta → *«questa distinta è già registrata»* (**D3-c**) |
 
-⛔ E il BE **non** deve «migliorare» l'esito: se lo trasformasse in un errore,
-il database scriverebbe nel registro degli errori un errore che non è un errore
-— che è la ragione esatta per cui Tid ha scelto l'opzione B.
+⛔ E il BE **non** deve «migliorare» l'esito: se lo trasformasse in un errore, il
+database scriverebbe nel registro degli errori un errore che non è un errore —
+che è la ragione esatta per cui è stato costruito così.
 
 ### 2.3 🔴 La **coerenza** si rifiuta, la **capienza** si segnala
 
-**D14-b**. E la seconda metà è quella che cambia l'interfaccia:
+**D14-b**, e adesso è **implementata**, non prevista:
 
 ```text
-«questa rata è di questa fattura?»      → 🔒 il DB RIFIUTA. Punto.
-«c'è ancora spazio su questo documento?» → ⚠️ si SEGNALA, e l'operatore decide
+«questa rata è di questa fattura?»       → 🔒 E_RIGA_CONTABILE_RATA_INCOERENTE (400)
+«c'è ancora spazio su questa rata?»      → ⚠️ E_RIGA_CONTABILE_CAPIENZA_SUPERATA (409)
 ```
 
-La forma della segnalazione è **a due tempi** (D14-d):
+La forma della segnalazione, **letta dal guard**:
 
 ```text
-1° tentativo, senza dichiarazione
-   → RIFIUTATO: «la fattura 2026/118 risulta già saldata. Confermi?»
-2° tentativo, con la conferma
-   → ACCETTATO, e sulla riga resta scritto che è stata forzata
+1° tentativo, forzata = false → RIFIUTATO, con la ragione e i numeri
+2° tentativo, forzata = true  → ACCETTATO, e resta scritto sulla riga
 ```
 
-⛔ **Nessun permesso, nessun pattern proponi/approva, un tempo solo.** Restano
-il **flag** sulla riga e un **motivo facoltativo**.
+⛔ **Nessun permesso, nessun pattern proponi/approva, un tempo solo**, e la
+regola è **simmetrica** nei due versi (D14-e ha superato l'asimmetria che il
+piano prevedeva).
 
-🔴 **E qui c'è il primo problema vero di questo brief**: un rifiuto *confermabile*
-esce dal DB come un errore qualunque, e il FE deve saperlo distinguere da un
-errore vero. Come, è **Q-1**.
+🔴 **Resta il problema di confine di questo brief**: un rifiuto *confermabile*
+esce sul filo HTTP come un 409 qualunque, e il FE deve distinguerlo da un errore
+vero. Come, è **Q-1** — ma il costo è crollato (§1.5, punto 4).
 
 ### 2.4 ⚠️ «Incassato» non è «postato», e la distinzione va nella **prima** misura
-
-Limite di dominio del brief madre §4:
 
 | Domanda | Che cosa si somma |
 | --- | --- |
 | «questa fattura è ancora da pagare?» | **tutti** i movimenti — il trasferimento la salda davvero |
 | «quanto è **entrato in banca**?» | solo i centri di cassa: `is_fondo_fattura` e `is_compensazione` **esclusi** |
 
-🔴 *«La distinzione va messa nella prima misura che si scrive, non aggiunta
-dopo. Un cruscotto di incassato che somma tutto conta come denaro arrivato
-qualcosa che è stato solo spostato, e l'errore non si vede: il numero è
-plausibile e cresce nel verso giusto.»*
-
 ⇒ **Regola per questo cantiere**: qualunque colonna, badge o totale che dica
-«incassato» **dichiara quale dei due è**, fin dalla prima riga di codice. Vedi
-**Q-6**.
+«incassato» **dichiara quale dei due è**, fin dalla prima riga di codice.
+
+🔴 **E qui c'è una scoperta della revisione**: `fn_get_saldo_rata` risponde
+**tre** numeri (registrato, in lavorazione, incassato); `fn_get_saldo_fattura`
+ne risponde **due**. La distinzione che il dominio pretende **esiste sulla rata
+e non sulla fattura** — cioè manca proprio al livello che l'operatore guarda per
+primo. È **Q-10**, ed è l'unica domanda di questa revisione che tocca il
+modello.
 
 ### 2.5 ⭐ La distinta manuale è **proprietà**, non risorsa contesa
 
 **D12-a**: il raggruppamento della distinta manuale comprende **chi sta
-lavorando**. Da cui:
+lavorando** — ed è nel corpo di `fn_get_or_create_vendite_contabile`, verificato.
+Da cui:
 
-- ⛔ **niente lock**, niente colonne di blocco, niente sblocco d'emergenza,
-  niente polling di «chi tiene la chiave». Tid l'aveva chiesto; il modello lo ha
-  reso inutile;
-- ⛔ **niente permesso «si confermano solo le righe proprie»** — rientrerebbe
-  dalla finestra la registrazione parziale che D3-a esclude dalla porta;
-- ✅ resta la **dichiarazione** di D13 (`righe_attese` + `totale_atteso`) come
-  **rete**, non come presidio principale: copre la stessa persona con due schede
-  aperte e un frontend che lavora su dati vecchi.
+- ⛔ **niente lock**, niente colonne di blocco, niente sblocco d'emergenza;
+- ⛔ **niente permesso «si confermano solo le righe proprie»**;
+- ✅ resta la **dichiarazione** di D13 (`p_righe_attese` + `p_totale_atteso`) come
+  **rete**: copre la stessa persona con due schede aperte.
+
+### 2.6 🔴 *(nuovo, dal lotto 6)* `pagamenti.*` pretende **l'operatore**
+
+Da lotto 6 le dodici tabelle di `pagamenti` hanno la RLS accesa con policy
+`FOR ALL`: pretendono `app.ruolo_applicativo = 'OPERATORE'` **per leggere e per
+scrivere**. Un percorso senza quella GUC **non vede niente e non scrive niente**.
+
+✅ **Verificato oggi**: la impostano sia `jwt_audit_middleware` (ciclo web) sia
+`coda_lavori/context.py` (worker). ⚠️ Resta da verificare, **una a una**, la
+manciata di cose che girano fuori da entrambi (comandi `manage.py`, job di
+servizio). `zeroerp_batch_fatturazione` ha `BYPASSRLS`: quelli non cambiano.
+
+⚠️ **E vale la memoria del conteggio fail-closed**: una lista di `pagamenti` che
+si svuota non è «nessun risultato», è **un perimetro che ha morso**. Ogni lista
+di questo cantiere va provata con un utente **dentro** e uno **fuori** dal
+perimetro, e la differenza va guardata.
 
 ---
 
-## 3. Il piano — sette slice
-
-Ogni slice è **collaudabile da sola** e dichiara **da quale lotto DB dipende**.
-Le prime tre non aspettano niente.
+## 3. Il piano — sette slice, nessuna in attesa
 
 ```text
-  DB lotto 2 ✅ ──▶ S0 telaio ──▶ S1 la distinta ──▶ S2 la riga e l'abbinamento
-  DB lotto 4 🔴 ─────────────────────────────────▶ S3 la registrazione
-  DB lotto 5 🔴 ─────────────────────────────────▶ S4 la rata e la capienza
-  DB lotto 6 🔴 ─────────────────────────────────▶ S5 il perimetro e la coda
-  DB lotto 7 🔴 ─────────────────────────────────▶ S6 le sistemazioni
+  S0 telaio ──▶ S1 distinta e righe ──▶ S2 LA REGISTRAZIONE ──▶ S3 rata e capienza
+                                                                      │
+                    S4 perimetro e canali (⚠️ DATO-1) ◀───────────────┤
+                    S5 sistemazioni ────────────────────────────────◀─┘
+                    S6 spezzatura (solo se Q-2 → sì)
 ```
 
-### 3.0 S0 — Il telaio *(nessuna dipendenza: si parte oggi)*
+**Come si mappa sul piano del 22/08** — le vecchie S3/S4 si fondono e si
+riordinano, perché l'ordine vecchio era dettato dai lotti DB e i lotti non ci
+sono più:
+
+| Vecchia | Nuova | Perché |
+| --- | --- | --- |
+| S0, S1, S2 | S0, **S1** | le righe stanno con la loro distinta: sono **un drawer solo** |
+| S3 (registrazione) | **S2** | sale: è **il primo valore vero** e adesso non aspetta niente |
+| S4 (rata e capienza) | **S3** | scende di uno, ma `scadenza_id` entra **già in S1** (sotto) |
+| S5 (perimetro e coda) | **S4** | invariata, ⚠️ **bloccata da DATO-1** |
+| S6 (sistemazioni) | **S5** | invariata: chiude **BE-4** e sblocca la **Fase D** del cantiere fondi |
+| R-4 (spezza) | **S6** | isolata: è l'unica cosa che dipende ancora da un passo DB |
+
+### 3.0 S0 — Il telaio
 
 Nessun valore di dominio. È ciò senza cui la slice 1 non si scrive.
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
-| **T-1** | `apps/pagamenti/api/urls_v1.py` + montaggio in `zeroerp_backend/urls.py` | BE | `path("api/v1/pagamenti/", include("apps.pagamenti.api.urls_v1"))`, subito **dopo** `pratiche` per stare nell'ordine dei domini |
-| **T-2** | `apps/pagamenti/db/pagamenti_repository.py` | BE | Il repository **generico dello schema**, come prescrive la convenzione di naming di `AGENTS.md`: liste, letture, chiamate a `fn_*`. ⛔ **Non** un file per entità: distinte e righe stanno insieme finché non nasce un sottodominio con orchestrazione propria |
-| **T-3** | `apps/pagamenti/services/pagamenti_service.py` | BE | La facciata. ⚠️ Il traduttore degli errori DB si prende da `make_db_errors_translator` (`payload_helpers`), **non** si riscrive |
-| **T-4** | `apps/pagamenti/types.py` | BE | `TypedDict` delle righe DB (`DistintaRow`, `RigaContabileRow`, `RicevutaPosting`) |
-| **T-5** | `frontend/src/pagamenti/{views,components,stores,api}/` | FE | Le quattro cartelle, allineate ai domini esistenti |
-| **T-6** | `DOMAIN_MENUS['pagamenti']` + rotte | FE | Da `[]` alle voci della slice 1. ⚠️ Le rotte vanno con `meta` per `resolveTabLabel`/`resolveTabIcon` |
-| **T-7** | Namespace i18n `pagamenti.*` in `it.json` e `en.json` | FE | ⚠️ **`check_i18n_keys.py` è un cancello CI**: una `label_key` seminata a DB senza la sua chiave nei locales **fa fallire la build**. È già successo al lotto 2, che per questo ha seminato le matrici con `{"manuale": false}` |
-| **T-8** | `useReadonlyMode('pagamenti')` sulle viste | FE | Piramide permessi standard. Lo `schemaDb` è già in `DOMAINS` |
+| **T-1** | `apps/pagamenti/api/urls_v1.py` + montaggio | BE | `path("api/v1/pagamenti/", include("apps.pagamenti.api.urls_v1"))`, dopo `pratiche` |
+| **T-2** | `apps/pagamenti/db/pagamenti_repository.py` | BE | Il repository **generico dello schema**: liste, letture, chiamate alle `fn_*`. ⛔ **Non** un file per entità |
+| **T-3** | `apps/pagamenti/services/pagamenti_service.py` | BE | La facciata. ⚠️ Il traduttore degli errori si prende da `make_db_errors_translator`, **non** si riscrive |
+| **T-4** | `apps/pagamenti/types.py` | BE | `TypedDict` delle righe DB (`DistintaRow`, `RigaContabileRow`, `RicevutaPosting`, `SaldoRata`, `EccedenzaRow`) |
+| **T-5** | ⭐ **Le due code dei lotti** | BE | Riscrivere il ripiego di `E_RIGA_CONTABILE_DISTINTA_FINALE` (frase nuova, **senza `%s`**) e **togliere** i tre codici obsoleti dal ripiego (BE-10). §1.5 |
+| **T-6** | `frontend/src/pagamenti/{views,components,stores,api}/` | FE | Le quattro cartelle |
+| **T-7** | `DOMAIN_MENUS['pagamenti']` + rotte | FE | Da `[]` alle voci della slice 1. ⚠️ `meta` per `resolveTabLabel`/`resolveTabIcon` |
+| **T-8** | Namespace i18n `pagamenti.*` in `it.json` e `en.json` | FE | ⚠️ `check_i18n_keys.py` è **un cancello CI**: una `label_key` seminata a DB senza la sua chiave **fa fallire la build** |
+| **T-9** | `useReadonlyMode('pagamenti')` sulle viste | FE | Piramide permessi standard |
+| **T-10** | ⚠️ **La prova del perimetro** | BE | Una lettura qualunque di `pagamenti` con e senza la GUC operatore, per **vedere** la RLS mordere prima che lo faccia in una lista (§2.6) |
 
-⭐ **Nessun endpoint di lookup da scrivere**: i quattro cataloghi sono già nella
-whitelist (§1.1). Il FE usa `LookupSelect` con `rel="pagamenti.centri_riscossione"`.
+⭐ **Nessun endpoint di lookup da scrivere**: i quattro cataloghi sono già in
+whitelist. Il FE usa `LookupSelect` con `rel="pagamenti.centri_riscossione"`.
 
-### 3.1 S1 — La distinta *(dipende dal lotto DB 2: ✅ applicato)*
+### 3.1 S1 — La distinta e le sue righe
 
-Il documento che raccoglie N importi arrivati insieme. Realizza **D12**, **D14-a-bis**
-e mette in mano a una persona ciò che il giro dei fondi scrive da mesi al buio.
+Il documento che raccoglie N importi arrivati insieme, **con dentro le sue
+righe**: sono un drawer solo e si costruiscono insieme.
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
-| **D-1** | `GET /pagamenti/distinte/` — lista paginata | BE | 📮 **Prerequisito DB**: vista `pagamenti.vw_vendite_contabili_lista` + seed `ui.lista_definizione` e `lista_colonna` (§6). Filtri: stato, origine, centro, **data** (`data_contabile`, col floor standard di `defaultFiltroDataDa`) |
-| **D-2** | `POST /pagamenti/distinte/` — apre una distinta manuale | BE | Una `SELECT fn_get_or_create_vendite_contabile(...)`, con `p_origine := 'MANUALE'` e `p_codice_stato_interno := 'BOZZA'`. ⭐ Il BE **non passa** l'operatore: lo mette la funzione (D12-a). ⚠️ `Idempotency-Key` obbligatoria |
-| **D-3** | `GET /pagamenti/distinte/{id}/` — dettaglio | BE | Testata + totali derivati (somma righe, righe registrabili, scarto dal dichiarato) |
-| **D-4** | `PATCH /pagamenti/distinte/{id}/` | BE | Solo i campi che una persona compila: `data_contabile`, `ente_incasso_id`, `importo_dichiarato`, `meta`. ⛔ **Non** lo stato: quello è un'azione |
-| **D-5** | `POST /pagamenti/distinte/{id}/stato/` | BE | `{nuovo_stato: 'VALIDATA'\|'BOZZA'\|'ANNULLATA'}`. Un `UPDATE stato_id`, e i **quattro guard del lotto 2** fanno il resto — transizione ammessa, quadratura col dichiarato, riapertura solo se `MANUALE`, chiusura senza righe pronte |
-| **D-6** | `DistinteListView.vue` | FE | `<ListaConfigurabile>` + `useListaConfigurabilePage` + `PageActionsBar`. Modello da copiare: `ApprovazioniPrezzoListView.vue` |
+| **D-1** | `GET /pagamenti/distinte/` — lista paginata | BE | 📮 **Prerequisito**: seed `ui.lista_definizione` + `lista_colonna` (§6). Filtri: stato, origine, centro, **data** (`data_contabile`, col floor standard di `defaultFiltroDataDa`) |
+| **D-2** | `POST /pagamenti/distinte/` | BE | Una `SELECT fn_get_or_create_vendite_contabile(...)` con `p_origine := 'MANUALE'`, `p_codice_stato_interno := 'BOZZA'`. ⭐ Il BE **non passa** l'operatore. ⚠️ `Idempotency-Key` obbligatoria |
+| **D-3** | `GET /pagamenti/distinte/{id}/` | BE | Testata + totali derivati (somma righe, righe registrabili, scarto dal dichiarato) + **il catalogo degli stati coi suoi flag** (`is_postabile`, `richiede_abbinamento`, `is_final`) |
+| **D-4** | `PATCH /pagamenti/distinte/{id}/` | BE | Solo i campi che una persona compila: `data_contabile`, `ente_incasso_id`, `importo_dichiarato`, `meta`. ⛔ **Non** lo stato |
+| **D-5** | `POST /pagamenti/distinte/{id}/stato/` | BE | `{nuovo_stato: 'VALIDATA'\|'BOZZA'\|'ANNULLATA'}` — **tre valori, non quattro** (§1.5 punto 5). Un `UPDATE stato_id`, e i guard fanno il resto |
+| **R-1** | `GET/POST /pagamenti/distinte/{id}/righe/` | BE | Lista e creazione righe |
+| **R-2** | `PATCH /pagamenti/righe/{id}/` | BE | I **fatti**: `importo`, le tre date, `riferimento_ente`, `motivo_sospeso`. ⛔ **Non** l'abbinamento: quello è un verbo (S3, ma il campo `scadenza_id` esiste già e va previsto nel form fin da subito) |
+| **R-3** | `POST /pagamenti/righe/{id}/stato/` | BE | Il percorso di D14-a. I guard rifiutano ciò che non è ammesso, **compreso** `ABBINATA` senza fattura |
+| **D-6** | `DistinteListView.vue` | FE | `<ListaConfigurabile>` + `useListaConfigurabilePage` + `PageActionsBar`. Modello: `ApprovazioniPrezzoListView.vue` |
 | **D-7** | `DistintaDrawer.vue` | FE | Testata + **master-detail inline** delle righe (`RigheMasterDetailTable`). ⚠️ `readonly` + `useInjectReadonly` **obbligatori** |
-| **D-8** | Pannello «validazione» nel drawer | FE | Mostra dichiarato vs digitato e il **delta**, così l'errore si vede **prima** di premere. ⚠️ È un pannello-azione dentro un drawer che post-BOZZA è `.app-readonly` ⇒ **wrapper `app-escape` obbligatorio**: due bug bloccanti sono già stati trovati così |
+| **D-8** | Pannello «validazione» | FE | Dichiarato vs digitato e **il delta**, così l'errore si vede **prima** di premere. ⚠️ Post-BOZZA il drawer è `.app-readonly` ⇒ **wrapper `app-escape` obbligatorio** |
+| **R-6** | Form riga | FE | `BillingAccountLookup` (esiste) + `FatturaLookup` (nuovo). ⚠️ Salvare l'`_obj` nel form per il restore dell'AutoComplete server-side |
+| **R-7** | Azioni di riga | FE | `RowActionsMenu` + `MANAGE_ICONS.KEBAB`. ⛔ **Mai la matita** |
 
 ⚠️ **Un'avvertenza sul contenuto di questa lista, oggi.** Le uniche distinte
-esistenti sono **`GENERATA`** — le crea il sync dei fondi fattura, e nascono già
-in `VALIDATA`. Quindi la prima cosa che la lista mostrerà a Tid **non è il
-lavoro di nessuno**: è la contabilità interna dei fondi. È giusto che si veda
-(§1.3), ma la schermata deve **dirlo** — la colonna `origine` non è un dettaglio
-tecnico da nascondere, è *«l'informazione che serve a chi la guarda»* (D12-b-bis).
+esistenti sono **`GENERATA`** — le crea il sync dei fondi fattura e nascono già
+in `VALIDATA`. La prima cosa che la lista mostrerà a Tid **non è il lavoro di
+nessuno**: è la contabilità interna dei fondi. È giusto che si veda, ma la
+schermata deve **dirlo**: la colonna `origine` non è un dettaglio tecnico.
 
-### 3.2 S2 — La riga e l'abbinamento *(dipende dal lotto DB 2: ✅ applicato)*
+### 3.2 S2 — La registrazione ⭐ *(era S3, e adesso è la prima cosa che vale)*
 
-| | Passo | Lato | Cosa fa |
-| --- | --- | --- | --- |
-| **R-1** | `GET/POST /pagamenti/distinte/{id}/righe/` | BE | Lista e creazione righe della distinta |
-| **R-2** | `PATCH /pagamenti/righe/{id}/` | BE | I **fatti** (`importo`, le tre date, `riferimento_ente`) e le **decisioni** (`fattura_id`, `billing_account_id`, `motivo_sospeso`). ⚠️ D12-d: sull'`AUTOMATICA` i fatti saranno immutabili — il guard però arriva **con D6**, quindi oggi il BE non deve inventarselo |
-| **R-3** | `POST /pagamenti/righe/{id}/stato/` | BE | Il percorso di D14-a. I guard del lotto 2 rifiutano ciò che non è ammesso, **compreso** `ABBINATA` senza fattura |
-| **R-4** | 🔴 `POST /pagamenti/righe/{id}/spezza/` | BE | **Il gesto centrale di D1-bis** — 1.200 su una rata da 1.000 si risolve *spezzando*, non forzando. 📮 Richiede una **funzione DB che nessun lotto contiene**. Vedi **Q-2** |
-| **R-5** | `FatturaLookup.vue` | FE | 🆕 Building block: autocomplete fattura cross-dominio. ⚠️ Vive in `vendite` ⇒ `skip_area_check = True` + scope nel repository (memoria `feedback_lookup_skip_area_check`): **mai** dare LETTURA su `vendite` a chi lavora gli incassi |
-| **R-6** | Form riga dentro il drawer distinta | FE | `BillingAccountLookup` (esiste) + `FatturaLookup` (nuovo). ⚠️ Salvare l'`_obj` nel form per il restore dell'AutoComplete server-side |
-| **R-7** | Azioni di riga | FE | `RowActionsMenu` + `MANAGE_ICONS.KEBAB`. ⛔ **Mai la matita**: la modifica è il click sulla riga |
-
-### 3.3 S3 — La registrazione 🔴 *(aspetta il lotto DB 4)*
-
-Il cuore. Fa esistere il primo `vendite_movimenti` del progetto, e da lì
-`fn_get_saldo_fattura` **smette di mentire**.
+Il cuore. Fa esistere il primo `vendite_movimenti` **chiesto da una persona**, e
+da lì `fn_get_saldo_fattura` smette di mentire nell'interfaccia.
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
 | **P-1** | `GET /pagamenti/distinte/{id}/anteprima-registrazione/` | BE | La **fotografia**: quante righe sono registrabili adesso, per che totale, quante restano indietro e perché. È ciò che l'operatore vede **prima** di premere, ed è ciò che poi **dichiara** |
-| **P-2** | `POST /pagamenti/distinte/{id}/registra/` | BE | **Una sola** `SELECT fn_posta_contabile(id, righe_attese, totale_atteso)`. `Idempotency-Key` obbligatoria. ⛔ Nessun `atomic()`, nessun ciclo, nessuna lettura-poi-scrittura |
-| **P-3** | La ricevuta risale intatta | BE | `{movimenti_creati, righe_postate, righe_saltate, totale_postato, esito}` dentro `success_response`. ⛔ Il BE **non** trasforma `NULLA_DA_POSTARE` in un errore (§2.2) |
-| **P-4** | Pannello «Registra» nel drawer | FE | Mostra l'anteprima, chiede conferma, invia la dichiarazione. ⚠️ `app-escape` (il drawer post-BOZZA è readonly) |
-| **P-5** | La frase sull'esito | FE | `POSTATA` → toast di successo coi numeri della ricevuta; `NULLA_DA_POSTARE` → **avviso**, non errore: *«questa distinta era già registrata»*. È D3-c, e la fa il FE |
-| **P-6** | Il rifiuto della dichiarazione | FE | Se il DB risponde «ciò che vedi non è ciò che c'è», **non si riprova in automatico**: si ricarica l'anteprima e si mostra la differenza. Un retry cieco su un gesto irreversibile è la cosa peggiore che si possa costruire |
+| **P-2** | `POST /pagamenti/distinte/{id}/registra/` | BE | **Una sola** `SELECT fn_posta_contabile(id, righe_attese, totale_atteso)`. ⚠️ I due parametri o **entrambi o nessuno**. `Idempotency-Key` obbligatoria |
+| **P-3** | La ricevuta risale intatta | BE | `{movimenti_creati, righe_postate, righe_saltate, totale_postato, esito}` dentro `success_response`. ⛔ Il BE **non** trasforma `NULLA_DA_POSTARE` in un errore |
+| **P-4** | Pannello «Registra» nel drawer | FE | Mostra l'anteprima, chiede conferma, invia la dichiarazione. ⚠️ `app-escape` |
+| **P-5** | La frase sull'esito | FE | `POSTATA` → toast coi numeri della ricevuta; `NULLA_DA_POSTARE` → **avviso**, non errore: *«questa distinta era già registrata»* |
+| **P-6** | Il rifiuto della dichiarazione | FE | Su `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE` (963) **non si riprova in automatico**: si ricarica l'anteprima e si mostra la differenza. Un retry cieco su un gesto irreversibile è la cosa peggiore che si possa costruire |
+| **P-7** | ⭐ **La distinta si chiude da sé** | FE | Dopo la registrazione lo stato è `CHIUSA`: il drawer va ricaricato e il pannello sparisce. ⛔ Nessun pulsante «chiudi» da nessuna parte |
 
-### 3.4 S4 — La rata e la capienza 🔴 *(aspetta il lotto DB 5)*
+### 3.3 S3 — La rata e la capienza
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
-| **A-1** | `scadenza_id` nel payload della riga | BE | Aggiunta al PATCH di R-2 |
-| **A-2** | Lookup delle rate di una fattura | BE | 📮 Prerequisito: **non esiste una rotta scadenze**. Vedi **Q-8** |
-| **A-3** | `GET /pagamenti/rate/{id}/saldo/` | BE | Sopra `fn_get_saldo_rata`. ⚠️ Deve **già** distinguere incassato da postato (§2.4) |
-| **A-4** | `GET /pagamenti/rate/sovra-incassate/` | BE | **BE-5**. 📮 Prerequisito DB: la vista di S2-7. ⚠️ *«senza, la forzatura è un modo di nascondere denaro, non di registrarlo»* |
-| **A-5** | La forzatura a due tempi | BE+FE | Il payload porta `forzatura_confermata` + `motivo` (facoltativo). Il primo tentativo **non** lo porta. Vedi **Q-1** per come il FE riconosce il rifiuto confermabile |
-| **A-6** | `RateSovraIncassateListView.vue` | FE | Lista. 📮 Prerequisito: seed `ui.lista_*` |
+| **A-1** | `POST /pagamenti/righe/{id}/abbina/` | BE | ⭐ **Il verbo dell'abbinamento** (BE-6): `{fattura_id, billing_account_id, scadenza_id?, forzata?, motivo_forzatura?}`. Un `UPDATE` solo, e i guard della rata decidono |
+| **A-2** | `GET /vendite/fatture/{id}/scadenze/lookup/` | BE | Le rate di una fattura **col loro saldo**: `list_fattura_scadenze` + `fn_get_saldo_rata` in LATERAL. ⚠️ Vive in `vendite` con `skip_area_check = True` (**Q-8**) |
+| **A-3** | `GET /pagamenti/rate/{id}/saldo/` | BE | Sopra `fn_get_saldo_rata`. ⭐ Espone **tre numeri distinti**, e li **nomina**: registrato · in lavorazione · incassato (§2.4) |
+| **A-4** | `GET /pagamenti/rate/fuori-capienza/` | BE | Sopra `vw_rate_fuori_capienza`. 📮 Prerequisito: **solo il seed** della lista — la vista c'è |
+| **A-5** | La forzatura a due tempi | BE+FE | Il primo tentativo **non** porta `forzata`; sul 409 `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` il FE mostra il messaggio del DB (che porta già i numeri) e chiede conferma; il secondo porta `forzata: true` + `motivo_forzatura`. Come il FE lo **riconosce** è **Q-1** |
+| **A-6** | `RateFuoriCapienzaListView.vue` | FE | Lista. ⭐ La prima colonna è **`motivo`**: due popolazioni diverse in un elenco solo |
 | **A-7** | Selettore rata nel form riga | FE | Alimentato dalla fattura scelta; si azzera quando la fattura cambia. ⚠️ La rata resta **facoltativa** anche su `ABBINATA` — la riga del fondo fattura ha fattura sì e rata no |
+| **A-8** | `SaldoDocumentoPanel` nel drawer fattura | FE | Vedi **Q-6** e **Q-10** |
 
-### 3.5 S5 — Il perimetro e la coda 🔴 *(aspetta il lotto DB 6)*
-
-| | Passo | Lato | Cosa fa |
-| --- | --- | --- | --- |
-| **E-1** | Gestione `enti_incasso` | BE+FE | Drawer dedicato: ha JOIN (soggetto_ruolo, filiale, conto) quindi **non** è un pannello config generico. Il conto diventa obbligatorio per `tipo = BANCA` |
-| **E-2** | Coda «da abbinare» | BE+FE | Lista cross-distinta delle righe `DA_ABBINARE` e `SOSPESA`. ⭐ Sono **due code per due persone diverse**: `DA_ABBINARE` = lavoro non ancora fatto, `SOSPESA` = lavoro fatto che ha trovato un ostacolo. Vedi **Q-4** |
-| **E-3** | Riverifica di **tutte** le liste sotto RLS | BE | ⚠️ Memoria `feedback_rls_query_contesto_sistema`: **un conteggio fail-closed somiglia a un dato**. Una lista che si svuota dopo il lotto 6 non è «nessun risultato», è un perimetro che ha morso |
-
-### 3.6 S6 — Le sistemazioni 🔴 *(aspetta il lotto DB 7)*
+### 3.4 S4 — Il perimetro e la coda ⚠️ *(bloccata da DATO-1, non da codice)*
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
-| **S-1** | `GET /pagamenti/eccedenze/` | BE | Sopra `vw_eccedenze_da_sistemare`. ⭐ **Raggruppata per cliente**, non per documento: la compensazione ha senso solo a livello cliente |
-| **S-2** | `POST /pagamenti/sistemazioni/` | BE | Registra la decisione: `RIPORTO` / `RIMBORSO` / `COMPENSAZIONE` |
-| **S-3** | I tre verbi | BE | Riusano meccanismi esistenti — fondo `origine = MANUALE`, contabile a importi negativi, contabile di compensazione. ⭐ **Nessuna macchina nuova** |
-| **S-4** | `EccedenzeView.vue` + drawer decisione | FE | La vista presenta, la persona decide, l'atto diventa un fatto |
+| **E-1** | Gestione `enti_incasso` | BE+FE | Drawer dedicato: ha JOIN (soggetto_ruolo, filiale, **conto**) quindi **non** è un pannello config generico. ⭐ **BE-8**: l'elenco dei conti mostra **solo** quelli con `uso = 'INCASSO'` dell'emittente — il DB rifiuta gli altri, ma un elenco che li propone fa sbagliare |
+| **E-2** | ⛔ **Il blocco** | — | Finché i due emittenti non hanno il loro conto `INCASSO` censito (**DATO-1**), questa schermata **non può creare niente**. Non è un difetto: è D5 |
+| **E-3** | Coda «da abbinare» | BE+FE | Lista cross-distinta delle righe `DA_ABBINARE` e `SOSPESA`. ⭐ Sono **due code per due persone diverse** (**Q-4**) |
+| **E-4** | Riverifica di **tutte** le liste sotto RLS | BE | ⚠️ §2.6: dentro e fuori perimetro, e si guarda la differenza |
+
+### 3.5 S5 — Le sistemazioni
+
+| | Passo | Lato | Cosa fa |
+| --- | --- | --- | --- |
+| **S-1** | `GET /pagamenti/eccedenze/` | BE | Sopra `vw_eccedenze_da_sistemare`. ⭐ **Raggruppata per cliente** — e la vista porta già `eccedenza_cliente` e `documenti_cliente` in finestra: il BE **non somma niente** |
+| **S-2** | `POST /pagamenti/sistemazioni/` | BE | ⭐ Un **`INSERT`**, non un verbo: `{destinazione, importo, cliente_…, emittente_…, fattura_origine_id, fattura_destinazione_id?, motivo?}`. I CHECK del DB tengono le combinazioni |
+| **S-3** | `POST /pagamenti/sistemazioni/{id}/conferma/` | BE | Una `SELECT fn_conferma_sistemazione(id, ente_incasso_id)`. ⚠️ **Il canale del rimborso si chiede QUI**: da quale conto esce il bonifico è una decisione del momento in cui si paga |
+| **S-4** | `POST /pagamenti/sistemazioni/{id}/annulla/` | BE | `fn_annulla_sistemazione(id, motivo)`. ⚠️ Il motivo è **obbligatorio** se l'atto non ne aveva già uno |
+| **S-5** | `EccedenzeView.vue` + drawer decisione | FE | La vista presenta, la persona decide, l'atto diventa un fatto. ⭐ `chi_e_in_credito` in evidenza: cliente o azienda cambia completamente che cosa si sta guardando |
+| **S-6** | Il dialogo della conferma | FE | Chiede il **canale** solo su `RIMBORSO` (sulle altre due destinazioni non serve) |
 
 📮 Con S-3 si chiude **BE-4** e si sblocca la **Fase D del cantiere fondi**,
-ferma per scelta da agosto.
+ferma per scelta da agosto: il riporto **è** il fondo `origine = MANUALE` che
+quel cantiere aspettava.
+
+### 3.6 S6 — La spezzatura 🔵 *(solo se Q-2 va come propongo)*
+
+| | Passo | Lato | Cosa fa |
+| --- | --- | --- | --- |
+| **X-1** | `POST /pagamenti/righe/{id}/spezza/` | BE | **Il gesto centrale di D1-bis**: 1.200 su una rata da 1.000 si risolve *spezzando*, non forzando. 📮 Richiede `fn_spezza_riga_contabile` — l'unica cosa che manca al DB |
+| **X-2** | Il gesto nel drawer | FE | Azione di riga: importo da staccare, e la riga nuova nasce `DA_ABBINARE` |
+
+⚠️ **Finché non c'è, l'operatore ha solo la forzatura** — che è la strada che
+D1-bis dichiara **meno** preferibile: l'eccedenza sparisce dentro una rata che
+non la giustifica, invece di restare denaro identificato.
 
 ### 3.7 Cosa il cantiere BE/FE **non** fa, e perché
 
 | Non fa | Perché |
 | --- | --- |
-| **Import del flusso bancario** (D6) | `enti_incasso` è a 0 righe: non esiste un canale da cui un file possa arrivare. E i due guard di immutabilità vanno **con** l'import: prima non hanno righe su cui agire |
+| **Import del flusso bancario** (D6) | `enti_incasso` è a 0 righe **e non è creabile** (DATO-1): non esiste un canale da cui un file possa arrivare |
 | **Abbinamento automatico** (D4) | Una regola di match si tara sui casi veri. Con zero incassi si scriverebbe immaginandoli |
-| **Portale clienti `GET /portale/scadenze/`** (§3.3) | Senza la slice 4 mostrerebbe il piano rate e basta, senza poter dire quali rate siano pagate — cioè l'unica domanda che il cliente si fa |
-| **Scadenzario** (§3.4) | ⛔ Limite di dominio: *«non esiste uno stato di pagamento della rata; nessuna colonna scaduta/insoluta, nessuna colorazione di sollecito»*. Ogni sua colonna sarebbe falsa su una fattura già incassata |
-| **Blocco `2.4 DatiPagamento`** (§3.2) | È il passo **2** dell'ordine di Tid, e appartiene al cantiere SDI |
-| **Il riferimento `RF` ISO 11649** (§3.6) | È una **proposta**, non una decisione |
+| **Portale clienti `GET /portale/scadenze/`** | Ha senso **dopo** S3: prima mostrerebbe il piano rate senza poter dire quali rate siano pagate |
+| **Scadenzario** | ⛔ Limite di dominio: *«non esiste uno stato di pagamento della rata»*. Ogni sua colonna sarebbe falsa su una fattura già incassata |
+| **Blocco `2.4 DatiPagamento`** | È il passo **2** dell'ordine di Tid, e appartiene al cantiere SDI |
+| **La capienza a livello di fattura** | 🔵 Il lotto 5 l'ha messa **solo sulla rata**, di proposito (al livello fattura passerebbe il sync dei fondi, che non ha nessuno che possa «confermare»). Estenderla è **una decisione di dominio**, non una rifinitura di interfaccia |
 
 ---
 
@@ -343,29 +432,34 @@ verbo compare **solo** per le azioni di dominio e come **ultimo** segmento.
 | --- | --- | --- | :---: |
 | S1 | `GET /api/v1/pagamenti/distinte/` | lista paginata | — |
 | S1 | `POST /api/v1/pagamenti/distinte/` | apre una distinta manuale | ✅ |
-| S1 | `GET /api/v1/pagamenti/distinte/{id}/` | dettaglio + totali derivati | — |
+| S1 | `GET /api/v1/pagamenti/distinte/{id}/` | dettaglio + totali + catalogo stati | — |
 | S1 | `PATCH /api/v1/pagamenti/distinte/{id}/` | campi compilabili | — |
 | S1 | `POST /api/v1/pagamenti/distinte/{id}/stato/` | VALIDATA · BOZZA · ANNULLATA | ✅ |
-| S2 | `GET /api/v1/pagamenti/distinte/{id}/righe/` | righe della distinta | — |
-| S2 | `POST /api/v1/pagamenti/distinte/{id}/righe/` | nuova riga | ✅ |
-| S2 | `PATCH /api/v1/pagamenti/righe/{id}/` | fatti + decisioni | — |
-| S2 | `POST /api/v1/pagamenti/righe/{id}/stato/` | il percorso di D14-a | ✅ |
-| S2 | `POST /api/v1/pagamenti/righe/{id}/spezza/` | 🔵 **Q-2** | ✅ |
-| S3 | `GET /api/v1/pagamenti/distinte/{id}/anteprima-registrazione/` | la fotografia | — |
-| S3 | `POST /api/v1/pagamenti/distinte/{id}/registra/` | ⭐ la madre | ✅ |
-| S4 | `GET /api/v1/pagamenti/rate/{id}/saldo/` | saldo per rata | — |
-| S4 | `GET /api/v1/pagamenti/rate/sovra-incassate/` | BE-5 | — |
-| S4 | `GET /api/v1/vendite/fatture/{id}/scadenze/lookup/` | 🔵 **Q-8** — vive in `vendite` | — |
-| S5 | `GET/POST/PATCH /api/v1/pagamenti/enti-incasso/…` | configurazione canali | ✅ su write |
-| S5 | `GET /api/v1/pagamenti/righe/da-abbinare/` | la coda | — |
-| S6 | `GET /api/v1/pagamenti/eccedenze/` · `POST /api/v1/pagamenti/sistemazioni/` | presenta · decide | ✅ su write |
+| S1 | `GET/POST /api/v1/pagamenti/distinte/{id}/righe/` | righe della distinta | ✅ su POST |
+| S1 | `PATCH /api/v1/pagamenti/righe/{id}/` | i **fatti** della riga | — |
+| S1 | `POST /api/v1/pagamenti/righe/{id}/stato/` | il percorso di D14-a | ✅ |
+| S2 | `GET /api/v1/pagamenti/distinte/{id}/anteprima-registrazione/` | la fotografia | — |
+| S2 | `POST /api/v1/pagamenti/distinte/{id}/registra/` | ⭐ la madre | ✅ |
+| S3 | `POST /api/v1/pagamenti/righe/{id}/abbina/` | fattura + rata (+ forzatura) | ✅ |
+| S3 | `GET /api/v1/pagamenti/rate/{id}/saldo/` | tre numeri, nominati | — |
+| S3 | `GET /api/v1/pagamenti/rate/fuori-capienza/` | l'elenco che rende onesta la forzatura | — |
+| S3 | `GET /api/v1/vendite/fatture/{id}/scadenze/lookup/` | 🔵 **Q-8** — vive in `vendite` | — |
+| S4 | `GET/POST/PATCH /api/v1/pagamenti/enti-incasso/…` | configurazione canali | ✅ su write |
+| S4 | `GET /api/v1/pagamenti/righe/da-abbinare/` | la coda | — |
+| S5 | `GET /api/v1/pagamenti/eccedenze/` | presenta | — |
+| S5 | `POST /api/v1/pagamenti/sistemazioni/` · `…/{id}/conferma/` · `…/{id}/annulla/` | registra · esegue · scarta | ✅ su write |
+| S6 | `POST /api/v1/pagamenti/righe/{id}/spezza/` | 🔵 **Q-2** | ✅ |
 
 **Note vincolanti:**
 
+- ⭐ **la risorsa si chiama `distinte`, non `contabili`.** Il piano DB scriveva
+  `POST /pagamenti/contabili/<id>/registra/`; sul filo si usa la parola che
+  l'operatore legge sulla schermata, e la guida di dominio la chiama *distinta*.
+  ⚠️ Se Tid preferisce il nome tecnico, si cambia **qui e in un posto solo**;
 - ⛔ **niente `POST /distinte/crea/`, niente `PATCH /distinte/5/aggiorna/`**: il
   verbo è nel metodo HTTP;
-- ✅ `registra`, `spezza`, `stato` sono **azioni di dominio**, e stanno come
-  ultimo segmento — la stessa forma di `POST /pratiche/3/sospendi/`;
+- ✅ `registra`, `abbina`, `spezza`, `conferma`, `annulla`, `stato` sono **azioni
+  di dominio** e stanno come ultimo segmento;
 - ⚠️ **niente `?format=`** nei query param: collide con DRF e produce un 404
   silenzioso. Se servirà un export, il parametro si chiama `formato`;
 - tutte le view estendono `DomainAPIView` con `area_funzionale = "pagamenti"`.
@@ -381,10 +475,11 @@ verbo compare **solo** per le azioni di dominio e come **ultimo** segmento.
 | Schermata | Slice | Forma |
 | --- | --- | --- |
 | **Distinte contabili** | S1 | `<ListaConfigurabile>` — paginatore in alto, filtri stato/origine/centro/data, click riga → drawer |
-| **DistintaDrawer** | S1-S3 | Testata + master-detail righe + pannello validazione + pannello registrazione |
-| **Da abbinare** | S5 | Coda di righe cross-distinta, due sotto-code (**Q-4**) |
-| **Rate sovra-incassate** | S4 | Lista. Senza, la forzatura nasconde invece di registrare |
-| **Eccedenze da sistemare** | S6 | Lista raggruppata **per cliente** + drawer decisione |
+| **DistintaDrawer** | S1-S2 | Testata + master-detail righe + pannello validazione + pannello registrazione |
+| **Rate fuori capienza** | S3 | Lista, **prima colonna `motivo`**. Senza, la forzatura nasconde invece di registrare |
+| **Canali di incasso** | S4 | Drawer di configurazione ⚠️ bloccato da DATO-1 |
+| **Da abbinare** | S4 | Coda di righe cross-distinta, due sotto-code (**Q-4**) |
+| **Eccedenze da sistemare** | S5 | Lista raggruppata **per cliente** + drawer decisione + dialogo conferma |
 
 ### 5.2 ✅ I 17 building block che si riusano
 
@@ -394,19 +489,17 @@ verbo compare **solo** per le azioni di dominio e come **ultimo** segmento.
 `BillingAccountLookup` · `useReadonlyMode` · `useConfirmAction` ·
 `useDrawerContentReady` · `createCrudStore` · `defaultFiltroDataDa`.
 
-### 5.3 🆕 I quattro da estrarre — e tre non sono nostri
+### 5.3 🆕 I quattro candidati all'estrazione — e tre non sono nostri
 
-| BB | Dove vive | Perché |
+| BB | Dove vivrebbe | Perché |
 | --- | --- | --- |
-| `FatturaLookup.vue` | `core/components/` | Autocomplete fattura cross-dominio. ⭐ **Non è di `pagamenti`**: serve a chiunque debba puntare una fattura da un altro schema, ed è la seconda occorrenza dopo i lookup BA e istanze |
-| `ScadenzaSelect.vue` | `core/components/` | Rate di una fattura. Gemello del precedente un piano più giù |
-| `SaldoDocumentoPanel.vue` | `core/components/` | «Incassato / Postato / Residuo» — ⭐ da progettare **con** la distinzione di §2.4 dentro, non appesa dopo. Vedi **Q-6** |
-| `useForzaturaConfermata.js` | `core/composables/` | Il doppio-tempo «rifiuto parlante → conferma → ripeti». ⚠️ Nasce building block **solo se** Q-1 sceglie la strada dell'`ui_action`: altrimenti sarebbe un elenco di codici cablato in un composable, cioè il difetto travestito da astrazione |
+| `FatturaLookup.vue` | `core/components/` | Autocomplete fattura cross-dominio. ⭐ Serve a chiunque debba puntare una fattura da un altro schema |
+| `ScadenzaSelect.vue` | `core/components/` | Rate di una fattura **col saldo accanto**. Gemello del precedente un piano più giù |
+| `SaldoDocumentoPanel.vue` | `core/components/` | «Registrato / In lavorazione / Incassato» — ⭐ da progettare **con** la distinzione di §2.4 dentro. ⚠️ Oggi i tre numeri esistono **solo sulla rata** (**Q-10**) |
+| `useForzaturaConfermata.js` | `core/composables/` | Il doppio-tempo «rifiuto parlante → conferma → ripeti». ⚠️ Nasce BB **solo se** Q-1 sceglie l'`ui_action`: altrimenti sarebbe un elenco di codici cablato in un composable |
 
 ⚠️ **Sulla regola del 2**: nessuno dei quattro si estrae *prima* di averlo visto
-funzionare una volta. Li dichiaro qui perché il piano li prevede, non perché si
-scrivano il primo giorno — e per `useForzaturaConfermata` la seconda occorrenza
-potrebbe non arrivare mai.
+funzionare una volta. Sono dichiarati qui perché il piano li prevede.
 
 ### 5.4 ⚠️ Le trappole già pagate, da non ripagare
 
@@ -416,177 +509,171 @@ potrebbe non arrivare mai.
 | `if (result)` dopo il save di un drawer | ⛔ `if (result !== null)`: uno `0` legittimo verrebbe letto come fallimento |
 | Pannello-azione dentro un drawer post-BOZZA | ⛔ Il contenuto è `.app-readonly` ⇒ **sempre** wrapper `app-escape` |
 | Store Pinia con dati utente | ⛔ `userScoped: true`, o al logout i dati restano |
-| Deep-link e freshness | ⛔ In `onActivated` **idempotente**, mai solo in `setup`/`onMounted`: con KeepAlive il secondo ingresso non rimonta |
+| Deep-link e freshness | ⛔ In `onActivated` **idempotente**, mai solo in `setup`/`onMounted` |
 | `watch(..., { immediate: true })` | ⛔ Le variabili che tocca devono **precederlo**: la TDZ in `setup` è silenziosa |
 | Download di un file | ⛔ `useApiHandler` rompe i blob: bypass + toast manuali |
 | `@` in una stringa i18n | ⛔ Va escapato: `{'@'}` |
+| L'elenco degli stati cablato nel FE | ⛔ Il catalogo porta `is_postabile`, `is_final`, `richiede_abbinamento`: si leggono, non si riscrivono |
 
 ---
 
-## 6. 📮 I nove prerequisiti a carico del team DB
+## 6. 📮 I prerequisiti a carico del team DB: da nove a **tre**
 
-⛔ **Non li eseguo io** (memoria `feedback_db_actions_passaggio_team`): si
-scrivono in un brief e si aspetta. Li elenco qui perché **non stanno nel piano
-DB** — nascono dall'interfaccia, non dal modello, e senza di essi le slice
-corrispondenti non partono.
+⛔ **Non li eseguo io** (le azioni DB si passano al team): si scrivono in un
+brief e si aspetta. Ecco il consuntivo della revisione.
 
-| | Prerequisito | Serve a | Slice |
-| --- | --- | --- | --- |
-| **DB-1** | Vista `pagamenti.vw_vendite_contabili_lista` — testata + totali derivati + display fields per JOIN (centro, ente, stato, origine) | ⚠️ Memoria `feedback_display_fields_backend`: i display si fanno in JOIN, **mai** lookup client-side | S1 |
-| **DB-2** | Seed `ui.lista_definizione` + `ui.lista_colonna` per `pagamenti.distinte` | `<ListaConfigurabile>` non funziona senza | S1 |
-| **DB-3** | Vista + seed lista per **le righe da abbinare** | la coda operativa | S5 |
-| **DB-4** | Vista + seed lista per **le rate sovra-incassate** (S2-7) | BE-5 | S4 |
-| **DB-5** | 🔵 `pagamenti.fn_spezza_riga_contabile(...)` — **non è in nessun lotto** | il caso ordinario di D1-bis. Vedi **Q-2** | S2 |
-| **DB-6** | 🔵 Lookup delle rate di una fattura — `vendite.fn_list_scadenze_fattura` o equivalente | **non esiste una rotta scadenze paginata**. Vedi **Q-8** | S4 |
-| **DB-7** | 🔵 Un `ui_action` per i rifiuti **confermabili**, se Q-1 sceglie quella strada | il doppio-tempo della forzatura | S4 |
-| **DB-8** | Vista + seed lista per le **eccedenze da sistemare** (S4-3) | il giro rimborsi | S6 |
-| **DB-9** | Conferma che le liste restino leggibili **dopo** la RLS del lotto 6 | ⚠️ uno zero fail-closed somiglia a un dato | S5 |
+| | Prerequisito del 22/08 | Oggi |
+| --- | --- | --- |
+| **DB-1** | vista `vw_vendite_contabili_lista` | 🔵 **Probabilmente non serve**: le liste alimentate da un endpoint di dominio si seminano con `vista_sql = NULL` (è la forma delle 6 liste dell'8° lotto e delle 3 del drawer lotto). I display field si fanno in JOIN **nel repository**. ⚠️ Costo: con `vista_sql` nullo il guard DB sui `campo_sorgente` **salta**, e l'unico presidio resta quello Python |
+| **DB-2** | seed lista **distinte** | 📮 **RESTA** |
+| **DB-3** | seed lista **righe da abbinare** | 📮 **RESTA** |
+| **DB-4** | vista + seed **rate sovra-incassate** | ⭐ **La vista c'è già** (`vw_rate_fuori_capienza`, lotto 5), col nome giusto e più contenuto di quanto chiedessi. 📮 Resta **il seed** |
+| **DB-5** | `fn_spezza_riga_contabile` | 📮 **RESTA** — l'unico oggetto DB davvero mancante. **Q-2** |
+| **DB-6** | lookup rate di una fattura | ✅ **ANNULLATO**: `list_fattura_scadenze` esiste, e i numeri li dà `fn_get_saldo_rata` |
+| **DB-7** | `ui_action` per i rifiuti confermabili | ✅ **ANNULLATO**: le `ui_action` sono un file **Python scritto a mano** (`error_ui_overrides.py`) |
+| **DB-8** | vista + seed **eccedenze** | ⭐ **La vista c'è già** (`vw_eccedenze_da_sistemare`, lotto 7), e porta pure il raggruppamento per cliente. 📮 Resta **il seed** |
+| **DB-9** | conferma che le liste reggano sotto RLS | ✅ **ANNULLATO come richiesta**: il lotto 6 ha portato `test-rls-pagamenti-perimetro.sql` (14 asserzioni). ⚠️ Diventa **lavoro BE**: la prova dentro/fuori perimetro su ogni lista (§2.6, T-10, E-4) |
+| **DB-10** | 🆕 | 📮 **NUOVO**: `fn_get_saldo_fattura` risponde **due numeri**, `fn_get_saldo_rata` ne risponde **tre**. Il livello che l'operatore guarda per primo è quello che **non** sa dire quanto è entrato in banca. È **Q-10** |
+| **DATO-1** | 🆕 | ⚠️ **Non è una richiesta al DB, è configurazione**: il conto `uso = 'INCASSO'` per ciascuno dei due emittenti. ⛔ Senza, **nessun canale di incasso è creabile** e la slice 4 non parte |
 
-⭐ **DB-1…DB-4 e DB-8 sono la stessa cosa cinque volte**: ogni lista di questo
-cantiere costa una vista e due seed. Conviene chiederle **insieme**, non una per
-slice — cinque brief separati al team DB sono cinque round-trip.
+⭐ **E i quattro seed si chiedono in un colpo solo, già scritti.** Esiste
+`scripts/gen_seed_lista.py`, che genera le righe dei quattro CSV a partire dal
+componente `.vue` e dalla vista: **le genero io in bozza** (i campi curati —
+priorità, gruppo, larghezza, sensibile — li decido a mano) e il team DB le fa
+confluire nei CSV di seed. Un round-trip invece di quattro, e nessuno scrive
+269 colonne a mano una seconda volta.
 
 ---
 
-## 7. ❓ Domande aperte — le nove che ti chiedo
+## 7. ❓ Domande aperte — **nove**
 
-> Ognuna porta **la mia proposta** e **il motivo per cui non decido io**. Le
-> prime due bloccano del codice; le altre sette orientano.
+> ⭐ **Che cosa è cambiato rispetto al 22/08.** Una si è chiusa **senza essere
+> decisa**: **Q-9** («quante liste chiediamo, e in che ordine») — le viste sono
+> due e già consegnate, i seed restano quattro e si chiedono in un brief solo
+> con le righe già generate (§6). Due sono **crollate di prezzo** senza cambiare
+> risposta: **Q-1** (l'`ui_action` è nostra, non del DB) e **Q-8** (il lookup
+> delle rate non ha prerequisiti). Una **nasce**: **Q-10**. Le altre restano
+> come stavano, e due — **Q-2** e **Q-5** — vanno decise **prima** delle slice
+> che toccano.
 
-### 🔴 Q-1 · Come viaggia sul filo HTTP un rifiuto **confermabile**?
+### 🔴 Q-1 · Come viaggia sul filo HTTP un rifiuto **confermabile**? *(molto più economica di ieri)*
 
-D14-d dice che il DB rifiuta il primo tentativo con un messaggio parlante e
-accetta il secondo. Ma sul filo HTTP quel rifiuto è **un errore come tutti gli
-altri**: esce con la sua classe (probabilmente `CONFLITTO_STATO` → 409) e il
-frontend deve capire che stavolta non deve mostrare un banner rosso, ma un
-dialogo *«confermi?»*.
-
-Il vocabolario delle `ui_action` oggi ha cinque voci — `highlight_form_fields`
-(126 usi), `show_error_banner` (34), `show_toast_error` (12),
-`show_retry_dialog` (2), `show_info_banner` (1) — e nessuna dice *«chiedi
-conferma e ripeti con la dichiarazione»*. `show_retry_dialog` è vicina ma
-significa un'altra cosa: *riprova*, non *conferma di volerlo fare davvero*.
+Il DB rifiuta il primo tentativo con `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` (409) e
+un messaggio che porta già i numeri (*«Sulla rata %s restano %s da regolare: un
+importo di %s non ci rientra»*), e accetta il secondo con `forzata = true`. Sul
+filo, quel rifiuto è **un 409 come tutti gli altri**.
 
 | | Strada | Costo | Rischio |
 | --- | --- | --- | --- |
-| **(a)** ⭐ | Una `ui_action` nuova, `confirm_and_retry`, sui codici confermabili | un override a catalogo + un ramo nel FE | nessuno: il FE riconosce la **classe di comportamento**, non i singoli codici |
-| **(b)** | Il FE tiene l'elenco dei codici confermabili | zero, oggi | 🔴 al terzo codice qualcuno se ne dimentica, e un rifiuto confermabile diventa un errore secco: l'operatore resta **bloccato** su un caso che il dominio dichiara ammesso |
-| **(c)** | Un endpoint di anteprima che dice **prima** cosa succederà, e il POST porta già la conferma | un GET in più per gesto | ⚠️ due verità che possono divergere fra l'anteprima e il POST — e sul posting è esattamente ciò che D13 esiste per evitare |
+| **(a)** ⭐ | Una `ui_action` nuova, `confirm_and_retry`, su quel codice in `error_ui_overrides.py` | **una riga di Python** + un ramo su `azioneUi` in `useApiHandler` | nessuno: il FE riconosce la **classe di comportamento**, non i singoli codici |
+| **(b)** | Il FE tiene l'elenco dei codici confermabili | zero, oggi | 🔴 al terzo codice qualcuno se ne dimentica, e l'operatore resta **bloccato** su un caso che il dominio dichiara ammesso |
 
-**La mia proposta: (a).** Il presidio sta nel catalogo, dove sta già tutto il
-resto della semantica degli errori, e il FE resta cieco ai codici — che è la
-proprietà che rende (b) fragile.
+**La mia proposta: (a).** ⭐ E la ragione per cui la ripropongo è che **è
+crollata di prezzo**: il 22/08 credevo servisse un giro col team DB, e invece
+`error_ui_overrides.py` è nostro, è scritto a mano e ogni voce porta già il suo
+paragrafo di motivazione. `useApiHandler` espone già `azioneUi`.
 
-**Perché non decido io**: introduce una voce nuova nel vocabolario delle
-`ui_action`, che è trasversale a tutto il prodotto, e tocca il confine
-DB↔BE↔FE che hai presidiato di persona due volte in agosto.
+**Perché non decido io**: introduce una voce nel vocabolario delle `ui_action`,
+che è trasversale a tutto il prodotto.
 
 ---
 
-### 🔴 Q-2 · Spezzare una riga: un verbo, o due gesti?
+### 🔴 Q-2 · Spezzare una riga: si chiede al team DB, o si rinvia?
 
-È il gesto **centrale** di D1-bis: arrivano 1.200 su una rata da 1.000, e la
-strada preferibile *«quando un'altra destinazione esiste»* è spezzare — non
-forzare.
-
-Ma spezzare è **due scritture**: l'importo della riga esistente cala, e nasce
-una riga nuova col residuo in `DA_ABBINARE`. La regola «una azione = una unità
-atomica» dice che devono stare in **una** transazione, e la forma preferita per
-sole-scritture-DB è **una funzione madre**. Che però **non è in nessun lotto**
-del piano DB.
+È il gesto **centrale** di D1-bis, ed è l'**unica** cosa che manca al database.
+Spezzare è **due scritture** (l'importo della riga cala, nasce una riga nuova col
+residuo in `DA_ABBINARE`): una azione = una unità atomica ⇒ **una funzione
+madre**.
 
 | | Strada | Nota |
 | --- | --- | --- |
-| **(a)** ⭐ | `fn_spezza_riga_contabile(p_riga_id, p_importo_da_staccare)` — DB-5 | il piano DB acquista un passo; la slice 2 acquista il suo gesto principale |
-| **(b)** | Il FE fa due chiamate | ⛔ **Vietato**: due scritture non atomiche, e il guardrail AST in CI lo vedrebbe comunque |
-| **(c)** | Si rimanda: nella slice 2 si forza soltanto | ⚠️ **Ribalta la preferenza di D1-bis**: l'eccedenza sparisce dentro una rata che non la giustifica, invece di restare denaro identificato |
+| **(a)** ⭐ | `fn_spezza_riga_contabile(p_riga_id, p_importo_da_staccare)` — un lotto 8 piccolo | il gesto principale della slice 6 esiste |
+| **(b)** | Il FE fa due chiamate | ⛔ **Vietato**: due scritture non atomiche, e il guardrail AST lo vedrebbe comunque |
+| **(c)** | Si rinvia: per ora si forza soltanto | ⚠️ **Ribalta la preferenza di D1-bis**: l'eccedenza sparisce dentro una rata che non la giustifica |
 
-**La mia proposta: (a)**, e la chiedo al team DB **insieme** a DB-1…DB-4, così
-non è un round-trip in più.
-
-**Perché non decido io**: aggiunge un passo a un piano DB che hai già
-approvato, e cambia il perimetro del lotto 5 (o ne apre uno 5-bis).
+**La mia proposta: (a)**, e la chiedo **insieme** ai tre seed e a Q-10, così è un
+brief solo. ⚠️ **Ma non blocca niente**: è la slice 6, ultima, e le prime cinque
+si costruiscono comunque.
 
 ---
 
 ### Q-3 · La distinta manuale nasce da un gesto, o dalla prima riga?
 
-D12-a dice che è *«il lotto di lavoro di un operatore»*. Due modi di renderlo:
-
 - **(a)** ⭐ l'operatore preme «Nuova distinta», la vede nascere, poi la riempie;
-- **(b)** la distinta nasce **da sé** alla prima riga registrata — «la mia
-  distinta di oggi» — e l'operatore non la apre mai esplicitamente.
+- **(b)** la distinta nasce **da sé** alla prima riga — «la mia distinta di oggi».
 
-**La mia proposta: (a).** (b) è più fedele alla metafora, ma un documento che
-nasce senza che nessuno l'abbia chiesto è difficile da spiegare e impossibile da
-annullare senza spiegare prima che esiste.
+⭐ **Nota nuova, dal codice**: (b) è **tecnicamente già supportato** —
+`fn_get_or_create_vendite_contabile` è un *get or create* e sulla `MANUALE` la
+chiave di riuso comprende chi lavora. Non è un lavoro in più: è una scelta di
+come si lavora.
 
-**Perché non decido io**: è una scelta di *come si lavora*, e la sai tu.
+**La mia proposta resta (a)**: un documento che nasce senza che nessuno l'abbia
+chiesto è difficile da spiegare e impossibile da annullare senza spiegare prima
+che esiste.
 
 ---
 
 ### Q-4 · «Da abbinare» e «sospese»: due code o una lista con un filtro?
 
-D12-f dice che la differenza fra `DA_ABBINARE` e `SOSPESA` è **chi ha
-guardato** — lavoro non ancora fatto contro lavoro fatto che ha trovato un
-ostacolo — e le chiama *«due code per due persone diverse»*.
+D12-f: la differenza è **chi ha guardato** — lavoro non ancora fatto contro
+lavoro fatto che ha trovato un ostacolo — *«due code per due persone diverse»*.
 
 - **(a)** ⭐ due voci di menu distinte, due liste;
 - **(b)** una lista sola con un filtro di stato in toolbar.
 
-**La mia proposta: (a)**, perché «due persone diverse» è scritto nella decisione
-e un filtro non separa due mestieri: li mette nello stesso posto e chiede a
-ciascuno di ricordarsi di impostarlo.
+**La mia proposta: (a)**, perché un filtro non separa due mestieri.
 
-⚠️ **Con un'avvertenza sul quando**: oggi le righe `DA_ABBINARE` **non
+⚠️ **E resta l'avvertenza sul quando**: oggi le righe `DA_ABBINARE` **non
 esistono** — l'unico scrittore è il sync dei fondi, che le crea già `ABBINATE`.
-Quella coda si popola solo con l'import (D6). Quindi la costruirei nella **slice
-5**, non nella 2. Confermi?
+Quella coda si popola con l'import (D6). Per questo sta nella slice **4**.
 
 ---
 
 ### Q-5 · `approva_rimessa` (azione id 5): si ritira, si riusa, o resta?
 
-D14-d ha tolto il permesso dalla forzatura, e quell'azione era il candidato
-naturale. Ora è a catalogo sull'area 7 e **nessuno la usa**.
+D14-e ha tolto il permesso dalla forzatura — **e adesso è nel codice**, non solo
+nel piano: il guard della rata accetta il secondo tentativo **senza chiedere
+niente a nessuno**. Quell'azione è a catalogo sull'area 7 e **nessuno la usa**.
 
 | | Strada | Nota |
 | --- | --- | --- |
-| **(a)** ⭐ | Si **riusa** per la **registrazione**: `registra_distinta` è irreversibile, e un gesto irreversibile merita un cancello | ma il nome direbbe un'altra cosa: si ritira `approva_rimessa` e se ne conia una nuova |
-| **(b)** | Si **ritira** e basta: il livello area `TUTTO` è sufficiente | meno pezzi; ma chiunque possa leggere e scrivere `pagamenti` può creare movimenti veri |
-| **(c)** | Resta lì | ⛔ *«un catalogo pieno di righe irraggiungibili insegna cose false»* — è la lezione appena pagata con `STORNATA` |
+| **(a)** ⭐ | Si **riusa** per la **registrazione**: si ritira `approva_rimessa` e nasce `registra_distinta` | la registrazione è l'unico gesto di questo cantiere che non si può disfare, e adesso è **il primo** che costruiamo |
+| **(b)** | Si **ritira** e basta | meno pezzi; ma chiunque possa scrivere `pagamenti` può creare movimenti veri |
+| **(c)** | Resta lì | ⛔ *«un catalogo pieno di righe irraggiungibili insegna cose false»* |
 
-**La mia proposta: (a)** — un'azione `registra_distinta`, e `approva_rimessa`
-ritirata con `obsoleto_dal`. La registrazione è l'unico gesto di questo cantiere
-che non si può disfare.
+**La mia proposta: (a)** — ed è **urgente adesso**, non dopo: la slice 2 è la
+registrazione, e il cancello va deciso **prima** di scriverla, non aggiunto sopra.
 
 ---
 
 ### Q-6 · Il saldo del documento: quanti numeri mostra, e dove?
 
-Col lotto 4 `fn_get_saldo_fattura` diventa vera. Due domande insieme:
-
-1. **Dove** — un pannello nel **drawer fattura** (accanto a `ScadenzeSintesi`),
-   o resta dentro `pagamenti`? ⭐ Io lo metterei nel drawer fattura: è lì che
+1. **Dove** — un pannello nel **drawer fattura** (accanto a `ScadenzeSintesi`), o
+   resta dentro `pagamenti`? ⭐ Io lo metterei nel drawer fattura: è lì che
    qualcuno si chiede se è stata pagata.
-2. **Quanti numeri** — §2.4 dice che «incassato» e «postato» sono cose diverse.
-   Un numero solo è più leggibile; due sono più veri. ⭐ Io mostrerei **residuo**
-   in grande (la domanda che uno si fa) e **entrato in banca** in piccolo, con la
-   differenza spiegata a tooltip quando c'è.
+2. **Quanti numeri** — ⭐ **residuo** in grande (la domanda che uno si fa), **in
+   lavorazione** e **incassato** in piccolo, con la differenza spiegata a
+   tooltip quando c'è.
 
-**Perché non decido io**: è la faccia che il cantiere mostra a chi non lavora
-negli incassi, ed è la prima cosa che si vede.
+⚠️ **Ma il punto 2 dipende da Q-10**: oggi, a livello di fattura, l'«incassato»
+**non è calcolabile** senza un giro in più.
 
 ---
 
 ### Q-7 · La correzione: gesto guidato o mano libera?
 
 D3-d: la correzione **non è un documento speciale**, è una contabile con importi
-di segno opposto. Ma il gesto, nell'interfaccia, non c'è.
+di segno opposto. Il gesto, nell'interfaccia, non c'è.
 
 - **(a)** ⭐ un'azione «Correggi» su una distinta registrata, che apre una
   distinta nuova con le righe **di segno opposto già precompilate**;
 - **(b)** l'operatore apre una distinta nuova e digita i negativi a mano.
+
+⚠️ **E il lotto 7 NON l'ha risolta, anche se sembra.** Le sistemazioni fanno una
+cosa diversa: decidono che fare di un'eccedenza **vera** (denaro davvero
+arrivato in più). La correzione rimedia a una registrazione **sbagliata** — un
+importo digitato male. Due mestieri, due strade, e confonderli significherebbe
+registrare come credito del cliente un errore di battitura.
 
 **La mia proposta: (a)**, con **una raccomandazione sul nome**: si chiama
 **correzione**, mai «storno». `STORNATA` è stata ritirata dal catalogo il 21/08 e
@@ -594,58 +681,81 @@ rimetterne la parola nell'interfaccia riaprirebbe una porta che il lotto 2 ha
 chiuso.
 
 ⚠️ **E (a) non è gratis**: precompilare significa creare N righe in un colpo,
-cioè di nuovo **una funzione madre** e non un ciclo nel service.
+cioè di nuovo **una funzione madre** e non un ciclo nel service. Se Q-7 va su
+(a), è un secondo oggetto da chiedere al team DB insieme a Q-2 e Q-10.
 
 ---
 
-### Q-8 · Il lookup delle rate: dove vive?
+### Q-8 · Il lookup delle rate: dove vive? *(resta, ma è diventata piccola)*
 
 Serve un `GET /vendite/fatture/{id}/scadenze/lookup/`: sta in `vendite`, lo
-consuma `pagamenti`. È esattamente il caso già risolto per
-`catalogo.articoli.uom` (pattern «lookup cross-dominio su sub-resource» in
-`api.md`): endpoint separato con `skip_area_check = True`, così chi lavora gli
-incassi **non** deve avere LETTURA su `vendite`.
+consuma `pagamenti`. È il caso già risolto per `catalogo.articoli.uom`: endpoint
+separato con `skip_area_check = True`, così chi lavora gli incassi **non** deve
+avere LETTURA su `vendite`.
 
-**La mia proposta**: quel pattern, identico. E poiché §3.4 del brief madre dice
-che *«non esiste una rotta scadenze paginata»*, colgo l'occasione — ma **solo**
-per il lookup, **non** per lo scadenzario, che resta fuori perimetro.
+⭐ **Novità**: non serve **niente** dal DB — `list_fattura_scadenze` esiste e
+`fn_get_saldo_rata` dà i numeri.
 
-**Perché chiedo**: apre un endpoint in `vendite` dentro un cantiere di
-`pagamenti`, e vale la pena che tu lo sappia prima e non dopo.
+**La mia proposta**: quel pattern, identico, e **solo** per il lookup — non per
+lo scadenzario, che resta fuori perimetro.
 
 ---
 
-### Q-9 · Quante liste mettiamo a piano, e in che ordine le chiediamo al DB?
+### ~~Q-9 · Quante liste mettiamo a piano, e in che ordine le chiediamo al DB?~~ ✅ **chiusa dalla revisione, senza essere decisa**
 
-Il piano ne prevede **cinque**: distinte (S1), da abbinare (S5), rate
-sovra-incassate (S4), eccedenze (S6), e potenzialmente i movimenti registrati.
-Ognuna costa una vista + due seed lato DB.
+Il 22/08 proponevo «un solo brief con le prime tre, e le altre si rimandano».
+Non serve più scegliere: **due delle viste erano già state consegnate** dai lotti
+5 e 7, e ciò che resta sono **quattro seed**, che si chiedono **insieme e già
+scritti** (§6). ⭐ Il costo di chiederle tutte è sceso sotto il costo di
+decidere quali rimandare.
 
-**La mia proposta**: chiedere al team DB **un solo brief con le prime tre**
-(distinte, rate sovra-incassate, da abbinare) e rimandare le altre. Cinque
-richieste separate sono cinque round-trip, e le ultime due dipendono da lotti
-che non esistono ancora.
+---
 
-**Perché chiedo**: è una decisione di **carico sul team DB**, non mia.
+### 🔴 Q-10 · *(nuova)* L'«incassato» esiste sulla rata e non sulla fattura: si sana o si convive?
+
+Il lotto 5 ha dato a `fn_get_saldo_rata` **tre numeri** — registrato, in
+lavorazione, **incassato** — e la terza colonna è §4 del brief madre: *i centri
+interni non sono cassa*. `fn_get_saldo_fattura`, che è del lotto 4, ne dà **due**.
+
+🔴 **Il livello che la gente guarda per primo è quello cieco.** Un pannello di
+fattura che dicesse «incassato» sommando tutto conterebbe come denaro arrivato
+qualcosa che è stato solo spostato — ed è l'errore che §2.4 esiste per
+impedire: *il numero è plausibile e cresce nel verso giusto*.
+
+| | Strada | Nota |
+| --- | --- | --- |
+| **(a)** ⭐ | Si chiede al team DB di allargare `fn_get_saldo_fattura` alla stessa forma della sorella (`saldo, in_lavorazione, incassato, has_movimenti`) | ⭐ **simmetria piena**, e la si paga una volta sola. La formula esiste già, scritta e provata, un piano più giù |
+| **(b)** | Il BE somma le rate | ⛔ Falso: una riga contabile può avere fattura **senza** rata (il fondo fattura è esattamente così), e quel denaro non comparirebbe in nessuna somma di rate |
+| **(c)** | Il BE si scrive la sua query sui centri | ⚠️ **Due sedi per la stessa regola**: il giorno che nasce un terzo centro interno, una delle due lo sa e l'altra no |
+
+**La mia proposta: (a)**, dentro lo stesso brief di Q-2. **Perché non decido
+io**: è un oggetto DB e una simmetria di modello, e le simmetrie di modello si
+chiudono subito o non si chiudono più.
 
 ---
 
 ## 8. Che cosa faccio appena rispondi
 
-In quest'ordine, e la prima riga di codice arriva **dopo** il brief al team DB —
-non prima, perché senza DB-1/DB-2 la lista non si può nemmeno provare.
+⭐ **In quest'ordine — e stavolta la prima riga di codice arriva subito**,
+perché il telaio non dipende da nessun prerequisito e le due code dei lotti
+(§1.5) sono lavoro di minuti che il progetto si porta dietro da due giorni.
 
-1. **Brief al team DB** con DB-1…DB-4 (+ DB-5 e DB-6 se Q-2 e Q-8 vanno come
-   propongo), su `dev/db-tid`;
-2. **Slice 0** — il telaio: non dipende da nessun prerequisito, e mentre il DB
-   lavora il dominio smette di essere due `.gitkeep`;
-3. **Slice 1** — la distinta, appena arrivano vista e seed;
-4. **Slice 2** — la riga e l'abbinamento;
-5. poi si aspetta il **lotto DB 4** per la registrazione.
+1. **Slice 0**, il telaio, **compresi** il ripiego riscritto e i tre codici
+   obsoleti tolti;
+2. **un brief solo al team DB** su `dev/db-tid`, con **tre cose certe e una
+   quarta se serve**: i quattro seed di lista (righe **già generate** da me, da
+   rivedere), `fn_spezza_riga_contabile` (se Q-2 → sì), l'allargamento di
+   `fn_get_saldo_fattura` (se Q-10 → sì) e la madre della correzione (solo se
+   Q-7 → (a)). ⛔ Un brief, non quattro;
+3. **Slice 1** — la distinta e le sue righe, appena arrivano i seed;
+4. **Slice 2** — la registrazione. ⚠️ Se Q-5 va come propongo, l'azione
+   `registra_distinta` va decisa **prima** di scriverla;
+5. **Slice 3** — la rata, la capienza e le rate fuori capienza;
+6. poi S4 (⚠️ ferma su DATO-1), S5, e S6 solo se il DB consegna la spezzatura.
 
-⚠️ **E una cosa che non farò senza dirtelo**: nessuna delle quattro estrazioni
-di §5.3 al primo colpo. La regola del 2 vale anche quando il piano prevede
-l'astrazione — si dichiara alla seconda occorrenza, non alla prima.
+⚠️ **E due cose che non farò senza dirtelo**: nessuna delle quattro estrazioni di
+§5.3 al primo colpo (la regola del 2 vale anche quando il piano prevede
+l'astrazione), e nessun commit di propria iniziativa.
 
 ---
 
@@ -654,11 +764,15 @@ l'astrazione — si dichiara alla seconda occorrenza, non alla prima.
 | Cosa | Dove |
 | --- | --- |
 | Le decisioni di dominio (D1…D15) | [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md) §2-bis e §3-bis |
-| I passi DB, lotto per lotto | [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md) §6 |
-| Le linee guida API | [api.md](../api.md) — grammatica URL, base view, envelope, atomicità, tassonomia errori |
-| Gli standard frontend | [frontend-standards.md](../frontend/frontend-standards.md) — pattern lista, drawer, readonly, i18n |
+| I passi DB, lotto per lotto | [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md) §6.7…§6.14 |
+| Le richieste che il DB ha lasciato al BE | [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md) §3 (BE-1…BE-10, DATO-1) |
+| Come si semina una lista | [work-done/brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md) + `scripts/gen_seed_lista.py` |
+| Le linee guida API | [api.md](../api.md) |
+| Gli standard frontend | [frontend-standards.md](../frontend/frontend-standards.md) |
 | I building block | [catalogo BE](../backend/catalogo-building-block-backend.md) · [catalogo FE](../frontend/catalogo-building-block-frontend.md) |
 | Il modello pagamenti in prosa | [gestione-dei-pagamenti.md](../../guide/gestione-dei-pagamenti.md) |
+| La madre del posting | [dbzero/pagamenti/manual/fn_posta_contabile.md](/dbzero/pagamenti/manual/fn_posta_contabile) |
+| Il guard della rata (coerenza + capienza) | [dbzero/pagamenti/manual/trgfn_vendite_contabili_righe_guard_rata.md](/dbzero/pagamenti/manual/trgfn_vendite_contabili_righe_guard_rata) |
 | Un modello di lista da copiare | `frontend/src/vendite/views/ApprovazioniPrezzoListView.vue` |
 | Un modello di view BE da copiare | `backend/apps/vendite/api/views_fondi_fattura.py` |
 
@@ -668,4 +782,5 @@ l'astrazione — si dichiara alla seconda occorrenza, non alla prima.
 
 | Data | Cosa |
 | --- | --- |
-| 2026-08-22 | Stesura. Terreno BE/FE misurato **sul codice**, non sui brief. ⭐ **Sei cose risultano già fatte** e i due brief esistenti non lo sanno: **BE-1 è chiusa** (i 21 codici errore dei lotti 1-2 sono tutti in `error_policies_generated.py`, verificati uno per uno), i **quattro cataloghi** di `pagamenti` sono già nella whitelist della lookup generica, `fn_get_lookup_codici` **filtra già** `obsoleto_dal` — quindi `STORNATA` non comparirà in nessun menu senza che nessuno debba ricordarsene —, l'area funzionale è a catalogo, il dominio è già in `DOMAINS` e la sua chiave i18n esiste. 🔴 **Vuoto per davvero**: `urls_v1.py` non esiste e `/api/v1/pagamenti/` è un 404 secco, `views.py` è una riga di commento, `DOMAIN_MENUS['pagamenti']` è `[]`, e **nessuna** `ui.lista_definizione` è di `pagamenti` — da cui il fatto che pesa di più sul piano: **ogni lista di questo cantiere ha un prerequisito DB**, non solo FE. Piano in **sette slice** agganciate ai lotti DB: **S0-S2 partono oggi** (il lotto 2 basta), S3 aspetta il lotto 4 (la madre), S4 il 5, S5 il 6, S6 il 7. 🔴 **Due prerequisiti che il piano DB non contiene** perché nascono dall'interfaccia: la **spezzatura di una riga** (il gesto centrale di D1-bis, che è due scritture e quindi vuole una funzione madre) e il **lookup delle rate** (§3.4 del brief madre: non esiste una rotta scadenze). ⚠️ **E un problema di confine che non avevo previsto**: un rifiuto *confermabile* (la forzatura del sovra-incasso) esce sul filo HTTP come un errore qualunque, e il vocabolario delle `ui_action` — cinque voci — non ha una parola per «chiedi conferma e ripeti». Nove domande aperte in §7 |
+| **2026-08-24** | ⭐ **REVISIONE DEL PIANO dopo la chiusura del DB.** Il 22/08 il piano era scritto col DB al lotto 3 di 7 e metà slice in attesa; il team DB ha chiuso **tutti e sette i lotti** nella stessa giornata (71 changeSet, 14 pgTAP). Rimisurato **tutto** contro il database vivo e il codice BE/FE. 🔴 **Cinque misure del 22/08 sono risultate sbagliate** (§1.5), e due di esse **tolgono lavoro invece di aggiungerne**: il lookup delle rate non ha bisogno di niente dal DB (`list_fattura_scadenze` esiste già in `vendite_repository`) e l'`ui_action` dei rifiuti confermabili **non sta a catalogo DB** ma in `error_ui_overrides.py`, che è Python scritto a mano — Q-1 passa da «un giro col team DB» a **una riga più un ramo**. Le altre tre spostano il lavoro: la vista si chiama `vw_rate_fuori_capienza` e contiene **due** popolazioni (sovra-incasso *e* movimento contrario), la forzatura **non è un flag di payload** ma due colonne della riga (`forzata`, `motivo_forzatura`) che restano scritte e che l'elenco a valle legge, e `fn_get_or_create_vendite_contabile` **ha cambiato firma** (via `p_compensazione_id`, D15-e). ⭐ **I nove prerequisiti DB diventano tre**: due viste sono state consegnate senza che nessuno le chiedesse (`vw_rate_fuori_capienza` col lotto 5, `vw_eccedenze_da_sistemare` col lotto 7, e la seconda porta già il raggruppamento per cliente in finestra), due non erano del DB, uno è diventato lavoro BE di verifica. Restano **quattro seed di lista** (che genero io in bozza con `scripts/gen_seed_lista.py`, un round-trip invece di quattro) e `fn_spezza_riga_contabile`. ✅ **BE-1 riverificata con uno script e non a campione**: 778 codici su 778 hanno la classe, e tutti i codici del cantiere hanno anche il ripiego — la coda che il piano DB elenca in cinque punti **è chiusa**. 📮 Restano **due code di lotto** che sono lavoro di minuti e vanno in slice 0: il ripiego di `E_RIGA_CONTABILE_DISTINTA_FINALE` porta ancora la frase vecchia, e tre codici marcati obsoleti il 22/08 sono ancora nel ripiego (BE-10). 🔴 **E la revisione ha trovato una cosa che nessuno dei tre brief dice**: `fn_get_saldo_rata` risponde **tre** numeri (registrato, in lavorazione, **incassato**) e `fn_get_saldo_fattura` ne risponde **due** — cioè la distinzione che §2.4 dichiara obbligatoria *«nella prima misura che si scrive»* esiste sulla rata e **non** sulla fattura, che è il livello che l'operatore guarda per primo. È **Q-10**, l'unica domanda nuova, e le due strade alternative sono peggiori entrambe (sommare le rate perde il fondo fattura, che ha fattura senza rata; riscrivere la formula nel BE crea due sedi per la stessa regola). ⭐ **Piano riordinato per valore**: le sette slice non hanno più dipendenze DB, la **registrazione sale da terza a seconda**, e la sola cosa che resta bloccata non è codice ma **dato** — senza il conto `uso = 'INCASSO'` dei due emittenti nessun canale di incasso è creabile (DATO-1), e con esso si ferma la sola slice 4. ⚠️ **Un vincolo nuovo dal lotto 6** (§2.6): `pagamenti.*` pretende `app.ruolo_applicativo = 'OPERATORE'` per leggere **e** per scrivere; verificato che middleware e worker della coda la impostano già, resta da controllare ciò che gira fuori da entrambi. Domande: restano **nove** — **Q-9 si è chiusa senza essere decisa** (le viste erano già lì, i seed si chiedono insieme), **Q-1 e Q-8 sono crollate di prezzo** senza cambiare risposta, e nasce Q-10, l'unica che tocca il modello |
+| 2026-08-22 | Stesura. Terreno BE/FE misurato **sul codice**, non sui brief. ⭐ **Sei cose risultavano già fatte** e i due brief esistenti non lo sapevano: BE-1 chiusa, i quattro cataloghi in whitelist, `fn_get_lookup_codici` che filtra già `obsoleto_dal`, l'area a catalogo, il dominio in `DOMAINS` e la sua chiave i18n. 🔴 **Vuoto per davvero**: `urls_v1.py` inesistente, `views.py` una riga di commento, `DOMAIN_MENUS['pagamenti']` a `[]`, e **nessuna** `ui.lista_definizione` di `pagamenti` — da cui il fatto che pesava di più: **ogni lista costa un prerequisito DB**. Piano in **sette slice** agganciate ai lotti DB, di cui tre eseguibili subito. 🔴 Due prerequisiti che il piano DB non conteneva (spezzatura di una riga, lookup delle rate) e un problema di confine: un rifiuto *confermabile* esce sul filo come un errore qualunque. Nove domande aperte |
