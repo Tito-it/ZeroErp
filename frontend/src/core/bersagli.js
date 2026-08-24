@@ -15,10 +15,16 @@
 //    ⚠️ Mai un pulsante che porta in un vicolo cieco: e' peggio di nessun
 //    pulsante, perche' promette una via d'uscita che non c'e'.
 //
-// ⚠️ UN RESOLVER SOLO, PIU' SUPERFICI. Il toast (`useApiHandler`) e l'icona di
-//    riga (`ErroreRigaInfo`, sugli errori persistiti dei giri asincroni) passano
-//    entrambi di qui. Se divergessero, lo stesso errore direbbe due cose diverse
-//    a seconda di come e' arrivato a video.
+// ⚠️ UN RESOLVER SOLO, TRE SUPERFICI — e sono TRE perche' l'errore arriva a
+//    video per tre strade diverse:
+//      · `useApiHandler`   → il toast, su una chiamata fallita (envelope);
+//      · `useLottoAzioni`  → il toast, su un esito del runner che risponde 200
+//                            col fallimento DENTRO il payload;
+//      · `ErroreRigaInfo`  → l'icona di riga, sugli errori PERSISTITI dei giri
+//                            asincroni, che si leggono ore dopo.
+//    Se il resolver si sdoppiasse, lo stesso errore direbbe due cose diverse a
+//    seconda di come e' arrivato — e nessuno se ne accorgerebbe, perche' le tre
+//    strade non si incontrano mai.
 import { DOCUMENTO_DRAWERS, DOCUMENTO_DRAWER_TIPI } from '../vendite/_shared/documenti/documentoDrawers'
 import { READONLY_DOMAINS } from './constants'
 
@@ -27,17 +33,37 @@ import { READONLY_DOMAINS } from './constants'
 // cioe' lo stesso vocabolario su cui il team DB ha costruito `config.tipi_entita`.
 // La tabella non era da inventare, era da riconoscere.
 //
-// ⚠️ Un tipo che NON e' qui dentro non e' un difetto: e' un'entita' che
-// nessuna schermata sa ancora raggiungere (oggi `TASK_RUN`). Il degrado e'
-// dichiarato — nessun pulsante — e la CI del database presidia il verso
-// opposto (`dbops.vw_bersagli_non_dichiarati`: un tipo scritto e non a catalogo
-// fa fallire la build).
+// ⚠️ Un tipo che NON e' qui dentro non e' un difetto: e' un'entita' che nessuna
+// schermata sa ancora raggiungere. Il degrado e' dichiarato — nessun pulsante —
+// e la CI del database presidia il verso opposto
+// (`dbops.vw_bersagli_non_dichiarati`: un tipo scritto e non a catalogo fa
+// fallire la build).
 //
-// ⚠️ `area` serve al guard dei permessi: un operatore con l'area BLOCCATA non
-// deve vedere un pulsante che lo porterebbe su un 403.
+// I CAMPI:
+//   `chiave`   ⭐ `id` | `uid`, e RISPECCHIA `config.tipi_entita.key_selector`.
+//              Il brief lo scrive esplicitamente: *«l'id e' opaco, la differenza
+//              e' dichiarata nel catalogo e il frontend non deve dedurla dal
+//              formato del valore»*. Serve a sapere se convertire a numero —
+//              le prop `*Id` dei drawer sono dichiarate `Number`, e passare una
+//              stringa e' un difetto silenzioso in produzione (la validazione
+//              delle prop e' compilata via) e un avviso in sviluppo.
+//              ⚠️ **Al 2026-08-24 tutti e nove i tipi hanno `id`**, e il campo
+//              resta lo stesso: il catalogo ammette ancora `uid`, e il giorno
+//              che una superficie pubblica indirizzera' cosi' quella riga
+//              cambia con un seed — senza toccare nessuna funzione. Scritto
+//              perche' registri un fatto verificato invece di una supposizione.
+//   `drawer`   chiave del registry `DOCUMENTO_DRAWERS` (il caso normale: un
+//              documento si apre, non si "visita").
+//   `rotta`    per le entita' che hanno una pagina: `queryKey` per un
+//              deep-link `?open=<id>`, `param` per una rotta con `:id`.
+//   `area`     schema DB per il guard dei permessi (`isAreaBlocked`).
+//   `richiedeAdmin`  per le rotte del dominio `amm-software`, dove il route
+//              guard non guarda l'area ma `isAdmin`: se il pulsante non
+//              rispettasse la stessa regola porterebbe su «accesso negato».
 const DESTINAZIONI = Object.freeze({
   FATTURA: {
     area: READONLY_DOMAINS.VENDITE,
+    chiave: 'id',
     drawer: DOCUMENTO_DRAWER_TIPI.FATTURA,
     // L'indirizzo della traduzione lo DICHIARA IL DATABASE, in
     // `config.tipi_entita.etichetta_key`: qui si ripete la stessa chiave, non
@@ -47,21 +73,72 @@ const DESTINAZIONI = Object.freeze({
   },
   COMMESSA: {
     area: READONLY_DOMAINS.VENDITE,
+    chiave: 'id',
     drawer: DOCUMENTO_DRAWER_TIPI.COMMESSA,
     etichettaKey: 'config.tipi_entita.commessa',
   },
   LOTTO: {
     area: READONLY_DOMAINS.VENDITE,
+    chiave: 'id',
     // Il lotto non ha un drawer nel registry: ha una LISTA, e ci si arriva col
     // deep-link `?open=<id>` che la view apre da sola (stesso meccanismo gia'
     // in servizio su `vendite-contratti`).
     rotta: { name: 'vendite-lotti', queryKey: 'open' },
     etichettaKey: 'config.tipi_entita.lotto',
   },
-  // ⛔ `TASK_RUN` NON C'E', ed e' deliberato. E' a catalogo perche' serve al
-  //    giornale degli eventi dell'altro cantiere, non al bersaglio: nessuna
-  //    schermata mostra un giro per id, quindi non c'e' nessun posto dove
-  //    mandare l'operatore. Il giorno che ci sara', si aggiunge una riga qui.
+  CONTRATTO: {
+    area: READONLY_DOMAINS.VENDITE,
+    chiave: 'id',
+    drawer: DOCUMENTO_DRAWER_TIPI.CONTRATTO,
+    etichettaKey: 'config.tipi_entita.contratto',
+  },
+  ORDINE_VENDITA: {
+    area: READONLY_DOMAINS.VENDITE,
+    chiave: 'id',
+    drawer: DOCUMENTO_DRAWER_TIPI.ORDINE_VENDITA,
+    etichettaKey: 'config.tipi_entita.ordine_vendita',
+  },
+  PREVENTIVO: {
+    area: READONLY_DOMAINS.VENDITE,
+    // ⭐ `id`, e la storia vale la riga. Il catalogo nasceva con `uid` — la
+    //    chiave con cui `config.sorgenti` collega il documento — e con quella
+    //    qui non si apriva niente: la rotta e' `<int:preventivo_id>` e la prop
+    //    del drawer e' `Number`. Il team DB ha corretto il 2026-08-24
+    //    (`20260824-10`), e la regola che ne e' uscita sta nel loro changeSet:
+    //    *il valore di `key_selector` si MISURA sulle rotte del frontend; non si
+    //    eredita, e non si deduce dal fatto che una colonna `uid` esista.*
+    chiave: 'id',
+    drawer: DOCUMENTO_DRAWER_TIPI.PREVENTIVO,
+    etichettaKey: 'config.tipi_entita.preventivo',
+  },
+  FLUSSO: {
+    area: READONLY_DOMAINS.PRATICHE,
+    chiave: 'id',
+    // ⭐ La dashboard pratiche apre un flusso dal solo id: chiede al backend
+    //    dove vive (`/pratiche/flussi/<id>/pratica/`) e prosegue. Fino al
+    //    2026-08-24 il deep-link voleva ANCHE `pratica_id` e senza quello non
+    //    faceva niente — il bersaglio porta il solo flusso, perche' la pratica
+    //    non e' cio' di cui l'errore parla.
+    rotta: { name: 'pratiche-gestione', queryKey: 'flusso_id' },
+    etichettaKey: 'config.tipi_entita.flusso',
+  },
+  DEFINIZIONE_WORKFLOW: {
+    area: READONLY_DOMAINS.AMM_SOFTWARE,
+    chiave: 'id',
+    // ⭐ L'unica destinazione che e' una PAGINA con un parametro di percorso, e
+    // non un drawer: il dettaglio strutturale di un'edizione e' troppo ricco
+    // per un pannello (lo dice il commento della rotta stessa).
+    rotta: { name: 'amm-software-definizione-editor', param: 'id' },
+    // ⚠️ Il route guard di `amm-software` NON guarda l'area: guarda `isAdmin`.
+    // Un pulsante che non rispettasse la stessa regola porterebbe l'operatore
+    // su «accesso negato», che e' il vicolo cieco che il §4.3 vieta.
+    richiedeAdmin: true,
+    etichettaKey: 'config.tipi_entita.definizione_workflow',
+  },
+  // ⛔ UN SOLO TIPO DEL CATALOGO NON E' QUI, e non e' una svista: `TASK_RUN`.
+  //    Nessuna schermata mostra un giro per id — sta a catalogo perche' serve
+  //    al giornale degli eventi dell'altro cantiere, non al bersaglio.
+  //    Otto destinazioni su nove tipi.
 })
 
 // Scopo: ⭐ IL CONFINE, e passa TUTTO di qui. Il backend parla inglese
@@ -92,7 +169,10 @@ export function normalizzaBersagli(grezzi) {
         (typeof b.id === 'string' || typeof b.id === 'number') &&
         String(b.id).trim() !== '',
     )
-    .map((b) => ({ tipo: b.type, id: String(b.id) }))
+    // ⚠️ `trim` anche nel valore, non solo nel controllo: senza, un `" 12 "`
+    //    passerebbe il filtro e finirebbe TALE E QUALE nell'etichetta del
+    //    pulsante — «Apri Fattura  12 ».
+    .map((b) => ({ tipo: b.type, id: String(b.id).trim() }))
 }
 
 // Scopo: I bersagli dell'ENVELOPE d'errore (`error.targets`) — la forma che
@@ -119,9 +199,33 @@ function raggiungibile(destinazione, authStore) {
   // perché sembra rotto il software e non la destinazione.
   if (!destinazione.drawer && !destinazione.rotta) return false
   if (destinazione.drawer && !DOCUMENTO_DRAWERS[destinazione.drawer]) return false
+  // ⚠️ Le due regole di accesso sono DIVERSE e vanno guardate come le guarda il
+  // route guard: `amm-software` su `isAdmin`, tutto il resto sull'area.
+  if (destinazione.richiedeAdmin && !authStore?.isAdmin) return false
   if (!destinazione.area) return true
   // `isAreaBlocked` e' la stessa lettura che fa il route guard: una regola sola.
   return !authStore?.isAreaBlocked?.(destinazione.area)
+}
+
+// Scopo: L'identificativo nella forma che la destinazione si aspetta.
+//
+// ⛔ NON SI DEDUCE DAL VALORE, si legge dal catalogo (`chiave`, specchio di
+//    `config.tipi_entita.key_selector`) — il brief lo scrive esplicitamente,
+//    perché un uuid e un numero si distinguono a occhio ma la regola non è il
+//    formato: è cosa quell'entità usa come chiave.
+//
+// ⚠️ E serve davvero: le prop `*Id` dei drawer sono dichiarate `Number`.
+//    Passargli la stringa che arriva dall'envelope è un avviso in sviluppo e un
+//    difetto silenzioso in produzione, dove la validazione delle prop non c'è.
+function identificativo(destinazione, id) {
+  if (destinazione.chiave !== 'id') return id
+  const n = Number(id)
+  // ⛔ `> 0`, non solo «è un numero». `Number('0')` è `0` e `Number('-3')` è
+  //    `-3`: entrambi finiti, entrambi accettati dalla regex del canale — e
+  //    entrambi produrrebbero un pulsante che apre `/fatture/0/`, cioè un 404.
+  //    È la regola che questa casa scrive per ogni id numerico in AGENTS.md
+  //    («errore se NULL o <= 0»), applicata dove il valore diventa una rotta.
+  return Number.isInteger(n) && n > 0 ? n : null
 }
 
 // Scopo: ⭐ Il bersaglio risolto in qualcosa che si puo' PREMERE, o `null`.
@@ -135,9 +239,17 @@ function raggiungibile(destinazione, authStore) {
 export function risolviBersaglio(bersaglio, authStore) {
   const destinazione = DESTINAZIONI[bersaglio?.tipo]
   if (!raggiungibile(destinazione, authStore)) return null
+  const id = identificativo(destinazione, bersaglio.id)
+  // Un tipo a chiave numerica con un id che numero non è: il database non
+  // dovrebbe produrlo, e se succede vale la regola di sempre — si scarta in
+  // silenzio, non si offre un pulsante che apre il vuoto.
+  if (id === null) return null
   return {
     tipo: bersaglio.tipo,
-    id: bersaglio.id,
+    id,
+    // ⚠️ L'etichetta mostra il valore ORIGINALE (stringa): è ciò che
+    //    l'operatore ritrova nella frase dell'errore.
+    idEtichetta: bersaglio.id,
     etichettaKey: destinazione.etichettaKey,
     drawer: destinazione.drawer ?? null,
     rotta: destinazione.rotta ?? null,

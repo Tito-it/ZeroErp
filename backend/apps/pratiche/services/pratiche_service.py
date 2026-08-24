@@ -14,7 +14,7 @@ from typing import Any
 
 from django.db import DatabaseError, IntegrityError, transaction
 
-from apps.core.services.db_error_fields import db_diag, structured_db_error_code
+from apps.core.services.db_error_fields import diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import map_integrity_error
 from apps.core.services.service_errors import ServiceError
@@ -209,7 +209,16 @@ def require_completamento_operatore_ammesso(
 # ripropagano al middleware (mapping E_DATABASE generico).
 def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
     msg = str(exc)
-    diag = db_diag(exc)
+    # ⭐ UNA lettura sola (BB `diagnostica_db`). ⚠️ E questo e' il QUINTO punto in
+    #    cui un errore del database diventa un errore dell'applicazione: i primi
+    #    quattro sono stati sanati il 2026-08-24, questo era rimasto indietro —
+    #    e non e' un dettaglio, perche' ci passa il TERZO SCAGLIONE del roll-out
+    #    del bersaglio (`E_FLUSSI_*`, `E_DEFINIZIONE_BOZZA_ESISTENTE`, applicati
+    #    il 2026-08-24). Senza, quei bersagli si fermavano qui e il pulsante non
+    #    sarebbe comparso mai — proprio sul caso che il brief chiama «il piu'
+    #    netto dell'intero roll-out», dove la frase la bozza che blocca non la
+    #    nomina affatto.
+    diag = diagnostica_db(exc, text=msg)
 
     # 1) Campo strutturato (dal 2026-08-05): il codice arriva dal DB, non si
     #    deduce dal testo. Qui vale piu' che altrove — i codici di questo
@@ -231,7 +240,7 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
     #    Una condizione invece di 21 voci gemelle da aggiungere e poi ripulire:
     #    copre ogni lotto futuro senza altre modifiche, e quando i codici vecchi
     #    usciranno dalla lista resta corretta com'e'.
-    structured = structured_db_error_code(exc)
+    structured = diag.codice_strutturato
     if structured is not None and (
         structured in _CODICI_DICHIARATI
         or structured.removeprefix("E_") in _CODICI_DICHIARATI
@@ -239,9 +248,11 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
         ErrorManager.raise_error(
             code=structured,
             # message_primary = solo il RAISE, senza stack PL/pgSQL.
-            message=getattr(diag, "message_primary", None) or msg,
-            detail=getattr(diag, "message_detail", None),
-            hint=getattr(diag, "message_hint", None),
+            message=diag.messaggio or msg,
+            detail=diag.detail,
+            hint=diag.hint,
+            fields=diag.fields,
+            targets=diag.bersagli or None,
             cause=exc,
             function_name=function_name,
         )
@@ -252,9 +263,11 @@ def _raise_known_db_error(exc: DatabaseError, *, function_name: str) -> None:
         if marker in msg:
             ErrorManager.raise_error(
                 code=code,
-                message=getattr(diag, "message_primary", None) or msg,
-                detail=getattr(diag, "message_detail", None),
-                hint=getattr(diag, "message_hint", None),
+                message=diag.messaggio or msg,
+                detail=diag.detail,
+                hint=diag.hint,
+                fields=diag.fields,
+                targets=diag.bersagli or None,
                 cause=exc,
                 function_name=function_name,
             )
@@ -1199,6 +1212,44 @@ def verifica_flusso_pratica(
         message=f"Flusso {flusso_id} non appartiene alla pratica {pratica_id}",
     )
     return flusso
+
+
+# Scopo: ⭐ LA PRATICA A CUI UN FLUSSO APPARTIENE, dal solo id del flusso.
+#
+#        PERCHE' ESISTE. Tutte le rotte dei flussi sono annidate sotto la
+#        pratica (`<pratica_id>/flussi/<flusso_id>/...`), e va benissimo finche'
+#        si arriva DALLA pratica. Ma un flusso puo' essere nominato da fuori —
+#        il BERSAGLIO di un errore ne e' il primo caso reale (`E_FLUSSI_*`,
+#        roll-out del 2026-08-24) — e chi lo nomina ha in mano il solo id.
+#        Senza questo, la dashboard non ha modo di aprirlo: il suo deep-link
+#        vuole `pratica_id` e senza quello non fa niente.
+#
+#        ⚠️ NON e' un secondo modo di LEGGERE un flusso, ed e' la ragione per cui
+#        risponde un id e non il flusso intero: il dettaglio resta uno solo
+#        (`verifica_flusso_pratica`), con la sua verifica di appartenenza. Qui si
+#        risponde a una domanda sola — «dove vive questa cosa?» — e chi la fa
+#        prosegue dalla porta principale.
+#
+#        ⛔ LA VISIBILITA' LA DECIDE LA PRATICA, non il flusso — misurato:
+#        `pratiche.flussi` non ha RLS, `pratiche.pratiche` si'. La lettura e'
+#        agganciata alla pratica apposta (vedi `get_pratica_di_flusso`), cosi'
+#        un flusso fuori perimetro e' indistinguibile da uno che non esiste.
+#        Per chi opera e' la stessa cosa; per chi non deve vederlo, anche.
+def pratica_di_flusso(flusso_id: int) -> int:
+    ErrorManager.require(
+        flusso_id > 0,
+        code="E_INVALID_ID",
+        message="flusso_id deve essere > 0",
+    )
+    assert flusso_id > 0
+    pratica_id = PraticheRepository().get_pratica_di_flusso(flusso_id)
+    ErrorManager.require(
+        pratica_id is not None,
+        code="E_FLUSSO_NOT_FOUND",
+        message=f"Flusso {flusso_id} non trovato",
+    )
+    assert pratica_id is not None
+    return pratica_id
 
 
 # Scopo: Sospende un singolo flusso all'interno di una pratica.

@@ -2057,9 +2057,9 @@ merita una riga perché è un difetto che si vedeva solo dal lato che riceve. Il
 canale del database (`RAISE … USING COLUMN`) viaggiava dall'08/08 ed era
 valorizzato da quasi tutti i punti di sollevamento — ma il backend lo perdeva
 **appena un service traduceva l'errore**, cioè quasi sempre. Il nome arrivava
-all'envelope da una strada su quattro, e a video non si illuminava niente.
+all'envelope da una strada su cinque, e a video non si illuminava niente.
 Ora la lettura è una sola (`diagnostica_db`) e il campo viaggia fino in fondo:
-vedi [api.md §I quattro punti di traduzione](../api.md).
+vedi [api.md §I cinque punti di traduzione](../api.md).
 
 ### ⭐ Il bersaglio dell'errore — `bersagli` (dal 2026-08-24)
 

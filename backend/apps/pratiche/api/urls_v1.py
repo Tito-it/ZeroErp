@@ -32,6 +32,7 @@ from apps.pratiche.api.views import (
     ApiPraticaAssegnazione,
     ApiPraticaCalcoliTempo,
     ApiPraticaDetail,
+    ApiFlussoPratica,
     ApiPraticaFlussiList,
     ApiPraticaFlussoAssegnazione,
     ApiPraticaFlussoCanali,
@@ -103,6 +104,11 @@ urlpatterns = [
     path("<int:pratica_id>/allegati/<int:allegato_id>/", ApiPraticaAllegatoDetail.as_view(), name="pratiche-allegato-detail"),
     # --- Flussi ---
     path("<int:pratica_id>/percorso/", ApiPraticaPercorso.as_view(), name="pratiche-percorso"),
+    # ⭐ Rotta NON annidata: «dove vive questo flusso». Sta prima delle rotte
+    #    `<int:pratica_id>/...` per leggibilita' — non c'e' ambiguita', un
+    #    convertitore `int` non matcha il letterale `flussi`.
+    #    La usa chi ha in mano il solo id del flusso: il bersaglio di un errore.
+    path("flussi/<int:flusso_id>/pratica/", ApiFlussoPratica.as_view(), name="pratiche-flusso-pratica"),
     path("<int:pratica_id>/flussi/", ApiPraticaFlussiList.as_view(), name="pratiche-flussi-list"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/", ApiPraticaFlussoDetail.as_view(), name="pratiche-flusso-detail"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/stato/", ApiPraticaFlussoStato.as_view(), name="pratiche-flusso-stato"),

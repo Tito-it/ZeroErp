@@ -334,6 +334,13 @@ stato `DA_ABBINARE`. La si spezza dopo, quando si è capito. Ed è innocuo, perc
 spezzare, correggere e rispezzare non tocca niente a valle. *La decisione viene
 prima della scrittura.*
 
+> ⚠️ **Precisazione del 2026-08-24 (D1-ter).** «Spezzare» qui vuol dire **una
+> riga per ogni destinazione vera**, ed è il modello — non un gesto
+> dell'interfaccia. Chi lavora a mano **scrive già le righe giuste**: non esiste
+> nessun verbo «spezza», e in particolare **non si spezza il pagamento di una
+> rata** per gestire un importo sbagliato. Il caso «una riga arrivata da fuori,
+> da spalmare» esiste solo con l'**import** (D6), che non è in perimetro.
+
 **Cosa comporta:**
 
 - guard di **quadratura**: Σ delle righe abbinate a una rata ≤ importo della
@@ -365,22 +372,30 @@ fattura.
 impedisce di incassare**: impedisce di **caricare una rata** con più di quanto
 vale. Ricevere i soldi non è mai rifiutato — la riga contabile si crea comunque.
 
-E dato che con D1 **la riga è l'unità di allocazione**, il caso ordinario si
-risolve **spezzando, senza forzare niente**:
+> ⛔ **DEPRECATO il 2026-08-24 — vedi D1-ter.** Il blocco qui sotto proponeva la
+> **spezzatura** come strada ordinaria per il sovra-incasso. Tid l'ha ritirata:
+> *«il pagamento di una rata non si spezza»*. Resta per storia, barrato, perché
+> il ragionamento che l'ha prodotto è ancora leggibile — e perché la ragione per
+> cui cade **non è che fosse sbagliato allora**: è che nel frattempo il lotto 7
+> ha costruito le sistemazioni.
+
+~~E dato che con D1 **la riga è l'unità di allocazione**, il caso ordinario si
+risolve **spezzando, senza forzare niente**:~~
 
 ```text
-arrivano 1.200 su una rata da 1.000
-  ├── riga 1.000  →  rata            (abbinata, quadra)
-  └── riga   200  →  DA_ABBINARE     (o su un'altra rata, o su un'altra fattura)
+~~arrivano 1.200 su una rata da 1.000~~
+~~  ├── riga 1.000  →  rata            (abbinata, quadra)~~
+~~  └── riga   200  →  DA_ABBINARE     (o su un'altra rata, o su un'altra fattura)~~
 ```
 
-⭐ È la strada **preferibile** quando un'altra destinazione esiste: l'eccedenza
+~~⭐ È la strada **preferibile** quando un'altra destinazione esiste: l'eccedenza
 resta denaro identificato e disponibile, invece di sparire dentro una rata che
-non la giustifica.
+non la giustifica.~~
 
 **La forzatura serve quando una destinazione non c'è** — nessuna altra rata,
 nessun'altra fattura aperta — e l'operatore vuole comunque dichiarare: *«lo so,
-ha pagato di più, registralo così»*.
+ha pagato di più, registralo così»*. ⚠️ **Con D1-ter questa non è più l'eccezione:
+è la strada ordinaria**, e il seguito lo prende il giro delle sistemazioni.
 
 ##### Come dev'essere fatta
 
@@ -610,6 +625,60 @@ click: in [fatture_scadenze](/dbzero/vendite/manual/fatture_scadenze) la query d
 controllo quadratura porta il filtro `totale_a_pagare > 0` con l'avvertenza che
 *«non è un dettaglio: senza, le fatture a base zero o negativa comparirebbero
 come squadrature»*. Stessa causa, stesso rimedio, un livello più in là.
+
+---
+
+#### ✅ D1-ter — **Il pagamento di una rata non si spezza** (Tid, 2026-08-24)
+
+> Decisione di Tid: *«se sono 1.200 su 1.000 di una rata già identificata non ha
+> senso spezzare, perché significa che il cliente ha pagato quella specifica rata
+> con importo sbagliato»*.
+
+⭐ **L'equivoco che questa decisione toglie.** D1-bis usava la spezzatura per
+gestire il **sovra-incasso su una rata identificata**. Ma lì l'atto del cliente è
+**uno solo**, con un importo sbagliato: spezzarlo inventerebbe due allocazioni
+dove il cliente ne ha voluta una, e soprattutto **deciderebbe al posto suo** che
+i 200 di troppo vanno su un'altra rata. Non è data entry: è una decisione, e ha
+un titolare.
+
+**Perché cade adesso e non prima.** La ragione dichiarata da D1-bis per preferire
+la spezzatura era *«l'eccedenza resta denaro identificato e disponibile, invece
+di sparire dentro una rata che non la giustifica»*. ⭐ Il **9 agosto quella
+ragione era vera**, perché le sistemazioni non esistevano. Il **lotto 7 del 22
+agosto** le ha costruite — elenco delle eccedenze, registro degli atti, tre
+destinazioni — quindi **l'eccedenza non sparisce più**: ha un elenco e un
+registro. La preferenza cade perché il problema che la giustificava è stato
+risolto altrove.
+
+**La strada ordinaria diventa una sola, e ha tre tempi:**
+
+```text
+1.200 su una rata da 1.000, rata identificata
+  1. si registra il FATTO      → 1.200 sulla rata, forzata, con il motivo
+  2. l'eccedenza si VEDE       → vw_rate_fuori_capienza + vw_eccedenze_da_sistemare
+  3. qualcuno DECIDE dei 200   → riporto | rimborso | compensazione (D15),
+                                 a registro e annullabile
+```
+
+⭐ **La forzatura smette di essere un ripiego**: è il primo tempo di un processo
+chiuso, non il modo di far entrare a forza un numero.
+
+##### Che cosa NON cade
+
+⛔ **D1 regge intatta.** *«Un incasso di 1.000 che copre tre rate diventa tre
+righe»* resta il modello: la riga è l'unità di allocazione, e un arrivo con più
+destinazioni **vere** si scrive come più righe. ⚠️ La differenza è **quando**: le
+righe si scrivono **così fin dall'inizio** — chi lavora a mano le digita — invece
+di ricavarle spezzando una riga già scritta.
+
+##### Che cosa ne discende, e dove
+
+| Sede | Conseguenza |
+| --- | --- |
+| Brief madre (qui) | il blocco della spezzatura in **D1-bis** è barrato; la forzatura non è più l'eccezione ma la strada ordinaria |
+| Piano BE/FE | ⛔ **Q-2 chiusa: nessun verbo «spezza»**, nessun `POST /righe/{id}/spezza/`. La **slice 6 sparisce** e `fn_spezza_riga_contabile` esce dalle richieste al team DB |
+| Piano DB | **nessun impatto**: quella funzione non è mai stata in nessun lotto — è la ragione per cui il piano BE/FE la chiedeva |
+| Quando potrebbe tornare | ⚠️ **Solo con l'import del flusso bancario (D6)**: lì la riga arriva **già fatta da fuori** e i suoi fatti sono immutabili, quindi allocare un arrivo unico su più destinazioni non si può fare digitando. Sarà **quel** cantiere a dire come, e non si anticipa adesso |
 
 ---
 
@@ -1013,9 +1082,11 @@ Restano da definire in fase di scrittura:
 - **incasso parziale su una rata** — ammesso per costruzione (la riga può valere
   meno della rata); da definire solo *come si racconta* una rata coperta a metà,
   che è una domanda di lettura, non di modello;
-- **eccedenza** — che cosa succede se l'abbinato supera la rata. Il guard di
+- ~~**eccedenza** — che cosa succede se l'abbinato supera la rata. Il guard di
   quadratura lo **nega**; resta da decidere se l'operatore vede un rifiuto o una
-  proposta di spezzare la riga;
+  proposta di spezzare la riga;~~ ✅ **CHIUSO**: il guard **segnala** invece di
+  negare (D14-b/D14-d, applicato col lotto 5), e l'operatore vede **un rifiuto
+  confermabile** — mai una proposta di spezzare (**D1-ter**, 2026-08-24);
 - **abbinamento automatico** — vedi **D4** in §4-bis: **fuori dalla prima slice**.
 
 > ~~Le domande originali del 02-08 su questo punto~~ — «FK o N:N?», «derivato o
@@ -1066,6 +1137,36 @@ fattura già incassata.
 Se e quando la lista si farà, valgono i cinque prerequisiti di
 [piano-migrazione-primevue-5.md](piano-migrazione-primevue-5.md), e il primo è
 lavoro BE vero: **non esiste una rotta scadenze paginata**.
+
+#### ⭐ NOTA del 2026-08-24 — **il vincolo che teneva chiuso lo scadenzario è caduto**
+
+> Presa parlando con Tid mentre si chiudeva Q-8 del piano BE/FE: *«dovremo
+> aggiungere una nota sullo scadenzario, che non avevo previsto»*.
+
+Il paragrafo qui sopra dice che lo scadenzario **richiede la 3.1**, *«perché
+senza stato di pagamento ogni sua colonna sarebbe falsa su una fattura già
+incassata»*. ✅ **La 3.1 è fatta**: il posting esiste dal lotto 4, l'abbinamento
+alla rata dal lotto 5, e `pagamenti.fn_get_saldo_rata` risponde **per singola
+rata** con residuo, in lavorazione e incassato.
+
+⇒ **«Scaduto» e «insoluto» hanno smesso di essere colonne false.** Sono
+derivabili: *rata con residuo > 0 e data di scadenza passata*. Lo scadenzario è
+passato da **impossibile** a **possibile e non fatto** — ed è un cambio di stato
+che nessuno aveva messo a piano, perché è arrivato come effetto collaterale di
+un altro cantiere.
+
+⛔ **Resta comunque fuori dal perimetro del cantiere incassi**, e non per
+prudenza: è **un cantiere suo**, con un lato FE proprio e almeno due cose vere
+ancora da fare — la **rotta scadenze paginata** (il cantiere incassi apre solo un
+**lookup** delle rate di *una* fattura, che è un'altra cosa) e i suoi seed di
+lista.
+
+##### ⚠️ Le due avvertenze da portarsi dietro quando si aprirà
+
+| | Avvertenza |
+| --- | --- |
+| **1** | 🔴 **I numeri devono venire dalla base unica dei saldi**, mai da una query propria dello scadenzario (vincolo §2.7 del piano BE/FE). Uno scadenzario è la porta dei **solleciti**: è il posto dove un numero sbagliato non resta un numero sbagliato, diventa una telefonata a un cliente che ha già pagato |
+| **2** | ⚠️ **«Incassato» non è «a posto»**, e qui la differenza morde. Una rata coperta da un **giro interno** — un fondo fattura, una compensazione — è **regolata**, anche se in banca non è entrato niente. Uno scadenzario che guardasse l'incassato solleciterebbe chi non deve niente; deve guardare il **residuo** |
 
 ### 3.5 ⏸️ `sepa_mandati` — pezzo di modello orfano (nuovo, 2026-08-09)
 
@@ -2190,6 +2291,8 @@ stub vuoti.
 
 | Data | Cosa è cambiato |
 | --- | --- |
+| **2026-08-24** (2) | ⭐ **Nota nuova in §3.4: il vincolo che teneva chiuso lo scadenzario è caduto** — emersa parlando con Tid mentre si chiudeva Q-8 del piano BE/FE, e **nessuno l'aveva messa a piano**. §3.4 diceva che lo scadenzario richiede la 3.1 *«perché senza stato di pagamento ogni sua colonna sarebbe falsa»*: la 3.1 adesso c'è (posting dal lotto 4, rata dal lotto 5, `fn_get_saldo_rata` per singola rata), quindi «scaduto» e «insoluto» sono **derivabili** e lo scadenzario è passato da **impossibile** a **possibile e non fatto**. ⛔ Resta fuori dal cantiere incassi — è un cantiere suo, e gli mancano ancora la rotta scadenze **paginata** (qui nasce solo un *lookup* delle rate di una fattura) e i suoi seed. ⚠️ Due avvertenze scritte per quando si aprirà: i numeri devono venire dalla **base unica dei saldi** e mai da una query propria (uno scadenzario è la porta dei solleciti: un numero sbagliato lì diventa una telefonata a chi ha già pagato), e **«incassato» non è «a posto»** — una rata coperta da un giro interno è regolata anche se in banca non è entrato niente, quindi si guarda il **residuo** |
+| **2026-08-24** | ✅ **D1-ter — il pagamento di una rata NON si spezza** (decisione di Tid). ⭐ Toglie un equivoco che stava in **D1-bis** dal 9 agosto: là la spezzatura era la strada *preferibile* per il sovra-incasso, ma su una rata **identificata** l'atto del cliente è **uno solo con un importo sbagliato** — spezzarlo inventerebbe due allocazioni dove il cliente ne ha voluta una, e deciderebbe **al posto suo** dove vanno i soldi di troppo. 🔴 **E la ragione per cui cade non è che fosse sbagliata allora**: D1-bis preferiva spezzare perché *«l'eccedenza resta denaro identificato invece di sparire dentro una rata che non la giustifica»*, e il **9 agosto era vero** — le sistemazioni non esistevano. Il **lotto 7 del 22/08** le ha costruite (elenco + registro + tre destinazioni), quindi l'eccedenza **non sparisce più**: la preferenza cade perché il problema che la giustificava è stato risolto altrove. ⭐ La strada ordinaria diventa **una sola a tre tempi**: si registra il fatto (forzata, con motivo) → l'eccedenza si vede negli elenchi → qualcuno **decide** (riporto/rimborso/compensazione, a registro e annullabile). La forzatura smette di essere un ripiego e diventa il primo tempo di un processo chiuso. ⛔ **Che cosa NON cade**: **D1 regge intatta** — un incasso che copre tre rate resta tre righe; cambia solo **quando** si scrivono (subito, digitandole) invece che ricavandole spezzando. 📮 Ne discende: nel piano BE/FE **cade il verbo «spezza»**, la slice dedicata **sparisce** e `fn_spezza_riga_contabile` esce dalle richieste al team DB (il piano DB non ne risente: non l'aveva in nessun lotto). ⚠️ Potrà tornare **solo con l'import** (D6), dove la riga arriva già fatta da fuori e non si può digitare |
 | 2026-08-21 | ⭐ **Estratto il piano DB in un brief suo**: [brief-db-posting-e-abbinamento-rata.md](brief-db-posting-e-abbinamento-rata.md). Qui restano le **decisioni di dominio**, là i **passi e le misure** — con la regola esplicita di quale sede si aggiorna per cosa, perché due documenti sullo stesso cantiere aperto divergono al primo aggiornamento (lezione già pagata dal cantiere fondi). 🔴 **Tre punti di questo brief corretti perché parlavano al presente di cose non più vere**: `fn_sync_pagamento_fondo_fattura` **non esiste più** (ritirata il 15/08); **B-2 era sbagliato a metà** — il trigger di mirror ha **già** il guard e solleva `P0001`, e il difetto vero è che tutte e quattro le funzioni di `pagamenti` sollevano `E_GENERICO`; il riquadro sulla **scadenza della metà «fondi»** è chiuso, perché quella metà è **fatta** (Fasi A/B/C/E/F applicate il 15-16/08) e **la dipendenza si è invertita** — la Fase D del cantiere fondi aspetta il processo rimborsi di `pagamenti`, cioè la **D8 (b)** di §4-bis. 🔴 **Cinque difetti nuovi misurati** e scritti là, tre bloccanti: `centri_riscossione` **non può contenere più di due righe** (il `where:` su `addUniqueConstraint` fu ignorato: il passo 3 di D9-d-1 oggi non è eseguibile, annotato in loco); `fn_sync_contabili_fondo_fattura` **riscriverebbe righe già postate**; un fondo interamente postato **si auto-annullerebbe**. ⭐ La lezione trasversale ai due: *verificare che un'identità algebrica si conservi non è verificare che i consumatori la usino ancora bene* — §1-bis prova che «la bilancia regge da sé» ed è vero, ma il codice che quei termini li **riscrive** non regge |
 | 2026-08-15 (sera) | 🔴 **Il tampone di D1-bis era sbagliato, e l'ha smontato Tid spiegando cosa sono davvero le due soglie.** *«Il verso opposto non è un fondo»* è **falso**: `minimo_soglia_min` e `minimo_soglia_max` sono i **due capi di una banda che contiene lo zero** (esempio reale: `−500 / +10`), e il capo inferiore esiste **apposta** per riportare avanti i **crediti**. Un filtro `importo_target > 0` avrebbe spento metà del meccanismo, in silenzio. Il controllo giusto è la **corrispondenza col documento** (stesso segno del totale della sorgente, non superiore in valore assoluto), in un **guard trigger** perché un CHECK non può leggere `vendite.fatture`. 🔴 Seconda scoperta: **«soglia non impostata = meccanismo spento» vale solo a metà** — se manca il *massimo* la condizione diventa vera per tutti e **ogni** fattura diventa di minimo: configurazione incompleta = meccanismo **spalancato**. Deciso da Tid: dev'essere un errore di configurazione (CHECK «entrambe o nessuna»). Ritirata la trappola *«un automatismo tarato su un verso»* di §5, che era essa stessa l'errore, e sostituita con le due lezioni vere: **leggere la configurazione prima di dedurre l'intenzione**, e **un difetto e un comportamento voluto possono avere lo stesso sintomo**. ✅ Confermato il perimetro del processo rimborsi (in `pagamenti`, tre uscite, passaggio **passivo**: se le va a cercare da sé) |
 | 2026-08-15 | 🔴 **Rimisurata la tabella delle «due serrature» di D1-bis: sbagliata su entrambe le righe.** Il fondo si genera sulla **differenza** `saldo − saldo_contabile` e il secondo termine non dipende dai movimenti: la seconda serratura **non è la slice 1**, è **l'assenza di scrittori di righe contabili** (il guard di quadratura è la slice **2**), e si apre col primo altro scrittore — import del flusso, correzione a mano, o slice 1. E `minimo` non è una configurazione: lo **riscrive** `fn_ricalcola_totali_fattura` dal confronto fra totale e soglie dell'emittente, quindi si accende da solo. La conclusione operativa non cambia (il limite inferiore resta nella slice 1), cambia la **scadenza**. 🔴 Aggiunto che **il limite inferiore da solo peggiora le cose**: senza l'`ANNULLATO` automatico un fondo non più dovuto resta `DISPONIBILE` e viene comunque **applicato** — serve nello stesso lotto il guard che rilegge la capienza al momento dell'atto. ✅ Chiusa la domanda lasciata aperta in D1-bis (fondo esistente con target negativo: **si lascia com'è**) e decisa F-4 (`fn_sync_pagamento_fondo_fattura` si **ritira**). ⭐ Verificato che con un posting **atomico** la bilancia di B-1 **regge da sé** (i due termini si scambiano lo stesso importo): il rischio è tutto nella non-atomicità. ⚠️ Nuovo limite di dominio in §4: «incassato» ≠ «postato» — le misure di cassa devono **escludere i centri non-cassa** (`is_fondo_fattura`, `is_compensazione`), perché il fondo diventerà un movimento vero ma per **trasferimento**. Quattro trappole nuove in §5. Fonte: il piano del cantiere fondi, [brief-db-fondo-fattura…](brief-db-fondo-fattura-ricalcolo-e-governo.md) §8 |
@@ -2198,7 +2301,7 @@ stub vuoti.
 | 2026-08-09 (notte, 6) | ⭐ Fissato con Tid il **principio di chiusura sul flusso di denaro** (§3-bis): **i fatti si aggiungono, i saldi si leggono, le decisioni le prende una persona**. Ne discende che la rincorsa degli incassi è **impossibile per costruzione**, non solo improbabile: un ciclo richiede un automatismo che riscriva un numero, e non ce ne sono. Regola pratica: nessun automatismo tocca il fondo in base agli incassi; l'attività pre-fatturazione **presenta, non sana**. Annotato che il **rimborso non è da costruire** (il movimento copre già «incasso o rimborso», e con D3-d è una contabile negativa). Trovato e segnalato `vendite.fn_sync_pagamento_fondo_fattura`: nome e colonne promettono movimenti, il corpo delega tutto a `fn_sync_contabili_fondo_fattura` e **nessuno la chiama** — probabile causa dell'equivoco «il posting esiste». Estratto il cantiere del meccanismo fondi in un **brief proprio**: `brief-db-fondo-fattura-ricalcolo-e-governo.md` |
 | 2026-08-09 (notte, 5) | Collocata la modifica ai fondi: **va nella slice 1, non dopo**. Misurato che il ramo negativo è oggi chiuso da **due serrature** — `minimo IS TRUE` (0 fatture su 12) e saldo negativo (nessun movimento) — e che **è la slice 1 ad aprire la seconda**. Da lì basta una configurazione a minimo perché un sovra-incasso generi un fondo negativo `DISPONIBILE` assegnato a una figlia. Annotato che entrambi i task fondi sono `attivo = true` (codice vivo, dominio `vendite`) e le regole di lavorazione su funzione esistente |
 | 2026-08-09 (notte, 4) | Su indicazione di Tid, due aggiunte a **D1-bis**. **(1)** Il fondo fattura **non si genera da solo** su un sovra-incasso: misurato che `fn_genera_fondi_fattura_source` filtra solo `<> 0`, quindi con saldo negativo creerebbe un fondo **negativo e `DISPONIBILE`** (e `ANNULLATO` scatta solo a zero) che `applica_fondi_lotto` assegnerebbe a una figlia — senza alcun CHECK a fermarlo. L'automatismo prende un **limite inferiore** (`> 0`) e l'eccedenza diventa **lavoro governato** (rimborso / compensazione / applicazione futura). Aperta: che fare di un fondo esistente il cui target diventa negativo. **(2)** Una fattura con `totale_a_pagare < 0` **si può pagare**: ha zero rate per progetto, quindi il pagamento si registra sulla **fattura** con `scadenza_id` NULL e nessuna quadratura per rata entra in gioco. 🔴 Fissato di **non** replicare la quadratura a livello fattura: l'intervallo si invertirebbe. Due trappole nuove in §5 |
-| 2026-08-09 (notte, 3) | Aggiunta **D1-bis** su indicazione di Tid: il **sovra-incasso è un fatto reale** (frequente nelle utilities) e va **registrabile con forzatura**. Precisato che il guard non impedisce di incassare ma di caricare una rata oltre il suo valore, e che il caso ordinario si risolve **spezzando la riga** senza forzare nulla. La forzatura è **esplicita, motivata, gated** (esiste già `approva_rimessa` sull'area pagamenti; pattern a due tempi già in `vendite`) e **visibile in un elenco**. 🔴 Fissata l'asimmetria: **il limite superiore è forzabile, quello inferiore no**. Verificato che `fatture_fondi_fattura_source.importo` **non ha CHECK**, quindi un saldo negativo può generare un fondo negativo sulle fatture a minimo. Due trappole nuove in §5 |
+| 2026-08-09 (notte, 3) | Aggiunta **D1-bis** su indicazione di Tid: il **sovra-incasso è un fatto reale** (frequente nelle utilities) e va **registrabile con forzatura**. Precisato che il guard non impedisce di incassare ma di caricare una rata oltre il suo valore, e che il caso ordinario si risolve **spezzando la riga** senza forzare nulla — ⛔ **quest'ultima parte è superata da D1-ter (2026-08-24): il pagamento di una rata non si spezza**, e la riga resta a registro così com'era scritta perché la storia non si riscrive. La forzatura è **esplicita, motivata, gated** (esiste già `approva_rimessa` sull'area pagamenti; pattern a due tempi già in `vendite`) e **visibile in un elenco**. 🔴 Fissata l'asimmetria: **il limite superiore è forzabile, quello inferiore no**. Verificato che `fatture_fondi_fattura_source.importo` **non ha CHECK**, quindi un saldo negativo può generare un fondo negativo sulle fatture a minimo. Due trappole nuove in §5 |
 | 2026-08-09 (notte, 2) | Separate **D4** (abbinare) e **D6** (importare), che stavano sotto un'unica etichetta e sono **due mestieri indipendenti nei due versi**. Deciso subito un criterio di D4: l'automatismo **propone, non decide** — solo un indizio certo può portare una riga ad `ABBINATA` da solo, così non può sbagliare in silenzio. Aggiunta **§3.6**: proposta di un **riferimento di pagamento in fattura** in standard **ISO 11649 (`RF…`)** costruito sull'id della **rata** — cifra di controllo che scarta i refusi, campo strutturato SEPA, funzioni derivate senza colonne nuove. Verificato che oggi **nessun riferimento di pagamento esiste** in tutto il sistema. Annotato il legame con §3.2: il blocco `2.4` è dove il riferimento si dichiara, ed è già il passo 2 dell'ordine di Tid |
 | 2026-08-09 (notte) | 🔴 **Il difetto D9-d-1 si è rivelato più grande della sua prima stesura.** Non «manca il centro banca»: `centri_riscossione` **non ha né CSV né loader** e le due righe esistenti sono state **inserite a mano** (`user_insert = postgres`, 17-02-2026). Su un DB ricostruito da zero la tabella è **vuota** — in CI mancano anche fondi fattura e compensazioni. Invisibile perché tutti e quattro i pgTAP di `pagamenti` si fabbricano il centro da soli. Scritta la soluzione in quattro passi (CSV nuovo, backfill delle 2 righe esistenti, centri reali, loader sul modello di `20260213-04`). Aggiunto a D9-d-2 il ramo `OR NULL` di `fn_get_saldo_fattura_contabili` che diventa codice morto |
 | 2026-08-09 (tarda sera) | 🔴 **Semplificata D3-d: lo storno smette di essere un concetto.** Intuizione di Tid a partire dal timore della catena di storni: non un documento etichettato, ma una contabile normale con **importi negativi**. Le tre sotto-domande d-1/d-2/d-3 **non si semplificano: spariscono**, perché erano un artefatto dell'etichetta. La sicurezza passa al controllo **simmetrico** `0 ≤ Σ ≤ importo rata`. Aggiunta **D9** (governo degli stati): `STORNATA` **ritirato** con `obsoleto_dal`, **transizioni dichiarate** su testata e righe — `pagamenti` era l'unico dominio senza —, **annullamento solo prima della conferma**. Trovati due difetti verificando: **manca il centro di riscossione per la banca** (una contabile di incasso reale oggi **non è creabile**) e **`stato_id` è nullable** proprio ora che diventa il cancello fra brogliaccio e registro. Due trappole nuove in §5 |

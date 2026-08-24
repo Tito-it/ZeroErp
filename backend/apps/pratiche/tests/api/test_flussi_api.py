@@ -27,6 +27,8 @@ Indice test eseguiti:
 16) FlussiApiTests.test_post_assegnazione_flusso_ownership_mismatch
 17) FlussiApiTests.test_post_assegnazione_flusso_parziale
 18) FlussiApiTests.test_get_operatori_reparto_ok
+19) FlussiApiTests.test_get_pratica_di_flusso_ok
+20) FlussiApiTests.test_get_pratica_di_flusso_non_visibile
 """
 
 import json
@@ -37,6 +39,7 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _VIEWS = "apps.pratiche.api.views"
+_SVC = "apps.pratiche.services.pratiche_service"
 
 
 def _mock_flusso_row(
@@ -110,6 +113,31 @@ class FlussiApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["data"]["id"], 5)
+
+    # Scopo: ⭐ «Dove vive questo flusso», dal solo id — l'unica rotta dei flussi
+    #        NON annidata sotto la pratica. La usa chi il flusso lo nomina da
+    #        fuori: il bersaglio di un errore porta `FLUSSO:<id>` e nient'altro.
+    #        ⚠️ Si mocka il repository del SERVICE, non quello delle views: e'
+    #        di la' che la rotta passa.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_get_pratica_di_flusso_ok(self, MockRepo, _auth):
+        MockRepo.return_value.get_pratica_di_flusso.return_value = 185
+
+        response = self.client.get("/api/v1/pratiche/flussi/166/pratica/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["pratica_id"], 185)
+
+    # Scopo: ⛔ FAIL-CLOSED. La lettura e' agganciata a `pratiche.pratiche` (che
+    #        ha la RLS) e non al solo `flussi` (che non ce l'ha): un flusso fuori
+    #        perimetro torna None ed e' indistinguibile da uno inesistente.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_get_pratica_di_flusso_non_visibile(self, MockRepo, _auth):
+        MockRepo.return_value.get_pratica_di_flusso.return_value = None
+
+        response = self.client.get("/api/v1/pratiche/flussi/999/pratica/")
+        self.assertEqual(response.json()["error"]["code"], "E_FLUSSO_NOT_FOUND")
 
     # Scopo: Verifica errore ownership quando flusso non appartiene alla pratica.
     @patch(_AUTH, return_value=(Mock(), None))

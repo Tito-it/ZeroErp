@@ -116,9 +116,11 @@ class RequestLogMiddlewareTests(TestCase):
     #    perderebbe la verifica che l'autenticazione ha gia' fatto (che
     #    l'emittente esista e sia attivo) e il log potrebbe riportare un
     #    emittente diverso da quello che la richiesta ha davvero usato.
-    # ⛔ E si presidia anche l'ASSENZA di `tx_id`: quella colonna non si puo'
-    #    collegare da qui — la riga si scrive quando la transazione di lavoro
-    #    ha gia' chiuso — e va tolta a DB, non riempita con un valore inventato.
+    # ⛔ E si presidia anche l'ASSENZA di `tx_id`: la colonna e' stata TOLTA a
+    #    DB il 2026-08-24 (0 valorizzate su 355.702), perche' da qui non si
+    #    poteva collegare — la riga si scrive quando la transazione di lavoro ha
+    #    gia' chiuso. Nominarla adesso farebbe fallire l'INSERT: l'asserzione
+    #    non e' piu' una preferenza di disegno, e' un presidio sullo schema.
     @patch(_GET_UA, return_value="TestBrowser/1.0")
     @patch(_GET_IP, return_value="192.168.1.1")
     @patch(_GET_REQ_ID, return_value="550e8400-e29b-41d4-a716-446655440000")

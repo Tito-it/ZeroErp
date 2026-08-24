@@ -3901,7 +3901,12 @@
       "fattura": "Invoice",
       "commessa": "Job",
       "lotto": "Batch",
-      "task_run": "Run"
+      "task_run": "Run",
+      "contratto": "Contract",
+      "ordine_vendita": "Order",
+      "preventivo": "Quote",
+      "flusso": "Workflow step",
+      "definizione_workflow": "Workflow edition"
     }
   },
   "lista_config": {

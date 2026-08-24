@@ -19,20 +19,25 @@ La LETTURA del canale (`structured_db_error_target`):
  7) test_tetto_di_cinque
  8) test_id_uuid_ammesso
 
-Il TRASPORTO — un test per ciascuno dei QUATTRO punti di traduzione, che e'
-il difetto che il piano ha trovato:
+Il TRASPORTO — un test per ciascuno dei CINQUE punti di traduzione, che e'
+il difetto che il piano ha trovato (il quinto e' emerso il 2026-08-24, col
+roll-out del terzo scaglione: era rimasto indietro):
  9) test_punto_1_database_error_nudo_arriva_nellenvelope
 10) test_punto_2_translate_db_errors_non_perde_il_bersaglio
 11) test_punto_3_raise_from_database_error_non_perde_il_bersaglio
 12) test_punto_4_service_error_porta_il_bersaglio_nellenvelope
+13) test_punto_5_pratiche_non_perde_il_bersaglio
 
 Le REGOLE dell'envelope:
-13) test_envelope_parla_inglese                (`type`/`id`, non `tipo`/`id`)
-14) test_su_un_tecnico_il_bersaglio_non_esce   (Q-E, letta dal lato che consegna)
-15) test_il_campo_da_correggere_viaggia_con_lui (il difetto gia' vivo, sanato)
+14) test_envelope_parla_inglese                 (`type`/`id`, non `tipo`/`id`)
+15) test_tupla_vuota_non_finisce_nellenvelope   (una chiave vuota non dice niente)
+16) test_su_un_tecnico_il_bersaglio_non_esce    (Q-E, dal lato che consegna)
+17) test_su_un_rimediabile_il_bersaglio_esce    (il verso opposto del 16)
+18) test_il_campo_da_correggere_viaggia_con_lui (il difetto gia' vivo, sanato)
+19) test_il_campo_esplicito_vince_su_quello_derivato
 
 End-to-end su DB reale (OPT-IN `ZEROERP_TEST_DB_E2E=1`):
-16) test_e2e_il_canale_porta_il_bersaglio
+20) test_e2e_il_canale_porta_il_bersaglio
 """
 
 from __future__ import annotations
@@ -158,17 +163,21 @@ class BersaglioLetturaTest(TestCase):
 
 
 class BersaglioTrasportoTest(TestCase):
-    """⭐ I QUATTRO PUNTI DI TRADUZIONE, uno per test.
+    """⭐ I CINQUE PUNTI DI TRADUZIONE, uno per test.
 
     E' il difetto che il piano ha trovato misurando (2026-08-24): i punti in cui
-    un `DatabaseError` diventa un `ServiceError` sono quattro, e tre su quattro
-    buttavano via la diagnostica strutturata prima dell'envelope. Un test per
-    punto e' l'unica forma in cui quel difetto non puo' tornare di soppiatto.
+    un `DatabaseError` diventa un `ServiceError` sono CINQUE, e quattro su
+    cinque buttavano via la diagnostica strutturata prima dell'envelope.
+
+    ⚠️ Il quinto (`pratiche`) e' emerso DOPO gli altri, col roll-out del terzo
+    scaglione — ed e' esattamente perche' c'e' un test per punto: il prossimo
+    che si aggiungesse senza il suo test tornerebbe a perdere il bersaglio in
+    silenzio, che e' il modo in cui questo difetto e' nato.
     """
 
     # Scopo: Punto 1 — il `DatabaseError` che arriva NUDO al middleware.
     #        E' l'unico che gia' funzionava, e proprio per questo e' l'unico che
-    #        non dimostrava niente sugli altri tre.
+    #        non dimostrava niente sugli altri quattro.
     def test_punto_1_database_error_nudo_arriva_nellenvelope(self):
         errore = ErrorTranslator.to_api_error(_errore_pilota())
         self.assertEqual(errore.targets, (Bersaglio(tipo="FATTURA", id="820"),))
@@ -204,6 +213,29 @@ class BersaglioTrasportoTest(TestCase):
         # ⭐ E con lui la SOLUZIONE a catalogo, che da questa strada non era mai
         #    uscita: dice all'operatore cosa fare, ed e' meta' del gesto.
         self.assertIn("Numerare prima", errore.hint or "")
+
+    # Scopo: Punto 5 — `pratiche._raise_known_db_error`, **12 punti di chiamata**.
+    #        ⚠️ Era rimasto indietro rispetto agli altri quattro, ed e' quello che
+    #        porta il TERZO SCAGLIONE del roll-out (`E_FLUSSI_*`,
+    #        `E_DEFINIZIONE_BOZZA_ESISTENTE`): senza, il caso che il brief chiama
+    #        «il piu' netto dell'intero roll-out» sarebbe arrivato senza gesto.
+    def test_punto_5_pratiche_non_perde_il_bersaglio(self):
+        from apps.pratiche.services.pratiche_service import _raise_known_db_error
+
+        exc = make_db_error(
+            "Esiste gia' una bozza di edizione workflow per lo scope"
+            " (tipo prestazione 12, emittente 32).",
+            codice="E_DEFINIZIONE_BOZZA_ESISTENTE",
+            hint="Aprire la bozza esistente e completarla, oppure eliminarla.",
+            bersaglio="DEFINIZIONE_WORKFLOW:77",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            _raise_known_db_error(exc, function_name="test")
+        errore = ErrorTranslator.to_api_error(ctx.exception)
+        self.assertEqual(errore.code, "E_DEFINIZIONE_BOZZA_ESISTENTE")
+        self.assertEqual(
+            errore.targets, (Bersaglio(tipo="DEFINIZIONE_WORKFLOW", id="77"),)
+        )
 
     # Scopo: Punto 4 — il `ServiceError` costruito a mano dai service (e dal
     #        giro per-fattura della pipeline, che e' la strada del PILOTA).

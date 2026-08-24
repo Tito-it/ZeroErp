@@ -68,6 +68,7 @@
 | 🔵 **A carico del BE** | 10 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
 | ⭐ **La richiesta del backend** | I changeSet 61 e 62 avevano consegnato le **colonne**, e **nessuna funzione le scriveva**. L5 mette i due scrittori — e corregge una premessa della richiesta che era **falsa**, misurandola | §5-bis |
 | 🧪 **Presidio** | ✅ **80 asserzioni verdi, zero skip** su 9 file — 5 nuovi/riscritti e 4 preesistenti adeguati. ⭐ E due asserzioni che passavano **dichiarandosi cieche** adesso verificano | §6 |
+| ⏭️ **Da dove si riparte** | Il **Passo A** (la timeline di un caso) **può iniziare**: i suoi tre prerequisiti sono chiusi e — per la prima volta — ci sono dati veri da mostrare. La proposta è di partire da una **ricognizione** sulla vista L3, non dall'endpoint: il suo primo consumatore ne è anche il collaudo. ⭐ Ed è il primo pezzo del filone con un **lato FE** | §12 |
 | 🔵 **Da verificare, fuori cantiere** | Un prezzo **non negoziato sul contratto** dentro un push **riuscito** (ORD0016313): l'errore è in `error_log`, l'attività ha comunque un prezzo bloccato. ⚠️ È la categoria che nessuno controlla — un errore registrato dentro un'operazione andata bene | §11 |
 | 🔵 **Domande aperte** | **Una: la Q-7**, la granularità del filo — un `correlation_id` per *passata* o per *azione dell'operatore*? ⭐ L'hanno posta i **dati**, non il piano: un solo click su «Fattura» produce due giri. Rinviata da Tid, deliberatamente. Le sei del primo giro restano chiuse | §8 |
 | 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
@@ -1176,7 +1177,7 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 | ~~**BE-11**~~ | ✅ **FATTA** *(2026-08-24)*. `CODICE_DIAGNOSTICA_FALLITA` vale **`E_DIAGNOSTICA_NON_REGISTRATA`**, la voce è in `error_messages_fallback.py` e le policy sono rigenerate. Provato dal vivo, non solo in test: `dbops.error_log` → `E_DIAGNOSTICA_NON_REGISTRATA · vendite.commesse_service.pr_run_commesse_push · commessa_id 812`. ⭐ **`E_PIPELINE_MARK_ERROR` (699) non è più sollevato da nessuno**: il suo `obsoleto_dal` si può mettere, ed è l'ultimo passo di §5-ter | — |
 | ~~**BE-10**~~ | ✅ **FATTA**, e rifatta a ogni seed *(2026-08-22, 08-23, 08-24)*. `error_policies_generated.py` è allineato: **778 codici, gli stessi del catalogo DB**, zero divergenze e zero classi cambiate — verificato coppia per coppia a ogni rigenero. ⭐ E la consegna ha una **seconda metà** che il §5 non nominava: un codice nuovo vuole la policy **e** il ripiego senza `%s` in `error_messages_fallback.py`. Misurato oggi: **694 codici vivi, 694 ripieghi, zero mancanti**. È il secondo verso che si dimentica, e lo presidia `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` | No, ma rompe la CI |
 
-### ⛔ `dbops.request_log.tx_id` non si può riempire, e va tolta *(2026-08-24, misurato)*
+### ✅ ~~`dbops.request_log.tx_id` non si può riempire, e va tolta~~ — **TOLTA** *(2026-08-24)*
 
 La consegna BE-8 diceva «o si collegano o si tolgono». **`emittente_attivo_id`
 si è collegata; `tx_id` no**, e non per pigrizia — dalla sede in cui la riga si
@@ -1193,12 +1194,27 @@ scrive quel valore **non esiste più**:
 che è la definizione di un filo che non lega, la stessa ragione per cui
 `fn_start_commessa_push_run` non genera un `correlation_id` d'ufficio.
 
-➡️ **Richiesta al team DB: `ALTER TABLE dbops.request_log DROP COLUMN tx_id`.**
+➡️ ✅ **Fatto dal team DB il 2026-08-24**, `DROP COLUMN` eseguito. Il backend non ne è stato toccato — l'`INSERT` non nominava quella colonna — ma i commenti che la descrivevano come «da togliere» sono stati allineati, e l'asserzione del test **cambia natura**: non è più una preferenza di disegno, è un presidio sullo **schema** (nominarla adesso farebbe fallire l'INSERT).
+
+⛔ ~~Richiesta al team DB: `ALTER TABLE dbops.request_log DROP COLUMN tx_id`.~~
 Zero righe valorizzate su 354.595, quindi non si perde niente. ⚠️ Se invece si
 volesse *tenerla*, il collegamento non è un lavoro di backend: la riga andrebbe
 scritta **dentro** la transazione di lavoro, cioè da un'altra parte e con un
 altro disegno.
 
+### ⭐ E la gemella non era morta — la stava già riempiendo BE-8
+
+⚠️ **Misura da non ripetere male.** Il piano diceva «`emittente_attivo_id` e
+`tx_id` sono **due colonne morte** (0 valorizzate su 353.758)», e il team DB ha
+rimisurato la prima **dopo** l'apply: **667 valori alle 23, 1.096 alle 2** —
+1.099 al controllo successivo. Non è un residuo di un middleware vecchio: è una
+colonna che **qualcuno sta scrivendo adesso**, e quel qualcuno è **BE-8**.
+
+⭐ Il «0 su 353.758» fotografava un giorno in cui la colonna era davvero morta.
+È la ragione per cui il `DROP` si è deciso sulla misura **di oggi** e solo sulla
+gemella: due colonne che sembravano lo stesso caso hanno avuto due esiti opposti
+nel giro di poche ore, e a distinguerle è stata una misura ripetuta — non la
+riga di un piano.
 
 ---
 
@@ -2081,3 +2097,85 @@ d'ordine invece che risolto dal contratto.
 un'operazione riuscita*, che è esattamente la categoria che nessuno controlla —
 e per questo vale la pena riprenderla a mente fresca invece di archiviarla come
 rumore.
+
+---
+
+## 12. ⏭️ Il Passo A — la proposta per ripartire *(2026-08-24)*
+
+> **Perché sta in questo brief e non in quello del Passo A.** Il Passo A non è
+> materia di questo cantiere — è il §498 di
+> [analisi-osservabilita-log.md](analisi-osservabilita-log.md). Ma **questo**
+> cantiere è ciò che lo ha reso possibile, e chi riparte lo fa da qui: la nota
+> serve a non dover ricostruire il ragionamento da capo.
+
+### ✅ I tre prerequisiti sono soddisfatti, e nessuno per deduzione
+
+| Prerequisito | Come si è chiuso |
+| --- | --- |
+| La riga di `event_log` è **parlante** | perimetro derivato · `auth_user_id` · `tx_id` · `cleanup_at` · `correlation_id` per corsa — verificati su **7 giri veri** (§10, voce del 2026-08-24 sera) |
+| `event_log` è sotto **RLS** | L1, changeSet 46. È ciò che permette a un endpoint di lettura di non mostrare gli eventi di altri emittenti: era il rischio **B9** dell'analisi, ed è il motivo per cui il Passo 0 veniva prima |
+| La **cucitura** esiste | `script.vw_giornale_entita`, lotto L3 — ⚠️ con **zero consumatori** a oggi |
+
+⭐ **E c'è la condizione che mancava fino a ieri: dati veri da mostrare.** Con il
+registro vuoto una timeline non si poteva collaudare — si sarebbe consegnata una
+pagina che «funziona» perché non mostra niente.
+
+### Cosa è, in una riga
+
+*«Dammi la storia di questa entità, in ordine di tempo.»* Filtri `entity_type` +
+`entity_id`, e `correlation_id`. Read-only, `DomainAPIView`, envelope e
+paginazione standard ([api.md](../api.md)). ⛔ Nessun aggregato, nessuna finestra
+temporale, nessun cruscotto: quelli sono il Passo B, e hanno prerequisiti loro.
+
+Approda dove il caso si guarda già: la **diagnostica del lotto** e il pannello
+**«Passaggi»** della fattura. ⭐ È **il primo pezzo di questo filone con un lato
+FE vero** — finora non ce n'era nessuno, ed è la ragione per cui il cantiere è
+stato tutto backend.
+
+📌 La query che serve è quella per cui la tabella è **già indicizzata**
+(`ix_event_log_entity_time`): non c'è niente da ottimizzare, e non è un caso —
+§1.1 la registrava fra le cose che reggevano già.
+
+### ⚠️ Tre cose da decidere PRIMA di scrivere codice
+
+1. **Il primo consumatore di `vw_giornale_entita` ne è anche il collaudo.** La
+   vista cuce quattro registri e non l'ha mai interrogata nessuno: il suo
+   perimetro (`security_invoker`, i JOIN alle testate protette) è **verificato
+   dal pgTAP, non dall'uso**. Chi scrive l'endpoint scopre per primo se regge.
+   ⛔ Da mettere in conto come lavoro, non da scoprire a metà.
+2. **Dove approda per prima**, lotto o fattura. Il **lotto** ha più materiale
+   (eventi + `task_runs` + log funzionali, cioè tutte e quattro le sorgenti);
+   la **fattura** è dove l'operatore si ferma più spesso. Sono due risposte
+   diverse alla stessa domanda «a chi serve prima».
+3. ⭐ **La Q-7 la incrocia** (§8). Se la timeline mostra il `correlation_id`
+   come «il giro», la domanda sulla granularità smette di essere teorica:
+   diventa **ciò che l'operatore legge**. Non blocca il Passo A — ma la risposta
+   è meglio darla prima di disegnare quella colonna che dopo.
+
+### ⭐ La proposta: un giro di RICOGNIZIONE prima del codice
+
+Non partire dall'endpoint: partire **dalla vista, interrogata sui casi che
+abbiamo in mano**. Due, e sono complementari:
+
+| Caso | Perché serve |
+| --- | --- |
+| **lotto 6260** | ha un **errore vivo** (nota di credito 18846 non numerabile) e una storia sporca: riporta-a-draft, due corse, un fallimento. È il caso *interessante* |
+| **lotto 7133** (LTF-0006586) | è andato **liscio** fino al definitivo: tre corse, tre fili, fattura numerata. È il caso *pulito*, e serve come metro |
+
+Da lì il disegno dell'endpoint si scrive da sé — e si sa **prima** se L3 va
+corretta, invece di costruirci sopra e accorgersene dopo.
+
+⚠️ **E una trappola già nota, che in ricognizione morde subito**: quelle tabelle
+hanno la RLS. Interrogarle senza contesto operatore le fa apparire **vuote**, e
+uno zero fail-closed somiglia in tutto e per tutto a un dato — è l'errore che ho
+commesso il 2026-08-24 su `event_log` e che ho dovuto correggere in due punti di
+questo documento. Chi ricognisce imposti le GUC (`app.ruolo_applicativo`,
+`app.current_user_id`, `app.current_emittente_id`) o userà numeri inventati.
+
+### Cosa NON fare partendo
+
+| Non fare | Perché |
+| --- | --- |
+| Aggregati, conteggi, «quanti errori questo mese» | È il **Passo B**, e su questo ambiente sarebbe illeggibile (§Passo B dell'analisi). Una vista aggregata costruita adesso porta chi la guarda a conclusioni sbagliate |
+| Una seconda vista «più comoda» accanto a `vw_giornale_entita` | La forma normalizzata a sette colonne è una **decisione** (§3.6), presa perché i registri di eventi del progetto sono **sei** e non uno. Una vista comoda per il primo consumatore è il seme della terza ristrutturazione |
+| Allargare la vista con colonne nuove | Un registro che non sa riempire la forma lascia `NULL`, **non allarga**. È scritto nel §3.6 ed è l'impegno §9.4 n.2 |
