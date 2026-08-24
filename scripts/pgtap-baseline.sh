@@ -76,14 +76,20 @@ done
 
 # Perimetro: tutti gli schemi o solo quelli richiesti.
 if [ ${#SCHEMI[@]} -eq 0 ]; then
-  FILES=$(ls "$ROOT_DIR"/db/pgtap/*/*.sql 2>/dev/null | sort)
+  # ⚠️ `find` e non `ls .../*/*.sql`: il glob a un livello solo lasciava fuori
+  #   dalla baseline le sottocartelle di schema — al 2026-08-24 erano 16 file
+  #   (vendite/offerte_commerciali, vendite/contratti), di cui 12 ROSSI da
+  #   settimane senza che nessuno li vedesse. Un presidio che non guarda in un
+  #   ramo non dice «tutto a posto»: dice «non ho guardato».
+  FILES=$(find "$ROOT_DIR/db/pgtap" -mindepth 2 -name '*.sql' 2>/dev/null | sort)
 else
   FILES=""
   for sc in "${SCHEMI[@]}"; do
     if [ ! -d "$ROOT_DIR/db/pgtap/$sc" ]; then
       echo "Schema inesistente: $sc (cerca in db/pgtap/)" >&2; exit 2
     fi
-    FILES="$FILES"$'\n'"$(ls "$ROOT_DIR/db/pgtap/$sc"/*.sql 2>/dev/null | sort)"
+    # Idem per lo schema singolo: si scende anche nelle sottocartelle.
+    FILES="$FILES"$'\n'"$(find "$ROOT_DIR/db/pgtap/$sc" -name '*.sql' 2>/dev/null | sort)"
   done
   FILES=$(echo "$FILES" | grep -v '^$')
 fi

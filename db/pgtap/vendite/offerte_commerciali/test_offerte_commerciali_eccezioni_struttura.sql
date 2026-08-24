@@ -20,6 +20,10 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(10);
 
 -- ============================================================
@@ -164,17 +168,36 @@ SELECT ok(
 );
 
 -- ============================================================
--- 10) Campi I4 assenti: NO stato_approvazione_prezzo, NO pratica_approvazione_prezzo_id
---     (non previsti per l''offerta pre-negoziazione)
+-- 10) Campi I4 PRESENTI: stato_approvazione_prezzo + pratica_approvazione_prezzo_id
+--
+-- ⭐ ROVESCIATO IL 2026-08-24, e la storia va lasciata scritta perche' e' una
+--    decisione presa due volte in senso opposto — non un errore.
+--
+--    Il 2026-05-24 (changeSet 20260524-05) la tabella nasce apposta SENZA quei
+--    due campi: «il flusso di approvazione prezzo e' solo sui contratti, non
+--    sull'offerta pre-negoziazione». Questa asserzione presidiava quella scelta.
+--
+--    Il 2026-06-01 (changeSet 20260601-01) la scelta e' stata RIBALTATA, con
+--    la sua ragione: le eccezioni COMPONENTI quei campi ce li avevano gia'
+--    (20260526-22), e senza la simmetria sulla riga un OVERRIDE/AGGIUNTA non
+--    composito non aveva dove registrare lo stato L3 — ne' il push poteva
+--    trasportarlo 1:1 a contratti_righe. Riferimento: refactor-prezzi-db §3.1.
+--
+--    ⚠️ Il test e' rimasto indietro di dodici settimane senza che nessuno lo
+--    sapesse: questo file vive in una sottocartella, e fino al 2026-08-24 i
+--    presidi pgTAP guardavano un livello solo — brief-db-pgtap-rami-ciechi.
+--
+--    ⭐ L'asserzione non si cancella, si ROVESCIA: quello che oggi vale la pena
+--    presidiare e' la SIMMETRIA — se qualcuno togliesse quei campi dalla riga
+--    lasciandoli sulle componenti, il push tornerebbe a perdere lo stato L3.
 -- ============================================================
-SELECT ok(
-    NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema = 'vendite'
-           AND table_name   = 'offerte_commerciali_eccezioni'
-           AND column_name IN ('stato_approvazione_prezzo', 'pratica_approvazione_prezzo_id')
-    ),
-    '10) Campi I4 assenti: stato_approvazione_prezzo e pratica_approvazione_prezzo_id non presenti'
+SELECT is(
+    (SELECT count(*)::int FROM information_schema.columns
+      WHERE table_schema = 'vendite'
+        AND table_name   = 'offerte_commerciali_eccezioni'
+        AND column_name IN ('stato_approvazione_prezzo', 'pratica_approvazione_prezzo_id')),
+    2,
+    '10) Campi I4 presenti sulla riga: la simmetria con le componenti regge (20260601-01)'
 );
 
 SELECT * FROM finish();

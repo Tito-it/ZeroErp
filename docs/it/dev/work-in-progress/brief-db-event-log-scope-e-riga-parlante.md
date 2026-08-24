@@ -1085,6 +1085,22 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 
 ## 5. 🔵 A carico del BE — *scritto qui, non toccato da qui*
 
+> ⏱️ **Stato rimisurato il 2026-08-24** sul codice del backend e sul database,
+> non riletto da questa tabella. ⭐ **Otto consegne su undici sono fatte** — il
+> BE si è mosso in fretta — e le tre che restano sono tutte piccole.
+>
+> | | Consegne |
+> | --- | --- |
+> | ✅ **fatte** | **BE-1** (`severity="WARN"`) · **BE-3** (il repository apre e chiude il giro) · **BE-4** (`entity_type="COMMESSA"`) · **BE-5** (la chiamata è a **sei** parametri) · **BE-6** (il BB unico esiste: `apps/vendite/db/_event_log_repo_mixin.py`) · **BE-7** (il telaio, **12** punti d'uso nei service `vendite`) · **BE-9** (il cancello dei codici evento c'è, e il catalogo è seminato) |
+> | 🟡 **scritta, ma mai esercitata** | **BE-2** — l'`uuid` per giro c'è in entrambi i posti giusti (`pipeline_runner.py:671`, `commesse_push_orchestrator.py:213`). ⛔ **Ma `event_log` ha ancora solo le 12 righe del 22/08, con UN filo solo**: dopo l'allineamento **nessuna corsa è stata eseguita**. Il codice c'è, la prova no — e costa una corsa sola |
+> | 🟡 **fatta per 21 codici su 22** | **BE-10** — le policy sono state rigenerate, ma **prima** che arrivasse `E_DIAGNOSTICA_NON_REGISTRATA` (987): quel codice manca ancora dal file generato. Si chiude insieme a BE-11, stesso comando |
+> | 🔵 **non iniziate** | **BE-11** (la costante è ancora su `E_PIPELINE_MARK_ERROR` — consegnato ieri sera, è normale) · **BE-8** (il `request_id` esiste come contextvar in `request_context_middleware`, ma il formatter di logging non lo raccoglie: nei `settings` non compare) |
+>
+> ⭐ **La cosa che vale la pena vedere**: le sette fatte sono tutte quelle che
+> *si scrivono*. Le due che restano aperte sul giro — BE-2 e il suo esercizio —
+> sono quelle che *si dimostrano*, e nessuna riga di codice le chiude al posto
+> di una corsa vera. È il rischio 3 del §9.3 nella sua forma finale.
+
 > **Perimetro DB:** questo cantiere non modifica `backend/`. Le richieste si
 > scrivono, non si implementano.
 >
@@ -1275,7 +1291,7 @@ Nessuna delle due blocca. Si scrivono perché sono state misurate.
 
 | | Cosa |
 | --- | --- |
-| ⚠️ **Il ruolo batch non può aprire un giro di push** | `zeroerp_batch_fatturazione` ha su `commesse_push_log` il solo grado **`r` (SELECT)**, mentre su `fatturazione_lotti_task_runs` ha `arw`. Oggi non è un difetto — il push gira come `zeroerp_app` — ma il giorno che passasse sul canale batch, l'apertura fallirebbe sul **GRANT**, non sulla RLS. E un `BYPASSRLS` non aiuta: salta le policy, non i permessi. È lo stesso disallineamento del precedente `vendite.note` |
+| ⚠️ **Il ruolo batch non può aprire un giro di push** — ⭐ *e non si concede in anticipo (2026-08-24)* | `zeroerp_batch_fatturazione` ha su `commesse_push_log` il solo grado **`r` (SELECT)**, che gli arriva dal `GRANT SELECT ON ALL TABLES` dello schema; su `fatturazione_lotti_task_runs` ha `arw`. Oggi non è un difetto — il push gira come `zeroerp_app` — ma il giorno che passasse sul canale batch, l'apertura fallirebbe sul **GRANT**, non sulla RLS. E un `BYPASSRLS` non aiuta: salta le policy, non i permessi. È lo stesso disallineamento del precedente `vendite.note`. ⛔ **Ma il DML non si aggiunge adesso**, ed è il provisioning script a dirlo: il perimetro di scrittura è per-tabella e graduato (`iud`/`iu`/`i`/`u`/`d`), e *«una tabella nuova non concessa fallisce RUMOROSAMENTE (permission denied): quando la pipeline scrive una nuova tabella, aggiungere la riga nel grado giusto»*. Concedere a chi non scrive spegnerebbe l'unico allarme previsto. Il giorno che il push passa sul canale batch, il grado è **`iu`** — INSERT per l'apertura, UPDATE per la chiusura |
 | ✅ **Il `tx_id` è attaccato — ⚠️ ma non alle righe già scritte** | ~~Né `commesse_push_log` né `event_log` hanno il trigger~~ → **rimisurato il 2026-08-23: ci sono entrambi** (`trg_event_log_gen_tx_id_ins_upd`, `trg_commesse_push_log_gen_tx_id_ins_upd`), li ha generati il pgagent come previsto, e una riga **nuova** prende il suo `tx_id`. ⛔ **Le 12 righe già scritte restano NULL per sempre**: la tabella è append-only e il backfill non esiste — è il prezzo dichiarato in §1.3, non un difetto da correggere. Chi guarderà *quelle* righe non troverà il ponte verso `error_log`; se un giorno desse fastidio, l'unica via è quella già usata una volta (azzerare) |
 | ⚠️ **La baseline B-7 dei codici errore è indietro, e non la aggiorno io** | Il cancello è **verde** (`accumuli nuovi: 0`), ma `db/baseline-codici-errore-famiglie.tsv` è fermo al cantiere che l'ha creata: rigenerarla oggi farebbe entrare **9 righe di tre cantieri diversi** — le mie due (`E_VENDITE_CHIAMATA_NON_VALIDA` → `PARAMETRO`, `E_COMMESSA_PUSH_RUN_NON_APERTO` → `NOT_FOUND`), quelle di `pagamenti` e quella del pricing. ⭐ Il file dice di sé che aggiornarlo *«è una DECISIONE, non una formalità: ogni riga che cambia dice che un codice ha cambiato significato»*: prendere quella decisione per conto di altri due cantieri sarebbe il modo di svuotarla di senso. Va fatta in **una passata sola e deliberata** |
 

@@ -8,22 +8,19 @@
 > nasce dove l'errore viene sollevato; il consumo lato BE/FE è dichiarato in §7
 > ma **non** è questo brief.
 >
-> ✅ **Stato al 2026-08-24: il lotto DB è APPLICATO, e il canale è vivo.**
-> I quattro changeSet `20260823-01…04` risultano in `databasechangelog`
-> (verificato, non dedotto), `config.tipi_entita` ha la sua `key_selector` con
-> le quattro righe a `id`, e il bersaglio **esce davvero dal `RAISE`**: chiamata
-> reale a `script.fn_log_and_raise_error` da psycopg, `diag.datatype_name` =
-> `FATTURA:835,FATTURA:820`, accanto a `constraint_name` = il codice e
-> `column_name` = il campo. ⭐ **Quindi la B-1 non è più «eseguibile in teoria»:
-> il lato che deve leggere ha qualcosa da leggere, misurato.**
-> ⚠️ **Il catalogo dei tipi esiste dal 2026-08-22**, applicato dall'altro
-> cantiere: era il prerequisito, non un passo di qui.
+> ✅ **APPLICATO E VERDE (2026-08-24).** Quattro changeSet (`20260823-01…04`),
+> tre CSV, il controllo **(G)** del guardrail di CI e la quarta riga della
+> tabella dei canali in `linee-guida-sql`. **19 asserzioni pgTAP su tre file**
+> (8 sul canale, 4 sul cancello, 7 sul pilota — questi ultimi da 5 che erano),
+> più il presidio del catalogo messaggi. Il guardrail passa: **un solo mittente
+> su tutti e tre i canali**; `dbops.vw_bersagli_non_dichiarati` è **vuota**.
 >
-> 📋 **E dal 2026-08-24 c'è il piano BE/FE — §7-bis**, che non è la §7
-> riscritta: la §7 dichiarava tre consegne, il piano ne ha misurato il terreno e
-> ha trovato che **i punti in cui un errore del database diventa un errore
-> dell'applicazione sono quattro, non uno** — e che sulla strada del **pilota**
-> il bersaglio (come già oggi il campo da evidenziare) si perderebbe.
+> ⭐ **Il lato DB del cantiere è chiuso.** Restano il **roll-out** (T-5, §6 L6),
+> il **T-3b** che aspetta il frontend, e la **proposta L5**. Le consegne BE/FE
+> sono in §7 — e **B-1 adesso è eseguibile**: il canale esiste.
+>
+> ⚠️ **Il catalogo dei tipi** è il prerequisito, applicato dall'altro cantiere
+> il 2026-08-22; questo lotto gli ha aggiunto `key_selector` (T-1d).
 >
 > ✅ **Ed è SCRIVIBILE dal quinto giro (2026-08-22): le cinque domande che il
 > quarto aveva aperto sono tutte chiuse** — §8, `Q-A`…`Q-E`. In breve: il
@@ -554,7 +551,7 @@ vero della fusione.
 > `runOnChange: true` è il mirror CSV già esistente (il **55** dell'altro
 > cantiere), che si **estende in place** e non si duplica.
 
-### L1 — Il canale, e la casella dove viaggia
+### L1 — Il canale, e la casella dove viaggia — ✅ **APPLICATO il 2026-08-24**
 
 È il lotto che rende esistente il bersaglio. Da solo non produce ancora nessun
 pulsante, ma è quello su cui poggiano tutti gli altri.
@@ -594,7 +591,7 @@ elenco — e *quanti* sono lo dice già la frase (sul 937 c'è `v_n_bloccanti`).
 | **Non fallisce mai per colpa del bersaglio** | Un bersaglio malformato lascia la casella **vuota** e scrive `W_BERSAGLIO_MALFORMATO` nel log. È la lezione del 18/08 tradotta: *la funzione che serve a riportare un errore non può essere quella che lo distrugge*. ⛔ E il `W_` **resta un `W_`**: si logga, non si solleva |
 | **Non deriva niente da sola** | Nessuna composizione automatica dalle chiavi `<tipo>_id` già presenti nel contesto: è il **L5**, ed è una proposta, non questo lotto |
 
-### L2 — Il pilota: il 937
+### L2 — Il pilota: il 937 — ✅ **APPLICATO il 2026-08-24**
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
@@ -610,7 +607,7 @@ stringa `'riga N'` — e va **spezzata in due variabili**: una per la frase, una
 per il bersaglio. Sono due lettori, e questo brief esiste per non farli più
 condividere lo stesso canale.
 
-### L3 — Il presidio del vocabolario
+### L3 — Il presidio del vocabolario — ✅ **APPLICATO il 2026-08-24**
 
 | # | File | Fase | Cosa |
 | --- | --- | --- | --- |
@@ -625,7 +622,7 @@ non dichiarato lo scopre in CI, non in esercizio.
 `dbops.error_log` — che non dice né se un ramo è mai stato percorso né se conti
 qualcosa.
 
-### L4 — La convenzione scritta
+### L4 — La convenzione scritta — ✅ **FATTA il 2026-08-23**
 
 | File | Cosa |
 | --- | --- |
@@ -653,6 +650,202 @@ di scriverla:
 ➡️ **Si valuta dopo il pilota**, misurando su un campione quante volte la chiave
 `<tipo>_id` più ovvia è davvero l'entità dove si vorrebbe andare. Fino ad allora
 il roll-out è **esplicito, uno alla volta**.
+
+### L6 — Il roll-out *(T-5)* — 🔵 **il solo passo DB che resta**
+
+> ⚠️ **Che cosa si «rolla», e cosa NO** *(domanda di Tid, 2026-08-24 — vale la
+> pena averla scritta, perché in questo progetto «log» sono due cose diverse).*
+>
+> Il roll-out tocca **il codice**: per ogni codice errore scelto si rivede **la
+> funzione che lo solleva**, aggiungendo `bersaglio` al contesto. Da lì in poi
+> gli errori di quel tipo lo portano.
+>
+> ⛔ **Le righe già scritte in `dbops.error_log` non si toccano**, e non è una
+> rinuncia: una riga di log è la **fotografia di un momento** e il bersaglio si
+> compone al sollevamento, coi dati di allora — ricostruirlo dopo vorrebbe dire
+> inventare cosa il database *avrebbe detto*, magari su un ramo che nel
+> frattempo è cambiato. E i due lettori del bersaglio sono vivi: il pulsante
+> esiste solo nell'istante dell'errore. È il §5.4, *«non si tocca `error_log`»*.
+>
+> ⚠️ **Da non confondere con `vendite.event_log`**, il giornale dell'altro
+> cantiere: quello le entità le nomina di suo, in colonne dedicate
+> (`entity_type` / `entity_id`), e il roll-out non lo riguarda. I due condividono
+> il **vocabolario** (`config.tipi_entita`), non il meccanismo.
+
+Il pilota ha dimostrato che il disegno regge. Da qui in avanti è un lavoro **a
+scaglioni**, un messaggio per volta, con la regola di §5.5: **solo sulle classi
+rimediabili**.
+
+**Misurato il 2026-08-24 sui corpi delle funzioni vive** — non su `error_log` —
+cercando i punti di sollevamento che passano un **id interno** fra i valori
+della frase:
+
+| Classe | Punti | Codici | Funzioni |
+| --- | ---: | ---: | ---: |
+| `DATO_ERRATO` | 235 | 24 | 135 |
+| `NON_TROVATO` | 39 | 22 | 38 |
+| `CONFLITTO_STATO` | 37 | 29 | 24 |
+| `NON_PERMESSO` | 2 | 2 | 2 |
+| `NON_ESEGUIBILE` | 1 | 1 | 1 |
+| ~~`TECNICO`~~ ⛔ **fuori perimetro** (Q-E) | ~~21~~ | ~~7~~ | ~~16~~ |
+
+⭐ **Non sono 314 interventi.** I `DATO_ERRATO` sono 235 punti su **24 codici**:
+la maggior parte è un id di *parametro sbagliato*, dove il bersaglio non serve —
+l'operatore sta guardando quel campo, e il canale giusto è `COLUMN`. ⚠️ La
+selezione si fa **per codice**, non per punto, ed è una lettura da fare a mano:
+un conteggio non sa distinguere «l'id della cosa che devi aprire» da «l'id che
+hai sbagliato a scrivere».
+
+#### Primo scaglione — ✅ **APPLICATO E VERDE il 2026-08-24**
+
+| # | File | Cosa |
+| --- | --- | --- |
+| — | `config/tipi_entita.csv` | **+3 tipi**: `PREVENTIVO` (**`uid`**), `CONTRATTO` (`id`), `ORDINE_VENDITA` (`id`). ⛔ Nessun changeSet: il mirror `20260822-55` è `runOnChange` e si estende in place |
+| **01** | `update-fn-push-offerta-bersaglio` | I due guard di idempotenza di `fn_push_offerta_a_contratto` |
+| **02** | `update-fn-push-preventivo-bersaglio` | Il rifiuto di `fn_push_preventivo_a_ordine` |
+| **03** | `update-fn-genera-ddt-bersaglio` | I due rifiuti di evasione di `fn_genera_ddt_da_ordine`; `E_DDT_ORDINE_NOT_FOUND` escluso |
+| — | i **tre** pgTAP esistenti | estesi, non duplicati: `test_fn_push_offerta_a_contratto` 9→10, `test-fn-push-preventivo-a-ordine-v1` 9→11, `test-fn-genera-ddt-da-ordine-v1` 24→26 |
+
+⭐ **La cosa che questo scaglione ha insegnato, e che il piano non aveva:**
+
+> **Il bersaglio non è l'entità nominata nella frase.**
+
+I due messaggi dell'offerta dicono *«L'offerta 412 ha già generato il
+contratto»*. Puntare all'offerta sarebbe stato naturale — è il soggetto — e
+**inutile**: l'operatore l'offerta ce l'ha davanti, è da lì che ha premuto il
+pulsante. Quello che non riesce a raggiungere è il **contratto già generato**.
+Il bersaglio risponde a *«dove devi andare»*, non a *«di cosa stiamo
+parlando»*. ⚠️ È la ragione per cui il roll-out si fa **codice per codice**: un
+conteggio non sa distinguere le due cose.
+
+⭐ **E il preventivo è il primo uso reale di `key_selector`**: si cita per
+**`uid`**, non per numero. La colonna era nata il 23/08 e nessuno l'aveva
+esercitata — le quattro voci a catalogo erano tutte a chiave numerica. Un id
+numerico avrebbe prodotto un pulsante che non apre niente, e il difetto si
+sarebbe scoperto dal frontend, mesi dopo, senza sapere da dove veniva.
+
+⚠️ **Due rami senza bersaglio, e sono voluti**: il preventivo che **non esiste**
+(o non è visibile sotto RLS) — l'errore copre due casi con lo stesso codice, e
+solo uno ha un posto dove mandare qualcuno. Presidiato dal test 11.
+
+⚠️ Nella frase resta l'id numerico: **due canali, due lettori**. Toglierlo è il
+T-3b, e aspetta il frontend.
+
+**I DDT chiudono la famiglia** — ✅ scritti (`20260824-03`):
+`E_DDT_ORDINE_STATO_NON_EVADIBILE` e `E_DDT_NIENTE_DA_EVADERE` portano il
+bersaglio sull'**ordine**, e `E_DDT_ORDINE_NOT_FOUND` **no**.
+
+⭐ **L'obiezione da tenere in mente, perché tornerà**: *«l'operatore l'ordine lo
+sta già guardando, che senso ha un pulsante “vai all'ordine”?»*. Ce l'ha quando
+l'evasione parte **in massa**: lì la frase dice **quale** ordine ha rifiutato e
+non ci porta. È lo stesso caso del 937 dentro un giro di lotto — e vuol dire che
+il bersaglio vale anche su errori che *sembrano* già contestualizzati.
+
+⭐ **E lì il bersaglio non costa niente**: si compone una volta sola subito dopo
+la lettura dell'ordine — a quel punto esiste **ed è visibile** — senza nessuna
+query in più e senza rami condizionali.
+
+#### Secondo scaglione — «gli errori dentro un giro» — ✅ **APPLICATO E VERDE**
+
+Il primo scaglione aveva convertito errori che nascono da **un gesto** (apri
+un'offerta, premi «genera»). Questi no: nascono **dentro un giro automatico**,
+dove l'operatore non sta guardando nessuna delle entità nominate.
+
+| # | Funzione | Codice | Bersaglio |
+| --- | --- | --- | --- |
+| **07** | `fn_get_or_create_lotto` | `E_LOTTO_NON_RIUTILIZZABILE` | `LOTTO` — **su entrambi** i punti in cui è sollevato |
+| **05** | `fn_assign_numero_fattura` | `E_FATTURA_SENZA_RIGHE` | `FATTURA` |
+| **06** | `fn_genera_scadenze_fattura` | `E_SCADENZE_BASE_NON_PRONTA`, `E_SCADENZE_TERMINE_MANCANTE` | `FATTURA` |
+| — | `test-genera-scadenze-fattura-v1` | | **esteso 14 → 16** |
+
+⭐ **È qui che l'obiezione «ma ce l'ha già davanti» cade del tutto**: il lotto
+che blocca un'emissione l'operatore non lo sta guardando affatto, e la fattura
+senza righe è una fra molte dentro il giro.
+
+⚠️ **Due esclusioni nuove, e la prima è una lezione di costo**:
+
+| Escluso | Perché |
+| --- | --- |
+| `E_COMMESSA_NON_MODIFICABILE`, `E_ONERE_SEGMENT_DUPLICATO` | Il bersaglio avrebbe senso (la commessa), ma vivono in `fn_upsert_commessa_attivita` — **firma da 40 parametri**. Toccarla obbliga alla passata `%TYPE` su tutte: lavoro e rischio sproporzionati all'aggiunta di un bersaglio. Aspettano un giro in cui quella funzione si tocchi per un motivo suo |
+| `E_VALORE_MANCANTE` | ⛔ Vive **nella stessa funzione** del 06 e ha un context **identico** ai due convertiti — ma parla di un **campo**, non di un'entità: il suo canale è `COLUMN`. Per questo la sostituzione è ancorata al **codice** e non alla riga di contesto: un'ancora più larga gli avrebbe messo il bersaglio addosso |
+
+⭐ **Il secondo caso è il più istruttivo dell'intero roll-out**: due punti su tre
+di una funzione hanno lo stesso identico contesto, e solo due su tre vanno
+convertiti. È la prova che *«un roll-out a tappeto»* non esiste — la domanda si
+fa a ogni ramo, e qui il test **16** la presidia.
+
+#### Terzo scaglione — «gli errori che nascono da una lista» — ✅ **APPLICATO E VERDE**
+
+| # | Funzione | Codici | Bersaglio |
+| --- | --- | --- | --- |
+| **08** | `pratiche.fn_prendi_in_carico_flusso` | `E_FLUSSI_PRESA_CARICO_STATO_ERRATO`, `E_FLUSSI_GIA_ASSEGNATO` | `FLUSSO` — composto una volta, riusato da entrambi |
+| **09** | `pratiche.fn_fork_definizione` | `E_DEFINIZIONE_BOZZA_ESISTENTE` | `DEFINIZIONE_WORKFLOW` — le bozze che bloccano |
+| — | `config/tipi_entita.csv` | | **+2 tipi**: `FLUSSO`, `DEFINIZIONE_WORKFLOW` (9 in totale) |
+
+⭐ **E qui c'è il caso più netto dell'intero roll-out.** La frase del `09` è:
+
+> *«Esiste già una bozza di edizione workflow per lo scope (tipo prestazione 12,
+> emittente 32).»*
+
+Nomina lo **scope**, e la bozza che blocca **non la nomina affatto** — e non è un
+difetto del messaggio: quel documento un nome utile non ce l'ha, e metterci un id
+tecnico sarebbe proprio il difetto che questo cantiere esiste per togliere.
+
+⭐ **Quindi il bersaglio, lì, non aggiunge comodità: aggiunge un'informazione che
+la frase — per come è costruita — non può dare.** È il caso che mostra meglio
+perché i due lettori vogliono due canali, e non una frase più ricca.
+
+⚠️ **I due tipi nuovi non esistono in `config.sorgenti`**, quindi non c'è nessun
+codice con cui doverli far coincidere: la regola della coincidenza vale dove i
+due cataloghi si intersecano, e qui non si intersecano.
+
+⚠️ **`fn_fork_definizione` è `SECURITY DEFINER`** — misurato, non dedotto: è di
+`titodb` e **non** è nel registro `dbops.sec_functions_owner`, quindi il
+`CREATE OR REPLACE` la lascia dov'è. Da non confondere con le `SECURITY DEFINER`
+di `postgres`, che dopo la riscrittura vogliono `dbops.fn_sync_functions_owner`.
+
+#### 🏁 Il roll-out è a FINE CORSA — misurato il 2026-08-24
+
+Non «finito»: **a fine corsa**. Dei `CONFLITTO_STATO` che passano un id restano
+**21 punti su 15 codici**, e riletti con la lente sono quasi tutti **esclusioni
+motivate**, non lavoro arretrato:
+
+| Cosa resta | Quanti | Perché non si converte |
+| --- | ---: | --- |
+| La famiglia **resi** (`E_RESO_*`, `E_ACCREDITO_*`) | 9 punti | I messaggi non nominano un'altra entità: l'operatore è **sul reso**. Un pulsante «vai al reso» da dentro il reso non è un gesto |
+| `E_COLONNA_NON_MODIFICABILE`, `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` | 2 | I `%s` sono un **nome di colonna** e due **stati**, non entità. Il canale del primo è `COLUMN` |
+| `E_DEFINIZIONE_NON_PUBBLICABILE`, `E_DEFINIZIONE_NO_PUBBLICATA`, `E_PREV_NESSUNA_RIGA_ATTIVA` | 3 | Il documento nominato è **quello che l'operatore ha aperto** |
+| `E_COMMESSA_NON_MODIFICABILE`, `E_ONERE_SEGMENT_DUPLICATO` | 2 | ⚠️ Esclusione di **costo**: `fn_upsert_commessa_attivita` ha 40 parametri (vedi sopra) |
+| 🔵 `E_FORNITORE_NON_ATTIVO`, `E_ACCREDITO_GIA_ESEGUITO` | 2 | **Gli unici due candidati veri rimasti**, e nessuno dei due è ovvio: il primo vorrebbe un tipo `SOGGETTO` e una rotta all'anagrafica, il secondo dipende da dove si apre la coda accrediti |
+
+⭐ **La conclusione operativa**: continuare a tappeto vorrebbe dire aggiungere
+pulsanti che non aiutano — e il §5.5 dice che un bersaglio inutile non è
+neutro, perché insegna a ignorare il pulsante. **Il roll-out riprende quando lo
+chiede un caso**, non per completare una lista.
+
+⚠️ **E la classe `NON_TROVATO` (39 punti, 22 codici) resta fuori quasi per
+intero**, per una ragione di principio già emersa tre volte: *se la cosa non si
+trova, non c'è nessun posto dove mandare l'operatore*.
+
+#### ⛔ Tre esclusioni su tre codici toccati — il roll-out non è meccanico
+
+| Ramo escluso | Perché |
+| --- | --- |
+| il ramo **fail-closed** del 937 | il padre non è visibile: il valore in mano non è nemmeno un id di fattura |
+| il **preventivo inesistente** | l'errore copre due casi, e solo uno ha una destinazione |
+| **`E_DDT_ORDINE_NOT_FOUND`** | l'ordine non c'è, o la RLS lo nasconde — per chi opera è la stessa cosa |
+
+⚠️ **È la lezione operativa del primo scaglione**: la domanda *«c'è un posto
+dove mandarlo?»* va fatta **a ogni ramo**, non a ogni codice. Un roll-out fatto
+a tappeto avrebbe prodotto tre pulsanti che aprono il vuoto.
+
+➡️ ~~**Primo scaglione proposto**: i `CONFLITTO_STATO`, 29 codici.~~ *(scelto, e in corso.)* Sono per definizione Sono per
+definizione *«questa cosa è in uno stato che non permette l'operazione»* — cioè
+esattamente i casi in cui l'operatore deve **andare a vedere quella cosa**. È la
+stessa famiglia del pilota.
+
+⚠️ Ogni conversione porta con sé, quando serve, **la riga di catalogo del tipo**
+(§5.1 T-1c): due file, e il presidio L3 fa fallire la build se ci si dimentica.
 
 ### Ordine, dipendenze e cosa resta fuori
 
@@ -693,7 +886,99 @@ frontend che ha una **ragione** per leggere quel canale, e rende scrivibile il
 presidio **C2** di
 [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 
----
+### B-1 · Backend — dal canale all'envelope ✅ **eseguibile**
+
+**Dove.** `backend/apps/core/services/db_error_fields.py` — è il modulo che
+possiede già la lettura degli altri due canali strutturati
+(`structured_db_error_code`, `structured_db_error_field`) ed è
+*volutamente senza dipendenze interne*. Il terzo lettore va lì, accanto ai suoi
+gemelli, e non altrove.
+
+**Cosa leggere.** `diag.datatype_name` — lo stesso `diag` da cui il modulo legge
+già `constraint_name` e `column_name`.
+
+**Il contratto**, identico nella forma a quello del 05/08 e dell'08/08:
+
+> **`P0001` + `datatype_name` valorizzato = le entità a cui l'errore si
+> riferisce.**
+
+⛔ **E vale SOLO dentro `P0001`.** Fuori di lì quel campo lo riempie PostgreSQL
+da sé — è il suo uso legittimo, le violazioni di dominio — esattamente come
+`constraint_name` su un `23xxx` contiene il nome del vincolo. Il modulo ha già
+questa difesa per il codice: qui va ripetuta, non reinventata.
+
+**La forma sul filo**: `TIPO:id[,TIPO:id]`, **al massimo cinque**. Stringa
+vuota = nessun bersaglio (come per `column_name`, un valore che nasce da
+un'espressione NULL arriva vuoto, non assente).
+
+**La validazione, speculare a quella del database.** Il modulo ha già
+`_COLUMN_RE` per il campo; qui servono le due gemelle —
+`^[A-Z][A-Z0-9_]{0,30}$` per il tipo e `^[0-9a-fA-F-]{1,36}$` per l'id — e
+valgono per la stessa ragione già scritta lì: *le due metà dello stesso canale
+vanno guardate uguale*. ⚠️ Un elemento che non passa si **scarta in silenzio**:
+il percorso d'errore non può fallire per colpa del bersaglio, ed è la regola che
+il lato DB rispetta già.
+
+**Nell'envelope**, accanto a `code` / `message` / `ui_action` / `fields` /
+`hint`:
+
+```json
+"target": [{"type": "FATTURA", "id": "835"}]
+```
+
+⚠️ **Due nomi diversi per la stessa cosa, e non è una svista**: la chiave nel
+contesto del database è `bersaglio` (italiano, come `campo` e `parametro`, e
+perché `target` là dentro è già occupata da altro); il campo dell'envelope è
+`target` con dentro `type`, perché l'envelope è in inglese (`fields`, `hint`,
+`ui_action`). La traduzione avviene **al confine**, in `error_translator.py`
+(riga ~228, dove oggi si popola `fields=_campi(...)`).
+
+⛔ **Cosa il backend NON deve fare:**
+
+| Non fare | Perché |
+| --- | --- |
+| **Risolvere la rotta** | Il backend non sa che schermate esistono. Consegna `type` + `id`, la rotta è del frontend |
+| **Fallire su un tipo sconosciuto** | Un tipo che il frontend non conosce degrada a «nessun pulsante» (B-3). Un 500 al posto di un errore di dominio sarebbe il difetto peggiore |
+| **Leggere `dbops.error_log`** | Il contesto ricco resta al database, per chi diagnostica. Il canale basta |
+
+### B-2 · Frontend — da `type` a un gesto
+
+Una **tabella sola** `type → rotta`, e il pulsante *«Vai al documento»*.
+
+⭐ **È la stessa tabella della futura timeline per entità**
+([analisi-osservabilita-log.md](analisi-osservabilita-log.md), Passo A): i due
+consumatori condividono il vocabolario `config.tipi_entita`, quindi la mappa si
+scrive **una volta**. Se nascesse due volte, divergerebbe — ed è la ragione per
+cui il `tipo` è logico e non è mai un nome di tabella (§4.2).
+
+⚠️ **L'id è opaco.** Per `PREVENTIVO` è un `uid`, per gli altri otto è un `id`
+numerico: la differenza è dichiarata nel catalogo (`key_selector`) e il
+frontend non deve dedurla dal formato del valore.
+
+**Vocabolario al 2026-08-24** — nove tipi: `LOTTO`, `COMMESSA`, `FATTURA`,
+`TASK_RUN`, `PREVENTIVO`, `CONTRATTO`, `ORDINE_VENDITA`, `FLUSSO`,
+`DEFINIZIONE_WORKFLOW`. ⚠️ Cresce **una voce per volta**, insieme al messaggio
+che la usa: la mappa del frontend può restare indietro, e quando succede il
+degrado di B-3 fa il suo mestiere.
+
+### B-3 · Frontend — il degrado, che è parte del disegno
+
+**Nessun pulsante** quando: il tipo non è nella mappa, l'utente non ha il
+permesso, il record non è nel suo perimetro emittente, la riga non esiste più.
+⛔ **Il messaggio si mostra sempre e non cambia.**
+
+⭐ **Non è una gestione dell'errore: è il patto.** Il bersaglio è **un'offerta,
+non una promessa** (§4.3) — il database lo scrive senza sapere chi leggerà, e
+tre rami del roll-out sono stati lasciati **apposta** senza bersaglio proprio
+per non offrire un pulsante che porta nel vuoto.
+
+### E un effetto laterale che vale da solo
+
+`ui_action` oggi è un canale **prodotto e non consumato**: 126 codici promettono
+«evidenzia il campo» e nessun componente legge `azioneUi`. Un errore che porta
+un bersaglio è il primo pezzo di frontend che ha una **ragione** per leggere quel
+canale, e rende scrivibile il presidio **C2** di
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 
 ## 7-bis. Il piano di sviluppo BE/FE *(scritto il 2026-08-24)*
 
@@ -889,9 +1174,17 @@ tabella tipo→destinazione non è da costruire, è da riconoscere.
 
 | Data | Cosa |
 | --- | --- |
-| 2026-08-24 (terzo giro) | 🔎 **Revisione critica del codice appena scritto, su richiesta di Tid — e ha trovato due bug veri, uno dei quali introdotto dalla revisione stessa.** 🔴 **(1) Il guard «niente bersaglio sui TECNICO» copriva 3 codici su 79.** Usava `is_technical_code`, che è un insieme di **tre** codici scritti a mano (`E_PIPELINE`, `E_DATABASE`, `E_GENERICO`) e serve a un'altra domanda — «devo nascondere il dettaglio?». La regola **Q-E** parla della **classe** di catalogo, e di codici `TECNICO` ce ne sono **79**. ⭐ Ora si guarda `policy.http_status >= 500` (gratis: la policy è già risolta lì) **più** `is_technical`, e servono **entrambi**: misurato, `E_DATABASE` ed `E_PIPELINE` sono di classe `DATO_ERRATO`, cioè **400** — lo status da solo non li prende. È un'incoerenza di catalogo che precede questo cantiere. 🔴 **(2) Sul percorso PERSISTITO il pulsante non sarebbe comparso mai.** Il backend persiste `[{type, id}]` (chiavi inglesi, come l'envelope), il resolver del frontend legge `tipo`: `ErroreRigaInfo` passava l'array grezzo e trovava `undefined` per ogni elemento. ⛔ **Nessun errore, nessun avviso — solo un gesto che non c'è**, cioè il difetto silenzioso peggiore. ⭐ Corretto rendendolo **impossibile per costruzione**: la normalizzazione la fa il componente, non il chiamante, e passa da `normalizzaBersagli`, unico confine fra le due lingue. ⚠️ Il frontend non ha un runner di test: dove non si può presidiare, si toglie il modo di sbagliare. 🔴 **(3) E un bug che ho introdotto de-duplicando lo schema OpenAPI**: i due `inline_serializer` del runner condividevano le **istanze** dei campi DRF, e un campo si lega al proprio serializer — `VenditeNumeraLottoResponse` usciva dallo schema **senza nemmeno la chiave `data`**. Nessun test lo vedeva: il contratto pubblicato era semplicemente sbagliato. Trovato girando `manage.py spectacular` e confrontando i due componenti; risolto con una **funzione factory** invece di una costante. ⭐ È la lezione del giro: una de-duplicazione che condivide oggetti con stato non è una de-duplicazione. 🔧 **Altre correzioni**: la conversione verso l'envelope era in **tre copie** → BB `bersagli_envelope`; una tupla vuota usciva come `"targets": []` (chiave presente che non dice niente) → si toglie; `jsonb_out` del `meta` chiamato **due volte per riga** nella lista fatture → una; `cause=exc` aggiunta a `translate_db_errors` **rimossa** — non serviva più col BB, e cambiava la catena delle eccezioni su 46 punti come effetto collaterale; `useAuthStore()` letto dentro un `catch` (fuori dal setup, dipendenza nascosta dalla pinia globale) → lo store **si passa**; area `'vendite'` a mano → `READONLY_DOMAINS.VENDITE`; una destinazione senza né drawer né rotta avrebbe mostrato un pulsante inerte → scartata; l'id nell'etichetta si nasconde se è lungo (gli `uid` arriveranno); `TOAST_DURATION.AZIONI` invece di riusare `SYSTEM_ERROR`; il doppio comando inline nel template del toast → funzione con `finally`. ✅ **3.916 test verdi**, E2E compresa; schema OpenAPI rigenerato e verificato componente per componente; lint e build del frontend puliti |
-| 2026-08-24 (secondo giro) | ✅ **BE e FE SCRITTI E VERDI — 3.912 test, E2E compresa.** Sette lotti di backend, sei di frontend, `api.md` e `frontend-standards` aggiornati. ⭐ **Il lavoro vero non era leggere la casella nuova** (dieci righe): era che i punti in cui un errore del database diventa un errore dell'applicazione sono **cinque**, e quattro su cinque buttavano via la diagnostica strutturata. Ora la lettura è **una** — il BB `diagnostica_db(exc)` — e `ServiceError` porta `fields` e `targets` fino in fondo. ⚠️ Il BB unifica la lettura, **non** il trasporto: quello resta scritto in ciascun punto, e c'è **un test per punto** perché il difetto non torni di soppiatto. 🔴 **Sanato un difetto già vivo che non è del bersaglio**: il canale `COLUMN` viaggiava dall'08/08 ed era valorizzato da quasi tutti i punti di sollevamento, ma `fields` arrivava all'envelope da **una strada su quattro** — i 136 binding di `campiErrati` non si illuminavano su nessun errore nato in PL/pgSQL, e `api.md` scriveva il contrario. Corretta anche quella riga. 🔴 **Il rilievo che ha spostato il piano**: gli endpoint del runner rispondono **200 anche quando la catena si ferma** (il fallimento è `motivo_stop` + `errore`), quindi il **pilota 937 non passa da nessun envelope**. Senza il **B6** il caso che ha fatto nascere il cantiere sarebbe stato l'unico senza gesto. ⭐ **E la strada ASINCRONA è coperta, per decisione di Tid — che aveva ragione due volte**: sul merito (il §1 dice che il lettore che conta è «l'operatore cinque minuti dopo», cioè il giro batch che fallisce quando non c'è nessuno) e sul **costo**, che è risultato *minore* del toast: nessuna DDL (`fatture_log.meta` è già jsonb), il punto di scrittura esisteva già ed era già fuori dall'`atomic` dello step, la query della lista **selezionava già** quel `meta`, e la casa a video era già lì — `ErroreRigaInfo`, nato il 21/08 contro «l'errore annunciato da un toast e poi sparito per sempre». 🔎 **Due scoperte sul frontend**: `FATTURA` **non ha una rotta** (si apre solo in drawer), quindi il gesto è «apri il documento»; e la tabella tipo→destinazione **esisteva già** — le chiavi di `DOCUMENTO_DRAWER_TIPI` *sono* i `config.sorgenti.codice_interno*`, cioè la convergenza che il §5.1-bis chiede era già vera anche di là, senza che nessuno l'avesse dichiarato. ⛔ **Non toccato**: nessun file di `db/`, `ui_action` non si accende (176 scelte da rileggere, passo suo), il catalogo dei tipi non si semina in anticipo. ➡️ **Il `T-3b` è ora sbloccato** ed è del team DB: B-1 e B-2 sono in servizio |
-| 2026-08-24 | ✅ **Il lotto DB risulta APPLICATO, e il canale è stato provato dal vivo** — non dedotto: i quattro changeSet sono in `databasechangelog`, `config.tipi_entita` ha la `key_selector`, e una chiamata reale a `script.fn_log_and_raise_error` da psycopg restituisce `diag.datatype_name = 'FATTURA:835,FATTURA:820'` accanto al codice e al campo. Lo stato in testa al brief diceva ancora «non applicato»: corretto. 📋 **Scritto il piano BE/FE (§7-bis)** su richiesta di Tid. ⭐ **E la misura ha spostato il baricentro del lavoro**: leggere la casella nuova è un pugno di righe, ma i punti in cui un errore del database diventa un errore dell'applicazione sono **quattro** — `_from_database_error`, `translate_db_errors` (46 chiamate), `raise_from_database_error` (9), `_run_per_fattura_task` — e **tre su quattro buttano via la diagnostica strutturata**, fra cui la strada del **pilota 937**. 🔴 **Ne è uscito un difetto già vivo, che non è del bersaglio**: il canale `COLUMN` viaggia dall'08/08 ed è valorizzato da quasi tutti i punti di sollevamento, ma `fields` arriva all'envelope **solo** sulla prima delle quattro strade — quindi i 136 binding di `campiErrati` su un errore nato in PL/pgSQL non si illuminano mai, e `api.md` scrive il contrario. ⭐ **La sede unica c'è già e ha il parametro giusto**: `ErrorManager.raise_error` accetta `cause` e 33 punti gliela passano — derivare lì `hint`, `fields` e bersaglio copre tre punti su quattro senza toccarli. 🔎 **Due misure sul frontend che cambiano il disegno**: `FATTURA` **non ha una rotta** (si apre solo in drawer, da quattro punti), quindi il gesto è «apri il documento» e non «vai alla pagina»; e la tabella tipo→destinazione **esiste già** — è il registro `DOCUMENTO_DRAWERS` — quindi al bersaglio serve che i codici di `config.tipi_entita` coincidano con le sue chiavi, non una mappa nuova. ⛔ E **nessun toast di questa casa sa portare un pulsante**: da lì la **Q-G**. 🔵 **Tre decisioni aperte** (§7-bis.6): il nome del campo nell'envelope (**Q-F**), dove si disegna il gesto (**Q-G**), e se la traduzione `DatabaseError`→`ServiceError` diventa un BB solo (**Q-H**, regola del 2). ⛔ Nulla scritto in `backend/` né in `frontend/`: il piano precede il codice |
+| 2026-08-24 (decimo giro) | 📋 **Scritte le consegne BE/FE in forma eseguibile** (§7). ⭐ **B-1 non è più una richiesta generica**: dice il modulo (`backend/apps/core/services/db_error_fields.py`, che possiede già i due canali gemelli e non ha dipendenze interne), il campo (`diag.datatype_name`), il contratto («solo dentro `P0001`», con la difesa già scritta lì per `constraint_name`), le due regex speculari a quelle del database, il punto di traduzione (`error_translator.py` ~228) e tre cose che il backend **non** deve fare. ⚠️ Dichiarata anche una asimmetria che sorprenderebbe: la chiave nel contesto DB è `bersaglio` (italiano, e perché `target` là è già occupata), il campo dell'envelope è `target`/`type` (inglese, come `fields` e `hint`) — la traduzione avviene **al confine**. ⭐ E B-2 chiarisce che la tabella `type → rotta` è **la stessa** della futura timeline per entità: si scrive una volta, o diverge |
+| 2026-08-24 (nono giro) | ✅ **Terzo scaglione APPLICATO** (baseline `pratiche` verde). 📊 **Stato del roll-out**: **13 codici**, **9 funzioni**, **14 punti di sollevamento**, **9 tipi** a catalogo — e `dbops.vw_bersagli_non_dichiarati` sempre **vuota**. 🏁 **E il roll-out è a FINE CORSA, non finito**: dei `CONFLITTO_STATO` che passano un id restano 21 punti su 15 codici, e riletti con la lente sono **quasi tutti esclusioni motivate** — la famiglia resi («sei già sul reso»), i `%s` che sono colonne o stati, i documenti che l'operatore ha già aperto, e i due bloccati dal costo della funzione a 40 parametri. ⭐ **Restano due soli candidati veri** (`E_FORNITORE_NON_ATTIVO`, `E_ACCREDITO_GIA_ESEGUITO`) e nessuno dei due è ovvio. ⭐ **La conclusione, scritta perché nessuno riapra la lista a tappeto**: continuare vorrebbe dire aggiungere pulsanti che non aiutano — e un bersaglio inutile non è neutro, insegna a ignorare il pulsante. Il roll-out riprende quando lo chiede un caso |
+| 2026-08-24 (ottavo giro) | 🛠️ **TERZO SCAGLIONE SCRITTO — «gli errori che nascono da una lista»**: due changeSet (`20260824-08/09`, schema `pratiche`), tre codici, due tipi nuovi a catalogo (`FLUSSO`, `DEFINIZIONE_WORKFLOW` — nove in totale). ⛔ Non applicato. ⭐ **Contiene il caso più netto dell'intero roll-out**: `E_DEFINIZIONE_BOZZA_ESISTENTE` nomina lo **scope** (tipo prestazione, emittente) e la bozza che blocca **non la nomina affatto** — quel documento un nome utile non ce l'ha, e metterci un id tecnico sarebbe il difetto che il cantiere esiste per togliere. Lì il bersaglio non aggiunge comodità: **aggiunge un'informazione che la frase, per come è costruita, non può dare**. È l'argomento migliore che questo cantiere abbia prodotto per i due canali separati. ⚠️ Terza volta che un `EXISTS` diventa una raccolta — stessa scansione, in più gli id, e array perché se le bozze fossero più d'una vanno viste tutte; il predicato non cambia (`jsonb_agg` su zero righe è NULL). ⚠️ `fn_fork_definizione` è `SECURITY DEFINER`: verificato che è di `titodb` e **non** nel registro `sec_functions_owner`, quindi nessun blocco di proprietà da aggiungere |
+| 2026-08-24 (settimo giro) | ✅ **Secondo scaglione APPLICATO e verde** (`20260824-05/06/07` — il `04` era occupato da un altro cantiere, rinominato in `07`: il numero vive in **tre** posti, nome file, `logicalFilePath` e `id`). Test del piano rate **16/16**, baseline senza regressioni nuove. 📊 **Stato del roll-out, misurato sul codice**: **10 codici** portano ora un bersaglio, su **7 funzioni** e **11 punti di sollevamento** — tutti di classe `CONFLITTO_STATO`. ⭐ E `dbops.vw_bersagli_non_dichiarati` resta **vuota**: dieci conversioni e zero tipi fuori catalogo, che è il senso di aver messo il cancello prima del roll-out e non dopo |
+| 2026-08-24 (sesto giro) | 🛠️ **SECONDO SCAGLIONE SCRITTO — «gli errori dentro un giro»**: tre changeSet (`20260824-05/06/07`), quattro codici, cinque punti di sollevamento, e il test del piano rate esteso **14 → 16**. ⛔ Non applicato. ⭐ **Il tema è nuovo e più forte del primo**: questi errori nascono dentro un giro automatico, non da un gesto — il lotto che blocca un'emissione l'operatore non lo sta guardando affatto, e la fattura senza righe è una fra molte. Qui l'obiezione «ma ce l'ha già davanti» cade del tutto. ⚠️ **Due esclusioni, e la seconda è la più istruttiva di tutto il roll-out**: `E_VALORE_MANCANTE` vive nella STESSA funzione dei due rifiuti del piano rate e ha un context **identico**, ma parla di un campo — il suo canale è `COLUMN`. Per questo la sostituzione è ancorata al **codice** e non alla riga di contesto: un'ancora più larga gli avrebbe messo il bersaglio addosso, e il presidio è il test 16. ⚠️ L'altra esclusione è di **costo**: `E_COMMESSA_NON_MODIFICABILE` e `E_ONERE_SEGMENT_DUPLICATO` vivono in `fn_upsert_commessa_attivita`, che ha una firma da **40 parametri** — toccarla obbliga alla passata `%TYPE` su tutte, sproporzionata all'aggiunta di un bersaglio |
+| 2026-08-24 (quinto giro) | ✅ **Primo scaglione APPLICATO, tutto verde.** I tre pgTAP estesi passano — offerta **10/10**, preventivo **11/11**, DDT **26/26** — e con i tre file del canale, del cancello e del pilota fanno **66 asserzioni** sul cantiere. ⭐ **E il cancello del vocabolario è VUOTO**: `dbops.vw_bersagli_non_dichiarati` non elenca niente, cioè ogni tipo scritto nei corpi vivi è a catalogo. È la prova che la scelta di far crescere il catalogo una voce per volta regge — non perché ci si ricorda, ma perché dimenticarsene farebbe fallire la build. Il guardrail resta verde: un solo mittente su tutti e tre i canali strutturati |
+| 2026-08-24 (quarto giro) | ✅ **Famiglia CHIUSA: scritto anche il DDT** (`20260824-03`), e con lui il primo scaglione è completo — tre changeSet, tre tipi a catalogo, tre pgTAP esistenti estesi (mai un file nuovo). ⛔ Non applicato. ⭐ **La lezione operativa dello scaglione**: su tre codici convertiti ci sono state **tre esclusioni di ramo** — il fail-closed del 937, il preventivo inesistente, `E_DDT_ORDINE_NOT_FOUND`. La domanda «c'è un posto dove mandarlo?» va fatta **a ogni ramo**, non a ogni codice: un roll-out a tappeto avrebbe prodotto tre pulsanti che aprono il vuoto. ⭐ **E un'obiezione che tornerà, con la sua risposta**: «l'operatore l'ordine lo sta già guardando» — vero sul singolo, falso sull'**evasione in massa**, dove la frase dice quale ordine ha rifiutato e non ci porta. Il bersaglio vale anche sugli errori che *sembrano* già contestualizzati. ⚠️ **Fuori cantiere, trovato leggendo**: `fn_genera_ddt_da_ordine` solleva `E_VALIDAZIONE` con dentro `'p_ordine_id deve essere > 0'` — cioè un **nome di parametro nel `VARIADIC`**, che è la cosa che le linee guida vietano perché quei valori compongono la frase che legge l'operatore. Non toccato qui |
+| 2026-08-24 (terzo giro) | ✅ **Primo scaglione APPLICATO.** Il test del preventivo è **verde, 11/11**, e con lui la prova che `key_selector = 'uid'` funziona end-to-end: il bersaglio esce come `PREVENTIVO:<uuid>`, e sul preventivo inesistente non esce affatto. ⛔ **Un difetto mio all'apply, e non era l'unico**: i due changeSet avevano una precondizione «i tipi devono essere già a catalogo» che ha fatto fallire il migrate. Sbagliata due volte: `80_data` gira **dopo** `20_code`, quindi non poteva che trovare zero (la stessa finestra che avevo documentato io stesso nel `20260823-02`); e soprattutto **non era una verifica di quel livello** — la funzione non legge il catalogo a runtime, e il vocabolario lo presidia la CI. Tolta, col motivo scritto in testata di entrambi i file. 🔴 **E il test dell'offerta è rosso — ma NON per causa mia**: fallisce identico su `HEAD` senza le mie modifiche, nel fixture, con una violazione di RLS. Vedi la riga qui sotto |
+| 2026-08-24 (fuori cantiere) | 🔴 **Trovato verificando: 12 file pgTAP su 16 sono rossi, e nessuno li misurava.** `scripts/pgtap-baseline.sh` cerca in `db/pgtap/*/*.sql` — **un livello solo** — quindi le tre sottocartelle di `vendite` (`offerte_commerciali`, `contratti`, `fixtures`) sono **fuori dalla baseline**. ⭐ La causa dei rossi sembra comune e ha una data: il **2026-08-07** il pgTAP è passato da girare come owner a girare come **applicazione**, quindi la RLS ha cominciato a mordere — e quei fixture scelgono «il primo emittente attivo per id» invece dell'emittente **del perimetro di chi opera** (per cui esiste già l'helper `script.fn_pgtap_emittente_operatore()`). Due forme dello stesso difetto: la violazione diretta del `WITH CHECK`, e un `NULL` propagato da una riga che la RLS nasconde. ⚠️ **Non è di questo cantiere e non si risolve qui**, ma tocca questo cantiere in un punto: la mia asserzione **10** vive in uno di quei file, e finché il fixture non regge non è verificabile |
+| 2026-08-24 (secondo giro) | 🛠️ **ROLL-OUT, primo scaglione: SCRITTO** — due changeSet (`20260824-01/02`), tre tipi nuovi a catalogo (`PREVENTIVO` per **uid**, `CONTRATTO`, `ORDINE_VENDITA`) e i **due pgTAP esistenti estesi** invece di due file nuovi. ⛔ Non applicato. ⭐ **E lo scaglione ha insegnato una cosa che il piano non aveva: il bersaglio NON è l'entità nominata nella frase.** Sui due rifiuti dell'offerta la frase nomina l'offerta — che l'operatore ha già davanti — mentre la cosa irraggiungibile è il **documento già generato**: il bersaglio risponde a «dove devi andare», non a «di cosa stiamo parlando». È la conferma che il roll-out va fatto **codice per codice**: un conteggio non distingue le due cose. ⭐ **Secondo guadagno: `key_selector` è stato esercitato per la prima volta** — il preventivo si cita per `uid`, e con l'id numerico il pulsante non avrebbe aperto niente (difetto che si sarebbe scoperto dal frontend, mesi dopo). ⚠️ `EXISTS` diventato una raccolta nei due guard dell'offerta: stessa scansione, in più gli id — e sono **array**, perché se i documenti generati fossero più d'uno (l'anomalia che il guard esiste per fermare) l'operatore deve vederli tutti |
+| 2026-08-24 | ✅ **APPLICATO, e verde: 19 asserzioni su tre file** (8 canale, 4 cancello, 7 pilota) più il presidio del catalogo messaggi. Verificato dopo l'apply: `key_selector` seminato dal mirror `runOnChange` senza toccare il loader, `dbops.vw_bersagli_non_dichiarati` **vuota**, guardrail verde con **un solo mittente su tutti e tre i canali**. ⛔ **Un difetto mio, e i test l'hanno preso al primo colpo**: il file sul canale aveva una **parentesi di chiusura in meno** in quattro asserzioni su otto — non compilava affatto. ⭐ **La correzione non è stata mettere la parentesi**: le asserzioni sono state riscritte col **verbo in un'istruzione separata**, che è la regola di casa (la snapshot di statement) e che *incidentalmente* toglie di mezzo cinque livelli di parentesi annidate dentro un `is()`. La regola esisteva per un'altra ragione e ha protetto da questa: annidare la chiamata dentro l'asserzione era il difetto a monte. ⚠️ Il rilievo di Tid era *«è una regressione del tuo lavoro?»* — no: il difetto stava **solo nel file di test**, e il changeSet non era nemmeno arrivato a essere esercitato. 📋 Misurato il menu del roll-out (§6 L6) **sul codice**: 314 punti di sollevamento passano un id interno, ma su 78 codici — la selezione si fa per codice e a mano, perché un conteggio non distingue «l'id da aprire» da «l'id sbagliato a scrivere» |
 | 2026-08-23 | 🛠️ **SCRITTO IL LOTTO — quattro changeSet (`20260823-01…04`), tre CSV, tre file pgTAP, il controllo (G) del guardrail e la quarta riga della tabella dei canali in `linee-guida-sql`. ⛔ Nulla applicato: l'apply è di Tid.** ⭐ **Le cose verificate PRIMA di scrivere, non dedotte**: che il canale `DATATYPE` sopravviva al giro (`GET STACKED DIAGNOSTICS PG_DATATYPE_NAME`); che la logica di composizione regga su sette casi (due validi, uuid, uno storto, tutti storti, sette, vuoto, chiave assente); che le colonne da ancorare col `%TYPE` abbiano **esattamente** i tipi di adesso (`atttypid::regtype`, che ignora il typmod) — quindi né firma né `RETURNS TABLE` cambiano e non serve nessun `DROP`; e che il guardrail col controllo (G) resti **verde** (girato sul database: unico mittente su tutti e tre i canali). ⚠️ **Due cose scoperte scrivendo, che il piano non aveva**: (1) `fn_log_error_only` scrive via **dblink**, cioè in transazione autonoma — le righe di `error_log` dei test **sopravvivono al ROLLBACK**, e ora è scritto nel file di test invece di essere creduto il contrario; (2) `jsonb_build_object('bersaglio', NULL)` **non** vuol dire «nessun bersaglio»: sarebbe una chiave presente e inutilizzabile, cioè un `W_` su un ramo che funziona — da cui il `CASE` nel pilota. 🔴 **Un richiamo di Tid, ed è la terza volta**: `%TYPE` in firma, `RETURNS TABLE` e `DECLARE`. Il meccanismo ha un nome ed è scritto in memoria — **riprodurre il corpo vivo porta con sé il debito della funzione** in una forma che sembra corretta perché combacia col database. Sanato in entrambe le funzioni, e dove il tipo resta esplicito ora c'è scritto **perché** (un conteggio, un interruttore, il nome di una colonna, una colonna che non esiste). ⏱️ **Chiusa la verifica lasciata in sospeso ieri**: `trg_event_log_gen_tx_id_ins_upd` **è nato** con l'automazione delle 21:00, e `event_log` ha le sue prime 12 righe scritte dalla pipeline vera |
 | 2026-08-22 (sesto giro) | 📋 **Scritto il piano (§6)**: cinque lotti, quattro changeSet numerati (**63-66**), due append ai CSV, un controllo di CI, tre file pgTAP e una tabella da estendere in `linee-guida-sql`. ⭐ **Le tre decisioni che il piano ha dovuto prendere per essere scrivibile**, e stanno tutte nel L1: (1) **il ricco resta nel contesto, il compatto viaggia** — `p_context->'bersaglio'` è l'array del §4.2 e finisce in `error_log`, la casella dell'eccezione porta `TIPO:id`, e li scrive **lo stesso chiamante una volta sola**; (2) **la funzione non legge il catalogo a runtime** — valida solo la forma, il vocabolario lo presidia la CI (L3), perché una query dentro il percorso d'errore è una dipendenza che non si vuole; (3) **un bersaglio malformato non distrugge mai l'errore di dominio** — casella vuota e `W_BERSAGLIO_MALFORMATO` nel log, che è la lezione del 18/08 tradotta. ⚠️ **Il L5 (derivazione automatica dalle chiavi `<tipo>_id`) è retrocesso a proposta**: con la Q-E servirebbe leggere la classe a runtime e con la Q-D varrebbe per tre tipi — ma la ragione vera è che un bersaglio sbagliato è **attivo** (porta l'operatore altrove), mentre un `COLUMN` sbagliato è inerte: non merita la stessa scorciatoia. 🔧 **Allineati i riferimenti superati** dopo l'apply dell'altro cantiere, di qua e di là (§3 di questo brief; §3.1, §3.2, §3.5, §3.8 e §4-bis dell'altro) |
 | 2026-08-22 (quinto giro) | ✅ **Chiuse tutte e cinque le domande del quarto giro, e il brief diventa scrivibile.** ⭐ **Q-A: via A** — il bersaglio esce dal `RAISE` su una **casella strutturata nuova**, terza volta che questa casa fa la stessa mossa (`CONSTRAINT` 05/08, `COLUMN` 08/08), con la composizione in **una sede sola** dentro `fn_log_and_raise_error`. ⭐ **Q-B: la chiave è `bersaglio`** — i 16 punti che usano `target` per il nome di una tabella non si toccano, e nessuna parola resta con due significati. ⭐ **Q-C: la chiave dell'entità la dichiara il catalogo**, sulla convenzione di `config.sorgenti.key_selector`: la regola vive accanto al tipo, non nella testa di chi scrive il frontend. ⭐ **Q-D: il catalogo cresce col roll-out**, una voce per volta insieme al messaggio che la usa — niente voci che promettono una destinazione irraggiungibile, e il presidio **T-4** impedisce di dimenticarsene. ⭐ **Q-E: bersaglio solo sugli errori rimediabili, mai sui `TECNICO`** — su un 500 non c'è gesto, e l'entità resta negli appunti per chi indaga. ⏱️ **Nel frattempo il L4 dell'altro cantiere è stato applicato** (53-60, più 61-62 del suo L2): la colonna del **T-1d** è ora un changeSet nuovo. ❌ **E una segnalazione mia che era sbagliata**: avevo dato per «residuo» la FK `fk_event_log_tipo_entita` senza riga in `dbops.fk_index_policy`. **Non è un residuo, è una decisione scritta** (loro §4, L4): la FK è su `entity_type`, che è **già la prima colonna di `ix_event_log_entity_time`** — coperta per prefisso — e registrarla a `consentito=false` sarebbe **attivamente dannoso**, perché il ramo del `DROP` estrae il nome dal `dll_command` e cancellerebbe un indice non dedicato che serve alla query forense. ⭐ Avevo guardato la tabella e non il brief: la regola «gli indici FK sono opt-in» ha un'eccezione per prefisso, e loro l'avevano già vista |

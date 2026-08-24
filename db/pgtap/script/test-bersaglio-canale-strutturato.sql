@@ -76,30 +76,56 @@ END
 $fn$;
 
 -- ============================================================
+-- I CASI, tutti raccolti in una volta.
+-- ⚠️ Il verbo in un'istruzione SEPARATA dalle asserzioni: e' la regola di
+--    casa, e qui evita anche di annidare cinque livelli di parentesi dentro
+--    un `is()` — che e' esattamente il modo in cui la prima stesura si e'
+--    rotta.
+-- ============================================================
+CREATE TEMP TABLE tmp_bers AS
+WITH casi(nome, ctx) AS (
+  VALUES
+    ('uno',      jsonb_build_object('bersaglio', jsonb_build_array(
+                     jsonb_build_object('tipo', 'FATTURA', 'id', '835')))),
+    ('due',      jsonb_build_object('bersaglio', jsonb_build_array(
+                     jsonb_build_object('tipo', 'FATTURA', 'id', '835'),
+                     jsonb_build_object('tipo', 'FATTURA', 'id', '820')))),
+    ('uuid',     jsonb_build_object('bersaglio', jsonb_build_array(
+                     jsonb_build_object('tipo', 'SOGGETTO',
+                                        'id', '0f6a2c1e-2b7d-4f0a-9c31-8a5b6d4e1f22')))),
+    ('nudo',     jsonb_build_object('bersaglio',
+                     jsonb_build_object('tipo', 'FATTURA', 'id', '835'))),
+    ('storto',   jsonb_build_object('bersaglio', jsonb_build_array(
+                     jsonb_build_object('tipo', 'fattura', 'id', '835'),
+                     jsonb_build_object('tipo', 'FATTURA', 'id', '820')))),
+    ('vuoto',    jsonb_build_object('bersaglio', '[]'::jsonb)),
+    ('assente',  jsonb_build_object('parametro', 'p_fattura_id', 'valore', '835')),
+    ('sette',    jsonb_build_object('bersaglio', (
+                     SELECT jsonb_agg(jsonb_build_object('tipo', 'FATTURA', 'id', i::text)
+                                      ORDER BY i)
+                       FROM generate_series(1, 7) AS i)))
+)
+SELECT c.nome, e.canale, e.codice
+  FROM casi c
+  CROSS JOIN LATERAL pg_temp.solleva(c.ctx) AS e;
+
+-- ============================================================
 -- 1..3 — il bersaglio viaggia
 -- ============================================================
 SELECT is(
-    (SELECT canale FROM pg_temp.solleva(
-        jsonb_build_object('bersaglio', jsonb_build_array(
-            jsonb_build_object('tipo', 'FATTURA', 'id', '835')))),
+    (SELECT canale FROM tmp_bers WHERE nome = 'uno'),
     'FATTURA:835',
     '1. Un bersaglio solo esce nella forma TIPO:id'
 );
 
 SELECT is(
-    (SELECT canale FROM pg_temp.solleva(
-        jsonb_build_object('bersaglio', jsonb_build_array(
-            jsonb_build_object('tipo', 'FATTURA', 'id', '835'),
-            jsonb_build_object('tipo', 'FATTURA', 'id', '820')))),
+    (SELECT canale FROM tmp_bers WHERE nome = 'due'),
     'FATTURA:835,FATTURA:820',
     '2. Due bersagli, separati da virgola e nell''ordine dell''array'
 );
 
 SELECT is(
-    (SELECT canale FROM pg_temp.solleva(
-        jsonb_build_object('bersaglio', jsonb_build_array(
-            jsonb_build_object('tipo', 'SOGGETTO',
-                               'id',   '0f6a2c1e-2b7d-4f0a-9c31-8a5b6d4e1f22')))),
+    (SELECT canale FROM tmp_bers WHERE nome = 'uuid'),
     'SOGGETTO:0f6a2c1e-2b7d-4f0a-9c31-8a5b6d4e1f22',
     '3. Un id uid (uuid) passa: la chiave dell''entita'' non e'' sempre un numero'
 );
@@ -108,25 +134,19 @@ SELECT is(
 -- 4..6 — ⭐ il bersaglio storto NON distrugge l'errore
 -- ============================================================
 SELECT is(
-    (SELECT canale || '|' || codice FROM pg_temp.solleva(
-        jsonb_build_object('bersaglio',
-            jsonb_build_object('tipo', 'FATTURA', 'id', '835')))),
+    (SELECT canale || '|' || codice FROM tmp_bers WHERE nome = 'nudo'),
     '|E_PARAMETRO_INVALIDO',
     '4. Oggetto nudo invece dell''array: canale VUOTO, ma il codice di dominio c''e'''
 );
 
 SELECT is(
-    (SELECT canale FROM pg_temp.solleva(
-        jsonb_build_object('bersaglio', jsonb_build_array(
-            jsonb_build_object('tipo', 'fattura', 'id', '835'),
-            jsonb_build_object('tipo', 'FATTURA', 'id', '820')))),
+    (SELECT canale FROM tmp_bers WHERE nome = 'storto'),
     'FATTURA:820',
     '5. L''elemento col tipo minuscolo e'' scartato, quello valido resta'
 );
 
 SELECT is(
-    (SELECT canale || '|' || codice FROM pg_temp.solleva(
-        jsonb_build_object('bersaglio', '[]'::jsonb))),
+    (SELECT canale || '|' || codice FROM tmp_bers WHERE nome = 'vuoto'),
     '|E_PARAMETRO_INVALIDO',
     '6. Array vuoto: canale vuoto, errore di dominio intatto'
 );
@@ -135,8 +155,7 @@ SELECT is(
 -- 7 — nessuna regressione su chi non usa il bersaglio
 -- ============================================================
 SELECT is(
-    (SELECT canale FROM pg_temp.solleva(
-        jsonb_build_object('parametro', 'p_fattura_id', 'valore', '835'))),
+    (SELECT canale FROM tmp_bers WHERE nome = 'assente'),
     '',
     '7. Senza la chiave bersaglio il canale resta vuoto'
 );
@@ -147,11 +166,7 @@ SELECT is(
 --   disegnerebbe piu' un gesto ma un elenco.
 -- ============================================================
 SELECT is(
-    (SELECT canale FROM pg_temp.solleva(
-        jsonb_build_object('bersaglio', (
-            SELECT jsonb_agg(jsonb_build_object('tipo', 'FATTURA', 'id', i::text)
-                             ORDER BY i)
-              FROM generate_series(1, 7) AS i)))),
+    (SELECT canale FROM tmp_bers WHERE nome = 'sette'),
     'FATTURA:1,FATTURA:2,FATTURA:3,FATTURA:4,FATTURA:5',
     '8. Oltre cinque elementi il canale si ferma a cinque'
 );

@@ -50,7 +50,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(14);
+SELECT plan(16);
 
 -- ============================================================
 -- 0) Fixture
@@ -261,6 +261,57 @@ SELECT ok(
       AND termine_pagamento_snapshot ? 'arrotondamento_metodo'
      FROM vendite.fatture WHERE id = (SELECT id FROM tmp_f_gsf)),
   '14) Lo snapshot in testata porta i VALORI del termine, non il solo id');
+
+-- ============================================================
+-- 15-16) ⭐ IL BERSAGLIO — e chi non lo prende, nella stessa funzione.
+--   Questi due rifiuti nascono DENTRO il giro di lotto: la fattura da
+--   sistemare non e' quella che l'operatore ha davanti, e senza bersaglio
+--   dovrebbe cercarsela. ⛔ Il 16 presidia l'esclusione: E_VALORE_MANCANTE ha
+--   un context IDENTICO ai due, ma parla di un CAMPO — il suo canale e'
+--   COLUMN, non DATATYPE — e un'ancora piu' larga in fase di scrittura gli
+--   avrebbe messo il bersaglio addosso.
+--   ⚠️ Il verbo in un'istruzione separata dall'asserzione.
+--   Brief: brief-db-bersaglio-errore §6 L6.
+-- ============================================================
+CREATE OR REPLACE FUNCTION pg_temp.gsf_canali(p_fattura_id bigint)
+RETURNS TABLE(bersaglio text, codice text) AS $fn$
+-- ⚠️ `text` espliciti: sono canali dell'eccezione, non valori di colonna.
+DECLARE v_b text; v_c text;
+BEGIN
+  PERFORM * FROM vendite.fn_genera_scadenze_fattura(p_fattura_id);
+  RETURN QUERY SELECT 'NESSUN ERRORE'::text, ''::text;
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_b = PG_DATATYPE_NAME, v_c = CONSTRAINT_NAME;
+  RETURN QUERY SELECT COALESCE(v_b, ''), COALESCE(v_c, '');
+END $fn$ LANGUAGE plpgsql;
+
+-- Stato di partenza: termine presente, base NULL -> E_SCADENZE_BASE_NON_PRONTA
+UPDATE vendite.fatture
+   SET termine_pagamento_id = (SELECT id FROM tmp_tp3_gsf), totale_a_pagare = NULL
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+
+CREATE TEMP TABLE tmp_gsf_canali AS
+SELECT * FROM pg_temp.gsf_canali((SELECT id FROM tmp_f_gsf));
+
+SELECT is(
+  (SELECT bersaglio || '|' || codice FROM tmp_gsf_canali),
+  'FATTURA:' || (SELECT id FROM tmp_f_gsf)::text || '|E_SCADENZE_BASE_NON_PRONTA',
+  '15) il rifiuto del piano rate porta il bersaglio sulla fattura'
+);
+
+-- ⛔ E ora il codice che NON lo prende, sollevato dalla stessa funzione.
+UPDATE vendite.fatture
+   SET termine_pagamento_id = NULL, totale_a_pagare = NULL
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+
+CREATE TEMP TABLE tmp_gsf_canali_2 AS
+SELECT * FROM pg_temp.gsf_canali((SELECT id FROM tmp_f_gsf));
+
+SELECT is(
+  (SELECT bersaglio FROM tmp_gsf_canali_2),
+  'FATTURA:' || (SELECT id FROM tmp_f_gsf)::text,
+  '16) anche il rifiuto per termine mancante porta il bersaglio'
+);
 
 SELECT * FROM finish();
 
