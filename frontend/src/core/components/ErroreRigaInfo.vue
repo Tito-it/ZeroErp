@@ -66,6 +66,14 @@ const props = defineProps({
   // di prima: il bersaglio è un'offerta, non una promessa. Mai un pulsante che
   // porta in un vicolo cieco.
   bersagli: { type: Array, default: () => [] },
+  // ⭐ L'ENTITA' DI QUESTA RIGA — `{tipo, id}`. Dal `T-3b` (2026-08-24) il
+  // bersaglio porta anche il documento **su cui** l'errore e' successo, che qui
+  // e' la riga stessa: un pulsante «apri» verso di lei direbbe «vai dove sei
+  // gia'». Lo filtra `BersaglioAzioni`; questo componente lo trasporta e basta.
+  //
+  // ⚠️ Assente = nessun filtro. E' la scelta prudente: un pulsante di troppo si
+  // vede, uno nascosto per sbaglio no.
+  entitaCorrente: { type: [Object, null], default: null },
 })
 
 const { t } = useI18n()
@@ -127,6 +135,7 @@ function chiudiPopover() {
     <BersaglioAzioni
       class="app-errore-riga-azioni"
       :bersagli="bersagli"
+      :entita-corrente="entitaCorrente"
       @eseguita="chiudiPopover"
     />
   </Popover>

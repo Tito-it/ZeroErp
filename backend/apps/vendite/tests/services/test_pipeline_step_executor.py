@@ -510,8 +510,9 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.get_task_handler_code.return_value = "numera_fatture_default"
         repo.list_fatture_by_lotto.return_value = [101]
         repo.numera_fattura_opz_emessa.side_effect = make_db_error(
-            "Non si puo' numerare il documento 15353: la fattura che rettifica "
-            "non e' ancora numerata (documento 835). Numera prima quella.",
+            "Non si puo' numerare il documento: rettifica righe di altri "
+            "documenti che non risultano ancora numerati. Documenti da "
+            "numerare prima: 1.",
             codice="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
         )
 
@@ -525,9 +526,12 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             )
 
         self.assertEqual(exc.exception.code, "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
-        # Il messaggio e' quello del RAISE, con dentro i due numeri: e' l'unica
-        # cosa che dice all'operatore QUALE documento numerare prima.
-        self.assertIn("835", exc.exception.message)
+        # Il messaggio e' quello del RAISE, non il generico del giro per-fattura.
+        # ⚠️ Dal `T-3b` (2026-08-24) quella frase NON porta piu' nessun id: porta
+        #    il conteggio dei bloccanti, e QUALE documento aprire lo dice il
+        #    bersaglio (`test_bersaglio_pipeline`). Qui si prova che la frase del
+        #    database arriva intatta, che e' la cosa che il giro appiattiva.
+        self.assertIn("Documenti da numerare prima", exc.exception.message)
         # E lo stesso codice nel log di scope FATTURA, non il generico.
         self.assertEqual(
             error_logger.log_error.call_args.kwargs["code"],

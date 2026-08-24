@@ -788,6 +788,7 @@ function fatturaNumero(row) {
                       :quando="data.errore_quando"
                       :livello="data.errore_livello"
                       :bersagli="data.errore_bersagli || []"
+                      :entita-corrente="{ tipo: 'FATTURA', id: data.fattura_id }"
                       :titolo="t('vendite.lotti.errore_documento_titolo')"
                     />
                   </span>
@@ -957,12 +958,22 @@ function fatturaNumero(row) {
                        ⛔ Il gesto NON si costruisce su `fattura_id`, che pure
                        sta nella riga: quello e' il documento che ha FALLITO e
                        che l'operatore sta gia' guardando qui; il bersaglio e'
-                       dove deve ANDARE. Sul caso collaudato sono due fatture
-                       diverse (19563 contro 835). -->
+                       dove deve ANDARE.
+                       ⭐ E dal `T-3b` (2026-08-24) `fattura_id` torna utile
+                       proprio per QUESTO: il bersaglio porta ora anche il
+                       documento su cui l'errore e' successo — che su una riga
+                       e' la riga stessa — e passandolo come `entitaCorrente`
+                       quel pulsante si nasconde. Non e' il gesto: e' cio' che
+                       il gesto NON deve essere.
+                       ⚠️ Le righe di LOTTO non hanno documento: li' `null`,
+                       cioe' nessun filtro. -->
                   <template #cell-messaggio="{ data }">
                     <div class="app-segn-messaggio">
                       <span>{{ data.messaggio }}</span>
-                      <BersaglioAzioni :bersagli="data.target" />
+                      <BersaglioAzioni
+                        :bersagli="data.target"
+                        :entita-corrente="data.fattura_id ? { tipo: 'FATTURA', id: data.fattura_id } : null"
+                      />
                     </div>
                   </template>
                   <!-- Sulle righe di LOTTO non c'e' documento: si mostra la

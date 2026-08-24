@@ -23,7 +23,7 @@ ieri e un avviso di oggi deve mostrare il critico, non l'avviso.
 
 | Campo | Cosa |
 |---|---|
-| `errore_messaggio` | il messaggio del database, quello che nomina il documento e la via d'uscita |
+| `errore_messaggio` | il messaggio del database, quello che dice cosa è successo e la via d'uscita. ⚠️ Dal `T-3b` (2026-08-24) **non nomina più il documento con un id**: *quale* aprire lo dice il bersaglio, che viaggia nel `meta` della riga di log (chiave `bersagli`) e a video diventa un pulsante |
 | `errore_codice` | il codice applicativo, da `meta->>'error_code'` — la chiave che scrivono sia le funzioni DB sia il backend (D-7) |
 | `errore_quando` | quando: un errore vecchio su una riga già rilavorata si riconosce solo dalla data |
 | `errore_livello` | `C`/`W`/`I` — **fuori dal seed**, ma nel payload: senza, il frontend mostrerebbe l'icona rossa anche su un avviso. Stesso ruolo di `natura_doc_codice` |
@@ -101,7 +101,7 @@ contato dalla summary, **non veniva scritto mai** (misurato: 16 righe su 16 a
         "id_fiscale_univoco_cf_piva": "01234567890",
         "natura_doc_codice": "NOTA_CREDITO",
         "natura_doc_descrizione": "Nota di credito",
-        "errore_messaggio": "Non si può numerare il documento 15353: la fattura che rettifica non è ancora numerata (documento 835). Numera prima quella.",
+        "errore_messaggio": "Non si può numerare il documento: rettifica righe di altri documenti che non risultano ancora numerati. Documenti da numerare prima: 1.",
         "errore_codice": "E_FATTURA_RETTIFICATA_SENZA_NUMERO",
         "errore_quando": "2026-08-21T17:39:39.675+02:00",
         "errore_livello": "C"
