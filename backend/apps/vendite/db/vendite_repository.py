@@ -3239,3 +3239,78 @@ class VenditeRepository:
             ddt_id=ddt_id,
             ordine_id=ordine_id,
         )
+
+    # Scopo: IL GIORNALE DI UN'ENTITA' — «cosa e' successo a questa cosa, in
+    #        ordine di tempo», letto dalla vista che cuce i registri.
+    #
+    # ⭐ LA SORGENTE E' `script.vw_giornale_entita` (lotto L3 del brief
+    #    event_log), che unisce quattro registri in una forma normalizzata. Vive
+    #    in `script` e non in `vendite` perche' i registri di eventi del progetto
+    #    sono sei: quando arrivera' «cosa e' successo a questa pratica», il ramo
+    #    entra con un UNION ALL e questo lettore non cambia.
+    # 📌 Sta in `vendite` perche' il primo consumatore e' la fattura. Al SECONDO
+    #    dominio va spostato in `core` — non prima (regola del 2).
+    #
+    # ⚠️ La vista e' `security_invoker`: il perimetro lo applica la connessione
+    #    di chi legge, non questa query. ⛔ Ma NON e' il cancello di questo
+    #    endpoint: `fatture` ha la RLS, e una fattura fuori scope darebbe zero
+    #    righe — cioe' «non e' successo niente» invece di «non la vedi». Il
+    #    cancello e' la TESTATA, e lo tiene il service.
+    #
+    # ⛔ L'ORDINE NON PUO' APPOGGIARSI AL SOLO TEMPO, ed e' il rilievo R-1 della
+    #    ricognizione: `event_time` e `data_ora` hanno default `now()`, che in
+    #    PostgreSQL e' il timestamp di TRANSAZIONE. Misurato: 38 righe di un
+    #    lotto su 3 istanti distinti, uno per corsa. A ordinare davvero dentro
+    #    l'istante e' il tiebreak `riga_id`, che e' l'ordine di scrittura — ed e'
+    #    la sequenza vera finche' il registro e' UNO SOLO (oggi, per la fattura,
+    #    e' `fatture_log`). ⚠️ Il giorno che una fattura avra' righe da due
+    #    registri, dentro lo stesso istante l'ordine tornera' arbitrario: allora
+    #    servira' una sequenza vera, non un ripiego qui.
+    def list_giornale_entita(
+        self,
+        *,
+        entity_type: str,
+        entity_id: int,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    riga_key, registro, quando, gravita, cosa,
+                    tx_id, correlation_id, auth_user_id, user_insert,
+                    COUNT(*) OVER () AS total_count
+                FROM script.vw_giornale_entita
+                WHERE entity_type = %s AND entity_id = %s
+                ORDER BY quando DESC, riga_id DESC
+                LIMIT %s OFFSET %s
+                """,
+                [entity_type, int(entity_id), safe_limit, safe_offset],
+            )
+            rows = cursor.fetchall()
+
+        total_count = int(rows[0][9]) if rows else 0
+        risultato: list[dict[str, Any]] = [
+            {
+                "riga_key": str(row[0]),
+                "registro": str(row[1]),
+                "quando": None if row[2] is None else row[2].isoformat(),
+                # ⚠️ `gravita` puo' essere NULL, e non e' un caso da ignorare: la
+                # vista lo dichiara come il segnale che «un vincolo si e'
+                # allargato e la mappa e' rimasta indietro». Passa cosi' com'e'.
+                "gravita": row[3],
+                "cosa": row[4],
+                "tx_id": None if row[5] is None else str(row[5]),
+                # ⚠️ NULL su due registri su quattro PER COSTRUZIONE della vista
+                # (rilievo R-2): `LOTTO_LOG` e `FATTURA_LOG` non hanno un filo.
+                # Non e' un dato mancante, e' un dato che li' non esiste.
+                "correlation_id": None if row[6] is None else str(row[6]),
+                "auth_user_id": None if row[7] is None else int(row[7]),
+                "user_insert": row[8],
+            }
+            for row in rows
+        ]
+        return risultato, total_count

@@ -56,7 +56,7 @@
 | 📋 **Il piano** | **Sei slice**, nessuna in attesa. Ordinate per valore: S0 telaio → S1 distinta e righe → **S2 la registrazione** → S3 rata e capienza → S4 perimetro e canali → S5 sistemazioni. ⛔ La settima (spezzatura) **è caduta con D1-ter** | §3 |
 | 🔌 **Il contratto** | 18 endpoint, grammatica URL di `api.md`. ⭐ Il posting è **una sola `SELECT`**; l'abbinamento è **un verbo solo** che porta anche la forzatura | §4 |
 | 🎨 **Il frontend** | 5 schermate, 2 drawer, 3 pannelli. **17 building block riusati**, **4 candidati** all'estrazione (nessuno al primo colpo) | §5 |
-| 📮 **Al team DB** | **Due**, non nove: i **seed delle liste** (che genero io in bozza) e l'**asimmetria del saldo fattura** (Q-10). ⛔ La terza — la spezzatura — **è caduta con D1-ter**. ⚠️ Più un **dato**, non codice: senza il conto `INCASSO` dei due emittenti **nessun canale di incasso è creabile** | §6 |
+| 📮 **Al team DB** | **Tre**: i **seed delle liste** (che genero io in bozza), le **due righe dell'azione di processo** (Q-5) e l'**asimmetria del saldo fattura** (Q-10), più la madre della correzione come **differita**. ⛔ La spezzatura **è caduta con D1-ter**. ✅ E il prerequisito di **dato** (conto `INCASSO`) è **risolto**: configurato in-app il 24/08 | §6 |
 | ✅ **Domande aperte** | **ZERO.** Nove chiuse il 24/08 — **Q-1** `confirm_and_retry` · **Q-2** cade con D1-ter · **Q-3** apertura con form · **Q-4** due porte una lista · **Q-5** nasce `registra_distinta` · **Q-6** saldi con **una sede sola** (§2.7) · **Q-7** correzione guidata · **Q-8** lookup in `vendite` · **Q-10** simmetria del saldo fattura — più Q-9 chiusa da sé | §7 |
 
 ---
@@ -110,10 +110,20 @@ Misurato **sul codice e sul database vivo**, non sui brief.
 > Da oggi ogni giorno che passa è un giorno in cui il database sa registrare
 > denaro e **nessuno può chiederglielo**.
 >
-> ⚠️ **Con una sola eccezione, e non è codice**: nessuno dei due emittenti ha un
-> conto con `uso = 'INCASSO'` censito (S3-3 del piano DB, DATO-1). Finché manca,
-> **nessun `ente_incasso` è creabile** — ed è voluto: si fallisce alla
-> configurazione, non in esercizio. Blocca la **slice 4**, non le altre.
+> ✅ **E l'unica eccezione è caduta il 2026-08-24.** Nessuno dei due emittenti
+> aveva un conto con `uso = 'INCASSO'` censito (S3-3 del piano DB, DATO-1), e
+> senza **nessun `ente_incasso` era creabile** — voluto: si fallisce alla
+> configurazione, non in esercizio. **Tid l'ha configurato in-app** con due conti
+> fittizi di test, uno per emittente: `IT00TESTINCASSO0000000001` e
+> `…0002`. ⭐ **Servivano due IBAN distinti** perché un conto `INCASSO` appartiene
+> a **un solo** soggetto — è la garanzia da cui il database ricava di chi sono i
+> soldi arrivati prima della fattura.
+>
+> ⚠️ **Due avvertenze che restano.** Il perimetro adesso è **vero anche se il dato
+> è finto**: se i due IBAN fossero sull'emittente sbagliato, le liste
+> mostrerebbero la cosa sbagliata **senza dare errore**. E in produzione servono
+> gli IBAN reali: ⛔ questi non devono viaggiare — si riconoscono dal nome, ed è
+> il motivo per cui sono scritti così.
 
 ### 1.4 ⭐ La superficie DB, coi nomi veri
 
@@ -315,7 +325,7 @@ proprio `incassato`. Non si sana con una somma nel backend (§7, **Q-10**).
 ```text
   S0 telaio ──▶ S1 distinta e righe ──▶ S2 LA REGISTRAZIONE ──▶ S3 rata e capienza
                                                                       │
-                    S4 perimetro e canali (⚠️ DATO-1) ◀───────────────┤
+                    S4 perimetro e canali ◀───────────────────────────┤
                     S5 sistemazioni ────────────────────────────────◀─┘
 ```
 
@@ -335,7 +345,7 @@ sono più:
 | S0, S1, S2 | S0, **S1** | le righe stanno con la loro distinta: sono **un drawer solo** |
 | S3 (registrazione) | **S2** | sale: è **il primo valore vero** e adesso non aspetta niente |
 | S4 (rata e capienza) | **S3** | scende di uno, ma `scadenza_id` entra **già in S1** (sotto) |
-| S5 (perimetro e coda) | **S4** | invariata, ⚠️ **bloccata da DATO-1** |
+| S5 (perimetro e coda) | **S4** | invariata. ~~⚠️ bloccata da DATO-1~~ → ✅ **sbloccata il 24/08** (conti di incasso configurati) |
 | S6 (sistemazioni) | **S5** | invariata: chiude **BE-4** e sblocca la **Fase D** del cantiere fondi |
 | ~~R-4 (spezza)~~ | ⛔ **caduta** | **D1-ter, 2026-08-24**: il gesto non esiste più. Con essa cade `fn_spezza_riga_contabile`, che era l'unico oggetto DB mancante |
 
@@ -417,12 +427,12 @@ da lì `fn_get_saldo_fattura` smette di mentire nell'interfaccia.
 | **A-8** | `SaldoPanel` nel drawer fattura | FE | ✅ **Q-6**: **residuo** in grande, **in lavorazione** in piccolo e solo quando c'è. ⛔ **Niente «incassato»** su questa schermata. ⭐ Un componente solo per tutti i livelli (§2.7) |
 | **A-9** | ⭐ **La coda del riconciliatore** *(salita dalla slice 4 — Q-4)* | BE+FE | `GET /pagamenti/righe/` con filtro di stato: lista **cross-distinta**. ✅ **Q-4 → (c)**: **due voci di menu** («Da abbinare» · «Sospese») che aprono **la stessa lista** con il filtro già impostato — due porte, **un solo** seed |
 
-### 3.4 S4 — Il perimetro e la coda ⚠️ *(bloccata da DATO-1, non da codice)*
+### 3.4 S4 — Il perimetro e i canali ✅ *(sbloccata il 2026-08-24)*
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
 | **E-1** | Gestione `enti_incasso` | BE+FE | Drawer dedicato: ha JOIN (soggetto_ruolo, filiale, **conto**) quindi **non** è un pannello config generico. ⭐ **BE-8**: l'elenco dei conti mostra **solo** quelli con `uso = 'INCASSO'` dell'emittente — il DB rifiuta gli altri, ma un elenco che li propone fa sbagliare |
-| **E-2** | ⛔ **Il blocco** | — | Finché i due emittenti non hanno il loro conto `INCASSO` censito (**DATO-1**), questa schermata **non può creare niente**. Non è un difetto: è D5 |
+| **E-2** | ✅ **Il blocco è caduto** | dato | **DATO-1 risolto in-app da Tid il 24/08**: due conti `INCASSO` fittizi, uno per emittente (`IT00TESTINCASSO000000000{1,2}`). ⚠️ **Da riverificare al primo canale creato**: che ogni IBAN sia sull'emittente giusto — il perimetro è vero anche se il dato è finto, e uno scambio non dà errore, dà liste sbagliate |
 | ~~**E-3**~~ | ~~Coda «da abbinare»~~ | — | ⬆️ **Salita alla slice 3 (A-9)** con la chiusura di **Q-4**: la coda si riempie già con l'inserimento manuale, non aspetta l'import |
 | **E-4** | Riverifica di **tutte** le liste sotto RLS | BE | ⚠️ §2.6: dentro e fuori perimetro, e si guarda la differenza |
 
@@ -465,7 +475,7 @@ quel cantiere aspettava.
 
 | Non fa | Perché |
 | --- | --- |
-| **Import del flusso bancario** (D6) | `enti_incasso` è a 0 righe **e non è creabile** (DATO-1): non esiste un canale da cui un file possa arrivare |
+| **Import del flusso bancario** (D6) | `enti_incasso` è ancora a **0 righe**: il conto ora c'è (DATO-1 risolto), ma il canale va prima **creato** — ed è la slice 4. Senza canale non esiste una porta da cui un file possa entrare |
 | **Abbinamento automatico** (D4) | Una regola di match si tara sui casi veri. Con zero incassi si scriverebbe immaginandoli |
 | **Portale clienti `GET /portale/scadenze/`** | Ha senso **dopo** S3: prima mostrerebbe il piano rate senza poter dire quali rate siano pagate |
 | **Scadenzario** | ⛔ Resta fuori — ma ⭐ **il motivo per cui era chiuso è caduto** (nota nuova del 24/08 nel brief madre §3.4, nata chiudendo Q-8): il posting e il saldo per rata esistono, quindi «scaduto» e «insoluto» **non sono più colonne false**. È passato da **impossibile** a **possibile e non fatto**, ed è **un cantiere suo**: qui nasce solo il **lookup** delle rate di *una* fattura, non la rotta scadenze paginata. ⚠️ Quando si aprirà: i numeri vengono dalla **base unica dei saldi** (§2.7) e mai da una query propria — uno scadenzario è la porta dei solleciti — e si guarda il **residuo**, non l'incassato: una rata coperta da un giro interno è regolata anche se in banca non è entrato niente |
@@ -529,7 +539,7 @@ verbo compare **solo** per le azioni di dominio e come **ultimo** segmento.
 | **Distinte contabili** | S1 | `<ListaConfigurabile>` — paginatore in alto, filtri stato/origine/centro/data, click riga → drawer |
 | **DistintaDrawer** | S1-S2 | Testata + master-detail righe + pannello validazione + pannello registrazione |
 | **Rate fuori capienza** | S3 | Lista, **prima colonna `motivo`**. Senza, la forzatura nasconde invece di registrare |
-| **Canali di incasso** | S4 | Drawer di configurazione ⚠️ bloccato da DATO-1 |
+| **Canali di incasso** | S4 | Drawer di configurazione. ✅ Il prerequisito di dato è stato risolto il 24/08 |
 | **Da abbinare** · **Sospese** | S3 | ⭐ **La stessa lista, due voci di menu** con il filtro di stato già impostato (Q-4 → c) |
 | **Eccedenze da sistemare** | S5 | Lista raggruppata **per cliente** + drawer decisione + dialogo conferma |
 
@@ -587,7 +597,7 @@ brief e si aspetta. Ecco il consuntivo della revisione.
 | **DB-8** | vista + seed **eccedenze** | ⭐ **La vista c'è già** (`vw_eccedenze_da_sistemare`, lotto 7), e porta pure il raggruppamento per cliente. 📮 Resta **il seed** |
 | **DB-9** | conferma che le liste reggano sotto RLS | ✅ **ANNULLATO come richiesta**: il lotto 6 ha portato `test-rls-pagamenti-perimetro.sql` (14 asserzioni). ⚠️ Diventa **lavoro BE**: la prova dentro/fuori perimetro su ogni lista (§2.6, T-10, E-4) |
 | **DB-10** | 🆕 | 📮 **NUOVO e CONFERMATO** (Q-10 → a, Tid 24/08): allargare `fn_get_saldo_fattura` a `residuo · in_lavorazione · incassato`, la stessa forma di `fn_get_saldo_rata`. ⭐ Non è una rifinitura: senza, la **base unica dei saldi** (§2.7) nasce storta al livello che dovrà reggere il **saldo cliente** |
-| **DATO-1** | 🆕 | ⚠️ **Non è una richiesta al DB, è configurazione**: il conto `uso = 'INCASSO'` per ciascuno dei due emittenti. ⛔ Senza, **nessun canale di incasso è creabile** e la slice 4 non parte |
+| ~~**DATO-1**~~ | ✅ **RISOLTO il 2026-08-24** | Non era una richiesta al DB ma **configurazione**, e **non serviva nessuna colonna nuova**: il conto di incasso è una **riga** in `anagrafiche.soggetti_ruoli_conti_bancari` con `uso = 'INCASSO'`, non un parametro dell'emittente. ⛔ Metterlo fra i parametri sarebbe stata una **seconda sede** fuori dal vincolo «un conto `INCASSO` → un solo soggetto», che è ciò che regge il perimetro. Fatto in-app da Tid con due IBAN di test, uno per emittente |
 
 ⭐ **E i quattro seed si chiedono in un colpo solo, già scritti.** Esiste
 `scripts/gen_seed_lista.py`, che genera le righe dei quattro CSV a partire dal
@@ -623,8 +633,9 @@ confluire nei CSV di seed. Un round-trip invece di quattro, e nessuno scrive
 > | **Q-8** | ✅ **chiusa da Tid**: lookup dedicato in `vendite`, nessun permesso allargato |
 > | **Q-10** | ✅ **nata e chiusa oggi**: `fn_get_saldo_fattura` si allarga a tre numeri |
 >
-> ⚠️ **Resta un solo blocco, e non è una domanda**: **DATO-1**, il conto di
-> incasso dei due emittenti — senza, la slice 4 non parte.
+> ✅ **E il solo blocco rimasto è caduto lo stesso giorno**: **DATO-1**, il conto
+> di incasso dei due emittenti, configurato in-app. ⛔ **Non resta niente da
+> decidere né da aspettare**: da qui in avanti è solo lavoro.
 
 ### ~~Q-1 · Come viaggia sul filo HTTP un rifiuto **confermabile**?~~ ✅ **CHIUSA da Tid (2026-08-24): strada (a)**
 
@@ -926,7 +937,7 @@ perché il telaio non dipende da nessun prerequisito e le due code dei lotti
 4. **Slice 2** — la registrazione. ⚠️ Se Q-5 va come propongo, l'azione
    `registra_distinta` va decisa **prima** di scriverla;
 5. **Slice 3** — la rata, la capienza e le rate fuori capienza;
-6. poi S4 (⚠️ ferma su DATO-1) e S5, che chiude il cantiere e sblocca la Fase D
+6. poi S4 (✅ non più ferma: DATO-1 risolto) e S5, che chiude il cantiere e sblocca la Fase D
    dei fondi.
 
 ⚠️ **E due cose che non farò senza dirtelo**: nessuna delle quattro estrazioni di
@@ -958,6 +969,7 @@ l'astrazione), e nessun commit di propria iniziativa.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-08-24** (dato) | ✅ **DATO-1 risolto, e senza scrivere niente.** Era l'ultimo blocco del cantiere: nessuno dei due emittenti aveva un conto con `uso = 'INCASSO'`, quindi nessun canale di incasso era creabile. ⭐ **Non serviva nessuna colonna nuova** — la domanda era se aggiungerla ai parametri dell'emittente, e la risposta è no: il conto di incasso **non è un attributo**, è una **riga di relazione** in `anagrafiche.soggetti_ruoli_conti_bancari` con `uso = 'INCASSO'`, e il giro per crearla (endpoint + drawer + voce «Incasso» tradotta) **esisteva già tutto**. ⛔ Metterlo fra i parametri avrebbe creato una **seconda sede fuori dal vincolo** «un conto `INCASSO` appartiene a un solo soggetto» — che è esattamente la garanzia da cui il database ricava di chi sono i soldi arrivati prima della fattura: due emittenti avrebbero potuto dichiarare lo stesso conto senza che nessun errore lo dicesse. Tid l'ha configurato in-app con **due IBAN fittizi**, `IT00TESTINCASSO0000000001` e `…0002` — **due e non uno**, proprio per quel vincolo. ⚠️ Restano due avvertenze: il **perimetro è vero anche se il dato è finto** (i due IBAN sull'emittente sbagliato darebbero liste sbagliate **senza errore**), e in produzione servono quelli reali — ⛔ questi non devono viaggiare, e si riconoscono dal nome apposta. ℹ️ Il `CHECK` sull'IBAN è solo formale (`^[A-Z0-9]{15,34}$`, nessun checksum), quindi un valore di test passa |
 | **2026-08-24** (decisioni) | ✅ **TUTTE E NOVE LE DOMANDE CHIUSE, in una sessione sola; due cambiano il piano.** ⭐ **Q-7 → (a)**: la correzione è un **gesto guidato** — un'azione «Correggi» che apre una distinta nuova con le righe di segno opposto **già precompilate** — mai ricopiatura a mano, dove nasce il secondo errore; ⛔ e si chiama **correzione**, mai «storno» (`STORNATA` è ritirata dal 21/08). ⚠️ La sua funzione madre va al team DB come **richiesta differita**, firma proposta ma «da scrivere quando parte la slice»: una madre pronta che nessuno chiama è già successo col posting. ⭐ **Q-8 → (a)**: lookup dedicato in `vendite` con `skip_area_check`, che risponde il minimo su una fattura già scelta — ⛔ **niente LETTURA su `vendite`** a chi lavora gli incassi. E chiudendola è emersa **una cosa che nessuno aveva previsto**, scritta nel brief madre §3.4: **il vincolo che teneva chiuso lo scadenzario è caduto** — «scaduto» e «insoluto» non sono più colonne false, perché il saldo per rata esiste. Lo scadenzario passa da *impossibile* a *possibile e non fatto*, resta **un cantiere suo**, e si porta dietro due avvertenze: i numeri dalla **base unica dei saldi** (uno scadenzario è la porta dei solleciti) e si guarda il **residuo**, non l'incassato — una rata coperta da un giro interno è regolata anche se in banca non è entrato niente. ⭐ **Q-10 → (a)**: `fn_get_saldo_fattura` si allarga alla forma della sorella (`residuo · in_lavorazione · incassato`). Nata e chiusa nella stessa giornata, e la ragione per cui non si rinvia è §2.7: le due alternative — sommare le rate, o riscrivere la formula nel BE — sono **una falsa** (una riga può avere fattura senza rata: il fondo fattura è così) e **una in contraddizione col vincolo appena scritto**. ⭐ **Q-6 → il saldo va nel drawer fattura, senza l'«incassato»** (quel numero risponde a una domanda di tesoreria, non a «questa fattura è a posto?»), **ma la parte che conta è la terza**: *«il drawer fattura non è l'unico posto; dovrà nascere una funzione che dia anche il saldo del cliente, quindi qualsiasi cosa faremo deve essere una base unica per i saldi»*. 🔴 Diventa il **vincolo §2.7**: non si costruisce «il pannello della fattura» ma **la base dei saldi** — un solo modulo BE legge le funzioni di saldo, un vocabolario solo (`residuo · in_lavorazione · incassato`), un componente FE solo, e **tre livelli in testa fin dall'inizio** (documento · rata · **cliente**), col terzo che si accende dopo. Un saldo calcolato in due posti diverge alla prima regola nuova, e sono numeri su cui qualcuno decide se sollecitare un cliente. ⭐ **Q-5 → (a)**: si ritira `approva_rimessa` — orfana da quando D14-e ha tolto il permesso alla forzatura — e nasce **`registra_distinta`**, `pericolosa = true`, il cancello sull'unico gesto irreversibile del cantiere. ⚠️ Due righe di seed (DB-11) e un `check_azione` nella view, **più l'assegnazione a un profilo nello stesso giro**: appena il controllo esiste, senza il permesso concesso non registra nessuno. ⭐ **Q-4 → (c)**: «da abbinare» e «sospese» sono **due voci di menu che aprono la stessa lista** col filtro già impostato — due porte per due mestieri, **un solo** seed a catalogo, perché il filtro vive nella toolbar e non nella definizione. ⚠️ E la decisione ha corretto una misura sbagliata del 22/08: scrivevo che quella coda «si popola solo con l'import», ma era vero **solo finché nessuno poteva digitare righe** — con l'inserimento manuale si riempie subito, quindi **la coda sale dalla slice 4 alla slice 3** (approvato da Tid). ⭐ **Q-3 → (a)**: la distinta si apre con un gesto esplicito e **un form** — *«l'operatore deve poter caricare delle informazioni per aprire la specifica contabile»*. Ne discendono tre cose concrete: il **centro si deriva dal canale** (chiederli entrambi a mano costruisce un errore evitabile, e un guard lo rifiuta), il form deve funzionare **col solo centro** finché gli enti di incasso non esistono (DATO-1), e ⚠️ **la riapertura va annunciata**: la funzione è un *get or create* e ridà la distinta di stamattina — se ha già righe, entrarci in silenzio è il modo in cui si registra due volte credendo di cominciare. **Q-1 → (a)**: nasce l'`ui_action` `confirm_and_retry` in `error_ui_overrides.py` sul codice della capienza — il frontend ramifica su `azioneUi` e **resta cieco ai codici**, che è la proprietà che rendeva fragile l'alternativa. ⛔ **Q-2 → il gesto non esiste**: *«il pagamento di una rata non si spezza»*, registrata nel brief madre come **D1-ter**. ⭐ **L'equivoco era mio e stava nell'esempio**: presentavo 1.200 su una rata da 1.000 come il caso da spezzare, ma se la rata è identificata l'atto del cliente è **uno solo con un importo sbagliato** — spezzarlo inventa due allocazioni dove ce n'è una e **decide al posto del cliente** dove vanno i soldi di troppo. 🔴 **E la ragione per cui D1-bis diceva il contrario non era sbagliata allora**: preferiva spezzare perché *«l'eccedenza resta denaro identificato invece di sparire dentro una rata che non la giustifica»*, vero il 9 agosto perché le sistemazioni non c'erano. Il lotto 7 le ha costruite: l'eccedenza **ha un elenco e un registro**, e la preferenza cade perché il problema è stato risolto altrove. 📮 Ne discende: **cade la slice 6**, cade `POST /righe/{id}/spezza/`, e cade `fn_spezza_riga_contabile` — che era **l'unico oggetto DB ancora mancante**: da adesso il database non deve più niente a questo cantiere **tranne i quattro seed di lista**. ✅ Il piano passa da **sette slice a sei** e da **tre prerequisiti DB a due**. ⚠️ **D1 regge intatta**: un incasso che copre tre rate resta tre righe, cambia solo *quando* si scrivono — subito, digitandole, invece che spezzando dopo |
 | **2026-08-24** | ⭐ **REVISIONE DEL PIANO dopo la chiusura del DB.** Il 22/08 il piano era scritto col DB al lotto 3 di 7 e metà slice in attesa; il team DB ha chiuso **tutti e sette i lotti** nella stessa giornata (71 changeSet, 14 pgTAP). Rimisurato **tutto** contro il database vivo e il codice BE/FE. 🔴 **Cinque misure del 22/08 sono risultate sbagliate** (§1.5), e due di esse **tolgono lavoro invece di aggiungerne**: il lookup delle rate non ha bisogno di niente dal DB (`list_fattura_scadenze` esiste già in `vendite_repository`) e l'`ui_action` dei rifiuti confermabili **non sta a catalogo DB** ma in `error_ui_overrides.py`, che è Python scritto a mano — Q-1 passa da «un giro col team DB» a **una riga più un ramo**. Le altre tre spostano il lavoro: la vista si chiama `vw_rate_fuori_capienza` e contiene **due** popolazioni (sovra-incasso *e* movimento contrario), la forzatura **non è un flag di payload** ma due colonne della riga (`forzata`, `motivo_forzatura`) che restano scritte e che l'elenco a valle legge, e `fn_get_or_create_vendite_contabile` **ha cambiato firma** (via `p_compensazione_id`, D15-e). ⭐ **I nove prerequisiti DB diventano tre**: due viste sono state consegnate senza che nessuno le chiedesse (`vw_rate_fuori_capienza` col lotto 5, `vw_eccedenze_da_sistemare` col lotto 7, e la seconda porta già il raggruppamento per cliente in finestra), due non erano del DB, uno è diventato lavoro BE di verifica. Restano **quattro seed di lista** (che genero io in bozza con `scripts/gen_seed_lista.py`, un round-trip invece di quattro). ✅ **BE-1 riverificata con uno script e non a campione**: 778 codici su 778 hanno la classe, e tutti i codici del cantiere hanno anche il ripiego — la coda che il piano DB elenca in cinque punti **è chiusa**. 📮 Restano **due code di lotto** che sono lavoro di minuti e vanno in slice 0: il ripiego di `E_RIGA_CONTABILE_DISTINTA_FINALE` porta ancora la frase vecchia, e tre codici marcati obsoleti il 22/08 sono ancora nel ripiego (BE-10). 🔴 **E la revisione ha trovato una cosa che nessuno dei tre brief dice**: `fn_get_saldo_rata` risponde **tre** numeri (registrato, in lavorazione, **incassato**) e `fn_get_saldo_fattura` ne risponde **due** — cioè la distinzione che §2.4 dichiara obbligatoria *«nella prima misura che si scrive»* esiste sulla rata e **non** sulla fattura, che è il livello che l'operatore guarda per primo. È **Q-10**, l'unica domanda nuova, e le due strade alternative sono peggiori entrambe (sommare le rate perde il fondo fattura, che ha fattura senza rata; riscrivere la formula nel BE crea due sedi per la stessa regola). ⭐ **Piano riordinato per valore**: le sette slice non hanno più dipendenze DB, la **registrazione sale da terza a seconda**, e la sola cosa che resta bloccata non è codice ma **dato** — senza il conto `uso = 'INCASSO'` dei due emittenti nessun canale di incasso è creabile (DATO-1), e con esso si ferma la sola slice 4. ⚠️ **Un vincolo nuovo dal lotto 6** (§2.6): `pagamenti.*` pretende `app.ruolo_applicativo = 'OPERATORE'` per leggere **e** per scrivere; verificato che middleware e worker della coda la impostano già, resta da controllare ciò che gira fuori da entrambi. Domande: restano **nove** — **Q-9 si è chiusa senza essere decisa** (le viste erano già lì, i seed si chiedono insieme), **Q-1 e Q-8 sono crollate di prezzo** senza cambiare risposta, e nasce Q-10, l'unica che tocca il modello |
 | 2026-08-22 | Stesura. Terreno BE/FE misurato **sul codice**, non sui brief. ⭐ **Sei cose risultavano già fatte** e i due brief esistenti non lo sapevano: BE-1 chiusa, i quattro cataloghi in whitelist, `fn_get_lookup_codici` che filtra già `obsoleto_dal`, l'area a catalogo, il dominio in `DOMAINS` e la sua chiave i18n. 🔴 **Vuoto per davvero**: `urls_v1.py` inesistente, `views.py` una riga di commento, `DOMAIN_MENUS['pagamenti']` a `[]`, e **nessuna** `ui.lista_definizione` di `pagamenti` — da cui il fatto che pesava di più: **ogni lista costa un prerequisito DB**. Piano in **sette slice** agganciate ai lotti DB, di cui tre eseguibili subito. 🔴 Due prerequisiti che il piano DB non conteneva (spezzatura di una riga, lookup delle rate) e un problema di confine: un rifiuto *confermabile* esce sul filo come un errore qualunque. Nove domande aperte |

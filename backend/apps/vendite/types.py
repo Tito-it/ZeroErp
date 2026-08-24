@@ -123,6 +123,14 @@ class LottoSegnalazioneRow(TypedDict):
     # contiene piu' step e uno step piu' task, e senza questo flag una
     # segnalazione di tre giri fa si legge come se fosse di adesso.
     job_corrente: bool
+    # ⭐ IL BERSAGLIO: su QUALE cosa l'errore punta — `[{"type", "id"}]`, gli
+    # stessi nomi dell'envelope, cosi' la scheda e il toast disegnano il gesto
+    # con un resolver solo. `None` = nessuna destinazione, che e' il caso
+    # normale (e oggi tutte le righe di origine `LOTTO`).
+    # ⛔ Da non confondere con `fattura_id`: quello e' il documento che ha
+    # FALLITO, questo e' dove l'operatore deve andare. Sul caso collaudato sono
+    # due fatture diverse.
+    target: list[dict[str, str]] | None
 
 
 class LottoTaskRunRow(TypedDict):
@@ -139,6 +147,7 @@ class LottoTaskRunRow(TypedDict):
     error_code: str | None
     error_message: str | None
     meta: dict[str, Any]
+    giro_corrente: bool
 
 
 class LottoFattureRow(TypedDict):

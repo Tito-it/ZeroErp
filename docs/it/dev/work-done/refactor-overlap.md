@@ -251,6 +251,39 @@ Niente `DEFERRABLE`: con close-before-activate nella stessa transazione l'EXCLUD
 immediato basta. **Ambito** resta nella chiave (COMMERCIO/COMMODITY coesistono, §2.4).
 A valle: guard applicativo BE proattivo (§3.3) ora può usare la semantica nuova.
 
+#### 📌 Una conseguenza sul push offerta→contratto — *misurata il 2026-08-24, non è un difetto*
+
+> **Perché è scritta qui.** È emersa due volte, e la seconda ha rischiato di far
+> aprire un cantiere contro una decisione già presa. La si registra **accanto
+> alla decisione che la genera**, così la prossima volta la si trova invece di
+> ridedurla.
+
+Con un incumbent **in bozza**, `vendite.fn_contratto_sovrapposto` non lo
+restituisce (filtra `AND c.partecipa_overlap_snapshot`, e un DRAFT non
+partecipa). In `fn_push_offerta_a_contratto` l'overlap vale quindi `NULL` e
+**l'intero blocco viene saltato**: né il rifiuto `E_CONTRATTO_OVERLAP_ESISTENTE`
+né la chiamata a `fn_chiudi_contratto_per_successione`.
+
+➡️ **Ne discende che la successione automatica dal push richiede un incumbent
+già `ATTIVO`.** Con due bozze sovrapposte, `p_chiudi_contratto_esistente` non
+ha effetto.
+
+⭐ **E va bene così, per due ragioni indipendenti:**
+
+| | Perché non è un buco |
+| --- | --- |
+| 1 | **Semantica**: *succedere* significa chiudere un contratto **attivo** e farne partire un altro. Una bozza non si succede — si modifica o si scarta. Il verbo non ha oggetto |
+| 2 | **Il rifiuto parlante c'è comunque**, solo più avanti: all'attivazione il guard proattivo di `contratti_service.emetti()` (§3.3) rifiuta **nominando** il contratto in conflitto; e se anche si arrivasse all'EXCLUDE, `ex_contratti_no_overlap` è **mappato** a `E_VENDITE_CONTRATTO_OVERLAP` con un messaggio scritto. In nessun ramo l'operatore vede un errore di vincolo nudo |
+
+⚠️ **La trappola da cui guardarsi**, ed è quella in cui si è caduti: la catena
+«DRAFT → niente overlap → niente successione» è vera e **si verifica in un
+minuto**; la conseguenza a valle («allora esplode alla promozione con un errore
+opaco») è **plausibile e falsa**, e si vede solo misurando `emetti()` e la mappa
+dei vincoli. Dedurre il secondo pezzo dal primo è l'errore.
+
+Presidiato da `test-contratti-overlap-draft-escluso-v1` (due DRAFT sovrapposti
+ammessi, attivazione sovrapposta bloccata).
+
 ### 3.5 Anti-regressione (per non ricascarci)
 
 Il declassamento EXCLUDE→indice è passato silenzioso perché:

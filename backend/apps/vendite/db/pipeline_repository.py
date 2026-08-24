@@ -500,7 +500,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 SELECT
                     riga_key, origine, data_ora, livello, messaggio, error_code,
                     fase, fattura_id, documento_display, importo,
-                    disabilitato, job_corrente, total_count, fuori_job_count
+                    disabilitato, job_corrente, total_count, fuori_job_count,
+                    target
                 FROM vendite.fn_list_lotto_segnalazioni(
                     p_lotto_id          => %s,
                     p_origine           => %s,
@@ -537,6 +538,21 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 "importo": str(row[9]) if row[9] is not None else None,
                 "disabilitato": bool(row[10]),
                 "job_corrente": bool(row[11]),
+                # ⭐ IL BERSAGLIO: su quale cosa l'errore punta, per offrire un
+                # gesto invece di far ricopiare un id. Forma `[{type, id}]`,
+                # **byte-identica** a quella dell'envelope d'errore: la scheda e
+                # il toast usano lo stesso resolver senza convertire niente.
+                #
+                # ⛔ NON E' `fattura_id`, che pure sta due righe piu' su. Quello
+                # e' il documento che ha FALLITO — nel collaudo la 19563, che
+                # l'operatore sta gia' guardando in questa lista; il bersaglio e'
+                # dove deve ANDARE, la 835. Sono due entita' diverse, e usare la
+                # prima darebbe un pulsante che riporta dove si e' gia'.
+                #
+                # ⚠️ `jsonb_out`: da un cursore RAW psycopg non decodifica i
+                # jsonb, arrivano come stringa. NULL resta NULL = nessun
+                # bersaglio, che e' il caso normale e non un difetto.
+                "target": jsonb_out(row[14]),
             }
             for row in rows
         ]
@@ -552,8 +568,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         order_by: str | None = None,
         order_dir: str = "desc",
         solo_attivi: bool = True,
+        solo_giro_corrente: bool = False,
+        task_stato: list[str] | None = None,
         max_rows: int | None = None,
-    ) -> tuple[list[LottoTaskRunRow], int]:
+    ) -> tuple[list[LottoTaskRunRow], int, int]:
         # ⭐ LA SORGENTE E' LA FUNZIONE DB, non una query nostra (BE-2 del brief
         # liste drawer lotto, 2026-08-22). Prima c'erano DUE verita' sullo
         # stesso elenco: una `SELECT` qui, con ordine inchiodato e senza
@@ -567,10 +585,23 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         # leggerlo, quindi il totale e' zero per costruzione.
         # ⚠️ `order_by` NON si valida qui: la funzione ha la sua whitelist e su
         # un nome sconosciuto ripiega sul default. Ricopiarla nel backend
-        # sarebbe la terza verita'.
+        # sarebbe la terza verita'. ⭐ Vale identico per `task_stato`: uno stato
+        # che la funzione non conosce non aggiunge e non toglie nulla, e il
+        # vocabolario dei task lo possiede il DB.
+        #
+        # ⭐ I DUE FILTRI del `20260824-11`, e sono in coda alla firma apposta:
+        # le chiamate posizionali precedenti valgono invariate.
+        # ⚠️ `esclusi_count` NON e' un accessorio: e' cio' che dice al lettore
+        # che sta guardando una FETTA. Invariante garantita dal DB:
+        # `total_count + esclusi_count` = le righe che il lotto ha davvero.
+        # ⛔ Per questo il metodo torna una TERNA e non piu' una coppia: chi
+        # legge il totale filtrato deve avere sotto mano anche cio' che manca.
         tetto = _DRAWER_EXPORT_MAX_ROWS if max_rows else 500
         safe_limit = max(1, min(int(max_rows or limit), tetto))
         safe_offset = max(0, int(offset))
+        # Lista vuota trattata come assente: «nessuno stato scelto» e «tutti gli
+        # stati» sono la stessa domanda, e un array vuoto a DB non lo sarebbe.
+        stati = [s for s in (task_stato or []) if s] or None
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -578,14 +609,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     id, lotto_id, pipeline_id, stato_doc_fiscale_id,
                     task_code, fase, tentativo, task_stato,
                     started_at, ended_at, error_code, error_message,
-                    meta, total_count
+                    meta, giro_corrente, total_count, esclusi_count
                 FROM vendite.fn_list_lotto_task_runs(
-                    p_lotto_id   => %s,
-                    p_solo_attivi => %s,
-                    p_limit      => %s,
-                    p_offset     => %s,
-                    p_order_by   => %s,
-                    p_order_dir  => %s
+                    p_lotto_id           => %s,
+                    p_solo_attivi        => %s,
+                    p_limit              => %s,
+                    p_offset             => %s,
+                    p_order_by           => %s,
+                    p_order_dir          => %s,
+                    p_solo_giro_corrente => %s,
+                    p_task_stato         => %s
                 )
                 """,
                 [
@@ -595,11 +628,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     safe_offset,
                     order_by or None,
                     order_dir,
+                    bool(solo_giro_corrente),
+                    stati,
                 ],
             )
             rows = cursor.fetchall()
 
-        total_count = int(rows[0][13]) if rows else 0
+        total_count = int(rows[0][14]) if rows else 0
+        # ⚠️ Su zero righe non c'e' nessuna riga da cui leggere gli esclusi:
+        # vale zero per costruzione, come il totale.
+        esclusi_count = int(rows[0][15]) if rows else 0
         result: list[LottoTaskRunRow] = [
             {
                 "id": int(row[0]),
@@ -618,10 +656,14 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 # lo decodifica fuori dall'ORM): senza questa conversione il
                 # consumatore farebbe `str.get(...)`.
                 "meta": jsonb_out(row[12]) or {},
+                # «Questa riga appartiene all'ultima passata?» ⚠️ Passata, NON
+                # azione dell'operatore: `until_done` ne incatena piu' d'una e
+                # ognuna scrive il proprio `PIPELINE_STARTED`, che e' l'ancora.
+                "giro_corrente": bool(row[13]),
             }
             for row in rows
         ]
-        return result, total_count
+        return result, total_count, esclusi_count
 
     # Scopo: Recupera `lotto_stato_doc_fiscale_id` dal contesto applicativo o dal database.
     def get_lotto_stato_doc_fiscale_id(self, lotto_id: int) -> int | None:

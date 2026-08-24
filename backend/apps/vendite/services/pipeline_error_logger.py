@@ -44,10 +44,27 @@ class PipelineErrorLogger:
         function_name: str = "vendite.pipeline_error_logger.log_error",
     ) -> None:
         # Non inferire dal testo: scope e severity sono espliciti.
+        #
+        # ⛔ `error_code` e NON `code`, ed e' una lezione gia' pagata una volta.
+        #    La chiave del codice su una riga di log e' `error_code`: la scrivono
+        #    cosi' le funzioni DB, la dichiara cosi' il seed della lista delle
+        #    segnalazioni come `campo_sorgente`, e `marca_fattura_in_errore` ha
+        #    lo stesso commento dal giorno in cui il difetto emerse su
+        #    `fatture_log`. Qui era rimasta `code`, cioe' la stessa cosa scritta
+        #    in due modi da due scrittori.
+        # 🔴 Misurato dal team DB il 2026-08-24: su `fatturazione_lotti_log` le
+        #    righe con `code` erano **17 su 588, TUTTE di livello C** — il
+        #    codice spariva a video proprio sulle critiche, dove serve di piu'.
+        #    Nessuno se n'era accorto perche' il percorso DB funziona, quindi il
+        #    meccanismo *sembrava* a posto: e' il modo peggiore di sbagliare.
+        # ⚠️ Il lettore ha un `COALESCE` sulle due chiavi (regge le 17 righe
+        #    storiche), ma quello e' un rattoppo sul LETTORE: il rimedio e'
+        #    questa riga. Le righe vecchie restano leggibili, le nuove sono
+        #    giuste, e non serve nessun backfill.
         meta: dict[str, Any] = {
             "scope": scope,
             "severity": severity,
-            "code": code,
+            "error_code": code,
             "detail": detail,
             "context": context or {},
             "function_name": function_name,

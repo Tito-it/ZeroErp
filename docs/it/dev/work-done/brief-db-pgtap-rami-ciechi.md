@@ -7,7 +7,7 @@
 > **rossi**, e nessuno lo sapeva.
 >
 > **Origine.** 2026-08-24, di rimbalzo. Verificando un'asserzione del cantiere
-> [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) è emerso un test
+> [brief-db-bersaglio-errore.md](../work-in-progress/brief-db-bersaglio-errore.md) è emerso un test
 > rosso; la baseline appena girata da Tid diceva *«nessuna regressione»*. Non
 > mentiva: **quel file non l'aveva guardato**.
 >
@@ -108,8 +108,21 @@ non è una prova d'innocenza.
 suo guard di overlap — e con lui tutto il ramo `p_chiudi_contratto_esistente` —
 può scattare **solo** contro un incumbent già promosso. È coerente col disegno
 (una bozza non blocca), ma vuol dire che la successione, sul flusso di push, non
-è raggiungibile finché il contratto precedente resta in bozza. **Registrato qui,
-non deciso qui.**
+è raggiungibile finché il contratto precedente resta in bozza. ~~**Registrato
+qui, non deciso qui.**~~
+
+> ✅ **CHIUSA il 2026-08-24, e la risposta è: non è un difetto.** L'osservazione
+> è stata verificata fino in fondo e portata **accanto alla decisione che la
+> genera** — [refactor-overlap.md §3.4](refactor-overlap.md), dove ora c'è il
+> riquadro *«Una conseguenza sul push offerta→contratto»*.
+>
+> ⛔ **E una deduzione che sembrava ovvia era falsa**, vale la pena saperlo: da
+> qui si era concluso che il conflitto riemergesse alla promozione come
+> violazione nuda dell'`EXCLUDE`. Non succede — il guard proattivo di
+> `contratti_service.emetti()` rifiuta **nominando** il contratto in conflitto, e
+> `ex_contratti_no_overlap` è comunque **mappato** a `E_VENDITE_CONTRATTO_OVERLAP`.
+> La catena a monte si verifica in un minuto; la conseguenza a valle **si misura**,
+> non si deduce.
 
 ---
 
@@ -119,8 +132,7 @@ non deciso qui.**
 | --- | --- |
 | **Mettere i cinque nella baseline dei rossi** | Un rosso registrato è un rosso che smette di far rumore. Sono stati guardati, non archiviati |
 | **Aggiustare i test perché tornassero verdi** | ⭐ La differenza sta nel come: in ogni caso si è prima stabilito **chi aveva ragione** — e la risposta è sempre venuta da un changeSet con la sua data e la sua motivazione, non da una preferenza. Due asserzioni ne sono uscite **più forti** di prima (la 10 rovesciata, la 14 che ora asserisce il codice), e una è **nata** (la 1-bis) |
-| **Toccare il database** | Nessuno dei cinque lo chiedeva: erano tutti test che descrivevano un mondo superato |
-| **Toccare il database** | Nessuno di questi cinque ha ancora una diagnosi che giustifichi un changeSet |
+| **Toccare il database** | Nessuno dei cinque lo chiedeva: erano tutti test che descrivevano un mondo superato, non oggetti difettosi |
 
 ---
 

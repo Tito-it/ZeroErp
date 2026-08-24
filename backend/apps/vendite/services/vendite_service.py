@@ -1480,6 +1480,7 @@ def get_documento_passaggi(
 # ------------------------------------------------------------------
 
 _FN_FATTURA_DETTAGLIO = "vendite.vendite_service.get_fattura_dettaglio"
+_FN_FATTURA_GIORNALE = "vendite.vendite_service.get_fattura_giornale"
 
 
 # Scopo: Documento fattura completo per la consultazione a video: testata
@@ -1579,6 +1580,75 @@ def get_fattura_dettaglio(
 # =====================================================================
 
 _FN_FONDI_DA_DECIDERE = "vendite.vendite_service.fn_fondi_fattura_da_decidere"
+
+
+# Scopo: IL GIORNALE DI UNA FATTURA — «cosa e' successo a questo documento, in
+#        ordine di tempo». Sola lettura, elenco paginato dalla vista cucita
+#        `script.vw_giornale_entita` (Passo A del filone osservabilita').
+#
+# ⭐ PRIMO CONSUMATORE DELLA VISTA, e quindi anche il suo collaudo: fino al
+#    2026-08-24 non l'aveva interrogata nessuno, e il suo perimetro era
+#    verificato dal pgTAP e non dall'uso.
+#
+# 🔴 IL CANCELLO E' LA TESTATA, e non e' una precauzione ridondante. La vista e'
+#    `security_invoker`, quindi su una fattura fuori scope la RLS la farebbe
+#    rispondere ZERO RIGHE — cioe' «a questo documento non e' successo niente»
+#    invece di «questo documento non lo vedi». Sono due frasi diverse e non
+#    devono leggersi uguali: stesso ordine di lettura di `get_fattura_dettaglio`
+#    e degli altri pannelli satellite della fattura.
+#
+# ⛔ NIENTE AGGREGATI, nessuna finestra temporale, nessun conteggio per periodo:
+#    quelli sono il Passo B e hanno prerequisiti loro. Qui si risponde a una
+#    domanda sola.
+def get_fattura_giornale(
+    *,
+    fattura_id: int,
+    page: int = 1,
+    page_size: int = 50,
+    auth_user_id: int | None = None,
+) -> dict[str, object]:
+    ErrorManager.require(
+        bool(fattura_id and fattura_id > 0),
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="fattura_id obbligatorio e > 0",
+        context={"fattura_id": fattura_id},
+        function_name=_FN_FATTURA_GIORNALE,
+        log_to_db=True,
+    )
+    offset = _validate_pagination(page, page_size, _FN_FATTURA_GIORNALE)
+    repository = VenditeRepository()
+
+    # 1. IL CANCELLO — vedi sopra. Inesistente e fuori scope danno la stessa
+    #    risposta: distinguerli confermerebbe l'esistenza di una fattura di un
+    #    altro emittente.
+    testata = repository.get_fattura_testata(fattura_id, auth_user_id=auth_user_id)
+    if testata is None:
+        ErrorManager.raise_error(
+            code="E_FATTURA_NON_TROVATA",
+            message="Fattura non trovata.",
+            detail=f"Nessuna fattura accessibile con id={fattura_id}",
+            context={"fattura_id": fattura_id},
+            function_name=_FN_FATTURA_GIORNALE,
+            log_to_db=True,
+        )
+
+    # 2. Solo ORA il giornale: la testata ha gia' autorizzato l'accesso.
+    righe, total_count = repository.list_giornale_entita(
+        entity_type="FATTURA",
+        entity_id=fattura_id,
+        limit=page_size,
+        offset=offset,
+    )
+    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
+    return {
+        "fattura_id": fattura_id,
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "results": righe,
+    }
 
 
 # Scopo: Restituisce l'elenco paginato dei fondi fattura «da decidere»
