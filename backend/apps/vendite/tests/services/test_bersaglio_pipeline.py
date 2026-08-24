@@ -37,14 +37,21 @@ from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 
 # Scopo: L'errore pilota come il database lo solleva davvero: codice, campo,
 #        soluzione e bersaglio, tutti e quattro sui loro canali.
+#
+#        ⚠️ FORMA AGGIORNATA AL `T-3b` (changeSet `20260824-13`, 2026-08-24):
+#        la frase ha perso entrambi gli id e porta il CONTEGGIO dei bloccanti;
+#        il bersaglio ne ha DUE, e l'ORDINE e' portante — prima il documento da
+#        numerare (835, che e' quello del giro), poi il padre bloccante (820).
+#        ⛔ Qui l'ordine non e' un dettaglio: e' cio' che dice QUALE fattura ha
+#        rifiutato dentro un giro di lotto, ora che la frase non lo dice piu'.
 def _errore_937():
     return make_db_error(
-        "Non si puo' numerare il documento 835: la fattura che rettifica non e'"
-        " ancora numerata (documento 820).",
+        "Non si puo' numerare il documento: rettifica righe di altri documenti"
+        " che non risultano ancora numerati. Documenti da numerare prima: 1.",
         codice="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
         campo="numero",
-        hint="Numerare prima il documento indicato, poi ripetere.",
-        bersaglio="FATTURA:820",
+        hint="Numerare prima i documenti che questo rettifica, poi ripetere.",
+        bersaglio="FATTURA:835,FATTURA:820",
     )
 
 
@@ -99,7 +106,11 @@ class BersaglioGiroPerFatturaTest(SimpleTestCase):
     def test_il_bersaglio_sopravvive_al_giro_per_fattura(self):
         exc = self._solleva()
         self.assertEqual(exc.code, "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
-        self.assertEqual(exc.targets, (Bersaglio(tipo="FATTURA", id="820"),))
+        # ⭐ Due bersagli, nell'ordine: il documento del giro e poi il padre.
+        self.assertEqual(
+            exc.targets,
+            (Bersaglio(tipo="FATTURA", id="835"), Bersaglio(tipo="FATTURA", id="820")),
+        )
 
     # Scopo: ⭐ Con lui passano il campo da correggere e la SOLUZIONE a catalogo.
     #        Da questa strada non erano mai usciti: usciva il solo
@@ -123,10 +134,16 @@ class BersaglioPersistitoTest(SimpleTestCase):
             code="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
             message="x",
             detail="dettaglio",
-            targets=(Bersaglio(tipo="FATTURA", id="820"),),
+            targets=(
+                Bersaglio(tipo="FATTURA", id="835"),
+                Bersaglio(tipo="FATTURA", id="820"),
+            ),
         )
         meta = _meta_errore_fattura({"task": "numera_fatture"}, exc)
-        self.assertEqual(meta["bersagli"], [{"type": "FATTURA", "id": "820"}])
+        self.assertEqual(
+            meta["bersagli"],
+            [{"type": "FATTURA", "id": "835"}, {"type": "FATTURA", "id": "820"}],
+        )
         # ⚠️ Le chiavi sono INGLESI come nell'envelope: il consumatore a video e'
         #    lo stesso, e due forme sarebbero due strade da tenere allineate.
         self.assertEqual(meta["task"], "numera_fatture")
@@ -155,11 +172,15 @@ class BersaglioEsitoRunnerTest(SimpleTestCase):
 
         exc = ServiceError(
             code="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
-            message="Non si puo' numerare il documento 835.",
+            message="Non si puo' numerare il documento: rettifica righe di"
+            " altri documenti che non risultano ancora numerati.",
             detail="dettaglio",
-            hint="Numerare prima il documento indicato.",
+            hint="Numerare prima i documenti che questo rettifica.",
             fields=("numero",),
-            targets=(Bersaglio(tipo="FATTURA", id="820"),),
+            targets=(
+                Bersaglio(tipo="FATTURA", id="835"),
+                Bersaglio(tipo="FATTURA", id="820"),
+            ),
         )
         repo = MagicMock()
         repo.get_lotto_stato_doc_fiscale_id.return_value = 8
@@ -174,7 +195,10 @@ class BersaglioEsitoRunnerTest(SimpleTestCase):
             )
         self.assertEqual(esito["motivo_stop"], "ERRORE")
         errore = esito["errore"]
-        self.assertEqual(errore["targets"], [{"type": "FATTURA", "id": "820"}])
+        self.assertEqual(
+            errore["targets"],
+            [{"type": "FATTURA", "id": "835"}, {"type": "FATTURA", "id": "820"}],
+        )
         self.assertEqual(errore["fields"], ["numero"])
         self.assertIn("Numerare prima", errore["hint"])
 

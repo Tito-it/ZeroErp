@@ -515,6 +515,26 @@ Perché è questa la prima superficie:
 Approda dove il caso si guarda già: la diagnostica del lotto e il pannello
 «Passaggi» della fattura.
 
+> ⛔ **VINCOLO DECISO DA TID IL 2026-08-24, e arriva da un altro cantiere**
+> ([brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) §8.3): **un
+> diario tecnico non diventa una superficie per tutti.** Se una schermata mostra
+> `dbops.error_log` — o qualunque altro registro di appunti tecnici — nasce
+> **dietro un permesso dichiarato**, per i tecnici, non visibile a chiunque apra
+> l'applicazione.
+>
+> ⭐ **La ragione, con le sue parole**: *«altrimenti continuiamo a creare altre
+> tabelle per mettere le segnalazioni tecniche che poi qualcuno mette a video…
+> un loop infinito. Tutto il lavoro attuale è stato per dividere le due aree.»*
+> Il loop si riconosce così: si separa l'appunto tecnico dalla frase per la
+> persona, poi si mette l'appunto a video «così si vede meglio», e a quel punto
+> serve un terzo posto per gli appunti. La separazione **non si difende
+> scrivendo meglio: si difende negando la superficie**.
+>
+> ⚠️ Conseguenza diretta su questo passo: il `context` di una riga resta
+> **appunti per chi indaga** e non va ripulito o riscritto per renderlo
+> presentabile — la timeline di questo passo è **forense**, per chi ha il
+> permesso di indagare, non una vetrina.
+
 ### Passo B — Le superfici aggregate
 
 Dopo il Passo 1, e **dopo che esistano dati veri da aggregare**:

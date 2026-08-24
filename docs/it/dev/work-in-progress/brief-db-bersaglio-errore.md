@@ -53,9 +53,17 @@
 > è l'errore **persistito** — cioè il lettore che il §1 dice essere quello che
 > conta. §7-bis.8.
 >
-> 🔵 **Restano tre cose che non bloccano**: la **proposta L5** (derivazione
-> automatica, mai decisa), **due candidati T-5** rimasti (§L6, «fine corsa»), e
-> le due domande di fondo del §8.
+> 🔵 **Resta UNA cosa, e non è lavoro arretrato**: **due candidati T-5** (§L6,
+> «fine corsa»), che si convertono *quando lo chiede un caso*.
+> ⛔ **La proposta L5 è ARCHIVIATA — respinta da Tid il 2026-08-24**, sulla
+> misura del §L5: riprodurrebbe 9 bersagli su 14 già coperti, e ne inventerebbe
+> **138 mai vagliati**.
+> ✅ **E le due domande di fondo del §8 sono CHIUSE** (Tid, 2026-08-24):
+> `error_log` **non** diventa una superficie per tutti — se mai si mostrasse,
+> solo ai tecnici e dietro permesso, *«o continuiamo a creare tabelle per gli
+> appunti tecnici che poi qualcuno mette a video»* — e il catalogo messaggi
+> **non** prende una dimensione «superficie», perché le superfici si separano
+> nei **percorsi**, non nel catalogo.
 >
 > ⚠️ **Il catalogo dei tipi** è il prerequisito, applicato dall'altro cantiere
 > il 2026-08-22; questo lotto gli ha aggiunto `key_selector` (T-1d).
@@ -659,7 +667,7 @@ elenco — e *quanti* sono lo dice già la frase (sul 937 c'è `v_n_bloccanti`).
 | --- | --- |
 | **Non legge il catalogo a runtime** | Sarebbe una query in più dentro il percorso d'errore, e un catalogo irraggiungibile diventerebbe un errore dentro l'errore. La funzione **valida solo la forma** (`^[A-Z][A-Z0-9_]*$` per il tipo, id non vuoto) — esattamente come fa già col nome del campo. ⭐ **Il vocabolario lo presidia la CI** (L3), che è dove un errore di programmazione va scoperto |
 | **Non fallisce mai per colpa del bersaglio** | Un bersaglio malformato lascia la casella **vuota** e scrive `W_BERSAGLIO_MALFORMATO` nel log. È la lezione del 18/08 tradotta: *la funzione che serve a riportare un errore non può essere quella che lo distrugge*. ⛔ E il `W_` **resta un `W_`**: si logga, non si solleva |
-| **Non deriva niente da sola** | Nessuna composizione automatica dalle chiavi `<tipo>_id` già presenti nel contesto: è il **L5**, ed è una proposta, non questo lotto |
+| **Non deriva niente da sola** | Nessuna composizione automatica dalle chiavi `<tipo>_id` già presenti nel contesto: era il **L5**, ⛔ **respinto il 2026-08-24** sulla misura — e quindi non è più nemmeno una proposta aperta |
 
 ### L2 — Il pilota: il 937 — ✅ **APPLICATO il 2026-08-24**
 
@@ -699,7 +707,11 @@ qualcosa.
 | `docs/it/linee-guida-sql.md` §5 | ⭐ **La quarta riga della tabella dei canali**, che oggi ne ha tre (`p_error_code` → backend, `p_context->>'campo'` → frontend, `VARIADIC` → operatore). Il bersaglio è il quarto destinatario, e va **in quella tabella**: è il posto dove chi scrive una guard va a guardare |
 | idem | La regola delle classi (Q-E) e la forma dell'array (§4.2), **con l'avvertenza del nome**: `bersaglio`, non `target` — che in 16 punti significa già un'altra cosa |
 
-### L5 — La derivazione automatica *(proposta, NON decisa)*
+### L5 — La derivazione automatica — ⛔ **ARCHIVIATA: RESPINTA (Tid, 2026-08-24)**
+
+> ⛔ **Decisione: non si fa.** Il roll-out resta **esplicito, uno alla volta**.
+> La sezione resta scritta perché la misura che l'ha respinta vale più della
+> proposta: dice **quanto** vale l'esplicito, non solo che si preferisce.
 
 Due punti di sollevamento vivi su tre scrivono già una chiave `<tipo>_id` nel
 contesto (§4.1). La tentazione è comporre il bersaglio da lì, senza toccare
@@ -720,6 +732,54 @@ di scriverla:
 ➡️ **Si valuta dopo il pilota**, misurando su un campione quante volte la chiave
 `<tipo>_id` più ovvia è davvero l'entità dove si vorrebbe andare. Fino ad allora
 il roll-out è **esplicito, uno alla volta**.
+
+#### 📏 LA MISURA — 2026-08-24, sui corpi vivi *(1082 punti di sollevamento, 410 funzioni)*
+
+⭐ **Non su un campione: sul totale**, e con un metro che non richiede giudizio.
+I **14 punti che il bersaglio ce l'hanno** sono verità nota — lì qualcuno ha già
+deciso, caso per caso, dove va mandato l'operatore. La domanda diventa
+verificabile: *applicando la regola candidata a quei 14, quante volte esce lo
+stesso bersaglio?*
+
+| Esito | Punti | Quali |
+| --- | ---: | --- |
+| ✅ **Identico** | **9** | I due `E_FLUSSI_*`, `E_FATTURA_SENZA_RIGHE`, i due `E_SCADENZE_*`, i due `E_LOTTO_NON_RIUTILIZZABILE`, i due `E_DDT_*` |
+| ⛔ **Nessun bersaglio** | 1 | `E_DEFINIZIONE_BOZZA_ESISTENTE`: il contesto porta `tipo_prestazione_id` e `emittente_fiscale_id` — **l'entità di destinazione non è nominata da nessuna parte**. È il caso che il brief chiama «il più netto del roll-out», ed è esattamente quello che la derivazione non sa fare |
+| ⚠️ **Parziale** | 1 | `E_FATTURA_RETTIFICATA_SENZA_NUMERO`: darebbe il solo `fattura_id`, cioè il documento **su cui** l'errore è successo, e perderebbe i **padri bloccanti** — la metà azionabile. ⛔ E prima del `T-3b` avrebbe dato l'elemento **sbagliato dei due** |
+| ⛔ **Entità sbagliata** | 2 | `E_OFFERTA_CONTRATTO_GIA_GENERATO` e `E_OFFERTA_ORDINE_GIA_GENERATO`: il contesto ha `offerta_id`, ma il bersaglio vero è il **contratto** (o l'ordine) **già generato**. Il commento nel corpo lo dice con le stesse parole: *«si manda l'operatore sull'ORDINE che esiste, non sull'offerta che ha già aperto»* |
+| ⚠️ **Guardia persa** | 1 | `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`: tipo e valore sarebbero giusti, ma il bersaglio vero nasce da una `SELECT` che verifica che il preventivo **esista** — quell'errore copre due casi, «non c'è» e «c'è ma è nello stato sbagliato». Senza la guardia, nel primo caso comparirebbe un pulsante **che non apre niente** |
+
+➡️ **9 su 14: due terzi.** E i cinque mancati sbagliano in **quattro modi
+diversi**, che è il dato peggiore: non c'è una correzione sola da aggiungere
+alla regola.
+
+⛔ **E c'è il lato che la proposta non guardava: i punti che il bersaglio NON ce
+l'hanno.** La derivazione, per come è pensata, non si applica ai 14 — si applica
+a **tutti**. Sui 1068 punti senza bersaglio farebbe fuoco su **138**:
+
+| Classe del codice | Punti | Perché non dovrebbe farne nessuno |
+| --- | ---: | --- |
+| `DATO_ERRATO` | 49 | È un campo sbagliato in un form: l'operatore è **già sulla cosa**, e il canale giusto è `COLUMN` |
+| `CONFLITTO_STATO` | 35 | L'unica classe legittima — ma il roll-out **li ha già riletti uno per uno** (§L6) e conclusi «esclusioni motivate»: la derivazione riaprirebbe a tappeto proprio la lista che si è deciso di non fare |
+| `TECNICO` | 22 | ⛔ Vietati dalla **Q-E**: su un 500 non c'è nessun gesto |
+| `NON_TROVATO` | 17 | ⛔ *Se la cosa non si trova, non ci si può andare*: un pulsante verso un id che non esiste |
+| altri (`NON_ESEGUIBILE`, `NON_PERMESSO`, fuori catalogo) | 15 | |
+
+⭐ **Il numero che decide non è 9 su 14: è 138 pulsanti che nessuno ha vagliato**,
+di cui al massimo 35 in una classe ammissibile. E il §5.5 dice perché non sono
+neutri: *un bersaglio inutile insegna a ignorare il pulsante*. Sommato
+all'asimmetria già scritta qui sopra — sul canale `COLUMN` un valore sbagliato è
+**inerte**, un bersaglio sbagliato è **attivo** — la derivazione automatica
+comprerebbe 9 punti già coperti al prezzo di 138 non verificati.
+
+➡️ ⛔ **DECISO da Tid il 2026-08-24: L5 è ARCHIVIATA, respinta**, con questa
+misura come motivazione. Il roll-out resta **esplicito, uno alla volta** — che è
+anche ciò che il §L6 ha già deciso per conto suo. ⚠️ Da rifare **solo** se cambia il
+presupposto: un catalogo che dichiari, per codice, quale chiave del contesto è
+il bersaglio — che però non è più una derivazione, è il roll-out scritto altrove.
+
+*(Misura riproducibile: i corpi vivi in `docs/it/dbzero/*/funzioni/*.md`, le
+classi da `error_policies_generated.py`.)*
 
 ### L6 — Il roll-out *(T-5)* — 🏁 **a FINE CORSA** *(il passo DB che resta è il `T-3b`)*
 
@@ -1020,25 +1080,46 @@ nessuno sa quale documento ha rifiutato, è invece l'informazione principale. Se
 desse fastidio si nasconde **a video** il bersaglio che coincide con la riga:
 non si toglie dal database, che non sa su quale superficie l'errore verrà letto.
 
-#### 📋 Il debito documentale che questo passo lascia fuori dal perimetro DB
+#### 📋 Il debito documentale che questo passo lascia fuori dal perimetro DB — ✅ **CHIUSO dal BE il 2026-08-24**
 
 ⚠️ **Quattro punti citano la frase VECCHIA del 937**, e da oggi descrivono un
 messaggio che non esiste più. Nessuno di loro **rompe** — i test lo fabbricano a
 mano, non lo leggono dal catalogo, e infatti restano verdi — ma una finta che
 imita una frase ritirata si legge come documentazione, ed è così che una casa si
-ritrova a credere in un messaggio che nessuno solleva:
+ritrova a credere in un messaggio che nessuno solleva.
 
-| Dove | Cosa c'è scritto |
-| --- | --- |
-| `docs/it/backend/vendite/manual/api_lotto_fatture_list.md` | un payload d'esempio con `errore_messaggio` nella forma vecchia |
-| `backend/apps/vendite/tests/services/test_bersaglio_pipeline.py` | `hint="Numerare prima il documento indicato…"` — la `soluzione` riscritta |
-| `backend/apps/core/tests/services/test_db_error_target.py` | idem, più il `message` a due id |
-| `backend/apps/vendite/tests/services/test_pipeline_step_executor.py` | il messaggio completo nella forma vecchia |
+⭐ **Cercandoli, erano SEI.** I due che questa tabella non aveva sono in fondo, e
+non è un rimprovero al passaggio: il perimetro DB non poteva vederli. È la
+seconda volta in questo cantiere che *«i punti si cercano, non si conoscono»*
+(la prima fu il quinto punto di traduzione, §7-bis.1).
 
-➡️ **È del BE**: il perimetro DB non tocca `backend/`. Costa quattro stringhe, e
-la forma nuova è quella nel riquadro qui sopra.
+| # | Dove | Cosa c'era scritto | Esito |
+| --- | --- | --- | --- |
+| 1 | `docs/it/backend/vendite/manual/api_lotto_fatture_list.md` | un payload d'esempio con `errore_messaggio` nella forma vecchia | ✅ payload **e** la riga della tabella campi, che prometteva un messaggio *«che nomina il documento»* |
+| 2 | `backend/apps/vendite/tests/services/test_bersaglio_pipeline.py` | `hint="Numerare prima il documento indicato…"` — la `soluzione` riscritta | ✅ |
+| 3 | `backend/apps/core/tests/services/test_db_error_target.py` | idem, più il `message` a due id | ✅ |
+| 4 | `backend/apps/vendite/tests/services/test_pipeline_step_executor.py` | il messaggio completo nella forma vecchia | ✅ e con lui l'**asserzione**: vedi sotto |
+| **5** | ⭐ `backend/apps/core/services/error_messages_fallback.py` | il **ripiego** del 937 — quello che si mostra quando il messaggio del catalogo non arriva — diceva *«le righe di **una** fattura … numerare prima **quella**»*: singolare, e senza il caso «fuori dal perimetro» | ✅ riscritto al plurale, senza `%s` |
+| **6** | ⭐ `docs/it/backend/vendite/manual/api_fattura_giornale.md` | un secondo payload d'esempio, scritto **il giorno prima** nel cantiere `event_log` e non ancora committato: per questo non poteva essere in lista | ✅ |
 
-⚠️ **Un quinto punto NON va toccato**: la riga **R-3** di
+⛔ **E non erano solo quattro stringhe.** Due cose andavano oltre la prosa:
+
+* **le finte portano ora DUE bersagli**, `FATTURA:835,FATTURA:820`. Un finto a
+  un bersaglio solo riproduce una forma che il database **non solleva più**, e i
+  test di trasporto smetterebbero di provare che il **secondo** elemento arriva
+  — cioè proprio ciò che il `T-3b` ha aggiunto. Gli assert a valle sono passati
+  da uno a due elementi, **in ordine**;
+* **un'asserzione diceva il falso.** In `test_pipeline_step_executor` c'era
+  `assertIn("835", message)` con il commento *«è l'unica cosa che dice QUALE
+  documento numerare prima»*. Oggi quella frase non porta nessun id: il test ora
+  verifica che il messaggio del database arrivi **intatto** (`"Documenti da
+  numerare prima"`) invece di essere appiattito sul generico del giro
+  per-fattura, che è la cosa che quel test è nato per misurare.
+
+✅ **3919 test verdi** dopo l'allineamento (l'unico rosso della suite è il
+presidio `NULLS` su un file di un altro cantiere, estraneo a questo).
+
+⚠️ **Un settimo punto NON va toccato**: la riga **R-3** di
 [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
 cita la frase vecchia raccontando cosa si leggeva sul lotto 6260 il 2026-08-23.
 Lì è **storia**, ed è giusta com'è.
@@ -1680,15 +1761,65 @@ quale superficie l'errore verrà letto.
 | ~~**Q-D**~~ | ✅ **CHIUSA (Tid, 2026-08-22): il catalogo cresce col roll-out**, una voce per volta, insieme al messaggio che la usa. ⭐ Niente voci che promettono una destinazione che nessuna schermata raggiunge, e il presidio T-4 impedisce di dimenticarsene | §5.1-bis · T-1c |
 | ~~**Q-E**~~ | ✅ **CHIUSA (Tid, 2026-08-22): sì sulle classi rimediabili, NO sui `TECNICO`.** Il bersaglio è un gesto per l'operatore, e su un 500 non c'è gesto: l'entità resta negli appunti, per chi indaga. Stessa logica già in servizio per il campo da evidenziare | §5.5 |
 
-### Aperte — non bloccano la scrittura
+### ✅ Chiuse — le due di fondo, decise da Tid il 2026-08-24
 
-3. 🔵 **`error_log` diventerà leggibile in-app?** Se sì il `context` smette di
-   essere solo diagnostico e diventa una superficie: cambia cosa è lecito
-   scriverci. Domanda gemella del Passo 3 di
-   [analisi-osservabilita-log.md](analisi-osservabilita-log.md).
-4. 🔵 **Il catalogo messaggi distingue le superfici?** Operatore, portale
-   cliente, shop leggono lo stesso `config.messaggi_errore`. ⚠️ È più grossa di
-   questo brief e non lo blocca, ma è la domanda che gli sta sotto.
+**3. ⛔ `error_log` NON diventa una superficie per tutti.** *(Era: «diventerà
+leggibile in-app?»)*
+
+➡️ **Decisione: no.** E se un giorno qualcosa di quel diario si mostrasse, vale
+**solo per i tecnici, dietro accesso autorizzato** — mai per chiunque apra
+l'applicazione.
+
+⭐ **La motivazione è la più importante scritta in questo brief, perché è la
+ragione per cui il brief esiste.** Parole di Tid: *«altrimenti continuiamo a
+creare altre tabelle per mettere le segnalazioni tecniche che poi qualcuno mette
+a video… un loop infinito. Tutto il lavoro attuale è stato per dividere le due
+aree.»*
+
+⛔ **Il loop è reale, e va nominato per poterlo riconoscere**: si separa
+l'appunto tecnico dalla frase per la persona (§2, due lettori due canali); poi
+si mette l'appunto a video «così si vede meglio»; a quel punto l'appunto è
+diventato una frase per una persona, e serve un terzo posto dove mettere gli
+appunti. La separazione non si difende scrivendo meglio: si difende **negando la
+superficie**.
+
+➡️ **Regola operativa che ne discende**, e vale oltre questo brief: *ogni
+schermata che mostri `dbops.error_log` — o qualunque diario tecnico — nasce
+dietro un permesso*. Non «visibile agli amministratori per convenzione»: un
+permesso dichiarato, come per ogni altra area.
+
+⭐ **Conseguenza qui, concreta**: l'assunto del §2 **regge**, e con lui le scelte
+che ci si appoggiano — su tutte `primo_bloccante`, che il `T-3b` ha tolto dalla
+frase e **lasciato nel contesto**. Era la decisione giusta e resta tale.
+
+⚠️ La domanda gemella resta al **Passo A** di
+[analisi-osservabilita-log.md](analisi-osservabilita-log.md), ma ci arriva
+**decisa**: lì si progetta una timeline per chi indaga, non una vetrina.
+*(Riferimento aggiornato il 2026-08-24: era «Passo 3», che dal 22/08 è diviso in
+**A** forense e **B** aggregato.)*
+
+**4. ⛔ Il catalogo messaggi NON distingue le superfici.** *(Era: «deve
+distinguerle?»)*
+
+➡️ **Decisione: no**, e non serve. Parole di Tid: *«lo stesso messaggio lo
+potrebbero leggere diverse persone, ma non tutti leggono tutti i messaggi. La
+maggior parte di quello fatto finora sono attività da operatore interno: non è
+pensabile che uno dallo shop lanci la fatturazione.»*
+
+⭐ **Il punto che scioglie la domanda**: le superfici non si separano nel
+**catalogo**, si separano nei **percorsi**. Un utente dello shop non attraversa
+la funzione che numera un lotto, quindi il messaggio 937 non lo raggiunge — non
+perché il catalogo lo nasconda, ma perché quella strada non è sua. Il timore
+(«la stessa frase davanti a tre pubblici») descriveva una sovrapposizione che
+**oggi non esiste**.
+
+⛔ **Quindi niente dimensione «superficie»** accanto a `lingua`: sarebbe 756
+messaggi moltiplicati per un pubblico che su quasi tutti non passa mai.
+
+⚠️ **Quando tornerà a valere, e come si riconosce**: il giorno in cui un codice
+viene sollevato **anche** su un percorso raggiungibile dallo shop o dal portale.
+Allora è **quel messaggio** a doversi rivolgere a quel lettore — un caso, non una
+colonna. È lo stesso criterio del roll-out: *riprende quando lo chiede un caso*.
 
 ---
 
@@ -1696,6 +1827,9 @@ quale superficie l'errore verrà letto.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-24 (§8 chiuso) | ✅ **LE DUE DOMANDE DI FONDO SONO DECISE, e il brief non ha più domande aperte.** *(3)* ⛔ **`error_log` non diventa una superficie per tutti**: se mai si mostrasse, **solo ai tecnici e dietro un permesso dichiarato**. ⭐ La motivazione di Tid è la ragione stessa del cantiere: *«altrimenti continuiamo a creare altre tabelle per mettere le segnalazioni tecniche che poi qualcuno mette a video… un loop infinito; tutto il lavoro attuale è stato per dividere le due aree»*. Il loop va saputo riconoscere — si separa l'appunto dalla frase, poi si mette l'appunto a video, e serve un terzo posto per gli appunti: **la separazione si difende negando la superficie, non scrivendo meglio**. ⭐ Conseguenza concreta: l'assunto del §2 regge, e con lui il `primo_bloccante` che il `T-3b` ha tolto dalla frase e lasciato nel contesto. 📌 Il vincolo è stato **portato dove verrà consumato** — Passo A di `analisi-osservabilita-log.md` — perché lì si progetta la timeline, e una decisione che vive solo nel brief che l'ha generata è una decisione che il prossimo non trova. *(4)* ⛔ **Il catalogo messaggi non prende una dimensione «superficie»**: *«non tutti leggono tutti i messaggi; non è pensabile che uno dallo shop lanci la fatturazione»*. ⭐ Il punto che scioglie la domanda: **le superfici si separano nei percorsi, non nel catalogo** — chi sta nello shop non attraversa la funzione che numera un lotto, quindi il 937 non lo raggiunge. La sovrapposizione temuta oggi non esiste, e il giorno che esistesse sarebbe **quel messaggio** a doversi rivolgere a quel lettore: un caso, non una colonna |
+| 2026-08-24 (L5 respinta · ErroreRigaInfo) | ⛔ **L5 ARCHIVIATA — respinta da Tid**, sulla misura fatta sui **corpi vivi**: 1082 punti di sollevamento, 410 funzioni. ⭐ **Il metro non chiede un giudizio**: i 14 punti che il bersaglio ce l'hanno sono verità nota, quindi si chiede alla regola candidata di riprodurli. Ne riproduce **9 su 14**, e i cinque mancati sbagliano in **quattro modi diversi** — nessun bersaglio (l'entità non è nominata nel contesto), bersaglio parziale (il 937: perde i padri bloccanti), **entità sbagliata** (i due `E_OFFERTA_*`: manderebbe all'offerta, e il corpo dice testualmente il contrario) e **guardia di esistenza persa** (il preventivo che non c'è → un pulsante che non apre niente). ⭐ **Ma il numero che ha deciso è un altro**: la derivazione non si applica ai 14, si applica a tutti — sui 1068 punti senza bersaglio farebbe fuoco su **138**, di cui 22 `TECNICO` (vietati dalla Q-E), 17 `NON_TROVATO`, 49 `DATO_ERRATO` e 35 `CONFLITTO_STATO` **già riletti uno per uno** dal §L6. Nove punti già coperti al prezzo di 138 non vagliati, e un bersaglio inutile non è neutro (§5.5). 🆕 **`ErroreRigaInfo`: chiuso il rilievo restituito dal team DB** — `BersaglioAzioni` prende `entitaCorrente` e non rende il bersaglio che coincide con la riga. ⛔ Il filtro sta nel **componente** e non nei due chiamanti (stessa ragione della normalizzazione), e il **toast non passa di lì** perché è l'unica superficie dove quel bersaglio è l'informazione principale. ⚠️ Assente = nessun filtro: un pulsante di troppo si vede, uno nascosto per sbaglio no |
+| 2026-08-24 (BE, allineamento al T-3b) | ✅ **Chiuso il debito documentale che il §6 L7 lasciava al BE** — e i punti erano **sei, non quattro**: oltre ai quattro dichiarati, il **ripiego** di `error_messages_fallback.py` (che il perimetro DB non poteva vedere: è la frase che si mostra quando il messaggio del catalogo **non arriva**, ed era rimasta al singolare) e il payload d'esempio di `api_fattura_giornale.md`, scritto il giorno prima nell'altro cantiere e ancora non committato. ⭐ **È la seconda volta che in questo cantiere «i punti si cercano, non si conoscono»** (la prima fu il quinto punto di traduzione). ⛔ **E non erano quattro stringhe**: le finte sono passate a **due bersagli** — un finto a uno solo riproduce una forma che il database non solleva più, e i test di trasporto smetterebbero di provare che il secondo elemento arriva — e un'asserzione **diceva il falso** (`assertIn("835", message)`, col commento *«è l'unica cosa che dice QUALE documento»*): ora misura che la frase del database arrivi **intatta**, che è ciò per cui quel test è nato. ✅ **3919 verdi**. 📌 Il frontend **non ha richiesto niente**, verificato sul percorso vero: `BersaglioAzioni` cicla sulle azioni e l'etichetta porta già l'id, quindi i due pulsanti si distinguono da soli — la previsione del §7-ter ha retto. |
 | 2026-08-24 (T-3b eseguito) | 🎉 **IL `T-3b` È FATTO, E IL CANTIERE HA RAGGIUNTO IL PROPRIO SCOPO**: la frase del 937 non porta più nessuna chiave interna. Applicato alle 13:28 — changeSet `20260824-13` e la riga 937 di `messaggi_errore.csv` **nella stessa passata**, come il §5.3 pretende. ⭐ **Le due domande del §7-ter, decise da Tid.** *(1)* Il bersaglio ha **due ruoli**: il documento da numerare **in testa**, poi i padri bloccanti visibili in ordine di id. ⛔ **Non era una scelta di resa: era ciò che rendeva possibile il passo.** Con un bersaglio solo, tolti gli id dalla frase, dentro un giro di lotto *quale* fattura ha rifiutato non lo direbbe più nessuno — il Rilievo 1 del BE. Il primo elemento c'è sempre **per costruzione**: se il documento non fosse visibile a chi opera, la funzione sarebbe uscita con `E_FATTURA_NON_TROVATA` molto prima della guardia. *(2)* **Una frase sola** per entrambi i rami, con un `%s` che porta il **conteggio** — non un identificativo — e la `soluzione` riscritta perché regga **anche dove il pulsante non c'è**. ⭐ **E ne è uscita una regola generale**, ora nelle linee-guida §5: *in testa al bersaglio va la cosa **su cui** l'errore è successo*. Non è estetica — il canale compatto tiene i primi cinque elementi, quindi la testa è ciò che sopravvive al tetto, e dentro un'elaborazione massiva è l'unica cosa che dice *quale*. ✅ **Verde**: 8/8 sul pilota come applicazione (da 7, il test 8 è nuovo; i test 6 e 7 sono passati dall'insieme alla **stringa esatta**, perché l'ordine è diventato una proprietà), catalogo messaggi 6/6, bersagli-non-dichiarati 4/4, guardrail (G) muto, e **nessuna regressione su 222 file di `vendite`**. ⭐ **La prova, non la deduzione**: la frase è *«…Documenti da numerare prima: 2»* e il canale `FATTURA:19753,FATTURA:19752,FATTURA:19754` — dove `19753` è la nota, che **non è l'id più basso**: è in testa perché è il soggetto, ed è esattamente ciò che il test 7 distingue da una coincidenza. 📋 Restituito a BE/FE un rilievo che non blocca: su `ErroreRigaInfo` il primo bersaglio coincide con la riga, quindi lì il pulsante è ridondante (sul toast del runner è invece l'informazione principale) — si nasconde a video, non si toglie dal database |
 | 2026-08-24 (passaggio T-3b) | 📋 **Scritto il passaggio del `T-3b` al team DB (§7-ter)** — l'ultimo passo del cantiere, e da oggi sbloccato: B-1 e B-2 sono in servizio e collaudati su due superfici. 🔴 **E non è scrivibile com'era previsto.** Rileggendo il pilota contro il §4.2 sono emerse due cose che il piano non aveva. **(1)** Il messaggio ha due `%s` — il documento DA numerare e quello che BLOCCA — ma il bersaglio ne copre **uno solo**, il padre: togliere entrambi gli id lascia scoperto il primo, e dentro un giro di lotto **quale** non lo direbbe più né la prosa né il pulsante. È il rischio che il §5.3-bis aveva previsto, e la risposta doveva essere il bersaglio. ⭐ **Ne esce una divergenza fra questo brief e il codice**: il §4.2 dichiara che il 937 ha **due** bersagli — ed è la ragione per cui la forma è un array — mentre il pilota ne emette uno. Non è un difetto di ieri: il pilota è nato così e nessuno l'aveva riletto contro quella frase. **(2)** Nel ramo **fail-closed** il secondo valore non è nemmeno un id (`'riga N'`) e il bersaglio è assente per scelta (§4.3): lì togliere l'id lascerebbe l'operatore con **meno di oggi**, senza nessun pulsante a compensare. ➡️ Le due domande sono poste **come domande** — la prima è una scelta di modello, non di stesura. ⛔ Restano invece non negoziabili i vincoli del §5.3 (catalogo e chiamanti nello **stesso** changeSet, mai il CSV per primo; il test 5 li prende in CI solo se viaggiano insieme) e la revisione della `soluzione` a catalogo, che oggi dice «il documento **indicato**» e senza id non ha più referente. ⭐ Il frontend è già pronto alla risposta 1: con due bersagli disegna due pulsanti senza modifiche — è il motivo per cui l'array fu voluto anche con un elemento solo |
 | 2026-08-24 (segnalazioni) | ✅ **Il bersaglio è anche sulla scheda Segnalazioni del lotto, e collaudato in-app**: dal messaggio il documento è linkato e si apre. ⭐ È l'errore **persistito** — il lettore che il §1 chiama «l'operatore cinque minuti dopo»: il toast serve chi c'era, questa scheda chi non c'era. **DB** (loro): `fn_list_lotto_segnalazioni` ritorna `target jsonb`. **BE** (mio): la colonna in coda alla SELECT e nella riga, più il tipo. ⚠️ **E la loro nota era giusta dove io stavo per «correggerla»**: la firma della funzione mette `target` in 16ª posizione, ma il repository **non fa `SELECT *`** — nomina le colonne e non prende `id` — quindi lì è davvero `row[14]`. Due frame diversi, entrambi veri; l'unico modo di saperlo era leggere il repository invece della firma. ⚠️ **Due test sulla mappatura POSIZIONALE**, perché è il difetto che sarebbe silenzioso: un off-by-one metterebbe `fuori_job_count` dentro `target` — un numero al posto di un array, cioè **nessun pulsante senza nessun errore**. Uno dei due presidia anche che `target ≠ fattura_id`. 🔴 **Accolto il loro rilievo su `error_code`**: `PipelineErrorLogger` scriveva `code`, ora scrive `error_code`. ⭐ Ed era una lezione **già pagata una volta** — `marca_fattura_in_errore` ha lo stesso identico commento dal giorno in cui il difetto emerse su `fatture_log`, e non era stata applicata all'altro scrittore. Verificato prima di rinominare: nessun lettore di `meta->>'code'` oltre al loro COALESCE, nessuna vista né Python legge `error_log.context->>'code'`. Le 17 righe storiche restano leggibili, nessun backfill. 🆕 **Estratto `core/components/BersaglioAzioni.vue`** alla 2ª copia (regola del 2, dichiarato a Tid): la resa dei pulsanti, usata da `ErroreRigaInfo` e dalla cella del messaggio. ⛔ Il **toast non passa di lì** — riceve azioni già composte perché vive nel template PrimeVue col suo `closeCallback`, e condividerlo porterebbe i18n e store dentro un toast; il pezzo condiviso vero è `azioniDaBersagli`. ⛔ E la **normalizzazione la fa il componente**, non il chiamante: è il bug già commesso una volta (payload inglese, resolver che legge `tipo` → nessun pulsante, in silenzio). ✅ 3.927 test verdi, E2E compresa |

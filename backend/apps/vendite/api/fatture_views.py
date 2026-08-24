@@ -24,6 +24,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id
 from apps.core.api.payload_validators import qp_int_strict
+from apps.core.services.value_normalizer import as_bool
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_service import (
     get_fattura_dettaglio,
@@ -121,6 +122,37 @@ class ApiFatturaGiornale(DomainAPIView):
         parameters=[
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="sort_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Colonna di ordinamento: `gravita` (default, i piu' gravi "
+                    "prima) oppure `quando`. Un valore fuori whitelist ricade "
+                    "sul default. ⛔ L'ordinamento e' del SERVER perche' la "
+                    "lista e' paginata: ordinare la sola pagina caricata "
+                    "risponderebbe a una domanda piu' stretta senza dirlo."
+                ),
+            ),
+            OpenApiParameter(
+                name="sort_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Verso: `desc` (default) o `asc`.",
+            ),
+            OpenApiParameter(
+                name="ritirate",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Include anche le segnalazioni RITIRATE (`disabilitato`), che di "
+                    "default sono nascoste perche' appartengono a un tentativo poi "
+                    "rifatto. Quante ne sono state nascoste lo dice `ritirate_count`."
+                ),
+            ),
         ],
         responses={
             200: inline_serializer(
@@ -134,6 +166,7 @@ class ApiFatturaGiornale(DomainAPIView):
                             "page": serializers.IntegerField(),
                             "page_size": serializers.IntegerField(),
                             "total_pages": serializers.IntegerField(),
+                            "ritirate_count": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -149,6 +182,9 @@ class ApiFatturaGiornale(DomainAPIView):
             fattura_id=fattura_id,
             page=qp_int_strict(q.get("page"), "page", 1),
             page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
+            includi_ritirate=as_bool(q.get("ritirate"), default=False),
+            sort_by=q.get("sort_by") or "gravita",
+            sort_dir=q.get("sort_dir") or "desc",
             auth_user_id=get_scope_user_id(request),
         )
         return success_response(data)

@@ -23,15 +23,15 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import ErroreRigaInfo from '../../core/components/ErroreRigaInfo.vue'
 import BersaglioAzioni from '../../core/components/BersaglioAzioni.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ErroreRigaInfo from '../../core/components/ErroreRigaInfo.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
-import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import FatturaDrawer from './FatturaDrawer.vue'
 import { useDocumentiPerSorgenteStore } from '../../documenti/stores/documentiPerSorgente'
@@ -731,13 +731,12 @@ function fatturaNumero(row) {
             <TabPanel value="fatture">
               <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
                    destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
-                   stesso di ogni pagina lista, quindi queste tre si comportano come le
-                   altre anche quando la regola cambia.
+                   stesso di ogni pagina lista.
                    ⚠️ Sul piccolo schermo le icone collassano nel kebab da se':
                    `PageActionsBar` lo fa al breakpoint, non serve nulla qui. -->
               <div class="app-page-toolbar">
                 <!-- Spaziatore: `space-between` con un figlio solo allineerebbe
-                     a SINISTRA. Queste due liste non hanno filtri propri. -->
+                     a SINISTRA. Questa lista non ha filtri propri. -->
                 <span class="app-page-filters" />
                 <PageActionsBar :actions="barraDocumenti">
                   <template #suffix>
@@ -761,8 +760,7 @@ function fatturaNumero(row) {
                 @config-loaded="listaDocumenti.onConfigLoaded"
               >
                 <!-- Numero componibile serie+numero: il seed dichiara `numero`,
-                     l'etichetta a video la compone il FE (come su
-                     `dash_competenza_errori`). -->
+                     l'etichetta a video la compone il FE. -->
                 <template #cell-numero="{ data }">{{ fatturaNumero(data) }}</template>
                 <!-- ⚠️ La nota di credito non e' un'anomalia: severity neutra,
                      mai `danger` — e il totale negativo si mostra com'e',
@@ -788,6 +786,7 @@ function fatturaNumero(row) {
                       :quando="data.errore_quando"
                       :livello="data.errore_livello"
                       :bersagli="data.errore_bersagli || []"
+                      :entita-corrente="{ tipo: 'FATTURA', id: data.fattura_id }"
                       :titolo="t('vendite.lotti.errore_documento_titolo')"
                     />
                   </span>
@@ -795,28 +794,23 @@ function fatturaNumero(row) {
                 <!-- ⛔ LO SLOT SI CHIAMA `actions`, NON `cell-azioni`.
                      `ListaConfigurabile` rende la colonna delle azioni SOLO se
                      la config la dichiara **e** il caller fornisce lo slot
-                     `#actions` (`haAzioni`) — la colonna `azioni` non passa
-                     dalla catena `#cell-<campo>` delle colonne dati.
-                     🔴 Con il nome sbagliato la condizione era falsa e la
-                     colonna non veniva resa affatto: **nessun kebab**, e
-                     nessun errore da nessuna parte. Il difetto si e' visto solo
-                     in app (rilievo di Tid, 2026-08-24) perche' il seed
-                     dichiarava la colonna e i permessi erano a posto: tutto
-                     "corretto" tranne il nome dello slot.
+                     `#actions` (`haAzioni`).
+                     🔴 Col nome sbagliato la condizione e' falsa e la colonna
+                     non viene resa affatto: nessun kebab, e nessun errore da
+                     nessuna parte.
                      ⚠️ `compact` va accettato: e' il flag con cui il BB
                      comprime le azioni quando lo spazio si stringe. -->
                 <template #actions="{ data, compact }">
                   <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" :force-compact="compact" />
                 </template>
-                <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il
-                     default PrimeVue, che e' in inglese. -->
+                <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il default
+                     PrimeVue, che e' in inglese. -->
                 <template #empty>
                   <div class="app-empty-state"><i class="pi pi-inbox" /><p>{{ t('vendite.lotti.nessuna_fattura') }}</p></div>
                 </template>
               </ListaConfigurabile>
             </TabPanel>
 
-            <!-- Tentativi dei task (uno per corsa di ogni passo dello step). -->
             <TabPanel value="task">
               <!-- ⭐ Contenitore STANDARD delle liste: filtri a sinistra, azioni a
                    destra. Non un allineamento scritto a mano — `app-page-toolbar` e' lo
@@ -957,12 +951,22 @@ function fatturaNumero(row) {
                        ⛔ Il gesto NON si costruisce su `fattura_id`, che pure
                        sta nella riga: quello e' il documento che ha FALLITO e
                        che l'operatore sta gia' guardando qui; il bersaglio e'
-                       dove deve ANDARE. Sul caso collaudato sono due fatture
-                       diverse (19563 contro 835). -->
+                       dove deve ANDARE.
+                       ⭐ E dal `T-3b` (2026-08-24) `fattura_id` torna utile
+                       proprio per QUESTO: il bersaglio porta ora anche il
+                       documento su cui l'errore e' successo — che su una riga
+                       e' la riga stessa — e passandolo come `entitaCorrente`
+                       quel pulsante si nasconde. Non e' il gesto: e' cio' che
+                       il gesto NON deve essere.
+                       ⚠️ Le righe di LOTTO non hanno documento: li' `null`,
+                       cioe' nessun filtro. -->
                   <template #cell-messaggio="{ data }">
                     <div class="app-segn-messaggio">
                       <span>{{ data.messaggio }}</span>
-                      <BersaglioAzioni :bersagli="data.target" />
+                      <BersaglioAzioni
+                        :bersagli="data.target"
+                        :entita-corrente="data.fattura_id ? { tipo: 'FATTURA', id: data.fattura_id } : null"
+                      />
                     </div>
                   </template>
                   <!-- Sulle righe di LOTTO non c'e' documento: si mostra la

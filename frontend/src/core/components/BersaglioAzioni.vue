@@ -24,6 +24,11 @@
 // legge `tipo` — passare l'array grezzo non risolve niente e **il pulsante non
 // compare mai**, senza errori e senza avvisi. Facendola qui, nessuna lista che
 // monti questo componente puo' sbagliarla.
+//
+// ⭐ E DA QUI PASSA ANCHE `entitaCorrente` (T-3b): le superfici di riga
+// nascondono il bersaglio che coincide con la riga. Sta nel componente per la
+// stessa ragione della normalizzazione — e' una regola di RESA, e il toast (che
+// non passa di qui) non la vuole affatto: li' quel bersaglio e' il principale.
 import { computed } from 'vue'
 import Button from 'primevue/button'
 import { useAuthStore } from '../../stores/auth'
@@ -36,6 +41,24 @@ const props = defineProps({
   // destinazione — e non e' un difetto: il messaggio si mostra lo stesso e
   // qui non compare niente. E' il patto «offerta, non promessa» (§4.3).
   bersagli: { type: [Array, null], default: null },
+  // ⭐ L'ENTITA' CHE QUESTA SUPERFICIE STA GIA' MOSTRANDO — `{tipo, id}`, la
+  // riga a cui il pannello e' attaccato. Un bersaglio che coincide con lei non
+  // e' un gesto: dice «vai dove sei gia'», e qui non si rende.
+  //
+  // ⭐ PERCHE' ESISTE (T-3b, 2026-08-24). Dal `T-3b` il bersaglio del 937 ha
+  // DUE ruoli: il documento **su cui** l'errore e' successo, in testa, e poi i
+  // documenti da sistemare. Sul TOAST il primo e' l'informazione principale —
+  // chi guarda un giro di lotto non sa quale documento abbia rifiutato — ma su
+  // una superficie di RIGA quel documento e' la riga stessa.
+  //
+  // ⛔ Si nasconde a VIDEO, e solo qui: dal database non si toglie, perche' il
+  // database non sa su quale superficie l'errore verra' letto (nota del team
+  // DB, §6 L7 del brief). La stessa riga di `error_log` alimenta entrambe.
+  //
+  // ⚠️ Assente = non si filtra niente. Una superficie che non sa dire su cosa
+  // sta non deve indovinarlo: mostrare un pulsante in piu' e' molto meno grave
+  // che nasconderne uno che serviva.
+  entitaCorrente: { type: [Object, null], default: null },
   size: { type: String, default: 'small' },
 })
 
@@ -46,11 +69,23 @@ const emit = defineEmits(['eseguita'])
 
 const auth = useAuthStore()
 
+// Scopo: I bersagli da rendere: tutti, meno quello che coincide con la riga.
+//        ⚠️ Il confronto e' su STRINGHE perche' `normalizzaBersagli` normalizza
+//        li' (`String(id).trim()`): un `id` numerico che arriva dal chiamante
+//        non deve mancare il confronto per il tipo del valore — sarebbe un
+//        filtro che non filtra, cioe' il difetto silenzioso di sempre.
+const daRendere = computed(() => {
+  const tutti = normalizzaBersagli(props.bersagli)
+  const qui = props.entitaCorrente
+  if (!qui?.tipo || qui.id === null || qui.id === undefined) return tutti
+  const idQui = String(qui.id).trim()
+  if (idQui === '') return tutti
+  return tutti.filter((b) => !(b.tipo === qui.tipo && b.id === idQui))
+})
+
 // ⚠️ `computed` e non un calcolo nel template: la risoluzione legge i permessi,
 // e su una tabella di righe ripeterla a ogni render sarebbe lavoro sprecato.
-const azioni = computed(() =>
-  azioniDaBersagli(normalizzaBersagli(props.bersagli), auth),
-)
+const azioni = computed(() => azioniDaBersagli(daRendere.value, auth))
 
 // Scopo: esegue il gesto e avvisa il contenitore. ⚠️ `finally`: se l'azione
 //        sollevasse, chi deve chiudersi si chiude comunque.

@@ -64,13 +64,23 @@ from apps.core.tests.db_error_fakes import make_db_error
 #        solleva davvero — codice sul canale CONSTRAINT, campo su COLUMN,
 #        bersaglio su DATATYPE. Un finto che non li porta tutti e tre fa
 #        passare il test per la ragione sbagliata.
-def _errore_pilota(*, bersaglio: str | None = "FATTURA:820") -> DatabaseError:
+#
+#        ⚠️ FORMA AGGIORNATA AL `T-3b` (changeSet `20260824-13`, 2026-08-24):
+#        la frase non porta piu' nessun id — porta il CONTEGGIO dei bloccanti —
+#        e il bersaglio ne ha DUE, nell'ordine che il database scrive: prima il
+#        documento DA NUMERARE (835, quello su cui l'errore e' successo), poi i
+#        padri bloccanti visibili (820). ⛔ Un finto a un bersaglio solo
+#        riprodurrebbe una forma che il database non solleva piu', e i test di
+#        trasporto smetterebbero di provare che il SECONDO elemento arriva.
+def _errore_pilota(
+    *, bersaglio: str | None = "FATTURA:835,FATTURA:820"
+) -> DatabaseError:
     return make_db_error(
-        "Non si puo' numerare il documento 835: la fattura che rettifica non e'"
-        " ancora numerata (documento 820).",
+        "Non si puo' numerare il documento: rettifica righe di altri documenti"
+        " che non risultano ancora numerati. Documenti da numerare prima: 1.",
         codice="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
         campo="numero",
-        hint="Numerare prima il documento indicato, poi ripetere.",
+        hint="Numerare prima i documenti che questo rettifica, poi ripetere.",
         bersaglio=bersaglio,
     )
 
@@ -180,7 +190,10 @@ class BersaglioTrasportoTest(TestCase):
     #        non dimostrava niente sugli altri quattro.
     def test_punto_1_database_error_nudo_arriva_nellenvelope(self):
         errore = ErrorTranslator.to_api_error(_errore_pilota())
-        self.assertEqual(errore.targets, (Bersaglio(tipo="FATTURA", id="820"),))
+        self.assertEqual(
+            errore.targets,
+            (Bersaglio(tipo="FATTURA", id="835"), Bersaglio(tipo="FATTURA", id="820")),
+        )
 
     # Scopo: Punto 2 — `translate_db_errors`, 46 punti di chiamata nei domini.
     #        ⚠️ Prima del 2026-08-24 questo trasportava il solo `hint`.
@@ -194,7 +207,10 @@ class BersaglioTrasportoTest(TestCase):
                 raise _errore_pilota()
         errore = ErrorTranslator.to_api_error(ctx.exception)
         self.assertEqual(errore.code, "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
-        self.assertEqual(errore.targets, (Bersaglio(tipo="FATTURA", id="820"),))
+        self.assertEqual(
+            errore.targets,
+            (Bersaglio(tipo="FATTURA", id="835"), Bersaglio(tipo="FATTURA", id="820")),
+        )
 
     # Scopo: Punto 3 — `raise_from_database_error`, 9 punti di chiamata.
     #        ⚠️ Prima del 2026-08-24 questo non trasportava nulla: ne' `hint`,
@@ -209,7 +225,10 @@ class BersaglioTrasportoTest(TestCase):
                 log_to_db=False,
             )
         errore = ErrorTranslator.to_api_error(ctx.exception)
-        self.assertEqual(errore.targets, (Bersaglio(tipo="FATTURA", id="820"),))
+        self.assertEqual(
+            errore.targets,
+            (Bersaglio(tipo="FATTURA", id="835"), Bersaglio(tipo="FATTURA", id="820")),
+        )
         # ⭐ E con lui la SOLUZIONE a catalogo, che da questa strada non era mai
         #    uscita: dice all'operatore cosa fare, ed e' meta' del gesto.
         self.assertIn("Numerare prima", errore.hint or "")
@@ -242,11 +261,18 @@ class BersaglioTrasportoTest(TestCase):
     def test_punto_4_service_error_porta_il_bersaglio_nellenvelope(self):
         exc = ServiceError(
             code="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
-            message="Non si puo' numerare il documento 835.",
-            targets=(Bersaglio(tipo="FATTURA", id="820"),),
+            message="Non si puo' numerare il documento: rettifica righe di"
+            " altri documenti che non risultano ancora numerati.",
+            targets=(
+                Bersaglio(tipo="FATTURA", id="835"),
+                Bersaglio(tipo="FATTURA", id="820"),
+            ),
         )
         errore = ErrorTranslator.to_api_error(exc)
-        self.assertEqual(errore.targets, (Bersaglio(tipo="FATTURA", id="820"),))
+        self.assertEqual(
+            errore.targets,
+            (Bersaglio(tipo="FATTURA", id="835"), Bersaglio(tipo="FATTURA", id="820")),
+        )
 
 
 class BersaglioEnvelopeTest(TestCase):
@@ -260,7 +286,8 @@ class BersaglioEnvelopeTest(TestCase):
         risposta = exception_to_error_response(_errore_pilota())
         payload = json.loads(risposta.content)
         self.assertEqual(
-            payload["error"]["targets"], [{"type": "FATTURA", "id": "820"}]
+            payload["error"]["targets"],
+            [{"type": "FATTURA", "id": "835"}, {"type": "FATTURA", "id": "820"}],
         )
 
     # Scopo: ⚠️ Una tupla VUOTA non deve diventare `"targets": []`. Una chiave

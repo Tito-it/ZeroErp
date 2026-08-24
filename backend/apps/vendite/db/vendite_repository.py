@@ -74,6 +74,36 @@ logger = logging.getLogger(__name__)
 # usi diversi, e confonderli significa o una pagina enorme o un file troncato.
 _LOTTO_FATTURE_EXPORT_MAX_ROWS = 10_000
 
+# ⭐ Le colonne ordinabili del GIORNALE di un'entita', e sono due sole di
+# proposito: la gravita' (default) e il tempo. ⛔ Non e' una lista ridotta «per
+# ora»: `registro`, `chi` e `cosa` raggrupperebbero, non ordinerebbero — e su un
+# elenco paginato un raggruppamento a video e' un ordinamento che mente.
+# ⚠️ Il valore `rango` non e' una colonna della vista: e' il rango calcolato
+# nella CTE, perche' il vocabolario e' testuale e in ordine alfabetico ERROR
+# verrebbe PRIMA di INFO e WARN — una scala che non e' una scala.
+_GIORNALE_SORT_COLUMNS: dict[str, str] = {
+    "gravita": "rango",
+    "quando": "quando",
+}
+
+
+# Scopo: la clausola `ORDER BY` del giornale di un'entita', a partire dalla
+#        colonna chiesta e dal verso. ⭐ E' una funzione PURA perche' e' la parte
+#        che si sbaglia in silenzio: un ordinamento storto non solleva niente e
+#        a video somiglia a un ordinamento giusto. Cosi' si prova senza DB.
+# ⚠️ Non concatena mai `NULLS ...` a mano: la direzione la compone
+#    `sql_order_direction`, che i NULL li porta gia' con se' (BB di casa).
+def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
+    direzione = sql_order_direction(sort_dir, default_desc=True)
+    if _GIORNALE_SORT_COLUMNS.get(sort_by or "", "rango") == "rango":
+        # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
+        #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
+        #    recenti» resta la lettura utile anche guardando dal meno grave.
+        #    `riga_id` chiude come sempre — e' il rimedio a R-1, il tempo da
+        #    solo non ordina (default `now()` = timestamp di transazione).
+        return f"t.rango_gravita {direzione}, t.quando DESC, t.riga_id DESC"
+    return f"t.quando {direzione}, t.riga_id {sql_tiebreak_direction(direzione)}"
+
 LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "fattura_id": "fllf.fattura_id",
     "numero": "f.numero",
@@ -278,6 +308,25 @@ class VenditeRepository:
                 fl.data_insert,
                 fl.user_insert,
                 s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                -- ⭐ QUANTI documenti e QUANTO valgono, sulla riga del lotto
+                -- (richiesta di Tid, 2026-08-24). Prima il lotto diceva com'e'
+                -- andato e non quanto pesa: per sapere se erano tre fatture o
+                -- trecento bisognava aprirlo.
+                -- ⚠️ Sotto-query e non JOIN + GROUP BY: un JOIN sul ponte
+                -- moltiplicherebbe la riga del lotto per il numero delle sue
+                -- fatture, e ogni altra colonna andrebbe aggregata a sua volta.
+                -- ⚠️ `COALESCE` sulla somma e non sul conteggio: un lotto senza
+                -- documenti vale ZERO euro (0 e' il totale giusto), ma
+                -- `count(*)` gia' torna 0 da se'. Sul totale il COALESCE serve
+                -- perche' `sum()` su zero righe da' NULL, che a video
+                -- diventerebbe un trattino dove il numero c'e' ed e' zero.
+                (SELECT count(*)
+                   FROM vendite.fatturazione_lotti_fatture lf_c
+                  WHERE lf_c.lotto_id = fl.id)                    AS n_fatture,
+                (SELECT COALESCE(sum(f_t.totale_doc), 0)
+                   FROM vendite.fatturazione_lotti_fatture lf_t
+                   JOIN vendite.fatture f_t ON f_t.id = lf_t.fattura_id
+                  WHERE lf_t.lotto_id = fl.id)                    AS totale_documenti,
                 -- ⭐ «C'e' un errore grave nel dettaglio»: UN SOLO documento
                 -- fallito basta ad accendere il segnale sulla riga del lotto
                 -- (richiesta di Tid, 2026-08-21). E' la forma dei gestionali a
@@ -369,7 +418,11 @@ class VenditeRepository:
             # vuota — cioe' SEMBRA la garanzia che il flag `multi_emittente`
             # pretende, senza esserlo.
             "emittente_ragione_sociale": row[18],
-            "ha_errori_gravi": bool(row[19]),
+            "n_fatture": int(row[19]),
+            # ⚠️ Stringa e non float, come ogni importo che esce da qui: un
+            # totale fiscale non passa da un binario a virgola mobile.
+            "totale_documenti": str(row[20]),
+            "ha_errori_gravi": bool(row[21]),
             "riaperto": bool(row[20]),
         }
 
@@ -425,6 +478,7 @@ class VenditeRepository:
         limit: int,
         offset: int,
         max_limit: int = LIST_MAX_LIMIT,
+        solo_recuperi_mese: bool = False,
     ) -> tuple[list[LottoListRow], int]:
         # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
         # protegge la lista a video; l'export lo alza esplicitamente (fino a
@@ -438,7 +492,35 @@ class VenditeRepository:
         params: list[Any] = []
 
         # Costruzione WHERE dinamica; ogni filtro è parametrizzato.
-        if competenza_mese is not None:
+        # ⭐ LA SCHEDA «RECUPERI DEL MESE» E' QUESTA STESSA LISTA con UNA
+        #    condizione diversa: i lotti di competenza PRECEDENTE che hanno
+        #    emesso documenti NEL mese filtrato. Colonne, decodifiche, whitelist
+        #    di ordinamento e seed restano gli stessi — quindi le due schede
+        #    mostrano le stesse informazioni e permettono le stesse azioni **per
+        #    costruzione**. Una seconda lista scritta a parte divergerebbe al
+        #    primo ritocco.
+        #
+        # ⚠️ Il caso che la motiva: una commessa di competenza GIUGNO fatturata
+        #    ad AGOSTO produce un documento con data agosto dentro un lotto di
+        #    giugno. Chi lavora sul mese di agosto non lo trova, perche' lo
+        #    cerca — giustamente — per la data del documento e non per la
+        #    competenza della commessa.
+        if solo_recuperi_mese:
+            conditions.append("fl.competenza_mese < %s")
+            params.append(competenza_mese)
+            conditions.append(
+                """
+                EXISTS (
+                    SELECT 1
+                      FROM vendite.fatturazione_lotti_fatture lf_r
+                      JOIN vendite.fatture f_r ON f_r.id = lf_r.fattura_id
+                     WHERE lf_r.lotto_id = fl.id
+                       AND date_trunc('month', f_r.data)::date = %s
+                )
+                """
+            )
+            params.append(competenza_mese)
+        elif competenza_mese is not None:
             conditions.append("fl.competenza_mese = %s")
             params.append(competenza_mese)
         if utility_id is not None:
@@ -3266,6 +3348,21 @@ class VenditeRepository:
     #    e' `fatture_log`). ⚠️ Il giorno che una fattura avra' righe da due
     #    registri, dentro lo stesso istante l'ordine tornera' arbitrario: allora
     #    servira' una sequenza vera, non un ripiego qui.
+    # ⭐ `disabilitato` — la segnalazione RITIRATA — arriva dal changeSet
+    #    `20260824-14`. Il nome e' quello della sorgente ed e' lo stesso che
+    #    espone `fn_list_lotto_segnalazioni`: lo stesso fatto non ha due nomi,
+    #    quindi il pannello della fattura e la scheda del lotto lo mappano su
+    #    «Ritirata» allo stesso modo.
+    # ⚠️ Sulla vista la colonna e' IN CODA (un `CREATE OR REPLACE VIEW` non puo'
+    #    inserirla in mezzo). Qui non morde: le colonne si nominano nella
+    #    `SELECT`, quindi la posizione la decidiamo noi — ma chi legge per
+    #    posizione da un `SELECT *` deve saperlo.
+    # ⛔ `NULL` NON vuol dire «non ritirata», e i due NULL non sono uguali: su
+    #    `event_log` il concetto non esiste (append-only, un evento e' un fatto
+    #    accaduto), sui `task_runs` il ritiro esiste ma su un altro asse
+    #    (`attivo` spegne il TENTATIVO, `disabilitato` ritira un SEGNALE). Da
+    #    qui il `COALESCE(..., false)`: dove il concetto non si applica, la riga
+    #    e' viva — che e' l'unica lettura che non inventa niente.
     def list_giornale_entita(
         self,
         *,
@@ -3273,26 +3370,81 @@ class VenditeRepository:
         entity_id: int,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[dict[str, Any]], int]:
+        escludi_ritirate: bool = True,
+        sort_by: str = "gravita",
+        sort_dir: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int, int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
+        # ⭐ L'ORDINE DI DEFAULT E' LA GRAVITA' (decisione di Tid, 2026-08-24
+        #    dopo la validazione in-app): la prima domanda davanti a un
+        #    documento e' «c'e' qualcosa che non va?», non «cosa e' successo per
+        #    primo». La cronologia resta a un clic, sulla colonna «quando».
+        # ⛔ E l'ordinamento sta QUI e non nel client: la lista e' PAGINATA lato
+        #    server, quindi ordinare a valle ordinerebbe la sola pagina
+        #    visibile — «il piu' grave» diventerebbe «il piu' grave fra i primi
+        #    50 in ordine di tempo», che e' un difetto silenzioso: a video
+        #    somiglia in tutto a un elenco ordinato bene.
+        order_clause = _giornale_order_clause(sort_by, sort_dir)
         with connection.cursor() as cursor:
+            # ⚠️ I due conteggi si calcolano PRIMA del filtro, in una CTE: una
+            # finestra sulla query filtrata non vedrebbe le righe nascoste, e
+            # dire quante se ne nascondono e' meta' del mestiere di nasconderle.
             cursor.execute(
                 """
-                SELECT
-                    riga_key, registro, quando, gravita, cosa,
-                    tx_id, correlation_id, auth_user_id, user_insert,
-                    COUNT(*) OVER () AS total_count
-                FROM script.vw_giornale_entita
-                WHERE entity_type = %s AND entity_id = %s
-                ORDER BY quando DESC, riga_id DESC
-                LIMIT %s OFFSET %s
-                """,
-                [entity_type, int(entity_id), safe_limit, safe_offset],
+                WITH tutte AS (
+                    SELECT riga_key, registro, riga_id, quando, gravita, cosa,
+                           tx_id, correlation_id, auth_user_id, user_insert,
+                           COALESCE(disabilitato, false) AS ritirata,
+                           -- ⭐ IL RANGO DELLA GRAVITA', qui e non nel client:
+                           --    il vocabolario normalizzato della vista e'
+                           --    INFO | WARN | ERROR, e ordinarlo per TESTO
+                           --    darebbe ERROR < INFO < WARN — cioe' un ordine
+                           --    alfabetico spacciato per una scala.
+                           -- ⚠️ NULL (e ogni parola non prevista) pesa come un
+                           --    ERROR, non come un INFO. La vista dichiara che
+                           --    una gravita' nulla significa «un vincolo si e'
+                           --    allargato e la mappa e' rimasta indietro»:
+                           --    mandarla in fondo la renderebbe invisibile
+                           --    dalla seconda pagina in giu', che e' il modo
+                           --    piu' efficace di nascondere un difetto. A video
+                           --    resta distinguibile — trattino e colore neutro
+                           --    (`gravitaGiornaleSeverity`), quindi nessuno la
+                           --    scambia per un errore vero.
+                           CASE gravita
+                               WHEN 'INFO' THEN 1
+                               WHEN 'WARN' THEN 2
+                               ELSE 3
+                           END AS rango_gravita
+                      FROM script.vw_giornale_entita
+                     WHERE entity_type = %s AND entity_id = %s
+                ), conteggi AS (
+                    SELECT COUNT(*) FILTER (WHERE NOT ritirata) AS vive,
+                           COUNT(*) FILTER (WHERE ritirata)     AS ritirate
+                      FROM tutte
+                )
+                SELECT t.riga_key, t.registro, t.quando, t.gravita, t.cosa,
+                       t.tx_id, t.correlation_id, t.auth_user_id, t.user_insert,
+                       t.ritirata, c.vive, c.ritirate
+                  FROM tutte t CROSS JOIN conteggi c
+                 WHERE NOT %s OR NOT t.ritirata
+                 ORDER BY {order_clause}
+                 LIMIT %s OFFSET %s
+                """.format(order_clause=order_clause),
+                [
+                    entity_type, int(entity_id), bool(escludi_ritirate),
+                    safe_limit, safe_offset,
+                ],
             )
             rows = cursor.fetchall()
 
-        total_count = int(rows[0][9]) if rows else 0
+        # ⚠️ Su zero righe non c'e' nessuna riga da cui leggere i conteggi. E' il
+        # caso «tutte ritirate»: la CTE li avrebbe, ma il filtro non lascia
+        # passare nulla da cui prenderli. Si ripiega su una domanda secca.
+        if rows:
+            vive, ritirate = int(rows[0][10]), int(rows[0][11])
+        else:
+            vive, ritirate = self._conta_giornale_entita(entity_type, entity_id)
         risultato: list[dict[str, Any]] = [
             {
                 "riga_key": str(row[0]),
@@ -3310,7 +3462,26 @@ class VenditeRepository:
                 "correlation_id": None if row[6] is None else str(row[6]),
                 "auth_user_id": None if row[7] is None else int(row[7]),
                 "user_insert": row[8],
+                "ritirata": bool(row[9]),
             }
             for row in rows
         ]
-        return risultato, total_count
+        return risultato, vive, ritirate
+
+    # Scopo: i due conteggi del giornale quando la pagina non ha righe da cui
+    #        leggerli — vedi il ripiego qui sopra.
+    def _conta_giornale_entita(self, entity_type: str, entity_id: int) -> tuple[int, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) FILTER (WHERE NOT COALESCE(disabilitato, false)),
+                       COUNT(*) FILTER (WHERE COALESCE(disabilitato, false))
+                  FROM script.vw_giornale_entita
+                 WHERE entity_type = %s AND entity_id = %s
+                """,
+                [entity_type, int(entity_id)],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return 0, 0
+        return int(row[0]), int(row[1])

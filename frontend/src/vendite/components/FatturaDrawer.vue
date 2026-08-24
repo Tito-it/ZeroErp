@@ -129,10 +129,20 @@ const noteCount = ref(0)
 const giornale = ref([])
 const giornaleTotale = ref(0)
 const giornaleCaricato = ref(false)
+// Quante righe il filtro nasconde: le segnalazioni RITIRATE, cioè quelle di
+// un tentativo poi rifatto. ⛔ Il numero non è un di più — senza, «nessun
+// evento» e «tre eventi, tutti superati» si leggono uguali.
+const giornaleRitirate = ref(0)
 // Quante righe stanno in una pagina. ⚠️ Non c'è paginatore: su un documento gli
 // eventi sono pochi (misurato: 3 sul caso più mosso). Se un giorno saranno di
 // più, la riga «mostrati N di M» qui sotto lo dice invece di tacerlo.
 const GIORNALE_PAGE_SIZE = 50
+// ⭐ L'ORDINE DI DEFAULT È LA GRAVITÀ (Tid, 2026-08-24, dopo la validazione
+// in-app): davanti a un documento la prima domanda è «c'è qualcosa che non
+// va?», non «cosa è successo per primo». La cronologia resta a un clic.
+// ⚠️ `sortOrder` è la convenzione PrimeVue: -1 = DESC, 1 = ASC.
+const giornaleSortField = ref('gravita')
+const giornaleSortOrder = ref(-1)
 
 // ⭐ L'ERRORE IN EVIDENZA. Un documento che non si è potuto numerare deve dirlo
 // in testa, non in fondo alla terza schermata: chi apre la fattura la apre
@@ -140,11 +150,9 @@ const GIORNALE_PAGE_SIZE = 50
 // ⚠️ Si prende il PIÙ RECENTE, e la lista arriva già ordinata dal più nuovo:
 // su un documento ripreso più volte gli errori si ripetono uguali, e mostrarli
 // tutti direbbe che è successo N volte invece di una.
-// ⛔ CAVEAT NOTO: la vista non porta ancora `disabilitato`, quindi una
-// segnalazione RITIRATA è indistinguibile da una viva. Prendere la più recente
-// è il ripiego che regge meglio — una ritirata è per definizione superata da
-// quella che l'ha sostituita, quindi non è mai la più recente. Quando la
-// colonna arriverà, qui si filtra invece di dedurre.
+// ⭐ E non c'è più niente da dedurre: dal changeSet `20260824-14` la vista porta
+// `disabilitato`, e le ritirate sono già state tolte dal SERVER — quindi qui
+// dentro un ERROR è vivo per costruzione, non per inferenza sull'ordine.
 const erroreVivo = computed(() => giornale.value.find((r) => r.gravita === 'ERROR') ?? null)
 
 // Scopo: il link del banner — porta sulla scheda dove l'errore è raccontato per
@@ -224,6 +232,18 @@ async function loadDettaglio() {
   }
 }
 
+// Scopo: riordina la storia RICHIEDENDOLA AL SERVER.
+// ⛔ Il `lazy` della tabella non è un dettaglio di resa: senza, PrimeVue
+//    ordinerebbe l'array già caricato — cioè la sola pagina — e con più righe
+//    del tetto «il più grave» diventerebbe «il più grave fra i primi 50». È il
+//    difetto silenzioso di sempre: a video un elenco ordinato male e uno
+//    ordinato bene si somigliano.
+function onGiornaleSort(event) {
+  giornaleSortField.value = event.sortField || 'gravita'
+  giornaleSortOrder.value = event.sortOrder ?? -1
+  loadGiornale()
+}
+
 // Scopo: carica la storia del documento. ⚠️ Silenziosa e best-effort: un
 //        giornale che non arriva non deve impedire di leggere la fattura, e il
 //        pannello lo dice da sé restando sullo stato «non caricato» invece di
@@ -235,7 +255,12 @@ async function loadGiornale() {
   const my = fv.tag()
   try {
     const res = await execute(
-      () => getFatturaGiornale(props.fatturaId, { pageSize: GIORNALE_PAGE_SIZE }),
+      () =>
+        getFatturaGiornale(props.fatturaId, {
+          pageSize: GIORNALE_PAGE_SIZE,
+          sortBy: giornaleSortField.value,
+          sortDir: giornaleSortOrder.value === 1 ? 'asc' : 'desc',
+        }),
       { silent: true },
     )
     if (!fv.isCurrent(my) || res == null) return
@@ -251,6 +276,7 @@ async function loadGiornale() {
     // non si copiano a vicenda.
     giornale.value = res.results ?? []
     giornaleTotale.value = Number(res.count ?? 0)
+    giornaleRitirate.value = Number(res.ritirate_count ?? 0)
     giornaleCaricato.value = true
   } catch {
     // Volutamente muto: vedi sopra.
@@ -276,6 +302,7 @@ watch(
     giornale.value = []
     giornaleTotale.value = 0
     giornaleCaricato.value = false
+    giornaleRitirate.value = 0
     tabAttiva.value = 'documento'
     await loadDettaglio()
     // Dopo il dettaglio, non insieme: se la fattura non è accessibile il
@@ -707,11 +734,25 @@ function onNoteSaved(total) {
             data-key="riga_key"
             class="app-datatable app-datatable--inner"
             size="small"
+            lazy
+            :sort-field="giornaleSortField"
+            :sort-order="giornaleSortOrder"
+            @sort="onGiornaleSort"
           >
-            <Column :header="t('vendite.fatture.col_giornale_quando')" style="width: 150px;">
+            <Column
+              field="quando"
+              sortable
+              :header="t('vendite.fatture.col_giornale_quando')"
+              style="width: 150px;"
+            >
               <template #body="{ data }">{{ displayTimestamp(data.quando) }}</template>
             </Column>
-            <Column :header="t('vendite.fatture.col_giornale_gravita')" style="width: 110px;">
+            <Column
+              field="gravita"
+              sortable
+              :header="t('vendite.fatture.col_giornale_gravita')"
+              style="width: 110px;"
+            >
               <template #body="{ data }">
                 <!-- ⚠️ `gravita` può essere NULL, e la vista lo dichiara come il
                      segnale che «un vincolo si è allargato e la mappa è rimasta
@@ -734,14 +775,28 @@ function onNoteSaved(total) {
 
           <!-- ⛔ I due vuoti NON sono lo stesso vuoto: «non è successo niente»
                è un'informazione, «non sono riuscito a chiederlo» no. -->
+          <!-- ⛔ TRE vuoti diversi, e vanno detti diversi: «non è successo
+               niente», «è successo tutto ed è stato superato», «non sono
+               riuscito a chiederlo». Il secondo su un elenco filtrato è il
+               caso in cui la distinzione conta di più. -->
           <div v-else class="app-empty-state">
             <i :class="giornaleCaricato ? 'pi pi-check-circle' : 'pi pi-inbox'" />
-            <p>
-              {{ giornaleCaricato
-                ? t('vendite.fatture.giornale_vuoto')
-                : t('vendite.fatture.giornale_non_caricato') }}
+            <p v-if="!giornaleCaricato">{{ t('vendite.fatture.giornale_non_caricato') }}</p>
+            <p v-else-if="giornaleRitirate > 0">
+              {{ t('vendite.fatture.giornale_solo_ritirate', { n: giornaleRitirate }) }}
             </p>
+            <p v-else>{{ t('vendite.fatture.giornale_vuoto') }}</p>
           </div>
+
+          <!-- Il conto di ciò che il filtro toglie. Compare solo quando c'è
+               qualcosa da dichiarare E qualcosa da mostrare: sull'elenco vuoto
+               lo dice già il messaggio qui sopra, e ripeterlo sarebbe rumore. -->
+          <p
+            v-if="giornaleRitirate > 0 && giornale.length"
+            class="app-drawer-header-muted"
+          >
+            {{ t('vendite.fatture.giornale_ritirate', { n: giornaleRitirate }) }}
+          </p>
 
           <!-- Il conto, quando la pagina non basta: un elenco troncato che non
                lo dice si legge come completo. -->

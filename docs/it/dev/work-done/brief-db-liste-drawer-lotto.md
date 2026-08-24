@@ -882,6 +882,86 @@ sempre.
 
 ---
 
+## 6-bis. ⭐ Strascico 2026-08-24 — «Recuperi del mese», e il dubbio su `competenza_mese` chiuso
+
+> **Perché sta qui.** Il cantiere è chiuso, ma questo tocca le stesse liste
+> (`vendite.lotti` e `vendite.lotto_fatture`) e nasce da una domanda che quel
+> lavoro non poteva vedere: si vede solo usando le liste per qualche settimana.
+
+### Il caso, misurato
+
+Una commessa di **competenza giugno** fatturata **ad agosto** produce un
+documento con **data agosto** dentro un **lotto di giugno**. Tutto corretto: la
+regola di raccolta è `a.competenza_mese <= X` e il documento prende la data del
+giorno di emissione.
+
+⛔ **Ma chi lavora sul mese di agosto non lo trova**, perché lo cerca — con
+ragione — per la **data del documento** e non per la competenza della commessa.
+Rilievo di Tid, nato sul campo: *«la prima cosa che mi è venuta in mente è stata
+cercarla sul mese di competenza data fattura»*.
+
+Misurato su tre casi veri, il più netto:
+
+| Fattura | Lotto | Competenza lotto | Data documento | Numero |
+| --- | --- | --- | --- | --- |
+| 18848 | LTF-0006586 | giugno | **23 agosto** | **8/2026**, DEFINITIVA |
+
+### La risposta: una scheda sulla LISTA, non nel drawer
+
+`GET /vendite/lotti/?competenza_mese=…&recuperi_mese=1` — i lotti di competenza
+**precedente** che hanno emesso documenti **nel mese filtrato**. Sulla lista di
+agosto risponde `LTF-0006585` e `LTF-0006586`.
+
+⛔ **Ed è la stessa lista con UNA condizione diversa**, non un secondo elenco:
+colonne, decodifiche, whitelist di ordinamento e seed restano gli stessi, quindi
+le due schede mostrano le stesse informazioni e permettono le stesse azioni **per
+costruzione**. Estratto `LottiLista.vue` (regola del 2) perché il blocco è
+montato due volte.
+
+⚠️ **Il mese significa due cose diverse nelle due schede, ed è voluto**: nella
+principale è la **competenza** dei lotti, in quella dei recuperi è il mese in cui
+i documenti sono stati **emessi** (i lotti hanno competenza precedente per
+definizione). È ciò che rende utile la scheda.
+
+⛔ **Rifiuto esplicito**: «recuperi del mese» **senza un mese** viene respinto —
+«competenza precedente» senza un termine di paragone non significa niente, e
+rispondere un elenco plausibile sarebbe peggio di un errore.
+
+### 🔴 Due difetti pagati, e il secondo vale oltre il caso
+
+1. **Prima l'avevo messa nel drawer del lotto** — su indicazione mia, e Tid l'ha
+   accettata fidandosi. Sbagliato: quell'insieme è una proprietà del **mese**, e
+   nel drawer si sarebbe ripetuta identica su **tutti e 14** i lotti di agosto
+   (misurato: stesso perimetro, `tipo_doc 1 / ef 72 / utility 5`). Rimossa su
+   rilievo di Tid, insieme al componente estratto per lei — con un consumatore
+   solo sarebbe stata un'astrazione prematura — e al parametro backend rimasto
+   senza chiamanti.
+2. ⭐ **La scheda si ricaricava al cambio filtro ma tornava identica**: le
+   passavo `competenza_mese` e non `stato_lotto`. *Un filtro che si muove sopra
+   una lista che non cambia si legge come un filtro rotto*, e lo era. ⚠️
+   Corretto in **due** punti — la lista **e** l'export: sistemare solo il primo
+   avrebbe spostato lo stesso difetto dove si nota più tardi, in un file già
+   consegnato a qualcuno.
+
+### 🔧 E una cosa che credevo mancasse e c'era
+
+Avevo dato per assente la colonna **data documento** nella scheda Documenti.
+Misurato: è a catalogo, `visibile: true`, **priorità 90** — fra le ultime a
+ritirarsi. Mancava solo l'etichetta parlante: si chiamava «Data», che in un
+elenco di documenti non dice *quale* data. Rinominata **«Data documento»**.
+
+### 🔵 Aperto: due colonne che aspettano il seed
+
+La riga del lotto dice **com'è andato** ma non **quanto pesa**. Il backend
+produce già `n_fatture` e `totale_documenti` nel payload di `vendite.lotti`;
+mancano le due voci di `ui.lista_colonna` — seed del team DB, richiesta scritta.
+
+⚠️ `totale_documenti` è **zero, non nullo**, su un lotto senza documenti: da qui
+il `COALESCE(sum(...), 0)`, perché `sum()` su zero righe dà NULL e a video
+diventerebbe un trattino dove il numero c'è ed è zero. Sul `count(*)` non serve.
+
+---
+
 ## 7. Registro
 
 ### 2026-08-21 · Nascita

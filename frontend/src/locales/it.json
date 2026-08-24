@@ -2201,6 +2201,8 @@
       "col_giornale_cosa": "Cosa è successo",
       "col_giornale_chi": "Chi",
       "giornale_vuoto": "Nessun evento registrato per questo documento",
+      "giornale_ritirate": "{n} segnalazioni ritirate non sono mostrate: appartengono a un tentativo poi rifatto",
+      "giornale_solo_ritirate": "Nessun evento in corso: le {n} segnalazioni registrate sono state tutte superate",
       "giornale_non_caricato": "Storia del documento non disponibile",
       "giornale_parziale": "Mostrati {n} eventi di {tot}",
       "cliente": "Ragione sociale",
@@ -2518,6 +2520,10 @@
       "documenti_fattura_titolo": "Documenti della fattura",
       "tab_fatture": "Fatture",
       "tab_task": "Task",
+      "tab_recuperi": "Recuperi del mese",
+      "tab_lotti_mese": "Lotti del mese",
+      "nessun_recupero_lista": "Nessun lotto di competenza precedente ha emesso documenti in questo mese",
+      "recuperi_lista_nota": "Lotti di competenza precedente che hanno emesso documenti nel mese filtrato — le commesse fatturate in ritardo. Per competenza non compaiono nell'elenco qui accanto, ma i loro documenti portano la data di questo mese.",
       "tab_segnalazioni": "Segnalazioni",
       "nessuna_fattura": "Nessuna fattura nel lotto",
       "nessun_task": "Nessun task-run",
@@ -3355,7 +3361,7 @@
       "nc_spiegazione": "L'accredito si registra dalla coda accrediti: la nota di credito nasce al prossimo giro di fatturazione."
     },
     "lotto_fatture": {
-      "col_data": "Data",
+      "col_data": "Data documento",
       "col_errore_codice": "Cod. errore",
       "col_errore_livello": "Livello errore",
       "col_errore_messaggio": "Errore",
