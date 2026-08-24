@@ -29,10 +29,17 @@ DECLARE
     -- ⚠️ `integer` e `text` espliciti: sono un CONTEGGIO e un'ETICHETTA, non il
     --    valore di una colonna. Non c'e' niente da ancorare, e va detto invece
     --    di sembrare una dimenticanza.
+    --
+    -- ⭐ Dal 24-08-2026 `v_n_bloccanti` non e' piu' solo diagnostica: e' il
+    --    valore che riempie l'unico segnaposto del messaggio 937. Il conteggio
+    --    e' l'unica cosa che la frase puo' dire su QUANTI documenti mancano
+    --    quando i pulsanti sono al massimo cinque (linee-guida-sql §5).
     v_n_bloccanti     integer;
+    -- ⭐ E `v_primo_bloccante` non e' piu' nella frase: resta nel context, cioe'
+    --    in dbops.error_log, per chi diagnostica. Due lettori, due canali.
     v_primo_bloccante text;
-    -- Il BERSAGLIO: l'array di {tipo,id} che il frontend trasforma in un
-    -- pulsante. `jsonb` perche' e' la forma del context, non una colonna.
+    -- Il BERSAGLIO: l'array di {tipo,id} che il frontend trasforma in
+    -- pulsanti. `jsonb` perche' e' la forma del context, non una colonna.
     v_bersagli        jsonb;
 BEGIN
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
@@ -47,6 +54,12 @@ BEGIN
     END IF;
 
     -- Lock riga fattura (solo la riga fattura, alias f)
+    --
+    -- ⭐ E' ANCHE IL CANCELLO DI VISIBILITA' SU CUI POGGIA IL PRIMO BERSAGLIO:
+    --    la RLS e' attiva e la funzione e' SECURITY INVOKER, quindi una fattura
+    --    fuori dal perimetro di chi opera qui non si trova e si esce con
+    --    E_FATTURA_NON_TROVATA. Arrivare alla guardia significa che
+    --    `p_fattura_id` e' un documento che chi opera puo' aprire.
     SELECT f.numero IS NOT NULL, f.data, f.registro_id, r.reset_policy, f.anno, f.serie, f.numero
       INTO v_is_numbered, v_data, v_registro_id, v_reset, v_anno, v_serie, v_numero
       FROM vendite.fatture f
@@ -97,6 +110,12 @@ BEGIN
     --    CONTA COME BLOCCANTE: il predicato non e' «risulta non numerata», e'
     --    «non posso dimostrare che sia numerata». Con dei JOIN interni uno zero
     --    avrebbe voluto dire «via libera» proprio nel caso in cui non si sa.
+    --
+    -- ⭐ 24-08-2026: `v_n_bloccanti` e' anche il valore che va nella frase.
+    --    Un padre invisibile entra quindi nel CONTEGGIO ma non nel bersaglio,
+    --    ed e' coerente: la frase dice quanti documenti mancano, i pulsanti
+    --    dicono dove si puo' andare. Sono due domande diverse, come i due
+    --    tipi di JOIN qui sotto.
     -- --------------------------------------------------
     SELECT count(DISTINCT COALESCE(rif.id::text, 'riga ' || fr.riga_rettificata_id::text))::integer,
            min(COALESCE(rif.id::text, 'riga ' || fr.riga_rettificata_id::text))
@@ -109,49 +128,69 @@ BEGIN
        AND (rif.id IS NULL OR rif.numero IS NULL);
 
     IF v_n_bloccanti > 0 THEN
-        -- ⭐ IL BERSAGLIO (23-08-2026) — la frase per la persona, l'etichetta
-        --    per l'interfaccia. Fin qui il messaggio diceva «il documento 835»
-        --    e l'operatore doveva ricopiarsi un numero interno in un campo di
-        --    ricerca; adesso accanto alla frase esce l'indicazione di QUALE
-        --    documento, e il frontend ci disegna sopra un gesto.
+        -- ⭐ IL BERSAGLIO, DUE RUOLI (24-08-2026, passo T-3b del brief).
+        --    E' la forma che il §4.2 dichiarava dal primo giro — «il documento
+        --    da numerare e la fattura rettificata» — ed e' la ragione per cui
+        --    questa chiave e' un ARRAY. Il pilota ne emetteva uno solo.
         --
-        -- ⛔ SOLO I PADRI VISIBILI, e i JOIN qui sono INTERNI — al contrario
-        --    del predicato qui sopra, e non e' una svista: la guardia deve
-        --    essere fail-closed (un padre invisibile BLOCCA), il bersaglio
-        --    dev'essere onesto (a un padre invisibile non si puo' mandare
-        --    nessuno). Sono due domande diverse sulle stesse righe:
-        --    «posso dimostrare che sia numerata?» e «dove mando l'operatore?».
-        --    Il ramo fail-closed resta quindi SENZA bersaglio: il messaggio si
-        --    mostra lo stesso, il pulsante non compare. Mai un pulsante che
-        --    porta in un vicolo cieco.
+        --    1. IL DOCUMENTO DA NUMERARE, sempre e per PRIMO.
+        --       ⭐ Senza di lui il T-3b non si potrebbe fare: dentro un giro di
+        --          lotto l'errore arriva su una fattura fra molte, e tolti gli
+        --          id dalla frase QUALE non lo direbbe piu' nessuno.
+        --       ⭐ E' sempre presente per costruzione: se non fosse visibile,
+        --          la SELECT ... FOR UPDATE qui sopra non l'avrebbe trovato e
+        --          saremmo usciti con E_FATTURA_NON_TROVATA.
+        --       ⭐ Ed e' PRIMO perche' il canale compatto tiene i primi cinque
+        --          elementi per ordinalita': in testa, la cosa che dice «quale»
+        --          sopravvive al tetto anche con sette padri bloccanti.
+        --
+        --    2. I PADRI BLOCCANTI, solo quelli VISIBILI, in ordine di id.
+        --       ⛔ JOIN INTERNI, al contrario del predicato qui sopra, e non e'
+        --          una svista: la guardia dev'essere fail-closed (un padre
+        --          invisibile BLOCCA), il bersaglio dev'essere onesto (a un
+        --          padre invisibile non si puo' mandare nessuno). Un pulsante
+        --          in un vicolo cieco e' peggio di nessun pulsante — §4.3.
+        --
+        -- ⚠️ Niente piu' `CASE WHEN v_bersagli IS NULL`: con il documento in
+        --    testa l'array ha SEMPRE almeno un elemento, quindi il ramo «chiave
+        --    assente» del pilota non esiste piu'. Scritto perche' chi confronta
+        --    i due changeSet non lo legga come una dimenticanza.
         --
         -- ⚠️ Gira solo qui dentro, cioe' solo quando l'errore parte davvero:
         --    sul percorso felice non costa niente.
-        SELECT jsonb_agg(x.b ORDER BY x.b)
-          INTO v_bersagli
-          FROM (SELECT DISTINCT jsonb_build_object('tipo', 'FATTURA',
-                                                   'id',   rif.id::text) AS b
-                  FROM vendite.fatture_righe fr
-                  JOIN vendite.fatture_righe rr  ON rr.id  = fr.riga_rettificata_id
-                  JOIN vendite.fatture      rif  ON rif.id = rr.fattura_id
-                 WHERE fr.fattura_id = p_fattura_id
-                   AND fr.riga_rettificata_id IS NOT NULL
-                   AND rif.numero IS NULL) x;
+        SELECT jsonb_build_array(
+                   jsonb_build_object('tipo', 'FATTURA',
+                                      'id',   p_fattura_id::text))
+               || COALESCE(
+                    (SELECT jsonb_agg(jsonb_build_object('tipo', 'FATTURA',
+                                                         'id',   x.id::text)
+                                      ORDER BY x.id)
+                       FROM (SELECT DISTINCT rif.id
+                               FROM vendite.fatture_righe fr
+                               JOIN vendite.fatture_righe rr  ON rr.id  = fr.riga_rettificata_id
+                               JOIN vendite.fatture      rif  ON rif.id = rr.fattura_id
+                              WHERE fr.fattura_id = p_fattura_id
+                                AND fr.riga_rettificata_id IS NOT NULL
+                                AND rif.numero IS NULL) x),
+                    '[]'::jsonb)
+          INTO v_bersagli;
 
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_numera_fattura_opz_emessa', 'E_FATTURA_RETTIFICATA_SENZA_NUMERO',
-            -- ⚠️ La chiave `bersaglio` si aggiunge SOLO se c'e' qualcosa da
-            --    dire. Metterla a NULL non vorrebbe dire «nessun bersaglio»:
-            --    per chi legge sarebbe una chiave presente e non utilizzabile,
-            --    cioe' un W_BERSAGLIO_MALFORMATO — un avviso di difetto su un
-            --    ramo che invece funziona come deve.
+            -- ⚠️ `primo_bloccante` resta QUI e non nella frase: nel ramo
+            --    fail-closed non e' nemmeno un id di fattura (e' la stringa
+            --    `riga <id>`), e non si nomina in chiaro una riga che il
+            --    lettore non puo' aprire. Per chi diagnostica e' invece
+            --    l'aggancio esatto, e dbops.error_log e' la sua sede.
             jsonb_build_object('fattura_id',      p_fattura_id,
                                'bloccanti',       v_n_bloccanti,
-                               'primo_bloccante', v_primo_bloccante)
-            || CASE WHEN v_bersagli IS NULL THEN '{}'::jsonb
-                    ELSE jsonb_build_object('bersaglio', v_bersagli) END,
+                               'primo_bloccante', v_primo_bloccante,
+                               'bersaglio',       v_bersagli),
             NULL::uuid,
-            p_fattura_id::text, v_primo_bloccante);
+            -- ⭐ L'UNICO valore che entra nella frase, ed e' un CONTEGGIO, non
+            --    un identificativo: «Documenti da numerare prima: 2». Non c'e'
+            --    piu' niente da ricopiare in un campo di ricerca.
+            v_n_bloccanti::text);
     END IF;
 
     -- Assegna numero
@@ -174,7 +213,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean, p_codice_interno_emessa character varying)
-IS 'Assegna numero fattura (idempotente) e opzionalmente imposta stato EMESSA. ⭐ rev 2026-08-21: rifiuta di numerare un documento che RETTIFICA le righe di una fattura ancora senza numero (E_FATTURA_RETTIFICATA_SENZA_NUMERO). Non e'' cronologia: una nota di credito deve citare numero e data del documento corretto nel blocco DatiFattureCollegate della TD04, e con il padre senza numero quel blocco non e'' compilabile — la nota nascerebbe gia'' inadatta allo SDI. Il rifiuto arriva PRIMA di consumare un numero. ⚠️ Il predicato e'' PER RIGA (fatture_righe.riga_rettificata_id -> riga -> fattura): una nota puo'' rettificare righe di fatture diverse e ne basta UNA senza numero. ⭐ NON guarda la natura del documento: una nota di DEBITO che rettifica ha lo stesso problema, e una fattura ordinaria non ha righe con riga_rettificata_id — il predicato sulle righe copre tutto senza bloccare i casi normali. Non usa vendite.fatture_rettifiche perche'' quel ponte lo popola un task che gira DOPO la numerazione. ⛔ FAIL-CLOSED sulla visibilita'': fatture e fatture_righe hanno la RLS e la funzione e'' SECURITY INVOKER, quindi i JOIN sono LEFT e una riga il cui padre non e'' visibile conta come BLOCCANTE — il predicato e'' «non posso dimostrare che sia numerata», non «risulta non numerata». ⚠️ La guardia sta DOPO il ritorno idempotente: un documento gia'' numerato continua a rispondere con i suoi valori, altrimenti un secondo giro romperebbe cio'' che il primo ha gia'' fatto bene. ⚠️ CHI CHIAMA DEVE NUMERARE PRIMA I PADRI: il giro di lotto e'' fail-fast (una fattura che rifiuta ferma lo step). Oggi regge perche'' il backend ordina per f.id e la fattura rettificata e'' sempre piu'' vecchia della nota — la merce dev''essere gia'' stata fatturata perche'' l''accredito sia possibile — ma e'' un invariante implicito, non una garanzia scritta. ⭐ rev 2026-08-23: l''errore porta un BERSAGLIO. Il context della guardia aggiunge la chiave ''bersaglio'' con l''array {tipo,id} delle fatture rettificate da numerare, e script.fn_log_and_raise_error lo fa uscire nel canale DATATYPE dell''eccezione: il frontend ci disegna un pulsante «vai al documento» invece di lasciare all''operatore un id da ricopiare. ⛔ SOLO I PADRI VISIBILI, con JOIN interni — al contrario del predicato della guardia, che e'' fail-closed con LEFT JOIN: sono due domande diverse sulle stesse righe («posso dimostrare che sia numerata?» e «dove mando l''operatore?»), e il ramo in cui il padre non e'' visibile resta senza bersaglio, cioe'' senza pulsante. ⚠️ La chiave si aggiunge solo se c''e'' almeno un bersaglio: una chiave a NULL sarebbe letta come bersaglio malformato. ⚠️ Il messaggio 937 NON e'' cambiato: togliere l''id dalla frase e'' un passo successivo, e non si fa prima che il pulsante esista. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L2.';
+IS 'Assegna numero fattura (idempotente) e opzionalmente imposta stato EMESSA. ⭐ rev 2026-08-21: rifiuta di numerare un documento che RETTIFICA le righe di una fattura ancora senza numero (E_FATTURA_RETTIFICATA_SENZA_NUMERO). Non e'' cronologia: una nota di credito deve citare numero e data del documento corretto nel blocco DatiFattureCollegate della TD04, e con il padre senza numero quel blocco non e'' compilabile — la nota nascerebbe gia'' inadatta allo SDI. Il rifiuto arriva PRIMA di consumare un numero. ⚠️ Il predicato e'' PER RIGA (fatture_righe.riga_rettificata_id -> riga -> fattura): una nota puo'' rettificare righe di fatture diverse e ne basta UNA senza numero. ⭐ NON guarda la natura del documento: una nota di DEBITO che rettifica ha lo stesso problema, e una fattura ordinaria non ha righe con riga_rettificata_id — il predicato sulle righe copre tutto senza bloccare i casi normali. Non usa vendite.fatture_rettifiche perche'' quel ponte lo popola un task che gira DOPO la numerazione. ⛔ FAIL-CLOSED sulla visibilita'': fatture e fatture_righe hanno la RLS e la funzione e'' SECURITY INVOKER, quindi i JOIN sono LEFT e una riga il cui padre non e'' visibile conta come BLOCCANTE — il predicato e'' «non posso dimostrare che sia numerata», non «risulta non numerata». ⚠️ La guardia sta DOPO il ritorno idempotente: un documento gia'' numerato continua a rispondere con i suoi valori, altrimenti un secondo giro romperebbe cio'' che il primo ha gia'' fatto bene. ⚠️ CHI CHIAMA DEVE NUMERARE PRIMA I PADRI: il giro di lotto e'' fail-fast (una fattura che rifiuta ferma lo step). Oggi regge perche'' il backend ordina per f.id e la fattura rettificata e'' sempre piu'' vecchia della nota — la merce dev''essere gia'' stata fatturata perche'' l''accredito sia possibile — ma e'' un invariante implicito, non una garanzia scritta. ⭐ rev 2026-08-23: l''errore porta un BERSAGLIO (canale DATATYPE, via script.fn_log_and_raise_error). ⭐ rev 2026-08-24 (T-3b): l''ID ESCE DALLA PROSA. Il messaggio 937 passa da due segnaposto a UNO, che porta il CONTEGGIO dei bloccanti e non piu'' due chiavi interne; il bersaglio prende DUE RUOLI — il documento DA NUMERARE (sempre, e per PRIMO, cosi'' sopravvive al tetto di cinque elementi del canale compatto) e i padri bloccanti VISIBILI in ordine di id. ⭐ Il primo elemento c''e'' sempre per costruzione: se p_fattura_id non fosse visibile a chi opera, la SELECT ... FOR UPDATE non l''avrebbe trovato e si sarebbe usciti con E_FATTURA_NON_TROVATA. Senza quel primo bersaglio il T-3b non si sarebbe potuto fare: dentro un giro di lotto, tolti gli id dalla frase, QUALE fattura ha rifiutato non lo direbbe piu'' nessuno. ⛔ Il bersaglio dei padri resta a JOIN INTERNI contro i LEFT JOIN del predicato: un padre invisibile entra nel CONTEGGIO della frase ma NON fra i pulsanti, perche'' a un documento che non si puo'' aprire non si manda nessuno. ⚠️ La chiave `bersaglio` e'' ora incondizionata (l''array non e'' mai vuoto), quindi il CASE del pilota e'' sparito. ⚠️ `primo_bloccante` resta nel context per chi diagnostica: nel ramo fail-closed non e'' nemmeno un id di fattura. ⛔ Questo changeSet e'' inseparabile dalla riga 937 di 80_data/sql/config/messaggi_errore.csv. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §7-ter, passo T-3b.';
 ```
 
 ---

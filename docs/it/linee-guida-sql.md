@@ -172,10 +172,14 @@ nel testo:
 PERFORM script.fn_log_and_raise_error(
     'vendite', 'fn_numera_fattura_opz_emessa', 'E_FATTURA_RETTIFICATA_SENZA_NUMERO',
     jsonb_build_object('fattura_id', p_fattura_id,
+                       -- il documento SU CUI l'errore e' successo, per primo,
+                       -- poi le cose DA SISTEMARE per farlo passare
                        'bersaglio',  jsonb_build_array(
+                           jsonb_build_object('tipo', 'FATTURA', 'id', p_fattura_id::text),
                            jsonb_build_object('tipo', 'FATTURA', 'id', v_padre_id::text))),
     NULL::uuid,
-    p_fattura_id::text, v_primo_bloccante);
+    -- ⭐ nella frase va il CONTEGGIO, non gli id: quelli viaggiano nel bersaglio
+    v_n_bloccanti::text);
 ```
 
 Da lì esce nel canale `DATATYPE` dell'eccezione — contratto **«`P0001` +
@@ -186,6 +190,7 @@ L'operatore non legge nessun id e non ricopia niente.
 | Regola | Perché |
 | --- | --- |
 | **Array sempre**, anche con un elemento | i casi a due bersagli esistono già, e cambiare la forma di una chiave in servizio costa più che nascere larghi |
+| ⭐ **In testa la cosa su cui l'errore è successo**, poi quelle da sistemare | ⚠️ **l'ordine è portante, non estetico**: il canale compatto tiene i **primi cinque** elementi, quindi ciò che sta in testa è ciò che sopravvive al tetto. Dentro un'elaborazione massiva (un giro di lotto, un import) l'errore arriva su una riga fra molte, e quel primo elemento è l'unica cosa che dice **quale** — la frase non lo dice più, ed è tutto il punto |
 | `tipo` è un **codice di `config.tipi_entita`** | è il vocabolario condiviso col giornale degli eventi e con le rotte del frontend: una mappa sola, non due |
 | `id` è la **chiave dichiarata dal catalogo** (`key_selector`: `id` \| `uid`) | soggetti, preventivi e offerte non si citano col numero progressivo |
 | ⛔ **mai il nome di una tabella** | il catalogo dei messaggi serve anche il portale cliente e lo shop: là i nomi delle tabelle sono ricognizione regalata |

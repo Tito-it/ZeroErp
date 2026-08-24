@@ -35,6 +35,10 @@
 --      venga consumato — che e' l'unica cosa che non si torna indietro
 --   4) nessuna regressione: su una fattura ORDINARIA la guardia non vede nulla
 --   5) ⭐ dato un numero al padre, la guardia si spegne
+--   6) ⭐ il rifiuto porta il BERSAGLIO, e il primo elemento e' il documento
+--      da numerare (T-3b)
+--   7) ⭐ due padri senza numero: tre bersagli, nell'ordine dichiarato
+--   8) ⭐ la FRASE non porta nessun id e porta il conteggio dei bloccanti
 --
 -- ⚠️ PERCHE' IL TEST 5 NON DICE «la NC si numera». Numerare ha ALTRE
 --    precondizioni che non c'entrano con questa guardia: la prima che si
@@ -61,6 +65,26 @@
 -- ⭐ AGGIUNTO IL 2026-08-23 — i test 6 e 7: il rifiuto porta un BERSAGLIO.
 --   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L2.
 --
+-- ⭐ AGGIORNATO IL 2026-08-24 — il passo T-3b (changeSet 20260824-13 + la riga
+--   937 di messaggi_errore.csv). Due cose cambiano, e vanno lette insieme:
+--
+--   · IL BERSAGLIO HA DUE RUOLI. Il primo elemento e' il DOCUMENTO DA NUMERARE
+--     (la nota), poi vengono i padri bloccanti visibili in ordine di id. I test
+--     6 e 7 asseriscono percio' la stringa ESATTA e non piu' l'insieme:
+--     l'ordine e' diventato una proprieta' che conta, perche' il canale
+--     compatto tiene i PRIMI CINQUE elementi e in testa deve stare la cosa che
+--     dice «quale documento».
+--
+--   · LA FRASE NON PORTA PIU' NESSUN ID: porta il CONTEGGIO dei bloccanti. E'
+--     il test 8, ed e' lo scopo dell'intero cantiere — il messaggio smette di
+--     mettere una chiave interna davanti a una persona.
+--
+--   ⛔ IL TEST 8 E' ROSSO FINCHE' IL CSV NON E' CARICATO, ed e' voluto: misura
+--     la coppia. Con la funzione applicata e il catalogo indietro, format()
+--     riceve un valore e ne chiede due, ripiega sul template non composto e
+--     scrive W_MESSAGGIO_ARITA — il conteggio non compare e il test lo vede.
+--     E' la trappola del §5.3 del brief, presa dal lato del collaudo.
+--
 -- ⛔ COSA QUESTO FILE **NON** MISURA, e va detto invece di lasciarlo credere:
 --   il ramo FAIL-CLOSED. Quando la fattura rettificata sta fuori dal perimetro
 --   emittente di chi opera, la guardia blocca lo stesso (LEFT JOIN, «non posso
@@ -78,7 +102,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(8);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -144,6 +168,22 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   GET STACKED DIAGNOSTICS v_bers = PG_DATATYPE_NAME;
   RETURN COALESCE(v_bers, '');
+END $$ LANGUAGE plpgsql;
+
+-- ⭐ IL TERZO GEMELLO (24-08-2026): la FRASE che legge l'operatore. Serve al
+--   test 8, che e' lo scopo del passo T-3b — dopo di esso il messaggio non deve
+--   piu' contenere nessuna chiave interna.
+--   ⚠️ `MESSAGE_TEXT` e non `SQLERRM`: sono la stessa cosa qui, ma la forma con
+--   GET STACKED DIAGNOSTICS e' quella dei due gemelli sopra e si legge uguale.
+CREATE OR REPLACE FUNCTION pg_temp.nnc_messaggio(p_fattura_id bigint)
+RETURNS text AS $$
+DECLARE v_msg text;
+BEGIN
+  PERFORM vendite.fn_numera_fattura_opz_emessa(p_fattura_id, false);
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+  RETURN COALESCE(v_msg, '');
 END $$ LANGUAGE plpgsql;
 
 -- ⭐ L'esito della numerazione come CODICE di dominio (canale CONSTRAINT), o
@@ -246,11 +286,25 @@ SELECT isnt(
 );
 
 -- ============================================================
--- 6) ⭐ IL BERSAGLIO — il rifiuto dice ANCHE su quale documento.
+-- 6) ⭐ IL BERSAGLIO — il rifiuto dice su quale documento, e su quale prima.
 --    E' la ragione per cui il 20260823-03 esiste: fin qui il messaggio
 --    nominava un id dentro la frase e l'operatore doveva ricopiarselo; adesso
 --    accanto alla frase viaggia l'indicazione del documento, e il frontend ci
 --    disegna un pulsante.
+--
+--    ⭐ DAL 2026-08-24 (T-3b) GLI ELEMENTI SONO DUE, e il primo e' la NOTA —
+--    cioe' il documento che si sta cercando di numerare. Senza di lui il passo
+--    T-3b non si sarebbe potuto fare: dentro un giro di lotto l'errore arriva
+--    su una fattura fra molte, e tolti gli id dalla frase QUALE ha rifiutato
+--    non lo direbbe piu' nessuno.
+--
+--    ⚠️ SI ASSERISCE LA STRINGA ESATTA, ordine compreso, e fino a ieri questo
+--    file diceva il contrario («l'ordine non e' una proprieta' su cui valga la
+--    pena legare un test»). E' cambiato il motivo: il canale compatto tiene i
+--    PRIMI CINQUE elementi per ordinalita', quindi la testa dell'array e' cio'
+--    che sopravvive al tetto. Che li' ci sia il documento da numerare non e'
+--    piu' un dettaglio di resa, e' la garanzia che regge il messaggio.
+--
 --    ⚠️ Il padre e' stato numerato dal test 5: gli si toglie il numero per
 --    tornare alla condizione bloccante. Il verbo, di nuovo, in un'istruzione
 --    separata dall'asserzione.
@@ -264,8 +318,9 @@ SELECT pg_temp.nnc_bersaglio((SELECT fattura_id FROM tmp_nc)) AS bersaglio;
 
 SELECT is(
   (SELECT bersaglio FROM tmp_bers_1),
-  'FATTURA:' || (SELECT fattura_id FROM tmp_padre)::text,
-  '6) il rifiuto porta il bersaglio: il documento da numerare prima'
+  'FATTURA:' || (SELECT fattura_id FROM tmp_nc)::text
+    || ',FATTURA:' || (SELECT fattura_id FROM tmp_padre)::text,
+  '6) il bersaglio porta PRIMA il documento da numerare, POI il padre bloccante'
 );
 
 -- ============================================================
@@ -288,16 +343,52 @@ SELECT (SELECT fattura_id FROM tmp_nc), 2, r.articolo_id, 'Seconda riga pgTAP NC
 CREATE TEMP TABLE tmp_bers_2 AS
 SELECT pg_temp.nnc_bersaglio((SELECT fattura_id FROM tmp_nc)) AS bersaglio;
 
--- ⚠️ Si confronta l'INSIEME e non la stringa: l'ordine dentro il canale lo
---    decide il confronto fra oggetti jsonb, che non e' l'ordine degli id e non
---    e' una proprieta' su cui valga la pena legare un test.
+-- ⚠️ Stringa esatta, per la ragione scritta al test 6: dal T-3b l'ordine e'
+--    portante. La nota resta in TESTA anche se il suo id non e' il piu' basso
+--    (tmp_padre e' stata creata prima di lei, tmp_padre2 dopo), quindi questa
+--    asserzione distingue davvero «primo perche' e' il soggetto» da «primo
+--    perche' e' il piu' piccolo» — che sarebbe stata una coincidenza.
 SELECT is(
-  (SELECT string_agg(t, ',' ORDER BY t)
-     FROM unnest(string_to_array((SELECT bersaglio FROM tmp_bers_2), ',')) AS t),
-  (SELECT string_agg(t, ',' ORDER BY t)
-     FROM unnest(ARRAY['FATTURA:' || (SELECT fattura_id FROM tmp_padre)::text,
-                       'FATTURA:' || (SELECT fattura_id FROM tmp_padre2)::text]) AS t),
-  '7) due padri senza numero, due bersagli: e'' per questo che la forma e'' un array'
+  (SELECT bersaglio FROM tmp_bers_2),
+  'FATTURA:' || (SELECT fattura_id FROM tmp_nc)::text
+    || ',FATTURA:' || (SELECT fattura_id FROM tmp_padre)::text
+    || ',FATTURA:' || (SELECT fattura_id FROM tmp_padre2)::text,
+  '7) due padri senza numero: tre bersagli, col documento da numerare in testa'
+);
+
+-- ============================================================
+-- 8) ⭐ LA FRASE NON PORTA PIU' NESSUN ID — ed e' lo scopo del cantiere.
+--    Fino al 2026-08-23 il messaggio 937 diceva «Non si puo' numerare il
+--    documento 19563: la fattura che rettifica non e' ancora numerata
+--    (documento 835)»: due chiavi interne dentro una frase scritta per una
+--    persona, che per rimediare doveva ricopiarsele in un campo di ricerca.
+--    Adesso la frase dice QUANTI documenti mancano, e DOVE andare lo dicono i
+--    pulsanti costruiti sul bersaglio del test 7.
+--
+--    ⚠️ SI ASSERISCONO LE PROPRIETA', NON IL TESTO. Ripetere qui la frase del
+--    catalogo vorrebbe dire scriverla due volte e rendere rosso il test a ogni
+--    limatura della formulazione — che e' esattamente il debito descritto in
+--    «i consumatori di un messaggio si cercano dal nome di chi lo solleva».
+--    Le due proprieta' che contano sono: nessuno dei tre id compare nella
+--    frase, e il conteggio dei bloccanti (qui 2) compare come numero a se'.
+--
+--    ⛔ E QUESTO TEST MISURA LA COPPIA changeSet+CSV. Se il catalogo e' ancora
+--    quello vecchio (due segnaposto) e la funzione passa un valore solo,
+--    format() fallisce, fn_log_and_raise_error ripiega sul template non
+--    composto e scrive W_MESSAGGIO_ARITA: gli id non ci sono lo stesso — sono
+--    dei `%s` — ma il conteggio non compare, e il test lo vede.
+-- ============================================================
+CREATE TEMP TABLE tmp_msg_1 AS
+SELECT pg_temp.nnc_messaggio((SELECT fattura_id FROM tmp_nc)) AS messaggio;
+
+SELECT is(
+  (SELECT (position((SELECT fattura_id FROM tmp_nc)::text     IN m.messaggio) = 0
+       AND position((SELECT fattura_id FROM tmp_padre)::text  IN m.messaggio) = 0
+       AND position((SELECT fattura_id FROM tmp_padre2)::text IN m.messaggio) = 0
+       AND m.messaggio ~ '(^|[^0-9])2([^0-9]|$)')::text
+     FROM tmp_msg_1 m),
+  'true',
+  '8) la frase non nomina nessun id e dice quanti sono i documenti da numerare'
 );
 
 SELECT * FROM finish();
