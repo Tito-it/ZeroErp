@@ -16,8 +16,14 @@ from apps.pagamenti.api.views import (
     ApiDistintaRighe,
     ApiDistintaStato,
     ApiDistinteList,
+    ApiFatturaRateSaldo,
+    ApiFatturaSaldo,
+    ApiRataSaldo,
+    ApiRateFuoriCapienza,
+    ApiRigaAbbina,
     ApiRigaDetail,
     ApiRigaStato,
+    ApiRigheCoda,
 )
 
 urlpatterns = [
@@ -52,10 +58,41 @@ urlpatterns = [
     # --- Righe contabili (indirizzate per id proprio, non sotto la distinta:
     #     una riga si lavora anche dalla coda del riconciliatore, dove la
     #     distinta di appartenenza non e' il contesto) ---
+    path("righe/", ApiRigheCoda.as_view(), name="pagamenti-righe-coda"),
+    path(
+        "righe/<int:riga_id>/abbina/",
+        ApiRigaAbbina.as_view(),
+        name="pagamenti-riga-abbina",
+    ),
     path(
         "righe/<int:riga_id>/stato/",
         ApiRigaStato.as_view(),
         name="pagamenti-riga-stato",
     ),
     path("righe/<int:riga_id>/", ApiRigaDetail.as_view(), name="pagamenti-riga-detail"),
+    # --- Rate ---
+    # ⚠️ `fuori-capienza/` PRIMA di `<int:scadenza_id>/`, o il pattern generico
+    #     se la mangia (non e' un intero, ma l'ordine e' la regola: la prossima
+    #     rotta di elenco potrebbe esserlo).
+    path(
+        "rate/fuori-capienza/",
+        ApiRateFuoriCapienza.as_view(),
+        name="pagamenti-rate-fuori-capienza",
+    ),
+    path(
+        "rate/<int:scadenza_id>/saldo/",
+        ApiRataSaldo.as_view(),
+        name="pagamenti-rata-saldo",
+    ),
+    # --- Saldi di un documento (li consumano schermate di `vendite`) ---
+    path(
+        "fatture/<int:fattura_id>/saldo/",
+        ApiFatturaSaldo.as_view(),
+        name="pagamenti-fattura-saldo",
+    ),
+    path(
+        "fatture/<int:fattura_id>/rate/",
+        ApiFatturaRateSaldo.as_view(),
+        name="pagamenti-fattura-rate",
+    ),
 ]

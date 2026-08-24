@@ -38,6 +38,8 @@ from apps.core.services.payload_helpers import (
 )
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTE_SORT_COLUMNS,
+    RATE_FUORI_CAPIENZA_SORT_COLUMNS,
+    RIGHE_SORT_COLUMNS,
     PagamentiRepository,
 )
 from apps.pagamenti.types import DistintaRow, RicevutaPosting, RigaContabileRow
@@ -118,6 +120,22 @@ ORIGINE_MANUALE = "MANUALE"
 #    ancora di chi sia, e quello stato dice esattamente questo.
 STATO_DISTINTA_INIZIALE = "BOZZA"
 STATO_RIGA_INIZIALE = "DA_ABBINARE"
+# Lo stato in cui l'abbinamento porta la riga: e' lo stesso gesto, non due.
+STATO_RIGA_ABBINATA = "ABBINATA"
+
+# ⭐ Le due code del riconciliatore, e sono DUE MESTIERI (D12-f): `DA_ABBINARE`
+#    e' lavoro non ancora fatto, `SOSPESA` e' lavoro fatto che ha trovato un
+#    ostacolo. Due voci di menu, una lista sola con il filtro gia' impostato.
+CODE_RIGHE: dict[str, tuple[str, ...]] = {
+    "DA_ABBINARE": ("DA_ABBINARE",),
+    "SOSPESE": ("SOSPESA",),
+    # La terza voce non e' una coda: e' il modo di guardarle insieme quando
+    # serve, e non compare in nessun menu.
+    "TUTTE": ("DA_ABBINARE", "SOSPESA"),
+}
+
+# I due motivi per cui una rata esce dalla banda di capienza.
+MOTIVI_FUORI_CAPIENZA: tuple[str, ...] = ("SOVRA_INCASSATA", "MOVIMENTO_CONTRARIO")
 
 # Campi della testata che una persona compila. ⛔ Lo stato non e' qui: quello e'
 # un'azione, e ha il suo endpoint.
@@ -202,6 +220,19 @@ def _rifiuta_importo(raw: Any, key: str, *, condizione: bool) -> None:
 def _meta_json(payload: dict[str, Any]) -> str:
     meta = _PAYLOAD.optional_meta(payload, "meta")
     return json.dumps(meta or {})
+
+
+# Scopo: L'involucro paginato, uguale per tutte le liste del dominio.
+def _risposta_paginata(
+    results: list[Any], total: int, page: int, page_size: int
+) -> dict[str, Any]:
+    return {
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if page_size else 0,
+        "results": results,
+    }
 
 
 # Scopo: Legge la distinta o solleva il 404 di dominio.
@@ -295,14 +326,7 @@ def list_distinte(
         limit=page_size,
         offset=offset,
     )
-    total_pages = (total + page_size - 1) // page_size if page_size else 0
-    return {
-        "count": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "results": results,
-    }
+    return _risposta_paginata(results, total, page, page_size)
 
 
 # Scopo: Dettaglio di una distinta: testata, totali derivati, righe e i due
@@ -571,6 +595,177 @@ def cambia_stato_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.cambia_stato_riga",
     )
     return {"riga": _riga_o_404(repository, riga_id)}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  L'abbinamento — il verbo che porta il denaro alla rata
+# ══════════════════════════════════════════════════════════════════
+
+# Scopo: Imputa una riga a una fattura, e quando c'e' a una rata.
+# ⭐ E' un VERBO e non un PATCH, per due ragioni: porta con se' la rata e la
+#    forzatura, ed e' una DECISIONE — non la correzione di un dato che era
+#    stato digitato male.
+# ⚠️ La rata resta FACOLTATIVA anche su una riga abbinata: la riga del fondo
+#    fattura ha fattura si' e rata no, ed e' un caso normale.
+# 🔴 Il doppio tempo della capienza (D14-d) passa di qui e il backend NON lo
+#    interpreta: il primo tentativo arriva senza `forzata`, il guard del
+#    database rifiuta con la ragione e i numeri, e la conferma dell'operatore
+#    torna con `forzata = true`. ⛔ Il backend non decide che cosa sia
+#    forzabile — se lo facesse, sarebbe una seconda sede della regola.
+def abbina_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    _PAYLOAD.validate_allowed_keys(
+        payload,
+        allowed=frozenset(
+            {"fattura_id", "billing_account_id", "scadenza_id", "forzata",
+             "motivo_forzatura"}
+        ),
+    )
+    fattura_id = _PAYLOAD.require_positive_int(
+        payload, "fattura_id", message="La fattura e' obbligatoria per abbinare."
+    )
+    billing_account_id = _PAYLOAD.require_positive_int(
+        payload,
+        "billing_account_id",
+        message="Il cliente e' obbligatorio per abbinare.",
+    )
+    scadenza_id = _PAYLOAD.optional_positive_int(payload, "scadenza_id")
+    forzata = _PAYLOAD.optional_bool(payload, "forzata") or False
+    motivo_forzatura = _PAYLOAD.optional_string(payload, "motivo_forzatura")
+    # ⚠️ Un motivo senza forzatura e' una nota che nessuno leggera' mai: la
+    #    colonna esiste per spiegare una forzatura, e scriverla su una riga non
+    #    forzata lascerebbe a registro una spiegazione di un gesto mai fatto.
+    ErrorManager.require(
+        forzata or motivo_forzatura is None,
+        code=E_VALIDAZIONE,
+        message="Il motivo si scrive solo insieme alla forzatura.",
+        detail="motivo_forzatura richiede forzata = true.",
+        context={"field": "motivo_forzatura"},
+        function_name=f"{_FN}.abbina_riga",
+    )
+
+    repository = PagamentiRepository()
+    _riga_o_404(repository, riga_id)
+    with _db_errors("abbina_riga"):
+        toccate = repository.abbina_riga(
+            riga_id=riga_id,
+            fattura_id=fattura_id,
+            billing_account_id=billing_account_id,
+            scadenza_id=scadenza_id,
+            forzata=forzata,
+            motivo_forzatura=motivo_forzatura,
+            codice_stato_interno=STATO_RIGA_ABBINATA,
+        )
+    ErrorManager.require(
+        toccate > 0,
+        code=E_STATO_NON_CONFIGURATO,
+        message="Stato riga contabile non configurato.",
+        detail=f"codice_interno={STATO_RIGA_ABBINATA} assente o non attivo.",
+        function_name=f"{_FN}.abbina_riga",
+    )
+    return {"riga": _riga_o_404(repository, riga_id)}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Le due code, e l'elenco che rende onesta la forzatura
+# ══════════════════════════════════════════════════════════════════
+
+# Scopo: La coda del riconciliatore: le righe di TUTTE le distinte in uno degli
+#        stati chiesti.
+# ⭐ `coda` sceglie il mestiere, non lo stato: chi entra da «Da abbinare» vede
+#    solo quelle, chi entra da «Sospese» solo le sue — ma la definizione a
+#    catalogo e' una sola.
+def list_coda_righe(
+    *,
+    coda: str | None = None,
+    billing_account_id: int | None = None,
+    data_da: date | None = None,
+    data_a: date | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, Any]:
+    chiave = (coda or "TUTTE").upper()
+    ErrorManager.require(
+        chiave in CODE_RIGHE,
+        code=E_VALIDAZIONE,
+        message="Coda non riconosciuta.",
+        detail=f"Ammesse: {', '.join(CODE_RIGHE)}.",
+        context={"field": "coda", "coda": chiave},
+        function_name=f"{_FN}.list_coda_righe",
+    )
+    order_by, order_dir = validate_order_params(
+        order_by or "data_pagamento",
+        (order_dir or "desc").lower(),
+        allowed_columns=frozenset(RIGHE_SORT_COLUMNS),
+        error_code=E_VALIDAZIONE,
+        function_name=f"{_FN}.list_coda_righe",
+    )
+    offset = validate_pagination(
+        page, page_size, error_code=E_VALIDAZIONE,
+        function_name=f"{_FN}.list_coda_righe",
+    )
+
+    repository = PagamentiRepository()
+    results, total = repository.list_righe_coda(
+        stati=CODE_RIGHE[chiave],
+        billing_account_id=billing_account_id,
+        data_da=data_da,
+        data_a=data_a,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=page_size,
+        offset=offset,
+    )
+    return _risposta_paginata(results, total, page, page_size)
+
+
+# Scopo: Le rate uscite dalla banda di capienza.
+# 🔴 Senza questo elenco la forzatura sarebbe «un modo per nascondere, non per
+#    registrare»: e' la ragione per cui la vista e il guard che permette di
+#    forzare stanno nello stesso lotto.
+def list_rate_fuori_capienza(
+    *,
+    motivo: str | None = None,
+    billing_account_id: int | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, Any]:
+    # Fail-fast sul vocabolario chiuso: un motivo inventato darebbe una lista
+    # vuota, che su due soli valori possibili e' indistinguibile da «non c'e'
+    # niente fuori capienza» — cioe' dalla risposta piu' rassicurante.
+    ErrorManager.require(
+        motivo is None or motivo in MOTIVI_FUORI_CAPIENZA,
+        code=E_VALIDAZIONE,
+        message="Motivo non riconosciuto.",
+        detail=f"Ammessi: {', '.join(MOTIVI_FUORI_CAPIENZA)}.",
+        context={"field": "motivo", "motivo": motivo},
+        function_name=f"{_FN}.list_rate_fuori_capienza",
+    )
+    order_by, order_dir = validate_order_params(
+        order_by or "data_scadenza",
+        (order_dir or "desc").lower(),
+        allowed_columns=frozenset(RATE_FUORI_CAPIENZA_SORT_COLUMNS),
+        error_code=E_VALIDAZIONE,
+        function_name=f"{_FN}.list_rate_fuori_capienza",
+    )
+    offset = validate_pagination(
+        page, page_size, error_code=E_VALIDAZIONE,
+        function_name=f"{_FN}.list_rate_fuori_capienza",
+    )
+
+    repository = PagamentiRepository()
+    results, total = repository.list_rate_fuori_capienza(
+        motivo=motivo,
+        billing_account_id=billing_account_id,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=page_size,
+        offset=offset,
+    )
+    return _risposta_paginata(results, total, page, page_size)
 
 
 # ══════════════════════════════════════════════════════════════════

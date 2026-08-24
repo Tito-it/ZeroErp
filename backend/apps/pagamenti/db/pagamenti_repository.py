@@ -173,6 +173,23 @@ DISTINTE_SORT_COLUMNS: dict[str, str] = {
     "totale_righe": "totale_righe",
 }
 
+# Colonne ordinabili della coda del riconciliatore (righe cross-distinta).
+RIGHE_SORT_COLUMNS: dict[str, str] = {
+    "data_pagamento": "data_pagamento",
+    "importo": "importo",
+    "stato": "stato_codice",
+    "distinta": "contabile_codice",
+}
+
+# Colonne ordinabili dell'elenco delle rate fuori capienza.
+RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
+    "data_scadenza": "data_scadenza",
+    "motivo": "motivo",
+    "residuo": "residuo",
+    "importo_rata": "importo_rata",
+    "fattura": "fattura_numero",
+}
+
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
 _JSONB_COLS = ("meta",)
 
@@ -599,6 +616,243 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id), codice_stato_interno])
             return cursor.rowcount
+
+    # Scopo: Imputa una riga a una fattura (e, quando c'e', a una rata).
+    # ⭐ UN SOLO `UPDATE`: i dati dell'abbinamento e lo stato viaggiano insieme,
+    #    perche' sono lo stesso gesto — «questa riga e' di questo documento».
+    #    Separarli lascerebbe per un istante una riga abbinata a meta', che i
+    #    guard rifiuterebbero comunque, ma con un messaggio sull'ordine delle
+    #    scritture invece che sul merito.
+    # ⚠️ `forzata` e' il SECONDO TEMPO della capienza (D14-d): il primo
+    #    tentativo arriva senza, il guard rifiuta con la ragione e i numeri, e
+    #    la conferma dell'operatore torna qui come `forzata = true` — che resta
+    #    SCRITTA sulla riga, ed e' cio' che l'elenco a valle legge.
+    def abbina_riga(
+        self,
+        *,
+        riga_id: int,
+        fattura_id: int,
+        billing_account_id: int,
+        scadenza_id: int | None,
+        forzata: bool,
+        motivo_forzatura: str | None,
+        codice_stato_interno: str,
+    ) -> int:
+        sql = """
+            UPDATE pagamenti.vendite_contabili_righe r
+               SET fattura_id         = %s,
+                   billing_account_id = %s,
+                   scadenza_id        = %s,
+                   forzata            = %s,
+                   motivo_forzatura   = %s,
+                   stato_id           = st.id
+              FROM pagamenti.vendite_contabili_righe_stati st
+             WHERE r.id = %s
+               AND st.codice_interno = %s
+               AND st.attivo IS TRUE
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql,
+                [
+                    int(fattura_id), int(billing_account_id), scadenza_id,
+                    bool(forzata), motivo_forzatura,
+                    int(riga_id), codice_stato_interno,
+                ],
+            )
+            return cursor.rowcount
+
+    # ══════════════════════════════════════════════════════════════
+    #  I saldi — le tre letture, e nient'altro le chiama
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: Il saldo di una RATA: residuo, in lavorazione, incassato.
+    # ⭐ Tre numeri e non uno: «quanto manca», «quanto e' gia' digitato ma non
+    #    registrato» e «quanto e' entrato davvero in banca» sono tre domande
+    #    diverse, e la terza esclude i centri interni (fondi, compensazioni).
+    # ⚠️ `escludi_riga_id` serve a chiedere lo spazio PRIMA DI SE': e' cosi' che
+    #    si verifica se una riga ci sta, senza contarsi addosso.
+    def get_saldo_rata(
+        self, scadenza_id: int, *, escludi_riga_id: int | None = None
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT saldo, in_lavorazione, incassato, has_movimenti
+              FROM pagamenti.fn_get_saldo_rata(%s, %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(scadenza_id), escludi_riga_id])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Il residuo di un DOCUMENTO e il flag «ha movimenti».
+    # ⚠️ Due numeri, non tre: a questo livello il database non sa ancora dire
+    #    l'incassato (richiesta DB-10 al team DB). Chi compone la risposta lo
+    #    dichiara `None`, e ⛔ non lo inventa sommando le rate: una riga puo'
+    #    avere fattura SENZA rata — il fondo fattura e' esattamente cosi' — e
+    #    quel denaro non comparirebbe in nessuna somma di rate.
+    def get_saldo_fattura(self, fattura_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT saldo, has_movimenti
+              FROM pagamenti.fn_get_saldo_fattura(%s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Il denaro di un documento gia' digitato ma NON ancora registrato.
+    def get_saldo_fattura_contabili(self, fattura_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT saldo_contabile, has_righe_postabili
+              FROM pagamenti.fn_get_saldo_fattura_contabili(%s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Le rate di un documento, con il loro saldo accanto.
+    # ⭐ Sta in `pagamenti` e non in `vendite` benche' le rate siano di vendite:
+    #    la domanda e' «quanto resta su questa rata», e a saperla rispondere e'
+    #    questo schema. ⚠️ E `vendite` non potrebbe chiederglielo: le chiamate
+    #    laterali fra moduli di pari livello non sono ammesse (api.md).
+    def list_rate_con_saldo(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                sc.id                AS scadenza_id,
+                sc.numero_rata,
+                sc.data_scadenza,
+                sc.importo,
+                s.saldo              AS residuo,
+                s.in_lavorazione,
+                s.incassato,
+                s.has_movimenti
+              FROM vendite.fatture_scadenze sc
+              CROSS JOIN LATERAL pagamenti.fn_get_saldo_rata(sc.id) s
+             WHERE sc.fattura_id = %s
+             ORDER BY sc.numero_rata NULLS LAST, sc.data_scadenza NULLS LAST, sc.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # ══════════════════════════════════════════════════════════════
+    #  Le due code di lavoro
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: Le righe di TUTTE le distinte in uno degli stati chiesti — la coda
+    #        del riconciliatore.
+    # ⭐ Un endpoint solo per due code: «da abbinare» e «sospese» sono due
+    #    mestieri diversi (D12-f) e due voci di menu, ma la stessa lista con un
+    #    filtro diverso gia' impostato. Due definizioni a catalogo per due
+    #    schermate identiche sarebbero due cose da tenere allineate.
+    def list_righe_coda(
+        self,
+        *,
+        stati: tuple[str, ...],
+        billing_account_id: int | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[RigaContabileRow], int]:
+        self._guard_canale_sistema("list_righe_coda")
+
+        conditions = ["r.attivo IS TRUE", "rs.codice_interno = ANY(%s)"]
+        params: list[Any] = [list(stati)]
+        if billing_account_id is not None:
+            conditions.append("r.billing_account_id = %s")
+            params.append(billing_account_id)
+        if data_da is not None:
+            conditions.append("c.data_contabile >= %s")
+            params.append(data_da)
+        if data_a is not None:
+            conditions.append("c.data_contabile <= %s")
+            params.append(data_a)
+
+        sort_col = RIGHE_SORT_COLUMNS.get(order_by, "data_pagamento")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        # La coda porta con se' la sua distinta: una riga senza il documento da
+        # cui viene non si lavora — l'operatore deve poterci tornare.
+        select_sql = f"""
+            {_RIGA_SELECT}
+              JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
+             WHERE {" AND ".join(conditions)}
+        """
+        data_sql = f"""
+            SELECT *, COUNT(*) OVER () AS total_count FROM (
+                {select_sql}
+            ) q
+            ORDER BY {sort_col} {direction}, id {tiebreak}
+            LIMIT %s OFFSET %s
+        """
+        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
+        rows, total = fetch_paged_with_total(
+            data_sql,
+            [*params, limit, offset],
+            fallback_count_sql=count_sql,
+            fallback_params=list(params),
+            offset=offset,
+        )
+        return [self._shape(row) for row in rows], total
+
+    # Scopo: L'elenco delle rate uscite dalla banda di capienza.
+    # ⭐ Senza questo elenco la forzatura sarebbe «un modo per nascondere, non
+    #    per registrare»: e' la ragione per cui la vista sta nello stesso lotto
+    #    del guard che permette di forzare.
+    # ⚠️ `motivo` ha due valori e vanno mostrati entrambi: `SOVRA_INCASSATA` e
+    #    `MOVIMENTO_CONTRARIO` — un rimborso dove non era entrato niente e' il
+    #    caso che ha fatto cadere l'asimmetria di D1-bis.
+    def list_rate_fuori_capienza(
+        self,
+        *,
+        motivo: str | None = None,
+        billing_account_id: int | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_rate_fuori_capienza")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if motivo is not None:
+            conditions.append("v.motivo = %s")
+            params.append(motivo)
+        if billing_account_id is not None:
+            conditions.append("v.billing_account_id = %s")
+            params.append(billing_account_id)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = RATE_FUORI_CAPIENZA_SORT_COLUMNS.get(order_by, "data_scadenza")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        select_sql = f"""
+            SELECT v.*
+              FROM pagamenti.vw_rate_fuori_capienza v
+              {where_clause}
+        """
+        data_sql = f"""
+            SELECT *, COUNT(*) OVER () AS total_count FROM (
+                {select_sql}
+            ) q
+            ORDER BY {sort_col} {direction}, scadenza_id {tiebreak}
+            LIMIT %s OFFSET %s
+        """
+        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
+        return fetch_paged_with_total(
+            data_sql,
+            [*params, limit, offset],
+            fallback_count_sql=count_sql,
+            fallback_params=list(params),
+            offset=offset,
+        )
 
     # ══════════════════════════════════════════════════════════════
     #  La madre del posting
