@@ -97,6 +97,41 @@ def _run_lotto_kwargs(payload: dict[str, object]) -> dict[str, object]:
     }
 
 
+# Scopo: I campi dell'ESITO del driver di pipeline, per i due endpoint che lo
+#        ritornano (avanza fino in fondo, numera lotto).
+#
+# ⚠️ IL FALLIMENTO E' DENTRO IL PAYLOAD, NON NELLO STATUS. Questi endpoint
+#    rispondono **200 anche quando la catena si ferma**, perche' puo' aver
+#    eseguito qualche step prima di fermarsi e quel lavoro va raccontato: chi
+#    legge DEVE guardare `motivo_stop`. Un 200 non e' un successo — difetto
+#    misurato in-app il 2026-08-21, il toast verde su un lotto che il database
+#    aveva rifiutato.
+#
+# ⭐ `errore` porta gli STESSI nomi dell'envelope d'errore — `code`, `message`,
+#    `detail`, `hint`, `fields`, `targets` — cosi' che a video il gesto lo
+#    disegni un consumatore solo.
+#
+# ⚠️ Definito UNA volta: i due `@extend_schema` lo chiamano. Erano due copie
+#    identiche, cioe' due punti in cui divergere sul contratto di una risposta.
+#
+# ⛔ ED E' UNA FUNZIONE, NON UNA COSTANTE — misurato, non supposto. Con un dict
+#    a livello di modulo i due `inline_serializer` condividerebbero le STESSE
+#    ISTANZE di campo, e un campo DRF si lega al proprio serializer: il secondo
+#    componente esce dallo schema **senza nemmeno la chiave `data`**. Verificato
+#    con `manage.py spectacular`: `VenditeNumeraLottoResponse` conteneva il solo
+#    `meta`. Non fallisce niente e nessun test lo vede — il contratto pubblicato
+#    e' semplicemente sbagliato, che e' il modo peggiore di romperlo.
+def _esito_runner_fields() -> dict[str, serializers.Field]:
+    return {
+        "lotto_id": serializers.IntegerField(allow_null=True),
+        "stato_lotto": serializers.CharField(allow_null=True),
+        "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
+        "step_eseguiti": serializers.IntegerField(),
+        "motivo_stop": serializers.CharField(),
+        "errore": serializers.DictField(required=False, allow_null=True),
+    }
+
+
 class ApiRunLottoPipeline(DomainAPIView):
     area_funzionale = "vendite"
     post_permission = "genera_fatture_lotti"
@@ -189,13 +224,7 @@ class ApiRunLottoPipelineUntilDone(DomainAPIView):
                 fields={
                     "data": inline_serializer(
                         name="VenditeRunLottoPipelineUntilDoneData",
-                        fields={
-                            "lotto_id": serializers.IntegerField(allow_null=True),
-                            "stato_lotto": serializers.CharField(allow_null=True),
-                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
-                            "step_eseguiti": serializers.IntegerField(),
-                            "motivo_stop": serializers.CharField(),
-                        },
+                        fields=_esito_runner_fields(),
                     ),
                     "meta": serializers.DictField(required=False),
                 },
@@ -1555,13 +1584,7 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
                 fields={
                     "data": inline_serializer(
                         name="VenditeNumeraLottoData",
-                        fields={
-                            "lotto_id": serializers.IntegerField(allow_null=True),
-                            "stato_lotto": serializers.CharField(allow_null=True),
-                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
-                            "step_eseguiti": serializers.IntegerField(),
-                            "motivo_stop": serializers.CharField(),
-                        },
+                        fields=_esito_runner_fields(),
                     ),
                     "meta": serializers.DictField(required=False),
                 },

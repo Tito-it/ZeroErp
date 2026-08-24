@@ -90,15 +90,42 @@ class RequestLogMiddleware(MiddlewareMixin):
             if response.status_code >= 400:
                 error_code = _extract_error_code(response)
 
+            # ⭐ `emittente_attivo_id` SI COLLEGA, e non si passa dal Python
+            #    (consegna BE-8). Era una delle due colonne MORTE di questa
+            #    tabella: 0 righe valorizzate su 354.595. Il valore c'e' gia'
+            #    nella sessione — la GUC `app.current_emittente_id`, che
+            #    `jwt_audit_authentication` scrive a ogni richiesta autenticata
+            #    ed e' la STESSA che le policy RLS leggono per decidere cosa
+            #    l'utente vede.
+            #
+            # ⚠️ Si legge di la' e non dal JWT apposta: l'autenticazione ha gia'
+            #    verificato che quell'emittente esista e sia attivo prima di
+            #    metterlo nella GUC. Ripartire dal token vorrebbe dire rifare la
+            #    verifica — o, peggio, non rifarla e scrivere nel log un
+            #    emittente che il resto della richiesta non ha usato.
+            #
+            # ⭐ E la GUC e' ancora leggibile QUI, che e' la ragione per cui
+            #    questo funziona: `set_config(..., false)` la mette a livello di
+            #    SESSIONE, non di transazione, e questa INSERT avviene dopo la
+            #    risposta ma sulla stessa connessione. Con `true` sarebbe gia'
+            #    sparita.
+            #
+            # ⛔ `tx_id` resta NULL, ed e' l'unica delle due che NON si collega
+            #    da qui: la riga si scrive quando la transazione di lavoro ha
+            #    gia' chiuso, quindi il suo `tx_id` non esiste piu'. Un valore
+            #    coniato adesso legherebbe questa riga a se stessa e a niente
+            #    altro. Va tolta a DB — richiesta scritta, non fatta qui.
             sql = """
                 INSERT INTO dbops.request_log
                     (auth_user_id, username, request_id, method, path,
                      query_string, status_code, duration_ms, ip_address,
-                     user_agent, error_code, idempotency_key)
+                     user_agent, error_code, idempotency_key,
+                     emittente_attivo_id)
                 VALUES
                     (%s, %s, %s::uuid, %s, %s,
                      %s, %s, %s, %s::inet,
-                     %s, %s, %s)
+                     %s, %s, %s,
+                     NULLIF(current_setting('app.current_emittente_id', true), '')::bigint)
             """
             params = [
                 auth_user_id,

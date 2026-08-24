@@ -320,7 +320,9 @@
     "forbidden_title": "Access denied",
     "forbidden_message": "You do not have permission to access this area.",
     "back_home": "Back to Home",
-    "lookup_load_failed": "Could not load the list. Retry or contact the administrator."
+    "lookup_load_failed": "Could not load the list. Retry or contact the administrator.",
+    "bersaglio_apri": "Open {entita} {id}",
+    "bersaglio_apri_senza_id": "Open {entita}"
   },
   "placeholder": {
     "wip_title": "Under construction",
@@ -3894,6 +3896,12 @@
     "documenti": {
       "tab_modelli": "Document templates",
       "tab_asset": "Document assets"
+    },
+    "tipi_entita": {
+      "fattura": "Invoice",
+      "commessa": "Job",
+      "lotto": "Batch",
+      "task_run": "Run"
     }
   },
   "lista_config": {

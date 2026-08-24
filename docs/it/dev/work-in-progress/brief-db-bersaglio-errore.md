@@ -867,11 +867,24 @@ resta appeso a B-1/B-2 e non lo chiude questo brief.
 
 ---
 
-## 7. Le consegne BE/FE — *scritte qui, non implementate da qui*
+## 7. Cosa tocca dopo, e a chi *(dichiarato qui, **pianificato in §7-bis**)*
 
-> **Perimetro DB:** questo cantiere non modifica `backend/` né `frontend/`. Da
-> qui in avanti il valore è tutto lì: il database scrive il bersaglio in **14
-> punti**, e finché nessuno legge quel canale non compare nessun pulsante.
+> ➡️ **Le tre consegne di questa tabella sono diventate un piano il 2026-08-24: §7-bis.**
+> Questa resta la dichiarazione — *cosa* serve e a chi; là c'è il *come*, e le
+> tre misure che hanno spostato il baricentro del lavoro.
+
+| | Chi | Cosa |
+| --- | --- | --- |
+| **B-1** | BE | ✅ **Il canale è APPLICATO e provato dal vivo** (`20260823-02`; `diag.datatype_name` letto da psycopg il 2026-08-24). Si legge **`diag.datatype_name`** — lo stesso posto da cui il backend legge già `constraint_name` per il codice e `column_name` per i campi — e si porta nell'envelope accanto a `code` / `message` / `ui_action` / `fields`. ⚠️ **Il contratto vale solo dentro `P0001`**, come per `CONSTRAINT`: fuori di lì quel campo lo riempie PostgreSQL da sé. Forma: `TIPO:id[,TIPO:id]`, al massimo cinque; stringa vuota = nessun bersaglio. ⭐ È **lo stesso lavoro già fatto due volte** — `CONSTRAINT`→`code` (05/08) e `COLUMN`→`fields` (08/08) |
+| **B-2** | FE | il gesto: dal bersaglio a una destinazione. ⚠️ **E non è una rotta**: misurato il 2026-08-24, `FATTURA` una rotta non ce l'ha — si apre solo in un drawer. ⭐ La tabella però esiste già ed è il registro `DOCUMENTO_DRAWERS`: si riusa, non si scrive (§7-bis.3) |
+| **B-3** | FE | il degrado di §4.3 — bersaglio non risolvibile → nessun pulsante, messaggio invariato |
+
+⭐ **Un effetto laterale che vale da solo**: `ui_action` oggi è un canale
+prodotto e non consumato — 126 codici promettono «evidenzia il campo» e nessun
+componente legge `azioneUi`. Un errore che porta un bersaglio è il primo pezzo di
+frontend che ha una **ragione** per leggere quel canale, e rende scrivibile il
+presidio **C2** di
+[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
 
 ### B-1 · Backend — dal canale all'envelope ✅ **eseguibile**
 
@@ -966,6 +979,159 @@ per non offrire un pulsante che porta nel vuoto.
 un bersaglio è il primo pezzo di frontend che ha una **ragione** per leggere quel
 canale, e rende scrivibile il presidio **C2** di
 [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
+
+## 7-bis. Il piano di sviluppo BE/FE *(scritto il 2026-08-24)*
+
+> ✅ **FATTO IL 2026-08-24, tutto tranne il `T-3b`.** Sette lotti di backend
+> (B1..B7) e sei di frontend (F1..F6), **3.912 test verdi** — inclusa la passata
+> con `ZEROERP_TEST_DB_E2E=1`, che stavolta è **verde piena**: il rosso atteso
+> («DB avanti rispetto a git») era il file delle policy indietro, e i due CSV di
+> `W_BERSAGLIO_MALFORMATO` lo hanno riallineato.
+> ⭐ **Provato dal vivo, non dedotto**: chiamata reale a
+> `script.fn_log_and_raise_error` da psycopg → `diag.datatype_name` =
+> `FATTURA:835,FATTURA:820`, e il test end-to-end la ripete a ogni corsa.
+> ⛔ **Resta fuori il `T-3b`** — l'id che esce dalla prosa del 937 — che è un
+> passo **del database** e ora è sbloccato: B-1 e B-2 sono in servizio (§5.3-bis).
+
+> **Cos'è.** La §7 dichiarava tre consegne — `B-1` al backend, `B-2` e `B-3` al
+> frontend — e diceva bene *cosa* serve. Questo è il piano per farle, scritto
+> dopo aver **misurato il terreno**, e la misura ha spostato il baricentro: il
+> lavoro grosso non è leggere la casella nuova (sono dieci righe), è che **i
+> punti in cui un errore del database diventa un errore dell'applicazione sono
+> quattro**, e tre dei quattro buttano via la diagnostica strutturata prima che
+> arrivi all'envelope. ⛔ **Fra i tre c'è la strada del pilota.**
+>
+> ⚠️ **Perimetro.** Qui non si tocca nessun file di `db/`: il lotto DB è
+> applicato e chiuso. Si tocca `backend/` e `frontend/`, più `api.md` e
+> `frontend-standards.md`, che sono i due documenti dove questa convenzione va a
+> vivere.
+
+### 7-bis.1 🔴 Il rilievo: i punti di traduzione sono quattro, non uno
+
+Un errore sollevato da `script.fn_log_and_raise_error` arriva al backend come
+`DatabaseError` con la sua diagnostica: codice su `CONSTRAINT`, campo su
+`COLUMN`, bersaglio su `DATATYPE`, causa su `DETAIL`, soluzione su `HINT`.
+**Poi qualcuno lo traduce**, e la traduzione decide cosa sopravvive.
+
+| | Dove | Cosa porta all'envelope oggi | Cosa perde |
+| --- | --- | --- | --- |
+| 1 | `ErrorTranslator._from_database_error` — il `DatabaseError` che arriva **nudo** al middleware | `hint`, `fields` | — |
+| 2 | `payload_helpers.translate_db_errors` — **46 punti** di chiamata nei domini | `hint` soltanto | ⛔ `fields` |
+| 3 | `ErrorManager.raise_from_database_error` — **9 punti** | niente | ⛔ `hint`, `fields` |
+| 4 | `pipeline_step_executor._run_per_fattura_task` — ⭐ **la strada del 937** | il solo `message_primary` | ⛔ `hint`, `fields` |
+
+⚠️ **E non sono quattro copie da riparare quattro volte**: dietro ci sono **42
+`except DatabaseError`** nei service. Un rimedio per punto di cattura è
+esattamente la forma in cui questa casa ha già visto divergere il codice.
+
+⭐ **Ne esce un difetto già vivo, che non è del bersaglio.** Il canale `COLUMN`
+esiste dall'08/08 e — col ripiego su `parametro` — lo valorizzano **quasi tutti**
+i punti di sollevamento del database. Ma `api.md` scrive *«il backend lo legge
+già»*, ed è vero **per un lettore su quattro**: appena un service traduce (cioè
+sempre, in ogni dominio) il nome della colonna **si perde**. Il frontend, che ha
+136 binding pronti su `campiErrati`, su un errore nato in PL/pgSQL non riceve
+niente. ⛔ **Il bersaglio, scritto nello stesso posto, farebbe la stessa fine.**
+
+➡️ **La sede unica esiste già, e ha pure il parametro giusto.**
+`ErrorManager.raise_error` accetta `cause`, e **33 punti gliela passano**. Se è
+da lì che si deriva la diagnostica — `hint`, `fields`, `bersagli` — i punti 3 e
+4 sono coperti **senza toccarli**, e il punto 2 costa una riga (`cause=exc`, che
+oggi non passa). ⭐ **È la mossa del database applicata al backend**: la
+composizione in una sede sola, come `fn_log_and_raise_error` compone la casella
+per tutti i 1.093 punti di sollevamento.
+
+### 7-bis.2 I lotti del backend
+
+| # | Lotto | File | Cosa |
+| --- | --- | --- | --- |
+| **B1** | La **lettura** della casella | `apps/core/services/db_error_fields.py` | `structured_db_error_target(exc)` — gemella di `structured_db_error_code` e `structured_db_error_field`. Legge `diag.datatype_name`, ritorna una tupla di `{tipo, id}` (vuota → `None`). ⛔ **Qui il guard sullo SQLSTATE SERVE**, al contrario di `COLUMN`: fuori da `P0001` quel campo lo riempie PostgreSQL da sé (un `22P02` ci mette il nome di un tipo). È il patto scritto in §4.4. ⚠️ La regex è lo **specchio** di quella del database (`^[A-Z][A-Z0-9_]{0,30}$` e id numerico-o-uuid) e il tetto è **cinque**: le due metà dello stesso canale si guardano uguale, com'è già per `COLUMN` |
+| **B2** | Il **trasporto** — ⭐ il lotto vero | `service_errors.py` · `error_manager.py` · `payload_helpers.py` | `ServiceError` prende `fields` e `bersagli`; `ErrorManager.raise_error`, quando riceve una `cause` che è un errore DB, li **deriva** (insieme a `hint`, che oggi deriva solo se il chiamante glielo passa a mano); `translate_db_errors` passa `cause=exc`. ⛔ **Il campo `hint` e il campo `fields` esplicitamente passati dal chiamante VINCONO**: la derivazione è un ripiego, non un'imposizione — è la stessa precedenza che il database dà a `campo` su `parametro` |
+| **B3** | L'**envelope** | `error_translator.py` | `ApiError` prende il campo nuovo; `to_api_error` lo legge dal `ServiceError` **e** da `_from_database_error`; ⛔ e va **ricopiato in `_apply_policy`**, che costruisce un `ApiError` nuovo — è il punto esatto in cui `fields` si era già perso una volta, e il commento in quel metodo lo dice. ⚠️ **Su un codice di classe `TECNICO` il bersaglio si toglie**: è la Q-E letta dal lato che consegna, e vale anche se un giorno il database sbagliasse a metterlo (non c'è gesto su un 500) |
+| **B6** | Il **runner**, che non passa dall'envelope | `pipeline_runner.py` · `vendite/api/views.py` | 🔴 Gli endpoint del runner rispondono **200 anche quando la catena si ferma per errore**: il fallimento è `motivo_stop` + `errore: {code, message, detail}`, costruito a mano in `_drive_lotto_until_done`. È il **quinto** punto di appiattimento, ed è **la strada del pilota**. Il blob prende `hint`, `fields`, `targets` — gli stessi tre nomi dell'envelope, perché il consumatore a video sia uno solo. ⚠️ È un **contratto**: va aggiornato anche l'`inline_serializer` di `@extend_schema` |
+| **B7** | Il bersaglio si **persiste** *(strada asincrona)* | `pipeline_runner.py` · `vendite_repository.py` · `types.py` | ⭐ **Il lettore che conta è qui** (§1: «l'operatore cinque minuti dopo»): un giro batch fallisce quando non c'è nessuno davanti allo schermo, e l'unica cosa che resta è una riga scritta. ⚠️ **Costa meno del toast**: nessuna DDL (`fatture_log.meta` e `task_runs.meta` sono già `jsonb NOT NULL`), il punto di scrittura esiste già ed è già fuori dall'`atomic` dello step (`_persist_fattura_error_safely`), e la query della lista fatture **seleziona già `err.meta`** ed estrae già una chiave da lì (`error_code`). Si aggiunge `bersagli` accanto, con la stessa convenzione |
+| **B4** | I **test** | `apps/core/tests/…` | ⚠️ `db_error_fakes.FakeDiag` porta oggi **quattro** campi e non ha né `column_name` né `datatype_name`: `test_db_error_field_column.py` si è dovuto scrivere il proprio finto. Alla seconda copia si estende quello condiviso (regola del 2). Unitari sulla lettura (forma buona, tipo minuscolo, id storto, sesto elemento, SQLSTATE non `P0001`); **un test per ciascuno dei quattro punti di traduzione**, che è il difetto che questo piano ha trovato; e un **E2E opt-in** (`ZEROERP_TEST_DB_E2E=1`) contro la funzione vera, sul modello di `test_db_error_fields.py` |
+| **B5** | La **documentazione** | `docs/it/dev/api.md` | La riga nuova nella tabella dell'envelope, e la sezione dei canali strutturati che diventa **tre**. ⛔ **E si corregge la riga che oggi dice il falso**: *«il backend lo legge già; le funzioni non lo mandano ancora»* — le funzioni lo mandano dall'08/08, ed è il backend a perderlo per strada |
+
+⭐ **B2 vale da solo, anche a bersaglio spento**: rimette in servizio il canale
+`COLUMN` su tutti gli errori nati in PL/pgSQL, cioè accende 136 binding che oggi
+esistono e non si illuminano mai.
+
+### 7-bis.3 I lotti del frontend
+
+⚠️ **Due misure prima di progettare**, entrambe fatte sul codice:
+
+| Fatto | Conseguenza sul disegno |
+| --- | --- |
+| ⛔ **`FATTURA` non ha una rotta.** Non esiste `vendite/fatture`: la fattura si apre **solo** in un drawer, da quattro punti diversi (riga del lotto, tool fatturazione, drawer commessa, chip di lineage) | Il gesto del §2 **non è «vai a una pagina»**, è «apri il documento». La «tabella di rotte» del §3 nasce quindi come **tabella di aperture** |
+| ⭐ **E quella tabella esiste già**: `vendite/_shared/documenti/documentoDrawers.js` mappa `DOCUMENTO_DRAWER_TIPI` → drawer + nome della prop dell'id, con il suo host (`DocumentoDrawerHost`) e il suo comando (`useDocumentoDrawer.apri(tipo, id)`) | Il bersaglio **non chiede una mappa nuova**: chiede che i codici di `config.tipi_entita` e le chiavi di quel registro **coincidano**, esattamente come il §5.1-bis chiede che coincidano con `config.sorgenti` |
+
+| # | Lotto | File | Cosa |
+| --- | --- | --- | --- |
+| **F1** | Il bersaglio **arriva** | `core/composables/useApiHandler.js` | `bersagli` accanto a `campiErrati` e `azioneUi`: stessa forma, stesse regole (si azzera a ogni `execute`, si popola anche in `silent`). ⭐ **Costa una riga e serve 122 file**: è il punto in cui il canale diventa disponibile ovunque senza toccare nessun componente |
+| **F2** | Il bersaglio **si risolve** | `core/bersagli.js` *(nuovo)* | `risolviBersaglio({tipo, id})` → `{ etichetta, apri() }` **oppure `null`**. Il `null` è il §4.3, ed è metà del lavoro: tipo fuori mappa, area bloccata (`auth.isAreaBlocked`), veste che non è quella dell'operatore → **nessun gesto**, e il messaggio resta quello di prima. ⚠️ **Mai un pulsante che porta in un vicolo cieco**, e mai un `catch` silenzioso al posto del controllo |
+| **F3** | Il bersaglio **si vede** | *(dipende dalla Q-G)* | Il gesto a video. Vedi la decisione aperta: oggi **nessun toast di questa casa sa portare un pulsante**, e `useNotify` espone quattro funzioni che passano solo `{severity, summary, life}` |
+| **F4** | Le **etichette** | `locales/it.json` · `en.json` | Le chiavi `config.tipi_entita.*` — **oggi non esistono nel frontend**, e sono l'indirizzo che il database ha già scritto nella colonna `etichetta_key` del catalogo. ⭐ È il patto dei tre livelli già in `frontend-standards`: il DB emette l'indirizzo, il BE lo trasporta senza interpretarlo, il FE lo risolve. ⚠️ Una chiave che non esiste **non dà errore: dà testo mancante** — quindi si semina insieme al tipo, come il §5.1 T-1c fa col catalogo |
+| **F6** | Il gesto **sull'errore persistito** | `core/components/ErroreRigaInfo.vue` · `LottoDrawer.vue` | ⭐ **Il posto migliore, e c'era già.** Quel popover è nato il 2026-08-21 da un rilievo di Tid, contro *«l'errore annunciato da un toast e poi sparito per sempre»*: è letteralmente la casa di un errore che si legge dopo. Prende una prop `bersagli` e disegna lo stesso gesto del toast, risolto dallo stesso `risolviBersaglio`. ⛔ **Un resolver solo, due superfici**: se le due divergessero, il pulsante direbbe due cose diverse sullo stesso errore |
+| **F5** | La **documentazione** | `frontend-standards.md` · `catalogo-building-block-frontend.md` | Il paragrafo gemello di quello di `campiErrati`, e la riga di `useApiHandler` nel catalogo BB |
+
+⭐ **E un effetto laterale che la §7 aveva già visto**: `azioneUi` è ferma da
+mesi perché nessun componente ha una ragione per leggerla. Un errore che porta
+un bersaglio è la prima ragione — ma ⚠️ **non si accende `ui_action` in questo
+piano**: sono 176 scelte fatte quando nessuno poteva verificarle a video, e
+vanno rilette in un passo suo (`api.md` lo scrive già).
+
+### 7-bis.4 Ordine, e cosa dipende da cosa
+
+```text
+B1 ──► B2 ──┬─► B3 (envelope) ──► F1 ─┐
+            ├─► B6 (runner)   ────────┼─► F2 ──┬─► F3  (toast, host globale)
+            └─► B7 (persist)  ────────┘        └─► F6  (ErroreRigaInfo)
+                                          F4 ──┘
+B4 (test) accompagna B1..B3 · B5/F5 (doc) chiudono
+```
+
+* **B2 è il lotto che vale**: è la lettura unica su cui poggiano i tre trasporti;
+* ⭐ **Tre produttori, un consumatore.** L'envelope (B3), il blob del runner
+  (B6) e la riga persistita (B7) portano gli **stessi tre nomi**; a video il
+  gesto lo disegna **un resolver solo** (F2). Se divergessero, lo stesso errore
+  direbbe due cose diverse a seconda di come è arrivato;
+* ⛔ **Il pilota si misura su B6, non su B3.** Il 937 esce dentro un 200: finché
+  non si vede il bersaglio in `errore.targets` di quella risposta, il resto è
+  teoria — ed è l'errore che avrei fatto fermandomi all'envelope;
+* **F1/F6 non servono a niente senza il loro produttore**, e non fanno danno: un
+  campo assente dà un array vuoto;
+* **F4 prima di F3 e F6**, o il primo pulsante nasce senza etichetta.
+
+### 7-bis.5 Cosa NON si fa
+
+* ⛔ **Non si tocca `db/`.** Il lotto DB è applicato: il `T-3b` — l'id che esce
+  dalla prosa del 937 — resta appeso a **B-1 e B-2 in servizio**, ed è §5.3-bis;
+* ⛔ **Non si accende `ui_action`** (sopra, F3);
+* ⛔ **Non si semina il catalogo dei tipi in anticipo**: è la Q-D, e il cancello
+  che la rende sicura (`dbops.vw_bersagli_non_dichiarati`) è già in CI;
+* ⛔ **Non si estende il bersaglio agli errori nati in Python.** Ci si potrà
+  arrivare — `ServiceError` avrà il campo — ma un canale nuovo si accende su un
+  produttore solo, e il produttore è il database.
+
+### 7-bis.6 ✅ Le decisioni — chiuse da Tid il 2026-08-24
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| ~~**Q-F**~~ | Il nome del campo nell'envelope | ✅ **`targets`, elementi `{type, id}`.** Le chiavi dell'envelope sono inglesi e restano tali; la collisione che al §4.2 ha imposto `bersaglio` vive nel `context` del database, non qui. ⚠️ Il frontend lo espone come **`bersagli`**, esattamente come fa oggi `fields` → `campiErrati`: la lingua cambia al confine, e il confine è uno solo |
+| ~~**Q-G**~~ | Dove si disegna il gesto | ✅ **Toast con azioni, persistente** sui bersagli — `useNotify` impara a portare pulsanti e `useApiHandler` li compone. ⭐ Una sede sola: i **122** file che usano `useApiHandler` lo prendono senza una riga di modifica. ⛔ **Ma non è l'unica sede** — vedi Q-J |
+| ~~**Q-H**~~ | Il BB della traduzione | ✅ **Piena: `diagnostica_db(exc)`.** ⭐ **E la ragione che ha deciso è quella giusta, non la mia**: la forma minima (derivare dentro `raise_error`) non toglieva le quattro letture parziali — ne aggiungeva una quinta, lasciando in piedi il difetto sotto un rimedio. E sarebbe stata **implicita**: copriva 3 punti su 4 *a patto* che il chiamante passi `cause=exc`, cosa che fanno 33 chiamate su 173. ⚠️ Il BB unifica la **lettura**, non il **trasporto**: che il valore arrivi all'envelope va comunque scritto in ciascun punto |
+| ~~**Q-I**~~ | *(nuova)* Il pilota non passa da un envelope HTTP | ✅ **`errore` del runner porta `hint`/`fields`/`targets`.** 🔴 **Il rilievo che l'ha aperta**: gli endpoint del runner rispondono **200 anche quando la catena si ferma per errore** — il fallimento è un campo del payload (`motivo_stop` + `errore: {code, message, detail}`), perché la catena può aver eseguito qualche step e quel lavoro va raccontato. È un **quinto** punto di appiattimento, costruito a mano in `pipeline_runner._drive_lotto_until_done`, e il piano non l'aveva. ⛔ Senza questa decisione **il 937 non avrebbe mai mostrato un gesto**: `useApiHandler` vede un 200 e non ha niente da leggere |
+| ~~**Q-J**~~ | *(nuova)* La strada **asincrona** | ✅ **Il bersaglio si persiste, e arriva anche lì.** ⭐ **Ed è il lettore che conta**: il §1 dice che il caso vero è *«l'operatore cinque minuti dopo, che sta rimediando»* — cioè il giro batch, che fallisce quando non c'è nessuno davanti allo schermo. Il toast è il caso facile. ⚠️ **Costa molto meno del toast**, misurato: `fatture_log.meta` e `task_runs.meta` sono già `jsonb NOT NULL` (**nessuna DDL, nessun passaggio al team DB**); la query della lista fatture **seleziona già `err.meta`** e già ne estrae `error_code`; il punto di scrittura esiste già ed è già nel posto giusto (`_persist_fattura_error_safely`, fuori dall'`atomic` dello step, best-effort). ⭐ E la casa a video è **`ErroreRigaInfo`**, nato il 2026-08-21 proprio contro *«l'errore annunciato da un toast e poi sparito per sempre»*: il gesto lì sta meglio che nel toast |
+| ~~**Q-K**~~ | *(nuova)* Chi ospita il drawer aperto dal toast | ✅ **Un `DocumentoDrawerHost` globale in `App.vue`**, accanto a `<Toast />`, pilotato da `useDocumentoDrawer`. ⭐ Riusa tutto ciò che c'è — il registro, la sequenza chunk→mount→apertura, la chiusura globale al cambio di rotta (`registraDrawerChiudibile`) — e vale per qualunque bersaglio da qualunque schermata. ⛔ L'alternativa «il toast naviga, la vista apre» cade su `FATTURA`, che una vista non ce l'ha: bisognerebbe inventarne una solo per ospitare un drawer |
+| ~~**Q-L**~~ | *(nuova)* Quali dei quattro tipi si risolvono | ✅ **`FATTURA` e `COMMESSA` col registro esistente; `LOTTO` con un deep-link `?open=<id>` su `LottiListView`** (il modello è già in servizio in `ContrattiListView`); **`TASK_RUN` resta muto** — nessuna schermata, quindi nessun pulsante, che è esattamente il degrado del §4.3 |
+
+⭐ **E una scoperta della Q-L che vale oltre il bersaglio**: le chiavi di
+`DOCUMENTO_DRAWER_TIPI` **sono già** i `config.sorgenti.codice_interno`. Cioè la
+convergenza che il §5.1-bis chiede fra `config.tipi_entita` e `config.sorgenti`
+**è già vera anche sul frontend**, senza che nessuno l'avesse dichiarato: la
+tabella tipo→destinazione non è da costruire, è da riconoscere.
+
+---
 
 ## 8. Domande
 

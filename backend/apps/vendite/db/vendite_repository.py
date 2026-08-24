@@ -2328,6 +2328,11 @@ class VenditeRepository:
 
         result: list[LottoFattureRow] = []
         for row in rows:
+            # ⚠️ Il `meta` dell'errore si legge UNA volta per riga: `jsonb_out`
+            # fa un `json.loads` (dal cursore RAW il jsonb arriva come stringa),
+            # e chiamarlo una volta per chiave lo ripeterebbe a ogni chiave
+            # nuova — su una lista paginata, per ogni riga.
+            errore_meta = jsonb_out(row[22]) or {}
             result.append(
                 {
                     "id": int(row[0]),
@@ -2355,7 +2360,14 @@ class VenditeRepository:
                     # Il codice sta nel `meta` di chi ha scritto la riga: dice
                     # DI CHE errore si tratta, non solo che c'e'. `jsonb_out`
                     # perche' dal cursore RAW il jsonb arriva come stringa.
-                    "errore_codice": (jsonb_out(row[22]) or {}).get("error_code"),
+                    "errore_codice": errore_meta.get("error_code"),
+                    # ⭐ IL BERSAGLIO dell'errore persistito (2026-08-24): su
+                    # QUALE cosa, cosi' che l'icona di riga possa offrire un
+                    # gesto e non solo una lettura. Stessa borsa `meta` del
+                    # codice qui sopra — il canale c'era gia', mancava cosa
+                    # metterci. Forma: `[{"type": "FATTURA", "id": "820"}]`.
+                    # Brief: `brief-db-bersaglio-errore.md` §7-bis (B7).
+                    "errore_bersagli": errore_meta.get("bersagli"),
                     "errore_livello": row[23],
                 }
             )

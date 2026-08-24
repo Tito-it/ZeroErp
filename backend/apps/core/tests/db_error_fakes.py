@@ -36,13 +36,23 @@ SQLSTATE_RAISE_EXCEPTION = "P0001"
 
 
 class FakeDiag:
-    """I campi `diag` di psycopg3 che il backend legge davvero."""
+    """I campi `diag` di psycopg3 che il backend legge davvero.
+
+    ⭐ I canali strutturati sono TRE, e vanno tutti riprodotti: `constraint_name`
+    porta il codice (05/08), `column_name` il campo da correggere (08/08),
+    `datatype_name` il bersaglio (23/08). ⚠️ Un finto che ne dimentica uno fa
+    passare il test **per una ragione diversa** da quella per cui passa il
+    sistema — che e' esattamente la famiglia di trappole per cui questo modulo
+    esiste.
+    """
 
     def __init__(self, **campi: Any) -> None:
         self.message_primary = campi.get("message_primary")
         self.message_detail = campi.get("message_detail")
         self.message_hint = campi.get("message_hint")
         self.constraint_name = campi.get("constraint_name")
+        self.column_name = campi.get("column_name")
+        self.datatype_name = campi.get("datatype_name")
 
 
 class FakeCausaPg(Exception):
@@ -65,6 +75,8 @@ def make_db_error(
     sqlstate: str = SQLSTATE_RAISE_EXCEPTION,
     detail: str | None = None,
     hint: str | None = None,
+    campo: str | None = None,
+    bersaglio: str | None = None,
 ) -> DatabaseError:
     exc = DatabaseError(testo)
     exc.__cause__ = FakeCausaPg(
@@ -73,5 +85,10 @@ def make_db_error(
         message_detail=detail,
         message_hint=hint,
         constraint_name=codice,
+        column_name=campo,
+        # ⚠️ Forma del canale: `TIPO:id[,TIPO:id]`, testo — non jsonb. Il ricco
+        # resta nel `context` e finisce in `dbops.error_log`; qui viaggia la
+        # versione minima che serve a disegnare un gesto.
+        datatype_name=bersaglio,
     )
     return exc

@@ -6,7 +6,8 @@
 //        apre il LottoDrawer diagnostico (step corrente, fatture, task-run,
 //        segnalazioni) con le azioni di governo. Nessuna logica di dominio:
 //        stato/step/gate vivono nel motore, la lista rende e naviga.
-import { ref, computed, onActivated } from 'vue'
+import { ref, computed, nextTick, onActivated } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusuraGlobale'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
@@ -34,6 +35,9 @@ import { useLottiStore } from '../stores/lotti'
 
 const { t } = useI18n()
 const notify = useNotify()
+// Servono al deep-link `?open=<id>` (vedi `applicaDeepLink` piu' sotto).
+const route = useRoute()
+const router = useRouter()
 // Il valore serve anche qui, non solo ai figli: in sola lettura il kebab di
 // riga non propone azioni di governo (il BE resta il guard vero).
 const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.VENDITE)
@@ -160,6 +164,7 @@ onActivated(() => {
   syncFiltri()
   if (!store.loading) load()
   loadMensile()
+  applicaDeepLink()
 })
 
 // Drawer diagnostico.
@@ -178,6 +183,28 @@ const drawerLottoId = ref(null)
 function apriLotto(row) {
   drawerLottoId.value = row.id
   drawerVisible.value = true
+}
+
+// ⭐ DEEP-LINK `?open=<id>`: la lista apre direttamente il lotto indicato.
+// Nasce per il BERSAGLIO di un errore (2026-08-24) — il pulsante «Apri Lotto
+// 6034» di un toast o di un'icona di riga arriva qui — ma e' il meccanismo
+// generico gia' in servizio su `vendite-contratti`, non un canale suo.
+//
+// ⚠️ In `onActivated` e non in un `watch immediate`, ed e' la differenza che
+// conta su questa view: sta sotto KeepAlive, quindi tornarci NON rimonta il
+// setup. Un `watch` sulla query funzionerebbe al primo ingresso e poi
+// silenziosamente piu' (feedback_keepalive_onactivated).
+// ⚠️ Il param si ripulisce subito: senza, un refresh della pagina riaprirebbe
+// il pannello che l'operatore aveva appena chiuso.
+function applicaDeepLink() {
+  const grezzo = route.query.open
+  if (!grezzo) return
+  const id = Number(grezzo)
+  const query = { ...route.query }
+  delete query.open
+  router.replace({ query })
+  if (!Number.isFinite(id) || id <= 0) return
+  nextTick(() => apriLotto({ id }))
 }
 
 // Azioni di riga: stesso composable del drawer — conferme, chiamate e testi

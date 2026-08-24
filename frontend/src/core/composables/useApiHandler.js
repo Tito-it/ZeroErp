@@ -19,9 +19,24 @@
 // anche per le regole che il frontend non conosce.
 // ⚠️ Si azzera a ogni `execute`: descrive l'ultimo errore, non la storia del
 // drawer. Un campo resta rosso finche' non si riprova a salvare.
+//
+// ⭐ BERSAGLI (dal 2026-08-24): l'ALTRA META' della stessa idea. `campiErrati`
+// dice quale campo correggere DENTRO la pagina dove l'operatore gia' si trova;
+// i bersagli dicono a quale ALTRA cosa deve andare (envelope `error.targets`,
+// forma `[{type, id}]`). E la differenza e' tutto il punto: il primo evidenzia
+// un input, il secondo fa comparire un GESTO — «Apri la fattura 820».
+//
+// ⚠️ Il gesto NON va disegnato dal chiamante: lo compone questo composable e lo
+// consegna al toast, cosi' che i 122 file che usano `execute` lo abbiano senza
+// una riga di modifica. `bersagli` resta esposto per chi ha una superficie
+// propria dove metterlo (il pannello degli esiti, l'icona di riga).
+// Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §7-bis.
 
 import { ref } from 'vue'
+import { useAuthStore } from '../../stores/auth'
 import { useNotify } from './useNotify'
+import { estraiBersagli } from '../bersagli'
+import { azioniDaBersagli } from '../bersaglioGesto'
 
 // Codici che NON producono un toast, perche' a video c'e' gia' una schermata
 // che dice la stessa cosa meglio: due messaggi identici, di cui uno rosso,
@@ -52,11 +67,18 @@ const CODICI_SENZA_TOAST = new Set([
 export function useApiHandler() {
   const loading = ref(false)
   const notify = useNotify()
+  // ⚠️ Si legge QUI, nel setup, e non dentro il `catch`: serve al degrado del
+  // bersaglio (area BLOCCATA → nessun pulsante), e `useAuthStore()` fuori dal
+  // setup dipenderebbe dalla pinia attiva globale.
+  const auth = useAuthStore()
   // Campi del form che il backend indica come da correggere (envelope: `fields`),
   // e come suggerisce di reagire (`ui_action`). Si azzerano a ogni chiamata: si
   // riferiscono all'ULTIMO errore, non alla storia del drawer.
   const campiErrati = ref([])
   const azioneUi = ref(null)
+  // Su QUALE cosa l'errore e' successo. Stesse regole di `campiErrati`: si
+  // azzera a ogni chiamata, si popola anche in `silent`.
+  const bersagli = ref([])
 
   /**
    * Esegue una chiamata API con gestione errori/toast automatica.
@@ -72,6 +94,7 @@ export function useApiHandler() {
     loading.value = true
     campiErrati.value = []
     azioneUi.value = null
+    bersagli.value = []
     try {
       const response = await apiFn()
       if (options.successMessage) {
@@ -90,12 +113,21 @@ export function useApiHandler() {
       // evidenziare senza far comparire un toast.
       campiErrati.value = estraiCampi(err)
       azioneUi.value = err.response?.data?.error?.ui_action ?? null
+      bersagli.value = estraiBersagli(err.response?.data?.error)
       const codice = err.response?.data?.error?.code
       if (!options.silent && !CODICI_SENZA_TOAST.has(codice)) {
         const message = extractErrorMessage(err) || options.errorMessage
         const isSystem = isSystemError(err)
+        // ⭐ Il gesto, quando c'e' qualcosa da raggiungere. `azioniDaBersagli`
+        // scarta da se' i bersagli irraggiungibili (tipo senza destinazione,
+        // area bloccata): un array vuoto = toast di prima, nessuna regressione.
+        // ⚠️ Un toast CON azioni resta aperto finche' non lo si chiude: un
+        // gesto che sparisce dopo cinque secondi non e' un gesto.
+        const azioni = azioniDaBersagli(bersagli.value, auth)
         if (isSystem) {
           notify.systemError(message)
+        } else if (azioni.length) {
+          notify.errorConAzioni(message, azioni)
         } else {
           notify.error(message)
         }
@@ -106,7 +138,7 @@ export function useApiHandler() {
     }
   }
 
-  return { execute, loading, campiErrati, azioneUi }
+  return { execute, loading, campiErrati, azioneUi, bersagli }
 }
 
 // Estrae i nomi dei campi da correggere dall'envelope: { error: { fields: [...] } }.

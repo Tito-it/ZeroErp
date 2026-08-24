@@ -68,7 +68,8 @@
 | 🔵 **A carico del BE** | 10 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
 | ⭐ **La richiesta del backend** | I changeSet 61 e 62 avevano consegnato le **colonne**, e **nessuna funzione le scriveva**. L5 mette i due scrittori — e corregge una premessa della richiesta che era **falsa**, misurandola | §5-bis |
 | 🧪 **Presidio** | ✅ **80 asserzioni verdi, zero skip** su 9 file — 5 nuovi/riscritti e 4 preesistenti adeguati. ⭐ E due asserzioni che passavano **dichiarandosi cieche** adesso verificano | §6 |
-| ✅ **Domande aperte** | **Zero.** Le sei del primo giro chiuse il 2026-08-22 | §8 |
+| 🔵 **Da verificare, fuori cantiere** | Un prezzo **non negoziato sul contratto** dentro un push **riuscito** (ORD0016313): l'errore è in `error_log`, l'attività ha comunque un prezzo bloccato. ⚠️ È la categoria che nessuno controlla — un errore registrato dentro un'operazione andata bene | §11 |
+| 🔵 **Domande aperte** | **Una: la Q-7**, la granularità del filo — un `correlation_id` per *passata* o per *azione dell'operatore*? ⭐ L'hanno posta i **dati**, non il piano: un solo click su «Fattura» produce due giri. Rinviata da Tid, deliberatamente. Le sei del primo giro restano chiuse | §8 |
 | 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
 | ⭐ **Un solo documento** | Da qui in avanti chi lavora su `event_log` legge **questo** brief: T-1/T-1b di `brief-db-bersaglio-errore` sono **assorbiti** e di là non si gestiscono più | §4-bis |
 | ⭐ **I due perni** | (1) «Chi» è **già nella riga** (`user_insert`): B3 non era vero — manca **il perimetro**, e serve perché `event_log` è **l'unico registro polimorfo**, l'unico senza una testata a cui ancorarsi. (2) **Un diario non si blocca mai**: rifiuta solo ciò di cui non sa dire di chi è | §3.2 · §3.3 |
@@ -1103,6 +1104,32 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 > **Perimetro DB:** questo cantiere non modifica `backend/`. Le richieste si
 > scrivono, non si implementano.
 >
+> ✅ **CHIUSO AL 2026-08-24 — dodici consegne su dodici.** Nessuna riga di
+> questa tabella è più aperta. Le due nate misurando e non previste dal piano
+> originale (**BE-10**, il registro delle policy; **BE-11**, il codice che aveva
+> smesso di dire la verità) sono dentro il conto.
+>
+> ✅ **E «fatto» vuol dire anche «visto funzionare»**, dal 2026-08-23: quattro
+> corse vere di pipeline (lotti 6260 e 7132) hanno scritto **21 righe** con
+> perimetro derivato, `auth_user_id`, `tx_id`, `cleanup_at` a 750 giorni e — il
+> punto di BE-2 — **un `correlation_id` diverso per corsa**, condiviso coi
+> `task_runs`. Il rischio 3 del §9.3 è chiuso.
+>
+> ⛔ **E il giro vero ha trovato un difetto che i test non vedevano**: sul lotto
+> 6260, `set_lotto_job_stato` è stato rifiutato («Transizione non ammessa:
+> COMPLETATO → ERRORE») e l'eccezione usciva **prima** che il diario venisse
+> tentato — `PIPELINE_ERROR` non veniva scritto. Corretto: marcatura e diario
+> sono ora **due passi indipendenti**. Dettaglio in **BE-7**.
+>
+> ✅ **E il ramo push commesse è stato esercitato anche lui** (2026-08-23,
+> 23:27, push di ORD0016313): `commesse_push_log` **1506** nasce e si chiude in
+> 75 ms — `stato = COMPLETATO`, non rimasta `IN_ESECUZIONE` — col
+> `correlation_id` e il `tx_id` valorizzati. ⭐ Il **perimetro non si è perso**
+> togliendo `PUSH_STARTED`: `risultato.perimetro` porta `sorgente_uid = 16824` e
+> `source_types = [ORDINE_VENDITA]`. E ⛔ **zero righe in `event_log`**: nessun
+> `TASK_RUN` ha provato a entrare nel giornale, che è il difetto da cui il
+> cantiere è partito. **Entrambi i rami sono ora verificati sul campo.**
+>
 > ✅ **Stato al 2026-08-22 (sera), scritto dal backend.** Sette consegne su nove
 > fatte in un primo giro — BE-1, BE-3a, BE-4, BE-5, BE-6, BE-7, BE-9 — e le
 > ultime due, **BE-2** e **BE-3b**, chiuse appena il team DB ha consegnato i
@@ -1138,16 +1165,40 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 | # | Consegna | Blocca? |
 | --- | --- | --- |
 | ~~**BE-1**~~ | ✅ **FATTA** *(verificato il 2026-08-23: `commesse_service.py:243` scrive `severity="WARN"`)*. Era il difetto già vivo del §1.2: `EMITTIBILITA_FALLITA` non era mai scrivibile | — |
-| **BE-2** | `correlation_id` = **un `uuid` nuovo per giro**, generato dal runner e dall'orchestratore push; scritto anche su `task_runs` e `commesse_push_log` (D-7). ✅ **Il DB è pronto dal 2026-08-22**: `fn_start_lotto_task_run` ha il settimo parametro e `fn_start_commessa_push_run` il terzo (L5) | ~~Sì, dopo L2~~ → **sbloccata** |
-| **BE-3** | La riga di `commesse_push_log` nasce **in testa** al giro (`IN_ESECUZIONE`) e si chiude alla fine; `PUSH_STARTED`/`PUSH_COMPLETED` **escono da `event_log`** (D-3). ✅ **Il DB è pronto**: la coppia `fn_start_commessa_push_run` / `fn_close_commessa_push_run` (L5). ⛔ **E `fn_log_commessa_push_run` non esiste più**: `commesse_repository.log_push_run` va riscritto nello stesso giro, non è opzionale | ~~Sì~~ → **sbloccata, e ora è un breaking** |
-| **BE-4** | `EMITTIBILITA_FALLITA` diventa **per commessa** (`entity_type = 'COMMESSA'`, `entity_id = commessa_id`), una riga per commessa fallita invece di un evento aggregato con dentro una lista di id (D-3) | Sì |
-| **BE-5** | Smettere di passare `actor` e `source`: **le colonne non esistono più** (D-6). ⭐ **E con L4 anche `domain`**, che scende dalla firma: la chiamata passa da 9 a **6** parametri. ⚠️ Un solo adeguamento, se BE-5 e L4 viaggiano insieme — due se si separano | Sì |
-| **BE-9** | *(da L4)* Seminare i **codici evento** nel catalogo `config.eventi_dominio`. ⚠️ Un codice non dichiarato **non blocca la scrittura** (D-12) ma fa fallire la build: il cancello è `dbops.vw_eventi_non_dichiarati` (changeSet 60) | No, ma rompe la CI |
-| **BE-6** | ⚠️ **Estrarre il BB unico di `log_event`.** `pipeline_repository.log_event` e `commesse_repository.log_event` sono **copia carbone**: finché restano due, ogni modifica si scrive due volte | No, ma è il momento giusto |
-| **BE-7** | Le scritture di diario passano dal telaio **`_diagnostica_best_effort`** già presente in `pipeline_runner`. ⭐ Dopo L1 una `log_event` **può fallire** (`NOT NULL`, FK, `WITH CHECK`), e un difetto del diario non deve mai diventare il messaggio che legge l'operatore — è **la stessa classe** di BE-1. Vedi **Q-3** | Sì, di fatto |
-| **BE-8** | *(Passo 2, indipendente da tutto)* `request_id` nel formatter di logging — esiste già come contextvar, ma il formatter non lo raccoglie. ⏱️ **Sulle due colonne il seguito c'è, ed è diverso da come era scritto qui**: ~~due colonne morte~~ → rimisurate il 2026-08-24, `tx_id` è davvero a **0 su 355.264** (e nessuno potrebbe scriverla: niente trigger, nessuna funzione, e il middleware inserisce con lista di colonne esplicita) ⇒ **tolta**, changeSet `20260824-04`, su richiesta del BE. ⛔ Ma `emittente_attivo_id` **non è morta, e non lo era già più**: 667 valori alle 23, **1.096 alle 2** — cioè qualcuno la sta scrivendo *adesso*. Non è un residuo di un middleware vecchio: è una colonna viva, e il «0 su 353.758» del brief fotografava un giorno in cui lo era davvero. ⭐ È il motivo per cui un `DROP` si decide sulla misura di oggi e non su quella scritta nel piano | No |
-| ~~**BE-11**~~ | ✅ **FATTA lato BE il 2026-08-24** (lavoro non ancora pushato) — e il DB ha chiuso il passo che seguiva: `E_PIPELINE_MARK_ERROR` è **ritirato** (`obsoleto_dal = 2026-08-24`). ⛔ La riga resta a catalogo e non si cancella: **18 righe di log già scritte** la citano, e un messaggio orfano di codice è storia che nessuno sa più leggere. ~~Spostare `CODICE_DIAGNOSTICA_FALLITA` su **`E_DIAGNOSTICA_NON_REGISTRATA`** in `apps/core/services/diagnostica_best_effort.py`, aggiungere la voce in `error_messages_fallback.py` e rigenerare le policy (è lo stesso comando di BE-10). ⚠️ **Finché non arriva, il discriminante resta il `function_name`**, che ogni chiamante passa specifico ~~ | — |
-| **BE-10** | ⚠️ *(da L1/L4/L5, trovata misurando)* **Rigenerare `apps/core/services/error_policies_generated.py`** (`manage.py genera_error_policies`) e committarlo. Il file mappa codice → classe, si rigenera **a ogni seed**, e misurato il 2026-08-22 è indietro di **21 codici su 776**: 3 di L5, 3 di L1/L4, 1 del cantiere delle righe rettificate e **14 di `pagamenti`**. ⭐ Non è un debito di questo cantiere — è un debito di **giornata**, e si paga in un comando solo | ⛔ **Rompe la CI**: `test_error_policies_divergenza_db` confronta il file col catalogo **letto dal database**, quindi diventa rosso appena i CSV arrivano in CI — in una PR che può non c'entrare niente |
+| ~~**BE-2**~~ | ✅ **FATTA** *(2026-08-24)*. `pipeline_runner` conia un `uuid4()` **a ogni corsa** — non più il `lock_batch_id`, che nasce col lotto e non cambia mai — e lo passa a eventi, `task_runs` (via lo step executor, anche sul ramo di rollback automatico) e `commesse_push_log`. ⭐ Il filo viaggia anche **con l'eccezione**, così il tentativo FALLITO — riscritto fuori transazione — non è l'unico del giro senza. Presidiato da un test che fa **due corse sullo stesso lotto** e le confronta: una corsa sola non distinguerebbe le due implementazioni. ✅ **E la prova sul campo c'è**, 2026-08-23: quattro corse vere, **quattro `correlation_id` distinti** — due sullo stesso lotto 6260 a cinque secondi di distanza, che col `lock_batch_id` sarebbero stati identici. I `task_runs` portano lo stesso filo dei loro eventi (4 tentativi per filo) | ~~~~Sì, dopo L2~~ → **sbloccata**~~ → **chiusa** |
+| ~~**BE-3**~~ | ✅ **FATTA** *(2026-08-23/24)*, in due metà. **3a**: `PUSH_STARTED`/`PUSH_COMPLETED` **fuori** da `event_log`; `sorgente_uid`/`righe_ids` non si perdono — scendono in `risultato.perimetro`, che prima vivevano solo nel payload dell'evento. **3b**: `log_push_run` spezzata in `start_push_run` (in testa) e `close_push_run` (in coda). Verificato dal vivo: apertura `IN_ESECUZIONE`, chiusura `PARZIALE`, e i due rifiuti che rispondono come devono. ⚠️ Nel push **singolo** la riga rolla con l'`atomic` esterna: il guadagno «un giro interrotto non sparisce» vale sul **batch** | ~~~~Sì~~ → **sbloccata, e ora è un breaking**~~ → **chiusa** |
+| ~~**BE-4**~~ | ✅ **FATTA** *(2026-08-23)*. Una riga per commessa fallita, `entity_type='COMMESSA'`, legata alla commessa di cui parla — invece di un evento aggregato appeso a un giro, con dentro la lista degli id. ⭐ L'aggregato era sbagliato **prima ancora del perimetro**: chi apre la commessa 812 vuole vedere che il suo push è fallito, non pescare il proprio id da una lista che sta altrove | ~~Sì~~ → **chiusa** |
+| ~~**BE-5**~~ | ✅ **FATTA** *(2026-08-23)*. Sette call site allineati alla firma a **sei**. ⭐ Un solo adeguamento e non due, perché è viaggiata insieme a **BE-6**: la firma si è riscritta in **un** posto | ~~Sì~~ → **chiusa** |
+| ~~**BE-9**~~ | ✅ **FATTA** *(2026-08-23)*, e **più larga del richiesto**. I cinque codici erano già a catalogo; il cancello è `apps/core/tests/test_event_codes_declared_guardrail.py`, che legge il **CSV in git** (non il DB: così gira anche senza database). ⭐ Poi **esteso a `entity_type`** il 2026-08-24: era l'ultima stringa che nessuno guardava, e un refuso passava ogni cancello per fallire a runtime. Il criterio non è «esiste a catalogo» ma «esiste **e ha un modo**» — `TASK_RUN` è a catalogo e viene respinto lo stesso. Verificato che morda su entrambi i casi | ~~No, ma rompe la CI~~ → **chiusa** |
+| ~~**BE-6**~~ | ✅ **FATTA** *(2026-08-23)*. `EventLogRepositoryMixin` (`db/_event_log_repo_mixin.py`): le due copie carbone sono sparite. ⭐ Fatta **prima** di BE-5 e non dopo, ed è la ragione per cui la firma a sei si è scritta una volta sola | ~~No, ma è il momento giusto~~ → **chiusa** |
+| ~~**BE-7**~~ | ✅ **FATTA** *(2026-08-23/24)*. Tutte e **cinque** le scritture di diario passano dal telaio, ora in `apps/core/services/diagnostica_best_effort.py`. ⛔ **E il telaio da solo non bastava, due volte.** (1) Serviva un **savepoint**: in PostgreSQL ingoiare l'eccezione non recupera una transazione abortita, quindi il `try` spostava solo il punto di rottura. (2) In `_mark_lotto_error` il diario stava **dentro** l'`atomic` della marcatura: una riga rifiutata rollava indietro anche lo stato `ERRORE` del lotto, e il telaio ingoiava — **il diario rotto distruggeva ciò che doveva descrivere**. Trovato rivedendo il codice, corretto, e presidiato da un test che confronta gli **id dei blocchi transazionali** (l'ordine delle chiamate non distingueva le due versioni). ⭐ **(3) E un terzo, trovato da un giro VERO il 2026-08-23** (lotto 6260): `set_lotto_job_stato` rifiutato con «Transizione non ammessa: COMPLETATO → ERRORE» — il lotto era già COMPLETATO da una corsa precedente — e l'eccezione usciva **prima** che il diario venisse tentato. `PIPELINE_ERROR` non veniva scritto: dell'unico giro andato storto non restava traccia nel registro fatto apposta per raccontarlo. È lo **specchio** del (2): là la marcatura moriva per colpa del diario, qui il diario moriva per colpa della marcatura. Ora sono **due passi indipendenti**, e li chiude la stessa regola — la **D-12** | ~~Sì, di fatto~~ → **chiusa** |
+| ~~**BE-8**~~ | ✅ **FATTA** *(2026-08-24)*, ed era l'ultima consegna aperta. **(a)** `req=%(request_id)s` è ora nel formatter, messo da un filtro (`apps/core/logging_filters.py`) agganciato a **ogni** handler: la correlazione diventa una proprietà del canale di log, non una disciplina di chi scrive. Fuori da una richiesta vale `-`. ⭐ E l'unico punto che se lo scriveva a mano — `api.exception` — è stato **ripulito**: stampava la stessa informazione due volte. **(b)** `emittente_attivo_id` **si collega**, letto dalla GUC `app.current_emittente_id` dentro la `INSERT`. Verificato dal vivo: senza emittente in sessione → `NULL`, con emittente 7 → `7`. **(c)** ⛔ `tx_id` **non si può collegare da qui** — vedi sotto | No |
+| ~~**BE-11**~~ | ✅ **FATTA** *(2026-08-24)*. `CODICE_DIAGNOSTICA_FALLITA` vale **`E_DIAGNOSTICA_NON_REGISTRATA`**, la voce è in `error_messages_fallback.py` e le policy sono rigenerate. Provato dal vivo, non solo in test: `dbops.error_log` → `E_DIAGNOSTICA_NON_REGISTRATA · vendite.commesse_service.pr_run_commesse_push · commessa_id 812`. ⭐ **`E_PIPELINE_MARK_ERROR` (699) non è più sollevato da nessuno**: il suo `obsoleto_dal` si può mettere, ed è l'ultimo passo di §5-ter | — |
+| ~~**BE-10**~~ | ✅ **FATTA**, e rifatta a ogni seed *(2026-08-22, 08-23, 08-24)*. `error_policies_generated.py` è allineato: **778 codici, gli stessi del catalogo DB**, zero divergenze e zero classi cambiate — verificato coppia per coppia a ogni rigenero. ⭐ E la consegna ha una **seconda metà** che il §5 non nominava: un codice nuovo vuole la policy **e** il ripiego senza `%s` in `error_messages_fallback.py`. Misurato oggi: **694 codici vivi, 694 ripieghi, zero mancanti**. È il secondo verso che si dimentica, e lo presidia `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` | No, ma rompe la CI |
+
+### ⛔ `dbops.request_log.tx_id` non si può riempire, e va tolta *(2026-08-24, misurato)*
+
+La consegna BE-8 diceva «o si collegano o si tolgono». **`emittente_attivo_id`
+si è collegata; `tx_id` no**, e non per pigrizia — dalla sede in cui la riga si
+scrive quel valore **non esiste più**:
+
+| | |
+| --- | --- |
+| Chi scrive la riga | `RequestLogMiddleware._insert_log`, **dopo** che la risposta è partita |
+| Quando | la transazione di lavoro ha **già chiuso** |
+| Da dove verrebbe il `tx_id` | la GUC `dbops.tx_id` — misurata **vuota** in una sessione applicativa |
+| E la tabella | ⛔ **non ha nessun trigger**, quindi `dbops.trgfn_tx_id_managed` non la tocca |
+
+⭐ **Un valore coniato adesso legherebbe la riga a sé stessa e a nient'altro** —
+che è la definizione di un filo che non lega, la stessa ragione per cui
+`fn_start_commessa_push_run` non genera un `correlation_id` d'ufficio.
+
+➡️ **Richiesta al team DB: `ALTER TABLE dbops.request_log DROP COLUMN tx_id`.**
+Zero righe valorizzate su 354.595, quindi non si perde niente. ⚠️ Se invece si
+volesse *tenerla*, il collegamento non è un lavoro di backend: la riga andrebbe
+scritta **dentro** la transazione di lavoro, cioè da un'altra parte e con un
+altro disegno.
+
 
 ---
 
@@ -1344,7 +1395,7 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 
 ---
 
-## 8. Domande — tutte chiuse il 2026-08-22
+## 8. Domande — le sei del primo giro chiuse, **una aperta** (Q-7)
 
 | # | Era | Come si è chiusa |
 | --- | --- | --- |
@@ -1353,6 +1404,7 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 | **Q-3** | Un difetto del diario può far fallire il lavoro? | ✅ **Fail-loud nel DB, best-effort nel BE** — D-15. E la riga nel log tecnico è la differenza fra «best-effort» e «silenzio» |
 | **Q-4 · Q-5** | I lucchetti `require_attivo` verso `config.sorgenti` e `emittenti_fiscali` spegnerebbero il diario | ✅ **Rovesciata da un rilievo di Tid**: *«invece di smettere di scrivere, non dovrebbe continuare e semmai segnalare?»*. Risposta: sul diario **non si blocca mai** (D-12), e il lucchetto non si disattiva — **si evita di crearlo**, scegliendo la colonna SR (D-1) e il `CHECK` invece della FK (D-9). ⚠️ Non si segnala nemmeno: l'avviso scatterebbe sul caso normale |
 | **Q-6** | Quali sorgenti nella vista | ✅ **Quattro** — D-16, con `attivita_fatturabili_log` fuori e il motivo scritto nella vista |
+| 🔵 **Q-7** | ⏸️ **APERTA** *(2026-08-24, rinviata da Tid a mente fresca)* — **la granularità del filo**: un `correlation_id` per **passata** o per **azione dell'operatore**? | ⭐ **La domanda l'hanno posta i dati, non il piano.** Rendendo definitivo LTF-0006586, un **solo** click su «Fattura» ha prodotto **due** giri (`c92b1cf5` alle 23:11:13 e `9084ac2b` alle 23:11:14): `run_lotto_pipeline_until_done` incatena più corse e ognuna conia il suo filo. Quindi oggi il filo risponde a *«in quale passata?»*, **non** a *«cosa ha prodotto il mio click?»*. Le due letture sono entrambe legittime: **(a)** com'è adesso — granularità fine, e per risalire al click si usa il `tx_id`; **(b)** `until_done` conia il filo **una volta** e lo passa a tutta la catena — risponde all'operatore, e per la singola passata resta il `task_run`. ⛔ **Nessuna delle due è stata implementata di fretta**: è una scelta di modello e cambia cosa significa quel campo. ⚠️ E attenzione a scegliere la (a) *«tanto c'è il tx_id»*: nel caso misurato i due giri condividevano il `tx_id` **per come è caduta la transazione**, non per garanzia |
 
 > ⚠️ **Il rilievo di Q-4/Q-5 vale oltre questo cantiere.** «Chi continua a
 > scrivere su una riga annullata» è un'anomalia da **presidiare sul documento**,
@@ -1396,7 +1448,7 @@ adesso, invece di aspettare il terzo giro.
 | --- | --- | --- |
 | **1** | 🔴 ~~`domain` e `event_code` non governati~~ | ✅ **D-18 / L4.** Era il più probabile: stessa forma del difetto che ci ha riportati qui due volte, e `event_code` è l'asse su cui il Passo B raggruppa |
 | **2** | 🔴 ~~La vista nasce come union di sole tabelle `vendite`~~ | ✅ **§3.6 rev.** I registri di eventi del progetto sono **sei**: se la cucitura nascesse locale, a rifarsi sarebbe la vista — cioè la cosa che tutti avrebbero già in mano |
-| **3** | 🟡 **Il modello non ha ancora incontrato la realtà** — ⏱️ **mezzo passo fatto, 2026-08-23** | ~~`event_log` ha **zero righe**~~ → **ne ha 12**, scritte dalla pipeline vera. ⭐ **Il percorso di scrittura ha retto**: perimetro derivato, `auth_user_id` valorizzato, `cleanup_at` a 750 giorni. ⛔ **Il significato di un campo no**: le quattro corse condividono **un solo** `correlation_id`, che è il `lock_batch_id` del lotto — la S3 non più dedotta ma **misurata**. Il DB ha fatto la sua parte (61 e 67); resta **BE-2**, e nessuna migrazione può chiuderla. ⏱️ E `tx_id` è NULL su tutte: il trigger lo genera `ci_apply` |
+| **3** | ✅ **CHIUSO — il modello ha incontrato la realtà** *(2026-08-23, quattro corse vere)* | ⭐ **Tutti e sei i campi del lato scrittura reggono su dati veri**: perimetro derivato (`72`), `auth_user_id` = 1 con `user_insert` = `tid`, `cleanup_at` a 750 giorni, `entity_id` reale, **`tx_id` ora valorizzato** (il trigger è arrivato: la D-5 è viva come dato, non più solo come colonna) e ⭐ **`correlation_id` diverso a ogni corsa**. La prova che conta è il confronto: le righe del 22 agosto condividono **un solo** filo (`01a0255a…`, il `lock_batch_id`) su più corse; quelle del 23 ne hanno **uno per corsa** — `ba49a824` e `3731cae2` sullo **stesso** lotto 6260, a cinque secondi di distanza — e su LTF-0006586 (lotto 7133) tre corse con tre fili, due delle quali a **un secondo** l'una dall'altra, coi `task_runs` che portano il filo della corsa che li ha generati. ✅ **E il ramo push**: giro 1506 aperto e chiuso, perimetro conservato, giornale intatto. ⛔ **E una correzione onesta**: il 2026-08-24 avevo scritto qui «`event_log` è a zero righe». **Era falso**, ed era un errore di misura mio — la tabella ha la RLS, e contarla senza contesto operatore la fa apparire vuota. È il caso del *conteggio fail-closed che somiglia a un dato*: le righe c'erano tutte |
 | **4** | 🟡 `FORCE ROW LEVEL SECURITY` | Se arriva l'ondata, `fn_resolve_emittente_sr_id` va rivista — insieme a una dozzina di funzioni gemelle. Dichiarato nel changeSet: **non sarà una ristrutturazione di questo registro** |
 | **5** | 🟡 Il **Passo B** poggia sulla qualità dei codici errore | Lo split di `E_PARAMETRO_INVALIDO` (126 funzioni, 7 schemi) ha un brief suo. Non blocca il Passo A |
 
@@ -1459,6 +1511,123 @@ Il brief nasce da due giri con Tid sullo stesso giorno.
   `NOT NULL` e ha 70 valori distinti) ed esce la vista `vw_giornale_entita`,
   perché il Passo A sul solo `event_log` consegnerebbe quattro righe.
 - **Le undici decisioni** di §2 sono di Tid, prese lo stesso giorno.
+
+### 2026-08-24 (sera) · ✅ Il modello incontra la realtà — **su entrambi i rami**
+
+Scritto dal **backend**, dopo che Tid ha esercitato l'applicazione vera. È la
+verifica che nessun test poteva dare, ed è quella che chiude il **rischio 3**.
+
+| Ramo | Cosa è stato fatto | Cosa dicono le righe |
+| --- | --- | --- |
+| **Pipeline** | 4 corse sul 6260/7132, poi LTF-0006586 (lotto 7133) reso definitivo | **7 fili distinti su 7 corse**, `task_runs` cuciti col filo della loro corsa, `tx_id` e `auth_user_id` valorizzati, `cleanup_at` a 750 giorni |
+| **Push commesse** | push di ORD0016313 | giro **1506** aperto e chiuso in 75 ms, `risultato.perimetro` intatto, **zero** righe nel giornale |
+
+⭐ **La prova che il `correlation_id` funziona sta in un dettaglio di
+cronometro**: sul lotto 7133 due corse distano **un secondo** (23:11:13 e
+23:11:14) e hanno fili diversi. Col `lock_batch_id` sarebbero stati lo stesso
+valore — la S3 non è più una deduzione né una misura su dati vecchi, è il
+comportamento nuovo osservato nel caso peggiore.
+
+⛔ **E il giro vero ha trovato due cose che i test non vedevano**, entrambe
+corrette lo stesso giorno:
+
+1. **`_mark_lotto_error` moriva prima di scrivere il diario** — la marcatura e
+   il diario erano un passo solo, e il rifiuto della prima impediva la seconda.
+   Ora sono **indipendenti**. Dettaglio in **BE-7**.
+2. **`COMPLETATO -> ERRORE` era vietato** — un lotto già completato e rilanciato
+   senza successo non si poteva marcare. Aperto, con la decisione di Tid e il
+   perché scritto accanto. Vedi il registro qui sotto.
+
+⚠️ **Una lezione di metodo, e vale oltre questo cantiere**: nel misurare avevo
+scritto due volte «`event_log` è a zero righe». **Era falso.** La tabella ha la
+RLS, e contarla senza contesto operatore la fa apparire vuota — *un conteggio
+fail-closed somiglia in tutto e per tutto a un dato*. Le righe c'erano tutte. Chi
+controlla queste tabelle da psql deve impostare il contesto, o leggerà zeri
+inventati.
+
+📌 Fuori cantiere, annotato in **§11**: un prezzo **non negoziato sul contratto**
+dentro un push **riuscito**.
+
+### 2026-08-24 · ✅ Il backend chiude: **dodici consegne su dodici**
+
+Scritto dal **backend**. Con **BE-8** e **BE-11** finiscono le consegne del §5:
+non ne resta nessuna aperta.
+
+- **BE-11** — `CODICE_DIAGNOSTICA_FALLITA` spostata su
+  `E_DIAGNOSTICA_NON_REGISTRATA`. ⭐ **Il debito era stato aperto dal backend e
+  chiuso da entrambi i lati nell'ordine giusto**: il DB ha coniato il codice
+  (TECNICO) e ha lasciato vivo il vecchio scrivendo *«un codice ritirato che
+  qualcuno solleva ancora è peggio di un nome che mente»*; ora che nessuno
+  solleva più `E_PIPELINE_MARK_ERROR` (699), il suo `obsoleto_dal` si può
+  mettere. È l'ultimo passo di §5-ter, ed è a carico del DB.
+- **BE-8** — `req=%(request_id)s` su ogni riga di log, e `emittente_attivo_id`
+  che smette di essere una colonna morta. Dettaglio nella riga della tabella.
+
+⭐ **Due cose che scrivendo si sono rivelate diverse da come erano nel piano.**
+
+1. **Il `request_id` non andava aggiunto ai messaggi, ma al canale.** Il piano
+   diceva «`request_id` nel formatter»; misurando, il progetto lo scriveva già
+   a mano — **in un punto solo**, `api.exception`. Cioè la prova che scriverlo
+   a mano copre solo dove qualcuno ci ha pensato: è la forma di difetto che
+   questo cantiere ha già nominato due volte (*una cosa che tutti scrivono e
+   nessuno governa*). Nel filtro la correlazione diventa una **proprietà del
+   canale**, e il punto che se la scriveva è stato ripulito perché stampava la
+   stessa informazione due volte.
+   ⚠️ E il presidio che serviva non era sul filtro: è sulla **configurazione**.
+   Il formato cita `%(request_id)s`, quindi un handler aggiunto domani **senza**
+   il filtro non stamperebbe una riga sbagliata — la **perderebbe**, perché
+   fallisce la formattazione, e proprio mentre si cerca di capire cosa è
+   successo. Il test lo verifica sugli handler dichiarati in `settings.LOGGING`.
+
+2. ⛔ **Delle due colonne morte, una sola si poteva collegare.** `tx_id` **no**,
+   e la ragione non è di implementazione: la riga di `request_log` si scrive
+   *dopo* la risposta, quando la transazione di lavoro ha già chiuso — e la GUC
+   `dbops.tx_id` in una sessione applicativa è **vuota** (misurata), mentre la
+   tabella **non ha nessun trigger**. Un valore coniato lì legherebbe la riga a
+   sé stessa. Richiesta di `DROP COLUMN` scritta sopra, non eseguita qui.
+
+#### ⭐ E il giro vero ha corretto anche una regola di dominio *(decisione di Tid, 2026-08-24)*
+
+Il difetto del lotto 6260 aveva **due** cause, e la seconda non era del diario.
+`set_lotto_job_stato` vietava `COMPLETATO -> ERRORE`, quindi un lotto già
+completato e **rilanciato senza successo non si poteva marcare**: restava
+`COMPLETATO` pur avendo una fattura che non si era numerata.
+
+> *Tid: «non è giusto — se il lotto contiene una riga in errore deve essere
+> marcato».*
+
+⚠️ **E il divieto non proteggeva niente**, perché colpiva solo quel caso:
+l'avvio del giro scrive `IN_ESECUZIONE` **dentro** la transazione del giro, e un
+fallimento la rolla indietro — il marcatore, che gira fuori, ritrova lo stato
+precedente. Il lotto era `COMPLETATO` non perché fosse a posto, ma perché il
+fallimento aveva cancellato la prova di essere partito.
+
+⛔ **Non si è aperto anche `ERRORE -> COMPLETATO`**, ed è la parte da non
+«simmetrizzare» domani: le due transizioni non sono la stessa cosa girata al
+contrario. *«È andata bene»* è una **conclusione**, e va guadagnata con un giro —
+che passa da `IN_ESECUZIONE` e riporta il lotto a `COMPLETATO` da sé. *«È andata
+male»* è un **fatto osservato**: rifiutarne la registrazione non lo rende meno
+vero, lo rende solo invisibile. È la stessa regola del diario, la **D-12**, un
+piano più in su.
+
+⭐ **E lo spegnimento resta automatico, senza una seconda sede.** A fine di ogni
+giro il runner ricalcola con `evaluate_lotto_status` — che conta le segnalazioni
+**attuali** — e riporta il lotto a `COMPLETATO` se non ci sono più errori. Tolte
+le righe rotte e rilanciato, il segnale si spegne da solo. Verificato sul vivo:
+`ERRORE -> IN_ESECUZIONE -> COMPLETATO` passa.
+⚠️ Ma **solo dentro un giro**: rimuovere le righe *senza rilanciare* non
+sbianca il lotto. Sede unica per scelta, non dimenticanza.
+
+📌 Misurato mentre si correggeva: il lotto 6260 **ha davvero un errore adesso**
+(1 segnalazione critica, 1 fattura in `stato_esecuzione = ERRORE`) ed è
+`COMPLETATO`. È l'incoerenza che la modifica chiude.
+
+⚠️ **E resta in piedi, intatto, il rischio 3.** `event_log` è di nuovo a **zero
+righe** e nessun `task_run` ha il filo del giro: il percorso di scrittura è
+verificato dai test e da prove puntuali contro il database, ma **una pipeline
+vera non è ancora passata** da quando BE-2 e BE-3b esistono. È l'unica cosa che
+nessuna riga di questo documento può dichiarare chiusa — e la prossima mossa
+utile non è codice, è **far girare un giro** e guardare le righe.
 
 ### 2026-08-23 (undicesimo giro) · 🟢 L6 — il difetto trovato dalla domanda «è completo?»
 
@@ -1569,11 +1738,11 @@ Domanda di Tid. Risposta misurata sul database e sul codice, non riletta da qui.
 | | Cosa | Esito |
 | --- | --- | --- |
 | ✅ | I 22 changeSet del cantiere | tutti applicati |
-| ✅ | I sei campi del lato scrittura | perimetro derivato · `auth_user_id` · `cleanup_at` a 750 giorni · `entity_id` reale · `tx_id` **ora scritto** · `correlation_id` **scrivibile** (manca chi lo genera: BE-2) |
+| ✅ | I sei campi del lato scrittura | perimetro derivato · `auth_user_id` · `cleanup_at` a 750 giorni · `entity_id` reale · `tx_id` **ora scritto** · `correlation_id` **generato dal backend** (BE-2 fatta il 2026-08-24: un `uuid4()` per corsa, non più il `lock_batch_id` del lotto) |
 | ✅ | I cataloghi e la retention | 4 tipi · 5 codici evento · regola `CLEANUP_AT` id 15 (750 giorni, attiva) · `fk_index_policy` registrata |
 | ✅ | Il presidio | 76 asserzioni verdi, e i quattro percorsi della retention (riga viva, scadenza immutabile, riga scaduta, GUC di manutenzione) sono tutti coperti |
 | ✅ | La spia dei codici evento | `dbops.vw_eventi_non_dichiarati` = **0** — e ⭐ **il cancello lato Python esiste già**: `apps/core/tests/test_event_codes_declared_guardrail.py`. **BE-9 risulta fatta** |
-| ⛔ | **Il BE è rotto adesso su un punto** | `commesse_repository.py:1546` chiama ancora `fn_log_commessa_push_run`, che il changeSet **69** ha tolto: il push commesse **fallisce** finché BE-3b non arriva. È la conseguenza **dichiarata** del breaking, non una sorpresa — ma va saputa oggi, non al primo push |
+| ✅ | ~~**Il BE è rotto adesso su un punto**~~ | ⏱️ **Superato il 2026-08-24, e la misura era su uno snapshot precedente al merge del backend** (PR #1364). `commesse_repository` non chiama più `fn_log_commessa_push_run`: al suo posto ci sono `start_push_run` (in testa) e `close_push_run` (in coda) — **BE-3b è fatta**. Verificato dal vivo: apertura `IN_ESECUZIONE`, chiusura `PARZIALE`, e i due rifiuti della chiusura che rispondono come devono |
 
 ⭐ **Quindi: lato DB il cantiere non ha più niente da consegnare.** Restano
 **quattro cose aperte, tutte dichiarate e nessuna dimenticata**: l'indice di
@@ -1866,3 +2035,49 @@ Conseguenze, tutte nate da lì:
   non va toccata, e la colonna diventa la stessa che usa tutta la famiglia vendite;
 - ⚠️ **non** si segnala l'anomalia sulla riga: scatterebbe sul caso normale. Il
   presidio giusto sta sul documento, ed è di un altro documento.
+
+---
+
+## 11. 🔵 Da verificare — trovato collaudando, **fuori cantiere**
+
+> **Perché sta qui e non in un brief suo.** Non è materia di `event_log`: è
+> emerso mentre si verificava sul campo il ramo push, e nel registro tecnico si
+> vede **solo** perché quel giro è stato guardato riga per riga. Annotato per
+> non perderlo — non analizzato, non corretto.
+
+### Un prezzo non negoziato sul contratto, dentro un push riuscito *(2026-08-23)*
+
+Il push di **ORD0016313** (giro `commesse_push_log` **1506**) è andato
+`COMPLETATO`, e **nello stesso `tx_id`** ha lasciato una riga in
+`dbops.error_log`:
+
+```
+23:27:18 · vendite.fn_resolve_prezzo_listino_v2 · E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C
+context: articolo 019d53f6-58ca-7cb7-b77b-86d201ce9787 · contratto_id 198
+         ba_id 155 · utility_id 5 · data_riferimento 2026-08-09
+         classe_utenza_id NULL · listino_versione_id_preferito NULL
+```
+
+⭐ **E il push non si è fermato**: l'attività nata dal giro
+(`commesse_attivita` **44883**, commessa **25092**) ha
+`prezzo_snapshot = 17.00`, `prezzo_bloccato = true`, `pricing_mode = FIXED` —
+cioè il prezzo **è arrivato lo stesso**, verosimilmente bloccato dalla riga
+d'ordine invece che risolto dal contratto.
+
+**La domanda da porsi, quando si riprende:**
+
+1. **17,00 è il prezzo giusto?** Se viene dall'ordine e il contratto 198 avrebbe
+   dovuto negoziarne un altro, il documento nasce con un prezzo che nessuno ha
+   deciso — ed è il tipo di cosa che si scopre in fattura.
+2. **Il ripiego è voluto o è una tolleranza?** Un `prezzo_bloccato` che copre un
+   articolo *non negoziato sul contratto* può essere il disegno (il prezzo del
+   documento vince) oppure il modo in cui un buco di configurazione passa
+   inosservato. Le due cose si distinguono solo leggendo la regola, non il dato.
+3. **Quante volte capita?** Una riga di `error_log` su un push riuscito non la
+   guarda nessuno: se il caso è frequente, il registro lo sa già —
+   `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` per `function_name` e periodo.
+
+⚠️ **Non è un difetto accertato.** È un errore *registrato dentro
+un'operazione riuscita*, che è esattamente la categoria che nessuno controlla —
+e per questo vale la pena riprenderla a mente fresca invece di archiviarla come
+rumore.

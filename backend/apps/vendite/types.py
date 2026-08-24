@@ -178,6 +178,11 @@ class LottoFattureRow(TypedDict):
     # distinguere un avviso da un errore e mostrerebbe l'icona rossa su
     # entrambi. Stesso ruolo di `natura_doc_codice`.
     errore_livello: str | None
+    # ⭐ IL BERSAGLIO dell'errore: su QUALE cosa, per disegnare un gesto invece
+    # di far ricopiare un id a mano. Forma `[{"type": ..., "id": ...}]`, gli
+    # stessi nomi dell'envelope. NULL quando l'errore non ne porta — che e' il
+    # caso normale, non un difetto.
+    errore_bersagli: list[dict[str, str]] | None
 
 
 class LottoListRow(TypedDict):

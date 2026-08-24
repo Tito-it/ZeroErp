@@ -29,7 +29,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
 
-from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, db_diag, db_error_code
+from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -914,11 +914,13 @@ def translate_db_errors(
         )
     except DatabaseError as exc:
         exc_text = str(exc)
+        # ⭐ UNA lettura sola della diagnostica (BB `diagnostica_db`, 2026-08-24).
         # Campo strutturato per primo (`CONSTRAINT` su P0001), poi il ripiego
         # a regex sul testo: stessa semantica di prima — qualunque codice il DB
         # dichiari vince sul `fallback_code` — ma letto da una fonte che non
         # dipende da come e' scritto il call site nel corpo della funzione.
-        code = db_error_code(exc, text=exc_text) or fallback_code
+        diag_dominio = diagnostica_db(exc, text=exc_text)
+        code = diag_dominio.codice or fallback_code
         # ⭐ L'HINT del database e' l'AZIONE SUGGERITA che il team DB scrive a
         # catalogo per ogni codice («se il documento non e' ancora numerato, la
         # strada e' il reset del lotto…»): la parte che dice all'operatore cosa
@@ -929,14 +931,24 @@ def translate_db_errors(
         # quel ramo vale solo per un DatabaseError che arriva NUDO al
         # middleware: appena un service traduce — cioe' sempre, qui — non ci
         # passa. Ora il campo viaggia strutturato fino all'envelope.
-        diag = db_diag(exc)
+        # ⭐ IL CAMPO DA CORREGGERE E IL BERSAGLIO, dal 2026-08-24, e sono la
+        # stessa lezione dell'`hint` qui sopra ripetuta due volte. Misurato: il
+        # canale `COLUMN` viaggia dall'08/08 ed e' valorizzato da quasi tutti i
+        # punti di sollevamento del database, ma arrivava all'envelope SOLO
+        # dalla strada del `DatabaseError` nudo — cioe' praticamente mai, perche'
+        # questo context manager ha 46 punti di chiamata. I 136 binding di
+        # `campiErrati` sul frontend non si illuminavano su un errore nato in
+        # PL/pgSQL, e nessuno poteva vederlo dal lato che riceve.
+        # Il bersaglio (canale `DATATYPE`) sarebbe nato con lo stesso difetto.
         ErrorManager.raise_error(
-            hint=getattr(diag, "message_hint", None),
+            hint=diag_dominio.hint,
             code=code,
             message=exc_text.split("\n", maxsplit=1)[0].strip()
             or fallback_message,
             detail=exc_text,
             context=context,
+            fields=diag_dominio.fields,
+            targets=diag_dominio.bersagli or None,
         )
 
 
