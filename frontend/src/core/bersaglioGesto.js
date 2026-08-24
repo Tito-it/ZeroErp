@@ -55,21 +55,28 @@ function vaiAl(risolto) {
     return
   }
   if (risolto.rotta) {
-    // ⚠️ La query e non un param: la view legge il deep-link e poi se lo
-    // ripulisce con `router.replace` — stesso meccanismo gia' in servizio su
-    // `vendite-contratti` (`?open=<id>`).
-    router.push({
-      name: risolto.rotta.name,
-      query: { [risolto.rotta.queryKey]: risolto.id },
-    })
+    // Due forme, e la mappa dice quale:
+    //  · `queryKey` → deep-link `?open=<id>` su una LISTA, che lo legge e poi se
+    //    lo ripulisce con `router.replace` (meccanismo gia' in servizio su
+    //    `vendite-contratti` e, dal 2026-08-24, su `vendite-lotti`);
+    //  · `param`    → rotta con `:id`, per le entita' che hanno una pagina
+    //    propria invece di un pannello (l'editor di una definizione workflow).
+    const { name, queryKey, param } = risolto.rotta
+    router.push(
+      param
+        ? { name, params: { [param]: risolto.id } }
+        : { name, query: { [queryKey]: risolto.id } },
+    )
   }
 }
 
-// ⚠️ Un identificativo LUNGO non entra in un pulsante. Oggi i tre tipi
-// raggiungibili hanno tutti chiave numerica, ma `config.tipi_entita.key_selector`
-// ammette anche `uid`: il giorno che entra un `PREVENTIVO`, «Apri Preventivo
-// 0f8c1d42-9a3b-4c11-8e77-2b6d5a4c9e01» sarebbe un'etichetta illeggibile — e il
-// numero, a quel punto, non aggiunge niente a chi legge.
+// ⚠️ Un identificativo LUNGO non entra in un pulsante. Al 2026-08-24 tutti e
+// nove i tipi a catalogo hanno chiave numerica, ma `key_selector` ammette
+// ancora `uid`: il giorno che una superficie pubblica indirizzera' cosi',
+// «Apri Preventivo 0f8c1d42-9a3b-4c11-8e77-2b6d5a4c9e01» sarebbe un'etichetta
+// illeggibile — e il numero, a quel punto, non aggiunge niente a chi legge.
+// ⭐ Il guard resta anche se oggi non morde: costa una riga e toglie una
+//    domanda a chi aggiungera' quel tipo.
 const ID_MAX_IN_ETICHETTA = 12
 
 // Scopo: ⭐ Le AZIONI da mettere nel toast, per i bersagli raggiungibili.
@@ -92,8 +99,8 @@ export function azioniDaBersagli(bersagli, authStore) {
     const entita = t(risolto.etichettaKey)
     return {
       label:
-        risolto.id.length <= ID_MAX_IN_ETICHETTA
-          ? t('errors.bersaglio_apri', { entita, id: risolto.id })
+        String(risolto.idEtichetta).length <= ID_MAX_IN_ETICHETTA
+          ? t('errors.bersaglio_apri', { entita, id: risolto.idEtichetta })
           : t('errors.bersaglio_apri_senza_id', { entita }),
       icon: 'pi pi-external-link',
       esegui: () => vaiAl(risolto),

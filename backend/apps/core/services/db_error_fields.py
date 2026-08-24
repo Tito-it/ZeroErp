@@ -253,16 +253,29 @@ def bersagli_envelope(
 class DiagnosticaDb:
     """Tutto cio' che un errore del database dice, letto UNA volta.
 
-    ⭐ Perche' esiste, ed e' un difetto misurato il 2026-08-24. I punti in cui
-    un `DatabaseError` diventa un `ServiceError` sono QUATTRO — il translator
-    del middleware, `translate_db_errors` (46 chiamate), `raise_from_database_error`
-    (9) e `_run_per_fattura_task` della pipeline — e ognuno leggeva un
-    sottoinsieme diverso della diagnostica. (C'e' un QUINTO punto che non passa
-    di qui perche' non produce un envelope: il blob `errore` del runner di
-    pipeline, che appiattisce un `ServiceError` dentro una risposta 200.) Conseguenza: `hint` arrivava
-    all'envelope da due strade su quattro e `fields` da UNA, quindi i 136
-    binding di `campiErrati` sul frontend non si illuminavano mai su un errore
-    nato in PL/pgSQL. Il canale c'era, era il trasporto a perderlo.
+    ⭐ Perche' esiste, ed e' un difetto misurato il 2026-08-24. I punti in cui un
+    `DatabaseError` diventa un `ServiceError` sono CINQUE, e ognuno leggeva un
+    sottoinsieme diverso della diagnostica:
+
+      1. `ErrorTranslator._from_database_error` — l'errore NUDO al middleware
+      2. `payload_helpers.translate_db_errors` — 46 punti di chiamata
+      3. `ErrorManager.raise_from_database_error` — 9
+      4. `pipeline_step_executor._run_per_fattura_task` — la strada del pilota
+      5. `pratiche._raise_known_db_error` — 12
+
+    Conseguenza: `hint` arrivava all'envelope da **tre** strade su cinque e
+    `fields` da **UNA**, quindi i 136 binding di `campiErrati` sul frontend non
+    si illuminavano mai su un errore nato in PL/pgSQL. Il canale c'era, era il
+    trasporto a perderlo.
+
+    ⚠️ Il quinto e' stato trovato DOPO gli altri quattro, col roll-out del
+    2026-08-24 — ed e' la ragione per cui questo elenco va riletto invece che
+    dato per completo: un BB unifica la LETTURA, non il trasporto, e un punto
+    di traduzione nuovo va cercato.
+
+    ⛔ E c'e' un sesto appiattimento che NON passa di qui, perche' non produce un
+    `ServiceError`: il blob `errore` di `pipeline_runner._drive_lotto_until_done`,
+    che mette il fallimento dentro una risposta **200**.
 
     ⚠️ Nessun campo qui e' «nuovo»: sono le stesse letture di prima, messe in
     una sede sola perche' non possano piu' divergere.

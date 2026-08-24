@@ -37,6 +37,9 @@ Indice test eseguiti:
 24) PraticheServiceTests.test_cerca_pratiche_lente_ruolo_passata_al_repo
 25) PraticheServiceTests.test_cambia_stato_pratica_chiusura_bloccata_485
 26) PraticheServiceTests.test_cerca_pratiche_filtri_priorita_risorsa
+27) PraticheServiceTests.test_pratica_di_flusso_ok
+28) PraticheServiceTests.test_pratica_di_flusso_non_visibile_o_inesistente
+29) PraticheServiceTests.test_pratica_di_flusso_id_non_valido
 """
 
 from unittest.mock import MagicMock, patch
@@ -97,6 +100,35 @@ class PraticheServiceTests(SimpleTestCase):
         p_exit.start()
         self.addCleanup(p_enter.stop)
         self.addCleanup(p_exit.stop)
+
+    # Scopo: ⭐ «Dove vive questo flusso», dal solo id. Serve al deep-link della
+    #        dashboard quando il flusso e' nominato DA FUORI — il bersaglio di
+    #        un errore (`E_FLUSSI_*`) porta l'id del flusso e nient'altro.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_pratica_di_flusso_ok(self, MockRepo):
+        MockRepo.return_value.get_pratica_di_flusso.return_value = 185
+        self.assertEqual(pratiche_service.pratica_di_flusso(166), 185)
+        MockRepo.return_value.get_pratica_di_flusso.assert_called_once_with(166)
+
+    # Scopo: ⛔ FAIL-CLOSED, ed e' il ramo che conta. La lettura e' agganciata a
+    #        `pratiche.pratiche` (che ha la RLS) e non al solo `flussi` (che non
+    #        ce l'ha): un flusso fuori perimetro torna None ed e'
+    #        indistinguibile da uno che non esiste — che per chi opera e' la
+    #        stessa cosa, e per chi non deve vederlo anche.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_pratica_di_flusso_non_visibile_o_inesistente(self, MockRepo):
+        MockRepo.return_value.get_pratica_di_flusso.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.pratica_di_flusso(999)
+        self.assertEqual(ctx.exception.code, "E_FLUSSO_NOT_FOUND")
+
+    # Scopo: Guard sull'id, come ogni altro punto d'ingresso del service.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_pratica_di_flusso_id_non_valido(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.pratica_di_flusso(0)
+        self.assertEqual(ctx.exception.code, "E_INVALID_ID")
+        MockRepo.return_value.get_pratica_di_flusso.assert_not_called()
 
     # Scopo: Verifica creazione pratica base con tutti i campi obbligatori.
     @patch(f"{_SVC}.PraticheRepository")

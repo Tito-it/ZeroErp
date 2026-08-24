@@ -72,6 +72,15 @@ export function getFlusso(praticaId, flussoId) {
   return api.get(`${BASE}/${praticaId}/flussi/${flussoId}/`)
 }
 
+// ⭐ Dove vive un flusso, dal solo id: l'unica rotta dei flussi non annidata
+// sotto la pratica. Serve a chi il flusso lo nomina DA FUORI e non ha la
+// pratica in mano — il primo caso reale e' il bersaglio di un errore, che
+// porta `FLUSSO:<id>` e nient'altro (deep-link `?flusso_id=` della dashboard).
+// ⚠️ Risponde `{ pratica_id }` e non il flusso: il dettaglio resta uno solo.
+export function getPraticaDiFlusso(flussoId) {
+  return api.get(`${BASE}/flussi/${flussoId}/pratica/`)
+}
+
 export function createFlusso(praticaId, payload) {
   return api.post(`${BASE}/${praticaId}/flussi/`, payload)
 }

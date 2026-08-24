@@ -15,9 +15,20 @@
 > più il presidio del catalogo messaggi. Il guardrail passa: **un solo mittente
 > su tutti e tre i canali**; `dbops.vw_bersagli_non_dichiarati` è **vuota**.
 >
-> ⭐ **Il lato DB del cantiere è chiuso.** Restano il **roll-out** (T-5, §6 L6),
-> il **T-3b** che aspetta il frontend, e la **proposta L5**. Le consegne BE/FE
-> sono in §7 — e **B-1 adesso è eseguibile**: il canale esiste.
+> ⭐ **Tutti e quattro i lati sono chiusi** *(aggiornato 2026-08-24, sera)*: il
+> **DB** (L1-L4), il **roll-out** (L6, a fine corsa: 8 funzioni, 9 tipi), il
+> **backend** (B-1: cinque punti di traduzione, envelope `targets`) e il
+> **frontend** (B-2/B-3: toast con azioni, ospite globale, **8 destinazioni su
+> 9 tipi**). Il dettaglio è in §7-bis.
+>
+> 🔴 **Resta UNO solo, e adesso è sbloccato: il `T-3b`** — l'id che esce dalla
+> prosa del 937. Aspettava *«B-1 e B-2 in servizio»* (§5.3-bis) e lo sono: è un
+> passo **del team DB**, ed è l'ultima cosa che separa questo cantiere dal
+> proprio scopo — la frase che smette di portare una chiave interna.
+>
+> 🔵 **E restano tre cose che non bloccano**: la **proposta L5** (derivazione
+> automatica, mai decisa), **due candidati T-5** rimasti (§L6, «fine corsa»), e
+> le due domande di fondo del §8. ⚠️ Più il collaudo in-app, che è di Tid.
 >
 > ⚠️ **Il catalogo dei tipi** è il prerequisito, applicato dall'altro cantiere
 > il 2026-08-22; questo lotto gli ha aggiunto `key_selector` (T-1d).
@@ -964,15 +975,23 @@ il lato DB rispetta già.
 `hint`:
 
 ```json
-"target": [{"type": "FATTURA", "id": "835"}]
+"targets": [{"type": "FATTURA", "id": "835"}]
 ```
 
 ⚠️ **Due nomi diversi per la stessa cosa, e non è una svista**: la chiave nel
 contesto del database è `bersaglio` (italiano, come `campo` e `parametro`, e
 perché `target` là dentro è già occupata da altro); il campo dell'envelope è
-`target` con dentro `type`, perché l'envelope è in inglese (`fields`, `hint`,
-`ui_action`). La traduzione avviene **al confine**, in `error_translator.py`
-(riga ~228, dove oggi si popola `fields=_campi(...)`).
+`targets` con dentro `type`, perché l'envelope è in inglese (`fields`, `hint`,
+`ui_action`). La traduzione avviene **al confine**, in `error_translator.py`.
+
+> 🔧 **Rettifica del 2026-08-24 (BE).** Questo paragrafo diceva `target` al
+> **singolare**. Il nome deciso da Tid — e quello **già in servizio** — è
+> **`targets`**, al plurale come `fields`: il campo è sempre un array (§4.2,
+> decisione del 2026-08-22), e un plurale che porta una lista è ciò che il
+> resto dell'envelope fa già. ⚠️ Il codice non è stato cambiato per seguire il
+> testo: è il testo ad essere allineato al contratto in servizio, perché
+> l'envelope è **pubblicato** (`/api/schema/`) e rinominarlo costerebbe una
+> rottura per chi lo legge. Vedi §7-bis.6, **Q-F**.
 
 ⛔ **Cosa il backend NON deve fare:**
 
@@ -1047,7 +1066,7 @@ canale, e rende scrivibile il presidio **C2** di
 > `frontend-standards.md`, che sono i due documenti dove questa convenzione va a
 > vivere.
 
-### 7-bis.1 🔴 Il rilievo: i punti di traduzione sono quattro, non uno
+### 7-bis.1 🔴 Il rilievo: i punti di traduzione sono cinque, non uno
 
 Un errore sollevato da `script.fn_log_and_raise_error` arriva al backend come
 `DatabaseError` con la sua diagnostica: codice su `CONSTRAINT`, campo su
@@ -1060,15 +1079,24 @@ Un errore sollevato da `script.fn_log_and_raise_error` arriva al backend come
 | 2 | `payload_helpers.translate_db_errors` — **46 punti** di chiamata nei domini | `hint` soltanto | ⛔ `fields` |
 | 3 | `ErrorManager.raise_from_database_error` — **9 punti** | niente | ⛔ `hint`, `fields` |
 | 4 | `pipeline_step_executor._run_per_fattura_task` — ⭐ **la strada del 937** | il solo `message_primary` | ⛔ `hint`, `fields` |
+| 5 | `pratiche._raise_known_db_error` — **12 punti** | `hint` soltanto | ⛔ `fields` |
 
-⚠️ **E non sono quattro copie da riparare quattro volte**: dietro ci sono **42
+> ⚠️ **Il quinto non era in questa tabella quando è stata scritta.** È emerso il
+> 2026-08-24 col roll-out del terzo scaglione, che passa proprio di lì
+> (`E_FLUSSI_*`, `E_DEFINIZIONE_BOZZA_ESISTENTE`). ⭐ **È la conferma della
+> regola che questa sezione stessa enuncia**: il BB unifica la **lettura**, non
+> il **trasporto** — e un punto di traduzione va **cercato**, non aspettato.
+> Da lì la scelta di tenere **un test per punto**: il prossimo che nascesse
+> senza il suo tornerebbe a perdere il bersaglio in silenzio.
+
+⚠️ **E non sono cinque copie da riparare cinque volte**: dietro ci sono **42
 `except DatabaseError`** nei service. Un rimedio per punto di cattura è
 esattamente la forma in cui questa casa ha già visto divergere il codice.
 
 ⭐ **Ne esce un difetto già vivo, che non è del bersaglio.** Il canale `COLUMN`
 esiste dall'08/08 e — col ripiego su `parametro` — lo valorizzano **quasi tutti**
 i punti di sollevamento del database. Ma `api.md` scrive *«il backend lo legge
-già»*, ed è vero **per un lettore su quattro**: appena un service traduce (cioè
+già»*, ed è vero **per un lettore su cinque**: appena un service traduce (cioè
 sempre, in ogni dominio) il nome della colonna **si perde**. Il frontend, che ha
 136 binding pronti su `campiErrati`, su un errore nato in PL/pgSQL non riceve
 niente. ⛔ **Il bersaglio, scritto nello stesso posto, farebbe la stessa fine.**
@@ -1090,7 +1118,7 @@ per tutti i 1.093 punti di sollevamento.
 | **B3** | L'**envelope** | `error_translator.py` | `ApiError` prende il campo nuovo; `to_api_error` lo legge dal `ServiceError` **e** da `_from_database_error`; ⛔ e va **ricopiato in `_apply_policy`**, che costruisce un `ApiError` nuovo — è il punto esatto in cui `fields` si era già perso una volta, e il commento in quel metodo lo dice. ⚠️ **Su un codice di classe `TECNICO` il bersaglio si toglie**: è la Q-E letta dal lato che consegna, e vale anche se un giorno il database sbagliasse a metterlo (non c'è gesto su un 500) |
 | **B6** | Il **runner**, che non passa dall'envelope | `pipeline_runner.py` · `vendite/api/views.py` | 🔴 Gli endpoint del runner rispondono **200 anche quando la catena si ferma per errore**: il fallimento è `motivo_stop` + `errore: {code, message, detail}`, costruito a mano in `_drive_lotto_until_done`. È il **quinto** punto di appiattimento, ed è **la strada del pilota**. Il blob prende `hint`, `fields`, `targets` — gli stessi tre nomi dell'envelope, perché il consumatore a video sia uno solo. ⚠️ È un **contratto**: va aggiornato anche l'`inline_serializer` di `@extend_schema` |
 | **B7** | Il bersaglio si **persiste** *(strada asincrona)* | `pipeline_runner.py` · `vendite_repository.py` · `types.py` | ⭐ **Il lettore che conta è qui** (§1: «l'operatore cinque minuti dopo»): un giro batch fallisce quando non c'è nessuno davanti allo schermo, e l'unica cosa che resta è una riga scritta. ⚠️ **Costa meno del toast**: nessuna DDL (`fatture_log.meta` e `task_runs.meta` sono già `jsonb NOT NULL`), il punto di scrittura esiste già ed è già fuori dall'`atomic` dello step (`_persist_fattura_error_safely`), e la query della lista fatture **seleziona già `err.meta`** ed estrae già una chiave da lì (`error_code`). Si aggiunge `bersagli` accanto, con la stessa convenzione |
-| **B4** | I **test** | `apps/core/tests/…` | ⚠️ `db_error_fakes.FakeDiag` porta oggi **quattro** campi e non ha né `column_name` né `datatype_name`: `test_db_error_field_column.py` si è dovuto scrivere il proprio finto. Alla seconda copia si estende quello condiviso (regola del 2). Unitari sulla lettura (forma buona, tipo minuscolo, id storto, sesto elemento, SQLSTATE non `P0001`); **un test per ciascuno dei quattro punti di traduzione**, che è il difetto che questo piano ha trovato; e un **E2E opt-in** (`ZEROERP_TEST_DB_E2E=1`) contro la funzione vera, sul modello di `test_db_error_fields.py` |
+| **B4** | I **test** | `apps/core/tests/…` | ⚠️ `db_error_fakes.FakeDiag` porta oggi **quattro** campi e non ha né `column_name` né `datatype_name`: `test_db_error_field_column.py` si è dovuto scrivere il proprio finto. Alla seconda copia si estende quello condiviso (regola del 2). Unitari sulla lettura (forma buona, tipo minuscolo, id storto, sesto elemento, SQLSTATE non `P0001`); **un test per ciascuno dei punti di traduzione**, che è il difetto che questo piano ha trovato; e un **E2E opt-in** (`ZEROERP_TEST_DB_E2E=1`) contro la funzione vera, sul modello di `test_db_error_fields.py` |
 | **B5** | La **documentazione** | `docs/it/dev/api.md` | La riga nuova nella tabella dell'envelope, e la sezione dei canali strutturati che diventa **tre**. ⛔ **E si corregge la riga che oggi dice il falso**: *«il backend lo legge già; le funzioni non lo mandano ancora»* — le funzioni lo mandano dall'08/08, ed è il backend a perderlo per strada |
 
 ⭐ **B2 vale da solo, anche a bersaglio spento**: rimette in servizio il canale
@@ -1145,8 +1173,9 @@ B4 (test) accompagna B1..B3 · B5/F5 (doc) chiudono
 
 ### 7-bis.5 Cosa NON si fa
 
-* ⛔ **Non si tocca `db/`.** Il lotto DB è applicato: il `T-3b` — l'id che esce
-  dalla prosa del 937 — resta appeso a **B-1 e B-2 in servizio**, ed è §5.3-bis;
+* ⛔ **Non si tocca `db/`.** ➡️ E il `T-3b` — l'id che esce dalla prosa del 937 —
+  **non è più appeso**: aspettava «B-1 e B-2 in servizio» (§5.3-bis) e dal
+  2026-08-24 lo sono. È il passo che resta, ed è del team DB;
 * ⛔ **Non si accende `ui_action`** (sopra, F3);
 * ⛔ **Non si semina il catalogo dei tipi in anticipo**: è la Q-D, e il cancello
   che la rende sicura (`dbops.vw_bersagli_non_dichiarati`) è già in CI;
@@ -1171,6 +1200,112 @@ B4 (test) accompagna B1..B3 · B5/F5 (doc) chiudono
 convergenza che il §5.1-bis chiede fra `config.tipi_entita` e `config.sorgenti`
 **è già vera anche sul frontend**, senza che nessuno l'avesse dichiarato: la
 tabella tipo→destinazione non è da costruire, è da riconoscere.
+
+---
+
+### 7-bis.7 ✅ Il roll-out del 2026-08-24 — allineati BE e FE, e le due strade che mancavano
+
+> **Cos'è.** Il DB ha portato il bersaglio su **8 funzioni** e il catalogo a
+> **9 tipi**. Il BE e il FE sono stati allineati lo stesso giorno; qui restano
+> i due punti che **non** si chiudono lato applicazione, perché sono decisioni.
+
+✅ **Verificato dal vivo** — sollevando gli errori veri dal database e leggendo
+l'envelope prodotto: **7 codici su 7** del roll-out arrivano col loro bersaglio,
+attraverso tutti i punti di traduzione (`DEFINIZIONE_BOZZA_ESISTENTE`,
+`FLUSSI_GIA_ASSEGNATO`, `FLUSSI_PRESA_CARICO_STATO_ERRATO`,
+`DDT_ORDINE_STATO_NON_EVADIBILE`, `VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`,
+`LOTTO_NON_RIUTILIZZABILE`, `FATTURA_SENZA_RIGHE`).
+
+🔴 **Un QUINTO punto di traduzione, che era rimasto indietro.**
+`pratiche_service._raise_known_db_error` (**12 punti di chiamata**) portava il
+solo `hint`. ⛔ **Ed è la strada del terzo scaglione**: senza il rimedio, il caso
+che questo brief chiama *«il più netto dell'intero roll-out»* —
+`E_DEFINIZIONE_BOZZA_ESISTENTE`, dove la frase la bozza che blocca **non la
+nomina affatto** — sarebbe arrivato a video senza nessun gesto. Sanato, e ora
+c'è **un test per ciascuno dei cinque** punti.
+⭐ È la conferma della regola già scritta al §7-bis.1: *il BB unifica la lettura,
+non il trasporto* — un punto di traduzione nuovo va **cercato**, non aspettato.
+
+**La mappa del frontend, dopo:** `FATTURA`, `COMMESSA`, `LOTTO`, `CONTRATTO`,
+`ORDINE_VENDITA`, `DEFINIZIONE_WORKFLOW`, `FLUSSO`, `PREVENTIVO` — **8 tipi su
+9**. ⛔ Resta fuori il solo `TASK_RUN`, e non è un ritardo: nessuna schermata
+mostra un giro per id. ⭐ `DEFINIZIONE_WORKFLOW` è la prima
+destinazione che è una **pagina** e non un pannello, e la prima che vive in
+`amm-software` — dove il route guard non guarda l'area ma `isAdmin`: il pulsante
+segue la stessa regola, o porterebbe su «accesso negato».
+
+#### ✅ `FLUSSO` — chiuso il 2026-08-24 (BE + FE)
+
+Il deep-link della dashboard pratiche voleva **`?pratica_id=<X>&flusso_id=<Y>`**
+e senza `pratica_id` non faceva nulla (`if (!praticaId) return`), **in
+silenzio**. Il bersaglio porta il solo flusso, perché la pratica non è ciò di
+cui l'errore parla.
+
+| Dove | Cosa |
+| --- | --- |
+| BE | `GET /api/v1/pratiche/flussi/<id>/pratica/` → `{pratica_id}`. ⭐ **L'unica rotta dei flussi non annidata sotto la pratica**, e risponde a una domanda sola: *«dove vive questa cosa?»*. Non è un secondo modo di **leggere** un flusso — il dettaglio resta uno solo, con la sua verifica di appartenenza |
+| FE | `applyFlussoDeepLink()`: `?flusso_id=` da solo ora risolve la pratica e prosegue dalla porta di sempre. ⭐ Vale **oltre il bersaglio** — un link, una ricerca, una notifica |
+| — | `FLUSSO` entra nella mappa delle destinazioni |
+
+⛔ **E il join sulla pratica non è decorativo — misurato**: `pratiche.flussi`
+**non ha RLS**, `pratiche.pratiche` sì. Una lettura del solo `flussi`
+risponderebbe per qualunque flusso, anche di una pratica fuori perimetro: un id
+di troppo, e un pulsante che porta su una schermata che rifiuterà di aprirsi.
+Con il join decide la RLS della pratica, e un flusso non raggiungibile è
+**indistinguibile da uno che non esiste**.
+✅ Provato dal vivo su entrambi i rami: senza contesto operatore il resolver
+rifiuta (fail-closed), con il contesto risponde la pratica giusta.
+
+⚠️ **Non si riusa `get_flusso`**, ed è la lezione che questa casa aveva già
+imparato una volta (`get_flusso_esito_config`): quella proiezione fa **nove
+join** per restituire una colonna, e la sua risposta dipende anche da join che
+con la domanda non c'entrano.
+
+#### ✅ `PREVENTIVO` — chiuso il 2026-08-24 dal team DB
+
+> **Il difetto che questo brief temeva si è verificato — al contrario, e si è
+> chiuso in giornata.** Il §L6 scriveva che *«un id numerico avrebbe prodotto un
+> pulsante che non apre niente, e il difetto si sarebbe scoperto dal frontend,
+> mesi dopo»*. È successo con l'**`uid`**, e l'ha visto il frontend lo stesso
+> giorno in cui il tipo è nato.
+
+**Cosa è stato misurato** *(BE, 2026-08-24)*: il catalogo dichiarava
+`key_selector = uid` e il database scriveva `pv.uid::text` — ma la rotta API del
+dettaglio è `path("<int:preventivo_id>/", …)`, la prop del drawer è
+`preventivoId: { type: [Number, null] }`, e gli endpoint che accettano un uid di
+preventivo sono **zero**. Mapparlo avrebbe prodotto un pulsante che apre il vuoto.
+
+**Cosa ha fatto il team DB** *(`20260824-10`, applicato)*:
+
+| Dove | Cosa |
+| --- | --- |
+| `fn_push_preventivo_a_ordine` | una riga di corpo: `pv.uid::text` → `pv.id::text` |
+| `tipi_entita.csv` | `PREVENTIVO,…,uid` → `id` — mirror `runOnChange`, nessun changeSet di seed |
+| Test 10 | allineato: asserisce `PREVENTIVO:<id>` |
+
+⭐ **E la regola che ne è uscita vale oltre questo caso** — è nella testata del
+changeSet e merita di stare anche qui:
+
+> **Il valore di `key_selector` si MISURA sulle rotte del frontend. Non si
+> eredita, e non si deduce dal fatto che una colonna `uid` esista.**
+
+⚠️ **Adesso nessuno dei nove tipi usa `uid`.** La colonna resta, e il perché è
+scritto invece di lasciarlo intuire: oggi registra un **fatto verificato** invece
+di una supposizione, e il giorno in cui una superficie pubblica indirizzerà per
+uid quella riga cambia **con un seed**, senza toccare nessuna funzione. Se quel
+giorno non arriva, sarà costata una parola per riga.
+⭐ Il frontend tiene il campo `chiave` per la stessa ragione, e lo scrive.
+
+✅ **Verificato dal vivo dopo la correzione**: sollevato l'errore vero su un
+preventivo vero, l'envelope porta `[{"type": "PREVENTIVO", "id": "48"}]` — id
+numerico, coincidente con la riga.
+
+⭐ **E si è visto anche il degrado, per caso**: una sonda che aveva codificato due
+volte il JSON ha prodotto un `context` con `bersaglio` a **stringa**. Il database
+ha scritto `W_BERSAGLIO_MALFORMATO` (`forma=string letti=0 validi=0`), lasciato
+la casella vuota e **sollevato lo stesso l'errore di dominio** — cioè esattamente
+ciò che il L1 aveva promesso: *la funzione che serve a riportare un errore non
+può essere quella che lo distrugge*.
 
 ---
 
@@ -1215,7 +1350,10 @@ tabella tipo→destinazione non è da costruire, è da riconoscere.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-24 (sesto giro BE/FE) | ✅ **`PREVENTIVO` chiuso dal team DB, e la mappa del frontend arriva a 8 tipi su 9.** La richiesta scritta ieri è stata accolta (`20260824-10`, applicato sul DB di prova): `pv.uid::text` → `pv.id::text` e `key_selector` da `uid` a `id`. ⭐ **E la regola che ne è uscita vale oltre il caso**, dalla testata del changeSet: *«il valore di `key_selector` si MISURA sulle rotte del frontend; non si eredita, e non si deduce dal fatto che una colonna `uid` esista»*. ⚠️ Adesso **nessuno dei nove tipi usa `uid`**; la colonna resta e il frontend tiene il campo `chiave`, perché il giorno che servirà cambierà **con un seed** invece che con codice. ✅ **Verificato dal vivo** contro il DB corretto: `[{"type": "PREVENTIVO", "id": "48"}]`, id numerico e coincidente con la riga. ⭐ **E si è visto per caso anche il degrado**: una mia sonda che codificava due volte il JSON ha prodotto `bersaglio` a stringa — il database ha scritto `W_BERSAGLIO_MALFORMATO` (`forma=string letti=0 validi=0`), lasciato la casella vuota e sollevato **lo stesso** l'errore di dominio. È la promessa del L1 mantenuta in esercizio, non in un test. ⛔ Resta fuori il solo `TASK_RUN`, e non è un ritardo: nessuna schermata mostra un giro per id. ⚠️ Il changeSet è arrivato a monte col merge del ramo DB (`17d69c17d`): al momento della scrittura non era ancora pushato, e il frontend degradava da sé (id non numerico → nessun pulsante) — l'allineamento non rompeva nulla su un DB indietro. ✅ 3.921 test verdi |
 | 2026-08-24 (undicesimo giro) | 🔴 **Correzione su rilievo del BACKEND, e ha ragione**: il bersaglio del preventivo citava l'**uid**, ma le rotte sono `<int:preventivo_id>` e gli endpoint che accettano un uid sono **zero** — sarebbe stato un pulsante che non apre niente. Scritto il `20260824-10` (una riga di corpo), corretto il CSV (`PREVENTIVO,…,uid` → `id`, mirror runOnChange) e allineato il test 10. ⭐ **L'errore ha un nome e va tenuto**: ho riempito `config.tipi_entita.key_selector` con la risposta di `config.sorgenti.key_selector` — stesso nome, scelto apposta, ma **due domande diverse** (il lineage contro le rotte), che è la distinzione che entrambi i brief dichiarano dal principio. ➡️ Regola scritta: **il valore si MISURA sulle rotte, non si eredita**. ⚠️ Verificato anche che l'uid non è un'identità cross-revisione (165 righe, 165 uid, 165 id): nessuna sfumatura di dominio proteggeva la scelta sbagliata. ⭐ **E il difetto l'ha trovato il primo consumatore**: è la prova che il canale serviva — un bersaglio scritto e mai letto non avrebbe mai detto di essere sbagliato |
+| 2026-08-24 (quinto giro BE/FE) | ✅ **Chiuso `FLUSSO`, e scritta la richiesta su `PREVENTIVO`.** **FLUSSO**: rotta nuova `GET /pratiche/flussi/<id>/pratica/` — l'unica dei flussi non annidata sotto la pratica, e risponde a una domanda sola («dove vive questa cosa?») invece di essere un secondo modo di leggerlo. Il deep-link della dashboard ora apre dal solo `flusso_id`, e ⭐ **vale oltre il bersaglio**: link, ricerca, notifiche. ⛔ **E il join sulla pratica non è decorativo — misurato**: `pratiche.flussi` **non ha RLS**, `pratiche.pratiche` sì; una lettura del solo `flussi` avrebbe risposto per qualunque flusso, anche fuori perimetro. ⚠️ **Non si riusa `get_flusso`** (nove join per una colonna, e la sua visibilità dipende da join che con la domanda non c'entrano): è la stessa lezione che questa casa aveva già scritto in `get_flusso_esito_config`. ✅ Provato dal vivo su **entrambi** i rami: senza contesto operatore il resolver rifiuta, col contesto risponde la pratica giusta. 🔵 **PREVENTIVO**: richiesta al team DB, due righe (`pv.uid::text` → `pv.id::text`, e `key_selector` da `uid` a `id`). ⭐ Il difetto che il §L6 temeva — *«un id numerico avrebbe prodotto un pulsante che non apre niente, e si sarebbe scoperto mesi dopo»* — **si è verificato al contrario, e si è scoperto in giornata**: nessun endpoint accetta un uid di preventivo (verificato), la rotta è `<int:preventivo_id>` e la prop del drawer è `Number`. La motivazione dell'uid è vera per `config.sorgenti` e **falsa per le schermate**. ⛔ L'alternativa (un endpoint pubblico che risolve l'uid) costa un contratto in più mantenuto per un caso solo. **Mappa del frontend: 7 tipi su 9.** ✅ 3.921 test verdi, E2E compresa |
+| 2026-08-24 (quarto giro BE/FE) | ✅ **Allineati BE e FE al roll-out del DB** — 8 funzioni, 9 tipi a catalogo. **Provato dal vivo**: sollevati gli errori veri dal database, **7 codici su 7** arrivano all'envelope col loro bersaglio. 🔴 **Trovato un QUINTO punto di traduzione rimasto indietro**: `pratiche_service._raise_known_db_error` (12 punti di chiamata) portava il solo `hint`, e **è la strada del terzo scaglione** — senza il rimedio `E_DEFINIZIONE_BOZZA_ESISTENTE`, cioè «il caso più netto dell'intero roll-out», sarebbe arrivato a video senza gesto. Sanato, con **un test per ciascuno dei cinque** punti. ⭐ Conferma la regola del §7-bis.1: *il BB unifica la lettura, non il trasporto* — un punto nuovo va cercato, non aspettato. 🔴 **E un difetto in ciò che avevo già consegnato**: l'identificativo viaggiava come **stringa** dentro prop dichiarate `Number` (`fatturaId`, `contrattoId`, `ordineId`) — avviso in sviluppo, difetto silenzioso in produzione dove la validazione delle prop non c'è. ⭐ Corretto leggendo `key_selector` dal catalogo invece di dedurre il tipo dal valore, che è **esattamente ciò che la B-2 prescrive**: la mappa del frontend ora dichiara `chiave: 'id' | 'uid'` per ogni destinazione. 🆕 **Frontend**: mappa a 6 destinazioni (`+CONTRATTO`, `+ORDINE_VENDITA`, `+DEFINIZIONE_WORKFLOW`), supporto alle rotte con **parametro di percorso** e al guard `isAdmin` di `amm-software` — la definizione workflow è la prima destinazione che è una **pagina** e non un pannello. Nove etichette `config.tipi_entita.*` in `it`/`en`. ⛔ **Due tipi restano senza destinazione, e non è un ritardo del frontend** (§7-bis.7): **`PREVENTIVO`** — il catalogo dice `uid`, ma il documento si apre solo per **id numerico** (prop `Number`, rotta `<int:preventivo_id>`): il difetto che il brief temeva si è verificato **al contrario**, e serve una decisione; **`FLUSSO`** — il deep-link vuole `pratica_id` **e** `flusso_id`, e il bersaglio porta solo il secondo. Nel frattempo il degrado del §4.3 fa il suo mestiere. 🔧 **Rettificato il §7**, che scriveva `target` al singolare: il nome deciso e **in servizio** è `targets`, plurale come `fields`. Allineato il testo, non il codice — l'envelope è pubblicato in `/api/schema/`. ✅ **3.918 test verdi**, E2E compresa; lint e build del frontend puliti |
 | 2026-08-24 (decimo giro) | 📋 **Scritte le consegne BE/FE in forma eseguibile** (§7). ⭐ **B-1 non è più una richiesta generica**: dice il modulo (`backend/apps/core/services/db_error_fields.py`, che possiede già i due canali gemelli e non ha dipendenze interne), il campo (`diag.datatype_name`), il contratto («solo dentro `P0001`», con la difesa già scritta lì per `constraint_name`), le due regex speculari a quelle del database, il punto di traduzione (`error_translator.py` ~228) e tre cose che il backend **non** deve fare. ⚠️ Dichiarata anche una asimmetria che sorprenderebbe: la chiave nel contesto DB è `bersaglio` (italiano, e perché `target` là è già occupata), il campo dell'envelope è `target`/`type` (inglese, come `fields` e `hint`) — la traduzione avviene **al confine**. ⭐ E B-2 chiarisce che la tabella `type → rotta` è **la stessa** della futura timeline per entità: si scrive una volta, o diverge |
 | 2026-08-24 (nono giro) | ✅ **Terzo scaglione APPLICATO** (baseline `pratiche` verde). 📊 **Stato del roll-out**: **13 codici**, **9 funzioni**, **14 punti di sollevamento**, **9 tipi** a catalogo — e `dbops.vw_bersagli_non_dichiarati` sempre **vuota**. 🏁 **E il roll-out è a FINE CORSA, non finito**: dei `CONFLITTO_STATO` che passano un id restano 21 punti su 15 codici, e riletti con la lente sono **quasi tutti esclusioni motivate** — la famiglia resi («sei già sul reso»), i `%s` che sono colonne o stati, i documenti che l'operatore ha già aperto, e i due bloccati dal costo della funzione a 40 parametri. ⭐ **Restano due soli candidati veri** (`E_FORNITORE_NON_ATTIVO`, `E_ACCREDITO_GIA_ESEGUITO`) e nessuno dei due è ovvio. ⭐ **La conclusione, scritta perché nessuno riapra la lista a tappeto**: continuare vorrebbe dire aggiungere pulsanti che non aiutano — e un bersaglio inutile non è neutro, insegna a ignorare il pulsante. Il roll-out riprende quando lo chiede un caso |
 | 2026-08-24 (ottavo giro) | 🛠️ **TERZO SCAGLIONE SCRITTO — «gli errori che nascono da una lista»**: due changeSet (`20260824-08/09`, schema `pratiche`), tre codici, due tipi nuovi a catalogo (`FLUSSO`, `DEFINIZIONE_WORKFLOW` — nove in totale). ⛔ Non applicato. ⭐ **Contiene il caso più netto dell'intero roll-out**: `E_DEFINIZIONE_BOZZA_ESISTENTE` nomina lo **scope** (tipo prestazione, emittente) e la bozza che blocca **non la nomina affatto** — quel documento un nome utile non ce l'ha, e metterci un id tecnico sarebbe il difetto che il cantiere esiste per togliere. Lì il bersaglio non aggiunge comodità: **aggiunge un'informazione che la frase, per come è costruita, non può dare**. È l'argomento migliore che questo cantiere abbia prodotto per i due canali separati. ⚠️ Terza volta che un `EXISTS` diventa una raccolta — stessa scansione, in più gli id, e array perché se le bozze fossero più d'una vanno viste tutte; il predicato non cambia (`jsonb_agg` su zero righe è NULL). ⚠️ `fn_fork_definizione` è `SECURITY DEFINER`: verificato che è di `titodb` e **non** nel registro `sec_functions_owner`, quindi nessun blocco di proprietà da aggiungere |

@@ -241,7 +241,7 @@ class ErrorTranslator:
         # message_primary contiene solo il messaggio RAISE, senza stack PL/pgSQL
         raw_message = str(exc) or "Errore durante l'operazione database."
         # ⭐ UNA lettura sola (BB `diagnostica_db`, 2026-08-24): questo metodo
-        #    era l'unico dei quattro punti di traduzione a leggere TUTTO — ed e'
+        #    era l'unico dei cinque punti di traduzione a leggere TUTTO — ed e'
         #    anche l'unico che quasi nessun errore percorre, perche' vale solo
         #    per il `DatabaseError` che arriva NUDO al middleware. Da qui in poi
         #    leggono tutti la stessa cosa.

@@ -110,11 +110,15 @@ class RequestLogMiddleware(MiddlewareMixin):
             #    risposta ma sulla stessa connessione. Con `true` sarebbe gia'
             #    sparita.
             #
-            # ⛔ `tx_id` resta NULL, ed e' l'unica delle due che NON si collega
-            #    da qui: la riga si scrive quando la transazione di lavoro ha
-            #    gia' chiuso, quindi il suo `tx_id` non esiste piu'. Un valore
-            #    coniato adesso legherebbe questa riga a se stessa e a niente
-            #    altro. Va tolta a DB — richiesta scritta, non fatta qui.
+            # ⛔ `tx_id` NON C'E' PIU', ed e' il finale della stessa storia:
+            #    era l'altra colonna morta di questa tabella, e non si poteva
+            #    collegare da qui — la riga si scrive quando la transazione di
+            #    lavoro ha gia' chiuso, quindi il suo `tx_id` non esiste piu' e
+            #    un valore coniato adesso avrebbe legato la riga a se stessa.
+            #    Richiesta al team DB e **tolta il 2026-08-24** (0 valorizzate
+            #    su 355.702). ⚠️ Se un giorno servisse davvero, non si riapre
+            #    qui: la riga andrebbe scritta DENTRO la transazione di lavoro,
+            #    cioe' da un'altra parte e con un altro disegno.
             sql = """
                 INSERT INTO dbops.request_log
                     (auth_user_id, username, request_id, method, path,

@@ -511,13 +511,13 @@ database ce l'avesse messo.
 
 Brief: `docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
 
-### 🔴 I quattro punti di traduzione, e perché contano
+### 🔴 I cinque punti di traduzione, e perché contano
 
 Un errore sollevato da `script.fn_log_and_raise_error` porta tutto: codice,
 campo, bersaglio, causa, soluzione. **Poi qualcuno lo traduce in `ServiceError`,
 e la traduzione decide cosa sopravvive.** Misurato il 2026-08-24: i punti sono
-quattro (più un quinto che non passa nemmeno dall'envelope), e tre su quattro
-buttavano via la diagnostica strutturata.
+**cinque** (più un sesto appiattimento che non produce un envelope), e **quattro
+su cinque** buttavano via la diagnostica strutturata.
 
 | | Dove | Prima del 2026-08-24 |
 | --- | --- | --- |
@@ -525,7 +525,12 @@ buttavano via la diagnostica strutturata.
 | 2 | `payload_helpers.translate_db_errors` — **46** punti di chiamata | il solo `hint` |
 | 3 | `ErrorManager.raise_from_database_error` — **9** punti | niente |
 | 4 | `pipeline_step_executor._run_per_fattura_task` | il solo `message_primary` |
-| 5 | `pipeline_runner._drive_lotto_until_done` → `errore` del payload | ⚠️ **non è un envelope**: vedi sotto |
+| 5 | `pratiche._raise_known_db_error` — **12** punti | il solo `hint` |
+| — | `pipeline_runner._drive_lotto_until_done` → `errore` del payload | ⚠️ **non è un envelope**: vedi sotto |
+
+⚠️ **Il quinto è stato trovato DOPO gli altri quattro**, col roll-out del
+2026-08-24 — ed è la ragione per cui questo elenco va riletto invece che dato
+per completo: **un BB unifica la lettura, non il trasporto.**
 
 ⭐ **Ne discendeva un difetto già vivo, non del bersaglio**: il canale `COLUMN`
 viaggia dall'08/08 ed è valorizzato da quasi tutti i punti di sollevamento — ma
@@ -535,7 +540,7 @@ in PL/pgSQL.
 
 ➡️ **La lettura ora è UNA**, il BB `diagnostica_db(exc)` in
 `apps/core/services/db_error_fields.py`: ritorna codice, messaggio, causa,
-soluzione, campo e bersagli in un colpo solo. I quattro punti la usano, e
+soluzione, campo e bersagli in un colpo solo. I cinque punti la usano, e
 `ServiceError` porta `fields` e `targets` fino all'envelope.
 ⚠️ **Il BB unifica la lettura, non il trasporto**: che il valore arrivi
 all'envelope resta scritto in ciascun punto — ed è presidiato da

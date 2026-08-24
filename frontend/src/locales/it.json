@@ -3901,7 +3901,12 @@
       "fattura": "Fattura",
       "commessa": "Commessa",
       "lotto": "Lotto",
-      "task_run": "Giro"
+      "task_run": "Giro",
+      "contratto": "Contratto",
+      "ordine_vendita": "Ordine",
+      "preventivo": "Preventivo",
+      "flusso": "Flusso",
+      "definizione_workflow": "Edizione workflow"
     }
   },
   "lista_config": {
