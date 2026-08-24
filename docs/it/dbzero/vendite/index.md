@@ -356,6 +356,7 @@
 - [vw_documento_lineage_archi](views/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
 - [vw_documento_lineage_nodi](views/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
 - [vw_fattura_righe_esposte](views/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
+- [vw_fatture_lista](views/vw_fatture_lista.md)
 - [vw_fondi_fattura_da_decidere](views/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_lotti_fatture_incoerenti](views/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)
 - [vw_lotti_gruppi_serviti](views/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
