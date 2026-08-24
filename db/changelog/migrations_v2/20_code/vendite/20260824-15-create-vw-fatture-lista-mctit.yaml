@@ -1,0 +1,281 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SETTIMA SORELLA — vendite.vw_fatture_lista
+#   La fattura era l'unico documento del ciclo attivo senza vista canonica.
+#   Esistono gia': vw_contratti_lista, vw_ddt_lista, vw_offerte_commerciali_lista,
+#   vw_ordini_lista, vw_preventivi_lista, vw_resi_lista — tutte security_invoker.
+#
+# ── PERCHE' ORA, E COSA CAMBIA DAVVERO ──────────────────────────────
+#   Non e' simmetria per la simmetria. Oggi un documento fiscale si raggiunge
+#   solo di rimbalzo — da un lotto, da un cruscotto, da un collegamento — e nel
+#   frontend non esiste nessuna rotta verso le fatture. Questa vista e' il primo
+#   dei tre pezzi che aprono la strada diretta; gli altri due (endpoint e rotta)
+#   sono BE/FE e sono elencati nel registro del piano PrimeVue §9.
+#
+# ── ⛔ security_invoker=on, E VA RI-SPECIFICATA OGNI VOLTA ──────────
+#   E' una reloption, non fa parte del corpo: un `CREATE OR REPLACE VIEW` che
+#   non la ripete la AZZERA in silenzio, e la vista tornerebbe a leggere coi
+#   diritti del proprietario — cioe' senza RLS. vendite.fatture ha due policy
+#   (`rls_fatture_ef_whitelist` per l'operatore, `rls_fatture_ba_ownership` per
+#   il portale cliente) ed e' quella a dover mordere: la vista non filtra
+#   niente per conto suo, denormalizza e basta.
+#
+# ── ⛔ UN SOLO JOIN INTERNO, E IL RESTO E' LEFT — con la ragione ────
+#   ⭐ `config.nature_doc_fiscale` e' INNER: `vendite.fatture.natura_doc_id` e'
+#     NOT NULL e ha la sua foreign key (`fk_fatture_natura_doc`), quindi la riga
+#     di catalogo c'e' per costruzione. E' l'unico caso in cui l'inner join e'
+#     dimostrabile, e per questo e' l'unico.
+#
+#   ⛔ TUTTO IL RESTO E' LEFT JOIN, e la ragione NON e' «per prudenza»:
+#
+#     · `stato_doc_fiscale_id`, `tipo_doc_fiscale_id`, `utility_id` e
+#       `valuta_id` sono NULLABLE nello schema. Oggi sul database di sviluppo
+#       sono tutte valorizzate (18 fatture su 18), ma la domanda e' «puo'
+#       succedere?», non «e' successo?»: con un inner join una fattura senza
+#       stato sparirebbe dalla lista invece di comparirci senza stato.
+#
+#     · ⛔ `anagrafiche.billing_account` HA LA RLS — quattro policy — ed e' il
+#       caso che vale la pena scrivere per esteso. `billing_account_id` e'
+#       NOT NULL sulla fattura, quindi verrebbe naturale un inner join; ma le
+#       due tabelle risolvono il perimetro con DUE FUNZIONI DIVERSE:
+#           vendite.fatture         -> fn_scope_ef_whitelist_via_sr(emittente_soggetto_ruolo_id)
+#           anagrafiche.billing_account -> fn_scope_ef_whitelist_via_efba(id)
+#       Una dall'emittente del DOCUMENTO, l'altra dalla relazione
+#       emittente<->account. Possono legittimamente divergere, e con un inner
+#       join la fattura — che la SUA policy lascia passare — sparirebbe perche'
+#       il cliente non e' visibile. ⚠️ Sarebbe una lista che mostra MENO di
+#       quanto spetta, senza nessun segnale: il caso peggiore, perche' un vuoto
+#       non si distingue da un «non c'e' niente».
+#       Con il LEFT JOIN la riga resta e il nome del cliente e' vuoto — cioe'
+#       il degrado onesto: «il documento e' tuo, il nome non te lo so risolvere».
+#       ⭐ E' anche cio' che fanno gia' le sei sorelle, che il billing account
+#       lo hanno tutte in LEFT.
+#
+# ── ⭐ `emittente_fiscale_id` NON E' UNA COLONNA DELLA FATTURA ──────
+#   Le sei sorelle ce l'hanno in tabella; `vendite.fatture` no — ha
+#   `emittente_soggetto_ruolo_id`. Si deriva da
+#   `anagrafiche.emittenti_fiscali.soggetto_ruolo_id`, ed e' una derivazione
+#   SICURA: quella colonna ha un vincolo di unicita' (`uq_emittenti_fiscali_ruolo`),
+#   quindi il join non moltiplica le righe. ⚠️ Verificato sul catalogo, non
+#   dedotto — un join 1:N qui raddoppierebbe le fatture in lista.
+#
+# ── ℹ️ I NOMI SONO QUELLI CHE IL FRONTEND GIA' CONOSCE ──────────────
+#   `stato_codice_interno` / `stato_descrizione`, `ragione_sociale_completa`,
+#   `id_fiscale_univoco_cf_piva`, `ba_codice`, `utility_codice` /
+#   `utility_descrizione`, `emittente_ragione_sociale`, `soggetto_id`: sono i
+#   nomi canonici delle sei sorelle, non nomi nuovi.
+#   ⚠️ Divergono da quelli della lista `vendite.lotto_fatture`, che chiama gli
+#   stessi concetti `stato_doc_fiscale_descrizione` / `stato_doc_fiscale_codice`.
+#   Non e' un errore: quella lista non nasce da una vista, la costruisce il
+#   backend con SQL diretto. Qui si segue il canone delle viste, che e' quello
+#   che questa vista deve rispettare.
+#
+# ── ℹ️ GLI IMPORTI SI CHIAMANO COME IN TABELLA ─────────────────────
+#   `imponibile_tot`, `imposta_tot`, `totale_doc`, `totale_a_pagare`. ⚠️ Fra le
+#   sorelle il nome degli importi NON e' canonico (`vw_ordini_lista` dice
+#   `imponibile_tot`/`iva_tot`/`totale_doc`, `vw_preventivi_lista` dice
+#   `totale_imponibile`/`totale_iva`/`totale_documento`): non esistendo un
+#   canone si segue la colonna, che e' l'unica cosa non opinabile.
+#
+# ── ℹ️ IL LINEAGE C'E', ed e' stato misurato prima di metterlo ──────
+#   `vendite.vw_documento_lineage` ha 18 righe con `tipo_id` = FATTURA, cioe'
+#   una per fattura: il join produce dati, non cinque colonne sempre vuote.
+#   ⚠️ `n_discendenti_attivi` e `is_transitato` sono a zero per costruzione —
+#   la fattura e' terminale — e va bene: e' la risposta giusta, non un buco.
+#
+# ── ⛔ COSA QUESTA VISTA NON FA ─────────────────────────────────────
+#   · nessun filtro e nessuno scope applicativo: e' sola denormalizzazione,
+#     come le sei sorelle. Il perimetro lo fa la RLS, la paginazione il backend;
+#   · niente lotto di appartenenza: la lista nasce per raggiungere la fattura
+#     SENZA passare dal lotto, e il legame inverso e' un candidato per dopo
+#     (registro §9);
+#   · niente `data_contabilizzazione` ne' `critical`: non sono stati chiesti, e
+#     una vista canonica non si allarga per completezza.
+#
+# Dipendenze: vendite.fatture, vendite.vw_documento_lineage, config.sorgenti
+#             (voce FATTURA, gia' a catalogo).
+# Va con: il seed di ui.lista_definizione/lista_colonna/lista_preset per
+#         `vendite.fatture` (80_data, CSV) — ⚠️ seedato `attivo = f`, vedi il
+#         registro del piano PrimeVue §9.
+# Verifica: db/pgtap/vendite/test-vw-fatture-lista.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260824-15-create-vw-fatture-lista-mctit.yaml
+
+  - changeSet:
+      id: 20260824-15-create-vw-fatture-lista
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La settima sorella: vendite.vw_fatture_lista, vista flat canonica delle fatture di
+        vendita con i nomi gia' in uso nelle altre sei. security_invoker=on — vendite.fatture
+        ha la RLS ed e' quella a dover mordere. ⛔ Un solo JOIN interno (nature_doc_fiscale,
+        NOT NULL + FK): tutto il resto e' LEFT, e in particolare billing_account, che ha una
+        RLS propria risolta da una funzione DIVERSA da quella delle fatture — con un inner
+        join una fattura visibile sparirebbe perche' il suo cliente non lo e'.
+        ⭐ `emittente_fiscale_id` si deriva da emittenti_fiscali.soggetto_ruolo_id, che ha
+        un vincolo di unicita': il join non moltiplica le righe.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage
+            # La voce di catalogo su cui si aggancia il lineage. Senza, il join
+            # non fallisce: resta muto, che e' peggio.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM config.sorgenti
+                   WHERE codice_interno = 'FATTURA' AND attivo IS TRUE
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_fatture_lista
+              WITH (security_invoker = on) AS
+              SELECT
+                  -- ── identita' del documento ──────────────────────────────
+                  f.id,
+                  f.uid,
+                  -- ⚠️ numero/serie/anno sono NULL finche' il documento non e'
+                  --    numerato, ed e' corretto che le bozze compaiano in lista:
+                  --    esistono, e la lista serve anche a trovarle.
+                  f.numero,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  f.registro_id,
+
+                  -- ── stato, tipo, natura ──────────────────────────────────
+                  f.stato_doc_fiscale_id,
+                  sdf.codice_interno                 AS stato_codice_interno,
+                  sdf.descrizione                    AS stato_descrizione,
+                  sdf.fase,
+                  f.tipo_doc_fiscale_id,
+                  tdf.codice_interno                 AS tipo_doc_fiscale_codice,
+                  tdf.descrizione                    AS tipo_doc_fiscale_descrizione,
+                  f.natura_doc_id,
+                  ndf.codice_interno                 AS natura_doc_codice,
+                  ndf.descrizione                    AS natura_doc_descrizione,
+
+                  -- ── cliente, via billing account ─────────────────────────
+                  f.billing_account_id,
+                  ba.codice                          AS ba_codice,
+                  s_cli.id                           AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+
+                  -- ── emittente ────────────────────────────────────────────
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id                              AS emittente_fiscale_id,
+                  ef.codice                          AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa      AS emittente_ragione_sociale,
+
+                  -- ── classificazione ──────────────────────────────────────
+                  f.utility_id,
+                  u.codice                           AS utility_codice,
+                  u.descrizione                      AS utility_descrizione,
+                  f.valuta_id,
+                  v_val.codice                       AS valuta_codice,
+
+                  -- ── importi (nomi della tabella: fra le sorelle non c'e'
+                  --    un canone, quindi si segue la colonna) ──────────────
+                  f.imponibile_tot,
+                  f.imposta_tot,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+
+                  -- ── documento di origine ─────────────────────────────────
+                  f.sorgente_tipo_id,
+                  src.codice_interno                 AS sorgente_codice_interno,
+                  f.sorgente_uid,
+
+                  -- ── audit ────────────────────────────────────────────────
+                  f.data_insert,
+                  f.user_insert,
+                  f.data_update,
+                  f.user_update,
+
+                  -- ── genealogia documentale, come nelle sorelle ───────────
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato
+                FROM vendite.fatture f
+                -- ⭐ L'UNICO INTERNO, e si puo' dimostrare: natura_doc_id e'
+                --    NOT NULL e ha fk_fatture_natura_doc.
+                JOIN config.nature_doc_fiscale ndf
+                  ON ndf.id = f.natura_doc_id
+                -- ⚠️ LEFT: nullable nello schema. Un inner join farebbe
+                --    SPARIRE dalla lista una fattura senza stato, invece di
+                --    mostrarla senza stato.
+                LEFT JOIN config.stati_doc_fiscale sdf
+                  ON sdf.id = f.stato_doc_fiscale_id
+                LEFT JOIN config.tipi_doc_fiscale tdf
+                  ON tdf.id = f.tipo_doc_fiscale_id
+                -- ⛔ LEFT, e qui la ragione e' la RLS, non la nullabilita':
+                --    billing_account risolve il perimetro con
+                --    fn_scope_ef_whitelist_via_efba, la fattura con
+                --    fn_scope_ef_whitelist_via_sr. Le due possono divergere, e
+                --    un inner join toglierebbe dalla lista un documento che la
+                --    policy delle fatture lascia passare.
+                LEFT JOIN anagrafiche.billing_account ba
+                  ON ba.id = f.billing_account_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_cli
+                  ON sr_cli.id = ba.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s_cli
+                  ON s_cli.id = sr_cli.soggetto_id
+                -- ⭐ Il ponte verso l'emittente fiscale: la fattura porta il
+                --    soggetto_ruolo, non l'id fiscale. uq_emittenti_fiscali_ruolo
+                --    garantisce che sia 1:1.
+                LEFT JOIN anagrafiche.emittenti_fiscali ef
+                  ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                  ON sr_ef.id = f.emittente_soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s_ef
+                  ON s_ef.id = sr_ef.soggetto_id
+                LEFT JOIN config.utilities u
+                  ON u.id = f.utility_id
+                LEFT JOIN config.valute v_val
+                  ON v_val.id = f.valuta_id
+                LEFT JOIN config.sorgenti src
+                  ON src.id = f.sorgente_tipo_id
+                -- La genealogia si aggancia per (tipo, uid) come nelle sorelle;
+                -- per la fattura la chiave e' l'id, come dichiara
+                -- config.sorgenti.key_selector.
+                LEFT JOIN vendite.vw_documento_lineage lin
+                  ON lin.tipo_id = (SELECT s.id
+                                      FROM config.sorgenti s
+                                     WHERE s.codice_interno = 'FATTURA'
+                                       AND s.attivo IS TRUE)
+                 AND lin.uid = f.id::text;
+
+              COMMENT ON VIEW vendite.vw_fatture_lista
+              IS 'Vista flat canonica e self-contained delle fatture di vendita per la lista UI — la settima sorella di vw_contratti/ddt/offerte_commerciali/ordini/preventivi/resi_lista, e l''ultimo documento del ciclo attivo che ne era privo. Nomi canonici gia'' noti al frontend: stato_codice_interno/stato_descrizione, ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, utility_codice/utility_descrizione, emittente_ragione_sociale, soggetto_id. Cliente risolto via billing_account -> soggetto_ruolo -> soggetto (la fattura non porta un soggetto_ruolo cliente). emittente_fiscale_id DERIVATO da anagrafiche.emittenti_fiscali.soggetto_ruolo_id, che ha un vincolo di unicita'' (uq_emittenti_fiscali_ruolo): il join non moltiplica le righe. Importi coi nomi della tabella (imponibile_tot, imposta_tot, totale_doc, totale_a_pagare) perche'' fra le sorelle quel nome NON e'' canonico. ⛔ security_invoker=on: vendite.fatture ha la RLS (rls_fatture_ef_whitelist per l''operatore, rls_fatture_ba_ownership per il portale) ed e'' quella a dover mordere — la vista non filtra e non fa scope, denormalizza soltanto. ⛔ UN SOLO join interno, config.nature_doc_fiscale, e solo perche'' natura_doc_id e'' NOT NULL con FK; tutto il resto e'' LEFT. In particolare anagrafiche.billing_account, che ha una RLS propria risolta da fn_scope_ef_whitelist_via_efba mentre la fattura usa fn_scope_ef_whitelist_via_sr: le due derivazioni del perimetro possono divergere, e un inner join farebbe sparire dalla lista una fattura che la sua policy lascia passare — una lista che mostra meno del dovuto senza nessun segnale. Le colonne nullable (stato/tipo/utility/valuta) sono LEFT per la stessa ragione di forma: una fattura senza stato deve comparire senza stato, non sparire. Bozze incluse: numero/serie/anno sono NULL finche'' il documento non e'' numerato. Genealogia da vendite.vw_documento_lineage (18 righe su 18 fatture, misurate): n_discendenti_attivi e is_transitato sono zero per costruzione perche'' la fattura e'' terminale. NON contiene il lotto di appartenenza: questa lista esiste per raggiungere la fattura SENZA passare dal lotto. Seed lista: ui.lista_definizione ''vendite.fatture'' (attivo = f finche'' il backend non espone l''endpoint). Registro: docs/it/dev/work-in-progress/piano-migrazione-primevue-5.md §9, 2026-08-24.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_fatture_lista;
