@@ -38,6 +38,7 @@ from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.pagamenti.types import (
     DistintaRow,
     RicevutaPosting,
+    RigaCodaRow,
     RigaContabileRow,
     StatoCatalogoRow,
     StatoRigaCatalogoRow,
@@ -120,8 +121,7 @@ _DISTINTA_SELECT = """
       ) lot ON TRUE
 """
 
-_RIGA_SELECT = """
-    SELECT
+_RIGA_COLONNE = """
         r.id,
         r.contabile_id,
         r.importo,
@@ -150,6 +150,9 @@ _RIGA_SELECT = """
         r.fondo_source_id,
         r.attivo,
         r.meta
+"""
+
+_RIGA_FROM = """
       FROM pagamenti.vendite_contabili_righe r
       LEFT JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
       LEFT JOIN vendite.fatture f            ON f.id = r.fattura_id
@@ -160,6 +163,22 @@ _RIGA_SELECT = """
       LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
              ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
       LEFT JOIN vendite.fatture_scadenze sc  ON sc.id = r.scadenza_id
+"""
+
+# La riga «nuda», per il dettaglio e per le righe di UNA distinta.
+_RIGA_SELECT = f"SELECT {_RIGA_COLONNE} {_RIGA_FROM}"
+
+# 🔴 La riga della CODA porta anche la sua distinta, e non e' un di piu': una
+# riga cross-distinta senza il documento da cui viene non si lavora — chi la
+# guarda deve poterci tornare. ⚠️ Ed e' anche la colonna su cui il contratto
+# dichiara di saper ordinare: senza, `order_by=distinta` sarebbe un 500.
+_RIGA_CODA_SELECT = f"""
+    SELECT {_RIGA_COLONNE},
+        c.codice          AS contabile_codice,
+        c.data_contabile  AS contabile_data,
+        c.origine         AS contabile_origine
+    {_RIGA_FROM}
+      JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
 """
 
 # Colonne ordinabili della lista distinte: whitelist chiusa, chiavi del
@@ -233,6 +252,42 @@ class PagamentiRepository:
                 "la connessione dell'utente della richiesta."
             ),
             function_name=f"{_FN}.{metodo}",
+        )
+
+    # Scopo: Esegue una lista paginata: pagina + totale in una valutazione, e
+    #        il conteggio di ripiego per la pagina stantia.
+    # Nota: era scritto tre volte (distinte, coda, rate fuori capienza) — e tre
+    #       copie della stessa paginazione divergono alla prima correzione.
+    # ⚠️ `order_clause` si compone dalla WHITELIST del chiamante e MAI da input
+    #    utente: qui dentro finisce in una stringa SQL.
+    @staticmethod
+    def _lista_paginata(
+        *,
+        select_sql: str,
+        params: list[Any],
+        order_clause: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        data_sql = f"""
+            SELECT *, COUNT(*) OVER () AS total_count FROM (
+                {select_sql}
+            ) q
+            {order_clause}
+            LIMIT %s OFFSET %s
+        """
+        # ⚠️ Il conteggio di ripiego serve SOLO a pagina oltre l'ultima: li' la
+        # window function non ha righe su cui calcolare il totale e
+        # risponderebbe zero. Senza, a chi e' rimasto su una pagina stantia di
+        # una lista che si e' accorciata sotto di lui diremmo «nessun
+        # risultato» — una cosa falsa, con l'aria di un dato.
+        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
+        return fetch_paged_with_total(
+            data_sql,
+            [*params, limit, offset],
+            fallback_count_sql=count_sql,
+            fallback_params=list(params),
+            offset=offset,
         )
 
     # ══════════════════════════════════════════════════════════════
@@ -328,32 +383,11 @@ class PagamentiRepository:
         # dello stesso giorno non devono cambiare posto fra una pagina e l'altra.
         tiebreak = sql_tiebreak_direction(direction)
 
-        data_sql = f"""
-            SELECT * , COUNT(*) OVER () AS total_count FROM (
-                {_DISTINTA_SELECT}
-                {_TOTALI_LATERAL}
-                {where_clause}
-            ) q
-            ORDER BY {sort_col} {direction}, id {tiebreak}
-            LIMIT %s OFFSET %s
-        """
-        # ⚠️ Il conteggio di ripiego serve SOLO nel caso raro «pagina oltre
-        # l'ultima»: li' la window function non ha righe su cui calcolare il
-        # totale e risponderebbe zero. Senza, a chi e' rimasto su una pagina
-        # stantia di una lista che si e' accorciata sotto di lui diremmo
-        # «nessun risultato» — cioe' una cosa falsa, con l'aria di un dato.
-        count_sql = f"""
-            SELECT COUNT(*) FROM (
-                {_DISTINTA_SELECT}
-                {_TOTALI_LATERAL}
-                {where_clause}
-            ) q
-        """
-        rows, total = fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
+        rows, total = self._lista_paginata(
+            select_sql=f"{_DISTINTA_SELECT}{_TOTALI_LATERAL}{where_clause}",
+            params=params,
+            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            limit=limit,
             offset=offset,
         )
         return [self._shape(row) for row in rows], total
@@ -675,6 +709,10 @@ class PagamentiRepository:
     def get_saldo_rata(
         self, scadenza_id: int, *, escludi_riga_id: int | None = None
     ) -> dict[str, Any] | None:
+        # Le tre funzioni di saldo sono SECURITY INVOKER: la row security del
+        # chiamante si applica da sola, e su un ruolo che la scavalca
+        # risponderebbero i numeri di TUTTI gli emittenti.
+        self._guard_canale_sistema("get_saldo_rata")
         sql = """
             SELECT saldo, in_lavorazione, incassato, has_movimenti
               FROM pagamenti.fn_get_saldo_rata(%s, %s)
@@ -684,30 +722,26 @@ class PagamentiRepository:
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 
-    # Scopo: Il residuo di un DOCUMENTO e il flag «ha movimenti».
-    # ⚠️ Due numeri, non tre: a questo livello il database non sa ancora dire
-    #    l'incassato (richiesta DB-10 al team DB). Chi compone la risposta lo
-    #    dichiara `None`, e ⛔ non lo inventa sommando le rate: una riga puo'
-    #    avere fattura SENZA rata — il fondo fattura e' esattamente cosi' — e
-    #    quel denaro non comparirebbe in nessuna somma di rate.
-    def get_saldo_fattura(self, fattura_id: int) -> dict[str, Any] | None:
+    # Scopo: Il saldo di un DOCUMENTO: residuo e denaro in lavorazione.
+    # ⭐ UNA query per due funzioni, e non e' solo un round-trip risparmiato su
+    #    un pannello che si apre a ogni fattura: due `SELECT` separate leggono
+    #    DUE ISTANTI diversi. Se una registrazione atterra fra l'una e l'altra,
+    #    il pannello mostra un residuo di prima accanto a un «in lavorazione»
+    #    di dopo — due numeri veri che insieme raccontano una cosa falsa.
+    # ⚠️ Due numeri e non tre: a questo livello il database non sa ancora dire
+    #    l'incassato (richiesta DB-10). Chi compone la risposta lo dichiara
+    #    `None`, e ⛔ non lo inventa sommando le rate — una riga puo' avere
+    #    fattura SENZA rata (il fondo fattura e' esattamente cosi').
+    def get_saldo_documento(self, fattura_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_saldo_documento")
         sql = """
-            SELECT saldo, has_movimenti
-              FROM pagamenti.fn_get_saldo_fattura(%s)
+            SELECT f.saldo, f.has_movimenti,
+                   c.saldo_contabile, c.has_righe_postabili
+              FROM pagamenti.fn_get_saldo_fattura(%s) f
+              CROSS JOIN pagamenti.fn_get_saldo_fattura_contabili(%s) c
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
-            rows = rows_to_list(cursor)
-        return rows[0] if rows else None
-
-    # Scopo: Il denaro di un documento gia' digitato ma NON ancora registrato.
-    def get_saldo_fattura_contabili(self, fattura_id: int) -> dict[str, Any] | None:
-        sql = """
-            SELECT saldo_contabile, has_righe_postabili
-              FROM pagamenti.fn_get_saldo_fattura_contabili(%s)
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
+            cursor.execute(sql, [int(fattura_id), int(fattura_id)])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 
@@ -717,6 +751,7 @@ class PagamentiRepository:
     #    questo schema. ⚠️ E `vendite` non potrebbe chiederglielo: le chiamate
     #    laterali fra moduli di pari livello non sono ammesse (api.md).
     def list_rate_con_saldo(self, fattura_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_rate_con_saldo")
         sql = """
             SELECT
                 sc.id                AS scadenza_id,
@@ -757,7 +792,7 @@ class PagamentiRepository:
         order_dir: str,
         limit: int,
         offset: int,
-    ) -> tuple[list[RigaContabileRow], int]:
+    ) -> tuple[list[RigaCodaRow], int]:
         self._guard_canale_sistema("list_righe_coda")
 
         conditions = ["r.attivo IS TRUE", "rs.codice_interno = ANY(%s)"]
@@ -776,26 +811,11 @@ class PagamentiRepository:
         direction = sql_order_direction(order_dir, default_desc=True)
         tiebreak = sql_tiebreak_direction(direction)
 
-        # La coda porta con se' la sua distinta: una riga senza il documento da
-        # cui viene non si lavora — l'operatore deve poterci tornare.
-        select_sql = f"""
-            {_RIGA_SELECT}
-              JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
-             WHERE {" AND ".join(conditions)}
-        """
-        data_sql = f"""
-            SELECT *, COUNT(*) OVER () AS total_count FROM (
-                {select_sql}
-            ) q
-            ORDER BY {sort_col} {direction}, id {tiebreak}
-            LIMIT %s OFFSET %s
-        """
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
-        rows, total = fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
+        rows, total = self._lista_paginata(
+            select_sql=f'{_RIGA_CODA_SELECT} WHERE {" AND ".join(conditions)}',
+            params=params,
+            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            limit=limit,
             offset=offset,
         )
         return [self._shape(row) for row in rows], total
@@ -833,24 +853,15 @@ class PagamentiRepository:
         direction = sql_order_direction(order_dir, default_desc=True)
         tiebreak = sql_tiebreak_direction(direction)
 
-        select_sql = f"""
-            SELECT v.*
-              FROM pagamenti.vw_rate_fuori_capienza v
-              {where_clause}
-        """
-        data_sql = f"""
-            SELECT *, COUNT(*) OVER () AS total_count FROM (
-                {select_sql}
-            ) q
-            ORDER BY {sort_col} {direction}, scadenza_id {tiebreak}
-            LIMIT %s OFFSET %s
-        """
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
-        return fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
+        return self._lista_paginata(
+            select_sql=(
+                f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"
+            ),
+            params=params,
+            order_clause=(
+                f"ORDER BY {sort_col} {direction}, scadenza_id {tiebreak}"
+            ),
+            limit=limit,
             offset=offset,
         )
 

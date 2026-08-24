@@ -24,6 +24,7 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
+from apps.pagamenti.types import SaldoRow
 
 _FN = "pagamenti.saldi_service"
 
@@ -53,8 +54,8 @@ def _saldo(
     has_movimenti: bool,
     livello: str,
     riferimento_id: int,
-) -> dict[str, Any]:
-    return {
+) -> SaldoRow:
+    return {  # type: ignore[return-value]
         "livello": livello,
         "riferimento_id": riferimento_id,
         "residuo": residuo,
@@ -75,23 +76,29 @@ def _saldo(
 #    fattura SENZA rata — il fondo fattura e' esattamente cosi' — e quel denaro
 #    non comparirebbe in nessuna somma di rate. Un numero incompleto che si
 #    presenta come completo e' peggio di un numero assente.
-def saldo_documento(fattura_id: int) -> dict[str, Any]:
+def saldo_documento(fattura_id: int) -> SaldoRow:
     repository = PagamentiRepository()
-    residuo = repository.get_saldo_fattura(fattura_id)
+    # ⭐ Una lettura sola per i due numeri: separate leggerebbero due istanti
+    #    diversi, e un residuo di prima accanto a un «in lavorazione» di dopo
+    #    sono due numeri veri che insieme raccontano una cosa falsa.
+    numeri = repository.get_saldo_documento(fattura_id)
+    # ℹ️ Il 404 di un documento inesistente lo solleva GIA' il database
+    #    (`E_FATTURA_NON_TROVATA`) e arriva al client tradotto senza passare di
+    #    qui. Questo guard copre l'altro caso — una risposta VUOTA — che
+    #    altrimenti diventerebbe un KeyError sul percorso d'errore.
     ErrorManager.require(
-        residuo is not None,
+        numeri is not None,
         code=E_FATTURA_NON_TROVATA,
         message="Fattura non trovata.",
         detail=f"fattura_id={fattura_id}",
         function_name=f"{_FN}.saldo_documento",
     )
-    assert residuo is not None
-    lavorazione = repository.get_saldo_fattura_contabili(fattura_id) or {}
+    assert numeri is not None
     return _saldo(
-        residuo=residuo["saldo"],
-        in_lavorazione=lavorazione.get("saldo_contabile"),
+        residuo=numeri["saldo"],
+        in_lavorazione=numeri["saldo_contabile"],
         incassato=None,
-        has_movimenti=bool(residuo["has_movimenti"]),
+        has_movimenti=bool(numeri["has_movimenti"]),
         livello="DOCUMENTO",
         riferimento_id=fattura_id,
     )
@@ -105,7 +112,9 @@ def saldo_documento(fattura_id: int) -> dict[str, Any]:
 #        i numeri.
 # ⚠️ `escludi_riga_id` chiede lo spazio PRIMA DI SE': serve a sapere se una
 #    riga ci sta senza contarsi addosso.
-def saldo_rata(scadenza_id: int, *, escludi_riga_id: int | None = None) -> dict[str, Any]:
+def saldo_rata(
+    scadenza_id: int, *, escludi_riga_id: int | None = None
+) -> SaldoRow:
     repository = PagamentiRepository()
     riga = repository.get_saldo_rata(scadenza_id, escludi_riga_id=escludi_riga_id)
     ErrorManager.require(

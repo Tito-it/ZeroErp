@@ -31,9 +31,11 @@ Indice test eseguiti:
 18) SaldiTests.test_documento_inesistente_404
 19) SaldiTests.test_rata_inesistente_404
 20) SaldiTests.test_escludi_riga_arriva_al_database
+20a) SaldiTests.test_i_due_numeri_del_documento_da_una_lettura_sola
 21) RifiutoConfermabileTests.test_la_capienza_ha_la_sua_ui_action
 """
 
+import inspect
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -63,11 +65,11 @@ def _repo() -> MagicMock:
         "incassato": Decimal("800.00"),
         "has_movimenti": True,
     }
-    repo.get_saldo_fattura.return_value = {
+    # ⭐ I due numeri del documento arrivano da UNA lettura sola: letture
+    # separate leggerebbero due istanti diversi.
+    repo.get_saldo_documento.return_value = {
         "saldo": Decimal("500.00"),
         "has_movimenti": True,
-    }
-    repo.get_saldo_fattura_contabili.return_value = {
         "saldo_contabile": Decimal("100.00"),
         "has_righe_postabili": True,
     }
@@ -150,9 +152,7 @@ class AbbinamentoTests(_Base):
     #        capienza la giudica il guard del database, e una seconda sede della
     #        regola divergerebbe dalla prima al primo cambiamento.
     def test_il_backend_non_decide_la_capienza(self):
-        sorgente = __import__(
-            "inspect"
-        ).getsource(pagamenti_service.abbina_riga)
+        sorgente = inspect.getsource(pagamenti_service.abbina_riga)
         for parola in ("capienza", "saldo", "residuo", "importo <"):
             self.assertNotIn(
                 parola,
@@ -239,8 +239,17 @@ class SaldiTests(_Base):
         self.assertEqual(saldo["in_lavorazione"], Decimal("100.00"))
         self.repo.list_rate_con_saldo.assert_not_called()
 
+    # Scopo: ⭐ Una lettura sola per residuo e in lavorazione: separate
+    #        leggerebbero DUE ISTANTI diversi, e se una registrazione atterra
+    #        fra l'una e l'altra il pannello mostra un residuo di prima accanto
+    #        a un «in lavorazione» di dopo — due numeri veri che insieme
+    #        raccontano una cosa falsa.
+    def test_i_due_numeri_del_documento_da_una_lettura_sola(self):
+        saldi_service.saldo_documento(2263)
+        self.repo.get_saldo_documento.assert_called_once()
+
     def test_documento_inesistente_404(self):
-        self.repo.get_saldo_fattura.return_value = None
+        self.repo.get_saldo_documento.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             saldi_service.saldo_documento(999)
         self.assertEqual(ctx.exception.code, saldi_service.E_FATTURA_NON_TROVATA)
