@@ -166,8 +166,21 @@ def fn_list_lotti(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    solo_recuperi_mese: bool = False,
 ) -> dict[str, object]:
     offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
+    # ⛔ La scheda «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
+    #    «competenza precedente» non ha un termine di paragone. Si rifiuta
+    #    invece di rispondere un elenco plausibile e senza significato.
+    ErrorManager.require(
+        not solo_recuperi_mese or competenza_mese is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="competenza_mese obbligatoria per l'elenco dei recuperi del mese",
+        context={"field": "competenza_mese"},
+        function_name="vendite.vendite_service.fn_list_lotti",
+        log_to_db=False,
+    )
     repository = VenditeRepository()
     results: list[LottoListRow]
     results, total_count = repository.list_lotti(
@@ -182,6 +195,7 @@ def fn_list_lotti(
         order_dir=order_dir,
         limit=page_size,
         offset=offset,
+        solo_recuperi_mese=solo_recuperi_mese,
     )
     return _build_list_response(results, total_count, page, page_size)
 
@@ -1605,6 +1619,9 @@ def get_fattura_giornale(
     fattura_id: int,
     page: int = 1,
     page_size: int = 50,
+    includi_ritirate: bool = False,
+    sort_by: str = "gravita",
+    sort_dir: str = "desc",
     auth_user_id: int | None = None,
 ) -> dict[str, object]:
     ErrorManager.require(
@@ -1634,12 +1651,29 @@ def get_fattura_giornale(
         )
 
     # 2. Solo ORA il giornale: la testata ha gia' autorizzato l'accesso.
-    righe, total_count = repository.list_giornale_entita(
+    # ⭐ LE RITIRATE SI NASCONDONO (decisione di Tid, 2026-08-24): una
+    #    segnalazione ritirata e' quella di un tentativo poi rifatto, e sul caso
+    #    misurato e' LETTERALMENTE la stessa frase di quella viva — mostrarle
+    #    entrambe fa credere che sia successo due volte.
+    # ⛔ Il filtro sta QUI e non nel client: la lista e' paginata lato server, e
+    #    filtrare a valle filtrerebbe solo la pagina visibile.
+    # ⚠️ `ritirate_count` non e' un accessorio: senza, «nessun evento» e «tre
+    #    eventi, tutti superati» si leggono uguali — ed e' proprio il caso in cui
+    #    la differenza conta.
+    # ⭐ L'ordinamento di default e' per GRAVITA' (Tid, 2026-08-24): davanti a un
+    #    documento la prima domanda e' «c'e' qualcosa che non va?». La colonna
+    #    non riconosciuta ricade sul default nel repository — un ordinamento
+    #    sbagliato non e' un errore da 400, e' una preferenza che non si applica.
+    righe, vive, ritirate = repository.list_giornale_entita(
         entity_type="FATTURA",
         entity_id=fattura_id,
         limit=page_size,
         offset=offset,
+        escludi_ritirate=not includi_ritirate,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
+    total_count = vive + ritirate if includi_ritirate else vive
     total_pages = (total_count + page_size - 1) // page_size if page_size else 0
     return {
         "fattura_id": fattura_id,
@@ -1647,6 +1681,9 @@ def get_fattura_giornale(
         "page": page,
         "page_size": page_size,
         "total_pages": total_pages,
+        # Quante righe il filtro lascia fuori. ⚠️ Zero quando le ritirate sono
+        # incluse: li' non c'e' niente di nascosto da dichiarare.
+        "ritirate_count": 0 if includi_ritirate else ritirate,
         "results": righe,
     }
 

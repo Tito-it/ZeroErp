@@ -10,27 +10,32 @@ import { ref, computed, nextTick, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusuraGlobale'
 import { useI18n } from 'vue-i18n'
-import Tag from 'primevue/tag'
 import Select from 'primevue/select'
-import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
-import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
 import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
+import LottiLista from '../components/LottiLista.vue'
 import LottoDrawer from '../components/LottoDrawer.vue'
 import FatturazioneEsitiPanel from '../components/FatturazioneEsitiPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
+import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
+import { useListaAzioni } from '../../core/composables/useListaAzioni'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
+import Message from 'primevue/message'
 import { useLottoAzioni } from '../composables/useLottoAzioni'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
 import { READONLY_DOMAINS } from '../../core/constants'
-import { statoLottoSeverity } from '../../core/utils/severity'
-import { exportLotti, listLottiMensile } from '../api/lotti'
+import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
 import { useLottiStore } from '../stores/lotti'
 
 const { t } = useI18n()
@@ -108,10 +113,85 @@ const {
   },
 })
 
+// ⭐ LA SCHEDA «RECUPERI DEL MESE»: i lotti di competenza PRECEDENTE che hanno
+//    emesso documenti nel mese filtrato. Non passa dallo store — è una seconda
+//    domanda sulla stessa lista, non un secondo stato della pagina.
+// ⚠️ `useListaDrawerPaginata` e non `useListaConfigurabilePage`: quest'ultimo
+//    pretende uno store con la forma «ricerca + sort + limit», e qui lo store
+//    non c'è. È lo stesso caso per cui quel BB è nato (una lista pilotata da un
+//    contesto esterno) — il nome dice «drawer» solo perché lì è stato estratto.
+const schedaAttiva = ref('lotti')
+
+// Scopo: inoltra a `listaRef` l'istanza di `<ListaConfigurabile>` che
+//        `<LottiLista>` espone, invece del wrapper.
+// 🔴 Difetto pagato il 2026-08-24: con `ref="listaRef"` sul componente estratto
+//    il ref puntava al WRAPPER, e `useListaConfigurabilePage` calcola
+//    `configReady` come `lista.value?.config != null` — che sul wrapper è
+//    sempre `null`. Effetto: «Personalizza colonne» **disabilitato**, senza
+//    nessun errore da nessuna parte. È lo stesso tipo di difetto del nome di
+//    slot sbagliato: tutto corretto tranne dove punta un riferimento.
+// ⚠️ Si ascolta l'ANNUNCIO del figlio (`@lista-pronta`) e non si LEGGE un ref:
+//    leggere significa leggere UNA volta sola, e un `null` in quell'istante
+//    resterebbe tale per sempre — con l'unico sintomo di un pulsante
+//    disabilitato. L'annuncio arriva dall'`onMounted` del figlio, quando la
+//    lista e' certamente montata: nessuna ipotesi sull'ordine.
+function registraLista(istanza) {
+  listaRef.value = istanza ?? null
+}
+// Stesso meccanismo della scheda sopra, e per la stessa ragione: un solo modo
+// di consegnare l'istanza, nessun caso che si affidi a un accesso tracciato
+// attraverso il proxy di `defineExpose`.
+const listaRecuperiRef = ref(null)
+function registraListaRecuperi(istanza) {
+  listaRecuperiRef.value = istanza ?? null
+}
+const listaRecuperi = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+  listLotti({
+    competenza_mese: store.filters.competenza_mese,
+    // ⚠️ ANCHE `stato_lotto`: la scheda si ricarica al cambio filtro, ma senza
+    // questo si ricaricherebbe IDENTICA — e un filtro che si muove sopra una
+    // lista che non cambia si legge come un filtro rotto (rilievo di Tid,
+    // 2026-08-24). I filtri della pagina sono due: mese e stato, e valgono per
+    // entrambe le schede.
+    ...(store.filters.stato_lotto ? { stato_lotto: store.filters.stato_lotto } : {}),
+    recuperi_mese: true,
+    page,
+    page_size: pageSize,
+    ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
+  }))
+
+// Personalizza colonne + esporta anche sulla seconda scheda: è una lista come
+// le altre. ⚠️ `?.lista`: `useListaAzioni` vuole l'istanza di
+// `<ListaConfigurabile>`, che `<LottiLista>` espone.
+const azioniRecuperi = useListaAzioni(() => listaRecuperiRef.value, {
+  exportFn: exportLotti,
+  getExportParams: (fmt) => ({
+    formato: fmt,
+    competenza_mese: store.filters.competenza_mese,
+    // Il file È la lista, quindi porta ENTRAMBI i filtri della pagina: senza
+    // `recuperi_mese` esporterebbe i lotti del mese, senza `stato_lotto`
+    // esporterebbe tutti gli stati mentre a video se ne vede uno.
+    ...(store.filters.stato_lotto ? { stato_lotto: store.filters.stato_lotto } : {}),
+    recuperi_mese: true,
+    ...(listaRecuperi.sortField.value
+      ? {
+          order_by: listaRecuperi.sortField.value,
+          order_dir: listaRecuperi.sortOrder.value === -1 ? 'desc' : 'asc',
+        }
+      : {}),
+  }),
+})
+
 // Scopo: carica la lista con toast d'errore (fail-visible: lo store propaga).
 async function load() {
   try {
     await store.fetchList()
+    // ⚠️ Anche la seconda scheda, e insieme alla prima: il CONTEGGIO sta
+    // nell'etichetta, e un'etichetta che dice «(0)» finché non la si apre è
+    // peggio di nessun conteggio. ⛔ Best-effort: se i recuperi non arrivano,
+    // la lista principale si vede lo stesso.
+    listaRecuperi.page.value = 1
+    listaRecuperi.carica().catch(() => {})
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))
   }
@@ -311,84 +391,80 @@ const azioniPagina = computed(() =>
              qui restano solo le celle che hanno un rendering proprio. Le altre
              (documento, utility, area geografica, creato, creato da) le rende il
              BB dal `formato` del catalogo. -->
-        <ListaConfigurabile
-          ref="listaRef"
-          codice="vendite.lotti"
-          :rows="store.items"
-          :total="store.totalRecords"
-          :loading="store.loading"
-          :paginator-options="paginatorProps"
-          :page="tablePage"
-          :sort-field="paginatorProps.sortField"
-          :sort-order="paginatorProps.sortOrder"
-          @page="onPage"
-          @sort="onSort"
-          @row-click="apriLotto"
-          @config-loaded="onConfigLoaded"
-        >
-          <template #cell-codice="{ data }">
-            <strong>{{ data.codice }}</strong>
-          </template>
-          <template #cell-tipo_lotto="{ data }">
-            <Tag :value="data.tipo_lotto" severity="secondary" />
-          </template>
-          <!-- ⭐ La spia degli errori gravi vive SULLO STATO (richiesta di Tid,
-               2026-08-21): basta UN documento fallito nel dettaglio per
-               accenderla. È la forma dei gestionali a lotti — la testata
-               avvisa, il dettaglio spiega — e il dettaglio è a un click: si
-               apre il drawer e la scheda «Segnalazioni» dice quale documento e
-               perché.
-               📌 Sullo stato e non in una colonna nuova: la lista è a catalogo
-               (`ui.lista_colonna`), quindi una colonna in più è un seed del
-               team DB e una casella in più da spuntare per ogni utente. La
-               spia qui si vede da subito e non chiede configurazione. -->
-          <template #cell-stato_lotto="{ data }">
-            <span class="app-lotto-stato-cella">
-              <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
-              <i
-                v-if="data.ha_errori_gravi"
-                class="pi pi-exclamation-triangle app-lotto-spia-errore"
-                v-tooltip.top="t('vendite.lotti.spia_errori_gravi')"
+        <!-- ⭐ DUE SCHEDE (decisione di Tid, 2026-08-24). La seconda esiste
+             perché una commessa di competenza GIUGNO fatturata ad AGOSTO
+             produce un documento con data agosto dentro un lotto di giugno:
+             chi lavora sul mese di agosto non lo trova, perché lo cerca —
+             giustamente — per la data del documento e non per la competenza
+             della commessa.
+             ⚠️ Stesso componente in entrambe: stesse colonne, stesse azioni per
+             costruzione. -->
+        <Tabs v-model:value="schedaAttiva">
+          <TabList>
+            <Tab value="lotti">{{ t('vendite.lotti.tab_lotti_mese') }}</Tab>
+            <Tab value="recuperi">
+              {{ t('vendite.lotti.tab_recuperi') }}
+              <template v-if="listaRecuperi.totale.value"> ({{ listaRecuperi.totale.value }})</template>
+            </Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel value="lotti">
+              <LottiLista
+                @lista-pronta="registraLista"
+                :rows="store.items"
+                :total="store.totalRecords"
+                :loading="store.loading"
+                :paginator-options="paginatorProps"
+                :page="tablePage"
+                :sort-field="paginatorProps.sortField"
+                :sort-order="paginatorProps.sortOrder"
+                :build-row-actions="(data) => azioniRiga(data, { readonly: isReadonly })"
+                :azioni-disabled="azioniLoading"
+                @page="onPage"
+                @sort="onSort"
+                @row-click="apriLotto"
+                @config-loaded="onConfigLoaded"
               />
-            </span>
-          </template>
-          <!-- Stato operativo: informazione interna della pipeline, resa come
-               Tag neutro — non è uno stato di dominio come `stato_lotto` e non
-               deve competere con lui a colpo d'occhio. -->
-          <template #cell-stato_operativo="{ data }">
-            <Tag v-if="data.stato_operativo" :value="data.stato_operativo" severity="secondary" />
-            <span v-else>—</span>
-          </template>
-          <template #cell-stato_doc_fiscale="{ data }">
-            <Tag
-              v-if="data.stato_doc_fiscale_descrizione"
-              :value="data.stato_doc_fiscale_descrizione"
-              severity="info"
-            />
-            <span v-else>—</span>
-          </template>
+            </TabPanel>
 
-          <!-- Azioni di governo del lotto senza passare dal drawer: avanza /
-               rilancia step, rendi definitive, ristampa, annulla, riporta in
-               lavorazione. Le voci proposte dipendono dallo stato della riga;
-               il verdetto vero (e il motivo di un rifiuto) arriva dal DB al
-               click — vedi useLottoAzioni. -->
-          <template #actions="{ data, compact }">
-            <RowActionsMenu
-              :row="data"
-              :actions="azioniRiga(data, { readonly: isReadonly })"
-              :disabled="azioniLoading"
-              :force-compact="compact"
-            />
-          </template>
-
-          <template #empty>
-            <div class="app-empty-state">
-              <i class="pi pi-server" />
-              <p>{{ t('vendite.lotti.nessun_lotto') }}</p>
-            </div>
-          </template>
-        </ListaConfigurabile>
+            <TabPanel value="recuperi">
+              <!-- ⚠️ La riga che spiega la scheda: senza, un elenco di lotti di
+                   giugno dentro la pagina filtrata su agosto si legge come un
+                   filtro che non ha funzionato. -->
+              <Message severity="secondary" :closable="false" class="app-mb-1">
+                {{ t('vendite.lotti.recuperi_lista_nota') }}
+              </Message>
+              <!-- Personalizza colonne + esporta anche qui: è una lista come le
+                   altre, e l'export porta con sé il filtro della scheda. -->
+              <div class="app-page-toolbar">
+                <span class="app-page-filters" />
+                <PageActionsBar :actions="azioniRecuperi.azioniLista.value">
+                  <template #suffix>
+                    <ListaConfigStatusTag :dirty="azioniRecuperi.dirty.value" />
+                  </template>
+                </PageActionsBar>
+              </div>
+              <LottiLista
+                @lista-pronta="registraListaRecuperi"
+                :rows="listaRecuperi.righe.value"
+                :total="listaRecuperi.totale.value"
+                :loading="listaRecuperi.loading.value"
+                :paginator-options="listaRecuperi.paginatorOptions.value"
+                :page="listaRecuperi.page.value"
+                :sort-field="listaRecuperi.sortField.value"
+                :sort-order="listaRecuperi.sortOrder.value"
+                :build-row-actions="(data) => azioniRiga(data, { readonly: isReadonly })"
+                :azioni-disabled="azioniLoading"
+                empty-key="vendite.lotti.nessun_recupero_lista"
+                empty-icon="pi pi-history"
+                @page="listaRecuperi.onPage"
+                @sort="listaRecuperi.onSort"
+                @row-click="apriLotto"
+                @config-loaded="listaRecuperi.onConfigLoaded"
+              />
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       </div>
     </div>
 
@@ -396,6 +472,14 @@ const azioniPagina = computed(() =>
       v-model:visible="exportDialogVisible"
       :loading="exportLoading"
       @export="onExportConfirm"
+    />
+
+    <!-- Dialog di export della seconda scheda: separato perché i filtri sono
+         diversi, e un dialog solo esporterebbe la lista sbagliata. -->
+    <ExportDialog
+      v-model:visible="azioniRecuperi.exportDialogVisible.value"
+      :loading="azioniRecuperi.exportLoading.value"
+      @export="azioniRecuperi.onExportConfirm"
     />
 
     <LottoDrawer

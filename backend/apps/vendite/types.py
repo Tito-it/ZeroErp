@@ -223,6 +223,11 @@ class LottoListRow(TypedDict):
     # ⭐ C'e' almeno UN documento in errore grave nel dettaglio del lotto: basta
     # uno ad accendere la spia sulla riga di lista. SE, non quanti — il numero
     # e il motivo stanno nel drawer, scheda «Segnalazioni».
+    # Quanti documenti contiene il lotto e quanto valgono. ⚠️ `totale_documenti`
+    # e' una STRINGA: un totale fiscale non passa da un binario a virgola
+    # mobile. Zero e' un totale valido (lotto senza documenti), non un vuoto.
+    n_fatture: int
+    totale_documenti: str
     ha_errori_gravi: bool
     # ⭐ Lotto riportato in lavorazione e step non ancora rifatto. Non e' uno
     # stato: e' un SEGNALE di un giro solo (`vendite.fatturazione_lotti.riaperto_il`,

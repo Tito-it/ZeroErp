@@ -815,6 +815,14 @@ class ApiLottiList(DomainAPIView):
             auth_user_id=get_scope_user_id(request),
             page=page,
             page_size=page_size,
+            # ⭐ La scheda «Recuperi del mese»: STESSA lista, stesse colonne,
+            #    stesse azioni — cambia solo QUALI lotti. Sono quelli di
+            #    competenza precedente che hanno emesso documenti nel mese
+            #    filtrato: chi lavora su agosto li cerca per data documento, e
+            #    per competenza non li trova.
+            solo_recuperi_mese=as_bool(
+                request.query_params.get("recuperi_mese"), default=False
+            ),
         )
         return success_response(data)
 

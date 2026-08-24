@@ -68,7 +68,7 @@
 | 🔵 **A carico del BE** | 10 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
 | ⭐ **La richiesta del backend** | I changeSet 61 e 62 avevano consegnato le **colonne**, e **nessuna funzione le scriveva**. L5 mette i due scrittori — e corregge una premessa della richiesta che era **falsa**, misurandola | §5-bis |
 | 🧪 **Presidio** | ✅ **80 asserzioni verdi, zero skip** su 9 file — 5 nuovi/riscritti e 4 preesistenti adeguati. ⭐ E due asserzioni che passavano **dichiarandosi cieche** adesso verificano | §6 |
-| ⏭️ **Da dove si riparte** | ✅ **La ricognizione è stata fatta, e la rotta è decisa**: il primo pannello approda sulla **FATTURA**, non sul lotto. ⭐ A deciderlo è stato un rilievo, non una preferenza — la storia di un lotto **non contiene** quella delle sue fatture, e sul caso sporco la frase leggibile sta solo di là. 🔴 Sette rilievi in tutto, e tre vanno risolti **prima** di scrivere l'endpoint: il tempo non ordina, il filo non copre due registri su quattro, il perimetro non è mai stato esercitato | §12 |
+| ✅ **Passo A CONSEGNATO** | La scheda **«Storia»** del drawer fattura è in servizio: `GET /vendite/fatture/<id>/giornale/`, primo consumatore di `vw_giornale_entita`. ⭐ Il collaudo del perimetro è stato fatto **apposta**, perché i dati non lo avrebbero fatto: la vista da sola risponde «0 righe» dove l'endpoint dice «non la vedi». 🔵 Resta il **lotto**, rinviato: lì il pannello deve prima rispondere a «che cos'è un caso» | §12 |
 | 🔵 **Da verificare, fuori cantiere** | Un prezzo **non negoziato sul contratto** dentro un push **riuscito** (ORD0016313): l'errore è in `error_log`, l'attività ha comunque un prezzo bloccato. ⚠️ È la categoria che nessuno controlla — un errore registrato dentro un'operazione andata bene | §11 |
 | ✅ **Domande — tutte chiuse** | **La Q-7 è stata decisa il 2026-08-24: il filo è l'AZIONE DELL'OPERATORE**, non la passata. ⭐ A deciderla è stata una misura, non una preferenza: la lettura alternativa si reggeva sul `tx_id` come ripiego, e dentro una sola passata del lotto 6260 i `tx_id` sono **quattro**. 🔴 E la stessa distinzione ha scoperto un difetto **già vivo**: il filtro «Ultimo giro» delle segnalazioni taglia a metà un singolo click | §8 |
 | 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
@@ -1555,6 +1555,26 @@ dalla pipeline vera, questo piano è verificato dai pgTAP e da nient'altro.
 
 ## 10. Registro
 
+### 2026-08-24 sera · Il pannello ordina per gravità, e il lotto ha un perimetro
+
+- 🆕 **La scheda «Storia» ordina per GRAVITÀ** (Tid, dopo la validazione
+  in-app): davanti a un documento la prima domanda è «c'è qualcosa che non va?».
+  La cronologia resta a un clic — la colonna `quando` è ordinabile.
+  ⛔ **Lato server**, perché la lista è paginata: riordinare nel client
+  riordinerebbe la sola pagina, e «il più grave» diventerebbe «il più grave fra
+  i primi 50». ⚠️ Il rango si calcola in SQL: il vocabolario è testuale, e in
+  ordine alfabetico `ERROR` verrebbe **prima** di `INFO` e `WARN`. ⚠️ Il `NULL`
+  pesa come un `ERROR`: mandarlo in fondo renderebbe invisibile dalla seconda
+  pagina in giù proprio la riga che dichiara un difetto. 6 test nuovi sulla
+  clausola, estratta come **funzione pura** — un ordinamento sbagliato non
+  solleva niente e a video somiglia a uno giusto.
+- ✅ **«Che cos'è un caso» è deciso**: il pannello del lotto mostrerà il lotto
+  **più le sue fatture**, righe non-INFO. §12.
+- 🔴 **Scritta la richiesta al team DB su R-1** (§13): le quattro colonne di
+  orario hanno default `now()`, cioè l'istante della **transazione**. ⭐
+  L'argomento nuovo è che quel significato oggi è coperto dal **`tx_id`**, che
+  prima non esisteva: l'orario può tornare a dire solo «quando è successo».
+
 ### 2026-08-22 · Nascita
 
 Il brief nasce da due giri con Tid sullo stesso giorno.
@@ -1611,6 +1631,28 @@ stesso difetto dell'ancora, visto dall'altra lista.
 ⚠️ **Ordine di merge**: `20260824-11` è applicato sul DB di sviluppo ma non
 ancora in git. Il codice BE/FE non deve arrivare a `Tito-dev` prima di quel push
 — e la CI **non lo intercetta**, perché i test sono mockati.
+
+✅ **E nel pomeriggio il Passo A è stato CONSEGNATO** — la scheda «Storia» del
+drawer fattura, primo consumatore di `vw_giornale_entita`. Tre cose vale la pena
+tenere di quel giro:
+
+- ⭐ **il collaudo del perimetro è stato fatto apposta**, perché i dati non lo
+  avrebbero fatto (R-4): senza contesto operatore la vista risponde **0 righe** e
+  l'endpoint `E_FATTURA_NON_TROVATA`. È la prova che il cancello sulla testata
+  non è ridondante — `security_invoker` da solo trasforma «non la vedi» in «non è
+  successo niente»;
+- 🔧 **un difetto pagato scrivendolo**: `execute` scarta l'envelope due volte, e
+  l'unwrap di troppo produceva *«nessun evento registrato»* su una fattura che ne
+  aveva tre — il vuoto positivo prodotto dal flag che esisteva per impedirlo;
+- ⭐ **una colonna chiesta al DB e arrivata in giornata** (`disabilitato`,
+  changeSet `20260824-14`), chiesta come **colonna e non come filtro**: il diario
+  resta completo, a nascondere è il consumatore — che dice anche quante ne
+  nasconde.
+
+⚠️ Su richiesta di Tid il pannello è **a schede** (Documento · Storia) e non una
+pagina da scorrere, con la segnalazione d'errore **in testa**: chi apre una
+fattura in errore la apre proprio per quello, e farglielo cercare in fondo era il
+difetto che il pannello esiste per togliere.
 
 📌 Nello stesso giro, sulle due liste del drawer: ordinamento iniziale «Fine»
 DESC sui task (era `started_at` **ASC**, il più vecchio in cima) e «Quando» DESC
@@ -2240,7 +2282,44 @@ rumore.
 
 ---
 
-## 12. ⏭️ Il Passo A — ricognizione FATTA e rotta decisa *(2026-08-24)*
+### ✅ CHIUSO — il dubbio su `competenza_mese` *(2026-08-24)*
+
+> **Era una domanda aperta di questo brief**, nata collaudando: un documento di
+> **competenza giugno** confermato **ad agosto** finisce nel lotto di *giugno*,
+> il dato fiscale è corretto (la fattura ha data agosto), ma `competenza_mese`
+> sembrava fare **due mestieri** — tetto della raccolta *e* etichetta di
+> archiviazione — senza che esistesse un `periodo_fatturazione`.
+
+⭐ **Il modello non ha il difetto che sospettavamo.** Misurato: la regola di
+raccolta è `a.competenza_mese <= X` e il documento prende la data del giorno di
+emissione — entrambe corrette. Il caso nasce da una scelta legittima
+dell'operatore: lanciare *«fattura competenza giugno»* in agosto.
+
+⛔ **Il difetto era di VISIBILITÀ, non di modello**: chi lavora sul mese di
+agosto quel documento non lo trova, perché lo cerca — con ragione — per la
+**data del documento** e non per la competenza della commessa. Non serviva un
+`periodo_fatturazione`: serviva un posto dove guardare.
+
+✅ **Risposto** con una scheda **«Recuperi del mese»** sulla lista lotti — i
+lotti di competenza precedente che hanno emesso documenti nel mese filtrato.
+Sulla lista di agosto risponde `LTF-0006585` e `LTF-0006586`.
+
+📌 Il caso, le due sbagliate che ho preso per strada e le cose che restano stanno
+nel §6-bis di
+[brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md) —
+qui basta sapere che **la domanda non è più aperta**.
+
+⚠️ **E ne è uscito un buco più grande, che resta aperto**: la **fattura è
+l'unico documento del ciclo attivo senza la sua lista**. Misurato — `preventivi`,
+`offerte`, `ordini`, `contratti`, `ddt`, `resi` hanno la loro
+`ui.lista_definizione`; `fatture` no, e nel frontend non esiste nessuna rotta
+verso di loro. Oggi un documento fiscale si raggiunge **solo** passando da un
+lotto, da un cruscotto o da un collegamento. È la ragione per cui la prima idea
+era stata una scheda dentro il drawer del lotto: non c'era altro posto.
+
+---
+
+## 12. ✅ Il Passo A — **CONSEGNATO** sulla fattura *(2026-08-24)*
 
 > **Perché sta in questo brief e non in quello del Passo A.** Il Passo A non è
 > materia di questo cantiere — è il §498 di
@@ -2345,6 +2424,110 @@ quella dell'operatore (R-3) e che il perimetro va collaudato **apposta**, perch�
 i dati non lo faranno (R-4). ⭐ Erano esattamente le cose che il §12 diceva di
 *«non scoprire a metà»*.
 
+### ✅ Consegnato — la scheda «Storia» del drawer fattura
+
+`GET /api/v1/vendite/fatture/<id>/giornale/` → scheda **Storia** accanto a
+**Documento**, più una **segnalazione in testa** quando il documento porta un
+errore. Doc:
+[api_fattura_giornale.md](../../backend/vendite/manual/api_fattura_giornale.md).
+
+⭐ **La vista ha finalmente un consumatore**, e il collaudo che il §12 metteva in
+conto è stato fatto davvero:
+
+| Contesto | La vista da sola | L'endpoint |
+| --- | --- | --- |
+| con contesto operatore | 3 righe | 3 righe |
+| **senza contesto** (fail-closed) | **0 righe** | **`E_FATTURA_NON_TROVATA`** |
+
+⛔ **È la prova che il cancello sulla testata non è ridondante**: `security_invoker`
+da solo trasforma «non la vedi» in «non è successo niente». Presidiato da
+`test_giornale_non_letto_se_testata_none` — senza, la regressione sarebbe
+silenziosa, perché la risposta sbagliata è un `200` con un elenco vuoto.
+
+**Come i rilievi hanno cambiato il codice, uno per uno:**
+
+| Rilievo | Cosa ne è uscito |
+| --- | --- |
+| **R-1** il tempo non ordina | `ORDER BY quando DESC, riga_id DESC`, col motivo scritto accanto: dentro l'istante a ordinare è il tiebreak, ed è la sequenza vera **finché il registro è uno solo** |
+| **R-2** il filo non copre due registri | nessun filtro per filo nel pannello: sarebbe un filtro che nasconde metà del contenuto |
+| **R-3** il lotto non contiene le sue fatture | ha deciso **dove** approdare |
+| **R-4** il perimetro mai esercitato | il collaudo qui sopra, fatto apposta perché i dati non lo avrebbero fatto |
+| **R-7** segnale contro rumore | le **ritirate** si nascondono, e `ritirate_count` dichiara quante |
+
+### 🔧 Un difetto pagato scrivendolo, e vale oltre questo pannello
+
+`useApiHandler.execute` **scarta già l'envelope due volte** (ritorna
+`response.data.data`). Il pannello leggeva `res.data?.data?.results`, cioè
+`undefined` — e il flag «ho caricato» andava comunque a `true`.
+
+⛔ **Il risultato era un vuoto positivo**: *«Nessun evento registrato per questo
+documento»* su una fattura che ne aveva tre. Cioè **esattamente ciò che quel
+flag esisteva per impedire, prodotto dal flag stesso.**
+
+⚠️ La causa è che due funzioni adiacenti nello stesso file hanno **contratti
+diversi**: `loadDettaglio` passa da `loadDetailOrClose`, che la response axios la
+restituisce intera; `loadGiornale` passa da `execute`, che la scarta. Copiare la
+forma del vicino era la mossa naturale ed era sbagliata. Scritto nel codice.
+
+### ⭐ E una colonna chiesta al DB e arrivata in giornata
+
+`disabilitato` — la segnalazione **ritirata** — non c'era sulla vista, e senza
+non si poteva né marcarla né nasconderla: **non si filtra ciò che non si vede**.
+Chiesta come colonna e **non** come filtro (il diario deve restare completo: a
+filtrare è il consumatore), è arrivata col changeSet `20260824-14`.
+
+Decisione di Tid: **si nascondono**. Sul caso misurato la ritirata è
+*letteralmente la stessa frase* di quella viva, e mostrarle entrambe fa credere
+che sia successo due volte.
+
+⚠️ Con la condizione che vale in tutto questo cantiere: **dire quante se ne
+nascondono**. È la terza volta in un giorno che lo stesso difetto si presenta —
+il filtro dei task che mostrava 1 riga su 90, l'«Ultimo giro» che ne taglia 6
+chiamandole «di corse precedenti», e qui. Un elenco filtrato e un elenco vuoto
+si leggono uguali.
+
+### ✅ «Che cos'è un caso» — **DECISO da Tid il 2026-08-24**
+
+Era la domanda che teneva fermo il pannello del **lotto**, e non era una scelta
+di schermata: cambia il filtro dell'endpoint, il contratto e su cosa pagina.
+
+➡️ **Decisione: il lotto PIÙ le sue fatture, limitato alle righe non-INFO.**
+Cioè *«cosa è andato storto in questo giro, ovunque sia successo»*.
+
+⭐ **Il numero che l'ha decisa**, misurato sul 6260: filtrando `entity_type =
+'LOTTO'` tornano **213 righe** che dicono otto volte *«Esito fatture lotto ·
+WARN»* e **non contengono il motivo** — che sta sulla fattura 19205, perché la
+sua entità è la fattura (**R-3**). Un pannello onesto ma limitato al lotto
+sarebbe un pannello che nel giorno in cui serve **non contiene la risposta**.
+
+⚠️ **«Non-INFO» non è `gravita IN ('WARN','ERROR')`.** È *tutto ciò che non è
+`INFO`*, **NULL compreso**: una gravità nulla significa «un vincolo si è
+allargato e la mappa è rimasta indietro» (§3.6), ed è esattamente la riga da non
+perdere. Un filtro scritto per elencazione la butterebbe via **in silenzio** — e
+sarebbe la terza volta che questo cantiere incontra lo stesso difetto. ⭐ È anche
+coerente con l'ordinamento appena consegnato sulla fattura, dove il `NULL` pesa
+come un `ERROR`.
+
+⛔ **E vale la regola di casa: dire quante se ne nascondono.** Un elenco filtrato
+e un elenco completo si leggono uguali; il pannello dichiara quante righe `INFO`
+ha tolto, come già fa con le ritirate.
+
+⚠️ **Cosa questa decisione NON risolve, e va saputo prima di scrivere**: il
+filtro non-INFO da solo non basta contro il rumore. Sempre sul 6260, delle 82
+righe non-INFO **81 sono la stessa storia ripetuta otto volte** (`task_code ·
+ANNULLATO`, una per corsa) e l'errore vero è **una riga sola** — è il rilievo
+**R-7**. Il nascondere le ritirate ne toglie una parte; il resto è una domanda
+aperta di **de-duplicazione**, da guardare col pannello davanti e non prima.
+
+### 🔵 Cosa resta del Passo A
+
+- **Il lotto**, che ora ha il suo perimetro (qui sopra) ma aspetta **R-1**: la
+  richiesta al team DB è il **§13**. Senza orario vero quella timeline mostra
+  una sequenza mai avvenuta, e sul lotto i registri sono **tre**.
+- ⚠️ **Il secondo registro.** Oggi per una fattura risponde solo `fatture_log`
+  (`event_log` non ha righe di entità `FATTURA`). Quando ne arriverà un secondo,
+  il tiebreak di R-1 smette di essere la sequenza vera.
+
 ### Cosa NON fare partendo
 
 | Non fare | Perché |
@@ -2352,3 +2535,97 @@ i dati non lo faranno (R-4). ⭐ Erano esattamente le cose che il §12 diceva di
 | Aggregati, conteggi, «quanti errori questo mese» | È il **Passo B**, e su questo ambiente sarebbe illeggibile (§Passo B dell'analisi). Una vista aggregata costruita adesso porta chi la guarda a conclusioni sbagliate |
 | Una seconda vista «più comoda» accanto a `vw_giornale_entita` | La forma normalizzata a sette colonne è una **decisione** (§3.6), presa perché i registri di eventi del progetto sono **sei** e non uno. Una vista comoda per il primo consumatore è il seme della terza ristrutturazione |
 | Allargare la vista con colonne nuove | Un registro che non sa riempire la forma lascia `NULL`, **non allarga**. È scritto nel §3.6 ed è l'impegno §9.4 n.2 |
+
+---
+
+## 13. 🔴 Il passaggio al team DB — **R-1: l'orario di transazione non ordina** *(scritto dal BE il 2026-08-24)*
+
+> **Cos'è.** Il prossimo pezzo del Passo A è la **storia di un lotto**, e non è
+> scrivibile finché l'orario delle righe non è quello vero. ⛔ **Perimetro: è del
+> team DB** — sono i `DEFAULT` di quattro colonne su quattro tabelle. Il BE qui
+> misura e chiede, non scrive.
+>
+> ⚠️ **Sulla FATTURA il difetto non morde**, ed è la ragione per cui il pannello
+> consegnato oggi funziona: un registro solo, poche righe, e dentro l'istante
+> ordina l'ordine di scrittura di *quel* registro. Sul **lotto** i registri
+> diventano **tre**, e i loro contatori di scrittura non sono confrontabili fra
+> loro.
+
+### La misura — 2026-08-24, sui dati veri
+
+`now()` in PostgreSQL è l'istante in cui è cominciata la **transazione**, non
+quello della scrittura. Tutte le righe scritte dentro la stessa transazione
+escono quindi con lo **stesso identico timestamp**, al microsecondo.
+
+```text
+lotto 7133 (pulito, tre corse)   38 righe  →  3 istanti distinti, uno per corsa
+lotto 6260 (sporco)             213 righe  →  stesso fenomeno
+```
+
+Le quattro colonne, dalla doc auto-generata:
+
+| Tabella | Colonna | Default oggi |
+| --- | --- | --- |
+| `vendite.event_log` | `event_time` | `now()` |
+| `vendite.fatture_log` | `data_ora` | `now()` |
+| `vendite.fatturazione_lotti_log` | `data_ora` | `now()` |
+| `vendite.fatturazione_lotti_task_runs` | `started_at` | `now()` |
+
+⛔ **E non c'è una colonna di ripiego**: `data_insert` è `now()` anche lei, su
+tutte e quattro. Non esiste, oggi, un modo di sapere in che ordine due righe di
+registri diversi siano state scritte dentro la stessa transazione.
+
+### 🔵 La domanda — posta come domanda
+
+**Le quattro colonne passano a `clock_timestamp()`?**
+
+⭐ **L'argomento a favore, che è nuovo e non c'era quando quei default sono
+stati scelti**: l'orario di transazione oggi non serve più a niente che non sia
+già coperto. Da questo cantiere ogni riga porta il **`tx_id`**, quindi «quali
+righe appartengono alla stessa transazione» ha una **chiave sua** — non è più
+una domanda a cui deve rispondere il timestamp. Prima del `tx_id` quei due
+significati erano sovrapposti su una colonna sola; adesso sono separabili, e
+l'orario può tornare a dire una cosa sola: **quando è successo**.
+
+⚠️ **Se la risposta fosse no**, la richiesta alternativa è una **sequenza
+ordinabile fra registri diversi** — perché il problema da risolvere non è il
+timestamp: è che una timeline di tre registri, oggi, **non è ordinabile**.
+
+### ⛔ La dipendenza da verificare — una sola, e va guardata
+
+`vendite.fn_list_lotto_segnalazioni` àncora il «job corrente» a
+`max(event_time)` dei `PIPELINE_STARTED` e tiene le righe da lì in avanti.
+
+⚠️ **Con l'orario vero il comportamento cambia**, e va deciso se in meglio: oggi
+le righe scritte nella **stessa transazione** del `PIPELINE_STARTED` — anche
+quelle scritte *prima* — hanno il suo identico timestamp e finiscono **dentro**
+il giro corrente. Con `clock_timestamp()` quelle precedenti cadrebbero **fuori**.
+⭐ A occhio è la lettura giusta, ma è un cambio di perimetro su una funzione in
+servizio: **lo dica un test, non questa frase.**
+
+### ⛔ Cosa il BE NON chiede
+
+* **Nessun backfill.** Le righe già scritte restano come sono: `event_log` è
+  append-only per trigger (niente `UPDATE`, niente `DELETE`) e un orario
+  ricostruito a posteriori sarebbe **inventato**. La convivenza fra due
+  generazioni di righe è già un fatto noto (rilievo **R-5**), e il pannello deve
+  reggerla comunque;
+* **Nessun tocco ai campi di audit** `data_insert` / `data_update`: lì l'orario
+  di transazione è la convenzione della casa (806 colonne) e non c'entra con
+  l'ordinamento di una timeline. ⚠️ Va detto perché la tentazione di
+  «uniformare tutto» trasformerebbe una richiesta da quattro colonne in una
+  passata su mezzo database;
+* **Nessuna modifica alle viste né agli indici.** `ix_event_log_entity_time` è
+  su `event_time DESC` e continua a servire: cambia il **valore** che ci finisce,
+  non la colonna;
+* **Nessun rimedio in Python.** Ordinare nel backend ciò che il database non sa
+  ordinare vorrebbe dire leggere tutte le righe per ordinarne una pagina — e la
+  lista è paginata.
+
+### 📌 Cosa fa il BE nel frattempo
+
+Niente che vada disfatto: il pannello **fattura** è consegnato e regge (un
+registro solo), e il pannello **lotto** non si scrive finché questa risposta non
+c'è. ⛔ Scriverlo prima significherebbe consegnare una schermata che mostra una
+sequenza **mai avvenuta**, e nessuno se ne accorgerebbe guardandola: è un elenco
+plausibile: la trappola è esattamente che non sembra rotto.

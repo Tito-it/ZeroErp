@@ -27,8 +27,14 @@ export function getFatturaDettaglio(fatturaId) {
 //    fattura è legata, questo cosa le è successo. Domande diverse, sorgenti
 //    diverse.
 // ⚠️ 404 unificato inesistente/fuori scope, come il dettaglio.
-export function getFatturaGiornale(fatturaId, { page = 1, pageSize = 50 } = {}) {
+// ⭐ `sortBy` di default è la GRAVITÀ, e l'ordinamento lo fa il SERVER: la lista
+//    è paginata, quindi riordinare qui riordinerebbe la sola pagina caricata —
+//    «il più grave» diventerebbe «il più grave fra i primi 50», senza dirlo.
+export function getFatturaGiornale(
+  fatturaId,
+  { page = 1, pageSize = 50, sortBy = 'gravita', sortDir = 'desc' } = {},
+) {
   return api.get(`${BASE}/${fatturaId}/giornale/`, {
-    params: { page, page_size: pageSize },
+    params: { page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir },
   })
 }

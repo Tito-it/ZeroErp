@@ -2201,6 +2201,8 @@
       "col_giornale_cosa": "What happened",
       "col_giornale_chi": "Who",
       "giornale_vuoto": "No events recorded for this document",
+      "giornale_ritirate": "{n} withdrawn signals are not shown: they belong to an attempt that was redone",
+      "giornale_solo_ritirate": "No current events: all {n} recorded signals have been superseded",
       "giornale_non_caricato": "Document history unavailable",
       "giornale_parziale": "Showing {n} of {tot} events",
       "cliente": "Company name",
@@ -2518,6 +2520,10 @@
       "documenti_fattura_titolo": "Invoice documents",
       "tab_fatture": "Invoices",
       "tab_task": "Tasks",
+      "tab_recuperi": "Month catch-ups",
+      "tab_lotti_mese": "Lots of the month",
+      "nessun_recupero_lista": "No lot of an earlier competence period issued documents in this month",
+      "recuperi_lista_nota": "Lots of an earlier competence period that issued documents in the filtered month — jobs invoiced late. By competence they do not appear in the list alongside, but their documents carry this month's date.",
       "tab_segnalazioni": "Alerts",
       "nessuna_fattura": "No invoice in the batch",
       "nessun_task": "No task-run",
@@ -3355,7 +3361,7 @@
       "nc_spiegazione": "The credit is registered from the credits queue: the credit note is created at the next invoicing run."
     },
     "lotto_fatture": {
-      "col_data": "Date",
+      "col_data": "Document date",
       "col_errore_codice": "Error code",
       "col_errore_livello": "Error level",
       "col_errore_messaggio": "Error",

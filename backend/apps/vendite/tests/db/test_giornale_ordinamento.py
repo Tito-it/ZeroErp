@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Unit test della clausola ORDER BY del giornale di un'entita'
+#        (`_giornale_order_clause`, funzione pura, no DB) — la scheda «Storia»
+#        del drawer fattura, Passo A del filone osservabilita'.
+# ------------------------------------------------------------
+"""
+Indice test eseguiti:
+1) test_default_ordina_per_gravita_dal_piu_grave
+2) test_colonna_fuori_whitelist_ricade_sul_default
+3) test_dentro_la_gravita_il_tempo_resta_dal_piu_recente
+4) test_quando_ordina_col_tiebreak_allineato
+5) test_quando_ascendente_porta_con_se_il_tiebreak
+6) test_nessun_nulls_incollato_alla_direzione
+"""
+
+from django.test import SimpleTestCase
+
+from apps.vendite.db.vendite_repository import _giornale_order_clause
+
+
+class GiornaleOrdinamentoTests(SimpleTestCase):
+    """L'ordine della storia di un documento.
+
+    ⛔ Perche' esiste questo file: un ordinamento sbagliato **non solleva
+    niente**. A video un elenco ordinato male e uno ordinato bene si somigliano,
+    e l'unico modo di accorgersene sarebbe che qualcuno noti una riga fuori
+    posto — cioe' mai.
+    """
+
+    # Scopo: ⭐ Il default e' la GRAVITA' (decisione di Tid, 2026-08-24, dopo la
+    # validazione in-app): davanti a un documento la prima domanda e' «c'e'
+    # qualcosa che non va?», non «cosa e' successo per primo».
+    def test_default_ordina_per_gravita_dal_piu_grave(self) -> None:
+        clausola = _giornale_order_clause(None, None)
+        self.assertTrue(clausola.startswith("t.rango_gravita DESC"))
+
+    # Scopo: ⚠️ Una colonna che non esiste non e' un errore da 400: e' una
+    # preferenza che non si applica. Il ripiego e' il default, non un ORDER BY
+    # vuoto — che lascerebbe l'ordine al piano di esecuzione, cioe' a nessuno.
+    def test_colonna_fuori_whitelist_ricade_sul_default(self) -> None:
+        self.assertEqual(
+            _giornale_order_clause("cosa", "desc"),
+            _giornale_order_clause("gravita", "desc"),
+        )
+
+    # Scopo: 🔴 Il test che protegge la scelta meno ovvia. Dentro la stessa
+    # gravita' il tempo resta DISCENDENTE anche chiedendo l'ordine ascendente:
+    # «i meno gravi prima» non vuol dire «i piu' vecchi prima». Se il verso si
+    # propagasse al secondo criterio, ordinando per gravita' crescente si
+    # otterrebbe la storia piu' vecchia in cima senza averla chiesta.
+    def test_dentro_la_gravita_il_tempo_resta_dal_piu_recente(self) -> None:
+        clausola = _giornale_order_clause("gravita", "asc")
+        self.assertIn("t.rango_gravita ASC", clausola)
+        self.assertIn("t.quando DESC", clausola)
+        self.assertTrue(clausola.endswith("t.riga_id DESC"))
+
+    # Scopo: sul tempo il tiebreak `riga_id` segue la direzione — e' il rimedio
+    # al rilievo R-1 (il default `now()` e' il timestamp di TRANSAZIONE, quindi
+    # piu' righe condividono l'istante: a ordinare dentro l'istante e' l'ordine
+    # di scrittura).
+    def test_quando_ordina_col_tiebreak_allineato(self) -> None:
+        clausola = _giornale_order_clause("quando", "desc")
+        self.assertIn("t.quando DESC", clausola)
+        self.assertTrue(clausola.endswith("t.riga_id DESC"))
+
+    def test_quando_ascendente_porta_con_se_il_tiebreak(self) -> None:
+        clausola = _giornale_order_clause("quando", "asc")
+        self.assertIn("t.quando ASC", clausola)
+        self.assertTrue(clausola.endswith("t.riga_id ASC"))
+
+    # Scopo: ⛔ Presidio locale del difetto gia' pagato altrove: `NULLS ...`
+    # incollato DOPO la direzione, che `sql_order_direction` porta gia' con se'.
+    # Il risultato sarebbe `DESC NULLS LAST NULLS LAST`, SQL invalido — cioe' un
+    # 500 su ogni ordinamento.
+    def test_nessun_nulls_incollato_alla_direzione(self) -> None:
+        for colonna in (None, "gravita", "quando"):
+            for verso in ("asc", "desc"):
+                with self.subTest(colonna=colonna, verso=verso):
+                    self.assertEqual(
+                        _giornale_order_clause(colonna, verso).count("NULLS"),
+                        1,
+                    )
