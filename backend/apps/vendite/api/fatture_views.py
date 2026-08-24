@@ -16,19 +16,28 @@
 
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id
-from apps.core.api.payload_validators import qp_int_strict
+from apps.core.api.payload_validators import (
+    paginated_envelope,
+    parse_list_params,
+    qp_int_strict,
+    qp_str,
+)
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.core.services.value_normalizer import as_bool
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_service import (
     get_fattura_dettaglio,
     get_fattura_giornale,
+    list_fatture_rows,
 )
 
 
@@ -188,3 +197,150 @@ class ApiFatturaGiornale(DomainAPIView):
             auth_user_id=get_scope_user_id(request),
         )
         return success_response(data)
+
+
+# Codice lista (`ui.lista_definizione`) usato dall'export per risolvere colonne
+# visibili, ordine e permessi dell'operatore.
+_LISTA_CODICE_FATTURE = "vendite.fatture"
+
+# Scopo: i filtri della lista fatture, letti una volta sola dalla query string.
+# ⭐ Riusa `extract_doc_list_filters`, la convenzione comune alle sei sorelle
+#    (`stato_codice_interno`, `billing_account_id`, `data_da`, `data_a`,
+#    `utility_id`), e aggiunge il solo filtro che è proprio del documento
+#    fiscale: la NATURA, che separa le fatture dalle note di credito.
+# ⚠️ `data_da`/`data_a` filtrano la DATA DEL DOCUMENTO, non la competenza della
+#    commessa che l'ha generato: è la ragione per cui questa lista esiste.
+def _filtri_lista_fatture(qp) -> dict[str, object]:
+    f = extract_doc_list_filters(qp, with_utility=True)
+    f["natura_doc_codice"] = qp_str(qp.get("natura_doc_codice"))
+    # ⭐ Identificativo fiscale: e' il criterio con cui la lista SOGGETTI manda
+    #    qui. Un soggetto e' una persona giuridica, non un conto — i suoi
+    #    documenti si raccolgono per codice fiscale / partita IVA, non per
+    #    billing account (che sono piu' d'uno).
+    f["id_fiscale"] = qp_str(qp.get("id_fiscale"))
+    return f
+
+
+_PARAMETRI_LISTA_FATTURE = [
+    OpenApiParameter(name="search", type=str, required=False),
+    OpenApiParameter(name="stato_codice_interno", type=str, required=False),
+    OpenApiParameter(name="natura_doc_codice", type=str, required=False,
+                     description="FATTURA | NOTA_CREDITO | NOTA_DEBITO"),
+    OpenApiParameter(name="billing_account_id", type=int, required=False),
+    OpenApiParameter(name="id_fiscale", type=str, required=False,
+                     description="Codice fiscale / partita IVA, confronto ESATTO "
+                                 "(la ricerca libera sullo stesso campo e' invece "
+                                 "parziale)."),
+    OpenApiParameter(name="utility_id", type=int, required=False),
+    OpenApiParameter(name="data_da", type=str, required=False,
+                     description="Data ISO del DOCUMENTO (non della competenza)."),
+    OpenApiParameter(name="data_a", type=str, required=False),
+    OpenApiParameter(name="limit", type=int, required=False),
+    OpenApiParameter(name="offset", type=int, required=False),
+    OpenApiParameter(name="order_by", type=str, required=False,
+                     description="`campo_sorgente` del catalogo `vendite.fatture`."),
+    OpenApiParameter(name="order_dir", type=str, required=False),
+]
+
+
+class ApiFattureList(DomainAPIView):
+    """GET /api/v1/vendite/fatture/ — la lista dei documenti fiscali.
+
+    ⭐ La **settima** lista del ciclo attivo: fino al 2026-08-24 la fattura era
+    l'unico documento senza la sua, e si raggiungeva solo passando da un lotto,
+    da un cruscotto o da un collegamento.
+
+    ⚠️ Sola lettura: la fattura si produce dalla pipeline di fatturazione, non
+    da un form. Nessun `POST`, e non è una dimenticanza.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    # ⚠️ LETTERALE e non la costante: `test_perimetro_emittente_copertura`
+    #    legge questo attributo con `ast.literal_eval`, e una variabile la
+    #    salta in silenzio — la lista risulterebbe senza cancello.
+    lista_codice = "vendite.fatture"
+    # Stesso livello oggetto del dettaglio: chi non può vedere una fattura non
+    # ne vede nemmeno l'elenco.
+    model_permission = ("vendite", "fattura")
+
+    @extend_schema(
+        operation_id="vendite_fatture_list",
+        parameters=_PARAMETRI_LISTA_FATTURE,
+        responses={200: inline_serializer(
+            name="VenditeFattureListResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: elenco paginato dei documenti fiscali, con filtri e scope emittente.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="data")
+        results, total = list_fatture_rows(
+            search=p["search"],
+            auth_user_id=get_scope_user_id(request),
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            **_filtri_lista_fatture(qp),
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+
+
+class ApiFattureExportView(DomainAPIView):
+    """GET /api/v1/vendite/fatture/export/?formato=csv|xlsx
+
+    ⚠️ `formato` e non `format`: quest'ultimo è un magic parameter di DRF e
+    verrebbe intercettato prima della view.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    # ⚠️ LETTERALE e non la costante: `test_perimetro_emittente_copertura`
+    #    legge questo attributo con `ast.literal_eval`, e una variabile la
+    #    salta in silenzio — la lista risulterebbe senza cancello.
+    lista_codice = "vendite.fatture"
+    model_permission = ("vendite", "fattura")
+
+    @extend_schema(
+        operation_id="vendite_fatture_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            *_PARAMETRI_LISTA_FATTURE,
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: file CSV/XLSX della lista fatture.
+    # ⚠️ Filtri IDENTICI a quelli della lista — il file È la lista. E si fetcha
+    #    `EXPORT_MAX_ROWS + 1` per RILEVARE il superamento del tetto invece di
+    #    consegnare un file troncato in silenzio.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+        p = parse_list_params(qp, default_order="data")
+        filtri = _filtri_lista_fatture(qp)
+        results, total = list_fatture_rows(
+            search=p["search"],
+            auth_user_id=get_scope_user_id(request),
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            max_limit=EXPORT_MAX_ROWS + 1,
+            **filtri,
+        )
+        applicati = {k: str(v) for k, v in filtri.items() if v is not None}
+        if p["search"]:
+            applicati["search"] = p["search"]
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_FATTURE,
+            results=results,
+            total=total,
+            filtri_applicati=applicati,
+            fmt=fmt,
+        )

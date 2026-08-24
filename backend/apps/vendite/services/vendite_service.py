@@ -23,6 +23,7 @@ from apps.core.services.list_helpers import (
     validate_pagination,
 )
 from apps.core.services.partitioned_note_service import PartitionedNoteService
+from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
     LOTTO_FATTURE_SORT_COLUMNS,
@@ -1664,7 +1665,11 @@ def get_fattura_giornale(
     #    documento la prima domanda e' «c'e' qualcosa che non va?». La colonna
     #    non riconosciuta ricade sul default nel repository — un ordinamento
     #    sbagliato non e' un errore da 400, e' una preferenza che non si applica.
-    righe, vive, ritirate = repository.list_giornale_entita(
+    # ⚠️ Il quarto valore (`info_vive`) qui non si usa: sul documento singolo il
+    #    pannello mostra TUTTE le gravita', quindi non c'e' nessuna INFO
+    #    nascosta da dichiarare. Il corpo e' condiviso col giornale del lotto,
+    #    dove invece le INFO si filtrano.
+    righe, vive, ritirate, _info_vive = repository.list_giornale_entita(
         entity_type="FATTURA",
         entity_id=fattura_id,
         limit=page_size,
@@ -1684,6 +1689,100 @@ def get_fattura_giornale(
         # Quante righe il filtro lascia fuori. ⚠️ Zero quando le ritirate sono
         # incluse: li' non c'e' niente di nascosto da dichiarare.
         "ritirate_count": 0 if includi_ritirate else ritirate,
+        "results": righe,
+    }
+
+
+_FN_LOTTO_GIORNALE = "vendite.vendite_service.get_lotto_giornale"
+
+
+# Scopo: LA STORIA DI UN LOTTO — il lotto piu' le sue fatture, righe non-INFO.
+#        Secondo (e ultimo) consumatore di `script.vw_giornale_entita`.
+#
+# ⭐ «Che cos'e' un caso» e' una decisione di Tid del 2026-08-24, e non era una
+#    scelta di schermata: un pannello limitato all'entita' LOTTO sarebbe onesto
+#    e nel giorno in cui serve **non conterrebbe la risposta**. Misurato sul
+#    6260: il lotto ripete «Esito fatture lotto · WARN», il motivo sta sulla
+#    FATTURA perche' la sua entita' e' la fattura (rilievo R-3).
+#
+# ⛔ Il pannello si e' potuto scrivere solo dal 2026-08-24 19:33, quando il team
+#    DB ha applicato R-1: qui i registri sono TRE, e con l'orario di transazione
+#    le righe di una stessa transazione uscivano tutte con lo stesso istante —
+#    una timeline che mostra una sequenza mai avvenuta e non sembra rotta.
+#
+# ⚠️ Le INFO si nascondono ma si CONTANO: un elenco filtrato e un elenco completo
+#    si leggono uguali. Stessa regola gia' applicata alle ritirate.
+def get_lotto_giornale(
+    *,
+    lotto_id: int,
+    page: int = 1,
+    page_size: int = 50,
+    includi_info: bool = False,
+    includi_ritirate: bool = False,
+    sort_by: str = "gravita",
+    sort_dir: str = "desc",
+    auth_user_id: int | None = None,
+) -> dict[str, object]:
+    ErrorManager.require(
+        bool(lotto_id and lotto_id > 0),
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="lotto_id obbligatorio e > 0",
+        context={"lotto_id": lotto_id},
+        function_name=_FN_LOTTO_GIORNALE,
+        log_to_db=True,
+    )
+    offset = _validate_pagination(page, page_size, _FN_LOTTO_GIORNALE)
+    repository = VenditeRepository()
+
+    # 1. IL CANCELLO. ⛔ Non e' ridondante con la RLS: la vista del giornale non
+    #    ha un perimetro emittente proprio per le righe di entita' FATTURA, e
+    #    senza questo passaggio un id fuori scope riceverebbe «zero righe» —
+    #    che si legge come «lotto senza storia», non come «non lo puoi vedere».
+    #    Inesistente e fuori scope danno la STESSA risposta, per non confermare
+    #    l'esistenza del lotto di un altro emittente.
+    lotto = repository.get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
+    if lotto is None:
+        ErrorManager.raise_error(
+            code="E_LOTTO_NON_TROVATO",
+            message="Lotto non trovato.",
+            detail=f"Nessun lotto accessibile con id={lotto_id}",
+            context={"lotto_id": lotto_id},
+            function_name=_FN_LOTTO_GIORNALE,
+            log_to_db=True,
+        )
+
+    # 2. Solo ORA il giornale: il lotto e' gia' stato autorizzato.
+    righe, vive, ritirate, info_vive = repository.list_giornale_lotto(
+        lotto_id=lotto_id,
+        limit=page_size,
+        offset=offset,
+        escludi_ritirate=not includi_ritirate,
+        escludi_info=not includi_info,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
+
+    # ⚠️ Il totale e' quello che l'elenco MOSTRA, non quello che esiste: e' su
+    #    di lui che pagina il client. I due numeri nascosti viaggiano a parte.
+    total_count = vive
+    if includi_ritirate:
+        total_count += ritirate
+    if not includi_info:
+        total_count -= info_vive
+    total_count = max(0, total_count)
+    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
+    return {
+        "lotto_id": lotto_id,
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "ritirate_count": 0 if includi_ritirate else ritirate,
+        # ⭐ Quante righe di routine il filtro tiene fuori. Senza, «un lotto con
+        #    tre problemi» e «un lotto con tre problemi e 173 passi andati bene»
+        #    si leggono identici.
+        "info_count": 0 if includi_info else info_vive,
         "results": righe,
     }
 
@@ -1852,3 +1951,45 @@ def get_situazione_merce(
             ordine_id=ordine_id, ddt_id=ddt_id
         ),
     }
+
+
+# Scopo: LA LISTA FATTURE — la settima del ciclo attivo, sullo stampo delle sei
+#        sorelle. Facade sottile sul repository: la sorgente è la vista
+#        canonica `vendite.vw_fatture_lista`, e la validazione dei parametri di
+#        lista la fa `parse_list_params` alla porta.
+#
+# ⚠️ Sola lettura, e non è una svista: la fattura si produce dalla pipeline di
+#    fatturazione, non da un form. Qui non esiste nessun verbo di scrittura.
+def list_fatture_rows(
+    *,
+    stato_codice: str | None = None,
+    billing_account_id: int | None = None,
+    id_fiscale: str | None = None,
+    utility_id: int | None = None,
+    natura_doc_codice: str | None = None,
+    data_da: date | None = None,
+    data_al: date | None = None,
+    search: str | None = None,
+    auth_user_id: int | None = None,
+    limit: int,
+    offset: int,
+    order_by: str = "data",
+    order_dir: str = "desc",
+    max_limit: int = 200,
+) -> tuple[list[object], int]:
+    return FattureRepository().list_fatture(
+        stato_codice=stato_codice,
+        billing_account_id=billing_account_id,
+        id_fiscale=id_fiscale,
+        utility_id=utility_id,
+        natura_doc_codice=natura_doc_codice,
+        data_da=data_da,
+        data_al=data_al,
+        search=search,
+        auth_user_id=auth_user_id,
+        limit=limit,
+        offset=offset,
+        order_by=order_by,
+        order_dir=order_dir,
+        max_limit=max_limit,
+    )

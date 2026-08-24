@@ -19,7 +19,7 @@ conteggio per periodo: quelli hanno prerequisiti loro.
 ([analisi-osservabilita-log.md](../../../dev/work-in-progress/analisi-osservabilita-log.md)),
 e il **primo consumatore** di `script.vw_giornale_entita` — la vista che cuce i
 registri di evento del progetto in una forma normalizzata (lotto L3 del
-[brief event_log](../../../dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md)).
+[brief event_log](../../../dev/work-done/brief-db-event-log-scope-e-riga-parlante.md)).
 
 ⭐ **Fino al 2026-08-24 quella vista non l'aveva interrogata nessuno**: il suo
 perimetro era verificato dal pgTAP e non dall'uso. Scriverne il primo lettore

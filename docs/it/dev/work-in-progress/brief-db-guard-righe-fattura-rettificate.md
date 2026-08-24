@@ -19,7 +19,7 @@
 > **Correlati:**
 > [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md) §12.6
 > (il modello delle rettifiche) ·
-> [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
+> [brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
 > (il cantiere che ha fatto girare la baseline; **nessun** rapporto tecnico).
 
 ---

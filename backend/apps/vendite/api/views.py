@@ -72,6 +72,7 @@ from apps.vendite.services.vendite_service import (
     fn_list_lotti,
     fn_list_lotto_fatture,
     fn_lotti_mensile,
+    get_lotto_giornale,
 )
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
@@ -1115,6 +1116,102 @@ class ApiLottoFattureList(DomainAPIView):
 # Commesse — push orchestrator + stato + attivita                     #
 # ================================================================== #
 
+
+
+class ApiLottoGiornale(DomainAPIView):
+    """La STORIA di un lotto: il lotto PIU' le sue fatture, righe non-INFO.
+
+    Secondo (e ultimo) consumatore di `script.vw_giornale_entita`, la vista che
+    cuce i registri di evento del progetto in una forma normalizzata. Sul lotto
+    i registri che rispondono sono **tre** — `EVENT_LOG`, `LOTTO_LOG`,
+    `TASK_RUN` — piu' `FATTURA_LOG` per i documenti che contiene.
+
+    ⭐ «Il lotto piu' le sue fatture» e' una DECISIONE (Tid, 2026-08-24), non una
+    scelta di schermata: un pannello limitato all'entita' LOTTO ripeterebbe
+    «Esito fatture lotto · WARN» e **non conterrebbe il motivo**, che sta sulla
+    fattura perche' la sua entita' e' la fattura (rilievo R-3).
+
+    ⛔ Non e' la lista delle segnalazioni (`/segnalazioni/`), che elenca i
+    problemi APERTI da risolvere: qui si risponde a *«cosa e' successo, in che
+    ordine»* — comprese le cose andate bene e i tentativi superati.
+
+    Lotto inesistente **o fuori scope emittente** → 404 identico. ⚠️ E il 404 lo
+    decide la TESTATA: la vista risponderebbe zero righe, cioe' «non e' successo
+    niente» invece di «non lo vedi».
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Colonna di ordinamento: `gravita` (default, i piu' gravi "
+                    "prima) oppure `quando`. Un valore fuori whitelist ricade "
+                    "sul default."
+                ),
+            ),
+            OpenApiParameter(
+                name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+                description="Verso: `desc` (default) o `asc`.",
+            ),
+            OpenApiParameter(
+                name="info", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Include anche le righe di routine (`INFO`), di default "
+                    "nascoste. Quante ne sono state nascoste lo dice "
+                    "`info_count`. ⚠️ «Non-INFO» comprende la gravita' NULL, che "
+                    "e' il segnale di un vincolo allargato e non un dato "
+                    "mancante: resta visibile anche col filtro attivo."
+                ),
+            ),
+            OpenApiParameter(
+                name="ritirate", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Include anche le segnalazioni RITIRATE, che appartengono a "
+                    "un tentativo poi rifatto. Il conteggio e' `ritirate_count`."
+                ),
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoGiornaleResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoGiornaleData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(),
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "ritirate_count": serializers.IntegerField(),
+                            "info_count": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il giornale paginato del lotto.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        q = request.query_params
+        data = get_lotto_giornale(
+            lotto_id=lotto_id,
+            page=qp_int_strict(q.get("page"), "page", 1),
+            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
+            includi_info=as_bool(q.get("info"), default=False),
+            includi_ritirate=as_bool(q.get("ritirate"), default=False),
+            sort_by=q.get("sort_by") or "gravita",
+            sort_dir=q.get("sort_dir") or "desc",
+            auth_user_id=get_scope_user_id(request),
+        )
+        return success_response(data)
 
 class ApiRunCommessePush(DomainAPIView):
     area_funzionale = "vendite"

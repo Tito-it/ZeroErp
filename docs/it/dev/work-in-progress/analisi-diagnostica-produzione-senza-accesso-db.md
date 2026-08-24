@@ -4,9 +4,13 @@
 >
 > **Tipo:** analisi + base di sviluppo (non è ancora un piano operativo per-fase)
 >
-> **Stato:** WIP — proposta da validare prima della progettazione tecnica
+> **Stato:** WIP — proposta da validare prima della progettazione tecnica.
+> ⚠️ **Perimetro ristretto il 2026-08-24**: la parte di osservabilità è stata
+> **delegata** ai documenti che la possiedono (§3.1). Qui restano
+> classificazione dei dati, mascheratura, riproduzione, profilo di accesso e
+> perimetro AI.
 >
-> **Data:** 2026-07-25
+> **Data:** 2026-07-25 · **rivalutato** il 2026-08-24 (§0-bis)
 >
 > **Origine:** documento di analisi di Tid («Diagnostica di produzione senza accesso
 > al database», luglio 2026), qui **riscritto e ancorato al codice e alla
@@ -17,6 +21,86 @@
 > snapshot, tre strati di tracciabilità, framework automazioni DB, grafo di genealogia
 > documenti, capabilities per entità, canale di sistema RLS). Il lavoro nuovo è
 > **comporre, classificare e chiudere**, non fondare.
+
+---
+
+## 0-bis. 🔄 RIVALUTAZIONE — 2026-08-24, dopo il cantiere osservabilità
+
+> **Perché.** L'analisi è del 25 luglio, con un aggiornamento del 3 agosto. Da
+> allora due cantieri hanno lavorato **esattamente sul suo inventario**:
+> `event_log`/osservabilità e «l'errore porta un bersaglio». Tre affermazioni del
+> §3 oggi sono **false**, e due fasi non partono più da zero. L'impianto regge —
+> è la misura sotto che va rifatta.
+>
+> 📌 Il documento più vicino a questo è
+> [analisi-osservabilita-log.md](analisi-osservabilita-log.md), che ha lo stato
+> passo per passo (§3-quater): quello è il piano, questo è il perché.
+
+### Cosa è cambiato — e cosa ne è seguito
+
+| Diceva | Oggi |
+| --- | --- |
+| *«`vendite.event_log` è **write-only**: zero endpoint, zero consumatori»* | ⛔ **superato**: il primo consumatore è in servizio — `script.vw_giornale_entita` e la scheda «Storia» del drawer fattura, validata in-app |
+| *«l'`actor` vale **sempre** `service:django`: non si può ricostruire chi ha agito»* | ⛔ **superato**: la riga porta `auth_user_id`, l'emittente (NOT NULL, con RLS), `tx_id` e `correlation_id` per corsa. È il **Passo 0**, fatto |
+| `request_log` … `tx_id` | ⚠️ **la colonna non esiste più** (tolta il 2026-08-24): quella riga nasce quando l'unità di lavoro ha già chiuso, quindi il suo `tx_id` non esisteva davvero. La correlazione HTTP↔DB resta su `request_id` |
+| *«il 67% delle righe di `error_log` ha codice `MESSAGGIO_NON_DEFINITO`»*, prerequisito della Fase 1 | ⛔ **chiuso il giorno dopo che fu scritto** (2026-08-04, `brief-db-seed-messaggi-errore-mancanti`), ed è l'esempio che ha deciso la delega qui sotto. ⚠️ Se quel numero serve, si **rimisura** — e col contesto giusto: su una tabella con RLS un conteggio senza GUC torna zero e **sembra un dato** |
+| *«lo standard `cleanup_at` non è applicato ai log di dominio»* | 🟡 **parziale**: `event_log` ce l'ha; `fatturazione_lotti_log` e `fatture_log` no |
+
+### ⛔ La conseguenza: il §3.1 è stato DELEGATO
+
+Non una correzione riga per riga — una **cessione di proprietà**. L'inventario
+dell'osservabilità ha oggi documenti vivi che lo possiedono, e tenerne qui una
+copia significa risincronizzarla a ogni loro movimento: il caso del 67% mostra
+che non succede, e che una copia invecchia **senza dirlo**.
+
+➡️ Questo documento resta su ciò che **nessun altro copre**: classificare i dati
+dello schema, mascherarli, **riprodurre** un caso altrove, e decidere **con quale
+identità** si guarda la produzione — più il **perimetro AI** (R7), che dal 25
+luglio non ha ancora una risposta e precede tutto il resto.
+
+### Le fasi non partono più da zero
+
+**Fase 0 — correlazione: 1 su 3 fatta.**
+
+| | |
+| --- | --- |
+| `request_id` nei log Python | ✅ **fatto** (consegna BE-8): filtro + `req=%(request_id)s` nel formatter. Il criterio di accettazione **n. 7** del §9 è soddisfatto |
+| persistere le **eccezioni non gestite** | 🔵 **aperto**: `ApiExceptionMiddleware` non scrive su `error_log` |
+| error tracker esterno sì/no | 🔵 aperto, ed è ancora una decisione di Tid |
+
+**Fase 1 — endpoint diagnostico: due contenuti su sette hanno già la sorgente.**
+Il punto 4 (*cronologia*) ha ora un lettore vero — la vista cucita e il pannello
+«Storia» — e il punto 7 (*frontiera del grafo*) era già servito da `passaggi/`.
+Il punto 6 (*correlazione per `tx_id`*) è diventato possibile su `event_log`
+adesso che la colonna c'è. ⭐ L'aggregatore ha meno da inventare di quanto il §5.3
+supponesse: **quello che manca è il lato che nessuno ha ancora provato**, non il
+materiale.
+
+### Tre cose nuove che l'analisi non poteva sapere
+
+1. ⭐ **Un errore adesso dice su QUALE cosa** è successo (cantiere del bersaglio,
+   chiuso: [brief-db-bersaglio-errore.md](../work-done/brief-db-bersaglio-errore.md)).
+   Per il **report diagnostico** è materiale gratis: l'entità da guardare non va
+   dedotta dalla prosa, viaggia su un canale suo;
+2. ⛔ **Decisione di Tid del 2026-08-24 che vincola il §5.3 e il §5.6**: un
+   diario tecnico **non diventa una superficie per tutti**. Se si mostra, è per i
+   tecnici e **dietro un permesso dichiarato**. Motivo: *«altrimenti continuiamo a
+   creare tabelle per le segnalazioni tecniche che poi qualcuno mette a video»*.
+   ⭐ Conferma il §5.6 invece di contraddirlo — ma lo rende una **regola**, non
+   una preferenza di disegno, e vale anche per il report diagnostico;
+3. 🔴 **R-1: il tempo, da solo, non ordina.** Le colonne di orario dei registri
+   hanno default `now()` (istante di **transazione**): 38 righe su 3 istanti. Ogni
+   cronologia diagnostica eredita il problema — il punto 4 della Fase 1 compreso.
+   Richiesta al team DB già scritta (§13 del brief `event_log`).
+
+### ➡️ Conclusione della rivalutazione
+
+L'impianto **non cambia**: due artefatti, cinque fasi, mascheratura in estrazione.
+Cambiano **il punto di partenza** (la Fase 0 è a un terzo, la Fase 1 ha già due
+sorgenti) e **due presupposti da rifare**: la misura del 67% e la frase
+sull'`actor`. ⚠️ Le questioni del §10.2 restano **tutte aperte** — nessuno dei due
+cantieri le ha toccate, e la prima (provider AI in produzione) precede ancora
+tutto il resto.
 
 ---
 
@@ -93,47 +177,36 @@ Ripresi dall'analisi originale, con un'aggiunta.
 
 È il cuore di questa revisione. Ogni riga è verificata sul repo.
 
-### 3.1 Osservabilità (tre strati, già in Anello 0)
+### 3.1 Osservabilità — ⛔ **non è più materia di questo documento** *(delegato il 2026-08-24)*
 
-Riferimento: [audit-e-tracciabilita.md](../../guide/audit-e-tracciabilita.md).
+Qui c'era l'inventario dei tre strati di log, i loro buchi e due riquadri di
+misure. **Non ci sta più**, e non perché sia sbagliato: perché nel frattempo
+quell'inventario ha **un proprietario vivo**, e una copia va risincronizzata a
+ogni movimento dell'originale — cioè invecchia in silenzio. Era già successo: il
+riquadro del 2026-08-03 dava il *67% di errori non nominabili* come prerequisito
+della Fase 1, e quel problema è stato **chiuso il giorno dopo**.
 
-| Cosa | Dove | Note |
-|---|---|---|
-| Richieste HTTP | [`dbops.request_log`](/dbzero/dbops/tabelle/request_log) | utente, path, `query_string`, status, durata, IP, UA, `error_code`, `idempotency_key`, `request_id`, `tx_id`, `cleanup_at` |
-| Sessioni JWT | [`dbops.sessioni_utente`](/dbzero/dbops/tabelle/sessioni_utente) | LOGIN/REFRESH/LOGOUT/SCADENZA/REVOCA + `jti` + `request_id` |
-| Errori DB | [`dbops.error_log`](/dbzero/dbops/tabelle/error_log) | alimentata da `script.fn_log_and_raise_error`, `context` jsonb + `tx_id` |
-| Esecuzioni funzioni/automazioni | [`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log) | `params`/`result` jsonb, `dry_run`, `sqlstate`, `error_context`, `rows_affected` |
-| Job headless | `maintenance.job_run_log` via `registered_job` | esito, meta, anti-overlap |
-| Interazioni AI | [`dbops.ai_query_log`](/dbzero/dbops/tabelle/ai_query_log) | `input_text`, `tools_called`, `response_text`, `request_id` |
-| Correlazione trasversale | `request_id` (HTTP) + `tx_id` ([`dbops.transaction_ids`](/dbzero/dbops/tabelle/transaction_ids), immutabile) | permette di attraversare i tre strati |
+➡️ **Dove vive adesso**
 
-**Buco verificato:** i log applicativi Python sono file di testo rotativi
-(`settings.py` → `LOGGING`) con formatter **privo di `request_id`**, e in
-`requirements.in` non c'è error tracking (nessun Sentry/structlog). Un traceback Python
-oggi **non è correlabile** alla richiesta che l'ha generato. È la Fase 0 (§5.2).
+| Cosa | Documento |
+| --- | --- |
+| Stato dei registri, i passi, cosa manca | [analisi-osservabilita-log.md](analisi-osservabilita-log.md) — il **piano**, §3-quater per lo stato |
+| `event_log`: scope emittente, RLS, `auth_user_id`, `tx_id`, `correlation_id`, `cleanup_at` | [brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md) |
+| Errori nominabili — seed, segnaposti, classi, presidi | **dieci brief chiusi** in `work-done`, dal 2026-08-04 al 19 (`brief-db-seed-messaggi-errore-mancanti`, `-round-2`, `brief-db-segnaposti-messaggi-errore`, `brief-db-be-classe-codici-errore`, `brief-db-be-terzo-lato-presidio-codici`, `brief-db-codice-errore-strutturato`, …) |
+| «Su QUALE entità è successo» — il bersaglio dell'errore | [brief-db-bersaglio-errore.md](../work-done/brief-db-bersaglio-errore.md) *(chiuso)* |
 
-> 🔴 **Aggiornamento 2026-08-03 — due registri di questa tabella non sono in
-> salute, e la Fase 1 li dà per buoni.** Misurato sul DB, non stimato:
->
-> - **`dbops.error_log`: il 67% delle righe (41.885 su 62.418) ha codice
->   `MESSAGGIO_NON_DEFINITO`.** Il codice non è a catalogo, la funzione ripiega
->   sul segnaposto, e siccome la tabella conserva la **FK** al messaggio e non
->   il codice in chiaro, il codice originale è **perduto** (verificato: non è
->   nel `context`). Il punto 6 della Fase 1 — «correlazione: ultime richieste e
->   errori con lo stesso `request_id`/`tx_id`» — su due terzi delle righe
->   restituirebbe voci che non sanno dire quale errore rappresentano.
->   Rimedio già pronto: [brief-db-seed-messaggi-errore-mancanti.md](../work-done/brief-db-seed-messaggi-errore-mancanti.md).
-> - **`vendite.event_log` è write-only**: scritto da due repository, **mai
->   riletto** (zero endpoint, zero consumatori). Non compare in questa tabella
->   ma è la timeline per entità dei domini di vendita, cioè materiale naturale
->   della Fase 1. Inoltre l'`actor` è popolato al 100% ma vale **sempre**
->   `service:django`: il punto 5 della Fase 1 («contesto identità») non può
->   ricostruire *chi* ha agito da lì.
->
-> Nessuno dei due cambia la tesi di questo documento — la **rafforzano**: sono
-> altri due modi in cui «guardare i dati di produzione» oggi non basta. Ma
-> vanno considerati prerequisiti della Fase 1, non dettagli.
-> Stato completo e piano: [analisi-osservabilita-log.md](analisi-osservabilita-log.md).
+➡️ **Cosa questo documento continua a chiedere all'osservabilità**, e sono due
+cose sole:
+
+1. **la correlazione**, che è ciò che permette di sapere *quale* entità
+   estrarre: `request_id` sulla richiesta HTTP e `tx_id` sulla transazione DB.
+   ⚠️ Non sono la stessa cosa e non stanno sulla stessa riga — `request_log` il
+   `tx_id` **non ce l'ha più** (tolto il 2026-08-24: quella riga nasce quando
+   l'unità di lavoro ha già chiuso);
+2. **la cronologia di un caso**, che oggi ha un lettore vero — la vista cucita
+   `script.vw_giornale_entita` e la scheda «Storia» del drawer fattura.
+   🔴 Con un limite che questo documento eredita: **il tempo, da solo, non
+   ordina** (default `now()` = istante di transazione). Vedi R-1.
 
 ### 3.2 Stato e storia di un'entità
 
@@ -187,10 +260,12 @@ scadenza: il registro estrazioni e i pacchetti ci vanno sopra, non su una regola
 > ultimo giro 2026-08-02) — quindi la scelta di appoggiarcisi regge. Due precisazioni
 > che non la invalidano ma vanno sapute:
 >
-> - lo standard è applicato alle `dbops.*` e **non ai log di dominio**:
->   `vendite.event_log`, `fatturazione_lotti_log` e `fatture_log` non hanno
->   `cleanup_at` e crescono senza policy. Per i pacchetti è irrilevante; diventa
->   rilevante se un domani il pacchetto includesse i log di dominio del caso;
+> - lo standard è applicato alle `dbops.*` e **non ai log di dominio**.
+>   ⚠️ **Aggiornato il 2026-08-24**: `vendite.event_log` la `cleanup_at` ora ce
+>   l'ha (arrivata col Passo 0); restano senza `fatturazione_lotti_log` e
+>   `fatture_log`, che crescono senza policy — è il **Passo D** del piano
+>   osservabilità. Per i pacchetti è irrilevante; diventa rilevante se un domani
+>   il pacchetto includesse i log di dominio del caso;
 > - su `error_log` restano **530 righe già scadute e non ancora rimosse**: il purge
 >   passa, ma non è a saldo zero. Da tenere presente se si dimensiona il TTL dei
 >   pacchetti sul comportamento osservato invece che su quello dichiarato.
@@ -206,7 +281,8 @@ eccezionale, non canale ordinario.*
 **B — Solo logging ed error tracking.** Necessaria, non sufficiente: un traceback dice
 *dove* si è rotto, non *su quale configurazione di dati* — e in un sistema con la logica
 nel DB la causa è quasi sempre lo stato. **Ma in ZeroERP non è «già fatto»**: manca lo
-strato applicativo correlato (§3.1). *Diventa la Fase 0, prerequisito di tutto.*
+strato applicativo correlato. *Diventa la Fase 0, prerequisito di tutto — e dal
+2026-08-24 il primo dei suoi tre punti è fatto (§5.2).*
 
 **C — Replica di staging anonimizzata.** L'analisi originale la rimanda per costo e
 latenza. **Va rivalutata al rialzo**: il criterio «il pacchetto supera i vincoli di
@@ -244,12 +320,14 @@ insufficiente.
 
 Senza questa fase non si sa nemmeno **quale** entità estrarre.
 
-- `request_id` nel formatter/filter di logging Python (contesto già disponibile via
-  `apps.core.services.request_context.get_request_id`).
-- Persistenza delle eccezioni **non gestite** — passano già da
+- ✅ **FATTO (2026-08-24, consegna BE-8)** — `request_id` nel formatter/filter di
+  logging Python: `settings.py` ha il filtro `request_id` e ogni riga porta
+  `req=%(request_id)s`. ⭐ Con lui è soddisfatto il **criterio di accettazione
+  n. 7** del §9 (un traceback è correlabile alla riga di `request_log`).
+- 🔵 **APERTO** — Persistenza delle eccezioni **non gestite** — passano già da
   `ApiExceptionMiddleware` — con codice, `request_id`, `tx_id`, traccia troncata.
   Destinazione naturale: `dbops.error_log` (oggi alimentata solo DB-side).
-- Decisione esplicita su un error tracker esterno: **se** lo si introduce, va trattato
+- 🔵 **APERTO** — Decisione esplicita su un error tracker esterno: **se** lo si introduce, va trattato
   come destinatario di dati personali (R3/R7) e richiede l'ok di Tid sulla dipendenza
   (memoria `feedback_autorizzazioni_esplicite`).
 

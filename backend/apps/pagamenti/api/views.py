@@ -27,7 +27,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
-from apps.pagamenti.services import pagamenti_service
+from apps.pagamenti.services import pagamenti_service, saldi_service
 
 AREA = "pagamenti"
 
@@ -387,3 +387,251 @@ class ApiDistintaRegistra(DomainAPIView):
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Abbinamento, code e saldi (slice 3)
+# ══════════════════════════════════════════════════════════════════
+
+
+class ApiRigaAbbina(DomainAPIView):
+    """POST /api/v1/pagamenti/righe/<id>/abbina/ — il denaro trova il suo posto."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_riga_abbina",
+        request=inline_serializer(
+            name="PagamentiRigaAbbina",
+            fields={
+                "fattura_id": serializers.IntegerField(),
+                "billing_account_id": serializers.IntegerField(),
+                "scadenza_id": serializers.IntegerField(required=False),
+                "forzata": serializers.BooleanField(required=False),
+                "motivo_forzatura": serializers.CharField(required=False),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Imputa via POST una riga a una fattura, e quando c'e' a una rata.
+    # 🔴 Il DOPPIO TEMPO della capienza passa di qui: il primo tentativo arriva
+    #    senza `forzata`, il database rifiuta con `E_RIGA_CONTABILE_CAPIENZA_SUPERATA`
+    #    (409) e un messaggio che porta gia' i numeri, e la conferma
+    #    dell'operatore torna con `forzata = true`. ⚠️ Il frontend riconosce quel
+    #    rifiuto dall'`ui_action` `confirm_and_retry`, non da un elenco di
+    #    codici cablato.
+    def post(self, request: Request, riga_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return pagamenti_service.abbina_riga(riga_id, dict(payload))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiRigheCoda(DomainAPIView):
+    """GET /api/v1/pagamenti/righe/ — la coda del riconciliatore."""
+
+    area_funzionale = AREA
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="pagamenti_righe_coda",
+        parameters=[
+            OpenApiParameter(
+                name="coda", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Quale coda: DA_ABBINARE (lavoro non ancora fatto) | "
+                    "SOSPESE (lavoro fatto che ha trovato un ostacolo) | TUTTE. "
+                    "⭐ Sono due mestieri diversi e due voci di menu, ma la "
+                    "stessa lista con il filtro gia' impostato."
+                ),
+            ),
+            OpenApiParameter(
+                name="billing_account_id", type=int,
+                location=OpenApiParameter.QUERY, required=False,
+                description="Filtro cliente.",
+            ),
+            OpenApiParameter(
+                name="data_da", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="Data contabile della distinta, da (ISO).",
+            ),
+            OpenApiParameter(
+                name="data_a", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="Data contabile della distinta, a (ISO).",
+            ),
+            OpenApiParameter(
+                name="order_by", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description="Whitelist: data_pagamento (default) | importo | stato | distinta.",
+            ),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="asc | desc (default desc).",
+            ),
+            OpenApiParameter(
+                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Numero pagina (default 1).",
+            ),
+            OpenApiParameter(
+                name="page_size", type=int, location=OpenApiParameter.QUERY,
+                required=False, description="Dimensione pagina (default 50, max 200).",
+            ),
+        ],
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET le righe da lavorare, di tutte le distinte.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        data = pagamenti_service.list_coda_righe(
+            coda=qp_str_upper(qp.get("coda")),
+            billing_account_id=qp_int_optional(
+                qp.get("billing_account_id"), "billing_account_id"
+            ),
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            page=qp_int_strict(qp.get("page"), "page", 1),
+            page_size=qp_int_strict(qp.get("page_size"), "page_size", 50),
+        )
+        return success_response(data)
+
+
+class ApiRateFuoriCapienza(DomainAPIView):
+    """GET /api/v1/pagamenti/rate/fuori-capienza/ — l'elenco che rende onesta la forzatura."""
+
+    area_funzionale = AREA
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="pagamenti_rate_fuori_capienza",
+        parameters=[
+            OpenApiParameter(
+                name="motivo", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "SOVRA_INCASSATA (e' entrato piu' del dovuto) | "
+                    "MOVIMENTO_CONTRARIO (un rimborso dove non era entrato "
+                    "niente). ⭐ Sono due popolazioni diverse in un elenco solo, "
+                    "e il motivo e' la prima colonna da guardare. "
+                    "Motivo fuori vocabolario -> 400."
+                ),
+            ),
+            OpenApiParameter(
+                name="billing_account_id", type=int,
+                location=OpenApiParameter.QUERY, required=False,
+                description="Filtro cliente.",
+            ),
+            OpenApiParameter(
+                name="order_by", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Whitelist: data_scadenza (default) | motivo | residuo | "
+                    "importo_rata | fattura."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="asc | desc (default desc).",
+            ),
+            OpenApiParameter(
+                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Numero pagina (default 1).",
+            ),
+            OpenApiParameter(
+                name="page_size", type=int, location=OpenApiParameter.QUERY,
+                required=False, description="Dimensione pagina (default 50, max 200).",
+            ),
+        ],
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET le rate uscite dalla banda di capienza.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        data = pagamenti_service.list_rate_fuori_capienza(
+            motivo=qp_str_upper(qp.get("motivo")),
+            billing_account_id=qp_int_optional(
+                qp.get("billing_account_id"), "billing_account_id"
+            ),
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            page=qp_int_strict(qp.get("page"), "page", 1),
+            page_size=qp_int_strict(qp.get("page_size"), "page_size", 50),
+        )
+        return success_response(data)
+
+
+class ApiRataSaldo(DomainAPIView):
+    """GET /api/v1/pagamenti/rate/<id>/saldo/ — i tre numeri di una rata."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_rata_saldo",
+        parameters=[
+            OpenApiParameter(
+                name="escludi_riga_id", type=int, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Esclude una riga contabile dal conto: serve a chiedere lo "
+                    "spazio PRIMA DI SE', cioe' a sapere se quella riga ci sta "
+                    "senza contarsi addosso."
+                ),
+            ),
+        ],
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET residuo, in lavorazione e incassato di una rata.
+    def get(self, request: Request, scadenza_id: int) -> JsonResponse:
+        return success_response(
+            saldi_service.saldo_rata(
+                scadenza_id,
+                escludi_riga_id=qp_int_optional(
+                    request.query_params.get("escludi_riga_id"), "escludi_riga_id"
+                ),
+            )
+        )
+
+
+class ApiFatturaSaldo(DomainAPIView):
+    """GET /api/v1/pagamenti/fatture/<id>/saldo/ — il saldo di un documento."""
+
+    area_funzionale = AREA
+    # ⭐ Lo consuma il drawer FATTURA, che vive in `vendite`: senza questo, per
+    #    vedere se una fattura e' pagata servirebbe la LETTURA su `pagamenti` —
+    #    cioe' allargare un permesso per comodita'. E' lo stesso pattern del
+    #    lookup cross-dominio: risponde il MINIMO su un documento gia' scelto.
+    # ⚠️ E sta qui e non in `vendite` per un vincolo, non per gusto: le chiamate
+    #    laterali fra moduli di pari livello non sono ammesse (api.md), quindi
+    #    `vendite` non puo' chiedere un saldo a `pagamenti`.
+    skip_area_check = True
+
+    @extend_schema(
+        operation_id="pagamenti_fattura_saldo",
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET residuo e in lavorazione di una fattura.
+    # ⚠️ `incassato` risponde `null`: a questo livello il database non lo sa
+    #    ancora dire, e ⛔ non si somma dalle rate (una riga puo' avere fattura
+    #    senza rata: il fondo fattura e' cosi').
+    def get(self, request: Request, fattura_id: int) -> JsonResponse:
+        return success_response(saldi_service.saldo_documento(fattura_id))
+
+
+class ApiFatturaRateSaldo(DomainAPIView):
+    """GET /api/v1/pagamenti/fatture/<id>/rate/ — le rate con il loro saldo."""
+
+    area_funzionale = AREA
+    # Stessa ragione del saldo documento: lo consuma il form dell'abbinamento,
+    # e risponde il minimo su una fattura gia' scelta.
+    skip_area_check = True
+
+    @extend_schema(
+        operation_id="pagamenti_fattura_rate",
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET le rate di una fattura, ciascuna col suo saldo.
+    # ⭐ Un giro solo e non uno per rata: il form le mostra tutte insieme, e N
+    #    chiamate per disegnare un menu sono N modi di essere lenti.
+    def get(self, request: Request, fattura_id: int) -> JsonResponse:
+        return success_response(saldi_service.saldi_rate_documento(fattura_id))

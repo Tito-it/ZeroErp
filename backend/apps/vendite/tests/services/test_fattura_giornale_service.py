@@ -93,7 +93,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_scope_propagato_alla_testata(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = (_RIGHE, 1, 0)
+        repo.list_giornale_entita.return_value = (_RIGHE, 1, 0, 0)
         get_fattura_giornale(fattura_id=7, auth_user_id=99)
         repo.get_fattura_testata.assert_called_once_with(7, auth_user_id=99)
 
@@ -102,7 +102,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_shape_risposta_e_paginazione(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = (_RIGHE, 7, 0)
+        repo.list_giornale_entita.return_value = (_RIGHE, 7, 0, 0)
         data = get_fattura_giornale(fattura_id=7, page=2, page_size=3)
         self.assertEqual(data["fattura_id"], 7)
         self.assertEqual(data["count"], 7)
@@ -119,7 +119,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_giornale_vuoto_non_e_un_errore(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = ([], 0, 0)
+        repo.list_giornale_entita.return_value = ([], 0, 0, 0)
         data = get_fattura_giornale(fattura_id=7)
         self.assertEqual(data["count"], 0)
         self.assertEqual(data["results"], [])
@@ -131,7 +131,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_entity_type_e_fattura(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = ([], 0, 0)
+        repo.list_giornale_entita.return_value = ([], 0, 0, 0)
         get_fattura_giornale(fattura_id=7)
         chiamata = repo.list_giornale_entita.call_args.kwargs
         self.assertEqual(chiamata["entity_type"], "FATTURA")
@@ -144,7 +144,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_ritirate_nascoste_di_default(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1)
+        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
         data = get_fattura_giornale(fattura_id=7)
         self.assertTrue(repo.list_giornale_entita.call_args.kwargs["escludi_ritirate"])
         # `count` e' cio' che si VEDE, non cio' che esiste.
@@ -157,7 +157,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_ritirate_incluse_su_richiesta(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1)
+        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
         data = get_fattura_giornale(fattura_id=7, includi_ritirate=True)
         self.assertFalse(repo.list_giornale_entita.call_args.kwargs["escludi_ritirate"])
         self.assertEqual(data["count"], 3)
@@ -174,7 +174,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_ordinamento_di_default_e_la_gravita(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1)
+        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
         get_fattura_giornale(fattura_id=7)
         chiamata = repo.list_giornale_entita.call_args.kwargs
         self.assertEqual(chiamata["sort_by"], "gravita")
@@ -186,7 +186,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_ordinamento_chiesto_arriva_al_repository(self, repo_cls):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
-        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1)
+        repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
         get_fattura_giornale(fattura_id=7, sort_by="quando", sort_dir="asc")
         chiamata = repo.list_giornale_entita.call_args.kwargs
         self.assertEqual(chiamata["sort_by"], "quando")

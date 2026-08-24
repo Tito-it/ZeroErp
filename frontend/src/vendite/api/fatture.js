@@ -38,3 +38,17 @@ export function getFatturaGiornale(
     params: { page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir },
   })
 }
+
+// ⭐ LA LISTA DEI DOCUMENTI FISCALI — la settima del ciclo attivo. Sorgente
+//    `vendite.vw_fatture_lista`, sullo stampo delle sei sorelle.
+// ⚠️ `data_da`/`data_a` filtrano la DATA DEL DOCUMENTO, non la competenza della
+//    commessa che l'ha generato: è la ragione per cui questa lista esiste.
+export function listFatture(params = {}) {
+  return api.get(`${BASE}/`, { params })
+}
+
+// ⚠️ `formato` e non `format`: quest'ultimo è un magic parameter di DRF e
+//    verrebbe intercettato prima della view.
+export function exportFatture(params = {}) {
+  return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
+}

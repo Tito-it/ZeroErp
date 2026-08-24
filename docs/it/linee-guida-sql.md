@@ -207,7 +207,7 @@ perde, e lascia un `W_BERSAGLIO_MALFORMATO` nel log.
 in 16 punti, dove porta il **nome di una tabella**.
 
 Piano e decisioni:
-[brief-db-bersaglio-errore.md](dev/work-in-progress/brief-db-bersaglio-errore.md).
+[brief-db-bersaglio-errore.md](dev/work-done/brief-db-bersaglio-errore.md).
 
 ⚠️ Il terzo è quello che sfugge, perché **non lo vede nessun cancello**: il codice
 è registrato, la classe c'è, il campo viaggia — e il messaggio è illeggibile lo

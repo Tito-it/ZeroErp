@@ -242,3 +242,36 @@ export function eliminaFatturaDaLotto(lottoId, fatturaId) {
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
+
+// ⭐ LA STORIA DEL LOTTO — «cosa è successo a questo lotto, in che ordine»: il
+//    lotto PIÙ le sue fatture, righe non-INFO. Sorgente
+//    `script.vw_giornale_entita`, la vista che cuce i registri di evento; sul
+//    lotto ne rispondono TRE (`EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`) più
+//    `FATTURA_LOG` per i documenti che contiene.
+//
+// ⭐ «Il lotto più le sue fatture» è una decisione (Tid, 2026-08-24): il lotto
+//    ripete «Esito fatture lotto · WARN» e il MOTIVO sta sulla fattura, perché
+//    la sua entità è la fattura. Un pannello limitato al lotto sarebbe onesto e
+//    nel giorno in cui serve non conterrebbe la risposta.
+//
+// ⛔ Da non confondere con `segnalazioni/`, che elenca i problemi APERTI da
+//    risolvere: qui c'è anche ciò che è andato bene e i tentativi superati.
+// ⚠️ 404 unificato inesistente/fuori scope, deciso dalla TESTATA: la vista da
+//    sola risponderebbe zero righe, cioè «nessuna storia» invece di «non lo
+//    vedi».
+// ⭐ Ordinamento e filtri sono del SERVER: la lista è paginata, quindi filtrare
+//    o riordinare qui lavorerebbe sulla sola pagina caricata.
+export function getLottoGiornale(
+  lottoId,
+  { page = 1, pageSize = 50, sortBy = 'gravita', sortDir = 'desc', info = false } = {},
+) {
+  return api.get(`${BASE}/${lottoId}/giornale/`, {
+    params: {
+      page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir,
+      // ⚠️ Solo quando serve: il default del server è «nascoste», e mandare
+      // `info=false` esplicito funzionerebbe uguale ma legherebbe il client a
+      // un default che è del backend.
+      ...(info ? { info: true } : {}),
+    },
+  })
+}

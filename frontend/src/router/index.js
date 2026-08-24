@@ -361,6 +361,12 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'ordini' }
         },
         {
+          path: 'vendite/fatture',
+          name: 'vendite-fatture',
+          component: () => import('../vendite/views/FattureListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'fatture' }
+        },
+        {
           path: 'vendite/ddt',
           name: 'vendite-ddt',
           component: () => import('../vendite/ddt/views/DdtView.vue'),
