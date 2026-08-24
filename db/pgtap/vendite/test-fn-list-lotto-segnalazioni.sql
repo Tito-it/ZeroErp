@@ -17,6 +17,10 @@
 -- 9)  Un nome fuori whitelist solleva...
 -- 10) ...e `messaggio` e' fuori whitelist di proposito
 -- 11) Un lotto non visibile SOLLEVA, non risponde zero righe
+-- 12) ⭐ Il BERSAGLIO esce dove c'e'
+-- 13) ⛔ ...e NON e' `fattura_id`: sono due entita' diverse
+-- 14) Il degrado: dove non c'e', `target` e' NULL — senza filtri per livello
+-- 15) 🔴 Il codice del ramo LOTTO scritto dal BACKEND (chiave `code`) si legge
 --
 -- Scopo:
 --  - La 7 e' quella che misura il difetto piu' facile da non vedere: `C/W/I` in
@@ -37,7 +41,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(11);
+SELECT plan(15);
 
 -- ============================================================
 -- 0) Riferimenti
@@ -242,6 +246,89 @@ SELECT throws_ok(
   'P0001',
   NULL,
   '11) un lotto non visibile solleva, non risponde zero righe'
+);
+
+
+-- ============================================================
+-- 12-15) Il bersaglio, e il codice che il backend scrive
+-- ============================================================
+-- ⚠️ Le due righe di questo blocco si inseriscono QUI e non nella fixture in
+--   testa, di proposito: le asserzioni 1-11 contano le segnalazioni, e due
+--   righe in piu' le avrebbero rotte tutte. Un test che allarga la fixture
+--   condivisa per il proprio caso costringe a riscrivere le verifiche degli
+--   altri — e a quel punto non si sa piu' se il rosso e' del codice o del
+--   ritocco.
+
+-- ⭐ La riga col BERSAGLIO. `bersagli` e' la chiave che il backend scrive in
+--   `meta` al momento dell'errore; la funzione la espone come `target`.
+--   ⛔ L'id punta a un documento DIVERSO da quello che ha fallito: e' tutto il
+--   senso del bersaglio, ed e' il test 13 a verificarlo.
+INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta)
+VALUES
+  ((SELECT id FROM tmp_fattura_sg), now(), 'pgtap critica con bersaglio', 'C', FALSE,
+   jsonb_build_object(
+       'task', 'pgtap',
+       'error_code', 'E_FATTURA_RETTIFICATA_SENZA_NUMERO',
+       'bersagli', jsonb_build_array(
+           jsonb_build_object('id', ((SELECT id FROM tmp_fattura_sg) + 1)::text,
+                              'type', 'FATTURA'))));
+
+-- 🔴 E una riga di LOTTO scritta **come la scrive il BACKEND**: chiave `code`,
+--   non `error_code`. INSERT diretto di proposito — passare da
+--   `fn_log_pipeline_fase` userebbe la chiave del DB e non riprodurrebbe il
+--   caso. Misurato il 2026-08-24: le righe col codice sono 17, tutte scritte
+--   cosi' e tutte di livello `C`.
+INSERT INTO vendite.fatturazione_lotti_log
+    (lotto_id, data_ora, messaggio, status, disabilitato, meta)
+VALUES
+  ((SELECT lotto_id FROM tmp_lotto_sg), now(), 'pgtap critica di lotto dal BE', 'C', FALSE,
+   jsonb_build_object('scope', 'LOTTO',
+                      'function_name', 'vendite.run_lotto_pipeline',
+                      'code', 'E_LOTTO_FATTURE_NUMERATE'));
+CREATE TEMP TABLE tmp_sg_bers AS
+SELECT s.origine, s.livello, s.error_code, s.fattura_id, s.target, s.messaggio
+  FROM vendite.fn_list_lotto_segnalazioni(
+         p_lotto_id => (SELECT lotto_id FROM tmp_lotto_sg),
+         p_solo_attive => false, p_limit => 100) s;
+
+-- 12) Esce dove c'e'.
+SELECT is(
+  (SELECT b.target FROM tmp_sg_bers b WHERE b.messaggio = 'pgtap critica con bersaglio'),
+  jsonb_build_array(jsonb_build_object('id', ((SELECT id FROM tmp_fattura_sg) + 1)::text,
+                                       'type', 'FATTURA')),
+  '12) il bersaglio esce, e l''array passa INTATTO (elementi id/type)'
+);
+
+-- 13) ⛔ E non e' il documento che ha fallito.
+--     E' il vincolo che conta piu' di tutti nella richiesta: `fattura_id` e' cio'
+--     che l'operatore sta gia' guardando, il bersaglio e' dove deve ANDARE.
+SELECT isnt(
+  (SELECT b.target -> 0 ->> 'id' FROM tmp_sg_bers b
+    WHERE b.messaggio = 'pgtap critica con bersaglio'),
+  (SELECT b.fattura_id::text FROM tmp_sg_bers b
+    WHERE b.messaggio = 'pgtap critica con bersaglio'),
+  '13) il bersaglio NON e'' fattura_id: ha fallito un documento, se ne apre un altro'
+);
+
+-- 14) Il degrado, e senza filtri per livello.
+--     ⚠️ Si asserisce su una riga `C` e su una `W`: se il bersaglio fosse legato
+--     alla criticita', la prima lo avrebbe e la seconda no per la ragione
+--     sbagliata. Qui entrambe le righe senza bersaglio sono NULL, e una delle
+--     due e' critica.
+SELECT is(
+  (SELECT count(*)::int FROM tmp_sg_bers b
+    WHERE b.origine = 'FATTURA' AND b.target IS NULL),
+  2,
+  '14) dove il bersaglio non c''e'' la colonna e'' NULL, a prescindere dal livello'
+);
+
+-- 15) 🔴 Il codice scritto dal BACKEND si legge.
+--     Prima si leggeva solo `error_code`, e questa riga sarebbe stata senza
+--     codice — proprio una delle critiche, cioe' quelle dove serve.
+SELECT is(
+  (SELECT b.error_code FROM tmp_sg_bers b WHERE b.messaggio = 'pgtap critica di lotto dal BE'),
+  'E_LOTTO_FATTURE_NUMERATE'::text,
+  '15) sul ramo LOTTO si legge anche la chiave `code`, quella del backend'
 );
 
 SELECT * FROM finish();

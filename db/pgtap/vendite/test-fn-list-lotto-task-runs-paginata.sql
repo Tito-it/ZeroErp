@@ -42,7 +42,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- senza questa riga non verrebbero esercitati.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(13);
+SELECT plan(19);
 
 -- ============================================================
 -- 0) Riferimenti
@@ -290,6 +290,87 @@ SELECT is(
              (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE))),
   '3|4',
   '13) una run spenta sparisce col default e torna con p_solo_attivi = false'
+);
+
+-- ============================================================
+-- 14-19) ⭐ I FILTRI CHIESTI DAL BACKEND (2026-08-24)
+--   Richiesta del backend, 2026-08-24. Analisi e limiti: testata del
+--   changeSet 20260824-11.
+--
+--   ⚠️ La riga 1 e' stata spenta dal test 13, quindi il default ne vede 3.
+--   Tutte le prove qui sotto girano con `p_solo_attivi = false`, cosi' la
+--   base e' 4 e i conteggi si leggono senza doverli correggere a mente.
+--
+--   ⭐ L'invariante che rende leggibile la lista, ed e' il test 16:
+--       total_count + esclusi_count = quante righe ci sono davvero.
+--   Senza, una lista filtrata e una lista vuota si leggono uguali — ed e'
+--   esattamente il motivo per cui il backend ha chiesto il conteggio.
+-- ============================================================
+CREATE TEMP TABLE tmp_filtri_ptr AS
+SELECT
+  (SELECT count(*)::int FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE,
+     500, 0, NULL, 'desc', FALSE, ARRAY['COMPLETATO'])) AS righe_completato,
+  (SELECT max(esclusi_count)::int FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE,
+     500, 0, NULL, 'desc', FALSE, ARRAY['COMPLETATO'])) AS esclusi_completato,
+  (SELECT max(total_count)::int FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE,
+     500, 0, NULL, 'desc', FALSE, ARRAY['COMPLETATO'])) AS total_completato,
+  -- ⚠️ Due misure, non una: «tutte e due gli stati» da solo non
+  --    discriminerebbe — 4 e' anche il risultato SENZA filtro. La seconda
+  --    prova aggiunge uno stato ASSENTE dal fixture: se l'array fosse letto
+  --    male (primo elemento soltanto, o OR mal formato) i due numeri
+  --    cambierebbero insieme.
+  (SELECT count(*)::int FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE,
+     500, 0, NULL, 'desc', FALSE, ARRAY['COMPLETATO','IN_ESECUZIONE'])) AS righe_due_stati,
+  (SELECT count(*)::int FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE,
+     500, 0, NULL, 'desc', FALSE, ARRAY['COMPLETATO','ERRORE'])) AS righe_stato_assente,
+  (SELECT count(*)::int FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE,
+     500, 0, NULL, 'desc', TRUE, NULL)) AS righe_solo_giro,
+  (SELECT max(esclusi_count)::int FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE,
+     500, 0, NULL, 'desc', TRUE, NULL)) AS esclusi_solo_giro,
+  (SELECT bool_and(giro_corrente) FROM vendite.fn_list_lotto_task_runs(
+     (SELECT lotto_id FROM tmp_lotto_ptr), NULL, NULL, FALSE)) AS tutte_correnti;
+
+SELECT is(
+  (SELECT righe_completato FROM tmp_filtri_ptr), 2,
+  '14) p_task_stato = {COMPLETATO}: restano le due run concluse'
+);
+
+SELECT is(
+  (SELECT esclusi_completato FROM tmp_filtri_ptr), 2,
+  '15) e esclusi_count dice quante ne ha tolte il filtro'
+);
+
+SELECT is(
+  (SELECT total_completato + esclusi_completato FROM tmp_filtri_ptr), 4,
+  '16) ⭐ invariante: total_count + esclusi_count = le righe che ci sono davvero'
+);
+
+SELECT is(
+  (SELECT righe_due_stati || '|' || righe_stato_assente FROM tmp_filtri_ptr),
+  '4|2',
+  '17) l''array somma gli stati (4) e uno stato assente non aggiunge nulla (2)'
+);
+
+-- ⚠️ Il lotto di prova non e' mai passato dal runner, quindi in event_log non
+--   c'e' nessun PIPELINE_STARTED: l'ancora e' NULL. Il contratto dice che
+--   allora TUTTO conta come corrente — non c'e' nessuna corsa precedente da
+--   cui distinguersi — e il filtro non deve nascondere niente.
+SELECT is(
+  (SELECT righe_solo_giro || '|' || esclusi_solo_giro FROM tmp_filtri_ptr),
+  '4|0',
+  '18) senza ancora (lotto mai passato dal runner) il filtro giro non toglie nulla'
+);
+
+SELECT ok(
+  (SELECT tutte_correnti FROM tmp_filtri_ptr),
+  '19) e la colonna giro_corrente lo dice riga per riga, non solo nel conteggio'
 );
 
 SELECT * FROM finish();
