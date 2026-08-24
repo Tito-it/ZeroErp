@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_accoda_stampe_lotto.md" %}
 # ⚙️ Funzione `fn_accoda_stampe_lotto`
 
 ```sql

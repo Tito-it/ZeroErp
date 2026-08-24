@@ -15,7 +15,7 @@
 >
 > **Da qui in avanti si legge come riferimento**, non come lavoro: formula,
 > codici errore, contatori e trappole restano validi. Lo stato del cantiere sta
-> in [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §9.
+> in [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §9.
 
 ---
 
@@ -27,12 +27,12 @@
 > che è il difetto che questo cantiere ha già pagato altrove. **La storia sta in
 > git**: qui resta solo ciò che serve adesso.
 >
-> **Fonte di verità sullo stato**: [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §9.
+> **Fonte di verità sullo stato**: [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §9.
 > Questo documento è il **contratto verso il BE** — cosa il DB espone, cosa il BE
 > deve cablare, e dove i due si incontrano.
 >
 > **Fratello**: [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) (step DRAFT).
-> **Lavoro applicativo a valle**: [piano-be-fe-satelliti-fattura.md](../work-in-progress/piano-be-fe-satelliti-fattura.md).
+> **Lavoro applicativo a valle**: [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md).
 
 ---
 

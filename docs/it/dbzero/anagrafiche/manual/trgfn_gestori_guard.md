@@ -14,7 +14,7 @@
 >
 **Funzioni di supporto:**
 >
-[dbops.fn_log_and_raise_error](/dbzero/dbops/funzioni/fn_log_and_raise_error)
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
@@ -58,7 +58,7 @@ La funzione implementa **tre regole principali**:
    * In caso contrario, invoca:
 
      ```plpgsql
-     dbops.fn_log_and_raise_error(
+     script.fn_log_and_raise_error(
          'database',
          TG_NAME,
          p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
@@ -146,7 +146,7 @@ Valore di ritorno:
 
 La funzione non esegue `RAISE EXCEPTION` direttamente, ma delega a:
 
-* `dbops.fn_log_and_raise_error(...)`
+* `script.fn_log_and_raise_error(...)`
 * `script.fn_log_and_raise_error(...)`
 
 che gestiscono in modo centralizzato **logging e generazione dell'eccezione**.
@@ -178,7 +178,7 @@ La funzione dipende da:
 
 * **Funzioni esterne**
 
-  * `dbops.fn_log_and_raise_error(...)`
+  * `script.fn_log_and_raise_error(...)`
   * `script.fn_log_and_raise_error(...)`
 
 La corretta configurazione di queste funzioni e della tabella dei messaggi è fondamentale per avere errori tracciati e comprensibili.

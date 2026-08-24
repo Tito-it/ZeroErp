@@ -8,6 +8,8 @@
 
 from typing import Any
 
+from apps.core.services.db_error_fields import Bersaglio
+
 # Modello errore applicativo unico riusabile da tutti i servizi Django.
 
 
@@ -25,6 +27,8 @@ class ServiceError(Exception):
         tx_id: str | None = None,
         retryable: bool = False,
         context: dict[str, Any] | None = None,
+        fields: tuple[str, ...] | None = None,
+        targets: tuple[Bersaglio, ...] | None = None,
     ) -> None:
         super().__init__(detail or message)
         self.code = code
@@ -34,3 +38,12 @@ class ServiceError(Exception):
         self.tx_id = tx_id
         self.retryable = retryable
         self.context = context or {}
+        # ⭐ I due canali strutturati del database, dal 2026-08-24. Prima
+        #    esistevano solo per il `DatabaseError` che arriva NUDO al
+        #    middleware: appena un service traduceva — cioe' sempre, in ogni
+        #    dominio — il campo da correggere e il bersaglio si perdevano qui.
+        #    ⚠️ `fields` NON sostituisce la convenzione `context={"field": ...}`
+        #    dei 62 punti che costruiscono un ServiceError a mano: quella resta,
+        #    e il translator la legge per prima (e' l'esplicito del chiamante).
+        self.fields = fields
+        self.targets = targets

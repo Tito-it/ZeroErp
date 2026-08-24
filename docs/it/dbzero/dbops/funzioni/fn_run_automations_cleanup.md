@@ -25,6 +25,12 @@ DECLARE
   v_rows integer;
   v_params jsonb;
   v_rule_type text;
+  -- ⭐ Le tre variabili del rifiuto: una tabella che si oppone non ferma il
+  --   giro, ma non sparisce nemmeno — il suo SQLSTATE e il suo messaggio
+  --   finiscono nell'audit.
+  v_sqlstate text;
+  v_errmsg text;
+  v_errctx text;
 BEGIN
 
 /*
@@ -166,60 +172,132 @@ BEGIN
           CONTINUE;
         END IF;
 
-        v_rows := dbops.fn_apply_cleanup_at(
-          rtab.schema_name,
-          rtab.table_name,
-          v_cleanup_col,
-          v_base_col,
-          v_ttl_days,
-          v_apply_on_update,
-          p_dry_run
-        );
+        BEGIN
+          v_rows := dbops.fn_apply_cleanup_at(
+            rtab.schema_name,
+            rtab.table_name,
+            v_cleanup_col,
+            v_base_col,
+            v_ttl_days,
+            v_apply_on_update,
+            p_dry_run
+          );
 
-        PERFORM dbops.fn_audit_log_once(
-          p_function_name => 'dbops.fn_run_automations_cleanup',
-          p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
-          p_rule_type     => v_rule_type,
-          p_exec_mode     => p_exec_mode,
-          p_parts         => ARRAY[v_rule_type],
-          p_dry_run       => p_dry_run,
-          p_rows_affected => v_rows,
-          p_params        => jsonb_build_object(
-                              'table', rtab.schema_name||'.'||rtab.table_name,
-                              'cleanup_column', v_cleanup_col,
-                              'base_ts_column', v_base_col,
-                              'ttl_days', v_ttl_days,
-                              'apply_on_update', v_apply_on_update
-                            ),
-          p_message       => 'cleanup_at calcolato'
-        );
+          PERFORM dbops.fn_audit_log_once(
+            p_function_name => 'dbops.fn_run_automations_cleanup',
+            p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
+            p_rule_type     => v_rule_type,
+            p_exec_mode     => p_exec_mode,
+            p_parts         => ARRAY[v_rule_type],
+            p_dry_run       => p_dry_run,
+            p_rows_affected => v_rows,
+            p_params        => jsonb_build_object(
+                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                'cleanup_column', v_cleanup_col,
+                                'base_ts_column', v_base_col,
+                                'ttl_days', v_ttl_days,
+                                'apply_on_update', v_apply_on_update
+                              ),
+            p_message       => 'cleanup_at calcolato'
+          );
+        EXCEPTION
+          -- ⛔ Un annullamento resta un annullamento: se qualcuno ferma il job,
+          --    il job si ferma. Non e' una tabella che rifiuta.
+          WHEN query_canceled THEN
+            RAISE;
+          -- ⭐ Tutto il resto: la tabella viene SALTATA, non subita. Prima di
+          --    questa rete un solo veto (un trigger append-only, un guard sul
+          --    DELETE dei log) faceva morire l'INTERO giro: le tabelle che
+          --    venivano dopo non venivano piu' pulite, e nessuno lo sapeva.
+          --    ⚠️ Lo status e' ERROR e non WARN di proposito: i WARN di questa
+          --    funzione sono salti DICHIARATI (esclusa, senza colonna, senza
+          --    ttl). Questo non e' dichiarato — e' una tabella che si e'
+          --    opposta, e va distinta a colpo d'occhio.
+          WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS
+              v_sqlstate = RETURNED_SQLSTATE,
+              v_errmsg   = MESSAGE_TEXT,
+              v_errctx   = PG_EXCEPTION_CONTEXT;
+            PERFORM dbops.fn_audit_log_once(
+              p_function_name => 'dbops.fn_run_automations_cleanup',
+              p_status        => 'ERROR',
+              p_rule_type     => v_rule_type,
+              p_exec_mode     => p_exec_mode,
+              p_parts         => ARRAY[v_rule_type],
+              p_dry_run       => p_dry_run,
+              p_sqlstate      => v_sqlstate,
+              p_error_context => v_errctx,
+              p_params        => jsonb_build_object(
+                                  'table', rtab.schema_name||'.'||rtab.table_name,
+                                  'cleanup_column', v_cleanup_col,
+                                  'skip_reason', 'BLOCKED_BY_TABLE'
+                                ),
+              p_message       => v_errmsg
+            );
+        END;
 
       ELSIF v_rule_type = 'CLEANUP_PURGE' THEN
         v_batch_limit := COALESCE((v_params->>'batch_limit')::integer, 5000);
 
-        v_rows := dbops.fn_purge_cleanup_expired(
-          rtab.schema_name,
-          rtab.table_name,
-          v_cleanup_col,
-          v_batch_limit,
-          p_dry_run
-        );
+        BEGIN
+          v_rows := dbops.fn_purge_cleanup_expired(
+            rtab.schema_name,
+            rtab.table_name,
+            v_cleanup_col,
+            v_batch_limit,
+            p_dry_run
+          );
 
-        PERFORM dbops.fn_audit_log_once(
-          p_function_name => 'dbops.fn_run_automations_cleanup',
-          p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
-          p_rule_type     => v_rule_type,
-          p_exec_mode     => p_exec_mode,
-          p_parts         => ARRAY[v_rule_type],
-          p_dry_run       => p_dry_run,
-          p_rows_affected => v_rows,
-          p_params        => jsonb_build_object(
-                              'table', rtab.schema_name||'.'||rtab.table_name,
-                              'cleanup_column', v_cleanup_col,
-                              'batch_limit', v_batch_limit
-                            ),
-          p_message       => 'cleanup eseguito'
-        );
+          PERFORM dbops.fn_audit_log_once(
+            p_function_name => 'dbops.fn_run_automations_cleanup',
+            p_status        => CASE WHEN p_dry_run THEN 'DRYRUN' ELSE 'OK' END,
+            p_rule_type     => v_rule_type,
+            p_exec_mode     => p_exec_mode,
+            p_parts         => ARRAY[v_rule_type],
+            p_dry_run       => p_dry_run,
+            p_rows_affected => v_rows,
+            p_params        => jsonb_build_object(
+                                'table', rtab.schema_name||'.'||rtab.table_name,
+                                'cleanup_column', v_cleanup_col,
+                                'batch_limit', v_batch_limit
+                              ),
+            p_message       => 'cleanup eseguito'
+          );
+        EXCEPTION
+          -- ⛔ Un annullamento resta un annullamento: se qualcuno ferma il job,
+          --    il job si ferma. Non e' una tabella che rifiuta.
+          WHEN query_canceled THEN
+            RAISE;
+          -- ⭐ Tutto il resto: la tabella viene SALTATA, non subita. Prima di
+          --    questa rete un solo veto (un trigger append-only, un guard sul
+          --    DELETE dei log) faceva morire l'INTERO giro: le tabelle che
+          --    venivano dopo non venivano piu' pulite, e nessuno lo sapeva.
+          --    ⚠️ Lo status e' ERROR e non WARN di proposito: i WARN di questa
+          --    funzione sono salti DICHIARATI (esclusa, senza colonna, senza
+          --    ttl). Questo non e' dichiarato — e' una tabella che si e'
+          --    opposta, e va distinta a colpo d'occhio.
+          WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS
+              v_sqlstate = RETURNED_SQLSTATE,
+              v_errmsg   = MESSAGE_TEXT,
+              v_errctx   = PG_EXCEPTION_CONTEXT;
+            PERFORM dbops.fn_audit_log_once(
+              p_function_name => 'dbops.fn_run_automations_cleanup',
+              p_status        => 'ERROR',
+              p_rule_type     => v_rule_type,
+              p_exec_mode     => p_exec_mode,
+              p_parts         => ARRAY[v_rule_type],
+              p_dry_run       => p_dry_run,
+              p_sqlstate      => v_sqlstate,
+              p_error_context => v_errctx,
+              p_params        => jsonb_build_object(
+                                  'table', rtab.schema_name||'.'||rtab.table_name,
+                                  'cleanup_column', v_cleanup_col,
+                                  'skip_reason', 'BLOCKED_BY_TABLE'
+                                ),
+              p_message       => v_errmsg
+            );
+        END;
       END IF;
     END LOOP;
   END LOOP;
@@ -227,18 +305,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_cleanup(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS '
-Orchestratore cleanup_at con regole in dbops.automation_rules_tbl.
-
-Regole supportate:
-- CLEANUP_AT: calcola cleanup_at con TTL fisso.
-- CLEANUP_PURGE: elimina record con cleanup_at scaduto (batch).
-
-Parametri:
-- p_exec_mode: modalità esecuzione (AUTO/CI/SCHEDULED).
-- p_schemas: scope schemi (NULL -> resolve da automation_scope).
-- p_dry_run: se true, nessuna modifica e logging DRYRUN.
-';
+IS 'Orchestratore cleanup_at con regole in dbops.automation_rules_tbl. Regole supportate: CLEANUP_AT (calcola cleanup_at con TTL fisso) e CLEANUP_PURGE (elimina i record scaduti, a batch). Parametri: p_exec_mode (AUTO/CI/SCHEDULED), p_schemas (scope schemi, NULL -> resolve da automation_scope), p_dry_run. ⭐ rev 2026-08-23: una tabella che RIFIUTA di essere pulita non fa piu'' morire il giro. Prima non c''era nessun EXCEPTION nel doppio ciclo, quindi un solo veto — un trigger append-only, il guard sul DELETE dei log — fermava l''intera passata e le tabelle successive non venivano piu'' pulite, senza che nessuno lo sapesse. Adesso la tabella viene saltata e il rifiuto lascia una riga ERROR in dbops.audit_log con SQLSTATE e contesto (skip_reason = BLOCKED_BY_TABLE): e'' il quarto membro della famiglia di salti che la funzione aveva gia'' (EXCLUDED, NO_CLEANUP_COLUMN, MISSING_TTL_DAYS, MISSING_BASE_TS_COLUMN). ⚠️ status ERROR e non WARN di proposito: i WARN sono salti DICHIARATI, questo e'' una tabella che si e'' opposta. ⛔ query_canceled si ri-solleva: un annullamento resta un annullamento. ⚠️ Ogni regola gira ora in una sottotransazione, che e'' cio'' che un blocco EXCEPTION implica.';
 ```
 
 ---

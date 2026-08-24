@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI SCRIVE `ESEGUITO`: UN TRIGGER, NON CHI SE LO RICORDA — passo S1-16
+#   pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.1 S1-16 · Decisione: brief madre, D11
+#
+# ── TERZO E ULTIMO DEI PASSI A ORDINE OBBLIGATO ────────────────────────
+#   -49 il CHECK · -50 la matrice · -51 (questo) chi lo scrive.
+#
+# ── ⭐ PERCHE' UN TRIGGER E NON UNA RIGA DENTRO LA MADRE DEL POSTING ───
+#   Perche' scatta sul FATTO e non su chi se lo ricorda. La madre del posting
+#   (lotto 4) non e' l'unica strada per cui una riga contabile puo' finire
+#   registrata: c'e' la correzione a mano, ci sara' l'import da flusso, ci
+#   sara' il ri-posting. Una riga di codice dentro UNA di quelle strade
+#   protegge quella strada; un trigger sulla tabella protegge il dato.
+#
+#   ⭐ Ed e' quello che rende C-2 e C-3 non RAGGIUNGIBILI invece che
+#   tamponati: appena il fondo esce da ASSEGNATO, i tre lettori che filtrano
+#   su quello stato smettono di vederlo — senza che nessuno dei tre cambi.
+#
+# ── ⚠️ SCRIVE DA `pagamenti` VERSO `vendite`: TRE COSE VERIFICATE ──────
+#   1) `vendite.fatture_fondi_fattura_source` **non ha RLS**, quindi il
+#      trigger non incontra il problema «il padre non lo vedo» — che
+#      altrimenti avrebbe richiesto una SECURITY DEFINER;
+#   2) `script.trgfn_lock_columns` su quella tabella blocca `importo`,
+#      `fattura_sorgente_id`, `tipo_fondo_fattura_id` e `origine`: **`stato`
+#      non e' fra quelle**, quindi il trigger puo' scriverlo;
+#   3) scrivendo `stato` fa scattare `vendite.trgfn_fondi_source_guard_transizione`:
+#      e' il motivo per cui la matrice (-50) deve essere gia' applicata.
+#
+# ── ⚠️ «STATO REGISTRATO» = `POSTATA`, E OGGI E' UNO SOLO ──────────────
+#   Il confronto e' contro `codice_interno` — la chiave IMMUTABILE, mai
+#   contro `codice`, che l'utente puo' rinominare (linee-guida-sql §6c/§6d).
+#   ⛔ Non si e' aggiunta una quarta bandiera al catalogo (`is_registrato`)
+#   accanto a is_postabile / is_final / richiede_abbinamento: sarebbe una
+#   colonna per un insieme di UNO, in uno schema che questo lotto non
+#   doveva toccare. 🔵 Il giorno in cui gli stati registrati diventassero due,
+#   la bandiera diventa la mossa giusta — e questo commento e' il posto dove
+#   chi arriva lo legge.
+#
+# ── ⚠️ TRE CONDIZIONI, E NESSUNA E' DECORATIVA ─────────────────────────
+#   `fondo_source_id IS NOT NULL` — la riga non viene da un fondo: niente da
+#   marcare, ed e' il caso della stragrande maggioranza delle righe.
+#   `attivo IS TRUE` — una riga disattivata non e' in nessun conto: marcarla
+#   come eseguita direbbe che il denaro si e' mosso quando non conta.
+#   `stato = 'ASSEGNATO'` sull'atto — l'UPDATE non forza nulla: se l'atto e'
+#   gia' ESEGUITO (ri-posting) non tocca niente ed e' IDEMPOTENTE; se e'
+#   ANNULLATO o DISPONIBILE non lo resuscita, perche' una transizione da li'
+#   sarebbe comunque rifiutata dalla matrice e l'errore accuserebbe il
+#   trigger sbagliato.
+#
+# Verifica: db/pgtap/vendite/test-fondo-fattura-eseguito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-51-create-trgfn-righe-marca-fondo-eseguito-mctit.yaml
+
+  - changeSet:
+      id: 20260821-51-create-trgfn-righe-marca-fondo-eseguito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il trigger che porta l'atto di fondo fattura a ESEGUITO quando la riga contabile che
+        ne nasce entra in POSTATA. Scatta sul fatto e non su chi se lo ricorda: la madre del
+        posting non e' l'unica strada per cui una riga puo' finire registrata. E' cio' che
+        rende i difetti C-2 e C-3 non raggiungibili invece che tamponati — appena l'atto
+        esce da ASSEGNATO, i tre lettori che filtrano su quello stato smettono di vederlo.
+        Idempotente: l'UPDATE tocca solo un atto ancora ASSEGNATO.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+                columnName: fondo_source_id
+            # La matrice (-50) dev'esserci: il trigger scrive uno stato che il
+            # guard delle transizioni deve gia' ammettere.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_fondi_source_guard_transizione'
+                     AND pg_get_functiondef(p.oid) LIKE '%ESEGUITO%'
+            # Lo stato registrato esiste a catalogo: senza, il confronto
+            # sarebbe sempre falso e il trigger un no-op silenzioso.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pagamenti.vendite_contabili_righe_stati
+                   WHERE codice_interno = 'POSTATA'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice pagamenti.vendite_contabili_righe_stati.codice_interno%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Quando la riga contabile nata da un fondo fattura entra
+                  --   in uno stato REGISTRATO, l'atto che l'ha generata passa
+                  --   a ESEGUITO.
+                  --
+                  -- ⭐ Perche' qui e non nella madre del posting: la madre non
+                  --    e' l'unica strada per cui una riga finisce registrata
+                  --    (correzione a mano, import da flusso, ri-posting). Un
+                  --    trigger sulla tabella protegge il DATO, una riga dentro
+                  --    una funzione protegge QUELLA funzione.
+                  --
+                  -- ⚠️ Scrive da `pagamenti` verso `vendite`: quella tabella
+                  --    non ha RLS e `stato` non e' fra le colonne bloccate da
+                  --    trgfn_lock_columns. Ma fa scattare il guard delle
+                  --    transizioni del fondo: e' il motivo dell'ordine
+                  --    obbligato -49 -> -50 -> -51.
+                  --
+                  -- Uso: AFTER INSERT OR UPDATE OF stato_id FOR EACH ROW
+                  -- =========================================================
+
+                  -- La riga non viene da un fondo: e' il caso della
+                  -- stragrande maggioranza, e non c'e' niente da marcare.
+                  IF NEW.fondo_source_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Una riga disattivata non e' in nessun conto: dire che il
+                  -- denaro si e' mosso sarebbe falso.
+                  IF NEW.attivo IS NOT TRUE THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Nessun movimento di stato: niente da marcare.
+                  IF TG_OP = 'UPDATE' AND NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT s.codice_interno
+                    INTO v_codice
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.id = NEW.stato_id;
+
+                  -- ⚠️ Confronto contro codice_interno, la chiave immutabile:
+                  --    `codice` e' l'etichetta e l'utente puo' rinominarla.
+                  IF v_codice IS DISTINCT FROM 'POSTATA' THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- ⭐ Idempotente e non forzante: si tocca solo un atto
+                  --    ancora ASSEGNATO. Un atto gia' ESEGUITO (ri-posting)
+                  --    non cambia; uno ANNULLATO o DISPONIBILE non si
+                  --    resuscita — quella transizione la matrice la
+                  --    rifiuterebbe, e l'errore accuserebbe questo trigger
+                  --    invece di chi ha portato l'atto dov'e'.
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET stato = 'ESEGUITO'
+                   WHERE s.id = NEW.fondo_source_id
+                     AND s.stato = 'ASSEGNATO';
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()
+              IS 'Porta l''atto di fondo fattura (vendite.fatture_fondi_fattura_source) a ESEGUITO quando la riga contabile che ne nasce entra in POSTATA. Nasce il 2026-08-21 col lotto 3 del cantiere incassi (S1-16, decisione D11). ⭐ E'' un trigger e non una riga dentro la madre del posting perche'' scatta sul FATTO: la madre non e'' l''unica strada per cui una riga puo'' finire registrata (correzione a mano, import da flusso, ri-posting), e un trigger sulla tabella protegge il dato invece di proteggere una funzione. ⭐ Effetto strutturale: i tre lettori dei fondi (fn_sync_contabili_fondo_fattura, fn_applica_fondi_fattura, vw_fondi_fattura_da_decidere) filtrano su ASSEGNATO o DISPONIBILE, quindi un atto che passa a ESEGUITO esce da tutti e tre senza che nessuno di loro cambi: e'' cosi'' che i difetti C-2 (il sync che riscriveva una riga gia'' registrata) e C-3 (il fondo interamente postato che si auto-annullava) smettono di essere raggiungibili. ⚠️ Scrive da pagamenti verso vendite: quella tabella non ha RLS e `stato` non e'' fra le colonne bloccate dal lock, ma l''UPDATE fa scattare vendite.trgfn_fondi_source_guard_transizione — da cui l''ordine obbligato CHECK (20260821-49) -> matrice (-50) -> trigger (questo). ⚠️ Idempotente: l''UPDATE filtra stato = ASSEGNATO, quindi un ri-posting non cambia nulla e un atto ANNULLATO non viene resuscitato. ⚠️ «Stato registrato» e'' oggi POSTATA e basta, confrontato per codice_interno; se un giorno gli stati registrati diventassero due, la mossa giusta e'' una bandiera di catalogo accanto a is_postabile/is_final/richiede_abbinamento.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_z90_marca_fondo_eseguito_ins_upd
+                ON pagamenti.vendite_contabili_righe;
+
+              -- ⚠️ Fase z90 e non a10: non e' un guard che rifiuta, e' un
+              --    effetto che segue. Va DOPO i guard, che devono poter
+              --    rifiutare la riga prima che l'atto venga marcato.
+              CREATE TRIGGER trg_vendite_contabili_righe_z90_marca_fondo_eseguito_ins_upd
+                AFTER INSERT OR UPDATE OF stato_id ON pagamenti.vendite_contabili_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_z90_marca_fondo_eseguito_ins_upd
+                ON pagamenti.vendite_contabili_righe;
+
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito();

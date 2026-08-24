@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/vw_costo_medio_globale.md" %}
 # 🔍 View `vw_costo_medio_globale`
 
 ```sql

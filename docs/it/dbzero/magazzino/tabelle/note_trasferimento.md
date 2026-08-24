@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/note_trasferimento.md" %}
 # 📚 Tabella `note_trasferimento`
 
 ## 🗂️ Campi principali

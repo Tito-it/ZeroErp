@@ -20,19 +20,31 @@ DECLARE
   v_col_name             text := TG_ARGV[1];
 BEGIN
   -- =========================================================
-  -- Defense-in-depth: verifica che l'utente corrente abbia
+  -- Difesa in profondita': verifica che l'utente corrente abbia
   -- scope sull'emittente fiscale della riga.
   --
-  -- Modalita' (TG_ARGV[0]):
-  --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id,
-  --       si risolve via anagrafiche.emittenti_fiscali
-  --   'fattura' = la colonna contiene fattura_id,
-  --       si risolve via vendite.fatture -> emittenti_fiscali
-  --   'fiscale' = la colonna contiene gia' emittente_fiscale_id
-  --       (convenzione PK), nessuna risoluzione
+  -- Modalita' (TG_ARGV[0]) — la risoluzione vive tutta in
+  -- script.fn_resolve_emittente_fiscale_id:
+  --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id
+  --   'fattura'        = la colonna contiene fattura_id
+  --   'fiscale'        = la colonna E' gia' emittente_fiscale_id
+  --   'contabile'      = la colonna contiene contabile_id, e il
+  --                      perimetro si deriva dal CONTO DI INCASSO
+  --                      della distinta (D5)
   --
   -- Se app.current_user_id non e' settato (batch job) -> skip.
-  -- Se emittente non risolvibile -> skip (dati non ancora linkati).
+  -- Se emittente non risolvibile -> skip (nessun padrone).
+  --
+  -- ⭐ Rev 2026-08-22 (lotto 6, S3-4). La risoluzione era QUI, e
+  --   il guard e' SECURITY INVOKER: nel modo 'fattura' leggeva
+  --   vendite.fatture sotto row security, e per un utente fuori
+  --   perimetro quella lettura dava ZERO RIGHE. Emittente NULL ->
+  --   ramo «non risolvibile» -> RETURN NEW. Il guard si spegneva
+  --   esattamente nel caso che esiste per coprire, e il controllo
+  --   di integrita' referenziale — che gira fuori dalla row
+  --   security — non si opponeva: la riga entrava.
+  --   Adesso la risoluzione la fa una SECURITY DEFINER, che legge
+  --   tutto; qui resta solo l'applicazione della decisione.
   -- =========================================================
 
   -- 1. Leggi user_id dalla sessione PG
@@ -57,28 +69,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- 3. Risolvi emittente_fiscale_id in base alla modalita'
-  IF v_mode = 'soggetto_ruolo' THEN
-    SELECT ef.id
-      INTO v_emittente_fiscale_id
-      FROM anagrafiche.emittenti_fiscali ef
-     WHERE ef.soggetto_ruolo_id = v_col_value;
-
-  ELSIF v_mode = 'fattura' THEN
-    SELECT ef.id
-      INTO v_emittente_fiscale_id
-      FROM vendite.fatture f
-      JOIN anagrafiche.emittenti_fiscali ef
-        ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
-     WHERE f.id = v_col_value;
-
-  ELSIF v_mode = 'fiscale' THEN
-    -- Convenzione PK: la colonna E' gia' emittente_fiscale_id.
-    v_emittente_fiscale_id := v_col_value;
-  END IF;
+  -- 3. Risolvi l'emittente FUORI dalla row security.
+  v_emittente_fiscale_id :=
+      script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
 
   IF v_emittente_fiscale_id IS NULL THEN
-    RETURN NEW;  -- emittente non risolvibile
+    -- ⭐ Nessun padrone: dati non ancora collegati, oppure una
+    --   distinta INTERNA (fondo fattura, compensazione) che non e'
+    --   il canale di nessuno. Prima questo ramo raccoglieva anche
+    --   i documenti altrui; adesso no.
+    RETURN NEW;
   END IF;
 
   -- 4. Verifica scope (canonica auth_user_id, bypass SUPER_ADMIN)
@@ -92,6 +92,7 @@ BEGIN
         'detail', 'Utente non autorizzato per emittente fiscale',
         'auth_user_id', v_auth_user_id,
         'emittente_fiscale_id', v_emittente_fiscale_id,
+        'modo', v_mode,
         'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
       ),
       NULL::uuid,
@@ -108,7 +109,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.trgfn_guard_emittente_scope()
-IS 'Defense-in-depth: blocca INSERT/UPDATE se utente non ha scope su emittente fiscale. Modalita TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta).';
+IS 'Difesa in profondita'': blocca INSERT/UPDATE se l''utente non ha scope sull''emittente fiscale della riga. Modalita'' TG_ARGV[0]: soggetto_ruolo | fattura | fiscale (PK diretta) | contabile (perimetro dal conto di incasso, D5). ⭐ Rev 2026-08-22: la risoluzione dell''emittente e'' passata a script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER. Prima stava qui, e il guard e'' SECURITY INVOKER: nel modo fattura leggeva vendite.fatture sotto row security, e per un utente fuori perimetro la lettura dava zero righe -> emittente NULL -> ramo «non risolvibile» -> passa. Il guard si spegneva esattamente nel caso che esiste per coprire. ⚠️ Il ramo «non risolvibile» resta e serve: una distinta interna (fondo fattura, compensazione) non e'' il canale di nessuno.';
 ```
 
 ---

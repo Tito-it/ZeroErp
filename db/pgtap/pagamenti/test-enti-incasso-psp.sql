@@ -205,6 +205,36 @@ SELECT is(
 );
 
 -- ============================================================
+-- ⭐ Fixture aggiunta il 2026-08-22 (lotto 6, S3-1)
+-- ============================================================
+-- Da quel giorno OGNI canale di incasso deve dichiarare su quale conto
+-- dell'azienda atterra il suo denaro: e' il perimetro dei soldi non ancora
+-- attribuiti (D5), e vale su tutti i `tipo`, PSP compreso — il saldo di un PSP
+-- arriva comunque su un conto di accredito dell'emittente.
+-- ⚠️ Il conto dev'essere di uso INCASSO: un guard lo impone, perche' l'unicita'
+--    che regge il perimetro vive solo sulle righe INCASSO.
+CREATE TEMP TABLE tmp_conto_eip AS
+WITH conto AS (
+  INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
+  SELECT 'IT00PGTAPENTIPSPCONTO0000001',
+         (SELECT b.id FROM anagrafiche.bank_branches b
+           WHERE b.attivo IS TRUE ORDER BY b.id LIMIT 1),
+         true, false,
+         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
+  RETURNING id
+), legame AS (
+  INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari
+      (soggetto_ruolo_id, conto_bancario_id, uso, predefinito, storicizza, meta)
+  SELECT (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+           WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1),
+         conto.id, 'INCASSO', false, false,
+         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
+    FROM conto
+  RETURNING id
+)
+SELECT id AS legame_id FROM legame;
+
+-- ============================================================
 -- 6) Inserimento enti_incasso tipo PSP valido
 -- ============================================================
 CREATE TEMP TABLE tmp_ente_ok AS
@@ -218,6 +248,7 @@ WITH ins AS (
     centro_riscossione_id,
     soggetto_ruolo_id,
     bank_branch_id,
+    soggetto_ruolo_conto_bancario_id,
     formato_flusso,
     regole_match,
     meta
@@ -231,6 +262,7 @@ WITH ins AS (
     (SELECT id FROM tmp_centro),
     (SELECT soggetto_ruolo_id FROM tmp_ruolo_psp_ok),
     NULL,
+    (SELECT legame_id FROM tmp_conto_eip),
     'JSON',
     '{}'::jsonb,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
@@ -257,6 +289,7 @@ SELECT throws_ok(
     centro_riscossione_id,
     soggetto_ruolo_id,
     bank_branch_id,
+    soggetto_ruolo_conto_bancario_id,
     regole_match,
     meta
   )
@@ -268,6 +301,7 @@ SELECT throws_ok(
     (SELECT id FROM tmp_centro),
     NULL,
     NULL,
+    (SELECT legame_id FROM tmp_conto_eip),
     '{}'::jsonb,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
   );
@@ -308,6 +342,7 @@ SELECT throws_ok(
     centro_riscossione_id,
     soggetto_ruolo_id,
     bank_branch_id,
+    soggetto_ruolo_conto_bancario_id,
     regole_match,
     meta
   )
@@ -319,6 +354,7 @@ SELECT throws_ok(
     (SELECT id FROM tmp_centro),
     (SELECT soggetto_ruolo_id FROM tmp_ruolo_non_psp),
     NULL,
+    (SELECT legame_id FROM tmp_conto_eip),
     '{}'::jsonb,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
   );
@@ -382,6 +418,7 @@ SELECT throws_ok(
     centro_riscossione_id,
     soggetto_ruolo_id,
     bank_branch_id,
+    soggetto_ruolo_conto_bancario_id,
     regole_match,
     meta
   )
@@ -393,6 +430,7 @@ SELECT throws_ok(
     (SELECT id FROM tmp_centro),
     (SELECT soggetto_ruolo_id FROM tmp_ruolo_psp_senza_riga),
     NULL,
+    (SELECT legame_id FROM tmp_conto_eip),
     '{}'::jsonb,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))
   );

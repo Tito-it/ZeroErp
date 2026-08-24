@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: TypedDict delle righe DB del dominio `pagamenti` — distinte contabili,
+#        loro righe, ricevuta del posting e saldi.
+# Note: I nomi delle chiavi seguono le colonne del database, non il gergo del
+#       frontend: la traduzione la fa la view, non il tipo.
+# ------------------------------------------------------------
+
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, TypedDict
+
+
+# ══════════════════════════════════════════════════════════════════
+#  La distinta (testata contabile)
+# ══════════════════════════════════════════════════════════════════
+
+# ⭐ «Distinta» e non «movimento»: la testata NON ha importo e NON ha nessun
+#   riferimento bancario — quello sta sulla riga (`riferimento_ente`). E' il
+#   documento che raccoglie N importi arrivati insieme.
+class DistintaRow(TypedDict):
+    id: int
+    codice: str
+    centro_riscossione_id: int
+    centro_codice: str | None
+    centro_descrizione: str | None
+    ente_incasso_id: int | None
+    ente_codice: str | None
+    ente_descrizione: str | None
+    data_contabile: date
+    data_registrazione: date
+    stato_id: int
+    stato_codice: str | None
+    stato_descrizione: str | None
+    stato_is_final: bool | None
+    origine: str
+    importo_dichiarato: Decimal | None
+    data_conferma: datetime | None
+    user_conferma: str | None
+    # ⚠️ Al PLURALE, ed e' una correzione: l'unico su `vendite_contabili_lotti`
+    # e' `(lotto_id, contabile_id)`, non il solo `contabile_id` — una distinta
+    # puo' appartenere a piu' lotti, e leggerla come un valore solo avrebbe
+    # significato duplicare la riga nell'elenco per mostrarne uno.
+    lotti_ids: list[int] | None
+    meta: Any
+    # ── Totali derivati (non colonne: si contano sulle righe attive) ────────
+    # `totale_righe` conta TUTTE le righe attive, SCARTATA compresa: quel
+    # denaro E' arrivato, e la quadratura chiede «ho letto tutto cio' che
+    # c'era», non «tutto e' nostro». E' la stessa somma che il guard di
+    # validazione confronta con `importo_dichiarato`.
+    righe_totali: int
+    righe_registrabili: int
+    totale_righe: Decimal
+    totale_registrabile: Decimal
+    scarto_dichiarato: Decimal | None
+
+
+# ══════════════════════════════════════════════════════════════════
+#  La riga contabile
+# ══════════════════════════════════════════════════════════════════
+
+# La riga e' l'UNITA' DI ALLOCAZIONE (D1): un incasso che copre tre rate diventa
+# tre righe sotto la stessa distinta. ⛔ Non si «spezza» una riga per gestire un
+# importo sbagliato (D1-ter, 2026-08-24): quello si registra e poi si sistema.
+class RigaContabileRow(TypedDict):
+    id: int
+    contabile_id: int
+    importo: Decimal
+    riferimento_ente: str | None
+    data_pagamento: date | None
+    data_valuta: date | None
+    data_operazione: date | None
+    fattura_id: int | None
+    # `numero` e' un bigint a database, non una stringa: e' il progressivo, e
+    # la forma leggibile (serie/anno/numero) la compone chi la mostra.
+    fattura_numero: int | None
+    fattura_anno: int | None
+    fattura_serie: str | None
+    billing_account_id: int | None
+    billing_account_codice: str | None
+    billing_account_descrizione: str | None
+    scadenza_id: int | None
+    scadenza_numero_rata: int | None
+    scadenza_data: date | None
+    forzata: bool
+    motivo_forzatura: str | None
+    stato_id: int
+    stato_codice: str | None
+    stato_descrizione: str | None
+    stato_is_postabile: bool | None
+    stato_richiede_abbinamento: bool | None
+    motivo_sospeso: str | None
+    fondo_source_id: int | None
+    attivo: bool
+    meta: Any
+
+
+# ══════════════════════════════════════════════════════════════════
+#  I due cataloghi di stato
+# ══════════════════════════════════════════════════════════════════
+
+# ⭐ I flag viaggiano col catalogo e NON si cablano nel frontend: quali stati
+#   pretendono fattura e cliente lo dice `richiede_abbinamento`, quali occupano
+#   spazio su una rata lo dice `is_postabile`.
+class StatoCatalogoRow(TypedDict):
+    id: int
+    codice: str
+    codice_interno: str
+    descrizione: str | None
+    is_final: bool
+    ordine: int | None
+
+
+class StatoRigaCatalogoRow(StatoCatalogoRow):
+    is_postabile: bool
+    richiede_abbinamento: bool
+
+
+# ══════════════════════════════════════════════════════════════════
+#  La ricevuta del posting
+# ══════════════════════════════════════════════════════════════════
+
+# ⭐ `esito` e' a vocabolario chiuso: POSTATA | NULLA_DA_POSTARE. Il secondo NON
+#   e' un errore — la funzione non solleva — ed e' il frontend a decidere la
+#   frase (il database dice il fatto, chi parla con la persona lo racconta).
+class RicevutaPosting(TypedDict):
+    movimenti_creati: int
+    righe_postate: int
+    righe_saltate: int
+    totale_postato: Decimal
+    esito: str
+
+
+# ══════════════════════════════════════════════════════════════════
+#  I saldi — la forma UNICA dei tre livelli (documento, rata, cliente)
+# ══════════════════════════════════════════════════════════════════
+
+# 🔴 Vincolo del cantiere: i saldi hanno UNA SEDE SOLA. Questa forma vale per
+#   tutti i livelli; una schermata sceglie QUALI numeri accendere, mai come si
+#   chiamano. `incassato` e' None dove il database non lo sa ancora dire —
+#   oggi il livello documento (richiesta DB-10 in corso).
+class SaldoRow(TypedDict):
+    residuo: Decimal
+    in_lavorazione: Decimal | None
+    incassato: Decimal | None
+    has_movimenti: bool

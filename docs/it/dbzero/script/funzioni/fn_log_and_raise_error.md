@@ -13,14 +13,27 @@ CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(p_area text, p_function
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_msg    text;
-    v_detail text;
-    v_hint   text;
+    v_msg    config.messaggi_errore.messaggio%TYPE;
+    v_detail config.messaggi_errore.causa%TYPE;
+    v_hint   config.messaggi_errore.soluzione%TYPE;
+    -- ⚠️ `text` esplicito, e non e' una dimenticanza: v_campo NON e' il valore
+    --    di una colonna, e' il NOME di una colonna — un identificatore che
+    --    esce sul canale COLUMN. Non c'e' niente da ancorare.
     v_campo  text;
-    v_lang   text := coalesce(
+    v_lang   config.messaggi_errore.lingua%TYPE := coalesce(
         current_setting('myapp.user_language', true),
         'it'
     );
+    -- ── Il BERSAGLIO (23-08-2026). Vedi il punto 4-ter. ──
+    -- ⚠️ Tutti e quattro a tipo esplicito, per la stessa ragione di v_campo:
+    --    non riflettono nessuna colonna. `v_bers_forma` e' l'esito di
+    --    jsonb_typeof, `v_bersaglio` e' la forma compatta che esce nel canale
+    --    dell'eccezione (una stringa costruita qui, che in nessuna tabella
+    --    esiste), e gli altri due sono CONTEGGI.
+    v_bers_forma text;
+    v_bersaglio  text;
+    v_bers_tot   integer;
+    v_bers_ok    integer;
 BEGIN
     -- =========================================================
     -- Scopo (post 23-04-2026, i18n incrementale):
@@ -175,6 +188,82 @@ BEGIN
         v_campo := NULL;
     END IF;
 
+    -- 4-ter) IL BERSAGLIO: su quale cosa e' successo.
+    --
+    --    ⭐ IL PRINCIPIO, che e' tutto il cantiere: la FRASE e' per la
+    --       persona, il BERSAGLIO e' per l'interfaccia. Chi solleva scrive
+    --       l'array UNA volta nel context; di li' escono due proiezioni —
+    --       quella ricca resta in dbops.error_log per chi diagnostica, quella
+    --       compatta viaggia nel canale per chi deve disegnare un pulsante.
+    --       Non sono due verita': e' la stessa, letta da due lettori.
+    --
+    --    Forma attesa nel context (array SEMPRE, anche con un elemento solo):
+    --       'bersaglio', jsonb_build_array(
+    --            jsonb_build_object('tipo', 'FATTURA', 'id', v_id::text))
+    --    Forma che esce nel canale:  FATTURA:835,FATTURA:820
+    --
+    --    ⚠️ SI VALIDA LA FORMA, NON IL VOCABOLARIO. Nessuna lettura di
+    --       config.tipi_entita: sarebbe una query dentro il percorso
+    --       d'errore, cioe' una dipendenza in piu' proprio dove non se ne
+    --       vogliono. Che il tipo esista a catalogo lo dice la CI
+    --       (dbops.vw_bersagli_non_dichiarati), che e' dove un errore di
+    --       programmazione va scoperto.
+    --
+    --    ⛔ E NON PUO' FAR FALLIRE NIENTE. E' la stessa lezione del 18-08 sul
+    --       ripiego della format(): la funzione che serve a RIPORTARE un
+    --       errore non puo' essere quella che lo distrugge. Un bersaglio
+    --       storto lascia il canale vuoto e scrive W_BERSAGLIO_MALFORMATO nel
+    --       log — un W_ che si LOGGA e non si solleva mai.
+    --
+    --    ⚠️ Il tetto di cinque non e' un difetto e non si segnala: oltre, il
+    --       frontend non disegna piu' un gesto ma un elenco, e QUANTI sono lo
+    --       dice gia' la frase (i messaggi che ne hanno tanti portano il
+    --       conteggio in un %s).
+    v_bers_forma := jsonb_typeof(p_context -> 'bersaglio');
+
+    IF v_bers_forma IS NOT NULL THEN
+        IF v_bers_forma = 'array' THEN
+            BEGIN
+                SELECT count(*),
+                       count(*) FILTER (WHERE x.valido),
+                       string_agg(x.tipo || ':' || x.id, ',' ORDER BY x.ord)
+                           FILTER (WHERE x.valido AND x.ord <= 5)
+                  INTO v_bers_tot, v_bers_ok, v_bersaglio
+                  FROM (SELECT e.value ->> 'tipo' AS tipo,
+                               e.value ->> 'id'   AS id,
+                               e.ord,
+                               (    e.value ->> 'tipo' ~ '^[A-Z][A-Z0-9_]{0,30}$'
+                                AND coalesce(e.value ->> 'id', '') ~ '^[0-9a-fA-F-]{1,36}$'
+                               ) AS valido
+                          FROM jsonb_array_elements(p_context -> 'bersaglio')
+                               WITH ORDINALITY AS e(value, ord)) x;
+            EXCEPTION WHEN OTHERS THEN
+                -- Qualunque cosa sia andata storta leggendo il context, il
+                -- bersaglio si perde e l'errore di dominio parte lo stesso.
+                v_bersaglio := NULL;
+                v_bers_tot  := NULL;
+                v_bers_ok   := NULL;
+            END;
+        END IF;
+
+        -- La chiave c'e' ma non dice niente di utilizzabile: elemento
+        -- scartato per forma, oggetto nudo invece dell'array, array vuoto.
+        IF v_bersaglio IS NULL OR coalesce(v_bers_ok, 0) < coalesce(v_bers_tot, 1) THEN
+            PERFORM script.fn_log_error_only(
+                p_area,
+                p_function_name,
+                'W_BERSAGLIO_MALFORMATO',
+                coalesce(p_context, '{}'::jsonb) || jsonb_build_object(
+                    'codice_atteso',   p_error_code,
+                    'bersaglio_forma', coalesce(v_bers_forma, 'assente'),
+                    'bersaglio_letti', coalesce(v_bers_tot, 0),
+                    'bersaglio_validi', coalesce(v_bers_ok, 0)
+                ),
+                p_tx_id,
+                VARIADIC ARRAY[]::text[]);
+        END IF;
+    END IF;
+
     -- 5) Sollevamento eccezione con DETAIL/HINT localizzati.
     --
     --    CONSTRAINT porta il CODICE di dominio: e' l'unico campo
@@ -193,8 +282,12 @@ BEGIN
     --    vera (classe 23xxx) `constraint_name` contiene il nome
     --    del vincolo DB (`uq_...`, `fk_...`).
     --
+    --    DATATYPE porta il BERSAGLIO: su quali entita' l'errore
+    --    si riferisce, nella forma TIPO:id[,TIPO:id]. Contratto
+    --    gemello degli altri due, e terzo in tre mosse.
+    --
     --    ⚠️ Questo e' l'UNICO posto autorizzato a scrivere
-    --    CONSTRAINT e COLUMN in un RAISE. Presidiato in CI da
+    --    CONSTRAINT, COLUMN e DATATYPE in un RAISE. Presidiato in CI da
     --    scripts/sql/guardrail_codice_errore_strutturato.sql,
     --    controlli (A) e (F): se un altro RAISE usa gli stessi
     --    canali per altro, il backend si fiderebbe di un campo
@@ -212,12 +305,13 @@ BEGIN
               DETAIL     = coalesce(v_detail, ''),
               HINT       = coalesce(v_hint, ''),
               CONSTRAINT = p_error_code,
-              COLUMN     = coalesce(v_campo, '');
+              COLUMN     = coalesce(v_campo, ''),
+              DATATYPE   = coalesce(v_bersaglio, '');
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
-IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware). Post 05-08-2026: il CODICE di dominio esce nel campo strutturato CONSTRAINT dell''eccezione — contratto «P0001 + CONSTRAINT valorizzato = errore di dominio». Post 08-08-2026: esce anche il NOME DEL CAMPO da correggere, nel canale COLUMN, letto da p_context->>''campo'' e, in ripiego, da p_context->>''parametro'' col prefisso p_ tolto (convenzione gia'' in uso in 225 punti su 111 funzioni: copre 217 dei 380 punti evidenziabili senza toccarne nessuno) — contratto gemello «P0001 + COLUMN valorizzato = il campo che l''operatore deve correggere». Passa dal context e NON da un parametro nuovo perche'' la firma finisce con VARIADIC: un parametro dopo di essa e'' rifiutato, uno prima si mangerebbe in silenzio il primo valore di 973 chiamate. Si legge solo ''campo'' e mai ''valore'', e solo se sembra un identificatore. Unica sede autorizzata a scrivere CONSTRAINT e COLUMN (presidio: scripts/sql/guardrail_codice_errore_strutturato.sql, controlli A ed F). Il codice NON compare nel messaggio: quello e'' per l''utente. Post 18-08-2026: la format() del punto 4 e'' avvolta in un BEGIN/EXCEPTION. Con meno valori dei segnaposto alzava 22023 DA DENTRO questa funzione, quindi il RAISE di dominio non veniva mai eseguito e il contratto P0001+CONSTRAINT saltava; ora ripiega sul messaggio non composto (il codice si conserva) e scrive W_MESSAGGIO_ARITA nel log. La funzione gemella fn_log_error_only aveva gia'' lo stesso ripiego: l''asimmetria fra le due era il difetto. Il presidio statico e'' il test 5 di db/pgtap/script/test-catalogo-messaggi-errore-completo.sql.';
+IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware). Post 05-08-2026: il CODICE di dominio esce nel campo strutturato CONSTRAINT dell''eccezione — contratto «P0001 + CONSTRAINT valorizzato = errore di dominio». Post 08-08-2026: esce anche il NOME DEL CAMPO da correggere, nel canale COLUMN, letto da p_context->>''campo'' e, in ripiego, da p_context->>''parametro'' col prefisso p_ tolto (convenzione gia'' in uso in 225 punti su 111 funzioni: copre 217 dei 380 punti evidenziabili senza toccarne nessuno) — contratto gemello «P0001 + COLUMN valorizzato = il campo che l''operatore deve correggere». Passa dal context e NON da un parametro nuovo perche'' la firma finisce con VARIADIC: un parametro dopo di essa e'' rifiutato, uno prima si mangerebbe in silenzio il primo valore di 973 chiamate. Si legge solo ''campo'' e mai ''valore'', e solo se sembra un identificatore. Unica sede autorizzata a scrivere CONSTRAINT e COLUMN (presidio: scripts/sql/guardrail_codice_errore_strutturato.sql, controlli A ed F). Il codice NON compare nel messaggio: quello e'' per l''utente. Post 18-08-2026: la format() del punto 4 e'' avvolta in un BEGIN/EXCEPTION. Con meno valori dei segnaposto alzava 22023 DA DENTRO questa funzione, quindi il RAISE di dominio non veniva mai eseguito e il contratto P0001+CONSTRAINT saltava; ora ripiega sul messaggio non composto (il codice si conserva) e scrive W_MESSAGGIO_ARITA nel log. La funzione gemella fn_log_error_only aveva gia'' lo stesso ripiego: l''asimmetria fra le due era il difetto. Il presidio statico e'' il test 5 di db/pgtap/script/test-catalogo-messaggi-errore-completo.sql. Post 23-08-2026: esce anche il BERSAGLIO dell''errore, nel canale DATATYPE, letto da p_context->''bersaglio'' (array di {tipo,id}) e composto nella forma compatta TIPO:id[,TIPO:id] — al massimo cinque, perche'' oltre il frontend non disegna piu'' un gesto ma un elenco. Contratto gemello dei due precedenti: «P0001 + DATATYPE valorizzato = le entita'' a cui l''errore si riferisce». Terzo canale in tre mosse (CONSTRAINT 05-08, COLUMN 08-08, DATATYPE 23-08). Valida solo la FORMA e non legge config.tipi_entita: una query dentro il percorso d''errore sarebbe una dipendenza in piu'' proprio dove non si vuole, e il vocabolario lo presidia la CI (dbops.vw_bersagli_non_dichiarati). Un bersaglio malformato NON distrugge mai l''errore di dominio: canale vuoto e W_BERSAGLIO_MALFORMATO nel log, stesso ripiego del 18-08 sulla format(). Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md.';
 ```
 
 ---

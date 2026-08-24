@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_offerte_commerciali_gen_codice.md" %}
 # ⚙️ Funzione `trgfn_offerte_commerciali_gen_codice`
 
 ```sql

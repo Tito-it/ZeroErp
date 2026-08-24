@@ -1,20 +1,20 @@
 # Schema `config`
 
 ## 📚 Tabelle
-- [ambiti](tabelle/ambiti.md)
+- [ambiti](tabelle/ambiti.md) — (rev 2026-08-21)
 - [area_model_overrides](tabelle/area_model_overrides.md) — * Gestire le **eccezioni** al mapping automatico area = schema. * Consentire che un model appartenga a un'area diversa senza spostarlo fisicamente di schema.
 - [aree_funzionali](tabelle/aree_funzionali.md) — * Definire il **perimetro funzionale** su cui si applicano i livelli di accesso (TUTTO / LETTURA / BLOCCATO). * Fornire il **mapping area → schema DB** per la risoluzione automatica dei permessi in Django. * Gestire l'**ordine di visualizzazione** nell'interfaccia di configurazione profili reparto.
-- [aspetti_beni](tabelle/aspetti_beni.md)
+- [aspetti_beni](tabelle/aspetti_beni.md) — (rev 2026-08-21)
 - [assets_ownership](tabelle/assets_ownership.md) — * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset. * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione). * Abilitare logiche avanzate, tra cui:
 - [auth_totp_device](tabelle/auth_totp_device.md) — La tabella `config.auth_totp_device` gestisce i **device TOTP** per l'autenticazione a due fattori (2FA). Relazione 1:1 con `auth_user`: ogni utente puo' avere al massimo un device TOTP configurato.
 - [azioni_processo](tabelle/azioni_processo.md) — * Catalogare le **azioni di processo** che richiedono abilitazione esplicita. * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili. * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.
 - [canali_pratiche](tabelle/canali_pratiche.md) — La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attraverso cui i flussi di una pratica possono essere esposti verso l'esterno. Non e' un flag booleano sulla pratica ma un **registry di interfacce** configurabile.
-- [categoria_accisa](tabelle/categoria_accisa.md)
+- [categoria_accisa](tabelle/categoria_accisa.md) — (rev 2026-08-21)
 - [causali_onere](tabelle/causali_onere.md) — (rev 2026-07-21)
 - [causali_trasporto](tabelle/causali_trasporto.md) — * Fornire un **catalogo centralizzato** delle causali di trasporto utilizzabili nei DDT. * Supportare la **classificazione omogenea** dei flussi di movimentazione in base alla motivazione dell’invio/ritiro dei beni. * Costituire la base per **regole di processo** (es. fatturazione automatica, valorizzazione, contabilizzazione, statistiche) dipendenti dalla causale utilizzata.
-- [classi_errore](tabelle/classi_errore.md)
-- [classi_utenze](tabelle/classi_utenze.md)
-- [codici_errore](tabelle/codici_errore.md)
+- [classi_errore](tabelle/classi_errore.md) — (rev 2026-08-21)
+- [classi_utenze](tabelle/classi_utenze.md) — (rev 2026-08-21)
+- [codici_errore](tabelle/codici_errore.md) — (rev 2026-08-21)
 - [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 - [comuni](tabelle/comuni.md) — (last review 30-12-25) * **Censimento dei comuni**   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato. * **Attributi specifici per stato**   La colonna `extra_country` (JSONB) permette di memorizzare dati aggiuntivi specifici per ogni paese (per l’Italia: codice catastale, codice ISTAT, fascia climatica, ecc.). * **Integrazione con lo stradario**   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 - [conti_contabili](tabelle/conti_contabili.md) — * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia. * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
@@ -24,6 +24,7 @@
 - [email_outbox](tabelle/email_outbox.md) — La tabella `config.email_outbox` contiene le **bozze email** preparate dal sistema e modificabili dall'operatore prima dell'invio. Rappresenta il passaggio intermedio tra la generazione automatica dal template e l'invio effettivo.
 - [email_template](tabelle/email_template.md) — La tabella `config.email_template` contiene i **template email parametrizzabili** con variabili `{{...}}`. Ogni template puo' essere specializzato per reparto, tipo prestazione e lingua, con una catena di fallback a 5 livelli.
 - [esiti_flussi_pratiche](tabelle/esiti_flussi_pratiche.md) — Vocabolario **data-driven** degli **esiti** dei flussi operativi (il "verdetto" con cui un flusso si chiude, es. `POSITIVO`). Sostituisce l'enum che prima era **cablato** in piu' CHECK (`chk_flussi_esito`, ecc.): il motore fornisce il **meccanismo** (la tabella), i domini seedano i **valori**. Cosi' un dominio puo' aggiungere un esito senza toccare il codice del motore — decisivo per il **bivio-per-esito** (instradamento merce/servizi dello SMISTAMENTO) senza portare semantica di dominio in un CHECK di motore (layering).
+- [eventi_dominio](tabelle/eventi_dominio.md)
 - [forme_giuridiche](tabelle/forme_giuridiche.md) — (latest review 21-12-25)
 - [forme_giuridiche_tipi_soggetto_dettaglio](tabelle/forme_giuridiche_tipi_soggetto_dettaglio.md) — (latest review 21-12-25) La tabella **`config.forme_giuridiche_tipi_soggetto_dettaglio`** è una **matrice di configurazione** (Strada **B**) che definisce:
 - [identita_scope_bindings](tabelle/identita_scope_bindings.md) — (latest revision 18-04-2026)
@@ -39,7 +40,7 @@
 - [modalita_pagamento](tabelle/modalita_pagamento.md) — * Definire un elenco **normalizzato e univoco** delle modalità di pagamento disponibili nel sistema. * Fornire un **codice interno stabile** (`codice`) utilizzabile in configurazioni, mapping e integrazioni. * Supportare la definizione di **regole di incasso** e gestionali (es. tracciabilità, obbligo di IBAN, circuiti bancari).
 - [motivi_fermo](tabelle/motivi_fermo.md) — (latest review 06-07-2026) Vocabolario dei **motivi di fermo** della dashboard fatturazione (cruscotti a due lenti) con la **classe di azionabilità**: la gravità di un fermo non si deriva dallo stato grezzo del documento ma dal `motivo_fermo` che i resolver `vw_dash_fatturazione_*` già producono; la classe è una **mappatura statica** decisa dal dominio (decisione DL-6, Tid 2026-07-04), collocata qui DB-first.
 - [nature_doc_fiscale](tabelle/nature_doc_fiscale.md) — (rev 2026-08-18)
-- [nature_vendita](tabelle/nature_vendita.md)
+- [nature_vendita](tabelle/nature_vendita.md) — (rev 2026-08-21)
 - [note_stili](tabelle/note_stili.md) — (latest review 15-01-26) * Fornire un **catalogo centralizzato** degli stili che possono essere applicati alle note (formattazione e/o semantica). * Separare la **semantica dello stile** (es. AVVISO, AVVERTENZA, INFO) dalla renderizzazione effettiva lato UI/templating. * Supportare la definizione di **regole visuali e di priorità** per note e messaggi (es. stile per warning, info, errori, note di servizio).
 - [parameter_fk_surrogate](tabelle/parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [parameter_overrides](tabelle/parameter_overrides.md)
@@ -81,6 +82,7 @@
 - [tipi_contatti](tabelle/tipi_contatti.md) — (latest review 07-01-26) La tabella **`config.tipi_contatti`** definisce le **categorie di contatto** utilizzabili nell’anagrafica dei soggetti. Il reparto/ufficio di riferimento e' invece gestito da `config.unita_organizzative`.
 - [tipi_doc_fiscale](tabelle/tipi_doc_fiscale.md) — (latest review 27-01-2026) La tabella **`config.tipi_doc_fiscale`** rappresenta il catalogo dei **tipi di documento fiscale** gestiti dal sistema (es. fattura utility, allaccio, rata, rettifica). Il tipo documento e` la dimensione **funzionale** del documento e indica il *perche`* del documento, separandolo dalla numerazione contabile.
 - [tipi_documenti](tabelle/tipi_documenti.md) — (latest review 29-03-2026) `config.tipi_documenti` definisce un catalogo generale dei **tipi documento** utilizzati dal sistema come classificazione configurabile. Serve a distinguere famiglie documentali omogenee tramite codici stabili, riusabili in lookup, configurazioni e integrazioni.
+- [tipi_entita](tabelle/tipi_entita.md)
 - [tipi_evento_assets](tabelle/tipi_evento_assets.md) — (latest review 29-03-2026) `config.tipi_evento_assets` definisce il catalogo dei **tipi evento** usati per registrare il ciclo di vita operativo degli asset. Centralizza il vocabolario con cui gli eventi vengono classificati in `magazzino.eventi_assets`.
 - [tipi_indirizzi](tabelle/tipi_indirizzi.md) — La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utilizzabili in Zero ERP, come ad esempio Residenza, Domicilio Fiscale, Sede Legale, Sede Operativa, Corrispondenza Postale, Indirizzo di Fornitura, ecc. 
 - [tipi_indirizzi_allowed](tabelle/tipi_indirizzi_allowed.md) — (Ultima review 19-12-25)
@@ -92,9 +94,9 @@
 - [tipi_soggetto](tabelle/tipi_soggetto.md) — La tabella **`config.tipi_soggetto`** definisce le **macro-tipologie** dei soggetti presenti nel sistema ERP:
 - [tipi_soggetto_dettaglio](tabelle/tipi_soggetto_dettaglio.md) — * **Gestione Internazionale**   Permette di adattare la validazione di CF/P.IVA alle regole di ciascuno Stato (`stato_iso2`). * **Estendibilità**   Il collegamento a `config.tipi_soggetto` garantisce macro-categorie estensibili (Fisico, Giuridico, Ente, …). * **Controllo Applicativo**   Centralizza il formato di CF/P.IVA, evitando logiche duplicate nel backend.
 - [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md) — (latest review 19-12-25) La tabella **`config.tipi_soggetto_dettaglio_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:
-- [tipi_tariffe_ee](tabelle/tipi_tariffe_ee.md)
-- [tipi_ubicazione](tabelle/tipi_ubicazione.md)
-- [tipi_utenze](tabelle/tipi_utenze.md)
+- [tipi_tariffe_ee](tabelle/tipi_tariffe_ee.md) — (rev 2026-08-21)
+- [tipi_ubicazione](tabelle/tipi_ubicazione.md) — (rev 2026-08-21)
+- [tipi_utenze](tabelle/tipi_utenze.md) — (rev 2026-08-21)
 - [titoli_cortesia](tabelle/titoli_cortesia.md) — * **Uniformare i titoli**     Gestire centralmente i titoli di cortesia per tutti i soggetti/contatti, evitando discrepanze tra form, report e stampe.
 - [token_monouso](tabelle/token_monouso.md) — La tabella `config.token_monouso` implementa un **meccanismo generico di token monouso** riutilizzabile per qualsiasi flusso che richieda un link sicuro con scadenza: invito operatore, reset password, conferma email, attivazione account.
 - [toponomastica](tabelle/toponomastica.md) — (latest review 02-01-26) * **Censimento dei toponimi**   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi. * **Fondamentale per lo stradario**   Fornisce i prefissi standardizzati che, uniti al nome (es. "Garibaldi", "Roma"), generano i record di **`stradario_generale`**. * **Integrazione con lo stato geografico**   Collegato alla tabella `config.stati` per associare ogni tipo di toponimo all’area amministrativa di riferimento.
@@ -106,7 +108,7 @@
 - [transizioni_stati_preventivi](tabelle/transizioni_stati_preventivi.md) — (latest review 03-04-2026) `config.transizioni_stati_preventivi` definisce la **matrice delle transizioni ammesse** tra gli stati del preventivo vendita. Pattern identico a `config.transizioni_stati_pratiche`.
 - [transizioni_stati_reso](tabelle/transizioni_stati_reso.md) — (rev 2026-07-13)
 - [unita_organizzative](tabelle/unita_organizzative.md) — (latest review 07-01-26) La tabella **`config.unita_organizzative`** definisce il catalogo dei reparti/uffici utilizzabili nell'anagrafica (es. Amministrazione, Tecnico, Commerciale). Nasce per separare in modo netto il concetto di **unita organizzativa** dai **tipi di contatto**, riducendo ambiguita semantiche.
-- [user_emittente_attivo](tabelle/user_emittente_attivo.md)
+- [user_emittente_attivo](tabelle/user_emittente_attivo.md) — (rev 2026-08-21)
 - [user_emittenti_fiscali](tabelle/user_emittenti_fiscali.md) — * Legare in modo univoco un operatore al proprio emittente fiscale. * Discriminare gli **admin globali** (utenti senza riga, ruolo `ADMIN`) dagli **admin di emittente** (utenti con 1 riga, ruolo `ADMIN`) e dagli **operatori standard** (utenti con 1 riga, ruolo `OPERATIVO`). * Fornire il dato per il **filtering queryset** (`EmittenteFiscaleScopeMixin`) e per il **defense‑in‑depth** DB (trigger guard su `billing_account`, fatture, ordini, pagamenti).
 - [user_override_aree](tabelle/user_override_aree.md) — * Gestire **eccezioni individuali** al profilo ereditato dal reparto. * Supportare **deleghe temporanee** tramite validità temporale (`valido_dal` / `valido_al`). * Documentare la **motivazione** dell'override per audit e governance.
 - [user_override_azioni](tabelle/user_override_azioni.md) — * Concedere un'azione negata a livello reparto (**GRANT** individuale). * Revocare un'azione concessa a livello reparto (**DENY** individuale). * Supportare **validità temporale** e **motivazione** per governance.
@@ -132,7 +134,7 @@
 - [trgfn_regioni_normalize](funzioni/trgfn_regioni_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.regioni` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_sorgenti_normalize](funzioni/trgfn_sorgenti_normalize.md) — (latest review 29-03-2026) La trigger function `config.trgfn_sorgenti_normalize()` normalizza il campo `codice_interno` delle sorgenti applicative, portandolo in formato uniforme prima del salvataggio.
 - [trgfn_stati_doc_fiscale_chiude_lotto_guard](funzioni/trgfn_stati_doc_fiscale_chiude_lotto_guard.md) — (latest review 29-03-2026) La trigger function `config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` garantisce che il flag `chiude_lotto` in `config.stati_doc_fiscale` abbia cardinalita` **esattamente uno**: nel catalogo deve esistere sempre e solo una riga con `chiude_lotto = true`.
-- [trgfn_stati_doc_guard_esito_verdetto](funzioni/trgfn_stati_doc_guard_esito_verdetto.md)
+- [trgfn_stati_doc_guard_esito_verdetto](funzioni/trgfn_stati_doc_guard_esito_verdetto.md) — (rev 2026-08-21)
 - [trgfn_stradario_generale_normalize](funzioni/trgfn_stradario_generale_normalize.md) — (latest review 30-12-25) Normalizzare automaticamente l'indirizzo dello stradario generale, combinando il prefisso toponomastico con la descrizione della via.
 - [trgfn_stradario_generale_protect_update](funzioni/trgfn_stradario_generale_protect_update.md) — * **Blocco modifiche non consentite**: evitare update di descrizione, descrizione_breve o toponomastica_id in `config.stradario_generale` se il record è già in uso in `config.stradario`. * **Identificazione precisa**: indicare tramite JSON il nome della colonna modificata e l’ID del record per diagnosticare efficacemente l’errore. * **Centralizzazione logica**: mantenere il controllo integrità nel database, riducendo complessità lato applicazione.
 - [trgfn_tipi_ruoli_guard_entita_ref](funzioni/trgfn_tipi_ruoli_guard_entita_ref.md) — (latest review 29-03-2026) La trigger function `config.trgfn_tipi_ruoli_guard_entita_ref()` valida la configurazione dei riferimenti dinamici salvati in `config.tipi_ruoli`, assicurando che `entita_tabella` e `entita_colonna_codice` puntino a una tabella o vista realmente utilizzabile dalle funzioni di ricerca dettaglio.
@@ -142,5 +144,5 @@
 - [trgfn_user_emittenti_fiscali_guard_delete](funzioni/trgfn_user_emittenti_fiscali_guard_delete.md)
 
 ## 🔍 Views
-- [vw_codici_errore](views/vw_codici_errore.md)
-- [vw_codici_errore_identita](views/vw_codici_errore_identita.md)
+- [vw_codici_errore](views/vw_codici_errore.md) — (rev 2026-08-21)
+- [vw_codici_errore_identita](views/vw_codici_errore_identita.md) — (rev 2026-08-21)

@@ -10,7 +10,8 @@
 -- Riferimento: docs/it/dev/work-in-progress/brief-db-offerta-push-successione-contratto-overlap.md §4
 --
 -- Indice test (1..6):
---   1)  push offerta A (ACCETTATA) -> contratto DRAFT creato (baseline incumbent)
+--   1)    push offerta A (ACCETTATA) -> contratto DRAFT creato (baseline incumbent)
+--   1-bis) promosso ad ATTIVO, A partecipa all'overlap (vedi testata)
 --   2)  push offerta B sovrapposta, chiudi=false -> throws E_CONTRATTO_OVERLAP_ESISTENTE
 --   3)  dopo il fallimento (2) nessun contratto creato per l'offerta B
 --   4)  push offerta B sovrapposta, chiudi=true -> contratto creato
@@ -20,10 +21,38 @@
 -- Fixture: tre offerte ACCETTATE sullo stesso BA/istanza/utility.
 --   A [2098-01-01..2098-12-31], B [2098-06-01..2098-12-31] (overlap su A),
 --   C [2099-01-01..2099-12-31] (libera dopo la successione).
+--
+-- ⭐ CORRETTO IL 2026-08-24 — il contratto A si porta ad ATTIVO prima di
+--   spingere B, e senza quel passo il test era ROSSO. La ragione non e' una
+--   svista di fixture: e' una REGOLA DI DOMINIO che il test non aveva
+--   recepito. Dal 2026-06-02 (changeSet 20260602-18, brief «Overlap contratti:
+--   escludere i DRAFT dal vincolo») la partecipazione all'overlap e' decisa da
+--   `vendite.contratti.partecipa_overlap_snapshot`, colonna **GENERATED**:
+--
+--       partecipa_overlap_snapshot = NOT is_abortito AND NOT is_draft
+--
+--   Un contratto in BOZZA quindi **non blocca** nessuno, di proposito. Il test
+--   pretendeva l'opposto: il test 1 asserisce che A nasce in DRAFT e il test 2
+--   pretendeva che quello stesso DRAFT facesse scattare l'overlap — due cose
+--   che dal 02/06 non possono essere vere insieme.
+--
+--   ⚠️ E ne discende un fatto che vale oltre questo file: `fn_push_offerta_a_contratto`
+--   crea SEMPRE il contratto in DRAFT, quindi il suo guard di overlap — e con
+--   lui tutto il ramo `p_chiudi_contratto_esistente` — puo' scattare solo
+--   contro un incumbent gia' promosso. Che e' realistico, ed e' ora quello che
+--   questo test misura.
+--
+--   ⛔ Il test era invisibile: il file vive in una sottocartella, e fino al
+--   2026-08-24 i presidi pgTAP guardavano un livello solo. Vedi
+--   docs/it/dev/work-in-progress/brief-db-pgtap-rami-ciechi.md
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(6);
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
+SELECT plan(7);
 
 -- ============================================================
 -- Setup fixture (contesto come test_fn_push_offerta_a_contratto)
@@ -90,6 +119,27 @@ SELECT ok(
          WHERE c.stato_doc_contratto_id = (SELECT stato_draft_contratto_id FROM tmp_pushsucc_ctx)
     ),
     '1) push offerta A -> contratto DRAFT creato (incumbent)'
+);
+
+-- ============================================================
+-- ⭐ A ESCE DALLA BOZZA: senza, non partecipa all'overlap (vedi testata).
+--   DRAFT -> ATTIVO e' una transizione ammessa da
+--   config.transizioni_stati_contratti, quindi passa dal guard di transizione
+--   invece di aggirarlo.
+-- ============================================================
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti
+                                  WHERE codice_interno = 'ATTIVO')
+ WHERE id = (SELECT contratto_id FROM tmp_pushsucc_a);
+
+-- ⚠️ Si verifica che la promozione abbia davvero acceso la partecipazione:
+--   se un domani la colonna generata cambiasse formula, i test 2-5
+--   tornerebbero a misurare il caso sbagliato in silenzio.
+SELECT is(
+    (SELECT c.partecipa_overlap_snapshot
+       FROM vendite.contratti c JOIN tmp_pushsucc_a ta ON c.id = ta.contratto_id),
+    true,
+    '1-bis) promosso ad ATTIVO, il contratto A partecipa all''overlap'
 );
 
 -- ============================================================

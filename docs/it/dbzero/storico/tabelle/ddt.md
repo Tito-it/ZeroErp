@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/ddt.md" %}
 # 📚 Tabella `ddt`
 
 ## 🗂️ Campi principali

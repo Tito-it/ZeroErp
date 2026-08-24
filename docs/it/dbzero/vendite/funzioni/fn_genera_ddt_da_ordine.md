@@ -27,6 +27,9 @@ DECLARE
     v_qta_op          numeric;
     v_riga_nr         integer := 0;
     v_n_evase         integer := 0;
+    -- Il BERSAGLIO dei due rifiuti di evasione. ⚠️ `jsonb` esplicito: e' un
+    -- frammento del context, non il valore di una colonna.
+    v_bersagli        jsonb;
 BEGIN
     -- 1) Guard input.
     IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
@@ -44,16 +47,33 @@ BEGIN
      WHERE o.id = p_ordine_id;
 
     IF NOT FOUND THEN
+        -- ⛔ QUI NESSUN BERSAGLIO, ed e' una scelta. L'ordine non esiste —
+        --    oppure la RLS lo nasconde, che per chi opera e' la stessa cosa —
+        --    quindi non c'e' nessun posto dove mandarlo. Un pulsante che apre
+        --    il vuoto e' peggio di nessun pulsante (§4.3 del brief).
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_genera_ddt_da_ordine','E_DDT_ORDINE_NOT_FOUND',
             jsonb_build_object('ordine_id', p_ordine_id),
             NULL::uuid, p_ordine_id::text);
     END IF;
 
+    -- ⭐ IL BERSAGLIO, composto UNA VOLTA e riusato dai due rifiuti sotto.
+    --    Qui l'ordine e' certo: la SELECT sopra l'ha letto, quindi esiste ED
+    --    e' visibile a chi opera. Nessuna query in piu' — l'id ce l'abbiamo
+    --    gia' — e nessun ramo condizionale da mantenere.
+    --
+    -- ⚠️ Perche' serve, visto che l'operatore l'ordine lo sta gia' guardando:
+    --    l'evasione si lancia anche in massa, su piu' ordini in una passata, e
+    --    li' la frase dice QUALE ordine ha rifiutato ma non ci porta. E' lo
+    --    stesso caso del messaggio 937 dentro un giro di lotto.
+    v_bersagli := jsonb_build_array(
+        jsonb_build_object('tipo', 'ORDINE_VENDITA', 'id', p_ordine_id::text));
+
     IF v_stato_ord NOT IN ('CONFERMATO','PARZIALMENTE_EVASO') THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_genera_ddt_da_ordine','E_DDT_ORDINE_STATO_NON_EVADIBILE',
-            jsonb_build_object('ordine_id', p_ordine_id, 'stato', v_stato_ord),
+            jsonb_build_object('ordine_id', p_ordine_id, 'stato', v_stato_ord,
+                               'bersaglio', v_bersagli),
             NULL::uuid, p_ordine_id::text, v_stato_ord);
     END IF;
 
@@ -190,7 +210,8 @@ BEGIN
     IF v_n_evase = 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_genera_ddt_da_ordine','E_DDT_NIENTE_DA_EVADERE',
-            jsonb_build_object('ordine_id', p_ordine_id, 'righe', p_righe),
+            jsonb_build_object('ordine_id', p_ordine_id, 'righe', p_righe,
+                               'bersaglio', v_bersagli),
             NULL::uuid, p_ordine_id::text);
     END IF;
 
@@ -215,7 +236,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
-IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09.';
+IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09. ⭐ rev 2026-08-24: i due rifiuti di evasione (E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE) portano il BERSAGLIO sull''ordine, nel canale DATATYPE dell''eccezione: l''evasione si lancia anche in massa, e li'' la frase dice QUALE ordine ha rifiutato ma non ci porta. Il bersaglio si compone una volta sola dopo la lettura dell''ordine — a quel punto esiste ED e'' visibile — e non costa nessuna query in piu''. ⛔ E_DDT_ORDINE_NOT_FOUND resta SENZA bersaglio, di proposito: l''ordine non c''e'' o la RLS lo nasconde, e un pulsante che apre il vuoto e'' peggio di nessun pulsante. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
 ```
 
 ---

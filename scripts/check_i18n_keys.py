@@ -44,6 +44,7 @@
 # ------------------------------------------------------------
 """Guard delle chiavi i18n: chiavi rotte, parita' it/en, radici, emissioni DB."""
 
+import csv
 import json
 import os
 import re
@@ -239,6 +240,28 @@ def main():
                 for m in RE_SEED_KEY.finditer(testo):
                     db_keys.setdefault(m.group(1), set()).add(rel)
 
+    # ⭐ Terza sorgente: le INTESTAZIONI DI COLONNA del catalogo liste
+    # (`ui.lista_colonna.etichetta_i18n_key`). Non sono scritte nel frontend
+    # (nessun `t('...')` da grepare) e non sono JSON dentro un `meta`, quindi
+    # non le vedeva NESSUNO dei due controlli sopra: erano il punto cieco piu'
+    # grande del guard — 506 chiavi su 47 liste.
+    # ⚠️ Perche' contano: quando la chiave manca, l'intestazione ripiega
+    # sull'`etichetta` italiana del seed E NON DICE NIENTE (il frontend usa
+    # `te()` prima di tradurre). Il difetto si vede solo cambiando lingua e
+    # rileggendo le intestazioni — che e' esattamente come e' stato trovato,
+    # a occhio, il 2026-08-22.
+    colonne_keys = {}
+    _catalogo_csv = os.path.join(SEED, "ui", "lista_colonna.csv")
+    if os.path.isfile(_catalogo_csv):
+        rel = os.path.relpath(_catalogo_csv, ROOT)
+        with open(_catalogo_csv, newline="", encoding="utf-8") as fh:
+            for riga in csv.DictReader(fh):
+                if riga.get("attivo") != "t":
+                    continue
+                chiave = (riga.get("etichetta_i18n_key") or "").strip()
+                if chiave:
+                    colonne_keys.setdefault(chiave, set()).add(rel)
+
     rotte = sorted((k, v) for k, v in citate.items() if k not in presenti)
     db_rotte = sorted((k, v) for k, v in db_keys.items() if k not in presenti)
     solo_it = sorted(chiavi_it - chiavi_en)
@@ -274,6 +297,19 @@ def main():
                 print(f"       {d}")
     else:
         print("[ok] nessuna chiave emessa dal DB risulta irrisolvibile")
+
+    colonne_rotte = sorted((k, v) for k, v in colonne_keys.items() if k not in presenti)
+    if colonne_rotte:
+        problemi += len(colonne_rotte)
+        print(f"\n[X] {len(colonne_rotte)} INTESTAZIONI DI COLONNA senza traduzione")
+        print("    Il catalogo liste dichiara la chiave, i locales non ce l'hanno:")
+        print("    la colonna ripiega sull'etichetta italiana del seed, in silenzio.")
+        for k, dove in colonne_rotte[:20]:
+            print(f"    {k}")
+        if len(colonne_rotte) > 20:
+            print(f"    ... e altre {len(colonne_rotte) - 20}")
+    else:
+        print(f"[ok] tutte le {len(colonne_keys)} intestazioni di colonna sono tradotte")
 
     if solo_it or solo_en:
         problemi += len(solo_it) + len(solo_en)

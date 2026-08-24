@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/eventi_assets.md" %}
 # 📚 Tabella `eventi_assets`
 
 ## 🗂️ Campi principali

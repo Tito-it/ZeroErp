@@ -54,10 +54,27 @@ contabile.
   fornito, `> 0`. Guard espliciti con `E_PARAMETRO_INVALIDO`: un id nullo è un
   errore del chiamante, non un caso da normalizzare in silenzio.
 * La quota propria conta solo le righe contabili **attive**, in stato
-  **postabile**, marcate `meta->>'origine' = 'FONDO_FATTURA'` e
-  `meta->>'fondo_source_id' = p_source_id`.
+  **postabile**, il cui `fondo_source_id` è l'atto indicato (⭐ **colonna** dal
+  21-08-2026; prima erano due chiavi dentro il `meta`, e il filtro su `origine`
+  è caduto perché diceva la stessa cosa in un secondo modo).
 * Ritorna un `NUMERIC` che **può essere negativo**: su una fattura a credito il
   residuo lo è, ed è normale.
+
+> ⚠️ **L'assunzione su cui regge lo scorporo, scritta perché non si perda.** La
+> quota propria somma le sole righe **postabili**, quindi vale **finché la riga
+> del fondo è in lavorazione**. Su un fondo il cui trasferimento è già stato
+> *registrato* quella riga non sarebbe più contata — `POSTATA` non è postabile —
+> lo scorporo verrebbe a zero e il residuo risulterebbe **più basso del vero**:
+> il fondo sembrerebbe non più capiente.
+>
+> ✅ **Non capita, e non per fortuna**: un trasferimento registrato porta l'atto
+> a `ESEGUITO`, e tutti e tre i chiamanti filtrano `ASSEGNATO` o `DISPONIBILE`.
+> Nessuno arriva qui con un fondo eseguito.
+>
+> ⛔ **Chi aggiungesse un quarto chiamante deve rispettare questa condizione.**
+> È l'invariante presidiata da `db/pgtap/vendite/test-fondo-fattura-eseguito.sql`
+> — *nessun fondo `ASSEGNATO` ha una riga già registrata* — e un'assunzione non
+> presidiata è la prossima trappola.
 
 ---
 

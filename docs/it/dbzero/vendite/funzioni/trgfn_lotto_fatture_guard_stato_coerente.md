@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_lotto_fatture_guard_stato_coerente.md" %}
 # ⚙️ Funzione `trgfn_lotto_fatture_guard_stato_coerente`
 
 ```sql

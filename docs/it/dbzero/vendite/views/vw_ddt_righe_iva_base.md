@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_ddt_righe_iva_base.md" %}
 # 🔍 View `vw_ddt_righe_iva_base`
 
 > 📝 **Descrizione**

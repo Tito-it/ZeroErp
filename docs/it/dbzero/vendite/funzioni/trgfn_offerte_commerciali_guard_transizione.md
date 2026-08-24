@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_offerte_commerciali_guard_transizione.md" %}
 # ⚙️ Funzione `trgfn_offerte_commerciali_guard_transizione`
 
 ```sql

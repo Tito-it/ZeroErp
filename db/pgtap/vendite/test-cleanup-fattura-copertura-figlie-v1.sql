@@ -41,12 +41,34 @@
 --    vuotezza al test 5: li' l'elenco e' esplicito di proposito, perche' una
 --    stima di righe (reltuples) non e' un dato su cui fondare un presidio.
 -- ------------------------------------------------------------
+-- ⚠️ IL SECONDO LIVELLO, aggiunto il 2026-08-22 — e perche' mancava
+--   Questo file guardava solo le figlie di vendite.fatture. Ma la pulizia
+--   cancella anche vendite.fatture_RIGHE, e QUELLE figlie non le guardava
+--   nessuno: sei, di cui QUATTRO in NO ACTION. Il 2026-08-22 una di loro ha
+--   fatto esplodere test-riporta-lotto-a-draft-v1 con un 23503 grezzo dentro
+--   fn_cleanup_fatture_by_ids — cioe' esattamente il modo di scoprire il
+--   difetto che questo file esiste per evitare, applicato al livello che non
+--   sorvegliava.
+--
+-- ⚠️ E LA CHIAVE DELL'INVENTARIO DEL PRIMO LIVELLO E' LA TABELLA, non il
+--   vincolo. Non basta: vendite.attivita_fatturabili ha DUE chiavi esterne
+--   verso fatture_righe con ON DELETE diversi (una SET NULL, una NO ACTION).
+--   Classificata «per tabella» sarebbe risultata coperta mentre una delle due
+--   non lo era. Il secondo inventario e' quindi indicizzato per NOME DEL
+--   VINCOLO, che e' la cosa che porta davvero il comportamento.
+--   ⚠️ Il primo inventario non e' stato riscritto per non toccare un presidio
+--   che funziona: e' un debito dichiarato, non una svista.
+--
 -- Indice test
 -- 1) Ogni figlia di vendite.fatture e classificata (una nuova -> rosso col nome)
 -- 2) Nessuna voce dell inventario e sparita dal catalogo
 -- 3) Le GESTITA sono davvero nominate nel corpo della pulizia
 -- 4) Le BLOCCO_VOLUTO hanno ancora NO ACTION (nessuno le ha degradate a CASCADE)
 -- 5) Le SCOPERTA_NOTA sono ancora vuote (l eccezione e scaduta se si popolano)
+-- 6) Ogni figlia di vendite.fatture_RIGHE e classificata, per VINCOLO
+-- 7) Nessuna voce del secondo inventario e sparita dal catalogo
+-- 8) I BLOCCO_VOLUTO del secondo livello non sono stati degradati a CASCADE
+-- 9) Il guard che rende quei blocchi una risposta e non un incidente esiste
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -66,7 +88,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(5);
+SELECT plan(9);
 
 -- ============================================================
 -- L'inventario: la classificazione, con la motivazione
@@ -80,7 +102,11 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
   ('vendite.fatture_log',                  'GESTITA',       'DELETE nel cleanup'),
   ('vendite.fatturazione_lotti_fatture',   'GESTITA',       'DELETE nel cleanup: e il collegamento al lotto'),
   ('vendite.fatture_fondi_fattura',        'GESTITA',       'DELETE via fn_reset_fondi_fattura'),
-  ('vendite.fatture_fondi_fattura_source', 'GESTITA',       'UPDATE via fn_reset_fondi_fattura: azzera fattura_figlia_id e rimette il fondo DISPONIBILE. NON si cancella, ed e giusto: e un credito che deve sopravvivere alla fattura che lo consumava'),
+  -- ⭐ rev 2026-08-21 (cantiere incassi, lotto 3 / D11): la riga qui sopra
+  --   diceva «NON si cancella, ed e giusto». Dal changeSet 20260821-54 non e
+  --   piu vero, e una classificazione che descrive un comportamento finito e
+  --   peggio di una mancante: si legge come se fosse stata verificata.
+  ('vendite.fatture_fondi_fattura_source', 'GESTITA',       'DELETE via fn_reset_fondi_fattura quando l atto NON e stato eseguito: e una PROPOSTA, non un fatto, e il giro successivo ne rifa uno letto sul residuo di adesso. Un atto ESEGUITO invece non si tocca MAI - il reset lo segnala nel diario e va avanti - e uno bloccato da una distinta CHIUSA passa ad ANNULLATO col motivo sul dato'),
   ('pagamenti.vendite_contabili_righe',    'GESTITA',       'DELETE via fn_reset_fondi_fattura'),
 
   -- ── CASCADE_DB: ci pensa la FK, e va bene cosi ─────────────────────
@@ -93,6 +119,12 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
   -- ── BLOCCO_VOLUTO: il rifiuto E la funzionalita ────────────────────
   ('pagamenti.vendite_movimenti',          'BLOCCO_VOLUTO', 'una fattura con un incasso registrato NON si deve poter disfare'),
   ('vendite.fatture_sdi',                  'BLOCCO_VOLUTO', 'una fattura gia trasmessa allo SDI NON si deve poter disfare'),
+  -- ⭐ rev 2026-08-22 (cantiere incassi, lotto 7 / D15): la tabella e nata
+  --   rinominando pagamenti.compensazioni, che con vendite.fatture non aveva
+  --   nessun legame — l inventario non la conosceva perche NON ERA una figlia.
+  --   Adesso ne ha DUE (origine e destinazione), ed e questo file ad averlo
+  --   detto: e esattamente il lavoro per cui esiste.
+  ('pagamenti.sistemazioni',               'BLOCCO_VOLUTO', 'una fattura su cui e stata REGISTRATA una decisione di sistemazione NON si deve poter disfare: se l atto e CONFERMATO ha gia generato una distinta o un fondo, e cancellare il documento lascerebbe quel denaro senza origine; se e in BOZZA e comunque una decisione che qualcuno ha preso e che va ritrovata. ⚠️ Sul percorso vero il blocco non scatta mai - il cleanup lavora su fatture in DRAFT, e una sistemazione nasce da un sovra-incasso, cioe da movimenti su un documento gia emesso - ma il giorno che quel percorso cambiasse, il rifiuto e la risposta giusta'),
 
   -- ── SCOPERTA_NOTA: eccezione a tempo ───────────────────────────────
   ('vendite.attivita_consumi',             'SCOPERTA_NOTA', 'flusso consumi non ancora acceso: 0 righe e nessuno scrittore (solo fn_list_consumi_da_pushare, che legge). fattura_id e NULLABLE apposta, quindi il giorno che si accende il ripristino dovra azzerarlo, non cancellare il consumo');
@@ -182,6 +214,94 @@ SELECT is(
   (SELECT count(*) FROM vendite.attivita_consumi),
   0::bigint,
   '5) attivita_consumi e ancora vuota: l eccezione SCOPERTA_NOTA e ancora valida'
+);
+
+
+-- ============================================================
+-- IL SECONDO LIVELLO: le figlie di vendite.fatture_righe
+-- ============================================================
+-- ⚠️ Indicizzato per NOME DEL VINCOLO e non per tabella: una tabella puo'
+--   avere due chiavi esterne verso lo stesso padre con ON DELETE diversi, e
+--   classificarla «in blocco» nasconderebbe proprio quella asimmetria.
+CREATE TEMP TABLE tmp_inventario_righe(vincolo text PRIMARY KEY, tab text, categoria text, perche text);
+
+INSERT INTO tmp_inventario_righe(vincolo, tab, categoria, perche) VALUES
+  -- ── GESTITA ────────────────────────────────────────────────────────
+  ('fk_attivita_fatturabili_fattura_riga', 'vendite.attivita_fatturabili', 'GESTITA',
+   'ON DELETE SET NULL, e la pulizia lo azzera comunque a mano insieme al lock: il legame riga-attivita muore col documento, e l attivita torna in coda'),
+  ('fk_fatture_note_riga',                 'vendite.note_fatture',         'CASCADE_DB',
+   'nota agganciata alla riga: senza la riga non ha oggetto'),
+
+  -- ── BLOCCO_VOLUTO: il rifiuto E la funzionalita ────────────────────
+  -- ⭐ Le quattro qui sotto sono LA STESSA COSA vista da quattro lati: su
+  --   quella riga di fattura e gia stato registrato un accredito. Il legame
+  --   e il SECONDO TETTO dell accredito (20260818-27 punto 2) e il
+  --   DatiFattureCollegate della TD04: azzerarlo per far passare la pulizia
+  --   toglierebbe il tetto proprio mentre le quantita si ri-derivano.
+  --   La via d uscita per l operatore e fn_annulla_accredito_riga_reso.
+  ('fk_commesse_attivita_fattura_riga_rettificata', 'vendite.commesse_attivita', 'BLOCCO_VOLUTO',
+   'la commessa_attivita di RETTIFICA punta alla riga che sta correggendo: cancellarla lascerebbe l accredito senza origine'),
+  ('fk_attivita_fatturabili_fattura_riga_rettificata', 'vendite.attivita_fatturabili', 'BLOCCO_VOLUTO',
+   'stesso legame sul lato attivita fatturabili. ⚠️ La stessa tabella ha anche fk_attivita_fatturabili_fattura_riga in SET NULL: e il motivo per cui questo inventario e per VINCOLO e non per tabella'),
+  ('fk_resi_accrediti_fattura_riga',               'vendite.resi_righe_accrediti', 'BLOCCO_VOLUTO',
+   'l accredito del reso punta alla riga accreditata: e il documento che prova quanto e stato reso'),
+  ('fk_fatture_righe_riga_rettificata',            'vendite.fatture_righe',        'BLOCCO_VOLUTO',
+   'auto-riferimento: la riga di nota di credito punta alla riga rettificata. ⚠️ Blocca SOLO se la riga che rettifica sta FUORI dall insieme cancellato: se muoiono insieme la NO ACTION e soddisfatta a fine istruzione, ed e il caso normale della nota di credito nello stesso lotto');
+
+CREATE TEMP TABLE tmp_figlie_righe AS
+SELECT c.conname                       AS vincolo,
+       c.conrelid::regclass::text      AS tab,
+       c.confdeltype                   AS on_delete
+  FROM pg_constraint c
+ WHERE c.contype = 'f' AND c.confrelid = 'vendite.fatture_righe'::regclass;
+
+-- 6) La domanda, un livello piu' giu'
+SELECT is(
+  (SELECT count(*) FROM tmp_figlie_righe f
+    WHERE NOT EXISTS (SELECT 1 FROM tmp_inventario_righe i WHERE i.vincolo = f.vincolo)),
+  0::bigint,
+  '6) Ogni figlia di vendite.fatture_righe e classificata: '
+  || COALESCE((SELECT string_agg(f.vincolo, ', ') FROM tmp_figlie_righe f
+                WHERE NOT EXISTS (SELECT 1 FROM tmp_inventario_righe i WHERE i.vincolo = f.vincolo)),
+              'nessuna scoperta')
+);
+
+-- 7) E l'inventario non invecchia nell'altro verso
+SELECT is(
+  (SELECT count(*) FROM tmp_inventario_righe i
+    WHERE NOT EXISTS (SELECT 1 FROM tmp_figlie_righe f WHERE f.vincolo = i.vincolo)),
+  0::bigint,
+  '7) Nessuna voce del secondo inventario e sparita dal catalogo: '
+  || COALESCE((SELECT string_agg(i.vincolo, ', ') FROM tmp_inventario_righe i
+                WHERE NOT EXISTS (SELECT 1 FROM tmp_figlie_righe f WHERE f.vincolo = i.vincolo)),
+              'nessun fantasma')
+);
+
+-- 8) Un blocco voluto si perde in silenzio, anche qui
+-- ⚠️ Se qualcuno degradasse a CASCADE uno di questi, l accredito verrebbe
+--   cancellato insieme alla riga e nessuno protesterebbe: sembrerebbe una
+--   semplificazione, e sarebbe la perdita del secondo tetto.
+SELECT is(
+  (SELECT count(*) FROM tmp_inventario_righe i
+     JOIN tmp_figlie_righe f ON f.vincolo = i.vincolo
+    WHERE i.categoria = 'BLOCCO_VOLUTO' AND f.on_delete = 'c'),
+  0::bigint,
+  '8) I BLOCCO_VOLUTO del secondo livello non sono stati degradati a CASCADE'
+);
+
+-- 9) Un blocco senza spiegazione e' un incidente; con la spiegazione e' una risposta
+-- ⚠️ Questo test e' il motivo per cui i BLOCCO_VOLUTO qui sopra sono
+--   accettabili: senza il guard, quelle NO ACTION producono un 23503 grezzo a
+--   meta lavoro, dentro una funzione che i suoi chiamanti danno per
+--   infallibile. Con il guard producono un errore di dominio che dice cosa
+--   fare. Se il guard sparisce, i blocchi restano e la risposta no.
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'script' AND p.proname = 'fn_check_fatture_con_rettifiche'
+  )
+  AND (SELECT c.src FROM tmp_corpo c) ILIKE '%fn_check_fatture_con_rettifiche%',
+  '9) il guard fn_check_fatture_con_rettifiche esiste ed e chiamato dalla pulizia'
 );
 
 SELECT * FROM finish();

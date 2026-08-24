@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/note_trasferimento_riga.md" %}
 # 📚 Tabella `note_trasferimento_riga`
 
 ## 🗂️ Campi principali

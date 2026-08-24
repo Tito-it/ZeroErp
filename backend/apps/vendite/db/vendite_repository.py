@@ -53,10 +53,69 @@ from apps.vendite.types import (
 logger = logging.getLogger(__name__)
 
 # Whitelist colonne ordinamento per list_lotto_fatture; mai interpolate direttamente.
-_SORT_COLUMNS: dict[str, str] = {
+# Colonne ordinabili dei DOCUMENTI del lotto: chiave esposta al FE ->
+# espressione SQL. Mai interpolate direttamente: solo i valori di questa mappa
+# entrano nella query.
+#
+# ⭐ LA CHIAVE E' IL NOME DEL CAMPO NEL PAYLOAD, e non un sinonimo. Il seed di
+# `ui.lista_colonna` dichiara `campo_sorgente`, e la lista configurabile manda
+# QUELLO come `order_by`: se la chiave qui si chiamasse diversamente, la
+# freccetta comparirebbe sull'intestazione e non ordinerebbe niente — un
+# controllo che si vede e non funziona, peggio di un controllo assente.
+# E' il motivo per cui `nominativo` e' diventato `ragione_sociale_completa`
+# (richiesta BE-1 del team DB, 2026-08-22): il vecchio nome non esisteva in
+# nessun payload.
+#
+# ⚠️ Il NUCLEO ordina sempre (regola delle liste standard): numero, data,
+# identificativo fiscale e stati. Prima ne erano ordinabili 3 su 11, cioe' la
+# lista sarebbe nata con cinque colonne di nucleo rotte.
+# Il tetto delle righe esportabili dei documenti di un lotto. Il tetto di
+# PAGINA (`LIST_MAX_LIMIT`, 200) resta dov'e': sono due limiti diversi per due
+# usi diversi, e confonderli significa o una pagina enorme o un file troncato.
+_LOTTO_FATTURE_EXPORT_MAX_ROWS = 10_000
+
+# ⭐ Le colonne ordinabili del GIORNALE di un'entita', e sono due sole di
+# proposito: la gravita' (default) e il tempo. ⛔ Non e' una lista ridotta «per
+# ora»: `registro`, `chi` e `cosa` raggrupperebbero, non ordinerebbero — e su un
+# elenco paginato un raggruppamento a video e' un ordinamento che mente.
+# ⚠️ Il valore `rango` non e' una colonna della vista: e' il rango calcolato
+# nella CTE, perche' il vocabolario e' testuale e in ordine alfabetico ERROR
+# verrebbe PRIMA di INFO e WARN — una scala che non e' una scala.
+_GIORNALE_SORT_COLUMNS: dict[str, str] = {
+    "gravita": "rango",
+    "quando": "quando",
+}
+
+
+# Scopo: la clausola `ORDER BY` del giornale di un'entita', a partire dalla
+#        colonna chiesta e dal verso. ⭐ E' una funzione PURA perche' e' la parte
+#        che si sbaglia in silenzio: un ordinamento storto non solleva niente e
+#        a video somiglia a un ordinamento giusto. Cosi' si prova senza DB.
+# ⚠️ Non concatena mai `NULLS ...` a mano: la direzione la compone
+#    `sql_order_direction`, che i NULL li porta gia' con se' (BB di casa).
+def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
+    direzione = sql_order_direction(sort_dir, default_desc=True)
+    if _GIORNALE_SORT_COLUMNS.get(sort_by or "", "rango") == "rango":
+        # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
+        #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
+        #    recenti» resta la lettura utile anche guardando dal meno grave.
+        #    `riga_id` chiude come sempre — e' il rimedio a R-1, il tempo da
+        #    solo non ordina (default `now()` = timestamp di transazione).
+        return f"t.rango_gravita {direzione}, t.quando DESC, t.riga_id DESC"
+    return f"t.quando {direzione}, t.riga_id {sql_tiebreak_direction(direzione)}"
+
+LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "fattura_id": "fllf.fattura_id",
-    "nominativo": "srd.ragione_sociale_completa",
+    "numero": "f.numero",
+    "serie": "f.serie",
+    "data": "f.data",
+    "ragione_sociale_completa": "srd.ragione_sociale_completa",
+    "id_fiscale_univoco_cf_piva": "srd.id_fiscale_univoco_cf_piva",
+    "natura_doc_descrizione": "ndf.descrizione",
+    "stato_doc_fiscale_descrizione": "sdf.descrizione",
+    "stato_esecuzione": "fllf.stato_esecuzione",
     "totale_doc": "f.totale_doc",
+    "totale_a_pagare": "f.totale_a_pagare",
 }
 
 # Aree della famiglia dash fatturazione, nell'ordine del funnel (brief
@@ -248,7 +307,66 @@ class VenditeRepository:
                 fl.emittente_soggetto_ruolo_id,
                 fl.data_insert,
                 fl.user_insert,
-                s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                -- ⭐ QUANTI documenti e QUANTO valgono, sulla riga del lotto
+                -- (richiesta di Tid, 2026-08-24). Prima il lotto diceva com'e'
+                -- andato e non quanto pesa: per sapere se erano tre fatture o
+                -- trecento bisognava aprirlo.
+                -- ⚠️ Sotto-query e non JOIN + GROUP BY: un JOIN sul ponte
+                -- moltiplicherebbe la riga del lotto per il numero delle sue
+                -- fatture, e ogni altra colonna andrebbe aggregata a sua volta.
+                -- ⚠️ `COALESCE` sulla somma e non sul conteggio: un lotto senza
+                -- documenti vale ZERO euro (0 e' il totale giusto), ma
+                -- `count(*)` gia' torna 0 da se'. Sul totale il COALESCE serve
+                -- perche' `sum()` su zero righe da' NULL, che a video
+                -- diventerebbe un trattino dove il numero c'e' ed e' zero.
+                (SELECT count(*)
+                   FROM vendite.fatturazione_lotti_fatture lf_c
+                  WHERE lf_c.lotto_id = fl.id)                    AS n_fatture,
+                (SELECT COALESCE(sum(f_t.totale_doc), 0)
+                   FROM vendite.fatturazione_lotti_fatture lf_t
+                   JOIN vendite.fatture f_t ON f_t.id = lf_t.fattura_id
+                  WHERE lf_t.lotto_id = fl.id)                    AS totale_documenti,
+                -- ⭐ «C'e' un errore grave nel dettaglio»: UN SOLO documento
+                -- fallito basta ad accendere il segnale sulla riga del lotto
+                -- (richiesta di Tid, 2026-08-21). E' la forma dei gestionali a
+                -- lotti: la testata avvisa, il dettaglio spiega.
+                -- ⚠️ EXISTS e non un COUNT: la riga di lista deve dire SE, non
+                -- QUANTI — e un EXISTS si ferma al primo che trova invece di
+                -- percorrere tutti i log di tutte le fatture del lotto.
+                -- ⚠️ Due sorgenti come la guardia PRE-1: il ponte in ERRORE
+                -- **oppure** un log critico non ritirato. Guardarne una sola
+                -- lascerebbe spenta la spia proprio nei casi che l'altra copre.
+                -- 📌 Costo misurato con EXPLAIN ANALYZE (2026-08-21): il
+                -- pianificatore trasforma l'EXISTS interno in un SubPlan
+                -- HASHATO eseguito UNA volta (`loops=1`), non per riga — 0,177
+                -- ms su 46 lotti. Non e' una N+1 travestita.
+                EXISTS (
+                    SELECT 1
+                      FROM vendite.fatturazione_lotti_fatture lf_err
+                     WHERE lf_err.lotto_id = fl.id
+                       AND (
+                            lf_err.stato_esecuzione = 'ERRORE'
+                            OR EXISTS (
+                                SELECT 1
+                                  FROM vendite.fatture_log fl_log
+                                 WHERE fl_log.fattura_id = lf_err.fattura_id
+                                   AND fl_log.status = 'C'
+                                   AND fl_log.disabilitato IS FALSE
+                            )
+                       )
+                ) AS ha_errori_gravi,
+                -- ⭐ Il lotto e' stato riportato in lavorazione e il giro non ha
+                -- ancora rifatto lo step (`riaperto_il` si spegne appena il
+                -- runner lo onora, `azzera_riaperto_il`). Serve al FE per
+                -- NOMINARE giusto la prossima esecuzione: su un lotto riaperto
+                -- il prossimo run RIFA' lo step corrente e il lotto resta in
+                -- DRAFT — chiamarlo «Avanza step» e rispondere «Pipeline
+                -- avanzata» dice una cosa falsa (collaudo NC resi, 2026-08-22).
+                -- ⚠️ Il verdetto resta del runner (`is_lotto_riaperto`): questo
+                -- e' lo STESSO predicato letto per la presentazione, non una
+                -- seconda regola. Se il criterio cambiasse, cambia di la'.
+                (fl.riaperto_il IS NOT NULL) AS riaperto
     """
 
     _LOTTO_JOINS = """
@@ -300,6 +418,12 @@ class VenditeRepository:
             # vuota — cioe' SEMBRA la garanzia che il flag `multi_emittente`
             # pretende, senza esserlo.
             "emittente_ragione_sociale": row[18],
+            "n_fatture": int(row[19]),
+            # ⚠️ Stringa e non float, come ogni importo che esce da qui: un
+            # totale fiscale non passa da un binario a virgola mobile.
+            "totale_documenti": str(row[20]),
+            "ha_errori_gravi": bool(row[21]),
+            "riaperto": bool(row[20]),
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -354,6 +478,7 @@ class VenditeRepository:
         limit: int,
         offset: int,
         max_limit: int = LIST_MAX_LIMIT,
+        solo_recuperi_mese: bool = False,
     ) -> tuple[list[LottoListRow], int]:
         # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
         # protegge la lista a video; l'export lo alza esplicitamente (fino a
@@ -367,7 +492,35 @@ class VenditeRepository:
         params: list[Any] = []
 
         # Costruzione WHERE dinamica; ogni filtro è parametrizzato.
-        if competenza_mese is not None:
+        # ⭐ LA SCHEDA «RECUPERI DEL MESE» E' QUESTA STESSA LISTA con UNA
+        #    condizione diversa: i lotti di competenza PRECEDENTE che hanno
+        #    emesso documenti NEL mese filtrato. Colonne, decodifiche, whitelist
+        #    di ordinamento e seed restano gli stessi — quindi le due schede
+        #    mostrano le stesse informazioni e permettono le stesse azioni **per
+        #    costruzione**. Una seconda lista scritta a parte divergerebbe al
+        #    primo ritocco.
+        #
+        # ⚠️ Il caso che la motiva: una commessa di competenza GIUGNO fatturata
+        #    ad AGOSTO produce un documento con data agosto dentro un lotto di
+        #    giugno. Chi lavora sul mese di agosto non lo trova, perche' lo
+        #    cerca — giustamente — per la data del documento e non per la
+        #    competenza della commessa.
+        if solo_recuperi_mese:
+            conditions.append("fl.competenza_mese < %s")
+            params.append(competenza_mese)
+            conditions.append(
+                """
+                EXISTS (
+                    SELECT 1
+                      FROM vendite.fatturazione_lotti_fatture lf_r
+                      JOIN vendite.fatture f_r ON f_r.id = lf_r.fattura_id
+                     WHERE lf_r.lotto_id = fl.id
+                       AND date_trunc('month', f_r.data)::date = %s
+                )
+                """
+            )
+            params.append(competenza_mese)
+        elif competenza_mese is not None:
             conditions.append("fl.competenza_mese = %s")
             params.append(competenza_mese)
         if utility_id is not None:
@@ -1908,6 +2061,15 @@ class VenditeRepository:
     # `sql_order_direction` mette i NULL — in fondo ordinando DESC, che e'
     # quello che serve a chi cerca gli importi. `capienza_attuale` invece e'
     # calcolata su TUTTI i rami (fn_saldo_sorgente_fondo fa COALESCE): mai NULL.
+    # ⚠️ `stato_atto` vale `'DISPONIBILE'` sul solo ramo NON_PIU_CAPIENTE (dove
+    # la vista filtra `s.stato = 'DISPONIBILE'`) ed e' `NULL::varchar` per
+    # COSTRUZIONE sugli altri: la colonna ha DUE valori, non uno, e ordinarla
+    # separa le righe con un atto vivo da quelle senza — che e' informazione
+    # vera, non un flag alzato per far tacere il presidio dei seed.
+    # 📌 Sui NULL non serve nessun `NULLS LAST` scritto a mano: la direzione la
+    # produce `sql_order_direction`, che ritorna gia' `ASC NULLS FIRST` /
+    # `DESC NULLS LAST` (il vuoto sta dove starebbe lo zero) proprio perche' i
+    # default di PostgreSQL sono l'opposto.
     FONDI_DA_DECIDERE_SORT_COLUMNS: dict[str, str] = {
         "data": "data",
         "motivo": "motivo",
@@ -1916,6 +2078,7 @@ class VenditeRepository:
         "totale_a_pagare": "totale_a_pagare",
         "importo_proposto": "importo_proposto",
         "capienza_attuale": "capienza_attuale",
+        "stato_atto": "stato_atto",
     }
 
     # Colonne dell'elenco, NELL'ORDINE: un'unica tupla costruisce sia il SELECT
@@ -2100,12 +2263,19 @@ class VenditeRepository:
         sort_dir: str,
         limit: int,
         offset: int,
+        max_rows: int | None = None,
     ) -> tuple[list[LottoFattureRow], int]:
-        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
+        # ⚠️ DUE TETTI, e la differenza e' voluta: la PAGINA si ferma a
+        # `LIST_MAX_LIMIT` (200), l'EXPORT salta la paginazione e arriva al tetto
+        # dell'esportazione. Senza `max_rows` un file di 3.000 righe uscirebbe
+        # troncato a 200 senza dirlo — e un export troncato in silenzio somiglia
+        # in tutto a un export completo.
+        tetto = _LOTTO_FATTURE_EXPORT_MAX_ROWS if max_rows else LIST_MAX_LIMIT
+        safe_limit = max(1, min(int(max_rows or limit), tetto))
         safe_offset = max(0, int(offset))
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
-        sort_col = _SORT_COLUMNS.get(sort_by, "fllf.fattura_id")
+        sort_col = LOTTO_FATTURE_SORT_COLUMNS.get(sort_by, "fllf.fattura_id")
         safe_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
         order_clause = f"{sort_col} {safe_dir}"
         if sort_by != "fattura_id":
@@ -2138,6 +2308,44 @@ class VenditeRepository:
                 ON sdf.id = fllf.stato_doc_fiscale_id
             LEFT JOIN config.nature_doc_fiscale ndf
                 ON ndf.id = f.natura_doc_id
+        """
+
+        # ⭐ LA SEGNALAZIONE ATTACCATA ALLA RIGA (D-6 del brief liste drawer
+        # lotto, 2026-08-22). La colonna `stato_esecuzione` dice CHE la fattura
+        # e' fallita; da sola non dice perche', e il motivo viveva solo nel
+        # toast del momento — cioe' in nessun posto, un minuto dopo.
+        #
+        # ⭐ LA REGOLA E' «L'ULTIMA VIVA, DALLE PIU' GRAVI», e le due meta'
+        # contano entrambe: si guardano TUTTI i livelli, non solo i critici, e
+        # a parita' vince la GRAVITA' prima della data. Un documento con un
+        # avviso di ieri e nessun critico ha qualcosa da dire, e prima non lo
+        # diceva; uno con un critico di ieri e un avviso di oggi deve mostrare
+        # il critico, non l'avviso.
+        #
+        # ⚠️ LATERAL e non un JOIN semplice: di segnalazioni una fattura ne ha
+        # 0..n e ne serve UNA. Con un JOIN normale una fattura con tre
+        # segnalazioni comparirebbe tre volte nell'elenco del lotto.
+        # ⚠️ Sta FUORI da `joins` di proposito: `count_sql` conta le righe del
+        # lotto e non ha bisogno del messaggio — un LATERAL nel COUNT sarebbe
+        # lavoro per niente su ogni pagina.
+        # 📌 `disabilitato IS NOT TRUE`: «chi alza la bandiera la abbassa» — una
+        # segnalazione ritirata da chi l'ha scritta non deve piu' comparire.
+        errore_lateral = """
+            LEFT JOIN LATERAL (
+                SELECT fl.status, fl.messaggio, fl.data_ora, fl.meta
+                  FROM vendite.fatture_log fl
+                 WHERE fl.fattura_id = fllf.fattura_id
+                   AND fl.disabilitato IS NOT TRUE
+                 ORDER BY CASE fl.status
+                              WHEN 'C' THEN 3
+                              WHEN 'W' THEN 2
+                              WHEN 'I' THEN 1
+                              ELSE 0
+                          END DESC,
+                          fl.data_ora DESC,
+                          fl.id DESC
+                 LIMIT 1
+            ) err ON TRUE
         """
 
         count_sql = f"""
@@ -2173,9 +2381,19 @@ class VenditeRepository:
                 -- (§12.4-bis.8). Senza questa decodifica il drawer del lotto
                 -- non «assume» che siano tutte fatture: non ha il dato.
                 ndf.codice_interno      AS natura_doc_codice,
-                ndf.descrizione         AS natura_doc_descrizione
+                ndf.descrizione         AS natura_doc_descrizione,
+                err.messaggio           AS errore_messaggio,
+                err.data_ora            AS errore_quando,
+                err.meta                AS errore_meta,
+                -- ⚠️ Il LIVELLO non e' una colonna del seed ma serve al FE per
+                -- scegliere la severita': senza, l'icona di riga sarebbe rossa
+                -- anche su un avviso, cioe' direbbe «errore» dove errore non
+                -- c'e'. Stesso ruolo di `natura_doc_codice`, colonna di
+                -- supporto invisibile del seed.
+                err.status              AS errore_livello
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
+            {errore_lateral}
             {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
@@ -2192,6 +2410,11 @@ class VenditeRepository:
 
         result: list[LottoFattureRow] = []
         for row in rows:
+            # ⚠️ Il `meta` dell'errore si legge UNA volta per riga: `jsonb_out`
+            # fa un `json.loads` (dal cursore RAW il jsonb arriva come stringa),
+            # e chiamarlo una volta per chiave lo ripeterebbe a ogni chiave
+            # nuova — su una lista paginata, per ogni riga.
+            errore_meta = jsonb_out(row[22]) or {}
             result.append(
                 {
                     "id": int(row[0]),
@@ -2214,6 +2437,20 @@ class VenditeRepository:
                     "stato_doc_fiscale_codice": row[17],
                     "natura_doc_codice": row[18],
                     "natura_doc_descrizione": row[19],
+                    "errore_messaggio": row[20],
+                    "errore_quando": row[21].isoformat() if row[21] is not None else None,
+                    # Il codice sta nel `meta` di chi ha scritto la riga: dice
+                    # DI CHE errore si tratta, non solo che c'e'. `jsonb_out`
+                    # perche' dal cursore RAW il jsonb arriva come stringa.
+                    "errore_codice": errore_meta.get("error_code"),
+                    # ⭐ IL BERSAGLIO dell'errore persistito (2026-08-24): su
+                    # QUALE cosa, cosi' che l'icona di riga possa offrire un
+                    # gesto e non solo una lettura. Stessa borsa `meta` del
+                    # codice qui sopra — il canale c'era gia', mancava cosa
+                    # metterci. Forma: `[{"type": "FATTURA", "id": "820"}]`.
+                    # Brief: `brief-db-bersaglio-errore.md` §7-bis (B7).
+                    "errore_bersagli": errore_meta.get("bersagli"),
+                    "errore_livello": row[23],
                 }
             )
         return result, total_count
@@ -2684,10 +2921,23 @@ class VenditeRepository:
                 l.n_discendenti_attivi,
                 l.is_transitato,
                 l.n_sorgenti,
-                l.root_codice
+                l.root_codice,
+                l.natura_doc_codice,
+                -- ⚠️ La natura della FRONTIERA si legge dal SUO nodo, non da
+                -- questa riga: la summary porta solo la natura del documento
+                -- stesso. E serve davvero — la frontiera PUO' essere una nota
+                -- di credito (arco G dalla commessa, che non e' un ramo di
+                -- ritorno): misurato il 2026-08-21, e' gia' la frontiera
+                -- dell'ordine 240 e della commessa 322. Senza questa colonna
+                -- il pannello la etichetta «Fattura». Stesso JOIN alla vista
+                -- nodi del traversal qui sotto.
+                nfr.natura_doc_codice          AS frontiera_natura_doc_codice
             FROM vendite.vw_documento_lineage l
             JOIN config.sorgenti s ON s.id = l.tipo_id
             LEFT JOIN config.sorgenti sf ON sf.id = l.frontiera_tipo_id
+            LEFT JOIN vendite.vw_documento_lineage_nodi nfr
+                   ON nfr.tipo_id = l.frontiera_tipo_id
+                  AND nfr.uid = l.frontiera_uid
             WHERE l.tipo_id = %s
               AND l.uid = %s
         """
@@ -2720,6 +2970,8 @@ class VenditeRepository:
             "is_transitato": bool(row[20]),
             "n_sorgenti": int(row[21]),
             "root_codice": row[22],
+            "natura_doc_codice": row[23],
+            "frontiera_natura_doc_codice": row[24],
         }
 
     # Scopo: Catena dei passaggi di un documento via
@@ -2744,7 +2996,9 @@ class VenditeRepository:
                 -- Id numerico apribile nel drawer di dettaglio: uid::bigint
                 -- per i tipi id-keyed; traduzione uuid->id per preventivo/
                 -- offerta (unici key_selector='uid'). NULL = fuori scope RLS
-                -- o nodo senza drawer (fattura/commessa) -> FE non apre.
+                -- -> tappa consultiva, il FE non apre. (Fattura e commessa un
+                -- drawer ce l'hanno: dal 2026-07-29 il grafo non ha piu' nodi
+                -- senza superficie.)
                 COALESCE(pfrom.id, ofrom.id,
                     CASE WHEN sf.key_selector = 'id'
                          THEN NULLIF(p.from_uid, '')::bigint END) AS from_doc_id,
@@ -2758,7 +3012,12 @@ class VenditeRepository:
                 COALESCE(pto.id, oto.id,
                     CASE WHEN st.key_selector = 'id'
                          THEN NULLIF(p.to_uid, '')::bigint END) AS to_doc_id,
-                p.is_ramo_inverso
+                p.is_ramo_inverso,
+                -- La natura dei due estremi: distingue una nota di credito da
+                -- una fattura quando la tappa e' la seconda di fila sotto lo
+                -- stesso tipo documento (arco N).
+                p.from_natura_doc_codice,
+                p.to_natura_doc_codice
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
@@ -2802,6 +3061,8 @@ class VenditeRepository:
                     "to_is_abortito": bool(row[17]),
                     "to_doc_id": None if row[18] is None else int(row[18]),
                     "is_ramo_inverso": bool(row[19]),
+                    "from_natura_doc_codice": row[20],
+                    "to_natura_doc_codice": row[21],
                 }
             )
         return result
@@ -3060,3 +3321,167 @@ class VenditeRepository:
             ddt_id=ddt_id,
             ordine_id=ordine_id,
         )
+
+    # Scopo: IL GIORNALE DI UN'ENTITA' — «cosa e' successo a questa cosa, in
+    #        ordine di tempo», letto dalla vista che cuce i registri.
+    #
+    # ⭐ LA SORGENTE E' `script.vw_giornale_entita` (lotto L3 del brief
+    #    event_log), che unisce quattro registri in una forma normalizzata. Vive
+    #    in `script` e non in `vendite` perche' i registri di eventi del progetto
+    #    sono sei: quando arrivera' «cosa e' successo a questa pratica», il ramo
+    #    entra con un UNION ALL e questo lettore non cambia.
+    # 📌 Sta in `vendite` perche' il primo consumatore e' la fattura. Al SECONDO
+    #    dominio va spostato in `core` — non prima (regola del 2).
+    #
+    # ⚠️ La vista e' `security_invoker`: il perimetro lo applica la connessione
+    #    di chi legge, non questa query. ⛔ Ma NON e' il cancello di questo
+    #    endpoint: `fatture` ha la RLS, e una fattura fuori scope darebbe zero
+    #    righe — cioe' «non e' successo niente» invece di «non la vedi». Il
+    #    cancello e' la TESTATA, e lo tiene il service.
+    #
+    # ⛔ L'ORDINE NON PUO' APPOGGIARSI AL SOLO TEMPO, ed e' il rilievo R-1 della
+    #    ricognizione: `event_time` e `data_ora` hanno default `now()`, che in
+    #    PostgreSQL e' il timestamp di TRANSAZIONE. Misurato: 38 righe di un
+    #    lotto su 3 istanti distinti, uno per corsa. A ordinare davvero dentro
+    #    l'istante e' il tiebreak `riga_id`, che e' l'ordine di scrittura — ed e'
+    #    la sequenza vera finche' il registro e' UNO SOLO (oggi, per la fattura,
+    #    e' `fatture_log`). ⚠️ Il giorno che una fattura avra' righe da due
+    #    registri, dentro lo stesso istante l'ordine tornera' arbitrario: allora
+    #    servira' una sequenza vera, non un ripiego qui.
+    # ⭐ `disabilitato` — la segnalazione RITIRATA — arriva dal changeSet
+    #    `20260824-14`. Il nome e' quello della sorgente ed e' lo stesso che
+    #    espone `fn_list_lotto_segnalazioni`: lo stesso fatto non ha due nomi,
+    #    quindi il pannello della fattura e la scheda del lotto lo mappano su
+    #    «Ritirata» allo stesso modo.
+    # ⚠️ Sulla vista la colonna e' IN CODA (un `CREATE OR REPLACE VIEW` non puo'
+    #    inserirla in mezzo). Qui non morde: le colonne si nominano nella
+    #    `SELECT`, quindi la posizione la decidiamo noi — ma chi legge per
+    #    posizione da un `SELECT *` deve saperlo.
+    # ⛔ `NULL` NON vuol dire «non ritirata», e i due NULL non sono uguali: su
+    #    `event_log` il concetto non esiste (append-only, un evento e' un fatto
+    #    accaduto), sui `task_runs` il ritiro esiste ma su un altro asse
+    #    (`attivo` spegne il TENTATIVO, `disabilitato` ritira un SEGNALE). Da
+    #    qui il `COALESCE(..., false)`: dove il concetto non si applica, la riga
+    #    e' viva — che e' l'unica lettura che non inventa niente.
+    def list_giornale_entita(
+        self,
+        *,
+        entity_type: str,
+        entity_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        escludi_ritirate: bool = True,
+        sort_by: str = "gravita",
+        sort_dir: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int, int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        # ⭐ L'ORDINE DI DEFAULT E' LA GRAVITA' (decisione di Tid, 2026-08-24
+        #    dopo la validazione in-app): la prima domanda davanti a un
+        #    documento e' «c'e' qualcosa che non va?», non «cosa e' successo per
+        #    primo». La cronologia resta a un clic, sulla colonna «quando».
+        # ⛔ E l'ordinamento sta QUI e non nel client: la lista e' PAGINATA lato
+        #    server, quindi ordinare a valle ordinerebbe la sola pagina
+        #    visibile — «il piu' grave» diventerebbe «il piu' grave fra i primi
+        #    50 in ordine di tempo», che e' un difetto silenzioso: a video
+        #    somiglia in tutto a un elenco ordinato bene.
+        order_clause = _giornale_order_clause(sort_by, sort_dir)
+        with connection.cursor() as cursor:
+            # ⚠️ I due conteggi si calcolano PRIMA del filtro, in una CTE: una
+            # finestra sulla query filtrata non vedrebbe le righe nascoste, e
+            # dire quante se ne nascondono e' meta' del mestiere di nasconderle.
+            cursor.execute(
+                """
+                WITH tutte AS (
+                    SELECT riga_key, registro, riga_id, quando, gravita, cosa,
+                           tx_id, correlation_id, auth_user_id, user_insert,
+                           COALESCE(disabilitato, false) AS ritirata,
+                           -- ⭐ IL RANGO DELLA GRAVITA', qui e non nel client:
+                           --    il vocabolario normalizzato della vista e'
+                           --    INFO | WARN | ERROR, e ordinarlo per TESTO
+                           --    darebbe ERROR < INFO < WARN — cioe' un ordine
+                           --    alfabetico spacciato per una scala.
+                           -- ⚠️ NULL (e ogni parola non prevista) pesa come un
+                           --    ERROR, non come un INFO. La vista dichiara che
+                           --    una gravita' nulla significa «un vincolo si e'
+                           --    allargato e la mappa e' rimasta indietro»:
+                           --    mandarla in fondo la renderebbe invisibile
+                           --    dalla seconda pagina in giu', che e' il modo
+                           --    piu' efficace di nascondere un difetto. A video
+                           --    resta distinguibile — trattino e colore neutro
+                           --    (`gravitaGiornaleSeverity`), quindi nessuno la
+                           --    scambia per un errore vero.
+                           CASE gravita
+                               WHEN 'INFO' THEN 1
+                               WHEN 'WARN' THEN 2
+                               ELSE 3
+                           END AS rango_gravita
+                      FROM script.vw_giornale_entita
+                     WHERE entity_type = %s AND entity_id = %s
+                ), conteggi AS (
+                    SELECT COUNT(*) FILTER (WHERE NOT ritirata) AS vive,
+                           COUNT(*) FILTER (WHERE ritirata)     AS ritirate
+                      FROM tutte
+                )
+                SELECT t.riga_key, t.registro, t.quando, t.gravita, t.cosa,
+                       t.tx_id, t.correlation_id, t.auth_user_id, t.user_insert,
+                       t.ritirata, c.vive, c.ritirate
+                  FROM tutte t CROSS JOIN conteggi c
+                 WHERE NOT %s OR NOT t.ritirata
+                 ORDER BY {order_clause}
+                 LIMIT %s OFFSET %s
+                """.format(order_clause=order_clause),
+                [
+                    entity_type, int(entity_id), bool(escludi_ritirate),
+                    safe_limit, safe_offset,
+                ],
+            )
+            rows = cursor.fetchall()
+
+        # ⚠️ Su zero righe non c'e' nessuna riga da cui leggere i conteggi. E' il
+        # caso «tutte ritirate»: la CTE li avrebbe, ma il filtro non lascia
+        # passare nulla da cui prenderli. Si ripiega su una domanda secca.
+        if rows:
+            vive, ritirate = int(rows[0][10]), int(rows[0][11])
+        else:
+            vive, ritirate = self._conta_giornale_entita(entity_type, entity_id)
+        risultato: list[dict[str, Any]] = [
+            {
+                "riga_key": str(row[0]),
+                "registro": str(row[1]),
+                "quando": None if row[2] is None else row[2].isoformat(),
+                # ⚠️ `gravita` puo' essere NULL, e non e' un caso da ignorare: la
+                # vista lo dichiara come il segnale che «un vincolo si e'
+                # allargato e la mappa e' rimasta indietro». Passa cosi' com'e'.
+                "gravita": row[3],
+                "cosa": row[4],
+                "tx_id": None if row[5] is None else str(row[5]),
+                # ⚠️ NULL su due registri su quattro PER COSTRUZIONE della vista
+                # (rilievo R-2): `LOTTO_LOG` e `FATTURA_LOG` non hanno un filo.
+                # Non e' un dato mancante, e' un dato che li' non esiste.
+                "correlation_id": None if row[6] is None else str(row[6]),
+                "auth_user_id": None if row[7] is None else int(row[7]),
+                "user_insert": row[8],
+                "ritirata": bool(row[9]),
+            }
+            for row in rows
+        ]
+        return risultato, vive, ritirate
+
+    # Scopo: i due conteggi del giornale quando la pagina non ha righe da cui
+    #        leggerli — vedi il ripiego qui sopra.
+    def _conta_giornale_entita(self, entity_type: str, entity_id: int) -> tuple[int, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) FILTER (WHERE NOT COALESCE(disabilitato, false)),
+                       COUNT(*) FILTER (WHERE COALESCE(disabilitato, false))
+                  FROM script.vw_giornale_entita
+                 WHERE entity_type = %s AND entity_id = %s
+                """,
+                [entity_type, int(entity_id)],
+            )
+            row = cursor.fetchone()
+        if not row:
+            return 0, 0
+        return int(row[0]), int(row[1])

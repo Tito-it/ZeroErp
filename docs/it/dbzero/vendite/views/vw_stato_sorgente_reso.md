@@ -5,8 +5,11 @@
 >
 > Sesto ramo della proiezione di stato (brief-db-fatturazione-ddt-resi §4a, step 6b): traduce lo stato del reso nel vocabolario comune della sorgente polimorfa. Chiave = resi.id::text (config.sorgenti.key_selector = id per RESO_VENDITA). esito/terminale derivati come nel ramo DDT: is_abortito -&gt; NEGATIVO (ANNULLATO), fase CHIUSO non abortito -&gt; POSITIVO, altrimenti NULL. Dal 2026-07-18 il catalogo dichiara CONFERMATO fase CHIUSO (correzione Tid: un reso confermato E' concluso — la ri-consegna e' un altro documento) -&gt; un reso confermato proietta POSITIVO/terminale. La matrice ammette ancora CONFERMATO-&gt;ANNULLATO come storno guardato: terminale = conclusione commerciale, non lucchetto. rev 2026-07-18.
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_reso AS
+CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_reso
+WITH (security_invoker=on) AS
 SELECT s.id AS sorgente_tipo_id,
     (r.id)::text AS sorgente_uid,
     sdr.codice_interno AS stato_codice_interno,

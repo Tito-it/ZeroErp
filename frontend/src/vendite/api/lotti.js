@@ -41,14 +41,72 @@ export function listLottoFatture(lottoId, params = {}) {
   return api.get(`${BASE}/${lottoId}/fatture/`, { params })
 }
 
-// GET task-run runtime del lotto (tentativi/esiti per step).
-export function listLottoTaskRuns(lottoId, { limit = 100 } = {}) {
-  return api.get(`${BASE}/${lottoId}/task-runs/`, { params: { limit } })
+// GET i tentativi dei task del lotto — elenco PAGINATO e ordinabile
+// (`vendite.fn_list_lotto_task_runs`), con il totale nell'envelope.
+// ⚠️ `order_by` va lasciato al DB: la whitelist vive nella funzione, e su un
+// nome ignoto ripiega sul default invece di rifiutare.
+// ⭐ `taskStato` è un ARRAY di stati e viaggia separato da virgole: «errori e
+//    annullati» è una domanda legittima quanto «solo errori», e con un valore
+//    singolo non si potrebbe fare. Assente/vuoto = nessun filtro.
+// ⚠️ Il vocabolario ammesso NON sta qui: lo possiede la funzione DB, e uno
+//    stato che non conosce non aggiunge e non toglie nulla.
+export function listLottoTaskRuns(
+  lottoId,
+  { page = 1, pageSize = 25, orderBy = null, orderDir = 'desc', taskStato = null, soloGiroCorrente = false } = {},
+) {
+  const params = { page_size: pageSize, offset: (page - 1) * pageSize, order_dir: orderDir }
+  if (orderBy) params.order_by = orderBy
+  if (taskStato?.length) params.task_stato = taskStato.join(',')
+  if (soloGiroCorrente) params.solo_giro_corrente = true
+  return api.get(`${BASE}/${lottoId}/task-runs/`, { params })
 }
 
-// GET riepilogo segnalazioni del lotto (critical/warning/attention + blocco step).
+// Export delle tre liste del drawer lotto: CSV/XLSX con le colonne del
+// catalogo (ordine, visibilità e permessi dell'utente) e gli STESSI filtri e
+// ordinamento della lista a video — il file È la lista, non una seconda query
+// che le somiglia.
+// ⚠️ `formato` e non `format`: quest'ultimo è un magic parameter di DRF e
+// verrebbe intercettato prima della view (memoria feedback_drf_format_magic_param).
+export function exportLottoFatture(lottoId, params = {}) {
+  return api.get(`${BASE}/${lottoId}/fatture/export/`, { params, responseType: 'blob' })
+}
+
+export function exportLottoTaskRuns(lottoId, params = {}) {
+  return api.get(`${BASE}/${lottoId}/task-runs/export/`, { params, responseType: 'blob' })
+}
+
+export function exportLottoSegnalazioni(lottoId, params = {}) {
+  return api.get(`${BASE}/${lottoId}/segnalazioni/export/`, { params, responseType: 'blob' })
+}
+
+// GET riepilogo segnalazioni del lotto: solo i CONTEGGI (critical/warning/
+// attention) più `blocks_next_step`. Alimenta il banner di testata e le
+// etichette del filtro.
 export function getLottoSegnalazioni(lottoId) {
   return api.get(`${BASE}/${lottoId}/segnalazioni/`)
+}
+
+// GET l'ELENCO paginato delle segnalazioni (`vendite.fn_list_lotto_segnalazioni`):
+// le due origini — log di fattura e log di lotto — in una lista sola, col
+// documento e l'importo già composti dal DB.
+//
+// ⭐ Endpoint SEPARATO dal riepilogo, e non è una duplicazione: quello conta e
+// il drawer lo chiede a ogni apertura; questo elenca, pagina e ordina, e serve
+// solo quando la scheda è aperta. Farne uno solo vorrebbe dire portarsi dietro
+// l'elenco per mostrarne un numero.
+//
+// `livello`/`origine` assenti = nessun filtro. `solo_attive` è true di default
+// lato BE: una segnalazione ritirata non si mostra.
+// ⚠️ La risposta porta `fuori_job_count`: quante restano fuori dall'ultima
+// corsa di pipeline. Senza quel numero un elenco filtrato e uno vuoto si
+// leggono uguali.
+export function listLottoSegnalazioni(
+  lottoId, { livello = null, page = 1, pageSize = 25, orderBy = null, orderDir = 'desc' } = {},
+) {
+  const params = { page, page_size: pageSize, order_dir: orderDir }
+  if (livello) params.livello = livello
+  if (orderBy) params.order_by = orderBy
+  return api.get(`${BASE}/${lottoId}/segnalazioni/rows/`, { params })
 }
 
 // POST avanza pipeline lotto di UN step (com'è il motore). Riusata anche per il

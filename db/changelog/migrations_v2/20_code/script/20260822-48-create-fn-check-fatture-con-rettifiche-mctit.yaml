@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA RIGA GIA' ACCREDITATA NON SI PUO' DISFARE — la domanda, in un posto solo
+#   script.fn_check_fatture_con_rettifiche
+#
+# ── 🔴 IL DIFETTO, MISURATO IL 2026-08-22 ───────────────────────────
+#   `db/pgtap/vendite/test-riporta-lotto-a-draft-v1.sql` fallisce cosi':
+#
+#     23503: DELETE su "fatture_righe" viola fk_commesse_attivita_fattura_riga_rettificata
+#            CONTEXT: vendite.fn_cleanup_fatture_by_ids riga 94
+#                     vendite.fn_riporta_lotto_a_draft riga 79
+#
+#   Una violazione di chiave esterna GREZZA dentro una funzione che i suoi tre
+#   chiamanti danno per infallibile. E non e' una sorpresa: il commento di
+#   `fn_cleanup_fatture_by_ids` lo aveva previsto per iscritto, a proposito di
+#   `vendite.fatture_rettifiche` —
+#
+#     > «Se un giorno una porta di reset ammettesse un documento numerato,
+#     >  questa funzione dovrebbe cancellare anche la coppia: la FK non e'
+#     >  ON DELETE CASCADE, quindi il reset sbatterebbe su una violazione di
+#     >  chiave esterna grezza.»
+#
+#   ⭐ E' arrivato da un'ALTRA porta. Quella garanzia reggeva su un fatto:
+#   `fatture_rettifiche` la scrive `popola_fatture_rettifiche`, che gira DOPO
+#   `numera_fatture`, e le tre porte di reset i documenti numerati li rifiutano.
+#   ⛔ `commesse_attivita.fattura_riga_rettificata_id` invece si popola
+#   **PRIMA della numerazione**: `fn_accredita_riga_reso` ancora l'accredito
+#   alla CODA DEI RESI (`vw_resi_da_accreditare`), non al numero. Misurato: le
+#   8 attivita' che rettificano puntano tutte a righe di fatture EMESSA e **non
+#   numerate**. Non e' spazzatura di test: e' merce resa su una fattura emessa e
+#   non ancora numerata, che e' uno stato legittimo e ripetibile.
+#
+# ── ⚠️ E IL SINTOMO E' UN QUARTO DEL PROBLEMA ───────────────────────
+#   `vendite.fatture_righe` ha SEI figlie, e **quattro sono NO ACTION**:
+#
+#     vendite.commesse_attivita     .fattura_riga_rettificata_id   NO ACTION ⚠️
+#     vendite.attivita_fatturabili  .fattura_riga_rettificata_id   NO ACTION ⚠️
+#     vendite.fatture_righe         .riga_rettificata_id           NO ACTION ⚠️ (auto-riferimento)
+#     vendite.resi_righe_accrediti  .fattura_riga_rettificata_id   NO ACTION ⚠️
+#     vendite.attivita_fatturabili  .fattura_riga_id               SET NULL  ✅
+#     vendite.note_fatture          .fattura_riga_id               CASCADE   ✅
+#
+#   Il test ne ha colpita UNA perche' e' quella che la sua fixture aveva. Le
+#   altre tre aspettano il proprio caso.
+#   ⭐ Ma sono **la stessa cosa vista da quattro lati**: «su questa riga di
+#   fattura e' gia' stato registrato un accredito». Quindi un motivo solo, una
+#   domanda sola, quattro sorgenti.
+#
+# ── ⭐ PERCHE' RIFIUTARE E NON AZZERARE IL LEGAME ───────────────────
+#   L'alternativa era un `SET NULL` sul legame, e farebbe passare il reset.
+#   Ma quella colonna non e' una decorazione: il changeSet che l'ha creata
+#   (`20260818-27`, punto 2) la definisce **un secondo tetto all'accredito** —
+#   «questa riga ha fatturato 10 pezzi, non se ne possono accreditare 11» — e
+#   il legame `DatiFattureCollegate` della TD04. Azzerarla toglierebbe quel
+#   tetto **proprio mentre le quantita' vengono ri-derivate**.
+#
+#     > Non si distrugge la prova per far riuscire l'operazione.
+#
+#   La via d'uscita per l'operatore esiste ed e' esplicita:
+#   `vendite.fn_annulla_accredito_riga_reso`, poi il reset.
+#
+# ── DOVE VIVE LA DOMANDA ────────────────────────────────────────────
+#   Qui, e in un posto solo: le porte di reset sono TRE
+#   (fn_riporta_lotto_a_draft, fn_annulla_lotto_da_draft,
+#   fn_elimina_fattura_da_lotto) e la correttezza di ognuna dipende dal fatto
+#   che facciano la stessa cosa. E' lo stesso motivo per cui esiste
+#   `script.fn_check_lotto_fatture_pre_fiscali`, che questa funzione imita.
+#
+# ⚠️ `p_fatture_ids` NON usa `%TYPE`: la sintassi non vale per gli array.
+#
+# Verifica: db/pgtap/vendite/test-cleanup-fattura-copertura-figlie-v1.sql
+#           db/pgtap/vendite/test-riporta-lotto-a-draft-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260822-48-create-fn-check-fatture-con-rettifiche-mctit.yaml
+
+  - changeSet:
+      id: 20260822-48-create-fn-check-fatture-con-rettifiche
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_check_fatture_con_rettifiche(bigint[]): funzione PURA che elenca il
+        motivo ostativo «righe gia' rettificate» per un insieme di fatture. Sede unica
+        condivisa dalle tre porte di reset, sullo stampo di fn_check_lotto_fatture_pre_fiscali.
+        Guarda TUTTE E QUATTRO le figlie NO ACTION di vendite.fatture_righe, che sono la
+        stessa cosa vista da quattro lati: un accredito gia' registrato. Rifiuta invece di
+        azzerare il legame perche' quella colonna e' il secondo tetto dell'accredito
+        (20260818-27 punto 2), e toglierlo mentre le quantita' si ri-derivano sarebbe il
+        momento peggiore.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: fattura_riga_rettificata_id
+            - columnExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+                columnName: fattura_riga_rettificata_id
+            - columnExists:
+                schemaName: vendite
+                tableName: resi_righe_accrediti
+                columnName: fattura_riga_rettificata_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_fatture_con_rettifiche(
+                  -- ⚠️ Niente %TYPE: la sintassi non vale per gli array.
+                  p_fatture_ids bigint[]
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: dire se le righe di queste fatture sono gia' state
+              --   RETTIFICATE — cioe' se qualcuno ha gia' registrato un
+              --   accredito su di esse. Funzione PURA (fn_check_*): nessun
+              --   raise di dominio, nessuna scrittura.
+              --   Consumatori: le tre porte di reset, via le rispettive
+              --   fn_check_*, e per loro tramite fn_available_actions_lotto.
+              -- Ritorna: [] se nessuna riga e' rettificata; altrimenti un
+              --   array con {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                  v_motivi jsonb := '[]'::jsonb;
+                  v_righe  integer;
+              BEGIN
+                  -- Insieme vuoto: non c'e' niente da controllare, e NON e'
+                  -- un errore di parametro — i chiamanti passano legittimamente
+                  -- un lotto senza fatture.
+                  IF p_fatture_ids IS NULL
+                     OR array_length(p_fatture_ids, 1) IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- Le QUATTRO figlie NO ACTION di vendite.fatture_righe, in
+                  -- un colpo solo. Si contano le RIGHE DI FATTURA bloccate,
+                  -- non i riferimenti: all'operatore serve sapere quante righe
+                  -- del suo documento sono intoccabili, non quanti puntatori
+                  -- ci sono sopra.
+                  SELECT count(*)
+                    INTO v_righe
+                    FROM vendite.fatture_righe fr
+                   WHERE fr.fattura_id = ANY(p_fatture_ids)
+                     AND (
+                          EXISTS (SELECT 1 FROM vendite.commesse_attivita ca
+                                   WHERE ca.fattura_riga_rettificata_id = fr.id)
+                       OR EXISTS (SELECT 1 FROM vendite.attivita_fatturabili af
+                                   WHERE af.fattura_riga_rettificata_id = fr.id)
+                       OR EXISTS (SELECT 1 FROM vendite.resi_righe_accrediti ra
+                                   WHERE ra.fattura_riga_rettificata_id = fr.id)
+                          -- ⚠️ L'auto-riferimento conta SOLO se la riga che
+                          --   rettifica sta FUORI dall'insieme che si sta
+                          --   cancellando: se muoiono insieme, la NO ACTION
+                          --   e' soddisfatta a fine istruzione e non c'e'
+                          --   niente da impedire. Senza questa esclusione si
+                          --   bloccherebbe il caso normale — nota di credito
+                          --   e fattura nello stesso lotto.
+                       OR EXISTS (SELECT 1 FROM vendite.fatture_righe fr2
+                                   WHERE fr2.riga_rettificata_id = fr.id
+                                     AND NOT (fr2.fattura_id = ANY(p_fatture_ids)))
+                     );
+
+                  IF COALESCE(v_righe, 0) > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_FATTURE_RIGHE_RETTIFICATE',
+                          'reason',     'RIGHE_RETTIFICATE',
+                          -- ⚠️ La reason_key e' un debito verso il frontend
+                          --   finche' non esiste la voce i18n corrispondente.
+                          'reason_key', 'vendite.lotti.azione_reason.righe_rettificate',
+                          'dettaglio',  v_righe);
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_fatture_con_rettifiche(bigint[])
+              IS 'Funzione PURA (fn_check_*): dice se le righe di queste fatture sono gia'' state rettificate, cioe'' se qualcuno ha gia'' registrato un accredito su di esse. Ritorna [] oppure un array con {codice, reason, reason_key, dettaglio}. ⭐ Sede UNICA condivisa dalle tre porte di reset — riporta a draft, annulla lotto, elimina fattura — sullo stampo di script.fn_check_lotto_fatture_pre_fiscali: la correttezza di ognuna dipende dal fatto che facciano la stessa cosa. ⚠️ Guarda TUTTE E QUATTRO le figlie NO ACTION di vendite.fatture_righe (commesse_attivita, attivita_fatturabili, resi_righe_accrediti e l''auto-riferimento fatture_righe.riga_rettificata_id), perche'' sono la stessa cosa vista da quattro lati; l''auto-riferimento conta solo se la riga che rettifica sta FUORI dall''insieme cancellato, altrimenti si bloccherebbe il caso normale della nota di credito nello stesso lotto. ⛔ Rifiuta invece di azzerare il legame: quella colonna e'' il SECONDO TETTO dell''accredito (20260818-27 punto 2, «questa riga ha fatturato 10 pezzi, non se ne possono accreditare 11») e il DatiFattureCollegate della TD04 — toglierlo mentre le quantita'' vengono ri-derivate sarebbe il momento peggiore. La via d''uscita per l''operatore e'' vendite.fn_annulla_accredito_riga_reso, poi il reset. rev 2026-08-22.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_fatture_con_rettifiche(bigint[]);

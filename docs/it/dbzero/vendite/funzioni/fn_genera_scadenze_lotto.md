@@ -38,6 +38,12 @@ DECLARE
     v_tmp_ins     INTEGER;
     v_err_msg     TEXT;
     v_err_state   TEXT;
+    -- ⭐ Il codice di dominio viaggia nel campo CONSTRAINT della
+    --    diagnostica, ed E' un codice di config.codici_errore:
+    --    ancorato li', che ne e' l'unica definizione di dominio.
+    --    (I due vicini restano TEXT: il testo di un messaggio e
+    --    uno sqlstate non sono valori di una colonna.)
+    v_err_code    config.codici_errore.codice%TYPE;
 BEGIN
     -- ===== Guard parametri =====
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
@@ -146,7 +152,12 @@ BEGIN
                 -- continuare a salire.
                 GET STACKED DIAGNOSTICS
                     v_err_msg   = MESSAGE_TEXT,
-                    v_err_state = RETURNED_SQLSTATE;
+                    v_err_state = RETURNED_SQLSTATE,
+                    -- ⭐ Il codice registrato a catalogo: e'
+                    --    l'unica cosa che dice QUALE errore e'
+                    --    stato, visto che lo sqlstate di un
+                    --    errore di dominio e' sempre P0001.
+                    v_err_code  = CONSTRAINT_NAME;
 
                 v_failed := v_failed + 1;
 
@@ -156,11 +167,16 @@ BEGIN
                 VALUES (v_fattura_id, now(),
                         format('Generazione scadenze non riuscita: %s', v_err_msg),
                         'C', FALSE,
-                        jsonb_build_object(
-                            'task',     'genera_scadenze_lotto',
-                            'lotto_id', p_lotto_id,
-                            'sqlstate', v_err_state,
-                            'source',   'fn_genera_scadenze_lotto'));
+                        jsonb_strip_nulls(jsonb_build_object(
+                            'task',       'genera_scadenze_lotto',
+                            'lotto_id',   p_lotto_id,
+                            'sqlstate',   v_err_state,
+                            -- ⚠️ strip_nulls: una chiave presente e
+                            --    vuota si legge peggio di una assente
+                            --    (in lista, «non lo so» e «non c'e'»
+                            --    diventano la stessa cella bianca).
+                            'error_code', v_err_code,
+                            'source',     'fn_genera_scadenze_lotto')));
             END;
         END LOOP;
 
@@ -185,7 +201,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_scadenze_lotto(p_lotto_id bigint, p_batch_size integer)
-IS 'Fase 4.2 — wrapper di lotto del generatore del piano rate, task genera_scadenze_lotto dello step EMESSA. Modello: fn_snapshot_fattura_lotto. DUE filtri distinti e contati a parte, e la distinzione e'' sostanziale (D-Q pt.2): le fatture oltre la soglia DRAFT/EMESSA si saltano perche'' non hanno lavoro da fare (D-F), quelle con stato_esecuzione = ERRORE si saltano e NON si riprovano, perche'' questo e'' uno step a VALLE del DRAFT e li'' la fattura e'' un rifiuto, non un candidato — riprovarla qui vorrebbe dire portare verso la numerazione un documento gia'' dichiarato difettoso. Un contatore unico direbbe «cinque saltate» senza distinguere cinque documenti chiusi da cinque rotti, che per il cockpit sono l''opposto. Il fallimento di UNA fattura non uccide il giro (D-Q pt.1): sotto-blocco per fattura, marcatura C su fatture_log, si cattura raise_exception e non others. Al successo il task ritira le PROPRIE segnalazioni filtrando su meta->>''task'' e mai sul nome della funzione (D-Q pt.3).';
+IS 'Fase 4.2 — wrapper di lotto del generatore del piano rate, task genera_scadenze_lotto dello step EMESSA. Modello: fn_snapshot_fattura_lotto. DUE filtri distinti e contati a parte, e la distinzione e'' sostanziale (D-Q pt.2): le fatture oltre la soglia DRAFT/EMESSA si saltano perche'' non hanno lavoro da fare (D-F), quelle con stato_esecuzione = ERRORE si saltano e NON si riprovano, perche'' questo e'' uno step a VALLE del DRAFT e li'' la fattura e'' un rifiuto, non un candidato — riprovarla qui vorrebbe dire portare verso la numerazione un documento gia'' dichiarato difettoso. Un contatore unico direbbe «cinque saltate» senza distinguere cinque documenti chiusi da cinque rotti, che per il cockpit sono l''opposto. Il fallimento di UNA fattura non uccide il giro (D-Q pt.1): sotto-blocco per fattura, marcatura C su fatture_log, si cattura raise_exception e non others. Al successo il task ritira le PROPRIE segnalazioni filtrando su meta->>''task'' e mai sul nome della funzione (D-Q pt.3). ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-4): il ramo EXCEPTION cattura anche CONSTRAINT_NAME e lo scrive in meta->>''error_code''. Prima registrava solo RETURNED_SQLSTATE, che qui vale SEMPRE P0001 per costruzione — la clausola cattura `raise_exception` e nient''altro — quindi come codice non distingueva niente: una chiave che risponde sempre lo stesso valore. Il codice registrato a catalogo, quello su cui il backend mappa status HTTP e ui_action, viaggia nel campo CONSTRAINT della diagnostica, dove lo mette script.fn_log_and_raise_error. jsonb_strip_nulls e non jsonb_build_object nudo: CONSTRAINT_NAME e'' vuoto quando l''errore non viene da fn_log_and_raise_error (un CHECK violato, per dire), e una chiave presente con valore null in una lista si legge come una cella bianca indistinguibile da «non c''e''». Le altre quattro chiavi non sono mai nulle, quindi lo strip non puo'' mangiare altro. FORWARD-ONLY: le righe di log gia'' scritte non hanno il codice e non lo avranno mai, perche'' dal testo del messaggio non e'' ricostruibile.';
 ```
 
 ---

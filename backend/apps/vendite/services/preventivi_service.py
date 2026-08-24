@@ -1811,7 +1811,7 @@ def push_a_commessa(
     )
 
     # Delega al CommessaPushOrchestrator filtrato: scrive commesse + righe
-    # via fn DB esistenti, logga su commesse_push_log + event_log.
+    # via fn DB esistenti, logga su commesse_push_log.
     # Import locale per evitare ciclo (commesse_service importa repo che importa
     # preventivi_repository in altri punti).
     from apps.vendite.services.commesse_service import pr_run_commesse_push_one

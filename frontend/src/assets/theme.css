@@ -229,6 +229,27 @@
   /* Desktop: >= 1024px */
   /* Tablet: 768px - 1023px */
   /* Mobile: < 768px */
+
+  /* ===== Gravita' (severity) — il colore come SCORCIATOIA =====
+   * I colori con cui l'interfaccia dice «quanto e' grave», nello stesso
+   * vocabolario dei `Tag :severity` di PrimeVue che l'applicazione usa
+   * ovunque. Vivono qui e non nei componenti: il giorno che il tema cambia,
+   * cambia un posto solo.
+   *
+   * ⚠️ `warn` e' GIALLO e non arancio, ed e' una scelta misurata (rilievo di
+   * Tid, 2026-08-21): su una resa TENUE — un pallino, un chip non selezionato,
+   * un bordo — l'arancio si legge come un rosso spento, e i due livelli che
+   * contano di piu' finiscono per dare lo stesso segnale proprio dove il
+   * colore deve fare da scorciatoia. Sui `Tag` a fondo pieno la distinzione
+   * regge, quindi quelli restano quelli di PrimeVue: qui si governa la resa
+   * tenue, che e' l'unica dove il problema esiste. */
+  --app-severity-danger: var(--p-red-500);
+  --app-severity-warn: var(--p-yellow-500);
+  --app-severity-info: var(--p-blue-500);
+  --app-severity-success: var(--p-green-500);
+  --app-severity-secondary: var(--p-surface-400);
+  /* Quanta tinta prende uno sfondo «acceso» ma non invadente. */
+  --app-severity-fill: 16%;
 }
 
 /* ===== Light mode — override variabili che cambiano tra dark e light =====
@@ -242,6 +263,20 @@
   --app-sidebar-item-color: var(--p-text-color);
   --app-sidebar-item-hover-bg: var(--p-surface-200);
   --app-sidebar-item-hover-color: var(--p-text-color);
+
+  /* ===== Gravita' in light mode =====
+   * Le tinte -500 nascono per fondi scuri. Su fondo chiaro il GIALLO e' quello
+   * che cede per primo — su bianco un `yellow-500` e' quasi illeggibile — e
+   * cedendo riporterebbe esattamente il difetto per cui il giallo era stato
+   * scelto: un avviso che non si distingue. Si scende quindi di tonalita' dove
+   * serve il contrasto, tenendo le distanze fra i tre livelli. */
+  --app-severity-danger: var(--p-red-600);
+  --app-severity-warn: var(--p-yellow-700);
+  --app-severity-info: var(--p-blue-600);
+  --app-severity-success: var(--p-green-600);
+  --app-severity-secondary: var(--p-surface-500);
+  /* Su fondo chiaro la stessa percentuale rende piu' carica: si alleggerisce. */
+  --app-severity-fill: 12%;
 
   /* Topbar: chiara in light mode */
   --app-topbar-bg: var(--p-surface-0);

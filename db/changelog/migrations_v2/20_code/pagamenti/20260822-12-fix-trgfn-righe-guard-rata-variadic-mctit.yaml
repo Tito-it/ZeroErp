@@ -1,0 +1,262 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# 🔴 CORREZIONE IN AVANTI: UNA CHIAMATA CHE NON ESISTE — lotto 5
+#   pagamenti.trgfn_vendite_contabili_righe_guard_rata
+#   Corregge il changeSet 20260822-08, gia' applicato.
+#
+# ── CHE COSA ERA ROTTO ────────────────────────────────────────────────
+#   Il ramo della COERENZA chiamava `script.fn_log_and_raise_error` **senza
+#   valori**, perche' il messaggio del codice non aveva segnaposti:
+#
+#       PERFORM script.fn_log_and_raise_error(area, funzione, codice, context, tx_id);
+#
+#   ⛔ Ma `VARIADIC p_valori text[]` **non ha default**: PostgreSQL non accetta
+#   la chiamata a cinque argomenti e risolve *«la funzione
+#   script.fn_log_and_raise_error(unknown, unknown, unknown, jsonb, uuid) non
+#   esiste»*.
+#
+#   ⚠️ **E lo dice solo quando quel ramo scatta.** Il `CREATE FUNCTION` era
+#   passato, il guard funzionava, e l'unico caso rotto era **proprio quello che
+#   il guard esiste per gestire**. E' la forma di difetto piu' scomoda: il
+#   codice che non si esegue mai finche' non serve.
+#
+# ── ⭐ DUE PRESIDI L'HANNO PRESO, E CONVIENE SAPERE QUALI ─────────────
+#   1. `db/pgtap/pagamenti/test-abbinamento-rata.sql`, test 2 — che asserisce
+#      con `throws_like` sulla **frase** e non solo sullo SQLSTATE. 📌 Con
+#      `throws_ok(..., 'P0001')` sarebbe stato **verde**: anche «la funzione non
+#      esiste» e' un errore, e un `throws_ok` senza discriminante avrebbe fatto
+#      passare per «rifiuto di dominio» un errore di programmazione. E' la
+#      ragione per cui il progetto tiene un debito **a soglia** su quella forma;
+#   2. `db/pgtap/dbops/test-riferimenti-morti-v1.sql` — il cancello statico che
+#      scandisce i corpi delle funzioni cercando chiamate che non risolvono.
+#      L'ha trovato Tid facendolo girare.
+#
+# ── LA CORREZIONE, E CHE COSA PORTA IL MESSAGGIO ──────────────────────
+#   Il messaggio del codice 964 prende **un segnaposto** — la rata — e il guard
+#   le passa il suo **id**.
+#
+#   ⚠️ Si passa l'id, e non «la rata 3 del 30/09 della fattura 2026/118»: quella
+#   rata appartiene a un **altro documento**, che puo' non essere di questo
+#   operatore. La domanda di coerenza si fa fuori dalla row security **proprio
+#   per non far uscire niente**, e raccontarne i dati nel messaggio disferebbe
+#   la ragione per cui e' fatta cosi'.
+#
+# Origine: corpo dallo YAML applicato `20260822-08`, estratto e non ricopiato,
+#   col patch mirato applicato sopra. Nessun altro predicato e' cambiato, e il
+#   trigger non si ritocca: continua a puntare a questa funzione.
+# Verifica: db/pgtap/pagamenti/test-abbinamento-rata.sql (test 2) ·
+#   db/pgtap/dbops/test-riferimenti-morti-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-12-fix-trgfn-righe-guard-rata-variadic-mctit.yaml
+
+  - changeSet:
+      id: 20260822-12-fix-trgfn-righe-guard-rata-variadic
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Correzione in avanti del changeSet 20260822-08: il ramo della coerenza chiamava
+        fn_log_and_raise_error senza valori, ma il VARIADIC non ha default e la chiamata a
+        cinque argomenti non risolve. Il guard funzionava, e l'unico caso rotto era proprio
+        quello che esiste per gestire. Il messaggio del codice 964 prende un segnaposto — la
+        rata — e il guard le passa il suo id: non i suoi dati, perche' quella rata e' di un
+        altro documento che puo' non essere di questo operatore, e la coerenza si chiede
+        fuori dalla row security proprio per non far uscire niente. Trovato da due presidi:
+        il throws_like del pgTAP nuovo e il cancello dei riferimenti morti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'trgfn_vendite_contabili_righe_guard_rata'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_rata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_coerente       boolean;
+                  v_postabile      pagamenti.vendite_contabili_righe_stati.is_postabile%TYPE;
+                  v_saldo          vendite.fatture_scadenze.importo%TYPE;
+                  v_in_lavorazione pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_residuo        vendite.fatture_scadenze.importo%TYPE;
+                  v_rata_label     text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Due domande sulla rata indicata dalla riga, con due
+                  --   esiti opposti:
+                  --     COERENZA  — «è una rata di questa fattura?» → RIFIUTA
+                  --     CAPIENZA  — «c'è ancora spazio?»            → SEGNALA
+                  --
+                  -- ⭐ Un guard solo e non due: la seconda domanda ha senso
+                  --    solo se la prima è passata, e due BEFORE ROW separati
+                  --    girerebbero in ordine ALFABETICO — che qui non è
+                  --    l'ordine giusto.
+                  --
+                  -- Uso: BEFORE INSERT OR UPDATE FOR EACH ROW
+                  -- =========================================================
+
+                  -- Nessuna rata: non c'è niente da verificare. È il caso
+                  -- della riga del fondo fattura, che salda per trasferimento.
+                  IF NEW.scadenza_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Su UPDATE si guarda solo se è cambiato qualcosa che conta.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.scadenza_id IS NOT DISTINCT FROM OLD.scadenza_id
+                     AND NEW.fattura_id  IS NOT DISTINCT FROM OLD.fattura_id
+                     AND NEW.importo     IS NOT DISTINCT FROM OLD.importo
+                     AND NEW.stato_id    IS NOT DISTINCT FROM OLD.stato_id
+                     AND NEW.attivo      IS NOT DISTINCT FROM OLD.attivo
+                     AND NEW.forzata     IS NOT DISTINCT FROM OLD.forzata
+                  THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- =====================================================
+                  -- 1) COERENZA — e si RIFIUTA
+                  --
+                  -- ⚠️ La domanda si fa FUORI dalla row security: un guard che
+                  --    leggesse le scadenze sotto RLS non distinguerebbe «non
+                  --    appartiene» da «non la vedo», e rifiuterebbe una cosa
+                  --    vera dicendone una falsa.
+                  --
+                  -- ⭐ Una rata SENZA fattura non è incoerente: è INCOMPLETA, e
+                  --    a dirlo è il guard sui dati quando lo stato lo pretende
+                  --    («per portare la riga in ABBINATA servono la fattura e
+                  --    il cliente»). Parlare qui vorrebbe dire rispondere
+                  --    «la rata non è di quella fattura» a chi la fattura non
+                  --    l'ha ancora messa: vero, e inutile.
+                  --    ⚠️ I BEFORE ROW girano in ordine ALFABETICO, quindi
+                  --    questo guard parla PRIMA di quello sui dati: tacere qui
+                  --    è ciò che lascia parlare il messaggio giusto.
+                  -- =====================================================
+                  IF NEW.fattura_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_coerente := script.fn_check_scadenza_di_fattura(NEW.scadenza_id, NEW.fattura_id);
+
+                  IF COALESCE(v_coerente, false) IS FALSE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_righe_guard_rata',
+                          'E_RIGA_CONTABILE_RATA_INCOERENTE',
+                          jsonb_build_object(
+                              'campo',             'scadenza_id',
+                              'contabile_riga_id', NEW.id,
+                              'contabile_id',      NEW.contabile_id,
+                              'scadenza_id',       NEW.scadenza_id,
+                              'fattura_id',        NEW.fattura_id),
+                          NEW.tx_id,
+                          -- ⚠️ Si passa l'ID e non «la rata 3 del 30/09 della
+                          --    fattura 2026/118»: quella rata è di un ALTRO
+                          --    documento, che può non essere di questo
+                          --    operatore. La coerenza si chiede fuori dalla row
+                          --    security proprio per non far uscire niente:
+                          --    raccontarne i dati nel messaggio disferebbe la
+                          --    ragione per cui è fatta così.
+                          NEW.scadenza_id::text);
+                  END IF;
+
+                  -- =====================================================
+                  -- 2) CAPIENZA — solo se la riga occupa spazio davvero
+                  --
+                  -- 🔴 Se si guardasse a ogni cambio di stato, portare a
+                  --    SCARTATA una riga sospesa — cioè TOGLIERLA di mezzo —
+                  --    verrebbe rifiutata perché nel frattempo un'altra riga ha
+                  --    occupato lo spazio: si rifiuterebbe un gesto che libera.
+                  -- =====================================================
+                  IF NEW.attivo IS NOT TRUE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT s.is_postabile
+                    INTO v_postabile
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.id = NEW.stato_id;
+
+                  IF COALESCE(v_postabile, false) IS FALSE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⭐ Chi ha già dichiarato di sapere che non ci rientra è
+                  --    passato di qui una volta: non glielo si richiede.
+                  IF NEW.forzata IS TRUE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Lo spazio che c'era PRIMA di questa riga. La formula sta
+                  -- in una funzione sola: due copie della regola darebbero
+                  -- prima o poi due risposte diverse alla stessa domanda.
+                  SELECT r.saldo, r.in_lavorazione
+                    INTO v_saldo, v_in_lavorazione
+                    FROM pagamenti.fn_get_saldo_rata(NEW.scadenza_id, NEW.id) r;
+
+                  v_residuo := COALESCE(v_saldo, 0) - COALESCE(v_in_lavorazione, 0);
+
+                  -- ⭐ LA REGOLA: va nel verso di ciò che resta, e non lo
+                  --    scavalca. Nessun estremo fisso da invertire su un
+                  --    documento a credito.
+                  IF sign(NEW.importo) <> sign(v_residuo)
+                     OR abs(NEW.importo) > abs(v_residuo) THEN
+
+                      SELECT format('%s del %s', s.numero_rata,
+                                    to_char(s.data_scadenza, 'DD/MM/YYYY'))
+                        INTO v_rata_label
+                        FROM vendite.fatture_scadenze s
+                       WHERE s.id = NEW.scadenza_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_righe_guard_rata',
+                          'E_RIGA_CONTABILE_CAPIENZA_SUPERATA',
+                          jsonb_build_object(
+                              'contabile_riga_id', NEW.id,
+                              'contabile_id',      NEW.contabile_id,
+                              'scadenza_id',       NEW.scadenza_id,
+                              'fattura_id',        NEW.fattura_id,
+                              'residuo',           v_residuo,
+                              'importo',           NEW.importo),
+                          NEW.tx_id,
+                          COALESCE(v_rata_label, NEW.scadenza_id::text),
+                          v_residuo::text,
+                          NEW.importo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_rata()
+              IS 'Il guard della RATA: due domande sullo stesso dato, con due esiti opposti (D14-b). COERENZA — «questa rata appartiene alla fattura di questa riga?» — si RIFIUTA, perche'' e'' un''incoerenza logica che nessun cliente puo'' provocare. CAPIENZA — «c''e'' ancora spazio su questa rata?» — si SEGNALA, perche'' che un cliente paghi piu'' del dovuto o paghi due volte e'' un FATTO DEL MONDO, e il database non lo dichiara impossibile. ⭐ La regola della capienza e'' UNA SOLA per fatture e note di credito, e non nomina nessuna delle due: «un movimento normale riduce cio'' che manca e non lo supera» (D14-c). Non ha estremi fissi, quindi non ricade nella trappola di `0 ≤ Σ ≤ importo`, che su un documento a credito diventa un intervallo VUOTO — una porta chiusa travestita da controllo. R = 0 non e'' un caso a parte: e'' «nessuno spazio in nessuna direzione», cioe'' il documento gia'' saldato. ⭐ FORZATURA a due tempi (D14-d): primo tentativo rifiutato coi numeri, secondo accettato se la riga porta forzata = true, e resta scritto. ⛔ Nessuna azione di processo e nessun permesso, e la regola e'' SIMMETRICA nei due versi — cade l''asimmetria di D1-bis (D14-e), perche'' un rimborso piu'' grande del credito e'' un calcolo fatto su un dato vecchio e capita: vietarlo sposterebbe il problema fuori dal sistema invece di registrarlo. ⚠️ La coerenza si verifica ogni volta che ci sono rata E fattura; la capienza SOLO se la riga occupa spazio davvero (attiva e in uno stato postabile). 🔴 Altrimenti portare a SCARTATA una riga sospesa — cioe'' toglierla di mezzo — verrebbe rifiutato perche'' un''altra riga ha nel frattempo occupato lo spazio: si rifiuterebbe un gesto che LIBERA. ⭐ Una rata SENZA fattura non e'' incoerente ma INCOMPLETA, e a dirlo e'' il guard sui dati: questo tace apposta, perche'' girando prima (ordine alfabetico) coprirebbe il messaggio utile con uno vero e inutile. ℹ️ Il posting non lo incontra: quando la riga passa a POSTATA il suo movimento e'' gia'' scritto ed e'' escluso dal conto, che torna identico a quando era ABBINATA. 🔴 Un guard solo e non due perche'' la seconda domanda ha senso solo se la prima e'' passata, e due BEFORE ROW separati girerebbero in ordine alfabetico — che qui non e'' l''ordine giusto. ⚠️ La coerenza passa da script.fn_check_scadenza_di_fattura (fuori dalla row security), la capienza da pagamenti.fn_get_saldo_rata (invoker): li'' «non la vedi» diventa E_RATA_NON_TROVATA, ed e'' corretto — chi non vede quella rata non ci deve imputare denaro. ⭐ rev 2026-08-22 (20260822-12): il ramo della coerenza passava ZERO valori a fn_log_and_raise_error, ma il VARIADIC non ha default e la chiamata non risolveva — il guard falliva proprio nel caso che esiste per gestire. Adesso passa l''ID della rata, non i suoi dati: quella rata e'' di un altro documento e potrebbe non essere di questo operatore. S2-3/S2-4/S2-5 del cantiere incassi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino: si tornerebbe alla chiamata che non
+              --    risolve, cioè a un guard che fallisce proprio nel caso che
+              --    deve gestire.
+              SELECT 1;

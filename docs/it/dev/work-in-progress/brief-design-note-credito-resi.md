@@ -34,6 +34,15 @@
 > le righe collegate in un ramo, si **tolgono** nell'altro. Un changeSet
 > (`20260820-08`), il codice **934** e tre pgTAP: **preparati e NON applicati**.
 >
+> 🟠 **2026-08-21 — numerazione e lineage della nota di credito (§44).** Dal
+> collaudo prova 6: la prima NC esiste ed e' corretta. Due richieste — non si
+> deve poter numerare una nota di credito prima della fattura che corregge (la
+> TD04 deve citarne numero e data), e nel grafo dei «Passaggi» la nota non
+> esisteva come tale. Cinque changeSet (`20260821-01` → `-05`), codice **937**,
+> due pgTAP: **preparati e NON applicati**. ⚠️ Una misura della segnalazione non
+> si riproduce (§44.1), e la guardia sulla numerazione oggi e' **mascherata** da
+> un'altra precondizione (§44.2).
+>
 > 🟠 **2026-08-20 — gli altri due punti del messaggio BE (§40).** Lo stesso
 > messaggio che segnalava la guardia del §38 ne portava altri due, di
 > leggibilità: la **provenienza** delle righe di commessa (che a video è solo
@@ -5977,3 +5986,144 @@ chi tocca quelle due funzioni lo trovi.
   endpoint da toccare. Il detail porta già `available_actions`.
 * 🟡 **FE — niente cablaggio nuovo**: `enabled`/`reason_key` sono già letti (è
   così che funziona oggi «documento senza righe»).
+
+---
+
+## 44. 🟠 Numerazione e lineage della nota di credito (2026-08-21)
+
+> **Origine**: messaggio del team BE dal **collaudo, prova 6**. La prima nota di
+> credito esiste — fattura **15353**, natura `NOTA_CREDITO`, tre righe che
+> rettificano le righe 461/465/468 della fattura **835** — e il documento è
+> corretto: separato dalla fattura ordinaria, importi e legami per riga giusti.
+> Con questa, la **voce 9 della definizione di «fatto»** (§35.2) è finalmente
+> chiusa sui dati veri.
+>
+> ⛔ **Stato: preparato, NON applicato.** Cinque changeSet (`20260821-01` →
+> `-05`), un codice errore nuovo (**937**), due pgTAP.
+
+### 44.1 ⚠️ Una misura della segnalazione non si riproduce
+
+Il messaggio dice *«FATTURA 835 · indietro: 0 archi · avanti: 0 archi»*.
+Rimisurato il 2026-08-21 in contesto operatore: da 835 **indietro escono sette
+archi** (G verso tre commesse, poi E, poi A fino al preventivo), e dalla NC 15353
+ne escono due.
+
+**Il grafo attraversa già le fatture.** Quello che manca davvero è l'arco **fra
+le due fatture** — che è un'altra cosa, e la richiesta 2a la nomina bene. Vale la
+pena saperlo prima di cercare un difetto dove non è: se a video quel pannello
+risulta vuoto, la spiegazione è a valle del DB (📌 e Tid ha già segnalato che la
+scelta di non mostrare i passaggi dalla fattura era una decisione da disfare).
+
+### 44.2 🔴 Richiesta 1 — si può numerare una NC prima della fattura che corregge
+
+Confermato: `fn_numera_fattura_opz_emessa` sollevava **due** soli codici e non
+nominava mai rettifica né natura.
+
+**Fatto** (`20260821-05`): una guardia prima dell'assegnazione del numero.
+
+* ⭐ **Il predicato non guarda la natura**, e la richiesta diceva di guardarla.
+  Il motivo: una nota di **debito** che rettifica ha lo stesso identico problema
+  e passerebbe, mentre una fattura ordinaria non ha righe con
+  `riga_rettificata_id` — misurato **zero** sulla 835. Il predicato sulle righe
+  copre tutti i casi senza bloccarne di normali, ed è **per riga** come chiesto.
+* ⛔ **Fail-closed sulla visibilità**: `fatture` e `fatture_righe` hanno la RLS
+  (misurato) e la funzione è `SECURITY INVOKER`. I JOIN sono `LEFT` e una riga il
+  cui padre non è **visibile** conta come bloccante: il predicato è «non posso
+  dimostrare che sia numerata», non «risulta non numerata». Con dei JOIN interni
+  uno zero avrebbe voluto dire «via libera» proprio nel caso in cui non si sa.
+* La guardia sta **dopo il ritorno idempotente**: verificato anche il caso
+  limite — se il padre perdesse il numero *dopo*, la nota già numerata resta
+  idempotente e non viene ri-bloccata.
+
+**⚠️ Una cosa che la segnalazione non poteva sapere, ed è emersa dal test.** Oggi,
+sui dati veri, la NC **non si numera comunque**: la ferma prima un'altra
+precondizione (`E_FATTURA_NON_NUMERABILE_INCOERENTE`, «piano rate assente»). Il
+difetto è reale ma **mascherato da un controllo che parla d'altro** — e un
+controllo che protegge per caso non è un presidio: il giorno in cui il piano rate
+c'è, la nota passa. È il motivo per cui la guardia si scrive lo stesso, ed è
+scritto nell'intestazione del pgTAP perché nessuno lo riscopra.
+
+**🔴 Al BE, l'ordine di numerazione.** Il giro di lotto è **fail-fast**: una
+fattura che rifiuta ferma l'intero step. Oggi regge per un motivo strutturale —
+`list_fatture_by_lotto` ordina per `f.id` e la fattura rettificata è **sempre**
+più vecchia della nota, perché la merce dev'essere già stata fatturata perché
+l'accredito sia possibile — ma è un **invariante implicito**. Vale la pena
+renderlo esplicito nel codice che numera, con il perché accanto. ⛔ Il caso
+*cross-lotto* invece **deve** fermarsi: è la ragione della guardia.
+
+### 44.3 🔴 Richiesta 2 — la nota di credito nel lineage
+
+**(a) L'arco mancava davvero.** Aggiunto l'arco **N**: *fattura rettificata →
+nota di credito*, `1:N`, ricostruito da `fatture_righe.riga_rettificata_id`.
+
+⭐ **Perché dal legame riga-riga e non da `vendite.fatture_rettifiche`**: le due
+fonti dicono la stessa cosa ma non nello stesso momento. Il ponte documentale lo
+popola un task della fase **DEFINITIVA**, *dopo* la numerazione; il legame riga
+esiste dalla generazione delle righe. ⚠️ Misurato: `fatture_rettifiche` è **ancora
+a zero righe** mentre la NC esiste con tre righe collegate. Un grafo costruito
+sul ponte sarebbe rimasto muto proprio nella finestra in cui l'operatore guarda.
+È anche la stessa scelta dell'arco G.
+
+**(b) I due documenti ora si distinguono.** La **natura** entra nel nodo e si
+propaga a traversal e summary. Era la causa storica che la segnalazione ha
+individuato con precisione: *il grafo è nato quando `FATTURA` era una cosa sola*.
+
+### 44.4 ⭐ La decisione presa, e il suo costo evitato
+
+L'arco N è un **ramo di ritorno**, come R: sta nel pannello «Passaggi» e **resta
+fuori dal grafo forward** che alimenta le liste.
+
+> Nel reso torna la merce, qui torna il valore. Nessuno dei due è un avanzamento
+> del flusso.
+
+⛔ **Se fosse entrato**: la regola della frontiera sceglie l'attivo più profondo,
+quindi la nota avrebbe vinto sulla fattura stessa e **ogni riga di lista avrebbe
+cambiato frontiera** — senza errori e senza log, solo con un valore diverso.
+Misurato: applicando tutto in transazione, le righe della summary cambiate sono
+**zero**.
+
+⭐ **E una ripetizione tolta per strada.** La lettera `'R'` era scritta a mano in
+**tre** posti (i due `WHERE` della summary e il calcolo dentro la funzione).
+Aggiungere un secondo ramo di ritorno voleva dire ricordarsene tre volte, e il
+terzo dimenticato non avrebbe rotto niente di visibile. Ora `is_ramo_inverso` è
+calcolato una volta sola nella vista archi, e i consumatori leggono la proprietà.
+
+### 44.5 ⚠️ Un'invariante che ho scritto sbagliata, e che il test ha corretto
+
+La prima versione del presidio diceva: *«una nota di credito non è mai frontiera
+di un altro nodo»*. **È falso**, e l'ha detto il pgTAP diventando rosso: la nota
+è raggiungibile in avanti dalla **commessa** (arco G, che non è un ramo di
+ritorno), e al 2026-08-21 è già legittimamente la frontiera dell'ordine 240 e
+della commessa 322 — è l'ultimo documento nato da quel lavoro.
+
+L'invariante giusta è più stretta e più forte: **una fattura è sempre frontiera di
+sé stessa**, perché nel grafo forward non ha archi uscenti. Misurato prima di
+scriverla: zero fatture con frontiera diversa da sé.
+
+📌 Vale la pena tenerla agli atti: l'errore non era nel codice, era nella frase
+con cui stavo per descriverlo — e a trovarlo è stato il test che quella frase
+doveva presidiare.
+
+### 44.6 Le misure
+
+| | |
+| --- | --- |
+| `test-documento-lineage-v1` (esteso a plan 32) | **32/32** con i changeSet; prima: rossi su 5-7 (i set di colonne) e il file non arriva in fondo |
+| `test-numera-nota-credito-riferimento-v1` (nuovo, plan 5) | **5/5** con; prima **1 rosso**, ed è l'unico che misura il difetto (§44.2) |
+| summary prima/dopo, tutti i nodi | **zero righe cambiate** |
+| archi prima/dopo | **un solo arco in più** (N), **zero persi** |
+| firme delle due funzioni | **una sola** funzione per nome, argomenti identici: i `%TYPE` non hanno creato overload |
+
+### 44.7 🔴 Cosa serve al BE
+
+* **obbligatorio**: rigenerare `error_policies_generated.py` per
+  `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**);
+* **l'ordine di numerazione** del lotto, §44.2;
+* **due colonne nuove** da leggere quando servirà: `natura_doc_codice` sul nodo e
+  `from/to_natura_doc_codice` sul traversal — è quello che permette al pannello
+  «Passaggi» di non scrivere due volte «Fattura · EMESSA»;
+* ⚠️ **una nota per il rendering**: camminando in avanti da una commessa la nota
+  di credito compare **due volte** (arco G dalla commessa, arco N dalla fattura).
+  Non è un difetto: sono due relazioni diverse verso lo stesso documento, e il
+  traversal ritorna archi, non nodi. L'arco N porta `is_ramo_inverso = true`, che
+  il FE già rende in modo distinto.

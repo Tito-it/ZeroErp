@@ -23,6 +23,10 @@ from apps.vendite.api.views import (
     ApiLottiMensile,
     ApiLottoDetail,
     ApiLottoFattureList,
+    ApiLottoFattureExport,
+    ApiLottoTaskRunsExport,
+    ApiLottoSegnalazioniExport,
+    ApiLottoSegnalazioniRows,
     ApiLottoSegnalazioniSummary,
     ApiLottoTaskRuns,
     ApiResetLottoDraft,
@@ -62,7 +66,10 @@ from apps.vendite.api.views_dashboard_aperto import (
     ApiDashboardApertoDocumenti,
     ApiDashboardApertoDocumentiExport,
 )
-from apps.vendite.api.views_fondi_fattura import ApiFondiFatturaDaDecidere
+from apps.vendite.api.views_fondi_fattura import (
+    ApiFondiFatturaDaDecidere,
+    ApiFondiFatturaDaDecidereExport,
+)
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
     ApiListiniSelezionabiliContrattoLookup,
@@ -231,6 +238,14 @@ urlpatterns = [
         ApiFondiFatturaDaDecidere.as_view(),
         name="vendite-fondi-fattura-da-decidere",
     ),
+    # Export CSV/XLSX della stessa lista (colonne dal catalogo
+    # `vendite.fondi_fattura_da_decidere`, risolte sulla configurazione
+    # dell'operatore).
+    path(
+        "fondi-fattura/da-decidere/export/",
+        ApiFondiFatturaDaDecidereExport.as_view(),
+        name="vendite-fondi-fattura-da-decidere-export",
+    ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     # Export CSV/XLSX della lista (colonne dal catalogo `vendite.lotti`).
     path("lotti/export/", ApiLottiExportView.as_view(), name="vendite-lotti-export"),
@@ -248,6 +263,33 @@ urlpatterns = [
         "lotti/<int:lotto_id>/fatture/",
         ApiLottoFattureList.as_view(),
         name="vendite-lotto-fatture-list",
+    ),
+    # Export delle tre liste del drawer lotto. ⚠️ PRIMA delle rotte di elenco:
+    # `export/` e' un segmento letterale e non collide, ma le rotte piu'
+    # specifiche stanno in testa per convenzione.
+    path(
+        "lotti/<int:lotto_id>/fatture/export/",
+        ApiLottoFattureExport.as_view(),
+        name="vendite-lotto-fatture-export",
+    ),
+    path(
+        "lotti/<int:lotto_id>/task-runs/export/",
+        ApiLottoTaskRunsExport.as_view(),
+        name="vendite-lotto-task-runs-export",
+    ),
+    path(
+        "lotti/<int:lotto_id>/segnalazioni/export/",
+        ApiLottoSegnalazioniExport.as_view(),
+        name="vendite-lotto-segnalazioni-export",
+    ),
+    # Elenco PAGINATO delle segnalazioni (BE-4). ⚠️ PRIMA del riepilogo:
+    # `rows/` e' un segmento letterale e non collide, ma tenere la rotta piu'
+    # specifica in testa evita sorprese se un domani il riepilogo diventasse
+    # un pattern piu' permissivo.
+    path(
+        "lotti/<int:lotto_id>/segnalazioni/rows/",
+        ApiLottoSegnalazioniRows.as_view(),
+        name="vendite-lotto-segnalazioni-rows",
     ),
     path(
         "lotti/<int:lotto_id>/segnalazioni/",

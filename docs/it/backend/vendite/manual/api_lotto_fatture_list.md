@@ -8,6 +8,51 @@ Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con de
 
 Endpoint di sola lettura che interroga `vendite.fatturazione_lotti_fatture` con INNER JOIN su `vendite.fatture`, `anagrafiche.billing_account`, `anagrafiche.vw_soggetti_ruoli_dettaglio` e LEFT JOIN su `config.stati_sdi`, `config.stati_doc_fiscale`. Nessuna funzione SQL intermedia: query raw nel repository.
 
+## L'errore attaccato alla riga (2026-08-21)
+
+`stato_esecuzione` dice **che** la fattura è fallita; da sola non dice perché, e
+il motivo viveva solo nel toast del momento — cioè in nessun posto, un minuto
+dopo. La riga porta ora l'**ultima segnalazione viva** del documento, letta da
+`vendite.fatture_log` con un `LEFT JOIN LATERAL` che ne prende **una**.
+
+⭐ **La regola è «l'ultima viva, dalle più gravi»** (D-6), e le due metà contano
+entrambe: si guardano **tutti** i livelli — non solo i critici — e a parità
+vince la **gravità** prima della data. Un documento con un avviso di ieri e
+nessun critico ha qualcosa da dire, e prima non lo diceva; uno con un critico di
+ieri e un avviso di oggi deve mostrare il critico, non l'avviso.
+
+| Campo | Cosa |
+|---|---|
+| `errore_messaggio` | il messaggio del database, quello che dice cosa è successo e la via d'uscita. ⚠️ Dal `T-3b` (2026-08-24) **non nomina più il documento con un id**: *quale* aprire lo dice il bersaglio, che viaggia nel `meta` della riga di log (chiave `bersagli`) e a video diventa un pulsante |
+| `errore_codice` | il codice applicativo, da `meta->>'error_code'` — la chiave che scrivono sia le funzioni DB sia il backend (D-7) |
+| `errore_quando` | quando: un errore vecchio su una riga già rilavorata si riconosce solo dalla data |
+| `errore_livello` | `C`/`W`/`I` — **fuori dal seed**, ma nel payload: senza, il frontend mostrerebbe l'icona rossa anche su un avviso. Stesso ruolo di `natura_doc_codice` |
+
+Tutti e tre `null` quando non c'è errore.
+
+⚠️ **Il `LATERAL` sta fuori dal `COUNT`**: il conteggio delle righe del lotto non
+ha bisogno del messaggio, e cercarlo lì sarebbe lavoro per niente a ogni pagina.
+
+⭐ **E chi la abbassa**: il tentativo successivo. `ritira_marcature_fatture_be`
+gira **prima del verdetto** della guardia PRE-1 e **fuori** dalla transazione
+dello step — la marcatura firmata `origine=BE_PIPELINE` viene ritirata, il ponte
+torna `COMPLETED`, e se il giro fallisce di nuovo la marcatura si riscrive.
+Vive quindi **una sola** segnalazione per fattura, quella dell'ULTIMO tentativo.
+🔴 Senza quel ritiro il primo fallimento chiudeva il lotto per sempre: la
+guardia contava la propria marcatura e rispondeva «Lotto bloccato per
+segnalazioni critiche attive» anche dopo che l'operatore aveva corretto la
+causa. Misurato: con il ritiro dentro la transazione i log critici crescevano
+1 → 2 → 3 a ogni tentativo (il rollback annullava il ritiro ma non la scrittura
+nuova); fuori, restano 1.
+
+📌 **Chi scrive `stato_esecuzione = 'ERRORE'`**: il runner, nel gestore
+d'eccezione **fuori** dalla transazione dello step
+(`LottoPipelineRunner._persist_fattura_error_safely`). Dentro, il fail-fast
+annullerebbe la riga insieme all'errore che descrive — ed è il motivo per cui
+fino al 2026-08-21 il valore `'ERRORE'`, pur ammesso dal CHECK della tabella e
+contato dalla summary, **non veniva scritto mai** (misurato: 16 righe su 16 a
+`COMPLETED`).
+
 ## Input
 
 - Metodo: `GET`
@@ -53,7 +98,13 @@ Endpoint di sola lettura che interroga `vendite.fatturazione_lotti_fatture` con 
         "totale_a_pagare": "1234.560000",
         "soggetto_id": 55,
         "ragione_sociale_completa": "Mario Rossi Srl",
-        "id_fiscale_univoco_cf_piva": "01234567890"
+        "id_fiscale_univoco_cf_piva": "01234567890",
+        "natura_doc_codice": "NOTA_CREDITO",
+        "natura_doc_descrizione": "Nota di credito",
+        "errore_messaggio": "Non si può numerare il documento: rettifica righe di altri documenti che non risultano ancora numerati. Documenti da numerare prima: 1.",
+        "errore_codice": "E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+        "errore_quando": "2026-08-21T17:39:39.675+02:00",
+        "errore_livello": "C"
       }
     ]
   },

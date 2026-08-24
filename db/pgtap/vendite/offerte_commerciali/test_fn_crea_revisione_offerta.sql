@@ -18,6 +18,10 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(7);
 
 -- ============================================================
@@ -80,23 +84,30 @@ UPDATE vendite.offerte_commerciali
 
 -- Eccezioni rev.1: 2 attive + 1 inattiva
 -- tipo_erogazione UNA_TANTUM + fonte FISSA: combinazione ammessa da tutti i CHECK.
+-- ⭐ CORRETTO IL 2026-08-24 — con `fonte_quantita_attesa = 'FISSA'` la quantita'
+--    va messa in **qta_operativa**, non lasciata a NULL: e' la colonna operativa,
+--    ed e' quella che il guard pretende (E_QTA_MISSING, «Quantita' nulla o
+--    mancante», che nomina la colonna). Senza, il fixture non entrava proprio e
+--    il file falliva prima di qualunque asserzione.
+--    ⚠️ E' una trappola nota di questa famiglia di tabelle: la quantita'
+--    "parlante" e' quella operativa, non `quantita`.
 INSERT INTO vendite.offerte_commerciali_eccezioni (
     offerta_id, articolo_id, tipo_eccezione,
     tipo_erogazione, fonte_quantita_attesa,
-    prezzo_unitario, attivo
+    prezzo_unitario, attivo, qta_operativa
 )
 SELECT r1.id, ctx.articolo_id_1, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'FISSA', 100.00, TRUE
+       'UNA_TANTUM', 'FISSA', 100.00, TRUE, 1.00
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx
  WHERE ctx.articolo_id_1 IS NOT NULL;
 
 INSERT INTO vendite.offerte_commerciali_eccezioni (
     offerta_id, articolo_id, tipo_eccezione,
     tipo_erogazione, fonte_quantita_attesa,
-    prezzo_unitario, attivo
+    prezzo_unitario, attivo, qta_operativa
 )
 SELECT r1.id, ctx.articolo_id_2, 'AGGIUNTA'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'FISSA', 50.00, TRUE
+       'UNA_TANTUM', 'FISSA', 50.00, TRUE, 1.00
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx
  WHERE ctx.articolo_id_2 IS NOT NULL;
 
@@ -104,10 +115,10 @@ SELECT r1.id, ctx.articolo_id_2, 'AGGIUNTA'::"vendite"."tipo_eccezione_contratto
 INSERT INTO vendite.offerte_commerciali_eccezioni (
     offerta_id, articolo_id, tipo_eccezione,
     tipo_erogazione, fonte_quantita_attesa,
-    prezzo_unitario, attivo
+    prezzo_unitario, attivo, qta_operativa
 )
 SELECT r1.id, ctx.articolo_id_3, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'FISSA', 75.00, FALSE
+       'UNA_TANTUM', 'FISSA', 75.00, FALSE, 1.00
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx
  WHERE ctx.articolo_id_3 IS NOT NULL
    AND ctx.articolo_id_3 <> ctx.articolo_id_1

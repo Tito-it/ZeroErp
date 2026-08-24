@@ -25,7 +25,13 @@ export const TOAST_DURATION = {
   SUCCESS: 3000,
   WARN: 4000,
   ERROR: 5000,
-  SYSTEM_ERROR: 0  // 0 = persistente, chiusura manuale
+  SYSTEM_ERROR: 0,  // 0 = persistente, chiusura manuale
+  // ⭐ L'errore che porta un GESTO: persistente per la stessa ragione tecnica
+  // (0 = chiusura manuale) ma per un motivo diverso — non «e' grave», bensi'
+  // «c'e' un pulsante da premere», e un pulsante che sparisce dopo cinque
+  // secondi non e' un gesto. Nome suo perche' i due possano divergere senza
+  // che nessuno debba indovinare quale dei due stava cambiando.
+  AZIONI: 0
 }
 
 // Codici interni tipi ruolo (codice_interno da config.tipi_ruoli — fissi e immutabili)

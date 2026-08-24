@@ -20,6 +20,10 @@ View in `apps/vendite/api/views.py`:
 - Path canonico: `/api/v1/vendite/lotti/{lotto_id}/segnalazioni/`
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - Path params: `lotto_id` (int)
+- Query param: `livello` — `C` critiche (default) · `W` avvisi · `I` attenzioni.
+  Normalizzato (trim + maiuscolo) dalla view; fuori vocabolario → `400`.
+  ⚠️ Nome italiano come gli altri query param di dominio, e mai `format` o altri
+  nomi che DRF intercetta.
 
 ## Output
 
@@ -41,13 +45,67 @@ View in `apps/vendite/api/views.py`:
       "lotto_warning_count": 0,
       "lotto_info_count": 1,
       "fatture_stato_esecuzione_errore_count": 0
-    }
+    },
+    "livello": "C",
+    "segnalazioni": [
+      {
+        "riga_key": "FATTURA:3284",
+        "origine": "FATTURA",
+        "livello": "C",
+        "messaggio": "Non si può numerare il documento 15353: …",
+        "data_ora": "2026-08-21T17:39:39.675+02:00",
+        "codice": "E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+        "fase": null,
+        "fattura_id": 15353,
+        "ragione_sociale_completa": "Azienda PG Test Natura",
+        "totale_doc": "-20.740000"
+      }
+    ]
   },
   "meta": { ... }
 }
 ```
 
-- `400`: `lotto_id` non valido o <= 0
+- `400`: `lotto_id` non valido o <= 0, oppure `livello` fuori vocabolario
+
+## L'elenco, non solo i conteggi (2026-08-21)
+
+I conteggi dicono **quante** segnalazioni ci sono; `segnalazioni[]` dice **cosa
+sono**, per il livello richiesto.
+
+⭐ **Stessa fonte e stessi filtri dei conteggi**, e va tenuto così:
+`fatture_log` attraverso il ponte del lotto **+** `fatturazione_lotti_log`,
+entrambe con `disabilitato IS FALSE` — esattamente ciò che somma
+`fn_get_lotto_segnalazioni_summary`. Un elenco che leggesse una fonte sola
+mostrerebbe «1 critica» nel banner e zero righe nella scheda, e la divergenza
+fra un contatore e il suo dettaglio è peggio del dettaglio assente.
+📌 Verificato sul lotto 6034: **C=1 → 1 riga · W=2 → 2 righe · I=11 → 11 righe**.
+
+⚠️ Il livello `I` esiste **solo** sulle segnalazioni di LOTTO (il riepilogo
+conta `lotto_info_count` e non ha il gemello per le fatture): il ramo fatture
+resta nella query e per `I` semplicemente non produce righe.
+
+⭐ **Perché conteggi ed elenco viaggiano insieme**: li legge la stessa scheda e
+devono raccontare lo stesso istante. Due chiamate separate potrebbero cadere a
+cavallo di un giro e mostrare «2 critiche» sopra un elenco di tre.
+
+⚠️ **`riga_key` è la chiave di riga** (`<origine>:<id>`), e serve: `data_ora`
+**non è univoco** — misurato, sei segnalazioni con lo stesso microsecondo,
+scritte dallo stesso giro — e il solo `id` nemmeno, perché le due tabelle hanno
+sequenze indipendenti. È anche il tiebreak dell'`ORDER BY`: a parità di istante
+l'ordine dev'essere deterministico, o due letture della stessa pagina si
+scambiano righe.
+
+⚠️ **Nessuna paginazione, per ora**: cap a 500 righe con `logger.warning` sul
+troncamento — un elenco tagliato somiglia in tutto a uno completo, e sopra c'è
+un contatore che direbbe un numero diverso. La paginazione arriva con il
+catalogo lista (`ui.lista_definizione`), prerequisito DB.
+
+⚠️ **`messaggio` non si riscrive**: contiene la frase del database, l'unica che
+nomina il documento bloccante e la via d'uscita. `ragione_sociale_completa` e
+`totale_doc` si **affiancano** — un id interno non è visibile da nessuna parte
+nell'interfaccia, quindi senza nome e importo «documento 835» non identifica
+niente. Sulle segnalazioni di LOTTO sono `null` e il consumer mostra `fase`.
 - `500`: errore applicativo gestito dal middleware
 
 ## Regole

@@ -1,0 +1,213 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUATTRO E_GENERICO SUL GUARD DELLA TESTATA — passo P-7 (4 di 6)
+#   pagamenti.trgfn_vendite_contabili_guard_ente_centro
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §2.0 P-7
+#
+# ── I QUATTRO PUNTI, E I QUATTRO RIMEDI ─────────────────────────────────
+#   · ente inesistente o senza centro -> E_ENTE_INCASSO_SENZA_CENTRO (945)
+#     ⚠️ UN codice per DUE cause. `enti_incasso.centro_riscossione_id` e'
+#     nullable, quindi `v_centro_ente IS NULL` puo' voler dire «l'ente non c'e'»
+#     oppure «l'ente c'e' e non ha centro». Le due portano allo stesso posto — si
+#     va a guardare l'ente — e il messaggio le nomina entrambe apposta, per non
+#     mandare a cercare la cosa sbagliata. Distinguerle produrrebbe due frasi con
+#     lo stesso rimedio;
+#   · centro della testata diverso da quello dell'ente
+#     -> E_CONTABILE_CENTRO_ENTE_INCOERENTE (946): il centro e' una proprieta'
+#     dell'ente e non andrebbe passato a mano;
+#   · centro non abilitato alle compensazioni
+#     -> E_CENTRO_NON_ABILITATO_COMPENSAZIONE (947);
+#   · testata di compensazione gia' collegata a un lotto
+#     -> E_CONTABILE_COMPENSAZIONE_CON_LOTTO (948).
+#
+# ── ⭐ UN CODICE PER DUE PORTE, ED E' VOLUTO ────────────────────────────
+#   `E_CONTABILE_COMPENSAZIONE_CON_LOTTO` e' sollevato anche da
+#   `pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione` (changeSet
+#   20260821-19), che presidia il verso opposto: li' si collega al lotto una
+#   testata gia' di compensazione, qui si rende di compensazione una testata gia'
+#   collegata al lotto. Stessa regola letta nei due versi, stesso rimedio — usare
+#   due testate distinte — quindi stesso codice.
+#
+#   ⚠️ Per questo il messaggio ha UN solo segnaposto, la testata: il lotto lo
+#   conosce solo una delle due porte. Il lotto, quando c'e', va nel CONTESTO
+#   dell'evento in `dbops.error_log`, non nel messaggio. Un segnaposto che una
+#   delle due porte non sa riempire farebbe alzare 22023 a `format()` e
+#   l'errore di dominio sparirebbe.
+#
+# ── ⚠️ IL RIFERIMENTO AL VINCOLO CHE ORA ESISTE DAVVERO ────────────────
+#   Il ramo compensazione legge `centri_riscossione.is_compensazione`. Fino al
+#   changeSet 20260821-11 (stesso lotto) l'unicita' di quel flag era DICHIARATA e
+#   non esisteva — il `where:` era stato scritto su un `addUniqueConstraint`, che
+#   quell'attributo non ha. Da adesso il centro di compensazione e' unico per
+#   costruzione, e il messaggio del codice 947 puo' dirlo.
+#
+# Origine: corpo dalla doc auto-generata del 2026-08-21
+#   (docs/it/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_ente_centro.md).
+# Dipendenze: codici 945, 946, 947, 948 (append ai CSV di 80_data nello stesso
+#   commit). ⚠️ 80_data gira DOPO 20_code: nessuna preCondition sui codici.
+# Verifica: db/pgtap/pagamenti/test-compensazioni-contabili-model.sql
+# 🔴 RICHIESTA AL BE (BE-1): rigenerare error_policies_generated.py.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-17-update-trgfn-vendite-contabili-guard-ente-centro-codici-errore-mctit.yaml
+
+  - changeSet:
+      id: 20260821-17-update-trgfn-vendite-contabili-guard-ente-centro-codici-errore
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.trgfn_vendite_contabili_guard_ente_centro: i quattro E_GENERICO
+        passano a E_ENTE_INCASSO_SENZA_CENTRO, E_CONTABILE_CENTRO_ENTE_INCOERENTE,
+        E_CENTRO_NON_ABILITATO_COMPENSAZIONE e E_CONTABILE_COMPENSAZIONE_CON_LOTTO
+        (condiviso con il guard gemello sui lotti). Nessun predicato cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'trgfn_vendite_contabili_guard_ente_centro';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_centro_ente pagamenti.enti_incasso.centro_riscossione_id%TYPE;
+                v_is_compensazione pagamenti.centri_riscossione.is_compensazione%TYPE;
+                v_has_lotto_link boolean := false;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Garantire coerenza della testata contabile:
+                --   - centro/ente incasso
+                --   - regole di compensazione
+                --
+                -- Rev 2026-08-21 (passo P-7): i quattro E_GENERICO passano ai
+                -- codici registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                -- 1) Coerenza ente_incasso -> centro_riscossione.
+                IF NEW.ente_incasso_id IS NOT NULL THEN
+                  SELECT ei.centro_riscossione_id
+                    INTO v_centro_ente
+                    FROM pagamenti.enti_incasso ei
+                   WHERE ei.id = NEW.ente_incasso_id;
+
+                  -- ⚠️ Due cause, un codice: l'ente non esiste, oppure esiste e
+                  --    non ha centro (la colonna e' nullable). Stesso rimedio:
+                  --    si va a guardare l'ente.
+                  IF v_centro_ente IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_ENTE_INCASSO_SENZA_CENTRO',
+                      jsonb_build_object(
+                        'detail', 'ente_incasso senza centro_riscossione valido',
+                        'campo', 'ente_incasso_id',
+                        'ente_incasso_id', NEW.ente_incasso_id
+                      ),
+                      NULL::uuid,
+                      NEW.ente_incasso_id::text
+                    );
+                  END IF;
+
+                  IF NEW.centro_riscossione_id IS DISTINCT FROM v_centro_ente THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_CONTABILE_CENTRO_ENTE_INCOERENTE',
+                      jsonb_build_object(
+                        'detail', 'coerenza centro/ente non rispettata',
+                        'campo', 'centro_riscossione_id',
+                        'contabile_id', NEW.id,
+                        'centro_riscossione_id', NEW.centro_riscossione_id,
+                        'ente_incasso_id', NEW.ente_incasso_id,
+                        'centro_riscossione_ente', v_centro_ente
+                      ),
+                      NULL::uuid,
+                      NEW.centro_riscossione_id::text,
+                      NEW.ente_incasso_id::text,
+                      v_centro_ente::text
+                    );
+                  END IF;
+                END IF;
+
+                -- 2) Regole specifiche compensazione.
+                IF NEW.compensazione_id IS NOT NULL THEN
+                  SELECT c.is_compensazione
+                    INTO v_is_compensazione
+                    FROM pagamenti.centri_riscossione c
+                   WHERE c.id = NEW.centro_riscossione_id;
+
+                  -- ⚠️ Dal 2026-08-21 (20260821-11) il centro di compensazione e'
+                  --    UNICO per costruzione: indice unico parziale su
+                  --    is_compensazione. Prima l'unicita' era solo dichiarata.
+                  IF COALESCE(v_is_compensazione, false) IS FALSE THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_CENTRO_NON_ABILITATO_COMPENSAZIONE',
+                      jsonb_build_object(
+                        'detail', 'centro_riscossione non abilitato a compensazione',
+                        'campo', 'centro_riscossione_id',
+                        'contabile_id', NEW.id,
+                        'centro_riscossione_id', NEW.centro_riscossione_id,
+                        'compensazione_id', NEW.compensazione_id
+                      ),
+                      NULL::uuid,
+                      NEW.centro_riscossione_id::text
+                    );
+                  END IF;
+
+                  IF NEW.id IS NOT NULL THEN
+                    SELECT EXISTS (
+                      SELECT 1
+                        FROM pagamenti.vendite_contabili_lotti vcl
+                       WHERE vcl.contabile_id = NEW.id
+                    )
+                      INTO v_has_lotto_link;
+
+                    -- ⭐ Stesso codice del guard gemello sui lotti: e' la stessa
+                    --    regola letta nel verso opposto. Il messaggio ha un solo
+                    --    segnaposto perche' questa porta non conosce il lotto.
+                    IF v_has_lotto_link THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', 'pagamenti.trgfn_vendite_contabili_guard_ente_centro', 'E_CONTABILE_COMPENSAZIONE_CON_LOTTO',
+                        jsonb_build_object(
+                          'detail', 'testata compensazione non compatibile con link lotto',
+                          'contabile_id', NEW.id,
+                          'compensazione_id', NEW.compensazione_id
+                        ),
+                        NULL::uuid,
+                        NEW.id::text
+                      );
+                    END IF;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico. Il corpo precedente e' identico
+              --    salvo i codici errore: rimetterlo riporterebbe quattro
+              --    E_GENERICO su un guard che difende la coerenza fra canale di
+              --    incasso e documento.
+              SELECT 1;

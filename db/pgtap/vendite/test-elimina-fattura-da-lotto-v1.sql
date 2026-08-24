@@ -43,6 +43,7 @@
 -- 9) Motivo: la fattura ha gia un numero
 -- 10) Equivalenza check <-> mutazione            <-- il test che vale
 -- 11) Il perimetro allargato: da lotto EMESSA si puo togliere  <-- il bug chiuso
+-- 12) ...ma NON se su una riga e gia stato registrato un accredito
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -62,7 +63,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- Strutturali (girano sempre)
@@ -252,6 +253,17 @@ SELECT lf.lotto_id, lf.fattura_id
  WHERE sl.codice_interno = 'EMESSA'
    AND sf.codice_interno IN ('DRAFT', 'EMESSA')
    AND f.numero IS NULL
+   -- ⭐ rev 2026-08-22: la fixture deve scegliere una fattura DAVVERO
+   --   togliibile, e dal motivo 5 «non numerata» non basta piu': su una riga
+   --   puo' essere gia' stato registrato un accredito, e allora la funzione
+   --   rifiuta — a ragione. Senza questa riga il test sceglieva quel caso e
+   --   diventava rosso accusando il codice invece della propria selezione.
+   -- ⚠️ NON e' circolare: il soggetto del test e'
+   --   fn_check_fattura_eliminabile_da_lotto, che compone CINQUE motivi; qui
+   --   se ne neutralizza uno solo, con la stessa funzione che il motivo 5
+   --   delega. E il caso del RIFIUTO ha il suo presidio nel test 12 qui
+   --   sotto, quindi non e' questa fixture a doverlo garantire.
+   AND script.fn_check_fatture_con_rettifiche(ARRAY[f.id]) = '[]'::jsonb
  ORDER BY lf.lotto_id DESC
  LIMIT 1;
 
@@ -263,6 +275,38 @@ SELECT CASE
       (SELECT lotto_id FROM tmp_efl_emessa), (SELECT fattura_id FROM tmp_efl_emessa)),
     '[]'::jsonb,
     '11) Perimetro allargato: da un lotto EMESSA la fattura si puo togliere')
+END;
+
+
+-- ============================================================
+-- 12) ⭐ Il confine del perimetro allargato
+-- ============================================================
+-- Il motivo 5, nato il 2026-08-22 (changeSet 20260822-51). ⚠️ Questa e' la
+-- porta piu' ESPOSTA delle tre: lavora su UNA fattura e la ammette anche a
+-- lotto EMESSA — cioe' proprio lo stato in cui vive un accredito registrato
+-- prima della numerazione. Il motivo 4 non lo copre: l'accredito e' ancorato
+-- alla coda dei resi, non al numero.
+-- ⚠️ Si asserisce il CODICE e non «l'array non e' vuoto»: qualunque altro
+-- motivo renderebbe l'array non vuoto e il test passerebbe misurando altro.
+CREATE TEMP TABLE tmp_efl_rett AS
+SELECT lf.lotto_id, lf.fattura_id
+  FROM vendite.fatturazione_lotti_fatture lf
+ WHERE script.fn_check_fatture_con_rettifiche(ARRAY[lf.fattura_id]) <> '[]'::jsonb
+ ORDER BY lf.lotto_id DESC
+ LIMIT 1;
+
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM tmp_efl_rett)
+    THEN skip('nessuna fattura con righe gia accreditate su questo DB', 1)
+  ELSE ok(
+    EXISTS (
+      SELECT 1
+        FROM jsonb_array_elements(
+               script.fn_check_fattura_eliminabile_da_lotto(
+                 (SELECT lotto_id FROM tmp_efl_rett),
+                 (SELECT fattura_id FROM tmp_efl_rett))) m
+       WHERE m ->> 'codice' = 'E_FATTURE_RIGHE_RETTIFICATE'),
+    '12) ...ma una fattura con righe gia accreditate NON si toglie, e il motivo lo dice')
 END;
 
 SELECT * FROM finish();

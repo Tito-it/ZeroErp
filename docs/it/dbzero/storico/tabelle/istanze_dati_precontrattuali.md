@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/istanze_dati_precontrattuali.md" %}
 # 📚 Tabella `istanze_dati_precontrattuali`
 
 ## 🗂️ Campi principali

@@ -29,10 +29,40 @@ senza scrivere movimenti pagamenti diretti.
   `ANNULLATO` **scrivendone la ragione** in `motivo` (dal 2026-08-15) — e con un
   `COALESCE`, così una ragione già presente non viene sovrascritta.
 * Altrimenti crea/aggiorna una riga in `pagamenti.vendite_contabili_righe`:
+  * `fondo_source_id` = l'atto (⭐ **colonna** dal 21-08-2026, non più una
+    stringa dentro `meta`)
   * `meta.origine = 'FONDO_FATTURA'`
-  * `meta.fondo_source_id = source_id`
   * `fattura_id` = fattura sorgente
   * `billing_account_id` = source billing account
+
+> 🛟 **E c'è una rete che prima non c'era.** Se la riga di quell'atto si trova in
+> uno stato **dal quale non si torna ad `ABBINATA`**, non la si aggiorna: si
+> **salta e si registra un avviso** (`W_FONDO_RIGA_CONTABILE_NON_AGGIORNABILE`)
+> nel diario della fattura.
+>
+> ⭐ La domanda si fa alla **matrice** delle transizioni, non a un elenco di
+> stati scritto dentro la funzione — e per questo copre due casi, non uno: la
+> riga **registrata** (che sarebbe l'invariante rotta: quell'atto dovrebbe
+> essere `ESEGUITO`) e la riga **scartata**, da cui non esiste passaggio verso
+> `ABBINATA` e che senza la rete farebbe cadere il ricalcolo della fattura con
+> un errore che accusa il ricalcolo.
+>
+> ⛔ **Si registra e non si solleva**, ed è deliberato: questa funzione sta sul
+> percorso vivo della pipeline — `fn_ricalcola_totali_fattura` la chiama sempre,
+> come ultima istruzione — e un errore qui farebbe cadere un lotto di
+> fatturazione.
+>
+> ⚠️ **Non è il rimedio, è la rete.** Il rimedio sta un piano sopra: un fondo il
+> cui trasferimento è registrato passa a `ESEGUITO` e questo ciclo, che filtra
+> `ASSEGNATO`, **non ci arriva più**.
+>
+> 🔴 **Uno stato mancante adesso è un errore, non un ripiego.** Fino al
+> 21-08-2026, se lo stato `ABBINATA` non si trovava a catalogo la funzione
+> ripiegava su «uno stato qualunque». Era già sbagliato; era diventato peggio da
+> quando esiste la bandiera `richiede_abbinamento`, perché una riga ripiegata su
+> `IMPORTATA` sfuggirebbe **anche** al guard nuovo e resterebbe non registrabile
+> per sempre, in silenzio.
+
 * Usa `pagamenti.fn_get_or_create_vendite_contabile()` per risolvere la testata.
 * Il saldo effettivo **non è più calcolato qui**: si legge da
   [vendite.fn_saldo_sorgente_fondo](/dbzero/vendite/funzioni/fn_saldo_sorgente_fondo)

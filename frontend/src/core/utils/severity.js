@@ -559,3 +559,49 @@ export const STATO_MERCE_MAP = {
 export function statoMerceSeverity(codice) {
   return resolveSeverity(STATO_MERCE_MAP, codice)
 }
+
+// --- Motivi «fondo fattura da decidere» (vw_fondi_fattura_da_decidere, D-10:
+// vocabolario CHIUSO per costruzione — quattro letterali nei rami della UNION,
+// nessun dato li produce). ---
+//
+// ⚠️ Il colore separa DUE COSE DIVERSE, e non e' una gradazione di urgenza:
+//   PROPOSTA_SENZA_ATTO      arancio  c'e' una decisione DA PRENDERE su un
+//                                     caso sano (il fondo ci vuole e non c'e')
+//   NON_PIU_CAPIENTE         arancio  idem: l'atto esiste, la sorgente non lo
+//                                     regge piu' e va deciso cosa farne
+//   IMPORTO_NON_CORRISPONDENTE rosso  il dato NON TORNA (segno diverso dal
+//                                     documento o residuo piu' grande): non e'
+//                                     una scelta, e' qualcosa da capire
+//   UTILITY_NON_ATTRIBUIBILE   rosso  la riga e' IRRAGGIUNGIBILE da qualunque
+//                                     giro (utility nulla, e il filtro e' `=`):
+//                                     nessuna decisione la sblocca, va corretta
+// Chi guarda l'elenco deve poter separare a colpo d'occhio «devo scegliere» da
+// «qui c'e' qualcosa di rotto»: sono due lavori diversi, spesso di due persone
+// diverse.
+export const MOTIVO_FONDO_DA_DECIDERE_MAP = {
+  PROPOSTA_SENZA_ATTO: 'warn',
+  NON_PIU_CAPIENTE: 'warn',
+  IMPORTO_NON_CORRISPONDENTE: 'danger',
+  UTILITY_NON_ATTRIBUIBILE: 'danger',
+}
+export function motivoFondoDaDecidereSeverity(codice) {
+  return resolveSeverity(MOTIVO_FONDO_DA_DECIDERE_MAP, codice)
+}
+
+// Scopo: colore della gravità di una riga di giornale (`script.vw_giornale_entita`).
+// ⭐ Il vocabolario è quello NORMALIZZATO dalla vista — INFO | WARN | ERROR —
+//    non quello dei singoli registri (`C`/`W`/`I` dei log, `task_stato` dei
+//    task run): la vista li mappa una volta sola, e qui si legge il risultato.
+// ⚠️ `null` NON è un caso da appiattire su «neutro e via»: la vista dichiara che
+//    una gravità nulla significa «un vincolo si è allargato e la mappa è rimasta
+//    indietro». Si rende visibile (secondary + trattino dal chiamante), non si
+//    nasconde.
+export const GRAVITA_GIORNALE_MAP = {
+  ERROR: 'danger',
+  WARN: 'warn',
+  INFO: 'info',
+}
+
+export function gravitaGiornaleSeverity(gravita) {
+  return resolveSeverity(GRAVITA_GIORNALE_MAP, gravita)
+}

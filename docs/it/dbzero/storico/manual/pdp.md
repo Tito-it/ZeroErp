@@ -8,7 +8,7 @@
 >
 **Approfondimento funzioni:**
 >
-• [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)   
+• [`script.trgfn_upd_dlt_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)   
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 

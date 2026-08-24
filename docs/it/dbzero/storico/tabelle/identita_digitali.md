@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/identita_digitali.md" %}
 # 📚 Tabella `identita_digitali`
 
 > 📝 **Descrizione**

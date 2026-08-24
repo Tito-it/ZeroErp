@@ -132,7 +132,7 @@ Riferimento confronto:
 
 * `docs/it/guide/fatturazione.md`
 * `docs/it/dev/work-done/fatturazione-attivita-progetto.md`
-* `docs/it/dev/work-in-progress/pipeline-domini-engine.md`
+* `docs/it/dev/work-done/pipeline-domini-engine.md`
 
 Esito sintetico:
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_commessa_chiudibile.md" %}
 # ⚙️ Funzione `fn_check_commessa_chiudibile`
 
 ```sql

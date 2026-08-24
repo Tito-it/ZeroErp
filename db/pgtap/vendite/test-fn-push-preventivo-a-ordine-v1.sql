@@ -51,7 +51,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- ============================================================
 -- 1) Firma funzione: 5 parametri
@@ -255,6 +255,48 @@ SELECT is(
       AND o.documento_origine_id = (SELECT id FROM tmp_prev_atom)),
   0::bigint,
   '8b) nessun ordine orfano: la creazione e'' stata annullata con la transizione'
+);
+
+-- ============================================================
+-- 10-11) ⭐ IL BERSAGLIO, E PER UID.
+--   ⚠️ CORRETTO IL 2026-08-24 su rilievo del backend: si cita per **ID**, non
+--   per uid. Le rotte del preventivo sono <int:preventivo_id> e gli endpoint
+--   che accettano un uid sono ZERO — l'uid avrebbe prodotto un pulsante che non
+--   apre niente. ⭐ config.tipi_entita.key_selector si MISURA sulle rotte: non
+--   si eredita da config.sorgenti, che si chiama uguale ma risponde a un'altra
+--   domanda (con quale chiave il lineage collega il documento).
+--   ⛔ Il test 11 e' l'altra meta' della regola: su un preventivo che NON
+--   esiste il messaggio esce lo stesso ma il bersaglio no — un'offerta, non
+--   una promessa.
+--   ⚠️ Nella frase resta l'id numerico, ed e' voluto: due canali, due lettori.
+--   Brief: brief-db-bersaglio-errore §6 L6.
+-- ============================================================
+CREATE OR REPLACE FUNCTION pg_temp.push_prev_bersaglio(p_prev_id bigint)
+RETURNS text AS $fn$
+-- ⚠️ `text` esplicito: e' un canale dell'eccezione, non il valore di una colonna.
+DECLARE v_bers text;
+BEGIN
+  PERFORM vendite.fn_push_preventivo_a_ordine(p_prev_id);
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_bers = PG_DATATYPE_NAME;
+  RETURN COALESCE(v_bers, '');
+END $fn$ LANGUAGE plpgsql;
+
+CREATE TEMP TABLE tmp_prev_bersaglio AS
+SELECT pg_temp.push_prev_bersaglio((SELECT id FROM tmp_prev_draft))     AS esistente,
+       pg_temp.push_prev_bersaglio(-1::bigint)                          AS inesistente;
+
+SELECT is(
+  (SELECT esistente FROM tmp_prev_bersaglio),
+  'PREVENTIVO:' || (SELECT id FROM tmp_prev_draft)::text,
+  '10) il rifiuto porta il bersaglio sul preventivo, e lo cita per ID (non uid)'
+);
+
+SELECT is(
+  (SELECT inesistente FROM tmp_prev_bersaglio),
+  '',
+  '11) preventivo inesistente: il messaggio esce, il bersaglio no'
 );
 
 SELECT * FROM finish();

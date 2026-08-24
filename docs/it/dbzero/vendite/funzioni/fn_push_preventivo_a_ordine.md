@@ -22,6 +22,9 @@ DECLARE
     v_valuta_id            vendite.preventivi.valuta_id%TYPE;
     v_termine_pag_id       vendite.preventivi.termine_pagamento_id%TYPE;
     v_preventivo_uid       vendite.preventivi.uid%TYPE;
+    -- Il BERSAGLIO del rifiuto. ⚠️ `jsonb` esplicito: e' un frammento del
+    -- context, non il valore di una colonna.
+    v_bersagli             jsonb;
     v_soggetto_ruolo_id    vendite.ordini.soggetto_ruolo_id%TYPE;
     v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
     v_fatt_trigger         vendite.ordini.fatturazione_trigger%TYPE;
@@ -57,10 +60,50 @@ BEGIN
 
     IF NOT FOUND THEN
         -- Preventivo inesistente o non ACCETTATO: stesso errore parlante.
+        --
+        -- ⭐ IL BERSAGLIO, e qui va SUL PREVENTIVO: a differenza dei guard di
+        --    idempotenza dell'offerta, la cosa da raggiungere e' proprio il
+        --    documento nominato — l'operatore deve andarci per accettarlo.
+        --
+        -- ⭐ E SI CITA PER UID, non per id. E' il primo uso reale di
+        --    config.tipi_entita.key_selector: il preventivo, come l'offerta,
+        --    il progetto lo indirizza da fuori con l'uid (la stessa scelta di
+        --    config.sorgenti). Mandare l'id numerico avrebbe prodotto un
+        --    pulsante che non apre niente.
+        --
+        -- ⛔ E SOLO SE ESISTE. Questo errore copre due casi — «non c'e'» e
+        --    «c'e' ma non e' ACCETTATO» — e solo il secondo ha un posto dove
+        --    mandare qualcuno. Se il preventivo non esiste (o non e' visibile,
+        --    che per chi opera e' la stessa cosa) il messaggio si mostra lo
+        --    stesso e il pulsante non compare: il bersaglio e' un'offerta, non
+        --    una promessa.
+        --
+        -- ⚠️ La lettura e' SENZA il filtro di stato — quello di sopra ha appena
+        --    fallito proprio per lo stato: rimetterlo qui darebbe sempre NULL.
+        -- ⚠️ L'ID, non l'uid — correzione del 2026-08-24 su rilievo del backend.
+        --    Al primo giro qui c'era `pv.uid::text`, ereditato da
+        --    `config.sorgenti.key_selector`. Misurato: le rotte del preventivo
+        --    sono `<int:preventivo_id>` e gli endpoint che accettano un uid
+        --    sono ZERO — quel bersaglio avrebbe prodotto un pulsante che non
+        --    apre niente.
+        --    ⭐ Le due colonne si chiamano uguale e rispondono a domande
+        --    diverse: `config.sorgenti` dice con quale chiave il LINEAGE
+        --    collega il documento, `config.tipi_entita` con quale chiave lo si
+        --    RAGGIUNGE. Il valore si misura sulle rotte, non si eredita.
+        SELECT jsonb_build_array(jsonb_build_object('tipo', 'PREVENTIVO',
+                                                    'id',   pv.id::text))
+          INTO v_bersagli
+          FROM vendite.preventivi pv
+         WHERE pv.id = p_preventivo_id;
+
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_preventivo_a_ordine',
             'E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO',
-            jsonb_build_object('preventivo_id', p_preventivo_id),
+            -- ⚠️ La chiave si aggiunge solo se c'e' qualcosa da dire: una
+            --    chiave a NULL sarebbe letta come bersaglio malformato.
+            jsonb_build_object('preventivo_id', p_preventivo_id)
+            || CASE WHEN v_bersagli IS NULL THEN '{}'::jsonb
+                    ELSE jsonb_build_object('bersaglio', v_bersagli) END,
             NULL::uuid, p_preventivo_id::text);
     END IF;
 
@@ -225,7 +268,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying, p_flusso_id bigint)
-IS 'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 analisi-fix-transazioni): niente piu'' ordine creato + preventivo bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile. rev 2026-08-17: p_fatturazione_trigger NON viene piu'' portato a ''CONFERMATO'' con un COALESCE locale — passa in testata cosi'' com''e'', NULL compreso, e la risoluzione (testata -> billing_account -> CONFERMATO) sta in un posto solo, vendite.trgfn_ordini_normalize. Prima questa funzione raccoglieva il parametro e quel trigger lo sovrascriveva un istante dopo: il parametro era inerte (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19).';
+IS 'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 analisi-fix-transazioni): niente piu'' ordine creato + preventivo bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile. rev 2026-08-17: p_fatturazione_trigger NON viene piu'' portato a ''CONFERMATO'' con un COALESCE locale — passa in testata cosi'' com''e'', NULL compreso, e la risoluzione (testata -> billing_account -> CONFERMATO) sta in un posto solo, vendite.trgfn_ordini_normalize. Prima questa funzione raccoglieva il parametro e quel trigger lo sovrascriveva un istante dopo: il parametro era inerte (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). ⭐ rev 2026-08-24: il rifiuto porta il BERSAGLIO sul preventivo, e lo cita per ID — primo uso reale di config.tipi_entita.key_selector: il progetto indirizza preventivi e offerte con l''uid (come dichiara config.sorgenti), e mandare l''id numerico avrebbe prodotto un pulsante che non apre niente. ⛔ Solo se il preventivo ESISTE: questo errore copre due casi — «non c''e''» e «c''e'' ma non e'' ACCETTATO» — e solo il secondo ha un posto dove mandare qualcuno; se non esiste, il messaggio si mostra lo stesso e il pulsante non compare. ⚠️ La lettura dell''uid e'' senza filtro di stato: quello di sopra ha appena fallito proprio per lo stato. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6. ⚠️ rev 2026-08-24 (correzione): il bersaglio cita l''ID e non piu'' l''uid. Rilievo del backend, misurato: le rotte del preventivo sono <int:preventivo_id> e gli endpoint che accettano un uid sono zero — un bersaglio a uid avrebbe prodotto un pulsante che non apre niente, cioe'' esattamente il difetto che config.tipi_entita.key_selector esiste per evitare. ⭐ La lezione: quella colonna dice con quale chiave si RAGGIUNGE l''entita'', e il valore si misura sulle ROTTE; config.sorgenti.key_selector dice un''altra cosa (con quale chiave il lineage collega il documento) e non si eredita.';
 ```
 
 ---

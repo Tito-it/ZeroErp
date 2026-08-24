@@ -8,7 +8,7 @@ Approfondimento tabelle:
 >
 Approfondimenti funzioni:   
 >
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+[script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)     
 
 
 La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabile per la contabilizzazione delle operazioni, distinguendo tra conti di **acquisto** e **vendita**, e supportando l’audit delle modifiche.
@@ -49,7 +49,7 @@ La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabil
 1. **`trg_upd_conti_contabili_audit_data_user`**
 
    * **Quando**: `BEFORE UPDATE`
-   * **Cosa**: aggiorna automaticamente i campi `data_update` e `user_update` tramite `script.trgfn_upd_audit_data_user_generic()`
+   * **Cosa**: aggiorna automaticamente i campi `data_update` e `user_update` tramite `script.trgfn_audit_data_user_generic()`
 
 ---
 

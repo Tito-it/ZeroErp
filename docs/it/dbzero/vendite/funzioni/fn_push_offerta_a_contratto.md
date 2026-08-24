@@ -13,6 +13,10 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+    -- Il BERSAGLIO dei due guard di idempotenza: l'array {tipo,id} dei
+    -- documenti gia' generati. ⚠️ `jsonb` esplicito — e' un frammento del
+    -- context, non il valore di una colonna.
+    v_bersagli jsonb;
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
     v_stato_draft_id        config.stati_doc_contratti.id%TYPE;
@@ -79,29 +83,50 @@ BEGIN
     END IF;
 
     -- Guard idempotenza: contratto gia' generato per questa offerta?
-    IF EXISTS (
-        SELECT 1 FROM vendite.contratti
-         WHERE offerta_id = p_offerta_id
-    ) THEN
+    --
+    -- ⭐ IL BERSAGLIO NON E' L'OFFERTA — ed e' la cosa che questo scaglione ha
+    --    insegnato. La frase nomina l'offerta perche' e' il soggetto del
+    --    discorso, ma l'operatore l'offerta ce l'ha gia' davanti: quello che
+    --    non riesce a raggiungere e' il CONTRATTO che risulta gia' generato.
+    --    Il bersaglio e' «dove devi andare», non «di cosa stiamo parlando».
+    --
+    -- ⚠️ L'EXISTS diventa una raccolta: costa una scansione uguale e porta via
+    --    gli id. Sono un array perche' se i contratti fossero piu' d'uno —
+    --    l'anomalia che questo guard esiste per fermare — l'operatore deve
+    --    poterli vedere tutti, non solo il primo.
+    SELECT jsonb_agg(jsonb_build_object('tipo', 'CONTRATTO', 'id', c.id::text)
+                     ORDER BY c.id)
+      INTO v_bersagli
+      FROM vendite.contratti c
+     WHERE c.offerta_id = p_offerta_id;
+
+    IF v_bersagli IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
             'E_OFFERTA_CONTRATTO_GIA_GENERATO',
-            jsonb_build_object('offerta_id', p_offerta_id),
+            jsonb_build_object('offerta_id', p_offerta_id,
+                               'bersaglio',  v_bersagli),
             NULL::uuid,
             p_offerta_id::text
         );
     END IF;
 
     -- Guard mutua esclusivita': ordine gia' generato per questa offerta?
-    IF EXISTS (
-        SELECT 1 FROM vendite.ordini
-         WHERE documento_origine_tipo = 'OFFERTA'
-           AND documento_origine_id   = p_offerta_id
-    ) THEN
+    -- Stesso principio del guard qui sopra: si manda l'operatore sull'ORDINE
+    -- che esiste, non sull'offerta che ha gia' aperto.
+    SELECT jsonb_agg(jsonb_build_object('tipo', 'ORDINE_VENDITA', 'id', o.id::text)
+                     ORDER BY o.id)
+      INTO v_bersagli
+      FROM vendite.ordini o
+     WHERE o.documento_origine_tipo = 'OFFERTA'
+       AND o.documento_origine_id   = p_offerta_id;
+
+    IF v_bersagli IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_push_offerta_a_contratto',
             'E_OFFERTA_ORDINE_GIA_GENERATO',
-            jsonb_build_object('offerta_id', p_offerta_id),
+            jsonb_build_object('offerta_id', p_offerta_id,
+                               'bersaglio',  v_bersagli),
             NULL::uuid,
             p_offerta_id::text
         );
@@ -425,7 +450,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO).';
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO). ⭐ rev 2026-08-24: i due guard di idempotenza portano il BERSAGLIO, e il bersaglio NON e'' l''offerta — e'' il documento GIA'' GENERATO (il contratto, oppure l''ordine). La frase nomina l''offerta perche'' e'' il soggetto del discorso, ma l''operatore l''offerta ce l''ha gia'' davanti: cio'' che non riesce a raggiungere e'' il documento che gli blocca la strada. E'' un array perche'' se i documenti fossero piu'' d''uno — l''anomalia che il guard esiste per fermare — deve poterli vedere tutti. Da qui il canale DATATYPE dell''eccezione, e il frontend ci disegna «vai al contratto». ⚠️ L''EXISTS e'' diventato una raccolta: stessa scansione, in piu'' gli id. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
 ```
 
 ---

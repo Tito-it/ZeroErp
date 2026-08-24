@@ -43,3 +43,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 42,42,dash_competenza_gruppi_default,Vista standard gruppi fatturabili,sistema,,,t,25,"[{""col"":""valore"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
 43,43,dash_competenza_commesse_default,Vista standard drill-down commesse,sistema,,,t,25,"[{""col"":""valore_tot"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
 44,44,fondi_fattura_da_decidere_default,Vista standard fondi da decidere,sistema,,,t,50,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-15 00:00:00,mctit
+45,45,lotto_fatture_default,Vista standard documenti del lotto,sistema,,,t,25,,t,2026-08-22 00:00:00,mctit
+46,46,lotto_task_runs_default,Vista standard tentativi dei task,sistema,,,t,10,"[{""col"":""started_at"",""dir"":""desc""}]",t,2026-08-22 00:00:00,mctit
+47,47,lotto_segnalazioni_default,Vista standard segnalazioni del lotto,sistema,,,t,10,"[{""col"":""livello"",""dir"":""desc""}]",t,2026-08-22 00:00:00,mctit
+48,48,fatture_default,Vista standard fatture di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-24 00:00:00,mctit

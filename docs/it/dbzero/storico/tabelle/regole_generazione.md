@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/regole_generazione.md" %}
 # 📚 Tabella `regole_generazione`
 
 ## 🗂️ Campi principali

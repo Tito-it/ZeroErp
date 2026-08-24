@@ -204,7 +204,18 @@ Due punti di merito:
   davvero (solleciti, scadenzario), il prerequisito è **DB**: una imputazione
   incasso→scadenza, non un calcolo applicativo.
 - **Una fattura in DRAFT ha `numero` NULL**: il progressivo si assegna alla
-  numerazione fiscale.
+  numerazione fiscale. ⚠️ E non solo in DRAFT: fra **emissione e numerazione**
+  il documento è EMESSA e ancora senza numero. Un consumer che rende il numero
+  come identità del documento deve prevedere il caso — il pannello «Passaggi»
+  mostra «(non ancora numerato)», mai una stringa vuota.
+- **Nessuna genealogia**: la catena dei documenti a monte e a valle **non** è
+  in questa risposta. Ha il suo endpoint,
+  [`/vendite/fatture/<id>/passaggi/`](api_lineage_passaggi.md), che il drawer
+  chiama a parte (BB `DocumentoCollegamentiBar`, dal 2026-08-21).
+  ⚠️ Da non confondere con il blocco «documenti collegati» del drawer, che
+  legge `vendite.fatture_rettifiche` — l'indice documentale popolato **dopo** la
+  numerazione: nella finestra fra emissione e numerazione quello è vuoto e i
+  passaggi no, perché il grafo ricostruisce il legame dalle **righe**.
 
 ## Dipendenze DB
 
@@ -259,5 +270,6 @@ protegge gli **importi**, non l'annotazione operativa che ci gira intorno.
 | Consumer | Stato |
 | --- | --- |
 | `FatturaDrawer.vue` da kebab righe fatture del `LottoDrawer` | ✅ attivo |
+| `FatturaDrawer.vue` dalle **tappe FATTURA** dei pannelli «Passaggi» degli altri domini (via `DocumentoDrawerHost`) | ✅ attivo dal 2026-07-29 |
 | Dashboard Competenza, ricerca universale | possibile, nessuna modifica BE |
 | Portale clienti | ✅ prerequisito RLS **chiuso** il 2026-07-29. Il cliente vede righe e riepilogo IVA delle **sole** proprie fatture, in **sola lettura** (`FOR SELECT`): niente filtri applicativi sul billing account da aggiungere, e nessun permesso di scrittura da chiedere |

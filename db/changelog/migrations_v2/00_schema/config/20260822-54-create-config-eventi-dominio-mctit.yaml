@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA E' SUCCESSO — il catalogo dei codici evento
+#   config.eventi_dominio
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.8 · Decisione D-18 · lotto L4
+#
+# ── 🔴 IL DIFETTO CHE CHIUDE, E PERCHE' ADESSO ──────────────────────
+#   Domanda di Tid (2026-08-22): «siamo sicuri che sia definitiva? In venti
+#   giorni e' gia' la seconda volta sui log». La risposta e' stata misurare, e
+#   il pattern ha un nome:
+#
+#     > **Una colonna di testo che tutti scrivono e nessuno governa.**
+#
+#   Inizio agosto: 207 codici errore fuori catalogo. Oggi: `entity_type` testo
+#   libero. **Stesso difetto, altra colonna.** E lo stesso registro ne aveva
+#   ancora DUE nella stessa condizione — `domain` ed `event_code`:
+#
+#     severity      ✅ CHECK
+#     entity_type   ✅ CHECK -> catalogo (20260822-53)
+#     domain        ⛔ niente
+#     event_code    ⛔ niente
+#
+#   ⚠️ `event_code` e' **l'asse su cui il Passo B raggruppa**: chiedera' un
+#   catalogo, e lo chiedera' quando ci saranno dentro i dati, cioe' quando
+#   costa. Si chiude adesso, mentre la tabella e' gia' aperta.
+#
+#   📌 Il progetto sa gia' farlo: `config.tipi_evento_assets` e' il catalogo
+#   dei tipi evento del magazzino. Non e' un'invenzione.
+#
+# ── ⭐ UN CATALOGO SOLO: `domain` E' UNA PROPRIETA' DEL CODICE ──────
+#   `PIPELINE_STARTED` appartiene a PIPELINE, `EMITTIBILITA_FALLITA` a
+#   COMMESSE: il dominio non e' un secondo asse indipendente, e' un attributo
+#   del codice. Un codice che appartenesse a due domini vorrebbe dire due cose
+#   — il difetto contro cui il cantiere dei codici errore ha combattuto.
+#   ➡️ Per questo `vendite.event_log.domain` VIENE TOLTA (20260822-56): una
+#   copia derivabile scritta su ogni riga puo' DISSENTIRE dal catalogo, e
+#   nessun vincolo puo' impedirlo.
+#
+# ── ⛔ E QUESTO CATALOGO NON AVRA' UNA FK DA `event_log` ─────────────
+#   La mossa ovvia sarebbe una FK su `event_code`. **Sarebbe sbagliata**, e va
+#   detto perche' non venga riproposta:
+#
+#     > Una scrittura rifiutata perche' il codice non e' ancora a catalogo e'
+#     > **il diario che smette di scrivere per un problema di configurazione**
+#     > — cioe' esattamente cio' che la D-12 vieta. Il diario rifiuta solo
+#     > quando non sa dire DI CHI E' la riga; un codice ignoto non glielo
+#     > impedisce.
+#
+#   Il presidio e' un cancello che fallisce la BUILD, non la scrittura — vedi
+#   20260822-60 e la consegna BE-9.
+#
+# Dipendenze: nessuna. Il seed sta in 80_data (20260822-55).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260822-54-create-config-eventi-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20260822-54-create-config-eventi-dominio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.eventi_dominio: il catalogo dei codici evento del giornale, con il dominio
+        come ATTRIBUTO del codice e non come secondo asse — per questo vendite.event_log
+        perde la colonna domain (20260822-56). Chiude l'ultima colonna di testo non
+        governata del registro, che e' la forma esatta del difetto che ha prodotto due
+        interventi in venti giorni. ⛔ Nessuna FK da event_log: rifiutare una scrittura per
+        un codice non dichiarato violerebbe la D-12. Il presidio fallisce la build.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: eventi_dominio
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE config.eventi_dominio (
+                  -- La chiave e' il codice, come su config.codici_errore.
+                  codice        text NOT NULL,
+
+                  -- ⭐ Il dominio e' un ATTRIBUTO del codice, non un secondo
+                  --   asse: e' la ragione per cui event_log.domain sparisce.
+                  -- ⚠️ Testo governato da qui e non una seconda tabella: i
+                  --   domini sono cinque parole, e una tabella di cinque
+                  --   parole con una FK sopra e' cerimonia, non governo. Se un
+                  --   giorno servisse un'anagrafica dei domini — etichette,
+                  --   permessi, colori — nascera' allora e questa la
+                  --   referenziera'.
+                  dominio       text NOT NULL,
+
+                  -- Chiave i18n: il nome visibile lo scrive il frontend.
+                  etichetta_key text NOT NULL,
+
+                  -- ⛔ NON `attivo`: stessa ragione di config.tipi_entita —
+                  --   un lucchetto require_attivo non deve poter nascere
+                  --   vicino a questo registro.
+                  obsoleto_dal  date NULL,
+
+                  note          text NULL,
+
+                  data_insert timestamptz NOT NULL DEFAULT now(),
+                  user_insert text        NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamptz NOT NULL DEFAULT now(),
+                  user_update text        NOT NULL DEFAULT CURRENT_USER,
+
+                  CONSTRAINT pk_eventi_dominio PRIMARY KEY (codice)
+              );
+
+              CREATE INDEX ix_eventi_dominio_dominio
+                  ON config.eventi_dominio (dominio);
+
+              COMMENT ON TABLE config.eventi_dominio IS
+                  'Catalogo dei codici evento del giornale (vendite.event_log.event_code), '
+                  'col DOMINIO come attributo del codice e non come secondo asse — ed e'' '
+                  'la ragione per cui event_log.domain e'' stata tolta: una copia '
+                  'derivabile su ogni riga puo'' dissentire dal catalogo e nessun vincolo '
+                  'puo'' impedirlo. ⛔ event_log NON ha una FK verso qui, ed e'' deliberato: '
+                  'rifiutare una scrittura perche'' il codice non e'' dichiarato sarebbe il '
+                  'diario che smette di scrivere per un problema di configurazione, cioe'' '
+                  'la D-12 violata. Il presidio e'' un cancello che fallisce la BUILD '
+                  '(consegna BE-9), non la scrittura. ⛔ E niente colonna attivo, come su '
+                  'config.tipi_entita.';
+
+              COMMENT ON COLUMN config.eventi_dominio.dominio IS
+                  'Il sottodominio che emette l''evento (PIPELINE, COMMESSE, ...). ⚠️ Testo '
+                  'governato da questo catalogo e non una seconda tabella: sono cinque '
+                  'parole. Se servira'' un''anagrafica dei domini nascera'' allora.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS config.eventi_dominio;

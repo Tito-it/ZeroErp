@@ -40,6 +40,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ex_src_bancari_conto_incasso_un_solo_soggetto | `CREATE INDEX ex_src_bancari_conto_incasso_un_solo_soggetto ON anagrafiche.soggetti_ruoli_conti_bancari USING gist (conto_bancario_id, soggetto_ruolo_id) WHERE ((uso)::text = 'INCASSO'::text)` |
 | ix_anagrafiche_soggetti_ruoli_conti_bancari_conto_bancario_id | `CREATE INDEX ix_anagrafiche_soggetti_ruoli_conti_bancari_conto_bancario_id ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (conto_bancario_id)` |
 | ix_anagrafiche_soggetti_ruoli_conti_bancari_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_soggetti_ruoli_conti_bancari_soggetto_ruolo_id ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (soggetto_ruolo_id)` |
 | ix_src_bancari_istanza_utility_id | `CREATE INDEX ix_src_bancari_istanza_utility_id ON anagrafiche.soggetti_ruoli_conti_bancari USING btree (istanza_utility_id)` |

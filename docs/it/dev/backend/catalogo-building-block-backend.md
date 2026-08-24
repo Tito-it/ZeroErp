@@ -612,6 +612,19 @@ inesistente dà **0** e non «tutto».
 
 ---
 
+## Vendite — Giornale di un'entità / pannello «Storia» (`apps/vendite/`)
+
+Il lettore della vista cucita `script.vw_giornale_entita` — «cosa è successo a
+questa cosa, in ordine di tempo». Primo consumatore: la scheda **Storia** del
+drawer fattura (doc [api_fattura_giornale.md](../../backend/vendite/manual/api_fattura_giornale.md)).
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `VenditeRepository.list_giornale_entita` | [vendite_repository.py](../../../../backend/apps/vendite/db/vendite_repository.py) | Legge `script.vw_giornale_entita` per `(entity_type, entity_id)`, paginato. Ritorna la **terna** `(righe, vive, ritirate)`: chi legge un totale filtrato deve avere sotto mano anche ciò che manca. ⛔ **L'ordine non può appoggiarsi al solo tempo** — `now()` è il timestamp di *transazione* (misurato: 38 righe su 3 istanti), quindi a ordinare dentro l'istante è il tiebreak `riga_id`, che è la sequenza vera **finché il registro è uno solo**. ⚠️ `COALESCE(disabilitato, false)`: i due `NULL` non sono uguali — su `event_log` il concetto non esiste (append-only), sui `task_runs` il ritiro esiste su un altro asse (`attivo` spegne il *tentativo*, `disabilitato` ritira un *segnale*). 📌 Vive in `vendite` perché il primo consumatore è la fattura: **al secondo dominio va in `core`** (regola del 2) — la vista è già cross-dominio, un ramo nuovo entra con un `UNION ALL` e il lettore non cambia. |
+| `get_fattura_giornale` | [vendite_service.py](../../../../backend/apps/vendite/services/vendite_service.py) | 🔴 **Il cancello è la TESTATA, e non è ridondante**: la vista è `security_invoker`, quindi su una fattura fuori scope risponderebbe **zero righe** — cioè «non è successo niente» invece di «non la vedi». Verificato sul DB: senza contesto operatore la vista dà 0 e l'endpoint dà `E_FATTURA_NON_TROVATA`. ⚠️ Le **ritirate** si nascondono di default e `ritirate_count` dichiara quante: il filtro è sul server perché la lista è paginata lì, e filtrare a valle filtrerebbe solo la pagina visibile. |
+
+---
+
 ## Vendite — Lineage documenti / pannello "Passaggi" (`apps/vendite/`)
 
 Genealogia/transiti dei documenti vendite (brief-be-fe-lineage-documenti-vendite,

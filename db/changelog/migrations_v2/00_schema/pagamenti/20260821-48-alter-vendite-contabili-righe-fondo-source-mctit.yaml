@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LEGAME RIGA -> ATTO DIVENTA PORTANTE — passo S1-14 (lotto 3)
+#   pagamenti.vendite_contabili_righe.fondo_source_id
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.1 S1-14, §6.8
+#
+# ── PERCHE' ORA ────────────────────────────────────────────────────────
+#   Oggi il legame fra la riga contabile e l'atto che l'ha generata e' una
+#   STRINGA DENTRO UN JSON: `meta ->> 'fondo_source_id'`. Non e' una
+#   relazione — nessuna integrita', nessun indice, nessuna garanzia che il
+#   valore sia un id esistente — ed e' gia' letto in TRE punti:
+#   vendite.fn_sync_contabili_fondo_fattura, vendite.fn_reset_fondi_fattura,
+#   vendite.fn_saldo_sorgente_fondo. La «regola del 2» e' superata da un pezzo.
+#
+#   ⭐ E il lotto 3 ci appende sopra una MACCHINA A STATI: il trigger di S1-16
+#   porta il fondo a ESEGUITO leggendo proprio questo legame. Un legame che
+#   regge uno stato e' portante, e un legame portante si scrive come tale.
+#
+# ── ⭐ BACKFILL: ZERO RIGHE, MISURATO ──────────────────────────────────
+#   pagamenti.vendite_contabili_righe ha 0 righe (misurato il 2026-08-21).
+#   Non c'e' nessuna migrazione di dati da scrivere: la colonna nasce vuota e
+#   la scrive chi crea le righe (il sync, changeSet -52 di questo lotto).
+#   ⚠️ E' la ragione per cui la colonna NON e' NOT NULL: una riga contabile
+#   che NON viene da un fondo — cioe' la stragrande maggioranza di quelle che
+#   arriveranno — non ha nessun atto da citare.
+#
+# ── ⚠️ TRE CONSEGUENZE DELLA FK, DA SAPERE E NON DA SCOPRIRE ───────────
+#   1) **ORDINE DI CANCELLAZIONE.** La FK e' NO ACTION (default esplicito):
+#      chi cancella un atto deve prima cancellare le sue righe. E' il motivo
+#      per cui S1-17 spezza il reset in piu' statement invece di lasciarlo in
+#      una CTE unica — dentro un solo statement l'ordine fra CTE non e'
+#      garantito rispetto ai vincoli, e la FK potrebbe scattare prima che le
+#      figlie siano sparite. ⛔ NON si e' scelto DEFERRABLE INITIALLY
+#      DEFERRED: una FK differita NASCONDE l'ordine invece di dichiararlo.
+#
+#   2) **NASCE UN GUARD GENERICO.** `fatture_fondi_fattura_source` ha la
+#      colonna `attivo`, quindi l'automazione di dbops provvisionera' su
+#      questa FK un `trgfn_child_requires_active_parent`: una riga contabile
+#      non potra' puntare a un atto disattivato. E' innocuo — nessun punto del
+#      codice disattiva un atto (verificato) — ma va saputo, perche' i BEFORE
+#      ROW girano in ordine alfabetico e un guard generico puo' oscurarne uno
+#      scritto a mano.
+#      ⚠️ E le automazioni girano solo in `ci_apply` (o col pgagent delle
+#      21:00): sul migrate manuale il trigger non compare subito.
+#
+#   3) **L'INDICE NON NASCE DA QUI.** `dbops.fk_index_policy` e' OPT-IN: la
+#      riga di policy sta nel changeSet -55 di questo lotto, e la creazione
+#      resta a `dbops.apply_fk_index_policy()` in `90_end`. Mai un CREATE
+#      INDEX a mano su un indice governato dalla policy.
+#
+# ── ⚠️ E LA CHIAVE NEL `meta` NON RESTA ────────────────────────────────
+#   Dal changeSet -52 il sync scrive la COLONNA e non piu'
+#   `meta ->> 'fondo_source_id'`. Tenere entrambe sarebbe due sorgenti di
+#   verita' sullo stesso legame, che e' esattamente il difetto che questo
+#   passo chiude. `meta ->> 'origine' = 'FONDO_FATTURA'` invece RESTA: dice
+#   da quale processo nasce la riga, non a quale atto appartiene.
+#
+# Verifica: db/pgtap/vendite/test-fondo-fattura-eseguito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260821-48-alter-vendite-contabili-righe-fondo-source-mctit.yaml
+
+  - changeSet:
+      id: 20260821-48-alter-vendite-contabili-righe-fondo-source
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.vendite_contabili_righe.fondo_source_id: il legame con l'atto di fondo
+        fattura passa da stringa dentro un JSON a colonna con FK verso
+        vendite.fatture_fondi_fattura_source. Tre lettori lo usavano gia', e il lotto 3 ci
+        appende sopra una macchina a stati (il fondo passa a ESEGUITO leggendo questo
+        legame): un legame che regge uno stato va scritto come relazione. Nullable perche'
+        la maggior parte delle righe contabili non viene da un fondo. Backfill zero: la
+        tabella e' vuota.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_fondi_fattura_source
+            # La colonna non deve esistere gia': se esistesse, questo changeSet
+            # la ricreerebbe e il DDL fallirebbe a meta'.
+            - not:
+                - columnExists:
+                    schemaName: pagamenti
+                    tableName: vendite_contabili_righe
+                    columnName: fondo_source_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                ADD COLUMN fondo_source_id bigint;
+
+              -- ⚠️ NO ACTION esplicito: chi cancella un atto deve prima
+              --    cancellare le sue righe (S1-17 spezza il reset apposta).
+              --    Una FK differita nasconderebbe l'ordine invece di dirlo.
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                ADD CONSTRAINT fk_vendite_contabili_righe_fondo_source
+                FOREIGN KEY (fondo_source_id)
+                REFERENCES vendite.fatture_fondi_fattura_source (id)
+                ON UPDATE NO ACTION
+                ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN pagamenti.vendite_contabili_righe.fondo_source_id IS
+                'L''ATTO di fondo fattura da cui questa riga contabile nasce (vendite.fatture_fondi_fattura_source). NULL su ogni riga che non viene da un fondo, cioe'' sulla maggior parte. ⭐ Dal 2026-08-21 (lotto 3 del cantiere incassi, passo S1-14) sostituisce la chiave `meta ->> ''fondo_source_id''`: era una stringa dentro un JSON, senza integrita'' ne'' indice, e la leggevano gia'' TRE funzioni (fn_sync_contabili_fondo_fattura, fn_reset_fondi_fattura, fn_saldo_sorgente_fondo). ⚠️ E'' portante: il trigger trgfn_vendite_contabili_righe_marca_fondo_eseguito porta l''atto a ESEGUITO leggendo questa colonna quando la riga entra in POSTATA. ⚠️ La FK e'' NO ACTION di proposito: cancellare un atto pretende di aver prima cancellato le sue righe — e'' l''ordine che fn_reset_fondi_fattura rispetta spezzando il lavoro in piu'' statement. ℹ️ Da non confondere con `meta ->> ''origine'' = ''FONDO_FATTURA''`, che resta: quello dice da quale processo nasce la riga, questo a quale atto appartiene.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                DROP CONSTRAINT fk_vendite_contabili_righe_fondo_source;
+
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                DROP COLUMN fondo_source_id;

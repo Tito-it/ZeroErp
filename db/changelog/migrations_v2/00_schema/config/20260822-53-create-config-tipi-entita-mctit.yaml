@@ -1,0 +1,177 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA E' QUESTA ENTITA' — il catalogo dei tipi
+#   config.tipi_entita
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.7 · Decisione D-17 · lotto L4
+#
+# ── ⭐ NASCE DA UNA COLLISIONE, E LA CHIUDE ─────────────────────────
+#   `brief-db-bersaglio-errore` aveva deciso lo stesso giorno che
+#   `vendite.event_log.entity_type` dovesse adottare un catalogo chiuso
+#   (suoi passi T-1/T-1b). Questo cantiere aveva gia' applicato la scelta
+#   opposta — un `CHECK` — e il coordinamento e' mancato. La materia e' stata
+#   portata qui, dove vive la colonna, e i due passi di la' sono stati
+#   assorbiti.
+#
+# ── ⛔ NIENTE COLONNA `attivo`, ED E' LA CONDIZIONE CHE RENDE TUTTO POSSIBILE
+#   `dbops.fn_run_automations_attivo` gira su `*all`/`*all` e, per ogni FK
+#   verso una tabella CON la colonna `attivo`, genera da sola un lucchetto
+#   `trg_<figlia>_a10_<padre>_require_attivo_ins_upd`.
+#
+#     > Su questa FK quel lucchetto sarebbe un disastro silenzioso: **il diario
+#     > smetterebbe di scrivere** perche' qualcuno ha disattivato una voce di
+#     > elenco — cioe' la D-12 violata dall'automazione, alle 21:00, senza che
+#     > nessuno colleghi le due cose.
+#
+#   La deprecazione si fa quindi con `obsoleto_dal`, che e' gia' la regola di
+#   casa per i cataloghi (e non rompe le istanze referenziate). Verifica del
+#   meccanismo: `anagrafiche.soggetti_ruoli` non ha `attivo`, ed e' per questo
+#   che la FK dell'emittente su `event_log` non ha generato nessun guard —
+#   zero trigger `*_soggetti_ruoli_require_attivo_*` in tutto il database.
+#
+#   ⚠️ Chi un domani aggiungesse `attivo` qui romperebbe il diario senza
+#   toccarlo. Presidiato da db/pgtap/vendite/test-event-log-deriva-scope.sql,
+#   che asserisce l'ASSENZA di lucchetti su `event_log`.
+#
+# ── ⭐ `modo_risoluzione_emittente`: UN CATALOGO, DUE LETTURE ────────
+#   E' la colonna che permette a un catalogo solo di servire due bisogni che
+#   NON hanno lo stesso insieme:
+#
+#     GIORNALE   `event_log.entity_type` — ammette solo i tipi con un MODO,
+#                perche' il perimetro dev'essere derivabile dall'entita'
+#     BERSAGLIO  il `target` di un errore e le rotte della timeline —
+#                ammette TUTTO il catalogo, perche' gli basta che il frontend
+#                sappia arrivarci
+#
+#   Il giornale e' un SOTTOINSIEME PROPRIO del bersaglio: `TASK_RUN` non ha un
+#   padrone (per questo la D-3 l'ha espulso da `event_log`), ma un errore puo'
+#   benissimo puntarci. Un catalogo tagliato sui soli tipi giornalabili
+#   renderebbe il bersaglio inutilizzabile su meta' del suo caso d'uso.
+#
+#   ⭐ E il modo qui dentro rende INUTILE il `CASE` scritto a mano nel trigger
+#   di derivazione: aggiungere un tipo passa da tre modifiche coordinate
+#   (CHECK + ramo del trigger + modo nel risolutore) a **un seed**.
+#   Configurazione e trigger non possono piu' dissentire: sono la stessa riga.
+#
+# ── ⚠️ E `config.sorgenti`? La sovrapposizione si dichiara ──────────
+#   `config.sorgenti` e' gia' un registro polimorfo (15 righe, con
+#   `target_table` e `key_selector`), e contiene COMMESSA e FATTURA — ma non
+#   LOTTO, non TASK_RUN. Nessuno dei due insiemi contiene l'altro.
+#   ⛔ Non si estende quella: **ha `attivo`**, e la FK rigenererebbe il
+#   lucchetto. E non ci si aggancia con una FK, che lo rimetterebbe un salto
+#   piu' in la'.
+#   ⭐ Rispondono a DUE DOMANDE DIVERSE, ed e' la ragione da non dimenticare:
+#   `config.sorgenti` dice «da dove NASCE questo documento» (lineage e push,
+#   per questo porta la chiave id-vs-uid); questo dice «CHE COSA E' questa
+#   entita'» (perimetro e bersaglio). Vocabolari che si intersecano, domande no.
+#
+# Dipendenze: nessuna. Il seed sta in 80_data (20260822-55).
+# Verifica: db/pgtap/vendite/test-event-log-deriva-scope.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260822-53-create-config-tipi-entita-mctit.yaml
+
+  - changeSet:
+      id: 20260822-53-create-config-tipi-entita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.tipi_entita: il catalogo di «che cosa e' questa entita'», condiviso dal
+        perimetro del giornale e dal bersaglio degli errori. ⛔ SENZA colonna attivo — la
+        deprecazione e' obsoleto_dal — perche' una FK verso un padre con attivo fa generare
+        all'automazione un lucchetto require_attivo, e il diario smetterebbe di scrivere
+        per una voce disattivata (D-12). ⭐ modo_risoluzione_emittente e' la colonna che
+        rende un catalogo solo capace di servire due letture: il giornale ammette solo i
+        tipi che hanno un modo, il bersaglio tutto il catalogo.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_entita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE config.tipi_entita (
+                  -- La chiave e' il CODICE, non un id tecnico: e' cio' che
+                  -- finisce in vendite.event_log.entity_type e nel bersaglio
+                  -- di un errore, ed e' la stessa convenzione di
+                  -- config.codici_errore.
+                  codice                      text        NOT NULL,
+
+                  -- ⚠️ Chiave i18n, non l'etichetta: il nome visibile lo
+                  --   scrive il frontend. Un catalogo che porta il testo
+                  --   italiano diventa una seconda sede delle traduzioni.
+                  etichetta_key               text        NOT NULL,
+
+                  -- ⭐ La colonna delle DUE LETTURE (vedi testata).
+                  --   NULL = tipo puntabile da un errore ma NON giornalabile,
+                  --   perche' il suo perimetro non e' derivabile.
+                  --   Valori ammessi: quelli di script.fn_resolve_emittente_sr_id.
+                  modo_risoluzione_emittente  text        NULL,
+
+                  -- ⛔ NON `attivo`. Vedi testata: sarebbe il lucchetto che
+                  --   spegne il diario.
+                  obsoleto_dal                date        NULL,
+
+                  note                        text        NULL,
+
+                  data_insert timestamptz NOT NULL DEFAULT now(),
+                  user_insert text        NOT NULL DEFAULT CURRENT_USER,
+                  data_update timestamptz NOT NULL DEFAULT now(),
+                  user_update text        NOT NULL DEFAULT CURRENT_USER,
+
+                  CONSTRAINT pk_tipi_entita PRIMARY KEY (codice),
+
+                  -- Il modo, se c'e', dev'essere uno di quelli che il
+                  -- risolutore conosce. ⚠️ Un CHECK e non una FK: i modi sono
+                  -- tre parole dentro una funzione, non un'anagrafica.
+                  CONSTRAINT chk_tipi_entita_modo CHECK (
+                      modo_risoluzione_emittente IS NULL
+                      OR modo_risoluzione_emittente IN ('lotto', 'commessa', 'fattura')
+                  )
+              );
+
+              COMMENT ON TABLE config.tipi_entita IS
+                  'Catalogo di «che cosa e'' questa entita''», condiviso dal perimetro del '
+                  'giornale (vendite.event_log.entity_type) e dal bersaglio degli errori. '
+                  '⛔ SENZA colonna attivo, e non e'' una dimenticanza: una FK verso un '
+                  'padre con attivo fa generare a dbops.fn_run_automations_attivo un '
+                  'lucchetto require_attivo, e il diario smetterebbe di scrivere per una '
+                  'voce di elenco disattivata — la D-12 violata da un''automazione, alle '
+                  '21:00. La deprecazione si fa con obsoleto_dal. ⚠️ Non si estende '
+                  'config.sorgenti e non ci si aggancia: quella dice «da dove NASCE questo '
+                  'documento» (lineage e push), questa dice «CHE COSA E'' questa entita''» '
+                  '(perimetro e bersaglio) — vocabolari che si intersecano, domande no.';
+
+              COMMENT ON COLUMN config.tipi_entita.modo_risoluzione_emittente IS
+                  '⭐ La colonna delle DUE LETTURE. NOT NULL = il perimetro e'' derivabile '
+                  'dall''entita'', quindi il tipo e'' GIORNALABILE (vendite.event_log lo '
+                  'ammette) e il valore e'' il modo di script.fn_resolve_emittente_sr_id. '
+                  'NULL = tipo puntabile dal BERSAGLIO di un errore o dalle rotte della '
+                  'timeline, ma NON scrivibile nel giornale: e'' il caso di TASK_RUN, che '
+                  'non ha un padrone. Il giornale e'' un sottoinsieme proprio del bersaglio.';
+
+              COMMENT ON COLUMN config.tipi_entita.etichetta_key IS
+                  'Chiave i18n. ⚠️ Non l''etichetta: il nome visibile lo scrive il '
+                  'frontend, e un catalogo che portasse il testo italiano diventerebbe una '
+                  'seconda sede delle traduzioni.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS config.tipi_entita;

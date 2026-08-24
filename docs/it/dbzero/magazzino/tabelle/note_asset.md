@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/note_asset.md" %}
 # 📚 Tabella `note_asset`
 
 ## 🗂️ Campi principali

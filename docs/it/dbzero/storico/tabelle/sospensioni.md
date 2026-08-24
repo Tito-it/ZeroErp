@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/sospensioni.md" %}
 # 📚 Tabella `sospensioni`
 
 ## 🗂️ Campi principali

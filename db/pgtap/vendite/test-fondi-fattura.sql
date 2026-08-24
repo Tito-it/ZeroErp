@@ -12,18 +12,29 @@
 -- 6) Applicazione fondi fattura
 -- 7) Source aggiornata e righe fondi presenti
 -- 8) Sync contabili fondo fattura
--- 9) Reset fondi fattura (scenario standard)
--- 10) Source ripristinata e righe fondi rimosse
+-- 9) Reset fondi fattura (scenario standard): l'atto si CANCELLA
+-- 10) Atto cancellato e righe fondi rimosse
 -- 11) Righe contabili fondo rimosse
+-- 11-bis) Il DELETE riapre la rigenerazione: il giro successivo rifa' l'atto
 -- 12) Re-applicazione fondi
 -- 13) Sync + chiusura contabile
--- 14) Reset bloccato da contabile CHIUSA
+-- 14a) Reset bloccato da contabile CHIUSA (denaro MAI registrato)
 -- 15) Source ANNULLATA e warning log
 -- 16) Source ANNULLATA su reset bloccato
--- 17) Ragione dell'annullamento SUL DATO (motivo), non solo nel log
--- 18) Warning log su reset bloccato
--- 19) Cleanup completato
--- 20) Assert finale cleanup
+-- 17) ⭐ Il reset bloccato dichiara il suo CODICE nel log (W_, 20260821-43)
+-- 18) Ragione dell'annullamento SUL DATO (motivo), non solo nel log
+-- 19) Warning log su reset bloccato
+-- 20) Cleanup completato
+-- 21) Assert finale cleanup
+--
+-- ⭐ IL CASO 14 E' SDOPPIATO (Tid, 2026-08-22). Qui resta la meta'
+--   «contabilizzazione»: una distinta CHIUSA con dentro denaro che NON e' mai
+--   stato registrato, dove il reset e' bloccato dalla chiusura. L'altra meta'
+--   — «registrazione»: la riga diventa POSTATA, l'atto passa a ESEGUITO e il
+--   reset non lo tocca — vive in db/pgtap/vendite/test-fondo-fattura-eseguito.sql,
+--   perche' pretende un movimento contabile vero e un'altra catena di guard.
+--   Due fatti diversi, due file: qui SOSPESA non e' piu' un rattoppo per
+--   tenere il verde, e' la fixture giusta del caso che questo file racconta.
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -41,7 +52,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(20);
+SELECT plan(22);
 -- ============================================================
 -- 0) Riferimenti e costanti
 -- ============================================================
@@ -428,9 +439,15 @@ SELECT is(
 -- ============================================================
 -- 8) Reset fondi fattura (scenario standard)
 -- ============================================================
+-- ⭐ DAL 2026-08-21 IL RESET CANCELLA (S1-17, decisione D11): un atto non
+--   eseguito e' una PROPOSTA, non un fatto, e il giro successivo ne fa uno
+--   nuovo letto sul residuo DI ADESSO. Prima tornava a DISPONIBILE con
+--   l'importo vecchio congelato.
+--   ⚠️ La colonna di ritorno si chiama ora `deleted_source`: `updated_source`
+--   avrebbe continuato a dire una cosa falsa.
 SELECT is(
     (
-      SELECT updated_source
+      SELECT deleted_source
       FROM vendite.fn_reset_fondi_fattura(
           p_fattura_id => (
             SELECT id
@@ -439,23 +456,21 @@ SELECT is(
         )
     ),
     1,
-    'Reset fondi fattura (source riaperta)'
+    'Reset fondi fattura (atto cancellato)'
   );
 -- ============================================================
 -- 9) Verifica reset standard
 -- ============================================================
 SELECT ok(
     (
-      SELECT count(*) = 1
+      SELECT count(*) = 0
       FROM vendite.fatture_fondi_fattura_source s
       WHERE s.fattura_sorgente_id = (
           SELECT id
           FROM tmp_fattura_src
         )
-        AND s.stato = 'DISPONIBILE'
-        AND s.fattura_figlia_id IS NULL
     ),
-    'Source ripristinata a DISPONIBILE'
+    'Atto non eseguito CANCELLATO dal reset'
   );
 SELECT ok(
     (
@@ -480,6 +495,48 @@ SELECT ok(
         AND COALESCE(cr.meta->>'origine', '') = 'FONDO_FATTURA'
     ),
     'Righe contabili fondo rimosse'
+  );
+-- ============================================================
+-- 9-bis) Il DELETE riapre la rigenerazione — ed e' voluto
+-- ============================================================
+-- ⭐ E' la seconda meta' di S1-17, quella che non si vede: e' la regola
+--   dell'«atto unico» (fn_fondo_fattura_proponibile, passo 2) a impedire al
+--   giro notturno di rifare un fondo, e quella guarda se un atto esiste IN
+--   QUALUNQUE STATO. Finche' il reset lo lasciava ANNULLATO, la porta restava
+--   chiusa per sempre; cancellandolo, il giro successivo lo rifa' leggendo il
+--   residuo di ADESSO.
+--   ⚠️ Senza questa asserzione il cambio sarebbe invisibile: il resto del file
+--   riapplicherebbe un fondo che non esiste piu' e fallirebbe piu' avanti, con
+--   un rosso che accusa la riapplicazione invece del reset.
+SELECT is(
+    vendite.fn_genera_fondi_fattura_source(
+      p_billing_account_id => (
+        SELECT billing_account_id
+        FROM tmp_refs_ff
+      ),
+      p_utility_id => (
+        SELECT utility_id
+        FROM tmp_refs_ff
+      ),
+      p_tipo_doc_fiscale_id => (
+        SELECT tipo_doc_fiscale_id
+        FROM tmp_refs_ff
+      ),
+      p_emittente_soggetto_ruolo_id => (
+        SELECT emittente_soggetto_ruolo_id
+        FROM tmp_refs_ff
+      ),
+      p_valuta_id => (
+        SELECT valuta_id
+        FROM tmp_refs_ff
+      ),
+      p_tipo_fondo_fattura_id => (
+        SELECT id
+        FROM tmp_tipo_fondo
+      )
+    ),
+    1,
+    'Cancellato l''atto, il giro successivo ne rigenera uno nuovo'
   );
 -- ============================================================
 -- 10) Re-applicazione + contabilizzazione movimento
@@ -531,6 +588,73 @@ SELECT is(
     1,
     'Sync contabili fondo (secondo giro)'
   );
+-- ⚠️ La distinta si sceglie UNA volta e si tiene: prima serviva alle righe da
+--   sospendere, poi alla chiusura. Due sotto-select indipendenti potrebbero
+--   pescare distinte diverse, e il test passerebbe a giorni alterni.
+-- ⭐ Il legame riga -> atto si legge dalla COLONNA `fondo_source_id`
+--   (changeSet 20260821-48, passo S1-14): prima era una stringa dentro il
+--   meta, senza integrita' ne' indice, e la leggevano tre funzioni.
+CREATE TEMP TABLE tmp_contabile_ff AS
+SELECT cr.contabile_id
+FROM pagamenti.vendite_contabili_righe cr
+WHERE cr.fattura_id = (
+    SELECT id
+    FROM tmp_fattura_src
+  )
+  AND cr.fondo_source_id = (
+    SELECT s.id
+    FROM vendite.fatture_fondi_fattura_source s
+    WHERE s.fattura_sorgente_id = (
+        SELECT id
+        FROM tmp_fattura_src
+      )
+      AND s.fattura_figlia_id = (
+        SELECT id
+        FROM tmp_fattura_dst
+      )
+    ORDER BY s.id DESC
+    LIMIT 1
+  )
+ORDER BY cr.id DESC
+LIMIT 1;
+
+-- ⛔ DAL 2026-08-21 UNA DISTINTA NON SI CHIUDE CON RIGHE ANCORA PRONTE.
+--   Il guard pagamenti.trgfn_vendite_contabili_guard_chiusura (changeSet
+--   20260821-29) conta le righe attive il cui stato ha `is_postabile` — cioe'
+--   `ABBINATA`, l'unico — e rifiuta la chiusura: sono denaro dichiarato che
+--   sparirebbe da entrambi i conti.
+--   La riga nata dal sync del fondo e' esattamente in quello stato, quindi la
+--   fixture chiudeva la distinta in un modo che l'applicazione non puo' piu'
+--   percorrere. Si prende una delle due uscite che il guard stesso indica:
+--   sospendere (`SOSPESA`, `is_postabile = false`).
+--
+--   ⭐ E SOSPESA e' la fixture GIUSTA di questo caso, non un ripiego — deciso
+--   sdoppiando il caso 14 (Tid, 2026-08-22). Qui si collauda la
+--   CONTABILIZZAZIONE: una distinta chiusa con dentro denaro che NON e' mai
+--   stato registrato, dove a bloccare il reset e' la chiusura.
+--   `vendite.fn_reset_fondi_fattura` blocca sulla distinta CHIUSA e non guarda
+--   lo stato della riga: sospesa, la riga resta agganciata, la distinta si
+--   chiude, il reset e' bloccato — e l'atto passa ad ANNULLATO col motivo sul
+--   dato.
+--   ⇒ L'altra meta', la REGISTRAZIONE (riga POSTATA con il suo movimento, atto
+--   che passa a ESEGUITO, reset che non lo tocca), sta in
+--   db/pgtap/vendite/test-fondo-fattura-eseguito.sql: pretende un
+--   vendite_movimenti vero e un'altra catena di guard, ed e' un fatto diverso
+--   — non lo stesso caso scritto meglio.
+UPDATE pagamenti.vendite_contabili_righe cr
+SET stato_id = (
+    SELECT s.id
+    FROM pagamenti.vendite_contabili_righe_stati s
+    WHERE s.codice_interno = 'SOSPESA'
+    ORDER BY s.id
+    LIMIT 1
+  )
+FROM pagamenti.vendite_contabili_righe_stati st
+WHERE cr.contabile_id = (SELECT contabile_id FROM tmp_contabile_ff)
+  AND st.id = cr.stato_id
+  AND cr.attivo IS TRUE
+  AND st.is_postabile IS TRUE;
+
 UPDATE pagamenti.vendite_contabili c
 SET stato_id = (
     SELECT s.id
@@ -539,37 +663,16 @@ SET stato_id = (
     ORDER BY s.id
     LIMIT 1
   )
-WHERE c.id = (
-    SELECT cr.contabile_id
-    FROM pagamenti.vendite_contabili_righe cr
-    WHERE cr.fattura_id = (
-        SELECT id
-        FROM tmp_fattura_src
-      )
-      AND COALESCE(cr.meta->>'origine', '') = 'FONDO_FATTURA'
-      AND COALESCE(cr.meta->>'fondo_source_id', '') = (
-        SELECT s.id::text
-        FROM vendite.fatture_fondi_fattura_source s
-        WHERE s.fattura_sorgente_id = (
-            SELECT id
-            FROM tmp_fattura_src
-          )
-          AND s.fattura_figlia_id = (
-            SELECT id
-            FROM tmp_fattura_dst
-          )
-        ORDER BY s.id DESC
-        LIMIT 1
-      )
-    ORDER BY cr.id DESC
-    LIMIT 1
-  );
+WHERE c.id = (SELECT contabile_id FROM tmp_contabile_ff);
 -- ============================================================
--- 11) Reset bloccato da contabilizzazione
+-- 11) Reset bloccato dalla distinta CHIUSA (caso 14a)
 -- ============================================================
+-- ⚠️ Zero CANCELLATI, non zero aggiornati: il reset cancella gli atti che puo'
+--   toccare, e questo non lo puo' toccare. La distinta e' chiusa, quindi il
+--   minimo non e' piu' ripristinabile e l'atto passa ad ANNULLATO.
 SELECT is(
     (
-      SELECT updated_source
+      SELECT deleted_source
       FROM vendite.fn_reset_fondi_fattura(
           p_fattura_id => (
             SELECT id
@@ -578,7 +681,7 @@ SELECT is(
         )
     ),
     0,
-    'Reset bloccato se movimento fondo contabilizzato'
+    'Reset bloccato dalla distinta contabile CHIUSA'
   );
 SELECT ok(
     (
@@ -595,6 +698,29 @@ SELECT ok(
         AND s.stato = 'ANNULLATO'
     ),
     'Source ANNULLATA su reset bloccato'
+  );
+-- ⭐ Il ramo bloccato scrive anche il suo CODICE nel diario della fattura
+--    (changeSet 20260821-43, cantiere brief-db-liste-drawer-lotto L1/P-6).
+--    Qui non c'e' nessun errore catturato: la condizione — la contabile e'
+--    chiusa — la vede questa funzione, quindi il codice e' DICHIARATO, ed e'
+--    un `W_` perche' non si solleva: il resto del reset va avanti.
+--    ⚠️ `cause` vive nello stesso meta e non e' la stessa cosa: quello e' il
+--    vocabolario locale del ramo, `error_code` e' il codice di catalogo che le
+--    liste del drawer lotto mostrano.
+SELECT is(
+    (
+      SELECT fl.meta->>'error_code'
+      FROM vendite.fatture_log fl
+      WHERE fl.fattura_id = (
+          SELECT id
+          FROM tmp_fattura_dst
+        )
+        AND fl.meta->>'cause' = 'CONTABILE_CHIUSA'
+      ORDER BY fl.id DESC
+      LIMIT 1
+    ),
+    'W_FONDO_MINIMO_NON_RIPRISTINABILE',
+    'Il reset bloccato dichiara il suo codice nel log'
   );
 -- ⚠️ Questa asserzione dichiara una copertura che altrimenti resterebbe
 --    INCIDENTALE: `chk_fondi_source_motivo_obbligatorio` fa gia' fallire il

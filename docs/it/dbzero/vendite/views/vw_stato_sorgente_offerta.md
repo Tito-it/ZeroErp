@@ -5,8 +5,11 @@
 >
 > Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni offerta commerciale — stato nativo (alias fedeli) + fase/esito/terminale dichiarati su config.stati_doc_offerte. Chiave (sorgente_tipo_id, sorgente_uid) coerente con pratiche_sorgenti (key_selector=uid); al piu' una riga per chiave. Read-time (nessun mirror). Consumata dal motore solo via script.vw_stato_sorgente.
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_offerta AS
+CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_offerta
+WITH (security_invoker=on) AS
 SELECT s.id AS sorgente_tipo_id,
     (oc.uid)::text AS sorgente_uid,
     sdo.codice_interno AS stato_codice_interno,

@@ -1,0 +1,197 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# APPEND-ONLY NON VUOL DIRE «NON SI PUO' RITIRARE CIO' CHE E' SCADUTO»
+#   vendite.trgfn_event_log_append_only — revisione
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.4 · Decisione D-8/D-13
+#
+# ── 🔴 IL DIFETTO CHE QUESTO CHANGESET CHIUDE ───────────────────────
+#   Il corpo precedente era tre righe:
+#
+#       RAISE EXCEPTION 'vendite.event_log e'' append-only: operazione % non
+#                        consentita', TG_OP;
+#
+#   Due problemi, e il secondo si vede solo aggiungendo `cleanup_at`:
+#
+#   1. ⛔ **Nessun codice errore registrato.** Un `RAISE EXCEPTION` nudo non
+#      passa da `script.fn_log_and_raise_error`: il backend non ha uno status
+#      HTTP da mappare, l'errore non finisce in `dbops.error_log`, e nessuno
+#      puo' cercarlo per codice. Adesso usa i due codici gemelli
+#      `E_UPDATE_NOT_ALLOWED` / `E_DELETE_NOT_ALLOWED`.
+#
+#   2. 🔴 **La retention standard non poteva funzionare.** Misurato il
+#      2026-08-22: `dbops.fn_apply_cleanup_at` valorizza con un **UPDATE**,
+#      `dbops.fn_purge_cleanup_expired` cancella con un **DELETE**, e questo
+#      trigger li vietava entrambi. E la regola `id 11` di
+#      `dbops.automation_rules_tbl` e' `CLEANUP_AT` su `*all`/`*all`: sarebbe
+#      bastato aggiungere la colonna perche' il job settimanale iniziasse a
+#      fallire su questa tabella.
+#
+# ── ⭐ IL RIMEDIO: IL CRITERIO NON E' *CHI* CANCELLA, MA *COSA* ──────
+#     > append-only vuol dire che non puoi ALTERARE ne' CANCELLARE LA STORIA;
+#     > non vuol dire che non puoi RITIRARE CIO' CHE HA PASSATO LA SUA SCADENZA.
+#
+#   Una riga con `cleanup_at <= now()` e' cancellabile. Nessuna GUC da
+#   propagare, nessun ruolo da riconoscere: `fn_purge_cleanup_expired` funziona
+#   cosi' com'e', e non si tocca una funzione condivisa di `dbops` per un
+#   bisogno di `vendite`.
+#
+#   ⭐ E il veto sull'UPDATE diventa la garanzia del meccanismo: la data di
+#   scadenza, scritta all'INSERT dal trigger a10, **non e' piu' modificabile da
+#   nessuno**. Non si puo' anticipare la morte di una riga scomoda.
+#
+#   ⚠️ Il primo ramo — la GUC `zeroerp.maintenance_allow_delete_logs` — e' a
+#   **parita' con i log gemelli**: `script.trgfn_logs_guard_delete` la usa gia'
+#   su `vendite.fatture_log` e `vendite.fatturazione_lotti_log`. Serve alla
+#   manutenzione straordinaria, ed e' bene che sia la stessa leva ovunque.
+#
+# ── ⚠️ LO STESSO CONFLITTO E' LATENTE ALTROVE ──────────────────────
+#   `vendite.fatture_log` e `vendite.fatturazione_lotti_log` hanno il veto sul
+#   DELETE e **non hanno `cleanup_at`**. Il giorno in cui qualcuno gliela
+#   aggiunge, la regola `*all` prova a purgarle e trova il muro. Registrato nel
+#   brief (§1.3), non risolto qui: non e' questo il cantiere.
+#
+# Dipendenze: vendite.event_log.cleanup_at (20260822-40),
+#             codici E_UPDATE_NOT_ALLOWED / E_DELETE_NOT_ALLOWED (CSV 80_data).
+# Verifica: db/pgtap/vendite/test-event-log-append-only.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260822-44-update-trgfn-event-log-append-only-mctit.yaml
+
+  - changeSet:
+      id: 20260822-44-update-trgfn-event-log-append-only
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.trgfn_event_log_append_only: codici errore registrati al posto del RAISE
+        nudo, e un DELETE ammesso su riga gia' scaduta (cleanup_at <= now()) o con la GUC
+        di manutenzione, a parita' con trgfn_logs_guard_delete dei log gemelli. Senza
+        questo, aggiungere cleanup_at farebbe solo fallire il job settimanale: sia
+        fn_apply_cleanup_at (UPDATE) sia fn_purge_cleanup_expired (DELETE) erano vietati.
+        ⭐ Il criterio non e' chi cancella ma cosa: la storia non si tocca, cio' che e'
+        scaduto si ritira. E il veto sull'UPDATE rende immutabile la scadenza stessa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: event_log
+                columnName: cleanup_at
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_event_log_append_only';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_append_only()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_allow_logs text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Tenere vendite.event_log append-only, distinguendo pero'
+                  --   fra ALTERARE LA STORIA e RITIRARE CIO' CHE E' SCADUTO.
+                  --
+                  -- Regole:
+                  --   UPDATE                      -> sempre vietato
+                  --   DELETE con GUC manutenzione -> ammesso (parita' con
+                  --                                  script.trgfn_logs_guard_delete)
+                  --   DELETE di riga scaduta      -> ammesso (retention)
+                  --   DELETE di riga viva         -> vietato
+                  --
+                  -- ⭐ Il criterio del terzo ramo non e' CHI cancella ma COSA:
+                  --   cosi' dbops.fn_purge_cleanup_expired funziona com'e',
+                  --   senza propagare GUC ne' riconoscere ruoli, e senza
+                  --   toccare una funzione condivisa di dbops.
+                  --
+                  -- ⭐ Il veto sull'UPDATE e' cio' che rende `cleanup_at`
+                  --   immutabile: nessuno puo' anticipare la scadenza di una
+                  --   riga scomoda.
+                  -- =========================================================
+
+                  IF TG_OP = 'UPDATE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA::text,
+                          'trgfn_event_log_append_only',
+                          'E_UPDATE_NOT_ALLOWED',
+                          jsonb_build_object(
+                              'detail', 'Registro append-only: la storia non si modifica',
+                              'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',     OLD.id
+                          ),
+                          NULL::uuid,
+                          TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                          OLD.id::text
+                      );
+                  END IF;
+
+                  -- Da qui in giu' e' un DELETE.
+
+                  -- 1. Manutenzione straordinaria: stessa leva dei log gemelli.
+                  v_allow_logs := current_setting('zeroerp.maintenance_allow_delete_logs', true);
+
+                  IF COALESCE(lower(v_allow_logs), 'off') IN ('on', 'true', '1') THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- 2. Retention: la riga ha passato la sua scadenza.
+                  --    ⚠️ `cleanup_at` NULL = riga senza scadenza (nessuna
+                  --    regola CLEANUP_AT corrispondeva quando e' nata): non si
+                  --    cancella. In dubbio si conserva.
+                  IF OLD.cleanup_at IS NOT NULL AND OLD.cleanup_at <= now() THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- 3. Tutto il resto e' storia, e la storia non si cancella.
+                  PERFORM script.fn_log_and_raise_error(
+                      TG_TABLE_SCHEMA::text,
+                      'trgfn_event_log_append_only',
+                      'E_DELETE_NOT_ALLOWED',
+                      jsonb_build_object(
+                          'detail',     'Registro append-only: riga non scaduta',
+                          'table',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                          'id',         OLD.id,
+                          'cleanup_at', OLD.cleanup_at
+                      ),
+                      NULL::uuid,
+                      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      OLD.id::text
+                  );
+
+                  RETURN OLD;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_event_log_append_only()
+              IS 'Tiene vendite.event_log append-only distinguendo fra ALTERARE LA STORIA e RITIRARE CIO'' CHE E'' SCADUTO. UPDATE sempre vietato (E_UPDATE_NOT_ALLOWED); DELETE ammesso solo con la GUC zeroerp.maintenance_allow_delete_logs (parita'' con script.trgfn_logs_guard_delete dei log gemelli) o su riga con cleanup_at <= now(). ⭐ Il criterio del secondo ramo non e'' CHI cancella ma COSA: cosi'' dbops.fn_purge_cleanup_expired funziona com''e'', senza propagare GUC ne'' riconoscere ruoli. ⭐ Ed e'' il veto sull''UPDATE a rendere immutabile cleanup_at: nessuno puo'' anticipare la scadenza di una riga scomoda. ⚠️ Prima del 2026-08-22 era un RAISE EXCEPTION nudo, senza codice registrato, e vietava anche il DELETE della retention: con cleanup_at il job settimanale avrebbe iniziato a fallire.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_append_only()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                RAISE EXCEPTION 'vendite.event_log e'' append-only: operazione % non consentita', TG_OP;
+              END;
+              $function$;

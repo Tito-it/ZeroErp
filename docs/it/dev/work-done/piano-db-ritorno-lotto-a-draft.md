@@ -52,7 +52,7 @@
 > modificabile; per correggere si riporta a DRAFT e si ricalcola* — che oggi è
 > **dichiarato a metà e non implementato**.
 >
-> **Estratto il 2026-08-03** da [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md)
+> **Estratto il 2026-08-03** da [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md)
 > §3.6, dove era la «Fase 6». Ci stava per un vincolo d'ordine (§3.7 punto 6:
 > *«satelliti completi → poi ritorno a DRAFT, che deve saper ripulire ciò che
 > quelle fasi producono»*), non per parentela di tema. **Quel vincolo è
@@ -771,13 +771,19 @@ Conterrà almeno:
 
 ### Debito documentale ereditato
 
-Due righe del [§4-bis del piano satelliti](../work-in-progress/piano-db-satelliti-fattura.md) sono
+Due righe del [§4-bis del piano satelliti](piano-db-satelliti-fattura.md) sono
 agganciate a questo cantiere e si evadono **qui**, non lì:
 
-| Guida | Cosa cambia |
-|---|---|
-| `guide/fatturazione.md` | la **semantica del reset**, che cambia con questo cantiere |
-| `guide/cruscotti-fatturazione.md` | il verbo nuovo nel drawer lotto (6-B) |
+| Guida | Cosa cambia | Stato |
+|---|---|---|
+| `guide/fatturazione.md` | la **semantica del reset**, che cambia con questo cantiere | ✅ evasa qui il **04-08** (B5) |
+| `guide/cruscotti-fatturazione.md` | il verbo nuovo nel drawer lotto (6-B) | ✅ evasa il **22-08**, ma **nel piano satelliti** (`cruscotti-fatturazione.md` §7.6), non qui |
+
+> ⚠️ **Questa tabella è il motivo per cui la riga era rimasta scoperta.** Il
+> cantiere si è archiviato come chiuso con una delle due righe ancora aperta: un
+> debito trasferito a un documento che poi chiude non è messo al sicuro, è messo
+> fuori vista. Chi archivia un cantiere che ha **ereditato** debito da un altro
+> deve o evaderlo o **restituirlo** al mittente, non portarselo in archivio.
 
 ---
 
@@ -786,8 +792,8 @@ agganciate a questo cantiere e si evadono **qui**, non lì:
 | Cosa | Dove |
 |---|---|
 | Il caso reale che ha aperto il cantiere | [brief-db-termine-dal-documento-alla-commessa.md §6](brief-db-termine-dal-documento-alla-commessa.md) |
-| Da dove viene questo documento | [piano-db-satelliti-fattura.md](../work-in-progress/piano-db-satelliti-fattura.md) §3.6 (chiuso col puntatore qui) |
-| Le decisioni D-* citate in §1 | [piano-db-satelliti-fattura.md §2.1](../work-in-progress/piano-db-satelliti-fattura.md) |
-| I rilievi C-18 / C-19 / C-22 / C-23 | [piano-db-satelliti-fattura.md §1.2](../work-in-progress/piano-db-satelliti-fattura.md) |
-| Lato applicativo di 6-B | [piano-be-fe-satelliti-fattura.md §4-bis](../work-in-progress/piano-be-fe-satelliti-fattura.md) |
+| Da dove viene questo documento | [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md) §3.6 (chiuso col puntatore qui) |
+| Le decisioni D-* citate in §1 | [piano-db-satelliti-fattura.md §2.1](piano-db-satelliti-fattura.md) |
+| I rilievi C-18 / C-19 / C-22 / C-23 | [piano-db-satelliti-fattura.md §1.2](piano-db-satelliti-fattura.md) |
+| Lato applicativo di 6-B | [piano-be-fe-satelliti-fattura.md §4-bis](piano-be-fe-satelliti-fattura.md) |
 | Cosa viene **dopo** questo cantiere | [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) — incassi → `2.4 DatiPagamento` → SDI |

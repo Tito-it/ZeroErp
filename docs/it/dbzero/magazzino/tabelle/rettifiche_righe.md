@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/rettifiche_righe.md" %}
 # 📚 Tabella `rettifiche_righe`
 
 > 📝 **Descrizione**

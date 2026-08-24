@@ -32,6 +32,13 @@
 4. test_colonna_azione_mai_ordinabile
    `tipo_colonna='azione'` non ha campo sorgente: ordinarla non significa nulla.
 
+4-bis. test_lo_slot_delle_azioni_si_chiama_actions
+   ⛔ Chi monta `<ListaConfigurabile>` deve fornire lo slot `#actions`, non
+   `#cell-azioni`. Il BB rende la colonna delle azioni solo se la config la
+   dichiara **e** il caller passa quello slot: col nome sbagliato la colonna
+   non viene resa affatto — nessun kebab e NESSUN errore. Difetto reale su
+   `LottoDrawer.vue`, visto solo in app il 2026-08-24.
+
 5. test_ogni_lista_del_seed_ha_un_preset_default
    Senza preset `is_default` la lista non ha una configurazione di partenza.
 
@@ -72,6 +79,29 @@ def _repo_root() -> Path:
 
 
 _SEED_DIR = _repo_root() / "db/changelog/migrations_v2/80_data/sql/ui"
+
+
+# Scopo: whitelist di ordinamento di una lista il cui ORDINE vive nella funzione
+#        DB, non in Python — letta dalla doc auto-gen della funzione.
+#
+# ⭐ RIUSA il lettore di `scripts/gen_seed_lista.py` invece di ricopiarne la
+#    regex: le due letture devono dare lo stesso insieme, e due regex gemelle
+#    sono il modo classico per farle divergere quando una delle due funzioni
+#    cambia forma. Il generatore e' gia' la sede di quel parsing.
+# ⚠️ Import per percorso e non `from scripts...`: `scripts/` non e' un package
+#    e non sta sul path del runner Django.
+def _whitelist_da_funzione_db(percorso_doc: str):
+    def risolvi() -> set[str]:
+        import importlib.util
+
+        sorgente = _repo_root() / "scripts" / "gen_seed_lista.py"
+        spec = importlib.util.spec_from_file_location("_gen_seed_lista", sorgente)
+        assert spec and spec.loader
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        return modulo.whitelist_funzione_db(percorso_doc)
+
+    return risolvi
 
 
 # Scopo: whitelist di ordinamento di ogni lista convertita, risolta pigramente
@@ -220,6 +250,30 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # che il presidio confronta col seed: se i due divergessero, il BE
     # rifiuterebbe una colonna che la funzione accetta (o viceversa).
     ("vendite.commesse_attivita", _da_costante("apps.vendite.db.commesse_repository", "ATTIVITA_SORT_COLUMNS")),
+    # ══════════════════════════════════════════════════════════════════
+    # Le tre liste del drawer lotto di fatturazione (L3 del team DB,
+    # seed 2026-08-22). Registrate PRIMA della conversione dei `.vue`
+    # (FE-2): il registro copre gia' i test 1-6, che leggono il seed e
+    # non il frontend — e una lista che nasce senza presidio viene
+    # dichiarata a posto senza essere stata guardata.
+    # ══════════════════════════════════════════════════════════════════
+    ("vendite.lotto_fatture",
+     _da_costante("apps.vendite.db.vendite_repository", "LOTTO_FATTURE_SORT_COLUMNS")),
+    # ⭐ Le due sotto NON hanno una whitelist Python, e non e' una dimenticanza:
+    # ordine e paginazione stanno nella stessa funzione DB (ordinare a valle
+    # ordinerebbe la pagina gia' estratta), e tenerne uno specchio nel backend
+    # sarebbe una seconda verita' da riallineare a mano a ogni colonna nuova.
+    # Si legge quindi dalla doc auto-gen della funzione — la stessa sorgente che
+    # usa `gen_seed_lista.py`.
+    ("vendite.lotto_task_runs",
+     _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_task_runs.md")),
+    ("vendite.lotto_segnalazioni",
+     _whitelist_da_funzione_db("docs/it/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni.md")),
+    # Montata il 2026-08-22 (Vendite -> Tool fatturazione, primo tab). Era
+    # seedata dal 15-08 e SENZA consumatore frontend: il registro contava 46
+    # liste montate contro 47 codici a catalogo, e la differenza era questa.
+    ("vendite.fondi_fattura_da_decidere",
+     _whitelist_di_classe("FONDI_DA_DECIDERE_SORT_COLUMNS")),
     ("vendite.dash_aperto_documenti", _whitelist_di_classe("DASH_APERTO_SORT_COLUMNS")),
     ("vendite.dash_backlog_documenti", _whitelist_di_classe("DASH_BACKLOG_SORT_COLUMNS")),
     ("vendite.dash_competenza_errori", _whitelist_di_classe("DASH_COMPETENZA_ERRORI_SORT_COLUMNS")),
@@ -386,6 +440,39 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                             "una colonna azione non ha campo sorgente: "
                             "ordinarla non significa nulla.",
                         )
+
+    # Scopo: ⛔ LO SLOT DELLE AZIONI SI CHIAMA `actions`.
+    #
+    #        `<ListaConfigurabile>` rende la colonna delle azioni solo quando
+    #        `haAzioni` e' vero, e quella condizione ha DUE termini: la config
+    #        dichiara una colonna `tipo_colonna='azione'` **e** il caller
+    #        fornisce lo slot `#actions`. La colonna azioni NON passa dalla
+    #        catena `#cell-<campo>`, che serve alle colonne dati.
+    #
+    # 🔴 Col nome sbagliato non succede niente di visibile: nessun errore,
+    #    nessun warning, solo una colonna che non c'e'. Su `LottoDrawer.vue` il
+    #    seed dichiarava la colonna, i permessi erano a posto e la preferenza
+    #    utente non la nascondeva — tutto corretto tranne il nome dello slot, e
+    #    il kebab delle fatture non e' mai comparso. Trovato in app da Tid il
+    #    2026-08-24, su 19 consumatori era l'unico sbagliato.
+    #
+    # ⚠️ Il presidio guarda i `.vue`, non il seed: e' un difetto di CHIAMATA,
+    #    e nel database non se ne vede traccia.
+    def test_lo_slot_delle_azioni_si_chiama_actions(self) -> None:
+        src = _repo_root() / "frontend/src"
+        colpevoli: list[str] = []
+        for percorso in sorted(src.rglob("*.vue")):
+            testo = percorso.read_text(encoding="utf-8")
+            if "<ListaConfigurabile" not in testo:
+                continue
+            if "#cell-azioni" in testo:
+                colpevoli.append(str(percorso.relative_to(src)))
+        self.assertEqual(
+            colpevoli, [],
+            "slot `#cell-azioni` su un montaggio di <ListaConfigurabile>: il BB "
+            "si aspetta `#actions`, e col nome sbagliato la colonna delle "
+            f"azioni non viene resa (nessun kebab, nessun errore): {colpevoli}",
+        )
 
     def test_registro_copre_tutte_le_liste_montate_dal_frontend(self) -> None:
         # La fonte di verita' su "quali liste sono convertite" e' il frontend:

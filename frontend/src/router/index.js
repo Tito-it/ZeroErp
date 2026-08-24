@@ -324,6 +324,17 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'lotti' }
         },
         {
+          // Tool della fatturazione: contenitore a tab degli elenchi che il
+          // giro automatico lascia a una persona. Prima voce: i fondi fattura
+          // da decidere. Sta sotto `vendite` e non sotto `strumenti` perche' i
+          // dati sono di area vendite (RLS + perimetro emittente): la voce di
+          // menu e i suoi cancelli devono stare nella stessa area.
+          path: 'vendite/tool-fatturazione',
+          name: 'vendite-tool-fatturazione',
+          component: () => import('../vendite/views/ToolFatturazioneView.vue'),
+          meta: { domain: 'vendite', menuKey: 'tool-fatturazione' }
+        },
+        {
           // Strumenti → Code di lavoro: vista completa a due tab (coda lavori
           // generica + coda stampa). Accesso primario dal badge top bar.
           path: 'strumenti/code-lavoro',

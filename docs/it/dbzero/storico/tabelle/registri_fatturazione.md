@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/registri_fatturazione.md" %}
 # 📚 Tabella `registri_fatturazione`
 
 ## 🗂️ Campi principali

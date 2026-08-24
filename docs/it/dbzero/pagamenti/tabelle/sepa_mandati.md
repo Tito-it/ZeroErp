@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pagamenti/manual/sepa_mandati.md" %}
 # 📚 Tabella `sepa_mandati`
 
 > 📝 **Descrizione**

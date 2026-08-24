@@ -83,11 +83,13 @@ SELECT
      FROM config.valute v
     ORDER BY v.id LIMIT 1
   ) AS valuta_id,
-  (SELECT ef.id
-     FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1
-  ) AS emittente_fiscale_id,
+  -- ⚠️ L'emittente si DERIVA da chi agisce, non si pesca: da quando le viste
+  --   vw_stato_sorgente_* sono security_invoker (20260821-08/-09) le policy
+  --   ef_whitelist si applicano anche in lettura, e un documento intestato a un
+  --   emittente diverso da quello dell'operatore sarebbe invisibile alla vista.
+  --   Oggi i due valori coincidono per caso — un solo emittente ha documenti —
+  --   e proprio per questo il test passava: coincidenza, non costruzione.
+  script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
   (SELECT s.id
      FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
@@ -399,7 +401,13 @@ SELECT throws_like(
 -- ============================================================
 CREATE TEMP TABLE tmp_anc_refs AS
 SELECT
-  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true ORDER BY id LIMIT 1) AS emittente_id,
+  -- ⚠️ L'emittente si DERIVA da chi agisce, non si pesca: da quando le viste
+  --   vw_stato_sorgente_* sono security_invoker (20260821-08/-09) le policy
+  --   ef_whitelist si applicano anche in lettura, e un documento intestato a un
+  --   emittente diverso da quello dell'operatore sarebbe invisibile alla vista.
+  --   Oggi i due valori coincidono per caso — un solo emittente ha documenti —
+  --   e proprio per questo il test passava: coincidenza, non costruzione.
+  script.fn_pgtap_emittente_operatore() AS emittente_id,
   (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1)                    AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA')       AS st_aperta,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE')   AS priorita_id,

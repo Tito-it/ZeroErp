@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/note_articoli.md" %}
 # 📚 Tabella `note_articoli`
 
 > 📝 **Descrizione**

@@ -28,6 +28,9 @@ DECLARE
     v_template_id       pratiche.flussi.template_flusso_id%TYPE;
     v_unita_org         pratiche.flussi.unita_organizzativa_id%TYPE;
     v_da_eseguire_id    config.stati_flussi_pratiche.id%TYPE;
+    -- Il BERSAGLIO dei due rifiuti. ⚠️ `jsonb` esplicito: e' un frammento del
+    -- context, non il valore di una colonna.
+    v_bersagli          jsonb;
     v_has_skill_lock    BOOLEAN;
     v_competente        BOOLEAN;
     v_reparto_operatore anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
@@ -68,6 +71,14 @@ BEGIN
         );
     END IF;
 
+    -- ⭐ IL BERSAGLIO, composto una volta e riusato dai due rifiuti sotto.
+    --    Chi prende in carico un flusso arriva da una LISTA: la frase gli dice
+    --    quale flusso ha rifiutato, e senza bersaglio deve ritrovarselo.
+    --    ⚠️ Il flusso e' gia' stato letto (SELECT ... FOR UPDATE): esiste ed e'
+    --    visibile, quindi nessuna query in piu' e nessun ramo condizionale.
+    v_bersagli := jsonb_build_array(
+        jsonb_build_object('tipo', 'FLUSSO', 'id', p_flusso_id::text));
+
     -- Verifica stato DA_ESEGUIRE
     SELECT id INTO v_da_eseguire_id
       FROM config.stati_flussi_pratiche
@@ -77,7 +88,9 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'E_FLUSSI_PRESA_CARICO_STATO_ERRATO',
-            jsonb_build_object('flusso_id', p_flusso_id, 'stato_id', v_stato_id, 'stato_richiesto', v_da_eseguire_id),
+            jsonb_build_object('flusso_id', p_flusso_id, 'stato_id', v_stato_id,
+                               'stato_richiesto', v_da_eseguire_id,
+                               'bersaglio', v_bersagli),
             NULL::uuid, p_flusso_id::text
         );
     END IF;
@@ -92,7 +105,9 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'E_FLUSSI_GIA_ASSEGNATO',
-            jsonb_build_object('flusso_id', p_flusso_id, 'risorsa_attuale', v_risorsa_attuale, 'risorsa_richiedente', p_risorsa_umana_id),
+            jsonb_build_object('flusso_id', p_flusso_id, 'risorsa_attuale', v_risorsa_attuale,
+                               'risorsa_richiedente', p_risorsa_umana_id,
+                               'bersaglio', v_bersagli),
             NULL::uuid, p_flusso_id::text, v_risorsa_attuale::text
         );
     END IF;
@@ -170,7 +185,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_prendi_in_carico_flusso(p_flusso_id bigint, p_risorsa_umana_id bigint)
-IS 'Assegna un flusso DA_ESEGUIRE all''operatore con policy eligibilita'' reparto-first + competenza opzionale (casi A/B/C/D). FOR UPDATE anti-race.';
+IS 'Assegna un flusso DA_ESEGUIRE all''operatore con policy eligibilita'' reparto-first + competenza opzionale (casi A/B/C/D). FOR UPDATE anti-race. ⭐ rev 2026-08-24: i due rifiuti della presa in carico portano il BERSAGLIO sul flusso. Chi prende in carico arriva da una LISTA: la frase dice quale flusso ha rifiutato, e senza bersaglio deve ritrovarselo. Il flusso e'' gia'' letto (SELECT ... FOR UPDATE), quindi esiste ed e'' visibile: nessuna query in piu''. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
 ```
 
 ---

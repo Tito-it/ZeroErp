@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/vw_codici_errore.md" %}
 # 🔍 View `vw_codici_errore`
 
 > 📝 **Descrizione**

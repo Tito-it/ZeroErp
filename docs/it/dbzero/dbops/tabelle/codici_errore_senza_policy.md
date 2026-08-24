@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/codici_errore_senza_policy.md" %}
 # 📚 Tabella `codici_errore_senza_policy`
 
 > 📝 **Descrizione**

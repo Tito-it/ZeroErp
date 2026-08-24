@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/template_asset.md" %}
 # 📚 Tabella `template_asset`
 
 ## 🗂️ Campi principali

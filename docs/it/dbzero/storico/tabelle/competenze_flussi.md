@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/competenze_flussi.md" %}
 # 📚 Tabella `competenze_flussi`
 
 ## 🗂️ Campi principali

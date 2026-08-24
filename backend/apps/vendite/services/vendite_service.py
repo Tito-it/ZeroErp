@@ -25,6 +25,7 @@ from apps.core.services.list_helpers import (
 from apps.core.services.partitioned_note_service import PartitionedNoteService
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
+    LOTTO_FATTURE_SORT_COLUMNS,
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
     DASH_BACKLOG_CLASSI,
@@ -50,7 +51,14 @@ from apps.vendite.types import (
 
 logger = logging.getLogger(__name__)
 
-_SORT_BY_VALIDI: tuple[str, ...] = ("fattura_id", "nominativo", "totale_doc")
+# ⚠️ DUE ELENCHI SULLO STESSO REQUISITO, e devono restare allineati: qui si
+# valida l'input (400 parlante al chiamante), nel repository si traduce in SQL
+# (`LOTTO_FATTURE_SORT_COLUMNS`). Il presidio e' il test `test_..._order_by_fuori_whitelist`.
+# ⭐ Derivato dal repository invece di riscritto: alla terza aggiunta di colonna
+# (BE-1, 2026-08-22, da 3 a 11) copiare i nomi a mano sarebbe stato il modo
+# sicuro per farne divergere uno — e la divergenza si vede solo dal lato che
+# rifiuta, cioe' come «ordinamento non ammesso» su una colonna che c'e'.
+_SORT_BY_VALIDI: tuple[str, ...] = tuple(LOTTO_FATTURE_SORT_COLUMNS)
 _SORT_DIR_VALIDI: tuple[str, ...] = ("asc", "desc")
 
 
@@ -158,8 +166,21 @@ def fn_list_lotti(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    solo_recuperi_mese: bool = False,
 ) -> dict[str, object]:
     offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
+    # ⛔ La scheda «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
+    #    «competenza precedente» non ha un termine di paragone. Si rifiuta
+    #    invece di rispondere un elenco plausibile e senza significato.
+    ErrorManager.require(
+        not solo_recuperi_mese or competenza_mese is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="competenza_mese obbligatoria per l'elenco dei recuperi del mese",
+        context={"field": "competenza_mese"},
+        function_name="vendite.vendite_service.fn_list_lotti",
+        log_to_db=False,
+    )
     repository = VenditeRepository()
     results: list[LottoListRow]
     results, total_count = repository.list_lotti(
@@ -174,6 +195,7 @@ def fn_list_lotti(
         order_dir=order_dir,
         limit=page_size,
         offset=offset,
+        solo_recuperi_mese=solo_recuperi_mese,
     )
     return _build_list_response(results, total_count, page, page_size)
 
@@ -326,8 +348,15 @@ def fn_list_lotto_fatture(
     sort_dir: str = "asc",
     page: int = 1,
     page_size: int = 50,
+    max_rows: int | None = None,
 ) -> dict[str, object]:
-    offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotto_fatture")
+    # ⭐ L'helper condiviso, non un `if` scritto qui: l'export SALTA la
+    # paginazione invece di violarne il tetto, ed e' la stessa regola di tutte
+    # le altre liste esportabili del modulo.
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_list_lotto_fatture",
+    )
     _validate_enum(
         sort_by,
         allowed=_SORT_BY_VALIDI,
@@ -352,8 +381,9 @@ def fn_list_lotto_fatture(
         auth_user_id=auth_user_id,
         sort_by=sort_by,
         sort_dir=sort_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
+        max_rows=max_rows,
     )
     return _build_list_response(results, total_count, page, page_size)
 
@@ -1299,8 +1329,21 @@ def fn_dash_competenza_errori(
 # Tipi documento con endpoint /passaggi/ (nodo lineage con vista di dominio).
 # COMMESSA aggiunta nella Fase C (genealogia inversa, design §7.3): non ha una
 # lista/CRUD propria, ma il suo nodo lineage è consultabile via drawer leggero
-# (sorgenti che l'hanno generata + fatture a valle). FATTURA resta nodo
-# terminale senza endpoint (Q4: capolinea, nessuna superficie propria).
+# (sorgenti che l'hanno generata + fatture a valle).
+#
+# ⭐ FATTURA entra il 2026-08-21, e la decisione Q4 che la teneva fuori
+# («capolinea, nessuna superficie propria») era vera quando è stata presa e non
+# lo è più, per DUE ragioni indipendenti:
+#   1. la superficie ora c'è — il drawer di consultazione della fattura esiste
+#      dal 2026-07-29, ed è già la destinazione delle tappe FATTURA negli altri
+#      pannelli: mancava solo il pannello sul documento stesso;
+#   2. il capolinea non è più tale — l'arco N (fattura rettificata → nota di
+#      credito, changeSet 20260821-02) le dà un discendente.
+# ⚠️ Resta vero che la fattura non ha discendenti nel grafo FORWARD: l'arco N è
+# un ramo di ritorno. Il valore del pannello qui è quindi la direzione INDIETRO
+# — «da dove viene questo documento» — non la frontiera, che per una fattura
+# indica sempre sé stessa. Misurato sulla fattura 835: 7 archi indietro (tre
+# commesse, tre ordini, un preventivo), 1 avanti (la nota di credito).
 LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
     "PREVENTIVO",
     "OFFERTA_COMMERCIALE",
@@ -1309,6 +1352,7 @@ LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
     "DDT_VENDITA",
     "RESO_VENDITA",
     "COMMESSA",
+    "FATTURA",
 )
 
 
@@ -1398,6 +1442,11 @@ def get_documento_passaggi(
     if nodo["is_transitato"] and nodo["frontiera_tipo_id"] is not None and not is_self:
         frontiera = {
             "tipo_codice": nodo["frontiera_tipo_codice"],
+            # ⚠️ La frontiera puo' essere una nota di credito (arco G dalla
+            # commessa): senza la natura il FE la etichetterebbe «Fattura».
+            # E' l'invariante che il pgTAP del DB ha corretto (§44.5): «una NC
+            # non e' mai frontiera di un altro nodo» e' FALSO.
+            "natura_doc_codice": nodo["frontiera_natura_doc_codice"],
             "codice": nodo["frontiera_codice"],
             "stato_codice_interno": nodo["frontiera_stato_codice_interno"],
             "fase": nodo["frontiera_fase"],
@@ -1423,6 +1472,14 @@ def get_documento_passaggi(
             "n_discendenti_diretti": nodo["n_discendenti_diretti"],
             "n_discendenti_attivi": nodo["n_discendenti_attivi"],
             "n_sorgenti": nodo["n_sorgenti"],
+            # La natura distingue la nota di credito dalla fattura: sono lo
+            # stesso tipo documento e, senza, il pannello scrive due volte
+            # «Fattura · EMESSA» per due documenti diversi.
+            "natura_doc_codice": nodo["natura_doc_codice"],
+            # ⭐ Il codice della radice: per una fattura e' l'informazione che
+            # conta davvero, perche' la frontiera indica sempre se stessa (nodo
+            # terminale del grafo forward). Dice «da dove viene».
+            "root_codice": nodo["root_codice"],
         },
         "pratica": pratica,
         "frontiera": frontiera,
@@ -1437,6 +1494,7 @@ def get_documento_passaggi(
 # ------------------------------------------------------------------
 
 _FN_FATTURA_DETTAGLIO = "vendite.vendite_service.get_fattura_dettaglio"
+_FN_FATTURA_GIORNALE = "vendite.vendite_service.get_fattura_giornale"
 
 
 # Scopo: Documento fattura completo per la consultazione a video: testata
@@ -1538,6 +1596,98 @@ def get_fattura_dettaglio(
 _FN_FONDI_DA_DECIDERE = "vendite.vendite_service.fn_fondi_fattura_da_decidere"
 
 
+# Scopo: IL GIORNALE DI UNA FATTURA — «cosa e' successo a questo documento, in
+#        ordine di tempo». Sola lettura, elenco paginato dalla vista cucita
+#        `script.vw_giornale_entita` (Passo A del filone osservabilita').
+#
+# ⭐ PRIMO CONSUMATORE DELLA VISTA, e quindi anche il suo collaudo: fino al
+#    2026-08-24 non l'aveva interrogata nessuno, e il suo perimetro era
+#    verificato dal pgTAP e non dall'uso.
+#
+# 🔴 IL CANCELLO E' LA TESTATA, e non e' una precauzione ridondante. La vista e'
+#    `security_invoker`, quindi su una fattura fuori scope la RLS la farebbe
+#    rispondere ZERO RIGHE — cioe' «a questo documento non e' successo niente»
+#    invece di «questo documento non lo vedi». Sono due frasi diverse e non
+#    devono leggersi uguali: stesso ordine di lettura di `get_fattura_dettaglio`
+#    e degli altri pannelli satellite della fattura.
+#
+# ⛔ NIENTE AGGREGATI, nessuna finestra temporale, nessun conteggio per periodo:
+#    quelli sono il Passo B e hanno prerequisiti loro. Qui si risponde a una
+#    domanda sola.
+def get_fattura_giornale(
+    *,
+    fattura_id: int,
+    page: int = 1,
+    page_size: int = 50,
+    includi_ritirate: bool = False,
+    sort_by: str = "gravita",
+    sort_dir: str = "desc",
+    auth_user_id: int | None = None,
+) -> dict[str, object]:
+    ErrorManager.require(
+        bool(fattura_id and fattura_id > 0),
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="fattura_id obbligatorio e > 0",
+        context={"fattura_id": fattura_id},
+        function_name=_FN_FATTURA_GIORNALE,
+        log_to_db=True,
+    )
+    offset = _validate_pagination(page, page_size, _FN_FATTURA_GIORNALE)
+    repository = VenditeRepository()
+
+    # 1. IL CANCELLO — vedi sopra. Inesistente e fuori scope danno la stessa
+    #    risposta: distinguerli confermerebbe l'esistenza di una fattura di un
+    #    altro emittente.
+    testata = repository.get_fattura_testata(fattura_id, auth_user_id=auth_user_id)
+    if testata is None:
+        ErrorManager.raise_error(
+            code="E_FATTURA_NON_TROVATA",
+            message="Fattura non trovata.",
+            detail=f"Nessuna fattura accessibile con id={fattura_id}",
+            context={"fattura_id": fattura_id},
+            function_name=_FN_FATTURA_GIORNALE,
+            log_to_db=True,
+        )
+
+    # 2. Solo ORA il giornale: la testata ha gia' autorizzato l'accesso.
+    # ⭐ LE RITIRATE SI NASCONDONO (decisione di Tid, 2026-08-24): una
+    #    segnalazione ritirata e' quella di un tentativo poi rifatto, e sul caso
+    #    misurato e' LETTERALMENTE la stessa frase di quella viva — mostrarle
+    #    entrambe fa credere che sia successo due volte.
+    # ⛔ Il filtro sta QUI e non nel client: la lista e' paginata lato server, e
+    #    filtrare a valle filtrerebbe solo la pagina visibile.
+    # ⚠️ `ritirate_count` non e' un accessorio: senza, «nessun evento» e «tre
+    #    eventi, tutti superati» si leggono uguali — ed e' proprio il caso in cui
+    #    la differenza conta.
+    # ⭐ L'ordinamento di default e' per GRAVITA' (Tid, 2026-08-24): davanti a un
+    #    documento la prima domanda e' «c'e' qualcosa che non va?». La colonna
+    #    non riconosciuta ricade sul default nel repository — un ordinamento
+    #    sbagliato non e' un errore da 400, e' una preferenza che non si applica.
+    righe, vive, ritirate = repository.list_giornale_entita(
+        entity_type="FATTURA",
+        entity_id=fattura_id,
+        limit=page_size,
+        offset=offset,
+        escludi_ritirate=not includi_ritirate,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
+    total_count = vive + ritirate if includi_ritirate else vive
+    total_pages = (total_count + page_size - 1) // page_size if page_size else 0
+    return {
+        "fattura_id": fattura_id,
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        # Quante righe il filtro lascia fuori. ⚠️ Zero quando le ritirate sono
+        # incluse: li' non c'e' niente di nascosto da dichiarare.
+        "ritirate_count": 0 if includi_ritirate else ritirate,
+        "results": righe,
+    }
+
+
 # Scopo: Restituisce l'elenco paginato dei fondi fattura «da decidere»
 #        (vendite.vw_fondi_fattura_da_decidere), filtrabile per motivo.
 # Obiettivo: dare una sede alle quattro situazioni in cui il giro automatico si
@@ -1556,6 +1706,9 @@ def fn_fondi_fattura_da_decidere(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    # Export: valorizzato = perimetro intero in una volta, paginazione saltata
+    # (BB `_paging_o_export`). Assente = la lista paginata di sempre.
+    max_rows: int | None = None,
 ) -> dict[str, object]:
     # Filtro motivo sulla whitelist ORDINATA dei quattro motivi della vista:
     # fail-fast 400 invece di una lista vuota silenziosa, che su un vocabolario
@@ -1576,7 +1729,10 @@ def fn_fondi_fattura_da_decidere(
         error_code="E_VENDITE_VALIDATION",
         function_name=_FN_FONDI_DA_DECIDERE,
     )
-    offset = _validate_pagination(page, page_size, _FN_FONDI_DA_DECIDERE)
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name=_FN_FONDI_DA_DECIDERE,
+    )
 
     repository = VenditeRepository()
     results: list[FondoFatturaDaDecidereRow]
@@ -1585,7 +1741,7 @@ def fn_fondi_fattura_da_decidere(
         auth_user_id=auth_user_id,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     return _build_list_response(

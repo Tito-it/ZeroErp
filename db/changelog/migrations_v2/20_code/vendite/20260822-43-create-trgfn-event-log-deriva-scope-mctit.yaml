@@ -1,0 +1,271 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA SI COMPILA DA SOLA — L1 del Passo 0
+#   vendite.fn_event_log_ttl_days + vendite.trgfn_event_log_deriva_scope
+#   + trg_event_log_a10_deriva_scope_ins
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §3.2 · Decisioni D-2, D-12, D-13, D-14
+#
+# ── ⭐ LA REGOLA, IN UNA FRASE ───────────────────────────────────────
+#     > Il diario rifiuta una riga SOLO quando non riesce a dire di chi e'.
+#     > Tutto il resto lo registra.
+#
+#   In concreto:
+#     entity_type fuori vocabolario  -> lo respinge il CHECK (23514)
+#     entita' inesistente            -> RIFIUTA qui (P0001)
+#     emittente DISATTIVATO          -> ✅ REGISTRA
+#     documento ANNULLATO            -> ✅ REGISTRA
+#
+#   ⭐ Perche' un lucchetto su un diario sarebbe autolesionista (rilievo di
+#   Tid, 2026-08-22): il fatto e' gia' accaduto, e rifiutare la riga distrugge
+#   l'unica prova che lo spiegherebbe. E l'anomalia che verrebbe da temere —
+#   attivita' NUOVA su un emittente disattivato — e' gia' bloccata a monte, sui
+#   documenti (`ddt`, `ordini`, `preventivi`, `contratti`, `resi` hanno il
+#   lucchetto verso `anagrafiche.emittenti_fiscali`: sette tabelle, verificato).
+#   Un lucchetto sul diario rifiuterebbe quindi **solo righe legittime**: la
+#   chiusura dei documenti di un emittente cessato, che e' esattamente il
+#   momento in cui il diario serve.
+#
+#   ⚠️ E non si segnala nemmeno l'anomalia sulla riga: un avviso che scatta sul
+#   caso NORMALE diventa rumore, e un presidio che tutti ignorano e' peggio di
+#   uno che non c'e'. Il posto di quel presidio e' sul documento — vedi
+#   docs/it/dev/work-in-progress/analisi-presidi-percorso-storto.md.
+#
+# ── ⚠️ IL NOME DEL TRIGGER E' PORTANTE ──────────────────────────────
+#   I BEFORE ROW scattano in **ordine alfabetico di nome**. Oggi la tabella non
+#   ha lucchetti generati (D-1 e D-9 li evitano per costruzione), ma se un
+#   domani qualcuno aggiunge una FK verso una tabella con `attivo`,
+#   `dbops.fn_run_automations_attivo` generera'
+#   `trg_event_log_a10_<padre>_require_attivo_ins_upd`. `deriva` deve continuare
+#   a stare PRIMA, o il lucchetto troverebbe un NULL e si spegnerebbe da solo.
+#   ⛔ Rinominarlo `..._a10_scope_deriva_ins` lo manderebbe dopo la «s» di
+#   `sorgenti`, e il difetto non si vedrebbe finche' non si disattiva qualcosa.
+#
+# ── LE QUATTRO COSE CHE IL TRIGGER SCRIVE ───────────────────────────
+#   emittente_soggetto_ruolo_id  derivato dall'entita' (D-2)
+#   auth_user_id                 da app.current_user_id (D-14)
+#   cleanup_at                   event_time + TTL (D-13)
+#   — e non si fida di cio' che passa il chiamante su nessuna delle tre:
+#     sono fatti che il database conosce, e la logica non si duplica altrove.
+#
+# ── ⚠️ IL TTL SI LEGGE DA DOVE LO LEGGE L'AUTOMAZIONE ───────────────
+#   `dbops.automation_rules_tbl`, regola CLEANUP_AT piu' specifica con fallback
+#   alla `*all`. UNA sede sola: se domani il termine cambia, cambia li' e vale
+#   sia per il trigger sia per il job settimanale.
+#   ⛔ Non si usa `dbops.fn_apply_cleanup_at`: valorizza con un UPDATE, che su
+#   questa tabella e' vietato. Vedi §3.4 del brief.
+#   Se nessuna regola corrisponde, `cleanup_at` resta NULL e la riga non scade
+#   mai: fail-safe: in dubbio non si cancella.
+#
+# Dipendenze: script.fn_resolve_emittente_sr_id (20260822-42),
+#             dbops.automation_rules_tbl, dbops.fn_schema_match,
+#             vendite.event_log (colonne di 20260822-40),
+#             codice errore E_EVENT_LOG_SCOPE_NON_RISOLTO (CSV 80_data).
+# Verifica: db/pgtap/vendite/test-event-log-deriva-scope.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260822-43-create-trgfn-event-log-deriva-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260822-43-create-trgfn-event-log-deriva-scope
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La riga di vendite.event_log si compila da sola: perimetro derivato dall'entita'
+        (fn_resolve_emittente_sr_id), auth_user_id dalla GUC, cleanup_at dal TTL di
+        dbops.automation_rules_tbl. ⭐ Il diario rifiuta SOLO cio' di cui non sa dire di
+        chi e': un emittente disattivato o un documento annullato si registrano lo stesso,
+        perche' un guard su un diario distrugge la prova del fatto che deve spiegare.
+        ⚠️ Il nome trg_event_log_a10_deriva_scope_ins e' portante: i BEFORE ROW scattano in
+        ordine alfabetico e «deriva» deve precedere qualunque require_attivo futuro.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: event_log
+                columnName: emittente_soggetto_ruolo_id
+            - columnExists:
+                schemaName: vendite
+                tableName: event_log
+                columnName: cleanup_at
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_resolve_emittente_sr_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ══ 1) IL TERMINE DI RETENTION, LETTO DA UNA SEDE SOLA ═══════
+              CREATE OR REPLACE FUNCTION vendite.fn_event_log_ttl_days()
+              RETURNS integer
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_ttl_days integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rispondere quanti giorni vive una riga di event_log,
+                  --   leggendolo DALLA STESSA sorgente che usa l'automazione
+                  --   settimanale: dbops.automation_rules_tbl.
+                  --
+                  -- ⭐ Esiste per non avere due termini di retention che
+                  --   divergono: quello del trigger e quello del job. La
+                  --   regola piu' specifica vince (priority, poi id), con
+                  --   fallback alla *all — stesso criterio di
+                  --   dbops.fn_run_automations_cleanup.
+                  --
+                  -- ⚠️ NULL = nessuna regola corrisponde. Il chiamante lascia
+                  --   allora cleanup_at a NULL e la riga non scade mai:
+                  --   in dubbio non si cancella.
+                  -- =========================================================
+                  SELECT (r.params ->> 'ttl_days')::integer
+                    INTO v_ttl_days
+                    FROM dbops.automation_rules_tbl r
+                   WHERE r.enabled
+                     AND upper(btrim(r.rule_type)) = 'CLEANUP_AT'
+                     AND dbops.fn_schema_match(r.target_schema, 'vendite')
+                     AND (upper(r.target_table) = '*ALL' OR 'event_log' ILIKE r.target_table)
+                     AND (r.params ->> 'ttl_days') IS NOT NULL
+                   ORDER BY r.priority, r.id
+                   LIMIT 1;
+
+                  RETURN v_ttl_days;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_event_log_ttl_days()
+              IS 'Giorni di vita di una riga di vendite.event_log, letti da dbops.automation_rules_tbl (regola CLEANUP_AT piu'' specifica, fallback *all). ⭐ Esiste perche'' il termine sta in UNA sede sola: il trigger che valorizza cleanup_at e il job settimanale devono leggere lo stesso numero. ⚠️ NULL = nessuna regola: la riga non scade mai (in dubbio non si cancella).';
+
+              -- ══ 2) LA DERIVAZIONE ════════════════════════════════════════
+              CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_deriva_scope()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ %TYPE su tutto cio' che riflette una colonna
+                  --    (linee-guida-sql §5). `v_modo` e `v_ttl_days` no: il
+                  --    primo e' un letterale di dispatch, il secondo esce da
+                  --    un jsonb (params->>'ttl_days') e non ha una colonna.
+                  v_modo         text;
+                  v_sr_id        vendite.event_log.emittente_soggetto_ruolo_id%TYPE;
+                  v_auth_user_id vendite.event_log.auth_user_id%TYPE;
+                  v_ttl_days     integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Compilare da se' le quattro cose che il database sa e il
+                  --   chiamante no: DI CHI e' la riga, CHI l'ha scritta, e
+                  --   quando scade.
+                  --
+                  -- ⭐ LA REGOLA (D-12):
+                  --   il diario rifiuta una riga SOLO quando non riesce a dire
+                  --   di chi e'. Un emittente disattivato o un documento
+                  --   annullato si registrano lo stesso: il fatto e' accaduto,
+                  --   e rifiutare la riga distruggerebbe l'unica prova che lo
+                  --   spiegherebbe. L'attivita' NUOVA su un emittente
+                  --   disattivato e' gia' bloccata sui documenti.
+                  --
+                  -- ⚠️ Non si fida di cio' che passa il chiamante su nessuno
+                  --   dei tre campi: sono fatti del database, e la logica non
+                  --   si duplica in Python.
+                  -- =========================================================
+
+                  -- 1. Da che parte si guarda. Il CHECK chk_event_log_entity_type
+                  --    garantisce che uno dei tre rami ci sia: vocabolario e
+                  --    dispatch cambiano nello stesso changeSet, apposta.
+                  v_modo := CASE NEW.entity_type
+                                WHEN 'LOTTO'    THEN 'lotto'
+                                WHEN 'COMMESSA' THEN 'commessa'
+                                WHEN 'FATTURA'  THEN 'fattura'
+                            END;
+
+                  -- 2. Di chi e'. La risoluzione gira FUORI dalla row security
+                  --    (SECURITY DEFINER): «non la vedo» non e' «non esiste».
+                  v_sr_id := script.fn_resolve_emittente_sr_id(v_modo, NEW.entity_id);
+
+                  IF v_sr_id IS NULL THEN
+                      -- ⛔ L'unico caso in cui il diario rifiuta: l'entita' non
+                      --    esiste, quindi non c'e' modo di dire di chi sia la
+                      --    riga. E' un chiamante rotto -> classe TECNICO.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_event_log_deriva_scope',
+                          'E_EVENT_LOG_SCOPE_NON_RISOLTO',
+                          jsonb_build_object(
+                              'detail',      'Entita non trovata: perimetro non derivabile',
+                              'entity_type', NEW.entity_type,
+                              'entity_id',   NEW.entity_id,
+                              'event_code',  NEW.event_code
+                          ),
+                          NULL::uuid,
+                          NEW.entity_type,
+                          NEW.entity_id::text
+                      );
+                  END IF;
+
+                  NEW.emittente_soggetto_ruolo_id := v_sr_id;
+
+                  -- 3. Chi, come numero. `user_insert` (il nome) lo scrive il
+                  --    trigger di audit leggendo app.jwt_user; qui si tiene
+                  --    l'id, che regge a un rename. NULL sul canale batch, dove
+                  --    non c'e' un utente: li' «chi» resta user_insert.
+                  v_auth_user_id := NULLIF(
+                      current_setting('app.current_user_id', true), ''
+                  )::bigint;
+                  NEW.auth_user_id := v_auth_user_id;
+
+                  -- 4. Quando scade. ⭐ Si valorizza QUI e non con
+                  --    dbops.fn_apply_cleanup_at, che userebbe un UPDATE —
+                  --    vietato su questa tabella. Effetto voluto: il veto
+                  --    sull'UPDATE rende la scadenza immutabile.
+                  v_ttl_days := vendite.fn_event_log_ttl_days();
+
+                  IF v_ttl_days IS NOT NULL THEN
+                      NEW.cleanup_at := COALESCE(NEW.event_time, now())
+                                        + make_interval(days => v_ttl_days);
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_event_log_deriva_scope()
+              IS 'BEFORE INSERT su vendite.event_log: deriva il perimetro dall''entita'' (script.fn_resolve_emittente_sr_id), scrive auth_user_id dalla GUC e cleanup_at dal TTL di dbops.automation_rules_tbl. ⭐ LA REGOLA: il diario rifiuta una riga SOLO quando non riesce a dire di chi e''. Un emittente disattivato o un documento annullato si registrano lo stesso — il fatto e'' accaduto, e rifiutare la riga distruggerebbe la prova che lo spiega; l''attivita'' NUOVA su un emittente disattivato e'' gia'' bloccata sui documenti. ⚠️ Non si fida del chiamante su nessuno dei tre campi: sono fatti del database.';
+
+              -- ══ 3) IL TRIGGER ════════════════════════════════════════════
+              --   ⚠️ Il nome e' portante: i BEFORE ROW scattano in ordine
+              --   alfabetico, e «deriva» deve precedere qualunque
+              --   `..._a10_<padre>_require_attivo_ins_upd` che l'automazione
+              --   generasse in futuro — altrimenti quel lucchetto troverebbe
+              --   un NULL e si spegnerebbe da solo.
+              DROP TRIGGER IF EXISTS trg_event_log_a10_deriva_scope_ins ON vendite.event_log;
+
+              CREATE TRIGGER trg_event_log_a10_deriva_scope_ins
+                  BEFORE INSERT ON vendite.event_log
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_event_log_deriva_scope();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_event_log_a10_deriva_scope_ins ON vendite.event_log;
+              DROP FUNCTION IF EXISTS vendite.trgfn_event_log_deriva_scope();
+              DROP FUNCTION IF EXISTS vendite.fn_event_log_ttl_days();

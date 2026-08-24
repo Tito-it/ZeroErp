@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_pratiche_gen_codice.md" %}
 # ⚙️ Funzione `trgfn_pratiche_gen_codice`
 
 ```sql

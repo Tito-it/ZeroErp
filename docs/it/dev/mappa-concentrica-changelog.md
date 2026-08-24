@@ -85,8 +85,8 @@ altrove:
   ~15 righe di sola configurazione, zero migration;
 - **ritiro del generatore di righe SQL** e fix degli importi di riga a zero.
 
-Vedi [piano-db-satelliti-fattura.md](work-in-progress/piano-db-satelliti-fattura.md),
-[piano-be-fe-satelliti-fattura.md](work-in-progress/piano-be-fe-satelliti-fattura.md),
+Vedi [piano-db-satelliti-fattura.md](work-done/piano-db-satelliti-fattura.md),
+[piano-be-fe-satelliti-fattura.md](work-done/piano-be-fe-satelliti-fattura.md),
 [brief-db-generazione-scadenze-fattura.md](work-done/brief-db-generazione-scadenze-fattura.md),
 [brief-be-fe-drawer-fattura.md](work-done/brief-be-fe-drawer-fattura.md).
 

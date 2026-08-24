@@ -38,6 +38,11 @@ Indice test eseguiti:
 36) test_lotto_riaperto_non_azzera_se_nessuno_step_eseguito (Fase 6)
 37) test_lotto_riaperto_non_innesca_rollback_automatico (Fase 6)
 38) test_lotto_riaperto_non_azzera_se_il_giro_non_ha_prodotto_fatture (Fase 6)
+39) test_giornale_rotto_non_ferma_la_pipeline (BE-7 / D-15)
+40) test_il_filo_del_giro_e_nuovo_a_ogni_corsa (BE-2 / D-7)
+41) test_il_filo_del_giro_arriva_allo_step_executor (BE-2 / D-7)
+42) test_giornale_rotto_non_annulla_la_marcatura_di_errore (BE-7, il verso mancante)
+43) test_marcatura_rifiutata_non_impedisce_il_diario (lotto 6260, giro vero 2026-08-23)
 
 Nota Fase 6 (2026-08-03): i test 33-37 presidiano il ritorno del lotto a
 DRAFT. Il 33 e il 34 vanno letti in COPPIA: da soli non distinguono un ramo
@@ -54,6 +59,7 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.vendite.services.lotto_segnalazioni_service import LottoSignalStatus
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 
 
@@ -197,6 +203,14 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             self.disattiva_calls = getattr(self, "disattiva_calls", 0) + 1
             return 0
 
+        # Scopo: Stub del ritiro delle marcature per-fattura scritte dal BE.
+        #        Registra l'ORDINE rispetto al verdetto: e' l'unica cosa che
+        #        conta di questo metodo (vedi il test dedicato).
+        def ritira_marcature_fatture_be(self, lotto_id):
+            self.eventi = getattr(self, "eventi", [])
+            self.eventi.append("ritira")
+            return 0
+
         # Scopo: Stub `sync_lotto_fatture_stato` con tracking delle chiamate (lotto, stato).
         def sync_lotto_fatture_stato(self, *, lotto_id, stato_doc_fiscale_id=None):
             if not hasattr(self, "sync_calls"):
@@ -329,6 +343,135 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
         self.assertEqual(repo.last_stato, "ERRORE")
+
+    # Scopo: 🔴 LA BANDIERA SI ABBASSA PRIMA DEL VERDETTO — il presidio della
+    #        porta a senso unico.
+    #
+    #        Dal 2026-08-21 il BE marca le fatture fallite perché l'operatore
+    #        legga il motivo sulla riga. Quelle marcature entrano nella guardia
+    #        unificata PRE-1 (`blocks_next_step` conta critici **e** righe in
+    #        ERRORE): se il verdetto le vedesse ancora alzate dal tentativo
+    #        precedente, il primo fallimento chiuderebbe il lotto per sempre —
+    #        l'operatore corregge la causa, ripreme «Rendi definitive» e trova
+    #        «Lotto bloccato per segnalazioni critiche attive», un messaggio
+    #        che parla d'altro.
+    #
+    #        ⚠️ Il test guarda l'ORDINE, non l'effetto: l'effetto è un conteggio
+    #        del database. È l'ordine la cosa fragile — invertirlo non rompe
+    #        niente di visibile e rimette in scena esattamente quel difetto.
+    def test_ritira_le_proprie_marcature_prima_di_chiedere_il_verdetto(self):
+        eventi = []
+
+        class _RepoOrdine(self._RepoMock):
+            def ritira_marcature_fatture_be(self, lotto_id):
+                eventi.append("ritira")
+                return 0
+
+        class _ServizioSegnalazioni:
+            def evaluate_lotto_status(self, lotto_id):
+                eventi.append("verdetto")
+                return LottoSignalStatus(
+                    critical_count=0, warning_count=0, attention_count=0,
+                    fatture_stato_esecuzione_errore_count=0,
+                    is_error=False, blocks_next_step=False, summary={},
+                )
+
+        runner = LottoPipelineRunner(
+            repository=_RepoOrdine(), step_executor=self._StepExecutorMock(),
+        )
+        runner.lotto_segnalazioni_service = _ServizioSegnalazioni()
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(dry_run=False))
+
+        self.assertEqual(eventi[:2], ["ritira", "verdetto"])
+
+    # Scopo: ⭐ IL FALLIMENTO RESTA ATTACCATO ALLA RIGA — e la scrittura avviene
+    #        FUORI dalla transazione dello step, che e' l'unica ragione per cui
+    #        sopravvive.
+    #
+    #        Il giro per-fattura e' fail-fast: rilancia, e lo step viene
+    #        annullato. Una riga di log scritta li' dentro spariva col rollback
+    #        insieme all'errore che descriveva — misurato in-app il 2026-08-21:
+    #        il toast diceva il motivo, e un minuto dopo il motivo non esisteva
+    #        piu' da nessuna parte (`stato_esecuzione` restava 'COMPLETED',
+    #        `fatture_log` vuoto). Il valore 'ERRORE' era nel CHECK della
+    #        tabella dal primo giorno e non lo scriveva nessuno.
+    #
+    #        ⚠️ Il `fattura_id` arriva dal `context` del ServiceError: e' il
+    #        canale che `_run_per_fattura_task` riempie gia' per il diario.
+    def test_runner_attacca_l_errore_alla_fattura_che_lo_ha_causato(self):
+        class _RepoConMarca(self._RepoMock):
+            marcate = None
+
+            def marca_fattura_in_errore(self, *, lotto_id, fattura_id, code, messaggio, meta=None):
+                self.marcate = {
+                    "lotto_id": lotto_id, "fattura_id": fattura_id,
+                    "code": code, "messaggio": messaggio,
+                }
+
+        class _StepConErroreDiFattura:
+            def execute_step(self, **kwargs):
+                raise ServiceError(
+                    code="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+                    message="Non si puo' numerare il documento 15353: ...",
+                    detail="Task numera_fatture fallito su fattura_id=15353",
+                    context={"lotto_id": 6034, "fattura_id": 15353, "task": "numera_fatture"},
+                )
+
+        repo = _RepoConMarca()
+        runner = LottoPipelineRunner(repository=repo, step_executor=_StepConErroreDiFattura())
+        with _fake_tx():
+            with self.assertRaises(ServiceError):
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+
+        self.assertIsNotNone(repo.marcate, "il fallimento non e' stato attaccato alla riga")
+        self.assertEqual(repo.marcate["fattura_id"], 15353)
+        self.assertEqual(repo.marcate["code"], "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
+        self.assertIn("15353", repo.marcate["messaggio"])
+
+    # Scopo: un errore di LOTTO non ha una riga a cui attaccarsi, e non deve
+    #        inventarsene una. Senza questo ramo il `context` senza
+    #        `fattura_id` finirebbe in una marcatura su `None`.
+    def test_errore_senza_fattura_non_marca_nessuna_riga(self):
+        class _RepoConMarca(self._RepoMock):
+            chiamate = 0
+
+            def marca_fattura_in_errore(self, **kwargs):
+                self.chiamate += 1
+
+        repo = _RepoConMarca()
+        runner = LottoPipelineRunner(
+            repository=repo, step_executor=self._ServiceFailingStepExecutorMock(),
+        )
+        with _fake_tx():
+            with self.assertRaises(ServiceError):
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(repo.chiamate, 0)
+
+    # Scopo: la marcatura e' best-effort come il gemello sul lotto: se fallisce
+    #        NON deve mascherare l'eccezione vera, che e' l'unica cosa che
+    #        l'operatore sta aspettando.
+    def test_marcatura_fallita_non_maschera_l_errore_vero(self):
+        class _RepoRotto(self._RepoMock):
+            def marca_fattura_in_errore(self, **kwargs):
+                raise RuntimeError("marca-fallita")
+
+        class _StepConErroreDiFattura:
+            def execute_step(self, **kwargs):
+                raise ServiceError(
+                    code="E_FATTURA_RETTIFICATA_SENZA_NUMERO",
+                    message="msg",
+                    detail="d",
+                    context={"fattura_id": 15353},
+                )
+
+        runner = LottoPipelineRunner(
+            repository=_RepoRotto(), step_executor=_StepConErroreDiFattura(),
+        )
+        with _fake_tx():
+            with self.assertRaises(ServiceError) as exc:
+                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(exc.exception.code, "E_FATTURA_RETTIFICATA_SENZA_NUMERO")
 
     # Scopo: Verifica il caso `test_runner_does_not_mask_error_when_mark_fails`.
     def test_runner_does_not_mask_error_when_mark_fails(self):
@@ -729,6 +872,223 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
 
+    # Scopo: 🔴 UNA MARCATURA RIFIUTATA NON IMPEDISCE IL DIARIO.
+    #
+    #        Lo SPECCHIO del test qui sotto, e non è un caso di scuola: è
+    #        successo su un giro vero il 2026-08-23, lotto 6260. La pipeline era
+    #        fallita per un motivo di dominio legittimo (nota di credito non
+    #        numerabile), poi:
+    #
+    #          set_lotto_job_stato(6260, 'ERRORE')
+    #            -> «Transizione non ammessa: COMPLETATO -> ERRORE»
+    #
+    #        Il lotto era gia' COMPLETATO da una corsa precedente. L'eccezione
+    #        usciva prima che il diario venisse tentato, e in `event_log`
+    #        restavano ZERO righe: dell'unico giro andato storto non c'era
+    #        traccia nel registro fatto apposta per raccontarlo.
+    #
+    # ⚠️ Il verso è che `log_event` venga chiamato COMUNQUE. Un test che si
+    #    limitasse a «non solleva» passerebbe anche col difetto — non sollevava
+    #    nemmeno prima, perché il telaio ingoiava.
+    def test_marcatura_rifiutata_non_impedisce_il_diario(self):
+        repo = MagicMock()
+        # La transizione di stato è rifiutata dal guard di dominio, come sul 6260.
+        repo.set_lotto_job_stato.side_effect = RuntimeError(
+            "Transizione non ammessa: COMPLETATO -> ERRORE"
+        )
+        runner = LottoPipelineRunner(repository=repo, error_logger=MagicMock())
+
+        with _fake_tx():
+            runner._mark_lotto_error_safely(
+                lotto_id=6260, code="E_PIPELINE", tipo_lotto="MASSIVO",
+                detail="nota di credito non numerabile",
+                correlation_id="7f3a1c22-0000-4000-8000-000000000003",
+            )
+
+        repo.log_event.assert_called_once()
+        kw = repo.log_event.call_args.kwargs
+        self.assertEqual(kw["event_code"], "PIPELINE_ERROR")
+        self.assertEqual(kw["entity_id"], 6260)
+        self.assertEqual(kw["severity"], "ERROR")
+        # ⭐ E il filo del giro sopravvive: è il modo in cui questa riga si
+        #    ricollega al resto della corsa che è andata storta.
+        self.assertEqual(
+            kw["correlation_id"], "7f3a1c22-0000-4000-8000-000000000003"
+        )
+
+    # Scopo: 🔴 UN GIORNALE ROTTO NON ANNULLA LA MARCATURA DI ERRORE.
+    #
+    #        Il verso che mancava, e il difetto era reale: `log_event` stava
+    #        DENTRO l'`atomic` di `_mark_lotto_error`, insieme alle tre
+    #        scritture che contano (segnalazione di lotto, stato ERRORE,
+    #        fotografia esito fatture). Una riga di giornale rifiutata rollava
+    #        indietro **anche quelle**, e il telaio best-effort del chiamante
+    #        ingoiava — quindi il lotto restava senza stato ERRORE, in silenzio,
+    #        proprio nel ramo in cui qualcosa era gia' andato storto.
+    #
+    # ⚠️ Il telaio NON bastava: avvolge `_mark_lotto_error` per intero, quindi
+    #    vede il guasto solo dopo che la transazione ha gia' annullato tutto.
+    #    Per questo il test guarda l'ORDINE — la marcatura deve avvenire prima
+    #    che il diario ci provi — e non solo «non solleva».
+    def test_giornale_rotto_non_annulla_la_marcatura_di_errore(self):
+        # Traccia APERTURA e CHIUSURA di ogni blocco transazionale, cosi' si puo'
+        # dire in quale blocco cade ciascuna scrittura. ⚠️ Un test che guardasse
+        # solo l'ORDINE delle chiamate non distinguerebbe le due versioni: anche
+        # col difetto il diario veniva dopo la marcatura — solo, nello STESSO
+        # blocco. E' la profondita' che conta, non la sequenza.
+        # Ogni blocco transazionale ha un ID PROPRIO (non la profondita': due
+        # blocchi fratelli hanno la stessa profondita' e sarebbero
+        # indistinguibili). Cosi' si puo' chiedere la cosa giusta: «il blocco in
+        # cui e' avvenuta la marcatura era gia' chiuso quando il diario ci ha
+        # provato?».
+        eventi: list[str] = []
+        aperti: list[int] = []
+        prossimo = {"id": 0}
+
+        class _AtomicSpia:
+            def __enter__(self_inner):
+                prossimo["id"] += 1
+                aperti.append(prossimo["id"])
+                eventi.append(f"apre#{prossimo['id']}")
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                eventi.append(f"chiude#{aperti.pop()}")
+                return False
+
+        repo = MagicMock()
+        repo.set_lotto_job_stato.side_effect = lambda *a, **k: eventi.append(
+            f"marca#{aperti[-1]}"
+        )
+
+        def _diario_rifiutato(**_kwargs):
+            eventi.append(f"diario#{aperti[-1]}")
+            raise RuntimeError("E_EVENT_LOG_SCOPE_NON_RISOLTO")
+
+        repo.log_event.side_effect = _diario_rifiutato
+        runner = LottoPipelineRunner(repository=repo, error_logger=MagicMock())
+
+        with patch(
+            "apps.vendite.services.pipeline_runner.transaction.atomic",
+            side_effect=lambda *a, **k: _AtomicSpia(),
+        ):
+            # Non deve sollevare: e' best-effort per costruzione.
+            runner._mark_lotto_error_safely(
+                lotto_id=1, code="E_X", tipo_lotto="MASSIVO", detail="dettaglio",
+            )
+
+        blocco_marcatura = next(e for e in eventi if e.startswith("marca#")).split("#")[1]
+        diario = next(e for e in eventi if e.startswith("diario#"))
+        # ⭐ Il blocco in cui e' avvenuta la marcatura DEVE essere gia' chiuso
+        #    quando il diario ci prova. Se lo condividessero, il rifiuto della
+        #    riga di giornale rollerebbe indietro anche lo stato ERRORE — ed e'
+        #    esattamente cio' che faceva.
+        self.assertLess(
+            eventi.index(f"chiude#{blocco_marcatura}"), eventi.index(diario),
+            f"il diario scrive dentro la transazione della marcatura: {eventi}",
+        )
+        # E le tre scritture che contano sono state fatte tutte.
+        repo.log_lotto_esito_fatture.assert_called_once()
+
+    # Scopo: ⭐ IL FILO DEL GIRO E' NUOVO A OGNI CORSA (BE-2, D-7).
+    #
+    # 🔴 E' il difetto che questa consegna chiude, ed e' invisibile a un test
+    #    che guardi una corsa sola: il `correlation_id` valeva
+    #    `lotto_context.lock_batch_id`, che nasce col LOTTO e **non cambia
+    #    mai**. Diceva «di che lotto», che `entity_id` diceva gia' — e due
+    #    corse dello stesso lotto erano indistinguibili proprio sulla domanda
+    #    per cui il campo esiste.
+    #
+    # ⚠️ Per questo il test fa DUE corse sullo stesso lotto e confronta: con
+    #    l'implementazione vecchia i due valori erano uguali e il test sarebbe
+    #    rosso. Una corsa sola non distinguerebbe le due implementazioni.
+    def test_il_filo_del_giro_e_nuovo_a_ogni_corsa(self):
+        fili: list[str | None] = []
+
+        def _corri() -> None:
+            repo = MagicMock(wraps=self._RepoMock())
+            step_executor = self._StepExecutorMock()
+            runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+            with _fake_tx():
+                runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
+            fili.append(step_executor.last_kwargs.get("correlation_id"))
+
+        _corri()
+        _corri()
+
+        self.assertEqual(len(fili), 2)
+        self.assertTrue(all(fili), "il giro deve avere un filo")
+        self.assertNotEqual(
+            fili[0], fili[1],
+            "due corse dello stesso lotto condividono il filo: e' il difetto "
+            "di `lock_batch_id`, che nasce col lotto e non cambia mai",
+        )
+
+    # Scopo: lo STESSO filo scende sugli eventi e sullo step executor — che e'
+    #        poi la via per cui arriva ai `task_runs`.
+    #
+    # ⚠️ Il verso «lo stesso» conta quanto «c'e'»: due fili diversi nella stessa
+    #    corsa non cucirebbero niente, ed e' un difetto che si vede solo
+    #    confrontandoli fra loro.
+    def test_il_filo_del_giro_arriva_allo_step_executor(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
+
+        filo_step = step_executor.last_kwargs.get("correlation_id")
+        self.assertTrue(filo_step)
+        fili_eventi = {
+            c.kwargs.get("correlation_id") for c in repo.log_event.call_args_list
+        }
+        self.assertEqual(
+            fili_eventi, {filo_step},
+            "eventi e task_runs dello stesso giro devono portare lo stesso filo",
+        )
+
+    # Scopo: ⭐ UN DIFETTO DEL DIARIO NON FERMA IL LAVORO CHE DESCRIVE
+    #        (consegna BE-7, decisione D-15 del brief
+    #        `brief-db-event-log-scope-e-riga-parlante.md`).
+    #
+    #        E' il verso che nessuno verificava, ed e' quello che conta: dal
+    #        2026-08-22 `fn_log_event` PUO' rifiutare una riga — il giornale
+    #        non accetta eventi di cui non sappia dire di chi sono. Le tre
+    #        scritture di `PIPELINE_STARTED` / `STEP_COMPLETED` /
+    #        `PIPELINE_COMPLETED` stanno DENTRO l'`atomic` del giro: senza il
+    #        telaio best-effort, un evento rifiutato portava giu' l'intera
+    #        pipeline di fatturazione — cioe' il difetto BE-1 in grande.
+    #
+    # ⚠️ Non basta che non sollevi: la pipeline deve ARRIVARE IN FONDO. Un
+    #    test che si fermasse a `assertNoRaises` passerebbe anche se il giro
+    #    uscisse a meta' in silenzio, che e' il modo in cui questo difetto
+    #    sarebbe tornato.
+    def test_giornale_rotto_non_ferma_la_pipeline(self):
+        repo = MagicMock(wraps=self._RepoMock())
+        # Il giornale rifiuta OGNI riga, come farebbe il trigger di derivazione
+        # su un'entita' che non sa collocare.
+        repo.log_event.side_effect = RuntimeError(
+            "E_EVENT_LOG_SCOPE_NON_RISOLTO: il giornale non registra righe senza perimetro"
+        )
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+
+        with _fake_tx():
+            result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
+
+        # Il giro e' arrivato in fondo: lotto restituito e step eseguito.
+        self.assertEqual(result, 10)
+        self.assertTrue(step_executor.called)
+        # E il diario ci ha PROVATO su tutti e tre i momenti: il telaio
+        # assorbe, non salta le scritture successive.
+        codici = {
+            c.kwargs.get("event_code") for c in repo.log_event.call_args_list
+        }
+        self.assertEqual(
+            codici, {"PIPELINE_STARTED", "STEP_COMPLETED", "PIPELINE_COMPLETED"}
+        )
+
     # Scopo: Verifica che run_pipeline emetta PIPELINE_STARTED su event_log.
     def test_runner_emits_pipeline_started_event(self):
         repo = MagicMock(wraps=self._RepoMock())
@@ -741,7 +1101,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             if c.kwargs.get("event_code") == "PIPELINE_STARTED"
         ]
         self.assertEqual(len(started_calls), 1)
-        self.assertEqual(started_calls[0].kwargs["domain"], "PIPELINE")
         self.assertEqual(started_calls[0].kwargs["entity_type"], "LOTTO")
         self.assertEqual(started_calls[0].kwargs["entity_id"], 10)
 
@@ -757,7 +1116,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             if c.kwargs.get("event_code") == "PIPELINE_COMPLETED"
         ]
         self.assertEqual(len(completed_calls), 1)
-        self.assertEqual(completed_calls[0].kwargs["domain"], "PIPELINE")
         self.assertEqual(completed_calls[0].kwargs["payload"]["tipo_lotto"], "MASSIVO")
 
     # Scopo: Verifica che _execute_pipeline_step emetta STEP_COMPLETED su event_log.
@@ -788,7 +1146,6 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         ]
         self.assertEqual(len(error_calls), 1)
         self.assertEqual(error_calls[0].kwargs["severity"], "ERROR")
-        self.assertEqual(error_calls[0].kwargs["domain"], "PIPELINE")
 
     # Scopo: F1 — su lotto ESISTENTE in successo, il runner AVANZA allo step
     # successivo a quello corrente (non ri-esegue il primo). Catalogo [1,2,8],

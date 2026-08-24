@@ -15,7 +15,7 @@
 > **Vedi anche**:
 > * [Guida tecnica API Commesse (DB layer)](/guide/gestione-commesse) — datata, da aggiornare (vedi §3)
 > * [gestione-commesse-v2.md](gestione-commesse-v2.md) — piano v2 (feb 2026), in larga parte implementato ma fermo a febbraio
-> * [sviluppo-fatturazione.md](../work-in-progress/sviluppo-fatturazione.md), [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md), [fatturazione-attivita-progetto.md](fatturazione-attivita-progetto.md)
+> * [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md), [fatturazione-attivita-progetto.md](fatturazione-attivita-progetto.md)
 > * brief work-done: `brief-db-commesse-transizioni-stati.md`, `brief-db-commesse-multi-sorgente.md`, `brief-db-drop-uq-commesse-attivita-src-uid-partial.md`
 
 ---

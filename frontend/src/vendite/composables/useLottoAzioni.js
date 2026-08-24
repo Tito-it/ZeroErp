@@ -21,6 +21,9 @@
 import { unref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useAuthStore } from '../../stores/auth'
+import { estraiBersagli } from '../../core/bersagli'
+import { azioniDaBersagli } from '../../core/bersaglioGesto'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useNotify } from '../../core/composables/useNotify'
 import { labelOrCode } from '../../core/utils/i18nLabel'
@@ -39,6 +42,10 @@ import {
 // ha — stampare è leggere (I-4).
 export const LOTTO_AZIONE_PERMESSO = {
   avanza_step: 'genera_fatture_lotti',
+  // Stessa chiamata e stesso potere di `avanza_step`: cambia solo COME si
+  // chiama davanti all'operatore (vedi `verbiPipeline`). Un permesso proprio
+  // direbbe che e' un'altra facolta', e non lo e'.
+  rigenera_bozza: 'genera_fatture_lotti',
   rilancia_step: 'genera_fatture_lotti',
   numera: 'numera_fatture_lotti',
   annulla: 'reset_lotto_draft',
@@ -49,6 +56,9 @@ export const LOTTO_AZIONE_PERMESSO = {
 // delle azioni prende label/icona/severity dal `meta` di catalogo.
 export const LOTTO_AZIONE_PIPELINE_UI = {
   avanza_step: { label_key: 'vendite.lotti.avanza', icon: 'pi pi-forward', severity: undefined },
+  // ⚠️ Icona DIVERSA da `avanza_step` di proposito: la freccia in avanti su un
+  // gesto che non avanza e' la stessa bugia dell'etichetta.
+  rigenera_bozza: { label_key: 'vendite.lotti.rigenera', icon: 'pi pi-refresh', severity: undefined },
   rilancia_step: { label_key: 'vendite.lotti.rerun', icon: 'pi pi-replay', severity: 'warn' },
 }
 
@@ -74,6 +84,8 @@ const LOTTO_AZIONE_SEVERITY = {
 export function useLottoAzioni({ onDone } = {}) {
   const { t, te } = useI18n()
   const { execute, loading } = useApiHandler()
+  // Serve al degrado del bersaglio (area BLOCCATA → nessun pulsante).
+  const auth = useAuthStore()
   const notify = useNotify()
   const { confirmAction } = useConfirmAction()
 
@@ -85,6 +97,15 @@ export function useLottoAzioni({ onDone } = {}) {
       title: 'vendite.lotti.avanza_header',
       message: 'vendite.lotti.avanza_conferma',
       esito: () => t('vendite.lotti.avanza_esito'),
+    },
+    // Stessa API di `avanza_step`, testi propri: su un lotto riaperto quella
+    // chiamata RIFA' lo step corrente e il lotto resta in DRAFT — annunciare
+    // «Pipeline avanzata» sarebbe falso (collaudo NC resi, 2026-08-22).
+    rigenera_bozza: {
+      api: (id) => runLottoPipeline(id),
+      title: 'vendite.lotti.rigenera_header',
+      message: 'vendite.lotti.rigenera_conferma',
+      esito: () => t('vendite.lotti.rigenera_esito'),
     },
     rilancia_step: {
       api: (id) => runLottoPipeline(id),
@@ -142,6 +163,49 @@ export function useLottoAzioni({ onDone } = {}) {
       .join('\n')
   }
 
+// I motivi di arresto del driver pipeline (`_drive_lotto_until_done`) che sono
+// un ESITO BUONO. Tutto il resto — `ERRORE`, `BLOCCATO_CRITICITA`,
+// `GUARD_MAX_ITER` — è un fallimento.
+//
+// 🔴 PERCHE' QUESTA LISTA ESISTE (difetto trovato in-app il 2026-08-21). Gli
+// endpoint del runner rispondono **200 anche quando la catena si ferma per
+// errore**: il fallimento non è un errore HTTP, è un campo dell'esito
+// (`motivo_stop` + `errore`), perché la catena può aver eseguito qualche step
+// prima di fermarsi e quel lavoro va raccontato. `useApiHandler` vede un 200 e
+// non ha niente da segnalare — quindi chi legge l'esito DEVE guardare
+// `motivo_stop`, altrimenti annuncia come riuscita un'operazione fallita.
+//
+// Misurato: «Rendi definitive» su un lotto con una nota di credito la cui
+// fattura non è ancora numerata mostrava il toast verde «Fatture numerate».
+// Il documento non era numerato, il DB aveva rifiutato con il suo motivo, e
+// all'operatore non arrivava niente.
+const MOTIVI_STOP_OK = ['COMPLETATO', 'FERMATO_A_STATO']
+
+// Scopo: il verdetto su una risposta del runner. Chi non porta `motivo_stop`
+//   (ristampa, annulla, riporta a draft) non è un esito di catena: per quelli
+//   il 200 è già la risposta, e si resta su «riuscito».
+//   `messaggio` è quello del DB quando c'è — è l'unico che dice QUALE
+//   documento sblocca la strada — con ripiego sul codice di arresto, mai su
+//   una frase generica che nasconde il motivo.
+function verdettoRunner(res) {
+  const motivo = res?.motivo_stop
+  if (!motivo || MOTIVI_STOP_OK.includes(motivo)) return { ok: true }
+  return {
+    ok: false,
+    messaggio: res?.errore?.message || motivo,
+    // ⭐ IL BERSAGLIO ARRIVA DA QUI, e non dall'envelope (2026-08-24). Questi
+    // endpoint rispondono 200 anche quando falliscono, quindi `useApiHandler`
+    // non vede nessun errore e il canale che disegna il gesto altrove — l'
+    // envelope `error.targets` — qui non passa proprio. `errore` porta gli
+    // STESSI nomi, e da lì si prende.
+    // ⚠️ È il messaggio PILOTA del cantiere a passare di qua
+    // (`E_FATTURA_RETTIFICATA_SENZA_NUMERO`, «numera prima il documento 820»):
+    // senza questa riga il caso che ha fatto nascere tutto resterebbe l'unico
+    // senza pulsante.
+    bersagli: estraiBersagli(res?.errore),
+  }
+}
+
   // Scopo: esegue un verbo su un lotto — conferma, chiamata, toast, refresh.
   //   Usato dal drawer, che ha già il blob capability e quindi mostra
   //   disabilitate le azioni non eseguibili.
@@ -161,10 +225,22 @@ export function useLottoAzioni({ onDone } = {}) {
         const res = await execute(() => verbo.api(lottoId))
         // `!== null` e non `if (res)`: un esito vuoto è comunque un successo
         // (memoria feedback_drawer_result_check).
-        if (res !== null) {
-          notify.success(verbo.esito(res))
+        if (res === null) return
+        const verdetto = verdettoRunner(res)
+        if (!verdetto.ok) {
+          // ⚠️ Si ricarica LO STESSO: la catena può essersi fermata DOPO aver
+          // eseguito qualche step, e la lista deve mostrare dove è arrivata.
+          // Il gesto se c'è, il toast di prima se non c'è: `errorConAzioni`
+          // ricade da sé su `error` con un array vuoto.
+          notify.errorConAzioni(
+            verdetto.messaggio,
+            azioniDaBersagli(verdetto.bersagli, auth),
+          )
           if (!verbo.skipDone) await onDone?.()
+          return
         }
+        notify.success(verbo.esito(res))
+        if (!verbo.skipDone) await onDone?.()
       },
     })
   }
@@ -181,7 +257,7 @@ export function useLottoAzioni({ onDone } = {}) {
   //   I due verbi di pipeline non sono nel blob per costruzione: per loro non
   //   c'è verdetto da chiedere e si procede diretti.
   async function eseguiVerificato(lottoId, key) {
-    if (key === 'avanza_step' || key === 'rilancia_step') {
+    if (key === 'avanza_step' || key === 'rigenera_bozza' || key === 'rilancia_step') {
       esegui(lottoId, key)
       return
     }
@@ -212,10 +288,24 @@ export function useLottoAzioni({ onDone } = {}) {
   //   step. Prima la condizione era `!isEmessa`, e proponeva «Avanza step»
   //   anche sui lotti DEFINITIVA — invisibile nel drawer di un lotto alla
   //   volta, evidente in una lista dove i chiusi sono la maggioranza.
+  //
+  //   ⭐ Da DRAFT i verbi sono DUE e si escludono, perché la stessa chiamata
+  //   fa due cose diverse (runner, `deve_rifare_step_corrente`):
+  //     · lotto RIAPERTO → il run RIFA' lo step corrente, il lotto resta in
+  //       DRAFT      → «Rigenera la bozza»
+  //     · lotto normale → il run AVANZA, DRAFT→EMESSA → «Avanza step»
+  //   Trovato in collaudo (NC resi, 2026-08-22): dopo «Riporta in lavorazione»
+  //   servono due pressioni — la prima rigenera, la seconda avanza — ed è
+  //   corretto; a essere sbagliato era che il pulsante le chiamasse uguali e
+  //   annunciasse «Pipeline avanzata» anche quando non era avanzato niente.
+  //   ⚠️ Il flag `riaperto` arriva dal BE (`fatturazione_lotti.riaperto_il`):
+  //   NON si deduce qui, o diventerebbe una seconda regola accanto a quella
+  //   del runner.
   function verbiPipeline(lotto) {
     if (lotto?.stato_lotto === 'ERRORE') return ['rilancia_step']
     if (lotto?.stato_lotto === 'IN_ESECUZIONE') return []
-    return lotto?.stato_doc_fiscale_codice === 'DRAFT' ? ['avanza_step'] : []
+    if (lotto?.stato_doc_fiscale_codice !== 'DRAFT') return []
+    return lotto?.riaperto ? ['rigenera_bozza'] : ['avanza_step']
   }
 
   // Scopo: verbi PLAUSIBILI per una riga di lista, dai soli campi che la riga

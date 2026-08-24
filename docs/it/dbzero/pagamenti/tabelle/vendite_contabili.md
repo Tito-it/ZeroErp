@@ -20,28 +20,29 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | ente_incasso_id | bigint | YES |  |
-| stato_id | smallint | YES |  |
+| stato_id | smallint | NO | 1 |
 | data_conferma | timestamp with time zone | YES |  |
 | user_conferma | text | YES |  |
-| compensazione_id | bigint | YES |  |
+| origine | character varying | NO | 'GENERATA'::character varying |
+| importo_dichiarato | numeric | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_vendite_contabili_automatica_dichiara |  |
+| CHECK | chk_vendite_contabili_generata_non_dichiara |  |
+| CHECK | chk_vendite_contabili_origine |  |
 | FOREIGN KEY | fk_vendite_contabili_centro_riscossione | centro_riscossione_id |
-| FOREIGN KEY | fk_vendite_contabili_compensazione | compensazione_id |
 | FOREIGN KEY | fk_vendite_contabili_ente_incasso | ente_incasso_id |
 | FOREIGN KEY | fk_vendite_contabili_stato | stato_id |
 | PRIMARY KEY | pk_vendite_contabili | id |
 | UNIQUE | uq_vendite_contabili_codice | codice |
-| UNIQUE | uq_vendite_contabili_compensazione | compensazione_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_vendite_contabili | `CREATE UNIQUE INDEX pk_vendite_contabili ON pagamenti.vendite_contabili USING btree (id)` |
 | uq_vendite_contabili_codice | `CREATE UNIQUE INDEX uq_vendite_contabili_codice ON pagamenti.vendite_contabili USING btree (codice)` |
-| uq_vendite_contabili_compensazione | `CREATE UNIQUE INDEX uq_vendite_contabili_compensazione ON pagamenti.vendite_contabili USING btree (compensazione_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
@@ -50,14 +51,19 @@
 | trg_vendite_contabili_a10_centri_riscossione_require_att_2ae3a9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'centri_riscossione', 'attivo', 'centro_riscossione_id', 'id')` |
 | trg_vendite_contabili_a10_enti_incasso_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'enti_incasso', 'attivo', 'ente_incasso_id', 'id')` |
 | trg_vendite_contabili_a10_enti_incasso_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'enti_incasso', 'attivo', 'ente_incasso_id', 'id')` |
+| trg_vendite_contabili_a10_guard_chiusura_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_chiusura()` |
+| trg_vendite_contabili_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('ente_incasso', 'ente_incasso_id')` |
+| trg_vendite_contabili_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('ente_incasso', 'ente_incasso_id')` |
 | trg_vendite_contabili_a10_guard_ente_centro_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()` |
 | trg_vendite_contabili_a10_guard_ente_centro_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()` |
-| trg_vendite_contabili_a10_vendite_contabili_stati_requir_c1cc51 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_stati', 'attivo', 'stato_id', 'id')` |
+| trg_vendite_contabili_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_transizione()` |
+| trg_vendite_contabili_a10_guard_validazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_validazione()` |
 | trg_vendite_contabili_a10_vendite_contabili_stati_requir_c1cc51 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_stati', 'attivo', 'stato_id', 'id')` |
-| trg_vendite_contabili_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_vendite_contabili_a10_vendite_contabili_stati_requir_c1cc51 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pagamenti', 'vendite_contabili_stati', 'attivo', 'stato_id', 'id')` |
 | trg_vendite_contabili_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_vendite_contabili_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_vendite_contabili_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_vendite_contabili_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

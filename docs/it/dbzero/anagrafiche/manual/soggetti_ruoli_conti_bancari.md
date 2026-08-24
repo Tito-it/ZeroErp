@@ -10,7 +10,7 @@
 > • [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)    
 >
 **Artefatti di selezione**   
-> • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/view/vw_conti_bancari_per_ruolo)    
+> • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo)    
 > • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
 >
 **Approfondimento Trigger/Funzioni generiche**   
@@ -65,6 +65,35 @@ La cascata di selezione è a **3 livelli** (istanza → ruolo generico → sogge
 * **Predefinito per uso/ruolo/istanza** (2 partial unique index):
   - `uq_src_bancari_predefinito_istanza (soggetto_ruolo_id, istanza_utility_id, uso) WHERE predefinito=true AND istanza_utility_id IS NOT NULL`
   - `uq_src_bancari_predefinito_no_istanza (soggetto_ruolo_id, uso) WHERE predefinito=true AND istanza_utility_id IS NULL`
+* 🔴 **Un conto di INCASSO appartiene a UN SOLO soggetto** — vincolo di
+  esclusione `ex_src_bancari_conto_incasso_un_solo_soggetto`
+  `EXCLUDE USING gist (conto_bancario_id WITH =, soggetto_ruolo_id WITH <>) WHERE (uso = 'INCASSO')`
+  *(dal 2026-08-22)*. ⭐ **E' il pezzo che regge il perimetro degli incassi**: la
+  catena *azienda → conto* era già garantita, ma serviva **al contrario** — «questi
+  soldi su questo conto, di chi sono?» — e in quel verso non c'era niente. La
+  regola di dominio è vera nel mondo (due partite IVA, due conti correnti) ma il
+  database non la sapeva: finché quel legame serviva a stampare un IBAN in fattura
+  l'ambiguità era un fastidio, appoggiandoci la sicurezza diventa un **varco
+  silenzioso** — due aziende sullo stesso conto, ciascuna vede i soldi dell'altra,
+  e nessun errore da nessuna parte.
+  > ⚠️ **Esclusione e non indice unico** su `(conto_bancario_id) WHERE uso = 'INCASSO'`:
+  > quello vieterebbe anche lo stesso conto sullo **stesso** soggetto una volta a
+  > livello di ruolo e una per istanza utility — cioè proprio la configurazione che
+  > i due indici `uq_src_bancari_ruolo_*_conto_uso` dichiarano legittima. La regola
+  > nomina **due** colonne: stesso conto **e** soggetto diverso.
+  >
+  > ⛔ Il periodo di validità **non** entra nel vincolo di proposito: in Italia un
+  > IBAN non passa di mano, e ammettere la sovrapposizione nel tempo costringerebbe
+  > il perimetro a risolvere il conto **alla data** — cioè a rispondere in modo
+  > diverso ieri e oggi alla domanda «di chi sono questi soldi?».
+  >
+  > ⭐ **Regola generale, oltre questo caso:** una verità di dominio su cui si
+  > appoggia un perimetro di sicurezza deve diventare un **vincolo**, non restare
+  > un'assunzione. Il costo di scriverla è un indice; il costo di non scriverla non
+  > si vede finché non è successo.
+* **Chi ci si appoggia**: `pagamenti.enti_incasso.soggetto_ruolo_conto_bancario_id`
+  punta a una riga di questa tabella, e un guard pretende che il suo `uso` sia
+  `INCASSO` — è lì che l'unicità qui sopra diventa il perimetro degli incassi.
 * **Validità temporale**: `CHECK (valido_al IS NULL OR valido_dal IS NULL OR valido_al >= valido_dal)`.
 * **Valori ammessi `uso`**: `CHECK (uso IN ('INCASSO','PAGAMENTO','RIMBORSO','GENERICO'))`.
 * **Guard‑rail conto attivo**: trigger impedisce associazioni a `conti_bancari.attivo=false`.

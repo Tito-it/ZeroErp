@@ -33,7 +33,7 @@ import PraticaDrawer from '../../../pratiche/components/PraticaDrawer.vue'
 import DocumentoDrawerHost from '../documenti/DocumentoDrawerHost.vue'
 import { useDocumentoDrawer } from '../documenti/useDocumentoDrawer'
 import LineagePassaggiDialog from './LineagePassaggiDialog.vue'
-import { lineageTipoLabel } from './lineageLabels'
+import { lineageDocumentoLabel } from './lineageLabels'
 import { useDocumentoPassaggi } from './useDocumentoPassaggi'
 
 const props = defineProps({
@@ -81,15 +81,24 @@ function chipsDaArchi(archi, lato, { escludiAbortiti = false } = {}) {
     if (escludiAbortiti && p.to_is_abortito) continue
     const tipoCodice = avanti ? p.to_tipo_codice : p.from_tipo_codice
     if (!tipoCodice) continue
-    const corrente = perTipo.get(tipoCodice)
+    // ⭐ SI RAGGRUPPA PER TIPO **E NATURA**, non per tipo soltanto. Fattura e
+    // nota di credito hanno lo stesso `codice_interno` sorgente: raggruppate
+    // insieme diventerebbero «2 Fattura» su una fattura che ne ha una sola e
+    // una nota di credito a valle — cioe' il chip nasconderebbe proprio la
+    // cosa che segnala (2026-08-21, arco N).
+    const naturaCodice = avanti ? p.to_natura_doc_codice : p.from_natura_doc_codice
+    const chiave = `${tipoCodice}|${naturaCodice ?? ''}`
+    const corrente = perTipo.get(chiave)
     if (corrente) {
       corrente.n += 1
-      // Il ramo di ritorno (arco R, DDT->Reso) marca il chip appena c'e'.
+      // I rami di ritorno (arco R DDT->Reso, arco N fattura->nota di credito)
+      // marcano il chip appena ce n'e' uno.
       corrente.ramoInverso = corrente.ramoInverso || Boolean(p.is_ramo_inverso)
     } else {
-      perTipo.set(tipoCodice, {
-        key: `${lato}-${tipoCodice}`,
+      perTipo.set(chiave, {
+        key: `${lato}-${chiave}`,
         tipoCodice,
+        naturaCodice,
         n: 1,
         avanti,
         ramoInverso: Boolean(p.is_ramo_inverso),
@@ -117,12 +126,12 @@ const hasCollegamenti = computed(
 // Scopo: etichetta del chip — il conteggio compare solo da 2 in su («Ordine»,
 //        «2 DDT»): a 1 il numero e' rumore, il chip stesso dice che c'e'.
 function chipLabel(chip) {
-  const tipo = lineageTipoLabel(t, te, chip.tipoCodice)
+  const tipo = lineageDocumentoLabel(t, te, chip.tipoCodice, chip.naturaCodice)
   return chip.n > 1 ? `${chip.n} ${tipo}` : tipo
 }
 
 // Glifo di direzione, coerente con la timeline della dialog: ← origine,
-// → destinazione, ↩ ramo di ritorno (DDT->Reso).
+// → destinazione, ↩ ramo di ritorno (DDT->Reso, fattura->nota di credito).
 function chipIcon(chip) {
   if (chip.ramoInverso) return 'pi pi-replay'
   return chip.avanti ? 'pi pi-arrow-right' : 'pi pi-arrow-left'

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/iva.md" %}
 # 📚 Tabella `iva`
 
 ## 🗂️ Campi principali

@@ -1,0 +1,188 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RLS SULLA RIGA CONTABILE — passo S3-5 (lotto 6)
+#   pagamenti.vendite_contabili_righe
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-5 · Decisione: brief madre D5
+#
+# ── ⭐ DUE STRADE IN `OR`, E NESSUNA E' RIDONDANTE ───────────────────
+#   1. **la distinta** — cioe' il conto su cui il denaro e' arrivato;
+#   2. **la fattura** della riga, quando c'e'.
+#
+#   ⭐ La prima e' quella per cui il perimetro dal conto esiste: la riga **da
+#   abbinare** non ha nessuna fattura, quindi la seconda strada non la
+#   troverebbe mai. Con la sola fattura, la coda che questo cantiere serve a
+#   rendere lavorabile sarebbe **invisibile a tutti**.
+#
+#   ⚠️ La seconda serve a due casi che capitano, e uno e' strutturale:
+#   * **la riga di una distinta INTERNA** (fondo fattura, compensazione). La
+#     testata di quelle distinte e' visibile a tutti — non e' di nessuno — ma le
+#     righe **non ereditano niente**: `fn_scope_ef_whitelist_via_contabile` su
+#     una distinta senza canale risponde `false`, e a scoprire di chi e' quel
+#     denaro e' la **fattura che la riga porta**. E' cosi' che la parte
+#     condivisa resta condivisa e quella riservata resta riservata;
+#   * **la riga sul proprio documento finita sulla distinta di un altro**, cioe'
+#     un abbinamento sbagliato. Se non la vedessi, il mio saldo direbbe che quel
+#     denaro non e' arrivato **e non avrei modo di scoprire perche'**. La riga di
+#     un errore va vista da chi ne subisce l'effetto.
+#
+# ── ⭐ E c'e' una terza ragione, meno ovvia: LA BILANCIA ─────────────
+#   Se una riga sulla mia distinta sparisse dalla vista perche' porta la fattura
+#   di un altro, la somma delle righe che vedo **non tornerebbe** con il totale
+#   della distinta — e quella quadratura e' un presidio vero di questo cantiere
+#   (`E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA`). Un perimetro che rompe una
+#   bilancia produce un allarme falso ogni volta.
+#
+# ── ⚠️ LA SECONDA STRADA LEGGE SOTTO RLS, ED E' GIUSTO COSI' ─────────
+#   `script.fn_scope_ef_whitelist_via_fattura` legge `vendite.fatture` **sotto**
+#   la row security. Nel guard di scrittura quella lettura filtrata era un
+#   difetto (changeSet -16); **qui converge**: se la fattura non la vedo, la
+#   funzione risolve a `NULL` e la canonica risponde `false` — cioe' esattamente
+#   «quella riga non e' mia».
+#
+#     > ⭐ La stessa lettura e' un difetto in un posto e la risposta giusta in un
+#     > altro. La differenza non e' nella funzione: e' nella **domanda**. Un
+#     > guard chiede «di chi e' questa riga» e deve saperlo per intero; una
+#     > policy chiede «devo mostrargliela», e non vedere e' gia' la risposta.
+#
+# ── 🔴 `FOR ALL`, per la ragione misurata nel changeSet -20 ──────────
+#   Con la sola `FOR SELECT` la tabella sarebbe diventata di sola lettura, e
+#   `INSERT ... RETURNING` passa comunque dalla `USING`. ⭐ Il `WITH CHECK` e'
+#   **lo stesso predicato**, e regge il percorso vero: la riga di un fondo nasce
+#   con la sua `fattura_id` gia' valorizzata, quindi la seconda strada la copre
+#   fin dal primo istante.
+#   ⚠️ Ne segue un vincolo di modello da conoscere: **una riga su una distinta
+#   interna deve portare una fattura**. Senza, nessuna delle due strade la copre
+#   e non si scrive. Oggi e' sempre vero — un fondo e una compensazione sono per
+#   definizione di un documento.
+#
+#   ⭐ I **due trigger** di scrittura (changeSet -18) restano: la policy fa
+#   sparire, il trigger **rifiuta e spiega**.
+#
+# Dipendenze: script.fn_scope_ef_whitelist_via_contabile (changeSet -19),
+#             script.fn_scope_ef_whitelist_via_fattura (esistente).
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-21-enable-rls-vendite-contabili-righe-mctit.yaml
+
+  - changeSet:
+      id: 20260822-21-enable-rls-vendite-contabili-righe
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy rls_vendite_contabili_righe_perimetro_incasso su
+        pagamenti.vendite_contabili_righe (FOR ALL, gate OPERATORE fail-closed) + ENABLE ROW
+        LEVEL SECURITY senza FORCE. Due strade in OR: la distinta (cioe' il conto, ed e'
+        l'unica che copre la coda da abbinare, dove la fattura non c'e') e la fattura della
+        riga quando c'e' — che copre le righe delle distinte INTERNE, la cui testata e'
+        visibile a tutti ma le cui righe non ereditano niente, e la riga sul proprio documento
+        finita sulla distinta di un altro. Serve anche a non rompere la quadratura fra le
+        righe viste e il totale della distinta.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist_via_contabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE POLICY rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          -- 1. La distinta: il conto su cui il denaro e' arrivato.
+                          --    ⭐ L'unica strada che copre la riga DA ABBINARE, che
+                          --    fattura non ne ha. Su una distinta INTERNA risponde
+                          --    false, apposta: la sua testata e' di tutti, le righe no.
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id
+                          )
+                          -- 2. La fattura, quando c'e'. ⚠️ E' quella che da' il
+                          --    perimetro alle righe delle distinte interne, e che
+                          --    fa vedere la riga sul PROPRIO documento finita sulla
+                          --    distinta di un altro: senza, il saldo direbbe che quel
+                          --    denaro non e' arrivato e non ci sarebbe modo di
+                          --    scoprire perche'.
+                          OR (
+                              fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id
+                              )
+                          )
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          script.fn_scope_ef_whitelist_via_contabile(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              contabile_id
+                          )
+                          OR (
+                              fattura_id IS NOT NULL
+                              AND script.fn_scope_ef_whitelist_via_fattura(
+                                  NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                  fattura_id
+                              )
+                          )
+                      )
+                  );
+
+              COMMENT ON POLICY rls_vendite_contabili_righe_perimetro_incasso
+                   ON pagamenti.vendite_contabili_righe IS
+                  'RLS: l''operatore vede e scrive le righe contabili del proprio perimetro, per '
+                  'due strade in OR. (1) LA DISTINTA, cioe'' il conto su cui il denaro e'' arrivato '
+                  '(D5): e'' l''unica che copre la riga «da abbinare», che fattura non ne ha — con '
+                  'la sola fattura quella coda sarebbe invisibile a tutti. Su una distinta INTERNA '
+                  'risponde false apposta: la sua testata e'' di tutti, le sue righe no. '
+                  '(2) LA FATTURA della riga quando c''e'': e'' quella che da'' il perimetro alle '
+                  'righe delle distinte interne, ed e'' quella che fa vedere la riga sul PROPRIO '
+                  'documento finita sulla distinta di un altro (un abbinamento sbagliato) — senza, '
+                  'il saldo direbbe che quel denaro non e'' arrivato e non ci sarebbe modo di '
+                  'scoprire perche''. ⭐ E serve anche alla BILANCIA: se una riga sulla propria '
+                  'distinta sparisse perche'' porta la fattura di un altro, la somma delle righe '
+                  'viste non tornerebbe col totale della distinta, e la quadratura darebbe un '
+                  'allarme falso ogni volta. ⚠️ La seconda strada legge vendite.fatture SOTTO la '
+                  'row security, e qui e'' giusto: non vedere la fattura E'' gia'' la risposta. Nel '
+                  'guard di SCRITTURA la stessa lettura era un difetto, perche'' li'' la domanda e'' '
+                  '«di chi e''» e va saputa per intero. ⚠️ Vincolo di modello che ne segue: una riga '
+                  'su una distinta interna DEVE portare una fattura, altrimenti nessuna delle due '
+                  'strade la copre. rev 2026-08-22 (lotto 6, S3-5).';
+
+              ALTER TABLE pagamenti.vendite_contabili_righe ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili_righe DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_vendite_contabili_righe_perimetro_incasso
+                  ON pagamenti.vendite_contabili_righe;

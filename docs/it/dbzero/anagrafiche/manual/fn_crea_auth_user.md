@@ -4,12 +4,12 @@
 >
 **Approfondimento tabelle:**
 >
-[auth_user (Django)](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+[auth_user (Django)](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 >
 **Approfondimento funzioni:**
 >
-[anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/manual/fn_crea_operatore)
-> [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana)
+[anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2)
+> [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2)
 
 ---
 ### 🎯 Scopo Principale

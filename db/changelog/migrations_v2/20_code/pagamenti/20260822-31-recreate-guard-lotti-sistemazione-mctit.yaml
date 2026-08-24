@@ -1,0 +1,176 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA DISTINTA NATA DA UN ATTO NON STA IN UN LOTTO — passo S4-2 (lotto 7)
+#   pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione
+#   (sostituisce trgfn_vendite_contabili_lotti_guard_compensazione)
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-2 · Decisione: brief madre D15-e
+#
+# ── ⭐ LA REGOLA NON CAMBIA, CAMBIANO IL NOME E IL PERIMETRO ─────────
+#   Un **lotto di fatturazione** raccoglie le fatture prodotte in un giro di
+#   emissione. Una distinta nata da una **sistemazione** registra un rimborso o
+#   una compensazione decisi su documenti **già emessi**: non appartiene a
+#   nessun giro.
+#
+#   ⚠️ Il predicato però si allarga: prima diceva «di compensazione», adesso dice
+#   «di sistemazione» — cioè **tutte e tre** le destinazioni. Non è una
+#   estensione arbitraria: anche una distinta di **rimborso** non ha niente a che
+#   fare con un lotto di fatturazione, e la regola vecchia non la copriva solo
+#   perché il rimborso non esisteva ancora come atto registrato.
+#
+# ── ⭐ E DA DUE PORTE DIVENTA UNA ────────────────────────────────────
+#   La regola aveva **due guardiani**: questo, e il ramo 2 di
+#   `trgfn_vendite_contabili_guard_ente_centro` — la stessa regola letta nei due
+#   versi, con lo stesso codice.
+#
+#   Girato il verso del legame (D15-e), **la contabile non sa più di essere nata
+#   da un atto**: lo sa l'atto. Il guard sulla contabile perde il dato su cui si
+#   appoggiava, e con esso il momento in cui poteva scattare — alla nascita della
+#   distinta nessun atto la cita ancora. ⭐ Resta **una** porta, ed è quella
+#   giusta: il pericolo è agganciare al lotto, e si presidia dove si aggancia.
+#
+# ── 🔴 E LA LETTURA VA FUORI DALLA ROW SECURITY ─────────────────────
+#   ⚠️ **Questo è nuovo rispetto alla versione vecchia**, e va detto: prima il
+#   guard leggeva una colonna di `vendite_contabili`, che l'utente sta già
+#   toccando. Adesso legge `pagamenti.sistemazioni`, **che ha la RLS** — e per un
+#   utente fuori perimetro l'atto non c'è.
+#
+#     > 🔴 Il caso è raggiungibile: la contabile di una **compensazione** è una
+#     > distinta **interna** (centro dedicato, nessun canale), e le distinte
+#     > interne sono **visibili a tutti**. Un operatore dell'azienda B vede la
+#     > distinta di compensazione dell'azienda A e potrebbe agganciarla a un
+#     > proprio lotto — con un guard `SECURITY INVOKER` non se ne accorgerebbe
+#     > nessuno.
+#
+#   La domanda passa perciò da `script.fn_get_sistemazione_di_contabile`
+#   (changeSet -30), che è `SECURITY DEFINER`.
+#
+# ── ⚠️ IL CODICE CAMBIA, E IL VECCHIO SI DEPRECA ────────────────────
+#   `E_CONTABILE_SISTEMAZIONE_CON_LOTTO` (974) sostituisce
+#   `E_CONTABILE_COMPENSAZIONE_CON_LOTTO` (955), marcato `obsoleto_dal`. Un
+#   codice che nomina **una** delle tre destinazioni direbbe meno di ciò che
+#   presidia — la stessa ragione per cui nel lotto 5 la vista si chiama
+#   `vw_rate_fuori_capienza` e non `vw_rate_sovra_incassate`.
+#   📮 Il ripiego lato backend va allineato (BE-1).
+#
+# Verifica: db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-31-recreate-guard-lotti-sistemazione-mctit.yaml
+
+  - changeSet:
+      id: 20260822-31-recreate-guard-lotti-sistemazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_vendite_contabili_lotti_guard_sistemazione sostituisce
+        trgfn_vendite_contabili_lotti_guard_compensazione. La regola non cambia — una distinta
+        nata da un atto non appartiene a un giro di fatturazione — ma il predicato si allarga a
+        tutte e tre le destinazioni, e da DUE porte diventa UNA: girato il verso (D15-e) la
+        contabile non sa piu' di essere nata da un atto, quindi il guard gemello su
+        vendite_contabili perde il dato e il momento in cui scattare. 🔴 E la lettura va FUORI
+        dalla row security: sistemazioni ha la RLS, e la contabile di una compensazione e' una
+        distinta INTERNA visibile a tutti — un operatore di un'altra azienda potrebbe
+        agganciarla al proprio lotto senza che il guard se ne accorga.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_get_sistemazione_di_contabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sistemazione_id pagamenti.sistemazioni.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire di agganciare a un lotto di fatturazione una
+                  --   distinta contabile nata da una SISTEMAZIONE.
+                  --
+                  -- ⭐ Un lotto raccoglie le fatture prodotte in un giro di
+                  --   emissione; una distinta di sistemazione registra un
+                  --   rimborso o una compensazione decisi su documenti gia'
+                  --   emessi. Non appartiene a nessun giro.
+                  --
+                  -- 🔴 La domanda si fa FUORI dalla row security: pagamenti.sistemazioni
+                  --   ha la RLS, e questo guard e' SECURITY INVOKER. La contabile
+                  --   di una compensazione e' una distinta INTERNA, quindi
+                  --   VISIBILE A TUTTI: senza la SECURITY DEFINER, un operatore
+                  --   di un'altra azienda la aggancerebbe al proprio lotto e il
+                  --   guard non vedrebbe l'atto che c'e' dietro.
+                  --
+                  -- Rev 2026-08-22 (lotto 7, D15-e): era
+                  -- trgfn_vendite_contabili_lotti_guard_compensazione e leggeva
+                  -- vendite_contabili.compensazione_id, che non esiste piu'.
+                  -- =========================================================
+
+                  v_sistemazione_id :=
+                      script.fn_get_sistemazione_di_contabile(NEW.contabile_id);
+
+                  IF v_sistemazione_id IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione',
+                          'E_CONTABILE_SISTEMAZIONE_CON_LOTTO',
+                          jsonb_build_object(
+                              'detail', 'distinta nata da una sistemazione: non si collega a un lotto',
+                              'contabile_id', NEW.contabile_id,
+                              'lotto_id', NEW.lotto_id,
+                              'sistemazione_id', v_sistemazione_id
+                          ),
+                          NULL::uuid,
+                          NEW.contabile_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione() IS
+                'Una distinta contabile nata da una SISTEMAZIONE non si aggancia a un lotto di fatturazione: il lotto raccoglie le fatture prodotte in un giro di emissione, la distinta registra un rimborso o una compensazione decisi su documenti gia'' emessi. ⭐ Sostituisce trgfn_vendite_contabili_lotti_guard_compensazione (2026-08-22, D15-e): il predicato si allarga a tutte e tre le destinazioni — anche una distinta di rimborso non c''entra con un lotto, e la regola vecchia non la copriva solo perche'' il rimborso non esisteva ancora come atto. ⭐ E da DUE porte diventa UNA: girato il verso del legame la contabile non sa piu'' di essere nata da un atto, quindi il guard gemello su vendite_contabili perde il dato e il momento in cui scattare. Resta quella giusta: il pericolo e'' agganciare al lotto, e si presidia dove si aggancia. 🔴 La lettura passa da script.fn_get_sistemazione_di_contabile, SECURITY DEFINER: sistemazioni ha la RLS e la contabile di una compensazione e'' una distinta INTERNA, visibile a tutti — da SECURITY INVOKER il guard tacerebbe proprio nel caso che deve coprire.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_lotti_a10_guard_compensazione_ins_upd
+                  ON pagamenti.vendite_contabili_lotti;
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_lotti_a10_guard_sistemazione_ins_upd
+                  ON pagamenti.vendite_contabili_lotti;
+
+              CREATE TRIGGER trg_vendite_contabili_lotti_a10_guard_sistemazione_ins_upd
+                  BEFORE INSERT OR UPDATE OF contabile_id ON pagamenti.vendite_contabili_lotti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione();
+
+              -- ⚠️ Il predecessore si toglie: lasciarlo vivo vorrebbe dire tenere
+              --    in giro una funzione che legge una colonna che non esiste piu'
+              --    — verde a riposo e rossa alla prima chiamata.
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_lotti_a10_guard_sistemazione_ins_upd
+                  ON pagamenti.vendite_contabili_lotti;
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione();

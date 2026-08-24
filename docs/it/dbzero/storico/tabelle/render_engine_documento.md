@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/render_engine_documento.md" %}
 # 📚 Tabella `render_engine_documento`
 
 ## 🗂️ Campi principali

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/acquisti/manual/ordini_righe_fulfillment.md" %}
 # 📚 Tabella `ordini_righe_fulfillment`
 
 > 📝 **Descrizione**

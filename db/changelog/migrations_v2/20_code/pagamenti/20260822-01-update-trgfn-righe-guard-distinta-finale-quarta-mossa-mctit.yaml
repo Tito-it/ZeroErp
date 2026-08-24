@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA QUARTA MOSSA: UNA RIGA CHE DIVENTA PRONTA SOTTO UNA DISTINTA CHIUSA
+#   pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §1.4 C-5 · lotto 4 · decisione di Tid del 2026-08-22
+#
+# ── PERCHE' ESISTE, E PERCHE' PROPRIO ADESSO ───────────────────────────
+#   Il guard nasceva (changeSet `20260821-28`) con **tre** mosse: una riga non
+#   puo' NASCERE, essere RIATTIVATA o essere SPOSTATA sotto una distinta in
+#   stato finale. Ne mancava una quarta, che allora non era raggiungibile:
+#   **una riga che sta gia' li' e cambia stato**.
+#
+#   🔴 **Il lotto 4 la rende raggiungibile.** La madre del posting, appena
+#   registrato, porta la distinta a `CHIUSA` — ed e' la scelta giusta: la
+#   chiusura e' la *conseguenza* del registrare, non un gesto a parte
+#   (decisione di Tid, 2026-08-22). Ma sotto quella distinta possono restare
+#   righe `DA_ABBINARE`: il guard di chiusura non le considera un ostacolo, e
+#   deliberatamente — *«DA_ABBINARE e SOSPESA non bloccano, o la distinta non
+#   si chiuderebbe mai»*.
+#
+#   ⇒ Senza questa mossa, domani qualcuno abbina una di quelle righe, la porta
+#   ad `ABBINATA`, e ottiene **denaro dichiarato e pronto sotto una distinta che
+#   non si registra piu'**: il posting parte dalla testata e una `CHIUSA` la
+#   rifiuta. È il danno di C-5 dalla terza porta — quella che il difetto
+#   originale non aveva nominato.
+#
+# ── ⭐ CHE COSA SI VIETA, E CHE COSA NO ────────────────────────────────
+#   Si vieta **solo** l'ingresso in uno stato `is_postabile`. Restano ammesse
+#   tutte le altre scritture su una riga che sta sotto una distinta finale:
+#   sospenderla, scartarla, correggerne il `motivo_sospeso`. ⭐ Ed e'
+#   deliberato: *dire che cosa ne e' stato di quel denaro deve restare
+#   possibile anche dopo*, altrimenti la riga resta muta per sempre.
+#
+#   ⚠️ **Non blocca il posting**, e va verificato leggendo e non sperando: la
+#   madre porta le righe da `ABBINATA` a `POSTATA`, che **non e' postabile**, e
+#   lo fa mentre la distinta e' ancora `VALIDATA`. Due ragioni indipendenti per
+#   cui questo guard non la incontra.
+#
+# ── ⚠️ IL MESSAGGIO CAMBIA, PERCHE' NE COPRE DUE ──────────────────────
+#   `E_RIGA_CONTABILE_DISTINTA_FINALE` diceva *«non accetta altre righe»*, che
+#   sulla mossa nuova sarebbe falso — non si sta aggiungendo niente. Il codice
+#   pero' **non si spezza**: il criterio del progetto e' che un codice nasce
+#   quando cambia il **rimedio**, e il rimedio qui e' lo stesso (quel denaro, se
+#   va registrato, vuole una distinta nuova). Si allarga la frase:
+#   *«…: non accetta altre righe, e quelle che ha non si lavorano piu'.»*
+#   Arita' invariata (due segnaposti), quindi nessun rischio di `format()`.
+#   📮 Il gemello di ripiego lato backend (`error_messages_fallback.py`) va
+#   allineato: e' una richiesta BE, scritta in §6.11 del brief.
+#
+# Origine: corpo dalla doc auto-generata `dbzero` (l'oggetto vivo) col patch
+#   mirato applicato sopra. Trigger e firma invariati.
+# Verifica: db/pgtap/pagamenti/test-fn-posta-contabile.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-01-update-trgfn-righe-guard-distinta-finale-quarta-mossa-mctit.yaml
+
+  - changeSet:
+      id: 20260822-01-update-trgfn-righe-guard-distinta-finale-quarta-mossa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Quarta mossa del guard sulla distinta finale: una riga che sta gia' sotto una
+        distinta chiusa o annullata non puo' entrare in uno stato PRONTO DA REGISTRARE. Le
+        prime tre mosse (nascere, essere riattivata, essere spostata) non coprivano il caso,
+        che prima non era raggiungibile e che il lotto 4 rende reale: la madre del posting
+        chiude la distinta appena ha registrato, e sotto possono restare righe DA_ABBINARE
+        che il guard di chiusura non considera un ostacolo. Abbinarne una dopo produrrebbe
+        denaro pronto sotto una distinta che non si registra piu'. Restano ammesse tutte le
+        altre scritture: sospendere o scartare quella riga deve restare possibile.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'trgfn_vendite_contabili_righe_guard_distinta_finale'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_is_final       pagamenti.vendite_contabili_stati.is_final%TYPE;
+                  v_stato          pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_codice         pagamenti.vendite_contabili.codice%TYPE;
+                  v_diventa_pronta pagamenti.vendite_contabili_righe_stati.is_postabile%TYPE;
+                  v_da_guardare    boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire che una riga contabile finisca — o torni utile —
+                  --   sotto una distinta in stato finale (CHIUSA o ANNULLATA):
+                  --   la' non entra in nessun conto e non verra' mai registrata.
+                  --
+                  -- ⚠️ QUATTRO mosse, non una: nascere li', esserci RIATTIVATA,
+                  --    esserci SPOSTATA da un'altra distinta, e — dal
+                  --    2026-08-22 — diventarci PRONTA DA REGISTRARE restando
+                  --    dov'e'.
+                  --
+                  -- ⚠️ Cio' che NON si rifiuta: le altre scritture su una riga
+                  --    gia' li'. Rifiutare tutto impedirebbe perfino di
+                  --    correggere il motivo_sospeso di una riga annullata — e,
+                  --    dalla quarta mossa in poi, impedirebbe di DIRE che cosa
+                  --    ne e' stato di quel denaro (sospenderla, scartarla),
+                  --    che e' l'unica cosa che resta da fare.
+                  -- =========================================================
+
+                  v_da_guardare := CASE
+                      WHEN TG_OP = 'INSERT' THEN NEW.attivo IS TRUE
+                      -- riattivazione, oppure spostamento sotto un'altra distinta
+                      ELSE (NEW.attivo IS TRUE AND OLD.attivo IS NOT TRUE)
+                        OR (NEW.contabile_id IS DISTINCT FROM OLD.contabile_id)
+                  END;
+
+                  -- ⭐ QUARTA MOSSA. La riga non si sposta e non si riattiva:
+                  --    cambia stato, e il nuovo stato la rende PRONTA DA
+                  --    REGISTRARE. Sotto una distinta finale quel denaro non
+                  --    verrebbe mai registrato — il posting parte dalla testata,
+                  --    e una CHIUSA la rifiuta.
+                  -- ⚠️ La domanda si fa al CATALOGO (`is_postabile`), non a un
+                  --    elenco di stati scritto qui: e' la stessa scelta di
+                  --    `richiede_abbinamento` sul guard gemello.
+                  -- ℹ️ La lettura si paga solo se le altre tre mosse non hanno
+                  --    gia' deciso, e solo su un cambio di stato vero.
+                  IF NOT v_da_guardare
+                     AND TG_OP = 'UPDATE'
+                     AND NEW.attivo IS TRUE
+                     AND NEW.stato_id IS DISTINCT FROM OLD.stato_id
+                  THEN
+                      SELECT s.is_postabile
+                        INTO v_diventa_pronta
+                        FROM pagamenti.vendite_contabili_righe_stati s
+                       WHERE s.id = NEW.stato_id;
+
+                      v_da_guardare := COALESCE(v_diventa_pronta, false);
+                  END IF;
+
+                  IF NOT v_da_guardare THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ⚠️ Quando pagamenti avra' la RLS (slice 3, S3-5) questa
+                  --    lettura va riguardata: un guard che legge sotto RLS non
+                  --    distingue «non lo vedo» da «e' di un altro».
+                  SELECT s.is_final, s.codice_interno, c.codice
+                    INTO v_is_final, v_stato, v_codice
+                    FROM pagamenti.vendite_contabili c
+                    JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
+                   WHERE c.id = NEW.contabile_id;
+
+                  IF COALESCE(v_is_final, false) IS FALSE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale',
+                      'E_RIGA_CONTABILE_DISTINTA_FINALE',
+                      jsonb_build_object(
+                          'contabile_riga_id', NEW.id,
+                          'contabile_id',      NEW.contabile_id,
+                          'contabile_codice',  v_codice,
+                          'stato_distinta',    v_stato,
+                          'stato_riga_id',     NEW.stato_id,
+                          'diventa_pronta',    COALESCE(v_diventa_pronta, false),
+                          'operazione',        TG_OP
+                      ),
+                      NEW.tx_id,
+                      COALESCE(v_codice, NEW.contabile_id::text),
+                      CASE WHEN v_stato = 'ANNULLATA' THEN 'annullata' ELSE 'chiusa' END
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale()
+              IS 'Porta d''INGRESSO del difetto C-5: nessuna riga contabile utile sotto una distinta in stato finale (CHIUSA o ANNULLATA), dove non entrerebbe in nessun conto e non verrebbe mai registrata. ⚠️ QUATTRO mosse: nascere li'', esserci RIATTIVATA, esserci SPOSTATA da un''altra distinta, e — dal 2026-08-22, lotto 4 — DIVENTARCI PRONTA DA REGISTRARE restando dov''e''. ⭐ La quarta e'' nata con la madre del posting: la madre chiude la distinta appena ha registrato (la chiusura e'' la conseguenza del registrare, decisione di Tid), e sotto possono restare righe DA_ABBINARE — che il guard di chiusura NON considera un ostacolo, deliberatamente, o la distinta non si chiuderebbe mai. Abbinarne una il giorno dopo produrrebbe denaro dichiarato e pronto sotto una distinta che il posting rifiuta perche'' finale. ⚠️ Si vieta SOLO l''ingresso in uno stato is_postabile: sospendere, scartare o correggere il motivo di una riga che sta li'' resta possibile, ed e'' deliberato — dire che cosa ne e'' stato di quel denaro deve restare l''ultima cosa che si puo'' fare. ⚠️ Non blocca il posting per due ragioni indipendenti: POSTATA non e'' uno stato postabile, e la distinta e'' ancora VALIDATA quando la madre muove le righe. ⚠️ La domanda «questo stato e'' pronto?» si fa al catalogo (is_postabile) e non a un elenco scritto dentro il guard. Gemello d''uscita: pagamenti.trgfn_vendite_contabili_guard_chiusura (E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: tornare alle tre mosse riapre
+              --    la porta che la madre del posting rende raggiungibile, e il
+              --    danno (denaro pronto sotto una distinta che non si registra
+              --    piu') non si vede finche' qualcuno non legge i saldi.
+              SELECT 1;

@@ -12,7 +12,7 @@ from typing import Any, NoReturn
 from django.conf import settings
 from django.db import connection
 
-from apps.core.services.db_error_fields import structured_db_error_code
+from apps.core.services.db_error_fields import Bersaglio, diagnostica_db
 from apps.core.services.service_errors import ServiceError
 
 # Helper unico errori: validazione, raise strutturato e logging opzionale su DB.
@@ -31,6 +31,8 @@ class ErrorManager:
         hint: str | None = None,
         retryable: bool = False,
         context: dict[str, Any] | None = None,
+        fields: tuple[str, ...] | None = None,
+        targets: tuple[Bersaglio, ...] | None = None,
         area: str = "backend",
         function_name: str = "django_service",
         log_to_db: bool = False,
@@ -51,6 +53,10 @@ class ErrorManager:
             hint=hint,
             retryable=retryable,
             context=context,
+            # I due canali strutturati del database. Chi traduce un errore DB li
+            # legge da `diagnostica_db` e li passa qui: senza, si fermano al log.
+            fields=fields,
+            targets=targets,
         )
         if cause is not None:
             raise service_error from cause
@@ -114,6 +120,11 @@ class ErrorManager:
         log_to_db: bool = True,
     ) -> NoReturn:
         msg = str(exc)
+        # ⭐ UNA lettura sola della diagnostica (BB `diagnostica_db`, 2026-08-24).
+        #    Prima di allora questo metodo leggeva il solo codice e buttava via
+        #    il resto: `hint`, il campo da correggere e il bersaglio non
+        #    arrivavano mai all'envelope da questa strada.
+        diag = diagnostica_db(exc, text=msg)
         matched_code: str | None = None
         # Campo strutturato per primo, ma SOLO se il codice e' fra quelli che il
         # chiamante ha dichiarato di conoscere: `message` vs `fallback_message`
@@ -122,7 +133,7 @@ class ErrorManager:
         # il messaggio del caso riconosciuto per un errore che non aspettava.
         # L'insieme degli esiti resta identico: cambia solo che il match non
         # dipende piu' da come e' scritto il testo dell'eccezione.
-        structured = structured_db_error_code(exc)
+        structured = diag.codice_strutturato
         if structured is not None and any(c == structured for c, _ in known_markers):
             matched_code = structured
         # ⛔ NON DUPLICARE IL DIARIO — decisione DB+BE del 2026-08-19.
@@ -136,7 +147,7 @@ class ErrorManager:
         # errori PG veri — violazioni di vincolo, timeout — nel diario NON ci
         # sono. Se il backend smettesse di scriverli si perderebbero del tutto:
         # li' la riga la scriviamo noi, e non e' un doppione.
-        gia_scritto_dal_database = structured is not None
+        gia_scritto_dal_database = diag.gia_scritto_dal_database
         for code_candidate, markers in known_markers:
             if matched_code is not None:
                 break
@@ -153,7 +164,14 @@ class ErrorManager:
                 else fallback_message
             ),
             detail=msg,
+            # ⚠️ `hint` e' la SOLUZIONE che il team DB scrive a catalogo per ogni
+            #    codice, e il `message` qui sopra e' del CHIAMANTE: sono due cose
+            #    diverse e non si scavalcano. Fino al 2026-08-24 da questa strada
+            #    la soluzione non usciva affatto.
+            hint=diag.hint,
             context=context,
+            fields=diag.fields,
+            targets=diag.bersagli or None,
             cause=exc,
             log_to_db=log_to_db and not gia_scritto_dal_database,
             function_name=function_name,

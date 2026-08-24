@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_admin_merge_stradario.md" %}
 # ⚙️ Funzione `fn_admin_merge_stradario`
 
 ```sql

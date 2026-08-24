@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RATA ARRIVA ANCHE SUL MOVIMENTO — passo S2-2 (lotto 5)
+#   pagamenti.vendite_movimenti.scadenza_id
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.2 S2-2
+#
+# ── ⭐ PERCHE' LA COLONNA STA ANCHE QUI, SE C'E' GIA' SULLA RIGA ───────
+#   Perche' il **movimento e' il fatto**, e i fatti si leggono da soli. La riga
+#   contabile e' il documento di lavoro da cui il movimento nasce; il movimento
+#   e' cio' che resta. Chi somma gli incassi di una rata deve poterlo fare
+#   **senza passare dalla riga** — che un domani potrebbe essere disattivata,
+#   spostata, o vivere sotto una distinta annullata.
+#
+#   ⚠️ E non e' una seconda sorgente di verita': il valore **non lo scrive il
+#   chiamante**, lo copia il trigger di mirror dalla riga (changeSet
+#   `20260822-08`), esattamente come gia' fa per `fattura_id`,
+#   `billing_account_id` e `contabile_id`. Passarne uno diverso e' un errore, e
+#   il mirror lo rifiuta gia' oggi per gli altri tre.
+#
+#   ⭐ E' la stessa forma dei tre campi che il mirror copia da sempre: **una
+#   colonna in piu' in un elenco che esiste**, non un meccanismo nuovo.
+#
+# ── ⚠️ FACOLTATIVA, come sulla riga ────────────────────────────────────
+#   Un movimento che nasce da una riga senza rata non ha rata. Il fondo fattura
+#   e' il caso vivo: salda per trasferimento e non si riferisce a nessuna
+#   scadenza.
+#
+# ── ⚠️ E LA FK PUNTA A UNA TABELLA CON LA RLS ─────────────────────────
+#   Come per la riga: l'integrita' referenziale attraversa la row security
+#   (PostgreSQL esegue i controlli RI fuori da essa), quindi si comporta
+#   identica per l'operatore e per il canale di sistema.
+#
+# Verifica: db/pgtap/pagamenti/test-abbinamento-rata.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-05-alter-vendite-movimenti-scadenza-mctit.yaml
+
+  - changeSet:
+      id: 20260822-05-alter-vendite-movimenti-scadenza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.vendite_movimenti.scadenza_id: la rata arriva anche sul movimento, perche'
+        il movimento e' il fatto e i fatti si leggono da soli — chi somma gli incassi di una
+        rata non deve passare dalla riga, che puo' essere disattivata o vivere sotto una
+        distinta annullata. Non e' una seconda sorgente di verita': il valore lo copia il
+        trigger di mirror dalla riga, come gia' fa per fattura_id, billing_account_id e
+        contabile_id. Una colonna in piu' in un elenco che esiste, non un meccanismo nuovo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_movimenti
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+                columnName: scadenza_id
+            - not:
+                - columnExists:
+                    schemaName: pagamenti
+                    tableName: vendite_movimenti
+                    columnName: scadenza_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_movimenti
+                ADD COLUMN scadenza_id bigint;
+
+              ALTER TABLE pagamenti.vendite_movimenti
+                ADD CONSTRAINT fk_vendite_movimenti_scadenza
+                FOREIGN KEY (scadenza_id)
+                REFERENCES vendite.fatture_scadenze (id)
+                ON UPDATE NO ACTION
+                ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN pagamenti.vendite_movimenti.scadenza_id IS
+                'La RATA a cui questo movimento e'' imputato (vendite.fatture_scadenze). ⭐ Sta anche qui, e non solo sulla riga contabile, perche'' il MOVIMENTO E'' IL FATTO: chi somma gli incassi di una rata deve poterlo fare senza passare dalla riga, che puo'' essere disattivata, spostata o vivere sotto una distinta annullata. ⚠️ NON e'' una seconda sorgente di verita'': il valore non lo scrive il chiamante, lo copia il trigger pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga dalla riga citata in contabile_riga_id — esattamente come per fattura_id, billing_account_id e contabile_id, e con lo stesso rifiuto se il chiamante ne passa uno diverso. ⚠️ Facoltativa: un movimento che nasce da una riga senza rata non ha rata, e la riga del fondo fattura e'' il caso vivo (salda per trasferimento, non si riferisce a nessuna scadenza).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pagamenti.vendite_movimenti
+                DROP CONSTRAINT fk_vendite_movimenti_scadenza;
+
+              ALTER TABLE pagamenti.vendite_movimenti
+                DROP COLUMN scadenza_id;

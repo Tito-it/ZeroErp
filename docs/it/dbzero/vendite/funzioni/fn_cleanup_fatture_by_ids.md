@@ -19,6 +19,7 @@ DECLARE
   v_deleted_righe     integer := 0;
   v_updated_attivita  integer := 0;
   v_riemesse_attivita integer := 0;
+  v_motivi_rettifiche jsonb;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -41,6 +42,49 @@ BEGIN
   IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
     RETURN QUERY SELECT 0, 0, 0, 0;
     RETURN;
+  END IF;
+
+  -- ══ GUARD FAIL-LOUD (2026-08-22) ═════════════════════════════
+  -- ⛔ Una riga di fattura gia' RETTIFICATA non si cancella: su di
+  --    essa e' gia' stato registrato un accredito, e
+  --    `fattura_riga_rettificata_id` e' il SECONDO TETTO di quel
+  --    accredito (20260818-27 punto 2) piu' il DatiFattureCollegate
+  --    della TD04. Azzerare il legame per far passare la pulizia
+  --    toglierebbe quel tetto proprio mentre le quantita' vengono
+  --    ri-derivate: non si distrugge la prova per far riuscire
+  --    l'operazione.
+  --
+  -- ⭐ PERCHE' QUI E NON SOLO NELLE fn_check_*. Le porte sono TRE, e
+  --    le loro fn_check_* servono all'INTERFACCIA — spiegano prima
+  --    del click. Questo e' l'unico punto che tutte e tre
+  --    attraversano: e' il presidio della QUARTA porta, quella che
+  --    nessuno ha ancora scritto. Il commento di questa funzione la
+  --    chiedeva gia', a proposito di fatture_rettifiche.
+  --
+  -- ⚠️ Senza, il difetto non e' un errore di dominio ma una
+  --    violazione di chiave esterna GREZZA (23503) dentro una
+  --    funzione che i suoi chiamanti danno per infallibile —
+  --    misurato il 2026-08-22 su test-riporta-lotto-a-draft-v1.
+  --
+  -- ⚠️ Il guard legge sotto ROW SECURITY (questa funzione e'
+  --    SECURITY INVOKER). Un chiamante fuori perimetro potrebbe non
+  --    vedere le righe che rettificano e passare di qui: in quel
+  --    caso pero' NON si perde niente in silenzio, perche' e' la FK
+  --    a fermare la cancellazione — si torna al 23503 di prima, che
+  --    e' il comportamento attuale, non un peggioramento.
+  v_motivi_rettifiche := script.fn_check_fatture_con_rettifiche(p_fatture_ids);
+
+  IF jsonb_array_length(v_motivi_rettifiche) > 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite',
+      'fn_cleanup_fatture_by_ids',
+      'E_FATTURE_RIGHE_RETTIFICATE',
+      jsonb_build_object(
+        'detail',      'Righe di fattura gia rettificate: pulizia rifiutata',
+        'fatture_ids', to_jsonb(p_fatture_ids),
+        'motivi',      v_motivi_rettifiche),
+      NULL::uuid,
+      (v_motivi_rettifiche -> 0 ->> 'dettaglio'));
   END IF;
 
   PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);

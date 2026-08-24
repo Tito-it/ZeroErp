@@ -14,7 +14,7 @@ La trigger function **`anagrafiche.trgfn_soggetti_conti_bancari_guard()`** appli
 1. **Impedire** la creazione/modifica di un legame verso un conto bancario **non attivo**.
 2. **Bloccare** incoerenze sulle date di validità, assicurando che l’intervallo temporale sia corretto.
 
-In caso di violazione, la funzione genera un **errore applicativo** tramite `anagrafiche.fn_log_and_raise_error`.
+In caso di violazione, la funzione genera un **errore applicativo** tramite `script.fn_log_and_raise_error`.
 
 ---
 
@@ -106,7 +106,7 @@ Errori gestiti:
 
 Handler utilizzato:
 
-* `anagrafiche.fn_log_and_raise_error(...)`
+* `script.fn_log_and_raise_error(...)`
 
 ---
 
@@ -165,4 +165,4 @@ Inoltre, nel payload della violazione date la chiave `tabella` è impostata a `a
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function (guard/consistency)
 * **Tabelle coinvolte:** conti bancari + tabella legame
-* **Meccanismo errore:** `anagrafiche.fn_log_and_raise_error`
+* **Meccanismo errore:** `script.fn_log_and_raise_error`

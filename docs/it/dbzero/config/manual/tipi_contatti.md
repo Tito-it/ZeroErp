@@ -9,7 +9,7 @@ Approfondimento tabelle:
 Approfondimenti funzioni:   
 >
 [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)     
-> [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)     
 
 ---
 ### 🎯 Scopo Principale

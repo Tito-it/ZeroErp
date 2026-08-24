@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/note_stili.md" %}
 # 📚 Tabella `note_stili`
 
 ## 🗂️ Campi principali

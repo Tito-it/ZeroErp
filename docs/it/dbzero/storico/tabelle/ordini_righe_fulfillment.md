@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/ordini_righe_fulfillment.md" %}
 # 📚 Tabella `ordini_righe_fulfillment`
 
 ## 🗂️ Campi principali

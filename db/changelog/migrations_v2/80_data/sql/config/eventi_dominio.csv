@@ -1,0 +1,6 @@
+codice,dominio,etichetta_key,obsoleto_dal,note
+PIPELINE_STARTED,PIPELINE,config.eventi_dominio.pipeline_started,NULL,"Avvio di un giro di pipeline su un lotto. E' l'ancora del «job corrente» in vendite.fn_list_lotto_segnalazioni."
+STEP_COMPLETED,PIPELINE,config.eventi_dominio.step_completed,NULL,NULL
+PIPELINE_COMPLETED,PIPELINE,config.eventi_dominio.pipeline_completed,NULL,NULL
+PIPELINE_ERROR,PIPELINE,config.eventi_dominio.pipeline_error,NULL,NULL
+EMITTIBILITA_FALLITA,COMMESSE,config.eventi_dominio.emittibilita_fallita,NULL,"⚠️ Con BE-4 diventa PER COMMESSA (entity_type COMMESSA) invece di un evento aggregato con dentro una lista di id. E ⛔ va scritto con severity WARN, non WARNING: il valore sbagliato lo ha reso non scrivibile per mesi (BE-1)."

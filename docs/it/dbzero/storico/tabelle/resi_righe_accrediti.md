@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/resi_righe_accrediti.md" %}
 # 📚 Tabella `resi_righe_accrediti`
 
 ## 🗂️ Campi principali

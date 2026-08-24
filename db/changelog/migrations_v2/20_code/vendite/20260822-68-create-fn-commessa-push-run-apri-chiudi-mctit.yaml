@@ -1,0 +1,290 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GIRO DI PUSH SI APRE E SI CHIUDE — lotto L5, seconda meta'
+#   vendite.fn_start_commessa_push_run · vendite.fn_close_commessa_push_run
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §5-bis (richiesta del backend, 2026-08-22) · Decisioni D-3 e D-7
+#
+# ── IL DIFETTO, MISURATO DAL BACKEND SUL CORPO VIVO ────────────────
+#   Il changeSet `20260822-62` ha allargato `chk_commesse_push_log_stato` a
+#   quattro valori, `IN_ESECUZIONE` compreso, perche' la riga del giro possa
+#   nascere in TESTA. ⛔ Ma l'unica funzione che scrive su quella tabella —
+#   `fn_log_commessa_push_run` — ha un guard suo, che quel valore lo **rifiuta**:
+#
+#     IF v_stato NOT IN ('COMPLETATO', 'PARZIALE', 'ERRORE') THEN ... solleva
+#
+#   ⭐ E' il caso in cui **il vincolo di tabella e la funzione che ci scrive
+#   dicono due cose diverse**: la migrazione passa, e a fallire e' la prima
+#   scrittura. Non c'e' nessun cancello che lo veda — il CHECK non sa chi lo
+#   scrive, e la funzione non legge il CHECK.
+#
+# ── ⭐ LA RISPOSTA: LA COPPIA CHE QUESTA CASA HA GIA' ──────────────
+#   Non si allarga la funzione esistente: si segue il pattern dei `task_runs` —
+#   `fn_start_lotto_task_run` / `fn_complete_...` / `fn_fail_...` — dove aprire
+#   e chiudere sono **due verbi diversi** perche' sono due momenti diversi.
+#
+#     fn_start_commessa_push_run(dry_run, source_types, correlation_id) -> id
+#         INSERT in testa, stato IN_ESECUZIONE, run_at = now()
+#     fn_close_commessa_push_run(id, stato, risultato, durata_ms, source_types)
+#         UPDATE della riga aperta: esito finale, risultato, durata
+#
+#   ⭐ Il guadagno che non era nel piano: un push **interrotto** oggi non lascia
+#   traccia — muore e sparisce. Con la riga aperta in testa, quella rimasta a
+#   `IN_ESECUZIONE` e' l'unica prova che qualcosa e' partito e non e' tornato.
+#   ⚠️ E vale per **meta'**: `pr_run_commesse_push_one` (il push singolo dal
+#   drawer) avvolge il giro in una `transaction.atomic()` esterna, quindi li' la
+#   riga viene rollata insieme al resto. Il guadagno e' del **batch**, che gira
+#   in autocommit. Detto adesso, non scoperto dopo.
+#
+# ── ⛔ I DUE RIFIUTI DELLA CHIUSURA, E PERCHE' SONO DUE ────────────
+#   1. **`IN_ESECUZIONE` non e' un esito.** Un giro «chiuso in esecuzione»
+#      resterebbe aperto per sempre agli occhi di chiunque lo conti — ed e'
+#      peggio di una chiusura mancata, perche' assomiglia a un giro interrotto
+#      senza esserlo. Lo stesso guard intercetta il valore vuoto e quello
+#      sconosciuto: hanno la stessa origine, chi chiude non sa come e' andata.
+#   2. **Una riga che non e' aperta non si chiude.** O non esiste, o qualcuno
+#      l'ha gia' chiusa; in entrambi i casi il chiamante ha perso il filo della
+#      propria corsa. Sovrascrivere un esito gia' registrato perderebbe la
+#      storia di **due** corse, non di una.
+#
+#   ⚠️ Le classi: entrambi `TECNICO`. Quel dato non lo produce nessuna persona
+#   in un form — lo produce un programma che sbaglia — e su un TECNICO la
+#   chiave `campo` non entra nel contesto: non c'e' nessun campo da accendere.
+#   ⛔ E non si riusa `E_PARAMETRO_INVALIDO`: e' uno split rimandato, un debito
+#   e non una sede (AGENTS.md; precedenti `E_VENDITE_PRICING_ESITO_ASSENTE` e
+#   `E_PAGAMENTI_CHIAMATA_NON_VALIDA`).
+#
+# ── ⭐ UNA SOLA SEDE PER L'ELENCO DEGLI ESITI ──────────────────────
+#   `v_finali` e' dichiarata una volta: il guard la legge e il messaggio la
+#   compone. Scrivere quell'elenco due volte e' **esattamente** il difetto da
+#   cui nasce questo changeSet. ⚠️ Resta un secondo elenco nel CHECK di tabella,
+#   che pero' e' un insieme **diverso** (contiene anche IN_ESECUZIONE): la
+#   relazione fra i due la asserisce il pgTAP, che rilegge `pg_get_constraintdef`
+#   — cosi' il giorno che qualcuno aggiunge un quinto stato, a dirlo e' un test
+#   e non la prima scrittura.
+#
+# ── SULLA DESCRIZIONE DELLA TABELLA ────────────────────────────────
+#   Diceva «Log append-only … nessuno stato inter-run». Dal 62 lo stato
+#   inter-run esiste e la chiusura e' un UPDATE: la frase descriveva un
+#   contratto che non c'e' piu', ed e' la prima cosa che legge chi apre la doc
+#   auto-generata. Si riscrive qui, dove il contratto nuovo prende forma.
+#
+# Dipendenze: 20260822-62 (colonne e stato) · i tre codici a CSV (80_data).
+# Consumo: BE-2, BE-3b. Verifica: db/pgtap/vendite/test-commesse-push-log-function-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260822-68-create-fn-commessa-push-run-apri-chiudi-mctit.yaml
+
+  - changeSet:
+      id: 20260822-68-create-fn-commessa-push-run-apri-chiudi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La coppia apri/chiudi del giro di push commesse, sul pattern dei task_runs:
+        fn_start_commessa_push_run crea la riga in TESTA (IN_ESECUZIONE, correlation_id),
+        fn_close_commessa_push_run la chiude con l'esito. ⛔ Nasce da un difetto misurato
+        dal backend: il changeSet 62 aveva allargato il CHECK a quattro stati, ma la
+        funzione che scrive quella tabella ha un guard suo che IN_ESECUZIONE lo rifiuta —
+        vincolo e funzione dicevano due cose diverse, e a fallire sarebbe stata la prima
+        scrittura. Due rifiuti alla chiusura (stato non finale, riga non aperta), entrambi
+        TECNICO. ⭐ E un giro interrotto smette di sparire.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_push_log
+                columnName: correlation_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_constraint
+                   WHERE conrelid = 'vendite.commesse_push_log'::regclass
+                     AND conname  = 'chk_commesse_push_log_stato'
+                     AND pg_get_constraintdef(oid) LIKE '%IN_ESECUZIONE%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) L'APERTURA — la riga del giro nasce PRIMA che il giro produca qualcosa
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_start_commessa_push_run(
+                  p_dry_run        vendite.commesse_push_log.dry_run%TYPE        DEFAULT false,
+                  p_source_types   vendite.commesse_push_log.source_types%TYPE   DEFAULT NULL,
+                  p_correlation_id vendite.commesse_push_log.correlation_id%TYPE DEFAULT NULL
+              )
+              RETURNS vendite.commesse_push_log.id%TYPE
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_id vendite.commesse_push_log.id%TYPE;
+              BEGIN
+                  -- Scopo: apre il giro di push commesse — una riga in stato IN_ESECUZIONE,
+                  --        con l'ora di partenza e il filo del giro — e ne restituisce
+                  --        l'identificativo, che il chiamante conserva per la chiusura.
+                  --
+                  -- ⭐ NESSUN GUARD, ed e' una decisione. L'apertura di un diario non ha
+                  --    niente da rifiutare: non cita nessuna entita' esterna, e ogni valore
+                  --    che riceve e' facoltativo. Un guard qui potrebbe solo impedire a un
+                  --    giro di partire per un difetto dell'appunto che lo registra —
+                  --    esattamente cio' che la D-12 del cantiere vieta.
+                  --
+                  -- ⚠️ p_correlation_id resta NULLABLE e non si genera d'ufficio: un uuid
+                  --    coniato qui non lo conoscerebbe nessun altro registro, quindi non
+                  --    cucirebbe niente. Un buco dichiarato si conta; un filo che non lega
+                  --    sembra un filo.
+                  INSERT INTO vendite.commesse_push_log (
+                      dry_run, source_types, risultato, stato, correlation_id
+                  ) VALUES (
+                      COALESCE(p_dry_run, FALSE), p_source_types, '{}'::jsonb,
+                      'IN_ESECUZIONE', p_correlation_id
+                  )
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_start_commessa_push_run(boolean, text[], uuid)
+              IS 'Apre un giro di push commesse: INSERT della riga in TESTA alla corsa, stato IN_ESECUZIONE, run_at = now(). Restituisce l''id, che va passato a vendite.fn_close_commessa_push_run. ⭐ Il motivo per cui la riga nasce all''inizio e non alla fine: prima l''evento d''avvio citava entity_id = 0, che non era un segnaposto ma un id CHE NON ESISTEVA ANCORA. E un giro interrotto smette di sparire — la riga rimasta IN_ESECUZIONE e'' l''unica prova che qualcosa e'' partito e non e'' tornato. ⚠️ Il guadagno vale sul batch, che gira in autocommit: nel push singolo dal drawer la transaction.atomic() esterna rolla anche questa riga. ⛔ Nessun guard: un diario che si apre non ha niente da rifiutare (D-12). Brief: brief-db-event-log-scope-e-riga-parlante, D-3 e D-7.';
+
+              -- ============================================================
+              -- 2) LA CHIUSURA — l'esito, e i due modi in cui si sbaglia
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_close_commessa_push_run(
+                  p_id           vendite.commesse_push_log.id%TYPE,
+                  p_stato        vendite.commesse_push_log.stato%TYPE,
+                  p_risultato    vendite.commesse_push_log.risultato%TYPE    DEFAULT NULL,
+                  p_durata_ms    vendite.commesse_push_log.durata_ms%TYPE    DEFAULT NULL,
+                  p_source_types vendite.commesse_push_log.source_types%TYPE DEFAULT NULL
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- ⭐ UNA SOLA SEDE per l'elenco: il guard lo legge, e il messaggio lo
+                  --   compone da qui. Scriverlo due volte e' il difetto che ha prodotto
+                  --   questo changeSet — il CHECK di tabella ammetteva quattro valori e la
+                  --   funzione che ci scriveva ne ammetteva tre, e nessuno dei due lo sapeva.
+                  --   ⚠️ Sono un SOTTOINSIEME del vocabolario di chk_commesse_push_log_stato,
+                  --   che ammette anche IN_ESECUZIONE: quello e' lo stato di un giro aperto,
+                  --   non un esito. La relazione fra i due insiemi e' asserita dal pgTAP
+                  --   test-commesse-push-log-function-v1, che rilegge il CHECK.
+                  v_finali CONSTANT text[] := ARRAY['COMPLETATO', 'PARZIALE', 'ERRORE'];
+                  v_stato  vendite.commesse_push_log.stato%TYPE;
+                  v_prima  vendite.commesse_push_log.stato%TYPE;
+              BEGIN
+                  -- Scopo: chiude il giro aperto da vendite.fn_start_commessa_push_run —
+                  --        esito, risultato per handler e durata — e rifiuta le due forme in
+                  --        cui un chiamante puo' aver perso il filo della propria corsa.
+
+                  IF p_id IS NULL OR p_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_commessa_push_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_id', 'valore', p_id),
+                          NULL::uuid,
+                          'vendite.fn_close_commessa_push_run',
+                          'p_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  IF p_durata_ms IS NOT NULL AND p_durata_ms < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_commessa_push_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_durata_ms', 'valore', p_durata_ms),
+                          NULL::uuid,
+                          'vendite.fn_close_commessa_push_run',
+                          'p_durata_ms non puo'' essere negativo');
+                  END IF;
+
+                  v_stato := upper(btrim(COALESCE(p_stato, '')));
+
+                  -- ── GUARD 1: IN_ESECUZIONE non chiude un giro ────────────────────────
+                  --   Un giro «chiuso in esecuzione» e' una riga che nessuno riaprira' mai e
+                  --   che ogni conteggio leggera' come aperta per sempre: e' peggio di una
+                  --   chiusura mancata, perche' assomiglia a un giro interrotto e non lo e'.
+                  --   Lo stesso guard intercetta il valore vuoto e quello sconosciuto: hanno
+                  --   la stessa origine — chi chiude non sa come e' andata.
+                  IF v_stato <> ALL (v_finali) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_commessa_push_run', 'E_COMMESSA_PUSH_RUN_STATO_NON_FINALE',
+                          jsonb_build_object('push_log_id', p_id, 'stato', p_stato),
+                          NULL::uuid,
+                          COALESCE(NULLIF(v_stato, ''), '(vuoto)'),
+                          array_to_string(v_finali, ', '));
+                  END IF;
+
+                  -- ⚠️ Il filtro sullo stato sta nel WHERE e non in un SELECT ... FOR UPDATE
+                  --   che precede: cosi' due chiusure in corsa non possono vincere entrambe.
+                  --   Il perdente non trova la riga e finisce nel guard 2, che e' la verita'.
+                  --   ⭐ E i COALESCE fanno la loro parte: chi chiude senza ripetere gli
+                  --   handler non cancella quelli dichiarati all'apertura.
+                  UPDATE vendite.commesse_push_log l
+                     SET stato        = v_stato,
+                         risultato    = COALESCE(p_risultato, l.risultato),
+                         durata_ms    = COALESCE(p_durata_ms, l.durata_ms),
+                         source_types = COALESCE(p_source_types, l.source_types)
+                   WHERE l.id = p_id
+                     AND l.stato = 'IN_ESECUZIONE';
+
+                  -- ── GUARD 2: si chiude un giro che non e' aperto ─────────────────────
+                  --   Due casi, un codice: la riga non esiste, oppure qualcuno l'ha gia'
+                  --   chiusa. Sono la stessa cosa per chi legge — il chiamante ha perso il
+                  --   filo della propria corsa — e il valore nel messaggio dice quale dei
+                  --   due. ⛔ Non si sovrascrive un esito gia' registrato: verrebbe da
+                  --   un'altra corsa, e a perdersi sarebbe la storia di entrambe.
+                  IF NOT FOUND THEN
+                      SELECT l.stato INTO v_prima
+                        FROM vendite.commesse_push_log l
+                       WHERE l.id = p_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_close_commessa_push_run', 'E_COMMESSA_PUSH_RUN_NON_APERTO',
+                          jsonb_build_object('push_log_id', p_id, 'stato_corrente', v_prima),
+                          NULL::uuid,
+                          p_id::text,
+                          CASE WHEN v_prima IS NULL
+                               THEN 'non esiste'
+                               ELSE format('e'' gia'' chiuso in stato %s', v_prima)
+                          END);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_close_commessa_push_run(bigint, character varying, jsonb, integer, text[])
+              IS 'Chiude il giro di push aperto da vendite.fn_start_commessa_push_run: esito finale, risultato per handler, durata. ⛔ Due rifiuti, ed erano il punto della richiesta del backend: (1) IN_ESECUZIONE non e'' un esito — un giro «chiuso in esecuzione» resterebbe aperto per sempre agli occhi di chi lo conta; (2) una riga che non e'' IN_ESECUZIONE non si chiude — o non esiste, o e'' gia'' chiusa, e sovrascriverne l''esito perderebbe la storia di due corse. Entrambi TECNICO: quel dato lo produce solo un chiamante che ha perso il filo. ⭐ L''elenco degli esiti finali sta in UNA sede dentro la funzione, e il messaggio lo compone da li'': il difetto da cui nasce questo changeSet e'' proprio un CHECK di tabella e un guard di funzione che dicevano cose diverse senza saperlo. ⚠️ I COALESCE non cancellano cio'' che l''apertura aveva dichiarato: chi chiude senza ripetere gli handler li conserva.';
+
+              -- ============================================================
+              -- 3) LA DESCRIZIONE DELLA TABELLA — non descriveva piu' cio' che c'e'
+              -- ============================================================
+              --   Diceva «Log append-only dei run orchestratore push commesse; nessuno stato
+              --   inter-run». Dal changeSet 62 lo stato inter-run ESISTE (IN_ESECUZIONE) e
+              --   la riga si aggiorna alla chiusura: la vecchia frase e' rimasta a descrivere
+              --   un contratto che non c'e' piu', ed e' la prima cosa che legge chi apre la
+              --   doc auto-generata.
+              COMMENT ON TABLE vendite.commesse_push_log IS
+                  'Registro dei giri dell''orchestratore push commesse. ⭐ Dal 2026-08-22 la riga nasce in TESTA al giro (vendite.fn_start_commessa_push_run, stato IN_ESECUZIONE) e si chiude alla fine (vendite.fn_close_commessa_push_run): prima veniva creata a fine corsa, ed e'' il motivo per cui l''evento d''avvio citava entity_id = 0 — un id che non esisteva ancora. Ne discendono tre cose: l''evento d''avvio ha un''entita'' vera, il correlation_id del giro ha dove stare prima che il giro produca qualcosa, e un giro INTERROTTO lascia una traccia (la riga rimasta IN_ESECUZIONE). ⚠️ Non e'' piu'' append-only: la chiusura e'' un UPDATE della stessa riga, e non c''e'' nessun veto che lo impedisca. ⚠️ E lo stato inter-run ora ESISTE: chi conta i giri deve decidere cosa farne, perche'' IN_ESECUZIONE non e'' un esito.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_close_commessa_push_run(
+                  bigint, character varying, jsonb, integer, text[]);
+              DROP FUNCTION IF EXISTS vendite.fn_start_commessa_push_run(boolean, text[], uuid);
+              COMMENT ON TABLE vendite.commesse_push_log IS
+                  'Log append-only dei run orchestratore push commesse; nessuno stato inter-run.';

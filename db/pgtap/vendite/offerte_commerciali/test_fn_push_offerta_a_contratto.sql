@@ -21,7 +21,11 @@
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(9);
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
+SELECT plan(10);
 
 -- ============================================================
 -- Setup fixture
@@ -295,6 +299,35 @@ SELECT throws_ok(
     ),
     'P0001', NULL,
     '9) Push da ACCETTATA con ordine gia generato -> throws E_OFFERTA_ORDINE_GIA_GENERATO (mutua esclusivita)'
+);
+
+-- ============================================================
+-- 10) ⭐ IL BERSAGLIO — e NON e' l'offerta.
+--     Il rifiuto di idempotenza deve dire dove andare, e dove andare e' il
+--     CONTRATTO gia' generato: l'offerta l'operatore ce l'ha davanti, e' da
+--     li' che ha premuto il pulsante.
+--     ⚠️ Il verbo in un'istruzione separata dall'asserzione, come sempre.
+--     Brief: brief-db-bersaglio-errore §6 L6.
+-- ============================================================
+CREATE OR REPLACE FUNCTION pg_temp.push_off_bersaglio(p_offerta_id bigint)
+RETURNS text AS $fn$
+-- ⚠️ `text` esplicito: e' un canale dell'eccezione, non il valore di una colonna.
+DECLARE v_bers text;
+BEGIN
+  PERFORM vendite.fn_push_offerta_a_contratto(p_offerta_id, NULL::bigint);
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_bers = PG_DATATYPE_NAME;
+  RETURN COALESCE(v_bers, '');
+END $fn$ LANGUAGE plpgsql;
+
+CREATE TEMP TABLE tmp_push_bersaglio AS
+SELECT pg_temp.push_off_bersaglio((SELECT id FROM tmp_push_offerta_acc)) AS bersaglio;
+
+SELECT is(
+    (SELECT bersaglio FROM tmp_push_bersaglio),
+    'CONTRATTO:' || (SELECT contratto_id FROM tmp_push_contratto_id)::text,
+    '10) il rifiuto porta il bersaglio sul CONTRATTO gia'' generato, non sull''offerta'
 );
 
 SELECT * FROM finish();

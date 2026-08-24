@@ -5,7 +5,7 @@
 **Tabelle correlate:**
 >
 [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/views/risorse_umane_auth_user)
 > [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
 >
 **Funzioni correlate:**

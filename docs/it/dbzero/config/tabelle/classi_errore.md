@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/classi_errore.md" %}
 # 📚 Tabella `classi_errore`
 
 > 📝 **Descrizione**

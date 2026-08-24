@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTO DEVE ESSERE UN CONTO DI INCASSO — passo S3-1 (lotto 6)
+#   pagamenti.trgfn_enti_incasso_guard_conto_incasso
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-1/S3-2 · Decisione: brief madre D5
+#
+# ── 🔴 PERCHE' UN GUARD, E NON BASTA LA FK ────────────────────────────
+#   La FK `fk_enti_incasso_conto_incasso` sa che la riga puntata **esiste**. Non
+#   sa che cosa **e'**: `uso` e' una colonna della riga puntata, e una FK non
+#   legge le colonne di cio' che punta.
+#
+#   ⚠️ E il buco che si apre e' esattamente sul pezzo che regge il perimetro.
+#   L'unicita' del passo S3-2 (`ex_src_bancari_conto_incasso_un_solo_soggetto`)
+#   vive **solo sulle righe con `uso = 'INCASSO'`**: e' li' che il domino
+#   «un conto → un solo soggetto → un solo emittente» si tiene in piedi. Un ente
+#   agganciato a una riga `PAGAMENTO` o `GENERICO` sarebbe **fuori da
+#   quell'unicita'**, e il perimetro tornerebbe a essere un'assunzione — con
+#   l'aggravante che nessuno se ne accorgerebbe, perche' la configurazione
+#   sarebbe passata senza un errore.
+#
+# ── ⭐ COSA VERIFICA, E COSA NON VERIFICA DI PROPOSITO ────────────────
+#   ✅ `uso = 'INCASSO'`, e basta.
+#
+#   ⛔ **Non** guarda `bloccato`, e **non** guarda `valido_al`. Sono due stati
+#   che cambiano nel tempo per ragioni che non c'entrano con questo ente:
+#   bloccare un conto e' un gesto legittimo, e un guard che lo impedisse perche'
+#   «c'e' un ente che lo cita» sposterebbe il rifiuto sul gesto sbagliato. Chi
+#   deve accorgersi di un canale appeso a un conto bloccato e' un controllo di
+#   esercizio, non un vincolo di scrittura.
+#   ⚠️ `uso` invece **non e' uno stato**: e' cosa quel legame E'. Se cambia, il
+#   legame e' un altro legame.
+#
+# ── ⚠️ LETTURA SOTTO RLS: qui non e' un problema, e va detto perche' ──
+#   Un trigger guard e' `SECURITY INVOKER` e legge con i permessi di chi scrive:
+#   su una tabella con RLS non distinguerebbe «non e' un conto di incasso» da
+#   «non lo vedo», e rifiuterebbe una cosa vera dicendone una falsa.
+#   ✅ `anagrafiche.soggetti_ruoli_conti_bancari` ha la **row security spenta**
+#   (misurato il 2026-08-22), quindi la lettura e' completa per chiunque.
+#   ⚠️ Il giorno in cui quella tabella entra sotto RLS, questa funzione va
+#   riportata su una `SECURITY DEFINER` — come e' gia' stato fatto per le
+#   scadenze con `script.fn_check_scadenza_di_fattura`.
+#
+# ── ⚠️ SI GUARDA SOLO QUANDO LA COLONNA CAMBIA ────────────────────────
+#   Su `UPDATE` con la colonna invariata il guard esce in testa: altrimenti
+#   qualunque modifica a un ente (la descrizione, le regole di match) verrebbe
+#   rifiutata per una configurazione decisa mesi prima, e l'errore accuserebbe
+#   il gesto sbagliato.
+#
+# Codici: E_ENTE_INCASSO_CONTO_NON_DI_INCASSO (nuovo, 967)
+# Verifica: db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-14-create-trgfn-enti-incasso-guard-conto-incasso-mctit.yaml
+
+  - changeSet:
+      id: 20260822-14-create-trgfn-enti-incasso-guard-conto-incasso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di configurazione su pagamenti.enti_incasso: il conto agganciato al canale deve
+        avere uso = 'INCASSO'. La FK sa che la riga esiste, non che cosa e': senza questo
+        guard un ente potrebbe appoggiarsi al conto dei PAGAMENTI, che sta FUORI
+        dall'unicita' conto -> un solo soggetto (quella vive solo sulle righe INCASSO), e il
+        perimetro tornerebbe a essere un'assunzione senza che nessuno se ne accorga.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: enti_incasso
+                columnName: soggetto_ruolo_conto_bancario_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_uso anagrafiche.soggetti_ruoli_conti_bancari.uso%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il conto agganciato a un canale di incasso deve essere un
+                  --   conto di INCASSO. La FK garantisce che la riga esista,
+                  --   non che cosa sia.
+                  --
+                  -- Perche' conta (D5): l'unicita'
+                  --   ex_src_bancari_conto_incasso_un_solo_soggetto vive SOLO
+                  --   sulle righe con uso = 'INCASSO'. Un ente appeso a una
+                  --   riga PAGAMENTO o GENERICO sarebbe fuori da quella
+                  --   garanzia, e il perimetro «un conto -> un solo emittente»
+                  --   tornerebbe a essere un'assunzione.
+                  --
+                  -- ⚠️ Lettura sotto RLS: anagrafiche.soggetti_ruoli_conti_bancari
+                  --   ha la row security SPENTA, quindi SECURITY INVOKER va
+                  --   bene. Se un giorno entra sotto RLS, questa funzione va
+                  --   portata su una SECURITY DEFINER: altrimenti confonderebbe
+                  --   «non e' di incasso» con «non lo vedo».
+                  -- =========================================================
+
+                  -- Su UPDATE si guarda solo se la colonna cambia: altrimenti
+                  -- una modifica alla descrizione verrebbe rifiutata per una
+                  -- configurazione decisa mesi prima.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.soggetto_ruolo_conto_bancario_id
+                         IS NOT DISTINCT FROM OLD.soggetto_ruolo_conto_bancario_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT src.uso
+                    INTO v_uso
+                    FROM anagrafiche.soggetti_ruoli_conti_bancari src
+                   WHERE src.id = NEW.soggetto_ruolo_conto_bancario_id;
+
+                  -- v_uso NULL = riga inesistente: non e' affare di questo
+                  -- guard, la FK la rifiuta da se' e con il suo messaggio.
+                  IF v_uso IS NOT NULL AND v_uso <> 'INCASSO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_enti_incasso_guard_conto_incasso',
+                          'E_ENTE_INCASSO_CONTO_NON_DI_INCASSO',
+                          jsonb_build_object(
+                              'detail', 'Il conto agganciato al canale non ha uso INCASSO',
+                              'campo',  'soggetto_ruolo_conto_bancario_id',
+                              'soggetto_ruolo_conto_bancario_id', NEW.soggetto_ruolo_conto_bancario_id,
+                              'uso',    v_uso,
+                              'codice', NEW.codice
+                          ),
+                          NULL::uuid,
+                          v_uso::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso() IS
+                'Guard di configurazione: il conto agganciato a un canale di incasso deve avere uso = ''INCASSO''. ⭐ Serve perche'' l''unicita'' che regge il perimetro (ex_src_bancari_conto_incasso_un_solo_soggetto) vive SOLO sulle righe INCASSO: un ente appeso al conto dei pagamenti starebbe fuori da quella garanzia e nessuno se ne accorgerebbe. ⛔ NON guarda bloccato ne'' valido_al di proposito: sono stati che cambiano per ragioni che non riguardano questo ente, e rifiutare il blocco di un conto perche'' «c''e'' un ente che lo cita» sposterebbe l''errore sul gesto sbagliato. ⚠️ Legge sotto RLS ma la tabella puntata ce l''ha spenta: se un giorno entra sotto row security, va portata su SECURITY DEFINER.';
+
+              DROP TRIGGER IF EXISTS trg_enti_incasso_a10_guard_conto_incasso_ins_upd
+                  ON pagamenti.enti_incasso;
+
+              CREATE TRIGGER trg_enti_incasso_a10_guard_conto_incasso_ins_upd
+                  BEFORE INSERT OR UPDATE ON pagamenti.enti_incasso
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_enti_incasso_a10_guard_conto_incasso_ins_upd
+                  ON pagamenti.enti_incasso;
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_enti_incasso_guard_conto_incasso();

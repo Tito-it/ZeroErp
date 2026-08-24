@@ -1,0 +1,341 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RESET CANCELLA CIO' CHE NON E' STATO ESEGUITO — passo S1-17 (lotto 3)
+#   vendite.fn_reset_fondi_fattura
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.1 S1-17 · Decisione: brief madre, D11
+#
+# ── LA REGOLA, IN UNA RIGA ─────────────────────────────────────────────
+#   **Si cancella solo cio' che non e' stato eseguito. Un `ESEGUITO` non si
+#   cancella mai.** Ed e' il quarto stato a renderla applicabile: senza una
+#   parola per «eseguito», un reset che cancella non saprebbe da che cosa
+#   tenere le mani lontane.
+#
+# ── PERCHE' IL DELETE E' PIU' SICURO DELL'UPDATE CHE SOSTITUISCE ───────
+#
+#   | | Prima | Adesso |
+#   |---|---|---|
+#   | atto NON eseguito | UPDATE -> DISPONIBILE, con l'importo VECCHIO congelato | **DELETE**: il giro successivo ne crea uno nuovo, letto sul residuo DI ADESSO |
+#   | atto ESEGUITO | 🔴 UPDATE -> ANNULLATO lasciando `fattura_figlia_id` valorizzato: un record che si contraddice | **non si tocca**: si segnala nel diario e si va avanti |
+#
+#   ⚠️ Due conseguenze, entrambe accettate e nessuna delle due implicita:
+#   1) `fatture_fondi_fattura_source` NON e' storicizzata (nessuna colonna
+#      `storicizza`): un DELETE e' definitivo. ✅ Accettato — *un atto mai
+#      eseguito e' una PROPOSTA, non un fatto*, e sono i fatti a doversi solo
+#      aggiungere;
+#   2) il DELETE **riapre la rigenerazione**, ed e' voluto: e' la regola
+#      dell'«atto unico» (`fn_fondo_fattura_proponibile` passo 2) a impedire
+#      al giro notturno di ricreare un fondo, e quella guarda se un atto
+#      esiste IN QUALUNQUE STATO. Cancellandolo, il giro successivo lo rifa'
+#      leggendo il residuo corrente. E' il comportamento cercato, ma e' un
+#      CAMBIO REALE rispetto a ieri.
+#
+# ── ⚠️ PERCHE' NON E' PIU' UNA CTE SOLA ────────────────────────────────
+#   La FK `fk_vendite_contabili_righe_fondo_source` (changeSet -48) impone un
+#   ordine: prima le righe, poi l'atto. Dentro UN SOLO statement l'ordine fra
+#   CTE non e' garantito rispetto ai vincoli, e la FK potrebbe scattare prima
+#   che le figlie siano sparite. ⛔ L'alternativa — dichiarare la FK
+#   DEFERRABLE INITIALLY DEFERRED — e' stata scartata: nasconde l'ordine
+#   invece di dichiararlo, ed e' la stessa forma che la RLS ha gia' imposto
+#   altrove nel cantiere.
+#
+# ── ⭐ TRE ESITI, NON PIU' DUE — E DUE CODICI DIVERSI ──────────────────
+#
+#   * **atto ESEGUITO** (o, anomalia, ASSEGNATO con una riga gia' REGISTRATA)
+#     -> non si tocca, si segnala `W_FONDO_ESEGUITO_NON_RESETTABILE`.
+#     ℹ️ I due casi hanno lo stesso codice di catalogo e due `cause` diverse
+#     nel meta (`ATTO_ESEGUITO` / `RIGA_REGISTRATA`): stesso fatto — il denaro
+#     e' registrato — visto da due angoli. La distinzione utile a chi indaga
+#     sta nel vocabolario LOCALE, non nel codice che la lista mostra.
+#   * **riga in una distinta CHIUSA** -> ANNULLATO col motivo sul dato, si
+#     segnala `W_FONDO_MINIMO_NON_RIPRISTINABILE`. Invariato nella sostanza.
+#     🔴 **Ma la frase cambia, perche' diceva il falso**: era «Minimo non
+#     ripristinabile: gia postato», mentre la condizione e' che la distinta e'
+#     chiusa — cioe' proprio il caso in cui il denaro NON e' stato registrato.
+#     Adesso i due casi hanno due frasi, e ognuna dice la sua.
+#   * **tutto il resto** -> si cancella.
+#
+#   ⚠️ E il blocco «distinta CHIUSA» ora guarda **anche le righe non attive**:
+#   una riga archiviata in una distinta chiusa resta un fatto, e con la FK
+#   nuova resterebbe comunque a impedire la cancellazione dell'atto. Meglio
+#   dirlo con un blocco esplicito che scoprirlo con una violazione di vincolo.
+#
+# ── ⭐ E I TIPI SI ANCORANO CON %TYPE, come vuole la regola ────────────
+#   `p_fattura_id vendite.fatture.id%TYPE` in firma (era un `bigint` nudo).
+#   ✅ Il tipo risolto e' `bigint`, identico a quello vivo — ma qui la
+#   verifica conta meno del solito: si sta gia' facendo DROP + CREATE, quindi
+#   non c'e' nessun overload da temere.
+#   ℹ️ Le due colonne del `RETURNS TABLE` restano `integer`: sono CONTATORI di
+#   righe cancellate, non il riflesso di una colonna.
+#   ⚠️ I quattro array restano `bigint[]`: `colonna%TYPE[]` **non esiste** in
+#   PostgreSQL — e' l'eccezione dichiarata nelle linee guida, non una svista.
+#
+# ── ⚠️ LA FIRMA CAMBIA: `updated_source` DIVENTA `deleted_source` ──────
+#   `RETURNS TABLE` non si cambia con CREATE OR REPLACE: serve DROP + CREATE,
+#   che qui e' lecito (nessuna produzione, §6.2 scorciatoia 2). Il nome
+#   vecchio direbbe una cosa falsa: non si aggiorna piu' niente.
+#   ✅ **Nessun consumatore da avvisare, misurato**: `backend/` non nomina mai
+#   questa funzione, e l'unico chiamante nel database —
+#   `vendite.fn_cleanup_fatture_by_ids` — la invoca con `PERFORM`, cioe'
+#   ignora il risultato.
+#
+# Origine: corpo dallo YAML applicato 20260821-43 (piu' recente della doc
+#   auto-generata: quel migrate e' delle 23:56 e la doc e' delle 23:43),
+#   verificato identico all'oggetto vivo prima di partire.
+# Verifica: db/pgtap/vendite/test-fondi-fattura.sql · db/pgtap/vendite/test-fondo-fattura-eseguito.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260821-54-recreate-fn-reset-fondi-fattura-delete-atto-mctit.yaml
+
+  - changeSet:
+      id: 20260821-54-recreate-fn-reset-fondi-fattura-delete-atto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il reset dei fondi cancella l'atto non eseguito invece di riaprirlo, e un atto
+        ESEGUITO non lo tocca mai: lo segnala e va avanti. Sparisce il ramo che scriveva un
+        record autocontraddittorio (ANNULLATO con fattura_figlia_id valorizzato). Non e' piu'
+        una CTE sola: la FK verso l'atto impone di cancellare prima le righe, e dentro un
+        solo statement quell'ordine non e' garantito. DROP + CREATE perche' cambia il
+        RETURNS TABLE — updated_source diventa deleted_source, dato che non si aggiorna piu'
+        niente; nessun consumatore da avvisare (il backend non la nomina, l'unico chiamante
+        DB la invoca con PERFORM).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+                columnName: fondo_source_id
+            # Il quarto stato dev'esserci: senza, il reset non avrebbe la
+            # parola con cui riconoscere cio' che non deve toccare.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conrelid = 'vendite.fatture_fondi_fattura_source'::regclass
+                     AND conname = 'chk_fondi_source_stato'
+                     AND pg_get_constraintdef(oid) LIKE '%ESEGUITO%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_reset_fondi_fattura(bigint);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_reset_fondi_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+               RETURNS TABLE(
+                  deleted_source integer,
+                  deleted_fondi  integer
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_deleted_source INTEGER := 0;
+                  v_deleted_fondi  INTEGER := 0;
+                  v_stato_contabile_chiusa_id pagamenti.vendite_contabili_stati.id%TYPE;
+                  -- ⚠️ Array: `colonna%TYPE[]` non esiste in PostgreSQL, quindi
+                  --    qui il tipo resta esplicito. Portano id di
+                  --    vendite.fatture_fondi_fattura_source.
+                  v_src_ids      bigint[];
+                  v_registrate   bigint[];
+                  v_chiuse       bigint[];
+                  v_resettabili  bigint[];
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT s.id INTO v_stato_contabile_chiusa_id
+                    FROM pagamenti.vendite_contabili_stati s WHERE s.codice_interno = 'CHIUSA' AND s.attivo IS TRUE LIMIT 1;
+
+                  IF v_stato_contabile_chiusa_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_fondi_fattura', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'CHIUSA'), NULL::uuid, 'lo stato CHIUSA delle distinte contabili');
+                  END IF;
+
+                  -- =========================================================
+                  -- 1) GLI ATTI GIA' ESEGUITI: solo segnalazione.
+                  --    Non entrano nemmeno nel giro sotto (che filtra
+                  --    ASSEGNATO): qui si dicono, perche' un reset silenzioso
+                  --    su una fattura che aveva un fondo eseguito lascerebbe
+                  --    l'operatore a chiedersi dove sia finito.
+                  -- =========================================================
+                  INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta, data_insert, user_insert, data_update, user_update)
+                  SELECT p_fattura_id, now(),
+                         format('Fondo non resettabile: il trasferimento e'' gia'' stato registrato (fattura %s del %s)',
+                                COALESCE(fs.numero::text, 'N/D'), COALESCE(to_char(fs.data, 'YYYY-MM-DD'), 'N/D')),
+                         'W', FALSE,
+                         jsonb_build_object('source_id', s.id, 'fattura_sorgente_id', s.fattura_sorgente_id,
+                                            'error_code', 'W_FONDO_ESEGUITO_NON_RESETTABILE', 'cause', 'ATTO_ESEGUITO'),
+                         now(), current_user, now(), current_user
+                    FROM vendite.fatture_fondi_fattura_source s
+                    JOIN vendite.fatture fs ON fs.id = s.fattura_sorgente_id
+                   WHERE s.fattura_figlia_id = p_fattura_id
+                     AND s.stato = 'ESEGUITO';
+
+                  -- =========================================================
+                  -- 2) GLI ATTI IN GIOCO, bloccati in lettura.
+                  --    ⚠️ FOR UPDATE OF s: si bloccano le sole righe
+                  --    dell'atto; le JOIN su tipi (filtro) e fatture
+                  --    (display) non vanno bloccate.
+                  -- =========================================================
+                  SELECT array_agg(q.id) INTO v_src_ids
+                    FROM (
+                      SELECT s.id
+                        FROM vendite.fatture_fondi_fattura_source s
+                        JOIN vendite.tipi_fondi_fattura t ON t.id = s.tipo_fondo_fattura_id
+                       WHERE s.fattura_figlia_id = p_fattura_id
+                         AND s.stato = 'ASSEGNATO'
+                         AND t.codice_interno = 'F_F_ADD_ACC'
+                         FOR UPDATE OF s
+                    ) q;
+
+                  IF v_src_ids IS NULL THEN
+                      RETURN QUERY SELECT 0, 0;
+                      RETURN;
+                  END IF;
+
+                  -- =========================================================
+                  -- 3) CHI NON SI TOCCA, e per quale delle due ragioni.
+                  --
+                  --    (a) l'anomalia: l'atto e' ASSEGNATO ma una sua riga e'
+                  --        gia' REGISTRATA. L'invariante vuole che in quel
+                  --        caso l'atto sia ESEGUITO; se non lo e', qualcosa
+                  --        e' andato storto e non si cancella denaro
+                  --        registrato per rimettere le cose a posto.
+                  -- =========================================================
+                  SELECT array_agg(DISTINCT cr.fondo_source_id) INTO v_registrate
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.fondo_source_id = ANY (v_src_ids)
+                     AND st.codice_interno = 'POSTATA';
+
+                  -- =========================================================
+                  --    (b) la riga sta in una distinta CHIUSA: il minimo non
+                  --        e' piu' ripristinabile.
+                  --    ⚠️ Qui NON si filtra `attivo`, e non e' una svista: una
+                  --        riga archiviata in una distinta chiusa resta un
+                  --        fatto, e con la FK nuova impedirebbe comunque la
+                  --        cancellazione dell'atto. Meglio un blocco che lo
+                  --        dice che una violazione di vincolo che lo scopre.
+                  -- =========================================================
+                  SELECT array_agg(DISTINCT cr.fondo_source_id) INTO v_chiuse
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili c ON c.id = cr.contabile_id
+                   WHERE cr.fondo_source_id = ANY (v_src_ids)
+                     AND c.stato_id = v_stato_contabile_chiusa_id
+                     AND NOT (cr.fondo_source_id = ANY (COALESCE(v_registrate, '{}'::bigint[])));
+
+                  SELECT array_agg(x) INTO v_resettabili
+                    FROM unnest(v_src_ids) AS x
+                   WHERE NOT (x = ANY (COALESCE(v_registrate, '{}'::bigint[])))
+                     AND NOT (x = ANY (COALESCE(v_chiuse, '{}'::bigint[])));
+
+                  -- =========================================================
+                  -- 4) Le segnalazioni dei bloccati, e l'annullamento dei soli
+                  --    bloccati da distinta chiusa.
+                  --    ⭐ La frase non dice piu' «gia postato»: la condizione
+                  --       e' che la distinta e' chiusa, cioe' il caso in cui
+                  --       il denaro NON e' stato registrato.
+                  -- =========================================================
+                  INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta, data_insert, user_insert, data_update, user_update)
+                  SELECT p_fattura_id, now(),
+                         format('Minimo non ripristinabile: la distinta contabile e'' chiusa (fattura %s del %s)',
+                                COALESCE(fs.numero::text, 'N/D'), COALESCE(to_char(fs.data, 'YYYY-MM-DD'), 'N/D')),
+                         'W', FALSE,
+                         jsonb_build_object('source_id', s.id, 'fattura_sorgente_id', s.fattura_sorgente_id,
+                                            'error_code', 'W_FONDO_MINIMO_NON_RIPRISTINABILE', 'cause', 'CONTABILE_CHIUSA'),
+                         now(), current_user, now(), current_user
+                    FROM vendite.fatture_fondi_fattura_source s
+                    JOIN vendite.fatture fs ON fs.id = s.fattura_sorgente_id
+                   WHERE s.id = ANY (COALESCE(v_chiuse, '{}'::bigint[]));
+
+                  INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta, data_insert, user_insert, data_update, user_update)
+                  SELECT p_fattura_id, now(),
+                         format('Fondo non resettabile: una sua riga contabile risulta gia'' registrata (fattura %s del %s)',
+                                COALESCE(fs.numero::text, 'N/D'), COALESCE(to_char(fs.data, 'YYYY-MM-DD'), 'N/D')),
+                         'W', FALSE,
+                         jsonb_build_object('source_id', s.id, 'fattura_sorgente_id', s.fattura_sorgente_id,
+                                            'error_code', 'W_FONDO_ESEGUITO_NON_RESETTABILE', 'cause', 'RIGA_REGISTRATA'),
+                         now(), current_user, now(), current_user
+                    FROM vendite.fatture_fondi_fattura_source s
+                    JOIN vendite.fatture fs ON fs.id = s.fattura_sorgente_id
+                   WHERE s.id = ANY (COALESCE(v_registrate, '{}'::bigint[]));
+
+                  -- ⭐ La ragione dell'annullamento sta SUL DATO, non solo nel
+                  --    diario: chi legge la riga del fondo sa perche' e'
+                  --    ANNULLATO senza dover cercare in fatture_log.
+                  UPDATE vendite.fatture_fondi_fattura_source s
+                     SET stato = 'ANNULLATO',
+                         motivo = format('Minimo non ripristinabile: distinta contabile gia CHIUSA (fattura %s del %s)',
+                                         COALESCE(fs.numero::text, 'N/D'),
+                                         COALESCE(to_char(fs.data, 'YYYY-MM-DD'), 'N/D')),
+                         data_update = now(), user_update = current_user
+                    FROM vendite.fatture fs
+                   WHERE fs.id = s.fattura_sorgente_id
+                     AND s.id = ANY (COALESCE(v_chiuse, '{}'::bigint[]));
+
+                  -- =========================================================
+                  -- 5) I RESETTABILI, in tre statement e in quest'ordine.
+                  --    ⚠️ Prima le righe contabili: la FK verso l'atto e'
+                  --       NO ACTION, e cancellare l'atto con una figlia viva
+                  --       fallirebbe.
+                  --    ℹ️ Nessun filtro sulla distinta: per costruzione un
+                  --       resettabile non ha righe sotto una distinta CHIUSA
+                  --       (quelle stanno in v_chiuse). Rimetterlo qui
+                  --       lascerebbe una figlia viva e la FK lo direbbe con
+                  --       una violazione di vincolo.
+                  -- =========================================================
+                  DELETE FROM pagamenti.vendite_contabili_righe cr
+                   WHERE cr.fondo_source_id = ANY (COALESCE(v_resettabili, '{}'::bigint[]));
+
+                  WITH del_ff AS (
+                      DELETE FROM vendite.fatture_fondi_fattura ff
+                       USING vendite.fatture_fondi_fattura_source s
+                       WHERE s.id = ANY (COALESCE(v_resettabili, '{}'::bigint[]))
+                         AND ff.fattura_id = p_fattura_id
+                         AND ff.riferimento_fattura_id = s.fattura_sorgente_id
+                       RETURNING ff.id
+                  )
+                  SELECT COUNT(*)::INTEGER INTO v_deleted_fondi FROM del_ff;
+
+                  WITH del_src AS (
+                      DELETE FROM vendite.fatture_fondi_fattura_source s
+                       WHERE s.id = ANY (COALESCE(v_resettabili, '{}'::bigint[]))
+                       RETURNING s.id
+                  )
+                  SELECT COUNT(*)::INTEGER INTO v_deleted_source FROM del_src;
+
+                  RETURN QUERY SELECT COALESCE(v_deleted_source, 0), COALESCE(v_deleted_fondi, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(vendite.fatture.id%TYPE)
+              IS 'Reset dei fondi applicati a una fattura FIGLIA. ⭐ rev 2026-08-21 (cantiere incassi, lotto 3, passo S1-17, decisione D11): l''atto NON eseguito si CANCELLA invece di tornare DISPONIBILE, e un atto ESEGUITO non si tocca mai — si segnala nel diario e il giro prosegue. La regola in una riga: si cancella solo cio'' che non e'' stato eseguito. ⚠️ Due conseguenze accettate: la tabella non e'' storicizzata, quindi il DELETE e'' definitivo (un atto mai eseguito e'' una PROPOSTA, non un fatto); e cancellare RIAPRE la rigenerazione, perche'' l''«atto unico» di fn_fondo_fattura_proponibile guarda se un atto esiste in qualunque stato — il giro successivo ne rifa'' uno leggendo il residuo di adesso, che e'' il comportamento cercato ma e'' un cambio reale. ⚠️ Non e'' piu'' una CTE sola: la FK fk_vendite_contabili_righe_fondo_source impone di cancellare prima le righe e poi l''atto, e dentro un solo statement quell''ordine non e'' garantito rispetto ai vincoli. Tre esiti: atto ESEGUITO (o ASSEGNATO con una riga gia'' REGISTRATA, che e'' l''anomalia) -> non si tocca, W_FONDO_ESEGUITO_NON_RESETTABILE con due `cause` diverse nel meta; riga in una distinta CHIUSA -> ANNULLATO con la ragione sul dato, W_FONDO_MINIMO_NON_RIPRISTINABILE — 🔴 e la frase non dice piu'' «gia postato», che era falsa proprio nel caso in cui il denaro NON e'' stato registrato; tutto il resto -> cancellato. ⚠️ Il blocco «distinta CHIUSA» guarda anche le righe non attive: una riga archiviata in una distinta chiusa resta un fatto, e con la FK impedirebbe comunque la cancellazione dell''atto. ⚠️ E'' un''operazione TECNICA sul ciclo di vita della figlia (il ritorno di un lotto in bozza) e NON una reazione ai pagamenti: nessun incasso la chiama e nessun incasso deve chiamarla. ⚠️ La firma e'' cambiata: updated_source -> deleted_source, perche'' non si aggiorna piu'' niente (nessun consumatore: il backend non la nomina e fn_cleanup_fatture_by_ids la invoca con PERFORM). D-16 + D-5 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2, superati in parte da D11. rev 2026-08-21 precedente (liste drawer lotto, L1/P-6): le note di avviso dichiarano il loro codice in meta->>''error_code''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: la versione precedente
+              --    riportava l'atto a DISPONIBILE con l'importo vecchio e
+              --    scriveva ANNULLATO sugli eseguiti, cioe' proprio i due
+              --    comportamenti che questo changeSet toglie. E la firma
+              --    tornerebbe a updated_source. Si riapplica 20260821-43 solo
+              --    sapendo questo.
+              SELECT 1;

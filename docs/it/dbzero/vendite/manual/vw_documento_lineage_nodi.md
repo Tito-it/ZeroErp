@@ -78,4 +78,26 @@ WHERE tipo_id = (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_V
 
 ---
 
+
+### ⭐ La natura del documento (rev 2026-08-21)
+
+Il nodo espone anche `natura_doc_codice` / `natura_doc_descrizione`, da
+`config.nature_doc_fiscale`.
+
+**Perché.** Il grafo è nato il 2026-07-14, quando `FATTURA` era **una cosa
+sola**. La natura è arrivata con la slice nota di credito, ed è un **asse
+nuovo**: il *tipo* dice da quale tabella viene il nodo, la *natura* che cosa è
+fiscalmente. Senza, due nodi `FATTURA` della stessa commessa — la fattura e la
+nota di credito che la rettifica — sono la stessa riga scritta due volte: stesso
+tipo, stesso stato, e `codice` **NULL** su entrambi finché non sono numerati.
+
+⚠️ **È valorizzata nel solo ramo FATTURA**, e negli altri sette è NULL — ed è
+corretto: un preventivo o un DDT non hanno una natura fiscale.
+
+⚠️ **`LEFT JOIN` e non `JOIN`**: `fatture.natura_doc_id` è nullable e una
+fattura storica può non averla. Con il `JOIN` quel documento **sparirebbe dal
+grafo**, che è molto peggio di una natura vuota.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/fatture_scadenze.md" %}
 # 📚 Tabella `fatture_scadenze`
 
 ## 🗂️ Campi principali

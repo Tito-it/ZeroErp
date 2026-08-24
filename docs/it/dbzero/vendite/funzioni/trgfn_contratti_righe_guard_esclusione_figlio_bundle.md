@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_contratti_righe_guard_esclusione_figlio_bundle.md" %}
 # ⚙️ Funzione `trgfn_contratti_righe_guard_esclusione_figlio_bundle`
 
 ```sql

@@ -1,0 +1,411 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test del service `pagamenti` — le regole che il BACKEND tiene, non
+#        quelle del database.
+# Note: ⚠️ Qui NON si riverificano i guard di PostgreSQL (transizioni,
+#       quadratura, capienza): sono provati da 14 file pgTAP e replicarli
+#       significherebbe avere due sedi che divergono. Si prova cio' che il
+#       backend decide da se': il vocabolario di cio' che una persona puo'
+#       chiedere, l'integrita' della dichiarazione, e il fatto che l'esito
+#       della registrazione risalga INTATTO.
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+1)  CreaDistintaTests.test_origine_manuale_e_bozza_forzate
+2)  CreaDistintaTests.test_operatore_non_viene_passato
+3)  CreaDistintaTests.test_importo_dichiarato_scritto_a_parte
+4)  CreaDistintaTests.test_gia_popolata_quando_la_distinta_ha_righe
+5)  CreaDistintaTests.test_centro_obbligatorio
+6)  CreaDistintaTests.test_data_contabile_obbligatoria
+7)  StatoDistintaTests.test_chiusa_non_e_richiedibile
+8)  StatoDistintaTests.test_annullata_e_richiedibile
+9)  StatoDistintaTests.test_distinta_inesistente_404
+10) StatoRigaTests.test_postata_non_e_richiedibile
+11) StatoRigaTests.test_motivo_sospeso_scritto_prima_dello_stato
+12) RegistrazioneTests.test_mezza_dichiarazione_rifiutata_solo_righe
+13) RegistrazioneTests.test_mezza_dichiarazione_rifiutata_solo_totale
+14) RegistrazioneTests.test_dichiarazione_intera_passa_al_database
+15) RegistrazioneTests.test_senza_dichiarazione_passa_none
+16) RegistrazioneTests.test_nulla_da_postare_non_e_un_errore
+16a) RegistrazioneTests.test_dichiarazione_zero_e_legittima
+16b) StatoNonConfiguratoTests.test_distinta_stato_non_a_catalogo
+16c) StatoNonConfiguratoTests.test_riga_stato_non_a_catalogo
+16d) ImportiTests.test_nan_rifiutato
+16e) ImportiTests.test_infinito_rifiutato
+16f) AtomicitaTests.test_crea_distinta_e_una_transazione_sola
+17) ImportiTests.test_float_non_perde_precisione
+18) ImportiTests.test_stringa_non_numerica_rifiutata
+19) ImportiTests.test_booleano_rifiutato
+20) PatchTests.test_riga_non_accetta_abbinamento
+21) PatchTests.test_patch_vuoto_non_scrive
+22) ListaTests.test_ordinamento_fuori_whitelist_rifiutato
+"""
+
+from contextlib import nullcontext
+from datetime import date
+from decimal import Decimal
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+from apps.core.services.error_manager import ServiceError
+from apps.pagamenti.services import pagamenti_service
+
+
+# Distinta minima: il service legge `righe_totali` per `gia_popolata` e i
+# totali per l'anteprima.
+def _distinta(**over):
+    riga = {
+        "id": 7,
+        "codice": "CNT-0001",
+        "stato_codice": "BOZZA",
+        "righe_totali": 0,
+        "righe_registrabili": 0,
+        "totale_righe": Decimal("0"),
+        "totale_registrabile": Decimal("0"),
+        "importo_dichiarato": None,
+        "scarto_dichiarato": None,
+    }
+    riga.update(over)
+    return riga
+
+
+def _riga_contabile(**over):
+    riga = {
+        "id": 11,
+        "contabile_id": 7,
+        "importo": Decimal("100.00"),
+        "stato_codice": "DA_ABBINARE",
+        "stato_descrizione": "Riga da abbinare manualmente",
+        "stato_is_postabile": False,
+    }
+    riga.update(over)
+    return riga
+
+
+# Scopo: Repository finto con i ritorni che il service si aspetta.
+def _repo(**over) -> MagicMock:
+    repo = MagicMock()
+    repo.get_distinta.return_value = _distinta()
+    repo.get_riga.return_value = _riga_contabile()
+    repo.list_righe.return_value = []
+    repo.list_stati_distinta.return_value = []
+    repo.list_stati_riga.return_value = []
+    repo.get_or_create_distinta.return_value = 7
+    # ⚠️ Le scritture rispondono il NUMERO DI RIGHE TOCCATE, e il service lo
+    # guarda: un doppio che rispondesse un `MagicMock` farebbe passare per
+    # riuscito un aggiornamento che non e' avvenuto — ed e' esattamente il caso
+    # che questi test devono poter vedere.
+    repo.set_stato_distinta.return_value = 1
+    repo.set_stato_riga.return_value = 1
+    repo.update_distinta.return_value = 1
+    repo.update_riga.return_value = 1
+    for chiave, valore in over.items():
+        getattr(repo, chiave).return_value = valore
+    return repo
+
+
+class _ServiceTestCase(TestCase):
+    # Scopo: Sostituisce il repository con un doppio per ogni test.
+    def setUp(self) -> None:
+        self.repo = _repo()
+        patcher = patch.object(
+            pagamenti_service, "PagamentiRepository", return_value=self.repo
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # ⚠️ `transaction.atomic` neutralizzato: aprire una transazione e' una
+        # query vera e qui non c'e' database. E' la convenzione del progetto.
+        # ⭐ Che il blocco atomico ci sia DAVVERO lo prova
+        #    `AtomicitaTests.test_crea_distinta_e_una_transazione_sola`, che lo
+        #    sostituisce con un doppio e ne verifica la chiamata: neutralizzare
+        #    senza quel test spegnerebbe il presidio invece di aggirarlo.
+        atomic_patcher = patch.object(
+            pagamenti_service.transaction, "atomic", new=lambda *a, **k: nullcontext()
+        )
+        atomic_patcher.start()
+        self.addCleanup(atomic_patcher.stop)
+
+
+class CreaDistintaTests(_ServiceTestCase):
+    _PAYLOAD = {"centro_riscossione_id": 39, "data_contabile": "2026-08-24"}
+
+    # Scopo: Il backend crea SOLO distinte manuali in bozza: `GENERATA` la
+    #        scrive il giro dei fondi, `AUTOMATICA` l'import.
+    def test_origine_manuale_e_bozza_forzate(self):
+        pagamenti_service.crea_distinta(dict(self._PAYLOAD))
+        kwargs = self.repo.get_or_create_distinta.call_args.kwargs
+        self.assertEqual(kwargs["origine"], "MANUALE")
+        self.assertEqual(kwargs["codice_stato_interno"], "BOZZA")
+        self.assertEqual(kwargs["centro_riscossione_id"], 39)
+        self.assertEqual(kwargs["data_contabile"], date(2026, 8, 24))
+
+    # Scopo: ⭐ L'operatore NON si passa: lo mette la funzione madre
+    #        dall'identita' della connessione. Passarlo dal backend sarebbe una
+    #        seconda verita' su chi sta lavorando.
+    def test_operatore_non_viene_passato(self):
+        pagamenti_service.crea_distinta(dict(self._PAYLOAD))
+        kwargs = self.repo.get_or_create_distinta.call_args.kwargs
+        self.assertNotIn("operatore", kwargs)
+        self.assertNotIn("user_insert", kwargs)
+
+    # Scopo: Il totale dichiarato non e' un parametro della funzione madre: si
+    #        scrive dopo, come qualunque campo che una persona compila.
+    def test_importo_dichiarato_scritto_a_parte(self):
+        pagamenti_service.crea_distinta(
+            {**self._PAYLOAD, "importo_dichiarato": "1250.50"}
+        )
+        self.repo.update_distinta.assert_called_once_with(
+            7, {"importo_dichiarato": Decimal("1250.50")}
+        )
+
+    # Scopo: ⚠️ Il *get or create* puo' aver restituito la distinta di
+    #        stamattina: se ha gia' righe la schermata deve dirlo, perche'
+    #        entrarci in silenzio e' il modo in cui si registra due volte
+    #        credendo di cominciare.
+    def test_gia_popolata_quando_la_distinta_ha_righe(self):
+        self.repo.get_distinta.return_value = _distinta(righe_totali=3)
+        esito = pagamenti_service.crea_distinta(dict(self._PAYLOAD))
+        self.assertTrue(esito["gia_popolata"])
+
+    # Scopo: Senza centro non esiste una distinta — lo pretende il database, e
+    #        il messaggio deve arrivare a chi compila, non al log.
+    def test_centro_obbligatorio(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pagamenti_service.crea_distinta({"data_contabile": "2026-08-24"})
+        self.assertEqual(ctx.exception.code, pagamenti_service.E_VALIDAZIONE)
+
+    # Scopo: Idem per la data contabile.
+    def test_data_contabile_obbligatoria(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.crea_distinta({"centro_riscossione_id": 39})
+
+
+class StatoDistintaTests(_ServiceTestCase):
+    # Scopo: 🔴 `CHIUSA` non e' un gesto: la chiusura e' una CONSEGUENZA del
+    #        registrare, e la scrive la funzione madre. Un pulsante «chiudi»
+    #        rimetterebbe in mano a qualcuno una decisione che il database
+    #        prende da se'.
+    def test_chiusa_non_e_richiedibile(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pagamenti_service.cambia_stato_distinta(7, {"nuovo_stato": "CHIUSA"})
+        self.assertEqual(ctx.exception.code, pagamenti_service.E_VALIDAZIONE)
+        self.repo.set_stato_distinta.assert_not_called()
+
+    # Scopo: I tre stati che una persona chiede davvero passano.
+    def test_annullata_e_richiedibile(self):
+        pagamenti_service.cambia_stato_distinta(7, {"nuovo_stato": "annullata"})
+        self.repo.set_stato_distinta.assert_called_once_with(7, "ANNULLATA")
+
+    # Scopo: Distinta inesistente (o fuori perimetro) -> 404 di dominio, e i
+    #        due casi restano indistinguibili.
+    def test_distinta_inesistente_404(self):
+        self.repo.get_distinta.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            pagamenti_service.cambia_stato_distinta(999, {"nuovo_stato": "VALIDATA"})
+        self.assertEqual(ctx.exception.code, pagamenti_service.E_DISTINTA_NON_TROVATA)
+
+
+class StatoRigaTests(_ServiceTestCase):
+    # Scopo: `POSTATA` la scrive il posting, non una persona.
+    def test_postata_non_e_richiedibile(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.cambia_stato_riga(11, {"nuovo_stato": "POSTATA"})
+        self.repo.set_stato_riga.assert_not_called()
+
+    # Scopo: Il motivo accompagna la sospensione NELLO STESSO GIRO e prima del
+    #        cambio di stato: sospendere senza dire perche' lascia la riga in
+    #        una coda dove il prossimo non sa che cosa si era gia' capito.
+    def test_motivo_sospeso_scritto_prima_dello_stato(self):
+        chiamate: list[str] = []
+        self.repo.update_riga.side_effect = (
+            lambda *a, **k: (chiamate.append("motivo"), 1)[1]
+        )
+        self.repo.set_stato_riga.side_effect = (
+            lambda *a, **k: (chiamate.append("stato"), 1)[1]
+        )
+        pagamenti_service.cambia_stato_riga(
+            11, {"nuovo_stato": "SOSPESA", "motivo_sospeso": "cliente non chiaro"}
+        )
+        self.assertEqual(chiamate, ["motivo", "stato"])
+
+
+class AtomicitaTests(_ServiceTestCase):
+    # Scopo: 🔴 Aprire una distinta con un totale dichiarato sono DUE scritture
+    #        (la funzione madre non prende quel parametro), e devono essere UNA
+    #        unita'. Una distinta nata senza il suo dichiarato e' una distinta
+    #        la cui quadratura non scatta mai: il controllo esisterebbe e non
+    #        direbbe niente.
+    # ⚠️ `ATOMIC_REQUESTS` non e' attivo nel progetto: senza il blocco esplicito
+    #    sarebbero due transazioni separate.
+    def test_crea_distinta_e_una_transazione_sola(self):
+        with patch.object(pagamenti_service.transaction, "atomic") as atomic:
+            atomic.return_value = nullcontext()
+            pagamenti_service.crea_distinta(
+                {
+                    "centro_riscossione_id": 39,
+                    "data_contabile": "2026-08-24",
+                    "importo_dichiarato": "1250.50",
+                }
+            )
+        atomic.assert_called_once()
+
+
+class StatoNonConfiguratoTests(_ServiceTestCase):
+    # Scopo: 🔴 Zero righe toccate NON e' un successo silenzioso. La distinta
+    #        esiste (appena letta), quindi a non risolvere e' il CODICE DI
+    #        STATO: senza questo controllo la risposta sarebbe un 200 con lo
+    #        stato invariato, e l'operatore leggerebbe «fatto» su un gesto che
+    #        non e' avvenuto.
+    def test_distinta_stato_non_a_catalogo(self):
+        self.repo.set_stato_distinta.return_value = 0
+        with self.assertRaises(ServiceError) as ctx:
+            pagamenti_service.cambia_stato_distinta(7, {"nuovo_stato": "VALIDATA"})
+        self.assertEqual(ctx.exception.code, pagamenti_service.E_STATO_NON_CONFIGURATO)
+
+    # Scopo: Stessa regola sulla riga.
+    def test_riga_stato_non_a_catalogo(self):
+        self.repo.set_stato_riga.return_value = 0
+        with self.assertRaises(ServiceError) as ctx:
+            pagamenti_service.cambia_stato_riga(11, {"nuovo_stato": "SCARTATA"})
+        self.assertEqual(ctx.exception.code, pagamenti_service.E_STATO_NON_CONFIGURATO)
+
+
+class RegistrazioneTests(_ServiceTestCase):
+    _RICEVUTA = {
+        "movimenti_creati": 2,
+        "righe_postate": 2,
+        "righe_saltate": 1,
+        "totale_postato": Decimal("300.00"),
+        "esito": "POSTATA",
+    }
+
+    # Scopo: ⚠️ La dichiarazione e' facoltativa ma LEGATA. Mezza dichiarazione
+    #        non si puo' verificare, e accettarla in silenzio significherebbe
+    #        registrare senza controllo CREDENDO di averlo fatto.
+    def test_mezza_dichiarazione_rifiutata_solo_righe(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.registra_distinta(7, {"righe_attese": 3})
+        self.repo.posta_contabile.assert_not_called()
+
+    # Scopo: L'altro verso della stessa regola.
+    def test_mezza_dichiarazione_rifiutata_solo_totale(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.registra_distinta(7, {"totale_atteso": "300.00"})
+        self.repo.posta_contabile.assert_not_called()
+
+    # Scopo: La dichiarazione intera arriva al database COM'E'.
+    def test_dichiarazione_intera_passa_al_database(self):
+        self.repo.posta_contabile.return_value = dict(self._RICEVUTA)
+        pagamenti_service.registra_distinta(
+            7, {"righe_attese": 2, "totale_atteso": "300.00"}
+        )
+        kwargs = self.repo.posta_contabile.call_args.kwargs
+        self.assertEqual(kwargs["righe_attese"], 2)
+        self.assertEqual(kwargs["totale_atteso"], Decimal("300.00"))
+
+    # Scopo: ⭐ **Zero e' una dichiarazione legittima**: l'anteprima puo'
+    #        mostrare zero righe registrabili, e la coppia (0, 0) e' esattamente
+    #        cio' che l'operatore ha davanti. Il database risponde
+    #        `NULLA_DA_POSTARE`, che e' un esito — rifiutarla qui trasformerebbe
+    #        una risposta vera in un 400 con una frase falsa.
+    def test_dichiarazione_zero_e_legittima(self):
+        self.repo.posta_contabile.return_value = dict(self._RICEVUTA)
+        pagamenti_service.registra_distinta(
+            7, {"righe_attese": 0, "totale_atteso": "0"}
+        )
+        kwargs = self.repo.posta_contabile.call_args.kwargs
+        self.assertEqual(kwargs["righe_attese"], 0)
+        self.assertEqual(kwargs["totale_atteso"], Decimal("0"))
+
+    # Scopo: Senza dichiarazione si registra cio' che c'e' — e' la strada dei
+    #        processi automatici, che non hanno un operatore che guarda.
+    def test_senza_dichiarazione_passa_none(self):
+        self.repo.posta_contabile.return_value = dict(self._RICEVUTA)
+        pagamenti_service.registra_distinta(7, {})
+        kwargs = self.repo.posta_contabile.call_args.kwargs
+        self.assertIsNone(kwargs["righe_attese"])
+        self.assertIsNone(kwargs["totale_atteso"])
+
+    # Scopo: 🔴 «Niente da registrare» NON e' un errore. Se il backend lo
+    #        trasformasse in uno, il database scriverebbe nel registro degli
+    #        errori un errore che non e' un errore — ed e' la ragione esatta
+    #        per cui la funzione madre non solleva.
+    def test_nulla_da_postare_non_e_un_errore(self):
+        self.repo.posta_contabile.return_value = {
+            **self._RICEVUTA,
+            "movimenti_creati": 0,
+            "righe_postate": 0,
+            "totale_postato": Decimal("0"),
+            "esito": "NULLA_DA_POSTARE",
+        }
+        ricevuta = pagamenti_service.registra_distinta(7, {})
+        self.assertEqual(ricevuta["esito"], "NULLA_DA_POSTARE")
+
+
+class ImportiTests(_ServiceTestCase):
+    _PAYLOAD = {"centro_riscossione_id": 39, "data_contabile": "2026-08-24"}
+
+    # Scopo: ⚠️ Un importo passa sempre da `str`: `Decimal(0.1)` porterebbe
+    #        dentro l'errore del float, e su del denaro quell'errore poi si
+    #        somma.
+    def test_float_non_perde_precisione(self):
+        pagamenti_service.crea_distinta({**self._PAYLOAD, "importo_dichiarato": 0.1})
+        campi = self.repo.update_distinta.call_args.args[1]
+        self.assertEqual(campi["importo_dichiarato"], Decimal("0.1"))
+
+    # Scopo: Una stringa che non e' un numero e' un errore di chi compila.
+    def test_stringa_non_numerica_rifiutata(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.crea_distinta(
+                {**self._PAYLOAD, "importo_dichiarato": "mille"}
+            )
+
+    # Scopo: ⚠️ `NaN` si costruisce senza protestare e arriverebbe fino alla
+    #        colonna numeric, dove ogni somma che lo incontra diventa NaN — e un
+    #        totale NaN non si vede: si legge come un campo vuoto.
+    def test_nan_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.crea_distinta(
+                {**self._PAYLOAD, "importo_dichiarato": "NaN"}
+            )
+
+    # Scopo: Idem per l'infinito.
+    def test_infinito_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.crea_distinta(
+                {**self._PAYLOAD, "importo_dichiarato": float("inf")}
+            )
+
+    # Scopo: `True` non e' un importo, anche se Python lo sommerebbe.
+    def test_booleano_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.crea_distinta(
+                {**self._PAYLOAD, "importo_dichiarato": True}
+            )
+
+
+class PatchTests(_ServiceTestCase):
+    # Scopo: ⛔ Il PATCH della riga porta i FATTI, non l'abbinamento: quello e'
+    #        un verbo, perche' porta con se' la rata e la forzatura ed e' una
+    #        decisione — non la correzione di un dato digitato male.
+    def test_riga_non_accetta_abbinamento(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.aggiorna_riga(11, {"fattura_id": 2263})
+        self.repo.update_riga.assert_not_called()
+
+    # Scopo: Un PATCH che non nomina nessun campo non scrive niente.
+    def test_patch_vuoto_non_scrive(self):
+        pagamenti_service.aggiorna_riga(11, {})
+        self.repo.update_riga.assert_not_called()
+
+
+class ListaTests(_ServiceTestCase):
+    # Scopo: ⛔ L'ordinamento entra in una clausola SQL: solo la whitelist
+    #        passa, e cio' che non c'e' e' un 400, non un default silenzioso.
+    def test_ordinamento_fuori_whitelist_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.list_distinte(order_by="importo_dichiarato; DROP")
+        self.repo.list_distinte.assert_not_called()

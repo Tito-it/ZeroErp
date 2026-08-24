@@ -32,6 +32,7 @@ from apps.core.api.payload_validators import (
     qp_str,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
@@ -56,6 +57,7 @@ from apps.vendite.services.pipeline_service import (
     esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
+    fn_list_lotto_segnalazioni,
     fn_annulla_lotto_da_draft,
     fn_riporta_lotto_a_draft,
     fn_elimina_fattura_da_lotto,
@@ -92,6 +94,41 @@ def _run_lotto_kwargs(payload: dict[str, object]) -> dict[str, object]:
         "meta": payload.get("meta"),
         "dry_run": optional_bool(payload, "dry_run", default=False),
         "tipo_lotto": payload.get("tipo_lotto", "MASSIVO"),
+    }
+
+
+# Scopo: I campi dell'ESITO del driver di pipeline, per i due endpoint che lo
+#        ritornano (avanza fino in fondo, numera lotto).
+#
+# ⚠️ IL FALLIMENTO E' DENTRO IL PAYLOAD, NON NELLO STATUS. Questi endpoint
+#    rispondono **200 anche quando la catena si ferma**, perche' puo' aver
+#    eseguito qualche step prima di fermarsi e quel lavoro va raccontato: chi
+#    legge DEVE guardare `motivo_stop`. Un 200 non e' un successo — difetto
+#    misurato in-app il 2026-08-21, il toast verde su un lotto che il database
+#    aveva rifiutato.
+#
+# ⭐ `errore` porta gli STESSI nomi dell'envelope d'errore — `code`, `message`,
+#    `detail`, `hint`, `fields`, `targets` — cosi' che a video il gesto lo
+#    disegni un consumatore solo.
+#
+# ⚠️ Definito UNA volta: i due `@extend_schema` lo chiamano. Erano due copie
+#    identiche, cioe' due punti in cui divergere sul contratto di una risposta.
+#
+# ⛔ ED E' UNA FUNZIONE, NON UNA COSTANTE — misurato, non supposto. Con un dict
+#    a livello di modulo i due `inline_serializer` condividerebbero le STESSE
+#    ISTANZE di campo, e un campo DRF si lega al proprio serializer: il secondo
+#    componente esce dallo schema **senza nemmeno la chiave `data`**. Verificato
+#    con `manage.py spectacular`: `VenditeNumeraLottoResponse` conteneva il solo
+#    `meta`. Non fallisce niente e nessun test lo vede — il contratto pubblicato
+#    e' semplicemente sbagliato, che e' il modo peggiore di romperlo.
+def _esito_runner_fields() -> dict[str, serializers.Field]:
+    return {
+        "lotto_id": serializers.IntegerField(allow_null=True),
+        "stato_lotto": serializers.CharField(allow_null=True),
+        "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
+        "step_eseguiti": serializers.IntegerField(),
+        "motivo_stop": serializers.CharField(),
+        "errore": serializers.DictField(required=False, allow_null=True),
     }
 
 
@@ -187,13 +224,7 @@ class ApiRunLottoPipelineUntilDone(DomainAPIView):
                 fields={
                     "data": inline_serializer(
                         name="VenditeRunLottoPipelineUntilDoneData",
-                        fields={
-                            "lotto_id": serializers.IntegerField(allow_null=True),
-                            "stato_lotto": serializers.CharField(allow_null=True),
-                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
-                            "step_eseguiti": serializers.IntegerField(),
-                            "motivo_stop": serializers.CharField(),
-                        },
+                        fields=_esito_runner_fields(),
                     ),
                     "meta": serializers.DictField(required=False),
                 },
@@ -234,16 +265,203 @@ class ApiLottoSegnalazioniSummary(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET il riepilogo segnalazioni del lotto per uso operativo/UI.
+    # Scopo: Restituisce via GET il RIEPILOGO segnalazioni del lotto (conteggi
+    #        + blocco avanzamento). Alimenta il banner di testata.
+    # ⚠️ Le RIGHE stanno su un endpoint suo (`/segnalazioni/rows/`): questo lo
+    #    chiede il drawer a ogni apertura, e portarsi dietro l'elenco per
+    #    mostrarne un numero sarebbe lavoro a ogni giro.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        data = fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id)
+        return success_response(fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id))
+
+
+
+
+class ApiLottoSegnalazioniRows(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/segnalazioni/rows/ — elenco PAGINATO delle
+    segnalazioni del lotto (`vendite.fn_list_lotto_segnalazioni`): le due origini
+    — log di fattura e log di lotto — in un elenco solo, col documento e
+    l'importo gia' composti.
+
+    Filtri opzionali: `livello` (C/W/I), `origine` (FATTURA/LOTTO),
+    `solo_attive` (default true: le ritirate non si mostrano), `solo_job_corrente`
+    (default false). `fuori_job_count` dice quante restano fuori dall'ultima
+    corsa: senza, un elenco filtrato e uno vuoto si leggono uguali."""
+
+    area_funzionale = "vendite"
+    # Lista configurabile 47.
+    lista_codice = "vendite.lotto_segnalazioni"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="livello", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="origine", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="solo_attive", type=bool, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="solo_job_corrente", type=bool, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY),
+        ],
+        responses={200: inline_serializer(
+            name="LottoSegnalazioniRowsResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: elenco paginato delle segnalazioni del lotto.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        q = request.query_params
+        data = fn_list_lotto_segnalazioni(
+            lotto_id=lotto_id,
+            livello=(q.get("livello") or None),
+            origine=(q.get("origine") or None),
+            solo_attive=as_bool(q.get("solo_attive"), default=True),
+            solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
+            page=optional_int({"page": q.get("page", "1")}, "page") or 1,
+            page_size=optional_int({"page_size": q.get("page_size", "50")}, "page_size") or 50,
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+        )
         return success_response(data)
 
 
+class ApiLottoSegnalazioniExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/segnalazioni/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista di segnalazioni della scheda, con gli STESSI filtri
+    e lo STESSO ordinamento: il file rispecchia cio' che l'operatore sta
+    guardando, non una seconda lista che gli somiglia.
+
+    Le colonne le decide il catalogo `vendite.lotto_segnalazioni` attraverso
+    `UiService.get_lista_config`: nascoste escluse, ordine e permessi rispettati.
+
+    NB: il parametro si chiama `formato` e NON `format`, che DRF intercetta
+    come magic parameter prima della view.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_segnalazioni"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="livello", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="origine", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX delle segnalazioni del lotto.
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        # Formato PRIMA della query: su formato invalido non si paga il fetch.
+        fmt = parse_export_format(request)
+        q = request.query_params
+        filtri = {"livello": q.get("livello") or None, "origine": q.get("origine") or None}
+        data = fn_list_lotto_segnalazioni(
+            lotto_id=lotto_id,
+            **filtri,
+            solo_attive=as_bool(q.get("solo_attive"), default=True),
+            solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+            # ⚠️ `max_rows` e non `page_size`: l'export salta la paginazione
+            # invece di violarne il tetto. Il `+1` non tronca — serve al guard
+            # di `build_export_response`, che confronta il `count` ESATTO.
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_segnalazioni",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati={
+                "lotto_id": str(lotto_id),
+                **{k: str(v) for k, v in filtri.items() if v is not None},
+            },
+            fmt=fmt,
+        )
+
+
+# Scopo: normalizza il filtro multi-valore `task_stato` della scheda Task del
+#        drawer lotto. Accetta sia la ripetizione (`?task_stato=A&task_stato=B`,
+#        forma naturale di DRF) sia l'elenco separato da virgole
+#        (`?task_stato=A,B`, quello che manda il client): un solo lettore per
+#        entrambe, invece di due contratti da tenere allineati.
+# ⚠️ MAIUSCOLO come ogni filtro a vocabolario del progetto (cfr. `qp_str_upper`).
+# ⛔ L'elenco degli stati AMMESSI non si dichiara qui: lo possiede
+#    `vendite.fn_list_lotto_task_runs`, e uno stato che non conosce non aggiunge
+#    e non toglie nulla. Ricopiarlo sarebbe la seconda verita' sullo stesso
+#    vocabolario — la stessa ragione per cui `order_by` passa intatto.
+def _qp_task_stato(query_params) -> list[str] | None:
+    grezzi: list[str] = []
+    for valore in query_params.getlist("task_stato"):
+        grezzi.extend(valore.split(","))
+    stati = [v.strip().upper() for v in grezzi if v.strip()]
+    return stati or None
+
+
+class ApiLottoTaskRunsExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/task-runs/export/?formato=csv|xlsx
+
+    I tentativi dei task del lotto, colonne dal catalogo
+    `vendite.lotto_task_runs`."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_task_runs"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="task_stato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="solo_giro_corrente", type=bool, location=OpenApiParameter.QUERY, required=False
+            ),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX dei tentativi dei task del lotto.
+    # ⚠️ I due filtri viaggiano anche qui, ed e' il punto: il file E' la lista.
+    #    Un export che ignorasse lo stato scelto conterrebbe le 90 righe mentre
+    #    a video se ne vedono 10 — e finirebbero in mano a qualcuno come «i
+    #    task di quel lotto».
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        q = request.query_params
+        task_stato = _qp_task_stato(q)
+        solo_giro_corrente = as_bool(q.get("solo_giro_corrente"), default=False)
+        data = fn_get_lotto_task_runs(
+            lotto_id=lotto_id,
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+            task_stato=task_stato,
+            solo_giro_corrente=solo_giro_corrente,
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        # I filtri finiscono nell'intestazione del file: chi lo riapre fra un
+        # mese deve poter sapere di quale fetta si tratta.
+        filtri_applicati: dict[str, str] = {"lotto_id": str(lotto_id)}
+        if task_stato:
+            filtri_applicati["task_stato"] = ",".join(task_stato)
+        if solo_giro_corrente:
+            filtri_applicati["solo_giro_corrente"] = "true"
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_task_runs",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 class ApiLottoTaskRuns(DomainAPIView):
     area_funzionale = "vendite"
+    # Lista configurabile 46.
+    lista_codice = "vendite.lotto_task_runs"
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -252,7 +470,33 @@ class ApiLottoTaskRuns(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Numero massimo task run restituiti (default 100, max 500).",
-            )
+            ),
+            OpenApiParameter(
+                name="task_stato",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filtro sullo stato del tentativo. Multi-valore: ripetibile "
+                    "(`task_stato=ERRORE&task_stato=COMPLETATO`) oppure separato da "
+                    "virgole (`task_stato=ERRORE,COMPLETATO`). Assente = nessun filtro. "
+                    "Il vocabolario ammesso lo possiede la funzione DB: uno stato che non "
+                    "conosce non aggiunge e non toglie nulla."
+                ),
+            ),
+            OpenApiParameter(
+                name="solo_giro_corrente",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Limita all'ultima PASSATA della pipeline (ancora: l'ultimo "
+                    "`PIPELINE_STARTED`). ⚠️ Passata, NON azione dell'operatore: "
+                    "`run_lotto_pipeline_until_done` ne incatena piu' d'una, quindi un solo "
+                    "click puo' restare tagliato a meta'. Leggere sempre `esclusi_count` "
+                    "insieme al risultato."
+                ),
+            ),
         ],
         responses={
             200: inline_serializer(
@@ -263,6 +507,7 @@ class ApiLottoTaskRuns(DomainAPIView):
                         fields={
                             "lotto_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
+                            "esclusi_count": serializers.IntegerField(),
                             "task_runs": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -271,10 +516,31 @@ class ApiLottoTaskRuns(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET i task run runtime del lotto per monitoraggio operativo.
+    # Scopo: Restituisce via GET i task run del lotto — elenco PAGINATO e
+    #        ordinabile (BE-2, 2026-08-22): la sorgente e'
+    #        `vendite.fn_list_lotto_task_runs`, che porta anche il totale.
+    # ⚠️ `limit` resta accettato come sinonimo di `page_size`: e' il nome che
+    #    il client attuale manda, e cambiarlo di soppiatto avrebbe rotto il
+    #    drawer prima che la lista configurabile lo sostituisse (FE-2).
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        limit = optional_int({"limit": request.query_params.get("limit", "100")}, "limit")
-        data = fn_get_lotto_task_runs(lotto_id=lotto_id, limit=limit)
+        q = request.query_params
+        page_size = optional_int(
+            {"page_size": q.get("page_size") or q.get("limit") or "100"}, "page_size"
+        )
+        offset = optional_int({"offset": q.get("offset", "0")}, "offset")
+        data = fn_get_lotto_task_runs(
+            lotto_id=lotto_id,
+            page_size=page_size,
+            offset=offset,
+            order_by=(q.get("order_by") or None),
+            order_dir=(q.get("order_dir") or "desc"),
+            # ⭐ I due filtri del `20260824-11`. ⚠️ Nessuno dei due ha un default
+            #    che nasconde righe: chi chiama senza vede quello che vedeva
+            #    prima. La scelta di quale fetta mostrare all'apertura e' del
+            #    client, non dell'endpoint.
+            task_stato=_qp_task_stato(q),
+            solo_giro_corrente=as_bool(q.get("solo_giro_corrente"), default=False),
+        )
         return success_response(data)
 
 
@@ -549,6 +815,14 @@ class ApiLottiList(DomainAPIView):
             auth_user_id=get_scope_user_id(request),
             page=page,
             page_size=page_size,
+            # ⭐ La scheda «Recuperi del mese»: STESSA lista, stesse colonne,
+            #    stesse azioni — cambia solo QUALI lotti. Sono quelli di
+            #    competenza precedente che hanno emesso documenti nel mese
+            #    filtrato: chi lavora su agosto li cerca per data documento, e
+            #    per competenza non li trova.
+            solo_recuperi_mese=as_bool(
+                request.query_params.get("recuperi_mese"), default=False
+            ),
         )
         return success_response(data)
 
@@ -706,6 +980,9 @@ class ApiLottoDetail(DomainAPIView):
                             "emittente_soggetto_ruolo_id": serializers.IntegerField(allow_null=True),
                             "data_insert": serializers.CharField(allow_null=True),
                             "user_insert": serializers.CharField(),
+                            # Segnale di un giro solo: il prossimo run RIFA' lo
+                            # step corrente invece di avanzare (vedi types.py).
+                            "riaperto": serializers.BooleanField(),
                             # Blob capability (script.fn_available_actions_lotto):
                             # assente se il capability layer e' rotto (fallback
                             # graceful nel service) → required=False.
@@ -730,8 +1007,55 @@ class ApiLottoDetail(DomainAPIView):
         return success_response(data)
 
 
+class ApiLottoFattureExport(DomainAPIView):
+    """GET /api/v1/vendite/lotti/<id>/fatture/export/?formato=csv|xlsx
+
+    I documenti del lotto (fatture E note di credito), colonne dal catalogo
+    `vendite.lotto_fatture`: nascoste escluse, ordine e permessi rispettati."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.lotto_fatture"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={(200, "text/csv"): bytes},
+    )
+    # Scopo: file CSV/XLSX dei documenti del lotto.
+    def get(self, request: Request, lotto_id: int) -> HttpResponse:
+        fmt = parse_export_format(request)
+        q = request.query_params
+        stato = q.get("stato_esecuzione") or None
+        data = fn_list_lotto_fatture(
+            lotto_id=lotto_id,
+            stato_esecuzione=stato,
+            auth_user_id=get_scope_user_id(request),
+            sort_by=(q.get("sort_by") or "fattura_id"),
+            sort_dir=(q.get("sort_dir") or "asc"),
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+        return build_export_response(
+            request,
+            lista_codice="vendite.lotto_fatture",
+            results=data["results"],
+            total=data["count"],
+            filtri_applicati={
+                "lotto_id": str(lotto_id),
+                **({"stato_esecuzione": stato} if stato else {}),
+            },
+            fmt=fmt,
+        )
+
+
 class ApiLottoFattureList(DomainAPIView):
     area_funzionale = "vendite"
+    # Lista configurabile 45: il codice dichiara da quale catalogo arrivano le colonne (e per chi ha piu' emittenti, da quale perimetro le righe).
+    lista_codice = "vendite.lotto_fatture"
     is_search_endpoint = True
 
     @extend_schema(
@@ -1338,13 +1662,7 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
                 fields={
                     "data": inline_serializer(
                         name="VenditeNumeraLottoData",
-                        fields={
-                            "lotto_id": serializers.IntegerField(allow_null=True),
-                            "stato_lotto": serializers.CharField(allow_null=True),
-                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
-                            "step_eseguiti": serializers.IntegerField(),
-                            "motivo_stop": serializers.CharField(),
-                        },
+                        fields=_esito_runner_fields(),
                     ),
                     "meta": serializers.DictField(required=False),
                 },

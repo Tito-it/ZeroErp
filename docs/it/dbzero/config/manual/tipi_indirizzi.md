@@ -17,7 +17,7 @@ La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utili
 ### 🚨 Trigger
 
 * **`trg_tipi_indirizzi_upd_lock_cod_interno`** (BEFORE UPDATE): blocca la modifica di `codice_interno` tramite `script.trgfn_lock_columns`.
-* **`trg_upd_tipi_indirizzi_audit_data_user`** (BEFORE UPDATE): aggiorna `data_update` e `user_update` con `script.trgfn_upd_audit_data_user_generic()`.
+* **`trg_upd_tipi_indirizzi_audit_data_user`** (BEFORE UPDATE): aggiorna `data_update` e `user_update` con `script.trgfn_audit_data_user_generic()`.
 
 ---
 

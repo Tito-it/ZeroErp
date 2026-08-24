@@ -407,18 +407,39 @@ LOG_DIR = Path(_log_dir_env) if _log_dir_env else (BASE_DIR / "logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "app.log"
 
+# ⭐ `req=%(request_id)s` SU OGNI RIGA (consegna BE-8 / Passo 2 di
+#    `analisi-osservabilita-log.md`). Il `request_id` esisteva gia' come
+#    contextvar ed era gia' scritto in `dbops.request_log`, ma della richiesta
+#    si sapeva l'ESITO e non cosa avesse fatto: i log applicativi non si
+#    potevano legare alla richiesta che li aveva prodotti.
+#
+# ⚠️ Il filtro va su OGNI handler che usa il formato `verbose`: il formato cita
+#    `%(request_id)s`, e un record senza quell'attributo farebbe fallire la
+#    formattazione — cioe' perderebbe la riga proprio mentre si cerca di capire
+#    cosa e' successo. Chi aggiunge un handler con questo formatter deve
+#    aggiungergli anche il filtro.
+# ⚠️ Fuori da una richiesta (worker, comandi, shell) il valore e' `-`.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {
+            "()": "apps.core.logging_filters.RequestIdFilter",
+        },
+    },
     "formatters": {
         "verbose": {
-            "format": "%(asctime)s %(levelname)s %(name)s [%(process)d] %(message)s",
+            "format": (
+                "%(asctime)s %(levelname)s %(name)s [%(process)d] "
+                "req=%(request_id)s %(message)s"
+            ),
         },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
+            "filters": ["request_id"],
         },
         "app_file": {
             "class": "logging.handlers.RotatingFileHandler",
@@ -426,6 +447,7 @@ LOGGING = {
             "maxBytes": 10 * 1024 * 1024,
             "backupCount": 5,
             "formatter": "verbose",
+            "filters": ["request_id"],
         },
     },
     "root": {

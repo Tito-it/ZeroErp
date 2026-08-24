@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/forme_giuridiche.md" %}
 # 📚 Tabella `forme_giuridiche`
 
 ## 🗂️ Campi principali

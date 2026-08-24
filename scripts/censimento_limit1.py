@@ -94,7 +94,11 @@ RX_LIMIT = re.compile(r'\bLIMIT\s+1\b', re.I)
 RX_FROM  = re.compile(r'\bFROM\s+([A-Za-z_][\w.]*)', re.I)
 
 righe = []
-for f in sorted(pathlib.Path('db/pgtap').glob('*/*.sql')):
+# ⚠️ `rglob` e non `glob('*/*.sql')`: il glob a un livello solo salta le
+#   sottocartelle di schema. Stesso difetto trovato il 2026-08-24 in
+#   pgtap-baseline.sh e guardrail_pgtap_preambolo.py — un censimento che
+#   non guarda in un ramo non dice «pulito», dice «non ho guardato».
+for f in sorted(pathlib.Path('db/pgtap').rglob('*.sql')):
     t = f.read_text(encoding='utf-8', errors='replace')
     m = maschera(t)
     for mo in RX_LIMIT.finditer(m):
@@ -126,7 +130,7 @@ print(f"{'schema':<14}{'LIMIT 1 senza ORDER BY':>24}{'di cui ALTO':>13}{'file':>
 for s in sorted(schemi, key=lambda x: -schemi[x]):
     print(f"{s:<14}{schemi[s]:>24}{alti[s]:>13}{len(files[s]):>7}")
 print(f"{'TOTALE':<14}{sum(schemi.values()):>24}{sum(alti.values()):>13}"
-      f"{len(set(f for f,_,_,_ in righe)):>7}  su {len(list(pathlib.Path('db/pgtap').glob('*/*.sql')))} file")
+      f"{len(set(f for f,_,_,_ in righe)):>7}  su {len(list(pathlib.Path('db/pgtap').rglob('*.sql')))} file")
 print()
 tabelle = collections.Counter(tab for _, _, tab, r in righe if r == 'ALTO')
 print("Tabelle piu' pescate a caso (rischio ALTO):")

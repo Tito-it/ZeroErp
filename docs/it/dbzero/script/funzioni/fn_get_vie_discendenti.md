@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_get_vie_discendenti.md" %}
 # ⚙️ Funzione `fn_get_vie_discendenti`
 
 ```sql

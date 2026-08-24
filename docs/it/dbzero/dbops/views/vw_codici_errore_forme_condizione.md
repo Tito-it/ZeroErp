@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/vw_codici_errore_forme_condizione.md" %}
 # 🔍 View `vw_codici_errore_forme_condizione`
 
 > 📝 **Descrizione**

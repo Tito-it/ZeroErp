@@ -1,0 +1,320 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PILOTA DEL BERSAGLIO — il messaggio 937 dice ANCHE su quale documento
+#   vendite.fn_numera_fattura_opz_emessa
+#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md
+#          §5.2 (perche' il 937) · §6 lotto L2 · passo T-3a
+#
+# ── PERCHE' PROPRIO QUESTO MESSAGGIO ────────────────────────────────
+#   E' il caso che ha fatto nascere il cantiere, dal collaudo della nota di
+#   credito del 2026-08-21, e ha la proprieta' che serve a un pilota: un
+#   identificativo umano NON ESISTE. Il documento da numerare un numero non ce
+#   l'ha — e' tutta la ragione dell'errore. Se il disegno regge qui, regge dove
+#   e' piu' facile.
+#
+#   Oggi la frase dice: «Non si puo' numerare il documento 835: la fattura che
+#   rettifica non e' ancora numerata (documento 820)». Quei due numeri sono
+#   chiavi interne: all'operatore non dicono niente e per rimediare deve
+#   ricopiarsele in un campo di ricerca.
+#
+# ── ⭐ COSA CAMBIA, E COSA NO ───────────────────────────────────────
+#   Cambia SOLO il context: si aggiunge la chiave `bersaglio` con l'elenco
+#   delle fatture da numerare prima. Da li' `script.fn_log_and_raise_error`
+#   (20260823-02) la fa uscire nel canale DATATYPE, e il frontend ci disegna un
+#   pulsante «vai al documento».
+#
+#   ⛔ IL MESSAGGIO NON SI TOCCA, ed e' una decisione di sequenza, non una
+#   dimenticanza. Togliere l'id dalla frase e' additivo solo DOPO che il
+#   pulsante esiste: prima, l'operatore leggerebbe «numera prima il documento
+#   indicato» senza che niente sia indicato — meno di quanto ha oggi, in cambio
+#   di niente. E su un'emissione di lotto l'id nella frase e' l'unica cosa che
+#   dice QUALE fattura fra molte. E' il passo T-3b del brief, e aspetta il
+#   frontend.
+#
+#   ⭐ Quindi questo changeSet e' additivo per costruzione: non puo' peggiorare
+#   nulla, e il giorno che il pulsante arriva e' gia' pronto.
+#
+# ── ⛔ SOLO I PADRI VISIBILI — due domande diverse sulle stesse righe ─
+#   La guardia usa LEFT JOIN ed e' FAIL-CLOSED: un padre fuori dal perimetro
+#   emittente si legge come «non c'e'» e conta come BLOCCANTE, perche' il
+#   predicato non e' «risulta non numerata» ma «non posso dimostrare che sia
+#   numerata».
+#
+#   Il bersaglio usa JOIN INTERNI, ed e' il contrario: a un documento che non
+#   si puo' aprire non si manda nessuno. Un pulsante che porta in un vicolo
+#   cieco e' peggio di nessun pulsante — §4.3 del brief.
+#
+#   ⚠️ E non e' un dettaglio da poco: nel ramo fail-closed il valore che oggi
+#   finisce nella frase non e' nemmeno un id di fattura, e' la stringa
+#   `riga <id>` (il COALESCE della guardia). Costruirci sopra un bersaglio
+#   avrebbe voluto dire inventare un tipo che non esiste e mandarci l'operatore.
+#   Quel ramo resta senza bersaglio, e la frase resta quella di sempre.
+#
+# ── ⚠️ LA CHIAVE SI AGGIUNGE SOLO SE C'E' QUALCOSA DA DIRE ──────────
+#   `jsonb_build_object('bersaglio', NULL)` NON vuol dire «nessun bersaglio»:
+#   per chi legge e' una chiave presente e non utilizzabile, cioe' un
+#   W_BERSAGLIO_MALFORMATO nel log — un avviso di difetto su un ramo che invece
+#   sta funzionando come deve. Da qui il `|| CASE WHEN ... THEN '{}'`.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────
+#   · ⭐ %TYPE in FIRMA, RETURNS TABLE e DECLARE, nello stesso giro: il corpo
+#     viene dal vivo e portava i tipi nudi del 20260305-05. Ancorati
+#     p_fattura_id, p_codice_interno_emessa e le quattro colonne del RETURNS
+#     che una colonna ce l'hanno. ⚠️ Firma e RETURNS **non cambiano**, ed e'
+#     verificato sul catalogo e non dedotto: i tipi di argomento e di risultato
+#     perdono il typmod, quindi `serie vendite.fatture.serie%TYPE` (varchar(8))
+#     resta `character varying` come adesso. Nessun overload, e nessun DROP —
+#     che con un RETURNS TABLE *cambiato* sarebbe stato obbligatorio.
+#     ⚠️ Restano espliciti, con la ragione accanto: `p_set_emessa` (un
+#     interruttore del chiamante), `mese` e `v_mese` (vendite.fatture non ha
+#     quella colonna), `v_is_numbered` (l'esito di un controllo) e `v_bersagli`
+#     (un frammento del context).
+#   · Corpo dal vivo (pg_get_functiondef), col `;` dopo `$function$`.
+#   · La query del bersaglio gira SOLO dentro il ramo d'errore: sul percorso
+#     felice non costa niente.
+#   · SECURITY INVOKER invariato — ed e' cio' che rende vera la distinzione fra
+#     i due JOIN: la visibilita' e' quella di chi opera.
+#   · Nessun seed nuovo: il tipo `FATTURA` e' a catalogo dal 20260822-55.
+#
+# Dipendenze: 20260823-02 (il canale), 20260821-05 (la guardia che si rivede).
+# Verifica: db/pgtap/vendite/test-numera-nota-credito-riferimento-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260823-03-update-fn-numera-fattura-bersaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260823-03-update-fn-numera-fattura-bersaglio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il 937 porta il bersaglio: il context della guardia aggiunge l'array {tipo,id}
+        delle fatture da numerare prima, e da li' esce nel canale DATATYPE — il frontend
+        ci disegna un pulsante invece di lasciare all'operatore un id da ricopiare.
+        ⛔ Solo i padri VISIBILI (JOIN interni), al contrario del predicato della guardia
+        che e' fail-closed: a un documento che non si puo' aprire non si manda nessuno, e
+        quel ramo resta senza pulsante. ⚠️ Il messaggio NON cambia: togliere l'id dalla
+        frase e' un passo successivo e non si fa prima che il pulsante esista.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_numera_fattura_opz_emessa'
+                     AND p.prosrc LIKE '%E_FATTURA_RETTIFICATA_SENZA_NUMERO%'
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_log_and_raise_error'
+                     AND p.prosrc LIKE '%DATATYPE%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(
+                  p_fattura_id            vendite.fatture.id%TYPE,
+                  -- ⚠️ `boolean` esplicito: e' un INTERRUTTORE del chiamante, non il
+                  --    valore di una colonna. Non c'e' niente da ancorare.
+                  p_set_emessa            boolean DEFAULT true,
+                  p_codice_interno_emessa config.stati_doc_fiscale.codice_interno%TYPE DEFAULT 'EMESSA'::character varying)
+               RETURNS TABLE(registro_id vendite.fatture.registro_id%TYPE,
+                             anno        vendite.fatture.anno%TYPE,
+                             -- ⚠️ `smallint` esplicito: vendite.fatture NON ha una colonna
+                             --    `mese` — il mese si ricava dalla data ed esiste solo come
+                             --    asse del contatore. Non c'e' niente da ancorare.
+                             mese        smallint,
+                             serie       vendite.fatture.serie%TYPE,
+                             numero      vendite.fatture.numero%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ `BOOLEAN` esplicito: e' l'esito di un controllo, non il valore
+                  --    di una colonna.
+                  v_is_numbered  BOOLEAN;
+                  v_reset        vendite.registri_fatturazione.reset_policy%TYPE;
+                  v_data         vendite.fatture.data%TYPE;
+                  v_registro_id  vendite.fatture.registro_id%TYPE;
+                  v_anno         vendite.fatture.anno%TYPE;
+                  -- ⚠️ `SMALLINT` esplicito, stessa ragione del `mese` in RETURNS:
+                  --    la colonna non esiste, il mese si ricava dalla data.
+                  v_mese         SMALLINT;
+                  v_serie        vendite.fatture.serie%TYPE;
+                  v_numero       vendite.fatture.numero%TYPE;
+                  v_stato_emessa_id config.stati_doc_fiscale.id%TYPE;
+                  -- ⚠️ `integer` e `text` espliciti: sono un CONTEGGIO e un'ETICHETTA, non il
+                  --    valore di una colonna. Non c'e' niente da ancorare, e va detto invece
+                  --    di sembrare una dimenticanza.
+                  v_n_bloccanti     integer;
+                  v_primo_bloccante text;
+                  -- Il BERSAGLIO: l'array di {tipo,id} che il frontend trasforma in un
+                  -- pulsante. `jsonb` perche' e' la forma del context, non una colonna.
+                  v_bersagli        jsonb;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_set_emessa IS TRUE AND (p_codice_interno_emessa IS NULL OR btrim(p_codice_interno_emessa) = '') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_codice_interno_emessa', 'valore', p_codice_interno_emessa),
+                          NULL::uuid, 'p_codice_interno_emessa obbligatorio se p_set_emessa=true');
+                  END IF;
+
+                  -- Lock riga fattura (solo la riga fattura, alias f)
+                  SELECT f.numero IS NOT NULL, f.data, f.registro_id, r.reset_policy, f.anno, f.serie, f.numero
+                    INTO v_is_numbered, v_data, v_registro_id, v_reset, v_anno, v_serie, v_numero
+                    FROM vendite.fatture f
+                    JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                   WHERE f.id = p_fattura_id FOR UPDATE OF f;
+
+                  IF v_registro_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_FATTURA_NON_TROVATA',
+                          jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  -- Idempotente: se gia' numerata ritorna valori correnti
+                  IF v_is_numbered THEN
+                      v_mese := CASE WHEN v_reset = 'MENSILE' THEN EXTRACT(MONTH FROM v_data)::SMALLINT ELSE NULL END;
+                      RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+                      RETURN;
+                  END IF;
+
+                  -- --------------------------------------------------
+                  -- ⛔ IL RIFERIMENTO FISCALE DEVE ESISTERE PRIMA.
+                  --    Un documento che RETTIFICA le righe di un'altra fattura non si puo'
+                  --    numerare finche' quella fattura non ha un numero.
+                  --
+                  -- ⚠️ NON e' una questione di cronologia. Una nota di credito deve citare
+                  --    numero e data del documento corretto nel blocco DatiFattureCollegate
+                  --    della fattura elettronica (TD04): con il documento rettificato ancora
+                  --    senza numero quel blocco non e' compilabile, e la nota nascerebbe
+                  --    gia' inadatta a partire verso lo SDI. Il rifiuto arriva PRIMA di
+                  --    consumare un numero, che e' l'unica cosa che non si torna indietro.
+                  --
+                  -- ⚠️ IL PREDICATO E' PER RIGA, NON PER DOCUMENTO: una nota di credito puo'
+                  --    rettificare righe di fatture DIVERSE, e basta che UNA sia senza
+                  --    numero perche' il blocco fiscale resti incompleto.
+                  --
+                  -- ⭐ E NON GUARDA LA NATURA. Sarebbe stato naturale scrivere «se natura =
+                  --    NOTA_CREDITO allora...», ed e' sbagliato per due motivi: una nota di
+                  --    DEBITO che rettifica ha lo stesso identico problema, e una fattura
+                  --    ordinaria non ha righe con riga_rettificata_id — quindi il predicato
+                  --    sulle righe copre tutti i casi senza mai bloccare quelli normali.
+                  --    Il legame e' quello che esiste dalla generazione delle righe; il
+                  --    ponte documentale vendite.fatture_rettifiche lo popola un task che
+                  --    gira DOPO questa funzione, quindi qui sarebbe sempre vuoto.
+                  --
+                  -- ⛔ FAIL-CLOSED SULLA VISIBILITA'. vendite.fatture e vendite.fatture_righe
+                  --    hanno la RLS e questa funzione e' SECURITY INVOKER: una fattura
+                  --    rettificata fuori dal perimetro emittente di chi opera si legge come
+                  --    «non c'e'». I JOIN sono quindi LEFT e la riga senza padre visibile
+                  --    CONTA COME BLOCCANTE: il predicato non e' «risulta non numerata», e'
+                  --    «non posso dimostrare che sia numerata». Con dei JOIN interni uno zero
+                  --    avrebbe voluto dire «via libera» proprio nel caso in cui non si sa.
+                  -- --------------------------------------------------
+                  SELECT count(DISTINCT COALESCE(rif.id::text, 'riga ' || fr.riga_rettificata_id::text))::integer,
+                         min(COALESCE(rif.id::text, 'riga ' || fr.riga_rettificata_id::text))
+                    INTO v_n_bloccanti, v_primo_bloccante
+                    FROM vendite.fatture_righe fr
+                    LEFT JOIN vendite.fatture_righe rr ON rr.id  = fr.riga_rettificata_id
+                    LEFT JOIN vendite.fatture      rif ON rif.id = rr.fattura_id
+                   WHERE fr.fattura_id = p_fattura_id
+                     AND fr.riga_rettificata_id IS NOT NULL
+                     AND (rif.id IS NULL OR rif.numero IS NULL);
+
+                  IF v_n_bloccanti > 0 THEN
+                      -- ⭐ IL BERSAGLIO (23-08-2026) — la frase per la persona, l'etichetta
+                      --    per l'interfaccia. Fin qui il messaggio diceva «il documento 835»
+                      --    e l'operatore doveva ricopiarsi un numero interno in un campo di
+                      --    ricerca; adesso accanto alla frase esce l'indicazione di QUALE
+                      --    documento, e il frontend ci disegna sopra un gesto.
+                      --
+                      -- ⛔ SOLO I PADRI VISIBILI, e i JOIN qui sono INTERNI — al contrario
+                      --    del predicato qui sopra, e non e' una svista: la guardia deve
+                      --    essere fail-closed (un padre invisibile BLOCCA), il bersaglio
+                      --    dev'essere onesto (a un padre invisibile non si puo' mandare
+                      --    nessuno). Sono due domande diverse sulle stesse righe:
+                      --    «posso dimostrare che sia numerata?» e «dove mando l'operatore?».
+                      --    Il ramo fail-closed resta quindi SENZA bersaglio: il messaggio si
+                      --    mostra lo stesso, il pulsante non compare. Mai un pulsante che
+                      --    porta in un vicolo cieco.
+                      --
+                      -- ⚠️ Gira solo qui dentro, cioe' solo quando l'errore parte davvero:
+                      --    sul percorso felice non costa niente.
+                      SELECT jsonb_agg(x.b ORDER BY x.b)
+                        INTO v_bersagli
+                        FROM (SELECT DISTINCT jsonb_build_object('tipo', 'FATTURA',
+                                                                 'id',   rif.id::text) AS b
+                                FROM vendite.fatture_righe fr
+                                JOIN vendite.fatture_righe rr  ON rr.id  = fr.riga_rettificata_id
+                                JOIN vendite.fatture      rif  ON rif.id = rr.fattura_id
+                               WHERE fr.fattura_id = p_fattura_id
+                                 AND fr.riga_rettificata_id IS NOT NULL
+                                 AND rif.numero IS NULL) x;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_numera_fattura_opz_emessa', 'E_FATTURA_RETTIFICATA_SENZA_NUMERO',
+                          -- ⚠️ La chiave `bersaglio` si aggiunge SOLO se c'e' qualcosa da
+                          --    dire. Metterla a NULL non vorrebbe dire «nessun bersaglio»:
+                          --    per chi legge sarebbe una chiave presente e non utilizzabile,
+                          --    cioe' un W_BERSAGLIO_MALFORMATO — un avviso di difetto su un
+                          --    ramo che invece funziona come deve.
+                          jsonb_build_object('fattura_id',      p_fattura_id,
+                                             'bloccanti',       v_n_bloccanti,
+                                             'primo_bloccante', v_primo_bloccante)
+                          || CASE WHEN v_bersagli IS NULL THEN '{}'::jsonb
+                                  ELSE jsonb_build_object('bersaglio', v_bersagli) END,
+                          NULL::uuid,
+                          p_fattura_id::text, v_primo_bloccante);
+                  END IF;
+
+                  -- Assegna numero
+                  SELECT t.registro_id, t.anno, t.mese, t.serie, t.numero
+                    INTO v_registro_id, v_anno, v_mese, v_serie, v_numero
+                    FROM vendite.fn_assign_numero_fattura(p_fattura_id) AS t;
+
+                  -- Opzionale: stato EMESSA
+                  IF p_set_emessa THEN
+                      SELECT id INTO v_stato_emessa_id
+                        FROM config.stati_doc_fiscale WHERE codice_interno = p_codice_interno_emessa LIMIT 1;
+
+                      IF v_stato_emessa_id IS NOT NULL THEN
+                          UPDATE vendite.fatture SET stato_doc_fiscale_id = COALESCE(stato_doc_fiscale_id, v_stato_emessa_id) WHERE id = p_fattura_id;
+                      END IF;
+                  END IF;
+
+                  RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_numera_fattura_opz_emessa(bigint, boolean, character varying)
+              IS 'Assegna numero fattura (idempotente) e opzionalmente imposta stato EMESSA. ⭐ rev 2026-08-21: rifiuta di numerare un documento che RETTIFICA le righe di una fattura ancora senza numero (E_FATTURA_RETTIFICATA_SENZA_NUMERO). Non e'' cronologia: una nota di credito deve citare numero e data del documento corretto nel blocco DatiFattureCollegate della TD04, e con il padre senza numero quel blocco non e'' compilabile — la nota nascerebbe gia'' inadatta allo SDI. Il rifiuto arriva PRIMA di consumare un numero. ⚠️ Il predicato e'' PER RIGA (fatture_righe.riga_rettificata_id -> riga -> fattura): una nota puo'' rettificare righe di fatture diverse e ne basta UNA senza numero. ⭐ NON guarda la natura del documento: una nota di DEBITO che rettifica ha lo stesso problema, e una fattura ordinaria non ha righe con riga_rettificata_id — il predicato sulle righe copre tutto senza bloccare i casi normali. Non usa vendite.fatture_rettifiche perche'' quel ponte lo popola un task che gira DOPO la numerazione. ⛔ FAIL-CLOSED sulla visibilita'': fatture e fatture_righe hanno la RLS e la funzione e'' SECURITY INVOKER, quindi i JOIN sono LEFT e una riga il cui padre non e'' visibile conta come BLOCCANTE — il predicato e'' «non posso dimostrare che sia numerata», non «risulta non numerata». ⚠️ La guardia sta DOPO il ritorno idempotente: un documento gia'' numerato continua a rispondere con i suoi valori, altrimenti un secondo giro romperebbe cio'' che il primo ha gia'' fatto bene. ⚠️ CHI CHIAMA DEVE NUMERARE PRIMA I PADRI: il giro di lotto e'' fail-fast (una fattura che rifiuta ferma lo step). Oggi regge perche'' il backend ordina per f.id e la fattura rettificata e'' sempre piu'' vecchia della nota — la merce dev''essere gia'' stata fatturata perche'' l''accredito sia possibile — ma e'' un invariante implicito, non una garanzia scritta. ⭐ rev 2026-08-23: l''errore porta un BERSAGLIO. Il context della guardia aggiunge la chiave ''bersaglio'' con l''array {tipo,id} delle fatture rettificate da numerare, e script.fn_log_and_raise_error lo fa uscire nel canale DATATYPE dell''eccezione: il frontend ci disegna un pulsante «vai al documento» invece di lasciare all''operatore un id da ricopiare. ⛔ SOLO I PADRI VISIBILI, con JOIN interni — al contrario del predicato della guardia, che e'' fail-closed con LEFT JOIN: sono due domande diverse sulle stesse righe («posso dimostrare che sia numerata?» e «dove mando l''operatore?»), e il ramo in cui il padre non e'' visibile resta senza bersaglio, cioe'' senza pulsante. ⚠️ La chiave si aggiunge solo se c''e'' almeno un bersaglio: una chiave a NULL sarebbe letta come bersaglio malformato. ⚠️ Il messaggio 937 NON e'' cambiato: togliere l''id dalla frase e'' un passo successivo, e non si fa prima che il pulsante esista. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: si riapplica il 20260821-05,
+              --    sapendo che da quel momento il 937 torna a dire solo un id
+              --    dentro la frase. Il messaggio non e' mai cambiato, quindi
+              --    non c'e' niente da rimettere a posto sul catalogo.
+              SELECT 1;

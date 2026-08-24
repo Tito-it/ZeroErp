@@ -10,7 +10,7 @@
 > • [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)  
 >
 **Artefatti di selezione**   
-> • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/view/vw_conti_bancari_per_ruolo)   
+> • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo)   
 > • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
 >
 ### 🎯 Scopo Principale

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/profili_accesso_azioni.md" %}
 # 📚 Tabella `profili_accesso_azioni`
 
 > 📝 **Descrizione**

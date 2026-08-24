@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/template_documenti_versioni.md" %}
 # 📚 Tabella `template_documenti_versioni`
 
 ## 🗂️ Campi principali

@@ -10,7 +10,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from apps.core.services.db_error_fields import db_error_code
+from django.db import transaction
+
+from apps.core.services.db_error_fields import db_error_code, diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, messaggio_eccezione, run_fan_out
 from apps.core.services.service_errors import ServiceError
@@ -146,6 +148,11 @@ class PipelineStepExecutor:
         }
 
     # Scopo: Gestisce uno step pipeline validando input, risolvendo processi da configurazione DB e dispatch dei task
+    # ⚠️ `correlation_id` e' l'identita' del GIRO (D-7), non del lotto: la
+    #    genera il runner a ogni corsa e attraversa di qui per finire sulla riga
+    #    del tentativo. Facoltativa per disegno — chi esegue uno step fuori da
+    #    un giro (rollback puntuale, rilancio manuale) non ne ha uno, e un uuid
+    #    coniato qui sarebbe un filo che non lega niente.
     def execute_step(
         self,
         lotto_id: int,
@@ -154,6 +161,7 @@ class PipelineStepExecutor:
         *,
         rollback: bool = False,
         dry_run: bool = False,
+        correlation_id: str | None = None,
     ) -> None:
         ErrorManager.require(
             bool(lotto_id and stato_doc_fiscale_id and tipo_lotto and tipo_lotto.strip()),
@@ -230,6 +238,7 @@ class PipelineStepExecutor:
                 rollback=rollback,
                 dry_run=dry_run,
                 pipeline_id=pipeline_id,
+                correlation_id=correlation_id,
             )
 
     # Scopo: Verifica le dipendenze d'ordine di `_TASK_ORDER_DEPENDENCIES` sulla
@@ -290,6 +299,7 @@ class PipelineStepExecutor:
         rollback: bool,
         dry_run: bool,
         pipeline_id: int | None = None,
+        correlation_id: str | None = None,
     ) -> None:
         task = str(process.get("task", "")).strip()
         fase = process.get("fase") or "Esecuzione step"
@@ -399,6 +409,7 @@ class PipelineStepExecutor:
                 task_code=task,
                 fase=fase,
                 meta={"rollback": rollback},
+                correlation_id=correlation_id,
             )
             task_run_id = task_run_result.task_run_id
 
@@ -414,6 +425,51 @@ class PipelineStepExecutor:
             )
         except Exception as exc:
             self._fail_task_run_safely(task_run_id, exc)
+            # 🔴 IL TASK RUN IN ERRORE NON SOPRAVVIVE ALLA RIGA SOPRA, e non e'
+            # colpa sua: `fn_fail_lotto_task_run` scrive DENTRO la transazione
+            # dello step, che il rilancio annulla. Il diario dei task registrava
+            # quindi solo cio' che era andato bene — misurato il 2026-08-21:
+            # 128 COMPLETATO, 56 ANNULLATO, **zero ERRORE** su 184 run, mentre
+            # i fallimenti c'erano eccome.
+            # Qui si appendono all'eccezione le coordinate per RISCRIVERLO dopo
+            # il rollback: lo fa il runner, che e' l'unico punto FUORI dalla
+            # transazione (`_persist_task_run_error_safely`).
+            # ⚠️ Attributo sull'eccezione e non `context` del ServiceError: la
+            # riscrittura serve anche per le eccezioni NON di dominio, che un
+            # `context` non ce l'hanno.
+            # ⚠️ Solo se il tracing e' attivo (`task_run_id`): dove non c'e'
+            # policy non c'e' diario, ed e' una scelta di configurazione — non
+            # va aggirata scrivendo righe che il giro riuscito non scriverebbe.
+            # ⚠️ `try` sull'ASSEGNAZIONE, non un di piu': non tutte le
+            # eccezioni accettano attributi nuovi (una classe con `__slots__`
+            # solleva `AttributeError`), e qui siamo dentro la gestione di un
+            # fallimento — un secondo errore prenderebbe il posto del primo,
+            # che e' l'unico che l'operatore sta aspettando. Perdere la riga di
+            # diario e' accettabile; perdere il messaggio no.
+            if task_run_id is not None and pipeline_id is not None:
+                try:
+                    exc.zeroerp_task_run_fallito = {
+                        "lotto_id": lotto_id,
+                        "pipeline_id": pipeline_id,
+                        "stato_doc_fiscale_id": stato_doc_fiscale_id,
+                        "task_code": task,
+                        "fase": fase,
+                        # Il filo del giro viaggia con l'eccezione: chi riscrive
+                        # la riga fuori dalla transazione (il telaio best-effort
+                        # del runner) non ha altro modo di conoscerlo, e senza
+                        # il tentativo fallito resterebbe l'unico del giro
+                        # senza `correlation_id` — cioe' l'unico che la
+                        # diagnostica non ritroverebbe.
+                        "correlation_id": correlation_id,
+                        "error_code": (
+                            exc.code
+                            if isinstance(exc, ServiceError)
+                            else db_error_code(exc) or "E_TASK"
+                        ),
+                        "error_message": messaggio_eccezione(exc),
+                    }
+                except Exception:  # noqa: S110 - vedi commento sopra
+                    pass
             raise
         if task_run_id is not None:
             # D-Q p.3: un esito PARZIALE (giro completato, alcune fatture in
@@ -514,7 +570,39 @@ class PipelineStepExecutor:
         # Helper riusabile: esecuzione task per-fattura con logging scope FATTURA.
         for fattura_id in fattura_ids:
             try:
-                action(fattura_id)
+                # 🔴 SAVEPOINT PER FATTURA — SENZA, IL PERCORSO D'ERRORE SI
+                # DISTRUGGE DA SOLO. Quando una madre DB solleva, la
+                # transazione PostgreSQL entra in stato ABORTITO: da quel
+                # momento QUALUNQUE istruzione risponde «la transazione
+                # corrente e' interrotta». Le due righe sotto — il log di scope
+                # FATTURA e la scrittura del diario — sono istruzioni SQL:
+                # fallivano entrambe, e il loro fallimento SOSTITUIVA l'errore
+                # di dominio. L'operatore riceveva `E_PIPELINE`, «Errore nella
+                # pipeline di fatturazione», e il codice vero non arrivava
+                # nemmeno al diario del lotto.
+                #
+                # 🔴 Misurato in-app il 2026-08-21 (collaudo nota di credito,
+                # lotto 6034): il DB aveva scritto la sua riga con tutto —
+                # «Non si puo' numerare il documento 15353: la fattura che
+                # rettifica non e' ancora numerata (documento 835)» — e a video
+                # non arrivava niente. In cascata fallivano anche il marcatore
+                # di errore del lotto (`_mark_lotto_error_safely`) e il
+                # passaggio di stato a ERRORE: il lotto restava COMPLETATO,
+                # cioe' raccontava il contrario di quello che era successo.
+                #
+                # Con il savepoint, `ROLLBACK TO SAVEPOINT` riporta la
+                # transazione in stato utilizzabile: l'errore resta, ma si puo'
+                # ancora scrivere. E' la stessa disciplina del BB `run_fan_out`
+                # (`isola_in_transazione=True`), che qui non si puo' riusare
+                # perche' quello raccoglie tutti gli esiti e questo giro e'
+                # FAIL-FAST: si ferma al primo che cade.
+                #
+                # ⚠️ Non cambia cosa viene scritto: il rilancio propaga e la
+                # transazione dello step viene comunque annullata a monte. Il
+                # savepoint serve alla LEGGIBILITA' del fallimento, non a
+                # salvarne il lavoro.
+                with transaction.atomic():
+                    action(fattura_id)
             except ServiceError as exc:
                 self._log_fattura_task_error(
                     task=task,
@@ -526,17 +614,61 @@ class PipelineStepExecutor:
                 )
                 raise
             except Exception as exc:
+                # ⭐ IL CODICE DEL DATABASE NON SI PERDE QUI. E' lo stesso
+                # difetto gia' corretto in `_fail_task_run_safely` per il
+                # diario dei task run (vedi il suo commento), e restava aperto
+                # sulla strada che l'OPERATORE vede: un task che delega a una
+                # madre DB solleva un `DatabaseError` che porta il suo codice di
+                # dominio nel campo strutturato, e appiattirlo su
+                # `E_TASK_FATTURA` sostituisce una frase che dice cosa fare con
+                # una che dice solo «errore».
+                # 🔴 Misurato sul caso che l'ha fatto emergere (nota di credito,
+                # 2026-08-21): `E_FATTURA_RETTIFICATA_SENZA_NUMERO` — «numera
+                # prima la fattura NNN» — arrivava a video come «Errore su
+                # singola fattura durante task pipeline». La guardia nuova del
+                # DB c'era e funzionava; era illeggibile.
+                # ⚠️ Vale per OGNI task per-fattura, non solo per la
+                # numerazione: scadenze, snapshot indirizzi e proiezione
+                # rettifiche passano tutti di qui.
+                # Letto UNA volta: la stessa risposta decide codice, messaggio
+                # e `log_to_db` — tre letture separate dello stesso fatto sono
+                # tre punti in cui divergere per errore.
+                # ⭐ UNA lettura sola (BB `diagnostica_db`, 2026-08-24): prima
+                # erano tre chiamate separate sullo stesso fatto, piu' un quarto
+                # `db_diag` qui sotto — e il campo da correggere e il bersaglio
+                # non li leggeva nessuno.
+                diag_dominio = diagnostica_db(exc)
+                codice_strutturato = diag_dominio.codice_strutturato
+                code = diag_dominio.codice or "E_TASK_FATTURA"
+                # `message_primary` e' il solo RAISE, senza lo stack PL/pgSQL:
+                # e' cio' che si mostra. Senza codice di dominio non c'e' niente
+                # da mostrare di meglio della frase generica — un `str(exc)`
+                # tecnico a video non aiuterebbe nessuno.
+                message = (
+                    (diag_dominio.messaggio if diag_dominio.codice else None)
+                    or "Errore su singola fattura durante task pipeline."
+                )
                 self._log_fattura_task_error(
                     task=task,
                     lotto_id=lotto_id,
                     fattura_id=fattura_id,
                     stato_doc_fiscale_id=stato_doc_fiscale_id,
-                    code="E_TASK_FATTURA",
+                    code=code,
                     detail=str(exc),
                 )
+                # ⭐ IL BERSAGLIO PASSA DI QUI, ed e' la ragione per cui questo
+                # punto conta piu' degli altri tre: il messaggio pilota del
+                # cantiere — `E_FATTURA_RETTIFICATA_SENZA_NUMERO`, «numera prima
+                # il documento 820» — nasce dentro un task per-fattura, quindi
+                # e' QUESTA la strada che deve portarlo. Insieme al bersaglio
+                # passano il campo da correggere e la soluzione a catalogo, che
+                # da qui non erano mai usciti.
                 ErrorManager.raise_error(
-                    code="E_TASK_FATTURA",
-                    message="Errore su singola fattura durante task pipeline.",
+                    code=code,
+                    message=message,
+                    hint=diag_dominio.hint,
+                    fields=diag_dominio.fields,
+                    targets=diag_dominio.bersagli or None,
                     detail=f"Task {task} fallito su fattura_id={fattura_id}: {exc}",
                     context={
                         "lotto_id": lotto_id,
@@ -545,7 +677,12 @@ class PipelineStepExecutor:
                         "task": task,
                     },
                     function_name="vendite.pipeline_step_executor._run_per_fattura_task",
-                    log_to_db=True,
+                    # ⛔ Niente doppia riga nel diario: quando il codice arriva
+                    # dal campo strutturato, `script.fn_log_and_raise_error` ha
+                    # gia' scritto la sua (decisione DB+BE del 2026-08-19, vedi
+                    # `ErrorManager.raise_from_database_error`). Il ripiego
+                    # testuale e gli errori Python la riga non ce l'hanno.
+                    log_to_db=codice_strutturato is None,
                     cause=exc,
                 )
 
@@ -663,7 +800,32 @@ class PipelineStepExecutor:
         # _execute_pipeline_step (runner) dopo i task. Cosi' la fattura passa per EMESSA(2)
         # prima della numerazione, evitando il salto 1→8 vietato dalla matrice transizioni.
         def _action() -> None:
-            fattura_ids = self.repository.list_fatture_by_lotto(lotto_id)
+            # ⭐ L'ORDINE QUI E' UN REQUISITO, NON UNA COMODITA' (DB 2026-08-21,
+            # brief note credito §44.2). Dal 2026-08-21
+            # `fn_numera_fattura_opz_emessa` RIFIUTA
+            # (`E_FATTURA_RETTIFICATA_SENZA_NUMERO`) di numerare un documento le
+            # cui righe rettificano righe di una fattura ancora senza numero: una
+            # nota di credito deve poter citare numero e data del documento
+            # corretto nel blocco `DatiFattureCollegate` della TD04. Il giro e'
+            # FAIL-FAST per fattura, quindi una nota incontrata prima della sua
+            # fattura fermerebbe l'INTERO step.
+            #
+            # L'id crescente E' l'ordine di dipendenza, e non per caso: perche'
+            # un accredito sia possibile la merce dev'essere gia' stata
+            # fatturata, quindi la fattura rettificata nasce SEMPRE prima della
+            # nota che la corregge.
+            #
+            # ⚠️ Il `sorted` non ripete l'`ORDER BY` del repository: lo rende
+            # indipendente da esso. Quella query ha due chiamanti e il suo
+            # ordinamento e' li' per la stabilita' del risultato — chi un giorno
+            # lo cambiasse per un'altra ragione non ha modo di sapere che qui
+            # dentro ci si appoggia, e il guasto sarebbe uno step che si ferma a
+            # meta' lotto con un codice che parla d'altro.
+            #
+            # ⛔ Il caso CROSS-LOTTO non e' coperto da nessun ordinamento e non
+            # deve esserlo: se la fattura rettificata sta in un lotto ancora in
+            # bozza, il rifiuto della madre DB e' la risposta giusta.
+            fattura_ids = sorted(self.repository.list_fatture_by_lotto(lotto_id))
             self._run_per_fattura_task(
                 lotto_id=lotto_id,
                 stato_doc_fiscale_id=stato_doc_fiscale_id,

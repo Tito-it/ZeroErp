@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/categoria_accisa.md" %}
 # 📚 Tabella `categoria_accisa`
 
 > 📝 **Descrizione**

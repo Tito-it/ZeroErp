@@ -5,7 +5,7 @@
 Approfondimenti tabelle:   
 >
 [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)    
-> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)     
+> [vendite.ddt](/dbzero/vendite/tabelle/ddt)     
 > [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)    
 >
 
@@ -71,7 +71,7 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
 
 * **DDT**:
 
-  * Campi come `causale_trasporto_id` in `vendite.ddt_testata` (e, se previsto, in altri documenti logistici).
+  * Campi come `causale_trasporto_id` in `vendite.ddt` (e, se previsto, in altri documenti logistici).
   * La causale selezionata descrive il *motivo operativo* con cui i beni vengono movimentati.
 
 * **Altri documenti di movimento**:
@@ -92,7 +92,7 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
      * aggiorna automaticamente i campi `data_update` e `user_update` ad ogni modifica della riga.
    * **Come**:
 
-     * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()` che centralizza la gestione dei campi di audit.
+     * invoca la funzione generica `script.trgfn_audit_data_user_generic()` che centralizza la gestione dei campi di audit.
 
 > Questo garantisce che tutte le modifiche al catalogo causali di trasporto siano sempre tracciate in modo uniforme rispetto alle altre tabelle di configurazione.
 

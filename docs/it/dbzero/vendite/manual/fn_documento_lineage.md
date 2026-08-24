@@ -79,4 +79,30 @@ ORDER BY ordine;
 
 ---
 
+
+### ⭐ Le due colonne nuove, e una conseguenza a video (rev 2026-08-21)
+
+Il traversal espone anche `from_natura_doc_codice` / `to_natura_doc_codice`: sono
+ciò che, nel pannello «Passaggi», distingue la fattura dalla nota di credito che
+la rettifica — due nodi che senza la natura hanno stesso tipo, stesso stato e
+`codice` NULL finché non sono numerati.
+
+`is_ramo_inverso` **non è più ricalcolato qui** come `arco = 'R'`: arriva da
+`vw_documento_lineage_archi`, che è l'unica sede dell'elenco dei rami di ritorno.
+Sull'arco N vale `true`, quindi il FE lo rende già in modo distinto senza sapere
+nulla di note di credito.
+
+⚠️ **Una conseguenza da sapere, per chi rende a video.** Camminando in avanti da
+una **commessa**, la nota di credito compare **due volte**: una come figlia
+diretta (arco G, dalla commessa) e una a livello 2 (arco N, dalla fattura che
+rettifica). Non è un difetto — sono due relazioni diverse verso lo stesso
+documento, e questa funzione ritorna **archi**, non nodi.
+
+⛔ La revisione è un **DROP + CREATE** (la `RETURNS TABLE` cambia, e PostgreSQL
+non lo consente in place). Il DROP porta via i GRANT: sono ri-concessi a
+`zeroerp_app` nello stesso changeSet, altrimenti il pannello e i pgTAP
+prenderebbero «permesso negato» fino alla passata serale di `ci_apply`.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -62,8 +62,11 @@
       <td>
         Logistica, ubicazioni e movimentazione fisica.
         <ul>
-          <li>Esempi: <code>magazzini</code>, <code>ubicazioni</code>, <code>movimenti</code>, <code>giacenze</code>, <code>lotti</code>, <code>seriali</code></li>
+          <li>Esempi: <code>magazzini</code>, <code>ubicazioni</code>, <code>movimenti</code>, <code>costo_medio</code>, <code>inventari</code>, <code>trasferimenti</code></li>
+          <li>La <strong>giacenza non è una tabella</strong>: è la vista <code>vw_giacenza</code>, somma del ledger <code>movimenti</code>. Stessa cosa per il valore (<code>vw_giacenza_valorizzata</code>).</li>
+          <li><code>lotto</code> e <code>seriale</code> sono <strong>colonne</strong> di <code>movimenti</code>, non tabelle proprie.</li>
           <li>Tracciabilità e valorizzazione su UoM base</li>
+          <li>⚠️ <strong>Modello disegnato, non in esercizio</strong> (misurato 21-08-2026): tutte le tabelle operative sono a 0 righe.</li>
         </ul>
       </td>
     </tr>

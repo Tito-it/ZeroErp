@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/user_override_oggetti.md" %}
 # 📚 Tabella `user_override_oggetti`
 
 ## 🗂️ Campi principali

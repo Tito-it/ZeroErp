@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/ai_query_log.md" %}
 # 📚 Tabella `ai_query_log`
 
 > 📝 **Descrizione**

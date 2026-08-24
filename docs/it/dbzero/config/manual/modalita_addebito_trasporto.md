@@ -5,12 +5,12 @@
 Approfondimenti tabelle:
 >
 [config.causali_trasporto](/dbzero/config/tabelle/causali_trasporto)
-> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)
-> [vendite.fatture_testata](/dbzero/vendite/tabelle/fatture_testata)
+> [vendite.ddt](/dbzero/vendite/tabelle/ddt)
+> [vendite.fatture](/dbzero/vendite/tabelle/fatture)
 >
 Approfondimenti funzioni/trigger generici:
 >
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
@@ -74,7 +74,7 @@ Esempi tipici: **FRANCO**, **ASSEGNATO**, **TERZI**, con comportamenti diversi r
 
 * **Documenti di trasporto e vendita**:
 
-  * campi tipo `modalita_addebito_trasporto_id` in `vendite.ddt_testata` o `vendite.fatture_testata`;
+  * campi tipo `modalita_addebito_trasporto_id` in `vendite.ddt` o `vendite.fatture`;
   * influenza le logiche di calcolo e addebito delle spese di trasporto.
 
 * **Anagrafiche clienti/fornitori** (in prospettiva):
@@ -90,7 +90,7 @@ Esempi tipici: **FRANCO**, **ASSEGNATO**, **TERZI**, con comportamenti diversi r
 Attualmente la definizione non include campi di audit (`data_insert`, `user_insert`, ecc.). Se in futuro verranno aggiunti, si potrà:
 
 1. Introdurre un trigger di audit generico (es. `trg_upd_modalita_addebito_trasporto_audit_data_user`).
-2. Collegarlo alla funzione `script.trgfn_upd_audit_data_user_generic()` per allineare la gestione agli altri domini `config.*`.
+2. Collegarlo alla funzione `script.trgfn_audit_data_user_generic()` per allineare la gestione agli altri domini `config.*`.
 
 > L’adozione di un audit standard è consigliata qualora la tabella venga utilizzata in contesti multi-gestore o dove è importante tracciare modifiche alle regole di porto.
 

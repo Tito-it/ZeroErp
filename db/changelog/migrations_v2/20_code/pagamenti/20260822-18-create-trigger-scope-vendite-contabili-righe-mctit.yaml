@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO IN SCRITTURA SU DISTINTA E RIGA — passo S3-4 (lotto 6)
+#   pagamenti.vendite_contabili + pagamenti.vendite_contabili_righe
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3 S3-4 · Decisione: brief madre D5
+#
+# ── ⭐ TRE TRIGGER, TRE CATENE — e nessuna copre le altre ─────────────
+#
+#   | Dove | Modo, colonna | Domanda |
+#   | --- | --- | --- |
+#   | **testata** | `ente_incasso` su `ente_incasso_id` | «questo canale e' mio?» |
+#   | **riga** | `fattura` su `fattura_id` | «questa fattura e' mia?» |
+#   | **riga** | `contabile` su `contabile_id` | «questo conto e' mio?» |
+#
+#   ⚠️ Sulla riga ne servono **due**. Con il solo `fattura`, il guard avrebbe
+#   protetto **solo le righe gia' abbinate** — cioe' proprio non la coda «da
+#   abbinare», che e' l'unica ragione per cui il perimetro dal conto e' stato
+#   inventato (D5): un presidio che si accende dopo che il lavoro e' finito.
+#   ⭐ Con il solo `contabile`, si potrebbe abbinare denaro **proprio** alla
+#   fattura **di un altro**: il conto sarebbe mio, la fattura no — ed e' il verso
+#   in cui il denaro sparisce dal conto di chi lo aspettava.
+#
+#   ⚠️ E sulla **testata** serve il terzo, perche' senza si potrebbe aprire una
+#   distinta **sul canale di un altro emittente**: chi la crea poi non la vede
+#   (la policy la nasconde) e l'altro emittente si ritrova una distinta che non
+#   ha aperto. La riga da sola non basta a impedirlo: quando la testata nasce, di
+#   righe non ce n'e' nessuna.
+#
+# ── ⚠️ IL CASO NORMALE PASSA SENZA ACCORGERSENE ──────────────────────
+#   * riga **da abbinare** sul proprio conto: il guard della fattura esce in
+#     testa (`fattura_id` nullo), quello del conto verifica e passa;
+#   * riga del **fondo fattura**: il guard della fattura verifica e passa; quello
+#     del conto trova una distinta **interna**, che non ha canale, e la lascia
+#     stare — ⭐ ed e' il motivo per cui le `JOIN` di quel modo sono interne: una
+#     distinta interna non e' il canale di nessuno, e pretendere un perimetro da
+#     li' rifiuterebbe **la prima riga scritta dalla pipeline dei fondi**;
+#   * distinta **interna**: il guard della testata trova `ente_incasso_id` nullo
+#     ed esce prima ancora di risolvere.
+#
+# ── ⚠️ ORDINE DEI `BEFORE ROW`: alfabetico, e qui non fa danno ────────
+#   `a10_guard_distinta_finale` → `a10_guard_emittente_scope` →
+#   `a10_guard_rata` → `a10_guard_scope_conto` → `a10_guard_stato_dati` →
+#   `a10_guard_transizione`. Nessuno dei messaggi che parlano prima racconta dati
+#   di un altro emittente: dicono cose sulla riga che si sta scrivendo, con
+#   valori che chi scrive ha appena digitato.
+#
+# ── ⛔ NON e' questo il presidio che nasconde le righe altrui ─────────
+#   Questo **rifiuta una scrittura, e lo dice**. A far sparire dalla vista le
+#   righe fuori perimetro sono le policy dei changeSet -20/-21/-22. Le due cose
+#   servono insieme: un rifiuto parlante dove serve un rimedio, un silenzio dove
+#   serve riservatezza.
+#
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260822-18-create-trigger-scope-vendite-contabili-righe-mctit.yaml
+
+  - changeSet:
+      id: 20260822-18-create-trigger-scope-vendite-contabili-righe
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Tre trigger di scope in scrittura su pagamenti: uno sulla testata (modo
+        'ente_incasso', altrimenti si aprirebbe una distinta sul canale di un altro
+        emittente) e due sulla riga — modo 'fattura' su fattura_id, mirror di quello che
+        vendite_movimenti ha gia', e modo 'contabile' su contabile_id, che deriva il
+        perimetro dal conto di incasso (D5). Sulla riga ne servono due perche' nessuno dei
+        due copre l'altro: col solo primo il guard proteggerebbe le sole righe gia' abbinate,
+        cioe' non la coda da abbinare; col solo secondo si potrebbe abbinare denaro proprio
+        alla fattura di un altro.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili_righe
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_resolve_emittente_fiscale_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. LA TESTATA — il canale su cui la distinta si apre.
+              --    Senza, si potrebbe aprire una distinta sul conto di un altro
+              --    emittente: chi la crea poi non la vede e l'altro si ritrova un
+              --    documento che non ha aperto. La riga da sola non lo impedisce,
+              --    perche' quando la testata nasce di righe non ce n'e' nessuna.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('ente_incasso', 'ente_incasso_id');
+
+              -- 2. LA RIGA, perimetro della FATTURA — vale quando la riga e' gia'
+              --    abbinata. Mirror esatto di
+              --    trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_emittente_scope_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE TRIGGER trg_vendite_contabili_righe_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON pagamenti.vendite_contabili_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_id');
+
+              -- 3. LA RIGA, perimetro del CONTO — vale sempre, ed e' l'unico che
+              --    copre la coda «da abbinare», dove la fattura per definizione
+              --    non c'e'.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_scope_conto_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+
+              CREATE TRIGGER trg_vendite_contabili_righe_a10_guard_scope_conto_ins_upd
+                  BEFORE INSERT OR UPDATE ON pagamenti.vendite_contabili_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('contabile', 'contabile_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_scope_conto_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_righe_a10_guard_emittente_scope_ins_upd
+                  ON pagamenti.vendite_contabili_righe;
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_emittente_scope_ins_upd
+                  ON pagamenti.vendite_contabili;

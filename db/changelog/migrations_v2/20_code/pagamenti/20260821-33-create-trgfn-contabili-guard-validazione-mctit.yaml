@@ -1,0 +1,228 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE CONDIZIONI CHE LA MATRICE NON SA ESPRIMERE — passi S1-22 e coda di S1-19
+#   pagamenti.trgfn_vendite_contabili_guard_validazione
+#   Piano: brief-db-posting-e-abbinamento-rata.md §2.1 S1-22
+#   Decisione: brief-incassi, D14-a-bis (quadratura a VALIDATA) e D12-b-bis/D12-d
+#
+# ── PERCHE' UN GUARD SOLO PER DUE REGOLE ──────────────────────────────
+#   Sono la stessa specie: **condizioni su una transizione che la matrice
+#   `(stato_da, stato_a)` non può portare**, perché dipendono da colonne della
+#   riga e non dalla coppia di stati. Tenerle insieme dice al prossimo lettore
+#   dove si guarda quando la matrice ammette un passaggio e il database lo rifiuta
+#   lo stesso.
+#
+#   **1 · Entrando in `VALIDATA`** — se la distinta dichiara un totale, la somma
+#   delle righe deve corrispondere.
+#   **2 · Uscendo da `VALIDATA` verso `BOZZA`** — solo se la distinta è `MANUALE`.
+#
+# ── ⭐ 1) LA QUADRATURA SCATTA AL GESTO «HO FINITO», NON ALLA REGISTRAZIONE ─
+#   È una decisione (D14-a-bis), non un dettaglio di implementazione: se hai
+#   dichiarato 1.500 € e ne hai digitati 1.480, te lo dice **lì**, mentre sei
+#   ancora nel flusso di inserimento — invece che al momento di registrare, quando
+#   il lavoro è finito e il contesto è perso.
+#
+#   ⚠️ **E non può stare in un trigger di riga.** Durante un caricamento le righe
+#   entrano una alla volta e la somma torna **solo alla fine**: un trigger di riga
+#   rifiuterebbe la prima riga di ogni import. È la regola già registrata nel
+#   progetto — *un tetto-somma non sta in un trigger di riga: il guard tiene la
+#   riga, la madre tiene l'uguaglianza*. Qui il «momento in cui la somma è
+#   completa» è dichiarato dall'operatore, ed è il passaggio a `VALIDATA`.
+#
+#   ⚠️ **La somma conta TUTTE le righe attive, `SCARTATA` comprese** (D12-e). Quel
+#   denaro **è arrivato**: la quadratura dice *«abbiamo letto tutto ciò che
+#   c'era»*, non *«tutto è nostro»*. Se una riga scartata uscisse dalla somma, il
+#   **primo scarto romperebbe la quadratura di una distinta sana**.
+#
+#   ℹ️ Senza `importo_dichiarato` non si controlla niente e si passa: sul manuale
+#   è facoltativo per decisione, e i totali si vedono comunque alla registrazione.
+#
+# ── ⭐ 2) LA RIAPERTURA E' SOLO DELLA MANUALE ──────────────────────────
+#   `VALIDATA → BOZZA` è seminata come **ammessa** nella matrice, perché la
+#   matrice non porta condizioni. La restrizione a `MANUALE` vive qui: una
+#   distinta `AUTOMATICA` è la copia di un file ed è immutabile (D12-d); una
+#   `GENERATA` non si corregge, si rigenera.
+#
+#   ⚠️ **Chi legge la sola matrice non vede questa regola.** È il motivo per cui
+#   il codice errore esiste e per cui il suo messaggio nomina l'origine: senza,
+#   l'operatore leggerebbe «transizione ammessa» in un posto e un rifiuto
+#   nell'altro, senza capire quale dei due mente.
+#
+# ── ⚠️ L'ORDINE FRA I QUATTRO GUARD DELLA TESTATA ─────────────────────
+#   I `BEFORE ROW` scattano in ordine **alfabetico**. Su `vendite_contabili`:
+#     1. `…_a10_guard_chiusura_upd`      (S1-20)
+#     2. `…_a10_guard_ente_centro_ins_upd`
+#     3. `…_a10_guard_transizione_upd`   (S1-5)
+#     4. `…_a10_guard_validazione_upd`   (questo)
+#
+#   ⭐ È l'ordine giusto e vale la pena averlo scritto: **la transizione si
+#   valuta prima delle sue condizioni**, così chi tenta un passaggio inesistente
+#   legge «non ammessa» e non un dettaglio sulla quadratura di una transizione che
+#   comunque non poteva fare.
+#   ⚠️ Il primo — la chiusura — sta davanti a tutti: se qualcuno tenta un salto
+#   inesistente **verso `CHIUSA`** con righe pronte, leggerà prima delle righe
+#   pronte e poi della transizione. Due giri invece di uno, e nessuna interfaccia
+#   offre quel salto: si accetta, ma è scritto perché non sembri un caso.
+#
+# Dipendenze: codici E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA (959, DATO_ERRATO)
+#   e E_CONTABILE_RIAPERTURA_NON_MANUALE (960, CONFLITTO_STATO); colonne origine e
+#   importo_dichiarato (`20260821-32`).
+# Presidio: db/pgtap/pagamenti/test-contabili-origine-e-quadratura.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-33-create-trgfn-contabili-guard-validazione-mctit.yaml
+
+  - changeSet:
+      id: 20260821-33-create-trgfn-contabili-guard-validazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Le due condizioni che la matrice delle transizioni non sa esprimere, perché
+        dipendono da colonne della riga: entrando in VALIDATA la somma delle righe deve
+        corrispondere al totale dichiarato (se c'è), e la riapertura verso BOZZA è solo
+        della distinta MANUALE. La quadratura sta al gesto «ho finito di inserire» per
+        decisione — lì l'operatore è ancora nel flusso — e conta anche le righe scartate,
+        perché quel denaro è arrivato comunque.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: origine
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: importo_dichiarato
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_validazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_da  pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_stato_a   pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_somma     pagamenti.vendite_contabili_righe.importo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Le CONDIZIONI su una transizione che la matrice
+                  --   (stato_da, stato_a) non puo' portare, perche' dipendono da
+                  --   colonne della riga:
+                  --
+                  --   1) entrando in VALIDATA — se la distinta DICHIARA un
+                  --      totale, la somma delle righe deve corrispondere;
+                  --   2) uscendo da VALIDATA verso BOZZA — solo se e' MANUALE.
+                  --
+                  -- ⚠️ La quadratura NON puo' stare in un trigger di riga: la
+                  --    somma torna solo alla fine del caricamento. Qui il
+                  --    momento e' dichiarato dall'operatore.
+                  -- =========================================================
+
+                  IF NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN s.id = OLD.stato_id THEN s.codice_interno END),
+                      max(CASE WHEN s.id = NEW.stato_id THEN s.codice_interno END)
+                    INTO v_stato_da, v_stato_a
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.id IN (OLD.stato_id, NEW.stato_id);
+
+                  -- ── 1) Quadratura col totale dichiarato, entrando in VALIDATA
+                  IF v_stato_a = 'VALIDATA' AND NEW.importo_dichiarato IS NOT NULL THEN
+                      -- ⚠️ TUTTE le righe attive, SCARTATA compresa: quel denaro
+                      --    e' arrivato. Se le scartate uscissero dalla somma, il
+                      --    primo scarto romperebbe una distinta sana.
+                      SELECT COALESCE(SUM(cr.importo), 0)
+                        INTO v_somma
+                        FROM pagamenti.vendite_contabili_righe cr
+                       WHERE cr.contabile_id = NEW.id
+                         AND cr.attivo IS TRUE;
+
+                      IF v_somma IS DISTINCT FROM NEW.importo_dichiarato THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'pagamenti.trgfn_vendite_contabili_guard_validazione',
+                              'E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA',
+                              jsonb_build_object(
+                                  'campo',              'importo_dichiarato',
+                                  'contabile_id',       NEW.id,
+                                  'codice',             NEW.codice,
+                                  'origine',            NEW.origine,
+                                  'importo_dichiarato', NEW.importo_dichiarato,
+                                  'somma_righe',        v_somma
+                              ),
+                              NEW.tx_id,
+                              NEW.codice,
+                              NEW.importo_dichiarato::text,
+                              v_somma::text
+                          );
+                      END IF;
+                  END IF;
+
+                  -- ── 2) La riapertura e' solo della MANUALE
+                  IF v_stato_da = 'VALIDATA' AND v_stato_a = 'BOZZA'
+                     AND NEW.origine IS DISTINCT FROM 'MANUALE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'pagamenti.trgfn_vendite_contabili_guard_validazione',
+                          'E_CONTABILE_RIAPERTURA_NON_MANUALE',
+                          jsonb_build_object(
+                              'contabile_id', NEW.id,
+                              'codice',       NEW.codice,
+                              'origine',      NEW.origine
+                          ),
+                          NEW.tx_id,
+                          NEW.codice,
+                          CASE NEW.origine
+                              WHEN 'AUTOMATICA' THEN 'arrivata da un file'
+                              WHEN 'GENERATA'   THEN 'prodotta dal sistema'
+                              ELSE NEW.origine
+                          END
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_validazione() IS
+                'Le condizioni su una transizione che la MATRICE non sa esprimere, perche'' dipendono da colonne della riga. (1) Entrando in VALIDATA: se importo_dichiarato e'' valorizzato, la somma delle righe attive - SCARTATA COMPRESA, quel denaro e'' arrivato - deve corrispondere. Il controllo sta al gesto «ho finito di inserire» per decisione (D14-a-bis): li'' l''operatore e'' ancora nel flusso. ⚠️ Non puo'' stare in un trigger di riga, dove la somma torna solo alla fine. (2) VALIDATA -> BOZZA solo se origine = MANUALE: l''automatica e'' la copia di un file ed e'' immutabile, la generata si rifa''. ⚠️ Chi legge la sola matrice non vede queste due regole.';
+
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_validazione_upd
+                  ON pagamenti.vendite_contabili;
+
+              CREATE TRIGGER trg_vendite_contabili_a10_guard_validazione_upd
+                  BEFORE UPDATE OF stato_id ON pagamenti.vendite_contabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_guard_validazione();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- ⚠️ Il rollback toglie due regole che la matrice non sa esprimere:
+              -- una distinta tornerebbe validabile con un totale dichiarato che
+              -- non quadra, e una distinta importata tornerebbe riapribile.
+              DROP TRIGGER IF EXISTS trg_vendite_contabili_a10_guard_validazione_upd
+                  ON pagamenti.vendite_contabili;
+
+              DROP FUNCTION IF EXISTS pagamenti.trgfn_vendite_contabili_guard_validazione();

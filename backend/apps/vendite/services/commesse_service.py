@@ -25,6 +25,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, transaction
 
+from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import PayloadValidator
@@ -200,32 +201,70 @@ def pr_run_commesse_push(
                         righe_ids=attivita_per_commessa.get(commessa_id, []),
                     )
             except Exception as exc:  # noqa: BLE001 — best-effort, report-driven
-                emittibilita_errors.append(
-                    f"commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
-                )
+                # Una sola composizione del messaggio: finisce sia nel report
+                # (con le coordinate davanti) sia nel payload dell'evento. Due
+                # `f"{type(exc).__name__}: {exc}"` scritti a mano avrebbero
+                # potuto divergere alla prima modifica.
+                errore = f"{type(exc).__name__}: {exc}"
+                emittibilita_errors.append(f"commessa_id={commessa_id}: {errore}")
                 # Categoria a sé: il guard tipo_doc (497) segnala righe approvabili
                 # con tipo_doc_fiscale_id mancante → altrimenti fatturato perso in
                 # silenzio. Lo isoliamo per renderlo osservabile (dashboard/alert).
-                if _ERR_TIPO_DOC_MANCANTE in str(exc):
+                tipo_doc_mancante_qui = _ERR_TIPO_DOC_MANCANTE in str(exc)
+                if tipo_doc_mancante_qui:
                     tipo_doc_mancante.append(commessa_id)
 
-        # Persistenza durevole: in un push headless gli errori del ponte
-        # vivrebbero solo nel dict di ritorno e andrebbero persi. Traccia un
-        # evento queryable (severity WARNING), evidenziando il tipo_doc mancante.
-        if emittibilita_errors:
-            repo.log_event(
-                domain="COMMESSE",
-                entity_type="TASK_RUN",
-                entity_id=report.push_log_id or 0,
-                event_code="EMITTIBILITA_FALLITA",
-                severity="WARNING",
-                payload={
-                    "push_log_id": report.push_log_id,
-                    "totale_falliti": len(emittibilita_errors),
-                    "tipo_doc_mancante_commesse": tipo_doc_mancante,
-                    "errori": emittibilita_errors,
-                },
-            )
+                # ⭐ UNA RIGA DI GIORNALE PER COMMESSA FALLITA (consegna BE-4,
+                #    D-3). Prima era UN evento aggregato a fine ciclo, con
+                #    dentro la lista degli id: appeso a `TASK_RUN`, cioe' a un
+                #    giro — che non e' un'entita' e non ha un emittente da cui
+                #    derivare il perimetro. Il giornale oggi lo rifiuterebbe.
+                #
+                #    ⭐ E l'aggregato era sbagliato prima ancora del perimetro:
+                #    chi apre la commessa 812 vuole vedere che il suo push e'
+                #    fallito, non pescare il proprio id da una lista dentro il
+                #    payload di un evento che sta da un'altra parte. La riga si
+                #    lega alla cosa di cui parla.
+                #
+                # 🔴 `severity` VALE "WARN", NON "WARNING" (BE-1). Il CHECK
+                #    `chk_event_log_severity` ammette INFO | WARN | ERROR: con
+                #    "WARNING" questa scrittura sollevava 23514 e — non essendo
+                #    in un try — faceva saltare `pr_run_commesse_push` PROPRIO
+                #    nel ramo in cui qualcosa era gia' andato storto. In
+                #    tabella: zero righe, per mesi. E' sopravvissuto perche' il
+                #    test lo asseriva su un mock, che il CHECK non ce l'ha.
+                #
+                # ⚠️ Nel telaio best-effort (BE-7 / D-15): siamo gia' dentro un
+                #    fallimento, e un difetto del diario non deve prendere il
+                #    posto dell'errore che sta descrivendo. Fuori
+                #    dall'`atomic` per costruzione — quello e' gia' rollbackato.
+                # ⛔ `entity_type` ed `event_code` restano ARGOMENTI ESPLICITI,
+                #    e non e' una preferenza: il cancello di CI che li confronta
+                #    coi cataloghi (`test_event_codes_declared_guardrail`) legge
+                #    l'AST dei punti di chiamata. Raccoglierli in un dict e
+                #    passarlo con `**` — che sembra piu' pulito — rende il
+                #    cancello CIECO su questa riga, in silenzio. Provato: dopo
+                #    quella "semplificazione" il gate vedeva un `entity_type`
+                #    invece di due.
+                #
+                # ⚠️ La lambda non ha argomenti di default e non ne ha bisogno:
+                #    il telaio la invoca SUBITO, prima che il giro successivo
+                #    rileghi `commessa_id`.
+                diagnostica_best_effort(
+                    lambda: repo.log_event(
+                        entity_type="COMMESSA",
+                        entity_id=commessa_id,
+                        event_code="EMITTIBILITA_FALLITA",
+                        severity="WARN",
+                        payload={
+                            "push_log_id": report.push_log_id,
+                            "tipo_doc_mancante": tipo_doc_mancante_qui,
+                            "errore": errore,
+                        },
+                    ),
+                    contesto={"commessa_id": commessa_id},
+                    function_name="vendite.commesse_service.pr_run_commesse_push",
+                )
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,
@@ -240,14 +279,14 @@ def pr_run_commesse_push(
 
 # Scopo: Variante puntuale del push commesse — esegue UN solo handler con
 # filtro sulla riga sorgente identificata da `sorgente_uid`. Riusa
-# orchestrator (lock + log su commesse_push_log + event_log): differisce
+# orchestrator (lock + log su commesse_push_log): differisce
 # dal batch sia per perimetro (1 documento invece di N) sia per
 # semantica transazionale: all-or-nothing. Un documento sorgente
 # (preventivo/ordine/contratto/DDT/consumi) e' un'unita' transazionale
 # singola — inviare un sottoinsieme delle sue righe lascerebbe commessa
 # orfana e testata sorgente semi-evasa. Se anche solo una riga fallisce,
 # rollback dell'intera scrittura (commesse + attivita + link sorgente +
-# push_log + event_log) e raise E_COMMESSA_PUSH_PARZIALE_VIETATO.
+# push_log) e raise E_COMMESSA_PUSH_PARZIALE_VIETATO.
 # Il batch globale `pr_run_commesse_push` mantiene best-effort per-riga
 # (cron giornaliero su N documenti: 1 riga rotta non blocca le altre).
 # Usato dal pulsante UI "Push commessa" del drawer preventivo (e in futuro
@@ -292,7 +331,7 @@ def pr_run_commesse_push_one(
     orch = CommessaPushOrchestrator(repo, handlers)
 
     # Atomic esterna: il raise sotto rolla TUTTE le scritture del run
-    # (commesse, attivita, link sorgente, push_log, event_log).
+    # (commesse, attivita, link sorgente, push_log).
     # L'advisory lock dell'orchestrator e' session-level e viene rilasciato
     # dal finally interno indipendentemente dal rollback della transazione.
     # Dry-run e' esente: in simulazione l'utente vuole il report diagnostico

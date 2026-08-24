@@ -1,0 +1,417 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I GUARD DI CHIAMATA ESCONO DA `E_PARAMETRO_INVALIDO` — passo P-7-bis (1 di 3)
+#   pagamenti.fn_get_or_create_vendite_contabile
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md §6.7
+#
+# ── PERCHE' UN SECONDO GIRO, E PERCHE' IN AVANTI ────────────────────────
+#   Il lotto 1 e' stato applicato il 2026-08-21 alle 19:38. Il changeSet
+#   `20260821-14` aveva portato questi guard da `E_GENERICO` a
+#   `E_PARAMETRO_INVALIDO`, seguendo la tabella «Regola operativa» di
+#   `work-done/correzione-e-generico.md` (aprile 2026). ⛔ Un changeSet applicato
+#   non si modifica: si corregge in avanti, ed e' questo file.
+#
+# ── 🔴 IL DIFETTO: `E_PARAMETRO_INVALIDO` E' UN DEBITO, NON UNA SEDE ───
+#   Segnalato da Tid il 2026-08-21 (*«esiste ancora perche' il BE deve gestire
+#   vecchie funzioni che non sono riuscito a correggere»*), e i documenti lo
+#   confermano nero su bianco:
+#
+#   · **D11** di `work-done/brief-db-be-classe-codici-errore.md`:
+#     *«`E_VALIDAZIONE` si spezza prima del seed; `E_PARAMETRO_INVALIDO` NO —
+#     denominatore sicuro + `note`, e CANTIERE SUO»*. E' uno **split rimandato**,
+#     con una classe di compromesso e la ragione scritta nel catalogo;
+#   · **§9.1** dello stesso brief: *«la regola che chiude il RUBINETTO — vietare
+#     NUOVI codici generici — resta in coda al lavoro: rincorrere gli esistenti
+#     senza chiudere il rubinetto e' la forma in cui questi registri non calano
+#     mai»*;
+#   · **`docs/it/dev/api.md` §Tassonomia** lo dichiara **candidato allo split**
+#     (113 funzioni, 111 con verita' 400 e 2 con 404) e ne trae la regola
+#     *«un codice usato per due cose si spezza a monte, non si rimappa a valle»*.
+#
+#   ⭐ **Precedente identico e recente**: `E_VENDITE_PRICING_ESITO_ASSENTE`
+#   (2026-08-19, classe TECNICO) nasce perche' il rubinetto B-7 respinse
+#   `E_PARAMETRO_INVALIDO` su un guard analogo — *«li' non c'e' nessun parametro
+#   invalido, c'e' un'invariante rotta»*.
+#
+# ── PERCHE' `TECNICO` (500) E NON `DATO_ERRATO` (400) ──────────────────
+#   Questi guard non difendono un **dato dell'operatore**: difendono
+#   un'**invariante della chiamata**. Su di essi il `NULL` e' AMMESSO, e un id
+#   `<= 0` o un `codice_interno` vuoto non escono da nessuna interfaccia — li
+#   produce solo un chiamante rotto. `DATO_ERRATO` significa *«chi l'ha fatta puo'
+#   correggerlo e riprovare»*: qui non c'e' niente da correggere a video.
+#
+#   ⚠️ **E' un cambio di comportamento per il BE**, non solo di etichetta: quei
+#   punti passano da 400 a 500. E' voluto — un 400 su un bug del chiamante manda
+#   l'operatore a cercare un campo che non esiste.
+#
+#   ⚠️ La chiave `campo` **esce dal contesto**: su un 500 non c'e' nessun campo da
+#   accendere, e lasciarla farebbe evidenziare un input per un errore che l'input
+#   non ha causato. Il nome del parametro resta nel messaggio, dove il lettore e'
+#   chi ha scritto la chiamata.
+#
+# ── ℹ️ IL MESSAGGIO NOMINA IL PARAMETRO, ED E' L'ECCEZIONE DICHIARATA ──
+#   La regola scritta il 2026-08-21 in
+#   `guide/Messaggi-di-Errore-e-Generazione-Log.md` §«I valori del messaggio» dice
+#   che nel `VARIADIC` non entra un nome di parametro. ⭐ Questo e' il caso in cui
+#   **entra di proposito**: il destinatario e' uno sviluppatore e il nome del
+#   parametro e' l'informazione utile. Il criterio non e' «c'e' un nome?» ma
+#   «l'ho messo perche' serve a chi legge?».
+#
+# ── COSA NON CAMBIA ────────────────────────────────────────────────────
+#   Nessun predicato, nessuna firma, nessun `RETURNS`. I `%TYPE` restano quelli
+#   di `20260821-14` — ⚠️ il corpo NON e' stato ripreso da
+#   `pg_get_functiondef`, che li scioglie: e' quello dello YAML applicato,
+#   **verificato identico all'oggetto vivo** prima di toccarlo.
+#
+# Verifica: db/pgtap/pagamenti/ — nessun test cambia esito, perche'
+#   `fn_log_and_raise_error` solleva sempre `P0001` a prescindere dalla classe:
+#   la classe decide lo status HTTP lato backend, non lo SQLSTATE.
+# Dipendenze: codice `E_PAGAMENTI_CHIAMATA_NON_VALIDA` (953, TECNICO), appeso ai
+#   CSV di `80_data` nello stesso commit. ⚠️ `80_data` gira DOPO `20_code`:
+#   nessuna preCondition sul codice.
+# 🔴 RICHIESTA AL BE (BE-1): rigenerare `error_policies_generated.py`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20260821-21-update-fn-get-or-create-vendite-contabile-chiamata-non-valida-mctit.yaml
+
+  - changeSet:
+      id: 20260821-21-update-fn-get-or-create-vendite-contabile-chiamata-non-valida
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti.fn_get_or_create_vendite_contabile: i QUATTRO guard che difendono
+        un'invariante della chiamata (id <= 0 dove il NULL e' ammesso, codice di stato vuoto)
+        escono da E_PARAMETRO_INVALIDO — split rimandato, non una sede per il nuovo — e passano
+        a E_PAGAMENTI_CHIAMATA_NON_VALIDA, classe TECNICO. Tolta la chiave 'campo': su un 500
+        non c'e' nessun campo da accendere. Nessun predicato, nessuna firma cambiata.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname = 'fn_get_or_create_vendite_contabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(
+                  p_centro_riscossione_id pagamenti.centri_riscossione.id%TYPE,
+                  p_data_contabile        pagamenti.vendite_contabili.data_contabile%TYPE,
+                  p_data_registrazione    pagamenti.vendite_contabili.data_registrazione%TYPE DEFAULT CURRENT_DATE,
+                  p_ente_incasso_id       pagamenti.enti_incasso.id%TYPE DEFAULT NULL,
+                  p_compensazione_id      pagamenti.compensazioni.id%TYPE DEFAULT NULL,
+                  p_lotto_id              pagamenti.vendite_contabili_lotti.lotto_id%TYPE DEFAULT NULL,
+                  p_codice_stato_interno  pagamenti.vendite_contabili_stati.codice_interno%TYPE DEFAULT 'BOZZA',
+                  p_meta                  pagamenti.vendite_contabili.meta%TYPE DEFAULT '{}'::jsonb
+              )
+               RETURNS pagamenti.vendite_contabili.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
+                v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_codice pagamenti.vendite_contabili.codice%TYPE;
+                v_existing_centro_id pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
+                v_existing_ente_id pagamenti.vendite_contabili.ente_incasso_id%TYPE;
+                v_existing_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE;
+                v_existing_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_existing_stato_id pagamenti.vendite_contabili.stato_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recuperare o creare una testata contabile vendite.
+                --
+                -- Regole principali:
+                --   - p_compensazione_id e p_lotto_id sono mutualmente esclusivi
+                --   - se p_compensazione_id e' valorizzato, la testata e' unica
+                --     per compensazione (vincolo applicativo + unique DB)
+                --
+                -- Rev 2026-08-21 (passo P-7): i nove E_GENERICO passano ai codici
+                -- registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                -- ⭐ I DUE guard che un OPERATORE puo' far scattare davvero: il
+                --    centro e la data li sceglie lui in un form. Codice di dominio,
+                --    non un codice trasversale, perche' il messaggio lo legge una
+                --    persona e non deve nominare un parametro PL/pgSQL.
+                IF p_centro_riscossione_id IS NULL OR p_centro_riscossione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_centro_riscossione_id obbligatorio > 0',
+                      'campo', 'centro_riscossione_id',
+                      'p_centro_riscossione_id', p_centro_riscossione_id
+                    ),
+                    NULL::uuid,
+                    'il centro di riscossione'
+                  );
+                END IF;
+
+                IF p_data_contabile IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_data_contabile obbligatoria',
+                      'campo', 'data_contabile'
+                    ),
+                    NULL::uuid,
+                    'la data contabile'
+                  );
+                END IF;
+
+                -- ⚠️ Da qui in giu' i guard non difendono un DATO dell'operatore:
+                --    difendono un'INVARIANTE DELLA CHIAMATA. Su questi il NULL e'
+                --    AMMESSO, e un id <= 0 o uno stato vuoto non escono da nessuna
+                --    interfaccia — li produce solo un chiamante rotto. Per questo il
+                --    codice e' E_PAGAMENTI_CHIAMATA_NON_VALIDA, classe TECNICO (500):
+                --    l'operatore non ha niente da correggere, e il messaggio nomina il
+                --    parametro perche' il suo lettore e' chi ha scritto la chiamata.
+                --    ⛔ NON E_PARAMETRO_INVALIDO: quello e' uno split rimandato
+                --    (D11 di brief-db-be-classe-codici-errore) che sopravvive per le
+                --    funzioni vecchie, non una sede per il codice nuovo.
+
+                IF p_ente_incasso_id IS NOT NULL AND p_ente_incasso_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_ente_incasso_id deve essere > 0 se valorizzato',
+                      'p_ente_incasso_id', p_ente_incasso_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_ente_incasso_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_compensazione_id IS NOT NULL AND p_compensazione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_compensazione_id deve essere > 0 se valorizzato',
+                      'p_compensazione_id', p_compensazione_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_compensazione_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_lotto_id deve essere > 0 se valorizzato',
+                      'p_lotto_id', p_lotto_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_lotto_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                -- Regola di dominio, non guard di parametro: una testata nasce da
+                -- una compensazione OPPURE appartiene a un lotto di fatturazione.
+                IF p_compensazione_id IS NOT NULL AND p_lotto_id IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI',
+                    jsonb_build_object(
+                      'detail', 'p_compensazione_id e p_lotto_id non possono coesistere',
+                      'compensazione_id', p_compensazione_id,
+                      'lotto_id', p_lotto_id
+                    ),
+                    NULL::uuid,
+                    p_compensazione_id::text, p_lotto_id::text
+                  );
+                END IF;
+
+                IF p_codice_stato_interno IS NULL OR btrim(p_codice_stato_interno) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_codice_stato_interno obbligatorio'
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_codice_stato_interno (obbligatorio, non vuoto)'
+                  );
+                END IF;
+
+                SELECT s.id
+                  INTO v_stato_id
+                  FROM pagamenti.vendite_contabili_stati s
+                 WHERE s.codice_interno = p_codice_stato_interno
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                -- ⚠️ Non e' un parametro sbagliato: e' il catalogo degli stati a
+                -- non avere quella riga, o ad averla spenta. Classe TECNICO.
+                IF v_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_STATO_NON_CONFIGURATO',
+                    jsonb_build_object(
+                      'detail', 'stato contabile non trovato/attivo',
+                      'codice_interno', p_codice_stato_interno
+                    ),
+                    NULL::uuid,
+                    p_codice_stato_interno
+                  );
+                END IF;
+
+                v_data_registrazione := COALESCE(p_data_registrazione, current_date);
+
+                -- Ricerca/riuso su compensazione (chiave primaria di processo).
+                IF p_compensazione_id IS NOT NULL THEN
+                  SELECT vc.id,
+                         vc.centro_riscossione_id,
+                         vc.ente_incasso_id,
+                         vc.data_contabile,
+                         vc.data_registrazione,
+                         vc.stato_id
+                    INTO v_contabile_id,
+                         v_existing_centro_id,
+                         v_existing_ente_id,
+                         v_existing_data_contabile,
+                         v_existing_data_registrazione,
+                         v_existing_stato_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.compensazione_id = p_compensazione_id
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+
+                  IF v_contabile_id IS NOT NULL THEN
+                    IF v_existing_centro_id IS DISTINCT FROM p_centro_riscossione_id
+                       OR v_existing_ente_id IS DISTINCT FROM p_ente_incasso_id
+                       OR v_existing_data_contabile IS DISTINCT FROM p_data_contabile
+                       OR v_existing_data_registrazione IS DISTINCT FROM v_data_registrazione
+                       OR v_existing_stato_id IS DISTINCT FROM v_stato_id THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE',
+                        jsonb_build_object(
+                          'detail','Parametri incoerenti con testata gia associata alla compensazione',
+                          'compensazione_id', p_compensazione_id,
+                          'contabile_id', v_contabile_id,
+                          'centro_riscossione_id_atteso', v_existing_centro_id,
+                          'centro_riscossione_id_richiesto', p_centro_riscossione_id,
+                          'ente_incasso_id_atteso', v_existing_ente_id,
+                          'ente_incasso_id_richiesto', p_ente_incasso_id,
+                          'data_contabile_attesa', v_existing_data_contabile,
+                          'data_contabile_richiesta', p_data_contabile,
+                          'data_registrazione_attesa', v_existing_data_registrazione,
+                          'data_registrazione_richiesta', v_data_registrazione,
+                          'stato_id_atteso', v_existing_stato_id,
+                          'stato_id_richiesto', v_stato_id
+                        ),
+                        NULL::uuid,
+                        p_compensazione_id::text, v_contabile_id::text
+                      );
+                    END IF;
+                  END IF;
+
+                ELSIF p_lotto_id IS NULL THEN
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.compensazione_id IS NULL
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                ELSE
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                    JOIN pagamenti.vendite_contabili_lotti vcl
+                      ON vcl.contabile_id = vc.id
+                   WHERE vcl.lotto_id = p_lotto_id
+                     AND vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.compensazione_id IS NULL
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                END IF;
+
+                IF v_contabile_id IS NULL THEN
+                  v_codice := concat(
+                    'VC_',
+                    to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+                    '_',
+                    substr(md5(random()::text || clock_timestamp()::text), 1, 8)
+                  );
+
+                  INSERT INTO pagamenti.vendite_contabili (
+                    codice,
+                    centro_riscossione_id,
+                    ente_incasso_id,
+                    compensazione_id,
+                    data_contabile,
+                    data_registrazione,
+                    stato_id,
+                    meta
+                  ) VALUES (
+                    v_codice,
+                    p_centro_riscossione_id,
+                    p_ente_incasso_id,
+                    p_compensazione_id,
+                    p_data_contabile,
+                    v_data_registrazione,
+                    v_stato_id,
+                    COALESCE(p_meta, '{}'::jsonb)
+                  )
+                  RETURNING id INTO v_contabile_id;
+                END IF;
+
+                IF p_lotto_id IS NOT NULL THEN
+                  INSERT INTO pagamenti.vendite_contabili_lotti (
+                    lotto_id,
+                    contabile_id,
+                    meta
+                  ) VALUES (
+                    p_lotto_id,
+                    v_contabile_id,
+                    jsonb_build_object('source','fn_get_or_create_vendite_contabile')
+                  )
+                  ON CONFLICT (lotto_id, contabile_id) DO NOTHING;
+                END IF;
+
+                RETURN v_contabile_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(
+                  pagamenti.centri_riscossione.id%TYPE,
+                  pagamenti.vendite_contabili.data_contabile%TYPE,
+                  pagamenti.vendite_contabili.data_registrazione%TYPE,
+                  pagamenti.enti_incasso.id%TYPE,
+                  pagamenti.compensazioni.id%TYPE,
+                  pagamenti.vendite_contabili_lotti.lotto_id%TYPE,
+                  pagamenti.vendite_contabili_stati.codice_interno%TYPE,
+                  pagamenti.vendite_contabili.meta%TYPE)
+              IS 'Recupera o crea la testata contabile vendite (la DISTINTA: raccoglie N importi dello stesso canale, non un singolo movimento bancario). Rev 2026-08-21: i nove E_GENERICO passano ai codici registrati (E_CONTABILE_DATI_OBBLIGATORI, E_PAGAMENTI_CHIAMATA_NON_VALIDA, E_CONTABILE_STATO_NON_CONFIGURATO, E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI, E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE) e i tipi sono ancorati con %TYPE in firma e RETURNS; nessun predicato e'' cambiato. ⭐ I codici sono scelti per CHI LEGGE il messaggio: i due dati che l''operatore fornisce (centro di riscossione, data contabile) hanno un codice di dominio, i quattro guard che solo un chiamante rotto puo'' far scattare hanno E_PAGAMENTI_CHIAMATA_NON_VALIDA, classe TECNICO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: rimetterebbe i guard di chiamata
+              --    su E_PARAMETRO_INVALIDO, cioe' su un codice che il progetto ha
+              --    gia' dichiarato candidato allo split, e li riporterebbe a 400
+              --    su un errore che l'operatore non puo' correggere.
+              SELECT 1;

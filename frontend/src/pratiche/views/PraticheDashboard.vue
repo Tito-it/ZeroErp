@@ -5,7 +5,7 @@
 // Adattabile ai piccoli schermi (niente larghezza fissa).
 // Riusa: PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
 import { ref, shallowRef, computed, watch, onMounted, onActivated, onUnmounted, nextTick, markRaw } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import { useDrawerState } from '../../core/composables/useDrawerState'
@@ -21,10 +21,12 @@ import PraticaPercorso from '../components/PraticaPercorso.vue'
 import PraticaDrawer from '../components/PraticaDrawer.vue'
 import FlussoDrawer from '../components/FlussoDrawer.vue'
 import { getUiActivity } from '../uiActivityRegistry'
-import { getFlusso, createFlusso, cambiaStatoFlusso } from '../api/pratiche-api'
+import { getFlusso, getPraticaDiFlusso, createFlusso, cambiaStatoFlusso } from '../api/pratiche-api'
 
 const { t } = useI18n()
 const route = useRoute()
+// Serve a ripulire il deep-link `?flusso_id=` dopo averlo applicato.
+const router = useRouter()
 const store = usePraticheStore()
 const drawer = useDrawerState()
 
@@ -60,6 +62,20 @@ function applyTipoDeepLink({ refetch }) {
   if (refetch) store.fetchList()
 }
 
+// Scopo: seleziona la pratica e assicura che il percorso sia caricato.
+// ⚠️ I due rami NON sono equivalenti, e la differenza non si vede a occhio:
+// cambiare `selectedPraticaId` fa partire un watch che carica il percorso, ma a
+// PARITA' di pratica quel watch non scatta — e il carico va chiesto a mano,
+// altrimenti un rientro sulla stessa pratica mostrerebbe un percorso stantio.
+// Estratto alla 2a copia (regola del 2): lo usano i due deep-link qui sotto.
+function selezionaPratica(praticaId) {
+  if (store.selectedPraticaId !== praticaId) {
+    store.selectedPraticaId = praticaId // il watch carica il percorso
+  } else {
+    loadPercorsoPratica(praticaId)
+  }
+}
+
 // Scopo: applica il deep-link di selezione pratica (+flusso dalla coda home).
 // La coda lavoro della home (PraticheHome) naviga qui con pratica_id [+flusso_id]:
 // selezioniamo la pratica e ne carichiamo il percorso. Il flusso_id viene tenuto
@@ -69,11 +85,46 @@ function applyPraticaDeepLink() {
   const praticaId = _queryId('pratica_id')
   if (!praticaId) return
   selectedFlussoId.value = _queryId('flusso_id') || null
-  if (store.selectedPraticaId !== praticaId) {
-    store.selectedPraticaId = praticaId // il watch carica il percorso
-  } else {
-    loadPercorsoPratica(praticaId)
-  }
+  selezionaPratica(praticaId)
+}
+
+// Scopo: applica il deep-link quando arriva il SOLO `flusso_id`.
+//
+// ⭐ DEEP-LINK DAL SOLO `flusso_id`, senza la pratica (2026-08-24).
+//
+// La coda della home arriva sempre con `pratica_id` + `flusso_id`, perche' la
+// riga li ha entrambi. Ma un flusso puo' essere nominato DA FUORI da chi ha in
+// mano il solo id: il primo caso reale e' il BERSAGLIO di un errore
+// (`E_FLUSSI_GIA_ASSEGNATO`, `E_FLUSSI_PRESA_CARICO_STATO_ERRATO`), dove il
+// database scrive `FLUSSO:<id>` e nient'altro — la pratica non e' cio' di cui
+// l'errore parla.
+//
+// ⚠️ Prima, `applyPraticaDeepLink` usciva subito (`if (!praticaId) return`) e un
+// `?flusso_id=` da solo non faceva NIENTE, in silenzio: il modo peggiore di non
+// funzionare. Qui si chiede al backend dove vive il flusso e si prosegue dalla
+// porta di sempre.
+//
+// ⚠️ `silent`: se il flusso non esiste o la RLS lo nasconde, l'operatore resta
+// dov'e' senza un toast che parla di un id che non ha mai visto. E' il degrado
+// dichiarato del bersaglio — un'offerta, non una promessa.
+async function applyFlussoDeepLink() {
+  const flussoId = _queryId('flusso_id')
+  if (!flussoId || _queryId('pratica_id')) return
+  // ⚠️ IL PARAM SI RIPULISCE SUBITO, e prima della chiamata. Questa view sta
+  //    sotto KeepAlive: `onActivated` scatta a OGNI rientro nel tab, e con il
+  //    param ancora nell'URL si rifarebbe la risoluzione ogni volta — una
+  //    chiamata per attivazione, per sempre. È la stessa disciplina dei
+  //    deep-link `?open=` (contratti, lotti).
+  //    ⭐ Qui sì e in `applyPraticaDeepLink` no, ed è voluto: quello ricarica il
+  //    percorso a ogni rientro apposta (freschezza), questo risolverebbe di
+  //    nuovo lo stesso id per ottenere la stessa risposta.
+  const query = { ...route.query }
+  delete query.flusso_id
+  router.replace({ query })
+  const res = await execute(() => getPraticaDiFlusso(flussoId), { silent: true })
+  if (!res?.pratica_id) return
+  selectedFlussoId.value = flussoId
+  selezionaPratica(res.pratica_id)
 }
 
 applyTipoDeepLink({ refetch: false }) // primo mount: fetcha la SearchTable
@@ -109,6 +160,9 @@ onMounted(() => {
 onActivated(() => {
   applyTipoDeepLink({ refetch: true })
   applyPraticaDeepLink()
+  // ⚠️ Dopo l'altro e non al suo posto: i due sono esclusivi (questo esce se
+  //    `pratica_id` c'e'), ma l'ordine rende esplicito quale vince.
+  applyFlussoDeepLink()
 })
 
 // --- Percorso (roadmap) della pratica selezionata ---

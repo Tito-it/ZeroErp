@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/listini_tipologie_utilities.md" %}
 # 📚 Tabella `listini_tipologie_utilities`
 
 ## 🗂️ Campi principali

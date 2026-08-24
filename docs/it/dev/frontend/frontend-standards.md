@@ -1745,6 +1745,26 @@ Il tema supporta dark e light mode tramite la classe `.p-dark` su `<html>`.
 | Pulsante | Topbar — icona sole (dark) / luna (light), tooltip i18n |
 | Variabili | Tutte le `--app-*` in `theme.css` hanno override nel blocco `:root:not(.p-dark)` |
 
+#### Gravità (severity) — il colore come scorciatoia
+
+I token `--app-severity-*` sono il colore con cui l'interfaccia dice **quanto è
+grave**, nello stesso vocabolario dei `Tag :severity` di PrimeVue: `danger`,
+`warn`, `info`, `success`, `secondary`, più `--app-severity-fill` (quanta tinta
+prende uno sfondo acceso ma non invadente). Il BB che li consuma è
+[`SelectButtonGravita`](../../../frontend/src/core/components/SelectButtonGravita.vue).
+
+⚠️ **`warn` è GIALLO e non arancio**, e non è una preferenza estetica: su una
+resa **tenue** — un pallino, un chip non selezionato, un bordo — l'arancio si
+legge come un rosso spento, e i due livelli che contano di più finiscono per
+dare lo stesso segnale proprio dove il colore deve fare da scorciatoia
+(rilievo in-app, 2026-08-21). Sui `Tag` a fondo pieno la distinzione regge:
+quelli restano i colori di PrimeVue, e questi token governano la resa tenue,
+che è l'unica dove il problema esiste.
+
+⚠️ **In light mode scendono di tonalità**: le `-500` nascono per fondi scuri e
+su bianco il giallo cede per primo — cedendo, riporterebbe esattamente il
+difetto per cui era stato scelto.
+
 **Regola**: nessun componente deve usare direttamente `--p-surface-700/800/900` per sfondi o bordi.
 Usare sempre le variabili `--app-*` corrispondenti che si adattano automaticamente al modo attivo.
 Per aggiungere un componente theme-aware: definire le variabili in `:root` (dark) e sovrascriverle
@@ -2032,12 +2052,73 @@ finita (**122**, misurati sui `context={"field": …}` e sulle chiavi passate ai
 validator). Legare un campo fuori da quella lista non fa danno ma non fa niente:
 è una riga che non decide.
 
-⚠️ **Oggi lo popolano solo gli errori nati nel backend Python** (42 codici su
-125 con `ui_action = highlight_form_fields`). Per quelli sollevati dalle
-funzioni PL/pgSQL il canale esiste ma non e' ancora usato: finche' non lo sara',
-`campiErrati` su quegli errori resta vuoto e il comportamento e' quello di
-prima — nessuna regressione, solo nessun guadagno. Piano e misure:
-`docs/it/dev/work-done/piano-be-classe-codici-errore.md` §12.
+✅ **Dal 2026-08-24 lo popolano anche gli errori nati in PL/pgSQL**, e la storia
+merita una riga perché è un difetto che si vedeva solo dal lato che riceve. Il
+canale del database (`RAISE … USING COLUMN`) viaggiava dall'08/08 ed era
+valorizzato da quasi tutti i punti di sollevamento — ma il backend lo perdeva
+**appena un service traduceva l'errore**, cioè quasi sempre. Il nome arrivava
+all'envelope da una strada su cinque, e a video non si illuminava niente.
+Ora la lettura è una sola (`diagnostica_db`) e il campo viaggia fino in fondo:
+vedi [api.md §I cinque punti di traduzione](../api.md).
+
+### ⭐ Il bersaglio dell'errore — `bersagli` (dal 2026-08-24)
+
+`campiErrati` dice **quale campo correggere** nella pagina dove l'operatore già
+si trova. Il **bersaglio** dice **a quale altra cosa deve andare** — ed è la
+differenza fra evidenziare un input e disegnare un **gesto**.
+
+```
+messaggio:  «Non si può numerare il documento 835: la fattura che
+             rettifica non è ancora numerata (documento 820).»
+gesto:      [ Apri Fattura 820 ]
+```
+
+⭐ **Perché esiste**: all'operatore non serve il *nome* del record, gli serve
+**arrivarci**. Un identificativo dentro una frase, per quanto umano, resta una
+cosa da ricopiare a mano in un campo di ricerca.
+
+**Non c'è niente da scrivere nei componenti.** Il gesto lo compone
+`useApiHandler` e lo consegna al toast: i **122** file che usano `execute` lo
+hanno già.
+
+```js
+// Serve solo a chi ha una superficie PROPRIA dove metterlo.
+const { execute, bersagli } = useApiHandler()
+```
+
+| Regola | Perché |
+|---|---|
+| il toast con un gesto è **persistente** | un pulsante che sparisce dopo cinque secondi non è un gesto. `life: 0`, come `systemError` |
+| bersaglio irraggiungibile → **nessun pulsante** | è un'**offerta**, non una promessa: permessi, area bloccata, tipo senza destinazione. Il messaggio si mostra lo stesso. ⛔ Mai un pulsante che porta in un vicolo cieco |
+| mai su un errore **tecnico** | su un 500 l'operatore non ha niente da fare. Lo toglie il backend, in `_apply_policy` |
+| al massimo **cinque** | oltre, non è più un gesto ma un elenco — e *quanti* sono lo dice già la frase |
+
+**Le tre superfici, e il resolver è uno solo:**
+
+| Da dove arriva l'errore | Chi disegna il gesto |
+|---|---|
+| envelope `error.targets` (una chiamata fallita) | il **toast**, via `useApiHandler` — automatico |
+| `errore.targets` dentro un **200** del runner di pipeline | `useLottoAzioni`, stesso toast |
+| `errore_bersagli` di una riga (giro **asincrono**, errore persistito) | `ErroreRigaInfo`, il popover dell'icona di riga |
+
+⚠️ **Un resolver solo — `core/bersagli.js` — per tutte e tre.** Se divergessero,
+lo stesso errore direbbe due cose diverse a seconda di come è arrivato a video.
+
+⭐ **E la terza riga è quella che conta di più.** Un giro di fatturazione può
+partire da solo — worker, batch notturno — e fallire quando davanti allo schermo
+non c'è nessuno: chi legge quell'errore lo legge **ore dopo**, dall'icona di
+riga. Il toast è il caso facile.
+
+**Aggiungere un tipo raggiungibile** = una riga in `DESTINAZIONI`
+(`core/bersagli.js`) più la sua etichetta `config.tipi_entita.<codice>` in
+`it.json`/`en.json`. ⚠️ L'indirizzo i18n **lo dichiara il database**
+(`config.tipi_entita.etichetta_key`): qui si ripete quella chiave, non se ne
+inventa una — è lo stesso patto dei tre livelli già descritto sopra.
+
+⚠️ **Oggi `TASK_RUN` non è raggiungibile**, ed è deliberato: è a catalogo perché
+serve al giornale degli eventi, e nessuna schermata mostra un giro per id.
+
+---
 
 ⚠️ **`ui_action` non si usa ancora.** `useApiHandler` lo espone come `azioneUi`
 per chi vorra' costruirci sopra, ma **nessun componente lo legge**: la reazione

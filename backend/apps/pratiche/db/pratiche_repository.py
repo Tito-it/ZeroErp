@@ -463,6 +463,35 @@ class PraticheRepository:
             cursor.execute(sql, [flusso_id])
             return row_to_dict(cursor)
 
+    # Scopo: ⭐ La pratica a cui un flusso appartiene, dal solo id del flusso.
+    #
+    # ⚠️ NON si riusa `get_flusso`, e le ragioni sono due — la seconda e' quella
+    #    che conta. (1) COSTO: quella proiezione fa NOVE join (soggetti, risorse
+    #    umane, azioni_ui, unita organizzative...) per restituire una colonna;
+    #    e' la stessa ragione per cui esiste `get_flusso_esito_config`, poco piu'
+    #    sotto. (2) ⛔ VISIBILITA': la sua risposta dipende anche da join che con
+    #    la domanda non c'entrano, e qui la domanda e' una sola.
+    #
+    # ⛔ IL JOIN SU `pratiche` NON E' DECORATIVO — misurato il 2026-08-24:
+    #    `pratiche.flussi` **non ha RLS**, `pratiche.pratiche` si'. Una lettura
+    #    del solo `flussi` risponderebbe per QUALUNQUE flusso, anche di una
+    #    pratica fuori dal perimetro di chi chiede: un id di troppo, e un
+    #    pulsante che porta su una schermata che rifiutera' di aprirsi.
+    #    Con il join la RLS della pratica decide, e un flusso non raggiungibile
+    #    e' indistinguibile da uno che non esiste — che per chi opera e' la
+    #    stessa cosa.
+    def get_pratica_di_flusso(self, flusso_id: int) -> int | None:
+        sql = """
+            SELECT f.pratica_id
+              FROM pratiche.flussi f
+              JOIN pratiche.pratiche p ON p.id = f.pratica_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [flusso_id])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Config esito dello step (modalita_esito + esito_default dal template).
     # Query leggera per il path di avvio (evita la proiezione completa di get_flusso,
     # che fa JOIN soggetti/azioni_ui + fn BA per soli 2 campi). Ritorna

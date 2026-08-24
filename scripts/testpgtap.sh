@@ -97,7 +97,7 @@
 # motivata, non un interruttore per far sparire un permesso mancante.
 #
 # Censimento dei marcati:
-#   grep -rlE '^-- pgtap-runner:[[:space:]]*owner' db/pgtap/*/*.sql
+#   grep -rlE '^-- pgtap-runner:[[:space:]]*owner' --include='*.sql' -r db/pgtap
 
 set -e
 

@@ -16,11 +16,14 @@ Indice test eseguiti:
 14) VenditePipelineApiTests.test_run_lotto_pipeline_converts_zero_optional_ids_to_none
 15) VenditePipelineApiTests.test_run_lotto_pipeline_full_payload_new_lotto_massivo_ok
 16) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_ok
-17) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_v1_requires_jwt
-18) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_rejects_invalid_lotto_id
-19) VenditePipelineApiTests.test_get_lotto_task_runs_ok
-20) VenditePipelineApiTests.test_get_lotto_task_runs_v1_requires_jwt
-21) VenditePipelineApiTests.test_get_lotto_task_runs_rejects_invalid_lotto_id
+17) VenditePipelineApiTests.test_get_lotto_segnalazioni_rows_filtri_dal_query_param
+18) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_v1_requires_jwt
+19) VenditePipelineApiTests.test_get_lotto_segnalazioni_summary_rejects_invalid_lotto_id
+20) VenditePipelineApiTests.test_get_lotto_task_runs_ok
+20-bis) VenditePipelineApiTests.test_get_lotto_task_runs_filtri
+20-ter) VenditePipelineApiTests.test_get_lotto_task_runs_stato_vuoto_non_filtra
+21) VenditePipelineApiTests.test_get_lotto_task_runs_v1_requires_jwt
+22) VenditePipelineApiTests.test_get_lotto_task_runs_rejects_invalid_lotto_id
 """
 
 import json
@@ -367,7 +370,29 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         self.assertEqual(data["lotto_id"], 80)
         self.assertTrue(data["blocks_next_step"])
         self.assertEqual(data["critical_count"], 1)
+        # Il riepilogo CONTA e basta: le righe hanno un endpoint suo
+        # (`/segnalazioni/rows/`), cosi' il drawer non si porta dietro l'elenco
+        # a ogni apertura per mostrarne un numero.
         mocked_summary.assert_called_once_with(lotto_id=80)
+
+    # Scopo: ⭐ L'ELENCO delle segnalazioni sta su una rotta SUA, e i filtri
+    #        arrivano dal query string. Presidia anche i due default che non
+    #        sono neutri: `solo_attive=True` (una segnalazione ritirata non si
+    #        mostra) e `solo_job_corrente=False` (si vede tutto lo storico
+    #        finche' qualcuno non chiede l'ultima corsa).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_list_lotto_segnalazioni")
+    def test_get_lotto_segnalazioni_rows_filtri_dal_query_param(self, mocked_rows, _mock_auth):
+        mocked_rows.return_value = {"lotto_id": 80, "results": []}
+        response = self.client.get(
+            "/api/v1/vendite/lotti/80/segnalazioni/rows/?livello=W&origine=LOTTO&page=2&page_size=10"
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked_rows.assert_called_once_with(
+            lotto_id=80, livello="W", origine="LOTTO",
+            solo_attive=True, solo_job_corrente=False,
+            page=2, page_size=10, order_by=None, order_dir="desc",
+        )
 
     # Scopo: Verifica il caso `test_get_lotto_segnalazioni_summary_v1_requires_jwt`.
     def test_get_lotto_segnalazioni_summary_v1_requires_jwt(self):
@@ -413,7 +438,57 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         self.assertEqual(data["lotto_id"], 80)
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["task_runs"][0]["task_code"], "numera_fatture")
-        mocked_task_runs.assert_called_once_with(lotto_id=80, limit=50)
+        # ⚠️ `limit` resta il nome che il client manda e arriva come `page_size`:
+        # l'endpoint e' diventato paginato (BE-2) senza rompere il chiamante.
+        # ⭐ E i due filtri del `20260824-11` arrivano SPENTI quando non si
+        #    chiedono: nessun default nasconde righe: chi chiama senza vede
+        #    quello che vedeva prima.
+        mocked_task_runs.assert_called_once_with(
+            lotto_id=80, page_size=50, offset=0, order_by=None, order_dir="desc",
+            task_stato=None, solo_giro_corrente=False,
+        )
+
+    # Scopo: il filtro multi-valore `task_stato` arriva al service come LISTA,
+    #        normalizzato a maiuscolo, sia ripetuto sia separato da virgole — e
+    #        `solo_giro_corrente` come booleano.
+    # ⚠️ Il presidio sta qui e non sul vocabolario: quale stato sia ammesso lo
+    #    decide la funzione DB, e ricopiarlo nel backend sarebbe la seconda
+    #    verita' sullo stesso elenco.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_get_lotto_task_runs")
+    def test_get_lotto_task_runs_filtri(self, mocked_task_runs, _mock_auth):
+        mocked_task_runs.return_value = {
+            "lotto_id": 80, "count": 0, "esclusi_count": 90, "task_runs": [], "results": [],
+        }
+
+        self.client.get(
+            "/api/v1/vendite/lotti/80/task-runs/"
+            "?task_stato=errore,completato&solo_giro_corrente=true"
+        )
+        chiamata = mocked_task_runs.call_args.kwargs
+        self.assertEqual(chiamata["task_stato"], ["ERRORE", "COMPLETATO"])
+        self.assertTrue(chiamata["solo_giro_corrente"])
+
+        mocked_task_runs.reset_mock()
+        self.client.get(
+            "/api/v1/vendite/lotti/80/task-runs/?task_stato=ERRORE&task_stato=ANNULLATO"
+        )
+        self.assertEqual(
+            mocked_task_runs.call_args.kwargs["task_stato"], ["ERRORE", "ANNULLATO"]
+        )
+
+    # Scopo: un `task_stato` vuoto NON e' un filtro che non seleziona niente:
+    #        e' l'assenza di filtro. ⛔ La distinzione conta perche' una lista
+    #        vuota e una lista non filtrata direbbero la stessa cosa a video.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_get_lotto_task_runs")
+    def test_get_lotto_task_runs_stato_vuoto_non_filtra(self, mocked_task_runs, _mock_auth):
+        mocked_task_runs.return_value = {
+            "lotto_id": 80, "count": 0, "esclusi_count": 0, "task_runs": [], "results": [],
+        }
+
+        self.client.get("/api/v1/vendite/lotti/80/task-runs/?task_stato=%20,")
+        self.assertIsNone(mocked_task_runs.call_args.kwargs["task_stato"])
 
     # Scopo: Verifica il caso `test_get_lotto_task_runs_v1_requires_jwt`.
     def test_get_lotto_task_runs_v1_requires_jwt(self):

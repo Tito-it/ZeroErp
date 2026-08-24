@@ -29,8 +29,9 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 * `tipo_fondo_fattura_id`: tipologia fondo. **Immutabile.**
 * `importo`: valore del fondo. **Immutabile**, e vincolato a *corrispondere* alla
   sorgente (stesso segno del `totale_a_pagare`, non superiore in valore assoluto).
-* `stato`: `DISPONIBILE` / `ASSEGNATO` / `ANNULLATO` — vocabolario chiuso da
-  `CHECK` e cammino presidiato da un guard; `ANNULLATO` è **terminale**.
+* `stato`: `DISPONIBILE` / `ASSEGNATO` / **`ESEGUITO`** / `ANNULLATO` —
+  vocabolario chiuso da `CHECK` e cammino presidiato da un guard; `ESEGUITO` e
+  `ANNULLATO` sono **terminali**.
 * `origine`: `AUTOMATICA` / `MANUALE`. ⭐ Non dice *chi* ha creato il fondo: dice
   **quale regola si applica**. L'atto automatico è *vincolato* dal guard di
   corrispondenza, quello manuale è *governato* (motivo obbligatorio, e arriva dal
@@ -56,16 +57,42 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 * La tabella è pensata anche per scenari di **compensazione** tra insoluti
   e crediti cliente (tipici nei processi utilities).
 * Stato `ANNULLATO`: usato quando la source non è più eseguibile
-  (es. documento sorgente già saldato/compensato o reset bloccato da movimenti contabilizzati).
+  (es. documento sorgente già saldato/compensato, o reset bloccato da una
+  distinta contabile già chiusa).
+* ⭐ Stato **`ESEGUITO`** (dal 21-08-2026): il trasferimento è stato
+  **registrato in contabilità**. Non lo scrive una persona: lo scrive un
+  trigger, quando la riga contabile nata dal fondo entra in uno stato
+  registrato.
 
-### Reset e riapertura
+> ⭐ **Perché sono quattro e non tre.** `ANNULLATO` portava **tre** significati
+> diversi — «non si deve fare più», «non si è più capienti», «è già stato
+> eseguito» — e il terzo produceva un record che si contraddiceva: stato
+> `ANNULLATO` con la fattura figlia **ancora agganciata**. Dare una parola al
+> terzo caso non è cosmesi: i tre lettori dei fondi filtrano tutti sullo stato,
+> quindi un atto che passa a `ESEGUITO` **esce da tutti e tre** senza che
+> nessuno di loro cambi.
+>
+> ⚠️ **`ESEGUITO` è terminale**, per la ragione opposta e simmetrica di
+> `ANNULLATO`: là si è tolto denaro dal tavolo, qui lo si è **mosso**. In
+> entrambi i casi tornare indietro non disfa niente. Un fondo eseguito che si
+> rivelasse sbagliato si corregge con un **atto nuovo**, ed è la ragione per cui
+> i rimborsi sono un processo e non un `UPDATE`.
 
-* In caso di reset tecnico della fattura figlia, i fondi applicati vengono
-  **ripristinati** a stato `DISPONIBILE` e la relazione con la fattura figlia
-  viene rimossa.
+### Reset
+
+* In caso di reset tecnico della fattura figlia, l'atto **non eseguito** viene
+  **cancellato** insieme alle sue righe: è una *proposta*, non un fatto, e il
+  giro successivo ne fa una nuova letta sul residuo **di adesso**.
+* Un atto **`ESEGUITO` non si tocca mai**: il reset lo segnala nel diario della
+  fattura e prosegue con gli altri.
 * La logica di reset è centralizzata in `vendite.fn_reset_fondi_fattura()`.
 * ⚠️ È un'operazione **tecnica sulla figlia** (ritorno del lotto in bozza),
   **non una reazione ai pagamenti**: nessun incasso riapre o chiude un fondo.
+
+> ⚠️ **Prima del 21-08-2026 il reset riapriva** (`stato = 'DISPONIBILE'`) con
+> l'importo vecchio congelato. Il passaggio `ASSEGNATO → DISPONIBILE` resta
+> *ammesso* dalla matrice, ma **non lo percorre più nessuno**: è rimasto come
+> unica strada per disfare l'assegnazione senza cancellare l'atto.
 
 ### 🔴 ~~Storni e riapertura per tipologia~~ — concetto ritirato (2026-08-15)
 

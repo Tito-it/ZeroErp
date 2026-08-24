@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/tipi_ruoli_nature_ammesse.md" %}
 # 📚 Tabella `tipi_ruoli_nature_ammesse`
 
 ## 🗂️ Campi principali

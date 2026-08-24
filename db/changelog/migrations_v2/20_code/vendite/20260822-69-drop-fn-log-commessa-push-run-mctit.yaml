@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SECONDA PORTA SI CHIUDE — lotto L5, coda
+#   DROP vendite.fn_log_commessa_push_run
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §5-bis (richiesta del backend, 2026-08-22)
+#
+# ── PERCHE' SI TOGLIE INVECE DI LASCIARLA ──────────────────────────
+#   `fn_log_commessa_push_run` inseriva un giro **gia' finito**. Con la riga
+#   che nasce in testa (20260822-68), quell'operazione non esiste piu': non e'
+#   una variante comoda, e' una porta che scavalca l'apertura.
+#
+#   Lasciarla vorrebbe dire ammettere righe **senza correlation_id**, senza
+#   essere mai passate da `IN_ESECUZIONE`, e un giro interrotto che torna a
+#   sparire — cioe' rimettere in circolo i tre difetti che il 62 e il 68 hanno
+#   chiuso. ⭐ Due porte sulla stessa tabella si disallineano alla prima
+#   modifica: e' la stessa «regola del 2» per cui il pgTAP sul canale batch non
+#   e' stato scritto.
+#
+#   ⚠️ E non potrebbe nemmeno fare da ripiego: ha un guard suo che
+#   `IN_ESECUZIONE` lo **rifiuta**, quindi un giro non saprebbe aprirlo.
+#
+# ── ⛔ E' UN BREAKING, DICHIARATO ──────────────────────────────────
+#   `commesse_repository.log_push_run` la chiama oggi. Il BE adegua il proprio
+#   repository **nello stesso giro** (BE-3b): non siamo in produzione, e la
+#   D-4 di questo stesso cantiere ha gia' azzerato `event_log` per una ragione
+#   analoga. Un ritiro morbido — la funzione che resta e nessuno che la chiama
+#   — sarebbe la forma in cui questi registri non calano mai.
+#
+#   ⛔ Nessun `CASCADE`: se qualcosa dipendesse da lei, il DROP deve fallire e
+#   dirlo. Misurato prima di scrivere (`pg_proc.prosrc` su tutto il database):
+#   **nessuna funzione, vista o trigger la nomina**. I soli chiamanti sono il
+#   repository Python e il pgTAP, che cambiano nello stesso giro.
+#
+# ── PERCHE' UN CHANGESET SUO E NON IN CODA AL 68 ───────────────────
+#   Perche' e' l'unica cosa **irreversibile per il backend** di questo lotto: i
+#   due changeSet precedenti aggiungono, questo toglie. Tenerlo separato
+#   significa che si legge da solo nel `databasechangelog`, e che il giorno in
+#   cui qualcuno chiede «quando e' sparita quella funzione» la risposta e' una
+#   riga, non un file da leggere.
+#
+# Dipendenze: 20260822-68 (la coppia che la sostituisce).
+# Consumo: BE-3b (adeguamento di commesse_repository.log_push_run).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260822-69-drop-fn-log-commessa-push-run-mctit.yaml
+
+  - changeSet:
+      id: 20260822-69-drop-fn-log-commessa-push-run
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Via vendite.fn_log_commessa_push_run: inseriva un giro gia' finito, e con la riga
+        che nasce in testa quell'operazione non esiste piu'. Lasciarla sarebbe una seconda
+        porta sulla stessa tabella — righe senza correlation_id, mai passate da
+        IN_ESECUZIONE, e un giro interrotto che torna a sparire. ⛔ Breaking dichiarato per
+        commesse_repository.log_push_run, che si adegua nello stesso giro (BE-3b). Nessun
+        CASCADE: misurato che nessun oggetto del database la nomina.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_start_commessa_push_run';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_close_commessa_push_run';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Nessun CASCADE, di proposito: un DROP che trascina e' un DROP
+              --    che non dice cosa ha portato via.
+              DROP FUNCTION IF EXISTS vendite.fn_log_commessa_push_run(
+                  boolean, text[], jsonb, character varying, integer);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo com'era al 2026-08-22, preso dalla doc auto-generata.
+              -- ⚠️ Torna anche il suo guard che rifiuta IN_ESECUZIONE: e' il
+              --    difetto da cui questo lotto e' nato, e un rollback deve
+              --    riportare la macchina indietro, non a meta'.
+              CREATE OR REPLACE FUNCTION vendite.fn_log_commessa_push_run(
+                  p_dry_run boolean DEFAULT false,
+                  p_source_types text[] DEFAULT NULL::text[],
+                  p_risultato jsonb DEFAULT '{}'::jsonb,
+                  p_stato character varying DEFAULT 'COMPLETATO'::character varying,
+                  p_durata_ms integer DEFAULT NULL::integer
+              )
+              RETURNS bigint
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_id    vendite.commesse_push_log.id%TYPE;
+                  v_stato vendite.commesse_push_log.stato%TYPE;
+              BEGIN
+                  v_stato := upper(COALESCE(NULLIF(btrim(p_stato), ''), ''));
+
+                  IF v_stato = '' THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_commessa_push_run', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_stato', 'valore', p_stato), NULL::uuid, 'p_stato obbligatorio');
+                  END IF;
+
+                  IF v_stato NOT IN ('COMPLETATO', 'PARZIALE', 'ERRORE') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_commessa_push_run', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_stato', 'valore', v_stato), NULL::uuid, concat('p_stato=', v_stato, ' (ammessi: COMPLETATO, PARZIALE, ERRORE)'));
+                  END IF;
+
+                  IF p_durata_ms IS NOT NULL AND p_durata_ms < 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_commessa_push_run', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_durata_ms', 'valore', p_durata_ms), NULL::uuid, 'p_durata_ms se fornito deve essere >= 0');
+                  END IF;
+
+                  INSERT INTO vendite.commesse_push_log (dry_run, source_types, risultato, stato, durata_ms)
+                  VALUES (COALESCE(p_dry_run, FALSE), p_source_types, COALESCE(p_risultato, '{}'::jsonb), v_stato, p_durata_ms)
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_log_commessa_push_run(boolean, text[], jsonb, character varying, integer)
+              IS 'Registra run push commesse in commesse_push_log con validazioni stato/durata.';

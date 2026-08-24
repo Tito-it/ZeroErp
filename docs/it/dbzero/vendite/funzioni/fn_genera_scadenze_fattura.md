@@ -87,7 +87,14 @@ BEGIN
     IF v_termine_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_genera_scadenze_fattura', 'E_SCADENZE_TERMINE_MANCANTE',
-            jsonb_build_object('fattura_id', p_fattura_id),
+            jsonb_build_object('fattura_id', p_fattura_id,
+                               -- ⭐ Il bersaglio, su entrambi i rifiuti del piano
+                               --    rate: si arriva qui dentro il giro di lotto,
+                               --    e la fattura da sistemare non e' quella che
+                               --    l'operatore ha davanti.
+                               'bersaglio', jsonb_build_array(
+                                   jsonb_build_object('tipo', 'FATTURA',
+                                                      'id', p_fattura_id::text))),
             NULL::uuid, p_fattura_id::text
         );
     END IF;
@@ -127,7 +134,14 @@ BEGIN
     IF v_base IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_genera_scadenze_fattura', 'E_SCADENZE_BASE_NON_PRONTA',
-            jsonb_build_object('fattura_id', p_fattura_id),
+            jsonb_build_object('fattura_id', p_fattura_id,
+                               -- ⭐ Il bersaglio, su entrambi i rifiuti del piano
+                               --    rate: si arriva qui dentro il giro di lotto,
+                               --    e la fattura da sistemare non e' quella che
+                               --    l'operatore ha davanti.
+                               'bersaglio', jsonb_build_array(
+                                   jsonb_build_object('tipo', 'FATTURA',
+                                                      'id', p_fattura_id::text))),
             NULL::uuid, p_fattura_id::text
         );
     END IF;
@@ -159,6 +173,11 @@ BEGIN
                 jsonb_build_object(
                     'task',              'genera_scadenze_lotto',
                     'source',            'fn_genera_scadenze_fattura',
+                    -- ⭐ Codice DICHIARATO, non catturato: qui non c'e'
+                    --    nessun errore altrui: la condizione l'ha vista
+                    --    questa funzione. E' un W_ perche' non si
+                    --    solleva — si registra e il giro prosegue.
+                    'error_code',        'W_SCADENZE_TOTALE_NEGATIVO',
                     'totale_a_pagare',   v_base,
                     'termine_pagamento_id', v_termine_id));
         RETURN QUERY SELECT v_deleted, 0;
@@ -245,7 +264,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_scadenze_fattura(p_fattura_id bigint)
-IS 'Fase 4.1 — (ri)genera il piano rate di una fattura. LEGGE il termine dalla testata e non lo risolve (C-13: la catena unica e'' fn_resolve_termini_pagamento, e il termine arriva qui passando dalla chiave). Formula a ramo unico dopo la riforma D-E: data = fattura.data + primo_offset_giorni + (n-1)*intervallo, in giorni, con spostamento a fine mese se richiesto; importo = base/numero_rate arrotondato con script.fn_arrotonda_importo (building block unico) e quadratura sull''ULTIMA rata, cosi'' la somma e'' esattamente la base. DELETE+INSERT: rieseguire ricostruisce lo stesso piano invece di sommarcisi, e la DELETE precede i casi a base non positiva perche'' una fattura diventata interamente coperta da acconti deve PERDERE le rate che aveva. I tre casi della base seguono D-D: NULL = passo fuori ordine (E_SCADENZE_BASE_NON_PRONTA), zero = coperta da acconti (zero rate, nessun log), negativa = saldo a favore del cliente (zero rate, log NON critico). Oltre la soglia DRAFT/EMESSA solleva E_SCADENZE_FATTURA_BLOCCATA (D-F): il filtro «salta senza fallire» spetta al wrapper di lotto. Scrive in testata termine_pagamento_snapshot con i VALORI del termine e non il solo id, perche'' una fattura emessa deve continuare a spiegare le proprie rate anche se il catalogo cambia.';
+IS 'Fase 4.1 — (ri)genera il piano rate di una fattura. LEGGE il termine dalla testata e non lo risolve (C-13: la catena unica e'' fn_resolve_termini_pagamento, e il termine arriva qui passando dalla chiave). Formula a ramo unico dopo la riforma D-E: data = fattura.data + primo_offset_giorni + (n-1)*intervallo, in giorni, con spostamento a fine mese se richiesto; importo = base/numero_rate arrotondato con script.fn_arrotonda_importo (building block unico) e quadratura sull''ULTIMA rata, cosi'' la somma e'' esattamente la base. DELETE+INSERT: rieseguire ricostruisce lo stesso piano invece di sommarcisi, e la DELETE precede i casi a base non positiva perche'' una fattura diventata interamente coperta da acconti deve PERDERE le rate che aveva. I tre casi della base seguono D-D: NULL = passo fuori ordine (E_SCADENZE_BASE_NON_PRONTA), zero = coperta da acconti (zero rate, nessun log), negativa = saldo a favore del cliente (zero rate, log NON critico). Oltre la soglia DRAFT/EMESSA solleva E_SCADENZE_FATTURA_BLOCCATA (D-F): il filtro «salta senza fallire» spetta al wrapper di lotto. Scrive in testata termine_pagamento_snapshot con i VALORI del termine e non il solo id, perche'' una fattura emessa deve continuare a spiegare le proprie rate anche se il catalogo cambia. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-5): la nota di avviso sul totale a pagare negativo dichiara W_SCADENZE_TOTALE_NEGATIVO in meta->>''error_code''. ⚠️ Cambia specie rispetto ai tre changeSet gemelli dello stesso giro (fn_log_pipeline_fase, fn_snapshot_fattura_lotto, fn_genera_scadenze_lotto): quelli CATTURANO un errore altrui in un ramo EXCEPTION e ne prendono il codice da CONSTRAINT_NAME, qui non c''e'' niente da catturare — la condizione la vede questa funzione, e il codice si DICHIARA. E'' un W_ perche'' non si solleva mai: si registra e il giro prosegue (un W_ sollevato sarebbe un HTTP 500). ⛔ Il codice NON ha una entry in config.messaggi_errore, di proposito e per decisione: questo punto scrive la frase direttamente in vendite.fatture_log.messaggio e non passa da script.fn_log_and_raise_error, quindi un messaggio a catalogo sarebbe una seconda copia della stessa frase che nessuno compone. La forma e'' prevista dal disegno: la FK va da messaggi_errore verso codici_errore, quindi un codice senza figli e'' legittimo mentre un messaggio senza padre no. ⭐ rev 2026-08-24: i due rifiuti del piano rate (E_SCADENZE_TERMINE_MANCANTE, E_SCADENZE_BASE_NON_PRONTA) portano il BERSAGLIO sulla fattura. Si arriva qui dentro il giro di lotto, e la fattura da sistemare non e'' quella che l''operatore ha davanti. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
 ```
 
 ---

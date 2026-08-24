@@ -1379,7 +1379,7 @@ davvero — ed è esattamente lo scenario in cui la slice C ha scoperto
 | **BE-B** — il DDT smette di pretendere il prezzo | ✅ **fatto** | B1-B7 sotto |
 | **BE-D** — doc API (`prezzo_esito`) | ✅ **fatto** | sezione nuova in `api_ddt.md` |
 | **FE-A → FE-E** | ✅ **fatto** | §21.1-quinquies |
-| caselle 1, 1-bis, 6 del §19 | ⬜ validazione **in-app di Tid** | nessun test automatico le ha mai attraversate |
+| caselle 1, 1-bis, 6 del §19 | ⬜ validazione **in-app di Tid** | nessun test automatico le ha mai attraversate — il copione e' in [collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md) (9 prove, dati veri misurati il 2026-08-21) |
 
 **Non committato al momento della scrittura**: le modifiche di BE-C vivono
 nell'albero di lavoro insieme ad altro lavoro in corso.

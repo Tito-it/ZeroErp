@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_contratti_sync_is_abortito_snapshot.md" %}
 # ⚙️ Funzione `trgfn_contratti_sync_is_abortito_snapshot`
 
 ```sql

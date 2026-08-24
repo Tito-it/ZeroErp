@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/sepa_mandati.md" %}
 # 📚 Tabella `sepa_mandati`
 
 ## 🗂️ Campi principali

@@ -95,6 +95,44 @@ class LottoSegnalazioniSummary(TypedDict):
     fatture_stato_esecuzione_errore_count: int
 
 
+class LottoSegnalazioneRow(TypedDict):
+    # Una segnalazione del lotto, nella forma in cui si LEGGE — i conteggi del
+    # riepilogo dicono quante sono, questa dice cosa sono.
+    # Sorgente: `vendite.fn_list_lotto_segnalazioni` (L2), che unisce le due
+    # origini e compone gia' documento e importo.
+    #
+    # ⚠️ I nomi sono quelli che il seed della lista 47 dichiara come
+    # `campo_sorgente`: se divergono, la colonna si spunta a catalogo e resta
+    # vuota a video.
+    #
+    # `riga_key`: chiave di riga per il rendering. Serve perche' `data_ora` NON
+    # e' univoco — misurato, sei segnalazioni con lo stesso microsecondo — e il
+    # solo `id` nemmeno, dato che le due origini hanno sequenze indipendenti.
+    riga_key: str
+    origine: str              # 'FATTURA' | 'LOTTO'
+    data_ora: str | None
+    livello: str              # 'C' | 'W' | 'I'
+    messaggio: str | None
+    error_code: str | None
+    fase: str | None          # solo origine LOTTO
+    fattura_id: int | None
+    documento_display: str | None   # NULL sulle righe LOTTO
+    importo: str | None             # NULL sulle righe LOTTO
+    disabilitato: bool        # ritirata: e' il filtro, non la colonna
+    # ⭐ La segnalazione appartiene all'ULTIMA corsa di pipeline (D-6): un job
+    # contiene piu' step e uno step piu' task, e senza questo flag una
+    # segnalazione di tre giri fa si legge come se fosse di adesso.
+    job_corrente: bool
+    # ⭐ IL BERSAGLIO: su QUALE cosa l'errore punta — `[{"type", "id"}]`, gli
+    # stessi nomi dell'envelope, cosi' la scheda e il toast disegnano il gesto
+    # con un resolver solo. `None` = nessuna destinazione, che e' il caso
+    # normale (e oggi tutte le righe di origine `LOTTO`).
+    # ⛔ Da non confondere con `fattura_id`: quello e' il documento che ha
+    # FALLITO, questo e' dove l'operatore deve andare. Sul caso collaudato sono
+    # due fatture diverse.
+    target: list[dict[str, str]] | None
+
+
 class LottoTaskRunRow(TypedDict):
     id: int
     lotto_id: int
@@ -109,6 +147,7 @@ class LottoTaskRunRow(TypedDict):
     error_code: str | None
     error_message: str | None
     meta: dict[str, Any]
+    giro_corrente: bool
 
 
 class LottoFattureRow(TypedDict):
@@ -134,6 +173,25 @@ class LottoFattureRow(TypedDict):
     # puo' contenere di diverse, quindi «N fatture» e' «N documenti».
     natura_doc_codice: str | None
     natura_doc_descrizione: str | None
+    # ⭐ L'ULTIMA segnalazione VIVA della fattura, DALLE PIU' GRAVI (D-6):
+    # tutti i livelli, non solo i critici, e a parita' vince la gravita' prima
+    # della data. NULL quando non ce n'e'. `stato_esecuzione` dice CHE la riga
+    # e' fallita; questi dicono perche', quando e con quale codice —
+    # l'informazione che prima viveva solo nel toast del momento.
+    # ⚠️ I nomi sono quelli che il seed dichiara come `campo_sorgente`: se
+    # divergono, la colonna si spunta a catalogo e resta vuota a video.
+    errore_codice: str | None
+    errore_messaggio: str | None
+    errore_quando: str | None
+    # ⚠️ Fuori dal seed, ma nel payload: senza il livello il frontend non puo'
+    # distinguere un avviso da un errore e mostrerebbe l'icona rossa su
+    # entrambi. Stesso ruolo di `natura_doc_codice`.
+    errore_livello: str | None
+    # ⭐ IL BERSAGLIO dell'errore: su QUALE cosa, per disegnare un gesto invece
+    # di far ricopiare un id a mano. Forma `[{"type": ..., "id": ...}]`, gli
+    # stessi nomi dell'envelope. NULL quando l'errore non ne porta — che e' il
+    # caso normale, non un difetto.
+    errore_bersagli: list[dict[str, str]] | None
 
 
 class LottoListRow(TypedDict):
@@ -162,6 +220,21 @@ class LottoListRow(TypedDict):
     # `emittente_soggetto_ruolo_id`, che pure c'e' due righe sopra: un id a
     # video non dichiara l'emittente, sposta l'ambiguita' di un passo.
     emittente_ragione_sociale: str | None
+    # ⭐ C'e' almeno UN documento in errore grave nel dettaglio del lotto: basta
+    # uno ad accendere la spia sulla riga di lista. SE, non quanti — il numero
+    # e il motivo stanno nel drawer, scheda «Segnalazioni».
+    # Quanti documenti contiene il lotto e quanto valgono. ⚠️ `totale_documenti`
+    # e' una STRINGA: un totale fiscale non passa da un binario a virgola
+    # mobile. Zero e' un totale valido (lotto senza documenti), non un vuoto.
+    n_fatture: int
+    totale_documenti: str
+    ha_errori_gravi: bool
+    # ⭐ Lotto riportato in lavorazione e step non ancora rifatto. Non e' uno
+    # stato: e' un SEGNALE di un giro solo (`vendite.fatturazione_lotti.riaperto_il`,
+    # spento dal runner appena lo onora). Esiste per la presentazione — sul
+    # lotto riaperto la prossima esecuzione RIFA' lo step corrente invece di
+    # avanzare, e il lotto resta in DRAFT.
+    riaperto: bool
 
 
 class CommessaEmitResult(TypedDict):
@@ -1015,6 +1088,17 @@ class LineageNodoRow(TypedDict):
     is_transitato: bool
     n_sorgenti: int
     root_codice: str | None
+    # ⭐ Natura del documento fiscale (FATTURA / NOTA_CREDITO / NOTA_DEBITO),
+    # dal changeSet 20260821-01. Senza, due nodi FATTURA nati dalla stessa
+    # commessa sono indistinguibili — il grafo e' nato quando `FATTURA` era una
+    # cosa sola. NULL per tutti i tipi che non sono documenti fiscali.
+    # (La descrizione NON si porta: il FE decodifica il codice via i18n come
+    # per `tipo_codice` — due sorgenti di etichetta divergerebbero.)
+    natura_doc_codice: str | None
+    # Natura del nodo FRONTIERA (JOIN alla vista nodi): la frontiera puo'
+    # essere una nota di credito — arco G dalla commessa — e senza questa il
+    # pannello la etichetta «Fattura».
+    frontiera_natura_doc_codice: str | None
 
 
 class LineagePassaggioRow(TypedDict):
@@ -1041,6 +1125,11 @@ class LineagePassaggioRow(TypedDict):
     to_is_abortito: bool
     to_doc_id: int | None
     is_ramo_inverso: bool
+    # Natura dei due estremi (vedi `LineageNodoRow.natura_doc_codice`): e' cio'
+    # che permette a una tappa di dire «Nota di credito» invece di «Fattura»
+    # per la seconda volta di fila.
+    from_natura_doc_codice: str | None
+    to_natura_doc_codice: str | None
 
 
 class FondoFatturaDaDecidereRow(TypedDict):

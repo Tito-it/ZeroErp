@@ -349,7 +349,52 @@ BEGIN
           'contesto: jsonb_build_object(''campo'', ''nome_campo'', ...).', v_mittenti;
     END IF;
 
-    RAISE NOTICE 'OK — un solo mittente sul canale CONSTRAINT e uno sul canale COLUMN, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
+    -- ── (G) un solo mittente anche sul canale DATATYPE ──────────────
+    --
+    -- Terzo gemello, e nasce insieme al canale (20260823-02). Dal 2026-08-23
+    -- `DATATYPE` porta il BERSAGLIO dell'errore — su quali entita' si
+    -- riferisce, nella forma TIPO:id[,TIPO:id] — e il frontend ci disegna un
+    -- pulsante «vai al documento».
+    --
+    -- ⚠️ Nasce a ZERO mittenti, come (F) e a differenza di (A): un presidio che
+    -- parte da zero non chiede mai a nessuno di sanare un arretrato.
+    --
+    -- ⚠️ E il modo in cui questo canale rompe e' il peggiore dei tre. Un
+    -- CONSTRAINT sbagliato fa decidere male uno status; un COLUMN sbagliato
+    -- evidenzia il campo sbagliato; un DATATYPE sbagliato **porta l'operatore
+    -- da un'altra parte** — apre un documento che non c'entra, con la pagina
+    -- che gliel'ha proposto come se fosse sicura. Un bersaglio sbagliato e'
+    -- peggio di nessun bersaglio, ed e' la ragione per cui la derivazione
+    -- automatica dalle chiavi del context e' stata rimandata.
+    --
+    -- ⚠️ Fuori da P0001 quel campo lo riempie PostgreSQL da se' (le violazioni
+    -- di dominio): il contratto vale SOLO dentro P0001, come per CONSTRAINT.
+    SELECT string_agg(n.nspname || '.' || p.proname, E'\n  ' ORDER BY n.nspname, p.proname)
+      INTO v_mittenti
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql')
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND p.prosrc ~* 'RAISE[^;]*USING[^;]*\mDATATYPE\M\s*='
+       AND NOT (n.nspname = 'script' AND p.proname = 'fn_log_and_raise_error');
+
+    IF v_mittenti IS NOT NULL THEN
+        RAISE EXCEPTION
+          E'Il canale DATATYPE ha piu'' di un mittente:\n  %\n\n'
+          'Dal 2026-08-23 il campo DATATYPE dell''eccezione e'' riservato al BERSAGLIO '
+          'dell''errore — le entita'' a cui si riferisce, nella forma TIPO:id[,TIPO:id] — '
+          'contratto «P0001 + DATATYPE valorizzato = il bersaglio» (changeSet '
+          '20260823-02), e l''unica sede autorizzata a scriverlo e'' '
+          'script.fn_log_and_raise_error, che lo compone da p_context->''bersaglio''.\n'
+          'Il frontend ci disegna sopra un pulsante: se ci finisce dentro altro, non '
+          'fallisce niente — porta l''operatore su un documento che non c''entra, e '
+          'gliel''ha proposto la pagina. E'' peggio di non proporne nessuno.\n'
+          'La strada e'' passare da fn_log_and_raise_error mettendo il bersaglio nel '
+          'contesto: jsonb_build_object(''bersaglio'', jsonb_build_array('
+          'jsonb_build_object(''tipo'', ''FATTURA'', ''id'', v_id::text))).', v_mittenti;
+    END IF;
+
+    RAISE NOTICE 'OK — un solo mittente sui canali CONSTRAINT, COLUMN e DATATYPE, nessun codice fuori convenzione non registrato, nessuna voce di troppo nel registro (% attive), nessun codice ritirato ancora sollevato (% ritirati), nessun warning sollevato come errore.',
         (SELECT count(*) FROM dbops.messaggi_errore_codici_legacy),
         (SELECT count(*) FROM config.codici_errore
           WHERE obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE);

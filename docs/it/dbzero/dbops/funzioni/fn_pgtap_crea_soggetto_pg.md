@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_crea_soggetto_pg.md" %}
 # ⚙️ Funzione `fn_pgtap_crea_soggetto_pg`
 
 ```sql

@@ -13,17 +13,38 @@
 -- hardcoda il codice della natura). Resta intatta la derivazione/congelamento
 -- della natura dall'articolo (no override operatore).
 --
--- Indice test (1..7):
+-- Indice test (1..11):
 --   Sanity:
 --   1) SERVIZIO_RICORRENTE mappa a destinazione_tipo='CONTRATTO'
 --   2) E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA registrato in messaggi_errore
 --   Fixture:
---   3) preventivo DRAFT + 2 articoli distinti (ricorrente + MERCE) disponibili
+--   3) preventivo DRAFT + 3 articoli distinti (ricorrente + MERCE + una tantum) disponibili
 --   Comportamento:
 --   4) INSERT riga con articolo a natura CONTRATTO -> BLOCCO (E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA)
 --   5) INSERT riga con articolo a natura MERCE -> ammessa
 --   6) natura ereditata e congelata sulla riga = MERCE (no override)
 --   7) UPDATE OF articolo_id verso articolo ricorrente -> BLOCCO
+--   Lock della colonna (2026-08-21):
+--   8) E_PREV_RIGA_NATURA_IMMUTABILE registrato in messaggi_errore
+--   9) UPDATE della SOLA natura_vendita_id -> BLOCCO (lock di colonna)
+--  10) UPDATE OF articolo_id verso articolo NON ricorrente -> ammesso
+--      (il lock non deve intralciare l'ereditarieta')
+--  11) ... e la natura si riallinea da sola all'articolo nuovo
+--
+-- ⚠️ I test 9 e 10 dipendono dal trigger trg_preventivi_righe_a10_lock_columns_upd,
+--    che NON e' scritto a mano: lo genera l'automazione LOCK_COLUMNS
+--    (dbops.fn_run_automations_lock_columns) dalla riga aggiunta il 2026-08-21 a
+--    dbops.automation_lock_columns. Finche' quella migrazione non e' applicata e
+--    l'automazione non e' passata, il test 9 e' ROSSO: e' atteso, non e' una
+--    regressione.
+--
+-- ⚠️ Il test 10 e' il presidio dell'ORDINE ALFABETICO fra i due BEFORE ROW.
+--    `trg_preventivi_righe_a10_lock_columns_upd` precede
+--    `trg_preventivi_righe_a10_set_natura_vendita_ins_upd`, quindi il lock legge
+--    la natura NON ancora riscritta dall'ereditarieta' e il cambio articolo passa.
+--    Se qualcuno rinominasse i due trigger invertendone l'ordine, il lock
+--    bloccherebbe anche il cambio articolo legittimo: il test 10 e' l'unica cosa
+--    che se ne accorgerebbe.
 --
 -- Nota: il ramo "articolo a natura NULL (legacy pre-backfill)" non e' piu'
 -- testabile da quando catalogo.articoli.natura_vendita_id e' NOT NULL (D3,
@@ -48,7 +69,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(11);
 
 -- ============================================================
 -- 1) Sanity seed: SERVIZIO_RICORRENTE -> destinazione_tipo CONTRATTO
@@ -89,6 +110,12 @@ SELECT
     (SELECT a.id FROM catalogo.articoli a
       WHERE a.attivo IS TRUE AND a.is_composito = FALSE
       ORDER BY a.id LIMIT 1 OFFSET 1) AS articolo_b_id,
+    -- Terzo articolo per il test 10: serve un bersaglio di cambio articolo che
+    -- NON sia ricorrente, altrimenti a bloccare sarebbe il guard MODALITA' A e
+    -- non si vedrebbe se il lock lascia passare.
+    (SELECT a.id FROM catalogo.articoli a
+      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
+      ORDER BY a.id LIMIT 1 OFFSET 2) AS articolo_c_id,
     (SELECT s.id FROM config.stati_doc_preventivi s
       WHERE s.codice='DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
@@ -97,7 +124,8 @@ SELECT
     (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
       ORDER BY i.id LIMIT 1) AS iva_id,
     (SELECT id FROM config.nature_vendita WHERE codice_interno='SERVIZIO_RICORRENTE') AS natura_ric_id,
-    (SELECT id FROM config.nature_vendita WHERE codice_interno='MERCE') AS natura_merce_id;
+    (SELECT id FROM config.nature_vendita WHERE codice_interno='MERCE') AS natura_merce_id,
+    (SELECT id FROM config.nature_vendita WHERE codice_interno='SERVIZIO_UNA_TANTUM') AS natura_ut_id;
 
 INSERT INTO vendite.preventivi (
     numero, rev,
@@ -123,6 +151,10 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_ric_id FROM tmp_
  WHERE id = (SELECT articolo_a_id FROM tmp_nat_refs);
 UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_nat_refs)
  WHERE id = (SELECT articolo_b_id FROM tmp_nat_refs);
+-- C = una tantum (destinazione COMMESSA): non ricorrente, quindi il guard
+-- MODALITA' A lo lascia passare ed e' un bersaglio valido per il test 10.
+UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_ut_id FROM tmp_nat_refs)
+ WHERE id = (SELECT articolo_c_id FROM tmp_nat_refs);
 
 -- ============================================================
 -- 4) INSERT con articolo a natura CONTRATTO -> BLOCCO
@@ -184,6 +216,88 @@ SELECT throws_like(
     '%servizio ricorrente%',
     '7) UPDATE OF articolo_id verso ricorrente -> bloccato'
 );
+
+-- ============================================================
+-- 8) Codice errore del lock registrato
+--    Sanity sul seed: senza la riga in config.messaggi_errore il lock
+--    solleverebbe con un segnaposto irrisolto invece che con la sua frase.
+-- ============================================================
+SELECT ok(
+    EXISTS(SELECT 1 FROM config.messaggi_errore
+            WHERE codice='E_PREV_RIGA_NATURA_IMMUTABILE'),
+    '8) E_PREV_RIGA_NATURA_IMMUTABILE registrato'
+);
+
+-- ============================================================
+-- 9) UPDATE della SOLA natura_vendita_id -> BLOCCO
+--    E' il buco che il lock chiude: il trigger di ereditarieta' e' agganciato a
+--    UPDATE OF articolo_id, quindi un UPDATE che tocca solo questa colonna non
+--    lo faceva scattare e la natura si staccava dall'articolo — aggirando anche
+--    il guard MODALITA' A verificato ai punti 4 e 7.
+--    Il pattern si ferma PRIMA del segnaposto %s del messaggio.
+-- ============================================================
+SELECT throws_like(
+    format(
+        $$UPDATE vendite.preventivi_righe SET natura_vendita_id = %s
+           WHERE id = (SELECT pr.id FROM vendite.preventivi_righe pr
+                         JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+                        WHERE p.numero='PGTAP-NAT-RIC'
+                          AND pr.articolo_id = %L::uuid
+                        ORDER BY pr.id LIMIT 1)$$,
+        (SELECT natura_ric_id FROM tmp_nat_refs),
+        (SELECT articolo_b_id FROM tmp_nat_refs)
+    ),
+    '%natura di vendita della riga non%',
+    '9) UPDATE della sola natura_vendita_id -> bloccato (E_PREV_RIGA_NATURA_IMMUTABILE)'
+);
+
+-- ============================================================
+-- 10) UPDATE OF articolo_id verso articolo NON ricorrente -> AMMESSO
+--     Presidio dell'ordine alfabetico fra i due BEFORE ROW: il lock
+--     (trg_..._a10_lock_columns_upd) gira PRIMA dell'ereditarieta'
+--     (trg_..._a10_set_natura_vendita_ins_upd), quindi legge la natura non
+--     ancora riscritta e non vede nessuna modifica. Invertire i due nomi
+--     bloccherebbe il cambio articolo legittimo, e questo e' il solo test che
+--     se ne accorgerebbe.
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT articolo_c_id FROM tmp_nat_refs) IS NULL
+        THEN skip('10) skip: servono almeno 3 articoli semplici attivi in catalogo')
+    ELSE lives_ok(
+        format(
+            $$UPDATE vendite.preventivi_righe SET articolo_id = %L::uuid
+               WHERE id = (SELECT pr.id FROM vendite.preventivi_righe pr
+                             JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+                            WHERE p.numero='PGTAP-NAT-RIC'
+                              AND pr.articolo_id = %L::uuid
+                            ORDER BY pr.id LIMIT 1)$$,
+            (SELECT articolo_c_id FROM tmp_nat_refs),
+            (SELECT articolo_b_id FROM tmp_nat_refs)
+        ),
+        '10) UPDATE OF articolo_id verso articolo non ricorrente -> ammesso col lock attivo'
+    )
+END;
+
+-- ============================================================
+-- 11) ... e la natura si e' riallineata da sola all'articolo nuovo
+--     Il lock blocca la scrittura MANUALE, non l'ereditarieta': se questo
+--     fallisse dopo un 10) verde, vorrebbe dire che il lock ha lasciato passare
+--     il cambio articolo ma il trigger di ereditarieta' non ha piu' riscritto.
+-- ============================================================
+SELECT CASE
+    WHEN (SELECT articolo_c_id FROM tmp_nat_refs) IS NULL
+        THEN skip('11) skip: servono almeno 3 articoli semplici attivi in catalogo')
+    ELSE is(
+        (SELECT pr.natura_vendita_id
+           FROM vendite.preventivi_righe pr
+           JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+          WHERE p.numero='PGTAP-NAT-RIC'
+            AND pr.articolo_id = (SELECT articolo_c_id FROM tmp_nat_refs)
+          ORDER BY pr.id LIMIT 1),
+        (SELECT natura_ut_id FROM tmp_nat_refs),
+        '11) natura riallineata da sola all''articolo nuovo (SERVIZIO_UNA_TANTUM)'
+    )
+END;
 
 SELECT * FROM finish();
 ROLLBACK;

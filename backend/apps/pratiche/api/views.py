@@ -409,6 +409,36 @@ class ApiPraticaFlussoDetail(DomainAPIView):
 
 
 
+class ApiFlussoPratica(DomainAPIView):
+    """`GET /api/v1/pratiche/flussi/<flusso_id>/pratica/` — dove vive un flusso.
+
+    ⭐ L'unica rotta dei flussi NON annidata sotto la pratica, e serve a chi il
+    flusso lo nomina **da fuori**: il primo caso reale e' il BERSAGLIO di un
+    errore (`E_FLUSSI_*`, roll-out del 2026-08-24), che porta l'id del flusso e
+    nient'altro. La dashboard, senza `pratica_id`, non saprebbe dove aprirlo.
+
+    ⚠️ Risponde un id, non il flusso: il dettaglio resta uno solo, con la sua
+    verifica di appartenenza. Vedi `pratiche_service.pratica_di_flusso`.
+    """
+
+    area_funzionale = "pratiche"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="FlussoPraticaResponse",
+            fields={"data": inline_serializer(
+                name="FlussoPraticaData",
+                fields={"pratica_id": serializers.IntegerField()},
+            )},
+        )},
+    )
+    # Scopo: Restituisce l'id della pratica a cui il flusso appartiene.
+    def get(self, request: Request, flusso_id: int) -> JsonResponse:
+        return success_response(
+            {"pratica_id": pratiche_service.pratica_di_flusso(flusso_id)}
+        )
+
+
 class ApiPraticaFlussoStato(DomainAPIView):
     area_funzionale = "pratiche"
     post_permission = "cambia_stato_flusso"

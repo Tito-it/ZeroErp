@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'IDENTITA' DEL GIRO — L2, prima meta'
+#   vendite.fatturazione_lotti_task_runs.correlation_id
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §1.2 (difetto S3) · Decisione D-7
+#
+# ── 🔴 IL DIFETTO: `correlation_id` NON IDENTIFICA UN GIRO ──────────
+#   Sul ramo pipeline il `correlation_id` scritto in `event_log` vale
+#   `fatturazione_lotti.lock_batch_id` — che nasce col lotto
+#   (`COALESCE(p_lock_batch_id, uuidv7())`) e **non cambia mai**.
+#
+#     > Quindi non dice «in che giro»: dice «di che lotto». E `entity_id` lo
+#     > diceva gia'. Due corse dello stesso lotto condividono il valore, e
+#     > sulla domanda che il campo esiste per rispondere sono indistinguibili.
+#
+#   ⭐ Non e' una deduzione: e' gia' misurato da un test scritto da altri.
+#   `db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql` asserisce
+#   testualmente — suo test 6 — che «le due corse condividono il correlation_id:
+#   da solo non distinguerebbe», ed e' il motivo per cui l'ancora del «job
+#   corrente» in `fn_list_lotto_segnalazioni` e' l'`event_time` dell'ultimo
+#   `PIPELINE_STARTED` e non il `correlation_id`.
+#
+# ── ⭐ IL RIMEDIO (D-7): UN uuid NUOVO A OGNI GIRO ──────────────────
+#   Lo genera il runner all'avvio (**BE-2**) e lo scrive su tutte e tre le
+#   sedi: gli eventi del giro, i suoi `task_runs`, e — per il ramo push — la
+#   riga di `commesse_push_log` (20260822-62).
+#
+#   ⚠️ Perche' non il `tx_id`: un giro attraversa **piu' transazioni**, una per
+#   step. Il `tx_id` cuce cio' che e' successo *nella stessa transazione*, che
+#   e' un'altra domanda — ed e' la ragione per cui servono entrambi.
+#   ⚠️ E perche' non l'id del `task_run`: quello e' per-task, non per-giro.
+#
+# ── PERCHE' LA COLONNA VA QUI ──────────────────────────────────────
+#   `fatturazione_lotti_task_runs` e' l'unico posto dove il singolo tentativo
+#   di un task e' registrato. Senza il filo del giro, la diagnostica di un
+#   lotto puo' dire *cosa* e' stato tentato ma non *in quale passata* — e i
+#   lotti con molte corse sono la norma, non l'eccezione.
+#
+# ⚠️ Nullable, e resta nullable: le righe gia' scritte non lo hanno e non si
+#   possono inventare. Un `NOT NULL` costringerebbe a un valore finto, che e'
+#   peggio di un buco dichiarato.
+#
+# Dipendenze: nessuna. Consumo: BE-2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260822-61-task-runs-correlation-id-mctit.yaml
+
+  - changeSet:
+      id: 20260822-61-task-runs-correlation-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fatturazione_lotti_task_runs.correlation_id: il filo del giro sul registro
+        dei tentativi. Il correlation_id attuale di event_log e' il lock_batch_id del
+        lotto, che non cambia mai fra una corsa e l'altra — un test esistente lo asserisce
+        gia' (test-fn-list-lotto-segnalazioni-job, test 6). Nullable: le righe gia' scritte
+        non lo hanno e un valore finto sarebbe peggio di un buco dichiarato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_task_runs
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatturazione_lotti_task_runs
+                    columnName: correlation_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_task_runs
+                  ADD COLUMN correlation_id uuid;
+
+              -- L'accesso vero e' «i tentativi di QUESTO giro», non «tutti i
+              -- giri»: l'indice serve la join della diagnostica di un lotto.
+              CREATE INDEX ix_task_runs_correlation
+                  ON vendite.fatturazione_lotti_task_runs (correlation_id)
+               WHERE correlation_id IS NOT NULL;
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_task_runs.correlation_id IS
+                  'Identita'' del GIRO che ha prodotto questo tentativo: un uuid generato '
+                  'dal runner all''avvio e condiviso con gli eventi del giro e, sul ramo '
+                  'push, con la riga di commesse_push_log. ⚠️ NON e'' il lock_batch_id del '
+                  'lotto, che nasce col lotto e non cambia mai: due corse dello stesso '
+                  'lotto lo condividono, e sulla domanda «in che giro» sono '
+                  'indistinguibili — lo asserisce gia'' il test 6 di '
+                  'test-fn-list-lotto-segnalazioni-job. ⚠️ E non e'' il tx_id: un giro '
+                  'attraversa piu'' transazioni, una per step, quindi rispondono a due '
+                  'domande diverse e servono entrambi. Nullable: le righe anteriori a '
+                  'BE-2 non lo hanno, e inventarlo sarebbe peggio di lasciarlo vuoto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_task_runs_correlation;
+              ALTER TABLE vendite.fatturazione_lotti_task_runs DROP COLUMN IF EXISTS correlation_id;

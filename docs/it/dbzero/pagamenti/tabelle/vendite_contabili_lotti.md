@@ -36,8 +36,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_vendite_contabili_lotti_a10_guard_compensazione_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione()` |
-| trg_vendite_contabili_lotti_a10_guard_compensazione_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione()` |
+| trg_vendite_contabili_lotti_a10_guard_sistemazione_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione()` |
+| trg_vendite_contabili_lotti_a10_guard_sistemazione_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione()` |
 | trg_vendite_contabili_lotti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_lotti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vendite_contabili_lotti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

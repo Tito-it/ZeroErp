@@ -19,3 +19,22 @@ const BASE = '/vendite/fatture'
 export function getFatturaDettaglio(fatturaId) {
   return api.get(`${BASE}/${fatturaId}/`)
 }
+
+// ⭐ LA STORIA DEL DOCUMENTO: «cosa è successo a questa fattura, in ordine di
+//    tempo». Sorgente `script.vw_giornale_entita`, la vista che cuce i registri
+//    di evento del progetto — per la fattura oggi risponde `fatture_log`.
+// ⛔ Da non confondere con `passaggi/`: quello dice con quali ALTRI documenti la
+//    fattura è legata, questo cosa le è successo. Domande diverse, sorgenti
+//    diverse.
+// ⚠️ 404 unificato inesistente/fuori scope, come il dettaglio.
+// ⭐ `sortBy` di default è la GRAVITÀ, e l'ordinamento lo fa il SERVER: la lista
+//    è paginata, quindi riordinare qui riordinerebbe la sola pagina caricata —
+//    «il più grave» diventerebbe «il più grave fra i primi 50», senza dirlo.
+export function getFatturaGiornale(
+  fatturaId,
+  { page = 1, pageSize = 50, sortBy = 'gravita', sortDir = 'desc' } = {},
+) {
+  return api.get(`${BASE}/${fatturaId}/giornale/`, {
+    params: { page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir },
+  })
+}

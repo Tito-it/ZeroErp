@@ -29,6 +29,7 @@
 | tx_id | uuid | YES |  |
 | contabile_riga_id | bigint | YES |  |
 | data_valuta | date | YES |  |
+| scadenza_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -38,11 +39,14 @@
 | FOREIGN KEY | fk_vendite_movimenti_centro_riscossione | centro_riscossione_id |
 | FOREIGN KEY | fk_vendite_movimenti_contabile | contabile_id |
 | FOREIGN KEY | fk_vendite_movimenti_contabile_riga | contabile_riga_id |
+| FOREIGN KEY | fk_vendite_movimenti_scadenza | scadenza_id |
 | PRIMARY KEY | pk_vendite_movimenti | id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_vendite_movimenti_fattura_id | `CREATE INDEX ix_vendite_movimenti_fattura_id ON pagamenti.vendite_movimenti USING btree (fattura_id)` |
+| ix_vendite_movimenti_scadenza_id | `CREATE INDEX ix_vendite_movimenti_scadenza_id ON pagamenti.vendite_movimenti USING btree (scadenza_id) WHERE (scadenza_id IS NOT NULL)` |
 | pk_vendite_movimenti | `CREATE UNIQUE INDEX pk_vendite_movimenti ON pagamenti.vendite_movimenti USING btree (id)` |
 | uq_vendite_movimenti_contabile_riga | `CREATE UNIQUE INDEX uq_vendite_movimenti_contabile_riga ON pagamenti.vendite_movimenti USING btree (contabile_riga_id) WHERE (contabile_riga_id IS NOT NULL)` |
 

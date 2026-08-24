@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/_legacy_risorse_umane_auth_user.md" %}
 # 📚 Tabella `_legacy_risorse_umane_auth_user`
 
 ## 🗂️ Campi principali

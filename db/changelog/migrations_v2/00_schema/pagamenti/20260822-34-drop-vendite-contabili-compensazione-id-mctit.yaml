@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COLONNA SPARISCE — passo S4-2 (lotto 7)
+#   pagamenti.vendite_contabili.compensazione_id
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-bis S4-2 · Decisione: brief madre D15-e
+#
+# ── ⭐ E' L'ULTIMO PASSO DEL GIRO, E VA PER ULTIMO ───────────────────
+#   Girare il verso del legame (D15-e) è **una decisione, cinque changeSet**:
+#
+#       -26  la colonna nasce dall'altra parte  (`sistemazioni.contabile_id`)
+#       -31  il guard sui lotti legge l'atto invece della contabile
+#       -32  il guard su ente/centro perde il ramo che non ha più un dato
+#       -33  la funzione perde il parametro
+#       -34  ⬅ **qui**: la colonna vecchia se ne va
+#
+#   ⚠️ **L'ordine non è estetico.** `plpgsql` risolve i riferimenti alle colonne
+#   **all'esecuzione**, non alla creazione: togliendo la colonna prima di
+#   riscrivere i corpi, le funzioni resterebbero *verdi a riposo e rosse alla
+#   prima chiamata* — il tipo di rottura che si scopre in esercizio.
+#   ⭐ L'ordine è garantito dalla numerazione, perché l'auto-gen mescola
+#   `00_schema` e `20_code` ordinando per numero.
+#
+# ── ⭐ COSA SE NE VA INSIEME ─────────────────────────────────────────
+#   | Oggetto | Dove vive adesso la sua garanzia |
+#   | --- | --- |
+#   | `uq_vendite_contabili_compensazione` | `uq_sistemazioni_contabile` — l'unicità **cambia lato**, non si perde |
+#   | `fk_vendite_contabili_compensazione` | `fk_sistemazioni_contabile`, nel verso giusto |
+#   | la colonna | `sistemazioni.contabile_id` |
+#
+#   ⭐ Il bilancio del giro: su `vendite_contabili` **tre oggetti in meno** e nessuna
+#   garanzia persa. *Meno pezzi, non di più.*
+#
+# ── ✅ COSTO ZERO, MISURATO ─────────────────────────────────────────
+#   `pagamenti.compensazioni` era a **zero righe**, quindi la colonna era nulla
+#   ovunque. E in tutto `backend/` e `frontend/` **nessuna riga di codice** la
+#   nomina: solo commenti e stringhe di messaggi (2026-08-22).
+#
+# Verifica: db/pgtap/pagamenti/test-compensazioni-contabili-model.sql (riscritto)
+#           + baseline `pagamenti`
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260822-34-drop-vendite-contabili-compensazione-id-mctit.yaml
+
+  - changeSet:
+      id: 20260822-34-drop-vendite-contabili-compensazione-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Sparisce pagamenti.vendite_contabili.compensazione_id con il suo unico e la sua FK:
+        e' l'ultimo passo del giro del verso (D15-e), e va per ultimo perche' plpgsql risolve
+        i riferimenti alle colonne all'esecuzione — togliendola prima di riscrivere i corpi,
+        le funzioni sarebbero verdi a riposo e rosse alla prima chiamata. Nessuna garanzia si
+        perde: l'unicita' «una contabile per atto» e' su uq_sistemazioni_contabile. Bilancio
+        del giro: tre oggetti in meno su vendite_contabili. Costo zero: la colonna era nulla
+        ovunque (zero righe) e nessuna riga di codice in backend o frontend la nomina.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pagamenti
+                tableName: vendite_contabili
+                columnName: compensazione_id
+            - columnExists:
+                schemaName: pagamenti
+                tableName: sistemazioni
+                columnName: contabile_id
+            # ⚠️ Non si toglie una colonna finche' qualcuno la LEGGE. Le due
+            #    prove sono strutturali e non guardano il testo dei corpi:
+            #    un sqlCheck su `prosrc LIKE '%compensazione_id%'` sarebbe
+            #    caduto sui COMMENTI dei changeSet precedenti, che la nominano
+            #    apposta per spiegare perche' non c'e' piu'.
+            #
+            # 1. il guard vecchio sui lotti dev'essere sparito (changeSet -31)
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'trgfn_vendite_contabili_lotti_guard_compensazione';
+            # 2. la funzione dev'essere gia' a otto parametri (changeSet -33)
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'pagamenti'
+                     AND p.proname = 'fn_get_or_create_vendite_contabile'
+                     AND p.pronargs = 8;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP CONSTRAINT uq_vendite_contabili_compensazione;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP CONSTRAINT fk_vendite_contabili_compensazione;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP COLUMN compensazione_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD COLUMN compensazione_id bigint;
+
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD CONSTRAINT fk_vendite_contabili_compensazione
+                FOREIGN KEY (compensazione_id)
+                REFERENCES pagamenti.sistemazioni (id);
+
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD CONSTRAINT uq_vendite_contabili_compensazione UNIQUE (compensazione_id);

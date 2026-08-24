@@ -78,4 +78,44 @@ WHERE (from_tipo_id, from_uid) = (:tipo, :uid)     -- uscenti
 
 ---
 
+
+### ⭐ Arco N — Fattura rettificata → Nota di credito (rev 2026-08-21)
+
+| Arco | Da → A | Card. | Fonte |
+|---|---|---|---|
+| **N** | Fattura rettificata → Nota di credito | **1:N** | `fatture_righe.riga_rettificata_id` → riga → fattura (`DISTINCT`) |
+
+**Da dove si legge, e perché non dall'altra fonte.** Le candidate erano due, e
+dicono la stessa cosa ma **non nello stesso momento**:
+
+* `vendite.fatture_rettifiche` — il ponte a livello **documento**, popolato da un
+  task della fase DEFINITIVA che gira **dopo** la numerazione;
+* `fatture_righe.riga_rettificata_id` — il legame **riga-riga**, scritto alla
+  generazione delle righe.
+
+⚠️ Misurato il 2026-08-21: la prima nota di credito esiste con tre righe
+collegate, e `fatture_rettifiche` è **ancora a zero righe** perché il lotto non è
+stato reso definitivo. Un grafo costruito sul ponte sarebbe rimasto muto proprio
+nella finestra in cui l'operatore guarda. È anche la stessa scelta dell'**arco
+G**, che legge un soft-link e non una tabella ponte.
+
+⚠️ **È il primo arco fra due nodi dello stesso tipo** (FATTURA→FATTURA). Il
+traversal regge (ha il set dei visitati e il tetto a livello 10), ma un arco
+X→X non direbbe una genealogia, direbbe un ciclo: si esclude esplicitamente.
+
+### ⭐ `is_ramo_inverso` vive qui, una volta sola
+
+Prima la lettera `'R'` era scritta a mano in **tre** posti: i due `WHERE` della
+summary e il calcolo dentro `fn_documento_lineage`. Aggiungere un secondo ramo
+di ritorno voleva dire ricordarsene tre volte — e il posto dimenticato **non
+avrebbe dato nessun errore**: solo la nota di credito comparsa come discendente
+forward della fattura, cioè una **frontiera diversa su ogni riga di lista**, in
+silenzio.
+
+⚠️ **«Inverso» non vuol dire «all'indietro nel tempo»**: la nota di credito nasce
+*dopo*. Vuol dire ramo di **ritorno** — nel reso torna la merce, qui torna il
+valore — e come il reso non è un avanzamento del flusso.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -47,13 +47,35 @@ Il principio fondamentale e che la scrittura diretta in `vendite_movimenti` e un
 * [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili) — testata contabile
 * [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe) — dettaglio righe
 * [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti) — movimenti effettivi
-* [pagamenti.compensazioni](/dbzero/pagamenti/tabelle/compensazioni) — testate di compensazione
+* [pagamenti.sistemazioni](/dbzero/pagamenti/tabelle/sistemazioni) — il registro delle sistemazioni (riporti, rimborsi, compensazioni)
+* [pagamenti.vw_eccedenze_da_sistemare](/dbzero/pagamenti/views/vw_eccedenze_da_sistemare) — l'elenco dei documenti che hanno incassato piu' del dovuto
 * [pagamenti.vendite_contabili_lotti](/dbzero/pagamenti/tabelle/vendite_contabili_lotti) — legame contabile-lotto
 
 **Lookup stati:**
 
 * [pagamenti.vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati) — stati della testata
-* [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) — stati della riga (con `is_postabile`)
+* [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati) — stati della riga (con `is_postabile`, `is_final` e `richiede_abbinamento`)
+
+**Come ci si passa (dal 2026-08-21):**
+
+* [pagamenti.transizioni_stati_contabile](/dbzero/pagamenti/tabelle/transizioni_stati_contabile) — il grafo della **distinta**
+* [pagamenti.transizioni_stati_contabile_riga](/dbzero/pagamenti/tabelle/transizioni_stati_contabile_riga) — il grafo della **riga**
+
+⭐ Fino a quella data `pagamenti` era l'unico dominio del progetto con degli
+**stati** e **nessuna regola su come ci si passa**: qualunque salto era ammesso,
+compreso uscire da uno stato dichiarato finale. Le due matrici sono lette da
+altrettanti guard, e **nessun grafo è scritto nel codice**.
+
+⚠️ Due regole però le matrici non le portano, perché dipendono da colonne della
+riga e non dalla coppia di stati — vivono nel guard
+`trgfn_vendite_contabili_guard_validazione`: la **riapertura** in bozza è solo
+della distinta manuale, e entrando in `VALIDATA` la somma delle righe deve
+corrispondere al **totale dichiarato**, se c'è. *Chi legge la sola matrice non le
+vede.*
+
+**Autorizzazioni all'addebito:**
+
+* [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati) — mandati SEPA (`CORE` / `B2B`): l'autorizzazione con cui il debitore permette al creditore di addebitare il proprio conto. ⚠️ Oggi la tabella è **vuota** e nessuna funzione la legge: la struttura è pronta, il processo di addebito diretto non è ancora costruito
 
 **Cross-schema:**
 
@@ -64,6 +86,13 @@ Il principio fondamentale e che la scrittura diretta in `vendite_movimenti` e un
 * [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile) — creazione o recupero testata
 * [pagamenti.fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili) — saldo contabile in lavorazione
 * [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) — saldo finanziario effettivo
+* [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — ⭐ **la registrazione**: le righe pronte diventano movimenti, e la distinta si chiude
+* [pagamenti.fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) — il saldo per **rata**, che distingue il registrato dal dichiarato e l'incassato dal postato
+* [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura) — «questa rata e' di questa fattura?», chiesto **fuori** dalla row security
+
+**Viste:**
+
+* [pagamenti.vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) — le rate il cui residuo e' uscito dalla banda: l'elenco senza il quale la forzatura sarebbe un modo di nascondere denaro
 
 ---
 
@@ -75,11 +104,14 @@ pagamenti
 │   └── enti_incasso                -- canali fisici (filiale, ufficio postale, PSP)
 ├── compensazioni                   -- processo di compensazione fatture
 ├── vendite_contabili               -- testata contabile (punto unico d'ingresso)
-│   ├── vendite_contabili_righe     -- dettaglio per fattura/BA/importo
+│   ├── vendite_contabili_righe     -- dettaglio per fattura/BA/rata/importo
 │   │   └── vendite_movimenti      -- movimento effettivo 1:1 con riga
 │   └── vendite_contabili_lotti     -- legame N:M con lotti di fatturazione
 ├── vendite_contabili_stati         -- lookup stati testata (con is_final)
-└── vendite_contabili_righe_stati   -- lookup stati riga (con is_postabile, is_final)
+│   └── transizioni_stati_contabile -- come ci si passa: il grafo della distinta
+├── vendite_contabili_righe_stati   -- lookup stati riga (is_postabile, is_final, richiede_abbinamento)
+│   └── transizioni_stati_contabile_riga  -- come ci si passa: il grafo della riga
+└── sepa_mandati                    -- mandati di addebito diretto (oggi vuota, nessun lettore)
 
 vendite
 └── fatture_fondi_fattura_source    -- sorgenti fondi fattura (minimi, riaddebiti)
@@ -87,62 +119,92 @@ vendite
 
 ---
 
-## Il piano rate e gli incassi: due metà che non si toccano ancora
+## Il piano rate e gli incassi: adesso si parlano
 
-> Sezione aggiunta il **2026-08-02**, quando il piano rate è entrato in esercizio.
-> Fino ad allora `vendite.fatture_scadenze` era vuota per costruzione e questa
-> guida non aveva motivo di nominarla.
+> Sezione aggiunta il **2026-08-02**, quando il piano rate e' entrato in
+> esercizio. ⭐ **Riscritta il 2026-08-22**: fino a quel giorno le due meta' non
+> si toccavano, e la sezione esisteva per dirlo.
 
-Da oggi una fattura porta il proprio **piano rate**: quante rate, a quale data,
-per quale importo. Lo genera la pipeline nello step EMESSA e vive in
+Una fattura porta il proprio **piano rate**: quante rate, a quale data, per quale
+importo. Lo genera la pipeline nello step EMESSA e vive in
 [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze).
 
-### 🔴 Un incasso è agganciato alla FATTURA, non alla RATA
+**Chi decide quante rate e con che scadenze** non e' questa guida: e' il *termine
+di pagamento* del documento, scelto da un catalogo e risolto lungo la catena
+documento -> commessa -> cliente -> *unica rata*. Regole, catalogo di oggi e
+conseguenze (fra cui il fatto che il termine decide anche **quante fatture**
+nascono) in [Termini di pagamento](/guide/termini-di-pagamento).
 
-È il punto da avere chiaro prima di progettare qualsiasi cosa in quest'area.
-`pagamenti.vendite_movimenti` porta `fattura_id` e `billing_account_id`, e si
-ferma lì: nell'intero database **non esiste alcuna colonna `scadenza_id`**.
+### ⭐ Un incasso si aggancia alla RATA — dal 2026-08-22
 
-Le due metà quindi **non si parlano**:
+~~Un incasso e' agganciato alla FATTURA, non alla RATA.~~ Era vero fino al lotto
+5 del cantiere incassi: `vendite_movimenti` portava la fattura e si fermava li',
+e nell'intero database non esisteva nessuna colonna `scadenza_id`.
+
+Adesso la porta la **riga contabile**, ed e' li' che l'abbinamento vive:
 
 ```text
-vendite.fatture_scadenze     "questa fattura si paga in 2 rate, il 30/09 e il 31/10"
-                                          ⟂  nessun collegamento
-pagamenti.vendite_movimenti  "su questa fattura sono entrati 500 €"
+vendite.fatture_scadenze           "questa fattura si paga in 2 rate, il 30/09 e il 31/10"
+                                                |
+pagamenti.vendite_contabili_righe   scadenza_id -> l'incasso dice A QUALE RATA va
+                                                |
+pagamenti.vendite_movimenti         scadenza_id -> copiata dalla riga quando si registra
 ```
 
-### Cosa si può e cosa NON si può rispondere oggi
+⭐ **Niente tabella in mezzo**: la riga contabile *e' gia'* l'unita' di
+allocazione, e chi paga due rate con un bonifico solo fa **due righe** — che e'
+anche il modo in cui la banca lo racconta.
+
+⚠️ **La rata resta facoltativa**: ci sono righe che saldano un documento senza
+riferirsi a una scadenza precisa, e quella del fondo fattura e' il caso vivo
+(salda per **trasferimento**).
+
+### Che cosa si puo' chiedere adesso
 
 | Domanda | Risposta |
 |---|---|
-| Quanto resta da incassare su una fattura? | ✅ `pagamenti.fn_get_saldo_fattura` — residuo = `totale_a_pagare` − movimenti attivi |
-| Come è rateizzata questa fattura? | ✅ `vendite.fatture_scadenze` |
-| **Questa rata è stata pagata?** | ❌ **non derivabile** |
-| Quali rate sono scadute o insolute? | ❌ **non derivabile** |
+| Quanto resta da incassare su una fattura? | ✅ `pagamenti.fn_get_saldo_fattura` |
+| Come e' rateizzata questa fattura? | ✅ `vendite.fatture_scadenze` |
+| **Questa rata e' stata pagata?** | ✅ `pagamenti.fn_get_saldo_rata` — e distingue il **registrato** dal **dichiarato** |
+| Quanto di quel che risulta pagato e' **denaro davvero arrivato**? | ✅ la colonna `incassato`: i centri interni (fondo fattura, compensazione) non sono cassa |
+| Quali rate hanno incassato piu' del dovuto? | ✅ [vw_rate_fuori_capienza](/dbzero/pagamenti/views/vw_rate_fuori_capienza) |
+| Quali rate sono scadute o insolute? | 🟠 **derivabile** dal saldo per rata piu' la data: lo scadenzario e' una schermata da costruire, non piu' un dato che manca |
 
-Ne segue una regola pratica: **nessuna colonna «scaduta / insoluta / da
-incassare», nessuna colorazione di sollecito, nessun filtro «da incassare»**. Su
-una fattura già incassata sarebbero tutte false, e un dato che mente è peggio di
-un dato assente.
+### ⭐ Le due domande che il database tiene separate
 
-Si può fare l'elenco del **piano rate**; uno **scadenzario** è un'altra cosa, e il
-modello oggi non può sostenerlo.
+Quando si abbina un incasso a una rata il database ne fa **due**, e risponde in
+modo opposto:
 
-### ⚠️ Due avvertenze per chi costruirà l'aggancio
+| | Domanda | Che cosa fa |
+| --- | --- | --- |
+| **Coerenza** | «questa rata e' di questa fattura?» | 🔒 **rifiuta** — e' un'incoerenza logica, nessun cliente puo' provocarla |
+| **Capienza** | «c'e' ancora spazio su questa rata?» | ⚠️ **segnala** — che un cliente paghi due volte e' un fatto del mondo |
 
-* **Il piano rate è uno snapshot congelato.** Oltre `DRAFT`/`EMESSA` le rate non
-  si toccano più (guard sui satelliti della fattura). La riconciliazione dovrà
-  quindi scrivere **altrove** — una tabella di allocazione, o `vendite_movimenti`
-  — e **mai** «marcare la rata come pagata» aggiornando `fatture_scadenze`.
-* **«Prossima rata» è un concetto temporale, non di pagamento**: la prossima per
-  data, e se sono tutte passate l'ultima. La regola vive già nel frontend ed è una
-  per tutto il prodotto — chi la ricalcolasse per conto proprio farebbe dire a due
-  schermate cose diverse sullo stesso documento.
+> ⭐ **La capienza si puo' forzare, e la forzatura resta scritta.** Il primo
+> tentativo viene rifiutato con i numeri («restano 40, questo importo e' 90»);
+> chi conferma registra lo stesso, e sulla riga rimane il segno di quella
+> decisione con un motivo facoltativo. ⛔ Nessun permesso e nessuna azione di
+> processo: l'operatore non e' mai bloccato.
+>
+> ⚠️ Ed e' per questo che esiste l'elenco a valle: **una forzatura senza un
+> elenco e' un modo per nascondere, non per registrare**.
 
-Le attività aperte e il loro ordine sono in
+### ⚠️ Due avvertenze che restano valide
+
+* **Il piano rate e' uno snapshot congelato.** Oltre `DRAFT`/`EMESSA` le rate non
+  si toccano piu' (guard sui satelliti della fattura). L'abbinamento infatti
+  **non scrive mai** su `fatture_scadenze`: scrive sulla riga contabile, e lo
+  stato della rata si **legge**, non si marca.
+* **«Prossima rata» e' un concetto temporale, non di pagamento**: la prossima per
+  data, e se sono tutte passate l'ultima. La regola vive gia' nel frontend ed e'
+  una per tutto il prodotto — chi la ricalcolasse per conto proprio farebbe dire
+  a due schermate cose diverse sullo stesso documento.
+
+Le attivita' aperte e il loro ordine sono in
 [brief-incassi-riconciliazione-rate-promemoria.md](../dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md).
 
 ---
+
 
 ## Centri di riscossione e enti di incasso
 
@@ -156,6 +218,17 @@ Due flag booleani distinguono i centri speciali:
 * `is_fondo_fattura` — identifica il centro per i movimenti automatici di fondo fattura
 
 Un centro non puo essere contemporaneamente di compensazione e di fondo fattura.
+
+> ✅ **Adesso e vero. Fino al 21-08-2026 non lo era**, e non per una svista di
+> scrittura: il `CHECK chk_centri_riscossione_ruolo_esclusivo` era dichiarato
+> nella migrazione `20260211-21` e **non esisteva nel database** — il blocco che
+> lo crea era annidato dentro l'elenco delle colonne di un `addColumn`, e li
+> dentro non viene eseguito. La colonna era nata, il vincolo no.
+> Rimesso in piedi dal passo **P-1** di
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata),
+> applicato il 21-08-2026 insieme ai due indici unici **parziali** che rendono
+> unico ciascuno dei due ruoli (prima uno dei due era un unico **totale** su un
+> booleano, e teneva la tabella a due righe in tutto).
 
 > ⚠️ **Questi due centri non sono cassa, e chi misura gli incassi deve saperlo.**
 > Un movimento su `is_fondo_fattura` o `is_compensazione` non e denaro arrivato:
@@ -179,7 +252,25 @@ Da un punto di vista tecnico:
 | `meta`             | JSONB           |    no    | Metadati estensibili                                       |
 | Campi audit        | —               |    —     | `data_insert`, `user_insert`, `data_update`, `user_update` |
 
-**Vincolo UNIQUE:** `uq_centri_riscossione_compensazione` su `(is_compensazione)` — garantisce al massimo un centro di compensazione nel sistema.
+**Vincolo UNIQUE:** `uq_centri_riscossione_compensazione` su `(is_compensazione)` — ~~garantisce al massimo un centro di compensazione nel sistema.~~
+
+> 🔴 **Quella e l'intenzione; il vincolo vivo fa un'altra cosa, e va saputo prima
+> di configurare.** Il vincolo e **totale** su una colonna booleana, non parziale:
+> quindi ammette **una sola riga `true` e una sola riga `false`**, cioe`
+> **`centri_riscossione` non puo contenere piu di DUE righe in tutto**. Oggi ce
+> ne sono esattamente due, quindi il vincolo e saturo e sembra rispettato:
+> **aggiungere il centro banca oggi fallisce.**
+>
+> La causa: nella migrazione `20260211-14` il `where: "is_compensazione = true"`
+> e scritto su un `addUniqueConstraint`, che quell'attributo **non prevede** — e
+> lo ha ignorato in silenzio. Sostituito da due indici unici **parziali** (uno
+> per flag) al passo **P-1** di
+> [brief-db-posting-e-abbinamento-rata.md](/dev/work-in-progress/brief-db-posting-e-abbinamento-rata)
+> — ⛔ **non ancora applicato**.
+>
+> ⚠️ E `is_fondo_fattura` oggi non ha **nessun** vincolo di unicita: i centri
+> fondo fattura potrebbero essere N, e chi ne sceglie uno prende quello con
+> l'id piu basso.
 
 **Protezioni:** trigger `trgfn_prevent_deactivate_if_children` impedisce la disattivazione se esistono enti incasso, contabili o movimenti collegati.
 
@@ -197,6 +288,12 @@ Il campo `tipo` ammette quattro valori: `BANCA`, `POSTE`, `PSP`, `ALTRO`. Le reg
 * Se `tipo = PSP`: `soggetto_ruolo_id` obbligatorio, con validazione del ruolo tramite `trgfn_enti_incasso_guard_psp`
 * Negli altri casi: `bank_branch_id` deve essere NULL
 
+⭐ **E dal 2026-08-22 ogni canale, di qualunque tipo, deve dire su quale conto
+dell'azienda atterra il suo denaro** (`soggetto_ruolo_conto_bancario_id`). Non e'
+un dettaglio anagrafico: e' il modo in cui il sistema sa **di chi sono** i soldi
+che arrivano prima ancora che siano attribuiti a una fattura. Si spiega piu'
+avanti, in «Chi vede che cosa».
+
 Da un punto di vista tecnico:
 
 | Colonna                 | Tipo         | Nullable | Descrizione                                                         |
@@ -209,6 +306,7 @@ Da un punto di vista tecnico:
 | `centro_riscossione_id` | BIGINT, FK   |    si    | Centro di riscossione di appartenenza                               |
 | `soggetto_ruolo_id`     | BIGINT, FK   |    si    | Soggetto con ruolo anagrafico                                       |
 | `bank_branch_id`        | BIGINT, FK   |    si    | Filiale bancaria (obbligatoria per `BANCA`)                         |
+| `soggetto_ruolo_conto_bancario_id` | BIGINT, FK |  **no**  | ⭐ Il conto dell'azienda su cui atterra il denaro del canale — e' il perimetro |
 | `formato_flusso`        | TEXT         |    si    | Formato del flusso importato                                        |
 | `regole_match`          | JSONB        |    no    | Regole di abbinamento flusso                                        |
 | `attivo`                | BOOLEAN      |    no    | Flag attivo/disattivo (default: true)                               |
@@ -222,6 +320,17 @@ Da un punto di vista tecnico:
 
 **Trigger di guardia PSP:** il trigger `trgfn_enti_incasso_guard_psp` (BEFORE INSERT/UPDATE) verifica che per `tipo = PSP` il `soggetto_ruolo_id` appartenga a un ruolo con `codice_interno = 'PSP'` e che esista un record attivo in `anagrafiche.psp`.
 
+**Trigger di guardia sul conto:** `trgfn_enti_incasso_guard_conto_incasso` verifica
+che il conto agganciato sia registrato **per gli incassi** e non per altro (i
+pagamenti, i rimborsi). Non e' una formalita': e' su quel legame che poggia il
+riconoscimento di chi sono i soldi in arrivo.
+
+> 📮 **Conseguenza pratica**: finche' le due aziende non hanno un conto «di
+> incasso» censito in anagrafica, **nessun canale e' configurabile**. E' voluto:
+> un canale senza conto produrrebbe una coda di incassi che nessuno vede, e
+> quell'errore si scopre mesi dopo. Meglio fermarsi alla configurazione, dove chi
+> se ne accorge puo' rimediare subito.
+
 > Documentazione dettagliata: [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)
 
 ---
@@ -230,7 +339,7 @@ Da un punto di vista tecnico:
 
 La testata contabile e il punto unico d'ingresso per ogni pagamento, sia che provenga da un flusso bancario, da una compensazione automatica o da un fondo fattura. Ogni testata identifica un'operazione contabile con la sua data, il centro di riscossione, l'eventuale ente di incasso e lo stato di lavorazione.
 
-La testata puo essere collegata a una compensazione (`compensazione_id`) oppure a uno o piu lotti di fatturazione (tramite la tabella di legame `vendite_contabili_lotti`), ma **mai a entrambi**: questa mutua esclusione e applicata dai trigger di guardia.
+⚠️ **Dal 2026-08-22 la testata non porta piu' il riferimento all'atto di sistemazione**: e' l'atto a tenere l'id della sua distinta. La testata puo essere collegata a uno o piu lotti di fatturazione (tramite la tabella di legame `vendite_contabili_lotti`), ma **mai a entrambi**: questa mutua esclusione e applicata dai trigger di guardia.
 
 Da un punto di vista tecnico:
 
@@ -243,7 +352,7 @@ Da un punto di vista tecnico:
 | `data_contabile`        | DATE               |    no    | Data contabile dell'operazione                                      |
 | `data_registrazione`    | DATE               |    no    | Data di registrazione                                               |
 | `stato_id`              | SMALLINT, FK       |    si    | Stato della testata                                                 |
-| `compensazione_id`      | BIGINT, FK, UNIQUE |    si    | Compensazione collegata (1:1)                                       |
+| ~~`compensazione_id`~~  | —                  |    —     | ⛔ **Rimossa il 2026-08-22**: il legame vive su `sistemazioni.contabile_id` (1:1)                                       |
 | `data_conferma`         | TIMESTAMPTZ        |    si    | Data di conferma/posting                                            |
 | `user_conferma`         | TEXT               |    si    | Utente che ha confermato                                            |
 | `meta`                  | JSONB              |    no    | Metadati estensibili                                                |
@@ -252,7 +361,7 @@ Da un punto di vista tecnico:
 **Vincoli UNIQUE:**
 
 * `uq_vendite_contabili_codice` su `(codice)` — codice univoco per testata
-* `uq_vendite_contabili_compensazione` su `(compensazione_id)` — una sola testata per compensazione
+* ~~`uq_vendite_contabili_compensazione`~~ — ⛔ rimosso: l'unicita' «una distinta per atto» vive su `uq_sistemazioni_contabile`, cioe' dall'altro lato. Una sola testata per compensazione
 
 **Trigger principali:**
 
@@ -287,9 +396,18 @@ Da un punto di vista tecnico:
 | `data_valuta`        | DATE         |    si    | Data valuta                                                         |
 | `data_operazione`    | DATE         |    si    | Data operazione                                                     |
 | `motivo_sospeso`     | TEXT         |    si    | Motivazione per stato sospeso                                       |
+| `fondo_source_id`    | BIGINT, FK   |    si    | Atto di fondo fattura da cui la riga nasce (vuoto sulle altre)      |
 | `attivo`             | BOOLEAN      |    no    | Flag attivo (default: true)                                         |
 | `meta`               | JSONB        |    no    | Metadati estensibili                                                |
 | Campi audit          | —            |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+
+> ⭐ **`fondo_source_id` e cio che accade quando la riga viene registrata.**
+> Dal 21-08-2026 il legame con l'atto di fondo fattura e una colonna con una
+> chiave esterna vera (prima era una stringa dentro il `meta`). Non serve solo a
+> ritrovare le righe: portando la riga in uno stato **registrato**, un trigger
+> porta l'atto a **`ESEGUITO`** — cioe il fondo smette di essere una cosa da
+> lavorare e diventa una cosa fatta. Da li non si torna indietro: se il fondo
+> era sbagliato si compie un atto nuovo, non si riscrive quello vecchio.
 
 **Vincoli CHECK:** `chk_vendite_contabili_righe_importo_non_zero` — l'importo non puo essere zero.
 
@@ -378,22 +496,91 @@ Gli stati delle righe contabili includono un flag cruciale per il processo di po
 
 ---
 
-## Compensazioni
+## Le sistemazioni: quando un cliente ha pagato piu' del dovuto
 
-La compensazione e un processo automatico che genera una testata contabile per pareggiare importi tra fatture. La tabella `compensazioni` e leggera: registra solo `data_esecuzione` e metadati. La logica operativa passa interamente dalla testata contabile collegata.
+> Sezione **riscritta il 2026-08-22**. ~~Si intitolava «Compensazioni»~~ e
+> descriveva un processo automatico che non esisteva ancora davvero: adesso il
+> giro c'e' per intero, e la compensazione e' **una delle tre strade**, non il
+> nome di tutto.
 
-Da un punto di vista tecnico:
+### Il problema, in una frase
 
-| Colonna           | Tipo        | Nullable | Descrizione                                                         |
-| ----------------- | ----------- | :------: | ------------------------------------------------------------------- |
-| `id`              | BIGINT, PK  |    no    | Chiave primaria                                                     |
-| `data_esecuzione` | TIMESTAMPTZ |    no    | Data e ora dell'esecuzione (default: `now()`)                       |
-| `meta`            | JSONB       |    no    | Metadati estensibili                                                |
-| Campi audit       | —           |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
+Capita che su un documento entri **piu' denaro di quanto era dovuto**: un cliente
+paga due volte, o paga un importo tondo, o si e' fatta una nota di credito dopo
+che aveva gia' saldato. Quel credito e' suo, e prima o poi qualcuno deve
+decidere che farne.
 
-Il legame con la testata contabile e 1:1 (vincolo UNIQUE su `vendite_contabili.compensazione_id`). La testata creata per una compensazione deve appartenere a un centro riscossione con `is_compensazione = true`, e non puo essere associata a lotti di fatturazione.
+⚠️ Fino a oggi il sistema **non lo mostrava a nessuno**: il denaro restava sul
+documento e chi lo cercava doveva sapere gia' dove guardare.
 
-> Documentazione dettagliata: [pagamenti.compensazioni](/dbzero/pagamenti/tabelle/compensazioni)
+### Le due meta': un elenco e un registro
+
+```text
+vw_eccedenze_da_sistemare   →  che cosa c'e' DA FARE
+sistemazioni                →  che cosa e' STATO FATTO
+```
+
+⭐ **L'elenco** raccoglie i documenti che hanno incassato piu' del dovuto, li
+mostra **raggruppati per cliente** — perche' e' guardando il cliente che si
+decide, e perche' un credito su una fattura puo' coprire un debito su un'altra —
+e dice **chi e' in credito**: normalmente il cliente, ma su una nota di credito
+restituita in eccesso e' l'azienda. ⚠️ Sbagliare quel verso significa rimborsare
+denaro che si deve incassare, e per questo il sistema lo scrive invece di
+lasciarlo dedurre.
+
+⭐ **Il registro** tiene traccia di ogni decisione presa: che cosa si e' scelto
+di fare, per quanto, su quali documenti, quando e da chi.
+
+### Le tre strade
+
+| Si sceglie | Che cosa succede |
+|---|---|
+| **Riporto** | il credito va su un'**altra fattura** del cliente, come sconto gia' disponibile |
+| **Rimborso** | il denaro **esce**: si prepara un movimento in uscita da un conto dell'azienda |
+| **Compensazione** | il credito di un documento copre il debito di un altro, **dello stesso cliente** |
+
+⭐ **Nessuna di queste e' un meccanismo nuovo**: il riporto usa i fondi fattura,
+il rimborso e la compensazione usano le distinte contabili — le stesse con cui si
+registrano gli incassi, solo con gli importi al contrario. *Mancavano l'elenco e
+il registro, non le macchine.*
+
+### Il giro, per intero
+
+```text
+l'elenco mostra un'eccedenza
+   → una PERSONA sceglie che farne          (nessun automatismo decide da solo)
+   → la decisione si registra
+   → alla conferma nasce il documento       (un fondo, oppure una distinta)
+   → registrando quel documento il denaro si muove davvero
+```
+
+⚠️ **Fra la decisione e l'effetto ci sono due passi**, e l'elenco li distingue:
+finche' la decisione e' in bozza non e' successo niente; una volta confermata il
+documento c'e' ma l'eccedenza cala solo quando quel documento viene **registrato**.
+⭐ E a quel punto la riga sparisce dall'elenco **da sola**: i saldi si leggono,
+non si conservano.
+
+### Tre cose che vale la pena sapere
+
+* ⭐ **Si puo' sistemare solo una parte.** Su una fattura possono esistere piu'
+  sistemazioni: si rimborsa una quota e si riporta il resto.
+* ⚠️ **La verifica si fa al momento di confermare, non di decidere.** Fra i due
+  momenti puo' arrivare un altro incasso, o un collega puo' aver gia' usato lo
+  stesso credito: controllare prima darebbe una garanzia che scade.
+* ⛔ **Una decisione confermata non si corregge: se ne registra un'altra.** Il
+  denaro si e' gia' mosso, e il registro deve continuare a raccontare cio' che e'
+  successo davvero. Annullare invece si puo', finche' non si e' confermato — e
+  l'atto resta scritto, con la sua ragione: *annullare non e' cancellare*.
+
+### ⚠️ Da non confondere: il centro «compensazione»
+
+`centri_riscossione.is_compensazione` **non e' cambiato**, e parla di un'altra
+cosa: e' il *luogo contabile* dove finiscono le compensazioni, non l'atto con cui
+si decidono. Resta uno dei centri che **non sono cassa**.
+
+> Documentazione dettagliata:
+> [pagamenti.sistemazioni](/dbzero/pagamenti/tabelle/sistemazioni) ·
+> [pagamenti.vw_eccedenze_da_sistemare](/dbzero/pagamenti/views/vw_eccedenze_da_sistemare)
 
 ---
 
@@ -414,7 +601,7 @@ Da un punto di vista tecnico:
 
 **Vincolo UNIQUE:** `uq_vendite_contabili_lotti_lotto_contabile` su `(lotto_id, contabile_id)` — una coppia lotto-contabile non puo essere duplicata.
 
-**Trigger di guardia:** `trgfn_vendite_contabili_lotti_guard_compensazione` blocca l'inserimento se la testata ha `compensazione_id IS NOT NULL`.
+**Trigger di guardia:** `trgfn_vendite_contabili_lotti_guard_sistemazione` *(dal 2026-08-22; si chiamava `..._guard_compensazione` e copriva le sole compensazioni)* blocca l'inserimento se la testata ha `compensazione_id IS NOT NULL`.
 
 > Documentazione dettagliata: [pagamenti.vendite_contabili_lotti](/dbzero/pagamenti/tabelle/vendite_contabili_lotti)
 
@@ -483,20 +670,40 @@ Da un punto di vista tecnico:
 
 * `DISPONIBILE` — il fondo e stato generato e attende assegnazione
 * `ASSEGNATO` — il fondo e stato collegato a una fattura figlia (`fattura_figlia_id` valorizzato)
+* `ESEGUITO` — ⭐ il trasferimento e stato **registrato in contabilita**: il fondo e una cosa fatta
 * `ANNULLATO` — il fondo non e piu utilizzabile (documento sorgente gia saldato o reset bloccato)
 
-Il reset centralizzato in `vendite.fn_reset_fondi_fattura()` riporta i fondi `ASSEGNATO` a `DISPONIBILE` rimuovendo il `fattura_figlia_id`.
+> ⭐ **`ESEGUITO` e nato il 21-08-2026, e non e una parola in piu.** Prima
+> `ANNULLATO` ne diceva **tre** di cose — «non si deve fare piu», «non si e piu
+> capienti», «e gia stato eseguito» — e nell'ultimo caso lasciava un record che
+> si contraddiceva: annullato, ma con la fattura figlia ancora agganciata.
+> Adesso ogni fatto ha il suo nome.
+>
+> ⚠️ **`ESEGUITO` e `ANNULLATO` sono entrambi definitivi**, per ragioni
+> opposte: dal secondo si e tolto denaro dal tavolo, nel primo lo si e **mosso**.
+> In tutti e due i casi tornare indietro non disfa niente — se serve un altro
+> esito si compie un **atto nuovo**.
+>
+> ℹ️ Non lo scrive una persona: lo scrive il database, appena la riga contabile
+> nata dal fondo viene registrata.
+
+Il reset centralizzato in `vendite.fn_reset_fondi_fattura()` **cancella** i fondi
+`ASSEGNATO` che non sono stati eseguiti — un atto mai eseguito e una proposta, e
+il giro successivo ne fa una nuova sul residuo di adesso — e **non tocca** quelli
+`ESEGUITO`, che si limita a segnalare nel diario della fattura.
 
 > ⚠️ **Il reset e un'operazione tecnica sulla fattura figlia** (il ritorno di un
 > lotto in bozza), **non una reazione ai pagamenti**: nessun incasso riapre o
 > chiude un fondo da solo.
 >
-> 🟠 **Due cose stanno per cambiare** (piano in corso —
-> [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8):
+> ✅ ~~**Due cose stanno per cambiare**~~ — **la prima e' fatta** (15-08-2026):
+> il fondo di una fattura definitiva **non si ricalcola piu**, la generazione e
+> create-only e l'importo dell'atto e immutabile. La seconda e ancora aperta.
+> (piano — [brief-db-fondo-fattura…](/dev/work-in-progress/brief-db-fondo-fattura-ricalcolo-e-governo) §8):
 >
-> * oggi il fondo di una fattura non ancora assegnato viene **riallineato** dai
->   giri di fatturazione successivi. Diventera fisso: **una fattura definitiva ha
->   un fondo definitivo**, che non si ricalcola piu;
+> * ~~oggi il fondo di una fattura non ancora assegnato viene **riallineato** dai
+>   giri di fatturazione successivi. Diventera fisso~~ → **fatto**: una fattura
+>   definitiva ha un fondo definitivo;
 > * oggi il passaggio ad `ANNULLATO` per "documento sorgente gia saldato"
 >   avviene **da solo**. Sparira: se nel frattempo la fattura di origine e stata
 >   pagata, il fondo semplicemente **non viene applicato** e resta da guardare.
@@ -519,7 +726,7 @@ Da un punto di vista tecnico:
 | `p_data_contabile`        | DATE   | —              | Data contabile (obbligatoria)             |
 | `p_data_registrazione`    | DATE   | `CURRENT_DATE` | Data registrazione                        |
 | `p_ente_incasso_id`       | BIGINT | NULL           | Ente di incasso (> 0 se valorizzato)      |
-| `p_compensazione_id`      | BIGINT | NULL           | Compensazione collegata                   |
+| ~~`p_compensazione_id`~~  | —      | —              | ⛔ **Rimosso il 2026-08-22**: le sistemazioni creano la loro distinta da se'                   |
 | `p_lotto_id`              | BIGINT | NULL           | Lotto di fatturazione                     |
 | `p_codice_stato_interno`  | TEXT   | `'BOZZA'`      | Codice interno dello stato iniziale       |
 | `p_meta`                  | JSONB  | `'{}'`         | Metadati                                  |
@@ -528,13 +735,13 @@ Da un punto di vista tecnico:
 
 **Strategia di ricerca:**
 
-1. Se `p_compensazione_id` e valorizzato: cerca per `compensazione_id` (relazione 1:1 UNIQUE). Se trovata, verifica coerenza dei parametri.
+1. ⛔ *(rimosso il 2026-08-22)* Se `p_compensazione_id` era valorizzato: cercava per `compensazione_id` (relazione 1:1 UNIQUE). Se trovata, verifica coerenza dei parametri.
 2. Se `p_lotto_id` e NULL: cerca per combinazione `(centro, ente, data_contabile, data_registrazione, stato)` senza compensazione.
 3. Se `p_lotto_id` e valorizzato: cerca tramite JOIN su `vendite_contabili_lotti` con la stessa combinazione.
 4. Se non trovata: INSERT con codice auto-generato `VC_<timestamp>_<random8>`.
 5. Se `p_lotto_id` e valorizzato: INSERT in `vendite_contabili_lotti` con `ON CONFLICT DO NOTHING`.
 
-**Vincolo di mutua esclusione:** `p_compensazione_id` e `p_lotto_id` sono mutuamente esclusivi (errore se entrambi valorizzati).
+**Vincolo di mutua esclusione:** ⛔ *(non piu' applicabile dal 2026-08-22, il primo parametro non esiste)* `p_compensazione_id` e `p_lotto_id` erano mutuamente esclusivi (errore se entrambi valorizzati).
 
 > Documentazione dettagliata: [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile)
 
@@ -587,6 +794,50 @@ Da un punto di vista tecnico:
 
 ---
 
+### `fn_posta_contabile`
+
+⭐ **La funzione che registra.** Trasforma in movimenti contabili le righe di una
+distinta che sono pronte a diventarlo, e chiude la distinta.
+
+E' il punto in cui **nasce il primo movimento** del progetto: fino al
+22-08-2026 nessuna funzione del database scriveva `vendite_movimenti`, quindi il
+residuo di una fattura coincideva col totale *per costruzione* — non perche'
+nessuno avesse pagato, ma perche' non c'era modo di registrarlo.
+
+| Parametro | Tipo | Descrizione |
+| --- | --- | --- |
+| `p_contabile_id` | BIGINT | La distinta da registrare (obbligatorio) |
+| `p_righe_attese` | INTEGER | Quante righe pronte aveva davanti chi conferma (facoltativo) |
+| `p_totale_atteso` | NUMERIC | ...e per che totale (facoltativo, ma insieme al precedente) |
+
+**Restituisce:** `TABLE(movimenti_creati INTEGER, righe_postate INTEGER, righe_saltate INTEGER, totale_postato NUMERIC, esito TEXT)`
+
+**In sintesi, che cosa fa e in che ordine:** blocca la distinta, pretende che sia
+**validata**, quadra le righe col totale dichiarato, verifica la dichiarazione di
+chi conferma, rifiuta parlando se una riga pronta non dice a quale fattura e
+cliente appartiene, scrive i movimenti, porta le righe a «registrata», scrive la
+conferma e chiude.
+
+> ⭐ **Tre cose non ovvie, e conviene saperle prima di usarla.**
+>
+> 1. **La dichiarazione di chi conferma** (`p_righe_attese` / `p_totale_atteso`)
+>    serve perche' fra il momento in cui una persona guarda l'elenco e il momento
+>    in cui preme «registra» la distinta puo' cambiare. Registrare qualcosa di
+>    diverso da cio' che e' stato approvato sarebbe **irreversibile**: la
+>    funzione confronta e, se non torna, **rifiuta prima di scrivere**.
+> 2. **«Niente da registrare» non e' un errore**: la funzione risponde
+>    `NULLA_DA_POSTARE` e non solleva. Il messaggio «l'hai gia' fatto» lo mette
+>    l'interfaccia leggendo l'esito.
+> 3. **La chiusura e' una conseguenza, non una scelta**: registrato, la distinta
+>    e' chiusa. Le righe di cui nessuno ha ancora detto che cosa ne e' stato
+>    restano li' e vengono contate in `righe_saltate` — ma da quel momento **non
+>    possono piu' diventare pronte**, o sarebbe denaro dichiarato che non si
+>    registrera' mai.
+
+> Documentazione dettagliata: [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile)
+
+---
+
 ## Saldi: due livelli di lettura
 
 Il modello espone due livelli di saldo per ogni fattura, che rispondono a domande diverse:
@@ -602,6 +853,77 @@ Questa separazione e fondamentale per evitare duplicazioni nei processi automati
 
 ---
 
+## Chi vede che cosa — il perimetro degli incassi
+
+> Sezione aggiunta il **2026-08-22**. Riguarda le installazioni in cui convivono
+> **piu' aziende** (in questo sistema sono due, entrambe attive): chi lavora per
+> l'una non deve vedere i soldi dell'altra.
+
+### Il problema, in una frase
+
+Il sistema capisce a chi appartiene un documento **guardando il documento**: una
+fattura dice qual e' l'azienda che l'ha emessa, e da li' si decide chi puo'
+vederla. ⚠️ **Ma quando mille euro arrivano in banca non hanno ancora una
+fattura.** Applicare la regola normale li renderebbe invisibili — non «visibili
+a chi non dovrebbe»: invisibili **a tutti**. E un elenco vuoto sembra un elenco
+di cose finite, non un lavoro che nessuno riesce a vedere.
+
+### La risposta: il conto
+
+> Un'azienda ha una partita IVA propria, e due aziende diverse **non incassano
+> sullo stesso conto corrente**. Quindi il denaro ha un padrone **dal primo
+> istante**: l'ha deciso il cliente scegliendo su quale conto pagare.
+
+⭐ Il sistema ora usa proprio questo. Ogni **canale di incasso** dichiara su quale
+conto atterra il suo denaro; da quel conto si risale all'azienda; e da li' si
+decide chi vede la distinta e le sue righe.
+
+⭐ **E quella regola non e' rimasta una consuetudine: e' diventata un vincolo.**
+Lo stesso conto «di incasso» non puo' piu' essere registrato su due soggetti
+diversi — il sistema lo rifiuta. Finche' quel legame serviva solo a stampare un
+IBAN in fattura l'ambiguita' era un fastidio; appoggiandoci il riconoscimento del
+denaro, sarebbe diventata un varco che **non produce nessun errore visibile**.
+
+### Che cosa si vede, in concreto
+
+| Che cosa | Chi la vede |
+|---|---|
+| Una **distinta** arrivata da un canale | chi lavora per l'azienda titolare di quel conto |
+| Le sue **righe** | gli stessi — anche quelle non ancora abbinate a una fattura |
+| Una riga gia' abbinata a una **fattura** | anche chi ha quella fattura, se e' di un'altra azienda ⚠️ |
+| I **movimenti** (il denaro registrato) | chi ha la fattura che quel movimento paga |
+| Le distinte **interne** del sistema (fondi fattura, compensazioni) | tutti — non sono di nessuno |
+| Le **righe** di quelle distinte interne | solo chi ha la fattura che la riga porta |
+
+⚠️ **La terza riga della tabella non e' una svista.** Se una riga finisce per
+sbaglio sulla distinta dell'azienda sbagliata, chi possiede la fattura **deve
+poterla vedere**: altrimenti il suo saldo direbbe che quel denaro non e' arrivato
+e non ci sarebbe modo di scoprire perche'. La riga di un errore va vista da chi
+ne subisce l'effetto.
+
+⚠️ **E una riga che non ha ne' fattura ne' canale la vedono tutti**: e' il caso
+di un operatore che sta digitando incassi in un proprio blocco di lavoro. Non
+c'e' nulla, in quella riga, che dica di chi sia — nasconderla non protegge
+nessuno e impedisce solo di lavorarla. Appena viene abbinata a una fattura,
+rientra nelle regole normali.
+
+### Due presidi, e fanno cose diverse
+
+| | Che cosa fa | Che cosa vede l'operatore |
+|---|---|---|
+| **Il filtro in lettura** | fa **sparire** dagli elenchi cio' che non e' suo | niente: gli elenchi mostrano il suo lavoro |
+| **Il blocco in scrittura** | **rifiuta** di scrivere fuori dal proprio perimetro | un messaggio che dice cosa e' successo |
+
+⭐ Servono insieme, e la ragione e' semplice: **un silenzio dove serve
+riservatezza, un messaggio dove serve un rimedio**. Se ci fosse solo il filtro,
+un tentativo sbagliato produrrebbe un errore tecnico incomprensibile; se ci fosse
+solo il blocco, i dati altrui comparirebbero negli elenchi.
+
+⚠️ **I lavori automatici notturni non sono toccati**: girano con un'utenza di
+sistema che il filtro non riguarda, perche' devono vedere tutto per definizione.
+
+---
+
 ## Trigger di guardia
 
 ### Coerenza ente/centro: `trgfn_vendite_contabili_guard_ente_centro`
@@ -614,7 +936,7 @@ Se `ente_incasso_id` e valorizzato, verifica che il `centro_riscossione_id` dell
 
 **Blocco 2 — Regole compensazione:**
 
-Se `compensazione_id` e valorizzato:
+⛔ *(rimosso il 2026-08-22, lotto 7)* Se `compensazione_id` era valorizzato:
 
 * Il centro di riscossione deve avere `is_compensazione = true`
 * La testata non deve avere link in `vendite_contabili_lotti` (mutua esclusione)
@@ -631,9 +953,9 @@ Questo trigger (BEFORE INSERT/UPDATE su `vendite_movimenti`) garantisce la coere
 
 ---
 
-### Mutua esclusione lotto/compensazione: `trgfn_vendite_contabili_lotti_guard_compensazione`
+### Mutua esclusione lotto/sistemazione: `trgfn_vendite_contabili_lotti_guard_sistemazione`
 
-Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata con `compensazione_id IS NOT NULL` venga associata a un lotto. Lavora in coppia con il blocco 2 del guard ente/centro per applicare la mutua esclusione da entrambi i lati.
+Questo trigger (BEFORE INSERT/UPDATE su `vendite_contabili_lotti`) impedisce che una testata **nata da una sistemazione** — la domanda si fa all'atto, non piu' alla testata — ~~con `compensazione_id IS NOT NULL` venga associata a un lotto. Lavora in coppia con il blocco 2 del guard ente/centro per applicare la mutua esclusione da entrambi i lati.
 
 ---
 
@@ -650,10 +972,11 @@ flowchart TD
   E --> F
   F --> G[vendite_contabili_righe<br/>dettaglio per fattura/BA]
   G --> H{Stato riga<br/>is_postabile?}
-  H -->|Si| I[Posting]
+  H -->|Si| I[fn_posta_contabile<br/>la registrazione]
   H -->|No| J[Validazione/Sospeso]
   J --> H
   I --> K[vendite_movimenti<br/>1:1 con riga]
+  I --> M[distinta CHIUSA<br/>+ data_conferma]
   K --> L[fn_get_saldo_fattura<br/>aggiornamento saldo]
 ```
 
@@ -665,7 +988,7 @@ flowchart TD
 
 2. **Coerenza ente/centro**: se una testata ha un ente incasso, il `centro_riscossione_id` dell'ente deve coincidere con quello della testata (guard: `trgfn_vendite_contabili_guard_ente_centro`).
 
-3. **Mutua esclusione compensazione/lotto**: una testata con `compensazione_id` non puo avere link in `vendite_contabili_lotti`, e viceversa. Applicata da due trigger simmetrici.
+3. **Mutua esclusione sistemazione/lotto**: una testata **nata da una sistemazione** non puo avere link in ~~`vendite_contabili_lotti`, e viceversa. Applicata da due trigger simmetrici.
 
 4. **Centro compensazione obbligatorio**: una testata con `compensazione_id` deve appartenere a un centro con `is_compensazione = true`. Un solo centro nel sistema puo avere questo flag.
 
@@ -737,7 +1060,6 @@ erDiagram
         bigint ente_incasso_id FK
         date data_contabile
         smallint stato_id FK
-        bigint compensazione_id FK
     }
 
     vendite_contabili_righe {
@@ -798,7 +1120,6 @@ erDiagram
     vendite_contabili {
         bigint id PK
         varchar codice
-        bigint compensazione_id FK
     }
 
     vendite_contabili_lotti {
@@ -849,7 +1170,7 @@ Per il dettaglio delle singole tabelle e funzioni:
 * [pagamenti.vendite_contabili (manual)](/dbzero/pagamenti/manual/vendite_contabili) — contesto e semantica
 * [pagamenti.vendite_contabili_righe (manual)](/dbzero/pagamenti/manual/vendite_contabili_righe) — dettaglio righe
 * [pagamenti.vendite_movimenti (manual)](/dbzero/pagamenti/manual/vendite_movimenti) — movimenti effettivi
-* [pagamenti.compensazioni (manual)](/dbzero/pagamenti/manual/compensazioni) — compensazioni
+* [pagamenti.sistemazioni (manual)](/dbzero/pagamenti/manual/sistemazioni) — il registro delle sistemazioni
 * [vendite.fatture_fondi_fattura_source (manual)](/dbzero/vendite/manual/fatture_fondi_fattura_source) — fondi fattura
 
 ---

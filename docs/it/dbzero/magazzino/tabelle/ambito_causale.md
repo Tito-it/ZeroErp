@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/ambito_causale.md" %}
 # 📚 Tabella `ambito_causale`
 
 > 📝 **Descrizione**

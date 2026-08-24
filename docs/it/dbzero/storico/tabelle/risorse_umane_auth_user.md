@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/risorse_umane_auth_user.md" %}
 # 📚 Tabella `risorse_umane_auth_user`
 
 ## 🗂️ Campi principali

@@ -157,7 +157,13 @@ def senza_commenti(t: str) -> str:
 
 
 def main() -> int:
-    file = sorted(RADICE.glob("*/*.sql"))
+    # ⚠️ `rglob` e non `glob("*/*.sql")`: il glob a un livello solo lasciava
+    #   fuori le sottocartelle di schema — al 2026-08-24 erano 16 file, che per
+    #   questo non avevano mai ricevuto lo standard di preambolo del
+    #   2026-08-07 (contesto operatore) e fallivano tutti sulla RLS senza che
+    #   nessun presidio lo dicesse. Stesso difetto, nello stesso giorno, anche
+    #   in scripts/pgtap-baseline.sh.
+    file = sorted(RADICE.rglob("*.sql"))
     viol, debito = [], 0
 
     for f in file:

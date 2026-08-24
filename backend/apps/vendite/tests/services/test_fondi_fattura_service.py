@@ -18,6 +18,8 @@ Indice test eseguiti:
 9) FondiFatturaDaDecidereServiceTests.test_page_size_oltre_massimo
 10) FondiFatturaDaDecidereServiceTests.test_auth_user_id_inoltrato_defense_in_depth
 11) FondiFatturaDaDecidereServiceTests.test_offset_dalla_pagina
+11-bis) FondiFatturaDaDecidereServiceTests.test_export_salta_la_paginazione
+11-ter) FondiFatturaDaDecidereServiceTests.test_export_max_rows_non_positivo
 12) FondiFatturaVocabolarioTests.test_configurazione_incompleta_non_e_un_motivo
 13) FondiFatturaVistaGuardrailTests.test_motivi_misurati_dalla_vista_viva (e2e, opt-in)
 """
@@ -159,6 +161,30 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["limit"], 25)
         self.assertEqual(kwargs["offset"], 50)
+
+    # Scopo: `max_rows` (export) SALTA la paginazione invece di violarne il
+    #        tetto: limit=max_rows, offset=0 — anche con una `page` addosso, che
+    #        e' il caso reale (il FE inoltra all'export gli stessi filtri della
+    #        lista). Se la pagina vincesse, l'export conterrebbe la SOLA pagina
+    #        a video mentre il file promette il perimetro intero.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_fondi_fattura_da_decidere",
+        return_value=([], 0),
+    )
+    def test_export_salta_la_paginazione(self, mock_repo):
+        fn_fondi_fattura_da_decidere(page=4, page_size=25, max_rows=10_001)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["limit"], 10_001)
+        self.assertEqual(kwargs["offset"], 0)
+
+    # Scopo: `max_rows` non positivo -> 400. Un limite <= 0 non e' «tutto»:
+    #        e' una query che non torna niente, e il file sarebbe vuoto senza
+    #        che nulla lo dica.
+    def test_export_max_rows_non_positivo(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_fondi_fattura_da_decidere(max_rows=0)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
 
 class FondiFatturaVocabolarioTests(TestCase):

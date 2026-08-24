@@ -27,6 +27,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| correlation_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -42,6 +43,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_task_runs_correlation | `CREATE INDEX ix_task_runs_correlation ON vendite.fatturazione_lotti_task_runs USING btree (correlation_id) WHERE (correlation_id IS NOT NULL)` |
 | pk_fatturazione_lotti_task_runs | `CREATE UNIQUE INDEX pk_fatturazione_lotti_task_runs ON vendite.fatturazione_lotti_task_runs USING btree (id)` |
 | uq_fatt_lotti_task_runs_lotto_step_task_try | `CREATE UNIQUE INDEX uq_fatt_lotti_task_runs_lotto_step_task_try ON vendite.fatturazione_lotti_task_runs USING btree (lotto_id, stato_doc_fiscale_id, task_code, tentativo)` |
 

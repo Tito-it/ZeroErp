@@ -29,6 +29,10 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(12);
 
 -- ============================================================
@@ -48,11 +52,21 @@ SELECT
  ORDER BY ba.id
  LIMIT 1;
 
--- C_A: DRAFT, finestra 2080 (incumbent per il test di overlap)
+-- C_A: ATTIVO, finestra 2080 (incumbent per il test di overlap)
+-- ⭐ ATTIVO e non DRAFT, ed e' la correzione del 2026-08-24: dal changeSet
+--    20260602-18 («Overlap contratti: escludere i DRAFT dal vincolo») la
+--    partecipazione all'overlap e' decisa dalla colonna GENERATED
+--    `partecipa_overlap_snapshot = NOT is_abortito AND NOT is_draft`. Un
+--    incumbent in bozza non blocca nessuno — di proposito — e il test 3
+--    misurava quindi il caso sbagliato: NULL invece dell'id.
+--    ⚠️ Lo stato si mette all'INSERT e non con un UPDATE perche' il guard di
+--    transizione (trg_contratti_a10_guard_transizione_stato_upd) e' sul solo
+--    UPDATE: nascere ATTIVO e' lecito, ed evita di far dipendere un fixture
+--    dalla matrice delle transizioni.
 INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
     utility_id, emittente_fiscale_id, stato_doc_contratto_id, valido_dal, valido_al)
 SELECT 'PGTAP_SUCC_A', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittente_id,
-       c.id_draft, '2080-01-01'::date, '2080-12-31'::date
+       c.id_attivo, '2080-01-01'::date, '2080-12-31'::date
   FROM tmp_succ_ctx c;
 
 -- C_ABORT: stato abortito, finestra 2082 (deve essere ignorato dal rilevamento)
@@ -86,8 +100,10 @@ SELECT 'PGTAP_SUCC_ATT', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittent
 -- C_PERP: DRAFT, perpetuo 2110.. (valido_al NULL)
 INSERT INTO vendite.contratti(numero, billing_account_id, istanza_utility_id,
     utility_id, emittente_fiscale_id, stato_doc_contratto_id, valido_dal, valido_al)
+-- ⭐ ATTIVO per la stessa ragione di C_A: un perpetuo in bozza non partecipa
+--    all'overlap, e il test 6 misurerebbe il caso sbagliato.
 SELECT 'PGTAP_SUCC_PERP', c.ba_id, c.istanza_utility_id, c.utility_id, c.emittente_id,
-       c.id_draft, '2110-01-01'::date, NULL::date
+       c.id_attivo, '2110-01-01'::date, NULL::date
   FROM tmp_succ_ctx c;
 
 -- ============================================================

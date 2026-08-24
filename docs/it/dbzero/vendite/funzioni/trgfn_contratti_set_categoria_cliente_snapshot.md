@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_contratti_set_categoria_cliente_snapshot.md" %}
 # ⚙️ Funzione `trgfn_contratti_set_categoria_cliente_snapshot`
 
 ```sql

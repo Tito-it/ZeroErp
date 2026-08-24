@@ -1,0 +1,10 @@
+## 📘 Documentazione Concettuale – Tabella `storico.resi_righe_rinunce`
+
+> 📄 **Il contenuto è quello di [vendite.resi_righe_rinunce](/dbzero/vendite/tabelle/resi_righe_rinunce)**, la tabella di origine.
+> Lì stanno il significato delle colonne, le relazioni e le regole di dominio.
+
+{% include-markdown "it/dbzero/storico/_tabelle-storico.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -440,7 +440,8 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
     "detail": "tipo_doc_fiscale_id=42 non trovato",
     "retryable": false,
     "ui_action": "highlight_form_fields",
-    "fields": ["tipo_doc_fiscale_id"]
+    "fields": ["tipo_doc_fiscale_id"],
+    "targets": [{ "type": "FATTURA", "id": "820" }]
   },
   "meta": { "request_id": "uuid-..." }
 }
@@ -455,6 +456,7 @@ Generato da `success_response()` in `apps.core.api.success_responses`.
 | `retryable`         | no              | `true` se il client puo` riprovare la stessa richiesta              |
 | `ui_action`         | si`             | Come dovrebbe reagire la pagina. ⚠️ **Il frontend non lo legge ancora** |
 | `fields`            | no              | I **nomi** dei campi del form da correggere (`["partita_iva"]`)     |
+| `targets`           | no              | **Su quale cosa**: `[{type, id}]`, al massimo cinque                |
 | `hint`              | no              | L'**azione suggerita**: cosa può fare l'operatore adesso            |
 
 ⭐ **`fields` — dal 2026-08-08.** È l'informazione senza la quale
@@ -487,12 +489,90 @@ diagnostica destinata a `dbops.error_log`: contiene anche `lotto_id`,
 client di evidenziare cose che sullo schermo non esistono. E il **valore** non
 esce mai: è il dato che l'operatore ha appena scritto.
 
+⭐ **`targets` — dal 2026-08-24.** È l'**altra metà** di `fields`, e la
+differenza vale la riga: `fields` dice quale campo correggere **dentro la
+pagina in cui l'operatore già si trova**; `targets` dice a quale **altra cosa**
+deve andare. Il primo evidenzia un input, il secondo fa disegnare un **gesto** —
+*«Apri la fattura 820»*.
+
+Forma: un array di `{type, id}`, al massimo cinque. `type` è un codice di
+`config.tipi_entita` (`FATTURA`, `COMMESSA`, `LOTTO`…), **mai** un nome di
+tabella — il catalogo dei messaggi serve anche il portale cliente e lo shop, e
+lì i nomi delle tabelle sarebbero ricognizione regalata.
+
+⚠️ **È un'offerta, non una promessa.** Il bersaglio può puntare a qualcosa che
+chi legge non può aprire (permessi, perimetro emittente, record cancellato): il
+messaggio si mostra lo stesso, **il pulsante non compare**. Mai un pulsante che
+porta in un vicolo cieco.
+
+⛔ **Mai su un codice `TECNICO`.** Su un 500 l'operatore non ha niente da fare,
+quindi non c'è nessun gesto da offrirgli: `_apply_policy` lo toglie, anche se il
+database ce l'avesse messo.
+
+Brief: `docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
+
+### 🔴 I cinque punti di traduzione, e perché contano
+
+Un errore sollevato da `script.fn_log_and_raise_error` porta tutto: codice,
+campo, bersaglio, causa, soluzione. **Poi qualcuno lo traduce in `ServiceError`,
+e la traduzione decide cosa sopravvive.** Misurato il 2026-08-24: i punti sono
+**cinque** (più un sesto appiattimento che non produce un envelope), e **quattro
+su cinque** buttavano via la diagnostica strutturata.
+
+| | Dove | Prima del 2026-08-24 |
+| --- | --- | --- |
+| 1 | `ErrorTranslator._from_database_error` — il `DatabaseError` **nudo** al middleware | `hint` + `fields` ✅ |
+| 2 | `payload_helpers.translate_db_errors` — **46** punti di chiamata | il solo `hint` |
+| 3 | `ErrorManager.raise_from_database_error` — **9** punti | niente |
+| 4 | `pipeline_step_executor._run_per_fattura_task` | il solo `message_primary` |
+| 5 | `pratiche._raise_known_db_error` — **12** punti | il solo `hint` |
+| — | `pipeline_runner._drive_lotto_until_done` → `errore` del payload | ⚠️ **non è un envelope**: vedi sotto |
+
+⚠️ **Il quinto è stato trovato DOPO gli altri quattro**, col roll-out del
+2026-08-24 — ed è la ragione per cui questo elenco va riletto invece che dato
+per completo: **un BB unifica la lettura, non il trasporto.**
+
+⭐ **Ne discendeva un difetto già vivo, non del bersaglio**: il canale `COLUMN`
+viaggia dall'08/08 ed è valorizzato da quasi tutti i punti di sollevamento — ma
+`fields` arrivava all'envelope **solo dal punto 1**, cioè quasi mai. I 136
+binding di `campiErrati` sul frontend non si illuminavano su nessun errore nato
+in PL/pgSQL.
+
+➡️ **La lettura ora è UNA**, il BB `diagnostica_db(exc)` in
+`apps/core/services/db_error_fields.py`: ritorna codice, messaggio, causa,
+soluzione, campo e bersagli in un colpo solo. I cinque punti la usano, e
+`ServiceError` porta `fields` e `targets` fino all'envelope.
+⚠️ **Il BB unifica la lettura, non il trasporto**: che il valore arrivi
+all'envelope resta scritto in ciascun punto — ed è presidiato da
+`apps/core/tests/services/test_db_error_target.py`, che ha **un test per punto**.
+
+### ⚠️ Il runner risponde 200 anche quando fallisce
+
+Gli endpoint di pipeline (`run_lotto_pipeline_until_done`, `numera_lotto`)
+rispondono **200 anche quando la catena si ferma per errore**: il fallimento è
+un campo del payload — `motivo_stop` più `errore` — perché la catena può aver
+eseguito qualche step prima di fermarsi e quel lavoro va raccontato.
+
+```json
+{ "data": { "motivo_stop": "ERRORE",
+            "errore": { "code": "...", "message": "...", "detail": "...",
+                        "hint": "...", "fields": [...], "targets": [...] } } }
+```
+
+⛔ **Chi legge DEVE guardare `motivo_stop`**: un 200 non è un successo. Difetto
+misurato in-app il 2026-08-21 — «Rendi definitive» mostrava il toast verde su un
+lotto che il database aveva rifiutato.
+
+⭐ **I nomi dentro `errore` sono gli stessi dell'envelope**, di proposito: a
+video il gesto lo disegna un consumatore solo. Due nomi per la stessa cosa
+sarebbero due strade da tenere allineate a mano.
+
 **Da dove arriva `fields`, due strade:**
 
 | Origine | Contratto | Stato |
 |---|---|---|
 | errori nati in **Python** | `context={"field": <nome>}` nel `ServiceError` | ✅ attivo (42 codici) |
-| errori nati in **PL/pgSQL** | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | 🔵 **il backend lo legge già**; le funzioni non lo mandano ancora |
+| errori nati in **PL/pgSQL** | `RAISE … USING COLUMN = '<colonna>'` → `diag.column_name` | ✅ **attivo dal 2026-08-24.** ⚠️ Prima diceva *«il backend lo legge già; le funzioni non lo mandano ancora»*, ed erano **due affermazioni false**: le funzioni lo mandano dall'08/08 (il ripiego su `parametro` copre quasi tutti i punti di sollevamento), ed è il **backend** a perderlo — su tre delle quattro strade di traduzione |
 | **violazione NOT NULL** (23502) | `column_name` lo valorizza PostgreSQL da solo | ✅ attivo, senza che nessuno scriva niente |
 
 ⭐ **Il canale del DB non è da inventare**: `COLUMN` è un campo strutturato del
@@ -599,7 +679,8 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Vendite — Cockpit fatturazione (Fase C)**: [api_fatturazione.md](/backend/vendite/manual/api_fatturazione) — endpoint di comando del cockpit: giro «Fattura competenza» (`POST fatturazione/run/`, non bloccante via coda lavori `dbops.coda_lavori`) + polling `run/<job_id>/`, «Rendi definitive» perimetro (`POST fatturazione/numera/`) e singolo lotto (`lotti/<id>/numera/`), ristampa massiva (`lotti/<id>/ristampa/`), esiti giri + stato coda stampa (`fatturazione/esiti/`). Dal 2026-07-27 `fatturazione/run/` accetta `gruppi[]` = **emissione mirata** (stesso verbo, perimetro ristretto ai gruppi fatturabili scelti; assente = giro di massa invariato). Idempotenza 2-layer, identità operatore catturata (RLS come nel web), gate fiscale I-7
 * **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
 * **Vendite — Fattura (consultazione)**: [api_fattura_dettaglio.md](/backend/vendite/manual/api_fattura_dettaglio) — `GET /vendite/fatture/<id>/` restituisce il **documento completo** (testata decodificata + righe da `vw_fattura_righe_esposte` con kit risolti + riepilogo IVA + piano rate) in un round-trip, per il drawer di consultazione. Orchestra gli **stessi** lettori che alimentano il contesto del PDF → video e stampa raccontano lo stesso documento per costruzione (regola R17). Sola lettura: oltre EMESSA le righe sono congelate a DB. ⚠️ **Ordine di lettura vincolante**: la testata è l'unico cancello di scope — `vendite.fatture` ha la RLS, `fatture_righe`/`fatture_riepiloghi_iva` **no**. Include le note fattura (`<id>/note/`, sesto dominio del BB partizionato) e i `contatori` dei badge (oggi `note`) — dict e non scalare per reggere i prossimi senza cambiare shape; il conteggio sta **dopo** il cancello di testata perché `note_fatture` non ha RLS
-* **Vendite — Fondi fattura (governo)**: [api_fondi_fattura.md](/backend/vendite/manual/api_fondi_fattura) — `GET /vendite/fondi-fattura/da-decidere/`: l'elenco dei casi in cui il giro automatico **si ferma** e la scelta resta a una persona (4 motivi a vocabolario chiuso). Read-only su `vw_fondi_fattura_da_decidere`, `security_invoker` → **va letta con la connessione dell'utente, mai da un canale di sistema**. ⭐ L'elenco **presenta, non sana**: nessuna riga ha un gemello automatico che la corregge, perché sanarla vorrebbe dire muovere denaro senza che nessuno l'abbia deciso
+* **Vendite — Giornale fattura (la storia del documento)**: [api_fattura_giornale.md](/backend/vendite/manual/api_fattura_giornale) — `GET /vendite/fatture/<id>/giornale/`: «cosa è successo a questo documento, in ordine di tempo», elenco paginato di sola lettura che alimenta la scheda «Storia» del drawer fattura. ⭐ **Primo consumatore di `script.vw_giornale_entita`** (la vista che cuce i quattro registri di evento): fino al 2026-08-24 il suo perimetro era verificato dal pgTAP e non dall'uso. ⛔ Da non confondere con `/passaggi/`, che dice con quali **altri documenti** la fattura è legata: qui si risponde a *«cosa le è successo»*. 🔴 **Il cancello è la testata**: la vista è `security_invoker` e su una fattura fuori scope risponderebbe **zero righe** — cioè «non è successo niente» invece di «non la vedi». Il 404 nasce da `vendite.fatture`, non dalla vista. ⛔ L'ordine **non può appoggiarsi al solo tempo** (`now()` è il timestamp di transazione: 38 righe su 3 istanti), a ordinare dentro l'istante è il tiebreak. ⚠️ Le segnalazioni **ritirate** sono nascoste di default e `ritirate_count` dichiara quante: senza quel numero «nessun evento» e «tre eventi tutti superati» si leggono uguali
+* **Vendite — Fondi fattura (governo)**: [api_fondi_fattura.md](/backend/vendite/manual/api_fondi_fattura) — `GET /vendite/fondi-fattura/da-decidere/` (+ `/export/` CSV/XLSX, colonne dalla configurazione lista dell'operatore): l'elenco dei casi in cui il giro automatico **si ferma** e la scelta resta a una persona (4 motivi a vocabolario chiuso). Read-only su `vw_fondi_fattura_da_decidere`, `security_invoker` → **va letta con la connessione dell'utente, mai da un canale di sistema**. ⭐ L'elenco **presenta, non sana**: nessuna riga ha un gemello automatico che la corregge, perché sanarla vorrebbe dire muovere denaro senza che nessuno l'abbia deciso
 * **Vendite — Situazione merce (ordine e DDT)**: [api_situazione_merce.md](/backend/vendite/manual/api_situazione_merce) — `GET /vendite/{ordini|ddt}/<id>/situazione-merce/`: quanto è uscito, tornato, fatturato e cosa resta aperto, in **un round-trip** e quattro sezioni (riassunto per riga d'ordine · partite di merce · coda accrediti · coda ri-consegne). Read-only su `vw_situazione_merce_ordine` + `vw_partite_merce` + le due code, tutte `security_invoker`. Le due view nascono dal factory `build_situazione_merce_view` (i domini sono due dal primo giorno). ⛔ **`differenza` e `da_spedire` possono essere `null`, e `null` non è zero** («il conto non si applica»: ordine non ancora impegnato, riga mai spedita, causale non fatturabile, conto non calcolabile) e **`stato` non si ri-traduce** — arriva già tradotto dal DB con **sette** valori. ⚠️ `fatturato_anticipato` non è un accredito. 🔴 Il perimetro si verifica sulla **testata** prima di ogni lettura (`ordini`/`ddt` hanno la RLS, le righe no): fuori scope → 404, altrimenti il pannello uscirebbe vuoto invece che negato
 * **Vendite — Lineage/genealogia documenti**: [api_lineage_passaggi.md](/backend/vendite/manual/api_lineage_passaggi) — `GET /<dominio>/<id>/passaggi/` sui 7 domini (6 documenti + commessa — factory `build_passaggi_view`): pratica collegata + frontiera + catena transiti avanti/indietro (read-only su `vw_documento_lineage`/`fn_documento_lineage`, RLS invoker)
 * **Vendite — Situazione aperta**: [api_dashboard_aperto.md](/backend/vendite/manual/api_dashboard_aperto) — stock documenti per `area × fase` senza asse temporale + drill-down (read-only su `vw_dash_aperto_*`; sostituisce la dashboard 5-card, Fase 3 due-lenti)

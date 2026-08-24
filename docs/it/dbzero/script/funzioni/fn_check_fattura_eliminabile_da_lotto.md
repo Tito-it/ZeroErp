@@ -133,12 +133,21 @@ BEGIN
       'dettaglio',  v_fatt_numero);
   END IF;
 
+  -- ⭐ MOTIVO 5 (2026-08-22) — righe gia' RETTIFICATE.
+  -- ⚠️ Questa e' la porta piu' esposta delle tre: lavora su UNA
+  -- fattura e la ammette anche a lotto EMESSA (motivo 1), cioe'
+  -- proprio lo stato in cui vive un accredito registrato prima
+  -- della numerazione. Il motivo 4 non lo copre: l'accredito e'
+  -- ancorato alla coda dei resi, non al numero.
+  v_motivi := v_motivi
+            || script.fn_check_fatture_con_rettifiche(ARRAY[p_fattura_id]);
+
   RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_fattura_eliminabile_da_lotto(p_lotto_id bigint, p_fattura_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi ostativi all''eliminazione di UNA fattura da un lotto. Togliere = CANCELLARE (RD-7, 2026-08-04: il modello «reperto» e'' caduto). Ritorna [] se si puo'' togliere, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (831) — ⚠️ e'' l''ALLARGAMENTO di RD-7, prima si pretendeva il lotto in DRAFT: il confine giusto e'' lo stesso delle due sorelle (non numerato) ed e'' quello che il FE applicava gia'', tanto che il vecchio guard produceva una voce di menu che falliva sui lotti EMESSA. Motivo 2: fattura non collegata a questo lotto (832). Motivo 3: fattura oltre il pre-fiscale (833), gate fiscale che resta. Motivo 4: fattura gia'' NUMERATA (834) — deliberatamente ridondante rispetto al 3 e da NON semplificare via: guarda il numero e non lo stato, perche'' il danno sarebbe irreversibile. Sorgente UNICA letta da vendite.fn_elimina_fattura_da_lotto (solleva il primo motivo). ⚠️ NON e'' una capability per riga: il drawer ha gia'' in mano lo stato del lotto e quello di ogni fattura, che sono i due campi su cui gatare. rev 2026-08-04.';
+IS 'Funzione PURA (fn_check_*): motivi ostativi all''eliminazione di UNA fattura da un lotto. Togliere = CANCELLARE (RD-7, 2026-08-04). Ritorna [] oppure array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (831) — allargamento RD-7. Motivo 2: fattura non collegata a questo lotto (832). Motivo 3: fattura oltre il pre-fiscale (833). Motivo 4: fattura gia'' NUMERATA (834), deliberatamente ridondante rispetto al 3. ⭐ Motivo 5 (2026-08-22): righe gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ e'' la porta piu'' esposta delle tre, perche'' lavora su UNA fattura e la ammette anche a lotto EMESSA, cioe'' proprio lo stato in cui vive un accredito registrato prima della numerazione; il motivo 4 non lo copre, l''accredito e'' ancorato alla coda dei resi e non al numero. Sorgente UNICA letta da vendite.fn_elimina_fattura_da_lotto. rev 2026-08-22.';
 ```
 
 ---

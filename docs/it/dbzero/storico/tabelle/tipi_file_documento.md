@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/storico/manual/tipi_file_documento.md" %}
 # 📚 Tabella `tipi_file_documento`
 
 ## 🗂️ Campi principali

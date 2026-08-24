@@ -20,7 +20,7 @@
 -- 11) trigger propaga_qta registrato su offerte_commerciali_eccezioni
 -- 12) fn_init guard p_eccezione_id NULL → E_PARAMETRO_INVALIDO
 -- 13) fn_init guard p_emittente_sr_id NULL → E_PARAMETRO_INVALIDO
--- 14) fn_init eccezione non trovata → E_PARAMETRO_INVALIDO
+-- 14) fn_init eccezione non trovata → E_OFFERTA_ECCEZIONE_NON_TROVATA
 -- 15) fn_init articolo non composito → 0
 -- 16) fn_init quantita NULL → 0 (consumo)
 -- 17) fn_init idempotenza → 0 alla seconda chiamata [skip se no composito]
@@ -40,6 +40,10 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(27);
 
 -- ============================================================
@@ -326,12 +330,39 @@ SELECT throws_like(
 );
 
 -- ============================================================
--- TEST 14) fn_init eccezione non trovata → E_PARAMETRO_INVALIDO
+-- TEST 14) fn_init eccezione non trovata → E_OFFERTA_ECCEZIONE_NON_TROVATA
+--
+-- ⭐ AGGIORNATO IL 2026-08-24, e in meglio: il test pretendeva
+--    `E_PARAMETRO_INVALIDO`, ma quel ramo ha ricevuto un codice PROPRIO —
+--    `E_OFFERTA_ECCEZIONE_NON_TROVATA`, classe `NON_TROVATO` — che e' la
+--    direzione in cui il progetto sta andando (il generico si sta scomponendo,
+--    codice per codice). Il test blindava il codice VECCHIO, cioe' avrebbe
+--    protestato contro un miglioramento.
+--
+-- ⚠️ E qui si asserisce il CODICE, non piu' un frammento di frase: il punto e'
+--    QUALE errore, e la frase e' la cosa che cambia piu' spesso. Con
+--    `throws_like('%Parametro non valido%')` un domani basterebbe riscrivere il
+--    messaggio per far diventare verde un ramo sbagliato.
 -- ============================================================
-SELECT throws_like(
-    $$SELECT vendite.fn_offerta_eccezione_componenti_init(999999999, 1, CURRENT_DATE)$$,
-    '%Parametro non valido%',
-    '14) fn_init(999999999, 1, date): eccezione non trovata → E_PARAMETRO_INVALIDO'
+CREATE OR REPLACE FUNCTION pg_temp.oce_codice_init(p_ecc bigint)
+RETURNS text AS $fn$
+-- ⚠️ `text` esplicito: e' il canale CONSTRAINT dell'eccezione, non una colonna.
+DECLARE v_cod text;
+BEGIN
+    PERFORM vendite.fn_offerta_eccezione_componenti_init(p_ecc, 1, CURRENT_DATE);
+    RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
+    RETURN COALESCE(NULLIF(v_cod, ''), 'SQLSTATE:' || SQLSTATE);
+END $fn$ LANGUAGE plpgsql;
+
+CREATE TEMP TABLE tmp_oce_cod_14 AS
+SELECT pg_temp.oce_codice_init(999999999::bigint) AS codice;
+
+SELECT is(
+    (SELECT codice FROM tmp_oce_cod_14),
+    'E_OFFERTA_ECCEZIONE_NON_TROVATA',
+    '14) fn_init(999999999, 1, date): eccezione non trovata → E_OFFERTA_ECCEZIONE_NON_TROVATA'
 );
 
 -- ============================================================
