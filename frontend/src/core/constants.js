@@ -310,6 +310,12 @@ export const MANAGE_ICONS = {
   COMMESSA: 'pi pi-briefcase',
   LISTINI: 'app-nav-icon app-nav-icon-listini',
   RIGHE: 'pi pi-list',
+  // FATTURE: la stessa icona della voce di navigazione (NAV_ICONS.FATTURE) —
+  // le azioni di riga che PORTANO alla lista fatture devono essere
+  // riconoscibili come «quella lì», non come una funzione nuova.
+  // Centralizzata 2026-08-24 alla 2a occorrenza: il collegamento nasce
+  // insieme sulle liste soggetti e clienti.
+  FATTURE: 'app-nav-icon app-nav-icon-fatture',
   // Trasversali
   EDIT: 'pi pi-pencil',
   ADD: 'pi pi-plus',
@@ -436,6 +442,7 @@ export const TAB_ENTITIES = {
   CONVERSIONI_UOM: 'conversioni_uom',
   DDT: 'ddt',
   RESO: 'reso',
+  FATTURA: 'fattura',
   EMAIL_ACCOUNTS: 'email-accounts',
   EMAIL_TEMPLATES: 'email-templates',
   EMITTENTE_FISCALE: 'emittente-fiscale',

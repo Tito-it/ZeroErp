@@ -23,6 +23,7 @@ from apps.vendite.api.views import (
     ApiLottiMensile,
     ApiLottoDetail,
     ApiLottoFattureList,
+    ApiLottoGiornale,
     ApiLottoFattureExport,
     ApiLottoTaskRunsExport,
     ApiLottoSegnalazioniExport,
@@ -263,6 +264,14 @@ urlpatterns = [
         "lotti/<int:lotto_id>/fatture/",
         ApiLottoFattureList.as_view(),
         name="vendite-lotto-fatture-list",
+    ),
+    # La STORIA del lotto (Passo A, seconda meta'): il lotto piu' le sue
+    # fatture, righe non-INFO. ⛔ Da non confondere con `segnalazioni/`, che
+    # elenca i problemi APERTI: qui c'e' anche cio' che e' andato bene.
+    path(
+        "lotti/<int:lotto_id>/giornale/",
+        ApiLottoGiornale.as_view(),
+        name="vendite-lotto-giornale",
     ),
     # Export delle tre liste del drawer lotto. ⚠️ PRIMA delle rotte di elenco:
     # `export/` e' un segmento letterale e non collide, ma le rotte piu'

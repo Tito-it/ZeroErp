@@ -7,7 +7,7 @@
 > **rossi**, e nessuno lo sapeva.
 >
 > **Origine.** 2026-08-24, di rimbalzo. Verificando un'asserzione del cantiere
-> [brief-db-bersaglio-errore.md](../work-in-progress/brief-db-bersaglio-errore.md) è emerso un test
+> [brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) è emerso un test
 > rosso; la baseline appena girata da Tid diceva *«nessuna regressione»*. Non
 > mentiva: **quel file non l'aveva guardato**.
 >

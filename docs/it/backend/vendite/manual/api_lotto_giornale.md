@@ -1,0 +1,106 @@
+# API lotto_giornale (Django)
+
+## Scopo
+
+Rispondere a una domanda sola: **«cosa è successo a questo lotto, in che
+ordine»** — il lotto **più le sue fatture**, limitato alle righe non-INFO.
+Elenco paginato e di sola lettura che alimenta la scheda **«Storia»** del
+`LottoDrawer`.
+
+## Contesto
+
+Secondo (e ultimo) consumatore di **`script.vw_giornale_entita`**, la vista che
+cuce i registri di evento del progetto in una forma normalizzata a sette
+colonne. Sul lotto rispondono **tre** registri — `EVENT_LOG`, `LOTTO_LOG`,
+`TASK_RUN` — più `FATTURA_LOG` per i documenti che contiene.
+
+⭐ **«Il lotto più le sue fatture» è una DECISIONE** (Tid, 2026-08-24), non una
+scelta di schermata: cambia il filtro, il contratto e su cosa si pagina.
+
+Il numero che l'ha decisa, misurato sul lotto **6260**: filtrando la sola entità
+`LOTTO` tornano righe che ripetono *«Esito fatture lotto · WARN»* e **non
+contengono il motivo** — che sta sulla **fattura**, perché la sua entità è la
+fattura (rilievo **R-3**). Un pannello onesto ma limitato al lotto sarebbe un
+pannello che **nel giorno in cui serve non contiene la risposta**.
+
+⛔ **Non era scrivibile prima del 2026-08-24, 19:33.** Qui i registri sono tre, e
+con l'orario di **transazione** (`now()`) tutte le righe scritte nella stessa
+transazione uscivano con lo **stesso istante**: una timeline che mostra una
+sequenza **mai avvenuta** — e che guardandola non sembra rotta. È il rilievo
+**R-1**, chiesto dal BE e risolto dal team DB con `clock_timestamp()`
+(changeSet `20260824-16`, `-17`, `-18`).
+
+⛔ **Da non confondere con `/segnalazioni/`**, che elenca i problemi **aperti** da
+risolvere: qui c'è anche ciò che è andato bene e i tentativi poi superati.
+
+## Input
+
+- Metodo: `GET`
+- Path canonico: `/api/v1/vendite/lotti/{lotto_id}/giornale/`
+- Header sicurezza: `Authorization: Bearer <access_token>`
+- Query param (tutti opzionali):
+  - `page` (int, default `1`) · `page_size` (int, default `50`, max `200`)
+  - `sort_by` — `gravita` (default) | `quando`. Fuori whitelist ricade sul default
+  - `sort_dir` — `desc` (default) | `asc`
+  - `info` (bool, default `false`) — include le righe di routine
+  - `ritirate` (bool, default `false`) — include le segnalazioni ritirate
+
+## Output
+
+```json
+{"data": {"lotto_id": 6260, "count": 113, "page": 1, "page_size": 50,
+          "total_pages": 3, "ritirate_count": 2, "info_count": 173,
+          "results": [...]}}
+```
+
+Ogni riga porta `riga_key`, `registro`, `quando`, `gravita`, `cosa`, `tx_id`,
+`correlation_id`, `auth_user_id`, `user_insert`, `ritirata` e — proprio di questo
+endpoint — **`entity_type` / `entity_id`**.
+
+⭐ **`entity_type` non è un accessorio**: è l'informazione che rende utile il
+pannello. Senza, *«il lotto dice che è andata male»* e *«la fattura 20024 dice
+perché»* diventano due frasi indistinguibili nello stesso elenco.
+
+## Regole
+
+| Regola | Perché |
+|---|---|
+| **«Non-INFO» = tutto ciò che non è INFO, NULL compreso** | Il filtro gira sul **rango**, mai su `gravita IN ('WARN','ERROR')`: una gravità nulla significa «un vincolo si è allargato e la mappa è rimasta indietro», ed è esattamente la riga da non perdere. Un filtro per elencazione la butterebbe via **in silenzio** |
+| **Le INFO si nascondono ma si CONTANO** (`info_count`) | Un elenco filtrato e uno completo si leggono uguali. «Tre problemi» e «tre problemi più 173 passi andati bene» sono due schermate diverse |
+| **I conteggi si calcolano PRIMA dei filtri**, in una CTE | Una finestra sulla query filtrata non vedrebbe le righe nascoste — e dire quante se ne nascondono è metà del mestiere di nasconderle |
+| Le INFO si contano **solo fra le vive** | Una riga INFO già ritirata sarebbe contata due volte, e i numeri a video non tornerebbero col totale |
+| **Il rango di gravità si calcola in SQL** | Il vocabolario è testuale: ordinandolo per testo `ERROR` verrebbe prima di `INFO` e `WARN` — un ordine alfabetico spacciato per una scala |
+| Il `NULL` pesa come un **ERROR** | Mandarlo in fondo lo renderebbe invisibile dalla seconda pagina in giù: il modo più efficace di nascondere un difetto |
+| **Ordinamento e filtri sono del SERVER** | La lista è paginata: a valle si ordinerebbe la sola pagina, e «il più grave» diventerebbe «il più grave fra i primi 50» |
+| Il perimetro delle fatture è una **sotto-query** | Un lotto può contenere migliaia di documenti: tradurli in un `IN (...)` da Python sarebbe un limite nascosto che si scopre il giorno del lotto grosso |
+
+### Il cancello, e perché non è ridondante
+
+Lotto inesistente **o fuori scope emittente** → **404 identico**
+(`E_LOTTO_NON_TROVATO`), deciso da `repository.get_lotto` **prima** di leggere il
+giornale.
+
+⛔ **Non è ridondante con la RLS.** La vista non ha un perimetro emittente proprio
+per le righe di entità `FATTURA`: senza il cancello un lotto altrui riceverebbe
+**zero righe**, che si legge come *«lotto senza storia»* e non come *«non lo puoi
+vedere»*. Misurato: la vista da sola risponde `0` righe su un id inesistente,
+l'endpoint risponde 404.
+
+## Dipendenze DB
+
+- `script.vw_giornale_entita` (changeSet `20260822-70`)
+- `vendite.fatturazione_lotti_fatture` — il perimetro dei documenti
+- `vendite.fatturazione_lotti` — via `get_lotto`, il cancello
+- ⛔ **R-1 è un prerequisito**, non un dettaglio: senza `clock_timestamp()` sulle
+  quattro colonne di orario questo endpoint restituisce un ordine che non è
+  quello dei fatti
+
+## Correlati
+
+- [api_fattura_giornale.md](api_fattura_giornale.md) — la stessa domanda su un
+  documento. ⭐ I due condividono il corpo (`VenditeRepository._list_giornale`):
+  cambia **solo** il perimetro, così gravità, conteggi e ordinamento non possono
+  divergere fra le due schede
+- [api_lotto_segnalazioni_summary.md](api_lotto_segnalazioni_summary.md) — i
+  problemi **aperti**, che è un'altra domanda
+- [api_lotto_fatture_list.md](api_lotto_fatture_list.md) — i documenti del lotto

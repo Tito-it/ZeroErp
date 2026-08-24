@@ -453,6 +453,20 @@ class VenditeRepository:
         "stato_doc_fiscale_descrizione": "sdf.descrizione",
         "data_insert": "fl.data_insert",
         "user_insert": "fl.user_insert",
+        # ⭐ Quanti documenti e quanto valgono (colonne accese dal team DB il
+        # 2026-08-24). ⚠️ Il VALORE è la sotto-query per intero, non l'alias di
+        # SELECT: l'`ORDER BY` gira su una query con JOIN e un alias qui
+        # sarebbe ambiguo. La CHIAVE resta il `campo_sorgente` del catalogo.
+        "n_fatture": (
+            "(SELECT count(*) FROM vendite.fatturazione_lotti_fatture lf_o"
+            "  WHERE lf_o.lotto_id = fl.id)"
+        ),
+        "totale_documenti": (
+            "(SELECT COALESCE(sum(f_o.totale_doc), 0)"
+            "   FROM vendite.fatturazione_lotti_fatture lf_o2"
+            "   JOIN vendite.fatture f_o ON f_o.id = lf_o2.fattura_id"
+            "  WHERE lf_o2.lotto_id = fl.id)"
+        ),
         # Emittente (Fase E). ⚠️ Il VALORE e' l'espressione SQL, non l'alias:
         # in questa whitelist le altre voci sono qualificate (`fl.codice`,
         # `tdf.descrizione`) perche' l'ORDER BY gira su una query con JOIN, e
@@ -3373,7 +3387,87 @@ class VenditeRepository:
         escludi_ritirate: bool = True,
         sort_by: str = "gravita",
         sort_dir: str = "desc",
-    ) -> tuple[list[dict[str, Any]], int, int]:
+    ) -> tuple[list[dict[str, Any]], int, int, int]:
+        return self._list_giornale(
+            perimetro_sql="entity_type = %s AND entity_id = %s",
+            perimetro_params=[entity_type, int(entity_id)],
+            limit=limit,
+            offset=offset,
+            escludi_ritirate=escludi_ritirate,
+            escludi_info=False,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
+
+    # Scopo: il giornale di un LOTTO — il lotto PIU' le sue fatture.
+    #
+    # ⭐ «Che cos'e' un caso» e' una DECISIONE (Tid, 2026-08-24), non una scelta
+    #    di schermata: cambia il filtro, il contratto e su cosa si pagina. Un
+    #    pannello limitato all'entita' LOTTO sarebbe onesto e **non conterrebbe
+    #    la risposta** — misurato sul 6260: 113 righe non-INFO sul lotto che
+    #    dicono «Esito fatture lotto · WARN», e il motivo sta sulla FATTURA,
+    #    perche' la sua entita' e' la fattura (rilievo R-3).
+    #
+    # ⛔ Il perimetro e' una SOTTO-QUERY, non una lista di id passata da Python:
+    #    un lotto di fatturazione puo' contenere migliaia di documenti, e
+    #    tradurli in un `IN (...)` sarebbe un limite nascosto che si scopre il
+    #    giorno del lotto grosso.
+    # Perimetro: sola lettura. ⚠️ Nessuno scope emittente QUI — il cancello e'
+    #    `get_lotto`, che il service chiama PRIMA (stessa forma del giornale
+    #    fattura, dove il cancello e' `get_fattura_testata`).
+    def list_giornale_lotto(
+        self,
+        *,
+        lotto_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        escludi_ritirate: bool = True,
+        escludi_info: bool = True,
+        sort_by: str = "gravita",
+        sort_dir: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int, int, int]:
+        return self._list_giornale(
+            perimetro_sql="""
+                (entity_type = 'LOTTO' AND entity_id = %s)
+                OR (entity_type = 'FATTURA' AND entity_id IN (
+                        SELECT lf.fattura_id
+                          FROM vendite.fatturazione_lotti_fatture lf
+                         WHERE lf.lotto_id = %s))
+            """,
+            perimetro_params=[int(lotto_id), int(lotto_id)],
+            limit=limit,
+            offset=offset,
+            escludi_ritirate=escludi_ritirate,
+            escludi_info=escludi_info,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
+
+    # Scopo: il corpo unico del giornale — CTE dei conteggi, rango di gravita',
+    #        filtri, ordinamento e mappatura delle righe. Cambia SOLO il
+    #        perimetro: una riga (la fattura) oppure un lotto e le sue fatture.
+    #
+    # ⭐ ESTRATTO alla 2a occorrenza (regola del 2). Le due letture devono dare
+    #    le stesse regole di gravita', gli stessi conteggi e lo stesso
+    #    ordinamento: due copie sarebbero identiche il primo giorno e divergenti
+    #    al primo ritocco — e qui divergere vuol dire che lo stesso evento si
+    #    legge in due modi a seconda della scheda da cui lo guardi.
+    # ⚠️ Il perimetro arriva come SQL e parametri, non come valori: e' l'unico
+    #    modo di servire «una riga» e «un insieme calcolato dal database» con lo
+    #    stesso corpo. Le due stringhe sono LETTERALI scritte qui sopra — nessun
+    #    input dell'utente le raggiunge.
+    def _list_giornale(
+        self,
+        *,
+        perimetro_sql: str,
+        perimetro_params: list[Any],
+        limit: int,
+        offset: int,
+        escludi_ritirate: bool,
+        escludi_info: bool,
+        sort_by: str,
+        sort_dir: str,
+    ) -> tuple[list[dict[str, Any]], int, int, int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
         # ⭐ L'ORDINE DI DEFAULT E' LA GRAVITA' (decisione di Tid, 2026-08-24
@@ -3387,7 +3481,7 @@ class VenditeRepository:
         #    somiglia in tutto a un elenco ordinato bene.
         order_clause = _giornale_order_clause(sort_by, sort_dir)
         with connection.cursor() as cursor:
-            # ⚠️ I due conteggi si calcolano PRIMA del filtro, in una CTE: una
+            # ⚠️ I TRE conteggi si calcolano PRIMA dei filtri, in una CTE: una
             # finestra sulla query filtrata non vedrebbe le righe nascoste, e
             # dire quante se ne nascondono e' meta' del mestiere di nasconderle.
             cursor.execute(
@@ -3395,6 +3489,7 @@ class VenditeRepository:
                 WITH tutte AS (
                     SELECT riga_key, registro, riga_id, quando, gravita, cosa,
                            tx_id, correlation_id, auth_user_id, user_insert,
+                           entity_type, entity_id,
                            COALESCE(disabilitato, false) AS ritirata,
                            -- ⭐ IL RANGO DELLA GRAVITA', qui e non nel client:
                            --    il vocabolario normalizzato della vista e'
@@ -3417,34 +3512,51 @@ class VenditeRepository:
                                ELSE 3
                            END AS rango_gravita
                       FROM script.vw_giornale_entita
-                     WHERE entity_type = %s AND entity_id = %s
+                     WHERE {perimetro_sql}
                 ), conteggi AS (
                     SELECT COUNT(*) FILTER (WHERE NOT ritirata) AS vive,
-                           COUNT(*) FILTER (WHERE ritirata)     AS ritirate
+                           COUNT(*) FILTER (WHERE ritirata)     AS ritirate,
+                           -- ⚠️ Le INFO si contano SOLO fra le righe vive: una
+                           -- riga INFO gia' ritirata sarebbe contata due volte,
+                           -- e i due numeri a video non tornerebbero col totale.
+                           COUNT(*) FILTER (
+                               WHERE NOT ritirata AND rango_gravita = 1
+                           ) AS info_vive
                       FROM tutte
                 )
                 SELECT t.riga_key, t.registro, t.quando, t.gravita, t.cosa,
                        t.tx_id, t.correlation_id, t.auth_user_id, t.user_insert,
-                       t.ritirata, c.vive, c.ritirate
+                       t.ritirata, t.entity_type, t.entity_id,
+                       c.vive, c.ritirate, c.info_vive
                   FROM tutte t CROSS JOIN conteggi c
-                 WHERE NOT %s OR NOT t.ritirata
+                 WHERE (NOT %s OR NOT t.ritirata)
+                   -- ⚠️ «Non-INFO» e' TUTTO CIO' CHE NON E' INFO, NULL COMPRESO,
+                   -- e per questo si filtra sul RANGO e non con un
+                   -- `gravita IN ('WARN','ERROR')`: una gravita' nulla e'
+                   -- esattamente la riga da non perdere, e un filtro scritto
+                   -- per elencazione la butterebbe via in silenzio.
+                   AND (NOT %s OR t.rango_gravita > 1)
                  ORDER BY {order_clause}
                  LIMIT %s OFFSET %s
-                """.format(order_clause=order_clause),
+                """.format(perimetro_sql=perimetro_sql, order_clause=order_clause),  # noqa: S608
                 [
-                    entity_type, int(entity_id), bool(escludi_ritirate),
+                    *perimetro_params,
+                    bool(escludi_ritirate), bool(escludi_info),
                     safe_limit, safe_offset,
                 ],
             )
             rows = cursor.fetchall()
 
         # ⚠️ Su zero righe non c'e' nessuna riga da cui leggere i conteggi. E' il
-        # caso «tutte ritirate»: la CTE li avrebbe, ma il filtro non lascia
-        # passare nulla da cui prenderli. Si ripiega su una domanda secca.
+        # caso «tutte ritirate» — o, sul lotto, «tutte INFO»: la CTE li avrebbe,
+        # ma i filtri non lasciano passare nulla da cui prenderli. Si ripiega su
+        # una domanda secca, con lo STESSO perimetro.
         if rows:
-            vive, ritirate = int(rows[0][10]), int(rows[0][11])
+            vive, ritirate, info_vive = int(rows[0][12]), int(rows[0][13]), int(rows[0][14])
         else:
-            vive, ritirate = self._conta_giornale_entita(entity_type, entity_id)
+            vive, ritirate, info_vive = self._conta_giornale(
+                perimetro_sql, perimetro_params,
+            )
         risultato: list[dict[str, Any]] = [
             {
                 "riga_key": str(row[0]),
@@ -3463,25 +3575,38 @@ class VenditeRepository:
                 "auth_user_id": None if row[7] is None else int(row[7]),
                 "user_insert": row[8],
                 "ritirata": bool(row[9]),
+                # ⭐ DI CHI e' la riga. Sul giornale della fattura e' sempre la
+                # stessa e sembra ridondante; sul lotto e' l'informazione che
+                # rende utile il pannello — «il lotto dice che e' andata male,
+                # la fattura 19205 dice perche'».
+                "entity_type": row[10],
+                "entity_id": None if row[11] is None else int(row[11]),
             }
             for row in rows
         ]
-        return risultato, vive, ritirate
+        return risultato, vive, ritirate, info_vive
 
-    # Scopo: i due conteggi del giornale quando la pagina non ha righe da cui
-    #        leggerli — vedi il ripiego qui sopra.
-    def _conta_giornale_entita(self, entity_type: str, entity_id: int) -> tuple[int, int]:
+    # Scopo: i conteggi del giornale quando la pagina non ha righe da cui
+    #        leggerli — vedi il ripiego qui sopra. Stesso perimetro, per
+    #        costruzione: riceve la stessa coppia SQL/parametri.
+    def _conta_giornale(
+        self, perimetro_sql: str, perimetro_params: list[Any],
+    ) -> tuple[int, int, int]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT COUNT(*) FILTER (WHERE NOT COALESCE(disabilitato, false)),
-                       COUNT(*) FILTER (WHERE COALESCE(disabilitato, false))
+                       COUNT(*) FILTER (WHERE COALESCE(disabilitato, false)),
+                       COUNT(*) FILTER (
+                           WHERE NOT COALESCE(disabilitato, false)
+                             AND gravita = 'INFO'
+                       )
                   FROM script.vw_giornale_entita
-                 WHERE entity_type = %s AND entity_id = %s
-                """,
-                [entity_type, int(entity_id)],
+                 WHERE {perimetro_sql}
+                """.format(perimetro_sql=perimetro_sql),  # noqa: S608
+                perimetro_params,
             )
             row = cursor.fetchone()
         if not row:
-            return 0, 0
-        return int(row[0]), int(row[1])
+            return 0, 0, 0
+        return int(row[0]), int(row[1]), int(row[2])
