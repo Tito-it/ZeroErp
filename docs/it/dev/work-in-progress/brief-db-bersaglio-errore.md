@@ -718,11 +718,10 @@ Il bersaglio risponde a *«dove devi andare»*, non a *«di cosa stiamo
 parlando»*. ⚠️ È la ragione per cui il roll-out si fa **codice per codice**: un
 conteggio non sa distinguere le due cose.
 
-⭐ **E il preventivo è il primo uso reale di `key_selector`**: si cita per
-**`uid`**, non per numero. La colonna era nata il 23/08 e nessuno l'aveva
-esercitata — le quattro voci a catalogo erano tutte a chiave numerica. Un id
-numerico avrebbe prodotto un pulsante che non apre niente, e il difetto si
-sarebbe scoperto dal frontend, mesi dopo, senza sapere da dove veniva.
+⭐ **E il preventivo è il primo uso reale di `key_selector`** — ~~si cita per
+`uid`~~ ⚠️ **corretto il 2026-08-24 su rilievo del backend: si cita per `id`.**
+La colonna ha fatto comunque il suo mestiere, solo al secondo giro: vedi il
+riquadro qui sotto.
 
 ⚠️ **Due rami senza bersaglio, e sono voluti**: il preventivo che **non esiste**
 (o non è visibile sotto RLS) — l'errore copre due casi con lo stesso codice, e
@@ -803,6 +802,48 @@ due cataloghi si intersecano, e qui non si intersecano.
 `titodb` e **non** è nel registro `dbops.sec_functions_owner`, quindi il
 `CREATE OR REPLACE` la lascia dov'è. Da non confondere con le `SECURITY DEFINER`
 di `postgres`, che dopo la riscrittura vogliono `dbops.fn_sync_functions_owner`.
+
+#### 🔴 La correzione del backend sul `key_selector` — e l'errore ha un nome
+
+**Rilievo del BE, 2026-08-24**, e ha ragione. Il `20260824-02` faceva citare il
+preventivo per **uid**, con la motivazione *«è la chiave nativa con cui il
+progetto lo indirizza da fuori»*. Misurato — da loro, e riverificato qui:
+
+| Cosa | Misura |
+| --- | --- |
+| Rotte del preventivo | tutte `<int:preventivo_id>` |
+| Prop del drawer | `Number` |
+| Endpoint che accettano un **uid** di preventivo | **zero** |
+| `uid` vs `id` su `vendite.preventivi` | **165 / 165 / 165** — l'uid è un surrogato 1:1, non un'identità che sopravvive alle revisioni |
+
+⛔ Un bersaglio a uid avrebbe prodotto **un pulsante che non apre niente** —
+cioè esattamente il difetto che `key_selector` esiste per evitare, e che la
+testata del `20260823-01` dichiara a chiare lettere.
+
+⭐ **L'errore ha un nome, ed è istruttivo: ho riempito la colonna con la
+risposta dell'ALTRO catalogo.** `config.sorgenti.key_selector` dice con quale
+chiave il **lineage** collega un documento; `config.tipi_entita.key_selector`
+dice con quale chiave lo si **raggiunge**. Stesso nome — scelto apposta, perché
+è la stessa convenzione — ma **due domande diverse**: è la distinzione che
+entrambi i brief dichiarano fin dal principio (*«vocabolari che si intersecano,
+domande no»*), e il valore l'ho copiato da uno all'altro lo stesso.
+
+➡️ **La regola che ne esce, e vale per ogni tipo futuro:**
+
+> **Il valore di `key_selector` si MISURA sulle rotte del frontend.
+> Non si eredita da `config.sorgenti`, e non si deduce dall'esistenza di una
+> colonna `uid`.**
+
+⚠️ **E ora nessun tipo usa `uid`**: tutti e nove hanno `id`. La colonna resta, e
+vale la pena dire perché invece di lasciarlo intuire: oggi registra un fatto
+**verificato** invece di una supposizione — e la differenza si vede solo il
+giorno in cui qualcuno sbaglia, che è appunto oggi. Il giorno in cui una
+superficie pubblica (portale, shop) indirizzerà un documento per uid, quella
+riga cambia con **un seed** e nessuna funzione si tocca.
+
+⭐ **Nota di metodo**: il difetto l'ha trovato **il primo consumatore**, ed è la
+prova che il canale serviva — un bersaglio scritto e mai letto non avrebbe mai
+detto di essere sbagliato. È anche il primo ritorno utile dalla consegna B-1.
 
 #### 🏁 Il roll-out è a FINE CORSA — misurato il 2026-08-24
 
@@ -1174,6 +1215,7 @@ tabella tipo→destinazione non è da costruire, è da riconoscere.
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-24 (undicesimo giro) | 🔴 **Correzione su rilievo del BACKEND, e ha ragione**: il bersaglio del preventivo citava l'**uid**, ma le rotte sono `<int:preventivo_id>` e gli endpoint che accettano un uid sono **zero** — sarebbe stato un pulsante che non apre niente. Scritto il `20260824-10` (una riga di corpo), corretto il CSV (`PREVENTIVO,…,uid` → `id`, mirror runOnChange) e allineato il test 10. ⭐ **L'errore ha un nome e va tenuto**: ho riempito `config.tipi_entita.key_selector` con la risposta di `config.sorgenti.key_selector` — stesso nome, scelto apposta, ma **due domande diverse** (il lineage contro le rotte), che è la distinzione che entrambi i brief dichiarano dal principio. ➡️ Regola scritta: **il valore si MISURA sulle rotte, non si eredita**. ⚠️ Verificato anche che l'uid non è un'identità cross-revisione (165 righe, 165 uid, 165 id): nessuna sfumatura di dominio proteggeva la scelta sbagliata. ⭐ **E il difetto l'ha trovato il primo consumatore**: è la prova che il canale serviva — un bersaglio scritto e mai letto non avrebbe mai detto di essere sbagliato |
 | 2026-08-24 (decimo giro) | 📋 **Scritte le consegne BE/FE in forma eseguibile** (§7). ⭐ **B-1 non è più una richiesta generica**: dice il modulo (`backend/apps/core/services/db_error_fields.py`, che possiede già i due canali gemelli e non ha dipendenze interne), il campo (`diag.datatype_name`), il contratto («solo dentro `P0001`», con la difesa già scritta lì per `constraint_name`), le due regex speculari a quelle del database, il punto di traduzione (`error_translator.py` ~228) e tre cose che il backend **non** deve fare. ⚠️ Dichiarata anche una asimmetria che sorprenderebbe: la chiave nel contesto DB è `bersaglio` (italiano, e perché `target` là è già occupata), il campo dell'envelope è `target`/`type` (inglese, come `fields` e `hint`) — la traduzione avviene **al confine**. ⭐ E B-2 chiarisce che la tabella `type → rotta` è **la stessa** della futura timeline per entità: si scrive una volta, o diverge |
 | 2026-08-24 (nono giro) | ✅ **Terzo scaglione APPLICATO** (baseline `pratiche` verde). 📊 **Stato del roll-out**: **13 codici**, **9 funzioni**, **14 punti di sollevamento**, **9 tipi** a catalogo — e `dbops.vw_bersagli_non_dichiarati` sempre **vuota**. 🏁 **E il roll-out è a FINE CORSA, non finito**: dei `CONFLITTO_STATO` che passano un id restano 21 punti su 15 codici, e riletti con la lente sono **quasi tutti esclusioni motivate** — la famiglia resi («sei già sul reso»), i `%s` che sono colonne o stati, i documenti che l'operatore ha già aperto, e i due bloccati dal costo della funzione a 40 parametri. ⭐ **Restano due soli candidati veri** (`E_FORNITORE_NON_ATTIVO`, `E_ACCREDITO_GIA_ESEGUITO`) e nessuno dei due è ovvio. ⭐ **La conclusione, scritta perché nessuno riapra la lista a tappeto**: continuare vorrebbe dire aggiungere pulsanti che non aiutano — e un bersaglio inutile non è neutro, insegna a ignorare il pulsante. Il roll-out riprende quando lo chiede un caso |
 | 2026-08-24 (ottavo giro) | 🛠️ **TERZO SCAGLIONE SCRITTO — «gli errori che nascono da una lista»**: due changeSet (`20260824-08/09`, schema `pratiche`), tre codici, due tipi nuovi a catalogo (`FLUSSO`, `DEFINIZIONE_WORKFLOW` — nove in totale). ⛔ Non applicato. ⭐ **Contiene il caso più netto dell'intero roll-out**: `E_DEFINIZIONE_BOZZA_ESISTENTE` nomina lo **scope** (tipo prestazione, emittente) e la bozza che blocca **non la nomina affatto** — quel documento un nome utile non ce l'ha, e metterci un id tecnico sarebbe il difetto che il cantiere esiste per togliere. Lì il bersaglio non aggiunge comodità: **aggiunge un'informazione che la frase, per come è costruita, non può dare**. È l'argomento migliore che questo cantiere abbia prodotto per i due canali separati. ⚠️ Terza volta che un `EXISTS` diventa una raccolta — stessa scansione, in più gli id, e array perché se le bozze fossero più d'una vanno viste tutte; il predicato non cambia (`jsonb_agg` su zero righe è NULL). ⚠️ `fn_fork_definizione` è `SECURITY DEFINER`: verificato che è di `titodb` e **non** nel registro `sec_functions_owner`, quindi nessun blocco di proprietà da aggiungere |
