@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | fattura_id | bigint | NO |  |
-| data_ora | timestamp with time zone | NO | now() |
+| data_ora | timestamp with time zone | NO | clock_timestamp() |
 | messaggio | text | NO |  |
 | status | character | NO | 'W'::bpchar |
 | disabilitato | boolean | NO | false |
@@ -38,6 +38,7 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_fatture_log_a10_guard_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_logs_guard_delete()` |
+| trg_fatture_log_a10_orario_reale_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_fatture_log_a10_orario_reale()` |
 | trg_fatture_log_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatture_log_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_fatture_log_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

@@ -62,7 +62,15 @@ BEGIN
         data_insert, user_insert, data_update, user_update
     )
     VALUES (
-        p_lotto_id, now(), COALESCE(p_messaggio, p_fase, 'pipeline'), p_status,
+        -- ⭐ R-1 (24-08-2026): clock_timestamp() e non now(). Con
+        --    now() ogni riga scritta dentro la stessa transazione
+        --    usciva con lo stesso identico orario, e la storia di un
+        --    lotto — che unisce TRE registri i cui contatori di riga
+        --    non sono confrontabili fra loro — non era ordinabile.
+        --    ⚠️ Gli ultimi quattro `now()` restano: quelli sono i
+        --    campi di AUDIT, dove l'orario di transazione e' la
+        --    convenzione della casa e non c'entra con l'ordinamento.
+        p_lotto_id, clock_timestamp(), COALESCE(p_messaggio, p_fase, 'pipeline'), p_status,
         FALSE, p_fase, p_stato_doc_fiscale_id, v_tipo_lotto, v_stato_operativo,
         v_meta, now(), current_user, now(), current_user
     );

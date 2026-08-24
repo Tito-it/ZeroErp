@@ -1570,10 +1570,15 @@ dalla pipeline vera, questo piano è verificato dai pgTAP e da nient'altro.
   solleva niente e a video somiglia a uno giusto.
 - ✅ **«Che cos'è un caso» è deciso**: il pannello del lotto mostrerà il lotto
   **più le sue fatture**, righe non-INFO. §12.
-- 🔴 **Scritta la richiesta al team DB su R-1** (§13): le quattro colonne di
-  orario hanno default `now()`, cioè l'istante della **transazione**. ⭐
-  L'argomento nuovo è che quel significato oggi è coperto dal **`tx_id`**, che
-  prima non esisteva: l'orario può tornare a dire solo «quando è successo».
+- ~~🔴 **Scritta la richiesta al team DB su R-1** (§13)~~ → ✅ **RISPOSTA E
+  LOTTO SCRITTI dal team DB in giornata** (changeSet `20260824-16` e `-17`,
+  7 asserzioni pgTAP). L'argomento del `tx_id` regge e la risposta è sì.
+  🔴 **Ma il perimetro non era «quattro `DEFAULT`»**, ed è la parte che vale:
+  misurato sui corpi vivi, i default sono **inerti su tre registri su quattro**
+  (i chiamanti passano la colonna a mano), e c'era un **quinto punto** —
+  `ended_at`, scritto con `now()` — che da solo avrebbe fatto fallire
+  `chk_fatt_lotti_task_runs_timestamps` su **165 corse su 319**. Dettaglio in
+  fondo al §13.
 
 ### 2026-08-22 · Nascita
 
@@ -2538,7 +2543,7 @@ aperta di **de-duplicazione**, da guardare col pannello davanti e non prima.
 
 ---
 
-## 13. 🔴 Il passaggio al team DB — **R-1: l'orario di transazione non ordina** *(scritto dal BE il 2026-08-24)*
+## 13. ✅ Il passaggio al team DB — **R-1: l'orario di transazione non ordina** *(chiesto dal BE e SCRITTO dal DB il 2026-08-24)*
 
 > **Cos'è.** Il prossimo pezzo del Passo A è la **storia di un lotto**, e non è
 > scrivibile finché l'orario delle righe non è quello vero. ⛔ **Perimetro: è del
@@ -2629,3 +2634,169 @@ registro solo), e il pannello **lotto** non si scrive finché questa risposta no
 c'è. ⛔ Scriverlo prima significherebbe consegnare una schermata che mostra una
 sequenza **mai avvenuta**, e nessuno se ne accorgerebbe guardandola: è un elenco
 plausibile: la trappola è esattamente che non sembra rotto.
+
+---
+
+### ✅ La risposta del team DB — **R-1 è scritto** *(2026-08-24)*
+
+**Sì, `clock_timestamp()`**, e l'argomento del BE regge: con il `tx_id` su ogni
+riga, «quali righe appartengono alla stessa transazione» ha una chiave sua, e
+l'orario può tornare a dire una cosa sola. ⭐ Se ne aggiunge uno: quelle quattro
+sono colonne di **osservabilità**, non di audit — `data_insert` continua a
+portare l'orario di transazione, che è la convenzione della casa. Non si erode
+una convenzione: si scioglie una sovrapposizione.
+
+🔴 **Ma il perimetro non era «quattro `DEFAULT`», e come richiesta non
+funzionava.** Due misure, sui corpi vivi.
+
+**Prima — i `DEFAULT` sono quasi tutti inerti.** I chiamanti la colonna la
+passano a mano:
+
+| Registro | Il `DEFAULT` si usa? | Chi scrive davvero |
+| --- | --- | --- |
+| `event_log.event_time` | ✅ sì | `fn_log_event` non passa la colonna — **l'unico dove il default basta** |
+| `fatture_log.data_ora` | ❌ **mai** | 5 funzioni + il **backend** (`pipeline_repository.py`), tutti `now()` esplicito |
+| `fatturazione_lotti_log.data_ora` | ❌ no | `fn_log_pipeline_fase` |
+| `task_runs.started_at` | ❌ no | `fn_start_lotto_task_run` |
+
+⚠️ Cambiando i soli `DEFAULT` si sarebbe mosso **un registro su quattro**, con
+un changeSet applicato che dichiarava di aver risolto: la forma peggiore,
+perché sembra fatta.
+
+**Seconda — c'era un quinto punto, e da solo rompeva la pipeline.** `ended_at`
+non ha `DEFAULT`: lo scrive `fn_set_runtime_task_run_esito` con `now()`.
+Spostando il solo `started_at`, un tentativo aperto e chiuso nella stessa
+transazione otterrebbe `ended_at` (inizio transazione) **minore** di
+`started_at` (orologio alla scrittura) — e c'è un vincolo:
+
+```text
+chk_fatt_lotti_task_runs_timestamps  CHECK (ended_at IS NULL OR ended_at >= started_at)
+```
+
+⛔ Non è un rischio teorico: **165 corse su 319** hanno oggi `ended_at =
+started_at` esatto, cioè sono precisamente quel caso. Sarebbe stato un
+fallimento di vincolo dentro lo step.
+
+#### Cosa è stato scritto
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **16** | `00_schema/vendite/…-alter-registri-log-orario-reale` | I quattro `DEFAULT`. Allinea la DDL, non è il punto in cui la regola vive |
+| **17** | `20_code/vendite/…-registri-log-orario-reale` | ⭐ Il pezzo che sposta il comportamento: un **trigger** su `fatture_log` e **tre funzioni** riscritte |
+| — | `db/pgtap/vendite/test-registri-log-orario-reale.sql` | **7 asserzioni** |
+
+⛔ **I due changeSet vanno nella stessa passata**: separati, per un giro
+`started_at` e `ended_at` starebbero su due orologi diversi.
+
+⭐ **Perché su `fatture_log` un trigger e non cinque riscritture.** I cinque
+chiamanti sono **957 righe di corpo vivo**, e in nessuno di essi il log è il
+soggetto: è una riga di servizio dentro un ramo di errore. Riprodurre 957 righe
+per spostare cinque token è il baratto sbagliato — un corpo vivo riprodotto si
+porta dietro il proprio debito e *sembra* giusto perché combacia col database —
+e avrebbe comunque lasciato fuori il sesto scrittore.
+➡️ **Il sesto è il backend**, e il trigger lo copre: **nessuna consegna BE**.
+La richiesta al BE su questo punto si può cancellare.
+⚠️ E non è un meccanismo nuovo: `trgfn_audit_data_user_generic` fa già
+esattamente questo — un BEFORE che mette lui l'orario — su tutte e quattro
+queste tabelle. Cambia la colonna, e con essa l'orologio giusto.
+
+Sugli altri tre registri **niente trigger**, ed è una scelta: lì i chiamanti
+sono uno o due e piccoli (57, 69, 112 righe), quindi si toglie il `now()` dove
+sta e il codice smette di dire una cosa che non è più vera. Un trigger avrebbe
+lasciato in piedi un `now()` morto che mente.
+
+#### ✅ L'ancoraggio del «giro corrente» — deciso, e **pinnato**
+
+Il BE chiedeva *«lo dica un test, non questa frase»*. Deciso (Tid, 2026-08-24):
+una riga scritta nella stessa transazione ma **prima** del `PIPELINE_STARTED`
+cade **fuori** dal giro corrente — appartiene al giro precedente. È il **test 7**
+del pgTAP, e la misura del prima/dopo è netta:
+
+```text
+prima del lotto R-1   pgTAP R-1 prima=true   pgTAP R-1 dopo=true
+dopo                  pgTAP R-1 prima=false  pgTAP R-1 dopo=true
+```
+
+⚠️ Con `now()` quel predicato **non distingueva niente**: tutte le righe della
+transazione avevano l'orario del marcatore.
+⭐ E le funzioni ancorate sono **due**, non una: oltre a
+`fn_list_lotto_segnalazioni` c'è `fn_list_lotto_task_runs`, con lo stesso
+`max(event_time)`. Il BE ne aveva vista una.
+
+#### 🔧 Un difetto pagato scrivendo il presidio
+
+La prima versione del **test 2** — «nessuna funzione scrive più `now()` in
+quelle colonne» — era **rossa**, e il colpevole era un **commento del changeSet
+stesso**, quello che spiega il difetto citandolo: *«con `ended_at = now()` un
+tentativo…»*. ⚠️ Un presidio che legge `prosrc` grezzo **accusa chi documenta il
+difetto invece di chi lo commette**. Si tolgono i commenti prima di cercare —
+è la stessa lezione dello scanner dell'arità in
+`test-catalogo-messaggi-errore-completo.sql`, e questa casa l'ha già pagata una
+volta.
+
+#### 📌 Cosa resta fuori, dichiarato
+
+* **Nessun backfill**, come chiesto: le righe già scritte restano com'erano, e
+  la convivenza fra due generazioni (R-5) va retta dal pannello;
+* **`data_insert` / `data_update` non si toccano**, su nessuna tabella;
+* **nessun indice, nessuna vista**: `ix_event_log_entity_time` continua a
+  servire — cambia il valore che ci finisce, non la colonna;
+* 📌 `fn_set_runtime_task_run_esito` solleva tre volte `E_GENERICO`. È debito
+  **noto**, guardato e non toccato: correggerlo vuol dire coniare tre codici
+  registrati con la loro classe, ed è un lotto suo.
+
+#### 🔧 La correzione — il trigger scriveva SEMPRE, e ha rotto tre asserzioni
+
+Applicato il lotto (18:52), è arrivato un rosso su
+`test-fn-list-lotto-segnalazioni-job.sql` — test **5, 7, 8**. Non è un difetto
+dei test: è del changeSet.
+
+Il trigger del `-17` imponeva `data_ora` **senza guardare cosa avesse passato il
+chiamante**. La scelta era dichiarata nella sua testata — *«non si potrà inserire
+una riga di log con un orario storico»* — ma era dichiarata **in astratto**: era
+stato misurato chi legge quelle colonne (tutto `pg_proc`) e **non chi ci scrive
+un valore fabbricato**. Ci scrivono le fixture pgTAP, e una lo dice nella propria
+testata:
+
+> ⚠️ *La linea del tempo si scrive a mano: `now()` è costante dentro una
+> transazione, quindi quattro righe nate qui avrebbero lo stesso istante e la
+> finestra non misurerebbe niente.*
+
+Quel test colloca due segnalazioni a `now() - interval '40 min'` e `- '10 min'`
+per metterle prima e dopo la seconda corsa; il trigger le riportava entrambe
+all'adesso e la finestra dell'ultimo job smetteva di misurare.
+
+⚠️ **Misurato, non supposto**: `test-vw-giornale-entita.sql` scrive anch'esso un
+orario fabbricato su `fatture_log` (`now() - interval '15 min'`) ed era quindi
+**esposto** allo stesso difetto, ma è rimasto **verde** — le sue asserzioni non
+dipendono dalla posizione relativa di quella riga. ⭐ Vale la pena scriverlo: il
+raggio del danno è «ovunque si scriva un orario fabbricato», non «ovunque un
+test sia diventato rosso». Il secondo insieme è più piccolo del primo, e fidarsi
+del secondo vuol dire correggere solo ciò che si è visto rompere.
+
+⭐ **La regola, detta meglio** — changeSet **`20260824-18`**:
+
+> Se il chiamante ha passato l'istante di **inizio transazione**, non ha scelto
+> un orario: ha usato l'unico che aveva, e quello si sostituisce. Qualunque
+> **altro** valore è una scelta, e si rispetta.
+
+⚠️ Non è «fidarsi del chiamante», ed è la differenza che conta: `now()` dentro
+una transazione è una **costante**, quindi il confronto riconosce esattamente il
+caso «non ha deciso niente» — che è quello dei sei scrittori veri, tutti con
+`now()` letterale. Su di loro il comportamento non cambia di una virgola.
+(`CURRENT_TIMESTAMP` e `transaction_timestamp()` sono lo stesso valore e sono
+coperti senza nominarli.)
+
+✅ **Verificato prima di consegnare**, iniettando la correzione nelle tre suite:
+`test-fn-list-lotto-segnalazioni-job` **8/8**, `test-vw-giornale-entita` **15/15**,
+e il test di R-1 passa a **8 asserzioni** — la nuova è il rovescio della 5:
+*un orario scelto dal chiamante non viene sovrascritto*. Senza quella
+asserzione la correzione sarebbe una riga di codice che nessuno difende, e chi
+un domani «semplificasse» il trigger rifarebbe lo stesso danno.
+
+📌 **La lezione, che è la parte che vale.** Prima del `-17` erano stati misurati
+tutti i consumatori in `pg_proc`, e non era stata guardata la suite pgTAP.
+⚠️ **Una fixture è un consumatore come un altro**: fabbrica gli stati che il
+codice non sa produrre da solo, ed è per definizione il posto dove un valore
+«anomalo» viene scritto **di proposito**. Un trigger che normalizza un valore va
+cercato anche lì, con lo stesso grep.

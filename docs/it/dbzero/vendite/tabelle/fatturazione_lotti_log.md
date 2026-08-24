@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | lotto_id | bigint | NO |  |
-| data_ora | timestamp with time zone | NO | now() |
+| data_ora | timestamp with time zone | NO | clock_timestamp() |
 | messaggio | text | NO |  |
 | status | character | NO | 'W'::bpchar |
 | disabilitato | boolean | NO | false |
