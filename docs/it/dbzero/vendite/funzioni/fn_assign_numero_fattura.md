@@ -85,7 +85,14 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_assign_numero_fattura', 'E_FATTURA_SENZA_RIGHE',
             jsonb_build_object('fattura_id', p_fattura_id,
-                               'registro_id', v_registro_id),
+                               'registro_id', v_registro_id,
+                               -- ⭐ Il bersaglio: questa funzione gira DENTRO il
+                               --    giro di lotto, su molte fatture. La frase
+                               --    dice quale ha rifiutato, il bersaglio la fa
+                               --    aprire. La fattura e' gia' stata letta.
+                               'bersaglio', jsonb_build_array(
+                                   jsonb_build_object('tipo', 'FATTURA',
+                                                      'id', p_fattura_id::text))),
             NULL::uuid, p_fattura_id::text
         );
     END IF;
@@ -254,7 +261,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
-IS 'Assegna anno, serie e numero a una fattura, dopo il guard D-K di coerenza del documento. Il guard gira SEMPRE prima di consumare il progressivo, perche'' un numero fiscale valido su un documento invalido si ripara solo con una nota di variazione. rev 2026-08-18 (brief-design-note-credito-resi N11): SETTIMA condizione — natura = NOTA_CREDITO <=> totale_a_pagare <= 0. ⭐ Trasforma la scelta di D-NC-2 (il segno vive nel numero, non in un''etichetta) da convenzione a invariante VERIFICATO, e chiude il cerchio con la FatturaPA dove lo stesso invariante si legge TipoDocumento = TD04 <=> totale_doc < 0. ⚠️ Lo zero e'' ammesso da entrambe le parti: si presidia il SEGNO, non l''importo, e vietare una fattura a saldo nullo sarebbe una regola inventata da questo guard invece che decisa. ⚠️ La seconda meta'' dice «diverso da NOTA_CREDITO» e non «uguale a FATTURA»: copre anche NOTA_DEBITO senza nominarla, ed e'' letteralmente il verso <= dell''equivalenza.';
+IS 'Assegna anno, serie e numero a una fattura, dopo il guard D-K di coerenza del documento. Il guard gira SEMPRE prima di consumare il progressivo, perche'' un numero fiscale valido su un documento invalido si ripara solo con una nota di variazione. rev 2026-08-18 (brief-design-note-credito-resi N11): SETTIMA condizione — natura = NOTA_CREDITO <=> totale_a_pagare <= 0. ⭐ Trasforma la scelta di D-NC-2 (il segno vive nel numero, non in un''etichetta) da convenzione a invariante VERIFICATO, e chiude il cerchio con la FatturaPA dove lo stesso invariante si legge TipoDocumento = TD04 <=> totale_doc < 0. ⚠️ Lo zero e'' ammesso da entrambe le parti: si presidia il SEGNO, non l''importo, e vietare una fattura a saldo nullo sarebbe una regola inventata da questo guard invece che decisa. ⚠️ La seconda meta'' dice «diverso da NOTA_CREDITO» e non «uguale a FATTURA»: copre anche NOTA_DEBITO senza nominarla, ed e'' letteralmente il verso <= dell''equivalenza. ⭐ rev 2026-08-24: E_FATTURA_SENZA_RIGHE porta il BERSAGLIO sulla fattura. Questa funzione gira DENTRO il giro di lotto, su molte fatture: la frase dice quale ha rifiutato, il bersaglio la fa aprire. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
 ```
 
 ---

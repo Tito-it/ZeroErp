@@ -1,0 +1,183 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ROLL-OUT DEL BERSAGLIO — terzo scaglione (2 di 2)
+#   pratiche.fn_fork_definizione
+#   Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 lotto L6
+#
+# ── TERZO SCAGLIONE: FLUSSI E DEFINIZIONI WORKFLOW ──────────────────
+#   Due scaglioni fa: errori che nascono da un gesto. Lo scorso: errori che
+#   nascono dentro un giro automatico. Questo: errori che nascono da una
+#   LISTA — l'operatore sceglie una riga fra molte, e il rifiuto gli nomina
+#   qualcosa che non ha davanti.
+#
+#   ⭐ E qui c'e' il caso piu' netto dell'intero roll-out: un messaggio che
+#   l'oggetto bloccante NON LO NOMINA AFFATTO. Vedi il 20260824-09.
+#
+# ── I TIPI NUOVI A CATALOGO ─────────────────────────────────────────
+#   `FLUSSO` e `DEFINIZIONE_WORKFLOW`, entrambi a chiave `id` e senza
+#   `modo_risoluzione_emittente`: puntabili da un errore, NON giornalabili —
+#   `vendite.event_log` non sa derivare un emittente da un flusso.
+#   ⛔ Nessun changeSet di seed: `config/tipi_entita.csv` e' un mirror
+#   `runOnChange` (20260822-55) e si estende in place.
+#   ⚠️ Nessuno dei due esiste in `config.sorgenti`, quindi non c'e' nessun
+#   codice con cui doverli far coincidere: la regola della coincidenza vale
+#   dove i due cataloghi si intersecano, e qui non si intersecano.
+#
+# ── ⭐ IL CASO PIU' NETTO DELL'INTERO ROLL-OUT ──────────────────────
+#   La frase e': «Esiste gia' una bozza di edizione workflow per lo scope
+#   (tipo prestazione 12, emittente 32)».
+#
+#   Nomina lo **scope**. La bozza che blocca **non la nomina affatto** — e non
+#   e' un difetto del messaggio: quel documento un nome utile non ce l'ha, e
+#   scriverci dentro un id tecnico sarebbe il difetto che questo cantiere
+#   esiste per togliere.
+#
+#   ⭐ Quindi qui il bersaglio non aggiunge comodita': aggiunge
+#   **un'informazione che la frase, per come e' costruita, non puo' dare**.
+#   E' il caso che mostra meglio perche' i due lettori vogliono due canali.
+#
+# ── ⚠️ L'EXISTS DIVENTA UNA RACCOLTA ────────────────────────────────
+#   Come nei guard dell'offerta: stessa scansione, in piu' gli id. E sono un
+#   ARRAY perche' se le bozze fossero piu' d'una — l'anomalia che questo guard
+#   esiste per fermare — l'operatore deve poterle vedere tutte.
+#   ⚠️ Il predicato non cambia: `jsonb_agg` su zero righe e' NULL, quindi
+#   «esiste almeno una bozza» resta la stessa condizione di prima.
+#
+# ── NOTE DI CASA ────────────────────────────────────────────────────
+#   · ⚠️ **SECURITY DEFINER, e non serve nessun blocco di proprieta'**: e'
+#     misurato, non dedotto — la funzione e' di **`titodb`** (chi migra) e
+#     **non** e' nel registro `dbops.sec_functions_owner`, quindi il
+#     CREATE OR REPLACE la lascia dov'e'. Da non confondere con le
+#     SECURITY DEFINER di `postgres`, che dopo la riscrittura vogliono
+#     `dbops.fn_sync_functions_owner`.
+#   · ⭐ %TYPE in FIRMA e RETURNS. ⚠️ Verificato sul catalogo:
+#     `pratiche.workflow_definizioni.id` e' `integer` e
+#     `anagrafiche.emittenti_fiscali.id` e' `bigint` — i tipi di adesso.
+#   · `SET search_path` conservato identico: e' parte del contratto di una
+#     SECURITY DEFINER, non una decorazione.
+#   · Il messaggio NON cambia (T-3a).
+#
+# Dipendenze: 20260823-02 (il canale), il tipo DEFINIZIONE_WORKFLOW in 80_data.
+# Verifica: la baseline `pratiche`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260824-09-update-fn-fork-definizione-bersaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260824-09-update-fn-fork-definizione-bersaglio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        E_DEFINIZIONE_BOZZA_ESISTENTE porta il bersaglio sulle bozze che bloccano il fork,
+        ed e' il caso piu' netto del roll-out: la frase nomina lo SCOPE e la bozza che
+        blocca non la nomina affatto — quel documento un nome utile non ce l'ha. Qui il
+        bersaglio non aggiunge comodita', aggiunge un'informazione che la frase non puo'
+        dare. L'EXISTS diventa una raccolta, il predicato non cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_log_and_raise_error'
+                 AND p.prosrc LIKE '%DATATYPE%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_fork_definizione(
+                  p_definizione_id      pratiche.workflow_definizioni.id%TYPE,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE)
+               RETURNS pratiche.workflow_definizioni.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pratiche', 'script', 'config', 'dbops', 'pg_temp'
+              AS $function$
+              -- Scopo: creare l'edizione di un emittente da una definizione (di
+              --        solito il preset), in BOZZA, con provenance per il drift.
+              --        SECURITY DEFINER: la DML interna (via fn_copia) gira come owner.
+              DECLARE
+                -- Il BERSAGLIO: le bozze che bloccano il fork. ⚠️ `jsonb` esplicito, e' un
+                -- frammento del context.
+                v_bersagli jsonb;
+                v_tipo_id pratiche.workflow_definizioni.tipo_prestazione_id%TYPE;
+              BEGIN
+                IF p_emittente_fiscale_id IS NULL OR p_emittente_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_fork_definizione', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','p_emittente_fiscale_id',
+                                       'valore',p_emittente_fiscale_id),
+                    NULL::uuid,
+                    'il fork richiede un emittente valido; per una nuova versione dello stesso scope usare fn_nuova_versione_definizione');
+                END IF;
+
+                -- Scope destinazione = tipo della sorgente + emittente. Se la
+                -- sorgente non esiste, il guard bozza si salta e fn_copia solleva
+                -- E_VALORE_MANCANTE.
+                SELECT wd.tipo_prestazione_id INTO v_tipo_id
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.id = p_definizione_id;
+
+                -- ⭐ IL CASO PIU' NETTO DEL ROLL-OUT, e vale la pena dirlo qui.
+                --    La frase che legge l'operatore e' «esiste gia' una bozza di edizione
+                --    workflow per lo scope (tipo prestazione X, emittente Y)»: nomina lo
+                --    SCOPE, e la bozza che lo blocca **non la nomina affatto**. Non e' un
+                --    difetto del messaggio — quel documento un nome utile non ce l'ha — ed e'
+                --    esattamente il buco che il bersaglio riempie: qui non aggiunge comodita',
+                --    aggiunge un'informazione che la frase, per come e' costruita, non puo'
+                --    dare.
+                --
+                -- ⚠️ L'EXISTS diventa una raccolta, come nei guard dell'offerta: stessa
+                --    scansione, in piu' gli id. ARRAY perche' se le bozze fossero piu' d'una
+                --    — l'anomalia che questo guard esiste per fermare — l'operatore deve
+                --    poterle vedere tutte.
+                IF v_tipo_id IS NOT NULL THEN
+                  SELECT jsonb_agg(jsonb_build_object('tipo', 'DEFINIZIONE_WORKFLOW',
+                                                      'id',   wd.id::text) ORDER BY wd.id)
+                    INTO v_bersagli
+                    FROM pratiche.workflow_definizioni wd
+                   WHERE wd.tipo_prestazione_id  = v_tipo_id
+                     AND wd.emittente_fiscale_id IS NOT DISTINCT FROM p_emittente_fiscale_id
+                     AND wd.stato = 'BOZZA';
+                END IF;
+
+                IF v_bersagli IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_fork_definizione', 'E_DEFINIZIONE_BOZZA_ESISTENTE',
+                    jsonb_build_object('tipo_prestazione_id', v_tipo_id,
+                                       'emittente_fiscale_id', p_emittente_fiscale_id,
+                                       'bersaglio', v_bersagli),
+                    NULL::uuid,
+                    v_tipo_id::text,
+                    p_emittente_fiscale_id::text);
+                END IF;
+
+                RETURN pratiche.fn_copia_definizione(p_definizione_id, p_emittente_fiscale_id, true);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_fork_definizione(integer, bigint)
+              IS 'Crea l''edizione di un emittente da una definizione (di solito il preset), in BOZZA, con provenance per il drift. Wrapper di fn_copia_definizione(..., true). Guard: emittente NOT NULL; scope destinazione senza BOZZA aperta (DEFINIZIONE_BOZZA_ESISTENTE 515, invariante ≤1 BOZZA per scope). SECURITY DEFINER (search_path fisso): DML interna senza grant diretto; autorizzazione al gate app-layer (AdminAPIView). ⭐ rev 2026-08-24: E_DEFINIZIONE_BOZZA_ESISTENTE porta il BERSAGLIO sulle bozze che bloccano il fork — ed e'' il caso piu'' netto del roll-out del bersaglio. La frase nomina lo SCOPE (tipo prestazione, emittente) e la bozza che blocca non la nomina affatto: quel documento un nome utile non ce l''ha. Qui il bersaglio non aggiunge comodita'', aggiunge un''informazione che la frase per come e'' costruita non puo'' dare. L''EXISTS e'' diventato una raccolta (stessa scansione, in piu'' gli id) ed e'' un array perche'' se le bozze fossero piu'' d''una l''operatore deve vederle tutte. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: si riapplica la revisione
+              --    precedente, sapendo che da quel momento quel rifiuto torna
+              --    a non dire dove andare.
+              SELECT 1;

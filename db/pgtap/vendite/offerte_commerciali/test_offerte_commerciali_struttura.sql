@@ -22,6 +22,10 @@
 -- ------------------------------------------------------------
 
 BEGIN;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
+SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(12);
 
 -- ============================================================

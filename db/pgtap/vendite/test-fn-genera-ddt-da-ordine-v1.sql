@@ -48,7 +48,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(24);
+SELECT plan(26);
 
 -- ============================================================
 -- 1) Funzione presente
@@ -352,6 +352,44 @@ SELECT throws_ok(
   format($q$SELECT vendite.fn_genera_ddt_da_ordine(%s)$q$, (SELECT id FROM tmp_ord_draft)),
   'P0001', NULL,
   '24) ordine DRAFT -> E_DDT_ORDINE_STATO_NON_EVADIBILE');
+
+-- ============================================================
+-- 25-26) ⭐ IL BERSAGLIO — «vai all'ordine», e a chi NON lo prende.
+--   L'obiezione ovvia e' che l'operatore l'ordine lo sta gia' guardando: vale
+--   quando l'evasione parte in MASSA, dove la frase dice quale ordine ha
+--   rifiutato ma non ci porta. Stesso caso del 937 dentro un giro di lotto.
+--   ⛔ Il 26 e' l'altra meta': su un ordine che non esiste non c'e' nessun
+--   posto dove mandare qualcuno, e il canale resta vuoto.
+--   ⚠️ Il verbo in un'istruzione separata dall'asserzione.
+--   Brief: brief-db-bersaglio-errore §6 L6.
+-- ============================================================
+CREATE OR REPLACE FUNCTION pg_temp.ddt_bersaglio(p_ordine_id bigint)
+RETURNS text AS $fn$
+-- ⚠️ `text` esplicito: e' un canale dell'eccezione, non il valore di una colonna.
+DECLARE v_bers text;
+BEGIN
+  PERFORM vendite.fn_genera_ddt_da_ordine(p_ordine_id);
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_bers = PG_DATATYPE_NAME;
+  RETURN COALESCE(v_bers, '');
+END $fn$ LANGUAGE plpgsql;
+
+CREATE TEMP TABLE tmp_ddt_bersaglio AS
+SELECT pg_temp.ddt_bersaglio((SELECT id FROM tmp_ord_draft)) AS su_ordine_draft,
+       pg_temp.ddt_bersaglio(999999999::bigint)              AS su_ordine_inesistente;
+
+SELECT is(
+  (SELECT su_ordine_draft FROM tmp_ddt_bersaglio),
+  'ORDINE_VENDITA:' || (SELECT id FROM tmp_ord_draft)::text,
+  '25) il rifiuto di evasione porta il bersaglio sull''ordine'
+);
+
+SELECT is(
+  (SELECT su_ordine_inesistente FROM tmp_ddt_bersaglio),
+  '',
+  '26) ordine inesistente: il messaggio esce, il bersaglio no'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

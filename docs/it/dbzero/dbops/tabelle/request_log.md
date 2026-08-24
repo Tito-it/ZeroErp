@@ -21,7 +21,6 @@
 | user_agent | text | YES |  |
 | error_code | text | YES |  |
 | idempotency_key | text | YES |  |
-| tx_id | uuid | YES |  |
 | cleanup_at | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
