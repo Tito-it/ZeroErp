@@ -259,9 +259,12 @@ SELECT is(
 
 -- ============================================================
 -- 10-11) ⭐ IL BERSAGLIO, E PER UID.
---   E' il primo uso reale di config.tipi_entita.key_selector: il preventivo il
---   progetto lo indirizza con l'UID, non col numero progressivo, e mandare
---   l'id avrebbe prodotto un pulsante che non apre niente.
+--   ⚠️ CORRETTO IL 2026-08-24 su rilievo del backend: si cita per **ID**, non
+--   per uid. Le rotte del preventivo sono <int:preventivo_id> e gli endpoint
+--   che accettano un uid sono ZERO — l'uid avrebbe prodotto un pulsante che non
+--   apre niente. ⭐ config.tipi_entita.key_selector si MISURA sulle rotte: non
+--   si eredita da config.sorgenti, che si chiama uguale ma risponde a un'altra
+--   domanda (con quale chiave il lineage collega il documento).
 --   ⛔ Il test 11 e' l'altra meta' della regola: su un preventivo che NON
 --   esiste il messaggio esce lo stesso ma il bersaglio no — un'offerta, non
 --   una promessa.
@@ -286,10 +289,8 @@ SELECT pg_temp.push_prev_bersaglio((SELECT id FROM tmp_prev_draft))     AS esist
 
 SELECT is(
   (SELECT esistente FROM tmp_prev_bersaglio),
-  'PREVENTIVO:' || (SELECT pv.uid::text
-                      FROM vendite.preventivi pv
-                     WHERE pv.id = (SELECT id FROM tmp_prev_draft)),
-  '10) il rifiuto porta il bersaglio sul preventivo, e lo cita per UID'
+  'PREVENTIVO:' || (SELECT id FROM tmp_prev_draft)::text,
+  '10) il rifiuto porta il bersaglio sul preventivo, e lo cita per ID (non uid)'
 );
 
 SELECT is(
