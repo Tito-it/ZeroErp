@@ -2218,3 +2218,11 @@ a {
   border-color: var(--app-in-corso-color);
   box-shadow: 0 0 0 1px var(--app-in-corso-color);
 }
+
+/* Messaggio di una riga di giornale (storia del documento). I messaggi che
+ * arrivano dal database portano DETAIL e HINT su righe proprie: senza pre-line
+ * verrebbero schiacciati in un paragrafo unico, e si perderebbe la separazione
+ * fra «cos'è successo» e «cosa fare». Stessa ragione di ErroreRigaInfo. */
+.app-giornale-cosa {
+  white-space: pre-line;
+}

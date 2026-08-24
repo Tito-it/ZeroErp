@@ -587,3 +587,21 @@ export const MOTIVO_FONDO_DA_DECIDERE_MAP = {
 export function motivoFondoDaDecidereSeverity(codice) {
   return resolveSeverity(MOTIVO_FONDO_DA_DECIDERE_MAP, codice)
 }
+
+// Scopo: colore della gravità di una riga di giornale (`script.vw_giornale_entita`).
+// ⭐ Il vocabolario è quello NORMALIZZATO dalla vista — INFO | WARN | ERROR —
+//    non quello dei singoli registri (`C`/`W`/`I` dei log, `task_stato` dei
+//    task run): la vista li mappa una volta sola, e qui si legge il risultato.
+// ⚠️ `null` NON è un caso da appiattire su «neutro e via»: la vista dichiara che
+//    una gravità nulla significa «un vincolo si è allargato e la mappa è rimasta
+//    indietro». Si rende visibile (secondary + trattino dal chiamante), non si
+//    nasconde.
+export const GRAVITA_GIORNALE_MAP = {
+  ERROR: 'danger',
+  WARN: 'warn',
+  INFO: 'info',
+}
+
+export function gravitaGiornaleSeverity(gravita) {
+  return resolveSeverity(GRAVITA_GIORNALE_MAP, gravita)
+}
