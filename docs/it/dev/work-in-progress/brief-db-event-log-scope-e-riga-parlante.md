@@ -546,7 +546,7 @@ stanno qui perché il disegno da solo non le conteneva.
 | ➕ | **Tre colonne tecniche** oltre ai sette concetti: `registro`, `riga_id`, `riga_key` | I quattro spazi di id **si sovrappongono**: senza la coppia (registro, id) non esiste nessuna chiave stabile per paginare, deduplicare o aprire la riga sorgente. ⭐ È la stessa scelta già fatta da `fn_list_lotto_segnalazioni` (`origine` + `riga_key`); qui la colonna nomina il **registro** e non l'entità, perché l'entità la dice già `entity_type` |
 | 🔄 | `quando` del `task_run` = **`COALESCE(ended_at, started_at)`**, non `started_at` | La riga porta lo stato **finale** del tentativo: col solo `started_at`, un task durato tre minuti e finito male comparirebbe **prima** degli eventi che lo spiegano, già marcato `ERRORE`. Un tentativo ancora aperto ha solo l'avvio, e lì compare |
 | ⭐ | La mappa della gravità **non ha `ELSE`** | Tre vocabolari chiusi da altrettanti `CHECK` entrano in uno. Un `ELSE 'INFO'` seppellirebbe un valore nuovo fra le righe innocue; senza, esce **NULL** e un'asserzione pgTAP lo vede. È la lezione del **L5** applicata *prima* che il danno accada |
-| ⛔ | La vista **non filtra** `disabilitato` né `attivo` | Un diario dice cosa è **successo**, non cosa è ancora aperto. «Cosa è ancora aperto» ha già la sua sede — `fn_list_lotto_segnalazioni`, che il filtro ce l'ha. Un secondo filtro qui sarebbe una seconda risposta alla stessa domanda |
+| ⛔ | La vista **non filtra** `disabilitato` né `attivo` — ⚠️ *ma la prima stesura non lo ESPONEVA, ed era sbagliato (corretto il 2026-08-24, changeSet `20260824-13`)* | Un diario dice cosa è **successo**, non cosa è ancora aperto: il **non filtrare** regge. ⛔ Ma «non filtrare» e «non dire» sono due cose diverse, e confonderle lascia il consumatore senza niente in mano — **non si filtra ciò che non si vede**. Misura che l'ha deciso (fattura 19563): due righe con la **stessa frase**, la prima ritirata quando il lotto è stato rifatto ⇒ a video sembrano due errori, ed è uno. Adesso la colonna c'è; il `WHERE` continua a non esserci |
 
 ⛔ **E una trappola che vale la pena conoscere prima di toccare la vista**, e che
 la doc auto-generata dichiara da sé: `security_invoker` è una **reloption**, non
@@ -1734,6 +1734,56 @@ verificato dai test e da prove puntuali contro il database, ma **una pipeline
 vera non è ancora passata** da quando BE-2 e BE-3b esistono. È l'unica cosa che
 nessuna riga di questo documento può dichiarare chiusa — e la prossima mossa
 utile non è codice, è **far girare un giro** e guardare le righe.
+
+### 2026-08-24 (dodicesimo giro) · 🟢 La vista dice anche cosa è stato ritirato
+
+Richiesta del backend, e ⭐ **corregge una decisione presa qui**. Il changeSet 70
+aveva stabilito che il giornale non filtra le segnalazioni ritirate — e quella
+metà regge. L'altra metà no: **non esporre il flag non è la stessa cosa che non
+filtrare**, e senza di esso il primo consumatore (il pannello «Storia del
+documento» del drawer fattura) non può né marcare né nascondere. *Non si filtra
+ciò che non si vede.*
+
+⭐ **La misura vale più dell'argomento**, e sta in tre righe (fattura 19563):
+
+```text
+11:54:21  ritirata=f  Totale a pagare negativo…
+11:54:34  ritirata=t  Non si puo' numerare il documento 19563…
+11:57:10  ritirata=f  Non si puo' numerare il documento 19563…
+```
+
+Le ultime due sono **la stessa identica frase**: la prima è l'errore della corsa
+delle 11:54, ritirato quando il lotto è stato rifatto alle 11:57. L'operatore
+legge due errori e conclude che sia successo due volte.
+
+Tre cose decise scrivendo:
+
+1. **Il nome è `disabilitato`**, quello della sorgente e quello che espone già
+   `fn_list_lotto_segnalazioni` — che risponde alla stessa domanda sulle stesse
+   righe. Lo stesso fatto non deve avere due nomi. 📌 Ed è la ragione per cui
+   oggi il ritiro si vede sul drawer del **lotto** e non su quello della
+   **fattura**: stesso fatto, due strade, una sola arredata.
+2. ⚠️ **I due NULL non hanno la stessa ragione**, e la differenza è scritta nella
+   vista: su `event_log` il concetto **non esiste** (append-only, un evento non
+   si spegne); sui `task_runs` **esiste ma su un altro asse** — `attivo` spegne
+   il *record* e lo fa una sola funzione, `disabilitato` ritira un *segnale* e lo
+   scrivono **dieci** funzioni. Fonderli sarebbe dire due cose con una parola, e
+   oggi la mappatura sarebbe pure inverificabile (0 righe su 299).
+3. ⛔ **La colonna nuova va in coda**, perché `CREATE OR REPLACE VIEW` non
+   permette di inserirla in mezzo — `disabilitato` finisce dopo `user_insert`,
+   non accanto a `cosa` dove si leggerebbe meglio.
+
+⭐ **E la trappola di ieri ha avuto la sua prima occasione**: questo è il primo
+`CREATE OR REPLACE` della vista, e `security_invoker` **va ripetuta** o si
+azzera. Ripetuta, e verificata sull'oggetto vivo (`reloptions =
+{security_invoker=true}`). ⚠️ Da lì anche una conseguenza operativa: il corpo di
+una **vista** non si copia dalla doc auto-generata — per le viste quella riporta
+`pg_get_viewdef`, cioè l'albero ri-stampato, **senza commenti e senza
+reloption**. Il corpo arriva dal changeSet 70, dopo aver verificato che nessun
+altro lo tocchi.
+
+🧪 pgTAP da 12 a **15**, e discrimina: senza la colonna il file esegue 12
+asserzioni su un piano di 15, che `pg_prove` legge come fallimento.
 
 ### 2026-08-23 (undicesimo giro) · 🟢 L6 — il difetto trovato dalla domanda «è completo?»
 

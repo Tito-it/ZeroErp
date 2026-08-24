@@ -4,7 +4,7 @@
 -- Test: script.vw_giornale_entita — la cucitura dei quattro registri
 --       (changeSet 20260822-70, brief-db-event-log-scope-e-riga-parlante §3.6)
 -- ------------------------------------------------------------
--- Indice test (plan 12):
+-- Indice test (plan 15):
 --  1) ⛔ la vista e' security_invoker — senza, tutto il perimetro cade
 --  2) la fixture arriva nella vista da tutti e quattro i registri
 --  3) `riga_key` e' unica: i quattro spazi di id non si sovrappongono
@@ -16,7 +16,10 @@
 --  9) ⭐ ogni `entity_type` prodotto esiste in config.tipi_entita
 -- 10) il `quando` di un tentativo chiuso e' l'ended_at, non lo started_at
 -- 11) ⛔ nessun registro fuori dai quattro dichiarati
--- 12) una segnalazione SPENTA resta nel diario: non si filtra
+-- 12) una segnalazione RITIRATA resta nel diario: non si filtra
+-- 13) ⭐ ...e si vede che e' ritirata: il flag c'e', accanto a quella viva
+-- 14) event_log ha `disabilitato` NULL: il concetto non esiste
+-- 15) i task_runs hanno NULL: il ritiro esiste, ma su un altro asse
 --
 -- Scopo:
 --  - la vista non aggiunge un dato: rende leggibile insieme cio' che sta in
@@ -56,7 +59,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- LEGGE, quindi leggerla da owner non collauderebbe niente.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(15);
 
 -- ============================================================
 -- 0) Fixture — un lotto, una fattura, e una riga per registro
@@ -310,6 +313,55 @@ SELECT ok(
        AND g.cosa     = 'pgtap giornale SPENTA'
   ),
   '12. una segnalazione spenta resta nel diario: non si filtra'
+);
+
+-- ============================================================
+-- 13-15) ⭐ Il flag del ritiro
+-- ============================================================
+--   La 12 dice che la riga resta; la 13 dice che si CAPISCE che e' ritirata.
+--   Sono due proprieta' diverse, e la prima stesura della vista aveva solo la
+--   prima: non filtrare e non dire non sono la stessa cosa. Senza il flag il
+--   consumatore non puo' ne' marcare ne' nascondere — e non si filtra cio' che
+--   non si vede.
+--   ⚠️ L'asserzione confronta le DUE righe insieme, quella viva e quella
+--   ritirata: un test che guardasse solo la ritirata passerebbe anche se la
+--   vista rispondesse `true` a tutte.
+SELECT set_eq(
+  $$ SELECT g.cosa || '=' || g.disabilitato::text
+       FROM script.vw_giornale_entita g
+      WHERE g.registro = 'LOTTO_LOG'
+        AND g.cosa IN ('pgtap giornale SPENTA', 'pgtap giornale C') $$,
+  ARRAY['pgtap giornale SPENTA=true', 'pgtap giornale C=false'],
+  '13. il flag del ritiro c''e'', e distingue la riga ritirata da quella viva'
+);
+
+--   ⛔ Qui NULL vuol dire «non si applica»: la tabella e' append-only, e un
+--   evento e' un fatto accaduto — non un segnale che si accende e si spegne.
+SELECT is(
+  (
+    SELECT count(*)::int
+      FROM script.vw_giornale_entita g
+     WHERE g.registro = 'EVENT_LOG'
+       AND g.disabilitato IS NOT NULL
+  ),
+  0,
+  '14. sul diario append-only il flag e'' sempre vuoto: non c''e'' niente da ritirare'
+);
+
+--   ⚠️ E qui NULL vuol dire un'altra cosa, ed e' scritto nella vista: il ritiro
+--   esiste ma su un altro asse — `attivo` spegne il RECORD del tentativo (una
+--   sola funzione lo fa), `disabilitato` ritira un SEGNALE (dieci funzioni).
+--   Il giorno che qualcuno volesse vederlo qui, la mappatura si decide con dei
+--   dati sotto: oggi 0 righe su 299 hanno `attivo = false`.
+SELECT is(
+  (
+    SELECT count(*)::int
+      FROM script.vw_giornale_entita g
+     WHERE g.registro = 'TASK_RUN'
+       AND g.disabilitato IS NOT NULL
+  ),
+  0,
+  '15. sui tentativi il flag resta vuoto: il loro spegnimento e'' un altro asse'
 );
 
 SELECT * FROM finish();

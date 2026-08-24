@@ -56,6 +56,7 @@ rinegozia, e un registro che non sa riempirne una lascia vuoto.
 | `correlation_id` | `uuid` | La **corsa** che ha prodotto la riga. Oggi lo portano solo il diario e i tentativi. |
 | `auth_user_id` | `bigint` | Chi ha agito, per numero interno: regge a un cambio di nome utente. |
 | `user_insert` | `text` | Chi ha agito, per nome: si legge senza cercare. |
+| `disabilitato` | `boolean` | Se quella segnalazione è stata **ritirata**. ⚠️ Vuoto dove il concetto non si applica (il diario append-only) o dove il ritiro passa da un altro asse (i tentativi). |
 
 ---
 
@@ -104,12 +105,22 @@ Né lui né la tabella che lo possiede hanno un filtro di perimetro: quel ramo
 mostrerebbe righe di altri emittenti. Entra quando il padre avrà la sua regola
 di visibilità — non prima, e non «per simmetria».
 
-**2. La vista non nasconde niente.** Le segnalazioni *spente* e i tentativi non
-più attivi restano: un diario dice cosa è **successo**, non cosa è ancora
-aperto. Per «cosa è ancora aperto» esiste già
-[`fn_list_lotto_segnalazioni`](/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni),
-che il filtro ce l'ha. Aggiungerlo qui sarebbe una seconda risposta alla stessa
-domanda.
+**2. La vista non nasconde niente — e dal 2026-08-24 lo dice.** Le segnalazioni
+ritirate restano: un diario racconta cosa è **successo**, non cosa è ancora
+aperto. Ma restare non basta: senza il flag `disabilitato`, chi legge non può
+distinguere una segnalazione viva da una che è stata ritirata, e **non si filtra
+ciò che non si vede**.
+
+> ⭐ Il caso che l'ha deciso, in tre righe (fattura 19563): due segnalazioni
+> consecutive con la **stessa identica frase**, la prima ritirata quando il lotto
+> è stato rifatto pochi minuti dopo. Senza il flag, a video sono due errori — e
+> chi legge conclude che sia successo due volte, mentre è successo una volta.
+
+⛔ **A filtrare è il consumatore**, che dirà anche quante righe ha nascosto. La
+vista non ha e non avrà un `WHERE` su questo campo. E per «cosa è ancora aperto»
+esiste già [`fn_list_lotto_segnalazioni`](/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni),
+che quel filtro ce l'ha — e che chiama il campo con lo **stesso nome**: lo stesso
+fatto non deve avere due nomi.
 
 **3. La `gravita` è l'unico punto in cui i vocabolari si incontrano.** I quattro
 registri usano parole diverse per dire la stessa cosa — `I/W/C` da una parte,
