@@ -212,8 +212,8 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 211,12,stato_lotto,Stato,Stato corrente del giro di fatturazione,stato_lotto,informazione,string,,130,70,center,Stato,3,t,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato,95
 212,12,stato_operativo,Stato operativo,Stato operativo interno della pipeline,stato_operativo,informazione,string,,140,80,center,Stato,3,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato_operativo,20
 213,12,stato_doc_fiscale,Stato fiscale,Stato fiscale dei documenti del lotto,stato_doc_fiscale_descrizione,informazione,string,,150,90,center,Stato,3,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato_doc,50
-214,12,data_insert,Creato,Data e ora di creazione del lotto,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,4,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato,10
-215,12,user_insert,Creato da,Utente che ha generato il lotto,user_insert,informazione,string,,120,110,left,Audit,4,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato_da,5
+214,12,data_insert,Creato,Data e ora di creazione del lotto,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,5,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato,10
+215,12,user_insert,Creato da,Utente che ha generato il lotto,user_insert,informazione,string,,120,110,left,Audit,5,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato_da,5
 216,12,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-30 00:00:00,mctit,common.col_azioni,100
 217,13,codice,Codice,Codice della categoria cliente,codice,identificatore,string,,160,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.categorie_clienti.col_codice,100
 218,13,descrizione,Descrizione,Descrizione della categoria cliente,descrizione,informazione,string,,300,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.categorie_clienti.col_descrizione,95
@@ -522,3 +522,27 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 522,47,fase,Fase,Passo della pipeline; vuoto sulle segnalazioni di documento,fase,informazione,string,,180,80,left,,,t,t,t,f,f,t,2026-08-22 00:00:00,mctit,vendite.lotto_segnalazioni.col_fase,45
 523,47,job_corrente,Ultimo giro,Se la segnalazione appartiene all'ultima esecuzione del lotto. Le segnalazioni di documento sopravvivono ai giri finche' il problema non e' risolto,job_corrente,informazione,boolean,yesno,110,90,center,,,t,t,t,f,f,t,2026-08-22 00:00:00,mctit,vendite.lotto_segnalazioni.col_job_corrente,30
 524,47,ritirata,Ritirata,Segnalazione gia' rientrata: il task che l'aveva alzata ha poi funzionato,disabilitato,informazione,boolean,yesno,100,100,center,,,t,f,t,f,f,t,2026-08-22 00:00:00,mctit,vendite.lotto_segnalazioni.col_ritirata,20
+525,12,n_fatture,N. documenti,Quanti documenti contiene il lotto,n_fatture,informazione,numeric,,110,92,right,Contenuto,4,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.lotti.col_n_documenti,70
+526,12,totale_documenti,Totale documenti,Somma dei totali dei documenti del lotto,totale_documenti,informazione,numeric,currency_eur,140,94,right,Contenuto,4,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.lotti.col_totale_documenti,65
+527,48,numero,Numero,Numero progressivo del documento fiscale,numero,identificatore,string,,110,10,left,Identificazione,1,t,t,t,t,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_numero,100
+528,48,serie,Serie,Serie di numerazione del registro,serie,informazione,string,,80,20,left,Identificazione,1,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_serie,15
+529,48,anno,Anno,Anno di numerazione,anno,informazione,numeric,,80,30,center,Identificazione,1,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_anno,15
+530,48,data,Data,Data del documento: non la competenza di cio' che fattura,data,informazione,date,date_short,110,40,center,Identificazione,1,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_data,95
+531,48,natura_doc_descrizione,Natura,Fattura o nota di credito o nota di debito,natura_doc_descrizione,informazione,string,,150,50,left,Classificazione,2,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_natura,75
+532,48,tipo_doc_fiscale_descrizione,Tipo documento,Tipo di documento fiscale emesso,tipo_doc_fiscale_descrizione,informazione,string,,160,60,left,Classificazione,2,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_tipo_doc,40
+533,48,utility_descrizione,Utility,Utility di riferimento del documento,utility_descrizione,informazione,string,,150,70,left,Classificazione,2,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_utility,35
+534,48,ragione_sociale_completa,Cliente,Denominazione del cliente intestatario,ragione_sociale_completa,informazione,string,,200,80,left,Cliente,3,t,t,t,t,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_cliente,96
+535,48,id_fiscale_univoco_cf_piva,Id. Fiscale,Codice fiscale o partita IVA del cliente,id_fiscale_univoco_cf_piva,informazione,string,,140,90,left,Cliente,3,t,t,t,t,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_id_fiscale,55
+536,48,ba_codice,Cd. Account,Codice del billing account fatturato,ba_codice,informazione,string,,120,100,left,Cliente,3,t,t,t,t,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_ba_codice,45
+537,48,stato_descrizione,Stato,Stato fiscale del documento,stato_descrizione,informazione,string,,130,110,center,Stato,4,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_stato,90
+538,48,imponibile_tot,Imponibile,Totale imponibile del documento,imponibile_tot,informazione,numeric,currency_eur,130,120,right,Importi,5,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_imponibile,30
+539,48,imposta_tot,IVA,Totale imposta del documento,imposta_tot,informazione,numeric,currency_eur,120,130,right,Importi,5,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_imposta,25
+540,48,totale_doc,Totale,Totale del documento,totale_doc,informazione,numeric,currency_eur,130,140,right,Importi,5,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_totale,85
+541,48,totale_a_pagare,Totale a pagare,Totale da incassare al netto di acconti e arrotondamenti,totale_a_pagare,informazione,numeric,currency_eur,140,150,right,Importi,5,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_totale_a_pagare,60
+542,48,valuta_codice,Valuta,Codice valuta del documento,valuta_codice,informazione,string,,90,160,left,Importi,5,t,f,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_valuta,10
+543,48,emittente_ragione_sociale,Emittente,Ragione sociale dell emittente fiscale del documento,emittente_ragione_sociale,informazione,string,,160,170,left,Emittente,6,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_emittente,50
+544,48,data_insert,Creazione,Data e ora di creazione del documento,data_insert,informazione,datetime,datetime_short,150,180,center,Audit,7,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_data_insert,5
+545,48,user_insert,Creato da,Utente che ha generato il documento,user_insert,informazione,string,,120,190,left,Audit,7,f,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.fatture.col_creato_da,5
+546,48,pratica_numero,Pratica,Pratica di lavorazione collegata,pratica_numero,informazione,string,,120,200,left,Genealogia,20,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.lineage.col_pratica,50
+547,48,fase,Fase,Fase del ciclo di vita del documento,fase,informazione,string,,110,210,center,Genealogia,20,t,t,t,f,f,t,2026-08-24 00:00:00,mctit,vendite.lineage.col_fase,50
+548,48,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-08-24 00:00:00,mctit,common.col_azioni,100

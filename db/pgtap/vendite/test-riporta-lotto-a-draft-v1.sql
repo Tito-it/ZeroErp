@@ -270,30 +270,73 @@ END;
 --   fn_cleanup_fatture_by_ids. Il gemello sulle fatture NUMERATE non lo
 --   copriva: l'accredito si registra PRIMA della numerazione, perche' e'
 --   ancorato alla coda dei resi e non al numero.
--- ⚠️ throws_like e non throws_ok('P0001'): qui il punto non e' «e' un errore
---   di dominio» ma QUALE — un rifiuto per stato non pre-fiscale sarebbe
---   altrettanto P0001 e passerebbe lo stesso.
+-- ⭐ rev 2026-08-24 — QUESTA FIXTURE AVEVA LO STESSO DIFETTO CHE IL 22/08 ERA
+--   GIA' STATO CORRETTO SUL SOGGETTO PRINCIPALE, e in due modi.
+--
+--   🔴 PRIMO, ed e' quello che l'ha resa rossa. `fn_riporta_lotto_a_draft`
+--   solleva il codice del PRIMO motivo (`v_motivi -> 0 ->> 'codice'`), e i
+--   motivi sono ordinati: lo STATO viene prima delle rettifiche. La fixture
+--   prendeva «l'ultimo lotto con righe accreditate» senza guardare in che
+--   stato fosse: il 2026-08-24 il piu' recente e' diventato uno in DEFINITIVA,
+--   la funzione ha risposto — correttamente — «il ritorno in bozza e' ammesso
+--   solo su un lotto in bozza o emesso», e il test e' diventato rosso
+--   accusando il codice invece della propria selezione.
+--   ⚠️ Non era un errore di ORDER BY mancante: l'ORDER BY c'era. Mancava la
+--   condizione che rende il caso SIGNIFICATIVO — cioe' che il motivo sotto
+--   esame sia quello che la funzione solleva davvero.
+--
+--   ⛔ SECONDO, e non si era ancora manifestato: la fixture ri-elencava a mano
+--   UNA delle quattro sorgenti che `script.fn_check_fatture_con_rettifiche`
+--   guarda (`commesse_attivita`), ignorando `attivita_fatturabili`,
+--   `resi_righe_accrediti` e l'auto-riferimento fra righe di fattura. Cercava
+--   quindi meno soggetti di quanti ne esistano, e su un database dove
+--   l'accredito fosse arrivato per una delle altre tre strade avrebbe
+--   saltato il test dichiarando «caso non riproducibile».
+--
+--   ➡️ Si CHIEDE alla stessa funzione, come gia' fa la fixture principale:
+--   «qual e' il primo motivo?». Cosi' un motivo nuovo che passasse davanti
+--   non rompe piu' il test — al massimo lo fa saltare, dichiarandolo.
+--
+-- ⚠️ E si asserisce il CODICE DI DOMINIO, non la frase. Prima qui c'era un
+--   `throws_like` sul testo del messaggio: e' il canale sbagliato su cui
+--   legarsi, e il 2026-08-24 se n'e' avuta la prova nello stesso giorno — il
+--   messaggio 937 e' stato riscritto per togliere gli id dalla prosa (passo
+--   T-3b). Un messaggio si riscrive quando serve; un codice registrato a
+--   catalogo no. Il codice si legge dal canale CONSTRAINT dell'eccezione, che
+--   e' il contratto di `script.fn_log_and_raise_error`.
+--   ⭐ E risponde alla stessa domanda per cui il `throws_like` era stato
+--   scelto contro `throws_ok('P0001')`: non «e' un errore di dominio» ma
+--   QUALE — `E_LOTTO_NON_RIPORTABILE_A_DRAFT` e `E_FATTURE_RIGHE_RETTIFICATE`
+--   sono due codici diversi, mentre erano lo stesso SQLSTATE.
 CREATE TEMP TABLE tmp_lotto_rett_rld AS
 SELECT fl.id
   FROM vendite.fatturazione_lotti fl
- WHERE EXISTS (
-         SELECT 1
-           FROM vendite.fatturazione_lotti_fatture lf
-           JOIN vendite.fatture_righe fr ON fr.fattura_id = lf.fattura_id
-          WHERE lf.lotto_id = fl.id
-            AND EXISTS (SELECT 1 FROM vendite.commesse_attivita ca
-                         WHERE ca.fattura_riga_rettificata_id = fr.id))
+ WHERE script.fn_check_lotto_riportabile_a_draft(fl.id) -> 0 ->> 'reason'
+       = 'RIGHE_RETTIFICATE'
  ORDER BY fl.id DESC
  LIMIT 1;
 
+-- Il verbo in una funzione a parte, che restituisce il CODICE: cosi'
+-- l'asserzione confronta due stringhe e non dipende da come e' scritta la
+-- frase per l'operatore.
+CREATE OR REPLACE FUNCTION pg_temp.rld_codice(p_lotto_id bigint)
+RETURNS text AS $$
+DECLARE v_cod text;
+BEGIN
+  PERFORM vendite.fn_riporta_lotto_a_draft(p_lotto_id);
+  RETURN 'NESSUN ERRORE';
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
+  RETURN COALESCE(NULLIF(v_cod, ''), 'SQLSTATE:' || SQLSTATE);
+END $$ LANGUAGE plpgsql;
+
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_lotto_rett_rld)
-    THEN skip('nessun lotto con righe gia rettificate: caso non riproducibile sui dati presenti', 1)
-  ELSE throws_like(
-         format($$ SELECT * FROM vendite.fn_riporta_lotto_a_draft(%s) $$,
-                (SELECT id FROM tmp_lotto_rett_rld)),
-         '%e'' gia'' stato registrato un accredito%',
-         '11) un lotto con righe gia accreditate viene rifiutato, e il messaggio lo dice')
+    THEN skip('nessun lotto il cui PRIMO motivo ostativo sia l''accredito: caso non riproducibile sui dati presenti', 1)
+  ELSE is(
+         pg_temp.rld_codice((SELECT id FROM tmp_lotto_rett_rld)),
+         'E_FATTURE_RIGHE_RETTIFICATE',
+         '11) un lotto con righe gia accreditate viene rifiutato, e col codice giusto')
 END;
 
 SELECT * FROM finish();

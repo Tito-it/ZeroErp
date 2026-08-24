@@ -46,3 +46,4 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 45,45,lotto_fatture_default,Vista standard documenti del lotto,sistema,,,t,25,,t,2026-08-22 00:00:00,mctit
 46,46,lotto_task_runs_default,Vista standard tentativi dei task,sistema,,,t,10,"[{""col"":""started_at"",""dir"":""desc""}]",t,2026-08-22 00:00:00,mctit
 47,47,lotto_segnalazioni_default,Vista standard segnalazioni del lotto,sistema,,,t,10,"[{""col"":""livello"",""dir"":""desc""}]",t,2026-08-22 00:00:00,mctit
+48,48,fatture_default,Vista standard fatture di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-24 00:00:00,mctit

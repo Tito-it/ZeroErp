@@ -2094,6 +2094,302 @@ maturità.
 
 ## 9. Registro
 
+### 2026-08-24 · La settima sorella — `vendite.vw_fatture_lista` e la lista a catalogo
+
+Scrive il team DB, su richiesta BE. La fattura era **l'unico documento del ciclo
+attivo senza vista canonica e senza lista**: esistono `vw_contratti_lista`,
+`vw_ddt_lista`, `vw_offerte_commerciali_lista`, `vw_ordini_lista`,
+`vw_preventivi_lista`, `vw_resi_lista` — tutte `security_invoker=on` — e le sei
+`ui.lista_definizione` corrispondenti. Per le fatture, niente: oggi un documento
+fiscale si raggiunge **solo di rimbalzo**, da un lotto, da un cruscotto o da un
+collegamento.
+
+**Consegnato** (changeSet `20260824-15`, applicato alle 17:33):
+
+| Cosa | Dove |
+| --- | --- |
+| `vendite.vw_fatture_lista` | `20_code/vendite` — 51 colonne, `security_invoker=on` |
+| `ui.lista_definizione` **48** `vendite.fatture` | `80_data`, CSV — ⛔ **`attivo = f`**, vedi sotto |
+| 22 `ui.lista_colonna` (527-548) + preset `fatture_default` | `80_data`, CSV |
+| 8 asserzioni pgTAP | `db/pgtap/vendite/test-vw-fatture-lista.sql` — **8/8 verdi come applicazione** |
+
+⭐ **Due cose che la vista fa diversamente dalle sorelle, e sono misure, non
+gusto.**
+
+**1. `emittente_fiscale_id` non è una colonna della fattura.** Le sei sorelle ce
+l'hanno in tabella; `vendite.fatture` porta `emittente_soggetto_ruolo_id`. Si
+deriva da `anagrafiche.emittenti_fiscali.soggetto_ruolo_id`, ed è una
+derivazione **sicura** perché quella colonna ha un vincolo di unicità
+(`uq_emittenti_fiscali_ruolo`): il join non moltiplica le righe. ⚠️ Verificato
+sul catalogo, non dedotto — un join 1:N qui avrebbe raddoppiato le fatture in
+lista, che è il modo più silenzioso in cui una lista mente.
+
+**2. ⛔ Un solo JOIN interno, e tutti gli altri LEFT — per la RLS, non per
+prudenza.** `anagrafiche.billing_account` **ha quattro policy**, e
+`billing_account_id` è NOT NULL sulla fattura: verrebbe naturale un inner join.
+Ma le due tabelle risolvono il perimetro con **funzioni diverse**:
+
+```text
+vendite.fatture             -> fn_scope_ef_whitelist_via_sr(emittente_soggetto_ruolo_id)
+anagrafiche.billing_account -> fn_scope_ef_whitelist_via_efba(id)
+```
+
+Una dall'emittente del **documento**, l'altra dalla relazione
+emittente↔account. Possono legittimamente divergere — e con un inner join la
+fattura, che la **sua** policy lascia passare, sparirebbe perché il cliente non
+è visibile. ⚠️ Sarebbe una lista che mostra **meno del dovuto senza nessun
+segnale**: un vuoto non si distingue da un «non c'è niente». Col LEFT JOIN la
+riga resta e il nome del cliente è vuoto, che è il degrado onesto.
+L'unico interno è `config.nature_doc_fiscale`, e solo perché `natura_doc_id` è
+NOT NULL con FK — l'unico caso *dimostrabile*, e per questo l'unico.
+⭐ **Il test 5 del pgTAP conta i `JOIN` non-LEFT nel corpo e pretende che siano
+uno**: se qualcuno ne aggiunge un altro, la prossima corsa lo dice.
+
+⚠️ **Anche le colonne nullable sono LEFT** (`stato_doc_fiscale_id`,
+`tipo_doc_fiscale_id`, `utility_id`, `valuta_id`): oggi sono valorizzate su 18
+fatture su 18, ma la domanda è «può succedere?», non «è successo?». Una fattura
+senza stato deve comparire **senza stato**, non sparire. Il test 6 crea proprio
+quella riga.
+
+⭐ **Sul filtro per data il rischio è chiuso dalla forma.** La richiesta
+insisteva — *«la data che filtra è quella del DOCUMENTO, non la competenza: una
+commessa di competenza giugno fatturata ad agosto produce un documento con data
+agosto»* — e la vista non espone **nessuna** competenza, perché
+`vendite.fatture` non ne ha una: la competenza vive sul lotto. Sbagliare
+colonna, partendo da questa vista, non è possibile.
+
+**⛔ `attivo = f` sulla `lista_definizione`, e non è cautela generica.** La
+lista è inerte per costruzione finché non esistono l'endpoint e la rotta, che
+sono BE/FE. Con `attivo = f`:
+
+- `fn_resolve_lista_config('vendite.fatture', …)` **fallisce fail-fast*- con
+  `E_UI_LISTA_NON_TROVATA` invece di rispondere una configurazione che nessuno
+  può usare (verificato in transazione);
+- il presidio `gen_seed_lista.py --verifica-ordinamento` **salta le liste
+  spente**, quindi non annuncia un debito che non è ancora tale. Il giorno
+  dell'accensione, se la whitelist del BE non c'è, diventa rosso — cioè
+  l'accensione è **cancellata dal controllo**, non affidata alla memoria.
+
+⭐ **E qui il guard sul `campo_sorgente` C'È**, al contrario della lista
+`vendite.lotti`: `trgfn_ui_lista_colonna_a10_valida_campo_sorgente` valida
+contro `pg_attribute` solo quando la lista ha una `vista_sql`, e questa ce l'ha.
+Provato al contrario, in transazione: una colonna con `campo_sorgente`
+inventato viene **rifiutata**. È la differenza pratica fra una lista che nasce
+da una vista e una che nasce da SQL nel backend.
+
+**Cosa serve al BE/FE** — la lista non si accende senza tutti e cinque:
+
+1. **endpoint paginato** `GET /api/v1/vendite/fatture/` sulla vista, con la
+   policy di ricerca e paginazione, più l'export gemello;
+2. **i filtri chiesti da Tid**: `data_da`/`data_a` su `data` (⚠️ la data del
+   **documento**), `billing_account_id`, `id_fiscale_univoco_cf_piva`,
+   `stato_codice_interno`, e la ricerca testuale sulle quattro colonne marcate
+   `ricercabile_full` (`numero`, `ragione_sociale_completa`,
+   `id_fiscale_univoco_cf_piva`, `ba_codice`).
+   ⭐ **Per l'aggancio dalla scheda soggetto conviene `soggetto_id`**, che la
+   vista espone: un identificativo fiscale può cambiare, l'id del soggetto no;
+3. **whitelist di ordinamento** chiavata sul `campo_sorgente` (non sul `codice`
+   logico), più la voce in `WHITELIST_BE` di `gen_seed_lista.py`. Il preset
+   apre su `data desc`, quindi `data` deve esserci;
+4. **la rotta e la vista Vue**, che oggi non esistono: è il pezzo che rende
+   raggiungibile il documento fiscale senza passare da un lotto;
+5. **le chiavi i18n** `vendite.fatture.col_*` (le due di genealogia riusano le
+   `vendite.lineage.col_*` già a catalogo).
+
+Poi **una cella**: `attivo` da `f` a `t` sulla riga 48 di
+`lista_definizione.csv`.
+
+⚠️ **Due nomi divergono da `vendite.lotto_fatture`**, e non è un errore: quella
+lista chiama gli stessi concetti `stato_doc_fiscale_descrizione` /
+`stato_doc_fiscale_codice` perché non nasce da una vista — la costruisce il
+backend con SQL diretto. Qui si segue il canone delle **viste**
+(`stato_codice_interno` / `stato_descrizione`), che è ciò che la richiesta
+chiedeva.
+
+📌 **Due candidati lasciati fuori, dichiarati invece che dimenticati**: il
+**lotto di appartenenza** sulla riga (questa lista nasce per raggiungere la
+fattura *senza* passare dal lotto, quindi il legame inverso è una comodità, non
+un requisito) e `multi_emittente = t`, che le sei sorelle hanno tutte a `f`: è
+una **capacità che si guadagna** collaudando la schermata, non un valore di
+seed. La colonna emittente c'è, quindi il giorno che serve il presidio
+`dbops.vw_liste_multi_emittente_non_certificate` non si oppone — resta a zero
+righe, verificato.
+
+🔴 **Un rilievo trovato di passaggio, e non è di questo lotto**: le due colonne
+`n_fatture` / `totale_documenti` della lista `vendite.lotti` (registro qui
+sotto) sono state **accese** — `attivo = t` nel CSV e nel database — mentre il
+payload del backend **continua a non produrle** (verificato sul tip di
+`origin/dev/backend-tid`, `6a1e23ca5`). Il presidio è di conseguenza **rosso**:
+
+```text
+vendite.lotti     KO
+    promettono l'ordinamento ma il BE non ce l'ha: n_fatture, totale_documenti
+    NUCLEO rotto (deve ordinare sempre)          : totale
+```
+
+⭐ **È il cancello che funziona**, non un guasto: era esattamente ciò che
+`attivo = f` doveva far succedere all'accensione. Ma finché resta acceso, la
+colonna è spuntabile e la cella è vuota — e il presidio resta rosso per tutte
+le altre liste, che è il modo in cui un controllo smette di essere letto. Le
+due strade sono: rimettere `attivo = f` in attesa del BE, oppure consegnare i
+quattro punti elencati sotto. **Non è una decisione del team DB.**
+
+#### 🔧 E una regressione pgTAP sanata di passaggio — `test-riporta-lotto-a-draft-v1.sql`
+
+Non c'entra con le liste, ma è emersa dalla baseline `vendite` di questo lotto
+ed è la **stessa classe di difetto** che il file aveva già corretto il
+2026-08-22 sul proprio soggetto principale. Vale la pena registrarla dove è
+stata trovata.
+
+Il test 11 verifica che il ritorno in bozza rifiuti un lotto le cui righe sono
+già state accreditate. La sua fixture prendeva *«l'ultimo lotto con righe
+accreditate»* — con l'`ORDER BY`, quindi non era il caso del `LIMIT 1` cieco —
+ma **senza la condizione che rende il caso significativo**. E
+`fn_riporta_lotto_a_draft` solleva il codice del **primo** motivo
+(`v_motivi -> 0 ->> 'codice'`), con i motivi ordinati: lo **stato** viene prima
+delle rettifiche. Il 2026-08-24 il lotto più recente con righe accreditate è
+diventato il **4212**, in `DEFINITIVA`: la funzione ha risposto — correttamente
+— *«il ritorno in bozza è ammesso solo su un lotto in bozza o emesso»*, e il
+test è diventato rosso **accusando il codice invece della propria selezione**.
+Il **603** (`EMESSA`, unico motivo `RIGHE_RETTIFICATE`) era il soggetto giusto e
+c'era.
+
+⛔ **E c'era un secondo difetto, non ancora manifestato**: la fixture
+ri-elencava a mano **una** delle quattro sorgenti che
+`script.fn_check_fatture_con_rettifiche` guarda (`commesse_attivita`),
+ignorando `attivita_fatturabili`, `resi_righe_accrediti` e l'auto-riferimento
+fra righe di fattura. Cercava meno soggetti di quanti ne esistano, e su un
+database dove l'accredito fosse arrivato per una delle altre tre strade avrebbe
+saltato il test dichiarando «caso non riproducibile».
+
+➡️ **Sanato chiedendolo alla funzione**, che è ciò che la fixture principale fa
+già dal 22/08: si seleziona il lotto il cui **primo motivo** è
+`RIGHE_RETTIFICATE`. Un motivo nuovo che passasse davanti non rompe più il test
+— al massimo lo fa saltare, dichiarandolo.
+
+⭐ **E l'asserzione è passata dalla frase al CODICE.** C'era un `throws_like` sul
+testo del messaggio, ed è il canale sbagliato su cui legarsi: **la prova è dello
+stesso giorno**, perché il passo T-3b ha riscritto il messaggio 937 per togliere
+gli id dalla prosa. Un messaggio si riscrive quando serve; un codice registrato
+a catalogo no. Ora si legge `E_FATTURE_RIGHE_RETTIFICATE` dal canale
+`CONSTRAINT`, che risponde alla stessa domanda per cui il `throws_like` era
+stato preferito a `throws_ok('P0001')` — non *«è un errore di dominio»* ma
+**quale** — e ci risponde in un modo che una riscrittura del testo non tocca.
+
+✅ **11/11 verdi**, e la baseline `vendite` torna senza regressioni.
+
+### 2026-08-24 · Due colonne per `vendite.lotti` — e il payload non le produce
+
+Scrive il team DB, su richiesta BE. La richiesta: *«la riga del lotto dice com'è
+andato ma non quanto pesa»* — servono `n_fatture` e `totale_documenti`, e
+*«il backend li produce già nel payload della lista: mancano solo le due voci di
+`ui.lista_colonna`»*.
+
+🔴 **Misurato prima di seedare, e la premessa non regge.** Sul **tip del ramo
+backend** (`6a1e23ca5`, 13:33 del 2026-08-24) e su `origin/Tito-dev`:
+
+| Cosa | Misura |
+| --- | --- |
+| `totale_documenti` in `backend/` | **non esiste**, in nessun file, in nessun ramo, in tutta la storia |
+| `n_fatture` in `vendite_repository.py` | esiste **solo** per la dashboard competenza, non per la lista lotti |
+| `_LOTTO_SELECT_COLS` | 21 colonne, nessuna delle due |
+
+Le due voci sono state seedate lo stesso — è il lavoro chiesto — ma **`attivo = f`**.
+
+⛔ **Perché `attivo = f` e non `t`.** Un `campo_sorgente` che non esiste nel
+payload non dà errore da nessuna parte: la colonna compare nel pannello di
+personalizzazione, l'operatore la spunta e la cella resta **vuota**. È
+letteralmente il difetto contro cui `vendite_repository.py` ha già un commento in
+maiuscolo su `emittente_ragione_sociale` — *«se diverge, la colonna si spunta e
+resta vuota, cioè SEMBRA la garanzia senza esserlo»*.
+⭐ E `attivo = f` è **auto-annunciante**, che è la ragione vera: il BE spedisce il
+payload, apre la lista, non vede le colonne e torna. Con `attivo = t` il buco
+resta muto finché non se ne accorge un operatore.
+Verificato in transazione: con `attivo = f` `fn_resolve_lista_config` ne espone
+**zero**; accese, ne espone due, entrambe `visibile: false` (merge del passo 3),
+quindi nemmeno l'accensione cambia da sola l'aspetto della lista.
+
+🔴 **Il cancello che tutti danno per scontato qui non c'è**, ed è la misura che
+vale oltre questa richiesta. `trgfn_ui_lista_colonna_a10_valida_campo_sorgente`
+valida `campo_sorgente` contro `pg_attribute` **solo se la lista ha una
+`vista_sql`**; altrimenti fa `RETURN NEW`. Misurato sul database:
+
+| | |
+| --- | ---: |
+| liste con `vista_sql IS NULL` | **33 su 47** |
+| colonne attive con `campo_sorgente` **senza alcun cancello** | **275 su 487 (56%)** |
+
+`vendite.lotti` è fra queste: la lista nasce da SQL diretto sulla tabella, non da
+una vista. ⚠️ Quindi su più della metà del catalogo *«il trigger lo prende»* è
+falso, e nessuno lo aveva scritto.
+
+🔵 **Proposta — la quinta direzione del presidio** (non fatta, serve una
+decisione). `gen_seed_lista.py --verifica-ordinamento` già legge il repository
+del BE per estrarne la whitelist di ordinamento. Per le liste senza `vista_sql`
+può fare la stessa cosa col **TypedDict della riga** (`LottoListRow` e gemelli):
+sono chiavi dichiarate una per riga, ed è il contratto vero del payload.
+Coprirebbe le 275 colonne che oggi non hanno niente.
+
+**Le decisioni del seed, con la ragione:**
+
+| Campo | Valore | Perché |
+| --- | --- | --- |
+| `ordinabile` | **`t` su entrambe** | `totale_documenti` è **nucleo** (`NUCLEO_ORDINABILE`, voce «totale»): la regola di dominio dice che ordina sempre. Non è la solita cautela «`f` finché la whitelist non arriva» — qui `f` sarebbe *già* un KO al presidio |
+| `filtrabile` | `f` | nessun parametro di filtro nel BE, e sulla lista lotti i due flag si corrispondono uno a uno |
+| `formato` | vuoto / `currency_eur` | ⚠️ **non `number` sul conteggio**: `formatNumber` ha `minimumFractionDigits: 2` e renderebbe «3,00». Vuoto → `String(value)` → «3», che è la convenzione delle altre 49 colonne numeriche |
+| `sensibile` | `f` | un totale in euro invita a metterlo `t`. ⛔ Non si fa: `sensibile` è un **cancello**, e senza un grant in `lista_colonna_permesso` la colonna sparisce per tutti |
+| `gruppo` | `Contenuto` (4) | gruppo nuovo fra `Stato` (3) e `Audit`. ⚠️ Le due righe `Audit` passano da `gruppo_ordine` 4 a **5**: senza, l'ordine dei due gruppi lo deciderebbe il tiebreak alfabetico del modale, cioè per caso |
+| `lista_preset_colonna` | **nessuna riga** | è il precedente di `emittente_fiscale` (2026-08-18): una colonna aggiunta dopo entra dal merge del passo 3 — nascosta, annunciata da `colonne_nuove`. Metterla nel preset la accenderebbe d'ufficio a tutti |
+
+⭐ **Il cancello sull'accensione, provato e non dedotto.** Il presidio ignora le
+righe `attivo = f`, quindi oggi è **verde (47/47)**. Flippando `attivo` a `t`
+senza la whitelist del BE diventa:
+
+```text
+vendite.lotti                           KO
+    promettono l'ordinamento ma il BE non ce l'ha: n_fatture, totale_documenti
+    NUCLEO rotto (deve ordinare sempre)          : totale
+```
+
+Cioè l'accensione **non passa** finché il BE non ha consegnato. È il metodo della
+passata unica applicato al contrario: invece di chiedere e sperare, il controllo
+si rifiuta di lasciar accendere.
+
+⚠️ **Lo zero non è il nulla, e la catena si rompe in SQL.** Il BE ha chiesto che
+`totale_documenti` sia *«zero, non nullo, su un lotto senza documenti»*, ed è la
+richiesta giusta — ma il punto in cui si perde non è il frontend:
+
+```text
+SUM(...) su zero righe  ->  NULL      ← qui
+psycopg -> JSON         ->  null
+CellaConfigurabile      ->  if (value == null) return ''   ← cella vuota
+```
+
+`formatCurrency(0)` dà «0,00 €» e `0 == null` è falso in JS: **il frontend fa già
+la cosa giusta**. Serve `COALESCE(SUM(...), 0)` nella query, e nessun
+`None if row[x] is None` nel mapping. `COUNT(*)` non ha il problema.
+
+**Cosa deve fare il BE** — quattro punti, tutti in `apps/vendite`:
+
+1. `_LOTTO_SELECT_COLS`: le due aggregazioni, con `COALESCE(SUM(...), 0)` sul
+   totale. ⚠️ Misurarle: l'`EXISTS` di `ha_errori_gravi` è stato verificato con
+   `EXPLAIN ANALYZE` e il pianificatore lo esegue **una volta**; due aggregati
+   correlati non ereditano quella proprietà — se non si appiattiscono, meglio un
+   `LEFT JOIN LATERAL` unico;
+2. `_map_lotto_row` e `LottoListRow`: le due chiavi, **con questi nomi esatti**;
+3. `LOTTI_SORT_COLUMNS`: entrambe, o l'accensione resta bloccata dal presidio;
+4. `frontend/src/locales/*.json`: `vendite.lotti.col_n_documenti` e
+   `col_totale_documenti`. ⚠️ Non è un errore se mancano — `etichettaColonna` ha
+   il guard `te` e ripiega sull'etichetta italiana — ma in `en` si vedrebbe
+   l'italiano.
+
+Poi **una sola cella**: `attivo` da `f` a `t` sulle righe 525 e 526 del CSV.
+
+📌 **Un rilievo di nomenclatura, che decide il BE**: `n_fatture` conta *documenti*
+(un lotto produce anche note di credito), e la colonna gemella si chiama
+`totale_**documenti**`. Se il nome va cambiato è ora che costa zero — dopo è una
+chiave nel JSONB delle preferenze utente.
+
 ### 2026-08-21 · `LottoDrawer` esce dal Gruppo B — il bersaglio passa a 35
 
 Scrive il team DB, su richiesta BE/FE. La nota chiedeva tre
