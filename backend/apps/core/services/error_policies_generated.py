@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 778, di cui 84 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 778, di cui 85 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -682,6 +682,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PIPELINE_LOTTO_CRITICAL": "DATO_ERRATO",
     "E_PIPELINE_LOTTO_IN_ESECUZIONE": "CONFLITTO_STATO",
     "E_PIPELINE_LOTTO_NOT_FOUND": "NON_TROVATO",
+    # RITIRATO il 2026-08-24, sostituito da E_DIAGNOSTICA_NON_REGISTRATA (987). Marcava i guasti del telaio best-effort del backend (diagnostica_best_effort.py) e mentiva due volte: il NOME diceva PIPELINE, ma dal 2026-08-22 il telaio serve anche il push commesse — chi cercasse i guasti del push per codice non li avrebbe trovati; e la CLASSE era DATO_ERRATO (400) su un guasto interno, dove chi ha fatto la richiesta non puo' correggere niente. ⚠️ Il ritiro arriva DOPO che il backend ha spostato la costante CODICE_DIAGNOSTICA_FALLITA sul codice nuovo, e non prima: un codice ritirato che qualcuno solleva ancora e' peggio di un nome che mente. ⛔ La riga resta a catalogo e non si cancella: le 355 mila righe di log gia' scritte la citano, e un messaggio orfano di codice e' una riga di storia che nessuno sa piu' leggere.
+    # ⚠️ RITIRATO il 2026-08-24
     "E_PIPELINE_MARK_ERROR": "DATO_ERRATO",
     # 404 -> 500 il 2026-08-06 (audit dei 404 «larghi», api.md). · `pipeline_step_executor` lo solleva quando NON ESISTE una · configurazione di pipeline per quello stato/tipo lotto: non e' una · risorsa che l'operatore ha chiesto e non c'e', e' un pezzo che · nessuno ha configurato. Il 404 gli diceva «non esiste», mandandolo · a cercare una cosa che nessuno puo' trovare.
     "E_PIPELINE_NOT_FOUND": "TECNICO",
@@ -1227,6 +1229,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_NUMERAZIONE_IMMUTABILE",
         "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID",
         "E_PERC_IVA_NO_MOD",
+        "E_PIPELINE_MARK_ERROR",
         "E_PREZZO_LISTINO_NON_TROVATO",
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",

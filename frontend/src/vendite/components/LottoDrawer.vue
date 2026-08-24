@@ -712,8 +712,21 @@ function fatturaNumero(row) {
                     />
                   </span>
                 </template>
-                <template #cell-azioni="{ data }">
-                  <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" />
+                <!-- ⛔ LO SLOT SI CHIAMA `actions`, NON `cell-azioni`.
+                     `ListaConfigurabile` rende la colonna delle azioni SOLO se
+                     la config la dichiara **e** il caller fornisce lo slot
+                     `#actions` (`haAzioni`) — la colonna `azioni` non passa
+                     dalla catena `#cell-<campo>` delle colonne dati.
+                     🔴 Con il nome sbagliato la condizione era falsa e la
+                     colonna non veniva resa affatto: **nessun kebab**, e
+                     nessun errore da nessuna parte. Il difetto si e' visto solo
+                     in app (rilievo di Tid, 2026-08-24) perche' il seed
+                     dichiarava la colonna e i permessi erano a posto: tutto
+                     "corretto" tranne il nome dello slot.
+                     ⚠️ `compact` va accettato: e' il flag con cui il BB
+                     comprime le azioni quando lo spazio si stringe. -->
+                <template #actions="{ data, compact }">
+                  <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" :force-compact="compact" />
                 </template>
                 <!-- Empty-state TRADOTTO: senza lo slot il BB lascia il
                      default PrimeVue, che e' in inglese. -->
