@@ -404,7 +404,7 @@ E_PIPELINE_DRIVER_MAX_ITER,TECNICO,NULL,NULL
 E_PIPELINE_LOTTO_CRITICAL,DATO_ERRATO,NULL,NULL
 E_PIPELINE_LOTTO_IN_ESECUZIONE,CONFLITTO_STATO,NULL,NULL
 E_PIPELINE_LOTTO_NOT_FOUND,NON_TROVATO,NULL,NULL
-E_PIPELINE_MARK_ERROR,DATO_ERRATO,NULL,NULL
+E_PIPELINE_MARK_ERROR,DATO_ERRATO,2026-08-24,"RITIRATO il 2026-08-24, sostituito da E_DIAGNOSTICA_NON_REGISTRATA (987). Marcava i guasti del telaio best-effort del backend (diagnostica_best_effort.py) e mentiva due volte: il NOME diceva PIPELINE, ma dal 2026-08-22 il telaio serve anche il push commesse — chi cercasse i guasti del push per codice non li avrebbe trovati; e la CLASSE era DATO_ERRATO (400) su un guasto interno, dove chi ha fatto la richiesta non puo' correggere niente. ⚠️ Il ritiro arriva DOPO che il backend ha spostato la costante CODICE_DIAGNOSTICA_FALLITA sul codice nuovo, e non prima: un codice ritirato che qualcuno solleva ancora e' peggio di un nome che mente. ⛔ La riga resta a catalogo e non si cancella: le 355 mila righe di log gia' scritte la citano, e un messaggio orfano di codice e' una riga di storia che nessuno sa piu' leggere."
 E_PIPELINE_NOT_FOUND,TECNICO,NULL,"404 -> 500 il 2026-08-06 (audit dei 404 «larghi», api.md). · `pipeline_step_executor` lo solleva quando NON ESISTE una · configurazione di pipeline per quello stato/tipo lotto: non e' una · risorsa che l'operatore ha chiesto e non c'e', e' un pezzo che · nessuno ha configurato. Il 404 gli diceva «non esiste», mandandolo · a cercare una cosa che nessuno puo' trovare."
 E_PIPELINE_SCOPE_INCOMPLETE,DATO_ERRATO,NULL,NULL
 E_PIPELINE_STATO_LOTTO,CONFLITTO_STATO,NULL,NULL

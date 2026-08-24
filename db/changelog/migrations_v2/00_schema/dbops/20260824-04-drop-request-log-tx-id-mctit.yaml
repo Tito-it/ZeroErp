@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA COLONNA CHE NESSUNO HA MAI SCRITTO
+#   dbops.request_log.tx_id
+#   Brief: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md
+#          §5, consegna BE-8 (seconda metà)
+#   Richiesta del backend, 2026-08-24: «da togliere, non eseguibile lato BE».
+#
+# ── LA MISURA ──────────────────────────────────────────────────────
+#   355.264 righe, **0** con `tx_id` valorizzato. E non è che il valore non
+#   arriva: non c'è **niente** che potrebbe scriverlo —
+#
+#     · nessun trigger sulla tabella (verificato su `pg_trigger`);
+#     · nessuna funzione né vista del database la nomina;
+#     · il middleware che scrive la riga (`request_log_middleware`) usa una
+#       lista di colonne **esplicita**, e `tx_id` non c'è dentro.
+#
+#   ⭐ Non è una colonna «da collegare»: è una colonna che è nata per un
+#   disegno che non è mai stato costruito. Il brief le dava due destini — «o si
+#   collegano o si tolgono» — e il backend ha scelto il secondo per la propria
+#   metà, perché collegarla richiederebbe di far entrare il `tx_id` di dominio
+#   in un middleware che di dominio non sa niente.
+#
+# ── ⚠️ E LA GEMELLA NON SI TOCCA ───────────────────────────────────
+#   Il brief nominava **due** colonne morte: `tx_id` e `emittente_attivo_id`.
+#   Rimisurato oggi, la seconda **non è morta**: ha **667 valori** su 355.264.
+#   Poche, ma non zero — e una colonna con dei dati dentro non si butta perché
+#   un documento di venti giorni fa diceva che era vuota.
+#
+#     > ⭐ È il motivo per cui questo changeSet ne tocca UNA. La misura del
+#     > brief era vera quando è stata presa; la decisione si prende su quella
+#     > di adesso.
+#
+# ── ⛔ IL PRESIDIO CHE CONTA STA NELLA `preCondition` ───────────────
+#   Un `DROP COLUMN` non si disfa: il rollback può ricreare la colonna, non i
+#   dati. Per questo la precondizione non si limita a «la colonna esiste», ma
+#   verifica che sia **ancora vuota**: se fra la scrittura di questo file e la
+#   sua applicazione qualcuno avesse cominciato a scriverla, il changeSet si
+#   ferma (`HALT`) invece di buttare via le righe che nel frattempo sono
+#   arrivate.
+#
+#   ⚠️ Su un database ricostruito da zero la tabella è vuota e la precondizione
+#   passa per costruzione: è pensata per QUESTO database, dove la colonna ha
+#   una storia di 355.264 righe alle spalle.
+#
+# Dipendenze: nessuna. Consumo: nessuno — è cio' che la rende sicura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260824-04-drop-request-log-tx-id-mctit.yaml
+
+  - changeSet:
+      id: 20260824-04-drop-request-log-tx-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Via dbops.request_log.tx_id: 0 valorizzati su 355.264, e nessuno potrebbe
+        scriverla — niente trigger, nessuna funzione o vista che la nomini, e il middleware
+        che inserisce la riga usa una lista di colonne esplicita che non la contiene. Nasce
+        per un disegno mai costruito. Richiesta del backend (BE-8, seconda metà). ⚠️ La
+        gemella emittente_attivo_id NON si tocca: rimisurata oggi ha 667 valori, e il
+        brief che le dava morte entrambe fotografava un altro giorno. ⛔ La precondizione
+        verifica che la colonna sia ANCORA vuota: un DROP COLUMN non si disfa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: request_log
+                columnName: tx_id
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(tx_id) FROM dbops.request_log;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Niente CASCADE: se qualcosa dipendesse da questa colonna, il
+              --    DROP deve fallire e dirlo. Misurato che non dipende niente —
+              --    ma il CASCADE toglierebbe la differenza fra «non dipende
+              --    niente» e «non dipende piu' niente».
+              ALTER TABLE dbops.request_log
+                  DROP COLUMN tx_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback ricrea la colonna VUOTA, che e' esattamente tutto
+              --    cio' che c'era: 0 valori su 355.264. Qui, per una volta, un
+              --    rollback che non recupera i dati non perde niente.
+              ALTER TABLE dbops.request_log
+                  ADD COLUMN IF NOT EXISTS tx_id uuid;
