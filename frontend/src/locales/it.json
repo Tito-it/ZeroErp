@@ -2501,6 +2501,7 @@
       "stato_errore": "Errore",
       "col_codice": "Codice",
       "col_competenza": "Competenza",
+      "col_data_documento": "Data documento",
       "col_tipo": "Tipo",
       "col_tipo_doc": "Documento",
       "col_utility": "Utility",

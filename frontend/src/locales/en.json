@@ -2501,6 +2501,7 @@
       "stato_errore": "Error",
       "col_codice": "Code",
       "col_competenza": "Accrual",
+      "col_data_documento": "Document date",
       "col_tipo": "Type",
       "col_tipo_doc": "Document",
       "col_utility": "Utility",
