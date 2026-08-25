@@ -209,6 +209,18 @@ RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
     "fattura": "fattura_numero",
 }
 
+# Colonne ordinabili dell'elenco delle eccedenze da sistemare.
+# ⭐ Il default e' per CLIENTE, non per documento: la decisione si prende
+#    guardando il cliente (D15-b) — compensare significa mettere insieme due
+#    documenti suoi.
+ECCEDENZE_SORT_COLUMNS: dict[str, str] = {
+    "cliente": "cliente_ragione_sociale",
+    "eccedenza_cliente": "eccedenza_cliente",
+    "eccedenza": "eccedenza",
+    "fattura_data": "fattura_data",
+    "fattura": "fattura_numero",
+}
+
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
 _JSONB_COLS = ("meta",)
 
@@ -864,6 +876,203 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
+
+    # ══════════════════════════════════════════════════════════════
+    #  Le sistemazioni — il denaro di troppo
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: L'elenco dei documenti su cui e' entrato piu' del dovuto.
+    # ⭐ La vista porta GIA' il raggruppamento per cliente in finestra
+    #    (`eccedenza_cliente`, `documenti_cliente`): qui non si somma niente —
+    #    rifarlo in Python sarebbe una seconda aritmetica da tenere allineata.
+    # ⚠️ Il nome del cliente NON e' nella vista: si aggiunge in JOIN, perche' un
+    #    elenco che si guarda per cliente e mostra un id non si guarda.
+    def list_eccedenze(
+        self,
+        *,
+        chi_e_in_credito: str | None = None,
+        billing_account_id: int | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_eccedenze")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if chi_e_in_credito is not None:
+            conditions.append("v.chi_e_in_credito = %s")
+            params.append(chi_e_in_credito)
+        if billing_account_id is not None:
+            conditions.append("v.billing_account_id = %s")
+            params.append(billing_account_id)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = ECCEDENZE_SORT_COLUMNS.get(order_by, "eccedenza_cliente")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        select_sql = f"""
+            SELECT v.*,
+                   srd.ragione_sociale_completa AS cliente_ragione_sociale
+              FROM pagamenti.vw_eccedenze_da_sistemare v
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                     ON srd.soggetto_ruolo_id = v.cliente_soggetto_ruolo_id
+              {where_clause}
+        """
+        return self._lista_paginata(
+            select_sql=select_sql,
+            params=params,
+            # ⚠️ Tiebreak sul CLIENTE prima che sul documento: ordinando per
+            # eccedenza di cliente, i documenti dello stesso cliente devono
+            # restare insieme — altrimenti l'elenco «per cliente» li sparpaglia.
+            order_clause=(
+                f"ORDER BY {sort_col} {direction}, "
+                f"cliente_soggetto_ruolo_id {tiebreak}, fattura_id {tiebreak}"
+            ),
+            limit=limit,
+            offset=offset,
+        )
+
+    # Scopo: Cliente ed emittente di una fattura, DERIVATI e non dichiarati.
+    # 🔴 Il guard sui dati li verifica con un codice TECNICO apposta: «l'emittente
+    #    e il cliente non li sceglie una persona in un modulo, li DERIVA chi
+    #    costruisce l'atto». Prenderli dal payload significherebbe far arrivare
+    #    al database una dichiarazione che il database sa gia' — e che, se
+    #    sbagliata, il suo autore non puo' correggere.
+    # ⚠️ Lettura sotto RLS: una fattura fuori perimetro non risponde, e il
+    #    chiamante lo traduce in «non trovata».
+    def get_riferimenti_fattura(self, fattura_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_riferimenti_fattura")
+        sql = """
+            SELECT f.id                       AS fattura_id,
+                   f.emittente_soggetto_ruolo_id,
+                   f.billing_account_id,
+                   ba.soggetto_ruolo_id       AS cliente_soggetto_ruolo_id
+              FROM vendite.fatture f
+              JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Registra l'atto di sistemazione.
+    # ⭐ Un `INSERT`, non una funzione madre: una scrittura sola non ha bisogno
+    #    di una madre, e inventarne una avrebbe aggiunto un oggetto che non
+    #    garantisce niente in piu'.
+    # ⚠️ Nasce in `BOZZA` (default di colonna): registrare una decisione non e'
+    #    ancora eseguirla — il denaro si muove alla conferma.
+    def create_sistemazione(
+        self,
+        *,
+        destinazione: str,
+        importo: Decimal,
+        fattura_origine_id: int,
+        cliente_soggetto_ruolo_id: int,
+        emittente_soggetto_ruolo_id: int,
+        fattura_destinazione_id: int | None = None,
+        motivo: str | None = None,
+        meta: str = "{}",
+    ) -> int:
+        sql = """
+            INSERT INTO pagamenti.sistemazioni (
+                destinazione, importo, fattura_origine_id, fattura_destinazione_id,
+                cliente_soggetto_ruolo_id, emittente_soggetto_ruolo_id, motivo, meta
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            RETURNING id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql,
+                [
+                    destinazione, importo, int(fattura_origine_id),
+                    fattura_destinazione_id, int(cliente_soggetto_ruolo_id),
+                    int(emittente_soggetto_ruolo_id), motivo, meta,
+                ],
+            )
+            row = cursor.fetchone()
+        return int(row[0])
+
+    # Scopo: Un atto di sistemazione, con i display field di chi lo legge.
+    def get_sistemazione(self, sistemazione_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_sistemazione")
+        sql = """
+            SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
+                   s.fattura_origine_id, fo.numero AS fattura_origine_numero,
+                   fo.anno AS fattura_origine_anno, fo.serie AS fattura_origine_serie,
+                   s.fattura_destinazione_id, fd.numero AS fattura_destinazione_numero,
+                   fd.anno AS fattura_destinazione_anno,
+                   fd.serie AS fattura_destinazione_serie,
+                   s.cliente_soggetto_ruolo_id,
+                   srd.ragione_sociale_completa AS cliente_ragione_sociale,
+                   s.emittente_soggetto_ruolo_id,
+                   s.contabile_id, s.fondo_source_id,
+                   s.data_esecuzione, s.user_esecuzione,
+                   s.data_insert, s.user_insert, s.meta
+              FROM pagamenti.sistemazioni s
+              LEFT JOIN vendite.fatture fo ON fo.id = s.fattura_origine_id
+              LEFT JOIN vendite.fatture fd ON fd.id = s.fattura_destinazione_id
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                     ON srd.soggetto_ruolo_id = s.cliente_soggetto_ruolo_id
+             WHERE s.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id)])
+            rows = rows_to_list(cursor)
+        return self._shape(rows[0]) if rows else None
+
+    # Scopo: Gli atti registrati su un documento.
+    # ⭐ Sono PIU' DI UNO per natura: si puo' rimborsare una parte e riportare il
+    #    resto, e l'elenco delle eccedenze conta apposta le bozze e le confermate
+    #    separatamente.
+    def list_sistemazioni_fattura(self, fattura_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_sistemazioni_fattura")
+        sql = """
+            SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
+                   s.fattura_destinazione_id, s.contabile_id, s.fondo_source_id,
+                   s.data_esecuzione, s.user_esecuzione, s.data_insert
+              FROM pagamenti.sistemazioni s
+             WHERE s.fattura_origine_id = %s
+             ORDER BY s.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Esegue l'atto — la decisione diventa un fatto.
+    # ⭐ UNA SOLA `SELECT` sulla funzione madre: sceglie la strada (fondo,
+    #    distinta negativa, distinta di compensazione) e ci mette sopra il
+    #    denaro. ⛔ Nessuna delle tre macchine e' nuova, e nessuna la orchestra
+    #    il backend.
+    # ⚠️ `ente_incasso_id` si chiede QUI e non alla registrazione: «da quale
+    #    conto esce il bonifico» e' una decisione del momento in cui si paga.
+    def conferma_sistemazione(
+        self, sistemazione_id: int, *, ente_incasso_id: int | None = None
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT contabile_id, fondo_source_id, esito
+              FROM pagamenti.fn_conferma_sistemazione(%s, %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id), ente_incasso_id])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Scarta l'atto, lasciandolo a registro con la sua ragione.
+    # ⚠️ Il motivo si FONDE con quello gia' scritto: se l'atto ne aveva uno e la
+    #    chiamata arriva vuota, resta quello che c'era.
+    def annulla_sistemazione(
+        self, sistemazione_id: int, *, motivo: str | None = None
+    ) -> str | None:
+        sql = "SELECT pagamenti.fn_annulla_sistemazione(%s, %s)"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id), motivo])
+            row = cursor.fetchone()
+        return row[0] if row else None
 
     # ══════════════════════════════════════════════════════════════
     #  La madre del posting

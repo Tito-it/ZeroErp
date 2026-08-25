@@ -22,7 +22,7 @@
 import json
 import logging
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
@@ -36,6 +36,11 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
 )
+from apps.pagamenti.services._helpers import (
+    E_VALIDAZIONE,
+    decimal_da_payload as _decimal_da_payload,
+    risposta_paginata as _risposta_paginata,
+)
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTE_SORT_COLUMNS,
     RATE_FUORI_CAPIENZA_SORT_COLUMNS,
@@ -48,12 +53,7 @@ logger = logging.getLogger(__name__)
 
 _FN = "pagamenti.pagamenti_service"
 
-# Codice di validazione del payload di questo dominio. ⭐ Seminato dal team DB
-# il 2026-08-25 su richiesta del backend: fino ad allora si usava il generico
-# `E_VALIDATION_INPUT`, e il passaggio e' costato — come previsto — una riga.
-# ⚠️ Il nome e' `..._VALIDATION` (come `E_VENDITE_VALIDATION`), non
-# `..._VALIDAZIONE`: il catalogo tiene le due forme e questa e' quella scelta.
-E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"
+
 
 # Codici di dominio gia' a catalogo che il backend solleva da se': sono i due
 # casi in cui l'oggetto non c'e' (o il perimetro non lo lascia vedere, e i due
@@ -164,75 +164,10 @@ _CAMPI_RIGA_PATCH: tuple[str, ...] = (
 #  Helper locali
 # ══════════════════════════════════════════════════════════════════
 
-# Scopo: Estrae un importo dal payload come Decimal esatto.
-# ⚠️ Passa da `str`: `Decimal(0.1)` porta dentro l'errore del float, e su un
-#    importo di denaro quell'errore poi si somma. Il float in ingresso e'
-#    ammesso (il JSON non ha decimali) ma si converte sempre dalla sua forma
-#    testuale.
-# Nota: candidato all'estrazione se ne nasce una seconda occorrenza — oggi e'
-#    la prima, e la regola del 2 dice di non astrarre prima.
-def _decimal_da_payload(
-    payload: dict[str, Any], key: str, *, obbligatorio: bool
-) -> Decimal | None:
-    raw = payload.get(key)
-    if raw is None:
-        ErrorManager.require(
-            not obbligatorio,
-            code=E_VALIDAZIONE,
-            message=f"Campo '{key}' obbligatorio.",
-            context={"field": key},
-            function_name=_FN,
-        )
-        return None
-
-    # `True` sommerebbe come 1, e un flag scambiato per un importo non lo
-    # segnalerebbe nessuno.
-    _rifiuta_importo(raw, key, condizione=isinstance(raw, bool))
-
-    try:
-        valore = Decimal(str(raw))
-    except (InvalidOperation, ValueError):
-        _rifiuta_importo(raw, key, condizione=True)
-        raise AssertionError("unreachable")  # pragma: no cover
-
-    # ⚠️ `Decimal("NaN")` e `Decimal("Infinity")` si costruiscono senza
-    # protestare, e un JSON puo' portarli. Un importo non finito arriverebbe
-    # fino alla colonna numeric, dove ogni somma che lo incontra diventa NaN —
-    # e un totale NaN non si vede: si legge come un campo vuoto.
-    _rifiuta_importo(raw, key, condizione=not valore.is_finite())
-    return valore
-
-
-# Scopo: Rifiuta un valore che non e' un importo, con la stessa frase ovunque.
-def _rifiuta_importo(raw: Any, key: str, *, condizione: bool) -> None:
-    if not condizione:
-        return
-    ErrorManager.raise_error(
-        code=E_VALIDAZIONE,
-        message=f"Campo '{key}' non e' un importo valido.",
-        detail=f"Valore ricevuto: {raw!r}",
-        context={"field": key, key: str(raw)},
-        function_name=_FN,
-    )
-
-
 # Scopo: Serializza `meta` per il passaggio a una colonna jsonb.
 def _meta_json(payload: dict[str, Any]) -> str:
     meta = _PAYLOAD.optional_meta(payload, "meta")
     return json.dumps(meta or {})
-
-
-# Scopo: L'involucro paginato, uguale per tutte le liste del dominio.
-def _risposta_paginata(
-    results: list[Any], total: int, page: int, page_size: int
-) -> dict[str, Any]:
-    return {
-        "count": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size if page_size else 0,
-        "results": results,
-    }
 
 
 # Scopo: Legge la distinta o solleva il 404 di dominio.

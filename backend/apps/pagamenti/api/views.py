@@ -27,7 +27,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
-from apps.pagamenti.services import pagamenti_service, saldi_service
+from apps.pagamenti.services import pagamenti_service, saldi_service, sistemazioni_service
 
 AREA = "pagamenti"
 
@@ -635,3 +635,196 @@ class ApiFatturaRateSaldo(DomainAPIView):
     #    chiamate per disegnare un menu sono N modi di essere lenti.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
         return success_response(saldi_service.saldi_rate_documento(fattura_id))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Le sistemazioni — che cosa si fa del denaro di troppo (slice 5)
+# ══════════════════════════════════════════════════════════════════
+
+
+class ApiEccedenze(DomainAPIView):
+    """GET /api/v1/pagamenti/eccedenze/ — i documenti che hanno incassato più del dovuto."""
+
+    area_funzionale = AREA
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="pagamenti_eccedenze",
+        parameters=[
+            OpenApiParameter(
+                name="chi_e_in_credito", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "CLIENTE (ha pagato più del dovuto) | AZIENDA (un documento "
+                    "a credito su cui è entrato denaro). Valore fuori "
+                    "vocabolario -> 400."
+                ),
+            ),
+            OpenApiParameter(
+                name="billing_account_id", type=int,
+                location=OpenApiParameter.QUERY, required=False,
+                description="Filtro cliente.",
+            ),
+            OpenApiParameter(
+                name="order_by", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Whitelist: eccedenza_cliente (default) | cliente | "
+                    "eccedenza | fattura_data | fattura. ⭐ Il default è per "
+                    "CLIENTE, non per documento: la decisione si prende "
+                    "guardando il cliente."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="asc | desc (default desc).",
+            ),
+            OpenApiParameter(
+                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Numero pagina (default 1).",
+            ),
+            OpenApiParameter(
+                name="page_size", type=int, location=OpenApiParameter.QUERY,
+                required=False, description="Dimensione pagina (default 50, max 200).",
+            ),
+        ],
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET l'elenco delle eccedenze da sistemare.
+    # ⭐ La vista porta già il raggruppamento per cliente in finestra
+    #    (`eccedenza_cliente`, `documenti_cliente`): il backend non somma niente.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        data = sistemazioni_service.list_eccedenze(
+            chi_e_in_credito=qp_str_upper(qp.get("chi_e_in_credito")),
+            billing_account_id=qp_int_optional(
+                qp.get("billing_account_id"), "billing_account_id"
+            ),
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            page=qp_int_strict(qp.get("page"), "page", 1),
+            page_size=qp_int_strict(qp.get("page_size"), "page_size", 50),
+        )
+        return success_response(data)
+
+
+class ApiSistemazioni(DomainAPIView):
+    """POST /api/v1/pagamenti/sistemazioni/ — registra la decisione."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_sistemazione_create",
+        request=inline_serializer(
+            name="PagamentiSistemazioneCreate",
+            fields={
+                "fattura_origine_id": serializers.IntegerField(),
+                "destinazione": serializers.CharField(),
+                "importo": serializers.DecimalField(max_digits=18, decimal_places=2),
+                "fattura_destinazione_id": serializers.IntegerField(required=False),
+                "motivo": serializers.CharField(required=False),
+                "meta": serializers.DictField(required=False),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Registra via POST che cosa si è deciso di fare di un'eccedenza.
+    # ⚠️ **Registrare non è eseguire**: l'atto nasce in bozza e il denaro si
+    #    muove alla conferma. Fra i due momenti può arrivare un altro incasso —
+    #    ed è la ragione per cui il controllo dell'eccedenza sta là.
+    # 🔴 Cliente ed emittente NON si passano: li deriva il backend dalla fattura
+    #    di origine, perché non sono una scelta di chi compila.
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return sistemazioni_service.crea_sistemazione(dict(payload))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiSistemazioneDetail(DomainAPIView):
+    """GET /api/v1/pagamenti/sistemazioni/<id>/ — il dettaglio dell'atto."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_sistemazione_detail",
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET l'atto, col suo esito quando c'è.
+    def get(self, request: Request, sistemazione_id: int) -> JsonResponse:
+        return success_response(
+            sistemazioni_service.get_sistemazione(sistemazione_id)
+        )
+
+
+class ApiFatturaSistemazioni(DomainAPIView):
+    """GET /api/v1/pagamenti/fatture/<id>/sistemazioni/ — gli atti su un documento."""
+
+    area_funzionale = AREA
+    # Stessa ragione del saldo: lo consuma il drawer fattura, che vive in
+    # `vendite`, e risponde il minimo su un documento già scelto.
+    skip_area_check = True
+
+    @extend_schema(
+        operation_id="pagamenti_fattura_sistemazioni",
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET gli atti registrati su una fattura.
+    # ⭐ Sono più di uno per natura: si può rimborsare una parte e riportare il
+    #    resto.
+    def get(self, request: Request, fattura_id: int) -> JsonResponse:
+        return success_response(
+            sistemazioni_service.list_sistemazioni_fattura(fattura_id)
+        )
+
+
+class ApiSistemazioneConferma(DomainAPIView):
+    """POST /api/v1/pagamenti/sistemazioni/<id>/conferma/ — l'atto diventa un fatto."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_sistemazione_conferma",
+        request=inline_serializer(
+            name="PagamentiSistemazioneConferma",
+            fields={"ente_incasso_id": serializers.IntegerField(required=False)},
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Esegue via POST l'atto: una sola `SELECT` sulla funzione madre, che
+    #        sceglie la strada (fondo, distinta negativa, compensazione) e ci
+    #        mette sopra il denaro.
+    # ⚠️ Il **canale del rimborso** si chiede QUI e non alla registrazione: da
+    #    quale conto esce il bonifico è una decisione del momento in cui si paga.
+    def post(self, request: Request, sistemazione_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return sistemazioni_service.conferma_sistemazione(
+                sistemazione_id, dict(payload)
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiSistemazioneAnnulla(DomainAPIView):
+    """POST /api/v1/pagamenti/sistemazioni/<id>/annulla/ — la decisione si scarta."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_sistemazione_annulla",
+        request=inline_serializer(
+            name="PagamentiSistemazioneAnnulla",
+            fields={"motivo": serializers.CharField(required=False)},
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Scarta via POST l'atto, lasciandolo a registro con la sua ragione.
+    # ⚠️ Il motivo è obbligatorio se l'atto non ne aveva già uno: lo dice il
+    #    guard del database, che sa se ce n'era uno — il backend non lo replica.
+    def post(self, request: Request, sistemazione_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return sistemazioni_service.annulla_sistemazione(
+                sistemazione_id, dict(payload)
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)

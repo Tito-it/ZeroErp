@@ -16,7 +16,9 @@ from apps.pagamenti.api.views import (
     ApiDistintaRighe,
     ApiDistintaStato,
     ApiDistinteList,
+    ApiEccedenze,
     ApiFatturaRateSaldo,
+    ApiFatturaSistemazioni,
     ApiFatturaSaldo,
     ApiRataSaldo,
     ApiRateFuoriCapienza,
@@ -24,6 +26,10 @@ from apps.pagamenti.api.views import (
     ApiRigaDetail,
     ApiRigaStato,
     ApiRigheCoda,
+    ApiSistemazioneAnnulla,
+    ApiSistemazioneConferma,
+    ApiSistemazioneDetail,
+    ApiSistemazioni,
 )
 
 urlpatterns = [
@@ -94,5 +100,29 @@ urlpatterns = [
         "fatture/<int:fattura_id>/rate/",
         ApiFatturaRateSaldo.as_view(),
         name="pagamenti-fattura-rate",
+    ),
+    path(
+        "fatture/<int:fattura_id>/sistemazioni/",
+        ApiFatturaSistemazioni.as_view(),
+        name="pagamenti-fattura-sistemazioni",
+    ),
+    # --- Le sistemazioni: l'elenco presenta, la persona decide, i due verbi
+    #     fanno diventare la decisione un fatto (o la scartano) ---
+    path("eccedenze/", ApiEccedenze.as_view(), name="pagamenti-eccedenze"),
+    path("sistemazioni/", ApiSistemazioni.as_view(), name="pagamenti-sistemazioni"),
+    path(
+        "sistemazioni/<int:sistemazione_id>/conferma/",
+        ApiSistemazioneConferma.as_view(),
+        name="pagamenti-sistemazione-conferma",
+    ),
+    path(
+        "sistemazioni/<int:sistemazione_id>/annulla/",
+        ApiSistemazioneAnnulla.as_view(),
+        name="pagamenti-sistemazione-annulla",
+    ),
+    path(
+        "sistemazioni/<int:sistemazione_id>/",
+        ApiSistemazioneDetail.as_view(),
+        name="pagamenti-sistemazione-detail",
     ),
 ]
