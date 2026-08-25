@@ -2620,6 +2620,7 @@
       "perimetro_competenza": "L'atto numera {n} lotti: la data indicata qui sotto vale per tutti.",
       "perimetro_creazione": "Se lasci la data vuota, la decide il registro di numerazione: non significa «oggi».",
       "pavimento": "L'ultimo numero già emesso su questo registro porta la data {data}: non si può numerare prima.",
+      "pavimento_perimetro": "Il sezionale più avanti fra quelli toccati da questo atto ha già emesso un numero con data {data}: non si può numerare prima.",
       "sposta_le_date": "I documenti portano oggi la data {da}. Confermando passeranno al {a}, e i piani rate verranno rigenerati con le nuove scadenze.",
       "niente_da_numerare": "In questo perimetro non c'è nessun documento ancora da numerare.",
       "non_caricato": "La finestra di numerazione non è stata letta: riprova a riaprire il dialog."
