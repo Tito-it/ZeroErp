@@ -29,6 +29,7 @@
 | stato_operativo | text | NO | 'APERTO'::text |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
 | riaperto_il | timestamp with time zone | YES |  |
+| data_documento | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

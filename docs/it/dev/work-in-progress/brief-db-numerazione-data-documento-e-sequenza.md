@@ -658,36 +658,51 @@ DB-12, DB-13 in coda
 fra tutte le cartelle**, non per cartella
 ([[feedback_liquibase_numerazione_globale_per_data]]).
 
-| Lotto | # | Cartella | File (proposto) | Consegna |
-| --- | --- | --- | --- | --- |
-| **0** | — | — | *bonifica dati a mano* (§6) | prerequisito del lotto B |
-| **A** | 02 | `80_data` | `…-seed-parameter-system-fuso-orario-` + append a `parameters.csv` (id 54) | DB-1 |
-| A | 03 | `20_code` | `…-create-fn-data-operativa-` | DB-2 |
-| A | 04 | `00_schema` | `…-alter-registri-politica-data-documento-` (colonna + CHECK + `COMMENT`) | DB-3 |
-| A | 05 | `00_schema` | `…-alter-fatturazione-lotti-data-documento-` | DB-4 |
-| A | 06 | `80_data` | CSV **dedicato** `registri_fatturazione_politica_data.csv` + loader nuovo | seed D-2 |
-| A | 07 | `20_code` | `…-create-fn-calcola-data-documento-` | DB-5 |
-| A | 08 | `20_code` | `…-update-fn-get-or-create-fattura-header-data-documento-` | DB-6 |
-| A | 09 | `00_schema` | `…-alter-fatture-data-default-fn-data-operativa-` | DB-2 (default di colonna) |
-| **B** | 10 | `00_schema` | `…-alter-registri-progressivi-ultima-data-` | DB-7 |
-| B | 11 | `80_data` | append a `codici_errore.csv` + `messaggi_errore.csv` (id **989**) | DB-9 |
-| B | 12 | `80_data` | `…-backfill-ultima-data-progressivi-` (forward-only, `runOnChange: false`) | §6 punto 2 |
-| B | 13 | `20_code` | `…-recreate-fn-get-next-progressivo-cancello-` (**DROP + CREATE**) | DB-8 |
-| **C** | 14 | `20_code` | `…-create-fn-get-data-minima-numerabile-` (le due funzioni) | DB-10 |
-| C | 15 | `20_code` | `…-create-fn-imposta-data-documento-lotto-` | DB-11 |
-| C | 16 | `20_code` | `…-create-trgfn-fatture-guard-data-numerata-` + trigger | **DB-14** |
-| **D** | 17 | `00_schema` | `…-alter-chk-registri-fatturazione-reset-annuale-` | DB-12 (CHECK) |
-| D | 18 | `20_code` | `…-recreate-fn-assign-numero-fattura-fattura-id-e-senza-mese-` (**DROP + CREATE**, ⭐ **fuso**: D-4) | DB-8 (chiamante) + DB-12 |
-| D | 19 | `20_code` | `…-recreate-fn-numera-fattura-opz-emessa-senza-mese-` (**DROP + CREATE**) | DB-12 |
-| D | — | `db/pgtap/` | estensione dei 4 file | DB-13 |
+| Lotto | # | Cartella | File | Consegna | Stato |
+| --- | --- | --- | --- | --- | --- |
+| **A** | 12 | `80_data` | `20260825-12-upsert-parameter-system-fuso-orario-` + CSV **dedicato** `parameters_sistema.csv` (id 54) | DB-1 | ✅ scritto |
+| A | 02 | `20_code/script` | `20260825-02-create-fn-data-operativa-` | DB-2 | ✅ scritto |
+| A | 03 | `00_schema/vendite` | `20260825-03-alter-registri-politica-data-documento-` | DB-3 | ✅ scritto |
+| A | 04 | `00_schema/vendite` | `20260825-04-alter-fatturazione-lotti-data-documento-` | DB-4 | ✅ scritto |
+| A | 05 | `80_data` | `20260825-05-seed-registri-politica-data-documento-` + CSV dedicato | seed D-2 | ✅ scritto |
+| A | 06 | `20_code/vendite` | `20260825-06-create-fn-calcola-data-documento-` | DB-5 | ✅ scritto |
+| A | 07 | `20_code/vendite` | `20260825-07-update-fn-get-or-create-fattura-header-data-documento-` | DB-6 | ✅ scritto |
+| A | 08 | `00_schema/vendite` | `20260825-08-alter-fatture-data-default-operativa-` | DB-2 (default) | ✅ scritto |
+| **0** | — | — | ~~bonifica dati~~ → **nessuna** (§6). Resta la *ripartenza dei numeratori da 100*, **dopo** il migrate | cosmesi, non prerequisito | 🟡 script pronto e collaudato |
+| **B** | 09 | `00_schema/vendite` | `20260825-09-alter-registri-progressivi-ultima-data-` | DB-7 | ✅ scritto |
+| B | — | `80_data` | append a `codici_errore.csv` + `messaggi_errore.csv` (id **989**) | DB-9 | ✅ scritto |
+| B | 10 | `80_data` | `20260825-10-backfill-ultima-data-progressivi-` | §6 punto 2 | ✅ scritto |
+| B | 11 | `20_code/vendite` | `20260825-11-recreate-fn-get-next-progressivo-cancello-` (**DROP + CREATE**) | DB-8 | ✅ scritto |
+| **C** | 13 | `20_code/vendite` | `20260825-13-create-fn-get-data-minima-numerabile-` | DB-10 | ✅ scritto |
+| C | 14 | `20_code/vendite` | `20260825-14-create-fn-imposta-data-documento-lotto-` | DB-11 | ✅ scritto |
+| C | 15 | `20_code/vendite` | `20260825-15-create-trgfn-fatture-guard-data-numerata-` + codice **990** nei CSV | **DB-14** | ✅ scritto |
+| **D** | 16 | `00_schema/vendite` | `20260825-16-alter-chk-registri-fatturazione-reset-annuale-` | DB-12 (CHECK) | ✅ scritto |
+| D | 17 | `20_code/vendite` | `20260825-17-recreate-fn-numera-fattura-opz-emessa-senza-mese-` ⚠️ **prima la chiamante** | DB-12 | ✅ scritto |
+| D | 18 | `20_code/vendite` | `20260825-18-recreate-fn-assign-numero-fattura-bersaglio-e-senza-mese-` (**fuso**: D-4) | DB-8 (chiamante) + DB-12 | ✅ scritto |
+| D | — | `db/pgtap/` | `test-registri-progressivi` esteso (14) + **`test-data-documento-v1` nuovo** (15) | DB-13 | ✅ **verdi** |
 
-⭐ **Passi 14 e 19 del piano originale fusi nel 18** (decisione D-4, Tid
-2026-08-25): `fn_assign_numero_fattura` si riscrive **una volta sola**, passando
-`p_fattura_id` a `fn_get_next_progressivo` e togliendo `mese` dal `RETURNS TABLE`
-nello stesso `DROP + CREATE`.
-⚠️ Fra il passo 13 e il 18 c'è una finestra in cui l'errore del cancello esce
-**senza bersaglio** (il chiamante non passa ancora l'id): accettabile solo
-perché i lotti si applicano nello stesso giro. ▶ §10.3 D-4.
+⚠️ **DB-1 non ha un changeSet, e la numerazione e' scalata di uno rispetto al
+piano di ieri.** Il mirror `20250715-01-upsert_parameters` e' gia'
+`runOnChange: true` + `validCheckSums: ANY` sul CSV: appendere la riga BASTA, e
+un loader nuovo sarebbe una seconda sorgente per la stessa tabella
+([[feedback_messaggi_errore_no_new_loader]], stessa logica). Vale identico per
+DB-9 al passo 10.
+
+⭐ **I due `recreate` di `fn_assign_numero_fattura` sono fusi nel passo 17**
+(decisione D-4, Tid 2026-08-25): la funzione si riscrive **una volta sola**,
+passando `p_fattura_id` a `fn_get_next_progressivo` e togliendo `mese` dal
+`RETURNS TABLE` nello stesso `DROP + CREATE`.
+⚠️ Fra il passo 11 e il 18 c'è una finestra in cui l'errore del cancello esce
+**senza bersaglio** (il chiamante non passa ancora l'id). Tid, 2026-08-25:
+**non siamo in produzione, il punto decade**. ▶ §10.3 D-4.
+
+⛔ **E l'ordine 17 → 18 è invertito rispetto al piano di stamattina, per una
+ragione misurata.** Le due funzioni si toccano: `fn_numera_fattura_opz_emessa`
+chiama `fn_assign_numero_fattura`. Togliendo `mese` prima dalla **chiamata**, ci
+sarebbe un momento in cui la chiamante fa `SELECT t.mese FROM …` su una colonna
+che non esiste più: **errore a runtime**. Nell'ordine giusto — prima la
+chiamante, poi la chiamata — la chiamante seleziona 4 colonne su 5, che è
+legittimo, e non c'è nessuna finestra rotta.
 ⛔ Ciò che **non** si può fare è invertire la numerazione fra chi droppa e chi
 ricrea: l'autogen ordina `00_schema` e `20_code` per NN
 ([[reference_liquibase_autogen_ordina_per_numero]]).
@@ -722,15 +737,109 @@ Stato al 2026-08-25 su `dbdev`:
   sbagliare in silenzio (▶ §10 V-5), ed è anche il caso su cui va provata la
   bonifica.
 
-Da fare, nell'ordine:
+### ⛔ RETTIFICA (Tid, 2026-08-25, secondo giro): **la bonifica non si fa**
 
-1. riallineare a mano `vendite.fatture.data` delle numerate perché la sequenza
-   torni monotòna per `(registro, serie)` — oppure azzerare il registro 3, se
-   Tid preferisce ripartire pulito;
-2. **backfill** di `registri_fatturazione_progressivi.ultima_data` =
-   `max(f.data)` delle numerate di quella riga di contatore;
-3. sistemare la data delle 6 `EMESSA` (o lasciarle: dopo DB-11 si ridichiarano
-   dal dialog).
+~~1. azzerare il registro 3 · 2. backfill · 3. sistemare le 5 EMESSA~~
+
+La domanda di Tid — *«perché dovremmo rinumerarle? mica danno errore? i dati sono
+di test»* — ha smontato la premessa, ed era giusta. **Le 11 fatture con le
+inversioni non producono nessun errore**: `uq_fatture_numero` è soddisfatto,
+nessuna query legge l'ordine dei numeri, nessun guard le guarda. Sono **storia
+brutta, non un difetto attivo**.
+
+⭐ **Il cancello è rivolto in avanti**: confronta la data del *prossimo*
+documento con `max(ultima_data)`. Non gli importa come si è arrivati a quel
+massimo.
+
+Quindi l'unica conseguenza reale delle 11 è **una riga sola**: il pavimento si
+ferma al **2026-08-23** (dalla fattura 18848, numero 8), e delle 5 `EMESSA` in
+attesa le tre datate 31/07, 02/08 e 03/08 verrebbero rifiutate.
+
+**E quelle tre date sono spazzatura comunque**: sono `current_date` in UTC
+catturati alla generazione della bozza settimane fa, non decisioni. Sul registro
+3 (politica `OGGI`) il nuovo modello darebbe loro la data di oggi.
+
+### Cosa si fa, allora
+
+**Niente sulle fatture.** Resta il **backfill** di `ultima_data`, che non è
+lavoro a mano ma il changeSet `20260825-10`.
+
+⭐ **Una sola cosa a mano, e non è una bonifica: i numeratori ripartono da 100**
+(decisione di Tid, 2026-08-25 — *«che ci frega, facciamo prima»*). Nessuna
+rinumerazione, nessuna cancellazione: solo uno **stacco visibile** fra il prima
+e il dopo. Tutto ciò che porta 1..11 viene dal flusso rotto, tutto ciò che porta
+101 e oltre viene dal cancello. In collaudo si legge a colpo d'occhio.
+
+```sql
+-- ⚠️ DOPO il migrate, non prima: il backfill (20260825-10) è runOnChange:false
+--    e gira una volta durante il migrate — eseguito prima, lo sovrascriverebbe.
+INSERT INTO vendite.registri_fatturazione_progressivi
+       (registro_id, anno, mese, serie, last_numero, attivo)
+SELECT r.id, EXTRACT(YEAR FROM CURRENT_DATE)::smallint, 0,
+       COALESCE(r.serie_default, ''), 100, true
+  FROM vendite.registri_fatturazione r
+ WHERE r.attivo
+ON CONFLICT (registro_id, anno, mese, serie) DO UPDATE SET last_numero = 100;
+```
+
+Collaudato in transazione: `INSERT 0 6`, sei registri a 100, prossimo numero
+**101**, le 11 fatture intatte. Script eseguibile (con `ROLLBACK` da girare in
+`COMMIT`): `/tmp/ripartenza-numeratori-da-100.sql`.
+
+⭐ **Non tocca `ultima_data`, ed è una scelta.** Sul registro 3 resta 2026-08-23,
+quindi le tre `EMESSA` anteriori **restano rifiutate** — ed è esattamente il
+collaudo che serve: sono il primo caso reale di `fn_imposta_data_documento_lotto`
+(DB-11), l'unica occasione di provare il cancello su dati veri. Azzerare il
+pavimento renderebbe il cancello inerte fino al primo numero nuovo.
+⚠️ Se un giorno servisse sbloccarle subito, basta aggiungere `ultima_data = NULL`
+a quell'`UPDATE` — ma sapendo che si sta spegnendo il presidio.
+
+⭐ Le tre bloccate diventano il **primo collaudo vero di
+`fn_imposta_data_documento_lotto`** (DB-11, lotto C): la funzione riscrive la
+data, **rigenera il piano rate** e salta le già numerate. È esattamente il caso
+per cui esiste.
+
+⛔ **E per questo NON si sistemano con un `UPDATE` secco su `fatture.data`.**
+Cambiare la data senza rigenerare le scadenze lascia rate calcolate su una data
+che il documento non porta più, e il guard D-K **non se ne accorge** — la somma
+delle rate non cambia, cambiano le loro scadenze, quindi passa in silenzio. È
+precisamente il difetto che DB-11 punto 4 esiste per impedire, e sarebbe
+ridicolo introdurlo a mano nel cantiere che lo chiude.
+
+⚠️ **La sola conseguenza da sapere**: fra il migrate del lotto B e l'arrivo di
+DB-11, quelle tre fatture non si possono numerare. Non siamo in produzione e il
+lotto C è il prossimo.
+
+---
+
+## 6-bis. ~~Lo script di azzeramento~~ — le alternative misurate e scartate
+
+⛔ **Nessuna di queste si esegue** (rettifica di Tid del 2026-08-25). Restano
+scritte perché sono state provate davvero, e perché il giorno in cui una
+bonifica servisse su un database che non è di test, il confronto è già fatto.
+
+Tutte e tre collaudate in transazione con `ROLLBACK`, tutte a costo trascurabile
+(due o tre `UPDATE`):
+
+| | le 11 vecchie | inversioni residue | pavimento R2 | `EMESSA` bloccate | fatture senza numero |
+| --- | --- | --- | --- | --- | --- |
+| **niente** (scelta) | invariate | 3, storiche | 2026-08-23 | 3 → le risolve DB-11 | 5 |
+| azzeramento | perdono il numero | — | nessuno | 0 | **11 `DEFINITIVA` + 5** |
+| rinumerare per data | 1..11 in ordine | 0 | 2026-08-23 | 3 | 5 |
+| serie storica `R2S` | numeri invariati | 3, in una serie chiusa | nessuno | 0 | 5 |
+| entrambe (`R2S` + ordine) | 1..11 in ordine su `R2S` | 0 | nessuno | 0 | 5 |
+
+⚠️ **Perché l'azzeramento era la peggiore**, ed era quella scelta al primo giro:
+lascia **11 fatture `DEFINITIVA` senza numero** dentro 10 lotti chiusi — nessun
+vincolo lo impedisce e nessun trigger lo rifiuta (verificato: né i `BEFORE`, né i
+`CONSTRAINT ... DEFERRED` al `COMMIT`), ma sono documenti «definitivi» senza
+identificativo fiscale.
+
+⚠️ **Perché la serie storica, pur elegante, resta una finzione**: `R2S` non
+esiste in `tipi_doc_fiscale_registri` e nessuna mappatura la produrrebbe mai. È
+leggibile come «sezionale chiuso prima del cantiere» solo se qualcuno lo scrive
+da qualche parte — cioè è una convenzione che vive in un documento, non nel
+modello.
 
 ---
 
@@ -753,6 +862,16 @@ Da fare, nell'ordine:
   scritto; il cantiere ci gira intorno usando un CSV dedicato.
 * I due UNIQUE gemelli su `registri_fatturazione_progressivi` (§10 V-12):
   nominati, non tolti.
+* ⛔ **`DEFAULT_UTILITY` non è più scrivibile, e nessuno se n'era accorto.** La
+  riga (id 12 di `config.parameters`) ha `default_value = ''`, il dispatcher
+  `config.trgfn_parameters_fk_surrogate_dispatch` — entrato **dopo** — pretende un
+  valore esistente in `config.utilities.codice_interno`, e la stringa vuota non
+  c'è. ⚠️ E `default_value` è `NOT NULL`, mentre la descrizione della riga dice
+  «NULL = nessun default»: **quella riga non ha nessun valore scrivibile**.
+  Sopravvive solo perché precede il guard. Il migrate del 2026-08-25 ci è morto
+  sopra. Sanarla è una **decisione di dominio** (scegliere una utility di
+  default, oppure ammettere `''` nel guard, oppure togliere il `NOT NULL`) e non
+  si prende dentro questo cantiere.
 
 ---
 
@@ -1006,3 +1125,593 @@ ha il parametro `p_fattura_id` e il suo unico chiamante **non glielo passa**:
 il cancello funziona, ma l'errore esce **senza bersaglio**. È accettabile solo
 perché i due lotti si applicano nello stesso giro. ⛔ Se si dovesse fermarsi in
 mezzo, il file fuso va anticipato subito dopo DB-8.
+
+### 2026-08-25 · Lotto A applicato al repo (scritto, non migrato)
+
+Otto consegne di file per la prima metà del cantiere — «la data nasce giusta» —
+più l'append al CSV dei parametri. **Nessuna migrazione eseguita**: i changeSet
+sono nel repo e aspettano l'autorizzazione a `migrate`.
+
+| | |
+| --- | --- |
+| DB-1 | riga `SYSTEM_FUSO_ORARIO` (id 54) appesa a `parameters.csv`. ⭐ **Nessun changeSet**: il mirror esistente è già `runOnChange` sul file, e la numerazione del piano è scalata di uno |
+| DB-2 | `script.fn_data_operativa()` — `STABLE`, fail-loud su **tre** condizioni (assente · vuoto · non in `pg_timezone_names`) |
+| DB-3 | `registri_fatturazione.politica_data_documento` + CHECK + `COMMENT` |
+| DB-4 | `fatturazione_lotti.data_documento`, senza default (il NULL significa «vince il registro») |
+| seed | CSV **dedicato** per la politica + eredità dei registri clonati da `meta->>'clonato_da'` |
+| DB-5 | `vendite.fn_calcola_data_documento` |
+| DB-6 | `fn_get_or_create_fattura_header` senza `current_date` |
+| DB-2b | `vendite.fatture.data` DEFAULT `script.fn_data_operativa()` |
+
+**Tre cose emerse scrivendo**, tutte già dentro i file:
+
+1. ⭐ **Il terzo controllo di `fn_data_operativa`.** Il brief ne chiedeva due
+   (parametro assente o vuoto). Ne serve un terzo: un valore che *non è un fuso*
+   (`Europe/Roma`) fa alzare a `AT TIME ZONE` un **22023 grezzo** da dentro la
+   funzione — il contratto «`P0001` + `CONSTRAINT` = errore di dominio» salta e
+   il guasto arriva al backend come 500 non tradotto. È la stessa forma del
+   difetto già pagato sui segnaposto malformati.
+2. ⭐ **Nessun `ELSE` che ingoia in `fn_calcola_data_documento`.** Il brief
+   scriveva `ELSE fn_data_operativa()`: una politica non riconosciuta si
+   sarebbe comportata come `OGGI`, in silenzio. Ora solleva. Il CHECK rende il
+   ramo irraggiungibile *finché regge*, ed è esattamente il ragionamento già
+   scritto in `fn_genera_scadenze_fattura` sulla ripartizione non gestita.
+3. ⚠️ **`fn_get_or_create_fattura_header` guadagna un controllo che non aveva.**
+   Legge il lotto (per competenza e data dichiarata) e quindi può non trovarlo:
+   `E_LOTTO_NON_TROVATO`. Prima il lotto non lo leggeva affatto, e un
+   `p_lotto_id` sbagliato produceva una fattura orfana. ⭐ La lettura sta
+   **dopo** il lookup della fattura esistente: la funzione gira una volta per
+   *attività* e quasi sempre esce subito.
+
+⭐ E il codice per il chiamante rotto **non è `E_PARAMETRO_INVALIDO`**:
+`E_VENDITE_CHIAMATA_NON_VALIDA` (983, `TECNICO`) esiste già ed è il gemello di
+dominio di quello che il cantiere incassi ha usato stamattina. Il rubinetto
+degli 88 `E_PARAMETRO_INVALIDO` di `vendite` resta chiuso.
+
+**Verifiche eseguite** — tutte in transazione con `ROLLBACK`, nessuna scrittura
+lasciata sul database:
+
+* i tre rami di errore di `fn_data_operativa` sollevano `P0001` con la frase
+  giusta, e il canale `CONSTRAINT` porta `E_CONFIG_MANCANTE`;
+* ⭐ **la controprova del difetto**: con la sessione forzata in **UTC** (il fuso
+  di Django), alle 00:30 del 26/08 romane `current_date` dice **25/08** e
+  `fn_data_operativa()` dice **26/08**;
+* `fn_calcola_data_documento` su 8 casi: OGGI, fine mese, **febbraio bisestile**
+  (2028-02-29), competenza a metà mese, dichiarata che vince su entrambe le
+  politiche, competenza `NULL` che sotto `FINE_MESE` solleva e sotto `OGGI` è
+  legittima, registro `<= 0` e registro inesistente con **due frasi diverse**;
+* il seed: i tre cloni **ereditano** dai loro originali (1360 si comporta come
+  il 4);
+* ⭐ **end-to-end su `fn_get_or_create_fattura_header`**, con la sessione in
+  UTC: tre lotti veri, tre configurazioni, tre date scritte giuste
+  (`2026-08-25` · `2026-08-10` dichiarata · `2026-06-30` fine mese), più
+  l'idempotenza (una seconda chiamata non crea una seconda fattura) e il nuovo
+  `E_LOTTO_NON_TROVATO`;
+* `scripts/guardrail_run_on_change.py` e `guardrail_pgtap_preambolo.py`: verdi;
+* i sette YAML parsano, hanno un solo changeSet e il `logicalFilePath`.
+
+⚠️ **Una trappola incontrata e da ricordare per DB-13**: la prima stesura della
+prova leggeva la data con `SELECT f.data FROM fatture WHERE f.id = fn_get_or_create...(...)`
+— tutto in **una** istruzione — e riceveva `NULL`. La snapshot di statement
+legge *prima* delle scritture della funzione chiamata: il verbo va invocato in
+un'istruzione **separata** dall'asserzione
+([[reference_pgtap_stessa_istruzione_snapshot]]). Vale identico nei pgTAP di
+DB-13.
+
+### 2026-08-25 · Lotto B applicato al repo — il cancello (scritto, non migrato)
+
+Tre changeSet più l'append del codice errore ai due CSV. **Nessuna migrazione
+eseguita.**
+
+| | |
+| --- | --- |
+| DB-7 | `registri_fatturazione_progressivi.ultima_data` |
+| DB-9 | `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` (`DATO_ERRATO`) + messaggio **989** — nessun changeSet: i mirror `runOnChange` dei due CSV lo ripescano |
+| §6.2 | backfill di `ultima_data` dallo storico, forward-only |
+| DB-8 | ⭐ **il cancello**, dentro `fn_get_next_progressivo`, sotto l'advisory lock |
+
+⭐ **La correzione portante è nel lock, non nel cancello.** La chiave
+dell'advisory lock passa da `registro|anno|serie` a **`registro|serie`**. Senza,
+il cancello sarebbe stato aggirabile *proprio nel caso che dichiara di coprire*:
+legge il massimo attraverso gli anni, ma con l'anno nel lock due numerazioni con
+date in anni diversi avrebbero preso lock **diversi**, letto lo stesso massimo e
+passato entrambe. Il `FOR UPDATE` sulla riga di contatore non salva — blocca la
+riga dell'anno corrente, non le altre.
+
+> **La regola, che vale oltre questo cantiere:** *il perimetro del lock deve
+> coincidere con quello del controllo che ci sta dentro.* Un lock più stretto di
+> ciò che il controllo legge non serializza niente.
+
+**Tre scelte prese scrivendo:**
+
+1. **Il bersaglio si cerca per DATA, non per numero** — e nel registro 3, oggi,
+   la differenza si vede: «l'ultimo per numero» è la fattura 835 (31/07), la
+   frase invece nomina il 23/08. Il pulsante avrebbe portato altrove.
+2. **La chiave `bersaglio` si omette quando sarebbe vuota** (chiamata senza
+   `p_fattura_id` e ultima non visibile): un array vuoto è malformato e
+   lascerebbe un `W_BERSAGLIO_MALFORMATO` nel log per niente.
+3. **I guard di parametro escono da `E_PARAMETRO_INVALIDO`.** La funzione vecchia
+   ci metteva dentro `'p_registro_id e p_data obbligatori'` — nomi di variabili
+   PL/pgSQL nella frase che legge una persona. Ora sono due guard separati con
+   `E_VENDITE_CHIAMATA_NON_VALIDA` (TECNICO), più il `<= 0` sugli id che mancava.
+
+**Verifiche** — in transazione con `ROLLBACK`, su un registro di prova creato e
+distrutto lì dentro:
+
+* stessa data dell'ultimo numerato → **passa** (decisione 7), data successiva →
+  passa e il pavimento sale;
+* data anteriore → `P0001` con la frase *«…che porta la data 23/08/2026»*, e il
+  pavimento **non arretra** dopo il rifiuto;
+* ⭐ **cross-anno**: numerato il 2027-01-05, il tentativo sul 2026-12-31 è
+  **rifiutato** — è il caso che la vecchia chiave del lock non avrebbe protetto;
+* **due serie sullo stesso registro** non si bloccano a vicenda (S2 riparte da 1
+  mentre S1 è a 3);
+* contratto errore completo: `CONSTRAINT` = il codice, `COLUMN` = `data_documento`,
+  `DATATYPE` = `FATTURA:835`; e senza bersaglio il canale resta **vuoto**, non
+  malformato;
+* chiamata a **tre** argomenti (il chiamante attuale) ancora valida, e
+  `pg_get_function_identity_arguments` conferma **una sola** firma: nessun
+  overload;
+* backfill sui contatori veri: registro 3 → 23/08/2026, registro 5 → 24/08/2026,
+  gli stessi numeri calcolati a mano nell'analisi.
+
+**Bonifica**: decisa (azzeramento del registro 3), script scritto e **collaudato
+in transazione** — §6-bis. `UPDATE 11`, `DELETE 1`, zero inversioni residue,
+nessun trigger che rifiuta. ⚠️ **Da eseguire prima del migrate**, e finisce in
+`ROLLBACK`: va portato a `COMMIT` a mano.
+
+⚠️ **Rilievo laterale, non di questo cantiere**: `scripts/codici-errore-baseline.sh`
+segnala un **rientrato** preesistente (`E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`)
+che chiede un `--update` della baseline. Non è stato toccato: è debito altrui e
+allineare una baseline è una decisione, non un effetto collaterale.
+
+### 2026-08-25 · La bonifica cade, e i numeratori ripartono da 100
+
+Tid, rileggendo: *«perché dovremmo rinumerarle? mica danno errore? i dati sono di
+test»*. La domanda ha smontato la premessa di §6, ed era giusta.
+
+**Le 11 fatture con le inversioni non producono nessun errore.**
+`uq_fatture_numero` è soddisfatto, nessuna query legge l'ordine dei numeri,
+nessun guard le guarda. ⭐ Il cancello è **rivolto in avanti**: confronta la data
+del *prossimo* documento con `max(ultima_data)`, e non gli importa come si è
+arrivati a quel massimo. Le inversioni sono storia brutta, non un difetto attivo.
+
+L'unica conseguenza reale era **una riga sola**: il pavimento a 2026-08-23, e tre
+`EMESSA` anteriori rifiutate. ⭐ E quelle tre date sono spazzatura comunque —
+`current_date` in UTC catturati alla generazione della bozza settimane fa, non
+decisioni.
+
+**Deciso:** nessuna bonifica. Le tre bloccate diventano il **primo collaudo reale
+di `fn_imposta_data_documento_lotto`** (DB-11), che è la funzione fatta apposta:
+riscrive la data, **rigenera il piano rate**, salta le già numerate.
+
+⛔ **E per questo non si sistemano con un `UPDATE` secco.** Cambiare
+`fatture.data` senza rigenerare le scadenze lascia rate calcolate su una data che
+il documento non porta più, e il guard D-K **non se ne accorge**: la somma non
+cambia, cambiano le scadenze. Sarebbe ridicolo introdurre a mano il difetto che
+DB-11 punto 4 esiste per impedire.
+
+⭐ **Resta una cosa sola, e non è una bonifica: i numeratori ripartono da 100.**
+Uno stacco visibile fra il flusso rotto (1..11) e il cancello (101+), leggibile a
+colpo d'occhio in collaudo. Sei registri, un `INSERT ... ON CONFLICT`, collaudato.
+⚠️ Va eseguito **dopo** il migrate: il backfill è `runOnChange: false` e girerebbe
+dopo, sovrascrivendo.
+
+**Le alternative sono state misurate davvero prima di scartarle** (§6-bis), tutte
+a costo trascurabile: azzeramento, rinumerazione per data, serie storica `R2S`, e
+le ultime due combinate. La tabella comparativa resta scritta perché il giorno in
+cui una bonifica servisse su un database che non è di test, il confronto è già
+fatto. ⚠️ E perché l'opzione scelta al primo giro — l'azzeramento — era **la
+peggiore delle quattro**: lasciava 11 fatture `DEFINITIVA` senza numero.
+
+### 2026-08-25 · Migrate fallito sul 09, e perché la prova non l'aveva visto
+
+Tid ha lanciato il migrate. Applicati **02, 03, 04, 06, 07, 08**; il **09** è
+morto con *«Unterminated string literal»*, e con lui si sono fermati 05, 10 e 11.
+
+**Il difetto**: un **apostrofo singolo in una parola italiana tronca** dentro il
+`COMMENT ON COLUMN` — `letto la' sotto`. In un letterale SQL a quote singole
+quell'apostrofo **chiude la stringa**: tutte le forme `e'`, `gia'`, `piu'`,
+`perche'`, `la'`… vanno raddoppiate, e in quel `COMMENT` tutte lo erano tranne
+una. Corretto riformulando la frase invece di raddoppiare, così la trappola non
+si ripresenta a chi rilegge.
+
+⛔ **Perché la verifica non l'aveva presa, ed è la lezione vera.** Per i file
+02, 06, 07 e 11 avevo **estratto** l'SQL dallo YAML e lo avevo eseguito intero.
+Per 03, 04, 08 e 09 la prova **ricopiava a mano solo l'`ALTER TABLE`**, senza il
+`COMMENT`. Una prova che riscrive l'SQL non prova il changeSet: prova quello che
+si è ricopiato — e si ricopia sempre la DDL, saltando `COMMENT`, `GRANT` e
+blocchi `DO`, cioè proprio i pezzi che non sembrano codice e che nessuno rilegge.
+([[feedback_verificare_sql_estratto_non_riscritto]])
+
+**Cosa è stato fatto adesso:**
+
+* un **tokenizer** che cammina i blocchi `sql` di tutti i changeSet del cantiere
+  tenendo conto del dollar-quoting e segnala i letterali non chiusi: **1 trovato**
+  (il 09), **0 dopo la correzione**;
+* la verifica **dinamica rifatta come si deve**, sull'SQL **estratto dallo YAML**:
+  09, 11, 05 e 10 concatenati in ordine di dipendenza dentro `BEGIN; … ROLLBACK;`
+  con `ON_ERROR_STOP=1`. Tutto eseguito — `COMMENT` e `GRANT` compresi — seed dei
+  registri corretto (i tre cloni ereditano) e backfill che valorizza le due righe
+  di contatore (registro 3 → 23/08, registro 5 → 24/08).
+
+**Stato del database**: parziale e coerente. `DATABASECHANGELOG` registra 02, 03,
+04, 06, 07, 08; `ultima_data` **non** esiste ancora. Il 09 non è stato registrato,
+quindi il migrate riprende da lì senza conflitti di checksum: **basta rilanciarlo**.
+
+⭐ **Candidato a guardrail**: quel tokenizer trova la classe intera senza toccare
+il database ed è un `scripts/guardrail_*.py` naturale, gemello di
+`guardrail_run_on_change.py`. Non è stato aggiunto — è una decisione, non un
+effetto collaterale di una correzione.
+
+### 2026-08-25 · Secondo migrate fallito — e la mina era in `parameters.csv`
+
+Ripreso il migrate dopo la correzione del `09`: applicati **09** e **11**. Poi il
+lotto `80_data` è morto su un changeSet **che non è di questo cantiere**:
+`20250715-01-upsert_parameters`, con `E_PARAMETER_DEFAULT_VALUE_INVALID`.
+
+**Cosa è successo.** DB-1 era un *append* a `parameters.csv`. L'append cambia il
+checksum del file, il mirror è `runOnChange: true`, quindi si è **svegliato** e ha
+ri-scritto **tutte** le righe — morendo su `DEFAULT_UTILITY` (id 12), che ha
+`default_value = ''`. Il dispatcher `config.trgfn_parameters_fk_surrogate_dispatch`,
+entrato **dopo** che quella riga fu scritta, pretende un valore esistente in
+`config.utilities.codice_interno`, e la stringa vuota non c'è.
+
+🔴 **E qui c'è la lezione, perché avevo verificato — con il controllo sbagliato.**
+Avevo confrontato `parameters.csv` col database riga per riga, trovato tutto
+allineato e concluso «append sicuro». **Il confronto non poteva vederlo**: la riga
+è **identica** al database ed è **irriscrivibile lo stesso**.
+
+> Le mine nei CSV con mirror `runOnChange` sono **due specie**:
+> **stantìa** — il CSV dice il falso rispetto al DB (si trova col confronto);
+> **irriscrivibile** — il CSV dice il vero, ma un guard entrato dopo lo rifiuta.
+> La seconda si trova **solo rieseguendo l'upsert**.
+
+⚠️ E `DEFAULT_UTILITY` è messa peggio di così: `default_value` è `NOT NULL` mentre
+la sua descrizione dice «NULL = nessun default». **Quella riga non ha nessun
+valore scrivibile.** Nominata in §7 — sanarla è una decisione di dominio.
+
+**Cosa è stato fatto:**
+
+* `parameters.csv` **ripristinato** (`git checkout`): il checksum torna quello di
+  prima, il mirror si riaddormenta, il migrate si sblocca;
+* DB-1 spostato su un **CSV dedicato** — `parameters_sistema.csv` + loader
+  `20260825-12` — che apre la famiglia `SYSTEM_*`. È lo stesso pattern già in
+  casa (`parameters_note_defaults.csv`, `parameters_documenti_storage.csv`,
+  `parameters_vendite_defaults.csv`, `parameters_default_tipo_soggetto_dettaglio.csv`)
+  e la stessa mossa già fatta per `registri_fatturazione.csv`;
+* ⭐ **verificata la RIESEGUIBILITÀ dei quattro CSV toccati**, non più il confronto:
+  ogni file caricato in una temp table e ri-upsertato riga per riga dentro
+  `BEGIN; … ROLLBACK;`. `codici_errore.csv` (780 righe) ✅ ·
+  `messaggi_errore.csv` (777) ✅ · `parameters_sistema.csv` ✅ — e con la riga a
+  posto `script.fn_data_operativa()` risponde `2026-08-25` · 
+  `registri_fatturazione_politica_data.csv` ✅.
+
+⚠️ **Un effetto collaterale della prova, da sapere**: la prova di *controllo* su
+`parameters.csv` è rimasta **appesa**. Nel percorso d'errore
+`script.fn_log_error_only` tenta un `dblink` che può non tornare, e la sessione
+resta attiva **tenendo un lock su `config.parameters`** — cioè bloccherebbe il
+migrate successivo. Terminata con `pg_terminate_backend`; la transazione è tornata
+indietro pulita (nessun `SYSTEM_FUSO_ORARIO` residuo). Chi rifà quella verifica
+metta un timeout e controlli `pg_stat_activity` dopo.
+
+**Stato del database**: `DATABASECHANGELOG` ha 02, 03, 04, 06, 07, 08, 09, 11.
+Restano da applicare i tre di `80_data`: **05** (seed politiche), **10**
+(backfill), **12** (parametro fuso). Nessuno dei tre è registrato, quindi il
+migrate riprende da lì: **basta rilanciarlo**.
+
+### 2026-08-25 · Il cancello statico sui letterali SQL
+
+Chiesto da Tid dopo i due migrate falliti: *«prima finisci di risolvere, poi
+scrivilo»*. Scritto e agganciato alla CI.
+
+`scripts/guardrail_sql_letterali.py` cammina i blocchi `sql` di **changes** e
+**rollback** di ogni changelog di `migrations_v2` e segnala i letterali `'`
+aperti e mai chiusi. Tiene conto di dollar-quoting, commenti `--`, commenti
+`/* … */` **annidati** e apostrofi raddoppiati. Statico, senza database.
+Agganciato in `ci-validate.yaml` accanto agli altri due cancelli statici, prima
+del migrate — che è proprio quello che vogliamo non far morire.
+
+**Esito:** `2943` changelog esaminati, **verde**; la regressione ricostruita
+(il `la'` rimesso nel `09`) viene **presa**.
+
+⚠️ **E qui ho sbagliato di nuovo la stessa cosa, in piccolo.** La prima stesura
+non gestiva i commenti `/* … */` — avevo scritto nel file, testualmente, che «nel
+repo non compaiono nei blocchi sql». Falso, e misurato dopo tre minuti:
+`20251026-01-create-fn-guard-sorgente-polimorfa` si apre con un `/* … */` che
+contiene `l'esistenza`. Quell'apostrofo apriva un letterale fantasma, il
+tokenizer perdeva il passo per 3900 caratteri e accusava un `COMMENT`
+perfettamente sano 120 righe più in basso.
+
+⛔ **Un cancello che sbaglia così viene spento dopo due segnalazioni**, e un
+presidio spento è peggio di uno assente. Corretto e riverificato: zero falsi
+positivi su tutto il repo.
+
+⚠️ **Cosa NON prende, ed è scritto nel file perché non dia falsa sicurezza**: un
+letterale chiuso ma nel **punto sbagliato**. Quello lo vede solo il parser di
+PostgreSQL — cioè eseguire l'SQL estratto dallo YAML in transazione. I due
+controlli sono complementari, non alternativi.
+
+Regola documentata dove la si cerca: `docs/it/linee-guida-sql.md` **§11.3**, con
+in §11.2 la parte nuova sulle **due specie di mina** nei CSV con mirror
+`runOnChange`.
+
+### 2026-08-25 · Lotti C e D scritti — restano i pgTAP
+
+Sei changeSet più il codice errore **990**. **Nessuna migrazione eseguita.**
+
+| | |
+| --- | --- |
+| DB-10 | `fn_get_data_minima_numerabile` (registro, serie) e `_lotto` |
+| DB-11 | `fn_imposta_data_documento_lotto` — la madre: data + rate + conteggi |
+| DB-14 | `trgfn_fatture_guard_data_numerata` + trigger + codice `E_FATTURA_DATA_NON_MODIFICABILE` (990) |
+| DB-12 | CHECK `reset_policy = 'ANNUALE'`, poi le due funzioni senza `mese` |
+
+**Quattro decisioni prese scrivendo:**
+
+1. ⛔ **L'ordine 17 → 18 è invertito rispetto al piano**, e la ragione è
+   misurata: `fn_numera_fattura_opz_emessa` chiama `fn_assign_numero_fattura`.
+   Togliendo `mese` prima dalla *chiamata*, la chiamante farebbe
+   `SELECT t.mese FROM …` su una colonna che non esiste più — errore a runtime.
+   Prima la chiamante: selezionare 4 colonne su 5 è legittimo.
+2. ⛔ **Il JOIN sul registro cade nel 17 e RESTA nel 18.** Nel 17 serviva solo a
+   `reset_policy`; nel 18 porta anche `serie_default`, cioè **il punto in cui la
+   serie di un documento si risolve davvero** — la stessa risoluzione che usano
+   `fn_get_data_minima_numerabile` e il backfill. Se una delle tre diverge,
+   cerca una riga di contatore che non esiste e risponde «nessun vincolo».
+3. ⚠️ **DB-11 rigenera le rate solo dove un piano esiste già.** Su una `DRAFT`
+   senza totali `fn_genera_scadenze_fattura` alzerebbe
+   `E_SCADENZE_BASE_NON_PRONTA` e farebbe fallire l'intera dichiarazione su un
+   caso legittimo. Se il piano non c'è, lo step EMESSA lo creerà con la data
+   nuova: non c'è niente da riparare.
+4. ⚠️ **DB-14 conia un codice invece di riusare `E_COLONNA_NON_MODIFICABILE`**,
+   che pure esiste sulla stessa tabella: quel messaggio dice «Colonna non
+   modificabile: %s» e non dice **perché** — e il perché è tutto. Nel segnaposto
+   va il **numero**, non l'id: è quello che compare sul documento.
+   ✅ Test esistenti verificati prima di aggiungere il trigger: l'unico pgTAP che
+   scrive `fatture.data` non numera mai quella fattura.
+
+**Verifiche** — DDL **estratta dagli YAML** (non riscritta) ed eseguita in
+transazione, poi prove di comportamento:
+
+* pavimento del registro con la serie risolta dal `serie_default`, serie
+  esplicita, serie sbagliata → `NULL`, registro senza contatore → `NULL`,
+  registro inesistente e id `<= 0` → due frasi distinte;
+* pavimento dei 5 lotti con le `EMESSA` in attesa: **2026-08-23** su tutti;
+* **DB-14**: cambiare la data della fattura numerata 18848 → `P0001`,
+  *«Fattura 8 già numerata…»*, bersaglio `FATTURA:18848`; su una non numerata
+  passa; e un `UPDATE` che non nomina `data` non scatta affatto;
+* **DB-11**: data valida → `aggiornate 1, saltate 0, rate_rigenerate 1`, e la
+  **prima rata si sposta** dal 23/09 al 10/10 — cioè il punto 4 funziona; data
+  sotto il pavimento → rifiutata con `campo = data_documento` e bersaglio
+  `LOTTO:7515`; sul lotto 4212 (due fatture numerate) → `0 aggiornate,
+  2 saltate`, **non fallisce**;
+* **DB-12**: `MENSILE` e `NESSUNA` rifiutati dal CHECK; le due funzioni tornano
+  quattro colonne, `fn_get_next_progressivo` ha i suoi quattro parametri, e
+  `pg_get_function_identity_arguments` conferma **nessun overload**;
+* **il giro completo**: numerare una `EMESSA` passa dal cancello e prende il
+  **101**, con `ultima_data` aggiornata alla data nuova;
+* i tre guardrail statici: verdi (2949 changelog esaminati da quello nuovo).
+
+⛔ **Un'incoerenza trovata nei dati, non nel codice** — vedi §6-ter.
+
+**Resta DB-13**, i pgTAP. Si scrivono dopo il migrate di C e D: prima, non si
+potrebbero **eseguire**, e una prova che non gira non è una prova.
+
+---
+
+## 6-ter. ⛔ Il contatore del registro 5 è rimasto sulla serie vecchia
+
+Trovato il 2026-08-25 provando i lotti C e D, **dopo** che Tid aveva rinominato i
+`serie_default` e portato i contatori a 100.
+
+| registro | serie che userà | serie del contatore | |
+| --- | --- | --- | --- |
+| 3 Front-office | `VX2` | `VX2` | ok |
+| 4 Back-office | `VX1` | `VX1` | ok |
+| **5 NC** | **`RX1`** | **`''` (vuota)** | ⛔ |
+| 1359/1360/1361 | `V2` / `V1` / `R2` | idem | ok |
+
+**Cosa succede se resta così**: la serie effettiva di un documento è
+`COALESCE(f.serie, r.serie_default, '')`, quindi la prossima nota di credito
+cerca il contatore su `RX1`, **non lo trova**, ne crea uno a zero e prende il
+numero **1** invece di 101. E `ultima_data` di `RX1` sarebbe `NULL`: su quel
+sezionale il cancello **non avrebbe nessun pavimento** e accetterebbe qualunque
+data. La riga con la serie vuota — `last_numero = 100`, `ultima_data = 2026-08-24`
+— resterebbe orfana.
+
+⭐ **È la conferma sul campo che la risoluzione della serie è il punto delicato
+di tutto il cantiere**: rinominare un `serie_default` sposta il sezionale, e
+tutto ciò che non lo risolve allo stesso modo smette di parlare della stessa
+cosa. Le funzioni scritte oggi hanno retto proprio perché lo risolvono tutte con
+lo stesso `COALESCE`.
+
+**Rimedio**, una riga, collaudata (`UPDATE 1`, zero orfane, tutti e sei i
+registri a `prossimo_numero = 101`) — script in
+`/tmp/allinea-contatori-alla-serie.sql`:
+
+```sql
+UPDATE vendite.registri_fatturazione_progressivi rp
+   SET serie = COALESCE(r.serie_default, '')
+  FROM vendite.registri_fatturazione r
+ WHERE r.id = rp.registro_id
+   AND rp.serie <> COALESCE(r.serie_default, '')
+   AND NOT EXISTS (SELECT 1 FROM vendite.registri_fatturazione_progressivi altra
+                    WHERE altra.registro_id = rp.registro_id AND altra.anno = rp.anno
+                      AND altra.mese = rp.mese AND altra.serie = COALESCE(r.serie_default, ''));
+```
+
+⚠️ Il `NOT EXISTS` c'è perché se sulla serie giusta esistesse **già** una riga le
+due andrebbero **fuse a mano**: quale `last_numero` sopravvive è una decisione,
+non una cosa da indovinare.
+
+⚠️ **E le 11 fatture storiche del registro 3 restano sulla serie `R2`**, che ora
+non è più quella del registro. Non è un difetto: è — arrivandoci per un'altra
+strada — l'opzione «serie storica» confrontata in §6-bis, ottenuta rinominando la
+serie **viva** invece di spostare i documenti vecchi. `uq_fatture_numero` regge
+(chiave diversa) e il pavimento è stato riportato su `VX2`.
+
+### 2026-08-25 · DB-13 — i pgTAP, scritti e VERDI. Il cantiere DB è chiuso.
+
+Scritti **dopo** il migrate, per poterli eseguire: una prova che non gira non è
+una prova.
+
+| file | | |
+| --- | --- | --- |
+| `test-registri-progressivi.sql` | esteso da 6 a **14** asserzioni | ✅ |
+| `test-data-documento-v1.sql` | **nuovo**, **15** asserzioni | ✅ |
+
+⚠️ **Due file invece dei due che il brief nominava.** `test-numerazione-guard-coerenza-v1.sql`
+non è stato toccato: è il test del guard **D-K**, che questo cantiere non ha
+cambiato, e infilarci dentro la data l'avrebbe reso un file su due argomenti. La
+data documento, la madre e il guard sulla colonna hanno preso un file loro.
+
+**Cosa coprono, oltre alle nove voci del brief:**
+
+* il **cross-anno** — numerato al 2026-01-01, il tentativo sul 2025-12-31 è
+  rifiutato benché il contatore 2025 sia un'altra riga;
+* ⭐ **`throws_like` sulle frasi**, non solo lo SQLSTATE: il rifiuto del cancello
+  deve nominare *la data da cui ripartire* (`%15/03/2026%`) e quello di DB-14 il
+  *numero del documento* (`%999001%`). Un test sul solo SQLSTATE resterebbe
+  verde anche se il messaggio smettesse di dire l'unica cosa utile;
+* **la serie risolta dal `serie_default`** — il punto su cui il rename di
+  stamattina avrebbe potuto far saltare tutto;
+* ⭐ **la controprova di DB-14**: su una fattura *non* numerata la data si
+  cambia. Senza, «il guard funziona» e «il guard blocca tutto» sarebbero verdi
+  allo stesso modo;
+* ⭐ **la rigenerazione delle rate si misura sullo spostamento della prima
+  scadenza**, non sul fatto che la funzione non sollevi. È l'unico modo di
+  vedere il punto 4 di DB-11, che altrimenti è invisibile — il guard D-K
+  verifica la somma, che non cambia;
+* i tre rami fail-loud di `fn_data_operativa`, **con la sessione forzata in
+  `UTC`** dentro il preambolo: è il fuso di Django, cioè quello che produceva il
+  difetto.
+
+⚠️ **Scritto in testa al file, e non lasciato scoprire a chi verrà dopo**: questi
+test **non provano che il cancello stia sotto l'advisory lock**. pgTAP è
+mono-sessione, il lock non si contende, e spostando il controllo *prima* del lock
+il file resterebbe interamente verde. La posizione si presidia in review. È la
+stessa lezione già scritta in `test-numerazione-guard-coerenza-v1.sql` sul D-K.
+
+**Verifiche:**
+
+* i due file: **29 asserzioni, tutte verdi**;
+* i quattro file dell'area numerazione (`registri-progressivi`,
+  `data-documento-v1`, `numerazione-guard-coerenza-v1`, `numera-fattura-opz-emessa`,
+  `numera-nota-credito-riferimento-v1`): **PASS**;
+* ⭐ **`scripts/pgtap-baseline.sh vendite` — 225 file: «Nessuna regressione,
+  ogni rosso era già noto»** (5 rossi, tutti in baseline). Il trigger nuovo su
+  `vendite.fatture` e le due firme cambiate non hanno rotto niente;
+* i tre guardrail statici verdi, e il debito `throws_ok` **invariato a 131**: i
+  test nuovi passano tutti lo SQLSTATE.
+
+---
+
+## 11. Stato finale del cantiere DB
+
+**18 changeSet applicati**, 4 CSV toccati, 2 file pgTAP, 1 guardrail nuovo.
+Tutte e 14 le consegne DB sono chiuse — le 13 del brief più **DB-14**, emersa
+dalla verifica.
+
+⛔ **Restano due cose, entrambe fuori dal DB:**
+
+1. **`/tmp/allinea-contatori-alla-serie.sql` — DA ESEGUIRE.** Il contatore del
+   registro 5 (NC) è ancora sulla serie vuota mentre il registro usa `RX1`: la
+   prossima nota di credito prenderebbe il numero **1** invece di 101, e su quel
+   sezionale il cancello non avrebbe **nessun pavimento**. §6-ter.
+2. Le consegne **BE-1..BE-6** e **FE-1..FE-4** di §8, che ora possono partire.
+
+⚠️ E due debiti **nominati e non chiusi**, entrambi di casa d'altri: la mina in
+`registri_fatturazione.csv` (§10.3 D-3) e `DEFAULT_UTILITY` che non ha nessun
+valore scrivibile (§7).
+
+---
+
+### 11.1 · 2026-08-25 — documentazione concettuale delle sei funzioni nuove
+
+Le pagine **auto-generate** delle sei funzioni nate in questo cantiere esistevano
+già (le scrive `scripts/gen_db_docs.py` leggendo il DB vivo); mancava la metà
+**manuale**, quella che le persone scrivono e che l'auto-gen non tocca mai.
+
+| funzione | pagina |
+| --- | --- |
+| `script.fn_data_operativa` | `docs/it/dbzero/script/manual/fn_data_operativa.md` |
+| `vendite.fn_calcola_data_documento` | `docs/it/dbzero/vendite/manual/fn_calcola_data_documento.md` |
+| `vendite.fn_get_data_minima_numerabile` | `…/manual/fn_get_data_minima_numerabile.md` |
+| `vendite.fn_get_data_minima_numerabile_lotto` | `…/manual/fn_get_data_minima_numerabile_lotto.md` |
+| `vendite.fn_imposta_data_documento_lotto` | `…/manual/fn_imposta_data_documento_lotto.md` |
+| `vendite.trgfn_fatture_guard_data_numerata` | `…/manual/trgfn_fatture_guard_data_numerata.md` |
+
+Contenuto ricavato dai `COMMENT` sugli oggetti vivi e dal §4 di questo brief:
+scopo in una frase, la regola in tabella, e — dove esiste — **la trappola**
+(`current_date` che segue il fuso della sessione; la serie che si risolve
+diversamente fra la targa e il cancello; il fail-open sotto RLS della targa per
+lotto; le rate che vanno rigenerate perché la somma non cambia e le date sì;
+`OLD.numero` e non lo stato, perché il numero arriva **mentre** la fattura è in
+EMESSA).
+
+⚠️ **Serve un'altra passata di `scripts/gen_db_docs.py`.** La riga
+`{% include-markdown … %}` che aggancia il manuale alla pagina di riferimento la
+scrive il generatore, e **solo se il file manuale esiste già** quando gira: la
+passata del 2026-08-25 è avvenuta prima che queste sei pagine fossero scritte,
+quindi al momento esistono ma non sono agganciate a niente.
+
+### 2026-08-25 · Migrazione confermata, baseline verde, documentazione chiusa
+
+**18/18 changeSet applicati.** `scripts/pgtap-baseline.sh vendite` su 225 file:
+**nessuna regressione**.
+
+#### La doc auto-gen si è rigenerata da sola
+
+Il migrate ha riscritto `docs/it/dbzero/`: le sei pagine nuove esistono
+(`fn_data_operativa`, `fn_calcola_data_documento`, le due
+`fn_get_data_minima_numerabile*`, `fn_imposta_data_documento_lotto`,
+`trgfn_fatture_guard_data_numerata`) e le quattro modificate portano il corpo
+nuovo. ⛔ Quelle non si toccano a mano.
+
+#### I manuali delle funzioni nuove erano già stati scritti
+
+Trovati in `<schema>/manual/`, tutti e sei, completi. **Non toccati.**
+
+#### ⛔ Quello che invece mancava: il debito sui manuali ESISTENTI
+
+E due di essi **dicevano il falso**, non erano semplicemente incompleti:
+
+| file | stato prima | |
+| --- | --- | --- |
+| `fn_assign_numero_fattura.md` | «`mese` valorizzato solo se `reset_policy = MENSILE`» + `mese` nell'Output | ⛔ **falso** |
+| `fn_numera_fattura_opz_emessa.md` | `mese` nell'Output | ⛔ **falso** |
+| `fn_get_next_progressivo.md` | zero occorrenze di *cancello*, *monotonia*, `ultima_data` | ⚠️ muto sulla modifica più importante |
+| `fn_get_or_create_fattura_header.md` | nessuna traccia della data | ⚠️ |
+| `registri_fatturazione.md` | nessuna traccia di `politica_data_documento` | ⚠️ |
+| `registri_fatturazione_progressivi.md` | nessuna traccia di `ultima_data` | ⚠️ |
+| `fatturazione_lotti.md` | nessuna traccia di `data_documento` | ⚠️ |
+| `fatture.md` | nessuna traccia del guard né del nuovo default | ⚠️ |
+
+**Tutti e otto aggiornati**, ciascuno con una sezione `🔄 rev 2026-08-25` nello
+stile che quei file già usavano (`rev 2026-08-18`, `rev 2026-08-21`), e le due
+falsità corrette **in linea**, dove stavano — non solo smentite in fondo.
+
+⭐ Il pezzo più lungo è `fn_get_next_progressivo.md`: è la funzione più cambiata
+del cantiere e il suo manuale non sapeva niente del cancello. Ora dice dove sta
+il controllo e perché lì, perché il lock ha perso l'anno, da dove viene il
+pavimento e perché non da `vendite.fatture`, e **cosa i pgTAP non possono
+provare**.
+
+✅ Tutti i link `/dbzero/...` aggiunti puntano a pagine che esistono (verificato
+file per file: il guardrail «riferimenti morti» gira dopo il migrate in CI).
+
+---
+
+### ⛔ Resta una sola azione, ed è sui dati
+
+`/tmp/allinea-contatori-alla-serie.sql`. Verificato adesso: il contatore del
+registro 5 è **ancora** sulla serie vuota mentre il registro usa `RX1`.
+
+| registro | serie che userà | serie del contatore | |
+| --- | --- | --- | --- |
+| 3 · 4 · 1359 · 1360 · 1361 | VX2 · VX1 · V2 · V1 · R2 | idem | ok |
+| **5 NC** | **`RX1`** | **`''`** | ⛔ |
+
+Finché resta così, la prossima nota di credito prende il numero **1** invece di
+101 e su quel sezionale **il cancello non ha pavimento**. §6-ter.

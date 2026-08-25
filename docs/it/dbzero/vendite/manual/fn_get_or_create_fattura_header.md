@@ -87,4 +87,61 @@ normale.
 
 ---
 
+### 🔄 rev 2026-08-25 — la data smette di essere un effetto collaterale
+
+Brief: `brief-db-numerazione-data-documento-e-sequenza` (**DB-6**).
+
+```diff
+- VALUES (v_registro_id, current_date, ...)
++ VALUES (v_registro_id, v_data, ...)   -- fn_calcola_data_documento(...)
+```
+
+⛔ **Questa è l'unica riga in tutto il repo che scrive `vendite.fatture.data`.**
+Verificato su `pg_proc`, su `backend/` e sulla doc auto-gen: nessun'altra
+funzione, nessun endpoint, nessuna schermata. Cambiarla qui cambia il
+comportamento **ovunque** — ed è anche il motivo per cui il difetto è rimasto
+invisibile così a lungo: non c'era un secondo posto in cui vedere due
+implementazioni divergenti.
+
+#### I due danni che `current_date` faceva insieme
+
+**1. Il momento sbagliato.** Era catturato alla **generazione della bozza**, cioè
+giorni o settimane prima dell'atto fiscale. Se un lotto restava indietro, la sua
+data restava indietro con lui. La data del documento è una *decisione* — per la
+differita, tipicamente l'ultimo giorno del mese di competenza — non l'orario di
+un batch.
+
+**2. Il fuso sbagliato.** `current_date` segue il fuso **della sessione**, e la
+sessione non è una sola: Django si connette in **UTC** (`USE_TZ` senza
+`TIME_ZONE` in `DATABASES`), psql e pgAgent in `Europe/Rome`. Lo stesso oggetto,
+chiamato da due canali, scriveva **due date diverse** — e ogni documento generato
+fra la mezzanotte e le 02:00 locali portava **la data del giorno prima**.
+📌 Misurato il 2026-08-25: **7 fatture su 18** avevano
+`data <> (data_insert AT TIME ZONE 'Europe/Rome')::date`.
+
+#### Da dove viene la data adesso
+
+Da [`vendite.fn_calcola_data_documento`](/dbzero/vendite/funzioni/fn_calcola_data_documento),
+a cui si passano il registro della chiave, la `competenza_mese` e la
+`data_documento` del lotto. Qui non si decide niente: **si chiede**.
+
+#### ⭐ Il lotto si legge DOPO il lookup, non in testa
+
+Questa funzione gira una volta per **attività**, e nella stragrande maggioranza
+dei giri esce subito perché la testata è già stata creata. Leggere il lotto in
+testa avrebbe aggiunto una query per ogni attività di ogni lotto, per un valore
+che serve solo alla prima.
+
+#### ⚠️ Un controllo che prima non poteva esistere
+
+`vendite.fatturazione_lotti` ha la RLS e questa funzione è `SECURITY INVOKER`: un
+lotto fuori dal perimetro di chi opera si legge come «non c'è», e si esce con
+`E_LOTTO_NON_TROVATO`. È **fail-closed** ed è la risposta giusta — non si crea una
+testata dentro un lotto che non si può vedere.
+
+📌 Prima il lotto non veniva letto affatto: un `p_lotto_id` sbagliato produceva
+una **fattura orfana**, in silenzio.
+
+---
+
 {% include-markdown "signature-core.md" %}

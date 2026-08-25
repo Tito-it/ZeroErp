@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-4 — LA DATA DICHIARATA SUL LOTTO
+#   vendite.fatturazione_lotti.data_documento
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-4
+#   Decisione 3 di Tid (2026-08-25): la regola sta sul registro, con una data
+#   FACOLTATIVA sul lotto che la scavalca.
+#
+# ── ⭐ FACOLTATIVA, E IL NULL SIGNIFICA QUALCOSA ────────────────────
+#   NULL  -> nessuno ha dichiarato niente: vince la politica del registro.
+#   piena -> vince lei, per TUTTI i documenti del lotto, qualunque sia il loro
+#            registro.
+#
+#   ⚠️ Il NULL non e' «non impostato per dimenticanza»: e' il caso NORMALE, ed
+#   e' il motivo per cui la colonna non ha default. Un default qui — anche
+#   `fn_data_operativa()` — trasformerebbe il silenzio in una dichiarazione, e
+#   la politica del registro non verrebbe piu' letta da nessuno.
+#
+# ── DUE COSE ATTERRANO QUI ──────────────────────────────────────────
+#   1. la data facoltativa alla CREAZIONE del lotto (BE-1 / FE-1);
+#   2. la data digitata nel dialog «Rendi definitive» (DB-11), che la scrive
+#      prima di numerare — ed e' anche il posto da cui si rimedia a un rifiuto
+#      del cancello di monotonia.
+#
+# ── ℹ️ CHE COSA SCATTA SCRIVENDOLA ──────────────────────────────────
+#   Misurato il 2026-08-25: quattro trigger di questa tabella non hanno
+#   `UPDATE OF`, quindi scattano su qualunque UPDATE — compreso questo:
+#     · script.trgfn_guard_emittente_scope   ⭐ ed e' voluto: chi non ha il
+#       lotto nel proprio perimetro non ne cambia la data;
+#     · script.trgfn_audit_data_user_generic (data_update/user_update);
+#     · dbops.trgfn_tx_id_managed;
+#     · script.trgfn_storico_generic         ⭐ la ridichiarazione lascia
+#       traccia nello storico, che e' esattamente cio' che serve su un dato
+#       fiscale.
+#
+# ── ℹ️ NIENTE STORICO DA TOCCARE, NIENTE INDICE ─────────────────────
+#   `storico.fatturazione_lotti` e' a SNAPSHOT JSONB: la colonna nuova ci entra
+#   da sola. Non e' una FK: nessuna riga in dbops.fk_index_policy. Nessun
+#   indice: non e' un criterio di ricerca, si legge sempre per id di lotto.
+#
+# Dipendenze: nessuna. La leggono fn_get_or_create_fattura_header (20260825-07)
+#             e fn_imposta_data_documento_lotto (lotto C).
+# Verifica: db/pgtap/vendite/test-registri-progressivi.sql (caso 7, DB-13)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260825-04-alter-fatturazione-lotti-data-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260825-04-alter-fatturazione-lotti-data-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-4: data documento FACOLTATIVA sul lotto, che scavalca la politica del registro per
+        tutti i documenti di quel lotto. Nessun default, e non e' una dimenticanza: il NULL e'
+        il caso normale e significa «vince la politica del registro» — un default qui
+        trasformerebbe il silenzio in una dichiarazione e la politica non verrebbe piu' letta
+        da nessuno. Ci atterrano la data della creazione lotto (BE-1) e quella del dialog
+        «Rendi definitive» (DB-11). Storico a snapshot JSONB: niente da toccare. Nessun
+        indice, nessuna riga di fk_index_policy.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatturazione_lotti
+                    columnName: data_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti
+                ADD COLUMN data_documento date NULL;
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti.data_documento
+                IS 'Data documento DICHIARATA per questo lotto. ⭐ FACOLTATIVA, e il NULL significa qualcosa: vuota = nessuno ha dichiarato niente, vince la politica del registro (registri_fatturazione.politica_data_documento); piena = vince lei, per TUTTI i documenti del lotto, qualunque sia il loro registro. ⚠️ Nessun DEFAULT, e non e'' una dimenticanza: il NULL e'' il caso NORMALE, e un default — anche script.fn_data_operativa() — trasformerebbe il silenzio in una dichiarazione, con la conseguenza che la politica del registro non verrebbe piu'' letta da nessuno. Ci atterrano due cose: la data facoltativa alla creazione del lotto (BE-1/FE-1) e la data digitata nel dialog «Rendi definitive», scritta da vendite.fn_imposta_data_documento_lotto prima di numerare — che e'' anche il modo di rimediare a un rifiuto del cancello di monotonia. ⚠️ Scriverla fa scattare il guard di perimetro emittente, l''audit, il tx_id e lo STORICO: la ridichiarazione di una data fiscale lascia traccia, ed e'' voluto. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti
+                DROP COLUMN IF EXISTS data_documento;

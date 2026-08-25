@@ -155,6 +155,27 @@ jobs:
         # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
         run: python scripts/guardrail_pgtap_preambolo.py
 
+      - name: Guardrail letterali SQL nei changeSet
+        # Presidia una classe sola, e basta quella: un apostrofo singolo dentro
+        # una stringa SQL la CHIUDE, e il changeSet smette di essere quello che
+        # sembra. Nel testo italiano scritto senza accenti — `e'`, `gia'`,
+        # `piu'`, `la'`, `perche'` — l'apostrofo va RADDOPPIATO, e basta che ne
+        # sfugga uno.
+        #
+        # Perche' esiste: il 2026-08-25 un migrate e' morto su un `la'` dentro
+        # un COMMENT ON COLUMN di 1600 caratteri. ⚠️ Il difetto vive quasi
+        # sempre nei COMMENT e nei GRANT, cioe' nei pezzi che «non sembrano
+        # codice» e che una prova a mano ricopia per ultimi — o non ricopia
+        # affatto.
+        #
+        # Statico e senza database: sta qui, prima del migrate, perche' e'
+        # proprio il migrate che vogliamo non far morire.
+        #
+        # ⚠️ NON sostituisce l'esecuzione: prende il letterale che non si chiude
+        # mai, non quello chiuso nel punto sbagliato. Quello lo vede solo il
+        # parser di PostgreSQL, cioe' il migrate qui sotto.
+        run: python scripts/guardrail_sql_letterali.py
+
       - name: Generate Liquibase autogen master (timeline)
         run: |
           python scripts/gen_master_autogen.py \

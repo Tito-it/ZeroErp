@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SEED D-2 — LA POLITICA DATA DEI SEI REGISTRI
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md
+#          §4 DB-3 (seed) · decisione D-2 di Tid, 2026-08-25
+#
+#   Front-office -> OGGI                   (fattura immediata)
+#   Back-office  -> FINE_MESE_COMPETENZA   (fattura differita)
+#   NC           -> OGGI   (una nota di credito porta la data del giorno in cui
+#                           la si emette)
+#
+# ── ⛔ PERCHE' UN CSV DEDICATO E NON registri_fatturazione.csv ──────
+#   Perche' quel file e' una MINA, misurata il 2026-08-25:
+#     · dice `emittente_soggetto_ruolo_id = NULL` sui registri 3/4/5, mentre il
+#       database dice **72** — glielo ha scritto `20260819-05`, che intestava i
+#       sezionali per chiudere un difetto di BUCHI NELLA SERIE;
+#     · non contiene affatto i tre registri del secondo emittente.
+#   Il suo mirror `20260127-09-upsert-registri-fatturazione` e' `runOnChange:
+#   true`, quindi **dorme finche' nessuno tocca il file**. Il primo che lo
+#   edita — per qualunque motivo, anche solo per aggiungere una colonna — lo
+#   sveglia e riporta i tre registri a emittente NULL, riaprendo il difetto in
+#   silenzio.
+#
+#   ⚠️ La mina NON viene disinnescata qui (decisione D-3 di Tid): resta armata,
+#   ed e' descritta in §10.3 D-3 del brief col rimedio gia' scritto — CSV
+#   riallineato + mirror RI-ANCORATO con numerazione nuova, mai modificando il
+#   changeSet mergiato. Questo file le gira intorno.
+#
+#   ⭐ Un CSV per colonna/sottoinsieme e' gia' il pattern di casa: `parameters`
+#   sta su cinque file, `tipi_doc_fiscale_registri` su due. La sede resta un
+#   CSV, quindi AGENTS.md §80_data e' rispettato.
+#
+# ── ⛔ SI SEMINA PER `codice`, NON PER id ───────────────────────────
+#   E non e' pedanteria da linee-guida (§6b: «riferimento per chiave naturale
+#   stabile, mai per id»): qui l'id sarebbe **proprio sbagliato**. I registri
+#   3/4/5 hanno id espliciti nel loro seed, ma quelli del secondo emittente
+#   nascono da un `INSERT ... SELECT` senza id (`20260819-05`): su `dbdev` la
+#   sequenza ha dato 1359/1360/1361, su un database RICOSTRUITO DA ZERO darebbe
+#   altro. Un seed per id funzionerebbe qui e mancherebbe il bersaglio in CI —
+#   e `loadUpdateData`, non trovando la riga, la **inserirebbe**, morendo su un
+#   NOT NULL di `descrizione`.
+#   ⭐ `codice` e' UNIQUE, ed e' la stessa chiave che `20260819-05` usa per
+#   risolvere i registri: una convenzione sola, non due.
+#
+# ── ⭐ I REGISTRI CLONATI EREDITANO, NON SI RIDIGITANO ──────────────
+#   Per la stessa ragione, i tre registri del secondo emittente non stanno nel
+#   CSV: il loro `codice` e' derivato dall'id del soggetto_ruolo
+#   (`Front-office-159`) e non e' deterministico fra ambienti. Prendono la
+#   politica **dal registro da cui sono stati clonati**, che `20260819-05` ha
+#   lasciato scritto in `meta->>'clonato_da'`.
+#
+#   E' l'argomento che quel changeSet fa gia', parola per parola, su
+#   `reset_policy`: «ridigitarla a mano e' il modo piu' facile di dare al
+#   secondo emittente una numerazione che si comporta diversamente senza che
+#   nessuno se ne accorga». Vale identico per la data.
+#
+#   ⚠️ La propagazione sta NELLO STESSO changeSet del caricamento, e non e' una
+#   comodita': il checksum di un `loadUpdateData` comprende il CSV, quindi
+#   editare il CSV ri-esegue **tutto** il changeSet, propagazione inclusa. In
+#   due changeSet separati, cambiare la politica del Front-office lascerebbe il
+#   suo clone indietro — in silenzio.
+#
+#   ⭐ E non e' una seconda sorgente di verita': la sorgente resta il CSV. Lo
+#   `UPDATE` non contiene nessun valore, solo la REGOLA «il clone segue il suo
+#   originale».
+#
+# Dipendenze: 20260825-03 (la colonna). ⚠️ 80_data gira dopo 00_schema: c'e'.
+#             E i registri esistono gia' (20260127-09 e 20260819-05, entrambi
+#             prima in ordine alfabetico dentro l'includeAll di 80_data).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260825-05-seed-registri-politica-data-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260825-05-seed-registri-politica-data-documento
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed D-2: Front-office OGGI, Back-office FINE_MESE_COMPETENZA, NC OGGI. CSV DEDICATO e
+        non registri_fatturazione.csv, che e' stantio sull'emittente e il cui mirror
+        runOnChange dorme: toccarlo riporterebbe i registri a emittente NULL (decisione D-3:
+        la mina resta armata e nominata, non la si disinnesca qui). Si semina per `codice` e
+        non per id perche' i registri del secondo emittente nascono da un INSERT...SELECT e
+        i loro id non sono deterministici fra ambienti. Quei tre non stanno nel CSV — il loro
+        codice e' derivato e nemmeno lui e' deterministico — ma EREDITANO la politica dal
+        registro di meta->>'clonato_da', stesso argomento che 20260819-05 fa per reset_policy.
+        Caricamento e propagazione stanno nello STESSO changeSet: il checksum comprende il
+        CSV, quindi editarlo ri-esegue anche l'eredita'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: politica_data_documento
+            - sqlCheck:
+                expectedResult: 3
+                sql: |
+                  SELECT COUNT(*) FROM vendite.registri_fatturazione
+                   WHERE codice IN ('Front-office', 'Back-office', 'NC');
+      changes:
+        # 1) I tre registri «originali», dal CSV, per chiave naturale.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/registri_fatturazione_politica_data.csv
+            tableName: registri_fatturazione
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice,                  type: STRING }
+              - column: { name: politica_data_documento,  type: STRING }
+
+        # 2) I cloni ereditano dal loro originale.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⭐ Nessun valore scritto qui dentro: solo la REGOLA «il clone
+              --    segue il registro da cui e' nato». La sorgente di verita'
+              --    resta il CSV caricato al passo 1.
+              -- ⚠️ jsonb_exists() e non l'operatore `?`: dentro un blocco sql
+              --    di Liquibase il punto interrogativo va raddoppiato, e una
+              --    funzione non ha quel problema (linee-guida-sql).
+              -- ⚠️ Il predicato sul formato numerico evita che un `clonato_da`
+              --    scritto male faccia morire il migrate con un errore di
+              --    cast, che accuserebbe questo file invece di chi l'ha scritto.
+              UPDATE vendite.registri_fatturazione r
+                 SET politica_data_documento = src.politica_data_documento
+                FROM vendite.registri_fatturazione src
+               WHERE jsonb_exists(r.meta, 'clonato_da')
+                 AND (r.meta ->> 'clonato_da') ~ '^[0-9]+$'
+                 AND src.id = (r.meta ->> 'clonato_da')::bigint
+                 AND src.id <> r.id
+                 AND r.politica_data_documento IS DISTINCT FROM src.politica_data_documento;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si torna al default di colonna: nessun registro dichiara nulla.
+              UPDATE vendite.registri_fatturazione
+                 SET politica_data_documento = 'OGGI'
+               WHERE politica_data_documento <> 'OGGI';

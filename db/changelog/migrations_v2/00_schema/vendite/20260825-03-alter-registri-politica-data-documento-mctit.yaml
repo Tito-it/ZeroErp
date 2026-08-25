@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-3 — LA REGOLA DELLA DATA VIVE SUL REGISTRO
+#   vendite.registri_fatturazione.politica_data_documento
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-3
+#   Decisione 3 di Tid (2026-08-25)
+#
+# ── ⭐ PERCHE' SUL REGISTRO E NON SUL LOTTO ─────────────────────────
+#   Il registro E' il sezionale: e' li' che vive la sequenza, e la regola della
+#   data deve stare accanto alla regola del numero — altrimenti si puo'
+#   configurare un registro la cui data litiga con la sua numerazione.
+#
+#   E c'e' un guadagno che una colonna sul lotto non darebbe: **un lotto puo'
+#   contenere documenti di registri diversi**. La natura instrada la nota di
+#   credito su un registro suo (`fn_build_fattura_key` -> `fn_get_registro_id`),
+#   e con la regola sul registro ogni documento prende la data giusta DA SE'.
+#   Sul lotto, una data sola avrebbe dovuto valere anche per la nota di credito.
+#
+# ── I DUE VALORI ────────────────────────────────────────────────────
+#   OGGI                  -> script.fn_data_operativa()          fattura immediata
+#   FINE_MESE_COMPETENZA  -> ultimo giorno di lotto.competenza_mese   differita
+#
+#   ⚠️ `FINE_MESE_COMPETENZA` E IL CANCELLO DI MONOTONIA COLLIDONO PER
+#   COSTRUZIONE, e non e' un difetto: e' il comportamento normale della
+#   differita in ritardo. Un lotto di competenza ARRETRATA lavorato oggi prende
+#   la data di fine di quel mese, che e' anteriore all'ultimo numero emesso, e
+#   il cancello lo rifiuta — l'operatore deve ridichiarare la data dal dialog.
+#   Misurato il 2026-08-25: 4 lotti hanno competenza giugno e fatture datate
+#   luglio/agosto (7515, 7133, 7132, 151), e il 7133 porta la fattura 18848
+#   GIA' NUMERATA il 23/08. ⭐ La `minDate` esposta al frontend
+#   (fn_get_data_minima_numerabile_lotto) e' cio' che rende vivibile questa
+#   politica: non e' un abbellimento.
+#
+# ── ℹ️ IL DEFAULT E' 'OGGI', E COPRE ANCHE I REGISTRI FUTURI ────────
+#   I sei registri esistenti prendono il loro valore dal seed di 80_data
+#   (20260825-05). Un registro creato domani nasce `OGGI`, cioe' col
+#   comportamento di sempre: chi vuole la differita la dichiara.
+#
+# ── ℹ️ NIENTE STORICO DA TOCCARE ────────────────────────────────────
+#   `storico.registri_fatturazione` e' a SNAPSHOT JSONB (colonne: id,
+#   registri_fatturazione_id, change_type, tipo_operazione, snapshot, ...):
+#   una colonna nuova ci entra da sola. Verificato il 2026-08-25.
+#
+# ── ℹ️ NIENTE fk_index_policy ───────────────────────────────────────
+#   La colonna non e' una FK: nessuna riga da seminare in
+#   dbops.fk_index_policy, e nessun indice — sei righe in tabella.
+#
+# Dipendenze: nessuna sullo schema. La legge fn_calcola_data_documento (20260825-06).
+# Verifica: db/pgtap/vendite/test-registri-progressivi.sql (casi 6 e 7, DB-13)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260825-03-alter-registri-politica-data-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260825-03-alter-registri-politica-data-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-3: il registro dice come si numera E che data porta il documento. Nuova colonna
+        politica_data_documento (OGGI | FINE_MESE_COMPETENZA), default OGGI. Sta sul registro
+        e non sul lotto perche' il registro E' il sezionale — la regola della data deve stare
+        accanto alla regola del numero — e perche' un lotto puo' contenere documenti di
+        registri diversi (la nota di credito ha un registro suo): con la regola sul registro
+        ogni documento prende la data giusta da se'. ⚠️ FINE_MESE_COMPETENZA collide col
+        cancello di monotonia per costruzione, ed e' voluto: un lotto di competenza arretrata
+        va ridichiarato dal dialog. Nessuno storico da toccare (snapshot JSONB), nessun
+        indice, nessuna riga di fk_index_policy.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: registri_fatturazione
+                    columnName: politica_data_documento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                ADD COLUMN politica_data_documento varchar(32) NOT NULL DEFAULT 'OGGI';
+
+              ALTER TABLE vendite.registri_fatturazione
+                ADD CONSTRAINT chk_registri_fatturazione_politica_data
+                CHECK (politica_data_documento IN ('OGGI', 'FINE_MESE_COMPETENZA'));
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.politica_data_documento
+                IS 'Che data porta il documento emesso su questo sezionale. OGGI = script.fn_data_operativa(), cioe'' la data odierna nel fuso dell''azienda (fattura immediata). FINE_MESE_COMPETENZA = ultimo giorno di fatturazione_lotti.competenza_mese (fattura differita: competenza 2026-07 -> 2026-07-31). ⭐ La regola sta QUI e non sul lotto perche'' il registro E'' il sezionale: la regola della data deve stare accanto a quella del numero, o si configura un registro la cui data litiga con la sua numerazione. E perche'' un LOTTO PUO'' CONTENERE DOCUMENTI DI REGISTRI DIVERSI — la natura instrada la nota di credito su un registro suo — quindi con la regola sul registro ogni documento prende la data giusta da se''. ⚠️ Una data valorizzata su fatturazione_lotti.data_documento SCAVALCA questa politica, per tutti i documenti di quel lotto. ⚠️ FINE_MESE_COMPETENZA collide col cancello di monotonia di fn_get_next_progressivo per costruzione, e non e'' un difetto: un lotto di competenza arretrata lavorato in ritardo prende una data anteriore all''ultimo numero emesso e viene rifiutato, e l''operatore la ridichiara dal dialog. La minDate di fn_get_data_minima_numerabile_lotto e'' cio'' che rende vivibile la politica. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                DROP CONSTRAINT IF EXISTS chk_registri_fatturazione_politica_data;
+              ALTER TABLE vendite.registri_fatturazione
+                DROP COLUMN IF EXISTS politica_data_documento;

@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-14 — ⭐ LA PORTA DI SERVIZIO CHE NESSUNO PRESIDIAVA
+#   vendite.trgfn_fatture_guard_data_numerata
+#   + trg_fatture_a10_guard_data_numerata_upd
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-14
+#
+# ── COME E' SALTATA FUORI ───────────────────────────────────────────
+#   Il brief diceva, di passaggio, che oltre `EMESSA`
+#   `trgfn_fattura_satellite_guard_congelamento` «congela tutto». Misurato su
+#   `pg_trigger` il 2026-08-25: **e' falso per la testata**. Quella funzione e'
+#   agganciata a `vendite.fatture` con
+#   `BEFORE UPDATE OF emittente_snapshot, cliente_snapshot` — e basta. Su
+#   `fatture_indirizzi` e `fatture_scadenze` copre tutti gli eventi, sulla
+#   testata NO.
+#
+#   Quindi fino a oggi un `UPDATE vendite.fatture SET data = …` su una fattura
+#   **numerata e DEFINITIVA passava**. Il cantiere costruiva un cancello
+#   sull'ingresso principale lasciando aperto il retro — e la data e' il dato da
+#   cui dipendono l'anno del sezionale, la chiave del contatore e il piano rate.
+#
+# ── ⛔ IL DISCRIMINANTE E' IL NUMERO, NON LO STATO ──────────────────
+#   `fn_numera_fattura_opz_emessa` assegna il numero **mentre** la fattura e' in
+#   `EMESSA`: lo stato passa a `DEFINITIVA` dopo, nella finalizzazione dello
+#   step. Una soglia scritta sugli stati (`DRAFT|EMESSA`) lascerebbe quindi una
+#   finestra REALE in cui il documento ha un numero fiscale e la data e' ancora
+#   scrivibile — che e' esattamente il buco da chiudere.
+#
+# ── ℹ️ E' UN `_a10_`, E IL NOME LO COLLOCA ──────────────────────────
+#   I trigger di fase `a10` girano in ordine alfabetico:
+#   `guard_data_numerata` viene **prima** di `guard_emittente_scope`,
+#   `guard_intestazione_congelata`, `guard_stato`, `guard_uscita_draft`,
+#   `lock_natura_doc`. Nessuna sovrapposizione di colonna con nessuno di loro:
+#   e' l'unico che nomina `data`.
+#
+# ── ✅ I TEST ESISTENTI REGGONO, verificato e non supposto ──────────
+#   `grep` su `db/pgtap/` e `backend/`: un solo punto scrive
+#   `vendite.fatture.data` in un test —
+#   `test-genera-scadenze-fattura-v1.sql:163`, che sposta la data al 20/12/2026
+#   per provare il cavallo d'anno del fine-mese. ⭐ Quella fattura non viene MAI
+#   numerata nel file (nessuna chiamata a `fn_assign_numero_fattura` ne'
+#   `fn_numera_fattura_opz_emessa`), quindi il guard non la tocca.
+#   ⚠️ Il controllo va rifatto da chi aggiungera' test che numerano E spostano la
+#   data: e' la classe di rosso che un guard nuovo produce
+#   ([[feedback_guard_breaks_existing_tests]]).
+#
+# ── ℹ️ IL CODICE E' NUOVO, E IL RIUSO ERA PEGGIO ────────────────────
+#   `E_COLONNA_NON_MODIFICABILE` esiste ed e' gia' in uso sulla stessa tabella
+#   (per `natura_doc_id`), ma il suo messaggio e' «Colonna non modificabile: %s»
+#   — non dice **perche'**, e il perche' e' tutto: la fattura ha un numero.
+#   `E_FATTURA_DATA_NON_MODIFICABILE` (990) e' il gemello per forma di
+#   `E_FATTURA_NON_ANNULLABILE`, che dice «Fattura %s gia' numerata: …».
+#   ⭐ Nel `%s` va il NUMERO, non l'id: e' quello che compare sul documento e
+#   che una persona riconosce. L'id resta nel contesto e nel bersaglio.
+#
+# ── ℹ️ NIENTE `campo` NEL CONTESTO, ed e' una scelta ────────────────
+#   Su un `CONFLITTO_STATO` non c'e' nessun campo da accendere: non e' un valore
+#   sbagliato, e' la situazione che non lo consente. E per la regola delle
+#   capability (linee-guida-sql §12) un'azione che il guard rifiutera' non va
+#   nemmeno proposta.
+#
+# Dipendenze: la riga E_FATTURA_DATA_NON_MODIFICABILE nei due CSV di 80_data.
+#             ⚠️ 80_data gira DOPO: fra le due fasi il codice esiste nel corpo ma
+#             non a catalogo, e fn_log_and_raise_error ripiegherebbe su
+#             E_MESSAGGIO_NON_DEFINITO. Nessuno cambia date in mezzo a un migrate.
+# Verifica: db/pgtap/vendite/test-registri-progressivi.sql (caso 12, DB-13)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260825-15-create-trgfn-fatture-guard-data-numerata-mctit.yaml
+
+  - changeSet:
+      id: 20260825-15-create-trgfn-fatture-guard-data-numerata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-14: la data di una fattura GIA' NUMERATA diventa immutabile. Nasce da una misura,
+        non dal piano: trgfn_fattura_satellite_guard_congelamento e' agganciata alla TESTATA
+        sulle sole colonne emittente_snapshot e cliente_snapshot, quindi fino a oggi un UPDATE
+        della data su una fattura numerata e DEFINITIVA passava — il cantiere costruiva un
+        cancello sull'ingresso lasciando aperto il retro. ⛔ Il discriminante e' il NUMERO e
+        non lo stato: si numera MENTRE si e' in EMESSA, quindi una soglia per stato lascerebbe
+        una finestra in cui il documento ha un numero fiscale e la data e' ancora scrivibile.
+        ✅ Test esistenti verificati: l'unico pgTAP che scrive fatture.data non numera mai
+        quella fattura. Codice nuovo (990) e non E_COLONNA_NON_MODIFICABILE, che non direbbe
+        PERCHE'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - not:
+                - sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                      SELECT COUNT(*) FROM pg_trigger
+                       WHERE tgrelid = 'vendite.fatture'::regclass
+                         AND tgname  = 'trg_fatture_a10_guard_data_numerata_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_data_numerata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da quando una fattura ha un numero fiscale, la sua data
+                  --   non si tocca piu'.
+                  --
+                  -- Regola:
+                  --   il discriminante e' OLD.numero, NON lo stato: la fattura
+                  --   viene numerata mentre e' in EMESSA, e una soglia per
+                  --   stato lascerebbe una finestra scrivibile su un documento
+                  --   gia' numerato.
+                  -- =========================================================
+
+                  -- ⚠️ IS DISTINCT FROM e non `<>`: la data e' NOT NULL oggi, ma
+                  --    un confronto che non regge il NULL e' un difetto che
+                  --    aspetta solo un ALTER COLUMN.
+                  IF OLD.numero IS NOT NULL
+                     AND NEW.data IS DISTINCT FROM OLD.data THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text,
+                          'E_FATTURA_DATA_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'fattura_id',   OLD.id,
+                              'numero',       OLD.numero,
+                              'anno',         OLD.anno,
+                              'serie',        OLD.serie,
+                              'data_attuale', OLD.data,
+                              'data_richiesta', NEW.data,
+                              -- ⭐ Il bersaglio: il documento su cui l'errore e'
+                              --    successo. Sempre visibile a chi opera — se non
+                              --    lo fosse, la RLS avrebbe gia' impedito l'UPDATE.
+                              'bersaglio', jsonb_build_array(
+                                  jsonb_build_object('tipo', 'FATTURA',
+                                                     'id', OLD.id::text))),
+                          NEW.tx_id,
+                          -- ⭐ Nel messaggio va il NUMERO, non l'id: e' quello che
+                          --    compare sul documento e che una persona riconosce.
+                          OLD.numero::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_guard_data_numerata()
+                IS 'Rende immutabile vendite.fatture.data da quando la fattura ha un numero. ⭐ Nasce il 2026-08-25 da una MISURA, non dal piano: trgfn_fattura_satellite_guard_congelamento — che il brief dava per «congela tutto oltre EMESSA» — e'' agganciata alla TESTATA con BEFORE UPDATE OF emittente_snapshot, cliente_snapshot e basta (su fatture_indirizzi e fatture_scadenze copre tutti gli eventi, sulla testata no). Fino a oggi un UPDATE della data su una fattura numerata e DEFINITIVA passava, e la data e'' il dato da cui dipendono l''anno del sezionale, la chiave del contatore e il piano rate: il cantiere costruiva un cancello sull''ingresso principale lasciando aperto il retro. ⛔ IL DISCRIMINANTE E'' OLD.numero, NON LO STATO, e non e'' un dettaglio: fn_numera_fattura_opz_emessa assegna il numero MENTRE la fattura e'' in EMESSA — lo stato passa a DEFINITIVA dopo, nella finalizzazione dello step — quindi una soglia scritta sugli stati DRAFT|EMESSA lascerebbe una finestra reale in cui il documento ha un numero fiscale e la data e'' ancora scrivibile. ℹ️ Il codice e'' nuovo e non riusa E_COLONNA_NON_MODIFICABILE, che pure esiste sulla stessa tabella: quel messaggio dice «Colonna non modificabile: %s» e non dice PERCHE'', mentre il perche'' e'' tutto. Gemello per forma di E_FATTURA_NON_ANNULLABILE. Nel segnaposto va il NUMERO e non l''id: e'' quello che compare sul documento. ℹ️ Nessun `campo` nel contesto: su un CONFLITTO_STATO non c''e'' niente da accendere, ed e'' la situazione a non consentirlo. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-14.';
+
+              -- ⚠️ `UPDATE OF data`: il trigger non scatta se quella colonna non
+              --    e' nominata dall'UPDATE. Su una tabella che ne ha gia' dodici
+              --    di fase a10, e' la differenza fra un guard e una tassa.
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_data_numerata_upd ON vendite.fatture;
+              CREATE TRIGGER trg_fatture_a10_guard_data_numerata_upd
+                  BEFORE UPDATE OF data ON vendite.fatture
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatture_guard_data_numerata();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_data_numerata_upd ON vendite.fatture;
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatture_guard_data_numerata();

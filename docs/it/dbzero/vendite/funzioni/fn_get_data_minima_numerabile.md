@@ -1,0 +1,76 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_get_data_minima_numerabile.md" %}
+# ⚙️ Funzione `fn_get_data_minima_numerabile`
+
+```sql
+CREATE FUNCTION fn_get_data_minima_numerabile(p_registro_id bigint, p_serie text)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_get_data_minima_numerabile(p_registro_id bigint, p_serie text DEFAULT NULL::text)
+ RETURNS date
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+    v_serie      TEXT;
+    v_pavimento  vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Da quale data in poi questo sezionale accetta un numero.
+    --   NULL = nessun pavimento (non e' ancora uscito niente).
+    --
+    -- Regole:
+    --   - si legge il CONTATORE, non le fatture: il contatore non
+    --     ha RLS e la risposta e' sempre completa;
+    --   - il massimo si prende ATTRAVERSO GLI ANNI, come fa il
+    --     cancello.
+    -- =========================================================
+
+    IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'vendite.fn_get_data_minima_numerabile',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
+            jsonb_build_object(
+                'detail', 'registro_id obbligatorio e maggiore di zero',
+                'p_registro_id', p_registro_id),
+            NULL::uuid,
+            'vendite.fn_get_data_minima_numerabile',
+            'p_registro_id (obbligatorio, maggiore di zero)');
+    END IF;
+
+    -- ⭐ Serie non dichiarata = quella del registro. E' la
+    --    differenza voluta con fn_get_next_progressivo, che la
+    --    riceve gia' risolta dal suo chiamante.
+    SELECT COALESCE(p_serie, r.serie_default, '')
+      INTO v_serie
+      FROM vendite.registri_fatturazione r
+     WHERE r.id = p_registro_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'vendite.fn_get_data_minima_numerabile',
+            'E_CONFIG_MANCANTE',
+            jsonb_build_object('registro_id', p_registro_id),
+            NULL::uuid,
+            concat('registro di fatturazione ', p_registro_id, ' inesistente'));
+    END IF;
+
+    SELECT max(rp.ultima_data)
+      INTO v_pavimento
+      FROM vendite.registri_fatturazione_progressivi rp
+     WHERE rp.registro_id = p_registro_id
+       AND rp.serie       = v_serie;
+
+    RETURN v_pavimento;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_get_data_minima_numerabile(p_registro_id bigint, p_serie text)
+IS 'Da quale data in poi questo sezionale (registro + serie) accetta un numero. NULL = nessun pavimento: da quella sequenza non e'' ancora uscito niente, qualunque data va bene. ⭐ E'' la TARGA del cancello di vendite.fn_get_next_progressivo, non un secondo controllo: serve al frontend per aprire il DatePicker con minDate gia'' giusta, cosi'' il rifiuto diventa l''eccezione invece della norma. Se targa e cancello divergessero, comanda il cancello. ⛔ LA SERIE SI RISOLVE DIVERSAMENTE dalla funzione che numera, ed e'' voluto: qui p_serie NULL significa «quella del registro» (COALESCE(p_serie, serie_default, '''')), perche'' questa e'' un''API di lettura e chiedere «il minimo del registro 3» senza sapere che la sua serie e'' R2 deve dare la risposta giusta; in fn_get_next_progressivo, che e'' interna, la serie arriva gia'' risolta dal chiamante. ⚠️ Misurato il 2026-08-25: tutte le fatture non numerate hanno serie NULL e la prendono dal serie_default, quindi un COALESCE(serie,'''') cercherebbe il contatore della serie vuota, non lo troverebbe e risponderebbe NULL — la risposta piu'' permissiva possibile proprio dove il cancello rifiuta. ℹ️ Si legge il CONTATORE e non vendite.fatture: il contatore non ha RLS, quindi la risposta e'' completa per chiunque; e il massimo si prende ATTRAVERSO GLI ANNI, come fa il cancello. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-10.';
+```
+
+---
+{% include-markdown "signature-core.md" %}
