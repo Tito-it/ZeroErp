@@ -32,3 +32,60 @@ billing/emittente/utility/valuta, e la **sorgente** (DDT di provenienza via `ddt
   `descrizione AS stato_descrizione` (display) — linee-guida-sql §6c.
 - Il reso aggancia il **DDT** (non l'ordine): l'ordine si raggiunge dal DDT. Niente colonne
   trasporto/logistica/importi (asimmetria voluta col DDT in questa slice).
+
+---
+
+### ⭐ La sesta sorella — genealogia in lista (rev 2026-08-25)
+
+Fino al 2026-08-25 `vw_resi_lista` era l'unica delle liste documento **senza**
+colonne di lineage: sei sorelle su sette ce l'avevano (`20260715-01..05`,
+`20260824-15`), i resi no. Il changeSet `20260825-21` le porta, nella stessa
+forma di `vw_ddt_lista`, via
+`LEFT JOIN vendite.vw_documento_lineage lin ON (tipo_id = RESO_VENDITA, uid = r.id::text)`:
+
+`pratica_id` · `pratica_numero` · `n_pratiche` · `frontiera_tipo_id` ·
+`frontiera_codice` · `frontiera_stato_codice_interno` · `frontiera_fase` ·
+`n_discendenti_attivi` · `is_transitato`
+
+⭐ **Su un reso `frontiera_codice` è il numero della NOTA DI CREDITO.** Con
+l'arco `S` (`20260825-19`) il reso smette di essere una foglia e la sua frontiera
+diventa la nota che lo accredita. La colonna «Transito» risponde quindi a
+*«questo reso è già stato accreditato, e con quale documento»* — che prima era
+una **quantità** (`gia_accreditato`) dentro un drawer, non un documento in lista.
+
+⚠️ **`fase` non c'era, ed è la trappola.** La vista esponeva `stato_codice_interno`
+e `stato_descrizione` ma **non la fase normalizzata**, e il seed della colonna
+omonima la cerca con quel nome esatto (`campo_sorgente = 'fase'`): senza
+`sr.fase` da `config.stati_doc_reso` la colonna sarebbe nata **vuota e in
+silenzio**. Nessun errore: solo una colonna a video che non dice niente.
+
+⚠️ Il join al lineage è **`LEFT`** come sulle sorelle: un reso senza genealogia
+compare senza genealogia, non sparisce.
+
+### 🔴 Cosa serve al consumatore, e non è nella vista
+
+- **`frontiera_tipo_codice`** — la vista espone l'`id` (il grafo parla per id),
+  mai il codice. Ogni repository di lista lo decodifica con
+  `LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id`.
+  ⛔ **Senza, la colonna «Transito» resta muta**: `LineageFrontieraChip` ha il
+  gate su `isTransitato && tipoCodice` e renderebbe «—», cioè *«non
+  transitato»*, proprio sul reso che HA transitato. Difetto trovato il
+  2026-08-25 e presidiato da
+  `apps/vendite/tests/services/test_lineage_liste_be.py`.
+- **`frontiera_natura_doc_codice`** — ⛔ **non c'è, e su questa vista serve
+  sempre.** `vendite.fatture` è una tabella sola: fattura e nota di credito si
+  distinguono solo per `natura_doc_id`, e la frontiera di un reso accreditato è
+  **sempre** una nota di credito (pgTAP 35). Senza la natura la colonna
+  «Transito» etichetta «Fattura» il documento che il cantiere esiste per
+  nominare. La colonna manca **su `vw_documento_lineage`**, che è la sede: il
+  pannello «Passaggi» la ricava per conto suo in `get_lineage_nodo` joinando
+  `vw_documento_lineage_nodi` su `frontiera_uid` — chiave che **le liste non
+  hanno**. Richiesta al team DB: brief arco S §7-bis.
+
+### Consumo
+
+`ui.lista_definizione 'vendite.resi'` (id 9) + preset `resi_default` (id 9); il
+frontend è già `<ListaConfigurabile>`, quindi le colonne arrivano dal seed
+(`lista_colonna` 549/550/551) — ma i **tre slot** `#cell-pratica`, `#cell-fase`,
+`#cell-transito` vanno scritti nel componente, come sulle cinque sorelle: senza,
+il BB rende il valore grezzo (la fase come testo, la frontiera come numero nudo).
