@@ -173,3 +173,54 @@ WHERE f.sorgente_tipo_id = :src_tipo
 ### Importanza nel sistema
 
 `vendite.fatture` è il **fulcro fiscale** del ciclo vendite: custodisce l’identità legale del documento, aggrega il contenuto economico e determina interfacce con **IVA, pagamenti, contabilità e integrazioni esterne**. Una corretta gestione di numerazione, stato e idempotenza garantisce **consistenza, rintracciabilità e compliance**.
+
+---
+
+### 🔄 rev 2026-08-25 — la colonna `data`
+
+Brief: `brief-db-numerazione-data-documento-e-sequenza`.
+
+#### Chi la scrive
+
+⛔ **Un solo punto in tutto il repo**:
+[`fn_get_or_create_fattura_header`](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header),
+alla creazione della testata — e da lì in poi soltanto
+[`fn_imposta_data_documento_lotto`](/dbzero/vendite/funzioni/fn_imposta_data_documento_lotto),
+quando l'operatore la ridichiara. Nessun endpoint, nessuna schermata.
+
+Il valore non è più `current_date` ma
+[`fn_calcola_data_documento`](/dbzero/vendite/funzioni/fn_calcola_data_documento):
+la politica del registro, che una data dichiarata sul lotto può scavalcare.
+
+⚠️ Il `DEFAULT` di colonna è passato da `CURRENT_DATE` a
+`script.fn_data_operativa()`. È **inerte** sul percorso reale — chi scrive passa
+la data a mano — e serve perché la DDL non dichiari una cosa diversa da quella
+che succede: **chi scrive una fixture il default lo usa davvero**.
+
+#### ⛔ Da quando c'è un numero, la data non si tocca più
+
+`trg_fatture_a10_guard_data_numerata_upd` →
+[`trgfn_fatture_guard_data_numerata`](/dbzero/vendite/funzioni/trgfn_fatture_guard_data_numerata).
+Rifiuta con `E_FATTURA_DATA_NON_MODIFICABILE`.
+
+⚠️ **Il discriminante è `numero IS NOT NULL`, non lo stato**, e non è un
+dettaglio: `fn_numera_fattura_opz_emessa` assegna il numero **mentre** la fattura
+è in `EMESSA` — lo stato passa a `DEFINITIVA` dopo, nella finalizzazione dello
+step. Una soglia scritta sugli stati lascerebbe una finestra reale in cui il
+documento ha un numero fiscale e la data è ancora scrivibile.
+
+📌 **Prima del 2026-08-25 quella porta era aperta.**
+`trgfn_fattura_satellite_guard_congelamento` — che sembrava congelare la testata
+oltre `EMESSA` — è agganciata a `vendite.fatture` sulle **sole** colonne
+`emittente_snapshot` e `cliente_snapshot`. Su `fatture_indirizzi` e
+`fatture_scadenze` copre tutti gli eventi; sulla testata no.
+
+#### ⚠️ Cambiare la data significa rifare il piano rate
+
+Le scadenze si calcolano da `f.data` (`data_rata = data + offset`) nello step
+**EMESSA**, cioè **prima** del numero. Il guard **D-K** verifica che
+Σ rate = `totale_a_pagare`: la **somma non cambia**, cambiano le **date**. Una
+data nuova con rate vecchie passerebbe quindi in silenzio.
+
+⭐ Per questo la ridichiarazione si fa **solo** da
+`fn_imposta_data_documento_lotto`, che rigenera, e mai con un `UPDATE` diretto.

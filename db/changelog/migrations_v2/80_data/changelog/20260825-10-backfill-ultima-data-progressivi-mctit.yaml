@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# §6 punto 2 — BACKFILL DI ultima_data
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §6
+#
+# ── A COSA SERVE ────────────────────────────────────────────────────
+#   `ultima_data` nasce vuota. Da `20260825-11` in avanti la scrive
+#   `fn_get_next_progressivo` a ogni numero emesso — ma i numeri gia' usciti
+#   PRIMA di quel changeSet nessuno li ha registrati. Senza questo file il
+#   cancello nasce cieco su tutto lo storico: `NULL` = «nessun vincolo», e la
+#   prima numerazione dopo il migrate passerebbe qualunque data.
+#
+# ── ⭐ UN `runOnChange: false` CHE E' LA FORMA GIUSTA ───────────────
+#   Una bonifica `runOnChange: false` «fotografa un minuto», e di solito e' un
+#   difetto: se la sorgente continua a sporcare, la fotografia invecchia.
+#   ⭐ Qui non succede, ed e' il criterio per distinguere i due casi: dal
+#   changeSet successivo la colonna se la scrive DA SOLA il punto che emette il
+#   numero. Non c'e' nessuna sorgente che continui a sporcare — c'e' uno
+#   storico che va letto una volta.
+#
+# ── ℹ️ LA SERIE SI RISOLVE COME LA RISOLVE CHI NUMERA ───────────────
+#   `COALESCE(f.serie, r.serie_default, '')`, identico a
+#   `fn_assign_numero_fattura`. ⛔ Non e' pedanteria: misurato il 2026-08-25,
+#   **tutte** le fatture non numerate hanno `f.serie IS NULL` e prendono la
+#   serie dal `serie_default` del registro. Un backfill scritto con
+#   `COALESCE(f.serie,'')` cercherebbe la riga di contatore della serie vuota,
+#   non la troverebbe, e lascerebbe `ultima_data` a NULL — cioe' un cancello
+#   che non presidia niente, in silenzio.
+#
+# ── ℹ️ PER ANNO, PERCHE' LA RIGA DI CONTATORE E' PER ANNO ───────────
+#   Si raggruppa per `(registro, anno, serie)` perche' quella e' la chiave della
+#   riga. Il cancello poi legge il MASSIMO **attraverso gli anni** — sono due
+#   cose diverse e vanno entrambe: qui si popola la memoria riga per riga, la'
+#   si guarda il sezionale intero.
+#
+# ── ⚠️ GIRA PRIMA LA BONIFICA A MANO, NON DOPO ──────────────────────
+#   §6 del brief: la bonifica del registro 3 (decisione di Tid del 2026-08-25:
+#   **azzerare**) va eseguita PRIMA di questo migrate. Se si azzera dopo, questo
+#   backfill avra' gia' scritto una `ultima_data` che si riferisce a numeri che
+#   non esistono piu', e il cancello nascerebbe con un pavimento inventato.
+#   ⭐ Se l'azzeramento e' stato fatto, su quel registro questo file non trova
+#   nulla da scrivere ed e' esattamente cio' che deve succedere.
+#
+# ── ℹ️ LA RLS NON MORDE QUI ─────────────────────────────────────────
+#   Gira come l'utente della migrazione (owner in sviluppo, ruolo di migrazione
+#   in CI), che non e' soggetto alle policy: la lettura di `vendite.fatture` e'
+#   completa. ⚠️ E' l'unico punto del cantiere in cui leggere le fatture per
+#   ricavarne un massimo e' legittimo — a runtime il cancello legge il
+#   contatore, apposta.
+#
+# Dipendenze: 20260825-09 (la colonna).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260825-10-backfill-ultima-data-progressivi-mctit.yaml
+
+  - changeSet:
+      id: 20260825-10-backfill-ultima-data-progressivi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Backfill di registri_fatturazione_progressivi.ultima_data dallo storico delle fatture
+        gia' numerate: senza, il cancello di monotonia nascerebbe cieco (NULL = nessun vincolo)
+        e la prima numerazione dopo il migrate passerebbe qualunque data. runOnChange:false e'
+        la forma giusta qui — dal changeSet successivo la colonna se la scrive da sola
+        fn_get_next_progressivo, quindi non c'e' nessuna sorgente che continui a sporcare, c'e'
+        uno storico da leggere una volta. ⛔ La serie si risolve con COALESCE(f.serie,
+        r.serie_default, '') come fa chi numera: tutte le fatture non numerate hanno serie NULL
+        e la prendono dal registro, quindi un COALESCE(f.serie,'') lascerebbe ultima_data a NULL
+        in silenzio. ⚠️ La bonifica a mano del registro 3 va eseguita PRIMA di questo migrate.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: registri_fatturazione_progressivi
+            columnName: ultima_data
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $backfill$
+              DECLARE
+                  v_righe integer;
+              BEGIN
+                  -- ⭐ La serie si risolve ESATTAMENTE come la risolve
+                  --    fn_assign_numero_fattura, o si popola la riga sbagliata
+                  --    (o nessuna, che e' peggio: il cancello resta cieco e non
+                  --    lo dice).
+                  UPDATE vendite.registri_fatturazione_progressivi rp
+                     SET ultima_data = x.max_data
+                    FROM (
+                        SELECT f.registro_id,
+                               f.anno,
+                               COALESCE(f.serie, r.serie_default, '') AS serie,
+                               max(f.data) AS max_data
+                          FROM vendite.fatture f
+                          JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                         WHERE f.numero IS NOT NULL
+                           AND f.anno   IS NOT NULL
+                         GROUP BY 1, 2, 3
+                    ) x
+                   WHERE rp.registro_id = x.registro_id
+                     AND rp.anno        = x.anno
+                     AND rp.serie       = x.serie
+                     -- idempotente: la seconda passata non tocca nulla
+                     AND rp.ultima_data IS DISTINCT FROM x.max_data;
+
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+
+                  RAISE NOTICE '[20260825-10] backfill ultima_data: % righe di contatore valorizzate', v_righe;
+
+                  -- ⚠️ Un avviso, non un errore: una riga di contatore senza
+                  --    numeri emessi e' legittima (nasce con last_numero = 0),
+                  --    e dopo l'azzeramento del registro 3 e' proprio cio' che
+                  --    ci si aspetta. Ma va DETTO, perche' su quelle righe il
+                  --    cancello non ha pavimento e chi legge il log del migrate
+                  --    deve sapere quante sono.
+                  SELECT count(*) INTO v_righe
+                    FROM vendite.registri_fatturazione_progressivi
+                   WHERE ultima_data IS NULL;
+
+                  IF v_righe > 0 THEN
+                      RAISE NOTICE '[20260825-10] % righe di contatore restano senza ultima_data: su quelle il cancello non ha pavimento (nessun numero ancora emesso)', v_righe;
+                  END IF;
+              END
+              $backfill$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE vendite.registri_fatturazione_progressivi
+                 SET ultima_data = NULL
+               WHERE ultima_data IS NOT NULL;

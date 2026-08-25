@@ -5,6 +5,7 @@
 // 2026-06-02): qui restano filtri, slot e azioni di riga specifici.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useClientiStore } from '../stores/clienti'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
@@ -29,6 +30,9 @@ import { useAuthStore } from '../../stores/auth'
 
 const emit = defineEmits(['new', 'row-click', 'soggetto', 'contatti', 'indirizzi', 'conti-bancari', 'contratti'])
 const { t } = useI18n()
+// Navigazione verso la lista fatture (azione di riga): e' un cambio di
+// pagina, non un sotto-drawer, quindi non passa dal padre come le altre voci.
+const router = useRouter()
 const store = useClientiStore()
 const auth = useAuthStore()
 const isBlocked = useInjectBlocked()
@@ -107,6 +111,22 @@ function buildRowActions(data) {
       label: t('vendite.contratti.gestisci_contratti'),
       icon: MANAGE_ICONS.CONTRATTI,
       command: () => emit('contratti', data),
+    },
+    // ⭐ Porta alla LISTA FATTURE già filtrata su questo conto. Non apre un
+    // sotto-drawer: è una navigazione, e la lista dichiara a video da dove
+    // arriva e come togliere il filtro.
+    // ⛔ `billing_account_id` e NON `id`: su questa vista sono due colonne
+    // diverse e non coincidono mai (misurato: 0 righe su 21). Usare `id`
+    // avrebbe dato un filtro valido e SEMPRE VUOTO — «questo cliente non ha
+    // fatture» su ogni cliente, senza nessun errore.
+    {
+      key: 'fatture',
+      label: t('vendite.fatture.vedi_fatture'),
+      icon: MANAGE_ICONS.FATTURE,
+      command: () => router.push({
+        path: '/vendite/fatture',
+        query: { ba: data.billing_account_id, eti: data.ragione_sociale_completa },
+      }),
     },
   ]
 }

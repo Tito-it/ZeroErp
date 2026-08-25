@@ -15,9 +15,24 @@ from apps.pagamenti.api.views import (
     ApiDistintaRegistra,
     ApiDistintaRighe,
     ApiDistintaStato,
+    ApiContiIncasso,
     ApiDistinteList,
+    ApiEccedenze,
+    ApiEnteIncassoDetail,
+    ApiEntiIncasso,
+    ApiFatturaRateSaldo,
+    ApiFatturaSistemazioni,
+    ApiFatturaSaldo,
+    ApiRataSaldo,
+    ApiRateFuoriCapienza,
+    ApiRigaAbbina,
     ApiRigaDetail,
     ApiRigaStato,
+    ApiRigheCoda,
+    ApiSistemazioneAnnulla,
+    ApiSistemazioneConferma,
+    ApiSistemazioneDetail,
+    ApiSistemazioni,
 )
 
 urlpatterns = [
@@ -52,10 +67,75 @@ urlpatterns = [
     # --- Righe contabili (indirizzate per id proprio, non sotto la distinta:
     #     una riga si lavora anche dalla coda del riconciliatore, dove la
     #     distinta di appartenenza non e' il contesto) ---
+    path("righe/", ApiRigheCoda.as_view(), name="pagamenti-righe-coda"),
+    path(
+        "righe/<int:riga_id>/abbina/",
+        ApiRigaAbbina.as_view(),
+        name="pagamenti-riga-abbina",
+    ),
     path(
         "righe/<int:riga_id>/stato/",
         ApiRigaStato.as_view(),
         name="pagamenti-riga-stato",
     ),
     path("righe/<int:riga_id>/", ApiRigaDetail.as_view(), name="pagamenti-riga-detail"),
+    # --- Rate ---
+    # ⚠️ `fuori-capienza/` PRIMA di `<int:scadenza_id>/`, o il pattern generico
+    #     se la mangia (non e' un intero, ma l'ordine e' la regola: la prossima
+    #     rotta di elenco potrebbe esserlo).
+    path(
+        "rate/fuori-capienza/",
+        ApiRateFuoriCapienza.as_view(),
+        name="pagamenti-rate-fuori-capienza",
+    ),
+    path(
+        "rate/<int:scadenza_id>/saldo/",
+        ApiRataSaldo.as_view(),
+        name="pagamenti-rata-saldo",
+    ),
+    # --- Saldi di un documento (li consumano schermate di `vendite`) ---
+    path(
+        "fatture/<int:fattura_id>/saldo/",
+        ApiFatturaSaldo.as_view(),
+        name="pagamenti-fattura-saldo",
+    ),
+    path(
+        "fatture/<int:fattura_id>/rate/",
+        ApiFatturaRateSaldo.as_view(),
+        name="pagamenti-fattura-rate",
+    ),
+    path(
+        "fatture/<int:fattura_id>/sistemazioni/",
+        ApiFatturaSistemazioni.as_view(),
+        name="pagamenti-fattura-sistemazioni",
+    ),
+    # --- I canali di incasso: da dove arrivano i soldi ---
+    # ⚠️ `conti-incasso/` e' una risorsa a se' e non una sotto-risorsa del
+    #     canale: si consulta PRIMA di avere un canale, mentre lo si crea.
+    path("conti-incasso/", ApiContiIncasso.as_view(), name="pagamenti-conti-incasso"),
+    path("enti-incasso/", ApiEntiIncasso.as_view(), name="pagamenti-enti-incasso"),
+    path(
+        "enti-incasso/<int:ente_incasso_id>/",
+        ApiEnteIncassoDetail.as_view(),
+        name="pagamenti-ente-incasso-detail",
+    ),
+    # --- Le sistemazioni: l'elenco presenta, la persona decide, i due verbi
+    #     fanno diventare la decisione un fatto (o la scartano) ---
+    path("eccedenze/", ApiEccedenze.as_view(), name="pagamenti-eccedenze"),
+    path("sistemazioni/", ApiSistemazioni.as_view(), name="pagamenti-sistemazioni"),
+    path(
+        "sistemazioni/<int:sistemazione_id>/conferma/",
+        ApiSistemazioneConferma.as_view(),
+        name="pagamenti-sistemazione-conferma",
+    ),
+    path(
+        "sistemazioni/<int:sistemazione_id>/annulla/",
+        ApiSistemazioneAnnulla.as_view(),
+        name="pagamenti-sistemazione-annulla",
+    ),
+    path(
+        "sistemazioni/<int:sistemazione_id>/",
+        ApiSistemazioneDetail.as_view(),
+        name="pagamenti-sistemazione-detail",
+    ),
 ]

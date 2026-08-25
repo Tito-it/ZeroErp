@@ -15,6 +15,7 @@
 | serie | character varying | NO | ''::character varying |
 | last_numero | bigint | NO | 0 |
 | attivo | boolean | YES |  |
+| ultima_data | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -1,0 +1,222 @@
+<script setup>
+// Scopo: FE-2 — il dialog che dichiara la DATA DOCUMENTO con cui numerare.
+//   Serve i DUE perimetri dell'atto fiscale con un componente solo, perche' e'
+//   la stessa domanda su due insiemi: un LOTTO (`lottoId`, dal drawer/lista) o
+//   un MESE DI COMPETENZA (`competenzaMese`, dalla Dashboard Competenza, che
+//   tocca N lotti e vuole UNA data per tutti — decisione 5 del brief).
+//
+// ⭐ PERCHE' ESISTE. Fino al 2026-08-25 la data della fattura era il
+//   `current_date` del momento in cui era nata la BOZZA, e non si poteva
+//   correggere da nessuna parte: un lotto rimasto indietro portava una data
+//   vecchia, e numerandolo dopo lotti piu' recenti produceva un numero alto su
+//   una data bassa. Dal cancello di `fn_get_next_progressivo` quel caso ora
+//   viene RIFIUTATO — quindi senza questo dialog l'operatore avrebbe un rifiuto
+//   e nessun modo di rimediare.
+//
+// ⛔ LA `minDate` NON E' UN ABBELLIMENTO. Sul registro Back-office la politica
+//   e' `FINE_MESE_COMPETENZA`: ogni lotto di competenza ARRETRATA nasce con una
+//   data anteriore all'ultimo numero emesso. Senza il pavimento a video il
+//   dialog proporrebbe ogni volta una data che il DB rifiuta, e l'operatore
+//   imparerebbe a leggere l'errore invece della targa.
+//
+// ⚠️ Il pavimento e' un SUGGERIMENTO, non una garanzia: la lettura e' fail-open
+//   sotto RLS (una fattura fuori perimetro non entra nel massimo). Il rifiuto
+//   vero resta del DB. Questo dialog non decide niente — mostra e chiede.
+//
+// Non chiama l'API di numerazione: emette `conferma` con la data scelta e
+// lascia al chiamante il verbo, i toast e il refresh (che sono suoi).
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import DatePicker from 'primevue/datepicker'
+import Message from 'primevue/message'
+import AppDialog from '../../core/components/AppDialog.vue'
+import { useApiHandler } from '../../core/composables/useApiHandler'
+import { displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
+import { getFinestraNumerazione } from '../api/lotti'
+import { MODO_DATA_DOCUMENTO } from '../constants'
+
+const props = defineProps({
+  visible: { type: Boolean, required: true },
+  // ⭐ DUE MODI, e la differenza NON e' cosmetica.
+  //   `numera`    — si sta per numerare: la data e' OBBLIGATORIA (si conferma
+  //                 quella proposta) e confermare puo' SPOSTARE le date dei
+  //                 documenti, quindi il dialog lo dice prima.
+  //   `creazione` — si sta per creare i lotti: la data e' FACOLTATIVA, e
+  //                 lasciarla vuota non vuol dire «oggi» — vuol dire «la
+  //                 decide la politica del registro». Non c'e' nessuna data da
+  //                 spostare, perche' i documenti non esistono ancora: qui
+  //                 `data_corrente` (che parla dei lotti GIA' emessi) sarebbe
+  //                 la risposta a un'altra domanda, e non si legge.
+  // ⛔ `validator` e non solo un default: un refuso nel valore ricadrebbe in
+  //    silenzio sul modo `numera`, che e' la direzione PERICOLOSA — il dialog
+  //    di creazione pretenderebbe una data e annuncerebbe «niente da numerare»
+  //    su lotti che non esistono ancora. Meglio un errore in console che una
+  //    schermata che dice il falso.
+  modo: {
+    type: String,
+    default: MODO_DATA_DOCUMENTO.NUMERA,
+    validator: (v) => Object.values(MODO_DATA_DOCUMENTO).includes(v),
+  },
+  // Esattamente uno dei due. Entrambi null = il dialog non chiede niente.
+  lottoId: { type: [Number, null], default: null },
+  competenzaMese: { type: [String, null], default: null },
+  // Quanti lotti tocca l'atto (solo perimetro competenza): serve alla frase,
+  // non alla logica.
+  nLotti: { type: Number, default: 0 },
+  // ⭐ La frase del perimetro, quando il chiamante ne ha una piu' precisa della
+  //   nostra. In creazione e' il PESO di cio' che sta per succedere — «3 gruppi,
+  //   47 attivita'» — che prima stava nella conferma secca: assorbendo quella
+  //   conferma, questo dialog deve assorbirne anche il testo, o l'operatore
+  //   perderebbe l'informazione piu' importante delle due.
+  perimetroTesto: { type: String, default: '' },
+})
+const emit = defineEmits(['update:visible', 'conferma'])
+
+const { t } = useI18n()
+const { execute, loading } = useApiHandler()
+
+const dataScelta = ref(null)
+const minima = ref(null)     // pavimento del sezionale (Date | null)
+const corrente = ref(null)   // data che i documenti portano oggi (Date | null)
+// ⛔ «CARICATO» E' UNO STATO SUO, e serve a non dire una bugia. Senza, una
+//   lettura FALLITA e una lettura RIUSCITA CON PERIMETRO VUOTO sono
+//   indistinguibili — entrambe lasciano `corrente` a null — e il dialog
+//   annuncerebbe «non c'e' niente da numerare» su una chiamata che non ha
+//   nemmeno risposto. Un errore travestito da dato tranquillo.
+//   Copre anche il primo render, prima che `carica()` parta.
+const caricato = ref(false)
+
+// Scopo: la data da proporre. Se quella che i documenti portano gia' va bene,
+//   si propone QUELLA — confermare non cambia niente ed e' il caso normale.
+//   Solo se e' sotto il pavimento si propone il pavimento, che e' il primo
+//   giorno in cui quei documenti possono prendere un numero.
+// ⚠️ Nessun ripiego su «oggi»: se non c'e' ne' una data corrente ne' un
+//   pavimento non c'e' niente da numerare, e il dialog lo dice.
+function proponi() {
+  if (!corrente.value) return minima.value
+  if (minima.value && corrente.value < minima.value) return minima.value
+  return corrente.value
+}
+
+const inCreazione = computed(() => props.modo === MODO_DATA_DOCUMENTO.CREAZIONE)
+
+async function carica() {
+  dataScelta.value = null
+  minima.value = null
+  corrente.value = null
+  caricato.value = false
+  if (props.lottoId == null && !props.competenzaMese) return
+  const res = await execute(
+    () => getFinestraNumerazione({
+      lottoId: props.lottoId,
+      competenzaMese: props.competenzaMese,
+    }),
+  )
+  // `!== null`: una risposta con tutti i campi a null e' un esito legittimo
+  // (niente da numerare), non un errore.
+  // ⚠️ Niente `silent`: se la lettura fallisce l'operatore deve vederlo. Un
+  //    dialog che si apre vuoto e in silenzio e' il modo in cui un guasto
+  //    diventa «non c'era niente da fare».
+  if (res === null) return
+  caricato.value = true
+  minima.value = res.data_minima ? parseIsoDate(res.data_minima) : null
+  // ⚠️ In creazione `data_corrente` NON si legge: parla dei lotti gia' emessi,
+  //    non di quelli che stanno per nascere. Il pavimento invece vale in
+  //    entrambi i modi — un lotto creato oggi con una data indietro verrebbe
+  //    rifiutato al momento di numerarlo, ed e' meglio saperlo adesso.
+  corrente.value = inCreazione.value
+    ? null
+    : (res.data_corrente ? parseIsoDate(res.data_corrente) : null)
+  dataScelta.value = inCreazione.value ? null : proponi()
+}
+
+watch(() => props.visible, (v) => { if (v) carica() })
+
+// Confermare SPOSTA le date dei documenti (e con esse le scadenze): e' la
+// conseguenza che l'operatore non si aspetta, e va detta prima, non dopo.
+const spostaLeDate = computed(() => {
+  if (!dataScelta.value || !corrente.value) return false
+  return toDateString(dataScelta.value) !== toDateString(corrente.value)
+})
+
+// Solo nel modo `numera`: in creazione non c'e' niente da numerare per
+// definizione, e dirlo sarebbe un avviso su una cosa che nessuno ha chiesto.
+const nienteDaNumerare = computed(
+  () => !inCreazione.value && caricato.value && !corrente.value,
+)
+// Lettura non riuscita: il dialog non sa niente e non deve fingere di sapere.
+const nonCaricato = computed(() => !inCreazione.value && !loading.value && !caricato.value)
+
+function onHide() { emit('update:visible', false) }
+
+function conferma() {
+  // ⚠️ In creazione il vuoto e' una risposta legittima — «non dichiaro niente,
+  //    decida il registro» — e viaggia come `null`, non come la data di oggi.
+  if (!inCreazione.value && !dataScelta.value) return
+  emit('conferma', dataScelta.value ? toDateString(dataScelta.value) : null)
+  onHide()
+}
+</script>
+
+<template>
+  <AppDialog
+    :visible="visible"
+    width="sm"
+    :header="t(inCreazione ? 'vendite.numerazione_data.titolo_creazione' : 'vendite.numerazione_data.titolo')"
+    :loading="loading"
+    :save-disabled="(!inCreazione && !dataScelta) || nienteDaNumerare || nonCaricato"
+    :save-label="t(inCreazione ? 'vendite.numerazione_data.conferma_creazione' : 'vendite.numerazione_data.conferma')"
+    save-severity="success"
+    @update:visible="onHide"
+    @save="conferma"
+  >
+    <!-- ⚠️ Perimetro e pavimento in UN messaggio, non in un paragrafo con una
+         classe nuova: nel foglio comune non c'e' una classe «testo introduttivo
+         di dialog», e inventarla qui vorrebbe dire aggiungere CSS a un
+         componente invece che al foglio (feedback_css_centralizzazione). -->
+    <Message v-if="nonCaricato" severity="warn" :closable="false" class="mb-1">
+      {{ t('vendite.numerazione_data.non_caricato') }}
+    </Message>
+    <Message v-else-if="nienteDaNumerare" severity="info" :closable="false" class="mb-1">
+      {{ t('vendite.numerazione_data.niente_da_numerare') }}
+    </Message>
+    <Message v-else-if="!loading" severity="info" :closable="false" class="mb-1">
+      <template v-if="perimetroTesto">{{ perimetroTesto }}</template>
+      <template v-else-if="inCreazione">
+        {{ t('vendite.numerazione_data.perimetro_creazione') }}
+      </template>
+      <template v-else-if="lottoId != null">
+        {{ t('vendite.numerazione_data.perimetro_lotto') }}
+      </template>
+      <template v-else>
+        {{ t('vendite.numerazione_data.perimetro_competenza', { n: nLotti }) }}
+      </template>
+      <template v-if="minima">
+        {{ ' ' }}{{ t('vendite.numerazione_data.pavimento', { data: displayDate(minima) }) }}
+      </template>
+    </Message>
+
+    <!-- ⛔ L'avviso che conta: confermando si SPOSTANO le date dei documenti e
+         si RIGENERANO le scadenze. Chi non lo dice lo nasconde. -->
+    <Message v-if="spostaLeDate" severity="warn" :closable="false" class="mb-1">
+      {{ t('vendite.numerazione_data.sposta_le_date', {
+        da: displayDate(corrente),
+        a: displayDate(dataScelta),
+      }) }}
+    </Message>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t(inCreazione ? 'vendite.numerazione_data.campo_data_creazione' : 'vendite.numerazione_data.campo_data') }}</label>
+        <DatePicker
+          v-model="dataScelta"
+          date-format="dd/mm/yy"
+          show-icon
+          show-button-bar
+          :min-date="minima || undefined"
+          :disabled="nienteDaNumerare"
+        />
+      </div>
+    </div>
+  </AppDialog>
+</template>

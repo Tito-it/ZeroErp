@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-1 — SEED DEL PARAMETRO SYSTEM_FUSO_ORARIO (id 54)
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-1
+#
+#   Il fuso orario dell'azienda. Lo legge script.fn_data_operativa(), che
+#   sostituisce `current_date` sul percorso della data documento: `current_date`
+#   segue il fuso DELLA SESSIONE, e la sessione di Django e' UTC mentre psql e
+#   pgAgent sono Europe/Rome — lo stesso oggetto dava due date diverse secondo il
+#   canale, e ogni documento nato fra mezzanotte e le 02:00 locali portava la
+#   data del giorno prima (misurato: 7 fatture su 18).
+#
+# ── ⛔ PERCHE' UN CSV DEDICATO E NON UN APPEND A parameters.csv ─────
+#   Perche' e' stato provato, ed e' ESPLOSO. `parameters.csv` e' una MINA
+#   DORMIENTE: contiene la riga `DEFAULT_UTILITY` (id 12) con
+#   `default_value = ''`, e quel valore **non e' piu' scrivibile**. Il dispatcher
+#   `config.trgfn_parameters_fk_surrogate_dispatch` — entrato DOPO che quella
+#   riga fu scritta — pretende che il valore esista in
+#   `config.utilities.codice_interno`, e la stringa vuota non c'e'.
+#
+#   Il mirror `20250715-01-upsert_parameters` e' `runOnChange: true`: **dorme
+#   finche' nessuno tocca il file**. Un semplice append in coda ne cambia il
+#   checksum, lo sveglia, e la ri-lettura muore su una riga che non c'entra
+#   niente con chi ha appeso — `E_PARAMETER_DEFAULT_VALUE_INVALID`, e il migrate
+#   si ferma.
+#
+#   ⚠️ E non e' un problema di CSV disallineato dal database: il database ha
+#   ESATTAMENTE lo stesso valore. La riga e' identica e **irriscrivibile lo
+#   stesso**. Un confronto CSV-vs-DB non lo vede: l'unica verifica che lo
+#   trovava era provare a RIESEGUIRE il loader.
+#
+#   ⭐ Un CSV per famiglia di parametri e' comunque il pattern di casa:
+#   `parameters_note_defaults.csv`, `parameters_documenti_storage.csv`,
+#   `parameters_vendite_defaults.csv`, `parameters_default_tipo_soggetto_dettaglio.csv`.
+#   Questo apre la famiglia `parameters_sistema.csv` per i parametri
+#   trasversali `SYSTEM_*`. La sede resta un CSV: AGENTS.md §80_data rispettato.
+#
+# ── ℹ️ IL DISPATCHER QUI E' UN NO-OP ────────────────────────────────
+#   `SYSTEM_FUSO_ORARIO` non corrisponde a nessuno dei quattro pattern attivi in
+#   `config.parameter_fk_surrogate` (`DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%`,
+#   `DEFAULT_UTILITY`, `NOTE_DEFAULT_STILE`, `NOTE_DEFAULT_LINGUA`), quindi il
+#   trigger esce subito. ⚠️ E non deve entrarci: il valore non punta a una
+#   tabella di catalogo, punta a `pg_timezone_names` — che il catalogo non e' e
+#   il framework non sa raggiungere. A validarlo e' `script.fn_data_operativa()`
+#   stessa, che rifiuta un fuso non riconosciuto.
+#
+# Dipendenze: nessuna. ⚠️ La usa script.fn_data_operativa (20260825-02), che pero'
+#             vive in 20_code e quindi esiste GIA' quando questo file gira: fra
+#             il migrate di quella fase e questo seed la funzione solleva
+#             E_CONFIG_MANCANTE. E' voluto — meglio un errore parlante che una
+#             data presa da un fuso a caso — ma nessuno deve fatturare in mezzo
+#             a un migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260825-12-upsert-parameter-system-fuso-orario-mctit.yaml
+
+  - changeSet:
+      id: 20260825-12-upsert-parameter-system-fuso-orario
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-1: parametro id=54, code='SYSTEM_FUSO_ORARIO', default_value='Europe/Rome'. E' il
+        fuso dell'AZIENDA, che script.fn_data_operativa() usa al posto di current_date —
+        current_date segue il fuso della SESSIONE, UTC da Django ed Europe/Rome da psql e
+        pgAgent. ⛔ CSV DEDICATO e non un append a parameters.csv: quel file e' una mina
+        dormiente (la riga DEFAULT_UTILITY ha default_value = '' e il dispatcher FK-surrogata,
+        entrato dopo, non la accetta piu'), e un append ne cambia il checksum svegliando un
+        mirror runOnChange che muore su una riga di qualcun altro. Un confronto CSV-vs-DB non
+        lo vede: la riga e' identica al database e irriscrivibile lo stesso. ℹ️ Su questo
+        parametro il dispatcher e' no-op: nessun pattern lo intercetta, e non deve — il valore
+        punta a pg_timezone_names, che non e' una tabella di catalogo. Lo valida
+        fn_data_operativa stessa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM config.parameters
+                   WHERE id = 54 AND code <> 'SYSTEM_FUSO_ORARIO';
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/parameters_sistema.csv
+            tableName: parameters
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,            type: NUMERIC }
+              - column: { name: code,          type: STRING }
+              - column: { name: default_value, type: STRING }
+              - column: { name: description,   type: STRING }
+              - column: { name: data_insert,   type: STRING }
+              - column: { name: user_insert,   type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update,   type: STRING }
+              - column: { name: tx_id,         type: uuid }
+              - column: { name: storicizza,    type: BOOLEAN }

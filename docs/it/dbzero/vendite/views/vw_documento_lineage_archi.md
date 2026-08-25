@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R e N (rami di ritorno). Chiave nodo polimorfa (tipo_id, uid::text). Nodo target decorato via vw_documento_lineage_nodi. security_invoker=on. Base di vw_documento_lineage e fn_documento_lineage. ⭐ rev 2026-08-20 — ARCO N: fattura rettificata -&gt; nota di credito, ricostruito da vendite.fatture_righe.riga_rettificata_id (legame RIGA-RIGA) e NON da vendite.fatture_rettifiche: quel ponte lo popola un task della fase DEFINITIVA, dopo la numerazione, mentre riga_rettificata_id esiste dalla generazione delle righe — il grafo deve mostrare il legame quando c'e', non quando il documento e' chiuso. Stessa scelta dell'arco G (soft-link, non tabella ponte). E' il primo arco fra due nodi dello STESSO tipo (FATTURA-&gt;FATTURA): l'arco X-&gt;X e' escluso perche' sarebbe un ciclo e non una genealogia. ⭐ is_ramo_inverso E' CALCOLATO QUI, una volta sola: prima la lettera R era ripetuta in tre posti (due WHERE della summary e fn_documento_lineage) e il terzo dimenticato non avrebbe rotto niente di visibile — la nota di credito sarebbe solo comparsa come discendente forward, cambiando la frontiera di ogni lista. ⚠️ «Inverso» non e' «all'indietro nel tempo» (la NC nasce dopo): e' ramo di RITORNO — nel reso torna la merce, qui il valore. Espone anche from/to_natura_doc_codice, per distinguere i due nodi FATTURA.
+> Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R e N (rami di ritorno) + S. Chiave nodo polimorfa (tipo_id, uid::text). Nodo target decorato via vw_documento_lineage_nodi. security_invoker=on. Base di vw_documento_lineage e fn_documento_lineage. ⭐ rev 2026-08-25 — ARCO S: reso -&gt; nota di credito, letto da vendite.resi_righe_accrediti (la tabella nata il 2026-08-18 per registrare il FATTO dell'accredito «contro cosa»), via commessa_attivita_id -&gt; attivita_fatturabili -&gt; fatture_righe. Soft-link calcolato come G e N, nessuna tabella ponte. Prima il grafo si fermava sul reso: la nota era collegata alla fattura che rettifica e alla commessa, ma non al reso, e i due rami di ritorno — la merce che torna e il valore che torna — non si toccavano mai. ⛔ S NON E' UN RAMO DI RITORNO, ed e' una scelta: «inverso» vuol dire ramo di RITORNO, un verso che il grafo forward non percorre; S invece e' l'AVANZAMENTO del reso (la merce e' tornata, adesso si accredita), come H lo e' dell'ordine. La conseguenza voluta e' che il reso smette di essere una foglia e prende la nota come FRONTIERA. ⛔ NON si aggiunge un arco «reso -&gt; fattura ORIGINALE», benche' resi_righe_accrediti.fattura_riga_rettificata_id lo renda banale: sarebbe forward, i due nodi FATTURA finirebbero allo stesso livello e con lo stesso pipeline_rank, e la frontiera del reso si deciderebbe sul confronto lessicografico fra due uid testuali. Il triangolo si chiude gia' via N. ⛔ REGOLA DI PERIMETRO (rev 2026-08-25): ogni ramo passa dalle TABELLE-TESTATA dei due documenti che collega, perche' sono quelle che portano la RLS. Le tabelle-ponte (commesse_sorgenti, attivita_fatturabili, resi_righe, resi_righe_accrediti) hanno relrowsecurity = f e non danno perimetro: un ramo che si ferma li' produce un arco verso un documento che il chiamante non vede, e la decorazione non lo ferma perche' i join ai nodi sono LEFT. Fino al 2026-08-24 lo facevano B, E, F (entrambi gli estremi, via commesse_sorgenti) e G (la commessa, via attivita_fatturabili). ⚠️ La chiave di commesse_sorgenti.sorgente_uid e' POLIMORFA (key_selector): uid per il preventivo, id::text per ordine e contratto — i tre join non si copiano l'uno dall'altro, e si casta l'id a text, mai il testo a uuid. ⭐ is_ramo_inverso E' CALCOLATO QUI, una volta sola: prima la lettera R era ripetuta in tre posti (due WHERE della summary e fn_documento_lineage) e il terzo dimenticato non avrebbe rotto niente di visibile. Espone anche from/to_natura_doc_codice, per distinguere i due nodi FATTURA.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -24,12 +24,14 @@ WITH archi AS (
           WHERE ((o.documento_origine_tipo)::text = 'PREVENTIVO'::text)
         UNION ALL
          SELECT s_from.id,
-            cs.sorgente_uid,
+            (p.uid)::text AS uid,
             s_to.id,
-            (cs.commessa_id)::text AS commessa_id,
+            (cm.id)::text AS id,
             cs.ruolo_link,
             'B'::text AS text
-           FROM ((vendite.commesse_sorgenti cs
+           FROM ((((vendite.commesse_sorgenti cs
+             JOIN vendite.preventivi p ON (((p.uid)::text = cs.sorgente_uid)))
+             JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
              JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
              JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
         UNION ALL
@@ -58,32 +60,37 @@ WITH archi AS (
           WHERE ((o.documento_origine_tipo)::text = 'OFFERTA'::text)
         UNION ALL
          SELECT s_from.id,
-            cs.sorgente_uid,
+            (o.id)::text AS id,
             s_to.id,
-            (cs.commessa_id)::text AS commessa_id,
+            (cm.id)::text AS id,
             cs.ruolo_link,
             'E'::text AS text
-           FROM ((vendite.commesse_sorgenti cs
+           FROM ((((vendite.commesse_sorgenti cs
+             JOIN vendite.ordini o ON (((o.id)::text = cs.sorgente_uid)))
+             JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
              JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
              JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
         UNION ALL
          SELECT s_from.id,
-            cs.sorgente_uid,
+            (c.id)::text AS id,
             s_to.id,
-            (cs.commessa_id)::text AS commessa_id,
+            (cm.id)::text AS id,
             cs.ruolo_link,
             'F'::text AS text
-           FROM ((vendite.commesse_sorgenti cs
+           FROM ((((vendite.commesse_sorgenti cs
+             JOIN vendite.contratti c ON (((c.id)::text = cs.sorgente_uid)))
+             JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
              JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
              JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
         UNION ALL
          SELECT DISTINCT s_from.id,
-            (af.commessa_id)::text AS commessa_id,
+            (cm.id)::text AS id,
             s_to.id,
             (f.id)::text AS id,
             NULL::character varying AS "varchar",
             'G'::text AS text
-           FROM ((((vendite.attivita_fatturabili af
+           FROM (((((vendite.attivita_fatturabili af
+             JOIN vendite.commesse cm ON ((cm.id = af.commessa_id)))
              JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
              JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
              JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'COMMESSA'::text) AND (s_from.attivo IS TRUE))))
@@ -122,6 +129,21 @@ WITH archi AS (
              JOIN vendite.fatture_righe rr ON ((rr.id = fr.riga_rettificata_id)))
              JOIN config.sorgenti s_fat ON ((((s_fat.codice_interno)::text = 'FATTURA'::text) AND (s_fat.attivo IS TRUE))))
           WHERE ((fr.riga_rettificata_id IS NOT NULL) AND (rr.fattura_id <> fr.fattura_id))
+        UNION ALL
+         SELECT DISTINCT s_from.id,
+            (r.id)::text AS id,
+            s_to.id,
+            (fr.fattura_id)::text AS fattura_id,
+            NULL::character varying AS "varchar",
+            'S'::text AS text
+           FROM ((((((vendite.resi_righe_accrediti acc
+             JOIN vendite.resi_righe rr ON ((rr.id = acc.resi_riga_id)))
+             JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+             JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = acc.commessa_attivita_id)))
+             JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+             JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_from.attivo IS TRUE))))
+             JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'FATTURA'::text) AND (s_to.attivo IS TRUE))))
+          WHERE (af.fattura_riga_id IS NOT NULL)
         )
  SELECT a.from_tipo_id,
     a.from_uid,

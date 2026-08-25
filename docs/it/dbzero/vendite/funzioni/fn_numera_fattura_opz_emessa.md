@@ -9,20 +9,15 @@ CREATE FUNCTION fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa b
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean DEFAULT true, p_codice_interno_emessa character varying DEFAULT 'EMESSA'::character varying)
- RETURNS TABLE(registro_id bigint, anno smallint, mese smallint, serie character varying, numero bigint)
+ RETURNS TABLE(registro_id bigint, anno smallint, serie character varying, numero bigint)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     -- ⚠️ `BOOLEAN` esplicito: e' l'esito di un controllo, non il valore
     --    di una colonna.
     v_is_numbered  BOOLEAN;
-    v_reset        vendite.registri_fatturazione.reset_policy%TYPE;
-    v_data         vendite.fatture.data%TYPE;
     v_registro_id  vendite.fatture.registro_id%TYPE;
     v_anno         vendite.fatture.anno%TYPE;
-    -- ⚠️ `SMALLINT` esplicito, stessa ragione del `mese` in RETURNS:
-    --    la colonna non esiste, il mese si ricava dalla data.
-    v_mese         SMALLINT;
     v_serie        vendite.fatture.serie%TYPE;
     v_numero       vendite.fatture.numero%TYPE;
     v_stato_emessa_id config.stati_doc_fiscale.id%TYPE;
@@ -42,6 +37,13 @@ DECLARE
     -- pulsanti. `jsonb` perche' e' la forma del context, non una colonna.
     v_bersagli        jsonb;
 BEGIN
+    -- ⭐ rev 2026-08-25 (DB-12): `mese` e' uscito dal RETURNS TABLE.
+    --    Era calcolato da `reset_policy`, che ammetteva tre valori e
+    --    ne implementava uno; e nessun consumatore lo leggeva —
+    --    il backend drena il result set, i pgTAP leggono per nome.
+    --    Con lui sono caduti `v_reset`, `v_data` e il JOIN sul
+    --    registro, che serviva solo a portare reset_policy.
+
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_PARAMETRO_INVALIDO',
             jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
@@ -60,10 +62,12 @@ BEGIN
     --    fuori dal perimetro di chi opera qui non si trova e si esce con
     --    E_FATTURA_NON_TROVATA. Arrivare alla guardia significa che
     --    `p_fattura_id` e' un documento che chi opera puo' aprire.
-    SELECT f.numero IS NOT NULL, f.data, f.registro_id, r.reset_policy, f.anno, f.serie, f.numero
-      INTO v_is_numbered, v_data, v_registro_id, v_reset, v_anno, v_serie, v_numero
+    -- ⚠️ rev 2026-08-25: niente piu' JOIN su registri_fatturazione. Serviva solo
+    --    a portare reset_policy; era un INNER JOIN e in teoria filtrava, in
+    --    pratica mai (registro_id e' NOT NULL con una FK).
+    SELECT f.numero IS NOT NULL, f.registro_id, f.anno, f.serie, f.numero
+      INTO v_is_numbered, v_registro_id, v_anno, v_serie, v_numero
       FROM vendite.fatture f
-      JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
      WHERE f.id = p_fattura_id FOR UPDATE OF f;
 
     IF v_registro_id IS NULL THEN
@@ -73,8 +77,7 @@ BEGIN
 
     -- Idempotente: se gia' numerata ritorna valori correnti
     IF v_is_numbered THEN
-        v_mese := CASE WHEN v_reset = 'MENSILE' THEN EXTRACT(MONTH FROM v_data)::SMALLINT ELSE NULL END;
-        RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+        RETURN QUERY SELECT v_registro_id, v_anno, v_serie, v_numero;
         RETURN;
     END IF;
 
@@ -151,11 +154,6 @@ BEGIN
         --          padre invisibile non si puo' mandare nessuno). Un pulsante
         --          in un vicolo cieco e' peggio di nessun pulsante — §4.3.
         --
-        -- ⚠️ Niente piu' `CASE WHEN v_bersagli IS NULL`: con il documento in
-        --    testa l'array ha SEMPRE almeno un elemento, quindi il ramo «chiave
-        --    assente» del pilota non esiste piu'. Scritto perche' chi confronta
-        --    i due changeSet non lo legga come una dimenticanza.
-        --
         -- ⚠️ Gira solo qui dentro, cioe' solo quando l'errore parte davvero:
         --    sul percorso felice non costa niente.
         SELECT jsonb_build_array(
@@ -194,8 +192,8 @@ BEGIN
     END IF;
 
     -- Assegna numero
-    SELECT t.registro_id, t.anno, t.mese, t.serie, t.numero
-      INTO v_registro_id, v_anno, v_mese, v_serie, v_numero
+    SELECT t.registro_id, t.anno, t.serie, t.numero
+      INTO v_registro_id, v_anno, v_serie, v_numero
       FROM vendite.fn_assign_numero_fattura(p_fattura_id) AS t;
 
     -- Opzionale: stato EMESSA
@@ -208,12 +206,12 @@ BEGIN
         END IF;
     END IF;
 
-    RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+    RETURN QUERY SELECT v_registro_id, v_anno, v_serie, v_numero;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean, p_codice_interno_emessa character varying)
-IS 'Assegna numero fattura (idempotente) e opzionalmente imposta stato EMESSA. ⭐ rev 2026-08-21: rifiuta di numerare un documento che RETTIFICA le righe di una fattura ancora senza numero (E_FATTURA_RETTIFICATA_SENZA_NUMERO). Non e'' cronologia: una nota di credito deve citare numero e data del documento corretto nel blocco DatiFattureCollegate della TD04, e con il padre senza numero quel blocco non e'' compilabile — la nota nascerebbe gia'' inadatta allo SDI. Il rifiuto arriva PRIMA di consumare un numero. ⚠️ Il predicato e'' PER RIGA (fatture_righe.riga_rettificata_id -> riga -> fattura): una nota puo'' rettificare righe di fatture diverse e ne basta UNA senza numero. ⭐ NON guarda la natura del documento: una nota di DEBITO che rettifica ha lo stesso problema, e una fattura ordinaria non ha righe con riga_rettificata_id — il predicato sulle righe copre tutto senza bloccare i casi normali. Non usa vendite.fatture_rettifiche perche'' quel ponte lo popola un task che gira DOPO la numerazione. ⛔ FAIL-CLOSED sulla visibilita'': fatture e fatture_righe hanno la RLS e la funzione e'' SECURITY INVOKER, quindi i JOIN sono LEFT e una riga il cui padre non e'' visibile conta come BLOCCANTE — il predicato e'' «non posso dimostrare che sia numerata», non «risulta non numerata». ⚠️ La guardia sta DOPO il ritorno idempotente: un documento gia'' numerato continua a rispondere con i suoi valori, altrimenti un secondo giro romperebbe cio'' che il primo ha gia'' fatto bene. ⚠️ CHI CHIAMA DEVE NUMERARE PRIMA I PADRI: il giro di lotto e'' fail-fast (una fattura che rifiuta ferma lo step). Oggi regge perche'' il backend ordina per f.id e la fattura rettificata e'' sempre piu'' vecchia della nota — la merce dev''essere gia'' stata fatturata perche'' l''accredito sia possibile — ma e'' un invariante implicito, non una garanzia scritta. ⭐ rev 2026-08-23: l''errore porta un BERSAGLIO (canale DATATYPE, via script.fn_log_and_raise_error). ⭐ rev 2026-08-24 (T-3b): l''ID ESCE DALLA PROSA. Il messaggio 937 passa da due segnaposto a UNO, che porta il CONTEGGIO dei bloccanti e non piu'' due chiavi interne; il bersaglio prende DUE RUOLI — il documento DA NUMERARE (sempre, e per PRIMO, cosi'' sopravvive al tetto di cinque elementi del canale compatto) e i padri bloccanti VISIBILI in ordine di id. ⭐ Il primo elemento c''e'' sempre per costruzione: se p_fattura_id non fosse visibile a chi opera, la SELECT ... FOR UPDATE non l''avrebbe trovato e si sarebbe usciti con E_FATTURA_NON_TROVATA. Senza quel primo bersaglio il T-3b non si sarebbe potuto fare: dentro un giro di lotto, tolti gli id dalla frase, QUALE fattura ha rifiutato non lo direbbe piu'' nessuno. ⛔ Il bersaglio dei padri resta a JOIN INTERNI contro i LEFT JOIN del predicato: un padre invisibile entra nel CONTEGGIO della frase ma NON fra i pulsanti, perche'' a un documento che non si puo'' aprire non si manda nessuno. ⚠️ La chiave `bersaglio` e'' ora incondizionata (l''array non e'' mai vuoto), quindi il CASE del pilota e'' sparito. ⚠️ `primo_bloccante` resta nel context per chi diagnostica: nel ramo fail-closed non e'' nemmeno un id di fattura. ⛔ Questo changeSet e'' inseparabile dalla riga 937 di 80_data/sql/config/messaggi_errore.csv. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §7-ter, passo T-3b.';
+IS 'Assegna numero fattura (idempotente) e opzionalmente imposta stato EMESSA. ⭐ rev 2026-08-21: rifiuta di numerare un documento che RETTIFICA le righe di una fattura ancora senza numero (E_FATTURA_RETTIFICATA_SENZA_NUMERO). Non e'' cronologia: una nota di credito deve citare numero e data del documento corretto nel blocco DatiFattureCollegate della TD04, e con il padre senza numero quel blocco non e'' compilabile — la nota nascerebbe gia'' inadatta allo SDI. Il rifiuto arriva PRIMA di consumare un numero. ⚠️ Il predicato e'' PER RIGA (fatture_righe.riga_rettificata_id -> riga -> fattura): una nota puo'' rettificare righe di fatture diverse e ne basta UNA senza numero. ⭐ NON guarda la natura del documento: una nota di DEBITO che rettifica ha lo stesso problema, e una fattura ordinaria non ha righe con riga_rettificata_id. ⛔ FAIL-CLOSED sulla visibilita'': fatture e fatture_righe hanno la RLS e la funzione e'' SECURITY INVOKER, quindi i JOIN sono LEFT e una riga il cui padre non e'' visibile conta come BLOCCANTE — il predicato e'' «non posso dimostrare che sia numerata», non «risulta non numerata». ⚠️ La guardia sta DOPO il ritorno idempotente. ⭐ rev 2026-08-23/24 (T-3b): l''errore porta un BERSAGLIO a DUE RUOLI — il documento DA NUMERARE (sempre, e per PRIMO, cosi'' sopravvive al tetto di cinque elementi del canale compatto) e i padri bloccanti VISIBILI in ordine di id — e nella frase va un CONTEGGIO, non gli id. ⛔ Il bersaglio dei padri resta a JOIN INTERNI contro i LEFT JOIN del predicato: un padre invisibile entra nel CONTEGGIO ma NON fra i pulsanti. ⭐ rev 2026-08-25 (DB-12, cantiere numerazione-data-documento): `mese` ESCE dal RETURNS TABLE. Era calcolato da registri_fatturazione.reset_policy, che ammetteva tre valori e ne implementava uno — e non lo leggeva NESSUNO: il backend drena il result set (pipeline_repository.py, due punti: uno scalare e uno con fetchall), i pgTAP leggono per nome di colonna o fanno PERFORM. Con lui sono caduti v_reset, v_data e il JOIN su registri_fatturazione, che serviva solo a portare reset_policy (era INNER e in teoria filtrava, in pratica mai: registro_id e'' NOT NULL con una FK). Cambiare il RETURNS TABLE ha richiesto DROP + CREATE, con firma invariata: revisione, non overload. ⛔ Questo changeSet va applicato PRIMA di quello su fn_assign_numero_fattura: qui si smette di chiedere t.mese mentre la funzione chiamata ancora lo espone, e selezionare 4 colonne su 5 e'' legittimo — il contrario e'' un errore a runtime. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-12.';
 ```
 
 ---

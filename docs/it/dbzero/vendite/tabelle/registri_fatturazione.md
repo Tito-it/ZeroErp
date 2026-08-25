@@ -24,10 +24,12 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
 | utility_id | integer | YES |  |
+| politica_data_documento | character varying | NO | 'OGGI'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_registri_fatturazione_politica_data |  |
 | CHECK | chk_registri_fatturazione_reset |  |
 | FOREIGN KEY | fk_registri_fatturazione_emitt | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_registri_fatturazione_utility | utility_id |

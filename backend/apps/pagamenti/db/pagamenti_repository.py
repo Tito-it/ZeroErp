@@ -38,6 +38,7 @@ from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.pagamenti.types import (
     DistintaRow,
     RicevutaPosting,
+    RigaCodaRow,
     RigaContabileRow,
     StatoCatalogoRow,
     StatoRigaCatalogoRow,
@@ -120,8 +121,7 @@ _DISTINTA_SELECT = """
       ) lot ON TRUE
 """
 
-_RIGA_SELECT = """
-    SELECT
+_RIGA_COLONNE = """
         r.id,
         r.contabile_id,
         r.importo,
@@ -150,6 +150,9 @@ _RIGA_SELECT = """
         r.fondo_source_id,
         r.attivo,
         r.meta
+"""
+
+_RIGA_FROM = """
       FROM pagamenti.vendite_contabili_righe r
       LEFT JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
       LEFT JOIN vendite.fatture f            ON f.id = r.fattura_id
@@ -162,6 +165,22 @@ _RIGA_SELECT = """
       LEFT JOIN vendite.fatture_scadenze sc  ON sc.id = r.scadenza_id
 """
 
+# La riga «nuda», per il dettaglio e per le righe di UNA distinta.
+_RIGA_SELECT = f"SELECT {_RIGA_COLONNE} {_RIGA_FROM}"
+
+# 🔴 La riga della CODA porta anche la sua distinta, e non e' un di piu': una
+# riga cross-distinta senza il documento da cui viene non si lavora — chi la
+# guarda deve poterci tornare. ⚠️ Ed e' anche la colonna su cui il contratto
+# dichiara di saper ordinare: senza, `order_by=distinta` sarebbe un 500.
+_RIGA_CODA_SELECT = f"""
+    SELECT {_RIGA_COLONNE},
+        c.codice          AS contabile_codice,
+        c.data_contabile  AS contabile_data,
+        c.origine         AS contabile_origine
+    {_RIGA_FROM}
+      JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
+"""
+
 # Colonne ordinabili della lista distinte: whitelist chiusa, chiavi del
 # contratto API -> espressioni SQL. ⛔ Mai input utente dentro l'ORDER BY.
 DISTINTE_SORT_COLUMNS: dict[str, str] = {
@@ -171,6 +190,72 @@ DISTINTE_SORT_COLUMNS: dict[str, str] = {
     "origine": "origine",
     "centro": "centro_codice",
     "totale_righe": "totale_righe",
+}
+
+# Colonne ordinabili della coda del riconciliatore (righe cross-distinta).
+RIGHE_SORT_COLUMNS: dict[str, str] = {
+    "data_pagamento": "data_pagamento",
+    "importo": "importo",
+    "stato": "stato_codice",
+    "distinta": "contabile_codice",
+}
+
+# Colonne ordinabili dell'elenco delle rate fuori capienza.
+RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
+    "data_scadenza": "data_scadenza",
+    "motivo": "motivo",
+    "residuo": "residuo",
+    "importo_rata": "importo_rata",
+    "fattura": "fattura_numero",
+}
+
+# Colonne ordinabili dell'elenco delle eccedenze da sistemare.
+# ⭐ Il default e' per CLIENTE, non per documento: la decisione si prende
+#    guardando il cliente (D15-b) — compensare significa mettere insieme due
+#    documenti suoi.
+ECCEDENZE_SORT_COLUMNS: dict[str, str] = {
+    "cliente": "cliente_ragione_sociale",
+    "eccedenza_cliente": "eccedenza_cliente",
+    "eccedenza": "eccedenza",
+    "fattura_data": "fattura_data",
+    "fattura": "fattura_numero",
+}
+
+_ENTE_INCASSO_SELECT = """
+    SELECT
+        e.id, e.codice, e.codice_interno, e.descrizione, e.tipo, e.attivo,
+        e.centro_riscossione_id,
+        cr.codice          AS centro_codice,
+        cr.descrizione     AS centro_descrizione,
+        e.soggetto_ruolo_id,
+        e.bank_branch_id,
+        e.soggetto_ruolo_conto_bancario_id,
+        cb.iban            AS conto_iban,
+        src.uso            AS conto_uso,
+        src.soggetto_ruolo_id AS conto_soggetto_ruolo_id,
+        e.formato_flusso, e.regole_match, e.meta
+      FROM pagamenti.enti_incasso e
+      LEFT JOIN pagamenti.centri_riscossione cr ON cr.id = e.centro_riscossione_id
+      LEFT JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+             ON src.id = e.soggetto_ruolo_conto_bancario_id
+      LEFT JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+"""
+
+# Le colonne aggiornabili di un canale. ⛔ `codice_interno` NON c'e': e' la
+# chiave stabile con cui il resto del sistema lo nomina, e cambiarla romperebbe
+# i riferimenti senza che niente lo dica.
+_COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
+    {"codice", "descrizione", "tipo", "attivo", "centro_riscossione_id",
+     "soggetto_ruolo_id", "bank_branch_id", "soggetto_ruolo_conto_bancario_id",
+     "formato_flusso", "regole_match", "meta"}
+)
+
+# Colonne ordinabili dell'elenco dei canali di incasso.
+ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
+    "codice": "codice",
+    "descrizione": "descrizione",
+    "tipo": "tipo",
+    "centro": "centro_codice",
 }
 
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
@@ -216,6 +301,42 @@ class PagamentiRepository:
                 "la connessione dell'utente della richiesta."
             ),
             function_name=f"{_FN}.{metodo}",
+        )
+
+    # Scopo: Esegue una lista paginata: pagina + totale in una valutazione, e
+    #        il conteggio di ripiego per la pagina stantia.
+    # Nota: era scritto tre volte (distinte, coda, rate fuori capienza) — e tre
+    #       copie della stessa paginazione divergono alla prima correzione.
+    # ⚠️ `order_clause` si compone dalla WHITELIST del chiamante e MAI da input
+    #    utente: qui dentro finisce in una stringa SQL.
+    @staticmethod
+    def _lista_paginata(
+        *,
+        select_sql: str,
+        params: list[Any],
+        order_clause: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        data_sql = f"""
+            SELECT *, COUNT(*) OVER () AS total_count FROM (
+                {select_sql}
+            ) q
+            {order_clause}
+            LIMIT %s OFFSET %s
+        """
+        # ⚠️ Il conteggio di ripiego serve SOLO a pagina oltre l'ultima: li' la
+        # window function non ha righe su cui calcolare il totale e
+        # risponderebbe zero. Senza, a chi e' rimasto su una pagina stantia di
+        # una lista che si e' accorciata sotto di lui diremmo «nessun
+        # risultato» — una cosa falsa, con l'aria di un dato.
+        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"
+        return fetch_paged_with_total(
+            data_sql,
+            [*params, limit, offset],
+            fallback_count_sql=count_sql,
+            fallback_params=list(params),
+            offset=offset,
         )
 
     # ══════════════════════════════════════════════════════════════
@@ -311,32 +432,11 @@ class PagamentiRepository:
         # dello stesso giorno non devono cambiare posto fra una pagina e l'altra.
         tiebreak = sql_tiebreak_direction(direction)
 
-        data_sql = f"""
-            SELECT * , COUNT(*) OVER () AS total_count FROM (
-                {_DISTINTA_SELECT}
-                {_TOTALI_LATERAL}
-                {where_clause}
-            ) q
-            ORDER BY {sort_col} {direction}, id {tiebreak}
-            LIMIT %s OFFSET %s
-        """
-        # ⚠️ Il conteggio di ripiego serve SOLO nel caso raro «pagina oltre
-        # l'ultima»: li' la window function non ha righe su cui calcolare il
-        # totale e risponderebbe zero. Senza, a chi e' rimasto su una pagina
-        # stantia di una lista che si e' accorciata sotto di lui diremmo
-        # «nessun risultato» — cioe' una cosa falsa, con l'aria di un dato.
-        count_sql = f"""
-            SELECT COUNT(*) FROM (
-                {_DISTINTA_SELECT}
-                {_TOTALI_LATERAL}
-                {where_clause}
-            ) q
-        """
-        rows, total = fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
+        rows, total = self._lista_paginata(
+            select_sql=f"{_DISTINTA_SELECT}{_TOTALI_LATERAL}{where_clause}",
+            params=params,
+            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            limit=limit,
             offset=offset,
         )
         return [self._shape(row) for row in rows], total
@@ -599,6 +699,551 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id), codice_stato_interno])
             return cursor.rowcount
+
+    # Scopo: Imputa una riga a una fattura (e, quando c'e', a una rata).
+    # ⭐ UN SOLO `UPDATE`: i dati dell'abbinamento e lo stato viaggiano insieme,
+    #    perche' sono lo stesso gesto — «questa riga e' di questo documento».
+    #    Separarli lascerebbe per un istante una riga abbinata a meta', che i
+    #    guard rifiuterebbero comunque, ma con un messaggio sull'ordine delle
+    #    scritture invece che sul merito.
+    # ⚠️ `forzata` e' il SECONDO TEMPO della capienza (D14-d): il primo
+    #    tentativo arriva senza, il guard rifiuta con la ragione e i numeri, e
+    #    la conferma dell'operatore torna qui come `forzata = true` — che resta
+    #    SCRITTA sulla riga, ed e' cio' che l'elenco a valle legge.
+    def abbina_riga(
+        self,
+        *,
+        riga_id: int,
+        fattura_id: int,
+        billing_account_id: int,
+        scadenza_id: int | None,
+        forzata: bool,
+        motivo_forzatura: str | None,
+        codice_stato_interno: str,
+    ) -> int:
+        sql = """
+            UPDATE pagamenti.vendite_contabili_righe r
+               SET fattura_id         = %s,
+                   billing_account_id = %s,
+                   scadenza_id        = %s,
+                   forzata            = %s,
+                   motivo_forzatura   = %s,
+                   stato_id           = st.id
+              FROM pagamenti.vendite_contabili_righe_stati st
+             WHERE r.id = %s
+               AND st.codice_interno = %s
+               AND st.attivo IS TRUE
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql,
+                [
+                    int(fattura_id), int(billing_account_id), scadenza_id,
+                    bool(forzata), motivo_forzatura,
+                    int(riga_id), codice_stato_interno,
+                ],
+            )
+            return cursor.rowcount
+
+    # ══════════════════════════════════════════════════════════════
+    #  I saldi — le tre letture, e nient'altro le chiama
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: Il saldo di una RATA: residuo, in lavorazione, incassato.
+    # ⭐ Tre numeri e non uno: «quanto manca», «quanto e' gia' digitato ma non
+    #    registrato» e «quanto e' entrato davvero in banca» sono tre domande
+    #    diverse, e la terza esclude i centri interni (fondi, compensazioni).
+    # ⚠️ `escludi_riga_id` serve a chiedere lo spazio PRIMA DI SE': e' cosi' che
+    #    si verifica se una riga ci sta, senza contarsi addosso.
+    def get_saldo_rata(
+        self, scadenza_id: int, *, escludi_riga_id: int | None = None
+    ) -> dict[str, Any] | None:
+        # Le tre funzioni di saldo sono SECURITY INVOKER: la row security del
+        # chiamante si applica da sola, e su un ruolo che la scavalca
+        # risponderebbero i numeri di TUTTI gli emittenti.
+        self._guard_canale_sistema("get_saldo_rata")
+        sql = """
+            SELECT saldo, in_lavorazione, incassato, has_movimenti
+              FROM pagamenti.fn_get_saldo_rata(%s, %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(scadenza_id), escludi_riga_id])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Il saldo di un DOCUMENTO: residuo e denaro in lavorazione.
+    # ⭐ UNA query per due funzioni, e non e' solo un round-trip risparmiato su
+    #    un pannello che si apre a ogni fattura: due `SELECT` separate leggono
+    #    DUE ISTANTI diversi. Se una registrazione atterra fra l'una e l'altra,
+    #    il pannello mostra un residuo di prima accanto a un «in lavorazione»
+    #    di dopo — due numeri veri che insieme raccontano una cosa falsa.
+    # ⚠️ Due numeri e non tre: a questo livello il database non sa ancora dire
+    #    l'incassato (richiesta DB-10). Chi compone la risposta lo dichiara
+    #    `None`, e ⛔ non lo inventa sommando le rate — una riga puo' avere
+    #    fattura SENZA rata (il fondo fattura e' esattamente cosi').
+    def get_saldo_documento(self, fattura_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_saldo_documento")
+        sql = """
+            SELECT f.saldo, f.has_movimenti,
+                   c.saldo_contabile, c.has_righe_postabili
+              FROM pagamenti.fn_get_saldo_fattura(%s) f
+              CROSS JOIN pagamenti.fn_get_saldo_fattura_contabili(%s) c
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id), int(fattura_id)])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Le rate di un documento, con il loro saldo accanto.
+    # ⭐ Sta in `pagamenti` e non in `vendite` benche' le rate siano di vendite:
+    #    la domanda e' «quanto resta su questa rata», e a saperla rispondere e'
+    #    questo schema. ⚠️ E `vendite` non potrebbe chiederglielo: le chiamate
+    #    laterali fra moduli di pari livello non sono ammesse (api.md).
+    def list_rate_con_saldo(self, fattura_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_rate_con_saldo")
+        sql = """
+            SELECT
+                sc.id                AS scadenza_id,
+                sc.numero_rata,
+                sc.data_scadenza,
+                sc.importo,
+                s.saldo              AS residuo,
+                s.in_lavorazione,
+                s.incassato,
+                s.has_movimenti
+              FROM vendite.fatture_scadenze sc
+              CROSS JOIN LATERAL pagamenti.fn_get_saldo_rata(sc.id) s
+             WHERE sc.fattura_id = %s
+             ORDER BY sc.numero_rata NULLS LAST, sc.data_scadenza NULLS LAST, sc.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # ══════════════════════════════════════════════════════════════
+    #  Le due code di lavoro
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: Le righe di TUTTE le distinte in uno degli stati chiesti — la coda
+    #        del riconciliatore.
+    # ⭐ Un endpoint solo per due code: «da abbinare» e «sospese» sono due
+    #    mestieri diversi (D12-f) e due voci di menu, ma la stessa lista con un
+    #    filtro diverso gia' impostato. Due definizioni a catalogo per due
+    #    schermate identiche sarebbero due cose da tenere allineate.
+    def list_righe_coda(
+        self,
+        *,
+        stati: tuple[str, ...],
+        billing_account_id: int | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[RigaCodaRow], int]:
+        self._guard_canale_sistema("list_righe_coda")
+
+        conditions = ["r.attivo IS TRUE", "rs.codice_interno = ANY(%s)"]
+        params: list[Any] = [list(stati)]
+        if billing_account_id is not None:
+            conditions.append("r.billing_account_id = %s")
+            params.append(billing_account_id)
+        if data_da is not None:
+            conditions.append("c.data_contabile >= %s")
+            params.append(data_da)
+        if data_a is not None:
+            conditions.append("c.data_contabile <= %s")
+            params.append(data_a)
+
+        sort_col = RIGHE_SORT_COLUMNS.get(order_by, "data_pagamento")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        rows, total = self._lista_paginata(
+            select_sql=f'{_RIGA_CODA_SELECT} WHERE {" AND ".join(conditions)}',
+            params=params,
+            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            limit=limit,
+            offset=offset,
+        )
+        return [self._shape(row) for row in rows], total
+
+    # Scopo: L'elenco delle rate uscite dalla banda di capienza.
+    # ⭐ Senza questo elenco la forzatura sarebbe «un modo per nascondere, non
+    #    per registrare»: e' la ragione per cui la vista sta nello stesso lotto
+    #    del guard che permette di forzare.
+    # ⚠️ `motivo` ha due valori e vanno mostrati entrambi: `SOVRA_INCASSATA` e
+    #    `MOVIMENTO_CONTRARIO` — un rimborso dove non era entrato niente e' il
+    #    caso che ha fatto cadere l'asimmetria di D1-bis.
+    def list_rate_fuori_capienza(
+        self,
+        *,
+        motivo: str | None = None,
+        billing_account_id: int | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_rate_fuori_capienza")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if motivo is not None:
+            conditions.append("v.motivo = %s")
+            params.append(motivo)
+        if billing_account_id is not None:
+            conditions.append("v.billing_account_id = %s")
+            params.append(billing_account_id)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = RATE_FUORI_CAPIENZA_SORT_COLUMNS.get(order_by, "data_scadenza")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        return self._lista_paginata(
+            select_sql=(
+                f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"
+            ),
+            params=params,
+            order_clause=(
+                f"ORDER BY {sort_col} {direction}, scadenza_id {tiebreak}"
+            ),
+            limit=limit,
+            offset=offset,
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    #  I canali di incasso — da dove arrivano i soldi
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: L'elenco dei canali, coi display field di chi li guarda.
+    # ⭐ Il **conto** e' in JOIN e non e' un dettaglio: e' da li' che il
+    #    database ricava di chi sono i soldi arrivati prima della fattura, ed e'
+    #    la colonna che rende leggibile una riga di configurazione altrimenti
+    #    fatta di id.
+    def list_enti_incasso(
+        self,
+        *,
+        tipo: str | None = None,
+        centro_riscossione_id: int | None = None,
+        attivo: bool | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_enti_incasso")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if tipo is not None:
+            conditions.append("e.tipo = %s")
+            params.append(tipo)
+        if centro_riscossione_id is not None:
+            conditions.append("e.centro_riscossione_id = %s")
+            params.append(centro_riscossione_id)
+        if attivo is not None:
+            conditions.append("e.attivo = %s")
+            params.append(attivo)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = ENTI_INCASSO_SORT_COLUMNS.get(order_by, "codice")
+        direction = sql_order_direction(order_dir, default_desc=False)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        select_sql = f"""
+            {_ENTE_INCASSO_SELECT}
+            {where_clause}
+        """
+        return self._lista_paginata(
+            select_sql=select_sql,
+            params=params,
+            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            limit=limit,
+            offset=offset,
+        )
+
+    # Scopo: Il dettaglio di un canale.
+    def get_ente_incasso(self, ente_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_ente_incasso")
+        sql = f"{_ENTE_INCASSO_SELECT} WHERE e.id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ente_id)])
+            rows = rows_to_list(cursor)
+        return self._shape(rows[0]) if rows else None
+
+    # Scopo: I conti che un emittente puo' agganciare a un canale.
+    # 🔴 **Solo quelli con `uso = 'INCASSO'`**, ed e' la richiesta BE-8: il
+    #    database rifiuta gli altri con un errore parlante, ma un elenco che li
+    #    propone fa sbagliare — e chi sbaglia se ne accorge dopo aver compilato
+    #    tutto il resto.
+    # ⚠️ Il livello e' quello del RUOLO (`soggetti_ruoli_conti_bancari`) e non
+    #    del soggetto: e' li' che vive l'unicita' «un conto INCASSO -> un solo
+    #    soggetto», che e' la garanzia da cui il perimetro degli incassi dipende.
+    #    Un conto censito solo a livello soggetto NON e' agganciabile, e non e'
+    #    una svista del modello: e' quella garanzia.
+    def list_conti_incasso(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_conti_incasso")
+        sql = """
+            SELECT src.id            AS soggetto_ruolo_conto_bancario_id,
+                   src.soggetto_ruolo_id,
+                   src.predefinito,
+                   src.intestazione_dichiarata,
+                   cb.id             AS conto_bancario_id,
+                   cb.iban,
+                   cb.bic_swift,
+                   cb.intestatario_predefinito
+              FROM anagrafiche.soggetti_ruoli_conti_bancari src
+              JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+             WHERE src.soggetto_ruolo_id = %s
+               AND src.uso = 'INCASSO'
+               AND src.bloccato IS NOT TRUE
+               -- Le date di validita' ordinano e filtrano sempre: un conto
+               -- scaduto non si propone. `COALESCE(valido_al, 'infinity')`
+               -- perche' scadenza vuota = validita' infinita.
+               AND (src.valido_dal IS NULL OR src.valido_dal <= CURRENT_DATE)
+               AND COALESCE(src.valido_al, 'infinity'::date) >= CURRENT_DATE
+             ORDER BY src.predefinito DESC, cb.iban
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(soggetto_ruolo_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Crea un canale di incasso.
+    # ⚠️ Nessuna funzione madre: e' un `INSERT` su una tabella di
+    #    configurazione, e i quattro guard (tipo/filiale, conto di incasso,
+    #    coerenza PSP, scope emittente) parlano da soli.
+    def create_ente_incasso(self, campi: dict[str, Any]) -> int:
+        colonne = list(campi)
+        segnaposti = ", ".join(
+            "%s::jsonb" if c in _JSONB_COLS or c == "regole_match" else "%s"
+            for c in colonne
+        )
+        sql = f"""
+            INSERT INTO pagamenti.enti_incasso ({", ".join(colonne)})
+            VALUES ({segnaposti})
+            RETURNING id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [campi[c] for c in colonne])
+            row = cursor.fetchone()
+        return int(row[0])
+
+    # Scopo: Aggiorna un canale di incasso.
+    def update_ente_incasso(self, ente_id: int, campi: dict[str, Any]) -> int:
+        if not campi:
+            return 0
+        set_clause, params = self._set_clause(
+            campi, _COLONNE_ENTE_INCASSO_AGGIORNABILI, "update_ente_incasso"
+        )
+        params.append(int(ente_id))
+        sql = f"""
+            UPDATE pagamenti.enti_incasso
+               SET {set_clause}
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.rowcount
+
+    # ══════════════════════════════════════════════════════════════
+    #  Le sistemazioni — il denaro di troppo
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: L'elenco dei documenti su cui e' entrato piu' del dovuto.
+    # ⭐ La vista porta GIA' il raggruppamento per cliente in finestra
+    #    (`eccedenza_cliente`, `documenti_cliente`): qui non si somma niente —
+    #    rifarlo in Python sarebbe una seconda aritmetica da tenere allineata.
+    # ⚠️ Il nome del cliente NON e' nella vista: si aggiunge in JOIN, perche' un
+    #    elenco che si guarda per cliente e mostra un id non si guarda.
+    def list_eccedenze(
+        self,
+        *,
+        chi_e_in_credito: str | None = None,
+        billing_account_id: int | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_eccedenze")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if chi_e_in_credito is not None:
+            conditions.append("v.chi_e_in_credito = %s")
+            params.append(chi_e_in_credito)
+        if billing_account_id is not None:
+            conditions.append("v.billing_account_id = %s")
+            params.append(billing_account_id)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = ECCEDENZE_SORT_COLUMNS.get(order_by, "eccedenza_cliente")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        select_sql = f"""
+            SELECT v.*,
+                   srd.ragione_sociale_completa AS cliente_ragione_sociale
+              FROM pagamenti.vw_eccedenze_da_sistemare v
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                     ON srd.soggetto_ruolo_id = v.cliente_soggetto_ruolo_id
+              {where_clause}
+        """
+        return self._lista_paginata(
+            select_sql=select_sql,
+            params=params,
+            # ⚠️ Tiebreak sul CLIENTE prima che sul documento: ordinando per
+            # eccedenza di cliente, i documenti dello stesso cliente devono
+            # restare insieme — altrimenti l'elenco «per cliente» li sparpaglia.
+            order_clause=(
+                f"ORDER BY {sort_col} {direction}, "
+                f"cliente_soggetto_ruolo_id {tiebreak}, fattura_id {tiebreak}"
+            ),
+            limit=limit,
+            offset=offset,
+        )
+
+    # Scopo: Cliente ed emittente di una fattura, DERIVATI e non dichiarati.
+    # 🔴 Il guard sui dati li verifica con un codice TECNICO apposta: «l'emittente
+    #    e il cliente non li sceglie una persona in un modulo, li DERIVA chi
+    #    costruisce l'atto». Prenderli dal payload significherebbe far arrivare
+    #    al database una dichiarazione che il database sa gia' — e che, se
+    #    sbagliata, il suo autore non puo' correggere.
+    # ⚠️ Lettura sotto RLS: una fattura fuori perimetro non risponde, e il
+    #    chiamante lo traduce in «non trovata».
+    def get_riferimenti_fattura(self, fattura_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_riferimenti_fattura")
+        sql = """
+            SELECT f.id                       AS fattura_id,
+                   f.emittente_soggetto_ruolo_id,
+                   f.billing_account_id,
+                   ba.soggetto_ruolo_id       AS cliente_soggetto_ruolo_id
+              FROM vendite.fatture f
+              JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Registra l'atto di sistemazione.
+    # ⭐ Un `INSERT`, non una funzione madre: una scrittura sola non ha bisogno
+    #    di una madre, e inventarne una avrebbe aggiunto un oggetto che non
+    #    garantisce niente in piu'.
+    # ⚠️ Nasce in `BOZZA` (default di colonna): registrare una decisione non e'
+    #    ancora eseguirla — il denaro si muove alla conferma.
+    def create_sistemazione(
+        self,
+        *,
+        destinazione: str,
+        importo: Decimal,
+        fattura_origine_id: int,
+        cliente_soggetto_ruolo_id: int,
+        emittente_soggetto_ruolo_id: int,
+        fattura_destinazione_id: int | None = None,
+        motivo: str | None = None,
+        meta: str = "{}",
+    ) -> int:
+        sql = """
+            INSERT INTO pagamenti.sistemazioni (
+                destinazione, importo, fattura_origine_id, fattura_destinazione_id,
+                cliente_soggetto_ruolo_id, emittente_soggetto_ruolo_id, motivo, meta
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            RETURNING id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql,
+                [
+                    destinazione, importo, int(fattura_origine_id),
+                    fattura_destinazione_id, int(cliente_soggetto_ruolo_id),
+                    int(emittente_soggetto_ruolo_id), motivo, meta,
+                ],
+            )
+            row = cursor.fetchone()
+        return int(row[0])
+
+    # Scopo: Un atto di sistemazione, con i display field di chi lo legge.
+    def get_sistemazione(self, sistemazione_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_sistemazione")
+        sql = """
+            SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
+                   s.fattura_origine_id, fo.numero AS fattura_origine_numero,
+                   fo.anno AS fattura_origine_anno, fo.serie AS fattura_origine_serie,
+                   s.fattura_destinazione_id, fd.numero AS fattura_destinazione_numero,
+                   fd.anno AS fattura_destinazione_anno,
+                   fd.serie AS fattura_destinazione_serie,
+                   s.cliente_soggetto_ruolo_id,
+                   srd.ragione_sociale_completa AS cliente_ragione_sociale,
+                   s.emittente_soggetto_ruolo_id,
+                   s.contabile_id, s.fondo_source_id,
+                   s.data_esecuzione, s.user_esecuzione,
+                   s.data_insert, s.user_insert, s.meta
+              FROM pagamenti.sistemazioni s
+              LEFT JOIN vendite.fatture fo ON fo.id = s.fattura_origine_id
+              LEFT JOIN vendite.fatture fd ON fd.id = s.fattura_destinazione_id
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                     ON srd.soggetto_ruolo_id = s.cliente_soggetto_ruolo_id
+             WHERE s.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id)])
+            rows = rows_to_list(cursor)
+        return self._shape(rows[0]) if rows else None
+
+    # Scopo: Gli atti registrati su un documento.
+    # ⭐ Sono PIU' DI UNO per natura: si puo' rimborsare una parte e riportare il
+    #    resto, e l'elenco delle eccedenze conta apposta le bozze e le confermate
+    #    separatamente.
+    def list_sistemazioni_fattura(self, fattura_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_sistemazioni_fattura")
+        sql = """
+            SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
+                   s.fattura_destinazione_id, s.contabile_id, s.fondo_source_id,
+                   s.data_esecuzione, s.user_esecuzione, s.data_insert
+              FROM pagamenti.sistemazioni s
+             WHERE s.fattura_origine_id = %s
+             ORDER BY s.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Esegue l'atto — la decisione diventa un fatto.
+    # ⭐ UNA SOLA `SELECT` sulla funzione madre: sceglie la strada (fondo,
+    #    distinta negativa, distinta di compensazione) e ci mette sopra il
+    #    denaro. ⛔ Nessuna delle tre macchine e' nuova, e nessuna la orchestra
+    #    il backend.
+    # ⚠️ `ente_incasso_id` si chiede QUI e non alla registrazione: «da quale
+    #    conto esce il bonifico» e' una decisione del momento in cui si paga.
+    def conferma_sistemazione(
+        self, sistemazione_id: int, *, ente_incasso_id: int | None = None
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT contabile_id, fondo_source_id, esito
+              FROM pagamenti.fn_conferma_sistemazione(%s, %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id), ente_incasso_id])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Scarta l'atto, lasciandolo a registro con la sua ragione.
+    # ⚠️ Il motivo si FONDE con quello gia' scritto: se l'atto ne aveva uno e la
+    #    chiamata arriva vuota, resta quello che c'era.
+    def annulla_sistemazione(
+        self, sistemazione_id: int, *, motivo: str | None = None
+    ) -> str | None:
+        sql = "SELECT pagamenti.fn_annulla_sistemazione(%s, %s)"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id), motivo])
+            row = cursor.fetchone()
+        return row[0] if row else None
 
     # ══════════════════════════════════════════════════════════════
     #  La madre del posting

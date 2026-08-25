@@ -5,6 +5,7 @@
 // 2026-06-02): qui restano filtri, slot e azioni di riga specifici.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
@@ -28,6 +29,9 @@ import { useAuthStore } from '../../stores/auth'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
+// Navigazione verso la lista fatture (azione di riga): e' un cambio di
+// pagina, non un sotto-drawer, quindi non passa dal padre come le altre voci.
+const router = useRouter()
 const store = useSoggettiStore()
 const auth = useAuthStore()
 const isBlocked = useInjectBlocked()
@@ -87,6 +91,23 @@ function buildRowActions(data) {
       icon: MANAGE_ICONS.CONTI_BANCARI,
       disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
+    },
+    // ⭐ Porta alla LISTA FATTURE filtrata sull'IDENTIFICATIVO FISCALE, non su
+    // un billing account: un soggetto è una persona giuridica e può avere PIÙ
+    // conti, quindi «le sue fatture» è un insieme più largo di «le fatture di
+    // un conto». È la ragione per cui il backend ha due filtri distinti.
+    // ⚠️ Disabilitata quando l'identificativo manca: un soggetto senza codice
+    // fiscale né partita IVA non ha un criterio con cui raccogliere i suoi
+    // documenti, e mandare senza filtro consegnerebbe le fatture di TUTTI.
+    {
+      key: 'fatture',
+      label: t('vendite.fatture.vedi_fatture'),
+      icon: MANAGE_ICONS.FATTURE,
+      disabled: !data.id_fiscale_univoco_cf_piva,
+      command: () => router.push({
+        path: '/vendite/fatture',
+        query: { id_fiscale: data.id_fiscale_univoco_cf_piva },
+      }),
     },
   ]
 }

@@ -29,6 +29,15 @@ AS $function$
 --         cadeva sul serie_default del registro. Calcolarla
 --         senza scriverla avrebbe dato alla nota di credito un
 --         numero valido nella serie delle fatture.
+-- rev 2026-08-25 (DB-6, cantiere numerazione-data-documento):
+--         la data non e' piu' `current_date`. ⛔ Questa e' l'unica
+--         riga in tutto il repo che scrive vendite.fatture.data,
+--         e `current_date` faceva due danni insieme: prendeva il
+--         giorno in cui qualcuno ha premuto «Fattura» — l'orario
+--         di un batch, non una decisione — e lo prendeva nel fuso
+--         DELLA SESSIONE, che da Django e' UTC. Ogni documento
+--         generato fra la mezzanotte e le 02:00 locali portava la
+--         data del giorno prima (7 fatture su 18, misurate).
 DECLARE
     v_key          JSONB;
     v_fattura_id   vendite.fatture.id%TYPE;
@@ -44,6 +53,10 @@ DECLARE
     v_serie        vendite.fatture.serie%TYPE;
     v_termine_id   config.termini_pagamento.id%TYPE;
     v_modalita_id  config.modalita_pagamento.id%TYPE;
+    -- rev 2026-08-25: i tre ingredienti della data.
+    v_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE;
+    v_data_dichiarata vendite.fatturazione_lotti.data_documento%TYPE;
+    v_data            vendite.fatture.data%TYPE;
 BEGIN
     -- Guard: parametri obbligatori
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
@@ -135,6 +148,37 @@ BEGIN
 
     IF v_fattura_id IS NOT NULL THEN RETURN v_fattura_id; END IF;
 
+    -- ─── rev 2026-08-25 (DB-6): LA DATA ───────────────────────
+    -- ⭐ Il lotto si legge QUI e non in testa: questa funzione gira
+    --    una volta per ATTIVITA', e nella stragrande maggioranza
+    --    dei giri esce dalla riga qui sopra con la testata gia'
+    --    creata. In testa, sarebbe una query in piu' per ogni
+    --    attivita' di ogni lotto, per un valore che serve solo
+    --    alla prima.
+    -- ⚠️ fatturazione_lotti ha la RLS (ef_whitelist, FOR ALL) e
+    --    questa funzione e' SECURITY INVOKER: un lotto fuori dal
+    --    perimetro di chi opera si legge come «non c'e'». E'
+    --    fail-closed ed e' la risposta giusta — non si crea una
+    --    testata dentro un lotto che non si puo' vedere.
+    SELECT fl.competenza_mese, fl.data_documento
+      INTO v_competenza_mese, v_data_dichiarata
+      FROM vendite.fatturazione_lotti fl
+     WHERE fl.id = p_lotto_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_get_or_create_fattura_header', 'E_LOTTO_NON_TROVATO',
+            jsonb_build_object('lotto_id', p_lotto_id,
+                               'attivita_id', p_attivita_id),
+            NULL::uuid, p_lotto_id::text
+        );
+    END IF;
+
+    -- ⭐ La regola sta nel registro (e la dichiarazione sul lotto
+    --    la scavalca): qui non si decide niente, si chiede.
+    v_data := vendite.fn_calcola_data_documento(
+                  v_registro_id, v_competenza_mese, v_data_dichiarata);
+
     -- Crea fattura + link lotto. Le colonne di testata sono il
     -- secondo specchio: quello che la chiave ha deciso, qui si
     -- scrive. ⚠️ `serie` compresa: e' la meta' che mancava.
@@ -143,7 +187,7 @@ BEGIN
         emittente_soggetto_ruolo_id, billing_account_id, reseller_soggetto_ruolo_id,
         utility_id, valuta_id, tasso_cambio,
         termine_pagamento_id, modalita_pagamento_id, meta)
-    VALUES (v_registro_id, current_date, v_tipo_doc_id, v_natura_id,
+    VALUES (v_registro_id, v_data, v_tipo_doc_id, v_natura_id,
         v_stato_doc_id, v_serie,
         v_emittente_id, v_ba_id, v_reseller_id,
         v_utility_id, v_valuta_id, 1,
@@ -158,7 +202,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_or_create_fattura_header(p_lotto_id bigint, p_attivita_id bigint)
-IS 'Recupera o crea la testata DRAFT della fattura a cui l''attivita'' appartiene, dentro il lotto dato. Il WHERE del lookup e la INSERT nominano gli STESSI elementi della chiave di fn_build_fattura_key: se la chiave separa e il lookup no, le due meta'' si annullano e le attivita'' tornano nella stessa fattura. rev 2026-08-18 (brief-design-note-credito-resi N3): la chiave ha undici elementi, natura e serie compresi. ⚠️ `serie` non era MAI stata scritta da questa INSERT — restava NULL e fn_assign_numero_fattura cadeva sul serie_default del registro: calcolarla senza scriverla avrebbe dato alla nota di credito un numero VALIDO nella serie delle fatture, cioe'' un difetto che non solleva nulla e si scopre guardando un registro IVA. Confronto: `=` sulla natura (NOT NULL), IS NOT DISTINCT FROM sui quattro nullable (reseller, utility, serie, modalita''/termine).';
+IS 'Recupera o crea la testata DRAFT della fattura a cui l''attivita'' appartiene, dentro il lotto dato. Il WHERE del lookup e la INSERT nominano gli STESSI elementi della chiave di fn_build_fattura_key: se la chiave separa e il lookup no, le due meta'' si annullano e le attivita'' tornano nella stessa fattura. rev 2026-08-18 (brief-design-note-credito-resi N3): la chiave ha undici elementi, natura e serie compresi. ⚠️ `serie` non era MAI stata scritta da questa INSERT — restava NULL e fn_assign_numero_fattura cadeva sul serie_default del registro: calcolarla senza scriverla avrebbe dato alla nota di credito un numero VALIDO nella serie delle fatture, cioe'' un difetto che non solleva nulla e si scopre guardando un registro IVA. Confronto: `=` sulla natura (NOT NULL), IS NOT DISTINCT FROM sui quattro nullable (reseller, utility, serie, modalita''/termine). ⭐ rev 2026-08-25 (DB-6, cantiere numerazione-data-documento): la data non e'' piu'' `current_date` ma vendite.fn_calcola_data_documento(registro, competenza del lotto, data dichiarata sul lotto). ⛔ Questa e'' l''UNICA riga in tutto il repo che scrive vendite.fatture.data — verificato su pg_proc, su backend/ e sulla doc auto-gen — quindi cambiarla qui cambia il comportamento ovunque, ed e'' anche il motivo per cui il difetto e'' rimasto invisibile: non c''era un secondo posto in cui vedere due implementazioni divergenti. `current_date` faceva due danni insieme: prendeva il giorno in cui qualcuno ha premuto «Fattura» (l''orario di un batch, non una decisione) e lo prendeva nel fuso DELLA SESSIONE, che da Django e'' UTC — ogni documento generato fra mezzanotte e le 02:00 locali portava la data del giorno prima, misurato su 7 fatture su 18. ⭐ Il lotto si legge DOPO il lookup e non in testa: la funzione gira una volta per attivita'' e quasi sempre trova la testata gia'' creata, quindi in testa sarebbe una query in piu'' per ogni attivita'' di ogni lotto. ⚠️ vendite.fatturazione_lotti ha la RLS e questa funzione e'' SECURITY INVOKER: un lotto fuori perimetro si legge come «non c''e''» e si esce con E_LOTTO_NON_TROVATO — controllo NUOVO, prima il lotto non veniva letto affatto. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-6.';
 ```
 
 ---

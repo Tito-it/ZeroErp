@@ -1,7 +1,7 @@
 # Brief DB — `event_log`: la riga dice *chi*, *per chi*, *in che giro*
 
 > **Cos'è.** Il **piano di sviluppo lato database** del **Passo 0** di
-> [analisi-osservabilita-log.md](analisi-osservabilita-log.md): rendere parlante la
+> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md): rendere parlante la
 > riga di `vendite.event_log` — perimetro emittente, `tx_id`, identità del giro,
 > entità reale — e metterla sotto RLS, **prima** che esista qualunque endpoint.
 >
@@ -14,6 +14,23 @@
 > **Origine.** Analisi del 2026-08-03, piano rivisto il 2026-08-22, stato
 > **rimisurato sul DB e sul codice** lo stesso giorno (§0-ter dell'analisi).
 > Decisioni di Tid del 2026-08-22, tutte in §2.
+>
+> 📦 **ARCHIVIATO il 2026-08-24.** Il cantiere è chiuso: piano DB finito e
+> applicato, **12 consegne BE su 12** verificate su sette giri veri, e le domande
+> del §8 tutte chiuse.
+>
+> ➡️ **Tre code sono uscite di qui**, perché non erano sue e in un documento
+> archiviato sarebbero diventate invisibili:
+>
+> | Cosa c'era | Dov'è ora |
+> | --- | --- |
+> | Il **Passo A** (timeline di un caso) e i rilievi della ricognizione | [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) §3-quater — è il **piano**, ed è lì che il Passo A vive |
+> | **R-1** — l'orario di transazione, chiesto al team DB e **risolto** (`clock_timestamp()`, changeSet `20260824-16/17`) | idem, §3-quater |
+> | Il **prezzo non negoziato** dentro un push riuscito, annotato come «fuori cantiere» | [brief-ddt-righe-senza-prezzo.md](../work-in-progress/brief-ddt-righe-senza-prezzo.md), che tratta già quel codice |
+>
+> ⚠️ **I riferimenti a questo file nei corpi SQL e nei changelog citano il vecchio
+> percorso** (`work-in-progress/…`) e resteranno così: i primi vivono nei
+> `COMMENT ON FUNCTION`, cioè nel database, i secondi in changeSet mergiati.
 >
 > **Stato:** ✅ **PIANO DB FINITO — L1, L4, L2, L5 e L3 applicati e verdi**
 > (L1/L4/L2/L5 il 2026-08-22, L3 il **2026-08-23**). Ventidue changeSet,
@@ -41,10 +58,10 @@
 > registro del 2026-08-23.
 >
 > **Correlati:**
-> [analisi-osservabilita-log.md](analisi-osservabilita-log.md) (il documento madre) ·
-> [brief-db-rls-commesse.md](../work-done/brief-db-rls-commesse.md) (il cantiere
+> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) (il documento madre) ·
+> [brief-db-rls-commesse.md](brief-db-rls-commesse.md) (il cantiere
 > gemello: 3 changeSet + 1 pgTAP) ·
-> [brief-db-grant-batch-cleanup-note.md](../work-done/brief-db-grant-batch-cleanup-note.md)
+> [brief-db-grant-batch-cleanup-note.md](brief-db-grant-batch-cleanup-note.md)
 > (il precedente del canale batch, che qui **non** si ripete) ·
 > [linee-guida-sql.md](../../linee-guida-sql.md) §10 (RLS) — di cui questo brief
 > propone una **precisazione**, §3.3 ·
@@ -68,8 +85,9 @@
 | 🔵 **A carico del BE** | 10 consegne, di cui **BE-1 è un difetto vero e vive già oggi** | §5 |
 | ⭐ **La richiesta del backend** | I changeSet 61 e 62 avevano consegnato le **colonne**, e **nessuna funzione le scriveva**. L5 mette i due scrittori — e corregge una premessa della richiesta che era **falsa**, misurandola | §5-bis |
 | 🧪 **Presidio** | ✅ **80 asserzioni verdi, zero skip** su 9 file — 5 nuovi/riscritti e 4 preesistenti adeguati. ⭐ E due asserzioni che passavano **dichiarandosi cieche** adesso verificano | §6 |
-| ✅ **Passo A CONSEGNATO** | La scheda **«Storia»** del drawer fattura è in servizio: `GET /vendite/fatture/<id>/giornale/`, primo consumatore di `vw_giornale_entita`. ⭐ Il collaudo del perimetro è stato fatto **apposta**, perché i dati non lo avrebbero fatto: la vista da sola risponde «0 righe» dove l'endpoint dice «non la vedi». 🔵 Resta il **lotto**, rinviato: lì il pannello deve prima rispondere a «che cos'è un caso» | §12 |
+| ✅ **Passo A CHIUSO — due schede su due** | La **fattura** e il **lotto** hanno la loro «Storia»: `GET /vendite/fatture/<id>/giornale/`, primo consumatore di `vw_giornale_entita`. ⭐ Il collaudo del perimetro è stato fatto **apposta**, perché i dati non lo avrebbero fatto: la vista da sola risponde «0 righe» dove l'endpoint dice «non la vedi». ⭐ Il **lotto** è arrivato in serata, appena R-1 ha sbloccato l'orario: mostra il lotto **più le sue fatture**, righe non-INFO — e alla prima chiamata vera ha dimostrato la propria ragione d'essere, *il lotto dice che è andata male, la fattura dice perché* | §12 · §13 |
 | 🔵 **Da verificare, fuori cantiere** | Un prezzo **non negoziato sul contratto** dentro un push **riuscito** (ORD0016313): l'errore è in `error_log`, l'attività ha comunque un prezzo bloccato. ⚠️ È la categoria che nessuno controlla — un errore registrato dentro un'operazione andata bene | §11 |
+| ✅ **La fattura ha finalmente la sua lista** | Inseguendo `competenza_mese` è venuto fuori che la fattura era **l'unico documento del ciclo attivo senza elenco**: si raggiungeva solo da un lotto o da un collegamento. Costruita — vista, catalogo, endpoint, pagina, filtri per **data documento**, billing account e id fiscale. ⭐ **Tre presidi hanno trovato tre difetti prima di me**, e nessuno dei tre dava un errore a video | §11-bis |
 | ✅ **Domande — tutte chiuse** | **La Q-7 è stata decisa il 2026-08-24: il filo è l'AZIONE DELL'OPERATORE**, non la passata. ⭐ A deciderla è stata una misura, non una preferenza: la lettura alternativa si reggeva sul `tx_id` come ripiego, e dentro una sola passata del lotto 6260 i `tx_id` sono **quattro**. 🔴 E la stessa distinzione ha scoperto un difetto **già vivo**: il filtro «Ultimo giro» delle segnalazioni taglia a metà un singolo click | §8 |
 | 🧱 **È una fondamenta?** | La risposta misurata, con l'elenco di cosa ci riporterebbe qui e i **due impegni verificabili**. ⭐ Le due volte in venti giorni sono lo **stesso difetto**: una colonna di testo che tutti scrivono e nessuno governa | §9 |
 | ⭐ **Un solo documento** | Da qui in avanti chi lavora su `event_log` legge **questo** brief: T-1/T-1b di `brief-db-bersaglio-errore` sono **assorbiti** e di là non si gestiscono più | §4-bis |
@@ -240,7 +258,7 @@ legittime**.
 **normale** — la chiusura dei documenti di un emittente cessato — diventa rumore,
 e un presidio che tutti ignorano è peggio di uno che non c'è. Il posto di quel
 presidio è sul documento, ed è materia di
-[analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md).
+[analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md).
 
 **Come si realizza, senza combattere con l'automazione.** Il lucchetto
 `require_attivo` lo genera `dbops.fn_run_automations_attivo`, che gira su
@@ -1071,7 +1089,7 @@ dicono di evitare.
 
 ⚠️ **Cosa NON è stato assorbito, e perché** — portare qui anche il bersaglio
 farebbe di questo documento il contenitore di due mestieri: è esattamente ciò
-che il §0 di [analisi-osservabilita-log.md](analisi-osservabilita-log.md) dice
+che il §0 di [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) dice
 di non fare con la diagnostica di produzione, e la ragione è la stessa.
 
 ### Cosa questo cantiere REGALA all'altro, senza costo
@@ -1080,7 +1098,7 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 | --- | --- |
 | ⛔ | ~~I due codici nati con L1 — `E_EVENT_LOG_SCOPE_NON_RISOLTO` ed `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` — hanno già la forma del bersaglio: convertirli è una riga, e sono i **primi adottanti gratuiti** del loro T-5.~~ **SUPERATA il 2026-08-22**, e il regalo non era accettabile — tre ragioni indipendenti, misurate sui CSV applicati: `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` porta **per definizione** un tipo **fuori catalogo**, quindi farebbe fallire il presidio che loro devono scrivere; `E_EVENT_LOG_SCOPE_NON_RISOLTO` punta a **un'entità che non esiste**, quindi il pulsante non comparirebbe **mai**; e sono entrambi **`TECNICO` (500)**, la classe in cui *noi stessi* non mettiamo `campo` nel contesto. ➡️ **Ne è uscita la regola che a quel brief mancava** — *il bersaglio si mette sugli errori rimediabili, mai sui `TECNICO`* — che è un regalo migliore di quello che avevamo offerto. Vedi `brief-db-bersaglio-errore` §5.5 |
 | ⭐ | La vista `script.vw_giornale_entita` (§3.6) e le rotte del bersaglio (loro **B-2**) usano **lo stesso** vocabolario `config.tipi_entita`: la tabella tipo → schermata si scrive una volta |
-| ⚠️ | Il guard `E_FATTURE_RIGHE_RETTIFICATE` di [brief-db-guard-righe-fattura-rettificate.md](brief-db-guard-righe-fattura-rettificate.md) dice «su %s righe» — un conteggio, **nessun id in prosa**, che è già la regola giusta. Ma un `target` sulle righe bloccate lo renderebbe azionabile: buon candidato **T-5** |
+| ⚠️ | Il guard `E_FATTURE_RIGHE_RETTIFICATE` di [brief-db-guard-righe-fattura-rettificate.md](../work-in-progress/brief-db-guard-righe-fattura-rettificate.md) dice «su %s righe» — un conteggio, **nessun id in prosa**, che è già la regola giusta. Ma un `target` sulle righe bloccate lo renderebbe azionabile: buon candidato **T-5** |
 
 ---
 
@@ -1136,7 +1154,7 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 > ultime due, **BE-2** e **BE-3b**, chiuse appena il team DB ha consegnato i
 > due scrittori mancanti (changeSet **67, 68, 69**). ⭐ **Nove su nove.**
 > Il prerequisito e la sua richiesta sono in
-> [brief-db-scrittori-del-giro-push-e-task-run.md](../work-done/brief-db-scrittori-del-giro-push-e-task-run.md),
+> [brief-db-scrittori-del-giro-push-e-task-run.md](brief-db-scrittori-del-giro-push-e-task-run.md),
 > ora in `work-done`.
 >
 > ⭐ **Il rischio 3 del §9.3 è chiuso a metà**: il registro ha di nuovo delle
@@ -1407,7 +1425,7 @@ SQLSTATE **oppure** `throws_like` sulla frase dove il punto è *quale* errore, e
 | **Un `trgfn_guard_emittente_scope` su questa tabella** | D-10 |
 | **Estendere `script.fn_resolve_emittente_fiscale_id`** | Con la colonna SR la derivazione è una **copia** dal padre: nasce il gemello `fn_resolve_emittente_sr_id` e la funzione esistente **non si tocca** (D-1) |
 | **Seedare `LOTTO` in `config.sorgenti`** | Serviva alla FK, che non c'è più (D-9). Se un domani il lineage vorrà il lotto come nodo, sarà una decisione sua |
-| **Segnalare come anomalia un evento su un padre disattivato** | L'avviso scatterebbe sul caso **normale** (la chiusura dei documenti di un emittente cessato) e diventerebbe rumore. Il presidio giusto sta **sul documento** — [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md) |
+| **Segnalare come anomalia un evento su un padre disattivato** | L'avviso scatterebbe sul caso **normale** (la chiusura dei documenti di un emittente cessato) e diventerebbe rumore. Il presidio giusto sta **sul documento** — [analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md) |
 
 ---
 
@@ -1469,7 +1487,7 @@ critica irrisolta.
 > ⚠️ **Il rilievo di Q-4/Q-5 vale oltre questo cantiere.** «Chi continua a
 > scrivere su una riga annullata» è un'anomalia da **presidiare sul documento**,
 > non da nascondere spegnendo il suo diario. È materia di
-> [analisi-presidi-percorso-storto.md](analisi-presidi-percorso-storto.md), e il
+> [analisi-presidi-percorso-storto.md](../work-in-progress/analisi-presidi-percorso-storto.md), e il
 > diario — una volta leggibile — è ciò che permette di **accorgersene**.
 
 ---
@@ -1555,6 +1573,70 @@ dalla pipeline vera, questo piano è verificato dai pgTAP e da nient'altro.
 
 ## 10. Registro
 
+### 2026-08-24 notte · ✅ **Il Passo A è chiuso** — anche il lotto ha la sua storia
+
+- ✅ **Consegnata la scheda «Storia» del lotto**: `GET /vendite/lotti/<id>/giornale/`
+  + la quarta scheda del `LottoDrawer`. Il lotto **più le sue fatture**, righe
+  non-INFO, `entity_type` su ogni riga. §12.
+- ⭐ **Ha dimostrato la propria ragione d'essere alla prima chiamata vera**: sul
+  6260 il lotto dice `E_FATTURA_RETTIFICATA_SENZA_NUMERO` e la **fattura 20024**
+  dice *perché*. È il rilievo R-3, visto in una schermata invece che in una
+  misura.
+- 🔧 **Estratto `_list_giornale`** (regola del 2): fattura e lotto condividono
+  gravità, conteggi e ordinamento; cambia solo il perimetro. 🔵 Da confermare.
+- 🔧 **`DataTable`/`Column` non erano importati** nel `LottoDrawer` — la scheda
+  sarebbe rimasta **vuota senza nessun errore**. Né eslint né il build lo
+  segnalano: trovato rileggendo.
+- ✅ 12 test nuovi, mock del giornale fattura allineati, **1684 `vendite` verdi**.
+
+### 2026-08-24 notte · R-1 torna applicato, e il BE non deve fare niente
+
+- ✅ **Verificato l'arrivo di R-1 sul DB vivo**, non sugli YAML: quattro
+  `DEFAULT clock_timestamp()` + il trigger `trg_fatture_log_a10_orario_reale_ins`.
+- ⭐ **La consegna BE attesa non serve, e il perché è misurato**: `_insert_fatture_log`
+  passa `now()` **letterale in SQL** — istante di transazione — che è il caso
+  che la regola del `-18` sostituisce. ⚠️ Con un `datetime` di Python il trigger
+  lo leggerebbe come **scelta** e lo rispetterebbe: stesso codice, difetto
+  silenzioso. La distinzione l'ho letta dalla chiamata, non dedotta dalla nota.
+- ✅ **Firme delle tre funzioni riscritte ricontrollate contro il database**:
+  invariate per il BE. `fn_log_pipeline_fase` ha un parametro in più
+  (`p_error_code`) ma con `DEFAULT NULL`, quindi la chiamata posizionale a sei
+  argomenti regge. 29 test di `test_pipeline_repository` verdi.
+- 🟢 **Il pannello del lotto è sbloccato** — §12.
+
+### 2026-08-24 notte · Il documento fiscale ha una porta d'ingresso
+
+- ✅ **La lista fatture è costruita e collegata** — §11-bis. Il team DB ha
+  pushato in giornata la vista `vw_fatture_lista`, la definizione **48** con 22
+  colonne, il preset e il pgTAP (`8919b41f4`); BE e FE sopra, con i filtri
+  chiesti da Tid (**billing account** e **id fiscale**) e la **data documento**
+  che è la ragione per cui la lista esiste.
+- ✅ **Chiuse anche le due colonne del peso del lotto** — `n_fatture` e
+  `totale_documenti`, seedate nello stesso push e messe in whitelist
+  d'ordinamento. Il §6-bis del brief lotto non ha più niente di aperto.
+- 🔧 **Quattro difetti, nessuno visibile.** Tre li hanno trovati i presidi
+  (`TAB_ENTITIES.FATTURA` assente · lista fuori dal registro `_LISTE` · il
+  `lista_codice` scritto come costante e quindi invisibile all'`ast`); il quarto
+  l'ho trovato **scrivendo questa nota**, rileggendo il seed: tre slot `#cell-…`
+  su cinque portavano i nomi delle **liste sorelle**, e su questa lista i codici
+  sono altri. ⚠️ La lezione è la stessa dello slot `#actions`: *il nome della
+  colonna si legge dal seed, mai dalla lista accanto*.
+- ✅ **Risposto a Tid sulla RLS**: è attiva su `vendite.fatture` (due policy) e la
+  vista è `security_invoker`, quindi morde a livello DB; il filtro applicativo
+  resta difesa in profondità. ⚠️ Ma la **discriminazione non è mai stata
+  esercitata**: tutte e 18 le fatture sono di un solo emittente — stesso R-4 del
+  §12.
+
+### 2026-08-24 · Chiusura e archiviazione
+
+Il cantiere è chiuso e il documento va in `work-done`. ⭐ **E si chiude più corto
+di com'era**: tre sezioni non erano sue — il Passo A (che il §12 dichiarava «non
+materia di questo cantiere» già mentre lo scriveva), la richiesta su R-1, e un
+rilievo di pricing annotato come «fuori cantiere». ⛔ Archiviare con dentro una
+**richiesta aperta** avrebbe seppellito l'unica cosa che stava ancora aspettando:
+nessuno cerca lavoro da fare in `work-done`. Sono andate dove qualcuno le guarda
+— la mappa è in testa al documento.
+
 ### 2026-08-24 sera · Il pannello ordina per gravità, e il lotto ha un perimetro
 
 - 🆕 **La scheda «Storia» ordina per GRAVITÀ** (Tid, dopo la validazione
@@ -1570,10 +1652,15 @@ dalla pipeline vera, questo piano è verificato dai pgTAP e da nient'altro.
   solleva niente e a video somiglia a uno giusto.
 - ✅ **«Che cos'è un caso» è deciso**: il pannello del lotto mostrerà il lotto
   **più le sue fatture**, righe non-INFO. §12.
-- 🔴 **Scritta la richiesta al team DB su R-1** (§13): le quattro colonne di
-  orario hanno default `now()`, cioè l'istante della **transazione**. ⭐
-  L'argomento nuovo è che quel significato oggi è coperto dal **`tx_id`**, che
-  prima non esisteva: l'orario può tornare a dire solo «quando è successo».
+- ~~🔴 **Scritta la richiesta al team DB su R-1** (§13)~~ → ✅ **RISPOSTA E
+  LOTTO SCRITTI dal team DB in giornata** (changeSet `20260824-16` e `-17`,
+  7 asserzioni pgTAP). L'argomento del `tx_id` regge e la risposta è sì.
+  🔴 **Ma il perimetro non era «quattro `DEFAULT`»**, ed è la parte che vale:
+  misurato sui corpi vivi, i default sono **inerti su tre registri su quattro**
+  (i chiamanti passano la colonna a mano), e c'era un **quinto punto** —
+  `ended_at`, scritto con `now()` — che da solo avrebbe fatto fallire
+  `chk_fatt_lotti_task_runs_timestamps` su **165 corse su 319**. Dettaglio in
+  fondo al §13.
 
 ### 2026-08-22 · Nascita
 
@@ -2179,7 +2266,7 @@ esistente e migliore (§6).
 ⚠️ **Fuori cantiere, trovato dalla baseline**: `fn_cleanup_fatture_by_ids`
 esplodeva con un `23503` grezzo su una figlia di `fatture_righe` che nessuno
 sorvegliava. Non c'entra con l'osservabilità e ha un brief suo,
-[brief-db-guard-righe-fattura-rettificate.md](brief-db-guard-righe-fattura-rettificate.md).
+[brief-db-guard-righe-fattura-rettificate.md](../work-in-progress/brief-db-guard-righe-fattura-rettificate.md).
 
 ### 2026-08-22 (terzo giro) · L1 scritto
 
@@ -2309,21 +2396,141 @@ nel §6-bis di
 [brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md) —
 qui basta sapere che **la domanda non è più aperta**.
 
-⚠️ **E ne è uscito un buco più grande, che resta aperto**: la **fattura è
-l'unico documento del ciclo attivo senza la sua lista**. Misurato — `preventivi`,
-`offerte`, `ordini`, `contratti`, `ddt`, `resi` hanno la loro
-`ui.lista_definizione`; `fatture` no, e nel frontend non esiste nessuna rotta
-verso di loro. Oggi un documento fiscale si raggiunge **solo** passando da un
-lotto, da un cruscotto o da un collegamento. È la ragione per cui la prima idea
-era stata una scheda dentro il drawer del lotto: non c'era altro posto.
+⚠️ **E ne è uscito un buco più grande** — chiuso subito dopo, qui sotto.
 
 ---
 
-## 12. ✅ Il Passo A — **CONSEGNATO** sulla fattura *(2026-08-24)*
+## 11-bis. ✅ **La fattura ha la sua lista** — la settima del ciclo attivo *(2026-08-24)*
+
+> **Perché sta in questo brief.** Non è materia di questo cantiere: è il buco che
+> il §11 ha trovato inseguendo `competenza_mese`. Sta qui perché è **qui** che è
+> stato registrato, e chi riparte deve trovare la risposta accanto alla domanda.
+
+### Il buco, misurato
+
+La **fattura era l'unico documento del ciclo attivo senza la sua lista**.
+Misurato: `preventivi`, `offerte`, `ordini`, `contratti`, `ddt`, `resi` hanno la
+loro `ui.lista_definizione`; `fatture` **no**, e nel frontend non esisteva
+nessuna rotta verso di loro.
+
+⛔ Un documento fiscale si raggiungeva **solo** passando da un lotto, da un
+cruscotto o da un collegamento. È la ragione per cui la prima idea era stata una
+scheda dentro il drawer del lotto: *non c'era altro posto dove metterla*.
+
+### Cosa è stato costruito
+
+| Lato | Consegna |
+| --- | --- |
+| **DB** (team DB, commit `8919b41f4`) | vista `vendite.vw_fatture_lista` · `ui.lista_definizione` **48** `vendite.fatture` · **22 colonne** + preset `fatture_default` (ordinamento `data desc`, pagina 25) · pgTAP `test-vw-fatture-lista.sql` |
+| **BE** | `fatture_repository.py` — `list_fatture` sulla vista, whitelist `_ORDER_COLS_FATTURE` · `vendite_service.list_fatture_rows` · `ApiFattureList` + `ApiFattureExportView` |
+| **FE** | `FattureSearchTable.vue` + `FattureListView.vue` + store `fatture.js` · rotta `/vendite/fatture` · voce di menu · `TAB_ENTITIES.FATTURA` |
+
+⭐ **Filtri**: ricerca (numero · cliente · codice BA · **id fiscale**), stato,
+natura, utility, **data documento da/a**, più i due criteri dei collegamenti in
+entrata (`billing_account_id` e `id_fiscale` esatto).
+
+⚠️ **`data_da`/`data_al` filtrano la DATA DEL DOCUMENTO, non la competenza della
+commessa**: è *tutto il punto della lista*. È la domanda del §11 — «l'ho cercata
+sul mese di competenza data fattura» — resa una casella.
+
+⛔ **SOLA LETTURA, per costruzione**: nessun «Nuovo». La fattura si produce dalla
+pipeline di fatturazione e oltre EMESSA le righe sono congelate a DB — quindi
+`useListaConfigurabilePage` è chiamato **senza `onNew`**. Il drawer è quello di
+consultazione già in servizio: **la lista gli dà finalmente una casa**.
+
+### ⭐ Tre presidi hanno trovato tre difetti veri, prima di me
+
+Nessuno dei tre dava un errore a video:
+
+1. **`TAB_ENTITIES.FATTURA` non esisteva** — `useTabFreshness` avrebbe ricevuto
+   `undefined`, e la lista non si sarebbe mai rinfrescata rientrando sulla scheda.
+2. **Il registro `_LISTE` non conteneva la lista** — e un buco *lì* non è un test
+   che fallisce: è **tutta la batteria dei seed che smette di guardare** la nuova
+   lista, in silenzio.
+3. **`lista_codice = _LISTA_CODICE_FATTURE`** era invisibile al presidio del
+   perimetro, che legge il sorgente con `ast.literal_eval`: la lista risultava
+   **non presidiata**. Corretto a **letterale**. ⚠️ *Una costante è più pulita da
+   leggere e più cieca da controllare*.
+
+### 🔧 E un quarto difetto, trovato rileggendo il seed
+
+I nomi degli slot `#cell-…` **non coincidono con quelli delle sorelle**: su
+`vendite.fatture` il DB ha chiamato le colonne `natura_doc_descrizione`,
+`stato_descrizione`, `pratica_numero`; sui contratti si chiamano `natura`,
+`stato`, `pratica`. Li avevo scritti **alla maniera delle sorelle** — tre slot su
+cinque sbagliati.
+
+⛔ **Uno slot col nome sbagliato non dà nessun errore**: la cella ripiega sul
+valore grezzo e i Tag colorati spariscono. **Il nome si legge dal seed, mai dalla
+lista sorella.**
+
+### La RLS c'è già, e il filtro applicativo si somma
+
+Domanda di Tid: *«la RLS è attiva giusto, filtrerebbe già per emittente?»* — sì.
+
+| | |
+| --- | --- |
+| `vendite.fatture` | RLS **attiva**, due policy: `rls_fatture_ef_whitelist` (`FOR ALL`) e `rls_fatture_ba_ownership` (`FOR SELECT`, il portale) |
+| tid (SUPER_ADMIN) | 18 righe |
+| fara (operatore) | 18 righe |
+| **senza contesto** | **0** — fail-closed |
+
+La vista è `security_invoker`, quindi il perimetro morde **a livello DB**. Il
+filtro applicativo resta **difesa in profondità** — regola di
+[api.md](../api.md) §Scope emittente — e ha una ragione concreta: *la RLS gira
+sulle **tabelle**, il filtro applicativo sulla **colonna della vista***.
+
+⚠️ **Ma la discriminazione non è mai stata esercitata sui dati**: `fara` vede 18
+righe come `tid` perché **tutte e 18 le fatture sono dello stesso emittente**
+(`ef_pk 32`). È il rilievo **R-4** del §12: *il fail-closed funziona; la
+discriminazione non è mai avvenuta su dati veri*.
+
+### ✅ I due collegamenti in entrata *(2026-08-24)*
+
+Chiesti da Tid e costruiti: una voce del kebab «Vedi le fatture» sulle liste
+**soggetti** e **clienti**. ⭐ **Due criteri diversi, e non è un dettaglio**: dal
+soggetto si va per **identificativo fiscale**, dal cliente per **id del billing
+account** — un soggetto è una persona giuridica e può avere **più conti**, quindi
+«le sue fatture» è un insieme più largo di «le fatture di un conto». Da qui il
+filtro `id_fiscale` nuovo lato BE, a **confronto esatto**.
+
+⚠️ **Non è un doppione della ricerca libera**, che sullo stesso campo fa
+`ILIKE %…%`: un `ILIKE` sul collegamento sarebbe sbagliato **in silenzio** — una
+partita IVA è contenuta in altre più lunghe, e il collegamento consegnerebbe le
+fatture di qualcun altro senza dare nessun segno. Misurato: `id_fiscale` troncato
+a sei caratteri risponde **0 righe**, non 8.
+
+⛔ **Il collegamento toglie il pavimento temporale**, ed è la parte che si sarebbe
+persa facendolo in fretta. La lista nasce con `data_da` = oggi−60gg; chi arriva
+da un cliente chiede *«le SUE fatture»*, non «le sue recenti». Col pavimento
+attivo un soggetto con documenti di sei mesi fa avrebbe ricevuto **«Nessuna
+fattura»**: una risposta falsa che non sembra un errore.
+
+⛔ **E la pagina lo dichiara a video**, con un banner e un pulsante per togliere
+il filtro. È il **primo filtro da URL dell'applicazione** — i quattro
+`route.query` esistenti aprono un drawer o scelgono una scheda — e una lista che
+mostra 8 righe su 18 senza dire perché si legge come l'elenco intero.
+
+🔧 **Un difetto evitato misurando**: `vw_clienti_lista` ha **sia `id` sia
+`billing_account_id`**, e non coincidono **mai** (misurato: 0 righe su 21).
+Passare `id` avrebbe dato un filtro valido e **sempre vuoto** — «questo cliente
+non ha fatture» su *ogni* cliente, senza nessun errore.
+
+⚠️ Sul soggetto **senza** identificativo fiscale la voce è **disabilitata**:
+mandare senza criterio avrebbe consegnato le fatture di tutti.
+
+### 🔵 Cosa resta
+
+- **Validazione in-app** della pagina e dei due collegamenti (Tid).
+- La fattura sull'emittente `44` che renderebbe collaudabile il perimetro.
+
+---
+
+## 12. ✅ Il Passo A — **CHIUSO**: la fattura e il lotto *(2026-08-24)*
 
 > **Perché sta in questo brief e non in quello del Passo A.** Il Passo A non è
 > materia di questo cantiere — è il §498 di
-> [analisi-osservabilita-log.md](analisi-osservabilita-log.md). Ma **questo**
+> [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md). Ma **questo**
 > cantiere è ciò che lo ha reso possibile, e chi riparte lo fa da qui: la nota
 > serve a non dover ricostruire il ragionamento da capo.
 
@@ -2519,14 +2726,76 @@ ANNULLATO`, una per corsa) e l'errore vero è **una riga sola** — è il riliev
 **R-7**. Il nascondere le ritirate ne toglie una parte; il resto è una domanda
 aperta di **de-duplicazione**, da guardare col pannello davanti e non prima.
 
-### 🔵 Cosa resta del Passo A
+### ✅ **CONSEGNATO anche il lotto** — il Passo A è chiuso *(2026-08-24, 20:00)*
 
-- **Il lotto**, che ora ha il suo perimetro (qui sopra) ma aspetta **R-1**: la
-  richiesta al team DB è il **§13**. Senza orario vero quella timeline mostra
-  una sequenza mai avvenuta, e sul lotto i registri sono **tre**.
-- ⚠️ **Il secondo registro.** Oggi per una fattura risponde solo `fatture_log`
-  (`event_log` non ha righe di entità `FATTURA`). Quando ne arriverà un secondo,
-  il tiebreak di R-1 smette di essere la sequenza vera.
+`GET /vendite/lotti/<id>/giornale/` + la scheda **«Storia»** del `LottoDrawer`,
+la quarta. Le altre tre dicono **cosa c'è ORA** — i documenti, i tentativi, le
+segnalazioni aperte; questa dice **cosa è successo**, comprese le cose andate
+bene e i tentativi poi superati.
+
+⭐ **Il pannello ha dimostrato la propria ragione d'essere alla prima chiamata
+vera**, sul 6260:
+
+```text
+LOTTO   6260  | ERROR | TASK_RUN    | numera_fatture · ERRORE · E_FATTURA_RETTIFICATA_SENZA_NUMERO
+FATTURA 20024 | ERROR | FATTURA_LOG | Non si può numerare il documento: rettifica righe da chiudere
+```
+
+Il lotto dice **che** è andata male, la fattura dice **perché** — ed è
+esattamente il rilievo **R-3**. Per questo ogni riga porta `entity_type` /
+`entity_id`, o le due frasi sarebbero indistinguibili nello stesso elenco.
+
+**I conteggi, misurati sul vivo** (le quattro combinazioni tornano):
+
+| | count | info_count | ritirate_count |
+| --- | --- | --- | --- |
+| default | **113** | 173 | 2 |
+| `info=1` | 286 | 0 | 2 |
+| `ritirate=1` | 115 | 173 | 0 |
+| entrambi | 288 | 0 | 0 |
+
+⭐ **Le INFO si nascondono ma si contano**: 173 su 286. Mostrarle tutte
+seppellisce le 113 che dicono qualcosa; nasconderle senza dirlo fa credere che
+il lotto abbia avuto **solo** problemi.
+
+⛔ **E il filtro gira sul RANGO, non su `gravita IN ('WARN','ERROR')`**: «non-INFO»
+è tutto ciò che non è INFO, **NULL compreso**. Un filtro scritto per elencazione
+avrebbe buttato via in silenzio proprio la riga che dichiara un vincolo
+allargato — sarebbe stata la terza volta in questo cantiere.
+
+#### Il cancello, e la prova che serve
+
+Misurato, non dedotto: sullo stesso id la **vista da sola** risponde `0 righe` —
+cioè *«lotto senza storia»* — mentre l'endpoint risponde `E_LOTTO_NON_TROVATO`.
+⛔ La vista **non ha** un perimetro emittente proprio per le righe di entità
+`FATTURA`: senza `get_lotto` davanti, un lotto altrui non sarebbe stato negato,
+sarebbe stato dichiarato **vuoto**.
+
+#### 🔧 Due cose trovate scrivendo
+
+1. ⭐ **Il corpo del giornale è stato ESTRATTO** (`_list_giornale`), non
+   duplicato: fattura e lotto condividono rango di gravità, conteggi, filtri e
+   ordinamento, e cambia **solo** il perimetro. ⚠️ Due copie sarebbero state
+   identiche il primo giorno e divergenti al primo ritocco — e qui divergere
+   vuol dire che *lo stesso evento si legge in due modi a seconda della scheda
+   da cui lo guardi*. 🔵 **Regola del 2: da confermare con Tid.**
+2. 🔧 **`DataTable` e `Column` non erano importati** nel `LottoDrawer`: le sue
+   tre schede usano `<ListaConfigurabile>`, la storia no — non è una lista che
+   l'operatore personalizza, è un giornale. ⛔ Senza gli import Vue avrebbe reso
+   due elementi sconosciuti e **la scheda sarebbe rimasta vuota, senza nessun
+   errore**. Trovato rileggendo: né eslint né il build lo segnalano.
+
+⚠️ **Un limite dichiarato**: la storia **non è paginata a video** — mostra la
+prima pagina da 50 e dichiara «mostrati N su TOT». Sul 6260 sono 50 righe su
+113. Stessa scelta del pannello fattura; sul lotto pesa di più.
+
+**Presidio**: 12 test nuovi (`test_lotto_giornale_service`), i mock del giornale
+fattura allineati alla nuova arità, **1684 test `vendite` verdi** e 829 `core`.
+Manuale: `api_lotto_giornale.md`.
+
+⚠️ **Il secondo registro.** Oggi per una fattura risponde solo `fatture_log`
+(`event_log` non ha righe di entità `FATTURA`). Quando ne arriverà un secondo,
+il tiebreak di R-1 smette di essere la sequenza vera.
 
 ### Cosa NON fare partendo
 
@@ -2538,7 +2807,7 @@ aperta di **de-duplicazione**, da guardare col pannello davanti e non prima.
 
 ---
 
-## 13. 🔴 Il passaggio al team DB — **R-1: l'orario di transazione non ordina** *(scritto dal BE il 2026-08-24)*
+## 13. ✅ Il passaggio al team DB — **R-1: l'orario di transazione non ordina** *(chiesto dal BE e SCRITTO dal DB il 2026-08-24)*
 
 > **Cos'è.** Il prossimo pezzo del Passo A è la **storia di un lotto**, e non è
 > scrivibile finché l'orario delle righe non è quello vero. ⛔ **Perimetro: è del
@@ -2629,3 +2898,169 @@ registro solo), e il pannello **lotto** non si scrive finché questa risposta no
 c'è. ⛔ Scriverlo prima significherebbe consegnare una schermata che mostra una
 sequenza **mai avvenuta**, e nessuno se ne accorgerebbe guardandola: è un elenco
 plausibile: la trappola è esattamente che non sembra rotto.
+
+---
+
+### ✅ La risposta del team DB — **R-1 è scritto** *(2026-08-24)*
+
+**Sì, `clock_timestamp()`**, e l'argomento del BE regge: con il `tx_id` su ogni
+riga, «quali righe appartengono alla stessa transazione» ha una chiave sua, e
+l'orario può tornare a dire una cosa sola. ⭐ Se ne aggiunge uno: quelle quattro
+sono colonne di **osservabilità**, non di audit — `data_insert` continua a
+portare l'orario di transazione, che è la convenzione della casa. Non si erode
+una convenzione: si scioglie una sovrapposizione.
+
+🔴 **Ma il perimetro non era «quattro `DEFAULT`», e come richiesta non
+funzionava.** Due misure, sui corpi vivi.
+
+**Prima — i `DEFAULT` sono quasi tutti inerti.** I chiamanti la colonna la
+passano a mano:
+
+| Registro | Il `DEFAULT` si usa? | Chi scrive davvero |
+| --- | --- | --- |
+| `event_log.event_time` | ✅ sì | `fn_log_event` non passa la colonna — **l'unico dove il default basta** |
+| `fatture_log.data_ora` | ❌ **mai** | 5 funzioni + il **backend** (`pipeline_repository.py`), tutti `now()` esplicito |
+| `fatturazione_lotti_log.data_ora` | ❌ no | `fn_log_pipeline_fase` |
+| `task_runs.started_at` | ❌ no | `fn_start_lotto_task_run` |
+
+⚠️ Cambiando i soli `DEFAULT` si sarebbe mosso **un registro su quattro**, con
+un changeSet applicato che dichiarava di aver risolto: la forma peggiore,
+perché sembra fatta.
+
+**Seconda — c'era un quinto punto, e da solo rompeva la pipeline.** `ended_at`
+non ha `DEFAULT`: lo scrive `fn_set_runtime_task_run_esito` con `now()`.
+Spostando il solo `started_at`, un tentativo aperto e chiuso nella stessa
+transazione otterrebbe `ended_at` (inizio transazione) **minore** di
+`started_at` (orologio alla scrittura) — e c'è un vincolo:
+
+```text
+chk_fatt_lotti_task_runs_timestamps  CHECK (ended_at IS NULL OR ended_at >= started_at)
+```
+
+⛔ Non è un rischio teorico: **165 corse su 319** hanno oggi `ended_at =
+started_at` esatto, cioè sono precisamente quel caso. Sarebbe stato un
+fallimento di vincolo dentro lo step.
+
+#### Cosa è stato scritto
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **16** | `00_schema/vendite/…-alter-registri-log-orario-reale` | I quattro `DEFAULT`. Allinea la DDL, non è il punto in cui la regola vive |
+| **17** | `20_code/vendite/…-registri-log-orario-reale` | ⭐ Il pezzo che sposta il comportamento: un **trigger** su `fatture_log` e **tre funzioni** riscritte |
+| — | `db/pgtap/vendite/test-registri-log-orario-reale.sql` | **7 asserzioni** |
+
+⛔ **I due changeSet vanno nella stessa passata**: separati, per un giro
+`started_at` e `ended_at` starebbero su due orologi diversi.
+
+⭐ **Perché su `fatture_log` un trigger e non cinque riscritture.** I cinque
+chiamanti sono **957 righe di corpo vivo**, e in nessuno di essi il log è il
+soggetto: è una riga di servizio dentro un ramo di errore. Riprodurre 957 righe
+per spostare cinque token è il baratto sbagliato — un corpo vivo riprodotto si
+porta dietro il proprio debito e *sembra* giusto perché combacia col database —
+e avrebbe comunque lasciato fuori il sesto scrittore.
+➡️ **Il sesto è il backend**, e il trigger lo copre: **nessuna consegna BE**.
+La richiesta al BE su questo punto si può cancellare.
+⚠️ E non è un meccanismo nuovo: `trgfn_audit_data_user_generic` fa già
+esattamente questo — un BEFORE che mette lui l'orario — su tutte e quattro
+queste tabelle. Cambia la colonna, e con essa l'orologio giusto.
+
+Sugli altri tre registri **niente trigger**, ed è una scelta: lì i chiamanti
+sono uno o due e piccoli (57, 69, 112 righe), quindi si toglie il `now()` dove
+sta e il codice smette di dire una cosa che non è più vera. Un trigger avrebbe
+lasciato in piedi un `now()` morto che mente.
+
+#### ✅ L'ancoraggio del «giro corrente» — deciso, e **pinnato**
+
+Il BE chiedeva *«lo dica un test, non questa frase»*. Deciso (Tid, 2026-08-24):
+una riga scritta nella stessa transazione ma **prima** del `PIPELINE_STARTED`
+cade **fuori** dal giro corrente — appartiene al giro precedente. È il **test 7**
+del pgTAP, e la misura del prima/dopo è netta:
+
+```text
+prima del lotto R-1   pgTAP R-1 prima=true   pgTAP R-1 dopo=true
+dopo                  pgTAP R-1 prima=false  pgTAP R-1 dopo=true
+```
+
+⚠️ Con `now()` quel predicato **non distingueva niente**: tutte le righe della
+transazione avevano l'orario del marcatore.
+⭐ E le funzioni ancorate sono **due**, non una: oltre a
+`fn_list_lotto_segnalazioni` c'è `fn_list_lotto_task_runs`, con lo stesso
+`max(event_time)`. Il BE ne aveva vista una.
+
+#### 🔧 Un difetto pagato scrivendo il presidio
+
+La prima versione del **test 2** — «nessuna funzione scrive più `now()` in
+quelle colonne» — era **rossa**, e il colpevole era un **commento del changeSet
+stesso**, quello che spiega il difetto citandolo: *«con `ended_at = now()` un
+tentativo…»*. ⚠️ Un presidio che legge `prosrc` grezzo **accusa chi documenta il
+difetto invece di chi lo commette**. Si tolgono i commenti prima di cercare —
+è la stessa lezione dello scanner dell'arità in
+`test-catalogo-messaggi-errore-completo.sql`, e questa casa l'ha già pagata una
+volta.
+
+#### 📌 Cosa resta fuori, dichiarato
+
+* **Nessun backfill**, come chiesto: le righe già scritte restano com'erano, e
+  la convivenza fra due generazioni (R-5) va retta dal pannello;
+* **`data_insert` / `data_update` non si toccano**, su nessuna tabella;
+* **nessun indice, nessuna vista**: `ix_event_log_entity_time` continua a
+  servire — cambia il valore che ci finisce, non la colonna;
+* 📌 `fn_set_runtime_task_run_esito` solleva tre volte `E_GENERICO`. È debito
+  **noto**, guardato e non toccato: correggerlo vuol dire coniare tre codici
+  registrati con la loro classe, ed è un lotto suo.
+
+#### 🔧 La correzione — il trigger scriveva SEMPRE, e ha rotto tre asserzioni
+
+Applicato il lotto (18:52), è arrivato un rosso su
+`test-fn-list-lotto-segnalazioni-job.sql` — test **5, 7, 8**. Non è un difetto
+dei test: è del changeSet.
+
+Il trigger del `-17` imponeva `data_ora` **senza guardare cosa avesse passato il
+chiamante**. La scelta era dichiarata nella sua testata — *«non si potrà inserire
+una riga di log con un orario storico»* — ma era dichiarata **in astratto**: era
+stato misurato chi legge quelle colonne (tutto `pg_proc`) e **non chi ci scrive
+un valore fabbricato**. Ci scrivono le fixture pgTAP, e una lo dice nella propria
+testata:
+
+> ⚠️ *La linea del tempo si scrive a mano: `now()` è costante dentro una
+> transazione, quindi quattro righe nate qui avrebbero lo stesso istante e la
+> finestra non misurerebbe niente.*
+
+Quel test colloca due segnalazioni a `now() - interval '40 min'` e `- '10 min'`
+per metterle prima e dopo la seconda corsa; il trigger le riportava entrambe
+all'adesso e la finestra dell'ultimo job smetteva di misurare.
+
+⚠️ **Misurato, non supposto**: `test-vw-giornale-entita.sql` scrive anch'esso un
+orario fabbricato su `fatture_log` (`now() - interval '15 min'`) ed era quindi
+**esposto** allo stesso difetto, ma è rimasto **verde** — le sue asserzioni non
+dipendono dalla posizione relativa di quella riga. ⭐ Vale la pena scriverlo: il
+raggio del danno è «ovunque si scriva un orario fabbricato», non «ovunque un
+test sia diventato rosso». Il secondo insieme è più piccolo del primo, e fidarsi
+del secondo vuol dire correggere solo ciò che si è visto rompere.
+
+⭐ **La regola, detta meglio** — changeSet **`20260824-18`**:
+
+> Se il chiamante ha passato l'istante di **inizio transazione**, non ha scelto
+> un orario: ha usato l'unico che aveva, e quello si sostituisce. Qualunque
+> **altro** valore è una scelta, e si rispetta.
+
+⚠️ Non è «fidarsi del chiamante», ed è la differenza che conta: `now()` dentro
+una transazione è una **costante**, quindi il confronto riconosce esattamente il
+caso «non ha deciso niente» — che è quello dei sei scrittori veri, tutti con
+`now()` letterale. Su di loro il comportamento non cambia di una virgola.
+(`CURRENT_TIMESTAMP` e `transaction_timestamp()` sono lo stesso valore e sono
+coperti senza nominarli.)
+
+✅ **Verificato prima di consegnare**, iniettando la correzione nelle tre suite:
+`test-fn-list-lotto-segnalazioni-job` **8/8**, `test-vw-giornale-entita` **15/15**,
+e il test di R-1 passa a **8 asserzioni** — la nuova è il rovescio della 5:
+*un orario scelto dal chiamante non viene sovrascritto*. Senza quella
+asserzione la correzione sarebbe una riga di codice che nessuno difende, e chi
+un domani «semplificasse» il trigger rifarebbe lo stesso danno.
+
+📌 **La lezione, che è la parte che vale.** Prima del `-17` erano stati misurati
+tutti i consumatori in `pg_proc`, e non era stata guardata la suite pgTAP.
+⚠️ **Una fixture è un consumatore come un altro**: fabbrica gli stati che il
+codice non sa produrre da solo, ed è per definizione il posto dove un valore
+«anomalo» viene scritto **di proposito**. Un trigger che normalizza un valore va
+cercato anche lì, con lo stesso grep.

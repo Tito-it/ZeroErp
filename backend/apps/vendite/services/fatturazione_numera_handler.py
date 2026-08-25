@@ -29,7 +29,10 @@ import logging
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.vendite.services._fatturazione_job_helpers import parse_competenza_mese
+from apps.vendite.services._fatturazione_job_helpers import (
+    parse_competenza_mese,
+    parse_data_iso,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,22 @@ def fatturazione_numera_handler(
 ) -> dict[str, Any]:
     competenza = parse_competenza_mese(
         payload.get("competenza_mese"), error_code=E_NUMERA_PAYLOAD,
+    )
+    # ⭐ UNA data per l'INTERO atto (decisione 5 del brief numerazione): quella
+    #    che l'operatore ha scritto nel dialog vale per tutti i lotti che questo
+    #    giro numera, non una per lotto. Facoltativa: assente = nessuna
+    #    dichiarazione, ogni documento tiene la data che ha.
+    # ⚠️ La stringa e' gia' stata validata dall'endpoint; qui si ri-parsa perche'
+    #    il payload della coda e' JSON e un job puo' essere accodato anche da
+    #    un'altra strada. Un valore malformato deve rompere il job con un codice
+    #    parlante, non arrivare a `fn_imposta_data_documento_lotto` come testo.
+    # ⛔ `parse_data_iso` e NON `parse_competenza_mese`: la seconda normalizza al
+    #    1° del mese (una competenza E' un mese) e trasformerebbe un 25/08
+    #    dichiarato in un 01/08, in silenzio.
+    data_documento = parse_data_iso(
+        payload.get("data_documento"),
+        error_code=E_NUMERA_PAYLOAD,
+        campo="data_documento",
     )
     auth_user_id = (scope or {}).get("auth_user_id")
 
@@ -97,6 +116,7 @@ def fatturazione_numera_handler(
             # (numera + accoda stampa). Idempotente/resume-safe (C-2d).
             esito = pipeline_service.numera_lotto(
                 lotto_id=lotto["id"], auth_user_id=auth_user_id,
+                data_documento=data_documento,
             )
             if esito.get("stato_doc_fiscale_id") == definitiva_id:
                 numerati += 1
@@ -128,6 +148,9 @@ def fatturazione_numera_handler(
 
     return {
         "competenza": competenza.isoformat(),
+        # La data dichiarata entra nell'esito: e' l'unico posto dove, a giro
+        # finito, si legge CON QUALE data l'atto e' stato compiuto.
+        "data_documento": data_documento.isoformat() if data_documento else None,
         "lotti": len(lotti),
         "numerati": numerati,
         "saltati": len(saltati_dett),

@@ -22,6 +22,10 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   - `emittente_soggetto_ruolo_id` (int) — filtro per emittente fiscale
   - `page` (int) — numero pagina, default `1`
   - `page_size` (int) — righe per pagina, default `50`, max `200`
+  - `order_by` (string) — colonna di ordinamento, da **whitelist**
+    (`VenditeRepository.LOTTI_SORT_COLUMNS`); la chiave è il `campo_sorgente` del
+    catalogo liste, non il `codice` logico
+  - `order_dir` (`asc` | `desc`)
 
 ## Output
 
@@ -50,8 +54,14 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
         "area_geografica_id": 2,
         "area_geografica_descrizione": "Nord",
         "emittente_soggetto_ruolo_id": 7,
+        "emittente_ragione_sociale": "Emittente S.p.A.",
         "data_insert": "2026-02-18T10:00:00+01:00",
-        "user_insert": "zeroerp"
+        "user_insert": "zeroerp",
+        "n_fatture": 5,
+        "totale_documenti": "1234.56",
+        "ha_errori_gravi": false,
+        "riaperto": false,
+        "data_documento": null
       }
     ]
   },
@@ -65,7 +75,25 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 
 - Tutti i filtri sono opzionali; assenza o valore vuoto equivale a nessun filtro.
 - `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
-- Ordinamento fisso: `data_insert DESC, id DESC` (deterministico).
+- Ordinamento: **`data_insert DESC, id DESC` è il DEFAULT**, non un vincolo — la
+  lista accetta `order_by`/`order_dir` su whitelist, con tiebreak deterministico.
+  ⚠️ La riga precedente diceva «ordinamento fisso»: era falsa, corretta il
+  2026-08-25.
+- ⚠️ `totale_documenti` è una **stringa**: un totale fiscale non passa da un
+  binario a virgola mobile. Zero è un totale valido (lotto senza documenti), non
+  un vuoto.
+- ⚠️ `data_documento` è la **dichiarazione** sul lotto, non la data che i
+  documenti portano: `null` significa «nessuno ha dichiarato niente, decide la
+  politica del registro» (`OGGI` / `FINE_MESE_COMPETENZA`), **non** «manca la
+  data». È anche la ragione per cui la colonna di catalogo è `filtrabile = f`:
+  un filtro su una colonna nulla nella maggioranza delle righe è una trappola.
+- ⭐ `riaperto` = il lotto è stato riportato in lavorazione e lo step non è
+  ancora stato rifatto (`fatturazione_lotti.riaperto_il`). Serve al FE per
+  NOMINARE giusto la prossima esecuzione: su un lotto riaperto il run **rifà** lo
+  step e il lotto resta in DRAFT.
+  🔴 Fino al 2026-08-25 il mapper leggeva l'indice sbagliato e il flag valeva
+  «questo lotto ha un totale diverso da zero» — invertito proprio sui casi veri.
+  Presidio: `apps/vendite/tests/services/test_lotto_row_mapping.py`.
 - LEFT JOIN su tutte le tabelle di decodifica: lotti con FK nullable restituiscono `null` nei campi descrizione corrispondenti.
 - La JOIN su `area_geografica_id` punta a `vendite.area_geografica_fatturazione` (non `config.aree_geografiche`).
 - `is_search_endpoint = True` sulla view: attiva throttling `SearchBurstRateThrottle`.
@@ -79,11 +107,25 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 - `config.stati_doc_fiscale` (LEFT JOIN decodifica stato doc fiscale)
 - `config.tipi_doc_fiscale` (LEFT JOIN decodifica tipo doc fiscale)
 - `vendite.area_geografica_fatturazione` (LEFT JOIN decodifica area geografica)
+- `anagrafiche.soggetti_ruoli` + `anagrafiche.soggetti` (ragione sociale emittente)
+- `vendite.fatturazione_lotti_fatture` + `vendite.fatture` (conteggio, totale,
+  spia errori gravi — sotto-query, non JOIN: un JOIN sul ponte moltiplicherebbe
+  la riga del lotto per il numero delle sue fatture)
 
 ## Note di migrazione
 
 - Query raw nel repository (`VenditeRepository.list_lotti`); nessuna funzione SQL dedicata.
 - Due query per request: `COUNT(*)` + dati con `LIMIT/OFFSET` (pattern offset pagination).
+- ⛔ **Il payload lo compone `_LOTTO_SELECT_COLS`, non una vista**: `vendite.lotti`
+  è l'unica delle liste documento **senza `vista_sql`**. Chi aggiunge una colonna
+  al catalogo (`ui.lista_colonna`) deve quindi aggiungerla **prima** qui, o la
+  colonna compare a video **vuota su tutte le righe**; e se la dichiara
+  `ordinabile = t` deve aggiungerla anche a `LOTTI_SORT_COLUMNS`, o la freccia
+  risponde 400. Entrambe le cose sono presidiate da
+  `apps/core/tests/test_liste_configurabili_seed.py`.
+- `data_documento` (2026-08-25): colonna di catalogo `ui.lista_colonna` id 552,
+  `ordine_default 25`, `priorita 85`, `filtrabile = f`. Brief:
+  `dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md`.
 
 ---
 

@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_resi_lista DIVENTA LA SESTA SORELLA — fase + colonne di genealogia.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Con l'arco S (20260825-19) il DB sa dire «questo reso e' gia' stato
+#   accreditato, con quel documento». Ma nella LISTA dei resi non si vede: la
+#   riga non porta niente di genealogico, e l'informazione resta in un drawer da
+#   aprire un reso alla volta. Sei liste documento su sette hanno le colonne
+#   lineage dal 2026-07-15 (20260715-01..05) e la settima dal 2026-08-24
+#   (20260824-15, le fatture): i resi erano l'unica rimasta.
+#
+# -- ⭐ E QUI IL CANTIERE INCASSA UNA COSA CHE NON HA DOVUTO COSTRUIRE --
+#   Sulle sorelle la colonna «Transito» proietta `frontiera_codice`, cioe' il
+#   documento piu' a valle in esecuzione. Sul reso quella frontiera E' LA NOTA
+#   DI CREDITO (e' la decisione DB-B del cantiere: S non e' un ramo di ritorno,
+#   quindi il reso smette di essere una foglia). Quindi la colonna mostra IL
+#   NUMERO DELLA NOTA senza nessuna consegna su misura — che era la richiesta
+#   rimasta aperta nel brief («se si vuole il numero della nota in colonna e'
+#   una consegna BE+FE separata»). Non lo e' piu': e' un seed.
+#
+# -- ⚠️ SERVE ANCHE `fase`, CHE QUI NON C'ERA --------------------------
+#   La vista espone stato_codice_interno e stato_descrizione, ma NON la fase
+#   normalizzata. Il seed della colonna «Fase» la cerca con quel nome esatto
+#   (ui.lista_colonna.campo_sorgente = 'fase'), quindi senza questa aggiunta la
+#   colonna nascerebbe e resterebbe vuota, senza nessun errore. Sorgente:
+#   sr.fase da config.stati_doc_reso, gia' in join.
+#
+# -- ⚠️ LE COLONNE SI APPENDONO IN CODA, E NON E' UNO STILE ------------
+#   CREATE OR REPLACE VIEW puo' solo AGGIUNGERE colonne in fondo: cambiare
+#   l'ordine o il tipo di una colonna esistente fallisce (42P16). E' la stessa
+#   ragione per cui in vw_ddt_lista `fase` e il blocco lineage stanno dopo le
+#   colonne di audit invece che accanto allo stato.
+#
+# -- ⚠️ NIENTE FRONTEND, NIENTE BACKEND -------------------------------
+#   frontend/src/vendite/resi/components/ResiSearchTable.vue e' gia'
+#   <ListaConfigurabile codice="vendite.resi"> (seed ui.lista_definizione id 9),
+#   e il preset resi_default (id 9, is_default) esiste dal 2026-07-18. Le tre
+#   colonne arrivano dal seed CSV di ui.lista_colonna + ui.lista_preset_colonna,
+#   con le chiavi i18n vendite.lineage.col_pratica|col_fase|col_transito che ci
+#   sono gia'. E' la stessa catena delle cinque sorelle del 2026-07-15.
+#
+# -- ⚠️ security_invoker -----------------------------------------------
+#   Va ri-specificato: la RLS di vendite.resi (rls_resi_ef_whitelist) deve
+#   continuare a mordere sulla base. Un CREATE OR REPLACE che non lo ripete la
+#   azzera senza errori.
+#
+# Origine: doc auto-gen docs/it/dbzero/vendite/views/vw_resi_lista.md (oggetto
+#          VIVO: include il rename di 20260803-01, che lo YAML 20260802-20 non ha).
+# Dipendenze: 20260825-19 (l'arco S, verificato in precondizione).
+# Cantiere: docs/it/dev/work-in-progress/brief-db-lineage-arco-reso-nota-credito.md §5 DB-F
+# Verifica: db/pgtap/vendite/test-colonne-lineage-liste-v1.sql (plan 30)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260825-21-update-vw-resi-lista-lineage-mctit.yaml
+
+  - changeSet:
+      id: 20260825-21-update-vw-resi-lista-lineage
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_resi_lista prende fase + le colonne di genealogia (pratica, frontiera, transito) come le
+        sei sorelle. Sul reso la frontiera e' la nota di credito (arco S), quindi la colonna
+        «Transito» mostra il numero della nota: «questo reso e' gia' stato accreditato» diventa un
+        dato di lista invece di un drawer da aprire.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_lista
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage
+            # ⛔ Senza l'arco S la colonna «Transito» nascerebbe mostrando il reso
+            #    stesso (frontiera di se'), cioe' un dato inutile su ogni riga.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname   = 'vw_documento_lineage_archi'
+                     AND definition LIKE '%''S''::text%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_resi_lista
+              WITH (security_invoker=on) AS
+              SELECT r.id,
+                  r.uid,
+                  r.numero,
+                  r.anno,
+                  r.data,
+                  r.stato_doc_reso_id,
+                  sr.codice_interno AS stato_codice_interno,
+                  sr.descrizione AS stato_descrizione,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  r.billing_account_id,
+                  ba.codice AS ba_codice,
+                  r.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  r.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  r.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  r.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  r.sorgente_uid,
+                  d_src.id AS ddt_origine_id,
+                  d_src.numero AS ddt_origine_numero,
+                  r.data_insert,
+                  r.user_insert,
+                  r.data_update,
+                  r.user_update,
+                  -- ⭐ rev 2026-08-25 — DA QUI IN GIU' E' NUOVO, e sta in coda perche'
+                  --   CREATE OR REPLACE VIEW sa solo AGGIUNGERE colonne in fondo.
+                  --   `fase` non c'era: la vista aveva lo stato ma non la fase
+                  --   normalizzata, e il seed della colonna omonima la cerca con questo
+                  --   nome esatto (ui.lista_colonna.campo_sorgente = 'fase').
+                  sr.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  -- ⭐ SU UN RESO QUESTA COLONNA E' IL NUMERO DELLA NOTA DI CREDITO.
+                  --   La frontiera e' il documento piu' a valle in esecuzione; con
+                  --   l'arco S (20260825-19) il reso non e' piu' una foglia e la sua
+                  --   frontiera diventa la nota che lo accredita. E' il motivo per cui
+                  --   questo changeSet sta nel cantiere dell'arco S e non da un'altra
+                  --   parte: la colonna «Transito» risponde a «questo reso e' gia' stato
+                  --   accreditato, e con quale documento».
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato
+                 FROM vendite.resi r
+                   JOIN config.stati_doc_reso sr ON sr.id = r.stato_doc_reso_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = r.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = r.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = r.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = r.sorgente_tipo_id
+                   LEFT JOIN vendite.ddt d_src ON d_src.uid = r.sorgente_uid
+                   -- ⚠️ LEFT, come sulle sei sorelle: un reso senza genealogia deve
+                   --   comparire in lista senza genealogia, non sparire.
+                   LEFT JOIN vendite.vw_documento_lineage lin
+                          ON lin.tipo_id = (SELECT s.id FROM config.sorgenti s
+                                             WHERE s.codice_interno = 'RESO_VENDITA'
+                                               AND s.attivo IS TRUE)
+                         AND lin.uid = (r.id)::text;
+
+              COMMENT ON VIEW vendite.vw_resi_lista IS
+                  'Lista/dettaglio resi vendita (mirror vw_ddt_lista). security_invoker=on + RLS su '
+                  'base; espone emittente_fiscale_id/_codice e emittente_ragione_sociale. '
+                  '⭐ rev 2026-08-25 — LA SESTA SORELLA: fase + colonne di genealogia da '
+                  'vendite.vw_documento_lineage (pratica, frontiera, discendenti, is_transitato), '
+                  'nella stessa forma delle altre liste documento. `fase` non c''era: la vista '
+                  'aveva lo stato ma non la fase normalizzata, e il seed della colonna omonima la '
+                  'cerca con quel nome esatto — senza, la colonna sarebbe nata vuota e in silenzio. '
+                  '⭐ SU UN RESO frontiera_codice E'' IL NUMERO DELLA NOTA DI CREDITO: con l''arco '
+                  'S (20260825-19) il reso smette di essere una foglia e la sua frontiera diventa '
+                  'la nota che lo accredita. La colonna «Transito» risponde percio'' a «questo reso '
+                  'e'' gia'' stato accreditato, e con quale documento» — che prima era una '
+                  'QUANTITA'' (gia_accreditato) in un drawer, non un documento in lista. '
+                  '⚠️ Il join al lineage e'' LEFT come sulle sorelle: un reso senza genealogia '
+                  'compare senza genealogia, non sparisce. '
+                  'Consumo: ui.lista_definizione ''vendite.resi'' (id 9) + preset resi_default; il '
+                  'frontend e'' gia'' <ListaConfigurabile>, quindi le colonne arrivano dal seed.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: un CREATE OR REPLACE non puo' TOGLIERE
+              --    colonne, quindi tornare indietro vuol dire DROP + CREATE della vista
+              --    nella forma di 20260802-20 piu' il rename di 20260803-01 — e il DROP
+              --    porta via i GRANT. Va fatto a mano e con un changeSet suo, dopo aver
+              --    tolto le tre righe di seed da ui.lista_colonna: lasciarle puntare a
+              --    colonne inesistenti romperebbe la lista, non la riporterebbe indietro.
+              SELECT 1;

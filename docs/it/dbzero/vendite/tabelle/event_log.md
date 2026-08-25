@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| event_time | timestamp with time zone | NO | now() |
+| event_time | timestamp with time zone | NO | clock_timestamp() |
 | entity_type | text | NO |  |
 | entity_id | bigint | NO |  |
 | event_code | text | NO |  |

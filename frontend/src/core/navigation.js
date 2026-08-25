@@ -183,6 +183,10 @@ export const DOMAIN_MENUS = {
     { key: 'ordini', icon: NAV_ICONS.ORDINI, to: '/vendite/ordini' },
     { key: 'ddt', icon: NAV_ICONS.DDT, to: '/vendite/ddt' },
     { key: 'resi', icon: NAV_ICONS.RESI, to: '/vendite/resi' },
+    // ⭐ La settima lista del ciclo attivo, arrivata il 2026-08-24: fino ad
+    // allora la fattura era l'unico documento senza la sua, e si raggiungeva
+    // solo passando da un lotto o da un collegamento.
+    { key: 'fatture', icon: NAV_ICONS.FATTURE, to: '/vendite/fatture' },
     { key: 'contratti', icon: NAV_ICONS.CONTRATTI, to: '/vendite/contratti' },
     { key: 'listini', icon: NAV_ICONS.LISTINI, to: '/vendite/listini' },
     { key: 'promo-articoli', icon: NAV_ICONS.PROMO_ARTICOLI, to: '/vendite/promo-articoli' },

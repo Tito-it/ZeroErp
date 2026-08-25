@@ -24,6 +24,17 @@ Indice test eseguiti:
 12) DistintaDetailApiTests.test_patch_passa_il_payload_al_service
 13) RegistrazioneApiTests.test_anteprima_ok
 14) RegistrazioneApiTests.test_registrazione_restituisce_la_ricevuta_intatta
+15) Slice3RotteTests.test_le_rotte_della_slice_3_esistono
+16) Slice3ApiTests.test_abbina_senza_idempotency_key_rifiutato
+17) Slice3ApiTests.test_abbina_ok
+18) Slice3ApiTests.test_coda_filtri_tradotti
+19) Slice3ApiTests.test_saldo_rata_ok
+20) Slice3ApiTests.test_saldo_fattura_ok
+21) Slice5RotteTests.test_le_rotte_delle_sistemazioni_esistono
+22) Slice5ApiTests.test_eccedenze_filtri_tradotti
+23) Slice5ApiTests.test_registrazione_senza_idempotency_key_rifiutata
+24) Slice5ApiTests.test_conferma_ok
+25) Slice5ApiTests.test_annulla_ok
 """
 
 from datetime import date
@@ -274,3 +285,183 @@ class RegistrazioneApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["esito"], "NULLA_DA_POSTARE")
+
+
+class Slice3RotteTests(JwtMockedApiTest):
+    # Scopo: Le sei rotte della slice 3 esistono e stanno dove il contratto
+    #        dice. ⚠️ `rate/fuori-capienza/` deve stare PRIMA del pattern con
+    #        l'id: l'ordine e' la regola, non la fortuna.
+    def test_le_rotte_della_slice_3_esistono(self):
+        self.assertEqual(
+            reverse("pagamenti-riga-abbina", args=[11]),
+            "/api/v1/pagamenti/righe/11/abbina/",
+        )
+        self.assertEqual(reverse("pagamenti-righe-coda"), "/api/v1/pagamenti/righe/")
+        self.assertEqual(
+            reverse("pagamenti-rate-fuori-capienza"),
+            "/api/v1/pagamenti/rate/fuori-capienza/",
+        )
+        self.assertEqual(
+            reverse("pagamenti-rata-saldo", args=[900]),
+            "/api/v1/pagamenti/rate/900/saldo/",
+        )
+        self.assertEqual(
+            reverse("pagamenti-fattura-saldo", args=[2263]),
+            "/api/v1/pagamenti/fatture/2263/saldo/",
+        )
+        self.assertEqual(
+            reverse("pagamenti-fattura-rate", args=[2263]),
+            "/api/v1/pagamenti/fatture/2263/rate/",
+        )
+
+
+class Slice3ApiTests(JwtMockedApiTest):
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    # Scopo: Abbinare e' una scrittura, e la conferma della forzatura si
+    #        ripete: senza chiave di idempotenza un doppio invio la applica due
+    #        volte.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.abbina_riga")
+    def test_abbina_senza_idempotency_key_rifiutato(self, mocked, _auth):
+        response = self.client.post(
+            "/api/v1/pagamenti/righe/11/abbina/",
+            data={"fattura_id": 2263, "billing_account_id": 41},
+            content_type="application/json",
+        )
+        self.assertEqual(response.json()["error"]["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
+        mocked.assert_not_called()
+
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.abbina_riga")
+    def test_abbina_ok(self, mocked, _auth):
+        mocked.return_value = {"riga": {"id": 11, "stato_codice": "ABBINATA"}}
+        response = self.client.post(
+            "/api/v1/pagamenti/righe/11/abbina/",
+            data={"fattura_id": 2263, "billing_account_id": 41, "forzata": True},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-0003",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mocked.call_args.args[1]["forzata"])
+
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.list_coda_righe")
+    def test_coda_filtri_tradotti(self, mocked, _auth):
+        mocked.return_value = {"count": 0, "page": 1, "page_size": 50,
+                               "total_pages": 0, "results": []}
+        self.client.get("/api/v1/pagamenti/righe/?coda=sospese&billing_account_id=41")
+        kwargs = mocked.call_args.kwargs
+        self.assertEqual(kwargs["coda"], "SOSPESE")
+        self.assertEqual(kwargs["billing_account_id"], 41)
+
+    @_AUTH
+    @patch("apps.pagamenti.api.views.saldi_service.saldo_rata")
+    def test_saldo_rata_ok(self, mocked, _auth):
+        mocked.return_value = {"livello": "RATA", "residuo": "1000.00",
+                               "in_lavorazione": "0", "incassato": "800.00",
+                               "has_movimenti": True}
+        response = self.client.get(
+            "/api/v1/pagamenti/rate/900/saldo/?escludi_riga_id=11"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked.call_args.kwargs["escludi_riga_id"], 11)
+
+    # Scopo: ⚠️ Il saldo di un documento sta in `pagamenti` e NON in `vendite`:
+    #        le chiamate laterali fra moduli di pari livello non sono ammesse.
+    #        Lo consuma il drawer fattura, quindi salta il controllo d'area.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.saldi_service.saldo_documento")
+    def test_saldo_fattura_ok(self, mocked, _auth):
+        mocked.return_value = {"livello": "DOCUMENTO", "residuo": "500.00",
+                               "in_lavorazione": "100.00", "incassato": None,
+                               "has_movimenti": True}
+        response = self.client.get("/api/v1/pagamenti/fatture/2263/saldo/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["data"]["incassato"])
+
+
+class Slice5RotteTests(JwtMockedApiTest):
+    # Scopo: Le cinque rotte del giro delle sistemazioni. ⚠️ `sistemazioni/<id>/`
+    #        sta DOPO i due verbi: il pattern generico se li mangerebbe.
+    def test_le_rotte_delle_sistemazioni_esistono(self):
+        self.assertEqual(reverse("pagamenti-eccedenze"), "/api/v1/pagamenti/eccedenze/")
+        self.assertEqual(
+            reverse("pagamenti-sistemazioni"), "/api/v1/pagamenti/sistemazioni/"
+        )
+        self.assertEqual(
+            reverse("pagamenti-sistemazione-conferma", args=[3]),
+            "/api/v1/pagamenti/sistemazioni/3/conferma/",
+        )
+        self.assertEqual(
+            reverse("pagamenti-sistemazione-annulla", args=[3]),
+            "/api/v1/pagamenti/sistemazioni/3/annulla/",
+        )
+        self.assertEqual(
+            reverse("pagamenti-fattura-sistemazioni", args=[2263]),
+            "/api/v1/pagamenti/fatture/2263/sistemazioni/",
+        )
+
+
+class Slice5ApiTests(JwtMockedApiTest):
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.list_eccedenze")
+    def test_eccedenze_filtri_tradotti(self, mocked, _auth):
+        mocked.return_value = {"count": 0, "page": 1, "page_size": 50,
+                               "total_pages": 0, "results": []}
+        self.client.get("/api/v1/pagamenti/eccedenze/?chi_e_in_credito=cliente")
+        self.assertEqual(mocked.call_args.kwargs["chi_e_in_credito"], "CLIENTE")
+
+    # Scopo: Registrare una decisione e' una scrittura: senza chiave di
+    #        idempotenza un doppio invio registra due atti sullo stesso denaro.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.crea_sistemazione")
+    def test_registrazione_senza_idempotency_key_rifiutata(self, mocked, _auth):
+        response = self.client.post(
+            "/api/v1/pagamenti/sistemazioni/",
+            data={"fattura_origine_id": 2263, "destinazione": "RIMBORSO",
+                  "importo": "200.00"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.json()["error"]["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
+        mocked.assert_not_called()
+
+    # Scopo: ⚠️ Il canale del rimborso viaggia alla CONFERMA.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.conferma_sistemazione")
+    def test_conferma_ok(self, mocked, _auth):
+        mocked.return_value = {"esito": {"contabile_id": 88, "fondo_source_id": None,
+                                          "esito": "RIMBORSO"},
+                               "sistemazione": {"id": 3, "stato": "CONFERMATA"}}
+        response = self.client.post(
+            "/api/v1/pagamenti/sistemazioni/3/conferma/",
+            data={"ente_incasso_id": 4},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-0004",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked.call_args.args[1], {"ente_incasso_id": 4})
+        self.assertEqual(response.json()["data"]["esito"]["contabile_id"], 88)
+
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.annulla_sistemazione")
+    def test_annulla_ok(self, mocked, _auth):
+        mocked.return_value = {"sistemazione": {"id": 3, "stato": "ANNULLATA"}}
+        response = self.client.post(
+            "/api/v1/pagamenti/sistemazioni/3/annulla/",
+            data={"motivo": "deciso altrimenti"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-0005",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["sistemazione"]["stato"], "ANNULLATA")

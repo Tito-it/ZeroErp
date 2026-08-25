@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-7 — LA MEMORIA DELLA SEQUENZA
+#   vendite.registri_fatturazione_progressivi.ultima_data
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-7
+#
+# ── ⭐ PERCHE' QUI E NON SU vendite.fatture ─────────────────────────
+#   Il cancello di monotonia deve chiedersi «qual e' la data dell'ultimo numero
+#   emesso su questo sezionale?». La risposta si potrebbe cercare in
+#   `vendite.fatture` con un `max(data)` — e sarebbe **sbagliato**, perche'
+#   quella tabella ha la RLS (`rls_fatture_ef_whitelist`, `FOR ALL`) e la
+#   funzione che numera e' `SECURITY INVOKER`.
+#
+#   Sotto un perimetro emittente ristretto quel `max()` tornerebbe `NULL`, e un
+#   cancello che legge `NULL` dice **«via libera» proprio quando non sa**. Uno
+#   zero — o un NULL — non e' un dato: e' l'assenza di una risposta, e va
+#   trattata come tale.
+#
+#   ⭐ `registri_fatturazione_progressivi` **NON ha RLS** (verificato il
+#   2026-08-25 su `pg_class.relrowsecurity`: `f`). Qui il dato e' sempre
+#   completo, per chiunque, e' `O(1)`, ed e' su una riga che il cancello ha
+#   gia' bloccato con l'advisory lock e il `FOR UPDATE`. Il problema si elimina
+#   alla radice invece di essere aggirato.
+#
+# ── ℹ️ NULLABLE, E RESTA NULLABLE ───────────────────────────────────
+#   Una riga di contatore nasce prima di aver emesso qualcosa
+#   (`fn_get_next_progressivo` la crea con `last_numero = 0`), quindi `NULL`
+#   significa «su questa riga non e' ancora uscito nessun numero». Il cancello
+#   lo legge come «nessun vincolo», ed e' corretto: non c'e' niente da
+#   rispettare. ⚠️ Non e' lo stesso `NULL` fail-open di cui sopra — li' era
+#   «non lo vedo», qui e' «non e' ancora successo».
+#
+# ── ℹ️ NIENTE INDICE, NIENTE STORICO ────────────────────────────────
+#   La tabella ha due righe. Il cancello legge per `(registro_id, serie)`, che
+#   e' gia' la testa di `uq_regprog_key`. E la tabella non ha ne' colonne di
+#   audit ne' `storicizza`: e' tecnica, e resta tale.
+#
+# ── ⚠️ MENTRE SI E' QUI: due UNIQUE gemelli, nominati e non tolti ───
+#   `uq_regprog_key (registro_id, anno, mese, serie)` e
+#   `uq_registri_progressivi_scope (registro_id, anno, COALESCE(mese,0),
+#   COALESCE(serie,''))` sono **lo stesso vincolo**: `mese` e `serie` sono
+#   `NOT NULL`, quindi i due `COALESCE` non fanno niente e il secondo e' un
+#   gemello con espressioni (linee-guida-sql §8.6 — e non lo vede
+#   `vw_duplicate_indexes`, perche' le firme differiscono per le espressioni).
+#   ⛔ NON si toglie qui: droppare un UNIQUE e' una decisione sua, non un
+#   effetto collaterale di una colonna aggiunta. §7 del brief lo registra.
+#
+# Dipendenze: nessuna. La legge fn_get_next_progressivo (20260825-11), che deve
+#             avere numero PIU' ALTO — l'autogen ordina 00_schema e 20_code per NN.
+# Verifica: db/pgtap/vendite/test-registri-progressivi.sql (caso 5, DB-13)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260825-09-alter-registri-progressivi-ultima-data-mctit.yaml
+
+  - changeSet:
+      id: 20260825-09-alter-registri-progressivi-ultima-data
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-7: il contatore ricorda la data dell'ultimo numero che ha emesso. Sta QUI e non su
+        vendite.fatture perche' quella tabella ha la RLS e la funzione che numera e' SECURITY
+        INVOKER: un max(data) sotto perimetro ristretto tornerebbe NULL, e un cancello che
+        legge NULL direbbe «via libera» proprio quando non sa. registri_fatturazione_progressivi
+        non ha RLS (verificato su pg_class.relrowsecurity), quindi il dato e' sempre completo,
+        e' O(1) ed e' su una riga che il cancello ha gia' bloccato. Nullable per costruzione:
+        una riga di contatore nasce prima di emettere, e li' NULL vuol dire «non e' ancora
+        successo», non «non lo vedo». Niente indice (due righe, e la chiave e' gia' la testa
+        di uq_regprog_key), niente storico (tabella tecnica).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione_progressivi
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: registri_fatturazione_progressivi
+                    columnName: ultima_data
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                ADD COLUMN ultima_data date NULL;
+
+              COMMENT ON COLUMN vendite.registri_fatturazione_progressivi.ultima_data
+                IS 'Data del documento a cui e'' stato dato l''ultimo numero uscito da questa riga di contatore. La scrive vendite.fn_get_next_progressivo a ogni numero emesso, con GREATEST: non arretra mai, nemmeno se un documento legittimo portasse una data uguale. ⭐ E'' la memoria su cui poggia il cancello di monotonia, e sta QUI e non su vendite.fatture per una ragione precisa: fatture ha la RLS (rls_fatture_ef_whitelist, FOR ALL) e la funzione che numera e'' SECURITY INVOKER, quindi un max(data) letto in quella tabella sotto un perimetro emittente ristretto tornerebbe NULL — e un cancello che legge NULL direbbe «via libera» PROPRIO QUANDO NON SA. Questa tabella non ha RLS (verificato 2026-08-25 su pg_class.relrowsecurity = f): il dato e'' sempre completo per chiunque, e'' O(1), ed e'' su una riga che il cancello ha gia'' bloccato con l''advisory lock e il FOR UPDATE. ⚠️ NULL qui significa «da questa riga non e'' ancora uscito nessun numero» — una riga di contatore nasce con last_numero = 0 prima di emettere — e il cancello lo legge come «nessun vincolo da rispettare», che e'' corretto. Non e'' lo stesso NULL fail-open descritto sopra: quello era «non lo vedo», questo e'' «non e'' ancora successo». ⚠️ Il cancello legge il MASSIMO su (registro_id, serie) ATTRAVERSO GLI ANNI, non il valore della riga dell''anno corrente: altrimenti un documento retrodatato all''anno scorso finirebbe nel contatore dell''anno scorso e passerebbe indisturbato. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-7.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione_progressivi
+                DROP COLUMN IF EXISTS ultima_data;

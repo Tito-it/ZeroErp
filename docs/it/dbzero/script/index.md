@@ -15,6 +15,7 @@
 - [fn_available_actions_reso](funzioni/fn_available_actions_reso.md) — (rev 2026-07-13)
 - [fn_capability_promo_articolo](funzioni/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
+- [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
@@ -41,6 +42,7 @@
 - [fn_check_utility_istanza_coerenza](funzioni/fn_check_utility_istanza_coerenza.md)
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_current_identita_context](funzioni/fn_current_identita_context.md) — (latest review 19-04-2026)
+- [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.

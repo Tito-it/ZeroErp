@@ -1,0 +1,495 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-1 — I PUNTI DI SCRITTURA SMETTONO DI PASSARE now()
+#   E' il pezzo che sposta davvero il comportamento: il 20260824-16 allinea i
+#   DEFAULT, ma i DEFAULT sono quasi tutti inerti perche' i chiamanti la
+#   colonna la passano a mano.
+#   Richiesta: brief-db-event-log-scope-e-riga-parlante.md §13 (R-1)
+#
+# ⛔ VA APPLICATO NELLA STESSA PASSATA DEL 20260824-16. Separati, per un giro
+#   `started_at` e `ended_at` starebbero su due orologi diversi.
+#
+# ── ⭐ LA MISURA CHE HA DECISO LA FORMA — 2026-08-24, sui corpi vivi ─
+#   La richiesta del BE parlava di «quattro DEFAULT». Misurato, i chiamanti
+#   sono otto e il DEFAULT lo usa uno solo:
+#
+#     event_log.event_time             DEFAULT usato   ✅ fn_log_event non passa
+#                                                         la colonna: basta il -16
+#     fatturazione_lotti_log.data_ora  now() esplicito ❌ fn_log_pipeline_fase
+#     task_runs.started_at             now() esplicito ❌ fn_start_lotto_task_run
+#     task_runs.ended_at               now() esplicito ❌ fn_set_runtime_task_run_esito
+#     fatture_log.data_ora             now() esplicito ❌ CINQUE funzioni + il backend
+#
+# ── ⛔ IL QUINTO PUNTO, CHE LA RICHIESTA NON AVEVA — e rompe la pipeline ─
+#   `ended_at` non ha DEFAULT: lo scrive `fn_set_runtime_task_run_esito` con
+#   `now()`. Spostando solo `started_at`, un tentativo aperto e chiuso nella
+#   stessa transazione otterrebbe `ended_at` (inizio transazione) MINORE di
+#   `started_at` (orologio alla scrittura) — e c'e' un vincolo:
+#
+#     chk_fatt_lotti_task_runs_timestamps  CHECK (ended_at IS NULL OR ended_at >= started_at)
+#
+#   ⚠️ Non e' un rischio teorico: misurato, **165 corse su 319 hanno oggi
+#   `ended_at = started_at` esatto**, cioe' sono esattamente quel caso. Sarebbe
+#   stato un fallimento di vincolo dentro lo step, non un difetto sottile.
+#   Per questo `ended_at` si sposta QUI, nella stessa passata.
+#
+# ── ⭐ PERCHE' SU `fatture_log` UN TRIGGER E NON CINQUE RISCRITTURE ──
+#   I cinque chiamanti di `fatture_log` sono `fn_genera_scadenze_fattura`,
+#   `fn_genera_scadenze_lotto`, `fn_reset_fondi_fattura`,
+#   `fn_snapshot_fattura_lotto`, `fn_sync_contabili_fondo_fattura`: **957 righe
+#   di corpo vivo in tutto**, e in nessuno di essi il log e' il soggetto — e'
+#   una riga di servizio dentro un ramo di errore.
+#
+#   ⛔ Riprodurre 957 righe per spostare cinque token e' il baratto sbagliato,
+#   ed e' una trappola che questa casa ha gia' pagato: un corpo vivo riprodotto
+#   si porta dietro il proprio debito e SEMBRA giusto perche' combacia col
+#   database. Cinque riscritture sono cinque occasioni di regredire qualcosa
+#   che non c'entra.
+#
+#   ⭐ E c'e' un sesto scrittore che una riscrittura non raggiunge: il
+#   **backend** (`apps/vendite/db/pipeline_repository.py`, l'INSERT unico su
+#   `fatture_log`) passa anche lui `now()`. Il trigger lo copre senza chiedere
+#   niente a nessuno — cioe' toglie una consegna al BE invece di aggiungerla.
+#
+#   ⚠️ E NON e' un meccanismo nuovo in casa: `trgfn_audit_data_user_generic`
+#   fa esattamente questo — un BEFORE che mette lui l'orario — su tutte e
+#   quattro queste tabelle. Il trigger nuovo e' lo stesso idioma applicato a
+#   una colonna di osservabilita' invece che a una di audit.
+#
+#   ⛔ SCRIVE SEMPRE, senza guardare cosa ha passato il chiamante, e va detto:
+#   il valore di quella colonna e' «quando questa riga e' stata scritta», e
+#   quello lo sa solo il database. Un chiamante che ne passasse un altro
+#   starebbe sbagliando per definizione. ⚠️ Il prezzo, dichiarato: un giorno
+#   non si potra' inserire una riga di log con un orario storico. Il brief lo
+#   esclude gia' («nessun backfill»), e per `event_log` lo esclude un trigger.
+#
+#   ⚠️ ORDINE FRA TRIGGER: i BEFORE ROW scattano in ordine alfabetico.
+#   `trg_fatture_log_a10_orario_reale_ins` viene prima di
+#   `trg_fatture_log_audit_data_user_upd` e `trg_fatture_log_gen_tx_id_ins_upd`,
+#   e nessuno dei due legge `data_ora` — verificato, non dedotto.
+#
+# ── ℹ️ SUGLI ALTRI TRE REGISTRI NIENTE TRIGGER, ed e' una scelta ────
+#   Li' i chiamanti sono uno o due e piccoli (57, 69 e 112 righe): si toglie il
+#   `now()` dove sta, cosi' il codice smette di dire una cosa che non e' piu'
+#   vera. Un trigger avrebbe reso il `now()` residuo codice morto che mente.
+#   Il futuro lo presidia il pgTAP: nessuna funzione puo' scrivere `now()` in
+#   quelle colonne senza far diventare rossa la suite.
+#
+# ── ⛔ COSA NON CAMBIA ──────────────────────────────────────────────
+#   · `data_insert` / `data_update` restano `now()` in tutte e tre le funzioni:
+#     e' la convenzione della casa e non c'entra con l'ordinamento;
+#   · firme, RETURNS e semantica delle tre funzioni: nessun overload, nessun
+#     DROP — cambia un token per funzione;
+#   · nessun backfill, nessun indice, nessuna vista.
+#
+# ── 📌 DEBITO VISTO E NON TOCCATO ───────────────────────────────────
+#   `fn_set_runtime_task_run_esito` solleva tre volte `E_GENERICO`. E' debito
+#   noto e non e' di questo cantiere: correggerlo vuol dire coniare tre codici
+#   registrati con la loro classe, ed e' un lotto suo. Scritto qui perche' chi
+#   rilegge questa funzione sappia che e' stato guardato, non ignorato.
+#
+# Dipendenze: 20260824-16 (i DEFAULT), stessa passata.
+# Consumatori da rileggere: vendite.fn_list_lotto_segnalazioni e
+#   vendite.fn_list_lotto_task_runs ancorano il «giro corrente» a
+#   max(event_time) dei PIPELINE_STARTED — il perimetro cambia, ed e' pinnato
+#   dal pgTAP.
+# Verifica: db/pgtap/vendite/test-registri-log-orario-reale.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260824-17-registri-log-orario-reale-mctit.yaml
+
+  - changeSet:
+      id: 20260824-17-registri-log-orario-reale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        R-1, il pezzo che sposta il comportamento: i punti di scrittura dei registri
+        smettono di passare now(). Un TRIGGER su fatture_log (cinque funzioni per 957 righe
+        di corpo vivo, piu' il backend: riprodurle per spostare cinque token e' il baratto
+        sbagliato) e tre funzioni piccole riscritte. ⛔ ended_at si sposta QUI o il CHECK
+        chk_fatt_lotti_task_runs_timestamps fallisce: 165 corse su 319 hanno oggi
+        ended_at = started_at esatto. ⚠️ data_insert/data_update restano now().
+      preConditions:
+        - onFail: HALT
+        - and:
+            # I DEFAULT devono essere gia' passati: se questo file girasse da
+            # solo, la DDL direbbe una cosa e il codice un'altra.
+            - sqlCheck:
+                expectedResult: 4
+                sql: |
+                  SELECT count(*)
+                    FROM pg_attrdef d
+                    JOIN pg_class c ON c.oid = d.adrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.adnum
+                   WHERE n.nspname = 'vendite'
+                     AND (c.relname, a.attname) IN
+                         (('event_log','event_time'), ('fatture_log','data_ora'),
+                          ('fatturazione_lotti_log','data_ora'),
+                          ('fatturazione_lotti_task_runs','started_at'))
+                     AND pg_get_expr(d.adbin, d.adrelid) ILIKE '%clock_timestamp%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- 1) L'orario vero su fatture_log, imposto dal database
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_log_a10_orario_reale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: mettere su `data_ora` l'istante della SCRITTURA e non
+              --   quello di inizio transazione, qualunque cosa passi il
+              --   chiamante.
+              --
+              -- ⭐ PERCHE' UN TRIGGER E NON CINQUE RISCRITTURE. Gli scrittori di
+              --   questo registro sono cinque funzioni per 957 righe di corpo
+              --   vivo — piu' il backend — e in nessuna di esse il log e' il
+              --   soggetto: e' una riga di servizio dentro un ramo di errore.
+              --   Riprodurre quei corpi per spostare cinque token vorrebbe dire
+              --   cinque occasioni di regredire qualcosa che non c'entra, e
+              --   lascerebbe comunque fuori l'INSERT del backend.
+              --
+              -- ⛔ SCRIVE SEMPRE, senza guardare NEW.data_ora. Non e' una svista:
+              --   il valore di questa colonna e' «quando questa riga e' stata
+              --   scritta», e quello lo sa solo il database. Un chiamante che ne
+              --   passasse un altro starebbe sbagliando per definizione.
+              --   ⚠️ Il prezzo e' dichiarato: non si puo' inserire una riga di
+              --   log con un orario storico. Il cantiere lo esclude gia'
+              --   («nessun backfill»).
+              --
+              -- ⚠️ Idioma gia' in casa: trgfn_audit_data_user_generic fa
+              --   esattamente questo sulle colonne di audit, su questa stessa
+              --   tabella. Qui la colonna e' di OSSERVABILITA', e per questo
+              --   l'orologio e' un altro.
+              BEGIN
+                  NEW.data_ora := clock_timestamp();
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_log_a10_orario_reale()
+              IS 'BEFORE INSERT su vendite.fatture_log: impone data_ora = clock_timestamp(), cioe'' l''istante della SCRITTURA e non quello di inizio transazione. ⭐ Nasce da R-1 (brief-db-event-log-scope-e-riga-parlante §13): con now() tutte le righe scritte nella stessa transazione escono con lo stesso timestamp al microsecondo, e la storia di un lotto — che legge tre registri — non e'' ordinabile. ⭐ E'' un trigger e non cinque riscritture perche'' gli scrittori di questo registro sono cinque funzioni per 957 righe di corpo vivo (fn_genera_scadenze_fattura, fn_genera_scadenze_lotto, fn_reset_fondi_fattura, fn_snapshot_fattura_lotto, fn_sync_contabili_fondo_fattura) piu'' l''INSERT del backend, e in nessuna di esse il log e'' il soggetto: riprodurle sarebbe stato cinque occasioni di regredire altro, e avrebbe comunque lasciato fuori il backend. ⛔ Scrive SEMPRE, senza guardare il valore passato: quel valore lo sa solo il database, e chi ne passasse un altro sbaglierebbe per definizione — il prezzo dichiarato e'' che non si puo'' inserire una riga di log con orario storico, cosa che il cantiere esclude gia'' (nessun backfill). ⚠️ Fase a10 perche'' i BEFORE ROW scattano in ordine alfabetico: viene prima di trg_fatture_log_audit_data_user_upd e trg_fatture_log_gen_tx_id_ins_upd, nessuno dei quali legge data_ora. Idioma gemello di trgfn_audit_data_user_generic, che fa lo stesso sulle colonne di audit — dove pero'' l''orologio giusto resta now().';
+
+              DROP TRIGGER IF EXISTS trg_fatture_log_a10_orario_reale_ins ON vendite.fatture_log;
+
+              CREATE TRIGGER trg_fatture_log_a10_orario_reale_ins
+                  BEFORE INSERT ON vendite.fatture_log
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatture_log_a10_orario_reale();
+
+              -- =========================================================
+              -- 2) fatturazione_lotti_log — l'unico scrittore smette di
+              --    passare now()
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_log_pipeline_fase(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_fase text, p_status character DEFAULT 'I'::bpchar, p_messaggio text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb, p_error_code text DEFAULT NULL::text)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tipo_lotto      vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_stato_operativo vendite.fatturazione_lotti.stato_operativo%TYPE;
+                  v_error_code      config.codici_errore.codice%TYPE;
+                  v_meta            vendite.fatturazione_lotti_log.meta%TYPE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_status IS NULL OR p_status NOT IN ('I', 'W', 'C') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_status', 'valore', p_status), NULL::uuid, concat('p_status=', coalesce(p_status::text, 'NULL'), ' (ammessi: I, W, C)'));
+                  END IF;
+
+                  SELECT l.tipo_lotto, l.stato_operativo INTO v_tipo_lotto, v_stato_operativo
+                    FROM vendite.fatturazione_lotti l WHERE l.id = p_lotto_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                  END IF;
+
+                  -- ⭐ IL CODICE ERRORE ENTRA IN META.
+                  --    Normalizzato: una stringa di soli spazi e' assenza, non un
+                  --    codice — e in JSON diventerebbe una chiave presente e vuota,
+                  --    cioe' peggio che assente (la lista mostrerebbe una cella
+                  --    bianca dove «non lo so» e «non c'e'» si leggono uguali).
+                  --    ⚠️ NESSUNA verifica contro config.codici_errore: questa
+                  --    funzione scrive un LOG, e un log non deve poter fallire per
+                  --    un refuso nel codice che sta registrando. Fallirebbe dentro
+                  --    il ramo EXCEPTION di qualcun altro, sostituendo il guasto
+                  --    vero con il proprio.
+                  v_error_code := NULLIF(btrim(COALESCE(p_error_code, '')), '');
+                  v_meta       := COALESCE(p_meta, '{}'::jsonb);
+
+                  IF v_error_code IS NOT NULL THEN
+                      -- Il parametro VINCE su una chiave omonima gia' presente in
+                      -- p_meta: e' quello dichiarato in firma, ed e' l'unico che
+                      -- un lettore sa di dover cercare.
+                      v_meta := v_meta || jsonb_build_object('error_code', v_error_code);
+                  END IF;
+
+                  INSERT INTO vendite.fatturazione_lotti_log (
+                      lotto_id, data_ora, messaggio, status, disabilitato, fase,
+                      stato_doc_fiscale_id, tipo_lotto, stato_operativo, meta,
+                      data_insert, user_insert, data_update, user_update
+                  )
+                  VALUES (
+                      -- ⭐ R-1 (24-08-2026): clock_timestamp() e non now(). Con
+                      --    now() ogni riga scritta dentro la stessa transazione
+                      --    usciva con lo stesso identico orario, e la storia di un
+                      --    lotto — che unisce TRE registri i cui contatori di riga
+                      --    non sono confrontabili fra loro — non era ordinabile.
+                      --    ⚠️ Gli ultimi quattro `now()` restano: quelli sono i
+                      --    campi di AUDIT, dove l'orario di transazione e' la
+                      --    convenzione della casa e non c'entra con l'ordinamento.
+                      p_lotto_id, clock_timestamp(), COALESCE(p_messaggio, p_fase, 'pipeline'), p_status,
+                      FALSE, p_fase, p_stato_doc_fiscale_id, v_tipo_lotto, v_stato_operativo,
+                      v_meta, now(), current_user, now(), current_user
+                  );
+              END;
+              $function$;
+
+              -- =========================================================
+              -- 3) task_runs — apertura e chiusura sullo STESSO orologio
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_start_lotto_task_run(p_lotto_id bigint, p_pipeline_id bigint, p_stato_doc_fiscale_id bigint, p_task_code character varying, p_fase character varying DEFAULT NULL::character varying, p_meta jsonb DEFAULT '{}'::jsonb, p_correlation_id uuid DEFAULT NULL::uuid)
+               RETURNS TABLE(task_run_id bigint, tentativo smallint)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tentativo vendite.fatturazione_lotti_task_runs.tentativo%TYPE;
+              BEGIN
+                  -- Scopo: apre un tentativo di task sul lotto (stato IN_ESECUZIONE),
+                  --        numerandolo, e — dal 2026-08-22 — legandolo al GIRO che lo ha
+                  --        prodotto. Il numero di tentativo si conta per (lotto, task,
+                  --        stato_doc_fiscale): e' la chiave con cui la pipeline decide se
+                  --        riprendere o saltare.
+
+                  -- ── I tre guard di chiamata ──────────────────────────────────────────
+                  --   ⚠️ Erano `E_PARAMETRO_INVALIDO` con dentro «p_lotto_id obbligatorio e
+                  --   > 0» come frase per l'operatore. Il codice e' un debito dichiarato
+                  --   (D11 di brief-db-be-classe-codici-errore: split rimandato) e non e' la
+                  --   sede del nuovo: qui il dato lo produce SOLO un chiamante rotto, quindi
+                  --   la classe e' TECNICO e il codice e' il gemello vendite di
+                  --   E_PAGAMENTI_CHIAMATA_NON_VALIDA (2026-08-21). Il messaggio nomina il
+                  --   parametro DI PROPOSITO: il suo lettore e' chi ha scritto la chiamata.
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_start_lotto_task_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid,
+                          'vendite.fn_start_lotto_task_run',
+                          'p_lotto_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_start_lotto_task_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_pipeline_id', 'valore', p_pipeline_id),
+                          NULL::uuid,
+                          'vendite.fn_start_lotto_task_run',
+                          'p_pipeline_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_start_lotto_task_run', 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_task_code', 'valore', p_task_code),
+                          NULL::uuid,
+                          'vendite.fn_start_lotto_task_run',
+                          'p_task_code obbligatorio');
+                  END IF;
+
+                  -- Il tentativo successivo per questa terna. `IS NOT DISTINCT FROM` perche'
+                  -- lo stato documento e' nullable: con `=` una terna a stato NULL non si
+                  -- ritroverebbe mai e ogni corsa ripartirebbe da 1.
+                  SELECT COALESCE(MAX(r.tentativo), 0)::SMALLINT + 1
+                    INTO v_tentativo
+                    FROM vendite.fatturazione_lotti_task_runs r
+                   WHERE r.lotto_id = p_lotto_id
+                     AND r.task_code = p_task_code
+                     AND r.stato_doc_fiscale_id IS NOT DISTINCT FROM p_stato_doc_fiscale_id::INTEGER;
+
+                  RETURN QUERY
+                  INSERT INTO vendite.fatturazione_lotti_task_runs AS r (
+                      lotto_id, pipeline_id, stato_doc_fiscale_id, task_code, fase, tentativo,
+                      task_stato, started_at, ended_at, error_code, error_message, meta,
+                      correlation_id,
+                      attivo, data_insert, user_insert, data_update, user_update
+                  ) VALUES (
+                      -- ⭐ R-1 (24-08-2026): `started_at` all'orologio della scrittura.
+                      --    ⛔ E la chiusura DEVE stare sullo stesso orologio: con
+                      --    `ended_at = now()` un tentativo aperto e chiuso nella
+                      --    stessa transazione finirebbe con la fine PRIMA
+                      --    dell'inizio, e chk_fatt_lotti_task_runs_timestamps lo
+                      --    rifiuterebbe. Vedi fn_set_runtime_task_run_esito, qui
+                      --    sotto: i due si spostano insieme o non si spostano.
+                      --    ⚠️ I `now()` in coda sono i campi di AUDIT e restano.
+                      p_lotto_id, p_pipeline_id, p_stato_doc_fiscale_id::INTEGER, p_task_code, p_fase, v_tentativo,
+                      'IN_ESECUZIONE', clock_timestamp(), NULL, NULL, NULL, COALESCE(p_meta, '{}'::JSONB),
+                      p_correlation_id,
+                      TRUE, now(), current_user, now(), current_user
+                  ) RETURNING r.id, r.tentativo;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION vendite.fn_set_runtime_task_run_esito(p_task_run_id bigint, p_task_stato text, p_error_code text DEFAULT NULL::text, p_error_message text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_task_stato text;
+                v_error_code text;
+                v_meta jsonb;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Applicare in modo uniforme la chiusura di un task-run
+                --   runtime del LOTTO.
+                --
+                -- Regole:
+                --   - validazione input minimi
+                --   - update stato/ended_at/meta
+                --   - fail: valorizza error_code/error_message
+                --   - complete/cancel: non forza errori, salvo reset dedicato
+                --
+                -- rev 2026-08-04: via il ramo ATTIVITA_FATTURABILI e con esso
+                --   il parametro `p_scope`. Quel ramo aggiornava
+                --   vendite.attivita_fatturabili_lotti_task_runs, droppata il
+                --   2026-02-27 col resto della famiglia «attivita pipeline»:
+                --   il CASCADE non porta via i corpi plpgsql, che PostgreSQL
+                --   non traccia come dipendenze. Non e' mai esplosa perche'
+                --   plpgsql pianifica per singolo statement, alla prima
+                --   esecuzione di quello statement, e i tre wrapper passavano
+                --   tutti 'LOTTO' cablato: il ramo morto non e' mai stato
+                --   nemmeno pianificato.
+                --
+                -- 📌 rev 2026-08-24 (R-1): cambia UN token, `ended_at`. Il resto
+                --   del corpo e' quello vivo, riprodotto senza toccarlo.
+                --   ⚠️ I tre `E_GENERICO` qui sotto sono debito NOTO e non di
+                --   questo cantiere: correggerli vuol dire coniare tre codici
+                --   registrati con la loro classe. Scritto perche' chi rilegge
+                --   sappia che sono stati guardati, non ignorati.
+                -- =========================================================
+                v_task_stato := upper(COALESCE(NULLIF(btrim(p_task_stato), ''), ''));
+                v_error_code := NULLIF(btrim(p_error_code), '');
+                v_meta := COALESCE(p_meta, '{}'::jsonb);
+
+                IF p_task_run_id IS NULL OR p_task_run_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_set_runtime_task_run_esito',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', 'LOTTO',
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'task_run_id obbligatorio',
+                        'task_run_id', p_task_run_id
+                      )
+                    ),
+                    NULL::uuid,
+                    'task_run_id obbligatorio'
+                  );
+                END IF;
+
+                IF v_task_stato NOT IN ('COMPLETATO', 'ERRORE', 'ANNULLATO') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_set_runtime_task_run_esito',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', 'LOTTO',
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'task_stato non valido',
+                        'task_stato', p_task_stato
+                      )
+                    ),
+                    NULL::uuid,
+                    'task_stato non valido'
+                  );
+                END IF;
+
+                UPDATE vendite.fatturazione_lotti_task_runs
+                   SET task_stato = v_task_stato,
+                       -- ⭐ R-1: lo STESSO orologio di `started_at`. Con `now()`
+                       --    un tentativo aperto e chiuso nella stessa transazione
+                       --    otterrebbe una fine ANTERIORE all'inizio, e
+                       --    chk_fatt_lotti_task_runs_timestamps lo rifiuterebbe.
+                       --    ⚠️ Misurato il 24-08-2026: 165 corse su 319 hanno
+                       --    ended_at = started_at esatto, cioe' sono esattamente
+                       --    quel caso — non un'ipotesi.
+                       ended_at = clock_timestamp(),
+                       error_code = CASE
+                         WHEN v_task_stato = 'ERRORE' THEN COALESCE(v_error_code, 'E_GENERICO')
+                         ELSE error_code
+                       END,
+                       error_message = CASE
+                         WHEN v_task_stato = 'ERRORE' THEN COALESCE(NULLIF(btrim(p_error_message), ''), 'Errore task')
+                         ELSE error_message
+                       END,
+                       meta = COALESCE(meta, '{}'::jsonb) || v_meta,
+                       -- ⚠️ Audit: resta now(), come in tutta la casa.
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE id = p_task_run_id;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_set_runtime_task_run_esito',
+                    'E_GENERICO',
+                    jsonb_build_object(
+                      'scope', 'LOTTO',
+                      'severity', 'C',
+                      'code', 'E_GENERICO',
+                      'lotto_id', NULL,
+                      'fattura_id', NULL,
+                      'context', jsonb_build_object(
+                        'detail', 'task_run non trovato',
+                        'task_run_id', p_task_run_id
+                      )
+                    ),
+                    NULL::uuid,
+                    concat('task_run non trovato id:', p_task_run_id::text)
+                  );
+                END IF;
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico dei tre corpi: si riapplica la
+              --    revisione precedente di ciascuno, INSIEME al rollback del
+              --    20260824-16. Tornare indietro a meta' lascerebbe `started_at`
+              --    e `ended_at` su due orologi diversi, che e' esattamente il
+              --    difetto che questo changeSet esiste per non introdurre.
+              --    Il trigger, quello si', si toglie senza effetti collaterali:
+              --    da quel momento su fatture_log torna a valere il valore
+              --    passato dal chiamante.
+              DROP TRIGGER IF EXISTS trg_fatture_log_a10_orario_reale_ins ON vendite.fatture_log;
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatture_log_a10_orario_reale();

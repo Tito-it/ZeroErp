@@ -1569,3 +1569,194 @@ In Python la trappola e' identica: `row_to_dict(cursor)` ritorna `None` a zero
 righe. Per questo BE-A2 chiede un guard **esplicito** con
 `E_VENDITE_PRICING_ESITO_ASSENTE` — e non un `assert`, che con `python -O`
 sparisce e lascia proseguire il `None`.
+
+---
+
+## 🔵 Un prezzo non negoziato dentro un push RIUSCITO — *(trovato il 2026-08-23, arrivato qui il 2026-08-24)*
+
+> **Da dove viene.** Emerso collaudando sul campo il ramo push del cantiere
+> `event_log`, ed era annotato là dentro come «fuori cantiere» — perché lo è:
+> non è osservabilità, è **pricing**. Portato qui, che è il documento che quel
+> codice d'errore lo tratta già. Annotato, **non analizzato e non corretto**.
+>
+> ⚠️ Si è visto **solo** perché quel giro è stato guardato riga per riga: il push
+> è andato `COMPLETATO` e l'errore è rimasto in `dbops.error_log`, senza che
+> niente a video lo dicesse.
+
+> **Perché sta qui e non in un brief suo.** Non è materia di `event_log`: è
+> emerso mentre si verificava sul campo il ramo push, e nel registro tecnico si
+> vede **solo** perché quel giro è stato guardato riga per riga. Annotato per
+> non perderlo — non analizzato, non corretto.
+
+### Un prezzo non negoziato sul contratto, dentro un push riuscito *(2026-08-23)*
+
+Il push di **ORD0016313** (giro `commesse_push_log` **1506**) è andato
+`COMPLETATO`, e **nello stesso `tx_id`** ha lasciato una riga in
+`dbops.error_log`:
+
+```
+23:27:18 · vendite.fn_resolve_prezzo_listino_v2 · E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C
+context: articolo 019d53f6-58ca-7cb7-b77b-86d201ce9787 · contratto_id 198
+         ba_id 155 · utility_id 5 · data_riferimento 2026-08-09
+         classe_utenza_id NULL · listino_versione_id_preferito NULL
+```
+
+⭐ **E il push non si è fermato**: l'attività nata dal giro
+(`commesse_attivita` **44883**, commessa **25092**) ha
+`prezzo_snapshot = 17.00`, `prezzo_bloccato = true`, `pricing_mode = FIXED` —
+cioè il prezzo **è arrivato lo stesso**, verosimilmente bloccato dalla riga
+d'ordine invece che risolto dal contratto.
+
+**La domanda da porsi, quando si riprende:**
+
+1. **17,00 è il prezzo giusto?** Se viene dall'ordine e il contratto 198 avrebbe
+   dovuto negoziarne un altro, il documento nasce con un prezzo che nessuno ha
+   deciso — ed è il tipo di cosa che si scopre in fattura.
+2. **Il ripiego è voluto o è una tolleranza?** Un `prezzo_bloccato` che copre un
+   articolo *non negoziato sul contratto* può essere il disegno (il prezzo del
+   documento vince) oppure il modo in cui un buco di configurazione passa
+   inosservato. Le due cose si distinguono solo leggendo la regola, non il dato.
+3. **Quante volte capita?** Una riga di `error_log` su un push riuscito non la
+   guarda nessuno: se il caso è frequente, il registro lo sa già —
+   `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` per `function_name` e periodo.
+
+⚠️ **Non è un difetto accertato.** È un errore *registrato dentro
+un'operazione riuscita*, che è esattamente la categoria che nessuno controlla —
+e per questo vale la pena riprenderla a mente fresca invece di archiviarla come
+rumore.
+
+---
+
+### ✅ CHIUSO — il dubbio su `competenza_mese` *(2026-08-24)*
+
+> **Era una domanda aperta di questo brief**, nata collaudando: un documento di
+> **competenza giugno** confermato **ad agosto** finisce nel lotto di *giugno*,
+> il dato fiscale è corretto (la fattura ha data agosto), ma `competenza_mese`
+> sembrava fare **due mestieri** — tetto della raccolta *e* etichetta di
+> archiviazione — senza che esistesse un `periodo_fatturazione`.
+
+⭐ **Il modello non ha il difetto che sospettavamo.** Misurato: la regola di
+raccolta è `a.competenza_mese <= X` e il documento prende la data del giorno di
+emissione — entrambe corrette. Il caso nasce da una scelta legittima
+dell'operatore: lanciare *«fattura competenza giugno»* in agosto.
+
+⛔ **Il difetto era di VISIBILITÀ, non di modello**: chi lavora sul mese di
+agosto quel documento non lo trova, perché lo cerca — con ragione — per la
+**data del documento** e non per la competenza della commessa. Non serviva un
+`periodo_fatturazione`: serviva un posto dove guardare.
+
+✅ **Risposto** con una scheda **«Recuperi del mese»** sulla lista lotti — i
+lotti di competenza precedente che hanno emesso documenti nel mese filtrato.
+Sulla lista di agosto risponde `LTF-0006585` e `LTF-0006586`.
+
+📌 Il caso, le due sbagliate che ho preso per strada e le cose che restano stanno
+nel §6-bis di
+[brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md) —
+qui basta sapere che **la domanda non è più aperta**.
+
+⚠️ **E ne è uscito un buco più grande** — chiuso subito dopo, qui sotto.
+
+---
+
+## 11-bis. ✅ **La fattura ha la sua lista** — la settima del ciclo attivo *(2026-08-24)*
+
+> **Perché sta in questo brief.** Non è materia di questo cantiere: è il buco che
+> il §11 ha trovato inseguendo `competenza_mese`. Sta qui perché è **qui** che è
+> stato registrato, e chi riparte deve trovare la risposta accanto alla domanda.
+
+### Il buco, misurato
+
+La **fattura era l'unico documento del ciclo attivo senza la sua lista**.
+Misurato: `preventivi`, `offerte`, `ordini`, `contratti`, `ddt`, `resi` hanno la
+loro `ui.lista_definizione`; `fatture` **no**, e nel frontend non esisteva
+nessuna rotta verso di loro.
+
+⛔ Un documento fiscale si raggiungeva **solo** passando da un lotto, da un
+cruscotto o da un collegamento. È la ragione per cui la prima idea era stata una
+scheda dentro il drawer del lotto: *non c'era altro posto dove metterla*.
+
+### Cosa è stato costruito
+
+| Lato | Consegna |
+| --- | --- |
+| **DB** (team DB, commit `8919b41f4`) | vista `vendite.vw_fatture_lista` · `ui.lista_definizione` **48** `vendite.fatture` · **22 colonne** + preset `fatture_default` (ordinamento `data desc`, pagina 25) · pgTAP `test-vw-fatture-lista.sql` |
+| **BE** | `fatture_repository.py` — `list_fatture` sulla vista, whitelist `_ORDER_COLS_FATTURE` · `vendite_service.list_fatture_rows` · `ApiFattureList` + `ApiFattureExportView` |
+| **FE** | `FattureSearchTable.vue` + `FattureListView.vue` + store `fatture.js` · rotta `/vendite/fatture` · voce di menu · `TAB_ENTITIES.FATTURA` |
+
+⭐ **Filtri**: ricerca (numero · cliente · codice BA · **id fiscale**), stato,
+natura, utility, **data documento da/a**. Sono i due filtri chiesti da Tid —
+*billing account* e *id fiscale* — più quelli che le sorelle hanno già.
+
+⚠️ **`data_da`/`data_al` filtrano la DATA DEL DOCUMENTO, non la competenza della
+commessa**: è *tutto il punto della lista*. È la domanda del §11 — «l'ho cercata
+sul mese di competenza data fattura» — resa una casella.
+
+⛔ **SOLA LETTURA, per costruzione**: nessun «Nuovo». La fattura si produce dalla
+pipeline di fatturazione e oltre EMESSA le righe sono congelate a DB — quindi
+`useListaConfigurabilePage` è chiamato **senza `onNew`**, e dal 2026-07-31 il BB
+in quel caso il pulsante non lo mette affatto. Il drawer è quello di consultazione
+già in servizio: **la lista gli dà finalmente una casa**.
+
+### ⭐ Tre presidi hanno trovato tre difetti veri, prima di me
+
+Nessuno dei tre dava un errore a video. Sono la ragione per cui i presidi esistono:
+
+1. **`TAB_ENTITIES.FATTURA` non esisteva** — `useTabFreshness` avrebbe ricevuto
+   `undefined`, e la lista non si sarebbe mai rinfrescata rientrando sulla scheda.
+2. **Il registro `_LISTE` non conteneva la lista** — e un buco *lì* non è un test
+   che fallisce: è **tutta la batteria dei seed che smette di guardare** la nuova
+   lista, in silenzio.
+3. **`lista_codice = _LISTA_CODICE_FATTURE`** era invisibile al presidio del
+   perimetro, che legge il sorgente con `ast.literal_eval`: la lista risultava
+   **non presidiata**. Corretto a **letterale**. ⚠️ *Una costante è più pulita da
+   leggere e più cieca da controllare* — dove un presidio legge il codice, la
+   costante è il difetto.
+
+### 🔧 E un quarto difetto trovato scrivendo questa nota
+
+I nomi degli slot `#cell-…` **non coincidono con quelli delle sorelle**: su
+`vendite.fatture` il DB ha chiamato le colonne `natura_doc_descrizione`,
+`stato_descrizione`, `pratica_numero`; sui contratti si chiamano `natura`,
+`stato`, `pratica`. Li avevo scritti **alla maniera delle sorelle** — tre slot su
+cinque sbagliati.
+
+⛔ **Uno slot col nome sbagliato non dà nessun errore**: la cella ripiega sul
+valore grezzo, i Tag colorati e la cella lineage spariscono e basta. È lo stesso
+difetto silenzioso già pagato sullo slot `#actions`. **Il nome si legge dal seed,
+mai dalla lista sorella** — annotato nel componente.
+
+### La RLS c'è già, e il filtro applicativo si somma
+
+Domanda di Tid: *«la RLS è attiva giusto, filtrerebbe già per emittente?»* — sì.
+
+| | |
+| --- | --- |
+| `vendite.fatture` | RLS **attiva**, due policy: `rls_fatture_ef_whitelist` (`FOR ALL`) e `rls_fatture_ba_ownership` (`FOR SELECT`, il portale) |
+| tid (SUPER_ADMIN) | 18 righe |
+| fara (operatore) | 18 righe |
+| **senza contesto** | **0** — fail-closed |
+
+La vista è `security_invoker`, quindi il perimetro morde **a livello DB**, prima
+che il backend dica qualcosa. Il filtro applicativo
+(`add_emittente_scope_condition`) resta come **difesa in profondità** — è la
+regola scritta in [api.md](../api.md) §Scope emittente e ciò che fanno tutte e sei
+le sorelle. E ha una ragione concreta: *la RLS gira sulle **tabelle**, il filtro
+applicativo sulla **colonna della vista*** — un `LEFT JOIN` futuro verso una
+tabella senza policy sfuggirebbe alla prima e non al secondo.
+
+⚠️ **Ma la discriminazione non è mai stata esercitata sui dati**: `fara` vede 18
+righe come `tid` non perché la policy sia permissiva, ma perché **tutte e 18 le
+fatture sono dello stesso emittente** (`ef_pk 32`). Esiste un secondo emittente
+(`44`) che `fara` non ha in whitelist, e nessuna fattura gli appartiene. È
+identico al rilievo **R-4** del §12: *il fail-closed funziona; la discriminazione
+non è mai avvenuta su dati veri*. Serve una fattura sull'emittente `44` per
+collaudarla davvero.
+
+### 🔵 Cosa resta
+
+- **Validazione in-app** della pagina (Tid).
+- Il **collegamento profondo** da billing account / soggetti alla lista **con il
+  filtro già applicato** — chiesto da Tid, non ancora costruito.
+- La fattura sull'emittente `44` che renderebbe collaudabile il perimetro.
+
+---

@@ -16,6 +16,7 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
+from django.core.cache import cache
 from django.test import Client, SimpleTestCase
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -32,6 +33,12 @@ class TestClientiPatchApi(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()
+        # ⚠️ La cache del throttle e' CONDIVISA da tutta la suite: senza
+        #    questa riga il budget consumato dai test che girano prima
+        #    arriva qui, e le richieste rispondono 429 invece del loro
+        #    codice. Il difetto non e' del test che fallisce — e' di quello
+        #    che non pulisce, e si vede solo in suite completa.
+        cache.clear()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)

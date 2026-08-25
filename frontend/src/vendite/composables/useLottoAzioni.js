@@ -18,7 +18,7 @@
 //   espone di proposito, perché il loro verdetto (step successivo + criticità +
 //   distinzione avanza/rilancio, D-Q p.1) vive per intero nel runner Python.
 //   Finché sta lì restano gate del frontend — vedi `risposta-db-azioni-lista-lotto.md` §5.
-import { unref } from 'vue'
+import { ref, unref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useAuthStore } from '../../stores/auth'
@@ -114,10 +114,16 @@ export function useLottoAzioni({ onDone } = {}) {
       esito: () => t('vendite.lotti.avanza_esito'),
     },
     numera: {
-      api: (id) => numeraLotto(id),
+      // ⭐ La data documento dichiarata nel dialog arriva fin qui: riscrive la
+      // data delle fatture non ancora numerate del lotto e ne RIGENERA i piani
+      // rate, prima di numerare. `null` = nessuna dichiarazione.
+      api: (id, { dataDocumento = null } = {}) => numeraLotto(id, { dataDocumento }),
       title: 'vendite.lotti.numera_header',
       message: 'vendite.lotti.numera_conferma',
       esito: () => t('vendite.lotti.numera_esito'),
+      // ⛔ Non passa dalla conferma secca: la numerazione CHIEDE una data
+      // (FE-2). Vedi `numeraDialog` piu' sotto.
+      chiedeData: true,
     },
     ristampa: {
       api: (id) => ristampaLotto(id),
@@ -206,12 +212,58 @@ function verdettoRunner(res) {
   }
 }
 
+  // ⭐ FE-2 — LO STATO DEL DIALOG DELLA DATA, in UNA sede sola. I consumatori
+  //   sono due (il drawer e la lista) e ognuno rende il proprio
+  //   `<NumerazioneDataDialog>` legato a questo stato: la LOGICA resta qui, il
+  //   template e' loro. Duplicarla sarebbe la stessa trappola per cui questo
+  //   composable e' nato.
+  const numeraDialog = ref({ visible: false, lottoId: null })
+
+  // Scopo: la corsa vera di un verbo — chiamata, verdetto sul `motivo_stop`,
+  //   toast, refresh. Estratta dalla conferma perche' i percorsi che ci
+  //   arrivano sono DUE: la conferma secca (tutti gli altri verbi) e il dialog
+  //   della data (`numera`). Una copia per percorso avrebbe fatto divergere
+  //   proprio la lettura dell'esito, che e' la parte delicata (§ MOTIVI_STOP_OK).
+  async function _corri(lottoId, verbo, opzioni = {}) {
+    const res = await execute(() => verbo.api(lottoId, opzioni))
+    // `!== null` e non `if (res)`: un esito vuoto è comunque un successo
+    // (memoria feedback_drawer_result_check).
+    if (res === null) return
+    const verdetto = verdettoRunner(res)
+    if (!verdetto.ok) {
+      // ⚠️ Si ricarica LO STESSO: la catena può essersi fermata DOPO aver
+      // eseguito qualche step, e la lista deve mostrare dove è arrivata.
+      notify.errorConAzioni(
+        verdetto.messaggio,
+        azioniDaBersagli(verdetto.bersagli, auth),
+      )
+      if (!verbo.skipDone) await onDone?.()
+      return
+    }
+    notify.success(verbo.esito(res))
+    if (!verbo.skipDone) await onDone?.()
+  }
+
+  // Scopo: conferma la numerazione con la data scelta nel dialog.
+  async function confermaNumera(dataDocumento) {
+    const lottoId = numeraDialog.value.lottoId
+    numeraDialog.value = { visible: false, lottoId: null }
+    if (lottoId == null) return
+    await _corri(lottoId, VERBI.numera, { dataDocumento })
+  }
+
   // Scopo: esegue un verbo su un lotto — conferma, chiamata, toast, refresh.
   //   Usato dal drawer, che ha già il blob capability e quindi mostra
   //   disabilitate le azioni non eseguibili.
   function esegui(lottoId, key) {
     const verbo = VERBI[key]
     if (!verbo) return
+    // ⭐ La numerazione non chiede «sei sicuro?»: chiede CON QUALE DATA. Il
+    //   dialog e' la conferma, e porta con se' il pavimento del sezionale.
+    if (verbo.chiedeData) {
+      numeraDialog.value = { visible: true, lottoId }
+      return
+    }
     confirmAction({
       title: t(verbo.title),
       // ⚠️ L'avviso si APPENDE qui e non dentro la stringa di conferma: la
@@ -221,27 +273,9 @@ function verdettoRunner(res) {
       // di un'operazione non annullabile.
       message: verbo.avviso ? `${t(verbo.message)} ${t(verbo.avviso)}` : t(verbo.message),
       ...(verbo.danger ? { danger: true, acceptLabel: t(verbo.acceptLabel) } : {}),
-      onAccept: async () => {
-        const res = await execute(() => verbo.api(lottoId))
-        // `!== null` e non `if (res)`: un esito vuoto è comunque un successo
-        // (memoria feedback_drawer_result_check).
-        if (res === null) return
-        const verdetto = verdettoRunner(res)
-        if (!verdetto.ok) {
-          // ⚠️ Si ricarica LO STESSO: la catena può essersi fermata DOPO aver
-          // eseguito qualche step, e la lista deve mostrare dove è arrivata.
-          // Il gesto se c'è, il toast di prima se non c'è: `errorConAzioni`
-          // ricade da sé su `error` con un array vuoto.
-          notify.errorConAzioni(
-            verdetto.messaggio,
-            azioniDaBersagli(verdetto.bersagli, auth),
-          )
-          if (!verbo.skipDone) await onDone?.()
-          return
-        }
-        notify.success(verbo.esito(res))
-        if (!verbo.skipDone) await onDone?.()
-      },
+      // Il gesto se c'è, il toast di prima se non c'è: `errorConAzioni` ricade
+      // da sé su `error` con un array vuoto (dentro `_corri`).
+      onAccept: () => _corri(lottoId, verbo),
     })
   }
 
@@ -348,6 +382,8 @@ function verdettoRunner(res) {
     loading,
     esegui,
     eseguiVerificato,
+    numeraDialog,
+    confermaNumera,
     verbiPipeline,
     verbiPlausibili,
     azioniRiga,

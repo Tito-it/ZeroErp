@@ -48,6 +48,16 @@ View: `ApiRunLottoPipelineUntilDone` (`apps.vendite.api.views`).
   - `dry_run` (bool)
   - `tipo_lotto` (string) — `MASSIVO` (default) o `GIORNALIERO`
 
+⚠️ **`data_documento` NON è esposta qui, ed è deliberato** (2026-08-25). Il
+servizio `run_lotto_pipeline_until_done` accetta il parametro — è così che i
+verbi del cockpit scrivono la data dichiarata sui lotti che creano — ma
+`_run_lotto_kwargs` non lo mappa dal body: questo endpoint resta la superficie
+**stretta** del driver, e la data documento è una decisione d'atto che si prende
+dai verbi (`fatturazione/run/`, `fatturazione/numera/`,
+`lotti/<id>/numera/` — vedi [api_fatturazione.md](api_fatturazione.md)).
+Un lotto creato da qui prende quindi la data dalla **politica del suo registro**,
+che è il default giusto. Detto perché non venga letto come una dimenticanza.
+
 ## Output
 
 - `200`: esito del driver

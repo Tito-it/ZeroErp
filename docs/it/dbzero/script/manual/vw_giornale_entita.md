@@ -22,7 +22,7 @@ esiste, con le stesse parole per tutti.
 >
 > - [event_log](/dbzero/vendite/tabelle/event_log) — il registro polimorfo, l'unico che porta il perimetro sulla riga
 > - [fn_list_lotto_segnalazioni](/dbzero/vendite/funzioni/fn_list_lotto_segnalazioni) — risponde a un'**altra** domanda: «cosa è ancora aperto su questo lotto»
-> - Brief del cantiere: [brief-db-event-log-scope-e-riga-parlante](/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante) §3.6
+> - Brief del cantiere: [brief-db-event-log-scope-e-riga-parlante](/dev/work-done/brief-db-event-log-scope-e-riga-parlante) §3.6
 
 ---
 

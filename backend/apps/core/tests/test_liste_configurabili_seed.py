@@ -236,6 +236,10 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # pratiche) + le righe versione listino (endpoint UNION standalone+compositi,
     # decisione Tid 2026-08-02). Le whitelist delle code sono i dizionari
     # nome->SQL dei rispettivi repository: `set(dict)` = le chiavi.
+    # ⭐ La SETTIMA lista del ciclo attivo, 2026-08-24: fino ad allora la fattura
+    # era l'unico documento senza la sua, e si raggiungeva solo passando da un
+    # lotto o da un collegamento.
+    ("vendite.fatture", _da_costante("apps.vendite.db.fatture_repository", "_ORDER_COLS_FATTURE")),
     ("dbops.coda_lavori", _da_costante("apps.core.services.coda_lavori.repository", "ELENCA_SORT_SQL")),
     ("vendite.fatture_stampa_coda", _da_costante("apps.vendite.db.pipeline_repository", "CODA_STAMPA_SORT_SQL")),
     ("vendite.approvazioni_prezzo", _da_costante("apps.pratiche.db.pratiche_repository", "PRATICHE_ORDER_COLS")),

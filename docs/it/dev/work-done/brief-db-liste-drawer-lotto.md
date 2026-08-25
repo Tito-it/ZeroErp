@@ -44,6 +44,7 @@
 | 🔵 **A carico del BE/FE** | 6 consegne, di cui **3 bloccano** la nascita delle liste. Da concordare **prima** di L3, non in consegna | §4 |
 | ✅ **Domande aperte** | **Zero.** Q-1 e Q-2 chiuse il 2026-08-21 | §6 |
 | ⭐ **Il perno da non perdere** | «Job» ha un'ancora e non serve una colonna nuova: l'`event_time` dell'ultimo `PIPELINE_STARTED` in `vendite.event_log`. ⚠️ Non il `correlation_id`, che due corse condividono | §3 D-6 |
+| ⭐ **Strascico del 2026-08-24** | **«Recuperi del mese»** sulla lista lotti — i lotti di competenza precedente che hanno emesso documenti nel mese filtrato: il dubbio su `competenza_mese` non era di modello, era di **visibilità**. ✅ Chiuse anche le due colonne del **peso** del lotto (`n_fatture`, `totale_documenti`). 🔴 Tre difetti pagati, **nessuno dei tre dava un errore** | §6-bis |
 | ⭐ **STATO** | ✅ **CANTIERE CHIUSO (2026-08-22).** L1, L2, L3 applicati · BE-1…BE-5, FE-1 e FE-2 consegnati · tre liste a video con paginazione, export e colonne personalizzabili · presidio **47/47, zero KO** (compreso lo strascico `fondi_fattura_da_decidere`, §4-bis B) | §4 · §5 · §7 |
 
 ---
@@ -927,7 +928,7 @@ definizione). È ciò che rende utile la scheda.
 «competenza precedente» senza un termine di paragone non significa niente, e
 rispondere un elenco plausibile sarebbe peggio di un errore.
 
-### 🔴 Due difetti pagati, e il secondo vale oltre il caso
+### 🔴 Tre difetti pagati, e nessuno dei tre dava un errore
 
 1. **Prima l'avevo messa nel drawer del lotto** — su indicazione mia, e Tid l'ha
    accettata fidandosi. Sbagliato: quell'insieme è una proprietà del **mese**, e
@@ -942,6 +943,16 @@ rispondere un elenco plausibile sarebbe peggio di un errore.
    Corretto in **due** punti — la lista **e** l'export: sistemare solo il primo
    avrebbe spostato lo stesso difetto dove si nota più tardi, in un file già
    consegnato a qualcuno.
+3. ⭐ **«Personalizza colonne» era disabilitato** su entrambe le schede, senza
+   nessun errore in console. `useListaAzioni` vuole l'istanza di
+   `<ListaConfigurabile>`, e dopo l'estrazione il `ref="listaRef"` puntava al
+   **wrapper**: `configReady` restava falso per sempre. ⚠️ La prima correzione
+   — un function-ref che legge `el?.lista` — l'ho **scartata io**: legge UNA
+   volta, e se in quell'istante il figlio non è montato resta `null` senza dare
+   segno. La correzione vera è un evento `lista-pronta` emesso dall'`onMounted`
+   del figlio, quando il montaggio è un fatto e non un'ipotesi. *Applicato a
+   **entrambe** le schede*: correggerne una sola avrebbe lasciato lo stesso
+   difetto dove si scopre più tardi.
 
 ### 🔧 E una cosa che credevo mancasse e c'era
 
@@ -950,15 +961,33 @@ Misurato: è a catalogo, `visibile: true`, **priorità 90** — fra le ultime a
 ritirarsi. Mancava solo l'etichetta parlante: si chiamava «Data», che in un
 elenco di documenti non dice *quale* data. Rinominata **«Data documento»**.
 
-### 🔵 Aperto: due colonne che aspettano il seed
+### ✅ CHIUSO — le due colonne del peso del lotto *(2026-08-24)*
 
-La riga del lotto dice **com'è andato** ma non **quanto pesa**. Il backend
-produce già `n_fatture` e `totale_documenti` nel payload di `vendite.lotti`;
-mancano le due voci di `ui.lista_colonna` — seed del team DB, richiesta scritta.
+La riga del lotto diceva **com'è andato** ma non **quanto pesa**. Il backend
+produceva già `n_fatture` e `totale_documenti` nel payload di `vendite.lotti`;
+mancavano le due voci di `ui.lista_colonna`. **Seedate dal team DB in giornata**
+(commit `8919b41f4`): colonne `525` e `526`, gruppo *Contenuto*, allineate a
+destra, `totale_documenti` con formato `currency_eur`, priorità **70** e **65** —
+alte abbastanza da sopravvivere al restringimento, sotto le colonne d'identità.
+
+Lato BE le due voci sono entrate in `LOTTI_SORT_COLUMNS`, così sono anche
+**ordinabili**. ⚠️ Il valore in whitelist è la **sotto-query per intero**, non
+l'alias di `SELECT`: l'`ORDER BY` gira su una query con JOIN e un alias lì
+sarebbe ambiguo. La **chiave** resta il `campo_sorgente` del catalogo — è quello
+che il FE manda come `sortField`.
 
 ⚠️ `totale_documenti` è **zero, non nullo**, su un lotto senza documenti: da qui
 il `COALESCE(sum(...), 0)`, perché `sum()` su zero righe dà NULL e a video
 diventerebbe un trattino dove il numero c'è ed è zero. Sul `count(*)` non serve.
+
+### 📌 E lo strascico ha aperto un cantiere suo
+
+Da questo caso è uscito un buco molto più grande — **la fattura era l'unico
+documento del ciclo attivo senza la sua lista** — e la lista è stata costruita.
+Non sta qui perché non è una lista del drawer lotto: il racconto è nel **§11**
+di
+[brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md),
+dove il buco era stato registrato.
 
 ---
 

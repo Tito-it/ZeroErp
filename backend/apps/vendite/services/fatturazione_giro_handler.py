@@ -36,6 +36,7 @@ from apps.vendite.services._fatturazione_job_helpers import (
     TernaKey,
     messaggio_gruppi_non_serviti,
     parse_competenza_mese,
+    parse_data_iso,
     parse_gruppi,
     spiega_gruppi_non_serviti,
     terna_key,
@@ -90,6 +91,16 @@ def fatturazione_giro_handler(
     )
     fino_a_stato = payload.get("fino_a_stato")
     gruppi = parse_gruppi(payload.get("gruppi"), error_code=E_GIRO_PAYLOAD)
+    # ⭐ La data documento dichiarata per i lotti che questo giro creera'
+    #    (BE-1). ⛔ `parse_data_iso` e NON `parse_competenza_mese`: la seconda
+    #    normalizza al 1° del mese e trasformerebbe la data scelta in un'altra,
+    #    senza sollevare niente.
+    # ⚠️ Assente = la decide la politica del registro. Non e' «oggi».
+    data_documento = parse_data_iso(
+        payload.get("data_documento"),
+        error_code=E_GIRO_PAYLOAD,
+        campo="data_documento",
+    )
 
     # Import locale: evita di caricare la catena driver al boot del modulo
     # (registrato in ready()); il core è l'unico punto di verità I-1.
@@ -106,6 +117,8 @@ def fatturazione_giro_handler(
         kwargs["gruppi"] = gruppi
     if fino_a_stato:
         kwargs["fino_a_stato"] = fino_a_stato
+    if data_documento is not None:
+        kwargs["data_documento"] = data_documento
 
     summary = esegui_giro_fatturazione(**kwargs)
 

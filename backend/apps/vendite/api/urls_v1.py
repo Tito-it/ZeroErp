@@ -12,6 +12,7 @@ from apps.vendite.api.views import (
     ApiCommessePushLog,
     ApiCommessaStato,
     ApiFatturazioneApprovaCompetenza,
+    ApiFatturazioneFinestraNumerazione,
     ApiFatturazioneEsiti,
     ApiFatturazioneNumera,
     ApiFatturazioneNumeraLotto,
@@ -23,6 +24,7 @@ from apps.vendite.api.views import (
     ApiLottiMensile,
     ApiLottoDetail,
     ApiLottoFattureList,
+    ApiLottoGiornale,
     ApiLottoFattureExport,
     ApiLottoTaskRunsExport,
     ApiLottoSegnalazioniExport,
@@ -264,6 +266,14 @@ urlpatterns = [
         ApiLottoFattureList.as_view(),
         name="vendite-lotto-fatture-list",
     ),
+    # La STORIA del lotto (Passo A, seconda meta'): il lotto piu' le sue
+    # fatture, righe non-INFO. ⛔ Da non confondere con `segnalazioni/`, che
+    # elenca i problemi APERTI: qui c'e' anche cio' che e' andato bene.
+    path(
+        "lotti/<int:lotto_id>/giornale/",
+        ApiLottoGiornale.as_view(),
+        name="vendite-lotto-giornale",
+    ),
     # Export delle tre liste del drawer lotto. ⚠️ PRIMA delle rotte di elenco:
     # `export/` e' un segmento letterale e non collide, ma le rotte piu'
     # specifiche stanno in testa per convenzione.
@@ -415,6 +425,15 @@ urlpatterns = [
         "fatturazione/lotti/<int:lotto_id>/ristampa/",
         ApiFatturazioneRistampaLotto.as_view(),
         name="vendite-fatturazione-ristampa-lotto",
+    ),
+    # BE-5: la FINESTRA DI NUMERAZIONE — con quale data si puo' numerare e da
+    # quale data i documenti partono adesso, per un lotto (`?lotto_id=`) o per
+    # l'atto su un mese (`?competenza_mese=`).
+    # Sola lettura: alimenta il `minDate` del DatePicker di «Rendi definitive».
+    path(
+        "fatturazione/finestra-numerazione/",
+        ApiFatturazioneFinestraNumerazione.as_view(),
+        name="vendite-fatturazione-finestra-numerazione",
     ),
     # C-5: esiti dei giri (job_run_log per corsia) + stato coda stampa (scope
     # emittente operatore). Sola lettura.

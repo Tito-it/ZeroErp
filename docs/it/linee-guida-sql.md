@@ -207,7 +207,7 @@ perde, e lascia un `W_BERSAGLIO_MALFORMATO` nel log.
 in 16 punti, dove porta il **nome di una tabella**.
 
 Piano e decisioni:
-[brief-db-bersaglio-errore.md](dev/work-in-progress/brief-db-bersaglio-errore.md).
+[brief-db-bersaglio-errore.md](dev/work-done/brief-db-bersaglio-errore.md).
 
 ⚠️ Il terzo è quello che sfugge, perché **non lo vede nessun cancello**: il codice
 è registrato, la classe c'è, il campo viaggia — e il messaggio è illeggibile lo
@@ -1330,6 +1330,62 @@ comunque dopo il loader. Serve un mirror **ri-ancorato** più avanti nella
 timeline — stesso CSV, stesse colonne, numerazione nuova. Esempi:
 `20260806-13-riancora-mirror-transizioni-preventivi`,
 `20260806-14-riancora-mirror-stati-doc-contratti`.
+
+⛔ **E «appendere una riga» non è mai gratis: sveglia il mirror, che rilegge
+TUTTO il file.** Il 2026-08-25 un append a `config/parameters.csv` ha fatto
+fallire il migrate su `DEFAULT_UTILITY` — una riga di qualcun altro, con
+`default_value = ''`, che un dispatcher entrato **dopo** non accetta più.
+
+⚠️ **E il confronto CSV ↔ database non lo vede.** Le mine sono **due specie**:
+
+| specie | il CSV… | come si trova |
+| --- | --- | --- |
+| **stantìa** | dice il falso rispetto al DB | confronto CSV ↔ DB |
+| **irriscrivibile** | dice il **vero**, ma un guard entrato dopo lo rifiuta | **solo rieseguendo l'upsert** |
+
+⭐ **La verifica che le prende entrambe**, prima di toccare un CSV con mirror
+`runOnChange`: caricarlo in una temp table e rifare l'upsert su **tutte** le
+righe dentro una transazione che si annulla. Se una riga qualsiasi rifiuta, il
+mirror non è risvegliabile.
+
+⚠️ Con un **timeout**: nel percorso d'errore `script.fn_log_error_only` tenta un
+`dblink` che può restare appeso **tenendo un lock sulla tabella**, e a quel punto
+blocca anche il migrate. Se succede, `pg_terminate_backend`.
+
+⭐ Se il file è una mina e non la si vuole disinnescare adesso, la via è un **CSV
+dedicato** con un loader suo: la sede resta un CSV e il file minato non si sveglia.
+
+---
+
+### 11.3 ⛔ Un apostrofo singolo chiude il letterale
+
+Presidiato da `scripts/guardrail_sql_letterali.py` in CI.
+
+Nel testo italiano scritto senza accenti — `e'`, `gia'`, `piu'`, `perche'`,
+`cioe'`, `puo'`, `la'`, `pero'`, `cosi'`, `attivita'`, `meta'` — ogni apostrofo
+dentro una stringa SQL a quote singole va **RADDOPPIATO**. Basta che ne sfugga
+uno e il letterale si chiude lì: Liquibase risponde *«Unterminated string
+literal»* su un blocco di 1600 caratteri, dove l'occhio non la trova.
+
+> Il 2026-08-25 il migrate è morto su `un max(data) letto la' sotto un perimetro
+> ristretto`, dentro un `COMMENT ON COLUMN`.
+
+⚠️ **Il difetto vive quasi sempre nei `COMMENT ON` e nei `GRANT`** — i pezzi che
+«non sembrano codice». ⭐ Ed è il motivo per cui **una prova che riscrive a mano
+l'SQL del changeSet non prova il changeSet**: si ricopia sempre la DDL e si
+saltano proprio quelli. Si estraggono i blocchi `changes[].sql.sql` dallo YAML e
+si eseguono **interi**, con `ON_ERROR_STOP=1`, dentro una transazione che si
+annulla.
+
+⚠️ Il cancello statico prende il letterale che **non si chiude mai**; uno chiuso
+nel punto sbagliato lo vede solo il parser di PostgreSQL. I due controlli sono
+complementari, non alternativi.
+
+⚠️ E il cancello gestisce i commenti `/* … */` **annidati**, perché la prima
+stesura non lo faceva: un `l'esistenza` dentro un commento apriva un letterale
+fantasma e faceva accusare un `COMMENT` sano 120 righe più in basso. Un cancello
+che sbaglia così viene spento dopo due segnalazioni, e un presidio spento è
+peggio di uno assente.
 
 ---
 

@@ -93,6 +93,16 @@ I due `WHERE` del grafo forward non nominano più la lettera `'R'`: leggono
 `vw_documento_lineage_archi.is_ramo_inverso`, che è l'unica sede dell'elenco dei
 rami di ritorno (oggi `R` e `N`).
 
+⚠️ **L'arco `S` (reso → nota di credito, 2026-08-25) NON è stato aggiunto a
+quell'elenco, ed è una decisione.** «Inverso» non vuol dire «a valle di un
+ritorno»: vuol dire *ramo di ritorno*, un verso che il grafo forward non deve
+percorrere. `S` è l'**avanzamento naturale del reso** — la merce è tornata,
+adesso si accredita — come `H` è l'avanzamento dell'ordine. Marcarlo inverso
+avrebbe lasciato il reso frontiera di sé stesso, cioè al punto di partenza.
+Presidiato dal test **29**, che asserisce `is_ramo_inverso` vero *esattamente*
+per `R` e `N`: diventerebbe rosso il giorno in cui qualcuno aggiungesse `S`
+«per simmetria».
+
 ⛔ **Il risultato non è cambiato di una riga, ed è misurato**: applicando le
 quattro modifiche in transazione e confrontando la summary prima/dopo su tutti i
 nodi, le righe cambiate sono **zero**.
@@ -108,19 +118,42 @@ diverso.
 anche qui, così una lista di fatture smette di scrivere «Fattura» sopra una nota
 di credito.
 
-⚠️ **Non esiste una `frontiera_natura_doc_codice`**, e non è una dimenticanza:
-l'arco N è escluso dal grafo forward, quindi una nota di credito non può **mai**
-essere la frontiera di nessuno e quella colonna varrebbe sempre NULL. Una colonna
-che vale sempre NULL non è un dato: è qualcosa che qualcuno prima o poi prova a
-leggere.
+⛔ **CORREZIONE (2026-08-25) — qui c'era una frase falsa, e lo era già il giorno
+in cui è stata scritta.** Diceva: *«non esiste una `frontiera_natura_doc_codice`,
+e non è una dimenticanza: l'arco N è escluso dal grafo forward, quindi una nota
+di credito non può mai essere la frontiera di nessuno e quella colonna varrebbe
+sempre NULL»*. La **premessa** è giusta, la **conclusione** no — e il paragrafo
+successivo, sulla stessa pagina, diceva già il contrario.
+
+L'arco **G** (commessa → fattura) **non** è un ramo di ritorno, quindi una nota
+di credito **è** raggiungibile in avanti: misurata dal BE il 2026-08-21 come
+frontiera dell'ordine 240 e della commessa 322. Dal 2026-08-25 l'arco **S**
+(reso → nota di credito) la rende frontiera anche del **reso** — ed è
+l'informazione per cui quel cantiere esiste.
+
+Lo stesso testo viveva nel `COMMENT ON VIEW`, corretto dal changeSet
+`20260825-20` (un `COMMENT ON VIEW` **da solo**: ricreare la vista per una
+stringa avrebbe voluto dire ricopiare 150 righe di `WITH RECURSIVE` e
+ri-specificare `security_invoker=on`, che se dimenticato si azzera in silenzio).
+
+**La colonna quindi non c'è per un'altra ragione**: il consumatore la ricava per
+conto suo. `get_lineage_nodo` la legge joinando `vw_documento_lineage_nodi` sulla
+frontiera (`nfr.natura_doc_codice AS frontiera_natura_doc_codice`).
+
+🔴 **E questo oggi basta per un consumatore solo.** Il join richiede
+`frontiera_uid`, che la summary espone **ma le `vw_*_lista` no**: le sei liste
+documento portano `frontiera_tipo_id`/`_codice`/`_stato`/`_fase` e non la chiave
+del nodo, quindi la colonna «Transito» **non può** ricavare la natura e scrive
+«Fattura» sopra una nota di credito. Misurato il 2026-08-25: 4 nodi hanno una NC
+come frontiera (ordine, reso, commessa, e la NC stessa), e sul reso il caso è
+**strutturale** — il pgTAP 35 asserisce che l'arco `S` arriva *sempre* a una
+`NOTA_CREDITO`. Richiesta al team DB nel brief dell'arco S, §7-bis.
 
 📌 **Un'invariante che vale la pena conoscere**, ed è quella che presidia la
 scelta: *una fattura è sempre frontiera di sé stessa* — nel grafo forward non ha
 archi uscenti. È il test 30 di `test-documento-lineage-v1`.
 ⚠️ **Non** «una nota di credito non è mai frontiera»: quella formulazione è
-sbagliata, perché la nota è raggiungibile in avanti dalla **commessa** (arco G) e
-al 2026-08-21 è già legittimamente la frontiera dell'ordine 240 e della commessa
-322.
+sbagliata, ed è stata il test a dirlo diventando rosso.
 
 ---
 

@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R-1 — L'ORARIO DEI REGISTRI DIVENTA QUELLO DELLA SCRITTURA
+#   I quattro DEFAULT passano da now() a clock_timestamp().
+#   Richiesta: docs/it/dev/work-in-progress/brief-db-event-log-scope-e-riga-parlante.md §13
+#
+# ── IL PROBLEMA, IN UNA RIGA ────────────────────────────────────────
+#   `now()` e' l'istante in cui e' COMINCIATA la transazione, non quello della
+#   scrittura: tutte le righe scritte dentro la stessa transazione escono con
+#   lo stesso identico timestamp, al microsecondo. Sulla FATTURA non morde (un
+#   registro solo: dentro l'istante ordina il contatore di quel registro), sul
+#   LOTTO i registri diventano TRE e i loro contatori non sono confrontabili
+#   fra loro. La storia di un lotto, oggi, non e' ordinabile.
+#
+# ── ⭐ PERCHE' ORA SI PUO', E PRIMA NO ──────────────────────────────
+#   L'argomento e' del BE ed e' quello giusto: da questo cantiere ogni riga
+#   porta il `tx_id`, quindi «quali righe appartengono alla stessa transazione»
+#   ha una CHIAVE SUA e non e' piu' una domanda a cui deve rispondere il
+#   timestamp. I due significati erano sovrapposti su una colonna sola; adesso
+#   sono separabili, e l'orario torna a dire una cosa sola: QUANDO e' successo.
+#
+#   ⭐ E se ne aggiunge uno: queste quattro sono colonne di OSSERVABILITA', non
+#   di audit. L'orario di transazione resta la convenzione della casa su
+#   `data_insert`/`data_update` (806 colonne) e li' non si tocca — non e' una
+#   convenzione erosa, e' una sovrapposizione sciolta.
+#
+# ── ⛔ ATTENZIONE: QUESTO FILE DA SOLO NON RISOLVE NIENTE ───────────
+#   Misurato il 2026-08-24 sui corpi vivi: i DEFAULT sono quasi tutti INERTI,
+#   perche' i chiamanti passano la colonna a mano.
+#
+#     event_log.event_time              DEFAULT usato  ✅  (fn_log_event
+#                                       non passa la colonna) — qui basta
+#     fatture_log.data_ora              MAI usato      ❌  5 funzioni + il BE
+#     fatturazione_lotti_log.data_ora   MAI usato      ❌  fn_log_pipeline_fase
+#     task_runs.started_at              MAI usato      ❌  fn_start_lotto_task_run
+#
+#   Il pezzo che sposta davvero il comportamento e' il **20260824-17**, che
+#   toglie il `now()` dai punti di scrittura. Questo file allinea la DDL perche'
+#   non dica una cosa diversa da quella che succede: un `DEFAULT now()` accanto
+#   a un trigger che scrive `clock_timestamp()` e' una dichiarazione falsa per
+#   chiunque legga la tabella.
+#
+# ── ⛔ COSA NON SI TOCCA, ed e' scritto perche' la tentazione c'e' ──
+#   · `data_insert` / `data_update` su queste e su tutte le altre tabelle:
+#     li' l'orario di transazione e' la convenzione, e non c'entra con
+#     l'ordinamento di una timeline. «Uniformare tutto» trasformerebbe una
+#     richiesta da quattro colonne in una passata su mezzo database;
+#   · nessun BACKFILL: le righe gia' scritte restano come sono. `event_log` e'
+#     append-only per trigger, e un orario ricostruito a posteriori sarebbe
+#     INVENTATO. La convivenza fra due generazioni di righe e' gia' un fatto
+#     noto (rilievo R-5 del brief) e il pannello deve reggerla comunque;
+#   · nessun indice: `ix_event_log_entity_time` e' su `event_time DESC` e
+#     continua a servire — cambia il VALORE che ci finisce, non la colonna.
+#
+# ── ℹ️ SUL RISCHIO DI OROLOGIO ──────────────────────────────────────
+#   `clock_timestamp()` legge l'orologio di sistema e puo' quindi arretrare se
+#   qualcuno lo corregge (NTP). ⚠️ Non e' una regressione rispetto a oggi: anche
+#   `now()` lo legge, all'inizio della transazione. Cio' che cambia e' che due
+#   righe della stessa transazione ora si distinguono — che e' esattamente lo
+#   scopo — e il tiebreak per id resta necessario dentro lo stesso registro,
+#   perche' la risoluzione e' il microsecondo.
+#
+# Dipendenze: nessuna. ⚠️ Ma va applicato NELLA STESSA PASSATA del 20260824-17:
+#             separati, lascerebbero task_runs con `started_at` e `ended_at`
+#             su due orologi diversi — vedi la testata di quel file.
+# Verifica: db/pgtap/vendite/test-registri-log-orario-reale.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260824-16-alter-registri-log-orario-reale-mctit.yaml
+
+  - changeSet:
+      id: 20260824-16-alter-registri-log-orario-reale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        R-1: i quattro DEFAULT dei registri passano da now() (istante di inizio transazione)
+        a clock_timestamp() (istante della scrittura), cosi' la storia di un lotto — che
+        legge TRE registri — diventa ordinabile. ⛔ Da solo non basta: i DEFAULT sono quasi
+        tutti inerti perche' i chiamanti passano la colonna a mano, e il comportamento lo
+        sposta il 20260824-17. Questo file allinea la DDL perche' non dichiari una cosa
+        diversa da quella che succede. ⚠️ data_insert/data_update NON si toccano: li'
+        l'orario di transazione e' la convenzione della casa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: event_log
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_log
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_log
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_task_runs
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.event_log
+                ALTER COLUMN event_time SET DEFAULT clock_timestamp();
+
+              ALTER TABLE vendite.fatture_log
+                ALTER COLUMN data_ora SET DEFAULT clock_timestamp();
+
+              ALTER TABLE vendite.fatturazione_lotti_log
+                ALTER COLUMN data_ora SET DEFAULT clock_timestamp();
+
+              ALTER TABLE vendite.fatturazione_lotti_task_runs
+                ALTER COLUMN started_at SET DEFAULT clock_timestamp();
+
+              COMMENT ON COLUMN vendite.event_log.event_time
+                IS 'Quando l''evento e'' stato scritto. ⭐ rev 2026-08-24 (R-1): clock_timestamp() e non now(), che e'' l''istante di INIZIO TRANSAZIONE e dava lo stesso valore a tutte le righe scritte insieme — rendendo non ordinabile la storia di un lotto, che legge tre registri diversi. «Quali righe appartengono alla stessa transazione» ha ora una chiave sua (tx_id) e non e'' piu'' una domanda per il timestamp. ⚠️ Colonna di OSSERVABILITA'', non di audit: data_insert resta a now(), che e'' la convenzione della casa.';
+
+              COMMENT ON COLUMN vendite.fatture_log.data_ora
+                IS 'Quando la riga di log e'' stata scritta. ⭐ rev 2026-08-24 (R-1): clock_timestamp(). ⛔ Su questa tabella il DEFAULT non basta e non e'' il presidio: cinque funzioni e il backend passano la colonna a mano, quindi l''orario vero lo impone il trigger trg_fatture_log_a10_orario_reale_ins (20260824-17).';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_log.data_ora
+                IS 'Quando la riga di log e'' stata scritta. ⭐ rev 2026-08-24 (R-1): clock_timestamp(). ⚠️ Il valore lo scrive vendite.fn_log_pipeline_fase, che passa la colonna a mano: il DEFAULT qui e'' allineamento della DDL, non il punto in cui la regola vive.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_task_runs.started_at
+                IS 'Quando il tentativo e'' stato aperto. ⭐ rev 2026-08-24 (R-1): clock_timestamp(). ⛔ ended_at e'' scritto da vendite.fn_set_runtime_task_run_esito e DEVE stare sullo stesso orologio: con started_at a clock_timestamp() ed ended_at a now(), un tentativo aperto e chiuso nella stessa transazione finirebbe con ended_at < started_at e violerebbe chk_fatt_lotti_task_runs_timestamps. Misurato il 2026-08-24: 165 corse su 319 hanno ended_at = started_at esatto, cioe'' sono precisamente quel caso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.event_log
+                ALTER COLUMN event_time SET DEFAULT now();
+              ALTER TABLE vendite.fatture_log
+                ALTER COLUMN data_ora SET DEFAULT now();
+              ALTER TABLE vendite.fatturazione_lotti_log
+                ALTER COLUMN data_ora SET DEFAULT now();
+              ALTER TABLE vendite.fatturazione_lotti_task_runs
+                ALTER COLUMN started_at SET DEFAULT now();

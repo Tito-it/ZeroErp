@@ -6127,3 +6127,210 @@ doveva presidiare.
   Non è un difetto: sono due relazioni diverse verso lo stesso documento, e il
   traversal ritorna archi, non nodi. L'arco N porta `is_ramo_inverso = true`, che
   il FE già rende in modo distinto.
+
+---
+
+## 45. ⭐ «Annulla l'accredito»: il DB dice se si può, e perché no (2026-08-25)
+
+> **Origine**: richiesta del team BE. *«Il pulsante è acceso anche quando
+> l'annullo non è più possibile: l'operatore apre la dialog, scrive il motivo
+> obbligatorio, conferma, e solo lì riceve `E_ACCREDITO_ANNULLO_NON_AMMESSO`.
+> Serve che il DB dica se l'annullo è ammesso, e perché no — con lo stesso
+> predicato della guardia, non una seconda scrittura.»*
+>
+> ✅ **DB APPLICATO** il 2026-08-25 alle 23:05 (`20260825-22/23/24`), pgTAP
+> **23/23**, baseline `vendite` senza regressioni, doc auto-gen rigenerata.
+> ✅ **Aggiunta `20260825-25`** dopo il rilievo del §45.5: le righe del reso —
+> la superficie dove il pulsante vive davvero — prendono una vista.
+> Restano al BE la migrazione di `list_righe` e al FE tre chiavi i18n.
+
+### 45.1 Il caso, misurato
+
+| reso | riga | rettifiche | `stato_emissione` | annullo |
+| --- | --- | --- | --- | --- |
+| **24** `RESO0000017` | 24 | 3 | `EMESSA` ×3, in fattura | ⛔ rifiutato |
+| 5796 `RESO0005122` | 5797 | 1 | `NON_EMESSA` | ✅ ammesso |
+| 5798 `RESO0005123` | 5799 | 1 | `NON_EMESSA` | ✅ ammesso |
+
+⭐ Non è un caso limite: `stato_emissione` non torna indietro, quindi `EMESSA` è
+lo **stato finale** di ogni accredito. Oggi 1 riga su 3, domani tutte.
+
+### 45.2 La consegna DB
+
+| # | Cosa |
+| --- | --- |
+| **`20260825-22`** | `script.fn_check_accredito_annullabile(resi_riga_id)` → `jsonb`. Pura, `STABLE`, `SECURITY INVOKER`. `[]` se ammesso, altrimenti array **ordinato** di `{codice, reason, reason_key, dettaglio, valori}` |
+| **`20260825-23`** | `vendite.fn_annulla_accredito_riga_reso` **rifattorizzata**: il predicato esce dal corpo, la madre chiama la check e solleva il `codice` del **primo** motivo |
+| **`20260825-24`** | `vw_resi_da_accreditare` espone `annullo_blocco_codice` (il `reason` del primo motivo, `NULL` se ammesso) |
+| **pgTAP** | `test-annulla-accredito-riga-reso-v1.sql` `plan(18)` → **`plan(23)`** |
+
+È l'undicesima della famiglia `script.fn_check_*`, scritta sul modello di
+`fn_check_fattura_eliminabile_da_lotto` — il gemello esatto, perché anche lì
+l'azione è **per riga** di una lista e la madre solleva il primo `codice`.
+
+**I tre motivi**, nell'ordine con cui la madre li solleva:
+
+| # | condizione | `codice` (già a catalogo) | `reason` |
+| --- | --- | --- | --- |
+| 1 | nessuna riga di ponte | `E_ACCREDITO_NON_TROVATO` | `NESSUN_ACCREDITO` |
+| 2 | rettifiche non tutte visibili sotto RLS | `E_ACCREDITO_ANNULLO_INCOMPLETO` | `FUORI_PERIMETRO` |
+| 3 | almeno una rettifica bloccata | `E_ACCREDITO_ANNULLO_NON_AMMESSO` | `RETTIFICA_EMESSA` |
+
+⛔ **Nessun codice errore nuovo**: la funzione non solleva, li *nomina*.
+⚠️ L'**ordine è il contratto**: la madre solleva il primo, quindi se divergesse
+il tooltip direbbe una cosa e l'errore un'altra — il difetto di oggi spostato di
+un passo.
+
+### 45.3 ⛔ Due scelte che non sono ovvie
+
+**`blocco_codice` non si riusa.** Quella colonna, sulla stessa vista, risponde a
+«perché non posso **accreditare**» e ha un solo valore: `GIA_ACCREDITATO` — che è
+esattamente la condizione che **abilita** l'annullo. Nella stessa colonna
+vorrebbe dire «bottone A spento» e «bottone B acceso» insieme. Colonna nuova,
+accanto.
+
+**Le tre condizioni del motivo 3 si tengono tutte e tre.** Dopo un reset di lotto
+la riga di `attivita_fatturabili` **sopravvive** (`fn_cleanup_fatture_by_ids` la
+sblocca e le azzera `fattura_riga_id`, non la cancella). «Esiste una AF →
+bloccato» vieterebbe per sempre l'annullo dopo un reset legittimo: è il ramo che
+sembra più prudente ed è sbagliato. Il pgTAP 17 lo presidia già.
+
+### 45.4 ⭐ Il presidio della richiesta del BE è strutturale
+
+Il test **22** asserisce che la madre **chiama** la check e **non contiene più**
+il predicato. È una differenza che vale la pena nominare: un test che chiamasse
+la madre e ne confrontasse l'esito col check proverebbe che oggi coincidono;
+questo prova che **non possono divergere**, perché la regola sta scritta in un
+posto solo.
+
+⚠️ E il vincolo **C-3** resta: che l'annullo *cancelli* le righe di ponte invece
+di marcarle è ciò che fa auto-riparare `fn_check_rinuncia_reversibile` e la
+guardia `E_RESO_ANNULLO_CON_ACCREDITO` di `fn_annulla_reso`. Il motivo 1 della
+nuova funzione dipende dalla stessa scelta. I posti restano tre, e ora uno è
+letto anche da una vista.
+
+### 45.5 Esito sul DB applicato (2026-08-25)
+
+* `20260825-22/23/24` **`EXECUTED`** alle 23:05; pgTAP **23/23**; baseline
+  `vendite` senza regressioni; doc auto-gen rigenerata.
+* Comportamento misurato: riga 24 → `RETTIFICA_EMESSA`, righe 5797 e 5799 →
+  `NULL` (ammesso).
+* `check_i18n_keys.py` è passato da **1 a 4** problemi, come previsto: le tre
+  `reason_key` nuove aspettano il FE.
+
+⚠️ **Una cosa emersa solo dopo l'apply, e vale la pena scriverla.** Oggi
+`vw_resi_da_accreditare` restituisce **zero righe**, quindi la colonna nuova non
+ha nulla da mostrare — e non è un difetto: una riga **esce dalla coda al verbo**
+(§N9), quindi un accredito completo la fa sparire. `annullo_blocco_codice` sulla
+coda serve al solo caso dell'accredito **parziale** (`accredito_dovuto > 0` **e**
+`gia_accreditato > 0`), che è reale ma raro.
+⭐ Ne discende che **il consumatore principale sono le righe del reso** — cioè
+la superficie che il DB non serviva affatto.
+
+⛔ **E qui c'era una frase sbagliata, scritta da me: «il DB non ha chiuso il
+problema visibile».** Rilievo di Tid, ed è giusto: *il DB sono io*. Mettere a
+verbale un lavoro a metà come se lo decidesse qualcun altro non è una
+constatazione, è un modo di non finirlo. La ragione che avevo dato — «le righe
+del reso sono SQL nel repository, non una vista» — **descrive** lo stato, non lo
+giustifica: è l'anomalia che avevo segnalato io stesso due paragrafi più sotto.
+La consegna prosegue nel §45.7.
+
+### 45.5-bis Prova in transazione, prima dell'apply
+
+* riga 24 → `RETTIFICA_EMESSA` / `E_ACCREDITO_ANNULLO_NON_AMMESSO`; righe 5797 e
+  5799 → `NULL` (ammesso); una riga senza accredito → `NESSUN_ACCREDITO`;
+* **lettura e madre coincidono su tutte le righe**, con la frase invariata:
+  *«Riga di reso 24: 3 rettifiche su 3 sono già emesse, l'accredito non si può
+  più annullare»*;
+* `pg_get_function_identity_arguments` invariata su entrambe le funzioni: i
+  `%TYPE` in firma e in `RETURNS TABLE` risolvono ai tipi di prima, **nessun
+  overload**;
+* `security_invoker=on` preservato sulla vista;
+* pgTAP **23/23**.
+
+### 45.6 Cosa serve dagli altri due lati
+
+**BE — la query sparisce.** Con `vendite.vw_resi_righe_dettaglio` (§45.7)
+`resi_repository.py::list_righe` smette di contenere SQL:
+
+```sql
+SELECT * FROM vendite.vw_resi_righe_dettaglio
+ WHERE reso_id = %s AND attivo IS TRUE
+ ORDER BY riga_nr, id
+```
+
+⭐ Sono **cinquanta righe di SQL in meno** in Python, e la colonna
+`annullo_blocco_codice` arriva già dentro.
+
+**FE — tre chiavi i18n**, e sono bloccanti:
+
+| chiave | testo proposto |
+| --- | --- |
+| `vendite.resi.annullo_blocco.nessun_accredito` | Non c'è nessun accredito da annullare su questa riga |
+| `vendite.resi.annullo_blocco.fuori_perimetro` | Alcune rettifiche di questo accredito non sono visibili con i tuoi permessi |
+| `vendite.resi.annullo_blocco.rettifica_emessa` | L'accredito è già stato emesso in fattura e non si può più annullare |
+
+🔴 **Perché bloccanti**: `scripts/check_i18n_keys.py` (controllo 4) cerca le
+`reason_key` emesse dalle funzioni e assenti dai locales, e **fallisce**. Dopo
+l'apply passerà da 1 problema a 4. ⚠️ E il problema che c'è già è della stessa
+specie e della stessa famiglia — `vendite.lotti.azione_reason.righe_rettificate`,
+da `fn_check_fatture_con_rettifiche`: questi debiti non si chiudono da soli.
+
+Poi il gate: pulsante `disabled` quando `annullo_blocco_codice` è valorizzato,
+tooltip da `labelOrCode`. Sulla coda il meccanismo esiste già identico per
+`blocco_codice` (`bloccoLabel`).
+
+### 45.7 ⭐ `vw_resi_righe_dettaglio` — le righe del reso prendono una sede
+
+**`20260825-25`**, nato dal rilievo di Tid del §45.5.
+✅ **`EXECUTED`** il 2026-08-25 alle 23:39, pgTAP **6/6** sotto RLS, baseline
+`vendite` senza regressioni.
+
+Le righe del reso erano l'**unico** dettaglio documento servito da SQL scritto in
+Python. Non è una questione di stile: è il motivo per cui il motivo di blocco
+poteva arrivare su una superficie sola — e proprio non quella dove il pulsante
+vive.
+
+`list_righe` non ha filtri dinamici: è una `SELECT` piatta con
+`WHERE rr.reso_id = %s AND rr.attivo IS TRUE ORDER BY rr.riga_nr, rr.id`. Era una
+vista scritta in Python.
+
+**Due scelte, entrambe deliberate:**
+
+* ⚠️ **La vista proietta, il chiamante filtra.** `attivo` è una **colonna**, non
+  un filtro incorporato. Una vista «dettaglio» che nasconde righe di nascosto
+  darebbe un conteggio diverso da quello della tabella senza dirlo. Presidiato
+  dal test 5.
+* ⛔ **Passa da `vendite.resi`**, che ha la RLS (`rls_resi_ef_whitelist`), perché
+  `vendite.resi_righe` **non ce l'ha**. Senza quel join la vista sarebbe
+  leggibile per qualunque `reso_id`, fuori perimetro emittente. Che il service
+  autorizzi prima non basta: un oggetto di database dev'essere sicuro da solo,
+  perché il prossimo consumatore non sa cosa faceva il primo.
+  ⚠️ È la **stessa classe di difetto** degli archi `B`/`E`/`F`/`G` del grafo di
+  genealogia, chiusa lo stesso giorno (`20260825-19`).
+
+**Prova**: `SELECT ... EXCEPT ...` nei due versi contro l'SQL che sostituisce, su
+**tutti** i resi — **0 differenze**, 17 righe. E la colonna nuova si accende dove
+serve: riga 24 → `RETTIFICA_EMESSA`, righe 5797 e 5799 → `NULL`. Tutte e tre
+compaiono qui; nella coda, nessuna.
+
+pgTAP nuovo: `test-vw-resi-righe-dettaglio-v1.sql`, `plan(6)` — forma,
+`security_invoker`, **perimetro**, **nessun filtro nascosto**, e la coerenza fra
+`annullo_blocco_codice` e la sede unica del predicato.
+
+⚠️ **E il test del perimetro oggi non riproduce niente, va detto.** Misurato dopo
+l'apply: la vista torna **17 righe come owner e 17 come `zeroerp_app`** — la
+whitelist dell'operatore di collaudo copre tutti i resi, quindi anche senza il
+join a `vendite.resi` sarebbe verde. È un **presidio**, non una prova: serve il
+giorno in cui un operatore sarà ristretto a un emittente. Esattamente come il
+test 38 del grafo di genealogia, e per la stessa ragione.
+
+### 45.8 Resta aperto
+
+* ⚠️ **`FUORI_PERIMETRO` dipende da chi guarda**, non dallo stato del documento:
+  due operatori vedrebbero lo stesso reso col pulsante in stati diversi. È
+  coerente con la madre (che rifiuta), ma se si preferisce un generico «non
+  disponibile» si cambia solo la `reason_key`.
+* ✅ ~~Le righe del reso sono l'unico dettaglio documento servito da SQL nel
+  repository~~ — chiuso dal §45.7: `vw_resi_righe_dettaglio`. Resta al BE
+  passare a leggerla.

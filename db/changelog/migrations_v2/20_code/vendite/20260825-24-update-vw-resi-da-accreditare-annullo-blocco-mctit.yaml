@@ -1,0 +1,214 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La coda accrediti porta in riga il motivo per cui l'annullo e' bloccato.
+#
+# -- COSA SI AGGIUNGE --------------------------------------------------
+#   Una colonna: `annullo_blocco_codice`, il `reason` del primo motivo che
+#   script.fn_check_accredito_annullabile restituisce (NULL = annullo
+#   ammesso). E' la stessa forma di `blocco_codice`, che sta due colonne piu'
+#   su e che il frontend rende gia' con labelOrCode.
+#
+# -- ⛔ E PERCHE' NON SI RIUSA `blocco_codice` -------------------------
+#   Sembra la colonna pronta ed e' la trappola. `blocco_codice` risponde a
+#   «perche' non posso ACCREDITARE questa riga», e ha un solo valore:
+#   GIA_ACCREDITATO. Che e' esattamente la condizione che ABILITA l'annullo.
+#   Le due domande vivono sulla stessa riga e puntano in direzioni opposte:
+#   nella stessa colonna, GIA_ACCREDITATO vorrebbe dire «bottone A spento» e
+#   «bottone B acceso» insieme.
+#
+# -- IL PATTERN, CHE E' GIA' SCRITTO -----------------------------------
+#   linee-guida-sql §12.1: «Permesso -> nascondi. Stato -> disabilita col
+#   motivo». §12.4: «le capability stanno solo sul DETTAGLIO, mai per riga di
+#   lista; le liste fanno il gate sui codici che hanno gia' in riga». Il
+#   COMMENT di questa stessa vista lo dichiara da luglio: «espone
+#   gia_accreditato e blocco_codice perche' il frontend gate il bottone sui
+#   dati che la riga porta gia', mai con una capability per riga di lista».
+#
+# -- ⚠️ UNA CHIAMATA PER RIGA, COME LE ALTRE DUE ----------------------
+#   La vista chiama gia' due funzioni scalari per riga
+#   (fn_resi_riga_accreditato_partita, fn_resi_riga_residuo_riconsegna):
+#   questa e' la terza, e la lista e' paginata (cap 200). Non e' una
+#   capability per riga — e' uno scalare, che e' proprio la forma che §12.4
+#   ammette.
+#
+# -- ⚠️ security_invoker ----------------------------------------------
+#   Va ri-specificato: e' una reloption invisibile in pg_get_viewdef e un
+#   CREATE OR REPLACE che non la ripete la AZZERA, senza errori.
+#
+# Origine: doc auto-gen (oggetto vivo), con una colonna in coda.
+# Dipendenze: 20260825-22 (la funzione di check, verificata in precondizione).
+# Cantiere: docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §45
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260825-24-update-vw-resi-da-accreditare-annullo-blocco-mctit.yaml
+
+  - changeSet:
+      id: 20260825-24-update-vw-resi-da-accreditare-annullo-blocco
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_resi_da_accreditare espone annullo_blocco_codice: il motivo per cui l'annullo
+        dell'accredito e' bloccato su quella riga, NULL se ammesso. Colonna NUOVA accanto a
+        blocco_codice e non al suo posto: quella risponde a «perche' non posso accreditare», e il
+        suo unico valore GIA_ACCREDITATO e' la condizione che abilita l'annullo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_da_accreditare
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_accredito_annullabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_resi_da_accreditare
+              WITH (security_invoker=on) AS
+              WITH acc AS (
+                       SELECT p.ddt_riga_id,
+                          p.tenuti,
+                          p.fatturato AS fatturati,
+                          (- p.differenza) AS accredito_partita
+                         FROM vendite.vw_partite_merce p
+                        WHERE (p.differenza < (0)::numeric)
+                      ), eff AS (
+                       SELECT e.resi_riga_id,
+                          e.reso_id,
+                          e.ddt_riga_id,
+                          e.ordine_riga_id,
+                          e.riapre_residuo,
+                          e.quantita,
+                          vendite.fn_resi_riga_accreditato_partita(e.resi_riga_id) AS gia_accreditato
+                         FROM vendite.vw_resi_righe_effettive e
+                      ), dist AS (
+                       SELECT e.resi_riga_id,
+                          e.reso_id,
+                          e.ddt_riga_id,
+                          e.ordine_riga_id,
+                          e.riapre_residuo,
+                          e.quantita AS qta_resa,
+                          e.gia_accreditato,
+                          a.tenuti,
+                          a.fatturati,
+                          GREATEST((0)::numeric, LEAST(GREATEST((0)::numeric, (e.quantita - e.gia_accreditato)), (a.accredito_partita - COALESCE(sum(GREATEST((0)::numeric, (e.quantita - e.gia_accreditato))) OVER (PARTITION BY e.ddt_riga_id ORDER BY e.resi_riga_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), (0)::numeric)))) AS accredito_dovuto
+                         FROM (eff e
+                           JOIN acc a ON ((a.ddt_riga_id = e.ddt_riga_id)))
+                      )
+               SELECT x.resi_riga_id,
+                  r.id AS reso_id,
+                  r.uid AS reso_uid,
+                  r.numero AS reso_numero,
+                  r.data,
+                  r.emittente_fiscale_id,
+                  r.billing_account_id,
+                  ba.codice AS ba_codice,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  rr.articolo_id,
+                  rr.descrizione,
+                  rr.quantita,
+                  rr.qta_operativa,
+                  rr.uom_operativa_id,
+                  rr.motivo,
+                  x.ddt_riga_id,
+                  dr.ddt_id,
+                  d.numero AS ddt_numero,
+                  x.ordine_riga_id,
+                  x.tenuti,
+                  x.fatturati,
+                  x.accredito_dovuto,
+                  (
+                      CASE
+                          WHEN (x.riapre_residuo AND (vendite.fn_resi_riga_residuo_riconsegna(x.resi_riga_id) > (0)::numeric)) THEN 'FACOLTATIVA'::text
+                          ELSE 'DOVUTA'::text
+                      END)::character varying AS etichetta,
+                  x.gia_accreditato,
+                  (
+                      CASE
+                          WHEN (x.gia_accreditato > (0)::numeric) THEN 'GIA_ACCREDITATO'::text
+                          ELSE NULL::text
+                      END)::character varying AS blocco_codice,
+                  -- ⭐ rev 2026-08-25 — E QUESTA E' L'ALTRA DOMANDA: perche' non posso
+                  --   ANNULLARE l'accredito. NULL = annullo ammesso.
+                  --   ⛔ Colonna NUOVA e non un allargamento di blocco_codice, che sta qui
+                  --   sopra: quella risponde a «perche' non posso ACCREDITARE» e il suo unico
+                  --   valore, GIA_ACCREDITATO, e' esattamente la condizione che ABILITA
+                  --   l'annullo. Nella stessa colonna vorrebbe dire «bottone A spento» e
+                  --   «bottone B acceso» insieme.
+                  --   ⭐ Il motivo arriva da script.fn_check_accredito_annullabile, che e' la
+                  --   SEDE UNICA: la stessa che vendite.fn_annulla_accredito_riga_reso
+                  --   interroga per sollevare. Se lettura e guardia divergessero si tornerebbe
+                  --   al difetto che questo giro chiude — il pulsante spento su un annullo che
+                  --   sarebbe passato, o acceso su uno che verra' rifiutato.
+                  --   Si prende il `reason` del PRIMO motivo: l'ordine dell'array e' il
+                  --   contratto, ed e' quello con cui la madre solleva.
+                  --   ⚠️ Terza funzione scalare per riga di questa vista, dopo
+                  --   fn_resi_riga_accreditato_partita e fn_resi_riga_residuo_riconsegna: uno
+                  --   SCALARE, non una capability, che e' proprio la forma che
+                  --   linee-guida-sql §12.4 ammette per le liste.
+                  (script.fn_check_accredito_annullabile(x.resi_riga_id) -> 0 ->> 'reason')::character varying
+                      AS annullo_blocco_codice
+                 FROM (((((((dist x
+                   JOIN vendite.resi_righe rr ON ((rr.id = x.resi_riga_id)))
+                   JOIN vendite.resi r ON ((r.id = x.reso_id)))
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = r.destinatario_soggetto_ruolo_id)))
+                   JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = r.billing_account_id)))
+                   JOIN vendite.ddt_righe dr ON ((dr.id = x.ddt_riga_id)))
+                   JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+                WHERE (x.accredito_dovuto > (0)::numeric);
+
+              COMMENT ON VIEW vendite.vw_resi_da_accreditare IS
+                  'La CODA ACCREDITI: le righe di reso per cui il conto della merce dichiara un '
+                  'accredito ancora dovuto. La quota della partita si ripartisce fra le righe di '
+                  'reso con una greedy per resi_riga_id. rev 2026-08-18 (brief-design-note-credito-resi '
+                  'N9): la finestra si applica alla quantita'' ANCORA ACCREDITABILE (quantita'' resa '
+                  'meno gia'' accreditato) e non alla quantita'' resa. ⚠️ Con la seconda, dopo il '
+                  'primo accredito la riga gia'' servita tornava in testa alla coda e si riprendeva '
+                  'il residuo della partita, mentre la riga che quel residuo lo doveva davvero '
+                  'usciva dalla coda: la quota diventava IRRAGGIUNGIBILE — la stessa malattia per '
+                  'cui il cantiere esiste, creata dal rimedio. Misurato sulla partita 17163 il '
+                  '2026-08-18. ⭐ Ne discende che una riga esce dalla coda AL VERBO e non alla '
+                  'generazione della fattura: l''idempotenza smette di dipendere da una finestra '
+                  'temporale e diventa un numero che e'' gia'' sceso. '
+                  'Espone gia_accreditato e blocco_codice perche'' il frontend gate il bottone sui '
+                  'dati che la riga porta gia'', mai con una capability per riga di lista. '
+                  '⭐ rev 2026-08-25 — annullo_blocco_codice: il motivo per cui l''ANNULLO '
+                  'dell''accredito e'' bloccato su quella riga, NULL se ammesso, dal `reason` del '
+                  'primo motivo di script.fn_check_accredito_annullabile. Richiesta del team BE: il '
+                  'pulsante «Annulla l''accredito» era acceso anche quando l''annullo non era piu'' '
+                  'possibile, e l''operatore scopriva il vincolo dopo aver scritto il motivo '
+                  'obbligatorio e confermato. ⛔ E'' una colonna NUOVA e non un allargamento di '
+                  'blocco_codice: quella risponde a «perche'' non posso ACCREDITARE» e il suo unico '
+                  'valore, GIA_ACCREDITATO, e'' esattamente la condizione che ABILITA l''annullo — '
+                  'nella stessa colonna vorrebbe dire «bottone A spento» e «bottone B acceso» '
+                  'insieme. ⭐ La sede del predicato e'' UNA: la stessa funzione che la madre '
+                  'interroga per sollevare, cosi'' lettura e guardia non possono divergere. '
+                  'security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Un CREATE OR REPLACE non toglie colonne: per tornare indietro
+              --    serve DROP + CREATE nella forma di 20260818-40, e il DROP porta
+              --    via i GRANT. Va fatto a mano, con un changeSet suo.
+              SELECT 1;

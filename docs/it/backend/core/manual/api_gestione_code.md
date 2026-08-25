@@ -61,6 +61,31 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
 - Righe: fattura (numero/anno/serie), emittente, lotto, stato, tentativi,
   ultimo_errore, documento_id.
 
+⭐ **`ultimo_errore` porta il codice di DOMINIO, dal 2026-08-25.** Prima, su un
+rifiuto del database, la riga conteneva `{"code": "ProgrammingError", "message":
+"<testo + stack CONTEXT>"}`: un render fallito muto su un rifiuto che ha un nome.
+Ora il drenatore legge la diagnostica dal BB `diagnostica_db` e scrive il codice
+applicativo, la frase (`message_primary`, senza lo stack), e — **solo dove ci
+sono** — `detail`, `campo` e `bersagli`:
+
+```json
+{ "code": "E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO",
+  "message": "La data del documento e' anteriore all'ultimo numero gia' emesso…",
+  "campo": "data_documento",
+  "bersagli": [ { "type": "LOTTO", "id": "1278" } ] }
+```
+
+⛔ **Perché conta proprio qui.** Il backstop di numerazione
+(`numera_fattura_backstop`) gira dentro il drenatore, **senza un operatore
+davanti**: dal 2026-08-25 può rifiutare (il cancello sulla sequenza del
+registro), e questa riga di coda è **l'unico posto** dove quel motivo può essere
+letto. Va scritto qui o non esiste da nessuna parte.
+
+⚠️ Vale per **entrambi** i rami di errore del drenatore, non solo per quello
+generico: un `ServiceError` di dominio porta gli stessi canali (`targets`) e
+prima li perdeva — la stessa riga raccontava due storie a seconda di quale
+`except` l'avesse presa.
+
 ### 4. Dettaglio job (BE-8, sola lettura)
 
 - `GET /api/v1/core/tracciamento/coda-lavori/<job_id>/`

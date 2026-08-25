@@ -103,6 +103,7 @@ def esegui_giro_fatturazione(
     on_lane_esito: OnLaneEsito | None = None,
     on_discovery: OnDiscovery | None = None,
     gruppi: tuple[str, ...] | list[str] | None = None,
+    data_documento: date | None = None,
 ) -> dict[str, Any]:
     if modalita not in _MODALITA:
         raise ValueError(
@@ -149,6 +150,8 @@ def esegui_giro_fatturazione(
         "fatturazione_immediata": fatturazione_immediata,
         "competenza": competenza.isoformat(),
         "fino_a_stato": fermata,
+        # Nel riepilogo del giro: a consuntivo, con quale data i lotti sono nati.
+        "data_documento": data_documento.isoformat() if data_documento else None,
         "dry_run": dry_run,
         "lane": len(terne),
         "senza_emittente": senza_emittente,
@@ -212,6 +215,11 @@ def esegui_giro_fatturazione(
                 # PERSISTE su vendite.fatturazione_lotti_gruppi nella stessa
                 # transazione in cui crea il lotto (contratto §8-bis).
                 gruppi=gruppi_tuple,
+                # ⭐ La data dichiarata vale per TUTTI i lotti del giro
+                # (decisione 5): si scrive alla creazione di ciascuno, e da li'
+                # `fn_get_or_create_fattura_header` la usa al posto della
+                # politica del registro. None = nessuna dichiarazione.
+                data_documento=data_documento,
             )
         except ServiceError as exc:
             falliti += 1

@@ -227,6 +227,17 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_DOCUMENTI_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "highlight_form_fields",  # classe DATO_ERRATO
+    # -- Vendite: la data documento e la sequenza del registro ----------
+    # ⭐ `DATO_ERRATO` ha come default il banner, e qui e' il caso opposto: il
+    #    dato sbagliato E' un campo che l'operatore ha davanti, nel dialog
+    #    «Rendi definitive». Non e' una supposizione — il DB lo DICE, e l'ho
+    #    letto da una chiamata vera (2026-08-25): `column_name` arriva
+    #    valorizzato a `data_documento`. Il default del banner esiste perche'
+    #    «promettere un campo che non esiste e' peggio del contrario»; qui il
+    #    campo esiste ed e' nominato dalla sorgente.
+    # ⚠️ Il messaggio porta gia' la data da cui ripartire («…che porta la data
+    #    23/08/2026»): campo acceso + frase che dice il valore giusto.
+    "E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: giri di fatturazione (handler coda lavori) ------------
     "E_FATTURAZIONE_GIRO_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO
@@ -436,6 +447,32 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # una fattura che non esiste.
     # 409 sui tre conflitti di stato (non e` un input da correggere, e` un
     # fatto), 400 sul motivo mancante (campo del form).
+    # ══════════════════════════════════════════════════════════════════
+    # Il rifiuto CONFERMABILE — `confirm_and_retry` (Tid, 2026-08-24, Q-1 del
+    # brief BE/FE posting e abbinamento rata)
+    # ══════════════════════════════════════════════════════════════════
+    # ⭐ Voce NUOVA nel vocabolario delle ui_action, e dice una cosa che nessuna
+    # delle altre diceva: *«chiedi conferma e ripeti la stessa richiesta»*.
+    # `show_retry_dialog` e' vicina e significa un'altra cosa — RIPROVA, non
+    # CONFERMA DI VOLERLO FARE DAVVERO.
+    #
+    # IL CASO. Arrivano 1.200 su una rata da 1.000. Il database RIFIUTA il primo
+    # tentativo con la ragione e i numeri, e ACCETTA il secondo se la riga porta
+    # `forzata = true` (D14-d): che un cliente paghi piu' del dovuto e' un fatto
+    # del mondo, e il database non lo dichiara impossibile — chiede solo che
+    # qualcuno lo dica.
+    #
+    # PERCHE' SERVE UNA ui_action E NON UN ELENCO DI CODICI NEL FRONTEND. Sul
+    # filo HTTP quel rifiuto e' un 409 come tutti gli altri: senza un segnale,
+    # l'interfaccia mostrerebbe un banner rosso e l'operatore resterebbe
+    # BLOCCATO su un caso che il dominio dichiara ammesso. Un elenco di codici
+    # nel frontend costa zero oggi e si dimentica al terzo codice; qui il
+    # frontend riconosce la CLASSE DI COMPORTAMENTO e resta cieco ai codici.
+    #
+    # ⚠️ La classe resta CONFLITTO_STATO (409) ed e' giusta: non c'e' un campo
+    # sbagliato da evidenziare — l'importo puo' essere corretto, e' il documento
+    # che non ha piu' spazio.
+    "E_RIGA_CONTABILE_CAPIENZA_SUPERATA": "confirm_and_retry",  # classe CONFLITTO_STATO
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "highlight_form_fields",  # classe DATO_ERRATO

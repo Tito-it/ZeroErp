@@ -97,6 +97,16 @@ class RigaContabileRow(TypedDict):
     meta: Any
 
 
+# ⭐ La riga vista dalla CODA porta anche la sua distinta: una riga
+#   cross-distinta senza il documento da cui viene non si lavora — chi la
+#   guarda deve poterci tornare. ⚠️ Ed e' la colonna su cui il contratto
+#   dichiara di saper ordinare.
+class RigaCodaRow(RigaContabileRow):
+    contabile_codice: str
+    contabile_data: date
+    contabile_origine: str
+
+
 # ══════════════════════════════════════════════════════════════════
 #  I due cataloghi di stato
 # ══════════════════════════════════════════════════════════════════
@@ -142,7 +152,12 @@ class RicevutaPosting(TypedDict):
 #   chiamano. `incassato` e' None dove il database non lo sa ancora dire —
 #   oggi il livello documento (richiesta DB-10 in corso).
 class SaldoRow(TypedDict):
-    residuo: Decimal
+    # A quale livello si sta guardando: DOCUMENTO | RATA | (CLIENTE, quando si
+    # accendera'). ⭐ Viaggia nella risposta perche' la stessa forma serve tre
+    # domande diverse, e chi la riceve deve sapere a quale sta rispondendo.
+    livello: str
+    riferimento_id: int
+    residuo: Decimal | None
     in_lavorazione: Decimal | None
     incassato: Decimal | None
     has_movimenti: bool

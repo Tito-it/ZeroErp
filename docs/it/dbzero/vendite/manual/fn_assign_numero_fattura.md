@@ -25,8 +25,11 @@ in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 * `p_fattura_id` obbligatorio e `> 0`.
 * Lock sulla riga fattura per coerenza.
 * `anno` ricavato da `vendite.fn_get_anno_registro`.
-* Numero ottenuto da `vendite.fn_get_next_progressivo`.
-* `mese` valorizzato solo se `reset_policy = MENSILE`.
+* Numero ottenuto da `vendite.fn_get_next_progressivo`, a cui si passa anche
+  `p_fattura_id` — serve al **bersaglio** del cancello di monotonia.
+* La **serie** si risolve qui, con `COALESCE(f.serie, r.serie_default, '')`: è il
+  punto in cui il sezionale di un documento viene deciso, ed è il motivo per cui
+  il `JOIN` su `registri_fatturazione` resta.
 
 ---
 
@@ -36,9 +39,10 @@ Ritorna una riga con:
 
 * `registro_id`
 * `anno`
-* `mese`
 * `serie`
 * `numero`
+
+⚠️ **`mese` è uscito dal ritorno il 2026-08-25** — vedi la revisione in fondo.
 
 ---
 
@@ -96,6 +100,55 @@ Non verifica che la nota di credito abbia le rate a zero: lo fa già la
 **condizione 4** (*«un documento non positivo non si rateizza»*), ed è scritta
 `<= 0`, non «assumo positivo». ⭐ Il documento a saldo negativo non è un caso che
 qualcuno deve insegnare alla catena — è un caso che la catena **contempla già**.
+
+---
+
+### 🔄 rev 2026-08-25 — il bersaglio del cancello, e via il `mese`
+
+Brief: `brief-db-numerazione-data-documento-e-sequenza` (**DB-8** e **DB-12**).
+Due modifiche in un solo `DROP` + `CREATE`, perché la seconda lo richiedeva
+comunque.
+
+#### 1. Si passa `p_fattura_id` a `fn_get_next_progressivo`
+
+Dal 2026-08-25 quella funzione ospita il **cancello di monotonia**: rifiuta un
+numero a un documento la cui data è anteriore all'ultima già numerata sul
+sezionale. L'errore porta un **bersaglio**, e senza questo parametro il primo
+elemento — *quale* documento ha rifiutato — non ci sarebbe.
+
+⭐ Non è un dettaglio di comodità. Questa funzione gira **dentro il giro di
+lotto**, su molte fatture: la frase del rifiuto dice da quale data ripartire, e
+senza il bersaglio nessuno direbbe **su quale documento** è successo.
+
+#### 2. `mese` esce dal `RETURNS TABLE`
+
+Da cinque colonne a quattro. Era calcolato da `reset_policy`, che prometteva tre
+comportamenti e ne implementava uno, e non lo leggeva nessuno — il backend drena
+il result set, i pgTAP leggono per nome. Con lui è caduta l'ultima lettura di
+`reset_policy` in questa funzione.
+
+⛔ **Ma il `JOIN` su `registri_fatturazione` RESTA**, al contrario di quanto fatto
+in `fn_numera_fattura_opz_emessa`. Lì portava solo `reset_policy`; qui porta
+anche `serie_default`, cioè **il punto in cui la serie di un documento si risolve
+davvero**.
+
+⚠️ E quella risoluzione — `COALESCE(f.serie, r.serie_default, '')` — dev'essere
+**identica** in tutti e tre i posti che la usano: qui, in
+`fn_get_data_minima_numerabile` e nel backfill di `ultima_data`. Se una delle tre
+diverge, cerca una riga di contatore che non esiste e risponde «nessun vincolo».
+📌 Misurato il 2026-08-25: **tutte** le fatture non ancora numerate hanno
+`f.serie IS NULL` e prendono la serie dal registro — quindi è proprio il caso
+normale, non un bordo.
+
+#### Adesso prima del numero ci sono DUE cose
+
+| | domanda | dov'è |
+| --- | --- | --- |
+| guard **D-K** | il documento *merita* un numero? | qui, fuori dal lock |
+| **cancello** | la data può stare in fondo alla sequenza? | in `fn_get_next_progressivo`, **sotto l'advisory lock** |
+
+E va bene così: il D-K guarda **la fattura**, il cancello guarda **la sequenza**.
+Solo il secondo ha bisogno del lock.
 
 ---
 

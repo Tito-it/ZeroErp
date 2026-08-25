@@ -22,9 +22,18 @@ Indice test eseguiti:
 7) CataloghiTests.test_gli_stati_richiedibili_esistono_a_catalogo
 8) CataloghiTests.test_gli_stati_iniziali_esistono_a_catalogo
 9) CataloghiTests.test_nessuno_stato_richiedibile_e_ritirato
+10) OrdinamentiDichiaratiTests.test_le_colonne_delle_distinte_esistono
+11) OrdinamentiDichiaratiTests.test_le_colonne_della_coda_esistono
+12) OrdinamentiDichiaratiTests.test_le_colonne_delle_rate_esistono_nella_vista
+13) OrdinamentiDichiaratiTests.test_la_coda_porta_la_sua_distinta
+14) CataloghiTests.test_gli_stati_delle_code_esistono_a_catalogo
+15) CataloghiTests.test_lo_stato_dell_abbinamento_esiste_a_catalogo
+16) CataloghiTests.test_i_motivi_fuori_capienza_sono_quelli_della_vista
+17) CataloghiTests.test_i_codici_errore_del_service_esistono_a_catalogo
 """
 
 import csv
+import re
 from pathlib import Path
 from unittest import TestCase
 
@@ -33,6 +42,9 @@ from apps.pagamenti.db import pagamenti_repository as repo_mod
 from apps.pagamenti.db.pagamenti_repository import (
     _COLONNE_DISTINTA_AGGIORNABILI,
     _COLONNE_RIGA_AGGIORNABILI,
+    DISTINTE_SORT_COLUMNS,
+    RATE_FUORI_CAPIENZA_SORT_COLUMNS,
+    RIGHE_SORT_COLUMNS,
     PagamentiRepository,
 )
 from apps.pagamenti.services import pagamenti_service
@@ -137,6 +149,65 @@ class CataloghiTests(TestCase):
             _catalogo("vendite_contabili_righe_stati.csv"),
         )
 
+    # Scopo: Gli stati che compongono le DUE CODE del riconciliatore. Sono
+    #        scritti a mano nel service (e' una policy: quali righe sono
+    #        «lavoro da fare»), ma se un `codice_interno` cambiasse a catalogo
+    #        la coda si svuoterebbe **senza errore** — e una coda vuota si
+    #        legge come «non c'e' niente da fare».
+    def test_gli_stati_delle_code_esistono_a_catalogo(self):
+        catalogo = _catalogo("vendite_contabili_righe_stati.csv")
+        for coda, stati in pagamenti_service.CODE_RIGHE.items():
+            for codice in stati:
+                self.assertIn(codice, catalogo, f"coda {coda}: {codice} non a catalogo")
+
+    # Scopo: E lo stato in cui l'abbinamento porta la riga.
+    def test_lo_stato_dell_abbinamento_esiste_a_catalogo(self):
+        catalogo = _catalogo("vendite_contabili_righe_stati.csv")
+        self.assertIn(pagamenti_service.STATO_RIGA_ABBINATA, catalogo)
+        # ⭐ E deve essere POSTABILE: e' il senso dell'abbinamento — la riga
+        #    diventa denaro pronto a essere registrato.
+        self.assertEqual(
+            catalogo[pagamenti_service.STATO_RIGA_ABBINATA]["is_postabile"], "true"
+        )
+
+    # Scopo: I due motivi per cui una rata esce dalla banda sono scritti nel
+    #        service e prodotti da un `CASE` dentro la vista: due sedi per lo
+    #        stesso vocabolario. ⚠️ Un refuso qui darebbe una lista vuota — la
+    #        risposta piu' rassicurante possibile su un elenco che serve a NON
+    #        far sparire del denaro.
+    def test_i_motivi_fuori_capienza_sono_quelli_della_vista(self):
+        vista = (
+            Path(__file__).resolve().parents[5]
+            / "docs/it/dbzero/pagamenti/views/vw_rate_fuori_capienza.md"
+        ).read_text(encoding="utf-8")
+        for motivo in pagamenti_service.MOTIVI_FUORI_CAPIENZA:
+            self.assertIn(motivo, vista, f"motivo {motivo} assente dalla vista")
+
+    # Scopo: I codici errore che il service solleva DA SE' devono esistere a
+    #        catalogo. ⚠️ Un codice non registrato non fallisce: `resolve()` lo
+    #        manda su `E_GENERICO` -> **500**, cioe' un errore di dominio a 400
+    #        diventa un errore di server. E' successo al passaggio da
+    #        `E_VALIDATION_INPUT` al codice di dominio (2026-08-25).
+    def test_i_codici_errore_del_service_esistono_a_catalogo(self):
+        import csv as _csv
+
+        catalogo = {
+            r["codice"]
+            for r in _csv.DictReader(
+                (
+                    Path(__file__).resolve().parents[5]
+                    / "db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv"
+                ).open(encoding="utf-8")
+            )
+        }
+        for codice in (
+            pagamenti_service.E_VALIDAZIONE,
+            pagamenti_service.E_DISTINTA_NON_TROVATA,
+            pagamenti_service.E_RIGA_NON_TROVATA,
+            pagamenti_service.E_STATO_NON_CONFIGURATO,
+        ):
+            self.assertIn(codice, catalogo, f"{codice} non e' a catalogo")
+
     # Scopo: 🔴 Uno stato RITIRATO non si propone piu' a nessuno. `STORNATA` e'
     #        stata ritirata il 2026-08-21, e rimetterla in un menu riaprirebbe
     #        una porta che il lotto 2 ha chiuso.
@@ -153,3 +224,66 @@ class CataloghiTests(TestCase):
             if (catalogo[codice].get("obsoleto_dal") or "").strip()
         ]
         self.assertEqual(ritirati, [], "stati ritirati proposti a chi lavora")
+
+
+# I nomi che una SELECT rende disponibili all'ORDER BY esterno: gli alias
+# `AS nome` piu' le colonne prese nude (`c.origine` -> `origine`).
+def _nomi_esposti(frammento_sql: str) -> set[str]:
+    alias = set(re.findall(r"\bAS\s+([a-z_][a-z0-9_]*)", frammento_sql, re.I))
+    nude = set(re.findall(r"^\s*[a-z]{1,4}\.([a-z_][a-z0-9_]*),?\s*$",
+                          frammento_sql, re.I | re.M))
+    return {n.lower() for n in alias | nude}
+
+
+class OrdinamentiDichiaratiTests(TestCase):
+    """🔴 Ogni colonna che il contratto dichiara ordinabile deve ESISTERE.
+
+    Il difetto che questo presidio chiude e' costato un 500: la coda dichiarava
+    di saper ordinare per `distinta`, ma quella colonna non era nel SELECT — e
+    l'ordinamento finisce in una clausola SQL, quindi non e' un valore
+    sbagliato: e' una query che non parte. ⚠️ Un ordinamento si prova solo
+    chiedendolo, e nessun test lo chiedeva TUTTO.
+    """
+
+    # Scopo: Le sei colonne ordinabili della lista distinte.
+    def test_le_colonne_delle_distinte_esistono(self):
+        esposti = _nomi_esposti(repo_mod._DISTINTA_SELECT) | _nomi_esposti(
+            repo_mod._TOTALI_LATERAL
+        )
+        mancanti = sorted(
+            col for col in DISTINTE_SORT_COLUMNS.values() if col not in esposti
+        )
+        self.assertEqual(mancanti, [], "colonne dichiarate ordinabili e assenti")
+
+    # Scopo: Le quattro della coda del riconciliatore.
+    def test_le_colonne_della_coda_esistono(self):
+        esposti = _nomi_esposti(repo_mod._RIGA_CODA_SELECT)
+        mancanti = sorted(
+            col for col in RIGHE_SORT_COLUMNS.values() if col not in esposti
+        )
+        self.assertEqual(mancanti, [], "colonne dichiarate ordinabili e assenti")
+
+    # Scopo: Le cinque delle rate fuori capienza, contro la definizione della
+    #        VISTA — che e' doc auto-generata dal database, non una copia.
+    # ⚠️ Questo controllo e' piu' debole degli altri due: cerca il nome nel
+    #    testo della vista, quindi prende i refusi (il caso vero) ma non un
+    #    nome che esiste in un altro punto della definizione.
+    def test_le_colonne_delle_rate_esistono_nella_vista(self):
+        vista = (
+            Path(__file__).resolve().parents[5]
+            / "docs/it/dbzero/pagamenti/views/vw_rate_fuori_capienza.md"
+        ).read_text(encoding="utf-8")
+        mancanti = sorted(
+            col
+            for col in RATE_FUORI_CAPIENZA_SORT_COLUMNS.values()
+            if not re.search(rf"\b{re.escape(col)}\b", vista)
+        )
+        self.assertEqual(mancanti, [], "colonne assenti dalla vista")
+
+    # Scopo: ⭐ E la promessa che ne era la ragione: una riga cross-distinta
+    #        senza il documento da cui viene non si lavora — chi la guarda in
+    #        coda deve poterci tornare.
+    def test_la_coda_porta_la_sua_distinta(self):
+        esposti = _nomi_esposti(repo_mod._RIGA_CODA_SELECT)
+        for colonna in ("contabile_codice", "contabile_data", "contabile_origine"):
+            self.assertIn(colonna, esposti)

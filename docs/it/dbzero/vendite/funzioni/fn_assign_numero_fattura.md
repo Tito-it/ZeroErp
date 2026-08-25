@@ -9,16 +9,14 @@ CREATE FUNCTION fn_assign_numero_fattura(p_fattura_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
- RETURNS TABLE(registro_id bigint, anno smallint, mese smallint, serie character varying, numero bigint)
+ RETURNS TABLE(registro_id bigint, anno smallint, serie character varying, numero bigint)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_registro_id vendite.fatture.registro_id%TYPE;
     v_data        vendite.fatture.data%TYPE;
     v_serie       vendite.fatture.serie%TYPE;
-    v_reset       vendite.registri_fatturazione.reset_policy%TYPE;
     v_anno        vendite.fatture.anno%TYPE;
-    v_mese        SMALLINT;
     v_numero      vendite.fatture.numero%TYPE;
     -- D-K: stato dei satelliti, letto una volta sola.
     v_tot_pagare  vendite.fatture.totale_a_pagare%TYPE;
@@ -37,6 +35,13 @@ DECLARE
     -- D-K condizione 7: la natura del documento, per chiave naturale.
     v_natura_cod  config.nature_doc_fiscale.codice_interno%TYPE;
 BEGIN
+    -- ⭐ rev 2026-08-25 (cantiere numerazione-data-documento):
+    --    1) si passa p_fattura_id a fn_get_next_progressivo, che
+    --       ne ha bisogno per il BERSAGLIO del cancello di
+    --       monotonia — dentro un giro di lotto la frase non dice
+    --       piu' quale documento ha rifiutato;
+    --    2) `mese` esce dal RETURNS TABLE, e con lui reset_policy.
+
     -- Guard: parametro obbligatorio
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -47,11 +52,16 @@ BEGIN
     END IF;
 
     -- Recupera dati fattura + registro con lock (solo la riga fattura, alias f)
+    -- ⛔ Il JOIN sul registro RESTA: porta serie_default, cioe' il
+    --    punto in cui la SERIE di un documento si risolve davvero.
+    --    E' la stessa risoluzione che usano
+    --    fn_get_data_minima_numerabile e il backfill di ultima_data:
+    --    se una delle tre diverge, cerca una riga di contatore che
+    --    non esiste e risponde «nessun vincolo».
     SELECT f.registro_id,
            f.data,
-           COALESCE(f.serie, r.serie_default, ''),
-           r.reset_policy
-      INTO v_registro_id, v_data, v_serie, v_reset
+           COALESCE(f.serie, r.serie_default, '')
+      INTO v_registro_id, v_data, v_serie
       FROM vendite.fatture f
       JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
      WHERE f.id = p_fattura_id
@@ -240,12 +250,13 @@ BEGIN
     END IF;
 
     -- Calcolo progressivo
+    -- ⭐ rev 2026-08-25: si passa p_fattura_id, che serve SOLO al
+    --    bersaglio del cancello di monotonia. Senza, dentro un giro
+    --    di lotto l'errore direbbe da quale data ripartire ma non
+    --    su quale documento e' successo.
     v_anno := vendite.fn_get_anno_registro(v_data);
-    v_numero := vendite.fn_get_next_progressivo(v_registro_id, v_data, v_serie);
-    v_mese := CASE WHEN v_reset = 'MENSILE'
-                   THEN EXTRACT(MONTH FROM v_data)::SMALLINT
-                   ELSE NULL
-               END;
+    v_numero := vendite.fn_get_next_progressivo(
+                    v_registro_id, v_data, v_serie, p_fattura_id);
 
     -- Aggiorna testata fattura
     UPDATE vendite.fatture
@@ -256,12 +267,12 @@ BEGIN
            user_update = current_user
      WHERE id = p_fattura_id;
 
-    RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, '')::VARCHAR, v_numero;
+    RETURN QUERY SELECT v_registro_id, v_anno, NULLIF(v_serie, '')::VARCHAR, v_numero;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
-IS 'Assegna anno, serie e numero a una fattura, dopo il guard D-K di coerenza del documento. Il guard gira SEMPRE prima di consumare il progressivo, perche'' un numero fiscale valido su un documento invalido si ripara solo con una nota di variazione. rev 2026-08-18 (brief-design-note-credito-resi N11): SETTIMA condizione — natura = NOTA_CREDITO <=> totale_a_pagare <= 0. ⭐ Trasforma la scelta di D-NC-2 (il segno vive nel numero, non in un''etichetta) da convenzione a invariante VERIFICATO, e chiude il cerchio con la FatturaPA dove lo stesso invariante si legge TipoDocumento = TD04 <=> totale_doc < 0. ⚠️ Lo zero e'' ammesso da entrambe le parti: si presidia il SEGNO, non l''importo, e vietare una fattura a saldo nullo sarebbe una regola inventata da questo guard invece che decisa. ⚠️ La seconda meta'' dice «diverso da NOTA_CREDITO» e non «uguale a FATTURA»: copre anche NOTA_DEBITO senza nominarla, ed e'' letteralmente il verso <= dell''equivalenza. ⭐ rev 2026-08-24: E_FATTURA_SENZA_RIGHE porta il BERSAGLIO sulla fattura. Questa funzione gira DENTRO il giro di lotto, su molte fatture: la frase dice quale ha rifiutato, il bersaglio la fa aprire. Brief: docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md §6 L6.';
+IS 'Assegna anno, serie e numero a una fattura, dopo il guard D-K di coerenza del documento. Il guard gira SEMPRE prima di consumare il progressivo, perche'' un numero fiscale valido su un documento invalido si ripara solo con una nota di variazione. rev 2026-08-18 (brief-design-note-credito-resi N11): SETTIMA condizione — natura = NOTA_CREDITO <=> totale_a_pagare <= 0. ⭐ Trasforma la scelta di D-NC-2 (il segno vive nel numero, non in un''etichetta) da convenzione a invariante VERIFICATO, e chiude il cerchio con la FatturaPA dove lo stesso invariante si legge TipoDocumento = TD04 <=> totale_doc < 0. ⚠️ Lo zero e'' ammesso da entrambe le parti: si presidia il SEGNO, non l''importo. ⚠️ La seconda meta'' dice «diverso da NOTA_CREDITO» e non «uguale a FATTURA»: copre anche NOTA_DEBITO senza nominarla. ⭐ rev 2026-08-24: E_FATTURA_SENZA_RIGHE porta il BERSAGLIO sulla fattura. ⭐ rev 2026-08-25 (cantiere numerazione-data-documento), DUE modifiche in un solo DROP + CREATE (decisione D-4): (1) si passa p_fattura_id a fn_get_next_progressivo, che ne ha bisogno per il BERSAGLIO del cancello di monotonia — senza, dentro un giro di lotto l''errore direbbe da quale data ripartire ma non su quale documento e'' successo; (2) `mese` ESCE dal RETURNS TABLE, e con lui l''ultima lettura di registri_fatturazione.reset_policy, che ammetteva tre valori e ne implementava uno. ⛔ Questo changeSet va DOPO quello su fn_numera_fattura_opz_emessa, che chiama questa funzione: se `mese` sparisse prima che quella smetta di chiederlo sarebbe un errore a runtime. ⛔ Il JOIN su registri_fatturazione RESTA, al contrario di quanto fatto nella chiamante: qui porta serie_default, cioe'' il punto in cui la SERIE di un documento si risolve davvero — ed e'' la stessa risoluzione, COALESCE(f.serie, r.serie_default, ''''), che devono usare fn_get_data_minima_numerabile e il backfill di ultima_data; se una delle tre diverge, cerca una riga di contatore che non esiste e risponde «nessun vincolo». ℹ️ Adesso prima del numero ci sono DUE cose: il D-K (il documento merita un numero?) e il cancello di monotonia dentro fn_get_next_progressivo (la data puo'' stare in fondo alla sequenza?). Il secondo e'' sotto l''advisory lock, il primo no — e va bene: il D-K guarda la fattura, non la sequenza. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-8 e DB-12.';
 ```
 
 ---

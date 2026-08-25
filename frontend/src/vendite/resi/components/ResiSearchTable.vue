@@ -7,6 +7,8 @@
 // origine, emittente). Clone ridotto di DdtSearchTable (brief §11): NIENTE
 // azione "Nuovo" (il reso nasce SOLO dal pannello nel drawer DDT), filtrata via.
 // Export CSV/XLSX operativo (endpoint BE `/vendite/resi/export/`, DEF-1).
+// Dal 2026-08-25 e' la SESTA SORELLA delle liste documento: colonne di
+// genealogia (pratica, fase, transito) dal seed + i tre slot lineage.
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
@@ -20,6 +22,9 @@ import ListaConfigStatusTag from '../../../core/components/ListaConfigStatusTag.
 import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
+import LineagePraticaCell from '../../_shared/lineage/LineagePraticaCell.vue'
+import LineageFaseTag from '../../_shared/lineage/LineageFaseTag.vue'
+import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
@@ -136,6 +141,26 @@ onMounted(() => store.fetchList())
         <!-- Stato: Tag severity data-driven (statoResoSeverity). -->
         <template #cell-stato="{ data }">
           <Tag :value="data.stato_descrizione" :severity="statoResoSeverity(data.stato_codice_interno)" />
+        </template>
+
+        <!-- Colonne lineage: pratica cliccabile, fase, chip transito. Stessi
+             tre slot delle cinque sorelle — il seed (colonne 549/550/551 su
+             lista 9, 2026-08-25) porta le colonne, ma senza QUESTI slot il BB
+             renderebbe il valore grezzo: `fase` come testo al posto del Tag e
+             la frontiera come numero nudo al posto del chip.
+             ⭐ Su un reso il chip transito e' la risposta a «questo reso e'
+             gia' stato accreditato, e con quale documento»: la frontiera di un
+             reso accreditato e' la nota di credito (arco S, 20260825-19). -->
+        <template #cell-pratica="{ data }">
+          <LineagePraticaCell :pratica-id="data.pratica_id" :pratica-numero="data.pratica_numero" :n-pratiche="data.n_pratiche" />
+        </template>
+        <template #cell-fase="{ data }">
+          <LineageFaseTag :fase="data.fase" />
+        </template>
+        <template #cell-transito="{ data }">
+          <LineageFrontieraChip :is-transitato="data.is_transitato" :tipo-codice="data.frontiera_tipo_codice"
+            :codice="data.frontiera_codice" :stato="data.frontiera_stato_codice_interno"
+            :fase="data.frontiera_fase" :n-attivi="data.n_discendenti_attivi" />
         </template>
       </ListaConfigurabile>
     </template>

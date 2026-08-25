@@ -19,7 +19,7 @@
 > per accedere velocemente ai log, specialmente a quelli della fatturazione»*.
 >
 > ⭐ **Il brief del Passo 0 è scritto** (2026-08-22):
-> [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
+> [brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
 > — **18 decisioni chiuse, zero domande aperte**. ✅ **L1, L2 e L4 APPLICATI E
 > VERDI il 2026-08-22**: 18 changeSet, 5 CSV, 33 asserzioni pgTAP con zero skip.
 > ⭐ **La riga del giornale è parlante e i suoi vocabolari sono governati**:
@@ -309,6 +309,91 @@ quella parte, è già pagato.
 
 ---
 
+## 3-quater. 📍 Dove siamo — **stato dei passi al 2026-08-24 sera**
+
+> Rilettura fatta contro il **codice e il database vivi**, non contro il piano.
+> Serve perché tre passi su sette sono cambiati di stato in due giorni e il §4
+> qui sotto li descrive ancora come da fare.
+
+| Passo | Stato | Come si verifica |
+| --- | --- | --- |
+| **0** — la riga dice *chi*, *per chi*, *in che giro* | ✅ **FATTO** | `vendite.event_log` ha oggi `emittente_soggetto_ruolo_id` **NOT NULL** (+ RLS), `auth_user_id`, `tx_id`, `cleanup_at`. 12 consegne BE, verificate su **7 giri veri** |
+| **1** — rendere nominabili gli errori | ✅ seed applicato (2026-08-07) | resta il **check CI**, come già scritto |
+| **2** — `request_id` nei log Python | ✅ **FATTO** *(consegna BE-8)* | `settings.py`: filtro `request_id` + `req=%(request_id)s` nel formatter. ⭐ **B11 chiuso nello stesso giro, e in due direzioni opposte**: `emittente_attivo_id` ora si **scrive** (si collega in SQL, non passa dal Python), `tx_id` su `request_log` si è **tolto** — quella riga nasce quando l'unità di lavoro ha già chiuso, quindi il suo `tx_id` non esiste più. ⭐ *Una colonna che nessuno scrive si valorizza o si toglie: qui è successo l'uno e l'altro, sulla stessa tabella* |
+| **A** — la timeline di un caso | ✅ **CHIUSO — fattura e lotto** *(2026-08-24 sera)* | `GET /vendite/fatture/<id>/giornale/` (validato in-app da Tid) e `GET /vendite/lotti/<id>/giornale/` + le due schede «Storia». ⭐ Sono i **due soli consumatori** di `script.vw_giornale_entita`. Sul lotto: il lotto **più le sue fatture**, righe non-INFO, con `entity_type` su ogni riga — e alla prima chiamata vera *il lotto dice che è andata male, la fattura dice perché* (R-3). 🔵 Resta la validazione in-app del pannello lotto |
+| **B** — superfici aggregate | 🔵 aperto | invariato |
+| **C** — notifiche | 🔵 aperto | invariato |
+| **D** — retention sui log di dominio | 🟡 **parziale** | `event_log` ha `cleanup_at` dal Passo 0; `fatturazione_lotti_log` e `fatture_log` no |
+
+### ✅ R-1 — l'orario ora è quello vero *(chiesto dal BE, scritto dal team DB il 2026-08-24)*
+
+Era **la** cosa che teneva fermo il pannello del lotto: le colonne di orario dei
+registri avevano default `now()`, cioè l'istante della **transazione** (misurato:
+38 righe di un lotto su **3 istanti**). Sulla fattura non mordeva — un registro
+solo; sul lotto i registri sono **tre** e i loro contatori di scrittura non sono
+confrontabili, quindi la timeline sarebbe uscita **plausibile e falsa**.
+
+➡️ **Risposta: `clock_timestamp()`**, changeSet `20260824-16` (i `DEFAULT`) e
+`-17` (il comportamento), **nella stessa passata** + 7 asserzioni pgTAP.
+⭐ L'argomento che ha deciso: l'orario di transazione è oggi coperto dal `tx_id`,
+che quando quei default furono scelti non esisteva — sono colonne di
+**osservabilità**, non di audit, e `data_insert` continua a portare l'orario di
+transazione. *Non si erode una convenzione: si scioglie una sovrapposizione.*
+
+⚠️ **Tre cose emerse misurando, che la richiesta non prevedeva** e che vale la
+pena non riscoprire:
+
+1. **i `DEFAULT` erano quasi tutti inerti** — tre registri su quattro passano la
+   colonna a mano. Cambiare i soli default avrebbe mosso **un registro su
+   quattro**, con un changeSet che dichiarava di aver risolto: *la forma
+   peggiore, perché sembra fatta*;
+2. **c'era un quinto punto** — `ended_at`, scritto con `now()`: spostando il solo
+   `started_at`, un tentativo aperto e chiuso nella stessa transazione avrebbe
+   violato il `CHECK (ended_at >= started_at)`. **165 corse su 319** sono
+   esattamente quel caso;
+3. **su `fatture_log` è un trigger, non cinque riscritture** — e il trigger
+   copre anche il **sesto scrittore, che è il backend**: ⛔ **nessuna consegna
+   BE su questo punto.**
+
+⭐ **L'ancoraggio del «giro corrente» è deciso e pinnato** (Tid): una riga scritta
+nella stessa transazione ma **prima** del `PIPELINE_STARTED` cade **fuori** dal
+giro corrente. Con `now()` quel predicato non distingueva niente. Le funzioni
+ancorate sono **due** (`fn_list_lotto_segnalazioni` **e** `fn_list_lotto_task_runs`).
+
+⚠️ **Nessun backfill**, per scelta: le righe già scritte conservano l'orario di
+transazione, quindi in tabella convivono **due generazioni** (R-5) — e a reggerle
+è il pannello.
+
+### ✅ Il perimetro del pannello lotto è deciso *(Tid, 2026-08-24)*
+
+Il lotto **più le sue fatture**, righe **non-INFO**. La misura che l'ha decisa:
+filtrando il solo lotto tornano 213 righe che dicono otto volte «Esito fatture
+lotto · WARN» e **non contengono il motivo**, che sta sulla fattura.
+⚠️ «Non-INFO» include il **NULL**, che è la riga che dichiara un difetto.
+
+➡️ **Con R-1 applicato e il perimetro deciso, il pannello del lotto è stato
+scritto** la sera stessa — ✅ e con lui il Passo A si chiude. Il racconto sta nel
+§12 di
+[brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md);
+il manuale dell'endpoint è `api_lotto_giornale.md`.
+
+### ⚠️ I rilievi della ricognizione ancora vivi
+
+Misurati il 2026-08-24 sui lotti **6260** (sporco) e **7133** (pulito), col
+contesto operatore dichiarato. R-1 è risolto qui sopra, R-3 ha deciso dove
+approdava il Passo A; questi restano, e chi scrive il pannello del lotto li
+incontra tutti:
+
+| # | Rilievo | Perché conta |
+| --- | --- | --- |
+| **R-2** | `LOTTO_LOG` e `FATTURA_LOG` hanno `correlation_id` **NULL per costruzione della vista** | Filtrare per «filo» tiene `event_log` + `task_run` e butta via le righe scritte **per una persona**. ⛔ Un filtro per giro nasconderebbe metà del contenuto |
+| **R-4** | Il **perimetro non è mai stato esercitato** su nessuno dei quattro rami | Un solo emittente ha righe. Il fail-closed funziona (senza GUC la vista torna 0), la **discriminazione** no: va collaudata **apposta**, i dati non lo faranno |
+| **R-5** | Due **generazioni di righe** convivono | Le vecchie hanno `tx_id` NULL e per «filo» il lotto; le nuove il giro. A video sono **indistinguibili** — e da R-1 in poi si aggiunge l'orario |
+| **R-6** | La riga `TASK_RUN` è **incoerente con sé stessa** | `quando` è `COALESCE(ended_at, started_at)`, e `ended_at` lo scrive la corsa **successiva**: un task partito il 21 compare col timestamp del 22 |
+| **R-7** | **Rumore**: sul 6260, 213 righe, 82 non-INFO — e **81 sono la stessa storia ripetuta otto volte**. L'errore vero è **una riga** | Il filtro non-INFO da solo non basta: nascondere le ritirate ne toglie una parte, il resto è **de-duplicazione**, da guardare col pannello davanti |
+
+---
+
 ## 4. Piano proposto *(rivisto il 2026-08-22)*
 
 L'ordine non è per dimensione ma per **dipendenza**: ogni passo rende utile il
@@ -516,7 +601,7 @@ Approda dove il caso si guarda già: la diagnostica del lotto e il pannello
 «Passaggi» della fattura.
 
 > ⛔ **VINCOLO DECISO DA TID IL 2026-08-24, e arriva da un altro cantiere**
-> ([brief-db-bersaglio-errore.md](brief-db-bersaglio-errore.md) §8.3): **un
+> ([brief-db-bersaglio-errore.md](../work-done/brief-db-bersaglio-errore.md) §8.3): **un
 > diario tecnico non diventa una superficie per tutti.** Se una schermata mostra
 > `dbops.error_log` — o qualunque altro registro di appunti tecnici — nasce
 > **dietro un permesso dichiarato**, per i tecnici, non visibile a chiunque apra
@@ -621,7 +706,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    righe da quattro registri** — di cui solo 12 vengono da `event_log`. ⭐ È la
    conferma di ciò che motivava la vista: il Passo A sul solo diario avrebbe
    consegnato l'1,6% della storia. Dettagli nel
-   [brief del Passo 0](brief-db-event-log-scope-e-riga-parlante.md) §3.6 e §4.
+   [brief del Passo 0](../work-done/brief-db-event-log-scope-e-riga-parlante.md) §3.6 e §4.
 6. ✅ **`FORCE` sulla policy** — non è un bivio: parità con la famiglia
    (`ENABLE`, no `FORCE`) più filtro applicativo. Vedi la rettifica nel Passo 0
    (V1). *(era la #5)*
@@ -636,7 +721,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
    (Passo 1, che ormai è solo questo)
 8. **Notifiche** — canale email o solo badge in-app in prima battuta? (Passo C)
 > ✅ **Le voci 9, 10, 11, 12 e 13 sono state decise il 2026-08-22 e sono
-> confluite nel [brief del Passo 0](brief-db-event-log-scope-e-riga-parlante.md)
+> confluite nel [brief del Passo 0](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
 > come D-6 (`actor`/`source` via), D-7 (il giro), D-8 (retention),
 > D-9 (`entity_type` → `config.sorgenti`) e D-10 (niente guard). Restano qui
 > in forma abbreviata come storia; le motivazioni complete stanno nel brief,
@@ -682,7 +767,7 @@ a chi ripara la *storia* di un caso. Servono a persone diverse.
     ragione e resta valida**: per il giornale `entity_id` è la PK `id`, sempre;
     la chiave `uid` serve a chi *punta* a un'entità da fuori — il **bersaglio**
     di un errore — e il catalogo la dichiarerà per quello
-    ([brief-db-bersaglio-errore](brief-db-bersaglio-errore.md) §6, changeSet 63).
+    ([brief-db-bersaglio-errore](../work-done/brief-db-bersaglio-errore.md) §6, changeSet 63).
     ~~**`entity_type`: vocabolario libero, `CHECK`, o `config.sorgenti`?** Oggi è
     `text` senza vincolo.~~ Il progetto **ha già** un registro polimorfo,
     `config.sorgenti` (15 voci, con `target_table` e `key_selector`), che però

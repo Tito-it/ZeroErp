@@ -509,7 +509,7 @@ porta in un vicolo cieco.
 quindi non c'è nessun gesto da offrirgli: `_apply_policy` lo toglie, anche se il
 database ce l'avesse messo.
 
-Brief: `docs/it/dev/work-in-progress/brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
+Brief: `docs/it/dev/work-done/brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
 
 ### 🔴 I cinque punti di traduzione, e perché contano
 

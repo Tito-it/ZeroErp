@@ -28,6 +28,7 @@ from apps.core.api.payload_validators import (
     optional_iso_date,
     optional_uuid,
     qp_int_strict,
+    qp_int_optional,
     qp_iso_date_optional,
     qp_str,
 )
@@ -54,6 +55,7 @@ from apps.vendite.services.commesse_service import (
     pr_run_commesse_push,
 )
 from apps.vendite.services.pipeline_service import (
+    finestra_numerazione,
     esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
@@ -72,6 +74,7 @@ from apps.vendite.services.vendite_service import (
     fn_list_lotti,
     fn_list_lotto_fatture,
     fn_lotti_mensile,
+    get_lotto_giornale,
 )
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
@@ -777,7 +780,7 @@ class ApiLottiList(DomainAPIView):
             OpenApiParameter(name="area_geografica_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per area geografica fatturazione."),
             OpenApiParameter(name="tipo_doc_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per tipo documento fiscale."),
             OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per emittente fiscale (soggetto_ruolo_id)."),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento: `campo_sorgente` del catalogo lista `vendite.lotti` (codice, competenza_mese, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, data_insert, user_insert)."),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento: `campo_sorgente` del catalogo lista `vendite.lotti`. Whitelist autoritativa: `VenditeRepository.LOTTI_SORT_COLUMNS` — codice, competenza_mese, data_documento, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, emittente_ragione_sociale, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, n_fatture, totale_documenti, data_insert, user_insert."),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
             OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
@@ -1115,6 +1118,102 @@ class ApiLottoFattureList(DomainAPIView):
 # Commesse — push orchestrator + stato + attivita                     #
 # ================================================================== #
 
+
+
+class ApiLottoGiornale(DomainAPIView):
+    """La STORIA di un lotto: il lotto PIU' le sue fatture, righe non-INFO.
+
+    Secondo (e ultimo) consumatore di `script.vw_giornale_entita`, la vista che
+    cuce i registri di evento del progetto in una forma normalizzata. Sul lotto
+    i registri che rispondono sono **tre** — `EVENT_LOG`, `LOTTO_LOG`,
+    `TASK_RUN` — piu' `FATTURA_LOG` per i documenti che contiene.
+
+    ⭐ «Il lotto piu' le sue fatture» e' una DECISIONE (Tid, 2026-08-24), non una
+    scelta di schermata: un pannello limitato all'entita' LOTTO ripeterebbe
+    «Esito fatture lotto · WARN» e **non conterrebbe il motivo**, che sta sulla
+    fattura perche' la sua entita' e' la fattura (rilievo R-3).
+
+    ⛔ Non e' la lista delle segnalazioni (`/segnalazioni/`), che elenca i
+    problemi APERTI da risolvere: qui si risponde a *«cosa e' successo, in che
+    ordine»* — comprese le cose andate bene e i tentativi superati.
+
+    Lotto inesistente **o fuori scope emittente** → 404 identico. ⚠️ E il 404 lo
+    decide la TESTATA: la vista risponderebbe zero righe, cioe' «non e' successo
+    niente» invece di «non lo vedi».
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="sort_by", type=str, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Colonna di ordinamento: `gravita` (default, i piu' gravi "
+                    "prima) oppure `quando`. Un valore fuori whitelist ricade "
+                    "sul default."
+                ),
+            ),
+            OpenApiParameter(
+                name="sort_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+                description="Verso: `desc` (default) o `asc`.",
+            ),
+            OpenApiParameter(
+                name="info", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Include anche le righe di routine (`INFO`), di default "
+                    "nascoste. Quante ne sono state nascoste lo dice "
+                    "`info_count`. ⚠️ «Non-INFO» comprende la gravita' NULL, che "
+                    "e' il segnale di un vincolo allargato e non un dato "
+                    "mancante: resta visibile anche col filtro attivo."
+                ),
+            ),
+            OpenApiParameter(
+                name="ritirate", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description=(
+                    "Include anche le segnalazioni RITIRATE, che appartengono a "
+                    "un tentativo poi rifatto. Il conteggio e' `ritirate_count`."
+                ),
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoGiornaleResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoGiornaleData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(),
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "ritirate_count": serializers.IntegerField(),
+                            "info_count": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il giornale paginato del lotto.
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        q = request.query_params
+        data = get_lotto_giornale(
+            lotto_id=lotto_id,
+            page=qp_int_strict(q.get("page"), "page", 1),
+            page_size=qp_int_strict(q.get("page_size"), "page_size", 50),
+            includi_info=as_bool(q.get("info"), default=False),
+            includi_ritirate=as_bool(q.get("ritirate"), default=False),
+            sort_by=q.get("sort_by") or "gravita",
+            sort_dir=q.get("sort_dir") or "desc",
+            auth_user_id=get_scope_user_id(request),
+        )
+        return success_response(data)
 
 class ApiRunCommessePush(DomainAPIView):
     area_funzionale = "vendite"
@@ -1655,7 +1754,23 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
                 description="Chiave idempotenza obbligatoria per endpoint write.",
             )
         ],
-        request=None,
+        request=inline_serializer(
+            name="VenditeNumeraLottoRequest",
+            fields={
+                "data_documento": serializers.DateField(
+                    required=False,
+                    allow_null=True,
+                    help_text=(
+                        "Data documento dichiarata per l'atto: riscrive la data "
+                        "delle fatture non ancora numerate del lotto e ne "
+                        "rigenera i piani rate, PRIMA di numerare. Assente = "
+                        "nessuna dichiarazione, valgono le date che i documenti "
+                        "gia' portano. La data minima ammessa e' quella esposta "
+                        "dalla finestra di numerazione del perimetro."
+                    ),
+                ),
+            },
+        ),
         responses={
             200: inline_serializer(
                 name="VenditeNumeraLottoResponse",
@@ -1669,13 +1784,15 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
             )
         },
     )
-    # Scopo: Numera (Rendi definitive) il lotto: guard scope+EMESSA, poi step DEFINITIVA.
+    # Scopo: Numera (Rendi definitive) il lotto: guard scope+EMESSA, dichiarazione
+    #        opzionale della data documento, poi step DEFINITIVA.
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
-        # Scopo: delega al service (guard fiscale + esecuzione step DEFINITIVA).
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        # Scopo: delega al service (guard fiscale + data + esecuzione step DEFINITIVA).
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
             return numera_lotto(
                 lotto_id=int(lotto_id),
                 auth_user_id=get_scope_user_id(request),
+                data_documento=optional_iso_date(payload, "data_documento"),
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -1788,6 +1905,103 @@ class ApiFatturazioneEsiti(DomainAPIView):
                 user=request.user,
             ),
         )
+
+
+class ApiFatturazioneFinestraNumerazione(DomainAPIView):
+    """BE-5: la FINESTRA DI NUMERAZIONE di un perimetro — con quale data si
+    puo' numerare, e da quale data i documenti partono adesso. E' la TARGA del
+    cancello di
+    `vendite.fn_get_next_progressivo`, che rifiuta un documento la cui data e'
+    anteriore all'ultimo numero gia' emesso sul sezionale.
+
+    Due perimetri, una domanda sola: `?lotto_id=` (dialog «Rendi definitive»
+    del drawer lotto) oppure `?competenza_mese=` (atto di perimetro, che tocca
+    N lotti e vuole la data che li accontenta tutti). Esattamente uno dei due.
+
+    `data_minima` a `null` = nessun pavimento: su quei sezionali non e' ancora
+    stato emesso nessun numero, e qualunque data va bene.
+
+    ⚠️ E' un SUGGERIMENTO per il DatePicker, non una garanzia: la lettura e'
+    fail-open sotto RLS (una fattura fuori perimetro non entra nel massimo).
+    Il rifiuto vero resta del cancello, che legge il contatore."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="lotto_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Perimetro «un lotto». Alternativo a competenza_mese.",
+            ),
+            OpenApiParameter(
+                name="competenza_mese",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Perimetro «atto sul mese» (YYYY-MM-DD): il pavimento piu' "
+                    "restrittivo fra i lotti EMESSA di quel mese. Alternativo a "
+                    "lotto_id."
+                ),
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeFinestraNumerazioneResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFinestraNumerazioneData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(allow_null=True),
+                            "competenza_mese": serializers.CharField(allow_null=True),
+                            "data_documento": serializers.CharField(allow_null=True),
+                            "data_corrente": serializers.CharField(allow_null=True),
+                            "data_minima": serializers.CharField(allow_null=True),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce la data minima numerabile del perimetro richiesto.
+    def get(self, request: Request) -> JsonResponse:
+        # ⚠️ `qp_int_optional` e non un guard sul positivo qui: uno zero o un
+        #    negativo non e' un parametro malformato, e' un lotto che non
+        #    esiste — e la risposta giusta e' il 404 unificato del service, non
+        #    un 400 che dice una cosa diversa dagli altri verbi per-lotto.
+        lotto_id = qp_int_optional(request.query_params.get("lotto_id"), "lotto_id")
+        competenza_mese = qp_iso_date_optional(
+            request.query_params.get("competenza_mese"), "competenza_mese",
+        )
+        return success_response(
+            finestra_numerazione(
+                lotto_id=lotto_id,
+                competenza_mese=competenza_mese,
+                auth_user_id=get_scope_user_id(request),
+            ),
+        )
+
+
+# Scopo: Normalizza `data_documento` nel payload di un job di fatturazione:
+#        assente -> payload invariato; presente -> validata e riscritta in ISO
+#        `YYYY-MM-DD`.
+# ⭐ Estratto alla 2ª occorrenza (regola del 2): lo usano il giro (BE-1) e la
+#    numerazione di perimetro (BE-2).
+# ⚠️ Validata QUI e non solo nel worker: una data malformata deve tornare 400 a
+#    chi preme il pulsante, non diventare un job fallito da leggere nei log un
+#    minuto dopo.
+# ⚠️ E RISCRITTA, non solo controllata: `optional_iso_date` accetta piu' forme
+#    di quante il worker ne rilegga, e nel payload della coda deve finire una
+#    sola forma — quella che `parse_data_iso` sa rileggere.
+def _payload_con_data_documento(payload: dict[str, object]) -> dict[str, object]:
+    data_documento = optional_iso_date(payload, "data_documento")
+    if data_documento is None:
+        return payload
+    return {**payload, "data_documento": data_documento.isoformat()}
 
 
 # Scopo: Enqueue comune dei job di fatturazione OPERATORE su dbops.coda_lavori
@@ -1931,6 +2145,16 @@ class ApiFatturazioneRun(DomainAPIView):
             fields={
                 "competenza_mese": serializers.DateField(required=True),
                 "fino_a_stato": serializers.CharField(required=False, allow_null=True),
+                "data_documento": serializers.DateField(
+                    required=False,
+                    allow_null=True,
+                    help_text=(
+                        "Data documento dichiarata per i lotti che il giro "
+                        "creera'. Assente = la decide la politica del registro "
+                        "(OGGI / FINE_MESE_COMPETENZA): non e' un sinonimo di "
+                        "«oggi»."
+                    ),
+                ),
                 "gruppi": serializers.ListField(
                     child=serializers.CharField(),
                     required=False,
@@ -1964,9 +2188,9 @@ class ApiFatturazioneRun(DomainAPIView):
         # Scopo: enqueue comune + `fino_a_stato` opzionale e `gruppi` (mirata).
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return _accoda_job_fatturazione(
-                request, payload,
+                request, _payload_con_data_documento(payload),
                 job_type=JOB_TYPE_FATTURAZIONE_GIRO,
-                extra_payload_keys=("fino_a_stato",),
+                extra_payload_keys=("fino_a_stato", "data_documento"),
                 accetta_gruppi=True,
             )
 
@@ -2055,6 +2279,16 @@ class ApiFatturazioneNumera(DomainAPIView):
             name="VenditeFatturazioneNumeraRequest",
             fields={
                 "competenza_mese": serializers.DateField(required=True),
+                "data_documento": serializers.DateField(
+                    required=False,
+                    allow_null=True,
+                    help_text=(
+                        "Una data per l'INTERO atto (decisione 5 del brief "
+                        "numerazione): vale per tutti i lotti che l'atto "
+                        "numera. Assente = nessuna dichiarazione, ogni "
+                        "documento tiene la data che ha."
+                    ),
+                ),
             },
         ),
         responses={
@@ -2075,10 +2309,19 @@ class ApiFatturazioneNumera(DomainAPIView):
     )
     # Scopo: Accoda la numerazione di perimetro e ritorna l'handle del job.
     def post(self, request: Request) -> JsonResponse:
-        # Scopo: enqueue comune (nessuna chiave extra: solo competenza_mese).
+        # Scopo: enqueue comune + la data documento dell'atto (facoltativa).
+        # ⚠️ Validata QUI e non solo nel worker: una data malformata deve
+        #    tornare 400 a chi preme il pulsante, non diventare un job fallito
+        #    da leggere nei log un minuto dopo.
+        # ⚠️ NON entra nella chiave di BUSINESS della coda (competenza+scope):
+        #    due «Rendi definitive» vivi sullo stesso mese e scope restano un
+        #    doppione anche con date diverse — la dedup difende l'atto fiscale,
+        #    non il parametro.
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return _accoda_job_fatturazione(
-                request, payload, job_type=JOB_TYPE_FATTURAZIONE_NUMERA,
+                request, _payload_con_data_documento(payload),
+                job_type=JOB_TYPE_FATTURAZIONE_NUMERA,
+                extra_payload_keys=("data_documento",),
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

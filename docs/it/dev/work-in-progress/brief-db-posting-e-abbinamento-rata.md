@@ -38,9 +38,18 @@
 > **scrivendo**: lo sdoppiamento del caso 14 (lotto 3) e la chiusura della
 > distinta come conseguenza del registrare (lotto 4).
 >
-> ⭐ **§6.8 dice da dove si riparte**: ~~il lotto 2~~ → il **lotto 5**, la rata.
-> §6 resta la mappa dei sette lotti, con le scorciatoie che l'assenza di
-> produzione consente.
+> ⭐ **§6.8 dice da dove si riparte**: ~~il lotto 2~~ → ~~il **lotto 5**, la rata~~
+> → ⭐ **il lotto 8, la consegna** (§6.15). §6 resta la mappa dei lotti, con le
+> scorciatoie che l'assenza di produzione consente.
+>
+> 🎉 **AGGIORNAMENTO DEL 2026-08-25 — il modello era finito, il cantiere no.** Il
+> backend ha scritto le slice 0-3 (quattordici rotte, 86 test) e nel farlo ha
+> misurato che cosa gli manca **dal database**: nasce la **slice 5** (§2.3-ter),
+> tre passi piccoli e nessuno di modello — il saldo fattura a **tre numeri**
+> (DB-10), il **cancello** sulla registrazione (DB-11) e i **quattro seed** di
+> lista. ⚠️ E la rimisura del terreno ha trovato **tre cose che il brief BE/FE dà
+> per vere e il database smentisce**, la più cara delle quali è **DATO-1: non è
+> configurato**, quindi la loro slice 4 non è sbloccata. Tutto in **§3-bis**.
 
 ---
 
@@ -55,6 +64,9 @@
 | 📋 **Il piano, logico** | Slice **0** (terreno) → **1** (posting) → **2** (rata) → **3** (perimetro) → **4** (sistemazioni). ✅ **Tutte applicate** | §2 |
 | ⭐ **Il piano, operativo** | **Sette lotti** — che cosa si scrive, si prova e si applica insieme. Non coincidono con le slice | §6 |
 | ✅ **Stato** | 🎉 **TUTTI E SETTE I LOTTI CHIUSI** — 71 changeSet applicati (`20260821-11`…`-34`, `20260821-48`…`-55`, `20260822-01`…`-39`), 14 pgTAP nuovi, doc manuale completa. ⭐ `pagamenti` ha un **vocabolario, due matrici e quindici guard**; il fondo fattura ha il suo **quarto stato**; C-1…C-8 sono **tutti chiusi**. ⭐ **Il primo movimento esiste**, ⭐ **sa a quale RATA appartiene**, ⭐ **sa DI CHI È**, ⭐ **e adesso il denaro di troppo ha un elenco e un registro**. 📮 Resta **S3-3**, che è **dato** e non codice | §6.7 · §6.9 · §6.10 · §6.11 · §6.12 · §6.13 · §6.14 |
+| ✅ **Slice 5 — la consegna** *(nuova e CHIUSA il 25/08)* | **Tre porte** che il backend non può aprire da solo: `fn_get_saldo_fattura` a **tre numeri** (DB-10) · il **cancello** `registra_distinta` + il ritiro di `approva_rimessa` (DB-11) · il codice `E_PAGAMENTI_VALIDATION`. ✅ **Applicato alle 11:26** (in due migrate: il primo si è fermato su DATO-3): un changeSet, cinque righe di CSV, 13 asserzioni nuove, **0 rossi su 15** col runner vero. 📮 Restano i **quattro seed di lista** (aspettano la bozza BE) e la madre della correzione, **differita** | §2.3-ter · §6.15 |
+| 🔴 **Due cose da fare a mano** | **DATO-1** (il conto `INCASSO` dei due emittenti: mai configurato) · **DATO-2** (assegnare `registra_distinta` a un profilo, o non registra nessuno). ✅ **DATO-3 risolto il 25/08** — ma solo dopo che il migrate ci era morto sopra | §3-bis · §6.15 |
+| 🔴 **Il terreno, rimisurato il 25/08** | **DATO-1 NON è configurato** (i due IBAN esistono, il legame no: gli emittenti non hanno nessun conto) · la RLS è su **4 tabelle su 12**, non dodici · le distinte esistenti sono **zero**. ✅ In compenso: `vw_fk_senza_indice` a 0 e **BE-1 chiusa davvero** (0 codici senza policy) | §3-bis |
 | ✅ **Domande aperte** | **Zero** — tutte e nove chiuse il 21/08, tre **senza essere decise**. Resta il solo dettaglio **D15-e** | §5 |
 
 ---
@@ -1184,6 +1196,164 @@ scelta finché `pagamenti` non ha questa porta.
 
 ---
 
+### 2.3-ter Slice 5 — La consegna *(le porte che il BE non può aprire da solo)*
+
+> ⭐ **Nasce il 2026-08-25**, e non da una decisione di dominio nuova: dal
+> consuntivo del brief BE/FE, che al 24/08 ha **quattordici rotte scritte, 86
+> test verdi e zero frontend**. Il collo di bottiglia è tornato **qui**, ma su
+> oggetti minuscoli: ⛔ **non è una slice di modello** — non aggiunge una regola,
+> apre le porte perché quelle già scritte si possano usare.
+>
+> Chiude i prerequisiti **DB-2 · DB-3 · DB-4 · DB-8 · DB-10 · DB-11** di
+> [brief-be-fe-posting-e-abbinamento-rata.md](brief-be-fe-posting-e-abbinamento-rata.md) §6.
+>
+> ⚠️ **Misurata sul database vivo il 2026-08-25**, non sul consuntivo del BE:
+> due delle cose che quel documento dà per fatte non lo sono (§3, aggiornamento
+> del 25/08).
+
+| | Passo | Fase | Cosa fa |
+| --- | --- | --- | --- |
+| **S5-1** | ✅ **APPLICATO** (25/08, 11:26) — `fn_get_saldo_fattura` a **tre numeri** (DB-10, Q-10 chiusa da Tid il 24/08) | `20_code` | Da `(saldo, has_movimenti)` a `(saldo, in_lavorazione, incassato, has_movimenti)`: **la stessa forma e lo stesso ordine** della sorella `fn_get_saldo_rata`. ⭐ Non è una rifinitura: la «base unica dei saldi» del BE (§2.7 del loro brief) nasce storta **proprio al livello che dovrà reggere il saldo cliente** |
+| **S5-2** | ✅ **APPLICATO** (25/08, 11:26) — il cancello sulla registrazione (DB-11, Q-5) | `80_data` | Due righe di `config/azioni_processo.csv`: nasce `registra_distinta` (area **7**, `pericolosa = true`), si ritira `approva_rimessa` (`attivo = false`). ✅ **DATO-3 risolto** — ma il primo migrate ci si è fermato (§6.15) |
+| **S5-3** | 📮 **IN ATTESA della bozza BE** — i **quattro seed di lista** (DB-2/3/4/8) | `80_data` | `ui.lista_definizione` + `ui.lista_colonna` per distinte · coda righe (**una sola**, Q-4) · rate fuori capienza · eccedenze |
+| **S5-4** | ✅ **APPLICATO** (25/08) — `E_PAGAMENTI_VALIDATION` | `80_data` | Il codice di validazione del dominio, che **non esisteva**: il service del BE ripiegava sul generico `E_VALIDATION_INPUT` |
+| **S5-5** | 🔵 **DIFFERITA per scelta** — la madre della **correzione** (Q-7) | `20_code` | Si scrive **quando parte la slice che la chiama**, non prima |
+| **S5-6** | ✅ **ESEGUITA il 2026-08-25** — le verifiche del terreno | — | Nessun changeSet: si legge il database e si scrive che cosa dice |
+
+---
+
+#### ⭐ S5-1 — perché una colonna in più è **tre file**, e non uno
+
+`fn_get_saldo_rata` risponde **tre** numeri, `fn_get_saldo_fattura` ne risponde
+**due**: la distinzione che il brief madre §4 dichiara obbligatoria *«nella
+prima misura che si scrive»* esiste sulla **rata** e non sulla **fattura** —
+cioè manca al livello che l'operatore guarda per primo.
+
+| | Il vincolo | Cosa comporta |
+| --- | --- | --- |
+| **1** | 🔴 `CREATE OR REPLACE` **non cambia** il `RETURNS TABLE` | serve `DROP` + `CREATE`. ⚠️ E il `DROP` deve conservare l'**identità** della funzione (`p_fattura_id bigint`), o nasce un **overload** invece di una revisione |
+| **2** | 🔴 `pagamenti.vw_eccedenze_da_sistemare` la chiama con la **lista di alias a due nomi**: `CROSS JOIN LATERAL … s(saldo, has_movimenti)` | con quattro colonne quella lista **non è più valida** — e comunque il `DROP FUNCTION` non passa finché la vista dipende da lei. ⛔ **Niente `CASCADE`**: si scrive la catena **DROP vista → DROP+CREATE funzione → CREATE vista**, e chi ricrea porta il numero **più alto** di chi droppa |
+| **3** | ⚠️ Ricreando la vista si **ripete** `WITH (security_invoker = on)` | è una reloption, non sta nel corpo: si azzererebbe **senza errore**, e la vista mostrerebbe a ciascun emittente i documenti dell'altro |
+| **4** | ⚠️ Una vista ricreata **perde i GRANT** (`zeroerp_app`, `zeroerp_batch_fatturazione`) | il rubinetto che li ridà gira in `ci_apply` / pgagent, cioè **dopo**: su dev fino alle 21:00 la coda sarebbe vuota per l'applicazione. I GRANT si rimettono **nello stesso changeSet** |
+
+⭐ **`in_lavorazione` si DELEGA, non si riscrive.** Il dichiarato a livello
+documento ha già la sua sede — `fn_get_saldo_fattura_contabili`, che somma le
+righe `is_postabile` sotto una testata non finale — e riscriverne il predicato
+dentro la sorella romperebbe *«i saldi hanno una sede sola»* **nel changeSet che
+lo realizza**. ⚠️ La funzione `_contabili` **resta**: `vendite.fn_saldo_sorgente_fondo`
+le chiede `has_righe_postabili`, che l'altra non dà.
+
+⭐ **`incassato` copia la regola della rata, parola per parola**: somma i
+movimenti il cui centro **esiste** e non è `is_fondo_fattura` né
+`is_compensazione`. ⚠️ Un movimento **senza centro** non è cassa: «canale non
+dichiarato» non è «denaro arrivato».
+
+✅ **Gli altri due chiamanti non si toccano, ed è misurato e non dedotto**:
+`pagamenti.fn_conferma_sistemazione` e `vendite.fn_saldo_sorgente_fondo` fanno
+`SELECT s.saldo INTO …` — leggono **per nome**, non per posizione. Anche i due
+pgTAP che la citano (`test-fn-posta-contabile.sql`) leggono `sf.saldo`.
+
+⚠️ **Un costo da dichiarare**: la vista chiama la funzione **per riga
+candidata**, e una funzione PL/pgSQL è una scatola chiusa — nessun planner
+pota le colonne che non servono. Da S5-1 in poi ogni riga dell'elenco eccedenze
+paga anche il calcolo del dichiarato e dell'incassato, che la vista **non usa**.
+Sui volumi di oggi (0 movimenti) è nulla; è il tipo di cosa che si scrive
+adesso, non si scopre dopo.
+
+**La prova**: la quadratura (`saldo` di fattura = `totale_a_pagare − Σ movimenti
+attivi`) e soprattutto **il caso che distingue le due colonne** — un movimento
+sul centro `Fondi Fattura` **salda** il documento e **non** entra in
+`incassato`. Senza quel caso il test passerebbe anche con `incassato = saldo`.
+
+---
+
+#### ⭐ S5-2 — che cosa apre davvero il seed, e che cosa **non** apre
+
+Il codice che usa l'azione **c'è già**:
+`ApiDistintaRegistra.post_permission = "registra_distinta"`
+(`backend/apps/pagamenti/api/views.py:365`), e finché la riga non è a catalogo
+il gesto è **negato a tutti tranne i super admin**. ⭐ Fail-closed, il verso
+giusto in cui sbagliare su un gesto irreversibile.
+
+🔴 **Ma le due righe non fanno la stessa cosa, e la differenza è misurata**:
+
+| Riga | Chi la legge | Effetto vero |
+| --- | --- | --- |
+| `registra_distinta` **nasce** | `script.fn_check_azione_processo` (il cancello) **e** `script.fn_get_user_actions_map` (la mappa che accende i pulsanti) | ⚠️ **Da sola non abilita nessuno**: il cancello passa da `config.profili_accesso_azioni`, e senza assegnazione la catena finisce al «default sicuro → `false`» |
+| `approva_rimessa` **si ritira** | ⛔ `fn_check_azione_processo` **non guarda `attivo`** — lo guarda solo la mappa (`WHERE ap.attivo = TRUE`) | ⇒ il ritiro **toglie il pulsante**, non chiude una porta. La porta non l'ha mai avuta: ✅ verificato che **nessuna riga di codice** la nomina, in tutto `backend/` e `frontend/` |
+
+📮 **Da cui nasce DATO-2, e non è un dettaglio.** L'assegnazione a un profilo
+**non si semina**: `config.profili_accesso_azioni` non ha CSV in `80_data` (le
+sue righe le hanno scritte `tid` e `titodb` **in-app**). È configurazione, come
+DATO-1 — ⛔ e senza, dopo il seed **registra ancora solo il super admin**,
+mentre il pulsante nell'interfaccia c'è.
+
+---
+
+#### 📮 S5-3 — i quattro seed: che cosa il DB **non** può decidere
+
+Il BE genera le righe con `scripts/gen_seed_lista.py` e le passa in bozza; qui
+confluiscono nei CSV di `80_data/sql/ui/`. Modello recentissimo e completo:
+`20260824-15` (lista fatture) — **una** riga di definizione, **28** di colonna,
+più preset e righe di preset.
+
+| ⚠️ | Cosa la bozza deve portare decisa |
+| --- | --- |
+| **`sensibile`** | è un **cancello**, non un'etichetta: `t` senza il grant corrispondente rende la colonna invisibile **a tutti** |
+| **`multi_emittente`** | decide se la lista vive nel perimetro emittente. ⚠️ E il BE non deve dichiarare `lista_codice` **prima** del seed: il cancello di perimetro risolve il codice a catalogo e, non trovandolo, spegne la schermata a chi ha più di un emittente |
+| **`etichetta_i18n_key`** | `check_i18n_keys.py` è un **cancello CI**: una chiave seminata senza la sua traduzione **fa fallire la build**. ⇒ seed e namespace `pagamenti.*` atterrano **insieme**, o si rompe la build di chi non c'entra |
+| **`vista_sql = NULL`** | è la forma proposta dal BE (DB-1) ed è legittima — ⚠️ ma con `vista_sql` nullo il guard DB sui `campo_sorgente` **non gira**: l'unico presidio resta quello Python, e va detto invece che scoperto |
+
+🔵 **E una cosa che il seed non risolve**: oggi quelle liste sarebbero **vuote
+comunque**. Misurato il 25/08: `pagamenti.vendite_contabili` ha **0 righe**,
+`vendite_contabili_righe` 0, `vendite_movimenti` 0, `sistemazioni` 0. ⚠️ Il
+brief BE/FE avvisa che «le uniche distinte esistenti sono `GENERATA`»: **non ce
+n'è nessuna**, e una lista vuota in questo dominio somiglia in tutto a un
+perimetro che ha morso (§S5-6).
+
+---
+
+#### ✅ S5-4 — `E_PAGAMENTI_VALIDATION`: coniato, e il nome è una misura
+
+§10.7 del brief BE dichiara il debito: *«non esiste a catalogo (gli altri domini
+hanno il loro); il service usa oggi il generico `E_VALIDATION_INPUT`»*.
+✅ **Misurato**: a catalogo ci sono **31** codici `*_VALIDATION` / `*_VALIDAZIONE`
+— `E_VENDITE_VALIDATION`, `E_PRATICA_VALIDATION`, `E_DOCUMENTI_VALIDATION`, …
+tutti `DATO_ERRATO` — e **nessuno di `pagamenti`**.
+
+⭐ Il criterio di AGENTS.md dice **chi può rimediare**: qui il dato lo fornisce
+una persona in un form ⇒ `DATO_ERRATO` (400), come i gemelli. Due righe in
+append (`codici_errore.csv` + `messaggi_errore.csv`, id **988**), ⛔ **mai un
+loader nuovo**.
+
+⭐ **Il nome è `E_PAGAMENTI_VALIDATION`, e la scelta è stata contata, non
+preferita** (decisione di Tid, 25/08: *«il più usato fra i due, poi cercheremo di
+uniformare»*): a catalogo `_VALIDATION` sta su **17** codici e `_VALIDAZIONE` su
+**13**. ⚠️ Il brief BE §10.7 lo chiama `E_PAGAMENTI_VALIDAZIONE`: **il nome vero è
+l'altro**, e quella riga va corretta lassù insieme alla costante del service.
+
+⚠️ **Il messaggio NON ha segnaposti**, ed è voluto: il codice lo solleva il
+**backend**, che passa la frase specifica accanto al codice. Un `%s` in più di
+quanti valori arrivano fa fallire `format()` e l'errore di dominio sparisce.
+
+📮 Coda BE: rigenerare `error_policies_generated.py` e cambiare **una riga** del
+service (`E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"`,
+`apps/pagamenti/services/pagamenti_service.py:56`).
+
+---
+
+#### ✅ S5-6 — le verifiche del terreno, eseguite il 2026-08-25
+
+| Che cosa | Esito |
+| --- | --- |
+| `dbops.vw_fk_senza_indice` su `pagamenti` | ✅ **0 righe** — chiude la verifica che il lotto 7 aveva lasciato aperta («da riverificare dopo il `90_end` che crea l'indice opt-in»). 32 FK in policy, tutte con `dll_command` valorizzato |
+| `dbops.codici_errore_senza_policy` | ✅ **0** — il terzo lato regge; **BE-1 è chiusa davvero** |
+| RLS di `pagamenti` | 🔴 **4 tabelle su 12**, non dodici: `vendite_contabili`, `vendite_contabili_righe`, `vendite_movimenti`, `sistemazioni`. Le altre otto (compresi `enti_incasso`, `centri_riscossione` e i due cataloghi di stato) hanno la row security **spenta** — ed è coerente col lotto 6, che ha creato **tre** policy (più quella del lotto 7). ⚠️ È il brief BE/FE §2.6 a dire «le dodici tabelle»: la correzione è in §3 |
+| Il perimetro **morde**? | 🔴 **Oggi no, sulle distinte.** La policy di `vendite_contabili` ammette la riga quando `ente_incasso_id IS NULL` — «le distinte interne non sono di nessuno» — e `pagamenti.enti_incasso` ha **0 righe**: ⇒ ogni distinta futura nasce senza canale e **la vede qualunque `OPERATORE`**. Morde su `vendite_movimenti` (via fattura) e sulle righe con fattura |
+| **DATO-1 / S3-3** | 🔴 **NON risolto**, contrariamente al brief BE/FE. Dettaglio in §3 |
+
+---
+
 ### 2.4 Le verifiche
 
 ⚠️ **Il terreno è quasi vuoto**: 2 rate, 0 contabili, 0 movimenti. Nessuna misura
@@ -1267,6 +1437,8 @@ Slice 3 ────────┴── S3-1 … S3-6
 | **S1-3/4/5 prima di S1-10** | La madre fa una transizione: se la matrice non c'è, la fa senza regola — e la regola arriverebbe dopo, su dati già scritti |
 | **Slice 2 dopo Slice 1** | Il guard stato ↔ nullità (S1-6) nasce già prevedendo `scadenza_id`, ma la colonna arriva dopo: la slice 1 si collauda **senza aver deciso niente della 2** |
 | **Slice 3 in coda** | La RLS in lettura su una tabella vuota non si può collaudare in modo significativo |
+| **Slice 5 dopo il consumatore** *(25/08)* | ⭐ Non è una dipendenza tecnica ma di **misura**: i quattro seed di lista si scrivono sulle colonne che le schermate mostrano davvero, e il saldo a tre numeri si allarga quando esiste il modulo che lo legge. Scritta prima, sarebbe stata scritta immaginando il chiamante |
+| **S5-1 indipendente da S5-2/S5-3** | Un migrate solo: `20_code` e `80_data` girano nello stesso giro e in quest'ordine, e nessuno dei tre passi tocca ciò che toccano gli altri |
 
 ⚠️ **Una slice non è una PR, e non è un lotto.** Le slice dicono *che cosa rende
 vera quale cosa*; i **lotti** di **§6** dicono *che cosa si applica insieme*. La
@@ -1307,6 +1479,71 @@ non si eseguono.
 | **DATO-1** | 📮 **Non è una richiesta al BE, è configurazione**: censire per ciascuno dei due emittenti il proprio conto con `uso = 'INCASSO'`. ⛔ Finché manca, **nessun ente di incasso è creabile** — ed è voluto | S3-3 |
 | **BE-9** | 📮 **Il giro delle sistemazioni**: la schermata dell'elenco (`vw_eccedenze_da_sistemare`, ordinata per cliente e con `chi_e_in_credito` in evidenza), la registrazione dell'atto e i due verbi `fn_conferma_sistemazione` / `fn_annulla_sistemazione`. ⚠️ Il **canale del rimborso** si chiede **alla conferma** e non alla registrazione: *da quale conto esce il bonifico* è una decisione del momento in cui si paga | S4-3/S4-4 |
 | **BE-10** | ⚠️ **Togliere dal ripiego i tre codici obsoleti** (`E_CONTABILE_COMPENSAZIONE_CON_LOTTO`, `..._GIA_PRESENTE`, `..._LOTTO_ESCLUSIVI`): sono marcati `obsoleto_dal` a catalogo e nessuno li solleva più. Lasciarli in `error_messages_fallback.py` significa tenere una frase pronta per un errore che non arriva | S4-2 |
+
+---
+
+### ⭐ 3-bis Consuntivo del 2026-08-25 — che cosa il BE ha chiuso, e che cosa **non** è come dice
+
+> Misurato **sul codice e sul database vivo**, dopo la consegna delle slice 0-3
+> del backend (brief BE/FE §10). ⚠️ Sono misure del terreno DB: stanno **qui**,
+> ed è da qui che il BE le riprende — la loro sede resta questa.
+
+**Chiuse, e verificate una per una:**
+
+| | Esito misurato |
+| --- | --- |
+| **BE-1** | ✅ **CHIUSA, e cumulativa.** `dbops.codici_errore_senza_policy` risponde **0**: nessun codice sollevato dal database è privo di classe lato backend. Il piano la elencava aperta in cinque punti — non lo è più |
+| **BE-10** | ✅ **CHIUSA.** I tre codici obsoleti non compaiono più in `error_messages_fallback.py` |
+| **BE-2 · BE-3 · BE-6** | ✅ **SCRITTE** (slice 0-3 del BE): il posting è **una** `SELECT`, l'esito risale intatto, il verbo `abbina` esiste col doppio tempo della forzatura |
+| **BE-5** | ✅ **SCRITTA** sopra `vw_rate_fuori_capienza`, col nome vero della vista |
+| **BE-7** | 🟡 **PARZIALE**: i due percorsi che contano impostano la GUC; resta da verificare ciò che gira fuori da entrambi |
+| **BE-8 · BE-9** | 📮 **APERTE**: sono la slice 4 del loro piano, ferma su DATO-1 (sotto) |
+
+**🔴 Tre misure del brief BE/FE che il database smentisce:**
+
+| | Il brief BE/FE dice | Il database dice (25/08) |
+| --- | --- | --- |
+| **C-1** | *«DATO-1 risolto il 24/08: due conti `INCASSO` fittizi, uno per emittente»* — e su questa base dichiara **sbloccata la slice 4** | 🔴 **Non è risolto.** I due IBAN `IT00TESTINCASSO000000000{1,2}` **esistono** come `anagrafiche.conti_bancari` (id 1955 e 1956, scritti da `tid` il 24/08 alle 11:43 e 11:46) — ⛔ ma **non esiste nessuna riga** in `anagrafiche.soggetti_ruoli_conti_bancari` che li leghi a qualcuno. Le uniche due righe con `uso = 'INCASSO'` sono le **312 e 313**, scritte da `titodb` il **6 agosto**, con IBAN diversi (`IT22Z…`, `IT33Z…`) e **tutte e due sullo stesso soggetto_ruolo 64** — che non è un emittente: gli emittenti fiscali sono i soggetti_ruolo **72** e **159**, e **non hanno nessun conto**, di nessun uso. ⇒ **S3-3 resta aperto esattamente com'era**, `pagamenti.enti_incasso` è a **0 righe**, e la slice 4 del BE è ancora ferma. È il caso della memoria «*«applicato?» si chiede al database, non al brief*» |
+| **C-2** | §2.6: *«dal lotto 6 le **dodici** tabelle di `pagamenti` hanno la RLS accesa con policy `FOR ALL`»* | 🔴 **Quattro su dodici**: `vendite_contabili`, `vendite_contabili_righe`, `vendite_movimenti`, `sistemazioni`. Le altre otto hanno la row security **spenta** — ed è coerente col lotto 6, che ha creato **tre** policy (il «dodici» di quel lotto sono le tabelle del *guard di scrittura* `script.trgfn_guard_emittente_scope`, che è un'altra cosa). ⚠️ **Conseguenza operativa vera**: la prova T-10 / E-4 fatta su `centri_riscossione` o sui cataloghi di stato **non vedrebbe nessuna differenza** dentro e fuori perimetro, e passerebbe dicendo il contrario di ciò che verifica |
+| **C-3** | §3.1: *«le uniche distinte esistenti sono `GENERATA`: la prima cosa che la lista mostrerà non è il lavoro di nessuno»* | ⚠️ **Non ce n'è nessuna**: `vendite_contabili` = **0 righe**, e così righe, movimenti e sistemazioni. La prima lista sarà **vuota**, che in questo dominio è il risultato più difficile da leggere: uno zero fail-closed e uno zero vero si scrivono allo stesso modo |
+
+**⚠️ E un modo di sbagliare che nessuno dei due brief nomina.** Il guard
+`trgfn_enti_incasso_guard_conto_incasso` verifica **solo** che il conto abbia
+`uso = 'INCASSO'`; ⛔ **non** che appartenga all'emittente del canale. Quindi un
+`ente_incasso` appeso alle righe 312/313 **passerebbe** — e
+`script.fn_resolve_emittente_fiscale_id` non troverebbe nessun emittente dietro
+il soggetto_ruolo 64, quindi `fn_check_user_emittente_scope(NULL)` risponde
+`false`: **la coda di quel canale diventerebbe invisibile a tutti, senza un
+errore.** Il brief BE avvisa che «i due IBAN sull'emittente sbagliato darebbero
+liste sbagliate»: il caso raggiungibile oggi è peggiore, dà liste **vuote**.
+🔵 Se si vuole chiudere anche questa, è un guard in più — **non** è nella slice
+5, ed è una decisione, non una rifinitura.
+
+✅ **Tutto il resto del §1.4 del brief BE/FE è stato riverificato ed è esatto**:
+le firme delle cinque funzioni e delle due madri, i nomi e le colonne delle due
+viste (`vw_rate_fuori_capienza` con i suoi 17 campi e i due `motivo`,
+`vw_eccedenze_da_sistemare` col raggruppamento in finestra), i `CHECK` di
+`sistemazioni`, i due vocabolari coi loro flag, `richiede_abbinamento` come
+colonna del catalogo e `STORNATA` ritirata dal 21/08. ℹ️ Una imprecisione senza
+conseguenze: le funzioni pubbliche di `pagamenti` sono **sette**, non otto (più
+quindici `trgfn_`).
+
+📮 **DATO-2 — nuovo, e gemello di DATO-1.** L'assegnazione dell'azione
+`registra_distinta` a un profilo **non è seminabile**: `config.profili_accesso_azioni`
+non ha CSV in `80_data`, le sue righe sono configurazione scritta in-app. ⛔ Dopo
+il seed di S5-2 il pulsante esiste e **registra ancora solo il super admin**.
+✅ Non è una previsione: una delle cinque asserzioni della prova di S5-2 lo
+**misura** (zero permessi concessi dopo il seed).
+
+✅ **DATO-3 — risolto il 2026-08-25** *(ma il primo migrate ci si è fermato sopra: la previsione era giusta e l'ordine no)*. Era: **va fatto PRIMA del migrate, non dopo.** Il ritiro di
+`approva_rimessa` (`attivo = false`) viene **rifiutato** dal guard generico
+`dbops.trgfn_prevent_deactivate_if_children` finché esistono le **quattro**
+assegnazioni ai profili reparto — tutte a permesso **negato**, e tutte e quattro
+invisibili all'automazione come «figlie spente», perché quella tabella chiama
+`abilitata` la colonna che l'automazione cerca come `attivo`. ⇒ Il migrate
+fallirebbe su un changeSet di **febbraio** (il mirror del CSV), che nessuno ha
+toccato. Il rimedio è un `DELETE` di quattro righe: sta in **§6.15**, con il
+perché non possa essere un changeSet.
 
 ---
 
@@ -1624,7 +1861,7 @@ non si corregge — si corregge *in avanti*, con un changeSet nuovo. Provare pri
 ⚠️ Nel passo 2, il `BEGIN … ROLLBACK` dev'essere **dentro il file eseguito**:
 ricomporre lo script perdendo il wrapper significa scrivere davvero.
 
-### 6.4 I sette lotti
+### 6.4 I sette lotti *(più l'ottavo, aperto il 2026-08-25)*
 
 | | Lotto | Contiene | Perché sta insieme | Prima corsa possibile |
 | --- | --- | --- | --- | --- |
@@ -1635,6 +1872,7 @@ ricomporre lo script perdendo il wrapper significa scrivere davvero.
 | **5** | ✅ **CHIUSO** (22/08) · **La rata** | S2-1 … S2-8 | Slice 2 per intero | ~~dopo 4~~ → **fatto**, §6.12 |
 | **6** | ✅ **CHIUSO** (22/08, applicato alle 10:17 + la correzione `-24`) · **Il perimetro** | S3-1 … S3-6 (S3-3 resta **dato**) | Slice 3 per intero. ⚠️ La RLS su tabelle vuote non si collauda: conviene **dopo** che il lotto 4 ha prodotto dati | ~~dopo 5~~ → **fatto**, §6.13 |
 | **7** | ✅ **CHIUSO** (22/08, applicato alle 12:20) · **Le sistemazioni** | S4-1 … S4-5 | Slice 4 per intero. 📮 Sblocca la **Fase D** del cantiere fondi | ~~dopo 5~~ → **fatto**, §6.14 |
+| **8** | 📮 **DA SCRIVERE** (aperto il 25/08) · **La consegna** | S5-1 · S5-2 · S5-4 (S5-3 quando arriva la bozza BE) | ⭐ Un migrate solo: S5-1 è `20_code`, gli altri sono `80_data` — che gira **dopo** — e nessuno dei tre dipende dagli altri | **subito**, §6.15 |
 
 ⚠️ **Il lotto 3 non si spezza e non si salta.** Applicare la madre (4) senza la
 difesa (3) significa creare il primo movimento **e contemporaneamente** il primo
@@ -1644,6 +1882,12 @@ fatturazione.
 ℹ️ I lotti **6 e 7 sono indipendenti fra loro**: entrambi partono dopo il 5, e
 l'ordine fra i due è una scelta di priorità. Il 7 sblocca un altro cantiere, il 6
 chiude un buco di sicurezza in lettura.
+
+⭐ **E dal 2026-08-25 i lotti sono OTTO.** Il settimo chiudeva il *modello*; l'ottavo
+non aggiunge una regola — apre le porte perché il backend già scritto si possa
+usare (slice 5, §2.3-ter). ⚠️ È l'unico lotto del cantiere che **non nasce da una
+decisione di dominio ma da un consuntivo**: le quattordici rotte del BE esistono
+e tre cose gliele deve ancora il database. Dettaglio in **§6.15**.
 
 ### 6.5 Che cosa si può fare **senza** aspettare un migrate
 
@@ -2723,7 +2967,144 @@ giusta.
 | `rls` · `dbops` | **0 su 15** e **0 su 16** |
 | `vendite` | 5 su 204, tutti già noti — dopo aver classificato la figlia nuova |
 | cancelli statici | preambolo pgTAP ✅ · `runOnChange` ✅ · baseline codici errore ✅ |
-| `vw_fk_senza_indice` (`pagamenti`) | ⚠️ da riverificare dopo il `90_end` che crea l'indice opt-in |
+| `vw_fk_senza_indice` (`pagamenti`) | ~~⚠️ da riverificare dopo il `90_end` che crea l'indice opt-in~~ → ✅ **riverificato il 2026-08-25: 0 righe.** Le 32 FK dello schema sono in policy, tutte con `dll_command` valorizzato |
+
+---
+
+### 6.15 ✅ Lotto 8 — CHIUSO: **la consegna**
+
+> ⭐ **Aperto il 2026-08-25.** Il piano DB era «finito» il 22/08 perché era finito
+> il **modello**. Poi il backend ha scritto quattordici rotte e ha misurato che
+> cosa gli manca: tre cose piccole, e **due bloccano una slice intera del loro
+> piano**. ⛔ Non è un ripensamento sul disegno — è la parte del cantiere che si
+> poteva scrivere solo **dopo** aver visto il consumatore.
+
+**Un changeSet, cinque righe di CSV e un pgTAP.** ✅ **Applicato da Tid il
+2026-08-25 alle 11:26**, in **due** migrate: il primo si è fermato su DATO-3 (il
+riquadro qui sotto), il secondo è passato. ✅ **pgTAP col runner vero: 0 rossi su
+15**, auto-gen rigenerata, i due `manual/` scritti.
+
+| Passo | Che cos'è | Fase | File |
+| --- | --- | --- | --- |
+| **S5-1** | `fn_get_saldo_fattura` a tre numeri (DB-10) | `20_code/pagamenti` | ✅ **applicato** `20260825-01-recreate-fn-get-saldo-fattura-tre-numeri-mctit.yaml` |
+| **S5-2** | `registra_distinta` nasce, `approva_rimessa` si ritira (DB-11) | `80_data` | ✅ due righe in `config/azioni_processo.csv` — **nessun changeSet nuovo**: il mirror `loadUpdateData` (`20260228-18`, runOnChange) le ri-legge da sé |
+| **S5-4** | `E_PAGAMENTI_VALIDATION` | `80_data` | ✅ append a `config/codici_errore.csv` (classe `DATO_ERRATO`) e `config/messaggi_errore.csv` (id **988**) |
+| **S5-3** | I quattro seed di lista | `80_data` | 📮 **fuori dal lotto finché non arriva la bozza BE**: sono righe di CSV, entrano quando ci sono |
+| test | La prova di S5-1 | `db/pgtap/pagamenti/` | ✅ `test-fn-get-saldo-fattura-tre-numeri.sql` — 13 asserzioni |
+| doc | `manual/fn_get_saldo_fattura.md` e `manual/vw_eccedenze_da_sistemare.md` | — | ✅ **scritti dopo il migrate** (passo 5 del ciclo): il primo spiega perché «incassato» non è «saldato» e perché il dichiarato si delega; il secondo perché la vista è stata ricreata **senza cambiare una colonna** |
+
+**Perché queste tre cose stanno insieme.** Sono l'unico modo di chiedere **un
+migrate solo**: S5-1 è `20_code`, S5-2 e S5-4 sono `80_data` — che gira **dopo** —
+e nessuna delle tre dipende dall'altra. Separarle costerebbe tre round-trip per
+un changeSet e cinque righe di CSV.
+
+⭐ **S5-1 è UN changeSet e non tre**, ed è una correzione al piano di stamattina:
+fra il `DROP` della vista e la sua ricreazione il database non deve poter restare
+**mai** — nemmeno per un migrate interrotto fra due changeSet, che Liquibase
+commetterebbe uno alla volta. Precedente della stessa forma:
+`20260215-16-recreate-views-pdp-istanze-utility-id`.
+
+⭐ **E la firma è `%TYPE` in testa e `bigint` nel `DROP`**: `vendite.fatture.id%TYPE`
+si scioglie in `bigint` alla creazione (PostgreSQL lo dice con un `NOTICE`), quindi
+l'identità resta `(bigint)` e non nasce un overload — ma nel `DROP` il `%TYPE` non
+si può usare, perché lì è DDL semplice.
+
+---
+
+#### 🔴 Il difetto che la prova ha trovato, e non era del lotto
+
+⚠️ **Il ritiro di `approva_rimessa` FA FALLIRE IL MIGRATE**, e non per colpa di
+un changeSet nuovo: a rifiutarlo è il guard generico
+`dbops.trgfn_prevent_deactivate_if_children`, armato dall'automazione ATTIVO su
+96 tabelle.
+
+```text
+ERRORE: Non si puo' disattivare config.azioni_processo (id = 5): ci sono ancora
+        righe collegate in config.profili_accesso_azioni.
+```
+
+⭐ **Perché succede, e perché è interessante.** Il guard blocca solo se la figlia
+ha righe *attive* — ma «attiva» lo decide una colonna che si chiama `attivo`, e
+`config.profili_accesso_azioni` la sua on/off la chiama **`abilitata`**. Per
+l'automazione quella tabella «non ha lo stato», quindi conta **tutte** le righe,
+comprese le **quattro** che esistono — tutte con `abilitata = false`, cioè
+permesso **negato** su tutti e quattro i profili reparto.
+
+🔴 **E il changeSet che fallirebbe è di FEBBRAIO** (`20260228-18`, il mirror
+`runOnChange` del CSV): un migrate rosso su un file che nessuno ha toccato, per
+una riga cambiata in un CSV. Senza questa prova si sarebbe scoperto durante
+l'apply.
+
+📮 **Rimedio: DATO-3**, e va fatto **prima** del migrate — non si può mettere in
+un changeSet, perché il mirror di febbraio si ordina **prima** di qualunque file
+di oggi e girerebbe per primo:
+
+```sql
+DELETE FROM config.profili_accesso_azioni paz
+ USING config.azioni_processo a
+ WHERE a.id = paz.azione_id
+   AND a.permission_codename = 'approva_rimessa';
+```
+
+⭐ Quattro righe, tutte a permesso **negato**: nessuno perde niente.
+✅ **In CI non serve**: `profili_accesso_azioni` non ha CSV di seed, quindi su un
+database ricostruito da zero è vuota e il mirror passa. È esattamente la classe
+di difetto di C-1 — *«due righe inserite a mano che in CI non esistono»* — vista
+dal verso opposto.
+
+🔵 **E c'è un rimedio strutturale, che NON è in questo lotto.** L'automazione sa
+leggere un override: `dbops.fn_get_override_col(schema, tabella, 'ATTIVO_COL', 'attivo')`.
+Una riga in `dbops.automation_overrides_cols` —
+`config, profili_accesso_azioni, ATTIVO_COL, abilitata` — insegnerebbe al guard
+che una assegnazione **disabilitata** non è una figlia viva, e il caso non si
+ripresenterebbe alla prossima azione ritirata. ⚠️ Ma i trigger si **rigenerano in
+`ci_apply`**, non nel migrate: l'override non sbloccherebbe *questo* passaggio, e
+tocca ogni guard che ha quella tabella per figlia. È una decisione, e va misurata
+prima — non un contorno del lotto 8.
+
+⚠️ **Che cosa questo lotto NON risolve, e va detto prima di scriverlo:**
+
+* ⛔ **non sblocca la slice 4 del BE**: quella aspetta **DATO-1**, che è dato e
+  non codice, e che al 25/08 **non è configurato** (§3-bis, C-1);
+* ⛔ **non abilita nessuno a registrare**: serve **DATO-2**, l'assegnazione
+  dell'azione a un profilo, che si fa in-app;
+* ⛔ **non riempie nessuna lista**: le tabelle sono vuote. Il seed rende le
+  schermate *rendibili*, non popolate.
+
+⚠️ **E una regola del ciclo che qui vale doppio.** Il passo 2 (prova in
+`BEGIN … ROLLBACK`, col wrapper **dentro** il file eseguito) non è opzionale su
+S5-1: è una catena `DROP`/`CREATE` su una funzione che **due funzioni vive e una
+vista** interrogano, ed è il tipo di cosa che, sbagliata, si corregge solo in
+avanti.
+
+---
+
+#### ✅ La prova, eseguita il 2026-08-25 — e l'SQL **estratto dallo YAML**
+
+⛔ Niente ricopiato a mano: uno script legge il blocco `sql:` del changeSet e lo
+esegue dentro `BEGIN … ROLLBACK`, col wrapper **nel file eseguito**.
+
+| Che cosa | Esito |
+| --- | --- |
+| Il changeSet applicato in transazione annullata | ✅ **10 verifiche su 10**: una sola istanza della funzione (nessun overload), identità `(bigint)` invariata, `RETURNS TABLE` a quattro colonne, la vista con **le stesse colonne di prima**, `security_invoker` presente, i GRANT tornati su vista e funzione, `saldo` e `has_movimenti` **identici a prima su tutte le 18 fatture**, `in_lavorazione` uguale a `fn_get_saldo_fattura_contabili` su tutte, la vista con lo stesso contenuto, e `vendite.fn_saldo_sorgente_fondo` ancora chiamabile |
+| Il **rollback** del changeSet | ✅ riporta la forma a due colonne **e** la vista, entrambe funzionanti: un rollback che lascia il database rotto è peggio di un rollback assente |
+| Il pgTAP nuovo, col lotto iniettato | ✅ **13 su 13** |
+| ⭐ **Controllo negativo** | ✅ rimesso il difetto (`incassato` = somma di tutti i movimenti), **il test 10 diventa rosso** e gli altri restano verdi: la coppia 9-10 è l'unica che distingue `incassato` da `saldo`, e adesso è dimostrato invece che dichiarato |
+| I 14 pgTAP di `pagamenti`, col lotto iniettato | ✅ **15 su 15** verdi (i 14 esistenti + il nuovo) |
+| I 6 pgTAP di `vendite` che toccano fondi e saldi | ✅ verdi col lotto iniettato |
+| S5-2 e S5-4 simulati (INSERT/DELETE come farà il mirror) | ✅ **5 verifiche su 5**, ed è la corsa che ha trovato DATO-3. ⭐ Una delle cinque asserisce che dopo il seed **nessuno** ha ancora il permesso: il fail-closed è dimostrato, non promesso |
+| `guardrail_run_on_change.py` · `guardrail_pgtap_preambolo.py` | ✅ verdi (debito `throws_ok` invariato a 131: il test nuovo dichiara `P0001`) |
+| `codici-errore-baseline.sh` | ✅ 0 accumuli, 0 ristretti. ℹ️ Segnala **un rientrato** (`E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`) che **non è di questo cantiere**: la baseline non è stata stretta, perché assorbirla qui nasconderebbe il movimento di un altro |
+| `guardrail_codice_errore_strutturato.sql`, **col codice nuovo iniettato** | ✅ verde — e girato sul catalogo *con* la riga dentro, perché un cancello che gira su un catalogo che non ha ancora il codice non presidia niente |
+| 🔴 `check_naming_stato_codice.sql` | **ROSSO, e NON è di questo cantiere.** Tre `codice_interno AS <x>_codice` in due viste di `vendite`: `vw_fatture_lista` (`tipo_doc_fiscale_codice`, `natura_doc_codice` — nata il 24/08 col cantiere liste) e `vw_documento_lineage_nodi` (`natura_doc_codice` — 21/08). ⚠️ È un **cancello CI**: la prossima push che tocca `db/` fallisce lì, e il rosso comparirebbe addosso a chi passa. Segnalato, non toccato |
+
+⚠️ **Con che utente sono girate.** Le corse col lotto iniettato girano come
+**owner**, perché creare una funzione l'utente applicativo non può: quindi la
+**RLS non è esercitata** in quelle corse. È la ragione per cui, dopo il migrate,
+i pgTAP vanno rifatti col runner vero (`app`) e con `pgtap-baseline.sh`. ℹ️ Due
+rossi visti in quelle corse — `test-rls-pagamenti-perimetro` e
+`test-role-batch-fatturazione-postura` — sono **artefatti dell'owner**: il secondo
+è stato riprovato col runner giusto ed è **verde**.
 
 ---
 
@@ -2731,6 +3112,9 @@ giusta.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-08-25** (apply) | ✅ **LOTTO 8 APPLICATO — il cantiere DB è chiuso una seconda volta.** Applicato da Tid alle **11:26**, in **DUE** migrate. 🔴 **Il primo è morto esattamente dove la prova diceva**: il mirror `20260228-18` — un changeSet di **febbraio** — ha tentato il ritiro di `approva_rimessa` e il guard `dbops.trgfn_prevent_deactivate_if_children` l'ha rifiutato per le quattro assegnazioni spente (DATO-3). ⭐ **La previsione era giusta, l'ordine di consegna no**: DATO-3 era scritto nel brief come «prima del migrate», ma è arrivato in fondo a una risposta lunga — e un prerequisito che si legge dopo non è un prerequisito. La prossima volta va **in testa e da solo**. ⚠️ **Il primo migrate NON è stato inutile né dannoso**: `00_schema` e `20_code` girano prima di `80_data`, quindi `20260825-01` era già passato intero — funzione a quattro colonne, vista ricreata con `security_invoker` e GRANT, verificati sul database prima di ripartire. Tolte le quattro righe, il secondo migrate ha finito. ✅ **Le prove col terreno vero**: `pgtap-baseline.sh pagamenti` → **0 rossi su 15** col runner `app` (le corse della sera prima giravano come owner, dove la RLS non si esercita), auto-gen rigenerata, e i due `manual/` scritti — `fn_get_saldo_fattura` (perché «incassato» non è «saldato», e perché il dichiarato si **delega** invece di ricalcolarlo) e `vw_eccedenze_da_sistemare` (perché è stata ricreata **senza cambiare una colonna**). 📮 Restano fuori i quattro seed di lista (aspettano la bozza BE), **DATO-1** e **DATO-2** |
+| **2026-08-25** (sera) | ⭐ **LOTTO 8 SCRITTO E PROVATO** — un changeSet (`20260825-01`), cinque righe di CSV, un pgTAP nuovo da 13 asserzioni. ⛔ **Niente applicato**: il migrate lo chiede Tid. ⭐ **S5-1 è UN changeSet e non tre**, correzione al piano di stamattina: fra il `DROP` della vista e la sua ricreazione il database non deve restare **mai**, nemmeno per un migrate interrotto fra due changeSet — Liquibase li commette uno alla volta. ⭐ `in_lavorazione` **si delega** a `fn_get_saldo_fattura_contabili`: il dichiarato ha già una sede, e riscriverne il predicato avrebbe creato la seconda proprio nel passo che costruisce la base unica dei saldi. 🔴 **E la prova ha trovato un difetto che non è del lotto: il ritiro di `approva_rimessa` FA FALLIRE IL MIGRATE.** A rifiutarlo è il guard generico `dbops.trgfn_prevent_deactivate_if_children`, che blocca la disattivazione di una riga con figlie: `config.profili_accesso_azioni` ha **quattro** assegnazioni all'azione, tutte a permesso **negato** — ma l'automazione cerca una colonna che si chiama `attivo` e lì si chiama `abilitata`, quindi «figlia spenta» non esiste e contano tutte. ⚠️ Il changeSet che sarebbe fallito è di **FEBBRAIO** (il mirror `runOnChange` del CSV): un migrate rosso su un file che nessuno ha toccato. Rimedio **DATO-3**, un `DELETE` di quattro righe **prima** del migrate — non può essere un changeSet, perché il mirror di febbraio si ordina prima di qualunque file di oggi. ✅ In CI non serve: quella tabella non ha seed, quindi su un database ricostruito da zero è vuota — la classe di difetto di C-1 vista dal verso opposto. 🔵 Un rimedio strutturale esiste (una riga di `dbops.automation_overrides_cols` che insegna `ATTIVO_COL = abilitata`) ma **non è in questo lotto**: i trigger si rigenerano in `ci_apply`, quindi non sbloccherebbe questo passaggio, e tocca ogni guard che ha quella tabella per figlia. ⭐ **Il nome del codice nuovo è stato CONTATO, non preferito** (decisione di Tid): `_VALIDATION` sta su 17 codici, `_VALIDAZIONE` su 13 → nasce `E_PAGAMENTI_VALIDATION`, e la riga del brief BE che lo chiama `_VALIDAZIONE` va corretta. ✅ **Le prove**: SQL **estratto dallo YAML** e non ricopiato, 10 verifiche sul changeSet (identità invariata, nessun overload, la vista con le stesse colonne, `security_invoker` e GRANT rimessi, `saldo`/`has_movimenti` **identici a prima su tutte le 18 fatture**), il **rollback** provato e funzionante, **15 su 15** i pgTAP di `pagamenti` col lotto iniettato, verdi i 6 di `vendite` sui fondi, e ⭐ un **controllo negativo**: rimesso il difetto, il test 10 diventa rosso — la coppia 9-10 è l'unica che distingue `incassato` da `saldo`, e adesso è dimostrato. Cancelli statici verdi (`runOnChange`, preambolo pgTAP, baseline codici errore: 0 accumuli) |
+| **2026-08-25** (giorno) | 📮 **NASCE LA SLICE 5 — «la consegna» — e con essa l'ottavo lotto.** Il piano DB si era chiuso il 22/08 perché era finito il **modello**; il backend ha poi scritto le slice 0-3 (quattordici rotte, 86 test, zero frontend) e il consuntivo dice che cosa il database gli deve ancora: **tre porte piccole e nessuna di modello** — `fn_get_saldo_fattura` a **tre numeri** (DB-10, Q-10 chiusa da Tid), il **cancello** `registra_distinta` col ritiro di `approva_rimessa` (DB-11, Q-5) e i **quattro seed** di lista, che aspettano la bozza del BE. Più un conio da confermare (`E_PAGAMENTI_VALIDAZIONE`, che gli altri undici domini hanno e `pagamenti` no) e la madre della **correzione**, differita per scelta: una madre pronta che nessuno chiama è già successo col posting. ⭐ **E S5-1 è tre file, non uno**: cambiare il `RETURNS TABLE` vuole `DROP` + `CREATE`, ma `vw_eccedenze_da_sistemare` chiama la funzione con la **lista di alias a due nomi** — quindi la vista va droppata e ricreata (⛔ mai `CASCADE`), ripetendo `security_invoker = on`, che è una reloption e sparirebbe **senza errore**, e rimettendo i GRANT, che una vista ricreata perde fino al giro di `ci_apply`. ⭐ `in_lavorazione` **si delega** a `fn_get_saldo_fattura_contabili` invece di riscriverne il predicato: il vincolo «i saldi hanno una sede sola» si romperebbe nel changeSet che lo realizza. 🔴 **E la rimisura del terreno ha trovato tre cose che il brief BE/FE dà per vere e il database smentisce** (§3-bis): **DATO-1 NON è configurato** — i due IBAN `IT00TESTINCASSO…` esistono come conti bancari (scritti da `tid` il 24/08) ma **nessuna riga li lega a un soggetto**, e le uniche due righe `uso = 'INCASSO'` sono di **agosto 6, su un terzo soggetto**: gli emittenti (SR 72 e 159) non hanno **nessun** conto, `enti_incasso` è a 0 e la loro slice 4 **non è sbloccata**; la RLS di `pagamenti` è su **4 tabelle su 12** e non su dodici — quindi la prova del perimetro fatta sulla tabella sbagliata **passerebbe dicendo il contrario** di ciò che verifica; e le distinte esistenti sono **zero**, non «solo quelle `GENERATA`». ⚠️ Trovato anche un modo di sbagliare che nessuno dei due brief nomina: il guard del conto di incasso controlla l'`uso` ma **non** che il conto sia dell'emittente del canale — un ente appeso alle righe esistenti passerebbe e renderebbe la sua coda **invisibile a tutti, senza errore**. ✅ Chiuse due verifiche vecchie: `vw_fk_senza_indice` su `pagamenti` è a **0 righe** (la coda del lotto 7) e **BE-1 è chiusa davvero** — `dbops.codici_errore_senza_policy` risponde 0 |
 | 2026-08-22 (mezzogiorno) | ✅ **LOTTO 7 CHIUSO E APPLICATO** (12:20) — quindici changeSet (`20260822-25` … `-39`), due pgTAP nuovi (12 + 13), uno **rimosso** perché il suo oggetto non esiste più, dieci codici errore (968…977) e **tre marcati obsoleti**, nove `manual/` nuovi e la sezione della guida riscritta. 🎉 **CON QUESTO IL PIANO DB È FINITO: tutti e sette i lotti sono chiusi.** ⭐ **IL DENARO DI TROPPO HA UN ELENCO E UN REGISTRO**: capitava che su un documento entrasse più denaro del dovuto e il sistema non lo mostrasse a nessuno. 🔵→✅ **D15-e decisa da Tid: SI GIRA.** Il legame vive su `sistemazioni.contabile_id`, e su `vendite_contabili` spariscono la colonna, la sua FK, il suo unico e il parametro `p_compensazione_id` — **tre oggetti in meno e nessuna garanzia persa**, perché l'unicità «una contabile per atto» ha solo cambiato lato. ⚠️ Costo misurato PRIMA di decidere: zero righe ovunque e nessuna riga di codice in `backend/` o `frontend/`. ⭐ **Dodici decisioni prese scrivendo** (§6.14), e quattro meritano di essere lette: (1) **si rinomina TUTTO e non solo la tabella** — chiave primaria, sequenza, sette NOT NULL e due trigger — perché le automazioni di `pagamenti` lavorano per pattern e alla prima passata di `ci_apply` avrebbero generato i trigger col nome nuovo ACCANTO ai vecchi: due audit sulla stessa tabella non danno errore, scrivono due volte; (2) **il segno della riga si ricava dal SALDO** e non da un IF sul tipo di documento, e nella compensazione la seconda riga è l'opposto esatto della prima — due righe che sommano a zero, che è letteralmente che cosa vuol dire compensare; (3) **il controllo dell'eccedenza sta alla CONFERMA e non alla registrazione**, perché fra decidere e confermare può arrivare un altro incasso: verificare prima darebbe una garanzia che scade; (4) **i verbi sono due e non tre** — le tre destinazioni sono un dispatch dentro la conferma, e la registrazione dell'atto non è un verbo affatto perché una scrittura sola non ha bisogno di una madre. 🔴 **Due difetti trovati, e nessuno dei due dal ragionamento.** Il primo dalla SIMULAZIONE: il `DROP` della colonna falliva perché la lista `UPDATE OF` di un trigger la nominava — ⭐ *il corpo di una plpgsql non crea dipendenze, la lista di un trigger sì*, e solo la seconda si vede prima di provarci. Il secondo da un **pgTAP già verde**: `test-cleanup-fattura-copertura-figlie-v1` è diventato rosso e ha fatto il nome di `pagamenti.sistemazioni` — `compensazioni` non era una figlia di `vendite.fatture`, `sistemazioni` ne ha due. 📌 E quel rosso non si spegne aggiungendo una riga: si DECIDE la categoria (scelta: `BLOCCO_VOLUTO`, con il perché). 📮 Restano: BE-1 cumulativa più la rimozione dei tre codici obsoleti dal ripiego, il giro BE/FE delle sistemazioni (⚠️ il canale del rimborso si chiede alla CONFERMA, non alla registrazione), e 🔵 il tipo di fondo del riporto, che oggi usa l'unico generico a catalogo. ⭐ **E la Fase D del cantiere fondi è SBLOCCATA**: il riporto È il fondo `origine = MANUALE` che quel cantiere aspettava |
 | 2026-08-22 (mattina) | ✅ **LOTTO 6 CHIUSO E APPLICATO** (10:17, più la correzione `-24`) — dodici changeSet (`20260822-13` … `-24`), **tre** pgTAP nuovi (6 + 7 + 14), un codice errore (967), 4 `manual/` nuovi e 6 aggiornati, una sezione nuova nella guida dei pagamenti. ⭐ **IL DENARO SA DI CHI È**: fino a stamattina lo schema `pagamenti` aveva **zero policy** e la row security spenta su tutte e dodici le tabelle, e il denaro che arriva prima di avere una fattura non aveva padrone — con due emittenti attivi voleva dire che o lo vedevano tutti o non lo vedeva nessuno. Il perimetro adesso viene dal **conto di incasso** (D5), e la verità di dominio «due partite IVA, due conti» è diventata un **vincolo** invece di restare un'assunzione. 🔴 **Il lotto ha TROVATO un difetto che non era suo, su 12 tabelle**: `trgfn_guard_emittente_scope` risolveva l'emittente da `SECURITY INVOKER` leggendo `vendite.fatture`, che ha la RLS — per un utente fuori perimetro la fattura non c'è, l'emittente resta NULL, e il ramo «non risolvibile» **lascia passare**. Il guard si spegneva **esattamente nel caso che esiste per coprire**, e la FK non si opponeva perché i controlli referenziali girano già fuori dalla row security. Rimedio: la risoluzione esce e diventa una `SECURITY DEFINER` — chi RISOLVE non è chi APPLICA, la stessa mossa del lotto 5. Guard più restrittivo su 12 tabelle, misurato con la baseline completa: **nessuna regressione**. 🔴 **E ne ha CAUSATO uno, che due pgTAP già verdi hanno preso subito**: le policy della riga avevano due strade (il canale, la fattura) e restava fuori la riga `DA_ABBINARE` su una distinta `MANUALE` **senza canale** — cioè il lotto di lavoro di un operatore che digita incassi, D12-a, applicata nel lotto 2. Il `WITH CHECK` la rifiutava con 42501: **un perimetro che impedisce la lavorazione invece di proteggerla**. 📌 Il pgTAP nuovo del perimetro NON lo copriva (le sue distinte avevano tutte un canale): è la ragione per cui i test 9 e 10 adesso esistono. 📌 *Un perimetro si misura sui percorsi che ESISTONO, non su quelli che il disegno immagina.* Correzione in avanti (`-24`), terza strada. ⭐ **Dieci decisioni prese scrivendo** (§6.13), e tre meritano di essere lette: (1) 🔴 le policy sono **`FOR ALL` e non `FOR SELECT`**, e la prima stesura sbagliava — verificato in transazione annullata che la RLS **nega ciò che nessuna policy permette** (sola lettura per l'applicazione) e che **`INSERT ... RETURNING` passa dalla `USING`**, mentre `fn_get_or_create_vendite_contabile` restituisce l'id proprio così: *ciò che l'applicazione scrive e poi rilegge deve essere visibile a chi l'ha scritto, nello stesso istante — un perimetro che si chiude su una riga appena creata non nasconde, ROMPE*; (2) **S3-2 è un'esclusione e non l'indice unico del piano**: `(conto =, soggetto <>)` invece di `(conto)`, perché l'unico avrebbe vietato anche lo stesso conto sullo STESSO soggetto fra ruolo e istanza — configurazione che due indici della tabella dichiarano legittima, e un vincolo che vieta più della sua regola si scopre il giorno in cui rifiuta qualcosa di giusto; (3) **la colonna del conto è obbligatoria su TUTTI i tipi** e non solo su BANCA come diceva il piano, altrimenti la coda invisibile si sarebbe solo spostata su un altro `tipo`. 📮 **S3-3 resta aperto ed è DATO**: nessuno dei due emittenti ha un conto `INCASSO` censito, quindi **nessun ente di incasso è creabile** finché non si configura — ed è voluto (si fallisce alla configurazione, non in esercizio). 📮 E una richiesta BE da leggere con attenzione: da adesso `pagamenti.*` pretende `app.ruolo_applicativo = 'OPERATORE'` **anche per scrivere**; è la stessa postura di `vendite.fatture` da giugno, ma i job che girano con l'utenza applicativa fuori dal ciclo di richiesta vanno verificati. 🔵 Tre decisioni nuove: la distinta manuale senza canale (canale obbligatorio o condivisa?), la RLS sui cataloghi di configurazione, e le distinte interne una-per-emittente |
 | 2026-08-22 (notte, 2) | ✅ **LOTTO 5 CHIUSO E APPLICATO** — nove changeSet (`20260822-04` … `-12`), un pgTAP nuovo da 18 asserzioni, tre codici errore (964…966). ⭐ **L'INCASSO ARRIVA ALLA RATA**: fino a ieri nell'intero database non esisteva nessuna colonna `scadenza_id`, e la guida dei pagamenti aveva una sezione intitolata «due metà che non si toccano ancora» — riscritta. L'abbinamento vive **sulla riga contabile** e non in una tabella N:N (D1): chi paga due rate con un bonifico solo fa due righe, che è anche il modo in cui la banca lo racconta. 🔴 **La coerenza si chiede FUORI dalla row security**, con una SECURITY DEFINER minuscola che risponde un booleano: un guard che leggesse le scadenze sotto RLS non distinguerebbe «non appartiene» da «non la vedo» — due verità opposte che danno lo stesso EXISTS falso, e rifiutarle con lo stesso messaggio significa dirne una falsa. ⚠️ E il messaggio porta l'**id** della rata e non i suoi dati: quella rata è di un altro documento, e raccontarli disferebbe la ragione per cui la domanda si fa così. ⭐ **Sette decisioni prese scrivendo** (§6.12), e tre meritano di essere lette: (1) 🔴 **il caso che si sbaglia facile** — la capienza si verifica SOLO se la riga occupa spazio davvero, altrimenti portare a SCARTATA una riga sospesa, cioè *toglierla di mezzo*, verrebbe rifiutato perché un'altra riga ha nel frattempo occupato lo spazio: si rifiuterebbe un gesto che LIBERA (presidiato dal test 16); (2) una rata **senza fattura** non è incoerente ma incompleta, e il guard della rata **tace apposta** per non coprire il messaggio del guard sui dati, che parla dopo di lui nell'ordine alfabetico dei BEFORE ROW; (3) la vista **non si chiama come diceva il piano** — `vw_rate_sovra_incassate` avrebbe detto meno di ciò che contiene, perché fuori capienza si esce in due versi e il secondo (un rimborso dove non era entrato niente) è esattamente il caso che ha fatto cadere l'asimmetria di D1-bis. ⚠️ **S2-4 del piano era scaduto** e va letto sapendolo: diceva «asimmetrico, il limite inferiore non è forzabile» citando D1-bis, ma D14-e l'ha superato — la regola è simmetrica, senza permessi, e non ha estremi fissi da invertire. 🔴 **La prova ha trovato un difetto vero, ed era mio**: il ramo della coerenza chiamava `fn_log_and_raise_error` senza valori, ma il VARIADIC non ha default — il `CREATE FUNCTION` passava, il guard funzionava, e l'unico caso rotto era **proprio quello che il guard esiste per gestire**. 📌 L'hanno preso due presidi: il `throws_like` sulla FRASE del test 2 (con un `throws_ok` su P0001 sarebbe stato verde — anche «la funzione non esiste» è un errore) e il cancello statico `test-riferimenti-morti-v1.sql`, fatto girare da Tid. Correzione **in avanti** (`20260822-12`). 📮 Restano tre richieste BE (i due verbi dell'abbinamento e della forzatura, e la schermata dell'elenco), le due decisioni di dominio ereditate dal lotto 3, e una nuova: 🔵 la stessa regola di capienza vale anche a livello di FATTURA (D14-c), ma qui è stata messa solo sulla rata perché al livello di fattura passerebbe il sync dei fondi, che gira dentro il ricalcolo della pipeline e non ha nessuno che possa «confermare» |

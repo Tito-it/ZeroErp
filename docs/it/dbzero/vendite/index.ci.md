@@ -102,6 +102,7 @@
 - [fn_batch_upsert_commessa_attivita](manual/fn_batch_upsert_commessa_attivita.md) — (latest review 15-04-2026)
 - [fn_build_fattura_key](manual/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 - [fn_build_gruppo_fatturabile_key](manual/fn_build_gruppo_fatturabile_key.md) — Costruire la chiave del **gruppo fatturabile** di una riga di commessa. È l'**unica fonte di verità** della chiave: la usano sia l'elenco che l'operatore legge, sia i filtri che l'emissione applica. Se la forma cambiasse qui, cambierebbe ovunque insieme.
+- [fn_calcola_data_documento](manual/fn_calcola_data_documento.md) — **Che data porta un documento emesso su questo registro?**
 - [fn_cambia_stato_commessa](manual/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
 - [fn_cambia_stato_preventivo](manual/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
@@ -143,6 +144,8 @@
 - [fn_get_anno_registro](manual/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
 - [fn_get_arrotondamento_scope](manual/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
 - [fn_get_commessa_stato](manual/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
+- [fn_get_data_minima_numerabile](manual/fn_get_data_minima_numerabile.md) — **Da quale data in poi questo sezionale accetta un numero.**
+- [fn_get_data_minima_numerabile_lotto](manual/fn_get_data_minima_numerabile_lotto.md) — **Da quale data in poi TUTTE le fatture non ancora numerate di questo lotto possono prendere un numero.**
 - [fn_get_lotto_segnalazioni_summary](manual/fn_get_lotto_segnalazioni_summary.md) — (latest review 23-02-2026)   La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto, unificando:
 - [fn_get_lotto_task_last_run](manual/fn_get_lotto_task_last_run.md) — Restituisce l'ultimo task run disponibile per lotto/step/task.
 - [fn_get_next_progressivo](manual/fn_get_next_progressivo.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_next_progressivo`** restituisce il prossimo numero di registro, con **lock della riga** progressivi per evitare doppioni.
@@ -158,6 +161,7 @@
 - [fn_get_valuta_id](manual/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](manual/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
 - [fn_guard_lotto_fatture_stato_coerente](manual/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-08-21 — funzione rev 2026-08-04)
+- [fn_imposta_data_documento_lotto](manual/fn_imposta_data_documento_lotto.md) — **Dichiara la data documento di un lotto** — l'atto che l'operatore compie davvero: *«questo lotto lo dato al 31 luglio»*.
 - [fn_link_commessa_sorgente](manual/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
 - [fn_list_commessa_attivita](manual/fn_list_commessa_attivita.md) — (latest review 26-02-2026)   Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
 - [fn_list_commesse_emittibili](manual/fn_list_commesse_emittibili.md) — (latest review 26-02-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
@@ -265,6 +269,7 @@
 - [trgfn_fattura_satellite_guard_congelamento](manual/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
 - [trgfn_fatturazione_lotti_gen_codice](manual/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
+- [trgfn_fatture_guard_data_numerata](manual/trgfn_fatture_guard_data_numerata.md) — **Rende immutabile `vendite.fatture.data` da quando la fattura ha un numero.**
 - [trgfn_fatture_guard_stato](manual/trgfn_fatture_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni tra stati documento sulle fatture, bloccando quelle non ammesse.
 - [trgfn_fatture_guard_uscita_draft](manual/trgfn_fatture_guard_uscita_draft.md) — (latest review 02-08-2026)
 - [trgfn_fatture_log_sync_ad_stmt](manual/trgfn_fatture_log_sync_ad_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo DELETE su `vendite.fatture_log` (trigger statement-level).
