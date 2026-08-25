@@ -36,6 +36,8 @@ target è decorato (stato/fase/is_abortito) tramite `vw_documento_lineage_nodi`.
 | **G** | Commessa → Fattura | **1:N** | `attivita_fatturabili.fattura_riga_id` → `fatture_righe` → `fatture` |
 | **H** | Ordine → DDT | **1:N** | `ddt.sorgente_uid`(uuid)=`ordini.uid` (tradotto a `ordini.id`) |
 | **R** | DDT → Reso | **1:N** | `resi.sorgente_uid`(uuid)=`ddt.uid` — **ramo INVERSO** |
+| **N** | Fattura rettificata → Nota di credito | **1:N** | `fatture_righe.riga_rettificata_id` — **ramo INVERSO** (rev 2026-08-21, sezione in fondo) |
+| **S** | Reso → Nota di credito | **1:N** | `resi_righe_accrediti` → `attivita_fatturabili.fattura_riga_id` (rev 2026-08-25, sezione in fondo) |
 
 Le **colonne tipizzate dirette** in uuid (`ddt.sorgente_uid`, `resi.sorgente_uid`) sono
 tradotte alla chiave nodo con un JOIN alla tabella target (regola brief §0 Q1). I tipi
@@ -49,7 +51,7 @@ sono risolti per `codice_interno` (§6d), mai id letterali.
 * **Destinazione arco**: `to_tipo_id`, `to_uid`, `to_codice`
 * **Stato del target** (dal nodo): `to_stato_codice_interno`, `to_fase`, `to_is_abortito`
 * **`ruolo`**: `ROOT`/`COLLEGATO` dove esiste (archi da `commesse_sorgenti`), altrimenti NULL
-* **`arco`**: lettera diagnostica `A`..`H`, `R`
+* **`arco`**: lettera diagnostica `A`..`H`, `R`, `N`, `S` — **undici** dal 2026-08-25
 
 ---
 
@@ -115,6 +117,103 @@ silenzio.
 ⚠️ **«Inverso» non vuol dire «all'indietro nel tempo»**: la nota di credito nasce
 *dopo*. Vuol dire ramo di **ritorno** — nel reso torna la merce, qui torna il
 valore — e come il reso non è un avanzamento del flusso.
+
+---
+
+### ⭐ Arco S — Reso → Nota di credito (rev 2026-08-25)
+
+| Arco | Da → A | Card. | Fonte |
+|---|---|---|---|
+| **S** | Reso → Nota di credito | **1:N** | `resi_righe_accrediti` → `resi_righe` → `resi`, e `commessa_attivita_id` → `attivita_fatturabili.fattura_riga_id` → `fatture_righe` → `fatture` (`DISTINCT`) |
+
+**Il problema che chiude.** Il grafo **si fermava sul reso**: la nota di credito
+che lo accredita era già legata alla fattura che rettifica (arco `N`) e alla
+commessa (arco `G`), ma **non al reso**. I due rami di ritorno — la merce che
+torna e il valore che torna — non si toccavano. Nel drawer del reso l'unica
+traccia dell'accredito era `gia_accreditato`, che è una **quantità**, non un
+documento.
+
+**Il dato non si inventa: si legge.** `vendite.resi_righe_accrediti` è nata il
+2026-08-18 esattamente per reggere questo legame — *«il FATTO, con chi/quando/
+quanto/contro cosa»*. Il difetto non era nella scrittura: era che **nessuno la
+leggeva**.
+
+⭐ **`S` NON è un ramo di ritorno**, e la decisione è consapevole:
+`is_ramo_inverso` resta `arco = ANY (ARRAY['R','N'])`. «Inverso» vuol dire *ramo
+di ritorno*, un verso che il grafo forward non deve percorrere; `S` è invece
+l'**avanzamento naturale del reso** — la merce è tornata, adesso si accredita —
+come `H` è l'avanzamento dell'ordine. La conseguenza è voluta: **il reso smette
+di essere una foglia e prende la nota di credito come FRONTIERA**, che è
+l'informazione che prima non esisteva da nessuna parte.
+
+⚠️ **Il `WHERE af.fattura_riga_id IS NOT NULL` non è una formalità copiata da
+`G`.** Misurato il 2026-08-25: **5 accrediti registrati, 3 con la riga di
+fattura** — due resi accreditati e non ancora fatturati non hanno arco, e lo
+prenderanno all'emissione.
+
+⛔ **Due strade ovvie che sono sbagliate**, scritte qui perché non vengano
+riscoperte:
+
+1. **Scrivere il reso in `commesse_attivita.sorgente_tipo_id/uid`.** Non è un
+   campo di provenienza: è la **chiave di raggruppamento della fatturazione**
+   (`fn_build_gruppo_fatturabile_key`, letta da dashboard competenza, emissione
+   mirata e `fatturazione_lotti_gruppi`). Scriverci il reso sposterebbe la
+   rettifica in un altro gruppo, cioè in un altro lotto e in un altro documento.
+   Il legame va **letto**, non **trasportato**.
+2. **Un dodicesimo arco *reso → fattura originale*** via
+   `resi_righe_accrediti.fattura_riga_rettificata_id`, che è a un solo join di
+   distanza. Sarebbe **forward** come `S`, quindi fattura originale e nota di
+   credito finirebbero allo stesso livello con lo stesso `pipeline_rank` (sono
+   entrambe nodi `FATTURA`) e il pareggio si spezzerebbe su `d_uid`, che è
+   **testo**: la frontiera del reso diventerebbe un ordinamento lessicografico
+   fra `'20024'` e `'835'`. E non serve — **il triangolo si chiude già**:
+   `reso —S→ NC ←N— fattura originale`.
+
+⭐ **Il legame è MOLTI-A-MOLTI, di proposito.** Tutte le rettifiche di una
+commessa cadono nel gruppo `MAN:<commessa>`, quindi due resi diversi sulla stessa
+commessa producono **una sola** nota di credito, che può rettificare righe di
+fatture diverse. Un arco calcolato regge un molti-a-molti senza sforzo; un
+puntatore memorizzato no — ed è la ragione in più per cui la forma giusta è
+l'arco. Volere «una nota per reso» costerebbe la chiave di raggruppamento, non
+l'arco.
+
+---
+
+### ⛔ La regola del perimetro RLS — vale per OGNI ramo (rev 2026-08-25)
+
+> **Ogni ramo passa dalle tabelle-testata che portano la RLS. Le tabelle-ponte
+> non danno perimetro.**
+
+`commesse_sorgenti`, `attivita_fatturabili`, `resi_righe` e
+`resi_righe_accrediti` hanno tutte `relrowsecurity = f`: un ramo che si ferma lì
+eredita **zero** perimetro, e produce un arco verso un documento che il chiamante
+**non può vedere**.
+
+⚠️ **E la decorazione del nodo non salva**: `vw_documento_lineage_nodi` è in
+`LEFT JOIN`, quindi la riga dell'arco resterebbe con `from_codice`/`to_codice` a
+`NULL` invece di sparire.
+
+Misurato ramo per ramo contro `pg_class.relrowsecurity` il 2026-08-25: **quattro
+archi su dieci erano fuori perimetro** — `B`, `E`, `F` (sorgente **e** commessa,
+via `commesse_sorgenti`) e `G` (la commessa, saltata da
+`attivita_fatturabili`). Chiusi tutti nello stesso `CREATE OR REPLACE VIEW` di
+`S`: cinque join in più, tutti su chiave primaria, **zero righe cambiate** sul
+dato di oggi.
+
+⛔ **La chiave dei tre rami `B`/`E`/`F` non è la stessa.**
+`commesse_sorgenti.sorgente_uid` è **testo polimorfo** e segue la convenzione
+`key_selector`: `p.uid::text` per il preventivo, `o.id::text` per l'ordine,
+`c.id::text` per il contratto. Un join scritto con la chiave copiata da un altro
+ramo **non darebbe errore**: azzererebbe quel gruppo di archi.
+
+⚠️ **Sul dato di sviluppo non si riproduce** — l'operatore di collaudo vede tutte
+e 60 le commesse e tutti e 13 i resi, quindi zero archi fuori perimetro. È un
+presidio per il giorno in cui un operatore sarà ristretto a un emittente, ed è
+il test **38** del pgTAP (che è generale e non parla di `S`).
+
+⚠️ Quel test vale **solo** perché la suite gira come `zeroerp_app` con la RLS
+attiva. Con `PGTAP_RUNNER=owner` sarebbe verde per costruzione: **chi lo sposta
+lo spegne.**
 
 ---
 

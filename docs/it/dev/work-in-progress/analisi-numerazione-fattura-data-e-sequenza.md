@@ -2,10 +2,12 @@
 
 > **Destinatari:** Tid, team DB, backend, frontend
 >
-> **Tipo:** analisi del processo attuale + proposta di struttura bersaglio.
-> Non è ancora un brief di cantiere: le decisioni di §7 vanno prese prima.
+> **Tipo:** analisi del processo attuale + proposta di struttura bersaglio, da
+> cui è nato il brief di cantiere.
 >
-> **Stato:** WIP — misurato sui dati veri di `dbdev` il 2026-08-25
+> ✅ **Stato: CHIUSA E COLLAUDATA** (2026-08-25). Le decisioni di §7 sono state
+> prese, il cantiere è stato costruito e provato in applicazione: il riepilogo
+> è in fondo, al §9.
 >
 > **Origine:** Tid, 2026-08-25. «Stamattina ho numerato la fattura 835 del
 > 31/07/26, ha preso il numero 11 ma ci sono già fatture di agosto.»
@@ -23,6 +25,10 @@
 
 Registro 3 (`Front-office`, serie `R2`, reset `ANNUALE`), tutte le fatture
 numerate, in ordine di numero:
+
+> ⚠️ La serie di quel registro è stata poi rinominata in `VX2` e i contatori
+> sono ripartiti da 100: la tabella qui sotto è il **fotogramma del difetto**,
+> non lo stato di oggi.
 
 | numero | fattura | data documento | lotto | numerata il |
 | ---: | ---: | --- | ---: | --- |
@@ -377,13 +383,17 @@ monotòna.
 | --- | --- | --- |
 | **DB** | 13 consegne, dettagliate nel brief: parametro fuso + `fn_data_operativa`; politica su `registri_fatturazione`; `fatturazione_lotti.data_documento`; `fn_calcola_data_documento`; `fn_get_or_create_fattura_header` senza `current_date`; `registri_fatturazione_progressivi.ultima_data`; **cancello in `fn_get_next_progressivo`**; codice errore; `fn_get_data_minima_numerabile`; `fn_imposta_data_documento_lotto`; `reset_policy` a una voce; pgTAP | team DB — [brief](brief-db-numerazione-data-documento-e-sequenza.md) ✅ scritto |
 | **BE** | `data_documento` nei payload di creazione lotto e dei due verbi di numerazione; ordine del giro per data documento; policy del nuovo codice errore; il backstop stampa che ora può rifiutare | backend — ✅ 6/6 |
-| **FE** | campo data nella creazione lotto; DatePicker nel dialog «Rendi definitive» con `minDate` dalla finestra di numerazione; colonna data documento nella lista lotti; messaggio del cancello con bersaglio | frontend — ✅ 3/4, la colonna aspetta un seed |
+| **FE** | campo data nella creazione lotto; DatePicker nel dialog «Rendi definitive» con `minDate` dalla finestra di numerazione; colonna data documento nella lista lotti; messaggio del cancello con bersaglio | frontend — ✅ 4/4 |
 
-> ✅ **Chiuso il 2026-08-25.** DB applicato (18 changeSet), BE e FE scritti
-> (10 consegne su 10, la sola colonna di lista di FE-3 aspetta una riga di
-> seed). Consuntivo, difetti trovati per strada e revisione critica: **§12 del
-> [brief](brief-db-numerazione-data-documento-e-sequenza.md)**. Resta il
-> collaudo in-app.
+> ✅ **CHIUSO E COLLAUDATO il 2026-08-25.** DB applicato (18 changeSet), BE e FE
+> 10 consegne su 10, seed della colonna di lista arrivato, e **collaudo in-app
+> superato**: le date vengono chieste su entrambe le superfici — la riga scelta
+> dalla Dashboard Competenza e la numerazione avanzata dal drawer del lotto.
+> Consuntivo, difetti trovati per strada, revisione critica e collaudo: **§12
+> del [brief](brief-db-numerazione-data-documento-e-sequenza.md)**.
+>
+> ⛔ Il brief **resta in `work-in-progress/`**: 15 `COMMENT` dentro il database
+> ne citano il percorso e si rigenerano a ogni migrate (§12.8 del brief).
 
 ⛔ Le azioni DB non erano partite da qui: il brief è passato al team DB su
 `dev/db-tid`, e i prerequisiti sono stati applicati prima di toccare BE/FE

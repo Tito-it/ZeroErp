@@ -20,10 +20,23 @@
 > correzioni portanti al piano (§0.2), **tre decisioni di Tid** che hanno
 > allargato il cantiere (§8): il perimetro RLS si chiude su tutti gli archi, non
 > solo su `S`; la natura NOTA_CREDITO si asserisce; `vw_resi_lista` diventa la
-> sesta sorella. **CONSEGNA SCRITTA E APPLICATA** il 2026-08-25:
+> sesta sorella. **CONSEGNA DB SCRITTA E APPLICATA** il 2026-08-25:
 > `20260825-19/20/21`, seed CSV, due pgTAP estesi — **38/38** e **30/30**,
-> baseline `vendite` senza regressioni. Restano la verifica in-app (§6) e i due
-> residui del §7.
+> baseline `vendite` senza regressioni.
+>
+> ⛔ **2026-08-26 — il «zero BE, zero FE» del §5 DB-F.4 era FALSO**: tre buchi,
+> tutti silenziosi, chiusi lo stesso giorno (repository, slot della lista,
+> presidio esteso da 5 a 6 liste). Pagato anche il debito delle tre pagine
+> **manual**, dove sopravviveva la prosa che il `20260825-20` aveva corretto nel
+> `COMMENT`.
+>
+> 🔴 **E la misura ha trovato un difetto nuovo**: la colonna «Transito» chiama
+> **«Fattura»** la nota di credito, perché la natura della frontiera non esce
+> dalla summary (`frontiera_uid` non è in lista). Preesistente, già a video sugli
+> ordini; questo cantiere lo rende **strutturale**. Richiesta al team DB nel
+> **§7-bis** — BE/FE aspettano.
+>
+> Restano la verifica in-app (§6), il §7-bis e i due residui del §7.
 >
 > **Correlati:**
 > [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md) §44 ·
@@ -681,12 +694,61 @@ Da fare nello stesso passaggio: `(4,5,6,7,8,9)` e **18** in tutti e tre, più i
 `plan(26)` diventa **`plan(30)`**, con l'indice in testa aggiornato e il titolo
 del file da «5 liste» a «6 liste».
 
-#### F.4 — niente frontend, e va detto perché
+#### F.4 — ⛔ «niente frontend, niente backend»: ERA FALSO (corretto 2026-08-26)
 
-`ResiSearchTable.vue` è già `<ListaConfigurabile codice="vendite.resi">`
-(lista 9, seed DB). Le colonne arrivano dal seed e dal preset: **zero righe di
-FE, zero righe di BE**. È la stessa catena che ha funzionato per le cinque
-sorelle il 2026-07-15.
+> **Testo originale, tenuto perché è la forma del difetto e non il difetto:**
+>
+> *«`ResiSearchTable.vue` è già `<ListaConfigurabile codice="vendite.resi">`
+> (lista 9, seed DB). Le colonne arrivano dal seed e dal preset: **zero righe di
+> FE, zero righe di BE**. È la stessa catena che ha funzionato per le cinque
+> sorelle il 2026-07-15.»*
+
+**La premessa è vera, la conclusione no**, e la prova che era sbagliata sta
+proprio nelle cinque sorelle citate a sostegno: **anche loro** hanno righe di BE
+e di FE, scritte il 2026-07-15 insieme al seed. «La catena ha funzionato» voleva
+dire *«ha funzionato quando si sono scritti anche quei due pezzi»*.
+
+⭐ **Il seed porta la COLONNA, non la CELLA.** `<ListaConfigurabile>` monta le
+`Column` dalla configurazione e, senza uno slot del chiamante, rende il **valore
+grezzo**. È la stessa specie di [[feedback_bb_legge_non_trasporta]]: il building
+block unifica la **lettura** della configurazione, non il **rendering** di ogni
+cella — e i punti che rendono si **cercano**, uno per lista.
+
+**I tre buchi misurati, e cosa si vedeva a video senza:**
+
+| # | Dove | Senza | Perché il difetto è silenzioso |
+| --- | --- | --- | --- |
+| 1 | `ResiRepository.list_resi` — manca `frontiera_tipo_codice` | la colonna «Transito» mostra **«—»**, cioè *«non transitato»*, **proprio sul reso accreditato** | la vista espone `frontiera_tipo_id` (il grafo parla per id), il FE parla per `codice_interno`; `LineageFrontieraChip` ha il gate su `isTransitato && tipoCodice` e senza il codice ricade sul ramo «—» |
+| 2 | `ResiSearchTable.vue` — mancano i **tre slot** `#cell-pratica` / `#cell-fase` / `#cell-transito` | «Pratica» come testo non cliccabile, «Fase» come `CHIUSO` grezzo invece del Tag, «Transito» come **`1`** nudo invece del chip | il BB rende il valore grezzo: nessun errore, nessun log, solo tre colonne che non fanno il loro mestiere |
+| 3 | `test_lineage_liste_be.py` — ancorato a **cinque** liste | i test restano **verdi** e smettono di coprire la sesta | ⛔ **è la trappola del §5 DB-F.3, sul lato Python**: la stessa specie dei pgTAP ancorati a `lista_id IN (4..8)`, e non l'avevo cercata qui |
+
+⭐ **Il buco 1 era già stato sfiorato e non riconosciuto.** La whitelist `ORDER BY`
+di `_ORDER_COLS_RESI` era stata estesa a `pratica_numero`/`fase` — trovata dal
+presidio del seed, non a occhio. Chi l'ha scritta era **dentro il file giusto** e
+si è fermato alla colonna che il presidio nominava: un presidio copre ciò che
+sa, e la decodifica del tipo frontiera non la sapeva nessuno.
+
+**Consegna del 2026-08-26** (tre file, `20260825-19..21` invariati):
+
+1. `backend/apps/vendite/db/resi_repository.py` — `SELECT v.*, s.codice_interno
+   AS frontiera_tipo_codice` + `LEFT JOIN config.sorgenti`, identico alle cinque
+   sorelle;
+2. `frontend/src/vendite/resi/components/ResiSearchTable.vue` — i tre slot con i
+   BB `LineagePraticaCell` / `LineageFaseTag` / `LineageFrontieraChip`;
+3. `backend/apps/vendite/tests/services/test_lineage_liste_be.py` — esteso a
+   **sei** liste **e** con un presidio nuovo per il buco 1
+   (`test_ogni_lista_decodifica_il_tipo_della_frontiera`, che legge il sorgente
+   dei sei repository). ⭐ Verificato **al contrario**: rimessa la `SELECT v.*`
+   nuda, il test diventa rosso.
+
+**Misure.** 3+9 test verdi (lineage liste + presidio seed liste), `eslint` e
+`vite build` puliti, `check_i18n_keys.py` e `check-liste-configurabili.mjs`
+verdi. Query di lista provata sul DB vivo in contesto operatore: il reso 24 esce
+con `frontiera_tipo_codice = FATTURA`, `frontiera_codice = 1`,
+`is_transitato = t`, `n_discendenti_attivi = 1`.
+
+🔴 **E la misura ha scoperto il §7-bis**: quel `FATTURA` è la nota di credito, e
+il chip la etichetta «Fattura».
 
 ---
 
@@ -754,16 +816,22 @@ zero per costruzione perché la fattura è terminale»* — **resta vero**: l'ar
   cosa che si tocca lì, e si tocca con un `COMMENT ON VIEW`, non ricreando la
   vista.
 * **Nessun indice nuovo** (§5 DB-A, verificato sui vincoli).
-* **Nessuna modifica al frontend**, neppure per DB-F. Il pannello non conosce le
-  lettere: etichetta le tappe per **tipo** e **natura**
-  (`lineageDocumentoLabel`), e le chiavi i18n
+* **Nessuna modifica al frontend *per il PANNELLO*** — e solo per quello. Il
+  pannello «Passaggi» non conosce le lettere: etichetta le tappe per **tipo** e
+  **natura** (`lineageDocumentoLabel`), e le chiavi i18n
   `vendite.lineage.natura_nota_credito` e `vendite.lineage.tipo_reso_vendita`
-  esistono già. La tappa `reso → nota di credito` compare da sola. E la lista
-  resi è già `<ListaConfigurabile codice="vendite.resi">`: le tre colonne nuove
-  arrivano dal seed, con le chiavi `vendite.lineage.col_*` che pure ci sono.
-* **Nessuna modifica al backend.** `list_lineage_passaggi` proietta l'arco così
-  com'è; nessun consumatore BE conosce le lettere. La lista resi passa dallo
-  stesso endpoint generico delle cinque sorelle.
+  esistono già. La tappa `reso → nota di credito` compare da sola.
+  ⛔ **Per la LISTA invece no**, e questa riga diceva il contrario: la lista resi
+  è sì già `<ListaConfigurabile>` e le colonne arrivano davvero dal seed, ma il
+  BB rende il **valore grezzo** senza gli slot del chiamante. Vedi §5 DB-F.4
+  corretto.
+* **Nessuna modifica al backend *per gli ARCHI e per il PANNELLO***.
+  `list_lineage_passaggi` proietta l'arco così com'è e nessun consumatore BE
+  conosce le lettere — questo resta vero.
+  ⛔ **Ma la lista resi NON passa dallo stesso endpoint generico delle cinque
+  sorelle**: ogni dominio ha il **suo** repository e la **sua** `SELECT`, e
+  quella dei resi non decodificava `frontiera_tipo_id`. La frase originale
+  scambiava «stesso pattern» per «stesso codice». Vedi §5 DB-F.4 corretto.
 * **Nessun changeSet per il seed** di DB-F: i mirror CSV sono `runOnChange` e
   ripescano il file. Si appende, non si scrive un loader (§5 DB-F.2).
 
@@ -777,8 +845,19 @@ precisa è ciò che rende utile una verifica:
 | drawer della **NC 20024** | un chip **«Reso»** con `←` | `chipsDaArchi(indietro, 'from')` |
 | drawer del **DDT 140** | **nessun cambiamento** | `chipsDaArchi` filtra `livello === 1`, e `S` è al livello 2 |
 | dialog «Passaggi» del DDT 140 | la timeline arriva **fino alla nota** | il traversal non filtra: misurato, `R` (lvl 1) → `S` (lvl 2) |
-| **lista resi**, colonna «Transito» | il **numero della nota** sulla riga del reso 24 | `transito` proietta `frontiera_codice`, e la frontiera del reso accreditato è la NC (§5 DB-F) |
-| **lista resi**, colonne «Pratica» e «Fase» | valorizzate come sulle sorelle | stesso seed, stesso `campo_sorgente` |
+| **lista resi**, colonna «Transito» | un **chip** col numero della nota sulla riga del reso 24 | `transito` proietta `frontiera_codice`, e la frontiera del reso accreditato è la NC (§5 DB-F) |
+| **lista resi**, colonne «Pratica» e «Fase» | valorizzate come sulle sorelle — «Fase» è un **Tag colorato** | stesso seed, stesso `campo_sorgente`, stessi tre slot (§5 DB-F.4 corretto) |
+
+⚠️ **Due cose si vedranno e NON sono difetti di questa verifica**, entrambe già
+in §7 / §7-bis — vale la pena saperlo prima, per non fermare il collaudo:
+
+| Cosa si vede sulla riga del reso 24 | Perché | Dove |
+| --- | --- | --- |
+| il numero è **`1`**, non `NC0000001` | il `codice` del nodo fattura è `fatture.numero`, e il registro NC è al numero 1 | §7, terzo punto |
+| il chip dice **«Fattura»**, non «Nota di credito» | la natura della frontiera non esce dalla summary (`frontiera_uid` non è in lista) | 🔴 §7-bis |
+
+⛔ **Se invece «Transito» mostra «—»**, quello è un difetto: manca
+`frontiera_tipo_codice` dal backend (§5 DB-F.4, buco 1).
 
 ---
 
@@ -789,17 +868,18 @@ precisa è ciò che rende utile una verifica:
 > lineage in `vw_resi_lista`** (§5 DB-F), che porta in lista anche il **numero
 > della nota** per la via standard.
 
-* ⚠️ **Il tie-break del `root` nella CTE `inc` dipende dagli id dei
-  `config.sorgenti`** (§5-bis-a). Fragilità preesistente, esposta per la prima
-  volta da questo cantiere: finché la nota aveva una sola sorgente forward il
-  pareggio non entrava mai in gioco. La cura sarebbe un ordinamento su una
-  chiave stabile (`codice_interno`) o un rango dichiarato, non sull'id.
-* ⚠️ **`commesse_sorgenti` ha 2 righe `DDT_VENDITA` che non producono nessun
-  arco** (misurato: `PREVENTIVO` 47 → B, `ORDINE_VENDITA` 28 → E, `CONTRATTO` 3
-  → F, `DDT_VENDITA` **2 → niente**). È la stessa specie di questo cantiere — un
-  legame che esiste nel dato e non nel grafo — ma con una domanda di dominio
-  davanti: un DDT è sorgente di commessa, o quelle due righe sono un residuo?
-  Va guardato prima di scrivere un dodicesimo arco.
+> ⭐ **Le prime due voci sono uscite di qui il 2026-08-26** (voce **L7.5**):
+> hanno un cantiere loro, con le misure rifatte —
+> [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md).
+> ⚠️ E **la seconda è cresciuta misurandola**: le due righe `DDT_VENDITA` sono
+> `ROOT`, sono l'**unica** sorgente delle loro commesse, i due DDT esistono e una
+> riga è del **2026-08-17**. «Residuo» è l'ipotesi meno probabile, e intanto due
+> commesse vive dichiarano nel grafo di **non avere origine**.
+
+* ➡️ **Il tie-break del `root` nella CTE `inc` dipende dagli id dei
+  `config.sorgenti`** (§5-bis-a) → §1 del brief residui.
+* ➡️ **`commesse_sorgenti` ha 2 righe `DDT_VENDITA` che non producono nessun
+  arco** → §2 del brief residui.
 * ⚠️ **La colonna «Transito» mostra il numero nudo della fattura** (`1`), perché
   `vw_documento_lineage_nodi` espone `fatture.numero` come `codice` del nodo,
   mentre per gli altri sei tipi il `codice` è già parlante (`DDT0000031`,
@@ -811,6 +891,114 @@ precisa è ciò che rende utile una verifica:
   il valore è giusto (§3), il silenzio no. Un commento di due righe lì eviterebbe
   che il prossimo lo legga come una dimenticanza — e questo giro è la prova che
   succede.
+
+---
+
+## 7-bis. 🔴 Al team DB — la colonna «Transito» chiama «Fattura» la nota di credito
+
+> **Trovato il 2026-08-26 misurando la consegna in-app** (§5 DB-F.4). Non è un
+> difetto introdotto da questo cantiere: è un difetto **preesistente** che questo
+> cantiere rende **strutturale**, ed è la ragione per cui va qui e non in §7.
+
+### 7-bis.1 Il fatto
+
+Sulla riga del reso 24 la colonna «Transito» rende, oggi, il chip
+
+> `→ [Fattura] 1 · IN_CORSO`
+
+dove **`1` è la nota di credito 20024**. Il pgTAP **35** asserisce che l'arco `S`
+arriva **sempre** a una `NOTA_CREDITO`: quindi su questa lista l'etichetta
+sbagliata non è un caso limite, è **il caso**.
+
+⛔ E la colonna esiste per rispondere a *«questo reso è già stato accreditato, e
+con quale documento»* (§5-bis-b). Chiamare «Fattura» l'accredito è dire la cosa
+sbagliata **proprio nel punto** per cui la colonna è stata seminata.
+
+### 7-bis.2 Perché il frontend non può rimediare da solo
+
+La regola esiste già ed è una sola: `lineageDocumentoLabel(t, te, tipo, natura)`
+— *la natura vince sul tipo quando c'è*. È stata scritta il 2026-08-21 per
+esattamente questo motivo (`vendite.fatture` è **una** tabella; fattura e nota di
+credito si distinguono solo per `natura_doc_id`) ed è già usata dai chip di
+`DocumentoCollegamentiBar` e dalle tappe della dialog.
+
+🔴 **Alla cella della lista quel dato non arriva, e non può arrivare.** Il
+pannello lo ricava in `VenditeRepository.get_lineage_nodo`:
+
+```sql
+LEFT JOIN vendite.vw_documento_lineage_nodi nfr
+       ON nfr.tipo_id = l.frontiera_tipo_id
+      AND nfr.uid     = l.frontiera_uid      -- ⬅ la chiave
+```
+
+Il join ha bisogno di **`frontiera_uid`**. `vw_documento_lineage` ce l'ha; le
+**sei** `vw_*_lista` **no** — proiettano `frontiera_tipo_id`, `frontiera_codice`,
+`frontiera_stato_codice_interno`, `frontiera_fase`, e la chiave del nodo si ferma
+lì. Verificato eseguendo il join dalla lista: `ERRORE: la colonna
+v.frontiera_uid non esiste`.
+
+⛔ **Quindi non c'è un rimedio BE onesto**, e va detto perché la tentazione c'è:
+si potrebbe joinare `vendite.fatture` + `config.nature_doc_fiscale` filtrando su
+`frontiera_tipo_id = FATTURA`. Sarebbe **il tipo cablato nel backend** — cioè la
+cosa che il grafo esiste per non fare — moltiplicata per sei repository, e
+divergerebbe dal pannello alla prima modifica di uno dei due.
+[[feedback_no_quick_fix_soluzione_assoluta]].
+
+### 7-bis.3 La misura
+
+Contati i nodi la cui frontiera è una nota di credito, in contesto operatore, il
+2026-08-26:
+
+| nodo | quanti | dove si vede |
+| --- | ---: | --- |
+| `ORDINE_VENDITA` | 1 | lista ordini, colonna «Transito» → **oggi scrive «Fattura»** |
+| `RESO_VENDITA` | 1 | lista resi, colonna «Transito» → **il caso di questo cantiere** |
+| `COMMESSA` | 1 | drawer commessa (pannello, già corretto) |
+| `FATTURA` | 1 | la NC frontiera di sé stessa |
+
+⚠️ **Uno su quattro è già a video oggi**, sulla lista ordini, dal 2026-08-21. Non
+se n'è accorto nessuno perché è **una riga**; sul reso diventa la regola.
+
+### 7-bis.4 La richiesta
+
+**Esporre `frontiera_natura_doc_codice` su `vendite.vw_documento_lineage`.**
+
+* La sorgente è già lì: la CTE della frontiera conosce `frontiera_tipo_id` e
+  `frontiera_uid`, e `vw_documento_lineage_nodi` porta già
+  `natura_doc_codice` (rev 2026-08-20). È **un `LEFT JOIN` sul nodo di
+  frontiera**, lo stesso che il BE scrive a mano in `get_lineage_nodo`.
+* ⚠️ **`LEFT`, non `JOIN`**: `natura_doc_id` è nullable su `vendite.fatture`, e
+  sugli altri sette tipi di nodo la natura è NULL **ed è corretto** (la natura è
+  un asse diverso dal tipo, ed esiste solo per le fatture).
+* Poi le **sei** `vw_*_lista` la portano avanti come già fanno con
+  `frontiera_fase`, e i sei repository la proiettano accanto a
+  `frontiera_tipo_codice`.
+
+⭐ **E la ragione dichiarata nel `COMMENT` va aggiornata di conseguenza**, perché
+è la seconda volta che quella frase è vera a metà. Il `20260825-20` ha corretto
+*«varrebbe sempre NULL»* in *«il consumatore la ricava per conto suo»*. Ma il
+consumatore che la ricava è **uno**, e i consumatori che non possono sono
+**sei**: la frase giusta diventa *«la colonna c'è perché la chiave del nodo di
+frontiera non esce dalla summary, e senza di lei ogni lista chiama Fattura una
+nota di credito»*.
+
+### 7-bis.5 Cosa fa il BE/FE nel frattempo
+
+**Niente, e aspetta** ([[feedback_be_fe_attende_prerequisiti_db]]). Il lavoro a
+valle è piccolo e già scritto qui, così quando la colonna arriva è un giro solo:
+
+1. sei repository: `v.frontiera_natura_doc_codice` nella `SELECT`;
+2. `LineageFrontieraChip`: prop `naturaCodice` e `lineageDocumentoLabel` al posto
+   di `lineageTipoLabel` — **la funzione esiste già**, cambia la chiamata;
+3. le **sei** liste passano la prop — ⚠️ e vanno passate **tutte e sei**: una
+   prop dichiarata e non passata è un cancello che sembra esserci
+   ([[feedback_bb_legge_non_trasporta]]);
+4. un test nel presidio delle sei liste, gemello di
+   `test_ogni_lista_decodifica_il_tipo_della_frontiera`.
+
+⚠️ **Le chiavi i18n ci sono già tutte** (`vendite.lineage.natura_nota_credito`,
+`natura_fattura`, `natura_nota_debito`, in `it.json` e `en.json`): non c'è niente
+da tradurre, il giorno che si accende.
 
 ---
 
@@ -953,6 +1141,78 @@ ferma a `N`; `vw_resi_lista.md` è del 2026-08-03 e non sa di avere la genealogi
 La auto-gen si rigenera, quella **no** — è scritta a mano ed è l'unica metà della
 doc che può restare indietro senza che nessuno se ne accorga. È lo stesso difetto
 che questo cantiere ha corretto sul `COMMENT` (§DB-C), un piano più in là.
+
+### 2026-08-26 · Il BE/FE che il brief dichiarava inesistente
+
+Tid: *«completa l'attività come da documento, anche se credo lato BE/FE ci sia
+poco o nulla da fare»*. Il brief lo diceva più forte — **«zero righe di FE, zero
+righe di BE»** (§5 DB-F.4) — ed è stato verificato invece che creduto.
+
+**La consegna DB regge, misurata sul DB vivo** in contesto operatore
+(`script.fn_pgtap_set_contesto_operatore`): archi
+`A 64 · B 47 · C 1 · D 2 · E 28 · F 3 · G 20 · H 19 · N 1 · R 13 · **S 1**`,
+esattamente le attese del §L6; reso 24 con `is_transitato = t`,
+`frontiera_codice = 1`, `n_discendenti_attivi = 1`.
+
+⚠️ **E la prima misura è stata sbagliata, vale la pena scriverlo**: interrogata
+la vista come `zeroerp_app` **senza** contesto, `arco = 'S'` tornava **zero** —
+che somiglia a «la migrazione non è passata» e invece è la RLS fail-closed
+([[feedback_rls_conteggio_zero_non_e_un_dato]]). Le GUC si impostano **prima** di
+misurare, non dopo aver trovato un numero strano.
+
+⛔ **Tre buchi BE/FE, tutti silenziosi.** Dettaglio, misure e forma del difetto
+nel §5 DB-F.4 corretto. In una riga: il seed porta la **colonna**, non la
+**cella**, e la vista espone l'**id** del tipo di frontiera, mai il **codice**.
+Senza i due pezzi la colonna «Transito» del reso accreditato avrebbe mostrato
+**«—»**, cioè l'esatto contrario di ciò che il cantiere è servito a dire.
+
+| # | File | Cosa |
+| --- | --- | --- |
+| 1 | `backend/apps/vendite/db/resi_repository.py` | `frontiera_tipo_codice` decodificato da `config.sorgenti`, come sulle cinque sorelle |
+| 2 | `frontend/src/vendite/resi/components/ResiSearchTable.vue` | i tre slot `#cell-pratica` / `#cell-fase` / `#cell-transito` |
+| 3 | `backend/apps/vendite/tests/services/test_lineage_liste_be.py` | esteso da **5 a 6** liste **+** presidio nuovo sulla decodifica della frontiera |
+
+⭐ **Il terzo è la stessa trappola del §5 DB-F.3, sul lato Python**, e non
+l'avevo cercata lì: un presidio ancorato a un elenco di cinque **resta verde**
+mentre smette di coprire la sesta. Il nuovo test è stato verificato **al
+contrario** — rimessa la `SELECT v.*` nuda, diventa rosso e lo dice con la frase
+giusta.
+
+**Verifiche.** `test_lineage_liste_be` 3/3 · `test_liste_configurabili_seed` 9/9
+· `eslint` e `vite build` puliti · `scripts/check_i18n_keys.py` verde ·
+`frontend/scripts/check-liste-configurabili.mjs` verde. Nessuna migrazione
+scritta né applicata: `20260825-19/20/21` e i CSV restano quelli del 25.
+
+🔴 **Un difetto nuovo trovato dalla misura, passato al team DB nel §7-bis.** Con
+il chip finalmente vivo, quello che si legge è `→ [Fattura] 1`: la colonna
+«Transito» **chiama «Fattura» la nota di credito**. Il FE non può rimediare — la
+regola `lineageDocumentoLabel` esiste dal 2026-08-21, ma il join che porta la
+natura ha bisogno di `frontiera_uid`, che la summary ha e le sei `vw_*_lista`
+**no** (verificato: *«la colonna v.frontiera_uid non esiste»*). Il difetto è
+**preesistente** — è già a video sulla lista ordini da cinque giorni, su una
+riga — e questo cantiere lo rende **strutturale**, perché il pgTAP 35 asserisce
+che l'arco `S` arriva *sempre* a una `NOTA_CREDITO`. BE/FE **aspettano**
+([[feedback_be_fe_attende_prerequisiti_db]]), col lavoro a valle già scritto nel
+§7-bis.5.
+
+**Debito documentale del §8 pagato.** Le tre pagine **manual** erano ferme e la
+auto-gen non le rigenera:
+
+* `vw_documento_lineage_archi.md` — la tabella degli archi si fermava a `R`: ora
+  ha `N` e `S`, la sezione dell'arco `S` (comprese le **due strade ovvie e
+  sbagliate**) e la **regola generale del perimetro RLS**, con la trappola della
+  chiave polimorfa di `B`/`E`/`F`;
+* `vw_resi_lista.md` — era del 2026-08-03 e non sapeva di avere la genealogia:
+  ora ha le nove colonne, la trappola di `fase`, e la sezione *«cosa serve al
+  consumatore e non è nella vista»* (i due buchi sopra);
+* `vw_documento_lineage.md` — ⛔ **portava ancora la frase falsa** corretta dal
+  `20260825-20` nel `COMMENT`, e **si contraddiceva due paragrafi più sotto**
+  sulla stessa pagina. Corretta, con il perché e col rimando al §7-bis.
+
+⭐ **È la conferma del §DB-C sul terzo lato**: un commento sbagliato non fallisce
+mai, e ce n'erano **due copie** — una nel database, una nella doc a mano. Il
+changeSet ha corretto quella che il DB conosceva; l'altra è rimasta lì cinque
+giorni, e nessun presidio l'avrebbe mai vista.
 
 ---
 
@@ -1132,7 +1392,24 @@ scripts/pgtap-baseline.sh vendite
 * [X] guardrail statici verdi (`run_on_change`, `pgtap_preambolo`)
 * [X] ⛔ migrazione applicata da un migrate **esterno** alle 17:03, non dall'agente
 * [X] `38/38` + `30/30`, conteggio archi invariato su A..R, `pgtap-baseline.sh vendite` pulito
-* [ ] verifica in-app dei quattro casi della tabella §6 + colonna «Transito» sulla lista resi
 * [X] §8 aggiornato con l'esito reale
-* [ ] §44 di `brief-design-note-credito-resi.md` allineato (L7.2)
-* [ ] doc auto-gen delle tre viste rigenerata (`scripts/gen_db_docs.py`) — ⛔ mai a mano
+* [X] doc auto-gen delle tre viste rigenerata (`scripts/gen_db_docs.py`) — ⛔ mai a mano — *verificata il 2026-08-26: `vw_resi_lista` porta `fase` + le nove colonne, `vw_documento_lineage_archi` l'undicesimo ramo, `vw_documento_lineage` la prosa corretta*
+
+**BE/FE — la metà che il brief dichiarava inesistente (2026-08-26, §5 DB-F.4):**
+
+* [X] `ResiRepository.list_resi` decodifica `frontiera_tipo_codice` (senza, il chip resta muto)
+* [X] `ResiSearchTable.vue` monta i tre slot `#cell-pratica` / `#cell-fase` / `#cell-transito`
+* [X] `test_lineage_liste_be.py` esteso da 5 a **6** liste + presidio sulla decodifica della frontiera, verificato **al contrario**
+* [X] `eslint` · `vite build` · `check_i18n_keys.py` · `check-liste-configurabili.mjs` verdi
+
+**Documentazione:**
+
+* [X] §44 di `brief-design-note-credito-resi.md` allineato (L7.2)
+* [X] `collaudo-in-app-nota-credito-resi.md`: voce di collaudo della genealogia (L7.3)
+* [X] debito documentale del §8 pagato: le **tre** pagine **manual** in `docs/it/dbzero/vendite/manual/` (⛔ fra cui la prosa falsa sopravvissuta al `20260825-20`)
+
+**Aperto — non dipende da me:**
+
+* [ ] ⏳ **verifica in-app** dei quattro casi della tabella §6 + colonna «Transito» sulla lista resi (Tid)
+* [ ] 🔴 **§7-bis al team DB**: `frontiera_natura_doc_codice` su `vw_documento_lineage` — senza, la colonna «Transito» chiama «Fattura» la nota di credito. BE/FE **aspettano**, lavoro a valle già scritto nel §7-bis.5
+* [ ] L7.5: i due residui del §7 (tie-break del `root`, le 2 righe `DDT_VENDITA` senza arco) portati a un cantiere loro
