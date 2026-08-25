@@ -29,6 +29,7 @@ Indice test eseguiti:
 14) CataloghiTests.test_gli_stati_delle_code_esistono_a_catalogo
 15) CataloghiTests.test_lo_stato_dell_abbinamento_esiste_a_catalogo
 16) CataloghiTests.test_i_motivi_fuori_capienza_sono_quelli_della_vista
+17) CataloghiTests.test_i_codici_errore_del_service_esistono_a_catalogo
 """
 
 import csv
@@ -181,6 +182,31 @@ class CataloghiTests(TestCase):
         ).read_text(encoding="utf-8")
         for motivo in pagamenti_service.MOTIVI_FUORI_CAPIENZA:
             self.assertIn(motivo, vista, f"motivo {motivo} assente dalla vista")
+
+    # Scopo: I codici errore che il service solleva DA SE' devono esistere a
+    #        catalogo. ⚠️ Un codice non registrato non fallisce: `resolve()` lo
+    #        manda su `E_GENERICO` -> **500**, cioe' un errore di dominio a 400
+    #        diventa un errore di server. E' successo al passaggio da
+    #        `E_VALIDATION_INPUT` al codice di dominio (2026-08-25).
+    def test_i_codici_errore_del_service_esistono_a_catalogo(self):
+        import csv as _csv
+
+        catalogo = {
+            r["codice"]
+            for r in _csv.DictReader(
+                (
+                    Path(__file__).resolve().parents[5]
+                    / "db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv"
+                ).open(encoding="utf-8")
+            )
+        }
+        for codice in (
+            pagamenti_service.E_VALIDAZIONE,
+            pagamenti_service.E_DISTINTA_NON_TROVATA,
+            pagamenti_service.E_RIGA_NON_TROVATA,
+            pagamenti_service.E_STATO_NON_CONFIGURATO,
+        ):
+            self.assertIn(codice, catalogo, f"{codice} non e' a catalogo")
 
     # Scopo: 🔴 Uno stato RITIRATO non si propone piu' a nessuno. `STORNATA` e'
     #        stata ritirata il 2026-08-21, e rimetterla in un menu riaprirebbe

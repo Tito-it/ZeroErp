@@ -48,12 +48,12 @@ logger = logging.getLogger(__name__)
 
 _FN = "pagamenti.pagamenti_service"
 
-# ⚠️ Codice di validazione del payload. `pagamenti` non ha ancora il suo
-# `E_PAGAMENTI_VALIDAZIONE` a catalogo — gli altri domini ce l'hanno
-# (E_VENDITE_VALIDATION, E_RESO_VALIDAZIONE, …) — quindi si usa il generico,
-# che e' registrato e risolve 400. E' chiesto al team DB insieme agli altri
-# seed: quando arriva, cambia SOLO questa riga.
-E_VALIDAZIONE = "E_VALIDATION_INPUT"
+# Codice di validazione del payload di questo dominio. ⭐ Seminato dal team DB
+# il 2026-08-25 su richiesta del backend: fino ad allora si usava il generico
+# `E_VALIDATION_INPUT`, e il passaggio e' costato — come previsto — una riga.
+# ⚠️ Il nome e' `..._VALIDATION` (come `E_VENDITE_VALIDATION`), non
+# `..._VALIDAZIONE`: il catalogo tiene le due forme e questa e' quella scelta.
+E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"
 
 # Codici di dominio gia' a catalogo che il backend solleva da se': sono i due
 # casi in cui l'oggetto non c'e' (o il perimetro non lo lascia vedere, e i due
