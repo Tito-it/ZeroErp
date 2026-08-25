@@ -20,6 +20,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
+    qp_bool_optional,
     qp_int_optional,
     qp_int_strict,
     qp_iso_date_optional,
@@ -27,7 +28,12 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
-from apps.pagamenti.services import pagamenti_service, saldi_service, sistemazioni_service
+from apps.pagamenti.services import (
+    enti_incasso_service,
+    pagamenti_service,
+    saldi_service,
+    sistemazioni_service,
+)
 
 AREA = "pagamenti"
 
@@ -828,3 +834,178 @@ class ApiSistemazioneAnnulla(DomainAPIView):
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  I canali di incasso — da dove arrivano i soldi (slice 4)
+# ══════════════════════════════════════════════════════════════════
+
+
+class ApiEntiIncasso(DomainAPIView):
+    """GET/POST /api/v1/pagamenti/enti-incasso/ — i canali di incasso."""
+
+    area_funzionale = AREA
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="pagamenti_enti_incasso_list",
+        parameters=[
+            OpenApiParameter(
+                name="tipo", type=str, location=OpenApiParameter.QUERY, required=False,
+                description="BANCA | POSTE | PSP | ALTRO. Fuori vocabolario -> 400.",
+            ),
+            OpenApiParameter(
+                name="centro_riscossione_id", type=int,
+                location=OpenApiParameter.QUERY, required=False,
+                description="Filtro centro di riscossione.",
+            ),
+            OpenApiParameter(
+                name="attivo", type=bool, location=OpenApiParameter.QUERY,
+                required=False, description="Filtro attivo/disattivo.",
+            ),
+            OpenApiParameter(
+                name="order_by", type=str, location=OpenApiParameter.QUERY,
+                required=False,
+                description="Whitelist: codice (default) | descrizione | tipo | centro.",
+            ),
+            OpenApiParameter(
+                name="order_dir", type=str, location=OpenApiParameter.QUERY,
+                required=False, description="asc (default) | desc.",
+            ),
+            OpenApiParameter(
+                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Numero pagina (default 1).",
+            ),
+            OpenApiParameter(
+                name="page_size", type=int, location=OpenApiParameter.QUERY,
+                required=False, description="Dimensione pagina (default 50, max 200).",
+            ),
+        ],
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET l'elenco dei canali di incasso.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        data = enti_incasso_service.list_enti_incasso(
+            tipo=qp_str_upper(qp.get("tipo")),
+            centro_riscossione_id=qp_int_optional(
+                qp.get("centro_riscossione_id"), "centro_riscossione_id"
+            ),
+            attivo=qp_bool_optional(qp.get("attivo"), "attivo"),
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            page=qp_int_strict(qp.get("page"), "page", 1),
+            page_size=qp_int_strict(qp.get("page_size"), "page_size", 50),
+        )
+        return success_response(data)
+
+    @extend_schema(
+        operation_id="pagamenti_enti_incasso_create",
+        request=inline_serializer(
+            name="PagamentiEnteIncassoCreate",
+            fields={
+                "codice": serializers.CharField(),
+                "descrizione": serializers.CharField(),
+                "tipo": serializers.CharField(),
+                "soggetto_ruolo_conto_bancario_id": serializers.IntegerField(),
+                "centro_riscossione_id": serializers.IntegerField(required=False),
+                "soggetto_ruolo_id": serializers.IntegerField(required=False),
+                "bank_branch_id": serializers.IntegerField(required=False),
+                "formato_flusso": serializers.CharField(required=False),
+                "regole_match": serializers.DictField(required=False),
+                "meta": serializers.DictField(required=False),
+                "attivo": serializers.BooleanField(required=False),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Crea via POST un canale di incasso.
+    # 🔴 Il **conto** è obbligatorio su TUTTI i tipi, non solo su BANCA: un
+    #    canale senza conto produrrebbe una coda di denaro che nessuno vede — e
+    #    il conto è il punto da cui il database ricava di chi sono i soldi.
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return enti_incasso_service.crea_ente_incasso(dict(payload))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiEnteIncassoDetail(DomainAPIView):
+    """GET/PATCH /api/v1/pagamenti/enti-incasso/<id>/ — il canale."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_ente_incasso_detail",
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET il canale, col suo conto in chiaro.
+    def get(self, request: Request, ente_incasso_id: int) -> JsonResponse:
+        return success_response(
+            enti_incasso_service.get_ente_incasso(ente_incasso_id)
+        )
+
+    @extend_schema(
+        operation_id="pagamenti_ente_incasso_update",
+        request=inline_serializer(
+            name="PagamentiEnteIncassoPatch",
+            fields={
+                "codice": serializers.CharField(required=False),
+                "descrizione": serializers.CharField(required=False),
+                "tipo": serializers.CharField(required=False),
+                "attivo": serializers.BooleanField(required=False),
+                "centro_riscossione_id": serializers.IntegerField(required=False),
+                "soggetto_ruolo_id": serializers.IntegerField(required=False),
+                "bank_branch_id": serializers.IntegerField(required=False),
+                "soggetto_ruolo_conto_bancario_id": serializers.IntegerField(
+                    required=False
+                ),
+                "formato_flusso": serializers.CharField(required=False),
+                "regole_match": serializers.DictField(required=False),
+                "meta": serializers.DictField(required=False),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Aggiorna via PATCH i campi del canale.
+    # ⛔ `codice_interno` non è aggiornabile: è la chiave stabile con cui il
+    #    resto del sistema lo nomina.
+    def patch(self, request: Request, ente_incasso_id: int) -> JsonResponse:
+        return success_response(
+            enti_incasso_service.aggiorna_ente_incasso(
+                ente_incasso_id, dict(request.data)
+            )
+        )
+
+
+class ApiContiIncasso(DomainAPIView):
+    """GET /api/v1/pagamenti/conti-incasso/ — i conti agganciabili a un canale."""
+
+    area_funzionale = AREA
+
+    @extend_schema(
+        operation_id="pagamenti_conti_incasso",
+        parameters=[
+            OpenApiParameter(
+                name="soggetto_ruolo_id", type=int, location=OpenApiParameter.QUERY,
+                required=True,
+                description="Il soggetto (ruolo) di cui elencare i conti di incasso.",
+            ),
+        ],
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Restituisce via GET i soli conti con `uso = 'INCASSO'` del soggetto.
+    # 🔴 **BE-8**: il database rifiuta gli altri con un errore parlante, ma un
+    #    elenco che li propone fa sbagliare — e chi sbaglia se ne accorge dopo
+    #    aver compilato tutto il resto.
+    # ⚠️ Un elenco VUOTO non è un guasto: quel soggetto non ha ancora un conto
+    #    di incasso censito **a livello di ruolo**. La risposta lo dice con
+    #    `nessun_conto_di_incasso`, perché un menu vuoto senza spiegazione
+    #    sembra un errore dell'applicazione.
+    def get(self, request: Request) -> JsonResponse:
+        soggetto_ruolo_id = qp_int_strict(
+            request.query_params.get("soggetto_ruolo_id"), "soggetto_ruolo_id", 0
+        )
+        return success_response(
+            enti_incasso_service.list_conti_incasso(soggetto_ruolo_id)
+        )

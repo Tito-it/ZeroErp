@@ -15,8 +15,11 @@ from apps.pagamenti.api.views import (
     ApiDistintaRegistra,
     ApiDistintaRighe,
     ApiDistintaStato,
+    ApiContiIncasso,
     ApiDistinteList,
     ApiEccedenze,
+    ApiEnteIncassoDetail,
+    ApiEntiIncasso,
     ApiFatturaRateSaldo,
     ApiFatturaSistemazioni,
     ApiFatturaSaldo,
@@ -105,6 +108,16 @@ urlpatterns = [
         "fatture/<int:fattura_id>/sistemazioni/",
         ApiFatturaSistemazioni.as_view(),
         name="pagamenti-fattura-sistemazioni",
+    ),
+    # --- I canali di incasso: da dove arrivano i soldi ---
+    # ⚠️ `conti-incasso/` e' una risorsa a se' e non una sotto-risorsa del
+    #     canale: si consulta PRIMA di avere un canale, mentre lo si crea.
+    path("conti-incasso/", ApiContiIncasso.as_view(), name="pagamenti-conti-incasso"),
+    path("enti-incasso/", ApiEntiIncasso.as_view(), name="pagamenti-enti-incasso"),
+    path(
+        "enti-incasso/<int:ente_incasso_id>/",
+        ApiEnteIncassoDetail.as_view(),
+        name="pagamenti-ente-incasso-detail",
     ),
     # --- Le sistemazioni: l'elenco presenta, la persona decide, i due verbi
     #     fanno diventare la decisione un fatto (o la scartano) ---

@@ -221,6 +221,43 @@ ECCEDENZE_SORT_COLUMNS: dict[str, str] = {
     "fattura": "fattura_numero",
 }
 
+_ENTE_INCASSO_SELECT = """
+    SELECT
+        e.id, e.codice, e.codice_interno, e.descrizione, e.tipo, e.attivo,
+        e.centro_riscossione_id,
+        cr.codice          AS centro_codice,
+        cr.descrizione     AS centro_descrizione,
+        e.soggetto_ruolo_id,
+        e.bank_branch_id,
+        e.soggetto_ruolo_conto_bancario_id,
+        cb.iban            AS conto_iban,
+        src.uso            AS conto_uso,
+        src.soggetto_ruolo_id AS conto_soggetto_ruolo_id,
+        e.formato_flusso, e.regole_match, e.meta
+      FROM pagamenti.enti_incasso e
+      LEFT JOIN pagamenti.centri_riscossione cr ON cr.id = e.centro_riscossione_id
+      LEFT JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+             ON src.id = e.soggetto_ruolo_conto_bancario_id
+      LEFT JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+"""
+
+# Le colonne aggiornabili di un canale. ⛔ `codice_interno` NON c'e': e' la
+# chiave stabile con cui il resto del sistema lo nomina, e cambiarla romperebbe
+# i riferimenti senza che niente lo dica.
+_COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
+    {"codice", "descrizione", "tipo", "attivo", "centro_riscossione_id",
+     "soggetto_ruolo_id", "bank_branch_id", "soggetto_ruolo_conto_bancario_id",
+     "formato_flusso", "regole_match", "meta"}
+)
+
+# Colonne ordinabili dell'elenco dei canali di incasso.
+ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
+    "codice": "codice",
+    "descrizione": "descrizione",
+    "tipo": "tipo",
+    "centro": "centro_codice",
+}
+
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
 _JSONB_COLS = ("meta",)
 
@@ -876,6 +913,140 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
+
+    # ══════════════════════════════════════════════════════════════
+    #  I canali di incasso — da dove arrivano i soldi
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: L'elenco dei canali, coi display field di chi li guarda.
+    # ⭐ Il **conto** e' in JOIN e non e' un dettaglio: e' da li' che il
+    #    database ricava di chi sono i soldi arrivati prima della fattura, ed e'
+    #    la colonna che rende leggibile una riga di configurazione altrimenti
+    #    fatta di id.
+    def list_enti_incasso(
+        self,
+        *,
+        tipo: str | None = None,
+        centro_riscossione_id: int | None = None,
+        attivo: bool | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_enti_incasso")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if tipo is not None:
+            conditions.append("e.tipo = %s")
+            params.append(tipo)
+        if centro_riscossione_id is not None:
+            conditions.append("e.centro_riscossione_id = %s")
+            params.append(centro_riscossione_id)
+        if attivo is not None:
+            conditions.append("e.attivo = %s")
+            params.append(attivo)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = ENTI_INCASSO_SORT_COLUMNS.get(order_by, "codice")
+        direction = sql_order_direction(order_dir, default_desc=False)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        select_sql = f"""
+            {_ENTE_INCASSO_SELECT}
+            {where_clause}
+        """
+        return self._lista_paginata(
+            select_sql=select_sql,
+            params=params,
+            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            limit=limit,
+            offset=offset,
+        )
+
+    # Scopo: Il dettaglio di un canale.
+    def get_ente_incasso(self, ente_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_ente_incasso")
+        sql = f"{_ENTE_INCASSO_SELECT} WHERE e.id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ente_id)])
+            rows = rows_to_list(cursor)
+        return self._shape(rows[0]) if rows else None
+
+    # Scopo: I conti che un emittente puo' agganciare a un canale.
+    # 🔴 **Solo quelli con `uso = 'INCASSO'`**, ed e' la richiesta BE-8: il
+    #    database rifiuta gli altri con un errore parlante, ma un elenco che li
+    #    propone fa sbagliare — e chi sbaglia se ne accorge dopo aver compilato
+    #    tutto il resto.
+    # ⚠️ Il livello e' quello del RUOLO (`soggetti_ruoli_conti_bancari`) e non
+    #    del soggetto: e' li' che vive l'unicita' «un conto INCASSO -> un solo
+    #    soggetto», che e' la garanzia da cui il perimetro degli incassi dipende.
+    #    Un conto censito solo a livello soggetto NON e' agganciabile, e non e'
+    #    una svista del modello: e' quella garanzia.
+    def list_conti_incasso(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_conti_incasso")
+        sql = """
+            SELECT src.id            AS soggetto_ruolo_conto_bancario_id,
+                   src.soggetto_ruolo_id,
+                   src.predefinito,
+                   src.intestazione_dichiarata,
+                   cb.id             AS conto_bancario_id,
+                   cb.iban,
+                   cb.bic_swift,
+                   cb.intestatario_predefinito
+              FROM anagrafiche.soggetti_ruoli_conti_bancari src
+              JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+             WHERE src.soggetto_ruolo_id = %s
+               AND src.uso = 'INCASSO'
+               AND src.bloccato IS NOT TRUE
+               -- Le date di validita' ordinano e filtrano sempre: un conto
+               -- scaduto non si propone. `COALESCE(valido_al, 'infinity')`
+               -- perche' scadenza vuota = validita' infinita.
+               AND (src.valido_dal IS NULL OR src.valido_dal <= CURRENT_DATE)
+               AND COALESCE(src.valido_al, 'infinity'::date) >= CURRENT_DATE
+             ORDER BY src.predefinito DESC, cb.iban
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(soggetto_ruolo_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Crea un canale di incasso.
+    # ⚠️ Nessuna funzione madre: e' un `INSERT` su una tabella di
+    #    configurazione, e i quattro guard (tipo/filiale, conto di incasso,
+    #    coerenza PSP, scope emittente) parlano da soli.
+    def create_ente_incasso(self, campi: dict[str, Any]) -> int:
+        colonne = list(campi)
+        segnaposti = ", ".join(
+            "%s::jsonb" if c in _JSONB_COLS or c == "regole_match" else "%s"
+            for c in colonne
+        )
+        sql = f"""
+            INSERT INTO pagamenti.enti_incasso ({", ".join(colonne)})
+            VALUES ({segnaposti})
+            RETURNING id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [campi[c] for c in colonne])
+            row = cursor.fetchone()
+        return int(row[0])
+
+    # Scopo: Aggiorna un canale di incasso.
+    def update_ente_incasso(self, ente_id: int, campi: dict[str, Any]) -> int:
+        if not campi:
+            return 0
+        set_clause, params = self._set_clause(
+            campi, _COLONNE_ENTE_INCASSO_AGGIORNABILI, "update_ente_incasso"
+        )
+        params.append(int(ente_id))
+        sql = f"""
+            UPDATE pagamenti.enti_incasso
+               SET {set_clause}
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.rowcount
 
     # ══════════════════════════════════════════════════════════════
     #  Le sistemazioni — il denaro di troppo
