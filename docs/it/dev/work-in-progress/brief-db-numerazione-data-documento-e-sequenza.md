@@ -1715,3 +1715,74 @@ registro 5 è **ancora** sulla serie vuota mentre il registro usa `RX1`.
 
 Finché resta così, la prossima nota di credito prende il numero **1** invece di
 101 e su quel sezionale **il cancello non ha pavimento**. §6-ter.
+
+### 2026-08-25 · FE-3 — la colonna in lista è un seed DB, e ne serve una sola
+
+Il BE segnala che **FE-3 ha una dipendenza DB**: la colonna «data documento» in
+lista vuole una riga in `ui.lista_colonna`, che è seed. Ha ragione, e ha mandato
+la riga già compilata.
+
+#### Sulla lista **fatture** non serviva niente
+
+`vendite.fatture` (lista **48**) ha già la colonna `data` — `ordine_default 40`,
+`campo_sorgente = data`, `date`/`date_short`, filtrabile **e** ordinabile,
+priorità 95 — e `vw_fatture_lista` la espone. È già la data documento: **quella
+metà di FE-3 era chiusa in partenza.**
+
+#### Sulla lista **lotti** serve, ma il payload non ce l'ha
+
+⛔ `vendite.lotti` (lista **12**) **non ha `vista_sql`**: il payload lo compone
+`_LOTTO_SELECT_COLS` in `vendite_repository.py`, non una vista. E lì
+`data_documento` **non c'è** — zero occorrenze in tutto `backend/apps/vendite/`.
+
+⭐ Quindi l'ordine è **prima il campo nel payload, poi il seed**: al contrario la
+colonna comparirebbe, ordinabile, **vuota su tutte le righe**.
+
+#### ⛔ E il secondo prerequisito è un cancello di CI
+
+`scripts/check_i18n_keys.py` legge **`lista_colonna.csv`** e pretende che ogni
+`etichetta_i18n_key` con `attivo = t` esista in `it.json` **e** `en.json`. Oggi
+quel controllo è verde e **completo: 453 intestazioni su 453**.
+📌 Verificato: `vendite.lotti.col_data_documento` **non c'è in nessuno dei due**.
+
+#### Cosa è stato fatto
+
+La riga del BE è stata appesa **identica in tutto tranne `attivo`**, che è `f`.
+
+✅ Validata prima di scrivere: `tipo_colonna = informazione`, `tipo_dato = date` e
+`allineamento = center` sono valori ammessi dai rispettivi enum `ui.*`; il gruppo
+`Identificazione` / `gruppo_ordine 1` è **lo stesso** di `codice`,
+`competenza_mese` e `tipo_lotto`; `ordine_default 25` la colloca esattamente fra
+competenza (20) e tipo (30); `sensibile = f` — ⚠️ quella colonna è un **cancello**,
+non un'etichetta.
+✅ Inserimento provato in transazione: `INSERT 0 1`, nessun guard oppone nulla.
+✅ Il mirror è **rieseguibile**: `20260806-15-riancora-mirror-ui-lista-colonna`
+risulta `RERAN` alle 17:03 di oggi. Appendere è sicuro, e **non serve un loader
+nuovo**.
+✅ `check_i18n_keys.py` dopo l'append: **453 su 453, invariato** — il guardrail
+salta le righe con `attivo <> 't'`.
+
+~~⭐ `attivo = f` è il pattern di casa…~~
+
+#### ⛔ RETTIFICA (Tid, 2026-08-25): **accesa subito**
+
+*«accendila, è mezz'ora che giriamo intorno a una colonna, non è un problema»*.
+`attivo = t`, e la riga è ora **identica** a quella mandata dal BE.
+
+Dei due prerequisiti, **uno è stato chiuso nello stesso giro**: le chiavi
+`vendite.lotti.col_data_documento` sono state aggiunte a `it.json`
+(«Data documento») e `en.json` («Document date»), accanto a `col_competenza`
+sotto `vendite.lotti`. ⚠️ È **territorio FE**, toccato qui solo perché sono due
+righe e senza di esse si accendeva un rosso in CI: se il frontend preferisce
+ownerarle, si spostano senza attriti.
+
+✅ `check_i18n_keys.py`: **454 intestazioni su 454 tradotte**, parità it/en
+integra. (Il `[X] 1` residuo è preesistente e riguarda una chiave emessa dal DB,
+non un'intestazione di lista.)
+
+⚠️ **Resta il pezzo BE, e finché non arriva la colonna è vuota a video**:
+`fl.data_documento` in `_LOTTO_SELECT_COLS` (+ TypedDict e row mapper) e la voce
+nella whitelist di ordinamento — il seed dichiara `ordinabile = t`, e senza
+whitelist la lista prometterebbe un ordinamento che la query rifiuta. Scelta
+consapevole di Tid: su dati di sviluppo una colonna vuota per qualche ora non è
+un problema.
