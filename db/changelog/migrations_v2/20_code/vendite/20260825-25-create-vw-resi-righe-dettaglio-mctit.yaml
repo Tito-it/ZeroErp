@@ -1,0 +1,238 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le righe del reso prendono una SEDE nel database.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Le righe del reso erano l'unico dettaglio documento servito da SQL scritto
+#   in Python (resi_repository.py::list_righe) invece che da una vista. Non e'
+#   una questione di stile: e' il motivo per cui il motivo di blocco
+#   dell'annullo — chiesto dal team BE il 2026-08-25 «sia sulle righe del reso
+#   sia sulla coda accrediti» — poteva essere consegnato su UNA superficie
+#   sola. E misurato lo stesso giorno: le tre righe che hanno un accredito
+#   sono tutte USCITE dalla coda al verbo, quindi il pulsante «Annulla
+#   l'accredito» vive PROPRIO sulla superficie che il DB non serviva.
+#   Finche' resta cosi', ogni colonna derivata va aggiunta DUE volte.
+#
+# -- ⭐ E IL CONTO PER IL BACKEND MIGLIORA -----------------------------
+#   list_righe non ha filtri dinamici: e' una SELECT piatta con
+#   `WHERE rr.reso_id = %s AND rr.attivo IS TRUE ORDER BY rr.riga_nr, rr.id`.
+#   E' una vista scritta in Python. Dopo questo changeSet il BE cancella una
+#   cinquantina di righe di SQL e legge:
+#     SELECT * FROM vendite.vw_resi_righe_dettaglio
+#      WHERE reso_id = %s AND attivo IS TRUE ORDER BY riga_nr, id;
+#
+# -- ⚠️ LA VISTA PROIETTA, IL CHIAMANTE FILTRA ------------------------
+#   `attivo` e' una COLONNA e non un filtro incorporato. Una vista chiamata
+#   «dettaglio» che nasconde righe di nascosto e' una trappola: chi la
+#   interroga per contare le righe di un reso otterrebbe un numero diverso da
+#   quello della tabella senza che niente glielo dica. Il filtro resta dove
+#   sta oggi, cioe' esplicito nel chiamante.
+#
+# -- ⛔ E LA VISTA PASSA DA vendite.resi, CHE PORTA LA RLS -------------
+#   Misurato: vendite.resi ha relrowsecurity = t (rls_resi_ef_whitelist),
+#   vendite.resi_righe NO. Una vista costruita sulle sole righe sarebbe
+#   leggibile per QUALUNQUE reso_id, anche fuori dal perimetro emittente di
+#   chi chiede — e non basta che oggi il service autorizzi prima: un oggetto
+#   di database deve essere sicuro da solo, perche' il prossimo consumatore
+#   non sa cosa faceva il primo.
+#   ⚠️ E' la stessa classe di difetto trovata il 2026-08-25 sugli archi B/E/F/G
+#   del grafo di genealogia (changeSet 20260825-19): le tabelle-ponte e le
+#   tabelle-figlie non danno perimetro, lo danno le TESTATE. Un join in piu'
+#   su chiave primaria, e la vista e' dentro il recinto per costruzione.
+#
+# -- LA COLONNA CHE MOTIVA IL GIRO -------------------------------------
+#   `annullo_blocco_codice`: il motivo per cui l'annullo dell'accredito e'
+#   bloccato su quella riga, NULL se ammesso, dal `reason` del primo motivo di
+#   script.fn_check_accredito_annullabile — la stessa sede che
+#   vendite.fn_annulla_accredito_riga_reso interroga per sollevare. Cosi'
+#   lettura e guardia non possono divergere, che era il punto della richiesta.
+#
+# Origine: SQL di resi_repository.py::list_righe, riprodotto colonna per
+#          colonna (compresi i commenti che spiegavano le scelte) + due
+#          aggiunte: il join di perimetro e annullo_blocco_codice.
+# Dipendenze: 20260825-22 (fn_check_accredito_annullabile).
+# Verifica: db/pgtap/vendite/test-vw-resi-righe-dettaglio-v1.sql
+# Cantiere: docs/it/dev/work-in-progress/brief-design-note-credito-resi.md §45
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260825-25-create-vw-resi-righe-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260825-25-create-vw-resi-righe-dettaglio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.vw_resi_righe_dettaglio: le righe del reso prendono una sede nel database, con
+        annullo_blocco_codice in riga. Erano l'unico dettaglio documento servito da SQL in Python,
+        ed e' il motivo per cui il motivo di blocco dell'annullo poteva arrivare su una superficie
+        sola — proprio non quella dove il pulsante vive.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_accredito_annullabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_resi_righe_dettaglio
+              WITH (security_invoker=on) AS
+              SELECT
+                  rr.id,
+                  rr.reso_id,
+                  rr.riga_nr,
+                  -- ⚠️ COLONNA, non filtro: la vista proietta e il chiamante
+                  --    filtra. Una vista «dettaglio» che nasconde righe di
+                  --    nascosto darebbe un conteggio diverso da quello della
+                  --    tabella senza dirlo.
+                  rr.attivo,
+                  rr.ddt_riga_id,
+                  rr.ordine_riga_id,
+                  rr.articolo_id,
+                  a.codice                AS articolo_codice,
+                  a.descrizione           AS articolo_descrizione,
+                  rr.descrizione,
+                  rr.quantita,
+                  rr.qta_operativa,
+                  rr.factor_to_base,
+                  rr.uom_operativa_id,
+                  um.codice               AS uom_codice,
+                  rr.tipo_reso_id,
+                  tr.codice_interno       AS tipo_reso_codice_interno,
+                  tr.descrizione          AS tipo_reso_descrizione,
+                  tr.riapre_residuo,
+                  rr.motivo,
+                  COALESCE(ric.tot, 0::numeric) AS qta_riconsegnata,
+                  COALESCE(rin.tot, 0::numeric) AS qta_rinunciata,
+                  res.residuo AS qta_residua,
+                  -- Stati allineati 1:1 a vw_resi_da_riconsegnare (stessa
+                  -- semantica nel drawer e nella coda): RINUNCIATA quando la
+                  -- copertura si e' chiusa per rinuncia e non per consegna.
+                  CASE
+                      WHEN tr.riapre_residuo IS NOT TRUE THEN NULL
+                      WHEN res.residuo = 0::numeric
+                           AND COALESCE(rin.tot, 0::numeric) > 0::numeric
+                          THEN 'RINUNCIATA'
+                      WHEN COALESCE(ric.tot, 0::numeric) = 0::numeric
+                           AND COALESCE(rin.tot, 0::numeric) = 0::numeric
+                          THEN 'DA_RICONSEGNARE'
+                      WHEN res.residuo > 0::numeric
+                          THEN 'PARZIALE'
+                      ELSE 'COMPLETATA'
+                  END::character varying AS stato_riconsegna,
+                  -- Quanto di questa riga e' GIA' stato accreditato, in unita'
+                  -- di merce. ⭐ Si legge dalla fn del DB, che e' il punto UNICO
+                  -- della formula (la consuma anche vw_resi_da_accreditare per
+                  -- non ri-offrire una quota gia' accreditata): rifare qui la
+                  -- somma sul ponte darebbe una seconda verita' — e sbagliata,
+                  -- perche' su un kit N righe portano la STESSA quota padre e
+                  -- sommarle la moltiplicherebbe.
+                  -- Serve al drawer per offrire l'ANNULLO dell'accredito: dopo il
+                  -- verbo la riga esce dalla coda, quindi il reso e' l'unica sede
+                  -- da cui si puo' ancora disfare (§30.2 del brief).
+                  acc.accreditato AS gia_accreditato,
+                  -- ⭐ rev 2026-08-25 — PERCHE' NON POSSO ANNULLARE L'ACCREDITO.
+                  --   NULL = annullo ammesso. E' la ragione per cui questa vista
+                  --   nasce: le tre righe che hanno un accredito sono tutte uscite
+                  --   dalla coda al verbo, quindi il pulsante «Annulla
+                  --   l'accredito» vive QUI e non nella coda accrediti — e questa
+                  --   superficie il database non la serviva affatto.
+                  --   Il motivo arriva da script.fn_check_accredito_annullabile,
+                  --   la stessa sede che vendite.fn_annulla_accredito_riga_reso
+                  --   interroga per sollevare: lettura e guardia non possono
+                  --   divergere, che era il punto della richiesta del team BE.
+                  --   Si prende il `reason` del PRIMO motivo: l'ordine dell'array
+                  --   e' il contratto, ed e' quello con cui la madre solleva.
+                  ann.codice AS annullo_blocco_codice,
+                  rr.meta,
+                  rr.data_insert,
+                  rr.data_update
+                FROM vendite.resi_righe rr
+                -- ⛔ IL PERIMETRO. vendite.resi ha la RLS (rls_resi_ef_whitelist),
+                --    vendite.resi_righe NO: senza questo join la vista sarebbe
+                --    leggibile per qualunque reso_id, anche fuori dal perimetro
+                --    emittente di chi chiede. Che oggi il service autorizzi prima
+                --    non basta — un oggetto di database dev'essere sicuro da solo,
+                --    perche' il prossimo consumatore non sa cosa faceva il primo.
+                --    Stessa classe di difetto degli archi B/E/F/G del grafo di
+                --    genealogia, chiusa lo stesso giorno (20260825-19).
+                JOIN vendite.resi r                ON r.id  = rr.reso_id
+                LEFT JOIN catalogo.articoli a      ON a.id  = rr.articolo_id
+                LEFT JOIN catalogo.unita_misura um ON um.id = rr.uom_operativa_id
+                LEFT JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                LEFT JOIN (
+                      SELECT resi_riga_id, SUM(qta) AS tot
+                        FROM vendite.resi_righe_riconsegne
+                       GROUP BY resi_riga_id
+                ) ric ON ric.resi_riga_id = rr.id
+                LEFT JOIN (
+                      SELECT resi_riga_id, SUM(qta) AS tot
+                        FROM vendite.resi_righe_rinunce
+                       GROUP BY resi_riga_id
+                ) rin ON rin.resi_riga_id = rr.id
+                -- Helper valutato UNA volta per riga e riusato da qta_residua e
+                -- dai tre rami della CASE: senza il LATERAL sarebbero 3 chiamate
+                -- per riga (STABLE non garantisce il riuso fra occorrenze).
+                CROSS JOIN LATERAL (
+                      SELECT vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo
+                ) res
+                CROSS JOIN LATERAL (
+                      SELECT vendite.fn_resi_riga_accreditato_partita(rr.id) AS accreditato
+                ) acc
+                CROSS JOIN LATERAL (
+                      SELECT (script.fn_check_accredito_annullabile(rr.id) -> 0 ->> 'reason')::character varying AS codice
+                ) ann;
+
+              COMMENT ON VIEW vendite.vw_resi_righe_dettaglio IS
+                  'Le RIGHE DI UN RESO per il drawer di dettaglio: anagrafica di riga, copertura '
+                  'della ri-consegna (qta_riconsegnata / qta_rinunciata / qta_residua / '
+                  'stato_riconsegna), quota gia'' accreditata e motivo di blocco dell''annullo. '
+                  '⭐ Nasce il 2026-08-25 perche'' le righe del reso erano l''UNICO dettaglio '
+                  'documento servito da SQL scritto in Python (resi_repository.py::list_righe) '
+                  'invece che da una vista, e quello era il motivo per cui il motivo di blocco '
+                  'dell''annullo — chiesto dal team BE «sia sulle righe del reso sia sulla coda '
+                  'accrediti» — poteva arrivare su una superficie sola. ⚠️ E proprio non quella '
+                  'giusta: misurato lo stesso giorno, le tre righe con un accredito sono tutte '
+                  'USCITE dalla coda al verbo, quindi il pulsante «Annulla l''accredito» vive qui. '
+                  '⚠️ LA VISTA PROIETTA, IL CHIAMANTE FILTRA: `attivo` e'' una colonna e non un '
+                  'filtro incorporato, perche'' una vista «dettaglio» che nasconde righe di nascosto '
+                  'darebbe un conteggio diverso da quello della tabella senza dirlo. Anche '
+                  'l''ordinamento resta al chiamante. '
+                  '⛔ PERIMETRO: passa da vendite.resi, che ha la RLS (rls_resi_ef_whitelist), '
+                  'perche'' vendite.resi_righe NON ce l''ha — senza quel join la vista sarebbe '
+                  'leggibile per qualunque reso_id, anche fuori dal perimetro emittente. Che il '
+                  'service autorizzi prima non basta: un oggetto di database dev''essere sicuro da '
+                  'solo, perche'' il prossimo consumatore non sa cosa faceva il primo. Stessa classe '
+                  'di difetto degli archi B/E/F/G del grafo di genealogia, chiusa lo stesso giorno. '
+                  '⭐ gia_accreditato e annullo_blocco_codice si leggono da funzioni del DB che sono '
+                  'la SEDE UNICA della loro formula: fn_resi_riga_accreditato_partita (che consuma '
+                  'anche vw_resi_da_accreditare — rifare la somma sul ponte darebbe una seconda '
+                  'verita'', sbagliata sui kit) e script.fn_check_accredito_annullabile (la stessa '
+                  'che fn_annulla_accredito_riga_reso interroga per sollevare, cosi'' lettura e '
+                  'guardia non possono divergere). security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_resi_righe_dettaglio;

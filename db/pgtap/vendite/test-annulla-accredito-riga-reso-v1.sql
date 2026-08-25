@@ -9,7 +9,7 @@
 --    la funzione non esiste ancora nel DB. Prima dell'apply il rosso atteso e'
 --    «function ... does not exist», non un difetto del test.
 --
--- Indice test (1..17):
+-- Indice test (1..23):
 --   PARTITA A — il percorso pulito (la rettifica non viene mai emessa)
 --     1) fixture: la coda vede l'accredito dovuto 3
 --     2) il verbo scrive UNA coppia sul ponte
@@ -39,6 +39,22 @@
 --        -> LA CODA RISALE. E' l'unico test che dimostra chiuso il difetto di
 --        §10, e prima del changeset 20260818-73 e' ROSSO — vedi sotto.
 --
+--   PARTITA C — LA SEDE UNICA (2026-08-25, changeset 20260825-22/23/24).
+--     Il team BE ha chiesto che il DB dica SE l'annullo e' ammesso e PERCHE'
+--     no, «con lo stesso predicato della guardia, non una seconda scrittura».
+--     Il predicato e' uscito dal corpo della madre ed e' diventato
+--     script.fn_check_accredito_annullabile, che la madre INTERROGA e che il
+--     read-side legge per spegnere il pulsante.
+--    19) la funzione di check esiste
+--    20) e' STABLE — e' una lettura, non un verbo
+--    21) e' SECURITY INVOKER: il perimetro RLS di chi chiede e' il suo
+--    22) ⛔⛔ SEDE UNICA: la madre CHIAMA la check e NON contiene piu' il
+--        predicato. E' il presidio della richiesta del BE: due predicati che
+--        divergono riportano al difetto di partenza — pulsante spento su un
+--        annullo che sarebbe passato, o acceso su uno che verra' rifiutato
+--    23) la coda accrediti porta annullo_blocco_codice in riga (linee-guida-sql
+--        §12.4: le liste gate sui codici che hanno gia' in riga)
+--
 -- ⚠️ PERCHE' DUE PARTITE E NON UNA. Il caso plurale esige che le rettifiche
 --    siano EMESSE, e l'emissione crea attivita_fatturabili che restano nel
 --    conto della merce. La partita A tiene quindi il percorso in cui la coda
@@ -60,7 +76,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(23);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -567,6 +583,50 @@ SELECT ok(
     WHERE q.resi_riga_id = (SELECT resi_riga_id FROM tmp_pb_reso)),
   '18) percorso completo (accredito -> emissione -> reset -> annullo): LA CODA RISALE, e la merce resa torna accreditabile'
 );
+
+
+-- ---- 19..23: PARTITA C — la sede unica del predicato ---------------------
+SELECT has_function('script', 'fn_check_accredito_annullabile',
+                    ARRAY['bigint'],
+                    '19) script.fn_check_accredito_annullabile esiste');
+
+-- E' una LETTURA, non un verbo: se un domani scrivesse, la vista che la chiama
+-- per riga diventerebbe una scrittura per riga di lista.
+SELECT is(
+    (SELECT provolatile::text FROM pg_proc
+      WHERE oid = 'script.fn_check_accredito_annullabile(bigint)'::regprocedure),
+    's', '20) fn_check_accredito_annullabile e'' STABLE');
+
+-- SECURITY INVOKER: il motivo FUORI_PERIMETRO nasce dalla RLS di
+-- commesse_attivita, e deve essere quella di CHI CHIEDE. Con DEFINER
+-- risponderebbe sempre «si puo''» e il pulsante resterebbe acceso su un annullo
+-- che la madre rifiuta — di nuovo il difetto di partenza.
+SELECT is(
+    (SELECT prosecdef FROM pg_proc
+      WHERE oid = 'script.fn_check_accredito_annullabile(bigint)'::regprocedure),
+    false, '21) fn_check_accredito_annullabile e'' SECURITY INVOKER');
+
+-- ⛔⛔ IL PRESIDIO DELLA RICHIESTA DEL BE, e vale la pena dire perche' e'
+--    STRUTTURALE e non comportamentale. Un test che chiamasse la madre e
+--    confrontasse l'esito col check proverebbe che oggi coincidono; questo
+--    prova che NON POSSONO divergere, perche' la regola sta scritta in un
+--    posto solo. E' la differenza fra misurare un accordo e renderlo
+--    impossibile da rompere.
+--    Le due asserzioni sono una sola condizione in due meta': la chiamata c'e'
+--    E il predicato non c'e' piu'. Senza la seconda, un copia-incolla
+--    dimenticato passerebbe.
+SELECT is(
+    (SELECT count(*)::int FROM (
+        SELECT pg_get_functiondef('vendite.fn_annulla_accredito_riga_reso(bigint,text)'::regprocedure) AS src
+     ) q
+     WHERE q.src LIKE '%script.fn_check_accredito_annullabile%'
+       AND q.src NOT LIKE '%stato_emissione <> ''NON_EMESSA''%'),
+    1, '22) sede unica: la madre chiama la check e non ripete il predicato');
+
+-- linee-guida-sql §12.4: «le capability stanno solo sul DETTAGLIO, mai per riga
+-- di lista; le liste fanno il gate sui codici che hanno gia' in riga».
+SELECT has_column('vendite', 'vw_resi_da_accreditare', 'annullo_blocco_codice',
+                  '23) la coda accrediti porta annullo_blocco_codice in riga');
 
 SELECT * FROM finish();
 ROLLBACK;

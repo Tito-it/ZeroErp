@@ -15,6 +15,7 @@
 - [fn_available_actions_reso](funzioni/fn_available_actions_reso.md) — (rev 2026-07-13)
 - [fn_capability_promo_articolo](funzioni/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
+- [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)

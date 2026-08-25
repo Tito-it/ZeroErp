@@ -383,6 +383,7 @@
 - [vw_resi_da_accreditare](views/vw_resi_da_accreditare.md) — (rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware; rev 2026-07-18 forma cambiata)
 - [vw_resi_da_riconsegnare](views/vw_resi_da_riconsegnare.md) — (rev 2026-07-26)
 - [vw_resi_lista](views/vw_resi_lista.md) — (rev 2026-07-13)
+- [vw_resi_righe_dettaglio](views/vw_resi_righe_dettaglio.md)
 - [vw_resi_righe_effettive](views/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
 - [vw_situazione_merce_ordine](views/vw_situazione_merce_ordine.md) — (rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](views/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
