@@ -80,7 +80,8 @@ compare senza genealogia, non sparisce.
   nominare. La colonna manca **su `vw_documento_lineage`**, che è la sede: il
   pannello «Passaggi» la ricava per conto suo in `get_lineage_nodo` joinando
   `vw_documento_lineage_nodi` su `frontiera_uid` — chiave che **le liste non
-  hanno**. Richiesta al team DB: brief arco S §7-bis.
+  hanno**. Richiesta al team DB:
+  `brief-db-lineage-residui-root-e-sorgente-ddt.md` §3.
 
 ### Consumo
 

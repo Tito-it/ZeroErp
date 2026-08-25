@@ -332,6 +332,25 @@ record può cambiare, e lì `disabled` + `tooltip` spiega e resta a video.
 > [linee-guida-sql §12](/linee-guida-sql). ⚠️ Le due copie vanno tenute
 > allineate: il 2026-08-20 una decisione DB è stata presa ignorando questa
 > pagina, perché chi scrive SQL non la legge.
+>
+> ⭐ **E per le azioni PER RIGA il motivo lo deve dare il database lo stesso**
+> (`linee-guida-sql §12.5`, dal 2026-08-26). Le capability stanno sul dettaglio,
+> quindi una riga non le ha: il motivo arriva come **colonna della vista di
+> riga**, prodotta da una `script.fn_check_*` che la **madre chiama** per
+> rifiutare — così il tooltip e l'errore non possono dire due cose diverse.
+> ⛔ **Non ricalcolare la regola qui**: fra «riscriverla nel frontend» e «non
+> dirla affatto» la terza strada è chiederla al DB. È il difetto trovato in app
+> sul pulsante «Annulla l'accredito», acceso su un annullo che sarebbe stato
+> rifiutato dopo aver fatto scrivere all'operatore un motivo obbligatorio.
+
+⛔ **E il campo si chiama `tooltip`, non `motivo`.** `RowActionsMenu` legge
+`action.tooltip` e da lì ricava **da solo** il tooltip inline e la riga sotto la
+voce nel kebab (`actionMotivo`). Un `motivo:` sull'azione non lo legge nessuno:
+misurato il 2026-08-26, il motivo di un pulsante spento **non era mai stato
+reso** — ed è anche il motivo per cui la chiave i18n mancante non si era mai
+vista a video, perché l'etichetta non veniva proprio chiesta. È la terza
+occorrenza della stessa specie in questa pagina, insieme allo slot delle azioni
+col nome sbagliato e al campo `action` ignorato fino al 2026-08-17.
 
 **Regola record inattivo (`attivo=false` / `is_active=false`):**
 

@@ -2620,6 +2620,7 @@
       "perimetro_competenza": "This action numbers {n} batches: the date below applies to all of them.",
       "perimetro_creazione": "If you leave the date empty, the numbering register decides it: that does not mean «today».",
       "pavimento": "The last number already issued on this register is dated {data}: numbering earlier is not allowed.",
+      "pavimento_perimetro": "The most advanced register among those this action touches has already issued a number dated {data}: numbering earlier is not allowed.",
       "sposta_le_date": "The documents are currently dated {da}. Confirming moves them to {a}, and the instalment plans will be regenerated with the new due dates.",
       "niente_da_numerare": "There is nothing left to number in this scope.",
       "non_caricato": "The numbering window could not be read: try reopening the dialog."
@@ -3310,7 +3311,15 @@
       "coda_filtro_ddt": "Queue filtered on delivery note #{id}.",
       "coda_filtro_ordine": "Queue filtered on order #{id}.",
       "coda_filtro_documento_rimuovi": "Show the whole queue",
-      "riga_gia_accreditato": "Already credited"
+      "riga_gia_accreditato": "Already credited",
+      "annullo_blocco": {
+        "nessun_accredito": "There is no credit to undo on this line.",
+        "fuori_perimetro": "This credit cannot be undone here: it could not be reconstructed in full. Please report the return.",
+        "rettifica_emessa": "The credit has already been issued on an invoice and can no longer be undone."
+      },
+      "coda_blocco": {
+        "GIA_ACCREDITATO": "This line has already been credited: the remaining amount is no longer due."
+      }
     },
     "resi_da_accreditare": {
       "col_numero": "Number",

@@ -147,7 +147,8 @@ del nodo, quindi la colonna «Transito» **non può** ricavare la natura e scriv
 «Fattura» sopra una nota di credito. Misurato il 2026-08-25: 4 nodi hanno una NC
 come frontiera (ordine, reso, commessa, e la NC stessa), e sul reso il caso è
 **strutturale** — il pgTAP 35 asserisce che l'arco `S` arriva *sempre* a una
-`NOTA_CREDITO`. Richiesta al team DB nel brief dell'arco S, §7-bis.
+`NOTA_CREDITO`. Richiesta al team DB nel brief
+`brief-db-lineage-residui-root-e-sorgente-ddt.md`, §3.
 
 📌 **Un'invariante che vale la pena conoscere**, ed è quella che presidia la
 scelta: *una fattura è sempre frontiera di sé stessa* — nel grafo forward non ha

@@ -6142,7 +6142,9 @@ doveva presidiare.
 > **23/23**, baseline `vendite` senza regressioni, doc auto-gen rigenerata.
 > ✅ **Aggiunta `20260825-25`** dopo il rilievo del §45.5: le righe del reso —
 > la superficie dove il pulsante vive davvero — prendono una vista.
-> Restano al BE la migrazione di `list_righe` e al FE tre chiavi i18n.
+> ✅ **BE e FE chiusi il 2026-08-26** (§45.9): `list_righe` legge la vista, le
+> tre chiavi ci sono, il pulsante è spento col motivo su **entrambi** i punti.
+> Resta la verifica in-app.
 
 ### 45.1 Il caso, misurato
 
@@ -6248,7 +6250,7 @@ La consegna prosegue nel §45.7.
 * `security_invoker=on` preservato sulla vista;
 * pgTAP **23/23**.
 
-### 45.6 Cosa serve dagli altri due lati
+### 45.6 Cosa serve dagli altri due lati — ✅ **fatto il 2026-08-26** (§45.9)
 
 **BE — la query sparisce.** Con `vendite.vw_resi_righe_dettaglio` (§45.7)
 `resi_repository.py::list_righe` smette di contenere SQL:
@@ -6327,10 +6329,123 @@ test 38 del grafo di genealogia, e per la stessa ragione.
 
 ### 45.8 Resta aperto
 
-* ⚠️ **`FUORI_PERIMETRO` dipende da chi guarda**, non dallo stato del documento:
-  due operatori vedrebbero lo stesso reso col pulsante in stati diversi. È
-  coerente con la madre (che rifiuta), ma se si preferisce un generico «non
-  disponibile» si cambia solo la `reason_key`.
+* ✅ ~~**`FUORI_PERIMETRO` dipende da chi guarda**~~ — deciso il 2026-08-26,
+  §45.9.2: **cambia solo il testo**, non la `reason_key`.
 * ✅ ~~Le righe del reso sono l'unico dettaglio documento servito da SQL nel
-  repository~~ — chiuso dal §45.7: `vw_resi_righe_dettaglio`. Resta al BE
-  passare a leggerla.
+  repository~~ — chiuso dal §45.7: `vw_resi_righe_dettaglio`. ✅ **E il BE è
+  passato a leggerla** il 2026-08-26 (§45.9).
+
+---
+
+### 45.9 ✅ BE e FE chiusi (2026-08-26)
+
+`check_i18n_keys.py` era **rosso su 3 chiavi**; ora è verde. 2680 test BE OK,
+`eslint` e `vite build` puliti, guard di `<ListaConfigurabile>` verde.
+
+| Lato | Cosa |
+| --- | --- |
+| **BE** | `ResiRepository.list_righe` legge `vendite.vw_resi_righe_dettaglio`: **99 righe di metodo diventano 36**, e `annullo_blocco_codice` arriva già dentro. Il filtro `attivo` resta al chiamante (la vista proietta, non nasconde) |
+| **FE** | Le 3 chiavi in `it.json` **e** `en.json`, più il gate `disabled` + motivo sui **due** punti: `ResoRigheTable.vue` (la sede vera) e `ResiCodaTable.vue` |
+| **Presidio** | Il test che asseriva *«la formula non si riscrive»* è stato **riscritto, non cancellato** (§45.9.1) |
+
+#### 45.9.1 ⭐ La garanzia si è spostata, e il presidio l'ha seguita
+
+`test_gia_accreditato_dalla_fn_condivisa` asseriva che `list_righe` chiamasse
+`fn_resi_riga_accreditato_partita` invece di rifare la somma sul ponte. Quella
+query non esiste più: cancellare il test avrebbe tolto il presidio **insieme al
+codice**. Riscritto sull'invariante nuova — *«il repository non ricostruisce il
+dettaglio»*: niente tabelle di base, niente aggregazioni, niente chiamate a
+funzione. Il lato DB lo presidia il pgTAP della vista.
+
+#### 45.9.2 ⚖️ `FUORI_PERIMETRO`: cambiato il testo, **non** la `reason_key`
+
+Il §45.8 lasciava la scelta fra il testo proposto e un generico «non
+disponibile». Nessuno dei due, e la ragione viene da due misure sul predicato:
+
+* il motivo 2 scatta quando il ponte (senza RLS) conta N rettifiche e
+  `commesse_attivita` (RLS **via la commessa**, `rls_commesse_attivita_ef_whitelist`)
+  ne mostra meno. Perché accada con un reso **visibile**, reso e commessa devono
+  stare su **emittenti diversi** — cosa che la catena reso→DDT→ordine→commessa
+  non dovrebbe permettere. Non è «non è roba tua»: è un'**anomalia**;
+* e il modo più probabile in cui scatterà davvero non è nemmeno quello: la
+  policy pretende `app.ruolo_applicativo = 'OPERATORE'`, quindi **qualunque
+  lettura senza quella GUC vede zero** → motivo 2 su *tutte* le righe. È un
+  contesto di lettura sbagliato, non una questione di permessi.
+
+⛔ *«Non sono visibili con i tuoi permessi»* sbaglia due volte: manda l'operatore
+a chiedere un permesso che non gli serve, e **dice che esistono dati che non può
+vedere** — contro la convenzione no-leak di casa (un dettaglio fuori scope
+risponde 404, identico a un id inesistente). Ma il generico «non disponibile» è
+il pulsante grigio e **muto** che il §43.5 chiama *«il difetto che la regola
+voleva evitare, in una forma peggiore»*.
+
+**Testo adottato**: *«Questo accredito non si può annullare da qui: non è stato
+possibile ricostruirlo per intero. Segnala il reso.»* — vero, nomina un gesto,
+non quantifica ciò che è nascosto.
+
+⚠️ **`reason_key` e `dettaglio: {viste, attese}` restano invariati**: quella è la
+**diagnosi**, finisce in `dbops.error_log` ed è per chi può rimediare — che non è
+l'operatore. Se questo motivo si accende in-app è un segnale da guardare, non
+amministrazione ordinaria.
+
+#### 45.9.3 ⛔ Il campo si chiama `tooltip`, e `motivo` non lo leggeva nessuno
+
+Trovato scrivendo il gate. In `ResiCodaTable.vue` l'azione `accredita` passava
+un campo `motivo:` con l'etichetta del blocco.
+
+`RowActionsMenu` **non legge `action.motivo`**: legge `action.tooltip`, e da lì
+ricava da solo la riga del popup (`actionMotivo`) e il tooltip inline. Quindi il
+motivo del pulsante spento **non è mai stato reso**, né su desktop né su touch.
+
+⚠️ È anche il motivo per cui la chiave i18n mancante (§45.9.4) non si era mai
+vista a video: l'etichetta non veniva proprio chiesta.
+
+⭐ **Terza occorrenza della stessa specie** in questo codice — un campo o uno
+slot dichiarato col nome sbagliato, che non rompe niente e non fa niente: lo
+slot delle azioni col nome della catena `cell-` (2026-08-24), il campo `action`
+ignorato dal BB fino al 2026-08-17, e questo. *Un campo dichiarato e non letto è
+peggio della sua assenza: sembra presidiato.* Corretto in entrambi i punti.
+
+#### 45.9.4 🟠 E la chiave che non c'era
+
+`vendite.resi.coda_blocco.GIA_ACCREDITATO` non esisteva in nessuno dei due
+locale. Aggiunta insieme alle altre tre.
+
+#### 45.9.5 ⚠️ Il presidio si è acceso sulla propria documentazione
+
+Il test dello slot delle azioni è diventato **rosso** perché un commento nuovo
+*citava* il nome sbagliato per spiegare il difetto del §45.9.3. Il test leggeva
+il sorgente grezzo, quindi non distingueva chi **usa** lo slot da chi lo
+**nomina**.
+
+⭐ Non riscritto il commento: dato al presidio ciò che gli mancava. Il guard
+gemello `frontend/scripts/check-liste-configurabili.mjs` ha `senzaCommenti()`
+**dal primo giorno**, con la stessa motivazione scritta accanto — era l'unica
+differenza fra i due. Verificato al contrario: con un uso vero il test torna
+rosso.
+
+#### 45.9.6 ⭐ Perché era sfuggito — e non è una domanda oziosa
+
+La regola non è arrivata con la richiesta del BE: **era in casa da cinque
+giorni.** Il §43 l'aveva stabilita il 2026-08-20 e messa in
+`linee-guida-sql §12` — ma per «Annulla **reso**», che è a livello
+**documento** e passa da `fn_available_actions_reso`. L'annullo dell'accredito è
+**per riga**, non passa dalle capability, e la regola **non ha attraversato il
+confine fra i due livelli**.
+
+⭐ **E la prova che non era una scelta sta dentro un solo file.** In
+`ResiCodaTable.vue`, otto righe sopra l'annullo, l'azione gemella `accredita`
+faceva già `disabled` + motivo, con questo commento:
+
+> *«Disabilitata invece che nascosta quando la riga porta un `blocco_codice`: il
+> motivo si RENDE, perché il rimedio non è dell'operatore. **Un click che
+> restituisce un errore irrisolvibile è peggio di un'azione spenta che dice
+> perché.»***
+
+Otto righe sotto, `annulla-accredito` veniva aggiunta senza né l'uno né l'altro.
+La regola era già scritta, in italiano, nella stessa funzione.
+
+📌 **La domanda che resta**, e vale oltre questo caso: le altre azioni **per
+riga** del progetto hanno il loro gate, o hanno ereditato lo stesso silenzio? Il
+§12.4 delle linee guida SQL censisce le otto capability **di documento**; per le
+azioni di riga un censimento non esiste.

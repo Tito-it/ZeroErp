@@ -1,15 +1,19 @@
-# Brief DB — i due residui del lineage: il `root` che dipende dagli id, e la commessa senza origine
+# Brief DB — i residui del lineage: il `root` che dipende dagli id, la commessa senza origine, e la nota di credito che si chiama «Fattura»
 
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **Origine.** Voce **L7.5** di
-> [brief-db-lineage-arco-reso-nota-credito.md](brief-db-lineage-arco-reso-nota-credito.md):
+> [brief-db-lineage-arco-reso-nota-credito.md](../work-done/brief-db-lineage-arco-reso-nota-credito.md):
 > *«portare a un cantiere suo i due residui del §7»*. Sono usciti da lì e non
 > sono di lì: il cantiere dell'arco `S` li ha **esposti**, non creati.
+> ⭐ **Dal 2026-08-26 sono TRE**: alla chiusura del brief madre è arrivato qui
+> anche il suo §7-bis (§3) — un brief non si chiude *sopra* un difetto aperto,
+> e quello ha la stessa sede degli altri.
 >
 > **Stato.** 2026-08-26 — analisi e misure. **Nessun file scritto, nessuna
-> migrazione.** Due domande di modello prima di qualunque riga di SQL, entrambe
-> in §1.3 e §2.4.
+> migrazione.** Due domande di modello prima di qualunque riga di SQL (§1.3 e
+> §2.4); la terza voce invece non ha domande aperte — la richiesta è scritta
+> (§3.4).
 >
 > ⚠️ **La seconda voce è più grossa di come il brief madre la descriveva.**
 > Diceva *«2 righe `DDT_VENDITA` che non producono nessun arco — residuo?»*.
@@ -23,12 +27,18 @@
 
 ---
 
-## 0. Le due voci in una riga
+## 0. Le tre voci in una riga
 
 | # | Cosa | Gravità | Chi lo vede oggi |
 | --- | --- | --- | --- |
 | **1** | Il `root` di un nodo con più sorgenti si sceglie su `from_tipo_id`, cioè su un **id di `config.sorgenti`** e non su una chiave stabile | 🟠 fragilità silenziosa, nessun effetto oggi | nessuno — finché gli id non cambiano |
 | **2** | `commesse_sorgenti` ha righe **`DDT_VENDITA`** che non producono nessun arco: quelle commesse risultano **senza origine** nel grafo | 🔴 dato vero non rappresentato | chi apre il pannello «Passaggi» di quelle due commesse, e la colonna «Transito» dei due DDT |
+| **3** | La colonna «Transito» **chiama «Fattura» una nota di credito**, e mostra il numero **nudo** (`1`): la natura e il codice parlante non escono dalla summary | 🔴 dice la parola sbagliata | **ogni** operatore che guarda la lista resi o la lista ordini |
+
+⭐ **Le tre hanno una cosa in comune, ed è il motivo per cui stanno insieme**: la
+cura sta **sul nodo o sull'arco**, mai sulle sette viste di lista che li
+proiettano. Chi apre `vw_documento_lineage_nodi` / `vw_documento_lineage` le
+sistema in un giro solo.
 
 ---
 
@@ -199,19 +209,125 @@ colonna, poi la si usa).
 
 ---
 
-## 3. 📎 La famiglia accanto: come un nodo FATTURA si presenta in lista
+## 3. 🔴 Come un nodo FATTURA si presenta in lista
 
-Non è una terza voce di questo brief — è il rimando, perché le due cose si
-toccano e chi apre `vw_documento_lineage_nodi` le vede insieme.
+> **Arrivato qui dal §7-bis del brief dell'arco `S`**, che si è chiuso il
+> 2026-08-26 e non poteva chiudersi *sopra* un difetto aperto. Trovato
+> misurando la consegna in-app. Non è un
+> difetto introdotto da questo cantiere: è un difetto **preesistente** che questo
+> cantiere rende **strutturale**, ed è la ragione per cui va qui e non in §7.
 
-| Cosa | Dove sta |
-| --- | --- |
-| 🔴 la colonna «Transito» chiama **«Fattura»** una nota di credito (`frontiera_natura_doc_codice` non esce dalla summary) | **§7-bis** di [brief-db-lineage-arco-reso-nota-credito.md](brief-db-lineage-arco-reso-nota-credito.md) — **blocca** la resa del cantiere `S` |
-| ⚠️ la colonna «Transito» mostra il **numero nudo** (`1`) invece di un codice parlante, perché `vw_documento_lineage_nodi` espone `fatture.numero` come `codice` del nodo, mentre per gli altri sette tipi il `codice` è già parlante (`DDT0000031`, `ORD0000227`) | §7 dello stesso brief, terzo punto — non blocca |
+### 3.1 Il fatto
 
-⭐ **Entrambe si curano sul NODO**, non sulle sette viste di lista che lo
-proiettano. Se il team DB mette mano a `vw_documento_lineage_nodi` /
-`vw_documento_lineage`, conviene guardarle nello stesso giro.
+Sulla riga del reso 24 la colonna «Transito» rende, oggi, il chip
+
+> `→ [Fattura] 1 · IN_CORSO`
+
+dove **`1` è la nota di credito 20024**. Il pgTAP **35** asserisce che l'arco `S`
+arriva **sempre** a una `NOTA_CREDITO`: quindi su questa lista l'etichetta
+sbagliata non è un caso limite, è **il caso**.
+
+⛔ E la colonna esiste per rispondere a *«questo reso è già stato accreditato, e
+con quale documento»* (§5-bis-b). Chiamare «Fattura» l'accredito è dire la cosa
+sbagliata **proprio nel punto** per cui la colonna è stata seminata.
+
+### 3.2 Perché il frontend non può rimediare da solo
+
+La regola esiste già ed è una sola: `lineageDocumentoLabel(t, te, tipo, natura)`
+— *la natura vince sul tipo quando c'è*. È stata scritta il 2026-08-21 per
+esattamente questo motivo (`vendite.fatture` è **una** tabella; fattura e nota di
+credito si distinguono solo per `natura_doc_id`) ed è già usata dai chip di
+`DocumentoCollegamentiBar` e dalle tappe della dialog.
+
+🔴 **Alla cella della lista quel dato non arriva, e non può arrivare.** Il
+pannello lo ricava in `VenditeRepository.get_lineage_nodo`:
+
+```sql
+LEFT JOIN vendite.vw_documento_lineage_nodi nfr
+       ON nfr.tipo_id = l.frontiera_tipo_id
+      AND nfr.uid     = l.frontiera_uid      -- ⬅ la chiave
+```
+
+Il join ha bisogno di **`frontiera_uid`**. `vw_documento_lineage` ce l'ha; le
+**sei** `vw_*_lista` **no** — proiettano `frontiera_tipo_id`, `frontiera_codice`,
+`frontiera_stato_codice_interno`, `frontiera_fase`, e la chiave del nodo si ferma
+lì. Verificato eseguendo il join dalla lista: `ERRORE: la colonna
+v.frontiera_uid non esiste`.
+
+⛔ **Quindi non c'è un rimedio BE onesto**, e va detto perché la tentazione c'è:
+si potrebbe joinare `vendite.fatture` + `config.nature_doc_fiscale` filtrando su
+`frontiera_tipo_id = FATTURA`. Sarebbe **il tipo cablato nel backend** — cioè la
+cosa che il grafo esiste per non fare — moltiplicata per sei repository, e
+divergerebbe dal pannello alla prima modifica di uno dei due.
+[[feedback_no_quick_fix_soluzione_assoluta]].
+
+### 3.3 La misura
+
+Contati i nodi la cui frontiera è una nota di credito, in contesto operatore, il
+2026-08-26:
+
+| nodo | quanti | dove si vede |
+| --- | ---: | --- |
+| `ORDINE_VENDITA` | 1 | lista ordini, colonna «Transito» → **oggi scrive «Fattura»** |
+| `RESO_VENDITA` | 1 | lista resi, colonna «Transito» → **il caso di questo cantiere** |
+| `COMMESSA` | 1 | drawer commessa (pannello, già corretto) |
+| `FATTURA` | 1 | la NC frontiera di sé stessa |
+
+⚠️ **Uno su quattro è già a video oggi**, sulla lista ordini, dal 2026-08-21. Non
+se n'è accorto nessuno perché è **una riga**; sul reso diventa la regola.
+
+### 3.4 La richiesta
+
+**Esporre `frontiera_natura_doc_codice` su `vendite.vw_documento_lineage`.**
+
+* La sorgente è già lì: la CTE della frontiera conosce `frontiera_tipo_id` e
+  `frontiera_uid`, e `vw_documento_lineage_nodi` porta già
+  `natura_doc_codice` (rev 2026-08-20). È **un `LEFT JOIN` sul nodo di
+  frontiera**, lo stesso che il BE scrive a mano in `get_lineage_nodo`.
+* ⚠️ **`LEFT`, non `JOIN`**: `natura_doc_id` è nullable su `vendite.fatture`, e
+  sugli altri sette tipi di nodo la natura è NULL **ed è corretto** (la natura è
+  un asse diverso dal tipo, ed esiste solo per le fatture).
+* Poi le **sei** `vw_*_lista` la portano avanti come già fanno con
+  `frontiera_fase`, e i sei repository la proiettano accanto a
+  `frontiera_tipo_codice`.
+
+⭐ **E la ragione dichiarata nel `COMMENT` va aggiornata di conseguenza**, perché
+è la seconda volta che quella frase è vera a metà. Il `20260825-20` ha corretto
+*«varrebbe sempre NULL»* in *«il consumatore la ricava per conto suo»*. Ma il
+consumatore che la ricava è **uno**, e i consumatori che non possono sono
+**sei**: la frase giusta diventa *«la colonna c'è perché la chiave del nodo di
+frontiera non esce dalla summary, e senza di lei ogni lista chiama Fattura una
+nota di credito»*.
+
+### 3.5 Cosa fa il BE/FE nel frattempo
+
+**Niente, e aspetta** ([[feedback_be_fe_attende_prerequisiti_db]]). Il lavoro a
+valle è piccolo e già scritto qui, così quando la colonna arriva è un giro solo:
+
+1. sei repository: `v.frontiera_natura_doc_codice` nella `SELECT`;
+2. `LineageFrontieraChip`: prop `naturaCodice` e `lineageDocumentoLabel` al posto
+   di `lineageTipoLabel` — **la funzione esiste già**, cambia la chiamata;
+3. le **sei** liste passano la prop — ⚠️ e vanno passate **tutte e sei**: una
+   prop dichiarata e non passata è un cancello che sembra esserci
+   ([[feedback_bb_legge_non_trasporta]]);
+4. un test nel presidio delle sei liste, gemello di
+   `test_ogni_lista_decodifica_il_tipo_della_frontiera`.
+
+⚠️ **Le chiavi i18n ci sono già tutte** (`vendite.lineage.natura_nota_credito`,
+`natura_fattura`, `natura_nota_debito`, in `it.json` e `en.json`): non c'è niente
+da tradurre, il giorno che si accende.
+
+---
+
+### 3.6 ⚠️ E il secondo difetto della stessa famiglia: il numero nudo
+
+La stessa colonna «Transito» mostra **`1`** e non `NC0000001`, perché
+`vw_documento_lineage_nodi` espone `fatture.numero` come `codice` del nodo,
+mentre per gli altri sei tipi il `codice` è già parlante (`DDT0000031`,
+`ORD0000227`). Misurato sul reso 24 all'apply del 2026-08-25.
+
+⭐ **Sede identica**: il nodo. Chi mette mano a `vw_documento_lineage_nodi` per
+la natura guardi anche questo — sono un giro solo.
 
 ---
 
