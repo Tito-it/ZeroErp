@@ -32,6 +32,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from apps.core.services.db_error_fields import bersagli_envelope, diagnostica_db
 from apps.core.services.error_manager import ServiceError
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
@@ -179,33 +180,78 @@ def _lavora_item(
         return {"esito": "fatto", "documento_id": int(documento["id"])}
 
     except ServiceError as exc:
+        errore = _errore_riga_coda(exc)
         stato = repo.marca_stampa_errore(
-            coda_id,
-            errore={
-                "code": exc.code,
-                "message": str(exc.message or exc),
-                "detail": exc.detail,
-            },
-            soglia_tentativi=soglia_tentativi,
+            coda_id, errore=errore, soglia_tentativi=soglia_tentativi,
         )
         logger.warning(
             "stampa_coda.render_fallito coda_id=%s fattura_id=%s code=%s stato=%s",
-            coda_id, fattura_id, exc.code, stato,
+            coda_id, fattura_id, errore["code"], stato,
         )
-        return _esito_da_stato(stato, code=exc.code)
+        return _esito_da_stato(stato, code=str(errore["code"]))
 
     except Exception as exc:  # noqa: BLE001 — resilienza per-riga voluta
+        errore = _errore_riga_coda(exc)
         stato = repo.marca_stampa_errore(
-            coda_id,
-            errore={"code": type(exc).__name__, "message": str(exc)},
-            soglia_tentativi=soglia_tentativi,
+            coda_id, errore=errore, soglia_tentativi=soglia_tentativi,
         )
         logger.warning(
             "stampa_coda.render_errore_imprevisto coda_id=%s fattura_id=%s "
-            "type=%s stato=%s",
-            coda_id, fattura_id, type(exc).__name__, stato,
+            "code=%s type=%s stato=%s",
+            coda_id, fattura_id, errore["code"], type(exc).__name__, stato,
         )
-        return _esito_da_stato(stato, code=type(exc).__name__)
+        return _esito_da_stato(stato, code=str(errore["code"]))
+
+
+# Scopo: il MOTIVO che finisce sulla riga di coda, coi suoi canali: codice di
+#        dominio, frase leggibile, dettaglio, campo e bersagli.
+#
+# ⭐ BE-6 (brief numerazione §8). Qui dentro passa anche il BACKSTOP di
+#    numerazione (`numera_fattura_backstop`), che dal 2026-08-25 puo' RIFIUTARE:
+#    il cancello di `fn_get_next_progressivo` respinge un documento la cui data
+#    e' anteriore all'ultimo numero emesso sul sezionale. Prima in coda finiva
+#    `ProgrammingError` col testo dentro — cioe' un render fallito muto su un
+#    rifiuto che ha un nome, un campo e un bersaglio.
+#
+# ⚠️ Il backstop gira SENZA UN OPERATORE DAVANTI: la riga di coda e' l'unico
+#    posto dove quel motivo puo' essere letto, e va scritto qui o non esiste da
+#    nessuna parte.
+#
+# ⭐ UNO SOLO PER I DUE RAMI, e non e' economia di righe: un `ServiceError` di
+#    dominio porta gli stessi canali (`targets`), e prima li perdeva — la stessa
+#    riga di coda raccontava due storie diverse a seconda di quale `except`
+#    l'avesse presa.
+#
+# ⭐ Si legge dal BB `diagnostica_db`, non ricopiando `diag.*`: i punti che
+#    traducono un errore DB sono gia' cinque, e una sesta lettura parziale e' il
+#    modo in cui divergono. Su un'eccezione non-DB il BB torna semplicemente
+#    tutto vuoto, e valgono i ripieghi.
+def _errore_riga_coda(exc: BaseException) -> dict[str, Any]:
+    diag = diagnostica_db(exc)
+    # ⚠️ `message_primary` prima di `str(exc)`: su un errore PL/pgSQL il secondo
+    #    e' il messaggio PIU' lo stack CONTEXT, e in una riga di coda che
+    #    qualcuno leggera' a mano quella e' la parte che nasconde la frase.
+    messaggio = (
+        diag.messaggio
+        or getattr(exc, "message", None)
+        or str(exc)
+    )
+    errore: dict[str, Any] = {
+        "code": diag.codice or getattr(exc, "code", None) or type(exc).__name__,
+        "message": str(messaggio),
+    }
+    # Le chiavi si mettono SOLO se c'e' qualcosa da dire: una chiave presente e
+    # vuota non vuol dire «nessun campo», vuol dire «campo rotto» — stessa
+    # disciplina dei bersagli nel runner.
+    dettaglio = diag.detail or getattr(exc, "detail", None)
+    if dettaglio:
+        errore["detail"] = dettaglio
+    if diag.campo:
+        errore["campo"] = diag.campo
+    bersagli = bersagli_envelope(diag.bersagli or getattr(exc, "targets", ()))
+    if bersagli:
+        errore["bersagli"] = bersagli
+    return errore
 
 
 # Scopo: Traduce lo stato risultante della coda (ERRORE terminale vs PENDING

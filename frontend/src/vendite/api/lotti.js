@@ -125,12 +125,31 @@ export function runLottoPipeline(lottoId, { lockBatchId = null } = {}) {
 // POST «Rendi definitive» (C-4): numerazione di un singolo lotto EMESSA. Esegue
 // lo step DEFINITIVA (numera + accoda stampa). Gate fiscale separato (I-7):
 // endpoint e permesso dedicati (numera_fatture_lotti), distinto da «Avanza».
-export function numeraLotto(lottoId) {
+// `dataDocumento` (ISO `YYYY-MM-DD`, facoltativa): la data dichiarata per
+// l'atto. Riscrive la data delle fatture non ancora numerate del lotto e ne
+// RIGENERA i piani rate, prima di numerare. Assente/null = nessuna
+// dichiarazione: i documenti tengono la data che hanno.
+export function numeraLotto(lottoId, { dataDocumento = null } = {}) {
+  const payload = dataDocumento ? { data_documento: dataDocumento } : {}
   return api.post(
     `/vendite/fatturazione/lotti/${lottoId}/numera/`,
-    {},
+    payload,
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
+}
+
+// GET la FINESTRA DI NUMERAZIONE di un perimetro: con quale data si puo'
+// numerare, e da quale data i documenti partono adesso.
+// Un perimetro solo per chiamata: `{ lottoId }` oppure `{ competenzaMese }`.
+// Risposta: { lotto_id, competenza_mese, data_documento, data_corrente,
+//             data_minima } — tutte ISO o null.
+// ⚠️ `data_minima` null = nessun pavimento (nessun numero ancora emesso su quei
+// sezionali), non «nessun limite noto».
+export function getFinestraNumerazione({ lottoId = null, competenzaMese = null } = {}) {
+  const params = {}
+  if (lottoId != null) params.lotto_id = lottoId
+  if (competenzaMese) params.competenza_mese = competenzaMese
+  return api.get('/vendite/fatturazione/finestra-numerazione/', { params })
 }
 
 // POST ristampa MASSIVA di un lotto DEFINITIVA (C-8): accoda in coda stampa una
@@ -171,9 +190,13 @@ export function getFatturazioneEsiti(competenzaMese = null) {
 //
 // L'esito del job (`result`) porta `lotti: [{lotto_id, …}]`: sono N, non uno —
 // un gruppo con righe di tipo doc fiscale diverso finisce in lotti diversi.
-export function runFatturazione(competenzaMese, { gruppi = null } = {}) {
+// `dataDocumento` (facoltativa): la data dichiarata per i lotti che il giro
+// creera'. Assente = la decide la POLITICA del registro (`OGGI` /
+// `FINE_MESE_COMPETENZA`) — che non e' un sinonimo di «oggi».
+export function runFatturazione(competenzaMese, { gruppi = null, dataDocumento = null } = {}) {
   const payload = { competenza_mese: competenzaMese }
   if (gruppi && gruppi.length) payload.gruppi = gruppi
+  if (dataDocumento) payload.data_documento = dataDocumento
   return api.post(
     '/vendite/fatturazione/run/',
     payload,
@@ -185,10 +208,14 @@ export function runFatturazione(competenzaMese, { gruppi = null } = {}) {
 // bloccante. Accoda un job che esegue lo step DEFINITIVA (numera + accoda
 // stampa) sui lotti EMESSA del mese. Atto fiscale SEPARATO dalla fatturazione
 // (I-7). Ritorna { job_id, stato: 'PENDING' }; avanzamento via getFatturazioneRun.
-export function runNumerazione(competenzaMese) {
+// `dataDocumento` (facoltativa): UNA data per l'INTERO atto — vale per tutti i
+// lotti che il giro numera, non una per lotto (decisione 5 del brief).
+export function runNumerazione(competenzaMese, { dataDocumento = null } = {}) {
+  const payload = { competenza_mese: competenzaMese }
+  if (dataDocumento) payload.data_documento = dataDocumento
   return api.post(
     '/vendite/fatturazione/numera/',
-    { competenza_mese: competenzaMese },
+    payload,
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }

@@ -47,6 +47,14 @@ class LottoPipelineParams:
     # fatturabili da lavorare. Persistite sul lotto alla creazione — NON sono
     # un parametro che viaggia fino agli step. None = nessuna restrizione.
     gruppi: tuple[str, ...] | None = None
+    # LA DATA DOCUMENTO DICHIARATA (BE-1, brief numerazione §4 DB-4).
+    # Facoltativa: None = nessuna dichiarazione, e la data la decide la POLITICA
+    # del registro (`OGGI` / `FINE_MESE_COMPETENZA`) quando la testata nasce.
+    # ⚠️ None non vuol dire «oggi»: vuol dire «non dichiarata». Metterci un
+    # default qui rimetterebbe la data nelle mani di chi preme il pulsante, che
+    # e' esattamente il difetto che questo cantiere chiude.
+    # Scritta sul lotto alla creazione, come i gruppi.
+    data_documento: date | None = None
 
 
 # Scopo: Il `meta` della riga di `vendite.fatture_log` che racconta un
@@ -518,6 +526,18 @@ class LottoPipelineRunner:
             # una chiamata che non porta gruppi lo allargherebbe in silenzio.
             if params.gruppi and not is_existing_lotto_request:
                 self.repository.set_lotto_gruppi(lotto_id, params.gruppi)
+            # ⭐ LA DATA DICHIARATA, stessa disciplina dei gruppi e per la stessa
+            # ragione: si scrive alla CREAZIONE, non su un lotto che il
+            # chiamante ha indicato per id (rerun / «Avanza step» del drawer),
+            # dove la dichiarazione c'e' gia' e va riprodotta, non riscritta.
+            # ⛔ Passa dalla funzione MADRE anche qui, dove il lotto e' appena
+            # nato e non ha ancora fatture: e' l'unico punto che scrive la data
+            # documento, e un `UPDATE` diretto sarebbe una seconda strada che un
+            # domani dimenticherebbe di rigenerare le rate.
+            if params.data_documento is not None and not is_existing_lotto_request:
+                self.repository.imposta_data_documento_lotto(
+                    lotto_id=lotto_id, data_documento=params.data_documento,
+                )
         return lotto_id, is_existing_lotto_request
 
     # Scopo: Orchestra l'intero flusso pipeline lotto: risoluzione lotto, step execution, resume/rollback e gestione errori finali.

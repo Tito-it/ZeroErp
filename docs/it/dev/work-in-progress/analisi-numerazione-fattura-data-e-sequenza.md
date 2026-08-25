@@ -376,9 +376,15 @@ monotòna.
 | Lato | Cosa | Chi |
 | --- | --- | --- |
 | **DB** | 13 consegne, dettagliate nel brief: parametro fuso + `fn_data_operativa`; politica su `registri_fatturazione`; `fatturazione_lotti.data_documento`; `fn_calcola_data_documento`; `fn_get_or_create_fattura_header` senza `current_date`; `registri_fatturazione_progressivi.ultima_data`; **cancello in `fn_get_next_progressivo`**; codice errore; `fn_get_data_minima_numerabile`; `fn_imposta_data_documento_lotto`; `reset_policy` a una voce; pgTAP | team DB — [brief](brief-db-numerazione-data-documento-e-sequenza.md) ✅ scritto |
-| **BE** | `data_documento` nei payload di creazione lotto e dei due verbi di numerazione; `ORDER BY data_documento, id`; policy del nuovo codice errore; il backstop stampa che ora può rifiutare | backend |
-| **FE** | campo data nella creazione lotto; DatePicker nel dialog «Rendi definitive» con `minDate` dal precheck; colonna data documento nella lista lotti; messaggio del cancello con bersaglio | frontend |
+| **BE** | `data_documento` nei payload di creazione lotto e dei due verbi di numerazione; ordine del giro per data documento; policy del nuovo codice errore; il backstop stampa che ora può rifiutare | backend — ✅ 6/6 |
+| **FE** | campo data nella creazione lotto; DatePicker nel dialog «Rendi definitive» con `minDate` dalla finestra di numerazione; colonna data documento nella lista lotti; messaggio del cancello con bersaglio | frontend — ✅ 3/4, la colonna aspetta un seed |
 
-⛔ Le azioni DB non partono da qui: il brief è passato al team DB su
-`dev/db-tid`, e i prerequisiti vanno applicati prima di toccare BE/FE
+> ✅ **Chiuso il 2026-08-25.** DB applicato (18 changeSet), BE e FE scritti
+> (10 consegne su 10, la sola colonna di lista di FE-3 aspetta una riga di
+> seed). Consuntivo, difetti trovati per strada e revisione critica: **§12 del
+> [brief](brief-db-numerazione-data-documento-e-sequenza.md)**. Resta il
+> collaudo in-app.
+
+⛔ Le azioni DB non erano partite da qui: il brief è passato al team DB su
+`dev/db-tid`, e i prerequisiti sono stati applicati prima di toccare BE/FE
 ([[feedback_db_actions_passaggio_team]], [[feedback_be_fe_attende_prerequisiti_db]]).

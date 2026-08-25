@@ -1949,7 +1949,6 @@
       "approva_commessa_conferma": "Approve the {n} pending activities of job order {commessa}? They will become issuable for invoicing.",
       "approva_commessa_esito": "Job order approved: {n} activities",
       "fattura_mese": "Invoice now",
-      "fattura_mese_header": "Invoice period",
       "fattura_mese_conferma": "Start invoicing for period {mese}? Invoices will be issued up to the ISSUED state (cumulative over previous months). Numbering remains a separate step.",
       "fattura_mese_accodato": "Invoicing run started: processing…",
       "fattura_mese_esito": "Invoicing completed: {lane} batches generated.",
@@ -1957,8 +1956,6 @@
       "fattura_mese_errore": "The invoicing run did not complete successfully.",
       "fattura_mese_in_coda": "Run queued: it will be processed as soon as the worker is active.",
       "numera_mese": "Finalize",
-      "numera_mese_header": "Finalize period",
-      "numera_mese_conferma": "Finalize the ISSUED invoices for period {mese}? They will be numbered (fiscal act) and queued for printing. Separate from invoicing.",
       "numera_mese_accodato": "Finalization started: processing…",
       "numera_mese_esito": "Finalization completed: {numerati} batches finalized.",
       "numera_mese_esito_parziale": "Finalization completed: {numerati} finalized, {saltati} skipped, {falliti} errors out of {lotti} batches. Check the batch register.",
@@ -1998,7 +1995,6 @@
       "tot_gruppi_oneri": "of which charges:",
       "fattura_selezionati": "Invoice selected ({n})",
       "azione_fattura_gruppo": "Invoice this one",
-      "fattura_gruppi_header": "Targeted issuing",
       "fattura_gruppi_conferma": "You are about to invoice {n} groups ({attivita} activities): {riferimenti}. The run stops at the \"issued\" state: finalization stays a separate act. Proceed?",
       "fattura_gruppi_accodato": "Issuing started: processing…",
       "fattura_giro_gia_in_corso": "This same run is already being processed: no new one was started. Wait for its outcome.",
@@ -2501,6 +2497,7 @@
       "stato_errore": "Error",
       "col_codice": "Code",
       "col_competenza": "Accrual",
+      "col_data_documento": "Document date",
       "col_tipo": "Type",
       "col_tipo_doc": "Document",
       "col_utility": "Utility",
@@ -2584,7 +2581,8 @@
         "lotto_non_pre_fiscale": "The batch is beyond the pre-fiscal stage: invoices can no longer be removed from it.",
         "fattura_non_collegata": "The invoice does not belong to this batch.",
         "fattura_non_pre_fiscale": "The invoice is beyond the pre-fiscal stage: it cannot be deleted.",
-        "fattura_numerata": "The invoice is already numbered: deleting it would leave a gap in the fiscal numbering."
+        "fattura_numerata": "The invoice is already numbered: deleting it would leave a gap in the fiscal numbering.",
+        "righe_rettificate": "This batch contains rows that rectify another invoice: the credit is already recorded and cannot be undone from here."
       },
       "azione_non_piu_disponibile": "This action is no longer available on this batch: the list has been refreshed.",
       "col_emittente": "Issuer",
@@ -2610,6 +2608,21 @@
       "giornale_info_nascoste": "{n} routine events hidden.",
       "giornale_ritirate": "{n} events from retried attempts hidden.",
       "giornale_parziale": "Showing {n} of {tot} events."
+    },
+    "numerazione_data": {
+      "titolo": "Numbering — document date",
+      "titolo_creazione": "Invoicing — document date",
+      "conferma": "Number with this date",
+      "conferma_creazione": "Invoice",
+      "campo_data": "Document date",
+      "campo_data_creazione": "Document date (optional)",
+      "perimetro_lotto": "The documents in this batch will be numbered with the date below.",
+      "perimetro_competenza": "This action numbers {n} batches: the date below applies to all of them.",
+      "perimetro_creazione": "If you leave the date empty, the numbering register decides it: that does not mean «today».",
+      "pavimento": "The last number already issued on this register is dated {data}: numbering earlier is not allowed.",
+      "sposta_le_date": "The documents are currently dated {da}. Confirming moves them to {a}, and the instalment plans will be regenerated with the new due dates.",
+      "niente_da_numerare": "There is nothing left to number in this scope.",
+      "non_caricato": "The numbering window could not be read: try reopening the dialog."
     },
     "offerte": {
       "stato_info": {

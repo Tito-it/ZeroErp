@@ -19,6 +19,7 @@ import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
 import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
 import LottiLista from '../components/LottiLista.vue'
 import LottoDrawer from '../components/LottoDrawer.vue'
+import NumerazioneDataDialog from '../components/NumerazioneDataDialog.vue'
 import FatturazioneEsitiPanel from '../components/FatturazioneEsitiPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
@@ -293,7 +294,13 @@ function applicaDeepLink() {
 // i verbi PLAUSIBILI per lo stato della riga e la verifica vera avviene al
 // click, leggendo la capability di quel lotto: se il DB dice no, l'operatore
 // legge il motivo invece di veder fallire l'azione.
-const { azioniRiga, loading: azioniLoading } = useLottoAzioni({
+const {
+  azioniRiga,
+  loading: azioniLoading,
+  // FE-2: stato del dialog della data, dal composable condiviso col drawer.
+  numeraDialog,
+  confermaNumera,
+} = useLottoAzioni({
   onDone: async () => {
     await load()
     await loadMensile()
@@ -486,6 +493,14 @@ const azioniPagina = computed(() =>
       v-model:visible="drawerVisible"
       :lotto-id="drawerLottoId"
       @changed="load"
+    />
+
+    <!-- FE-2: stesso dialog del drawer, stesso stato: il kebab della lista e la
+         barra del drawer non possono chiedere la data in due modi diversi. -->
+    <NumerazioneDataDialog
+      v-model:visible="numeraDialog.visible"
+      :lotto-id="numeraDialog.lottoId"
+      @conferma="confermaNumera"
     />
   </div>
 </template>

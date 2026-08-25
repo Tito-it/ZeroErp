@@ -21,6 +21,7 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
+import NumerazioneDataDialog from '../components/NumerazioneDataDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import {
@@ -47,7 +48,7 @@ import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
-import { STATO_EMISSIONE_ATTIVITA } from '../constants'
+import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
@@ -908,7 +909,7 @@ function onApprovaMese() {
 
 // -------------------------------------------------- verbi asincroni FATTURA / NUMERA (C-6/C-7)
 // I due verbi non bloccanti «Fattura adesso» (C-6) e «Rendi definitive» (C-7)
-// condividono il flusso: conferma → accoda (POST) → polling del job (GET
+// condividono il flusso: accoda (POST) → polling del job (GET
 // run/<id>/) → esito + refresh. Estratto in un helper locale (regola del 2):
 // cambiano solo API, testi e campi dell'esito. Ogni verbo ha il PROPRIO polling
 // (loading del pulsante indipendente); vive sulla card del suo stadio (WYSIWYG),
@@ -916,10 +917,11 @@ function onApprovaMese() {
 // definitive» (numerazione, atto fiscale) sono pulsanti SEPARATI su card diverse.
 // Se il worker non e' schedulato il job resta PENDING → onTimeout avvisa "in
 // coda" invece di girare all'infinito; colpi a vuoto del polling silenziosi.
-// `avvia(opzioni)`: `messageParams` per i verbi la cui conferma non parla di un
-// mese ma di una selezione (l'emissione mirata), `apiOptions` per gli argomenti
-// extra della chiamata (i gruppi), `giro` per l'etichetta con cui l'esito verra'
+// `avvia(opzioni)`: `apiOptions` per gli argomenti extra della chiamata (i
+// gruppi, la data documento), `giro` per l'etichetta con cui l'esito verra'
 // attribuito. Tutti vuoti = comportamento dei due verbi di perimetro.
+// ⚠️ La CONFERMA non e' qui: la chiede il dialog della data documento, che tutti
+// e tre i verbi attraversano (vedi `chiediDataECrea`).
 //
 // ⭐ CONCORRENZA (2026-08-17, brief-fe-fatturazione-job-concorrenti). L'emissione
 // mirata ammette piu' giri in volo insieme (`maxConcurrent: Infinity`, decisione
@@ -930,6 +932,9 @@ function onApprovaMese() {
 // all'esito: senza, due esiti che arrivano a distanza di secondi sono
 // indistinguibili, e un elenco di «non serviti» che non dice di quale giro sia
 // non e' interpretabile.
+// ⚠️ `keys` porta ora solo i testi degli ESITI (accodato / errore / in coda):
+// header e conferma sono usciti insieme al ramo `confirmAction`. Lasciarli
+// dentro avrebbe fatto credere che qualcuno li leggesse.
 function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) {
   // Scopo: chiude un giro — toglie le marcature dei SOLI suoi gruppi (gli altri
   //        giri stanno ancora lavorando) e riallinea i dati.
@@ -980,55 +985,55 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk, maxConcurrent = 1 }) 
     },
   })
 
-  function avvia({ messageParams = null, apiOptions = null, giro = null } = {}) {
-    confirmAction({
-      title: t(keys.header),
-      message: t(keys.conferma, messageParams ?? {
-        mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
-      }),
-      onAccept: async () => {
-        // La competenza si congela QUI: il giro puo' concludersi dopo che
-        // l'operatore ha cambiato mese, e i suoi lotti appartengono al mese in
-        // cui e' partito, non a quello che si sta guardando all'arrivo.
-        const competenza = competenzaCorrente.value
-        const res = await execute(() =>
-          apiOptions ? apiFn(competenza, apiOptions)
-                     : apiFn(competenza))
-        if (res === null) return
-        // Stessa selezione ancora viva → il BE non crea un secondo job:
-        // restituisce l'id di QUELLO in corso (chiave di idempotenza
-        // competenza+scope+gruppi). Seguirlo di nuovo lo conterebbe due volte;
-        // e all'operatore va detto che non ha avviato niente di nuovo.
-        if (isFollowing(res.job_id)) {
-          notify.info(t('vendite.dashboard_competenza.fattura_giro_gia_in_corso'))
-          return
-        }
-        const gruppiGiro = apiOptions?.gruppi ?? []
-        const avviato = start(res.job_id, {
-          jobId: res.job_id, competenza, giro, gruppi: gruppiGiro,
-        })
-        if (!avviato) {
-          // Job accodato ma non seguito (tetto raggiunto sui verbi di
-          // perimetro): il lavoro parte lo stesso, l'esito no — dirlo e' il
-          // minimo, tacere lascerebbe credere che non sia successo nulla.
-          notify.warn(t(keys.inCoda))
-          return
-        }
-        notify.success(t(keys.accodato))
-        // Marcatura DOPO l'avvio riuscito: se il POST fallisce non devono
-        // restare righe segnate per un giro che non è mai partito.
-        if (gruppiGiro.length) {
-          marcaGiro(res.job_id, gruppiGiro)
-          // La selezione si libera ORA, non a fine giro: e' cio' che permette
-          // di comporre subito il giro successivo senza aspettare — il punto
-          // di tutto questo cantiere. Escono solo i gruppi di QUESTO giro.
-          const inviati = new Set(gruppiGiro)
-          selezioneGruppi.value = selezioneGruppi.value.filter(
-            (r) => !inviati.has(r.gruppo_key),
-          )
-        }
-      },
-    })
+  // ⭐ QUI NON SI CHIEDE PIU' CONFERMA, e la conferma non e' sparita: si e'
+  //   spostata nel dialog della data documento (FE-1/FE-2), che tutti e tre i
+  //   verbi attraversano e che porta con se' il testo del PESO
+  //   dell'operazione. Chiederla due volte non sarebbe prudenza: e' l'attrito
+  //   che insegna a premere «Sì» senza leggere.
+  //   ⚠️ Il ramo `confirmAction` e i `messageParams` sono stati TOLTI, non
+  //   lasciati spenti: un percorso morto accanto a uno vivo non si distingue
+  //   leggendo, e il prossimo verbo non saprebbe quale dei due imitare.
+  async function avvia({ apiOptions = null, giro = null } = {}) {
+      // La competenza si congela QUI: il giro puo' concludersi dopo che
+      // l'operatore ha cambiato mese, e i suoi lotti appartengono al mese in
+      // cui e' partito, non a quello che si sta guardando all'arrivo.
+      const competenza = competenzaCorrente.value
+      const res = await execute(() =>
+        apiOptions ? apiFn(competenza, apiOptions)
+                   : apiFn(competenza))
+      if (res === null) return
+      // Stessa selezione ancora viva → il BE non crea un secondo job:
+      // restituisce l'id di QUELLO in corso (chiave di idempotenza
+      // competenza+scope+gruppi). Seguirlo di nuovo lo conterebbe due volte;
+      // e all'operatore va detto che non ha avviato niente di nuovo.
+      if (isFollowing(res.job_id)) {
+        notify.info(t('vendite.dashboard_competenza.fattura_giro_gia_in_corso'))
+        return
+      }
+      const gruppiGiro = apiOptions?.gruppi ?? []
+      const avviato = start(res.job_id, {
+        jobId: res.job_id, competenza, giro, gruppi: gruppiGiro,
+      })
+      if (!avviato) {
+        // Job accodato ma non seguito (tetto raggiunto sui verbi di
+        // perimetro): il lavoro parte lo stesso, l'esito no — dirlo e' il
+        // minimo, tacere lascerebbe credere che non sia successo nulla.
+        notify.warn(t(keys.inCoda))
+        return
+      }
+      notify.success(t(keys.accodato))
+      // Marcatura DOPO l'avvio riuscito: se il POST fallisce non devono
+      // restare righe segnate per un giro che non è mai partito.
+      if (gruppiGiro.length) {
+        marcaGiro(res.job_id, gruppiGiro)
+        // La selezione si libera ORA, non a fine giro: e' cio' che permette
+        // di comporre subito il giro successivo senza aspettare — il punto
+        // di tutto questo cantiere. Escono solo i gruppi di QUESTO giro.
+        const inviati = new Set(gruppiGiro)
+        selezioneGruppi.value = selezioneGruppi.value.filter(
+          (r) => !inviati.has(r.gruppo_key),
+        )
+      }
   }
   return { avvia, nGiriInCorso: nJobsInCorso, resume }
 }
@@ -1074,8 +1079,6 @@ function notificaNonServiti(nonServiti, nLotti, context) {
 const { avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese } = useVerboFatturazione({
   apiFn: runFatturazione,
   keys: {
-    header: 'vendite.dashboard_competenza.fattura_mese_header',
-    conferma: 'vendite.dashboard_competenza.fattura_mese_conferma',
     accodato: 'vendite.dashboard_competenza.fattura_mese_accodato',
     errore: 'vendite.dashboard_competenza.fattura_mese_errore',
     inCoda: 'vendite.dashboard_competenza.fattura_mese_in_coda',
@@ -1098,8 +1101,6 @@ const {
 } = useVerboFatturazione({
   apiFn: runNumerazione,
   keys: {
-    header: 'vendite.dashboard_competenza.numera_mese_header',
-    conferma: 'vendite.dashboard_competenza.numera_mese_conferma',
     accodato: 'vendite.dashboard_competenza.numera_mese_accodato',
     errore: 'vendite.dashboard_competenza.numera_mese_errore',
     inCoda: 'vendite.dashboard_competenza.numera_mese_in_coda',
@@ -1134,8 +1135,6 @@ const {
   // l'attribuzione degli esiti qui sotto e il conteggio in testata.
   maxConcurrent: Infinity,
   keys: {
-    header: 'vendite.dashboard_competenza.fattura_gruppi_header',
-    conferma: 'vendite.dashboard_competenza.fattura_gruppi_conferma',
     accodato: 'vendite.dashboard_competenza.fattura_gruppi_accodato',
     errore: 'vendite.dashboard_competenza.fattura_mese_errore',
     inCoda: 'vendite.dashboard_competenza.fattura_mese_in_coda',
@@ -1202,6 +1201,53 @@ const {
   },
 })
 
+// ═══ FE-1 / FE-2 — LA DATA DOCUMENTO, CHIESTA PRIMA DELL'ATTO ═══════════════
+//
+// Due dialog, due domande diverse, lo stesso componente:
+//   · CREAZIONE (verbi «Fattura»): la data e' FACOLTATIVA — vuota vuol dire
+//     «la decide la politica del registro», che non e' «oggi». Questo dialog
+//     ASSORBE la conferma secca di prima (`skipConfirm`), e con essa il testo
+//     che dichiara il peso dell'operazione: senza, l'operatore perderebbe il
+//     «3 gruppi, 47 attivita'» per guadagnare un campo data.
+//   · NUMERAZIONE («Rendi definitive»): la data e' quella con cui i documenti
+//     prenderanno il numero, e il dialog porta il PAVIMENTO del sezionale —
+//     senza, sul Back-office (politica FINE_MESE_COMPETENZA) ogni mese
+//     arretrato proporrebbe una data che il DB rifiuta.
+const dialogNumeraMese = ref(false)
+const dialogDataCreazione = ref({ visible: false, perimetro: '', esegui: null })
+
+// Scopo: apre il dialog della data prima di un verbo di CREAZIONE, portandosi
+//        dietro la frase del perimetro e cosa fare alla conferma.
+function chiediDataECrea(perimetro, esegui) {
+  dialogDataCreazione.value = { visible: true, perimetro, esegui }
+}
+
+function confermaDataCreazione(dataDocumento) {
+  const azione = dialogDataCreazione.value.esegui
+  dialogDataCreazione.value = { visible: false, perimetro: '', esegui: null }
+  azione?.(dataDocumento)
+}
+
+// Verbo «Fattura mese»: la data prima, poi il giro (la conferma e' il dialog).
+function onFatturaMeseClick() {
+  chiediDataECrea(
+    t('vendite.dashboard_competenza.fattura_mese_conferma', {
+      mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
+    }),
+    (dataDocumento) => onFatturaMese({
+      apiOptions: dataDocumento ? { dataDocumento } : null,
+    }),
+  )
+}
+
+// Verbo «Rendi definitive competenza»: UNA data per l'intero atto (decisione 5
+// del brief), che vale per tutti i lotti che il giro numera.
+function confermaNumeraMese(dataDocumento) {
+  onRendiDefinitive({
+    apiOptions: dataDocumento ? { dataDocumento } : null,
+  })
+}
+
 // Scopo: avvia l'emissione mirata sui gruppi passati (una riga dal kebab,
 //        oppure l'intera selezione). La conferma dichiara quanti gruppi e
 //        quante attivita' si stanno per fatturare: e' il peso di cio' che sta
@@ -1215,15 +1261,18 @@ function fatturaGruppi(righe) {
   // magari dopo che la lista si e' gia' ricaricata e quelle righe non ci sono
   // piu'.
   const riferimenti = elencoTroncato(righe, gruppoRiferimento)
-  avviaFatturaGruppi({
-    messageParams: {
+  const gruppi = righe.map((r) => r.gruppo_key)
+  chiediDataECrea(
+    t('vendite.dashboard_competenza.fattura_gruppi_conferma', {
       n: righe.length,
       attivita: nAttivita,
       riferimenti,
-    },
-    apiOptions: { gruppi: righe.map((r) => r.gruppo_key) },
-    giro: riferimenti,
-  })
+    }),
+    (dataDocumento) => avviaFatturaGruppi({
+      apiOptions: dataDocumento ? { gruppi, dataDocumento } : { gruppi },
+      giro: riferimenti,
+    }),
+  )
 }
 
 // Scopo: kebab riga della lista gruppi — «Fattura questo» (gate permesso +
@@ -1694,7 +1743,7 @@ onActivated(() => {
                 size="small"
                 :loading="giroMeseInCorso"
                 :disabled="azioneLoading || giroMeseInCorso || giriMirataInCorso"
-                @click.stop="onFatturaMese"
+                @click.stop="onFatturaMeseClick"
               />
             </span>
             <!-- Verbo RENDI DEFINITIVE a grana mese (C-7): sulla card
@@ -1712,7 +1761,7 @@ onActivated(() => {
               :disabled="azioneLoading || nGiriNumera > 0"
               v-tooltip.bottom="t('vendite.dashboard_competenza.numera_mese_tooltip', { n: nDaNumerare })"
               style="margin-top: 0.5rem;"
-              @click.stop="onRendiDefinitive"
+              @click.stop="dialogNumeraMese = true"
             />
             <!-- Difetto D3 (§6-bis): «Emesse non fatturate» NON e' un passaggio
                  del percorso — pull e generazione righe fattura avvengono nello
@@ -2177,6 +2226,27 @@ onActivated(() => {
       v-model:visible="exportDialogVisible"
       :loading="exportLoading"
       @export="onExportConfirm"
+    />
+
+    <!-- FE-1: la data documento dei lotti che stanno per nascere. Facoltativa:
+         vuota = la decide la politica del registro. Questo dialog ha PRESO IL
+         POSTO della conferma secca, quindi porta anche il testo che dichiara il
+         peso dell'operazione (`perimetro-testo`). -->
+    <NumerazioneDataDialog
+      v-model:visible="dialogDataCreazione.visible"
+      :modo="MODO_DATA_DOCUMENTO.CREAZIONE"
+      :competenza-mese="competenzaCorrente"
+      :perimetro-testo="dialogDataCreazione.perimetro"
+      @conferma="confermaDataCreazione"
+    />
+
+    <!-- FE-2: «Rendi definitive competenza» — UNA data per l'intero atto, col
+         pavimento del sezionale piu' restrittivo fra i lotti del mese. -->
+    <NumerazioneDataDialog
+      v-model:visible="dialogNumeraMese"
+      :competenza-mese="competenzaCorrente"
+      :n-lotti="nDaNumerare"
+      @conferma="confermaNumeraMese"
     />
   </div>
 </template>

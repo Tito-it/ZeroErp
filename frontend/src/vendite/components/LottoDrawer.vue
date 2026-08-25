@@ -42,6 +42,7 @@ import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { useListaDrawerPaginata } from '../../core/composables/useListaDrawerPaginata'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import FatturaDrawer from './FatturaDrawer.vue'
+import NumerazioneDataDialog from './NumerazioneDataDialog.vue'
 import { useDocumentiPerSorgenteStore } from '../../documenti/stores/documentiPerSorgente'
 import { SORGENTE_CODES } from '../../documenti/constants'
 import { downloadBlob } from '../../core/utils/download'
@@ -562,7 +563,15 @@ watch(
 // kebab della lista lotti: una sola sede — estratto alla seconda occorrenza
 // (regola del 2, ok Tid 2026-08-04). Qui resta solo il refresh post-azione,
 // che è del drawer.
-const { esegui: eseguiAzione, verbiPipeline, loading: azioniLoading } = useLottoAzioni({
+const {
+  esegui: eseguiAzione,
+  verbiPipeline,
+  loading: azioniLoading,
+  // FE-2: il dialog della data documento. Lo STATO vive nel composable (una
+  // sede sola, condivisa col kebab della lista); qui si rende soltanto.
+  numeraDialog,
+  confermaNumera,
+} = useLottoAzioni({
   onDone: async () => {
     await reloadAll()
     emit('changed')
@@ -1277,6 +1286,15 @@ function fatturaNumero(row) {
     <FatturaDrawer
       v-model:visible="fatturaDrawerVisible"
       :fattura-id="fatturaDrawerId"
+    />
+
+    <!-- FE-2: «Rendi definitive» non chiede «sei sicuro?», chiede CON QUALE
+         DATA — e mostra il pavimento del sezionale, cioè il primo giorno in cui
+         quei documenti possono prendere un numero. -->
+    <NumerazioneDataDialog
+      v-model:visible="numeraDialog.visible"
+      :lotto-id="numeraDialog.lottoId"
+      @conferma="confermaNumera"
     />
   </Drawer>
 </template>

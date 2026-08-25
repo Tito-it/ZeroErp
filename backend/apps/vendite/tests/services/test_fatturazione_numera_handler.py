@@ -17,6 +17,8 @@
 #   4. competenza_mancante_raises_payload
 #   5. competenza_invalida_raises_payload
 #   6. handler_registrato_dopo_boot
+#   7. data_documento_dichiarata_arriva_al_core
+#   8. data_documento_non_e_normalizzata_al_primo_del_mese
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -68,14 +70,81 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
         )
         self.assertEqual(mock_numera.call_count, 2)
         # auth_user_id dello scope passato al core (defense-in-depth oltre RLS)
-        mock_numera.assert_any_call(lotto_id=1, auth_user_id=9)
-        mock_numera.assert_any_call(lotto_id=2, auth_user_id=9)
+        # ⚠️ `data_documento=None` e' ESPLICITO nell'asserzione: None qui vuol
+        #    dire «nessuna dichiarazione», e il core deve ricevere quel None —
+        #    non un default inventato dall'handler.
+        mock_numera.assert_any_call(lotto_id=1, auth_user_id=9, data_documento=None)
+        mock_numera.assert_any_call(lotto_id=2, auth_user_id=9, data_documento=None)
+        self.assertIsNone(result["data_documento"])
         self.assertEqual(result["competenza"], "2026-06-01")
         self.assertEqual(result["lotti"], 2)
         self.assertEqual(result["numerati"], 2)
         self.assertEqual(result["saltati"], 0)
         self.assertEqual(result["falliti"], 0)
         self.assertEqual(result["falliti_dett"], [])
+
+    # 7. La data documento dichiarata arriva al core, uguale per TUTTI i lotti
+    #    dell'atto (decisione 5 del brief numerazione: una data per l'atto, non
+    #    una per lotto), e torna nell'esito.
+    @patch(_NUMERA)
+    @patch(_VEND_REPO)
+    @patch(_PIPE_REPO)
+    def test_data_documento_dichiarata_arriva_al_core(
+        self, pipe_repo, vend_repo, mock_numera,
+    ) -> None:
+        pipe_repo.return_value.get_stato_doc_fiscale_id.side_effect = (
+            lambda codice: {"EMESSA": 7, "DEFINITIVA": 8}[codice]
+        )
+        vend_repo.return_value.list_lotti_numerabili.return_value = [
+            {"id": 1, "codice": "LTF-1"}, {"id": 2, "codice": "LTF-2"},
+        ]
+        mock_numera.return_value = {
+            "stato_doc_fiscale_id": 8, "motivo_stop": "COMPLETATO",
+        }
+
+        result = fatturazione_numera_handler(
+            {"competenza_mese": "2026-06-15", "data_documento": "2026-08-25"},
+            scope={"auth_user_id": 9},
+        )
+
+        mock_numera.assert_any_call(
+            lotto_id=1, auth_user_id=9, data_documento=date(2026, 8, 25),
+        )
+        mock_numera.assert_any_call(
+            lotto_id=2, auth_user_id=9, data_documento=date(2026, 8, 25),
+        )
+        self.assertEqual(result["data_documento"], "2026-08-25")
+
+    # 8. ⛔ IL TEST CHE PRESIDIA IL DIFETTO SILENZIOSO: la data documento NON si
+    #    normalizza al 1° del mese. `parse_competenza_mese` lo fa — perche' una
+    #    competenza E' un mese — e riusarla qui trasformerebbe il 25/08 scelto
+    #    dall'operatore in un 01/08 senza sollevare niente, scrivendo sui
+    #    documenti una data che nessuno ha deciso. Nel cantiere che nasce
+    #    proprio per togliere le date che nessuno ha deciso.
+    @patch(_NUMERA)
+    @patch(_VEND_REPO)
+    @patch(_PIPE_REPO)
+    def test_data_documento_non_e_normalizzata_al_primo_del_mese(
+        self, pipe_repo, vend_repo, mock_numera,
+    ) -> None:
+        pipe_repo.return_value.get_stato_doc_fiscale_id.side_effect = (
+            lambda codice: {"EMESSA": 7, "DEFINITIVA": 8}[codice]
+        )
+        vend_repo.return_value.list_lotti_numerabili.return_value = [
+            {"id": 1, "codice": "LTF-1"},
+        ]
+        mock_numera.return_value = {
+            "stato_doc_fiscale_id": 8, "motivo_stop": "COMPLETATO",
+        }
+
+        fatturazione_numera_handler(
+            {"competenza_mese": "2026-06-15", "data_documento": "2026-08-31"},
+            scope={"auth_user_id": 9},
+        )
+
+        passata = mock_numera.call_args.kwargs["data_documento"]
+        self.assertEqual(passata, date(2026, 8, 31))
+        self.assertNotEqual(passata.day, 1)
 
     # 1. Best-effort: un lotto in errore NON blocca gli altri; falliti_dett
     #    riporta lotto+codice+code.

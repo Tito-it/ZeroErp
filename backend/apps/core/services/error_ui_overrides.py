@@ -227,6 +227,17 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_DOCUMENTI_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "highlight_form_fields",  # classe DATO_ERRATO
+    # -- Vendite: la data documento e la sequenza del registro ----------
+    # ⭐ `DATO_ERRATO` ha come default il banner, e qui e' il caso opposto: il
+    #    dato sbagliato E' un campo che l'operatore ha davanti, nel dialog
+    #    «Rendi definitive». Non e' una supposizione — il DB lo DICE, e l'ho
+    #    letto da una chiamata vera (2026-08-25): `column_name` arriva
+    #    valorizzato a `data_documento`. Il default del banner esiste perche'
+    #    «promettere un campo che non esiste e' peggio del contrario»; qui il
+    #    campo esiste ed e' nominato dalla sorgente.
+    # ⚠️ Il messaggio porta gia' la data da cui ripartire («…che porta la data
+    #    23/08/2026»): campo acceso + frase che dice il valore giusto.
+    "E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO": "highlight_form_fields",  # classe DATO_ERRATO
     # -- Vendite: giri di fatturazione (handler coda lavori) ------------
     "E_FATTURAZIONE_GIRO_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "highlight_form_fields",  # classe DATO_ERRATO

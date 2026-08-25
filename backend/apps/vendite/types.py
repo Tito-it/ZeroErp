@@ -235,6 +235,29 @@ class LottoListRow(TypedDict):
     # lotto riaperto la prossima esecuzione RIFA' lo step corrente invece di
     # avanzare, e il lotto resta in DRAFT.
     riaperto: bool
+    # ⭐ La data documento DICHIARATA sul lotto (brief numerazione, DB-4).
+    # ⚠️ `None` non vuol dire «nessuna data»: vuol dire «nessuna dichiarazione»,
+    # e allora la data la decide la politica del registro
+    # (`OGGI` o `FINE_MESE_COMPETENZA`) quando la testata nasce. Le due cose non
+    # vanno confuse a video — un vuoto qui e' «non deciso», non «assente».
+    data_documento: str | None
+
+
+class EsitoDataDocumento(TypedDict):
+    """Esito di `vendite.fn_imposta_data_documento_lotto`.
+
+    ⚠️ I tre numeri non sono decorazione: `saltate_numerate` e
+    `rate_rigenerate` sono le due conseguenze che chi dichiara la data NON si
+    aspetta — un lotto numerato a meta' e delle scadenze che si sono spostate.
+    Chi non le mostra le nasconde.
+    """
+
+    # Fatture del lotto a cui la data e' stata riscritta.
+    aggiornate: int
+    # Fatture gia' numerate, che non si toccano: contate, non fatte fallire.
+    saltate_numerate: int
+    # Piani rate rigenerati sulla data nuova (solo dove un piano esisteva gia').
+    rate_rigenerate: int
 
 
 class CommessaEmitResult(TypedDict):

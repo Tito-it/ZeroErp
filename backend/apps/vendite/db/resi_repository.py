@@ -50,6 +50,15 @@ _ORDER_COLS_RESI: dict[str, str] = {
     # Tag di stato), nel seed invisibile e `ordinabile=f`.
     "ddt_origine_numero": "v.ddt_origine_numero",
     "data_insert": "v.data_insert",
+    # Colonne lineage, come sulle cinque sorelle: pratica e fase ordinabili, la
+    # frontiera no (è un chip composto, non un valore).
+    # ⚠️ Arrivate col catalogo il 2026-08-25 (`vw_resi_lista` diventa la sesta
+    # sorella, arco S reso -> nota di credito): le righe di `lista_colonna.csv`
+    # le dichiarano `ordinabile = t`, e senza queste due voci la freccia a video
+    # avrebbe risposto 400. Trovate dal presidio del seed
+    # (`test_liste_configurabili_seed`), non a occhio.
+    "pratica_numero": "v.pratica_numero",
+    "fase": "v.fase",
 }
 
 # Scopo: Config ORDER BY + search per le due code (viste dedicate), indicizzata
@@ -118,6 +127,12 @@ class ResiRepository:
     #        id_fiscale_univoco_cf_piva), `stato_codice_interno` per la severity
     #        del Tag FE, il DDT di origine e `emittente_fiscale_id` per lo scope
     #        operatore (RLS `rls_resi_ef_whitelist` + filtro applicativo).
+    #        Dal 2026-08-25 anche le colonne di genealogia (`fase`, pratica,
+    #        frontiera, discendenti, `is_transitato`): `vw_resi_lista` e' la
+    #        SESTA SORELLA delle liste documento. Su un reso la frontiera e' la
+    #        NOTA DI CREDITO che lo accredita (arco S), quindi la colonna
+    #        «Transito» risponde a «questo reso e' gia' stato accreditato, e con
+    #        quale documento».
     # Risultato: tuple (lista righe, conteggio totale).
     def list_resi(
         self,
@@ -184,8 +199,18 @@ class ResiRepository:
 
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_resi_lista v {where}"  # noqa: S608
         # Tiebreaker v.id per paginazione deterministica.
+        # `frontiera_tipo_codice` decodificato per il chip transito FE, come
+        # sulle cinque sorelle.
+        # ⛔ NON e' decorazione: `LineageFrontieraChip` ha il gate su
+        #    `isTransitato && tipoCodice`, quindi senza questa colonna la cella
+        #    mostra «—» — cioe' «non transitato» — proprio sul reso accreditato,
+        #    che e' l'unica cosa che questa lista doveva dire (arco S,
+        #    2026-08-25). La vista espone l'id, mai il codice: il grafo parla
+        #    per id, il FE per `codice_interno`.
         data_sql = f"""
-            SELECT v.* FROM vendite.vw_resi_lista v
+            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            FROM vendite.vw_resi_lista v
+            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
