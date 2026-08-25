@@ -1,0 +1,221 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-2 — LA «DATA DI OGGI» SMETTE DI DIPENDERE DA CHI CHIAMA
+#   script.fn_data_operativa()
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2
+#   Analisi: analisi-numerazione-fattura-data-e-sequenza.md §3 D2
+#
+# ── IL PROBLEMA, IN UNA RIGA ────────────────────────────────────────
+#   `current_date` segue il fuso DELLA SESSIONE, e la sessione non e' una sola:
+#   Django si connette in UTC (`USE_TZ = True` senza `TIME_ZONE` in `DATABASES`),
+#   psql e pgAgent in `Europe/Rome` (default del server). Lo stesso oggetto,
+#   chiamato da due canali, scrive due date diverse — e ogni documento generato
+#   fra la mezzanotte e le 02:00 locali porta LA DATA DEL GIORNO PRIMA.
+#
+#   Non e' teoria: misurato il 2026-08-25 su `dbdev`, **7 fatture su 18** hanno
+#   `data <> (data_insert AT TIME ZONE 'Europe/Rome')::date`. La fattura 835 e'
+#   nata l'01/08 alle 01:09 e porta il 31/07 — ed e' il documento da cui questo
+#   cantiere e' partito.
+#
+# ── ⭐ IL FUSO E' UN DATO, NON UNA COSTANTE ─────────────────────────
+#   Sta in `config.parameters` (`SYSTEM_FUSO_ORARIO`, seed nel CSV di 80_data),
+#   mai scritto dentro il codice. Il valore e' un nome IANA e deve esistere in
+#   `pg_timezone_names`.
+#
+# ── ⛔ FAIL-LOUD, E TRE VOLTE ───────────────────────────────────────
+#   Parametro assente · valore vuoto · valore che non e' un fuso riconosciuto:
+#   tutti e tre sollevano `E_CONFIG_MANCANTE`. ⛔ NESSUN ripiego silenzioso a
+#   UTC o a `current_date`: un ripiego qui darebbe una data PLAUSIBILE e
+#   SBAGLIATA, cioe' esattamente il difetto che questo file chiude, ma piu'
+#   difficile da vedere di prima.
+#
+#   ⚠️ Il terzo controllo non e' pignoleria. Senza, `AT TIME ZONE 'Europe/Roma'`
+#   alza un 22023 grezzo da dentro la funzione: il contratto «P0001 + CONSTRAINT
+#   valorizzato = errore di dominio» salta, il backend riceve un 500 con un
+#   messaggio non tradotto e nessuno sa che il guasto e' una lettera di troppo
+#   in una riga di configurazione. E' la stessa forma del difetto gia' pagato
+#   sui segnaposto malformati (18-08-2026).
+#
+#   ⭐ Un codice solo per tre condizioni, ed e' voluto: la domanda «riuso o
+#   conio?» si risponde su CHI PUO' RIMEDIARE, non sulla condizione. Assente,
+#   vuoto o sbagliato, il rimedio ce l'ha in mano la stessa persona — chi
+#   amministra la configurazione — e la classe e' la stessa (`TECNICO`, 500).
+#   A distinguere i tre casi e' la FRASE, che nomina la chiave e, quando c'e',
+#   il valore che non va.
+#
+# ── ⛔ PERCHE' NON USA script.fn_get_parameter_full, che pure ESISTE ─
+#   E' il lettore canonico dei parametri e risolve la cascata di
+#   `config.parameter_overrides` (utente -> gruppo -> emittente -> default).
+#   Qui si legge il `default_value` NUDO, apposta: un override per utente o per
+#   sessione farebbe portare ALLA STESSA FATTURA date diverse a seconda di chi
+#   la genera — cioe' il difetto che stiamo chiudendo, rimesso dentro dalla
+#   porta della configurazione.
+#   ⚠️ Questa riga esiste perche' senza di essa la prossima persona «corregge»
+#   la funzione verso il building block e riapre il buco in buona fede.
+#
+# ── ℹ️ STABLE, e si puo' ────────────────────────────────────────────
+#   `now()` e' l'istante di INIZIO TRANSAZIONE, quindi dentro una transazione la
+#   risposta e' per costruzione la stessa: `STABLE` e' la volatilita' esatta,
+#   non un'ottimizzazione.
+#   ⚠️ E una `STABLE` PUO' chiamare `script.fn_log_and_raise_error` malgrado
+#   quella scriva nel log — verificato il 2026-08-25 in transazione: esce
+#   `P0001` col messaggio composto, non un `0A000`. E' gia' il pattern di 53
+#   funzioni non-volatile in casa.
+#
+# ── ⚠️ PERIMETRO: QUESTA FUNZIONE NON BONIFICA NIENTE ───────────────
+#   Qui nasce soltanto. Chi la usa e' il percorso della data fattura (DB-5,
+#   DB-6) e il DEFAULT di colonna di `vendite.fatture.data` (20260825-08).
+#   `CURRENT_DATE` resta DEFAULT in **25 tabelle** e compare in **67 funzioni**:
+#   la bonifica generale — e l'ipotesi «metto TIME_ZONE in DATABASES e sistemo
+#   tutto con una riga», che ha raggio su tutta l'applicazione — e' un cantiere
+#   suo, da aprire subito dopo. §7 del brief.
+#
+# Dipendenze: la riga `SYSTEM_FUSO_ORARIO` in 80_data/sql/config/parameters.csv.
+#             ⚠️ 80_data gira DOPO 20_code: fra il migrate e il caricamento del
+#             CSV la funzione esiste e solleva. E' corretto — solleva perche' il
+#             dato non c'e' ancora — ma nessuno deve chiamarla in quella
+#             finestra, ed e' il motivo per cui il DEFAULT di colonna arriva
+#             solo al 20260825-08.
+# Verifica: db/pgtap/vendite/test-registri-progressivi.sql (casi 9 e 10, DB-13)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260825-02-create-fn-data-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20260825-02-create-fn-data-operativa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-2: la «data di oggi» dei documenti si calcola nel fuso DELL'AZIENDA, letto da
+        config.parameters (SYSTEM_FUSO_ORARIO), non nel fuso della sessione. current_date
+        segue la sessione, e la sessione di Django e' UTC mentre psql/pgAgent sono
+        Europe/Rome: lo stesso oggetto dava due date diverse, e ogni documento nato fra
+        mezzanotte e le 02:00 locali portava la data del giorno prima (7 fatture su 18,
+        misurate). Fail-loud su tre condizioni — parametro assente, vuoto, o non
+        riconosciuto da pg_timezone_names — tutte con E_CONFIG_MANCANTE: il rimedio ce l'ha
+        in mano la stessa persona e la frase distingue i casi. Nessun ripiego a UTC: darebbe
+        una data plausibile e sbagliata. NON usa fn_get_parameter_full di proposito: un
+        override per utente darebbe alla stessa fattura date diverse secondo chi la genera.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_data_operativa()
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- ⚠️ %TYPE e non `text` nudo: il tipo lo decide la colonna
+                  --    che lo contiene, non questa funzione.
+                  v_fuso config.parameters.default_value%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La data di oggi NEL FUSO DELL'AZIENDA, non in quello
+                  --   della sessione. Sostituisce current_date sul percorso
+                  --   della data documento.
+                  --
+                  -- Regole:
+                  --   - il fuso e' un DATO (config.parameters), mai una
+                  --     costante nel codice;
+                  --   - fail-loud su tutte e tre le forme di guasto: assente,
+                  --     vuoto, non riconosciuto. Mai un ripiego a UTC.
+                  -- =========================================================
+
+                  -- ⛔ Si legge il default NUDO e non script.fn_get_parameter_full:
+                  --    la cascata di override (utente/gruppo/sessione/emittente)
+                  --    farebbe dare alla STESSA fattura date diverse a seconda di
+                  --    chi la genera, cioe' il difetto che questa funzione chiude.
+                  --    Vedi la testata del changeSet.
+                  SELECT p.default_value
+                    INTO v_fuso
+                    FROM config.parameters p
+                   WHERE p.code = 'SYSTEM_FUSO_ORARIO';
+
+                  -- 1) Assente, oppure presente e vuoto.
+                  --    ⚠️ Il secondo caso e' raggiungibile davvero:
+                  --    config.parameters.default_value e' NOT NULL ma non ha
+                  --    nessun CHECK di non-vuoto, e a catalogo ci sono gia'
+                  --    parametri a stringa vuota.
+                  IF v_fuso IS NULL OR btrim(v_fuso) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_data_operativa', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', 'SYSTEM_FUSO_ORARIO',
+                                             'valore', v_fuso),
+                          NULL::uuid,
+                          -- ⭐ Nel VARIADIC va la CHIAVE DI CONFIGURAZIONE, che
+                          --    un amministratore riconosce e sa dove mettere —
+                          --    non il nome di una variabile PL/pgSQL.
+                          'SYSTEM_FUSO_ORARIO');
+                  END IF;
+
+                  v_fuso := btrim(v_fuso);
+
+                  -- 2) C'e' ed e' pieno, ma non e' un fuso.
+                  --    ⛔ Senza questo controllo `AT TIME ZONE` alza un 22023
+                  --    grezzo da dentro la funzione: il contratto
+                  --    «P0001 + CONSTRAINT = errore di dominio» salta e il
+                  --    guasto arriva al backend come 500 non tradotto.
+                  IF NOT EXISTS (SELECT 1 FROM pg_timezone_names tz
+                                  WHERE tz.name = v_fuso) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_data_operativa', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', 'SYSTEM_FUSO_ORARIO',
+                                             'valore', v_fuso),
+                          NULL::uuid,
+                          -- ⭐ Qui la frase nomina anche IL VALORE: e' l'unica
+                          --    cosa che dice a chi legge dove sta l'errore di
+                          --    battitura.
+                          concat('SYSTEM_FUSO_ORARIO = ', quote_literal(v_fuso),
+                                 ' (fuso orario non riconosciuto)'));
+                  END IF;
+
+                  -- ℹ️ now() e' l'istante di inizio transazione: dentro la
+                  --    stessa transazione la risposta e' per costruzione
+                  --    identica, ed e' il motivo per cui la funzione e' STABLE.
+                  RETURN (now() AT TIME ZONE v_fuso)::date;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_data_operativa()
+                IS 'La data di oggi NEL FUSO DELL''AZIENDA (config.parameters.SYSTEM_FUSO_ORARIO), non in quello della sessione. ⛔ Sostituisce current_date sul percorso della data documento: current_date segue il fuso della SESSIONE, e la sessione di Django e'' UTC (USE_TZ senza TIME_ZONE in DATABASES) mentre psql e pgAgent sono Europe/Rome — lo stesso oggetto dava due date diverse secondo il canale, e ogni documento nato fra mezzanotte e le 02:00 locali portava la data del giorno prima (misurato 2026-08-25: 7 fatture su 18 sfasate). ⛔ FAIL-LOUD su tre condizioni — parametro assente, valore vuoto, valore non presente in pg_timezone_names — tutte con E_CONFIG_MANCANTE: la domanda «riuso o conio un codice?» si risponde su CHI PUO'' RIMEDIARE (sempre chi amministra la configurazione, classe TECNICO) e a distinguere i casi e'' la frase. Nessun ripiego a UTC o a current_date: darebbe una data PLAUSIBILE e SBAGLIATA, cioe'' il difetto stesso in forma piu'' difficile da vedere. ⛔ NON usa script.fn_get_parameter_full, che pure esiste ed e'' il lettore canonico: la sua cascata di override (utente/gruppo/sessione/emittente) farebbe portare ALLA STESSA fattura date diverse a seconda di chi la genera. Il default nudo e'' la scelta, non una dimenticanza. ℹ️ STABLE perche'' now() e'' l''istante di inizio transazione. ⚠️ PERIMETRO: la usano solo fn_calcola_data_documento, fn_get_or_create_fattura_header e il DEFAULT di vendite.fatture.data; CURRENT_DATE resta in 25 tabelle e 67 funzioni, la cui bonifica e'' un cantiere separato. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2.';
+
+              -- ⚠️ I GRANT di una funzione NUOVA non esistono finche' non si
+              --    scrivono. Il ciclo che li ridistribuisce gira in ci_apply
+              --    (su dev, il pgagent delle 21:00): senza queste due righe,
+              --    fra il migrate e quel giro l'applicazione non puo'
+              --    chiamarla. Stessi due ruoli delle funzioni sorelle.
+              GRANT EXECUTE ON FUNCTION script.fn_data_operativa() TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION script.fn_data_operativa() TO zeroerp_batch_fatturazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_data_operativa();

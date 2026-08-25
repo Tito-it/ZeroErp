@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARCO CHE MANCAVA (4 di 4) — la prosa che era diventata falsa.
+#
+# -- IL DIFETTO, che non e' nel codice -------------------------------
+#   Il COMMENT di vendite.vw_documento_lineage afferma:
+#     «NON esiste una frontiera_natura_doc_codice, di proposito: l'arco N e' un
+#      ramo di ritorno ed e' escluso dal grafo forward, quindi una nota di
+#      credito non puo' mai essere la frontiera di nessuno e quella colonna
+#      varrebbe sempre NULL.»
+#   ⛔ La conclusione e' FALSA, e non per colpa dell'arco S: lo era gia' il
+#   giorno in cui e' stata scritta. L'arco G (commessa -> fattura) NON e' un
+#   ramo di ritorno, quindi una nota di credito e' raggiungibile in avanti dalla
+#   commessa. Il team BE lo aveva gia' misurato il 2026-08-21 — «la frontiera
+#   PUO' essere una nota di credito: e' gia' la frontiera dell'ordine 240 e
+#   della commessa 322» — tant'e' che get_lineage_nodo la legge davvero
+#   (nfr.natura_doc_codice AS frontiera_natura_doc_codice).
+#   Con l'arco S (20260825-19) diventa falsa una seconda volta: la nota e' ora
+#   frontiera anche del RESO, ed e' esattamente l'informazione che il cantiere
+#   voleva dare.
+#
+# -- ⛔ PERCHE' SI CORREGGE ADESSO, E NON «QUANDO CAPITA» -------------
+#   Perche' un commento sbagliato NON FALLISCE MAI. Non c'e' un test che lo
+#   legga, non c'e' un guardrail che lo confronti col comportamento: resta li' e
+#   il prossimo che progetta sopra quella vista ci costruisce sopra. Questa
+#   frase era gia' stata ricopiata pari pari dentro
+#   db/pgtap/vendite/test-documento-lineage-v1.sql (sopra il test 7), dove ha
+#   fatto esattamente quel danno una volta.
+#
+# -- ⚠️ PERCHE' UN `COMMENT ON VIEW` DA SOLO, E NON UN CREATE OR REPLACE
+#   Perche' ricreare vw_documento_lineage per cambiarle una stringa vorrebbe
+#   dire ricopiare ~150 righe di WITH RECURSIVE (fwd/walk/cand/frontiera/disc/
+#   inc/prat) e RI-SPECIFICARE security_invoker=on, che e' una reloption
+#   invisibile in pg_get_viewdef: dimenticarla la AZZERA senza nessun errore, e
+#   la RLS emittente smetterebbe di mordere su tutte le liste che leggono la
+#   summary. Sarebbe un rischio di regressione preso per una frase.
+#   Precedenti dello stesso taglio: 20260819-23, 20260819-24.
+#
+# -- ⭐ E SI SCRIVE ANCHE LA FRAGILITA' CHE L'ARCO S ESPONE ------------
+#   Con S una nota di credito ha DUE sorgenti forward (la commessa via G, il
+#   reso via S). La CTE `inc` sceglie il root con
+#   ORDER BY (ruolo='ROOT') DESC NULLS LAST, from_tipo_id, from_uid: entrambi
+#   gli archi hanno ruolo NULL, quindi il pareggio si spezza su from_tipo_id,
+#   cioe' su un ID di config.sorgenti. Oggi vince la commessa perche' 13 < 15.
+#   E' una fragilita' PREESISTENTE (la `inc` e' del 2026-07-14) che l'arco S e'
+#   il primo a esporre: finora la nota aveva una sola sorgente forward e il
+#   tie-break non entrava mai in gioco. Va scritta qui, dove la legge chi tocca
+#   la vista, non solo nel brief.
+#
+# Dipendenze: 20260825-19 (l'arco S, verificato in precondizione).
+# Cantiere: docs/it/dev/work-in-progress/brief-db-lineage-arco-reso-nota-credito.md §5 DB-C
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql (prosa sopra il test 7)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260825-20-comment-vw-documento-lineage-frontiera-natura-mctit.yaml
+
+  - changeSet:
+      id: 20260825-20-comment-vw-documento-lineage-frontiera-natura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Corregge il COMMENT di vw_documento_lineage: la frase «una nota di credito non puo' mai
+        essere la frontiera di nessuno» era falsa gia' prima di questo cantiere (l'arco G non e' un
+        ramo di ritorno) e con l'arco S lo e' due volte. Solo COMMENT ON VIEW: ricreare la vista
+        per una stringa rischierebbe l'azzeramento di security_invoker.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage
+            # ⛔ «20260825-19 prima di questo», in una forma che il DB puo' verificare:
+            #    senza l'arco S la prosa nuova direbbe una cosa che il grafo non fa.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname   = 'vw_documento_lineage_archi'
+                     AND definition LIKE '%''S''::text%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_documento_lineage IS
+                  'Lineage documenti vendite (Step 3): summary per nodo per arricchire le liste. '
+                  'Espone pratica (1:1 difensiva + n_pratiche), fase propria, frontiera forward '
+                  '(piu'' a valle attivo, esclude i rami di RITORNO), discendenti diretti/attivi, '
+                  'is_transitato, lato inverso (n_sorgenti + ROOT), natura del documento. '
+                  'security_invoker=on. '
+                  '⭐ rev 2026-08-20 — DUE COSE. (1) i due filtri del grafo forward non nominano '
+                  'piu'' la lettera R ma leggono vw_documento_lineage_archi.is_ramo_inverso: con '
+                  'l''arrivo dell''arco N (fattura rettificata -> nota di credito) la lettera era '
+                  'scritta a mano in TRE posti, e il terzo dimenticato non avrebbe dato nessun '
+                  'errore — solo la nota di credito come discendente forward, cioe'' una FRONTIERA '
+                  'diversa su ogni riga di lista. (2) espone natura_doc_codice/'
+                  'natura_doc_descrizione del nodo, cosi'' una lista di fatture smette di scrivere '
+                  '«Fattura» sopra una nota di credito. '
+                  '⛔ rev 2026-08-25 — LA FRASE CHE STAVA QUI ERA FALSA. Diceva: «NON esiste una '
+                  'frontiera_natura_doc_codice, di proposito: l''arco N e'' un ramo di ritorno ed '
+                  'e'' escluso dal grafo forward, quindi una nota di credito non puo'' mai essere '
+                  'la frontiera di nessuno e quella colonna varrebbe sempre NULL». La premessa e'' '
+                  'giusta, la conclusione no, e lo era gia'' il giorno in cui e'' stata scritta: '
+                  'l''arco G (commessa -> fattura) NON e'' un ramo di ritorno, quindi una nota di '
+                  'credito E'' raggiungibile in avanti — misurata dal BE il 2026-08-21 come '
+                  'frontiera dell''ordine 240 e della commessa 322, e get_lineage_nodo la legge '
+                  'davvero. Dal 2026-08-25 l''arco S (reso -> nota di credito) la rende frontiera '
+                  'anche del RESO, ed e'' l''informazione che il pannello doveva dare: «questo '
+                  'reso e'' gia'' stato accreditato, con quel documento». '
+                  'La colonna frontiera_natura_doc_codice non c''e'' perche'' il consumatore la '
+                  'ricava per conto suo, NON perche'' varrebbe sempre NULL. '
+                  '⚠️ E con l''arco S una nota di credito ha DUE sorgenti forward (la commessa via '
+                  'G, il reso via S): n_sorgenti passa da 1 a 2, e il ROOT si sceglie col '
+                  'tie-break della CTE inc — ORDER BY (ruolo=''ROOT'') DESC NULLS LAST, '
+                  'from_tipo_id, from_uid. Entrambi gli archi hanno ruolo NULL, quindi decide '
+                  'from_tipo_id, cioe'' un ID di config.sorgenti e non una chiave stabile: oggi '
+                  'vince la commessa solo perche'' 13 < 15. Fragilita'' preesistente (la inc e'' '
+                  'del 2026-07-14) che l''arco S e'' il primo a esporre, perche'' finora la nota '
+                  'aveva una sola sorgente forward e il pareggio non entrava mai in gioco.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico, e qui il motivo e' particolare: il
+              --    rollback rimetterebbe una frase FALSA sull'oggetto. Un commento
+              --    sbagliato non fallisce mai, quindi nessuno se ne accorgerebbe.
+              --    Se serve tornare indietro sul comportamento si annulla 20260825-19;
+              --    la prosa corretta puo' restare, perche' descrive anche il mondo
+              --    senza l'arco S (l'arco G bastava gia').
+              SELECT 1;

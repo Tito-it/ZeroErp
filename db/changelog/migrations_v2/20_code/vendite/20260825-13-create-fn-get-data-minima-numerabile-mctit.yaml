@@ -1,0 +1,256 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-10 — LA TARGA CHE DICE QUANTO E' ALTO IL CANCELLO
+#   vendite.fn_get_data_minima_numerabile        (registro, serie)
+#   vendite.fn_get_data_minima_numerabile_lotto  (lotto)
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-10
+#
+# ── A CHE SERVE ─────────────────────────────────────────────────────
+#   Il frontend apre il DatePicker con `minDate` gia' giusta, e l'errore del
+#   cancello (DB-8) diventa l'ECCEZIONE invece della norma. ⭐ Il cancello resta
+#   il cancello: questa e' la targa che ne dichiara l'altezza, non un secondo
+#   controllo. Se le due divergono, quella che comanda e' sempre l'altra.
+#
+#   ⚠️ E non e' un abbellimento: con `FINE_MESE_COMPETENZA` un lotto di
+#   competenza arretrata viene rifiutato PER COSTRUZIONE (§4 DB-3), quindi senza
+#   questa lettura il dialog proporrebbe ogni volta una data che il database
+#   rifiuta.
+#
+# ── ⛔ LA SERIE, E LA DIFFERENZA CON fn_get_next_progressivo ────────
+#   Qui `p_serie` NULL significa **«quella del registro»**: si risolve con
+#   `COALESCE(p_serie, r.serie_default, '')`. In `fn_get_next_progressivo`, che
+#   e' interna, `p_serie` NULL vale invece la serie vuota — perche' li' il
+#   chiamante (`fn_assign_numero_fattura`) l'ha gia' risolta.
+#   ⭐ La differenza e' voluta: questa e' un'API di lettura per il BE, e chiedere
+#   «il minimo del registro 3» senza sapere che la sua serie e' `R2` deve dare la
+#   risposta giusta, non una riga di contatore che non esiste.
+#   ⚠️ Misurato il 2026-08-25: TUTTE le fatture non numerate hanno
+#   `f.serie IS NULL` e prendono la serie dal `serie_default`. Con un
+#   `COALESCE(f.serie,'')` queste funzioni cercherebbero il contatore della serie
+#   vuota, non lo troverebbero e risponderebbero NULL — cioe' «nessun minimo», la
+#   risposta piu' permissiva possibile, proprio dove il cancello poi rifiuta.
+#
+# ── ℹ️ NULL SIGNIFICA «NESSUN PAVIMENTO» ────────────────────────────
+#   Da quel sezionale non e' ancora uscito nessun numero: qualunque data va bene.
+#   Il frontend lascia il DatePicker senza `minDate`.
+#
+# ── ⚠️ LA VARIANTE SUL LOTTO E' FAIL-OPEN, E VA SAPUTO ──────────────
+#   `vendite.fatture` ha la RLS e la funzione e' SECURITY INVOKER: se una fattura
+#   del lotto non e' visibile a chi opera, il suo `(registro, serie)` non entra
+#   nell'aggregazione e il minimo esce **piu' basso** del vero.
+#   ⭐ E' accettabile SOLO perche' questa e' una targa e non un lucchetto — il
+#   cancello di `fn_get_next_progressivo` legge il contatore, che la RLS non ha.
+#   ⛔ Chi un giorno volesse usare questa funzione AL POSTO del cancello sappia
+#   che sta sostituendo un presidio con un suggerimento.
+#
+# ── ℹ️ SET-BASED, NON UNA CHIAMATA PER RIGA ─────────────────────────
+#   La variante sul lotto fa UN JOIN sul contatore invece di invocare la sorella
+#   per ogni fattura: un lotto massivo ne ha molte, e la risposta e' la stessa.
+#
+# Dipendenze: 20260825-09 (ultima_data). Nessun consumatore ancora: il BE le usa
+#             da BE-5, il FE da FE-2.
+# Verifica: db/pgtap/vendite/test-registri-progressivi.sql (DB-13)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260825-13-create-fn-get-data-minima-numerabile-mctit.yaml
+
+  - changeSet:
+      id: 20260825-13-create-fn-get-data-minima-numerabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-10: le due letture che dicono da quale data in poi un sezionale (o un lotto) si puo'
+        numerare. Servono al DatePicker del dialog «Rendi definitive»: con FINE_MESE_COMPETENZA
+        un lotto di competenza arretrata viene rifiutato per costruzione, quindi senza minDate
+        il dialog proporrebbe ogni volta una data che il database rifiuta. ⭐ La targa non e' il
+        cancello: se divergono comanda fn_get_next_progressivo. ⛔ La serie si risolve con
+        COALESCE(p_serie, serie_default, ''), diversamente da fn_get_next_progressivo che la
+        riceve gia' risolta — tutte le fatture non numerate hanno serie NULL, e un
+        COALESCE(serie,'') risponderebbe NULL, cioe' «nessun minimo». ⚠️ La variante sul lotto
+        e' fail-open sotto RLS: una fattura non visibile abbassa il minimo. Accettabile perche'
+        e' un suggerimento, non un presidio.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: registri_fatturazione_progressivi
+            columnName: ultima_data
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ═══════════════════════════════════════════════════════════
+              -- 1) Per sezionale: (registro, serie)
+              -- ═══════════════════════════════════════════════════════════
+              CREATE OR REPLACE FUNCTION vendite.fn_get_data_minima_numerabile(
+                  p_registro_id vendite.registri_fatturazione.id%TYPE,
+                  p_serie       text DEFAULT NULL
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_serie      TEXT;
+                  v_pavimento  vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da quale data in poi questo sezionale accetta un numero.
+                  --   NULL = nessun pavimento (non e' ancora uscito niente).
+                  --
+                  -- Regole:
+                  --   - si legge il CONTATORE, non le fatture: il contatore non
+                  --     ha RLS e la risposta e' sempre completa;
+                  --   - il massimo si prende ATTRAVERSO GLI ANNI, come fa il
+                  --     cancello.
+                  -- =========================================================
+
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_data_minima_numerabile',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- ⭐ Serie non dichiarata = quella del registro. E' la
+                  --    differenza voluta con fn_get_next_progressivo, che la
+                  --    riceve gia' risolta dal suo chiamante.
+                  SELECT COALESCE(p_serie, r.serie_default, '')
+                    INTO v_serie
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          concat('registro di fatturazione ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  SELECT max(rp.ultima_data)
+                    INTO v_pavimento
+                    FROM vendite.registri_fatturazione_progressivi rp
+                   WHERE rp.registro_id = p_registro_id
+                     AND rp.serie       = v_serie;
+
+                  RETURN v_pavimento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_data_minima_numerabile(
+                  vendite.registri_fatturazione.id%TYPE, text)
+                IS 'Da quale data in poi questo sezionale (registro + serie) accetta un numero. NULL = nessun pavimento: da quella sequenza non e'' ancora uscito niente, qualunque data va bene. ⭐ E'' la TARGA del cancello di vendite.fn_get_next_progressivo, non un secondo controllo: serve al frontend per aprire il DatePicker con minDate gia'' giusta, cosi'' il rifiuto diventa l''eccezione invece della norma. Se targa e cancello divergessero, comanda il cancello. ⛔ LA SERIE SI RISOLVE DIVERSAMENTE dalla funzione che numera, ed e'' voluto: qui p_serie NULL significa «quella del registro» (COALESCE(p_serie, serie_default, '''')), perche'' questa e'' un''API di lettura e chiedere «il minimo del registro 3» senza sapere che la sua serie e'' R2 deve dare la risposta giusta; in fn_get_next_progressivo, che e'' interna, la serie arriva gia'' risolta dal chiamante. ⚠️ Misurato il 2026-08-25: tutte le fatture non numerate hanno serie NULL e la prendono dal serie_default, quindi un COALESCE(serie,'''') cercherebbe il contatore della serie vuota, non lo troverebbe e risponderebbe NULL — la risposta piu'' permissiva possibile proprio dove il cancello rifiuta. ℹ️ Si legge il CONTATORE e non vendite.fatture: il contatore non ha RLS, quindi la risposta e'' completa per chiunque; e il massimo si prende ATTRAVERSO GLI ANNI, come fa il cancello. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-10.';
+
+              -- ═══════════════════════════════════════════════════════════
+              -- 2) Per lotto: il massimo su tutti i sezionali che tocca
+              -- ═══════════════════════════════════════════════════════════
+              CREATE OR REPLACE FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_pavimento vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da quale data in poi TUTTE le fatture non ancora
+                  --   numerate di questo lotto possono prendere un numero.
+                  --
+                  -- Regole:
+                  --   - un lotto puo' toccare piu' sezionali (la nota di
+                  --     credito ha un registro suo): si prende il MASSIMO dei
+                  --     loro pavimenti, cioe' il piu' restrittivo;
+                  --   - solo le fatture SENZA numero: quelle numerate non
+                  --     hanno piu' niente da chiedere.
+                  -- =========================================================
+
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile_lotto',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'lotto_id obbligatorio e maggiore di zero',
+                              'p_lotto_id', p_lotto_id),
+                          NULL::uuid,
+                          'vendite.fn_get_data_minima_numerabile_lotto',
+                          'p_lotto_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- ⚠️ Il lotto ha la RLS: qui «non trovato» comprende «non
+                  --    visibile», ed e' giusto che le due risposte coincidano.
+                  --    Serve a distinguere «lotto che non c'e'» da «lotto senza
+                  --    pavimento», che tornerebbero entrambi NULL.
+                  PERFORM 1 FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile_lotto',
+                          'E_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  -- ⭐ Set-based: un JOIN sul contatore, non una chiamata alla
+                  --    sorella per ogni fattura. Un lotto massivo ne ha molte e
+                  --    la risposta e' identica.
+                  -- ⭐ La serie si risolve come la risolve chi numera.
+                  SELECT max(rp.ultima_data)
+                    INTO v_pavimento
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    JOIN vendite.fatture f
+                      ON f.id = lf.fattura_id
+                    JOIN vendite.registri_fatturazione r
+                      ON r.id = f.registro_id
+                    JOIN vendite.registri_fatturazione_progressivi rp
+                      ON rp.registro_id = f.registro_id
+                     AND rp.serie       = COALESCE(f.serie, r.serie_default, '')
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND f.numero IS NULL;
+
+                  RETURN v_pavimento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  vendite.fatturazione_lotti.id%TYPE)
+                IS 'Da quale data in poi TUTTE le fatture non ancora numerate di questo lotto possono prendere un numero: il MASSIMO dei pavimenti dei sezionali che il lotto tocca, cioe'' il piu'' restrittivo. ⭐ Un lotto puo'' contenere documenti di registri diversi — la natura instrada la nota di credito su un registro suo — quindi una risposta sola deve valere per tutti. ℹ️ Solo le fatture SENZA numero: quelle gia'' numerate non hanno piu'' niente da chiedere. NULL = nessun pavimento. ⚠️ FAIL-OPEN sotto RLS, e va saputo: vendite.fatture ha le policy e questa funzione e'' SECURITY INVOKER, quindi una fattura del lotto non visibile a chi opera non entra nell''aggregazione e il minimo esce PIU'' BASSO del vero. E'' accettabile solo perche'' questa e'' una TARGA e non un lucchetto — il cancello vero, in fn_get_next_progressivo, legge il contatore, che la RLS non ha. ⛔ Chi volesse usare questa funzione AL POSTO del cancello sappia che sta sostituendo un presidio con un suggerimento. ⚠️ Il lotto inesistente e il lotto non visibile danno la stessa risposta (E_LOTTO_NON_TROVATO), e il guard c''e'' per distinguerli da «lotto senza pavimento», che tornerebbe NULL come loro. ⭐ Set-based: un JOIN sul contatore, non una chiamata per fattura. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-10.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile(
+                  vendite.registri_fatturazione.id%TYPE, text) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile(
+                  vendite.registri_fatturazione.id%TYPE, text) TO zeroerp_batch_fatturazione;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  vendite.fatturazione_lotti.id%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  vendite.fatturazione_lotti.id%TYPE) TO zeroerp_batch_fatturazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_data_minima_numerabile_lotto(bigint);
+              DROP FUNCTION IF EXISTS vendite.fn_get_data_minima_numerabile(bigint, text);

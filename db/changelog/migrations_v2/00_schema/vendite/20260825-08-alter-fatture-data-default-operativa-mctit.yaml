@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-2 (seconda meta') — IL DEFAULT DI COLONNA SMETTE DI MENTIRE
+#   vendite.fatture.data  DEFAULT CURRENT_DATE -> script.fn_data_operativa()
+#   Piano: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2
+#
+# ── ℹ️ QUESTO FILE DA SOLO NON CAMBIA NIENTE, ED E' IL PUNTO ────────
+#   Il default e' INERTE sul percorso reale: `fn_get_or_create_fattura_header`
+#   — l'unico scrittore di questa colonna — passa `data` a mano, e da
+#   `20260825-07` la calcola con `fn_calcola_data_documento`. Il comportamento
+#   l'ha gia' spostato quel file.
+#
+#   Questo allinea la DDL perche' non DICHIARI una cosa diversa da quella che
+#   succede: un `DEFAULT CURRENT_DATE` accanto a una funzione che scrive la data
+#   operativa e' una dichiarazione falsa per chiunque legga la tabella — e per
+#   chiunque scriva una fixture, che il default lo usa davvero.
+#   ⭐ E' lo stesso ragionamento gia' scritto in `20260824-16` sui DEFAULT dei
+#   registri di log.
+#
+# ── ⚠️ UN DEFAULT CHE PUO' SOLLEVARE, E VA BENE ─────────────────────
+#   `script.fn_data_operativa()` e' fail-loud: senza il parametro
+#   `SYSTEM_FUSO_ORARIO` alza `E_CONFIG_MANCANTE`. Quindi da qui in avanti un
+#   `INSERT INTO vendite.fatture` che OMETTE la data fallisce se la
+#   configurazione non c'e', invece di scrivere una data presa dal fuso di chi
+#   sta chiamando.
+#   ⭐ E' esattamente il comportamento voluto: il difetto che questo cantiere
+#   chiude e' una data plausibile e sbagliata, che nessuno guarda. Un errore
+#   parlante e' sempre meglio.
+#   ⚠️ Il parametro arriva da `80_data`, che gira DOPO questa fase: fra i due
+#   momenti di un migrate non si generano bozze. Non e' un vincolo nuovo — un
+#   migrate a meta' non e' un momento in cui si fattura.
+#
+# ── ⚠️ PERIMETRO: NON E' LA BONIFICA DI CURRENT_DATE ────────────────
+#   Qui si tocca UNA colonna. `CURRENT_DATE` resta DEFAULT in **25 tabelle**
+#   (ddt, ordini, preventivi, resi, contratti, inventari, rettifiche...) e
+#   compare in **67 funzioni**. La bonifica generale — e l'ipotesi «metto
+#   TIME_ZONE in DATABASES e sistemo tutto con una riga», che ha raggio
+#   d'azione su tutta l'applicazione — e' un cantiere suo, §7 del brief.
+#   ⛔ Non allargare qui: una richiesta da una colonna diventerebbe una passata
+#   su mezzo database dentro un changeSet che nessuno ha rivisto per quello.
+#
+# ── ℹ️ NESSUN BACKFILL ──────────────────────────────────────────────
+#   Le 18 fatture esistenti restano come sono — 7 hanno la data sfasata di un
+#   giorno per il difetto UTC. Si sistemano a mano nella bonifica (§6 del
+#   brief), non con codice: un fix software per un problema di dati crea strati
+#   che poi vanno rimossi (AGENTS.md, Workflow Safety).
+#
+# Dipendenze: 20260825-02 (script.fn_data_operativa). ⚠️ NUMERO PIU' ALTO,
+#             e non e' un caso: l'autogen ordina 00_schema e 20_code per NN,
+#             quindi la funzione dev'esistere prima che una colonna la nomini.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260825-08-alter-fatture-data-default-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20260825-08-alter-fatture-data-default-operativa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-2 (seconda meta'): il DEFAULT di vendite.fatture.data passa da CURRENT_DATE a
+        script.fn_data_operativa(). ℹ️ Da solo non cambia il comportamento — il default e'
+        inerte, perche' fn_get_or_create_fattura_header passa la data a mano — ma allinea la
+        DDL a cio' che succede: un DEFAULT CURRENT_DATE accanto a una funzione che scrive la
+        data operativa e' una dichiarazione falsa per chi legge la tabella e per chi scrive
+        una fixture, che il default lo usa davvero. ⚠️ E' un default che PUO' SOLLEVARE
+        (E_CONFIG_MANCANTE senza il parametro del fuso), ed e' voluto: meglio un errore
+        parlante di una data plausibile e sbagliata. ⛔ Perimetro: UNA colonna. CURRENT_DATE
+        resta in 25 tabelle e 67 funzioni, la cui bonifica e' un cantiere separato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture
+                columnName: data
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_data_operativa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture
+                ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+
+              COMMENT ON COLUMN vendite.fatture.data
+                IS 'Data del documento. ⭐ rev 2026-08-25 (DB-2/DB-6): il valore lo scrive vendite.fn_get_or_create_fattura_header — unico punto in tutto il repo che scrive questa colonna — chiedendolo a vendite.fn_calcola_data_documento, cioe'' alla politica del registro o alla data dichiarata sul lotto. ⚠️ Il DEFAULT qui e'' ALLINEAMENTO DELLA DDL, non il punto in cui la regola vive: e'' inerte sul percorso reale, e serve perche'' la tabella non dichiari CURRENT_DATE mentre succede altro — chi scrive una fixture il default lo usa davvero. ⛔ Non e'' piu'' CURRENT_DATE perche'' quello segue il fuso DELLA SESSIONE: da Django e'' UTC, da psql e pgAgent e'' Europe/Rome, quindi lo stesso oggetto dava due date diverse secondo il canale e ogni documento nato fra mezzanotte e le 02:00 locali portava la data del giorno prima (misurato 2026-08-25: 7 fatture su 18). ⚠️ script.fn_data_operativa() e'' FAIL-LOUD: senza il parametro SYSTEM_FUSO_ORARIO un INSERT che omette la data fallisce invece di inventarla, ed e'' voluto. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.fatture
+                ALTER COLUMN data SET DEFAULT CURRENT_DATE;

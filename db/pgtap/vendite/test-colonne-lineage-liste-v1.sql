@@ -2,28 +2,37 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: Colonne lineage sulle 5 liste documento (Fase B).
+-- Test: Colonne lineage sulle 6 liste documento (Fase B).
 --   Viste: vw_preventivi_lista, vw_offerte_commerciali_lista, vw_ordini_lista,
---          vw_contratti_lista, vw_ddt_lista — estese con fase + colonne lineage.
---   Seed: ui.lista_colonna (pratica/fase/transito su liste 4..8).
---   Brief: brief-db-colonne-lineage-liste §5.
+--          vw_contratti_lista, vw_ddt_lista, vw_resi_lista — estese con fase +
+--          colonne lineage.
+--   Seed: ui.lista_colonna (pratica/fase/transito su liste 4..9).
+--   Brief: brief-db-colonne-lineage-liste §5;
+--          brief-db-lineage-arco-reso-nota-credito §5 DB-F (la sesta sorella).
+--
+-- ⛔ 2026-08-25 — PERCHE' I TEST 25/26/29 SONO STATI RITOCCATI E NON SOLO
+--   AFFIANCATI. Erano ancorati a `lista_id IN (4,5,6,7,8)` e alla costante 15.
+--   Aggiungendo la lista 9 (resi) NON sarebbero diventati rossi: sarebbero
+--   rimasti verdi smettendo di coprire la lista nuova — cioe' copertura che
+--   sparisce senza che nessun rosso lo dica, la forma peggiore. Una whitelist
+--   si verifica dal percorso che la attraversa, non dal nome del test.
 --
 -- CI-safe: forma (colonne presenti), security_invoker preservato, presenza/
 --   correttezza del seed, invariante seed-agnostica. 1 spot-check §5 (PRV0000185)
 --   protetto da skip() se i dati non ci sono.
 --
--- Indice test (1..24):
---   1..15) le 5 viste espongono pratica_numero, fase, frontiera_codice
---  16..20) le 5 viste hanno security_invoker attivo (preservato)
---     21)  seed: 15 righe (pratica/fase/transito su liste 4..8)
---     22)  seed: campo_sorgente corretto (pratica->pratica_numero, fase->fase,
+-- Indice test (1..30):
+--   1..18) le 6 viste espongono pratica_numero, fase, frontiera_codice
+--  19..24) le 6 viste hanno security_invoker attivo (preservato)
+--     25)  seed: 18 righe (pratica/fase/transito su liste 4..9)
+--     26)  seed: campo_sorgente corretto (pratica->pratica_numero, fase->fase,
 --          transito->frontiera_codice)
---     23)  invariante: pratica_numero NULL -> n_pratiche = 0 (preventivi)
---     24)  §5 (skip-able): PRV0000185 -> pratica 'PRA-0000818', frontiera
---          'DDT0000031', fase 'CHIUSO'
---     25)  §7 follow-up: preset default liste 4..8 hanno pratica/fase/transito
---          con visibile=true (15 righe lista_preset_colonna, DDT incluso)
---     26)  §7 follow-up: preset ddt_default (lista 8) creato e is_default
+--     27)  invariante: pratica_numero NULL -> n_pratiche = 0 (preventivi)
+--     28)  §5 (skip-able): il caso reale si sceglie dai dati (pratica+frontiera
+--          insieme -> la fase non manca mai)
+--     29)  §7 follow-up: preset default liste 4..9 hanno pratica/fase/transito
+--          con visibile=true (18 righe lista_preset_colonna, resi inclusi)
+--     30)  §7 follow-up: preset ddt_default (lista 8) creato e is_default
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -42,9 +51,9 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(26);
+SELECT plan(30);
 
--- ---- 1..15: colonne nuove presenti sulle 5 viste ------------------------
+-- ---- 1..18: colonne nuove presenti sulle 6 viste ------------------------
 SELECT has_column('vendite', 'vw_preventivi_lista',          'pratica_numero',  'preventivi: pratica_numero');
 SELECT has_column('vendite', 'vw_preventivi_lista',          'fase',            'preventivi: fase');
 SELECT has_column('vendite', 'vw_preventivi_lista',          'frontiera_codice','preventivi: frontiera_codice');
@@ -60,8 +69,17 @@ SELECT has_column('vendite', 'vw_contratti_lista',           'frontiera_codice',
 SELECT has_column('vendite', 'vw_ddt_lista',                 'pratica_numero',  'ddt: pratica_numero');
 SELECT has_column('vendite', 'vw_ddt_lista',                 'fase',            'ddt: fase');
 SELECT has_column('vendite', 'vw_ddt_lista',                 'frontiera_codice','ddt: frontiera_codice');
+-- ⭐ rev 2026-08-25: la SESTA sorella. vw_resi_lista era l'unica lista documento
+--    senza genealogia, e su un reso la colonna «transito» (frontiera_codice) e'
+--    il numero della NOTA DI CREDITO che lo accredita — l'arco S del cantiere
+--    brief-db-lineage-arco-reso-nota-credito. ⚠️ `fase` non c'era proprio: la
+--    vista aveva lo stato ma non la fase normalizzata, e senza quella colonna il
+--    seed omonimo sarebbe nato vuoto in silenzio.
+SELECT has_column('vendite', 'vw_resi_lista',                'pratica_numero',  'resi: pratica_numero');
+SELECT has_column('vendite', 'vw_resi_lista',                'fase',            'resi: fase');
+SELECT has_column('vendite', 'vw_resi_lista',                'frontiera_codice','resi: frontiera_codice');
 
--- ---- 16..20: security_invoker preservato --------------------------------
+-- ---- 19..24: security_invoker preservato --------------------------------
 SELECT ok(EXISTS (SELECT 1 FROM pg_class c, unnest(c.reloptions) o
                    WHERE c.oid='vendite.vw_preventivi_lista'::regclass
                      AND o IN ('security_invoker=on','security_invoker=true')),
@@ -82,28 +100,32 @@ SELECT ok(EXISTS (SELECT 1 FROM pg_class c, unnest(c.reloptions) o
                    WHERE c.oid='vendite.vw_ddt_lista'::regclass
                      AND o IN ('security_invoker=on','security_invoker=true')),
           'ddt: security_invoker preservato');
+SELECT ok(EXISTS (SELECT 1 FROM pg_class c, unnest(c.reloptions) o
+                   WHERE c.oid='vendite.vw_resi_lista'::regclass
+                     AND o IN ('security_invoker=on','security_invoker=true')),
+          'resi: security_invoker preservato');
 
--- ---- 21..22: seed ui.lista_colonna --------------------------------------
+-- ---- 25..26: seed ui.lista_colonna --------------------------------------
 SELECT is(
     (SELECT count(*)::int FROM ui.lista_colonna
-      WHERE lista_id IN (4,5,6,7,8) AND codice IN ('pratica','fase','transito') AND attivo),
-    15, 'seed: 15 colonne lineage (pratica/fase/transito su liste 4..8)');
+      WHERE lista_id IN (4,5,6,7,8,9) AND codice IN ('pratica','fase','transito') AND attivo),
+    18, 'seed: 18 colonne lineage (pratica/fase/transito su liste 4..9)');
 
 SELECT is(
     (SELECT count(*)::int FROM ui.lista_colonna
-      WHERE lista_id IN (4,5,6,7,8)
+      WHERE lista_id IN (4,5,6,7,8,9)
         AND ( (codice = 'pratica'  AND campo_sorgente = 'pratica_numero')
            OR (codice = 'fase'     AND campo_sorgente = 'fase')
            OR (codice = 'transito' AND campo_sorgente = 'frontiera_codice') )),
-    15, 'seed: campo_sorgente corretto per le 15 colonne');
+    18, 'seed: campo_sorgente corretto per le 18 colonne');
 
--- ---- 23: invariante seed-agnostica --------------------------------------
+-- ---- 27: invariante seed-agnostica --------------------------------------
 SELECT is(
     (SELECT count(*)::int FROM vendite.vw_preventivi_lista
       WHERE pratica_numero IS NULL AND n_pratiche > 0),
     0, 'invariante: pratica_numero NULL -> n_pratiche = 0');
 
--- ---- 24: caso reale §5, scelto dai dati e non nominato ------------------
+-- ---- 28: caso reale §5, scelto dai dati e non nominato ------------------
 -- 🔴 RESO SEED-AGNOSTICO IL 2026-08-18.
 --   Prima questo test nominava un documento: PRV0000185, e si aspettava
 --   'PRA-0000818|DDT0000031|CHIUSO'. Falliva con `have: NULL`.
@@ -143,16 +165,16 @@ SELECT CASE
     ELSE skip('nessun preventivo con la terna pratica+frontiera+fase nei dati', 1)
 END;
 
--- ---- 25..26: §7 follow-up — visibilita' di default sui preset 4..8 -------
+-- ---- 29..30: §7 follow-up — visibilita' di default sui preset 4..9 -------
 SELECT is(
     (SELECT count(*)::int
        FROM ui.lista_preset_colonna pc
        JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
        JOIN ui.lista_preset pr ON pr.id = pc.preset_id AND pr.is_default IS TRUE
-      WHERE pc.preset_id IN (4,5,6,7,8)
+      WHERE pc.preset_id IN (4,5,6,7,8,9)
         AND lc.codice IN ('pratica','fase','transito')
         AND pc.visibile IS TRUE),
-    15, 'preset default (5 liste): 15 colonne lineage visibili');
+    18, 'preset default (6 liste): 18 colonne lineage visibili');
 
 SELECT ok(
     EXISTS (SELECT 1 FROM ui.lista_preset

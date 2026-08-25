@@ -37,9 +37,10 @@ Ritorna una riga con:
 
 * `registro_id`
 * `anno`
-* `mese`
 * `serie`
 * `numero`
+
+⚠️ **`mese` è uscito dal ritorno il 2026-08-25** — vedi la revisione in fondo.
 
 ---
 
@@ -106,6 +107,39 @@ questa guardia: se il padre sta in un lotto ancora in bozza, il suo numero non
 esiste.
 
 Verifica: `db/pgtap/vendite/test-numera-nota-credito-riferimento-v1.sql`.
+
+---
+
+### 🔄 rev 2026-08-25 — via il `mese` dal ritorno
+
+Brief: `brief-db-numerazione-data-documento-e-sequenza` (**DB-12**).
+
+Il `RETURNS TABLE` passa da cinque colonne a **quattro**: `mese` non c'è più.
+
+**Perché non era mai servito.** Era calcolato da
+`registri_fatturazione.reset_policy`, che ammetteva `NESSUNA | ANNUALE | MENSILE`
+e ne implementava **una sola**: la chiave del contatore porta `mese = 0` fisso e
+`uq_fatture_numero` il mese non lo contiene, quindi `NESSUNA` si comportava come
+`ANNUALE` e `MENSILE` pure. ⛔ Un catalogo che promette tre comportamenti e ne fa
+uno è peggio di uno con una voce sola: prima o poi qualcuno sceglie `MENSILE` e
+un'implementazione a metà finisce in violazione di `UNIQUE`.
+
+✅ **E non lo leggeva nessuno**, verificato uno per uno prima di toglierlo: il
+backend drena il result set (due punti in `pipeline_repository.py`, uno scalare e
+uno con `fetchall`), i pgTAP leggono **per nome di colonna** o fanno `PERFORM`.
+Nessuno legge per posizione.
+
+Con `mese` sono caduti anche la variabile del reset, la data — che serviva solo
+al suo `CASE` — e il **JOIN su `registri_fatturazione`**, che portava soltanto
+`reset_policy` (era `INNER` e in teoria filtrava; in pratica mai, perché
+`registro_id` è `NOT NULL` con una FK).
+
+⚠️ **Cambiare il tipo di ritorno ha richiesto `DROP` + `CREATE`.** E l'ordine
+rispetto alla funzione chiamata non è arbitrario: **questa va ricreata PRIMA** di
+`fn_assign_numero_fattura`. Togliendo `mese` prima dalla chiamata, ci sarebbe un
+istante in cui questa fa `SELECT t.mese FROM fn_assign_numero_fattura(…)` su una
+colonna che non esiste più — errore a runtime. Nell'ordine giusto la chiamante
+seleziona quattro colonne su cinque, che è legittimo.
 
 ---
 

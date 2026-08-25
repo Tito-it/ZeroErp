@@ -68,4 +68,45 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 
 ---
 
+### 🔄 rev 2026-08-25 — `data_documento`, la data dichiarata
+
+Brief: `brief-db-numerazione-data-documento-e-sequenza` (**DB-4**, **DB-11**).
+
+Nuova colonna `data_documento date NULL`, **facoltativa**.
+
+| valore | effetto |
+| --- | --- |
+| `NULL` | nessuno ha dichiarato niente: vince la `politica_data_documento` del **registro** |
+| valorizzata | vince lei, per **tutti** i documenti del lotto, qualunque sia il loro registro |
+
+⚠️ **Il `NULL` significa qualcosa, e per questo la colonna non ha default.** Il
+`NULL` è il caso **normale**: un default — anche `script.fn_data_operativa()` —
+trasformerebbe il silenzio in una dichiarazione, con la conseguenza che la
+politica del registro non verrebbe più letta da nessuno.
+
+#### Ci atterrano due cose
+
+1. la data facoltativa alla **creazione del lotto** (BE-1 / FE-1);
+2. la data digitata nel dialog **«Rendi definitive»**, scritta da
+   [`fn_imposta_data_documento_lotto`](/dbzero/vendite/funzioni/fn_imposta_data_documento_lotto)
+   prima di numerare — che è anche il modo di rimediare a un rifiuto del cancello
+   di monotonia.
+
+⭐ È la colonna che rende vera la frase *«una data sola per l'intero atto»*: un
+lotto può contenere documenti di registri con politiche diverse, e senza una
+dichiarazione unica un atto solo produrrebbe date diverse.
+
+#### ⚠️ Scriverla non è una scrittura muta
+
+Quattro trigger di questa tabella non hanno `UPDATE OF`, quindi scattano su
+qualunque `UPDATE` — compreso questo:
+
+* `trgfn_guard_emittente_scope` — ⭐ **ed è voluto**: chi non ha il lotto nel
+  proprio perimetro non ne cambia la data;
+* audit `data_update` / `user_update`;
+* `tx_id`;
+* **storico** — ⭐ la ridichiarazione di una data fiscale lascia traccia.
+
+---
+
 {% include-markdown "signature-core.md" %}

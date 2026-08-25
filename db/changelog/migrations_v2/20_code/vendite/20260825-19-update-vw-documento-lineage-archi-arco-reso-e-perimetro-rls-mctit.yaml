@@ -1,0 +1,411 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ARCO CHE MANCAVA (3 di 4) — reso -> nota di credito.
+# E, nella stessa passata, il PERIMETRO RLS di tutta la vista.
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Il grafo si ferma sul reso. La nota di credito che lo accredita esiste,
+#   ed e' gia' collegata alla fattura che rettifica (arco N) e alla commessa
+#   (arco G), ma NON al reso: i due rami di ritorno — la merce che torna e il
+#   valore che torna — non si toccano mai. Nel pannello «Passaggi» della nota
+#   il reso non c'e', e nel drawer del reso l'unica traccia dell'accredito e'
+#   `gia_accreditato`, che e' una QUANTITA', non un documento.
+#   Rilievo di Tid dal collaudo in-app, 2026-08-25: «manca un collegamento tra
+#   la nota credito e il reso, non riesco a ritrovarlo — esempio nota credito
+#   20024».
+#
+# -- ⭐ DA DOVE SI LEGGE -----------------------------------------------
+#   Da vendite.resi_righe_accrediti, la tabella nata il 2026-08-18 proprio per
+#   reggere questo legame — lo dice il suo commento: «il FATTO, con
+#   chi/quando/quanto/contro cosa, una storia che altrimenti non esisterebbe da
+#   nessuna parte, perche' la rettifica in commessa dice COSA e' stato fatto,
+#   non A FRONTE DI COSA». Il difetto non era nella scrittura: era che nessuno
+#   la leggeva.
+#   La catena e' esatta per riga:
+#     resi_righe_accrediti.commessa_attivita_id
+#       -> attivita_fatturabili.commessa_attivita_id (UNIQUE: e' un 1:1)
+#       -> .fattura_riga_id -> fatture_righe.fattura_id = la nota di credito
+#   Soft-link calcolato, come G e N: nessuna tabella ponte.
+#
+# -- ⛔ LA STRADA CHE SEMBRAVA OVVIA E SAREBBE STATA SBAGLIATA ---------
+#   vendite.fn_accredita_riga_reso crea la rettifica passando
+#   p_sorgente_tipo_id => NULL, p_sorgente_uid => NULL, e sembra il buco da
+#   tappare. NON lo e': commesse_attivita.sorgente_tipo_id/uid non e' un campo
+#   di provenienza, e' la CHIAVE DI RAGGRUPPAMENTO DELLA FATTURAZIONE
+#   (fn_build_gruppo_fatturabile_key), letta da vw_dash_competenza_attivita,
+#   vw_dash_competenza_gruppi, vw_lotti_gruppi_serviti e da tutti i filtri di
+#   emissione mirata. Scriverci il reso sposterebbe la rettifica in un altro
+#   gruppo, cioe' in un altro lotto e in un altro documento.
+#   Il legame va LETTO, non TRASPORTATO.
+#   ⛔ Stessa risposta per l'altra scorciatoia: resi_righe_accrediti ha
+#   fattura_riga_rettificata_id, che punta dritto alla fattura ORIGINALE, e un
+#   dodicesimo arco «reso -> fattura originale» e' a un join di distanza. Non va
+#   aggiunto: sarebbe forward, quindi la fattura originale e la nota finirebbero
+#   allo stesso livello e con lo stesso pipeline_rank, e la frontiera del reso
+#   si deciderebbe sul confronto LESSICOGRAFICO fra '20024' e '835'. Il triangolo
+#   si chiude gia': reso -S-> NC <-N- fattura originale.
+#
+# -- ⭐ S NON E' UN RAMO DI RITORNO, ED E' LA DECISIONE PORTANTE -------
+#   is_ramo_inverso resta (arco IN ('R','N')): NON si tocca.
+#   «Inverso» non vuol dire «a valle di un ritorno», vuol dire ramo di RITORNO,
+#   cioe' un verso che il grafo forward non deve percorrere. R e' il ritorno
+#   della merce, N e' il ritorno del valore. S invece e' l'AVANZAMENTO NATURALE
+#   del reso — la merce e' tornata, adesso si accredita — esattamente come H e'
+#   l'avanzamento dell'ordine.
+#   ⭐ La conseguenza voluta: il reso smette di essere una FOGLIA e prende la
+#   nota di credito come FRONTIERA. E' l'informazione che oggi manca del tutto:
+#   «questo reso e' gia' stato accreditato, con quel documento». Marcarlo
+#   inverso lo lascerebbe frontiera di se' stesso, cioe' al punto di partenza.
+#   Misurato in transazione il 2026-08-25 su 425 righe di summary: cambiano
+#   DUE righe. Il reso 24 (frontiera se' -> NC 20024, is_transitato f -> t) e la
+#   NC 20024 (n_sorgenti 1 -> 2, root invariato). Nessun'altra.
+#
+# -- ⛔ IL PERIMETRO RLS, CHE NON E' UN DIFETTO DI S ------------------
+#   Cercando come tenere l'arco S dentro la RLS dei resi e' venuto fuori che
+#   QUATTRO archi gia' in esercizio ne stanno fuori da luglio.
+#   La regola, che vale per tutta la vista: le TABELLE-PONTE non danno
+#   perimetro. Misurato su pg_class il 2026-08-25:
+#     · commesse_sorgenti      relrowsecurity = f
+#     · attivita_fatturabili   relrowsecurity = f
+#     · resi_righe             relrowsecurity = f
+#     · resi_righe_accrediti   relrowsecurity = f
+#   mentre preventivi, ordini, contratti, commesse, ddt, resi, fatture e
+#   fatture_righe ce l'hanno tutte a `t`. Un ramo che si ferma sul ponte produce
+#   un arco verso un documento che il chiamante NON puo' vedere — e la
+#   decorazione non lo ferma, perche' vw_documento_lineage_nodi e' in LEFT JOIN:
+#   la riga resta, con il codice a NULL.
+#     · B, E, F saltavano ENTRAMBI gli estremi (la sorgente e la commessa);
+#     · G saltava la commessa (emetteva af.commessa_id senza toccare commesse);
+#     · S l'avrebbe fatto sul reso, se scritto come nella prima stesura.
+#   ⚠️ Sul dato del 2026-08-25 NON si riproduce: l'operatore di collaudo vede
+#   tutte e 60 le commesse e tutti e 13 i resi, quindi zero archi fuori
+#   perimetro. Non e' una misura della gravita': e' una misura del dataset.
+#   Con multi_emittente in crescita bastera' un operatore ristretto.
+#   Decisione di Tid (2026-08-25): si chiude la classe intera qui, perche' la
+#   vista si ricrea comunque e un buco misurato e rimandato non lo riapre
+#   nessuno. Cinque join in piu', tutti su chiave primaria.
+#
+# -- ⛔ LA CHIAVE DI commesse_sorgenti E' POLIMORFA -------------------
+#   sorgente_uid e' TEXT e segue la convenzione key_selector: per il preventivo
+#   e' lo uid, per ordine e contratto e' id::text. I tre join NON si copiano
+#   l'uno dall'altro. Misurato prima di scrivere: 47 uuid (PREVENTIVO), 28 e 3
+#   id numerici (ORDINE_VENDITA, CONTRATTO), zero valori non canonici, e i join
+#   recuperano 47/47, 28/28, 3/3. Si castano gli ID a text e MAI il testo a
+#   uuid: un cast del lato text solleverebbe a runtime sulla riga sbagliata.
+#
+# -- ⚠️ security_invoker -----------------------------------------------
+#   Va ri-specificato: e' una reloption invisibile in pg_get_viewdef e un
+#   CREATE OR REPLACE che non la ripete la AZZERA, senza errori.
+#
+# Origine: testo dello YAML 20260821-02 (ultima revisione della vista),
+#          riallineato alla doc auto-gen con round-trip.
+# Dipendenze: 20260821-01 (nature sul nodo), 20260818-35 (resi_righe_accrediti).
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql (plan 38)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260825-19-update-vw-documento-lineage-archi-arco-reso-e-perimetro-rls-mctit.yaml
+
+  - changeSet:
+      id: 20260825-19-update-vw-documento-lineage-archi-arco-reso-e-perimetro-rls
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arco S: reso -> nota di credito, letto da vendite.resi_righe_accrediti (soft-link, come G
+        e N). S NON e' un ramo di ritorno: e' l'avanzamento del reso, che smette di essere una
+        foglia e prende la nota come frontiera. Nella stessa passata il perimetro RLS di tutta la
+        vista: B, E, F e G passavano dalle tabelle-ponte (commesse_sorgenti, attivita_fatturabili),
+        che non hanno RLS, e producevano archi verso documenti non visibili al chiamante.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_archi
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe_accrediti
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM config.sorgenti
+                   WHERE codice_interno = 'RESO_VENDITA' AND attivo IS TRUE
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name   = 'vw_documento_lineage_nodi'
+                     AND column_name  = 'natura_doc_codice'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              -- ⛔ REGOLA DI PERIMETRO, valida per OGNI ramo di questa vista.
+              --   Ogni arco deve passare dalle TABELLE-TESTATA dei due documenti che
+              --   collega, perche' sono quelle che portano la RLS. Le tabelle-ponte
+              --   (commesse_sorgenti, attivita_fatturabili, resi_righe,
+              --   resi_righe_accrediti) hanno relrowsecurity = f e NON danno nessun
+              --   perimetro: un ramo che si ferma li' produce un arco verso un
+              --   documento che il chiamante non puo' vedere, e la decorazione non lo
+              --   ferma perche' vw_documento_lineage_nodi e' in LEFT JOIN — la riga
+              --   resta, con il codice a NULL.
+              --   Chi aggiunge il dodicesimo arco legga questa riga prima di scriverlo.
+              WITH archi AS (
+                  -- A — Preventivo -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id AS from_tipo_id, (p.uid)::text AS from_uid,
+                         s_to.id   AS to_tipo_id,   (o.id)::text  AS to_uid,
+                         NULL::varchar AS ruolo, 'A'::text AS arco
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO'     AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA' AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'PREVENTIVO'
+                  UNION ALL
+                  -- B — Preventivo -> Commessa (sorgente polimorfa; ruolo ROOT/COLLEGATO)
+                  --   ⭐ rev 2026-08-25: i due join a preventivi e commesse sono la
+                  --   REGOLA DI PERIMETRO qui sopra. commesse_sorgenti non ha RLS, e
+                  --   prima questo ramo non toccava nessuna delle due testate: l'arco
+                  --   compariva anche fra due documenti che il chiamante non vede.
+                  --   ⛔ La chiave e' POLIMORFA (key_selector): per il preventivo
+                  --   sorgente_uid e' lo UID, per ordine e contratto e' id::text. Si
+                  --   casta l'id a text e MAI il testo a uuid — un cast del lato text
+                  --   solleverebbe a runtime sulla riga di un altro ramo.
+                  SELECT s_from.id, (p.uid)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'B'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.preventivi p  ON p.uid::text = cs.sorgente_uid
+                    JOIN vendite.commesse   cm ON cm.id       = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- C — Offerta -> Contratto (contratti.offerta_id)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (c.id)::text,
+                         NULL::varchar, 'C'::text
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'CONTRATTO'           AND s_to.attivo   IS TRUE
+                   WHERE c.offerta_id IS NOT NULL
+                  UNION ALL
+                  -- D — Offerta -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (o.id)::text,
+                         NULL::varchar, 'D'::text
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA'      AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'OFFERTA'
+                  UNION ALL
+                  -- E — Ordine -> Commessa (sorgente polimorfa)
+                  --   rev 2026-08-25: perimetro, vedi il ramo B. Qui la chiave e'
+                  --   id::text, non lo uid.
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'E'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.ordini   o  ON o.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- F — Contratto -> Commessa (sorgente polimorfa; 1:N)
+                  --   rev 2026-08-25: perimetro, vedi il ramo B. Chiave id::text.
+                  SELECT s_from.id, (c.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'F'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.contratti c  ON c.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse  cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- G — Commessa -> Fattura (via attivita fatturabili gia' fatturate; 1:N)
+                  --   rev 2026-08-25: il join a commesse e' il perimetro. Prima questo
+                  --   ramo emetteva af.commessa_id senza toccare vendite.commesse, che
+                  --   ha la RLS: l'estremo fattura era protetto (fatture_righe ce l'ha),
+                  --   l'estremo commessa no.
+                  SELECT DISTINCT
+                         s_from.id, (cm.id)::text,
+                         s_to.id, (f.id)::text,
+                         NULL::varchar, 'G'::text
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse cm ON cm.id = af.commessa_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'  AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+                  UNION ALL
+                  -- H — Ordine -> DDT (colonna diretta uuid ddt.sorgente_uid -> ordini.uid; 1:N)
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (d.id)::text,
+                         NULL::varchar, 'H'::text
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- R — DDT -> Reso (ramo INVERSO; colonna diretta uuid resi.sorgente_uid -> ddt.uid; 1:N)
+                  SELECT s_from.id, (d.id)::text,
+                         s_to.id, (r.id)::text,
+                         NULL::varchar, 'R'::text
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- N — Fattura rettificata -> Nota di credito (ramo di RITORNO; 1:N)
+                  --   ⭐ Ricostruito da vendite.fatture_righe.riga_rettificata_id, cioe' dal
+                  --   legame RIGA-RIGA, e non da vendite.fatture_rettifiche. Le due fonti
+                  --   dicono la stessa cosa ma non nello stesso momento: il ponte
+                  --   documentale lo popola un task della fase DEFINITIVA, DOPO la
+                  --   numerazione, mentre riga_rettificata_id esiste dalla generazione delle
+                  --   righe. Il grafo deve mostrare il legame quando c'e', non quando il
+                  --   documento e' chiuso.
+                  --   ⚠️ Entrambi gli estremi sono nodi FATTURA: e' il primo arco del grafo
+                  --   fra due nodi dello STESSO tipo. Un arco X->X non direbbe una
+                  --   genealogia, direbbe un ciclo: si esclude esplicitamente.
+                  --   Il perimetro c'e' gia': fatture_righe ha la RLS su entrambi i lati.
+                  --   DISTINCT come in G: N righe di rettifica producono UN arco.
+                  SELECT DISTINCT
+                         s_fat.id, (rr.fattura_id)::text,
+                         s_fat.id, (fr.fattura_id)::text,
+                         NULL::varchar, 'N'::text
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.fatture_righe rr ON rr.id = fr.riga_rettificata_id
+                    JOIN config.sorgenti s_fat ON s_fat.codice_interno = 'FATTURA' AND s_fat.attivo IS TRUE
+                   WHERE fr.riga_rettificata_id IS NOT NULL
+                     AND rr.fattura_id <> fr.fattura_id
+                  UNION ALL
+                  -- S — Reso -> Nota di credito (AVANZAMENTO del reso; 1:N) ⭐ rev 2026-08-25
+                  --   Si legge da vendite.resi_righe_accrediti, la tabella nata il
+                  --   2026-08-18 per registrare il FATTO dell'accredito «contro cosa».
+                  --   Soft-link calcolato, come G e N: nessuna tabella ponte.
+                  --   ⚠️ Il passaggio da vendite.resi NON e' decorativo, e' la regola di
+                  --   perimetro in testa: resi ha la RLS (rls_resi_ef_whitelist),
+                  --   resi_righe e resi_righe_accrediti no. Senza questo join l'arco
+                  --   esisterebbe anche per un reso che la whitelist dell'operatore
+                  --   nasconde. E' lo stesso perimetro dell'arco R.
+                  --   DISTINCT: piu' accrediti dello stesso reso confluiscono nella stessa
+                  --   nota (tre, nel caso reale del 2026-08-25) e devono dare UN arco.
+                  --   Il WHERE e' quello dell'arco G: prima dell'emissione la riga di
+                  --   fattura non esiste ancora, e l'arco deve comparire quando c'e'.
+                  --   Misurato: 5 accrediti registrati, 3 con la riga di fattura — due
+                  --   resi accreditati e non ancora fatturati non hanno arco, e lo
+                  --   prenderanno all'emissione. Il WHERE non e' una formalita'.
+                  --   ⭐ S NON e' un ramo di ritorno: e' l'avanzamento del reso, come H lo
+                  --   e' dell'ordine. Vedi la nota su is_ramo_inverso piu' sotto.
+                  SELECT DISTINCT
+                         s_from.id, (r.id)::text,
+                         s_to.id,   (fr.fattura_id)::text,
+                         NULL::varchar, 'S'::text
+                    FROM vendite.resi_righe_accrediti acc
+                    JOIN vendite.resi_righe rr           ON rr.id = acc.resi_riga_id
+                    JOIN vendite.resi r                  ON r.id  = rr.reso_id
+                    JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = acc.commessa_attivita_id
+                    JOIN vendite.fatture_righe fr        ON fr.id = af.fattura_riga_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'      AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+              )
+              SELECT a.from_tipo_id,
+                     a.from_uid,
+                     nf.codice AS from_codice,
+                     a.to_tipo_id,
+                     a.to_uid,
+                     nt.codice AS to_codice,
+                     nt.stato_codice_interno AS to_stato_codice_interno,
+                     nt.fase                 AS to_fase,
+                     nt.is_abortito          AS to_is_abortito,
+                     a.ruolo,
+                     a.arco,
+                     -- ⭐ rev 2026-08-20: LA PROPRIETA' VIVE QUI, UNA VOLTA SOLA.
+                     --   Prima la lettera 'R' era scritta a mano in TRE posti: due WHERE
+                     --   della summary e il calcolo dentro fn_documento_lineage. Il posto
+                     --   dimenticato non avrebbe dato NESSUN errore: solo la nota di
+                     --   credito comparsa come discendente forward, cioe' una FRONTIERA
+                     --   diversa su ogni riga di lista, in silenzio.
+                     -- ⚠️ «Inverso» non vuol dire «all'indietro nel tempo» (la nota nasce
+                     --   DOPO). Vuol dire ramo di RITORNO — nel reso torna la merce, nella
+                     --   nota il valore — e come tale non e' un avanzamento del flusso.
+                     -- ⛔ rev 2026-08-25: L'ARCO S RESTA FUORI DA QUESTO ELENCO, E LA
+                     --   SCELTA E' CONSAPEVOLE. S non e' un ritorno: e' l'avanzamento
+                     --   naturale del reso (la merce e' tornata, adesso si accredita),
+                     --   esattamente come H e' l'avanzamento dell'ordine. E' cio' che fa
+                     --   smettere al reso di essere una foglia e gli da' la nota di
+                     --   credito come FRONTIERA — l'informazione che prima mancava del
+                     --   tutto. Marcarlo inverso lo lascerebbe frontiera di se' stesso,
+                     --   cioe' al punto di partenza.
+                     --   Chi volesse aggiungerlo «per simmetria» faccia prima girare il
+                     --   test 29 di test-documento-lineage-v1.sql: diventa rosso apposta.
+                     (a.arco IN ('R', 'N')) AS is_ramo_inverso,
+                     nf.natura_doc_codice AS from_natura_doc_codice,
+                     nt.natura_doc_codice AS to_natura_doc_codice
+                FROM archi a
+                LEFT JOIN vendite.vw_documento_lineage_nodi nf ON nf.tipo_id = a.from_tipo_id AND nf.uid = a.from_uid
+                LEFT JOIN vendite.vw_documento_lineage_nodi nt ON nt.tipo_id = a.to_tipo_id   AND nt.uid = a.to_uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                  'Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R e N '
+                  '(rami di ritorno) + S. Chiave nodo polimorfa (tipo_id, uid::text). Nodo target '
+                  'decorato via vw_documento_lineage_nodi. security_invoker=on. Base di '
+                  'vw_documento_lineage e fn_documento_lineage. '
+                  '⭐ rev 2026-08-25 — ARCO S: reso -> nota di credito, letto da '
+                  'vendite.resi_righe_accrediti (la tabella nata il 2026-08-18 per registrare il '
+                  'FATTO dell''accredito «contro cosa»), via commessa_attivita_id -> '
+                  'attivita_fatturabili -> fatture_righe. Soft-link calcolato come G e N, nessuna '
+                  'tabella ponte. Prima il grafo si fermava sul reso: la nota era collegata alla '
+                  'fattura che rettifica e alla commessa, ma non al reso, e i due rami di ritorno '
+                  '— la merce che torna e il valore che torna — non si toccavano mai. '
+                  '⛔ S NON E'' UN RAMO DI RITORNO, ed e'' una scelta: «inverso» vuol dire ramo di '
+                  'RITORNO, un verso che il grafo forward non percorre; S invece e'' '
+                  'l''AVANZAMENTO del reso (la merce e'' tornata, adesso si accredita), come H lo '
+                  'e'' dell''ordine. La conseguenza voluta e'' che il reso smette di essere una '
+                  'foglia e prende la nota come FRONTIERA. '
+                  '⛔ NON si aggiunge un arco «reso -> fattura ORIGINALE», benche'' '
+                  'resi_righe_accrediti.fattura_riga_rettificata_id lo renda banale: sarebbe '
+                  'forward, i due nodi FATTURA finirebbero allo stesso livello e con lo stesso '
+                  'pipeline_rank, e la frontiera del reso si deciderebbe sul confronto '
+                  'lessicografico fra due uid testuali. Il triangolo si chiude gia'' via N. '
+                  '⛔ REGOLA DI PERIMETRO (rev 2026-08-25): ogni ramo passa dalle TABELLE-TESTATA '
+                  'dei due documenti che collega, perche'' sono quelle che portano la RLS. Le '
+                  'tabelle-ponte (commesse_sorgenti, attivita_fatturabili, resi_righe, '
+                  'resi_righe_accrediti) hanno relrowsecurity = f e non danno perimetro: un ramo '
+                  'che si ferma li'' produce un arco verso un documento che il chiamante non vede, '
+                  'e la decorazione non lo ferma perche'' i join ai nodi sono LEFT. Fino al '
+                  '2026-08-24 lo facevano B, E, F (entrambi gli estremi, via commesse_sorgenti) e '
+                  'G (la commessa, via attivita_fatturabili). ⚠️ La chiave di '
+                  'commesse_sorgenti.sorgente_uid e'' POLIMORFA (key_selector): uid per il '
+                  'preventivo, id::text per ordine e contratto — i tre join non si copiano l''uno '
+                  'dall''altro, e si casta l''id a text, mai il testo a uuid. '
+                  '⭐ is_ramo_inverso E'' CALCOLATO QUI, una volta sola: prima la lettera R era '
+                  'ripetuta in tre posti (due WHERE della summary e fn_documento_lineage) e il '
+                  'terzo dimenticato non avrebbe rotto niente di visibile. '
+                  'Espone anche from/to_natura_doc_codice, per distinguere i due nodi FATTURA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico: si riapplica 20260821-02, e con essa
+              --    tornerebbero i quattro rami senza perimetro RLS. Un rollback di
+              --    questo changeSet da solo riaprirebbe un buco di visibilita', non
+              --    solo toglierebbe un arco: e' il motivo per cui non si automatizza.
+              SELECT 1;
