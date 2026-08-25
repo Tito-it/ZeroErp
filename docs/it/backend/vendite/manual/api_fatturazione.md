@@ -4,7 +4,8 @@
 
 Documentare gli endpoint di **comando** del cockpit di fatturazione (Fase C): i
 verbi «Fattura» e «Rendi definitive» del mese di competenza, la numerazione del
-singolo lotto, la ristampa massiva e la lettura degli esiti. Sono le azioni che
+singolo lotto, la ristampa massiva, la **finestra di numerazione** e la lettura
+degli esiti. Sono le azioni che
 rendono azionabile la Dashboard Competenza, riusando **le stesse primitive del
 batch** (I-1: un solo processo, due modi di avvio).
 
@@ -35,7 +36,7 @@ richiedono `Idempotency-Key: <uuid>` (header). Area funzionale: `vendite`.
 
 - `POST /api/v1/vendite/fatturazione/run/` · permesso `genera_fatture_lotti`
 - Body: `{ "competenza_mese": "YYYY-MM-DD" [, "fino_a_stato": "<codice>"]
-  [, "gruppi": ["<gruppo_key>", …]] }`
+  [, "gruppi": ["<gruppo_key>", …]] [, "data_documento": "YYYY-MM-DD"] }`
 - Corsia **differita**: si ferma a **EMESSA** (D-1), perimetro cumulativo
   `competenza ≤ M`. Scope emittente **catturato** all'accodamento.
 
@@ -83,7 +84,7 @@ oneri di una commessa. Un solo verbo, due perimetri: il processo è identico
 ### 3. «Rendi definitive competenza» (C-4 perimetro, non bloccante)
 
 - `POST /api/v1/vendite/fatturazione/numera/` · permesso `numera_fatture_lotti`
-- Body: `{ "competenza_mese": "YYYY-MM-DD" }`
+- Body: `{ "competenza_mese": "YYYY-MM-DD" [, "data_documento": "YYYY-MM-DD"] }`
 - Accoda un job `FATTURAZIONE_NUMERA`: esegue lo step DEFINITIVA sui **lotti
   EMESSA** del mese. Polling via `run/<job_id>/`.
 
@@ -128,6 +129,25 @@ che ha due chiamanti e potrebbe cambiare per un'altra ragione. L'id crescente
 già stata fatturata, quindi la fattura rettificata nasce sempre prima della nota.
 ⛔ Il caso **cross-lotto** deve invece fermarsi: è la ragione della guardia.
 
+### ⭐ …e i LOTTI si numerano in ordine di DATA DOCUMENTO (2026-08-25)
+
+⚠️ Due ordinamenti diversi che si somigliano, e vanno tenuti distinti: dentro un
+lotto le **fatture** vanno per id crescente (qui sopra, è l'ordine di dipendenza
+delle rettifiche); fra loro i **lotti** vanno per **data documento**
+(`min(f.data)` delle fatture senza numero, poi `id`), perché il cancello di
+`fn_get_next_progressivo` rifiuta una data anteriore all'ultimo numero emesso sul
+sezionale.
+
+🔴 Non è teoria: il giro del **2026-08-05** ha numerato sei lotti in un solo atto
+e ha prodotto un'inversione lo stesso (numero 2 al 21/07, numero 3 al 19/06),
+proprio perché ordinava per id di lotto — cioè nell'ordine in cui i lotti sono
+**nati**, non in quello in cui i loro documenti sono **datati**.
+
+Sede: `VenditeRepository.list_lotti_numerabili`, con il frammento SQL condiviso
+`db/_data_documento_sql.py` — lo stesso che alimenta `data_corrente` della
+finestra di numerazione. Due copie e il dialog racconterebbe un ordine diverso da
+quello con cui il giro numera davvero.
+
 ### ⭐ Il codice del DB arriva intatto all'operatore (2026-08-21)
 
 `_run_per_fattura_task` non appiattisce più ogni `DatabaseError` su
@@ -141,7 +161,40 @@ Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
 ### 4. «Rendi definitive» singolo lotto (C-4, sincrono)
 
 - `POST /api/v1/vendite/fatturazione/lotti/<lotto_id>/numera/` · permesso `numera_fatture_lotti`
-- Body: `{}`. Guard scope (404 fuori scope) + guard **EMESSA** (409 se non EMESSA).
+- Body: `{}` oppure `{ "data_documento": "YYYY-MM-DD" }`. Guard scope (404 fuori
+  scope) + guard **EMESSA** (409 se non EMESSA).
+
+### ⭐ `data_documento`: la data si DICHIARA, e non è un sinonimo di «oggi» (2026-08-25)
+
+Il parametro è **facoltativo su tutti e tre i verbi**, e assente non vuol dire
+«usa oggi»: vuol dire **nessuna dichiarazione**, e allora la data la decide la
+politica del registro (`vendite.registri_fatturazione.politica_data_documento`:
+`OGGI` oppure `FINE_MESE_COMPETENZA`) nel momento in cui la testata nasce.
+
+| verbo | cosa fa `data_documento` |
+| --- | --- |
+| `fatturazione/run/` (BE-1) | è scritta sui **lotti che il giro crea**, come i `gruppi`: alla creazione, non su un lotto indicato per id |
+| `fatturazione/numera/` (BE-2) | **una data per l'intero atto**: vale per tutti i lotti che quel giro numera, non una per lotto |
+| `lotti/<id>/numera/` (BE-2) | vale per quel lotto |
+
+⛔ **Sui due verbi di numerazione la data si applica PRIMA di numerare**, via
+`vendite.fn_imposta_data_documento_lotto`, che in un atto solo scrive la data sul
+lotto, la propaga alle fatture **non ancora numerate** e **rigenera i loro piani
+rate**. La rigenerazione non è un contorno: le scadenze si calcolano da
+`fatture.data` e il guard D-K verifica la **somma** delle rate — che non cambia,
+mentre cambiano le date. Una data nuova con le rate vecchie **passerebbe in
+silenzio**.
+
+⚠️ Le fatture **già numerate si saltano e si contano**: il caso «lotto numerato a
+metà» esiste nei dati, e rifiutare l'intero lotto renderebbe irrisolvibile
+proprio il caso per cui la funzione esiste.
+
+⚠️ **Due transazioni, non una.** La dichiarazione e la numerazione sono atti
+separati: se la numerazione poi fallisce (guard D-K, padre di una nota ancora
+senza numero), **la data e le rate rigenerate restano**. Non è un difetto da
+correggere avvolgendo tutto in un `atomic` — il runner tiene apposta il lavoro
+parziale degli step già fatti — ed è la ragione per cui l'esito porta
+`aggiornate`/`rate_rigenerate` **anche quando il giro si ferma**.
 
 ### 5. Ristampa massiva lotto (C-8, sincrono)
 
@@ -158,6 +211,41 @@ Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
 - Riassunto per corsia da `maintenance.job_run_log` (jobname
   `run_fatturazione_batch*`/`draina_coda_stampa`/`draina_coda_lavori`) + conteggi
   coda stampa per stato **scoped all'operatore** (JOIN a `vendite.fatture`).
+
+### 7. Finestra di numerazione (BE-5, sola lettura, 2026-08-25)
+
+- `GET /api/v1/vendite/fatturazione/finestra-numerazione/?lotto_id=<id>`
+- `GET /api/v1/vendite/fatturazione/finestra-numerazione/?competenza_mese=YYYY-MM-DD`
+- **Esattamente uno** dei due parametri (entrambi o nessuno → `E_VALIDATION_INPUT`).
+
+Risponde a due domande su due perimetri: con quale data si può numerare, e da
+quale data i documenti partono **adesso**.
+
+```json
+{ "data": {
+    "lotto_id": 1278, "competenza_mese": null,
+    "data_documento": null,        // la DICHIARAZIONE sul lotto (spesso assente)
+    "data_corrente": "2026-08-03", // la data che i documenti da numerare portano oggi
+    "data_minima":  "2026-08-23"   // il PAVIMENTO del sezionale
+} }
+```
+
+⭐ **Non è un abbellimento.** Sul registro Back-office la politica è
+`FINE_MESE_COMPETENZA`: ogni lotto di competenza **arretrata** nasce con una data
+anteriore all'ultimo numero emesso, quindi senza questa lettura il dialog
+proporrebbe **ogni volta** una data che il DB rifiuta, e l'operatore imparerebbe
+a leggere l'errore invece della targa.
+
+⛔ **È una TARGA, non un lucchetto.** `fn_get_data_minima_numerabile_lotto` è
+SECURITY INVOKER su `vendite.fatture`, che ha la RLS: sotto un perimetro
+ristretto il minimo esce **più basso del vero** (fail-open, e la funzione DB lo
+dichiara). Il rifiuto vero resta del cancello in `fn_get_next_progressivo`, che
+legge il **contatore** — tabella senza RLS. Chi usasse questa risposta AL POSTO
+del cancello starebbe sostituendo un presidio con un suggerimento.
+
+⚠️ `data_minima` a `null` = nessun pavimento (su quei sezionali non è ancora
+stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
+`null` = nel perimetro non c'è niente da numerare.
 
 ## Output
 
@@ -176,10 +264,16 @@ Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
 ```
   Stati: `PENDING` → `IN_CORSO` → `FATTO` | `ERRORE` | `ANNULLATO`. Il `result`
   del giro riporta `lane` (terne emittibili), `falliti`; quello della
-  numerazione perimetro `lotti`/`numerati`/`falliti`.
+  numerazione perimetro `lotti`/`numerati`/`falliti` (più `data_documento`, la
+  data con cui l'atto è stato compiuto: a giro finito è l'unico posto dove si
+  legge).
 - Ristampa: `{ "data": { "lotto_id": 117, "accodate": 4 } }`
 - Numerazione singolo lotto: esito dello step (`stato_doc_fiscale_id`,
-  `step_eseguiti`, `motivo_stop`).
+  `step_eseguiti`, `motivo_stop`). ⭐ Con `data_documento` nel body l'esito porta
+  anche `data_documento`, `aggiornate`, `saltate_numerate`, `rate_rigenerate`:
+  **le due conseguenze che l'operatore non si aspetta** sono un lotto numerato a
+  metà e delle scadenze che si sono spostate. Chi non le mostra le nasconde.
+- Finestra di numerazione: vedi §7.
 - Esiti: `{ "data": { "giri": [ { "jobname": "...", "last_ok": true, "last_run_at": "..." } ], "coda_stampa": { "PENDING": 2, "FATTO": 5 } } }`
 
 ## Regole
@@ -196,6 +290,18 @@ Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
 - **Gate fiscale I-7**: numerazione (atto fiscale) sempre dietro permesso
   `numera_fatture_lotti`, distinto da `genera_fatture_lotti`; la ristampa è gated
   a **DEFINITIVA** per non numerare mai via backstop.
+- **La data documento non entra nella chiave di business della coda**
+  (`{job_type}:{competenza}:{scope_key}`): due «Rendi definitive» vivi sullo
+  stesso mese e scope restano un doppione anche con date diverse — la dedup
+  difende l'**atto fiscale**, non il parametro.
+- **Validata all'endpoint, non solo nel worker**: una data malformata torna 400 a
+  chi preme il pulsante invece di diventare un job fallito da leggere nei log un
+  minuto dopo. ⛔ E viene **riscritta** in ISO, non solo controllata: nel payload
+  della coda deve finire una forma sola, quella che il worker sa rileggere.
+  ⚠️ Il worker la rilegge con `parse_data_iso` e **non** con
+  `parse_competenza_mese`: la seconda fa `.replace(day=1)` — perché una
+  competenza *è* un mese — e trasformerebbe un 25/08 dichiarato in un 01/08
+  senza sollevare niente.
 - **Worker non schedulato** = job resta PENDING: il polling FE ha un cap
   (~3 min) e avvisa «in coda» invece di attendere all'infinito.
 
@@ -211,6 +317,8 @@ Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | POST senza header `Idempotency-Key` |
 | `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**) | 409 | numerazione di un documento che rettifica righe di una fattura **senza numero** (o non visibile: il guard è fail-closed sulla RLS) |
 | `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | 409 | documento incoerente — totali, riepiloghi IVA o piano rate (sei condizioni, vedi la [guida](../../../guide/fatturazione.md)) |
+| `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` | 400 | la data del documento è anteriore all'ultimo numero già emesso sul sezionale. Sollevato dal **cancello** (`fn_get_next_progressivo`, sotto l'advisory lock) e, in anticipo, da `fn_imposta_data_documento_lotto`. `ui_action` **`highlight_form_fields`** e non il banner di default: il DB manda `column_name = data_documento`, cioè nomina il campo che l'operatore ha davanti |
+| `E_FATTURA_DATA_NON_MODIFICABILE` | 409 | si è tentato di cambiare la data di una fattura **già numerata** (trigger `trg_fatture_a10_guard_data_numerata_upd`) |
 | `E_TASK_FATTURA` | 400 | fallimento su singola fattura **che il database non ha nominato** (errore Python, guasto tecnico). Se il codice di dominio c'è, arriva quello |
 
 ## Dipendenze DB
@@ -229,6 +337,14 @@ Dettagli: [api_pipeline_task.md](api_pipeline_task.md).
   `fn_list_commesse_emittibili`, `fn_emit_attivita_fatturabili_da_commessa`,
   `fn_select_attivita_fatturabili`. Assenza di righe/`NULL` = nessuna
   restrizione = comportamento del giro schedulato.
+- **Data documento** (cantiere 2026-08-25): `registri_fatturazione.politica_data_documento`,
+  `fatturazione_lotti.data_documento`, `registri_fatturazione_progressivi.ultima_data`
+  (il **pavimento**, su tabella **senza RLS**) e le funzioni
+  `script.fn_data_operativa`, `vendite.fn_calcola_data_documento`,
+  `fn_get_data_minima_numerabile[_lotto]`, `fn_imposta_data_documento_lotto`,
+  `trgfn_fatture_guard_data_numerata`. Il cancello vive dentro
+  `fn_get_next_progressivo`, **dopo** l'advisory lock: letto prima sarebbe
+  soggetto a corsa.
 - **RLS operatore** su `fatturazione_lotti`/`fatture` (policy
   `rls_*_ef_whitelist`, GUC `app.current_user_id` + `app.ruolo_applicativo`).
 
@@ -245,3 +361,13 @@ guide funzionali `docs/it/guide/gestione-code-di-lavoro.md` +
 `gruppi` il comportamento — corsia, chiave di dedup, esito — è **bit-identico**
 a prima. Substrato DB `20260727-10..19`; brief BE/FE
 `dev/work-done/brief-be-fe-emissione-fattura-mirata.md`.
+
+**Data documento e cancello di sequenza (2026-08-25)**: additivo su tutti e tre i
+verbi — senza `data_documento` il comportamento è quello di prima, con la sola
+differenza che la data della testata non è più `current_date` (in **UTC**, quindi
+sbagliata di un giorno per tutto ciò che nasceva dopo mezzanotte) ma il risultato
+di `fn_calcola_data_documento`. Nuovo endpoint di sola lettura
+`fatturazione/finestra-numerazione/`. Brief:
+`dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md` (§8 le
+consegne BE/FE, §12 il consuntivo); analisi con le misure sui dati veri:
+`analisi-numerazione-fattura-data-e-sequenza.md`.

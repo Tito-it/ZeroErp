@@ -1,9 +1,14 @@
 # Brief DB — la data del documento e la sequenza del registro
 
-> ✅ **STATO: CANTIERE CHIUSO** (2026-08-25). DB **18 changeSet applicati** e
-> **14 consegne su 14** (§11); BE e FE **10 su 10 scritte**, con la sola colonna
-> di lista di FE-3 in attesa di una riga di seed (§12). Resta il **collaudo
-> in-app**, che è di Tid.
+> ✅ **STATO: CANTIERE CHIUSO E COLLAUDATO** (2026-08-25). DB **18 changeSet
+> applicati** e **14 consegne su 14** (§11); BE e FE **10 su 10** (§12); seed
+> della colonna di lista arrivato dal team DB; **collaudo in-app superato da
+> Tid** sulle due superfici che contano — la riga scelta dalla Dashboard
+> Competenza e la numerazione avanzata dal drawer del lotto (§12.7).
+>
+> ⛔ **NON spostare questo file in `work-done/`**: **15 `COMMENT` dentro il
+> database** citano questo percorso e si rigenerano a ogni migrate — spostarlo
+> renderebbe morti 15 riferimenti che non si correggono editando i file. §12.8.
 >
 > **Destinatario:** team DB (`dev/db-tid`), poi backend e frontend. BE e FE
 > hanno atteso i prerequisiti DB prima di partire
@@ -1851,12 +1856,44 @@ I tre guard nuovi provati uno per uno; il mapper confrontato riga per riga con
 la tabella; l'endpoint interrogato via HTTP dopo il reload di gunicorn (401 =
 c'è ed è protetto).
 
-### 12.7 Cosa resta
+### 12.7 ✅ Il collaudo in-app, e la chiusura (2026-08-25)
 
-* **FE-3** — la colonna «data documento» nella lista lotti: il valore è nel
-  payload, manca la riga di seed in `lista_colonna.csv` per `vendite.lotti`.
-  Passata al team DB.
-* **Il collaudo in-app**, che è di Tid: il dialog su un lotto singolo, sull'atto
-  di competenza, e il rifiuto del cancello su una delle tre `EMESSA` datate
-  prima del pavimento — che è il primo caso reale di
-  `fn_imposta_data_documento_lotto`.
+**Tid, in applicazione:** *«ora chiede le date correttamente, sia quando scelgo
+la riga da competenza fatturazione, sia quando dal lotto avanzo la
+numerazione»*. Sono **le due superfici che contano**, ed erano quelle a rischio
+per ragioni diverse: la prima perché il dialog ha **preso il posto** della
+conferma secca (se avesse perso il testo del peso dell'operazione si sarebbe
+visto lì), la seconda perché passa dal composable condiviso col kebab della
+lista, cioè da uno stato che vive in una sede sola per due consumatori.
+
+**FE-3 è completo**: la riga di seed è arrivata dal team DB
+(`ui.lista_colonna` id 552), il payload la porta da BE-1 e la whitelist di
+ordinamento la accetta. ⚠️ La colonna sarà **vuota** su tutti i lotti finora
+esistenti, e non è un difetto: `data_documento` è la **dichiarazione**, e nessuno
+dei lotti già chiusi ne ha una. Si riempirà dal primo giro fatto col dialog.
+
+🟡 **Non collaudato, e non blocca**: il **rifiuto del cancello** su una delle tre
+`EMESSA` datate prima del pavimento. È il primo caso reale di
+`fn_imposta_data_documento_lotto`, ed è l'unica occasione di vedere il messaggio
+del cancello con il suo bersaglio su dati veri. Provato in transazione (§12.6),
+mai a video.
+
+### 12.8 ⛔ Perché questo brief NON si sposta in `work-done/`
+
+Chiuso non vuol dire trasferito. **15 `COMMENT` dentro il database** citano
+`docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md`:
+
+| oggetto | |
+| --- | --- |
+| `script.fn_data_operativa()` · `vendite.fn_calcola_data_documento` · `fn_get_data_minima_numerabile[_lotto]` · `fn_imposta_data_documento_lotto` · `fn_get_next_progressivo` · `fn_assign_numero_fattura` · `fn_numera_fattura_opz_emessa` · `fn_get_or_create_fattura_header` · `trgfn_fatture_guard_data_numerata` | funzioni |
+| `fatture` · `fatturazione_lotti` · `registri_fatturazione` (×2) · `registri_fatturazione_progressivi` | tabelle |
+
+⚠️ Quei percorsi **non stanno nei file**: stanno nei `COMMENT ON`, e
+`scripts/gen_db_docs.py` li riscrive nella doc auto-generata a ogni migrate.
+Spostare il brief non li corregge — li rende **morti**, e il guardrail
+«riferimenti morti» li troverebbe dopo, in CI, su una PR che non c'entra nulla.
+Rimediare vorrebbe dire **15 changeSet** per riscrivere altrettanti `COMMENT`.
+
+⭐ Il file resta quindi in `work-in-progress/` **con lo stato scritto in testa**.
+Se un giorno la convenzione dovesse prevalere, il trasferimento è un cantiere DB
+suo — non un `git mv`.
