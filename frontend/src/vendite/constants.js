@@ -166,3 +166,19 @@ export const FONTE_QUANTITA_ATTESA = Object.freeze({
   LETTURE: 'LETTURE',
   DERIVATA_COMPONENTI: 'DERIVATA_COMPONENTI',
 })
+
+// I due modi del dialog della data documento (`NumerazioneDataDialog`).
+// ⭐ Qui e non dentro il componente: `defineProps` non puo' riferire una
+//    costante dichiarata nello scope di `<script setup>` (viene issata fuori),
+//    e senza un `validator` un refuso nel valore ricadrebbe in SILENZIO sul
+//    modo `NUMERA` — la direzione pericolosa, in cui il dialog di creazione
+//    pretende una data e annuncia «niente da numerare» su lotti che non
+//    esistono ancora.
+export const MODO_DATA_DOCUMENTO = Object.freeze({
+  // Si sta per numerare: data obbligatoria, e confermare puo' SPOSTARE le date
+  // dei documenti (e rigenerarne le scadenze).
+  NUMERA: 'numera',
+  // Si stanno per creare i lotti: data FACOLTATIVA — vuota vuol dire «la
+  // decide la politica del registro», che non e' «oggi».
+  CREAZIONE: 'creazione',
+})

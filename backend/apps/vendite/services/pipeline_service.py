@@ -81,6 +81,7 @@ def _build_pipeline_params(
     dry_run: bool,
     tipo_lotto: str,
     gruppi: tuple[str, ...] | None = None,
+    data_documento: date | None = None,
 ) -> LottoPipelineParams:
     return LottoPipelineParams(
         lotto_id=lotto_id,
@@ -94,6 +95,7 @@ def _build_pipeline_params(
         dry_run=dry_run,
         tipo_lotto=tipo_lotto,
         gruppi=gruppi,
+        data_documento=data_documento,
     )
 
 
@@ -149,6 +151,7 @@ def run_lotto_pipeline_until_done(
     tipo_lotto: str = "MASSIVO",
     fino_a_stato: str | None = None,
     gruppi: tuple[str, ...] | None = None,
+    data_documento: date | None = None,
 ) -> dict[str, object]:
     """Entrypoint servizio Python per eseguire la catena lotto fino a conclusione.
 
@@ -159,7 +162,12 @@ def run_lotto_pipeline_until_done(
     `gruppi` (emissione mirata, D-3): chiavi dei gruppi fatturabili da lavorare.
     Vengono PERSISTITE sul lotto alla creazione, non passate agli step: da li'
     in poi il perimetro vive nel `LottoContext` e sopravvive ai rerun. None =
-    nessuna restrizione (giro di massa, comportamento storico)."""
+    nessuna restrizione (giro di massa, comportamento storico).
+
+    `data_documento` (BE-1, brief numerazione): la data dichiarata per i
+    documenti del lotto. Scritta sul lotto alla creazione, come i gruppi. None =
+    NON dichiarata, e la decide la politica del registro — non e' un sinonimo
+    di «oggi»."""
     _validate_pipeline_lookups(
         tipo_doc_fiscale_id=tipo_doc_fiscale_id,
         utility_id=utility_id,
@@ -198,10 +206,119 @@ def run_lotto_pipeline_until_done(
         dry_run=dry_run,
         tipo_lotto=tipo_lotto,
         gruppi=gruppi,
+        data_documento=data_documento,
     )
     if fino_a_stato_id is not None:
         params = replace(params, fino_a_stato_doc_fiscale_id=fino_a_stato_id)
     return runner.run_lotto_until_done(params)
+
+
+# Scopo: Carica un lotto NELLO SCOPE dell'operatore, con il 404 unificato dei
+#        verbi per-lotto (fuori scope e inesistente danno la stessa risposta,
+#        come la RLS — api.md §scope).
+# ⭐ Estratto alla 2ª occorrenza (regola del 2): lo usano il guard di stato dei
+#    verbi (`_get_lotto_in_stato`) e la lettura della finestra di numerazione,
+#    che NON vuole un gate di stato — e' una GET, e rifiutare un lotto DRAFT
+#    con un 409 sarebbe una risposta a un'altra domanda.
+def _get_lotto_visibile(
+    *, lotto_id: int, auth_user_id: int | None,
+) -> dict[str, object]:
+    from apps.vendite.db.vendite_repository import VenditeRepository
+
+    lotto = VenditeRepository().get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
+    ErrorManager.require(
+        lotto is not None,
+        code="E_LOTTO_NON_TROVATO",
+        message="Lotto non trovato.",
+        detail=f"lotto_id={lotto_id}",
+    )
+    assert lotto is not None
+    return lotto
+
+
+# Scopo: BE-5 — LA FINESTRA DI NUMERAZIONE di un perimetro: con quale data si
+#        puo' numerare, e da quale data i documenti partono ADESSO.
+#        Risponde a due perimetri con una funzione sola, perche' e' la stessa
+#        domanda su due insiemi: un LOTTO (dialog «Rendi definitive» del
+#        drawer) oppure un MESE DI COMPETENZA (atto di perimetro, che tocca N
+#        lotti e vuole la data che li accontenta tutti).
+#
+#        Ritorna quattro cose, tutte ISO o `None`:
+#          `data_minima`   il PAVIMENTO — prima di quella data il DB rifiuta;
+#                          `None` = nessun numero ancora emesso su quei
+#                          sezionali, quindi nessun limite;
+#          `data_corrente` la data che i documenti da numerare portano OGGI;
+#                          `None` = non c'e' niente da numerare;
+#          `data_documento` la DICHIARAZIONE sul lotto (spesso assente: vince
+#                          la politica del registro). Solo sul perimetro lotto;
+#          piu' l'eco del perimetro chiesto.
+#
+# ⭐ PERCHE' ESISTE, e non e' un abbellimento. Con la politica
+#    `FINE_MESE_COMPETENZA` sul Back-office, ogni lotto di competenza ARRETRATA
+#    nasce con una data anteriore all'ultimo numero emesso: senza questa
+#    lettura il dialog proporrebbe ogni volta una data che il DB rifiuta, e
+#    l'operatore imparerebbe a leggere l'errore invece della targa.
+#
+# ⚠️ E' una TARGA, non un lucchetto. La funzione DB e' SECURITY INVOKER su
+#    `vendite.fatture`, che ha la RLS: sotto un perimetro ristretto il minimo
+#    esce PIU' BASSO del vero. Il rifiuto vero resta del cancello in
+#    `fn_get_next_progressivo`, che legge il contatore — tabella senza RLS.
+#    Chi usasse questa risposta AL POSTO del cancello starebbe sostituendo un
+#    presidio con un suggerimento.
+def finestra_numerazione(
+    *,
+    lotto_id: int | None = None,
+    competenza_mese: date | None = None,
+    auth_user_id: int | None = None,
+) -> dict[str, object]:
+    # Esattamente uno dei due: senza perimetro la domanda non ha risposta, con
+    # entrambi ne avrebbe due e non si saprebbe quale si e' ottenuta.
+    ErrorManager.require(
+        (lotto_id is None) != (competenza_mese is None),
+        code="E_VALIDATION_INPUT",
+        message="Indicare `lotto_id` oppure `competenza_mese`, non entrambi.",
+        detail=f"lotto_id={lotto_id} competenza_mese={competenza_mese}",
+    )
+    repo = VenditePipelineRepository()
+
+    # Scopo: la risposta, in UNA forma sola per i due perimetri — cosi' una
+    #        chiave nuova si aggiunge in un posto e non in due.
+    def _risposta(*, minima, corrente, data_documento=None) -> dict[str, object]:
+        return {
+            "lotto_id": lotto_id,
+            "competenza_mese": competenza_mese.isoformat() if competenza_mese else None,
+            "data_documento": data_documento,
+            "data_corrente": corrente.isoformat() if corrente else None,
+            "data_minima": minima.isoformat() if minima else None,
+        }
+
+    if lotto_id is not None:
+        lotto = _get_lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
+        return _risposta(
+            minima=repo.get_data_minima_numerabile_lotto(lotto_id),
+            corrente=repo.get_data_documento_corrente(lotto_id=lotto_id),
+            data_documento=lotto.get("data_documento"),
+        )
+
+    assert competenza_mese is not None
+    # Il perimetro dell'atto sono i lotti EMESSA di quel mese: gli stessi che
+    # `list_lotti_numerabili` restituisce. Config rotta -> fail-loud, non zero
+    # lotti silenziosi (stessa disciplina dell'handler di coda).
+    emessa_id = repo.get_stato_doc_fiscale_id("EMESSA")
+    ErrorManager.require(
+        emessa_id is not None,
+        code="E_PIPELINE_VALIDATION",
+        message="Stato EMESSA non configurato in config.stati_doc_fiscale.",
+    )
+    assert emessa_id is not None
+    return _risposta(
+        minima=repo.get_data_minima_numerabile_competenza(
+            competenza_mese=competenza_mese, stato_doc_fiscale_id=emessa_id,
+        ),
+        corrente=repo.get_data_documento_corrente(
+            competenza_mese=competenza_mese, stato_doc_fiscale_id=emessa_id,
+        ),
+    )
 
 
 # Scopo: Guard comune dei verbi per-lotto (C-4 numera, C-8 ristampa — estratto
@@ -219,16 +336,7 @@ def _get_lotto_in_stato(
     error_code: str,
     error_message: str,
 ) -> dict[str, object]:
-    from apps.vendite.db.vendite_repository import VenditeRepository
-
-    lotto = VenditeRepository().get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
-    ErrorManager.require(
-        lotto is not None,
-        code="E_LOTTO_NON_TROVATO",
-        message="Lotto non trovato.",
-        detail=f"lotto_id={lotto_id}",
-    )
-    assert lotto is not None
+    lotto = _get_lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
 
     stato_id = VenditePipelineRepository().get_stato_doc_fiscale_id(stato_codice)
     ErrorManager.require(
@@ -261,7 +369,10 @@ def _get_lotto_in_stato(
 #        Guard: scope operatore + stato EMESSA (via _get_lotto_in_stato — il
 #        gate fiscale non sta dietro lo stesso pulsante della pre-fiscale).
 def numera_lotto(
-    *, lotto_id: int, auth_user_id: int | None = None,
+    *,
+    lotto_id: int,
+    auth_user_id: int | None = None,
+    data_documento: date | None = None,
 ) -> dict[str, object]:
     _get_lotto_in_stato(
         lotto_id=lotto_id,
@@ -274,11 +385,43 @@ def numera_lotto(
         ),
     )
 
+    # ⭐ LA DATA SI DICHIARA PRIMA DI NUMERARE (BE-2, brief numerazione §4
+    #    DB-11), e l'ordine e' un requisito, non una comodita': la funzione
+    #    madre riscrive `fatture.data` e RIGENERA i piani rate, e le rate devono
+    #    quadrare quando il guard D-K le guarda — cioe' dentro la numerazione.
+    #    Farlo dopo vorrebbe dire cambiare la data di un documento gia' numerato,
+    #    che il trigger `trg_fatture_a10_guard_data_numerata_upd` rifiuta.
+    # ⚠️ Se la data e' sotto il pavimento del sezionale, la funzione madre
+    #    solleva SUBITO — con lo stesso codice del cancello — invece di lasciare
+    #    che il giro si fermi a meta' lotto.
+    # ⚠️ `None` = nessuna dichiarazione: non si tocca niente e valgono le date
+    #    che i documenti gia' portano. Non e' «usa oggi».
+    # ⛔ I DUE ATTI NON SONO NELLA STESSA TRANSAZIONE, e va saputo: se la
+    #    numerazione poi fallisce (guard D-K, padre di una nota ancora senza
+    #    numero), la data e le rate rigenerate RESTANO. Non e' un difetto da
+    #    correggere avvolgendo tutto in un `atomic`: il runner tiene apposta il
+    #    lavoro parziale degli step gia' fatti, e un rollback esterno lo
+    #    butterebbe via. E' invece il motivo per cui l'esito porta
+    #    `aggiornate`/`rate_rigenerate` ANCHE quando il giro si ferma — chi
+    #    legge deve poter sapere che la data si e' mossa lo stesso.
+    esito_data: dict[str, int] | None = None
+    if data_documento is not None:
+        esito_data = VenditePipelineRepository().imposta_data_documento_lotto(
+            lotto_id=lotto_id, data_documento=data_documento,
+        )
+
     # Esegue la catena fino a DEFINITIVA: da EMESSA è esattamente lo step
     # DEFINITIVA (numera + accoda stampa), poi si ferma (DEFINITIVA chiude il lotto).
-    return run_lotto_pipeline_until_done(
+    esito = run_lotto_pipeline_until_done(
         lotto_id=lotto_id, fino_a_stato="DEFINITIVA",
     )
+    # ⚠️ L'esito della dichiarazione viaggia con quello della numerazione, e non
+    #    e' decorazione: `saltate_numerate` e `rate_rigenerate` sono le due
+    #    conseguenze che l'operatore non si aspetta — un lotto numerato a meta'
+    #    e delle scadenze che si sono spostate. Chi non le mostra le nasconde.
+    if esito_data is not None:
+        esito = {**esito, "data_documento": data_documento.isoformat(), **esito_data}
+    return esito
 
 
 # Scopo: L'ELENCO paginato delle segnalazioni di un lotto (BE-4 del brief liste

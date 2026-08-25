@@ -1,7 +1,12 @@
 # Brief DB — la data del documento e la sequenza del registro
 
-> **Destinatario:** team DB (`dev/db-tid`). BE e FE **attendono**: nessuna riga
-> di backend o frontend parte prima che i prerequisiti qui sotto siano applicati
+> ✅ **STATO: CANTIERE CHIUSO** (2026-08-25). DB **18 changeSet applicati** e
+> **14 consegne su 14** (§11); BE e FE **10 su 10 scritte**, con la sola colonna
+> di lista di FE-3 in attesa di una riga di seed (§12). Resta il **collaudo
+> in-app**, che è di Tid.
+>
+> **Destinatario:** team DB (`dev/db-tid`), poi backend e frontend. BE e FE
+> hanno atteso i prerequisiti DB prima di partire
 > ([[feedback_be_fe_attende_prerequisiti_db]]).
 >
 > **Analisi di riferimento:**
@@ -25,8 +30,8 @@
 > emersi **un difetto di concorrenza**, **due `DROP` non dichiarati**, **una
 > premessa falsa** su un trigger, **una mina nel CSV dei registri** e cinque
 > rettifiche minori. Ogni consegna toccata porta qui sotto un rimando
-> `▶ §10 V-n`. **Nessuna riga di DB ancora scritta** (verificato: zero
-> occorrenze dei nomi nuovi in `db/`, `backend/`, `frontend/`, `docs/it/dbzero/`).
+> `▶ §10 V-n`. ⚠️ Quel giorno **nessuna riga era ancora scritta**: la frase resta
+> perché è il fotogramma da cui il cantiere è partito, non lo stato di oggi.
 
 ---
 
@@ -877,27 +882,31 @@ modello.
 
 ## 8. Cosa parte dopo, e per chi
 
-### Backend (attende il DB)
+> ✅ **CHIUSO il 2026-08-25.** Dieci consegne su dieci scritte, una sola in
+> attesa di un prerequisito (FE-3). Dettaglio in **§12**.
 
-| | Consegna |
-| --- | --- |
-| BE-1 | `data_documento` facoltativa nel payload di creazione lotto |
-| BE-2 | `data_documento` facoltativa su `POST /vendite/lotti/<id>/numera` e su `POST /vendite/fatturazione/numera` → `fn_imposta_data_documento_lotto` prima di numerare, **una data per l'intero atto** (decisione 5) |
-| BE-3 | `list_lotti_numerabili`: `ORDER BY fl.id` → **ordine per data documento** (`min(f.data)` delle fatture non numerate del lotto), poi `id` (decisione 6) |
-| BE-4 | Policy del codice `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` (rigenerata, non scritta a mano) |
-| BE-5 | Endpoint di lettura per la `minDate` del dialog (`fn_get_data_minima_numerabile_lotto`) |
-| BE-6 | Il **backstop stampa** ora può rifiutare: l'esito va nella coda con il suo motivo, non come render fallito muto |
+### Backend (attende il DB) — ✅ fatto
 
-### Frontend (attende il BE)
+| | Consegna | Stato |
+| --- | --- | --- |
+| BE-1 | `data_documento` facoltativa nel payload di creazione lotto | ✅ |
+| BE-2 | `data_documento` facoltativa su `POST /vendite/lotti/<id>/numera` e su `POST /vendite/fatturazione/numera` → `fn_imposta_data_documento_lotto` prima di numerare, **una data per l'intero atto** (decisione 5) | ✅ |
+| BE-3 | `list_lotti_numerabili`: `ORDER BY fl.id` → **ordine per data documento** (`min(f.data)` delle fatture non numerate del lotto), poi `id` (decisione 6) | ✅ |
+| BE-4 | Policy del codice `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` (rigenerata, non scritta a mano) | ✅ (commit `1be23ca53`) + override `ui_action` |
+| BE-5 | Endpoint di lettura per la `minDate` del dialog | ✅ `GET /vendite/fatturazione/finestra-numerazione/` |
+| BE-6 | Il **backstop stampa** ora può rifiutare: l'esito va nella coda con il suo motivo, non come render fallito muto | ✅ |
 
-| | Consegna |
-| --- | --- |
-| FE-1 | Campo data (facoltativo) nella creazione del lotto |
-| FE-2 | DatePicker nel dialog «Rendi definitive», singolo lotto **e** per competenza, con `minDate` da BE-5 e default dalla politica |
-| FE-3 | Colonna **data documento** nella lista lotti e nella lista fatture |
-| FE-4 | Messaggio del cancello con bersaglio (due pulsanti: il documento e l'ultimo numerato) |
+### Frontend (attende il BE) — ✅ fatto, tranne una colonna
 
-⚠️ **Da dire a BE e FE prima che partano** (dalla verifica del 2026-08-25):
+| | Consegna | Stato |
+| --- | --- | --- |
+| FE-1 | Campo data (facoltativo) nella creazione del lotto | ✅ |
+| FE-2 | DatePicker nel dialog «Rendi definitive», singolo lotto **e** per competenza, con `minDate` da BE-5 e default dalla politica | ✅ |
+| FE-3 | Colonna **data documento** nella lista lotti e nella lista fatture | 🟡 **il valore c'è nel payload, la colonna no**: serve una riga di seed in `lista_colonna.csv` per `vendite.lotti` — passata al team DB. La lista fatture ha già `data` |
+| FE-4 | Messaggio del cancello con bersaglio | ✅ — non ha richiesto codice: `LOTTO` era già mappato in `core/bersagli.js`. Verificato con una chiamata vera, non dato per fatto |
+
+⚠️ **Cosa era stato detto a BE e FE prima che partissero** (verifica del
+2026-08-25). Tutti e quattro i punti hanno retto: la §12 dice come.
 
 * **BE-5 / FE-2 salgono di rango.** Con il seed confermato (D-2), sul registro
   Back-office ogni lotto di **competenza arretrata** viene rifiutato dal cancello
@@ -1613,13 +1622,13 @@ stessa lezione già scritta in `test-numerazione-guard-coerenza-v1.sql` sul D-K.
 Tutte e 14 le consegne DB sono chiuse — le 13 del brief più **DB-14**, emersa
 dalla verifica.
 
-⛔ **Restano due cose, entrambe fuori dal DB:**
+✅ **I due residui di allora sono chiusi** (aggiornato il 2026-08-25, a sera):
 
-1. **`/tmp/allinea-contatori-alla-serie.sql` — DA ESEGUIRE.** Il contatore del
-   registro 5 (NC) è ancora sulla serie vuota mentre il registro usa `RX1`: la
-   prossima nota di credito prenderebbe il numero **1** invece di 101, e su quel
-   sezionale il cancello non avrebbe **nessun pavimento**. §6-ter.
-2. Le consegne **BE-1..BE-6** e **FE-1..FE-4** di §8, che ora possono partire.
+1. ~~`/tmp/allinea-contatori-alla-serie.sql`~~ **eseguito**: tutti e sei i
+   contatori sono sulla serie che il registro usa davvero, e il registro 5 (NC)
+   porta il suo pavimento al 2026-08-24. §6-ter.
+2. ~~Le consegne BE-1..BE-6 e FE-1..FE-4~~ **fatte**, tranne la colonna di
+   lista di FE-3 che aspetta una riga di seed. **§12**.
 
 ⚠️ E due debiti **nominati e non chiusi**, entrambi di casa d'altri: la mina in
 `registri_fatturazione.csv` (§10.3 D-3) e `DEFAULT_UTILITY` che non ha nessun
@@ -1703,10 +1712,22 @@ file per file: il guardrail «riferimenti morti» gira dopo il migrate in CI).
 
 ---
 
-### ⛔ Resta una sola azione, ed è sui dati
+### ✅ ~~Resta una sola azione, ed è sui dati~~ — fatta il 2026-08-25
 
-`/tmp/allinea-contatori-alla-serie.sql`. Verificato adesso: il contatore del
-registro 5 è **ancora** sulla serie vuota mentre il registro usa `RX1`.
+`/tmp/allinea-contatori-alla-serie.sql` **eseguito**. Verificato dopo:
+tutti e sei i contatori sono sulla serie che il registro usa davvero, e il
+registro 5 (NC) porta il suo pavimento.
+
+| registro | serie | `last_numero` | `ultima_data` |
+| --- | --- | ---: | --- |
+| 3 Front-office | `VX2` | 100 | 2026-08-23 |
+| 4 Back-office | `VX1` | 100 | — |
+| **5 NC** | **`RX1`** | 100 | **2026-08-24** |
+| 1359 · 1360 · 1361 | `V2` · `V1` · `R2` | 100 | — |
+
+Prima era così, ed è quello che si evitava — la prossima nota di credito avrebbe
+preso il numero **1** invece di 101, e su quel sezionale il cancello non avrebbe
+avuto **nessun pavimento**:
 
 | registro | serie che userà | serie del contatore | |
 | --- | --- | --- | --- |
@@ -1716,73 +1737,126 @@ registro 5 è **ancora** sulla serie vuota mentre il registro usa `RX1`.
 Finché resta così, la prossima nota di credito prende il numero **1** invece di
 101 e su quel sezionale **il cancello non ha pavimento**. §6-ter.
 
-### 2026-08-25 · FE-3 — la colonna in lista è un seed DB, e ne serve una sola
+---
 
-Il BE segnala che **FE-3 ha una dipendenza DB**: la colonna «data documento» in
-lista vuole una riga in `ui.lista_colonna`, che è seed. Ha ragione, e ha mandato
-la riga già compilata.
+## 12. Il cantiere BE/FE — 2026-08-25
 
-#### Sulla lista **fatture** non serviva niente
+**Dieci consegne su dieci scritte**, una in attesa di un seed (FE-3). 4058 test
+backend verdi, guard i18n pulito, build frontend senza errori, lint coi soli tre
+errori preesistenti. 23 file toccati e 3 nuovi.
 
-`vendite.fatture` (lista **48**) ha già la colonna `data` — `ordine_default 40`,
-`campo_sorgente = data`, `date`/`date_short`, filtrabile **e** ordinabile,
-priorità 95 — e `vw_fatture_lista` la espone. È già la data documento: **quella
-metà di FE-3 era chiusa in partenza.**
+### 12.1 Quello che è nato
 
-#### Sulla lista **lotti** serve, ma il payload non ce l'ha
+| Dove | Cosa |
+| --- | --- |
+| `db/_data_documento_sql.py` *(nuovo)* | I due frammenti SQL condivisi: «la data che i documenti da numerare portano oggi» e «quali lotti l'atto toccherebbe». Stesso pattern di `_coda_documento_filtro.py` |
+| `pipeline_repository.py` | `get_data_minima_numerabile_lotto` · `get_data_minima_numerabile_competenza` · `get_data_documento_corrente` · `imposta_data_documento_lotto` |
+| `pipeline_service.py` | `finestra_numerazione` (BE-5) · `_get_lotto_visibile` (estratto) · `numera_lotto(data_documento=…)` |
+| `views.py` / `urls_v1.py` | `GET /vendite/fatturazione/finestra-numerazione/` · `data_documento` sui tre POST · `_payload_con_data_documento` |
+| `NumerazioneDataDialog.vue` *(nuovo)* | Un componente, due modi (`MODO_DATA_DOCUMENTO.NUMERA` / `.CREAZIONE`), tre punti d'uso |
+| `test_lotto_row_mapping.py` *(nuovo)* | Il presidio della proiezione di riga del lotto (§12.3) |
 
-⛔ `vendite.lotti` (lista **12**) **non ha `vista_sql`**: il payload lo compone
-`_LOTTO_SELECT_COLS` in `vendite_repository.py`, non una vista. E lì
-`data_documento` **non c'è** — zero occorrenze in tutto `backend/apps/vendite/`.
+⭐ **Il pavimento si legge dal DB una volta per lotto, mai ricopiato.**
+`get_data_minima_numerabile_competenza` chiama
+`fn_get_data_minima_numerabile_lotto` dentro **una sola istruzione** invece di
+riscriverne la regola in un JOIN: «max(ultima_data) sui sezionali delle fatture
+senza numero», con la serie risolta come la risolve chi numera, vive in un posto
+solo.
 
-⭐ Quindi l'ordine è **prima il campo nel payload, poi il seed**: al contrario la
-colonna comparirebbe, ordinabile, **vuota su tutte le righe**.
+### 12.2 ⛔ Due difetti trovati per strada, che non erano di questo cantiere
 
-#### ⛔ E il secondo prerequisito è un cancello di CI
+**`riaperto` leggeva la colonna sbagliata** (`vendite_repository._map_lotto_row`):
+`bool(row[20])`, cioè `totale_documenti`, invece di `row[22]`. Nessun errore —
+prendeva un NUMERIC e lo passava a `bool()`, quindi il flag valeva *«questo lotto
+ha un totale diverso da zero»*. Misurato sui dati veri **prima** di correggere,
+ed era **invertito proprio sul caso che conta**:
 
-`scripts/check_i18n_keys.py` legge **`lista_colonna.csv`** e pretende che ogni
-`etichetta_i18n_key` con `attivo = t` esista in `it.json` **e** `en.json`. Oggi
-quel controllo è verde e **completo: 453 intestazioni su 453**.
-📌 Verificato: `vendite.lotti.col_data_documento` **non c'è in nessuno dei due**.
+| lotto | `riaperto_il` | totale | il flag diceva |
+| ---: | --- | ---: | --- |
+| 6034 | **sì** | 0 | `false` ⛔ |
+| 7132 · 7133 · 7515 · 4213 | no | ≠ 0 | `true` ⛔ |
 
-#### Cosa è stato fatto
+⚠️ È esattamente il difetto che il commento di quella colonna dice di voler
+impedire: su un lotto riaperto il prossimo giro **rifà** lo step, e chiamarlo
+«Avanza step» dice una cosa falsa.
 
-La riga del BE è stata appesa **identica in tutto tranne `attivo`**, che è `f`.
+**La whitelist di ordinamento dei resi** non aveva `fase` e `pratica_numero`,
+accese `ordinabile = t` dal seed dell'**arco S**: la freccia a video avrebbe
+risposto 400. L'ha trovato il presidio del seed
+(`test_liste_configurabili_seed`), non una lettura a occhio — ed è la ragione
+per cui quel presidio esiste.
 
-✅ Validata prima di scrivere: `tipo_colonna = informazione`, `tipo_dato = date` e
-`allineamento = center` sono valori ammessi dai rispettivi enum `ui.*`; il gruppo
-`Identificazione` / `gruppo_ordine 1` è **lo stesso** di `codice`,
-`competenza_mese` e `tipo_lotto`; `ordine_default 25` la colloca esattamente fra
-competenza (20) e tipo (30); `sensibile = f` — ⚠️ quella colonna è un **cancello**,
-non un'etichetta.
-✅ Inserimento provato in transazione: `INSERT 0 1`, nessun guard oppone nulla.
-✅ Il mirror è **rieseguibile**: `20260806-15-riancora-mirror-ui-lista-colonna`
-risulta `RERAN` alle 17:03 di oggi. Appendere è sicuro, e **non serve un loader
-nuovo**.
-✅ `check_i18n_keys.py` dopo l'append: **453 su 453, invariato** — il guardrail
-salta le righe con `attivo <> 't'`.
+### 12.3 ⭐ Il presidio nuovo, e la prova che serve
 
-~~⭐ `attivo = f` è il pattern di casa…~~
+Un mapper posizionale **non fallisce mai** quando l'indice è sbagliato: legge
+un'altra colonna e va avanti. `test_lotto_row_mapping.py` costruisce una riga
+finta in cui ogni posizione porta un valore riconoscibile, più i due casi veri
+del §12.2.
 
-#### ⛔ RETTIFICA (Tid, 2026-08-25): **accesa subito**
+⛔ **Provato che sia rosso sul codice rotto**: rimesso `row[20]` → due
+fallimenti; rimesso `row[22]` → verde. Un test che passa anche sul difetto che
+dice di presidiare non è un presidio.
 
-*«accendila, è mezz'ora che giriamo intorno a una colonna, non è un problema»*.
-`attivo = t`, e la riga è ora **identica** a quella mandata dal BE.
+### 12.4 Il difetto che stavo per introdurre
 
-Dei due prerequisiti, **uno è stato chiuso nello stesso giro**: le chiavi
-`vendite.lotti.col_data_documento` sono state aggiunte a `it.json`
-(«Data documento») e `en.json` («Document date»), accanto a `col_competenza`
-sotto `vendite.lotti`. ⚠️ È **territorio FE**, toccato qui solo perché sono due
-righe e senza di esse si accendeva un rosso in CI: se il frontend preferisce
-ownerarle, si spostano senza attriti.
+`parse_competenza_mese` fa `.replace(day=1)` — perché una competenza **è** un
+mese. Riusarla per la data documento avrebbe trasformato un **25/08 dichiarato
+dall'operatore in un 01/08**, senza sollevare niente: cioè avrebbe scritto sui
+documenti una data che nessuno ha scelto, nel cantiere che nasce per togliere le
+date che nessuno ha scelto.
 
-✅ `check_i18n_keys.py`: **454 intestazioni su 454 tradotte**, parità it/en
-integra. (Il `[X] 1` residuo è preesistente e riguarda una chiave emessa dal DB,
-non un'intestazione di lista.)
+Nato `parse_data_iso` (nessun `.replace`, nessun default) e un test che presidia
+il caso in negativo: `assertNotEqual(passata.day, 1)`.
 
-⚠️ **Resta il pezzo BE, e finché non arriva la colonna è vuota a video**:
-`fl.data_documento` in `_LOTTO_SELECT_COLS` (+ TypedDict e row mapper) e la voce
-nella whitelist di ordinamento — il seed dichiara `ordinabile = t`, e senza
-whitelist la lista prometterebbe un ordinamento che la query rifiuta. Scelta
-consapevole di Tid: su dati di sviluppo una colonna vuota per qualche ora non è
-un problema.
+### 12.5 La revisione critica del proprio codice (stesso giorno)
+
+Nove correzioni, tutte su codice scritto poche ore prima:
+
+| | Cosa | Perché contava |
+| --- | --- | --- |
+| bug | `get_data_documento_corrente` senza guard sul perimetro, con `int(stato or 0)` | Una chiamata sbagliata rispondeva `None` = «niente da numerare»: un errore di chiamante che esce come un dato |
+| bug | Il dialog con `{ silent: true }` | Lettura **fallita** e perimetro **vuoto** erano indistinguibili: annunciava «niente da numerare» su una chiamata che non aveva risposto |
+| bug | `defineProps` riferiva una costante dello scope `setup` | Vue issa le props: le costanti sono passate in `vendite/constants.js`, con `validator` — un refuso ricadeva **in silenzio** sul modo `numera`, la direzione pericolosa |
+| dup | Il frammento «data corrente» in due moduli, il perimetro in tre | Il dialog avrebbe raccontato un ordine diverso da quello con cui il giro numera |
+| dup | Il guard di visibilità del lotto scritto due volte | → `_get_lotto_visibile` |
+| dup | La normalizzazione di `data_documento` in due endpoint | → `_payload_con_data_documento` |
+| dup | Il costruttore della riga di coda diviso fra i due `except` | Il ramo `ServiceError` **perdeva campo e bersagli**: la stessa riga raccontava due storie a seconda di quale `except` l'avesse presa |
+| morto | Il ramo `confirmAction` di `avvia`, `messageParams`, sei `keys.*`, quattro stringhe i18n | Tutti e tre i verbi passano dal dialog: un percorso morto accanto a uno vivo non si distingue leggendo |
+| nome | `data_minima_numerabile` tornava quattro cose | → `finestra_numerazione`, fatto quando ancora nessuno la consumava |
+
+⚠️ E una cosa **documentata invece che corretta**: `numera_lotto` dichiara la
+data e poi numera in **due transazioni**. Se la numerazione fallisce, la data e
+le rate rigenerate restano. Non si corregge avvolgendo tutto in un `atomic` — il
+runner tiene apposta il lavoro parziale degli step già fatti — ed è il motivo per
+cui l'esito porta `aggiornate`/`rate_rigenerate` **anche quando il giro si
+ferma**.
+
+### 12.6 Come è stato verificato
+
+Con **chiamate vere**, non coi mock (i mock non vedono il binding):
+
+```
+imposta_data_documento_lotto(1278, 25/08) → aggiornate 1, rate rigenerate 1
+  rate PRIMA 03/08 → rate DOPO 25/08                    (in transazione, rollback)
+imposta_data_documento_lotto(1278, 01/08) → rifiutato
+  code     E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO
+  campo    data_documento
+  bersagli [{'type': 'LOTTO', 'id': '1278'}]
+  frase    «…che porta la data 23/08/2026.»
+finestra_numerazione(1278)  prima: corrente 03/08, minima 23/08
+                            dopo:  corrente 25/08, dichiarata 25/08
+```
+
+I tre guard nuovi provati uno per uno; il mapper confrontato riga per riga con
+la tabella; l'endpoint interrogato via HTTP dopo il reload di gunicorn (401 =
+c'è ed è protetto).
+
+### 12.7 Cosa resta
+
+* **FE-3** — la colonna «data documento» nella lista lotti: il valore è nel
+  payload, manca la riga di seed in `lista_colonna.csv` per `vendite.lotti`.
+  Passata al team DB.
+* **Il collaudo in-app**, che è di Tid: il dialog su un lotto singolo, sull'atto
+  di competenza, e il rifiuto del cancello su una delle tre `EMESSA` datate
+  prima del pavimento — che è il primo caso reale di
+  `fn_imposta_data_documento_lotto`.

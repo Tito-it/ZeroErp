@@ -31,8 +31,13 @@ from apps.vendite.db.commesse_repository import (
     TIPO_MOVIMENTO_RETTIFICA,
 )
 from apps.core.services.value_normalizer import as_bool, empty_to_none
+from apps.vendite.db._data_documento_sql import (
+    SQL_DATA_DOCUMENTO_CORRENTE,
+    SQL_PERIMETRO_LOTTI_NUMERABILI,
+)
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
+    EsitoDataDocumento,
     EliminaFatturaDaLottoResult,
     LottoPipelineMeta,
     LottoSegnalazioneRow,
@@ -1952,6 +1957,141 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             )
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # La DATA DOCUMENTO (brief numerazione §4, DB-4/DB-10/DB-11)
+    # ------------------------------------------------------------------
+
+    # Scopo: Da quale data in poi le fatture non ancora numerate del lotto
+    #        possono prendere un numero — il MASSIMO dei pavimenti dei sezionali
+    #        che il lotto tocca. `None` = nessun pavimento (sezionale vergine).
+    # ⚠️ E' una TARGA, non un lucchetto: `fn_get_data_minima_numerabile_lotto` e'
+    #    SECURITY INVOKER su `vendite.fatture`, che ha la RLS, quindi sotto un
+    #    perimetro ristretto il minimo esce PIU' BASSO del vero (fail-open, e la
+    #    funzione DB lo dichiara). Serve a dare al DatePicker un `minDate`
+    #    sensato; il rifiuto vero resta del cancello in
+    #    `fn_get_next_progressivo`, che legge il contatore — tabella senza RLS.
+    def get_data_minima_numerabile_lotto(self, lotto_id: int) -> date | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_get_data_minima_numerabile_lotto(%s)",
+                [int(lotto_id)],
+            )
+            row = cursor.fetchone()
+        return None if not row else row[0]
+
+    # Scopo: La data che i documenti ANCORA DA NUMERARE portano OGGI — la piu'
+    #        VECCHIA fra loro, cioe' quella che il cancello incontrera' per
+    #        prima. `None` = nel perimetro non c'e' niente da numerare.
+    # ⭐ Serve al dialog per due cose che il pavimento da solo non dice: quale
+    #    data proporre quando va gia' bene (non si tocca niente) e, quando NON
+    #    va bene, DA COSA a cosa si sta spostando. Un DatePicker che mostra solo
+    #    il minimo ammesso non fa vedere che sta per cambiare una data.
+    # ⚠️ `min` e non `max`: se il perimetro contiene documenti di date diverse,
+    #    quello che rischia il rifiuto e' il piu' vecchio.
+    # ⚠️ Stessa `WHERE` di `list_lotti_numerabili` sul ramo competenza: si misura
+    #    cio' che l'atto toccherebbe, non tutto il mese.
+    # ⛔ Guard esplicito sul perimetro, e non e' burocrazia: senza, una chiamata
+    #    senza argomenti cadrebbe nel ramo competenza con `competenza_mese`
+    #    NULL, non troverebbe nessun lotto e risponderebbe `None` — cioe'
+    #    «niente da numerare», che a video diventa un messaggio tranquillo su
+    #    una domanda mai posta. Un errore di chiamante non deve poter uscire
+    #    come un dato.
+    def get_data_documento_corrente(
+        self,
+        *,
+        lotto_id: int | None = None,
+        competenza_mese: date | None = None,
+        stato_doc_fiscale_id: int | None = None,
+    ) -> date | None:
+        if (lotto_id is None) == (competenza_mese is None):
+            raise ValueError(
+                "get_data_documento_corrente: indicare lotto_id OPPURE "
+                "competenza_mese, non entrambi e non nessuno "
+                f"(lotto_id={lotto_id!r} competenza_mese={competenza_mese!r})"
+            )
+        if lotto_id is not None:
+            sql = SQL_DATA_DOCUMENTO_CORRENTE.format(lotto="%s")
+            params: list[Any] = [int(lotto_id)]
+        else:
+            # ⚠️ Sul ramo competenza lo stato e' OBBLIGATORIO: senza, il
+            #    perimetro sarebbe «tutti i lotti del mese» invece che «quelli
+            #    che l'atto numera». Niente `or 0` — normalizzare in silenzio un
+            #    parametro mancante e' il modo in cui una risposta sbagliata
+            #    sembra una risposta.
+            if not stato_doc_fiscale_id:
+                raise ValueError(
+                    "get_data_documento_corrente: stato_doc_fiscale_id "
+                    "obbligatorio sul perimetro competenza"
+                )
+            sql = """
+                SELECT min(f_p.data)
+                  FROM vendite.fatturazione_lotti fl_p
+                  JOIN vendite.fatturazione_lotti_fatture lf_p ON lf_p.lotto_id = fl_p.id
+                  JOIN vendite.fatture f_p ON f_p.id = lf_p.fattura_id
+                 WHERE {perimetro}
+                   AND f_p.numero IS NULL
+            """.format(perimetro=SQL_PERIMETRO_LOTTI_NUMERABILI.format(lotti="fl_p"))
+            params = [competenza_mese, int(stato_doc_fiscale_id)]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        return None if not row else row[0]
+
+    # Scopo: Lo stesso pavimento, ma per l'ATTO su un mese di competenza
+    #        («Rendi definitive competenza»), che tocca N lotti: il piu'
+    #        restrittivo fra i loro, cioe' l'unica data che li accontenta tutti.
+    # ⭐ CHIAMA LA FUNZIONE DB UNA VOLTA PER LOTTO dentro UNA sola istruzione,
+    #    invece di ricopiarne la regola in un JOIN scritto qui. La regola —
+    #    «max(ultima_data) sui sezionali delle fatture senza numero», con la
+    #    serie risolta come la risolve chi numera — vive in un posto solo: una
+    #    seconda copia qui divergerebbe alla prima modifica, e in silenzio.
+    # ⚠️ I lotti sono quelli che l'atto numererebbe davvero (stessa `WHERE` di
+    #    `list_lotti_numerabili`): un pavimento calcolato su lotti che non
+    #    verranno toccati sarebbe piu' alto del necessario.
+    def get_data_minima_numerabile_competenza(
+        self, *, competenza_mese: date, stato_doc_fiscale_id: int,
+    ) -> date | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT max(vendite.fn_get_data_minima_numerabile_lotto(fl_p.id))
+                  FROM vendite.fatturazione_lotti fl_p
+                 WHERE {perimetro}
+                """.format(perimetro=SQL_PERIMETRO_LOTTI_NUMERABILI.format(lotti="fl_p")),
+                [competenza_mese, int(stato_doc_fiscale_id)],
+            )
+            row = cursor.fetchone()
+        return None if not row else row[0]
+
+    # Scopo: Dichiara la data documento del lotto delegando alla funzione MADRE
+    #        `vendite.fn_imposta_data_documento_lotto`, che in un atto solo
+    #        scrive la data sul lotto, la propaga alle fatture non ancora
+    #        numerate e RIGENERA i loro piani rate.
+    # ⛔ Non si scompone in tre chiamate da qui: le scadenze si calcolano da
+    #    `fatture.data` e il guard D-K verifica la SOMMA delle rate — che non
+    #    cambia. Una data nuova con le rate vecchie passerebbe in silenzio, ed e'
+    #    esattamente il difetto che quella funzione esiste per impedire.
+    # ⚠️ Le fatture gia' numerate si SALTANO e si contano: il caso «lotto
+    #    numerato a meta'» esiste nei dati.
+    def imposta_data_documento_lotto(
+        self, *, lotto_id: int, data_documento: date,
+    ) -> EsitoDataDocumento:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT aggiornate, saltate_numerate, rate_rigenerate
+                  FROM vendite.fn_imposta_data_documento_lotto(%s, %s)
+                """,
+                [int(lotto_id), data_documento],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {
+            "aggiornate": int(row[0]),
+            "saltate_numerate": int(row[1]),
+            "rate_rigenerate": int(row[2]),
+        }
 
     # Scopo: Gestisce `numera_fattura_opz_emessa` nel flusso applicativo del modulo.
     def numera_fattura_opz_emessa(self, fattura_id: int) -> None:

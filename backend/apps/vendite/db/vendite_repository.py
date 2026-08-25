@@ -30,6 +30,10 @@ from apps.core.services.system_context import connection_role_bypasses_rls
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
+from apps.vendite.db._data_documento_sql import (
+    SQL_DATA_DOCUMENTO_CORRENTE,
+    SQL_PERIMETRO_LOTTI_NUMERABILI,
+)
 from apps.vendite.types import (
     DashApertoDocumentoRow,
     DashApertoRiepilogoRow,
@@ -366,7 +370,15 @@ class VenditeRepository:
                 -- ⚠️ Il verdetto resta del runner (`is_lotto_riaperto`): questo
                 -- e' lo STESSO predicato letto per la presentazione, non una
                 -- seconda regola. Se il criterio cambiasse, cambia di la'.
-                (fl.riaperto_il IS NOT NULL) AS riaperto
+                (fl.riaperto_il IS NOT NULL) AS riaperto,
+                -- ⭐ LA DATA DICHIARATA DEL LOTTO (BE-1, brief numerazione §4
+                -- DB-4). Facoltativa: vuota = vince la politica del registro
+                -- (`registri_fatturazione.politica_data_documento`), che il DB
+                -- applica in `fn_calcola_data_documento` alla creazione della
+                -- testata. Qui si espone il valore DICHIARATO, non quello
+                -- calcolato: sono due cose diverse e mostrarle come una sola
+                -- direbbe che una scelta e' stata fatta quando non lo e'.
+                fl.data_documento
     """
 
     _LOTTO_JOINS = """
@@ -423,7 +435,19 @@ class VenditeRepository:
             # totale fiscale non passa da un binario a virgola mobile.
             "totale_documenti": str(row[20]),
             "ha_errori_gravi": bool(row[21]),
-            "riaperto": bool(row[20]),
+            # ⛔ ERA `bool(row[20])`, cioe' `totale_documenti`, corretto il
+            #    2026-08-25. L'indice sbagliato non dava nessun errore: leggeva
+            #    un NUMERIC e lo passava a `bool()`, quindi il flag valeva
+            #    «questo lotto ha un totale diverso da zero». Misurato sui dati
+            #    veri prima di correggere, ed era INVERTITO sul caso che conta:
+            #    il lotto 6034 e' riaperto e vale 0 -> diceva `false`; i lotti
+            #    7132/7133/7515/4213 non sono riaperti e valgono qualcosa ->
+            #    dicevano `true`.
+            # ⚠️ E' esattamente il difetto che il commento della colonna dice di
+            #    voler impedire: su un lotto riaperto il prossimo giro RIFA' lo
+            #    step, e chiamarlo «Avanza step» dice una cosa falsa.
+            "riaperto": bool(row[22]),
+            "data_documento": row[23].isoformat() if row[23] is not None else None,
         }
 
     # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
@@ -453,6 +477,15 @@ class VenditeRepository:
         "stato_doc_fiscale_descrizione": "sdf.descrizione",
         "data_insert": "fl.data_insert",
         "user_insert": "fl.user_insert",
+        # ⭐ La data documento DICHIARATA sul lotto. Entra qui perche' il seed
+        # della colonna la dichiara `ordinabile = t`: senza questa voce la
+        # freccia a video risponderebbe 400 — ed e' lo stesso difetto che il
+        # 2026-08-25 ha colpito la lista resi con `fase`/`pratica_numero`,
+        # trovato dal presidio del seed e non a occhio.
+        # ⚠️ La CHIAVE e' il `campo_sorgente` del catalogo, non il `codice`
+        # logico: qui i due coincidono, ma e' proprio dove divergono che quel
+        # difetto nasce (`pratica` vs `pratica_numero`).
+        "data_documento": "fl.data_documento",
         # ⭐ Quanti documenti e quanto valgono (colonne accese dal team DB il
         # 2026-08-24). ⚠️ Il VALORE è la sotto-query per intero, non l'alias di
         # SELECT: l'`ORDER BY` gira su una query con JOIN e un alias qui
@@ -640,6 +673,23 @@ class VenditeRepository:
     #        mese sono pochi, uno per terna emittente/tipo); il perimetro deve
     #        essere completo, non troncato.
     # Perimetro: sola lettura; nessun side-effect.
+    # ⭐ L'ORDINE E' PER DATA DOCUMENTO, NON PER ID (BE-3, brief numerazione
+    #    decisione 6). Il cancello di `fn_get_next_progressivo` rifiuta una data
+    #    anteriore all'ultimo numero emesso sul sezionale: numerando per id di
+    #    lotto, cioe' nell'ordine in cui i lotti sono NATI, un lotto piu' vecchio
+    #    ma con data piu' recente prende il numero prima e blocca gli altri.
+    # ⚠️ Non e' teoria: il giro del 2026-08-05 ha numerato sei lotti in un solo
+    #    atto e ha comunque prodotto un'inversione (numero 2 al 21/07, numero 3
+    #    al 19/06) proprio perche' ordinava per id.
+    # ⚠️ `min(f.data)` delle fatture SENZA numero, non `fl.data_documento`: la
+    #    data dichiarata puo' essere vuota (vince la politica del registro) e la
+    #    data vera del documento e' quella che il cancello confrontera'.
+    # ⛔ Il frammento NON e' scritto qui: viene da `_data_documento_sql`, perche'
+    #    il dialog della numerazione legge lo STESSO valore per dire «i documenti
+    #    portano oggi il ...». Due copie e il dialog racconterebbe un ordine
+    #    diverso da quello con cui il giro numera davvero.
+    # ⚠️ `NULLS LAST`: un lotto senza fatture da numerare non ha una data da
+    #    confrontare — va in coda, non in testa.
     def list_lotti_numerabili(
         self, *, competenza_mese: date, stato_doc_fiscale_id: int,
     ) -> list[dict[str, Any]]:
@@ -648,10 +698,15 @@ class VenditeRepository:
                 """
                 SELECT fl.id, fl.codice
                   FROM vendite.fatturazione_lotti fl
-                 WHERE fl.competenza_mese = %s
-                   AND fl.stato_doc_fiscale_id = %s
-                 ORDER BY fl.id
-                """,
+                  LEFT JOIN LATERAL (
+                      {data_corrente}
+                  ) d(data_doc) ON TRUE
+                 WHERE {perimetro}
+                 ORDER BY d.data_doc NULLS LAST, fl.id
+                """.format(
+                    data_corrente=SQL_DATA_DOCUMENTO_CORRENTE.format(lotto="fl.id"),
+                    perimetro=SQL_PERIMETRO_LOTTI_NUMERABILI.format(lotti="fl"),
+                ),
                 [competenza_mese, int(stato_doc_fiscale_id)],
             )
             return [

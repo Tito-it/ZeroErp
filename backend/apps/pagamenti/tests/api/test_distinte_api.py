@@ -30,6 +30,11 @@ Indice test eseguiti:
 18) Slice3ApiTests.test_coda_filtri_tradotti
 19) Slice3ApiTests.test_saldo_rata_ok
 20) Slice3ApiTests.test_saldo_fattura_ok
+21) Slice5RotteTests.test_le_rotte_delle_sistemazioni_esistono
+22) Slice5ApiTests.test_eccedenze_filtri_tradotti
+23) Slice5ApiTests.test_registrazione_senza_idempotency_key_rifiutata
+24) Slice5ApiTests.test_conferma_ok
+25) Slice5ApiTests.test_annulla_ok
 """
 
 from datetime import date
@@ -378,3 +383,85 @@ class Slice3ApiTests(JwtMockedApiTest):
         response = self.client.get("/api/v1/pagamenti/fatture/2263/saldo/")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["data"]["incassato"])
+
+
+class Slice5RotteTests(JwtMockedApiTest):
+    # Scopo: Le cinque rotte del giro delle sistemazioni. ⚠️ `sistemazioni/<id>/`
+    #        sta DOPO i due verbi: il pattern generico se li mangerebbe.
+    def test_le_rotte_delle_sistemazioni_esistono(self):
+        self.assertEqual(reverse("pagamenti-eccedenze"), "/api/v1/pagamenti/eccedenze/")
+        self.assertEqual(
+            reverse("pagamenti-sistemazioni"), "/api/v1/pagamenti/sistemazioni/"
+        )
+        self.assertEqual(
+            reverse("pagamenti-sistemazione-conferma", args=[3]),
+            "/api/v1/pagamenti/sistemazioni/3/conferma/",
+        )
+        self.assertEqual(
+            reverse("pagamenti-sistemazione-annulla", args=[3]),
+            "/api/v1/pagamenti/sistemazioni/3/annulla/",
+        )
+        self.assertEqual(
+            reverse("pagamenti-fattura-sistemazioni", args=[2263]),
+            "/api/v1/pagamenti/fatture/2263/sistemazioni/",
+        )
+
+
+class Slice5ApiTests(JwtMockedApiTest):
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.list_eccedenze")
+    def test_eccedenze_filtri_tradotti(self, mocked, _auth):
+        mocked.return_value = {"count": 0, "page": 1, "page_size": 50,
+                               "total_pages": 0, "results": []}
+        self.client.get("/api/v1/pagamenti/eccedenze/?chi_e_in_credito=cliente")
+        self.assertEqual(mocked.call_args.kwargs["chi_e_in_credito"], "CLIENTE")
+
+    # Scopo: Registrare una decisione e' una scrittura: senza chiave di
+    #        idempotenza un doppio invio registra due atti sullo stesso denaro.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.crea_sistemazione")
+    def test_registrazione_senza_idempotency_key_rifiutata(self, mocked, _auth):
+        response = self.client.post(
+            "/api/v1/pagamenti/sistemazioni/",
+            data={"fattura_origine_id": 2263, "destinazione": "RIMBORSO",
+                  "importo": "200.00"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.json()["error"]["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
+        mocked.assert_not_called()
+
+    # Scopo: ⚠️ Il canale del rimborso viaggia alla CONFERMA.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.conferma_sistemazione")
+    def test_conferma_ok(self, mocked, _auth):
+        mocked.return_value = {"esito": {"contabile_id": 88, "fondo_source_id": None,
+                                          "esito": "RIMBORSO"},
+                               "sistemazione": {"id": 3, "stato": "CONFERMATA"}}
+        response = self.client.post(
+            "/api/v1/pagamenti/sistemazioni/3/conferma/",
+            data={"ente_incasso_id": 4},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-0004",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mocked.call_args.args[1], {"ente_incasso_id": 4})
+        self.assertEqual(response.json()["data"]["esito"]["contabile_id"], 88)
+
+    @_AUTH
+    @patch("apps.pagamenti.api.views.sistemazioni_service.annulla_sistemazione")
+    def test_annulla_ok(self, mocked, _auth):
+        mocked.return_value = {"sistemazione": {"id": 3, "stato": "ANNULLATA"}}
+        response = self.client.post(
+            "/api/v1/pagamenti/sistemazioni/3/annulla/",
+            data={"motivo": "deciso altrimenti"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-0005",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["sistemazione"]["stato"], "ANNULLATA")

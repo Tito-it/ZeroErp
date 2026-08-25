@@ -1949,7 +1949,6 @@
       "approva_commessa_conferma": "Approvi le {n} attività da approvare della commessa {commessa}? Diventeranno emettibili in fatturazione.",
       "approva_commessa_esito": "Commessa approvata: {n} attività",
       "fattura_mese": "Fattura adesso",
-      "fattura_mese_header": "Fatturazione competenza",
       "fattura_mese_conferma": "Avviare la fatturazione della competenza {mese}? Verranno emesse le fatture fino allo stato EMESSA (cumulativo sui mesi precedenti). La numerazione resta un atto separato.",
       "fattura_mese_accodato": "Giro di fatturazione avviato: elaborazione in corso…",
       "fattura_mese_esito": "Fatturazione completata: {lane} lotti generati.",
@@ -1957,8 +1956,6 @@
       "fattura_mese_errore": "Il giro di fatturazione non è andato a buon fine.",
       "fattura_mese_in_coda": "Giro in coda: verrà elaborato appena il worker sarà attivo.",
       "numera_mese": "Rendi definitive",
-      "numera_mese_header": "Numerazione competenza",
-      "numera_mese_conferma": "Rendere definitive le fatture EMESSE della competenza {mese}? Verranno numerate (atto fiscale) e messe in coda di stampa. Operazione separata dalla fatturazione.",
       "numera_mese_accodato": "Numerazione avviata: elaborazione in corso…",
       "numera_mese_esito": "Numerazione completata: {numerati} lotti resi definitivi.",
       "numera_mese_esito_parziale": "Numerazione completata: {numerati} definitivi, {saltati} saltati, {falliti} errori su {lotti} lotti. Controlla il registro lotti.",
@@ -1998,7 +1995,6 @@
       "tot_gruppi_oneri": "di cui oneri:",
       "fattura_selezionati": "Fattura selezionati ({n})",
       "azione_fattura_gruppo": "Fattura questo",
-      "fattura_gruppi_header": "Emissione mirata",
       "fattura_gruppi_conferma": "Stai per fatturare {n} gruppi ({attivita} attività): {riferimenti}. L'operazione si ferma allo stato «emessa»: la numerazione resta un atto separato. Procedere?",
       "fattura_gruppi_accodato": "Emissione avviata: elaborazione in corso…",
       "fattura_giro_gia_in_corso": "Questa stessa emissione è già in lavorazione: non ne è stata avviata una nuova. Attendi il suo esito.",
@@ -2528,7 +2524,7 @@
       "avanza_esito": "Pipeline avanzata",
       "rigenera": "Rigenera la bozza",
       "rigenera_header": "Rigenera la bozza",
-      "rigenera_conferma": "Il lotto \u00e8 stato riportato in lavorazione: rieseguire lo step per rigenerare i documenti? Il lotto resta in bozza.",
+      "rigenera_conferma": "Il lotto è stato riportato in lavorazione: rieseguire lo step per rigenerare i documenti? Il lotto resta in bozza.",
       "rigenera_esito": "Bozza rigenerata",
       "rerun": "Riprova step",
       "rerun_header": "Riprova step in errore",
@@ -2585,7 +2581,8 @@
         "lotto_non_pre_fiscale": "Il lotto è oltre lo stato pre-fiscale: non si possono più togliere fatture.",
         "fattura_non_collegata": "La fattura non appartiene a questo lotto.",
         "fattura_non_pre_fiscale": "La fattura è oltre lo stato pre-fiscale: non può essere eliminata.",
-        "fattura_numerata": "La fattura è già numerata: eliminarla aprirebbe un buco nella numerazione fiscale."
+        "fattura_numerata": "La fattura è già numerata: eliminarla aprirebbe un buco nella numerazione fiscale.",
+        "righe_rettificate": "Il lotto contiene righe che rettificano un'altra fattura: l'accredito è già registrato e non si disfa da qui."
       },
       "azione_non_piu_disponibile": "Azione non più disponibile su questo lotto: la lista è stata aggiornata.",
       "col_emittente": "Emittente",
@@ -2611,6 +2608,21 @@
       "giornale_info_nascoste": "Nascosti {n} eventi di routine.",
       "giornale_ritirate": "Nascosti {n} eventi di tentativi poi rifatti.",
       "giornale_parziale": "Mostrati {n} eventi su {tot}."
+    },
+    "numerazione_data": {
+      "titolo": "Numerazione — data del documento",
+      "titolo_creazione": "Fatturazione — data del documento",
+      "conferma": "Numera con questa data",
+      "conferma_creazione": "Fattura",
+      "campo_data": "Data del documento",
+      "campo_data_creazione": "Data del documento (facoltativa)",
+      "perimetro_lotto": "I documenti di questo lotto prenderanno il numero con la data indicata qui sotto.",
+      "perimetro_competenza": "L'atto numera {n} lotti: la data indicata qui sotto vale per tutti.",
+      "perimetro_creazione": "Se lasci la data vuota, la decide il registro di numerazione: non significa «oggi».",
+      "pavimento": "L'ultimo numero già emesso su questo registro porta la data {data}: non si può numerare prima.",
+      "sposta_le_date": "I documenti portano oggi la data {da}. Confermando passeranno al {a}, e i piani rate verranno rigenerati con le nuove scadenze.",
+      "niente_da_numerare": "In questo perimetro non c'è nessun documento ancora da numerare.",
+      "non_caricato": "La finestra di numerazione non è stata letta: riprova a riaprire il dialog."
     },
     "offerte": {
       "stato_info": {

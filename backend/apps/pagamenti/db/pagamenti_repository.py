@@ -209,6 +209,55 @@ RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
     "fattura": "fattura_numero",
 }
 
+# Colonne ordinabili dell'elenco delle eccedenze da sistemare.
+# ⭐ Il default e' per CLIENTE, non per documento: la decisione si prende
+#    guardando il cliente (D15-b) — compensare significa mettere insieme due
+#    documenti suoi.
+ECCEDENZE_SORT_COLUMNS: dict[str, str] = {
+    "cliente": "cliente_ragione_sociale",
+    "eccedenza_cliente": "eccedenza_cliente",
+    "eccedenza": "eccedenza",
+    "fattura_data": "fattura_data",
+    "fattura": "fattura_numero",
+}
+
+_ENTE_INCASSO_SELECT = """
+    SELECT
+        e.id, e.codice, e.codice_interno, e.descrizione, e.tipo, e.attivo,
+        e.centro_riscossione_id,
+        cr.codice          AS centro_codice,
+        cr.descrizione     AS centro_descrizione,
+        e.soggetto_ruolo_id,
+        e.bank_branch_id,
+        e.soggetto_ruolo_conto_bancario_id,
+        cb.iban            AS conto_iban,
+        src.uso            AS conto_uso,
+        src.soggetto_ruolo_id AS conto_soggetto_ruolo_id,
+        e.formato_flusso, e.regole_match, e.meta
+      FROM pagamenti.enti_incasso e
+      LEFT JOIN pagamenti.centri_riscossione cr ON cr.id = e.centro_riscossione_id
+      LEFT JOIN anagrafiche.soggetti_ruoli_conti_bancari src
+             ON src.id = e.soggetto_ruolo_conto_bancario_id
+      LEFT JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+"""
+
+# Le colonne aggiornabili di un canale. ⛔ `codice_interno` NON c'e': e' la
+# chiave stabile con cui il resto del sistema lo nomina, e cambiarla romperebbe
+# i riferimenti senza che niente lo dica.
+_COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
+    {"codice", "descrizione", "tipo", "attivo", "centro_riscossione_id",
+     "soggetto_ruolo_id", "bank_branch_id", "soggetto_ruolo_conto_bancario_id",
+     "formato_flusso", "regole_match", "meta"}
+)
+
+# Colonne ordinabili dell'elenco dei canali di incasso.
+ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
+    "codice": "codice",
+    "descrizione": "descrizione",
+    "tipo": "tipo",
+    "centro": "centro_codice",
+}
+
 # Colonne jsonb che il driver restituisce come stringa fuori dall'ORM.
 _JSONB_COLS = ("meta",)
 
@@ -864,6 +913,337 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
+
+    # ══════════════════════════════════════════════════════════════
+    #  I canali di incasso — da dove arrivano i soldi
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: L'elenco dei canali, coi display field di chi li guarda.
+    # ⭐ Il **conto** e' in JOIN e non e' un dettaglio: e' da li' che il
+    #    database ricava di chi sono i soldi arrivati prima della fattura, ed e'
+    #    la colonna che rende leggibile una riga di configurazione altrimenti
+    #    fatta di id.
+    def list_enti_incasso(
+        self,
+        *,
+        tipo: str | None = None,
+        centro_riscossione_id: int | None = None,
+        attivo: bool | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_enti_incasso")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if tipo is not None:
+            conditions.append("e.tipo = %s")
+            params.append(tipo)
+        if centro_riscossione_id is not None:
+            conditions.append("e.centro_riscossione_id = %s")
+            params.append(centro_riscossione_id)
+        if attivo is not None:
+            conditions.append("e.attivo = %s")
+            params.append(attivo)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = ENTI_INCASSO_SORT_COLUMNS.get(order_by, "codice")
+        direction = sql_order_direction(order_dir, default_desc=False)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        select_sql = f"""
+            {_ENTE_INCASSO_SELECT}
+            {where_clause}
+        """
+        return self._lista_paginata(
+            select_sql=select_sql,
+            params=params,
+            order_clause=f"ORDER BY {sort_col} {direction}, id {tiebreak}",
+            limit=limit,
+            offset=offset,
+        )
+
+    # Scopo: Il dettaglio di un canale.
+    def get_ente_incasso(self, ente_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_ente_incasso")
+        sql = f"{_ENTE_INCASSO_SELECT} WHERE e.id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ente_id)])
+            rows = rows_to_list(cursor)
+        return self._shape(rows[0]) if rows else None
+
+    # Scopo: I conti che un emittente puo' agganciare a un canale.
+    # 🔴 **Solo quelli con `uso = 'INCASSO'`**, ed e' la richiesta BE-8: il
+    #    database rifiuta gli altri con un errore parlante, ma un elenco che li
+    #    propone fa sbagliare — e chi sbaglia se ne accorge dopo aver compilato
+    #    tutto il resto.
+    # ⚠️ Il livello e' quello del RUOLO (`soggetti_ruoli_conti_bancari`) e non
+    #    del soggetto: e' li' che vive l'unicita' «un conto INCASSO -> un solo
+    #    soggetto», che e' la garanzia da cui il perimetro degli incassi dipende.
+    #    Un conto censito solo a livello soggetto NON e' agganciabile, e non e'
+    #    una svista del modello: e' quella garanzia.
+    def list_conti_incasso(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_conti_incasso")
+        sql = """
+            SELECT src.id            AS soggetto_ruolo_conto_bancario_id,
+                   src.soggetto_ruolo_id,
+                   src.predefinito,
+                   src.intestazione_dichiarata,
+                   cb.id             AS conto_bancario_id,
+                   cb.iban,
+                   cb.bic_swift,
+                   cb.intestatario_predefinito
+              FROM anagrafiche.soggetti_ruoli_conti_bancari src
+              JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+             WHERE src.soggetto_ruolo_id = %s
+               AND src.uso = 'INCASSO'
+               AND src.bloccato IS NOT TRUE
+               -- Le date di validita' ordinano e filtrano sempre: un conto
+               -- scaduto non si propone. `COALESCE(valido_al, 'infinity')`
+               -- perche' scadenza vuota = validita' infinita.
+               AND (src.valido_dal IS NULL OR src.valido_dal <= CURRENT_DATE)
+               AND COALESCE(src.valido_al, 'infinity'::date) >= CURRENT_DATE
+             ORDER BY src.predefinito DESC, cb.iban
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(soggetto_ruolo_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Crea un canale di incasso.
+    # ⚠️ Nessuna funzione madre: e' un `INSERT` su una tabella di
+    #    configurazione, e i quattro guard (tipo/filiale, conto di incasso,
+    #    coerenza PSP, scope emittente) parlano da soli.
+    def create_ente_incasso(self, campi: dict[str, Any]) -> int:
+        colonne = list(campi)
+        segnaposti = ", ".join(
+            "%s::jsonb" if c in _JSONB_COLS or c == "regole_match" else "%s"
+            for c in colonne
+        )
+        sql = f"""
+            INSERT INTO pagamenti.enti_incasso ({", ".join(colonne)})
+            VALUES ({segnaposti})
+            RETURNING id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [campi[c] for c in colonne])
+            row = cursor.fetchone()
+        return int(row[0])
+
+    # Scopo: Aggiorna un canale di incasso.
+    def update_ente_incasso(self, ente_id: int, campi: dict[str, Any]) -> int:
+        if not campi:
+            return 0
+        set_clause, params = self._set_clause(
+            campi, _COLONNE_ENTE_INCASSO_AGGIORNABILI, "update_ente_incasso"
+        )
+        params.append(int(ente_id))
+        sql = f"""
+            UPDATE pagamenti.enti_incasso
+               SET {set_clause}
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.rowcount
+
+    # ══════════════════════════════════════════════════════════════
+    #  Le sistemazioni — il denaro di troppo
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: L'elenco dei documenti su cui e' entrato piu' del dovuto.
+    # ⭐ La vista porta GIA' il raggruppamento per cliente in finestra
+    #    (`eccedenza_cliente`, `documenti_cliente`): qui non si somma niente —
+    #    rifarlo in Python sarebbe una seconda aritmetica da tenere allineata.
+    # ⚠️ Il nome del cliente NON e' nella vista: si aggiunge in JOIN, perche' un
+    #    elenco che si guarda per cliente e mostra un id non si guarda.
+    def list_eccedenze(
+        self,
+        *,
+        chi_e_in_credito: str | None = None,
+        billing_account_id: int | None = None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._guard_canale_sistema("list_eccedenze")
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if chi_e_in_credito is not None:
+            conditions.append("v.chi_e_in_credito = %s")
+            params.append(chi_e_in_credito)
+        if billing_account_id is not None:
+            conditions.append("v.billing_account_id = %s")
+            params.append(billing_account_id)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sort_col = ECCEDENZE_SORT_COLUMNS.get(order_by, "eccedenza_cliente")
+        direction = sql_order_direction(order_dir, default_desc=True)
+        tiebreak = sql_tiebreak_direction(direction)
+
+        select_sql = f"""
+            SELECT v.*,
+                   srd.ragione_sociale_completa AS cliente_ragione_sociale
+              FROM pagamenti.vw_eccedenze_da_sistemare v
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                     ON srd.soggetto_ruolo_id = v.cliente_soggetto_ruolo_id
+              {where_clause}
+        """
+        return self._lista_paginata(
+            select_sql=select_sql,
+            params=params,
+            # ⚠️ Tiebreak sul CLIENTE prima che sul documento: ordinando per
+            # eccedenza di cliente, i documenti dello stesso cliente devono
+            # restare insieme — altrimenti l'elenco «per cliente» li sparpaglia.
+            order_clause=(
+                f"ORDER BY {sort_col} {direction}, "
+                f"cliente_soggetto_ruolo_id {tiebreak}, fattura_id {tiebreak}"
+            ),
+            limit=limit,
+            offset=offset,
+        )
+
+    # Scopo: Cliente ed emittente di una fattura, DERIVATI e non dichiarati.
+    # 🔴 Il guard sui dati li verifica con un codice TECNICO apposta: «l'emittente
+    #    e il cliente non li sceglie una persona in un modulo, li DERIVA chi
+    #    costruisce l'atto». Prenderli dal payload significherebbe far arrivare
+    #    al database una dichiarazione che il database sa gia' — e che, se
+    #    sbagliata, il suo autore non puo' correggere.
+    # ⚠️ Lettura sotto RLS: una fattura fuori perimetro non risponde, e il
+    #    chiamante lo traduce in «non trovata».
+    def get_riferimenti_fattura(self, fattura_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_riferimenti_fattura")
+        sql = """
+            SELECT f.id                       AS fattura_id,
+                   f.emittente_soggetto_ruolo_id,
+                   f.billing_account_id,
+                   ba.soggetto_ruolo_id       AS cliente_soggetto_ruolo_id
+              FROM vendite.fatture f
+              JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Registra l'atto di sistemazione.
+    # ⭐ Un `INSERT`, non una funzione madre: una scrittura sola non ha bisogno
+    #    di una madre, e inventarne una avrebbe aggiunto un oggetto che non
+    #    garantisce niente in piu'.
+    # ⚠️ Nasce in `BOZZA` (default di colonna): registrare una decisione non e'
+    #    ancora eseguirla — il denaro si muove alla conferma.
+    def create_sistemazione(
+        self,
+        *,
+        destinazione: str,
+        importo: Decimal,
+        fattura_origine_id: int,
+        cliente_soggetto_ruolo_id: int,
+        emittente_soggetto_ruolo_id: int,
+        fattura_destinazione_id: int | None = None,
+        motivo: str | None = None,
+        meta: str = "{}",
+    ) -> int:
+        sql = """
+            INSERT INTO pagamenti.sistemazioni (
+                destinazione, importo, fattura_origine_id, fattura_destinazione_id,
+                cliente_soggetto_ruolo_id, emittente_soggetto_ruolo_id, motivo, meta
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            RETURNING id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql,
+                [
+                    destinazione, importo, int(fattura_origine_id),
+                    fattura_destinazione_id, int(cliente_soggetto_ruolo_id),
+                    int(emittente_soggetto_ruolo_id), motivo, meta,
+                ],
+            )
+            row = cursor.fetchone()
+        return int(row[0])
+
+    # Scopo: Un atto di sistemazione, con i display field di chi lo legge.
+    def get_sistemazione(self, sistemazione_id: int) -> dict[str, Any] | None:
+        self._guard_canale_sistema("get_sistemazione")
+        sql = """
+            SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
+                   s.fattura_origine_id, fo.numero AS fattura_origine_numero,
+                   fo.anno AS fattura_origine_anno, fo.serie AS fattura_origine_serie,
+                   s.fattura_destinazione_id, fd.numero AS fattura_destinazione_numero,
+                   fd.anno AS fattura_destinazione_anno,
+                   fd.serie AS fattura_destinazione_serie,
+                   s.cliente_soggetto_ruolo_id,
+                   srd.ragione_sociale_completa AS cliente_ragione_sociale,
+                   s.emittente_soggetto_ruolo_id,
+                   s.contabile_id, s.fondo_source_id,
+                   s.data_esecuzione, s.user_esecuzione,
+                   s.data_insert, s.user_insert, s.meta
+              FROM pagamenti.sistemazioni s
+              LEFT JOIN vendite.fatture fo ON fo.id = s.fattura_origine_id
+              LEFT JOIN vendite.fatture fd ON fd.id = s.fattura_destinazione_id
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                     ON srd.soggetto_ruolo_id = s.cliente_soggetto_ruolo_id
+             WHERE s.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id)])
+            rows = rows_to_list(cursor)
+        return self._shape(rows[0]) if rows else None
+
+    # Scopo: Gli atti registrati su un documento.
+    # ⭐ Sono PIU' DI UNO per natura: si puo' rimborsare una parte e riportare il
+    #    resto, e l'elenco delle eccedenze conta apposta le bozze e le confermate
+    #    separatamente.
+    def list_sistemazioni_fattura(self, fattura_id: int) -> list[dict[str, Any]]:
+        self._guard_canale_sistema("list_sistemazioni_fattura")
+        sql = """
+            SELECT s.id, s.destinazione, s.stato, s.importo, s.motivo,
+                   s.fattura_destinazione_id, s.contabile_id, s.fondo_source_id,
+                   s.data_esecuzione, s.user_esecuzione, s.data_insert
+              FROM pagamenti.sistemazioni s
+             WHERE s.fattura_origine_id = %s
+             ORDER BY s.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Esegue l'atto — la decisione diventa un fatto.
+    # ⭐ UNA SOLA `SELECT` sulla funzione madre: sceglie la strada (fondo,
+    #    distinta negativa, distinta di compensazione) e ci mette sopra il
+    #    denaro. ⛔ Nessuna delle tre macchine e' nuova, e nessuna la orchestra
+    #    il backend.
+    # ⚠️ `ente_incasso_id` si chiede QUI e non alla registrazione: «da quale
+    #    conto esce il bonifico» e' una decisione del momento in cui si paga.
+    def conferma_sistemazione(
+        self, sistemazione_id: int, *, ente_incasso_id: int | None = None
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT contabile_id, fondo_source_id, esito
+              FROM pagamenti.fn_conferma_sistemazione(%s, %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id), ente_incasso_id])
+            rows = rows_to_list(cursor)
+        return rows[0] if rows else None
+
+    # Scopo: Scarta l'atto, lasciandolo a registro con la sua ragione.
+    # ⚠️ Il motivo si FONDE con quello gia' scritto: se l'atto ne aveva uno e la
+    #    chiamata arriva vuota, resta quello che c'era.
+    def annulla_sistemazione(
+        self, sistemazione_id: int, *, motivo: str | None = None
+    ) -> str | None:
+        sql = "SELECT pagamenti.fn_annulla_sistemazione(%s, %s)"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(sistemazione_id), motivo])
+            row = cursor.fetchone()
+        return row[0] if row else None
 
     # ══════════════════════════════════════════════════════════════
     #  La madre del posting

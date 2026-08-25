@@ -53,6 +53,31 @@ def parse_competenza_mese(raw: Any, *, error_code: str) -> date:
         ) from exc
 
 
+# Scopo: Legge una data ISO (`YYYY-MM-DD`) FACOLTATIVA dal payload di un job di
+#        fatturazione: `None`/vuoto -> None, valore malformato -> ServiceError
+#        col codice del chiamante.
+# ⛔ ESISTE PERCHE' `parse_competenza_mese` NON VA BENE, e la differenza e' di
+#    quelle che non sollevano niente: quella funzione fa `.replace(day=1)`,
+#    perche' una competenza E' un mese. Riusarla per la data documento
+#    trasformerebbe un 25/08 dichiarato dall'operatore in un 01/08 — cioe'
+#    scriverebbe sui documenti una data che nessuno ha scelto, proprio nel
+#    cantiere che nasce per togliere le date che nessuno ha scelto.
+# ⚠️ Nessun `.replace()` qui, e nessun default: assente vuol dire NON
+#    DICHIARATA, che non e' un sinonimo di «oggi».
+def parse_data_iso(raw: Any, *, error_code: str, campo: str) -> date | None:
+    if raw in (None, ""):
+        return None
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ServiceError(
+            code=error_code,
+            message=f"`{campo}` non valida (atteso YYYY-MM-DD).",
+            detail=str(raw),
+            context=contesto_terminale(),
+        ) from exc
+
+
 # Numero massimo di gruppi fatturabili selezionabili in una emissione mirata.
 # Non e' una regola fiscale: e' il tetto oltre il quale «selezione mirata» non
 # vuol piu' dire niente e conviene il giro di massa. Cap esplicito invece che
