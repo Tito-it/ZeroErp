@@ -3310,7 +3310,15 @@
       "coda_filtro_ddt": "Queue filtered on delivery note #{id}.",
       "coda_filtro_ordine": "Queue filtered on order #{id}.",
       "coda_filtro_documento_rimuovi": "Show the whole queue",
-      "riga_gia_accreditato": "Already credited"
+      "riga_gia_accreditato": "Already credited",
+      "annullo_blocco": {
+        "nessun_accredito": "There is no credit to undo on this line.",
+        "fuori_perimetro": "This credit cannot be undone here: it could not be reconstructed in full. Please report the return.",
+        "rettifica_emessa": "The credit has already been issued on an invoice and can no longer be undone."
+      },
+      "coda_blocco": {
+        "GIA_ACCREDITATO": "This line has already been credited: the remaining amount is no longer due."
+      }
     },
     "resi_da_accreditare": {
       "col_numero": "Number",

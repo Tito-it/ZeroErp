@@ -1402,6 +1402,12 @@ peggio di uno assente.
 > il messaggio spiega» — e il BE ha dovuto citare la regola per farla
 > correggere. La regola non era sbagliata: era **irraggiungibile** da dove
 > serviva.
+>
+> ⚠️ **E il 2026-08-26 è successo di nuovo, in un altro modo.** Questa volta la
+> regola era raggiungibile — era scritta qui — ma parlava solo delle azioni di
+> **documento**, e il difetto stava su un'azione **per riga**. Trovato di nuovo
+> in collaudo, di nuovo da Tid. Da lì il **§12.5**: *una regola che copre metà
+> delle forme è una regola che il prossimo applica a metà.*
 
 ### 12.1 La regola
 
@@ -1471,11 +1477,49 @@ righe, indirizzi mancanti), `<area>.<entità>.<azione>_reason.*` per quelli di
 dominio (`vendite.reso.annulla_reason.con_accrediti`,
 `vendite.ddt.push_commessa_reason.gia_inviato`).
 
+#### ⚠️ Un motivo che dipende da CHI GUARDA non è un motivo di stato
+
+Quando la precondizione attraversa una tabella con la **RLS**, il conteggio che
+la decide cambia con l'operatore: due persone vedono lo **stesso record** col
+pulsante in **stati diversi**. È legittimo — la funzione è `SECURITY INVOKER` e
+la madre rifiuterebbe comunque — ma il **testo** va scritto con una regola in
+più.
+
+⛔ **Il testo non dice all'operatore che esistono dati che non può vedere.** È
+la convenzione no-leak di casa: un dettaglio fuori perimetro risponde **404,
+identico a un id inesistente**, non «non hai i permessi». Un tooltip che dice
+*«alcune righe non sono visibili con i tuoi permessi»* la scavalca — e per di
+più manda a chiedere un permesso che quasi sempre non è la cura.
+
+⚠️ **Ma nemmeno un generico «non disponibile»**: è il pulsante grigio e muto del
+§12.3, in una forma peggiore perché deliberata.
+
+**La forma giusta**: dire che l'azione non si può fare **da qui** e nominare un
+gesto, senza quantificare ciò che è nascosto. Caso reale
+(`vendite.resi.annullo_blocco.fuori_perimetro`, 2026-08-26): *«Questo accredito
+non si può annullare da qui: non è stato possibile ricostruirlo per intero.
+Segnala il reso.»*
+
+⭐ **E il `reason` in chiaro resta**, insieme ai numeri nel `dettaglio`: quella è
+la **diagnosi**, finisce in `dbops.error_log` ed è per chi può rimediare — che
+non è l'operatore. Si cambia il testo, non il codice.
+
+⚠️ Vale la pena sapere **quando scatta davvero**: una policy che pretende
+`app.ruolo_applicativo = 'OPERATORE'` rende **zero** ogni lettura senza quella
+GUC, quindi il motivo si accende su *tutte* le righe. Il caso più probabile non
+è un permesso mancante: è un **contesto di lettura sbagliato**.
+
 ### 12.4 Dove vive, e chi non ci è ancora arrivato
 
 Le capability stanno **solo sul DETTAGLIO**, mai per riga di lista: una lista che
 chiamasse una `fn_available_actions_*` per riga farebbe N chiamate. Le liste
 fanno il gate sui codici che hanno già in riga.
+
+⛔ **E questa frase, da sola, ha lasciato passare un difetto per cinque giorni.**
+Dice alla lista *cosa fare* con i codici che ha, e non dice a nessuno che quei
+codici **devono esserci**. Un'azione per riga senza nessun codice in riga
+rispetta il §12.4 alla lettera e viola il §12.1 per intero. Il seguito è il
+**§12.5**, che è la metà mancante.
 
 Censimento delle otto funzioni al 2026-08-20:
 
@@ -1494,6 +1538,133 @@ Censimento delle otto funzioni al 2026-08-20:
 qualcosa, il pulsante è grigio e muto. Non è un difetto trovato in collaudo — è
 un debito **misurato**, e va sanato quando quei due domini toccano le loro
 azioni. Chi ci mette mano legga prima questa sezione.
+
+### 12.5 ⭐ Le azioni PER RIGA — la stessa regola, un'altra forma
+
+> **Origine**: collaudo in-app del 2026-08-26. Il pulsante «Annulla
+> l'accredito» era **acceso** su un accredito le cui rettifiche erano già
+> emesse: l'operatore apriva la dialog, scriveva il **motivo obbligatorio**,
+> confermava, e solo lì prendeva il rifiuto. È la «terza via» del §12.1, cinque
+> giorni dopo che il §12 era stato scritto per vietarla.
+
+⛔ **Perché il §12 non l'ha fermata.** Parla di `fn_available_actions_*`, che
+stanno sul **documento**. L'annullo dell'accredito è **per riga**, non passa
+dalle capability, e la regola **non ha attraversato il confine fra i due
+livelli**. La regola non era sbagliata né irraggiungibile: era scritta per una
+sola delle due forme.
+
+**La regola del §12.1 non cambia. Cambia da dove arriva la terna.**
+
+#### 12.5.1 La forma
+
+| | Azione di **documento** | Azione **per riga** |
+| --- | --- | --- |
+| chi decide | `script.fn_available_actions_<entità>` | `script.fn_check_<azione>(<id_riga>)` |
+| cosa torna | `available_actions[]` con `enabled`/`reason`/`reason_key` | `jsonb` — `[]` se ammesso, altrimenti array **ordinato** di `{codice, reason, reason_key, dettaglio, valori}` |
+| come arriva al FE | il detail porta il blob | **una colonna della vista di riga**, col `reason` del primo motivo (`NULL` = ammesso) |
+| chi la legge | la barra azioni | il costruttore delle azioni di riga |
+
+```sql
+-- La funzione NOMINA i codici, non solleva: sollevare è mestiere della madre.
+jsonb_build_object(
+  'codice',     'E_ACCREDITO_ANNULLO_NON_AMMESSO',   -- già a catalogo
+  'reason',     'RETTIFICA_EMESSA',
+  'reason_key', 'vendite.resi.annullo_blocco.rettifica_emessa',
+  'dettaglio',  jsonb_build_object('bloccate', v_n_bloccate, 'totali', v_n_rettifiche),
+  'valori',     jsonb_build_array(...))               -- gli argomenti del messaggio
+```
+
+#### 12.5.2 ⭐ La madre CHIAMA la check — e questo è il punto
+
+Il §12.2 chiede che il predicato sia *«lo STESSO del guard»*. Per le azioni di
+riga si può fare **meglio della disciplina**: la madre non riscrive il
+predicato, lo **chiama**, e solleva il `codice` del **primo** motivo.
+
+⭐ La differenza vale la riga: un test che chiamasse madre e check e ne
+confrontasse l'esito proverebbe che **oggi** coincidono; così si prova che **non
+possono divergere**, perché la regola sta scritta in un posto solo. Il presidio
+da scrivere non è «gli esiti coincidono», è **«la madre non contiene più il
+predicato»**.
+
+⚠️ **L'ordine dell'array è il contratto.** La madre solleva il primo: se l'ordine
+divergesse, il tooltip direbbe una cosa e l'errore un'altra — cioè il difetto di
+partenza spostato di un passo.
+
+⚠️ **Nessun codice errore nuovo.** La check *nomina* codici già a catalogo. Se
+per scriverla servisse un codice nuovo, il difetto è a monte: la madre stava
+rifiutando senza saper dire perché.
+
+#### 12.5.3 ⛔ Il motivo deve arrivare sulla superficie dove il pulsante VIVE
+
+È l'errore che è costato un changeSet in più, ed è facilissimo da rifare.
+
+La prima consegna aveva messo la colonna sulla **coda accrediti** — la lista che
+*sembra* la sede naturale. Ma una riga **esce dalla coda al verbo**: dopo un
+accredito completo la riga non c'è più, e la colonna non ha niente da mostrare.
+Il pulsante vive nel **drawer del reso**, che è l'unica sede da cui si può ancora
+disfare — e quella superficie non aveva una vista affatto.
+
+> **La domanda da farsi prima di scegliere la vista: da dove si preme quel
+> pulsante?** Non «quale lista parla di questa cosa».
+
+⭐ Ne è nata `vendite.vw_resi_righe_dettaglio`: le righe del reso erano l'**unico**
+dettaglio documento servito da SQL scritto in Python, ed è esattamente il motivo
+per cui il motivo di blocco poteva arrivare solo dove non serviva.
+
+#### 12.5.4 ⛔ Non riusare la colonna di un altro verbo
+
+Sulla stessa vista può già esserci un `blocco_codice` che risponde a **un'altra
+domanda**. Nel caso reale, `blocco_codice` dice *«non posso accreditare»* e il
+suo unico valore — `GIA_ACCREDITATO` — è **esattamente la condizione che
+ABILITA l'annullo**. Nella stessa colonna vorrebbe dire *«bottone A spento»* e
+*«bottone B acceso»* insieme.
+
+**Un verbo, una colonna**, con un nome che dice quale (`annullo_blocco_codice`).
+
+#### 12.5.5 ⚠️ Sull'altro lato il campo si chiama `tooltip`
+
+Il §12.3 vale identico: una `reason_key` senza voce nei locales è un pulsante
+grigio col tooltip **vuoto**, e `check_i18n_keys.py` lo intercetta.
+
+⛔ Ma c'è un secondo modo di perdere il motivo, e non lo intercetta nessuno: il
+contratto delle azioni di riga del frontend ha il campo **`tooltip`**, non
+`motivo`. Un `motivo:` sull'azione non lo legge nessuno — misurato il
+2026-08-26: il motivo di un pulsante spento **non era mai stato reso**, né su
+desktop né su touch, e la chiave i18n mancante non si era mai vista proprio
+perché l'etichetta non veniva chiesta.
+
+⭐ *Un campo dichiarato e non letto è peggio della sua assenza: sembra
+presidiato.* Chi consegna una `reason_key` nuova **guardi a video** che arrivi:
+è l'unico controllo che c'è.
+
+#### 12.5.6 🟠 Il censimento che non esiste
+
+Il §12.4 censisce le otto capability **di documento**. Per le azioni **di riga**
+non c'è nessun elenco — ed è il motivo per cui questa è sfuggita.
+
+Prima misura, 2026-08-26, e va letta per quello che è:
+
+| | |
+| --- | ---: |
+| funzioni `script.fn_check_*` che emettono `reason_key` | **13** su 25 |
+| viste che espongono una colonna di blocco per riga | **2** |
+| componenti FE che costruiscono azioni di riga | **44** |
+| …di cui disabilitano almeno un'azione | 27 |
+| …e di questi, passano anche un `tooltip` | **21** |
+
+⚠️ **Cosa questa misura NON prova.** È **per file**, non per azione: un file può
+disabilitare un'azione col motivo e un'altra senza, e qui risulta a posto. I 17
+file che non disabilitano niente possono essere del tutto legittimi — non tutte
+le azioni dipendono da uno stato. *Anche la misura è un programma, e può avere il
+suo difetto.*
+
+⭐ **Il numero da guardare è la seconda riga: due.** Due viste in tutto il
+progetto portano un motivo di blocco per riga, ed entrambe sono dei resi. Non
+dimostra che le altre siano sbagliate; dice che **nessuno ha ancora guardato**.
+
+Il censimento vero — azione per azione, con accanto la sua sede — è il lavoro che
+chiude questa sezione, e va fatto **prima** del prossimo collaudo che lo trovi da
+solo.
 
 ---
 

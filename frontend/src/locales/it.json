@@ -3310,7 +3310,15 @@
       "coda_filtro_ddt": "Coda filtrata sul DDT #{id}.",
       "coda_filtro_ordine": "Coda filtrata sull'ordine #{id}.",
       "coda_filtro_documento_rimuovi": "Mostra tutta la coda",
-      "riga_gia_accreditato": "Gia' accreditato"
+      "riga_gia_accreditato": "Gia' accreditato",
+      "annullo_blocco": {
+        "nessun_accredito": "Non c'è nessun accredito da annullare su questa riga.",
+        "fuori_perimetro": "Questo accredito non si può annullare da qui: non è stato possibile ricostruirlo per intero. Segnala il reso.",
+        "rettifica_emessa": "L'accredito è già stato emesso in fattura e non si può più annullare."
+      },
+      "coda_blocco": {
+        "GIA_ACCREDITATO": "Questa riga è già stata accreditata: la quota residua non è più dovuta."
+      }
     },
     "resi_da_accreditare": {
       "col_numero": "Numero",

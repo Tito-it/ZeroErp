@@ -815,7 +815,7 @@ allora basteranno due celle di seed — vedi §6.1 di
 
   | Dove | Cosa |
   | --- | --- |
-  | `docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md` | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` |
+  | ~~`docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md`~~ | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` — ✅ **causa corretta nel generatore il 2026-08-26**, spariscono alla prossima rigenerazione (vedi sotto) |
   | `docs/it/dev/frontend/i18n-namespace-radici.md` | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` |
 
   > ℹ️ **I 4 link morti non sono un contenuto sbagliato: è il generatore.**
@@ -825,6 +825,33 @@ allora basteranno due celle di seed — vedi §6.1 di
   > pagine sono sorelle — ma issato di un livello nell'index punta a una cartella
   > dove quel file non c'è. Il generatore non riscrive i link relativi quando li
   > sposta di cartella. Si corregge lì, una volta per tutti gli schemi.
+  >
+  > ✅ **CORRETTO IL 2026-08-26, dove diceva questo paragrafo**: in
+  > `scripts/gen_db_docs.py`. `extract_scopo` riceve ora la cartella dello schema
+  > e riscrive i link relativi nudi risolvendoli sulla sottocartella che contiene
+  > davvero il file — `funzioni/`, `views/`, `tabelle/` per `index.md`,
+  > `manual/` per `index.ci.md`, che sono **due bersagli diversi dalla stessa
+  > cartella**.
+  >
+  > ⭐ La riscrittura vive **dentro `extract_scopo`**, non nei quattro punti che
+  > la chiamano: la lettura dello «Scopo» è una sola, e quattro copie della
+  > stessa riscrittura sarebbero quattro occasioni di divergere.
+  > ⚠️ **Un nome non risolvibile si lascia com'è**: il generatore non inventa una
+  > destinazione. Meglio un link che il build segnala di uno che punta altrove.
+  >
+  > ⛔ **La doc NON è stata rigenerata**, ed è la regola: l'auto-gen si rigenera
+  > al suo giro, non a mano e non da qui. La correzione arriva ai due index di
+  > `pratiche` alla prossima rigenerazione.
+  > ⭐ **Provata comunque prima di fermarsi**: rigenerando in prova i due index
+  > il diff è **esattamente** i 4 link e nient'altro — che è anche la prova che
+  > il generatore, per il resto, è stabile — e su **tutti** gli schemi i link
+  > morti passano da **4 a 0**. La prova è stata poi annullata.
+  >
+  > 📌 **E il residuo era stato letto male, una volta.** Il 2026-08-26 un
+  > controllo automatico l'ha segnalato come *«link rotto in questo brief»*: ma
+  > il link qui sopra sta dentro un **esempio citato**, e citare non è linkare.
+  > Il difetto vero non era mai stato in questo file — era nel generatore, dove
+  > questo paragrafo diceva fin dall'inizio che fosse.
 
   ⚠️ **E una cosa che va saputa a proposito di questo residuo: non poteva
   validare nulla di questo cantiere.** `work-done/` e `work-in-progress/` sono

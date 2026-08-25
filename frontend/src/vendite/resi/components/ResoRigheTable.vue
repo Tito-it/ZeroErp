@@ -12,6 +12,7 @@ import Column from 'primevue/column'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import { useActionPermission } from '../../../core/composables/useActionPermission'
 import { MANAGE_ICONS } from '../../../core/constants'
+import { labelOrCode } from '../../../core/utils/i18nLabel'
 import { formatNumber } from '../../../core/utils/format'
 import { statoRiconsegnaSeverity } from '../../../core/utils/severity'
 import { AZIONE_ACCREDITA_RESO } from '../constants'
@@ -19,7 +20,7 @@ import { useResiStore } from '../stores/resi'
 import AccreditoAnnullaDialog from './dialogs/AccreditoAnnullaDialog.vue'
 import ResoRigaForm from './ResoRigaForm.vue'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useResiStore()
 
 defineProps({
@@ -49,19 +50,47 @@ defineExpose({ loadRighe: () => tableRef.value?.loadRighe() })
 // ⚠️ Si offre sul FATTO (`gia_accreditato > 0`, che il backend legge dalla fn
 // unica del DB) e non sulla REGOLA: «tutte le rettifiche ancora NON_EMESSA» e'
 // una precondizione della madre, e ricalcolarla qui sarebbe una seconda copia
-// destinata a divergere. Se e' troppo tardi la madre rifiuta con un messaggio
-// che dice quale strada prendere — cosa che il gate non saprebbe dire.
+// destinata a divergere.
+// ⛔ MA FINO AL 2026-08-26 IL BOTTONE RESTAVA ACCESO ANCHE QUANDO LA MADRE
+//    AVREBBE RIFIUTATO, e l'operatore scopriva il vincolo dopo aver aperto la
+//    dialog e scritto il motivo OBBLIGATORIO (rilievo in-app di Tid su
+//    RESO0000017, le cui tre rettifiche erano gia' EMESSA sulla nota di
+//    credito). Fra «ricalcolare la regola qui» e «non dirla affatto» c'e' la
+//    terza strada, che e' quella di casa: la regola la EMETTE il database.
+//    `annullo_blocco_codice` arriva da `vw_resi_righe_dettaglio` e nasce da
+//    `script.fn_check_accredito_annullabile`, che e' la sede UNICA — la stessa
+//    che la madre chiama per rifiutare. Zero copie, e il pulsante spento sa
+//    dire perche'.
+//    Regola: `frontend-standards` «permesso ⇒ nascondi, stato ⇒ disabilita col
+//    motivo», gia' applicata al §43 su «Annulla RESO» (livello documento) e
+//    arrivata qui solo ora (livello riga).
+// ⚠️ `NESSUN_ACCREDITO` non raggiunge la UI: senza accredito l'azione non e'
+//    proprio offerta (`visible` implicito). Vive nella check perche' la MADRE
+//    deve poterlo sollevare su una chiamata diretta all'API.
 const { isAllowed: canAccreditare } = useActionPermission(AZIONE_ACCREDITA_RESO)
 const annulloVisible = ref(false)
 const annulloRiga = ref(null)
 
+// Decodifica fail-visible del motivo di blocco (gemella di `bloccoLabel` nella
+// coda): un codice nuovo mostra il codice grezzo, mai la chiave i18n letterale.
+function annulloBloccoLabel(codice) {
+  return labelOrCode(t, te, `vendite.resi.annullo_blocco.${String(codice).toLowerCase()}`, codice)
+}
+
 function azioniRiga(riga) {
   if (!canAccreditare.value || !(Number(riga.gia_accreditato) > 0)) return []
+  const blocco = riga.annullo_blocco_codice || null
   return [{
     key: 'annulla-accredito',
     label: t('vendite.resi.annullo_azione'),
     icon: MANAGE_ICONS.UNDO,
     severity: 'danger',
+    disabled: blocco != null,
+    // ⚠️ Il campo del BB e' `tooltip`, NON `motivo`: `RowActionsMenu` ne ricava
+    //    da solo la riga del popup (`actionMotivo`). Un `motivo:` sull'azione
+    //    non lo legge nessuno — difetto reale trovato in `ResiCodaTable` il
+    //    2026-08-26 e corretto insieme a questo.
+    tooltip: blocco ? annulloBloccoLabel(blocco) : undefined,
     command: () => {
       annulloRiga.value = riga
       annulloVisible.value = true

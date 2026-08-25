@@ -161,6 +161,18 @@ Usa la riga **24** (il kit).
       riga**. Analisi, misure e prerequisito DB: **§45** del brief di design.
       ⚠️ Non è un caso limite: `stato_emissione` non torna indietro, quindi è lo
       stato **finale** di ogni accredito — oggi 1 riga su 3, domani tutte.
+      ✅ **CHIUSO**: DB il 2026-08-25 (`20260825-22/23/24/25`), BE e FE il
+      2026-08-26 (§45.9).
+- [ ] ⭐ **Da riverificare in app dopo la correzione.** Sul reso 24 il pulsante
+      «Annulla l'accredito» dev'essere **grigio e parlante**: il motivo si legge
+      come tooltip (desktop) **e** come riga sotto la voce nel kebab
+      (touch/tablet) — *«L'accredito è già stato emesso in fattura e non si può
+      più annullare»*.
+      ⚠️ Controprova obbligatoria: sui resi **RESO0005122** e **RESO0005123**
+      (rettifiche ancora `NON_EMESSA`) il pulsante resta **acceso e
+      funzionante** — è ciò che dimostra che il gate non ha spento tutto.
+      ⛔ Se è grigio ma **muto**, il difetto è a monte del colore: o
+      `annullo_blocco_codice` non arriva dalla vista, o manca la chiave i18n.
 - [ ] nel drawer del lotto, la conferma di **«Elimina dal lotto»** / «Riporta a
       bozza» / «Annulla lotto» avvisa che **un accredito già registrato NON
       viene annullato** e che la nota **si rigenera** al giro successivo;
@@ -175,7 +187,7 @@ Usa la riga **24** (il kit).
 > **Perché esiste questa prova.** Al collaudo del 2026-08-25 Tid: *«manca un
 > collegamento tra la nota credito e il reso, non riesco a ritrovarlo — esempio
 > nota credito 20024»*. Il grafo si fermava sul reso. Ora c'è l'arco `S`.
-> Cantiere: [brief-db-lineage-arco-reso-nota-credito.md](brief-db-lineage-arco-reso-nota-credito.md).
+> Cantiere: [brief-db-lineage-arco-reso-nota-credito.md](../work-done/brief-db-lineage-arco-reso-nota-credito.md).
 >
 > 📌 **Il caso vivo è il reso 24** (`RESO0000017`) → **NC 20024**, numero **1**
 > sul registro NC. Gli altri resi della tabella in cima non hanno l'arco: sono
@@ -217,7 +229,7 @@ Usa la riga **24** (il kit).
 | Cosa si vede | Perché | Dove sta |
 | --- | --- | --- |
 | il numero è **`1`** e non `NC0000001` | il `codice` del nodo fattura è `fatture.numero`, e il registro NC è al numero 1 — sulle sorelle la stessa colonna mostra `DDT0000031` | §7 del brief, terzo punto |
-| il chip dice **«Fattura»** e non «Nota di credito» | la natura della frontiera non esce dalla summary: il join ha bisogno di `frontiera_uid`, che le liste non hanno | 🔴 **§7-bis** del brief — richiesta al team DB, BE/FE aspettano |
+| il chip dice **«Fattura»** e non «Nota di credito» | la natura della frontiera non esce dalla summary: il join ha bisogno di `frontiera_uid`, che le liste non hanno | 🔴 **§3** di `brief-db-lineage-residui-root-e-sorgente-ddt.md` — richiesta al team DB, BE/FE aspettano |
 
 ⛔ **Se invece la colonna «Transito» mostra «—»** sul reso 24, quello **è** un
 difetto: vuol dire che `frontiera_tipo_codice` non arriva dal backend. Il chip ha

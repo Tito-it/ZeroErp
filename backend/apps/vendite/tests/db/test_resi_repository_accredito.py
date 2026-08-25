@@ -13,7 +13,10 @@ Indice test eseguiti:
 2) test_select_star_dalla_madre_non_select_scalare — la forma dell'SQL
 3) test_id_castato_a_intero_nei_parametri — nessuna stringa al driver
 4) test_annullo_letto_con_fetchall — anche l'annullo e' RETURNS TABLE
-5) test_gia_accreditato_dalla_fn_condivisa — la formula non si riscrive
+5) test_list_righe_legge_la_vista_e_non_ricostruisce — il dettaglio ha una
+   sede a DB (`vw_resi_righe_dettaglio`, 20260825-25) e il repository non
+   la ricompone. ⭐ Era «la formula non si riscrive»: la garanzia si e'
+   spostata nella vista, e il presidio l'ha seguita invece di sparire.
 """
 
 from unittest import TestCase
@@ -136,14 +139,21 @@ class ResiRepositoryAccreditoTests(TestCase):
 class ResiRigheGiaAccreditatoTests(TestCase):
     """Il fatto «quanto e' gia' stato accreditato» sulle righe del reso."""
 
-    # Scopo: 🔴 la quota accreditata si legge dalla fn del DB, che e' il punto
-    # UNICO della formula (la usa anche `vw_resi_da_accreditare`). Rifarla qui
-    # con un SUM sul ponte darebbe una seconda verita' — e sbagliata: su un kit
-    # N righe di ponte portano la STESSA quota padre, e sommarle la
-    # moltiplicherebbe. Se questo test diventa rosso perche' qualcuno ha
-    # scritto un SUM inline, il difetto e' quello, non il test.
+    # Scopo: ⭐ LA GARANZIA SI E' SPOSTATA, E IL PRESIDIO CON LEI (2026-08-26).
+    # Questo test asseriva che `list_righe` chiamasse
+    # `vendite.fn_resi_riga_accreditato_partita(rr.id)` invece di rifare la
+    # somma sul ponte — su un kit N righe portano la STESSA quota padre, e
+    # sommarle la moltiplicherebbe.
+    # Dal changeSet `20260825-25` quella query non esiste piu': la sede e'
+    # `vendite.vw_resi_righe_dettaglio`, e la fn la chiama la vista. Cancellare
+    # il test avrebbe tolto il presidio insieme al codice; riscriverlo
+    # sull'invariante NUOVA lo tiene vivo dov'e' finita la garanzia.
+    # ⛔ L'invariante e' «il repository non ricostruisce il dettaglio»: nessuna
+    #    tabella di base, nessuna aggregazione, nessuna chiamata a funzione.
+    #    Il lato DB (la fn e la coerenza con la sede unica del predicato) e'
+    #    presidiato dal pgTAP `test-vw-resi-righe-dettaglio-v1`.
     @patch("apps.vendite.db.resi_repository.connection")
-    def test_gia_accreditato_dalla_fn_condivisa(self, mock_conn) -> None:
+    def test_list_righe_legge_la_vista_e_non_ricostruisce(self, mock_conn) -> None:
         cursor = MagicMock()
         cursor.description = []
         cursor.fetchall.return_value = []
@@ -154,9 +164,17 @@ class ResiRigheGiaAccreditatoTests(TestCase):
         ResiRepository().list_righe(7)
 
         sql = cursor.execute.call_args[0][0]
-        self.assertIn("vendite.fn_resi_riga_accreditato_partita(rr.id)", sql)
-        self.assertIn("AS gia_accreditato", sql)
+        self.assertIn("vendite.vw_resi_righe_dettaglio", sql)
+        # Il dettaglio non si ricompone qui: ne' dalle tabelle di base...
+        self.assertNotIn("vendite.resi_righe_riconsegne", sql)
+        self.assertNotIn("vendite.resi_righe_rinunce", sql)
+        # ...ne' rifacendo le formule che la vista possiede.
         self.assertNotIn("SUM(qta_partita)", sql)
+        self.assertNotIn("fn_resi_riga_accreditato_partita", sql)
+        self.assertNotIn("fn_resi_riga_residuo_riconsegna", sql)
+        # ⚠️ `attivo` resta un filtro del CHIAMANTE: la vista proietta la
+        #    colonna e non nasconde righe (pgTAP 5 della vista).
+        self.assertIn("attivo IS TRUE", sql)
 
 
 class FatturaNaturaELegameTests(TestCase):

@@ -553,7 +553,56 @@ def write_docs_for_schema(schema, cur):
     # Genera indice CI con solo contenuti manuali
     write_index_ci(schema_dir, schema)
 
-def extract_scopo(text):
+# Dove l'index cerca il bersaglio di un link relativo della descrizione.
+# `index.md` linka le pagine generate, `index.ci.md` le pagine manuali: sono due
+# indici che vivono nella stessa cartella e puntano a due posti diversi.
+_SOTTOCARTELLE_INDEX = ('funzioni', 'views', 'tabelle')
+_SOTTOCARTELLE_INDEX_CI = ('manual',)
+
+
+# Link markdown a un .md RELATIVO e senza cartella: `[testo](nome.md)` con
+# eventuale ancora. Esclusi http(s), assoluti, `../` e le ancore pure.
+_LINK_MD_NUDO_RE = re.compile(
+    r"\]\((?!https?://|/|\.\./|#)([A-Za-z0-9_][A-Za-z0-9_.-]*\.md)(#[^)]*)?\)"
+)
+
+
+# Scopo: ⛔ RISCRIVE I LINK RELATIVI DELLA DESCRIZIONE COPIATA DA `manual/`.
+#
+#   Lo «Scopo Principale» viene preso da `<schema>/manual/<nome>.md` e incollato
+#   **verbatim** in `<schema>/index.md`, che sta **una cartella piu' su**. Dentro
+#   `manual/` un link `[fn_pubblica_definizione](fn_pubblica_definizione.md)` e'
+#   CORRETTO — le due pagine sono sorelle — ma issato nell'index punta a una
+#   cartella dove quel file non c'e'.
+#
+# ⚠️ Il difetto e' silenzioso: il link della VOCE viene prefissato dal
+#   generatore (`funzioni/<nome>.md`), quello dentro la FRASE no. Solo il build
+#   della doc se ne accorge, come warning, e nessuno lo lega alla sua causa —
+#   segnalato nel brief fan-out il 2026-08-10 come «residuo preesistente, si
+#   corregge nel generatore, una volta per tutti gli schemi». Misurato il
+#   2026-08-26: **4 link morti**, tutti in `pratiche/index.md` e nel gemello
+#   `index.ci.md`.
+#
+# ⚠️ Un nome non risolvibile si lascia **com'e'**: il generatore non inventa una
+#   destinazione. Meglio un link che il build segnala di uno che punta altrove.
+def _riscrivi_link_relativi(scopo, schema_dir, sottocartelle):
+    if not scopo or not schema_dir or not sottocartelle:
+        return scopo
+
+    def _sub(m):
+        fname, ancora = m.group(1), m.group(2) or ""
+        for sub in sottocartelle:
+            if os.path.isfile(os.path.join(schema_dir, sub, fname)):
+                return f"]({sub}/{fname}{ancora})"
+        return m.group(0)
+
+    return _LINK_MD_NUDO_RE.sub(_sub, scopo)
+
+
+# `schema_dir` + `sottocartelle` sono opzionali e la riscrittura vive QUI, non
+# nei quattro punti che chiamano: la lettura dello «Scopo» e' una sola, e quattro
+# copie della stessa riscrittura sarebbero quattro occasioni di divergere.
+def extract_scopo(text, schema_dir=None, sottocartelle=()):
     m = re.search(
         r"###\s*(?:🎯\s*)?(?:Scopo Principale|Scopo principale)\s*(.+?)(?=(?:\r?\n###|$))",
         text,
@@ -563,10 +612,12 @@ def extract_scopo(text):
         return ""
     full_scopo = m.group(1).strip()
     paragraph = full_scopo.split('\n\n', 1)[0]
-    return paragraph.replace('\n', ' ')
+    return _riscrivi_link_relativi(
+        paragraph.replace('\n', ' '), schema_dir, sottocartelle
+    )
 
 
-def add_entries_from_dir(dir_path, title, link_prefix, manual_dir, lines):
+def add_entries_from_dir(dir_path, title, link_prefix, manual_dir, lines, schema_dir=None):
     if not os.path.isdir(dir_path):
         return
     lines.append(title)
@@ -579,7 +630,7 @@ def add_entries_from_dir(dir_path, title, link_prefix, manual_dir, lines):
         manual_file = os.path.join(manual_dir, f"{name}.md")
         if os.path.isfile(manual_file):
             with open(manual_file, encoding='utf-8') as fh:
-                scopo = extract_scopo(fh.read())
+                scopo = extract_scopo(fh.read(), schema_dir, _SOTTOCARTELLE_INDEX)
             if scopo:
                 entry += f" — {scopo}"
         lines.append(entry)
@@ -608,13 +659,13 @@ def write_index(schema_dir, schema):
             manual_file = os.path.join(manual_dir, f"{name}.md")
             if os.path.isfile(manual_file):
                 text = open(manual_file, encoding='utf-8').read()
-                scopo = extract_scopo(text)
+                scopo = extract_scopo(text, schema_dir, _SOTTOCARTELLE_INDEX)
                 if scopo:
                     entry += f" — {scopo}"
             lines.append(entry)
         lines.append('')
     # Uso per funzioni
-    add_entries_from_dir(funcs_dir, "## ⚙️ Funzioni", "funzioni", manual_dir, lines)
+    add_entries_from_dir(funcs_dir, "## ⚙️ Funzioni", "funzioni", manual_dir, lines, schema_dir)
 
     # Uso per procedure (se stessa cartella, puoi filtrare per nome se serve)
     #add_entries_from_dir(funcs_dir, "## ⚙️ Procedura", "funzioni", manual_dir, lines)
@@ -663,7 +714,7 @@ def write_index(schema_dir, schema):
             manual_file = os.path.join(manual_dir, f"{name}.md")
             if os.path.isfile(manual_file):
                 text = open(manual_file, encoding='utf-8').read()
-                scopo = extract_scopo(text)
+                scopo = extract_scopo(text, schema_dir, _SOTTOCARTELLE_INDEX)
                 if scopo:
                     entry += f" — {scopo}"
             lines.append(entry)
@@ -713,7 +764,7 @@ def write_index_ci(schema_dir, schema):
             entry = f"- [{name}](manual/{name}.md)"
             if os.path.isfile(manual_file):
                 with open(manual_file, encoding='utf-8') as fh:
-                    scopo = extract_scopo(fh.read())
+                    scopo = extract_scopo(fh.read(), schema_dir, _SOTTOCARTELLE_INDEX_CI)
                 if scopo:
                     entry += f" — {scopo}"
             lines.append(entry)

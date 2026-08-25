@@ -81,6 +81,20 @@ def _repo_root() -> Path:
 _SEED_DIR = _repo_root() / "db/changelog/migrations_v2/80_data/sql/ui"
 
 
+# Scopo: sorgente `.vue` senza commenti. Serve a distinguere chi USA uno slot da
+#        chi lo NOMINA — un presidio che cerca una PAROLA si accende sui
+#        messaggi, ed e' successo il 2026-08-26: un commento che citava
+#        `#cell-azioni` per spiegare il difetto ha fatto diventare rosso il
+#        test che quel difetto presidia.
+# ⭐ Non e' una toppa: il guard gemello `frontend/scripts/check-liste-configurabili.mjs`
+#    ha `senzaCommenti()` dal primo giorno, con la stessa motivazione scritta
+#    accanto. Qui mancava, ed era l'unica differenza fra i due.
+def _senza_commenti(testo: str) -> str:
+    senza_html = re.sub(r"<!--.*?-->", "", testo, flags=re.S)
+    senza_blocco = re.sub(r"/\*.*?\*/", "", senza_html, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", senza_blocco, flags=re.M)
+
+
 # Scopo: whitelist di ordinamento di una lista il cui ORDINE vive nella funzione
 #        DB, non in Python — letta dalla doc auto-gen della funzione.
 #
@@ -462,11 +476,14 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
     #
     # ⚠️ Il presidio guarda i `.vue`, non il seed: e' un difetto di CHIAMATA,
     #    e nel database non se ne vede traccia.
+    # ⚠️ E guarda il sorgente SENZA COMMENTI (`_senza_commenti`): chi NOMINA lo
+    #    slot sbagliato per spiegarlo non lo sta usando. Senza, il presidio si
+    #    accende sulla propria documentazione — successo il 2026-08-26.
     def test_lo_slot_delle_azioni_si_chiama_actions(self) -> None:
         src = _repo_root() / "frontend/src"
         colpevoli: list[str] = []
         for percorso in sorted(src.rglob("*.vue")):
-            testo = percorso.read_text(encoding="utf-8")
+            testo = _senza_commenti(percorso.read_text(encoding="utf-8"))
             if "<ListaConfigurabile" not in testo:
                 continue
             if "#cell-azioni" in testo:
