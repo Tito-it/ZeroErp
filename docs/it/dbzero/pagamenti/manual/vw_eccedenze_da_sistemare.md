@@ -80,6 +80,22 @@ indistinguibile da una su cui nessuno ha mai guardato.
   registrato il residuo coincide col totale e non può aver cambiato segno.
 * `security_invoker = on`: legge tre tabelle con le policy, e senza girerebbe
   come proprietario mostrando a ciascuno i documenti dell'altro.
+* ⚠️ La vista prende dalla funzione del saldo **una colonna per nome**
+  (`s.saldo`), senza dichiarare la lista degli alias: così una colonna in più
+  sulla funzione non la riguarda.
+
+---
+
+### 🕘 Storia
+
+* **25-08-2026** — **ricreata senza cambiare nessuna colonna** (S5-1 del cantiere
+  incassi). ⭐ Non è una modifica alla vista: `fn_get_saldo_fattura` è passata da
+  due numeri a quattro, e per sostituire una funzione bisogna prima togliere la
+  vista che la usa — le due cose viaggiano perciò nello **stesso** changeSet,
+  così il database non resta mai senza l'una o senza l'altra. ⚠️ Ricreando si
+  ripetono `security_invoker` e i GRANT: sono cose che si perdono **in silenzio**,
+  e la prima delle due farebbe vedere a ciascun emittente i documenti dell'altro.
+* **22-08-2026** — prima stesura (lotto 7).
 
 ---
 
