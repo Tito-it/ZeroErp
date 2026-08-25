@@ -139,12 +139,12 @@ Usa la riga **24** (il kit).
 - [X] ⚠️ **il documento della nota di credito è SEPARATO** da quello della
       fattura che rettifica: se le righe di rettifica sono finite dentro una
       fattura ordinaria, **fermati e segnala**;
-- [ ] «Rendi definitive» → il documento prende un **numero sul sezionale NC**
+- [X] «Rendi definitive» → il documento prende un **numero sul sezionale NC**X
       (serie vuota), **non** sul progressivo delle fatture;
-- [ ] apri la nota di credito: in testata il Tag **«Nota di credito»**, la riga
+- [X ] apri la nota di credito: in testata il Tag **«Nota di credito»**, la riga
       **«Rettifica: …»** con il documento collegato, e sulle righe la colonna
       **«Rettifica riga»** con numero e riga della gemella;
-- [ ] apri la **fattura rettificata**: in testata dice **«Rettificata da …»** con
+- [X] apri la **fattura rettificata**: in testata dice **«Rettificata da …»** con
       il numero della nota.
 
 ### 7 · Dopo il documento: le due strade restano distinte
