@@ -6,9 +6,11 @@
 > Tid** sulle due superfici che contano — la riga scelta dalla Dashboard
 > Competenza e la numerazione avanzata dal drawer del lotto (§12.7).
 >
-> ⛔ **NON spostare questo file in `work-done/`**: **15 `COMMENT` dentro il
-> database** citano questo percorso e si rigenerano a ogni migrate — spostarlo
-> renderebbe morti 15 riferimenti che non si correggono editando i file. §12.8.
+> ⭐ **Spostato in `work-done/` il 2026-08-26** (decisione di Tid). ~~NON spostare
+> questo file~~: il divieto che stava qui poggiava su un rischio di CI che **non
+> esiste** — vedi §12.8, corretta. Restano 15 riferimenti al vecchio percorso
+> dentro i `COMMENT` del database: **debito cosmetico accettato**, non un
+> guasto.
 >
 > **Destinatario:** team DB (`dev/db-tid`), poi backend e frontend. BE e FE
 > hanno atteso i prerequisiti DB prima di partire
@@ -1890,10 +1892,73 @@ Chiuso non vuol dire trasferito. **15 `COMMENT` dentro il database** citano
 
 ⚠️ Quei percorsi **non stanno nei file**: stanno nei `COMMENT ON`, e
 `scripts/gen_db_docs.py` li riscrive nella doc auto-generata a ogni migrate.
-Spostare il brief non li corregge — li rende **morti**, e il guardrail
-«riferimenti morti» li troverebbe dopo, in CI, su una PR che non c'entra nulla.
-Rimediare vorrebbe dire **15 changeSet** per riscrivere altrettanti `COMMENT`.
+Spostare il brief non li corregge. Rimediare vorrebbe dire **15 changeSet** per
+riscrivere altrettanti `COMMENT`.
 
-⭐ Il file resta quindi in `work-in-progress/` **con lo stato scritto in testa**.
-Se un giorno la convenzione dovesse prevalere, il trasferimento è un cantiere DB
-suo — non un `git mv`.
+#### 🔴 RETTIFICA 2026-08-26 — il rischio di CI non esiste, e il file si è spostato
+
+~~Il file resta quindi in `work-in-progress/`…~~
+
+La conclusione qui sopra poggiava su una premessa **sbagliata**: che «il
+guardrail *riferimenti morti* li troverebbe dopo, in CI, su una PR che non
+c'entra nulla». **Non è così.**
+
+`scripts/sql/guardrail_riferimenti_morti.sql` — e la sua intestazione lo dice
+nella prima riga — presidia i **riferimenti morti nelle funzioni plpgsql**:
+compila i corpi con `plpgsql_check` e cerca **tabelle e funzioni** che non si
+risolvono, più le righe di configurazione che nominano per stringa una tabella
+inesistente. Non legge `pg_description`, non guarda i `COMMENT`, non sa cosa sia
+un percorso `.md`. In `ci-validate.yaml` il passo si chiama, alla lettera,
+*«Guardrail riferimenti morti (funzioni plpgsql + dati di config)»*.
+
+✅ E in CI **non c'è nessun altro controllo sui link dei documenti**: la build
+Zensical ha `normalize_source_file_links`, che i link verso file sorgente li
+**neutralizza**, non li fa fallire.
+
+**Quindi:** il fatto (15 `COMMENT` col vecchio percorso) è vero; la conseguenza
+(una CI rossa altrove) no. Il costo reale è che chi legge un `COMMENT` o la doc
+auto-gen cerca il brief in `work-in-progress/` e lo trova in `work-done/`.
+
+⭐ **Deciso da Tid il 2026-08-26: il brief si sposta**, e con lui l'analisi. Il
+debito dei 15 riferimenti è **accettato e nominato qui**. Si pagherà da sé: ogni
+volta che una di quelle funzioni verrà toccata per un motivo suo, il `COMMENT`
+si riscrive col percorso giusto — e nel frattempo la convenzione nuova
+([[feedback_no_path_wip_negli_yaml]]) impedisce che il caso si ripeta.
+
+### 2026-08-25 · Il brief chiude e si sposta in `work-done`
+
+Cantiere DB completo, migrato, collaudato e pushato. Il documento passa in
+`work-done/`.
+
+⚠️ **Il brief e l'analisi si linkavano per NOME NUDO**, essendo nella stessa
+cartella: spostandone uno solo si rompevano entrambe le direzioni. Corretti i
+**5** link (1 dal brief verso l'analisi, 4 dall'analisi verso il brief) con i
+percorsi relativi `../work-done/` e `../work-in-progress/`.
+⭐ L'analisi resta in `work-in-progress`: se un giorno la si sposta, i due link
+tornano a essere nomi nudi.
+
+#### ⛔ Convenzione adottata da qui in avanti (richiesta di Tid)
+
+> Negli YAML dei changeSet si cita il documento **per nome**, mai col percorso
+> `docs/it/dev/work-in-progress/…`.
+
+Il motivo immediato è che a cantiere chiuso il path muore e costringe a toccare
+changeSet già mergiati — fattibile (sono commenti, e i file portano
+`validCheckSums: ANY`) ma è churn che non doveva esistere.
+
+⭐ **Il costo vero però non sta nello YAML: sta nel DATABASE.** Lo stesso
+riferimento è dentro i `COMMENT ON FUNCTION` / `COMMENT ON COLUMN`, quindi vive
+in `pg_description` e **riappare nella doc auto-gen**. Misurato su questo
+cantiere: **32 occorrenze negli YAML e 16 nella doc auto-gen**, cioè nei commenti
+vivi di dieci funzioni.
+
+#### Cosa NON è stato fatto, e perché
+
+I 32 riferimenti esistenti **restano com'erano**. Correggerli a metà — YAML sì,
+database no — creerebbe una divergenza peggiore del path sbagliato; correggerli
+davvero vorrebbe dire **dieci changeSet nuovi per riscrivere dei commenti**, su
+oggetti appena collaudati.
+
+⭐ Il danno residuo è che chi legge un `COMMENT ON` cerca il brief in
+`work-in-progress` e lo trova in `work-done`: un secondo di attrito, e si
+risolve da sé. La regola vale **per il prossimo cantiere**, dove costa zero.

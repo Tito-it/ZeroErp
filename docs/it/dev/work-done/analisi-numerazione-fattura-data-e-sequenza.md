@@ -392,7 +392,7 @@ monotòna.
 > Consuntivo, difetti trovati per strada, revisione critica e collaudo: **§12
 > del [brief](brief-db-numerazione-data-documento-e-sequenza.md)**.
 >
-> ⛔ Il brief **resta in `work-in-progress/`**: 15 `COMMENT` dentro il database
+> ⭐ Brief e analisi sono in `work-done/` dal 2026-08-26. La nota precedente diceva che il brief doveva restare in `work-in-progress/` per via di 15 `COMMENT` nel database: il fatto è vero, la conseguenza no — il guardrail «riferimenti morti» presidia le funzioni plpgsql, non i percorsi dei documenti. Debito cosmetico accettato, vedi §12.8 del brief.
 > ne citano il percorso e si rigenerano a ogni migrate (§12.8 del brief).
 
 ⛔ Le azioni DB non erano partite da qui: il brief è passato al team DB su
