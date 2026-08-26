@@ -1,0 +1,409 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-6 — IL DOCUMENTO NASCE GIA' CONFORME
+#   vendite.fn_calcola_data_documento — DROP + CREATE
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-6
+#          (decisioni D-2, D-3, D-8)
+#
+# ── ⭐ CHE COSA CAMBIA ──────────────────────────────────────────────
+#   1. arriva `p_serie`, perche' il pavimento di sequenza e' per
+#      (registro, SERIE) e senza di essa si leggerebbe il contatore di un'altra
+#      sequenza — rispondendo «nessun pavimento», la risposta piu' permissiva
+#      possibile proprio dove il cancello poi rifiuta (brief §10 V-7);
+#   2. la data CALCOLATA viene portata dentro i due pavimenti.
+#
+# ── ⛔ SOLO SUL RAMO CALCOLATO, MAI SU QUELLO DICHIARATO ────────────
+#   Se un operatore scrive 31/07 nel dialog, quella data si RIFIUTA — non si
+#   sposta in silenzio. Spostare senza dirlo una scelta esplicita e' la classe
+#   di difetto che il cantiere della numerazione ha passato tre giorni a
+#   togliere: il clamp vale per il default, il cancello vale per la
+#   dichiarazione. Il `RETURN p_data_dichiarata` sta PRIMA dei due clamp, ed e'
+#   la riga che lo garantisce.
+#
+# ── ⭐ IL CLAMP DEL LIMITE ATTERRA SU OGGI, NON SUL PAVIMENTO ───────
+#   `GREATEST(politica, pavimento)` farebbe nascere il documento ESATTAMENTE sul
+#   pavimento, cioe' con margine di trasmissione ZERO: un documento nato il
+#   14/08 quando oggi e' il 26/08 sarebbe gia' intrasmissibile il giorno dopo.
+#   La forma giusta e' un `IF` che riparte da OGGI (brief §10 V-4, decisione
+#   D-2).
+#
+#   ⚠️ SUL RAMO `OGGI` IL CLAMP E' UN NO-OP PER COSTRUZIONE, e va scritto o
+#   qualcuno provera' a dimostrarlo con una fixture impossibile: la politica
+#   produce `data_operativa()`, il pavimento e' `data_operativa() - giorni`, e
+#   il primo non e' mai minore del secondo. Sull'immediata il limite vive solo
+#   come CANCELLO (sulla data dichiarata) e come TARGA, mai come clamp.
+#
+# ── ⭐ IL CLAMP DELLA SEQUENZA E' UN GREATEST, E LI' E' GIUSTO ──────
+#   Quel pavimento spinge IN AVANTI verso una data ammessa: un documento che
+#   nascesse sotto di esso sarebbe rifiutato dal cancello al primo tentativo di
+#   numerarlo (decisione D-3).
+#   ⚠️ Conseguenza accettata: su un sezionale che porta gia' una data FUTURA il
+#   documento nasce con quella data — anche su un registro `OGGI`. Ci si arriva
+#   solo se su quel registro c'e' gia' un documento datato in avanti, che e' una
+#   situazione anomala di suo, e nascere conformi vale il prezzo (brief §10 V-8).
+#
+# ── ⚠️ LA DATA DI NASCITA DIVENTA DIPENDENTE DAL TEMPO, ED E' VOLUTO ─
+#   Lo stesso lotto generato oggi e domani nasce con due date diverse, e un lotto
+#   annullato e rigenerato cambia data. E' una DECISIONE di Tid (2026-08-26,
+#   «e' giusto che sia cosi'»), non un effetto da evitare: e' il prezzo di
+#   «nascere conforme», ed e' cio' che fa comparire nei «recuperi del mese» un
+#   lotto lavorato in ritardo.
+#
+# ── ⛔ CAMBIA L'ORDINE DEI PARAMETRI: SERVE DROP + CREATE ───────────
+#   `p_serie` e' obbligatorio, e in PostgreSQL i parametri con `DEFAULT` stanno
+#   in coda: entra quindi in TERZA posizione, prima di `p_data_dichiarata`.
+#   Aggiungere un parametro creerebbe un OVERLOAD e con i DEFAULT le chiamate
+#   diventerebbero ambigue — serve DROP + CREATE, e il chiamante va ricreato
+#   nello stesso giro (20260826-09).
+#   ⛔ Fra questo changeSet e il 09 la generazione di una bozza NON risolve la
+#   funzione. I due vanno applicati insieme; PostgreSQL non lo impedisce, perche'
+#   non traccia le dipendenze dentro il corpo di una funzione PL/pgSQL e il DROP
+#   riesce in silenzio.
+#
+# ── ⛔ p_serie SENZA DEFAULT, E LA FIRMA SERVE DUE CANTIERI ─────────
+#   Decisione D-8: la firma si disegna tenendo conto di ENTRAMBE le esigenze —
+#   questa e quella di `brief-db-registro-e-data-prevista-in-competenza.md`, che
+#   chiama questa funzione dalle due viste della dashboard per la colonna
+#   `data_documento_prevista`. Le viste la serie ce l'hanno gia' in mano
+#   (`fn_resolve_registro_documento`), quindi una firma sola basta a tutti e due.
+#   Un DEFAULT su `p_serie` farebbe dimenticare il parametro: chi chiama deve
+#   DECIDERE cosa passare. ℹ️ `NULL` resta legittimo e significa «la serie di
+#   default del registro».
+#
+# ── ℹ️ TRE LETTURE DEL REGISTRO PER UN DOCUMENTO NUOVO ──────────────
+#   Questa funzione legge il registro, e cosi' fanno le due che chiama. Sono tre
+#   letture per chiave primaria su una tabella di sei righe, una volta per
+#   fattura CREATA (non per attivita'): il prezzo per non avere tre copie della
+#   stessa regola. Vedi §10 V-9 del brief.
+#
+# Dipendenze: 20260826-05 (fn_get_pavimento_emissione),
+#             20260826-06 (fn_get_pavimento_sequenza),
+#             script.fn_data_operativa (20260825-02).
+# ⛔ Va applicato INSIEME a 20260826-09, che e' il suo unico chiamante.
+# Verifica: db/pgtap/vendite/test-limite-emissione-v1.sql · test-data-documento-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-08-recreate-fn-calcola-data-documento-serie-e-clamp-mctit.yaml
+
+  - changeSet:
+      id: 20260826-08-recreate-fn-calcola-data-documento-serie-e-clamp
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-6: il documento nasce gia' conforme. Due modifiche in un solo DROP + CREATE:
+        (1) arriva p_serie, obbligatorio e in TERZA posizione perche' i parametri con DEFAULT
+        stanno in coda — il pavimento di sequenza e' per (registro, serie) e senza la serie si
+        leggerebbe il contatore di un'altra sequenza, rispondendo «nessun pavimento» proprio
+        dove il cancello rifiuta; (2) la data CALCOLATA viene portata dentro i due pavimenti.
+        ⛔ SOLO sul ramo calcolato: la data DICHIARATA si rifiuta, non si sposta — il RETURN
+        della dichiarata sta prima dei clamp. ⭐ Il clamp del limite atterra su OGGI e non sul
+        pavimento: sul pavimento il documento nascerebbe con margine di trasmissione zero.
+        ⚠️ Sul ramo OGGI il clamp del limite e' un no-op per costruzione, ed e' scritto perche'
+        non lo si provi con una fixture impossibile. ⭐ Il clamp della sequenza resta un
+        GREATEST: quello spinge in avanti verso una data ammessa. ⛔ La firma serve anche il
+        cantiere gemello della dashboard (decisione D-8) e p_serie non ha DEFAULT.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_pavimento_emissione';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_pavimento_sequenza';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ DROP prima del CREATE: cambia l'ORDINE dei parametri, quindi
+              --    un CREATE OR REPLACE creerebbe un OVERLOAD invece di
+              --    sostituire, e con i DEFAULT le chiamate diventerebbero
+              --    ambigue.
+              DROP FUNCTION IF EXISTS vendite.fn_calcola_data_documento(bigint, date, date);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_calcola_data_documento(
+                  p_registro_id     vendite.registri_fatturazione.id%TYPE,
+                  p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  p_serie           vendite.fatture.serie%TYPE,
+                  p_data_dichiarata vendite.fatturazione_lotti.data_documento%TYPE DEFAULT NULL
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_politica  vendite.registri_fatturazione.politica_data_documento%TYPE;
+                  v_data      vendite.fatture.data%TYPE;
+                  v_pav_emi   vendite.fatture.data%TYPE;
+                  v_pav_seq   vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Che data porta un documento emesso su questo sezionale,
+                  --   per questa competenza, con questa eventuale
+                  --   dichiarazione dell'operatore — e gia' CONFORME ai due
+                  --   pavimenti.
+                  --
+                  -- Regole:
+                  --   - la dichiarata vince su tutto e NON si tocca;
+                  --   - altrimenti decide la politica del registro;
+                  --   - poi la data calcolata entra nei due pavimenti;
+                  --   - non esiste un terzo caso silenzioso: ogni ramo non
+                  --     previsto solleva.
+                  -- =========================================================
+
+                  -- Guard di parametro: un id nullo o non positivo non esce da
+                  -- nessuna interfaccia — lo produce solo un chiamante rotto,
+                  -- ed e' per questo che il codice e' TECNICO.
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_calcola_data_documento',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_calcola_data_documento',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- Il registro si legge SEMPRE, anche quando la data e' gia'
+                  -- dichiarata: e' l'unico punto in cui un registro inesistente
+                  -- si fa notare. ⚠️ Questa tabella non ha RLS: «non trovato»
+                  -- vuol dire davvero «non esiste».
+                  SELECT r.politica_data_documento
+                    INTO v_politica
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_calcola_data_documento',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          concat('registro di fatturazione ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  -- ─── 1) LA DICHIARAZIONE VINCE, E NON SI TOCCA ───────────
+                  -- ⭐ Vale per TUTTI i documenti del lotto, qualunque sia il
+                  --    loro registro: e' il senso di «una data sola per l'intero
+                  --    atto».
+                  -- ⛔ E IL RETURN STA QUI, PRIMA DEI DUE CLAMP: una scelta
+                  --    esplicita non si sposta in silenzio. Se e' sotto i
+                  --    pavimenti, a rifiutarla sara' il cancello — che lo DICE.
+                  IF p_data_dichiarata IS NOT NULL THEN
+                      RETURN p_data_dichiarata;
+                  END IF;
+
+                  -- ─── 2) ALTRIMENTI DECIDE IL SEZIONALE ───────────────────
+                  IF v_politica = 'FINE_MESE_COMPETENZA' THEN
+
+                      -- ⛔ Niente ripiego su oggi: una data plausibile e
+                      --    sbagliata su un documento fiscale non la nota
+                      --    nessuno, e quando la si nota il numero e' gia'
+                      --    stato consumato.
+                      IF p_competenza_mese IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'vendite.fn_calcola_data_documento',
+                              'E_VENDITE_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object(
+                                  'detail', 'competenza obbligatoria con politica FINE_MESE_COMPETENZA',
+                                  'registro_id', p_registro_id,
+                                  'politica', v_politica),
+                              NULL::uuid,
+                              'vendite.fn_calcola_data_documento',
+                              'p_competenza_mese (obbligatorio con politica FINE_MESE_COMPETENZA)');
+                      END IF;
+
+                      -- ℹ️ date_trunc anche se la competenza e' il primo del
+                      --    mese per abitudine: la funzione non deve dipendere
+                      --    da un'abitudine che nessun vincolo impone.
+                      v_data := (date_trunc('month', p_competenza_mese)
+                                 + interval '1 month - 1 day')::date;
+
+                  ELSIF v_politica = 'OGGI' THEN
+                      v_data := script.fn_data_operativa();
+
+                  ELSE
+                      -- ─── ⭐ Nessun ramo che ingoia ───────────────────────
+                      -- Il CHECK di colonna rende questo ramo irraggiungibile
+                      -- finche' regge; se un giorno si allargasse, la funzione
+                      -- si ferma e lo DICE invece di datare i documenti a oggi
+                      -- fingendo di aver capito. Stesso ragionamento gia'
+                      -- scritto in fn_genera_scadenze_fattura sulla
+                      -- ripartizione non gestita.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_calcola_data_documento',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('registro_id', p_registro_id,
+                                             'politica_data_documento', v_politica),
+                          NULL::uuid,
+                          concat('politica data documento non gestita: ',
+                                 quote_literal(v_politica),
+                                 ' sul registro ', p_registro_id));
+                  END IF;
+
+                  -- ─── 3) ⭐ CLAMP DEL LIMITE DI EMISSIONE ─────────────────
+                  -- Se la politica produce una data non piu' emettibile si
+                  -- riparte da OGGI, NON dal pavimento: nascere sul pavimento
+                  -- e' nascere gia' scaduti il giorno dopo.
+                  -- ⚠️ SUL RAMO `OGGI` QUESTO E' UN NO-OP PER COSTRUZIONE: la
+                  --    politica da' data_operativa() e il pavimento e'
+                  --    data_operativa() - giorni. Sull'immediata il limite vive
+                  --    come cancello e come targa, mai come clamp.
+                  v_pav_emi := vendite.fn_get_pavimento_emissione(
+                                   p_registro_id, p_competenza_mese);
+
+                  IF v_data < v_pav_emi THEN
+                      v_data := script.fn_data_operativa();
+                  END IF;
+
+                  -- ─── 4) ⭐ CLAMP DEL PAVIMENTO DI SEQUENZA ───────────────
+                  -- Qui il GREATEST e' giusto: quel pavimento spinge IN AVANTI
+                  -- verso una data ammessa, e un documento nato sotto di esso
+                  -- verrebbe rifiutato al primo tentativo di numerarlo.
+                  -- ⚠️ GREATEST ignora i NULL: da una sequenza vergine il
+                  --    pavimento e' NULL e la data resta quella calcolata.
+                  -- ⚠️ Conseguenza accettata (decisione D-3): su un sezionale
+                  --    che porta gia' una data FUTURA il documento nasce con
+                  --    quella data, anche su un registro OGGI.
+                  v_pav_seq := vendite.fn_get_pavimento_sequenza(p_registro_id, p_serie);
+                  v_data := GREATEST(v_data, v_pav_seq);
+
+                  RETURN v_data;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_calcola_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  vendite.fatture.serie%TYPE,
+                  vendite.fatturazione_lotti.data_documento%TYPE)
+                IS 'Che data porta un documento emesso su questo sezionale, gia'' CONFORME ai due pavimenti. Ordine: (1) la data DICHIARATA sul lotto vince su tutto — vale per tutti i documenti dell''atto, qualunque sia il loro registro; (2) altrimenti decide la politica del sezionale — OGGI usa script.fn_data_operativa(), FINE_MESE_COMPETENZA l''ultimo giorno di competenza_mese; (3) poi la data CALCOLATA entra nei due pavimenti. ⛔ IL CLAMP VALE SOLO SUL RAMO CALCOLATO, MAI SU QUELLO DICHIARATO, e il RETURN della dichiarata sta PRIMA dei clamp apposta: spostare in silenzio una scelta esplicita e'' la classe di difetto che il cantiere della numerazione ha passato tre giorni a togliere — il clamp vale per il default, il cancello vale per la dichiarazione. ⭐ IL CLAMP DEL LIMITE ATTERRA SU OGGI E NON SUL PAVIMENTO: un GREATEST farebbe nascere il documento esattamente sul pavimento, cioe'' con margine di trasmissione ZERO — nato il 14/08 quando oggi e'' il 26/08, sarebbe intrasmissibile il giorno dopo (brief §10 V-4). ⚠️ SUL RAMO OGGI QUEL CLAMP E'' UN NO-OP PER COSTRUZIONE (politica = oggi, pavimento = oggi - giorni), ed e'' scritto perche'' non lo si provi con una fixture impossibile: sull''immediata il limite vive come cancello e come targa, mai come clamp. ⭐ IL CLAMP DELLA SEQUENZA RESTA UN GREATEST: quello spinge IN AVANTI verso una data ammessa, e un documento nato sotto di esso verrebbe rifiutato al primo tentativo di numerarlo. ⚠️ Conseguenza accettata (D-3): su un sezionale che porta gia'' una data FUTURA il documento nasce con quella data, anche su un registro OGGI. ⭐ rev 2026-08-26: arriva p_serie, OBBLIGATORIO e in TERZA posizione (i parametri con DEFAULT stanno in coda). Il pavimento di sequenza e'' per (registro, SERIE) e senza la serie si leggerebbe il contatore di un''ALTRA sequenza, rispondendo «nessun pavimento» — la risposta piu'' permissiva possibile proprio dove il cancello rifiuta. ⛔ p_serie NON ha DEFAULT: un default farebbe dimenticare il parametro. NULL resta legittimo e significa «la serie di default del registro». ⛔ LA FIRMA SERVE DUE CANTIERI (decisione D-8): la chiamano fn_get_or_create_fattura_header e le due viste della dashboard di brief-db-registro-e-data-prevista-in-competenza, che la serie ce l''hanno gia'' da fn_resolve_registro_documento. ⚠️ LA DATA DI NASCITA E'' DIPENDENTE DAL TEMPO, ED E'' UNA DECISIONE: lo stesso lotto generato oggi e domani nasce con due date diverse. E'' il prezzo di «nascere conforme», ed e'' cio'' che fa comparire nei «recuperi del mese» un lotto lavorato in ritardo. ℹ️ Tre letture del registro per fattura CREATA (questa piu'' le due delle funzioni chiamate): e'' il prezzo per non avere tre copie della stessa regola. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-6.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_calcola_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  vendite.fatture.serie%TYPE,
+                  vendite.fatturazione_lotti.data_documento%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_calcola_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  vendite.fatture.serie%TYPE,
+                  vendite.fatturazione_lotti.data_documento%TYPE) TO zeroerp_batch_fatturazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il rollback rimette la firma a TRE parametri: chi la chiama
+              --    (fn_get_or_create_fattura_header) va rollbackato insieme.
+              DROP FUNCTION IF EXISTS vendite.fn_calcola_data_documento(bigint, date, character varying, date);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_calcola_data_documento(
+                  p_registro_id     vendite.registri_fatturazione.id%TYPE,
+                  p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  p_data_dichiarata vendite.fatturazione_lotti.data_documento%TYPE DEFAULT NULL
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_politica vendite.registri_fatturazione.politica_data_documento%TYPE;
+              BEGIN
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_calcola_data_documento',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_calcola_data_documento',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT r.politica_data_documento
+                    INTO v_politica
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_calcola_data_documento',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          concat('registro di fatturazione ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  IF p_data_dichiarata IS NOT NULL THEN
+                      RETURN p_data_dichiarata;
+                  END IF;
+
+                  IF v_politica = 'FINE_MESE_COMPETENZA' THEN
+                      IF p_competenza_mese IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'vendite.fn_calcola_data_documento',
+                              'E_VENDITE_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object(
+                                  'detail', 'competenza obbligatoria con politica FINE_MESE_COMPETENZA',
+                                  'registro_id', p_registro_id,
+                                  'politica', v_politica),
+                              NULL::uuid,
+                              'vendite.fn_calcola_data_documento',
+                              'p_competenza_mese (obbligatorio con politica FINE_MESE_COMPETENZA)');
+                      END IF;
+
+                      RETURN (date_trunc('month', p_competenza_mese)
+                              + interval '1 month - 1 day')::date;
+
+                  ELSIF v_politica = 'OGGI' THEN
+                      RETURN script.fn_data_operativa();
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database', 'vendite.fn_calcola_data_documento',
+                      'E_CONFIG_MANCANTE',
+                      jsonb_build_object('registro_id', p_registro_id,
+                                         'politica_data_documento', v_politica),
+                      NULL::uuid,
+                      concat('politica data documento non gestita: ',
+                             quote_literal(v_politica),
+                             ' sul registro ', p_registro_id));
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_calcola_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  vendite.fatturazione_lotti.data_documento%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_calcola_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE,
+                  vendite.fatturazione_lotti.data_documento%TYPE) TO zeroerp_batch_fatturazione;

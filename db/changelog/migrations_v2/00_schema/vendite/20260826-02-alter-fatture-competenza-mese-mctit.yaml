@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-13 — LA COMPETENZA DIVENTA UNA PROPRIETA' DEL DOCUMENTO
+#   vendite.fatture.competenza_mese
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-13 (decisione D-9)
+#
+# ── ⭐ PERCHE' SULLA FATTURA E NON SOLO SUL LOTTO ───────────────────
+#   La competenza e' una proprieta' del DOCUMENTO FISCALE; il lotto e' l'ATTREZZO
+#   che l'ha prodotto. Fino a oggi un dato di dominio era raggiungibile solo
+#   attraverso un artefatto di lavorazione — `fatturazione_lotti_fatture` ->
+#   `fatturazione_lotti.competenza_mese`.
+#
+#   ⛔ E quel percorso non e' percorribile dal cancello della numerazione:
+#   `vendite.fatturazione_lotti` ha la RLS e `fn_get_next_progressivo` e'
+#   SECURITY INVOKER, quindi un lotto fuori dal perimetro di chi opera si legge
+#   come assente, la competenza uscirebbe NULL e il cancello direbbe «via libera»
+#   proprio quando non sa. Un presidio FAIL-OPEN nel punto scelto perche' e'
+#   l'unico non aggirabile.
+#
+#   Sulla riga della fattura il problema non esiste: `fn_assign_numero_fattura`
+#   LEGGE GIA' quella riga per numerarla, quindi la competenza costa una colonna
+#   in piu' in una SELECT che c'e' gia', e la RLS lavora nel verso giusto — se
+#   non vedi la riga non la numeri nemmeno.
+#
+# ── ℹ️ UN SOLO SCRITTORE ────────────────────────────────────────────
+#   Verificato il 2026-08-26 su pg_proc, su backend/ e sulla doc auto-gen:
+#   `vendite.fn_get_or_create_fattura_header` e' l'UNICO
+#   `INSERT INTO vendite.fatture` di tutto il repo, e ha gia' la competenza in
+#   mano perche' la usa per calcolare la data. La colonna si valorizza in un
+#   punto solo (20260826-08).
+#
+# ── ⛔ NULLABLE, E LA TENTAZIONE DEL NOT NULL VA NOMINATA ────────────
+#   Il modello ammette oggi una fattura senza riga di ponte verso un lotto:
+#   `fatturazione_lotti_fatture` e' una tabella a se', e nessun vincolo su
+#   `vendite.fatture` pretende che esista. Un NOT NULL sarebbe quindi un vincolo
+#   che il backfill non sa soddisfare in tutti i casi.
+#   Chi legge la colonna RIPIEGA sulla deduzione dalla data
+#   (`date_trunc('month', data)`), che e' la risposta di oggi: mai peggiore.
+#   ⛔ E nessun errore: una fattura senza lotto non e' rotta.
+#   Se un domani si dimostrasse che il ponte e' obbligatorio, il NOT NULL e' un
+#   passo SEPARATO — non si stringe un vincolo nello stesso giro in cui si
+#   popola una colonna.
+#
+# ── ⛔ NESSUN INDICE, ED E' UNA SCELTA ───────────────────────────────
+#   La colonna si legge sulla riga che si ha gia' in mano, per chiave primaria
+#   (`fn_assign_numero_fattura`) o dentro un JOIN gia' filtrato per lotto
+#   (`fn_get_pavimento_lotto`). Nessun consumatore la usa come filtro: un indice
+#   sarebbe una struttura che nessuno interroga e che ogni INSERT paga.
+#   ⚠️ Se un domani una lista filtrera' le fatture per competenza, l'indice si
+#   aggiunge allora — con il nome di policy `ix_fatture_competenza_mese`.
+#
+# ── ℹ️ NIENTE STORICO DA TOCCARE, NIENTE fk_index_policy ────────────
+#   Lo storico di `vendite.fatture` e' a snapshot JSONB
+#   (`script.trgfn_storico_generic('fatture_id')`): una colonna nuova ci entra da
+#   sola. La colonna non e' una FK: nessuna riga in `dbops.fk_index_policy`.
+#
+# Dipendenze: nessuna. La riempie il backfill 20260826-04 e la scrive
+#             20260826-08; la leggono 20260826-10 e 20260826-13.
+# Verifica: db/pgtap/vendite/test-limite-emissione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260826-02-alter-fatture-competenza-mese-mctit.yaml
+
+  - changeSet:
+      id: 20260826-02-alter-fatture-competenza-mese
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-13 (decisione D-9): la competenza diventa una proprieta' del documento. Nuova
+        colonna nullable vendite.fatture.competenza_mese, scritta alla nascita dal lotto.
+        ⭐ Serve al cancello della numerazione, che oggi non puo' avere la competenza: sta
+        solo su fatturazione_lotti, che ha la RLS, e leggerla da dentro una SECURITY INVOKER
+        renderebbe FAIL-OPEN l'unico presidio non aggirabile. Sulla riga della fattura non
+        c'e' quel problema — fn_assign_numero_fattura legge gia' quella riga per numerarla.
+        ⛔ Nullable e non NOT NULL: il modello ammette una fattura senza riga di ponte verso
+        un lotto, e chi legge ripiega sulla deduzione dalla data, che e' la risposta di oggi.
+        ⛔ Nessun indice: la colonna si legge sulla riga gia' in mano, mai come filtro.
+        Nessuno storico da toccare (snapshot JSONB), nessuna riga di fk_index_policy.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture
+                    columnName: competenza_mese
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture
+                ADD COLUMN competenza_mese date;
+
+              COMMENT ON COLUMN vendite.fatture.competenza_mese
+                IS 'Il mese di competenza del documento, per convenzione il PRIMO giorno del mese. ⭐ La competenza e'' una proprieta'' del DOCUMENTO FISCALE; il lotto e'' l''attrezzo che l''ha prodotto — fino al 2026-08-26 era raggiungibile solo attraverso vendite.fatturazione_lotti_fatture. ⛔ Il cancello della numerazione non poteva percorrere quella strada: vendite.fatturazione_lotti ha la RLS e vendite.fn_get_next_progressivo e'' SECURITY INVOKER, quindi un lotto fuori perimetro si legge come assente, la competenza uscirebbe NULL e il cancello direbbe «via libera» proprio quando non sa. Qui il problema non c''e'': fn_assign_numero_fattura legge gia'' questa riga per numerarla. ⚠️ SI SCRIVE ALLA NASCITA E NON SI INSEGUE: la valorizza vendite.fn_get_or_create_fattura_header dal lotto dentro cui la fattura nasce, e se piu'' tardi la fattura entra in un secondo lotto con un''altra competenza la colonna resta quella di nascita — la competenza di un documento e'' decisa quando il documento nasce, non da chi lo raccoglie dopo. ⛔ NULL e'' legittimo (il modello ammette una fattura senza riga di ponte) e NON e'' un errore: chi legge ripiega sulla deduzione dalla data, date_trunc(''month'', data), che e'' la risposta di prima e quindi mai peggiore. ℹ️ Nessun indice: si legge sulla riga gia'' in mano, mai come filtro. Brief: brief-db-limite-emissione-e-data-verificata, decisione D-9.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture
+                DROP COLUMN IF EXISTS competenza_mese;

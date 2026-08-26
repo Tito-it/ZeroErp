@@ -16,7 +16,7 @@
 -- 10) ... e la FRASE nomina la data da cui ripartire (throws_like)
 -- 11) CROSS-ANNO: data dell'anno precedente -> rifiutata lo stesso
 -- 12) Due serie sullo stesso registro non si bloccano a vicenda
--- 13) fn_get_data_minima_numerabile risolve la serie dal serie_default
+-- 13) fn_get_pavimento_sequenza risolve la serie dal serie_default
 -- 14) Cleanup completato
 -- ------------------------------------------------------------
 -- Scopo:
@@ -70,6 +70,19 @@ WITH ins AS (
     descrizione,
     reset_policy,
     attivo,
+    -- ⛔ IL LIMITE DI EMISSIONE SI DISATTIVA QUI, E NON E' UN TRUCCO.
+    --   Dal 2026-08-26 il cancello rifiuta una data piu' vecchia di N giorni,
+    --   e i test 2..5 di questo file numerano con date del 2025 e del 2026
+    --   perche' provano il RESET D'ANNO: servono due anni civili, e nessuna
+    --   data relativa a oggi li da'. Con il limite attivo cadrebbero 12
+    --   asserzioni su 14 — un file verde che diventa rosso da solo.
+    --   ⭐ Si CONFIGURA il registro di prova invece di aggirare il presidio:
+    --   e' il primo uso legittimo della colonna di override, e prova la
+    --   colonna mentre disinnesca il test.
+    --   ⚠️ Questo file NON verifica il limite di emissione: quello vive in
+    --   test-limite-emissione-v1.sql. Qui si prova il CANCELLO DI MONOTONIA,
+    --   e il limite dev'essere fuori strada.
+    limite_emissione_giorni,
     meta
   )
   SELECT
@@ -77,6 +90,7 @@ WITH ins AS (
     'Registro test progressivi',
     'ANNUALE',
     true,
+    9999,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_reg))
   RETURNING id
 )
@@ -98,6 +112,9 @@ SELECT is(
   vendite.fn_get_next_progressivo(
     p_registro_id => (SELECT id FROM tmp_registro),
     p_data => date '2025-12-31',
+    -- ⚠️ rev 2026-08-26: p_competenza_mese e' OBBLIGATORIO. NULL significa
+    --   «non la so» e il cancello ripiega sul mese della data.
+    p_competenza_mese => NULL,
     p_serie => NULL
   ),
   1::bigint,
@@ -108,6 +125,9 @@ SELECT is(
   vendite.fn_get_next_progressivo(
     p_registro_id => (SELECT id FROM tmp_registro),
     p_data => date '2025-12-31',
+    -- ⚠️ rev 2026-08-26: p_competenza_mese e' OBBLIGATORIO. NULL significa
+    --   «non la so» e il cancello ripiega sul mese della data.
+    p_competenza_mese => NULL,
     p_serie => NULL
   ),
   2::bigint,
@@ -118,6 +138,7 @@ SELECT is(
   vendite.fn_get_next_progressivo(
     p_registro_id => (SELECT id FROM tmp_registro),
     p_data => date '2026-01-01',
+    p_competenza_mese => NULL,
     p_serie => NULL
   ),
   1::bigint,
@@ -158,6 +179,7 @@ SELECT is(
   vendite.fn_get_next_progressivo(
     p_registro_id => (SELECT id FROM tmp_registro),
     p_data => date '2026-01-01',
+    p_competenza_mese => NULL,
     p_serie => NULL
   ),
   2::bigint,
@@ -171,6 +193,7 @@ SELECT is(
   vendite.fn_get_next_progressivo(
     p_registro_id => (SELECT id FROM tmp_registro),
     p_data => date '2026-03-15',
+    p_competenza_mese => NULL,
     p_serie => NULL
   ),
   3::bigint,
@@ -185,14 +208,14 @@ SELECT is(
 --   che si accontenta dello SQLSTATE resterebbe verde anche se il messaggio
 --   smettesse di nominare la data.
 SELECT throws_ok(
-  format($$ SELECT vendite.fn_get_next_progressivo(%s, date '2026-02-01', NULL) $$,
+  format($$ SELECT vendite.fn_get_next_progressivo(%s, date '2026-02-01', NULL, NULL) $$,
          (SELECT id FROM tmp_registro)),
   'P0001', NULL,
   'Data anteriore nello stesso anno -> rifiutata (P0001)'
 );
 
 SELECT throws_like(
-  format($$ SELECT vendite.fn_get_next_progressivo(%s, date '2026-02-01', NULL) $$,
+  format($$ SELECT vendite.fn_get_next_progressivo(%s, date '2026-02-01', NULL, NULL) $$,
          (SELECT id FROM tmp_registro)),
   '%15/03/2026%',
   'La frase del rifiuto NOMINA la data da cui ripartire'
@@ -206,7 +229,7 @@ SELECT throws_like(
 --   31/12/2025, quindi un controllo per anno lascerebbe passare questo
 --   documento e aprirebbe un numero in un anno gia' chiuso.
 SELECT throws_ok(
-  format($$ SELECT vendite.fn_get_next_progressivo(%s, date '2025-12-31', NULL) $$,
+  format($$ SELECT vendite.fn_get_next_progressivo(%s, date '2025-12-31', NULL, NULL) $$,
          (SELECT id FROM tmp_registro)),
   'P0001', NULL,
   'CROSS-ANNO: data dell''anno precedente -> rifiutata lo stesso'
@@ -222,25 +245,38 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_registro_b AS
 WITH ins AS (
   INSERT INTO vendite.registri_fatturazione (
-    codice, descrizione, serie_default, reset_policy, attivo, meta)
+    codice, descrizione, serie_default, reset_policy, attivo,
+    -- ⛔ Come sopra: qui si prova la separazione fra due SERIE, non il limite
+    --   di emissione, e le date sono d'archivio.
+    limite_emissione_giorni, meta)
   SELECT
     left('REGB_' || (SELECT test_scope FROM tmp_costanti_reg), 16),
     'Registro test serie', 'PG1', 'ANNUALE', true,
+    9999,
     jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_reg))
   RETURNING id)
 SELECT * FROM ins;
 
-SELECT vendite.fn_get_next_progressivo((SELECT id FROM tmp_registro_b), date '2026-05-10', 'PG1');
+-- ⚠️ rev 2026-08-26: la serie e' il QUARTO argomento — al terzo posto
+--   ora c'e' la competenza. Lasciando 'PG1' al terzo posto, PostgreSQL
+--   proverebbe a leggerlo come data e il test morirebbe su un errore di
+--   cast, non su una regola.
+SELECT vendite.fn_get_next_progressivo((SELECT id FROM tmp_registro_b), date '2026-05-10', NULL, 'PG1');
 
 SELECT is(
   vendite.fn_get_next_progressivo(
-    (SELECT id FROM tmp_registro_b), date '2026-01-01', 'PG2'),
+    (SELECT id FROM tmp_registro_b), date '2026-01-01', NULL, 'PG2'),
   1::bigint,
   'Due serie sullo stesso registro: la seconda riparte da 1 e non e'' bloccata dal pavimento della prima'
 );
 
 -- ============================================================
 -- 12) DB-10: la lettura risolve la serie dal serie_default
+-- ⭐ rev 2026-08-26: la funzione si chiama ora fn_get_pavimento_sequenza — da
+--   quando i pavimenti sono due, «data minima numerabile» e' il nome della
+--   COMPOSIZIONE e non di questa primitiva. E p_serie ha perso il DEFAULT: da
+--   primitiva interna, dimenticare la serie fa leggere il contatore di un'altra
+--   sequenza. NULL resta legittimo e significa «quella del registro».
 -- ============================================================
 -- ⛔ E' la differenza voluta con fn_get_next_progressivo, che riceve la serie
 --   gia' risolta dal chiamante. Chiedere «il minimo di questo registro» senza
@@ -248,12 +284,12 @@ SELECT is(
 --   della serie vuota — dove non c'e' nessun contatore.
 SELECT is(
   ARRAY[
-    vendite.fn_get_data_minima_numerabile((SELECT id FROM tmp_registro_b)),
-    vendite.fn_get_data_minima_numerabile((SELECT id FROM tmp_registro_b), 'PG1'),
-    vendite.fn_get_data_minima_numerabile((SELECT id FROM tmp_registro_b), '')
+    vendite.fn_get_pavimento_sequenza((SELECT id FROM tmp_registro_b), NULL),
+    vendite.fn_get_pavimento_sequenza((SELECT id FROM tmp_registro_b), 'PG1'),
+    vendite.fn_get_pavimento_sequenza((SELECT id FROM tmp_registro_b), '')
   ],
   ARRAY[date '2026-05-10', date '2026-05-10', NULL::date],
-  'fn_get_data_minima_numerabile: serie non dichiarata = serie_default; serie vuota = nessun contatore'
+  'fn_get_pavimento_sequenza: serie NULL = serie_default; serie vuota = nessun contatore'
 );
 
 -- ============================================================

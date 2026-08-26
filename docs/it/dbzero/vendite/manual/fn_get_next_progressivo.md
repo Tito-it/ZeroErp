@@ -25,15 +25,21 @@ di registro, con **lock della riga** progressivi per evitare doppioni.
 | --- | --- | --- |
 | `p_registro_id` | `vendite.registri_fatturazione.id%TYPE` | Registro fiscale. |
 | `p_data` | `vendite.fatture.data%TYPE` | Data documento. |
+| `p_competenza_mese` | `vendite.fatture.competenza_mese%TYPE` | Competenza del documento, per il **limite di emissione** (dal 2026-08-26). `NULL` = «non la so»: si ripiega sul mese di `p_data`. |
 | `p_serie` | text | Serie **già risolta** dal chiamante. |
 | `p_fattura_id` | `vendite.fatture.id%TYPE` | Solo per il **bersaglio** dell'errore (dal 2026-08-25). |
 
+⚠️ **`p_competenza_mese` è obbligatorio e sta in TERZA posizione**, prima dei due
+che hanno un default: in PostgreSQL i parametri con `DEFAULT` stanno in coda.
+Chi aggiorna una chiamata posizionale scritta prima del 2026-08-26 deve
+ricontarne gli argomenti — al terzo posto ora c'è una **data**, non la serie.
+
 ⚠️ **`p_serie` arriva già risolta.** Qui `NULL` vale la serie **vuota**, non il
 `serie_default` del registro: a fare il `COALESCE(f.serie, r.serie_default, '')`
-è `fn_assign_numero_fattura`. La funzione di lettura
-[`fn_get_data_minima_numerabile`](/dbzero/vendite/funzioni/fn_get_data_minima_numerabile)
-si comporta all'**opposto**, ed è voluto — lì è un'API e «non ho detto la serie»
-deve significare «quella del registro».
+è `fn_assign_numero_fattura`. La primitiva di lettura
+[`fn_get_pavimento_sequenza`](/dbzero/vendite/funzioni/fn_get_pavimento_sequenza)
+si comporta all'**opposto**, ed è voluto: lì `NULL` significa «quella del
+registro».
 
 ---
 
@@ -148,6 +154,61 @@ contende, e spostando il controllo prima del lock
 `db/pgtap/vendite/test-registri-progressivi.sql` resterebbe interamente **verde**.
 La posizione si presidia in **review**. Ciò che quei test provano è il
 *predicato*: quali date passano e quali no.
+
+
+### ⭐ rev 2026-08-26 — il cancello guarda anche il LIMITE DI EMISSIONE
+
+Brief: `brief-db-limite-emissione-e-data-verificata` (**DB-10**).
+
+> **Un numero non si consegna nemmeno a un documento la cui data è troppo
+> vecchia perché il documento sia ancora emettibile.**
+
+I pavimenti diventano **due**, e il cancello non li compone più a mano: li chiede
+a [`fn_get_pavimento_data_documento`](/dbzero/vendite/funzioni/fn_get_pavimento_data_documento),
+che torna il **pavimento effettivo** (il maggiore) e l'**origine** (quale dei due
+ha vinto). Prima qui c'era un `max(ultima_data)` scritto a mano, cioè una delle
+tre copie della stessa regola.
+
+⚠️ La lettura resta **sotto il lock**: la metà di sequenza legge il contatore, ed
+è proprio quella che va serializzata.
+
+#### Due codici, e li sceglie `origine`
+
+| origine | codice | rimedio |
+|---|---|---|
+| `SEQUENZA` | `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` | risalire alla fattura che porta quel numero — **bersaglio** a due elementi |
+| `EMISSIONE` | `E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE` | avvicinare la data a oggi — ⛔ **nessun secondo bersaglio**: dietro il limite non c'è nessun documento da aprire, e un pulsante verso il nulla è peggio di nessun pulsante |
+
+A parità di data vince `SEQUENZA`, perché la sua frase può portare l'operatore su
+un documento vero.
+
+#### ⛔ La frase nomina il pavimento EFFETTIVO
+
+Fino al 2026-08-25 il messaggio portava il pavimento di **sequenza**, perché era
+l'unico. Con due pavimenti deve portare il **maggiore**: se nominasse quello di
+sequenza mentre a mordere è il limite, direbbe all'operatore di scegliere una data
+**che verrebbe rifiutata di nuovo**.
+
+#### ⭐ La competenza arriva dalla RIGA, non dal lotto
+
+`fn_assign_numero_fattura` **legge già** la riga della fattura per numerarla: la
+competenza è una colonna in più in una `SELECT` che c'è già.
+
+⛔ **Non si legge dal lotto**, e la ragione è la stessa per cui il pavimento di
+sequenza si legge dal contatore: `vendite.fatturazione_lotti` ha la RLS e questa
+funzione è `SECURITY INVOKER`. Un lotto fuori dal perimetro di chi opera si
+leggerebbe come assente, la competenza uscirebbe `NULL` e il cancello direbbe
+**«via libera» proprio quando non sa** — un presidio *fail-open* nel punto che
+esiste apposta per non esserlo.
+
+⚠️ **Il ripiego su `date_trunc('month', p_data)`** copre le fatture nate prima
+del 2026-08-26, che hanno la colonna a `NULL`: è la risposta di allora, quindi
+mai peggiore. ⛔ Il prezzo, dichiarato: col ripiego il cancello **non distingue**
+un 31/07 che è davvero di luglio da uno che in realtà è di giugno. Chi la
+competenza vera ce l'ha è la porta di dichiarazione
+([`fn_imposta_data_documento_lotto`](/dbzero/vendite/funzioni/fn_imposta_data_documento_lotto)),
+dove il controllo resta **stretto** — due severità diverse, e la differenza è
+scritta in entrambi i posti apposta.
 
 ---
 

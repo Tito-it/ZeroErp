@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-2 — L'OVERRIDE DEL LIMITE DI EMISSIONE, SUL REGISTRO
+#   vendite.registri_fatturazione.limite_emissione_giorni
+#   vendite.registri_fatturazione.limite_emissione_giorno_mese
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-2 (decisioni D-1, D-6)
+#
+# ── ⭐ UNA REGOLA GENERALE E LA SUA ESENZIONE, NON DUE FORME ────────
+#   Un documento non puo' essere datato piu' di N giorni fa: e' la regola, e vale
+#   per TUTTI i documenti. La differita ha in piu' un PERMESSO — un documento
+#   datato l'ultimo giorno del mese M si emette fino al giorno G di M+1 — che
+#   scade. Quando scade, torna la regola generale.
+#
+#   ⛔ E' il motivo per cui il CHECK di coerenza e' A UN LATO SOLO: il valore in
+#   GIORNI vale anche sulla differita, quindi un registro FINE_MESE_COMPETENZA
+#   puo' legittimamente valorizzare ENTRAMBE le colonne. Vietare la seconda
+#   sarebbe vietare una configurazione buona. L'unico valore inerte possibile e'
+#   il giorno del mese su un registro OGGI, e quello si vieta.
+#
+# ── ⛔ IL GIORNO DEL MESE NON HA TETTO A 28 (decisione D-6) ─────────
+#   Il CHECK ammette 1..31, e a fare i conti col mese e' la FUNZIONE:
+#   `LEAST(primo_del_mese_successivo + giorno - 1, ultimo_del_mese_successivo)`.
+#   Con 31 su un febbraio la scadenza e' il 28 (o il 29).
+#
+#   ⚠️ Il `LEAST` sta nella funzione e NON nel CHECK, ed e' una separazione di
+#   mestieri: il vincolo presidia il VALORE CONFIGURATO, la funzione lo traduce
+#   in una DATA. Un CHECK non conosce il mese su cui il valore verra' applicato.
+#
+# ── ⚠️ IL CHECK DI COERENZA ACCOPPIA L'OVERRIDE ALLA POLITICA ───────
+#   `chk_registri_fatturazione_limite_coerenza` nomina `politica_data_documento`,
+#   e quella colonna la riscrive un loader `runOnChange` (`20260825-05`) A OGNI
+#   MIGRATE. Conseguenza da sapere PRIMA di incontrarla: il giorno in cui
+#   qualcuno cambia nel CSV la politica di un registro che porta un
+#   `limite_emissione_giorno_mese`, il migrate muore su un changeSet che non e'
+#   suo. Il rimedio e' azzerare l'override nello stesso giro in cui si cambia la
+#   politica — due UPDATE, non uno.
+#   E' la stessa specie di mina che il cantiere della numerazione ha gia' pagato
+#   una volta su `parameters.csv`: qui e' nominata prima, non dopo.
+#
+# ── ℹ️ NULL = VALE IL DEFAULT GLOBALE ───────────────────────────────
+#   Le due colonne sono l'OVERRIDE. Il valore si scrive una volta sola in
+#   config.parameters (20260826-03) e un registro con un'esigenza propria la
+#   dichiara; gli altri tacciono. ⛔ NULL non significa «nessun limite»:
+#   significa «quello di tutti».
+#
+# ── ℹ️ NIENTE STORICO, NIENTE INDICI, NIENTE fk_index_policy ────────
+#   `storico.registri_fatturazione` e' a snapshot JSONB: una colonna nuova ci
+#   entra da sola. Le colonne non sono FK e la tabella ha sei righe: nessun
+#   indice e nessuna riga in dbops.fk_index_policy.
+#
+# ── ⚠️ NIENTE %TYPE QUI ─────────────────────────────────────────────
+#   Il `%TYPE` non vale in DDL plain: si usa nelle firme e nei DECLARE delle
+#   funzioni, che infatti lo useranno per ancorarsi a QUESTE due colonne.
+#
+# Dipendenze: 20260825-03 (politica_data_documento), che il CHECK di coerenza
+#             nomina. ⚠️ 00_schema ordina per NN: 03 < 01 del giorno dopo, c'e'.
+# Verifica: db/pgtap/vendite/test-limite-emissione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260826-01-alter-registri-limite-emissione-mctit.yaml
+
+  - changeSet:
+      id: 20260826-01-alter-registri-limite-emissione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-2: l'override del limite di emissione sul registro. Due colonne nullable
+        (NULL = vale il default globale di config.parameters, non «nessun limite»):
+        limite_emissione_giorni, che e' la regola generale e vale ANCHE sulla differita a
+        permesso scaduto, e limite_emissione_giorno_mese, che e' il permesso della sola
+        differita. ⛔ Il CHECK di coerenza e' A UN LATO SOLO (OGGI -> giorno_mese IS NULL):
+        vietare i giorni sulla differita vieterebbe una configurazione legittima. ⛔ Il giorno
+        del mese ammette 1..31 e NON ha tetto a 28: a fare i conti col mese e' la funzione,
+        con LEAST sull'ultimo giorno del mese successivo — il vincolo presidia il valore
+        configurato, la funzione lo traduce in una data. ⚠️ Il CHECK di coerenza nomina
+        politica_data_documento, che un loader runOnChange riscrive a ogni migrate: cambiare
+        la politica di un registro che porta un override fa fallire il migrate finche'
+        l'override non viene azzerato nello stesso giro.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: politica_data_documento
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: registri_fatturazione
+                    columnName: limite_emissione_giorni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                ADD COLUMN limite_emissione_giorni smallint;
+
+              ALTER TABLE vendite.registri_fatturazione
+                ADD COLUMN limite_emissione_giorno_mese smallint;
+
+              -- Dominio: giorni non negativi. Lo zero e' ammesso e significa
+              -- «solo oggi», che e' una configurazione severa ma sensata.
+              ALTER TABLE vendite.registri_fatturazione
+                ADD CONSTRAINT chk_registri_fatturazione_limite_giorni
+                CHECK (limite_emissione_giorni IS NULL OR limite_emissione_giorni >= 0);
+
+              -- Dominio: un giorno del mese. ⛔ 1..31 e non 1..28: al mese corto
+              -- ci pensa la funzione con un LEAST, e un CHECK non conosce il
+              -- mese su cui il valore verra' applicato.
+              ALTER TABLE vendite.registri_fatturazione
+                ADD CONSTRAINT chk_registri_fatturazione_limite_giorno_mese
+                CHECK (limite_emissione_giorno_mese IS NULL
+                       OR limite_emissione_giorno_mese BETWEEN 1 AND 31);
+
+              -- ⭐ Coerenza A UN LATO SOLO: su un registro a data odierna il
+              --    giorno del mese non ha nessun significato, e un valore che
+              --    sembra configurazione e non lo e' e' peggio di un valore
+              --    assente. Il verso opposto NON si vieta: i giorni valgono
+              --    anche sulla differita, appena il permesso scade.
+              ALTER TABLE vendite.registri_fatturazione
+                ADD CONSTRAINT chk_registri_fatturazione_limite_coerenza
+                CHECK (politica_data_documento <> 'OGGI'
+                       OR limite_emissione_giorno_mese IS NULL);
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.limite_emissione_giorni
+                IS 'Quanti giorni indietro puo'' stare la data di un documento di questo sezionale, rispetto alla data operativa. NULL = vale il default globale (config.parameters.VENDITE_LIMITE_EMISSIONE_IMMEDIATA_GIORNI), NON «nessun limite». ⭐ E'' la REGOLA GENERALE e vale su ENTRAMBE le politiche: su OGGI e'' l''unico pavimento; su FINE_MESE_COMPETENZA e'' il pavimento a cui si ricade quando il permesso di datare a fine mese e'' scaduto. ⛔ Non e'' una costante di legge murata nel codice: e'' una lettura configurabile, ed e'' il motivo per cui il valore sta a catalogo. Lo legge vendite.fn_get_pavimento_emissione. Brief: brief-db-limite-emissione-e-data-verificata, decisioni D-1 e D-2.';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.limite_emissione_giorno_mese
+                IS 'Entro quale giorno del mese SUCCESSIVO alla competenza un documento differito resta emettibile con la data di fine competenza. NULL = vale il default globale (config.parameters.VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE). ⛔ Ha senso SOLO con politica_data_documento = FINE_MESE_COMPETENZA, e un CHECK lo impone: e'' il PERMESSO della differita, non una regola sua. Scaduto il permesso, il documento ricade su limite_emissione_giorni come tutti gli altri. ⭐ LA SCADENZA SI CALCOLA SUL MESE (decisione D-6): il vincolo ammette 1..31, e vendite.fn_get_pavimento_emissione applica LEAST(primo_del_mese_successivo + giorno - 1, ultimo_del_mese_successivo) — con 31 su un febbraio la scadenza e'' il 28 (o il 29), non il 2 marzo. Il LEAST sta nella funzione e non nel CHECK perche'' un vincolo non conosce il mese su cui il valore verra'' applicato. Brief: brief-db-limite-emissione-e-data-verificata, decisione D-6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.registri_fatturazione
+                DROP CONSTRAINT IF EXISTS chk_registri_fatturazione_limite_coerenza;
+
+              ALTER TABLE vendite.registri_fatturazione
+                DROP CONSTRAINT IF EXISTS chk_registri_fatturazione_limite_giorno_mese;
+
+              ALTER TABLE vendite.registri_fatturazione
+                DROP CONSTRAINT IF EXISTS chk_registri_fatturazione_limite_giorni;
+
+              ALTER TABLE vendite.registri_fatturazione
+                DROP COLUMN IF EXISTS limite_emissione_giorno_mese;
+
+              ALTER TABLE vendite.registri_fatturazione
+                DROP COLUMN IF EXISTS limite_emissione_giorni;

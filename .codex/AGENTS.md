@@ -36,6 +36,45 @@ si riscrive sul modello — e se sul modello non regge, non era una ragione.
 scritto **con la data e con il contesto** in cui è stato preso, e non va mai
 usato come premessa di una decisione strutturale.
 
+### ⭐ Come si distingue, in pratica: struttura contro popolazione
+
+Non tutto ciò che si legge dal database è una «misura». Il discriminante e' se
+si sta guardando il **progetto** o il suo **contenuto**:
+
+| Cosa si legge | Che natura ha | Decide? |
+| --- | --- | --- |
+| Nullabilita' di una colonna, `CHECK`, chiavi, FK, RLS, GRANT, volatilita' e corpo di una funzione, seed in `80_data`, contratto di un endpoint | **contratto**: e' il progetto, scritto | ✅ si' — e' la sorgente giusta |
+| `count(*)`, «zero righe in quello stato», «N su M hanno il padre valorizzato», distribuzione dei valori | **istantanea**: la fotografia di una macchina | ⛔ no |
+
+Leggere la struttura non e' «misurare»: e' leggere il progetto, e va fatto — anzi
+va fatto sulla **doc auto-gen** e non dagli YAML, che sono quasi sempre stantii.
+La domanda che decide resta **«il modello lo ammette?»**: se una colonna e'
+nullable, il NULL e' un caso da gestire anche quando in questo momento non ce
+n'e' nemmeno uno.
+
+### ⚠️ La prova del nove, su ogni riga che scrivo
+
+**Togli la misura.** Se l'argomento resta in piedi identico, era **colore** — e
+va dichiarato tale. Se l'argomento si affloscia, era **appoggiato alla cosa
+sbagliata** e va riscritto sulla struttura.
+
+⭐ Il caso peggiore non e' la conclusione sbagliata: e' la conclusione **giusta**
+appoggiata a un conteggio. Li' non c'e' niente da correggere nel risultato, e la
+misura sta occupando il posto dell'argomento — un documento cosi' scade con la
+macchina su cui e' stato scritto.
+
+### ⛔ Corollario sui test, ed e' dove il difetto rientra dalla finestra
+
+Una prova che confronta il risultato nuovo con i **dati esistenti** non prova la
+regola: prova i soli casi che quella popolazione **per caso** contiene. Un ramo
+che si distingue solo quando una colonna opzionale e' valorizzata si prova
+**costruendo** quel caso in un pgTAP, non confrontando una popolazione.
+
+⚠️ E un test che itera su cio' che c'e' passa **a vuoto** su un database
+ricostruito da zero — cioe' in CI: e' la forma classica del «verde per
+sottrazione», che passa smettendo di verificare. O si dichiara con uno `skip()`
+motivato, o si sostituisce con un test che i soggetti se li fabbrica.
+
 ## Quick Start per AI Agent
 
 - Progetto: ERP Django + PostgreSQL, open-source GPL v3

@@ -25,10 +25,15 @@
 | user_update | text | YES | CURRENT_USER |
 | utility_id | integer | YES |  |
 | politica_data_documento | character varying | NO | 'OGGI'::character varying |
+| limite_emissione_giorni | smallint | YES |  |
+| limite_emissione_giorno_mese | smallint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_registri_fatturazione_limite_coerenza |  |
+| CHECK | chk_registri_fatturazione_limite_giorni |  |
+| CHECK | chk_registri_fatturazione_limite_giorno_mese |  |
 | CHECK | chk_registri_fatturazione_politica_data |  |
 | CHECK | chk_registri_fatturazione_reset |  |
 | FOREIGN KEY | fk_registri_fatturazione_emitt | emittente_soggetto_ruolo_id |

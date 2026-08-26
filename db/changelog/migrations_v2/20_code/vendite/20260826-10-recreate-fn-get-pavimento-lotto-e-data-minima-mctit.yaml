@@ -1,0 +1,317 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-8 (parte 2) — LA TARGA DEL LOTTO COMPONE I DUE PAVIMENTI
+#   vendite.fn_get_pavimento_lotto(lotto)  -> TABLE(pavimento, origine)   NUOVA
+#   vendite.fn_get_data_minima_numerabile_lotto(lotto) -> date  (ora sottile)
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-8 (decisione D-4)
+#
+# ── ⭐ PERCHE' DUE FUNZIONI E NON UNA ───────────────────────────────
+#   La porta di dichiarazione (`fn_imposta_data_documento_lotto`) non ha bisogno
+#   solo della DATA: le serve anche di sapere QUALE pavimento ha morso, per
+#   scegliere fra i due codici errore. Ma la firma di
+#   `fn_get_data_minima_numerabile_lotto` e' un CONTRATTO: il backend la chiama
+#   in tre punti aspettandosi uno scalare, e per il frontend e' la `minDate` del
+#   dialog.
+#   ⇒ la funzione vera torna la coppia, e la vecchia resta come lettura sottile.
+#   ⛔ Il nome `_lotto` NON si rinomina, al contrario della sorella per registro:
+#   qui il nome e' in servizio.
+#
+# ── ⛔ NON E' PIU' UN max(ultima_data) ──────────────────────────────
+#   Il pavimento va composto PER FATTURA — registro e serie sono del documento,
+#   la competenza e' sua (o, se manca, del lotto) — e i registri hanno limiti
+#   diversi. Un `max` sul solo contatore ignorerebbe del tutto il limite di
+#   emissione.
+#
+#   ⭐ E resta SET-BASED: la composizione gira una volta per SEZIONALE distinto
+#   (`SELECT DISTINCT` su registro, serie, competenza), non una volta per
+#   fattura. Un lotto massivo ne ha molte e i sezionali sono pochi.
+#
+# ── ⚠️ IL PAREGGIO VA A SEQUENZA, ANCHE QUI ─────────────────────────
+#   `ORDER BY pavimento DESC, (origine = 'SEQUENZA') DESC`: a parita' di data si
+#   sceglie la frase che puo' portare un bersaglio. E' la stessa regola scritta
+#   in `fn_get_pavimento_data_documento` — qui si applica fra sezionali diversi.
+#
+# ── ℹ️ ZERO RIGHE = NESSUN PAVIMENTO, E IL `SELECT INTO` LO FA DA SE' ─
+#   Se il lotto non ha fatture da numerare, o se nessun sezionale produce un
+#   pavimento, il `SELECT ... INTO` non trova righe e AZZERA le variabili. Qui
+#   e' esattamente il comportamento voluto — «nessun vincolo» — ed e' scritto
+#   perche' altrove la stessa proprieta' e' una trappola: in una catena di
+#   fallback il livello a valle cancella quello a monte.
+#   ⭐ E la funzione torna comunque UNA riga, mai zero: chi la chiama non deve
+#   distinguere «nessun vincolo» da «nessuna risposta».
+#
+# ── ⚠️ FAIL-OPEN SOTTO RLS, E VA SAPUTO ─────────────────────────────
+#   `vendite.fatture` ha le policy e questa funzione e' SECURITY INVOKER: una
+#   fattura del lotto non visibile a chi opera non entra nell'aggregazione e il
+#   pavimento esce PIU' BASSO del vero. E' accettabile solo perche' questa e' una
+#   TARGA e non un lucchetto — il cancello vero, in `fn_get_next_progressivo`,
+#   legge il contatore, che la RLS non ha.
+#   ⛔ Chi volesse usare questa funzione AL POSTO del cancello sappia che sta
+#   sostituendo un presidio con un suggerimento.
+#
+# Dipendenze: 20260826-07 (fn_get_pavimento_data_documento),
+#             20260826-02 (fatture.competenza_mese).
+# Verifica: db/pgtap/vendite/test-limite-emissione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-10-recreate-fn-get-pavimento-lotto-e-data-minima-mctit.yaml
+
+  - changeSet:
+      id: 20260826-10-recreate-fn-get-pavimento-lotto-e-data-minima
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-8 (parte 2): la targa del lotto compone i due pavimenti. Nasce
+        vendite.fn_get_pavimento_lotto, che torna la coppia (pavimento, origine), e
+        fn_get_data_minima_numerabile_lotto diventa una lettura sottile su di essa — ⛔ la sua
+        firma e' un contratto: il backend la chiama in tre punti aspettandosi uno scalare e per
+        il frontend e' la minDate del dialog. ⛔ Non e' piu' un max(ultima_data): il pavimento
+        si compone PER FATTURA (registro e serie del documento, competenza sua o del lotto)
+        perche' i registri hanno limiti diversi, e un max sul solo contatore ignorerebbe del
+        tutto il limite di emissione. ⭐ Resta set-based: la composizione gira una volta per
+        SEZIONALE distinto, non per fattura. ⚠️ Il pareggio va a SEQUENZA anche fra sezionali
+        diversi. ℹ️ Torna sempre UNA riga: zero righe nella query interna azzerano le
+        variabili, che qui e' il comportamento voluto. ⚠️ Resta FAIL-OPEN sotto RLS, ed e'
+        accettabile solo perche' e' una targa e non un lucchetto.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture
+                columnName: competenza_mese
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_pavimento_data_documento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ═══════════════════════════════════════════════════════════
+              -- 1) La funzione VERA: la coppia (pavimento, origine)
+              -- ═══════════════════════════════════════════════════════════
+              CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_lotto(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS TABLE(
+                  pavimento vendite.registri_fatturazione_progressivi.ultima_data%TYPE,
+                  -- ⚠️ `text` e non un %TYPE: non riflette nessuna colonna.
+                  origine   text
+               )
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_pavimento vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+                  v_origine   text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da quale data in poi TUTTE le fatture non ancora
+                  --   numerate di questo lotto possono prendere un numero, e
+                  --   QUALE pavimento ha deciso.
+                  --
+                  -- Regole:
+                  --   - un lotto puo' toccare piu' sezionali: si prende il
+                  --     MASSIMO dei loro pavimenti, cioe' il piu' restrittivo;
+                  --   - solo le fatture SENZA numero: quelle numerate non hanno
+                  --     piu' niente da chiedere;
+                  --   - a parita' di data vince SEQUENZA, perche' la sua frase
+                  --     puo' portare un bersaglio.
+                  -- =========================================================
+
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_pavimento_lotto',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'lotto_id obbligatorio e maggiore di zero',
+                              'p_lotto_id', p_lotto_id),
+                          NULL::uuid,
+                          'vendite.fn_get_pavimento_lotto',
+                          'p_lotto_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- ⚠️ Il lotto ha la RLS: qui «non trovato» comprende «non
+                  --    visibile», ed e' giusto che le due risposte coincidano.
+                  --    Serve a distinguere «lotto che non c'e'» da «lotto senza
+                  --    pavimento», che tornerebbero entrambi NULL.
+                  PERFORM 1 FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_pavimento_lotto',
+                          'E_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  -- ⭐ SET-BASED SUI SEZIONALI DISTINTI, non per fattura: la
+                  --    composizione dipende da (registro, serie, competenza), e
+                  --    un lotto massivo ha molte fatture e pochi sezionali.
+                  -- ⭐ La serie si risolve come la risolve chi numera.
+                  -- ⚠️ La competenza e' quella DELLA FATTURA, con ripiego su
+                  --    quella del lotto: dal 2026-08-26 e' una proprieta' del
+                  --    documento, e le fatture nate prima possono averla a NULL.
+                  WITH sezionali AS (
+                      SELECT DISTINCT
+                             f.registro_id                                   AS registro_id,
+                             COALESCE(f.serie, r.serie_default, '')          AS serie,
+                             COALESCE(f.competenza_mese, fl.competenza_mese) AS competenza
+                        FROM vendite.fatturazione_lotti_fatture lf
+                        JOIN vendite.fatture f
+                          ON f.id = lf.fattura_id
+                        JOIN vendite.registri_fatturazione r
+                          ON r.id = f.registro_id
+                        JOIN vendite.fatturazione_lotti fl
+                          ON fl.id = lf.lotto_id
+                       WHERE lf.lotto_id = p_lotto_id
+                         AND f.numero IS NULL
+                  ),
+                  pavimenti AS (
+                      SELECT pv.pavimento AS pav,
+                             pv.origine   AS org
+                        FROM sezionali s
+                        CROSS JOIN LATERAL vendite.fn_get_pavimento_data_documento(
+                                   s.registro_id, s.serie, s.competenza) pv
+                       WHERE pv.pavimento IS NOT NULL
+                  )
+                  SELECT p.pav, p.org
+                    INTO v_pavimento, v_origine
+                    FROM pavimenti p
+                   -- ⚠️ Il piu' RESTRITTIVO fra i sezionali toccati, e a parita'
+                   --    di data vince SEQUENZA: stessa regola della sede
+                   --    composta, applicata qui fra sezionali diversi.
+                   ORDER BY p.pav DESC, (p.org = 'SEQUENZA') DESC
+                   LIMIT 1;
+
+                  -- ℹ️ Zero righe = nessun pavimento, e il SELECT INTO ha gia'
+                  --    azzerato le due variabili. Qui e' il comportamento
+                  --    voluto; altrove la stessa proprieta' e' una trappola.
+                  RETURN QUERY SELECT v_pavimento, v_origine;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_pavimento_lotto(vendite.fatturazione_lotti.id%TYPE)
+                IS 'Da quale data in poi TUTTE le fatture non ancora numerate di questo lotto possono prendere un numero, e QUALE pavimento ha deciso: il MASSIMO fra i pavimenti composti dei sezionali che il lotto tocca, cioe'' il piu'' restrittivo. ⭐ Un lotto puo'' contenere documenti di registri diversi — la natura instrada la nota di credito su un registro suo — quindi una risposta sola deve valere per tutti. ⛔ NON E'' PIU'' UN max(ultima_data): il pavimento si compone PER FATTURA (registro e serie del documento, competenza sua o del lotto) via vendite.fn_get_pavimento_data_documento, perche'' i registri hanno limiti di emissione diversi e un max sul solo contatore li ignorerebbe del tutto. ⭐ E resta SET-BASED: la composizione gira una volta per SEZIONALE DISTINTO e non per fattura — un lotto massivo ha molte fatture e pochi sezionali. ⚠️ La competenza si legge dalla FATTURA con ripiego su quella del lotto: dal 2026-08-26 e'' una proprieta'' del documento, e le fatture nate prima possono averla a NULL. ⚠️ A PARITA'' DI DATA VINCE SEQUENZA, come nella sede composta: la sua frase puo'' portare un bersaglio, quella del limite di emissione no. ℹ️ Solo le fatture SENZA numero: quelle gia'' numerate non hanno piu'' niente da chiedere. ℹ️ Torna SEMPRE una riga, mai zero: se nessun sezionale produce un pavimento, il SELECT INTO azzera le variabili e la risposta e'' (NULL, NULL) — «nessun vincolo». Chi chiama non deve distinguere «nessun vincolo» da «nessuna risposta». ⚠️ FAIL-OPEN sotto RLS, e va saputo: vendite.fatture ha le policy e questa funzione e'' SECURITY INVOKER, quindi una fattura del lotto non visibile a chi opera non entra nell''aggregazione e il pavimento esce PIU'' BASSO del vero. E'' accettabile solo perche'' questa e'' una TARGA e non un lucchetto — il cancello vero, in fn_get_next_progressivo, legge il contatore, che la RLS non ha. ⛔ Chi volesse usarla AL POSTO del cancello sappia che sta sostituendo un presidio con un suggerimento. ⚠️ Il lotto inesistente e il lotto non visibile danno la stessa risposta (E_LOTTO_NON_TROVATO), e il guard c''e'' per distinguerli da «lotto senza pavimento», che tornerebbe NULL come loro. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-8.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_lotto(
+                  vendite.fatturazione_lotti.id%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_lotto(
+                  vendite.fatturazione_lotti.id%TYPE) TO zeroerp_batch_fatturazione;
+
+              -- ═══════════════════════════════════════════════════════════
+              -- 2) La lettura sottile: solo la data. FIRMA INVARIATA.
+              -- ═══════════════════════════════════════════════════════════
+              CREATE OR REPLACE FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_pavimento vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La sola DATA del pavimento del lotto — la minDate del
+                  --   dialog. NULL = nessun pavimento.
+                  --
+                  -- Regole:
+                  --   - non decide niente: legge fn_get_pavimento_lotto e ne
+                  --     butta via l'origine;
+                  --   - la firma e' un CONTRATTO col backend e non cambia.
+                  -- =========================================================
+
+                  -- ℹ️ I guard (parametro, lotto inesistente o non visibile)
+                  --    stanno nella funzione che questa legge: qui sarebbero
+                  --    una seconda copia, e due copie divergono.
+                  SELECT pl.pavimento
+                    INTO v_pavimento
+                    FROM vendite.fn_get_pavimento_lotto(p_lotto_id) pl;
+
+                  RETURN v_pavimento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(vendite.fatturazione_lotti.id%TYPE)
+                IS 'La sola DATA del pavimento di un lotto: da quale data in poi tutte le sue fatture non numerate possono prendere un numero. NULL = nessun pavimento. ⭐ E'' la TARGA del cancello, non un secondo controllo: serve al frontend per aprire il DatePicker con minDate gia'' giusta, cosi'' il rifiuto diventa l''eccezione invece della norma. Se targa e cancello divergessero, comanda il cancello. ⭐ rev 2026-08-26: e'' diventata una LETTURA SOTTILE su vendite.fn_get_pavimento_lotto, che compone i due pavimenti (sequenza e limite di emissione) e dice anche QUALE ha deciso. Qui l''origine si butta via, e la ragione e'' che questa firma e'' un CONTRATTO: il backend la chiama in tre punti aspettandosi uno scalare e per il frontend e'' la minDate del dialog — cambiarla per aggiungere un''informazione che serve a un solo chiamante avrebbe fatto pagare a tutti il bisogno di uno. ⛔ Chi ha bisogno anche dell''origine (la porta di dichiarazione, per scegliere fra i due codici errore) chiama fn_get_pavimento_lotto direttamente. ℹ️ I guard — parametro non valido, lotto inesistente o non visibile — stanno nella funzione letta: qui sarebbero una seconda copia. ⚠️ Vale anche qui il FAIL-OPEN sotto RLS descritto in fn_get_pavimento_lotto. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-8.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  vendite.fatturazione_lotti.id%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  vendite.fatturazione_lotti.id%TYPE) TO zeroerp_batch_fatturazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimette la versione che guardava solo il contatore.
+              CREATE OR REPLACE FUNCTION vendite.fn_get_data_minima_numerabile_lotto(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_pavimento vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile_lotto',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'lotto_id obbligatorio e maggiore di zero',
+                              'p_lotto_id', p_lotto_id),
+                          NULL::uuid,
+                          'vendite.fn_get_data_minima_numerabile_lotto',
+                          'p_lotto_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  PERFORM 1 FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile_lotto',
+                          'E_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_lotto_id),
+                          NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  SELECT max(rp.ultima_data)
+                    INTO v_pavimento
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    JOIN vendite.fatture f
+                      ON f.id = lf.fattura_id
+                    JOIN vendite.registri_fatturazione r
+                      ON r.id = f.registro_id
+                    JOIN vendite.registri_fatturazione_progressivi rp
+                      ON rp.registro_id = f.registro_id
+                     AND rp.serie       = COALESCE(f.serie, r.serie_default, '')
+                   WHERE lf.lotto_id = p_lotto_id
+                     AND f.numero IS NULL;
+
+                  RETURN v_pavimento;
+              END;
+              $function$;
+
+              DROP FUNCTION IF EXISTS vendite.fn_get_pavimento_lotto(bigint);

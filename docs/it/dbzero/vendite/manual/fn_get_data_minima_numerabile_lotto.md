@@ -2,7 +2,8 @@
 
 > 👀 **Vedi anche**
 >
-> [vendite.fn_get_data_minima_numerabile](/dbzero/vendite/funzioni/fn_get_data_minima_numerabile)
+> [vendite.fn_get_pavimento_lotto](/dbzero/vendite/funzioni/fn_get_pavimento_lotto)
+> [vendite.fn_get_pavimento_sequenza](/dbzero/vendite/funzioni/fn_get_pavimento_sequenza)
 > [vendite.fn_imposta_data_documento_lotto](/dbzero/vendite/funzioni/fn_imposta_data_documento_lotto)
 > [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)
 > [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)
@@ -15,7 +16,7 @@
 possono prendere un numero.**
 
 È la sorella «per lotto» di
-[`fn_get_data_minima_numerabile`](/dbzero/vendite/funzioni/fn_get_data_minima_numerabile),
+[`fn_get_pavimento_sequenza`](/dbzero/vendite/funzioni/fn_get_pavimento_sequenza),
 e serve la stessa schermata: l'operatore dichiara **una** data per l'intero atto,
 quindi ha bisogno di **una** soglia.
 
@@ -74,6 +75,32 @@ tre cose diverse.
   (`E_VENDITE_CHIAMATA_NON_VALIDA`).
 * `STABLE`.
 * Brief: `docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md` §4 DB-10.
+
+
+### ⭐ rev 2026-08-26 — diventa una lettura sottile, e il pavimento è COMPOSTO
+
+Brief: `brief-db-limite-emissione-e-data-verificata` (**DB-8**).
+
+Il corpo si è spostato in
+[`fn_get_pavimento_lotto`](/dbzero/vendite/funzioni/fn_get_pavimento_lotto), che
+torna la **coppia** `(pavimento, origine)`; qui si legge la sola data e si butta
+via l'origine.
+
+⛔ **Perché il nome non è cambiato, al contrario della sorella per registro:**
+questa firma è un **contratto**. Il backend la chiama in tre punti aspettandosi
+uno scalare, e per il frontend è la `minDate` del dialog di numerazione.
+Cambiarla per aggiungere un'informazione che serve a **un solo** chiamante
+avrebbe fatto pagare a tutti il bisogno di uno — chi ha bisogno anche
+dell'origine chiama direttamente la funzione nuova.
+
+#### ⛔ Non è più un `max(ultima_data)`
+
+Il pavimento si compone **per fattura** — registro e serie sono del *documento*,
+la competenza è sua (o, se manca, del lotto) — perché i registri hanno **limiti
+di emissione diversi**, e un `max` sul solo contatore li ignorerebbe del tutto.
+
+⭐ E resta **set-based**: la composizione gira una volta per **sezionale
+distinto**, non una volta per fattura.
 
 ---
 
