@@ -140,7 +140,7 @@ export function useLottoAzioni({ onDone } = {}) {
       api: (id, { dataDocumento = null } = {}) => numeraLotto(id, { dataDocumento }),
       title: 'vendite.lotti.numera_header',
       message: 'vendite.lotti.numera_conferma',
-      esito: () => t('vendite.lotti.numera_esito'),
+      esito: () => t('vendite.lotti.numera_lotto_esito'),
       // ⛔ Non passa dalla conferma secca: la numerazione CHIEDE una data
       // (FE-2). Vedi `numeraDialog` piu' sotto.
       chiedeData: true,

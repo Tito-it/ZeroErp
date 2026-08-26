@@ -2547,7 +2547,7 @@
       "rerun_conferma": "Ri-eseguire lo step corrente del lotto in errore?",
       "numera_header": "Rendi definitive le fatture",
       "numera_conferma": "Numerare in modo definitivo le fatture del lotto? La numerazione fiscale è un atto irreversibile; le stampe verranno accodate.",
-      "numera_esito": "Fatture numerate: lotto reso definitivo",
+      "numera_lotto_esito": "Fatture numerate: lotto reso definitivo",
       "ristampa_header": "Ristampa documenti del lotto",
       "ristampa_conferma": "Accodare la ristampa dei documenti di tutte le fatture del lotto? I PDF verranno rigenerati in background; nessuna numerazione.",
       "ristampa_esito": "{n} documenti accodati per la stampa",
@@ -3524,6 +3524,19 @@
       "page_title": "Tool fatturazione",
       "page_description": "Gli elenchi che il giro automatico produce e non puo' chiudere da solo: qui li decide una persona.",
       "tab_fondi_da_decidere": "Fondi da decidere"
+    },
+    "attivita": {
+      "azione_reason": {
+        "non_trovata": "Attività non più disponibili: l'elenco che stai guardando è cambiato. Aggiornalo e riprova.",
+        "ancora_in_fattura": "Il lavoro è già dentro una fattura: non si riporta da emettere. Se la fattura va rifatta si agisce sulla fattura — «Elimina dal lotto» per quel documento, oppure «Riporta in lavorazione» sull'intero lotto.",
+        "gia_da_emettere": "Il lavoro è già da emettere: non c'è niente da riportare indietro, il prossimo giro di fatturazione lo prenderà da solo.",
+        "in_lavorazione": "Il lavoro è dentro un giro di fatturazione ancora in corso: non è un residuo. Si aspetta che il lotto finisca."
+      }
+    },
+    "sorgenti": {
+      "azione_reason": {
+        "righe_commessa_emesse": "Il documento ha righe di commessa già emesse: non si può chiudere finché ci sono. Si recuperano prima dalla dashboard di competenza, casella «Emesse non fatturate», col verbo «Riporta da emettere»."
+      }
     }
   },
   "dash_mesi": {

@@ -35,6 +35,18 @@
 #                    Il difetto offerte di maggio viveva per meta' nel CSV
 #                    (addendum-db-stati-doc-offerte-transizioni-label-key):
 #                    guardare solo le funzioni ne intercetterebbe una meta'.
+#   5) DUPLICATE   - chiavi definite DUE VOLTE nello stesso oggetto (2026-08-26).
+#                    In JSON e' lecito e ogni parser tiene l'ULTIMA: la prima e'
+#                    morta, senza errori e senza test rossi.
+#                    ⛔ E questo cancello era CIECO al proprio difetto: faceva
+#                    `json.load`, cioe' leggeva il dizionario gia' collassato —
+#                    guardava il RISULTATO invece del difetto. Serve un
+#                    `object_pairs_hook`, che vede le coppie prima che si
+#                    schiaccino.
+#                    Caso reale: `vendite.lotti.numera_esito` definita due volte
+#                    con DUE consumatori dai contratti diversi — la numerazione
+#                    di massa passava `{numerati}` e riceveva la frase del
+#                    singolo lotto, perdendo il conteggio a video.
 #
 # In Python e non in JS di proposito: gira ovunque ci sia Python, quindi
 # anche sul server DB dove non e' installato Node.
@@ -42,7 +54,7 @@
 # Uso:  python3 scripts/check_i18n_keys.py [--strict-roots]
 #       exit 0 = pulito, exit 1 = problemi (usabile in CI / pre-commit)
 # ------------------------------------------------------------
-"""Guard delle chiavi i18n: chiavi rotte, parita' it/en, radici, emissioni DB."""
+"""Guard chiavi i18n: rotte, parita' it/en, radici, emissioni DB, duplicate."""
 
 import csv
 import json
@@ -177,11 +189,41 @@ def walk_src():
                 yield os.path.join(dirpath, f)
 
 
+# Scopo: carica un locale e SEGNALA le chiavi definite due volte nello stesso
+#        oggetto JSON.
+# ⛔ Perche' serve un hook e non basta `json.load`: in JSON un oggetto con la
+#    stessa chiave due volte e' *lecito*, e ogni parser tiene l'ULTIMA — sia
+#    `json.load` qui, sia `JSON.parse` nel browser. Quindi la prima definizione
+#    e' morta e nessuno se ne accorge: niente errore, niente test rosso, solo una
+#    frase che a video non e' quella che si legge nel file.
+#    ⚠️ Fino al 2026-08-26 questo cancello era CIECO proprio perche' faceva
+#    `json.load`: leggeva il dizionario gia' collassato, cioe' guardava il
+#    risultato del difetto invece del difetto. Caso reale trovato quel giorno:
+#    `vendite.lotti.numera_esito` definita due volte, con DUE consumatori dai
+#    contratti diversi — la numerazione di massa passava `{numerati}` e riceveva
+#    la frase del singolo lotto, perdendo il conteggio.
+# ⚠️ E il difetto NON si vede da una ricerca testuale del nome: le due
+#    definizioni possono stare a cinquanta righe di distanza, ed essere
+#    entrambe legittime se gli oggetti che le contengono sono diversi. A
+#    decidere e' l'annidamento, che solo il parser conosce.
+def carica_locale(path):
+    duplicati = []
+
+    def hook(coppie):
+        visti = set()
+        for chiave, _ in coppie:
+            if chiave in visti:
+                duplicati.append(chiave)
+            visti.add(chiave)
+        return dict(coppie)
+
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh, object_pairs_hook=hook), duplicati
+
+
 def main():
-    with open(os.path.join(LOCALES, "it.json"), encoding="utf-8") as fh:
-        it = json.load(fh)
-    with open(os.path.join(LOCALES, "en.json"), encoding="utf-8") as fh:
-        en = json.load(fh)
+    it, dupli_it = carica_locale(os.path.join(LOCALES, "it.json"))
+    en, dupli_en = carica_locale(os.path.join(LOCALES, "en.json"))
     valori_it, valori_en = flatten_valori(it), flatten_valori(en)
     chiavi_it, chiavi_en = set(valori_it), set(valori_en)
     presenti = chiavi_it | chiavi_en
@@ -285,6 +327,20 @@ def main():
                 print(f"       ... e altri {len(dove) - 3}")
     else:
         print("[ok] nessuna chiave rotta nel frontend")
+
+    # ⛔ Le chiavi definite DUE VOLTE nello stesso oggetto. Vince l'ultima, la
+    #    prima e' morta, e il file mostra una frase che a video non compare.
+    if dupli_it or dupli_en:
+        problemi += len(dupli_it) + len(dupli_en)
+        print(f"\n[X] {len(dupli_it) + len(dupli_en)} CHIAVI DEFINITE DUE VOLTE nello stesso oggetto")
+        print("    In JSON vince l'ultima: la prima e' morta e non da' nessun errore.")
+        print("    Se i consumatori sono due con contratti diversi, uno riceve la")
+        print("    frase dell'altro — e un segnaposto che non compare non si vede.")
+        for lang, dupli in (("it.json", dupli_it), ("en.json", dupli_en)):
+            for k in sorted(set(dupli)):
+                print(f"    {lang}: {k}")
+    else:
+        print("[ok] nessuna chiave definita due volte")
 
     if db_rotte:
         problemi += len(db_rotte)
