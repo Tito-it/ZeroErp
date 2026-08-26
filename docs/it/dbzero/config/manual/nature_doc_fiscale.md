@@ -8,7 +8,7 @@
 > [config.fn_get_natura_doc_fiscale_id](fn_get_natura_doc_fiscale_id.md) ·
 > [vendite.fn_get_registro_id](/dbzero/vendite/funzioni/fn_get_registro_id)
 >
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-note-credito-resi.md`
+> Brief autorevole: `docs/it/dev/work-done/brief-design-note-credito-resi.md`
 > (decisione **D-NC-3**, §12.4-bis)
 
 ---

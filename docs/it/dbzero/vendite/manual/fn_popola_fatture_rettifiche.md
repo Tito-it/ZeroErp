@@ -7,7 +7,7 @@
 > [fn_accredita_riga_reso](fn_accredita_riga_reso.md) ·
 > [config.nature_doc_fiscale](/dbzero/config/tabelle/nature_doc_fiscale)
 >
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-note-credito-resi.md` (slice **N10**, §12.6-bis punto 4)
+> Brief autorevole: `docs/it/dev/work-done/brief-design-note-credito-resi.md` (slice **N10**, §12.6-bis punto 4)
 
 ---
 

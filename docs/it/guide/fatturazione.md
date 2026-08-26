@@ -822,7 +822,7 @@ rilancio dice all'operatore tutto ciò che manca al documento.
 
 > Sezione aggiunta il **2026-08-21**, quando la prima nota di credito è
 > esistita sui dati veri. Design-of-record:
-> [brief-design-note-credito-resi.md](../dev/work-in-progress/brief-design-note-credito-resi.md).
+> [brief-design-note-credito-resi.md](../dev/work-done/brief-design-note-credito-resi.md).
 
 Fino al 2026-08 il flusso copriva solo l'andata: sorgente → commessa → fattura →
 SDI. La nota di credito è il **ritorno del valore**, e sta al valore come il

@@ -9,12 +9,19 @@
 > questo si spunta, si annota con quello che si trova, e quando è finito diventa
 > il verbale di collaudo.
 >
-> **Stato** (2026-08-26): 🟡 **in corso — 26 spunte su 40.** Le prove 1→6 sono
-> passate, e hanno trovato quattro difetti che nessun test aveva trovato (§38,
-> §42, §44, §45 del brief). Restano: la **riverifica della prova 7** dopo la
-> correzione del §45.9, i suoi tre avvisi, e **tutta la prova 7-bis** (arco `S`),
-> che è nata il 2026-08-25 e non è mai stata eseguita.
-> Ambiente: sviluppo (`dbdev`). Preparato il 2026-08-19.
+> **Stato**: ✅ **CHIUSO il 2026-08-26 da Tid — 39 spunte su 39.** Da qui in
+> avanti questo file non è più un copione: è il **verbale di collaudo**.
+>
+> ⭐ **Cosa ha prodotto.** Otto prove hanno trovato **quattro difetti che nessun
+> test automatico aveva trovato**, e tutti e quattro erano di modello, non di
+> resa: la guardia mancante di `fn_annulla_reso` (§38 del brief), le note di
+> credito raggiungibili da due verbi di commessa (§42), la numerazione della NC
+> prima della fattura che corregge (§44) e l'annullo dell'accredito che restava
+> acceso su un accredito già emesso (§45). È la ragione per cui il collaudo
+> in-app non è una formalità di fine cantiere.
+>
+> Ambiente: sviluppo (`dbdev`). Preparato il 2026-08-19, eseguito fino al
+> 2026-08-26.
 
 ---
 
@@ -168,7 +175,7 @@ Usa la riga **24** (il kit).
       stato **finale** di ogni accredito — oggi 1 riga su 3, domani tutte.
       ✅ **CHIUSO**: DB il 2026-08-25 (`20260825-22/23/24/25`), BE e FE il
       2026-08-26 (§45.9).
-- [ ] ⭐ **Da riverificare in app dopo la correzione.** Sul reso 24 il pulsante
+- [X] ⭐ **Da riverificare in app dopo la correzione.** Sul reso 24 il pulsante
       «Annulla l'accredito» dev'essere **grigio e parlante**: il motivo si legge
       come tooltip (desktop) **e** come riga sotto la voce nel kebab
       (touch/tablet) — *«L'accredito è già stato emesso in fattura e non si può
@@ -178,12 +185,12 @@ Usa la riga **24** (il kit).
       funzionante** — è ciò che dimostra che il gate non ha spento tutto.
       ⛔ Se è grigio ma **muto**, il difetto è a monte del colore: o
       `annullo_blocco_codice` non arriva dalla vista, o manca la chiave i18n.
-- [ ] nel drawer del lotto, la conferma di **«Elimina dal lotto»** / «Riporta a
+- [X] nel drawer del lotto, la conferma di **«Elimina dal lotto»** / «Riporta a
       bozza» / «Annulla lotto» avvisa che **un accredito già registrato NON
       viene annullato** e che la nota **si rigenera** al giro successivo;
-- [ ] *(se la riga era anche rinunciata)* riaprire la rinuncia è **rifiutato**,
+- [X] *(se la riga era anche rinunciata)* riaprire la rinuncia è **rifiutato**,
       con il messaggio sull'accredito già eseguito;
-- [ ] e **annullare il reso** è rifiutato a sua volta, con il messaggio
+- [X] e **annullare il reso** è rifiutato a sua volta, con il messaggio
       sull'accredito registrato: qui la strada indietro non c'è più da nessuna
       parte, ed è corretto che i tre verbi lo dicano tutti e tre.
 
@@ -192,7 +199,7 @@ Usa la riga **24** (il kit).
 > **Perché esiste questa prova.** Al collaudo del 2026-08-25 Tid: *«manca un
 > collegamento tra la nota credito e il reso, non riesco a ritrovarlo — esempio
 > nota credito 20024»*. Il grafo si fermava sul reso. Ora c'è l'arco `S`.
-> Cantiere: [brief-db-lineage-arco-reso-nota-credito.md](../work-done/brief-db-lineage-arco-reso-nota-credito.md).
+> Cantiere: [brief-db-lineage-arco-reso-nota-credito.md](brief-db-lineage-arco-reso-nota-credito.md).
 >
 > 📌 **Il caso vivo è il reso 24** (`RESO0000017`) → **NC 20024**, numero **1**
 > sul registro NC. Gli altri resi della tabella in cima non hanno l'arco: sono
@@ -201,40 +208,40 @@ Usa la riga **24** (il kit).
 
 **Nel drawer del reso 24** — barra «Collegamenti», sotto le azioni:
 
-- [ ] compare un chip **«Nota di credito»** con la freccia **→** (destinazione,
+- [X] compare un chip **«Nota di credito»** con la freccia **→** (destinazione,
       non `↩`: `S` non è un ramo di ritorno);
-- [ ] cliccandolo si apre il drawer della nota;
-- [ ] nella dialog «Passaggi» la tappa `reso → nota di credito` c'è, e la nota è
+- [X] cliccandolo si apre il drawer della nota;
+- [X] nella dialog «Passaggi» la tappa `reso → nota di credito` c'è, e la nota è
       etichettata **«Nota di credito»**, non «Fattura» (è la natura che vince
       sul tipo).
 
 **Nel drawer della NC 20024:**
 
-- [ ] compare un chip **«Reso»** con la freccia **←** (origine);
-- [ ] restano i due che c'erano: la **commessa** (arco G) e la **fattura
+- [X] compare un chip **«Reso»** con la freccia **←** (origine);
+- [X] restano i due che c'erano: la **commessa** (arco G) e la **fattura
       rettificata** (arco N, con `↩`).
 
 **Nel drawer del DDT 140** *(controprova: qui NON deve cambiare niente)*:
 
-- [ ] la barra «Collegamenti» è **invariata** — i chip filtrano il **livello 1**,
+- [X] la barra «Collegamenti» è **invariata** — i chip filtrano il **livello 1**,
       e `S` è al livello 2;
-- [ ] ma la dialog «Passaggi» arriva **fino alla nota**: `R` (lvl 1) → `S` (lvl 2).
+- [X] ma la dialog «Passaggi» arriva **fino alla nota**: `R` (lvl 1) → `S` (lvl 2).
 
 **Nella lista resi** — le tre colonne nuove del gruppo «Genealogia»:
 
-- [ ] la colonna **«Transito»** sulla riga del reso 24 mostra un **chip**, non un
+- [X] la colonna **«Transito»** sulla riga del reso 24 mostra un **chip**, non un
       testo nudo, e non un trattino;
-- [ ] «Pratica» e «Fase» sono valorizzate come sulle liste sorelle — «Fase» è un
+- [X] «Pratica» e «Fase» sono valorizzate come sulle liste sorelle — «Fase» è un
       **Tag colorato**, non la parola `CHIUSO` scritta a mano;
-- [ ] ordinando per «Pratica» o per «Fase» la lista **si riordina** (non risponde
+- [X] ordinando per «Pratica» o per «Fase» la lista **si riordina** (non risponde
       un errore); su «Transito» la freccia **non c'è**, ed è voluto.
 
 ⚠️ **Due cose che si vedranno e NON sono difetti di questa prova:**
 
-| Cosa si vede | Perché | Dove sta |
-| --- | --- | --- |
-| il numero è **`1`** e non `NC0000001` | il `codice` del nodo fattura è `fatture.numero`, e il registro NC è al numero 1 — sulle sorelle la stessa colonna mostra `DDT0000031` | §7 del brief, terzo punto |
-| il chip dice **«Fattura»** e non «Nota di credito» | la natura della frontiera non esce dalla summary: il join ha bisogno di `frontiera_uid`, che le liste non hanno | 🔴 **§3** di `brief-db-lineage-residui-root-e-sorgente-ddt.md` — richiesta al team DB, BE/FE aspettano |
+| Cosa si vede                                       | Perché                                                                                                                                | Dove sta                                                                                              |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| il numero è **`1`** e non `NC0000001`              | il `codice` del nodo fattura è `fatture.numero`, e il registro NC è al numero 1 — sulle sorelle la stessa colonna mostra `DDT0000031` | §7 del brief, terzo punto                                                                             |
+| il chip dice **«Fattura»** e non «Nota di credito» | la natura della frontiera non esce dalla summary: il join ha bisogno di `frontiera_uid`, che le liste non hanno                       | 🔴 **§3** di `brief-db-lineage-residui-root-e-sorgente-ddt.md` — richiesta al team DB, BE/FE aspettano |
 
 ⛔ **Se invece la colonna «Transito» mostra «—»** sul reso 24, quello **è** un
 difetto: vuol dire che `frontiera_tipo_codice` non arriva dal backend. Il chip ha
@@ -264,18 +271,18 @@ cioè dice «non transitato» di un reso che è stato accreditato.
 
 ## Se qualcosa va storto
 
-| Sintomo                                     | Cosa guardare                                                                      |
-| ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| il verbo risponde 403                       | l'azione non è concessa al profilo (prova 8)                                       |
-| la riga resta in coda dopo l'accredito      | il verbo non ha scritto: guarda il toast, poi `vendite.resi_righe_accrediti`       |
-| la NC non nasce al giro                     | le rettifiche sono ancora `NON_EMESSA`? il lotto ha incluso quella commessa?       |
-| la NC nasce **dentro** la fattura           | 🔴 grave: la chiave documento non sta separando la natura. Fermati                  |
-| il numero è sul progressivo fatture         | 🔴 grave: registro sbagliato. Fermati                                               |
-| «operazione non consentita» sull'annullo    | è già emessa: è corretto. Il messaggio deve dire il perché                         |
-| il **reso** si annulla anche se accreditato | 🔴 grave: la guardia del §38 non è in esercizio. Fermati: la NC uscirebbe lo stesso |
-| «Transito» mostra **«—»** sul reso 24 | il backend non decodifica `frontiera_tipo_codice`: `ResiRepository.list_resi` |
+| Sintomo                                                   | Cosa guardare                                                                           |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| il verbo risponde 403                                     | l'azione non è concessa al profilo (prova 8)                                            |
+| la riga resta in coda dopo l'accredito                    | il verbo non ha scritto: guarda il toast, poi `vendite.resi_righe_accrediti`            |
+| la NC non nasce al giro                                   | le rettifiche sono ancora `NON_EMESSA`? il lotto ha incluso quella commessa?            |
+| la NC nasce **dentro** la fattura                         | 🔴 grave: la chiave documento non sta separando la natura. Fermati                       |
+| il numero è sul progressivo fatture                       | 🔴 grave: registro sbagliato. Fermati                                                    |
+| «operazione non consentita» sull'annullo                  | è già emessa: è corretto. Il messaggio deve dire il perché                              |
+| il **reso** si annulla anche se accreditato               | 🔴 grave: la guardia del §38 non è in esercizio. Fermati: la NC uscirebbe lo stesso      |
+| «Transito» mostra **«—»** sul reso 24                     | il backend non decodifica `frontiera_tipo_codice`: `ResiRepository.list_resi`           |
 | «Pratica»/«Fase»/«Transito» mostrano il **valore grezzo** | mancano i tre slot `#cell-*` in `ResiSearchTable.vue`: il BB rende il valore così com'è |
-| ordinare per «Pratica» o «Fase» risponde **400** | la colonna non è in `_ORDER_COLS_RESI` |
+| ordinare per «Pratica» o «Fase» risponde **400**          | la colonna non è in `_ORDER_COLS_RESI`                                                  |
 
 ⛔ **Sui due «grave»: non ritentare.** Sono i due casi in cui un secondo giro
 produce un secondo documento sbagliato.

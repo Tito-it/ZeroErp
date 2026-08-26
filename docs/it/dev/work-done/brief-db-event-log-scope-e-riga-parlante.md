@@ -1098,7 +1098,7 @@ di non fare con la diagnostica di produzione, e la ragione è la stessa.
 | --- | --- |
 | ⛔ | ~~I due codici nati con L1 — `E_EVENT_LOG_SCOPE_NON_RISOLTO` ed `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` — hanno già la forma del bersaglio: convertirli è una riga, e sono i **primi adottanti gratuiti** del loro T-5.~~ **SUPERATA il 2026-08-22**, e il regalo non era accettabile — tre ragioni indipendenti, misurate sui CSV applicati: `E_EVENT_LOG_ENTITY_TYPE_IGNOTO` porta **per definizione** un tipo **fuori catalogo**, quindi farebbe fallire il presidio che loro devono scrivere; `E_EVENT_LOG_SCOPE_NON_RISOLTO` punta a **un'entità che non esiste**, quindi il pulsante non comparirebbe **mai**; e sono entrambi **`TECNICO` (500)**, la classe in cui *noi stessi* non mettiamo `campo` nel contesto. ➡️ **Ne è uscita la regola che a quel brief mancava** — *il bersaglio si mette sugli errori rimediabili, mai sui `TECNICO`* — che è un regalo migliore di quello che avevamo offerto. Vedi `brief-db-bersaglio-errore` §5.5 |
 | ⭐ | La vista `script.vw_giornale_entita` (§3.6) e le rotte del bersaglio (loro **B-2**) usano **lo stesso** vocabolario `config.tipi_entita`: la tabella tipo → schermata si scrive una volta |
-| ⚠️ | Il guard `E_FATTURE_RIGHE_RETTIFICATE` di [brief-db-guard-righe-fattura-rettificate.md](../work-in-progress/brief-db-guard-righe-fattura-rettificate.md) dice «su %s righe» — un conteggio, **nessun id in prosa**, che è già la regola giusta. Ma un `target` sulle righe bloccate lo renderebbe azionabile: buon candidato **T-5** |
+| ⚠️ | Il guard `E_FATTURE_RIGHE_RETTIFICATE` di [brief-db-guard-righe-fattura-rettificate.md](brief-db-guard-righe-fattura-rettificate.md) dice «su %s righe» — un conteggio, **nessun id in prosa**, che è già la regola giusta. Ma un `target` sulle righe bloccate lo renderebbe azionabile: buon candidato **T-5** |
 
 ---
 
@@ -2266,7 +2266,7 @@ esistente e migliore (§6).
 ⚠️ **Fuori cantiere, trovato dalla baseline**: `fn_cleanup_fatture_by_ids`
 esplodeva con un `23503` grezzo su una figlia di `fatture_righe` che nessuno
 sorvegliava. Non c'entra con l'osservabilità e ha un brief suo,
-[brief-db-guard-righe-fattura-rettificate.md](../work-in-progress/brief-db-guard-righe-fattura-rettificate.md).
+[brief-db-guard-righe-fattura-rettificate.md](brief-db-guard-righe-fattura-rettificate.md).
 
 ### 2026-08-22 (terzo giro) · L1 scritto
 

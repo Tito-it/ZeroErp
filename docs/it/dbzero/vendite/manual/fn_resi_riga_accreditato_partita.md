@@ -7,7 +7,7 @@
 > [fn_accredita_riga_reso](fn_accredita_riga_reso.md) ·
 > [fn_resi_riga_residuo_riconsegna](fn_resi_riga_residuo_riconsegna.md) — la sorella per l'altra uscita
 >
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-note-credito-resi.md` (slice **N9**)
+> Brief autorevole: `docs/it/dev/work-done/brief-design-note-credito-resi.md` (slice **N9**)
 
 ---
 

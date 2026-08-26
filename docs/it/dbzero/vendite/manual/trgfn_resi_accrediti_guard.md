@@ -8,7 +8,7 @@
 > [trgfn_resi_riconsegne_guard](trgfn_resi_riconsegne_guard.md) — il gemello ·
 > [trgfn_resi_rinunce_guard](trgfn_resi_rinunce_guard.md) — l'altro gemello
 >
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-note-credito-resi.md` (§12.6-ter)
+> Brief autorevole: `docs/it/dev/work-done/brief-design-note-credito-resi.md` (§12.6-ter)
 
 ---
 

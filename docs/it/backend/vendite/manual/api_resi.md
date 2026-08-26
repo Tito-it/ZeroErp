@@ -13,7 +13,7 @@ configurabili con export.
 
 > **Dal 2026-08-18 espone anche il verbo dell'ACCREDITO** (la nota di credito
 > sui resi): vedi la sezione dedicata più sotto e
-> [brief-design-note-credito-resi.md](../../../dev/work-in-progress/brief-design-note-credito-resi.md).
+> [brief-design-note-credito-resi.md](../../../dev/work-done/brief-design-note-credito-resi.md).
 >
 > Stato: BE completo. Modello e state machine (DRAFT→CONFERMATO, +ANNULLATO),
 > residuo ordine, flip DDT→RESO: vedi
