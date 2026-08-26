@@ -367,19 +367,77 @@ def messaggio_gruppi_non_serviti(
     return f"{testa} " + "; ".join(dettagli) + "."
 
 
-# Scopo: Digest stabile dell'insieme dei gruppi, per la chiave di BUSINESS
-#        della coda. Obiettivo: due emissioni mirate sullo stesso mese e scope
-#        ma con gruppi DIVERSI devono produrre due job distinti — senza questo,
-#        la dedup dei job vivi assorbirebbe la seconda in silenzio, ed e' il
-#        difetto piu' insidioso della slice (l'operatore vede «accodato» e non
-#        succede nulla). Ordinamento prima dell'hash: lo stesso insieme
-#        selezionato in ordine diverso resta lo STESSO lavoro, quindi va
-#        deduplicato davvero.
+# Scopo: Digest stabile di un INSIEME di chiavi, per la chiave di BUSINESS
+#        della coda.
+#
+# ⭐ Obiettivo: due atti MIRATI sullo stesso mese e scope ma su insiemi DIVERSI
+#    devono produrre due job distinti. Senza, la dedup dei job vivi assorbe il
+#    secondo in silenzio — l'operatore legge «accodato» e non succede niente. E'
+#    il difetto piu' insidioso di questa famiglia di verbi.
+#
+# ⚠️ ORDINAMENTO PRIMA DELL'HASH: lo stesso insieme spuntato in ordine diverso
+#    e' lo STESSO lavoro, e quello va deduplicato davvero.
+#
+# ⚠️ `str()` su ogni elemento: l'insieme puo' essere di chiavi testuali (i
+#    gruppi fatturabili) o di id numerici (i lotti selezionati). ⛔ E l'ordine e'
+#    quello delle STRINGHE, non dei numeri: e' indifferente al risultato — serve
+#    solo che sia deterministico — ma va saputo, perche' `[2, 10]` e `[10, 2]`
+#    danno lo stesso digest mentre l'ordine canonico interno e' `10, 2`.
+#
 # Risultato: 12 esadecimali (collisione irrilevante: la chiave e' gia' scoped
-#        per job_type + mese + scope operatore), o stringa vuota senza gruppi —
-#        cosi' la chiave del giro di massa resta identica a prima.
-def gruppi_digest(gruppi: tuple[str, ...] | None) -> str:
-    if not gruppi:
+#        per job_type + mese + scope operatore), o stringa vuota su insieme
+#        assente — cosi' la chiave del giro di massa resta identica a prima.
+#
+# ⭐ Generalizzato il 2026-08-26 (regola del 2, ok Tid): nato per i gruppi
+#    dell'emissione mirata, serve identico alla numerazione su selezione di
+#    lotti. Due copie divergerebbero sul punto che conta — se ordinano prima di
+#    hashare — e la seconda perderebbe silenziosamente job legittimi.
+def insieme_digest(valori) -> str:
+    if not valori:
         return ""
-    canonico = "\x1f".join(sorted(gruppi))
+    canonico = "\x1f".join(sorted(str(v) for v in valori))
     return hashlib.sha256(canonico.encode("utf-8")).hexdigest()[:12]
+
+
+# Scopo: Normalizza e valida la lista dei LOTTI di una numerazione su selezione.
+#        Stessa disciplina di `parse_gruppi`, con cui condivide il motivo di
+#        esistere: un perimetro sbagliato deve fallire con un 400 parlante, mai
+#        degenerare in «tutti» o in un insieme che non trova nulla senza dirlo.
+# ⛔ Lista presente ma VUOTA = rifiuto, non «nessun filtro»: e' una richiesta
+#        ambigua («numera niente» oppure «numera tutto»?), e su un atto fiscale
+#        indovinare non e' ammesso. Chi vuole il mese intero omette il campo.
+# Risultato: tupla di id positivi deduplicati (ordine preservato), oppure None
+#        se il chiamante non ha chiesto alcuna selezione.
+def parse_lotti(raw: Any, *, error_code: str) -> tuple[int, ...] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, (list, tuple)):
+        raise ServiceError(
+            code=error_code,
+            message="`lotti` deve essere una lista di id di lotto.",
+            detail=f"tipo ricevuto: {type(raw).__name__}",
+            context=contesto_terminale(),
+        )
+    ids: list[int] = []
+    for elemento in raw:
+        # ⚠️ `bool` e' sottoclasse di `int`: senza il primo controllo, `True`
+        #    passerebbe come lotto numero 1.
+        if isinstance(elemento, bool) or not isinstance(elemento, int) or elemento <= 0:
+            raise ServiceError(
+                code=error_code,
+                message="`lotti` contiene un id non valido (atteso intero maggiore di zero).",
+                detail=repr(elemento),
+                context=contesto_terminale(),
+            )
+        if elemento not in ids:
+            ids.append(elemento)
+    if not ids:
+        raise ServiceError(
+            code=error_code,
+            message=(
+                "`lotti` non puo` essere una lista vuota: omettere il campo per "
+                "numerare l'intero mese."
+            ),
+            context=contesto_terminale(),
+        )
+    return tuple(ids)

@@ -1,6 +1,9 @@
 # Brief BE/FE — «Rendi definitive» torna dove stanno i lotti
 
-> **Destinatario:** me stesso (BE/FE), con **un prerequisito DB** (§4).
+> **Destinatario:** me stesso (BE/FE). ⚠️ Il «prerequisito DB» annunciato al §4
+> **non esisteva**: `SQL_PERIMETRO_LOTTI_NUMERABILI` è una costante **Python**,
+> non una funzione del database. Il cantiere è stato interamente BE/FE — zero
+> migrazioni, zero attese.
 >
 > **Origine.** Tid, 2026-08-26. La domanda di partenza era sulla semantica delle
 > card della Lente 1; da lì è emersa una contraddizione che Tid ha visto per
@@ -24,7 +27,25 @@
 > naturale) ·
 > [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
 >
-> ⛔ **Stato: decisioni prese, niente scritto.**
+> 🟡 **Stato al 2026-08-26: REALIZZATO E COLLAUDATO A METÀ.**
+> Backend e frontend sono scritti, verificati e in albero; l'interfaccia è stata
+> vista in-app da Tid («ora la grafica funziona», «da fatturate il link porta
+> correttamente ai lotti»).
+>
+> **Resta aperto, e il brief NON si chiude finché non lo è:**
+>
+> | | Cosa manca | Chi |
+> | --- | --- | --- |
+> | 🔴 **C-1** | il collaudo dei **verbi**: numerare una selezione, numerare il mese, il limite che si sposta fra sezionali diversi | Tid |
+> | 🔴 **C-2** | la **guida** (§7.1 e §6.3 di `cruscotti-fatturazione.md`) | dopo il passo L5 dell'altro cantiere (§9.1) |
+>
+> ⚠️ C-1 non è una formalità: è un **atto fiscale**, e finora ne è stato provato
+> il percorso (endpoint, coda, perimetro, guard) ma non l'**esito** — nessun
+> numero è stato consumato in collaudo.
+>
+> ⛔ C-2 è bloccato da un ordine, non da un dubbio: la stessa tabella dei verbi
+> viene riscritta anche dal cantiere gemello, e fare i due passi in parallelo
+> significa che una delle due mani perde il lavoro dell'altra.
 
 ---
 
@@ -307,3 +328,286 @@ disfare qualcosa. Meno occasioni di usare «Elimina dal lotto», che è il verbo
 cui vive il difetto.
 
 ⚠️ Il che **non** rende meno urgente la correzione DB: la rarità non è una difesa.
+
+---
+
+## 2026-08-26 · ✅ REALIZZATO — backend e frontend
+
+Nessun prerequisito DB: il «pezzo DB» del §4 era una **costante Python**
+(`SQL_PERIMETRO_LOTTI_NUMERABILI`), non una funzione del database. Il cantiere
+è stato interamente BE/FE.
+
+### Il perimetro, nelle sue due forme
+
+`SQL_PERIMETRO_LOTTI_NUMERABILI` non è più una stringa da formattare: è
+`costruisci_perimetro_lotti_numerabili`, che restituisce **SQL e parametri
+insieme**. Finché erano due cose separate, l'ordine dei segnaposto e quello dei
+valori erano due verità da tenere allineate a mano — ed è l'errore già successo
+lo stesso giorno sul cantiere delle facet: invertiti non danno errore,
+confrontano il valore sbagliato e tornano numeri plausibili.
+
+⛔ **Lo stato EMESSA si applica anche sulla forma a lista.** Un lotto scelto a
+mano non è per questo numerabile: la selezione decide il PERIMETRO, non le
+regole, e la casella spenta a video è una comodità, non un presidio. Provato sul
+database: selezionando `[1200, 79]` dove il 79 non è emesso, il perimetro ne
+restituisce **uno solo**.
+
+### I cinque anelli, tutti percorsi
+
+| # | anello | esito |
+| --- | --- | --- |
+| 1 | `LottiListView` — selezione e verbi | ✓ |
+| 2 | `POST fatturazione/numera/` accetta `lotti: [id]` | ✓ |
+| 3 | payload della coda | ✓ |
+| 4 | `fatturazione_numera_handler` | ✓ |
+| 5 | `list_lotti_numerabili` — ramo id | ✓ |
+
+più il ramo parallelo della finestra della data, che accetta `?lotti=` ripetuto.
+
+### ⛔ La trappola della coda è chiusa — provata sull'HTTP
+
+```
+selezione [1200] → job 1268
+selezione [1296] → job 1269      ← due job DISTINTI
+stessa selezione, due volte → 1268, 1268   ← dedup ancora viva
+```
+
+`gruppi_digest` è diventata `insieme_digest` (**regola del 2, dichiarata a
+Tid**): serviva identica ai gruppi dell'emissione mirata e ai lotti della
+numerazione. Due copie sarebbero divergute sul punto che conta — se ordinano
+prima di hashare — e la seconda avrebbe perso job legittimi in silenzio.
+
+### Le decisioni prese realizzando
+
+**D-6. La selezione ATTRAVERSA le due schede**, e questo chiude la trappola del
+§3 del brief: un lotto di competenza precedente — quello che sta nei «recuperi»
+— si spunta e si numera insieme a quelli del mese. È esattamente il caso che il
+verbo di massa non sa fare, perché lavora su una competenza sola.
+
+**D-7. ⛔ NON è stato estratto `useVerboFatturazione`.** Il brief lo dava per
+scontato; leggendolo, quella funzione porta con sé concetti che la lista Lotti
+non ha — i «gruppi non serviti», le marcature per `gruppo_key` — e riusarla
+significherebbe trascinarli dentro per poi ignorarli. ⭐ Ciò che era davvero
+condiviso **è già un BB**: `useJobPolling`. La lista Lotti usa quello.
+
+**D-8. Il rimando dalla Lente 1 porta il MESE, non «solo gli emessi»** — e va
+saputo: il filtro della lista Lotti è sullo stato del **lavoro**
+(bozza/completato/errore), che è un altro asse dallo stato del **documento**.
+Quali righe si possano numerare lo dice la casella, riga per riga, col suo
+motivo.
+
+### Cosa è sparito dalla Lente 1
+
+Il verbo, il suo dialog, il suo polling e **sette chiavi i18n** — tolti, non
+lasciati spenti: un percorso morto accanto a uno vivo non si distingue
+leggendo, e il prossimo verbo non saprebbe quale imitare. Restano il conteggio
+sulla card e il rimando: la card deve continuare a dire quante fatture aspettano
+un numero, ed è l'informazione che manda l'operatore dove il verbo adesso vive.
+
+### Un difetto corretto strada facendo
+
+La validazione della selezione era **dopo** due giri al database. Un payload
+malformato deve rompersi prima di pagare lavoro inutile, come già facevano gli
+altri due campi del payload. Spostata in testa.
+
+### Verifiche
+
+**2720 test verdi** (12 nuovi), build FE e presidio i18n puliti. Sull'HTTP: i
+tre perimetri della finestra rispondono, due insieme → 400, nessuno → 400,
+selezione vuota → 400, `["x"]` → 400.
+
+### ⚠️ Cosa resta
+
+- **Collaudo in-app di Tid**: la selezione sulle due schede, i due verbi, il
+  limite che si sposta spuntando lotti di sezionali diversi.
+- **La guida** (`cruscotti-fatturazione.md` §7.1 e §6.3): è la riga contesa del
+  §9.1, e va scritta **dopo** il passo L5 dell'altro cantiere, o una delle due
+  mani perde il lavoro dell'altra.
+
+---
+
+## 2026-08-26 · Revisione critica prima del collaudo — 5 rilievi corretti
+
+Richiesta di Tid a consegna avvenuta. **Due erano difetti veri**, e uno di essi
+avrebbe detto una falsità proprio nel punto in cui si conferma un atto fiscale.
+
+### 🔴 C-1 — Due porte, due regole sugli id dei lotti
+
+La POST dell'atto rifiutava `lotti: [0]`; la GET della finestra lo **accettava**
+e rispondeva `data_minima: null` — cioè «niente da numerare». Un errore di
+chiamante travestito da dato tranquillo, misurato su `?lotti=0` e `?lotti=-3`.
+
+Erano due validazioni scritte in due punti. Ora la GET **delega a `parse_lotti`**,
+la stessa della POST: una regola sola. ⚠️ Con una distinzione tenuta: un
+non-numero è un errore di FORMA (`lotti_invalid`), un id ≤ 0 è un errore di
+VALORE — due errori diversi meritano due messaggi diversi.
+
+### 🔴 C-2 — «L'atto numera 0 lotti»
+
+Il dialog riceveva il conteggio come **prop dal chiamante**, e la lista Lotti
+sull'atto di mese gli passava `0`: avrebbe annunciato *«L'atto numera 0 lotti»*
+mentre stava per numerarli tutti.
+
+⭐ Il numero lo dice ora il **server**, per entrambi i perimetri, e non è la
+stessa cosa di «quanti ne ha chiesti il chiamante»: una selezione può contenere
+lotti non più numerabili — li ha presi un altro giro, un collega li ha resi
+definitivi. Verificato: chiedendo `[1200, 79]` dove il 79 non è emesso, la
+risposta dichiara **1**, non 2. E il conteggio viene dalla **stessa discovery**
+che l'atto percorrerà, quindi i due numeri non possono divergere.
+
+### 🔴 C-3 — Il predicato «questo lotto si numera», scritto due volte
+
+`useLottoAzioni.verbiPlausibili` decideva già `stato === 'EMESSA' → si numera`,
+e il suo commento dice testualmente: *«tenerla qui, in una sede sola, è ciò che
+impedisce che ricompaia sparsa nei template»*. La mia selezione l'ha riscritta.
+
+Con due copie, il kebab di una riga potrebbe proporre «Rendi definitive» mentre
+la casella della stessa riga è spenta — nessun errore, solo un'interfaccia che
+si contraddice da sola. Estratto `lottoNumerabile(row)`, esportato, usato da
+entrambi. ⭐ È rimasta **una sola** occorrenza di `'EMESSA'` in tutto il
+frontend di questo cantiere, e sta lì dentro.
+
+### ⚠️ C-4 — Un commento che prometteva più di quanto accade
+
+Avevo scritto che il limite si ricalcola «mentre l'operatore spunta». Non
+accade: il dialog è **modale** e riceve una copia della selezione presa
+all'apertura. Il `watch` resta — il limite dipende dal perimetro, non dal
+momento, e se un domani il limite si mostrasse accanto alla lista sarebbe già la
+cosa giusta — ma il commento ora dice cosa fa davvero.
+
+### ⚠️ C-5 — La selezione azzerata anche quando l'atto falliva
+
+Si azzera ora **solo** in caso di successo. Azzerarla sul fallimento
+costringerebbe a rifare la spunta a mano proprio nel momento in cui serve
+riprovare, e su una lista paginata può voler dire ripercorrere le pagine.
+
+### Verifiche
+
+**2724 test verdi** (4 nuovi su `parse_lotti`), build ed eslint puliti.
+Sull'HTTP: `n_lotti` = 3 sul mese e 1 sulla selezione mista, `?lotti=0` e
+`?lotti=-3` → **400** su entrambe le porte.
+
+---
+
+## 2026-08-26 · 🔴 Pagina Lotti bianca — causa e correzione
+
+Segnalazione di Tid al primo collaudo: il rimando dalla Lente 1 apriva la pagina
+Lotti **vuota**, senza un errore leggibile.
+
+### La causa: un'API inventata
+
+```js
+const { can } = useActionPermission()          // ⛔ firma inesistente
+const canNumerare = computed(() => can('vendite', 'numera_fatture_lotti'))
+```
+
+`useActionPermission(codename)` prende l'azione come **argomento** e restituisce
+un computed `isAllowed`. Con la firma sbagliata `can` usciva `undefined` e il
+computed **sollevava al primo render** — e siccome `canNumerare` governa sia il
+`v-if` dei verbi sia le caselle di selezione, l'eccezione arrivava durante il
+render della pagina: schermo bianco.
+
+⛔ **Niente lo ha intercettato**: eslint non fa type-check, la build non esegue,
+e sul frontend non ci sono test. L'unico modo di accorgersene era **leggere
+l'API invece di ricordarsela** — che è la stessa lezione di
+[[feedback_slot_actions_lista_configurabile]]: col nome sbagliato la cosa non
+compare, e nessuno protesta.
+
+### ⭐ Cercando quella, ne è saltata fuori una PREESISTENTE
+
+`useNotify()` non aveva `info`. Lo chiamavano **quattro** punti — due miei e
+**due già in produzione nel cockpit di competenza**: «il giro era già in corso»
+e «l'ha fatturato un altro giro». Tutti e quattro sollevavano
+`notify.info is not a function` invece di mostrare il messaggio, e un toast che
+non compare non si distingue da un toast che non è stato chiesto.
+
+Aggiunta `info` (severità propria, durata propria: un informativo **non** è un
+avviso — riusare `warn` avrebbe colorato di giallo messaggi tranquilli,
+insegnando a ignorare il giallo).
+
+### Un terzo difetto, silenzioso
+
+`cambiaAnno` prende un **delta**, non l'anno. Il deep-link gli passava `2026`:
+`anno + 2026` sfora il range e la funzione fa `return` — si sarebbe atterrati sul
+mese giusto **dell'anno sbagliato**, senza un solo errore. Sarebbe emerso solo
+rimandando a un anno diverso da quello a schermo.
+
+### Il gate ripetuto
+
+`canNumerare` porta già permesso **e** readonly, e i `:disabled` dei due verbi
+lo ripetevano. Seconda copia tolta.
+
+### La verifica che mancava, e che ora c'è
+
+Un controllo sistematico di **ogni** identificatore che il mio codice chiama su
+un composable, confrontato con ciò che quel composable restituisce davvero:
+`useJobPolling`, `useApiHandler`, `useSelezioneToggle`, `useReadonlyMode`,
+`useNotify`, più i due oggetti del mio `useSelezioneLotti` letti dai due
+template. ⭐ È così che è emerso il `notify.info` preesistente.
+
+⚠️ Vale come regola per il frontend di questo progetto: **una firma non si
+ricorda, si legge** — non c'è nessuno strato che corregga chi sbaglia.
+
+---
+
+## 2026-08-26 · Dove siamo — il quadro
+
+### ✅ Fatto e verificato
+
+| | |
+| --- | --- |
+| perimetro nelle sue **due forme**, SQL e parametri insieme | `costruisci_perimetro_lotti_numerabili` |
+| i **cinque anelli** del trasporto | lista → endpoint → coda → worker → SQL |
+| la finestra della data sul **terzo perimetro** | `?lotti=` ripetuto |
+| dedup della coda sul perimetro selezionato | `insieme_digest` (regola del 2) |
+| selezione sulle **due schede** della lista Lotti | i «recuperi» si numerano insieme al mese |
+| i **due verbi** nello stesso posto | selezione + mese |
+| smontaggio della Lente 1 | verbo, dialog, polling e 7 chiavi i18n **tolti** |
+| rimando filtrato dalla card `Fatturate` | ✔ collaudato da Tid |
+
+**2724 test verdi**, build ed eslint puliti, i18n in parità.
+
+### Le prove che reggono il lavoro
+
+| | Cosa | Esito |
+| --- | --- | --- |
+| ⛔ | due selezioni diverse sullo stesso mese | **due job distinti** (1268/1269); la stessa selezione due volte resta uno |
+| ⛔ | un lotto **non emesso** spuntato a mano | resta fuori: `[1200, 79]` → il perimetro ne prende **uno** |
+| ⭐ | il conteggio annunciato | dal **server**, e dalla stessa discovery che l'atto percorrerà |
+| | id sbagliati (`0`, `-3`, `abc`, lista vuota) | **400** su entrambe le porte |
+| | perimetri ambigui o assenti | **400** |
+
+### I difetti trovati strada facendo, e chi li ha visti
+
+| | Difetto | Come è emerso |
+| --- | --- | --- |
+| 🔴 | pagina Lotti **bianca**: `useActionPermission` chiamata con una firma inventata | collaudo di Tid |
+| 🔴 | `useNotify` senza `info`, con **quattro** chiamanti — due **preesistenti** nel cockpit | cercando la prima |
+| 🔴 | GET e POST con regole diverse sugli id: `?lotti=0` rispondeva «niente da numerare» | revisione critica |
+| 🔴 | «L'atto numera **0 lotti**» sul perimetro mese | revisione critica |
+| 🔴 | il predicato «si numera» scritto **due volte** (kebab e casella potevano contraddirsi) | revisione critica |
+| ⚠️ | `cambiaAnno` riceveva l'anno invece del delta: mese giusto, **anno sbagliato**, in silenzio | revisione critica |
+| ⚠️ | validazione del payload **dopo** due giri al DB | realizzazione |
+| ⚠️ | la selezione azzerata anche quando l'atto falliva | revisione critica |
+
+⭐ **Tre su otto sono emersi solo perché qualcuno ha guardato lo schermo**, e due
+di quelli erano difetti che nessun test avrebbe visto: eslint non fa type-check,
+la build non esegue, e sul frontend non ci sono test. Da qui la regola scritta
+in coda al §«Pagina Lotti bianca»: **una firma non si ricorda, si legge**.
+
+### Cosa NON è stato fatto, e perché
+
+- **`useVerboFatturazione` non è stato estratto** (D-7): porta con sé concetti
+  che questa lista non ha, e ciò che era davvero condiviso — `useJobPolling` —
+  era già un BB.
+- **Il rimando porta il mese, non «solo gli emessi»** (D-8): il filtro della
+  lista Lotti è sullo stato del *lavoro*, non del *documento*. Quali righe si
+  numerino lo dice la casella, riga per riga, col suo motivo.
+- **La guida** (C-2): bloccata dall'ordine col cantiere gemello.
+
+### ⚠️ Nota per chi committerà
+
+Il cantiere tocca anche **due file di `core/`** — `useNotify.js` e
+`constants.js` — per la severità `info` che mancava. È territorio condiviso, e
+la correzione ripara **anche due punti preesistenti** del cockpit di competenza:
+va detto a chi rilegge il commit, o sembrerà uno sconfinamento.

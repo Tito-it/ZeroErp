@@ -9,6 +9,7 @@
 //        qui restano solo card stadi, pannello errori e drill-down.
 import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
@@ -55,7 +56,7 @@ import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { approvaCompetenza } from '../api/commesse'
-import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lotti'
+import { getFatturazioneRun, runFatturazione } from '../api/lotti'
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
@@ -67,6 +68,7 @@ import {
 } from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
+const router = useRouter()
 const notify = useNotify()
 
 // Provider readonly di area: con le azioni di processo (Fase A cockpit) il
@@ -1133,31 +1135,16 @@ const { avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese } = us
   },
 })
 
-// Verbo RENDI DEFINITIVE (C-7): card EMESSA_NON_FATTURATA. Numerazione di
-// perimetro (step DEFINITIVA sui lotti EMESSA del mese) — atto fiscale.
-const {
-  avvia: onRendiDefinitive, nGiriInCorso: nGiriNumera, resume: resumeNumera,
-} = useVerboFatturazione({
-  apiFn: runNumerazione,
-  keys: {
-    accodato: 'vendite.dashboard_competenza.numera_mese_accodato',
-    errore: 'vendite.dashboard_competenza.numera_mese_errore',
-    inCoda: 'vendite.dashboard_competenza.numera_mese_in_coda',
-  },
-  buildEsitoOk: (r) => {
-    const lotti = Number(r.lotti ?? 0)
-    const numerati = Number(r.numerati ?? 0)
-    const saltati = Number(r.saltati ?? 0)
-    const falliti = Number(r.falliti ?? 0)
-    // «saltato» = lotto processato ma NON transitato a DEFINITIVA (es. legacy
-    // senza step eseguibili): esito parziale quanto un errore, va mostrato.
-    if (falliti > 0 || saltati > 0) {
-      notify.warn(t('vendite.dashboard_competenza.numera_mese_esito_parziale', { numerati, saltati, falliti, lotti }))
-    } else {
-      notify.success(t('vendite.dashboard_competenza.numera_mese_esito', { numerati }))
-    }
-  },
-})
+// ⛔ IL VERBO «RENDI DEFINITIVE» NON VIVE PIU' QUI (2026-08-26). Agiva sui
+// LOTTI e stava accanto a un elenco di COMMESSE: per sapere cosa si stava per
+// rendere definitivo bisognava andarsene altrove. E' passato alla lista Lotti,
+// dove quell'elenco esiste e dove si puo' anche scegliere QUALI.
+// ⚠️ Qui resta il CONTEGGIO (`nDaNumerare`) e il rimando: la card deve
+// continuare a dire quante fatture aspettano un numero — e' l'informazione che
+// manda l'operatore dove il verbo adesso vive.
+// ⚠️ Non e' rimasto niente di spento: il verbo, il suo dialog e il suo polling
+// sono stati TOLTI, non lasciati inerti. Un percorso morto accanto a uno vivo
+// non si distingue leggendo, e il prossimo verbo non saprebbe quale imitare.
 
 // Verbo FATTURA MIRATA: stesso endpoint e stesso core del verbo di mese
 // (I-1), ma con il perimetro ristretto ai gruppi selezionati. Si ferma a
@@ -1252,7 +1239,6 @@ const {
 //     prenderanno il numero, e il dialog porta il PAVIMENTO del sezionale —
 //     senza, sul Back-office (politica FINE_MESE_COMPETENZA) ogni mese
 //     arretrato proporrebbe una data che il DB rifiuta.
-const dialogNumeraMese = ref(false)
 const dialogDataCreazione = ref({ visible: false, perimetro: '', esegui: null })
 
 // Scopo: apre il dialog della data prima di un verbo di CREAZIONE, portandosi
@@ -1277,14 +1263,6 @@ function onFatturaMeseClick() {
       apiOptions: dataDocumento ? { dataDocumento } : null,
     }),
   )
-}
-
-// Verbo «Rendi definitive competenza»: UNA data per l'intero atto (decisione 5
-// del brief), che vale per tutti i lotti che il giro numera.
-function confermaNumeraMese(dataDocumento) {
-  onRendiDefinitive({
-    apiOptions: dataDocumento ? { dataDocumento } : null,
-  })
 }
 
 // Scopo: avvia l'emissione mirata sui gruppi passati (una riga dal kebab,
@@ -1522,6 +1500,18 @@ const {
 const lottoDrawerVisible = ref(false)
 const lottoDrawerId = ref(null)
 
+// Scopo: porta alla lista Lotti sul MESE che si sta guardando — è dove vive
+//        «Rendi definitive» da quando ha lasciato questa schermata.
+// ⚠️ Il rimando porta la competenza e non «solo gli emessi»: il filtro di
+//    quella lista è sullo stato del LAVORO, non del documento. Quali righe si
+//    possano numerare lo dice la casella di selezione, riga per riga.
+function vaiAiLottiDaNumerare() {
+  router.push({
+    name: 'vendite-lotti',
+    query: { competenza: competenzaCorrente.value },
+  })
+}
+
 function apriLotto(lottoId) {
   if (!lottoId) return
   lottoDrawerId.value = lottoId
@@ -1564,7 +1554,6 @@ onActivated(() => {
   // arrivava mai. La fatturazione era avvenuta e da qui non si vedeva.
   // Idempotente: senza giri vivi non fa nulla (memoria feedback_keepalive_onactivated).
   resumeMese()
-  resumeNumera()
   resumeMirata()
 })
 </script>
@@ -1785,22 +1774,25 @@ onActivated(() => {
                 @click.stop="onFatturaMeseClick"
               />
             </span>
-            <!-- Verbo RENDI DEFINITIVE a grana mese (C-7): sulla card
-                 FATTURATA, dove stanno le fatture ancora EMESSA — cioe' quelle
-                 che questo verbo numera (fix difetto D2, §6-bis). Atto FISCALE
-                 (I-7): severity warn per distinguerlo dal pre-fiscale «Fattura».
-                 Loading = numerazione in corso (polling non bloccante). -->
+            <!-- ⭐ IL VERBO SE N'È ANDATO, e al suo posto c'è la strada per
+                 raggiungerlo (2026-08-26). «Rendi definitive» agisce sui LOTTI
+                 e viveva qui, accanto a un elenco di COMMESSE: per sapere cosa
+                 si stava per rendere definitivo bisognava andarsene altrove.
+                 Ora vive nella lista Lotti, dove quell'elenco esiste — e lì
+                 si può anche scegliere QUALI.
+                 ⛔ Il rimando porta con sé il FILTRO (mese + stato emessa): un
+                 collegamento all'elenco nudo sarebbe un passo indietro, non
+                 avanti. -->
             <Button
               v-if="card.stadio === 'FATTURATA' && nDaNumerare > 0 && canNumerare"
-              :label="t('vendite.dashboard_competenza.numera_mese')"
-              icon="pi pi-lock"
+              :label="t('vendite.dashboard_competenza.vai_ai_lotti', { n: nDaNumerare })"
+              icon="pi pi-external-link"
               size="small"
               severity="warn"
-              :loading="nGiriNumera > 0"
-              :disabled="azioneLoading || nGiriNumera > 0"
-              v-tooltip.bottom="t('vendite.dashboard_competenza.numera_mese_tooltip', { n: nDaNumerare })"
+              outlined
+              v-tooltip.bottom="t('vendite.dashboard_competenza.vai_ai_lotti_tooltip')"
               style="margin-top: 0.5rem;"
-              @click.stop="dialogNumeraMese = true"
+              @click.stop="vaiAiLottiDaNumerare"
             />
             <!-- Difetto D3 (§6-bis): «Emesse non fatturate» NON e' un passaggio
                  del percorso — pull e generazione righe fattura avvengono nello
@@ -2325,13 +2317,5 @@ onActivated(() => {
       @conferma="confermaDataCreazione"
     />
 
-    <!-- FE-2: «Rendi definitive competenza» — UNA data per l'intero atto, col
-         pavimento del sezionale piu' restrittivo fra i lotti del mese. -->
-    <NumerazioneDataDialog
-      v-model:visible="dialogNumeraMese"
-      :competenza-mese="competenzaCorrente"
-      :n-lotti="nDaNumerare"
-      @conferma="confermaNumeraMese"
-    />
   </div>
 </template>

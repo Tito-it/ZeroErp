@@ -140,15 +140,22 @@ export function numeraLotto(lottoId, { dataDocumento = null } = {}) {
 
 // GET la FINESTRA DI NUMERAZIONE di un perimetro: con quale data si puo'
 // numerare, e da quale data i documenti partono adesso.
-// Un perimetro solo per chiamata: `{ lottoId }` oppure `{ competenzaMese }`.
-// Risposta: { lotto_id, competenza_mese, data_documento, data_corrente,
+// Un perimetro solo per chiamata: `{ lottoId }`, `{ competenzaMese }` oppure
+// `{ lotti }` (la selezione della lista). Due insieme → 400.
+// Risposta: { lotto_id, competenza_mese, n_lotti, data_documento, data_corrente,
 //             data_minima } — tutte ISO o null.
 // ⚠️ `data_minima` null = nessun pavimento (nessun numero ancora emesso su quei
 // sezionali), non «nessun limite noto».
-export function getFinestraNumerazione({ lottoId = null, competenzaMese = null } = {}) {
+// ⭐ Sul perimetro `lotti` il limite va richiesto di nuovo a OGNI cambio di
+//    selezione: il pavimento è di ogni SEZIONALE, e aggiungere un lotto di un
+//    altro registro può spostarlo in avanti.
+export function getFinestraNumerazione({ lottoId = null, competenzaMese = null, lotti = null } = {}) {
   const params = {}
   if (lottoId != null) params.lotto_id = lottoId
   if (competenzaMese) params.competenza_mese = competenzaMese
+  // ⚠️ Parametro RIPETUTO (`?lotti=12&lotti=15`): axios serializza un array
+  //    così di default, ed è la forma che il backend legge con `getlist`.
+  if (lotti?.length) params.lotti = lotti
   return api.get('/vendite/fatturazione/finestra-numerazione/', { params })
 }
 
@@ -210,9 +217,14 @@ export function runFatturazione(competenzaMese, { gruppi = null, dataDocumento =
 // (I-7). Ritorna { job_id, stato: 'PENDING' }; avanzamento via getFatturazioneRun.
 // `dataDocumento` (facoltativa): UNA data per l'INTERO atto — vale per tutti i
 // lotti che il giro numera, non una per lotto (decisione 5 del brief).
-export function runNumerazione(competenzaMese, { dataDocumento = null } = {}) {
+// ⭐ `lotti`: il perimetro SELEZIONATO. Assente = tutti i lotti emessi della
+//    competenza (atto di mese). ⛔ Una lista VUOTA non si manda: il backend la
+//    rifiuta con un 400, e fa bene — «numera niente» e «numera tutto» non si
+//    indovinano su un atto fiscale. Chi non ha spuntato nulla non deve premere.
+export function runNumerazione(competenzaMese, { dataDocumento = null, lotti = null } = {}) {
   const payload = { competenza_mese: competenzaMese }
   if (dataDocumento) payload.data_documento = dataDocumento
+  if (lotti?.length) payload.lotti = lotti
   return api.post(
     '/vendite/fatturazione/numera/',
     payload,

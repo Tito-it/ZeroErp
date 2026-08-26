@@ -265,28 +265,61 @@ def _get_lotto_visibile(
 #    `fn_get_next_progressivo`, che legge il contatore — tabella senza RLS.
 #    Chi usasse questa risposta AL POSTO del cancello starebbe sostituendo un
 #    presidio con un suggerimento.
+# Scopo: il repository vendite, importato al bisogno.
+# ⚠️ Import LOCALE come gia' fa `_get_lotto_visibile` in questo modulo: la
+#    catena `vendite_repository` non va caricata al boot di `pipeline_service`.
+def _vendite_repo():
+    from apps.vendite.db.vendite_repository import VenditeRepository
+    return VenditeRepository()
+
+
 def finestra_numerazione(
     *,
     lotto_id: int | None = None,
     competenza_mese: date | None = None,
+    lotti_ids: list[int] | None = None,
     auth_user_id: int | None = None,
 ) -> dict[str, object]:
-    # Esattamente uno dei due: senza perimetro la domanda non ha risposta, con
-    # entrambi ne avrebbe due e non si saprebbe quale si e' ottenuta.
+    # Esattamente uno dei tre: senza perimetro la domanda non ha risposta, con
+    # piu' di uno ne avrebbe due e non si saprebbe quale si e' ottenuta.
+    # ⭐ Il terzo — `lotti_ids` — e' la SELEZIONE della lista lotti, e su di
+    #    esso il pavimento e' quello che conta di piu': spuntando lotti di
+    #    sezionali diversi il limite e' del piu' restrittivo, e cambia mentre si
+    #    spunta. Per questo la finestra si ricalcola sulla selezione e non una
+    #    volta all'apertura del dialog.
+    scelti = [p for p in (lotto_id, competenza_mese, lotti_ids) if p is not None]
     ErrorManager.require(
-        (lotto_id is None) != (competenza_mese is None),
+        len(scelti) == 1,
         code="E_VALIDATION_INPUT",
-        message="Indicare `lotto_id` oppure `competenza_mese`, non entrambi.",
-        detail=f"lotto_id={lotto_id} competenza_mese={competenza_mese}",
+        message=(
+            "Indicare `lotto_id`, `competenza_mese` oppure `lotti`, "
+            "esattamente uno."
+        ),
+        detail=(
+            f"lotto_id={lotto_id} competenza_mese={competenza_mese} "
+            f"lotti_ids={lotti_ids}"
+        ),
     )
     repo = VenditePipelineRepository()
 
     # Scopo: la risposta, in UNA forma sola per i due perimetri — cosi' una
     #        chiave nuova si aggiunge in un posto e non in due.
-    def _risposta(*, minima, corrente, data_documento=None) -> dict[str, object]:
+    def _risposta(*, minima, corrente, data_documento=None, n_lotti=None) -> dict[str, object]:
         return {
             "lotto_id": lotto_id,
             "competenza_mese": competenza_mese.isoformat() if competenza_mese else None,
+            # ⚠️ Quanti lotti l'atto TOCCHEREBBE davvero — non quanti ne ha
+            #    chiesti il chiamante. Sono due numeri diversi: una selezione
+            #    puo' contenere lotti non piu' numerabili (li ha presi un altro
+            #    giro, un collega li ha resi definitivi), e dire «l'atto numera
+            #    5 lotti» quando ne tocchera' 3 e' una frase falsa nel punto in
+            #    cui l'operatore sta per confermare un atto fiscale.
+            # ⛔ E lo dice il SERVER, per entrambi i perimetri. Sul mese il
+            #    chiamante quel numero non ce l'ha proprio — la lista e'
+            #    paginata e filtrata su un altro asse — e infatti la prima
+            #    versione gli passava `0`: il dialog annunciava «l'atto numera
+            #    0 lotti» mentre stava per numerarne tutti quelli del mese.
+            "n_lotti": n_lotti,
             "data_documento": data_documento,
             "data_corrente": corrente.isoformat() if corrente else None,
             "data_minima": minima.isoformat() if minima else None,
@@ -300,10 +333,10 @@ def finestra_numerazione(
             data_documento=lotto.get("data_documento"),
         )
 
-    assert competenza_mese is not None
-    # Il perimetro dell'atto sono i lotti EMESSA di quel mese: gli stessi che
-    # `list_lotti_numerabili` restituisce. Config rotta -> fail-loud, non zero
-    # lotti silenziosi (stessa disciplina dell'handler di coda).
+    # Perimetro di ATTO — un mese intero oppure una selezione di lotti. In
+    # entrambi i casi sono i lotti EMESSA: gli stessi che `list_lotti_numerabili`
+    # restituisce. Config rotta -> fail-loud, non zero lotti silenziosi (stessa
+    # disciplina dell'handler di coda).
     emessa_id = repo.get_stato_doc_fiscale_id("EMESSA")
     ErrorManager.require(
         emessa_id is not None,
@@ -311,13 +344,20 @@ def finestra_numerazione(
         message="Stato EMESSA non configurato in config.stati_doc_fiscale.",
     )
     assert emessa_id is not None
+    perimetro = {"competenza_mese": competenza_mese, "lotti_ids": lotti_ids}
     return _risposta(
-        minima=repo.get_data_minima_numerabile_competenza(
-            competenza_mese=competenza_mese, stato_doc_fiscale_id=emessa_id,
+        minima=repo.get_data_minima_numerabile_perimetro(
+            stato_doc_fiscale_id=emessa_id, **perimetro,
         ),
         corrente=repo.get_data_documento_corrente(
-            competenza_mese=competenza_mese, stato_doc_fiscale_id=emessa_id,
+            stato_doc_fiscale_id=emessa_id, **perimetro,
         ),
+        # ⚠️ La STESSA discovery che l'atto percorrera': cosi' il numero
+        #    annunciato e quello dei lotti toccati non possono divergere. Costa
+        #    una query in piu' all'apertura del dialog, e la si paga.
+        n_lotti=len(_vendite_repo().list_lotti_numerabili(
+            stato_doc_fiscale_id=emessa_id, **perimetro,
+        )),
     )
 
 

@@ -19,6 +19,10 @@
 #   6. handler_registrato_dopo_boot
 #   7. data_documento_dichiarata_arriva_al_core
 #   8. data_documento_non_e_normalizzata_al_primo_del_mese
+#   9. selezione_lotti_restringe_il_perimetro   ⭐ il quinto anello
+#  10. selezione_lotti_non_passa_anche_la_competenza
+#  11. selezione_vuota_rifiutata
+#  12. selezione_malformata_rifiutata
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -269,3 +273,71 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
         )
         self.assertIn(HANDLER_CODE, registered_handlers())
         self.assertIs(get_handler(HANDLER_CODE), fatturazione_numera_handler)
+
+    # ═══ IL PERIMETRO SELEZIONATO — il quinto anello ════════════════════════
+    #
+    # ⛔ Gli id partono dalla lista a video, attraversano endpoint, payload JSON
+    #    della coda e worker, e arrivano qui. Se uno solo di questi anelli li
+    #    perde, il giro numera l'INTERO MESE invece dei lotti spuntati — e non
+    #    fallisce, RIESCE. E' un atto fiscale: i numeri consumati non tornano.
+    #    Questi test presidiano l'ultimo anello, quello dove il difetto
+    #    diventerebbe irreversibile.
+
+    # 9. La selezione arriva alla discovery, e come `lotti_ids`.
+    @patch("apps.vendite.services.pipeline_service.numera_lotto")
+    @patch("apps.vendite.db.vendite_repository.VenditeRepository")
+    @patch("apps.vendite.db.pipeline_repository.VenditePipelineRepository")
+    def test_selezione_lotti_restringe_il_perimetro(
+        self, pipe_repo, vend_repo, mock_numera,
+    ):
+        pipe_repo.return_value.get_stato_doc_fiscale_id.side_effect = (
+            lambda codice: {"EMESSA": 8, "DEFINITIVA": 9}[codice]
+        )
+        vend_repo.return_value.list_lotti_numerabili.return_value = []
+        fatturazione_numera_handler(
+            {"competenza_mese": "2026-06-01", "lotti": [12, 15]}, scope=None,
+        )
+        kwargs = vend_repo.return_value.list_lotti_numerabili.call_args.kwargs
+        self.assertEqual(kwargs["lotti_ids"], [12, 15])
+
+    # 10. ⛔ E la competenza NON viene passata insieme: sono due perimetri
+    #     alternativi, e passarli entrambi e' un errore che il costruttore
+    #     rifiuta. Se questo test si spegne, il perimetro torna a essere il mese.
+    @patch("apps.vendite.services.pipeline_service.numera_lotto")
+    @patch("apps.vendite.db.vendite_repository.VenditeRepository")
+    @patch("apps.vendite.db.pipeline_repository.VenditePipelineRepository")
+    def test_selezione_lotti_non_passa_anche_la_competenza(
+        self, pipe_repo, vend_repo, mock_numera,
+    ):
+        pipe_repo.return_value.get_stato_doc_fiscale_id.side_effect = (
+            lambda codice: {"EMESSA": 8, "DEFINITIVA": 9}[codice]
+        )
+        vend_repo.return_value.list_lotti_numerabili.return_value = []
+        fatturazione_numera_handler(
+            {"competenza_mese": "2026-06-01", "lotti": [12]}, scope=None,
+        )
+        kwargs = vend_repo.return_value.list_lotti_numerabili.call_args.kwargs
+        self.assertNotIn("competenza_mese", kwargs)
+        # ⚠️ Lo stato resta sempre: un lotto scelto a mano non e' per questo
+        #    numerabile. La selezione decide il perimetro, non le regole.
+        self.assertEqual(kwargs["stato_doc_fiscale_id"], 8)
+
+    # 11. ⛔ Selezione VUOTA = rifiuto, non «tutti». E' una richiesta ambigua, e
+    #     su un atto fiscale non si indovina.
+    def test_selezione_vuota_rifiutata(self) -> None:
+        with self.assertRaises(ServiceError) as ctx:
+            fatturazione_numera_handler(
+                {"competenza_mese": "2026-06-01", "lotti": []}, scope=None,
+            )
+        self.assertEqual(ctx.exception.code, "E_FATTURAZIONE_NUMERA_PAYLOAD")
+
+    # 12. Selezione malformata → stesso codice payload, non un job che numera
+    #     il mese perche' non ha capito il campo.
+    def test_selezione_malformata_rifiutata(self) -> None:
+        for sbagliata in (["dodici"], [0], [-3], [True], "12", {"a": 1}):
+            with self.assertRaises(ServiceError, msg=repr(sbagliata)) as ctx:
+                fatturazione_numera_handler(
+                    {"competenza_mese": "2026-06-01", "lotti": sbagliata},
+                    scope=None,
+                )
+            self.assertEqual(ctx.exception.code, "E_FATTURAZIONE_NUMERA_PAYLOAD")

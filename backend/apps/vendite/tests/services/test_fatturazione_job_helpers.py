@@ -38,7 +38,15 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from django.test import SimpleTestCase
+
+from apps.core.services.service_errors import ServiceError
+from apps.vendite.services._fatturazione_job_helpers import parse_lotti
+from apps.vendite.db._data_documento_sql import (
+    costruisci_perimetro_lotti_numerabili,
+)
 
 from apps.vendite.services._fatturazione_job_helpers import (
     MOTIVO_COMMESSA_NON_EMITTIBILE,
@@ -315,3 +323,109 @@ class CorsiaRottaVsPerimetroTests(SimpleTestCase):
             _foto(n_righe=3, n_pronte=3, terne_pronte=[_CORSIA]),
         )
         self.assertEqual(motivo, MOTIVO_NON_DETERMINATO)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# IL PERIMETRO DEI LOTTI NUMERABILI — le sue due forme
+# ═══════════════════════════════════════════════════════════════════════════
+class PerimetroLottiNumerabiliTests(SimpleTestCase):
+    """SQL e parametri escono INSIEME, ed e' il punto.
+
+    Finche' erano due cose separate — un `format()` da una parte e la lista dei
+    valori scritta dal chiamante dall'altra — l'ordine dei segnaposto e quello
+    dei parametri erano due verita' da tenere allineate a mano. Invertirli non
+    da' errore: confronta il valore sbagliato e torna numeri plausibili.
+    """
+
+    def test_forma_competenza(self) -> None:
+        sql, params = costruisci_perimetro_lotti_numerabili(
+            lotti_alias="fl", stato_doc_fiscale_id=8,
+            competenza_mese=date(2026, 6, 1),
+        )
+        self.assertIn("fl.competenza_mese = %s", sql)
+        self.assertIn("fl.stato_doc_fiscale_id = %s", sql)
+        # I parametri seguono l'ordine dei segnaposto nel testo.
+        self.assertEqual(params, [date(2026, 6, 1), 8])
+        self.assertEqual(sql.count("%s"), len(params))
+
+    def test_forma_selezione(self) -> None:
+        sql, params = costruisci_perimetro_lotti_numerabili(
+            lotti_alias="fl_p", stato_doc_fiscale_id=8, lotti_ids=[15, 12],
+        )
+        self.assertIn("fl_p.id = ANY(%s)", sql)
+        self.assertEqual(params, [[15, 12], 8])
+        self.assertEqual(sql.count("%s"), len(params))
+
+    # ⛔ Lo stato si applica SEMPRE, anche sulla selezione: un lotto scelto a
+    #    mano non e' per questo numerabile. La selezione decide il perimetro,
+    #    non le regole — e la casella spenta a video e' una comodita', non un
+    #    presidio.
+    def test_lo_stato_vale_anche_sulla_selezione(self) -> None:
+        sql, _ = costruisci_perimetro_lotti_numerabili(
+            lotti_alias="fl", stato_doc_fiscale_id=8, lotti_ids=[1],
+        )
+        self.assertIn("stato_doc_fiscale_id", sql)
+
+    # ⛔ Nessuno dei due, o entrambi: e' un errore di CHIAMANTE. Senza guard
+    #    cadrebbe in un ramo coi parametri a NULL, non troverebbe nessun lotto e
+    #    risponderebbe «niente da numerare» — un messaggio tranquillo su una
+    #    domanda mai posta.
+    def test_perimetro_ambiguo_o_assente_solleva(self) -> None:
+        with self.assertRaises(ValueError):
+            costruisci_perimetro_lotti_numerabili(
+                lotti_alias="fl", stato_doc_fiscale_id=8,
+            )
+        with self.assertRaises(ValueError):
+            costruisci_perimetro_lotti_numerabili(
+                lotti_alias="fl", stato_doc_fiscale_id=8,
+                competenza_mese=date(2026, 6, 1), lotti_ids=[1],
+            )
+
+    # ⛔ Lista vuota: `= ANY('{}')` non trova niente e l'atto risponderebbe
+    #    «nessun lotto da numerare». Un errore di chiamante non deve poter
+    #    uscire travestito da dato.
+    def test_selezione_vuota_solleva(self) -> None:
+        with self.assertRaises(ValueError):
+            costruisci_perimetro_lotti_numerabili(
+                lotti_alias="fl", stato_doc_fiscale_id=8, lotti_ids=[],
+            )
+
+    # ⛔ Stato mancante: il perimetro diventerebbe «tutti i lotti» invece che
+    #    «quelli che l'atto numera».
+    def test_stato_mancante_solleva(self) -> None:
+        with self.assertRaises(ValueError):
+            costruisci_perimetro_lotti_numerabili(
+                lotti_alias="fl", stato_doc_fiscale_id=None,
+                competenza_mese=date(2026, 6, 1),
+            )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GLI ID DEI LOTTI: UNA REGOLA SOLA PER LE DUE PORTE
+# ═══════════════════════════════════════════════════════════════════════════
+class ParseLottiTests(SimpleTestCase):
+    """⛔ La GET della finestra e la POST dell'atto devono rifiutare le STESSE
+    cose. Quando erano due regole scritte in due punti, divergevano: la POST
+    rifiutava `[0]`, la GET lo accettava e rispondeva `data_minima: null` —
+    cioè «niente da numerare», un errore di chiamante travestito da dato
+    tranquillo (misurato il 2026-08-26 su `?lotti=0` e `?lotti=-3`).
+    """
+
+    def test_assente_e_selezione_sono_cose_diverse(self) -> None:
+        self.assertIsNone(parse_lotti(None, error_code="E_X"))
+
+    def test_deduplica_preservando_l_ordine(self) -> None:
+        self.assertEqual(parse_lotti([15, 12, 15], error_code="E_X"), (15, 12))
+
+    # ⛔ Vuota = rifiuto, non «tutti»: su un atto fiscale non si indovina fra
+    #    «numera niente» e «numera tutto».
+    def test_vuota_rifiutata(self) -> None:
+        with self.assertRaises(ServiceError):
+            parse_lotti([], error_code="E_X")
+
+    # ⚠️ `True` è un `int` in Python: senza il controllo su `bool` passerebbe
+    #    come lotto numero 1.
+    def test_valori_non_ammessi(self) -> None:
+        for sbagliato in ([0], [-3], [True], ["12"], [1.5], [None], "12", {"a": 1}):
+            with self.assertRaises(ServiceError, msg=repr(sbagliato)):
+                parse_lotti(sbagliato, error_code="E_X")

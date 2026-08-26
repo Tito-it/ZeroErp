@@ -81,6 +81,26 @@ const LOTTO_AZIONE_SEVERITY = {
   riporta_a_draft: 'warn',
 }
 
+// Scopo: un lotto si può numerare? ⚠️ È lo stato del DOCUMENTO, non del lavoro:
+//   `stato_lotto` (bozza/in esecuzione/completato) è un altro asse.
+//
+// ⛔ ESPORTATO, e in una sede SOLA. Lo leggono due cose che devono dire lo
+//   stesso: il kebab della riga — che propone «Rendi definitive» — e la casella
+//   di selezione della lista Lotti, che decide se quella riga si può spuntare.
+//   Con due copie il kebab potrebbe offrire il verbo su una riga la cui casella
+//   è spenta, o il contrario: nessun errore, solo un'interfaccia che si
+//   contraddice da sola. È esattamente ciò che il commento di `verbiPlausibili`
+//   chiedeva — «tenerla qui, in una sede sola, è ciò che impedisce che
+//   ricompaia sparsa nei template» — e che una seconda scrittura ha disatteso.
+//
+// ⚠️ Non è il VERDETTO e non deve diventarlo: dice cosa ha senso proporre,
+//   mentre se l'atto si possa fare davvero lo stabilisce il DB. Il backend
+//   applica comunque lo stato al perimetro: un lotto non emesso che arrivasse
+//   all'API non verrebbe numerato lo stesso.
+export function lottoNumerabile(row) {
+  return row?.stato_doc_fiscale_codice === 'EMESSA'
+}
+
 export function useLottoAzioni({ onDone } = {}) {
   const { t, te } = useI18n()
   const { execute, loading } = useApiHandler()
@@ -350,7 +370,7 @@ function verdettoRunner(res) {
   function verbiPlausibili(row) {
     const stato = row?.stato_doc_fiscale_codice
     const verbi = [...verbiPipeline(row)]
-    if (stato === 'EMESSA') verbi.push('numera', 'riporta_a_draft')
+    if (lottoNumerabile(row)) verbi.push('numera', 'riporta_a_draft')
     if (stato === 'DEFINITIVA') verbi.push('ristampa')
     if (stato === 'DRAFT') verbi.push('annulla')
     return verbi
