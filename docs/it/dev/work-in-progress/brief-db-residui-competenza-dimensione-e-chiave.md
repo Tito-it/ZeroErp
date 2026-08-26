@@ -6,7 +6,7 @@
 > **Origine.** 2026-08-26, scrivendo il piano applicativo di
 > [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md),
 > cioè la metà BE/FE del cantiere che il team DB ha appena chiuso
-> ([brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)).
+> ([brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)).
 > Il verbo **«Riporta da emettere»** è applicato, collaudato sulle 5 righe vere e
 > documentato. ⛔ **A video non può esistere**: la sua chiave non esce da nessuna
 > vista, e la card su cui dovrebbe vivere conta due popolazioni con **rimedi

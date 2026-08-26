@@ -1,7 +1,7 @@
 # Brief BE/FE — il lavoro che non torna indietro: la metà applicativa
 
 > **Destinatario:** backend + frontend. È il seguito di
-> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md),
+> [brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md),
 > che il team DB ha **chiuso il 2026-08-26** (16 changeSet, `20260826-23` …
 > `20260826-38`, tutti applicati) lasciando **due consegne e un verbo** a questo
 > lato.
@@ -480,3 +480,44 @@ parallelo.
 ---
 
 *Ultimo aggiornamento: 2026-08-26 — Tid / Claude*
+
+---
+
+## 9. Ereditato dal brief DB, che è stato archiviato
+
+Il brief del team DB — [brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)
+— è **chiuso e spostato in `work-done/`** il 2026-08-26: lato database tutto
+consegnato e applicato (16 changeSet). ⚠️ Prima di archiviarlo i suoi punti
+sospesi sono stati censiti **uno per uno**; questi tre non avevano ancora una
+casa, e senza questa sezione sarebbero spariti con lui.
+
+| # | Cosa | Stato |
+| --- | --- | --- |
+| **E-1** | la **guida operativa**: chiudere un documento adesso **ritira lavoro**, ed è un comportamento che l'operatore deve sapere *prima*, non scoprire dopo | ⏸️ si può fare adesso — è il §7 di questo brief |
+| **E-2** | il messaggio di `E_RIGA_COMMESSA_NON_MANUALE` (guard 4 di `fn_annulla_commessa_attivita`) promette *«il rimedio è SEMPRE a monte, sul documento»*: da L7b quella frase **è vera**, e può nominare il documento invece di lasciarlo cercare | ⏸️ passato al team DB come **D-6** |
+| **E-3** | 🟠 `codici-errore-baseline.sh` segnala un **rientrato**: `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | ⏸️ **vivo, verificato il 2026-08-26** |
+
+### 9.1 ⚠️ Su E-3, e non è una formalità
+
+Rilanciato il presidio col contesto DB giusto, il 2026-08-26:
+
+```text
+🔵 RIENTRATO  E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO
+              — non piu' misurabile o senza famiglie note (era: NOT_FOUND)
+Codici presidiati: 76 · accumuli nuovi: 0 · ristretti: 0 · rientrati: 1
+```
+
+⛔ **Ed è lo script stesso a dire che non si può rimandare all'infinito**:
+
+> *«Non è facoltativo: finché la baseline non è stretta, quelle famiglie restano
+> AMMESSE e il presidio non le vedrebbe tornare.»*
+
+Cioè il cancello è **mezzo spento** — un codice di quella famiglia potrebbe
+riallargare il proprio significato senza che nessuno se ne accorga. ⚠️ **Non è di
+questo cantiere** e stringerla qui nasconderebbe la storia di un altro lavoro
+dentro questo (è la ragione per cui il team DB non l'ha toccata): va allineata da
+chi possiede quel codice, con `scripts/codici-errore-baseline.sh --update`.
+
+⭐ Sta scritto qui e non altrove per una ragione sola: era l'unico dei tre punti
+**senza una casa**, e un debito che nessun documento nomina smette di esistere il
+giorno in cui il documento che lo nominava viene archiviato.

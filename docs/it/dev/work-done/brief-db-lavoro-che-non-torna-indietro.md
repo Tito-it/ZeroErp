@@ -10,19 +10,39 @@
 >
 > **Correlati:**
 > [brief-db-numerazione-data-documento-e-sequenza.md](brief-db-numerazione-data-documento-e-sequenza.md) ·
-> [brief-be-fe-rendi-definitive-sui-lotti.md](brief-be-fe-rendi-definitive-sui-lotti.md)
+> [brief-be-fe-rendi-definitive-sui-lotti.md](../work-in-progress/brief-be-fe-rendi-definitive-sui-lotti.md)
 > (l'altro esito della stessa conversazione)
 >
-> ⛔ **Stato: difetto PROVATO, causa isolata e DATATA, piano di sviluppo scritto
-> (§9). Nessun file scritto, nessuna migrazione applicata**
-> ([[feedback_db_actions_passaggio_team]], [[feedback_mai_applicare_migrazioni_db]]).
+> ✅ **CHIUSO il 2026-08-26 — lato DB tutto consegnato e applicato.**
+> **16 changeSet** (`20260826-23` … `20260826-38`), 5 file pgTAP nuovi, 18
+> corretti, 7 codici errore nuovi, 2 ritirati, 1 permesso, 7 schede concettuali
+> nuove e 2 corrette. Consuntivo nel **§14.11**.
+>
+> ⛔ **La riga qui sotto diceva «nessuna migrazione applicata»: era vera quando è
+> stata scritta, la mattina del 2026-08-26, ed è diventata falsa la sera dello
+> stesso giorno.** In un documento archiviato una testata stantia è la
+> dichiarazione convincente che il prossimo lettore prende per buona — il difetto
+> del §8.3, quello che ha tenuto in vita questo stesso cantiere per quattro
+> settimane. Per questo la testata è stata riscritta e non lasciata com'era.
+>
+> 📌 **Dove sono finiti i punti rimasti aperti** (nessuno è stato perso
+> nell'archiviazione — verificati uno per uno):
+>
+> | Cosa restava | Dove vive adesso |
+> | --- | --- |
+> | `BE-1` la fatturazione ferma · `BE-2` le policy dei 7 codici | ✅ **fatti**, [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) §2 e §3 |
+> | il verbo «Riporta da emettere» a video | stesso brief, §4 e §5 — ⛔ **bloccato** da un prerequisito DB |
+> | il prerequisito DB (la chiave del verbo e la card che conta due popolazioni) | [brief-db-residui-competenza-dimensione-e-chiave.md](../work-in-progress/brief-db-residui-competenza-dimensione-e-chiave.md) |
+> | ⏸️ la guida operativa: chiudere un documento adesso **ritira lavoro** | brief BE/FE, §7 |
+> | ⏸️ il messaggio di `E_RIGA_COMMESSA_NON_MANUALE`, la cui frase da L7b **è vera** | brief DB residui, **D-6** |
+> | 🟠 il rientrato `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` in `codici-errore-baseline.sh` | brief BE/FE, §9 — ⚠️ **non è di questo cantiere e la baseline non è stretta** |
 >
 > 📌 **Seconda passata, 2026-08-26** — analisi critica nel **§8**, piano in **§9**,
 > domande nel **§10**, collegamenti con l'altro brief nel **§11**, **stato e
 > ordine di esecuzione nel §13**.
 > ✅ **Tutte le domande aperte sono state chiuse da Tid il 2026-08-26** (elenco
-> nel §13.1). ⛔ **L'esecuzione non è iniziata**: si parte su «procedi», lotto
-> per lotto.
+> nel §13.1). ⚠️ *La riga «l'esecuzione non è iniziata» che stava qui è stata
+> tolta: l'esecuzione è iniziata e finita lo stesso giorno (§14).*
 > Due paragrafi sono marcati come superati: il **§3** (c'è una correzione più
 > piccola) e la nota finale del **§5** (era sbagliata). Non cancellati:
 > ⚠️ leggere il §8 **prima** del §3 e del §5.

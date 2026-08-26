@@ -25,7 +25,7 @@
 > [brief-db-numerazione-data-documento-e-sequenza.md](brief-db-numerazione-data-documento-e-sequenza.md)
 > (la data dichiarata e il cancello di sequenza — questo brief ne è il seguito
 > naturale) ·
-> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
+> [brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)
 >
 > 🟡 **Stato al 2026-08-26: REALIZZATO E COLLAUDATO A METÀ.**
 > Backend e frontend sono scritti, verificati e in albero; l'interfaccia è stata
