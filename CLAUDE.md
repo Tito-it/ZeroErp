@@ -1,5 +1,18 @@
 # CLAUDE.md
 
+## ⛔ Regola zero — da leggere prima di tutto
+
+> **Le misure servono a trovare gli errori, non a disegnare il progetto.**
+> Un dato del DB può solo **smentire** una regola: non decide mai la forma, il
+> perimetro o la priorità di ciò che si costruisce.
+> **Si sviluppa sul modello, non sulle righe di oggi.**
+
+Se in un brief sto per scrivere *«misurato X, quindi facciamo così»*, la misura
+sta guidando il progetto: la misura entra come **fatto datato**, mai come
+**motivo**. Casi, corollari e argomenti da rifiutare — «non è un caso di
+nicchia», «oggi non capita mai», «il test è verde» — nella sezione di apertura di
+[.codex/AGENTS.md](.codex/AGENTS.md).
+
 ## Istruzioni obbligatorie per ogni sessione
 
 **SEMPRE**, all'inizio di ogni conversazione o task, leggi questi file prima di qualsiasi altra azione:
