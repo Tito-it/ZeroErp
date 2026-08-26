@@ -43,6 +43,7 @@ from apps.vendite.types import (
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaGruppiRiepilogoRow,
+    DashCompetenzaGruppoRegistroRow,
     DashCompetenzaGruppoRow,
     DashCompetenzaGruppoTipoRow,
     DashCompetenzaMensileRow,
@@ -1418,6 +1419,22 @@ class VenditeRepository:
         # `codice` della colonna a catalogo (`emittente_fiscale`): il secondo
         # verso dello stesso presidio verifica proprio questo.
         "emittente_ragione_sociale": "emittente_ragione_sociale",
+        # Sezionale previsto e data prevista (BE-2, brief
+        # brief-db-registro-e-data-prevista-in-competenza). Stessa coppia
+        # inscindibile delle voci qui sopra: le righe 553/554 del CSV
+        # `ui/lista_colonna.csv` sono `ordinabile = t`, e il presidio
+        # `test_liste_configurabili_seed` lega catalogo e whitelist nei DUE
+        # versi. Il DB le ha consegnate sapendo che restavano rosse fino a qui.
+        # ⚠️ La chiave e' il `campo_sorgente`, non il `codice` a catalogo: la
+        # colonna del registro si chiama `registro` a catalogo e
+        # `registro_codice` sulla vista — la whitelist vuole il secondo.
+        # ⚠️ Ordinare per `registro_codice` mette insieme, in fondo, i gruppi
+        # multi-sezionale e quelli non risolvibili: sulla vista sono entrambi
+        # NULL. E' l'unico ordinamento possibile (il primo gruppo un codice non
+        # ce l'ha) ed e' anche quello utile: le righe da guardare finiscono
+        # vicine.
+        "registro_codice": "registro_codice",
+        "data_documento_prevista": "data_documento_prevista",
     }
 
     # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
@@ -1473,6 +1490,8 @@ class VenditeRepository:
         tipo_gruppo: str | None = None,
         ba_fatturazione_id: int | None = None,
         ba_non_determinabile: bool = False,
+        registro_id: int | None = None,
+        registro_non_risolvibile: bool = False,
         search: str | None = None,
     ) -> tuple[list[str], list[Any]]:
         conditions: list[str] = ["g.competenza_mese = %s"]
@@ -1488,6 +1507,27 @@ class VenditeRepository:
         elif ba_fatturazione_id is not None:
             conditions.append("g.ba_fatturazione_id = %s")
             params.append(ba_fatturazione_id)
+        # ── Filtro SEZIONALE (D-5) ────────────────────────────────────────
+        # ⛔ `= ANY(g.registri_ids)` e NON `g.registro_codice = %s`, ed e' la
+        #    decisione portante del filtro: un gruppo che tocca due sezionali
+        #    deve comparire sotto ENTRAMBE le voci, e sulla seconda colonna e'
+        #    NULL — quindi con un filtro sul codice sparirebbe da tutte e due.
+        #    E' anche la ragione per cui la vista espone l'array e non solo il
+        #    codice.
+        # ⚠️ `registro_non_risolvibile` e' ALTERNATIVO, non aggiuntivo: e'
+        #    l'ASSENZA del valore (stessa forma di `ba_non_determinabile`), e
+        #    si scrive come array vuoto o di soli NULL — non come un id
+        #    sentinella, che prima o poi finisce confrontato con una PK.
+        #    `cardinality(...) = 0` non basterebbe: `array_agg(DISTINCT)`
+        #    conserva i NULL, quindi un gruppo interamente non risolvibile ha
+        #    `{NULL}`, cardinalita' 1.
+        if registro_non_risolvibile:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM unnest(g.registri_ids) r WHERE r IS NOT NULL)"
+            )
+        elif registro_id is not None:
+            conditions.append("%s = ANY(g.registri_ids)")
+            params.append(registro_id)
         termine = (search or "").strip()
         if len(termine) >= SEARCH_MIN_LEN:
             # OR fra le cinque colonne, in UN solo gruppo parentesizzato: senza
@@ -1509,6 +1549,8 @@ class VenditeRepository:
         tipo_gruppo: str | None = None,
         ba_fatturazione_id: int | None = None,
         ba_non_determinabile: bool = False,
+        registro_id: int | None = None,
+        registro_non_risolvibile: bool = False,
         search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -1519,6 +1561,8 @@ class VenditeRepository:
             competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
             ba_fatturazione_id=ba_fatturazione_id,
             ba_non_determinabile=ba_non_determinabile,
+            registro_id=registro_id,
+            registro_non_risolvibile=registro_non_risolvibile,
             search=search,
         )
         where_clause = "WHERE " + " AND ".join(conditions)
@@ -1583,7 +1627,10 @@ class VenditeRepository:
                 g.commessa_stato_descrizione,
                 g.ba_codice_fatturazione,
                 g.id_fiscale,
-                g.emittente_ragione_sociale
+                g.emittente_ragione_sociale,
+                g.registri_n,
+                g.registro_codice,
+                g.data_documento_prevista
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -1633,6 +1680,27 @@ class VenditeRepository:
                     # il campo da se', lo deve portare questo SELECT. Se le due
                     # divergono la colonna si spunta e resta VUOTA.
                     "emittente_ragione_sociale": None if row[19] is None else str(row[19]),
+                    # ═══ Sezionale previsto e data prevista (BE-1) ═══════════
+                    # ⛔ Le due CHIAVI devono restare identiche al
+                    # `campo_sorgente` a catalogo (`registro_codice`,
+                    # `data_documento_prevista`, righe 553/554): la lista ha
+                    # `vista_sql = NULL`, quindi il catalogo il campo non lo
+                    # pesca da se' — lo porta questo SELECT. Se divergono, la
+                    # colonna si spunta e resta VUOTA su tutte le righe, senza
+                    # nessun errore.
+                    # ⛔ `registri_ids` NON entra nel payload, ed e' una scelta.
+                    # Serve al WHERE del filtro e alla facet — che stanno
+                    # entrambi qui — ma esporlo obbligherebbe a decidere se
+                    # tenere i NULL che `array_agg(DISTINCT)` conserva: con i
+                    # NULL e' una lista scomoda, senza diverge da `registri_n`
+                    # che li conta. Due numeri che dicono «quanti sezionali» e
+                    # non coincidono sono una domanda senza risposta. Al FE
+                    # bastano il conteggio e il codice.
+                    "registri_n": 0 if row[20] is None else int(row[20]),
+                    "registro_codice": None if row[21] is None else str(row[21]),
+                    "data_documento_prevista": (
+                        row[22].isoformat() if row[22] is not None else None
+                    ),
                 }
             )
         return result, total_count
@@ -1660,12 +1728,16 @@ class VenditeRepository:
         tipo_gruppo: str | None = None,
         ba_fatturazione_id: int | None = None,
         ba_non_determinabile: bool = False,
+        registro_id: int | None = None,
+        registro_non_risolvibile: bool = False,
         search: str | None = None,
     ) -> DashCompetenzaGruppiRiepilogoRow:
         conditions, params = self._where_gruppi(
             competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
             ba_fatturazione_id=ba_fatturazione_id,
             ba_non_determinabile=ba_non_determinabile,
+            registro_id=registro_id,
+            registro_non_risolvibile=registro_non_risolvibile,
             search=search,
         )
         where_clause = "WHERE " + " AND ".join(conditions)
@@ -1797,6 +1869,123 @@ class VenditeRepository:
                 "id_fiscale": None if r[3] is None else str(r[3]),
                 "n_gruppi": int(r[4]),
                 "n_attivita": int(r[5]),
+            }
+            for r in rows
+        ]
+
+    # Scopo: il `codice` di un registro di fatturazione, per l'etichetta della
+    #        riga «Filtri applicati» dell'export. `None` se l'id non esiste.
+    # ⚠️ Sta QUI e non nella view: leggere una tabella con SQL grezzo dentro un
+    #    layer di presentazione e' il punto da cui nascono le seconde
+    #    risoluzioni della stessa regola. `registri_fatturazione` non ha RLS —
+    #    e' un catalogo di configurazione — quindi «non trovato» significa
+    #    davvero «non esiste».
+    def get_registro_codice(self, registro_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT codice FROM vendite.registri_fatturazione WHERE id = %s",
+                [registro_id],
+            )
+            row = cursor.fetchone()
+        return None if row is None else str(row[0])
+
+    # Scopo: quanti GRUPPI ha il perimetro BASE (competenza + stadio) — il
+    #        numero della voce «Tutti i sezionali» della tendina.
+    # ⛔ Metodo dedicato e NON una seconda chiamata a
+    #    `get_dash_competenza_gruppi_riepilogo` senza filtri: sarebbero due
+    #    chiamate allo stesso metodo che rispondono a due domande diverse, e la
+    #    prima cosa che si e' rotta provandolo e' stato un test che leggeva
+    #    `call_args` — cioe' l'ULTIMA chiamata — credendo di leggere la prima.
+    #    Se confonde un test, confondera' chi legge.
+    # ⚠️ `COUNT(*)` sulla vista e non `count(DISTINCT gruppo_key)`: la vista
+    #    raggruppa gia' per (competenza, gruppo_key, …, stadio), quindi la riga
+    #    E' il gruppo — ed e' la stessa unita' che conta il riepilogo.
+    def count_gruppi_perimetro(
+        self, *, competenza_mese: date, stadio: str | None,
+    ) -> int:
+        conditions, params = self._where_gruppi(
+            competenza_mese=competenza_mese, stadio=stadio,
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*)::int FROM vendite.vw_dash_competenza_gruppi g "
+                "WHERE " + " AND ".join(conditions),
+                params,
+            )
+            row = cursor.fetchone()
+        return 0 if row is None else int(row[0])
+
+    # Scopo: Voci del filtro SEZIONALE della lista gruppi (facet, D-5): quali
+    #        registri il perimetro tocca, con quanti gruppi e quante attivita'
+    #        per ciascuno.
+    # Perimetro: BASE (competenza + stadio) come le altre due facet, e per lo
+    #        stesso motivo — deve mostrare tutte le voci anche quando una e'
+    #        gia' selezionata, altrimenti scegliendo «Back-office» le altre
+    #        sparirebbero dalla tendina e non si potrebbe piu' cambiare idea.
+    # Risultato: lista DashCompetenzaGruppoRegistroRow, la voce «non
+    #        risolvibile» (registro_id NULL) inclusa quando esiste.
+    #
+    # ⭐ `LEFT JOIN LATERAL unnest(...)`: un gruppo su DUE sezionali produce
+    #    DUE righe e viene contato sotto entrambe le voci — che e' esattamente
+    #    cio' che il filtro poi fa. Facet e filtro raccontano la stessa cosa
+    #    perche' usano la stessa espansione, non perche' si assomigliano.
+    # ⚠️ **LEFT** JOIN LATERAL, e il LEFT e' tutto: un gruppo senza sezionali
+    #    non produce righe dall'`unnest` e senza il LEFT sparirebbe dalla
+    #    facet — cioe' proprio il gruppo che l'operatore deve trovare. Col LEFT
+    #    ne produce una con `r.id` NULL, che e' la voce «non risolvibile».
+    # ⛔ Qui c'era un `CASE WHEN cardinality(...) = 0 THEN ARRAY[NULL]`.
+    #    Era **morto** — il LEFT copre da solo tutti e tre i casi (`{}`, `{NULL}`
+    #    e array NULL: verificato) — ma soprattutto era una SECONDA scrittura
+    #    di «questo gruppo non ha sezionale», diversa dal `NOT EXISTS` del
+    #    filtro. Due formulazioni della stessa regola in due punti sono la
+    #    divergenza che aspetta di succedere: facet e filtro direbbero cose
+    #    diverse sullo stesso gruppo, e nessuno se ne accorgerebbe.
+    # ⚠️ Le somme di `n_gruppi` E di `n_attivita` possono SUPERARE i totali del
+    #    perimetro. Non e' un difetto di conteggio: e' cosa significa «un gruppo
+    #    sta su due sezionali», ed e' lo stesso motivo per cui il filtro lo
+    #    trova sotto entrambi. Chi legge questi numeri come una partizione
+    #    sbaglia domanda — per il totale vero c'e' `count_gruppi_perimetro`.
+    # ⚠️ `registri_fatturazione` si legge in JOIN e NON e' filtrata dallo scope
+    #    della vista: e' un catalogo di configurazione, non un dato di
+    #    perimetro. Gli id che arrivano qui vengono comunque solo da righe che
+    #    la vista ha gia' fatto passare.
+    def list_dash_competenza_gruppi_registri(
+        self,
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+    ) -> list[DashCompetenzaGruppoRegistroRow]:
+        conditions, params = self._where_gruppi(
+            competenza_mese=competenza_mese, stadio=stadio,
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    r.id,
+                    MIN(rf.codice)      AS codice,
+                    MIN(rf.descrizione) AS descrizione,
+                    COUNT(*)::int       AS n_gruppi,
+                    COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
+                FROM vendite.vw_dash_competenza_gruppi g
+                LEFT JOIN LATERAL unnest(g.registri_ids) AS r(id) ON TRUE
+                LEFT JOIN vendite.registri_fatturazione rf ON rf.id = r.id
+                {where_clause}
+                GROUP BY r.id
+                ORDER BY COUNT(*) DESC, MIN(rf.codice) ASC NULLS LAST,
+                         r.id ASC NULLS LAST
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "registro_id": None if r[0] is None else int(r[0]),
+                "codice": None if r[1] is None else str(r[1]),
+                "descrizione": None if r[2] is None else str(r[2]),
+                "n_gruppi": int(r[3]),
+                "n_attivita": int(r[4]),
             }
             for r in rows
         ]

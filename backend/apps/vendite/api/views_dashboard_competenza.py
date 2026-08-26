@@ -12,6 +12,7 @@
 # lo scope emittente e' interamente DB-side (GUC fail-closed nelle viste).
 
 from datetime import date
+from typing import Any
 
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.types import OpenApiTypes
@@ -41,6 +42,7 @@ from apps.vendite.services.vendite_service import (
     fn_dash_competenza_errori,
     fn_dash_competenza_gruppi,
     fn_dash_competenza_mensile,
+    fn_get_registro_codice,
 )
 
 
@@ -329,6 +331,54 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
         return success_response(data)
 
 
+# Scopo: i filtri di dominio della lista GRUPPI, letti dalla query string una
+#        volta sola.
+#
+# ⛔ ESISTE PERCHE' LE COPIE ERANO DUE, e la seconda ha davvero sbagliato.
+#    Lista ed export leggevano gli stessi parametri in due punti diversi;
+#    aggiungendo il filtro sezionale l'ho messo nella lista e **dimenticato
+#    nell'export**, che avrebbe prodotto un file con TUTTE le righe mentre a
+#    video ne restavano 32 — e chi lo apre non ha modo di accorgersene, perche'
+#    crede di avere davanti il perimetro che aveva a schermo. E' l'esatto
+#    difetto che il commento dell'export dichiarava di voler evitare.
+#    Una sede sola: il prossimo filtro nasce in tutti e due i posti o in
+#    nessuno.
+#
+# ⚠️ `qp_bool_optional` e non `qp_bool` sui due flag: il secondo torna True
+#    quando il parametro e' ASSENTE (`default=True`), quindi la lista si
+#    aprirebbe mostrando i soli gruppi «non determinabili» — cioe' quasi nulla,
+#    senza che nessun filtro risulti attivo a video.
+# ⚠️ Gli id sono validati (`qp_int_optional`): un non-numero fa 400, non un
+#    filtro ignorato in silenzio che mostrerebbe tutto facendo credere di aver
+#    scelto qualcosa.
+# ℹ️ `tipo_gruppo` resta senza whitelist Python di proposito: il vocabolario e'
+#    estensibile lato DB (`config.sorgenti.codice_interno` + `ONERI_COMMESSA`) e
+#    una copia qui si disallineerebbe al primo tipo aggiunto. E' un bind param,
+#    e le voci valide le dichiara il blocco `tipi` della risposta.
+# ⛔ NON legge paginazione ne' `formato`: sono di trasporto, non di dominio, e i
+#    due chiamanti li trattano diversamente.
+def _filtri_gruppi_da_query(qp: Any) -> dict[str, Any]:
+    return {
+        "stadio": qp_str_upper(qp.get("stadio")),
+        "tipo_gruppo": qp_str_upper(qp.get("tipo_gruppo")),
+        "ba_fatturazione_id": qp_int_optional(
+            qp.get("ba_fatturazione_id"), "ba_fatturazione_id",
+        ),
+        "ba_non_determinabile": bool(
+            qp_bool_optional(qp.get("ba_non_determinabile"), "ba_non_determinabile")
+        ),
+        "registro_id": qp_int_optional(qp.get("registro_id"), "registro_id"),
+        "registro_non_risolvibile": bool(
+            qp_bool_optional(
+                qp.get("registro_non_risolvibile"), "registro_non_risolvibile",
+            )
+        ),
+        "search": qp_str(qp.get("search")),
+        "order_by": qp_str(qp.get("order_by")),
+        "order_dir": qp_str(qp.get("order_dir")),
+    }
+
+
 class ApiDashboardCompetenzaGruppi(DomainAPIView):
     """GET /api/v1/vendite/dashboard-competenza/gruppi/ — gruppi fatturabili.
 
@@ -410,6 +460,32 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                 ),
             ),
             OpenApiParameter(
+                name="registro_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filtro SEZIONALE: id del registro di fatturazione su cui il "
+                    "gruppo finirebbe. Un gruppo che ne tocca piu' di uno "
+                    "compare sotto OGNI voce che lo riguarda — il filtro lavora "
+                    "sull'insieme dei sezionali del gruppo, non sul codice "
+                    "unico, che in quel caso e' vuoto. Le voci disponibili sono "
+                    "nel blocco `registri` della risposta."
+                ),
+            ),
+            OpenApiParameter(
+                name="registro_non_risolvibile",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "true = solo i gruppi il cui sezionale NON e' determinabile "
+                    "(tipo documento non ancora scelto sulle righe). E' "
+                    "l'alternativa a `registro_id`, non un valore aggiuntivo: se "
+                    "valorizzato, `registro_id` viene ignorato."
+                ),
+            ),
+            OpenApiParameter(
                 name="search",
                 type=str,
                 location=OpenApiParameter.QUERY,
@@ -427,11 +503,13 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Colonna di ordinamento (whitelist): riferimento | "
-                    "tipo_gruppo | cliente_display | commessa_codice | "
-                    "n_attivita | valore (default) | data_attivita_max | "
-                    "ba_codice_fatturazione | id_fiscale. "
-                    "Colonna non ammessa -> 400."
+                    "Colonna di ordinamento, da WHITELIST "
+                    "(`VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS`); "
+                    "la chiave e' il `campo_sorgente` del catalogo liste, non "
+                    "il `codice` logico. Default: `valore` discendente. Colonna "
+                    "non ammessa -> 400. "
+                    "⚠️ L'elenco NON e' ricopiato qui di proposito: la copia "
+                    "precedente si era fermata a nove voci su undici."
                 ),
             ),
             OpenApiParameter(
@@ -471,6 +549,8 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                             "riepilogo": serializers.DictField(),
                             "tipi": serializers.ListField(child=serializers.DictField()),
                             "clienti": serializers.ListField(child=serializers.DictField()),
+                            "registri": serializers.ListField(child=serializers.DictField()),
+                            "n_gruppi_perimetro": serializers.IntegerField(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -491,41 +571,12 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
             function_name="vendite.api.views_dashboard_competenza.gruppi",
         )
         assert competenza_mese is not None
-        stadio = qp_str_upper(qp.get("stadio"))
-        # Vocabolario ESTENSIBILE lato DB (config.sorgenti.codice_interno +
-        # ONERI_COMMESSA): nessuna whitelist Python, che si disallineerebbe al
-        # primo tipo di sorgente aggiunto. Il valore e' un bind param (nessuna
-        # injection) e le voci valide le dichiara il blocco `tipi` della
-        # risposta, calcolato sui dati.
-        tipo_gruppo = qp_str_upper(qp.get("tipo_gruppo"))
-        # Filtro cliente: id numerico validato (un non-numero -> 400, non un
-        # filtro silenziosamente ignorato che mostrerebbe TUTTI i clienti
-        # facendo credere di averne scelto uno).
-        ba_fatturazione_id = qp_int_optional(
-            qp.get("ba_fatturazione_id"), "ba_fatturazione_id",
-        )
-        # ⚠️ `qp_bool_optional` e non `qp_bool`: quest'ultimo torna True quando il
-        # parametro e' ASSENTE (default=True), quindi la lista si sarebbe aperta
-        # mostrando i soli gruppi senza cliente determinabile — cioe' quasi
-        # nulla, senza che nessun filtro risultasse attivo a video.
-        ba_non_determinabile = bool(
-            qp_bool_optional(qp.get("ba_non_determinabile"), "ba_non_determinabile")
-        )
-        search = qp_str(qp.get("search"))
-        order_by = qp_str(qp.get("order_by"))
-        order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
         page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
 
         data = fn_dash_competenza_gruppi(
             competenza_mese=competenza_mese,
-            stadio=stadio,
-            tipo_gruppo=tipo_gruppo,
-            ba_fatturazione_id=ba_fatturazione_id,
-            ba_non_determinabile=ba_non_determinabile,
-            search=search,
-            order_by=order_by,
-            order_dir=order_dir,
+            **_filtri_gruppi_da_query(qp),
             page=page,
             page_size=page_size,
         )
@@ -644,6 +695,16 @@ def _competenza_mese_obbligatoria(request: Request, *, function_name: str) -> da
     return competenza_mese
 
 
+# Scopo: il codice del sezionale per la riga «Filtri applicati» dell'export.
+#        `None` quando il filtro non e' impostato o l'id non esiste: in entrambi
+#        i casi il merge lascia il valore grezzo, che e' meglio di un'etichetta
+#        inventata.
+def _etichetta_registro(registro_id: int | None) -> str | None:
+    if registro_id is None:
+        return None
+    return fn_get_registro_codice(registro_id)
+
+
 class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
     """GET /api/v1/vendite/dashboard-competenza/gruppi/export/?formato=csv|xlsx
 
@@ -669,6 +730,8 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
             OpenApiParameter(name="tipo_gruppo", type=str, required=False),
             OpenApiParameter(name="ba_fatturazione_id", type=int, required=False),
             OpenApiParameter(name="ba_non_determinabile", type=bool, required=False),
+            OpenApiParameter(name="registro_id", type=int, required=False),
+            OpenApiParameter(name="registro_non_risolvibile", type=bool, required=False),
             OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
@@ -686,25 +749,18 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
             request,
             function_name="vendite.api.views_dashboard_competenza.gruppi_export",
         )
+        filtri = _filtri_gruppi_da_query(qp)
         return build_dash_export_response(
             request,
             lista_codice="vendite.dash_competenza_gruppi",
             fetch=fn_dash_competenza_gruppi,
-            filtri={
-                "competenza_mese": competenza_mese,
-                "stadio": qp_str_upper(qp.get("stadio")),
-                "tipo_gruppo": qp_str_upper(qp.get("tipo_gruppo")),
-                "ba_fatturazione_id": qp_int_optional(
-                    qp.get("ba_fatturazione_id"), "ba_fatturazione_id",
-                ),
-                "ba_non_determinabile": bool(
-                    qp_bool_optional(
-                        qp.get("ba_non_determinabile"), "ba_non_determinabile",
-                    )
-                ),
-                "search": qp_str(qp.get("search")),
-                "order_by": qp_str(qp.get("order_by")),
-                "order_dir": qp_str(qp.get("order_dir")),
+            filtri={"competenza_mese": competenza_mese, **filtri},
+            # ⚠️ L'etichetta risolta, e non l'id: la riga «Filtri applicati» in
+            # testa al file e' l'unica cosa che dice a chi apre il foglio QUALE
+            # perimetro ha davanti, e `registro_id=4` non glielo dice — la
+            # apre un mese dopo, su una macchina che il catalogo non ce l'ha.
+            etichette_filtri={
+                "registro_id": _etichetta_registro(filtri["registro_id"]),
             },
         )
 

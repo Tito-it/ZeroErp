@@ -61,6 +61,7 @@ import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import {
   GRUPPI_CLIENTE_NON_DETERMINABILE,
+  GRUPPI_REGISTRO_NON_RISOLVIBILE,
   STADIO_GRUPPI,
   useDashboardCompetenzaStore,
 } from '../stores/dashboardCompetenza'
@@ -123,6 +124,10 @@ const {
   gruppiTipo,
   gruppiTipi,
   gruppiCliente,
+  gruppiRegistro,
+  gruppiRegistri,
+  gruppiPerimetroN,
+  gruppiFiltriApi,
   gruppiClienti,
   gruppiSearch,
   errori,
@@ -686,6 +691,44 @@ const opzioniCliente = computed(() => {
   ]
 })
 
+// Voci del filtro SEZIONALE (facet dal BE, stesso perimetro base delle altre
+// due tendine: deve restare possibile cambiare sezionale senza prima azzerare
+// il filtro alla cieca).
+// ⚠️ La somma dei conteggi puo' SUPERARE il numero di gruppi del perimetro, e
+// non e' un errore: un gruppo che tocca due sezionali e' contato — e trovato —
+// sotto entrambi. Per questo la voce «Tutti» non somma le voci: «Tutti (46)»
+// starebbe sopra una lista di 39 righe.
+// ⛔ E NEMMENO dal `riepilogo`, che e' la prima cosa che viene in mente e che
+// SEGUE i filtri: scelto «Back-office», la voce «Tutti» scenderebbe a 32 —
+// cioe' direbbe 32 di un'opzione che, premuta, ne mostra 39. Il numero arriva
+// dal BE calcolato sul perimetro BASE, che e' lo stesso della facet.
+// ⚠️ La tendina dei CLIENTI somma le sue voci e fa bene: li' ogni gruppo sta
+// sotto una voce sola. La differenza non e' fra le due tendine, e' fra
+// partizione e appartenenza multipla.
+const opzioniRegistro = computed(() => {
+  const voci = gruppiRegistri.value.map((r) => {
+    if (r.registro_id === null || r.registro_id === undefined) {
+      return {
+        value: GRUPPI_REGISTRO_NON_RISOLVIBILE,
+        label: t('vendite.dashboard_competenza.registro_non_risolvibile', { n: r.n_gruppi }),
+      }
+    }
+    return {
+      value: r.registro_id,
+      label: `${r.codice || r.descrizione || r.registro_id} (${r.n_gruppi})`,
+    }
+  })
+  return [
+    {
+      value: null,
+      label: t('vendite.dashboard_competenza.registro_tutti', {
+        n: gruppiPerimetroN.value,
+      }),
+    },
+    ...voci,
+  ]
+})
+
 // Scopo: etichetta del gruppo — riferimento leggibile del documento
 //        (PRV-0012…) oppure, per gli oneri sourceless, la commessa che li
 //        contiene. Il BE risolve gia' il riferimento: qui solo il fallback.
@@ -808,22 +851,18 @@ const contestoLista = computed(() => {
     return {
       lista: listaGruppiRef.value,
       exportFn: exportDashboardCompetenzaGruppi,
-      // ⚠️ TUTTI i filtri a video, cliente e ricerca compresi: un export che
-      // non corrisponde a cio' che si ha davanti e' peggio di nessun export —
-      // chi lo apre crede di avere quel perimetro e non ha modo di accorgersi
-      // che non e' cosi'. Il sentinella «non determinabile» si traduce qui
-      // esattamente come nello store: fuori viaggia solo il flag.
+      // ⚠️ TUTTI i filtri a video: un export che non corrisponde a ciò che si
+      // ha davanti è peggio di nessun export — chi lo apre crede di avere quel
+      // perimetro e non ha modo di accorgersi che non è così.
+      // ⛔ E per questo i filtri NON si ricompongono qui: li dà lo store, che è
+      //    lo stesso posto da cui li prende la lista. Finché erano due copie
+      //    hanno divergito davvero — il filtro sezionale è finito nella lista
+      //    e non nell'export, che avrebbe scritto un file con tutte le righe
+      //    mentre a video ne restavano 32 (rilievo 2026-08-26).
       params: (formato) => ({
         formato,
         competenza_mese: competenzaCorrente.value,
-        stadio: STADIO_GRUPPI,
-        tipo_gruppo: gruppiTipo.value,
-        ...(gruppiCliente.value === GRUPPI_CLIENTE_NON_DETERMINABILE
-          ? { ba_non_determinabile: true }
-          : { ba_fatturazione_id: gruppiCliente.value }),
-        search: gruppiSearch.value || null,
-        order_by: gruppiOrderBy.value,
-        order_dir: gruppiOrderDir.value,
+        ...gruppiFiltriApi(),
       }),
     }
   }
@@ -1938,6 +1977,24 @@ onActivated(() => {
                       v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_cliente_tooltip')"
                       @change="applicaFiltroGruppi"
                     />
+                    <!-- Filtro SEZIONALE: quale registro fiscale prenderà il
+                         documento. ⚠️ Il valore è l'ID del registro, non il
+                         codice, ed è voluto: un gruppo che tocca più sezionali
+                         il codice non ce l'ha (a video legge «Più sezionali»),
+                         e deve comunque comparire scegliendo uno qualunque dei
+                         suoi. Il filtro lavora sull'insieme, non sull'etichetta.
+                         Niente `filter`: i sezionali sono pochi per costruzione
+                         — crescono con gli emittenti, non coi clienti. -->
+                    <Select
+                      v-model="gruppiRegistro"
+                      :options="opzioniRegistro"
+                      option-label="label"
+                      option-value="value"
+                      class="app-form-select"
+                      :placeholder="t('vendite.dashboard_competenza.filtro_registro')"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_registro_tooltip')"
+                      @change="applicaFiltroGruppi"
+                    />
                     <!-- Ricerca libera: risponde a «dov'è finito ORD0005174», che è
                          una domanda diversa da «dammi tutto di Rossi» — per quella
                          c'è il filtro qui accanto. Sotto i 3 caratteri il backend la
@@ -2109,6 +2166,34 @@ onActivated(() => {
                     </span>
                     <span v-else>—</span>
                   </template>
+
+                  <!-- IL SEZIONALE PREVISTO (FE-1). Lo slot si nomina sul
+                       `codice` della colonna a catalogo — `registro` — non sul
+                       `campo_sorgente` (`registro_codice`), che serve al dato.
+                       ⚠️ La frase del caso multi la ricompone il FE da
+                       `registri_n`, e NON legge quella che il BE ha messo nel
+                       campo: quella è italiana e serve all'export, che la
+                       lingua del richiedente non la sa. Le due non possono
+                       divergere perché dipendono dallo STESSO numero.
+                       ⚠️ Il vuoto è «—» e non la frase: `registri_n <= 1` col
+                       codice assente vuol dire «non lo so», che è un fatto
+                       diverso da «sono più di uno» — succede sui gruppi il cui
+                       tipo documento non è ancora stato scelto. -->
+                  <template #cell-registro="{ data }">
+                    <span
+                      v-if="Number(data.registri_n) > 1"
+                      class="app-dash-registro-multi"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.col_registro_multi_tooltip')"
+                    >
+                      <i class="pi pi-clone" />
+                      {{ t('vendite.dashboard_competenza.col_registro_multi', { n: data.registri_n }) }}
+                    </span>
+                    <span v-else>{{ data.registro_codice || '—' }}</span>
+                  </template>
+                  <!-- data_documento_prevista non ha slot: il seed dichiara
+                       `date_short`, e una data si formatta dove si formattano
+                       tutte le altre. Vuota dove il documento esiste già
+                       (D-9) — una previsione su un documento nato non ha senso. -->
 
                   <template #actions="{ data, compact }">
                     <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />

@@ -855,16 +855,52 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
     # riga finta piu' corta non fa fallire il mapping in modo parlante, lo fa
     # esplodere su un indice — e una piu' lunga lo farebbe passare leggendo la
     # colonna sbagliata, che e' il modo silenzioso di sbagliare.
+    # ⚠️ La tupla deve avere la STESSA LARGHEZZA del SELECT del repository: il
+    #     mapping legge per indice, e una riga corta fa `IndexError` mentre una
+    #     lunga fa scorrere i valori sulle chiavi sbagliate — in silenzio.
+    #     `test_larghezza_riga_finta_uguale_al_select` qui sotto lo verifica
+    #     contro il SELECT vero invece di fidarsi di questo commento.
     def _rows(self, documento_id, *, emittibile=True,
               stato="PRONTA_FATTURAZIONE", stato_descr="Pronta fatturazione",
               ba_codice="BA-0001", id_fiscale="12345678901",
-              emittente="Tito Srl"):
+              emittente="Tito Srl",
+              registri_n=1, registro_codice="Front-office",
+              data_prevista=date(2026, 8, 31)):
         return [(
             "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
             emittibile, stato, stato_descr, ba_codice, id_fiscale, emittente,
+            registri_n, registro_codice, data_prevista,
         )]
+
+    # 24-septies) La riga finta e il SELECT vero devono avere la STESSA
+    #     larghezza. E' il presidio del presidio: tutti i test di mapping di
+    #     questa classe girano su `_rows`, quindi una tupla rimasta indietro non
+    #     li fa fallire — li fa passare su una forma che il database non
+    #     produce. Il conteggio si legge dal SELECT, non si scrive qui.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_larghezza_riga_finta_uguale_al_select(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        sql = mock_query.call_args.kwargs["select_sql"]
+        proiezione = sql.split("FROM vendite.vw_dash_competenza_gruppi")[0]
+        # Per RIGA e non per virgola: la prima colonna sta sulla stessa riga
+        # di `SELECT` e uno split sulle virgole la perderebbe — facendo contare
+        # 22 dove il SELECT ne ha 23, cioe' fallire il presidio nel momento in
+        # cui e' corretto.
+        colonne = [
+            r for r in (x.strip() for x in proiezione.splitlines())
+            if r.startswith("g.")
+        ]
+        self.assertEqual(
+            len(colonne), len(self._rows(1)[0]),
+            "la tupla di `_rows` non ha piu' la larghezza del SELECT: i test di "
+            "mapping di questa classe stanno girando su una forma che il "
+            "database non produce.",
+        )
 
     # 23) 🟢 L'id del documento viene dalla VISTA, non piu' da una LATERAL
     #     scritta qui (DB `20260815-25`). Era una SECONDA risoluzione della
@@ -1069,6 +1105,134 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertEqual(ramo[0].count("ILIKE"), 5)
         self.assertEqual(params.count("%ORD0005174%"), 5)
 
+    # ═══ IL SEZIONALE PREVISTO (brief-db-registro-e-data-prevista) ═══════════
+
+    # 25) ⛔ Il filtro sezionale lavora sull'INSIEME dei sezionali del gruppo,
+    #     non sul codice unico. E' la decisione portante: un gruppo che tocca
+    #     due sezionali ha `registro_codice` NULL, quindi un filtro sul codice
+    #     lo farebbe sparire da ENTRAMBE le voci — cioe' proprio dal gruppo che
+    #     l'operatore sta cercando.
+    def test_filtro_registro_usa_l_insieme_non_il_codice(self) -> None:
+        cond, params = VenditeRepository._where_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, registro_id=4,
+        )
+        self.assertIn("%s = ANY(g.registri_ids)", cond)
+        self.assertIn(4, params)
+        self.assertTrue(
+            all("registro_codice" not in c for c in cond),
+            "il filtro si e' appoggiato al codice: i gruppi multi-sezionale "
+            "sparirebbero da tutte le voci.",
+        )
+
+    # 26) «Non risolvibile» e' l'ASSENZA del valore e VINCE sull'id, come la
+    #     coppia gemella del cliente: sono alternativi, non sommabili.
+    #     ⚠️ E non si scrive `cardinality(...) = 0`: `array_agg(DISTINCT)`
+    #     conserva i NULL, quindi un gruppo interamente non risolvibile ha
+    #     `{NULL}` — cardinalita' 1 — e con quel predicato non lo troverebbe
+    #     nessuno.
+    def test_filtro_registro_non_risolvibile_vince_e_non_conta_la_cardinalita(self) -> None:
+        cond, params = VenditeRepository._where_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None,
+            registro_id=4, registro_non_risolvibile=True,
+        )
+        ramo = [c for c in cond if "registri_ids" in c]
+        self.assertEqual(len(ramo), 1)
+        self.assertIn("IS NOT NULL", ramo[0])
+        self.assertNotIn(4, params)
+        self.assertTrue(
+            all("cardinality" not in c for c in cond),
+            "predicato sulla cardinalita': un gruppo `{NULL}` la conta 1 e "
+            "resterebbe invisibile alla voce che lo riguarda.",
+        )
+
+    # 27) La frase «piu' sezionali» si accende sul CONTEGGIO, non sul NULL del
+    #     codice. Quel NULL ha due significati — piu' di uno, oppure nessuno
+    #     risolvibile — e confonderli direbbe «sono piu' di uno» a un gruppo che
+    #     di sezionali non ne ha nemmeno uno.
+    def test_etichetta_multi_registro_distingue_i_due_null(self) -> None:
+        from apps.vendite.services.vendite_service import _marca_gruppi_multi_registro
+
+        righe = [
+            {"registri_n": 2, "registro_codice": None},   # piu' sezionali
+            {"registri_n": 1, "registro_codice": None},   # non risolvibile
+            {"registri_n": 0, "registro_codice": None},   # nessuno
+            {"registri_n": 1, "registro_codice": "VX1"},  # normale
+        ]
+        _marca_gruppi_multi_registro(righe)
+        self.assertIn("2", str(righe[0]["registro_codice"]))
+        self.assertIsNone(righe[1]["registro_codice"])
+        self.assertIsNone(righe[2]["registro_codice"])
+        self.assertEqual(righe[3]["registro_codice"], "VX1")
+
+    # 28) Il mapping consegna le due colonne con le chiavi che il catalogo
+    #     dichiara, e la data come stringa ISO (il FE la formatta, il BE non
+    #     inventa un formato — memoria locale_formatters).
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_mapping_sezionale_e_data_prevista(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertEqual(righe[0]["registro_codice"], "Front-office")
+        self.assertEqual(righe[0]["data_documento_prevista"], "2026-08-31")
+        self.assertEqual(righe[0]["registri_n"], 1)
+
+        mock_query.return_value = (
+            self._rows(5387, registro_codice=None, data_prevista=None), 1,
+        )
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertIsNone(righe[0]["registro_codice"])
+        self.assertIsNone(righe[0]["data_documento_prevista"])
+
+    # 29-bis) ⭐ Il totale per la voce «Tutti i sezionali» si calcola sul
+    #     perimetro BASE, non sul riepilogo. Il riepilogo SEGUE i filtri: scelto
+    #     un sezionale, la voce «Tutti» direbbe il conteggio di quello — cioe'
+    #     un numero di un'opzione che, premuta, ne mostra un altro.
+    #     ⚠️ E nemmeno sommando la facet: un gruppo su due sezionali e' contato
+    #     sotto entrambi, quindi la somma sovrastima.
+    @patch.object(VenditeRepository, "count_gruppi_perimetro")
+    @patch.object(VenditeRepository, "list_dash_competenza_gruppi_registri")
+    @patch.object(VenditeRepository, "get_dash_competenza_gruppi_riepilogo")
+    @patch.object(VenditeRepository, "list_dash_competenza_gruppi_clienti")
+    @patch.object(VenditeRepository, "list_dash_competenza_gruppi_tipi")
+    @patch.object(VenditeRepository, "list_dash_competenza_gruppi")
+    def test_totale_perimetro_ignora_il_filtro_sezionale(
+        self, mock_lista, mock_tipi, mock_clienti, mock_riep, mock_registri,
+        mock_conta,
+    ):
+        mock_lista.return_value = ([], 0)
+        mock_tipi.return_value = []
+        mock_clienti.return_value = []
+        mock_registri.return_value = []
+        mock_riep.return_value = {
+            "n_gruppi": 32, "n_attivita": 0, "valore": None, "n_gruppi_oneri": 0,
+        }
+        mock_conta.return_value = 39
+        payload = fn_dash_competenza_gruppi(
+            competenza_mese=date(2026, 6, 1), stadio="DA_EMETTERE", registro_id=4,
+        )
+        # Il riepilogo SEGUE il filtro (32), il totale della tendina NO (39).
+        self.assertEqual(payload["riepilogo"]["n_gruppi"], 32)
+        self.assertEqual(payload["n_gruppi_perimetro"], 39)
+        # ⛔ E il conteggio del perimetro non deve MAI ricevere il filtro:
+        #    riceverlo lo farebbe coincidere col riepilogo, cioe' rendere il
+        #    difetto invisibile invece di impedirlo.
+        self.assertNotIn("registro_id", mock_conta.call_args.kwargs)
+
+    # 29) ⛔ La lista degli id NON esce nel payload: se un giorno ci rientrasse,
+    #     andrebbe deciso cosa farne dei NULL che `array_agg(DISTINCT)`
+    #     conserva — e due numeri che rispondono «quanti sezionali» in modo
+    #     diverso sono peggio di uno solo.
+    @patch.object(VenditeRepository, "_query_paged_view")
+    def test_registri_ids_non_esce_nel_payload(self, mock_query):
+        mock_query.return_value = (self._rows(5387), 1)
+        righe, _ = VenditeRepository().list_dash_competenza_gruppi(
+            competenza_mese=date(2026, 8, 1), stadio=None, limit=25, offset=0,
+        )
+        self.assertNotIn("registri_ids", righe[0])
+
 
 class DashCompetenzaGruppiExportParitaTests(TestCase):
     """L'export deve portare gli STESSI filtri della lista (D-7).
@@ -1088,43 +1252,63 @@ class DashCompetenzaGruppiExportParitaTests(TestCase):
     # per conto suo (niente paginazione, cap righe dal BB di export).
     _NON_FILTRI = {"page", "page_size", "max_rows"}
 
-    # Scopo: chiavi del dict `filtri={...}` passato da ApiDashboardCompetenzaGruppiExport.
-    def _chiavi_export(self) -> set[str]:
+    # Scopo: le classi delle due view che chiamano `_filtri_gruppi_da_query`.
+    def _classi_che_usano_il_lettore(self) -> set[str]:
         import ast
         import inspect
 
         from apps.vendite.api import views_dashboard_competenza as mod
 
         albero = ast.parse(inspect.getsource(mod))
+        trovate: set[str] = set()
         for nodo in ast.walk(albero):
-            if (
-                isinstance(nodo, ast.ClassDef)
-                and nodo.name == "ApiDashboardCompetenzaGruppiExport"
-            ):
-                for chiamata in ast.walk(nodo):
-                    if not isinstance(chiamata, ast.Call):
-                        continue
-                    for kw in chiamata.keywords:
-                        if kw.arg == "filtri" and isinstance(kw.value, ast.Dict):
-                            return {
-                                k.value for k in kw.value.keys
-                                if isinstance(k, ast.Constant)
-                            }
-        raise AssertionError(
-            "dict `filtri` non trovato in ApiDashboardCompetenzaGruppiExport"
-        )
+            if not isinstance(nodo, ast.ClassDef):
+                continue
+            for chiamata in ast.walk(nodo):
+                if (
+                    isinstance(chiamata, ast.Call)
+                    and isinstance(chiamata.func, ast.Name)
+                    and chiamata.func.id == "_filtri_gruppi_da_query"
+                ):
+                    trovate.add(nodo.name)
+        return trovate
 
-    def test_export_passa_tutti_i_filtri_della_lista(self) -> None:
+    # ⚠️ QUESTO TEST E' CAMBIATO IL 2026-08-26, e il motivo va letto.
+    #     Prima leggeva le chiavi LETTERALI del dict `filtri={...}` dell'export
+    #     e le confrontava con la firma del service. Misurava la cosa giusta
+    #     finche' i due punti di lettura erano DUE — ma la duplicazione era il
+    #     difetto, non il presidio: aggiungendo il filtro sezionale e' finito
+    #     nella lista e non nell'export, e questo test e' rimasto VERDE perche'
+    #     nel dict la chiave c'era (l'avevo scritta a mano in tutti e due).
+    #     Ora la lettura e' UNA (`_filtri_gruppi_da_query`) e la proprieta' da
+    #     provare e' diventata piu' forte: che quel lettore sia completo, e che
+    #     lo usino entrambe le view. Un filtro dimenticato non e' piu'
+    #     possibile — nasce in tutti e due i posti o in nessuno.
+    def test_lettore_filtri_copre_tutti_i_filtri_del_service(self) -> None:
         import inspect
+
+        from apps.vendite.api.views_dashboard_competenza import _filtri_gruppi_da_query
 
         parametri = set(inspect.signature(fn_dash_competenza_gruppi).parameters)
         attesi = parametri - self._NON_FILTRI
-        dimenticati = attesi - self._chiavi_export()
+        # `competenza_mese` lo passano le view separatamente: e' obbligatorio e
+        # ha una sua validazione parlante, non e' un filtro opzionale.
+        letti = set(_filtri_gruppi_da_query({})) | {"competenza_mese"}
+        dimenticati = attesi - letti
         self.assertEqual(
             dimenticati, set(),
-            f"filtri presenti nella lista e assenti nell'export: {dimenticati}. "
-            "L'export continuerebbe a funzionare, esportando un perimetro piu' "
-            "largo di quello a video (D-7).",
+            f"filtri del service che nessuno legge dalla query string: "
+            f"{dimenticati}. Lista ed export mostrerebbero un perimetro piu' "
+            "largo di quello chiesto, senza nessun errore.",
+        )
+
+    def test_lista_ed_export_usano_lo_stesso_lettore(self) -> None:
+        self.assertEqual(
+            self._classi_che_usano_il_lettore(),
+            {"ApiDashboardCompetenzaGruppi", "ApiDashboardCompetenzaGruppiExport"},
+            "una delle due view si e' riscritta la lettura dei filtri in "
+            "proprio: e' esattamente il modo in cui l'export ha gia' esportato "
+            "un perimetro diverso da quello a video.",
         )
 
 

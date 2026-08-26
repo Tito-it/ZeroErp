@@ -972,6 +972,59 @@ class DashCompetenzaGruppoRow(TypedDict):
     # colonna si spunta e resta vuota — che e' peggio di non averla, perche'
     # SEMBRA la garanzia che il flag `multi_emittente` pretende.
     emittente_ragione_sociale: str | None
+    # ═══ Il SEZIONALE che il documento prendera', e la data che portera' ═══
+    # (brief-db-registro-e-data-prevista-in-competenza, consegne L5/BE-1).
+    #
+    # ⭐ Non sono una previsione «parallela»: la vista li calcola con
+    # `fn_resolve_registro_documento`, che dal 2026-08-26 e' la STESSA funzione
+    # che `fn_build_fattura_key` usa per scrivere la chiave del documento vero.
+    # Lista e documento non coincidono perche' due implementazioni si comportano
+    # uguale, ma perche' e' un'implementazione sola.
+    #
+    # `registri_ids` porta TUTTI i sezionali toccati dal gruppo, e non e' una
+    # ridondanza di `registro_codice`: la chiave del gruppo non contiene tipo
+    # documento ne' natura — che sono colonne di RIGA — quindi un gruppo su piu'
+    # sezionali e' ammesso per costruzione, non e' un'anomalia. E' anche l'asse
+    # del filtro (D-5): un gruppo multi-sezionale deve comparire sotto ENTRAMBE
+    # le voci, e un filtro su `registro_codice` non potrebbe farlo perche' li'
+    # e' NULL.
+    # ⛔ La lista degli id NON esce nel payload: serve al WHERE del filtro e
+    # alla facet, che vivono entrambi nel repository. Esporla obbligherebbe a
+    # scegliere se tenere i NULL che `array_agg(DISTINCT)` conserva — con i
+    # NULL e' una lista scomoda, senza diverge da `registri_n` che invece li
+    # conta, e due numeri che rispondono «quanti sezionali» in modo diverso
+    # sono una domanda senza risposta.
+    registri_n: int
+    # ⚠️ NULL in DUE casi diversi, e il FE deve distinguerli:
+    #   · `registri_n > 1` -> il gruppo tocca piu' sezionali: non e' «non lo so»,
+    #     e' «sono piu' di uno». La frase la compone il BE (D-4), cosi' esce
+    #     anche nell'export, che condivide questa stessa proiezione;
+    #   · `registri_n = 0` -> non risolvibile (tipo documento non ancora scelto
+    #     su una riga DA_APPROVARE: il CHECK lo pretende solo da approvata e non
+    #     emessa). Cella vuota, ed e' onesto.
+    registro_codice: str | None
+    # Vuota dove il documento ESISTE GIA' (D-9): il join si aggancia su
+    # `fattura_riga_id IS NULL`. ⚠️ Il discriminante e' la riga di fattura, non
+    # lo stadio — `EMESSA_NON_FATTURATA` un documento non ce l'ha ancora.
+    data_documento_prevista: str | None
+
+
+class DashCompetenzaGruppoRegistroRow(TypedDict):
+    # Voce del filtro SEZIONALE della lista gruppi (facet, D-5).
+    # ⚠️ L'asse e' `registri_ids`, non `registro_codice`: un gruppo che tocca due
+    # sezionali va contato sotto ENTRAMBI, e con la seconda colonna sarebbe
+    # invisibile a tutte e due le voci (li' e' NULL).
+    # ⇒ Conseguenza dichiarata: la somma degli `n_gruppi` delle voci puo'
+    # SUPERARE il numero di gruppi del perimetro. Non e' un errore di conteggio,
+    # e' cio' che significa «un gruppo sta su due sezionali».
+    # `registro_id` NULL = voce dei gruppi con sezionale NON RISOLVIBILE, che e'
+    # l'assenza del valore e non un id sentinella (stessa forma della voce
+    # «cliente non determinabile» del facet clienti).
+    registro_id: int | None
+    codice: str | None
+    descrizione: str | None
+    n_gruppi: int
+    n_attivita: int
 
 
 class DashCompetenzaGruppoClienteRow(TypedDict):

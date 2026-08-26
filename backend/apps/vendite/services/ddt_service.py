@@ -643,8 +643,21 @@ def aggiorna_riga(
 
 
 # Scopo: Elimina riga DDT (HARD DELETE, solo DRAFT). I componenti BoM hanno
-#        ON DELETE CASCADE; il trigger DB `trgfn_dlt_block_ordrig_ddtrig` blocca
-#        se la riga e' gia' collegata a un ordine via fulfillment.
+#        ON DELETE CASCADE.
+#        Il trigger DB `trgfn_dlt_block_ordrig_ddtrig` ha TRE esiti, e li
+#        prova nell'ordine: documento non piu' in bozza ->
+#        E_DELETE_RIGA_DOC_NON_BOZZA; riga legata a un fulfillment ->
+#        E_DELETE_BLOCKED_FUL; riga usata in un reso o in una riconsegna ->
+#        E_DELETE_RIGA_DOC_REFERENZIATA; altrimenti la cancellazione RIESCE.
+#        ⚠️ Il terzo esito non esisteva fino al 2026-08-26: la funzione
+#        sollevava su OGNI ramo e il `RETURN OLD` era irraggiungibile, quindi
+#        questo verbo NON ha mai potuto riuscire. Il commento che stava qui
+#        diceva «blocca SE la riga e' collegata a un fulfillment» e descriveva
+#        un guard condizionale che non esisteva. Trovato in collaudo in-app
+#        (riga 32884, prezzo 0, zero legami), corretto a DB con
+#        `20260826-2x-...-ramo-lecito`. ⛔ La lezione: un'assunzione sul
+#        comportamento di un trigger va provata con una chiamata VERA — i test
+#        di questo modulo mockano il repository e non l'avrebbero mai vista.
 def elimina_riga(ddt_id: int, riga_id: int) -> dict[str, Any]:
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="elimina_riga")
