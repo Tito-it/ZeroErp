@@ -19,6 +19,7 @@
 > • [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto)  
 > • [vendite.fn_riporta_lotto_a_draft](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft)  
 > • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)  
+> • [vendite.fn_libera_attivita_fatturabili](/dbzero/vendite/funzioni/fn_libera_attivita_fatturabili)  
 
 ---
 
@@ -61,8 +62,21 @@ annullamento.
 
 ### Cosa ripristina
 
+> ⛔ **L'ordine è portante, e viene prima dell'elenco.** *Prima si ripristina,
+> poi si cancella.* Non è una preferenza di stile: la chiave esterna
+> `fk_attivita_fatturabili_fattura_riga` non è differita, quindi la sua azione
+> referenziale scatta **a fine istruzione** del `DELETE` sulle righe. Con il
+> ripristino a valle di quel `DELETE`, il legame che il ripristino deve leggere
+> è già rotto e il filtro non trova più niente: l'attività resta fatturata senza
+> fattura e la sua riga di commessa resta emessa, **senza un errore**. È
+> successo, fra il 28 luglio e il 26 agosto 2026.
+>
+> ⚠️ Chi aggiunge un passo qui dentro non lo metta fra il ripristino e le
+> cancellazioni.
+
 * **Elimina**: note (dal padre partizionato `vendite.note`), riepiloghi IVA,
-  righe, log, collegamento lotto-fattura, testate.
+  righe, log, collegamento lotto-fattura, testate. ⭐ **Dopo** il ripristino,
+  mai prima.
 * **Storna** dall'ambito di compensazione l'arrotondamento delle fatture
   cancellate, **prima** di toccarle — in testa alla funzione, così resta corretto
   qualunque passo venga aggiunto dopo.
@@ -82,12 +96,19 @@ annullamento.
 * Usa la GUC `zeroerp.maintenance_reset_lotto_draft` per bypassare il guard
   «fatturato».
 
-⚠️ **Le due popolazioni devono restare una sola.** Le `commesse_attivita` da
-rimettere in coda si raccolgono con il **predicato identico** a quello della
-`UPDATE` su `attivita_fatturabili`, e **subito prima** di essa: quella `UPDATE`
-azzera `fattura_riga_id`, cioè distrugge il legame. Se i due filtri divergessero,
-si sbloccherebbe un insieme di attività e se ne rimetterebbe in coda un altro —
-in silenzio.
+⭐ **Le due popolazioni sono una sola per costruzione** (dal 26-08-2026). Il
+perimetro si calcola **una volta** — mentre il legame con la riga è ancora vivo —
+e diventa un elenco di identificativi; le due scritture stanno insieme nella
+primitiva condivisa
+[`fn_libera_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_libera_attivita_fatturabili),
+che serve anche il verbo di recupero. Prima erano **due filtri identici scritti
+due volte**, «di proposito»: bastava che divergessero per sbloccare un insieme di
+attività e rimetterne in coda un altro, in silenzio. Ora quel rischio non esiste.
+
+⚠️ **La primitiva non apre la GUC di manutenzione, e non deve.** Il guard di riga
+rifiuta di toccare un'attività ancora agganciata a una fattura: è ciò che
+impedisce di usare il ripristino per **scollegare una fattura viva**. Ad aprirla
+è chi la fattura la sta cancellando — cioè questa funzione, due passi più in su.
 
 ⚠️ **Il ramo su `p_lock_batch_id`** prende **tutte** le attività del batch: è
 corretto nel reset globale (libera anche quelle agganciate al lotto che non sono

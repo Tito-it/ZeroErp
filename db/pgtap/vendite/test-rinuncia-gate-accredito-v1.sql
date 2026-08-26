@@ -185,7 +185,7 @@ BEGIN
   RETURNING id INTO v_riga;
 
   UPDATE vendite.attivita_fatturabili
-     SET fattura_riga_id = v_riga, fatturato = true
+     SET fattura_riga_id = v_riga
    WHERE id = v_af;
 
   RETURN v_riga;
@@ -225,7 +225,7 @@ RETURNS void AS $$
 BEGIN
   UPDATE vendite.attivita_fatturabili
      SET lock_in_fatturazione = false, lock_batch_id = NULL,
-         fattura_riga_id = NULL, fatturato = false
+         fattura_riga_id = NULL
    WHERE commessa_attivita_id = p_ca_id;
   UPDATE vendite.commesse_attivita
      SET stato_emissione = 'NON_EMESSA'

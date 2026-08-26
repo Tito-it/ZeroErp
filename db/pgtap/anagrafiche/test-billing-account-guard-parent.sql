@@ -295,7 +295,7 @@ BEGIN
         competenza_mese, competenza_dal, competenza_al,
         commessa_id, commessa_attivita_id,
         tipo_doc_fiscale_id, valuta_id,
-        fatturato, approvato
+        approvato
     ) VALUES (
         v_articolo_id, v_child1_ba_id, v_child1_istanza_id,
         CURRENT_DATE, 1,
@@ -304,7 +304,7 @@ BEGIN
         (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
         v_commessa_id, v_commessa_attivita_id,
         v_tipo_doc_id, v_valuta_id,
-        false, false
+        false
     );
 
     -- Salva gli ID per i test successivi
@@ -369,19 +369,91 @@ SELECT lives_ok(
 -- =========================================================
 -- 6) Dopo fatturazione, rimozione parent → OK
 -- =========================================================
--- Marca tutte le attivita come fatturate, poi rimuovi parent
+-- ⛔ rev 2026-08-26 — «marcare come fatturate» non e' piu' possibile.
+--   Dal changeSet 20260826-33 `fatturato` e' una colonna GENERATA su
+--   `fattura_riga_id IS NOT NULL`: il timbro non si SCRIVE, si OTTIENE
+--   agganciando l'attivita' a una riga di fattura vera.
+--   ⭐ E la fixture ci guadagna. Prima diceva «fatturata» a un'attivita' che
+--   nessuna fattura conteneva — cioe' costruiva proprio lo stato incoerente
+--   che il cantiere brief-db-lavoro-che-non-torna-indietro ha reso
+--   impossibile, e su cui il guard qui sotto veniva interrogato. Adesso la
+--   fattura c'e', e la domanda che il test pone e' quella vera.
+-- ⚠️ La fatturazione e' SETUP e sta FUORI dal lives_ok: il test 6 asserisce
+--   che il parent si stacchi, non che si riesca a fatturare.
+DO $fatt$
+DECLARE
+    v_fattura_id bigint;
+    v_riga_id    bigint;
+BEGIN
+    INSERT INTO vendite.fatture (
+        registro_id, emittente_soggetto_ruolo_id, billing_account_id,
+        tipo_doc_fiscale_id, valuta_id, stato_doc_fiscale_id, data)
+    SELECT (SELECT r.id FROM vendite.registri_fatturazione r
+             WHERE r.attivo IS TRUE
+               AND (r.emittente_soggetto_ruolo_id IS NULL
+                    OR r.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore())
+             ORDER BY r.id LIMIT 1),
+           script.fn_pgtap_emittente_sr_operatore(),
+           af.billing_account_id, af.tipo_doc_fiscale_id, af.valuta_id,
+           (SELECT s.id FROM config.stati_doc_fiscale s
+             WHERE s.codice_interno = 'DRAFT' ORDER BY s.id LIMIT 1),
+           CURRENT_DATE
+      FROM vendite.attivita_fatturabili af
+     WHERE af.billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard)
+     ORDER BY af.id
+     LIMIT 1
+    RETURNING id INTO v_fattura_id;
+
+    INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
+                                       qta, prezzo_unitario, imponibile_riga)
+    VALUES (v_fattura_id, 1, 'Riga PGTAP guard parent', 1, 10, 10)
+    RETURNING id INTO v_riga_id;
+
+    UPDATE vendite.attivita_fatturabili
+       SET fattura_riga_id = v_riga_id
+     WHERE billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard);
+END
+$fatt$;
+
 SELECT lives_ok(
     $$
-      UPDATE vendite.attivita_fatturabili
-         SET fatturato = true
-       WHERE billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard);
-
       UPDATE anagrafiche.billing_account
          SET parent_account_id = NULL
        WHERE id = (SELECT child1_ba_id FROM tmp_ids_guard);
     $$,
     'Rimozione parent_account_id dopo fatturazione attivita: OK'
 );
+
+-- ⚠️ Si smonta subito, e non e' pignoleria: il cleanup finale CANCELLA le
+--   attivita', e dal changeSet 20260826-26 la chiave esterna verso la riga di
+--   fattura e' NO ACTION — piu' il guard di riga che rifiuta di toccare
+--   un'attivita' ancora agganciata. Sganciare qui tiene il cleanup semplice
+--   invece di fargli aggirare il muro con la GUC di manutenzione.
+DO $smonta$
+DECLARE
+    v_fattura_id bigint;
+BEGIN
+    SELECT f.id INTO v_fattura_id
+      FROM vendite.fatture f
+     WHERE f.billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard)
+     ORDER BY f.id DESC
+     LIMIT 1;
+
+    IF v_fattura_id IS NULL THEN
+        RETURN;
+    END IF;
+
+    PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
+    UPDATE vendite.attivita_fatturabili
+       SET fattura_riga_id = NULL
+     WHERE fattura_riga_id IN (SELECT fr.id FROM vendite.fatture_righe fr
+                                WHERE fr.fattura_id = v_fattura_id);
+    PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'off', true);
+
+    DELETE FROM vendite.fatture_righe WHERE fattura_id = v_fattura_id;
+    DELETE FROM vendite.fatture       WHERE id = v_fattura_id;
+END
+$smonta$;
 
 -- =========================================================
 -- Cleanup finale

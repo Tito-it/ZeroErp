@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L7b pezzo 2 — IL MOTORE: la porta che si chiude da sola
+#   vendite.trgfn_doc_ritira_commessa_attivita()   [generica, fase _z90_]
+#   Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-10 (§9.7.6)
+#
+# ── ⭐ PERCHE' UN TRIGGER E NON UNA CHIAMATA NEI SERVIZI (Q-10) ─────
+#   Lo stato di una testata si cambia da **molti** posti — funzioni DB e
+#   `UPDATE` diretti dal backend — e sono destinati a crescere. Con la chiamata
+#   esplicita basta **uno** distratto e il buco torna, silenzioso identico a
+#   quello da cui nasce questo cantiere.
+#
+#   ⭐ E l'argomento e' in questo stesso cantiere. Il difetto di L1 era nato
+#   esattamente cosi': la regola «prima riallinea, poi cancella» viveva come
+#   ORDINE DEI PASSI dentro una funzione, cioe' come **disciplina**. E' bastata
+#   una chiave esterna nuova e la disciplina e' saltata senza un errore, per
+#   quattro settimane. La lezione — **il muro va nella struttura** — e' la
+#   stessa applicata in L3a, e vale identica qui.
+#
+#   ⭐ Secondo argomento, sul modello: la transizione di stato e' gia'
+#   data-driven (`config.transizioni_stati_*`). Il progetto ha gia' deciso che
+#   *«cosa puo' diventare cosa»* e' una proprieta' del dato, non del chiamante.
+#   Il ritiro e' la **conseguenza** di quella transizione: metterlo nel chiamante
+#   lo separerebbe dalla cosa che lo causa.
+#
+# ── ⚠️ E IL PREZZO SI PAGA COL REGISTRO ─────────────────────────────
+#   Un trigger che annulla lavoro e' **azione a distanza**: chi chiude l'ordine
+#   non vede che sta annullando anche righe di commessa. Si paga con il log riga
+#   per riga, che `fn_ritira_commessa_attivita_da_sorgente` scrive sempre —
+#   altrimenti «il lavoro e' sparito» diventa indistinguibile da un difetto, che
+#   e' precisamente il male da cui nasce questo cantiere.
+#
+# ── ⭐ SI AGGANCIA AL DATO: `is_abortito`, non 'ANNULLATO' ──────────
+#   Come il freno del pezzo 1. Un secondo stato abortito sara' coperto da solo.
+#
+# ── ⚠️ FASE `_z90_` E `AFTER`, e non e' un dettaglio ────────────────
+#   Il freno (`_a10_`, BEFORE) e il motore (`_z90_`, AFTER) restano **due
+#   oggetti diversi**: la cosa che blocca e la cosa che agisce non si mescolano.
+#   E AFTER perche' il ritiro deve avvenire solo se la transizione e' passata:
+#   in BEFORE girerebbe anche quando un guard successivo la rifiuta.
+#   ⚠️ I BEFORE ROW scattano in ordine ALFABETICO: il nome del trigger e' stato
+#   scelto sapendolo, e la fase `_z90_` lo tiene comunque in coda.
+#
+# ── ⛔ COSA NON RAGGIUNGE, ED E' GIUSTO ─────────────────────────────
+#   Le righe **sourceless** — `ONERE` e `RETTIFICA` — non hanno sorgente e il
+#   ritiro per sorgente non le trova. La loro via e' `fn_annulla_commessa_attivita`
+#   e `fn_annulla_accredito_riga_reso`.
+#
+# ⚠️ `vendite.attivita_consumi` NON viene montata: e' l'unica delle cinque
+#   sorgenti che spingono senza una colonna di stato `stato_doc_*` con
+#   vocabolario (ha `stato_calcolo`), ed e' anche un flusso non ancora acceso —
+#   `test-cleanup-fattura-copertura-figlie-v1` la classifica SCOPERTA_NOTA e
+#   sorveglia che resti vuota. Va montata il giorno che il flusso si accende.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-35-create-trgfn-doc-ritira-commessa-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260826-35-create-trgfn-doc-ritira-commessa-attivita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L7b / Q-10: il MOTORE. Quando un documento entra in uno stato abortito, ritira le
+        righe di commessa NON_EMESSA che aveva spinto. ⭐ Trigger e non chiamata nei servizi
+        perche' lo stato di una testata si cambia da molti posti e ne basta uno distratto: e'
+        lo stesso argomento del difetto di L1, dove la regola viveva come disciplina dentro
+        una funzione ed e' saltata senza un errore. Il muro va nella struttura. ⭐ E la
+        transizione e' gia' data-driven: il ritiro e' la CONSEGUENZA di quella transizione,
+        metterlo nel chiamante lo separerebbe dalla causa. ⚠️ Il prezzo dell'azione a
+        distanza si paga col registro riga per riga, che la primitiva scrive sempre. ⭐ Si
+        aggancia a is_abortito, non a 'ANNULLATO'. Fase _z90_ e AFTER: il freno (_a10_) e il
+        motore restano due oggetti, e in BEFORE il ritiro girerebbe anche su una transizione
+        poi rifiutata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_ritira_commessa_attivita_da_sorgente'
+                     AND p.pronargs = 3;
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_doc_guard_chiusura_sorgente';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sorgente_codice  text := TG_ARGV[0];
+                  v_colonna_stato    text := TG_ARGV[1];
+                  v_vocabolario      text := TG_ARGV[2];
+                  v_sorgente_tipo_id config.sorgenti.id%TYPE;
+                  v_stato_new        bigint;
+                  v_stato_old        bigint;
+                  v_chiude_new       boolean := false;
+                  v_chiude_old       boolean := false;
+                  v_etichetta        text;
+                  v_ritirate         integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   IL MOTORE del ritiro: quando un documento entra in uno
+                  --   stato ABORTITO, riprende le righe di commessa che aveva
+                  --   spinto e che nessuno ha ancora emesso.
+                  --
+                  -- ⭐ Trigger e non chiamata nei servizi (Q-10): lo stato di
+                  --   una testata si cambia da molti posti, e ne basta UNO
+                  --   distratto perche' il buco torni. E' lo stesso argomento
+                  --   del difetto di L1 — la regola viveva come disciplina
+                  --   dentro una funzione, ed e' saltata senza un errore.
+                  --
+                  -- ⛔ Le righe EMESSA non arrivano qui: le ferma il guard
+                  --   _a10_ (trgfn_doc_guard_chiusura_sorgente) impedendo la
+                  --   chiusura. La primitiva comunque non le toccherebbe.
+                  -- ⚠️ Le SOURCELESS (ONERE, RETTIFICA) non sono raggiungibili
+                  --   dal ritiro per sorgente, ed e' corretto.
+                  -- =========================================================
+                  v_stato_new := (to_jsonb(NEW) ->> v_colonna_stato)::bigint;
+                  v_stato_old := (to_jsonb(OLD) ->> v_colonna_stato)::bigint;
+
+                  IF v_stato_new IS NOT DISTINCT FROM v_stato_old THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- ⭐ `is_abortito` dal vocabolario, non 'ANNULLATO' cablato:
+                  --   un secondo stato abortito sara' coperto da solo.
+                  EXECUTE format(
+                      'SELECT COALESCE(bool_or(s.is_abortito) FILTER (WHERE s.id = $1), false),'
+                      '       COALESCE(bool_or(s.is_abortito) FILTER (WHERE s.id = $2), false)'
+                      '  FROM %s s WHERE s.id IN ($1, $2)', v_vocabolario)
+                     INTO v_chiude_new, v_chiude_old
+                    USING v_stato_new, v_stato_old;
+
+                  -- Solo l'INGRESSO in uno stato abortito e' una chiusura.
+                  IF NOT v_chiude_new OR v_chiude_old THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT s.id INTO v_sorgente_tipo_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = v_sorgente_codice;
+
+                  IF v_sorgente_tipo_id IS NULL THEN
+                      -- ⛔ Fail-closed: un trigger montato male deve gridare,
+                      --    non restare inerte. Un ritiro che non ritira e' la
+                      --    forma di difetto che questo cantiere chiude.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text,
+                          'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+                          jsonb_build_object('parametro', 'TG_ARGV[0]',
+                                             'valore',    v_sorgente_codice),
+                          NULL::uuid, 'TG_ARGV[0]');
+                  END IF;
+
+                  -- Il motivo che finira' nel registro, riga per riga. Nomina
+                  -- il DOCUMENTO, perche' e' la cosa che chi indaga cerchera'.
+                  v_etichetta := format('Ritiro automatico alla chiusura del documento di origine (%s %s)',
+                                        v_sorgente_codice,
+                                        COALESCE(to_jsonb(NEW) ->> 'numero',
+                                                 to_jsonb(NEW) ->> 'codice',
+                                                 to_jsonb(NEW) ->> 'id',
+                                                 '?'));
+
+                  -- ⛔ LA CHIAVE e' `uid::text` (quella di commesse_attivita),
+                  --    non quella di commesse_sorgenti che varia per sorgente.
+                  v_ritirate := vendite.fn_ritira_commessa_attivita_da_sorgente(
+                                    v_sorgente_tipo_id,
+                                    (to_jsonb(NEW) ->> 'uid'),
+                                    v_etichetta);
+
+                  -- ℹ️ Zero righe non e' un errore: un documento puo' non aver
+                  --    mai spinto niente. Il fatto che sia successo qualcosa,
+                  --    e cosa, vive nel registro delle righe ritirate.
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_ritira_commessa_attivita()
+              IS 'MOTORE generico del ritiro: quando un documento entra in uno stato ABORTITO, riprende le righe di vendite.commesse_attivita che aveva spinto e che nessuno ha ancora emesso (le porta ad ANNULLATA via vendite.fn_ritira_commessa_attivita_da_sorgente, con una riga di registro per ciascuna). ⭐ TRIGGER e non chiamata nei servizi (decisione Q-10): lo stato di una testata si cambia da MOLTI posti — funzioni DB e UPDATE diretti dal backend — e sono destinati a crescere; con la chiamata esplicita basta UNO distratto e il buco torna, silenzioso identico a quello da cui nasce questo cantiere. ⭐ E l''argomento e'' nel cantiere stesso: il difetto di L1 era nato cosi'', con la regola «prima riallinea, poi cancella» che viveva come ORDINE DEI PASSI dentro una funzione, cioe'' come disciplina — ed e'' bastata una chiave esterna nuova per farla saltare senza un errore, per quattro settimane. Il muro va nella STRUTTURA, ed e'' la stessa lezione applicata in L3a. ⭐ Secondo argomento, sul modello: la transizione di stato e'' gia'' data-driven (config.transizioni_stati_*), quindi il progetto ha gia'' deciso che «cosa puo'' diventare cosa» e'' una proprieta'' del dato e non del chiamante; il ritiro e'' la CONSEGUENZA di quella transizione, e metterlo nel chiamante lo separerebbe dalla causa. ⚠️ IL PREZZO: un trigger che annulla lavoro e'' AZIONE A DISTANZA — chi chiude l''ordine non vede che sta annullando anche righe di commessa. Si paga con il registro riga per riga, che la primitiva scrive sempre: senza, «il lavoro e'' sparito» diventerebbe indistinguibile da un difetto. ⭐ Si aggancia a is_abortito letto dal vocabolario degli stati e NON a un codice_interno cablato: un secondo stato abortito sara'' coperto da solo. Parametrizzata su (TG_ARGV[0] = codice_interno della sorgente, TG_ARGV[1] = colonna di stato, TG_ARGV[2] = tabella del vocabolario): una funzione, non quattro copie. ⚠️ Fase _z90_ e AFTER, e non e'' un dettaglio: il freno (_a10_, trgfn_doc_guard_chiusura_sorgente) e il motore restano DUE oggetti — la cosa che blocca e la cosa che agisce non si mescolano — e in BEFORE il ritiro girerebbe anche su una transizione che un guard successivo rifiuta. ⛔ Le righe EMESSA non arrivano qui: le ferma il guard impedendo la chiusura. ⚠️ Le SOURCELESS (ONERE, RETTIFICA) non sono raggiungibili dal ritiro per sorgente, ed e'' corretto: la loro via e'' fn_annulla_commessa_attivita e fn_annulla_accredito_riga_reso. ⛔ Fail-closed su un trigger montato con un codice sorgente inesistente. ℹ️ Zero righe ritirate non e'' un errore: un documento puo'' non aver mai spinto niente. Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-10.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_doc_ritira_commessa_attivita();
