@@ -44,17 +44,17 @@ Tutto quello che serve **esiste già** su `dbdev`. Non c'è niente da preparare.
 
 ### Il cliente
 
-| BA | codice | ragione sociale | perché questo |
-|---|---|---|---|
+| BA      | codice        | ragione sociale          | perché questo                                                                                                                                                                              |
+| ------- | ------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **155** | `BAC/0000042` | **Titini Michele Carlo** | ha il **contratto 198 in modalità C**, che è ciò che rende il caso riproducibile: su un contratto C un articolo non negoziato **non ha prezzo**, e non è un difetto dei dati — è la regola |
 
 ### Gli articoli
 
-| codice | tipo | cosa fa il resolver per il BA 155 | serve alla prova |
-|---|---|---|---|
-| **`ARC005474`** | semplice | ⛔ **non risolve** → `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | 1, 2, 3, 4, 7 |
-| **`ART_GUARD_COMP_20260115004105240`** | semplice | ✅ risolve → **120,00**, origine `CONTRATTO_AGGIUNTA` | 8 (controprova) |
-| **`art-comp-001`** («Test composito») | **kit, 3 componenti, tutti obbligatori** | ⛔ **nessuno dei tre** componenti risolve | 5, 6 |
+| codice                                 | tipo                                     | cosa fa il resolver per il BA 155                             | serve alla prova |
+| -------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- | ---------------- |
+| **`ARC005474`**                        | semplice                                 | ⛔ **non risolve** → `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | 1, 2, 3, 4, 7    |
+| **`ART_GUARD_COMP_20260115004105240`** | semplice                                 | ✅ risolve → **120,00**, origine `CONTRATTO_AGGIUNTA`          | 8 (controprova)  |
+| **`art-comp-001`** («Test composito»)  | **kit, 3 componenti, tutti obbligatori** | ⛔ **nessuno dei tre** componenti risolve                      | 5, 6             |
 
 ⭐ `art-comp-001` è il caso più severo che ci sia: i tre componenti sono tutti
 **obbligatori**, cioè quelli su cui il vecchio divieto era più duro. Se passa
@@ -65,19 +65,19 @@ questo, passa tutto.
 
 ### Le causali (`config.causali_trasporto`)
 
-| id | codice | `fatturabile` |
-|---|---|---|
-| **1** | **VENDITA** | ✅ `true` — **l'unica** |
-| 2 | CONTO_VISIONE | `false` |
-| 3 | RESO · 4 RIPARAZIONE · 5 CAMPIONATURA · 6 TRASFERIMENTO · 7 CONTO_LAVORO · 8 OMAGGIO | `false` |
+| id    | codice                                                                               | `fatturabile`          |
+| ----- | ------------------------------------------------------------------------------------ | ---------------------- |
+| **1** | **VENDITA**                                                                          | ✅ `true` — **l'unica** |
+| 2     | CONTO_VISIONE                                                                        | `false`                |
+| 3     | RESO · 4 RIPARAZIONE · 5 CAMPIONATURA · 6 TRASFERIMENTO · 7 CONTO_LAVORO · 8 OMAGGIO | `false`                |
 
 ### I DDT già in bozza (se non vuoi crearne uno)
 
-| id | cliente | utility | causale | righe |
-|---|---|---|---|---|
-| **15849** | 155 — Titini Michele Carlo | 5 | *(nessuna)* | 1 |
-| 15851 | 169 | 5 | *(nessuna)* | 1 |
-| 15853 | 173 | 5 | CAMPIONATURA | 1 |
+| id        | cliente                    | utility | causale      | righe |
+| --------- | -------------------------- | ------- | ------------ | ----- |
+| **15849** | 155 — Titini Michele Carlo | 5       | *(nessuna)*  | 1     |
+| 15851     | 169                        | 5       | *(nessuna)*  | 1     |
+| 15853     | 173                        | 5       | CAMPIONATURA | 1     |
 
 📌 **Suggerimento d'ordine**: crea **un DDT nuovo** per il cliente
 `BAC/0000042`, lascia la causale vuota, e usalo per le prove 1→4. È più pulito
@@ -95,14 +95,14 @@ default, **causale vuota**. Salva la bozza, poi apri le righe → **Nuova riga**
 **Cosa fare**: articolo **`ARC005474`**, quantità 1, IVA come proposta,
 **il campo prezzo LASCIALO VUOTO**. Salva.
 
-- [ ] la riga **si salva** — compare il toast **verde** «Riga aggiunta»;
-- [ ] compare **anche** un toast **giallo** con il motivo, che parla di
+- [X] la riga **si salva** — compare il toast **verde** «Riga aggiunta»;
+- [X] compare **anche** un toast **giallo** con il motivo, che parla di
       *contratto in modalità C / articolo non negoziato*;
-- [ ] ⛔ **nessun toast rosso**, e nessun messaggio «impossibile risolvere il
+- [X] ⛔ **nessun toast rosso**, e nessun messaggio «impossibile risolvere il
       prezzo listino»;
-- [ ] nella tabella righe, la colonna **Prezzo** mostra il tag grigio
+- [X] nella tabella righe, la colonna **Prezzo** mostra il tag grigio
       **«Senza prezzo»** — non una cella vuota;
-- [ ] la colonna **Importo** mostra **anch'essa** «Senza prezzo» — **non
+- [X] la colonna **Importo** mostra **anch'essa** «Senza prezzo» — **non
       `0,00 €`**.
 
 ⚠️ **Se vedi `0,00 €` nell'importo**: è il difetto V-2 del brief tornato. Un
@@ -118,7 +118,7 @@ poterla eseguire.
 
 **Dove**: chiudi il drawer del DDT, riaprilo, torna sulle righe.
 
-- [ ] la riga è ancora lì col tag **«Senza prezzo»**.
+- [X] la riga è ancora lì col tag **«Senza prezzo»**.
 
 Il **motivo** però non è a video (punto 4 del preambolo): si verifica sul dato.
 Query di sola lettura, sostituisci `<ddt_id>`:
@@ -130,8 +130,8 @@ SELECT id, riga_nr, prezzo_unitario,
  WHERE ddt_id = <ddt_id> AND attivo;
 ```
 
-- [ ] `prezzo_unitario` è **NULL**;
-- [ ] `motivo` vale **`E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`**.
+- [X] `prezzo_unitario` è **NULL**;
+- [X] `motivo` vale **`E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`**.
 
 ⚠️ **Se `motivo` è NULL** ma il prezzo manca: B7 non ha scritto. È il caso in
 cui fra sei mesi qualcuno guarda quella riga e non sa dire se il prezzo fu
@@ -142,10 +142,10 @@ dimenticato o se non c'era.
 **Dove**: sulla testata dello stesso DDT, imposta la causale **VENDITA**. Salva.
 Poi guarda il pulsante **Emetti**.
 
-- [ ] il pulsante **Emetti** è **disabilitato**;
-- [ ] passandoci sopra, il tooltip elenca i motivi e fra questi c'è quello sul
+- [X] il pulsante **Emetti** è **disabilitato**;
+- [X] passandoci sopra, il tooltip elenca i motivi e fra questi c'è quello sul
       **prezzo non risolvibile**, che **nomina la riga**;
-- [ ] se provi comunque, il DDT **non** passa a EMESSO.
+- [X] se provi comunque, il DDT **non** passa a EMESSO.
 
 ⭐ **Questo è il momento storico della validazione**: il gate esiste dal
 2026-07-18 e in un anno non è **mai** scattato su un documento reale — le 271
@@ -272,17 +272,17 @@ esista.
 
 ## Verbale
 
-| # | Prova | Casella §19 | Esito | Note |
-|---|---|---|---|---|
-| 1 | Articolo semplice senza prezzo si carica | **1** | ⬜ | |
-| 2 | Il motivo sopravvive al ricarico | F-7 | ⬜ | |
-| 3 | Causale fatturabile → emissione blocca | 2 | ⬜ | |
-| 4 | Causale non fatturabile → il DDT esce e resta fuori | 3 | ⬜ | |
-| 5 | Causale bloccata dopo l'emissione | 3-bis | ⬜ | |
-| 6 | Il kit viaggia senza prezzi | **1-bis** | ⬜ | |
-| 7 | Ordini e preventivi rifiutano ancora | 4 | ⬜ | |
-| 8 | Prezzo risolto: nessuna regressione | — | ⬜ | |
-| 9 | Ri-consegna standalone | **6** | ⬜ | |
+| #   | Prova                                               | Casella §19 | Esito | Note |
+| --- | --------------------------------------------------- | ----------- | ----- | ---- |
+| 1   | Articolo semplice senza prezzo si carica            | **1**       | ⬜     |      |
+| 2   | Il motivo sopravvive al ricarico                    | F-7         | ⬜     |      |
+| 3   | Causale fatturabile → emissione blocca              | 2           | ⬜     |      |
+| 4   | Causale non fatturabile → il DDT esce e resta fuori | 3           | ⬜     |      |
+| 5   | Causale bloccata dopo l'emissione                   | 3-bis       | ⬜     |      |
+| 6   | Il kit viaggia senza prezzi                         | **1-bis**   | ⬜     |      |
+| 7   | Ordini e preventivi rifiutano ancora                | 4           | ⬜     |      |
+| 8   | Prezzo risolto: nessuna regressione                 | —           | ⬜     |      |
+| 9   | Ri-consegna standalone                              | **6**       | ⬜     |      |
 
 **Chiuso il**: ______  **Da**: ______
 
