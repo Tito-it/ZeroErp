@@ -18,7 +18,7 @@
 > ⚠️ **Da non confondere con le note di credito.** «Rettifica» qui significa
 > *correzione di prezzo*; la correzione di **merce** (reso già fatturato →
 > accredito) è un dominio diverso, e il suo documento è
-> [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md).
+> [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
 
 
 **Data:** 27-02-2026

@@ -43,8 +43,8 @@
 > perché la loro sede è il **nodo**, non questa vista.
 >
 > **Correlati:**
-> [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md) §44 ·
-> [collaudo-in-app-nota-credito-resi.md](../work-in-progress/collaudo-in-app-nota-credito-resi.md)
+> [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md) §44 ·
+> [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md)
 
 ---
 
@@ -1325,8 +1325,8 @@ scripts/pgtap-baseline.sh vendite
 | # | Cosa |
 | --- | --- |
 | 7.1 | Riga di registro in **§8** con l'esito reale dell'apply (data, changeSet, conteggio archi, test) |
-| 7.2 | Aggiornare **§44** di [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md): l'arco `S` chiude la richiesta 2 anche dal lato reso |
-| 7.3 | Spuntare la voce corrispondente in [collaudo-in-app-nota-credito-resi.md](../work-in-progress/collaudo-in-app-nota-credito-resi.md) dopo la verifica in-app della tabella del §6, **più** la colonna «Transito» nella lista resi |
+| 7.2 | Aggiornare **§44** di [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md): l'arco `S` chiude la richiesta 2 anche dal lato reso |
+| 7.3 | Spuntare la voce corrispondente in [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md) dopo la verifica in-app della tabella del §6, **più** la colonna «Transito» nella lista resi |
 | 7.4 | ⚠️ La doc auto-gen si rigenera **da sola** al migrate: **non editarla a mano**. Finché Tid non applica, nel repo resta la prosa vecchia — è atteso, non un debito |
 | 7.5 | Portare a un cantiere suo i due residui del §7: il tie-break del `root` e le 2 righe `DDT_VENDITA` in `commesse_sorgenti` senza arco |
 

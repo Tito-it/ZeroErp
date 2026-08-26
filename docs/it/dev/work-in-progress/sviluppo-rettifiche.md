@@ -15,7 +15,7 @@
 > | `tipo_movimento` è una **colonna** su `commesse_attivita` e `attivita_fatturabili` con CHECK `NORMALE \| RETTIFICA \| ONERE` | `20260717-01..04` |
 > | Le quantità sono **immutabili** dopo l'emissione: le correzioni sono **righe nuove**, mai UPDATE | [brief immutabilità e porta oneri](../work-done/brief-db-immutabilita-quantita-e-porta-oneri.md) |
 > | Le voci di puro valore hanno **una porta sola** (`fn_aggiungi_onere_commessa`, causali a catalogo) | stesso brief, §4c |
-> | La correzione di **merce** ha ora il suo modello completo: contatore, `tipo_movimento='RETTIFICA'`, `resi_righe_accrediti` | [brief nota di credito](brief-design-note-credito-resi.md) |
+> | La correzione di **merce** ha ora il suo modello completo: contatore, `tipo_movimento='RETTIFICA'`, `resi_righe_accrediti` | [brief nota di credito](../work-done/brief-design-note-credito-resi.md) |
 >
 > 🔴 **Il punto su cui questo documento va riscritto, non aggiornato**: il §6.2
 > e il §7.1 propongono `vendite.rettifiche` + `vendite.rettifiche_righe` come

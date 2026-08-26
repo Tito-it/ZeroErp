@@ -1,7 +1,7 @@
 # Sei richieste al team DB dal lato applicativo · *nota di credito*
 
 > **Cos'è.** Le sei cose che il piano BE/FE di
-> [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md)
+> [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)
 > (**PARTE IV**, §21 → §26) **non può scrivere da sé**, perché stanno nel
 > database. Tutto il resto del piano procede in parallelo e non le aspetta —
 > tranne dove è scritto il contrario nella colonna «blocca».
@@ -1748,7 +1748,7 @@ numerazione.
 
 ## Riferimenti
 
-* Brief principale e piano BE/FE: [brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md)
+* Brief principale e piano BE/FE: [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)
   — decisioni §21.4, numeratore §21.5, piano §22 → §26
 * Partita generalizzata (cantiere 1): [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md)
 * Pannello situazione merce (cantiere 2): [brief-design-situazione-merce-ordine.md](../work-in-progress/brief-design-situazione-merce-ordine.md)

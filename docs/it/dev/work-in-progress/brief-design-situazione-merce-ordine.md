@@ -36,7 +36,7 @@
 > Catena completa e ragioni in
 > [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md).
 >
-> **Rif.**: [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)
+> **Rif.**: [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md)
 > (le code che alimentano la lettura) · `brief-design-fatturazione-due-lenti.md`
 > §6-quater DL-24/DL-27.
 

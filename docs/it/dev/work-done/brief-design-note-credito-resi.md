@@ -7,26 +7,27 @@
 > riaperto due volte dal collaudo (§38, §45) e richiuso ogni volta ·
 > ✅ **BE: 9 slice su 9** · ✅ **FE: 6 su 6** (§27.1) ·
 > ✅ **prerequisiti DB: nessuno, tutti e sette chiusi** (§27.2, brief di
-> passaggio in `work-done`) · ✅ **ultimo giro BE+FE il 2026-08-26** (§45.9).
+> passaggio in `work-done`) · ✅ **ultimo giro BE+FE il 2026-08-26** (§45.9) ·
+> ✅ **collaudo in-app CHIUSO** il 2026-08-26.
 >
-> 🔴 **Resta una cosa sola, ed è la ragione per cui questo file è ancora in
-> `work-in-progress`: la validazione in-app, che è di Tid.** Il copione è
-> [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md)
-> — **26 spunte su 40** al 2026-08-26. Gli aperti non sono contorno: la
-> **riverifica della correzione del §45.9** (il pulsante grigio *e parlante*,
-> con la controprova sui resi 5122/5123 che resta acceso) e **tutta la prova
-> 7-bis** (arco `S`, la genealogia reso → NC 20024), che è nata il 2026-08-25 e
-> non è mai stata eseguita. Quando è spuntato, il collaudo diventa il verbale e
-> **i due file si spostano insieme in `work-done`**.
+> 📦 **Archiviato in `work-done/` il 2026-08-26**, insieme al verbale di collaudo.
+>
+> ✅ **E la validazione in-app è CHIUSA — 2026-08-26, da Tid, 39 spunte su 39.**
+> Il verbale è [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md),
+> archiviato qui accanto. Le otto prove hanno trovato **quattro difetti che
+> nessun test automatico aveva trovato** — §38, §42, §44, §45 — e tutti e quattro
+> erano di **modello**, non di resa. Con questa, il cantiere è chiuso e il brief
+> si archivia.
 >
 > 🔵 Due code che **non** appartengono più a questo cantiere e non lo trattengono:
 > la richiesta al team DB del **§3** di
-> [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
+> [brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
 > (il chip che scrive «Fattura» sopra una nota di credito) e la domanda del
 > **§45.9.6** — le azioni **per riga** non hanno un censimento dei gate, mentre
 > le otto capability **di documento** ce l'hanno (`linee-guida-sql §12.4`).
 >
-> **Stato slice per slice nel §27.**>
+> **Stato slice per slice nel §27.**
+>
 > ✅ **2026-08-19/20 — la guardia che mancava (§38): APPLICATA.** Il collaudo
 > in-app ha trovato che `vendite.fn_annulla_reso` **non vedeva l'accredito**: un
 > reso già accreditato si annullava lasciando vive le rettifiche, e il primo giro
@@ -97,11 +98,11 @@
 > accreditare, ma così come fatto rimangono bloccati, sembrano un ramo morto»*.
 >
 > **Ed è un ramo morto per progetto, non per dimenticanza**: la slice che ha
-> costruito la coda ([brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md)
+> costruito la coda ([brief-db-fatturazione-ddt-resi.md](brief-db-fatturazione-ddt-resi.md)
 > §7) mette l'emissione della NC **fuori perimetro** — *«qui solo la coda che la
 > alimenta»* — e lascia un **contratto vincolante** per chi la disegnerà (§2).
 >
-> **Design-of-record a monte**: [brief-design-fatturazione-due-lenti.md](../work-done/brief-design-fatturazione-due-lenti.md)
+> **Design-of-record a monte**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > §6-quater, decisioni **DL-24** (dove vivono i resi) e **DL-27** (il contatore).
 >
 > ---
@@ -114,7 +115,7 @@
 > prezzo zero.
 >
 > Catena completa e ragioni in
-> [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md).
+> [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md).
 >
 > ## ✅ PREREQUISITO — SODDISFATTO il 2026-08-17
 >
@@ -361,7 +362,7 @@ esattamente questa: *l'inverso richiede più lavoro*.
 
 ⭐ **L'argomento che ha spostato la scelta è arrivato da un'altra decisione**: il
 pannello «situazione merce» va **anche sul DDT**
-([brief dedicato](brief-design-situazione-merce-ordine.md) §5.1). Sull'ordine la
+([brief dedicato](../work-in-progress/brief-design-situazione-merce-ordine.md) §5.1). Sull'ordine la
 merce fuori partita è un'**assenza** — manca un numero che nessuno sa di dover
 cercare. Sul DDT è una **contraddizione visibile**: le righe del documento sono
 lì sotto, e il pannello sopra ne conterebbe solo alcune. Una spedizione mista
@@ -436,7 +437,7 @@ continueranno a raccontare il mondo di prima — ed è il tipo di incoerenza che
 nessun test intercetta, perché ognuno dei due è coerente con sé stesso.
 
 **1. La nota temporanea nel pannello «situazione merce» dell'ordine.**
-[brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md)
+[brief-design-situazione-merce-ordine.md](../work-in-progress/brief-design-situazione-merce-ordine.md)
 §5.3: il pannello mostra «N da accreditare» **con la dichiarazione che
 l'emissione della NC non è ancora disponibile** e che il dato è solo informativo.
 Quella nota è **temporanea per costruzione**: quando la NC esiste va **rimossa**,
@@ -718,7 +719,7 @@ di questo cantiere, entrambe vanno **scritte** o diventano sorprese):
    riconciliazione incassi**. Oggi il sistema lo dichiara con un log
    («saldo a favore del cliente»), quindi non è un silenzio. Se il credito deve
    essere compensabile con una fattura, è materia del **cantiere incassi**
-   ([brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md)),
+   ([brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)),
    e va portata lì come richiesta, non risolta qui.
 
 ⚠️ **L'accoppiamento con il §12.4 resta, ma è più debole di quanto scritto
@@ -966,7 +967,7 @@ li ha calcolati tre righe più su — e deve solo passarli.
 ⚠️ ~~Il perimetro emittente è un cantiere **attivo** (`dev/db-tid`): questo
 rilievo va portato anche lì, perché è un pezzo dello stesso quadro.~~ —
 **aggiornato il 2026-08-18**: quel cantiere è
-[**chiuso e archiviato**](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
+[**chiuso e archiviato**](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md).
 Il rilievo **resta in carico qui**, dentro **P-6** (i registri per emittente),
 che ne ha ereditato anche il residuo §11.11.
 
@@ -1756,7 +1757,7 @@ esattamente ciò che il brief del BB dichiara di voler impedire.
 
 | Dove | Cosa dice |
 | --- | --- |
-| [brief situazione merce](brief-design-situazione-merce-ordine.md) §6 | *«Nessuna azione nel pannello in questa fase: è una lettura. I verbi vivono dove già stanno»* |
+| [brief situazione merce](../work-in-progress/brief-design-situazione-merce-ordine.md) §6 | *«Nessuna azione nel pannello in questa fase: è una lettura. I verbi vivono dove già stanno»* |
 | questo brief, §9-bis | *«il posto naturale da cui invocare il verbo diventa proprio quel pannello, dove il numero è già davanti agli occhi»* |
 
 ✅ **Decisione: il pannello resta una LETTURA e offre un collegamento alla coda
@@ -2071,7 +2072,7 @@ fallback resta quello scelto), **sì** appena esisterà un registro intestato �
 è l'intento. La parità va **misurata**, non assunta: è il punto 7 di N0.
 
 ⭐ È un pezzo dello stesso quadro del **perimetro emittente** — cantiere
-[**chiuso il 2026-08-18**](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md),
+[**chiuso il 2026-08-18**](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md),
 quindi non c'è nessuno a cui segnalarla: la porta chi tiene **P-6**.
 
 ---
@@ -2324,12 +2325,12 @@ Oltre a quelle già citate slice per slice, sei che valgono per tutto il giro.
 
 | # | Cosa | Perché |
 | --- | --- | --- |
-| **PG-1** | 🔴 **Il processo rimborsi non esiste**, e una NC **fuori dalla banda del minimo** non ha né rata né fondo automatico | §12.4-bis.7. Dentro la banda il fondo fattura la regola da sé; fuori, il credito resta **senza un posto che dica «va rimborsato»**. La strada è nominata dal modello (fondo `origine = MANUALE`, motivo obbligatorio, *«arriva dal processo rimborsi di `pagamenti`»*) ma non è costruita. È la domanda **D8** di [brief-incassi-riconciliazione-rate-promemoria.md](brief-incassi-riconciliazione-rate-promemoria.md), ora precisata |
+| **PG-1** | 🔴 **Il processo rimborsi non esiste**, e una NC **fuori dalla banda del minimo** non ha né rata né fondo automatico | §12.4-bis.7. Dentro la banda il fondo fattura la regola da sé; fuori, il credito resta **senza un posto che dica «va rimborsato»**. La strada è nominata dal modello (fondo `origine = MANUALE`, motivo obbligatorio, *«arriva dal processo rimborsi di `pagamenti`»*) ma non è costruita. È la domanda **D8** di [brief-incassi-riconciliazione-rate-promemoria.md](../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md), ora precisata |
 
 ### 17.4 ~~Al cantiere perimetro emittente~~ → a **P-6**, dentro questo cantiere
 
 > ⚠️ **Aggiornato il 2026-08-18.** Il cantiere perimetro emittente è
-> [**chiuso e archiviato**](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md):
+> [**chiuso e archiviato**](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md):
 > EM-1 non ha più un destinatario esterno. Rientra in **P-6** — i registri di
 > numerazione per emittente sono materia sua — insieme al residuo §11.11 che
 > quel cantiere gli ha lasciato in eredità come prerequisito.
@@ -2719,7 +2720,7 @@ verdi.**
 > Questi vanno mandati **prima** di aprire il ramo BE.
 >
 > ✅ **Tutti e sei approvati da Tid il 2026-08-18** (sera). Il brief di
-> passaggio è [brief-db-note-credito-prerequisiti-be-fe.md](../work-done/brief-db-note-credito-prerequisiti-be-fe.md);
+> passaggio è [brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md);
 > le tre decisioni che li hanno chiusi sono nel §21.4.
 
 | # | Cosa | Perché blocca | Blocca chi |
@@ -2732,7 +2733,7 @@ verdi.**
 | **P-6** | 🔴 **Nessun registro è intestato a un emittente** — misurato il 2026-08-18: i tre registri (`Front-office` 3, `Back-office` 4, `NC` 5) hanno tutti `emittente_soggetto_ruolo_id` NULL, e gli **emittenti fiscali attivi sono 2**, che ✅ **emettono entrambi** (Tid). Non è un difetto della NC: vale sulle fatture da gennaio. §21.5 | due aziende emittenti **condividono lo stesso progressivo**, ed è un difetto fiscale in esercizio. La macchina sa separarli da `20260818-32` (N2b): manca la **configurazione**, non il codice | ⛔ non blocca BE/FE. Sul **registro NC** si separa subito e costa un registro + due righe di mapping; sui registri **3 e 4** è un cantiere suo, perché tocca numerazione già emessa |
 
 📌 **Tutti e sei sono nel brief di passaggio**
-[brief-db-note-credito-prerequisiti-be-fe.md](../work-done/brief-db-note-credito-prerequisiti-be-fe.md),
+[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md),
 pronto per `dev/db-tid`.
 
 ⚠️ **P-3, P-5 e P-6 questo piano li ha *trovati*, non ereditati.** La slice DB
@@ -3624,7 +3625,7 @@ disponibile» sposta la contraddizione invece di chiuderla.
 ### 27.2 ✅ I prerequisiti: **tutti e sette chiusi** (2026-08-19)
 
 Il brief di passaggio è
-[brief-db-note-credito-prerequisiti-be-fe.md](../work-done/brief-db-note-credito-prerequisiti-be-fe.md)
+[brief-db-note-credito-prerequisiti-be-fe.md](brief-db-note-credito-prerequisiti-be-fe.md)
 — **chiuso e spostato in `work-done` il 2026-08-19**. Contiene l'**analisi
 critica del team DB** (§7, rilievi C-1→C-7) e la **cronaca dell'esecuzione**
 (§9), oltre all'esito di ogni passo.
@@ -4858,7 +4859,7 @@ stato esercitato in app e ha fatto quello che doveva.
 #### 40.1.1 Cosa esce già, e cosa manca davvero
 
 `vendite.fn_list_commessa_attivita` è la funzione del §1 del
-[brief-db-lista-attivita-commessa-tre-campi](../work-done/brief-db-lista-attivita-commessa-tre-campi.md),
+[brief-db-lista-attivita-commessa-tre-campi](brief-db-lista-attivita-commessa-tre-campi.md),
 chiusa il 2026-08-16. Delle tre cose chieste oggi:
 
 | Chiesto | Oggi | Cosa manca |

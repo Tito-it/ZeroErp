@@ -32,7 +32,7 @@ Funzioni e viste:
 > sorelle nominava già. Ed è il motivo per cui la nota di credito non ha avuto
 > bisogno di una seconda pipeline.
 >
-> Piano: [brief-design-note-credito-resi](../../../dev/work-in-progress/brief-design-note-credito-resi.md),
+> Piano: [brief-design-note-credito-resi](../../../dev/work-done/brief-design-note-credito-resi.md),
 > decisione **D-NC-10**. Introdotta il 2026-08-18 (`20260818-35`, guard `20260818-36`).
 
 ---

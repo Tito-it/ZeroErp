@@ -86,7 +86,7 @@ documento **trasversale**.
 > ⭐ **AGGIORNAMENTO 2026-08-18 — la nota di credito ha un design completo.**
 > Non è più «da progettare»: dieci decisioni chiuse con Tid e un piano DB a nove
 > slice in
-> [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
+> [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
 > **Quello è il documento unico dell'item, questa roadmap resta il perché.**
 >
 > Cosa risponde, delle caselle ❌ qui sopra:

@@ -6,7 +6,7 @@
 > [vendite.fn_get_registro_id](/dbzero/vendite/funzioni/fn_get_registro_id) ·
 > [vendite.fn_accredita_riga_reso](/dbzero/vendite/funzioni/fn_accredita_riga_reso)
 >
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-note-credito-resi.md` (slice N1)
+> Brief autorevole: `docs/it/dev/work-done/brief-design-note-credito-resi.md` (slice N1)
 
 ---
 

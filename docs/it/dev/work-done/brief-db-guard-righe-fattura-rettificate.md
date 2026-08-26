@@ -12,14 +12,16 @@
 > niente. `test-riporta-lotto-a-draft-v1` era rosso, e non per colpa di quel
 > cantiere.
 >
-> **Stato:** ✅ **CHIUSO lato DB il 2026-08-22.** Cinque changeSet applicati,
-> due file pgTAP estesi, **21 asserzioni verdi**. Restano due consegne fuori dal
-> DB: §6.
+> **Stato:** ✅ **CHIUSO su tutti i lati** — DB il 2026-08-22 (cinque changeSet
+> applicati, due file pgTAP estesi, **21 asserzioni verdi**), BE e FE verificati
+> il 2026-08-26 (§6). L'unico residuo è **DB-1**, che non è un lavoro ma un
+> **debito ancorato**: si salda alla prossima volta che una di quelle quattro
+> funzioni si tocca.
 >
 > **Correlati:**
 > [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md) §12.6
 > (il modello delle rettifiche) ·
-> [brief-db-event-log-scope-e-riga-parlante.md](../work-done/brief-db-event-log-scope-e-riga-parlante.md)
+> [brief-db-event-log-scope-e-riga-parlante.md](brief-db-event-log-scope-e-riga-parlante.md)
 > (il cantiere che ha fatto girare la baseline; **nessun** rapporto tecnico).
 
 ---
@@ -189,8 +191,8 @@ nominano sono verdi.
 
 | # | A carico | Cosa |
 | --- | --- | --- |
-| **FE-1** | frontend | La `reason_key` **`vendite.lotti.azione_reason.righe_rettificate`** non ha ancora la voce i18n. Finché manca, `fn_available_actions_lotto` espone un motivo che il drawer non sa scrivere — ⚠️ è il debito che le `reason_key` portano per costruzione, non una dimenticanza di questo cantiere |
-| **BE-1** | backend | Il nuovo codice `E_FATTURE_RIGHE_RETTIFICATE` va mappato in `error_policies.py` (`CONFLITTO_STATO` → 409). Senza, l'envelope lo tratta come non riconosciuto |
+| **FE-1** | frontend | ✅ **FATTO** (verificato il 2026-08-26): la `reason_key` **`vendite.lotti.azione_reason.righe_rettificate`** ha la voce in `it.json` **e** in `en.json` (riga 2585). ⚠️ Resta vera la nota generale: le `reason_key` portano quel debito **per costruzione** — una chiave nuova al DB è muta al FE finché qualcuno non la scrive, e nessun test se ne accorge |
+| **BE-1** | backend | ✅ **FATTO** (verificato il 2026-08-26): `E_FATTURE_RIGHE_RETTIFICATE` → `CONFLITTO_STATO` in `error_policies_generated.py`, cioè **dal catalogo**, non a mano |
 | **DB-1** | team DB | ⚠️ **Debito `%TYPE` dichiarato.** Le quattro funzioni riscritte da questo cantiere hanno la firma a **tipi nudi**, ereditata dal corpo vivo che è stato riprodotto: `p_lotto_id bigint` (su tre `fn_check_*`) e `p_lock_batch_id uuid` (su `fn_cleanup_fatture_by_ids`). Cinque parametri in tutto, tutti id. ⛔ **Non si sanano con un changeSet apposta**: costringerebbe a riprodurre quattro corpi lunghi per cambiare cinque parole, e la riproduzione è proprio il gesto che genera l'errore. Si ancorano **alla prossima volta che una di quelle funzioni si tocca** |
 
 ---

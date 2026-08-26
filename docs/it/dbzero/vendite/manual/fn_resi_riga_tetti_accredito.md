@@ -7,7 +7,7 @@
 > [trgfn_resi_accrediti_guard](trgfn_resi_accrediti_guard.md) ·
 > [fn_accredita_riga_reso](fn_accredita_riga_reso.md)
 >
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-note-credito-resi.md` (§12.6-ter)
+> Brief autorevole: `docs/it/dev/work-done/brief-design-note-credito-resi.md` (§12.6-ter)
 
 ---
 

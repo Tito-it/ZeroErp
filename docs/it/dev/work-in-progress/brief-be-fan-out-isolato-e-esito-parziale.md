@@ -42,7 +42,7 @@
 > giornata (testata DDT non salvata in creazione, per due finestre distinte —
 > dettaglio in §13.2). E un cantiere nuovo: la coda accrediti è un **ramo
 > morto** senza il verbo che emette la nota di credito
-> ([brief-design-note-credito-resi.md](brief-design-note-credito-resi.md),
+> ([brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md),
 > decisioni di dominio già prese).
 >
 > **Stato al 2026-08-17, fine giornata — V2 quasi chiusa.** Fatti anche:
@@ -798,7 +798,7 @@ già — *«è 🟢 perché nessuna azione esiste oggi»*.
 verificabile ora (resta da confermare che il drill-down si apra: era il difetto
 della whitelist fail-closed); l'area RESI lo diventerà **con la slice NC**, e
 allora basteranno due celle di seed — vedi §6.1 di
-[brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
+[brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
 
 ### 13.3 Le due cose non-validazione — una chiusa, una aperta
 

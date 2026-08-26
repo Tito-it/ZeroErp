@@ -149,7 +149,7 @@ Quattro misure, tutte contrarie all'ipotesi «vecchie righe da buttare»:
 
 ⭐ **Ed è materiale vivo del collaudo in corso**: `DDT0010839` è il DDT dei resi
 `5797`/`5799` della tabella in cima a
-[collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md).
+[collaudo-in-app-nota-credito-resi.md](../work-done/collaudo-in-app-nota-credito-resi.md).
 
 ### 2.3 Cosa si vede a video, oggi
 

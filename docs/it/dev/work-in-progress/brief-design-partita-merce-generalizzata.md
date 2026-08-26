@@ -42,7 +42,7 @@ uno è indipendente.
 | ----- | ----------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1** | **Partita generalizzata**                       | **questo**                                                                         | È la nozione su cui gli altri due poggiano. Cambiarla dopo obbliga a rifarli                                                                   |
 | **2** | Pannello «situazione merce» su ordine **e DDT** | [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md) | Legge la partita. Fatto prima, mostrerebbe spedizioni miste con conti parziali **sul DDT**, dove l'incoerenza si vede a occhio                 |
-| **3** | Nota di credito (emissione dell'accredito)      | [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md)             | Attribuisce l'accredito **alla partita**. Scritta sulla chiave di oggi, andrebbe riscritta — e nel frattempo avrà emesso **documenti fiscali** |
+| **3** | Nota di credito (emissione dell'accredito) — ✅ **CHIUSO 2026-08-26**, in `work-done` | [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md)             | Attribuisce l'accredito **alla partita**. Scritta sulla chiave di oggi, andrebbe riscritta — e nel frattempo avrà emesso **documenti fiscali** |
 | **—** | Righe DDT a prezzo zero                         | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md)                 | **Indipendente**: riguarda il pricing in inserimento, non la partita. Può procedere in parallelo e sblocca la validazione DL-28                |
 
 ⚠️ **La catena 1 → 2 → 3 non è una preferenza di comodo.** Il punto 3 produce
@@ -1752,7 +1752,7 @@ allarme è entrato insieme alla generalizzazione.
 |                                            |                                                                                                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Cantiere 2** — pannello situazione merce | ✅ **sbloccato**: legge `vw_partite_merce`, che copre ordine, DDT, righe manuali e kit con una lettura sola, e porta `stato` già tradotto                                            |
-| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata. ⭐ **PARTITO il 2026-08-18**: analisi critica e piano DB (nove slice) nella PARTE II di [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md). ⚠️ Lì il **NC-3 di questo §19.3 è corretto**: la cintura tiene, ma nel caso ri-consegna **impedisce ciò che deve succedere** — la correzione `20260817-11/-12` ha chiuso il segmento vergine su cui la «riga 9» di luglio contava |
+| **Cantiere 3** — nota di credito           | ✅ **sbloccato**, e con tre avvertenze precise (§19.3) — la più importante è che `fn_get_stato_push_segment` è l'**unica** cintura che impedirà di ri-fatturare una riga rettificata. ⭐ **PARTITO il 2026-08-18**: analisi critica e piano DB (nove slice) nella PARTE II di [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md). ⚠️ Lì il **NC-3 di questo §19.3 è corretto**: la cintura tiene, ma nel caso ri-consegna **impedisce ciò che deve succedere** — la correzione `20260817-11/-12` ha chiuso il segmento vergine su cui la «riga 9» di luglio contava |
 | **Backend / Frontend**                     | ✅ otto richieste in §19 **tutte fatte** (BE 2026-08-17, FE 2026-08-18)                                                                                                                                |
 
 ### 20.5 Le tre cose che questo cantiere ha insegnato
@@ -2464,11 +2464,16 @@ con il caso vero davanti.
 
 1. **È l'indice della catena** (decisione di Tid, 2026-08-18). La tabella in
    testa — «l'ordine con cui eseguire i lavori collegati» — è la roadmap dei
-   cantieri: il **3 (nota di credito)** e le **righe DDT a prezzo zero** sono
-   ancora da fare. Archiviare l'indice mentre i lavori che indicizza sono aperti
-   è il modo più rapido per perderli.
-2. **Ha lavoro vivo**: il §23.2 è una richiesta DB presa in carico, non un
-   residuo.
+   cantieri. Archiviare l'indice mentre i lavori che indicizza sono aperti è il
+   modo più rapido per perderli.
+   ⭐ **Aggiornamento 2026-08-26**: dei due che tenevano aperto l'indice ne
+   resta **uno**. Il **3 (nota di credito)** è chiuso e archiviato in
+   `work-done` — collaudo in-app compreso, 39 spunte su 39. Restano le **righe
+   DDT a prezzo zero**, il cui collaudo non è ancora cominciato
+   ([collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md)).
+   **Quando quello si chiude, questo indice si archivia con lui.**
+2. ~~**Ha lavoro vivo**: il §23.2 è una richiesta DB presa in carico~~ —
+   ✅ **superato**: il §23.2 è chiuso dal 2026-08-18. Non è più una ragione.
 3. I link, che è la ragione **più debole** e va detta col numero giusto:
    spostandolo si romperebbero **5** link markdown con path (3 brief in
    `work-in-progress`, il brief DB in `work-done`, il manuale BE) — non 19. Le

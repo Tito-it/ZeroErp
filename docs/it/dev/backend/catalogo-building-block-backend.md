@@ -584,7 +584,7 @@ Perimetro ristretto del giro di fatturazione (brief-be-fe-emissione-fattura-mira
 Il predicato «questa riga di coda appartiene a QUESTO documento», condiviso fra
 il **pannello situazione merce** e le **due code di lavoro resi**. Estratto il
 2026-08-18 (regola del 2, ok Tid) dalla slice B3 di
-[brief-design-note-credito-resi.md](../work-in-progress/brief-design-note-credito-resi.md),
+[brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md),
 per la richiesta FE-2: dal pannello si arriva alla coda **già filtrata** sul
 documento aperto.
 

@@ -17,7 +17,7 @@ Viste e funzioni:
 > [fn_aggiungi_onere_commessa](fn_aggiungi_onere_commessa.md) — la porta gemella
 > [trgfn_resi_accrediti_guard](trgfn_resi_accrediti_guard.md)
 >
-> Brief autorevole: `docs/it/dev/work-in-progress/brief-design-note-credito-resi.md` (slice **N8**)
+> Brief autorevole: `docs/it/dev/work-done/brief-design-note-credito-resi.md` (slice **N8**)
 
 ---
 
