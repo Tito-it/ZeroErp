@@ -13,7 +13,7 @@
 > [analisi-numerazione-fattura-data-e-sequenza.md](analisi-numerazione-fattura-data-e-sequenza.md)
 >
 > **Vicino ma senza intersezioni:**
-> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
+> [brief-db-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-db-lavoro-che-non-torna-indietro.md)
 > (attività orfane e «Riporta da emettere»). Verificato il 2026-08-26: **non tocca
 > nessuna funzione né vista di questo cantiere**. Condivide però la classe di
 > difetto — *lavoro che esce dal giro senza un errore* — e una trappola
@@ -21,7 +21,7 @@
 > (loro §7.3, qui R-11 e T8).
 >
 > ⛔ **Intrecciato, non solo correlato:**
-> [brief-db-limite-emissione-e-data-verificata.md](../work-done/brief-db-limite-emissione-e-data-verificata.md).
+> [brief-db-limite-emissione-e-data-verificata.md](brief-db-limite-emissione-e-data-verificata.md).
 > Quel cantiere fa `DROP + CREATE` della stessa `fn_calcola_data_documento` che
 > queste viste chiamano, aggiungendo `p_serie` — e lo fa **contando su DB-1 di
 > qui**, che è ciò che dà la serie alle viste. ✅ **Consegna unica**, con l'ordine
@@ -30,10 +30,26 @@
 > ✅ **Decisioni prese** (Tid, 2026-08-26): D-2 «più registri» con data vuota,
 > D-3 nessuna colonna sulla lista per commessa. D-1 verificata sul codice.
 >
-> ✅ **Stato: LATO DB CHIUSO — applicato il 2026-08-26.** Sei changeSet
-> (`20260826-14` … `-19`), due righe di catalogo, un pgTAP 12/12 verde, doc
-> concettuale delle due funzioni nuove. Migrazione applicata da Tid: **nessuna
-> regressione, suite verde**. Restano solo le consegne BE/FE (§11.8).
+> 📦 **Stato: CANTIERE CHIUSO E ARCHIVIATO il 2026-08-26.** Tutti e tre i lati.
+>
+> * **DB** — sei changeSet (`20260826-14` … `-19`), due righe di catalogo, pgTAP
+>   12/12, doc concettuale delle due funzioni nuove. Migrazione applicata da Tid,
+>   nessuna regressione;
+> * **BE/FE** — le sette consegne (BE-0 → BE-5, FE-1), più una **revisione
+>   critica da 6 rilievi corretti**, di cui uno serio: l'export del *frontend*
+>   non mandava il filtro sezionale, e il presidio che avrebbe dovuto vederlo era
+>   cieco;
+> * **L8** — le colonne non nascono più spente. ✅ **Applicato davvero**,
+>   verificato sul DB il 2026-08-26: `registro` visibile ordine 75,
+>   `data_documento_prevista` visibile ordine 78. Il testo scriveva «al prossimo
+>   migrate», e il migrate è passato;
+> * **Opzione B** — il contorno della lista in una lettura sola: sei query
+>   diventano due, l'endpoint da 2,42–2,66 s a **1,30 s**.
+>
+> ⭐ **Nessuna decisione rimasta a Tid.** L'unica in sospeso era la «terza facet»
+> (regola del 2 sui tre metodi gemelli): è **decaduta da sé**, perché l'opzione B
+> ha rimosso i tre metodi invece di astrarli. Il perché, e cosa insegna, nel
+> §«Segnalato e NON fatto» — che ora è marcato **superato**.
 >
 > ⛔ ~~Stato: pronto per il team DB. Nessun file scritto.~~
 >
@@ -357,7 +373,7 @@ Sono lavoro BE/FE: vanno fatti **prima** del seed, o insieme.
   competenza.
 * ⛔ **L'invariante dell'emittente sulla commessa** — scoperto qui il 2026-08-26
   chiudendo D-6, ma è un difetto suo e ha un brief suo:
-  [brief-db-emittente-commessa-invariante.md](brief-db-emittente-commessa-invariante.md).
+  [brief-db-emittente-commessa-invariante.md](../work-in-progress/brief-db-emittente-commessa-invariante.md).
   ⚠️ **Tocca però lo scope di queste viste**: `vw_dash_competenza_attivita` filtra
   su `co.emittente_soggetto_ruolo_id`, quindi una commessa con quel valore a NULL
   non compare in nessuna delle liste di cui parla questo brief — colonna nuova
@@ -530,7 +546,7 @@ vista, e T2 (§11.7) resta necessario — ma va costruito facendo variare la
 **utility** fra padre e figlio, non l'emittente, che non può variare. ▶ R-5.
 
 ⛔ ~~Residuo minore~~ — **NON è minore, ed è un cantiere suo**:
-[brief-db-emittente-commessa-invariante.md](brief-db-emittente-commessa-invariante.md).
+[brief-db-emittente-commessa-invariante.md](../work-in-progress/brief-db-emittente-commessa-invariante.md).
 Approfondito su richiamo di Tid il 2026-08-26: `vendite.commesse.emittente_soggetto_ruolo_id`
 non è un attributo, è la **chiave di perimetro** della commessa — ci si appoggiano
 la RLS della tabella, il filtro di scope delle viste di questo cruscotto e il
@@ -682,7 +698,7 @@ pgTAP di scope, non da assumere. ⚠️ E il cancello di quel test è
 
 > ⛔ **Prima di tutto, l'ordine con il cantiere gemello** (✅ D-8, §12): L4/L5
 > vanno **dopo** il `DROP + CREATE` di `fn_calcola_data_documento` del brief
-> [limite-emissione-e-data-verificata](../work-done/brief-db-limite-emissione-e-data-verificata.md),
+> [limite-emissione-e-data-verificata](brief-db-limite-emissione-e-data-verificata.md),
 > o quel `DROP` fallisce sulla dipendenza della vista. Consegna unica.
 >
 > ⚠️ **Numerazione: i numeri `01…06` qui sotto sono BRUCIATI.** Il cantiere
@@ -690,7 +706,7 @@ pgTAP di scope, non da assumere. ⚠️ E il cancello di quel test è
 > serie di questo cantiere parte da **`20260826-14`**, e va **riverificata prima
 > di scrivere**: la sequenza è globale per data, e al 2026-08-26 se la dividono
 > **tre** cantieri — il terzo è
-> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md),
+> [brief-db-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-db-lavoro-che-non-torna-indietro.md),
 > che numeri non ne ha ancora presi ma ne prenderà.
 > Tutti i changeSet in stato finale con `runOnChange: false` e `validCheckSums`
 > (**al plurale**).
@@ -808,7 +824,7 @@ oggi — cioè non rompe nessun `throws_like` esistente.
 
 ⛔ **`p_serie` è obbligatoria e senza `DEFAULT`** (✅ D-8): la firma di
 `fn_calcola_data_documento` la aggiunge il cantiere gemello
-[limite-emissione-e-data-verificata](../work-done/brief-db-limite-emissione-e-data-verificata.md),
+[limite-emissione-e-data-verificata](brief-db-limite-emissione-e-data-verificata.md),
 proprio perché queste viste la serie ce l'hanno — gliela dà L2 in `reg.serie`.
 ✅ **L'ordine dei parametri NON è più un'incognita: il gemello ha applicato.**
 Firma vigente, letta sulla doc auto-gen il 2026-08-26 —
@@ -1147,7 +1163,7 @@ Da verificare col frontend prima del seed.
 
 > ✅ **Tid, 2026-08-26**: *«può essere una sola consegna appena loro terminano»*,
 > con l'osservazione che
-> [brief-db-limite-emissione-e-data-verificata.md](../work-done/brief-db-limite-emissione-e-data-verificata.md)
+> [brief-db-limite-emissione-e-data-verificata.md](brief-db-limite-emissione-e-data-verificata.md)
 > tocca la stessa funzione. **Verificato: è così, e l'intreccio è più stretto di
 > un'opinione.**
 
@@ -1228,7 +1244,7 @@ silenzio se qualcuno riporta il join a `ON true` per «semplificare».
 
 ⭐ **Conferma arrivata dall'esterno il 2026-08-26**, e vale la pena scriverla
 perché è il motivo per cui la condizione è quella giusta.
-[brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
+[brief-db-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-db-lavoro-che-non-torna-indietro.md)
 documenta un difetto che produce **attività orfane**: la riga di fattura è stata
 cancellata, l'attività resta marcata come fatturata e non torna in coda.
 Quello stato cade nello stadio `EMESSA_NON_FATTURATA`, ma **un documento non ce
@@ -1336,7 +1352,7 @@ Sei domande, chiuse tutte in giornata con Tid. ⭐ **Nessuna domanda aperta.**
 | **D-6** | **Chiusa senza debito** | ▼ sotto |
 
 ⛔ **D-8 non è una preferenza, è un vincolo meccanico.**
-[brief-db-limite-emissione-e-data-verificata.md](../work-done/brief-db-limite-emissione-e-data-verificata.md)
+[brief-db-limite-emissione-e-data-verificata.md](brief-db-limite-emissione-e-data-verificata.md)
 fa `DROP + CREATE` della stessa `fn_calcola_data_documento` che le nostre viste
 chiamano, e PostgreSQL **rifiuta** di eliminare una funzione da cui dipende una
 vista (provato in transazione). Se le viste entrassero prima, il loro `DROP`
@@ -1636,9 +1652,9 @@ eseguito**.
   la prova del nove e il corollario sui test. Più il punto 5 della filosofia non
   negoziabile in `PROJECT_CONTEXT.md`.
 * ⭐ **Due cantieri nuovi**, nati da un difetto scoperto chiudendo D-6:
-  [brief-db-emittente-commessa-invariante.md](brief-db-emittente-commessa-invariante.md)
+  [brief-db-emittente-commessa-invariante.md](../work-in-progress/brief-db-emittente-commessa-invariante.md)
   (la chiave di perimetro della commessa è nullable) e
-  [brief-db-billing-account-cambio-emittente.md](brief-db-billing-account-cambio-emittente.md)
+  [brief-db-billing-account-cambio-emittente.md](../work-in-progress/brief-db-billing-account-cambio-emittente.md)
   (la domanda fiscale, separata apposta).
 
 ### ⚠️ Cosa resta aperto, e non è del DB
@@ -1858,15 +1874,41 @@ Guard su `max_rows`: l'export si ferma alla lista.
 ⚠️ Se un giorno nascesse un secondo chiamante con `max_rows` che vuole i
 totali, troverà le chiavi **assenti** — un `KeyError`, non un numero sbagliato.
 
-### Segnalato e NON fatto: la terza facet
+### ~~Segnalato e NON fatto: la terza facet~~ — ⛔ SUPERATO, e la decisione non è mai servita
 
-`list_dash_competenza_gruppi_tipi`, `_clienti` e `_registri` sono ormai **tre**
-metodi della stessa forma (predicato condiviso → `GROUP BY` → mapping). È la
-soglia della regola del 2, e per [[feedback_regola_del_2_estrai_bb]] va
-**dichiarato prima**, non fatto di iniziativa. ⚠️ Con un caveat contrario: la
-terza ha un `LATERAL` che le altre due non hanno, e un template che deve
-parametrizzare `FROM`, `SELECT` e `GROUP BY` rischia di essere meno leggibile
-delle tre copie. Decisione a Tid.
+> ⛔ **Questo paragrafo descrive codice che non esiste più.** Resta perché la
+> storia vale; ma **non cercare quei tre metodi**: sono stati rimossi lo stesso
+> giorno dal §«Il contorno della lista in una sola lettura (opzione B)», più
+> sotto. Verificato il 2026-08-26: **zero definizioni e zero chiamate** per tutti
+> e tre.
+
+Il testo originale, agli atti:
+
+> `list_dash_competenza_gruppi_tipi`, `_clienti` e `_registri` sono ormai **tre**
+> metodi della stessa forma (predicato condiviso → `GROUP BY` → mapping). È la
+> soglia della regola del 2, e per [[feedback_regola_del_2_estrai_bb]] va
+> **dichiarato prima**, non fatto di iniziativa. ⚠️ Con un caveat contrario: la
+> terza ha un `LATERAL` che le altre due non hanno, e un template che deve
+> parametrizzare `FROM`, `SELECT` e `GROUP BY` rischia di essere meno leggibile
+> delle tre copie. Decisione a Tid.
+
+⭐ **Perché vale la pena tenerlo.** La decisione è stata correttamente portata a
+Tid e correttamente **non presa** — ed è finita bene proprio perché nessuna delle
+due opzioni sul tavolo era quella giusta. Si chiedeva *«tre copie o un
+template?»*, e la risposta era una terza: **quelle tre query non dovevano essere
+tre query.** L'opzione B le ha assorbite in una lettura sola insieme alle altre
+due aggregazioni, e la duplicazione è sparita come effetto, non come obiettivo.
+
+⚠️ **La regola del 2 dice di estrarre alla seconda copia. Prima di estrarre,
+chiedersi se le copie devono esistere** — perché un building block costruito
+sopra tre query che potevano essere una avrebbe reso permanente proprio la cosa
+da togliere, e con l'aria di aver risolto. Qui il costo era misurabile: sei
+letture della stessa vista, 2,42→1,30 s sull'endpoint.
+
+📌 E il caveat contrario scritto nel testo originale — *«il template rischia di
+essere meno leggibile delle tre copie»* — era il **segnale**: quando
+l'astrazione sembra peggio delle copie, spesso il problema non è come astrarre,
+è che le copie sono nel posto sbagliato.
 
 ### Verifiche dopo le correzioni
 
@@ -1949,11 +1991,120 @@ il ritiro dinamico manda nella riga di espansione quando lo spazio non basta.
 > emittente · azioni
 
 ℹ️ Postilla aggiunta anche nei due cantieri d'origine
-([cliente e ricerca](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md),
-[perimetro emittente](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)):
+([cliente e ricerca](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md),
+[perimetro emittente](brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)):
 è lì che il passo era stato saltato, ed è lì che chi rilegge deve trovarlo.
 
 ⭐ **Vale la pena farne una regola**: chi aggiunge una colonna a catalogo decide
 *anche* se nasce accesa o spenta, e lo scrive. «Spenta» è una scelta legittima —
 per una colonna di nicchia lo è — ma dev'essere una scelta, non l'esito di un
 passo saltato.
+
+---
+
+## 2026-08-26 · Il contorno della lista in una sola lettura (opzione B)
+
+Nato dalla domanda di Tid sulla regola del 2: *«farne uno solo peggiorerebbe le
+prestazioni degli altri 2 a causa del LATERAL?»*.
+
+### La misura che ha risposto: no, e il LATERAL non c'entra
+
+Stessa facet, con e senza il `LATERAL`, tre giri ciascuna: **285 ms contro
+285 ms**. Nella misura dell'endpoint la facet dei sezionali — quella *col*
+`LATERAL` — è perfino la più veloce delle tre (0,285 contro 0,296 e 0,307). Il
+costo sta tutto nella **vista**, non nell'espansione dell'array.
+
+⭐ **Ma la domanda aveva una risposta migliore di quella che avevo dato.**
+Dipende da cosa significa «farne uno solo»:
+
+| | effetto |
+| --- | --- |
+| un solo **template** (quello che avevo proposto e poi sconsigliato) | le query restano tre, i tempi identici, e il `LATERAL` diventa un parametro che due su tre ignorano — **si legge peggio** |
+| una sola **esecuzione** | la vista si legge **una volta**, e il `LATERAL` resta confinato nel suo ramo senza toccare gli altri due |
+
+Il dubbio che avevo sollevato **sparisce con la seconda forma**: non c'è nessun
+template da parametrizzare.
+
+### Cosa è stato fatto
+
+`get_dash_competenza_gruppi_accessori` sostituisce **cinque** metodi
+(`get_..._riepilogo`, `list_..._tipi`, `list_..._clienti`, `list_..._registri`,
+`count_gruppi_perimetro`), che sono stati **rimossi**: due implementazioni delle
+stesse cinque risposte sono la duplicazione che poi diverge
+([[feedback_duplicazione_nasconde_il_bug]]).
+
+⛔ **I due perimetri restano due**, dentro la stessa query: `base` (competenza +
+stadio) per le tre facet e il conteggio, `filtrato` (base + i filtri
+dell'operatore) per il riepilogo. Unificarli era la scorciatoia ovvia e avrebbe
+rotto le tendine **in silenzio** — nessun errore, solo tre menu che smettono di
+far cambiare idea.
+
+### Il risultato, misurato end-to-end
+
+| | prima | dopo |
+| --- | ---: | ---: |
+| query del servizio | 6 | **2** |
+| servizio (guscio) | 2,47 s | **1,36 s** |
+| **endpoint HTTP** | 2,42–2,66 s | **1,30 s** |
+| export HTTP | 2,4 s → 0,98 s (C-6) | 0,98 s |
+
+### Tre trappole incontrate, tutte pagate
+
+**1. La CTE deve portare ogni colonna che un filtro tocca.** Il primo tentativo
+elencava le nove colonne degli aggregati e si è rotto sulla **ricerca libera**,
+che ne guarda cinque, tre delle quali non previste. Il rimedio istintivo —
+`g.*` — funzionava ma **costava 0,7 s**: su questa vista il prezzo dipende da
+*cosa* le si chiede (348 ms per le dodici che servono, **1052 ms** per `g.*`).
+Soluzione: è `_where_gruppi_filtri` a **dichiarare le colonne che legge**,
+accanto al predicato che le usa. Chi aggiunge un filtro aggiunge condizione e
+colonne nello stesso punto, o non compila. E un filtro spento non porta le sue
+colonne: la ricerca libera ne chiede cinque **solo** quando è attiva.
+
+**2. Il denaro non passa da JSON come numero.** psycopg 3 consegna il `jsonb`
+come stringa e `json.loads` trasformerebbe un `numeric` in **float**: il totale
+esce come `::text` dalla query. Presidiato nel test di equivalenza, che verifica
+il *tipo* oltre al valore.
+
+**3. ⚠️ L'ordine dei parametri segue il TESTO, non la logica.** La CTE
+`filtrato` sta prima di `riepilogo`, quindi i parametri dei filtri precedono la
+costante degli oneri. Avevo scritto l'ordine sbagliato: non dà errore —
+confronta il tipo gruppo col valore sbagliato e restituisce numeri plausibili.
+
+### Le prove
+
+**Equivalenza sul database vero**, sette perimetri (perimetro **vuoto**
+compreso, filtro sezionale, «non risolvibile», ricerca, stadio assente): le
+cinque uscite del metodo nuovo **identiche** a quelle dei cinque vecchi, tipo
+del denaro incluso. Fatta **prima** di rimuoverli.
+
+`EXPLAIN ANALYZE` sulla query reale: `base` scansionata **una volta**, i cinque
+aggregati sono `CTE Scan` da microsecondi.
+
+Regressioni: **2691 test verdi**, build FE e presidio i18n puliti.
+
+### I presidi che hanno cambiato sede
+
+Due test verificavano al livello del **service** che le facet non ricevessero i
+filtri. Con una chiamata sola quella proprietà non è più osservabile lì: è
+scesa nella query. Sono stati riscritti dove la proprietà adesso vive —
+`test_due_perimetri_dentro_la_query` legge il testo SQL e verifica che il
+riepilogo peschi da `filtrato` e le quattro aggregazioni da `base`.
+
+⚠️ È la **seconda volta** in questa giornata che un presidio andava spostato
+insieme alla proprietà (l'altra è C-2). Vale come regola: quando una proprietà
+cambia livello, il test la segue — lasciarlo dov'era lo rende verde per
+costruzione.
+
+### ⚠️ Un errore mio, e come si è visto
+
+La rimozione dei cinque metodi l'ho fatta con uno script che calcolava la fine
+di ogni blocco con un'euristica: i blocchi si sono **sovrapposti** e ho
+cancellato anche `list_dash_competenza_errori`, la costante
+`DASH_COMPETENZA_ERRORI_SORT_COLUMNS` e la testa del metodo nuovo. Il file
+**compilava lo stesso**.
+
+Trovato confrontando l'inventario di metodi e costanti con `HEAD`, non
+guardando il codice. Ripristinati dal commit, e verificato che i blocchi
+rimessi siano **byte-identici** all'originale. ⛔ Lezione: una cancellazione a
+blocchi si verifica sull'**inventario**, non sul fatto che il file compili — e
+`python -c "import ast"` non è una verifica di integrità.

@@ -156,26 +156,26 @@ DL-28 è finalmente esercitato per intero.
 
 **Dove**: stessa testata, cambia la causale in **CONTO_VISIONE**. Salva.
 
-- [ ] il pulsante **Emetti** **si abilita** — e senza aver toccato il prezzo;
-- [ ] emetti: il DDT passa a **EMESSO** e prende il **numero**;
-- [ ] la riga resta **«Senza prezzo»**, non le è stato inventato uno zero.
+- [X] il pulsante **Emetti** **si abilita** — e senza aver toccato il prezzo;
+- [X] emetti: il DDT passa a **EMESSO** e prende il **numero**;
+- [X] la riga resta **«Senza prezzo»**, non le è stato inventato uno zero.
 
 Poi, la seconda metà della casella — che il documento resti **fuori** dal giro
 della fatturazione:
 
-- [ ] il pulsante **«Push a commessa»** è **disabilitato**, e il tooltip dice
+- [X] il pulsante **«Push a commessa»** è **disabilitato**, e il tooltip dice
       che è un documento di **solo trasporto**;
-- [ ] in `Vendite → Cockpit fatturazione` (lente DDT) il documento **non
+- [X] in `Vendite → Cockpit fatturazione` (lente DDT) il documento **non
       compare**.
 
 ### 5 · La causale, dopo l'emissione, è **bloccata** *(casella 3-bis)*
 
 **Dove**: sul DDT appena emesso, prova a modificare la testata.
 
-- [ ] il campo **Causale di trasporto** è in **sola lettura** (tutta la testata
+- [X] il campo **Causale di trasporto** è in **sola lettura** (tutta la testata
       lo è fuori dalla bozza).
 
-ℹ️ **Non è un errore che non appaia il messaggio del DB.** Il guard
+ℹ️ **sNon è un errore che non appaia il messaggio del DB.** Il guard
 `E_DDT_CAUSALE_IMMUTABILE` sta a livello database e l'applicazione non lo
 raggiunge, perché non espone la modifica. Il codice è comunque registrato nel
 dizionario del backend (BE-C) proprio perché il giorno in cui quella porta si
@@ -190,23 +190,23 @@ Righe → **Nuova riga** → articolo **`art-comp-001`**.
 
 Si apre la **dialog dei componenti** (l'articolo è composito):
 
-- [ ] i **tre** componenti (`componente`, `componente2`, `art 100`) hanno la
+- [X] i **tre** componenti (`componente`, `componente2`, `art 100`) hanno la
       colonna **Prezzo suggerito vuota** e accanto il **motivo**
       («Contratto 198 modalità C…»);
-- [ ] ⭐ il pulsante **Conferma** è **ABILITATO** — è la cosa da guardare: prima
+- [X] ⭐ il pulsante **Conferma** è **ABILITATO** — è la cosa da guardare: prima
       del 2026-08-19 era disabilitato e il kit non si salvava;
-- [ ] conferma **senza digitare nessun prezzo**, poi salva la riga;
-- [ ] la riga kit compare con **«Senza prezzo»**;
-- [ ] ⛔ **non** `0,00 €` — se il padre valesse zero sarebbe una **somma
+- [X] conferma **senza digitare nessun prezzo**, poi salva la riga;
+- [X] la riga kit compare con **«Senza prezzo»**;
+- [X] ⛔ **non** `0,00 €` — se il padre valesse zero sarebbe una **somma
       parziale** dei figli, il difetto che C2 esiste per impedire;
-- [ ] apri il pannello componenti della riga: i tre componenti ci sono, con
+- [X] apri il pannello componenti della riga: i tre componenti ci sono, con
       prezzo **assente** e **non** zero;
-- [ ] **Emetti**: il DDT esce.
+- [X] **Emetti**: il DDT esce.
 
 **Controprova, sulla stessa riga** — cambia la causale della testata in
 **VENDITA** *(fallo **prima** di emettere: dopo non si può più)*:
 
-- [ ] **Emetti** torna **disabilitato**, e il tooltip parla dei **componenti**
+- [X] **Emetti** torna **disabilitato**, e il tooltip parla dei **componenti**
       non valorizzati.
 
 ⚠️ **Quel motivo sui componenti era un ramo morto**: fino al 2026-08-19 non
@@ -221,9 +221,9 @@ non si sa se abbiamo aperto una porta o buttato giù un muro.
 **Dove**: `Vendite → Ordini → Nuovo`, stesso cliente `BAC/0000042`. Aggiungi una
 riga con **`ARC005474`** e **prezzo vuoto**.
 
-- [ ] arriva un **errore rosso**;
-- [ ] la riga **NON** si salva;
-- [ ] nessun tag «Senza prezzo» compare da nessuna parte.
+- [X] arriva un **errore rosso**;
+- [X] la riga **NON** si salva;
+- [X] nessun tag «Senza prezzo» compare da nessuna parte.
 
 Ripeti la stessa cosa su un **Preventivo**: stesso esito.
 
@@ -232,9 +232,9 @@ Ripeti la stessa cosa su un **Preventivo**: stesso esito.
 **Dove**: sul DDT della prova 1, aggiungi una riga con
 **`ART_GUARD_COMP_20260115004105240`**, prezzo **vuoto**.
 
-- [ ] la riga si salva e il prezzo si compila da solo: **120,00**;
-- [ ] **nessun** toast giallo;
-- [ ] nessun tag «Senza prezzo».
+- [X] la riga si salva e il prezzo si compila da solo: **120,00**;
+- [X] **nessun** toast giallo;
+- [X] nessun tag «Senza prezzo».
 
 ⚠️ **Se il prezzo non si risolve**, guarda l'**unità di misura** scelta: la
 misura sopra è sull'UoM **base** dell'articolo. Con un'altra UoM il prezzo può

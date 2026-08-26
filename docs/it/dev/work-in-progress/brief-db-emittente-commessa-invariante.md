@@ -3,7 +3,7 @@
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **Origine.** Tid, 2026-08-26, chiudendo la D-6 di
-> [brief-db-registro-e-data-prevista-in-competenza.md](brief-db-registro-e-data-prevista-in-competenza.md).
+> [brief-db-registro-e-data-prevista-in-competenza.md](../work-done/brief-db-registro-e-data-prevista-in-competenza.md).
 > Avevo segnalato come debito minore che `vendite.commesse.emittente_soggetto_ruolo_id`
 > è nullable e non legata al billing account. Risposta di Tid: *«allora hai
 > scoperto un bug!! la commessa dovrebbe derivare sempre l'emittente dalla

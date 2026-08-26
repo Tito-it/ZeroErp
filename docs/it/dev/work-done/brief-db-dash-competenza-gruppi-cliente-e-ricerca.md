@@ -1028,7 +1028,7 @@ determinabile» che vince sull'id invece di sommarsi.
 ## 2026-08-26 · ⚠️ Postilla: la colonna era nata SPENTA
 
 Scoperto chiudendo il cantiere
-[registro e data prevista in competenza](../work-in-progress/brief-db-registro-e-data-prevista-in-competenza.md),
+[registro e data prevista in competenza](brief-db-registro-e-data-prevista-in-competenza.md),
 e corretto lo stesso giorno su richiesta di Tid.
 
 ⛔ **Il seed in `ui.lista_colonna` non basta perche' una colonna si veda.** Lo
