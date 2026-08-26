@@ -16,17 +16,28 @@
 > Il controllo **non serve a chi lavora in ordine**: serve a impedire che una
 > commessa dimenticata produca un documento che non si può più mandare.
 >
-> **Correlati:** [brief-db-numerazione-data-documento-e-sequenza.md](../work-done/brief-db-numerazione-data-documento-e-sequenza.md)
+> **Correlati:** [brief-db-numerazione-data-documento-e-sequenza.md](brief-db-numerazione-data-documento-e-sequenza.md)
 > (il cantiere che ha reso la data una decisione del registro) ·
-> [brief-db-registro-e-data-prevista-in-competenza.md](brief-db-registro-e-data-prevista-in-competenza.md)
+> [brief-db-registro-e-data-prevista-in-competenza.md](../work-in-progress/brief-db-registro-e-data-prevista-in-competenza.md)
 >
 > ✅ **CANTIERE DB CHIUSO il 2026-08-26.** Decisioni chiuse (§12), 13 changeSet
 > su 13 **applicati e verificati sul `databasechangelog`**, pgTAP nuovo (19 test)
 > e bonifica dei due file che il cantiere faceva diventare rossi, **baseline
 > `vendite` verde**, doc concettuale scritta.
-> ⛔ **Restano fuori dal DB**: un altro giro di auto-gen (DOC-1), il ripiego del
-> codice errore lato backend (BE-1), e il collaudo del messaggio nuovo. Elenco
-> con i perché in fondo al §9.
+> ✅ **BE-1 CHIUSO il 2026-08-26** (ripiego + policy rigenerate, 4073 test BE
+> verdi) e **BE-2 riverificato**: il backend non tocca nessuna delle firme
+> cambiate. Dettaglio in fondo al §9 e nel registro.
+>
+> ✅ **COLLAUDO IN-APP SUPERATO il 2026-08-26 (Tid).** Il messaggio nuovo è
+> stato provato a video sul lotto `LTF-0007385`, l'unica porta che non dipende
+> dai dati: la **data dichiarata a mano** nel dialog di numerazione.
+>
+> 📦 **CANTIERE CHIUSO E ARCHIVIATO il 2026-08-26.** DOC-1 (il giro di auto-gen
+> per le cinque pagine `funzioni/` senza `include-markdown` e il link morto in
+> `index.ci.md`) è **rinunciato per decisione di Tid** — *«insignificante»*: non
+> resta come debito perché non è stato giudicato tale. Se un giorno il guardrail
+> dei riferimenti morti girerà su `dbzero/`, lo troverà insieme ai **4 link
+> morti preesistenti** che il §9 già nomina.
 
 ---
 
@@ -485,14 +496,87 @@ stato rinominato.
 
 ---
 
+### 2026-08-26 · ✅ BE-1 chiuso e BE-2 riverificato (backend)
+
+Il ripiego di `E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE` è scritto, le policy
+rigenerate, il backend ricaricato (`kill -HUP` sul master gunicorn: senza, in app
+non si sarebbe visto niente).
+
+⭐ **La rigenerazione ha aggiunto una voce sola**, 781 → 782. È la verifica che
+conta più dell'esito: il diff è stato fatto **prima** di accettare il file, per
+sapere se il catalogo del DB fosse avanti rispetto a git. Non lo era —
+`--check` ora risponde *allineato*. Rigenerare senza guardare avrebbe potuto
+tirare dentro codici di altri cantieri senza che nessuno se ne accorgesse.
+
+**Il ripiego, e perché è scritto così.** Il messaggio a catalogo dice *«la prima
+data ammessa è il %s»*: il ripiego esiste **proprio perché** quel `%s` può non
+arrivare, quindi non può nominare nessuna data. Dice le tre cose che restano
+vere senza argomenti — la data è troppo vecchia, **non è il cancello della
+sequenza**, e il calendario del dialog si apre già sul minimo giusto. La
+distinzione dal gemello `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` sopravvive
+quindi anche nel ripiego, che è il punto per cui il catalogo insiste che sono
+due codici e non uno.
+
+**BE-2 riverificato, non creduto.** Il piano diceva «niente»; l'ho controllato
+sulla doc rigenerata dal push. Le tre firme che il backend usa combaciano con i
+punti di chiamata, e le tre cambiate — `fn_assign_numero_fattura`,
+`fn_get_next_progressivo`, `fn_calcola_data_documento` — nel backend compaiono
+**solo dentro commenti e docstring**. ⚠️ Il controllo che serviva davvero era un
+altro: `fn_get_data_minima_numerabile` **senza** il suffisso `_lotto` è sparita
+col cantiere, e un `grep` sul nome corto trova anche quella lunga. Cercata con il
+confine giusto: **nessuna chiamata**. Se ce ne fosse stata una, nessun test
+l'avrebbe vista — i mock non conoscono le firme
+([[feedback_rinomina_db_binding_mockato]]).
+
+**Misure**: `test_error_policies_classi` 17/17, suite backend **4073 test OK**
+(7 skip), `genera_error_policies --check` allineato.
+
+---
+
+### 2026-08-26 · ✅ Collaudo superato — cantiere chiuso
+
+Il messaggio nuovo è stato visto a video da Tid e si comporta come previsto.
+
+⚠️ **La strada per arrivarci non era quella che il §7 lasciava immaginare.** La
+tabella dei sei documenti da numerare descriveva casi che *esistevano quel
+giorno*: quando il collaudo è partito erano già stati numerati, e non restava
+nessun caso spontaneo. Il messaggio si è raggiunto dall'unica porta che **non
+dipende dai dati** — la data **dichiarata a mano** nel dialog di numerazione, che
+è poi il percorso per cui il codice è nato (⛔ D-2, «il clamp vale per il default,
+il cancello vale per la dichiarazione»).
+
+⭐ **È la lezione da portare via**, e vale oltre questo cantiere: un collaudo
+appoggiato a righe misurate un giorno preciso **scade**, perché le righe si
+muovono. Quello appoggiato al **gesto** — dichiara una data fuori regola — vale
+sempre. Le misure servivano a trovare il difetto, non a costruire la prova.
+
+### 2026-08-26 · ⚠️ Due cose trovate durante il collaudo, che NON sono di qui
+
+1. 🟠 **Il drawer del lotto appena generato mostra un pannello senza azioni.**
+   Aprendolo mentre la pipeline gira, il drawer si tiene quella fotografia e non
+   rilegge la testata quando la generazione finisce: le due azioni ci sono e sono
+   abilitate (verificato su tutti e tre gli strati — `fn_available_actions_lotto`,
+   `fn_get_lotto`, permessi a catalogo), ma a video non compaiono finché non si
+   riapre. ⛔ Non dà nessun segnale di essere una foto vecchia. È il gemello
+   rovesciato del pulsante-vicolo-cieco del 2026-07-31 — lì un pulsante di
+   troppo, qui due che mancano. **Senza cantiere: da assegnare.**
+2. ⚠️ **Un conteggio letto senza contesto operatore.** Cercando i casi vivi,
+   `vendite.fatturazione_lotti` ha risposto **zero a tabella piena**: la policy
+   pretende `app.ruolo_applicativo = 'OPERATORE'` e con `'SYSTEM'` è fail-closed.
+   Lo zero è passato per un dato e ha prodotto la conclusione sbagliata («non c'è
+   più niente da provare»). Stessa specie del §45.9.2 del brief nota di credito.
+   Nessuna azione: è un promemoria di metodo, non un difetto del software.
+
+---
+
 ### ⛔ Cosa resta, e a chi
 
 | | Cosa | Perché non è qui |
 | --- | --- | --- |
-| **DOC-1** | **Un altro giro di auto-gen.** Le cinque pagine nuove in `funzioni/` non hanno la riga `{% include-markdown %}` verso il loro manuale — l'auto-gen la scrive solo se il manuale **esiste già** quando gira, e sono stati scritti dopo. Stessa ragione per cui `index.ci.md` elenca ancora `fn_get_data_minima_numerabile`, che ora è un **link morto** | ⛔ Non si edita a mano un file auto-generato: si rigenera |
-| **BE-1** | Il **ripiego senza `%s`** di `E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE` in `apps/core/services/error_messages_fallback.py`, poi `manage.py genera_error_policies` | Perimetro DB: le richieste al BE si scrivono qui. ⚠️ Presidiato da `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`: senza, il test del backend diventa rosso |
-| **BE-2** | **Niente**, e vale anche dopo D-9 — verificato: il backend numera passando da `fn_numera_fattura_opz_emessa`, firma invariata, e non chiama direttamente né `fn_assign_numero_fattura` né `fn_get_next_progressivo` | |
-| **FE-1** | **Niente di obbligato.** La `minDate` che il dialog già legge diventa più alta da sola. ⚠️ Il messaggio del rifiuto nuovo va provato in collaudo: è una frase diversa, e chi la incontra deve capire che non è il cancello della sequenza | |
+| **DOC-1** | 🚫 **RINUNCIATO** (Tid, 2026-08-26: *«insignificante»*). **Un altro giro di auto-gen.** Le cinque pagine nuove in `funzioni/` non hanno la riga `{% include-markdown %}` verso il loro manuale — l'auto-gen la scrive solo se il manuale **esiste già** quando gira, e sono stati scritti dopo. Stessa ragione per cui `index.ci.md` elenca ancora `fn_get_data_minima_numerabile`, che ora è un **link morto** | ⛔ Non si edita a mano un file auto-generato: si rigenera |
+| **BE-1** | ✅ **FATTO il 2026-08-26.** Ripiego senza `%s` scritto in `error_messages_fallback.py` e policy rigenerate: `E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE` → `DATO_ERRATO`. ⭐ **La rigenerazione ha aggiunto una voce sola** (781 → 782): il catalogo del DB **non era avanti rispetto a git**, verificato col diff prima di committare. `--check` ora dice *allineato*. Presidi verdi: 17/17 su `test_error_policies_classi`, **4073 test BE OK** | |
+| **BE-2** | **Niente** — ✅ **riverificato il 2026-08-26 sulla doc rigenerata dal push**, non sulla parola del piano. Le tre firme che il BE usa combaciano coi tre punti di chiamata: `fn_get_data_minima_numerabile_lotto(bigint)` (1977, 2058), `fn_imposta_data_documento_lotto(bigint, date)` (2084) e `fn_numera_fattura_opz_emessa(bigint, …)` (2100, 2246). ⛔ E delle due firme cambiate: `fn_assign_numero_fattura`, `fn_get_next_progressivo` e `fn_calcola_data_documento` compaiono nel backend **solo dentro commenti e docstring** — nessuna chiamata SQL. Verificato anche che nessuno chiami `fn_get_data_minima_numerabile` **senza** il suffisso `_lotto`, che il cantiere ha fatto sparire | |
+| **FE-1** | **Niente di obbligato**, e ✅ **il collaudo è stato fatto** (2026-08-26): la `minDate` si è alzata da sola e il messaggio del rifiuto nuovo è stato visto a video, dichiarando una data fuori regola nel dialog di numerazione | |
 | **GEMELLO** | `brief-db-registro-e-data-prevista-in-competenza.md` usa la firma nuova di `fn_calcola_data_documento` — **quattro** argomenti, con `p_serie` in terza posizione (▶ ✅ D-8) | La firma è già in servizio: quel cantiere la usa e basta |
 
 ⚠️ **Un debito preesistente trovato per strada, e nominato perché non si perda**:
