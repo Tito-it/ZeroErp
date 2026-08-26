@@ -745,19 +745,28 @@ class DashCompetenzaGruppiServiceTests(TestCase):
     i totali seguono il filtro, le voci del filtro no.
     """
 
-    # Scopo: repository mockato con le tre letture dell'endpoint.
+    # Scopo: repository mockato con le DUE letture dell'endpoint — la lista e
+    #        il suo contorno. Erano cinque fino al 2026-08-26: riepilogo e tre
+    #        facet vivono ora in una query sola (vedi
+    #        `get_dash_competenza_gruppi_accessori`).
     def _repo(self, mock_repo_cls):
         repo = mock_repo_cls.return_value
         repo.list_dash_competenza_gruppi.return_value = ([{"gruppo_key": "PREVENTIVO:a"}], 1)
-        repo.get_dash_competenza_gruppi_riepilogo.return_value = {
-            "n_gruppi": 1, "n_attivita": 3, "valore": "100.00", "n_gruppi_oneri": 0,
+        repo.get_dash_competenza_gruppi_accessori.return_value = {
+            "riepilogo": {
+                "n_gruppi": 1, "n_attivita": 3, "valore": "100.00",
+                "n_gruppi_oneri": 0,
+            },
+            "tipi": [
+                {"tipo_gruppo": "PREVENTIVO", "area_documento": "PREVENTIVI",
+                 "n_gruppi": 1, "n_attivita": 3},
+                {"tipo_gruppo": "ONERI_COMMESSA", "area_documento": None,
+                 "n_gruppi": 2, "n_attivita": 2},
+            ],
+            "clienti": [],
+            "registri": [],
+            "n_gruppi_perimetro": 3,
         }
-        repo.list_dash_competenza_gruppi_tipi.return_value = [
-            {"tipo_gruppo": "PREVENTIVO", "area_documento": "PREVENTIVI",
-             "n_gruppi": 1, "n_attivita": 3},
-            {"tipo_gruppo": "ONERI_COMMESSA", "area_documento": None,
-             "n_gruppi": 2, "n_attivita": 2},
-        ]
         return repo
 
     # 17) La risposta porta pagina + riepilogo + facet insieme: una seconda
@@ -785,21 +794,32 @@ class DashCompetenzaGruppiServiceTests(TestCase):
             "ONERI_COMMESSA",
         )
         self.assertEqual(
-            repo.get_dash_competenza_gruppi_riepilogo.call_args.kwargs["tipo_gruppo"],
+            repo.get_dash_competenza_gruppi_accessori.call_args.kwargs["tipo_gruppo"],
             "ONERI_COMMESSA",
         )
 
-    # 19) ⭐ Le facet NON ricevono il filtro: se lo ricevessero, selezionando un
-    #     tipo la tendina resterebbe con la sola voce scelta e l'operatore non
-    #     potrebbe piu' cambiare idea senza azzerare alla cieca.
+    # 19) ⚠️ QUESTO TEST HA CAMBIATO SEDE il 2026-08-26, e il perche' conta.
+    #     Prima verificava che le facet NON ricevessero il filtro: era una
+    #     proprieta' del SERVICE, che chiamava cinque metodi con argomenti
+    #     diversi. Ora la chiamata e' una sola e riceve tutto — la distinzione
+    #     fra i due perimetri e' scesa DENTRO la query (due CTE: `base` per le
+    #     facet, `filtrato` per il riepilogo).
+    #     Qui resta il pezzo che il service governa ancora: che il contorno
+    #     riceva TUTTI i filtri, perche' senza il riepilogo non potrebbe
+    #     riconciliare le righe. Il presidio della separazione vera sta in
+    #     `test_due_perimetri_dentro_la_query`, sotto — dov'e' andata a stare
+    #     la proprieta'.
     @patch.object(vendite_service, "VenditeRepository")
-    def test_gruppi_facet_ignora_il_filtro_tipo(self, mock_repo_cls):
+    def test_gruppi_contorno_riceve_tutti_i_filtri(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
         fn_dash_competenza_gruppi(
             competenza_mese=date(2026, 6, 1), tipo_gruppo="PREVENTIVO",
+            registro_id=4, search="ORD0005174",
         )
-        kwargs = repo.list_dash_competenza_gruppi_tipi.call_args.kwargs
-        self.assertNotIn("tipo_gruppo", kwargs)
+        kwargs = repo.get_dash_competenza_gruppi_accessori.call_args.kwargs
+        self.assertEqual(kwargs["tipo_gruppo"], "PREVENTIVO")
+        self.assertEqual(kwargs["registro_id"], 4)
+        self.assertEqual(kwargs["search"], "ORD0005174")
 
     # 20) Stadio fuori vocabolario -> 400 (stessa whitelist delle altre liste).
     @patch.object(vendite_service, "VenditeRepository")
@@ -820,7 +840,9 @@ class DashCompetenzaGruppiServiceTests(TestCase):
                 competenza_mese=date(2026, 6, 1), order_by="drop_table",
             )
 
-    # 22) Competenza normalizzata al 1° del mese su TUTTE E TRE le letture.
+    # 22) Competenza normalizzata al 1° del mese su ENTRAMBE le letture: una
+    #     sola normalizzata e l'altra no darebbe una lista di un mese e un
+    #     contorno di un altro.
     @patch.object(vendite_service, "VenditeRepository")
     def test_gruppi_competenza_normalizzata_al_primo(self, mock_repo_cls):
         repo = self._repo(mock_repo_cls)
@@ -828,10 +850,51 @@ class DashCompetenzaGruppiServiceTests(TestCase):
         atteso = date(2026, 6, 1)
         for chiamata in (
             repo.list_dash_competenza_gruppi,
-            repo.get_dash_competenza_gruppi_riepilogo,
-            repo.list_dash_competenza_gruppi_tipi,
+            repo.get_dash_competenza_gruppi_accessori,
         ):
             self.assertEqual(chiamata.call_args.kwargs["competenza_mese"], atteso)
+
+    # 22-bis) ⛔ IL PRESIDIO DEI DUE PERIMETRI, e ora vive QUI perche' e' qui
+    #     che vive la proprieta': dentro il testo della query.
+    #     · il RIEPILOGO legge `filtrato` — deve riconciliare le righe a video;
+    #     · le TRE FACET e il conteggio di perimetro leggono `base` — devono
+    #       mostrare tutte le voci anche quando una e' gia' scelta.
+    #     Farle leggere tutte lo stesso insieme e' la scorciatoia ovvia e
+    #     romperebbe le tendine IN SILENZIO: scelto «Preventivi», le altre voci
+    #     sparirebbero e non si potrebbe piu' cambiare idea senza azzerare il
+    #     filtro alla cieca. Nessun errore, nessun numero sbagliato: solo una
+    #     tendina che smette di funzionare.
+    @patch("apps.vendite.db.vendite_repository.connection")
+    def test_due_perimetri_dentro_la_query(self, mock_conn):
+        cursore = mock_conn.cursor.return_value.__enter__.return_value
+        cursore.fetchone.return_value = ("{}", "[]", "[]", "[]", 0)
+        VenditeRepository().get_dash_competenza_gruppi_accessori(
+            competenza_mese=date(2026, 6, 1), stadio="DA_EMETTERE",
+            tipo_gruppo="PREVENTIVO",
+        )
+        sql = cursore.execute.call_args[0][0]
+        # Il perimetro filtrato si usa UNA volta sola, e in un punto solo.
+        self.assertEqual(
+            sql.count("FROM filtrato"), 1,
+            "qualcuno oltre al riepilogo legge il perimetro filtrato: se sono "
+            "le facet, le tendine smettono di far cambiare idea.",
+        )
+        testa, coda = sql.split("tipi AS (", 1)
+        self.assertIn(
+            "FROM filtrato", testa.split("riepilogo AS (", 1)[1],
+            "il riepilogo non legge piu' il perimetro filtrato: i totali "
+            "descriverebbero un perimetro diverso dalle righe che hanno sopra.",
+        )
+        self.assertNotIn(
+            "filtrato", coda,
+            "una facet (o il conteggio di perimetro) e' passata al perimetro "
+            "filtrato.",
+        )
+        self.assertEqual(
+            coda.count("FROM base"), 4,
+            "le tre facet e il conteggio di perimetro devono leggere tutte e "
+            "quattro il perimetro BASE.",
+        )
 
 
 class DashCompetenzaGruppiRepositoryTests(TestCase):
@@ -1186,40 +1249,30 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         self.assertIsNone(righe[0]["registro_codice"])
         self.assertIsNone(righe[0]["data_documento_prevista"])
 
-    # 29-bis) ⭐ Il totale per la voce «Tutti i sezionali» si calcola sul
-    #     perimetro BASE, non sul riepilogo. Il riepilogo SEGUE i filtri: scelto
-    #     un sezionale, la voce «Tutti» direbbe il conteggio di quello — cioe'
-    #     un numero di un'opzione che, premuta, ne mostra un altro.
-    #     ⚠️ E nemmeno sommando la facet: un gruppo su due sezionali e' contato
-    #     sotto entrambi, quindi la somma sovrastima.
-    @patch.object(VenditeRepository, "count_gruppi_perimetro")
-    @patch.object(VenditeRepository, "list_dash_competenza_gruppi_registri")
-    @patch.object(VenditeRepository, "get_dash_competenza_gruppi_riepilogo")
-    @patch.object(VenditeRepository, "list_dash_competenza_gruppi_clienti")
-    @patch.object(VenditeRepository, "list_dash_competenza_gruppi_tipi")
-    @patch.object(VenditeRepository, "list_dash_competenza_gruppi")
-    def test_totale_perimetro_ignora_il_filtro_sezionale(
-        self, mock_lista, mock_tipi, mock_clienti, mock_riep, mock_registri,
-        mock_conta,
-    ):
-        mock_lista.return_value = ([], 0)
-        mock_tipi.return_value = []
-        mock_clienti.return_value = []
-        mock_registri.return_value = []
-        mock_riep.return_value = {
-            "n_gruppi": 32, "n_attivita": 0, "valore": None, "n_gruppi_oneri": 0,
+    # 29-bis) ⭐ I due numeri restano DUE fino al payload. Il riepilogo segue i
+    #     filtri (32), il totale della tendina no (39): se il service li
+    #     collassasse — o ne sovrascrivesse uno con l'altro passando dal
+    #     `payload.update` — la voce «Tutti i sezionali» direbbe 32 di
+    #     un'opzione che, premuta, ne mostra 39.
+    #     ⚠️ Che i due numeri NASCANO da perimetri diversi lo presidia
+    #     `test_due_perimetri_dentro_la_query`, dove sta la query. Qui si
+    #     verifica solo che il service non li confonda per strada.
+    @patch.object(vendite_service, "VenditeRepository")
+    def test_riepilogo_e_totale_perimetro_restano_due_numeri(self, mock_repo_cls):
+        repo = mock_repo_cls.return_value
+        repo.list_dash_competenza_gruppi.return_value = ([], 0)
+        repo.get_dash_competenza_gruppi_accessori.return_value = {
+            "riepilogo": {
+                "n_gruppi": 32, "n_attivita": 0, "valore": "0", "n_gruppi_oneri": 0,
+            },
+            "tipi": [], "clienti": [], "registri": [],
+            "n_gruppi_perimetro": 39,
         }
-        mock_conta.return_value = 39
         payload = fn_dash_competenza_gruppi(
             competenza_mese=date(2026, 6, 1), stadio="DA_EMETTERE", registro_id=4,
         )
-        # Il riepilogo SEGUE il filtro (32), il totale della tendina NO (39).
         self.assertEqual(payload["riepilogo"]["n_gruppi"], 32)
         self.assertEqual(payload["n_gruppi_perimetro"], 39)
-        # ⛔ E il conteggio del perimetro non deve MAI ricevere il filtro:
-        #    riceverlo lo farebbe coincidere col riepilogo, cioe' rendere il
-        #    difetto invisibile invece di impedirlo.
-        self.assertNotIn("registro_id", mock_conta.call_args.kwargs)
 
     # 29) ⛔ La lista degli id NON esce nel payload: se un giorno ci rientrasse,
     #     andrebbe deciso cosa farne dei NULL che `array_agg(DISTINCT)`

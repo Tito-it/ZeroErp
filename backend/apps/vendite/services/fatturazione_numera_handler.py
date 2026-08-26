@@ -31,6 +31,7 @@ from typing import Any
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._fatturazione_job_helpers import (
     parse_competenza_mese,
+    parse_lotti,
     parse_data_iso,
 )
 
@@ -72,6 +73,20 @@ def fatturazione_numera_handler(
         error_code=E_NUMERA_PAYLOAD,
         campo="data_documento",
     )
+    # ⛔ QUINTO E ULTIMO ANELLO del perimetro selezionato. Gli id partono dalla
+    #    lista a video, passano dall'endpoint, dal payload JSON della coda e
+    #    arrivano qui: se uno solo di questi anelli li perde, il giro numera
+    #    l'INTERO MESE invece dei lotti spuntati — e non fallisce, RIESCE. E' un
+    #    atto fiscale: i numeri consumati non tornano indietro.
+    # ⚠️ Si ri-valida qui e non solo nell'endpoint: il payload della coda e' JSON
+    #    e un job puo' essere accodato anche da un'altra strada. Stessa
+    #    disciplina di `data_documento` qui sopra.
+    # ⛔ E STA QUI, in testa, insieme agli altri due campi: un payload
+    #    malformato deve rompersi PRIMA di toccare il database. Messo piu' in
+    #    basso — accanto alla discovery, dove sembra piu' logico — un `lotti`
+    #    sbagliato pagherebbe prima due giri al DB per risolvere gli stati, e
+    #    fallirebbe dopo aver fatto lavoro inutile.
+    lotti_ids = parse_lotti(payload.get("lotti"), error_code=E_NUMERA_PAYLOAD)
     auth_user_id = (scope or {}).get("auth_user_id")
 
     # Import locali: evitano di caricare la catena pipeline al boot del modulo
@@ -90,8 +105,14 @@ def fatturazione_numera_handler(
     )
     assert emessa_id is not None
 
+    # ⭐ La competenza resta nel payload anche sulla selezione — e' la chiave di
+    #    dedup della coda e il contesto dell'esito — ma NON e' il perimetro: i
+    #    due argomenti sono alternativi, e passarli entrambi e' un errore di
+    #    chiamante che il costruttore rifiuta.
     lotti = VenditeRepository().list_lotti_numerabili(
-        competenza_mese=competenza, stato_doc_fiscale_id=emessa_id,
+        stato_doc_fiscale_id=emessa_id,
+        **({"lotti_ids": list(lotti_ids)} if lotti_ids
+           else {"competenza_mese": competenza}),
     )
 
     # `numerato` = transizione DEFINITIVA VERIFICATA sull'esito, non «nessuna

@@ -23,6 +23,11 @@ export const DIALOG_WIDTH = {
 // Durata toast in millisecondi
 export const TOAST_DURATION = {
   SUCCESS: 3000,
+  // ⭐ L'informativo dura come il successo, e non come l'avviso: dice che una
+  // cosa È SUCCESSA («il lavoro è in coda», «lo stava già facendo un altro
+  // giro»), non che c'è qualcosa da guardare. Voce propria perché i due
+  // possano divergere senza che nessuno debba scegliere quale «riusare».
+  INFO: 3000,
   WARN: 4000,
   ERROR: 5000,
   SYSTEM_ERROR: 0,  // 0 = persistente, chiusura manuale

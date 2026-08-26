@@ -46,12 +46,68 @@ SQL_DATA_DOCUMENTO_CORRENTE = """
        AND f_dd.numero IS NULL
 """
 
-# Scopo: i lotti che l'atto «Rendi definitive competenza» numererebbe davvero.
-# ⚠️ Deve restare identico al `WHERE` di `list_lotti_numerabili`: un pavimento
+# Scopo: i lotti che l'atto di numerazione toccherebbe davvero, nelle sue DUE
+#        forme — «tutti quelli di un mese» oppure «questi qui».
+#
+# ⚠️ Deve restare la stessa domanda per tutti e tre i chiamanti: un pavimento
 #    calcolato su un insieme diverso da quello che verra' numerato sarebbe un
 #    suggerimento sbagliato — piu' alto o piu' basso, ma comunque un'altra
-#    domanda. `{lotti}` = alias della tabella `vendite.fatturazione_lotti`.
-SQL_PERIMETRO_LOTTI_NUMERABILI = """
-    {lotti}.competenza_mese = %s
-    AND {lotti}.stato_doc_fiscale_id = %s
-"""
+#    domanda.
+#
+# ⛔ RESTITUISCE SQL **E** PARAMETRI INSIEME, e non e' pignoleria: finche' erano
+#    due cose separate — un `format()` qui e una lista di parametri scritta dal
+#    chiamante — l'ordine dei segnaposto e quello dei valori erano due verita'
+#    da tenere allineate a mano. Su una query con due perimetri e' esattamente
+#    l'errore che e' gia' successo (2026-08-26, cantiere facet): invertiti, non
+#    danno errore — confrontano il valore sbagliato e tornano numeri
+#    plausibili.
+#
+# ⛔ LO STATO SI APPLICA SEMPRE, anche sulla forma a lista. Un lotto scelto a
+#    mano dall'operatore non e' per questo numerabile: se non e' EMESSA, l'atto
+#    non deve toccarlo. La selezione decide il PERIMETRO, non le regole — e
+#    l'interfaccia che spegne la casella e' una comodita', non un presidio.
+#
+# ⛔ Guard su lista VUOTA. `= ANY('{}')` non trova niente e l'atto risponderebbe
+#    «nessun lotto da numerare»: un errore di chiamante uscirebbe travestito da
+#    dato. Chi non ha selezionato nulla non deve arrivare fin qui.
+#
+# `lotti_alias` = alias della tabella `vendite.fatturazione_lotti` nel contesto
+# del chiamante.
+def costruisci_perimetro_lotti_numerabili(
+    *,
+    lotti_alias: str,
+    stato_doc_fiscale_id: int,
+    competenza_mese=None,
+    lotti_ids=None,
+) -> tuple[str, list]:
+    # ⛔ Lo stato e' OBBLIGATORIO su entrambe le forme: senza, il perimetro
+    #    diventa «tutti i lotti» invece che «quelli che l'atto numera». Niente
+    #    `or 0` — normalizzare in silenzio un parametro mancante e' il modo in
+    #    cui una risposta sbagliata sembra una risposta.
+    if not stato_doc_fiscale_id:
+        raise ValueError(
+            "perimetro dei lotti numerabili: `stato_doc_fiscale_id` "
+            "obbligatorio (e' cio' che distingue i lotti numerabili dagli altri)."
+        )
+    if (competenza_mese is None) == (lotti_ids is None):
+        raise ValueError(
+            "perimetro dei lotti numerabili: indicare `competenza_mese` OPPURE "
+            f"`lotti_ids`, non entrambi ne' nessuno dei due "
+            f"(competenza_mese={competenza_mese!r}, lotti_ids={lotti_ids!r})."
+        )
+    if lotti_ids is not None:
+        ids = [int(x) for x in lotti_ids]
+        if not ids:
+            raise ValueError(
+                "perimetro dei lotti numerabili: `lotti_ids` e' vuoto. Un "
+                "perimetro senza lotti non e' «niente da numerare», e' una "
+                "chiamata sbagliata."
+            )
+        return (
+            f"{lotti_alias}.id = ANY(%s)\n    AND {lotti_alias}.stato_doc_fiscale_id = %s",
+            [ids, int(stato_doc_fiscale_id)],
+        )
+    return (
+        f"{lotti_alias}.competenza_mese = %s\n    AND {lotti_alias}.stato_doc_fiscale_id = %s",
+        [competenza_mese, int(stato_doc_fiscale_id)],
+    )

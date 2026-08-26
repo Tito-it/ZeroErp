@@ -14,6 +14,23 @@ export function useNotify() {
     })
   }
 
+  // ⛔ ESISTEVA GIÀ CHI LA CHIAMAVA, e non c'era (2026-08-26). Quattro punti
+  // facevano `notify.info(...)` — due nel cockpit di competenza («il giro era
+  // già in corso», «l'ha fatturato un altro giro») e due nella numerazione su
+  // selezione — e tutti e quattro sollevavano `notify.info is not a function`
+  // invece di mostrare il messaggio. Nessun test la copriva, e un toast che non
+  // compare non si distingue da un toast che non è stato chiesto.
+  // ⚠️ Un informativo NON è un avviso: dice che una cosa è successa, non che
+  // c'è qualcosa da guardare. Riusare `warn` avrebbe colorato di giallo
+  // messaggi tranquilli, insegnando a ignorare il giallo.
+  function info(message) {
+    toast.add({
+      severity: 'info',
+      summary: message || t('notifications.generic_info'),
+      life: TOAST_DURATION.INFO
+    })
+  }
+
   function warn(message) {
     toast.add({
       severity: 'warn',
@@ -67,5 +84,5 @@ export function useNotify() {
     })
   }
 
-  return { success, warn, error, errorConAzioni, systemError }
+  return { success, info, warn, error, errorConAzioni, systemError }
 }

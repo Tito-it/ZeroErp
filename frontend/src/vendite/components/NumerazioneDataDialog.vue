@@ -57,12 +57,15 @@ const props = defineProps({
     default: MODO_DATA_DOCUMENTO.NUMERA,
     validator: (v) => Object.values(MODO_DATA_DOCUMENTO).includes(v),
   },
-  // Esattamente uno dei due. Entrambi null = il dialog non chiede niente.
+  // Esattamente uno dei tre. Tutti vuoti = il dialog non chiede niente.
   lottoId: { type: [Number, null], default: null },
   competenzaMese: { type: [String, null], default: null },
-  // Quanti lotti tocca l'atto (solo perimetro competenza): serve alla frase,
-  // non alla logica.
-  nLotti: { type: Number, default: 0 },
+  // ⭐ Il perimetro SELEZIONATO (lista Lotti). ⚠️ Il limite si ricalcola a ogni
+  //   cambio di selezione — è nelle dipendenze del `watch` che chiama
+  //   `carica()` — perché il pavimento è di ogni SEZIONALE: spuntare un lotto
+  //   di un altro registro può spostarlo in avanti, e un limite calcolato una
+  //   volta all'apertura sarebbe quello di una selezione che non esiste più.
+  lotti: { type: Array, default: null },
   // ⭐ La frase del perimetro, quando il chiamante ne ha una piu' precisa della
   //   nostra. In creazione e' il PESO di cio' che sta per succedere — «3 gruppi,
   //   47 attivita'» — che prima stava nella conferma secca: assorbendo quella
@@ -85,6 +88,14 @@ const corrente = ref(null)   // data che i documenti portano oggi (Date | null)
 //   nemmeno risposto. Un errore travestito da dato tranquillo.
 //   Copre anche il primo render, prima che `carica()` parta.
 const caricato = ref(false)
+// ⛔ QUANTI LOTTI L'ATTO TOCCHERA', e lo dice il SERVER — non il chiamante.
+//   Sono due numeri diversi: una selezione puo' contenere lotti non piu'
+//   numerabili (li ha presi un altro giro, un collega li ha resi definitivi), e
+//   sul perimetro MESE il chiamante quel numero non ce l'ha proprio.
+//   ⚠️ La prima versione lo riceveva come prop e la lista Lotti gli passava `0`
+//   sull'atto di mese: il dialog annunciava «l'atto numera 0 lotti» mentre stava
+//   per numerarli tutti.
+const nLottiPerimetro = ref(0)
 
 // Scopo: la data da proporre. Se quella che i documenti portano gia' va bene,
 //   si propone QUELLA — confermare non cambia niente ed e' il caso normale.
@@ -104,6 +115,7 @@ async function carica() {
   dataScelta.value = null
   minima.value = null
   corrente.value = null
+  nLottiPerimetro.value = 0
   caricato.value = false
 
   // ⛔ IN CREAZIONE NON SI LEGGE NIENTE, ed è la correzione di un difetto vero
@@ -132,11 +144,12 @@ async function carica() {
     return
   }
 
-  if (props.lottoId == null && !props.competenzaMese) return
+  if (props.lottoId == null && !props.competenzaMese && !props.lotti?.length) return
   const res = await execute(
     () => getFinestraNumerazione({
       lottoId: props.lottoId,
       competenzaMese: props.competenzaMese,
+      lotti: props.lotti,
     }),
   )
   // `!== null`: una risposta con tutti i campi a null e' un esito legittimo
@@ -146,12 +159,29 @@ async function carica() {
   //    diventa «non c'era niente da fare».
   if (res === null) return
   caricato.value = true
+  nLottiPerimetro.value = Number(res.n_lotti ?? 0)
   minima.value = res.data_minima ? parseIsoDate(res.data_minima) : null
   corrente.value = res.data_corrente ? parseIsoDate(res.data_corrente) : null
   dataScelta.value = proponi()
 }
 
-watch(() => props.visible, (v) => { if (v) carica() })
+// Ricarica all'apertura, e anche se il PERIMETRO cambia sotto.
+// ⚠️ Oggi il secondo caso NON si verifica, ed è giusto saperlo invece di
+//   crederlo: il dialog è modale e riceve una copia della selezione presa al
+//   momento dell'apertura, quindi mentre è aperto nessuno può spuntare altro.
+//   Il ricalcolo c'è perché il limite dipende dal perimetro e non dal momento —
+//   se un domani il limite si mostrasse accanto alla lista, mentre si spunta,
+//   questo watch è già la cosa giusta. Il commento precedente descriveva quel
+//   comportamento come se accadesse già: non accadeva.
+// ⛔ E il limite DIPENDE davvero dal perimetro: è di ogni sezionale, e spuntare
+//   un lotto di un altro registro lo sposta in avanti.
+// ⚠️ La chiave è la lista ORDINATA e serializzata, non l'array: due riferimenti
+//   diversi con gli stessi id sono la stessa selezione e non devono ricaricare,
+//   mentre gli stessi id in ordine diverso nemmeno — è un insieme.
+watch(
+  () => [props.visible, [...(props.lotti ?? [])].sort((a, b) => a - b).join(',')],
+  ([visibile]) => { if (visibile) carica() },
+)
 
 // Confermare SPOSTA le date dei documenti (e con esse le scadenze): e' la
 // conseguenza che l'operatore non si aspetta, e va detta prima, non dopo.
@@ -210,7 +240,7 @@ function conferma() {
         {{ t('vendite.numerazione_data.perimetro_lotto') }}
       </template>
       <template v-else>
-        {{ t('vendite.numerazione_data.perimetro_competenza', { n: nLotti }) }}
+        {{ t('vendite.numerazione_data.perimetro_competenza', { n: nLottiPerimetro }) }}
       </template>
       <!-- ⚠️ Due frasi, perché i due perimetri NON dicono la stessa cosa: su un
            lotto il pavimento è di quel sezionale; su un mese è il PIÙ ALTO fra

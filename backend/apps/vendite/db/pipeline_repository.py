@@ -33,7 +33,7 @@ from apps.vendite.db.commesse_repository import (
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.db._data_documento_sql import (
     SQL_DATA_DOCUMENTO_CORRENTE,
-    SQL_PERIMETRO_LOTTI_NUMERABILI,
+    costruisci_perimetro_lotti_numerabili,
 )
 from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
@@ -2002,28 +2002,33 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         *,
         lotto_id: int | None = None,
         competenza_mese: date | None = None,
+        lotti_ids: list[int] | None = None,
         stato_doc_fiscale_id: int | None = None,
     ) -> date | None:
-        if (lotto_id is None) == (competenza_mese is None):
+        # ⛔ TRE perimetri, esattamente uno. Il guard non e' burocrazia: senza,
+        #    una chiamata senza argomenti cadrebbe in un ramo con i parametri a
+        #    NULL, non troverebbe nessun lotto e risponderebbe `None` — cioe'
+        #    «niente da numerare», che a video diventa un messaggio tranquillo
+        #    su una domanda mai posta. Un errore di chiamante non deve poter
+        #    uscire come un dato.
+        scelti = [p for p in (lotto_id, competenza_mese, lotti_ids) if p is not None]
+        if len(scelti) != 1:
             raise ValueError(
-                "get_data_documento_corrente: indicare lotto_id OPPURE "
-                "competenza_mese, non entrambi e non nessuno "
-                f"(lotto_id={lotto_id!r} competenza_mese={competenza_mese!r})"
+                "get_data_documento_corrente: indicare ESATTAMENTE uno fra "
+                "lotto_id, competenza_mese e lotti_ids "
+                f"(lotto_id={lotto_id!r} competenza_mese={competenza_mese!r} "
+                f"lotti_ids={lotti_ids!r})"
             )
         if lotto_id is not None:
             sql = SQL_DATA_DOCUMENTO_CORRENTE.format(lotto="%s")
             params: list[Any] = [int(lotto_id)]
         else:
-            # ⚠️ Sul ramo competenza lo stato e' OBBLIGATORIO: senza, il
-            #    perimetro sarebbe «tutti i lotti del mese» invece che «quelli
-            #    che l'atto numera». Niente `or 0` — normalizzare in silenzio un
-            #    parametro mancante e' il modo in cui una risposta sbagliata
-            #    sembra una risposta.
-            if not stato_doc_fiscale_id:
-                raise ValueError(
-                    "get_data_documento_corrente: stato_doc_fiscale_id "
-                    "obbligatorio sul perimetro competenza"
-                )
+            perimetro, params = costruisci_perimetro_lotti_numerabili(
+                lotti_alias="fl_p",
+                stato_doc_fiscale_id=stato_doc_fiscale_id,
+                competenza_mese=competenza_mese,
+                lotti_ids=lotti_ids,
+            )
             sql = """
                 SELECT min(f_p.data)
                   FROM vendite.fatturazione_lotti fl_p
@@ -2031,8 +2036,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                   JOIN vendite.fatture f_p ON f_p.id = lf_p.fattura_id
                  WHERE {perimetro}
                    AND f_p.numero IS NULL
-            """.format(perimetro=SQL_PERIMETRO_LOTTI_NUMERABILI.format(lotti="fl_p"))
-            params = [competenza_mese, int(stato_doc_fiscale_id)]
+            """.format(perimetro=perimetro)
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -2049,17 +2053,33 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     # ⚠️ I lotti sono quelli che l'atto numererebbe davvero (stessa `WHERE` di
     #    `list_lotti_numerabili`): un pavimento calcolato su lotti che non
     #    verranno toccati sarebbe piu' alto del necessario.
-    def get_data_minima_numerabile_competenza(
-        self, *, competenza_mese: date, stato_doc_fiscale_id: int,
+    # ⚠️ Vale per ENTRAMBI i perimetri, e sulla selezione conta di piu': il
+    #    pavimento e' di ogni SEZIONALE, e spuntando lotti di registri diversi il
+    #    piu' restrittivo puo' essere molto piu' avanti degli altri. `max` resta
+    #    la risposta giusta — e' l'unica data che li accontenta tutti — ma e' la
+    #    ragione per cui il dialog deve ricalcolarlo MENTRE la selezione cambia,
+    #    non una volta all'apertura.
+    def get_data_minima_numerabile_perimetro(
+        self,
+        *,
+        stato_doc_fiscale_id: int,
+        competenza_mese: date | None = None,
+        lotti_ids: list[int] | None = None,
     ) -> date | None:
+        perimetro, par_perimetro = costruisci_perimetro_lotti_numerabili(
+            lotti_alias="fl_p",
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            competenza_mese=competenza_mese,
+            lotti_ids=lotti_ids,
+        )
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT max(vendite.fn_get_data_minima_numerabile_lotto(fl_p.id))
                   FROM vendite.fatturazione_lotti fl_p
                  WHERE {perimetro}
-                """.format(perimetro=SQL_PERIMETRO_LOTTI_NUMERABILI.format(lotti="fl_p")),
-                [competenza_mese, int(stato_doc_fiscale_id)],
+                """.format(perimetro=perimetro),
+                par_perimetro,
             )
             row = cursor.fetchone()
         return None if not row else row[0]

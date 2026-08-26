@@ -237,7 +237,7 @@ data», **prima** che il documento esista.
 cui `fn_build_fattura_key` scrive la chiave del documento vero: lista e
 documento non coincidono perché due implementazioni si comportano uguale, ma
 perché è un'implementazione sola. Brief:
-`dev/work-in-progress/brief-db-registro-e-data-prevista-in-competenza.md`.
+`dev/work-done/brief-db-registro-e-data-prevista-in-competenza.md`.
 
 | Campo | Cosa dice |
 | --- | --- |

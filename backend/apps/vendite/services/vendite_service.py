@@ -1147,59 +1147,41 @@ def fn_dash_competenza_gruppi(
     if max_rows is not None:
         return payload
     # Due perimetri DIVERSI nella stessa risposta, ed e' voluto:
-    #  - `riepilogo` SEGUE tutti i filtri (tipo, cliente, ricerca): e' la
-    #    riconciliazione della lista che l'utente sta guardando, e un totale che
-    #    descrive un perimetro diverso dalle righe sopra di se' e' peggio di
-    #    nessun totale;
-    #  - `tipi` e `clienti` (le due facet) NON li seguono: devono mostrare tutte
-    #    le voci disponibili anche quando una e' selezionata, altrimenti
+    #  - `riepilogo` SEGUE tutti i filtri (tipo, cliente, sezionale, ricerca):
+    #    e' la riconciliazione della lista che l'utente sta guardando, e un
+    #    totale che descrive un perimetro diverso dalle righe sopra di se' e'
+    #    peggio di nessun totale;
+    #  - le TRE facet e `n_gruppi_perimetro` NON li seguono: devono mostrare
+    #    tutte le voci disponibili anche quando una e' selezionata, altrimenti
     #    scegliendo «Preventivi» le altre sparirebbero dalla tendina e non si
     #    potrebbe piu' cambiare idea senza azzerare il filtro alla cieca.
-    #    ⚠️ Entrambe sul perimetro BASE (competenza+stadio) e non una sull'altra:
+    #    ⚠️ Tutte sul perimetro BASE (competenza+stadio) e non una sull'altra:
     #    se `clienti` seguisse il tipo e `tipi` no, le due tendine
     #    racconterebbero perimetri diversi e il conteggio cambierebbe a seconda
     #    dell'ORDINE in cui l'operatore sceglie i filtri.
-    payload["riepilogo"] = repository.get_dash_competenza_gruppi_riepilogo(
-        competenza_mese=competenza,
-        stadio=stadio,
-        tipo_gruppo=tipo_gruppo,
-        ba_fatturazione_id=ba_fatturazione_id,
-        ba_non_determinabile=ba_non_determinabile,
-        registro_id=registro_id,
-        registro_non_risolvibile=registro_non_risolvibile,
-        search=search_param,
+    #
+    # ⭐ UNA SOLA LETTURA (2026-08-26). Erano cinque query, una per blocco, e
+    #    ognuna rileggeva la vista da capo: ~1,46 s dei ~2,47 s dell'endpoint.
+    #    I due perimetri ora convivono dentro la stessa query — vedi
+    #    `get_dash_competenza_gruppi_accessori`, dove sono due CTE distinte.
+    payload.update(
+        repository.get_dash_competenza_gruppi_accessori(
+            competenza_mese=competenza,
+            stadio=stadio,
+            tipo_gruppo=tipo_gruppo,
+            ba_fatturazione_id=ba_fatturazione_id,
+            ba_non_determinabile=ba_non_determinabile,
+            registro_id=registro_id,
+            registro_non_risolvibile=registro_non_risolvibile,
+            search=search_param,
+        )
     )
-    payload["tipi"] = repository.list_dash_competenza_gruppi_tipi(
-        competenza_mese=competenza,
-        stadio=stadio,
-    )
-    payload["clienti"] = repository.list_dash_competenza_gruppi_clienti(
-        competenza_mese=competenza,
-        stadio=stadio,
-    )
-    # Terza facet, stesso perimetro BASE delle altre due e per lo stesso
-    # motivo: deve restare possibile cambiare sezionale senza prima azzerare il
-    # filtro alla cieca.
-    payload["registri"] = repository.list_dash_competenza_gruppi_registri(
-        competenza_mese=competenza,
-        stadio=stadio,
-    )
-    # ⭐ Quanti gruppi ha il perimetro BASE — e serve solo alla voce «Tutti i
-    # sezionali» della tendina, che non puo' ricavarla da nessuna delle due
-    # fonti che ha gia':
-    #   · sommare le voci della facet SOVRASTIMA, perche' un gruppo su due
-    #     sezionali e' contato sotto entrambi (ed e' giusto che lo sia: e'
-    #     anche il modo in cui il filtro lo trova);
-    #   · `riepilogo` SEGUE i filtri, quindi appena si sceglie un sezionale la
-    #     voce «Tutti» scenderebbe al conteggio di quello — dicendo 32 sopra
-    #     un elenco che, scegliendola, ne mostra 39.
-    # ⚠️ La facet dei CLIENTI non ha questo problema e infatti somma le sue
-    #    voci: li' ogni gruppo sta sotto una voce sola. La differenza non e' fra
-    #    le due tendine, e' fra partizione e appartenenza multipla.
-    payload["n_gruppi_perimetro"] = repository.count_gruppi_perimetro(
-        competenza_mese=competenza,
-        stadio=stadio,
-    )
+    # ℹ️ `n_gruppi_perimetro` arriva dallo stesso blocco: e' il conteggio del
+    #    perimetro BASE, e serve alla voce «Tutti i sezionali» della tendina,
+    #    che non puo' ricavarlo da nessun altro numero della risposta —
+    #    sommare le voci della facet SOVRASTIMA (un gruppo su due sezionali e'
+    #    contato sotto entrambi, ed e' giusto che lo sia), e `riepilogo` segue
+    #    i filtri.
     return payload
 
 

@@ -18,7 +18,7 @@
 >
 > **Correlati:** [brief-db-numerazione-data-documento-e-sequenza.md](brief-db-numerazione-data-documento-e-sequenza.md)
 > (il cantiere che ha reso la data una decisione del registro) ·
-> [brief-db-registro-e-data-prevista-in-competenza.md](../work-in-progress/brief-db-registro-e-data-prevista-in-competenza.md)
+> [brief-db-registro-e-data-prevista-in-competenza.md](brief-db-registro-e-data-prevista-in-competenza.md)
 >
 > ✅ **CANTIERE DB CHIUSO il 2026-08-26.** Decisioni chiuse (§12), 13 changeSet
 > su 13 **applicati e verificati sul `databasechangelog`**, pgTAP nuovo (19 test)
