@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.0.0
+anthropic==1.1.0
     # via -r ../requirements.in
 anyio==4.14.2
     # via
@@ -28,7 +28,7 @@ cffi==2.1.1
     # via
     #   cryptography
     #   weasyprint
-cryptography==50.0.0
+cryptography==50.0.1
     # via -r ../requirements.in
 cssselect2==0.9.0
     # via weasyprint
@@ -56,7 +56,7 @@ et-xmlfile==2.0.0
     # via openpyxl
 fonttools[woff]==4.63.0
     # via weasyprint
-gunicorn==26.1.0
+gunicorn==26.2.0
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2
