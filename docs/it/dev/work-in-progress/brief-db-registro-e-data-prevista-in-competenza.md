@@ -1658,6 +1658,227 @@ scorciatoia, perché `ordinabile = f` avrebbe evitato il primo ma non il secondo
 
 ---
 
+## 2026-08-26 · ✅ BE/FE CONSEGNATO — le sette consegne
+
+Le sette voci del «cosa resta aperto, e non è del DB» sono chiuse. **Nessuna
+domanda nuova.**
+
+| | Consegna | Dove |
+| --- | --- | --- |
+| **BE-0** | preso atto del 400 → 500 (D-10): nessun lavoro, il codice era già registrato | — |
+| **BE-1** | proiezione: `registri_n`, `registro_codice`, `data_documento_prevista` | `VenditeRepository.list_dash_competenza_gruppi` + `DashCompetenzaGruppoRow` |
+| **BE-2** | whitelist di ordinamento, due voci | `DASH_COMPETENZA_GRUPPI_SORT_COLUMNS` |
+| **BE-3** | otto chiavi i18n, `it.json` **e** `en.json` | `vendite.dashboard_competenza.*` |
+| **BE-4** | la frase «Più sezionali (N)» composta nel BE | `_marca_gruppi_multi_registro` |
+| **BE-5** | filtro + facet + etichetta nell'export | `_where_gruppi`, `list_dash_competenza_gruppi_registri`, `etichette_filtri` |
+| **FE-1** | slot `#cell-registro` + tendina + stato di store | `DashboardCompetenzaView`, `stores/dashboardCompetenza` |
+
+### I due presidi rossi sono verdi
+
+| Guard | Prima | Dopo |
+| --- | --- | --- |
+| `test_liste_configurabili_seed` | 2 rossi (`data_documento_prevista`, `registro_codice` fuori whitelist) | **9/9 verde** |
+| `check_i18n_keys.py` | rosso sulle due `etichetta_i18n_key` | **pulito** |
+
+Regressioni: **1698 test vendite + 990 core/ui, tutti verdi.**
+
+### Tre scelte che si discostano dal piano, e il perché
+
+**1. `registri_ids` NON esce nel payload** (il piano lo dava per esposto). Il
+`WHERE` del filtro e la facet vivono entrambi nel repository e l'array lo usano
+lì. Esporlo obbligherebbe a decidere che farne dei NULL che `array_agg(DISTINCT)`
+conserva: tenendoli è una lista scomoda, togliendoli **diverge da `registri_n`**
+che invece li conta — e due numeri che rispondono «quanti sezionali» in modo
+diverso sono peggio di uno solo. Presidiato da un test che verifica l'assenza.
+
+**2. `etichette_filtri` è un MERGE, non un rimpiazzo.** Il parametro
+`filtri_label` di `build_dash_export_response` esisteva ma **non lo usava
+nessuno**: sostituiva il dizionario intero, quindi una view che volesse tradurre
+UNA chiave doveva ricopiarsi tutte le altre — e la prossima che nasce sarebbe
+sparita dal file in silenzio, proprio dalla riga che promette di dire quale
+perimetro si sta guardando. Rinominato e reso un merge sulle sole chiavi già
+normalizzate: un filtro assente non lo resuscita un'etichetta. Due test.
+
+**3. La descrizione OpenAPI di `order_by` non ricopia più la whitelist**: la
+copia si era fermata a **nove voci su undici**. Ora rimanda al nome della
+costante.
+
+**4. Una chiave in più: `n_gruppi_perimetro`** — trovata rileggendo il proprio
+codice, prima del collaudo. La voce «Tutti i sezionali» della tendina prendeva
+il totale dal `riepilogo`, che però **segue i filtri**: scelto «Back-office», la
+voce «Tutti» sarebbe scesa a *32* — cioè avrebbe dichiarato 32 di un'opzione
+che, premuta, ne mostra *39*. E non si poteva nemmeno sommare la facet, che
+sovrastima per appartenenza multipla. Serviva un terzo numero, sul perimetro
+base.
+
+⚠️ **Il primo tentativo era una seconda chiamata a
+`get_dash_competenza_gruppi_riepilogo` senza filtri, e ha rotto un test
+esistente** — che leggeva `call_args`, cioè l'**ultima** chiamata, credendo di
+leggere la prima. Il rosso era giusto: due chiamate allo stesso metodo per due
+domande diverse confondono chi legge prima ancora del test. Sostituito da
+`count_gruppi_perimetro`, un `COUNT(*)` dedicato. Verificato sull'HTTP: con
+`registro_id=4` il riepilogo scende a 32 e il perimetro resta **39**.
+
+### Le prove, sul database vero e sull'HTTP vero
+
+Non sui mock ([[feedback_rinomina_db_binding_mockato]]).
+
+| | Cosa | Esito |
+| --- | --- | --- |
+| repository | facet, filtri, ordinamenti, riepilogo su giugno con contesto operatore | 32 + 7 = **39**, quanto il perimetro |
+| HTTP | `GET .../gruppi/` con JWT vero, dopo `kill -HUP` | 200, facet e colonne nel payload |
+| HTTP | `order_by=registro_codice` e `=data_documento_prevista` | **200** (erano 400) |
+| HTTP | `registro_id=pippo`, `order_by=inesistente` | **400**, non un filtro ignorato in silenzio |
+| export | riga «Filtri applicati» | `"registro_id": "Back-office"`, non `4` |
+| ⭐ SQL | **i quattro predicati su array costruiti** | ▼ sotto |
+
+⭐ **Il caso multi-sezionale nei dati non esiste** (il team DB ha dovuto
+costruirlo anche lui, F7). I predicati sono stati provati su array fabbricati in
+transazione annullata, ed è la prova che conta:
+
+| Array | `= ANY(3)` | `= ANY(4)` | «non risolvibile» | `cardinality = 0` |
+| --- | --- | --- | --- | --- |
+| `{3}` | ✅ | | | |
+| `{3,4}` | ✅ | ✅ | | |
+| `{NULL}` | | | ✅ | ⛔ **lo perde** |
+| `{}` | | | ✅ | ✅ |
+| `{4,NULL}` | | ✅ | | |
+
+⛔ La colonna a destra è il predicato che **non** ho usato: su `{NULL}` —
+cardinalità 1 — un gruppo interamente non risolvibile sarebbe stato invisibile
+alla voce che lo riguarda. La facet conta il gruppo `{3,4}` sotto entrambe le
+voci: somma 7 su 5 gruppi reali, che è la conseguenza dichiarata.
+
+### ⚠️ Due cose da sapere prima di guardare a video
+
+**1. ~~Le colonne nascono SPENTE~~ — SUPERATO il 2026-08-26.** Al momento della
+consegna BE/FE il resolver le aggiungeva al preset con `visibile = false`
+(`colonne_nuove: 2`, verificato). Poi il team DB ha **acceso tutte e cinque** le
+colonne rimaste spente sulla lista 42 (le due di qui più codice BA, id fiscale
+ed emittente): la vista predefinita è ora di **13 colonne** e il badge
+«Personalizza» è a zero.
+
+⭐ Ed è stato possibile **perché il BE era già arrivato**: accendere una colonna
+che nessuno proietta non dà errore, la spunta e la lascia **vuota su tutte le
+righe** — peggio di una spenta, perché sembra un dato mancante invece di una
+configurazione.
+
+**2. Il Front-office propone `31/08` e non oggi, ed è corretto.** Il pavimento
+di sequenza della serie `VX2` porta `2026-08-31` — c'è un documento numerato con
+una data futura — e `fn_calcola_data_documento` fa `GREATEST(data, pavimento)`.
+È la **conseguenza accettata della D-3** del cantiere gemello: *«su un sezionale
+che porta già una data FUTURA il documento nasce con quella data, anche su un
+registro OGGI»*. Verificato prima di segnalarlo come difetto — non lo è.
+
+### Test aggiunti
+
+| Test | Cosa impedisce |
+| --- | --- |
+| `test_filtro_registro_usa_l_insieme_non_il_codice` | il ritorno al filtro sul codice, che fa sparire i gruppi multi |
+| `test_filtro_registro_non_risolvibile_vince_e_non_conta_la_cardinalita` | il predicato `cardinality = 0`, che perde `{NULL}` |
+| `test_etichetta_multi_registro_distingue_i_due_null` | dire «sono più di uno» a un gruppo che di sezionali non ne ha nemmeno uno |
+| `test_mapping_sezionale_e_data_prevista` | la divergenza chiave ↔ `campo_sorgente` (colonna spuntata e vuota) |
+| `test_registri_ids_non_esce_nel_payload` | il rientro dell'array senza aver deciso che fare dei NULL |
+| ⭐ `test_larghezza_riga_finta_uguale_al_select` | **il presidio del presidio**: tutti i test di mapping girano su `_rows`, quindi una tupla rimasta indietro non li fa fallire — li fa passare su una forma che il database non produce |
+| `test_etichette_sostituiscono_una_chiave_e_non_il_dizionario` + gemello | il rimpiazzo wholesale dei filtri applicati |
+
+---
+
+## 2026-08-26 · Revisione critica del codice BE/FE — 6 rilievi corretti
+
+Richiesta di Tid a consegna avvenuta e test verdi. **Il primo rilievo era un
+difetto vero, già in albero.**
+
+### 🔴 C-1 — L'export del FRONTEND non mandava il filtro sezionale
+
+Filtrando «Back-office» a video restavano 32 righe; premendo *Esporta* il file
+ne conteneva **39**. Chi lo apre non ha modo di accorgersene: crede di avere il
+perimetro che aveva a schermo. Ed è esattamente il difetto che il commento sopra
+quel blocco dichiarava di voler evitare.
+
+**Causa: due punti di traduzione**, non uno. Lo store componeva i parametri per
+la lista, la view se li ricomponeva per l'export — e il filtro nuovo è finito
+solo nel primo. È [[feedback_bb_legge_non_trasporta]] alla lettera: *il BB
+unifica la lettura, non il trasporto, e i punti che traducono si **cercano***.
+
+⛔ **Non corretto aggiungendo due righe**, che avrebbe lasciato in piedi la
+seconda copia: estratto `gruppiFiltriApi()` nello store, usato da entrambi. Il
+prossimo filtro nasce in tutti e due i posti o in nessuno.
+
+⚠️ **E lo stesso difetto c'era anche lato BE**, non ancora scattato: lista ed
+export leggevano gli stessi query param in due punti. Estratto
+`_filtri_gruppi_da_query`.
+
+### ⚠️ C-2 — Il presidio che avrebbe dovuto vederlo era cieco, e ora misura altro
+
+`test_export_passa_tutti_i_filtri_della_lista` esisteva già e confrontava le
+chiavi **letterali** del dict `filtri` con la firma del service. Era **verde**
+tutto il tempo: la chiave nel dict c'era, l'avevo scritta a mano in tutti e due
+i punti — quello che mancava era **nel frontend**, che quel test non guarda.
+
+Riscritto su una proprietà più forte, resa vera dalla correzione: che il
+**lettore unico** copra tutti i filtri del service, e che **entrambe** le view
+lo usino. Un filtro dimenticato non è più rappresentabile.
+
+### 🔴 C-3 — Nella facet, una seconda scrittura della stessa regola
+
+```sql
+LEFT JOIN LATERAL unnest(
+    CASE WHEN cardinality(g.registri_ids) = 0
+         THEN ARRAY[NULL]::bigint[] ELSE g.registri_ids END) …
+```
+
+Il `CASE` era **morto** — provato: il `LEFT` da solo produce la riga NULL su
+tutti e tre i casi (`{}`, `{NULL}`, array NULL). Ma il difetto vero non era la
+morte: era che diceva «questo gruppo non ha sezionale» in un **secondo modo**,
+diverso dal `NOT EXISTS` del filtro. Due formulazioni della stessa regola in due
+punti sono la divergenza che aspetta di succedere — facet e filtro avrebbero
+detto cose diverse sullo stesso gruppo, e nessuno se ne sarebbe accorto.
+Rimosso.
+
+### ⚠️ C-4 — SQL grezzo dentro una view
+
+`_etichetta_registro` leggeva `vendite.registri_fatturazione` con una query
+scritta nella view. È il punto da cui nascono le seconde risoluzioni della
+stessa regola. Sceso in `VenditeRepository.get_registro_codice`, esposto da
+`fn_get_registro_codice`: la view non conosce più nessuna tabella.
+
+### ⚠️ C-5 — Il contratto pubblicato era incompleto
+
+`n_gruppi_perimetro` non era nel serializer di risposta: c'era nel payload e non
+nello schema. Aggiunto.
+
+### ⭐ C-6 — Cinque aggregazioni buttate sulla richiesta più pesante
+
+`fn_dash_competenza_gruppi` calcolava riepilogo e **tre** facet anche quando il
+chiamante è l'export, che dall'envelope legge solo `results` e `count` — su una
+chiamata che scorre fino a 10.000 righe. Ne avevo aggiunte due io.
+Guard su `max_rows`: l'export si ferma alla lista.
+
+⚠️ Se un giorno nascesse un secondo chiamante con `max_rows` che vuole i
+totali, troverà le chiavi **assenti** — un `KeyError`, non un numero sbagliato.
+
+### Segnalato e NON fatto: la terza facet
+
+`list_dash_competenza_gruppi_tipi`, `_clienti` e `_registri` sono ormai **tre**
+metodi della stessa forma (predicato condiviso → `GROUP BY` → mapping). È la
+soglia della regola del 2, e per [[feedback_regola_del_2_estrai_bb]] va
+**dichiarato prima**, non fatto di iniziativa. ⚠️ Con un caveat contrario: la
+terza ha un `LATERAL` che le altre due non hanno, e un template che deve
+parametrizzare `FROM`, `SELECT` e `GROUP BY` rischia di essere meno leggibile
+delle tre copie. Decisione a Tid.
+
+### Verifiche dopo le correzioni
+
+| | Esito |
+| --- | --- |
+| `apps.vendite` + `apps.core` + `apps.ui` | **2690 verdi** |
+| build frontend + eslint | pulito |
+| lista con `registro_id=4` | count 32 · riepilogo 32 · **perimetro 39** |
+| facet ad agosto, dopo la rimozione del `CASE` | la voce «non risolvibile» c'è ancora (7 gruppi) |
+| ⭐ **export con `registro_id=4`** | **32 righe** (prima ne avrebbe scritte 39) |
+| export senza filtro | 39 righe |
+
 ## 2026-08-26 · ⭐ L8 — le colonne nascevano SPENTE
 
 > Richiamo di Tid a cantiere già chiuso: *«accendi le colonne nate spente»*.

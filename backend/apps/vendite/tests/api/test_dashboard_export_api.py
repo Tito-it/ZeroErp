@@ -201,3 +201,43 @@ class FiltriApplicatiNelFileTests(SimpleTestCase):
         )
         self.assertEqual(fetch.call_args.kwargs["competenza_mese"], date(2026, 6, 1))
         self.assertIsInstance(fetch.call_args.kwargs["competenza_mese"], date)
+
+    # 9) ⛔ Le etichette risolte SOSTITUISCONO il valore di singole chiavi, non
+    #    l'intero dizionario dei filtri applicati. Col rimpiazzo, una view che
+    #    volesse tradurre UNA chiave dovrebbe ricopiarsi tutte le altre — e la
+    #    prossima che nasce sparirebbe dal file in silenzio, proprio dalla riga
+    #    che promette di dire quale perimetro si sta guardando.
+    @patch(_BUILD)
+    def test_etichette_sostituiscono_una_chiave_e_non_il_dizionario(self, mock_build) -> None:
+        fetch = MagicMock(return_value=_envelope())
+        build_dash_export_response(
+            self._request(),
+            lista_codice="vendite.dash_competenza_gruppi",
+            fetch=fetch,
+            filtri={
+                "competenza_mese": date(2026, 6, 1),
+                "stadio": "DA_EMETTERE",
+                "registro_id": 4,
+            },
+            etichette_filtri={"registro_id": "Back-office"},
+        )
+        applicati = mock_build.call_args.kwargs["filtri_applicati"]
+        self.assertEqual(applicati["registro_id"], "Back-office")
+        self.assertEqual(applicati["stadio"], "DA_EMETTERE")
+        self.assertIn("competenza_mese", applicati)
+
+    # 10) Un'etichetta non RESUSCITA un filtro che non e' stato applicato: la
+    #     riga «Filtri applicati» descriverebbe un perimetro piu' stretto di
+    #     quello del file.
+    @patch(_BUILD)
+    def test_etichetta_non_resuscita_un_filtro_assente(self, mock_build) -> None:
+        fetch = MagicMock(return_value=_envelope())
+        build_dash_export_response(
+            self._request(),
+            lista_codice="vendite.dash_competenza_gruppi",
+            fetch=fetch,
+            filtri={"competenza_mese": date(2026, 6, 1), "registro_id": None},
+            etichette_filtri={"registro_id": "Back-office"},
+        )
+        applicati = mock_build.call_args.kwargs["filtri_applicati"]
+        self.assertNotIn("registro_id", applicati)

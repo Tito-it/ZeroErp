@@ -70,6 +70,22 @@ def _filtri_leggibili(filtri: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# Scopo: i filtri normalizzati, con le etichette risolte al posto dei valori
+#        grezzi sulle sole chiavi che il chiamante traduce.
+# ⚠️ L'override vale solo sulle chiavi sopravvissute alla normalizzazione: un
+#        filtro assente resta assente, un'etichetta non lo resuscita.
+def _filtri_leggibili_con_etichette(
+    filtri: dict[str, Any], etichette: dict[str, Any] | None,
+) -> dict[str, Any]:
+    out = _filtri_leggibili(filtri)
+    if not etichette:
+        return out
+    for chiave, etichetta in etichette.items():
+        if chiave in out and etichetta:
+            out[chiave] = etichetta
+    return out
+
+
 # Scopo: Coda invariante dell'export di una lista cruscotto.
 #        Argomenti:
 #          - request: la request DRF (porta `?formato=csv|xlsx`);
@@ -89,7 +105,7 @@ def build_dash_export_response(
     lista_codice: str,
     fetch: Callable[..., dict[str, Any]],
     filtri: dict[str, Any],
-    filtri_label: dict[str, Any] | None = None,
+    etichette_filtri: dict[str, Any] | None = None,
 ) -> HttpResponse:
     # Formato PRIMA della query: su formato invalido non si paga il fetch.
     # ⚠️ Il parametro e' `formato` (italiano) e non `format`: quest'ultimo e'
@@ -111,10 +127,17 @@ def build_dash_export_response(
         total=total,
         # I filtri di dominio sono gia' leggibili (codici brevi: area,
         # classe, stadio, mese), ma vanno NORMALIZZATI per il file — vedi
-        # `_filtri_leggibili`. `filtri_label` permette a una view di
-        # sostituirli con etichette risolte, senza obbligare tutte a farlo.
-        filtri_applicati=(
-            filtri_label if filtri_label is not None else _filtri_leggibili(filtri)
-        ),
+        # `_filtri_leggibili`. `etichette_filtri` permette a una view di
+        # SOSTITUIRE il valore di singole chiavi con l'etichetta risolta (un
+        # `registro_id=4` non dice niente a chi apre il foglio un mese dopo).
+        # ⛔ E' un merge su cio' che e' gia' stato normalizzato, NON un
+        #    rimpiazzo del dizionario intero: col rimpiazzo ogni view che
+        #    volesse tradurre UNA chiave dovrebbe ricopiarsi tutte le altre, e
+        #    il giorno che ne nasce una nuova sparirebbe dal file in silenzio —
+        #    proprio dalla riga che promette di dire quale perimetro si sta
+        #    guardando.
+        # ⚠️ Solo le chiavi GIA' presenti: un filtro non impostato non deve
+        #    ricomparire come applicato per via di un'etichetta.
+        filtri_applicati=_filtri_leggibili_con_etichette(filtri, etichette_filtri),
         fmt=fmt,
     )

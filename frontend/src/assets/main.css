@@ -2169,6 +2169,18 @@ a {
  * tooltip quando il bottone è DISABILITATO — un bottone spento non riceve
  * eventi del mouse, quindi il tooltip appeso a lui non comparirebbe proprio
  * quando il motivo serve. `display: inline-flex` per non alterare la toolbar. */
+/* Il caso «più sezionali» si legge come una NOTA e non come un codice: è
+   l'unico valore di quella colonna che non nomina un sezionale ma dichiara una
+   condizione — e affiancato ai codici veri, in tondo, sembrerebbe il nome di un
+   registro che non esiste. */
+.app-dash-registro-multi {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--app-text-muted);
+  font-style: italic;
+}
+
 .app-dash-fattura-wrap {
   display: inline-flex;
 }

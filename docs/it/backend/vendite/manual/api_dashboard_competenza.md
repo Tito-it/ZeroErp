@@ -53,6 +53,8 @@ emittente è DB-side via GUC nella vista): `commesse/` fa `GROUP BY commessa_id`
 
 - `competenza_mese` (obbligatorio, date ISO): mese di competenza; qualsiasi
   giorno viene normalizzato al 1° del mese.
+- `registro_id` (int, opzionale) / `registro_non_risolvibile` (bool,
+  opzionale) — filtro sezionale, vedi sotto. Alternativi.
 - `stadio` (opzionale): `DA_APPROVARE | DA_EMETTERE | EMESSA_NON_FATTURATA |
   FATTURATA` (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`;
   assente = tutti gli stadi).
@@ -205,7 +207,8 @@ Ogni riga: `gruppo_key`, `tipo_gruppo` (`codice_interno` della sorgente, oppure
 `ONERI_COMMESSA`), `area_documento`, `riferimento` (numero leggibile del
 documento, o la commessa per gli oneri), `commessa_id/commessa_codice`,
 `cliente_display`, `stadio`, `n_attivita`, `valore`, `ha_oneri`,
-`data_attivita_min` / `data_attivita_max`.
+`data_attivita_min` / `data_attivita_max`, `registri_n`, `registro_codice`,
+`data_documento_prevista`.
 
 Il blocco **`tipi`** è la *facet* del filtro: le voci realmente presenti nel
 perimetro con il conteggio (`tipo_gruppo`, `area_documento`, `n_gruppi`,
@@ -223,6 +226,99 @@ perimetro con il conteggio (`tipo_gruppo`, `area_documento`, `n_gruppi`,
 > gruppo fatturabile — offrire opzioni da zero risultati è peggio di nessun
 > filtro. E soprattutto **non contiene `ONERI_COMMESSA`**, che è un valore
 > sintetico della vista: proprio il caso che si vuole poter isolare.
+
+#### Il sezionale previsto e la data prevista (2026-08-26)
+
+Tre campi che rispondono alla domanda «su quale registro finirà, e con che
+data», **prima** che il documento esista.
+
+⭐ **Non sono una previsione parallela.** La vista li calcola con
+`fn_resolve_registro_documento`, che dal 2026-08-26 è la **stessa** funzione con
+cui `fn_build_fattura_key` scrive la chiave del documento vero: lista e
+documento non coincidono perché due implementazioni si comportano uguale, ma
+perché è un'implementazione sola. Brief:
+`dev/work-in-progress/brief-db-registro-e-data-prevista-in-competenza.md`.
+
+| Campo | Cosa dice |
+| --- | --- |
+| `registri_n` | quanti sezionali tocca il gruppo |
+| `registro_codice` | il codice, quando è **uno solo** |
+| `data_documento_prevista` | la data che il documento porterebbe |
+
+⚠️ **`registro_codice` è vuoto in DUE casi diversi**, e vanno distinti col
+conteggio, non fra loro:
+
+- `registri_n > 1` → il gruppo tocca **più** sezionali. Non è «non lo so», è
+  «sono più di uno», ed è ammesso **per costruzione**: la chiave del gruppo non
+  contiene tipo documento né natura, che sono colonne **di riga**;
+- `registri_n <= 1` → il sezionale **non è risolvibile** (tipo documento non
+  ancora scelto: il `CHECK` lo pretende solo da riga approvata e non emessa).
+
+⛔ **La lista degli id NON esce nel payload.** Serve al `WHERE` del filtro e alla
+facet, che vivono entrambi nel repository. Esporla obbligherebbe a decidere che
+farne dei NULL che `array_agg(DISTINCT)` conserva: tenendoli è una lista
+scomoda, togliendoli diverge da `registri_n` che invece li conta — e due numeri
+che rispondono «quanti sezionali» in modo diverso sono peggio di uno solo.
+
+⚠️ **La frase «Più sezionali (N)» la scrive il BACKEND** dentro
+`registro_codice`, ed è una deroga consapevole (D-4): il progetto compone le
+etichette nel frontend via i18n, ma l'export condivide questa proiezione e legge
+i valori grezzi, senza passare da nessuno slot — un export che tace dove la
+lista parla è peggio di un export in una lingua sola. Il **frontend non legge
+quella stringa**: ricompone la propria da `registri_n`, quindi a video resta
+bilingue, e le due non possono divergere perché dipendono dallo stesso numero.
+
+⚠️ **`data_documento_prevista` è vuota dove il documento esiste già** (D-9), e
+il discriminante è la **riga di fattura**, non lo stadio: un gruppo
+`EMESSA_NON_FATTURATA` un documento non ce l'ha ancora.
+
+ℹ️ Le due colonne di catalogo sono `ui.lista_colonna` **553** e **554** (lista
+42) e sono **accese nel preset di sistema** (`ui.lista_preset_colonna`, 2026-08-26,
+insieme alle tre che erano rimaste spente: codice BA, id fiscale, emittente).
+La vista predefinita della lista è quindi di **13 colonne**.
+
+⚠️ **Accendere una colonna è sicuro solo se qualcuno la serve.** Una colonna
+accesa e non proiettata dal repository non dà nessun errore: si spunta e resta
+**vuota su tutte le righe** — peggio di una spenta, perché sembra un dato
+mancante invece di una configurazione. Per queste due la proiezione (BE-1) e la
+whitelist di ordinamento (BE-2) sono arrivate **prima**.
+
+ℹ️ Ciò che finisce nell'export sono le colonne **visibili ed esportabili della
+preferenza dell'operatore**, non un elenco fisso: chi si è spento una colonna
+non la trova nel file, ed è la preferenza che comanda.
+
+#### Il filtro per sezionale
+
+`registro_id` (int) e `registro_non_risolvibile` (bool), **alternativi** come la
+coppia del cliente: il secondo vince e non si somma al primo.
+
+⛔ **Il filtro lavora sull'INSIEME dei sezionali del gruppo, non sul codice.** È
+la decisione portante: un gruppo multi-sezionale ha `registro_codice` NULL,
+quindi un filtro sul codice lo farebbe sparire da **entrambe** le voci — cioè
+proprio il gruppo che si sta cercando. Con l'insieme compare sotto ognuna.
+
+⚠️ Il predicato di «non risolvibile» **non** è `cardinality(...) = 0`:
+`array_agg(DISTINCT)` conserva i NULL, quindi un gruppo interamente non
+risolvibile ha `{NULL}` — cardinalità **1** — e con quel predicato non lo
+troverebbe nessuno. Misurato, non assunto.
+
+Il blocco **`registri`** è la facet corrispondente (`registro_id`, `codice`,
+`descrizione`, `n_gruppi`, `n_attivita`), stesso perimetro base delle altre due.
+
+⚠️ **La somma degli `n_gruppi` può SUPERARE i gruppi del perimetro.** Non è un
+errore di conteggio: è cosa significa «un gruppo sta su due sezionali» — ed è lo
+stesso motivo per cui il filtro lo trova sotto entrambi.
+
+⭐ Da qui la chiave **`n_gruppi_perimetro`**: quanti gruppi ha il perimetro
+**base**, e serve solo alla voce «Tutti i sezionali» della tendina. Non si
+ricava da nessuna delle due fonti già presenti — sommare la facet **sovrastima**
+(appartenenza multipla), e `riepilogo` **segue i filtri**, quindi scelto un
+sezionale la voce «Tutti» direbbe *32* di un'opzione che, premuta, ne mostra
+*39*.
+
+ℹ️ La facet dei **clienti** non ha questo problema e infatti somma le proprie
+voci: lì ogni gruppo sta sotto una voce sola. La differenza non è fra le due
+tendine, è fra **partizione** e **appartenenza multipla**.
 
 > ⚠️ **La `gruppo_key` è un contratto, non un'etichetta**: è la stessa stringa
 > che `POST /vendite/fatturazione/run/` accetta nel campo `gruppi`. Non va

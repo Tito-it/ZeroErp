@@ -1003,6 +1003,49 @@ def fn_dash_competenza_commesse(
 # Perimetro: sola lettura; scope emittente DB-side (viste security_invoker,
 #        fail-closed senza GUC operatore).
 # Risultato: dict con count, page, page_size, total_pages, results, riepilogo.
+# Scopo: il codice leggibile di un registro di fatturazione — serve alla riga
+#        «Filtri applicati» dell'export, dove un `registro_id=4` non dice niente
+#        a chi apre il foglio un mese dopo su un'altra macchina.
+# Risultato: il codice, oppure `None` se l'id non esiste (e allora chi chiama
+#        lascia il valore grezzo: meglio un id di un'etichetta inventata).
+def fn_get_registro_codice(registro_id: int) -> str | None:
+    return VenditeRepository().get_registro_codice(int(registro_id))
+
+
+# Etichetta di ripiego del sezionale quando il gruppo ne tocca piu' di uno.
+# ⛔ ITALIANO NEL BACKEND, ed e' una deroga consapevole (D-4, decisa con Tid).
+#    Il progetto compone le etichette nel FE via i18n — «cliente non
+#    determinabile» e' fatto cosi' — ma quella strada lascerebbe la cella VUOTA
+#    nell'export, che condivide questa stessa proiezione e legge i valori
+#    grezzi (`ui.lista_colonna.campo_sorgente`), senza passare da nessuno slot.
+#    Un export che tace dove la lista dice qualcosa e' peggio di un export che
+#    parla una lingua sola.
+# ⭐ E il FE NON legge questa stringa: ricompone la propria da `registri_n`
+#    (chiave `col_registro_multi`), quindi a video resta bilingue. Le due
+#    versioni non possono divergere perche' dipendono dallo STESSO numero, non
+#    l'una dall'altra.
+# ⚠️ Il giorno in cui l'export sapra' la lingua del richiedente, questa
+#    funzione e' il posto da cui togliere la deroga — non ce ne sono altre.
+_ETICHETTA_MULTI_REGISTRO = "Più sezionali ({n})"
+
+
+# Scopo: scrive nel `registro_codice` delle righe multi-sezionale l'etichetta
+#        che l'export mostrera'. Muta le righe in posto: sono gia' dizionari
+#        appena costruiti dal repository, e copiarle per una sola chiave
+#        sarebbe rumore.
+# ⚠️ La condizione e' `registri_n > 1`, NON `registro_codice is None`: quel NULL
+#        ha DUE significati (piu' sezionali, oppure nessuno risolvibile — il
+#        caso `{NULL}`, che la vista conta comunque 1) e trattarli allo stesso
+#        modo direbbe «sono piu' di uno» su un gruppo che di sezionali non ne ha
+#        nemmeno uno.
+def _marca_gruppi_multi_registro(results: list[DashCompetenzaGruppoRow]) -> None:
+    for riga in results:
+        if int(riga.get("registri_n") or 0) > 1 and riga.get("registro_codice") is None:
+            riga["registro_codice"] = _ETICHETTA_MULTI_REGISTRO.format(
+                n=riga["registri_n"],
+            )
+
+
 def fn_dash_competenza_gruppi(
     *,
     competenza_mese: date,
@@ -1015,6 +1058,14 @@ def fn_dash_competenza_gruppi(
     # finisce confrontato con una PK.
     ba_fatturazione_id: int | None = None,
     ba_non_determinabile: bool = False,
+    # Filtro SEZIONALE (D-5): l'asse e' `registri_ids`, non il codice — un
+    # gruppo che tocca due sezionali deve comparire sotto ENTRAMBE le voci.
+    # `registro_non_risolvibile` e' la voce «sezionale non determinabile», cioe'
+    # l'ASSENZA del valore: stessa forma del filtro cliente, e per lo stesso
+    # motivo (un id sentinella in un campo che porta chiavi vere prima o poi
+    # finisce confrontato con una PK).
+    registro_id: int | None = None,
+    registro_non_risolvibile: bool = False,
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
@@ -1072,15 +1123,29 @@ def fn_dash_competenza_gruppi(
         tipo_gruppo=tipo_gruppo,
         ba_fatturazione_id=ba_fatturazione_id,
         ba_non_determinabile=ba_non_determinabile,
+        registro_id=registro_id,
+        registro_non_risolvibile=registro_non_risolvibile,
         search=search_param,
         order_by=order_by,
         order_dir=order_dir,
         limit=limit,
         offset=offset,
     )
+    _marca_gruppi_multi_registro(results)
     payload = _build_list_response(
         results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
     )
+    # ⭐ EXPORT: si fermano qui. Riepilogo e facet servono all'INTERFACCIA — i
+    #    totali sopra la lista e le tre tendine — e `build_dash_export_response`
+    #    dall'envelope legge soltanto `results` e `count`. Calcolarli su una
+    #    chiamata che scorre fino a 10.000 righe sono cinque aggregazioni
+    #    buttate, sulla richiesta piu' pesante delle sei.
+    # ⚠️ `max_rows` valorizzato = export: e' l'unico chiamante che lo passa
+    #    (`build_dash_export_response`), ed e' anche l'unico che salta la
+    #    paginazione. Se un giorno ne nascesse un secondo che vuole i totali,
+    #    troverebbe le chiavi ASSENTI — un KeyError, non un numero sbagliato.
+    if max_rows is not None:
+        return payload
     # Due perimetri DIVERSI nella stessa risposta, ed e' voluto:
     #  - `riepilogo` SEGUE tutti i filtri (tipo, cliente, ricerca): e' la
     #    riconciliazione della lista che l'utente sta guardando, e un totale che
@@ -1100,6 +1165,8 @@ def fn_dash_competenza_gruppi(
         tipo_gruppo=tipo_gruppo,
         ba_fatturazione_id=ba_fatturazione_id,
         ba_non_determinabile=ba_non_determinabile,
+        registro_id=registro_id,
+        registro_non_risolvibile=registro_non_risolvibile,
         search=search_param,
     )
     payload["tipi"] = repository.list_dash_competenza_gruppi_tipi(
@@ -1107,6 +1174,29 @@ def fn_dash_competenza_gruppi(
         stadio=stadio,
     )
     payload["clienti"] = repository.list_dash_competenza_gruppi_clienti(
+        competenza_mese=competenza,
+        stadio=stadio,
+    )
+    # Terza facet, stesso perimetro BASE delle altre due e per lo stesso
+    # motivo: deve restare possibile cambiare sezionale senza prima azzerare il
+    # filtro alla cieca.
+    payload["registri"] = repository.list_dash_competenza_gruppi_registri(
+        competenza_mese=competenza,
+        stadio=stadio,
+    )
+    # ⭐ Quanti gruppi ha il perimetro BASE — e serve solo alla voce «Tutti i
+    # sezionali» della tendina, che non puo' ricavarla da nessuna delle due
+    # fonti che ha gia':
+    #   · sommare le voci della facet SOVRASTIMA, perche' un gruppo su due
+    #     sezionali e' contato sotto entrambi (ed e' giusto che lo sia: e'
+    #     anche il modo in cui il filtro lo trova);
+    #   · `riepilogo` SEGUE i filtri, quindi appena si sceglie un sezionale la
+    #     voce «Tutti» scenderebbe al conteggio di quello — dicendo 32 sopra
+    #     un elenco che, scegliendola, ne mostra 39.
+    # ⚠️ La facet dei CLIENTI non ha questo problema e infatti somma le sue
+    #    voci: li' ogni gruppo sta sotto una voce sola. La differenza non e' fra
+    #    le due tendine, e' fra partizione e appartenenza multipla.
+    payload["n_gruppi_perimetro"] = repository.count_gruppi_perimetro(
         competenza_mese=competenza,
         stadio=stadio,
     )
