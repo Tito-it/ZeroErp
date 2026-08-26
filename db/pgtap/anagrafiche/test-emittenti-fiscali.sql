@@ -337,23 +337,91 @@ SELECT is(
 --    cadere a cascata i test 8, 12, 13 e 14 — il caso da manuale della
 --    «fixture rimasta indietro rispetto a un guard entrato dopo».
 --
---    La condizione non si cerca piu': si COSTRUISCE, togliendo il
---    mapping a un BA esistente. E' lecito e mirato:
+--    La condizione non si cerca piu': si COSTRUISCE. E' lecito e mirato:
 --      - siamo dentro BEGIN/ROLLBACK, il database non cambia;
---      - il trigger non lo ricrea, perche' si attiva solo sull'INSERT
---        del billing account, non sulla DELETE del mapping;
+--      - il trigger di auto-aggancio non ricrea il mapping, perche' si
+--        attiva solo sull'INSERT del billing account, non sulla DELETE
+--        del mapping;
 --      - la riga di DEFAULT (billing_account_id IS NULL) resta intatta:
 --        `IN (subquery)` non la seleziona, e serve al test 9.
 --
 --    Cio' che i test 9-14 presidiano — il ramo di fallback di
 --    fn_get_emittente_fiscale_id e l'override per BA — e' codice vivo:
 --    va costruito lo stato, non sperato.
+--
+-- ⭐ 2026-08-26 — LA STESSA LEZIONE, UN LIVELLO PIU' SOTTO.
+--    Questo blocco costruiva lo stato togliendo il mapping a un BA
+--    PRESO IN PRESTITO (`ORDER BY ba.id LIMIT 1`), cioe' a un cliente
+--    vero con la sua storia — nel database di sviluppo, uno con 30
+--    commesse. Ha smesso di funzionare con
+--    `anagrafiche.trgfn_efba_guard_storia_emittente`, che vieta di
+--    spostare su un altro emittente un cliente che ha gia' fatturato o
+--    ha del lavoro raccolto in commessa: il test 12 (l'override) e'
+--    esattamente quello spostamento.
+--    ⛔ Il guard non e' troppo severo: quelle 30 commesse portano una
+--    COPIA CONGELATA dell'emittente, e mapparne il cliente altrove le
+--    renderebbe false. La fixture chiedeva al database uno stato che il
+--    modello non ammette.
+--    ⇒ Adesso il billing account **se lo fabbrica**: nuovo, quindi
+--    senza storia, quindi con la finestra di correzione ancora aperta —
+--    che e' precisamente il caso che i test 12 e 13 vogliono esercitare.
+--    Brief: brief-db-billing-account-cambio-emittente §6.1.
 -- ============================================================
-CREATE TEMP TABLE tmp_ba_no_map AS
-SELECT ba.id AS billing_account_id
-FROM anagrafiche.billing_account ba
-ORDER BY ba.id
-LIMIT 1;
+CREATE TEMP TABLE tmp_ba_no_map (billing_account_id bigint);
+
+DO $ba$
+DECLARE
+    v_soggetto_id          anagrafiche.istanze_utilities.soggetto_id%TYPE;
+    v_soggetto_ruolo_id    anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+    v_utility_id           anagrafiche.billing_account.utility_id%TYPE;
+    v_categoria_cliente_id anagrafiche.billing_account.categoria_cliente_id%TYPE;
+    v_codice_iu            anagrafiche.istanze_utilities.codice%TYPE;
+    v_istanza_id           anagrafiche.istanze_utilities.id%TYPE;
+    v_ba_id                anagrafiche.billing_account.id%TYPE;
+BEGIN
+    -- I riferimenti anagrafici si prendono da un billing account esistente
+    -- (soggetto, ruolo, utility, categoria): quello che NON si prende in
+    -- prestito e' il billing account stesso.
+    -- ⚠️ ORDER BY esplicito: un LIMIT 1 senza non verifica, scommette.
+    SELECT iu.soggetto_id, ba.soggetto_ruolo_id, ba.utility_id, ba.categoria_cliente_id
+      INTO v_soggetto_id, v_soggetto_ruolo_id, v_utility_id, v_categoria_cliente_id
+      FROM anagrafiche.billing_account ba
+      JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
+     WHERE ba.utility_id IS NOT NULL
+     ORDER BY ba.id
+     LIMIT 1;
+
+    -- Nessun riferimento: i test 8-14 si saltano da soli (tabella vuota).
+    IF v_soggetto_id IS NULL THEN
+        RETURN;
+    END IF;
+
+    SELECT 'PGTAP-EFIU-' || right(k.codice_ef1, 17)
+      INTO v_codice_iu
+      FROM tmp_costanti_ef k;
+
+    -- ⚠️ DUE istruzioni separate e non una CTE: sotto RLS il padre appena
+    --   inserito non e' visibile al figlio nella stessa snapshot, e il
+    --   guard di coerenza soggetto/istanza direbbe il falso.
+    INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
+    VALUES (v_soggetto_id, true, v_codice_iu)
+    RETURNING id INTO v_istanza_id;
+
+    -- ⭐ Il mapping verso l'emittente non si scrive: lo crea
+    --   anagrafiche.trgfn_billing_account_link_ef agganciando il BA
+    --   all'emittente dell'operatore corrente. E' il percorso reale — un
+    --   billing account non passa mai da uno stato «senza emittente» — ed
+    --   e' il motivo per cui la DELETE qui sotto serve.
+    INSERT INTO anagrafiche.billing_account (
+        istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        categoria_cliente_id)
+    VALUES (v_istanza_id, v_soggetto_ruolo_id, v_utility_id, CURRENT_DATE,
+        v_categoria_cliente_id)
+    RETURNING id INTO v_ba_id;
+
+    INSERT INTO tmp_ba_no_map VALUES (v_ba_id);
+END;
+$ba$;
 
 DELETE FROM anagrafiche.emittenti_fiscali_billing_account m
  WHERE m.billing_account_id IN (SELECT billing_account_id FROM tmp_ba_no_map);

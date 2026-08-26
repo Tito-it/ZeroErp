@@ -27,9 +27,18 @@
 > eterogenee) sono **chiuse in fase di piano**, con la motivazione presa sul
 > modello e non sui dati: §6. Non restano domande aperte.
 >
-> ⛔ **Nessun file scritto, nessuna migrazione applicata**
-> ([[feedback_mai_applicare_migrazioni_db]]). L'esecuzione parte su «procedi»,
-> lotto per lotto.
+> ✅ **CANTIERE DB CHIUSO il 2026-08-26 — L1…L9, tutti eseguiti e APPLICATI.**
+> ChangeSet `20260826-39` … `-45` e `-50`, `-51`, `-52`; quattro codici errore;
+> tre pgTAP nuovi; 8 pagine `manual/` e 4 guide. Registro, scarti dal piano e
+> **due correzioni in corsa** nel §8.
+>
+> ⚠️ **Migrazione applicata da Tid**, comando per comando
+> ([[feedback_mai_applicare_migrazioni_db]]): «puoi iniziare lo sviluppo»
+> autorizzava il lavoro, non l'apply — quello l'ha autorizzato lui.
+>
+> 🔴 **Resta la sola consegna BE-1** (§7.5): il backend deve smettere di passare
+> `p_emittente_soggetto_ruolo_id`, che dal `-52` non esiste più. Finché non lo
+> fa, il push si ferma con «funzione inesistente» — rumoroso per scelta.
 
 ---
 
@@ -305,6 +314,11 @@ rossi altrui — la baseline — è nel §7.8.
 >   `VARIADIC` **all'operatore** ([[feedback_error_codes_messaggi_errore]]).
 
 ### 7.0 Il quadro in una tabella
+
+> ✅ **ESEGUITI il 2026-08-26**: L1, L2, L3, L4, L6, L7, L8 e — dopo la
+> decisione di Tid di procedere senza aspettare il backend — anche **L5**.
+> Registro, scarti dal piano e correzioni nel **§8**. ✅ Anche **L9** è fatto.
+> Resta la sola consegna **BE-1**. Il testo qui sotto resta come pianificato.
 
 | Lotto | Cosa | Fase | Dipende da | Sblocca |
 | --- | --- | --- | --- | --- |
@@ -794,6 +808,88 @@ nel database e a cantiere chiuso il documento si sposta.
   (§7.3).
 * ⛔ **Non cambia** `fn_link_commessa_sorgente` (§7.6.2).
 
+### 7.12 ✅ D-5 CHIUSA — lo scenario «tutte le azioni disabilitate» esce dal modello e ci resta
+
+> **Aperta e chiusa il 2026-08-26**, dopo il rosso di
+> `vendite/test-guard-uscita-commessa-v1`. Era una domanda di **prodotto**, non
+> di implementazione: per questo non l'ho chiusa da solo.
+> ✅ **Decisione di Tid**: nessuna regola nuova. Lo `skip()` dichiarato è la
+> forma giusta.
+
+Il `NOT NULL` ha tolto l'ultima leva che rendeva raggiungibile lo scenario in cui,
+da `IN_ESECUZIONE`, **tutte e tre** le azioni manuali sono spente. La
+dimostrazione è nel §8 (voce «La baseline ha parlato»): `chiudi` disabilitato
+**implica** `rendi_pronta` abilitato, perché un guard di riga impone
+`APPROVATA + NON_EMESSA ⇒ tipo_doc NOT NULL`.
+
+⚠️ **Non è una perdita qualunque.** Il test 14 nasce per distinguere *«azioni
+presenti ma tutte spente»* da *«nessuna azione»* — il suo commento lo dice:
+*«col vecchio `jsonb_array_length(actions) > 0` questo test fallirebbe»*.
+Spostarlo su uno stato terminale lo farebbe passare **smettendo di verificare
+proprio quella distinzione**.
+
+**Le tre strade, e quella che consiglio:**
+
+| | Strada | Costo |
+| --- | --- | --- |
+| **a** | I test 14a/14 dichiarano lo stato vero (`annulla` e `chiudi` spente, `rendi_pronta` accesa) e `can_change_state = true` | ⛔ si perde la sola prova che `can_change_state` non è `count(actions) > 0` |
+| **b** | Si tiene il ramo «emittente mancante» come **presidio dichiarato** e i due test si marcano `skip()` motivato | ⚠️ un ramo irraggiungibile con un test che non gira: due debiti al prezzo di uno |
+| ~~**c**~~ | ~~Si cerca **un'altra condizione di testata** che spenga `rendi_pronta`~~ | ⛔ **caduta**: la condizione non esiste (sotto) |
+
+#### ⛔ Perché la **c** è caduta, ed è la parte che vale
+
+Il candidato che avevo proposto era la **competenza**: *«una commessa con
+competenza non ancora aperta non dovrebbe potersi dichiarare pronta»*. Letto il
+codice della lane, non regge — e la ragione è generale.
+
+Il filtro è `ca.competenza_mese <= v_competenza_mese`, e cioè:
+
+* sta sulle **righe**, non sulla testata (la competenza di testata è nullable e
+  la lane non la guarda affatto);
+* è **cumulativo**, non «del mese»;
+* e il mese è un **parametro del giro**: con `p_competenza_mese` a `NULL` il
+  filtro non esiste proprio.
+
+⇒ **Esempio (Tid, 2026-08-26)**: oggi è agosto 2026, la commessa ha righe di
+competenza **settembre**. Il giro di agosto non la prende — e fa bene, non è
+dovuta. Il giro di settembre, o un giro senza limite di mese, la prende.
+⇒ Quella commessa **è pronta**: non è pronta *per il giro di agosto*.
+
+⛔ Bloccarla direbbe all'operatore una cosa **falsa**, e sarebbe di nuovo *un
+guard che rifiuta uno stato che il modello ammette* — lo stesso difetto trovato
+poche ore prima nel risolutore delle sorgenti (§8), stavolta commesso per far
+tornare verde un test.
+
+⭐ **La distinzione da ricordare**: «non pronta» è una proprietà **della
+commessa**, «non ancora presa» è una proprietà **del giro**. Metterla nella
+funzione di dominio significherebbe spostarci dentro una regola dello scheduler.
+
+⚠️ E non c'è un altro candidato: passate in rassegna le colonne di testata —
+stato, tipo, policy, fatturazione immediata, condizioni di pagamento, cliente,
+utility — nessuna è una condizione di *prontezza*. Con l'emittente ora garantito,
+di condizioni di testata **non ne resta nessuna**.
+
+⇒ Il test 14 riavrà un soggetto **solo** se un giorno nascerà una condizione di
+testata per un suo motivo di dominio, non per riempire questo vuoto.
+
+✅ **Nel frattempo il file è tornato verde senza barare** (2026-08-26, `plan(17)`):
+
+* il test **14a** ora asserisce lo **stato vero** — `annulla` e `chiudi` spente,
+  `rendi_pronta` accesa — e resta un'asserzione forte: diventa rosso sia se
+  l'elenco delle azioni si svuota, sia se `rendi_pronta` si spegnesse insieme a
+  `chiudi`, cioè se l'invariante del `tipo_doc` cadesse;
+* il test **14** è uno **`skip()` dichiarato**, non un'asserzione indebolita.
+  Riscriverlo su `can_change_state = true` lo farebbe passare **smettendo di
+  verificare proprio la distinzione per cui era nato** — «azioni presenti ma
+  tutte spente» contro «nessuna azione». Il debito resta scritto lì, e punta qui.
+
+⚠️ Anche il marcatore `pgtap-runner: owner` di quel file è ora **senza il suo
+motivo**: l'unica ragione era l'`UPDATE` che azzerava l'emittente, e quella
+colonna non è più scrivibile da nessuno — owner compreso. ⛔ Non l'ho tolto:
+cambiare il ruolo con cui gira l'intero file dentro un commit che sta chiudendo
+un'altra cosa vorrebbe dire mescolare eventuali rossi da RLS a questi. Va
+rivalutato **in un cantiere suo**, ed è dichiarato nell'intestazione del file.
+
 ## 8. Registro
 
 ### 2026-08-26 · Nascita
@@ -857,3 +953,252 @@ una tabella già piena.
 
 ⛔ Nessuna migrazione applicata, nessun file scritto: l'esecuzione parte su
 «procedi», lotto per lotto.
+
+### 2026-08-26 · Esecuzione — L1, L2, L3, L4, L6, L7, L8
+
+> ⛔ **File scritti, migrazione NON applicata** — *vero al momento in cui questa
+> voce è stata scritta; Tid ha applicato più tardi lo stesso giorno.*
+> ([[feedback_mai_applicare_migrazioni_db]]). Numerazione ripresa da `39`: il
+> repo era arrivato a `20260826-38`.
+
+| # | File | Lotto |
+| --- | --- | --- |
+| 39 | `20_code/vendite/…-create-trgfn-commesse-default-emittente-mctit.yaml` | **L1** |
+| 40 | `20_code/vendite/…-create-trgfn-commesse-guard-emittente-ba-mctit.yaml` | **L2** |
+| 41 | `00_schema/vendite/…-alter-commesse-emittente-not-null-mctit.yaml` | **L3** |
+| 42 | `20_code/vendite/…-update-fn-get-or-create-commessa-emittente-non-null-mctit.yaml` | **L4** |
+| 43 | `20_code/script/…-create-fn-get-sorgente-billing-account-id-mctit.yaml` | **L6a** |
+| 44 | `20_code/vendite/…-create-fn-check-commessa-sorgente-emittente-mctit.yaml` | **L6b** |
+| 45 | `20_code/vendite/…-create-trgfn-commesse-sorgenti-guard-emittente-mctit.yaml` | **L6c** |
+| — | `80_data/sql/config/codici_errore.csv` · `messaggi_errore.csv` (+3 codici, id 1003–1005) | **L7** |
+| — | `db/pgtap/vendite/test-commesse-emittente-invariante-v1.sql` `plan(7)` | **L8** |
+| — | `db/pgtap/vendite/test-commessa-sorgente-emittente-omogeneo-v1.sql` `plan(6)` | **L8** |
+
+**⚠️ Tre scarti dal piano, e vanno letti.**
+
+1. ⛔ **`E_PARAMETRO_INVALIDO` NON è stato riusato nel risolutore nuovo.** Il
+   piano non lo diceva, e il guard sul parametro ID sarebbe finito lì per
+   inerzia: `AGENTS.md` lo vieta esplicitamente in codice nuovo — *«quel codice
+   è un debito, non una sede»*. Il guard c'è (lo impone la convenzione sugli ID)
+   e solleva **`E_SORG_CONF`**, che è quello che dice davvero: «configurazione
+   sorgente non risolvibile».
+2. ⭐ **Il check delle sorgenti ha una scorciatoia esplicita** che il piano non
+   prevedeva: *stesso billing account → true senza risolvere*. È il caso normale
+   del push, ed evita di propagare un difetto di configurazione (nessun gestore
+   globale) su un giro che non ha niente da presidiare. È dichiarata nel corpo,
+   non nascosta.
+3. ⭐ **L6 è diventato tre oggetti invece di due**: al `fn_check_*` si è
+   affiancato un **`fn_guard_*`** `SECURITY DEFINER` che compone la frase, e il
+   `trgfn_*` è rimasto sottile. Non è barocchismo: è il calco esatto della terna
+   già in servizio in `anagrafiche` (`fn_check_ba_coppia_emittente_omogenea` /
+   `fn_guard_albero_ba_emittente` / `trgfn_efba_guard_albero_emittente`), e serve
+   perché il messaggio va composto leggendo **sotto RLS**.
+
+⭐ **Un'asserzione che non era nel piano e che vale**: il test 6 del file sulle
+sorgenti presidia **l'ordine alfabetico dei due trigger**. Se qualcuno
+rinominasse il guard nuovo, quello è l'unico posto in cui il cambiamento si
+vedrebbe — prima che si metta a risolvere il billing account di un documento
+fantasma.
+
+**Verifiche fatte** (tutte statiche: nessun `migrate`, nessun `updateSQL` sul DB):
+
+* i 7 YAML parsano; `scripts/guardrail_run_on_change.py` ✅;
+  `scripts/guardrail_sql_letterali.py` ✅ (3005 changelog, nessun letterale
+  aperto); `scripts/guardrail_pgtap_preambolo.py` ✅ (515 file, e il debito
+  `throws_ok` senza discriminante resta **131 su soglia 131**: i nuovi passano
+  tutti lo SQLSTATE);
+* **arità dei messaggi verificata una per una** contro i valori nel `VARIADIC`
+  ([[reference_messaggi_errore_segnaposto_rompe_format]]): 4/4/2 sui codici
+  nuovi, e 1 su `E_SORG_CONF`, 1 su `E_SORG_FORMATO`, 1 su `E_SORG_KEYSEL`, 2 su
+  `E_SORG_KEY_MISSING` per quelli riusati;
+* ⚠️ la firma del `COMMENT ON FUNCTION` del 42 è quella **risolta**
+  (`bigint, integer, character varying, …`) e non i `%TYPE`: in DDL plain non
+  valgono ([[feedback_type_ddl_contexts]]).
+
+**Cosa resta**
+
+* ~~⛔ **L5** — la rimozione di `p_emittente_soggetto_ruolo_id`: **non scritto**,
+  ha il cancello **BE-1** ed è l'ultimo lotto per costruzione.~~
+  ✅ **Fatto il 2026-08-26** (`20260826-52`), su decisione di Tid: *«visto che
+  non c'è produzione possiamo procedere con L5, poi passo tutto al BE»*.
+  ⭐ È anche l'ordine migliore — il backend riceve il database **già nella forma
+  finale**, invece di doverlo inseguire in due giri.
+* ~~**L9** — documentazione `manual/` e guide.~~ ✅ **Fatto il 2026-08-26**:
+  8 pagine `manual/` + 4 guide. Dettaglio nella voce di registro «Documentazione».
+* ⚠️ **Il pre-volo di L3 non è stato eseguito**: la `preCondition` del 41 ferma
+  il migrate se esistono commesse con l'emittente a `NULL`. Va guardato **prima**
+  di autorizzare l'apply, e quelle righe si correggono a mano.
+* ⚠️ **La baseline pgTAP non è stata misurata** (serve il DB): resta il §7.8.1 —
+  18 fixture su 22 scelgono l'emittente senza guardare il billing account.
+
+### 2026-08-26 · La baseline ha parlato — ⛔ e uno dei tre rossi era **mio**
+
+Applicati i changeSet, Tid ha misurato: **1 regressione in `anagrafiche`, 3 in
+`vendite`**. Due erano fixture, una era un difetto di progetto.
+
+#### ⛔ Il difetto: il risolutore passava dalla strada sbagliata
+
+`script.fn_get_sorgente_billing_account_id` (20260826-43) risolveva l'emittente
+di un documento **passando dal suo billing account**. Letto sulla doc auto-gen:
+
+| tabella sorgente | `billing_account_id` | `emittente_fiscale_id` |
+| --- | --- | --- |
+| ordini · preventivi · ddt · resi | **NULLABLE** | NOT NULL |
+| contratti · offerte_commerciali | NOT NULL | NOT NULL |
+
+⇒ Su **quattro tabelle su sei** il billing account può mancare — ed è uno stato
+**legale** del modello — mentre l'emittente c'è sempre. Il risolutore si fermava
+fail-closed su documenti perfettamente validi: *un guard che rifiuta uno stato
+che il modello ammette non è severo, è rotto.*
+
+⭐ **L'ha trovato un pgTAP, non un ragionamento**:
+`vendite/test-ordini-guard-transizione-v1` crea ordini con
+`billing_account_id = NULL` **di proposito**, e ne collega uno a una commessa.
+È esattamente il corollario di `AGENTS.md`: un ramo si verifica dal percorso che
+lo attraversa.
+
+⚠️ **E la tentazione era il fail-open.** I sei guard fratelli, davanti a un BA
+nullo, *saltano* (*«Skip: nessun BA su cui ancorare la coerenza»*). Copiarli qui
+sarebbe stato naturale e sbagliato: **loro** confrontano il BA con l'emittente,
+**questo** confronta due emittenti — e l'emittente si legge, non si deduce.
+
+**Correzione forward-only** (`20260826-50`, `-51`):
+`script.fn_get_sorgente_emittente_sr_id` risponde **«chi lo emette»** con tre
+strade in ordine di direttezza — colonna SR (commesse, fatture, lotti),
+`emittente_fiscale_id` tradotto in SR (i sei documenti), billing account (le due
+tabelle attività). Il predecessore è `DROP`pato e il codice
+`E_SORG_BA_NON_RISOLTO`, nato e ritirato lo stesso giorno, è sostituito da
+`E_SORG_EMITTENTE_NON_RISOLTO`.
+⭐ Il check ne esce **più semplice**: la commessa l'emittente ce l'ha addosso
+(`NOT NULL` dal `-41`), quindi il confronto è fra due colonne e cade anche la
+scorciatoia «stesso BA → true».
+
+##### ⛔ E il ritiro del codice vecchio l'avevo scritto come `DELETE`. Il migrate l'ha fermato
+
+Prima stesura del `-50`: due `DELETE` su `codici_errore` e `messaggi_errore` per
+togliere `E_SORG_BA_NON_RISOLTO`, motivati con la regola *«loadUpdateData non
+cancella, quindi il DELETE forward-only è l'unica forma ammessa»*. Il migrate è
+fallito:
+
+> `l'istruzione UPDATE o DELETE sulla tabella "messaggi_errore" viola il vincolo`
+> `di chiave esterna "fk_error_log_messaggio_errore_id" ... La chiave (id)=(1005)`
+> `è ancora referenziata dalla tabella "error_log"`
+
+⭐ **Ha detto la cosa giusta.** Quella FK significa che il codice **era già stato
+sollevato** — nelle corse pgTAP di poche ore prima — e cancellarlo vorrebbe dire
+**riscrivere il giornale per far tornare i conti a una rinomina**. La regola che
+avevo citato parla di righe che devono sparire; una voce di catalogo che qualcuno
+ha già letto nel giornale non è una di quelle. Il pattern giusto c'era già ed è
+`obsoleto_dal`, lo stesso di qualunque voce di catalogo referenziata.
+
+⚠️ **E sotto ce n'era una peggiore, che il migrate non avrebbe fermato**: nel CSV
+avevo **riusato l'id 1005** per il codice nuovo. Il loader è `loadUpdateData`:
+avrebbe **rinominato in place** il messaggio a cui quelle righe di `error_log`
+puntano, e da lì in avanti il giornale avrebbe raccontato un altro codice. Il
+codice nuovo prende l'id **1007**.
+
+#### ✅ Le due fixture, e sono la §7.8.1 al lavoro
+
+* `anagrafiche/test-emittenti-fiscali` — costruiva lo stato «BA senza mapping»
+  **prendendo in prestito** un cliente vero (30 commesse). Ora **se lo fabbrica**.
+  ⭐ È la stessa lezione che quel file aveva già imparato una volta, un livello
+  più sotto: non bastava costruire il *mapping*, andava costruito il *cliente*.
+  ✅ **verde** (`plan(14)`).
+* `vendite/test-vw-dash-fatturazione` — creava la commessa dell'emittente B sul
+  **cliente di A**. Ora usa un cliente di B, e la condizione di skip si sposta da
+  «esiste un secondo emittente» a «esiste un cliente del secondo emittente», che
+  è la precondizione vera. ✅ **verde** (`plan(28)`).
+
+#### ❓ Il terzo rosso è una domanda, non una correzione
+
+`vendite/test-guard-uscita-commessa-v1` azzerava l'emittente per raggiungere lo
+scenario «tutte e tre le azioni disabilitate». Con il `NOT NULL` quello scenario
+**non è più uno stato del modello**, e non per caso:
+
+* `chiudi` disabilitato ⟺ esiste una riga `APPROVATA + NON_EMESSA`;
+* `rendi_pronta` disabilitato ⟺ **non** esiste una riga `APPROVATA + NON_EMESSA + tipo_doc`;
+* e `trgfn_commesse_attivita_guard_tipo_doc_emittibile` impone
+  `APPROVATA + NON_EMESSA ⇒ tipo_doc NOT NULL`.
+
+⇒ **`chiudi` disabilitato implica `rendi_pronta` abilitato**: sono complementari.
+⚠️ Il file stesso lo aveva previsto per l'asse delle righe e aveva tappato il
+buco con l'asse della testata; ora è chiuso anche quello — e la sua intestazione
+già dichiarava il ramo *«raggiungibile solo da un ruolo BYPASSRLS, mai da un
+operatore»*.
+
+✅ **D-5 chiusa lo stesso giorno** (§7.12): nessuna regola nuova. ⛔ E il
+candidato che avevo proposto — la competenza — **è caduto**: quel filtro è
+cumulativo, sta sulle righe ed è un **parametro del giro**, quindi una commessa
+di settembre guardata ad agosto è *pronta*, solo non ancora dovuta. Bloccarla
+sarebbe stato, per la seconda volta in un giorno, un guard che rifiuta uno stato
+che il modello ammette — stavolta per far tornare verde un test.
+✅ Il file è verde (`plan(17)`) con lo stato vero asserito e lo `skip()`
+dichiarato.
+
+### 2026-08-26 · Esecuzione di L5 — e la misura che avevo sbagliato per difetto
+
+Decisione di Tid: si procede senza aspettare il backend, *«visto che non c'è
+produzione»*. ⭐ È anche l'ordine migliore: il BE riceve il database già nella
+forma finale invece di inseguirlo in due giri.
+
+**`20260826-52`** — `DROP` + `CREATE` di `vendite.fn_get_or_create_commessa`,
+da **13 a 12 parametri**. Con il guard del `-40` in servizio l'override poteva
+solo essere ridondante o sbagliato: *un parametro il cui unico valore ammesso è
+quello che la funzione calcola da sé non è un'opzione, è una trappola per il
+prossimo chiamante, che lo legge nella firma e crede di poter scegliere.*
+
+⛔ **I `GRANT` non si sono lasciati al giro serale.** Letti sul DB prima del
+taglio (`zeroerp_app`, `zeroerp_batch_fatturazione` hanno `EXECUTE` esplicito) e
+rimessi **dentro il changeSet**: il loop di `90_end`/`ci_apply` su dev passa la
+sera, e fra il migrate e le 21:00 il push sarebbe morto con «permesso negato» —
+un sintomo che non somiglia per niente alla causa.
+
+#### ⚠️ Due errori miei, nello stesso lotto, e vale la pena scriverli
+
+1. ⛔ **Avevo contato DUE file pgTAP da adeguare. Sono QUINDICI**, per 21 punti
+   di chiamata. Il primo `grep` guardava poche righe di contesto dopo la
+   chiamata, e i parametri stanno su righe separate. Il conteggio giusto si
+   ottiene **attribuendo ogni `p_emittente_soggetto_ruolo_id` alla chiamata che
+   lo contiene** — nella suite quel nome compare anche in
+   `fn_get_or_create_lotto`, che non è toccata.
+2. ⛔ **Lo script che li ha modificati ha rotto 12 file su 13**, e li ho scoperti
+   dalla **baseline**: nessuno di quei nomi era a registro come rosso noto,
+   quindi il rosso era mio. La regola sbagliata era «se il valore rimosso
+   contiene una `)` allora era l'ultimo argomento» — ma `(SELECT … FROM tmp)` ne
+   ha una anche a metà lista, e toglieva la virgola alla riga precedente.
+   Il criterio giusto è **l'assenza della virgola finale**. Ripristinati con
+   `git checkout --` e rifatti.
+
+✅ **Tutti e 15 verdi**, verificati uno per uno. ⭐ E i chiamanti usano
+**parametri nominati**: nessuno shift posizionale silenzioso — è la ragione per
+cui un taglio di parametro in mezzo alla firma è stato sicuro.
+
+### 2026-08-26 · L9 — Documentazione
+
+**Pagine `manual/` nuove** (concettuali, non auto-generate): 4 in `vendite`
+(`trgfn_commesse_default_emittente`, `trgfn_commesse_guard_emittente_ba`,
+`trgfn_commesse_sorgenti_guard_emittente`), 1 in `script`
+(`fn_get_sorgente_emittente_sr_id`), 3 in `anagrafiche`
+(`fn_guard_ba_cambio_emittente`, `fn_get_storia_emittente_ba`,
+`fn_guard_ba_gestore_globale_storia`, `trgfn_efba_guard_storia_emittente`).
+
+**Guide toccate**, e due erano buchi veri:
+
+* `gestione-commesse.md` — nuova sezione **«Di chi è una commessa»**. ⚠️ E la
+  §API documentava ancora `p_emittente_soggetto_ruolo_id`, che dopo L5 non
+  esiste più: corretta.
+* `sorgente-polimorfa.md` — nuovo §2a **«Le tre domande che il meccanismo sa
+  fare»** (esiste? · in che stato è? · **chi lo emette?**), con la trappola del
+  cliente nullable scritta per chi domani ne scriverà un altro.
+* ⛔ `generazione-cliente.md` — **non nominava mai l'emittente**, e il legame
+  cliente→emittente nasce esattamente lì, da un trigger, con l'emittente
+  dell'operatore che sta creando. Un cliente può quindi *nascere sbagliato* e
+  non c'era scritto da nessuna parte.
+* `fatturazione.md` — «l'emittente della commessa non si passa: si deriva», più
+  il richiamo a monte sul cliente che non cambia emittente dopo aver fatturato.
+
+⚠️ **Un residuo del rinomino, trovato scrivendo la doc**: la pagina
+`script/manual/fn_get_sorgente_billing_account_id.md` puntava a una funzione che
+il `-50` aveva `DROP`pato. Rinominata e riscritta, e corretto il link entrante
+dalla pagina del guard. Tutti i collegamenti delle pagine nuove verificati uno
+per uno ([[feedback_no_build_doc]]: grep mirato, nessuna build).

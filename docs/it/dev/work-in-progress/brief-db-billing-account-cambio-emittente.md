@@ -22,9 +22,18 @@
 > di dominio con implicazioni fiscali. Mescolarli farebbe rimandare il primo in
 > attesa del secondo.
 >
-> ✅ **Stato (2026-08-26, secondo passaggio): le quattro domande sono chiuse
-> (§5) e il piano di sviluppo è scritto (§6).** ⛔ Nessun file scritto, nessuna
-> migrazione applicata ([[feedback_mai_applicare_migrazioni_db]]).
+> ✅ **CANTIERE DB CHIUSO il 2026-08-26 — M1…M6, eseguiti e APPLICATI.**
+> ChangeSet `20260826-46` … `-49` più il `-53` (i `COMMENT` che raccontavano il
+> modello di prima); un codice errore nuovo; un pgTAP `plan(8)`; 4 pagine
+> `manual/`, la sezione sulla tabella e due guide. Registro nel **§8**.
+>
+> 🔴 **Resta BE-1** — verificare che l'endpoint del mapping restituisca davvero
+> il 409 e non lo mangi in un `except Exception` (§6.7) — e, **in pausa, M7**:
+> la capability per il gesto FE non si costruisce finché il frontend non la
+> chiede.
+>
+> ⚠️ **Migrazione applicata da Tid il 2026-08-26** — l'autorizzazione l'ha data
+> lui, comando per comando ([[feedback_mai_applicare_migrazioni_db]]).
 >
 > ⭐ **E il cantiere ha smesso di essere facoltativo.** Non per una decisione di
 > dominio, ma per una conseguenza strutturale: nel momento in cui l'altro brief
@@ -617,3 +626,90 @@ emittente», e quando nasce sbagliato lo nasce subito).
 
 ⛔ Nessun file scritto, nessuna migrazione applicata: sette lotti in §6.0,
 l'esecuzione parte su «procedi».
+
+### 2026-08-26 · Esecuzione — M1, M2, M3, M4, M5
+
+> ⛔ **File scritti, migrazione NON applicata** — *vero al momento in cui questa
+> voce è stata scritta; Tid ha applicato più tardi lo stesso giorno.*
+> ([[feedback_mai_applicare_migrazioni_db]]).
+
+| # | File | Lotto |
+| --- | --- | --- |
+| 46 | `20_code/anagrafiche/…-create-fn-storia-emittente-ba-mctit.yaml` | **M1a** |
+| 47 | `20_code/anagrafiche/…-create-fn-guard-ba-cambio-emittente-mctit.yaml` | **M1b** |
+| 48 | `20_code/anagrafiche/…-create-fn-guard-ba-gestore-globale-storia-mctit.yaml` | **M2** |
+| 49 | `20_code/anagrafiche/…-create-trgfn-efba-guard-storia-emittente-mctit.yaml` | **M3** |
+| — | `80_data/sql/config/*.csv` — `E_BA_EMITTENTE_CON_STORIA` (`CONFLITTO_STATO`, id 1006) | **M4** |
+| — | `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql` `plan(8)` | **M5** |
+
+**⚠️ Due scarti dal piano.**
+
+1. ⭐ **M2 prende due parametri (`prima`, `dopo`) invece di nessuno.** Il gemello
+   dell'albero (`fn_guard_albero_ba_gestore_globale`) non ne ha perché è `AFTER`
+   e rilegge; questo è chiamato da un `BEFORE`, dove «prima» e «dopo» vivono solo
+   in `OLD`/`NEW` e vanno passati.
+2. ⭐ **M2 non compone il messaggio: delega a M1b.** Trova il primo billing
+   account non mappato con storia (`ORDER BY` + `LIMIT 1`, deterministico) e gli
+   passa la palla. Così l'errore del raggio N **nomina un cliente vero** invece
+   di dire «da qualche parte», e l'implementazione resta una sola.
+
+⭐ **Il pgTAP prova la forma «b» in coppia**, ed è la parte che conta: la
+**stessa** chiamata sullo **stesso** cliente, prima e dopo che gli sia passata
+una commessa — passa, poi blocca. È l'unico modo di dimostrare che la finestra
+di correzione esiste davvero e non è solo dichiarata. ⚠️ Il guard si chiama
+**direttamente**, con `prima`/`dopo` espliciti: il percorso via trigger su due
+emittenti diversi vorrebbe un secondo emittente fiscale nello scope
+dell'operatore, che quella fixture non fabbrica — il montaggio del trigger sui
+**tre** movimenti è presidiato strutturalmente (`pg_trigger.tgtype`).
+
+**Cosa resta**
+
+* ~~**M6** — documentazione.~~ ✅ **Fatto il 2026-08-26**: 4 pagine `manual/`
+  (`fn_guard_ba_cambio_emittente`, `fn_get_storia_emittente_ba`,
+  `fn_guard_ba_gestore_globale_storia`, `trgfn_efba_guard_storia_emittente`) +
+  `generazione-cliente.md` e `fatturazione.md`.
+  ⛔ E `generazione-cliente.md` **non nominava mai l'emittente**: il legame
+  nasce lì, da un trigger, con quello dell'operatore che sta creando il cliente —
+  quindi un cliente può *nascere sbagliato* e non era scritto da nessuna parte.
+* ⏸️ **M7** — la capability per il gesto FE: **non si costruisce** finché il
+  frontend non la chiede.
+* **BE-1** — verificare che l'endpoint del mapping restituisca davvero il 409 e
+  non lo mangi in un `except Exception` (§6.7).
+* ⚠️ Il pgTAP **non è stato eseguito**: serve il database, e l'apply non è
+  autorizzato.
+
+### 2026-08-26 · Le note che raccontavano il modello di prima
+
+Segnalazione di Tid: *«quelle note che accennano al fatto che il billing account
+potesse cambiare emittente vanno sistemate»*.
+
+⭐ **Aveva ragione, e l'origine è legittima**: prima del `-49` quel legame **era**
+un attributo mobile, e la documentazione lo diceva perché allora era vero. Tre
+frasi, tutte **dentro il database**:
+
+* `trgfn_efba_guard_albero_emittente` — *«se il mapping viene spostato da un BA a
+  un altro (caso teorico: la UNIQUE lo rende raro)»*;
+* `fn_guard_albero_ba_emittente` — *«il movimento che si dimentica sempre:
+  cambiare l'emittente di un BA…»*;
+* `fn_guard_albero_ba_gestore_globale` — *«cambia in blocco l'emittente di tutti
+  i BA senza mapping specifico»*.
+
+Nessuna è falsa **sul meccanismo** — quei guard devono ancora coprire quei
+movimenti — ma tutte lasciano credere che lo spostamento sia ordinario.
+
+⛔ **E non si è scritto «non si può fare»**, che era la formulazione proposta:
+sarebbe sbagliato quanto la nota vecchia, nell'altra direzione. La decisione D-1
+è la forma **b** — *libero finché non c'è storia, vietato dopo* — e la ragione
+sta nel §2.3: un billing account **nasce già agganciato** all'emittente di chi lo
+crea, quindi può nascere sbagliato. Con un legame immutabile quell'errore non si
+correggerebbe più. ⇒ La frase giusta nomina la **condizione**, non il divieto.
+
+**`20260826-53`** — quattro `COMMENT ON`, nessuna funzione ricreata: è l'unico
+modo di correggere una frase che vive nel database senza toccare il codice che la
+porta. ⭐ Aggiunta anche `trgfn_billing_account_link_ef`, che nell'elenco non
+c'era: è la funzione che **apre** la finestra di correzione, ed è la pagina su
+cui il lettore arriva quando si chiede da dove venga l'emittente di un cliente.
+
+**Doc concettuale**: la sezione «Quando questo legame si può ancora cambiare»
+sulla pagina della tabella (con la tabella dei due casi) + una nota su ognuna
+delle quattro funzioni.

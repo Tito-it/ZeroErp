@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L6b — Il check puro: commessa e sorgente stanno sullo stesso emittente?
+#   vendite.fn_check_commessa_sorgente_emittente_omogeneo(...)
+#   Piano: brief-db-emittente-commessa-invariante, L6 / H4 / D-4 (§7.6.2)
+#
+# ── ⭐ COS'E' L'INVARIANTE, NELLE PAROLE DI TID ─────────────────────
+#   «Una commessa non puo' aggregare diversi emittenti insieme.» Tollerare le
+#   sorgenti eterogenee vorrebbe dire che la colonna di perimetro della
+#   commessa descrive UNA PARTE del lavoro che ci sta sotto: la stessa forma di
+#   danno del §2 del brief, spostata di un anello.
+#
+# ── ⭐ IL CRITERIO E' L'EMITTENTE, NON IL BILLING ACCOUNT (D-4) ─────
+#   Sul modello di oggi le due cose coinciderebbero — la commessa ha
+#   billing_account_id NOT NULL ed e' una dimensione della sua chiave di
+#   raggruppamento, quindi e' di un BA solo — e bloccare sull'IDENTITA' del BA
+#   sarebbe piu' semplice e piu' stretto.
+#   ⛔ E sarebbe piu' stretto di quello che si e' deciso: l'albero dei billing
+#   account esiste apposta perche' piu' BA stiano sotto lo stesso emittente, e
+#   un guard sull'identita' vieterebbe per sempre che un documento di un figlio
+#   contribuisca alla commessa del padre — una decisione di dominio che nessuno
+#   ha preso, e che questo cantiere non ha titolo per prendere di straforo.
+#
+# ── ⚠️ `SECURITY DEFINER`, per la ragione di sempre ─────────────────
+#   Legge vendite.commesse, che ha la RLS. Da SECURITY INVOKER una commessa di
+#   un altro emittente sarebbe invisibile e il check non distinguerebbe «non la
+#   vedo» da «e' di un altro».
+#
+# ── ⛔ NULL = FALSE, e NON `IS NOT DISTINCT FROM` ───────────────────
+#   Calco esatto di anagrafiche.fn_check_ba_coppia_emittente_omogenea: con
+#   `NULL IS NOT DISTINCT FROM NULL` due emittenti irrisolti direbbero
+#   «omogeneo», cioe' la trappola del NULL nella chiave riaperta qui.
+#
+# ⚠️ Convenzione fn_check_*: boolean, nessun raise PROPRIO. Puo' pero'
+#   PROPAGARE i fail-closed del risolutore (E_SORG_*) e
+#   E_EMITTENTE_DEFAULT_MISSING: non sono verdetti di dominio, sono difetti di
+#   configurazione, e mascherarli qui li renderebbe invisibili.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-44-create-fn-check-commessa-sorgente-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260826-44-create-fn-check-commessa-sorgente-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L6b / H4: pure check (boolean, nessun raise proprio) — la sorgente che si sta
+        collegando appartiene allo stesso emittente fiscale della commessa? ⭐ Il criterio e'
+        l'EMITTENTE e non l'identita' del billing account (decisione D-4): bloccare sul BA
+        sarebbe piu' stretto dell'invariante dichiarato e vieterebbe per sempre che un
+        documento di un BA figlio contribuisca alla commessa del padre, che e' una decisione
+        di dominio mai presa. ⭐ Scorciatoia esplicita: stesso billing account -> true senza
+        risolvere, perche' due volte lo stesso BA da'' per costruzione lo stesso emittente.
+        ⚠️ SECURITY DEFINER: legge vendite.commesse, che ha la RLS — da INVOKER una commessa
+        di un altro emittente sarebbe invisibile e il check non distinguerebbe «non la vedo»
+        da «e' di un altro». ⛔ NULL -> false (fail-closed) e non IS NOT DISTINCT FROM: e' la
+        trappola che il gemello fn_check_ba_coppia_emittente_omogenea ha gia' chiuso.
+        Piano: brief-db-emittente-commessa-invariante, L6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_get_sorgente_billing_account_id'
+                     AND p.pronargs = 2;
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'fn_get_emittente_fiscale_id'
+                     AND p.pronargs = 1;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo(
+                  p_commessa_id      vendite.commesse.id%TYPE,
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_ba_commessa anagrafiche.billing_account.id%TYPE;
+                  v_ba_sorgente anagrafiche.billing_account.id%TYPE;
+                  v_ef_commessa anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  v_ef_sorgente anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   «Una commessa non puo' aggregare diversi emittenti
+                  --   insieme» (Tid). Qui si risponde SI/NO per una singola
+                  --   sorgente che si sta per collegare.
+                  --
+                  -- Convenzione fn_check_*: boolean, nessun raise proprio.
+                  -- ⚠️ Puo' pero' PROPAGARE i fail-closed del risolutore
+                  --   (E_SORG_*) e E_EMITTENTE_DEFAULT_MISSING: quelli non
+                  --   sono verdetti di dominio, sono difetti di
+                  --   configurazione, e mascherarli qui li renderebbe
+                  --   invisibili.
+                  -- =========================================================
+                  IF p_commessa_id IS NULL OR p_sorgente_tipo_id IS NULL OR p_sorgente_uid IS NULL THEN
+                      -- ⛔ Fail-closed: «non so dirlo» non e' «va bene».
+                      RETURN false;
+                  END IF;
+
+                  -- ⚠️ SECURITY DEFINER: senza, una commessa fuori perimetro
+                  --   sarebbe invisibile e questo NOT FOUND direbbe una cosa
+                  --   falsa.
+                  SELECT c.billing_account_id
+                    INTO v_ba_commessa
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+
+                  IF NOT FOUND OR v_ba_commessa IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  v_ba_sorgente := script.fn_get_sorgente_billing_account_id(
+                                       p_sorgente_tipo_id, p_sorgente_uid);
+
+                  -- ⭐ SCORCIATOIA ESPLICITA, ed e' il caso normale: se il
+                  --   documento e' dello STESSO billing account della commessa
+                  --   l'emittente e' lo stesso per costruzione — e' cosi' che
+                  --   il push crea le commesse. Si evitano due risoluzioni e,
+                  --   con esse, la propagazione di un difetto di configurazione
+                  --   su un giro che non ha niente da presidiare.
+                  IF v_ba_sorgente = v_ba_commessa THEN
+                      RETURN true;
+                  END IF;
+
+                  v_ef_commessa := anagrafiche.fn_get_emittente_fiscale_id(v_ba_commessa);
+                  v_ef_sorgente := anagrafiche.fn_get_emittente_fiscale_id(v_ba_sorgente);
+
+                  -- ⛔ NULL = fail-closed, e NON `IS NOT DISTINCT FROM`: con
+                  --   quello due emittenti irrisolti direbbero «omogeneo»,
+                  --   cioe' la trappola del NULL nella chiave riaperta qui.
+                  --   Il risolutore non torna mai NULL (solleva prima), ma se
+                  --   un giorno lo facesse questa riga tiene.
+                  IF v_ef_commessa IS NULL OR v_ef_sorgente IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  RETURN v_ef_commessa = v_ef_sorgente;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo(bigint, bigint, text)
+              IS 'Pure check (boolean, nessun raise proprio): la sorgente (tipo + chiave canonica) che si sta collegando appartiene allo STESSO emittente fiscale della commessa? E'' l''invariante detto da Tid — «una commessa non puo'' aggregare diversi emittenti insieme» — sull''asse dei documenti invece che su quello dei billing account (H4). ⭐ Il criterio e'' l''EMITTENTE e non l''identita'' del billing account, ed e'' una scelta (decisione D-4): sul modello di oggi le due cose coinciderebbero, perche'' la commessa ha billing_account_id NOT NULL ed e'' una dimensione della sua chiave di raggruppamento, ma bloccare sull''identita'' del BA vieterebbe per sempre che un documento di un BA figlio contribuisca alla commessa del padre — l''albero dei billing account esiste apposta perche'' piu'' BA stiano sotto lo stesso emittente, e quella e'' una decisione di dominio che nessuno ha preso. Il guard dice quello che l''invariante dice: stesso emittente. ⭐ Scorciatoia esplicita e non ottimizzazione occulta: stesso billing account -> true senza risolvere niente, perche'' due volte lo stesso BA da'' per costruzione lo stesso emittente; e'' il caso normale del push, e cosi'' un difetto di configurazione (nessun gestore globale) non si propaga su un giro che non ha niente da presidiare. ⚠️ SECURITY DEFINER: legge vendite.commesse, che ha la RLS — da SECURITY INVOKER una commessa fuori perimetro sarebbe invisibile e il NOT FOUND direbbe una cosa falsa. ⛔ NULL -> false (fail-closed) e NON IS NOT DISTINCT FROM: con quello due emittenti irrisolti direbbero «omogeneo», cioe'' la trappola del NULL nella chiave riaperta qui — e'' il calco esatto di anagrafiche.fn_check_ba_coppia_emittente_omogenea. ⚠️ Puo'' PROPAGARE i fail-closed di script.fn_get_sorgente_billing_account_id (E_SORG_*) e E_EMITTENTE_DEFAULT_MISSING: non sono verdetti di dominio ma difetti di configurazione, e mascherarli qui li renderebbe invisibili. Piano: brief-db-emittente-commessa-invariante, L6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_check_commessa_sorgente_emittente_omogeneo(bigint, bigint, text);

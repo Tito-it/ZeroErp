@@ -16,7 +16,7 @@
 | priorita_operativa | character varying | NO | 'NORMALE'::character varying |
 | billing_account_id | bigint | NO |  |
 | utility_id | integer | NO |  |
-| emittente_soggetto_ruolo_id | bigint | YES |  |
+| emittente_soggetto_ruolo_id | bigint | NO |  |
 | competenza_dal | date | YES |  |
 | competenza_al | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -57,17 +57,20 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_commesse_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_default_emittente()` |
+| trg_commesse_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_guard_emittente_ba()` |
+| trg_commesse_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_guard_emittente_ba()` |
 | trg_commesse_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_guard_transizione()` |
-| trg_commesse_a10_stati_commessa_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_commessa_id', 'id')` |
 | trg_commesse_a10_stati_commessa_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_commessa_id', 'id')` |
+| trg_commesse_a10_stati_commessa_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_commessa_id', 'id')` |
 | trg_commesse_a10_termini_pagamento_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id', 'id')` |
 | trg_commesse_a10_termini_pagamento_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id', 'id')` |
 | trg_commesse_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_commesse_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_commesse_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_commesse_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_commesse_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('commesse_id')` |
+| trg_commesse_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_commesse_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('commesse_id')` |
+| trg_commesse_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('commesse_id')` |
 | trg_vendite_commesse_a10_guard_chiave_immutabile_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_guard_chiave_immutabile()` |
 
 ---

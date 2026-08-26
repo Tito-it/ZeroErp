@@ -290,6 +290,54 @@ Per gli esempi dettagliati e le casistiche: [Guida Gestione Istanze Utility – 
 
 ---
 
+## L'emittente del cliente — si sceglie una volta
+
+> ⭐ Sezione aggiunta il 2026-08-26. Il legame cliente → emittente nasce **qui**,
+> automaticamente, e non era scritto da nessuna parte.
+
+### Nasce da solo, e prende l'emittente di chi sta creando
+
+Nel momento in cui il billing account viene creato, un trigger lo aggancia
+all'**emittente dell'operatore corrente**. Non c'è un passaggio in cui il
+cliente esiste «senza emittente»: nasce già agganciato.
+
+⚠️ **Conseguenza pratica da conoscere**: se l'operatore sta lavorando
+sull'emittente sbagliato, il cliente **nasce sbagliato**. È un errore di
+inserimento ordinario, e va corretto subito.
+
+### Perché «subito» non è un modo di dire
+
+Un documento già emesso porta con sé chi lo ha emesso, e **non lo cambia mai**.
+Spostare il cliente su un altro emittente non riscrive quei documenti: li
+lascia dove sono. Da quel momento chi li ha emessi continua a vedere i documenti
+e **smette di vedere il cliente** a cui si riferiscono.
+
+⇒ Per questo il legame si può cambiare **finché sul cliente non è passato del
+lavoro** — nessuna fattura, nessuna commessa — e non più dopo. Il controllo che
+lo impone è
+[`anagrafiche.fn_guard_ba_cambio_emittente`](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente),
+e il messaggio che restituisce dice **quante** fatture e **quante** commesse
+stanno bloccando.
+
+### E se il cliente è passato davvero all'altro emittente?
+
+Allora non si sposta: **si apre presso il nuovo emittente una fornitura nuova**.
+I documenti già emessi restano con chi li ha emessi, il cliente resta lo stesso
+soggetto, e le due posizioni convivono.
+
+⚠️ Non esiste un «cliente gemello» sulla stessa fornitura, e non è una
+dimenticanza: un indice univoco lo vieta — per una istanza di utility c'è **un**
+billing account e uno solo.
+
+### ⚠️ E l'albero dei clienti si muove tutto insieme
+
+Padre e figli devono stare sullo **stesso** emittente. Agganciare un cliente a un
+padre di un altro emittente, o spostare l'emittente di un solo nodo, viene
+respinto: vedi
+[`anagrafiche.fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente).
+
+---
+
 ## Trigger e funzioni coinvolte nella creazione
 
 ### Ordine di esecuzione (visione rapida)

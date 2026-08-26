@@ -61,3 +61,18 @@ proprietario della tabella, che vede tutto.
   disattivazione: **un invariante con l'interruttore non e' un invariante**;
 * l'errore nomina i due billing account **e** i due emittenti, cosi' chi lo
   legge sa cosa sistemare senza andarlo a cercare.
+---
+
+### ⚠️ Una nota del 2026-08-26: il movimento non è più ordinario
+
+Questo controllo descrive «cambiare l'emittente di un billing account» come un
+movimento normale — e fino al 2026-08-26 lo era.
+
+Da allora quel movimento è ammesso **solo finché il cliente non ha storia**:
+nessuna fattura, nessuna commessa. Dopo, i documenti già emessi congelano chi li
+ha emessi, e spostare il cliente li lascerebbe orfani.
+
+⭐ **Questo controllo non cambia e resta indispensabile**: risponde a un'altra
+domanda — *l'albero può diventare misto?* — e i due cancelli si sommano invece
+di sovrapporsi. Vedi
+[`trgfn_efba_guard_storia_emittente`](/dbzero/anagrafiche/manual/trgfn_efba_guard_storia_emittente).

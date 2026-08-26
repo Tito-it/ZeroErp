@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L3 — H1: `vendite.commesse.emittente_soggetto_ruolo_id` diventa NOT NULL
+#   Piano: brief-db-emittente-commessa-invariante, L3 (§7.3)
+#
+# ── ⛔ COSA CHIUDE, E NON E' UN MODO DI DIRE ────────────────────────
+#   `vendite.commesse` ha la row security accesa con UNA policy che vale per
+#   TUTTI i comandi (polcmd = '*'), e la sua condizione passa da
+#   script.fn_scope_ef_whitelist_via_sr(user, emittente_soggetto_ruolo_id).
+#   Per un operatore con perimetro ristretto, una commessa con emittente NULL
+#   NON ESISTE: non la legge, non la modifica, non la cancella. E la stessa
+#   condizione e' ricopiata nel WHERE di vw_dash_competenza_attivita.
+#   ⇒ Il danno ha la forma peggiore possibile: lavoro che esiste nel database,
+#   non compare da nessuna parte e non viene mai fatturato — e nessuno se ne
+#   accorge, perche' una lista che non mostra una riga ha lo stesso aspetto di
+#   una lista in cui quella riga non c'e'.
+#
+# ── ⚠️ L'ORDINE CON IL 20260826-39 E' UN VINCOLO VERO ───────────────
+#   L'autogen MESCOLA 00_schema e 20_code ordinando per NN. Questo changeSet ha
+#   numero 41, il trigger che riempie la colonna ha numero 39: se fosse il
+#   contrario, su un database ricostruito da zero (cioe' in CI) ogni INSERT che
+#   omette l'emittente fallirebbe nella finestra fra i due.
+#
+# ── ⛔ NESSUNA BONIFICA DENTRO IL CHANGESET ─────────────────────────
+#   Una `UPDATE ... SET emittente = fn(...)` sarebbe la fotografia di un
+#   minuto: lecita SOLO a rubinetto chiuso, e il rubinetto sono il 39 e il 40,
+#   che stanno prima. Se dopo di quelli restano righe a NULL sono pregresso da
+#   GUARDARE, non da riscrivere alla cieca.
+#   La preCondition qui sotto e' il pre-volo: se ci sono righe a NULL il
+#   migrate si ferma con un messaggio, invece di morire dentro ALTER TABLE.
+#   Le righe si correggono A MANO (AGENTS.md § Workflow Safety).
+#
+# ── ⚠️ COSA DIVENTA IRRAGGIUNGIBILE, E RESTA ───────────────────────
+#   script.fn_check_commessa_pronta_fatturazione solleva
+#   E_COMMESSA_EMITTENTE_MANCANTE per la commessa senza emittente: da qui in
+#   poi quel ramo non e' piu' raggiungibile. ⛔ NON si toglie — un ramo non si
+#   smonta perche' oggi non ci si arriva — e il codice NON si marca
+#   `obsoleto_dal`. Si dichiara, ed e' fatto nel §7.3 del brief.
+#
+# ⚠️ SET NOT NULL fa una scansione completa e prende un ACCESS EXCLUSIVE: in
+#   dev e' irrilevante, si scrive perche' non lo sia altrove.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260826-41-alter-commesse-emittente-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260826-41-alter-commesse-emittente-not-null
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L3 / H1: vendite.commesse.emittente_soggetto_ruolo_id diventa NOT NULL. Non e' un
+        attributo, e' la CHIAVE DI PERIMETRO della commessa: ci si appoggiano la row security
+        della tabella (una policy sola, FOR ALL), il filtro di scope di
+        vw_dash_competenza_attivita e il giornale degli eventi. Con la colonna a NULL, per un
+        operatore con perimetro ristretto la commessa NON ESISTE — non la legge, non la
+        modifica, non la cancella — e il lavoro che ci sta sotto non viene mai fatturato senza
+        che nessuno se ne accorga. ⚠️ NN 41 e non minore di 39: l'autogen mescola 00_schema e
+        20_code ordinando per numero, e il trigger che riempie la colonna deve venire PRIMA o
+        in CI si apre una finestra in cui ogni INSERT senza emittente fallisce. ⛔ Nessuna
+        bonifica qui dentro: la preCondition e' il pre-volo, le eventuali righe a NULL si
+        correggono a mano prima. ⚠️ Rende irraggiungibile il ramo E_COMMESSA_EMITTENTE_MANCANTE
+        di script.fn_check_commessa_pronta_fatturazione: il ramo RESTA e il codice non si
+        ritira. Piano: brief-db-emittente-commessa-invariante, L3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Il riempitore e il guard devono essere gia' in servizio: sono il
+            # rubinetto, e senza di loro il NOT NULL e' una fotografia.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname IN ('trgfn_commesse_default_emittente',
+                                       'trgfn_commesse_guard_emittente_ba');
+            # ⛔ PRE-VOLO: nessuna riga con l'emittente a NULL. Se ce ne sono,
+            #    il migrate si ferma QUI con un messaggio invece di morire
+            #    dentro ALTER TABLE — e quelle righe si guardano e si
+            #    correggono a mano, non con una UPDATE cieca in coda al file.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM vendite.commesse
+                   WHERE emittente_soggetto_ruolo_id IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- ⚠️ Scansione completa + ACCESS EXCLUSIVE. In dev e' irrilevante.
+              ALTER TABLE vendite.commesse
+                ALTER COLUMN emittente_soggetto_ruolo_id SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.commesse.emittente_soggetto_ruolo_id
+              IS 'Emittente fiscale della commessa (soggetti_ruoli.id). ⛔ NON e'' un attributo della commessa: e'' la sua CHIAVE DI PERIMETRO — ci si appoggiano la policy rls_commesse_ef_whitelist (una sola, FOR ALL, quindi anche UPDATE e DELETE), il filtro di scope di vendite.vw_dash_competenza_attivita e il giornale degli eventi. Con un NULL la commessa sparisce a chiunque abbia un perimetro ristretto, e il lavoro che ci sta sotto non viene mai fatturato senza che nessuno se ne accorga: e'' il motivo del NOT NULL, dal 2026-08-26. ⭐ Il valore e'' SEMPRE DERIVATO dal billing account e mai passato da fuori (decisione D-1): lo riempie vendite.trgfn_commesse_default_emittente quando arriva NULL e lo verifica vendite.trgfn_commesse_guard_emittente_ba, che rifiuta qualunque valore diverso da anagrafiche.fn_get_emittente_fiscale_id(billing_account_id). ⚠️ Il guard e'' montato UPDATE OF sulle due sole colonne che possono romperlo: cambiare il mapping emittente del billing account NON riscrive questa riga, quindi la copia puo'' invecchiare — a impedirlo e'' il cancello sul mapping, brief-db-billing-account-cambio-emittente. Piano: brief-db-emittente-commessa-invariante, L3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.commesse
+                ALTER COLUMN emittente_soggetto_ruolo_id DROP NOT NULL;

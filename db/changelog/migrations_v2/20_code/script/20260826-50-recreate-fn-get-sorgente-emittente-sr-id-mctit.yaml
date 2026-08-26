@@ -1,0 +1,317 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L6a′ — CORREZIONE: la domanda non e' «di chi e'», e' «chi lo emette»
+#   script.fn_get_sorgente_emittente_sr_id(tipo, chiave)   [sostituisce il 43]
+#   Piano: brief-db-emittente-commessa-invariante, L6 (§7.6.1, rev 2026-08-26)
+#
+# ── ⛔ IL DIFETTO DEL 20260826-43, E LA SUA MISURA ──────────────────
+#   `script.fn_get_sorgente_billing_account_id` risolveva l'emittente di un
+#   documento passando dal suo BILLING ACCOUNT. Sembrava la strada generica, ed
+#   e' quella sbagliata: letto sulla doc auto-gen il 2026-08-26,
+#
+#     tabella          billing_account_id   emittente_fiscale_id
+#     ordini                 NULLABLE            NOT NULL
+#     preventivi             NULLABLE            NOT NULL
+#     ddt                    NULLABLE            NOT NULL
+#     resi                   NULLABLE            NOT NULL
+#     contratti              NOT NULL            NOT NULL
+#     offerte_commerciali    NOT NULL            NOT NULL
+#
+#   ⇒ Su QUATTRO tabelle su sei il billing account puo' mancare — ed e' uno
+#   stato LEGALE del modello, non un errore — mentre l'emittente c'e' sempre.
+#   Il risolutore vecchio si fermava fail-closed su un documento perfettamente
+#   valido: un guard che rifiuta uno stato che il modello ammette non e'
+#   severo, e' rotto.
+#
+#   ⭐ Trovato da un pgTAP, non da un ragionamento:
+#   `vendite/test-ordini-guard-transizione-v1.sql` crea ordini con
+#   `billing_account_id = NULL` di proposito e ne collega uno a una commessa.
+#
+# ── ⭐ E LA CORREZIONE RENDE IL GUARD PIU' FORTE, NON PIU' DEBOLE ───
+#   La tentazione era «BA nullo -> salta il controllo», che e' quello che fanno
+#   i sei guard fratelli (`trgfn_ordini_guard_emittente_ba` e famiglia: *«Skip:
+#   nessun BA su cui ancorare la coerenza»*). Li' e' giusto, perche' quei guard
+#   confrontano PROPRIO il BA con l'emittente. Qui no: qui si confrontano DUE
+#   EMITTENTI, e l'emittente si legge direttamente.
+#   ⇒ Nessun fail-open, nessun ramo saltato.
+#
+# ── ⭐ TRE STRADE, IN ORDINE DI DIRETTEZZA ──────────────────────────
+#   1. `emittente_soggetto_ruolo_id` — commesse, fatture, lotti: e' gia' la
+#      convenzione SR, si copia;
+#   2. `emittente_fiscale_id` — i sei documenti: si traduce in SR con l'unico
+#      join 1:1 di casa (anagrafiche.emittenti_fiscali);
+#   3. `billing_account_id` — attivita_consumi e attivita_fatturabili, che
+#      l'emittente non ce l'hanno ma il cliente si': si delega ad
+#      anagrafiche.fn_get_emittente_fiscale_id.
+#   Nessuna delle tre -> errore. ⛔ Mai un NULL silenzioso: un risolutore che
+#   risponde «non lo so» trasforma il guard a valle in un no-op.
+#
+# ⚠️ Il codice `E_SORG_BA_NON_RISOLTO` (nato oggi col 43) e' RITIRATO con
+#   `obsoleto_dal` e sostituito da `E_SORG_EMITTENTE_NON_RISOLTO`, che prende un
+#   id suo: il nome vecchio nomina il cliente, e la domanda non e' quella.
+#   ⛔ NON si cancella, e il tentativo di cancellarlo e' fallito dicendo la cosa
+#   giusta: `error_log` ha una FK verso `messaggi_errore` e quel codice era gia'
+#   stato sollevato. Un codice a catalogo che qualcuno ha gia' letto nel
+#   giornale non sparisce — si marca obsoleto, come qualunque voce di catalogo
+#   gia' referenziata.
+#   ⚠️ E il codice nuovo NON riusa l'id 1005: il loader e' `loadUpdateData`, e
+#   riusarlo avrebbe RINOMINATO IN PLACE il messaggio a cui le righe di
+#   `error_log` puntano — quelle righe avrebbero cominciato a raccontare un
+#   altro codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260826-50-recreate-fn-get-sorgente-emittente-sr-id-mctit.yaml
+
+    - changeSet:
+          id: 20260826-50-recreate-fn-get-sorgente-emittente-sr-id
+          author: mctit
+          runOnChange: false
+          validCheckSums:
+              - ANY
+          failOnError: true
+          comment: >
+              L6a′ — CORREZIONE del 20260826-43. Quel risolutore passava dal BILLING ACCOUNT, che su
+              QUATTRO tabelle sorgente su sei (ordini, preventivi, ddt, resi) e' NULLABLE: si fermava
+              fail-closed su documenti perfettamente validi, e un guard che rifiuta uno stato che il
+              modello ammette non e' severo, e' rotto. L'emittente invece c'e' sempre —
+              emittente_fiscale_id e' NOT NULL su tutte e sei — quindi si legge quello.
+              ⭐ Trovato da un pgTAP (test-ordini-guard-transizione-v1), non da un ragionamento.
+              ⭐ La correzione rende il guard piu' FORTE: la tentazione era «BA nullo -> salta», che
+              e' quello che fanno i sei guard fratelli — li' e' giusto perche' confrontano il BA con
+              l'emittente, qui si confrontano DUE EMITTENTI e non c'e' niente da saltare. Tre strade
+              in ordine di direttezza: emittente_soggetto_ruolo_id, poi emittente_fiscale_id tradotto
+              in SR, poi il billing account per le due tabelle che l'emittente non ce l'hanno.
+              Piano: brief-db-emittente-commessa-invariante, L6.
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - sqlCheck:
+                          expectedResult: 1
+                          sql: |
+                              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                               WHERE n.nspname = 'script'
+                                 AND p.proname = 'fn_get_sorgente_billing_account_id'
+                                 AND p.pronargs = 2;
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_get_sorgente_emittente_sr_id(
+                            p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                            p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+                        )
+                        RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+                        LANGUAGE plpgsql
+                        STABLE
+                        SECURITY DEFINER
+                        SET search_path TO 'pg_catalog', 'public'
+                        AS $function$
+                        DECLARE
+                            c_uuid_re CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+                            v_target    regclass;
+                            v_selector  config.sorgenti.key_selector%TYPE;
+                            v_codice    config.sorgenti.codice_interno%TYPE;
+                            v_uid       text := btrim(p_sorgente_uid);
+                            v_colonna   text;        -- predicato sulla chiave: 'id' oppure 'uid'
+                            v_chiave    text;
+                            v_sr_id     anagrafiche.soggetti_ruoli.id%TYPE;
+                            v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                            v_ba_id     anagrafiche.billing_account.id%TYPE;
+                        BEGIN
+                            -- =========================================================
+                            -- Scopo:
+                            --   Dato (tipo sorgente, chiave canonica) dire CHI EMETTE
+                            --   quel documento, in convenzione soggetto_ruolo.
+                            --
+                            -- ⛔ NON si passa dal billing account, ed e' la correzione
+                            --   che ha fatto nascere questa funzione: su ordini,
+                            --   preventivi, ddt e resi il BA e' NULLABLE — uno stato
+                            --   LEGALE — mentre emittente_fiscale_id e' NOT NULL su
+                            --   tutte e sei le tabelle documento. Chiedere il cliente
+                            --   per sapere l'emittente e' la strada lunga, e su quattro
+                            --   tabelle e' una strada chiusa.
+                            --
+                            -- ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS.
+                            --   Da SECURITY INVOKER la sorgente di un altro emittente
+                            --   sarebbe invisibile e il chiamante concluderebbe «non
+                            --   esiste» invece di «e' di un altro».
+                            --
+                            -- ⛔ Fail-closed ovunque: mai un NULL silenzioso.
+                            -- =========================================================
+                            IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                                    jsonb_build_object('detail', 'Tipo sorgente non valorizzato',
+                                                       'sorgente_tipo_id', p_sorgente_tipo_id),
+                                    NULL::uuid, COALESCE(p_sorgente_tipo_id::text, '<nessuno>'));
+                            END IF;
+
+                            SELECT s.target_table, s.key_selector, s.codice_interno
+                              INTO v_target, v_selector, v_codice
+                              FROM config.sorgenti s
+                             WHERE s.id = p_sorgente_tipo_id
+                               AND s.attivo = true;
+
+                            IF v_target IS NULL OR v_selector IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                                    jsonb_build_object('detail', 'Sorgente non attiva o senza target_table/key_selector',
+                                                       'sorgente_tipo_id', p_sorgente_tipo_id,
+                                                       'target_table', COALESCE(v_target::text, '<NULL>'),
+                                                       'key_selector', COALESCE(v_selector, '<NULL>')),
+                                    NULL::uuid, p_sorgente_tipo_id::text);
+                            END IF;
+
+                            IF v_uid IS NULL OR v_uid = '' THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEY_MISSING',
+                                    jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                       'key_selector', v_selector),
+                                    NULL::uuid, p_sorgente_tipo_id::text, v_selector);
+                            END IF;
+
+                            -- Formato della chiave secondo il catalogo. ⚠️ La chiave
+                            -- attesa e' quella CANONICA (quella che
+                            -- fn_link_commessa_sorgente NORMALIZZA in scrittura), non
+                            -- quella che il push passa in giro.
+                            IF v_selector = 'id' THEN
+                                IF v_uid !~ '^[0-9]+$' THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                                        jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                           'sorgente_uid', v_uid,
+                                                           'key_selector', v_selector),
+                                        NULL::uuid, concat('atteso id::text, ricevuto ', v_uid));
+                                END IF;
+                                v_colonna := 'id';
+                            ELSIF v_selector = 'uid' THEN
+                                IF v_uid !~ c_uuid_re THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                                        jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                           'sorgente_uid', v_uid,
+                                                           'key_selector', v_selector),
+                                        NULL::uuid, concat('atteso uuid, ricevuto ', v_uid));
+                                END IF;
+                                v_colonna := 'uid';
+                            ELSE
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEYSEL',
+                                    jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                       'key_selector', v_selector),
+                                    NULL::uuid, v_selector);
+                            END IF;
+
+                            -- ⚠️ UN SOLO parametro, con il cast NELLA query: passarne
+                            --   due (uno bigint e uno uuid, l'altro NULL) romperebbe
+                            --   l'EXECUTE — «too many parameters specified». La chiave
+                            --   viaggia come testo e la si converte qui.
+                            v_chiave := format('t.%I = $1::%s', v_colonna,
+                                               CASE WHEN v_colonna = 'id' THEN 'bigint' ELSE 'uuid' END);
+
+                            -- ── STRADA 1: la colonna SR, che e' gia' la risposta ──────
+                            --   commesse, fatture, fatturazione_lotti: nessuna
+                            --   traduzione, e' una copia.
+                            IF EXISTS (SELECT 1 FROM pg_attribute
+                                        WHERE attrelid = v_target
+                                          AND attname  = 'emittente_soggetto_ruolo_id'
+                                          AND attnum   > 0 AND NOT attisdropped) THEN
+                                EXECUTE format('SELECT t.emittente_soggetto_ruolo_id FROM %s t WHERE %s',
+                                               v_target::text, v_chiave)
+                                  INTO v_sr_id
+                                 USING v_uid;
+
+                            -- ── STRADA 2: l'emittente del documento, tradotto in SR ──
+                            --   E' il caso dei SEI documenti, e la colonna e' NOT NULL
+                            --   su tutti e sei: e' il motivo per cui questa funzione
+                            --   esiste al posto di quella che chiedeva il cliente.
+                            ELSIF EXISTS (SELECT 1 FROM pg_attribute
+                                           WHERE attrelid = v_target
+                                             AND attname  = 'emittente_fiscale_id'
+                                             AND attnum   > 0 AND NOT attisdropped) THEN
+                                EXECUTE format('SELECT t.emittente_fiscale_id FROM %s t WHERE %s',
+                                               v_target::text, v_chiave)
+                                  INTO v_ef_id
+                                 USING v_uid;
+
+                                SELECT ef.soggetto_ruolo_id INTO v_sr_id
+                                  FROM anagrafiche.emittenti_fiscali ef
+                                 WHERE ef.id = v_ef_id;
+
+                            -- ── STRADA 3: il cliente, per chi l'emittente non ce l'ha ─
+                            --   attivita_consumi e attivita_fatturabili: nessuna colonna
+                            --   emittente, ma il billing account si'.
+                            ELSIF EXISTS (SELECT 1 FROM pg_attribute
+                                           WHERE attrelid = v_target
+                                             AND attname  = 'billing_account_id'
+                                             AND attnum   > 0 AND NOT attisdropped) THEN
+                                EXECUTE format('SELECT t.billing_account_id FROM %s t WHERE %s',
+                                               v_target::text, v_chiave)
+                                  INTO v_ba_id
+                                 USING v_uid;
+
+                                IF v_ba_id IS NOT NULL THEN
+                                    v_sr_id := anagrafiche.fn_get_emittente_fiscale_id(v_ba_id);
+                                END IF;
+
+                            ELSE
+                                -- Nessuna delle tre: la sorgente non e' interrogabile.
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                                    jsonb_build_object('detail', 'target_table senza colonna emittente ne'' billing account',
+                                                       'sorgente_tipo_id', p_sorgente_tipo_id,
+                                                       'target_table', v_target::text),
+                                    NULL::uuid, p_sorgente_tipo_id::text);
+                            END IF;
+
+                            -- ⛔ Documento inesistente, oppure esistente ma senza un
+                            --    emittente risolvibile: per il chiamante sono la stessa
+                            --    cosa — non si puo' dire chi lo emette — e un NULL qui
+                            --    disarmerebbe il guard a valle.
+                            IF v_sr_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_EMITTENTE_NON_RISOLTO',
+                                    jsonb_build_object('detail', 'documento inesistente o senza emittente risolvibile',
+                                                       'sorgente_tipo_id', p_sorgente_tipo_id,
+                                                       'sorgente_uid', v_uid,
+                                                       'target_table', v_target::text),
+                                    NULL::uuid, COALESCE(v_codice, p_sorgente_tipo_id::text), v_uid);
+                            END IF;
+
+                            RETURN v_sr_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(bigint, text)
+                        IS 'Risolve «CHI EMETTE questo documento» per la sorgente polimorfa: dato (sorgente_tipo_id, chiave CANONICA secondo config.sorgenti.key_selector) restituisce il soggetto_ruolo dell''emittente. ⛔ SOSTITUISCE script.fn_get_sorgente_billing_account_id (20260826-43), che passava dal BILLING ACCOUNT ed era la strada sbagliata: letto sulla doc auto-gen il 2026-08-26, billing_account_id e'' NULLABLE su QUATTRO tabelle sorgente su sei (ordini, preventivi, ddt, resi) — uno stato LEGALE del modello — mentre emittente_fiscale_id e'' NOT NULL su tutte e sei. Il risolutore vecchio si fermava fail-closed su documenti perfettamente validi, e un guard che rifiuta uno stato che il modello ammette non e'' severo: e'' rotto. Trovato da un pgTAP (vendite/test-ordini-guard-transizione-v1, che crea ordini con billing_account_id NULL di proposito), non da un ragionamento. ⭐ La correzione rende il guard piu'' FORTE e non piu'' debole: la tentazione era «BA nullo -> salta il controllo», che e'' cio'' che fanno i sei guard fratelli (trgfn_ordini_guard_emittente_ba e famiglia, «Skip: nessun BA su cui ancorare la coerenza») — li'' e'' giusto perche'' quei guard confrontano PROPRIO il BA con l''emittente, qui si confrontano DUE EMITTENTI e non c''e'' niente da saltare. TRE STRADE, in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la target ce l''ha — commesse, fatture, lotti: nessuna traduzione, e'' una copia; (2) emittente_fiscale_id tradotto in SR con il join 1:1 su anagrafiche.emittenti_fiscali — i sei documenti; (3) billing_account_id delegato ad anagrafiche.fn_get_emittente_fiscale_id — attivita_consumi e attivita_fatturabili, che l''emittente non ce l''hanno. Nessuna delle tre -> E_SORG_CONF. ⛔ FAIL-CLOSED ovunque, mai un NULL silenzioso: documento inesistente o senza emittente risolvibile -> E_SORG_EMITTENTE_NON_RISOLTO; chiave malformata -> E_SORG_FORMATO; key_selector fuori catalogo -> E_SORG_KEYSEL. ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS, e da SECURITY INVOKER la sorgente di un altro emittente sarebbe invisibile — il chiamante concluderebbe «non esiste» invece di «e'' di un altro». ⚠️ La chiave attesa e'' quella CANONICA, cioe'' quella che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella che il push passa (guida /guide/sorgente-polimorfa §4a). Piano: brief-db-emittente-commessa-invariante, L6.';
+
+                        -- ⛔ Il predecessore esce di scena: lasciarlo vivo significherebbe
+                        --    due risposte alla stessa domanda, e una delle due sbagliata
+                        --    su quattro tabelle su sei. Nessun CASCADE: se qualcosa lo
+                        --    usasse ancora, il DROP deve fallire e dirlo.
+                        DROP FUNCTION IF EXISTS script.fn_get_sorgente_billing_account_id(bigint, text);
+
+                        -- ⛔ NESSUNA CANCELLAZIONE del codice nato col 43, e la prima
+                        --    stesura di questo changeSet ci aveva provato: il migrate e'
+                        --    fallito dicendo la cosa giusta — `error_log` ha una chiave
+                        --    esterna verso `messaggi_errore`, e quel codice ERA GIA'
+                        --    STATO SOLLEVATO. Cancellarlo significherebbe riscrivere il
+                        --    giornale per far tornare i conti a una rinomina.
+                        --    Il ritiro si fa con `obsoleto_dal` nel CSV, che e' il
+                        --    pattern di casa per qualunque voce di catalogo gia'
+                        --    referenziata. Il codice nuovo si AFFIANCA, con un id suo.
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    sql: |
+                        DROP FUNCTION IF EXISTS script.fn_get_sorgente_emittente_sr_id(bigint, text);

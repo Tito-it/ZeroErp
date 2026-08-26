@@ -106,6 +106,7 @@
 - [fn_cambia_stato_commessa](funzioni/fn_cambia_stato_commessa.md) — (rev 2026-06-07) `vendite.fn_cambia_stato_commessa(p_commessa_id, p_nuovo_stato, p_user)` è l'**entrypoint sanzionato (DB-first)** per cambiare lo stato di una commessa: risolve il codice stato in id, esegue l'`UPDATE` e ritorna lo stato da/a.
 - [fn_cambia_stato_preventivo](funzioni/fn_cambia_stato_preventivo.md) — (latest review 03-04-2026) `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato, p_user)` esegue la **transizione di stato** di un preventivo vendita, validando la transizione tramite la matrice configurabile `config.transizioni_stati_preventivi`.
 - [fn_cancel_lotto_task_run](funzioni/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
+- [fn_check_commessa_sorgente_emittente_omogeneo](funzioni/fn_check_commessa_sorgente_emittente_omogeneo.md)
 - [fn_check_ddt_riga_richiede_prezzo](funzioni/fn_check_ddt_riga_richiede_prezzo.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice C)
 - [fn_check_fondo_fattura_capiente](funzioni/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
 - [fn_chiudi_contratto_per_successione](funzioni/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
@@ -165,6 +166,7 @@
 - [fn_get_totale_fondi_fattura](funzioni/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
+- [fn_guard_commessa_sorgente_emittente](funzioni/fn_guard_commessa_sorgente_emittente.md)
 - [fn_guard_lotto_fatture_stato_coerente](funzioni/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-08-21 — funzione rev 2026-08-04)
 - [fn_imposta_data_documento_lotto](funzioni/fn_imposta_data_documento_lotto.md) — **Dichiara la data documento di un lotto** — l'atto che l'operatore compie davvero: *«questo lotto lo dato al 31 luglio»*.
 - [fn_libera_attivita_fatturabili](funzioni/fn_libera_attivita_fatturabili.md) — (latest review 26-08-2026)
@@ -247,8 +249,11 @@
 - [trgfn_commesse_attivita_guard_prezzo_rettifica](funzioni/trgfn_commesse_attivita_guard_prezzo_rettifica.md) — (rev 2026-08-21 — decisione di Tid del 2026-08-20, brief nota di credito §42.2)
 - [trgfn_commesse_attivita_guard_quantita_immutabile](funzioni/trgfn_commesse_attivita_guard_quantita_immutabile.md) — (rev 2026-08-21)
 - [trgfn_commesse_attivita_guard_tipo_doc_emittibile](funzioni/trgfn_commesse_attivita_guard_tipo_doc_emittibile.md) — (rev 2026-06-19)
+- [trgfn_commesse_default_emittente](funzioni/trgfn_commesse_default_emittente.md) — (latest review 26-08-26)
 - [trgfn_commesse_guard_chiave_immutabile](funzioni/trgfn_commesse_guard_chiave_immutabile.md) — (latest review 02-08-2026)
+- [trgfn_commesse_guard_emittente_ba](funzioni/trgfn_commesse_guard_emittente_ba.md) — (latest review 26-08-26)
 - [trgfn_commesse_guard_transizione](funzioni/trgfn_commesse_guard_transizione.md) — (rev 2026-06-07)
+- [trgfn_commesse_sorgenti_guard_emittente](funzioni/trgfn_commesse_sorgenti_guard_emittente.md) — (latest review 26-08-26)
 - [trgfn_contratti_default_emittente](funzioni/trgfn_contratti_default_emittente.md) — (rev 2026-05-26)
 - [trgfn_contratti_default_valuta](funzioni/trgfn_contratti_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_contratti_freeze_listino_versione](funzioni/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.

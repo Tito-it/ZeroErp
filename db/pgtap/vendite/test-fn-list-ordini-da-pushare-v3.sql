@@ -187,7 +187,6 @@ CREATE TEMP TABLE tmp_commessa_a3 AS
 SELECT vendite.fn_get_or_create_commessa(
          p_billing_account_id          => pr.billing_account_id,
          p_utility_id                  => pr.utility_id,
-         p_emittente_soggetto_ruolo_id => pr.emittente_soggetto_ruolo_id,
          p_competenza_dal              => pr.competenza_dal,
          p_competenza_al               => pr.competenza_al,
          p_meta => jsonb_build_object('test_scope','pgtap_list_ordini_v3')

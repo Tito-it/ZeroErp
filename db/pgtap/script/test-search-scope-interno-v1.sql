@@ -272,6 +272,28 @@ SELECT sr.id                                       AS soggetto_ruolo_id,
                 WHERE e.billing_account_id = ba.id)
    AND script.fn_get_ba_emittente_sr_id(ba.id)
        = ANY (COALESCE((SELECT sr_ids FROM _t_scope), '{}'::bigint[]))
+   -- ⭐ 2026-08-26 — e SENZA STORIA, che e' il terzo guard da schivare.
+   --   Dal changeSet 20260826-49 un cliente che ha gia' fatture o commesse
+   --   NON si sposta su un altro emittente: quei documenti congelano chi li
+   --   ha emessi, e spostarlo li lascerebbe orfani. Qui lo spostamento e'
+   --   solo il MEZZO per costruire il caso — il soggetto del test e' la
+   --   ricerca — quindi si sceglie un cliente su cui e' ancora lecito.
+   --   ⚠️ La storia si chiede ad anagrafiche.fn_get_storia_emittente_ba e NON
+   --   con un NOT EXISTS scritto qui: quella funzione e' SECURITY DEFINER,
+   --   mentre un conteggio diretto girerebbe sotto RLS e risponderebbe
+   --   «nessuna storia» per i documenti che non vedo — scegliendo proprio il
+   --   cliente su cui il guard poi scatta.
+   AND (SELECT st.n_fatture + st.n_commesse
+          FROM anagrafiche.fn_get_storia_emittente_ba(ba.id) st) = 0
+   -- ⭐ E con UN SOLO billing account, che era una condizione IMPLICITA della
+   --   fixture e non era scritta: il test 13 chiede che il soggetto SPARISCA
+   --   dalla ricerca, ma la ricerca lo trova attraverso QUALUNQUE suo billing
+   --   account in perimetro. Se il soggetto ne ha due, spostarne uno non lo
+   --   toglie di mezzo e il test misura zero spostamenti invece di uno.
+   --   Finora reggeva per il cliente che il LIMIT 1 pescava, non per costruzione.
+   AND NOT EXISTS (SELECT 1 FROM anagrafiche.billing_account ba2
+                    WHERE ba2.soggetto_ruolo_id = sr.id
+                      AND ba2.id <> ba.id)
  ORDER BY s.ragione_sociale_completa, sr.id
  LIMIT 1;
 
@@ -287,7 +309,7 @@ SELECT CASE WHEN (SELECT ef_altro FROM _t_ef2) IS NOT NULL
     1::bigint,
     '12. PRECONDIZIONE fixture a due emittenti: il cliente di prova oggi si vede'
   )
-  ELSE skip('12. istanza con un solo emittente attivo, o nessun cliente CL mappato e fuori albero', 1)
+  ELSE skip('12. istanza con un solo emittente attivo, o nessun cliente CL mappato, fuori albero e senza storia', 1)
 END;
 
 -- Lo spostamento: il billing account del cliente passa all'ALTRO emittente.
