@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «SOLO BOZZA» SCENDE NEL DB — guard sulle testate DDT e ordine
+#
+# ── PERCHE' ESISTE ──────────────────────────────────────────────────
+#   Decisione di Tid, 2026-08-26: la regola «un documento si cancella
+#   solo finche' e' in bozza» deve vivere nel database, non solo nel
+#   backend. Oggi vive in due frozenset Python
+#   (_STATI_MODIFICABILI = {'DRAFT'} in ddt_service e ordini_service):
+#   qualunque altro percorso — una funzione DB, uno script, una
+#   riconciliazione — la salta senza accorgersene.
+#
+# ── ⛔ E SENZA QUESTO GUARD, IL SUO GEMELLO E' FAIL-OPEN ─────────────
+#   20260826-21 mette la stessa regola sul guard di RIGA. Ma le righe
+#   sono in ON DELETE CASCADE dalla testata, e provato con tabelle
+#   temporanee il 2026-08-26: in un BEFORE DELETE di riga innescato da
+#   un cascade, la testata risulta GIA' cancellata. Il guard di riga non
+#   puo' quindi leggerne lo stato, e la sua unica risposta corretta e'
+#   «di questo risponde la testata». Se la testata non ha un guard, il
+#   cascade e' la porta di servizio: si cancella un DDT consegnato e le
+#   sue righe seguono senza che nessuno abbia controllato niente.
+#
+#   ⭐ I due changeSet sono UNA COPPIA. Togliendone uno, l'altro non
+#   diventa piu' debole: diventa aggirabile.
+#
+# ── PERCHE' NON UNA FUNZIONE GENERICA ───────────────────────────────
+#   Il progetto ha l'idioma delle trigger function parametrizzate
+#   (dbops.trgfn_child_requires_active_parent). Qui non paga: le due
+#   testate hanno tabelle di stato diverse (config.stati_doc_ddt e
+#   config.stati_doc_ordini) e colonne diverse (stato_doc_ddt_id e
+#   stato_doc_ordine_id), quindi una versione generica richiederebbe SQL
+#   dinamico su due assi per coprire DUE casi. Si tiene la forma del
+#   gemello di riga, che gia' dispaccia su TG_TABLE_NAME: due funzioni
+#   della stessa famiglia che si leggono allo stesso modo.
+#
+# ── ⚠️ FASE E ORDINE ────────────────────────────────────────────────
+#   Fascia _a10_ (guard). Sulle due testate non esiste nessun altro
+#   BEFORE DELETE oltre a trg_*_z90_storico_upd_dlt, e i BEFORE ROW
+#   girano in ordine alfabetico: a10 precede z90, quindi il rifiuto
+#   arriva prima che la storicizzazione lavori.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-22-create-trgfn-doc-guard-delete-solo-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20260826-22-create-trgfn-doc-guard-delete-solo-bozza
+      author: mctit
+      # ⛔ runOnChange VIETATO in 20_code (scripts/guardrail_run_on_change.py).
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.trgfn_doc_guard_delete_solo_bozza + i due trigger su vendite.ddt
+        e vendite.ordini. La regola «un documento si cancella solo in bozza»
+        scende nel DB, e chiude la porta di servizio del CASCADE.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_documento text;
+                v_stato     text;
+                v_etichetta text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Un documento (DDT o ordine) si cancella SOLO finche' e'
+                --   in bozza. Regola di dominio, decisa da Tid il 2026-08-26.
+                --
+                -- ⚠️ Nessuna lettura sotto RLS qui: lo stato sta su OLD, cioe'
+                --    sulla riga che il chiamante sta gia' cancellando. Si
+                --    legge solo il codice dello stato dal vocabolario, che
+                --    RLS non ha.
+                -- =========================================================
+                IF TG_TABLE_NAME = 'ddt' THEN
+                  v_documento := 'DDT';
+                  v_etichetta := concat('DDT ', COALESCE(OLD.numero, '#' || OLD.id::text));
+                  SELECT s.codice_interno::text
+                    INTO v_stato
+                    FROM config.stati_doc_ddt s
+                   WHERE s.id = OLD.stato_doc_ddt_id;
+
+                ELSIF TG_TABLE_NAME = 'ordini' THEN
+                  v_documento := 'ORDINE';
+                  v_etichetta := concat('Ordine ', COALESCE(OLD.numero, '#' || OLD.id::text));
+                  SELECT s.codice_interno::text
+                    INTO v_stato
+                    FROM config.stati_doc_ordini s
+                   WHERE s.id = OLD.stato_doc_ordine_id;
+
+                ELSE
+                  -- Errore di MONTAGGIO, come nel gemello di riga.
+                  PERFORM script.fn_log_and_raise_error(
+                    'script', 'trgfn_doc_guard_delete_solo_bozza', 'E_DOC_TIPO_NON_GESTITO',
+                    jsonb_build_object('table', TG_TABLE_NAME, 'id', OLD.id),
+                    NULL::uuid,
+                    TG_TABLE_NAME);
+                END IF;
+
+                -- ⚠️ IS DISTINCT FROM e non <>: se il vocabolario non
+                --    restituisse lo stato (riga di stato mancante, che la FK
+                --    non dovrebbe permettere) il guard RIFIUTA. Fail-closed:
+                --    su un verbo distruttivo il default e' il no.
+                IF v_stato IS DISTINCT FROM 'DRAFT' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'trgfn_doc_guard_delete_solo_bozza', 'E_DELETE_DOC_NON_BOZZA',
+                    jsonb_build_object('table', TG_TABLE_NAME,
+                                       'id', OLD.id,
+                                       'documento', v_documento,
+                                       'stato', v_stato),
+                    NULL::uuid,
+                    v_etichetta,
+                    COALESCE(v_stato, '<sconosciuto>'));
+                END IF;
+
+                RETURN OLD;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza()
+              IS 'Un documento (vendite.ddt, vendite.ordini) si cancella SOLO finche'' e'' in bozza. Nasce il 2026-08-26 da una decisione di Tid: la regola viveva solo nel backend, in due frozenset Python (_STATI_MODIFICABILI = {DRAFT} in ddt_service e ordini_service), quindi ogni altro percorso la saltava. ⛔ E senza questo guard il suo gemello di riga (vendite.trgfn_dlt_block_ordrig_ddtrig, rev 20260826-21) sarebbe FAIL-OPEN: le righe sono in ON DELETE CASCADE dalla testata e — provato con tabelle temporanee — in un BEFORE DELETE di riga innescato da un cascade la testata risulta gia'' cancellata, quindi il guard di riga non puo'' leggerne lo stato. Il cascade sarebbe la porta di servizio. ⭐ I due guard sono UNA COPPIA: togliendone uno l''altro non si indebolisce, diventa aggirabile. ⚠️ IS DISTINCT FROM ''DRAFT'' e non <>: se il vocabolario non restituisse lo stato il guard rifiuta — su un verbo distruttivo il default e'' il no. ⚠️ Nessuna lettura sotto RLS: lo stato sta su OLD, e il vocabolario config.stati_doc_* non ha RLS. Fascia _a10_ perche'' i BEFORE ROW girano in ordine alfabetico e il rifiuto deve precedere trg_*_z90_storico_upd_dlt. Non generica di proposito: due testate, due tabelle di stato, due nomi di colonna — una versione parametrizzata costerebbe SQL dinamico su due assi per coprire due casi.';
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_delete_solo_bozza_dlt ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_guard_delete_solo_bozza_dlt
+                BEFORE DELETE ON vendite.ddt
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_delete_solo_bozza_dlt ON vendite.ordini;
+              CREATE TRIGGER trg_ordini_a10_guard_delete_solo_bozza_dlt
+                BEFORE DELETE ON vendite.ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_delete_solo_bozza_dlt ON vendite.ddt;
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_delete_solo_bozza_dlt ON vendite.ordini;
+              DROP FUNCTION IF EXISTS vendite.trgfn_doc_guard_delete_solo_bozza();
