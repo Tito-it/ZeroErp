@@ -21,7 +21,7 @@
 > (loro §7.3, qui R-11 e T8).
 >
 > ⛔ **Intrecciato, non solo correlato:**
-> [brief-db-limite-emissione-e-data-verificata.md](brief-db-limite-emissione-e-data-verificata.md).
+> [brief-db-limite-emissione-e-data-verificata.md](../work-done/brief-db-limite-emissione-e-data-verificata.md).
 > Quel cantiere fa `DROP + CREATE` della stessa `fn_calcola_data_documento` che
 > queste viste chiamano, aggiungendo `p_serie` — e lo fa **contando su DB-1 di
 > qui**, che è ciò che dà la serie alle viste. ✅ **Consegna unica**, con l'ordine
@@ -682,7 +682,7 @@ pgTAP di scope, non da assumere. ⚠️ E il cancello di quel test è
 
 > ⛔ **Prima di tutto, l'ordine con il cantiere gemello** (✅ D-8, §12): L4/L5
 > vanno **dopo** il `DROP + CREATE` di `fn_calcola_data_documento` del brief
-> [limite-emissione-e-data-verificata](brief-db-limite-emissione-e-data-verificata.md),
+> [limite-emissione-e-data-verificata](../work-done/brief-db-limite-emissione-e-data-verificata.md),
 > o quel `DROP` fallisce sulla dipendenza della vista. Consegna unica.
 >
 > ⚠️ **Numerazione: i numeri `01…06` qui sotto sono BRUCIATI.** Il cantiere
@@ -808,7 +808,7 @@ oggi — cioè non rompe nessun `throws_like` esistente.
 
 ⛔ **`p_serie` è obbligatoria e senza `DEFAULT`** (✅ D-8): la firma di
 `fn_calcola_data_documento` la aggiunge il cantiere gemello
-[limite-emissione-e-data-verificata](brief-db-limite-emissione-e-data-verificata.md),
+[limite-emissione-e-data-verificata](../work-done/brief-db-limite-emissione-e-data-verificata.md),
 proprio perché queste viste la serie ce l'hanno — gliela dà L2 in `reg.serie`.
 ✅ **L'ordine dei parametri NON è più un'incognita: il gemello ha applicato.**
 Firma vigente, letta sulla doc auto-gen il 2026-08-26 —
@@ -1147,7 +1147,7 @@ Da verificare col frontend prima del seed.
 
 > ✅ **Tid, 2026-08-26**: *«può essere una sola consegna appena loro terminano»*,
 > con l'osservazione che
-> [brief-db-limite-emissione-e-data-verificata.md](brief-db-limite-emissione-e-data-verificata.md)
+> [brief-db-limite-emissione-e-data-verificata.md](../work-done/brief-db-limite-emissione-e-data-verificata.md)
 > tocca la stessa funzione. **Verificato: è così, e l'intreccio è più stretto di
 > un'opinione.**
 
@@ -1336,7 +1336,7 @@ Sei domande, chiuse tutte in giornata con Tid. ⭐ **Nessuna domanda aperta.**
 | **D-6** | **Chiusa senza debito** | ▼ sotto |
 
 ⛔ **D-8 non è una preferenza, è un vincolo meccanico.**
-[brief-db-limite-emissione-e-data-verificata.md](brief-db-limite-emissione-e-data-verificata.md)
+[brief-db-limite-emissione-e-data-verificata.md](../work-done/brief-db-limite-emissione-e-data-verificata.md)
 fa `DROP + CREATE` della stessa `fn_calcola_data_documento` che le nostre viste
 chiamano, e PostgreSQL **rifiuta** di eliminare una funzione da cui dipende una
 vista (provato in transazione). Se le viste entrassero prima, il loro `DROP`

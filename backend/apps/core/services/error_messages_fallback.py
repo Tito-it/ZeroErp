@@ -299,6 +299,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FATTURAZIONE_NUMERA_PAYLOAD": "Parametri della numerazione non validi.",
     "E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO": "La data del documento e' anteriore a quella dell'ultimo numero gia' emesso su questo registro: la sequenza di un sezionale segue il tempo, e il numero successivo non puo' portare una data precedente.",
     "E_FATTURA_DATA_NON_MODIFICABILE": "La fattura e' gia' numerata: la data del documento non si puo' piu' cambiare.",
+    "E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE": "La data del documento e' troppo vecchia perche' sia ancora emettibile su questo registro: fra la data di un documento fiscale e il suo invio c'e' un termine, e quello e' passato. Non e' un problema di sequenza — si rimedia spostando la data in avanti, e il calendario del dialog di numerazione si apre gia' sulla prima data ammessa.",
     "E_FATTURA_EMITTENTE_NON_RISOLTO": "Emittente fiscale non risolvibile per la fattura in coda di stampa.",
     "E_FATTURA_GIA_FISCALE": "La fattura e` oltre lo stato pre-fiscale: non puo` essere tolta dal lotto.",
     "E_FATTURA_GIA_NUMERATA": "La fattura ha gia` un numero: toglierla dal lotto aprirebbe un buco nella numerazione fiscale.",
