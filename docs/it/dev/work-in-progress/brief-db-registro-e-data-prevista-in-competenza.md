@@ -1593,6 +1593,7 @@ rigenerata.**
 | **L4** | `vw_dash_competenza_attivita` — 4 colonne | `20260826-18` | ✅ applicato |
 | **L5** | `vw_dash_competenza_gruppi` — 4 colonne, «uno oppure N» | `20260826-19` | ✅ applicato |
 | **L6** | catalogo: 2 righe, `id` 553-554, lista 42 | `ui/lista_colonna.csv` | ✅ caricate dal mirror |
+| **L8** | ⭐ **preset**: le due colonne nuove **accese**, più le **tre** rimaste spente dai cantieri precedenti | `ui/lista_preset_colonna.csv` | ✍️ 5 righe appese, al prossimo migrate |
 | **L7** | pgTAP, 12 asserzioni | `test-registro-documento-previsto-v1.sql` | ✅ 12/12 verde |
 | **DOC** | doc concettuale delle due funzioni nuove | `dbzero/vendite/manual/fn_lookup_registro_id.md`, `…/fn_resolve_registro_documento.md` | ✅ scritte, riferimenti verificati |
 
@@ -1654,3 +1655,84 @@ eseguito**.
 
 ⚠️ **I due guard rossi sono noti e accettati** (decisione di Tid): non c'era
 scorciatoia, perché `ordinabile = f` avrebbe evitato il primo ma non il secondo.
+
+---
+
+## 2026-08-26 · ⭐ L8 — le colonne nascevano SPENTE
+
+> Richiamo di Tid a cantiere già chiuso: *«accendi le colonne nate spente»*.
+
+⛔ **Il seed a catalogo non basta perché una colonna si veda**, e non è un
+dettaglio di configurazione: è una regola scritta nella funzione che risolve la
+lista. Lo step 3 di `ui.fn_resolve_lista_config` — *«merge automatico colonne
+nuove dal catalogo»* — unisce con **`visibile => FALSE`** ogni colonna che non
+abbia una riga nel preset.
+
+⇒ Una colonna seedata e basta **esiste ma non si vede**: finisce nel contatore
+`colonne_nuove` (il badge «Personalizza»), e resta invisibile finché un operatore
+non la spunta a mano. ⚠️ **Consegnare così un cantiere significa consegnare una
+colonna che nessuno guarderà** — e senza nessun errore che lo dica.
+
+### Cosa si è aggiunto
+
+Due righe in `80_data/sql/ui/lista_preset_colonna.csv`, preset **42**
+(`dash_competenza_gruppi_default`, quello di sistema):
+
+```
+42,553,75,t,f
+42,554,78,t,f
+```
+
+ℹ️ **Nessun changeSet nuovo**: il loader `20260507-09` è `loadUpdateData`
+`runOnChange: true` con chiave `(preset_id, colonna_id)` — verificato — quindi
+le righe entrano al prossimo migrate.
+
+### La prova, in transazione annullata
+
+| | Prima | Dopo |
+| --- | --- | --- |
+| `registro` | `visibile = false` | ✅ `true`, ordine **75** |
+| `data_documento_prevista` | `visibile = false` | ✅ `true`, ordine **78** |
+
+La vista predefinita della lista 42 diventa:
+
+> riferimento · tipo gruppo · cliente · commessa · n. attività · valore ·
+> periodo · **registro** · **data prevista** · azioni
+
+⭐ Le due colonne cadono esattamente dove le voleva il piano: **dopo «Periodo»**,
+cioè accanto alle informazioni temporali, e prima delle azioni.
+
+### ✅ E le altre TRE, accese anche loro
+
+> ✅ **Tid, 2026-08-26**: *«accendi anche quelle»*.
+
+`ba_codice_fatturazione`, `id_fiscale` ed `emittente_fiscale` — seedate dai
+cantieri «cliente di fatturazione» (17/08) e «perimetro emittente» (18/08) e
+**mai messe nel preset**, cioè nella stessa identica condizione in cui erano le
+nostre.
+
+⚠️ **Verificato prima di accenderle**, perché una colonna accesa ma non servita
+sarebbe peggio di una spenta — si spunta e resta vuota: tutte e tre sono **già
+proiettate** dal repository nella `SELECT` della lista **e** presenti nella
+whitelist di ordinamento. Non nascono vuote.
+
+⭐ E il rischio sullo schermo stretto è basso per costruzione: le tre hanno le
+`priorita` più basse della lista (**40, 35, 30**), quindi sono le **prime** che
+il ritiro dinamico manda nella riga di espansione quando lo spazio non basta.
+
+**La vista predefinita della lista 42, adesso** — 13 colonne, badge
+«Personalizza» a **zero**:
+
+> riferimento · tipo gruppo · cliente · commessa · n. attività · valore ·
+> periodo · **registro** · **data prevista** · codice BA · id fiscale ·
+> emittente · azioni
+
+ℹ️ Postilla aggiunta anche nei due cantieri d'origine
+([cliente e ricerca](../work-done/brief-db-dash-competenza-gruppi-cliente-e-ricerca.md),
+[perimetro emittente](../work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md)):
+è lì che il passo era stato saltato, ed è lì che chi rilegge deve trovarlo.
+
+⭐ **Vale la pena farne una regola**: chi aggiunge una colonna a catalogo decide
+*anche* se nasce accesa o spenta, e lo scrive. «Spenta» è una scelta legittima —
+per una colonna di nicchia lo è — ma dev'essere una scelta, non l'esito di un
+passo saltato.

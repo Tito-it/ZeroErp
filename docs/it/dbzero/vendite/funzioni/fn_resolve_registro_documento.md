@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_resolve_registro_documento.md" %}
 # ⚙️ Funzione `fn_resolve_registro_documento`
 
 ```sql

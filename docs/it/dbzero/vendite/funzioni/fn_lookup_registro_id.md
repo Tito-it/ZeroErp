@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_lookup_registro_id.md" %}
 # ⚙️ Funzione `fn_lookup_registro_id`
 
 ```sql

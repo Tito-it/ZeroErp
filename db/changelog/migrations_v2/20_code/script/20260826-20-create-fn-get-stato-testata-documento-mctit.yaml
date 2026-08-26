@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LETTORE SECURITY DEFINER dello stato di una testata documento.
+#
+# ── ⭐ PERCHE' ESISTE, E PERCHE' SECURITY DEFINER ────────────────────
+#   Serve al guard di cancellazione delle righe documento
+#   (vendite.trgfn_dlt_block_ordrig_ddtrig), che deve rispondere a una
+#   domanda sola: «la testata di questa riga esiste ancora, e in che
+#   stato e'?».
+#
+#   ⛔ E la risposta NON puo' essere letta sotto RLS. Misurato sul
+#   catalogo il 2026-08-26: vendite.ddt e vendite.ordini hanno
+#   relrowsecurity = TRUE, mentre vendite.ddt_righe e
+#   vendite.ordini_righe NO. Un chiamante fuori perimetro puo' quindi
+#   raggiungere la RIGA e non vedere la sua TESTATA: sotto RLS la
+#   SELECT tornerebbe zero righe e il guard non saprebbe distinguere
+#   «non la vedo» da «non c'e' piu'».
+#
+#   ⚠️ E quella distinzione e' esattamente cio' su cui il guard decide:
+#   «testata assente» significa CASCADE partito dalla testata (provato
+#   il 2026-08-26 con tabelle temporanee: in un BEFORE DELETE di riga
+#   innescato da ON DELETE CASCADE la testata risulta gia' cancellata),
+#   e in quel caso la regola di stato l'ha gia' applicata il guard della
+#   testata. Leggere sotto RLS renderebbe il guard FAIL-OPEN proprio per
+#   chi sta fuori perimetro.
+#
+# ── L'ETICHETTA, e perche' non e' un id ─────────────────────────────
+#   Il secondo valore restituito e' la frase che l'operatore legge nel
+#   messaggio d'errore: «DDT 2026/00123» oppure, se il documento non ha
+#   ancora un numero, «DDT #4711». Il numero e' nullable su entrambe le
+#   testate, quindi il fallback non e' un caso di nicchia: e' il caso
+#   NORMALE di un documento in bozza.
+#
+# ── PERIMETRO ───────────────────────────────────────────────────────
+#   Legge DUE colonne di una testata (stato e numero) e null'altro. Non
+#   scrive. Non e' un'apertura di perimetro: e' una domanda chiusa, con
+#   una risposta che non contiene dati riservati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260826-20-create-fn-get-stato-testata-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260826-20-create-fn-get-stato-testata-documento
+      author: mctit
+      # ⛔ runOnChange VIETATO in 20_code (scripts/guardrail_run_on_change.py):
+      #   in CI Liquibase gira due volte e un runOnChange riscriverebbe questo
+      #   corpo sopra revisioni piu' recenti. Per aggiornare: file nuovo con
+      #   numerazione successiva.
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_get_stato_testata_documento: lettore SECURITY DEFINER dello
+        stato e dell'etichetta di una testata DDT/ordine, per il guard di
+        cancellazione delle righe. Necessario perche' le testate hanno RLS e le
+        righe no.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stato_testata_documento(
+                  p_documento  text,
+                  p_testata_id bigint)
+               RETURNS TABLE (stato text, etichetta text)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY DEFINER
+               SET search_path = pg_catalog, public
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Rispondere a «la testata esiste ancora, e in che stato e'?»
+                --   SENZA passare dalla RLS delle testate.
+                --
+                -- Contratto:
+                --   - zero righe  -> la testata NON esiste (cancellata, o mai
+                --     esistita). Il chiamante deve trattarlo come CASCADE.
+                --   - una riga    -> stato = codice_interno, etichetta = frase
+                --     per l'operatore.
+                --
+                -- ⚠️ Lo stato e' NOT NULL su entrambe le testate e la FK verso
+                --    config.stati_doc_* garantisce la riga di stato: se la
+                --    testata c'e', `stato` non e' mai NULL. Il chiamante puo'
+                --    quindi usare l'assenza di riga come segnale, e non deve
+                --    distinguere un NULL da un vuoto.
+                -- =========================================================
+                IF p_testata_id IS NULL OR p_testata_id <= 0 THEN
+                  RETURN;   -- nessuna riga: il chiamante lo legge come «assente»
+                END IF;
+
+                IF p_documento = 'DDT' THEN
+                  RETURN QUERY
+                  SELECT s.codice_interno::text,
+                         concat('DDT ', COALESCE(d.numero, '#' || d.id::text))
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                   WHERE d.id = p_testata_id;
+
+                ELSIF p_documento = 'ORDINE' THEN
+                  RETURN QUERY
+                  SELECT s.codice_interno::text,
+                         concat('Ordine ', COALESCE(o.numero, '#' || o.id::text))
+                    FROM vendite.ordini o
+                    JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+                   WHERE o.id = p_testata_id;
+
+                ELSE
+                  -- Errore di CHIAMANTE, non di dato: nessuna persona sceglie
+                  -- questo valore. Classe TECNICO, messaggio che nomina il
+                  -- valore ricevuto (fratello di E_RUOLO_APPLICATIVO_NON_GESTITO).
+                  PERFORM script.fn_log_and_raise_error(
+                    'script',
+                    'fn_get_stato_testata_documento',
+                    'E_DOC_TIPO_NON_GESTITO',
+                    jsonb_build_object('documento', p_documento,
+                                       'testata_id', p_testata_id),
+                    NULL::uuid,
+                    COALESCE(p_documento, '<null>'));
+                END IF;
+
+                RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_stato_testata_documento(text, bigint)
+              IS 'Lettore SECURITY DEFINER dello stato e dell''etichetta di una testata DDT/ordine. Nasce il 2026-08-26 per vendite.trgfn_dlt_block_ordrig_ddtrig, che deve distinguere «la testata non c''e'' piu''» (CASCADE partito dalla testata) da «la testata non la vedo» (RLS). ⛔ SECURITY DEFINER perche'' quella distinzione e'' il perno della decisione: misurato sul catalogo, vendite.ddt e vendite.ordini hanno RLS attiva e vendite.ddt_righe / vendite.ordini_righe NO — un chiamante fuori perimetro raggiunge la riga e non vede la testata, e un guard che leggesse sotto RLS diventerebbe fail-open proprio per lui. ⭐ CONTRATTO: zero righe = testata assente; una riga = stato (codice_interno) piu'' etichetta per l''operatore. Lo stato e'' NOT NULL su entrambe le testate e la FK garantisce la riga di stato, quindi l''assenza di riga e'' un segnale non ambiguo. ⚠️ L''etichetta ripiega sull''id quando `numero` e'' NULL, che sui documenti in bozza e'' il caso normale, non un residuo. PERIMETRO: legge due colonne, non scrive, non espone dati riservati. Tipo documento ammesso: DDT | ORDINE; qualunque altro valore e'' un errore di chiamante (E_DOC_TIPO_NON_GESTITO, TECNICO).';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_stato_testata_documento(text, bigint) TO PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_stato_testata_documento(text, bigint);
