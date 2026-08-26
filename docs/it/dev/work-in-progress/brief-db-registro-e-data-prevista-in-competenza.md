@@ -30,7 +30,12 @@
 > ✅ **Decisioni prese** (Tid, 2026-08-26): D-2 «più registri» con data vuota,
 > D-3 nessuna colonna sulla lista per commessa. D-1 verificata sul codice.
 >
-> ⛔ **Stato: pronto per il team DB. Nessun file scritto.**
+> ✅ **Stato: LATO DB CHIUSO — applicato il 2026-08-26.** Sei changeSet
+> (`20260826-14` … `-19`), due righe di catalogo, un pgTAP 12/12 verde, doc
+> concettuale delle due funzioni nuove. Migrazione applicata da Tid: **nessuna
+> regressione, suite verde**. Restano solo le consegne BE/FE (§11.8).
+>
+> ⛔ ~~Stato: pronto per il team DB. Nessun file scritto.~~
 >
 > ⭐ **Revisione critica e piano: §10, §11, §12** (2026-08-26). La revisione
 > aggiunge una consegna portante (**DB-0**, §11.1) senza la quale DB-1 non è
@@ -48,7 +53,10 @@
 > stessa `fn_calcola_data_documento`; **D-6** — **chiusa senza debito**:
 > l'omogeneità dell'emittente nell'albero dei BA è imposta da un guard.
 >
-> ⭐ **Nessuna domanda aperta.** ⛔ Resta la dipendenza d'ordine con il gemello
+> ⭐ **Nessuna domanda aperta.** ✅ **D-10** (2026-08-26): il guard di
+> `fn_get_registro_id` passa a un codice **TECNICO** — ⚠️ **status 400 → 500**,
+> nota per il BE in §12.
+> ⛔ Resta la dipendenza d'ordine con il gemello
 > (§12 D-8): le viste non possono precedere il suo `DROP + CREATE`.
 
 ---
@@ -695,14 +703,14 @@ pgTAP di scope, non da assumere. ⚠️ E il cancello di quel test è
 
 | # | Consegna | File | Dipende da |
 | --- | --- | --- | --- |
-| **L0** | ⭐ **DB-0, nuova (R-2).** `vendite.fn_lookup_registro_id(tipo_doc, natura, utility, emittente)` → `TABLE(registro_id, serie)`. Stesso `SELECT` di oggi, stessa gerarchia a quattro livelli, stesso filtro **esatto** sulla natura. **STABLE**. Torna **0 righe** dove oggi si solleva. Nessun `fn_log_and_raise_error` | `20_code/vendite/20260826-01-create-fn-lookup-registro-id-mctit.yaml` | — |
-| **L1** | `vendite.fn_get_registro_id` diventa l'**involucro**: chiama L0 e tiene i tre `fn_log_and_raise_error` (parametro, natura, registro non risolto). Firma e `RETURNS TABLE` **invariati** → `CREATE OR REPLACE` lecito. Un solo chiamante da non toccare | `20260826-02-update-fn-get-registro-id-involucro-mctit.yaml` | L0 |
-| **L2** | **DB-1 corretta (R-3, R-4).** `vendite.fn_resolve_registro_documento(p_billing_account_id_riga, p_tipo_doc_fiscale_id, p_natura_doc_id)` → `TABLE(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento)`. **STABLE**, restituisce **sempre una riga** (con NULL dove non risolve), nessun raise sui dati | `20260826-03-create-fn-resolve-registro-documento-mctit.yaml` | L0 |
-| **L3** | **DB-2.** `fn_build_fattura_key` smette di risolvere in proprio: una `SELECT … FROM vendite.fn_resolve_registro_documento(…)` sostituisce il blocco BA/utility/emittente/registro | `20260826-04-update-fn-build-fattura-key-resolve-registro-mctit.yaml` | L2 |
-| **L4** | **DB-3.** `vw_dash_competenza_attivita`: `registro_id`, `registro_codice`, `politica_data_documento`, `data_documento_prevista` | `20260826-05-update-vw-dash-competenza-attivita-registro-mctit.yaml` | L2 |
-| **L5** | **DB-4.** `vw_dash_competenza_gruppi`: `registri_ids` (✅ D-5, è ciò su cui si filtra), `registri_n`, `registro_codice`, `data_documento_prevista` con la regola «uno oppure N» | `20260826-06-update-vw-dash-competenza-gruppi-registro-mctit.yaml` | L4 |
-| **L6** | **DB-5 corretta.** Due righe in **append** a `80_data/sql/ui/lista_colonna.csv` (id 553/554, lista **42** soltanto) | *nessun changeSet nuovo*: il mirror ri-ancorato `20260806-15` è `runOnChange` e ri-legge il CSV | BE-2 + BE-3 |
-| **L7** | **DB-6 estesa.** pgTAP | `db/pgtap/vendite/test-registro-documento-previsto.sql` | L2…L5 |
+| ✅ **L0** | ⭐ **DB-0, nuova (R-2).** `vendite.fn_lookup_registro_id(tipo_doc, natura, utility, emittente)` → `TABLE(registro_id, serie)`. Stesso `SELECT` di oggi, stessa gerarchia a quattro livelli, stesso filtro **esatto** sulla natura. **STABLE**. Torna **0 righe** dove oggi si solleva. Nessun `fn_log_and_raise_error` | `20_code/vendite/20260826-14-create-fn-lookup-registro-id-mctit.yaml` ✍️ **scritto** | — |
+| ✅ **L1** | `vendite.fn_get_registro_id` diventa l'**involucro**: chiama L0 e tiene i tre `fn_log_and_raise_error` (parametro, natura, registro non risolto). Firma e `RETURNS TABLE` **invariati** → `CREATE OR REPLACE` lecito. Un solo chiamante da non toccare | `20260826-15-update-fn-get-registro-id-involucro-mctit.yaml` ✍️ **scritto** | L0 |
+| ✅ **L2** | **DB-1 corretta (R-3, R-4).** `vendite.fn_resolve_registro_documento(p_billing_account_id_riga, p_tipo_doc_fiscale_id, p_natura_doc_id)` → `TABLE(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento)`. **STABLE**, restituisce **sempre una riga** (con NULL dove non risolve), nessun raise sui dati | `20260826-16-create-fn-resolve-registro-documento-mctit.yaml` ✍️ **scritto** | L0 |
+| ✅ **L3** | **DB-2.** `fn_build_fattura_key` smette di risolvere in proprio: una `SELECT … FROM vendite.fn_resolve_registro_documento(…)` sostituisce il blocco BA/utility/emittente/registro | `20260826-17-update-fn-build-fattura-key-resolve-registro-mctit.yaml` ✍️ **scritto** | L2 |
+| ✅ **L4** | **DB-3.** `vw_dash_competenza_attivita`: `registro_id`, `registro_codice`, `politica_data_documento`, `data_documento_prevista` | `20260826-18-update-vw-dash-competenza-attivita-registro-mctit.yaml` ✍️ **scritto** | L2 |
+| ✅ **L5** | **DB-4.** `vw_dash_competenza_gruppi`: `registri_ids` (✅ D-5, è ciò su cui si filtra), `registri_n`, `registro_codice`, `data_documento_prevista` con la regola «uno oppure N» | `20260826-19-update-vw-dash-competenza-gruppi-registro-mctit.yaml` ✍️ **scritto** | L4 |
+| ✅ **L6** | **DB-5 corretta.** Due righe in **append** a `80_data/sql/ui/lista_colonna.csv` (id 553/554, lista **42** soltanto) | *nessun changeSet nuovo*: il mirror ri-ancorato `20260806-15` è `runOnChange` e ri-legge il CSV — ✍️ **righe appese** | ⚠️ BE-2 + BE-3 in ritardo |
+| ✅ **L7** | **DB-6 estesa.** pgTAP | `db/pgtap/vendite/test-registro-documento-previsto-v1.sql` ✍️ **scritto, 12/12 verde** | L2…L5 |
 
 ### 11.2 L2 — la firma per esteso, e i due ancoraggi
 
@@ -946,6 +954,7 @@ rossi preesistenti — un rosso non è automaticamente il proprio.
 | | Consegna | Nota |
 | --- | --- | --- |
 | BE-1 | Proiezione nella lista gruppi: `registro_codice`, `data_documento_prevista`, `registri_n` (+ `registri_ids`, che serve al filtro) nel `SELECT` di `list_dash_competenza_gruppi` e in `DashCompetenzaGruppoRow` | ⛔ le chiavi delle due colonne a catalogo devono essere i loro `campo_sorgente`, o si spuntano e restano vuote. `registri_n`/`registri_ids` **non** vanno a catalogo: servono al render e al filtro |
+| ⚠️ **BE-0** | ✅ **D-10**: `vendite.fn_get_registro_id` cambia il codice del guard di parametro — `E_PARAMETRO_INVALIDO` (DATO_ERRATO, **400**) → `E_VENDITE_CHIAMATA_NON_VALIDA` (TECNICO, **500**). ⭐ **Nessun lavoro da fare**, ma va saputo: se qualcosa si aspettava un 400 da lì, ora prende un 500 | ▼ §12 D-10 |
 | BE-5 | ✅ **D-5**: filtro per sezionale in `_where_gruppi` — `%s = ANY(g.registri_ids)` — **più la facet** della tendina, che deve mostrare tutte le voci anche quando una è selezionata, **più** l'etichetta nel blocco «filtri applicati» dell'export | tre pezzi, non uno: la facet costruita male chiude la tendina dopo la prima scelta |
 | BE-2 | `registro_codice` e `data_documento_prevista` in `DASH_COMPETENZA_GRUPPI_SORT_COLUMNS` | inscindibile da L6 |
 | BE-3 | `col_registro`, `col_data_prevista` **e** la chiave di «più registri», in `it.json` **e** `en.json` | il namespace è `vendite.dashboard_competenza` |
@@ -984,6 +993,54 @@ intestazioni di colonna dell'export le prende già oggi dal catalogo
 quindi comporre lì la frase è coerente con quello che l'export fa adesso. Se
 invece si vuole che segua la lingua della richiesta, è il BE a dover risolvere
 la chiave i18n, e il FE si limita a mostrare ciò che riceve.
+
+### ✅ D-10 DECISA — il guard di `fn_get_registro_id` diventa TECNICO ⚠️ **nota per il BE**
+
+> ✅ **Tid, 2026-08-26**, dopo aver chiesto se fosse fattibile: *«procedi»*.
+
+**Cosa cambia**, e riguarda solo chi consuma gli errori:
+
+| | prima | dopo |
+| --- | --- | --- |
+| codice | `E_PARAMETRO_INVALIDO` | `E_VENDITE_CHIAMATA_NON_VALIDA` |
+| classe / status | `DATO_ERRATO` → **400** | `TECNICO` → **500** |
+| frase | *«Parametro non valido: p_tipo_doc_fiscale_id obbligatorio e > 0»* | *«Chiamata non valida a vendite.fn_get_registro_id: p_tipo_doc_fiscale_id (obbligatorio, maggiore di zero).»* |
+
+⭐ **Al backend non serve fare niente.** `E_VENDITE_CHIAMATA_NON_VALIDA` è già
+registrato su **tutti e tre** i lati — catalogo DB, `error_messages_fallback.py`
+e `error_policies_generated.py` (classe `TECNICO`) — e **undici** funzioni di
+vendite lo usano già, otto delle quali scritte lo stesso giorno dal cantiere del
+limite di emissione. Nessun codice da coniare, nessuna riga da aggiungere ai
+CSV, nessuna policy da rigenerare, nessun rilascio.
+
+⚠️ **Ma va saputo**: se da qualche parte si contava su un **400** proveniente da
+quel punto, ora arriva un **500**. È l'unica cosa che cambia per chi consuma.
+
+**Perché è la verità**, e l'argomento è strutturale (non un conteggio):
+
+* l'unico chiamante è `fn_build_fattura_key`, che il tipo documento lo legge da
+  `attivita_fatturabili` — riga creata dall'emit a partire da un'attività
+  **APPROVATA**, e `chk_commesse_attivita_tipo_doc_emittibile` garantisce che lì
+  il tipo documento **ci sia**. Un NULL non è «l'operatore ha dimenticato un
+  campo»: è un guasto a monte;
+* ⛔ e la spia decisiva: nel contesto **non c'è la chiave `campo`**. Un
+  `DATO_ERRATO` esiste per dire al frontend quale campo accendere — qui non c'è
+  niente da accendere, quindi finora era **un 400 solo di nome**, che
+  all'operatore non offriva nulla da correggere.
+
+⭐ E nominare il parametro nella frase **smette di essere l'antipattern**: la
+registrazione di quel codice lo autorizza esplicitamente, *«perché il suo lettore
+è chi ha scritto la chiamata, non chi compila un form»*.
+
+⚠️ **Precedente contrario, dichiarato**: in `error_policies_generated.py` è
+registrato un caso in cui sei guard gemelli **restarono** su
+`E_PARAMETRO_INVALIDO` con la motivazione opposta. Quel commento è **anteriore**
+alla nascita di `E_VENDITE_CHIAMATA_NON_VALIDA` (2026-08-22), che esiste per
+essere la casa di quei casi: precedente superato, non contraddizione.
+
+ℹ️ **I due `E_CONFIG_MANCANTE` della stessa funzione restano intatti** — codice,
+contesto, frase, area e nome. Cambiarli sarebbe rumore su punti di log che
+nessuno ha chiesto di toccare.
 
 ### ✅ D-5 DECISA — il filtro si fa, ed è una consegna vera
 
@@ -1299,3 +1356,301 @@ bloccare, fail-closed sul NULL, e nessuna GUC di override.
 piedi quello della **utility**, che nessun guard vincola fra padre e figlio ed è
 l'altro asse con cui si sceglie il sezionale. **T2 riscritto** su quell'asse —
 costruirlo su emittenti diversi non sarebbe nemmeno possibile.
+
+### 2026-08-26 · L0 e L1 scritti e provati (nessuna migrazione)
+
+⛔ **Nessun `update` eseguito.** I due file sono stati provati eseguendo l'SQL
+**estratto dallo YAML** — non una copia riscritta, cosi' il `COMMENT ON` entra
+nella prova — dentro un file con `BEGIN`/`ROLLBACK` **nel file stesso**.
+
+| File | Cosa |
+| --- | --- |
+| `20260826-14-create-fn-lookup-registro-id` | il lookup: STABLE, `%TYPE` in firma, `RETURNS TABLE` e `DECLARE`, nessun raise, **sempre una riga** con la natura risolta in testa |
+| `20260826-15-update-fn-get-registro-id-involucro` | l'involucro: firma, `RETURNS TABLE` e i **tre errori** invariati |
+
+**Esito delle asserzioni** (nella stessa transazione, poi annullata):
+
+| | Verifica | Esito |
+| --- | --- | --- |
+| A2 | tipo documento NULL sul lookup → **non solleva**, una riga | ✅ è il 500 sulla lista, chiuso |
+| A4 / B1 | equivalenza vecchio ↔ nuovo su **tutta la matrice di configurazione** (8 combinazioni tipo × natura × emittente) | ✅ 0 registri divergenti, 0 serie divergenti |
+| B2 | il guard di parametro solleva ancora `P0001`, **frase identica** | ✅ *«Parametro non valido: p_tipo_doc_fiscale_id obbligatorio e > 0»* |
+| B3 | registro non risolvibile → solleva `P0001`, **frase identica** | ✅ *«Configurazione mancante: registro non risolto per tipo_doc 1 e natura 1»* |
+| B4 | **lo stesso caso di B3 sul lookup** → NULL, nessuna eccezione | ✅ è la separazione, vista da entrambi i lati |
+| B5 | `pg_get_function_identity_arguments` → **una sola** `fn_get_registro_id` | ✅ nessun overload nato per sbaglio |
+
+⚠️ **Una premessa mia sbagliata, corretta**: avevo scritto un'asserzione «un
+emittente inesistente ripiega sul livello 4 della gerarchia». Risponde **falso**,
+e non è un difetto: in questa configurazione **nessun registro ha l'emittente a
+NULL**, quindi il livello 4 non esiste — ed è una scelta presidiata da
+`test-registri-per-emittente-v1` («nessun registro *di nessuno*», la condizione
+che aveva fatto numerare due aziende sullo stesso registro).
+
+ℹ️ **Numerazione reale: `-14` e `-15`**, non `-01`/`-02` come diceva il piano: il
+cantiere «limite emissione» aveva già occupato `01…13`.
+
+⭐ **Debito CHIUSO** in giornata, su decisione di Tid (✅ D-10, §12): il guard di
+`fn_get_registro_id` passa da `E_PARAMETRO_INVALIDO` a
+`E_VENDITE_CHIAMATA_NON_VALIDA`. ⚠️ Sposta lo **status da 400 a 500**, ed è la
+sola cosa che cambia per chi consuma — al backend non serve fare niente, il
+codice è già registrato su tutti e tre i lati. Riprovato dopo la modifica:
+
+| | Verifica | Esito |
+| --- | --- | --- |
+| B2 | il guard solleva `P0001` con la frase nuova | ✅ *«Chiamata non valida a vendite.fn_get_registro_id: p_tipo_doc_fiscale_id (obbligatorio, maggiore di zero).»* |
+| B6 | nel corpo non resta traccia del codice vecchio | ✅ `usa_codice_tecnico = t`, `usa_ancora_il_vecchio = f` |
+| B7 | classe a catalogo | ✅ `TECNICO` |
+| B1, B3, B4, B5 | equivalenza, secondo errore, lookup silenzioso, nessun overload | ✅ invariati |
+
+### 2026-08-26 · L2 scritta e provata — ⭐ i due ancoraggi sono PROVATI
+
+`20260826-16-create-fn-resolve-registro-documento`. Nessuna migrazione: prova
+sull'SQL **estratto dallo YAML**, in transazione annullata.
+
+⭐ **Il lookup ha guadagnato una colonna**: restituisce anche
+`politica_data_documento`. Non è lavoro in più — il `JOIN` su
+`registri_fatturazione` c'era già, quindi è **restituire ciò che si è già
+letto** invece di far rifare al chiamante una `SELECT` per chiave sulla stessa
+riga.
+
+| | Verifica | Esito |
+| --- | --- | --- |
+| C1 | equivalenza con la catena di `fn_build_fattura_key` su **tutti** i billing account | ✅ 0 divergenze su BA di fatturazione, utility ed emittente |
+| **C2** | ⭐ **il caso COSTRUITO**: figlio con `parent_account_id` e **utility diversa** dal padre | ✅ `ba_fatturazione` dal **PADRE**, `utility` dalla **RIGA** |
+| C3 | tipo documento NULL | ✅ nessuna eccezione, registro NULL, **anelli intermedi comunque risolti** |
+| C4 | billing account inesistente | ✅ tutto NULL — **nessun ripiego** sul registro «di nessuno» |
+| C5 | guard di parametro | ✅ `P0001`, *«Chiamata non valida a vendite.fn_resolve_registro_documento: p_billing_account_id_riga (obbligatorio, maggiore di zero).»* |
+| C6 | la politica esce insieme al registro | ✅ coerente con `registri_fatturazione` |
+
+⭐ **C2 chiude R-5, ed è la consegna più importante di questo passo.** Il brief
+diceva che la prova dei due ancoraggi doveva essere **costruita** e non cercata
+nella popolazione — perché `parent_account_id` è nullable e un confronto sui
+documenti esistenti esercita solo i rami che quella popolazione per caso
+contiene. Il caso si costruisce davvero: un BA figlio con utility diversa passa
+il guard dell'albero (l'emittente resta lo stesso, ed è quello che il guard
+pretende). ⇒ **T2 di §11.7 è scrivibile**, e va scritto esattamente così.
+
+⚠️ E conferma R-6 dal lato pratico: il caso si costruisce **sulla utility**, non
+sull'emittente. Un figlio con emittente diverso il guard lo rifiuterebbe, e il
+test non partirebbe nemmeno.
+
+### 2026-08-26 · L3 scritta e provata — ⭐ la duplicazione è sparita
+
+`20260826-17-update-fn-build-fattura-key-resolve-registro`. Nessuna migrazione.
+
+Spariscono da `fn_build_fattura_key` **tre risoluzioni fatte a mano** — il
+`COALESCE` sul `parent_account_id`, la lettura di `ba.utility_id` e
+`fn_get_emittente_fiscale_id` — più la chiamata a `fn_get_registro_id`. Al loro
+posto **una riga**: `fn_resolve_registro_documento(v_ba_id, tipo_doc, natura)`.
+
+⭐ **Da qui la colonna «data prevista» smette di essere una profezia**: la lista e
+il documento non coincidono più perché due implementazioni si comportano uguale,
+ma perché è **la stessa funzione**.
+
+**La prova di invarianza**, catturando la chiave **prima** della sostituzione e
+riconfrontandola **dopo**, nella stessa transazione annullata:
+
+| | Verifica | Esito |
+| --- | --- | --- |
+| D1 | tutte le attività, chiave completa vecchia ↔ nuova | ✅ **51 su 51, 0 divergenti** |
+| D2 | confronto **elemento per elemento** degli undici | ✅ 0 righe: nessun elemento diverso |
+| D3 | firma | ✅ una sola, invariata |
+
+ℹ️ Nessuna attività andava già in errore prima, quindi il confronto è pieno e
+nessuna riga è finita in `error_log`.
+
+⚠️ **Due scelte scritte nel changelog perché non sembrino sviste:**
+
+1. **il `JOIN` su `billing_account` RESTA**, ma non per leggere la utility — la
+   dà il resolver. È il **guard** che produce `E_VALORE_MANCANTE` quando il
+   billing account non esiste o non è visibile sotto RLS. Toglierlo sposterebbe
+   quell'errore su un codice diverso e più avanti. Costa una seconda lettura per
+   chiave, sul percorso di scrittura, una volta per attività: si paga;
+2. **i due cancelli restano lì** perché il resolver non ferma — e non deve, è ciò
+   che lo rende usabile da una vista. Emittente NULL richiama
+   `fn_get_emittente_fiscale_id`, registro NULL richiama l'involucro: così i
+   **messaggi restano identici** e la seconda risoluzione si paga **solo quando
+   si sta già andando in errore**. ⚠️ E l'ordine è portante: prima l'emittente,
+   o un billing account senza emittente mappato leggerebbe «registro non
+   risolto» invece di «emittente di default mancante».
+
+### 2026-08-26 · L4, L5 e L7 — le colonne ci sono, e il pgTAP è verde
+
+Sei file scritti (`20260826-14` … `-19`) più il test. ⛔ **Nessuna migrazione**:
+ogni prova è girata sull'SQL **estratto dagli YAML**, in transazione annullata.
+
+#### L4 — `vw_dash_competenza_attivita`
+
+| | Verifica | Esito |
+| --- | --- | --- |
+| E1 | `security_invoker=on` non azzerata dal `REPLACE` | ✅ |
+| E3 | la vista si legge: 47 `DA_EMETTERE` e 5 `EMESSA_NON_FATTURATA` **con** sezionale e data, 44 `FATTURATA` **senza** | ✅ |
+| E4 | D-9: 44 righe con documento, **0 violazioni** | ✅ |
+| **E5** | ⭐ con una riga **senza tipo documento** la vista legge 96 righe invece di morire | ✅ **è il 500, chiuso** |
+| E6 | il sezionale previsto coincide con quello della catena di scrittura | ✅ 0 divergenti |
+
+⚠️ **Trappola incontrata**, e vale la pena averla scritta: la prima corsa dava
+**0 righe** su tutto. Non era un difetto del mio codice — è il fail-closed della
+vista senza contesto operatore (R-11, e la stessa trappola che il cantiere
+«lavoro che non torna indietro» ha annotato al suo §7.3). Il contesto si mette
+con `script.fn_pgtap_set_contesto_operatore()`.
+
+#### L5 — `vw_dash_competenza_gruppi`
+
+| | Verifica | Esito |
+| --- | --- | --- |
+| F0 | il presupposto di R-8: `array_agg(DISTINCT)` su `{1,NULL,1}` → `{1,NULL}`, cardinalità **2**, mentre `count(DISTINCT)` dice **1** | ✅ misurato, non assunto |
+| F1, F2 | `security_invoker` preservata, quattro colonne in coda | ✅ |
+| F5 | `registri_n` = `cardinality(registri_ids)` su tutti i gruppi | ✅ 0 divergenti |
+| **F7** | ⭐ **caso costruito**: gruppo con due sezionali → `{3,4}`, `registri_n=2`, **codice e data vuoti**, e il gruppo compare **sotto entrambi** i filtri | ✅ D-2 e D-5 insieme |
+
+⚠️ **F7 è costato tre tentativi, e i primi due erano il TEST a sbagliare** — vale
+la pena scriverlo perché sono le stesse trappole in cui cadrà chi manutiene:
+
+1. «due attività della stessa **commessa**» non è «stesso gruppo»: la chiave del
+   gruppo contiene anche la **sorgente**;
+2. cambiare il tipo documento non basta: con natura **NOTA_CREDITO** tutti i tipi
+   convergono sullo stesso sezionale NC, quindi il candidato va cercato **a
+   natura invariata** e verificando che porti davvero a un registro diverso.
+
+⭐ Entrambe le lezioni sono finite dentro il pgTAP, che cerca un gruppo **dove il
+caso sia costruibile** invece di prendere il primo.
+
+#### L7 — `db/pgtap/vendite/test-registro-documento-previsto-v1.sql`
+
+**12 asserzioni, 12 verdi, 0 rosse**, guardrail del preambolo superato. I due
+casi che contano sono **costruiti**, non cercati: i due ancoraggi (test 4) e il
+gruppo multi-sezionale (test 9-10).
+
+⚠️ **T1 del piano è stato TOLTO, di proposito.** Era «per ogni fattura esistente
+il registro coincide con `fatture.registro_id`»: su un database ricostruito da
+zero — cioè in CI — quell'asserzione passa **a vuoto**, ed è la forma classica
+del verde per sottrazione. La copertura sta sui test 3, 4 e 7, che i soggetti se
+li fabbricano. La rete anti-regressione sulla popolazione è stata comunque
+eseguita **una volta**, qui in analisi (D1: 51 chiavi su 51 identiche), che è il
+posto giusto per una misura del genere.
+
+#### ⛔ L6 (il seed) è FERMO, e non per una scelta mia
+
+Servono **due cose dal backend**, e nessuna delle due è nel perimetro DB:
+
+| | Cosa manca | Cosa succede senza |
+| --- | --- | --- |
+| BE-2 | le due voci in `DASH_COMPETENZA_GRUPPI_SORT_COLUMNS` | `test_liste_configurabili_seed` **rosso**: lega catalogo e whitelist nei due versi |
+| BE-3 | le chiavi i18n in `it.json` **e** `en.json` | `check_i18n_keys.py` **rosso**: legge proprio `ui.lista_colonna.etichetta_i18n_key` |
+
+⚠️ **Non c'è una scorciatoia**: mettere `ordinabile = f` eviterebbe il primo
+guard ma non il secondo, perché la chiave i18n serve comunque. Le due righe CSV
+sono pronte per esteso in §11.6.
+
+### 2026-08-26 · L6 — le due righe di catalogo, appese
+
+Scritte su decisione di Tid (*«scrivile, non c'è problema»*), accettando che due
+guard restino rossi finché il backend non consegna. **Nessun changeSet nuovo**:
+il mirror ri-ancorato `20260806-15` è `runOnChange` e carica tutte e 24 le
+colonne — verificato — quindi le righe entrano al prossimo migrate.
+
+`id` **553** e **554**, lista **42** soltanto. Provate inserendole davvero in
+`ui.lista_colonna` dentro una transazione annullata, così CHECK, FK e trigger
+sono stati esercitati:
+
+| | Verifica | Esito |
+| --- | --- | --- |
+| | le due righe entrano nella tabella | ✅ nessun vincolo violato |
+| | `sensibile = f`, `attivo = t`, `tipo_colonna = informazione` | ✅ (⛔ `sensibile = t` sarebbe stato un cancello, non un'etichetta) |
+| | ordini `75`/`78` e priorità `45`/`50` | ✅ 13 colonne, 13 ordini distinti — nessuna collisione |
+| ⭐ | **il `campo_sorgente` esiste davvero sulla vista** | ✅ `registro_codice` e `data_documento_prevista` ci sono entrambe |
+
+⭐ L'ultima è la verifica che vale di più: è **esattamente** il modo in cui questa
+classe di seed fallisce — una colonna a catalogo il cui campo a monte non
+esiste si spunta e resta **vuota**, senza nessun errore. Qui il campo c'è.
+
+⚠️ **Due guard resteranno rossi**, ed è noto e accettato:
+
+| Guard | Perché | Chi lo chiude |
+| --- | --- | --- |
+| `test_liste_configurabili_seed` | le due colonne sono `ordinabile = t` e non sono nella whitelist del repository | **BE-2** |
+| `check_i18n_keys.py` | legge `ui.lista_colonna.etichetta_i18n_key` e le due chiavi non sono in `it.json`/`en.json` | **BE-3** |
+
+⛔ **Non c'era una scorciatoia**: mettere `ordinabile = f` avrebbe evitato il
+primo ma non il secondo, perché la chiave i18n serve comunque.
+
+---
+
+## 2026-08-26 · ✅ CANTIERE DB CHIUSO — quadro completo
+
+Migrazione applicata da Tid. **Nessuna regressione, test verdi, doc auto-generata
+rigenerata.**
+
+### Cosa è stato consegnato
+
+| | Consegna | File | Stato |
+| --- | --- | --- | --- |
+| **L0** | `vendite.fn_lookup_registro_id` — la ricerca del sezionale **senza** il raise, `STABLE` | `20260826-14` | ✅ applicato |
+| **L1** | `vendite.fn_get_registro_id` diventa l'**involucro** | `20260826-15` | ✅ applicato |
+| **L2** | `vendite.fn_resolve_registro_documento` — la catena intera, i **due ancoraggi** compresi | `20260826-16` | ✅ applicato |
+| **L3** | `fn_build_fattura_key` smette di risolvere in proprio | `20260826-17` | ✅ applicato |
+| **L4** | `vw_dash_competenza_attivita` — 4 colonne | `20260826-18` | ✅ applicato |
+| **L5** | `vw_dash_competenza_gruppi` — 4 colonne, «uno oppure N» | `20260826-19` | ✅ applicato |
+| **L6** | catalogo: 2 righe, `id` 553-554, lista 42 | `ui/lista_colonna.csv` | ✅ caricate dal mirror |
+| **L7** | pgTAP, 12 asserzioni | `test-registro-documento-previsto-v1.sql` | ✅ 12/12 verde |
+| **DOC** | doc concettuale delle due funzioni nuove | `dbzero/vendite/manual/fn_lookup_registro_id.md`, `…/fn_resolve_registro_documento.md` | ✅ scritte, riferimenti verificati |
+
+### Le prove che reggono il lavoro
+
+Tutte girate sull'SQL **estratto dagli YAML** — non su una copia riscritta, così
+il `COMMENT ON` entra nella prova — in transazione con `ROLLBACK` **nel file
+eseguito**.
+
+| | Cosa provava | Esito |
+| --- | --- | --- |
+| **A4 / B1** | equivalenza lookup ↔ involucro su tutta la matrice di configurazione | 8 combinazioni, **0 divergenze** |
+| **B2, B3** | i messaggi d'errore dell'involucro | invariati, `P0001` |
+| **B5** | nessun overload nato per sbaglio | una sola `fn_get_registro_id` |
+| **C1** | equivalenza della catena su tutti i billing account | **0 divergenze** su BA, utility ed emittente |
+| ⭐ **C2** | **i due ancoraggi, su caso COSTRUITO** | BA di fatturazione dal **padre**, utility dalla **riga** |
+| **C4** | billing account irraggiungibile | tutto vuoto, **nessun ripiego** |
+| ⭐ **D1/D2** | **invarianza della chiave fattura**, elemento per elemento | **51 su 51 identiche**, 0 elementi diversi |
+| ⭐ **E5** | **il 500 sulla lista** | con una riga senza tipo documento la vista **legge**, non muore |
+| **E4** | D-9 | 44 righe con documento, **0 previsioni mostrate** |
+| **F0** | il presupposto di R-8, misurato | `array_agg` tiene i NULL, `count(DISTINCT)` no |
+| ⭐ **F7** | **gruppo multi-sezionale, COSTRUITO** | `{3,4}`, codice e data vuoti, e compare sotto **entrambi** i filtri |
+
+### Le decisioni prese durante il lavoro
+
+| | |
+| --- | --- |
+| **D-4** | la frase «più registri» la mette BE/FE — il DB dice *quanti*. ⭐ L'export è server-side e condivide la proiezione: componendola nel BE compare anche nel file |
+| **D-5 / D-5b** | il filtro per **sezionale** si fa — e da qui nasce `registri_ids`, perché un gruppo multi-sezionale deve comparire sotto **entrambi** i filtri |
+| **D-6** | chiusa **senza debito**: l'omogeneità dell'emittente nell'albero dei BA è imposta da un guard |
+| **D-7** | larghezze libere, come le altre undici |
+| **D-8** | consegna unica col cantiere gemello del limite di emissione |
+| **D-9** | previsione **vuota** dove il documento esiste già |
+| **D-10** | il guard di `fn_get_registro_id` passa a un codice **TECNICO** — ⚠️ **status 400 → 500**, nota per il BE |
+
+### Cosa il cantiere ha prodotto oltre a sé stesso
+
+* ⭐ **Una regola nel repo**: `.codex/AGENTS.md` § «Regola zero — le misure non
+  disegnano il progetto», con il discriminante **struttura contro popolazione**,
+  la prova del nove e il corollario sui test. Più il punto 5 della filosofia non
+  negoziabile in `PROJECT_CONTEXT.md`.
+* ⭐ **Due cantieri nuovi**, nati da un difetto scoperto chiudendo D-6:
+  [brief-db-emittente-commessa-invariante.md](brief-db-emittente-commessa-invariante.md)
+  (la chiave di perimetro della commessa è nullable) e
+  [brief-db-billing-account-cambio-emittente.md](brief-db-billing-account-cambio-emittente.md)
+  (la domanda fiscale, separata apposta).
+
+### ⚠️ Cosa resta aperto, e non è del DB
+
+| | Consegna | Nota |
+| --- | --- | --- |
+| BE-0 | **prendere atto** del cambio 400 → 500 (D-10) | nessun lavoro: il codice è già registrato su tutti e tre i lati |
+| BE-1 | proiezione delle colonne nella lista gruppi | ⛔ senza, le colonne si spuntano e restano **vuote** |
+| BE-2 | whitelist di ordinamento | ⚠️ **`test_liste_configurabili_seed` è rosso finché non arriva** |
+| BE-3 | chiavi i18n in `it.json` **e** `en.json`, «più registri» compresa | ⚠️ **`check_i18n_keys.py` è rosso finché non arrivano** |
+| BE-4 | la frase «più registri» composta nel BE (D-4) | così esce anche nell'export |
+| BE-5 | filtro per sezionale + **facet** + etichetta nei «filtri applicati» dell'export | tre pezzi, non uno |
+| FE-1 | slot `#cell-registro` | mostra ciò che il BE manda, «—» dove non c'è nulla |
+
+⚠️ **I due guard rossi sono noti e accettati** (decisione di Tid): non c'era
+scorciatoia, perché `ordinabile = f` avrebbe evitato il primo ma non il secondo.

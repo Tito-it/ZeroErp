@@ -1,0 +1,232 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-0 — IL LOOKUP DEL REGISTRO, SENZA IL RAISE
+#   vendite.fn_lookup_registro_id(tipo_doc, natura, utility, emittente)
+#       -> TABLE(natura_doc_id, registro_id, serie, politica_data_documento)
+#   Piano: brief-db-registro-e-data-prevista-in-competenza §11.1 L0 (R-2)
+#
+# ── ⛔ PERCHE' ESISTE, E NON E' UNA COMODITA' ───────────────────────
+#   `fn_get_registro_id` fa DUE cose nello stesso corpo: cerca la riga di
+#   mapping, e trasforma il «non trovato» in un errore di dominio. Finche' resta
+#   cosi', chi ha bisogno della sola RICERCA — le due viste della dashboard di
+#   competenza, che devono mostrare una PREVISIONE — ha due sole strade, ed
+#   entrambe sono sbagliate:
+#     * ricopiare il SELECT con la gerarchia a quattro livelli, cioe' una
+#       SECONDA implementazione della stessa regola;
+#     * avvolgere la chiamata in un EXCEPTION WHEN OTHERS, che intanto ha gia'
+#       scritto in error_log e che nasconde anche i guasti veri.
+#
+#   ⛔ E il ramo e' RAGGIUNGIBILE, non teorico: `chk_commesse_attivita_tipo_doc_emittibile`
+#   pretende il tipo documento SOLO su una riga APPROVATA e NON_EMESSA. Su uno
+#   stadio `DA_APPROVARE` il NULL e' AMMESSO — e con quel NULL una vista che
+#   chiamasse `fn_get_registro_id` non mostrerebbe una colonna vuota: farebbe
+#   morire l'INTERA lista da cui si fattura, lasciando una riga in error_log a
+#   ogni tentativo di aprirla.
+#
+# ── ⭐ LA FORMA E' QUELLA GIA' IN CASA SULL'EMITTENTE ───────────────
+#   `script.fn_get_ba_emittente_sr_id` (STABLE, torna NULL) porta la regola;
+#   `anagrafiche.fn_get_emittente_fiscale_id` e' l'involucro che trasforma il
+#   NULL in errore. La regola e' scritta UNA volta, e chi legge consuma il
+#   lettore mentre chi scrive consuma l'involucro. Qui si applica lo stesso
+#   taglio al registro: questa funzione e' il lettore, `fn_get_registro_id`
+#   (20260826-15) diventa l'involucro.
+#
+# ── ⭐ TORNA SEMPRE UNA RIGA, MAI ZERO ──────────────────────────────
+#   Anche quando non risolve niente: `(natura, NULL, NULL, NULL)`, o tutto NULL
+#   se nemmeno la natura si risolve. E' cio' che permette all'involucro di
+#   distinguere i DUE errori che oggi solleva — «natura non risolta» e «registro
+#   non risolto» — senza ricalcolarsi la natura per conto suo, cioe' senza
+#   riaprire la duplicazione da un'altra parte.
+#   ⭐ E la POLITICA DELLA DATA esce da qui per la stessa ragione economica: il
+#   JOIN su `registri_fatturazione` c'e' gia', quindi restituirla non e' lavoro
+#   in piu' — e' restituire cio' che si e' gia' letto, invece di far rifare al
+#   chiamante una SELECT per PK sulla stessa riga.
+#   ⚠️ Ed e' anche cio' che rende innocuo il LATERAL nelle viste: con `ON true`
+#   una funzione che torna zero righe non toglie la riga di sinistra solo
+#   perche' il JOIN e' LEFT, ma il codice che la consuma diventa piu' fragile.
+#
+# ── ⛔ NESSUN GUARD DI PARAMETRO, ED E' IL PUNTO ────────────────────
+#   `p_tipo_doc_fiscale_id` NULL non solleva: non trova, e lo dice tornando
+#   `registro_id` NULL. Il guard resta nell'involucro, dove il chiamante e' uno
+#   scrittore e un buco di configurazione DEVE fermare.
+#
+# ── ℹ️ LA REGOLA DI RICERCA E' COPIATA INVARIATA ────────────────────
+#   Gerarchia di specificita' a QUATTRO livelli su utility ed emittente
+#   (utility+emittente, utility, emittente, nessuno dei due) e filtro ESATTO
+#   sulla natura: non esiste un «registro della natura piu' vicina», e ripiegare
+#   sulla fattura emetterebbe una nota di credito nel registro sbagliato, in
+#   silenzio. Il default della natura si risolve per chiave naturale
+#   (`codice_interno` = 'FATTURA'), mai con un id cablato (linee-guida-sql §6b).
+#   ⚠️ `serie` esce GREZZA (l'override del mapping), non COALESCE-ata sul
+#   `serie_default` del registro: NULL qui significa «vale il default del
+#   registro», che `fn_assign_numero_fattura` risolve gia' da se'.
+#
+# ── ℹ️ STABLE, E NON E' UNA DICHIARAZIONE DI FACCIATA ───────────────
+#   Legge tre tabelle e nient'altro. Serve perche' la funzione finira' nel
+#   target list di `vw_dash_competenza_attivita`, che e' la base di altre
+#   quattro viste: da VOLATILE il planner non potrebbe potarla nemmeno dai
+#   consumatori che le colonne nuove non le guardano. `config.fn_get_natura_doc_fiscale_id`
+#   e' STABLE a sua volta (verificato su pg_proc), quindi la dichiarazione e'
+#   onesta e non ereditata a forza.
+#
+# ── ⚠️ TIPI ANCORATI CON %TYPE: FIRMA, RETURNS TABLE E DECLARE ──────
+#   Tutte e tre, come pretende linee-guida-sql §5b. Il %TYPE in firma e' una
+#   FOTOGRAFIA: si risolve al CREATE e non si riaggancia, quindi chi cambia una
+#   di queste colonne ricrea anche questa funzione.
+#
+# Dipendenze: vendite.tipi_doc_fiscale_registri, vendite.registri_fatturazione,
+#             config.fn_get_natura_doc_fiscale_id.
+# Consumatori previsti: 20260826-15 (involucro fn_get_registro_id) e
+#             fn_resolve_registro_documento.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-14-create-fn-lookup-registro-id-mctit.yaml
+
+  - changeSet:
+      id: 20260826-14-create-fn-lookup-registro-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-0: il LOOKUP del registro separato dal RAISE. ⛔ Esiste perche' le viste della
+        dashboard di competenza devono mostrare una PREVISIONE, e una previsione non puo'
+        far morire la lista che decora: il CHECK sul tipo documento lo pretende solo su una
+        riga APPROVATA e NON_EMESSA, quindi su uno stadio DA_APPROVARE il NULL e' ammesso e
+        fn_get_registro_id solleverebbe. ⭐ La forma e' quella gia' in casa sull'emittente
+        (fn_get_ba_emittente_sr_id lettore puro / fn_get_emittente_fiscale_id involucro che
+        solleva): la regola scritta UNA volta, il lettore per chi legge e l'involucro per chi
+        scrive. ⭐ Torna SEMPRE una riga, anche quando non risolve niente, e porta con se' la
+        natura risolta (per l'involucro) e la POLITICA DELLA DATA del registro (per le viste):
+        il JOIN su registri_fatturazione c'e' gia', quindi e' restituire cio' che si e' gia'
+        letto invece di far rifare al chiamante una SELECT per PK sulla stessa riga.
+        ⛔ Nessun guard di parametro qui: quello resta nell'involucro. Gerarchia a quattro
+        livelli e filtro ESATTO sulla natura copiati invariati; serie GREZZA. STABLE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: tipi_doc_fiscale_registri
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config'
+                     AND p.proname = 'fn_get_natura_doc_fiscale_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_lookup_registro_id(
+                  -- ⚠️ Tipi ANCORATI con %TYPE (linee-guida-sql §5b), firma e
+                  --    RETURNS TABLE comprese. Il %TYPE in firma e' una
+                  --    FOTOGRAFIA: si risolve al CREATE e non si riaggancia —
+                  --    chi cambia una di queste colonne ricrea la funzione.
+                  p_tipo_doc_fiscale_id         vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                  p_natura_doc_id               vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE           DEFAULT NULL,
+                  p_utility_id                  vendite.registri_fatturazione.utility_id%TYPE                  DEFAULT NULL,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(natura_doc_id           config.nature_doc_fiscale.id%TYPE,
+                             registro_id             vendite.registri_fatturazione.id%TYPE,
+                             serie                   vendite.tipi_doc_fiscale_registri.serie%TYPE,
+                             politica_data_documento vendite.registri_fatturazione.politica_data_documento%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_natura_doc_id config.nature_doc_fiscale.id%TYPE;
+                  v_registro_id   vendite.registri_fatturazione.id%TYPE;
+                  v_serie         vendite.tipi_doc_fiscale_registri.serie%TYPE;
+                  v_politica      vendite.registri_fatturazione.politica_data_documento%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   CERCARE il registro di numerazione e la serie, e basta.
+                  --   Chi non trova risponde NULL: qui non si solleva mai.
+                  --
+                  -- ⛔ Il guard di parametro e il raise NON stanno qui: sono
+                  --   in vendite.fn_get_registro_id, che e' l'involucro per
+                  --   chi SCRIVE. Questa funzione serve anche chi LEGGE — le
+                  --   viste della dashboard di competenza — dove un tipo
+                  --   documento nullo e' uno stato ammesso dal CHECK, non un
+                  --   guasto.
+                  -- =========================================================
+
+                  -- Default della natura risolto per chiave naturale, mai un
+                  -- id cablato: l'id e' dettaglio implementativo, il
+                  -- codice_interno e' il contratto (linee-guida-sql §6b).
+                  -- ⚠️ Esce nel risultato: e' cosi' che l'involucro distingue
+                  --    «natura non risolta» da «registro non trovato» senza
+                  --    rifare questo COALESCE per conto proprio.
+                  v_natura_doc_id := COALESCE(
+                      p_natura_doc_id,
+                      config.fn_get_natura_doc_fiscale_id('FATTURA'));
+
+                  -- Ricerca con fallback: tipo_doc+utility+emittente →
+                  -- tipo_doc+utility → tipo_doc+emittente → tipo_doc.
+                  -- ⚠️ Il fallback e' la gerarchia di specificita' del
+                  --    REGISTRO (utility/emittente). La NATURA invece e' un
+                  --    filtro ESATTO: non esiste un «registro della natura
+                  --    piu' vicina», e ripiegare sulla fattura emetterebbe una
+                  --    nota di credito nel registro sbagliato, in silenzio.
+                  -- ℹ️ Con p_tipo_doc_fiscale_id o v_natura_doc_id a NULL il
+                  --    predicato non corrisponde a nulla e v_registro_id resta
+                  --    NULL: e' il comportamento voluto, non un caso da
+                  --    intercettare.
+                  -- ⭐ `politica_data_documento` esce da QUI e non da una
+                  --    seconda lettura del chiamante: il JOIN su
+                  --    registri_fatturazione c'e' gia', quindi restituirla non
+                  --    e' lavoro in piu' — e' restituire cio' che si e' gia'
+                  --    letto. Una seconda SELECT per PK sulla stessa riga
+                  --    sarebbe la lettura duplicata che il progetto evita.
+                  SELECT r.id, m.serie, r.politica_data_documento
+                    INTO v_registro_id, v_serie, v_politica
+                    FROM vendite.tipi_doc_fiscale_registri m
+                    JOIN vendite.registri_fatturazione r ON r.id = m.registro_id
+                   WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                     AND m.natura_doc_id = v_natura_doc_id
+                     AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
+                     AND (r.emittente_soggetto_ruolo_id IS NULL OR r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                   ORDER BY
+                       CASE
+                           WHEN r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 1
+                           WHEN r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id IS NULL THEN 2
+                           WHEN r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 3
+                           WHEN r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id IS NULL THEN 4
+                           ELSE 9
+                       END, r.id
+                   LIMIT 1;
+
+                  -- ⚠️ `serie` esce GREZZA (l'override del mapping), non
+                  --    COALESCE-ata sul serie_default del registro: scrivere
+                  --    il default dentro vendite.fatture.serie cambierebbe il
+                  --    valore di una colonna su documenti gia' emessi, dove
+                  --    oggi c'e' NULL. NULL qui continua a voler dire «vale il
+                  --    default del registro», che fn_assign_numero_fattura
+                  --    risolve gia' da se'.
+                  -- ⭐ UNA riga sempre, anche tutta a NULL.
+                  RETURN QUERY SELECT v_natura_doc_id, v_registro_id, v_serie, v_politica;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_lookup_registro_id(
+                  vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                  vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE,
+                  vendite.registri_fatturazione.utility_id%TYPE,
+                  vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE)
+              IS 'CERCA il registro di numerazione e la serie per (tipo documento, natura), con utility ed emittente a raffinare — e NON solleva mai. E'' il lettore puro di cui vendite.fn_get_registro_id e'' l''involucro: stessa coppia, e stessa ragione, di script.fn_get_ba_emittente_sr_id (lettore) e anagrafiche.fn_get_emittente_fiscale_id (involucro che solleva). ⛔ Esiste perche'' le viste della dashboard di competenza mostrano una PREVISIONE del sezionale, e una previsione non puo'' far morire la lista che decora: chk_commesse_attivita_tipo_doc_emittibile pretende il tipo documento SOLO su una riga APPROVATA e NON_EMESSA, quindi su uno stadio DA_APPROVARE il NULL e'' ammesso — e li'' l''involucro solleverebbe, con l''intera lista che risponde 500 e una riga in error_log a ogni tentativo. ⭐ Torna anche la POLITICA DELLA DATA del registro, e non e'' lavoro in piu'': il JOIN su registri_fatturazione c''e'' gia'', quindi e'' restituire cio'' che si e'' gia'' letto invece di far rifare al chiamante una SELECT per PK sulla stessa riga. ⭐ Torna SEMPRE una riga, anche tutta a NULL, e porta con se'' la NATURA risolta: e'' cosi'' che l''involucro distingue «natura non risolta» da «registro non trovato» senza rifare il COALESCE per conto proprio, cioe'' senza riaprire la duplicazione da un''altra parte. ⛔ Nessun guard di parametro: un tipo documento nullo non trova e basta. La gerarchia di specificita'' a quattro livelli (utility+emittente, utility, emittente, nessuno) e il filtro ESATTO sulla natura sono copiati invariati da fn_get_registro_id; la serie esce GREZZA (NULL = vale il serie_default del registro). ℹ️ STABLE, e onestamente: legge tre tabelle e config.fn_get_natura_doc_fiscale_id, STABLE a sua volta. Serve perche'' la funzione finisce nel target list di vw_dash_competenza_attivita, base di altre quattro viste: da VOLATILE il planner non potrebbe potarla dai consumatori che le colonne nuove non le guardano. Piano: brief-db-registro-e-data-prevista-in-competenza, DB-0.';

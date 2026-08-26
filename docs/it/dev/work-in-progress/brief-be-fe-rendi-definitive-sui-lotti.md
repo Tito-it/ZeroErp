@@ -236,3 +236,74 @@ sulla card `FATTURATA`.
 
 ⚠️ I passi 3 e 4 vanno **nello stesso giro**: fra l'uno e l'altro l'atto di
 massa non esisterebbe da nessuna parte.
+
+---
+
+## 9. Collegamenti con `brief-db-lavoro-che-non-torna-indietro.md`
+
+> Aggiunto il 2026-08-26 dopo l'analisi critica dell'altro brief (che li tratta
+> in dettaglio nel suo **§11**). Qui solo ciò che **cambia il lavoro di questo
+> cantiere**.
+
+### 9.1 ⛔ La §7.6 della guida è contesa fra i due cantieri
+
+Il §7 di questo brief avverte che la realizzazione sarebbe **la terza volta** che
+la riga di «Rendi definitive» in `cruscotti-fatturazione.md` cambia. L'altro
+cantiere ne mette **due** sullo stesso file, e vengono prima:
+
+| Ordine | Cantiere | Sezione | Cosa |
+| --- | --- | --- | --- |
+| 1 | DB, lotto L1 | §7.6 | via l'avvertenza 🔴 su «Elimina dal lotto» |
+| 2 | DB, lotto L5 | §3.1 + §7.1 | la card `Emesse non fatturate` prende un verbo |
+| 3 | **questo** | §7.1 + §6.3 | «Rendi definitive» lascia la Lente 1 |
+
+⚠️ La tabella dei verbi della §7.1 viene toccata da **entrambi** i passi 2 e 3.
+Farli in parallelo significa riscriverla due volte da due mani, e una delle due
+perde. Il passo 3 va **dopo** il 2, o va fatto sapendo cosa il 2 ha scritto.
+
+### 9.2 ⭐ Il principio che tiene insieme le due direzioni
+
+Sembrano opposte — questo cantiere **toglie** un verbo dalla Lente 1, l'altro ce
+ne **mette** uno — e non lo sono. La regola è una sola:
+
+> **Un verbo sta dove sta l'elenco del suo oggetto.**
+
+«Rendi definitive» agisce su **lotti** e viveva accanto a un elenco di
+**commesse**: se ne va perché l'elenco giusto sta altrove (§1). «Riporta da
+emettere» agisce su **attività residue**, e la card `Emesse non fatturate` è
+l'unico posto dove quell'elenco esiste — nessuna lista di lotti le mostra,
+perché il loro lotto non c'è più.
+
+⭐ E la simmetria vale la pena di essere notata: `Emesse non fatturate` è la card
+su cui «Rendi definitive» stava **per errore** fino ad agosto 2026 (§7.1 della
+guida lo dichiara). Dopo i due cantieri quella card ospiterà **un solo verbo, e
+quello giusto**.
+
+### 9.3 La stessa forma, un livello più giù — ma **non** la stessa coda
+
+La D-4 di questo brief (perimetro = selezione di righe) e la Q-1 dell'altro
+(perimetro del verbo di recupero) chiedono la stessa cosa: `bigint[]` in
+ingresso, con guard esplicito su lista vuota — *«un errore di chiamante non deve
+poter uscire come un dato»* vale identico da entrambe le parti.
+
+⚠️ **Ciò che invece non si eredita è la coda.** «Rendi definitive» passa da
+`dbops.coda_lavori` e ha il problema di dedup del §5.1 (`gruppi_digest`).
+«Riporta da emettere» è **sincrono**: due scritture, una transazione, nessun job.
+Da non accodare per simmetria.
+
+⭐ Le due estrazioni «regola del 2» sono **distinte** e non si toccano:
+`gruppi_digest` → digest di un insieme di chiavi (qui, §5.1);
+`fn_libera_attivita_fatturabili` → la coppia di scritture di ripristino (là, L1).
+
+### 9.4 Il legame causale, che spiega perché i due brief sono nati insieme
+
+Le 5 attività perse dell'altro brief vengono da una fattura che **ha fallito la
+numerazione** (`E_FATTURA_NON_NUMERABILE_INCOERENTE`, 24/08) ed è stata poi
+eliminata dal lotto.
+
+⭐ Questo cantiere riduce la pressione su quel percorso: **con la selezione, dopo
+un fallimento si rinumera il solo lotto sistemato**, invece di agire sul mese o
+disfare qualcosa. Meno occasioni di usare «Elimina dal lotto», che è il verbo su
+cui vive il difetto.
+
+⚠️ Il che **non** rende meno urgente la correzione DB: la rarità non è una difesa.

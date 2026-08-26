@@ -182,6 +182,7 @@
 - [fn_log_event](funzioni/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 - [fn_log_lotto_esito_fatture](funzioni/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
 - [fn_log_pipeline_fase](funzioni/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
+- [fn_lookup_registro_id](funzioni/fn_lookup_registro_id.md)
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
 - [fn_offerta_eccezione_componenti_init](funzioni/fn_offerta_eccezione_componenti_init.md)
 - [fn_offerta_eccezione_componenti_preview](funzioni/fn_offerta_eccezione_componenti_preview.md)
@@ -207,6 +208,7 @@
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 - [fn_resolve_prezzo_listino_v2](funzioni/fn_resolve_prezzo_listino_v2.md) — (rev 2026-05-20 — 9° param p_listino_versione_id_preferito: fast path diretto)
 - [fn_resolve_prezzo_listino_v2_esito](funzioni/fn_resolve_prezzo_listino_v2_esito.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice A)
+- [fn_resolve_registro_documento](funzioni/fn_resolve_registro_documento.md)
 - [fn_resolve_stato_esecuzione](funzioni/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
 - [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md) — (latest review 02-08-2026)
 - [fn_riapri_riconsegna_reso](funzioni/fn_riapri_riconsegna_reso.md) — (rev 2026-07-26)
