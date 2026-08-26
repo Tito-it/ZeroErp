@@ -26,18 +26,16 @@ AS $function$
 --         undici elementi. Natura e serie entrano nel WHERE E
 --         nella INSERT. ⚠️ La serie in particolare non era MAI
 --         stata scritta da qui: restava NULL e la numerazione
---         cadeva sul serie_default del registro. Calcolarla
---         senza scriverla avrebbe dato alla nota di credito un
---         numero valido nella serie delle fatture.
+--         cadeva sul serie_default del registro.
 -- rev 2026-08-25 (DB-6, cantiere numerazione-data-documento):
 --         la data non e' piu' `current_date`. ⛔ Questa e' l'unica
---         riga in tutto il repo che scrive vendite.fatture.data,
---         e `current_date` faceva due danni insieme: prendeva il
---         giorno in cui qualcuno ha premuto «Fattura» — l'orario
---         di un batch, non una decisione — e lo prendeva nel fuso
---         DELLA SESSIONE, che da Django e' UTC. Ogni documento
---         generato fra la mezzanotte e le 02:00 locali portava la
---         data del giorno prima (7 fatture su 18, misurate).
+--         riga in tutto il repo che scrive vendite.fatture.data.
+-- rev 2026-08-26 (DB-7 + DB-13, cantiere limite-emissione):
+--         la SERIE entra fra gli argomenti della data — il clamp
+--         legge il contatore di (registro, serie) e senza la
+--         serie leggerebbe quello di un'altra sequenza — e la
+--         COMPETENZA viene SCRITTA sulla fattura, perche' e' una
+--         proprieta' del documento e non del lotto che lo produce.
 DECLARE
     v_key          JSONB;
     v_fattura_id   vendite.fatture.id%TYPE;
@@ -58,13 +56,34 @@ DECLARE
     v_data_dichiarata vendite.fatturazione_lotti.data_documento%TYPE;
     v_data            vendite.fatture.data%TYPE;
 BEGIN
-    -- Guard: parametri obbligatori
-    IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+    -- ⭐ rev 2026-08-26: guard UNO PER PARAMETRO, e codice TECNICO
+    --    di dominio. Prima era un E_PARAMETRO_INVALIDO solo con
+    --    dentro `p_lotto_id e p_attivita_id obbligatori e > 0`:
+    --    nomi di variabili PL/pgSQL nella frase che legge una
+    --    persona. Il codice sceglie la frase, ma il valore che ci
+    --    si infila dentro lo sceglie chi solleva.
+    IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
-            'vendite', 'fn_get_or_create_fattura_header', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'p_lotto_id/p_attivita_id', 'lotto_id', p_lotto_id, 'attivita_id', p_attivita_id),
-            NULL::uuid, 'p_lotto_id e p_attivita_id obbligatori e > 0'
-        );
+            'database', 'vendite.fn_get_or_create_fattura_header',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
+            jsonb_build_object(
+                'detail', 'lotto_id obbligatorio e maggiore di zero',
+                'p_lotto_id', p_lotto_id),
+            NULL::uuid,
+            'vendite.fn_get_or_create_fattura_header',
+            'p_lotto_id (obbligatorio, maggiore di zero)');
+    END IF;
+
+    IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'vendite.fn_get_or_create_fattura_header',
+            'E_VENDITE_CHIAMATA_NON_VALIDA',
+            jsonb_build_object(
+                'detail', 'attivita_id obbligatorio e maggiore di zero',
+                'p_attivita_id', p_attivita_id),
+            NULL::uuid,
+            'vendite.fn_get_or_create_fattura_header',
+            'p_attivita_id (obbligatorio, maggiore di zero)');
     END IF;
 
     -- Chiave documento dall'attivita': undici elementi, e da qui
@@ -176,18 +195,30 @@ BEGIN
 
     -- ⭐ La regola sta nel registro (e la dichiarazione sul lotto
     --    la scavalca): qui non si decide niente, si chiede.
+    -- ⚠️ rev 2026-08-26: LA SERIE E' UN ARGOMENTO, e non e' un
+    --    dettaglio — il clamp legge il contatore di
+    --    (registro, SERIE), e senza di essa leggerebbe quello di
+    --    un'altra sequenza rispondendo «nessun pavimento».
     v_data := vendite.fn_calcola_data_documento(
-                  v_registro_id, v_competenza_mese, v_data_dichiarata);
+                  v_registro_id, v_competenza_mese, v_serie, v_data_dichiarata);
 
     -- Crea fattura + link lotto. Le colonne di testata sono il
     -- secondo specchio: quello che la chiave ha deciso, qui si
     -- scrive. ⚠️ `serie` compresa: e' la meta' che mancava.
-    INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, natura_doc_id,
+    -- ⭐ rev 2026-08-26 (DB-13): `competenza_mese` viene SCRITTA.
+    --    Il valore e' gia' in mano — si legge dal lotto due righe
+    --    piu' su per calcolare la data — quindi la colonna costa
+    --    una parola nella lista, non una query. Si scrive ALLA
+    --    NASCITA e non si insegue: la fattura nasce dentro UN
+    --    lotto, che non e' ambiguo.
+    INSERT INTO vendite.fatture (registro_id, data, competenza_mese,
+        tipo_doc_fiscale_id, natura_doc_id,
         stato_doc_fiscale_id, serie,
         emittente_soggetto_ruolo_id, billing_account_id, reseller_soggetto_ruolo_id,
         utility_id, valuta_id, tasso_cambio,
         termine_pagamento_id, modalita_pagamento_id, meta)
-    VALUES (v_registro_id, v_data, v_tipo_doc_id, v_natura_id,
+    VALUES (v_registro_id, v_data, v_competenza_mese,
+        v_tipo_doc_id, v_natura_id,
         v_stato_doc_id, v_serie,
         v_emittente_id, v_ba_id, v_reseller_id,
         v_utility_id, v_valuta_id, 1,
@@ -202,7 +233,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_or_create_fattura_header(p_lotto_id bigint, p_attivita_id bigint)
-IS 'Recupera o crea la testata DRAFT della fattura a cui l''attivita'' appartiene, dentro il lotto dato. Il WHERE del lookup e la INSERT nominano gli STESSI elementi della chiave di fn_build_fattura_key: se la chiave separa e il lookup no, le due meta'' si annullano e le attivita'' tornano nella stessa fattura. rev 2026-08-18 (brief-design-note-credito-resi N3): la chiave ha undici elementi, natura e serie compresi. ⚠️ `serie` non era MAI stata scritta da questa INSERT — restava NULL e fn_assign_numero_fattura cadeva sul serie_default del registro: calcolarla senza scriverla avrebbe dato alla nota di credito un numero VALIDO nella serie delle fatture, cioe'' un difetto che non solleva nulla e si scopre guardando un registro IVA. Confronto: `=` sulla natura (NOT NULL), IS NOT DISTINCT FROM sui quattro nullable (reseller, utility, serie, modalita''/termine). ⭐ rev 2026-08-25 (DB-6, cantiere numerazione-data-documento): la data non e'' piu'' `current_date` ma vendite.fn_calcola_data_documento(registro, competenza del lotto, data dichiarata sul lotto). ⛔ Questa e'' l''UNICA riga in tutto il repo che scrive vendite.fatture.data — verificato su pg_proc, su backend/ e sulla doc auto-gen — quindi cambiarla qui cambia il comportamento ovunque, ed e'' anche il motivo per cui il difetto e'' rimasto invisibile: non c''era un secondo posto in cui vedere due implementazioni divergenti. `current_date` faceva due danni insieme: prendeva il giorno in cui qualcuno ha premuto «Fattura» (l''orario di un batch, non una decisione) e lo prendeva nel fuso DELLA SESSIONE, che da Django e'' UTC — ogni documento generato fra mezzanotte e le 02:00 locali portava la data del giorno prima, misurato su 7 fatture su 18. ⭐ Il lotto si legge DOPO il lookup e non in testa: la funzione gira una volta per attivita'' e quasi sempre trova la testata gia'' creata, quindi in testa sarebbe una query in piu'' per ogni attivita'' di ogni lotto. ⚠️ vendite.fatturazione_lotti ha la RLS e questa funzione e'' SECURITY INVOKER: un lotto fuori perimetro si legge come «non c''e''» e si esce con E_LOTTO_NON_TROVATO — controllo NUOVO, prima il lotto non veniva letto affatto. Brief: docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md §4 DB-6.';
+IS 'Recupera o crea la testata DRAFT della fattura a cui l''attivita'' appartiene, dentro il lotto dato. Il WHERE del lookup e la INSERT nominano gli STESSI elementi della chiave di fn_build_fattura_key: se la chiave separa e il lookup no, le due meta'' si annullano e le attivita'' tornano nella stessa fattura. rev 2026-08-18 (brief-design-note-credito-resi N3): la chiave ha undici elementi, natura e serie compresi. ⚠️ `serie` non era MAI stata scritta da questa INSERT — restava NULL e fn_assign_numero_fattura cadeva sul serie_default del registro: calcolarla senza scriverla avrebbe dato alla nota di credito un numero VALIDO nella serie delle fatture, cioe'' un difetto che non solleva nulla e si scopre guardando un registro IVA. Confronto: `=` sulla natura (NOT NULL), IS NOT DISTINCT FROM sui quattro nullable. ⭐ rev 2026-08-25 (cantiere numerazione-data-documento): la data non e'' piu'' `current_date` ma vendite.fn_calcola_data_documento. ⛔ Questa e'' l''UNICA riga in tutto il repo che scrive vendite.fatture.data — e dal 2026-08-26 anche l''unica che scrive vendite.fatture.competenza_mese — verificato su pg_proc, su backend/ e sulla doc auto-gen: cambiarla qui cambia il comportamento ovunque, ed e'' anche il motivo per cui il difetto di `current_date` era rimasto invisibile (non c''era un secondo posto in cui vedere due implementazioni divergenti). ⭐ rev 2026-08-26 (cantiere limite-emissione, DB-7 e DB-13), TRE modifiche: (1) la SERIE entra fra gli argomenti della data — il clamp legge il contatore di (registro, SERIE) e senza la serie leggerebbe quello di un''ALTRA sequenza, rispondendo «nessun pavimento» proprio dove il cancello rifiuta; (2) la INSERT scrive `competenza_mese`, che serve al cancello per applicare il limite di emissione senza dover leggere il lotto sotto RLS — il valore e'' gia'' in mano, si legge dal lotto due righe piu'' su per calcolare la data, quindi costa una parola nella lista e non una query. ⚠️ Si scrive ALLA NASCITA e non si insegue: la fattura nasce dentro UN lotto, e se piu'' tardi entrera'' in un secondo lotto con un''altra competenza la colonna resta quella di nascita; (3) i guard di parametro passano da E_PARAMETRO_INVALIDO — che portava `p_lotto_id e p_attivita_id obbligatori e > 0` nella frase letta da una persona — a E_VENDITE_CHIAMATA_NON_VALIDA, UNO PER PARAMETRO. ⭐ Il lotto si legge DOPO il lookup e non in testa: la funzione gira una volta per attivita'' e quasi sempre trova la testata gia'' creata. ⚠️ vendite.fatturazione_lotti ha la RLS e questa funzione e'' SECURITY INVOKER: un lotto fuori perimetro si legge come «non c''e''» e si esce con E_LOTTO_NON_TROVATO. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-7 e DB-13.';
 ```
 
 ---

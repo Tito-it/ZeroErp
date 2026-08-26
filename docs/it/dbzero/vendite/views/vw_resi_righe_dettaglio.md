@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_resi_righe_dettaglio.md" %}
 # 🔍 View `vw_resi_righe_dettaglio`
 
 > 📝 **Descrizione**

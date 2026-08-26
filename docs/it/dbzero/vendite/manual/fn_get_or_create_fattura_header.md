@@ -142,6 +142,34 @@ testata dentro un lotto che non si può vedere.
 📌 Prima il lotto non veniva letto affatto: un `p_lotto_id` sbagliato produceva
 una **fattura orfana**, in silenzio.
 
+
+### ⭐ rev 2026-08-26 — passa la SERIE, e scrive la COMPETENZA
+
+Brief: `brief-db-limite-emissione-e-data-verificata` (**DB-7** e **DB-13**).
+
+Tre modifiche, e nessuna delle prime due costa una query:
+
+1. **la serie entra fra gli argomenti della data.** `v_serie` esce dalla chiave a
+   undici elementi qualche riga più su; senza di essa il clamp leggerebbe il
+   contatore di un'**altra** sequenza, rispondendo «nessun pavimento» proprio
+   dove il cancello poi rifiuta;
+2. **la `INSERT` scrive `competenza_mese`.** Il valore è già in mano —
+   `v_competenza_mese` viene letto dal lotto per calcolare la data — quindi la
+   colonna costa **una parola nella lista**, non una query;
+3. i guard di parametro passano da `E_PARAMETRO_INVALIDO`, che portava
+   `p_lotto_id e p_attivita_id obbligatori e > 0` nella frase letta da una
+   persona, a `E_VENDITE_CHIAMATA_NON_VALIDA`, **uno per parametro**.
+
+⛔ **Questa resta l'unica `INSERT` su `vendite.fatture` di tutto il repo** —
+verificato su `pg_proc`, su `backend/` e sulla doc auto-generata. È il motivo per
+cui `competenza_mese` può nascere qui e basta: un solo scrittore, nessun secondo
+posto da tenere allineato.
+
+⚠️ **La competenza si scrive alla NASCITA e non si insegue.** La fattura nasce
+dentro **un** lotto, che non è ambiguo; se più tardi entrerà in un secondo lotto
+con un'altra competenza, la colonna resta quella di nascita. *La competenza di un
+documento è decisa quando il documento nasce, non da chi lo raccoglie dopo.*
+
 ---
 
 {% include-markdown "signature-core.md" %}

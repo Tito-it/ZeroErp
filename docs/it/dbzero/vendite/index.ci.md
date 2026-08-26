@@ -144,14 +144,18 @@
 - [fn_get_anno_registro](manual/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
 - [fn_get_arrotondamento_scope](manual/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
 - [fn_get_commessa_stato](manual/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
-- [fn_get_data_minima_numerabile](manual/fn_get_data_minima_numerabile.md) — **Da quale data in poi questo sezionale accetta un numero.**
 - [fn_get_data_minima_numerabile_lotto](manual/fn_get_data_minima_numerabile_lotto.md) — **Da quale data in poi TUTTE le fatture non ancora numerate di questo lotto possono prendere un numero.**
+- [fn_get_limite_emissione_default](manual/fn_get_limite_emissione_default.md) — **Il valore di un limite di emissione dal catalogo dei parametri, come numero.**
 - [fn_get_lotto_segnalazioni_summary](manual/fn_get_lotto_segnalazioni_summary.md) — (latest review 23-02-2026)   La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto, unificando:
 - [fn_get_lotto_task_last_run](manual/fn_get_lotto_task_last_run.md) — Restituisce l'ultimo task run disponibile per lotto/step/task.
 - [fn_get_next_progressivo](manual/fn_get_next_progressivo.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_next_progressivo`** restituisce il prossimo numero di registro, con **lock della riga** progressivi per evitare doppioni.
 - [fn_get_or_create_commessa](manual/fn_get_or_create_commessa.md) — (latest review 26-02-2026)   Recupera una commessa riusabile, coerente con il contesto BA/utility e parametri funzionali, oppure ne crea una nuova in modo sicuro anche con chiamate concorrenti.
 - [fn_get_or_create_fattura_header](manual/fn_get_or_create_fattura_header.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_get_or_create_fattura_header()`** recupera o crea una **testata fattura in bozza** a partire da una riga di `attivita_fatturabili`, usando la chiave documento (`vendite.fn_build_fattura_key`) e collegandola al lotto.
 - [fn_get_or_create_lotto](manual/fn_get_or_create_lotto.md) — (latest review 22-02-2026) La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente (o lo crea se assente) garantendo la coerenza dei parametri di richiesta.
+- [fn_get_pavimento_data_documento](manual/fn_get_pavimento_data_documento.md) — **Il pavimento EFFETTIVO della data di un documento — e quale dei due pavimenti ha deciso.**
+- [fn_get_pavimento_emissione](manual/fn_get_pavimento_emissione.md) — **Da quale data in poi un documento di questo sezionale è ancora EMETTIBILE.**
+- [fn_get_pavimento_lotto](manual/fn_get_pavimento_lotto.md) — **Da quale data in poi TUTTE le fatture non ancora numerate di un lotto possono prendere un numero — e quale pavimento ha deciso.**
+- [fn_get_pavimento_sequenza](manual/fn_get_pavimento_sequenza.md) — **Da quale data in poi questo sezionale accetta un numero, guardando SOLO la sequenza già emessa.**
 - [fn_get_pipeline_task_policy](manual/fn_get_pipeline_task_policy.md) — Restituisce la policy runtime attiva di un task pipeline (`annullabile`, `resume_mode`, `meta`).
 - [fn_get_registro_id](manual/fn_get_registro_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.
 - [fn_get_scope_fatture_lotto](manual/fn_get_scope_fatture_lotto.md) — (latest review 15-08-2026)
@@ -378,6 +382,7 @@
 - [vw_resi_da_accreditare](manual/vw_resi_da_accreditare.md) — (rev 2026-08-17 — agganciata alla partita di merce; rev 2026-07-26 etichetta reso-aware; rev 2026-07-18 forma cambiata)
 - [vw_resi_da_riconsegnare](manual/vw_resi_da_riconsegnare.md) — (rev 2026-07-26)
 - [vw_resi_lista](manual/vw_resi_lista.md) — (rev 2026-07-13)
+- [vw_resi_righe_dettaglio](manual/vw_resi_righe_dettaglio.md) — (latest review 25-08-2026)
 - [vw_resi_righe_effettive](manual/vw_resi_righe_effettive.md) — (latest review 2026-07-18)
 - [vw_situazione_merce_ordine](manual/vw_situazione_merce_ordine.md) — (rev 2026-08-18 — soglia dell'impegno · rev 2026-08-17 — nuova)
 - [vw_stato_sorgente_contratto](manual/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.

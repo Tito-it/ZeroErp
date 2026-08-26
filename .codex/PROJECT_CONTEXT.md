@@ -17,6 +17,12 @@
 2. **Django**: orchestrazione, API REST, e logica che non può stare nel DB
 3. **Vue** (futuro): SOLO presentazione — zero logica business nel frontend
 4. **No logica duplicata** tra livelli: se è nel DB non va replicata in Python, e viceversa
+5. ⛔ **Si progetta sul modello, mai su una fotografia**: le misure sui *dati* del DB
+   di sviluppo (`count(*)`, «zero righe in quello stato», «N su M») non decidono
+   nulla — decide ciò che il modello **ammette**. Le misure sulla *struttura*
+   (nullabilità, CHECK, RLS, GRANT, corpo di una funzione) sì: quelle sono il
+   progetto, non il contenuto. Regola completa, con il corollario sui test, in
+   [AGENTS.md § «Regola zero — le misure non disegnano il progetto»](AGENTS.md)
 
 ## Stack Tecnico
 
