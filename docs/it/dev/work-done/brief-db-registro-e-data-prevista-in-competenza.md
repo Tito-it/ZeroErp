@@ -13,7 +13,7 @@
 > [analisi-numerazione-fattura-data-e-sequenza.md](analisi-numerazione-fattura-data-e-sequenza.md)
 >
 > **Vicino ma senza intersezioni:**
-> [brief-db-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-db-lavoro-che-non-torna-indietro.md)
+> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
 > (attività orfane e «Riporta da emettere»). Verificato il 2026-08-26: **non tocca
 > nessuna funzione né vista di questo cantiere**. Condivide però la classe di
 > difetto — *lavoro che esce dal giro senza un errore* — e una trappola
@@ -706,7 +706,7 @@ pgTAP di scope, non da assumere. ⚠️ E il cancello di quel test è
 > serie di questo cantiere parte da **`20260826-14`**, e va **riverificata prima
 > di scrivere**: la sequenza è globale per data, e al 2026-08-26 se la dividono
 > **tre** cantieri — il terzo è
-> [brief-db-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-db-lavoro-che-non-torna-indietro.md),
+> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md),
 > che numeri non ne ha ancora presi ma ne prenderà.
 > Tutti i changeSet in stato finale con `runOnChange: false` e `validCheckSums`
 > (**al plurale**).
@@ -1244,7 +1244,7 @@ silenzio se qualcuno riporta il join a `ON true` per «semplificare».
 
 ⭐ **Conferma arrivata dall'esterno il 2026-08-26**, e vale la pena scriverla
 perché è il motivo per cui la condizione è quella giusta.
-[brief-db-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-db-lavoro-che-non-torna-indietro.md)
+[brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
 documenta un difetto che produce **attività orfane**: la riga di fattura è stata
 cancellata, l'attività resta marcata come fatturata e non torna in coda.
 Quello stato cade nello stadio `EMESSA_NON_FATTURATA`, ma **un documento non ce

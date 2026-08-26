@@ -2770,21 +2770,6 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             assert row is not None
         return int(row[0])
 
-    # Scopo: Gestisce `mark_attivita_fatturata` nel flusso applicativo del modulo.
-    def mark_attivita_fatturata(self, attivita_id: int, fattura_riga_id: int) -> None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE vendite.attivita_fatturabili
-                SET fattura_riga_id = %s,
-                    fatturato = TRUE,
-                    data_update = now(),
-                    user_update = current_user
-                WHERE id = %s
-                """,
-                [fattura_riga_id, attivita_id],
-            )
-
     # Scopo: Marca come RUNNING le attivita' lockate sul lotto, prima della
     #        generazione righe. Chiude il passo centrale del ciclo di vita
     #        `stato_esecuzione` (select -> PENDING, generazione -> RUNNING ->
@@ -2977,9 +2962,17 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     JOIN att_input a
                       ON a.fattura_id = i.fattura_id AND a.riga_nr = i.riga_nr
                 )
+                -- ⛔ `fatturato` NON si scrive: dal 20260826-33 e' una colonna
+                --    GENERATED ALWAYS AS (fattura_riga_id IS NOT NULL) STORED,
+                --    e scriverla e' un errore (SQLSTATE 428C9), non un no-op.
+                --    Il timbro si deriva da `fattura_riga_id`, che sta gia' in
+                --    questo stesso SET: era un doppione, e finche' i due dati
+                --    erano autonomi potevano — e il 2026-07 lo hanno fatto —
+                --    smettere di dire la stessa cosa. Ora il disaccordo non e'
+                --    piu' rappresentabile.
+                --    Piano: brief-db-lavoro-che-non-torna-indietro, L3b.
                 UPDATE vendite.attivita_fatturabili a
                 SET fattura_riga_id = c.fattura_riga_id,
-                    fatturato = TRUE,
                     stato_esecuzione = 'COMPLETED',
                     data_update = now(),
                     user_update = current_user

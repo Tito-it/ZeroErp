@@ -94,7 +94,7 @@ riga non c'è.
 fail-closed, non un dato*. Qui però non è un conteggio: è la riga intera.
 
 ⭐ **E non è un caso isolato: è una famiglia.**
-[brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
+[brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)
 descrive lo stesso tipo di danno per un'altra causa — un'attività che resta
 marcata come fatturata dopo che la sua fattura è stata eliminata, e che nessuno
 rimette mai in coda. ⚠️ Le due cose **non hanno oggetti in comune** e non vanno

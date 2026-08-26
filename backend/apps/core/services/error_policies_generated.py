@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 786, di cui 85 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 793, di cui 87 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -119,11 +119,21 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # B1 §13.7: codici dedicati attivazione shop (simmetrici al portale).
     "E_ATTIVAZIONE_SHOP": "DATO_ERRATO",
     "E_ATTIVAZIONE_SHOP_CROSS": "DATO_ERRATO",
+    # script.fn_check_attivita_riportabile_da_emettere e vendite.fn_riporta_attivita_da_emettere: si sta tentando di riportare «da emettere» un'attivita' che e' ancora agganciata a una riga di fattura. Nasce il 2026-08-26. · ⛔ E' IL GUARD CHE IMPEDISCE al verbo di diventare un modo per SCOLLEGARE UNA FATTURA VIVA. Il trigger di riga trgfn_attivita_fatturabili_guard_fatturato dice gia' la stessa cosa da un altro livello, con E_RIGA_GIA_FATTURATA: i due non si fondono, perche' quello e' generico e non dice all'operatore COSA stava tentando. Se il guard di dominio si rompesse, il trigger tiene comunque. · CONFLITTO_STATO: non c'e' un campo da correggere, e' la situazione dell'attivita' che non lo consente — e per la regola delle capability l'azione non va nemmeno proposta su una riga agganciata. · ⭐ I VALORI sono l'etichetta che l'operatore vede sulla card («commessa <codice>, competenza <MM/AAAA>»), mai un id tecnico. Gli id viaggiano nel BERSAGLIO, che qui ha due elementi: prima la COMMESSA (l'unico posto dove quella riga si vede), poi la FATTURA (la cosa da sistemare per far passare l'operazione).
+    "E_ATTIVITA_ANCORA_IN_FATTURA": "CONFLITTO_STATO",
+    # script.fn_check_attivita_riportabile_da_emettere: una o piu' attivita' dell'elenco non si risolvono. Nasce il 2026-08-26 col verbo «Riporta da emettere». · ⛔ COPRE DUE CASI DI PROPOSITO, e non e' una imprecisione: la riga non esiste piu' (l'elenco a schermo e' invecchiato), oppure appartiene a un emittente fuori dal perimetro di chi guarda. Dal punto di vista di chi chiede sono la stessa cosa, e dire «non hai il permesso» rivelerebbe l'esistenza di un documento altrui. · ⭐ Il perimetro e' il JOIN su vendite.commesse_attivita, che ha RLS: vendite.attivita_fatturabili non ne ha, quindi leggerla da sola sarebbe fail-open. · ⭐ IL VALORE nella frase e' il CONTEGGIO, non gli id: di una riga che non si vede non si puo' nominare niente che l'operatore riconosca — nemmeno la commessa. E per la stessa ragione questo motivo NON porta un bersaglio: un pulsante verso una riga invisibile e' un vicolo cieco.
+    "E_ATTIVITA_FATTURABILE_NON_TROVATA": "NON_TROVATO",
     "E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE": "CONFLITTO_STATO",
+    # script.fn_check_attivita_riportabile_da_emettere: l'attivita' non e' lucchettata, cioe' e' gia' disponibile per il prossimo giro di fatturazione. Nasce il 2026-08-26. · ⭐ Codice DEDICATO e non fuso con E_ATTIVITA_ANCORA_IN_FATTURA: «e' gia' a posto» e «e' dentro un documento» sono due situazioni opposte, e il rimedio della prima e' NON FARE NIENTE. Dire la seconda quando vale la prima manderebbe a cercare una fattura che non c'e'. · CONFLITTO_STATO e non AVVISO: la richiesta viene rifiutata, non solo annotata. ⚠️ Ed e' il motivo per cui il frontend deve gate-are l'azione sui codici che ha gia' in riga invece di proporla sempre: incontrare questo errore vuol dire che l'elenco mostrato era invecchiato.
+    "E_ATTIVITA_GIA_DA_EMETTERE": "CONFLITTO_STATO",
+    # script.fn_check_attivita_riportabile_da_emettere: l'attivita' e' lucchettata da un giro di fatturazione che non ha ancora dichiarato di aver finito (stato_esecuzione PENDING o RUNNING, non COMPLETED). Nasce il 2026-08-26. · ⛔ E' LA CONDIZIONE CHE SEPARA L'ORFANA DAL TRANSITO LEGITTIMO, ed e' il motivo per cui la card «Emesse non fatturate» NON e' il perimetro del verbo: quella card contiene due popolazioni strutturalmente diverse — l'attivita' emessa che sta aspettando il suo lotto (caso normale) e quella rimasta orfana (il residuo). Un verbo fondato sulla card disferebbe emissioni corrette. · CONFLITTO_STATO: si riprova quando il lotto ha finito. ⚠️ Se lo stato resta PENDING per sempre il problema e' il lotto, non questa attivita': si guarda il registro del lotto, non si forza il riporto.
+    "E_ATTIVITA_IN_LAVORAZIONE": "CONFLITTO_STATO",
     # Dati incoerenti a monte, non input dell'utente: 409 e banner, perche' la · correzione sta sul documento sorgente e non su questa schermata.
     "E_ATTIVITA_KIT_SENZA_PADRE": "CONFLITTO_STATO",
     "E_ATTIVITA_LOTTO_NOT_FOUND": "NON_TROVATO",
     "E_ATTIVITA_PIPELINE": "DATO_ERRATO",
+    # script.fn_check_attivita_riportabile_da_emettere: il verbo «Riporta da emettere» e' stato invocato con un elenco di attivita' assente o vuoto. Nasce il 2026-08-26 col verbo stesso. · TECNICO e non DATO_ERRATO: nessuna persona sceglie quel valore. L'interfaccia abilita il pulsante solo con almeno una riga selezionata, quindi un elenco vuoto e' un chiamante rotto, e chi ha fatto la richiesta non puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⛔ E il guard esiste perche' l'insieme vuoto NON deve poter uscire come «zero righe riportate»: sarebbe indistinguibile da un'operazione riuscita che non ha trovato niente da fare — cioe' la stessa forma di silenzio che questo cantiere sta chiudendo. · ⚠️ Su un TECNICO la chiave `campo` non esce dal contesto: su un 500 non c'e' nessun campo da accendere. Il VALORE nella frase e' il nome della funzione che ha ricevuto l'elenco, ed e' deliberato: il lettore qui e' uno sviluppatore.
+    "E_ATTIVITA_RIPORTO_SELEZIONE_VUOTA": "TECNICO",
     "E_ATTIVITA_VALIDATION": "DATO_ERRATO",
     # TERZO LATO — lotto 4, la coda: `catalogo` · `config` · `dbops` · `shop` · (2026-08-06) Brief §16. Sono i 14 codici da trigger rimasti dopo i · tre lotti per dominio: nessuno arriva a piu' di due funzioni, e non · c'e' un dominio che li tenga insieme — li tiene insieme il fatto di · essere gli ultimi. Con questi il percorso di una richiesta e' coperto. · Sollevato da dbops.fn_run_automations_attivo dentro · `EXCEPTION WHEN others`: fallisce la GENERAZIONE della regola di · automazione, cioe' il framework che arma i trigger. Non e' un · errore di chi compila, e non passa nemmeno da una richiesta web.
     "E_ATTIVO_BLOCK": "TECNICO",
@@ -646,6 +656,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_OPERATORE_SCOPE_PARAM_NON_VALIDO": "DATO_ERRATO",
     # Vie d'uscita per l'operatore (brief-db-vie-uscita-operatore §5.1): · l'annullamento dell'ordine torna disponibile da CONFERMATO, ma · `script.fn_check_ordine_annullabile` lo rifiuta se la merce e' gia' · uscita o il lavoro e' gia' andato in fatturazione. Codici sollevati dal · guard DB (`trgfn_ordini_guard_transizione`), tradotti dal regex di · `ordini_service._db_errors`: qui si dichiara la policy HTTP/UI.
     "E_ORD_ANNULLA_CON_DDT": "CONFLITTO_STATO",
+    # NULL · ⛔ RITIRATO il 2026-08-26 (cantiere «il lavoro che non torna indietro», Q-9). Vietava di annullare un ordine che aveva spinto in commessa, e il motivo era UNO: non c'era modo di disfare il push. Adesso c'e' — alla chiusura il documento ritira da se' le righe che nessuno ha ancora emesso (trg_ordini_z90_ritira_commessa_attivita_upd). ⭐ Al suo posto resta un freno solo e su una condizione VERA, E_SORGENTE_CON_RIGHE_EMESSE: le righe gia' EMESSA sono in volo verso una fattura, e hanno una via d'uscita che il messaggio nomina («Riporta da emettere»). ⚠️ Il codice NON si cancella: resta a catalogo e smette di essere sollevato, perche' puo' essere ancora nei log e nelle mappature del frontend. ⚠️ Si ritira INSIEME a E_PREV_GIA_IN_COMMESSA: erano lo stesso divieto su due documenti, e ritirarne uno solo avrebbe girato l'asimmetria invece di toglierla.
+    # ⚠️ RITIRATO il 2026-08-26
     "E_ORD_ANNULLA_IN_COMMESSA": "CONFLITTO_STATO",
     # Cliente (billing_account_id/soggetto_ruolo_id) immutabile post-create. · Sollevato sia dal guard BE (ordini_service.aggiorna_ordine) sia, come · difesa finale, dal lock-columns DB (automation_lock_columns, · DB-ORD-LOCK 2026-06-04, codice DB messaggi_errore id 469). · 400 -> 409 il 2026-08-06 (audit coerenza status): immutabilita' · post-creazione = conflitto con lo stato attuale (RFC 9110), come · gli altri 29 della famiglia. `ui_action` invariata.
     "E_ORD_CLIENTE_IMMUTABILE": "CONFLITTO_STATO",
@@ -758,6 +770,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREVENTIVO_RIGA_NON_TROVATA": "NON_TROVATO",
     # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione · prezzo out-of-policy. Codici sollevati da preventivi_service + · approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
     "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": "CONFLITTO_STATO",
+    # NULL · ⛔ RITIRATO il 2026-08-26 (cantiere «il lavoro che non torna indietro», Q-9). Vietava di annullare un preventivo gia' entrato in commessa «anche se nulla e' ancora uscito», e il motivo era UNO: non c'era modo di disfare il push. Adesso c'e' — alla chiusura il documento ritira da se' le righe non ancora emesse (trg_preventivi_z90_ritira_commessa_attivita_upd). ⭐ Resta invece E_PREV_ANNULLA_COMMESSA_EMESSA, che e' una condizione vera: le righe gia' EMESSA sono in volo verso una fattura. Il suo conteggio ora si delega a script.fn_check_sorgente_chiudibile e il codice si limita a rietichettare — una implementazione, due superfici. ⚠️ Il codice NON si cancella: resta a catalogo e smette di essere sollevato. ⚠️ Si ritira INSIEME a E_ORD_ANNULLA_IN_COMMESSA.
+    # ⚠️ RITIRATO il 2026-08-26
     "E_PREV_GIA_IN_COMMESSA": "CONFLITTO_STATO",
     "E_PREV_NESSUNA_RIGA": "DATO_ERRATO",
     # <- PREV_NESSUNA_RIGA_ATTIVA  (vivo)
@@ -885,6 +899,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
     "E_RIGA_PREZZO_PENDENTE": "CONFLITTO_STATO",
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "DATO_ERRATO",
+    # script.fn_check_sorgente_chiudibile e vendite.fn_ritira_commessa_attivita_da_sorgente: il ritiro e' stato invocato senza il tipo sorgente, senza la chiave del documento o senza il motivo. Nasce il 2026-08-26 col ritiro (Q-5' strada A). · TECNICO e non DATO_ERRATO: il chiamante e' un trigger o un servizio, non una persona in un form, e chi ha fatto la richiesta non puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⭐ IL VALORE nella frase e' il nome del parametro, ed e' deliberato: qui il lettore e' uno sviluppatore, e sapere QUALE dei tre manca e' l'informazione utile. · ⚠️ Il motivo e' fra i tre obbligatori perche' ANNULLATA e' irreversibile: senza motivo resta il fatto senza la ragione, e a mesi di distanza un importo sparito senza spiegazione e' indistinguibile da un difetto.
+    "E_RITIRO_SORGENTE_PARAMETRO_MANCANTE": "TECNICO",
     # ⚠️ RITIRATO il 2026-08-05
     "ERRORE_PARAMETRI": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-05
@@ -943,6 +959,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOGGETTO_NULL": "DATO_ERRATO",
     # Configurazione di `config.sorgenti` mancante o disattivata: non e' · colpa di chi compila, quindi banner e non campo evidenziato.
     "E_SORG_CONF": "DATO_ERRATO",
+    # script.fn_check_sorgente_chiudibile: si sta chiudendo un documento che ha spinto in commessa righe gia' EMESSA. Nasce il 2026-08-26 col ritiro (Q-5' strada A). · ⛔ Le righe EMESSA sono IN VOLO verso una fattura e non si ritirano: ritirarle lascerebbe un'attivita' fatturabile orfana in viaggio, cioe' esattamente il residuo che questo cantiere sta chiudendo. Il ritiro prende solo le NON_EMESSA. · ⭐ E dal lotto L5 il rifiuto ha una VIA D'USCITA, che il messaggio nomina: «Riporta da emettere» riporta la riga a NON_EMESSA e da li' il ritiro la prende. Prima non ce n'era una, ed e' il motivo per cui E_PREV_ANNULLA_COMMESSA_EMESSA era un vicolo cieco. · CONFLITTO_STATO: non c'e' un campo da correggere, e' la situazione delle righe che non lo consente — e per la regola delle capability l'azione non va nemmeno proposta. · ⭐ IL VALORE e' il CONTEGGIO delle righe emesse, non i loro id: quelli viaggiano nel contesto, e quanti sono e' cio' che dice all'operatore quanto lavoro deve recuperare.
+    "E_SORGENTE_CON_RIGHE_EMESSE": "CONFLITTO_STATO",
     "E_SORG_FORMATO": "DATO_ERRATO",
     "E_SORG_KEY_MISSING": "DATO_ERRATO",
     "E_SORG_KEYSEL": "DATO_ERRATO",
@@ -1243,9 +1261,11 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_FONTE_QUANTITA_NON_VALIDA",
         "E_INVALID_SNAPSHOT",
         "E_NUMERAZIONE_IMMUTABILE",
+        "E_ORD_ANNULLA_IN_COMMESSA",
         "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID",
         "E_PERC_IVA_NO_MOD",
         "E_PIPELINE_MARK_ERROR",
+        "E_PREV_GIA_IN_COMMESSA",
         "E_PREZZO_LISTINO_NON_TROVATO",
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",

@@ -126,6 +126,22 @@ motivato, o si sostituisce con un test che i soggetti se li fabbrica.
 - Accesso webserver configurato: test migrazione solo su richiesta
 - Per i file Python **generati** aggiungere sempre l'header standard in `templates/python-header.txt`.
 - Per ogni nuovo file Python (non generato da Django) aggiungere l'header standard di `templates/python-header.txt` e un breve commento iniziale sullo scopo.
+  ⭐ **È un cricchetto, e la parola «nuovo» è la regola**: `scripts/check_license.py`
+  (hook pre-commit) guarda i file **aggiunti**, non quelli modificati — toccare un
+  file vecchio senza header non blocca il commit.
+  ⚠️ Perché: l'hook ha girato per la **prima volta** il 2026-08-26 (`pre-commit`
+  non era installato su nessuna macchina, quindi la configurazione esisteva e non
+  presidiava niente), e quel giorno erano **2042 file su 5189** senza header — il
+  39% del repo, **579 su 605** sotto `frontend/src`. Con i modificati dentro il
+  perimetro, qualunque lavoro sul frontend si sarebbe bloccato al primo commit, e
+  la reazione ovvia sarebbe stata spegnere l'hook. *Un presidio che blocca tutto
+  viene disattivato, e allora non presidia più nemmeno i casi per cui era nato.*
+  ⛔ Quei 2042 sono un **registro del debito** e devono calare — ma per decisione,
+  non per attrito.
+  ✅ **Vale anche per `.js`/`.vue`** (Tid, 2026-08-26): la regola e i due
+  template stanno nella sezione Frontend qui sotto. Il filtro dell'hook
+  (`py|js|vue|yaml`) resta quello che era: non e' stato allargato, e' stato
+  finalmente **acceso**.
 - Nei file Python aggiungere un commento sintetico (`# Scopo: ...`) prima di ogni funzione/metodo (`def`/`async def`), in italiano.
 - Per funzioni/metodi che orchestrano processi complessi (pipeline, transazioni, dispatch task, integrazioni esterne), rendere il commento `Scopo` iniziale piu` dettagliato: obiettivo, perimetro e risultato atteso.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
@@ -179,6 +195,19 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Sicurezza: route guard su tutte le rotte (default protette), token refresh automatico, no `window.location` per redirect
 - Multilingua: ogni testo visibile all'utente usa `$t()` — mai stringhe hardcoded nei componenti
 - Build: `./node_modules/.bin/vite build` (richiede nvm per caricare Node)
+- **Header di licenza obbligatorio sui file nuovi**, come per il backend
+  (decisione di Tid, 2026-08-26): `templates/javascript-header.txt` per i `.js`,
+  `templates/vue-header.txt` per i `.vue`. Presidiato da `scripts/check_license.py`
+  (hook pre-commit), che guarda i file **aggiunti** — il pregresso non blocca.
+  ⚠️ In un `.vue` l'header va **prima di `<script setup>`** e in commento HTML:
+  e' l'unica forma valida in cima a un Single File Component, e il presidio legge
+  le prime 10 righe del file. Lo `Scopo:` invece **non** sta li': resta un
+  commento `// Scopo: ...` dentro `<script setup>`, dov'e' gia' la convenzione e
+  dove lo trova chi legge il codice.
+  ⚠️ **Non e' una regola nuova: era gia' in vigore di fatto e non scritta.**
+  L'hook include `js|vue` da sempre, ma non ha mai girato (`pre-commit` non era
+  installato), e i 26 file frontend che l'header ce l'hanno usano gia' esattamente
+  questa forma — i template la mettono per iscritto, non la inventano.
 
 ## Liquibase v2 Workflow
 
@@ -262,7 +291,10 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 
 ### Build docs (Zensical) - prerequisiti obbligatori
 
-- Stack docs corrente: `zensical==0.0.24` (con `deepmerge==2.0`) + tooling Python in `requirements.txt`.
+- Stack docs corrente: `zensical==0.0.57` (con `deepmerge==3.0`) + tooling Python in `requirements.txt`.
+  ⚠️ Le versioni **si leggono da `requirements.txt`**, non da questa riga: al 2026-08-26 diceva
+  `0.0.24`/`2.0` mentre il lock era gia' a `0.0.57`/`3.0`. Un numero scritto in due posti ne ha
+  sempre uno stantio, e questo e' quello senza presidio.
 - Non usare piu` `mkdocs build` come comando primario di progetto.
 - Build docs locale/CI: `python scripts/build_docs_zensical.py`
   - lo script preprocessa `docs/` in `.tmp/zensical_docs`

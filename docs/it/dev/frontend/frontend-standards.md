@@ -1727,7 +1727,22 @@ Corollari operativi:
 **Controllo automatico (obbligatorio prima di toccare chiavi o namespace):**
 `python3 scripts/check_i18n_keys.py [--strict-roots]` — rende rumoroso l'errore
 silenzioso: chiavi citate ma assenti, chiavi emesse dal DB (capability + seed)
-non risolvibili, parità it/en, radici di dominio in cima. Va tenuto verde.
+non risolvibili, parità it/en, radici di dominio in cima, e **chiavi definite due
+volte nello stesso oggetto**. Va tenuto verde.
+
+⚠️ **Una chiave scritta due volte non è un errore di sintassi**: in JSON è
+lecito, e ogni parser tiene l'**ultima** — `JSON.parse` come `json.load`. La
+prima è quindi *morta*, senza errori e senza test rossi, e il file mostra una
+frase che a video non compare. ⭐ Fa danno quando i consumatori sono **due con
+contratti diversi**: il 2026-08-26 `vendite.lotti.numera_esito` era definita due
+volte, e la numerazione **di massa** — che passa `{numerati}` — riceveva la frase
+del **singolo lotto**, perdendo il conteggio. Un segnaposto che non compare non
+si vede.
+⛔ E il cancello era **cieco al proprio difetto** fino a quel giorno: faceva
+`json.load`, cioè leggeva il dizionario già collassato — guardava il *risultato*
+invece del difetto. Ora usa un `object_pairs_hook`, che vede le coppie prima che
+si schiaccino. *Un presidio che parsifica il formato eredita la tolleranza del
+formato.*
 
 **Procedura di classificazione e inventario** (come si decide dove va una radice
 esistente, soglia del 70%, casi «due indirizzi con lo stesso nome»):

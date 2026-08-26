@@ -55,7 +55,6 @@ class _RepoMock:
     def __init__(self, attivita=None, prezzi=None, fatture=None, iva=None,
                  rettifiche=None):
         self.insert_calls = 0
-        self.mark_calls = 0
         self.batch_insert_and_mark_calls = 0
         self.running_calls = 0
         self.last_kwargs: dict = {}
@@ -134,10 +133,6 @@ class _RepoMock:
     def insert_fattura_riga(self, **kwargs):
         self.insert_calls += 1
         return 900
-
-    # Scopo: Gestisce `mark_attivita_fatturata` nel flusso applicativo del modulo.
-    def mark_attivita_fatturata(self, attivita_id, fattura_riga_id):
-        self.mark_calls += 1
 
     # Scopo: Batch INSERT righe + UPDATE attivita in un solo round-trip.
     def batch_insert_righe_and_mark(self, **kwargs):
@@ -221,7 +216,6 @@ class FattureRigheServiceUnitTests(SimpleTestCase):
         result = _genera(repo, dry_run=True)
         self.assertEqual(result, 1)
         self.assertEqual(repo.insert_calls, 0)
-        self.assertEqual(repo.mark_calls, 0)
         self.assertEqual(repo.batch_insert_and_mark_calls, 0)
         # Nessun effetto collaterale: nemmeno la marcatura RUNNING.
         self.assertEqual(repo.running_calls, 0)

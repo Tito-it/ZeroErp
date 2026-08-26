@@ -2547,7 +2547,7 @@
       "rerun_conferma": "Re-run the current step of the failed batch?",
       "numera_header": "Finalize invoices",
       "numera_conferma": "Assign definitive numbers to the batch invoices? Fiscal numbering is irreversible; prints will be queued.",
-      "numera_esito": "Invoices numbered: batch finalized",
+      "numera_lotto_esito": "Invoices numbered: batch finalized",
       "ristampa_header": "Reprint batch documents",
       "ristampa_conferma": "Queue the reprint of all the batch invoice documents? PDFs will be regenerated in the background; no numbering.",
       "ristampa_esito": "{n} documents queued for printing",
@@ -3524,6 +3524,19 @@
       "page_title": "Invoicing tools",
       "page_description": "The lists the automatic run produces but cannot close by itself: a person decides them here.",
       "tab_fondi_da_decidere": "Funds to decide"
+    },
+    "attivita": {
+      "azione_reason": {
+        "non_trovata": "Activities no longer available: the list you are looking at has changed. Refresh it and try again.",
+        "ancora_in_fattura": "The work is already inside an invoice: it cannot be sent back to be issued. If the invoice must be redone, act on the invoice — «Remove from batch» for that document, or «Back to processing» for the whole batch.",
+        "gia_da_emettere": "The work is already ready to be issued: there is nothing to send back, the next invoicing run will pick it up on its own.",
+        "in_lavorazione": "The work is inside an invoicing run still in progress: it is not a leftover. Wait for the batch to finish."
+      }
+    },
+    "sorgenti": {
+      "azione_reason": {
+        "righe_commessa_emesse": "The document has job lines already issued: it cannot be closed while they are there. Recover them first from the accrual dashboard, «Issued not invoiced» card, with the «Send back to be issued» action."
+      }
     }
   },
   "dash_mesi": {

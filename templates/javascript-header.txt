@@ -1,0 +1,7 @@
+// ------------------------------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) <anno> Tid (Michele Carlo Titini)
+// Doc: JavaScript
+// Scopo: <descrizione breve del file>
+// Note: <eventuali vincoli o istruzioni>  // opzionale
+// ------------------------------------------------------------

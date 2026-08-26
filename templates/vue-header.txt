@@ -1,0 +1,12 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (C) <anno> Tid (Michele Carlo Titini)
+-->
+<!--
+  Va PRIMA di <script setup>: il commento HTML e' l'unica forma valida in cima
+  a un Single File Component, e `scripts/check_license.py` legge le prime 10
+  righe del file.
+  Lo `Scopo:` NON si mette qui: resta un commento `// Scopo: ...` dentro
+  <script setup>, dov'e' gia' la convenzione del progetto e dove lo trova chi
+  legge il codice.
+-->
