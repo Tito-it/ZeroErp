@@ -19,6 +19,33 @@ Approfondimento funzioni:
 Elenca i motivi che impediscono di **annullare** un preventivo: un ordine già nato da esso
 (MOTIVO 1), oppure righe già **emesse** in commessa (MOTIVO 2).
 
+> ⛔ **rev 26-08-2026 — un terzo motivo è stato RITIRATO, e il secondo delega.**
+> Esisteva un `E_PREV_GIA_IN_COMMESSA` che vietava l'annullamento se il
+> preventivo era **entrato** in commessa, «anche se nulla era ancora uscito».
+> Il motivo per cui esisteva era che **non c'era modo di disfare il push**, e
+> adesso c'è — alla chiusura il documento **ritira da sé** le righe che nessuno
+> ha ancora emesso
+> ([`trgfn_doc_ritira_commessa_attivita`](/dbzero/vendite/funzioni/trgfn_doc_ritira_commessa_attivita)).
+> ⭐ E il preventivo **si allinea agli altri documenti**: l'ordine aveva lo stesso
+> divieto, e si è ritirato insieme a questo.
+>
+> ⭐ Il **MOTIVO 2 resta** — le righe già `EMESSA` sono in volo verso una fattura,
+> ed è una condizione vera — ma il suo **conteggio si delega** a
+> [`script.fn_check_sorgente_chiudibile`](/dbzero/script/funzioni/fn_check_sorgente_chiudibile),
+> e qui il motivo si limita a **rietichettare** col codice che il frontend già
+> mappa. *Una implementazione, due superfici.*
+> ⚠️ È anche il motivo per cui sui preventivi **non** si monta il guard generico:
+> uscirebbero due codici diversi per lo stesso rifiuto.
+>
+> ⚠️ Cambia anche la **chiave**, ed è un guadagno: prima si contava con
+> `starts_with()` sul `segment_key` (`'PREV:<uid>:R:'`), cioè su una convenzione
+> di stringa; adesso sulla coppia `(sorgente_tipo_id, sorgente_uid)`, che è il
+> legame **dichiarato**. Le due oggi coincidono, per costruzione non devono.
+>
+> ⚠️ `E_PREV_GIA_IN_COMMESSA` **non è stato cancellato**: resta a catalogo con
+> `obsoleto_dal = 2026-08-26`.
+> Cantiere: `brief-db-lavoro-che-non-torna-indietro.md`, Q-9.
+
 Dal 2026-08-04 il MOTIVO 2 è stato **assorbito dalla porta** `fn_cambia_stato_preventivo`, che
 prima lo teneva per sé: da allora la porta non ha più una regola propria, chiama questa.
 

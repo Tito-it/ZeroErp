@@ -233,7 +233,7 @@ BEGIN
   RETURNING id INTO v_riga;
 
   UPDATE vendite.attivita_fatturabili
-     SET fattura_riga_id = v_riga, fatturato = true
+     SET fattura_riga_id = v_riga
    WHERE id = v_af;
 
   RETURN v_riga;

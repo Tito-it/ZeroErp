@@ -658,7 +658,12 @@ che quella regola pretende).
 
 ### 9.1 L1 — Riordino della primitiva, e la primitiva condivisa
 
+> ✅ **ESEGUITO il 2026-08-26 — file scritti e verificati, migrazione NON
+> applicata.** Il registro con i tre changeSet reali, le prove e i due scarti
+> dal piano è nel **§14.1**. Il testo qui sotto resta come pianificato.
+
 **File**: `db/changelog/migrations_v2/20_code/vendite/20260827-NN-update-fn-cleanup-fatture-by-ids-ordine-ripristino-mctit.yaml`
+⚠️ *superato*: sono **tre** file datati `20260826`, elenco nel §14.1.
 
 1. `CREATE OR REPLACE vendite.fn_cleanup_fatture_by_ids(bigint[], uuid)` — corpo
    dalla doc auto-gen, con le due `UPDATE` **spostate** prima del blocco `DELETE`
@@ -1276,17 +1281,21 @@ cantieri, quella card ospiterà **un solo verbo, e quello giusto**.
 
 | # | Prerequisito | Lotto | Blocca |
 | --- | --- | --- | --- |
-| D-1′ | riordino di `fn_cleanup_fatture_by_ids` | L1 | niente lato codice: correzione pura |
+| D-1′ ✅ | riordino di `fn_cleanup_fatture_by_ids` — **applicato 2026-08-26** | L1 | niente lato codice: correzione pura |
 | D-2 | ⛔ nessuna bonifica: le 5 righe sono il banco di prova di L5 | L2 | niente |
-| D-5a | FK → `NO ACTION` | L3a | niente: è un muro |
+| D-5a ✅ | FK → `NO ACTION` — **applicato 2026-08-26** | L3a | niente: è un muro |
 | D-5b | `fatturato` → colonna generata | L3b | ⚠️ **richiesta al BE**: il ramo aggregato di `pipeline_repository.py` smette di scrivere `fatturato`, e `mark_attivita_fatturata` (morta) si cancella. Finché non arriva, L3b non si applica |
-| D-3 | presidi pgTAP + 4 dichiarazioni da correggere | L4 | niente |
+| D-3 ✅ | presidi pgTAP — **fatti 2026-08-26** (le dichiarazioni erano **5**, non 4: §14.3c) | L4 | niente |
 | D-4 | `fn_riporta_attivita_da_emettere` + codici + permesso `riporta_da_emettere` | L5 | il verbo FE sulla card dei residui, e il gate permessi lato BE |
 | Q-5′ | ✅ ritiro a monte, **strada A** | L7 | niente lato BE finché L7 non è scritto; poi cambia la guida operativa, il testo del guard 4 e il comportamento di «annulla ordine» |
 
 ---
 
-## 13. Stato: piano CHIUSO, esecuzione NON iniziata
+## 13. Stato: piano CHIUSO, esecuzione INIZIATA (L1 scritto, non applicato)
+
+> ⚠️ **SUPERATO in parte dal §14 (2026-08-26).** L'esecuzione è partita: **L1 è
+> scritto e verificato**, e la migrazione **non** è stata applicata. Il testo qui
+> sotto resta come stato di partenza.
 
 > ⛔ **Nessun file scritto, nessuna migrazione applicata, nessun changeSet
 > creato.** Tid, 2026-08-26: *«mi hai convinto, aggiorna il brief ma non
@@ -1347,3 +1356,1023 @@ L6  documentazione — segue L1 (§7.6) e L5 (§3.1, §7.1)
 | 1 | un **lotto vero con due fatture** in sviluppo, se è facile da produrre | il collaudo manuale di L1 sul percorso reale, non solo in transazione. ⭐ **Non serve ai pgTAP**: quelli si fabbricano i soggetti da soli, ed è l'unico modo perché restino verdi su un DB ricostruito da zero |
 | 2 | **non toccare le 5 righe orfane** | sono il banco di prova di L5 (§9.2.2) |
 | 3 | il «procedi» per ogni lotto, e l'autorizzazione **a parole** per ogni migrate | l'hook non si disattiva, e «procedi» sul lavoro non autorizza l'applicazione |
+
+---
+
+## 14. Registro di esecuzione
+
+> Un lotto per sezione, in ordine di esecuzione. ⛔ **Nessuna migrazione è stata
+> applicata**: l'autorizzazione si chiede a parole, per quel comando
+> ([[feedback_mai_applicare_migrazioni_db]]).
+
+### 14.1 L1 — riordino + primitiva condivisa · ✅ SCRITTO E VERIFICATO, non applicato (2026-08-26)
+
+**I tre changeSet**, in ordine di timeline (l'autogen ordina per `NN` e mescola
+`00_schema` e `20_code`: la primitiva ha numero **più basso** del suo
+consumatore — [[reference_liquibase_autogen_ordina_per_numero]]):
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **23** | `00_schema/vendite/20260826-23-comment-attivita-fatturabili-fattura-riga-ordine-mctit.yaml` | `COMMENT ON COLUMN … fattura_riga_id`: la `ON DELETE SET NULL` è **la rete, non il meccanismo** (dichiarazione **#1** del §8.3) |
+| **24** | `20_code/vendite/20260826-24-create-fn-libera-attivita-fatturabili-mctit.yaml` | `vendite.fn_libera_attivita_fatturabili(bigint[]) → (updated_attivita, riemesse_attivita)` — la primitiva condivisa (Q-6) |
+| **25** | `20_code/vendite/20260826-25-update-fn-cleanup-fatture-by-ids-ordine-ripristino-mctit.yaml` | il riordino **D-1′** + i commenti **#2** e **#3** del §8.3 riscritti |
+
+#### Due scarti dal piano, e perché
+
+1. ⚠️ **Data `20260826`, non `20260827`.** Il piano scriveva `20260827-NN`
+   perché immaginava di partire il giorno dopo. La numerazione è **globale per
+   data** ([[feedback_liquibase_numerazione_globale_per_data]]) e il 26 agosto
+   era arrivato a **22**: i tre lotti prendono 23, 24, 25.
+2. ⚠️ **L1 è TRE file, non due.** Il piano metteva il `COMMENT ON COLUMN` dentro
+   il changeSet del riordino. È il commento di una **colonna di tabella**, e in
+   `migrations_v2` quelli vivono in `00_schema` (287 file contro 24): mescolarlo
+   a una funzione avrebbe messo una dichiarazione di schema in un lotto di
+   codice. Non ha dipendenze, quindi sta per primo.
+
+#### Una cosa in più, che il piano non chiedeva
+
+⭐ **`p_lock_batch_id` si ancora con `%TYPE`** a
+`vendite.attivita_fatturabili.lock_batch_id` — la colonna che il predicato
+confronta davvero — invece di restare un `uuid` nudo
+([[feedback_type_anche_in_firma_e_returns_table]]).
+
+- ✅ **L'identità della funzione NON cambia**: `%TYPE` si risolve al `CREATE`, e
+  `pg_get_function_identity_arguments` continua a rispondere
+  `p_fatture_ids bigint[], p_lock_batch_id uuid`. Nessun `DROP`, nessun
+  overload, nessun chiamante da toccare.
+- ⚠️ Ed è una **fotografia, non un link** ([[feedback_type_in_firma_e_una_fotografia]]):
+  chi cambia il tipo di quella colonna deve ricreare anche questa funzione. È
+  scritto nell'intestazione del file.
+- ⛔ `p_fatture_ids` resta `bigint[]`: `colonna%TYPE[]` non esiste in PostgreSQL.
+  E i **quattro risultati sono contatori** (`GET DIAGNOSTICS ROW_COUNT`): non
+  specchiano nessuna colonna, quindi ancorarli sarebbe un `%TYPE` finto.
+
+#### La prova che conta: rosso prima, verde dopo
+
+Fixture **costruita** dentro `BEGIN … ROLLBACK` (fattura DRAFT + riga + attività
+portata a mano nello stato che la pipeline lascia), poi
+`fn_cleanup_fatture_by_ids(ARRAY[fattura], NULL::uuid)` — il **percorso
+per-fattura**, l'unico che il difetto colpiva (C-22).
+
+| | `updated_attivita` | `riemesse_attivita` | `fatturato` | lucchetto | `commesse_attivita` |
+| --- | ---: | ---: | --- | --- | --- |
+| **prima** (codice vivo) | **0** | **0** | `t` | ancora messo | ferma su `EMESSA` |
+| **dopo** (con i 3 changeSet) | **1** | **1** | `f` | tolto | `NON_EMESSA` |
+
+⭐ Il difetto si riproduce **esattamente** come descritto nel §1, compreso il
+dettaglio che lo rende invisibile: `fattura_riga_id` risulta già `NULL` *prima*
+che il ripristino giri — l'azione referenziale ha fatto il suo lavoro a fine
+istruzione, e l'`UPDATE` non ha più niente da agganciare.
+
+#### Le altre verifiche
+
+| Cosa | Esito |
+| --- | --- |
+| SQL **estratto dallo YAML** (non riscritto) ed eseguito in `BEGIN; … ROLLBACK;` col wrapper **nel file eseguito** | ✅ ([[feedback_verificare_sql_estratto_non_riscritto]], [[feedback_verifica_sql_wrapper_transazione]]) |
+| `diff` del corpo nuovo contro `pg_get_functiondef` vivo | ✅ cambiano **solo** i quattro punti voluti; il resto è identico byte a byte |
+| firma, arità, `RETURNS TABLE`, `prosecdef` | ✅ invariati; nessun overload |
+| i due `COMMENT` arrivano interi (nessun letterale troncato) | ✅ 3571 e 1929 caratteri |
+| il corpo non nomina più `v_ca_ids`, usa la primitiva, e il ripristino sta **prima** del `DELETE FROM vendite.fatture_righe` | ✅ verificato su `position()` in `prosrc` |
+| la primitiva **non** chiama `set_config` e non ha `proconfig` | ✅ (§8.9: impostare la GUC la renderebbe il modo di scollegare una fattura viva) |
+| `liquibase status` | ✅ i tre changeSet compaiono, nell'ordine giusto |
+| `liquibase updateSQL` (**non applica**) | ✅ exit 0 |
+| guardrail `runOnChange`, letterali SQL, `gen_master_autogen --strict` | ✅ tutti verdi |
+
+#### ⛔ I cinque pgTAP restano verdi — e questo NON è la prova
+
+`test-riporta-lotto-a-draft-v1` (11), `test-annulla-lotto-vuoto-v1` (6),
+`test-cleanup-fattura-copertura-figlie-v1` (9),
+`test-fatturazione-reset-lotto-draft` (12), `test-elimina-fattura-da-lotto-v1`
+(12): **verdi prima, verdi dopo**, piano rispettato in tutti e cinque.
+
+⛔ È **esattamente il §8.4**: erano verdi anche con il difetto in casa, perché
+asseriscono su `deleted_fatture`, una colonna a sinistra di quella che si era
+rotta. Servono a dire *«il riordino non ha rotto altro»*, non *«il riordino
+funziona»*. Quella la dice la tabella rosso/verde qui sopra — e le asserzioni
+mancanti arrivano con **L4**.
+
+#### ⚠️ Un limite del metodo di verifica pre-apply, che vale per tutti i lotti
+
+Per provare un pgTAP **contro codice non ancora applicato** si ricompone il file
+come `BEGIN; <changeSet>; <test>; ROLLBACK;`. Il DDL però lo può fare solo
+l'owner, e **`titodb` non è membro di `zeroerp_app`**: `SET ROLE zeroerp_app`
+viene rifiutato. Quindi quella corsa gira **come owner**, e la RLS **non è
+esercitata** — mentre la corsa vera, dal 2026-08-07, gira come l'applicazione.
+
+⭐ Qui non cambia la conclusione (i cinque file sono verdi anche in modalità
+owner **senza** la patch: stessa base di confronto). ⚠️ Ma su un lotto che tocca
+`commesse_attivita` sotto policy — **L5** e **L7** — la corsa pre-apply non può
+sostituire quella vera: là il verde si guadagna solo dopo il migrate.
+
+#### Cosa resta, e cosa NON è stato fatto
+
+- ⛔ **La migrazione non è applicata.** Serve l'autorizzazione a parole per
+  quel comando; l'hook non si disattiva.
+- ⚠️ **Le 5 righe orfane sono ancora lì**, ed è voluto: sono il banco di prova di
+  L5 (§9.2.2). L1 chiude il rubinetto, non bonifica.
+- ▶️ **Prossimi cancelli aperti da L1**: **L3a** (FK → `NO ACTION`), **L4**
+  (i presidi), **L5** (il verbo).
+  ⚠️ *aggiornato*: L1 è stato **applicato** (§14.1-bis) e **L3a è scritto** (§14.2).
+
+### 14.1-bis L1 — ✅ **APPLICATO** il 2026-08-26 (Tid), verificato sul vivo
+
+`databasechangelog`: `20260826-23/24/25` → `EXECUTED`, ordine 13928–13930
+([[feedback_stato_apply_si_legge_dal_databasechangelog]]).
+
+| Verifica sul DB dopo il migrate | Esito |
+| --- | --- |
+| `pg_get_function_identity_arguments` di `fn_cleanup_fatture_by_ids` | ✅ `p_fatture_ids bigint[], p_lock_batch_id uuid` — invariato, **nessun overload** nato dal `%TYPE` |
+| `fn_libera_attivita_fatturabili` esiste, arità 1 | ✅ |
+| `COMMENT` della colonna aggiornato | ✅ |
+| i cinque pgTAP con il **runner reale** (`zeroerp_app`, RLS attiva) | ✅ tutti `PASS` |
+| probe funzionale sul codice **vivo** | ✅ `updated_attivita = 1`, `riemesse_attivita = 1`, attività libera, `commesse_attivita` → `NON_EMESSA` |
+
+⚠️ La doc auto-gen di `fn_cleanup_fatture_by_ids` si è rigenerata da sola e ora
+mostra il corpo riordinato: è la conferma che l'oggetto vivo è quello scritto.
+
+---
+
+### 14.2 L3a — FK `SET NULL` → `NO ACTION` · ✅ SCRITTO E VERIFICATO, non applicato (2026-08-26)
+
+**File**: `00_schema/vendite/20260826-26-alter-fk-attivita-fatturabili-fattura-riga-no-action-mctit.yaml`
+
+#### Il censimento delle porte, che è la ragione per cui il muro è sicuro
+
+| Chi può cancellare una riga di fattura | Quanti | Come si è misurato |
+| --- | ---: | --- |
+| funzioni DB con `DELETE FROM vendite.fatture_righe` | **1** — `fn_cleanup_fatture_by_ids` | scansione su `pg_proc.prosrc` |
+| funzioni DB con `DELETE FROM vendite.fatture` (⚠️ `fk_fatture_righe_fat` è **CASCADE**: la testata porta via le righe) | **1** — la stessa | idem |
+| backend Django: SQL diretto | **0** | `grep` su `backend/**/*.py` |
+| backend Django: modelli ORM su quelle tabelle (cascata ORM) | **0** | `grep` su `db_table` |
+
+⭐ **E il fatto portante, che non è nel piano**: `vendite.attivita_fatturabili`
+**non ha row level security** (`pg_class.relrowsecurity = false`). La `SELECT`
+che alimenta il ripristino vede quindi *tutte* le righe, anche fuori dallo scope
+di chi chiama: quando il `DELETE` arriva, non ne resta nessuna agganciata.
+⚠️ Se quella tabella avesse la RLS, questo muro trasformerebbe un «non lo vedo»
+in un errore ([[reference_trigger_guard_legge_sotto_rls]]) e sarebbe un'altra
+cosa. Va riletto se un giorno la RLS ci arriva.
+
+#### Il `COMMENT` della colonna si riscrive una seconda volta
+
+⚠️ `20260826-23` (L1) motivava la `SET NULL` come *«la rete, non il meccanismo»*.
+Era vero finché la `SET NULL` c'era. Toglierla e lasciare quella frase
+produrrebbe la **quinta dichiarazione falsa** di questo cantiere: il commento è
+riscritto nello stesso changeSet che cambia la cosa che descrive.
+
+#### Le prove
+
+| Prova (in `BEGIN … ROLLBACK`) | Esito |
+| --- | --- |
+| **porta 1** — `DELETE` di una riga con un'attività attaccata | ✅ **23503**, `fk_attivita_fatturabili_fattura_riga` |
+| **porta 2** — `DELETE` della **testata** (cascata su `fk_fatture_righe_fat`) | ✅ **23503**, stesso vincolo |
+| percorso buono — `fn_cleanup_fatture_by_ids(…, NULL)` | ✅ `1` / `1`, attività libera, `NON_EMESSA` |
+| l'indice `ix_attivita_fatturabili_fattura_riga_id` sopravvive al `DROP`/`ADD` | ✅ (un `DROP CONSTRAINT` di FK non possiede indici) |
+| `dbops.fk_index_policy` | ✅ nessuna riga per questa FK, e il **nome non cambia**: niente da riseminare |
+| guard automatici rigenerati | ✅ nessuno: `trgfn_child_requires_active_parent` nasce solo verso un padre con colonna `attivo`, e `fatture_righe` non ce l'ha ([[reference_fk_nuova_genera_guard_che_oscura]]) |
+| **tutta la suite `vendite`** (213 file) con la patch in transazione, contro la stessa corsa senza | ✅ **zero differenze** |
+| i 7 pgTAP di altri schemi che nominano le due tabelle | ✅ zero differenze |
+| `liquibase status` · `updateSQL` · guardrail `runOnChange` / letterali · `gen_master_autogen --strict` | ✅ |
+
+#### ⛔ Una trappola per L4, scoperta qui
+
+`pg_get_constraintdef()` **non stampa `ON DELETE NO ACTION`**: è il default, e
+la definizione esce come
+
+```text
+FOREIGN KEY (fattura_riga_id) REFERENCES vendite.fatture_righe(id) ON UPDATE CASCADE
+```
+
+⚠️ Un presidio scritto come `… ~ 'NO ACTION'` sarebbe **verde mai** — o, peggio,
+lo si «aggiusta» invertendolo e diventa verde **sempre**. Il presidio di L4 va
+scritto su `pg_constraint.confdeltype = 'a'`, oppure sulla stringa esatta qui
+sopra. È la stessa famiglia di
+[[reference_check_tabella_e_guard_funzione_dissentono]]: il vincolo non si
+verifica dal nome di ciò che si crede di aver scritto.
+
+#### Cosa resta
+
+- ⚠️ *superato*: la migrazione **è stata applicata** da Tid lo stesso giorno — §14.2-bis.
+- ▶️ Sbloccato da qui: il presidio (d) di **L4**, che asserisce la definizione del vincolo.
+
+### 14.2-bis L3a — ✅ **APPLICATO** il 2026-08-26 (Tid)
+
+`databasechangelog`: `20260826-26` → `EXECUTED`, ordine 13939.
+
+| Verifica sul vivo | Esito |
+| --- | --- |
+| `pg_constraint.confdeltype` | ✅ `a` (NO ACTION); `confupdtype` = `c`, non deferrable |
+| `pg_get_constraintdef` | ✅ `FOREIGN KEY (fattura_riga_id) REFERENCES vendite.fatture_righe(id) ON UPDATE CASCADE` |
+| `ix_attivita_fatturabili_fattura_riga_id` | ✅ sopravvissuto al `DROP`/`ADD` |
+| `COMMENT` della colonna riscritto | ✅ |
+| `scripts/pgtap-baseline.sh vendite` (230 file, runner reale) | ✅ **nessuna regressione**: 5 rossi, tutti già in baseline |
+
+---
+
+### 14.3 L4 — I presidi (D-3) · ✅ FATTO il 2026-08-26 (nessuna migrazione: sono file pgTAP)
+
+> ⭐ Il criterio con cui è stato scritto: **un presidio che è verde anche col
+> difetto in casa non è un presidio.** Ogni asserzione nuova è stata provata
+> rimettendo in transazione la funzione **pre-L1**, per vedere che diventi rossa.
+
+#### (a) `test-fatturazione-reset-lotto-draft.sql` — 12 → **16** test
+
+La fixture c'era già ed era giusta; mancavano le asserzioni. Aggiunte:
+`updated_attivita = 1`, `riemesse_attivita = 1`, l'attività libera
+(timbro + legame + lucchetto + `stato_esecuzione`), la `commesse_attivita` a
+`NON_EMESSA`.
+
+- ⚠️ La `commesse_attivita` dello slot `RL2` viene portata a **`EMESSA` prima**
+  della chiamata: nasceva `NON_EMESSA`, e senza quel passo `riemesse_attivita`
+  varrebbe 0 con la correzione **e** senza — verde per sottrazione.
+- ⚠️ La mutazione è stata spostata in un'**istruzione separata**, con l'esito
+  materializzato in una temp: chiamata dentro l'asserzione, la snapshot di
+  statement leggerebbe lo stato *prima* delle scritture
+  ([[reference_pgtap_stessa_istruzione_snapshot]]).
+
+| Con la funzione **pre-L1** | Esito |
+| --- | --- |
+| test 1–12 (compreso `deleted_fatture`) | ✅ **verdi** — è la dimostrazione del §8.4 |
+| test 13, 14, 15, 16 | ⛔ **rossi** |
+
+#### (b) `test-elimina-fattura-da-lotto-effetti-v1.sql` — **nuovo**, 11 test
+
+Il caso a **due fatture** che il §3.2 chiedeva, con fixture **costruite**
+(commessa, due righe di commessa già `EMESSA`, lotto, due fatture, due righe, due
+attività agganciate e lucchettate sul batch del lotto).
+
+⚠️ **Le due fatture si inseriscono direttamente**, non con
+`fn_get_or_create_fattura_header`: quella è una *get*-or-create, e due attività
+dello stesso billing account / tipo documento / valuta ricadrebbero per
+costruzione sulla **stessa** fattura — cioè proprio ciò che questo file non deve
+avere. Il soggetto è l'effetto dell'eliminazione, non la creazione della testata.
+
+⭐ **Il file tiene insieme due proprietà opposte, e le prove lo mostrano**:
+
+| Scenario messo in transazione | Cosa diventa rosso |
+| --- | --- |
+| funzione **pre-L1** (il difetto) | 4, 5, 6, 7 — il lavoro della fattura tolta non torna |
+| **«correzione sbagliata»**: `fn_elimina_fattura_da_lotto` che passa il `lock_batch_id` del lotto invece di `NULL` | 4, 5, **8, 9** — libera anche il lavoro dell'**altra** fattura |
+
+⭐ Cioè: la regola **C-22** smette di essere una frase in un commento e diventa
+una cosa che qualcuno verifica. Era il punto del §3.2, ed è il motivo per cui
+una correzione plausibile poteva rompere il dominio in silenzio.
+
+#### (c) `test-cleanup-fattura-copertura-figlie-v1.sql` — 9 → **11** test
+
+- ⛔ **Corretta la dichiarazione #4 del §8.3**: diceva *«la pulizia lo azzera
+  comunque a mano insieme al lock … e l'attività torna in coda»*. Sul percorso
+  per-fattura non lo azzerava mai. Ora la motivazione descrive `NO ACTION` +
+  «sgancia prima di cancellare», e rimanda al test che lo verifica.
+- ⛔ **E una quinta dichiarazione che stava per nascere**: la voce
+  `fk_attivita_fatturabili_fattura_riga_rettificata` motivava l'indicizzazione
+  per vincolo dicendo *«la stessa tabella ha anche … in SET NULL»*. Da L3a sono
+  **entrambe NO ACTION**, e quella frase avrebbe invitato il prossimo lettore a
+  verificarla, trovarla falsa e «semplificare» l'inventario tornando a
+  indicizzarlo per tabella. ⭐ La ragione vera è più forte: **l'azione
+  referenziale è la stessa, ed è il TRATTAMENTO a essere opposto** — una la
+  pulizia la sgancia di proposito, l'altra non deve toccarla mai.
+- ⭐ **Test 10 (il «9-bis» del §9.4)**: «GESTITA» non vuol dire *«la pulizia la
+  nomina»*, vuol dire *«la nomina PRIMA di cancellare il padre»*. È il presidio
+  che mancava, ed è ciò che ha permesso al difetto di sopravvivere quattro
+  settimane con un inventario verde.
+  ⚠️ Il corpo si legge **senza i commenti** (`regexp_replace` sulle righe `--`):
+  con i commenti dentro, il nome della tabella compare già nell'intestazione
+  della funzione e la posizione misurerebbe la prosa, non il codice.
+  ⚠️ E si legge il corpo della **sola** `fn_cleanup_fatture_by_ids`: il
+  `tmp_corpo` del test 3 è uno `string_agg` di due funzioni **senza `ORDER BY`**,
+  innocuo per un `ILIKE` e fatale per un confronto di posizioni.
+  → con la funzione pre-L1 il test 10 è **rosso**.
+- ⭐ **Test 11 (il presidio del §9.4d, riformulato)**: il `CHECK` è caduto con la
+  Q-7, quindi il presidio è sulla **definizione del vincolo**.
+
+#### ⛔ La trappola del test 11, e perché il presidio è scritto così
+
+`pg_get_constraintdef()` **non stampa `ON DELETE NO ACTION`**: è il default. Un
+test scritto come `… ~ 'NO ACTION'` sarebbe **rosso per sempre**, e chi lo
+«aggiusta» invertendolo lo rende **verde per sempre**. Il test asserisce quindi
+la **stringa intera**, che in un colpo solo fissa colonne, bersaglio, `ON UPDATE`
+e il non essere `DEFERRABLE`.
+⭐ La prova che morde c'è stata da sola: scritto prima che L3a fosse applicata,
+il test 11 era rosso e nel messaggio diceva *have: … ON DELETE SET NULL / want:
+… ON UPDATE CASCADE*. È diventato verde con il migrate.
+
+#### Stato della suite
+
+`scripts/pgtap-baseline.sh vendite` (230 file, runner reale `zeroerp_app` + RLS):
+**nessuna regressione**, 5 rossi tutti già noti in baseline. Guardrail preambolo
+pgTAP: verde, e il debito `throws_ok` resta alla sua soglia.
+
+---
+
+### 14.4 L6 — Documentazione, la parte legata a L1 e L3a · ✅ FATTA il 2026-08-26
+
+| File | Cosa è cambiato |
+| --- | --- |
+| `docs/it/guide/cruscotti-fatturazione.md` §7.6 | ⛔ tolta l'avvertenza 🔴 «difetto aperto» e la riga della tabella dei verbi torna a dire il vero: le righe della fattura tolta **rientrano** nel giro, quelle delle altre fatture no. ⚠️ Resta detto che le attività rimaste indietro **prima** della correzione non si sbloccano da sole |
+| stessa guida §3.1 | la causa è dichiarata chiusa; il 🔴 resta **solo** sul fatto che la card non ha ancora un verbo per i residui già formati |
+| `docs/it/dbzero/vendite/manual/fn_cleanup_fatture_by_ids.md` | ⭐ l'ordine dei passi diventa la **prima cosa** della sezione «Cosa ripristina», con il perché; riscritto il paragrafo «le due popolazioni», che descriveva il meccanismo vecchio (due filtri identici scritti due volte); aggiunta la primitiva ai «Vedi anche» |
+
+⚠️ **Non fatta, ed è dell'altro lotto**: la §7.1 (il verbo nuovo in tabella) e la
+correzione della frase *«se in quella casella c'è un numero, qualcosa si è
+rotto»* (§8.6: la card contiene **due popolazioni**) restano con **L5**.
+⚠️ E la §7.1 è il file conteso con l'altro cantiere (§11.3): va coordinata, non
+fatta in parallelo.
+
+---
+
+### 14.5 Dove siamo
+
+> ⚠️ **Istantanea di meta' giornata, superata dal §14.11.** Non cancellata:
+> e' lo stato in cui il cantiere era quando restavano cinque lotti.
+
+```text
+L1   ✅ applicato      riordino + primitiva condivisa
+L3a  ✅ applicato      FK SET NULL -> NO ACTION (il muro)
+L4   ✅ fatto          presidi: 4+11+2 asserzioni, 2 dichiarazioni corrette
+L5   ✅ applicato      «Riporta da emettere» — collaudato sulle 5 righe VERE (in rollback)
+L7a  ✅ applicato      fn_check_sorgente_chiudibile + fn_ritira_...
+L7b  ✅ applicato      freno + motore generici, 7 trigger, i due divieti RITIRATI (Q-9)
+L6   ◐ parziale       L1/L3a fatte; §3.1 corretta; §7.1 attende la consegna BE/FE
+L2   —                 le 5 righe orfane restano dove sono (il recupero e' un gesto FE)
+
+L3b  ✅ applicato      `fatturato` e' generata; 15 fixture pgTAP sistemate, suite senza regressioni
+                     ⛔ RESTA la consegna BE (§14.8.4): finche' non arriva, la fatturazione e' ferma
+```
+
+---
+
+### 14.6 L5 — «Riporta da emettere» (D-4) · ✅ SCRITTO E VERIFICATO, non applicato (2026-08-26)
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **27** | `20_code/script/20260826-27-create-fn-check-attivita-riportabile-da-emettere-mctit.yaml` | i motivi ostativi, funzione **pura** |
+| **28** | `20_code/vendite/20260826-28-create-fn-riporta-attivita-da-emettere-mctit.yaml` | il verbo, `SECURITY INVOKER`, consuma la primitiva di L1 |
+| — | `80_data/sql/config/codici_errore.csv` · `messaggi_errore.csv` (id **996–1000**) · `azioni_processo.csv` (id **33**) | ⛔ **solo append**: i mirror `loadUpdateData` esistenti li ripescano, nessun loader nuovo |
+| — | `db/pgtap/vendite/test-riporta-attivita-da-emettere-v1.sql` | **nuovo**, 15 test |
+| — | `docs/it/dbzero/vendite/manual/fn_riporta_attivita_da_emettere.md` | **nuova**, la scheda del verbo |
+
+#### ⛔ Due trappole incontrate, e la seconda avrebbe fermato il migrate
+
+**1. Il perimetro di *scope* non sta sull'attività.** ⚠️ Misurato sul catalogo:
+`vendite.attivita_fatturabili` **non ha row level security**;
+`vendite.commesse_attivita` sì (`rls_commesse_attivita_ef_whitelist`, per
+`commessa_id`). Una `fn_check_*` che leggesse la sola `attivita_fatturabili`
+sarebbe **fail-open sullo scope** — e il danno non sarebbe un permesso concesso
+a vuoto: la mutazione libererebbe l'attività (tabella senza RLS) e **non**
+riporterebbe la riga di commessa a `NON_EMESSA` (tabella con RLS, zero righe
+toccate). ⭐ Cioè **esattamente lo stato spezzato** — un livello torna in coda e
+l'altro no — per impedire il quale esiste la primitiva condivisa di L1.
+→ L'attività si risolve **passando per `commesse_attivita`**: quel `JOIN` *è* il
+perimetro, ed è scritto come tale nel corpo e nel `COMMENT`.
+
+**2. ⛔ Una `preCondition` sui codici errore avrebbe fermato il migrate.** La
+prima stesura del changeSet 28 pretendeva i cinque `E_ATTIVITA_*` già a
+catalogo. ⚠️ Ma nel master `80_data` gira **dopo** `20_code`
+([[feedback_liquibase_phase_ordering_preconditions]]): quella preCondition
+sarebbe fallita alla prima applicazione, e su un database ricostruito da zero —
+cioè **in CI** — avrebbe fermato l'intero migrate con `onFail: HALT`.
+→ Tolta prima di applicare, con il **perché** scritto in testa al file, così la
+prossima persona non la rimette. Il presidio della registrazione esiste ed è un
+altro: `dbops.vw_codici_errore_da_dichiarare` più il cancello lato backend, che
+guardano il database **a regime** e non a metà di una passata.
+⭐ Verificato: i due changeSet si applicano puliti su un DB che i codici **non
+ha** — cioè nella condizione vera del migrate.
+
+#### Uno scarto dal piano, motivato
+
+Il §9.5 elencava come guard 4 *«l'AF non è marcata `fatturato`»*. ⛔ Non si può:
+il §9.5.0 (scritto dopo) stabilisce che il perimetro **non usa `fatturato`**,
+perché con la colonna generata di L3b quel predicato diventa sempre falso. Il
+guard 4 è quindi diventato **due** guard sulle condizioni vere, che sono anche
+più informative:
+
+| | Condizione | Codice | Cosa dice all'operatore |
+| --- | --- | --- | --- |
+| 4 | non è lucchettata | `E_ATTIVITA_GIA_DA_EMETTERE` | è già in coda: non c'è niente da fare |
+| 5 | lucchettata ma `stato_esecuzione <> COMPLETED` | `E_ATTIVITA_IN_LAVORAZIONE` | il lotto sta girando adesso: quello non si tocca |
+
+⭐ È il §8.6 che diventa codice: la card contiene **due popolazioni**, e la
+seconda condizione è ciò che le separa.
+
+#### I cinque codici, e perché nessuno è riusato
+
+| Codice | Classe | Perché non un codice esistente |
+| --- | --- | --- |
+| `E_ATTIVITA_RIPORTO_SELEZIONE_VUOTA` | `TECNICO` | ⛔ non `E_PARAMETRO_INVALIDO`: quel codice è **un debito, non una sede** (D11). Qui il lettore è uno sviluppatore, e il valore nella frase è il nome della funzione — deliberato |
+| `E_ATTIVITA_FATTURABILE_NON_TROVATA` | `NON_TROVATO` | copre **due casi di proposito** (riga sparita / fuori perimetro): da fuori sono indistinguibili, e dire «non hai il permesso» rivelerebbe un documento altrui |
+| `E_ATTIVITA_ANCORA_IN_FATTURA` | `CONFLITTO_STATO` | ⛔ non `E_RIGA_GIA_FATTURATA` (il guard di riga): quello è generico e non dice **cosa** si stava tentando |
+| `E_ATTIVITA_GIA_DA_EMETTERE` | `CONFLITTO_STATO` | «è già a posto» e «è dentro un documento» sono opposti, e il rimedio della prima è **non fare niente** |
+| `E_ATTIVITA_IN_LAVORAZIONE` | `CONFLITTO_STATO` | è la condizione che separa l'orfana dal transito legittimo |
+
+⭐ I **valori** nei messaggi sono l'etichetta che l'operatore vede sulla card
+(«commessa `<codice>`, competenza `<MM/AAAA>`»), mai un id tecnico; gli id
+viaggiano nel **bersaglio** — `COMMESSA` in testa (l'unico posto dove quella
+riga si vede), poi `FATTURA` (la cosa da sistemare). ⛔ Sul motivo aggregato
+«non trovata» **nessun bersaglio**: un pulsante verso una riga invisibile è un
+vicolo cieco.
+
+#### Le prove
+
+15 test su 15 verdi con i changeSet applicati in transazione. Il caso lecito
+(3–7, compreso l'evento di log con lotto e stato precedenti), i **quattro
+rifiuti** ciascuno col proprio codice (8–12), e i due che valgono di più:
+
+- **13 — la simmetria check ↔ mutazione**: per ogni rifiuto, il codice che la
+  `fn_check_*` nomina è lo stesso che il verbo solleva. Se le due metà
+  divergessero, l'interfaccia direbbe «si può fare» e il salvataggio no —
+  oppure nasconderebbe un'azione che sarebbe passata;
+- **14 — il verbo non chiama `set_config`** (letto sul corpo **senza commenti**:
+  lì dentro il nome della GUC compare di proposito, per spiegare perché non la
+  si imposta).
+
+Altre verifiche: `liquibase status` e `updateSQL` verdi; guardrail
+`runOnChange`, letterali SQL, preambolo pgTAP e `gen_master_autogen --strict`
+verdi; i tre CSV riparsati con il modulo `csv` (nessuna colonna anomala); i sei
+pgTAP che leggono `config.codici_errore` / `azioni_processo` **identici** prima
+e dopo i cinque codici nuovi.
+
+#### ℹ️ Un avviso della prova pre-apply, che non è un difetto
+
+Durante i test in transazione, `script.fn_log_error_only` avverte che non riesce
+a persistere il log (`fk_error_log_messaggio_errore_id`). ⭐ È corretto così:
+quel log passa da **dblink**, cioè da una connessione con una transazione
+**sua**, che non vede i codici seminati e non ancora committati. L'errore di
+dominio esce giusto lo stesso — i test 8–12 lo dimostrano — e dopo il migrate il
+log tornerà a scrivere. ⚠️ Da non inseguire come rosso.
+
+#### 🟠 Un rosso preesistente incontrato, e non toccato
+
+`scripts/codici-errore-baseline.sh` segnala **un rientrato**:
+`E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`. ⛔ Non è di questo cantiere e la
+baseline **non è stata stretta**: farlo qui nasconderebbe la storia di un altro
+lavoro dentro questo. Va allineata da chi possiede quel codice
+(`scripts/codici-errore-baseline.sh --update`).
+
+#### La documentazione, e cosa NON è stato scritto
+
+| Fatto | Cosa |
+| --- | --- |
+| ✅ guida §3.1 | ⛔ corretta la frase **falsa** *«se in quella casella c'è un numero, qualcosa si è rotto»* (§8.6): la casella contiene **due popolazioni**, e quella frase era vera solo per il verbo di massa. Ora c'è una tabella che le distingue |
+| ✅ `manual/fn_riporta_attivita_da_emettere.md` | la scheda del verbo |
+| ⏸️ guida §7.1 | ⚠️ **rinviato alla consegna BE/FE**, non al migrate DB. Mettere il verbo nella tabella dei verbi mentre il pulsante non esiste documenterebbe una cosa che l'operatore non può fare. ⚠️ Ed è il file conteso con l'altro cantiere (§11.3): va coordinato |
+| ⏸️ guida §3.1, il 🔴 «la card non ha un'azione» | resta finché il pulsante non c'è: oggi è ancora vero |
+
+#### ⚠️ E finché non si applica, un rosso ATTESO
+
+`db/pgtap/vendite/test-riporta-attivita-da-emettere-v1.sql` è **rosso adesso**, e
+lo dice con la frase giusta: *«la funzione script.fn_check_attivita_riportabile_da_emettere
+non esiste»*. Diventa verde con il migrate — è già stato provato, 15 su 15, con i
+changeSet applicati in transazione. ⛔ Non va messo in baseline: un rosso che ha
+una data di scadenza non è debito, è un lotto che aspetta.
+
+#### Cosa resta
+
+- ⛔ **Migrazione non applicata**: serve l'autorizzazione a parole per quel comando.
+- ⭐ **Il collaudo vero è sulle 5 righe orfane** (§9.2.2), dall'interfaccia, dopo
+  la consegna BE/FE. ⚠️ Se il verbo non le prende, non è la bonifica ad aver
+  fallito: è il perimetro a essere sbagliato, ed è meglio scoprirlo lì.
+- ▶️ Sbloccato da qui: **L7** (il ritiro a monte) e, dopo il collaudo **e** la
+  consegna BE, **L3b**.
+
+---
+
+### 14.6-bis L5 — ✅ **APPLICATO** il 2026-08-26 (Tid), e collaudato sulle 5 righe VERE
+
+`databasechangelog`: `20260826-27/28` → `EXECUTED` (13954, 13955). I cinque codici
+sono a catalogo, il permesso `riporta_da_emettere` è la riga 33, e
+`test-riporta-attivita-da-emettere-v1` è **verde, 15 su 15**.
+
+#### ⭐ Il collaudo sulle 5 righe, fatto in `BEGIN … ROLLBACK` (non le tocca)
+
+| | |
+| --- | ---: |
+| tutte e 5 dentro il perimetro del verbo | ✅ (`fattura_riga_id IS NULL`, lucchettate, `COMPLETED`) |
+| `fn_check_…` sulle 5 | `[]` — nessun motivo ostativo |
+| `fn_riporta_attivita_da_emettere` | **riportate 5, riemesse 5** |
+| casella «Emesse non fatturate» dopo | **0** |
+| righe di commessa tornate `NON_EMESSA` | 5 (id 551, 552, 553, 554, 1953) |
+| eventi `RIGA_RIPORTATA_DA_EMETTERE` scritti | 5, con lotto e stato precedenti |
+| ⭐ rientrano nel predicato di `fn_select_attivita_fatturabili` | **5 su 5** |
+
+⛔ **La transazione è stata rollata: le 5 righe sono ancora dove erano.** Il
+recupero vero va fatto dall'interfaccia, quando il verbo ci arriva — resta il
+banco di prova, ma **la metà DB non è più da collaudare: è collaudata**.
+
+#### ⭐ E qui cade un cancello di L3b
+
+Il §9.2.3 diceva che il pezzo 2 di L3 (la colonna generata) avrebbe ricalcolato
+`fatturato` sulle 5 orfane e **fatto sparire il banco di prova**, quindi doveva
+venire dopo il collaudo di L5.
+
+⚠️ **Non è più vero, e la ragione è nel §9.5.0**: il perimetro del verbo non usa
+`fatturato` — usa `fattura_riga_id`, `lock_in_fatturazione` e
+`stato_esecuzione`, e **nessuna delle tre è toccata da L3b**. Il banco di prova
+sopravvive. ⭐ Il vincolo d'ordine «L3b dopo il collaudo di L5» **decade**: dei
+tre cancelli del §13.3 ne resta **uno**, ed è la consegna BE.
+
+---
+
+### 14.7 L7 — ⛔ La premessa del §9.7.1 è SBAGLIATA, e va corretta prima di agganciare
+
+> **Metodo**: mappa rifatta sul **contratto** (corpo delle funzioni, `pg_proc`,
+> `pg_trigger`), con due controesempi sui dati usati solo per smentire.
+
+#### La mappa vera
+
+| Sorgente | Oggi, se ha spinto in commessa | Dove vive il freno |
+| --- | --- | --- |
+| **PREVENTIVO** | ⛔ **non si annulla** — `E_PREV_GIA_IN_COMMESSA` | `fn_check_preventivo_annullabile`, chiamata da `fn_cambia_stato_preventivo`, da `fn_available_actions_preventivo` **e** da `trgfn_preventivi_guard_annullamento` (trigger: non aggirabile) |
+| **ORDINE** | ⛔ **non si annulla** — `E_ORD_ANNULLA_IN_COMMESSA` | `fn_check_ordine_annullabile`, chiamata dalla **Regola 3** di `trgfn_ordini_guard_transizione` (trigger: non aggirabile) |
+| **DDT · CONTRATTO · OFFERTA · RESO · CONSUMI** | ✅ si chiudono, e **non ritirano niente** | nessun freno |
+
+⛔ **Il §9.7.1 dice che sull'ordine «la porta è aperta e senza rete». È falso**:
+l'ordine è sbarrato esattamente come il preventivo, e da un trigger. L'asimmetria
+non è «preventivo vs tutti gli altri»: è **due sorgenti su sei sbarrate, quattro
+aperte**.
+
+⚠️ **Conseguenza sulla Q-9.** La decisione era *«il preventivo si allinea agli
+altri: `E_PREV_GIA_IN_COMMESSA` smette di essere sollevato»*. Ma «gli altri»
+includono l'ordine, che sbarra pure — quindi applicata alla lettera la Q-9
+renderebbe il **preventivo il più permissivo** e lascerebbe l'ordine bloccato:
+la stessa asimmetria di prima, girata. La logica della strada A implica che si
+ritirino **entrambi**, ma Tid ha deciso su una mappa in cui il codice
+dell'ordine non compariva. **È la domanda del §14.7.1.**
+
+#### ⭐ Una scoperta che vale oltre questo lotto: le due chiavi polimorfe
+
+| Tabella | Cosa contiene `sorgente_uid` |
+| --- | --- |
+| `vendite.commesse_attivita` | **`<testata>.uid::text` per TUTTE le sorgenti** — verificato sul corpo delle cinque `fn_list_*_da_pushare`, che compongono tutte `x.uid::text` |
+| `vendite.commesse_sorgenti` | **varia**: `uid` per il preventivo, `id::text` per l'ordine |
+
+⭐ È il motivo per cui `fn_check_preventivo_annullabile` confronta `v_uid::text`
+e `fn_check_ordine_annullabile` confronta `p_ordine_id::text`: **non sono in
+disaccordo**, ognuna segue la chiave della propria sorgente
+([[reference_sorgente_polimorfa_key_selector]]).
+⛔ Ed è la trappola operativa del ritiro: sbagliare chiave **non solleva niente**
+— ritira zero righe. Per questo `fn_ritira_…` restituisce un **conteggio** e chi
+la chiama deve guardarlo, e per questo c'è un test apposta.
+
+#### 14.7.1 ⛔ La domanda, e cosa blocca
+
+> Con il ritiro attivo, **si ritirano ENTRAMBI** i freni «ha già spinto in
+> commessa» — `E_PREV_GIA_IN_COMMESSA` **e** `E_ORD_ANNULLA_IN_COMMESSA` — o
+> solo quello del preventivo come dice la Q-9 alla lettera?
+
+**La proposta**: **entrambi**. Vietavano perché non c'era modo di disfare il
+push; adesso c'è, ed è lo stesso per le due sorgenti. Al loro posto resta un
+freno solo — «ci sono righe `EMESSA`» — che è una condizione **vera** e ha una
+via d'uscita che il messaggio nomina.
+⚠️ Non la applico da solo: ritirare un codice che oggi **blocca** l'annullamento
+di un ordine è un cambio di comportamento su un documento vivo, e la Q-9 è stata
+una decisione esplicita, non un default.
+
+#### 14.7.2 L7a — le due primitive · ✅ SCRITTE E VERIFICATE, non applicate
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **29** | `20_code/script/20260826-29-create-fn-check-sorgente-chiudibile-mctit.yaml` | i motivi: oggi uno, «ci sono righe `EMESSA`» |
+| **30** | `20_code/vendite/20260826-30-create-fn-ritira-commessa-attivita-da-sorgente-mctit.yaml` | il ritiro: porta ad `ANNULLATA` le sole `NON_EMESSA`, e ne lascia traccia |
+| — | `codici_errore.csv` · `messaggi_errore.csv` (id **1001–1002**) | `E_RITIRO_SORGENTE_PARAMETRO_MANCANTE` (TECNICO) · `E_SORGENTE_CON_RIGHE_EMESSE` (CONFLITTO_STATO) |
+| — | `db/pgtap/vendite/test-ritiro-commessa-attivita-da-sorgente-v1.sql` | **nuovo**, 10 test |
+
+⭐ **Perché queste due si possono scrivere adesso**: servono identiche sotto
+qualunque risposta alla §14.7.1. È l'aggancio — il trigger generico e quali
+codici si ritirano — che dipende dalla decisione.
+
+⭐ **E il ritiro è l'oggetto di una promessa che il modello faceva già per
+iscritto**: il guard 4 di `fn_annulla_commessa_attivita` dice *«per una riga da
+push il rimedio è SEMPRE a monte, sul documento»*, e a monte non c'era nessun
+rimedio. Le due funzioni sono **complementari**: quella rifiuta le righe con
+sorgente e lavora sulle sourceless, questa lavora solo su quelle con sorgente.
+⚠️ `ONERE` e `RETTIFICA` restano irraggiungibili dal ritiro, ed è corretto: la
+loro via è `fn_annulla_commessa_attivita` e `fn_annulla_accredito_riga_reso`.
+
+**Le prove** (10/10, changeSet in transazione): il ritiro prende **una** riga (la
+sola `NON_EMESSA`), non tocca la `EMESSA` né la `ANNULLATA`, scrive la traccia
+col motivo e lo stato precedente, il freno nomina il suo codice e **tace** quando
+non ci sono più righe emesse, i due guard di parametro rifiutano — e il test 7,
+che è quello che vale: **con la chiave sbagliata il ritiro ritira zero e non
+solleva**.
+
+#### Cosa NON è stato scritto, e perché
+
+- ⏸️ **L7b — l'aggancio**: il trigger generico `_z90_` e il freno sulle
+  transizioni. Dipende dalla §14.7.1. ⭐ Nota per quando si farà: il **motore**
+  può essere una funzione trigger sola parametrizzata, perché su
+  `commesse_attivita` la chiave è uniforme (`NEW.uid::text`); il **freno**, dove
+  una `fn_check_*_annullabile` esiste già (ordine, preventivo), va aggiunto come
+  **motivo lì dentro** e non come condizione nel trigger — perché è quella
+  funzione a spegnere anche il **pulsante** (`fn_available_actions_*`).
+  Sulle altre quattro sorgenti una `fn_check_*` non c'è, e va decisa la forma.
+- ⏸️ **Q-9** (ritiro dei due codici): §14.7.1.
+
+---
+
+### 14.8 L3b — `fatturato` diventa generata · ✅ SCRITTO E VERIFICATO ⛔ **non applicabile ancora**
+
+> **Decisione di Tid, 2026-08-26**: *«io consiglio di fare tutto poi il BE si
+> allinea»* → **scrivo e applico subito**, accettando che la fatturazione resti
+> ferma finché il backend non è allineato.
+> ⛔ **La misura fatta scrivendo ha cambiato il quadro**: il costo non è
+> «4 punti di scrittura». Sono 4 **più 13 file pgTAP**. Dettaglio in §14.8.3 —
+> è l'unica ragione per cui il lotto non è pronto ad andare.
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **31** | `20_code/vendite/20260826-31-update-fn-libera-attivita-senza-timbro-mctit.yaml` | la primitiva smette di scrivere il timbro |
+| **32** | `20_code/vendite/20260826-32-update-fn-emit-attivita-senza-timbro-mctit.yaml` | l'emissione lo toglie dalla lista dell'`INSERT` |
+| **33** | `00_schema/vendite/20260826-33-alter-attivita-fatturabili-fatturato-generata-mctit.yaml` | `DROP` + `ADD ... GENERATED ALWAYS AS (fattura_riga_id IS NOT NULL) STORED NOT NULL` + l'indice ricreato |
+
+⚠️ **L'ordine è nei numeri**: 31 e 32 (gli scrittori smettono) prima di 33 (la
+colonna cambia), così nessuno dei due incontra mai l'errore. ⭐ La finestra fra
+i due **si sana da sola**: `ADD COLUMN ... GENERATED ... STORED` ricalcola tutte
+le righe.
+
+#### 14.8.1 Il raggio, censito prima di toccare
+
+| Cosa | Quante | Esito |
+| --- | ---: | --- |
+| viste che dipendono dalla colonna (`pg_depend`/`pg_rewrite`) | **0** | niente da ricreare |
+| indici che la contengono | **1** | `ix_attivita_articolo_flags`, ricreato nello stesso changeSet |
+| `CHECK` / policy RLS che la nominano | **0** | — |
+| trigger con `UPDATE OF … fatturato` | **0** | — |
+| righe in `dbops.automation_lock_columns` | **0** | — |
+| lo **storico** | — | è un `to_jsonb(NEW)`, non una copia colonna per colonna: lo spostamento della colonna in fondo non lo tocca |
+| `fn_select_attivita_fatturabili` (`RETURNING a.*`) | — | dichiara `RETURNS SETOF vendite.attivita_fatturabili`, cioè il tipo composito **della tabella stessa**: si adatta da solo |
+| il backend che legge quelle righe | — | usa una **lista di colonne esplicita**, non `a.*` posizionale |
+
+#### 14.8.2 Le prove (in transazione, poi rollata)
+
+`attgenerated = 's'`, `NOT NULL`, espressione `(fattura_riga_id IS NOT NULL)`;
+indice ricreato identico; **zero righe disallineate** su tutta la tabella; e
+scrivere la colonna adesso **è rifiutato** (`SQLSTATE 428C9`).
+
+⭐ Quest'ultima è la prova che il cantiere cercava: lo stato «timbrata senza
+fattura» — quello che il difetto di luglio produceva in silenzio — **non è più
+rappresentabile**. Non è vietato: è impossibile.
+
+#### 14.8.3 ⛔ Il costo vero, che il §9.3.2 non aveva contato
+
+Il §9.3.2 diceva: *«legge — ~60 punti: **nessuno da toccare**»*. È vero per chi
+**legge**. Ma fra quei punti ce ne sono che **scrivono**, e quelli si rompono:
+
+| Chi scrive | Quanti | Stato |
+| --- | ---: | --- |
+| funzioni DB | **2** | ✅ changeSet 31 e 32 |
+| backend (`pipeline_repository.py`) | **2** | ⛔ richiesta, §14.8.4 |
+| ⛔ **fixture pgTAP** | **13 file** | ⛔ **non ancora sistemate** |
+
+I tredici: `anagrafiche/test-billing-account-guard-parent`,
+`vendite/test-accredito-kit-meta-v1`, `test-annulla-accredito-riga-reso-v1`,
+`test-annulla-reso-gate-accredito-v1`, `test-attivita-fatturabili`,
+`test-elimina-fattura-da-lotto-effetti-v1`, `test-fatturazione-draft`,
+`test-fatturazione-reset-lotto-draft`, `test-fn-accredita-riga-reso-v1`,
+`test-rinuncia-gate-accredito-v1`, `test-riporta-attivita-da-emettere-v1`,
+`test-vw-dash-competenza-v1`,
+`test-vw-partite-merce-riconsegna-dopo-nc-v1`.
+
+⛔ **E non è un lavoro meccanico.** Una fixture che scrive `fatturato = true`
+**senza** valorizzare `fattura_riga_id` stava costruendo proprio lo stato che
+adesso è impossibile: togliere la riga non basta, va deciso se quel test voleva
+un'attività **davvero agganciata a una riga di fattura** (e allora la fixture
+deve crearne una) oppure soltanto **lucchettata** (e allora il timbro non
+c'entrava). Sono tredici decisioni piccole, non tredici `sed`.
+
+⚠️ **Conseguenza sulla decisione «applico subito»**: applicare adesso non ferma
+solo la fatturazione (che era messo in conto) — rende rosse tredici fixture, e
+un rosso di massa è il modo migliore per perdere di vista quale conta. Il lotto
+è **scritto e provato**; manca questo passo prima di poterlo applicare.
+
+#### 14.8.4 ⚠️ La richiesta al BACKEND, precisa
+
+File: `backend/apps/vendite/db/pipeline_repository.py`
+
+| Riga (≈) | Cosa | Azione |
+| ---: | --- | --- |
+| 2760 | `fatturato = TRUE,` dentro **`mark_attivita_fatturata`** | ⛔ il metodo è **morto**: nessun riferimento fuori dal file oltre a un doppione in un test. **Si cancella**, metodo e test |
+| 2962 | `fatturato = TRUE,` nel **ramo aggregato** | è lo scrittore **vivo**: lo statement deve smettere di nominare la colonna. Nient'altro cambia — `fattura_riga_id` è già nello stesso `SET`, e da lì il timbro si deriva |
+
+⭐ **Le letture non si toccano**: `a.fatturato IS FALSE` (righe ~1590 e ~2786)
+continua a funzionare identico — una colonna generata si legge come qualunque
+altra.
+
+⛔ Finché la riga 2962 esiste, **la prima fatturazione fallisce**: scrivere una
+colonna generata è un errore, non un no-op.
+
+---
+
+### 14.8-bis L3b — ✅ **APPLICATO** il 2026-08-26 (Tid), e le fixture sistemate
+
+`databasechangelog`: `20260826-29/30/31/32/33` → `EXECUTED` (13965–13969), quindi
+**anche L7a è applicata**. Sul vivo: `attgenerated = 's'`, `NOT NULL`,
+espressione `(fattura_riga_id IS NOT NULL)`, indice ricreato, `COMMENT` in
+posto.
+
+#### ⛔ Le fixture erano 15, non 13 — e il censimento sbagliato è istruttivo
+
+Il primo conteggio (§14.8.3) diceva 13 file. Erano **15**: la ricerca cercava
+`fatturato` **seguito da virgola**, e due file lo hanno **in fondo** alla lista
+di colonne — `…, fattura_riga_id, fatturato)`.
+
+⚠️ I due mancanti, `test-lista-commessa-attivita-fatturata-v1` e
+`test-esito-gruppi-giro-v1`, non sarebbero rimasti nascosti: erano rossi. Ma il
+modo in cui sono saltati fuori conta — non da una rilettura del `grep`, da una
+**seconda ricerca fatta con un'altra forma** (scansione delle liste `INSERT`
+invece del pattern testuale). ⭐ È la regola dei presidi che globbano un livello
+solo: quando ne trovi uno, cerca i gemelli **cambiando strumento**, non
+raffinando lo stesso.
+
+#### Come sono state sistemate: tre casi, non uno
+
+| Caso | Quanti | Cosa si è fatto |
+| --- | ---: | --- |
+| il **puntatore c'è già** nella stessa istruzione (`SET fattura_riga_id = X, fatturato = true`) | 12 | tolta la scrittura del timbro: era **ridondanza già prima**, e ora si deriva. Stato costruito identico |
+| il timbro valeva **`false` senza puntatore** | 2 | tolto: `NULL` sul puntatore dà `false` da sé |
+| ⛔ il timbro veniva **scritto senza puntatore, e serviva** | 1 | la fixture ha ora una **fattura vera** |
+
+⭐ **Il terzo caso è quello che vale.** In
+`anagrafiche/test-billing-account-guard-parent` il test 6 faceva
+`SET fatturato = true` per far passare il guard che vieta di staccare un parent
+con attività non fatturate. Cioè **diceva «fatturata» a un'attività che nessuna
+fattura conteneva**: costruiva esattamente lo stato incoerente che questo
+cantiere ha reso impossibile, e su quello interrogava il guard.
+Adesso la fixture crea una fattura e una riga, aggancia l'attività, e poi le
+smonta — perché il cleanup finale cancella le attività e dal `NO ACTION` di L3a
+non si cancella un'attività ancora agganciata.
+⚠️ La fatturazione sta **fuori** dal `lives_ok`: è setup, e il test 6 asserisce
+che il parent si stacchi, non che si riesca a fatturare.
+
+#### Un falso positivo, e perché non si toglie e basta
+
+`vendite/test-attivita-fatturabili` era nell'elenco per una riga in un
+`RETURNING`, cioè una **lettura**: il file passava. ⚠️ Ma asseriva
+*«Default fatturato = false»*, e un default non c'è più — il valore si deriva.
+L'asserzione resta identica e continua a valere; l'**etichetta** è stata
+corretta, perché lasciarla avrebbe mandato il prossimo lettore a cercare un
+`DEFAULT` inesistente. È la stessa specie di debito del §8.3.
+
+#### Lo stato della suite
+
+| Verifica | Esito |
+| --- | --- |
+| i 15 file, runner reale (`zeroerp_app` + RLS) | ✅ **tutti PASS** |
+| `scripts/pgtap-baseline.sh vendite` — 232 file | ✅ **nessuna regressione**, 5 rossi tutti già noti |
+| i 7 pgTAP di altri schemi che toccano quelle tabelle | ✅ tutti PASS |
+| guardrail preambolo pgTAP | ✅, debito `throws_ok` alla sua soglia |
+| scritture residue di `fatturato` in tutta `db/pgtap` e `backend/pgtap` | ✅ **zero** (verificato con due ricerche di forma diversa) |
+
+#### ⛔ Cosa resta rotto, e non è un difetto: è la finestra dichiarata
+
+La **fatturazione è ferma** finché il backend non smette di scrivere la colonna
+(§14.8.4). Il database è pronto e i test lo dimostrano; l'unico scrittore vivo
+rimasto è `pipeline_repository.py` riga ~2962.
+
+---
+
+### 14.9 L7b — L'aggancio · ✅ SCRITTO, VERIFICATO e **APPLICATO** (2026-08-26)
+
+> **La decisione della §14.7.1**: ✅ *«si ritirano **entrambi** i freni»* —
+> `E_PREV_GIA_IN_COMMESSA` **e** `E_ORD_ANNULLA_IN_COMMESSA`.
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **34** | `20_code/vendite/…-create-trgfn-doc-guard-chiusura-sorgente-mctit.yaml` | il **freno** generico, fase `_a10_` |
+| **35** | `20_code/vendite/…-create-trgfn-doc-ritira-commessa-attivita-mctit.yaml` | il **motore** generico, fase `_z90_` |
+| **36** | `00_schema/vendite/…-create-trigger-ritiro-commessa-su-testate-mctit.yaml` | i **7 trigger** sulle quattro testate |
+| **37** | `20_code/script/…-update-fn-check-ordine-annullabile-ritiro-mctit.yaml` | l'ordine ritira il suo divieto e delega |
+| **38** | `20_code/script/…-update-fn-check-preventivo-annullabile-ritiro-mctit.yaml` | il preventivo ritira il suo e delega |
+| — | `codici_errore.csv` | i due codici marcati `obsoleto_dal = 2026-08-26`, con il perché nella nota |
+| — | `db/pgtap/vendite/test-ritiro-alla-chiusura-documento-v1.sql` | **nuovo**, 7 test |
+
+#### ⭐ Tre scelte che migliorano il piano, e una che lo corregge
+
+**1. Ci si aggancia a `is_abortito`, non a `'ANNULLATO'`.** Il piano
+parametrizzava il trigger su un *codice di chiusura*. ⭐ Ma tutti e quattro i
+vocabolari (`config.stati_doc_preventivi|ordini|ddt|contratti`) hanno già il
+flag **`is_abortito`** — verificato. È lo stesso asse su cui il dominio già
+lavora, e il giorno che nasce un secondo stato abortito il guard lo copre **da
+solo**. Con un codice cablato non l'avrebbe coperto, e in silenzio.
+
+**2. Le testate sono QUATTRO, non sei.** Sono quelle che spingono davvero,
+cioè quelle con una `fn_list_*_da_pushare`: preventivi, ordini, DDT, contratti.
+⚠️ `attivita_consumi` **non si monta** — non ha una colonna di stato con
+vocabolario (ha `stato_calcolo`, un varchar senza `is_abortito`) ed è un flusso
+non ancora acceso. Offerte e resi non spingono: non hanno niente da ritirare.
+
+**3. ⛔ Sui preventivi si monta SOLO il motore.** Q-9 ha deciso che
+`E_PREV_ANNULLA_COMMESSA_EMESSA` **resta**. Montando anche il freno generico, la
+**stessa condizione** sarebbe uscita con **due codici diversi** a seconda di
+quale trigger parla per primo: per l'operatore lo stesso rifiuto con due nomi,
+per il frontend due `reason_key` da mappare.
+⭐ E la regola resta **una sola** lo stesso: la `fn_check_preventivo_annullabile`
+**delega** il conteggio a `script.fn_check_sorgente_chiudibile` e si limita a
+**rietichettare** il motivo col proprio codice. *Una implementazione, due
+superfici.*
+
+**4. Il freno non si scrive nel trigger dove una `fn_check_*` esiste già.** Sul
+preventivo e sull'ordine il gate è la loro `fn_check_*_annullabile`, ed è la
+stessa funzione che accende il **pulsante** (`fn_available_actions_*`): mettendo
+la condizione lì, l'azione smette di essere proposta invece di fallire al click.
+
+#### ⛔ Un cambio di chiave che sarebbe passato inosservato
+
+Il vecchio conteggio dell'ordine leggeva `vendite.commesse_sorgenti` con
+**`id::text`**; la primitiva legge `vendite.commesse_attivita` con
+**`uid::text`**. ⚠️ Sono chiavi polimorfe **diverse e deliberate**: passare
+quella vecchia non darebbe un errore, darebbe **zero motivi** — cioè un freno
+che lascia passare tutto. È scritto nel corpo, nel `COMMENT` e nella nota del
+codice ritirato, ed è il motivo per cui il ritiro restituisce un **conteggio**
+invece di `void`.
+
+#### Le prove (7/7, e con gli oggetti vivi)
+
+| # | Cosa | Perché conta |
+| ---: | --- | --- |
+| 2 | con una riga `EMESSA` la chiusura è **rifiutata**, col suo codice | il freno |
+| 3 | la `fn_check_*` nomina lo **stesso** motivo che il guard solleva | le due metà non si separano |
+| 4 | tolta la riga emessa, la chiusura **passa** | ⭐ è il presidio di **Q-9**: prima veniva rifiutata; se qualcuno rimettesse il divieto, torna rosso |
+| 5 | le righe sono `ANNULLATA`, con la traccia, il motivo e lo stato precedente | il prezzo dell'azione a distanza |
+| 6 | le righe di **un altro documento**, nella stessa commessa, non sono toccate | ⛔ se diventa rosso, il ritiro lavora per *commessa* invece che per *sorgente* |
+| 7 | riscrivere lo **stesso** stato non ritira di nuovo | nessun doppione nel registro |
+
+⭐ **Il test 4 fa un `UPDATE` nudo sulla testata**, senza passare da nessuna
+funzione di dominio: è precisamente il percorso che una chiamata esplicita nei
+servizi **non** coprirebbe, ed è l'argomento di Q-10 messo alla prova invece che
+dichiarato.
+
+Verifiche sul vivo: i **7 trigger** montati come previsto (preventivi solo
+`_z90_`); i due codici **non più sollevati** da nessuna funzione (occorrenze
+residue solo nei commenti, verificato a commenti spogliati) e marcati
+`obsoleto_dal` a catalogo. Guardrail `runOnChange`, letterali SQL, preambolo
+pgTAP e `gen_master_autogen --strict`: verdi.
+
+#### ⛔ Una regressione, trovata da Tid — e che avrei dovuto prevedere
+
+`vendite/test-ordini-guard-transizione-v1`, test **7 e 8**: asserivano che un
+ordine già in commessa venisse **rifiutato** con `E_ORD_ANNULLA_IN_COMMESSA`.
+Cioè asserivano **la regola che abbiamo appena ritirato**.
+
+⚠️ **L'errore di metodo è mio, ed è nominabile.** La regola in casa —
+[[feedback_guard_breaks_existing_tests]] — dice di cercare i test esistenti
+prima di toccare un guard, e io l'ho applicata solo nella direzione
+*restrittiva* (un guard nuovo rende rossi i test). Qui il guard è stato
+**allargato**, e un test che asseriva la restrizione è caduto per lo stesso
+meccanismo, al contrario. ⭐ La regola vale nei due sensi: *quando si cambia un
+guard si cercano i suoi consumatori dal CODICE*, non dalla direzione del cambio
+([[feedback_consumatori_messaggio_si_cercano_dal_nome]]).
+
+**Come è stata sistemata** — non spegnendo l'asserzione, ma portandola sulla
+regola nuova:
+
+| | prima | adesso |
+| --- | --- | --- |
+| cosa costruisce la fixture | l'ordine collegato a una commessa | **più** una riga di commessa già `EMESSA` |
+| cosa asserisce il 7 | rifiutato perché «ha spinto» | rifiutato perché **c'è lavoro in volo** |
+| cosa asserisce l'8 | `E_ORD_ANNULLA_IN_COMMESSA` | `E_SORGENTE_CON_RIGHE_EMESSE` |
+
+⭐ E il file ci guadagna un presidio che non aveva: la fixture usa `uid::text`
+per `commesse_attivita` e `id::text` per `commesse_sorgenti` **nella stessa
+pagina**, con scritto perché — le due chiavi polimorfe della stessa sorgente,
+una accanto all'altra.
+
+#### La caccia agli altri, fatta col criterio giusto
+
+Cercati **tutti** i pgTAP che chiudono un documento (17 file, per stato
+abortito o `stato_ann`): ✅ **tutti verdi** tranne
+`script/test-seed-stati-doc-ordini-evaso-v1`, che è un **rosso già in
+baseline** (`ASSERZIONE`) e riguarda `EVASO` — nulla a che vedere con questi
+trigger, che si svegliano solo entrando in uno stato abortito.
+
+Cercati anche i consumatori dei due codici ritirati fuori dal DB: restano nelle
+tabelle di fallback del backend e nelle chiavi i18n del frontend, e **è
+corretto** — un codice ritirato non si cancella. ⚠️ Ma il codice **nuovo**
+`E_SORGENTE_CON_RIGHE_EMESSE` ha bisogno della sua policy HTTP/UI e della sua
+`reason_key`: è una richiesta a BE/FE, §14.9.1.
+
+#### 14.9.1 ⚠️ La richiesta a BE/FE
+
+| Cosa | Dove |
+| --- | --- |
+| policy HTTP/UI per `E_SORGENTE_CON_RIGHE_EMESSE` (classe `CONFLITTO_STATO`) | `apps/core/services/error_policies_generated.py` |
+| messaggio di fallback | `apps/core/services/error_messages_fallback.py` |
+| `reason_key` `vendite.sorgenti.azione_reason.righe_commessa_emesse` | `frontend/src/locales/it.json` e `en.json` |
+| ⚠️ le chiavi `…azione_reason.gia_in_commessa` di ordini e preventivi | **non si cancellano** (un codice ritirato può essere ancora nei log), ma smettono di comparire |
+
+#### 🟠 Il rosso preesistente, ancora non toccato
+
+`codici-errore-baseline.sh` continua a segnalare **un rientrato**,
+`E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`. ⛔ Non è di questo cantiere e la
+baseline **non è stata stretta**: va allineata da chi possiede quel codice.
+
+#### Cosa resta di L7
+
+- ⏸️ **La documentazione operativa**: chiudere un documento adesso ritira lavoro,
+  ed è un comportamento che l'operatore deve **sapere prima**. Va nella guida —
+  ⚠️ ma quella pagina è contesa con l'altro cantiere (§11.3) e la §7.1 aspetta
+  comunque la consegna BE/FE.
+- ⏸️ Il messaggio di `E_RIGA_COMMESSA_NON_MANUALE` (guard 4 di
+  `fn_annulla_commessa_attivita`) dice *«il rimedio è SEMPRE a monte, sul
+  documento»*: ⭐ **da oggi quella frase è vera**, e il messaggio può nominare il
+  documento invece di lasciarlo cercare.
+
+---
+
+### 14.10 Documentazione DB — le schede concettuali · ✅ FATTA (2026-08-26)
+
+**Sette funzioni nuove, sette schede** in `docs/it/dbzero/<schema>/manual/`:
+
+| Schema | Scheda | Cosa fissa |
+| --- | --- | --- |
+| `vendite` | `fn_libera_attivita_fatturabili` | perché è **una primitiva** e non due `UPDATE` copiate; perché **non** imposta la GUC; perché il timbro non si scrive più e il **lucchetto sì** |
+| `vendite` | `fn_riporta_attivita_da_emettere` | il perimetro **senza `fatturato`**; lo scope che sta sulla **commessa**; i cinque rifiuti |
+| `vendite` | `fn_ritira_commessa_attivita_da_sorgente` | è **l'oggetto** della promessa del guard 4; complementare a `fn_annulla_commessa_attivita`; la chiave che sbagliata **non dà errore** |
+| `vendite` | `trgfn_doc_guard_chiusura_sorgente` | il **freno**, `is_abortito` invece di `'ANNULLATO'`, dove non è montato e perché, il **limite RLS** |
+| `vendite` | `trgfn_doc_ritira_commessa_attivita` | il **motore**, e l'argomento di Q-10 per esteso: perché trigger e non chiamata nei servizi |
+| `script` | `fn_check_attivita_riportabile_da_emettere` | i quattro motivi nell'ordine, il motivo 1 **aggregato**, la forma del bersaglio |
+| `script` | `fn_check_sorgente_chiudibile` | **le due chiavi polimorfe**, e perché sbagliarle dà zero motivi |
+
+#### ⛔ E due schede ESISTENTI che erano diventate false
+
+Non erano funzioni nuove: erano pagine che descrivevano una regola che abbiamo
+cambiato oggi. ⚠️ È esattamente la specie di debito del **§8.3** — una
+dichiarazione convincente che il prossimo lettore prende per buona.
+
+| Scheda | Cosa diceva | Cosa dice adesso |
+| --- | --- | --- |
+| `script/manual/fn_check_ordine_annullabile` | *«MOTIVO 2: ordine già entrato in una commessa»*, e `E_ORD_ANNULLA_IN_COMMESSA` in tabella | il motivo 2 è **righe già `EMESSA`**; il codice è barrato e marcato **ritirato**, non cancellato |
+| stessa scheda, sezione chiavi | *«Il MOTIVO 2 usa la chiave `id::text`»* | legge `commesse_attivita` con **`uid::text`**, e la pagina spiega **perché le due tabelle usano chiavi diverse** — `commesse_sorgenti` registra *chi* ha spinto, `commesse_attivita` porta *cosa* |
+| `script/manual/fn_check_preventivo_annullabile` | non nominava il terzo motivo | dichiara che `E_PREV_GIA_IN_COMMESSA` è **ritirato**, che il motivo 2 **delega** e rietichetta, e perché sui preventivi il guard generico **non** si monta |
+
+⭐ La correzione della scheda dell'ordine ha anche **guadagnato** un pezzo che non
+c'era: le due chiavi polimorfe della stessa sorgente, spiegate una accanto
+all'altra invece che dedotte per simmetria — che è la trappola che aveva già
+tenuto spento un motivo per tre changeSet.
+
+#### Il criterio con cui sono scritte
+
+Ogni scheda segue lo standard delle esistenti (`Scopo Principale` con la data di
+revisione, `Vedi anche`, `Esempio d'uso`, `Note operative`, firma), e in più
+fissa **le tre cose che un `COMMENT` non riesce a tenere**:
+
+1. **perché** la funzione esiste, non solo cosa fa;
+2. **cosa succederebbe** se qualcuno la cambiasse nel modo che sembra ovvio —
+   la GUC aperta dalla primitiva, il perimetro fondato su `fatturato`, il freno
+   montato anche sui preventivi, la chiave presa dalla tabella sbagliata;
+3. **i limiti dichiarati** invece che dedotti: il conteggio sotto RLS che non
+   ferma chi non vede, le righe sourceless irraggiungibili, `ANNULLATA`
+   irreversibile.
+
+⚠️ Tutti i collegamenti delle sette schede sono stati **verificati uno per uno**
+contro i file esistenti, e `db/pgtap/dbops/test-riferimenti-morti-v1` è verde.
+
+---
+
+### 14.11 Stato finale della giornata (2026-08-26)
+
+```text
+L1   ✅ applicato   riordino «prima si ripristina, poi si cancella» + primitiva condivisa
+L3a  ✅ applicato   FK SET NULL -> NO ACTION: il muro
+L3b  ✅ applicato   `fatturato` colonna GENERATA + 15 fixture pgTAP sistemate
+L4   ✅ fatto       presidi: le asserzioni che mancavano, 5 dichiarazioni corrette
+L5   ✅ applicato   «Riporta da emettere» — collaudato sulle 5 righe VERE (in rollback)
+L7a  ✅ applicato   fn_check_sorgente_chiudibile + fn_ritira_commessa_attivita_da_sorgente
+L7b  ✅ applicato   freno + motore generici, 7 trigger, i due divieti RITIRATI (Q-9)
+L6   ✅ fatto       guida operativa + 7 schede nuove + 2 schede corrette
+L2   —              le 5 righe orfane restano dove sono: il recupero e' un gesto FE
+```
+
+**16 changeSet** (`20260826-23` … `20260826-38`), **5 file pgTAP nuovi**,
+**18 file pgTAP corretti**, **7 codici errore nuovi**, **2 ritirati**,
+**1 permesso**.
+
+#### ⛔ Le due cose che restano, e sono entrambe fuori dal DB
+
+| # | Cosa | Perché blocca |
+| --- | --- | --- |
+| **BE-1** | `pipeline_repository.py` riga ~2962 deve smettere di scrivere `fatturato` (e il metodo morto `mark_attivita_fatturata` va cancellato) | ⛔ **la fatturazione è ferma** finché non arriva: scrivere una colonna generata è un errore, non un no-op. §14.8.4 |
+| **BE-2** | policy HTTP/UI e `reason_key` per i **7 codici nuovi** | senza, l'operatore vede un messaggio generico al posto di quello scritto. §14.9.1 |
+
+⭐ E il **verbo FE** su «Emesse non fatturate»: la metà DB è collaudata sulle
+righe vere, manca il pulsante.
+
+#### Il filo che tiene insieme tutto il cantiere
+
+Il difetto di partenza non era «mancava un controllo». Era una regola che viveva
+come **disciplina** — l'ordine dei passi dentro una funzione — ed è bastata una
+chiave esterna aggiunta altrove per farla saltare **senza un errore**, per
+quattro settimane.
+
+Ogni lotto ha spostato una regola dalla disciplina alla **struttura**:
+
+| Lotto | Da | A |
+| --- | --- | --- |
+| L1 | «ricordati di riallineare prima» | l'ordine dei passi, con il perché scritto dove serve |
+| L3a | «la SET NULL sgancia in silenzio» | `NO ACTION`: la quinta porta **esplode** invece di sganciare |
+| L3b | «i due dati devono restare allineati» | una colonna sola: il disaccordo **non è rappresentabile** |
+| L4 | «il test è verde» | asserzioni che **cadono** se la regola si rompe |
+| L7b | «chi chiude si ricordi di ritirare» | un trigger: **non si può dimenticare** |
+
+⚠️ E ogni volta il presidio è stato provato **rosso prima e verde dopo**, perché
+un presidio che non si è mai visto fallire non è un presidio: è una speranza.

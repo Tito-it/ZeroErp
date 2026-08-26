@@ -166,17 +166,33 @@ Il verbo **Fattura adesso** prende il lavoro e ne fa le righe di fattura **in un
 solo passo**: un'attività salta da `Da emettere` dritta a `Fatturate`. Nessuno
 transita da `Emesse non fatturate`.
 
-**Quindi: se in quella casella c'è un numero, qualcosa si è rotto.** Ci finisce
-il lavoro che il sistema ha già marcato come fatturato ma che **non sta in
-nessuna fattura** — tipicamente perché la sua fattura è stata eliminata dopo un
-errore. Ed è la casella più importante da guardare, per un motivo preciso:
-essendo marcato fatturato, quel lavoro **nessun giro futuro lo riprenderà**.
-Resterebbe invisibile per sempre, se non ci fosse quel contatore.
+⚠️ **Quella casella contiene due cose diverse, e conviene saperlo prima di
+guardarla.**
 
-🔴 Oggi la card **non ha un'azione**: rimettere in circolo quei residui è
-un'operazione di assistenza sul database. È un verbo che manca, non un caso che
-non esiste — il 26 agosto 2026 la casella conteneva 5 attività di luglio per
-5.019 €, orfane di una fattura eliminata dopo un errore di numerazione.
+| Cosa ci trovi | Che cos'è |
+| --- | --- |
+| lavoro **emesso che sta aspettando il suo lotto** | **transito normale**: succede quando l'emissione e la fatturazione sono due gesti separati, ed è il caso di chi emette in modo mirato e fattura dopo |
+| lavoro **rimasto senza la sua fattura** | **il residuo**: la fattura c'era ed è stata eliminata. Questo è il caso che conta |
+
+**È il secondo caso la spia**, e per un motivo preciso: quel lavoro risulta già
+fatturato, quindi **nessun giro futuro lo riprenderà**. Resterebbe invisibile
+per sempre, se non ci fosse quel contatore.
+
+> ⚠️ La versione precedente di questa pagina diceva *«se in quella casella c'è un
+> numero, qualcosa si è rotto»*. Era vero **solo** perché *Fattura adesso* fa
+> emissione e fatturazione in un passo unico — cioè era una proprietà di quel
+> verbo, non della casella. Chi emette in modo mirato ci vede passare lavoro
+> perfettamente sano.
+
+✅ **La causa è chiusa dal 26 agosto 2026**: eliminare una fattura da un lotto
+adesso rimette in coda il suo lavoro (§7.6), quindi da quella strada non se ne
+creano più.
+
+🔴 Restano però i **residui di prima**, e per quelli la card **non ha ancora
+un'azione**: rimetterli in circolo è oggi un'operazione di assistenza sul
+database. È un verbo che manca, non un caso che non esiste — il 26 agosto 2026
+la casella conteneva 5 attività di luglio per 5.019 €, orfane di una fattura
+eliminata dopo un errore di numerazione.
 
 **Quando usarla**: a fine/inizio mese, per capire quanto del competenza è stato
 fatturato e cosa manca per chiudere il mese.
@@ -438,26 +454,24 @@ si arriva anche dal pannello errori della Lente 1 (§7.5).
 | Verbo | Su cosa agisce | Cosa resta dopo |
 | --- | --- | --- |
 | **Riporta in lavorazione** | tutto il lotto, da EMESSA (o da bozza) | Il lotto **resta aperto** e torna in bozza: le sue fatture vengono eliminate, le righe di commessa tornano «da emettere» e al giro successivo le fatture si **rigenerano** |
-| **Elimina dal lotto** | **una** fattura | Solo quella fattura sparisce; il lotto e le altre fatture proseguono. 🔴 Le sue righe **NON** rientrano nel giro successivo — vedi l'avvertenza qui sotto |
+| **Elimina dal lotto** | **una** fattura | Solo quella fattura sparisce; il lotto e le altre fatture proseguono. Le sue righe **tornano «da emettere»** e rientrano nel giro successivo; quelle delle altre fatture **non vengono toccate** |
 | **Annulla lotto** | tutto il lotto, solo se è ancora in **bozza** | Il lotto è **chiuso e non si riapre**: le righe tornano libere e servirà un lotto nuovo |
 
 **La regola per scegliere**: se il lavoro va rifatto, *Riporta in lavorazione*;
 se il problema è un documento solo, *Elimina dal lotto*; *Annulla lotto* è per
 un giro partito per sbaglio, che non deve produrre nulla.
 
-🔴 **Avvertenza sull'«Elimina dal lotto» (difetto aperto, 26 agosto 2026).**
-Il verbo cancella la fattura ma **non rimette in coda il lavoro che conteneva**:
-quel lavoro resta marcato come già fatturato, e **nessun giro successivo lo
-riprenderà più**. Ricompare solo come numero nella casella *Emesse non
-fatturate* della Lente 1 (§3.1), che oggi non ha un'azione per recuperarlo.
-
-Finché il difetto non è corretto: se una fattura va rifatta, **usare *Riporta in
-lavorazione* sull'intero lotto** — quella strada rimette il lavoro in coda
-correttamente. *Elimina dal lotto* va usato solo quando quel lavoro
-effettivamente **non deve più essere fatturato**.
-
-Misurato: 5 attività di luglio 2026 per 5.019 €, rimaste ferme dopo
-l'eliminazione di una fattura che aveva fallito la numerazione.
+> ✅ **Corretto il 26 agosto 2026.** Fino a quella data *Elimina dal lotto*
+> cancellava la fattura ma **non rimetteva in coda il lavoro che conteneva**:
+> quel lavoro restava marcato come già fatturato e nessun giro successivo lo
+> riprendeva. L'avvertenza che consigliava di usare *Riporta in lavorazione*
+> sull'intero lotto **non serve più**: le due strade adesso rimettono in coda
+> allo stesso modo, e la scelta fra loro torna a essere quella descritta qui
+> sopra — tutto il lotto, oppure un documento solo.
+>
+> ⚠️ **Resta un lascito**: le attività rimaste indietro *prima* della correzione
+> non si sbloccano da sole. Sono quelle che si contano nella casella *Emesse non
+> fatturate* della Lente 1 (§3.1); il verbo per recuperarle è in lavorazione.
 
 Tre avvertenze, tutte pagate sul campo:
 

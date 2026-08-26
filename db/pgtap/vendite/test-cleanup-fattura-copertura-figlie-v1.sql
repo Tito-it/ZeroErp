@@ -52,12 +52,24 @@
 --
 -- ⚠️ E LA CHIAVE DELL'INVENTARIO DEL PRIMO LIVELLO E' LA TABELLA, non il
 --   vincolo. Non basta: vendite.attivita_fatturabili ha DUE chiavi esterne
---   verso fatture_righe con ON DELETE diversi (una SET NULL, una NO ACTION).
---   Classificata «per tabella» sarebbe risultata coperta mentre una delle due
---   non lo era. Il secondo inventario e' quindi indicizzato per NOME DEL
---   VINCOLO, che e' la cosa che porta davvero il comportamento.
+--   verso fatture_righe, e classificata «per tabella» sarebbe risultata
+--   coperta mentre una delle due non lo era. Il secondo inventario e' quindi
+--   indicizzato per NOME DEL VINCOLO, che e' la cosa che porta davvero il
+--   comportamento.
 --   ⚠️ Il primo inventario non e' stato riscritto per non toccare un presidio
 --   che funziona: e' un debito dichiarato, non una svista.
+--
+-- ⛔ rev 2026-08-26 — E IL MOTIVO PER CUI L'INDICE E' IL VINCOLO E' CAMBIATO
+--   Fino a oggi la ragione scritta qui sopra era «le due hanno ON DELETE
+--   diversi: una SET NULL, una NO ACTION». Dal changeSet 20260826-26 sono
+--   ENTRAMBE NO ACTION, e quella frase — lasciata li' — avrebbe invitato il
+--   prossimo lettore a verificarla, trovarla falsa e «semplificare»
+--   l'inventario tornando a indicizzarlo per tabella.
+--   ⭐ La ragione vera e' piu' forte, e adesso e' l'unica: **l'azione
+--   referenziale e' la stessa, ed e' il TRATTAMENTO a essere opposto**. Una
+--   la pulizia la sgancia di proposito prima di cancellare (GESTITA); l'altra
+--   NON deve toccarla mai, ed e' il guard a rifiutare l'operazione
+--   (BLOCCO_VOLUTO). Un inventario per tabella le direbbe identiche.
 --
 -- Indice test
 -- 1) Ogni figlia di vendite.fatture e classificata (una nuova -> rosso col nome)
@@ -69,6 +81,8 @@
 -- 7) Nessuna voce del secondo inventario e sparita dal catalogo
 -- 8) I BLOCCO_VOLUTO del secondo livello non sono stati degradati a CASCADE
 -- 9) Il guard che rende quei blocchi una risposta e non un incidente esiste
+-- 10) 🔴 Le GESTITA del secondo livello sono nominate PRIMA del DELETE sul padre
+-- 11) fk_attivita_fatturabili_fattura_riga e ancora il muro (NO ACTION)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -88,7 +102,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- ============================================================
 -- L'inventario: la classificazione, con la motivazione
@@ -227,8 +241,18 @@ CREATE TEMP TABLE tmp_inventario_righe(vincolo text PRIMARY KEY, tab text, categ
 
 INSERT INTO tmp_inventario_righe(vincolo, tab, categoria, perche) VALUES
   -- ── GESTITA ────────────────────────────────────────────────────────
+  -- ⛔ rev 2026-08-26. La motivazione precedente diceva: «ON DELETE SET NULL, e
+  --   la pulizia lo azzera COMUNQUE a mano insieme al lock: il legame muore col
+  --   documento e l attivita torna in coda». Era falsa nel punto che contava:
+  --   sul percorso per-fattura la pulizia NON lo azzerava mai, perche la SET
+  --   NULL scattava a fine istruzione del DELETE e le UPDATE a valle non
+  --   trovavano piu nulla. L attivita NON tornava in coda.
+  --   ⚠️ Questo file verificava la CLASSIFICAZIONE, mai l EFFETTO: una categoria
+  --   sbagliata con una motivazione convincente passa tutti i suoi test. Il
+  --   test 10 e la risposta.
+  --   Brief: brief-db-lavoro-che-non-torna-indietro §8.3 e §9.4.
   ('fk_attivita_fatturabili_fattura_riga', 'vendite.attivita_fatturabili', 'GESTITA',
-   'ON DELETE SET NULL, e la pulizia lo azzera comunque a mano insieme al lock: il legame riga-attivita muore col documento, e l attivita torna in coda'),
+   'ON DELETE NO ACTION dal 20260826-26, e la pulizia sgancia l attivita PRIMA di cancellare la riga (20260826-25): quando il DELETE arriva non esiste piu nessun puntatore vivo. Il vincolo e quindi la RETE, non il meccanismo - sul percorso buono non scatta mai, e scatta solo su una porta che si fosse dimenticata di riallineare. Il test 10 verifica l ORDINE, che e la cosa che si era rotta'),
   ('fk_fatture_note_riga',                 'vendite.note_fatture',         'CASCADE_DB',
    'nota agganciata alla riga: senza la riga non ha oggetto'),
 
@@ -242,7 +266,7 @@ INSERT INTO tmp_inventario_righe(vincolo, tab, categoria, perche) VALUES
   ('fk_commesse_attivita_fattura_riga_rettificata', 'vendite.commesse_attivita', 'BLOCCO_VOLUTO',
    'la commessa_attivita di RETTIFICA punta alla riga che sta correggendo: cancellarla lascerebbe l accredito senza origine'),
   ('fk_attivita_fatturabili_fattura_riga_rettificata', 'vendite.attivita_fatturabili', 'BLOCCO_VOLUTO',
-   'stesso legame sul lato attivita fatturabili. ⚠️ La stessa tabella ha anche fk_attivita_fatturabili_fattura_riga in SET NULL: e il motivo per cui questo inventario e per VINCOLO e non per tabella'),
+   'stesso legame sul lato attivita fatturabili. ⚠️ La stessa tabella ha anche fk_attivita_fatturabili_fattura_riga, e dal 20260826-26 le due hanno la STESSA azione referenziale (NO ACTION): e il TRATTAMENTO a essere opposto - quella la pulizia la sgancia di proposito prima di cancellare, questa non la tocca mai e il guard rifiuta l operazione. E il motivo per cui questo inventario e per VINCOLO e non per tabella, e vale piu di prima: un inventario per tabella le direbbe identiche'),
   ('fk_resi_accrediti_fattura_riga',               'vendite.resi_righe_accrediti', 'BLOCCO_VOLUTO',
    'l accredito del reso punta alla riga accreditata: e il documento che prova quanto e stato reso'),
   ('fk_fatture_righe_riga_rettificata',            'vendite.fatture_righe',        'BLOCCO_VOLUTO',
@@ -302,6 +326,62 @@ SELECT ok(
   )
   AND (SELECT c.src FROM tmp_corpo c) ILIKE '%fn_check_fatture_con_rettifiche%',
   '9) il guard fn_check_fatture_con_rettifiche esiste ed e chiamato dalla pulizia'
+);
+
+-- ============================================================
+-- 10) 🔴 «GESTITA» non vuol dire «nominata»: vuol dire «nominata PRIMA»
+-- ============================================================
+-- ⛔ E' il test che questo file non aveva, ed e' il motivo per cui il difetto
+--   del cantiere «il lavoro che non torna indietro» e' sopravvissuto quattro
+--   settimane. `fk_attivita_fatturabili_fattura_riga` era classificata GESTITA
+--   con una motivazione convincente, e il test 3 — che sorveglia solo il primo
+--   livello — avrebbe comunque risposto «si, la pulizia la nomina». La nominava
+--   DOPO aver cancellato il padre, cioe' quando il legame era gia' morto.
+--
+-- ⭐ Il corpo si legge SENZA I COMMENTI. Con i commenti dentro, il nome della
+--   tabella compare gia' nell'intestazione della funzione: la posizione
+--   misurerebbe la prosa, non il codice, e il test sarebbe verde qualunque
+--   cosa faccia la funzione.
+-- ⚠️ E si legge il corpo della SOLA fn_cleanup_fatture_by_ids: il tmp_corpo
+--   usato dal test 3 e' un string_agg di DUE funzioni senza ORDER BY, quindi
+--   l'ordine dei pezzi non e' deterministico — innocuo per un ILIKE, fatale
+--   per un confronto di posizioni.
+SELECT is(
+  (WITH corpo AS (
+     SELECT regexp_replace(p.prosrc, E'--[^\n]*', '', 'g') AS src
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'vendite' AND p.proname = 'fn_cleanup_fatture_by_ids')
+   SELECT count(*)
+     FROM tmp_inventario_righe i, corpo c
+    WHERE i.categoria = 'GESTITA'
+      AND NOT (position(split_part(i.tab, '.', 2) in c.src) > 0
+               AND position(split_part(i.tab, '.', 2) in c.src)
+                   < position('DELETE FROM vendite.fatture_righe' in c.src))),
+  0::bigint,
+  '10) le GESTITA del secondo livello sono nominate dalla pulizia PRIMA del DELETE sul padre'
+);
+
+-- ============================================================
+-- 11) Il muro non si toglie in silenzio
+-- ============================================================
+-- ⚠️ Un ALTER futuro che riportasse questa FK a ON DELETE SET NULL non
+--   renderebbe rosso NIENTE: la pulizia continuerebbe a funzionare (sgancia
+--   prima), e si perderebbe solo la difesa contro la porta che nessuno ha
+--   ancora scritto. E' la stessa forma di
+--   reference_check_tabella_e_guard_funzione_dissentono: il vincolo non si
+--   verifica dal nome di cio' che si crede di aver scritto.
+--
+-- ⛔ E si asserisce la DEFINIZIONE INTERA, non un frammento: `NO ACTION` e' il
+--   default e pg_get_constraintdef NON LO STAMPA. Un test scritto come
+--   «~ 'NO ACTION'» sarebbe rosso per sempre — e chi lo «aggiusta»
+--   invertendolo lo rende verde per sempre. La stringa intera invece fissa
+--   anche le colonne, il bersaglio, l'ON UPDATE e il non essere DEFERRABLE.
+SELECT is(
+  (SELECT pg_get_constraintdef(c.oid)
+     FROM pg_constraint c
+    WHERE c.conname = 'fk_attivita_fatturabili_fattura_riga'),
+  'FOREIGN KEY (fattura_riga_id) REFERENCES vendite.fatture_righe(id) ON UPDATE CASCADE',
+  '11) fk_attivita_fatturabili_fattura_riga e ancora il muro: ON DELETE NO ACTION (implicito), ON UPDATE CASCADE, non deferrable'
 );
 
 SELECT * FROM finish();

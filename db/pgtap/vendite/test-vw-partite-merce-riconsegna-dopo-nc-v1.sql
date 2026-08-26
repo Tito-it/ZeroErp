@@ -151,7 +151,7 @@ BEGIN
       r.iva_id, p_qta * p_prezzo)
   RETURNING id INTO v_riga;
 
-  UPDATE vendite.attivita_fatturabili SET fattura_riga_id = v_riga, fatturato = true WHERE id = v_af;
+  UPDATE vendite.attivita_fatturabili SET fattura_riga_id = v_riga WHERE id = v_af;
   RETURN v_riga;
 END $$ LANGUAGE plpgsql;
 

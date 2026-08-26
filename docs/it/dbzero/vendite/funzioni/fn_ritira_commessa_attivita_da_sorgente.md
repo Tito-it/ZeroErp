@@ -1,0 +1,162 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_ritira_commessa_attivita_da_sorgente.md" %}
+# ⚙️ Funzione `fn_ritira_commessa_attivita_da_sorgente`
+
+```sql
+CREATE FUNCTION fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_motivo text)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_motivo text)
+ RETURNS integer
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_motivo   text;
+    v_uid      vendite.commesse_attivita.sorgente_uid%TYPE;
+    v_prima    jsonb;
+    v_ritirate integer := 0;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Il documento riprende cio' che aveva spinto: porta ad
+    --   ANNULLATA le sole righe di commessa NON_EMESSA della
+    --   sorgente indicata, e ne lascia traccia riga per riga.
+    --
+    -- ⭐ E' l'oggetto di una promessa che il modello faceva gia'
+    --   per iscritto. Il guard 4 di fn_annulla_commessa_attivita
+    --   dice «per una riga da push il rimedio e' SEMPRE a monte,
+    --   sul documento» — e a monte non c'era nessun rimedio.
+    --   ⭐ Le due funzioni sono COMPLEMENTARI: quella rifiuta le
+    --   righe CON sorgente e lavora sulle sourceless, questa
+    --   lavora SOLO su quelle con sorgente.
+    --
+    -- ⛔ NON tocca le EMESSA: sono in volo verso una fattura. A
+    --   fermare la chiusura ci pensa
+    --   script.fn_check_sorgente_chiudibile, e la via d'uscita
+    --   per l'operatore e' «Riporta da emettere» (L5).
+    -- ⛔ NON tocca le ANNULLATA: sono uscite di proposito.
+    -- ⚠️ NON raggiunge le SOURCELESS (ONERE, RETTIFICA): non
+    --   hanno sorgente. E' corretto — per l'onere la via e'
+    --   fn_annulla_commessa_attivita, per la rettifica
+    --   fn_annulla_accredito_riga_reso.
+    --
+    -- ⛔ LA CHIAVE e' `<testata>.uid::text`, quella che le cinque
+    --   fn_list_*_da_pushare scrivono in
+    --   commesse_attivita.sorgente_uid. NON e' quella di
+    --   commesse_sorgenti, che varia per sorgente. Passare la
+    --   chiave sbagliata non solleva niente: ritira ZERO righe.
+    --   Per questo la funzione restituisce il conteggio.
+    -- =========================================================
+    IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_ritira_commessa_attivita_da_sorgente',
+            'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+            jsonb_build_object('parametro', 'p_sorgente_tipo_id',
+                               'valore',    p_sorgente_tipo_id),
+            NULL::uuid, 'p_sorgente_tipo_id');
+    END IF;
+
+    v_uid := btrim(COALESCE(p_sorgente_uid, ''));
+    IF v_uid = '' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_ritira_commessa_attivita_da_sorgente',
+            'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+            jsonb_build_object('parametro', 'p_sorgente_uid',
+                               'valore',    p_sorgente_uid),
+            NULL::uuid, 'p_sorgente_uid');
+    END IF;
+
+    -- ⚠️ Motivo obbligatorio, come per l'annullamento manuale.
+    --    ANNULLATA e' IRREVERSIBILE e l'unica traccia del perche'
+    --    e' l'evento di log. ⭐ Qui vale il doppio: chi chiude il
+    --    documento non sta guardando la commessa, e il ritiro e'
+    --    per lui un effetto a distanza.
+    v_motivo := btrim(COALESCE(p_motivo, ''));
+    IF v_motivo = '' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_ritira_commessa_attivita_da_sorgente',
+            'E_RITIRO_SORGENTE_PARAMETRO_MANCANTE',
+            jsonb_build_object('parametro', 'p_motivo'),
+            NULL::uuid, 'p_motivo');
+    END IF;
+
+    -- ── Lo snapshot, PRIMA di annullare ─────────────────────
+    -- ⚠️ Lo stato precedente e' cio' che il registro deve
+    --    raccontare, e l'UPDATE lo sovrascrive: si fotografa
+    --    finche' esiste. Stessa disciplina del riordino di L1 —
+    --    si legge il dato finche' e' vivo.
+    -- ⚠️ FOR UPDATE serializza i concorrenti; ORDER BY id evita
+    --    il deadlock fra due chiusure che si intersecano.
+    PERFORM 1
+       FROM vendite.commesse_attivita ca
+      WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
+        AND ca.sorgente_uid     = v_uid
+        AND ca.stato_emissione  = 'NON_EMESSA'
+      ORDER BY ca.id
+        FOR UPDATE;
+
+    SELECT jsonb_agg(jsonb_build_object(
+               'commessa_attivita_id', ca.id,
+               'commessa_id',          ca.commessa_id,
+               'segment_key',          ca.segment_key,
+               'prezzo_snapshot',      ca.prezzo_snapshot,
+               'tipo_movimento',       ca.tipo_movimento,
+               'stato_precedente',     ca.stato_emissione)
+               ORDER BY ca.id)
+      INTO v_prima
+      FROM vendite.commesse_attivita ca
+     WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
+       AND ca.sorgente_uid     = v_uid
+       AND ca.stato_emissione  = 'NON_EMESSA';
+
+    -- ── Il ritiro ───────────────────────────────────────────
+    -- Solo NON_EMESSA. Il predicato e' scritto in positivo e non
+    -- come «<> EMESSA»: se domani il CHECK ammettesse un quarto
+    -- stato, il default resta il NON toccarlo (fail-closed su un
+    -- verbo irreversibile).
+    -- stato_approvazione resta com'e': sono due assi distinti, e
+    -- una riga ritirata conserva la memoria di essere stata
+    -- approvata. data_update/user_update/tx_id/storico li mettono
+    -- i trigger della tabella.
+    UPDATE vendite.commesse_attivita ca
+       SET stato_emissione = 'ANNULLATA'
+     WHERE ca.sorgente_tipo_id = p_sorgente_tipo_id
+       AND ca.sorgente_uid     = v_uid
+       AND ca.stato_emissione  = 'NON_EMESSA';
+    GET DIAGNOSTICS v_ritirate = ROW_COUNT;
+
+    -- ── La traccia, riga per riga ───────────────────────────
+    -- ⛔ Un ritiro e' una CASCATA SILENZIOSA: chi chiude il
+    --    documento non vede che sta annullando anche righe di
+    --    commessa. Si paga con il registro, altrimenti «il lavoro
+    --    e' sparito» diventa indistinguibile da un difetto — che
+    --    e' il male da cui nasce questo cantiere.
+    -- ℹ️ La colonna `evento` non ha CHECK ne' vocabolario:
+    --    nessun seed da estendere.
+    INSERT INTO vendite.commesse_attivita_log
+                (commessa_attivita_id, evento, dettaglio)
+    SELECT (e ->> 'commessa_attivita_id')::bigint,
+           'RIGA_RITIRATA_DA_SORGENTE',
+           jsonb_build_object(
+               'motivo',             v_motivo,
+               'sorgente_tipo_id',   p_sorgente_tipo_id,
+               'sorgente_uid',       v_uid,
+               'stato_precedente',   e -> 'stato_precedente',
+               'segment_key',        e -> 'segment_key',
+               'prezzo_snapshot',    e -> 'prezzo_snapshot',
+               'tipo_movimento',     e -> 'tipo_movimento',
+               'commessa_id',        e -> 'commessa_id')
+      FROM jsonb_array_elements(COALESCE(v_prima, '[]'::jsonb)) AS e;
+
+    RETURN v_ritirate;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_ritira_commessa_attivita_da_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_motivo text)
+IS 'IL RITIRO: il documento riprende cio'' che aveva spinto. Porta ad ANNULLATA le sole righe di vendite.commesse_attivita in NON_EMESSA della sorgente indicata, e scrive una riga di vendite.commesse_attivita_log (evento RIGA_RITIRATA_DA_SORGENTE) per ciascuna. Restituisce quante ne ha ritirate. ⭐ E'' l''OGGETTO di una promessa che il modello faceva gia'' per iscritto: il guard 4 di fn_annulla_commessa_attivita dice «per una riga da push il rimedio e'' SEMPRE a monte, sul documento» — e fino al 2026-08-26 a monte non c''era nessun rimedio, perche'' annullare il documento fermava i push FUTURI e non ritirava cio'' che era gia'' passato. ⭐ Le due funzioni sono COMPLEMENTARI e non in contraddizione: fn_annulla_commessa_attivita rifiuta le righe CON sorgente e lavora sulle sourceless, questa lavora SOLO su quelle con sorgente. ⛔ NON tocca le righe EMESSA: sono in volo verso una fattura, e a fermare la chiusura ci pensa script.fn_check_sorgente_chiudibile — la via d''uscita per l''operatore e'' «Riporta da emettere» (L5), che le riporta a NON_EMESSA e le rende ritirabili. ⛔ NON tocca le ANNULLATA: sono uscite di proposito. ⚠️ E NON raggiunge le righe SOURCELESS — ONERE e RETTIFICA — perche'' non hanno sorgente: e'' corretto, e la via per loro e'' rispettivamente fn_annulla_commessa_attivita e fn_annulla_accredito_riga_reso. E'' la stessa distinzione ORIGINE/NATURA che ha morso il dominio il 2026-08-20. ⛔ LA CHIAVE e'' <testata>.uid::text, cioe'' quella che le cinque fn_list_*_da_pushare scrivono in commesse_attivita.sorgente_uid (verificato sui corpi). ⚠️ NON e'' la chiave di vendite.commesse_sorgenti, che VARIA per sorgente (uid per il preventivo, id::text per l''ordine): passare quella sbagliata non solleva niente e ritira ZERO righe, cioe'' un ritiro che non ritira — ed e'' per questo che la funzione restituisce il conteggio e chi la chiama deve guardarlo. ⚠️ Il MOTIVO e'' obbligatorio, come per l''annullamento manuale: ANNULLATA e'' irreversibile (fn_approva_commessa_attivita la filtra e non esiste ripristino) e l''unica traccia del perche'' e'' l''evento di log. ⭐ Qui vale il doppio, perche'' chi chiude il documento non sta guardando la commessa e il ritiro e'' per lui un effetto a distanza: un ritiro senza registro renderebbe «il lavoro e'' sparito» indistinguibile da un difetto. ⚠️ Il predicato e'' scritto in positivo (= NON_EMESSA) e non come «<> EMESSA»: se domani il CHECK ammettesse un quarto stato, il default resta il non toccarlo. Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-5'' strada A.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

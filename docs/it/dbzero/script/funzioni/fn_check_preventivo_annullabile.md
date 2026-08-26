@@ -44,7 +44,6 @@ DECLARE
   v_uid     vendite.preventivi.uid%TYPE;
   v_ordini  integer := 0;
   v_emesse  integer := 0;
-  v_commesse integer := 0;
 BEGIN
   IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -101,11 +100,26 @@ BEGIN
   -- chiamata separata. Sono due fatti diversi: oggi coincidono,
   -- per costruzione non devono.
   -- starts_with() (PG 18, index-friendly) come nella porta.
+  -- ⭐ rev 2026-08-26 (L7b) — il CONTEGGIO si delega, il CODICE resta.
+  -- La condizione e' la stessa di tutti gli altri documenti («ci sono righe
+  -- gia' EMESSA»), quindi si calcola in UN posto solo:
+  -- script.fn_check_sorgente_chiudibile. Ma Tid ha deciso (Q-9) che il
+  -- preventivo tiene il PROPRIO codice, che il frontend gia' mappa: qui il
+  -- motivo si RIETICHETTA, non si ricalcola.
+  -- ⭐ Una implementazione, due superfici. E' anche il motivo per cui sui
+  -- preventivi NON si monta il guard generico: uscirebbero due codici diversi
+  -- per lo stesso rifiuto, a seconda di quale trigger parla per primo.
+  -- ⚠️ Cambia anche la CHIAVE, ed e' un guadagno: prima si contava con
+  -- starts_with() sul segment_key ('PREV:<uid>:R:'), cioe' su una convenzione
+  -- di stringa; adesso sulla coppia (sorgente_tipo_id, sorgente_uid), che e'
+  -- il legame dichiarato. Le due oggi coincidono, per costruzione non devono.
   SELECT count(*)
     INTO v_emesse
-    FROM vendite.commesse_attivita ca
-   WHERE starts_with(ca.segment_key, 'PREV:' || v_uid::text || ':R:')
-     AND ca.stato_emissione = 'EMESSA';
+    FROM jsonb_array_elements(
+           script.fn_check_sorgente_chiudibile(
+               (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+               v_uid::text)) AS m
+   WHERE m ->> 'codice' = 'E_SORGENTE_CON_RIGHE_EMESSE';
 
   IF v_emesse > 0 THEN
     v_motivi := v_motivi || jsonb_build_object(
@@ -119,20 +133,17 @@ BEGIN
   -- anche se nulla e' ancora uscito. Tabella polimorfa: la chiave
   -- e' testo, e per PREVENTIVO config.sorgenti.key_selector dice
   -- 'uid'.
-  SELECT count(*)
-    INTO v_commesse
-    FROM vendite.commesse_sorgenti cs
-   WHERE cs.sorgente_uid = v_uid::text
-     AND cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s
-                                 WHERE s.codice_interno = 'PREVENTIVO');
-
-  IF v_commesse > 0 THEN
-    v_motivi := v_motivi || jsonb_build_object(
-      'codice',     'E_PREV_GIA_IN_COMMESSA',
-      'reason',     'GIA_IN_COMMESSA',
-      'reason_key', 'vendite.preventivi.azione_reason.gia_in_commessa',
-      'dettaglio',  v_commesse);
-  END IF;
+  -- ⛔ rev 2026-08-26 (L7b, Q-9) — E_PREV_GIA_IN_COMMESSA SI RITIRA.
+  -- Vietava di annullare un preventivo che aveva gia' spinto in commessa
+  -- «anche se nulla e' ancora uscito», e il motivo era che NON C'ERA MODO di
+  -- disfare il push. Adesso c'e': alla chiusura il documento RITIRA da se' le
+  -- righe che nessuno ha ancora emesso
+  -- (trg_preventivi_z90_ritira_commessa_attivita_upd).
+  -- ⭐ E il preventivo si allinea agli altri documenti: l'ordine aveva lo
+  -- stesso divieto (E_ORD_ANNULLA_IN_COMMESSA) e si ritira insieme a questo.
+  -- Resta il solo MOTIVO 2, che e' una condizione vera e ha una via d'uscita.
+  -- ⚠️ Il codice resta a catalogo con `obsoleto_dal`: non si cancella, smette
+  -- di essere sollevato.
 
   RETURN v_motivi;
 END;

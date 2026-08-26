@@ -156,7 +156,7 @@ BEGIN
         IF v_existing_id IS NULL THEN
             INSERT INTO vendite.attivita_fatturabili (
                 articolo_id, billing_account_id, istanza_utility_id, data_attivita,
-                quantita, competenza_mese, approvato, fatturato, meta, sorgente_riga,
+                quantita, competenza_mese, approvato, meta, sorgente_riga,
                 posticipa_al, sorgente_tipo_id, sorgente_uid, uom_id, qta_operativa,
                 uom_operativa_id, factor_to_base, valuta_id, prezzo_unitario,
                 tipo_doc_fiscale_id, competenza_dal, competenza_al,
@@ -171,7 +171,7 @@ BEGIN
             VALUES (
                 v_row.articolo_id, v_commessa.billing_account_id, v_row.istanza_utility_id,
                 v_row.data_attivita, v_row.quantita, v_row.competenza_mese,
-                (v_row.stato_approvazione = 'APPROVATA'), false,
+                (v_row.stato_approvazione = 'APPROVATA'),
                 COALESCE(v_row.meta, '{}'::jsonb) || jsonb_build_object(
                     'scope', 'COMMESSE', 'commessa_id', p_commessa_id,
                     'commessa_attivita_id', v_row.id, 'segment_key', v_row.segment_key

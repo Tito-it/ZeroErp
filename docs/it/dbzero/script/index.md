@@ -17,6 +17,7 @@
 - [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
+- [fn_check_attivita_riportabile_da_emettere](funzioni/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
@@ -36,6 +37,7 @@
 - [fn_check_preventivo_annullabile](funzioni/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
 - [fn_check_rinuncia_reversibile](funzioni/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_scadenza_di_fattura](funzioni/fn_check_scadenza_di_fattura.md) — (rev 2026-08-22)
+- [fn_check_sorgente_chiudibile](funzioni/fn_check_sorgente_chiudibile.md) — (latest review 26-08-2026)
 - [fn_check_ultimo_super_admin_attivo](funzioni/fn_check_ultimo_super_admin_attivo.md)
 - [fn_check_user_can_create_ba](funzioni/fn_check_user_can_create_ba.md)
 - [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
@@ -78,7 +80,7 @@
 - [fn_get_soggetto_dati_by_ruolo](funzioni/fn_get_soggetto_dati_by_ruolo.md) — * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
 - [fn_get_stato_cliente_by_istanza](funzioni/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
 - [fn_get_stato_push_segment](funzioni/fn_get_stato_push_segment.md) — (creata 2026-07-19 — brief-db-push-commessa-gia-inviato §4b, rilievo ORD0000227)
-- [fn_get_stato_testata_documento](funzioni/fn_get_stato_testata_documento.md) — Rispondere a una domanda sola: **«la testata di questo documento esiste ancora, e in che stato è?»** — senza passare dalla RLS.
+- [fn_get_stato_testata_documento](funzioni/fn_get_stato_testata_documento.md) — **Rispondere a una domanda sola: la testata di questo documento esiste ancora, e in che stato è?**
 - [fn_get_stradario](funzioni/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_tipo_contatto_id](funzioni/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 - [fn_get_uo_id_for_user](funzioni/fn_get_uo_id_for_user.md) — (latest review 19-04-2026)

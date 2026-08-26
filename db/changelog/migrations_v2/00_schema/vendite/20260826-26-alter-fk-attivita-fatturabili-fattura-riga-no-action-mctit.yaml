@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L3a — IL MURO: fk_attivita_fatturabili_fattura_riga da SET NULL a NO ACTION
+#   Piano: brief-db-lavoro-che-non-torna-indietro, L3a (§9.3.5, §9.3.6)
+#   Cancello: ⛔ NON si applica prima di L1 (20260826-25). L1 e' applicato.
+#
+# ── ⭐ COSA CAMBIA, IN DUE FRASI ────────────────────────────────────
+#   Oggi `ON DELETE SET NULL` dice: *«se cancelli la riga, io sgancio
+#   l'attivita' e vado avanti»* — cioe' sgancia IN SILENZIO, che e' la categoria
+#   che `test-cleanup-fattura-copertura-figlie-v1` chiama «cancellata in
+#   silenzio … nessuno se ne accorge mai».
+#   `ON DELETE NO ACTION` dice: *«non puoi cancellare una riga a cui
+#   un'attivita' e' ancora attaccata»* — l'operazione ESPLODE, e chi ha scritto
+#   quel codice lo scopre subito.
+#
+# ⛔ Con NO ACTION il difetto di luglio sarebbe esploso il primo giorno: il
+#   changeSet 20260728-11 non sarebbe passato, e l'ordine dei passi sarebbe
+#   stato corretto allora invece che a fine agosto.
+#
+# ── ⚠️ PERCHE' E' SICURO SOLO DOPO L1, E PERCHE' LO E' DAVVERO ──────
+#   Dopo il riordino, `fn_cleanup_fatture_by_ids` sgancia TUTTE le attivita'
+#   che puntano a una riga in via di cancellazione — sia per `lock_batch_id`,
+#   sia per `fattura_riga_id = ANY(v_righe_ids)` — PRIMA di arrivare al DELETE.
+#   Quando il DELETE arriva non esiste piu' nessun puntatore vivo: la NO ACTION
+#   non scatta mai sul percorso buono.
+#
+#   ⭐ E la raccolta e' COMPLETA, non «quella che il chiamante vede»:
+#   `vendite.attivita_fatturabili` NON ha row level security (verificato su
+#   `pg_class.relrowsecurity` = false), quindi la SELECT che alimenta il
+#   ripristino vede tutte le righe, anche quelle fuori dallo scope di chi
+#   chiama. Se la tabella avesse la RLS, questo muro trasformerebbe un
+#   «non lo vedo» in un errore, e sarebbe un'altra cosa.
+#
+# ── ⚠️ TUTTE LE PORTE CHE POSSONO CANCELLARE UNA RIGA, CENSITE ──────
+#   · funzioni DB con `DELETE FROM vendite.fatture_righe` → **una sola**,
+#     `vendite.fn_cleanup_fatture_by_ids` (scansione su `pg_proc.prosrc`);
+#   · funzioni DB con `DELETE FROM vendite.fatture` → **la stessa, e nessun'altra**.
+#     ⚠️ Conta, perche' `fk_fatture_righe_fat` e' ON DELETE CASCADE: cancellare
+#     una TESTATA porta via le sue righe. Nella pulizia le righe sono gia'
+#     cancellate esplicitamente due passi prima, quindi la cascata non trova
+#     nulla — ma un DELETE diretto su una testata con attivita' agganciate
+#     d'ora in poi ESPLODE, ed e' precisamente il comportamento voluto;
+#   · backend Django → **zero**: nessun `DELETE FROM vendite.fatture*` in SQL e
+#     nessun modello ORM mappato su quelle tabelle (quindi nessuna cascata ORM).
+#
+# ── ℹ️ COSA NON CAMBIA ──────────────────────────────────────────────
+#   · `ON UPDATE CASCADE` resta: la chiave primaria di una riga non si riscrive,
+#     ma la clausola c'era e toglierla non e' oggetto di questo lotto;
+#   · il nome del vincolo resta identico → nessun impatto su
+#     `dbops.fk_index_policy` (che per questa FK non ha riga) e nessuna
+#     rigenerazione di guard automatici: `dbops.trgfn_child_requires_active_parent`
+#     nasce solo verso un padre con colonna `attivo`, e `vendite.fatture_righe`
+#     non ce l'ha (verificato);
+#   · `DROP CONSTRAINT` di una chiave esterna NON cancella l'indice:
+#     `ix_attivita_fatturabili_fattura_riga_id` e' un indice a se' e sopravvive.
+#
+# ── ⛔ IL COMMENTO DELLA COLONNA VA RISCRITTO UN'ALTRA VOLTA ────────
+#   `20260826-23` (L1) motivava la `SET NULL` dicendo che era «la rete, non il
+#   meccanismo». Era vero finche' la SET NULL c'era. Ora non c'e' piu', e quella
+#   frase diventerebbe la quinta dichiarazione falsa di questo cantiere: si
+#   corregge in avanti, nello stesso changeSet che cambia la cosa che descrive.
+#
+# ⚠️ Il presidio che impedisce a un ALTER futuro di riportarla a SET NULL senza
+#   che nulla diventi rosso e' un `is(pg_get_constraintdef(...), ...)` in pgTAP,
+#   e arriva con il lotto L4.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260826-26-alter-fk-attivita-fatturabili-fattura-riga-no-action-mctit.yaml
+
+  - changeSet:
+      id: 20260826-26-alter-fk-attivita-fatturabili-fattura-riga-no-action
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L3a — il muro: fk_attivita_fatturabili_fattura_riga passa da ON DELETE SET NULL a
+        ON DELETE NO ACTION (ON UPDATE CASCADE invariato). ⭐ SET NULL sganciava l'attivita'
+        IN SILENZIO; NO ACTION rifiuta di cancellare una riga a cui un'attivita' e' ancora
+        attaccata, cioe' fa ESPLODERE la porta che si fosse dimenticata di riallineare.
+        ⛔ Sicuro SOLO dopo L1 (20260826-25): dal riordino la pulizia sgancia TUTTE le
+        attivita' prima del DELETE — e la raccolta e' completa perche' attivita_fatturabili
+        non ha RLS — quindi la NO ACTION non scatta mai sul percorso buono. ⚠️ Censite le
+        porte: una sola funzione cancella righe, la stessa cancella testate (e
+        fk_fatture_righe_fat e' CASCADE), il backend nessuna. Il COMMENT della colonna si
+        riscrive qui perche' 20260826-23 motivava la SET NULL, che non c'e' piu'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # ⛔ Il cancello: senza il riordino di L1 la NO ACTION farebbe
+            #    esplodere il percorso BUONO invece della quinta porta.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_cleanup_fatture_by_ids'
+                     AND position('fn_libera_attivita_fatturabili' in p.prosrc) > 0
+                     AND position('fn_libera_attivita_fatturabili' in p.prosrc)
+                         < position('DELETE FROM vendite.fatture_righe' in p.prosrc);
+            - foreignKeyConstraintExists:
+                schemaName: vendite
+                foreignKeyName: fk_attivita_fatturabili_fattura_riga
+            # Nessun puntatore orfano: la SET NULL non poteva produrne, ma
+            # l'ADD CONSTRAINT valida comunque e un rifiuto qui sarebbe muto.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM vendite.attivita_fatturabili a
+                   WHERE a.fattura_riga_id IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM vendite.fatture_righe r
+                                      WHERE r.id = a.fattura_riga_id);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT fk_attivita_fatturabili_fattura_riga;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT fk_attivita_fatturabili_fattura_riga
+                  FOREIGN KEY (fattura_riga_id)
+                  REFERENCES vendite.fatture_righe(id)
+                  ON UPDATE CASCADE
+                  ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.fattura_riga_id IS
+                  'Riga di fattura che aggrega questa attivita''. E'' il legame *n*->1 fra la '
+                  'riga di sintesi e il suo dettaglio, e dal 20260728-12 e'' l''UNICO: sulla riga '
+                  'aggregata le colonne sorgente_* vanno a NULL, non esistendo piu'' una sorgente '
+                  'singola. ⛔ ON DELETE NO ACTION dal 20260826-26 (L3a): una riga di fattura a '
+                  'cui un''attivita'' e'' ancora attaccata NON si cancella, e il tentativo '
+                  'ESPLODE. E'' un muro per chi scrive codice, non un errore che un operatore '
+                  'possa incontrare: l''unica funzione che cancella righe e testate e'' '
+                  'fn_cleanup_fatture_by_ids, che dal 20260826-25 riallinea le attivita'' PRIMA '
+                  'di cancellare — quando il DELETE arriva non esiste piu'' nessun puntatore '
+                  'vivo, e il vincolo non scatta mai sul percorso buono. Scatta SOLO su una '
+                  'porta nuova che si fosse dimenticata di passare di li''. ⚠️ Conta anche per '
+                  'chi cancella una TESTATA: fk_fatture_righe_fat e'' ON DELETE CASCADE, quindi '
+                  'la cascata porta via le righe e il vincolo si accorge delle attivita'' '
+                  'attaccate. ⛔ Prima era ON DELETE SET NULL, e sganciava IN SILENZIO: e'' cosi'' '
+                  'che fra il 2026-07-28 e il 2026-08-26 l''eliminazione di una fattura da un '
+                  'lotto ha lasciato attivita'' fatturate senza fattura e commesse_attivita '
+                  'ferme su EMESSA, senza un errore. ⚠️ La GUC '
+                  'zeroerp.maintenance_reset_lotto_draft serve per l''UPDATE del ripristino, che '
+                  'avviene mentre questa colonna e'' ANCORA valorizzata: e'' li'' che '
+                  'trgfn_attivita_fatturabili_guard_fatturato blocca, ed e'' giusto che blocchi '
+                  'chiunque non stia cancellando la fattura. brief-fix-importi-riga-fattura-zero '
+                  '§4.6; brief-db-lavoro-che-non-torna-indietro §8.3 e §9.3.5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS fk_attivita_fatturabili_fattura_riga;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT fk_attivita_fatturabili_fattura_riga
+                  FOREIGN KEY (fattura_riga_id)
+                  REFERENCES vendite.fatture_righe(id)
+                  ON UPDATE CASCADE
+                  ON DELETE SET NULL;

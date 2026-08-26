@@ -17,7 +17,35 @@ Approfondimento funzioni:
 (rev 2026-08-21 — funzione rev 2026-08-15)
 
 Elenca i motivi che impediscono di **annullare** un ordine: merce già uscita con un DDT figlio
-vivo (MOTIVO 1), oppure ordine già entrato in una commessa (MOTIVO 2).
+vivo (MOTIVO 1), oppure **righe di commessa già `EMESSA`** (MOTIVO 2).
+
+> ⛔ **rev 26-08-2026 — il MOTIVO 2 è cambiato, e non di poco.**
+> Fino a quella data bastava che l'ordine **avesse spinto** in commessa perché
+> l'annullamento fosse rifiutato (`E_ORD_ANNULLA_IN_COMMESSA`). Quel divieto è
+> stato **ritirato**: il motivo per cui esisteva era che **non c'era modo di
+> disfare il push**, e adesso c'è — alla chiusura il documento **ritira da sé**
+> le righe che nessuno ha ancora emesso
+> ([`trgfn_doc_ritira_commessa_attivita`](/dbzero/vendite/funzioni/trgfn_doc_ritira_commessa_attivita)).
+>
+> ⭐ Resta un freno solo, e su una condizione **vera**: le righe già `EMESSA`
+> sono in volo verso una fattura. E ha una via d'uscita che il messaggio nomina —
+> [«Riporta da emettere»](/dbzero/vendite/funzioni/fn_riporta_attivita_da_emettere)
+> le riporta a `NON_EMESSA`, e da lì il ritiro le prende.
+>
+> ⭐ Il conteggio **non si scrive più qui**: si delega a
+> [`script.fn_check_sorgente_chiudibile`](/dbzero/script/funzioni/fn_check_sorgente_chiudibile),
+> la stessa che il guard generico usa. *Una implementazione, due superfici* —
+> questa accende il pulsante, quella ferma la scrittura.
+>
+> ⚠️ **E la chiave è cambiata insieme al criterio.** Il vecchio conteggio leggeva
+> `vendite.commesse_sorgenti` con `id::text`; la primitiva legge
+> `vendite.commesse_attivita` con `uid::text`. Sono chiavi polimorfe **diverse e
+> deliberate**: passare quella vecchia non darebbe un errore, darebbe **zero
+> motivi**.
+>
+> ⚠️ `E_ORD_ANNULLA_IN_COMMESSA` **non è stato cancellato**: resta a catalogo con
+> `obsoleto_dal = 2026-08-26` e smette di essere sollevato.
+> Cantiere: `brief-db-lavoro-che-non-torna-indietro.md`, Q-9.
 
 ---
 
@@ -30,9 +58,20 @@ Il DDT si aggancia al padre con `ddt.sorgente_uid` (uuid, punta all'`uid` dell'o
 e non il legame al padre. È la stessa parola per due cose diverse, ed è precisamente ciò che
 ha tenuto spento per tre changeSet il MOTIVO 1 del gemello.
 
-Il MOTIVO 2 usa invece la chiave **`id::text`**, perché per `ORDINE_VENDITA` il `key_selector`
-della sorgente polimorfa dice `id` e non `uid`. Tre legami nella stessa funzione, tre chiavi
-diverse: non è disordine, è il modello polimorfo.
+⛔ **rev 26-08-2026** — il MOTIVO 2 usava la chiave **`id::text`** su
+`vendite.commesse_sorgenti`, perché per `ORDINE_VENDITA` il `key_selector` della
+sorgente polimorfa dice `id` e non `uid`. Adesso legge
+`vendite.commesse_attivita`, dove `sorgente_uid` porta **`uid::text` per tutte le
+sorgenti** — verificato sul corpo delle cinque `fn_list_*_da_pushare`.
+
+⚠️ **Le due tabelle usano chiavi polimorfe diverse per la stessa sorgente**, e
+non è disordine: `commesse_sorgenti` registra *chi* ha spinto (con la chiave
+dichiarata dal catalogo), `commesse_attivita` porta *cosa* è stato spinto (con
+l'`uid` che il push scrive). Confonderle non produce un errore: produce **zero
+motivi**, cioè un freno che lascia passare tutto.
+
+⭐ Tre legami nella stessa funzione, tre chiavi diverse: è il modello polimorfo,
+e va letto ogni volta invece che dedotto per simmetria.
 
 ---
 
@@ -64,7 +103,8 @@ Il predicato è `is_abortito IS NOT TRUE`. Un DDT in stato **RESO** ha `is_abort
 | Codice | Motivo |
 |--------|--------|
 | `E_ORD_ANNULLA_CON_DDT` | Esiste un DDT figlio vivo |
-| `E_ORD_ANNULLA_IN_COMMESSA` | L'ordine è già in una commessa |
+| `E_SORGENTE_CON_RIGHE_EMESSE` | Ci sono righe di commessa già `EMESSA` (delegato a `fn_check_sorgente_chiudibile`) |
+| ~~`E_ORD_ANNULLA_IN_COMMESSA`~~ | ⛔ **ritirato il 26-08-2026**: resta a catalogo, non viene più sollevato |
 | `E_PARAMETRO_INVALIDO` | `ordine_id` nullo o non positivo |
 
 ---

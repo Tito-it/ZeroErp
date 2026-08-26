@@ -347,10 +347,16 @@ SELECT is(
     'Default approvato = false'
 );
 
+-- ⚠️ rev 2026-08-26: NON e' piu' un default. Dal changeSet 20260826-33
+--   `fatturato` e' una colonna GENERATA su `fattura_riga_id IS NOT NULL`, e
+--   qui vale false perche' l'attivita' non e' agganciata a nessuna riga di
+--   fattura. L'asserzione resta identica e continua a valere; cambia il
+--   PERCHE', e lasciare scritto «default» avrebbe mandato il prossimo lettore
+--   a cercare un DEFAULT che non c'e' piu'.
 SELECT is(
     (SELECT fatturato FROM tmp_attivita_base),
     false,
-    'Default fatturato = false'
+    'fatturato = false su un attivita senza riga di fattura (colonna generata)'
 );
 
 SELECT is(

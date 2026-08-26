@@ -13,8 +13,21 @@
 -- 4) DRAFT->ANNULLATO -> ok (transizione manuale attiva)
 -- 5) DRAFT->SPEDITO (fuori matrice) -> throws E_ORDINE_TRANSIZIONE_NON_AMMESSA
 -- 6) CONFERMATO->ANNULLATO senza figli a valle -> ok (lives)
--- 7) CONFERMATO->ANNULLATO con l'ordine gia' in commessa -> throws
+-- 7) CONFERMATO->ANNULLATO con righe di commessa gia' EMESSA -> throws
 -- 8) ...e il CODICE di dominio esce nel campo strutturato CONSTRAINT
+--
+-- ⛔ rev 2026-08-26 — LA REGOLA E' CAMBIATA, e i test 7-8 con lei.
+--   Fino a oggi bastava che l'ordine AVESSE SPINTO in commessa perche'
+--   l'annullamento fosse rifiutato (E_ORD_ANNULLA_IN_COMMESSA). Quel divieto
+--   e' stato RITIRATO (cantiere «il lavoro che non torna indietro», Q-9): il
+--   motivo per cui esisteva era che non c'era modo di disfare il push, e
+--   adesso c'e' — alla chiusura il documento ritira da se' le righe che
+--   nessuno ha ancora emesso.
+--   ⭐ Resta un freno solo, e su una condizione VERA: le righe gia' EMESSA
+--   sono in volo verso una fattura (E_SORGENTE_CON_RIGHE_EMESSE), e hanno una
+--   via d'uscita che il messaggio nomina («Riporta da emettere»).
+--   ⚠️ Quindi la fixture non basta piu' che colleghi l'ordine a una commessa:
+--   deve produrre una riga di commessa EMESSA, che e' la cosa che ferma.
 --    (gruppo C: il codice arriva da `v_motivi -> 0 ->> 'codice'`, non da un
 --     letterale — vedi brief-db-codice-errore-strutturato §2)
 --
@@ -207,9 +220,11 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- 7) CONFERMATO->ANNULLATO con l'ordine gia' inviato a fatturazione -> throws
---    Un secondo ordine confermato, questa volta agganciato a una commessa:
---    il guard legge la stessa funzione pura del bottone e rifiuta.
+-- 7) CONFERMATO->ANNULLATO con righe di commessa gia' EMESSA -> throws
+--    Un secondo ordine confermato, agganciato a una commessa E con una riga
+--    gia' emessa: il guard legge la stessa funzione pura del bottone e rifiuta.
+--    ⚠️ Il solo collegamento alla commessa NON basta piu' (Q-9): quello che
+--    ferma e' il lavoro in volo, non il fatto di aver spinto.
 -- ============================================================
 CREATE TEMP TABLE tmp_gt_f AS
 WITH ins AS (
@@ -230,12 +245,43 @@ SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'),
        (SELECT id FROM tmp_gt_f)::text,
        'ROOT';
 
+-- ⛔ E la riga che davvero FERMA: una commessa_attivita gia' EMESSA spinta da
+--    questo ordine. Senza, dal 2026-08-26 l'annullamento passerebbe — ed e'
+--    voluto, perche' il documento ritira da se' cio' che nessuno ha emesso.
+-- ⚠️ La chiave e' l'`uid` dell'ordine, non il suo `id`: e' quella che
+--    fn_list_ordini_da_pushare scrive in commesse_attivita.sorgente_uid.
+--    ⭐ E NON e' la stessa che commesse_sorgenti usa qui sopra (li' e' l'id):
+--    due chiavi polimorfe diverse per la stessa sorgente, e confonderle non
+--    darebbe un errore — darebbe un guard che non ferma.
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+  uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+  valuta_id, prezzo_snapshot, pricing_mode,
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'),
+       'ORD:PGTAP-GT:R:1',
+       r.articolo_id,
+       -- ⚠️ vendite.commesse non ha istanza_utility_id: si risolve dal
+       --    billing account della commessa, che e' dove vive.
+       (SELECT b.istanza_utility_id FROM vendite.commesse c
+          JOIN anagrafiche.billing_account b ON b.id = c.billing_account_id
+         WHERE c.codice = 'PGTAP-GT-COM'),
+       DATE '2026-06-15',
+       (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1),
+       1,
+       DATE '2026-06-01', DATE '2026-06-01', DATE '2026-06-30',
+       r.valuta_id, 10.000000, 'FIXED',
+       'BOZZA', 'EMESSA',
+       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
+       (SELECT o.uid::text FROM vendite.ordini o WHERE o.id = (SELECT id FROM tmp_gt_f))
+  FROM tmp_refs_gt r;
+
 SELECT throws_ok(
   format($q$UPDATE vendite.ordini SET stato_doc_ordine_id =
               (SELECT stato_ann_id FROM tmp_refs_gt) WHERE id = %s$q$,
          (SELECT id FROM tmp_gt_f)),
   'P0001', NULL,
-  '7) CONFERMATO->ANNULLATO con ordine gia'' in commessa -> rifiutato dal guard'
+  '7) CONFERMATO->ANNULLATO con righe di commessa gia'' EMESSA -> rifiutato dal guard'
 );
 
 -- ============================================================
@@ -286,7 +332,7 @@ $fn$;
 SELECT is(
   (SELECT ROW(v_sqlstate, v_constraint)::text
      FROM pg_temp.capture_annulla((SELECT id FROM tmp_gt_f))),
-  ROW('P0001', 'E_ORD_ANNULLA_IN_COMMESSA')::text,
+  ROW('P0001', 'E_SORGENTE_CON_RIGHE_EMESSE')::text,
   '8) il codice di dominio (da v_motivi, non da letterale) esce nel campo CONSTRAINT'
 );
 
