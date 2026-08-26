@@ -60,3 +60,18 @@ EXECUTE FUNCTION anagrafiche.trgfn_billing_account_link_ef();
 * [`anagrafiche.trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale) — gemello `BEFORE INSERT`
 * [`anagrafiche.emittenti_fiscali_billing_account`](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — tabella di mapping
 * [Refactor operatore ↔ emittente](/dev/work-done/refactor-operatore-emittenti)
+---
+
+### ⚠️ La finestra di correzione si apre qui — e si chiude presto
+
+Questo aggancio automatico ha una conseguenza che vale la pena sapere proprio in
+questa pagina: **un cliente non passa mai da uno stato «senza emittente»**.
+Nasce già agganciato, e se l'operatore stava lavorando sull'emittente sbagliato
+**nasce agganciato male**.
+
+Dal 2026-08-26 quel legame si corregge solo **finché sul cliente non è passato
+del lavoro** — nessuna fattura, nessuna commessa. Dopo, i documenti già emessi
+congelano chi li ha emessi e spostare il cliente li lascerebbe orfani.
+
+⇒ La finestra di correzione si apre qui e **si chiude al primo push**. Vedi
+[`trgfn_efba_guard_storia_emittente`](/dbzero/anagrafiche/manual/trgfn_efba_guard_storia_emittente).

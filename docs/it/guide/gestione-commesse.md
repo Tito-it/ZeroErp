@@ -94,6 +94,62 @@ utente** (chiudi/riapri/annulla) + `fn_available_actions_commessa` è pianificat
 
 ---
 
+## Di chi è una commessa
+
+> ⭐ Sezione aggiunta il 2026-08-26 — cantiere «l'emittente della commessa è un
+> invariante». È il concetto che sta sotto a mezza guida, e non era scritto da
+> nessuna parte.
+
+### L'emittente non è un attributo: è la chiave di perimetro
+
+`vendite.commesse.emittente_soggetto_ruolo_id` decide **chi può vedere quella
+commessa**. Ci si appoggiano la row security della tabella, il filtro di scope
+del cruscotto competenza e il giornale degli eventi.
+
+⛔ Con quella colonna vuota la commessa non compariva sbagliata: **spariva**. Il
+lavoro restava nel database, non lo vedeva nessuno e non veniva mai fatturato —
+e una lista che non mostra una riga ha lo stesso aspetto di una lista in cui
+quella riga non c'è. Da qui il `NOT NULL` (`20260826-41`).
+
+### Da dove viene il valore
+
+**Dal billing account, sempre.** La commessa non la compila una persona in un
+form: nasce dal push, e l'emittente si ricava dal cliente del documento
+sorgente. Tre pezzi, tutti in `20_code`:
+
+| Oggetto | Cosa fa |
+| --- | --- |
+| [`trgfn_commesse_default_emittente`](/dbzero/vendite/manual/trgfn_commesse_default_emittente) | riempie la colonna quando arriva `NULL` |
+| [`trgfn_commesse_guard_emittente_ba`](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba) | rifiuta un valore diverso da quello derivato |
+| [`trgfn_commesse_sorgenti_guard_emittente`](/dbzero/vendite/manual/trgfn_commesse_sorgenti_guard_emittente) | vieta di collegare sorgenti di emittenti diversi |
+
+⇒ **Chi crea una commessa non deve sapere niente di emittenti.** Se lo passa e
+coincide, è ridondante; se non coincide, viene respinto. Per questo il parametro
+è stato tolto dalla firma: *un parametro il cui unico valore ammesso è quello
+che la funzione calcola da sé non è un'opzione, è una trappola per il prossimo
+chiamante.*
+
+### Una commessa non aggrega due emittenti
+
+Tutto il lavoro raccolto in una commessa deve uscire da **un solo** emittente: è
+l'emittente a decidere su quale registro la fattura verrà numerata, e con due
+emittenti nella stessa commessa quella scelta non sarebbe più vera per una parte
+delle righe.
+
+⚠️ Il criterio è l'**emittente**, non il cliente: più clienti possono stare sotto
+lo stesso emittente — è a questo che serve l'albero dei billing account — e
+vietare che il documento di un cliente «figlio» contribuisca alla commessa del
+«padre» sarebbe una regola più severa, che nessuno ha deciso.
+
+### ⚠️ E il cliente non cambia emittente a piacere
+
+L'altra metà dell'invariante sta in anagrafica: un cliente che ha già fatture o
+commesse **non si sposta** su un altro emittente, perché i documenti già emessi
+resterebbero orfani. Vedi
+[`anagrafiche.fn_guard_ba_cambio_emittente`](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente).
+
+---
+
 ## API — Funzioni DB
 
 ### 1. `fn_get_or_create_commessa`
@@ -111,9 +167,12 @@ utente** (chiudi/riapri/annulla) + `fn_available_actions_commessa` è pianificat
 | `p_utility_id` | si | Deve coincidere con utility del BA |
 | `p_tipo_commessa` | no | Default `AUTO` |
 | `p_policy_fatturazione` | no | Default `DA_DOCUMENTO` |
-| `p_emittente_soggetto_ruolo_id` | no | Fallback da `fn_get_emittente_fiscale_id` |
 | `p_competenza_dal` / `_al` | no | Range competenza testata |
 | `p_force_new` | no | Default `false` — forza nuova commessa |
+
+⛔ **Dal 2026-08-26 non esiste più `p_emittente_soggetto_ruolo_id`.** L'emittente
+non si passa: **si deriva dal billing account**, sempre. Vedi
+[§ Di chi è una commessa](#di-chi-e-una-commessa).
 
 **Ritorna**: `commessa_id` (nuova o riusata).
 
@@ -121,7 +180,7 @@ utente** (chiudi/riapri/annulla) + `fn_available_actions_commessa` è pianificat
 
 * Riuso solo su commesse con `chiude_commessa = false`
 * Advisory lock transazionale per evitare doppie create concorrenti
-* Emittente fallback automatico da billing account
+* Emittente **derivato** dal billing account (non più un parametro)
 
 ```sql
 SELECT vendite.fn_get_or_create_commessa(

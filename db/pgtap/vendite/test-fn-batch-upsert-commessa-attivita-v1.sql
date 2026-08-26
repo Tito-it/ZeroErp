@@ -133,7 +133,6 @@ SELECT vendite.fn_get_or_create_commessa(
   p_policy_fatturazione => 'DA_DOCUMENTO',
   p_fatturazione_immediata => false,
   p_priorita_operativa => 'NORMALE',
-  p_emittente_soggetto_ruolo_id => (SELECT emittente_soggetto_ruolo_id FROM tmp_batch_refs),
   p_competenza_dal => DATE '2026-06-01',
   p_competenza_al => DATE '2026-06-30',
   p_meta => jsonb_build_object('test_scope', 'pgtap_batch_upsert'),

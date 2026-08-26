@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_or_create_commessa`
 
 ```sql
-CREATE FUNCTION fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_emittente_soggetto_ruolo_id bigint, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
+CREATE FUNCTION fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying DEFAULT 'AUTO'::character varying, p_policy_fatturazione character varying DEFAULT 'DA_DOCUMENTO'::character varying, p_fatturazione_immediata boolean DEFAULT false, p_priorita_operativa character varying DEFAULT 'NORMALE'::character varying, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_meta jsonb DEFAULT '{}'::jsonb, p_force_new boolean DEFAULT false, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying DEFAULT 'AUTO'::character varying, p_policy_fatturazione character varying DEFAULT 'DA_DOCUMENTO'::character varying, p_fatturazione_immediata boolean DEFAULT false, p_priorita_operativa character varying DEFAULT 'NORMALE'::character varying, p_competenza_dal date DEFAULT NULL::date, p_competenza_al date DEFAULT NULL::date, p_meta jsonb DEFAULT '{}'::jsonb, p_force_new boolean DEFAULT false, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -18,10 +18,15 @@ AS $function$
 --        commessa esistente, ne apre una nuova — cosi' la divergenza
 --        emerge al push e non a valle, in fattura.
 -- Regole: la chiave vive in TRE posti (hash del lock, WHERE del riuso,
---         INSERT) e i tre vanno tenuti identici. I due parametri nuovi
---         sono in coda e con DEFAULT NULL: nessun chiamante da adeguare
---         subito, e finche' passano NULL il comportamento e' quello di
---         prima.
+--         INSERT). ⚠️ I tre NON sono identici alla lettera, ed e'
+--         voluto: l'emittente e' NOT NULL sulla colonna
+--         (20260826-41), quindi il WHERE lo confronta con `=` puro,
+--         mentre l'hash conserva il proprio COALESCE — cambiare la
+--         stringa che si hasha cambierebbe l'IDENTITA' del lock senza
+--         guadagno. Le DIMENSIONI restano le stesse in tutti e tre:
+--         e' quello che va tenuto uguale, non il testo.
+-- ⭐ Dal 2026-08-26 NON esiste piu' un parametro per l'emittente:
+--         si deriva dal billing account e basta (decisione D-1).
 DECLARE
     v_commessa_id vendite.commesse.id%TYPE;
     v_ba_utility  anagrafiche.billing_account.utility_id%TYPE;
@@ -82,14 +87,22 @@ BEGIN
         );
     END IF;
 
-    -- Risolve emittente
-    v_emittente := COALESCE(p_emittente_soggetto_ruolo_id, anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id));
+    -- ⭐ L'emittente si DERIVA, e non c'e' piu' nessun modo di
+    --   passarlo da fuori: e' la decisione D-1 portata a termine.
+    --   La funzione SOLLEVA invece di tornare NULL, quindi da qui
+    --   in poi v_emittente e' valorizzato per costruzione.
+    --   ⚠️ Lo stesso valore lo riscriverebbe comunque
+    --   trgfn_commesse_default_emittente sulla INSERT: qui serve
+    --   PRIMA, perche' entra nella chiave di riuso e nel lock.
+    v_emittente := anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id);
 
     IF NOT p_force_new THEN
         -- SPECCHIO 1 — advisory lock sul contesto dimensionale.
-        -- Le due dimensioni nuove entrano QUI: senza, due push
-        -- concorrenti con termini diversi non si serializzerebbero
-        -- e potrebbero creare due volte la stessa commessa.
+        -- ⛔ Il COALESCE su v_emittente resta anche se il NULL non
+        --    e' piu' possibile: quello che si hasha e' l'IDENTITA'
+        --    del lock, e cambiarla farebbe smettere di
+        --    serializzarsi a due sessioni che girassero su due
+        --    revisioni diverse di questa funzione.
         PERFORM pg_advisory_xact_lock(
             hashtext('fn_get_or_create_commessa'),
             hashtext(
@@ -104,8 +117,10 @@ BEGIN
         );
 
         -- SPECCHIO 2 — WHERE della commessa riusabile.
-        -- ⚠️ IS NOT DISTINCT FROM sulle due nuove: sono NULL quasi
-        -- sempre, e con `=` nessuna commessa verrebbe mai riusata.
+        -- ⭐ L'emittente si confronta con `=` PURO: la colonna e'
+        --   NOT NULL (20260826-41) e v_emittente non e' mai NULL.
+        -- ⚠️ IS NOT DISTINCT FROM resta sulle quattro dimensioni
+        --   davvero nullable (competenza e condizioni di pagamento).
         SELECT c.id INTO v_commessa_id
           FROM vendite.commesse c
           JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id AND sc.chiude_commessa = FALSE
@@ -115,7 +130,7 @@ BEGIN
            AND c.policy_fatturazione = p_policy_fatturazione
            AND c.fatturazione_immediata = p_fatturazione_immediata
            AND c.priorita_operativa = p_priorita_operativa
-           AND COALESCE(c.emittente_soggetto_ruolo_id, -1) = COALESCE(v_emittente, -1)
+           AND c.emittente_soggetto_ruolo_id = v_emittente
            AND c.competenza_dal IS NOT DISTINCT FROM p_competenza_dal
            AND c.competenza_al IS NOT DISTINCT FROM p_competenza_al
            AND c.termine_pagamento_id  IS NOT DISTINCT FROM p_termine_pagamento_id
@@ -142,8 +157,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_emittente_soggetto_ruolo_id bigint, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
-IS 'Recupera o crea commessa coerente con BA/utility e fallback emittente fiscale. Da D-R la chiave di raggruppamento comprende anche (termine_pagamento_id, modalita_pagamento_id): un documento sorgente con condizioni diverse apre una commessa NUOVA invece di riusarne una. Advisory lock previene la doppia creazione e include le stesse dimensioni del WHERE.';
+COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(p_billing_account_id bigint, p_utility_id integer, p_tipo_commessa character varying, p_policy_fatturazione character varying, p_fatturazione_immediata boolean, p_priorita_operativa character varying, p_competenza_dal date, p_competenza_al date, p_meta jsonb, p_force_new boolean, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
+IS 'Recupera o crea commessa coerente con BA/utility. Da D-R la chiave di raggruppamento comprende anche (termine_pagamento_id, modalita_pagamento_id): un documento sorgente con condizioni diverse apre una commessa NUOVA invece di riusarne una. Advisory lock previene la doppia creazione e include le stesse dimensioni del WHERE. ⭐ rev 2026-08-26 (brief-db-emittente-commessa-invariante, L5 / decisione D-2): NON esiste piu'' il parametro p_emittente_soggetto_ruolo_id — l''emittente si DERIVA dal billing account e non si passa da fuori (decisione D-1). Con vendite.trgfn_commesse_guard_emittente_ba in servizio quell''override poteva solo essere ridondante (uguale al derivato) o sbagliato (respinto dal trigger): un parametro il cui unico valore ammesso e'' quello che la funzione calcola da se'' non e'' un''opzione, e'' una trappola per il prossimo chiamante, che lo legge nella firma e crede di poter scegliere. ⚠️ La firma passa da 13 a 12 parametri, quindi e'' servito un DROP: un CREATE OR REPLACE avrebbe creato un OVERLOAD e, coi DEFAULT, le chiamate sarebbero diventate ambigue. I chiamanti usano parametri NOMINATI, quindi la rottura e'' rumorosa e immediata invece che silenziosa. ⚠️ Il WHERE confronta l''emittente con un `=` PURO (la colonna e'' NOT NULL dal 20260826-41), mentre il COALESCE dentro l''hash dell''advisory lock resta: li'' si hasha l''IDENTITA'' del lock, e cambiarla farebbe smettere di serializzarsi a due sessioni su revisioni diverse. Ne discende che i «tre specchi» non sono identici alla lettera, ed e'' voluto: cio'' che va tenuto uguale sono le DIMENSIONI, non il testo. ⚠️ IS NOT DISTINCT FROM resta sulle quattro dimensioni davvero nullable (competenza dal/al, termine e modalita'' di pagamento). ⭐ Lo stesso emittente lo riscriverebbe comunque vendite.trgfn_commesse_default_emittente sulla INSERT: qui si risolve PRIMA perche'' entra nella chiave di riuso e nell''advisory lock.';
 ```
 
 ---

@@ -56,3 +56,14 @@ funzione che infastidisce e' una funzione che qualcuno prima o poi disattiva.
   database;
 * e proprio per questo il valore e' alto: e' l'operazione rara, ampia e mai
   collaudata — quella in cui un errore e' silenzioso e grande.
+---
+
+### ⚠️ Una nota del 2026-08-26: adesso c'è un secondo cancello
+
+Lo stesso movimento — spostare l'emittente generale — ha ora un controllo in più:
+[`fn_guard_ba_gestore_globale_storia`](/dbzero/anagrafiche/manual/fn_guard_ba_gestore_globale_storia),
+che lo vieta se **anche un solo** cliente non agganciato ha già fatture o
+commesse. Su un'installazione che ha già fatturato, cioè quasi sempre.
+
+Non è una duplicazione: questo chiede *«l'albero può diventare misto?»*, l'altro
+*«c'è storia da proteggere?»*. Il secondo, di norma, risponde per primo.

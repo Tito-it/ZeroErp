@@ -245,8 +245,11 @@
 - [trgfn_commesse_attivita_guard_prezzo_rettifica](manual/trgfn_commesse_attivita_guard_prezzo_rettifica.md) — (rev 2026-08-21 — decisione di Tid del 2026-08-20, brief nota di credito §42.2)
 - [trgfn_commesse_attivita_guard_quantita_immutabile](manual/trgfn_commesse_attivita_guard_quantita_immutabile.md) — (rev 2026-08-21)
 - [trgfn_commesse_attivita_guard_tipo_doc_emittibile](manual/trgfn_commesse_attivita_guard_tipo_doc_emittibile.md) — (rev 2026-06-19)
+- [trgfn_commesse_default_emittente](manual/trgfn_commesse_default_emittente.md) — (latest review 26-08-26)
 - [trgfn_commesse_guard_chiave_immutabile](manual/trgfn_commesse_guard_chiave_immutabile.md) — (latest review 02-08-2026)
+- [trgfn_commesse_guard_emittente_ba](manual/trgfn_commesse_guard_emittente_ba.md) — (latest review 26-08-26)
 - [trgfn_commesse_guard_transizione](manual/trgfn_commesse_guard_transizione.md) — (rev 2026-06-07)
+- [trgfn_commesse_sorgenti_guard_emittente](manual/trgfn_commesse_sorgenti_guard_emittente.md) — (latest review 26-08-26)
 - [trgfn_contratti_default_emittente](manual/trgfn_contratti_default_emittente.md) — (rev 2026-05-26)
 - [trgfn_contratti_default_valuta](manual/trgfn_contratti_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_contratti_freeze_listino_versione](manual/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.

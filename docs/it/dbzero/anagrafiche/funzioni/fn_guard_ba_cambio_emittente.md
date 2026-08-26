@@ -1,0 +1,93 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente.md" %}
+# ⚙️ Funzione `fn_guard_ba_cambio_emittente`
+
+```sql
+CREATE FUNCTION fn_guard_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE
+    v_storia     record;
+    v_codice_ba  anagrafiche.billing_account.codice%TYPE;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Fail-fast: un billing account che ha gia' congelato il
+    --   proprio emittente da qualche parte non lo cambia piu'.
+    --   E' la forma «b» decisa in D-1 — libero finche' non c'e'
+    --   storia, vietato dopo.
+    --
+    -- ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la
+    --   RLS (vedi fn_get_storia_emittente_ba), e il codice del BA
+    --   si legge da anagrafiche.billing_account, che pure ce l'ha.
+    -- =========================================================
+
+    -- 1) La riga senza billing account e' quella del GESTORE
+    --    GLOBALE: la guarda fn_guard_ba_gestore_globale_storia,
+    --    che ha un raggio diverso (N billing account, non uno).
+    IF p_billing_account_id IS NULL THEN
+        RETURN;
+    END IF;
+
+    -- 2) ⭐ Se l'emittente non cambia DAVVERO non c'e' niente da
+    --    presidiare, ed e' la riga che tiene aperta la
+    --    manutenzione ordinaria: cancellare un mapping specifico
+    --    quando il gestore globale punta allo stesso emittente
+    --    non sposta nessun documento.
+    IF p_emittente_sr_prima IS NOT DISTINCT FROM p_emittente_sr_dopo THEN
+        RETURN;
+    END IF;
+
+    SELECT * INTO v_storia
+      FROM anagrafiche.fn_get_storia_emittente_ba(p_billing_account_id);
+
+    -- 3) Nessuna storia: la finestra di correzione e' ancora
+    --    aperta. E' il caso del billing account nato sotto
+    --    l'emittente sbagliato, che deve restare correggibile.
+    IF COALESCE(v_storia.n_fatture, 0) = 0
+       AND COALESCE(v_storia.n_commesse, 0) = 0 THEN
+        RETURN;
+    END IF;
+
+    SELECT ba.codice INTO v_codice_ba
+      FROM anagrafiche.billing_account ba
+     WHERE ba.id = p_billing_account_id;
+
+    -- 4) ⛔ Storia c'e': si blocca. La via d'uscita non e' la
+    --    forza, e' la forma «c» — se il cliente e' passato
+    --    davvero all'altro emittente si apre presso di lui una
+    --    fornitura nuova, e i documenti gia' emessi restano con
+    --    chi li ha emessi.
+    PERFORM script.fn_log_and_raise_error(
+        'anagrafiche',
+        'fn_guard_ba_cambio_emittente',
+        'E_BA_EMITTENTE_CON_STORIA',
+        jsonb_build_object(
+            'billing_account_id',  p_billing_account_id,
+            'codice',              v_codice_ba,
+            'n_fatture',           v_storia.n_fatture,
+            'n_commesse',          v_storia.n_commesse,
+            'emittente_sr_prima',  p_emittente_sr_prima,
+            'emittente_sr_dopo',   p_emittente_sr_dopo),
+        NULL::uuid,
+        COALESCE(v_codice_ba, p_billing_account_id::text),
+        v_storia.n_fatture::text,
+        v_storia.n_commesse::text,
+        COALESCE(p_emittente_sr_prima::text, '?'));
+END;
+$function$
+
+COMMENT ON FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
+IS 'Guard fail-fast: un billing account che ha gia'' CONGELATO il proprio emittente da qualche parte non lo cambia piu''. Solleva E_BA_EMITTENTE_CON_STORIA nominando il cliente, quante fatture e quante commesse lo bloccano. ⭐ Perche'' esiste, nelle parole di Tid: «non puo'' scomparire un cliente che ha gia'' delle fatture con un emittente perche'' e'' andato ad un altro». La fattura NON segue il cliente — congela il proprio emittente (NOT NULL + emittente_snapshot) — quindi spostare il billing account non riscrive la storia: LA ORFANA. Le fatture restano sull''emittente vecchio, il cliente passa al nuovo, e da quel momento chi quelle fatture le ha emesse continua a vedere il documento e smette di vedere il cliente. ⭐ E dal cantiere gemello non e'' piu'' solo la fattura: col NOT NULL del 20260826-41 anche vendite.commesse porta una copia congelata dell''emittente, e il suo guard — montato UPDATE OF apposta per non congelare le commesse a ogni cambio di stato — non la difende, perche'' un mapping spostato non riscrive quella riga. Il presidio deve stare qui. ⭐ Forma «b» (decisione D-1): libero finche'' non c''e'' storia, vietato dopo. Vietare e basta avrebbe un costo — un billing account NASCE gia'' mappato all''emittente dell''operatore che crea il cliente (anagrafiche.trgfn_billing_account_link_ef), quindi se l''operatore era loggato sull''emittente sbagliato nasce mappato male, ed e'' un errore di inserimento ordinario che deve restare correggibile. La domanda vera non e'' «si puo'' cambiare?» ma «fino a quando?». ⭐ Esce subito quando l''emittente non cambia davvero (IS NOT DISTINCT FROM): e'' la riga che tiene aperta la manutenzione ordinaria — cancellare un mapping specifico quando il gestore globale punta allo stesso emittente non sposta nessun documento. ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la RLS e il codice del BA si legge da anagrafiche.billing_account, che pure ce l''ha. ⚠️ NESSUN controllo sui figli, ed e'' deliberato: un BA il cui figlio ha storia e'' gia'' protetto da anagrafiche.fn_guard_albero_ba_emittente — spostare il padre da solo renderebbe l''albero misto e viene respinto li'', con un errore che dice la cosa giusta; aggiungere qui una risalita sarebbe un secondo presidio sullo stesso caso, con due messaggi diversi per lo stesso rifiuto. ⛔ Nessuna GUC di override e nessuna eccezione per il pregresso: un invariante con l''interruttore non e'' un invariante. ⭐ Quando il cancello chiude, la via d''uscita e'' la forma «c»: se il cliente e'' passato davvero all''altro emittente si apre presso di lui una fornitura nuova (una istanza_utility nuova e quindi un billing account nuovo — uq_billing_instance_utility rende impossibile un «BA gemello» sulla stessa fornitura), e i documenti gia'' emessi restano con chi li ha emessi. Piano: brief-db-billing-account-cambio-emittente, M1.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

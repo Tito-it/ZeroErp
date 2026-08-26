@@ -50,8 +50,11 @@
 - [fn_get_emittente_fiscale_pk](funzioni/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026)
 - [fn_get_evento_stato_corrente_cliente](funzioni/fn_get_evento_stato_corrente_cliente.md) — (latest review 28-04-2026)
 - [fn_get_or_create_indirizzo_dettaglio](funzioni/fn_get_or_create_indirizzo_dettaglio.md) — (latest review 13-03-2026) Building block atomico per l'upsert di un civico normalizzato in `anagrafiche.indirizzi_dettaglio`.
+- [fn_get_storia_emittente_ba](funzioni/fn_get_storia_emittente_ba.md) — (latest review 26-08-26)
 - [fn_guard_albero_ba_emittente](funzioni/fn_guard_albero_ba_emittente.md) — (latest review 18-08-26)
 - [fn_guard_albero_ba_gestore_globale](funzioni/fn_guard_albero_ba_gestore_globale.md) — (latest review 18-08-26)
+- [fn_guard_ba_cambio_emittente](funzioni/fn_guard_ba_cambio_emittente.md) — (latest review 26-08-26)
+- [fn_guard_ba_gestore_globale_storia](funzioni/fn_guard_ba_gestore_globale_storia.md) — (latest review 26-08-26)
 - [fn_guard_fornitore_attivo](funzioni/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
@@ -77,6 +80,7 @@
 - [trgfn_dati_societari_guard_forma_giuridica](funzioni/trgfn_dati_societari_guard_forma_giuridica.md) — (latest review 28-12-25) Garantire la **coerenza paese** tra il soggetto e la forma giuridica associata nei dati societari.
 - [trgfn_dati_societari_guard_tipo_soggetto](funzioni/trgfn_dati_societari_guard_tipo_soggetto.md) — (latest review 03-12-25) Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
 - [trgfn_efba_guard_albero_emittente](funzioni/trgfn_efba_guard_albero_emittente.md) — (latest review 18-08-26)
+- [trgfn_efba_guard_storia_emittente](funzioni/trgfn_efba_guard_storia_emittente.md) — (latest review 26-08-26)
 - [trgfn_emittenti_fiscali_default_bootstrap](funzioni/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
 - [trgfn_emittenti_fiscali_default_guard](funzioni/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
 - [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`** garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un `soggetto_ruolo_id` valido e coerente con il ruolo di **emittente fiscale** (`codice_interno = 'EF'`).

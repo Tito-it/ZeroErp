@@ -1,0 +1,248 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L6a — «di chi e' questo documento?», per la sorgente polimorfa
+#   script.fn_get_sorgente_billing_account_id(tipo, chiave)
+#   Piano: brief-db-emittente-commessa-invariante, L6 (§7.6.1)
+#
+# ── ⭐ IL PEZZO CHE MANCAVA ─────────────────────────────────────────
+#   Il meccanismo della sorgente polimorfa sa dire SE un documento esiste
+#   (script.trgfn_guard_sorgente_polimorfa_testuale) e in che STATO e'
+#   (script.vw_stato_sorgente). Non sapeva dire DI CHI E'. Serve al guard di
+#   omogeneita' dell'emittente sulle sorgenti di una commessa (L6), e serve
+#   una volta sola: si estrae qui perche' la seconda occorrenza non nasca mai.
+#
+# ── ⚠️ `SECURITY DEFINER`, E NON E' OPZIONALE ───────────────────────
+#   preventivi, ordini, ddt, contratti, offerte_commerciali e resi hanno TUTTI
+#   una policy RLS ef_whitelist. Da SECURITY INVOKER la sorgente di un altro
+#   emittente sarebbe INVISIBILE, e il guard direbbe «a posto» proprio nel caso
+#   che deve bloccare. E' la stessa ragione, con le stesse parole, per cui
+#   anagrafiche.fn_guard_albero_ba_emittente e' DEFINER.
+#
+# ── ⛔ FAIL-CLOSED SU TUTTO CIO' CHE NON RISOLVE ────────────────────
+#   Tipo non a catalogo, target_table senza colonna billing_account_id,
+#   documento inesistente, documento con il BA a NULL: sempre errore, mai un
+#   NULL silenzioso. Un risolutore che risponde NULL fa passare il confronto a
+#   valle e trasforma il guard in un no-op.
+#
+# ⭐ SQL dinamico su `target_table`: e' l'idioma di casa per questo meccanismo,
+#   lo usano sia trgfn_guard_sorgente_polimorfa_testuale sia
+#   vendite.fn_link_commessa_sorgente (`EXECUTE format('... FROM %s ...')`), con
+#   la stessa verifica di presenza colonna su pg_attribute. Il nome della
+#   tabella arriva da un `regclass`, non da input utente.
+# ⚠️ La chiave attesa e' quella CANONICA secondo config.sorgenti.key_selector
+#   (id::text per i tipi a chiave id, uuid testuale per gli altri): e' la forma
+#   che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella
+#   che il push passa (sempre l'uid).
+# ⭐ Verificato il 2026-08-26 sulla doc auto-gen: tutte le target_table di
+#   config.sorgenti hanno una colonna billing_account_id. In cinque casi
+#   (ordini, ddt, preventivi, resi, attivita_fatturabili) e' NULLABLE, e un
+#   documento senza BA non ha un emittente da confrontare: qui e' un errore,
+#   non un salto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260826-43-create-fn-get-sorgente-billing-account-id-mctit.yaml
+
+  - changeSet:
+      id: 20260826-43-create-fn-get-sorgente-billing-account-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L6a: «di chi e' questo documento?» per la sorgente polimorfa. Il meccanismo sapeva
+        dire se un documento esiste e in che stato e', non a chi appartiene: questa funzione
+        risolve il billing account partendo da (sorgente_tipo_id, chiave canonica).
+        ⚠️ SECURITY DEFINER e non e' opzionale: preventivi, ordini, ddt, contratti, offerte e
+        resi hanno tutti una policy RLS ef_whitelist, e da SECURITY INVOKER la sorgente di un
+        altro emittente sarebbe invisibile — il guard direbbe «a posto» proprio nel caso da
+        bloccare. Stessa ragione di anagrafiche.fn_guard_albero_ba_emittente. ⛔ Fail-closed su
+        tutto cio' che non risolve: un risolutore che risponde NULL fa passare il confronto a
+        valle e trasforma il guard in un no-op. ⭐ SQL dinamico su target_table: e' l'idioma
+        gia' in uso in trgfn_guard_sorgente_polimorfa_testuale e in
+        vendite.fn_link_commessa_sorgente. Piano: brief-db-emittente-commessa-invariante, L6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - columnExists:
+                schemaName: config
+                tableName: sorgenti
+                columnName: key_selector
+            - columnExists:
+                schemaName: config
+                tableName: sorgenti
+                columnName: target_table
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_sorgente_billing_account_id(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS anagrafiche.billing_account.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  c_uuid_re CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+                  v_target   regclass;
+                  v_selector config.sorgenti.key_selector%TYPE;
+                  v_codice   config.sorgenti.codice_interno%TYPE;
+                  v_uid      text := btrim(p_sorgente_uid);
+                  v_ba_id    anagrafiche.billing_account.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dato (tipo sorgente, chiave canonica) restituire il
+                  --   BILLING ACCOUNT del documento. E' il pezzo che mancava
+                  --   al meccanismo della sorgente polimorfa: sapeva dire SE
+                  --   un documento esiste e in che STATO e', non DI CHI e'.
+                  --
+                  -- ⚠️ SECURITY DEFINER: le sei tabelle documento hanno la
+                  --   RLS. Da SECURITY INVOKER la sorgente di un altro
+                  --   emittente sarebbe invisibile e il chiamante concluderebbe
+                  --   «non esiste» invece di «e' di un altro».
+                  --
+                  -- ⛔ Fail-closed ovunque: mai un NULL silenzioso.
+                  -- ⚠️ La chiave attesa e' quella CANONICA (key_selector), cioe'
+                  --   quella che fn_link_commessa_sorgente scrive — non quella
+                  --   che il push passa.
+                  -- =========================================================
+                  -- ⛔ Guard esplicito sul parametro ID, con E_SORG_CONF e NON
+                  --    E_PARAMETRO_INVALIDO: quel codice e' un debito con lo
+                  --    split rimandato, non una sede, e in codice NUOVO non si
+                  --    riusa. Un tipo sorgente nullo o non positivo e', per chi
+                  --    legge, esattamente «configurazione sorgente non
+                  --    risolvibile» — che e' quello che questo codice dice.
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Tipo sorgente non valorizzato',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, COALESCE(p_sorgente_tipo_id::text, '<nessuno>'));
+                  END IF;
+
+                  -- Configurazione della sorgente. Solo tipi ATTIVI: un tipo
+                  -- ritirato non deve poter risolvere in silenzio.
+                  SELECT s.target_table, s.key_selector, s.codice_interno
+                    INTO v_target, v_selector, v_codice
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id
+                     AND s.attivo = true;
+
+                  IF v_target IS NULL OR v_selector IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Sorgente non attiva o senza target_table/key_selector',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'target_table', COALESCE(v_target::text, '<NULL>'),
+                                             'key_selector', COALESCE(v_selector, '<NULL>')),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  -- ⚠️ La chiave si controlla DOPO il catalogo: cosi' il
+                  --    messaggio puo' nominare il key_selector vero, che e' il
+                  --    secondo segnaposto di E_SORG_KEY_MISSING.
+                  IF v_uid IS NULL OR v_uid = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_KEY_MISSING',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, p_sorgente_tipo_id::text, v_selector);
+                  END IF;
+
+                  -- ⛔ La target_table DEVE avere billing_account_id. Oggi ce
+                  --    l'hanno tutte (verificato 2026-08-26 sulla doc auto-gen),
+                  --    ma una sorgente futura potrebbe non averlo: li' si deve
+                  --    fermare qui, non rispondere NULL.
+                  IF NOT EXISTS (SELECT 1 FROM pg_attribute
+                                  WHERE attrelid = v_target
+                                    AND attname  = 'billing_account_id'
+                                    AND attnum   > 0
+                                    AND NOT attisdropped) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'target_table senza colonna billing_account_id',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'target_table', v_target::text),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  -- Lettura secondo la convenzione di chiave del catalogo.
+                  IF v_selector = 'id' THEN
+                      IF v_uid !~ '^[0-9]+$' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', v_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso id::text, ricevuto ', v_uid));
+                      END IF;
+
+                      EXECUTE format('SELECT t.billing_account_id FROM %s t WHERE t.id = $1', v_target::text)
+                        INTO v_ba_id USING v_uid::bigint;
+
+                  ELSIF v_selector = 'uid' THEN
+                      IF v_uid !~ c_uuid_re THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', v_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso uuid, ricevuto ', v_uid));
+                      END IF;
+
+                      EXECUTE format('SELECT t.billing_account_id FROM %s t WHERE t.uid = $1', v_target::text)
+                        INTO v_ba_id USING v_uid::uuid;
+
+                  ELSE
+                      -- key_selector fuori catalogo: config.sorgenti lo impedisce
+                      -- con un CHECK, qui e' difensivo e fail-closed.
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_KEYSEL',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, v_selector);
+                  END IF;
+
+                  -- ⛔ Documento inesistente OPPURE documento senza billing
+                  --    account: per il chiamante sono la stessa cosa — non si
+                  --    puo' dire di chi e' — e un NULL qui disarmerebbe il
+                  --    guard a valle.
+                  IF v_ba_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_billing_account_id', 'E_SORG_BA_NON_RISOLTO',
+                          jsonb_build_object('detail', 'documento inesistente o senza billing account',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'sorgente_uid', v_uid,
+                                             'target_table', v_target::text),
+                          NULL::uuid, COALESCE(v_codice, p_sorgente_tipo_id::text), v_uid);
+                  END IF;
+
+                  RETURN v_ba_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_sorgente_billing_account_id(bigint, text)
+              IS 'Risolve «di chi e'' questo documento» per la sorgente polimorfa: dato (sorgente_tipo_id, chiave CANONICA secondo config.sorgenti.key_selector) restituisce il billing_account_id del documento. ⭐ E'' il pezzo che mancava al meccanismo: script.trgfn_guard_sorgente_polimorfa_testuale sa dire SE un documento esiste, script.vw_stato_sorgente in che STATO e'', nessuno sapeva dire DI CHI e''. Nasce per il guard di omogeneita'' dell''emittente sulle sorgenti di una commessa (vendite.trgfn_commesse_sorgenti_guard_emittente), ed e'' estratta subito perche'' la seconda occorrenza non nasca mai. ⚠️ SECURITY DEFINER, e non e'' opzionale: vendite.preventivi, ordini, ddt, contratti, offerte_commerciali e resi hanno TUTTI una policy RLS ef_whitelist, quindi da SECURITY INVOKER la sorgente di un altro emittente sarebbe INVISIBILE e il chiamante concluderebbe «non esiste» invece di «e'' di un altro» — il guard direbbe «a posto» proprio nel caso da bloccare. E'' la stessa ragione per cui anagrafiche.fn_guard_albero_ba_emittente e'' DEFINER. ⛔ FAIL-CLOSED ovunque, mai un NULL silenzioso: tipo nullo/non positivo, non attivo o senza configurazione -> E_SORG_CONF (⛔ e NON E_PARAMETRO_INVALIDO: in codice nuovo quel codice non si riusa, e'' un debito con lo split rimandato); target_table senza colonna billing_account_id -> E_SORG_CONF; chiave nel formato sbagliato -> E_SORG_FORMATO; key_selector fuori catalogo -> E_SORG_KEYSEL; documento inesistente o con billing account NULL -> E_SORG_BA_NON_RISOLTO. Un risolutore che risponde NULL farebbe passare il confronto a valle e trasformerebbe il guard in un no-op. ⭐ SQL dinamico su target_table (un regclass, non input utente) con verifica di presenza colonna su pg_attribute: e'' l''idioma gia'' in uso in script.trgfn_guard_sorgente_polimorfa_testuale e in vendite.fn_link_commessa_sorgente. ⚠️ La chiave attesa e'' quella CANONICA — id::text per i tipi a chiave id, uuid testuale per gli altri — cioe'' quella che fn_link_commessa_sorgente NORMALIZZA in scrittura, non quella che il push passa (sempre l''uid): dedurla dal chiamante porta a una funzione che non trova mai niente, in silenzio (guida /guide/sorgente-polimorfa §4a). ⭐ Verificato il 2026-08-26 sulla doc auto-gen: tutte le target_table di config.sorgenti hanno billing_account_id; in cinque (ordini, ddt, preventivi, resi, attivita_fatturabili) e'' nullable, e un documento senza BA non ha un emittente da confrontare — qui e'' un errore, non un salto. Piano: brief-db-emittente-commessa-invariante, L6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_sorgente_billing_account_id(bigint, text);

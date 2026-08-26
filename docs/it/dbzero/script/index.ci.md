@@ -75,6 +75,7 @@
 - [fn_get_sistemazione_di_contabile](manual/fn_get_sistemazione_di_contabile.md) — (rev 2026-08-22)
 - [fn_get_snapshot_as_of](manual/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 - [fn_get_soggetto_dati_by_ruolo](manual/fn_get_soggetto_dati_by_ruolo.md) — * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
+- [fn_get_sorgente_emittente_sr_id](manual/fn_get_sorgente_emittente_sr_id.md) — (latest review 26-08-26)
 - [fn_get_stato_cliente_by_istanza](manual/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
 - [fn_get_stato_push_segment](manual/fn_get_stato_push_segment.md) — (creata 2026-07-19 — brief-db-push-commessa-gia-inviato §4b, rilievo ORD0000227)
 - [fn_get_stato_testata_documento](manual/fn_get_stato_testata_documento.md) — **Rispondere a una domanda sola: la testata di questo documento esiste ancora, e in che stato è?**
