@@ -250,6 +250,23 @@ un `data-key` sintetico dalle stesse quattro colonne.
 - **Stadio** = CASE della vista attività: `DA_APPROVARE` (non emessa, non
   approvata) → `DA_EMETTERE` (approvata, non emessa) → `EMESSA_NON_FATTURATA`
   (AF senza `fattura_riga_id`) → `FATTURATA`.
+- ⚠️ **`EMESSA_NON_FATTURATA` non è una tappa del percorso, è un RESIDUO.** Il
+  pull e la generazione righe avvengono nello **stesso step DRAFT**: un'attività
+  passa da `DA_EMETTERE` direttamente a `FATTURATA`, e in condizioni normali
+  quello stadio è **vuoto**. Ci si accumula ciò che ha perso la propria riga di
+  fattura — tipicamente una fattura **eliminata** dopo un errore: l'AF resta
+  `fatturato = t` con `lock_in_fatturazione = t`, quindi **nessun giro
+  successivo la ripesca**. Misurato il 2026-08-26: 5 AF di competenza luglio
+  (5.019 €) orfane della fattura 834 del lotto 603, eliminata dopo
+  `E_FATTURA_NON_NUMERABILE_INCOERENTE`.
+  🔴 Non esiste oggi un verbo che le rimetta in circolo: la card è a sola
+  lettura e il rimedio è manuale. Chi progetta quel verbo deve azzerare
+  **entrambi** i flag (`fatturato`, `lock_in_fatturazione`), non solo il primo.
+- ⭐ Il verbo **«Rendi definitive»** vive sulla card `FATTURATA`, non su
+  `EMESSA_NON_FATTURATA`: numera i lotti in stato `EMESSA`, cioè fatture che nel
+  funnel stanno in `FATTURATA` con `stato_fattura_codice_interno = 'EMESSA'`.
+  Sulla card dei residui il pulsante spariva a mese tutto fatturato — cioè
+  esattamente quando serviva.
 - **Void esclusi** (parità predicato `20260703-61`): attività `ANNULLATA` /
   `RIFIUTATA` (salvo `EMESSA + RIFIUTATA`) e commesse `ANNULLATA` fuori da tutte
   le proiezioni.

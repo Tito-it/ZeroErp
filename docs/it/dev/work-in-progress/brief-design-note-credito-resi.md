@@ -2,13 +2,31 @@
 
 > **Tipo**: brief di design (decisioni di dominio) + **piano DB** + **esecuzione**
 > + **piano BE/FE** ·
-> **Data**: 2026-08-17 · **rev**: 2026-08-18 (PARTE IV) · **Owner**: Tid ·
-> **Stato**: ✅ **PERIMETRO DB CHIUSO E APPLICATO** (2026-08-18) — ⚠️ **riaperto
-> il 2026-08-19 dal collaudo**, vedi §38 ·
-> 🟡 **BE IN CORSO: 3 slice su 9 chiuse e committate** (`24b09c7f2`) ·
-> ⛔ **FE non iniziato** · 🔴 **5 prerequisiti in attesa del team DB**.
-> **Stato slice per slice e ripartenza nel §27.**
+> **Data**: 2026-08-17 · **rev**: 2026-08-26 · **Owner**: Tid ·
+> **Stato**: ✅ **DB, BE e FE CHIUSI.** Perimetro DB applicato il 2026-08-18,
+> riaperto due volte dal collaudo (§38, §45) e richiuso ogni volta ·
+> ✅ **BE: 9 slice su 9** · ✅ **FE: 6 su 6** (§27.1) ·
+> ✅ **prerequisiti DB: nessuno, tutti e sette chiusi** (§27.2, brief di
+> passaggio in `work-done`) · ✅ **ultimo giro BE+FE il 2026-08-26** (§45.9).
 >
+> 🔴 **Resta una cosa sola, ed è la ragione per cui questo file è ancora in
+> `work-in-progress`: la validazione in-app, che è di Tid.** Il copione è
+> [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md)
+> — **26 spunte su 40** al 2026-08-26. Gli aperti non sono contorno: la
+> **riverifica della correzione del §45.9** (il pulsante grigio *e parlante*,
+> con la controprova sui resi 5122/5123 che resta acceso) e **tutta la prova
+> 7-bis** (arco `S`, la genealogia reso → NC 20024), che è nata il 2026-08-25 e
+> non è mai stata eseguita. Quando è spuntato, il collaudo diventa il verbale e
+> **i due file si spostano insieme in `work-done`**.
+>
+> 🔵 Due code che **non** appartengono più a questo cantiere e non lo trattengono:
+> la richiesta al team DB del **§3** di
+> [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
+> (il chip che scrive «Fattura» sopra una nota di credito) e la domanda del
+> **§45.9.6** — le azioni **per riga** non hanno un censimento dei gate, mentre
+> le otto capability **di documento** ce l'hanno (`linee-guida-sql §12.4`).
+>
+> **Stato slice per slice nel §27.**>
 > ✅ **2026-08-19/20 — la guardia che mancava (§38): APPLICATA.** Il collaudo
 > in-app ha trovato che `vendite.fn_annulla_reso` **non vedeva l'accredito**: un
 > reso già accreditato si annullava lasciando vive le rettifiche, e il primo giro
@@ -32,14 +50,14 @@
 > ed era falso per i 181 senza colonna `attivo`; toltala, diventava impreciso per
 > i 168 che ce l'hanno. Ora il guard sceglie fra due codici — si **disattivano**
 > le righe collegate in un ramo, si **tolgono** nell'altro. Un changeSet
-> (`20260820-08`), il codice **934** e tre pgTAP: **preparati e NON applicati**.
+> (`20260820-08`), il codice **934** e tre pgTAP: ✅ **applicati**.
 >
 > 🟠 **2026-08-21 — numerazione e lineage della nota di credito (§44).** Dal
 > collaudo prova 6: la prima NC esiste ed e' corretta. Due richieste — non si
 > deve poter numerare una nota di credito prima della fattura che corregge (la
 > TD04 deve citarne numero e data), e nel grafo dei «Passaggi» la nota non
 > esisteva come tale. Cinque changeSet (`20260821-01` → `-05`), codice **937**,
-> due pgTAP: **preparati e NON applicati**. ⚠️ Una misura della segnalazione non
+> due pgTAP: ✅ **applicati**. ⚠️ Una misura della segnalazione non
 > si riproduce (§44.1), e la guardia sulla numerazione oggi e' **mascherata** da
 > un'altra precondizione (§44.2).
 >
@@ -3569,7 +3587,7 @@ disponibile» sposta la contraddizione invece di chiuderla.
 
 ---
 
-## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-19)
+## 27. 📍 Stato dei lavori e ripartenza (aggiornato 2026-08-26)
 
 > Da leggere per primo aprendo una chat nuova. ⚠️ È un'istantanea: prima di
 > citarla, verificare contro il codice.
@@ -3691,20 +3709,35 @@ in `work-done`.
 
 #### Lavoro rimasto
 
-**Nessuna slice aperta**: B0→B8 e F1→F6 sono chiuse (§27.1). Restano tre cose,
-e nessuna è codice di questo cantiere.
+**Nessuna slice aperta**: B0→B8 e F1→F6 sono chiuse (§27.1), e il giro del
+2026-08-26 (§45.9) ha chiuso anche l'ultima correzione nata dal collaudo.
+Restano due cose, e **nessuna delle due è codice di questo cantiere**.
 
 1. 📌 **L'annuncio di rilascio** (§12.8): il conteggio del tab Backlog area
    `RESI` è passato da **1 a 4** col seed di N11 — è già successo, e va detto a
    chi usa quel cruscotto prima del rilascio;
-2. 🔴 **La validazione in-app**, che è di Tid: il giro è provato sui dati dallo
-   smoke, ma a video non l'ha ancora guardato nessuno. Il copione è scritto —
-   [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md),
-   8 prove, le prime cinque **reversibili** e il punto di non ritorno
-   dichiarato. È anche l'unico modo di chiudere la **voce 9** del §25.
+2. 🔴 **La validazione in-app, che è di Tid — ed è cominciata, non finita.**
+   Al 2026-08-26 il copione
+   [collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md)
+   è a **26 spunte su 40**. Le prove 1→6 sono passate (ed è così che sono nati
+   il §38, il §42, il §44 e il §45: **il collaudo ha trovato quattro difetti
+   che nessun test aveva trovato**). Restano aperti:
+   * la **riverifica della prova 7** dopo la correzione del §45.9 — «Annulla
+     l'accredito» dev'essere **grigio e parlante** sul reso 24, con la
+     controprova che sui resi 5122/5123 resta **acceso**: è quella che
+     dimostra che il gate non ha spento tutto;
+   * i tre avvisi di prova 7 (conferme del lotto, riapertura della rinuncia,
+     annullo del reso) — i tre verbi devono dire tutti e tre la stessa cosa;
+   * **tutta la prova 7-bis**, nata il 2026-08-25 con l'arco `S` e **mai
+     eseguita**: dal reso 24 si deve ritrovare la NC 20024, e dal DDT 140
+     **non** deve cambiare niente.
 
-⭐ **Con queste due, il brief si chiude.** Le decisioni non sono più fra i
-residui (§37).
+⚠️ La **voce 9** del §25 non aspetta più il collaudo: l'ha chiusa la prova 6 il
+2026-08-21, sui dati veri (§44).
+
+⭐ **Con queste due, il brief si chiude** — e si sposta in `work-done`
+**insieme al collaudo**, che a quel punto è il verbale. Le decisioni non sono
+più fra i residui (§37).
 
 #### Decisioni: ✅ prese entrambe il 2026-08-19 (§37)
 
@@ -5317,8 +5350,11 @@ questo giro — ma va abbassata, altrimenti la cricchetta resta lasca.
 > **Origine**: la parola giusta persa del §39.7. Tid l'ha letta, ha chiesto di
 > farlo bene, e questa è la ripresa.
 >
-> ⛔ **Stato: preparato, NON applicato.** Un changeSet (`20260820-08`), due
-> righe di catalogo, tre pgTAP adeguati. La migrazione aspetta il via.
+> ✅ **Stato: APPLICATO.** Un changeSet (`20260820-08`), due righe di catalogo,
+> tre pgTAP adeguati. Verificato il 2026-08-26 **dal catalogo, non dal file
+> YAML**: `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (934) è in
+> `error_policies_generated.py`, che si genera da
+> `config.vw_codici_errore_identita` — cioè dal DB vivo.
 
 ### 41.1 Il punto, in due righe
 
@@ -5998,8 +6034,11 @@ chi tocca quelle due funzioni lo trovi.
 > Con questa, la **voce 9 della definizione di «fatto»** (§35.2) è finalmente
 > chiusa sui dati veri.
 >
-> ⛔ **Stato: preparato, NON applicato.** Cinque changeSet (`20260821-01` →
-> `-05`), un codice errore nuovo (**937**), due pgTAP.
+> ✅ **Stato: APPLICATO.** Cinque changeSet (`20260821-01` → `-05`), un codice
+> errore nuovo (**937**), due pgTAP. Verificato il 2026-08-26 dal catalogo:
+> `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (937) è in
+> `error_policies_generated.py`, e `natura_doc_codice` insieme agli archi `N`
+> e `S` sono nell'introspezione di `vw_documento_lineage`.
 
 ### 44.1 ⚠️ Una misura della segnalazione non si riproduce
 

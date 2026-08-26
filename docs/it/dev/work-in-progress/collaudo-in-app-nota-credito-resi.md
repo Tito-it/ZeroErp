@@ -9,7 +9,12 @@
 > questo si spunta, si annota con quello che si trova, e quando è finito diventa
 > il verbale di collaudo.
 >
-> **Stato**: da eseguire. Ambiente: sviluppo (`dbdev`). Preparato il 2026-08-19.
+> **Stato** (2026-08-26): 🟡 **in corso — 26 spunte su 40.** Le prove 1→6 sono
+> passate, e hanno trovato quattro difetti che nessun test aveva trovato (§38,
+> §42, §44, §45 del brief). Restano: la **riverifica della prova 7** dopo la
+> correzione del §45.9, i suoi tre avvisi, e **tutta la prova 7-bis** (arco `S`),
+> che è nata il 2026-08-25 e non è mai stata eseguita.
+> Ambiente: sviluppo (`dbdev`). Preparato il 2026-08-19.
 
 ---
 

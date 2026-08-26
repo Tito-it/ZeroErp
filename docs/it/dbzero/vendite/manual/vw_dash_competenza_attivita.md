@@ -72,6 +72,16 @@ GROUP BY stadio;
 * Un'attività `EMESSA` senza riga AF (solo manutenzioni fuori flusso) cade in
   `EMESSA_NON_FATTURATA` con `data_emissione` NULL: classificazione corretta,
   ritardo non calcolabile.
+* ⚠️ **`EMESSA_NON_FATTURATA` è uno stadio RESIDUALE, non una tappa.** Pull e
+  generazione righe stanno nello stesso step DRAFT: il percorso normale va da
+  `DA_EMETTERE` a `FATTURATA` e questo stadio resta **vuoto**. Quando non lo è,
+  contiene AF che hanno **perso** la propria riga di fattura — il caso vero è la
+  fattura eliminata dopo un errore di numerazione, che azzera
+  `fattura_riga_id` lasciando però `fatturato = t` e `lock_in_fatturazione = t`:
+  da lì in poi **nessun giro le ripesca più**. Misurato il 2026-08-26: 5 AF di
+  luglio (5.019 €) orfane della fattura 834 del lotto 603. Chi legge un numero
+  in questa card lo legga come una **perdita silenziosa**, non come un
+  avanzamento in attesa.
 * Test: `db/pgtap/vendite/test-vw-dash-competenza-v1.sql`.
 
 ---

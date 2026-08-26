@@ -1,5 +1,41 @@
 # AGENTS.md
 
+## ⛔ Regola zero — le misure non disegnano il progetto
+
+> **Le misure servono a trovare gli errori, non a disegnare il progetto.**
+> Un dato del DB può solo **smentire** una regola: non decide mai la forma, il
+> perimetro o la priorità di ciò che si costruisce.
+> **Si sviluppa sul modello, non sulle righe di oggi.**
+
+Questa è la prima cosa da leggere, ogni volta. Vale per DB, backend e frontend.
+
+**Cosa può fare una misura**: portare un **controesempio**. «Questo caso esiste
+ed è gestito male» è un fatto, e va corretto. È l'unico uso legittimo.
+
+**Cosa NON può fare una misura** — e sono tutti argomenti da rifiutare, anche
+quando li sto scrivendo io:
+
+* ⛔ *«sono 168 su 349, non è un caso di nicchia»* → la frequenza non decide se
+  una cosa va fatta. Se la regola è giusta vale anche a 1 su 349;
+* ⛔ *«oggi non capita mai»* → **zero occorrenze non significa che il caso non
+  esiste**: significa che non c'è ancora un controesempio. Un guard non si
+  restringe perché il ramo oggi è irraggiungibile;
+* ⛔ *«oggi 1 riga su 3, domani tutte»* → è una previsione sui dati travestita
+  da progetto. La ragione dev'essere sul modello, o non è una ragione;
+* ⛔ *«oggi vince la commessa perché 13 < 15»* → un comportamento che dipende
+  da un ID esistente è un'ambiguità del modello, non una scelta;
+* ⛔ *«il test è verde»*, quando è verde **perché i dati di oggi non sanno
+  produrre il caso**. Non prova niente: è un presidio, e va dichiarato tale.
+
+**Il segnale d'allarme, mentre scrivo**: se in un brief compare
+*«misurato: … quindi facciamo così»*, la misura sta guidando il progetto. La
+misura entra nel documento come **fatto datato**, mai come **motivo**. Il motivo
+si riscrive sul modello — e se sul modello non regge, non era una ragione.
+
+⚠️ Corollario per i documenti: un numero misurato invecchia in silenzio. Va
+scritto **con la data e con il contesto** in cui è stato preso, e non va mai
+usato come premessa di una decisione strutturale.
+
 ## Quick Start per AI Agent
 
 - Progetto: ERP Django + PostgreSQL, open-source GPL v3
