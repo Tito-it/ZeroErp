@@ -48,3 +48,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 47,47,lotto_segnalazioni_default,Vista standard segnalazioni del lotto,sistema,,,t,10,"[{""col"":""livello"",""dir"":""desc""}]",t,2026-08-22 00:00:00,mctit
 48,48,fatture_default,Vista standard fatture di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-24 00:00:00,mctit
 49,49,dash_competenza_residui_default,Vista standard residui da riportare,sistema,,,t,25,"[{""col"":""competenza_mese"",""dir"":""asc""}]",t,2026-08-27 00:00:00,mctit
+50,50,distinte_default,Vista standard distinte contabili,sistema,,,t,25,"[{""col"":""data_contabile"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
+51,51,righe_default,Vista standard righe contabili da lavorare,sistema,,,t,25,"[{""col"":""data_pagamento"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
+52,52,rate_fuori_capienza_default,Vista standard rate fuori capienza,sistema,,,t,25,"[{""col"":""data_scadenza"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
+53,53,eccedenze_default,Vista standard eccedenze da sistemare,sistema,,,t,25,"[{""col"":""eccedenza_cliente"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit

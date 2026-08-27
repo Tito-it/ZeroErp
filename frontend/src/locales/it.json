@@ -3562,6 +3562,69 @@
       }
     }
   },
+  "pagamenti": {
+    "distinte": {
+      "col_codice": "Codice",
+      "col_data_contabile": "Data contabile",
+      "col_stato": "Stato",
+      "col_origine": "Origine",
+      "col_totale_righe": "Totale righe",
+      "col_scarto_dichiarato": "Scarto",
+      "col_importo_dichiarato": "Dichiarato",
+      "col_righe_registrabili": "Registrabili",
+      "col_righe_totali": "Righe",
+      "col_centro": "Centro",
+      "col_ente_descrizione": "Canale",
+      "col_data_registrazione": "Data registrazione",
+      "col_data_conferma": "Registrata il",
+      "col_user_conferma": "Registrata da"
+    },
+    "righe": {
+      "col_data_pagamento": "Data pagamento",
+      "col_importo": "Importo",
+      "col_stato": "Stato",
+      "col_riferimento_ente": "Riferimento",
+      "col_billing_account_descrizione": "Cliente",
+      "col_fattura_numero": "Fattura",
+      "col_distinta": "Distinta",
+      "col_scadenza_numero_rata": "Rata",
+      "col_scadenza_data": "Scadenza",
+      "col_forzata": "Forzata",
+      "col_motivo_sospeso": "Motivo sospensione",
+      "col_motivo_forzatura": "Motivo forzatura",
+      "col_contabile_data": "Data distinta",
+      "col_contabile_origine": "Origine distinta",
+      "col_data_valuta": "Valuta"
+    },
+    "rate_fuori_capienza": {
+      "col_motivo": "Motivo",
+      "col_fattura": "Fattura",
+      "col_data_scadenza": "Scadenza",
+      "col_residuo": "Residuo",
+      "col_importo_rata": "Importo rata",
+      "col_numero_rata": "Rata",
+      "col_registrato": "Registrato",
+      "col_righe_forzate": "Righe forzate",
+      "col_incassato": "Incassato",
+      "col_in_lavorazione": "In lavorazione",
+      "col_motivi_forzatura": "Motivi",
+      "col_anno": "Anno",
+      "col_serie": "Serie"
+    },
+    "eccedenze": {
+      "col_cliente": "Cliente",
+      "col_eccedenza_cliente": "Eccedenza cliente",
+      "col_chi_e_in_credito": "Chi e' in credito",
+      "col_eccedenza": "Eccedenza",
+      "col_fattura": "Documento",
+      "col_fattura_data": "Data",
+      "col_documenti_cliente": "Documenti",
+      "col_sistemazioni_in_bozza": "Atti in bozza",
+      "col_sistemazioni_confermate": "Atti confermati",
+      "col_residuo": "Residuo",
+      "col_totale_a_pagare": "Totale documento"
+    }
+  },
   "dash_mesi": {
     "anno_precedente": "Anno precedente",
     "anno_successivo": "Anno successivo",
