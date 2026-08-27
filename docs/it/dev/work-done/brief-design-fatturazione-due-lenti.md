@@ -559,7 +559,7 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 > documento vende. ⚠️ Resta la metà applicativa: finché il backend non usa il
 > nuovo resolver, l'operatore continua a non poter caricare la riga.
 >
-> Storia, misure e piano: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md`
+> Storia, misure e piano: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`
 > (§7 R-1/R-2 per il rilievo, §9 per il piano).
 
 ## 11. Piano di sviluppo

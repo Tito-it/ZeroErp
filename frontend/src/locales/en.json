@@ -3454,7 +3454,7 @@
       "compito_non_impegnata": "Not committed",
       "compito_non_misurabile": "Cannot be computed",
       "compito_non_spedita": "Not shipped yet",
-      "compito_riconsegna": "Redelivery",
+      "compito_riconsegna": "Not invoiced: already counted",
       "etichetta": "Goods:",
       "etichetta_dovuta": "Due",
       "etichetta_facoltativa": "Optional",

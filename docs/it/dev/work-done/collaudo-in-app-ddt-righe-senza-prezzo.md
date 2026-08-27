@@ -12,8 +12,15 @@
 > l'operatore vede: la **1** (articolo semplice senza prezzo), la **1-bis** (kit
 > senza prezzo) e la **6** (ri-consegna standalone). Questo documento le chiude.
 >
-> **Stato**: da eseguire. **Ambiente**: sviluppo (`dbdev`). Preparato il
-> 2026-08-21, con i dati misurati **quel giorno** in sola lettura.
+> ✅ **CHIUSO il 2026-08-27** — eseguito da Tid in-app. **Ambiente**: sviluppo
+> (`dbdev`). Preparato il 2026-08-21, con i dati misurati **quel giorno** in sola
+> lettura.
+>
+> ⭐ **Il collaudo ha fatto il suo mestiere: ha trovato cinque difetti che nessun
+> test automatico aveva visto**, e due erano bloccanti per l'operatore. L'elenco,
+> con dove è finito ciascuno, è nel **§Verbale**. Tre erano di questo perimetro e
+> sono corretti; due no, e hanno aperto due cantieri propri — la differenza è
+> spiegata lì.
 
 ---
 
@@ -263,28 +270,58 @@ esista.
       non il prezzo, e **non c'è nessun ordine da cui ereditarlo**;
 - [X] ⭐ il drawer **si apre e si usa** senza errori: prima di questo lavoro il
       solo aprire e risalvare quella riga faceva scattare il resolver;
-- [ ] con causale **VENDITA** l'emissione **blocca con il messaggio parlante**
+- [X] con causale **VENDITA** l'emissione **blocca con il messaggio parlante**
       della prova 3 — invece di lasciare l'operatore davanti a un documento che
       non capisce perché non esce;
-- [ ] digitando il prezzo a mano, il DDT **esce** normalmente.
+- [X] digitando il prezzo a mano, il DDT **esce** normalmente.
 
 ---
 
 ## Verbale
 
+**Chiuso il**: 2026-08-27 · **Da**: Tid · **Ambiente**: sviluppo (`dbdev`)
+
 | #   | Prova                                               | Casella §19 | Esito | Note |
 | --- | --------------------------------------------------- | ----------- | ----- | ---- |
-| 1   | Articolo semplice senza prezzo si carica            | **1**       | ⬜     |      |
-| 2   | Il motivo sopravvive al ricarico                    | F-7         | ⬜     |      |
-| 3   | Causale fatturabile → emissione blocca              | 2           | ⬜     |      |
-| 4   | Causale non fatturabile → il DDT esce e resta fuori | 3           | ⬜     |      |
-| 5   | Causale bloccata dopo l'emissione                   | 3-bis       | ⬜     |      |
-| 6   | Il kit viaggia senza prezzi                         | **1-bis**   | ⬜     |      |
-| 7   | Ordini e preventivi rifiutano ancora                | 4           | ⬜     |      |
-| 8   | Prezzo risolto: nessuna regressione                 | —           | ⬜     |      |
-| 9   | Ri-consegna standalone                              | **6**       | ⬜     |      |
+| 1   | Articolo semplice senza prezzo si carica            | **1**       | ✅     | il cuore della slice: si carica e si vede perché |
+| 2   | Il motivo sopravvive al ricarico                    | F-7         | ✅     |      |
+| 3   | Causale fatturabile → emissione blocca              | 2           | ✅     |      |
+| 4   | Causale non fatturabile → il DDT esce e resta fuori | 3           | ✅     |      |
+| 5   | Causale bloccata dopo l'emissione                   | 3-bis       | ✅     |      |
+| 6   | Il kit viaggia senza prezzi                         | **1-bis**   | ✅     |      |
+| 7   | Ordini e preventivi rifiutano ancora                | 4           | ✅     |      |
+| 8   | Prezzo risolto: nessuna regressione                 | —           | ✅     |      |
+| 9   | Ri-consegna standalone                              | **6**       | ⚠️     | percorsa **a mano**: il documento generato arriva nudo. Vedi R-3 qui sotto |
 
-**Chiuso il**: ______  **Da**: ______
+### ⭐ Che cosa ha trovato il collaudo — e dov'è finito
+
+> ⚠️ **Questa è la parte che conta più delle spunte.** Cinque difetti, nessuno
+> visto da un test automatico, due bloccanti per l'operatore. Si legge come:
+> *«spuntare tutto verde e non scrivere questo elenco avrebbe archiviato il
+> lavoro con due porte chiuse dentro»*.
+
+| # | Cosa | Dove è finito |
+| --- | --- | --- |
+| **R-1** 🔴 | Il drawer teneva in memoria l'id dell'ultima bozza creata: dopo aver creato un DDT, **qualunque riga della lista apriva sempre quello**. Ricaricare la lista non serviva, ricaricare la pagina sanava — sembrava un difetto delle liste, era `createdId` che sopravviveva alla chiusura | ✅ **corretto** nel BB `useDrawerAutosaveBozza` (valeva su DDT **e ordini**; nei preventivi era stato corretto a mano, e quella copia sanata nascondeva le altre due) |
+| **R-2** 🔴 | Sul form di riga il pulsante **Salva era morto**: `canSave` pretendeva `iva_id` anche in EDIT, dove l'UPDATE non lo invia nemmeno. Su una riga di ri-consegna — che nasce senza IVA — non si poteva correggere **niente**, nemmeno la quantità | ✅ **corretto** in `DdtRigaForm.vue`: in EDIT si valida solo ciò che l'EDIT manda. ⚠️ La stessa forma è latente in `OrdiniRigaForm` e `PreventiviRigaForm` — unificazione proposta, in attesa di ok |
+| **R-3** 🔴 | `fn_genera_ddt_riconsegna` genera un DDT **nudo**: niente causale, niente indirizzi, e sulla riga né prezzo né sconto né IVA. Il gemello che parte da un *ordine* — sorgente più povera — copia di più | 🔵 [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md), al team DB |
+| **R-4** 🔴 | L'IVA non ha un risolutore: la decide l'articolo, in due punti indipendenti, e uno è nel **frontend**. Il regime fiscale del cliente (`clienti.iva_id`, `split_payment`, `cliente_pa`) è compilato dall'operatore e **letto da nessuno** | 🔵 [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md), con 6 decisioni di Tid già prese |
+| **R-5** 🟠 | L'etichetta della riga di ri-consegna diceva il **nome** dello stato («Ri-consegna») mentre tutte le sue vicine dicono la **conseguenza** («Non si fattura», «Conto non calcolabile») | ✅ **corretto**: «Non si fattura: già contata» |
+
+### ⚠️ Perché la prova 9 non è verde, e perché il brief chiude lo stesso
+
+La casella **6** del §19 chiede che una ri-consegna standalone *«si emetta **senza
+digitare prezzi a mano**»*. Il documento si emette — ma **solo dopo** che
+l'operatore ha rimesso a mano causale, indirizzo di consegna e prezzo, perché il
+generatore non li scrive (**R-3**).
+
+⭐ **Il residuo però non è più di questo perimetro, ed è la ragione per cui il
+brief può chiudere.** Questa slice doveva rendere **possibile** una riga senza
+prezzo, e l'ha fatto: le prove 1, 1-bis e tutte le altre lo dimostrano. Ciò che
+manca è che un **generatore** erediti la testata dal suo padre (R-3) e che l'IVA
+abbia una **sede** (R-4): sono due cose che questa slice non ha mai avuto in
+carico e che non sarebbero migliorate restando in un documento chiuso. Il residuo
+si è **spostato**, non è sparito — ed è tracciato nei due brief sopra.
 
 > Quando le tre caselle in grassetto sono verdi, il brief
 > `brief-ddt-righe-senza-prezzo.md` può passare in `work-done` e questo verbale

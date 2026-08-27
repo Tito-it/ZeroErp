@@ -44,6 +44,20 @@
 > convenzioni di `ordinamento_default` (**§11.6**). Nessuno dei due è nostro —
 > sono di chi possiede quei perimetri — ma da qualche parte devono restare
 > scritti, e un brief archiviato non è quella parte.
+>
+> ### 📋 Cosa resta aperto — al 2026-08-27
+>
+> | | Cosa | Di chi |
+> | --- | --- | --- |
+> | 🔴 | **Il collaudo in-app.** Le 5 righe vere (`1123`, `1130`–`1133`, luglio 2026, 5.019 €) sono ancora dove erano: il recupero è il primo gesto. ⛔ Se il verbo non le prende non ha fallito la bonifica, **ha fallito il perimetro** | **Tid** |
+> | ⏸️ | **E-3** — il codice «rientrato» in `codici-errore-baseline.sh` (**§9**). ⚠️ Finché la baseline non si stringe, quella famiglia resta *dichiarata ammessa* e il presidio non la vedrebbe tornare: è un cancello mezzo spento | chi possiede quel codice |
+> | ⏸️ | **§11.6** — due convenzioni per `ordinamento_default` in `ui`. Per noi indifferente: `competenza_mese` risolve con entrambe | chi possiede lo schema `ui` |
+> | ⚠️ | **La §7.1 della guida è contesa** con `brief-be-fe-rendi-definitive-sui-lotti.md` (§7 qui sotto). Il nostro intervento è **additivo**, quindi un merge non ha nulla da scegliere — ma la tabella la riscrivono due mani | da coordinare |
+> | 🔵 | La prova del seleziona-tutto **non gira in CI**: nel frontend non c'è un runner (**§13.6**). Non è un debito di questo cantiere, è del frontend | — |
+>
+> ⛔ **Tutto il resto in questo file è CHIUSO.** I §§ che leggono come richieste
+> al futuro («va fatto», «si può fare adesso») sono **piani eseguiti**: restano
+> perché dicono *perché* una cosa andava fatta, non perché manchi.
 
 ---
 
@@ -192,18 +206,32 @@ DB committa il proprio seed. ✅ **La rigenerazione di BE-2 resta valida e pulit
 verificato che `error_policies_generated.py` **non contiene** nessuno dei cinque,
 e che i sette codici di questo cantiere sono nel CSV **committato**.
 
-### 3.1 🟡 Un residuo che è del DB, non mio
+### 3.1 ✅ Un residuo che era del DB — chiuso dal team DB
 
-`E_PREV_ANNULLA_COMMESSA_EMESSA` **resta** (Q-9), e il §9.7.4 del brief DB dice
-che *«il suo testo guadagna il rimedio»*. Letto a catalogo il 2026-08-26, la sua
-`soluzione` dice ancora:
+`E_PREV_ANNULLA_COMMESSA_EMESSA` **resta** (Q-9), e il §9.7.4 del brief DB diceva
+che *«il suo testo guadagna il rimedio»*. Letto a catalogo il 2026-08-26 la sua
+`soluzione` prometteva ancora **la strada di prima**:
 
 > *«l'operazione va ripresa dal lato fatturazione, con una nota di credito o uno
 > storno delle attività già emesse»*
 
-cioè **la strada di prima**, non «Riporta da emettere». Non è un difetto mio e
-non lo correggo dal backend: il ripiego che ho scritto non promette una via
-d'uscita che il catalogo non nomina. ➡️ **Va nel §6 come richiesta al team DB.**
+Non era un difetto mio e non l'ho corretto dal backend: il ripiego che ho scritto
+non promette una via d'uscita che il catalogo non nomina.
+
+✅ **Chiuso — riletto a catalogo il 2026-08-27**: il testo adesso nomina il verbo
+per intero e dice anche dove NON arriva.
+
+> *«…dal cruscotto competenza, sulla casella «Emesse non fatturate», il verbo
+> «Riporta da emettere» rimette le righe RESIDUE a NON_EMESSA — e da lì la
+> chiusura del preventivo le ritira da sé, senza che nessuno debba
+> ricordarsene. Il verbo prende SOLO i residui veri: riga lucchettata, giro di
+> fatturazione COMPLETED e nessuna riga di fattura. Le righe già dentro una
+> fattura viva non le tocca, e per quelle la strada resta la nota di credito.»*
+
+⭐ È il patto dei tre livelli che regge fino in fondo: il **catalogo** dichiara la
+via d'uscita, il backend la trasporta senza riscriverla, il frontend la mostra.
+E la frase dichiara anche il **limite** del verbo, che è la parte che di solito
+manca — un rimedio che non dice dove si ferma manda a sbattere.
 
 ---
 
@@ -502,12 +530,15 @@ all'occhio. Il backend lo proietta comunque.
 
 ## 7. Documentazione, e la contesa dichiarata
 
-| File | Cosa | Quando |
+> ✅ **Il piano qui sotto è ESEGUITO** (§12, 2026-08-27). Resta come piano perché
+> dice *perché* ciascuna riga andava toccata.
+
+| File | Cosa | Stato |
 | --- | --- | --- |
-| `docs/it/guide/cruscotti-fatturazione.md` §7.6 | l'avvertenza 🔴 su «Elimina dal lotto» **si toglie**: da L1 il difetto non c'è più | ⏸️ si può fare **adesso** |
-| stessa guida §3.1 | la card prende un verbo; ⚠️ e va corretta la frase *«se in quella casella c'è un numero, qualcosa si è rotto»* — è vera per il **verbo di massa**, non per la casella | con FE-2 |
-| stessa guida §7.1 | il verbo nuovo entra in tabella col suo permesso | con FE-2 |
-| stessa guida | ⭐ **chiudere un documento adesso ritira lavoro**: è un comportamento che l'operatore deve sapere **prima**, non scoprire dopo | ⏸️ si può fare adesso |
+| `docs/it/guide/cruscotti-fatturazione.md` §7.6 | l'avvertenza 🔴 su «Elimina dal lotto» **si toglie**: da L1 il difetto non c'è più | ✅ fatto |
+| stessa guida §3.1 | la card prende un verbo; ⚠️ e va corretta la frase *«se in quella casella c'è un numero, qualcosa si è rotto»* — è vera per il **verbo di massa**, non per la casella | ✅ fatto — e le situazioni sono **quattro**, non tre |
+| stessa guida §7.1 | il verbo nuovo entra in tabella col suo permesso | ✅ fatto — riga additiva, vedi la contesa qui sotto |
+| stessa guida | ⭐ **chiudere un documento adesso ritira lavoro**: è un comportamento che l'operatore deve sapere **prima**, non scoprire dopo | ✅ fatto — è la nuova **§7.7** |
 
 ⚠️ **La §7.1 è contesa con `brief-be-fe-rendi-definitive-sui-lotti.md`** (§11.3
 del brief DB): la tabella dei verbi la riscrivono **due mani**, e se le due
@@ -558,9 +589,9 @@ casa, e senza questa sezione sarebbero spariti con lui.
 
 | # | Cosa | Stato |
 | --- | --- | --- |
-| **E-1** | la **guida operativa**: chiudere un documento adesso **ritira lavoro**, ed è un comportamento che l'operatore deve sapere *prima*, non scoprire dopo | ⏸️ si può fare adesso — è il §7 di questo brief |
-| **E-2** | il messaggio di `E_RIGA_COMMESSA_NON_MANUALE` (guard 4 di `fn_annulla_commessa_attivita`) promette *«il rimedio è SEMPRE a monte, sul documento»*: da L7b quella frase **è vera**, e può nominare il documento invece di lasciarlo cercare | ⏸️ passato al team DB come **D-6** |
-| **E-3** | 🟠 `codici-errore-baseline.sh` segnala un **rientrato**: `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | ⏸️ **vivo, verificato il 2026-08-26** |
+| **E-1** | la **guida operativa**: chiudere un documento adesso **ritira lavoro**, ed è un comportamento che l'operatore deve sapere *prima*, non scoprire dopo | ✅ **fatto** (§12): è la nuova §7.7 della guida |
+| **E-2** | il messaggio di `E_RIGA_COMMESSA_NON_MANUALE` (guard 4 di `fn_annulla_commessa_attivita`) promette *«il rimedio è SEMPRE a monte, sul documento»*: da L7b quella frase **è vera**, e può nominare il documento invece di lasciarlo cercare | ✅ **consegnato dal team DB** come **D-6**: il messaggio ha il terzo segnaposto e il documento arriva risolto da `fn_get_sorgente_documento_ref` — a video si legge `ORD0000227`, non un UUID |
+| **E-3** | 🟠 `codici-errore-baseline.sh` segnala un **rientrato**: `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | ⏸️ **APERTO — l'unico dei tre.** Verificato il 2026-08-27 sul file committato `db/baseline-codici-errore-famiglie.tsv` (riga 81, ancora `NOT_FOUND`) |
 
 ### 9.1 ⚠️ Su E-3, e non è una formalità
 
@@ -657,6 +688,12 @@ ora avrebbe lasciato la CI rossa per una lista che il frontend **non monta
 ancora**: la registrazione va fatta nello stesso passo del mount, ed è la stessa
 regola delle «due metà concordate insieme» che il team DB ha invocato per le
 chiavi i18n. ➡️ **D-7 al team DB**: manca la riga di `ui.lista_preset`.
+
+✅ **Chiuso**: il preset è stato seminato dal team DB e **letto sull'oggetto vivo**
+il 2026-08-27 — `lista 49 · dash_competenza_residui_default ·
+[{"col":"competenza_mese","dir":"asc"}] · is_default`. La lista è registrata nel
+presidio e il presidio è verde. ⚠️ Letto dal database, non dai commit: un
+changeSet mergiato non è un oggetto applicato.
 
 ---
 

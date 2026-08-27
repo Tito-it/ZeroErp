@@ -6,11 +6,21 @@
 > rivelato un ramo morto (R-10, F-4) ·
 > **rev**: 2026-08-19 (sera) **PARTE II — piano BE/FE** (§13→§20), scritta dopo
 > il push del team DB ·
-> **Owner**: Tid · **Stato**: 🟢 **PERIMETRO DB CHIUSO — 2026-08-19.** Tutte e
-> quattro le slice (A, B, C, D) scritte, applicate e collaudate: pgTAP verdi,
-> baseline senza regressioni, cancelli statici verdi. 🔴 **Resta il solo lato
-> applicativo**: le richieste **BE-1 → BE-4** del §10, da cui dipende l'unica
-> casella che l'operatore vede ancora chiusa.
+> **Owner**: Tid · **Stato**: ✅ **CHIUSO — 2026-08-27**, validato in-app da Tid.
+> Verbale in [collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md).
+> Perimetro DB chiuso il 2026-08-19 (slice A-D), applicativo lo stesso giorno
+> (BE-A→BE-D, FE-A→FE-E).
+>
+> ⚠️ **Chiude con un residuo dichiarato, non con tutto verde**: la casella **6**
+> del §19 — *«una ri-consegna standalone si emette senza digitare prezzi a
+> mano»* — è stata percorsa **a mano**. Il motivo non è di questo perimetro:
+> `fn_genera_ddt_riconsegna` non eredita la testata dal DDT padre, e l'IVA non ha
+> un risolutore. Sono due cantieri propri, e restare qui non li avrebbe fatti
+> avanzare — vedi il §22.
+>
+> ⭐ **Il collaudo ha trovato cinque difetti che nessun test automatico aveva
+> visto**, due bloccanti per l'operatore. Tre corretti in giornata, due
+> instradati. Elenco completo nel verbale del collaudo.
 >
 > ➡️ **Il piano applicativo è la PARTE II, §13→§20** — verifica del consegnato,
 > sette rilievi (di cui tre correggono il §10: i codici da dichiarare sono
@@ -1379,7 +1389,8 @@ davvero — ed è esattamente lo scenario in cui la slice C ha scoperto
 | **BE-B** — il DDT smette di pretendere il prezzo | ✅ **fatto** | B1-B7 sotto |
 | **BE-D** — doc API (`prezzo_esito`) | ✅ **fatto** | sezione nuova in `api_ddt.md` |
 | **FE-A → FE-E** | ✅ **fatto** | §21.1-quinquies |
-| caselle 1, 1-bis, 6 del §19 | ⬜ validazione **in-app di Tid** | nessun test automatico le ha mai attraversate — il copione e' in [collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md) (9 prove, dati veri misurati il 2026-08-21) |
+| caselle 1 e 1-bis del §19 | ✅ **validate in-app da Tid, 2026-08-27** | [collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md), prove 1 e 6 |
+| casella 6 del §19 | ⚠️ **percorsa a mano** | il documento si emette, ma dopo che l'operatore ha rimesso causale, indirizzo e prezzo. Residuo instradato: §22 |
 
 **Non committato al momento della scrittura**: le modifiche di BE-C vivono
 nell'albero di lavoro insieme ad altro lavoro in corso.
@@ -1760,3 +1771,44 @@ collaudarla davvero.
 - La fattura sull'emittente `44` che renderebbe collaudabile il perimetro.
 
 ---
+
+---
+
+## 22. Chiusura — 2026-08-27
+
+> Il brief passa in `work-done`. Questa sezione dice **cosa ha chiuso**, **cosa
+> ha lasciato** e **dove è andato ciò che ha lasciato**, perché un brief che si
+> archivia senza dirlo trasforma un residuo tracciato in un residuo perso.
+
+### 22.1 Cosa ha chiuso
+
+Il perimetro dichiarato: *«il DDT deve ammettere righe a prezzo zero»*. Ammesse —
+al DB (slice A-D), nel backend, nel frontend, e **validate a video**: un articolo
+semplice senza prezzo si carica e **dice perché**; un kit viaggia senza prezzi;
+la causale fatturabile blocca l'emissione **nominando la riga**; quella non
+fatturabile lascia uscire il documento e lo tiene fuori dalla fatturazione, anche
+se qualcuno cambia la causale dopo; ordini e preventivi continuano a rifiutare.
+
+### 22.2 Cosa ha lasciato, e dov'è andato
+
+| Residuo | Dove |
+| --- | --- |
+| `fn_genera_ddt_riconsegna` genera un DDT **nudo** — niente causale, niente indirizzi, e sulla riga né prezzo né sconto né IVA. Il gemello che parte da un **ordine**, sorgente più povera, copia di più | [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md) |
+| L'IVA non ha un **risolutore**: la decide l'articolo, in due punti indipendenti, e uno è nel frontend. Il regime fiscale del cliente è scritto dall'operatore e letto da nessuno. Include la **dichiarazione d'intento**, che non ha nessuna sede | [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md) — 6 decisioni di Tid già prese |
+| L'unificazione di `canSave` fra `DdtRigaForm`, `OrdiniRigaForm` e `PreventiviRigaForm` (stessa forma, difetto latente sui due gemelli) | proposta a Tid, **in attesa di ok** — regola del 2 |
+
+⭐ **Perché il residuo giustifica la chiusura invece di impedirla.** Questa slice
+doveva rendere **possibile** una riga senza prezzo, e l'ha fatto. Ciò che manca è
+che un **generatore** erediti la testata dal suo padre, e che l'IVA abbia una
+**sede**: due cose che questo brief non ha mai avuto in carico. Tenerlo aperto
+non le avrebbe fatte avanzare — avrebbe solo reso il documento un contenitore di
+tutto ciò che tocca un DDT, che è esattamente ciò che
+`feedback_doc_split_modello_changelog_brief_piano` chiede di non fare.
+
+### 22.3 ⚠️ Nell'albero di lavoro alla chiusura
+
+Le correzioni nate dal collaudo — `useDrawerAutosaveBozza` (id della bozza che
+sopravviveva alla chiusura), `DdtRigaForm.canSave`, l'etichetta
+`compito_riconsegna` — vivono nell'albero **non committate**, insieme ad altro
+lavoro in corso. Chi committa faccia `git add` espliciti: l'hook di commit stagea
+tutto.

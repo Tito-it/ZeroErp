@@ -8,7 +8,7 @@
 **Perimetro:** `apps/vendite/services/pricing_service.py`,
 `apps/core/services/error_manager.py`. **Nessuna modifica DB richiesta.**
 **Origine:** trovato istruendo una domanda del
-[brief-ddt-righe-senza-prezzo](../work-in-progress/brief-ddt-righe-senza-prezzo.md) §7 R-10 / registro F-4.
+[brief-ddt-righe-senza-prezzo](brief-ddt-righe-senza-prezzo.md) §7 R-10 / registro F-4.
 Il difetto non c'entra col DDT: **tocca ogni dominio che chiama il pricing** —
 preventivi, ordini, contratti, offerte, DDT.
 
@@ -188,7 +188,7 @@ qualcuno di casa lì.
 
 Il ramo del §1 **resta nel codice** e diventerà un «esito» nel nucleo puro
 previsto dalla slice A del
-[brief-ddt-righe-senza-prezzo](../work-in-progress/brief-ddt-righe-senza-prezzo.md) §9 — **con un
+[brief-ddt-righe-senza-prezzo](brief-ddt-righe-senza-prezzo.md) §9 — **con un
 commento che dice che oggi è irraggiungibile e perché**. Non si cancella: se un
 domani la NOT NULL cadesse, il comportamento giusto è già scritto. Ma non resta
 neanche muto, che è l'errore che questo giro ha trovato **due volte** nello

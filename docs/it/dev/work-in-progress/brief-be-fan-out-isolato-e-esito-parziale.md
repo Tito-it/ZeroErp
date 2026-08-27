@@ -34,7 +34,7 @@
 > era **vuota da sempre**, ha la sua prima riga: accredito dovuto 5, etichetta
 > DOVUTA, verificata a video. ⏸️ **DL-28 sospeso**: la metà «blocco parlante»
 > non è costruibile finché le righe a prezzo zero non sono ammesse
-> ([brief dedicato](brief-ddt-righe-senza-prezzo.md), decisione di Tid presa).
+> ([brief dedicato](../work-done/brief-ddt-righe-senza-prezzo.md), decisione di Tid presa).
 > Restano provabili: **DL-23** (da costruire), le **card DDT/RESI con i
 > drill-down**, la seconda metà di DL-28 e il ramo «reso in DRAFT» di DL-27.
 >
@@ -538,7 +538,7 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   → **blocco parlante** all'emissione, non silenzio. E causale non fatturabile (es.
   CONTO_VISIONE) → fuori dalle card. **SOSPESO il 2026-08-17**: la metà «blocco parlante»
   non è provabile perché il caso **non è costruibile** — vedi il riquadro in fondo alla
-  sezione e [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md).
+  sezione e [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md).
   ⭐ **Aggiornamento 2026-08-19**: il lato DB è chiuso e applicato; il caso resta
   non costruibile solo perché il backend non usa ancora il nuovo resolver
   (richiesta BE-1). ✅ La metà
@@ -706,7 +706,7 @@ caricare, la metà «blocco parlante» del gate **non è mai scattata e non può
 scattare**: non è un gate sbagliato, è un gate che presidia una porta murata.
 
 **Decisione di Tid (2026-08-17): le righe a prezzo zero devono essere ammesse.**
-Perimetro e domande aperte in [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md);
+Perimetro e domande aperte in [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md);
 va corretta anche la **premessa nel design-of-record**, che oggi descrive come
 esistente un caso che il prodotto non consente.
 
