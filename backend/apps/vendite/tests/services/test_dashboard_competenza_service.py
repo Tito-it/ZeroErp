@@ -78,6 +78,70 @@ from apps.vendite.services.vendite_service import (
 # bucket FATTURATA/EMESSA arriva su DUE righe, una per tipo movimento. E' la
 # forma misurata dal team DB su luglio 2026 — 25 attivita' NORMALE + 1 ONERE da
 # 5.000 €. Il breakdown 3a deve restare UNA voce per stato.
+# ⭐ Le DUE popolazioni dentro `EMESSA_NON_FATTURATA`, che la card deve saper
+# distinguere: il RESIDUO chiede un'azione («Riporta da emettere»), le altre tre
+# situazioni no. ⚠️ Il caso si COSTRUISCE qui: nei dati di sviluppo del
+# 2026-08-27 il transito non c'era (5 righe su 5 residue), quindi un test che
+# guardasse la popolazione reale sarebbe verde senza aver verificato niente.
+_ROWS_DUE_POPOLAZIONI = [
+    {
+        "competenza_mese": "2026-07-01",
+        "stadio": "EMESSA_NON_FATTURATA",
+        "stato_fattura_codice_interno": None,
+        "stato_fattura_codice": None,
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 5,
+        "valore": "5019.00",
+        "valore_fatturato": "0",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+        "motivo_non_fatturata": "RESIDUO",
+    },
+    {
+        "competenza_mese": "2026-07-01",
+        "stadio": "EMESSA_NON_FATTURATA",
+        "stato_fattura_codice_interno": None,
+        "stato_fattura_codice": None,
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 12,
+        "valore": "8400.00",
+        "valore_fatturato": "0",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+        "motivo_non_fatturata": "IN_ATTESA_LOTTO",
+    },
+    {
+        "competenza_mese": "2026-07-01",
+        "stadio": "EMESSA_NON_FATTURATA",
+        "stato_fattura_codice_interno": None,
+        "stato_fattura_codice": None,
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 3,
+        "valore": "150.00",
+        "valore_fatturato": "0",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+        "motivo_non_fatturata": "GIRO_IN_CORSO",
+    },
+    # ⚠️ La quarta situazione, che nessun percorso scritto oggi produce — e non
+    #    e' una ragione per non provarla: il modello l'ammette (una riga di
+    #    commessa EMESSA senza riga in attivita_fatturabili).
+    {
+        "competenza_mese": "2026-07-01",
+        "stadio": "EMESSA_NON_FATTURATA",
+        "stato_fattura_codice_interno": None,
+        "stato_fattura_codice": None,
+        "tipo_movimento": "NORMALE",
+        "n_attivita": 1,
+        "valore": "70.00",
+        "valore_fatturato": "0",
+        "n_in_ritardo": 0,
+        "valore_in_ritardo": "0",
+        "motivo_non_fatturata": "SENZA_ATTIVITA_FATTURABILE",
+    },
+]
+
+
 _ROWS_BUCKET_SPEZZATO = [
     {
         "competenza_mese": "2026-07-01",
@@ -1542,3 +1606,97 @@ class DashCompetenzaFatturePerCellaTests(TestCase):
                 c for c in mese["stadi"] if c["stadio"] == "EMESSA_NON_FATTURATA"
             )
             self.assertEqual(cella["n_fatture_stato"], "NON_APPLICABILE")
+
+
+
+class CardResiduiTests(TestCase):
+    """⭐ La card «Emesse non fatturate» conta DUE cose con rimedi opposti."""
+
+    # ⚠️ Come la classe sorella: la terza lettura della griglia (conteggio
+    #    fatture per cella) e' una dipendenza DB che questi test non esercitano,
+    #    e in CI — dove il database non c'e' — una query vera li farebbe fallire
+    #    tutti insieme per un motivo che non riguarda cio' che asseriscono.
+    #    In locale il DB c'e' e il difetto sarebbe rimasto invisibile fino alla
+    #    pipeline.
+    def setUp(self):
+        patcher = patch.object(
+            vendite_service.VenditeRepository,
+            "count_dash_competenza_fatture_mensile",
+            return_value=({}, set()),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    # Scopo: 🔴 Dentro `EMESSA_NON_FATTURATA` solo il RESIDUO chiede un'azione:
+    #        il totale resta il totale, ma `n_residui` isola la quota su cui vive
+    #        il verbo «Riporta da emettere».
+    # ⛔ Se questo test cade, la card torna a sommare il lavoro fermo per un
+    #        difetto con quello in transito legittimo — e il verbo verrebbe
+    #        proposto su emissioni corrette, disfacendole.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=_ROWS_DUE_POPOLAZIONI,
+    )
+    def test_card_separa_residui_da_transito(self, _mock_rows, _mock_err):
+        luglio = vendite_service.fn_dash_competenza_mensile(anno=2026)["mesi"][6]
+        card = next(s for s in luglio["stadi"] if s["stadio"] == "EMESSA_NON_FATTURATA")
+
+        # Il totale li contiene tutti: 5 + 12 + 3 + 1.
+        self.assertEqual(card["n_attivita"], 21)
+        # La quota che chiede un'azione e' SOLO il residuo.
+        self.assertEqual(card["n_residui"], 5)
+        self.assertEqual(card["valore_residui"], "5019.00")
+        # ⚠️ E le altre tre NON entrano: sommarle direbbe «21 da recuperare»,
+        #    cioe' proporrebbe il verbo su 16 righe che lo rifiuterebbero.
+        self.assertEqual(card["n_attivita"] - card["n_residui"], 16)
+
+    # Scopo: Su uno stadio dove il motivo non si applica il campo c'e' e vale 0
+    #        (contratto simmetrico DL-8: il frontend rende, non deduce).
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=_ROWS_BUCKET_SPEZZATO,
+    )
+    def test_campo_presente_e_zero_dove_non_si_applica(self, _mock_rows, _mock_err):
+        luglio = vendite_service.fn_dash_competenza_mensile(anno=2026)["mesi"][6]
+        for card in luglio["stadi"]:
+            with self.subTest(stadio=card["stadio"]):
+                self.assertIn("n_residui", card)
+                self.assertEqual(card["n_residui"], 0)
+
+    # Scopo: 🔴 `valore_residui` e' NETTO, non assoluto. Un residuo di RETTIFICA
+    #        vale meno di zero, e il verbo lo tocca eccome (Q-8: nessuna
+    #        whitelist su `tipo_movimento`).
+    # ⛔ Con l'assoluto la card direbbe «di cui 1 · 500,00 €» sotto un totale di
+    #        -500,00 €, e sopra una lista che mostra -500,00: due meta' che non
+    #        si sommano al tutto, senza che niente fallisca.
+    @patch.object(vendite_service.VenditeRepository, "count_dash_competenza_errori_mensile", return_value={})
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_mensile",
+        return_value=[
+            {
+                "competenza_mese": "2026-07-01",
+                "stadio": "EMESSA_NON_FATTURATA",
+                "stato_fattura_codice_interno": None,
+                "stato_fattura_codice": None,
+                "tipo_movimento": "RETTIFICA",
+                "n_attivita": 1,
+                "valore": "-500.00",
+                "valore_fatturato": "0",
+                "n_in_ritardo": 0,
+                "valore_in_ritardo": "0",
+                "motivo_non_fatturata": "RESIDUO",
+            },
+        ],
+    )
+    def test_residuo_di_rettifica_resta_negativo(self, _mock_rows, _mock_err):
+        luglio = vendite_service.fn_dash_competenza_mensile(anno=2026)["mesi"][6]
+        card = next(s for s in luglio["stadi"] if s["stadio"] == "EMESSA_NON_FATTURATA")
+        self.assertEqual(card["n_residui"], 1)
+        # Lo stesso segno del `valore` accanto a cui viene reso.
+        self.assertEqual(card["valore_residui"], "-500.00")
+        self.assertEqual(card["valore_residui"], card["valore"])

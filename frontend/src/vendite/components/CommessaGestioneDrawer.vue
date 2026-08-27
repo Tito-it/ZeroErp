@@ -167,8 +167,19 @@ const righeApprovabili = computed(() =>
       && r.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
   ),
 )
-const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected } =
-  useSelezioneToggle({ selected, selezionabili: righeApprovabili })
+// ⛔ La terna «in pagina», non `toggleAll`/`anySelected`. Questa lista e'
+//    paginata LATO SERVER (`loadRighe` a ogni cambio pagina) e `onRighePage`
+//    NON azzera la selezione: si compone attraverso le pagine, di proposito.
+//    Fino al 2026-08-27 qui c'era `toggleAll`, che SOSTITUISCE la selezione con
+//    la pagina corrente — spuntare «tutte» a pagina 2 buttava via quanto
+//    spuntato a pagina 1, in silenzio. Vedi il blocco in fondo a
+//    `useSelezioneToggle`.
+const {
+  isSelectable, isSelected, toggleRow,
+  allInPagina: allSelected,
+  anyInPagina: anySelected,
+  toggleAllInPagina: toggleAll,
+} = useSelezioneToggle({ selected, selezionabili: righeApprovabili })
 
 // ------------------------------------------------------------------ load
 // Scopo: carica testata+capabilities; 404/fuori scope RLS → toast + chiusura.

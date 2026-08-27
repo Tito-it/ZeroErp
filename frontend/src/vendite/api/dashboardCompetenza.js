@@ -40,6 +40,17 @@ export function listDashboardCompetenzaGruppi(params = {}) {
   return api.get('/vendite/dashboard-competenza/gruppi/', { params })
 }
 
+// GET /vendite/dashboard-competenza/residui/?competenza_mese=&order_by=&order_dir=&page=&page_size=
+// I RESIDUI del mese: le attivita' che una fattura non ce l'hanno piu' e che
+// nessun giro riprendera' da solo. E' l'elenco su cui agisce «Riporta da
+// emettere», ed e' una lista SUA e non un filtro di `attivita/`.
+// ⛔ Non esiste un parametro per scegliere il motivo: lo stadio
+//    EMESSA_NON_FATTURATA contiene quattro situazioni e solo `RESIDUO` chiede
+//    un'azione — il perimetro del verbo lo decide il modello, non chi chiama.
+export function listDashboardCompetenzaResidui(params = {}) {
+  return api.get('/vendite/dashboard-competenza/residui/', { params })
+}
+
 // GET /vendite/dashboard-competenza/errori/?competenza_mese=&page=&page_size=
 // Errori vivi fatturazione (task run in ERRORE + fatture critical), blocco 4.
 export function listDashboardCompetenzaErrori(params = {}) {
@@ -59,6 +70,13 @@ export function exportDashboardCompetenzaGruppi(params = {}) {
 
 export function exportDashboardCompetenzaCommesse(params = {}) {
   return api.get('/vendite/dashboard-competenza/commesse/export/', {
+    params,
+    responseType: 'blob',
+  })
+}
+
+export function exportDashboardCompetenzaResidui(params = {}) {
+  return api.get('/vendite/dashboard-competenza/residui/export/', {
     params,
     responseType: 'blob',
   })

@@ -33,10 +33,14 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
 )
+from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.vendite.api.dash_export_helpers import build_dash_export_response
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services.vendite_service import (
+    fn_check_attivita_riportabili,
+    fn_riporta_attivita_da_emettere,
+    fn_dash_competenza_residui,
     fn_dash_competenza_attivita,
     fn_dash_competenza_commesse,
     fn_dash_competenza_errori,
@@ -377,6 +381,219 @@ def _filtri_gruppi_da_query(qp: Any) -> dict[str, Any]:
         "order_by": qp_str(qp.get("order_by")),
         "order_dir": qp_str(qp.get("order_dir")),
     }
+
+
+class ApiDashboardCompetenzaResidui(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-competenza/residui/ — l'elenco dei residui.
+
+    ⛔ Non e' un filtro della lista attivita': e' una lista sua, e la ragione e'
+    di dominio. Lo stadio `EMESSA_NON_FATTURATA` contiene QUATTRO situazioni con
+    rimedi opposti, e solo `RESIDUO` chiede un'azione — le altre tre sono
+    «niente da fare». Esporre un parametro per scegliere il motivo darebbe a chi
+    chiama l'illusione di poter allargare il perimetro del verbo, che invece e'
+    deciso dal modello.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.dash_competenza_residui"
+
+    @extend_schema(
+        operation_id="vendite_dashboard_competenza_residui",
+        parameters=[
+            OpenApiParameter(
+                name="competenza_mese",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="Mese di competenza ISO (YYYY-MM-DD, normalizzato al 1° del mese).",
+            ),
+            OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Colonna di ordinamento (whitelist): commessa_codice | "
+                    "cliente_display | articolo_codice | articolo_descrizione | "
+                    "competenza_mese (default, asc) | data_attivita | valore | "
+                    "lotto_provenienza_codice | motivo_non_fatturata | "
+                    "emittente_ragione_sociale. Colonna non ammessa -> 400."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
+            ),
+            OpenApiParameter(
+                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Numero pagina (default 1).",
+            ),
+            OpenApiParameter(
+                name="page_size", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Dimensione pagina (default 50, max 200).",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeDashCompetenzaResiduiResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeDashCompetenzaResiduiData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET l'elenco paginato dei RESIDUI del mese — le
+    #        attivita' su cui il verbo «Riporta da emettere» e' proponibile.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        # ⚠️ `_competenza_mese_obbligatoria` e non una copia del guard: il
+        #    messaggio e il codice di rifiuto del parametro obbligatorio sono
+        #    gia' scritti una volta, e due copie divergono senza fallire — la
+        #    stessa richiesta malfatta risponderebbe due frasi diverse a
+        #    seconda di quale endpoint la riceve.
+        competenza_mese = _competenza_mese_obbligatoria(
+            request,
+            function_name="vendite.api.views_dashboard_competenza.residui",
+        )
+        data = fn_dash_competenza_residui(
+            competenza_mese=competenza_mese,
+            order_by=qp_str(qp.get("order_by")),
+            order_dir=qp_str(qp.get("order_dir")),
+            page=qp_int_strict(qp.get("page"), "page", 1),
+            page_size=qp_int_strict(qp.get("page_size"), "page_size", 50),
+        )
+        return success_response(data)
+
+
+class ApiAttivitaRiportaDaEmettere(DomainAPIView):
+    """POST /api/v1/vendite/attivita-fatturabili/riporta-da-emettere/
+
+    Il verbo «Riporta da emettere»: rimette in coda di fatturazione un elenco di
+    attivita' RESIDUE. Non ricrea lotti ne' fatture — il lavoro ricompare in
+    «Da emettere» e segue il giro normale.
+
+    ⛔ Permesso DEDICATO `riporta_da_emettere` (`config.azioni_processo` 33) e
+    non `reset_lotto_fattura_draft`: legare un verbo di RECUPERO a chi puo'
+    cancellare documenti sarebbe mettere insieme due mestieri diversi.
+    """
+
+    area_funzionale = "vendite"
+    post_permission = "riporta_da_emettere"
+
+    @extend_schema(
+        operation_id="vendite_attivita_riporta_da_emettere",
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeRiportaDaEmettereRequest",
+            fields={
+                "attivita_fatturabili_ids": serializers.ListField(
+                    child=serializers.IntegerField(),
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeRiportaDaEmettereResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeRiportaDaEmettereData",
+                        fields={
+                            "riportate": serializers.IntegerField(),
+                            "riemesse_attivita": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Riporta «da emettere» le attivita' indicate (elenco di id).
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return fn_riporta_attivita_da_emettere(
+                attivita_fatturabili_ids=payload.get("attivita_fatturabili_ids"),  # type: ignore[arg-type]
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiAttivitaRiportabili(DomainAPIView):
+    """POST /api/v1/vendite/attivita-fatturabili/riportabili/ — i motivi ostativi.
+
+    ⚠️ E' un POST pur essendo una LETTURA, e la ragione e' l'elenco di id: una
+    selezione di 200 righe non sta in una query string. Nessun side-effect,
+    nessuna `Idempotency-Key` — non modifica niente.
+
+    ⭐ Serve a SPIEGARE invece di far fallire: il catalogo dichiara che
+    incontrare `E_ATTIVITA_GIA_DA_EMETTERE` significa che l'elenco a schermo era
+    invecchiato, quindi l'interfaccia ri-guarda prima di agire su una selezione
+    che ha in mano da un po'.
+
+    ⛔ Porta lo STESSO permesso del verbo, `riporta_da_emettere`, e va dichiarato
+    a mano: senza, `ZeroERPPermission` cade sul mestiere del metodo HTTP e un
+    POST chiede `add` sull'area. Sarebbe il gate sbagliato nei DUE versi — chi
+    puo' riportare ma non creare si vedrebbe negare la spiegazione di un verbo
+    che gli e' concesso, e chi puo' creare senza poter riportare potrebbe
+    interrogare un verbo che non gli spetta. Chi puo' agire puo' chiedere: e'
+    la stessa porta, guardata prima di aprirla.
+    """
+
+    area_funzionale = "vendite"
+    post_permission = "riporta_da_emettere"
+
+    @extend_schema(
+        operation_id="vendite_attivita_riportabili",
+        request=inline_serializer(
+            name="VenditeAttivitaRiportabiliRequest",
+            fields={
+                "attivita_fatturabili_ids": serializers.ListField(
+                    child=serializers.IntegerField(),
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeAttivitaRiportabiliResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeAttivitaRiportabiliData",
+                        fields={"motivi": serializers.ListField(child=serializers.DictField())},
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce i motivi che impediscono il riporto, senza tentarlo.
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return fn_check_attivita_riportabili(
+                attivita_fatturabili_ids=payload.get("attivita_fatturabili_ids"),  # type: ignore[arg-type]
+            )
+
+        return handle_post_json(request, handler=_handler)
 
 
 class ApiDashboardCompetenzaGruppi(DomainAPIView):
@@ -807,6 +1024,55 @@ class ApiDashboardCompetenzaCommesseExport(DomainAPIView):
                 "solo_ritardo": bool(
                     qp_bool_optional(qp.get("solo_ritardo"), "solo_ritardo"),
                 ),
+                "order_by": qp_str(qp.get("order_by")),
+                "order_dir": qp_str(qp.get("order_dir")),
+            },
+        )
+
+
+class ApiDashboardCompetenzaResiduiExport(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-competenza/residui/export/?formato=csv|xlsx
+
+    Esporta la STESSA lista dei residui che si ha a video, con lo stesso
+    ordinamento. Colonne e ordine dal catalogo `vendite.dash_competenza_residui`.
+    Hard cap 10.000 righe. Parametro `formato`, non `format` (quest'ultimo è
+    magic per DRF).
+
+    ⚠️ Esiste perché la lista ha le azioni di utility come le sorelle, e
+    «Esporta» senza endpoint aprirebbe un dialog inerte. ⛔ E soprattutto perché
+    senza questo ramo l'export della card cadeva su quello delle COMMESSE: un
+    file che non corrisponde a ciò che si ha davanti è peggio di nessun file —
+    chi lo apre crede di avere quel perimetro e non ha modo di accorgersene.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+    lista_codice = "vendite.dash_competenza_residui"
+
+    @extend_schema(
+        operation_id="vendite_dashboard_competenza_residui_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="competenza_mese", type=str, required=True),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={(200, "text/csv"): OpenApiTypes.BINARY},
+    )
+    # Scopo: Genera il file (CSV/XLSX) dei residui del mese.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        competenza_mese = _competenza_mese_obbligatoria(
+            request,
+            function_name="vendite.api.views_dashboard_competenza.residui_export",
+        )
+        return build_dash_export_response(
+            request,
+            lista_codice="vendite.dash_competenza_residui",
+            fetch=fn_dash_competenza_residui,
+            filtri={
+                "competenza_mese": competenza_mese,
                 "order_by": qp_str(qp.get("order_by")),
                 "order_dir": qp_str(qp.get("order_dir")),
             },

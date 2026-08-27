@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 793, di cui 87 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 798, di cui 88 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -162,6 +162,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AUTH_USER_SOGGETTO_SENZA_CF": "DATO_ERRATO",
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "TECNICO",
     "E_BA_ADMIN_GLOBALE_VIETATO": "NON_PERMESSO",
+    # Un billing account che ha gia' fatture o commesse non cambia emittente fiscale. ⭐ CONFLITTO_STATO e non DATO_ERRATO, e lo decide la descrizione della classe: «non c'e' un campo da correggere, e' la situazione che non lo consente» — l'emittente scelto non e' sbagliato, e' la storia gia' scritta che non lo ammette. Stesso ragionamento con cui E_EMITTENTE_NON_MODIFICABILE e' passato da 400 a 409 il 2026-08-06. Ne discende che nel contesto non va la chiave `campo`. ⏸️ Niente `bersaglio`: in testa andrebbe il billing account, che non e' a catalogo in config.tipi_entita — metterci una FATTURA violerebbe l'ordine, che e' portante. Piano: brief-db-billing-account-cambio-emittente, M4.
+    "E_BA_EMITTENTE_CON_STORIA": "CONFLITTO_STATO",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "DATO_ERRATO",
     # Difetto di programmazione, non condizione di dominio: 500.
     "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
@@ -225,6 +227,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMMESSA_AZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_CHIAVE_IMMUTABILE": "CONFLITTO_STATO",
     "E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI": "CONFLITTO_STATO",
+    # Guard emittente<->BA sulla COMMESSA. ⛔ Classe TECNICO e non DATO_ERRATO come i sei fratelli documento (E_ORDINE_/E_PREV_/E_DDT_/E_CONTRATTO_/E_OFFERTA_EMITTENTE_BA_INCOERENTE), e la divergenza e' deliberata: li' il valore lo fornisce una persona in un form, qui non ci arriva nessuno — la commessa nasce dal push, con l'emittente derivato dal billing account, quindi solo un chiamante rotto o una INSERT a mano puo' produrre un valore diverso. Ne discende che il contesto NON porta la chiave `campo` (su un 500 non c'e' nessun campo da accendere) e non porta il `bersaglio` (nessun gesto da offrire). ⛔ Non si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito con lo split rimandato, non una sede. Piano: brief-db-emittente-commessa-invariante, L2.
+    "E_COMMESSA_EMITTENTE_BA_INCOERENTE": "TECNICO",
     "E_COMMESSA_EMITTENTE_MANCANTE": "CONFLITTO_STATO",
     "E_COMMESSA_NESSUNA_RIGA_APPROVATA": "CONFLITTO_STATO",
     "E_COMMESSA_NON_MODIFICABILE": "CONFLITTO_STATO",
@@ -238,6 +242,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMMESSA_PUSH_RUN_STATO_NON_FINALE": "TECNICO",
     "E_COMMESSA_ROOT_CONFLITTO": "CONFLITTO_STATO",
     "E_COMMESSA_SORGENTE_ALTRA_COMMESSA": "CONFLITTO_STATO",
+    # Una commessa non puo' aggregare sorgenti di emittenti diversi (H4). TECNICO perche' oggi le sorgenti le collega il PUSH, non una persona: a quel valore non arriva nessun operatore. ⚠️ Da rivedere il giorno in cui il frontend offrira' un gesto «aggiungi questo documento alla commessa»: li' a scegliere sara' un operatore e la classe diventera' DATO_ERRATO, con `campo` e `bersaglio`. Piano: brief-db-emittente-commessa-invariante, L6.
+    "E_COMMESSA_SORGENTE_EMITTENTE_MISTO": "TECNICO",
     "E_COMMESSA_SORGENTE_SCONOSCIUTA": "DATO_ERRATO",
     "E_COMMESSA_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
     "E_COMMESSA_VALIDATION": "DATO_ERRATO",
@@ -957,8 +963,13 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOGGETTO_NO_CONTATTI": "DATO_ERRATO",
     "E_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_SOGGETTO_NULL": "DATO_ERRATO",
+    # RITIRATO il 2026-08-26, lo stesso giorno in cui e' nato (changeSet 20260826-43 -> 20260826-50). Il nome nominava il CLIENTE, e la domanda non e' quella: l'emittente si legge dal documento, che ce l'ha sempre (emittente_fiscale_id NOT NULL su tutte e sei le tabelle sorgente), non dal suo billing account, che su quattro di quelle sei e' nullable. Sostituito da E_SORG_EMITTENTE_NON_RISOLTO. ⛔ NON si cancella, e il tentativo di farlo e' fallito dicendo la cosa giusta: error_log ha una FK verso messaggi_errore e quel codice ERA GIA' STATO SOLLEVATO — cancellarlo vorrebbe dire riscrivere il giornale per far tornare i conti a una rinomina. E' il pattern obsoleto_dal, lo stesso di qualunque voce di catalogo gia' referenziata.
+    # ⚠️ RITIRATO il 2026-08-26
+    "E_SORG_BA_NON_RISOLTO": "TECNICO",
     # Configurazione di `config.sorgenti` mancante o disattivata: non e' · colpa di chi compila, quindi banner e non campo evidenziato.
     "E_SORG_CONF": "DATO_ERRATO",
+    # script.fn_get_sorgente_emittente_sr_id non riesce a dire CHI EMETTE un documento della sorgente polimorfa: o non esiste, o non ha un emittente risolvibile. Un codice solo per i due casi perche' per chi legge sono la stessa cosa. TECNICO: nessuna persona compone (sorgente_tipo_id, chiave), li mette il codice. ⛔ Il risolutore e' fail-closed apposta — rispondere NULL trasformerebbe in un no-op il guard a valle. Sostituisce E_SORG_BA_NON_RISOLTO (ritirato con obsoleto_dal, non cancellato). Piano: brief-db-emittente-commessa-invariante, L6.
+    "E_SORG_EMITTENTE_NON_RISOLTO": "TECNICO",
     # script.fn_check_sorgente_chiudibile: si sta chiudendo un documento che ha spinto in commessa righe gia' EMESSA. Nasce il 2026-08-26 col ritiro (Q-5' strada A). · ⛔ Le righe EMESSA sono IN VOLO verso una fattura e non si ritirano: ritirarle lascerebbe un'attivita' fatturabile orfana in viaggio, cioe' esattamente il residuo che questo cantiere sta chiudendo. Il ritiro prende solo le NON_EMESSA. · ⭐ E dal lotto L5 il rifiuto ha una VIA D'USCITA, che il messaggio nomina: «Riporta da emettere» riporta la riga a NON_EMESSA e da li' il ritiro la prende. Prima non ce n'era una, ed e' il motivo per cui E_PREV_ANNULLA_COMMESSA_EMESSA era un vicolo cieco. · CONFLITTO_STATO: non c'e' un campo da correggere, e' la situazione delle righe che non lo consente — e per la regola delle capability l'azione non va nemmeno proposta. · ⭐ IL VALORE e' il CONTEGGIO delle righe emesse, non i loro id: quelli viaggiano nel contesto, e quanti sono e' cio' che dice all'operatore quanto lavoro deve recuperare.
     "E_SORGENTE_CON_RIGHE_EMESSE": "CONFLITTO_STATO",
     "E_SORG_FORMATO": "DATO_ERRATO",
@@ -1271,6 +1282,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_REGOLA_FATTURAZIONE_MANCANTE",
         "ERRORE_PARAMETRI",
         "ERRORE_PARAMETRI_TABELLA",
+        "E_SORG_BA_NON_RISOLTO",
         "E_STATO_SCONOSCIUTO",
         "E_STORICIZZAZIONE",
         "E_STORICO_DLT",

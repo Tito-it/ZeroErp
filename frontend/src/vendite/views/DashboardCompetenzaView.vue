@@ -29,6 +29,7 @@ import {
   exportDashboardCompetenzaCommesse,
   exportDashboardCompetenzaErrori,
   exportDashboardCompetenzaGruppi,
+  exportDashboardCompetenzaResidui,
 } from '../api/dashboardCompetenza'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
@@ -60,10 +61,12 @@ import { getFatturazioneRun, runFatturazione } from '../api/lotti'
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
+import { checkRiportabili, riportaDaEmettere } from '../api/attivitaFatturabili'
 import {
   GRUPPI_CLIENTE_NON_DETERMINABILE,
   GRUPPI_REGISTRO_NON_RISOLVIBILE,
   STADIO_GRUPPI,
+  STADIO_RESIDUI,
   useDashboardCompetenzaStore,
 } from '../stores/dashboardCompetenza'
 
@@ -97,6 +100,14 @@ const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lo
 // il vicolo cieco lo si scopre solo dopo averlo imboccato.
 const { isAllowed: canCambiareStatoCommessa } = useActionPermission('cambia_stato_commessa')
 const canNumerare = computed(() => canNumerareFatture.value && !areaReadonly.value)
+// Gate del verbo «Riporta da emettere»: permesso DEDICATO
+// (`config.azioni_processo` 33) + readonly d'area. ⛔ Non si riusa
+// `reset_lotto_fattura_draft`: legare un verbo di RECUPERO a chi puo'
+// CANCELLARE documenti sarebbe mettere insieme due mestieri diversi. Il gate e'
+// lo stesso dell'endpoint, e qui serve perche' senza permesso la selezione non
+// deve nemmeno comparire — una checkbox che porta a un 403 e' un vicolo cieco.
+const { isAllowed: canRiportareDaEmettere } = useActionPermission('riporta_da_emettere')
+const canRiportare = computed(() => canRiportareDaEmettere.value && !areaReadonly.value)
 const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
@@ -132,6 +143,14 @@ const {
   gruppiFiltriApi,
   gruppiClienti,
   gruppiSearch,
+  residui,
+  residuiCount,
+  residuiPage,
+  residuiPageSize,
+  residuiLoading,
+  residuiLoaded,
+  residuiOrderBy,
+  residuiOrderDir,
   errori,
   erroriCount,
   erroriPage,
@@ -209,6 +228,11 @@ const cards = computed(() => {
     nFattureStato: cella.n_fatture_stato ?? 'NON_APPLICABILE',
     valoreDisplay: Number(cella.valore_display ?? 0),
     nInRitardo: cella.n_in_ritardo ?? 0,
+    // La quota che CHIEDE UN'AZIONE dentro lo stadio. Contratto simmetrico: il
+    // campo c'e' su ogni card e vale 0 dove non si applica — il FE rende, non
+    // deduce quali stadi ce l'abbiano.
+    nResidui: cella.n_residui ?? 0,
+    valoreResidui: Number(cella.valore_residui ?? 0),
     statiFattura: cella.stati_fattura ?? [],
   }))
 })
@@ -322,12 +346,26 @@ async function loadGruppi() {
   }
 }
 
-// Il drill-down della card «Da emettere» scende sui GRUPPI FATTURABILI, quello
-// delle altre card resta sulle commesse: ogni card scende sull'unita' del
-// proprio verbo. Un solo punto di smistamento, cosi' non puo' capitare che una
-// card carichi una lista e ne mostri un'altra.
+// Scopo: carica la pagina corrente dei RESIDUI del mese (drill-down della card
+//        «Emesse non fatturate»: le attivita' su cui si preme «Riporta da
+//        emettere»).
+async function loadResidui() {
+  try {
+    await store.fetchResidui(competenzaCorrente.value)
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  }
+}
+
+// Ogni card scende sull'unita' del PROPRIO verbo: «Da emettere» sui gruppi
+// fatturabili (si fattura un documento), «Emesse non fatturate» sui residui (si
+// riporta un'attivita'), le altre sulle commesse. Un solo punto di smistamento,
+// cosi' non puo' capitare che una card carichi una lista e ne mostri un'altra —
+// ed e' anche l'unico posto da toccare quando una card cambia unita'.
 function loadDrillDown() {
-  return stadioSelezionato.value === STADIO_GRUPPI ? loadGruppi() : loadCommesse()
+  if (stadioSelezionato.value === STADIO_GRUPPI) return loadGruppi()
+  if (stadioSelezionato.value === STADIO_RESIDUI) return loadResidui()
+  return loadCommesse()
 }
 
 // Scopo: carica la pagina corrente degli errori vivi del mese (blocco 4).
@@ -369,6 +407,10 @@ function selezionaStadio(stadio) {
   }
   store.resetCommesse()
   azzeraStatoGruppi()
+  // ⚠️ E la selezione dei residui: e' stato dell'operatore legato a UNA card, e
+  //    sopravvivere al cambio di card la renderebbe invisibile ma ancora
+  //    contata nel pulsante.
+  selezioneResidui.value = []
   stadioSelezionato.value = stadio
   // ⭐ Scegliere un'area la porta davanti: e' il senso della modifica.
   tabAttiva.value = TAB_AREA
@@ -497,7 +539,12 @@ const selezioneGruppi = ref([])
 const {
   isSelected: isGruppoSelezionato,
   toggleRow: toggleGruppo,
-  allSelected: tuttiGruppiSelezionati,
+  // ⚠️ La terna «in pagina», non `toggleAll`/`anySelected`: questa lista e'
+  //    PAGINATA e la selezione vive attraverso le pagine. Vedi il blocco in
+  //    fondo a `useSelezioneToggle`.
+  allInPagina: tuttiGruppiSelezionati,
+  anyInPagina: alcuniGruppiSelezionati,
+  toggleAllInPagina: toggleTuttiGruppi,
 } = useSelezioneToggle({
   selected: selezioneGruppi,
   selezionabili: gruppiSelezionabili,
@@ -526,40 +573,6 @@ watch([gruppi, gruppiInCorso], ([rows]) => {
     (r) => !nonSelezionabili.has(r.gruppo_key),
   )
 })
-
-// ⚠️ `toggleAll`/`anySelected` del BB NON sono riusabili qui, ed e' il punto
-// meno ovvio di questa lista. Il BB nasce per dialog a lista INTERA (evasione
-// ordine, crea-reso): `toggleAll` fa `selected = [...selezionabili]`, cioe'
-// SOSTITUISCE la selezione. Su una lista PAGINATA questo significa che
-// spuntare «tutti» in pagina 2 butterebbe via quanto selezionato in pagina 1 —
-// silenziosamente, e l'operatore se ne accorgerebbe solo dal conteggio del
-// pulsante. Qui la selezione e' per chiave di dominio e vive attraverso le
-// pagine, quindi il seleziona-tutto opera SOLO sulla pagina corrente,
-// aggiungendo o togliendo e lasciando intatto il resto.
-const chiaviPagina = computed(() => gruppiSelezionabili.value.map((r) => r.gruppo_key))
-
-// Selezione parziale DELLA PAGINA (stato indeterminate della checkbox header).
-const alcuniGruppiSelezionati = computed(
-  () => !tuttiGruppiSelezionati.value
-    && gruppiSelezionabili.value.some((r) => isGruppoSelezionato(r)),
-)
-
-// Il seleziona-tutto di pagina opera sulle sole righe SELEZIONABILI: le
-// bloccate non entrano nemmeno dal toggle di massa.
-function toggleTuttiGruppi() {
-  if (tuttiGruppiSelezionati.value) {
-    const daTogliere = new Set(chiaviPagina.value)
-    selezioneGruppi.value = selezioneGruppi.value.filter(
-      (r) => !daTogliere.has(r.gruppo_key),
-    )
-    return
-  }
-  const gia = new Set(selezioneGruppi.value.map((r) => r.gruppo_key))
-  selezioneGruppi.value = [
-    ...selezioneGruppi.value,
-    ...gruppiSelezionabili.value.filter((r) => !gia.has(r.gruppo_key)),
-  ]
-}
 
 // Lotti prodotti dalle emissioni mirate: sono N per giro, non uno (un gruppo
 // con righe di tipo doc fiscale diverso finisce in lotti diversi). Alimentano
@@ -600,6 +613,143 @@ function registraLottiEmessi(lotti, competenza) {
 //    sparire da una lista in cui il lavoro e' ancora in corso.
 function azzeraStatoGruppi() {
   selezioneGruppi.value = []
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RESIDUI: selezione e verbo «Riporta da emettere».
+// ⭐ Ogni riga della lista e' selezionabile per costruzione: il BACKEND filtra
+//    `motivo_non_fatturata = 'RESIDUO'`, cioe' esattamente il perimetro del
+//    verbo. Non si ri-filtra qui — sarebbe una seconda implementazione di un
+//    predicato che vive nel database, e la divergenza sarebbe silenziosa.
+const selezioneResidui = ref([])
+const residuiSelezionabili = computed(() => residui.value ?? [])
+const {
+  isSelected: isResiduoSelezionato,
+  toggleRow: toggleResiduo,
+  // ⛔ La terna «in pagina», e la prima stesura aveva preso quella sbagliata:
+  //    `toggleAll` SOSTITUISCE la selezione con la pagina corrente, quindi
+  //    spuntare «tutti» a pagina 2 buttava via quanto spuntato a pagina 1 —
+  //    in silenzio, e con la lista sorella dei gruppi cento righe piu' su che
+  //    faceva gia' la cosa giusta.
+  allInPagina: tuttiResiduiSelezionati,
+  anyInPagina: alcuniResiduiSelezionati,
+  toggleAllInPagina: toggleTuttiResidui,
+} = useSelezioneToggle({
+  selected: selezioneResidui,
+  selezionabili: residuiSelezionabili,
+  rowKey: 'attivita_fatturabile_id',
+})
+
+const residuiSortOrder = computed(() => (residuiOrderDir.value === 'desc' ? -1 : 1))
+
+// Scopo: paginazione della lista residui. La selezione NON si azzera al cambio
+//        pagina: le chiavi sono di dominio, non indici di riga, e la selezione
+//        si compone su piu' pagine.
+function onResiduiPage(event) {
+  store.applyResiduiPage(event)
+  loadResidui()
+}
+
+function onResiduiSort(event) {
+  store.applyResiduiSort(event)
+  residuiPage.value = 1
+  loadResidui()
+}
+
+// Scopo: l'etichetta del motivo. ⚠️ `labelOrCode`: il vocabolario e'
+//        estensibile lato DB (e' gia' passato da tre a quattro valori), quindi
+//        un valore nuovo deve mostrarsi COM'E' invece di sparire — mai il path
+//        della chiave a video, mai una cella vuota.
+// Scopo: l'etichetta di un motivo OSTATIVO (quelli di `riportabili/`).
+// ⭐ Il patto dei tre livelli: il DB emette l'indirizzo (`reason_key`), il BE lo
+//    trasporta intatto, il FE lo risolve. Qui non si traduce un codice in una
+//    frase — si risolve l'indirizzo che arriva, e se il vocabolario cresce la
+//    frase nuova compare senza toccare il frontend. Il ripiego e' il `codice`,
+//    mai il path della chiave e mai una cella vuota.
+function motivoOstacoloLabel(motivo) {
+  return labelOrCode(t, te, motivo?.reason_key ?? '', motivo?.codice ?? '—')
+}
+
+function motivoLabel(codice) {
+  if (!codice) return '—'
+  return labelOrCode(
+    t, te,
+    `vendite.dashboard_competenza.motivo_${String(codice).toLowerCase()}`,
+    codice,
+  )
+}
+
+const riportoInCorso = ref(false)
+
+// Scopo: «Riporta da emettere» sulle righe spuntate — rimette il lavoro in coda
+//        di fatturazione. Sincrono: due scritture e una transazione lato DB,
+//        nessun job da seguire.
+// ⚠️ La conferma c'e' anche se l'azione e' REVERSIBILE (si rifattura e si e' al
+//    punto di prima): non protegge da un danno, dichiara quante righe sta per
+//    toccare — un verbo di massa che parte al primo click su una lista paginata
+//    e' il modo di riportare indietro piu' di quanto si e' guardato.
+function riportaSelezionati() {
+  const righe = [...selezioneResidui.value]
+  if (!righe.length) return
+  confirmAction({
+    header: t('vendite.dashboard_competenza.riporta_header'),
+    message: t('vendite.dashboard_competenza.riporta_conferma', { n: righe.length }),
+    acceptLabel: t('vendite.dashboard_competenza.riporta_header'),
+    onAccept: async () => {
+      riportoInCorso.value = true
+      try {
+        const ids = righe.map((r) => r.attivita_fatturabile_id)
+        // ⭐ SI RI-GUARDA PRIMA DI AGIRE, ed e' il catalogo a chiederlo: il
+        //    codice `E_ATTIVITA_GIA_DA_EMETTERE` porta scritto che incontrarlo
+        //    significa che l'elenco mostrato era invecchiato, e che il verbo va
+        //    gate-ato sui motivi invece di essere proposto sempre. Fra il
+        //    momento in cui la pagina si e' caricata e questo click puo' essere
+        //    passato un giro di fatturazione, o un altro operatore.
+        // ⚠️ Senza questo passo il rifiuto arriverebbe comunque — la madre DB
+        //    non si fida di nessuno — ma come UN errore per l'intero elenco,
+        //    che e' atomico: l'operatore non saprebbe QUALE riga lo ha fermato
+        //    ne' perche', e riproverebbe.
+        const check = await execute(() => checkRiportabili(ids))
+        if (check === null) return
+        const ostacoli = check.data?.data?.motivi ?? []
+        if (ostacoli.length) {
+          notify.warn(t('vendite.dashboard_competenza.riporta_ostacoli', {
+            n: ostacoli.length,
+            motivo: motivoOstacoloLabel(ostacoli[0]),
+          }))
+          // L'elenco era vecchio: si azzera e si ri-legge, invece di lasciare
+          // in mano una selezione che si e' appena dimostrata falsa.
+          selezioneResidui.value = []
+          await Promise.all([loadResidui(), store.fetchMensile()])
+          return
+        }
+        const res = await execute(() => riportaDaEmettere(ids))
+        // ⚠️ `res !== null` e non `if (res)`: un envelope valido puo' essere
+        //    falsy, e `useApiHandler` restituisce `null` SOLO in errore. Con
+        //    `if (res)` un esito legittimo verrebbe scambiato per un fallimento.
+        if (res === null) return
+        const d = res.data?.data ?? {}
+        const riportate = Number(d.riportate ?? 0)
+        if (riportate > 0) {
+          notify.success(t('vendite.dashboard_competenza.riporta_esito', {
+            riportate,
+            riemesse: Number(d.riemesse_attivita ?? 0),
+          }))
+        } else {
+          // ⛔ Zero riportate non e' un successo da annunciare in verde: vuol
+          //    dire che l'elenco a schermo era invecchiato.
+          notify.warn(t('vendite.dashboard_competenza.riporta_nulla'))
+        }
+        selezioneResidui.value = []
+        // Il lavoro e' uscito dai residui ed e' rientrato in «Da emettere»:
+        // vanno ricaricate ENTRAMBE le facce, o la card resta a raccontare il
+        // minuto prima.
+        await Promise.all([loadResidui(), store.fetchMensile()])
+      } finally {
+        riportoInCorso.value = false
+      }
+    },
+  })
 }
 
 const gruppiSortOrder = computed(() => (gruppiOrderDir.value === 'desc' ? -1 : 1))
@@ -794,6 +944,7 @@ const erroriConChiave = computed(() =>
 const listaErroriRef = ref(null)
 const listaGruppiRef = ref(null)
 const listaCommesseRef = ref(null)
+const listaResiduiRef = ref(null)
 const erroriPaginatorOptions = computed(() => ({
   totalRecords: erroriCount.value,
   rows: erroriPageSize.value,
@@ -804,6 +955,12 @@ const gruppiPaginatorOptions = computed(() => ({
   totalRecords: gruppiCount.value,
   rows: gruppiPageSize.value,
   first: (gruppiPage.value - 1) * gruppiPageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
+const residuiPaginatorOptions = computed(() => ({
+  totalRecords: residuiCount.value,
+  rows: residuiPageSize.value,
+  first: (residuiPage.value - 1) * residuiPageSize.value,
   rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
 }))
 const commessePaginatorOptions = computed(() => ({
@@ -865,6 +1022,29 @@ const contestoLista = computed(() => {
         formato,
         competenza_mese: competenzaCorrente.value,
         ...gruppiFiltriApi(),
+      }),
+    }
+  }
+  // ⛔ Il ramo dei RESIDUI viene PRIMA di quello generico, e senza di lui la
+  //    card «Emesse non fatturate» cadeva nel ramo delle commesse: a video la
+  //    lista dei residui, e «Esporta» che scaricava le COMMESSE. E' il difetto
+  //    che il commento del ramo gruppi qui sopra dichiara di voler evitare —
+  //    «un export che non corrisponde a cio' che si ha davanti e' peggio di
+  //    nessun export» — rientrato dalla porta di servizio aggiungendo una lista
+  //    e dimenticando lo smistamento.
+  //    ⚠️ Anche «Personalizza colonne» ne dipende: puntava a `listaCommesseRef`,
+  //    che su questa card non e' nemmeno montata.
+  if (stadioSelezionato.value === STADIO_RESIDUI) {
+    return {
+      lista: listaResiduiRef.value,
+      exportFn: exportDashboardCompetenzaResidui,
+      // L'ordinamento a video entra nell'export: il file deve raccontare la
+      // stessa coda, nello stesso ordine di urgenza.
+      params: (formato) => ({
+        formato,
+        competenza_mese: competenzaCorrente.value,
+        order_by: residuiOrderBy.value,
+        order_dir: residuiOrderDir.value,
       }),
     }
   }
@@ -1801,13 +1981,29 @@ onActivated(() => {
                  RESIDUI (AF sospese, posticipate, o rimaste indietro per un
                  giro interrotto). Dirlo evita che l'operatore aspetti un
                  avanzamento che non arrivera' da solo. -->
+            <!-- ⭐ LA CARD DICE DUE COSE, e sono due perche' hanno rimedi
+                 OPPOSTI. Dentro «Emesse non fatturate» ci sono quattro
+                 situazioni: il RESIDUO chiede un'azione, le altre tre — in
+                 attesa del lotto, giro in corso, senza attivita' fatturabile —
+                 chiedono di aspettare. Un numero solo per due rimedi opposti
+                 era il difetto: la guida diceva «se c'e' un numero, qualcosa si
+                 e' rotto», e non era vero per la parte in transito.
+                 ⛔ Il conteggio arriva dal BE (`n_residui`), non si deduce
+                 dalla lista: la lista e' paginata, e sommare la pagina darebbe
+                 un parziale che sembra un totale. -->
             <span
-              v-if="card.stadio === 'EMESSA_NON_FATTURATA' && card.nAttivita > 0"
+              v-if="card.stadio === STADIO_RESIDUI && card.nAttivita > 0"
               class="app-dash-residui-hint"
               v-tooltip.bottom="t('vendite.dashboard_competenza.residui_tooltip')"
             >
               <i class="pi pi-info-circle" />
-              {{ t('vendite.dashboard_competenza.residui_hint') }}
+              <template v-if="card.nResidui > 0">
+                {{ t('vendite.dashboard_competenza.residui_di_cui', { n: card.nResidui }) }}
+                · {{ formatCurrency(card.valoreResidui) }}
+              </template>
+              <template v-else>
+                {{ t('vendite.dashboard_competenza.residui_nessuno_da_recuperare') }}
+              </template>
             </span>
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />
@@ -2199,6 +2395,121 @@ onActivated(() => {
                 <div v-else-if="gruppiLoaded" class="app-empty-state">
                   <i class="pi pi-check-circle" />
                   <p>{{ t('vendite.dashboard_competenza.nessun_gruppo') }}</p>
+                </div>
+              </template>
+
+              <!-- Card «Emesse non fatturate»: il drill-down scende sui RESIDUI,
+                   non sulle commesse. Motivo: qui il verbo e' «Riporta da
+                   emettere» e agisce su un'ATTIVITA' — la commessa aggregata
+                   non direbbe su cosa si sta per agire.
+                   ⚠️ La lista mostra MENO della card, ed e' voluto: lo stadio
+                   contiene quattro situazioni e solo `RESIDUO` chiede
+                   un'azione. Il numero grande e' «quanto lavoro e' fermo qui»,
+                   la lista e' «su cosa si puo' agire» — e la card lo dichiara
+                   con la riga «di cui N da recuperare». -->
+              <template v-else-if="stadioSelezionato === STADIO_RESIDUI">
+                <div class="app-page-toolbar">
+                  <h4 class="app-dash-fermi-title">
+                    {{ t('vendite.dashboard_competenza.residui_titolo') }}
+                  </h4>
+                  <!-- Il verbo di massa. Gate su permesso E readonly, come i
+                       fratelli; spento a selezione vuota. Il tooltip sta sul
+                       WRAPPER perche' un bottone disabilitato non riceve
+                       eventi del mouse — ed e' spento che il motivo serve. -->
+                  <span
+                    v-if="canRiportare"
+                    v-tooltip.bottom="t('vendite.dashboard_competenza.riporta_tooltip')"
+                    class="app-dash-fattura-wrap"
+                  >
+                    <Button
+                      :label="t('vendite.dashboard_competenza.riporta', { n: selezioneResidui.length })"
+                      icon="pi pi-replay"
+                      size="small"
+                      severity="warn"
+                      :loading="riportoInCorso"
+                      :disabled="selezioneResidui.length === 0 || riportoInCorso"
+                      @click="riportaSelezionati"
+                    />
+                  </span>
+                </div>
+                <ListaConfigurabile
+                  v-if="residuiCount > 0 || residuiLoading"
+                  ref="listaResiduiRef"
+                  codice="vendite.dash_competenza_residui"
+                  data-key="attivita_fatturabile_id"
+                  :rows="residui"
+                  :total="residuiCount"
+                  :loading="residuiLoading"
+                  :paginator-options="residuiPaginatorOptions"
+                  :page="residuiPage"
+                  :sort-field="residuiOrderBy"
+                  :sort-order="residuiSortOrder"
+                  @page="onResiduiPage"
+                  @sort="onResiduiSort"
+                >
+                  <!-- Selezione: chrome del BB (slot dedicato), non colonna di
+                       catalogo. PrimeVue 4 non ha piu' il predicato per-riga sul
+                       selectionMode, quindi la checkbox e' custom. -->
+                  <template v-if="canRiportare" #selection-header>
+                    <Checkbox
+                      binary
+                      :model-value="tuttiResiduiSelezionati"
+                      :indeterminate="alcuniResiduiSelezionati"
+                      :disabled="!residuiSelezionabili.length"
+                      @update:model-value="toggleTuttiResidui"
+                    />
+                  </template>
+                  <template v-if="canRiportare" #selection="{ data }">
+                    <Checkbox
+                      binary
+                      :model-value="isResiduoSelezionato(data)"
+                      @update:model-value="toggleResiduo(data)"
+                    />
+                  </template>
+
+                  <template #cell-commessa_codice="{ data }">
+                    {{ data.commessa_codice ?? `#${data.commessa_id}` }}
+                  </template>
+                  <template #cell-cliente_display="{ data }">
+                    {{ data.cliente_display ?? '—' }}
+                  </template>
+                  <template #cell-articolo="{ data }">
+                    {{ data.articolo_codice ?? '—' }}
+                  </template>
+                  <template #cell-articolo_descrizione="{ data }">
+                    {{ data.articolo_descrizione ?? '—' }}
+                  </template>
+                  <!-- ⭐ Il lotto di PROVENIENZA: risponde a «da dove viene
+                       questo residuo», che prima non si vedeva da nessuna
+                       parte. Non e' `lotto_id` — quello nasce dalla catena
+                       della fattura, e su un residuo la fattura non c'e'. -->
+                  <template #cell-lotto_provenienza="{ data }">
+                    <Button
+                      v-if="data.lotto_provenienza_id"
+                      link
+                      class="app-cell-link"
+                      :label="data.lotto_provenienza_codice ?? String(data.lotto_provenienza_id)"
+                      v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
+                      @click="apriLotto(data.lotto_provenienza_id)"
+                    />
+                    <span v-else>—</span>
+                  </template>
+                  <template #cell-motivo_non_fatturata="{ data }">
+                    <Tag :value="motivoLabel(data.motivo_non_fatturata)" severity="warn" />
+                  </template>
+                  <!-- competenza_mese, data_attivita e valore non hanno slot:
+                       il seed dichiara `date_short` e `currency_eur`. -->
+                </ListaConfigurabile>
+                <!-- ⚠️ `residuiLoaded` e non `!residuiLoading`: un empty-state
+                     positivo su una fetch mai riuscita direbbe «non c'e' niente
+                     da recuperare» quando invece non lo sappiamo. -->
+                <div v-else-if="residuiLoaded" class="app-empty-state">
+                  <i class="pi pi-check-circle" />
+                  <p>{{ t('vendite.dashboard_competenza.residui_vuoto') }}</p>
+                </div>
+                <div v-else class="app-empty-state">
+                  <i class="pi pi-inbox" />
+                  <p>{{ t('vendite.dashboard_competenza.residui_placeholder') }}</p>
                 </div>
               </template>
 

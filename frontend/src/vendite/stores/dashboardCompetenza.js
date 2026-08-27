@@ -18,6 +18,7 @@ import {
   listDashboardCompetenzaCommesse,
   listDashboardCompetenzaErrori,
   listDashboardCompetenzaGruppi,
+  listDashboardCompetenzaResidui,
 } from '../api/dashboardCompetenza'
 
 // Stadio del funnel il cui drill-down NON è la lista commesse ma la lista dei
@@ -26,6 +27,15 @@ import {
 // che è multi-sorgente e quindi non isola nulla. Costante unica: la usano il
 // gate della fetch e il template.
 export const STADIO_GRUPPI = 'DA_EMETTERE'
+
+// Stadio il cui drill-down NON è la lista commesse ma la lista dei RESIDUI.
+// ⭐ Stessa forma di STADIO_GRUPPI, e per la stessa ragione: qui il verbo è
+// «Riporta da emettere», e agisce su un'ATTIVITÀ — la commessa aggregata non
+// direbbe su cosa si sta per agire.
+// ⚠️ La card conta più di quello che la lista mostra, ed è voluto: lo stadio
+// contiene quattro situazioni e solo `RESIDUO` chiede un'azione. Il numero
+// grande è «quanto lavoro è fermo qui», la lista è «su cosa si può agire».
+export const STADIO_RESIDUI = 'EMESSA_NON_FATTURATA'
 
 // Voce «cliente non determinabile» del filtro cliente: sono i gruppi il cui BA
 // di fatturazione non e' risolvibile (tipicamente il padre e' fuori dallo scope
@@ -263,6 +273,46 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     { defaultPageSize: PAGINATION.COMPACT_ROWS }
   )
 
+  // Drill-down RESIDUI (card «Emesse non fatturate»): l'elenco su cui agisce
+  // «Riporta da emettere».
+  // ⭐ Ordinamento `competenza_mese` ASC, e NON `valore` DESC come le sorelle:
+  // e' allineato all'`ordinamento_default` del preset `dash_competenza_residui_default`
+  // (`ui.lista_preset`, 2026-08-27), che quel campo non lo consuma ancora il
+  // frontend — la convenzione e' allinearlo a mano, come fanno `auditLog` ed
+  // `emittentiFiscali`.
+  // ⛔ E la ragione e' di dominio, non di simmetria: questa non e' una lista di
+  // GRANDEZZE, e' una CODA DI RECUPERO. Un residuo che invecchia si avvicina al
+  // limite di emissione, quindi il piu' vecchio e' il piu' a rischio — stessa
+  // logica del backlog (`anzianita_giorni desc`), non dei gruppi fatturabili.
+  // ⚠️ La prima versione ordinava per `valore` DESC per copia dalle sorelle:
+  // avrebbe messo in cima i residui piu' grossi invece dei piu' urgenti, e la
+  // lista avrebbe raccontato una priorita' diversa da quella che il catalogo
+  // dichiara — senza che niente andasse storto.
+  const residuiSort = useSortState('competenza_mese', 'asc')
+  const residuiFetch = usePagedDashFetch(
+    (paging, competenzaMese) =>
+      listDashboardCompetenzaResidui({
+        competenza_mese: competenzaMese,
+        order_by: residuiSort.orderBy.value,
+        order_dir: residuiSort.orderDir.value,
+        ...paging,
+      }),
+    { defaultPageSize: PAGINATION.COMPACT_ROWS }
+  )
+
+  // Scopo: carica una pagina di residui del mese. Parte solo con la card
+  //        «Emesse non fatturate» selezionata, come le altre sezioni.
+  async function fetchResidui(competenzaMese) {
+    if (stadioSelezionato.value !== STADIO_RESIDUI) return
+    await residuiFetch.fetch(competenzaMese)
+  }
+
+  // Scopo: azzera la lista residui (cambio mese/anno o deselezione card).
+  function resetResidui() {
+    residuiSort.reset()
+    residuiFetch.reset()
+  }
+
   // Scopo: carica una pagina di commesse per (mese, stadio selezionato,
   //        filtro ritardo). Senza stadio attivo non parte nessuna fetch.
   async function fetchCommesse(competenzaMese) {
@@ -285,6 +335,11 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     // lista gruppi, altrimenti resterebbe a video appesa a uno stadio che non
     // e' piu' selezionato.
     resetGruppi()
+    // ⚠️ E la lista residui, per la stessa ragione. Dimenticarla qui e' il
+    //    difetto che non si vede provando una card sola: si apre «Emesse non
+    //    fatturate», si clicca un'altra card, e la selezione di righe resta
+    //    viva sotto uno stadio che non c'e' piu'.
+    resetResidui()
   }
 
   // Scopo: azzera il pannello errori (cambio mese/anno) e invalida le fetch.
@@ -304,6 +359,11 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     soloRitardo.value = false
     commesseSort.reset()
     commesseFetch.resetAll()
+    // ⚠️ `resetAll` e non `reset`: al logout si riporta al default anche la
+    //    dimensione di pagina, che e' una preferenza dell'operatore che se ne
+    //    va — la stessa regola delle sezioni sorelle (feedback_pinia_userscoped).
+    residuiSort.reset()
+    residuiFetch.resetAll()
     gruppiSort.reset()
     gruppiRiepilogo.value = { ...RIEPILOGO_VUOTO }
     gruppiTipo.value = null
@@ -360,6 +420,18 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     applyGruppiSort: gruppiSort.apply,
     fetchGruppi,
     resetGruppi,
+    residui: residuiFetch.items,
+    residuiCount: residuiFetch.count,
+    residuiPage: residuiFetch.page,
+    residuiPageSize: residuiFetch.pageSize,
+    residuiLoading: residuiFetch.loading,
+    residuiLoaded: residuiFetch.loaded,
+    residuiOrderBy: residuiSort.orderBy,
+    residuiOrderDir: residuiSort.orderDir,
+    applyResiduiPage: residuiFetch.applyPageEvent,
+    applyResiduiSort: residuiSort.apply,
+    fetchResidui,
+    resetResidui,
     errori: erroriFetch.items,
     erroriCount: erroriFetch.count,
     erroriPage: erroriFetch.page,

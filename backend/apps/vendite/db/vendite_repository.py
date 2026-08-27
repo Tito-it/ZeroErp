@@ -41,6 +41,7 @@ from apps.vendite.types import (
     DashBacklogDocumentoRow,
     DashBacklogRiepilogoRow,
     DashCompetenzaAttivitaRow,
+    DashCompetenzaResiduoRow,
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaGruppiRiepilogoRow,
@@ -198,6 +199,18 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
     "EMESSA_NON_FATTURATA",
     "FATTURATA",
 )
+
+# ⭐ L'unico dei quattro valori di `motivo_non_fatturata` (vocabolario chiuso
+# della vista `vw_dash_competenza_attivita`, changeSet 20260826-54) che CHIEDE
+# un'azione: le altre tre situazioni — IN_ATTESA_LOTTO, GIRO_IN_CORSO,
+# SENZA_ATTIVITA_FATTURABILE — sono «niente da fare».
+# ⛔ Vive QUI, in una sede sola, e si passa come PARAMETRO SQL: il letterale
+# embedded e' la lezione gia' pagata sullo stadio (vedi
+# TIPO_INDIRIZZO_FATTURAZIONE qui sotto). Il service la importa invece di
+# riscriverla — due copie dello stesso valore, una in SQL e una in Python,
+# divergono senza che niente fallisca: la lista mostrerebbe un perimetro e la
+# card ne conterebbe un altro.
+MOTIVO_NON_FATTURATA_RESIDUO = "RESIDUO"
 
 # Codice stabile (codice_interno di config.tipi_indirizzi) dello slot letto
 # nella testata fattura per la stampa: indirizzo di fatturazione del cliente,
@@ -984,7 +997,16 @@ class VenditeRepository:
                 m.valore_tot,
                 m.valore_fatturato_tot,
                 m.n_in_ritardo,
-                m.valore_in_ritardo
+                m.valore_in_ritardo,
+                -- ⭐ La dimensione arrivata col `20260826-55`, IN CODA di
+                --    proposito: le righe si leggono per POSIZIONE, quindi una
+                --    colonna infilata in mezzo sposta in silenzio tutte quelle
+                --    dopo — e `int(row[5])` che diventa una stringa non e' un
+                --    errore di sintassi, e' un numero sbagliato a video.
+                --    Serve alla card «Emesse non fatturate», che senza di lei
+                --    somma DUE cose con rimedi opposti: il RESIDUO, che chiede
+                --    un'azione, e il transito legittimo, su cui non si fa nulla.
+                m.motivo_non_fatturata
             FROM vendite.vw_dash_competenza_mensile m
             LEFT JOIN config.stati_doc_fiscale sdf
                 ON sdf.codice_interno = m.stato_fattura_codice_interno
@@ -1012,6 +1034,7 @@ class VenditeRepository:
                     "valore_fatturato": str(row[7]) if row[7] is not None else "0",
                     "n_in_ritardo": int(row[8]),
                     "valore_in_ritardo": str(row[9]) if row[9] is not None else "0",
+                    "motivo_non_fatturata": None if row[10] is None else str(row[10]),
                 }
             )
         return result
@@ -1291,6 +1314,152 @@ class VenditeRepository:
                     "stato_fattura_codice": None if row[23] is None else str(row[23]),
                     "valore_fatturato": str(row[24]) if row[24] is not None else None,
                     "fattura_critical": bool(row[25]),
+                }
+            )
+        return result, total_count
+
+    # Colonne ordinabili della lista dei RESIDUI (`ui.lista_definizione` 49).
+    # ⚠️ Le chiavi sono i `campo_sorgente` del catalogo, non i `codice` delle
+    # colonne: due divergono (`articolo` -> `articolo_codice`,
+    # `lotto_provenienza` -> `lotto_provenienza_codice`) e il presidio
+    # `apps/core/tests/test_liste_configurabili_seed.py` lega catalogo e
+    # whitelist nei DUE versi — una colonna `ordinabile = t` fuori whitelist fa
+    # rosso (la freccia a video risponderebbe 400) e una in whitelist marcata
+    # `ordinabile = f` fa rosso pure lei.
+    DASH_COMPETENZA_RESIDUI_SORT_COLUMNS = {
+        "commessa_codice": "commessa_codice",
+        "cliente_display": "cliente_display",
+        "articolo_codice": "articolo_codice",
+        "articolo_descrizione": "articolo_descrizione",
+        "competenza_mese": "competenza_mese",
+        "data_attivita": "data_attivita",
+        "valore": "valore",
+        "lotto_provenienza_codice": "lotto_provenienza_codice",
+        "motivo_non_fatturata": "motivo_non_fatturata",
+        "emittente_ragione_sociale": "emittente_ragione_sociale",
+    }
+
+    # Scopo: Elenco dei RESIDUI di un mese di competenza — le attivita' che una
+    #        fattura non ce l'hanno piu' e che nessun giro riprendera' da solo.
+    #        E' l'oggetto del verbo «Riporta da emettere»: la lista esiste
+    #        perche' il verbo agisce per riga, e l'operatore deve vedere COSA
+    #        sta riportando.
+    # Perimetro: sola lettura su `vw_dash_competenza_attivita`, che e'
+    #        `security_invoker` e fail-closed senza GUC operatore. Lo scope non
+    #        si aggiunge qui: sta gia' nella vista, sul JOIN con
+    #        `vendite.commesse_attivita` — `vendite.attivita_fatturabili` NON ha
+    #        row level security, quindi leggerla da sola sarebbe fail-open.
+    # Risultato: tuple (righe, conteggio totale).
+    def list_dash_competenza_residui(
+        self,
+        *,
+        competenza_mese: date,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[DashCompetenzaResiduoRow], int]:
+        # ⛔ IL PERIMETRO E' `motivo_non_fatturata = 'RESIDUO'`, e non e' un
+        #    filtro di comodo: lo stadio `EMESSA_NON_FATTURATA` contiene QUATTRO
+        #    situazioni con rimedi diversi, e solo questa chiede un'azione. Le
+        #    altre tre — `IN_ATTESA_LOTTO`, `GIRO_IN_CORSO`,
+        #    `SENZA_ATTIVITA_FATTURABILE` — sono «niente da fare», e proporre il
+        #    verbo su di loro significherebbe disfare emissioni corrette oppure
+        #    (l'ultima) offrirlo su una riga la cui chiave e' NULL.
+        #    Il discriminante lo calcola la VISTA, che lo ricava con lo stesso
+        #    `IS DISTINCT FROM` di `script.fn_check_attivita_riportabile_da_emettere`:
+        #    ricalcolarlo qui sarebbe una seconda implementazione, e la
+        #    divergenza sarebbe silenziosa (la lista proporrebbe il verbo su una
+        #    riga che la mutazione rifiuta).
+        conditions = ["a.competenza_mese = %s", "a.motivo_non_fatturata = %s"]
+        params: list[Any] = [competenza_mese, MOTIVO_NON_FATTURATA_RESIDUO]
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        sort_col = self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS.get(order_by or "")
+        # ⚠️ `default_desc=False`, al contrario delle liste sorelle: il default
+        #    dichiarato a catalogo e' `competenza_mese` ASC, e la direzione deve
+        #    valere anche per il TIEBREAK — altrimenti la primaria salirebbe e lo
+        #    spareggio scenderebbe, cioe' dentro lo stesso mese l'elenco andrebbe
+        #    al contrario di come e' stato chiesto (e' il difetto corretto in 30
+        #    punti il 2026-08-03).
+        direction = sql_order_direction(order_dir, default_desc=False)
+        tiebreak_dir = sql_tiebreak_direction(direction)
+        # ⚠️ Il tiebreak e' `attivita_fatturabile_id`: e' la chiave del verbo,
+        #    quindi l'unica univoca su questa lista — e su un elenco da cui si
+        #    SELEZIONA, una paginazione non deterministica farebbe agire su
+        #    righe diverse da quelle spuntate.
+        tiebreak = f"commessa_codice ASC, attivita_fatturabile_id {tiebreak_dir}"
+        if sort_col is not None:
+            order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
+        else:
+            # ⭐ Il default e' `competenza_mese` ASC, fedele
+            #    all'`ordinamento_default` del preset a catalogo — e deve
+            #    coincidere con quello che il frontend manda, altrimenti
+            #    l'export (che non passa dai filtri a video) darebbe un ordine
+            #    diverso dalla schermata e nessuno se ne accorgerebbe aprendo
+            #    il foglio.
+            # ⚠️ MA su questa lista quella colonna e' COSTANTE: il perimetro e'
+            #    un mese solo (`a.competenza_mese = %s`), quindi l'ordine che si
+            #    vede lo decide per intero il tiebreak — commessa, poi chiave.
+            #    Si scrive lo stesso, e per due ragioni: e' cio' che il catalogo
+            #    dichiara (divergere sarebbe un contratto non mantenuto), e il
+            #    giorno che il filtro si allargasse a un intervallo la clausola
+            #    e' gia' quella giusta. ⛔ Quel che NON si puo' dire e' «i piu'
+            #    vecchi in cima»: dentro un mese solo non c'e' nessun ordine di
+            #    anzianita' da leggere qui.
+            order_clause = f"ORDER BY competenza_mese {direction}, {tiebreak}"
+
+        # ⚠️ `attivita_fatturabile_id` si proietta ma NON e' a catalogo: serve al
+        #    verbo, non all'occhio (§7.4 del brief DB). Toglierlo dalla SELECT
+        #    lascerebbe una lista che si puo' guardare e non azionare.
+        select_sql = f"""
+            SELECT
+                a.attivita_fatturabile_id,
+                a.commessa_attivita_id,
+                a.commessa_id,
+                a.commessa_codice,
+                a.cliente_display,
+                a.articolo_codice,
+                a.articolo_descrizione,
+                a.competenza_mese,
+                a.data_attivita,
+                a.quantita,
+                a.valore,
+                a.lotto_provenienza_id,
+                a.lotto_provenienza_codice,
+                a.motivo_non_fatturata,
+                a.emittente_ragione_sociale
+            FROM vendite.vw_dash_competenza_attivita a
+            {where_clause}
+        """
+
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
+
+        result: list[DashCompetenzaResiduoRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "attivita_fatturabile_id": None if row[0] is None else int(row[0]),
+                    "commessa_attivita_id": int(row[1]),
+                    "commessa_id": int(row[2]),
+                    "commessa_codice": None if row[3] is None else str(row[3]),
+                    "cliente_display": None if row[4] is None else str(row[4]),
+                    "articolo_codice": None if row[5] is None else str(row[5]),
+                    "articolo_descrizione": None if row[6] is None else str(row[6]),
+                    "competenza_mese": row[7].isoformat() if row[7] is not None else None,
+                    "data_attivita": row[8].isoformat() if row[8] is not None else None,
+                    "quantita": str(row[9]) if row[9] is not None else None,
+                    "valore": str(row[10]) if row[10] is not None else None,
+                    "lotto_provenienza_id": None if row[11] is None else int(row[11]),
+                    "lotto_provenienza_codice": None if row[12] is None else str(row[12]),
+                    "motivo_non_fatturata": None if row[13] is None else str(row[13]),
+                    "emittente_ragione_sociale": None if row[14] is None else str(row[14]),
                 }
             )
         return result, total_count
@@ -3953,3 +4122,60 @@ class VenditeRepository:
         if not row:
             return 0, 0, 0
         return int(row[0]), int(row[1]), int(row[2])
+
+    # Scopo: I motivi che impediscono di riportare «da emettere» un elenco di
+    #        attivita' fatturabili. Lettura pura: nessuna scrittura, nessun
+    #        raise di dominio — serve a SPIEGARE invece di far fallire.
+    # Perimetro: `script.fn_check_attivita_riportabile_da_emettere`, che porta
+    #        con se' il proprio cancello di scope (il JOIN su
+    #        `vendite.commesse_attivita`, che ha la RLS).
+    # Risultato: lista di motivi; `[]` se il verbo e' ammesso su tutte.
+    def check_attivita_riportabili_da_emettere(
+        self, attivita_fatturabili_ids: list[int],
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_check_attivita_riportabile_da_emettere(%s::bigint[])",
+                [attivita_fatturabili_ids],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        payload = row[0]
+        # ⛔ Il `jsonb` arriva come STRINGA su questa connessione, non come lista
+        #    — misurato il 2026-08-27. Senza questo ramo `list(payload)` itera i
+        #    CARATTERI: `"[]"` diventa `['[', ']']`, cioe' **due motivi** dove non
+        #    ce n'era nessuno, e il verbo risulterebbe bloccato su righe
+        #    perfettamente riportabili. Nessun errore, nessun test rosso: un
+        #    difetto plausibile a video.
+        #    ⚠️ E' lo stesso ramo difensivo di `apps.core.db._helpers.call_jsonb_fn`,
+        #    che qui non si puo' riusare perche' e' annotato `-> dict` e questa
+        #    funzione ritorna un ARRAY. Al secondo consumatore di array si estrae.
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        return list(payload or [])
+
+    # Scopo: Rimette in coda di fatturazione un elenco di attivita' RESIDUE —
+    #        la madre DB del verbo «Riporta da emettere».
+    # Perimetro e risultato atteso: UNA sola `SELECT` sulla funzione madre, che
+    #        e' atomica per costruzione: libera le attivita', riporta a
+    #        NON_EMESSA le righe di commessa passate a EMESSA per causa loro e
+    #        scrive l'evento di registro, tutto nella stessa transazione.
+    #        ⛔ Niente `transaction.atomic()` con due chiamate: sarebbe una
+    #        seconda implementazione di un'atomicita' che il database gia'
+    #        garantisce.
+    # Risultato: dict con `riportate` e `riemesse_attivita`.
+    def riporta_attivita_da_emettere(
+        self, attivita_fatturabili_ids: list[int],
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT riportate, riemesse_attivita
+                FROM vendite.fn_riporta_attivita_da_emettere(%s::bigint[])
+                """,
+                [attivita_fatturabili_ids],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {"riportate": int(row[0]), "riemesse_attivita": int(row[1])}
+

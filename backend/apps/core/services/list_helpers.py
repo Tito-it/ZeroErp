@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from apps.core.services.error_manager import ErrorManager
 
 _ORDER_DIR_VALIDI = frozenset({"asc", "desc"})
@@ -25,15 +27,31 @@ _ORDER_DIR_VALIDI = frozenset({"asc", "desc"})
 #        nessun error_code di dominio). Questo opera nei service con rigore
 #        fail-fast e codice errore parametrico.
 def validate_order_params(
-    order_by: str,
-    order_dir: str,
+    order_by: str | None,
+    order_dir: str | None,
     *,
-    allowed_columns: frozenset[str],
+    allowed_columns: Collection[str],
     error_code: str,
     function_name: str,
-) -> tuple[str, str]:
+    nullable: bool = False,
+) -> tuple[str | None, str | None]:
+    # ⭐ `nullable` per le liste in cui «non specificato» e' un valore legittimo:
+    #    l'ordine lo decide allora il DEFAULT del repository, che e' quello
+    #    dichiarato a catalogo. E' la stessa apertura che `validate_enum_param`
+    #    ha da sempre per i filtri opzionali — senza, ogni dominio che ammette
+    #    l'assenza si riscrive il guard in casa, ed e' esattamente quello che era
+    #    successo in `vendite_service` (sette copie).
+    # ⚠️ `Collection[str]` e non `frozenset[str]`: le whitelist di vendite sono
+    #    `dict[chiave esposta -> colonna SQL]`, e `in`/`sorted()` su un dict
+    #    guardano le chiavi — che sono proprio i valori ammessi. L'annotazione
+    #    stretta era l'unica cosa che diceva «questo BB non fa per te».
+    # ⛔ Il confronto di `order_dir` resta CASE-SENSITIVE com'era: i tredici
+    #    chiamanti che c'erano prima si comportano identici, e chi accetta
+    #    `ASC` normalizza prima di chiamare (lo fa il wrapper di vendite).
+    #    Rilassarlo qui sarebbe stato un cambio di contratto silenzioso per
+    #    tutti, introdotto di straforo da un refactoring.
     ErrorManager.require(
-        order_by in allowed_columns,
+        (nullable and order_by is None) or order_by in allowed_columns,
         code=error_code,
         message="Parametri ordinamento non validi.",
         detail="order_by deve essere uno tra: " + ", ".join(sorted(allowed_columns)),
@@ -42,7 +60,7 @@ def validate_order_params(
         log_to_db=True,
     )
     ErrorManager.require(
-        order_dir in _ORDER_DIR_VALIDI,
+        (nullable and order_dir is None) or order_dir in _ORDER_DIR_VALIDI,
         code=error_code,
         message="Parametri ordinamento non validi.",
         detail="order_dir deve essere 'asc' o 'desc'",

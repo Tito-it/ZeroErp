@@ -433,6 +433,39 @@ Regola completa, esempi e criterio «riuso o conio un codice?»:
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.
 - Nei file di test Python/Django, inserire all'inizio un breve indice dei test previsti (nome test/caso).
 - Negli smoke test bash (`backend/scripts/smoke-test-*.sh`), inserire un blocco `# Indice test (0..N):` dopo l'header, elencando ogni sezione di test.
+
+### ⚠️ Gli smoke: nessuno li lancia, e per un giorno erano rotti in sei
+
+`backend/scripts/tests/smoke-*.py` — undici script che parlano col database di
+sviluppo, ognuno in `transaction.atomic()` + `set_rollback(True)`, quindi
+**eseguibili senza lasciare niente**.
+
+⛔ **Non li raccoglie il runner Django** (stanno fuori da `apps/`, hanno il
+trattino nel nome e il pattern di scoperta e' `test*.py`) e **non li esegue la
+CI**. Il 2026-08-27 sei degli undici erano rossi **da un giorno** senza che
+nessuno se ne accorgesse: `vendite.attivita_fatturabili.fatturato` era diventata
+`GENERATED` e le fixture continuavano a scriverla. Il difetto veniva da un
+cantiere che quei file non li aveva nemmeno aperti.
+
+```bash
+scripts/smoke-baseline.sh                   # tutti, ~4 min
+scripts/smoke-baseline.sh fattura-scadenze  # solo quelli col nome dato
+scripts/smoke-baseline.sh --update          # rigenera il registro dei noti
+```
+
+Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, non-verde
+**nuovo** → `exit 1`, noto rientrato → lo segnala. Registro in
+`backend/scripts/tests/baseline-smoke.tsv`, che e' un **debito** e deve calare.
+
+⛔ **Il codice di uscita di uno smoke non dice la verita'**: ce n'e' uno che
+stampa «ESITO: FALLITO» e esce **0**. Chi li lancia a mano con `&&` legge verde
+su un rosso — lo script classifica dall'**output**, ed e' il motivo per cui
+esiste invece di essere un `for`.
+
+⚠️ **Gli esiti sono TRE.** Oltre a verde e rosso c'e' `SENZA_MATERIA`: lo script
+si ferma su una precondizione assente e lo **dichiara** (`raise SystemExit`).
+Non e' un difetto, ma la copertura di quel giro vale **zero**, non «parziale»:
+va vista, non nascosta fra i verdi.
 - Struttura test Django per app: `apps/<schema>/tests/` con sottocartelle minime `api/` e `services/`.
 - Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
 - Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).

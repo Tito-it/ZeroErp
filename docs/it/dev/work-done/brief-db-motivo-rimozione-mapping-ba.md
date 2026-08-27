@@ -17,7 +17,17 @@
 >
 > ✅ **Stato (2026-08-27): Q-1 decisa da Tid — forma (a). N1, N2, N4 e N7
 > ESEGUITI** (changeSet `20260827-01`, `-02`, `-03`; pgTAP a `plan(14)`).
-> **N5 assorbito in N1** (§5.4). Restano **N6** e le consegne BE/FE del §8.
+> **N5 assorbito in N1** (§5.4), **N7** chiuso (§5.6) e le consegne BE/FE del
+> §8 **fatte**.
+>
+> ✅ **CANTIERE CHIUSO il 2026-08-27, validato in-app da Tid.** N1·N2·N4·N7 a
+> database, BE-2·BE-3 e FE-2·FE-3 consegnati, documentazione API aggiornata.
+> ⚠️ **N6 era un 🔴 di contabilità, non di sostanza**: verificato il 2026-08-27
+> che le quattro pagine `manual/` esistono e sono piene
+> (`fn_check_ba_cambio_emittente`, `fn_guard_ba_cambio_emittente`,
+> `trgfn_efba_guard_storia_emittente`, `fn_get_storia_emittente_ba`) e che
+> `fatturazione.md` nomina il vincolo. ⭐ Il marcatore l'ho aggiornato **dopo
+> aver guardato i file**, non per chiudere la riga.
 > ⭐ **N7 è nato da una segnalazione del BE, ed è la parte che ha insegnato di
 > più**: il buco c'era, ma la causa non era quella indicata — §5.6.
 
@@ -143,7 +153,7 @@ la regola: un secondo consumatore chiama la funzione, che è l'unità condivisa.
 | **N3** | il motivo sulla riga | — | ⇒ con la **(a)** non è un oggetto DB: è **BE-3** |
 | **N4** | pgTAP | `db/pgtap` | ✅ `plan(8)` → `plan(13)` |
 | **N5** | il messaggio nomina l'emittente per **id** | — | ⇒ **assorbito in N1** (§5.4) |
-| **N6** | documentazione | `docs/` | 🔴 |
+| **N6** | documentazione | `docs/` | ✅ 4 pagine `manual/` + `fatturazione.md` (verificate il 2026-08-27) |
 | **N7** | ⛔ la **riga del gestore globale** aveva il cestino acceso — segnalazione BE | `20_code` | ✅ `20260827-03` |
 
 ### 5.1 N1 — la check
@@ -309,14 +319,19 @@ trattarlo come se lo fosse allargherebbe il cantiere senza un motivo sul modello
 
 ## 8. Consegne fuori dal database
 
-⛔ **Ferme finché N1…N2 non sono applicati.**
+> ✅ **BE-2, BE-3, FE-2, FE-3 CONSEGNATE il 2026-08-27**, con N1, N2 e **N7**
+> applicati e verificati sul database. ~~🔴 Resta scoperta la riga del gestore
+> globale~~ — **coperta dal `20260827-03`**, e senza toccare il frontend: il
+> motivo nuovo arriva dallo stesso campo e il pulsante si è spento da sé. È il
+> dividendo di «una sola funzione per riga» (§5.6).
+> ⚠️ **FE-3 sono DUE chiavi**, non una: `con_storia` e `default_singleton`.
 
 | | Dove | Cosa |
 | --- | --- | --- |
 | **BE-2** | `apps/anagrafiche/services/emittenti_fiscali_service.py` | `can_remove` smette di essere `True` scritto a mano e diventa il `reason` che arriva dalla riga (`NULL` ⇒ ammesso); il messaggio del tooltip resta una **chiave**, mai testo dal database |
 | **BE-3** | `apps/anagrafiche/db/emittenti_fiscali_repository.py` | `LEFT JOIN LATERAL script.fn_check_ba_cambio_emittente(m.billing_account_id, m.emittente_soggetto_ruolo_id, <emittente della riga is_default>)` nell'SQL di `list_by_emittente`, esposto come `rimozione_blocco_reason` |
 | **FE-2** | `EmittenteFiscaleBillingAccountTab.buildRowActions` | `disabled` + **`tooltip`** sull'azione — ⛔ il campo si chiama `tooltip`, non `motivo`: `RowActionsMenu` legge solo quello |
-| **FE-3** | `locales/it.json` · `locales/en.json` | la chiave `amministrazione.emittenti_fiscali.ba_blocco.con_storia`, in **tutte e due** |
+| **FE-3** | `locales/it.json` · `locales/en.json` | `amministrazione.emittenti_fiscali.ba_blocco.` **`con_storia`** e **`default_singleton`**, in **tutte e due**. ⚠️ La seconda è **incondizionata** («deve sempre esistere, ce n'è uno solo»): scriverla come una condizione ripeterebbe a video l'errore che il `-03` ha appena evitato |
 
 ⚠️ **BE-3, la riga da non sbagliare**: il «dopo» è l'emittente della riga
 `is_default`, **non** `script.fn_get_ba_emittente_sr_id(ba)` — vedi §5.3.
@@ -324,6 +339,18 @@ trattarlo come se lo fosse allargherebbe il cantiere senza un motivo sul modello
 ⭐ **E prima di dire che FE-2 è fatto, guardare a video che il tooltip arrivi**:
 §12.5.5 — un campo dichiarato e non letto sembra presidiato, e in questo progetto
 il motivo di un pulsante spento non era **mai** stato reso.
+
+> **Cosa è stato verificato davvero** (2026-08-27), e cosa no.
+> ✅ **Il server vero, via HTTP**, con un JWT di un amministratore: la prima riga
+> della prima pagina (`id=15`, il gestore globale) torna `can_remove: false` con
+> `DEFAULT_SINGLETON` e la sua chiave. Non il service in isolamento: gunicorn,
+> ricaricato con `HUP` perché in dev **non ha l'autoreload**.
+> ✅ **Le sette chiavi** che l'azione emette sono tutte lette da `RowActionsMenu`
+> — è il difetto contro cui il §12.5.5 avverte, e si vede solo mettendo i due
+> file uno accanto all'altro. E le due chiavi i18n risolvono in **it** e **en**.
+> ⚠️ **Non è stato guardato un pixel**: su questa macchina non c'è né Chromium
+> né Playwright, e installarli richiede un ok esplicito. L'ultimo miglio —
+> aprire il drawer e passare il mouse sul cestino grigio — resta a Tid.
 
 ---
 
@@ -362,6 +389,104 @@ fare una chiamata in più», è l'unico posto in cui quel passo indietro si
 vedrebbe.
 
 ⛔ Nessuna migrazione applicata: l'apply lo autorizza Tid.
+
+
+### 2026-08-27 · BE-2·BE-3·FE-2·FE-3 consegnate — e un buco che si vede solo qui
+
+**Prerequisiti verificati prima di scrivere una riga**: `20260827-01` e `-02`
+sono **applicati** (`pg_proc`), la madre **chiama** davvero la check
+(`pg_get_functiondef`), e `zeroerp_app` ha l'`EXECUTE` — un `GRANT` mancante
+sarebbe stato un 500 su una lista che oggi funziona.
+
+| | Cosa è stato fatto |
+| --- | --- |
+| **BE-3** | `LEFT JOIN LATERAL` in `list_by_emittente`, esposto come `rimozione_blocco_reason` **e** `rimozione_blocco_reason_key` |
+| **BE-2** | `can_remove` = *il motivo è NULL*; motivo e chiave restano nel payload |
+| **FE-2** | `disabled` + `tooltip` sull'azione, con `labelOrCode(t, te, reason_key, reason)` |
+| **FE-3** | `amministrazione.emittenti_fiscali.ba_blocco.con_storia` in `it.json` **e** `en.json` |
+
+⭐ **Due campi e non uno.** Il §8 chiedeva `rimozione_blocco_reason`; da solo
+avrebbe costretto il frontend a **ricostruire** la chiave i18n dal codice
+macchina, cioè a riscrivere lì una corrispondenza che la check già consegna. La
+`reason_key` viaggia con il motivo, come per le `fn_available_actions_*`
+(`can_push_commessa_reason_key` &c.), e il frontend la rende con `labelOrCode` —
+fail-visible: chiave mancante ⇒ si vede il codice, non un tooltip vuoto.
+
+#### ⭐ Provato costruendo il caso, perché sui dati di oggi era verde a vuoto
+
+La prima lettura dava `can_remove: true` su **tutte e 43** le righe — corretto
+(41 puntano allo stesso emittente del default, 1 è su un cliente senza storia,
+1 è il default) e **inutile come prova**: non distingue «la colonna funziona» da
+«la colonna è sempre `NULL`».
+
+⇒ In una transazione **annullata**, con la veste dell'operatore di quell'emittente,
+è stata creata **una** commessa sul cliente del mapping 62 (emittente ≠ default,
+prima senza storia). Sulla **stessa riga**:
+
+| | `can_remove` | `reason` |
+| --- | --- | --- |
+| prima | `true` | — |
+| dopo | **`false`** | `BA_CON_STORIA` + `…ba_blocco.con_storia` |
+
+E il `DELETE` **vero**, sullo stesso identico stato, rifiuta con
+`E_BA_EMITTENTE_CON_STORIA` · **409** · *«Il cliente BAC/0000048 ha già 0 fatture
+e 1 commesse con l'emittente **EMI-TEST**…»*. ⭐ Due cose insieme: il tooltip e
+il rifiuto vengono dallo stesso predicato, e **N5 è atterrato** — l'emittente è
+nominato per codice, non più `72`.
+
+⚠️ **E il tubo è stato guardato tutto**, perché il §12.5.5 avverte proprio su
+questo: `paginated_envelope` non proietta i campi, lo store passa le righe
+intatte, `ListaConfigurabile` gira `:data` pieno allo slot `#actions`, e
+`RowActionsMenu` legge davvero `disabled` e `tooltip`. Un anello muto lasciava
+un pulsante grigio senza spiegazione.
+
+#### ~~🔴~~ ✅ N7 — la riga del **gestore globale** era accesa a vuoto
+
+> ✅ **Chiusa dal team DB lo stesso giorno** (`20260827-03`) — e con una
+> **causa diversa** da quella che avevo scritto qui sotto: non il guard
+> raggio N, ma il **singleton**. La segnalazione era giusta, l'attribuzione
+> no; il testo resta com'era, con l'errore dentro, perché la voce di
+> registro in coda spiega perché la mia proposta avrebbe fatto **peggio**
+> del silenzio. ▼ «N7 — la riga che nessuno aveva guardato».
+
+`fn_check_ba_cambio_emittente` esce al **primo** `IF`: senza billing account non
+è il suo caso. Ma quella riga si può cancellare, e a rifiutarla è un guard
+**diverso** — `fn_guard_ba_gestore_globale_storia`, il raggio N — che una
+`fn_check_*` gemella **non ce l'ha**.
+
+⇒ Sulla riga `is_default` il cestino resta **acceso** e il 409 è di nuovo
+l'unica rete. È lo stesso difetto che questo cantiere sta chiudendo, sull'altro
+guard — e il brief d'origine dice che quel cancello *«in pratica chiude quasi
+sempre»* su un'installazione che ha già fatturato: è la riga con la probabilità
+di rifiuto **più alta** delle due.
+
+⛔ **Non l'ho tappato nel backend**, ed è la ragione per cui è scritto qui invece
+che nel codice: dedurre «il default non si toglie se esiste un non-mappato con
+storia» lato Python sarebbe **ricalcolare la regola** fuori dalla sua sede — il
+divieto del §7 di questo stesso brief. Serve `script.fn_check_ba_gestore_globale_storia`,
+calco di N1, e `fn_guard_ba_gestore_globale_storia` che la chiama come N2.
+⚠️ Il «dopo» in quel caso è `NULL` (sparisce il gestore globale), esattamente
+come lo passa il trigger nel ramo `DELETE`.
+
+Nel frattempo il backend lo **dichiara** invece di tacerlo: la nota sta in
+`list_mapping`, dove la legge chi tocca `can_remove`.
+
+#### ⚠️ Il costo della LATERAL, letto sul piano e non sul cronometro
+
+`EXPLAIN (ANALYZE)`: **`loops=42`** sulla LATERAL, cioè gira una volta per riga
+**dell'emittente**, non per riga di pagina — il `COUNT(*) OVER ()` materializza
+tutto prima del `LIMIT`. E la lista **cresce col parco clienti**: ogni billing
+account nasce con un mapping suo (`trgfn_billing_account_link_ef`), quindi non
+c'è un tetto.
+
+⭐ **Non si è riscritta la query, e la ragione non è che «oggi sono 3 ms».** È
+che la funzione esce in corto circuito **senza toccare nessuna tabella** nei due
+casi normali, mentre i `JOIN` che c'erano già pagano lo **stesso** numero di giri
+con una ricerca su indice sotto RLS ciascuno — 772 buffer contro 67. Impaginare
+prima di arricchire è la mossa giusta il giorno in cui questa pagina rallenta, e
+riguarda **tutta** la query: isolare questo pezzo darebbe una vittoria del 7% in
+cambio di un `ORDER BY` scritto due volte, che è la forma in cui una lista si
+mette a ordinare male in silenzio.
 
 ### 2026-08-27 · N7 — la riga che nessuno aveva guardato
 

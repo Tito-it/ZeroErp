@@ -15,9 +15,35 @@
 > pulizia i18n che non era in programma (§5.1-bis/ter). Il resto è pianificato
 > qui e **non iniziato**: si parte su «procedi», lotto per lotto.
 >
-> ⛔ **Un prerequisito DB è emerso scrivendo questo piano** e blocca il verbo a
-> video: l'elenco su cui il pulsante dovrebbe agire **non esiste** — né la vista
-> che lo produce, né la chiave che il verbo consuma. Richiesta nel **§6**.
+> ✅ **2026-08-27 — il prerequisito DB è ARRIVATO** (merge `#1407` su `Tito-dev`,
+> migrate di Tid alle 08:20). Le quattro colonne, la dimensione, il pgTAP che
+> lega vista e `fn_check_*`, la lista `49` e i due messaggi: **tutto consegnato
+> e vivo**, verificato sugli oggetti del database e non solo sui commit.
+> ⇒ **BE-4 e FE-2 sono sbloccati.** Dettaglio nel **§6**.
+>
+> 🔎 **2026-08-27 — passata di REVISIONE CRITICA su tutto il cantiere**: **13
+> correzioni** applicate (tre sarebbero arrivate a video, una era una mia
+> «de-duplicazione» che riscriveva un BB esistente) più le **2 decisioni** poi
+> prese con Tid — una ha corretto **tre** liste paginate, oltre alla mia. Suite
+> **4136 verde**, catena riprovata sul DB vero. Dettaglio nel **§13**.
+>
+> ⛔ **Dal punto di vista dello sviluppo il cantiere è chiuso.** Resta il
+> **collaudo in-app di Tid** — e le 5 righe vere sono ancora lì apposta: il
+> recupero è il primo gesto, ed è lì che si vede se il perimetro è giusto.
+>
+> 📂 **2026-08-27 — questo è l'UNICO brief aperto del cantiere.** Gli altri due
+> sono archiviati in `work-done`, entrambi consegnati per intero:
+>
+> | Brief | Cosa conteneva | Dove |
+> | --- | --- | --- |
+> | `brief-db-lavoro-che-non-torna-indietro.md` | la causa: «Elimina dal lotto» non liberava niente. 16 changeSet | [work-done](../work-done/brief-db-lavoro-che-non-torna-indietro.md) — chiuso 2026-08-26 |
+> | `brief-db-residui-competenza-dimensione-e-chiave.md` | il prerequisito: la chiave del verbo, la dimensione, la lista 49 | [work-done](../work-done/brief-db-residui-competenza-dimensione-e-chiave.md) — chiuso 2026-08-27 |
+>
+> ⚠️ **Due punti dei brief archiviati sono vivi e stanno QUI**, per non perderli
+> chiudendo il loro file: il codice errore «rientrato» (**§9, E-3**) e le due
+> convenzioni di `ordinamento_default` (**§11.6**). Nessuno dei due è nostro —
+> sono di chi possiede quei perimetri — ma da qualche parte devono restare
+> scritti, e un brief archiviato non è quella parte.
 
 ---
 
@@ -27,12 +53,14 @@
 | --- | --- | --- | --- |
 | **BE-1** | il ramo aggregato di `pipeline_repository` smette di scrivere `fatturato`; il metodo morto `mark_attivita_fatturata` si cancella | ✅ **fatto** (§2) | `apps/vendite/db/pipeline_repository.py` |
 | **BE-2** | classe + messaggio di ripiego per i **7** codici nuovi; i **2** ritirati passano fra i ritirati | ✅ **fatto** (§3) | `apps/core/services/error_*` |
-| **BE-3** | endpoint «Riporta da emettere» (check + mutazione), permesso `riporta_da_emettere` | ⏸️ **attende il §6** — decisione di Tid: il perimetro dell'endpoint nasce allineato alla lista, non prima (§4) | `apps/vendite/` |
-| **BE-4** | la lista dei **residui**, che oggi non esiste a nessuna grana | ⛔ **bloccato dal §6** | `apps/vendite/` |
+| **BE-3** | endpoint «Riporta da emettere» (check + mutazione), permesso `riporta_da_emettere` | ✅ **fatto** (§10) — provato sul DB vero, bersaglio incluso | `apps/vendite/` |
+| **BE-4** | la lista dei **residui** | ✅ **fatto** (§10) — 5 righe vere, chiave del verbo proiettata | `apps/vendite/` |
 | **FE-1** | le chiavi i18n che il **database emette** e il frontend non risolve | ✅ **fatto** (§5.1) | `frontend/src/locales/` |
 | **FE-1b** | *fuori programma*: una chiave i18n definita **due volte**, e il cancello che non poteva vederla | ✅ **fatto** (§5.1-bis, §5.1-ter) | `frontend/src/locales/` · `useLottoAzioni.js` · `scripts/check_i18n_keys.py` |
-| **FE-2** | il verbo sulla card «Emesse non fatturate» | ⛔ **bloccato dal §6** | `DashboardCompetenzaView` |
-| **DOC** | guida operativa: §3.1, §7.1 e il ritiro alla chiusura di un documento | ⏸️ pianificato (§7) | `docs/it/guide/cruscotti-fatturazione.md` |
+| **FE-1c** | le **4 intestazioni** della lista residui, che il DB ha seminato il 2026-08-27 | ✅ **fatto** (§6.2) — il cancello CI era rosso | `frontend/src/locales/` |
+| **FE-2** | il verbo sulla card «Emesse non fatturate» | ✅ **fatto** (§11) — tutti i presidi verdi (§12) | `DashboardCompetenzaView` |
+| **DOC** | guida operativa + doc API | ✅ **fatta** (§12) | `guide/cruscotti-fatturazione.md` · `backend/vendite/manual/` · `dev/api.md` |
+| **REV** | revisione critica del codice: bug, fragilità, duplicati, valori a mano | ✅ **fatta** (§13) — 13 corrette, 2 segnalate | tutto il cantiere + i due cataloghi BB |
 
 ---
 
@@ -196,8 +224,11 @@ POST /api/v1/vendite/attivita-fatturabili/riporta-da-emettere/
      body { attivita_fatturabili_ids: [int] }
      → { riportate, riemesse_attivita }
 
-GET  /api/v1/vendite/attivita-fatturabili/riportabili/?ids=1,2,3
+POST /api/v1/vendite/attivita-fatturabili/riportabili/
+     body { attivita_fatturabili_ids: [int] }
      → { motivi: [...] }        # per spiegare senza far fallire
+     # POST e non GET: 200 id non stanno in una query string. Nessun
+     # side-effect, nessuna Idempotency-Key, stesso permesso del verbo.
 ```
 
 | Scelta | Perché |
@@ -208,11 +239,12 @@ GET  /api/v1/vendite/attivita-fatturabili/riportabili/?ids=1,2,3
 | ⛔ **niente coda** | «Riporta da emettere» è **sincrono**: due scritture, nessun job. Accodarlo per simmetria con «Rendi definitive» importerebbe il problema della dedup, che qui non esiste (§11.2 del brief DB) |
 | traduzione errori via `translate_db_errors` | così `hint`, `fields` e **`targets`** arrivano all'envelope: la madre DB compone già il bersaglio (COMMESSA, poi FATTURA) |
 
-⚠️ **Il `GET` non è un lusso.** Il codice `E_ATTIVITA_GIA_DA_EMETTERE` porta
+⚠️ **Quella lettura non è un lusso.** Il codice `E_ATTIVITA_GIA_DA_EMETTERE` porta
 scritto a catalogo che *«il frontend deve gate-are l'azione sui codici che ha già
 in riga invece di proporla sempre: incontrare questo errore vuol dire che
-l'elenco mostrato era invecchiato»*. Il `GET` è come il frontend ri-guarda prima
-di agire su una selezione che ha in mano da un po'.
+l'elenco mostrato era invecchiato»*. È come il frontend ri-guarda prima di agire su
+una selezione che ha in mano da un po', ed è cablata: `riportaSelezionati`
+chiama `checkRiportabili` **prima** della mutazione.
 
 ---
 
@@ -405,33 +437,66 @@ chiesta al DB ha quindi **tre** valori, non un booleano.
 
 ---
 
-## 6. ⛔ Il prerequisito DB — passato al team, brief a parte
+## 6. ✅ Il prerequisito DB — CONSEGNATO il 2026-08-27
 
-> ✅ **Scritto il 2026-08-26**:
-> [brief-db-residui-competenza-dimensione-e-chiave.md](brief-db-residui-competenza-dimensione-e-chiave.md).
-> Finché non arriva, **BE-3, BE-4 e FE-2 non partono**
-> ([[feedback_be_fe_attende_prerequisiti_db]]).
+Merge `#1407` su `Tito-dev`, fast-forward su `dev/backend-tid`, migrate di Tid
+alle 08:20. ⚠️ **Verificato sugli oggetti vivi, non sui commit**: un file in git
+non è una colonna nel database.
 
-⭐ **La richiesta si è ridotta scrivendola**, e vale la pena dire come: la prima
-stesura chiedeva una **vista nuova** dei residui. Guardando come sono fatte le
-tre liste sorelle della stessa Lente — `dash_competenza_errori`, `_gruppi`,
-`_commesse` — è venuto fuori che hanno tutte `vista_sql = NULL`: **la query la
-compone il backend**, la vista non esiste. Quindi non serviva un oggetto nuovo,
-servivano **quattro colonne in coda a una vista che c'è già**.
-
-| # | Richiesta | Cosa sblocca |
+| # | Chiesto | Consegnato |
 | --- | --- | --- |
-| **D-1** | quattro colonne su `vw_dash_competenza_attivita`: `attivita_fatturabile_id`, `lock_in_fatturazione`, `stato_esecuzione` e la dimensione `motivo_non_fatturata` (`IN_ATTESA_LOTTO` / `GIRO_IN_CORSO` / `RESIDUO`) | la **chiave del verbo** e il discriminante delle tre popolazioni |
-| **D-2** | `motivo_non_fatturata` entra nel `GROUP BY` di `vw_dash_competenza_mensile` | la card in due numeri (**strada A**, §5.3) |
-| **D-3** | un pgTAP che lega la dimensione della vista ai codici della `fn_check_*` | impedisce che le due superfici divergano **in silenzio** |
-| **D-4** | seed `ui.lista_definizione` id **44** + `ui.lista_colonna` per `vendite.dash_competenza_residui` | la lista si può rendere, esportare, personalizzare |
-| **D-5** · **D-6** | i due messaggi a catalogo che mandano dalla parte sbagliata (§3.1, e il guard 4 di `fn_annulla_commessa_attivita`) | non bloccano |
+| **D-1** | 4 colonne su `vw_dash_competenza_attivita` | ✅ e sono **otto**: le 4 chieste più `lotto_provenienza_id`/`_codice` e `articolo_codice`/`_descrizione` |
+| **D-2** | la dimensione nel `GROUP BY` della mensile | ✅ `motivo_non_fatturata` presente |
+| **D-3** | il pgTAP che lega vista e `fn_check_*` | ✅ `test-motivo-non-fatturata-v1`, **17/17** come applicazione |
+| **D-4** | il seed della lista | ✅ `ui.lista_definizione` **49** (non 44), 11 colonne |
+| **D-5 · D-6** | i due messaggi che mandavano dalla parte sbagliata | ✅ riscritti |
 
-⚠️ **D-2 porta un lavoro BE/FE nello stesso giro**, ed è dichiarato: aggiungere
-una dimensione **cambia la cardinalità** dell'aggregata. I totali reggono perché
-il pivot accumula, ma il breakdown elenca una voce per riga — senza adeguamento
-il frontend mostrerebbe `EMESSA_NON_FATTURATA` **due volte**. È lo stesso effetto
-collaterale già pagato il 2026-08-20 con `tipo_movimento`.
+### 6.1 ⭐ Tre correzioni del team DB, e la seconda cambia il codice BE
+
+**1. Il vocabolario ha QUATTRO valori, non tre.** Oltre ai tre chiesti c'è
+`SENZA_ATTIVITA_FATTURABILE`: il `LEFT JOIN` ammette una riga di commessa a
+`EMESSA` **senza** riga in `attivita_fatturabili`, e lì la chiave del verbo
+sarebbe `NULL` — la lista lo proporrebbe su una riga senza bersaglio. Nessun
+percorso scritto oggi la produce (cercato: non esiste un `DELETE FROM
+vendite.attivita_fatturabili` in tutto il repo), **e non è una ragione per non
+trattarla**.
+
+**2. ⛔ `IS DISTINCT FROM 'COMPLETED'`, non `<>`** — ed è la correzione che vale
+di più. `stato_esecuzione` è **nullable** e il `CHECK` ammette anche `ERRORE`:
+col `<>` un lucchetto a `NULL` darebbe `NULL`, il `CASE` cadrebbe sul ramo dopo e
+la vista direbbe **`RESIDUO` su una riga che la mutazione rifiuta** — cioè
+esattamente la divergenza silenziosa che il D-3 esiste per impedire. Il
+vocabolario che avevo proposto nel §3 conteneva quel `<>`.
+ℹ️ Conseguenza dichiarata: `ERRORE` finisce in `GIRO_IN_CORSO`.
+
+**3. L'id libero non era 44, era 49.** ⭐ E la lezione è generale: *«un id libero
+non si dichiara in un documento — si legge dal CSV nel momento in cui si
+semina»*. Il 44 era una **fotografia** del catalogo presa quando ho scritto il
+brief.
+
+### 6.2 ✅ La whitelist da usare, e cosa fa il verbo su ciascun valore
+
+| Valore | Chiede un'azione? | Codice della mutazione |
+| --- | --- | --- |
+| `IN_ATTESA_LOTTO` | ⛔ no | `E_ATTIVITA_GIA_DA_EMETTERE` |
+| `GIRO_IN_CORSO` | ⛔ no | `E_ATTIVITA_IN_LAVORAZIONE` |
+| ⭐ `RESIDUO` | ✅ **sì** | — il verbo accetta |
+| `SENZA_ATTIVITA_FATTURABILE` | ⛔ no | — **la chiave è `NULL`**: non proponibile |
+
+⚠️ **La card si spezza su `RESIDUO` / non-`RESIDUO`**, non su quattro numeri: gli
+altri tre sono «niente da fare», e distinguerli serve al **drill-down**, non al
+contatore.
+
+⭐ La lista è `WHERE motivo_non_fatturata = 'RESIDUO'`, e
+`attivita_fatturabile_id` **non è a catalogo di proposito**: serve al verbo, non
+all'occhio. Il backend lo proietta comunque.
+
+### 6.3 Le due richieste del §7 del brief DB, verificate
+
+| # | Richiesta | Esito |
+| --- | --- | --- |
+| **7.1** 🔴 le 4 chiavi i18n — *cancello CI rosso* | ✅ **chiuso**: aggiunte in `it.json` e `en.json` con le frasi del seed, `check_i18n_keys.py` torna verde (462 intestazioni tradotte) |
+| **7.2** 🔴 il breakdown elencherebbe `EMESSA_NON_FATTURATA` due volte | ✅ **già coperto, e non per fortuna**: il BE accumula in un dizionario per `stato_fattura_codice_interno` (`voce["n_attivita"] += …`), quindi è **agnostico alla dimensione**. È il rimedio messo il 2026-08-20 per `tipo_movimento`, e ha il suo presidio: `test_breakdown_non_duplica_lo_stato_su_bucket_spezzato`. ⚠️ Verificato anche che il breakdown vive **solo** su `stadio = FATTURATA`, dove `motivo_non_fatturata` è `NULL` |
 
 ---
 
@@ -521,3 +586,460 @@ chi possiede quel codice, con `scripts/codici-errore-baseline.sh --update`.
 ⭐ Sta scritto qui e non altrove per una ragione sola: era l'unico dei tre punti
 **senza una casa**, e un debito che nessun documento nomina smette di esistere il
 giorno in cui il documento che lo nominava viene archiviato.
+
+---
+
+## 10. BE-3 e BE-4 — fatti il 2026-08-27
+
+| Pezzo | Dove |
+| --- | --- |
+| `VenditeRepository.list_dash_competenza_residui` + `DASH_COMPETENZA_RESIDUI_SORT_COLUMNS` | `db/vendite_repository.py` |
+| `check_attivita_riportabili_da_emettere` · `riporta_attivita_da_emettere` | idem |
+| `DashCompetenzaResiduoRow` | `types.py` |
+| `fn_dash_competenza_residui` · `fn_check_attivita_riportabili` · `fn_riporta_attivita_da_emettere` · `_valida_ids_riporto` | `services/vendite_service.py` |
+| `ApiDashboardCompetenzaResidui` · `ApiAttivitaRiportaDaEmettere` · `ApiAttivitaRiportabili` | `api/views_dashboard_competenza.py` + `urls_v1.py` |
+| 13 test | `tests/services/test_riporta_da_emettere_service.py` |
+
+**Rotte**: `GET /vendite/dashboard-competenza/residui/`,
+`POST /vendite/attivita-fatturabili/riporta-da-emettere/` (permesso
+`riporta_da_emettere`, `Idempotency-Key` obbligatoria),
+`POST /vendite/attivita-fatturabili/riportabili/`.
+
+### 10.1 ⛔ Un difetto trovato provando sul database vero, e sarebbe stato invisibile
+
+La prima versione di `check_attivita_riportabili_da_emettere` faceva
+`list(row[0] or [])`. Contro il DB vero ha risposto:
+
+```python
+{'motivi': ['[', ']']}
+```
+
+⚠️ Il `jsonb` arriva come **stringa** su questa connessione — misurato — e
+`list()` ne itera i **caratteri**: `"[]"` diventa **due motivi** dove non ce
+n'era nessuno. A video il verbo sarebbe risultato **bloccato su righe
+perfettamente riportabili**, senza nessun errore e senza nessun test rosso.
+⭐ È la stessa specie del `coerceJsonbToObject` che il frontend ha già come
+difesa; corretto con lo stesso ramo, e con la ragione scritta accanto.
+⚠️ Non si è potuto riusare `apps.core.db._helpers.call_jsonb_fn`, che quel ramo
+ce l'ha: è annotato `-> dict` e questa funzione ritorna un **array**. Al secondo
+consumatore di array si estrae.
+
+### 10.2 Le prove, sul DB vero e sulle 5 righe reali
+
+Tutto in transazione **rollata**: le 5 righe sono ancora dove erano.
+
+| Cosa | Esito |
+| --- | --- |
+| la lista dei residui, luglio 2026 | **5 righe**, tutte `RESIDUO`, tutte con `lotto_provenienza = LTF-0000679` — ⭐ **è il lotto della fattura 834**, quella che fallì la numerazione e da cui è nato l'intero cantiere |
+| `fn_check` sulle 5 | `[]` — nessun motivo |
+| il verbo sulle 5 | `riportate 5, riemesse 5`; residui dopo: **0** |
+| dopo il rollback | di nuovo **5** |
+| su un'attività **ancora in fattura** | rifiutata: `E_ATTIVITA_ANCORA_IN_FATTURA` · 409 · `hint` presente · **`targets = (COMMESSA 322, FATTURA 20024)`** |
+
+⭐ **L'ultima riga è la chiusura del giro cominciato con BE-2**: il bersaglio che
+la madre DB compone arriva intero fino all'envelope, e a video diventerà «Apri
+Fattura 20024». Nessun componente deve scrivere una riga per averlo.
+
+### 10.3 Due scelte, con la ragione
+
+**`translate_db_errors`, non `raise_from_database_error`.** Il secondo accetta il
+codice del database **solo se dichiarato** in un elenco locale — cioè una seconda
+copia del catalogo. Il vocabolario di questo dominio è appena cresciuto da tre a
+quattro valori senza che il backend lo sapesse: una copia si sarebbe disallineata
+in silenzio, e un codice nuovo sarebbe arrivato all'operatore come generico.
+
+**La registrazione in `_LISTE` è stata scritta e poi RITIRATA.** Il presidio
+`test_liste_configurabili_seed` è diventato rosso: la lista `49` **non ha un
+preset di default** (le tre sorelle ne hanno uno ciascuna, lei zero — né a DB né
+nel CSV). ⚠️ Non blocca il frontend, perché `ui.fn_resolve_lista_config` ripiega
+sul catalogo e risolve **11 colonne**; ma è un'incoerenza di seed. Registrarla
+ora avrebbe lasciato la CI rossa per una lista che il frontend **non monta
+ancora**: la registrazione va fatta nello stesso passo del mount, ed è la stessa
+regola delle «due metà concordate insieme» che il team DB ha invocato per le
+chiavi i18n. ➡️ **D-7 al team DB**: manca la riga di `ui.lista_preset`.
+
+---
+
+## 11. FE-2 — il verbo a video, scritto il 2026-08-27
+
+| Pezzo | Dove |
+| --- | --- |
+| client del verbo + dei motivi | `vendite/api/attivitaFatturabili.js` (nuovo) |
+| client della lista | `vendite/api/dashboardCompetenza.js` |
+| sezione paginata `residui` + `STADIO_RESIDUI` | `vendite/stores/dashboardCompetenza.js` |
+| card spezzata, drill-down, selezione, verbo | `vendite/views/DashboardCompetenzaView.vue` |
+| 15 chiavi i18n (verbo, conferma, esiti, i **quattro** motivi) | `locales/it.json` · `en.json` |
+| `n_residui` / `valore_residui` nell'aggregata + 2 test | `services/vendite_service.py` · `tests/.../test_dashboard_competenza_service.py` |
+
+### 11.1 La card adesso dice **due** cose
+
+Sotto il numero grande compare *«di cui N da recuperare · € …»*, oppure
+*«nessuno da recuperare»*. ⛔ Il conteggio arriva dal **backend**
+(`n_residui`), non si deduce dalla lista: la lista è paginata, e sommare la
+pagina darebbe un parziale che sembra un totale.
+
+⭐ È la chiusura del difetto di modello del §5.3: fino a ieri la card sommava
+lavoro fermo per un difetto e lavoro in transito legittimo — due situazioni con
+rimedi **opposti** — e la guida operativa diceva *«se in quella casella c'è un
+numero, qualcosa si è rotto»*, che era vero solo per metà.
+
+⚠️ **Provato costruendo il caso**: nei dati di sviluppo il transito non esiste
+(5 righe su 5 residue), quindi un test sulla popolazione reale sarebbe stato
+verde senza verificare niente. Il fixture `_ROWS_DUE_POPOLAZIONI` fabbrica tutte
+e **quattro** le situazioni, compresa quella che nessun percorso scritto oggi
+produce. E il presidio è stato **visto fallire**: rompendo il discriminante
+(`stadio` invece di `motivo`) il test cade.
+
+### 11.2 Il drill-down e la selezione
+
+Cliccando la card si scende sui **residui**, non sulle commesse: stessa forma
+già scelta per «Da emettere» → gruppi fatturabili. Ogni card scende sull'unità
+del **proprio verbo**, e lo smistamento è in **un punto solo** (`loadDrillDown`).
+
+⭐ **Ogni riga della lista è selezionabile per costruzione**, e non c'è nessun
+predicato lato frontend: il backend filtra `motivo_non_fatturata = 'RESIDUO'`,
+cioè esattamente il perimetro del verbo. Ri-filtrare qui sarebbe una seconda
+implementazione di una regola che vive nel database.
+
+⚠️ Il verbo chiede conferma **pur essendo reversibile** (si rifattura e si è al
+punto di prima): la conferma non protegge da un danno, dichiara **quante righe**
+sta per toccare. Un verbo di massa che parte al primo click su una lista
+paginata è il modo di riportare indietro più di quanto si è guardato.
+
+⚠️ E l'esito distingue: `riportate > 0` è un toast verde, **zero è un avviso** —
+zero non è un successo, vuol dire che l'elenco a schermo era invecchiato.
+
+### 11.3 ✅ L'ultimo rosso, chiuso dal team DB il 2026-08-27
+
+`test_ogni_lista_del_seed_ha_un_preset_default` è **rosso** su
+`vendite.dash_competenza_residui`: la lista non ha una riga in `ui.lista_preset`
+(le tre sorelle ne hanno una ciascuna). È il **D-7** del brief DB.
+
+⭐ **E il rosso è arrivato nell'ordine giusto**, il che dice che i presidi
+funzionano: finché il frontend non montava la lista, registrarla nel registro
+avrebbe reso la CI rossa per niente. Montandola, `test_registro_copre_tutte_le_liste_montate_dal_frontend`
+è andato rosso **da solo** — ha imposto la registrazione — e a quel punto è
+emerso il rosso vero, che è il seed mancante.
+
+⛔ **Non l'ho aggirato e non l'ho dichiarato come eccezione**: un preset è un
+seed, e i seed sono lavoro del team DB.
+
+✅ **Consegnato con la PR #1409**: `ui/lista_preset.csv` id 49 + 11 righe di
+`lista_preset_colonna`, applicato. I nove test del presidio sono verdi.
+
+⭐ **E hanno corretto un mio suggerimento sbagliato.** Avevo scritto «sul modello
+della `43`», che ha il preset **più corto** del catalogo: non è una convenzione,
+è **drift** — la colonna emittente fu aggiunta il 2026-08-18 e quei preset non
+furono aggiornati. Le liste nate dopo (44, 45, 47, 48) hanno preset = catalogo, e
+hanno seguito quelle. ⚠️ Con `emittente_fiscale` **presente e `visibile = f`**,
+non omessa: omessa sarebbe diventata «colonna nuova» per il banner DEF-2, e una
+scelta dichiarata si sarebbe travestita da dimenticanza.
+
+⭐ Hanno anche messo un **presidio pgTAP** (`test-liste-preset-default-v1`, 5
+asserzioni, **viste rosse**) perché il difetto l'avevo trovato *a mano* contando
+le righe delle liste sorelle — e fra le cinque ce n'è una che vale oltre questo
+caso: `ui.lista_preset_colonna` ha **due FK separate** e niente obbliga la
+colonna ad appartenere alla stessa lista del preset. Il modello lo ammette, e
+l'effetto sarebbe una lista che mostra la colonna di un'altra **senza nessun
+errore di vincolo**.
+
+### 11.3-bis ⚠️ E una loro scelta ha corretto il MIO ordinamento
+
+Il preset dichiara `ordinamento_default = competenza_mese ASC`. Il mio store
+mandava `valore DESC`, copiato dalle liste sorelle.
+
+⛔ La loro ragione è di dominio e batte la simmetria: **questa non è una lista di
+grandezze, è una coda di recupero**. Un residuo che invecchia si avvicina al
+limite di emissione, quindi il più vecchio è il più a rischio — stessa logica del
+backlog (`anzianita_giorni desc`), non dei gruppi fatturabili.
+
+⚠️ Il campo `ordinamento_default` **non è ancora consumato dal frontend**: la
+convenzione è allineare lo store **a mano** (lo fanno già `auditLog` ed
+`emittentiFiscali`). Allineati **entrambi i lati** — store e default del
+repository — perché se divergessero l'**export**, che non passa dai filtri a
+video, darebbe un ordine diverso dalla schermata e nessuno se ne accorgerebbe
+aprendo il foglio. E con la primaria ASC anche il **tiebreak** è passato ad ASC:
+altrimenti dentro lo stesso mese l'elenco sarebbe andato al contrario di come è
+stato chiesto (il difetto corretto in 30 punti il 2026-08-03).
+
+### 11.4 Stato dei presidi
+
+| | |
+| --- | --- |
+| `check_i18n_keys.py` | ✅ verde — 462 intestazioni tradotte, parità it/en |
+| `vite build` | ✅ verde |
+| suite backend | ✅ **4134** test, **tutti verdi** |
+
+### 11.6 ⏸️ Una cosa che il team DB lascia aperta, e non è nostra
+
+`ordinamento_default` ha **due convenzioni** in giro: `clienti_default` ed
+`emittenti_fiscali_default` ordinano per `campo_sorgente`, tutti gli altri per
+`codice`. Non l'hanno chiusa di proposito — deciderlo dentro un test sarebbe
+stabilire una convenzione fuori dal cantiere che possiede le liste.
+ℹ️ Per noi è indifferente: `competenza_mese` è sia `codice` sia `campo_sorgente`,
+quindi risolve con entrambe.
+
+---
+
+## 12. Documentazione — fatta il 2026-08-27
+
+| File | Cosa |
+| --- | --- |
+| `backend/vendite/manual/api_riporta_da_emettere.md` | **nuova**: la scheda del verbo, struttura standard (Scopo · Contesto · Input · Output · Regole · Dipendenze DB · Note di migrazione) |
+| `backend/vendite/manual/api_dashboard_competenza.md` | la lista dei residui e il suo export, in Input e in Output |
+| `dev/api.md` | l'inventario: la riga della Lente 1 e una **voce propria** per il verbo |
+| `guide/cruscotti-fatturazione.md` | §3.1, §7.1, §7.6 e la nuova **§7.7** |
+
+### 12.1 ⭐ La guida era già stata scritta dal team DB — e in due punti era stantia
+
+Non l'ho riscritta: il team DB l'aveva già aggiornata con la §3.1 e il caso reale.
+Mancavano quattro cose, e due erano **dichiarazioni diventate false**:
+
+| # | Cosa diceva | Cosa dice adesso |
+| --- | --- | --- |
+| 1 | *«Resta da fare il pulsante: a video non c'è ancora»* | ✅ c'è, con la sua lista e la selezione |
+| 2 | *«dentro quella casella le situazioni sono **tre**»* (in **tre** punti della pagina) | **quattro** — la quarta è arrivata col `20260826-54` ed è un'anomalia |
+| 3 | il verbo non era nella **tabella dei verbi** del §7.1 | c'è, con la nota che agisce sulle **righe spuntate** e non sul mese |
+| 4 | il ritiro alla chiusura di un documento **non era documentato da nessuna parte** | è la nuova **§7.7** |
+
+⚠️ Il punto 4 è quello che vale di più per chi usa il programma: **chiudere un
+documento adesso ritira lavoro**, e prima non lo faceva. È un comportamento che
+l'operatore deve sapere *prima*, non scoprire dopo — e la §7.7 dice anche cosa
+fare quando il documento **rifiuta** di chiudersi perché ci sono righe già
+emesse: si recuperano con «Riporta da emettere», poi il documento si chiude
+portandosele via.
+
+### 12.2 Sulla contesa dichiarata nel §11.3 del brief DB
+
+La §7.1 è la tabella che l'altro cantiere («Rendi definitive va dove stanno i
+lotti») deve riscrivere. ⚠️ Il mio intervento è **additivo** — una riga nuova in
+coda alla tabella e tre note sotto — e non tocca la riga di «Rendi definitive»:
+un merge fra i due lavori non ha nulla da scegliere. Resta valido l'avvertimento
+di coordinarsi, non di lavorare in parallelo sulla stessa riga.
+
+---
+
+## 13. Revisione critica del codice — 2026-08-27
+
+Passata di rilettura su **tutto** ciò che questo cantiere ha scritto o toccato,
+cercando difetti, codice fragile, duplicati e valori a mano. **13 correzioni
+applicate, 2 cose segnalate e non toccate.** Suite **4136 test verde**, i18n ·
+eslint · `vite build` verdi, catena riprovata **sul DB vero** con contesto
+operatore e transazione rollata.
+
+### 13.1 🔴 I tre che sarebbero arrivati a video
+
+**1. La card e la sua lista si contraddicevano sul segno.** `valore_residui`
+sommava in **valore assoluto**, ma viene reso *sotto* un totale col segno e
+*sopra* una lista che mostra il valore di riga col segno. Un residuo di
+**RETTIFICA** — e il verbo li tocca eccome (Q-8, nessuna whitelist su
+`tipo_movimento`) — avrebbe detto «di cui 1 · 500,00 €» sotto un totale di
+**−500,00 €**: due metà che non si sommano al tutto, e chi guarda non ha modo di
+capire quale delle due mente. Ora è netto, come `valore` accanto a cui vive.
+⭐ Test nuovo, **provato rosso prima e verde dopo**
+(`test_residuo_di_rettifica_resta_negativo`).
+⚠️ L'assoluto in quella funzione ha **una sede sola** ed è `valore_abs`, che
+alimenta il donut di copertura — dove non compensare è proprio il punto. Il
+difetto è nato copiando la riga sbagliata delle due.
+
+**2. Una chiave i18n che non esisteva.** `motivoLabel` costruisce l'indirizzo da
+`motivo_${codice.toLowerCase()}`; il quarto valore del vocabolario è
+`SENZA_ATTIVITA_FATTURABILE` e la chiave scritta era `motivo_senza_attivita`. La
+chiave costruita non l'avrebbe mai trovata e a video sarebbe uscito il **codice
+grezzo**. ⚠️ Tre valori su quattro giusti — e il quarto è quello che **oggi non
+capita mai**: è il §5.3 di questo stesso brief che dice «zero occorrenze non
+significa che il caso non esiste», e l'ho sbagliato lo stesso.
+
+**3. Il tooltip della card diceva una cosa diventata falsa.** *«qui restano solo
+attività sospese, posticipate o rimaste indietro. Non avanzano da sole»*: dal
+`20260826-54` è vero per **una** situazione su quattro. Riscritto in italiano e
+inglese. ⚠️ È la stessa specie di difetto della guida (§12.1) rientrata dalla
+porta dell'**interfaccia** — la frase stantia non era solo nel documento.
+
+### 13.2 Due difetti strutturali
+
+**4. `POST /riportabili/` non aveva un permesso.** Senza `post_permission`,
+`ZeroERPPermission` cade sul mestiere del metodo HTTP e un POST chiede **`add`
+sull'area**. Gate sbagliato nei **due versi**: chi può riportare ma non creare si
+vedeva negare la spiegazione di un verbo che gli spetta, chi può creare senza
+poter riportare poteva interrogarlo. Ora porta `riporta_da_emettere`, lo stesso
+del verbo. ⭐ *Chi può agire può chiedere: è la stessa porta, guardata prima di
+aprirla.*
+
+**5. ⛔ `checkRiportabili` non lo chiamava nessuno.** La catena c'era tutta —
+rotta, view, service, repository, il ramo difensivo sul `jsonb` — e il frontend
+non la toccava mai. Il §4 di questo brief dice perché esiste; il catalogo lo dice
+sul codice `E_ATTIVITA_GIA_DA_EMETTERE`. Ora `riportaSelezionati` chiama la
+verifica **prima** della mutazione: se torna un motivo si avvisa (risolvendo il
+`reason_key` che il DB dichiara, con `labelOrCode`), si azzera la selezione e si
+rilegge l'elenco.
+⚠️ Senza, il rifiuto arrivava comunque — la madre non si fida di nessuno — ma
+come **un** errore per l'intero elenco, che è **atomico**: l'operatore non
+saprebbe quale riga lo ha fermato né perché, e riproverebbe.
+🔴 **È la specie di difetto della memoria `feedback_bb_legge_non_trasporta`**:
+niente fallisce, nessun test è rosso, e la funzione a video semplicemente non
+c'è. L'ho trovata contando i **consumatori** di ciò che avevo scritto, non
+rileggendo il codice.
+
+### 13.3 ⛔ Il duplicato peggiore era una mia «de-duplicazione»
+
+Il guard `order_by`/`order_dir` era copiato **sette volte** in
+`vendite_service.py`, e l'ho estratto in un helper privato.
+🔴 **Sbagliato: il building block esisteva da giugno.**
+`apps.core.services.list_helpers.validate_order_params` fa esattamente quello, è
+usato **tredici volte** — e **una di quelle tredici è in quello stesso file**,
+con accanto il commento *«`validate_order_params` — non un'altra copia inline del
+blocco»*. Qualcuno quella lezione l'aveva già scritta, sopra la mia testa.
+
+Correzione vera:
+
+| | |
+| --- | --- |
+| `validate_order_params` | cresce `nullable: bool = False` — per le liste in cui «non specificato» è legittimo e l'ordine lo decide il **default del repository**. È la stessa apertura che `validate_enum_param` ha da sempre per i filtri opzionali |
+| `allowed_columns` | da `frozenset[str]` a `Collection[str]`: le whitelist di vendite sono `dict[chiave esposta → colonna SQL]`, e `in`/`sorted()` su un dict guardano le chiavi. ⚠️ **L'annotazione stretta era l'unica cosa che diceva «questo BB non fa per te»** |
+| `_valida_ordinamento` | resta, ma come **wrapper di dominio** che riempie l'`error_code` — stessa forma di `_validate_enum` accanto, per la stessa ragione |
+| `order_dir` | ⛔ il confronto nel BB resta **case-sensitive**: chi accetta `ASC` normalizza prima di chiamare. Rilassarlo nel BB sarebbe stato un cambio di contratto silenzioso per tutti e tredici i chiamanti, introdotto di straforo da un refactoring |
+
+⭐ **La lezione operativa**: il catalogo BB va letto **prima** di estrarre, non
+dopo — è la prima difesa contro questa specie di duplicato, e stavolta ha
+funzionato solo perché stavo aggiornando la documentazione.
+
+### 13.4 Duplicazione e valori a mano — il resto
+
+| Cosa c'era | Cosa c'è |
+| --- | --- |
+| `'RESIDUO'` **letterale dentro la `WHERE`** + costante gemella nel service | `MOTIVO_NON_FATTURATA_RESIDUO` in `vendite_repository.py`, passata come **parametro SQL**. ⚠️ È la lezione già pagata sul letterale `stadio`, scritta due righe più sotto nello stesso file (`TIPO_INDIRIZZO_FATTURAZIONE`) |
+| `_competenza_mese_obbligatoria` esisteva già | la `GET` dei residui ne aveva una **copia**: due frasi diverse per la stessa richiesta malfatta, a seconda di quale endpoint la riceve |
+| `'EMESSA_NON_FATTURATA'` a mano nel template | `STADIO_RESIDUI`, che era **già importato in quel file** |
+| `residui_hint` | chiave i18n **morta** dopo la riscrittura della card. ⚠️ Il presidio vede le chiavi *rotte*, non quelle *orfane* |
+| `context={"op": f"{function_name}"}` ×2 | f-string senza interpolazione |
+| contratto OpenAPI: `valore (default)` | il default è `competenza_mese` ASC — **un contratto pubblicato che diceva il falso** |
+
+### 13.5 ⚠️ Un commento che mentiva
+
+Avevo scritto che il default `competenza_mese ASC` mette «i più vecchi in cima,
+perché il residuo più vecchio è il più vicino al limite di emissione».
+🔴 **Falso**: la lista è filtrata su **un mese solo**, quindi quella colonna è
+**costante** e l'ordine che si vede lo decide per intero il tiebreak (commessa,
+poi chiave). La clausola resta — è ciò che il catalogo dichiara, e sarebbe già
+quella giusta se il filtro si allargasse a un intervallo — ma ora lo dice, nel
+repository e nella scheda API.
+
+⭐ Un commento che spiega una cosa che non succede è **peggio** di nessun
+commento: il prossimo lettore ci costruisce sopra.
+
+### 13.6 ✅ Le due decisioni — prese il 2026-08-27
+
+Erano segnalate e non toccate. Guardandole da vicino **sono cambiate tutte e
+due**: una in peggio, una in meglio.
+
+#### A ✅ `toggleAll` — non era una trappola non vista, era una **già documentata due volte**
+
+Cercando i consumatori è saltato fuori che il seleziona-tutto corretto per liste
+paginate **esisteva già, scritto a mano, in due posti** — `useSelezioneLotti` e
+la **lista gruppi di questa stessa vista** — ognuno con un commento lungo che
+dice di non riusare `toggleAll` del BB. 🔴 **Io l'ho usato lo stesso, cento righe
+sotto uno dei due avvertimenti.**
+
+E non ero il solo. Il conto vero, su **sei** consumatori:
+
+| | Consumatori | `toggleAll` |
+| --- | --- | --- |
+| ✅ dialog a lista **intera** | `useRigheSelezioneQta` (3 dialog) · `PreventiviSmistamentoDialog` | **corretto** — è il suo mestiere |
+| ✅ paginati, riscritto **a mano** | `useSelezioneLotti` · gruppi in `DashboardCompetenzaView` | ~20 righe duplicate, due volte |
+| 🔴 paginati, **col difetto** | `ResiCodaTable` · `CommessaGestioneDrawer` · residui di competenza | perdita silenziosa |
+
+⚠️ **`CommessaGestioneDrawer` è emerso per ultimo** e non era nel conto che avevo
+dato a Tid: pagina lato server e `onRighePage` non azzera la selezione, quindi ha
+esattamente lo stesso difetto. **Su cinque liste paginate, tre erano rotte: il
+commento come presidio aveva un tasso di riuscita del 40%.**
+
+**Decisione (ok Tid): estrazione ADDITIVA.** Il BB offre due terne e si sceglie
+in base alla lista:
+
+| Lista | Terna |
+| --- | --- |
+| **INTERA** (dialog) | `toggleAll` · `allSelected` · `anySelected` — ⛔ **non toccati** |
+| **PAGINATA** | `toggleAllInPagina` · `allInPagina` · `anyInPagina` |
+
+Le due copie a mano sono collassate sul BB (−40 righe), le tre rotte sono
+corrette. **Nessun comportamento cambia per i tre dialog.**
+
+⭐ **La ragione non è togliere righe.** Il nome `toggleAll` *è* la trappola: si
+legge «seleziona tutto», significa «sostituisci con questa pagina». La regola
+viveva come **disciplina** — un commento «attenzione, qui non usarlo» — e chi non
+lo leggeva sbagliava in silenzio. Adesso è **struttura**: la funzione giusta è
+quella che si ha sotto mano. È la stessa riga della tabella con cui si chiude il
+brief DB archiviato — *da «ricordati di…» a «non si può dimenticare»*.
+
+ℹ️ `allInPagina` **è** `allSelected`, non un secondo calcolo: quello guardava già
+le sole `selezionabili`, cioè la pagina. Il nome esiste perché il consumatore
+paginato prenda tre nomi coerenti invece di ricordarsi che uno si chiama in un
+altro modo — ed era proprio quell'incoerenza (`allSelected` di pagina,
+`anySelected` globale) a rendere la coppia sbagliata plausibile.
+
+##### La prova, e perché è stata fatta a mano
+
+⛔ **Nel frontend non c'è un runner di test.** Un fix mai visto fallire è una
+speranza, quindi la semantica è stata provata con uno script su **reattività Vue
+vera**: due pagine, due righe spuntate nella prima, «seleziona tutto» nella
+seconda.
+
+```text
+toggleAll        -> [4,5]      · indeterminate a pag.2 con nulla spuntato lì: true
+toggleAllInPagina-> [1,2,4,5]  · indeterminate a pag.2 con nulla spuntato lì: false
+toggleAllInPagina, ri-premuto  -> [1,2]   (toglie SOLO la pagina corrente)
+```
+
+Cinque asserzioni, comprese le due che verificano che **il vecchio perdesse
+davvero** — senza quelle la prova non dimostrerebbe niente.
+🔵 Resta scoperto: senza runner, questa prova **non gira in CI**. Se un giorno il
+frontend ne prende uno, è il primo caso da portarci dentro.
+
+#### B ✅ Il tetto di 200 — **rilievo ritirato, non è un difetto**
+
+L'avevo presentato come un vicolo cieco di questo cantiere. Guardando oltre il
+mio file, **è la convenzione di casa**:
+
+| Costante | Verbo | Valore | Guard nel FE |
+| --- | --- | --- | --- |
+| `MAX_ATTIVITA_RIPORTO` | Riporta da emettere | 200 | no |
+| `MAX_ACCREDITI_MASSIVI` | Accredita resi | 200 | no |
+| `MAX_GRUPPI_EMISSIONE_MIRATA` | Emissione mirata | 200 | no |
+
+Tre verbi di massa, **stesso numero e stesso comportamento**: nessuno lo
+rispecchia a video, tutti e tre lasciano rifiutare il backend con un messaggio
+comprensibile. L'esposizione è identica — anche le liste sorelle paginano fino a
+100.
+
+**Decisione (Tid): si lascia com'è.** Se un giorno serve l'avviso lato client è
+**una** decisione per la famiglia di tre, non per questa lista, e vorrebbe dire
+ricopiare il 200 in tre punti del frontend — a meno che il BE non lo esponga, che
+oggi nessuno dei tre fa.
+
+⚠️ **L'errore di metodo, che vale più del rilievo**: avevo cercato il tetto solo
+dentro `vendite_service.py` e concluso che me l'ero inventato io. È la stessa
+specie di misura parziale che questo cantiere ha passato due giorni a smontare —
+*il perimetro si cerca, non si presume*.
+
+### 13.7 Le prove, dopo le correzioni
+
+Tutto in transazione **rollata** — le 5 righe vere sono ancora dove erano.
+
+| Prova | Esito |
+| --- | --- |
+| lista residui, contesto operatore (`app.ruolo_applicativo='OPERATORE'` + `app.current_user_id`) | **5 residui su 5**, tutti `RESIDUO`, chiave del verbo presente su ogni riga |
+| **10 colonne × 2 direzioni** su righe vere | 5 righe ciascuna, **nessun 500** |
+| `check_attivita_riportabili_da_emettere` sulle 5 | `[]` — il ramo `jsonb` regge (niente `['[', ']']`) |
+| stesso, su id inesistente | `E_ATTIVITA_FATTURABILE_NON_TROVATA` con `reason_key` e `dettaglio` = conteggio |
+| guard: `order_by='drop_table'` · `order_dir='sideways'` | rifiutati, `E_VENDITE_VALIDATION` |
+| guard: assenti · `'DESC'` maiuscolo · `'asc'` | ammessi, 5 righe — **nessuna regressione** dopo l'unificazione |
+
+⛔ **E uno zero non è un dato.** Le prime letture rispondevano **zero** su tutto:
+non era un fatto, era il **fail-closed**. La vista è `security_invoker` e filtra
+sullo scope emittente letto da GUC; il canale di **sistema** quelle GUC non le
+imposta, e `SUPER_ADMIN` non è il valore che `app.ruolo_applicativo` si aspetta.
+Le righe si sono viste solo con un contesto **OPERATORE** e un utente davvero
+mappato sull'emittente giusto (`pk 32` → `sr 72`). ⚠️ La ricetta era già scritta
+nel §8 di questo brief — e l'ho ritrovata sbagliando prima.
+

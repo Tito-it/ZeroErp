@@ -860,6 +860,42 @@ class DashCompetenzaMensileRow(TypedDict):
     valore_fatturato: str
     n_in_ritardo: int
     valore_in_ritardo: str
+    # ⭐ La dimensione arrivata col `20260826-55`: dentro `EMESSA_NON_FATTURATA`
+    # distingue il RESIDUO (chiede un'azione) dalle tre situazioni di transito
+    # (non chiedono niente). `None` sugli altri stadi.
+    motivo_non_fatturata: str | None
+
+
+class DashCompetenzaResiduoRow(TypedDict):
+    # Riga della lista dei RESIDUI (`ui.lista_definizione` 49) — le attivita'
+    # che una fattura non ce l'hanno piu' e che nessun giro riprendera' da solo.
+    # E' l'oggetto del verbo «Riporta da emettere».
+    #
+    # ⚠️ `attivita_fatturabile_id` e' la CHIAVE DEL VERBO e NON e' a catalogo:
+    # non si mostra, si passa a `vendite.fn_riporta_attivita_da_emettere`.
+    # E' dichiarato opzionale perche' il tipo descrive la vista, dove la colonna
+    # e' nullable (il caso `SENZA_ATTIVITA_FATTURABILE`); su questa lista, che
+    # filtra `motivo_non_fatturata = 'RESIDUO'`, e' sempre valorizzato — ma
+    # dichiararlo `int` qui direbbe una cosa piu' forte di quella che la
+    # sorgente garantisce.
+    attivita_fatturabile_id: int | None
+    commessa_attivita_id: int
+    commessa_id: int
+    commessa_codice: str | None
+    cliente_display: str | None
+    articolo_codice: str | None
+    articolo_descrizione: str | None
+    competenza_mese: str | None
+    data_attivita: str | None
+    quantita: str | None
+    valore: str | None
+    # ⛔ Il lotto di PROVENIENZA, non `lotto_id`: quello nasce dalla catena della
+    # fattura, e su un residuo la fattura non c'e' — sarebbe NULL proprio sulle
+    # righe di questa lista. Il legame vero e' `af.lock_batch_id`.
+    lotto_provenienza_id: int | None
+    lotto_provenienza_codice: str | None
+    motivo_non_fatturata: str | None
+    emittente_ragione_sociale: str | None
 
 
 class DashCompetenzaAttivitaRow(TypedDict):

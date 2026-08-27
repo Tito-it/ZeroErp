@@ -14,7 +14,8 @@ Indice test eseguiti:
  3) test_list_records_capability_slot_vuoto_emittente_disattivo — can_configure=false
  4) test_list_records_capability_record_configurato — can_update + can_remove
  5) test_list_records_capability_utility_disattiva_blocca_configure — can_configure=false
- 6) test_list_mapping_can_remove — BA mapping arricchito con can_remove=True
+ 6) test_list_mapping_can_remove_senza_motivo — nessun motivo => gesto ammesso
+ 6b) test_list_mapping_can_remove_con_motivo — motivo dal DB => gesto spento + chiave i18n
 """
 
 from unittest import TestCase
@@ -150,11 +151,24 @@ class TestUtilitiesCapability(TestCase):
 
 
 class TestBillingAccountMappingCapability(TestCase):
-    """BA mapping arricchito con can_remove=True."""
+    """BA mapping: `can_remove` deriva dal motivo che arriva dalla riga.
 
+    ⚠️ Le righe del fixture portano `rimozione_blocco_reason` perche' e' cio'
+    che il repository produce dal 2026-08-27 (`LEFT JOIN LATERAL` su
+    `script.fn_check_ba_cambio_emittente`).
+
+    ⛔ E LA RIGA `is_default` NON PUO' AVERE MOTIVO NULLO, dal `20260827-03`:
+    il gestore globale deve sempre esistere, quindi quella riga porta SEMPRE
+    `DEFAULT_SINGLETON`. Un fixture che la costruisce senza motivo riproduce
+    una forma che il repository non produce piu' — passa, e conferma un
+    comportamento che non esiste. E' lo stesso difetto che questi test sono
+    nati per chiudere, un livello piu' in su.
+    """
+
+    # Scopo: motivo assente (`NULL` dal database) => il gesto resta ammesso.
     @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_mapping_can_remove(self, mock_parent_cls, mock_repo_cls):
+    def test_list_mapping_can_remove_senza_motivo(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliBillingAccountService,
         )
@@ -162,8 +176,10 @@ class TestBillingAccountMappingCapability(TestCase):
         mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
         mock_repo_cls.return_value.list_by_emittente.return_value = (
             [
-                {"id": 1, "billing_account_id": 100, "is_default": False},
-                {"id": 2, "billing_account_id": None, "is_default": True},
+                {"id": 1, "billing_account_id": 100, "is_default": False,
+                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None},
+                {"id": 2, "billing_account_id": 101, "is_default": False,
+                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None},
             ],
             2,
         )
@@ -173,3 +189,44 @@ class TestBillingAccountMappingCapability(TestCase):
         self.assertEqual(total, 2)
         self.assertTrue(rows[0]["can_remove"])
         self.assertTrue(rows[1]["can_remove"])
+
+    # Scopo: ⭐ IL RAMO CHE CONTA — con un motivo il gesto si spegne, e il
+    #        motivo con la sua chiave i18n RESTANO nel payload: senza quelli
+    #        il frontend avrebbe un pulsante grigio che non dice perche',
+    #        che e' la stessa cosa di un'azione sparita.
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
+    def test_list_mapping_can_remove_con_motivo(self, mock_parent_cls, mock_repo_cls):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliBillingAccountService,
+        )
+
+        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
+        mock_repo_cls.return_value.list_by_emittente.return_value = (
+            [
+                {"id": 1, "billing_account_id": 100, "is_default": False,
+                 "rimozione_blocco_reason": "BA_CON_STORIA",
+                 "rimozione_blocco_reason_key":
+                     "amministrazione.emittenti_fiscali.ba_blocco.con_storia"},
+                {"id": 2, "billing_account_id": None, "is_default": True,
+                 "rimozione_blocco_reason": "DEFAULT_SINGLETON",
+                 "rimozione_blocco_reason_key":
+                     "amministrazione.emittenti_fiscali.ba_blocco.default_singleton"},
+            ],
+            2,
+        )
+
+        rows, _ = EmittentiFiscaliBillingAccountService().list_mapping(7)
+
+        # Entrambi i motivi a contratto spengono il gesto, e il servizio non
+        # guarda QUALE sia: trasporta, non deduce.
+        self.assertEqual([r["can_remove"] for r in rows], [False, False])
+        self.assertEqual(
+            [(r["rimozione_blocco_reason"], r["rimozione_blocco_reason_key"]) for r in rows],
+            [
+                ("BA_CON_STORIA",
+                 "amministrazione.emittenti_fiscali.ba_blocco.con_storia"),
+                ("DEFAULT_SINGLETON",
+                 "amministrazione.emittenti_fiscali.ba_blocco.default_singleton"),
+            ],
+        )

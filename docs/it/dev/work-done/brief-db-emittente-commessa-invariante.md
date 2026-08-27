@@ -3,7 +3,7 @@
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **Origine.** Tid, 2026-08-26, chiudendo la D-6 di
-> [brief-db-registro-e-data-prevista-in-competenza.md](../work-done/brief-db-registro-e-data-prevista-in-competenza.md).
+> [brief-db-registro-e-data-prevista-in-competenza.md](brief-db-registro-e-data-prevista-in-competenza.md).
 > Avevo segnalato come debito minore che `vendite.commesse.emittente_soggetto_ruolo_id`
 > è nullable e non legata al billing account. Risposta di Tid: *«allora hai
 > scoperto un bug!! la commessa dovrebbe derivare sempre l'emittente dalla
@@ -36,9 +36,15 @@
 > ([[feedback_mai_applicare_migrazioni_db]]): «puoi iniziare lo sviluppo»
 > autorizzava il lavoro, non l'apply — quello l'ha autorizzato lui.
 >
-> 🔴 **Resta la sola consegna BE-1** (§7.5): il backend deve smettere di passare
-> `p_emittente_soggetto_ruolo_id`, che dal `-52` non esiste più. Finché non lo
-> fa, il push si ferma con «funzione inesistente» — rumoroso per scelta.
+> ✅ **CANTIERE CHIUSO il 2026-08-27, validato in-app da Tid.** Nessuna consegna
+> aperta: DB, backend e frontend sono allineati.
+>
+> ✅ **BE-1 CHIUSO il 2026-08-26** (§7.5): il backend non passa più
+> `p_emittente_soggetto_ruolo_id`, il binding è provato con `EXPLAIN` sul
+> database vero e la suite è verde. Registro in coda al §8.
+> ⛔ In corsa è emerso che i **codici errore nuovi non erano registrati** lato
+> backend — un codice non registrato non fallisce, ripiega a 400: rigenerati e
+> dotati di ripiego. Nessuna consegna aperta su questo cantiere.
 
 ---
 
@@ -94,7 +100,7 @@ riga non c'è.
 fail-closed, non un dato*. Qui però non è un conteggio: è la riga intera.
 
 ⭐ **E non è un caso isolato: è una famiglia.**
-[brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)
+[brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
 descrive lo stesso tipo di danno per un'altra causa — un'attività che resta
 marcata come fatturata dopo che la sua fattura è stata eliminata, e che nessuno
 rimette mai in coda. ⚠️ Le due cose **non hanno oggetti in comune** e non vanno
@@ -1202,3 +1208,114 @@ cui un taglio di parametro in mezzo alla firma è stato sicuro.
 il `-50` aveva `DROP`pato. Rinominata e riscritta, e corretto il link entrante
 dalla pagina del guard. Tutti i collegamenti delle pagine nuove verificati uno
 per uno ([[feedback_no_build_doc]]: grep mirato, nessuna build).
+
+### 2026-08-26 · BE-1 — il parametro sparisce anche dal backend
+
+> Consegna del §7.5, l'ultima del cantiere. Il database era già nella forma
+> finale (`20260826-52`, 12 parametri): qui il backend smette di inseguirlo.
+
+| Dove | Cosa |
+| --- | --- |
+| `apps/vendite/db/commesse_repository.py` | via `emittente_soggetto_ruolo_id` dalla firma, `p_emittente_soggetto_ruolo_id => %s` dalla `SELECT` e il valore dalla lista. Il perché sta nel docstring, dove lo legge chi domani vorrà rimetterlo |
+| `apps/vendite/services/commesse_source_handlers.py` | via `emittente_soggetto_ruolo_id=` dalla chiamata **e dalla `cache_key`** |
+| `apps/vendite/tests/services/test_commesse_repository.py` | due chiamate adeguate + **il cancello nuovo** (`1d`) |
+| `apps/vendite/tests/services/test_commesse_source_handlers.py` | un'asserzione sui `kwargs` dell'happy path |
+| `scripts/tests/smoke-*.py` (4 file) | le chiamate dirette alla funzione |
+
+⭐ **La `cache_key` perde una dimensione, e non è una svista.** L'emittente non
+ha smesso di essere una dimensione della commessa — lo è ancora, nel `WHERE` del
+riuso — ma si **deriva** dal billing account, che nella chiave c'è già. Due
+righe con lo stesso `billing_account_id` ricadono per costruzione sullo stesso
+emittente: la colonna non discriminava niente. Lasciarla sarebbe stato uno
+specchio che riflette una funzione che non esiste più.
+⚠️ `row.emittente_soggetto_ruolo_id` **resta** in `PushableRow`, come diceva il
+§7.5 — e la verifica è stata fatta invece di essere dedotta: lo usa
+`_resolve_pricing_audit`, come guard, come dimensione della **sua** cache e come
+argomento di `PricingService.resolve_prezzo`.
+
+#### ⛔ E la revisione critica ha trovato che quelle dimensioni erano scritte **due volte**
+
+`cache_key` e i `kwargs` della chiamata erano **due elenchi identici**, a cinque
+righe di distanza, allineati solo dalla disciplina di chi li toccava — ed è
+esattamente ciò che questa consegna ha dovuto fare, modificandoli tutti e due.
+
+⇒ **Ora l'elenco è uno solo** (`dimensioni_commessa`) e la chiave si **deriva**
+da quello. ⭐ La ragione non è l'eleganza: togliere una dimensione dalla chiave
+lasciandola nella chiamata **non rompe niente di visibile** — fa riusare una
+commessa che non andava riusata, cioè il difetto che il commento sopra quella
+riga descrive da quando è nato (la fattura 2263, il termine sbagliato). Un
+allineamento tenuto a mano fra due copie che nessun test confronta è la forma in
+cui quel difetto rientra dalla finestra.
+⚠️ Restano fuori tre parametri, e **non per la stessa ragione**: `priorita_operativa`
+è una dimensione vera ma qui vale il default (costante per tutto il giro);
+`meta` e `force_new` non sono dimensioni affatto — e `force_new` è il comando che
+**disabilita** il riuso, quindi in una cache di riuso sarebbe una contraddizione.
+
+#### ⭐ Il cancello: `test_get_or_create_commessa_non_passa_emittente`
+
+Guarda **tutti e due i lati**, e non è ridondanza: una firma Python che
+riaccettasse il parametro senza spedirlo lo farebbe **ignorare in silenzio**, un
+SQL che lo spedisse senza averlo in firma **romperebbe il push**. Sono due
+difetti diversi ([[feedback_rinomina_db_binding_mockato]]).
+
+⛔ **Non asserisce quanti siano i parametri**, e la prima stesura lo faceva
+(«12 e 12»): l'arità è un fatto che vive nel **database**, e copiarlo in un test
+lo mette in un posto che invecchia da solo — il giorno in cui la funzione
+guadagnasse una colonna, il test sarebbe rosso dicendo `12 != 13`, che non
+spiega niente. Ciò che il test può provare **da sé** è che segnaposti e valori si
+**corrispondono** (`sql.count("%s") == len(args)`, l'idioma già in uso in
+`test_fatturazione_job_helpers`): se divergono la chiamata è irrisolvibile, e
+guardando i soli nomi non si vedrebbe.
+
+⭐ **E le tre asserzioni sono state provate rimettendo il difetto**, una per una:
+parametro solo in firma → rossa la firma; solo nell'SQL → rosso l'SQL; un
+segnaposto in più con un nome innocuo → rossa l'arità (`13 != 12`). Nessuna delle
+tre è decorativa.
+
+#### ⚠️ E il binding è stato provato **col database**, non coi mock
+
+Un test con un cursore finto avrebbe detto «verde» anche con la firma vecchia.
+Le due prove, entrambe su `dbdev`:
+
+* `EXPLAIN` dell'SQL **reale** prodotto dal repository (intercettato senza mock,
+  12 parametri) → pianifica: la funzione risolve;
+* `EXPLAIN` della chiamata **vecchia**, con `p_emittente_soggetto_ruolo_id` →
+  *«la funzione … non esiste»*. È la prova che il cancello sopra non è vacuo.
+
+⭐ **E lo stesso è stato fatto per i quattro smoke**, che sono i file più esposti:
+nessun test li copre e nessuno li esegue finché non serve, quindi un binding
+rotto lì dorme. Estratto l'SQL dall'`ast` di ciascuno e passato all'`EXPLAIN`:
+**4 su 4 risolvono**, e segnaposti/valori corrispondono (6·6, 6·6, 5·5, 5·5) —
+la verifica che il team DB si era dovuto fare a mano sui 15 pgTAP, dove uno
+script di sostituzione aveva rotto **12 file su 13**.
+
+⚠️ `EXPLAIN` **pianifica e basta**: nessuna commessa è stata creata.
+
+**Suite**: 4100 test verdi, `OK (skipped=7)`. In più, con `ZEROERP_TEST_DB_E2E=1`,
+i quattro cancelli sui codici errore (terzo lato, punti di chiamata, campi da
+`P0001`, divergenza dal catalogo): 20 verdi.
+
+⛔ **E i codici nuovi non erano registrati nel backend.** `E_COMMESSA_EMITTENTE_BA_INCOERENTE`,
+`E_COMMESSA_SORGENTE_EMITTENTE_MISTO` e `E_SORG_EMITTENTE_NON_RISOLTO` (più i due
+dell'altro cantiere) mancavano da `error_policies_generated.py`: un codice non
+registrato **non fallisce**, ripiega a 400. Rigenerato dal catalogo — **zero
+classi cambiate** sugli esistenti, che è il verso che conta — e scritti i quattro
+ripieghi senza `%s` in `error_messages_fallback.py`
+([[feedback_ripiego_ogni_codice_vivo]]). `E_SORG_BA_NON_RISOLTO` entra nel modulo
+già **ritirato**, quindi nessun ripiego: il diario deve restare leggibile, non
+deve nascere una frase che nessuno leggerà.
+
+⚠️ **E i primi tre ripieghi erano nel registro sbagliato**, corretto in
+revisione. Su un `TECNICO` il ripiego finisce sotto un **500**, dove l'operatore
+non ha niente da correggere: scriverci *«l'emittente non si passa da fuori, si
+deriva dal billing account»* è un'istruzione **per chi sviluppa**, messa nel
+canale che parla **a chi lavora** — lo stesso errore dei tre canali di
+`AGENTS.md`, un piano più in su. Il registro di casa per quella classe è il fatto
+più «anomalia tecnica» (77 codici `TECNICO` già scritti così), e le tre frasi ora
+lo seguono. ⭐ I sei fratelli `E_*_EMITTENTE_BA_INCOERENTE` restano diversi
+apposta: sono `DATO_ERRATO`, li legge una persona in un form che **può**
+correggere.
+
+✅ **Con questo il cantiere è chiuso su tutti e due i lati.** Non restano
+consegne backend; il frontend non nominava l'emittente della commessa in nessun
+punto, quindi non aveva niente da adeguare.

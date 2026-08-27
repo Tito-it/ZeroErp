@@ -338,6 +338,7 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   execute,
   loading,
   createdId,
+  visible: () => props.visible,
   isEdit: () => isEdit.value,
   contentReady: () => contentReady.value,
   triggerSources: () => form.value.billing_account_id,
