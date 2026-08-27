@@ -1,12 +1,29 @@
 # Brief DB — i residui di competenza: la chiave che manca e la dimensione che manca
 
+> ✅ **CHIUSO e ARCHIVIATO il 2026-08-27.** Le due metà sono consegnate: il lato
+> DB è **applicato e verificato sugli oggetti vivi** (§6, §8.5), il lato BE/FE ha
+> consumato tutto ciò che questo brief chiedeva (§7).
+>
+> ➡️ **Il seguito vive in
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md)**,
+> che resta l'**unico brief aperto** del cantiere: lì stanno il collaudo in-app
+> di Tid sulle 5 righe vere e i due
+> punti che questo brief lascia a **chi li possiede** — il codice errore
+> «rientrato» (§8.4 qui → §9 E-3 là) e le due convenzioni di
+> `ordinamento_default` (§8.3 qui → §11.6 là). ⛔ Nessuno dei due si perde
+> archiviando: erano già ricopiati là prima dello spostamento.
+>
+> ⚠️ **Quel che si legge sotto è il testo com'era quando è stato scritto**, con
+> gli aggiornamenti di stato in linea. Le richieste al passato («servono quattro
+> colonne») sono la RICHIESTA, non lo stato di oggi.
+
 > **Destinatario:** team DB (`dev/db-tid`). BE e FE **attendono**
 > ([[feedback_be_fe_attende_prerequisiti_db]]).
 >
 > **Origine.** 2026-08-26, scrivendo il piano applicativo di
-> [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md),
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md),
 > cioè la metà BE/FE del cantiere che il team DB ha appena chiuso
-> ([brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)).
+> ([brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)).
 > Il verbo **«Riporta da emettere»** è applicato, collaudato sulle 5 righe vere e
 > documentato. ⛔ **A video non può esistere**: la sua chiave non esce da nessuna
 > vista, e la card su cui dovrebbe vivere conta due popolazioni con **rimedi
@@ -20,8 +37,22 @@
 > ([[feedback_db_actions_passaggio_team]], [[feedback_mai_applicare_migrazioni_db]]).
 >
 > 🔴 **Quella riga vale per la RICHIESTA, non per lo stato di oggi.** Il lato DB
-> è **scritto e APPLICATO** (migrate di Tid, 2026-08-27 08:20): vedi §6. Restano
-> aperte le due consegne BE/FE del §7, e la prima è un **cancello CI rosso**.
+> è **scritto e APPLICATO** (migrate di Tid, 2026-08-27 08:20): vedi §6.
+>
+> ✅ **2026-08-27 — anche il lato BE/FE del §7 è CHIUSO** (`brief-be-fe-…` §10,
+> §11, §13): le quattro chiavi i18n ci sono e il cancello CI è verde, il
+> breakdown regge, il vocabolario è in whitelist, la lista 49 è montata e
+> registrata nel presidio, il pulsante c'è. La catena è stata riprovata sul DB
+> vero con contesto operatore: **5 residui su 5**, dieci colonne ordinabili per
+> due direzioni senza un 500, `fn_check_*` che risponde `[]`.
+>
+> ⚠️ **Una precisazione che vale per chi legge il §7.3**: il quarto valore è
+> `SENZA_ATTIVITA_FATTURABILE` per intero, e la chiave i18n che il frontend
+> costruisce è `…motivo_senza_attivita_fatturabile`. La prima stesura l'aveva
+> abbreviata a `motivo_senza_attivita`: la chiave costruita non l'avrebbe mai
+> trovata e a video sarebbe uscito il **codice grezzo**. ⛔ *Zero occorrenze non
+> significa che il caso non esiste* — è scritto in questo stesso brief, e il
+> valore che non capita mai è proprio quello che è stato sbagliato.
 
 ---
 
@@ -414,9 +445,14 @@ controesempio mancato, non una prova: la prova sono le fixture **costruite**.
 
 ---
 
-## 7. ⛔ Le richieste a BE/FE — e la prima è un cancello CI
+## 7. ✅ Le richieste a BE/FE — CHIUSE il 2026-08-27
 
-### 7.1 🔴 **BLOCCANTE** — le quattro chiavi i18n
+> Erano aperte quando questo brief è stato scritto; sono tutte consegnate.
+> Il dettaglio applicativo, le prove e la revisione critica stanno in
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md)
+> §10 (BE), §11 (FE), §12 (doc) e §13 (revisione).
+
+### 7.1 ✅ Le quattro chiavi i18n — erano un cancello CI rosso, ora è verde
 
 Il catalogo delle liste dichiara la chiave, e
 `scripts/check_i18n_keys.py` (CI) **confronta il CSV coi locales**: verificato,
@@ -466,6 +502,33 @@ leggendo `vw_dash_competenza_attivita` con
 ⚠️ `attivita_fatturabile_id` **non è a catalogo** ed è deliberato: serve al verbo,
 non all'occhio. Il backend lo proietta comunque — è la chiave che passa a
 `vendite.fn_riporta_attivita_da_emettere`.
+
+### 7.6 ✅ **D-7** — il preset di default della lista 49 (consegnato, vedi §8.5)
+
+Trovato il 2026-08-27 registrando la lista nel presidio
+`apps/core/tests/test_liste_configurabili_seed.py`, che è andato **rosso**:
+
+```text
+vendite.dash_competenza_errori    -> preset default: 1
+vendite.dash_competenza_gruppi    -> preset default: 1
+vendite.dash_competenza_commesse  -> preset default: 1
+vendite.dash_competenza_residui   -> preset default: 0   ← e zero righe nel CSV
+```
+
+⚠️ **Non blocca il frontend**: `ui.fn_resolve_lista_config` ripiega sul catalogo
+e risolve regolarmente le 11 colonne — verificato. È un'incoerenza di **seed**:
+le tre sorelle hanno una configurazione di partenza dichiarata, questa no, e il
+presidio dice che *«zero lascia la lista senza configurazione di partenza»*.
+
+⛔ Per questo la registrazione nel presidio è stata **ritirata e non forzata**:
+lasciarla avrebbe reso la CI rossa per una lista che il frontend non monta
+ancora. Va fatta nello stesso passo del mount — le due metà concordate insieme,
+come per le chiavi i18n del §7.1.
+
+Serve una riga in `ui/lista_preset.csv` (+ `lista_preset_colonna.csv` se le
+sorelle ce l'hanno), sul modello della `43`.
+
+---
 
 ### 7.5 Il pulsante
 
@@ -543,14 +606,27 @@ stretta quel presidio è un cancello **mezzo spento**, e non è uno stato in cui
 lasciarlo a lungo. È già registrato in `brief-db-lavoro-che-non-torna-indietro`
 §14.9 come rosso preesistente.
 
-### 8.5 ⛔ Stato: seminato, **non ancora applicato**
+### 8.5 ✅ Stato: APPLICATO — verificato sull'oggetto vivo il 2026-08-27
 
-Il preset è nei CSV e **provato in rollback**; i tre mirror `runOnChange`
-(`20260507-08`, `20260507-09` e il loro gemello) lo caricheranno **al prossimo
-migrate**. Fino ad allora `ui.lista_preset` non ha la riga, e il presidio 8.2
-è **rosso** — correttamente.
+Il preset è nei CSV e i tre mirror `runOnChange` (`20260507-08`, `20260507-09` e
+il loro gemello) l'hanno caricato. `ui.lista_preset` ha la riga:
+
+```text
+lista 49 · dash_competenza_residui_default · [{"col":"competenza_mese","dir":"asc"}] · is_default
+```
+
+⚠️ Letto **dal database**, non dai commit: è la stessa disciplina del §6 —
+un changeSet mergiato non è un oggetto applicato. Il presidio 8.2 è **verde**.
+
+⭐ E `competenza_mese asc` è il default che ripetono, uguale, il repository e il
+frontend: se divergessero, l'export — che non passa dai filtri a video — darebbe
+un ordine diverso dalla schermata, e chi apre il foglio non avrebbe modo di
+accorgersene. ⚠️ Su questa lista quella colonna è però **costante** (il perimetro
+è un mese solo), quindi l'ordine che si vede lo decide per intero il tiebreak:
+si scrive perché è ciò che il catalogo dichiara e perché sarebbe già quella
+giusta se il filtro si allargasse — non perché metta «i più vecchi in cima».
 
 ---
 
 *Scritto il 2026-08-26 — Tid / Claude. Piano applicativo che ne dipende:
-[brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md) §6.*
+[brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) §6.*

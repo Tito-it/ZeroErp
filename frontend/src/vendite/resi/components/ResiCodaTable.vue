@@ -159,9 +159,15 @@ const {
   isSelectable: isRigaAccreditabile,
   isSelected: isRigaSelezionata,
   toggleRow: toggleRiga,
-  toggleAll: toggleTutte,
-  allSelected: tutteSelezionate,
-  anySelected: alcuneSelezionate,
+  // ⛔ La terna «in pagina», non `toggleAll`/`anySelected`: questa coda e'
+  //    PAGINATA e la selezione vive attraverso le pagine. Fino al 2026-08-27
+  //    qui c'era `toggleAll`, che SOSTITUISCE la selezione con la pagina
+  //    corrente: spuntare «tutte» a pagina 2 buttava via quanto spuntato a
+  //    pagina 1, in silenzio — se ne vedeva solo il contatore del pulsante
+  //    calare. Vedi il blocco in fondo a `useSelezioneToggle`.
+  allInPagina: tutteSelezionate,
+  anyInPagina: alcuneSelezionate,
+  toggleAllInPagina: toggleTutte,
 } = useSelezioneToggle({
   selected: selezione,
   selezionabili: righeSelezionabili,

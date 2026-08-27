@@ -258,10 +258,10 @@ esista.
 
 **Cosa deve succedere sul DDT di ri-consegna generato:**
 
-- [ ] il DDT esiste, con la riga di ri-consegna;
-- [ ] la riga è **«Senza prezzo»** — il DB la genera valorizzando la quantità e
+- [X] il DDT esiste, con la riga di ri-consegna;
+- [X] la riga è **«Senza prezzo»** — il DB la genera valorizzando la quantità e
       non il prezzo, e **non c'è nessun ordine da cui ereditarlo**;
-- [ ] ⭐ il drawer **si apre e si usa** senza errori: prima di questo lavoro il
+- [X] ⭐ il drawer **si apre e si usa** senza errori: prima di questo lavoro il
       solo aprire e risalvare quella riga faceva scattare il resolver;
 - [ ] con causale **VENDITA** l'emissione **blocca con il messaggio parlante**
       della prova 3 — invece di lasciare l'operatore davanti a un documento che

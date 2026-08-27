@@ -297,6 +297,12 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("vendite.dash_competenza_errori", _whitelist_di_classe("DASH_COMPETENZA_ERRORI_SORT_COLUMNS")),
     ("vendite.dash_competenza_gruppi", _whitelist_di_classe("DASH_COMPETENZA_GRUPPI_SORT_COLUMNS")),
     ("vendite.dash_competenza_commesse", _whitelist_di_classe("DASH_COMPETENZA_COMMESSE_SORT_COLUMNS")),
+    # Lista dei RESIDUI (2026-08-27): l'elenco su cui agisce «Riporta da
+    # emettere». ⭐ Registrata nello STESSO passo in cui il frontend la monta,
+    # ed e' il presidio ad averlo imposto: montandola senza registrarla
+    # `test_registro_copre_tutte_le_liste_montate_dal_frontend` e' andato
+    # rosso da solo, che e' esattamente il suo mestiere.
+    ("vendite.dash_competenza_residui", _whitelist_di_classe("DASH_COMPETENZA_RESIDUI_SORT_COLUMNS")),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),

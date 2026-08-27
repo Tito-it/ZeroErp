@@ -487,6 +487,11 @@ watch(() => props.visible, async (v) => {
   // createdId rimasto da una sessione CREATE precedente (bozza auto-salvata)
   // farebbe puntare `effectivePreventivoId` al preventivo sbagliato riaprendo
   // un'altra pratica in EDIT. In CREATE resetForm() li riazzera comunque.
+  // ⚠️ Dal 2026-08-27 il caso generale e' coperto da `useDrawerAutosaveBozza`,
+  // che azzera `createdId` alla chiusura del drawer (lo stesso difetto era vivo
+  // su DDT e ordini, e li' apriva sempre lo stesso documento da qualunque riga
+  // della lista). Questa riga resta perche' qui il drawer puo' essere riusato
+  // SENZA passare da una chiusura, e allora il fronte di chiusura non scatta.
   createdId.value = null
   detail.value = null
   // loadParamDefaults serve in entrambi i mode (paramBool/paramInt usati anche
@@ -519,6 +524,7 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   execute,
   loading,
   createdId,
+  visible: () => props.visible,
   isEdit: () => isEdit.value,
   contentReady: () => contentReady.value,
   triggerSources: () => [form.value.utility_id, form.value.istanza_utility_id],

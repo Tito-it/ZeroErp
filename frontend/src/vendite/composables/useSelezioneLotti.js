@@ -12,10 +12,11 @@
 //    «lotti del mese» e «recuperi» — quindi spuntare «tutti» nella seconda
 //    butterebbe via quanto spuntato nella prima, in silenzio: l'operatore se
 //    ne accorgerebbe solo dal contatore del pulsante.
-//    Del BB si riusano quindi `isSelezionato`/`toggle` (il guard di coerenza) e
-//    si riscrive il solo seleziona-tutto, che opera SULLA PAGINA CORRENTE
-//    aggiungendo o togliendo e lasciando intatto il resto. È la stessa forma
-//    già in servizio sulla lista gruppi della Lente 1.
+//    ✅ Dal 2026-08-27 il seleziona-tutto di pagina NON si riscrive più qui: è
+//    `toggleAllInPagina`/`allInPagina`/`anyInPagina`, estratti nel BB. Questo
+//    file e la lista gruppi della Lente 1 se l'erano scritto a mano tutti e
+//    due, e nel frattempo altre TRE liste paginate avevano usato `toggleAll`
+//    lo stesso — la regola è passata dal commento alla funzione.
 //
 // ⭐ E LA SELEZIONE ATTRAVERSA LE DUE SCHEDE, di proposito: un lotto di
 //    competenza precedente — quello che sta nei «recuperi» — si numera insieme
@@ -51,7 +52,12 @@ export function useSelezioneLotti({ righeVisibili, abilitata }) {
     () => (righeVisibili.value ?? []).filter(lottoNumerabile),
   )
 
-  const { isSelected, toggleRow } = useSelezioneToggle({
+  const {
+    isSelected, toggleRow,
+    allInPagina: tuttiInPagina,
+    anyInPagina: alcuniInPagina,
+    toggleAllInPagina: toggleTuttiInPagina,
+  } = useSelezioneToggle({
     selected: selezione,
     selezionabili: selezionabiliInPagina,
     rowKey: 'id',
@@ -68,29 +74,6 @@ export function useSelezioneLotti({ righeVisibili, abilitata }) {
     if (!nonPiu.size) return
     selezione.value = selezione.value.filter((r) => !nonPiu.has(r.id))
   })
-
-  const tuttiInPagina = computed(() => {
-    const p = selezionabiliInPagina.value
-    return p.length > 0 && p.every((r) => isSelected(r))
-  })
-
-  const alcuniInPagina = computed(
-    () => !tuttiInPagina.value && selezionabiliInPagina.value.some((r) => isSelected(r)),
-  )
-
-  // Seleziona-tutto DELLA PAGINA: aggiunge o toglie, non sostituisce.
-  function toggleTuttiInPagina() {
-    const chiavi = new Set(selezionabiliInPagina.value.map((r) => r.id))
-    if (tuttiInPagina.value) {
-      selezione.value = selezione.value.filter((r) => !chiavi.has(r.id))
-      return
-    }
-    const gia = new Set(selezione.value.map((r) => r.id))
-    selezione.value = [
-      ...selezione.value,
-      ...selezionabiliInPagina.value.filter((r) => !gia.has(r.id)),
-    ]
-  }
 
   // Il motivo per cui una riga non si spunta, sulla casella spenta. ⚠️ Sulle
   // righe spuntabili torna `undefined` e non stringa vuota: un tooltip vuoto

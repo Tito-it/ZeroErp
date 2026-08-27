@@ -32,7 +32,7 @@
 > | --- | --- |
 > | `BE-1` la fatturazione ferma · `BE-2` le policy dei 7 codici | ✅ **fatti**, [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) §2 e §3 |
 > | il verbo «Riporta da emettere» a video | stesso brief, §4 e §5 — ⛔ **bloccato** da un prerequisito DB |
-> | il prerequisito DB (la chiave del verbo e la card che conta due popolazioni) | [brief-db-residui-competenza-dimensione-e-chiave.md](../work-in-progress/brief-db-residui-competenza-dimensione-e-chiave.md) |
+> | il prerequisito DB (la chiave del verbo e la card che conta due popolazioni) | [brief-db-residui-competenza-dimensione-e-chiave.md](brief-db-residui-competenza-dimensione-e-chiave.md) |
 > | ⏸️ la guida operativa: chiudere un documento adesso **ritira lavoro** | brief BE/FE, §7 |
 > | ⏸️ il messaggio di `E_RIGA_COMMESSA_NON_MANUALE`, la cui frase da L7b **è vera** | brief DB residui, **D-6** |
 > | 🟠 il rientrato `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` in `codici-errore-baseline.sh` | brief BE/FE, §9 — ⚠️ **non è di questo cantiere e la baseline non è stretta** |
@@ -2293,7 +2293,7 @@ baseline **non è stata stretta**: va allineata da chi possiede quel codice.
   ⚠️ ma quella pagina è contesa con l'altro cantiere (§11.3) e la §7.1 aspetta
   comunque la consegna BE/FE.
 - ✅ **FATTO il 2026-08-27** (changeSet `20260826-56`, brief
-  [brief-db-residui-competenza-dimensione-e-chiave](../work-in-progress/brief-db-residui-competenza-dimensione-e-chiave.md)
+  [brief-db-residui-competenza-dimensione-e-chiave](brief-db-residui-competenza-dimensione-e-chiave.md)
   D-6). Il messaggio di `E_RIGA_COMMESSA_NON_MANUALE` (guard 4 di
   `fn_annulla_commessa_attivita`) diceva *«il rimedio è SEMPRE a monte, sul
   documento»*: ⭐ **da L7b quella frase è vera**, e adesso il messaggio **nomina**

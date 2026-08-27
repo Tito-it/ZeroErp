@@ -57,6 +57,10 @@ from apps.vendite.api.views_dashboard_competenza import (
     ApiDashboardCompetenza,
     ApiDashboardCompetenzaAttivita,
     ApiDashboardCompetenzaCommesse,
+    ApiDashboardCompetenzaResidui,
+    ApiDashboardCompetenzaResiduiExport,
+    ApiAttivitaRiportaDaEmettere,
+    ApiAttivitaRiportabili,
     ApiDashboardCompetenzaCommesseExport,
     ApiDashboardCompetenzaErrori,
     ApiDashboardCompetenzaErroriExport,
@@ -192,6 +196,35 @@ urlpatterns = [
         "dashboard-competenza/commesse/export/",
         ApiDashboardCompetenzaCommesseExport.as_view(),
         name="vendite-dashboard-competenza-commesse-export",
+    ),
+    # I RESIDUI: le attivita' che una fattura non ce l'hanno piu' e che nessun
+    # giro riprendera' da solo. E' l'elenco su cui agisce «Riporta da emettere»,
+    # ed e' una lista sua e non un filtro di `attivita/`: lo stadio
+    # EMESSA_NON_FATTURATA contiene quattro situazioni e solo questa chiede
+    # un'azione.
+    path(
+        "dashboard-competenza/residui/",
+        ApiDashboardCompetenzaResidui.as_view(),
+        name="vendite-dashboard-competenza-residui",
+    ),
+    path(
+        "dashboard-competenza/residui/export/",
+        ApiDashboardCompetenzaResiduiExport.as_view(),
+        name="vendite-dashboard-competenza-residui-export",
+    ),
+    # Il verbo «Riporta da emettere» e la sua lettura di motivi. ⚠️ Vivono
+    # sull'ATTIVITA' e non sotto `dashboard-competenza/`: il cruscotto e' dove
+    # oggi si preme il pulsante, ma l'oggetto del verbo e' l'attivita'
+    # fatturabile — e domani lo stesso gesto puo' partire da un'altra schermata.
+    path(
+        "attivita-fatturabili/riporta-da-emettere/",
+        ApiAttivitaRiportaDaEmettere.as_view(),
+        name="vendite-attivita-riporta-da-emettere",
+    ),
+    path(
+        "attivita-fatturabili/riportabili/",
+        ApiAttivitaRiportabili.as_view(),
+        name="vendite-attivita-riportabili",
     ),
     # Emissione mirata: l'unita' su cui l'operatore decide nella card «Da
     # emettere» (documento sorgente oppure oneri di commessa). La gruppo_key
