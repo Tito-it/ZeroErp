@@ -174,6 +174,15 @@ class CommesseSourceHandlersTests(TestCase):
         repo.batch_upsert_attivita.assert_called_once()
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 1)
+        # ⛔ L'emittente NON si ri-passa al database: dal 2026-08-26 si deriva
+        #    dal billing account e la funzione DB non ha piu' il parametro
+        #    (`20260826-52`). Qui il repository e' un mock e accetterebbe
+        #    qualunque chiave: senza questa riga la reintroduzione passerebbe
+        #    i test e morirebbe al primo push vero, con «funzione inesistente».
+        self.assertNotIn(
+            "emittente_soggetto_ruolo_id",
+            repo.get_or_create_commessa.call_args.kwargs,
+        )
 
     # Scopo: PROPAGAZIONE — il termine del documento sorgente arriva alla
     #        commessa. E' la meta' visibile del difetto del 2026-08-03:

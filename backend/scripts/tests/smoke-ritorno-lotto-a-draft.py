@@ -154,11 +154,10 @@ with transaction.atomic():
             """
             SELECT vendite.fn_get_or_create_commessa(
                 p_billing_account_id => %s, p_utility_id => %s,
-                p_emittente_soggetto_ruolo_id => %s,
                 p_competenza_dal => %s, p_competenza_al => %s,
                 p_meta => %s::jsonb, p_force_new => true)
             """,
-            [t["billing_account_id"], t["utility_id"], t["emittente_sr_id"],
+            [t["billing_account_id"], t["utility_id"],
              competenza, competenza, f'{{"smoke": "{marker}"}}'],
         )
         commessa_id = cur.fetchone()[0]

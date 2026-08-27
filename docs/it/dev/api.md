@@ -375,6 +375,87 @@ Pattern alternativo (per endpoint che usano `limit`/`offset`):
 * Ricerca testuale: parametro `search`, minimo 3 caratteri, operatore ILIKE
 * Vedi: `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md`
 
+### ⭐ Capability di riga — come viaggia il motivo di un'azione spenta
+
+> **La regola non nasce qui**, e questa sezione non la riscrive: sta in
+> [linee-guida-sql §12](/linee-guida-sql) per chi la produce e in
+> [frontend-standards](frontend/frontend-standards.md) per chi la rende. Qui c'è
+> la faccia che mancava — **il trasporto** — perché una regola scritta su due lati
+> di tre si perde nel mezzo, ed è successo davvero: il pulsante «Annulla
+> l'accredito» e il cestino del mapping billing account erano **accesi** su gesti
+> che il database avrebbe rifiutato.
+
+**Permesso ⇒ nascondi. Stato ⇒ disabilita col motivo.** Ne discende che la
+risposta deve portare **due cose**, non una: se dice solo *«non si può»*, il
+client ha un pulsante grigio che non spiega niente — indistinguibile da un bug.
+
+| Ruolo del campo | Tipo | Cosa porta |
+| --- | --- | --- |
+| il flag | bool | `false` = azione **da disabilitare**, non da nascondere |
+| il motivo | string \| null | codice **macchina** del primo motivo. `null` = ammesso |
+| la chiave | string \| null | **chiave i18n** del tooltip |
+
+⚠️ **Sui NOMI non c'è ancora una forma unica, e questa tabella non ne inventa
+una.** Le famiglie in servizio sono tre, e nessuna è il calco delle altre:
+
+| Superficie | Flag | Motivo | Chiave i18n |
+| --- | --- | --- | --- |
+| dettaglio documento | `can_push_commessa` | `can_push_commessa_reason` | `can_push_commessa_reason_key` |
+| riga mapping BA | `can_remove` | `rimozione_blocco_reason` | `rimozione_blocco_reason_key` |
+| righe reso · coda accrediti | — | `annullo_blocco_codice` · `blocco_codice` | — |
+
+⭐ **Solo la prima è una terna coerente**: motivo e chiave si ricavano dal nome
+del flag, quindi chi ne legge uno sa già come si chiamano gli altri due. La
+seconda ha il motivo che non discende dal flag; la terza non ha flag **e** porta
+due nomi diversi per la stessa cosa su due superfici.
+
+⇒ Ciò che **vale in tutte** è la proprietà, non il template: il nome dice
+**quale verbo** blocca, e motivo e chiave viaggiano **in coppia**. Un
+`blocco_reason` generico su una riga che ha due azioni bloccabili le confonde al
+primo che si aggiunge (`linee-guida-sql §12.5.4`).
+
+⛔ **Unificare i nomi è una decisione che nessuno ha preso**, e non va presa di
+straforo rinominando: finché non c'è, si segue la famiglia della superficie su
+cui si sta lavorando invece di coniarne una quarta.
+
+⛔ **Il testo del motivo non viaggia mai nel payload.** Va la chiave: il
+messaggio è multilingua e vive nei `locales`, e una frase composta in SQL
+sarebbe una traduzione che nessuno può cambiare. ⚠️ Il client usa la chiave con
+un ripiego sul codice (`labelOrCode`): chiave mancante ⇒ si vede il codice
+macchina, non un tooltip vuoto.
+
+⛔ **Il backend TRASPORTA, non deduce.** Il flag si deriva dal motivo
+(`reason is None`), e il motivo lo produce la **stessa** funzione che il
+database usa per rifiutare — `script.fn_check_<azione>`, chiamata sia dalla
+madre che solleva l'errore sia dalla query di lista. Così tooltip e rifiuto non
+«coincidono oggi»: **non possono divergere**. Ricalcolare la condizione in
+Python è la forma in cui i due si sfilano in silenzio.
+
+⚠️ **E l'errore resta**, non viene sostituito: la capability è cosa si *propone*,
+il guard è cosa si *ammette*. Un client che non legge la capability prende il
+409 e ha ragione lui.
+
+**Due forme, e non sono intercambiabili:**
+
+| | Azione di **documento** | Azione **per riga** |
+| --- | --- | --- |
+| dove sta | blob `available_actions[]` nel **dettaglio** | **colonne della riga** di lista |
+| esempio | `fn_available_actions_preventivo` | `can_remove` + `rimozione_blocco_reason` su `…/billing-account/` |
+
+⛔ Una capability di dettaglio **non** risponde per una riga: il blob non sa
+niente delle righe. È l'errore in cui si cade per primo, perché la forma di
+dettaglio è quella già scritta.
+
+⚠️ **Il nome del campo dice QUALE verbo**, e non si riusa quello di un altro:
+su una riga possono esistere due azioni bloccabili per motivi diversi, e un
+`blocco_reason` generico le confonde al primo che si aggiunge.
+
+⭐ **Prima di dichiarare fatta una capability, verificare che il client la
+LEGGA.** Un campo dichiarato e mai letto sembra presidiato e non presidia niente:
+nel 2026 il motivo di un pulsante spento non era **mai** stato reso a video,
+perché il frontend leggeva un nome di campo diverso da quello emesso — e niente
+falliva.
+
 ---
 
 ## Endpoint PATCH (aggiornamento parziale)
@@ -670,7 +751,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 
 * **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati) | [api_flusso_assegnazione.md](/backend/pratiche/manual/api_flusso_assegnazione) | [api_operatori_reparto.md](/backend/pratiche/manual/api_operatori_reparto) | [api_prendi_in_carico.md](/backend/pratiche/manual/api_prendi_in_carico) | [api_coda_lavoro.md](/backend/pratiche/manual/api_coda_lavoro)
 * **Amm. Software**: [api_amm_software.md](../backend/amm-software/manual/api_amm_software.md)
-* **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md)
+* **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_indirizzi_ruolo.md](../backend/anagrafiche/manual/api_indirizzi_ruolo.md) | [api_contatti_ruolo.md](../backend/anagrafiche/manual/api_contatti_ruolo.md) | [api_conti_bancari_ruolo.md](../backend/anagrafiche/manual/api_conti_bancari_ruolo.md) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md) | [api_categorie_clienti.md](../backend/anagrafiche/manual/api_categorie_clienti.md) | [api_categorie_clienti_listini.md](../backend/anagrafiche/manual/api_categorie_clienti_listini.md) | [api_emittenti_fiscali.md](../backend/anagrafiche/manual/api_emittenti_fiscali.md)
 * **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
 * **Email**: [api_email.md](/backend/core/manual/api_email)
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
@@ -678,13 +759,14 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Vendite — Ciclo attivo**: [api_offerte.md](/backend/vendite/manual/api_offerte) | [api_ordini.md](/backend/vendite/manual/api_ordini)
 * **Vendite — Cockpit fatturazione (Fase C)**: [api_fatturazione.md](/backend/vendite/manual/api_fatturazione) — endpoint di comando del cockpit: giro «Fattura competenza» (`POST fatturazione/run/`, non bloccante via coda lavori `dbops.coda_lavori`) + polling `run/<job_id>/`, «Rendi definitive» perimetro (`POST fatturazione/numera/`) e singolo lotto (`lotti/<id>/numera/`), ristampa massiva (`lotti/<id>/ristampa/`), esiti giri + stato coda stampa (`fatturazione/esiti/`). Dal 2026-07-27 `fatturazione/run/` accetta `gruppi[]` = **emissione mirata** (stesso verbo, perimetro ristretto ai gruppi fatturabili scelti; assente = giro di massa invariato). Idempotenza 2-layer, identità operatore catturata (RLS come nel web), gate fiscale I-7
 * **Vendite — Commesse (governo operativo)**: [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato) | [api_commessa_attivita.md](/backend/vendite/manual/api_commessa_attivita) — lista righe + azioni APPROVA (riga/mese) e, dal 2026-07-28, **ANNULLA riga manuale** (`POST /commesse/<id>/attivita/<att_id>/annulla/`): non cancella, porta `stato_emissione` ad `ANNULLATA` (valore già filtrato da tutte le porte verso fattura e cockpit) con motivo obbligatorio tracciato; gate `carica_voce_manuale`, perimetro = righe sourceless non emesse su commessa modificabile | [api_commesse_pricing.md](/backend/vendite/manual/api_commesse_pricing) — azioni prezzo N5/N7/sblocco, dal 2026-07-23 gated su azione di processo **`prezzo_override_manuale`** (stesso codename dei gate prezzo di preventivi/contratti/DDT) | [api_commessa_oneri.md](/backend/vendite/manual/api_commessa_oneri) — **porta oneri**: `POST /commesse/<id>/oneri/` crea la riga di puro valore (qta=1, `tipo_movimento=ONERE`, già APPROVATA, sourceless), causale/UoM/IVA derivate dall'articolo-onere dalla madre DB; gate `carica_voce_manuale`, presidio all'ingresso senza approvazione a due passi
+* **Vendite — «Riporta da emettere» (recupero delle attività residue)**: [api_riporta_da_emettere.md](/backend/vendite/manual/api_riporta_da_emettere) — `POST /vendite/attivita-fatturabili/riporta-da-emettere/` (permesso dedicato `riporta_da_emettere`, `Idempotency-Key` obbligatoria) rimette in coda di fatturazione un elenco di attività **residue** e riporta a `NON_EMESSA` le righe di commessa passate a `EMESSA` per causa loro. ⛔ Non ricrea lotti né fatture: il lavoro ricompare in «Da emettere» e segue il giro normale. ⭐ **Sincrono** — due scritture e una transazione, nessun job: accodarlo per simmetria con «Rendi definitive» importerebbe la dedup, che qui non esiste. Il compagno `riportabili/` restituisce i **motivi ostativi** senza tentare nulla (è un POST pur essendo una lettura: una selezione di 200 righe non sta in una query string), e serve a **spiegare invece di far fallire** — incontrare `E_ATTIVITA_GIA_DA_EMETTERE` significa che l'elenco a schermo era invecchiato. 🔴 Lo **scope sta sulla commessa**, non sull'attività: `attivita_fatturabili` non ha RLS, `commesse_attivita` sì — leggere la prima da sola sarebbe fail-open, e il danno sarebbe lo **stato spezzato** (attività liberata, riga di commessa no). ⚠️ Il perimetro **non usa `fatturato`**, che dal `20260826-33` è una colonna generata: un verbo fondato lì smetterebbe di funzionare in silenzio.
 * **Vendite — Fattura (consultazione)**: [api_fattura_dettaglio.md](/backend/vendite/manual/api_fattura_dettaglio) — `GET /vendite/fatture/<id>/` restituisce il **documento completo** (testata decodificata + righe da `vw_fattura_righe_esposte` con kit risolti + riepilogo IVA + piano rate) in un round-trip, per il drawer di consultazione. Orchestra gli **stessi** lettori che alimentano il contesto del PDF → video e stampa raccontano lo stesso documento per costruzione (regola R17). Sola lettura: oltre EMESSA le righe sono congelate a DB. ⚠️ **Ordine di lettura vincolante**: la testata è l'unico cancello di scope — `vendite.fatture` ha la RLS, `fatture_righe`/`fatture_riepiloghi_iva` **no**. Include le note fattura (`<id>/note/`, sesto dominio del BB partizionato) e i `contatori` dei badge (oggi `note`) — dict e non scalare per reggere i prossimi senza cambiare shape; il conteggio sta **dopo** il cancello di testata perché `note_fatture` non ha RLS
 * **Vendite — Giornale fattura (la storia del documento)**: [api_fattura_giornale.md](/backend/vendite/manual/api_fattura_giornale) — `GET /vendite/fatture/<id>/giornale/`: «cosa è successo a questo documento, in ordine di tempo», elenco paginato di sola lettura che alimenta la scheda «Storia» del drawer fattura. ⭐ **Primo consumatore di `script.vw_giornale_entita`** (la vista che cuce i quattro registri di evento): fino al 2026-08-24 il suo perimetro era verificato dal pgTAP e non dall'uso. ⛔ Da non confondere con `/passaggi/`, che dice con quali **altri documenti** la fattura è legata: qui si risponde a *«cosa le è successo»*. 🔴 **Il cancello è la testata**: la vista è `security_invoker` e su una fattura fuori scope risponderebbe **zero righe** — cioè «non è successo niente» invece di «non la vedi». Il 404 nasce da `vendite.fatture`, non dalla vista. ⛔ L'ordine **non può appoggiarsi al solo tempo** (`now()` è il timestamp di transazione: 38 righe su 3 istanti), a ordinare dentro l'istante è il tiebreak. ⚠️ Le segnalazioni **ritirate** sono nascoste di default e `ritirate_count` dichiara quante: senza quel numero «nessun evento» e «tre eventi tutti superati» si leggono uguali
 * **Vendite — Fondi fattura (governo)**: [api_fondi_fattura.md](/backend/vendite/manual/api_fondi_fattura) — `GET /vendite/fondi-fattura/da-decidere/` (+ `/export/` CSV/XLSX, colonne dalla configurazione lista dell'operatore): l'elenco dei casi in cui il giro automatico **si ferma** e la scelta resta a una persona (4 motivi a vocabolario chiuso). Read-only su `vw_fondi_fattura_da_decidere`, `security_invoker` → **va letta con la connessione dell'utente, mai da un canale di sistema**. ⭐ L'elenco **presenta, non sana**: nessuna riga ha un gemello automatico che la corregge, perché sanarla vorrebbe dire muovere denaro senza che nessuno l'abbia deciso
 * **Vendite — Situazione merce (ordine e DDT)**: [api_situazione_merce.md](/backend/vendite/manual/api_situazione_merce) — `GET /vendite/{ordini|ddt}/<id>/situazione-merce/`: quanto è uscito, tornato, fatturato e cosa resta aperto, in **un round-trip** e quattro sezioni (riassunto per riga d'ordine · partite di merce · coda accrediti · coda ri-consegne). Read-only su `vw_situazione_merce_ordine` + `vw_partite_merce` + le due code, tutte `security_invoker`. Le due view nascono dal factory `build_situazione_merce_view` (i domini sono due dal primo giorno). ⛔ **`differenza` e `da_spedire` possono essere `null`, e `null` non è zero** («il conto non si applica»: ordine non ancora impegnato, riga mai spedita, causale non fatturabile, conto non calcolabile) e **`stato` non si ri-traduce** — arriva già tradotto dal DB con **sette** valori. ⚠️ `fatturato_anticipato` non è un accredito. 🔴 Il perimetro si verifica sulla **testata** prima di ogni lettura (`ordini`/`ddt` hanno la RLS, le righe no): fuori scope → 404, altrimenti il pannello uscirebbe vuoto invece che negato
 * **Vendite — Lineage/genealogia documenti**: [api_lineage_passaggi.md](/backend/vendite/manual/api_lineage_passaggi) — `GET /<dominio>/<id>/passaggi/` sui 7 domini (6 documenti + commessa — factory `build_passaggi_view`): pratica collegata + frontiera + catena transiti avanti/indietro (read-only su `vw_documento_lineage`/`fn_documento_lineage`, RLS invoker)
 * **Vendite — Situazione aperta**: [api_dashboard_aperto.md](/backend/vendite/manual/api_dashboard_aperto) — stock documenti per `area × fase` senza asse temporale + drill-down (read-only su `vw_dash_aperto_*`; sostituisce la dashboard 5-card, Fase 3 due-lenti)
-* **Vendite — Dashboard competenza (Lente 1)**: [api_dashboard_competenza.md](/backend/vendite/manual/api_dashboard_competenza) — funnel commessa→fattura per mese di competenza: aggregata 12 mesi × 4 stadi + breakdown stato fattura, drill-down attività, drill-down per commessa, **gruppi fatturabili** (`gruppi/` — l'unità dell'emissione mirata: documento sorgente oppure oneri di commessa, con riepilogo di perimetro nell'envelope; la `gruppo_key` è la stessa accettata da `fatturazione/run/`), errori vivi (read-only su `vw_dash_competenza_*`)
+* **Vendite — Dashboard competenza (Lente 1)**: [api_dashboard_competenza.md](/backend/vendite/manual/api_dashboard_competenza) — funnel commessa→fattura per mese di competenza: aggregata 12 mesi × 4 stadi + breakdown stato fattura, drill-down attività, drill-down per commessa, **gruppi fatturabili** (`gruppi/` — l'unità dell'emissione mirata: documento sorgente oppure oneri di commessa, con riepilogo di perimetro nell'envelope; la `gruppo_key` è la stessa accettata da `fatturazione/run/`), errori vivi, e dal 2026-08-27 i **residui** (`residui/` + `residui/export/` — le attività che una fattura non ce l'hanno più e che nessun giro riprenderà da solo: è l'elenco su cui agisce «Riporta da emettere». ⛔ Non è un filtro di `attivita/`: lo stadio `EMESSA_NON_FATTURATA` contiene **quattro** situazioni e solo `RESIDUO` chiede un'azione — esporre un parametro per sceglierla darebbe l'illusione di poter allargare il perimetro del verbo, che invece lo decide il modello. ⚠️ Default `competenza_mese` **ASC** e non `valore` DESC come le liste sorelle: non è una lista di grandezze, è una **coda di recupero** — il residuo più vecchio è il più vicino al limite di emissione) (read-only su `vw_dash_competenza_*`)
 * **Vendite — Dashboard backlog (Lente 2)**: [api_dashboard_backlog.md](/backend/vendite/manual/api_dashboard_backlog) — non-collegati per anzianità + classe di azionabilità: contatori 🟠/🔵/🔴 + lista con motivo/azione (read-only su `vw_dash_backlog_*` + lookup `config.motivi_fermo`)
 * **Documenti**: [api_documenti_templates.md](/backend/documenti/manual/api_documenti_templates) — read-only v1 motore documentale (lista/dettaglio template + versioni). Building block trasversali per view "per sorgente" (offerta/preventivo/contratto): [api_documenti_helpers.md](/backend/documenti/manual/api_documenti_helpers) — `resolve_contesto_documentale` + `extract_allegati` (2026-05-28). **Ristampa fedele** (2026-08-03): [api_ristampa_fedele.md](/backend/documenti/manual/api_ristampa_fedele) — `GET .../documenti/<id>/ristampa/` sui 6 domini sorgente: ri-renderizza il documento **com'era** (versione di template pinnata, anche OBSOLETA + `context_json` congelato), senza persistere nulla. È il terzo percorso, distinto dallo **scarica originale** (`file/`, richiede il file su storage: la persistenza è iniziata il 2026-07-21) e dal **genera nuovo documento** (`genera/`, modello e dati di oggi — che fino al 2026-08-03 si chiamava impropriamente «ristampa»). Fedeltà dichiarata in header `X-Ristampa-Pdf-Hash-Match`: byte diversi = fedele nel contenuto, non un errore.
 * **Core — Gestione code (tracciamento)**: [api_gestione_code.md](/backend/core/manual/api_gestione_code) — badge conteggi code + liveness worker (`tracciamento/code/conteggi/`), liste coda lavori/stampa (`tracciamento/coda-lavori/`, `tracciamento/coda-stampa/`, scope operatore, `?ambito=tutti` con `code_manage`), dettaglio job e azioni `annulla/`/`requeue/` (ownership scope-based BE, 404 no-leak)

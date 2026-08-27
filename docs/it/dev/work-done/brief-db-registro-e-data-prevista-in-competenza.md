@@ -373,7 +373,7 @@ Sono lavoro BE/FE: vanno fatti **prima** del seed, o insieme.
   competenza.
 * ⛔ **L'invariante dell'emittente sulla commessa** — scoperto qui il 2026-08-26
   chiudendo D-6, ma è un difetto suo e ha un brief suo:
-  [brief-db-emittente-commessa-invariante.md](../work-in-progress/brief-db-emittente-commessa-invariante.md).
+  [brief-db-emittente-commessa-invariante.md](brief-db-emittente-commessa-invariante.md).
   ⚠️ **Tocca però lo scope di queste viste**: `vw_dash_competenza_attivita` filtra
   su `co.emittente_soggetto_ruolo_id`, quindi una commessa con quel valore a NULL
   non compare in nessuna delle liste di cui parla questo brief — colonna nuova
@@ -546,7 +546,7 @@ vista, e T2 (§11.7) resta necessario — ma va costruito facendo variare la
 **utility** fra padre e figlio, non l'emittente, che non può variare. ▶ R-5.
 
 ⛔ ~~Residuo minore~~ — **NON è minore, ed è un cantiere suo**:
-[brief-db-emittente-commessa-invariante.md](../work-in-progress/brief-db-emittente-commessa-invariante.md).
+[brief-db-emittente-commessa-invariante.md](brief-db-emittente-commessa-invariante.md).
 Approfondito su richiamo di Tid il 2026-08-26: `vendite.commesse.emittente_soggetto_ruolo_id`
 non è un attributo, è la **chiave di perimetro** della commessa — ci si appoggiano
 la RLS della tabella, il filtro di scope delle viste di questo cruscotto e il
@@ -1652,9 +1652,9 @@ eseguito**.
   la prova del nove e il corollario sui test. Più il punto 5 della filosofia non
   negoziabile in `PROJECT_CONTEXT.md`.
 * ⭐ **Due cantieri nuovi**, nati da un difetto scoperto chiudendo D-6:
-  [brief-db-emittente-commessa-invariante.md](../work-in-progress/brief-db-emittente-commessa-invariante.md)
+  [brief-db-emittente-commessa-invariante.md](brief-db-emittente-commessa-invariante.md)
   (la chiave di perimetro della commessa è nullable) e
-  [brief-db-billing-account-cambio-emittente.md](../work-in-progress/brief-db-billing-account-cambio-emittente.md)
+  [brief-db-billing-account-cambio-emittente.md](brief-db-billing-account-cambio-emittente.md)
   (la domanda fiscale, separata apposta).
 
 ### ⚠️ Cosa resta aperto, e non è del DB

@@ -354,11 +354,59 @@ class EmittentiFiscaliBillingAccountRepository:
                    s.id_fiscale_univoco_cf_piva AS id_fiscale_univoco,
                    m.data_insert,
                    m.data_update,
+                   blocco.reason               AS rimozione_blocco_reason,
+                   blocco.reason_key           AS rimozione_blocco_reason_key,
                    COUNT(*) OVER ()            AS total_count
               FROM anagrafiche.emittenti_fiscali_billing_account m
               LEFT JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id
               LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
               LEFT JOIN anagrafiche.soggetti s         ON s.id  = sr.soggetto_id
+              -- Il motivo per cui QUESTA riga non si puo' togliere, chiesto al
+              -- database e non ricalcolato qui (linee-guida-sql 12.5).
+              -- ⛔ Il «dopo» e' l'emittente della riga is_default ESCLUSA
+              --    QUESTA: e' lo specchio esatto di come lo calcola
+              --    trgfn_efba_guard_storia_emittente, e i due non possono
+              --    divergere senza che il tooltip dica una cosa e il rifiuto
+              --    un'altra. Con script.fn_get_ba_emittente_sr_id direbbe
+              --    sempre «togliabile»: il mapping che si sta guardando c'e'
+              --    ancora, quindi «prima» e «dopo» coinciderebbero.
+              -- ⛔ LEFT JOIN LATERAL ... ON TRUE e non un CROSS JOIN: se il
+              --    gestore globale non esistesse, un CROSS JOIN svuoterebbe
+              --    la LISTA — cioe' «non c'e' nessun mapping», la risposta
+              --    piu' rassicurante possibile e la piu' falsa.
+              -- ⚠️ COSTO, letto sul piano e non sul cronometro: il
+              --    `COUNT(*) OVER ()` obbliga a materializzare TUTTE le righe
+              --    dell'emittente prima del LIMIT, quindi questa LATERAL gira
+              --    una volta per riga dell'emittente, non per riga di pagina.
+              --    E la lista cresce col parco clienti: ogni billing account
+              --    nasce con un mapping suo (trgfn_billing_account_link_ef),
+              --    quindi non c'e' un tetto. ⭐ Non e' pero' QUI il collo di
+              --    bottiglia, ed e' il motivo per cui non si e' riscritta la
+              --    query: la funzione esce in corto circuito senza toccare
+              --    nessuna tabella nei due casi normali (riga del gestore
+              --    globale, emittente che non cambia davvero), mentre i JOIN
+              --    che c'erano gia' pagano lo stesso numero di giri con una
+              --    ricerca su indice sotto RLS ciascuno — ed e' un ordine di
+              --    grandezza piu' caro. Se un giorno questa pagina rallenta,
+              --    la risposta e' impaginare PRIMA di arricchire, e riguarda
+              --    tutta la query: non questo pezzo.
+              LEFT JOIN LATERAL (
+                  SELECT motivo.value ->> 'reason'     AS reason,
+                         motivo.value ->> 'reason_key' AS reason_key
+                    FROM jsonb_array_elements(
+                             script.fn_check_ba_cambio_emittente(
+                                 m.billing_account_id,
+                                 m.emittente_soggetto_ruolo_id,
+                                 (SELECT d.emittente_soggetto_ruolo_id
+                                    FROM anagrafiche.emittenti_fiscali_billing_account d
+                                   WHERE d.is_default IS TRUE
+                                     AND d.id <> m.id))
+                         ) WITH ORDINALITY AS motivo(value, ord)
+                   -- L'ORDINE E' IL CONTRATTO: la madre solleva il primo
+                   -- motivo, e il tooltip deve mostrare quello stesso.
+                   ORDER BY motivo.ord
+                   LIMIT 1
+              ) blocco ON TRUE
              WHERE m.emittente_soggetto_ruolo_id = %s
                AND (%s::text IS NULL OR (
                        ba.codice ILIKE %s

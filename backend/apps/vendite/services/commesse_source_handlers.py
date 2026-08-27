@@ -449,34 +449,58 @@ class BaseSourceHandler(ABC):
             # l'errore che si commette fixando solo la propagazione:
             # produce un difetto piu' difficile da vedere di quello
             # che si voleva togliere.
-            cache_key = (
-                row.billing_account_id,
-                row.utility_id,
-                tipo_commessa,
-                policy_fatturazione,
-                row.fatturazione_immediata,
-                row.emittente_soggetto_ruolo_id,
-                row.competenza_dal,
-                row.competenza_al,
-                row.termine_pagamento_id,
-                row.modalita_pagamento_id,
-            )
+            #
+            # ⭐ UN ELENCO SOLO, e la chiave si DERIVA da quello. Fino al
+            # 2026-08-26 le dimensioni erano scritte due volte — la
+            # `cache_key` e i `kwargs` della chiamata, identici e a cinque
+            # righe di distanza — e a tenerle allineate c'era solo la
+            # disciplina di chi le toccava. Toglierne una dalla chiave e
+            # lasciarla nella chiamata non rompe niente di visibile: fa
+            # riusare una commessa che non andava riusata, cioe' il difetto
+            # che il commento qui sopra descrive. Con un elenco solo la
+            # divergenza non e' improbabile: e' impossibile.
+            # ⚠️ I tre che restano fuori NON sono fuori per la stessa
+            # ragione, e vale distinguerle. `priorita_operativa` E' una
+            # dimensione della chiave anche a database, ma qui non si
+            # passa: vale il default, quindi e' costante per tutto il giro
+            # — il giorno in cui venisse passata entrerebbe nella chiave da
+            # sola, ed e' il comportamento giusto.
+            # ⛔ `meta` e `force_new` invece non sono dimensioni affatto:
+            # il database non li mette ne' nell'hash del lock ne' nel WHERE
+            # del riuso. E `force_new` e' peggio di un di piu': e' il
+            # comando che DISABILITA il riuso, quindi in una cache di riuso
+            # sarebbe una contraddizione — chi un giorno lo passasse deve
+            # saltare questa cache, non aggiungerlo a questo dizionario.
+            # ⭐ L'EMITTENTE non c'e' piu', e non perche' abbia smesso di
+            # essere una dimensione della commessa: lo e' ancora, ma si
+            # DERIVA dal billing account, che nell'elenco c'e' gia'. Due
+            # righe con lo stesso `billing_account_id` ricadono per
+            # costruzione sullo stesso emittente, quindi non discriminava
+            # niente — e dal `20260826-52` la funzione DB non lo accetta
+            # nemmeno piu' in ingresso. ⚠️ `row.emittente_soggetto_ruolo_id`
+            # resta esposto da `PushableRow`: le `fn_list_*_da_pushare`
+            # continuano a calcolarlo e serve altrove. Cambia solo chi lo
+            # ri-passa.
+            dimensioni_commessa = {
+                "billing_account_id": row.billing_account_id,
+                "utility_id": row.utility_id,
+                "tipo_commessa": tipo_commessa,
+                "policy_fatturazione": policy_fatturazione,
+                "fatturazione_immediata": row.fatturazione_immediata,
+                "competenza_dal": row.competenza_dal,
+                "competenza_al": row.competenza_al,
+                "termine_pagamento_id": row.termine_pagamento_id,
+                "modalita_pagamento_id": row.modalita_pagamento_id,
+            }
+            # I `dict` conservano l'ordine di inserimento (Python 3.7+):
+            # la chiave e' stabile dentro il giro, che e' quanto serve a
+            # una cache che vive il tempo di un push.
+            cache_key = tuple(dimensioni_commessa.values())
 
             if cache_key in commessa_cache:
                 commessa_id = commessa_cache[cache_key]
             else:
-                commessa_id = self._repo.get_or_create_commessa(
-                    billing_account_id=row.billing_account_id,
-                    utility_id=row.utility_id,
-                    tipo_commessa=tipo_commessa,
-                    policy_fatturazione=policy_fatturazione,
-                    fatturazione_immediata=row.fatturazione_immediata,
-                    emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
-                    competenza_dal=row.competenza_dal,
-                    competenza_al=row.competenza_al,
-                    termine_pagamento_id=row.termine_pagamento_id,
-                    modalita_pagamento_id=row.modalita_pagamento_id,
-                )
+                commessa_id = self._repo.get_or_create_commessa(**dimensioni_commessa)
 
             self._repo.link_sorgente(
                 commessa_id=commessa_id,

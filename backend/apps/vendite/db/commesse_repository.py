@@ -505,7 +505,6 @@ class CommesseRepository(EventLogRepositoryMixin):
         policy_fatturazione: str = POLICY_FATTURAZIONE_DA_DOCUMENTO,
         fatturazione_immediata: bool = False,
         priorita_operativa: str = PRIORITA_OPERATIVA_NORMALE,
-        emittente_soggetto_ruolo_id: int | None = None,
         competenza_dal: date | None = None,
         competenza_al: date | None = None,
         meta: dict | None = None,
@@ -521,6 +520,18 @@ class CommesseRepository(EventLogRepositoryMixin):
         `fn_get_or_create_commessa` accettava gia' i due parametri; il BE non
         li passava, ed e' il difetto che faceva uscire ogni fattura col
         termine del CLIENTE anche quando l'ordine ne dichiarava un altro.
+
+        ⭐ L'EMITTENTE NON SI PASSA, e dal 2026-08-26 non si puo' nemmeno:
+        `p_emittente_soggetto_ruolo_id` e' stato tolto dalla firma della
+        funzione (changeSet `20260826-52`). Non e' un attributo della
+        commessa ma la sua CHIAVE DI PERIMETRO — ci si appoggiano la RLS
+        della tabella e il filtro di scope delle viste — e si deriva sempre
+        dal billing account (`anagrafiche.fn_get_emittente_fiscale_id`).
+        Il valore che il BE ri-passava era quello che il database gli aveva
+        appena dato dalle `fn_list_*_da_pushare`: un giro in piu' che, con
+        il guard `trgfn_commesse_guard_emittente_ba` in servizio, poteva
+        solo essere ridondante o sbagliato.
+        Piano: `brief-db-emittente-commessa-invariante` (D-2, lotto L5).
         """
         with connection.cursor() as cursor:
             cursor.execute(
@@ -532,7 +543,6 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_policy_fatturazione => %s,
                     p_fatturazione_immediata => %s,
                     p_priorita_operativa => %s,
-                    p_emittente_soggetto_ruolo_id => %s,
                     p_competenza_dal => %s,
                     p_competenza_al => %s,
                     p_meta => %s::jsonb,
@@ -548,7 +558,6 @@ class CommesseRepository(EventLogRepositoryMixin):
                     policy_fatturazione,
                     fatturazione_immediata,
                     priorita_operativa,
-                    emittente_soggetto_ruolo_id,
                     competenza_dal,
                     competenza_al,
                     self._to_jsonb_param(meta),

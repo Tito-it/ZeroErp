@@ -362,7 +362,6 @@ with transaction.atomic():
             """
             SELECT vendite.fn_get_or_create_commessa(
                 p_billing_account_id => %s, p_utility_id => c.utility_id,
-                p_emittente_soggetto_ruolo_id => c.emittente_soggetto_ruolo_id,
                 p_competenza_dal => %s, p_competenza_al => %s,
                 p_meta => %s::jsonb, p_force_new => true)
               FROM vendite.commesse c WHERE c.id = %s

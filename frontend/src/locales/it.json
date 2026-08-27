@@ -1109,6 +1109,10 @@
       "ba_select_required": "Seleziona prima un billing account.",
       "ba_default_exists": "Esiste gia' il default globale per questo emittente.",
       "ba_added": "Mapping aggiunto.",
+      "ba_blocco": {
+        "con_storia": "Il cliente ha gia' fatture o commesse con questo emittente: togliere il mapping lo sposterebbe, e quei documenti resterebbero senza il cliente a cui appartengono.",
+        "default_singleton": "Un gestore globale deve sempre esistere, e ce n'e' uno solo: questa riga non si puo' togliere."
+      },
       "ba_default_added": "Default globale creato.",
       "ba_removed": "Mapping rimosso.",
       "ba_remove_confirm": "Rimuovere il mapping per il BA {codice}?",

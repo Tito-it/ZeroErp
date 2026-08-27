@@ -36,6 +36,10 @@
 > [brief-db-motivo-rimozione-mapping-ba.md](brief-db-motivo-rimozione-mapping-ba.md),
 > dove N1 e N2 sono già scritti. §6.9.
 >
+> ✅ **CANTIERE CHIUSO il 2026-08-27, validato in-app da Tid** — compreso il
+> seguito, che ha chiuso anche FE-1: il cestino di riga si spegne col suo motivo
+> invece di essere punito dopo.
+>
 > ⚠️ **Migrazione applicata da Tid il 2026-08-26** — l'autorizzazione l'ha data
 > lui, comando per comando ([[feedback_mai_applicare_migrazioni_db]]).
 >

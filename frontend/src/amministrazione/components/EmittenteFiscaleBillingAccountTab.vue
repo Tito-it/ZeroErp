@@ -14,6 +14,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
@@ -24,7 +25,7 @@ import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Message from 'primevue/message'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useEmittentiFiscaliBAStore()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
@@ -125,13 +126,46 @@ function removeMapping(row) {
 }
 
 // Scopo: azioni di riga mapping BA (rimozione con conferma), nascoste in readonly.
+//
+// ⭐ IL MOTIVO ARRIVA DAL DATABASE, non si ricalcola qui. Un billing account
+//    che ha gia' fatture o commesse non cambia piu' emittente, e togliere il
+//    suo mapping lo farebbe ricadere sul gestore globale: e' un cambio di
+//    emittente, e viene rifiutato. Fino al 2026-08-27 il cestino era acceso
+//    lo stesso e l'operatore lo scopriva premendo — dopo aver confermato un
+//    dialog. Ora la riga porta `can_remove` e il motivo del primo blocco,
+//    prodotti da `script.fn_check_ba_cambio_emittente`: la STESSA funzione
+//    che la madre chiama per rifiutare, quindi tooltip ed errore non possono
+//    divergere (`linee-guida-sql` 12.5).
+// ⛔ Permesso => nascondi, stato => disabilita col motivo (12.1): qui e' uno
+//    stato — la storia del cliente puo' solo crescere, ma il mapping resta a
+//    video con la sua spiegazione invece di sparire senza dire niente.
+// ⚠️ Il campo si chiama `tooltip`, non `motivo`: RowActionsMenu legge solo
+//    quello, e da li' ricava sia il tooltip inline sia la riga sotto la voce
+//    nel kebab.
+// Scopo: il motivo del blocco in testo leggibile — chiave i18n se c'e',
+//        altrimenti il codice macchina. Stesso ripiego di `useDrawerActions`.
+function motivoBlocco(data) {
+  const chiave = data.rimozione_blocco_reason_key
+  const codice = data.rimozione_blocco_reason || ''
+  return chiave ? labelOrCode(t, te, chiave, codice) : codice
+}
+
 function buildRowActions(data) {
+  const bloccato = data.can_remove === false
   return [
     {
       key: 'rimuovi-mapping',
       label: t('common.delete'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
+      disabled: bloccato,
+      // Fail-visible su DUE livelli, ed e' lo stesso ripiego di
+      // `useDrawerActions`: senza CHIAVE si mostra il codice macchina (che
+      // dice comunque qualcosa), con la chiave ma senza traduzione ci pensa
+      // `labelOrCode`. ⛔ La chiave si guarda PRIMA di passarla: il database
+      // puo' emettere un motivo senza `reason_key`, e chiedere a `te()` di
+      // controllare un valore nullo non e' una domanda che ha senso fare.
+      tooltip: bloccato ? motivoBlocco(data) : '',
       command: () => removeMapping(data),
     },
   ]
