@@ -57,18 +57,27 @@ const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
     <slot name="prefix" />
 
     <span class="app-page-actions-desktop">
-      <Button
+      <!-- ⛔ Il tooltip sta sull'INVOLUCRO, non sul Button: un `<button disabled>`
+           non emette eventi del mouse, quindi appeso al Button non comparirebbe
+           mai — e a pulsante spento e' esattamente quando serve, perche' porta
+           il MOTIVO (`enabled:false` + `reason` dal DB via `useDrawerActions`).
+           Vedi `.app-action-tooltip-wrap` in main.css. -->
+      <span
         v-for="a in desktopInlineActions"
         :key="a.key"
-        :icon="a.icon"
-        :label="a.showLabel ? a.label : undefined"
-        text
-        :severity="buttonSeverity(a)"
-        :class="buttonClass(a)"
-        :disabled="isActionDisabled(a)"
+        class="app-action-tooltip-wrap"
         v-tooltip.bottom="buttonTooltip(a)"
-        @click="runAction(a, $event)"
-      />
+      >
+        <Button
+          :icon="a.icon"
+          :label="a.showLabel ? a.label : undefined"
+          text
+          :severity="buttonSeverity(a)"
+          :class="buttonClass(a)"
+          :disabled="isActionDisabled(a)"
+          @click="runAction(a, $event)"
+        />
+      </span>
       <Button
         v-if="desktopMenuActions.length"
         :icon="MANAGE_ICONS.KEBAB"
@@ -85,17 +94,21 @@ const compactMenuItems = computed(() => menuItems(nonPrimaryActions.value))
 
     <slot name="suffix" />
 
-    <Button
+    <span
       v-for="a in primaryActions"
       :key="a.key"
-      :icon="a.icon"
-      :label="a.label"
-      :severity="a.severity"
-      :class="buttonClass(a)"
-      :disabled="isActionDisabled(a)"
+      class="app-action-tooltip-wrap"
       v-tooltip.bottom="buttonTooltip(a)"
-      @click="runAction(a, $event)"
-    />
+    >
+      <Button
+        :icon="a.icon"
+        :label="a.label"
+        :severity="a.severity"
+        :class="buttonClass(a)"
+        :disabled="isActionDisabled(a)"
+        @click="runAction(a, $event)"
+      />
+    </span>
 
     <span class="app-page-actions-compact">
       <Button

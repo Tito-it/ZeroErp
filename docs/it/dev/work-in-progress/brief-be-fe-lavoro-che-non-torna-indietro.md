@@ -49,7 +49,7 @@
 >
 > | | Cosa | Di chi |
 > | --- | --- | --- |
-> | 🔴 | **Il collaudo in-app.** Le 5 righe vere (`1123`, `1130`–`1133`, luglio 2026, 5.019 €) sono ancora dove erano: il recupero è il primo gesto. ⛔ Se il verbo non le prende non ha fallito la bonifica, **ha fallito il perimetro** | **Tid** |
+> | 🔴 | **Il collaudo in-app** — il copione è scritto: [collaudo-in-app-riporta-da-emettere.md](collaudo-in-app-riporta-da-emettere.md), **11 prove**. Le 5 righe vere (`1123`, `1130`–`1133`, luglio 2026, 5.019 €) sono ancora dove erano: il recupero è il primo gesto. ⛔ Se il verbo non le prende non ha fallito la bonifica, **ha fallito il perimetro** | **Tid** |
 > | ⏸️ | **E-3** — il codice «rientrato» in `codici-errore-baseline.sh` (**§9**). ⚠️ Finché la baseline non si stringe, quella famiglia resta *dichiarata ammessa* e il presidio non la vedrebbe tornare: è un cancello mezzo spento | chi possiede quel codice |
 > | ⏸️ | **§11.6** — due convenzioni per `ordinamento_default` in `ui`. Per noi indifferente: `competenza_mese` risolve con entrambe | chi possiede lo schema `ui` |
 > | ⚠️ | **La §7.1 della guida è contesa** con `brief-be-fe-rendi-definitive-sui-lotti.md` (§7 qui sotto). Il nostro intervento è **additivo**, quindi un merge non ha nulla da scegliere — ma la tabella la riscrivono due mani | da coordinare |

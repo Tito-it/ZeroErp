@@ -198,7 +198,8 @@
       "timeline_concluso": "Concluso",
       "dettaglio_errore": "Ultimo errore",
       "dettaglio_esito": "Esito",
-      "dettaglio_payload": "Dati del lavoro"
+      "dettaglio_payload": "Dati del lavoro",
+      "riga_viva_hint": "Lavoro non ancora concluso: in attesa del giro del worker, o in esecuzione. L'esito arriva da sé — la lista si aggiorna da sola."
     }
   },
   "nav": {
@@ -2521,7 +2522,7 @@
       "numera_mese_tooltip": "Numera tutti i lotti emessi del mese selezionato, spuntati o no. ⚠️ Non tocca i recuperi, che sono di competenza precedente: quelli si spuntano.",
       "numera_accodato": "Numerazione messa in lavorazione: l'esito arriva da sé.",
       "numera_gia_in_corso": "Questo stesso perimetro è già in numerazione: non è stato avviato nulla di nuovo.",
-      "numera_esito": "Numerati {numerati} lotti.",
+      "numera_esito": "Numerati {numerati} lotti. I documenti sono in coda di stampa: l'esito arriva da sé.",
       "numera_esito_parziale": "Numerati {numerati} lotti su {lotti}: {saltati} saltati, {falliti} falliti. Il dettaglio è nel registro del lotto.",
       "numera_errore": "Numerazione non riuscita.",
       "numera_in_coda": "La numerazione è in coda: proseguirà da sé, l'esito non viene più seguito da questa pagina.",
@@ -2570,7 +2571,7 @@
       "rerun_conferma": "Ri-eseguire lo step corrente del lotto in errore?",
       "numera_header": "Rendi definitive le fatture",
       "numera_conferma": "Numerare in modo definitivo le fatture del lotto? La numerazione fiscale è un atto irreversibile; le stampe verranno accodate.",
-      "numera_lotto_esito": "Fatture numerate: lotto reso definitivo",
+      "numera_lotto_esito": "Fatture numerate: lotto reso definitivo. I documenti sono in coda di stampa: l'esito arriva da sé.",
       "ristampa_header": "Ristampa documenti del lotto",
       "ristampa_conferma": "Accodare la ristampa dei documenti di tutte le fatture del lotto? I PDF verranno rigenerati in background; nessuna numerazione.",
       "ristampa_esito": "{n} documenti accodati per la stampa",
@@ -2646,7 +2647,9 @@
       "giornale_solo_ritirate": "Nessun evento attivo: {n} appartengono a tentativi poi rifatti.",
       "giornale_info_nascoste": "Nascosti {n} eventi di routine.",
       "giornale_ritirate": "Nascosti {n} eventi di tentativi poi rifatti.",
-      "giornale_parziale": "Mostrati {n} eventi su {tot}."
+      "giornale_parziale": "Mostrati {n} eventi su {tot}.",
+      "lotto_in_giro_tooltip": "Numerazione di questo lotto già avviata e in lavorazione: attendi l'esito, la rotellina sparisce da sola quando il giro è finito.",
+      "numera_mese_atteso": "Un giro di numerazione è ancora in corso. L'atto sul MESE prende tutti i lotti, compresi quelli già in volo: attendi che finisca. Nel frattempo puoi numerare altre selezioni."
     },
     "numerazione_data": {
       "titolo": "Numerazione — data del documento",
@@ -3454,7 +3457,7 @@
       "compito_non_impegnata": "Nessun impegno",
       "compito_non_misurabile": "Conto non calcolabile",
       "compito_non_spedita": "Non ancora spedita",
-      "compito_riconsegna": "Non si fattura: gi\u00e0 contata",
+      "compito_riconsegna": "Non si fattura: già contata",
       "etichetta": "Merce:",
       "etichetta_dovuta": "Dovuta",
       "etichetta_facoltativa": "Facoltativa",

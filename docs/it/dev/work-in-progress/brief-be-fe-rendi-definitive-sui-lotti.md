@@ -22,7 +22,7 @@
 > vuole.»*
 >
 > **Correlati:**
-> [brief-db-numerazione-data-documento-e-sequenza.md](brief-db-numerazione-data-documento-e-sequenza.md)
+> [brief-db-numerazione-data-documento-e-sequenza.md](../work-done/brief-db-numerazione-data-documento-e-sequenza.md)
 > (la data dichiarata e il cancello di sequenza — questo brief ne è il seguito
 > naturale) ·
 > [brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)
@@ -36,12 +36,33 @@
 >
 > | | Cosa manca | Chi |
 > | --- | --- | --- |
-> | 🔴 **C-1** | il collaudo dei **verbi**: numerare una selezione, numerare il mese, il limite che si sposta fra sezionali diversi | Tid |
+> | 🔴 **C-1** | il collaudo dei **verbi**: numerare una selezione, numerare il mese, il limite che si sposta fra sezionali diversi. ⭐ **Copione scritto il 2026-08-27**: [collaudo-in-app-rendi-definitive-sui-lotti.md](collaudo-in-app-rendi-definitive-sui-lotti.md) — 13 prove, ordinate perché le sei che **non** consumano numeri vengano prima delle cinque che li consumano | Tid |
 > | 🔴 **C-2** | la **guida** (§7.1 e §6.3 di `cruscotti-fatturazione.md`) | dopo il passo L5 dell'altro cantiere (§9.1) |
 >
 > ⚠️ C-1 non è una formalità: è un **atto fiscale**, e finora ne è stato provato
 > il percorso (endpoint, coda, perimetro, guard) ma non l'**esito** — nessun
 > numero è stato consumato in collaudo.
+>
+> ⛔ **E il primo click vero, il 2026-08-27, ha trovato subito un difetto**: il
+> verbo su **selezione** non aveva mai funzionato. Il frontend mandava
+> `?lotti[]=12` (serializzazione di default di axios per gli array, provata sulla
+> 1.20 in `package.json`), il backend legge `getlist('lotti')` — chiave senza
+> parentesi — e non trovava niente; `_query_lotti_ids` traduce la lista vuota in
+> `None`, quindi il servizio riceveva **tutti e tre** i perimetri nulli e
+> rispondeva `E_VALIDATION_INPUT` su una richiesta in cui uno c'era. A video:
+> «La finestra di numerazione non è stata letta». Corretto in `api/lotti.js` con
+> `paramsSerializer: { indexes: null }`.
+>
+> ⭐ **Il verbo per-riga non era toccato** — manda un id **scalare** — ed è il
+> motivo per cui «prima funzionava»: quello che non aveva mai funzionato è il
+> perimetro nuovo, cioè proprio ciò che C-1 deve provare.
+>
+> ⚠️ **Accanto a quella riga c'era un commento che affermava il contrario**
+> (*«axios serializza un array così di default»*). Era falso, e ha fatto passare
+> la riga per una cosa già verificata. Questa classe di difetti — il frontend
+> serializza in un modo, il backend legge in un altro — **non la prende nessun
+> test**: non c'è un runner FE e i test Django mockano la request. Si vede solo
+> con una chiamata vera.
 >
 > ⛔ C-2 è bloccato da un ordine, non da un dubbio: la stessa tabella dei verbi
 > viene riscritta anche dal cantiere gemello, e fare i due passi in parallelo
@@ -611,3 +632,67 @@ Il cantiere tocca anche **due file di `core/`** — `useNotify.js` e
 `constants.js` — per la severità `info` che mancava. È territorio condiviso, e
 la correzione ripara **anche due punti preesistenti** del cockpit di competenza:
 va detto a chi rilegge il commit, o sembrerà uno sconfinamento.
+
+---
+
+## 10. Rientro del 2026-08-27 — il collaudo C-1, e cosa ha cambiato
+
+> Il collaudo è partito e ha trovato **quattro** difetti in poche prove, due dei
+> quali rendevano il verbo su selezione **inutilizzabile**. Copione e verbale:
+> [collaudo-in-app-rendi-definitive-sui-lotti.md](collaudo-in-app-rendi-definitive-sui-lotti.md).
+
+### 10.1 I difetti trovati
+
+| # | Cosa | Stato |
+| --- | --- | --- |
+| **R-1** | La selezione viaggiava come `?lotti[]=12` (serializzazione di default di axios per gli array) mentre il BE legge `getlist('lotti')`, chiave **senza** parentesi. `_query_lotti_ids` traduce la lista vuota in `None` → il servizio riceveva **tutti e tre** i perimetri nulli e rispondeva `E_VALIDATION_INPUT` su una richiesta in cui uno c'era. ⚠️ Accanto alla riga c'era un commento che **affermava il contrario**: la giustificazione era scritta e mai provata | ✅ `paramsSerializer: { indexes: null }` |
+| **R-2** | I due verbi restavano **spenti per sempre** dopo un giro: `useJobPolling` si sospendeva su `onDeactivated` e lasciava il `resume()` alla view, che non lo chiamava. Uscire dal tab e rientrare bastava | ✅ `onActivated` nel BB |
+| **R-3** | Dopo l'invio la selezione **non si svuotava**: il contatore diceva «(2)» contando lavoro già in volo | ✅ vedi §10.2 |
+| **R-4** | La scheda «Recuperi» sopravviveva al **cambio mese**: il mese nuovo si apriva sulla vista di eccezione | ✅ watch su `competenzaParam` — `onActivated` non basta, un cambio filtro non riattiva niente |
+
+### 10.2 ⭐ Decisione di Tid: **giri concorrenti ammessi**
+
+Ricalcando l'emissione mirata del cruscotto competenza (`maxConcurrent: Infinity`,
+decisione del 2026-08-17). Prima il tetto era **1** e i due verbi restavano spenti
+per tutta la durata: una seconda selezione si poteva comporre ma non inviare.
+
+Forma, e il pezzo che la rende sicura:
+
+* all'invio le righe spedite **escono dalla selezione** e non si ri-spuntano
+  finché il giro è vivo (`useRigheInGiro` + prune in `useSelezioneLotti`). Due
+  invii **non possono sovrapporsi** per costruzione;
+* ⛔ **«Rendi definitivo il mese» resta spento finché c'è un giro vivo**: il suo
+  perimetro è **tutto** e si sovrapporrebbe alle righe già in volo — e lì la
+  dedup non protegge, perché il digest è diverso. **Questa asimmetria è il pezzo
+  che salva il rimedio dal creare il problema che evita**: se un giorno qualcuno
+  riaccende quel verbo «per coerenza», è lì che si rompe;
+* l'azzeramento della selezione a esito riuscito **è stato tolto**: con i giri
+  concorrenti la selezione che c'è quando arriva l'esito è quella **nuova**,
+  composta mentre il primo giro viaggiava. Era corretto quando i giri erano uno
+  per volta — allora «la selezione» e «il perimetro appena spedito» erano la
+  stessa cosa. Non lo sono più.
+
+⚠️ **La prova 9 del collaudo era ineseguibile prima di questa decisione**, e
+l'ha scoperto Tid provandola: la trappola del §5.1 si manifesta solo sulla
+sovrapposizione di due giri, e l'interfaccia la vietava. Era una prova che
+avrebbe preso il verde misurando niente.
+
+### 10.3 Altro, dallo stesso giro
+
+* la **rotellina** sui lotti del perimetro di un giro vivo (`useRigheInGiro`,
+  estratto dal cruscotto alla 3ª occorrenza);
+* i due verbi finiscono nel **kebab** sotto i 1024px, riusando le classi
+  `app-page-actions-desktop`/`-compact` — stesso punto di rottura di tutte le
+  liste. ⚠️ **Restano accanto alla lista** e non salgono nella barra azioni di
+  pagina: quella è la toolbar di utility, e il principio di questo cantiere è
+  che *«un verbo sta dove sta l'elenco del suo oggetto»*;
+* il messaggio di esito dice ora anche che **i documenti sono in coda di
+  stampa**: la numerazione finisce accodandoli, e senza quella riga «Numerato 1
+  lotto» si legge come «è tutto pronto» mentre i PDF arrivano fino a due minuti
+  dopo.
+
+### 10.4 Cosa resta
+
+**C-1 non è chiuso**: il collaudo è in corso, 15 prove di cui 4 consumano numeri.
+**C-2** (la guida) è invariato — sempre in attesa del passo L5 del cantiere
+gemello (§9.1).

@@ -51,11 +51,11 @@
 > prezzo zero.
 >
 > Catena completa e ragioni in
-> [brief-design-partita-merce-generalizzata.md](brief-design-partita-merce-generalizzata.md).
+> [brief-design-partita-merce-generalizzata.md](../work-in-progress/brief-design-partita-merce-generalizzata.md).
 >
 > **Rif.**: [brief-design-fatturazione-due-lenti.md](../work-done/brief-design-fatturazione-due-lenti.md)
 > §10 **DL-28** · [brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md) §4a ·
-> checklist V2 in [brief-be-fan-out-isolato-e-esito-parziale.md](brief-be-fan-out-isolato-e-esito-parziale.md) §13.2.
+> checklist V2 in [brief-be-fan-out-isolato-e-esito-parziale.md](../work-in-progress/brief-be-fan-out-isolato-e-esito-parziale.md) §13.2.
 
 ---
 
@@ -1793,8 +1793,8 @@ se qualcuno cambia la causale dopo; ordini e preventivi continuano a rifiutare.
 
 | Residuo | Dove |
 | --- | --- |
-| `fn_genera_ddt_riconsegna` genera un DDT **nudo** — niente causale, niente indirizzi, e sulla riga né prezzo né sconto né IVA. Il gemello che parte da un **ordine**, sorgente più povera, copia di più | [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md) |
-| L'IVA non ha un **risolutore**: la decide l'articolo, in due punti indipendenti, e uno è nel frontend. Il regime fiscale del cliente è scritto dall'operatore e letto da nessuno. Include la **dichiarazione d'intento**, che non ha nessuna sede | [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md) — 6 decisioni di Tid già prese |
+| `fn_genera_ddt_riconsegna` genera un DDT **nudo** — niente causale, niente indirizzi, e sulla riga né prezzo né sconto né IVA. Il gemello che parte da un **ordine**, sorgente più povera, copia di più | [brief-db-ddt-riconsegna-eredita-testata.md](../work-in-progress/brief-db-ddt-riconsegna-eredita-testata.md) |
+| L'IVA non ha un **risolutore**: la decide l'articolo, in due punti indipendenti, e uno è nel frontend. Il regime fiscale del cliente è scritto dall'operatore e letto da nessuno. Include la **dichiarazione d'intento**, che non ha nessuna sede | [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md) — 6 decisioni di Tid già prese |
 | L'unificazione di `canSave` fra `DdtRigaForm`, `OrdiniRigaForm` e `PreventiviRigaForm` (stessa forma, difetto latente sui due gemelli) | proposta a Tid, **in attesa di ok** — regola del 2 |
 
 ⭐ **Perché il residuo giustifica la chiusura invece di impedirla.** Questa slice

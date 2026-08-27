@@ -103,7 +103,17 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     loading.value = false
   }
 
-  async function fetchList() {
+  // `silent: true` → la lista si aggiorna SENZA accendere `loading`. Serve ai
+  // refresh PERIODICI (le due schede delle code): la maschera di caricamento
+  // del DataTable che lampeggia ogni pochi secondi su una lista che l'operatore
+  // sta leggendo è peggio del dato stantio che va a correggere.
+  // ⚠️ Cambia SOLO lo spinner: il guard anti-race (`fv.tag`/`isCurrent`) resta
+  // identico, altrimenti un refresh silenzioso potrebbe sovrascrivere una
+  // fetch più recente — che è il difetto che quel guard esiste per impedire.
+  // ⚠️ Chi passa `fetchList` direttamente come handler di evento riceve
+  // l'oggetto Event come primo argomento: `silent` risulta `undefined`, cioè
+  // falsy, e il comportamento resta quello di sempre.
+  async function fetchList({ silent = false } = {}) {
     if (sospesa.value) return false
     const f = filters.value
     const searchTerm = (f.search || '').trim()
@@ -139,7 +149,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     // Marca QUESTA chiamata prima di partire: al ritorno si scrive solo se nel
     // frattempo non ne e' partita una piu' recente.
     const tag = fv.tag()
-    loading.value = true
+    if (!silent) loading.value = true
     try {
       const res = await fetchPage(buildParams(f, searchTerm))
       if (!fv.isCurrent(tag)) return false   // risposta stantia: la lista NON si tocca
@@ -155,7 +165,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
       // Lo spinner lo spegne solo la fetch corrente: una risposta scartata che
       // lo spegnesse lascerebbe la lista senza indicazione mentre una chiamata
       // piu' recente e' ancora in volo.
-      if (fv.isCurrent(tag)) loading.value = false
+      if (!silent && fv.isCurrent(tag)) loading.value = false
     }
   }
 

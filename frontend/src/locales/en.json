@@ -198,7 +198,8 @@
       "timeline_concluso": "Ended",
       "dettaglio_errore": "Last error",
       "dettaglio_esito": "Outcome",
-      "dettaglio_payload": "Job data"
+      "dettaglio_payload": "Job data",
+      "riga_viva_hint": "Work not finished yet: waiting for the worker run, or running. The outcome arrives on its own — the list refreshes by itself."
     }
   },
   "nav": {
@@ -2521,7 +2522,7 @@
       "numera_mese_tooltip": "Number every issued batch of the selected month, ticked or not. ⚠️ It does not touch recoveries, which belong to an earlier period: those must be ticked.",
       "numera_accodato": "Numbering queued: the outcome will arrive on its own.",
       "numera_gia_in_corso": "This very perimeter is already being numbered: nothing new was started.",
-      "numera_esito": "{numerati} batches numbered.",
+      "numera_esito": "{numerati} batches numbered. The documents are in the print queue: the outcome arrives on its own.",
       "numera_esito_parziale": "{numerati} of {lotti} batches numbered: {saltati} skipped, {falliti} failed. Details are in the batch log.",
       "numera_errore": "Numbering failed.",
       "numera_in_coda": "Numbering is queued: it will continue on its own, this page stops following it.",
@@ -2570,7 +2571,7 @@
       "rerun_conferma": "Re-run the current step of the failed batch?",
       "numera_header": "Finalize invoices",
       "numera_conferma": "Assign definitive numbers to the batch invoices? Fiscal numbering is irreversible; prints will be queued.",
-      "numera_lotto_esito": "Invoices numbered: batch finalized",
+      "numera_lotto_esito": "Invoices numbered: batch finalized. The documents are in the print queue: the outcome arrives on its own.",
       "ristampa_header": "Reprint batch documents",
       "ristampa_conferma": "Queue the reprint of all the batch invoice documents? PDFs will be regenerated in the background; no numbering.",
       "ristampa_esito": "{n} documents queued for printing",
@@ -2646,7 +2647,9 @@
       "giornale_solo_ritirate": "No active events: {n} belong to retried attempts.",
       "giornale_info_nascoste": "{n} routine events hidden.",
       "giornale_ritirate": "{n} events from retried attempts hidden.",
-      "giornale_parziale": "Showing {n} of {tot} events."
+      "giornale_parziale": "Showing {n} of {tot} events.",
+      "lotto_in_giro_tooltip": "Numbering of this batch already started and running: wait for the outcome, the spinner disappears on its own when the run ends.",
+      "numera_mese_atteso": "A numbering run is still in progress. The MONTH action takes every batch, including those already running: wait for it to finish. Meanwhile you can number other selections."
     },
     "numerazione_data": {
       "titolo": "Numbering — document date",

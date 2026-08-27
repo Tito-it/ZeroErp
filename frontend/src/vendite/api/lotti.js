@@ -153,10 +153,27 @@ export function getFinestraNumerazione({ lottoId = null, competenzaMese = null, 
   const params = {}
   if (lottoId != null) params.lotto_id = lottoId
   if (competenzaMese) params.competenza_mese = competenzaMese
-  // ⚠️ Parametro RIPETUTO (`?lotti=12&lotti=15`): axios serializza un array
-  //    così di default, ed è la forma che il backend legge con `getlist`.
   if (lotti?.length) params.lotti = lotti
-  return api.get('/vendite/fatturazione/finestra-numerazione/', { params })
+  // ⛔ `indexes: null` NON è un dettaglio di stile: senza, axios serializza un
+  //    array come `?lotti[]=12&lotti[]=15` (provato su axios 1.20, che è la
+  //    versione in `package.json`), mentre il backend legge
+  //    `query_params.getlist('lotti')` — cerca la chiave `lotti`, trova la
+  //    chiave `lotti[]`, e non vede NIENTE.
+  // ⚠️ Il difetto non si presenta come «parametro ignorato»: `_query_lotti_ids`
+  //    traduce la lista vuota in `None` di proposito (assente = «non sto
+  //    chiedendo per selezione»), quindi il servizio riceve tutti e tre i
+  //    perimetri nulli e risponde `E_VALIDATION_INPUT` — «indicarne esattamente
+  //    uno» — su una richiesta in cui l'operatore UNO l'aveva indicato.
+  //    A video: «La finestra di numerazione non è stata letta».
+  // ⭐ Qui prima c'era un commento che affermava l'opposto («axios serializza
+  //    un array così di default»). Era falso, ed è il motivo per cui questa
+  //    riga è arrivata fino al collaudo: la giustificazione era scritta accanto
+  //    al codice e nessuno l'ha messa alla prova. Trovato in-app da Tid il
+  //    2026-08-27, primo giro vero del verbo su selezione.
+  return api.get('/vendite/fatturazione/finestra-numerazione/', {
+    params,
+    paramsSerializer: { indexes: null },
+  })
 }
 
 // POST ristampa MASSIVA di un lotto DEFINITIVA (C-8): accoda in coda stampa una
