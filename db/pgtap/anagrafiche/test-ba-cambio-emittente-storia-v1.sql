@@ -7,8 +7,10 @@
 --   anagrafiche.fn_get_storia_emittente_ba()            (20260826-46)
 --   anagrafiche.fn_guard_ba_cambio_emittente()          (20260826-47)
 --   anagrafiche.trgfn_efba_guard_storia_emittente()     (20260826-49)
+--   script.fn_check_ba_cambio_emittente()               (20260827-01)
+--   anagrafiche.fn_guard_ba_cambio_emittente() rev N2   (20260827-02)
 --
--- Elenco test (plan 8):
+-- Elenco test (plan 13):
 --  1) Precondizioni: riferimenti anagrafici presenti
 --  2) BA appena nato: nessuna storia -> (0, 0)
 --  3) BA appena nato: il cambio di emittente PASSA        [la finestra di correzione]
@@ -17,6 +19,11 @@
 --  6) ... e la frase nomina il cliente e i due conteggi
 --  7) Emittente che non cambia davvero: PASSA             [manutenzione ordinaria]
 --  8) Il trigger e' montato sui tre movimenti (INSERT/UPDATE/DELETE)
+--  9) check: senza storia -> [] (la stessa risposta del guard, dalla riga)
+-- 10) check: emittente che NON cambia davvero -> [], anche CON storia
+-- 11) check: cambia + storia -> un motivo, col codice giusto
+-- 12) il messaggio nomina l'emittente per CODICE, non per soggetto_ruolo_id
+-- 13) ⭐ STRUTTURALE: la madre CHIAMA la check e non contiene piu' il predicato
 --
 -- Scopo:
 --  - il caso si FABBRICA (billing account nuovo, poi una commessa sopra):
@@ -67,7 +74,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(13);
 
 -- =========================================================
 -- 0) Riferimenti anagrafici, presi da un billing account esistente
@@ -172,6 +179,20 @@ SELECT lives_ok(
 );
 
 -- =========================================================
+-- 9) La CHECK dice la stessa cosa, e lo dice alla RIGA
+-- =========================================================
+-- ⭐ Non e' un doppione del 3): il 3) prova che la madre non solleva, questo
+--   prova che il pulsante resta ACCESO. Sono le due estremita' dello stesso
+--   predicato, ed e' il punto del §12.5.2.
+SELECT is(
+    (SELECT script.fn_check_ba_cambio_emittente(
+                t.billing_account_id, r.emittente_sr_ok, r.emittente_sr_altro)
+       FROM tmp_ids_ba_storia t, tmp_refs_ba_storia r),
+    '[]'::jsonb,
+    'check: senza storia nessun motivo — il cestino di riga resta acceso'
+);
+
+-- =========================================================
 -- 4) Gli si attacca del lavoro: ora la storia c'e'
 -- =========================================================
 INSERT INTO vendite.commesse (codice, billing_account_id, utility_id)
@@ -252,6 +273,66 @@ SELECT is(
         AND (t.tgtype & 16) = 16),
     1,
     'Il guard e'' montato BEFORE su INSERT, UPDATE e DELETE'
+);
+
+-- =========================================================
+-- 10) ⛔ LA META' DEL PREDICATO CHE SI DIMENTICA
+-- =========================================================
+-- Se l'emittente non cambia DAVVERO non c'e' niente da presidiare, e questo
+-- vale ANCHE su un billing account che ha storia: togliere un mapping quando
+-- il gestore globale punta allo stesso emittente non sposta nessun documento.
+-- ⚠️ Senza questa riga il cestino si spegnerebbe su quasi tutte le righe di
+--   un'installazione a un solo emittente, tutte a torto.
+SELECT is(
+    (SELECT script.fn_check_ba_cambio_emittente(
+                t.billing_account_id, r.emittente_sr_ok, r.emittente_sr_ok)
+       FROM tmp_ids_ba_storia t, tmp_refs_ba_storia r),
+    '[]'::jsonb,
+    'check: emittente che non cambia davvero -> nessun motivo, anche con storia'
+);
+
+-- =========================================================
+-- 11) Cambia + storia: un motivo, e il codice e' quello a catalogo
+-- =========================================================
+SELECT is(
+    (SELECT script.fn_check_ba_cambio_emittente(
+                t.billing_account_id, r.emittente_sr_ok, r.emittente_sr_altro) -> 0 ->> 'codice'
+       FROM tmp_ids_ba_storia t, tmp_refs_ba_storia r),
+    'E_BA_EMITTENTE_CON_STORIA',
+    'check: con storia il primo motivo nomina il codice gia'' a catalogo'
+);
+
+-- =========================================================
+-- 12) La frase nomina l'emittente per CODICE
+-- =========================================================
+-- ⭐ Il canale VARIADIC compone quello che legge una PERSONA. Il messaggio
+--   diceva «…con l'emittente 72» — un soggetto_ruolo_id in mezzo a una frase
+--   italiana, nella stessa frase in cui il cliente era gia' nominato bene.
+SELECT is(
+    (SELECT (script.fn_check_ba_cambio_emittente(
+                t.billing_account_id, r.emittente_sr_ok, r.emittente_sr_altro)
+             -> 0 -> 'valori' ->> 3)
+       FROM tmp_ids_ba_storia t, tmp_refs_ba_storia r),
+    (SELECT ef.codice FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.soggetto_ruolo_id = (SELECT emittente_sr_ok FROM tmp_refs_ba_storia)),
+    'il messaggio nomina l''emittente per CODICE, non per soggetto_ruolo_id'
+);
+
+-- =========================================================
+-- 13) ⭐ IL PRESIDIO CHE CONTA, ed e' STRUTTURALE
+-- =========================================================
+-- Il §12.5.2 lo dice in una riga: il presidio da scrivere NON e' «gli esiti
+-- coincidono» — quello proverebbe che oggi vanno d'accordo — ma «la madre non
+-- contiene piu' il predicato». Cosi' si prova che non POSSONO divergere.
+-- ⇒ Se un giorno qualcuno ricopiasse il conteggio dentro la madre «per non
+--   fare una chiamata in piu'», questa riga diventa rossa. E' l'unico posto in
+--   cui quel passo indietro si vedrebbe.
+SELECT ok(
+    pg_get_functiondef('anagrafiche.fn_guard_ba_cambio_emittente(bigint,bigint,bigint)'::regprocedure)
+        LIKE '%fn_check_ba_cambio_emittente%'
+    AND pg_get_functiondef('anagrafiche.fn_guard_ba_cambio_emittente(bigint,bigint,bigint)'::regprocedure)
+        NOT LIKE '%fn_get_storia_emittente_ba%',
+    'la madre CHIAMA la check e non contiene piu'' il predicato (§12.5.2)'
 );
 
 SELECT * FROM finish();

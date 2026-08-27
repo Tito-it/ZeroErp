@@ -17,6 +17,7 @@
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_attivita_riportabile_da_emettere](manual/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
+- [fn_check_ba_cambio_emittente](manual/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
 - [fn_check_ba_visible_for_emittenti](manual/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
 - [fn_check_blocco_login](manual/fn_check_blocco_login.md)
 - [fn_check_commessa_annullabile](manual/fn_check_commessa_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)

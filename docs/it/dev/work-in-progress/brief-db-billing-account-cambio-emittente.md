@@ -27,10 +27,14 @@
 > modello di prima); un codice errore nuovo; un pgTAP `plan(8)`; 4 pagine
 > `manual/`, la sezione sulla tabella e due guide. Registro nel **§8**.
 >
-> 🔴 **Resta BE-1** — verificare che l'endpoint del mapping restituisca davvero
-> il 409 e non lo mangi in un `except Exception` (§6.7) — e, **in pausa, M7**:
-> la capability per il gesto FE non si costruisce finché il frontend non la
-> chiede.
+> ✅ **BE-1 chiusa il 2026-08-26**: il 409 arriva, con la frase giusta, provato
+> sul database vero.
+>
+> ⭐ **M7 è SUPERATO, non rimandato** — e la verifica di BE-1 è ciò che lo ha
+> superato. Il gesto è **per riga**, non di dettaglio: la capability messa in
+> pausa non avrebbe risposto alla domanda giusta. Il cantiere prosegue in
+> [brief-db-motivo-rimozione-mapping-ba.md](brief-db-motivo-rimozione-mapping-ba.md),
+> dove N1 e N2 sono già scritti. §6.9.
 >
 > ⚠️ **Migrazione applicata da Tid il 2026-08-26** — l'autorizzazione l'ha data
 > lui, comando per comando ([[feedback_mai_applicare_migrazioni_db]]).
@@ -312,7 +316,7 @@ raccomandazione è **stessa release**; il vincolo tecnico è solo M1 dopo L3.
 | **M4** | codice `E_BA_EMITTENTE_CON_STORIA` + messaggio | `80_data` | — (stesso PR di M3) | il cancello CI dei codici |
 | **M5** | pgTAP | `db/pgtap` | M3 | — |
 | **M6** | documentazione | `docs/` | tutti | — |
-| **M7** | ⏸️ capability `fn_check_ba_emittente_puo_cambiare` per il gesto FE | `20_code` | M1 | **non si costruisce finché il FE non la chiede** |
+| ~~**M7**~~ | ⛔ **SUPERATO**: l'azione è **per riga**, non di dettaglio — ▶ [brief-db-motivo-rimozione-mapping-ba.md](brief-db-motivo-rimozione-mapping-ba.md) | — | — | §6.9 |
 
 ⭐ **M1 si può spezzare in due consegne**, se serve andare prima: la parte
 «fatture» non dipende da niente e chiude il caso fiscale — quello che Tid ha
@@ -362,6 +366,12 @@ anagrafiche.fn_guard_ba_cambio_emittente(
    globale punta **allo stesso** emittente non sposta niente e deve passare;
 3. legge i conteggi; se entrambi a zero → `RETURN`;
 4. altrimenti solleva `E_BA_EMITTENTE_CON_STORIA`.
+
+> ⭐ **Superato il 2026-08-27 (§6.9), e in meglio.** I quattro passi non stanno
+> più qui: sono in `script.fn_check_ba_cambio_emittente`, e questa funzione la
+> **chiama** sollevando il primo motivo. La sostanza non cambia — cambia che la
+> stessa risposta serve anche a **spegnere il pulsante** prima che venga premuto,
+> e che le due superfici non possono più divergere. ChangeSet `20260827-02`.
 
 ⛔ **Nessuna GUC di override, nessuna eccezione per il pregresso**: è la stessa
 frase che il `COMMENT` di `fn_guard_albero_ba_emittente` porta già scritta —
@@ -538,6 +548,11 @@ costruita con la veste operatore giusta, o non vede quello che ha appena scritto
 
 ### 6.7 Consegne fuori dal database
 
+> ✅ **Aggiornamento 2026-08-26/27**: BE-1 è stata **verificata e chiusa** — il
+> 409 arriva con la frase giusta. E la verifica ha prodotto il seguito: FE-1 non
+> è più «da progettare quando il FE la chiede», è un brief con i suoi lotti
+> (§6.9).
+
 **BE-1 — niente di obbligatorio, e va verificato che sia vero.** La classe
 `CONFLITTO_STATO` è già mappata a 409 dalla catena centralizzata
 (`config.classi_errore` → `apps/core/services/error_policies.py`): l'endpoint che
@@ -546,7 +561,8 @@ restituire il 409 con il messaggio senza modifiche. ⚠️ **Da provare, non da 
 per scontato**: se quel percorso cattura `Exception`, il messaggio del database si
 perde e l'operatore legge un 500 muto.
 
-**FE-1 — il gesto va spento prima, non punito dopo.** Oggi l'operatore scopre il
+**FE-1 — il gesto va spento prima, non punito dopo.** ⭐ *Superata dal §6.9: la
+sede non era una capability di dettaglio.* Oggi l'operatore scopre il
 divieto premendo. La forma giusta è la capability (`linee-guida-sql.md` §12), e la
 sua sede DB è **M7** — che però ⛔ **non si costruisce a vuoto**: si scrive quando
 il frontend la chiede, e sul **dettaglio** del cliente, mai per riga di lista
@@ -564,6 +580,43 @@ il frontend la chiede, e sul **dettaglio** del cliente, mai per riga di lista
   e si decidono, non si riscrivono alla cieca
   ([[feedback_dev_db_non_e_ricostruito_da_zero]]).
 * ⛔ **Non si tocca il guard dell'albero** (§7): è presidiato e non va ridiscusso.
+
+### 6.9 ⭐ M7 è superato — e a superarlo è stata la verifica di BE-1
+
+La pausa su M7 era motivata: *«non si costruisce a vuoto, si scrive quando il
+frontend la chiede»*. ⚠️ Guardando il frontend per chiudere BE-1, la richiesta
+**c'era già** — e non era quella che avevo immaginato.
+
+| | M7 come era stato messo in pausa | Quello che serviva davvero |
+| --- | --- | --- |
+| forma | capability di **dettaglio** (`fn_available_actions_*`) | check **per riga** (`fn_check_*`) |
+| dove arriva | nel blob del dettaglio | in una **colonna della riga** |
+| chi la legge | la barra azioni | il costruttore delle azioni di riga |
+
+⛔ **Una capability di dettaglio non avrebbe risposto alla domanda giusta**: il
+cestino sta su **ogni riga** della lista dei mapping, e il blob del dettaglio non
+sa niente delle righe. Sarebbe stato un oggetto costruito bene per il posto
+sbagliato.
+
+⭐ **La regola esisteva già**: è il **§12.5** delle linee guida SQL, scritto
+cinque giorni prima per il pulsante «Annulla l'accredito» di un altro dominio.
+Questo è il **secondo caso della stessa specie** — e il §12.5.6 lo diceva che ne
+sarebbero saltati fuori altri, perché per le azioni di riga *«non c'è nessun
+elenco»*.
+
+⇒ Il seguito vive in
+[brief-db-motivo-rimozione-mapping-ba.md](brief-db-motivo-rimozione-mapping-ba.md):
+**N1** e **N2** sono scritti (`20260827-01`, `-02`), il pgTAP di questo cantiere
+è passato da `plan(8)` a `plan(13)`, e la Q-1 su dove vive la colonna è stata
+decisa da Tid — forma **(a)**, il `LATERAL` nell'SQL che c'è già.
+
+⚠️ **E là dentro è rientrato un difetto di questo cantiere**: il messaggio del
+`20260826-47` diceva *«…con l'emittente 72»* — un `soggetto_ruolo_id` nudo in
+mezzo a una frase italiana, **nella stessa frase** in cui il cliente era già
+nominato per codice. Si è corretto da sé quando i valori del messaggio si sono
+spostati dentro la check.
+
+---
 
 ## 7. Cosa NON è in questo brief
 
@@ -671,9 +724,11 @@ dell'operatore, che quella fixture non fabbrica — il montaggio del trigger sui
   ⛔ E `generazione-cliente.md` **non nominava mai l'emittente**: il legame
   nasce lì, da un trigger, con quello dell'operatore che sta creando il cliente —
   quindi un cliente può *nascere sbagliato* e non era scritto da nessuna parte.
-* ⏸️ **M7** — la capability per il gesto FE: **non si costruisce** finché il
-  frontend non la chiede.
-* **BE-1** — verificare che l'endpoint del mapping restituisca davvero il 409 e
+* ~~⏸️ **M7** — la capability per il gesto FE.~~ ⛔ **SUPERATO** il 2026-08-27:
+  l'azione è per riga, e una capability di dettaglio non avrebbe risposto alla
+  domanda giusta. ▶ §6.9.
+* ~~**BE-1**~~ ✅ **chiusa il 2026-08-26**: il 409 arriva con la frase giusta.
+  *Era*: verificare che l'endpoint del mapping restituisca davvero il 409 e
   non lo mangi in un `except Exception` (§6.7).
 * ⚠️ Il pgTAP **non è stato eseguito**: serve il database, e l'apply non è
   autorizzato.
@@ -713,3 +768,24 @@ cui il lettore arriva quando si chiede da dove venga l'emittente di un cliente.
 **Doc concettuale**: la sezione «Quando questo legame si può ancora cambiare»
 sulla pagina della tabella (con la tabella dei due casi) + una nota su ognuna
 delle quattro funzioni.
+
+### 2026-08-27 · M7 superato, BE-1 chiusa
+
+✅ **BE-1 chiusa**: il 409 arriva con la frase giusta, provato sul database vero.
+
+⭐ **E la verifica ha superato M7.** La pausa era motivata — *«non si costruisce
+a vuoto»* — ma guardando il frontend la richiesta c'era già e non era una
+capability di dettaglio: il cestino sta **su ogni riga**, e il blob del dettaglio
+non sa niente delle righe. Sarebbe stato un oggetto costruito bene per il posto
+sbagliato. §6.9.
+
+⭐ **La regola c'era già e non l'avevo attraversata**: il §12.5 delle linee guida,
+scritto cinque giorni prima per un pulsante di un altro dominio. Il §12.5.6
+avvertiva che per le azioni di riga *«non c'è nessun elenco»* — e infatti questa
+è la seconda della stessa specie, trovata per caso.
+
+⇒ Seguito in
+[brief-db-motivo-rimozione-mapping-ba.md](brief-db-motivo-rimozione-mapping-ba.md).
+Da lì torna indietro anche una correzione: il messaggio di
+`fn_guard_ba_cambio_emittente` nominava l'emittente per `soggetto_ruolo_id`, e
+ora lo nomina per codice.
