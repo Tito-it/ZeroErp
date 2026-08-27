@@ -15,8 +15,8 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_ac
  SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
-    v_storia     record;
-    v_codice_ba  anagrafiche.billing_account.codice%TYPE;
+    v_motivi jsonb;
+    v_primo  jsonb;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -25,68 +25,43 @@ BEGIN
     --   E' la forma «b» decisa in D-1 — libero finche' non c'e'
     --   storia, vietato dopo.
     --
-    -- ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la
-    --   RLS (vedi fn_get_storia_emittente_ba), e il codice del BA
-    --   si legge da anagrafiche.billing_account, che pure ce l'ha.
+    -- ⭐ IL PREDICATO NON STA PIU' QUI (§12.5.2): sta in
+    --   script.fn_check_ba_cambio_emittente, che e' la STESSA
+    --   funzione da cui la lista dei mapping prende il motivo per
+    --   spegnere il cestino di riga. Non «coincidono»: sono la
+    --   stessa riga di codice, e non possono divergere.
+    --
+    -- ⚠️ Si solleva il PRIMO motivo dell'array: l'ordine e' il
+    --   contratto fra il tooltip e l'errore.
     -- =========================================================
+    v_motivi := script.fn_check_ba_cambio_emittente(
+                    p_billing_account_id, p_emittente_sr_prima, p_emittente_sr_dopo);
 
-    -- 1) La riga senza billing account e' quella del GESTORE
-    --    GLOBALE: la guarda fn_guard_ba_gestore_globale_storia,
-    --    che ha un raggio diverso (N billing account, non uno).
-    IF p_billing_account_id IS NULL THEN
+    IF v_motivi IS NULL OR jsonb_array_length(v_motivi) = 0 THEN
         RETURN;
     END IF;
 
-    -- 2) ⭐ Se l'emittente non cambia DAVVERO non c'e' niente da
-    --    presidiare, ed e' la riga che tiene aperta la
-    --    manutenzione ordinaria: cancellare un mapping specifico
-    --    quando il gestore globale punta allo stesso emittente
-    --    non sposta nessun documento.
-    IF p_emittente_sr_prima IS NOT DISTINCT FROM p_emittente_sr_dopo THEN
-        RETURN;
-    END IF;
+    v_primo := v_motivi -> 0;
 
-    SELECT * INTO v_storia
-      FROM anagrafiche.fn_get_storia_emittente_ba(p_billing_account_id);
-
-    -- 3) Nessuna storia: la finestra di correzione e' ancora
-    --    aperta. E' il caso del billing account nato sotto
-    --    l'emittente sbagliato, che deve restare correggibile.
-    IF COALESCE(v_storia.n_fatture, 0) = 0
-       AND COALESCE(v_storia.n_commesse, 0) = 0 THEN
-        RETURN;
-    END IF;
-
-    SELECT ba.codice INTO v_codice_ba
-      FROM anagrafiche.billing_account ba
-     WHERE ba.id = p_billing_account_id;
-
-    -- 4) ⛔ Storia c'e': si blocca. La via d'uscita non e' la
-    --    forza, e' la forma «c» — se il cliente e' passato
-    --    davvero all'altro emittente si apre presso di lui una
-    --    fornitura nuova, e i documenti gia' emessi restano con
-    --    chi li ha emessi.
+    -- ⚠️ Il `context` porta il dettaglio della check piu' il
+    --   `reason`: il frontend che riceve il 409 e quello che
+    --   legge la riga leggono la stessa parola.
+    --   ⛔ Nessuna chiave `campo`: la classe e' CONFLITTO_STATO —
+    --   «non c'e' un campo da correggere, e' la situazione che
+    --   non lo consente».
     PERFORM script.fn_log_and_raise_error(
         'anagrafiche',
         'fn_guard_ba_cambio_emittente',
-        'E_BA_EMITTENTE_CON_STORIA',
-        jsonb_build_object(
-            'billing_account_id',  p_billing_account_id,
-            'codice',              v_codice_ba,
-            'n_fatture',           v_storia.n_fatture,
-            'n_commesse',          v_storia.n_commesse,
-            'emittente_sr_prima',  p_emittente_sr_prima,
-            'emittente_sr_dopo',   p_emittente_sr_dopo),
+        v_primo ->> 'codice',
+        COALESCE(v_primo -> 'dettaglio', '{}'::jsonb)
+            || jsonb_build_object('reason', v_primo ->> 'reason'),
         NULL::uuid,
-        COALESCE(v_codice_ba, p_billing_account_id::text),
-        v_storia.n_fatture::text,
-        v_storia.n_commesse::text,
-        COALESCE(p_emittente_sr_prima::text, '?'));
+        VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_guard_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
-IS 'Guard fail-fast: un billing account che ha gia'' CONGELATO il proprio emittente da qualche parte non lo cambia piu''. Solleva E_BA_EMITTENTE_CON_STORIA nominando il cliente, quante fatture e quante commesse lo bloccano. ⭐ Perche'' esiste, nelle parole di Tid: «non puo'' scomparire un cliente che ha gia'' delle fatture con un emittente perche'' e'' andato ad un altro». La fattura NON segue il cliente — congela il proprio emittente (NOT NULL + emittente_snapshot) — quindi spostare il billing account non riscrive la storia: LA ORFANA. Le fatture restano sull''emittente vecchio, il cliente passa al nuovo, e da quel momento chi quelle fatture le ha emesse continua a vedere il documento e smette di vedere il cliente. ⭐ E dal cantiere gemello non e'' piu'' solo la fattura: col NOT NULL del 20260826-41 anche vendite.commesse porta una copia congelata dell''emittente, e il suo guard — montato UPDATE OF apposta per non congelare le commesse a ogni cambio di stato — non la difende, perche'' un mapping spostato non riscrive quella riga. Il presidio deve stare qui. ⭐ Forma «b» (decisione D-1): libero finche'' non c''e'' storia, vietato dopo. Vietare e basta avrebbe un costo — un billing account NASCE gia'' mappato all''emittente dell''operatore che crea il cliente (anagrafiche.trgfn_billing_account_link_ef), quindi se l''operatore era loggato sull''emittente sbagliato nasce mappato male, ed e'' un errore di inserimento ordinario che deve restare correggibile. La domanda vera non e'' «si puo'' cambiare?» ma «fino a quando?». ⭐ Esce subito quando l''emittente non cambia davvero (IS NOT DISTINCT FROM): e'' la riga che tiene aperta la manutenzione ordinaria — cancellare un mapping specifico quando il gestore globale punta allo stesso emittente non sposta nessun documento. ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la RLS e il codice del BA si legge da anagrafiche.billing_account, che pure ce l''ha. ⚠️ NESSUN controllo sui figli, ed e'' deliberato: un BA il cui figlio ha storia e'' gia'' protetto da anagrafiche.fn_guard_albero_ba_emittente — spostare il padre da solo renderebbe l''albero misto e viene respinto li'', con un errore che dice la cosa giusta; aggiungere qui una risalita sarebbe un secondo presidio sullo stesso caso, con due messaggi diversi per lo stesso rifiuto. ⛔ Nessuna GUC di override e nessuna eccezione per il pregresso: un invariante con l''interruttore non e'' un invariante. ⭐ Quando il cancello chiude, la via d''uscita e'' la forma «c»: se il cliente e'' passato davvero all''altro emittente si apre presso di lui una fornitura nuova (una istanza_utility nuova e quindi un billing account nuovo — uq_billing_instance_utility rende impossibile un «BA gemello» sulla stessa fornitura), e i documenti gia'' emessi restano con chi li ha emessi. Piano: brief-db-billing-account-cambio-emittente, M1.';
+IS 'Guard fail-fast: un billing account che ha gia'' CONGELATO il proprio emittente da qualche parte non lo cambia piu''. Solleva il codice del PRIMO motivo restituito da script.fn_check_ba_cambio_emittente, coi suoi valori. ⭐ rev 2026-08-27 (§12.5.2): il predicato NON sta piu'' qui — la madre CHIAMA la check invece di riscriverla, ed e'' la stessa funzione da cui la lista dei mapping nel drawer dell''emittente prende il motivo per spegnere il cestino di riga. La differenza vale la riga: un test che confrontasse i due esiti proverebbe che OGGI coincidono, cosi'' si prova che NON POSSONO divergere, perche'' la regola sta scritta in un posto solo. Il presidio da scrivere non e'' «gli esiti coincidono», e'' «la madre non contiene piu'' il predicato» — asserzione strutturale su pg_get_functiondef. ⚠️ L''ORDINE dell''array e'' il contratto: si solleva il primo motivo, e un ordine diverso farebbe dire al tooltip del pulsante una cosa e all''errore del rifiuto un''altra, cioe'' il difetto di partenza spostato di un passo. ⭐ Perche'' esiste, nelle parole di Tid: «non puo'' scomparire un cliente che ha gia'' delle fatture con un emittente perche'' e'' andato ad un altro». La fattura NON segue il cliente — congela il proprio emittente — quindi spostare il billing account non riscrive la storia: LA ORFANA. ⭐ Forma «b» (decisione D-1): libero finche'' non c''e'' storia, vietato dopo, perche'' un billing account nasce gia'' agganciato all''emittente di chi lo crea e puo'' nascere sbagliato. La condizione «l''emittente cambia davvero» vive nella check ed e'' cio'' che tiene aperta la manutenzione ordinaria. ⚠️ SECURITY DEFINER: la check lo e'' per contare la storia sotto RLS, e questa lo resta per simmetria e perche'' il contesto dell''errore ne dipende. ⛔ Nessuna GUC di override e nessuna eccezione per il pregresso. ⚠️ Nessun controllo sui figli, ed e'' deliberato: quel caso lo respinge gia'' anagrafiche.fn_guard_albero_ba_emittente con un errore piu'' preciso. Piano: brief-db-motivo-rimozione-mapping-ba, N2.';
 ```
 
 ---

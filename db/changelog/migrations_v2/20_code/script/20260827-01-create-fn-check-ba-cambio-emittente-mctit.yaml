@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# N1 — Il predicato che NOMINA: «questo mapping si puo' togliere?»
+#   script.fn_check_ba_cambio_emittente(ba, emittente_prima, emittente_dopo)
+#   Piano: brief-db-motivo-rimozione-mapping-ba, N1 (§5.1)
+#
+# ── ⭐ PERCHE' NASCE: il pulsante e' acceso su qualcosa che verra' rifiutato
+#   Nel tab «Billing Account» di un emittente il cestino di riga e' SEMPRE
+#   acceso. Su un cliente che ha gia' fatture o commesse presso un altro
+#   emittente il gesto viene respinto dal database — correttamente — DOPO che
+#   l'operatore ha premuto e confermato.
+#   E' alla lettera la «terza via» che il §12.1 delle linee guida vieta, nella
+#   forma PER RIGA del §12.5.
+#
+# ── ⛔ LA TRAPPOLA: il motivo NON e' «questo cliente ha storia» ──────
+#   Togliere un mapping specifico fa ricadere il billing account sul GESTORE
+#   GLOBALE. Quindi il cambio di emittente c'e' SOLO SE l'emittente della riga
+#   e' diverso da quello del default: se coincidono non si sposta niente, e la
+#   rimozione deve restare AMMESSA — e' manutenzione ordinaria.
+#   ⇒ Il predicato e' una COPPIA: *l'emittente cambia davvero* E *il billing
+#   account ha storia*. Scriverne solo la seconda meta' spegnerebbe il cestino
+#   su quasi tutte le righe di un'installazione a un solo emittente, a torto.
+#
+# ── ⭐ NOMINA, NON SOLLEVA (§12.5.2) ────────────────────────────────
+#   Sollevare e' mestiere della madre. Qui si restituisce l'array ORDINATO dei
+#   motivi: `[]` = ammesso. La madre (20260827-02) CHIAMA questa e solleva il
+#   codice del PRIMO — cosi' non si prova che i due esiti coincidono oggi, si
+#   prova che non possono divergere.
+#   ⚠️ L'ORDINE dell'array e' il contratto: se cambiasse, il tooltip direbbe una
+#   cosa e l'errore un'altra.
+#
+# ⚠️ Nessun codice errore nuovo (§12.5.2): `E_BA_EMITTENTE_CON_STORIA` e' gia'
+#   a catalogo dal 20260826-49. Se per scrivere questa check ne fosse servito
+#   uno nuovo, il difetto sarebbe stato a monte — la madre rifiutava senza
+#   saper dire perche'.
+#
+# ── ⭐ E QUI RIENTRA UN DIFETTO DI IERI, senza un changeSet suo ─────
+#   Il messaggio del 20260826-47 diceva «…con l'emittente 72»: un
+#   soggetto_ruolo_id nudo in mezzo a una frase italiana, nella stessa frase in
+#   cui il cliente e' nominato per codice. Il `VARIADIC` parla ALL'OPERATORE.
+#   Siccome i `valori` del messaggio si compongono QUI, la correzione atterra
+#   per costruzione: `anagrafiche.emittenti_fiscali.codice` (NOT NULL) al posto
+#   dell'id. Farne un changeSet separato avrebbe voluto dire scrivere l'etichetta
+#   sbagliata e correggerla il minuto dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260827-01-create-fn-check-ba-cambio-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260827-01-create-fn-check-ba-cambio-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        N1 (§12.5): il predicato che NOMINA e non solleva — «questo mapping si puo' togliere?».
+        Restituisce [] se ammesso, altrimenti l'array ordinato di {codice, reason, reason_key,
+        dettaglio, valori}. ⛔ Il predicato e' una COPPIA e non «il cliente ha storia»: togliere
+        un mapping fa ricadere il BA sul gestore globale, quindi il cambio c'e' solo se
+        l'emittente della riga DIFFERISCE da quello del default — se coincidono non si sposta
+        niente e la rimozione resta ammessa. Scriverne solo la seconda meta' spegnerebbe il
+        cestino su quasi tutte le righe di un'installazione a un solo emittente, a torto.
+        ⚠️ SECURITY DEFINER come la madre: la storia si conta su tabelle con la RLS, e da
+        INVOKER risponderebbe «nessuna storia» proprio nel caso da spegnere. ⚠️ Nessun codice
+        nuovo: E_BA_EMITTENTE_CON_STORIA e' gia' a catalogo. ⭐ Assorbe la correzione N5 — i
+        `valori` nominano l'emittente per CODICE e non per soggetto_ruolo_id: si compongono qui,
+        quindi un changeSet separato avrebbe scritto l'etichetta sbagliata per poi correggerla.
+        Piano: brief-db-motivo-rimozione-mapping-ba, N1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'fn_get_storia_emittente_ba'
+                     AND p.pronargs = 1;
+            # ⚠️ Il codice dev'essere a catalogo PRIMA: la check lo nomina, e
+            #    un reason_key che punta a un codice inesistente e' un tooltip
+            #    che non si potra' mai tradurre.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM config.codici_errore
+                   WHERE codice = 'E_BA_EMITTENTE_CON_STORIA'
+                     AND obsoleto_dal IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ba_cambio_emittente(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                  p_emittente_sr_prima anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE,
+                  p_emittente_sr_dopo  anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_motivi    jsonb := '[]'::jsonb;
+                  v_storia    record;
+                  v_codice_ba anagrafiche.billing_account.codice%TYPE;
+                  v_codice_ef anagrafiche.emittenti_fiscali.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Elencare i motivi che impediscono di cambiare
+                  --   l'emittente di un billing account. Funzione PURA
+                  --   (fn_check_*): nessun raise di dominio, nessuna
+                  --   scrittura. Consumatori: la madre
+                  --   anagrafiche.fn_guard_ba_cambio_emittente (che solleva il
+                  --   codice del primo motivo) e la lista dei mapping nel
+                  --   drawer dell'emittente (che spegne il cestino di riga).
+                  --
+                  -- Ritorna: [] se ammesso; altrimenti array ORDINATO di
+                  --   {codice, reason, reason_key, dettaglio, valori} — §12.5.1.
+                  -- ⚠️ L'ordine e' il contratto: la madre solleva il PRIMO.
+                  -- =========================================================
+
+                  -- 1) La riga senza billing account e' quella del GESTORE
+                  --    GLOBALE: ha un raggio diverso (N clienti, non uno) e la
+                  --    guarda anagrafiche.fn_guard_ba_gestore_globale_storia.
+                  IF p_billing_account_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- 2) ⛔ LA META' DEL PREDICATO CHE SI DIMENTICA.
+                  --    Se l'emittente non cambia DAVVERO non c'e' niente da
+                  --    presidiare: togliere un mapping specifico quando il
+                  --    gestore globale punta allo stesso emittente non sposta
+                  --    nessun documento, ed e' manutenzione ordinaria.
+                  --    Senza questa riga il cestino si spegnerebbe su quasi
+                  --    tutte le righe di un'installazione a un solo emittente.
+                  IF p_emittente_sr_prima IS NOT DISTINCT FROM p_emittente_sr_dopo THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT * INTO v_storia
+                    FROM anagrafiche.fn_get_storia_emittente_ba(p_billing_account_id);
+
+                  -- 3) Nessuna storia: la finestra di correzione e' aperta.
+                  IF COALESCE(v_storia.n_fatture, 0) = 0
+                     AND COALESCE(v_storia.n_commesse, 0) = 0 THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT ba.codice INTO v_codice_ba
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = p_billing_account_id;
+
+                  -- ⭐ L'emittente si nomina per CODICE: il canale VARIADIC
+                  --    compone la frase che legge una PERSONA, e un
+                  --    soggetto_ruolo_id li' dentro e' rumore. La colonna
+                  --    esiste ed e' NOT NULL; il COALESCE e' la rete.
+                  SELECT ef.codice INTO v_codice_ef
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.soggetto_ruolo_id = p_emittente_sr_prima;
+
+                  v_motivi := v_motivi || jsonb_build_object(
+                      'codice',     'E_BA_EMITTENTE_CON_STORIA',
+                      'reason',     'BA_CON_STORIA',
+                      'reason_key', 'amministrazione.emittenti_fiscali.ba_blocco.con_storia',
+                      'dettaglio',  jsonb_build_object(
+                                        'billing_account_id', p_billing_account_id,
+                                        'codice',             v_codice_ba,
+                                        'n_fatture',          v_storia.n_fatture,
+                                        'n_commesse',         v_storia.n_commesse,
+                                        'emittente_sr_prima', p_emittente_sr_prima,
+                                        'emittente_sr_dopo',  p_emittente_sr_dopo),
+                      'valori',     jsonb_build_array(
+                                        COALESCE(v_codice_ba, p_billing_account_id::text),
+                                        v_storia.n_fatture::text,
+                                        v_storia.n_commesse::text,
+                                        COALESCE(v_codice_ef, p_emittente_sr_prima::text)));
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_ba_cambio_emittente(bigint, bigint, bigint)
+              IS 'Pure check (§12.5.1): elenca i motivi che impediscono di cambiare l''emittente di un billing account. [] = ammesso; altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva — sollevare e'' mestiere della madre. ⛔ IL PREDICATO E'' UNA COPPIA, e la meta'' che si dimentica e'' la prima: togliere un mapping specifico fa ricadere il billing account sul GESTORE GLOBALE, quindi il cambio di emittente esiste SOLO SE l''emittente della riga e'' diverso da quello del default — se coincidono non si sposta nessun documento e la rimozione deve restare ammessa, perche'' e'' manutenzione ordinaria. Scrivere solo «il cliente ha storia» spegnerebbe il gesto su quasi tutte le righe di un''installazione a un solo emittente, tutte a torto. ⭐ Sede unica condivisa: anagrafiche.fn_guard_ba_cambio_emittente CHIAMA questa funzione e solleva il codice del PRIMO motivo (§12.5.2), quindi il tooltip del pulsante e l''errore del rifiuto non possono divergere — non «coincidono oggi»: non possono. ⚠️ L''ORDINE dell''array e'' il contratto: la madre solleva il primo, e un ordine diverso farebbe dire al tooltip una cosa e all''errore un''altra. ⚠️ SECURITY DEFINER, come la madre e per la stessa ragione: la storia si conta su vendite.fatture e vendite.commesse, che hanno la RLS accesa, e da SECURITY INVOKER la funzione risponderebbe «nessuna storia» proprio nel caso in cui il pulsante va spento. ⚠️ Nessun codice errore nuovo: E_BA_EMITTENTE_CON_STORIA e'' gia'' a catalogo (20260826-49). ⭐ I `valori` nominano l''emittente per CODICE e non per soggetto_ruolo_id — correzione del messaggio nato col 20260826-47, che diceva «…con l''emittente 72»: il canale VARIADIC compone la frase che legge una persona. Piano: brief-db-motivo-rimozione-mapping-ba, N1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_ba_cambio_emittente(bigint, bigint, bigint);

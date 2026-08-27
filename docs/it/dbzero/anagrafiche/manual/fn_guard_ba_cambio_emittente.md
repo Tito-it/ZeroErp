@@ -6,6 +6,8 @@ Approfondimenti funzioni:
 >
 [anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente)
 >
+[script.fn_check_ba_cambio_emittente](/dbzero/script/manual/fn_check_ba_cambio_emittente)
+>
 [vendite.trgfn_commesse_guard_emittente_ba](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba)
 >
 Approfondimenti tabelle:
@@ -86,3 +88,21 @@ soggetto, e le due posizioni convivono. E' la forma pulita, anche fiscalmente.
   disattivazione: **un invariante con l'interruttore non e' un invariante**;
 * non risale ai clienti collegati, ed e' voluto: quel caso e' gia' respinto dal
   controllo sull'albero, con un messaggio piu' preciso.
+
+---
+
+### ⭐ Dal 2026-08-27 il predicato non è più qui
+
+Questa funzione **non decide più**: chiede a
+[`script.fn_check_ba_cambio_emittente`](/dbzero/script/manual/fn_check_ba_cambio_emittente)
+e solleva il **primo** motivo che le viene restituito.
+
+Non è un riordino estetico. Quella stessa funzione è ciò che la lista dei
+clienti di un emittente interroga per **spegnere il cestino di riga**: il
+tooltip del pulsante e l'errore del rifiuto vengono dalla stessa riga di codice.
+
+⇒ Un controllo che confrontasse le due risposte proverebbe che *oggi* coincidono.
+Così si prova che **non possono** divergere — e il presidio scritto nel test non
+è «gli esiti coincidono», è **«qui dentro il predicato non c'è più»**.
+
+⚠️ Ne discende che **l'ordine dei motivi è un contratto**: si solleva il primo.
