@@ -475,5 +475,82 @@ del frontend.
 
 ---
 
+---
+
+## 8. Segnalazioni BE del 2026-08-27 — esito
+
+### 8.1 ✅ Mancava il preset di default della lista 49 — **è un buco mio**
+
+Ho seminato `lista_definizione` e `lista_colonna` e **non** `lista_preset`.
+Seminare una lista sono **tre** tabelle: le prime due si notano subito, la terza
+no — e non produce nessun errore, perché il resolver **ripiega sul catalogo**.
+La lista si vedeva, e partiva senza una configurazione dichiarata.
+
+📌 Misurato il 2026-08-27: la **49 era l'unica** lista attiva senza preset di
+default. Le altre 48 ce l'hanno.
+
+**Seminato** — `ui/lista_preset.csv` id **49** (`id = lista_id`, come tutte e 48
+le righe esistenti) + **11** righe in `ui/lista_preset_colonna.csv`. Entrambi i
+loader sono `runOnChange`, quindi basta il CSV.
+
+| Scelta | Perché |
+| --- | --- |
+| **preset = catalogo** (11 colonne su 11), non 10 | ⛔ Il «modello della 43» che il BE suggerisce è **drift, non convenzione**: la 41 e la 43 hanno il preset più corto del catalogo perché la colonna emittente fu aggiunta il 2026-08-18 e i preset non furono aggiornati. Le liste nate dopo (**44, 45, 47, 48**) hanno preset = catalogo. Ho seguito quelle |
+| `emittente_fiscale` con **`visibile = f`**, non omessa | ⚠️ Omessa diventerebbe «colonna nuova» per il banner DEF-2: una scelta **dichiarata** si travestirebbe da dimenticanza, e la lista nascerebbe col banner già acceso |
+| `pagina_dimensione = 25` | come le sorelle 42 e 43 |
+| `ordinamento_default` = `competenza_mese asc` | ⭐ Le sorelle ordinano per **valore desc**, ma questa non è una lista di grandezze: è una **coda di recupero**. Un residuo che invecchia si avvicina al limite di emissione, quindi il più vecchio è il più a rischio — stessa logica del backlog (`anzianita_giorni desc`), non dei gruppi. ℹ️ `competenza_mese` è sia `codice` sia `campo_sorgente`, quindi risolve con entrambe le convenzioni (vedi §8.3) |
+
+### 8.2 ⭐ E ci ho messo un presidio, perché il BE l'ha trovato **a mano**
+
+`db/pgtap/ui/test-liste-preset-default-v1.sql` — 5 asserzioni. Il difetto è stato
+scoperto contando le righe delle liste sorelle: è esattamente il genere di
+controllo che va spostato dalla disciplina alla **struttura**.
+
+| # | Cosa | Visto rosso? |
+| --- | --- | --- |
+| 1 | il **denominatore** non è zero | — (è il guard degli altri due: un `count(*) = 0` su una popolazione vuota passa *smettendo di verificare*) |
+| 2 | ⛔ ogni lista attiva ha **esattamente un** preset di sistema di default | ✅ rosso senza il seed |
+| 3 | ⛔ una colonna di preset appartiene alla **stessa lista** del preset | ✅ rosso infilando una colonna altrui |
+| 4 | la 49 ha il preset dichiarato **per intero** (11 colonne, 10 accese, 1 fissata) | ✅ rosso senza il seed |
+| 5 | la 49 non nasce col **banner DEF-2** acceso | ✅ rosso senza il seed |
+
+⭐ Il **3** merita una riga: `ui.lista_preset_colonna` ha **due FK separate** —
+una al preset, una alla colonna — e **niente** obbliga la colonna ad appartenere
+alla stessa lista del preset. Il modello lo ammette, e l'effetto sarebbe una
+lista che mostra la colonna di un'altra **senza nessun errore di vincolo**. Oggi
+zero occorrenze: è il momento giusto per il cancello, perché *un presidio nato
+verde costa niente e uno nato rosso non nasce*.
+
+### 8.3 ⚠️ Una cosa trovata e **non** chiusa: due convenzioni per `ordinamento_default`
+
+Cercando un quinto controllo ho misurato che `clienti_default` e
+`emittenti_fiscali_default` ordinano per **`campo_sorgente`**
+(`ragione_sociale_completa`), mentre tutti gli altri ordinano per **`codice`**.
+
+⛔ **Non l'ho messo nel presidio, ed è deliberato**: decidere qui quale delle due
+è «giusta» sarebbe stabilire una convenzione dentro un test invece che nel
+cantiere che possiede le liste. È scritto anche in testa al file pgTAP.
+➡️ Per chi possiede lo schema `ui`: o si sceglie una convenzione e si bonifica,
+o si dichiara che valgono entrambe.
+
+### 8.4 ✅ Il codice errore «rientrato» — concordo, e resta di chi lo possiede
+
+`E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`. **Nessuna azione da parte mia**, ed
+è la stessa conclusione che era già scritta nella §6.4: stringere la baseline
+qui nasconderebbe la storia di un altro lavoro dentro questo cantiere.
+⚠️ Ma il BE ha ragione sul fatto che sia **urgente**: finché la baseline non è
+stretta quel presidio è un cancello **mezzo spento**, e non è uno stato in cui
+lasciarlo a lungo. È già registrato in `brief-db-lavoro-che-non-torna-indietro`
+§14.9 come rosso preesistente.
+
+### 8.5 ⛔ Stato: seminato, **non ancora applicato**
+
+Il preset è nei CSV e **provato in rollback**; i tre mirror `runOnChange`
+(`20260507-08`, `20260507-09` e il loro gemello) lo caricheranno **al prossimo
+migrate**. Fino ad allora `ui.lista_preset` non ha la riga, e il presidio 8.2
+è **rosso** — correttamente.
+
+---
+
 *Scritto il 2026-08-26 — Tid / Claude. Piano applicativo che ne dipende:
 [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md) §6.*

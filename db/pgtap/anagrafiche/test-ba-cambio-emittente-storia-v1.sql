@@ -10,7 +10,7 @@
 --   script.fn_check_ba_cambio_emittente()               (20260827-01)
 --   anagrafiche.fn_guard_ba_cambio_emittente() rev N2   (20260827-02)
 --
--- Elenco test (plan 13):
+-- Elenco test (plan 14):
 --  1) Precondizioni: riferimenti anagrafici presenti
 --  2) BA appena nato: nessuna storia -> (0, 0)
 --  3) BA appena nato: il cambio di emittente PASSA        [la finestra di correzione]
@@ -24,6 +24,7 @@
 -- 11) check: cambia + storia -> un motivo, col codice giusto
 -- 12) il messaggio nomina l'emittente per CODICE, non per soggetto_ruolo_id
 -- 13) ⭐ STRUTTURALE: la madre CHIAMA la check e non contiene piu' il predicato
+-- 14) ⛔ la RIGA DEL GESTORE GLOBALE non e' togliibile, e non «dipende»
 --
 -- Scopo:
 --  - il caso si FABBRICA (billing account nuovo, poi una commessa sopra):
@@ -74,7 +75,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(13);
+SELECT plan(14);
 
 -- =========================================================
 -- 0) Riferimenti anagrafici, presi da un billing account esistente
@@ -313,7 +314,15 @@ SELECT is(
                 t.billing_account_id, r.emittente_sr_ok, r.emittente_sr_altro)
              -> 0 -> 'valori' ->> 3)
        FROM tmp_ids_ba_storia t, tmp_refs_ba_storia r),
-    (SELECT ef.codice FROM anagrafiche.emittenti_fiscali ef
+    -- ⚠️ `::text` obbligatorio, e non e' cosmesi: `is()` e'
+    --   `is(anyelement, anyelement, text)`, quindi i due lati devono
+    --   RISOLVERE ALLO STESSO TIPO. A sinistra `->> 3` da' `text`, qui
+    --   `emittenti_fiscali.codice` e' `character varying`: senza il cast
+    --   PostgreSQL non trova nessuna funzione e il file muore a meta' corsa.
+    --   ℹ️ Le altre `is()` di questo file reggono perche' confrontano con un
+    --   LETTERALE, che e' `unknown` e viene coercito all'anyelement: il difetto
+    --   compare solo quando il secondo lato e' una COLONNA gia' tipata.
+    (SELECT ef.codice::text FROM anagrafiche.emittenti_fiscali ef
       WHERE ef.soggetto_ruolo_id = (SELECT emittente_sr_ok FROM tmp_refs_ba_storia)),
     'il messaggio nomina l''emittente per CODICE, non per soggetto_ruolo_id'
 );
@@ -333,6 +342,25 @@ SELECT ok(
     AND pg_get_functiondef('anagrafiche.fn_guard_ba_cambio_emittente(bigint,bigint,bigint)'::regprocedure)
         NOT LIKE '%fn_get_storia_emittente_ba%',
     'la madre CHIAMA la check e non contiene piu'' il predicato (§12.5.2)'
+);
+
+-- =========================================================
+-- 14) ⛔ LA RIGA DEL GESTORE GLOBALE, e la risposta e' INCONDIZIONATA
+-- =========================================================
+-- Prima la check cadeva su «senza billing account non e' il mio caso» e
+-- rispondeva [] — cioe' lasciava il cestino ACCESO sulla riga che il
+-- repository tiene IN TESTA (ORDER BY is_default DESC).
+-- ⛔ Quella riga non si toglie MAI: il singleton pretende esattamente un
+--   default. La risposta NON dipende dalla storia, ed e' il motivo per cui non
+--   si e' scritta la gemella del guard raggio N — avrebbe dato un motivo
+--   condizionale dove la risposta e' secca.
+-- ⚠️ Si passa un `dopo` NULL, che e' esattamente cio' che resterebbe.
+SELECT is(
+    (SELECT script.fn_check_ba_cambio_emittente(
+                NULL::bigint, r.emittente_sr_ok, NULL::bigint) -> 0 ->> 'reason'
+       FROM tmp_refs_ba_storia r),
+    'DEFAULT_SINGLETON',
+    'la riga del gestore globale non e'' togliibile, e il motivo non e'' la storia'
 );
 
 SELECT * FROM finish();

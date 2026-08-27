@@ -15,10 +15,11 @@
 > **§12.5** di [linee-guida-sql.md](../../linee-guida-sql.md) — una `fn_check_*`
 > che la madre **chiama**, più una colonna sulla riga.
 >
-> ✅ **Stato (2026-08-27): Q-1 decisa da Tid — forma (a). N1, N2 e N4 ESEGUITI**
-> (changeSet `20260827-01` e `-02`, pgTAP portato a `plan(13)`). **N5 assorbito
-> in N1**, non è un lotto a sé — il perché è nel §5.4. Restano **N6** e le
-> consegne BE/FE del §8. Registro nel §9.
+> ✅ **Stato (2026-08-27): Q-1 decisa da Tid — forma (a). N1, N2, N4 e N7
+> ESEGUITI** (changeSet `20260827-01`, `-02`, `-03`; pgTAP a `plan(14)`).
+> **N5 assorbito in N1** (§5.4). Restano **N6** e le consegne BE/FE del §8.
+> ⭐ **N7 è nato da una segnalazione del BE, ed è la parte che ha insegnato di
+> più**: il buco c'era, ma la causa non era quella indicata — §5.6.
 
 ---
 
@@ -143,6 +144,7 @@ la regola: un secondo consumatore chiama la funzione, che è l'unità condivisa.
 | **N4** | pgTAP | `db/pgtap` | ✅ `plan(8)` → `plan(13)` |
 | **N5** | il messaggio nomina l'emittente per **id** | — | ⇒ **assorbito in N1** (§5.4) |
 | **N6** | documentazione | `docs/` | 🔴 |
+| **N7** | ⛔ la **riga del gestore globale** aveva il cestino acceso — segnalazione BE | `20_code` | ✅ `20260827-03` |
 
 ### 5.1 N1 — la check
 
@@ -217,6 +219,60 @@ Aggiunti a `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql`
 ⚠️ Le fixture **si fabbricano** il billing account e la commessa: un test che
 cerca fra i dati esistenti passa a vuoto in CI — e su questa tabella è già
 successo una volta.
+
+### 5.6 ⛔ N7 — la riga del gestore globale, e perché la gemella sarebbe stata sbagliata
+
+**Segnalazione del BE (2026-08-27), corretta**: `fn_check_ba_cambio_emittente`
+usciva al primo `IF` — *«senza billing account non è il suo caso»* — e su quella
+riga il cestino restava **acceso**. ⚠️ Ed è pure **la prima riga della lista**:
+il repository ordina `is_default DESC` apposta, per tenerla in testa.
+
+⭐ **E il BE ha fatto la cosa giusta a non tapparlo**: dedurlo in Python sarebbe
+stato ricalcolare la regola fuori dalla sua sede.
+
+#### ⛔ Ma la causa non è quella, ed è più forte
+
+Il BE attribuiva il rifiuto a `fn_guard_ba_gestore_globale_storia` (raggio N) e
+proponeva di scriverne la gemella `fn_check_*`. Verificato:
+
+> `anagrafiche.trgfn_emittenti_fiscali_default_guard` è un **AFTER** sui tre
+> movimenti e impone il **singleton**: *«deve esistere esattamente un default»*.
+> Cancellare quella riga porta il conteggio a **0**.
+
+⇒ **Quella riga non si toglie MAI**, con o senza storia.
+
+#### ⭐ Per questo la gemella sarebbe stata la risposta sbagliata
+
+Avrebbe prodotto un motivo **condizionale** — *«c'è storia»* — dove la risposta è
+**incondizionata**. Sul tooltip suggerirebbe che *senza* storia la riga si
+potrebbe togliere.
+
+> **Un tooltip che dichiara una condizione inesistente è peggio di nessun
+> tooltip: manda a cercare come soddisfarla.**
+
+⇒ Il motivo giusto è `E_EMITTENTE_DEFAULT_SINGLETON` (già a catalogo,
+`CONFLITTO_STATO`), `reason = DEFAULT_SINGLETON`, secco.
+
+#### ⭐ E la correzione entra nella check che c'è già
+
+Non in una funzione nuova, e non per pigrizia: **il frontend chiama una cosa per
+riga**. Con due check sarebbe il backend a dover dedurre *«che tipo di riga è
+questa»* — cioè esattamente il §7 che il BE ha invocato per non tapparlo da solo,
+riaperto un passo più in là.
+
+⚠️ **Il guard raggio N resta necessario e non è coperto da qui**: presidia il
+**cambio** dell'emittente del gestore globale — un `UPDATE`, o un `DELETE`
+seguito da un `INSERT` — non la cancellazione secca, che il singleton rende
+comunque impossibile.
+
+⚠️ **Il motivo del singleton serve alla RIGA, non al raise**: a rifiutare è il
+guard singleton, che compone la propria frase. I `valori` portano il conteggio
+che *risulterebbe*.
+
+**Chiave i18n in più per FE-3**:
+`amministrazione.emittenti_fiscali.ba_blocco.default_singleton`.
+
+---
 
 ---
 
@@ -306,3 +362,20 @@ fare una chiamata in più», è l'unico posto in cui quel passo indietro si
 vedrebbe.
 
 ⛔ Nessuna migrazione applicata: l'apply lo autorizza Tid.
+
+### 2026-08-27 · N7 — la riga che nessuno aveva guardato
+
+Segnalazione del BE: la check usciva al primo `IF` e sulla **riga del gestore
+globale** il cestino restava acceso — la prima della lista, per giunta.
+
+⭐ **Il buco c'era. La causa no.** Non era il guard raggio N ma il **singleton**:
+quella riga non si toglie mai, con o senza storia. ⇒ La gemella `fn_check_*`
+proposta avrebbe dato un motivo **condizionale** dove la risposta è secca, e un
+tooltip che dichiara una condizione inesistente manda a cercare come
+soddisfarla.
+
+⭐ **E la correzione è entrata nella check esistente**, non in una funzione
+nuova: il frontend chiama una cosa per riga, e con due sarebbe stato il backend
+a dedurre di che riga si tratta — il §7 riaperto un passo più in là.
+
+`20260827-03`; pgTAP `plan(13)` → `plan(14)`.
