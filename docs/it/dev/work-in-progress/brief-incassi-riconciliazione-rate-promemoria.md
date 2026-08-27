@@ -1040,6 +1040,42 @@ conto non distinguerebbe più niente. Escluso dalla regola di dominio sopra —
 ed è proprio il caso che il vincolo (2) rende **impossibile invece che
 improbabile**.
 
+#### 🔴 Addendum 2026-08-27 — «impossibile» lo era su **una porta sola**
+
+Il vincolo (2) presidiava `soggetti_ruoli_conti_bancari`. Ma un conto entra da
+**due** porte, e sull'altra — `soggetti_conti_bancari`, il legame a livello
+**soggetto** — non c'era niente: lo stesso IBAN poteva essere dichiarato «di
+incasso» per due aziende diverse senza che nulla lo impedisse. ⚠️ La garanzia
+reggeva perché nessuno aveva usato quella porta, non perché fosse chiusa.
+
+✅ **Decisione di Tid (2026-08-27): si estende il vincolo**, non lo si sposta —
+la regola vale ovunque il fatto si dichiari. Realizzata con
+`ex_scb_conto_incasso_un_solo_soggetto`, gemella della prima. Misure e passi nel
+piano DB (§6.16 del brief DB).
+
+⭐ **E il dubbio che ha accompagnato la decisione è stato misurato, non
+discusso** — vale la pena tenerlo qui perché tornerà:
+
+* *«Due emittenti sullo stesso soggetto potrebbero voler usare lo stesso conto»*
+  → **non possono esistere**: un soggetto ha al più un ruolo per tipo
+  (`uq_soggetto_ruolo`) e quel ruolo al più un emittente
+  (`uq_emittenti_fiscali_ruolo`). La catena è **1:1:1** per costruzione;
+* *«Un emittente che fattura gas ed energia deve poter separare i conti, e una
+  società grande può averne più d'uno per la stessa utility»* → ✅ **già
+  possibile, e non da oggi**: `soggetti_ruoli_conti_bancari` ha
+  `istanza_utility_id` e due indici unici distinti (conti legati a una utility /
+  conti generali). Il vincolo dice «stesso conto **+ azienda diversa**»: sul
+  **numero** di conti per azienda non ha niente da dire. ⚠️ L'unico limite è che
+  il **predefinito** per utility è uno solo — gli altri restano, come
+  alternativi.
+
+⇒ Ne discende una conseguenza di disegno che vale come regola: **un canale di
+incasso punta a un conto**, quindi separare gli incassi per utility significa
+**un canale per conto**. ⛔ `enti_incasso` **non** prende una colonna
+`istanza_utility_id`: la utility è un fatto del **conto**, e dichiararla anche
+sul canale sarebbe una seconda sede che diverge al primo aggiornamento. Manca
+solo **esporla** dove si sceglie il conto — richiesta BE-11 nel piano DB.
+
 ---
 
 ## 3. Le attività aperte

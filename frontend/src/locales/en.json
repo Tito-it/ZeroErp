@@ -3565,6 +3565,69 @@
       }
     }
   },
+  "pagamenti": {
+    "distinte": {
+      "col_codice": "Code",
+      "col_data_contabile": "Accounting date",
+      "col_stato": "Status",
+      "col_origine": "Origin",
+      "col_totale_righe": "Rows total",
+      "col_scarto_dichiarato": "Declared gap",
+      "col_importo_dichiarato": "Declared",
+      "col_righe_registrabili": "Postable rows",
+      "col_righe_totali": "Rows",
+      "col_centro": "Collection centre",
+      "col_ente_descrizione": "Collection channel",
+      "col_data_registrazione": "Posting date",
+      "col_data_conferma": "Posted at",
+      "col_user_conferma": "Posted by"
+    },
+    "righe": {
+      "col_data_pagamento": "Payment date",
+      "col_importo": "Amount",
+      "col_stato": "Status",
+      "col_riferimento_ente": "Channel reference",
+      "col_billing_account_descrizione": "Customer",
+      "col_fattura_numero": "Invoice",
+      "col_distinta": "Batch",
+      "col_scadenza_numero_rata": "Instalment",
+      "col_scadenza_data": "Due date",
+      "col_forzata": "Forced",
+      "col_motivo_sospeso": "Suspension reason",
+      "col_motivo_forzatura": "Forcing reason",
+      "col_contabile_data": "Batch date",
+      "col_contabile_origine": "Batch origin",
+      "col_data_valuta": "Value date"
+    },
+    "rate_fuori_capienza": {
+      "col_motivo": "Reason",
+      "col_fattura": "Invoice",
+      "col_data_scadenza": "Due date",
+      "col_residuo": "Balance",
+      "col_importo_rata": "Instalment amount",
+      "col_numero_rata": "Instalment",
+      "col_registrato": "Posted",
+      "col_righe_forzate": "Forced rows",
+      "col_incassato": "Cashed in",
+      "col_in_lavorazione": "In progress",
+      "col_motivi_forzatura": "Reasons",
+      "col_anno": "Year",
+      "col_serie": "Series"
+    },
+    "eccedenze": {
+      "col_cliente": "Customer",
+      "col_eccedenza_cliente": "Customer excess",
+      "col_chi_e_in_credito": "Who is owed",
+      "col_eccedenza": "Excess",
+      "col_fattura": "Document",
+      "col_fattura_data": "Date",
+      "col_documenti_cliente": "Documents",
+      "col_sistemazioni_in_bozza": "Draft actions",
+      "col_sistemazioni_confermate": "Confirmed actions",
+      "col_residuo": "Balance",
+      "col_totale_a_pagare": "Document total"
+    }
+  },
   "dash_mesi": {
     "anno_precedente": "Previous year",
     "anno_successivo": "Next year",

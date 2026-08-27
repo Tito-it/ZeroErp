@@ -57,8 +57,8 @@
 | 📋 **Il piano** | **Sei slice**, nessuna in attesa. Ordinate per valore: S0 telaio → S1 distinta e righe → **S2 la registrazione** → S3 rata e capienza → S4 perimetro e canali → S5 sistemazioni. ⛔ La settima (spezzatura) **è caduta con D1-ter** | §3 |
 | 🔌 **Il contratto** | 18 endpoint, grammatica URL di `api.md`. ⭐ Il posting è **una sola `SELECT`**; l'abbinamento è **un verbo solo** che porta anche la forzatura | §4 |
 | 🎨 **Il frontend** | 5 schermate, 2 drawer, 3 pannelli. **17 building block riusati**, **4 candidati** all'estrazione (nessuno al primo colpo) | §5 |
-| 📮 **Al team DB** | **Tre**: i **seed delle liste** (che genero io in bozza), le **due righe dell'azione di processo** (Q-5) e l'**asimmetria del saldo fattura** (Q-10), più la madre della correzione come **differita**. ⛔ La spezzatura **è caduta con D1-ter**. ✅ E il prerequisito di **dato** (conto `INCASSO`) è **risolto**: configurato in-app il 24/08 | §6 |
-| ⭐ **Stato del codice** | ✅ **BACKEND COMPLETO — tutte e cinque le slice.** Ventitré rotte, **128 test**, SQL provati con EXPLAIN sul database vero. 🔴 **FE: non iniziato.** 📮 Al team DB restano i seed delle liste, l'azione di processo e due codici errore. ⛔ **E un blocco sul DATO**: i conti di incasso sono censiti a livello SOGGETTO e i canali li vogliono a livello RUOLO (§10.8) | §10 |
+| ✅ **Al team DB** | ⭐ **NIENTE: consegnato tutto** (allineato dal team DB il 27/08). I quattro **seed di lista** con le 53 chiavi i18n, le due righe dell'**azione di processo**, `fn_get_saldo_fattura` a **tre numeri**, più due cose che non erano nell'elenco: il **404 dei canali** e la **seconda porta** del conto di incasso. 📮 Resta differita solo la madre della correzione. ⛔ **DATO-1 no**: §10.8 vale ancora | §6 · §6-bis |
+| ⭐ **Stato del codice** | ✅ **BACKEND COMPLETO — tutte e cinque le slice.** Ventitré rotte, **128 test**, SQL provati con EXPLAIN sul database vero. 🔴 **FE: non iniziato.** ✅ Al team DB **non resta niente** (§6-bis: adesso la palla è qui — due costanti, il `lista_codice` e BE-11). ⛔ **E un blocco sul DATO**: i conti di incasso sono censiti a livello SOGGETTO e i canali li vogliono a livello RUOLO (§10.8) | §10 |
 | ✅ **Domande aperte** | **ZERO.** Nove chiuse il 24/08 — **Q-1** `confirm_and_retry` · **Q-2** cade con D1-ter · **Q-3** apertura con form · **Q-4** due porte una lista · **Q-5** nasce `registra_distinta` · **Q-6** saldi con **una sede sola** (§2.7) · **Q-7** correzione guidata · **Q-8** lookup in `vendite` · **Q-10** simmetria del saldo fattura — più Q-9 chiusa da sé | §7 |
 
 ---
@@ -581,7 +581,20 @@ funzionare una volta. Sono dichiarati qui perché il piano li prevede.
 
 ---
 
-## 6. 📮 I prerequisiti a carico del team DB: da nove a **tre**
+## 6. ✅ I prerequisiti a carico del team DB: da nove a tre, e **poi a zero**
+
+> ✅ **ALLINEATO DAL TEAM DB IL 2026-08-27.** I tre prerequisiti che restavano
+> sono **consegnati e applicati**: i quattro seed di lista (53 colonne, 4 preset,
+> **53 chiavi i18n** già nei locales), le due righe dell'azione di processo, e
+> `fn_get_saldo_fattura` allargata a tre numeri. ⭐ **Il database non deve più
+> niente a questo cantiere**, tranne la madre della correzione, che resta
+> differita per scelta.
+>
+> 📮 **Ma tre cose sono passate dalla parte del backend**, e senza quelle il
+> cantiere non si vede a video: le due costanti di ripiego da cambiare, il
+> `lista_codice` da dichiarare sulle quattro view, e **BE-11** (§6-bis). ⛔ E
+> **DATO-1 non è ancora risolto**: §10.8 resta valida parola per parola.
+
 
 ⛔ **Non li eseguo io** (le azioni DB si passano al team): si scrivono in un
 brief e si aspetta. Ecco il consuntivo della revisione.
@@ -589,17 +602,27 @@ brief e si aspetta. Ecco il consuntivo della revisione.
 | | Prerequisito del 22/08 | Oggi |
 | --- | --- | --- |
 | **DB-1** | vista `vw_vendite_contabili_lista` | 🔵 **Probabilmente non serve**: le liste alimentate da un endpoint di dominio si seminano con `vista_sql = NULL` (è la forma delle 6 liste dell'8° lotto e delle 3 del drawer lotto). I display field si fanno in JOIN **nel repository**. ⚠️ Costo: con `vista_sql` nullo il guard DB sui `campo_sorgente` **salta**, e l'unico presidio resta quello Python |
-| **DB-2** | seed lista **distinte** | 📮 **RESTA** |
-| **DB-11** | 🆕 due righe in `config/azioni_processo.csv`: `approva_rimessa` → `attivo = false`, e `registra_distinta` (area 7, `pericolosa = true`) | 📮 **NUOVO, da Q-5**: il cancello sulla registrazione. ⚠️ Minuscolo, ma **blocca la slice 2** se arriva dopo |
-| **DB-3** | seed lista **righe da abbinare** | 📮 **RESTA**, ed è **uno solo**: con Q-4 → (c) le due code condividono la definizione e si separano col filtro |
-| **DB-4** | vista + seed **rate sovra-incassate** | ⭐ **La vista c'è già** (`vw_rate_fuori_capienza`, lotto 5), col nome giusto e più contenuto di quanto chiedessi. 📮 Resta **il seed** |
+| **DB-2** | seed lista **distinte** | ✅ **CONSEGNATO** (applicato 27/08): `pagamenti.distinte`, 14 colonne + preset |
+| **DB-11** | 🆕 due righe in `config/azioni_processo.csv`: `approva_rimessa` → `attivo = false`, e `registra_distinta` (area 7, `pericolosa = true`) | ✅ **CONSEGNATO** (25/08). ⚠️ Il ritiro ha fatto **fallire il primo migrate**: un guard generico rifiuta di spegnere una riga con figlie, e `profili_accesso_azioni` ne aveva quattro (tutte a permesso negato). Tolte a mano, il secondo migrate è passato. 📮 **Ma il cancello resta chiuso**: l'azione va ancora **assegnata a un profilo**, o registra solo il super admin |
+| **DB-3** | seed lista **righe da abbinare** | ✅ **CONSEGNATO** (27/08): `pagamenti.righe`, 15 colonne. Ed è **uno solo**: con Q-4 → (c) le due code condividono la definizione e si separano col filtro |
+| **DB-4** | vista + seed **rate sovra-incassate** | ⭐ **La vista c'è già** (`vw_rate_fuori_capienza`, lotto 5), col nome giusto e più contenuto di quanto chiedessi. ✅ **E il seed è CONSEGNATO** (27/08): `pagamenti.rate_fuori_capienza`, 13 colonne, prima colonna `motivo` |
 | ~~**DB-5**~~ | `fn_spezza_riga_contabile` | ⛔ **CADUTO (D1-ter, 2026-08-24)**: il gesto che lo richiedeva non esiste più. ⭐ Era l'unico oggetto DB mancante — **adesso il database non deve più niente a questo cantiere, tranne i seed** |
 | **DB-6** | lookup rate di una fattura | ✅ **ANNULLATO**: `list_fattura_scadenze` esiste, e i numeri li dà `fn_get_saldo_rata` |
 | **DB-7** | `ui_action` per i rifiuti confermabili | ✅ **ANNULLATO**: le `ui_action` sono un file **Python scritto a mano** (`error_ui_overrides.py`) |
-| **DB-8** | vista + seed **eccedenze** | ⭐ **La vista c'è già** (`vw_eccedenze_da_sistemare`, lotto 7), e porta pure il raggruppamento per cliente. 📮 Resta **il seed** |
+| **DB-8** | vista + seed **eccedenze** | ⭐ **La vista c'è già** (`vw_eccedenze_da_sistemare`, lotto 7), e porta pure il raggruppamento per cliente. ✅ **E il seed è CONSEGNATO** (27/08): `pagamenti.eccedenze`, 11 colonne, ordinate per cliente |
 | **DB-9** | conferma che le liste reggano sotto RLS | ✅ **ANNULLATO come richiesta**: il lotto 6 ha portato `test-rls-pagamenti-perimetro.sql` (14 asserzioni). ⚠️ Diventa **lavoro BE**: la prova dentro/fuori perimetro su ogni lista (§2.6, T-10, E-4) |
-| **DB-10** | 🆕 | 📮 **NUOVO e CONFERMATO** (Q-10 → a, Tid 24/08): allargare `fn_get_saldo_fattura` a `residuo · in_lavorazione · incassato`, la stessa forma di `fn_get_saldo_rata`. ⭐ Non è una rifinitura: senza, la **base unica dei saldi** (§2.7) nasce storta al livello che dovrà reggere il **saldo cliente** |
+| **DB-10** | 🆕 | ✅ **CONSEGNATO** (applicato 25/08) — era: 📮 **NUOVO e CONFERMATO** (Q-10 → a, Tid 24/08): allargare `fn_get_saldo_fattura` a `residuo · in_lavorazione · incassato`, la stessa forma di `fn_get_saldo_rata`. ⭐ Non è una rifinitura: senza, la **base unica dei saldi** (§2.7) nasce storta al livello che dovrà reggere il **saldo cliente** |
 | ~~**DATO-1**~~ | ✅ **RISOLTO il 2026-08-24** | Non era una richiesta al DB ma **configurazione**, e **non serviva nessuna colonna nuova**: il conto di incasso è una **riga** in `anagrafiche.soggetti_ruoli_conti_bancari` con `uso = 'INCASSO'`, non un parametro dell'emittente. ⛔ Metterlo fra i parametri sarebbe stata una **seconda sede** fuori dal vincolo «un conto `INCASSO` → un solo soggetto», che è ciò che regge il perimetro. Fatto in-app da Tid con due IBAN di test, uno per emittente |
+
+⚠️ **Come sono arrivati davvero.** La bozza non è mai partita da qui: il team DB
+ha generato le 53 righe **dal contratto del backend** — `campo_sorgente` dai
+`SELECT` del repository, e il **`codice`** di ogni colonna ordinabile uguale alla
+chiave della whitelist di ordinamento (`DISTINTE_SORT_COLUMNS` e sorelle), così
+che un ordinamento dichiarato a catalogo non diventi un 400. ⭐ Tre scelte sono
+**dichiarate e non dedotte**: `sensibile = f` ovunque (è un cancello, non
+un'etichetta), `multi_emittente = f` (default: una lista nuova nasce **non
+certificata**), `vista_sql = NULL` — col costo, detto, che il guard DB sui
+`campo_sorgente` non gira e l'unico presidio resta quello Python.
 
 ⭐ **E i quattro seed si chiedono in un colpo solo, già scritti.** Esiste
 `scripts/gen_seed_lista.py`, che genera le righe dei quattro CSV a partire dal
@@ -609,6 +632,25 @@ confluire nei CSV di seed. Un round-trip invece di quattro, e nessuno scrive
 269 colonne a mano una seconda volta.
 
 ---
+
+## 6-bis. 📮 Che cosa passa al backend adesso *(scritto dal team DB, 2026-08-27)*
+
+| | Cosa | Dove |
+| --- | --- | --- |
+| **BE-a** | Rigenerare `error_policies_generated.py`: due codici nuovi a catalogo | `E_PAGAMENTI_VALIDATION` (già adottato nel service) e `E_ENTE_INCASSO_NON_TROVATO` |
+| **BE-b** | `E_ENTE_NON_TROVATO = "E_ENTE_INCASSO_NON_TROVATO"` — **una riga** | `enti_incasso_service.py:48`. Il 404 dei canali smette di uscire come 400 |
+| **BE-c** | Dichiarare `lista_codice` sulle **quattro** view di lista | Adesso il codice è a catalogo, quindi il cancello di perimetro emittente lo risolve. ⚠️ Prima non si poteva: avrebbe spento la schermata a chi ha più di un emittente |
+| **BE-11** | ⭐ **Esporre la utility del conto, che c'è già** | `src.istanza_utility_id` non compare né in `_ENTE_INCASSO_SELECT` né in `list_conti_incasso`: chi configura un canale **non vede** se sta scegliendo il conto del gas o quello dell'energia. Il nome leggibile lo dà `anagrafiche.vw_istanze_utilities_dettaglio` (`utility_descrizione`). ⛔ **Non** è una colonna nuova su `enti_incasso`: la utility è un fatto del **conto**, e dichiararla anche sul canale sarebbe una seconda sede |
+
+⚠️ **E il nome del codice di validazione è `E_PAGAMENTI_VALIDATION`, non
+`_VALIDAZIONE`**: il catalogo ha due convenzioni vive e si è scelta la
+maggioranza (17 contro 13). §10.7 qui sotto dice ancora l'altro — è quella riga
+a essere vecchia, non il codice.
+
+⭐ **Le 53 chiavi i18n sono già nei locales**, in una radice `pagamenti` nuova:
+il cancello `check_i18n_keys.py` legge il CSV delle colonne e pretende le
+traduzioni in **entrambe** le lingue, quindi le due metà non potevano atterrare
+separate.
 
 ## 7. ✅ Domande aperte — **nessuna**
 
@@ -1138,7 +1180,7 @@ diversi senza che niente lo impedisca. Non è un problema di questo cantiere —
 | L'**azione di processo** `registra_distinta` | ⛔ Azione DB (due righe di seed). Il codice che la usa **c'è già**, ed è fail-closed nel frattempo |
 | Il verbo **`POST /righe/{id}/abbina/`** | È la slice 3 e porta con sé la rata, la capienza e la forzatura a due tempi. Va scritto **con** l'`ui_action` `confirm_and_retry` (Q-1), o il rifiuto confermabile arriva al frontend come un muro |
 | La **base dei saldi** (§2.7) | Slice 3. ⚠️ Nasce come **modulo unico** con tre livelli in testa, non come pannello della fattura: è il vincolo, non una rifinitura |
-| `E_PAGAMENTI_VALIDAZIONE` | Non esiste a catalogo (gli altri domini hanno il loro). Il service usa oggi il generico `E_VALIDATION_INPUT`, che è registrato e risolve 400: quando il codice di dominio arriverà, **cambia una riga sola** |
+| ~~`E_PAGAMENTI_VALIDAZIONE`~~ | ✅ **ARRIVATO il 25/08**, e si chiama **`E_PAGAMENTI_VALIDATION`**: il catalogo ha due convenzioni vive e si è scelta la maggioranza (17 contro 13). La riga è già cambiata nel service |
 
 ---
 
@@ -1146,6 +1188,7 @@ diversi senza che niente lo impedisca. Non è un problema di questo cantiere —
 
 | Data | Cosa |
 | --- | --- |
+| **2026-08-27** (allineamento dal team DB) | ✅ **I TRE PREREQUISITI DB SONO CONSEGNATI E APPLICATI, e la palla torna qui.** I quattro **seed di lista** (53 colonne, 4 preset, **53 chiavi i18n gia' nei locales**), le due righe dell'**azione di processo** e `fn_get_saldo_fattura` allargata a **tre numeri** — piu' due cose che questo brief non chiedeva: il **404 dei canali** (`E_ENTE_INCASSO_NON_TROVATO`, che §10.8 dichiarava come ripiego) e la **seconda porta** del conto di incasso. ⚠️ **La bozza dei seed non e' mai partita da qui**: il team DB ha generato le 53 righe dal contratto del backend — `campo_sorgente` dai `SELECT` del repository e il **`codice`** di ogni colonna ordinabile uguale alla chiave della whitelist di ordinamento, cosi' che un ordinamento a catalogo non diventi un 400. ⭐ Tre scelte dichiarate: `sensibile = f` (e' un cancello, non un'etichetta), `multi_emittente = f` (una lista nuova nasce **non certificata**), `vista_sql = NULL` col costo che il guard DB sui `campo_sorgente` non gira. 🔴 **E due cose da sapere prima di ripartire**: il nome del codice di validazione e' **`E_PAGAMENTI_VALIDATION`** e non `_VALIDAZIONE` (§10.7 diceva l'altro), e il cancello della registrazione **resta chiuso** finche' l'azione non e' assegnata a un profilo — il seed la crea, non la concede. 📮 **Adesso tocca al backend**: rigenerare le policy, cambiare `E_ENTE_NON_TROVATO`, dichiarare `lista_codice` sulle quattro view, e **BE-11** — esporre `src.istanza_utility_id` dove si sceglie il conto, perche' chi configura un canale non vede se sta prendendo quello del gas o quello dell'energia. Dettaglio in **§6-bis**. ⛔ **DATO-1 resta aperto**: §10.8 vale parola per parola |
 | **2026-08-24** (dato) | ✅ **DATO-1 risolto, e senza scrivere niente.** Era l'ultimo blocco del cantiere: nessuno dei due emittenti aveva un conto con `uso = 'INCASSO'`, quindi nessun canale di incasso era creabile. ⭐ **Non serviva nessuna colonna nuova** — la domanda era se aggiungerla ai parametri dell'emittente, e la risposta è no: il conto di incasso **non è un attributo**, è una **riga di relazione** in `anagrafiche.soggetti_ruoli_conti_bancari` con `uso = 'INCASSO'`, e il giro per crearla (endpoint + drawer + voce «Incasso» tradotta) **esisteva già tutto**. ⛔ Metterlo fra i parametri avrebbe creato una **seconda sede fuori dal vincolo** «un conto `INCASSO` appartiene a un solo soggetto» — che è esattamente la garanzia da cui il database ricava di chi sono i soldi arrivati prima della fattura: due emittenti avrebbero potuto dichiarare lo stesso conto senza che nessun errore lo dicesse. Tid l'ha configurato in-app con **due IBAN fittizi**, `IT00TESTINCASSO0000000001` e `…0002` — **due e non uno**, proprio per quel vincolo. ⚠️ Restano due avvertenze: il **perimetro è vero anche se il dato è finto** (i due IBAN sull'emittente sbagliato darebbero liste sbagliate **senza errore**), e in produzione servono quelli reali — ⛔ questi non devono viaggiare, e si riconoscono dal nome apposta. ℹ️ Il `CHECK` sull'IBAN è solo formale (`^[A-Z0-9]{15,34}$`, nessun checksum), quindi un valore di test passa |
 | **2026-08-25** (slice 4) | ✅ **BACKEND DEL CANTIERE COMPLETO: anche i canali di incasso.** Tre rotte — elenco/creazione, dettaglio/modifica, e **l'elenco dei conti agganciabili** (BE-8). ⭐ Quest'ultimo e' il pezzo che conta: il database rifiuta un conto che non e' di incasso con un errore parlante, ma **un elenco che lo propone fa sbagliare**, e chi sbaglia se ne accorge dopo aver compilato tutto il resto. Il conto e' obbligatorio su **tutti** i tipi e non solo su BANCA (un canale POSTE o PSP senza conto e' lo stesso difetto travestito), mentre la **filiale** vale solo per la banca — due fatti diversi che si somigliano. ⚠️ E un elenco di conti VUOTO **si dichiara** (`nessun_conto_di_incasso`): e' la condizione voluta da D5, ma un menu vuoto senza spiegazione sembra un guasto dell'applicazione. 🔴 **Due difetti trovati scrivendo, prima di consegnare**: il codice 404 che avevo scelto **non esiste a catalogo** — e un codice non registrato non fallisce, diventa un **500** — quindi si usa il codice di dominio col ripiego dichiarato e si chiede quello giusto; e il nome di una FK era sbagliato nella mappa di traduzione (`fk_enti_incasso_centro` invece di `..._centro_riscossione`), cioe' un errore che sarebbe uscito col messaggio grezzo del database. ⛔ **E il blocco vero non e' il codice: e' il dato** (§10.8) — i due conti creati il 24/08 sono legati al livello sbagliato, e uno al soggetto sbagliato. ✅ Test **108 → 128**, i nove SQL nuovi provati con EXPLAIN, e il lookup **provato sui dati veri** con le tre risposte che ci si aspetta |
 | **2026-08-25** (slice 5) | ✅ **Il giro delle sistemazioni, e con esso il BACKEND del cantiere e' completo tranne i canali di incasso.** Sei rotte: l'elenco delle eccedenze, la registrazione della decisione e i due verbi. ⭐ **Il backend qui fa MENO di quanto sembri**, ed e' il punto: registra un atto con un `INSERT` (una scrittura sola non ha bisogno di una madre) e chiama due funzioni madri — non sceglie la strada fra le tre destinazioni, non verifica l'eccedenza, non muove denaro. 🔴 **Cliente ed emittente si DERIVANO dalla fattura di origine e non si dichiarano**: il guard del database li verifica con un codice TECNICO apposta, perche' «non li sceglie una persona in un modulo, li deriva chi costruisce l'atto» — e il payload li rifiuta proprio per questo. ⚠️ **Registrare non e' eseguire**: l'atto nasce in bozza e il controllo dell'eccedenza sta alla CONFERMA, perche' fra decidere e confermare puo' arrivare un altro incasso — verificarla prima darebbe una garanzia che scade. E il **canale del rimborso** si chiede alla conferma, non alla registrazione. ⭐ L'elenco e' ordinato **per cliente** di default (D15-b) e il backend **non somma niente**: il raggruppamento la vista lo porta gia' in finestra. 📌 **Un presidio riscritto perche' dava un falso positivo**: cercava la parola «eccedenza» nel sorgente e si accendeva sul MESSAGGIO all'operatore — ora guarda le CHIAMATE, che e' cio' che voleva dire. ⭐ E due helper passati in una sede condivisa (`_helpers.py`) alla loro seconda occorrenza, invece di importare i nomi privati di un altro modulo. ✅ Test **86 → 108**, gli otto SQL nuovi provati con EXPLAIN sul database vero, le due madri NON chiamate (confermare muove denaro: si sono lette le firme). ⚠️ Le prove degli endpoint non hanno potuto girare in suite: un'altra sessione stava scrivendo BE-5 in `vendite` e l'URLconf del progetto era momentaneamente rotta da un import a meta' — le venti rotte del dominio sono state verificate con una URLconf isolata |
