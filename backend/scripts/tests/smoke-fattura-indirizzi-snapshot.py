@@ -149,12 +149,12 @@ with transaction.atomic():
                     competenza_mese, competenza_dal, competenza_al,
                     commessa_id, commessa_attivita_id,
                     sorgente_tipo_id, sorgente_uid, sorgente_origine_tipo_id,
-                    lock_batch_id, lock_in_fatturazione, fatturato, approvato,
+                    lock_batch_id, lock_in_fatturazione, approvato,
                     stato_esecuzione, prezzo_bloccato, meta
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, TRUE, FALSE, TRUE, 'PENDING', TRUE, '{}'::jsonb
+                    %s, TRUE, TRUE, 'PENDING', TRUE, '{}'::jsonb
                 )
                 """,
                 [t["articolo_id"], t["istanza_utility_id"], t["billing_account_id"],

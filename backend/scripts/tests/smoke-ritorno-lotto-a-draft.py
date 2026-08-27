@@ -193,11 +193,11 @@ with transaction.atomic():
                 factor_to_base, prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
                 competenza_mese, competenza_dal, competenza_al,
                 commessa_id, commessa_attivita_id, lock_batch_id,
-                lock_in_fatturazione, fatturato, approvato, stato_esecuzione,
+                lock_in_fatturazione, approvato, stato_esecuzione,
                 prezzo_bloccato, meta
             ) VALUES (
                 %s, %s, %s, %s, 1, %s, 1, %s, 1, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, TRUE, FALSE, TRUE, 'PENDING', TRUE,
+                %s, %s, %s, %s, %s, %s, TRUE, TRUE, 'PENDING', TRUE,
                 '{}'::jsonb
             ) RETURNING id
             """,
