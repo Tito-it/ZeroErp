@@ -370,17 +370,25 @@ SELECT ok(
 );
 
 -- ⭐ La GRANA, non la sola presenza della colonna: la mensile deve avere
---   esattamente una riga per ogni (mese, stadio, stato, tipo_movimento) del
---   dettaglio. Seed-agnostica — 0 = 0 su un database vuoto — e diventerebbe
---   rossa se qualcuno ri-aggregasse a valle «per non rompere il backend»,
---   che e' proprio la scorciatoia da cui questa colonna nasce.
+--   esattamente una riga per ogni combinazione di DIMENSIONI del dettaglio.
+--   Seed-agnostica — 0 = 0 su un database vuoto — e diventerebbe rossa se
+--   qualcuno ri-aggregasse a valle «per non rompere il backend», che e'
+--   proprio la scorciatoia da cui questa colonna nasce.
+-- ⚠️ AGGIORNATO il 2026-08-26 (D-2, brief-db-residui-competenza-dimensione-e-chiave):
+--   `motivo_non_fatturata` e' entrata fra le dimensioni, e questa asserzione
+--   e' un presidio di GRANA — cambiando la grana va PORTATA sulla regola nuova,
+--   mai spenta. E' lo stesso meccanismo che rese rossi i test 7 e 8 di
+--   test-ordini-guard-transizione-v1 quando L7b ALLARGO' un guard: un
+--   presidio cade allo stesso modo nelle due direzioni, e i consumatori si
+--   cercano dal CODICE, non dalla direzione del cambio.
 SELECT is(
   (SELECT count(*)::int FROM vendite.vw_dash_competenza_mensile),
   (SELECT count(*)::int FROM (
       SELECT 1 FROM vendite.vw_dash_competenza_attivita
-       GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento
+       GROUP BY competenza_mese, stadio, stato_fattura_codice_interno,
+                tipo_movimento, motivo_non_fatturata
    ) x),
-  '22. la mensile ha una riga per (mese, stadio, stato, tipo_movimento)'
+  '22. la mensile ha una riga per (mese, stadio, stato, tipo_movimento, motivo_non_fatturata)'
 );
 
 -- ============================================================

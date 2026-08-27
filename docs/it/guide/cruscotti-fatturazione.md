@@ -1,6 +1,12 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultima revisione**: 26 agosto 2026 — 🔴 **avvertenza sull'«Elimina dal
+> **Ultima revisione**: 26 agosto 2026 (sera) — la **§3.1** si aggiorna: dentro
+> «Emesse non fatturate» le situazioni sono **tre**, non due, e chiedono rimedi
+> opposti; il database adesso le distingue una per una, la card **si spezza in
+> due numeri** e i soli residui hanno una lista propria. ⚠️ Resta da fare il
+> **pulsante**: il verbo «Riporta da emettere» è collaudato lato database, a
+> video non c'è ancora.
+> Revisione precedente (26 agosto, mattina): 🔴 **avvertenza sull'«Elimina dal
 > lotto»** in §7.6: il verbo **non rimette in coda** il lavoro della fattura
 > cancellata (difetto aperto, misurato). Nuova **§3.1**: le quattro caselle del
 > funnel **non sono quattro passaggi**, e «Emesse non fatturate» è la casella
@@ -159,27 +165,28 @@ alimentano: sembrano un percorso a quattro tappe, ma il percorso vero ne usa
 | --- | --- |
 | **Da approvare** | lavoro registrato, non ancora dichiarato buono per la fattura |
 | **Da emettere** | lavoro buono, non ancora in fattura — **è da qui che parte il lotto** |
-| **Emesse non fatturate** | **residui**: lavoro rimasto a metà. Non è un passaggio |
+| **Emesse non fatturate** | lavoro **in transito o rimasto a metà**: non è un passaggio. Ci convivono tre situazioni, e solo una chiede un'azione |
 | **Fatturate** | lavoro finito dentro una fattura, numerata o no |
 
 Il verbo **Fattura adesso** prende il lavoro e ne fa le righe di fattura **in un
 solo passo**: un'attività salta da `Da emettere` dritta a `Fatturate`. Nessuno
 transita da `Emesse non fatturate`.
 
-⚠️ **Quella casella contiene due cose diverse, e conviene saperlo prima di
-guardarla.**
+⚠️ **Quella casella non conta una cosa sola, e conviene saperlo prima di
+guardarla.** Ci convivono situazioni che chiedono **rimedi opposti**:
 
-| Cosa ci trovi | Che cos'è |
-| --- | --- |
-| lavoro **emesso che sta aspettando il suo lotto** | **transito normale**: succede quando l'emissione e la fatturazione sono due gesti separati, ed è il caso di chi emette in modo mirato e fattura dopo |
-| lavoro **rimasto senza la sua fattura** | **il residuo**: la fattura c'era ed è stata eliminata. Questo è il caso che conta |
+| Cosa ci trovi | Che cos'è | Cosa devi fare |
+| --- | --- | --- |
+| lavoro **che aspetta il suo lotto** | **transito normale**: succede quando l'emissione e la fatturazione sono due gesti separati, ed è il caso di chi emette in modo mirato e fattura dopo | ⏳ niente: il prossimo giro lo prende da sé |
+| lavoro **dentro un giro ancora in corso** | il lotto lo sta lavorando **adesso** | ⏳ niente: si aspetta che il lotto finisca |
+| ⭐ lavoro **rimasto senza la sua fattura** | **il residuo**: la fattura c'era ed è stata eliminata | ✅ **«Riporta da emettere»** |
 
-**È il secondo caso la spia**, e per un motivo preciso: quel lavoro risulta già
-fatturato, quindi **nessun giro futuro lo riprenderà**. Resterebbe invisibile
-per sempre, se non ci fosse quel contatore.
+**È il terzo caso la spia**, e per un motivo preciso: quel lavoro risulta già
+emesso, quindi **nessun giro futuro lo riprenderà**. Resterebbe invisibile per
+sempre, se non ci fosse quel contatore.
 
-> ⚠️ La versione precedente di questa pagina diceva *«se in quella casella c'è un
-> numero, qualcosa si è rotto»*. Era vero **solo** perché *Fattura adesso* fa
+> ⚠️ Una versione precedente di questa pagina diceva *«se in quella casella c'è
+> un numero, qualcosa si è rotto»*. Era vero **solo** perché *Fattura adesso* fa
 > emissione e fatturazione in un passo unico — cioè era una proprietà di quel
 > verbo, non della casella. Chi emette in modo mirato ci vede passare lavoro
 > perfettamente sano.
@@ -188,11 +195,18 @@ per sempre, se non ci fosse quel contatore.
 adesso rimette in coda il suo lavoro (§7.6), quindi da quella strada non se ne
 creano più.
 
-🔴 Restano però i **residui di prima**, e per quelli la card **non ha ancora
-un'azione**: rimetterli in circolo è oggi un'operazione di assistenza sul
-database. È un verbo che manca, non un caso che non esiste — il 26 agosto 2026
-la casella conteneva 5 attività di luglio per 5.019 €, orfane di una fattura
-eliminata dopo un errore di numerazione.
+⭐ **E da lì in poi la casella si legge in chiaro.** Dal 26 agosto 2026 il
+database distingue le tre situazioni una per una, quindi la card **si spezza in
+due numeri** — quello che chiede un'azione e quello che chiede solo di
+aspettare — e l'elenco dei soli **residui** ha una lista sua, con il lotto da cui
+ciascuno proviene. ⚠️ Vale la pena ricordare che *«un numero in quella casella»*
+di per sé non è più un allarme: **è il numero dei residui a esserlo.**
+
+🔴 **Cosa manca ancora, alla data di questa revisione.** Il verbo esiste ed è
+collaudato lato database; il **pulsante** a video no. Finché non arriva, i
+residui si vedono ma non si recuperano da soli — il 26 agosto 2026 la casella
+conteneva 5 attività di luglio per 5.019 €, orfane di una fattura eliminata dopo
+un errore di numerazione, e sono il banco di prova del verbo.
 
 **Quando usarla**: a fine/inizio mese, per capire quanto del competenza è stato
 fatturato e cosa manca per chiudere il mese.

@@ -54,6 +54,7 @@
 --  16   [A3-bis] nessun secondo evento nel log
 --  17   [A2] riga CON sorgente -> respinta
 --  18   [A2] riga con sorgente: stato invariato
+--  18-bis ⭐ [D-6] il messaggio NOMINA il documento sorgente, non l uid
 --  19   [A5] fn_emit non produce alcuna AF per la riga annullata
 --  20   [A3] riga EMESSA (dal percorso reale) -> respinta
 --  21   [A3] riga emessa: stato invariato
@@ -81,7 +82,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(27);
+SELECT plan(28);
 
 -- ============================================================
 -- 1..3 struttura
@@ -326,6 +327,27 @@ SELECT is(
     WHERE ca.id = (SELECT id FROM tmp_riga_c)),
   'NON_EMESSA'::varchar,
   '18) [A2] riga con sorgente: stato invariato');
+
+-- ============================================================
+-- 18-bis) ⭐ IL MESSAGGIO NOMINA IL DOCUMENTO (D-6, 2026-08-26)
+-- ============================================================
+-- ⛔ Qui la FRASE e' la posta in gioco, non il codice: il terzo segnaposto
+--   riceveva `sorgente_uid` e a video usciva un UUID, cioe' un valore con cui
+--   l'operatore non puo' fare niente. Adesso arriva da
+--   vendite.fn_get_sorgente_documento_ref e porta il numero che si legge.
+-- ⚠️ Il pattern NON attraversa i segnaposto (AGENTS.md): si aggancia al
+--   testo stabile prima e dopo, e al valore atteso in mezzo.
+-- ℹ️ La fixture punta la sorgente COMMESSA sulla commessa stessa, e per
+--   quella riga di config.sorgenti il label_selector e' `codice`: il numero
+--   atteso e' quindi il CODICE della commessa. E' un caso vero della
+--   famiglia polimorfa, non un caso costruito per far passare il test.
+SELECT throws_like(
+  $$ SELECT vendite.fn_annulla_commessa_attivita(
+       (SELECT id FROM tmp_riga_c), 'tentativo su riga da push') $$,
+  '%nasce dal documento sorgente ' ||
+    (SELECT co.codice FROM vendite.commesse co
+      WHERE co.id = (SELECT commessa_id FROM tmp_com1)) || '%',
+  '18-bis) [D-6] il messaggio NOMINA il documento sorgente, non ne stampa l uid');
 
 -- ============================================================
 -- 19 [A5] la porta verso la fattura: l'effetto che conta davvero
