@@ -1,20 +1,25 @@
-# Brief DB — il DDT di ri-consegna nasce nudo: la testata che non eredita, e le due cose che NON vanno copiate
+# Brief DB — il DDT di ri-consegna nasce nudo: testata e riga che non ereditano, e le cose che NON vanno copiate
 
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **Origine.** Collaudo in-app di Tid del 2026-08-27, prova **9** di
-> [collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md)
+> [collaudo-in-app-ddt-righe-senza-prezzo.md](../work-done/collaudo-in-app-ddt-righe-senza-prezzo.md)
 > (ri-consegna standalone, casella **6** del §19 di
-> [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md)):
+> [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md)):
 > reso generato dal DDT `DDT0023451`, ri-consegna generata → il DDT nuovo arriva
 > **senza causale di trasporto e senza indirizzi**, e l'operatore li deve
 > ridigitare a mano su un documento che il DB ha generato da sé.
 >
 > **Stato.** 2026-08-27 — analisi sulla **struttura** (corpo delle due funzioni
 > madri, colonne di `vendite.ddt`, seed di `config.sorgenti`). Nessun file
-> scritto, nessuna migrazione. **Due domande di modello** prima di qualunque riga
-> di SQL (§3.2 e §4.3): non sono dettagli di copia, cambiano cosa il documento
-> dichiara.
+> scritto, nessuna migrazione. **Una domanda di modello** prima di qualunque riga
+> di SQL (§3.2, il vettore).
+>
+> ⚠️ **Revisione 2026-08-27, stessa giornata**: la voce su `fatturazione_immediata`
+> era **mia e sbagliata** — nasceva dall'aver guardato la colonna senza seguire il
+> percorso che la consuma. Ritirata e riscritta nel §4, che ora dice il contrario.
+> Al suo posto è entrata una voce vera, il §3-bis, sollevata da una domanda di Tid
+> sul prezzo della riga.
 >
 > **Correlati:**
 > [fn_genera_ddt_riconsegna](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna) ·
@@ -24,13 +29,14 @@
 
 ---
 
-## 0. Le tre voci in una riga
+## 0. Le voci in una riga
 
 | # | Cosa | Gravità | Chi lo vede oggi |
 | --- | --- | --- | --- |
-| **1** | Il generatore che parte dalla sorgente **più ricca** (un DDT) copia **meno** di quello che parte dalla più povera (un ordine): niente indirizzi, niente blocco trasporto | 🔴 asimmetria del modello, già incontrata in-app | ogni operatore che genera una ri-consegna |
-| **2** | `fatturazione_immediata` **non si copia e basta**: ereditarla da un DDT già fatturato ri-fattura merce già fatturata | 🔴 domanda di modello — la risposta decide se si emette una fattura di troppo | nessuno finora: la colonna oggi resta al default `false` |
+| **1** | **Testata**: il generatore che parte dalla sorgente **più ricca** (un DDT) copia **meno** di quello che parte dalla più povera (un ordine): niente indirizzi, niente blocco trasporto | 🔴 asimmetria del modello, già incontrata in-app | ogni operatore che genera una ri-consegna |
+| **2** | **Riga**: né prezzo né IVA né sconto. Nel caso **standalone** non c'è nessun `COALESCE` a valle che li recuperi — e la riga generata **non si poteva salvare affatto** dalla UI, nemmeno per correggere la quantità | 🔴 vicolo cieco chiuso | chi apre una riga di ri-consegna: prova 9 |
 | **3** | La ri-consegna **standalone** non dichiara nessuna sorgente: nasce orfana, mentre `RESO_VENDITA` esiste a catalogo e `vendite.resi` ha lo `uid` | 🟠 dato vero non rappresentato | chi guarda «Transito»/«Passaggi» su quel DDT |
+| **4** | ✅ ~~`fatturazione_immediata` ri-fattura merce già fatturata~~ — **rilievo mio RITIRATO il 2026-08-27**, vedi §4: la doppia fatturazione è già impedita a monte, e il flag sceglie solo la corsia | 🟢 nessuna | — |
 
 ⭐ **Cosa hanno in comune**: la cura sta tutta dentro **`fn_genera_ddt_riconsegna`**
 — una funzione, un changeSet. Nessuna vista, nessun trigger, nessun BE, nessun
@@ -152,41 +158,162 @@ non dice mai niente di non verificato.
 
 ---
 
-## 4. 🔴 `fatturazione_immediata` — non è una copia, è una decisione
+## 3-bis. 🔴 La riga: prezzo, IVA e sconto — e il vicolo cieco dello standalone
 
-`vendite.ddt.fatturazione_immediata` è `NOT NULL DEFAULT false`, ed è
-**immutabile fuori dalla bozza** (`trgfn_guard_fatturazione_immediata_immutabile`).
+Domanda di Tid del 2026-08-27: *«il prezzo della riga non dovrebbe essere
+ereditato? oppure essendo una ri-consegna potrebbe essere lasciato vuoto?»*.
+La risposta è **diversa nei due rami**, e il ramo standalone è un vicolo cieco.
 
-### 4.1 Il rischio, sul modello
+### 3-bis.1 Order-backed: il prezzo eredita già, e NON va copiato
 
-Se la ri-consegna eredita `true` da un DDT origine a fatturazione immediata, il
-documento nuovo **genera una seconda fattura** sulla stessa merce.
+`fn_list_ddt_da_pushare` proietta il prezzo così:
 
-### 4.2 Perché non si risolve con «copiala» né con «lasciala falsa»
+```sql
+COALESCE(x.dr_prezzo, x.src_prezzo_unitario)   -- src = riga d'ordine via fulfillment
+```
 
-Perché la risposta **dipende da cosa è successo al reso**, e il modello lo sa già
-dire: il §N7 di `vw_partite_merce` stabilisce che *la quota accreditata torna
-ri-fatturabile*.
+Il prezzo della ri-consegna order-backed **c'è già**, e non perché qualcuno
+l'abbia copiato: si risale a `ordini_righe_fulfillment` al momento della lettura.
+È lo stesso meccanismo che il §R-3 di `brief-ddt-righe-senza-prezzo.md` descrive
+(«tutte ereditano il prezzo dalla riga d'ordine via `ordini_righe_fulfillment`»).
 
-* reso **accreditato** (nota di credito emessa) → la merce è uscita dal fatturato:
-  ri-consegnarla e ri-fatturarla è **corretto**;
-* reso **non accreditato** → la merce è ancora fatturata: ri-fatturarla è una
-  **doppia fatturazione al cliente**.
+⛔ **Copiarlo dentro `ddt_righe.prezzo_unitario` sarebbe un peggioramento**: si
+creerebbe una **seconda copia di un numero che ha già una sorgente**, e le due
+divergono al primo cambio di prezzo sull'ordine (`feedback_duplicazione_nasconde_il_bug`).
 
-Copiare la colonna sbaglia nel secondo caso; forzarla a `false` sbaglia nel primo
-(e l'immutabilità post-bozza rende la correzione cara).
+### 3-bis.2 Standalone: non c'è nessun secondo termine del `COALESCE`
 
-### 4.3 ❓ Domanda al team DB
+Nel caso standalone `fn_genera_ddt_riconsegna` **non scrive nessun fulfillment**
+(passo 5, ramo `ordine_riga_id IS NOT NULL`). Quindi `src_prezzo_unitario` è
+`NULL`, `dr_prezzo` è `NULL`, e non c'è niente da cui ereditare.
 
-La condizione «questa quota è stata accreditata» è già leggibile in modo
-affidabile al momento della generazione (`fn_accredita_riga_reso` /
-`vw_partite_merce`)? Se sì la colonna si **deriva**, non si copia. Se no, va
-detto — e allora la scelta esplicita è `false`, con il perché scritto nel corpo
-della funzione, non un default silenzioso.
+⭐ **Ma la sorgente esiste, ed è a un salto solo**: `vendite.resi_righe.ddt_riga_id`
+è **`NOT NULL`** — ogni riga di reso punta alla riga del DDT d'origine, che il
+prezzo, lo sconto e l'IVA ce li ha. È la stessa relazione che il generatore usa
+già per articolo, descrizione e UoM.
 
-⚠️ Segnalo che questa è la voce che vale più della prova 9: le altre costano
-digitazione all'operatore, questa può costare **una fattura sbagliata** — ed è
-esattamente la forma del caso di `feedback_whitelist_dal_percorso_reale`.
+⚠️ **Non è `resi_righe` la sorgente**: quella tabella il prezzo **non ce l'ha**
+(articolo, descrizione, quantità, UoM, tipo, motivo — nessuna colonna di valore).
+Il reso è uno snapshot di **quantità**, non di **valore**. Chi cercasse il prezzo
+lì non lo trova e concluderebbe che «non c'è», mentre è sulla riga a monte.
+
+### 3-bis.3 ⛔ E non è solo il prezzo: mancano anche IVA e sconto
+
+Il generatore inserisce la riga con **sette** colonne:
+
+```sql
+INSERT INTO vendite.ddt_righe (
+    ddt_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, uom_operativa_id, factor_to_base)
+```
+
+Il gemello `fn_genera_ddt_da_ordine` ne scrive **dieci**, e le tre in più sono
+esattamente `prezzo_unitario, sconto_percentuale, iva_id`. Stessa asimmetria del
+§1, un piano più in basso.
+
+`vendite.ddt_righe.iva_id` è nullable e **non ha nessun trigger di default**: la
+riga nasce senza aliquota.
+
+### 3-bis.4 ⛔ Perché è un vicolo cieco e non un fastidio
+
+Rilievo in-app di Tid, in due tempi: prima *«la riga dell'articolo non è
+comunque modificabile»*, poi — ed è la frase che ha aperto il caso —
+*«il pulsante salva risulta disabilitato, e la combo IVA è vuota»*.
+
+Il contratto dice questo:
+
+* `script.fn_available_actions_ddt` → `can_edit_righe = (stato = 'DRAFT')`: in
+  bozza la riga **si apre**;
+* nel form di riga, in EDIT, `ArticoloLookup` e il select **IVA** sono
+  `:disabled="isEdit"`, mentre `prezzo_unitario` resta editabile;
+* ⛔ ma `canSave` pretendeva `iva_id` **anche in EDIT** — e `iva_id` su quelle
+  righe è `NULL`.
+
+Quindi non era «monco», era **chiuso**: il form si apriva e il pulsante Salva era
+morto per sempre. Non solo il prezzo — nemmeno la quantità si poteva correggere.
+E l'auto-fill dell'IVA dall'articolo non poteva soccorrere: passa da
+`onArticoloSelect`, che in EDIT non si può invocare perché il lookup è disabilitato.
+
+> ⭐ È il caso di `feedback_bug_logici_modello`: non manca un default comodo — il
+> percorso che il DB apre **non ha un'uscita a valle**.
+
+#### 3-bis.4-bis ✅ Il lato FE è già corretto (2026-08-27)
+
+`canSave` valida ora **solo ciò che l'EDIT invia**. Il ramo `isEdit` di
+`buildRigaPayload` manda `{qta_operativa, sconto_percentuale, descrizione}` più
+il prezzo: articolo, UoM e IVA non viaggiano, quindi non si validano.
+
+⚠️ **Sono due difetti distinti e servono entrambe le cure.** Il gate era
+sbagliato *a prescindere* dalle righe di ri-consegna — validava campi non
+trasmessi; le righe nude sono solo ciò che l'ha reso visibile. Con R4 il gate
+resterebbe sbagliato e nessuno se ne accorgerebbe più.
+
+⚠️ **La stessa forma è in `OrdiniRigaForm` e `PreventiviRigaForm`** (tre copie,
+payload di UPDATE identico: `articolo_id`/`uom_operativa_id`/`iva_id` non inviati
+in nessuna delle tre). Lì è **latente** — nessun generatore produce righe senza
+IVA su ordini e preventivi — ma è lo stesso difetto. L'unificazione in
+`useRigaArticoloComposito` (che già possiede `isEdit`/`isCasoA`/`submitRiga`) è
+**proposta a Tid, in attesa di ok**: regola del 2.
+
+### 3-bis.5 «Lasciarlo vuoto aiuta a non ri-fatturare?»
+
+**No** — ed è la parte da sfatare. Il prezzo non ha **nessun ruolo** nel decidere
+se una riga va in fatturazione: quel freno è altrove ed è già montato (§4). Un
+prezzo assente non protegge da niente; produce solo un documento che non si
+emette. I due piani sono indipendenti.
+
+---
+
+## 4. ✅ `fatturazione_immediata` — rilievo RITIRATO, e il perché conta
+
+> ⚠️ **Questa sezione diceva il contrario fino a poche ore fa.** Sosteneva che
+> ereditare il flag da un DDT a fatturazione immediata avrebbe emesso *«una
+> seconda fattura sulla stessa merce»*. **È falso**, e l'errore è stato mio: avevo
+> guardato la **colonna** senza seguire il **percorso che la consuma**. Lo lascio
+> scritto invece di cancellarlo, perché è il rilievo che avrebbe mandato il team
+> DB a mettere in sicurezza una porta già chiusa.
+
+### 4.1 La doppia fatturazione è già impedita, e per nome
+
+`vendite.vw_partite_merce` classifica ogni riga di DDT:
+
+```sql
+CASE WHEN r.e_riconsegna AND r.quota_nuova <= 0 THEN 'RICONSEGNA' ... END AS stato
+CASE WHEN w.conta_fatturazione AND v.misurabile
+      AND ((NOT r.e_riconsegna) OR (r.quota_nuova > 0)) THEN w.saldo
+     ELSE NULL END AS differenza
+```
+
+e `fn_list_ddt_da_pushare` sbarra la porta con un predicato esplicito, commentato
+per esteso nel corpo della funzione:
+
+```sql
+--   - riga di RI-CONSEGNA: merce gia' contata sulla partita
+--     d'origine. Fatturarla di nuovo sarebbe il «bug 1a».
+AND pm.differenza IS NOT NULL
+```
+
+Una riga di ri-consegna ha `differenza` **vuota** e non entra nella lista, **a
+prescindere** da `fatturazione_immediata`, dallo stato del DDT e dal prezzo.
+
+### 4.2 L'unico caso in cui la ri-consegna SI fattura è quello giusto
+
+`riconsegna_quota_nuova > 0`, cioè quando una **nota di credito** ha accreditato
+la quantità sulla partita d'origine (N7 / D-NC-4: *«una ri-consegna è merce nuova
+SOLO per la parte accreditata»*). Lì la merce è **uscita** dal fatturato, quindi
+ri-consegnarla è una vendita nuova e va fatturata — per quella quota sola.
+
+### 4.3 Cosa resta del flag
+
+`fatturazione_immediata` è una **corsia di instradamento**, non un cancello:
+`fn_list_ddt_da_pushare` la proietta (`x.d_fatt_immediata`) per decidere *dove*
+va una riga già dichiarata eleggibile. Quindi eredita insieme al blocco
+«relazione» del §2, come le altre colonne di patto commerciale, e la domanda che
+avevo posto **non esiste**.
+
+⭐ **La lezione operativa, che vale oltre questa riga**: *una colonna non si giudica
+dal suo nome, si giudica dal percorso che la legge.* La stessa forma di
+`feedback_whitelist_dal_percorso_reale`.
 
 ---
 
@@ -229,8 +356,12 @@ cantieri si guardino prima di scrivere.
 | **R1** | `fn_genera_ddt_riconsegna` eredita dal DDT origine il blocco «relazione» del §2 — causale, aspetto, modalità addebito, mittente | 🔴 sì — prova 9 |
 | **R2** | Cascata indirizzi ambito `DDT`, modellata sul passo 4-bis di `fn_genera_ddt_da_ordine` | 🔴 sì — senza, l'emissione è bloccata dal guard |
 | **R3** | ⛔ **Nessuna** eredità del blocco «viaggio» del §3 — e scritto nel corpo della funzione **perché** (un `-- non si copia` senza motivo lo rimette dentro il prossimo che passa) | — |
-| **R4** | Risposta alla domanda §4.3 su `fatturazione_immediata`, poi la riga conseguente | 🔴 potenzialmente sì, e in peggio |
+| **R4** | **Riga**: `prezzo_unitario` e `sconto_percentuale` dalla riga di DDT d'origine (`resi_righe.ddt_riga_id`, `NOT NULL`) **solo nel ramo standalone** — nell'order-backed il `COALESCE` a valle fa già il lavoro e una copia lo peggiora (§3-bis) | 🔴 sì — oggi lo standalone non ha uscita |
+| **R4-quater** | ⚠️ **`iva_id`: la copia è una misura di attesa, non la sede.** Con il risolutore IVA la riga di ri-consegna prende l'aliquota **da lì**, come ogni altra riga — e la decisione **P1** di Tid (2026-08-27) dice perché: *il documento a monte proietta, la fattura decide*, quindi l'IVA del DDT è una **proiezione** e si ri-risolve, non si trasporta. Finché il risolutore non c'è, copiarla dalla riga d'origine è meglio del `NULL` di oggi; quando ci sarà, questa copia **va tolta** o saranno due meccanismi per lo stesso campo. Vedi [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md) §2.6.2 | 🟠 da coordinare coi due cantieri |
+| ~~R4-bis~~ | ✅ **FATTO lato FE il 2026-08-27**: `canSave` non pretende più in EDIT i campi che l'EDIT non invia — la riga di ri-consegna ora si salva. ⚠️ **Non sostituisce R4**: resta una riga **senza aliquota**, e il select IVA in EDIT resta `:disabled`. Se il team DB decide di non ereditare `iva_id`, allora quel campo va sbloccato | — |
+| **R4-ter** | ❓ Una riga di DDT **senza `iva_id`** è ammessa a regime? La colonna è nullable e nessuna guard la pretende all'emissione, ma il riepilogo IVA (`vw_ddt_riepilogo_iva_dettaglio`) e la stampa la usano. Se la risposta è no, il posto del vincolo è il DB, non il pulsante Salva | no |
 | **R5** | Decisione di Tid sul vettore (§3.2) | no |
+| ~~R-fatt~~ | ✅ ~~`fatturazione_immediata`~~ — **ritirata**, §4 | — |
 | **R6** | Sorgente `RESO_VENDITA` sulla ri-consegna standalone (§5) | no — cantiere suo, se il team DB preferisce |
 
 **pgTAP attesi** (il perimetro si legge dai test, non dalla descrizione della
@@ -240,6 +371,15 @@ funzione — `feedback_ripiego_ogni_codice_vivo`):
   mittente **uguali** al DDT origine, e gli indirizzi ambito DDT copiati;
 * ri-consegna **standalone**: idem — è il caso della prova 9, e va **costruito**,
   non cercato fra le righe esistenti;
+* ⭐ **standalone, la riga**: prezzo e sconto **uguali alla riga di DDT
+  d'origine** (per l'IVA vedi `R4-quater`); e nel ramo **order-backed** `ddt_righe.prezzo_unitario` resta
+  `NULL` — la copia non ci deve essere, il `COALESCE` di
+  `fn_list_ddt_da_pushare` è la sorgente;
+* ⭐ **il freno della fatturazione non si è allentato**: la riga di ri-consegna
+  senza nota di credito ha `vw_partite_merce.stato = 'RICONSEGNA'` e
+  `differenza IS NULL`, e **non compare** in `fn_list_ddt_da_pushare` — anche
+  ora che la riga un prezzo ce l'ha. È la non-regressione che il §4 rende
+  necessaria: prima il prezzo assente nascondeva l'esito;
 * ⛔ **il test che manca sempre**: la testata generata ha `num_colli`,
   `peso_lordo`, `peso_netto`, `volume`, `targa`, `autista`, `tracking_code`,
   `data_ora_partenza` **a `NULL`** anche quando il DDT origine li ha valorizzati.
@@ -252,8 +392,9 @@ funzione — `feedback_ripiego_ogni_codice_vivo`):
 
 * **niente BE**: `resi_repository.genera_ddt_riconsegna` chiama la madre e ne
   ritorna l'id — la firma non cambia;
-* **niente FE**: il drawer DDT rende già causale, aspetto, addebito, mittente,
-  vettore e la sezione indirizzi (`DocumentoIndirizziSection`). Oggi sono vuoti
-  perché nessuno li scrive, non perché non si vedano;
+* **quasi niente FE**: il drawer DDT rende già causale, aspetto, addebito,
+  mittente, vettore e la sezione indirizzi (`DocumentoIndirizziSection`) — oggi
+  sono vuoti perché nessuno li scrive, non perché non si vedano. ⚠️ L'unica
+  eccezione è **R4-bis**, il select IVA bloccato in EDIT;
 * **nessuna colonna nuova**, **nessuna vista**, **nessun trigger**: una funzione,
   un changeSet con numerazione successiva, corpo preso dalla doc auto-gen.

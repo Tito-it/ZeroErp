@@ -37,7 +37,7 @@
 //   })
 //   start(jobId, { gruppi, etichetta })  // dopo l'accodamento
 
-import { computed, onDeactivated, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onUnmounted, ref } from 'vue'
 
 // Stati terminali di default della coda lavori generica (dbops.coda_lavori):
 // FATTO (ok), ERRORE (terminale), ANNULLATO (admin). PENDING/IN_CORSO = vivo.
@@ -249,11 +249,36 @@ export function useJobPolling(opts) {
   }
 
   // Cleanup: smontato il componente si lascia tutto: i job proseguono lato
-  // server. Sul tab KeepAlive messo in background NON si dimentica piu' nulla
-  // (prima si', e l'esito del giro andava perso): si sospende e basta, la
-  // ripresa la governa la view nel suo onActivated.
+  // server. Sul tab KeepAlive messo in background NON si dimentica nulla: si
+  // sospende, e al rientro si riprende.
+  //
+  // ⛔ LA RIPRESA STA QUI, E FINO AL 2026-08-27 NON C'ERA. Il BB si sospendeva
+  //    da se' e lasciava il `resume()` alla view — un contratto che il secondo
+  //    consumatore ha dimenticato, come era prevedibile: `DashboardCompetenzaView`
+  //    lo chiamava, `LottiListView` no. Effetto su quest'ultima: bastava uscire
+  //    dal tab e rientrare mentre un giro era in volo perche' i tick non
+  //    ripartissero piu'. Il job restava nella mappa, `nJobsInCorso` restava a 1,
+  //    e i due verbi «Rendi definitivi» restavano SPENTI per sempre — fino a un
+  //    ricarico di pagina. Trovato in-app da Tid: «il pulsante non si sblocca,
+  //    come se il lotto non avesse mai terminato».
+  //
+  // ⚠️ Il difetto e' silenzioso per costruzione: niente fallisce, nessun errore
+  //    in console, e la lista si ricarica normalmente — l'unica cosa che manca
+  //    e' un pulsante che si riaccende. Ricaricare la LISTA non serve (lo stato
+  //    e' in memoria), ricaricare la PAGINA sana: e' la firma di questa classe
+  //    di difetti.
+  //
+  // ⭐ L'asimmetria ERA il difetto: cio' che un BB si prende in carico da solo
+  //    (`suspend`) deve avere il suo contrario nello stesso posto. Un contratto
+  //    che si annota nel commento del composable viene rispettato dal primo che
+  //    lo legge e dimenticato dal secondo (memoria `feedback_bb_legge_non_trasporta`).
+  //
+  // `resume()` e' idempotente (`if (!sospeso) return`), quindi le view che lo
+  // chiamano gia' nel loro `onActivated` non fanno un secondo giro: quelle
+  // chiamate diventano ridondanti, non sbagliate.
   onUnmounted(() => stop())
   onDeactivated(() => suspend())
+  onActivated(() => resume())
 
   return {
     start,

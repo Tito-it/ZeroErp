@@ -107,18 +107,40 @@ function onArticoloSelect(item) {
   caricaUomConPickBase(item.id)
 }
 
-// Validazione FE. Il BE richiede: articolo, UoM operativa, qta_operativa <> 0,
-// IVA. Il prezzo NON e' richiesto: se vuoto e articolo non composito, il BE lo
-// risolve via PricingService; per articolo composito e' SUM(componenti).
+// Validazione FE. Il BE richiede, IN CREATE: articolo, UoM operativa,
+// qta_operativa <> 0, IVA. Il prezzo NON e' richiesto: se vuoto e articolo non
+// composito, il BE lo risolve via PricingService; per articolo composito e'
+// SUM(componenti).
+//
+// ⛔ In EDIT si valida SOLO cio' che l'EDIT invia. `buildRigaPayload` qui sotto,
+// nel ramo `isEdit`, manda `{qta_operativa, sconto_percentuale, descrizione}` +
+// il prezzo: articolo, UoM e IVA sono immutabili (i rispettivi campi sono
+// `:disabled="isEdit"`) e non viaggiano. Pretenderli qui significa spegnere il
+// pulsante Salva per un campo che il salvataggio non toccherebbe.
+//
+// ⚠️ Non e' un caso di scuola: `vendite.fn_genera_ddt_riconsegna` genera le
+// righe di ri-consegna SENZA `iva_id` (ne' prezzo, ne' sconto — il gemello
+// `fn_genera_ddt_da_ordine` invece li copia). Su quelle righe `iva_id` e' NULL,
+// il select IVA e' disabilitato e l'auto-fill da articolo non scatta mai perche'
+// passa da `onArticoloSelect`, che in EDIT non si puo' invocare. Risultato prima
+// di questa riga: il form si apriva e il Salva era **morto per sempre** — non
+// solo il prezzo, nemmeno la quantita' si poteva correggere. Rilievo in-app di
+// Tid, 2026-08-27, prova 9 del collaudo righe-senza-prezzo.
+// ⭐ Il rimedio a monte (la riga che nasce completa) e' chiesto al team DB in
+// `brief-db-ddt-riconsegna-eredita-testata.md` §3-bis/R4: sono due difetti
+// distinti e vanno chiusi entrambi — questo gate resterebbe sbagliato anche con
+// le righe complete, semplicemente non lo si vedrebbe piu'.
 const canSave = computed(() => {
   const f = form.value
-  if (!f.articolo_id) return false
-  if (!f.uom_operativa_id) return false
   if (f.qta_operativa == null || Number(f.qta_operativa) === 0) return false
-  if (!f.iva_id) return false
-  // CREATE su articolo composito: blocca il save finche' la ComponentiDialog
-  // non e' stata confermata almeno una volta (componentiPayload valorizzato).
-  if (showComponentiDialog.value && componentiPayload.value == null) return false
+  if (!isEdit.value) {
+    if (!f.articolo_id) return false
+    if (!f.uom_operativa_id) return false
+    if (!f.iva_id) return false
+    // CREATE su articolo composito: blocca il save finche' la ComponentiDialog
+    // non e' stata confermata almeno una volta (componentiPayload valorizzato).
+    if (showComponentiDialog.value && componentiPayload.value == null) return false
+  }
   return true
 })
 

@@ -628,9 +628,36 @@ Usato da: `FormFooter` (Ctrl+S salva).
 | `app-row-actions-inline`   | Interno `RowActionsMenu`          | Wrapper pulsanti inline — visibile solo con hover + viewport `>=1024px`    |
 | `app-row-actions-compact`  | Interno `RowActionsMenu`          | Wrapper kebab + menu popup — visibile su touch o viewport `<1024px`        |
 | `app-menu-item-manage`     | Voce `Menu` PrimeVue              | Colore blu — default popup `RowActionsMenu`                                |
-| `app-menu-item-action`     | Voce `Menu` PrimeVue              | Colore verde — default popup `PageActionsBar` / severity `primary`         |
+| `app-menu-item-action`     | Voce `Menu` PrimeVue              | **Blu dal 2026-08-27** (era verde) — default popup `PageActionsBar` / severity `primary`. Vedi la nota sotto |
 | `app-menu-item-warn`       | Voce `Menu` PrimeVue              | Colore arancio — severity `warn` (cautela)                                 |
 | `app-menu-item-danger`     | Voce `Menu` PrimeVue              | Colore rosso — severity `danger` (distruttiva)                             |
+
+#### ⭐ I pulsanti di AZIONE sono blu (decisione di Tid, 2026-08-27)
+
+Erano metà verdi e metà blu: sulla **stessa riga** di una lista «Gestisci note»
+usciva blu e «Apri documenti» verde, perché la prima non ha `severity` (fallback
+`app-menu-item-manage`) e la seconda ha `severity: primary`. La differenza non
+voleva dire niente per chi guarda.
+
+**Sede unica**: `--app-btn-action-*` in `theme.css`. I tre punti che erano verdi
+— `app-action-btn`, `app-reload-btn`, `app-menu-item-action` — puntano lì. Per
+tornare al verde si cambiano quelle tre righe, **non** i blocchi in `main.css`.
+
+⛔ **Restano intatti i colori che PORTANO un significato**: rosso per
+cancellazione e PDF, arancio per gli avvisi. Uniformare quelli cancellerebbe
+un'informazione, non un'incoerenza.
+
+#### ⛔ Il tooltip di un pulsante che può essere DISABILITATO va sull'involucro
+
+Un `<button disabled>` **non emette eventi del mouse**, e la directive tooltip di
+PrimeVue aggancia `mouseenter` sull'elemento stesso: appeso al Button il tooltip
+non compare **mai**, e a pulsante spento è esattamente quando serve.
+
+Si avvolge in uno `<span class="app-action-tooltip-wrap">` (`inline-flex`, così
+prende il posto del Button come elemento flex e la spaziatura non cambia).
+`PageActionsBar` e `DrawerActionsBar` lo fanno **dal 2026-08-27**: prima il
+motivo che il DB manda con `enabled:false` + `reason` era muto su tutte le liste
+e su tutti i drawer.
 
 ### Composable `useSearchTable(store)`
 

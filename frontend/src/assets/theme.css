@@ -197,6 +197,20 @@
   --app-btn-manage-color: var(--p-blue-500);
   --app-btn-manage-hover-color: var(--p-blue-700);
   --app-btn-manage-hover-bg: var(--p-blue-50);
+  /* ⭐ Colore dei pulsanti/voci di AZIONE (gestisci, apri, ricarica, aggiungi…).
+   * Deciso BLU il 2026-08-27 (Tid): erano metà verdi e metà blu — sulla stessa
+   * riga di una lista «Gestisci note» usciva blu e «Apri documenti» verde,
+   * senza che la differenza volesse dire niente per chi guarda.
+   * ⚠️ Restano intatti i colori che PORTANO un significato: rosso per
+   * cancellazione e PDF, giallo per gli avvisi. Uniformare quelli
+   * cancellerebbe un'informazione, non un'incoerenza.
+   * ⚠️ Sede UNICA: i tre punti che erano verdi (`app-action-btn`,
+   * `app-reload-btn`, `app-menu-item-action`) puntano qui. Per tornare al verde
+   * si rimettono `--p-primary-*` in queste tre righe, non in main.css. */
+  --app-btn-action-color: var(--app-btn-manage-color);
+  --app-btn-action-hover-color: var(--app-btn-manage-hover-color);
+  --app-btn-action-hover-bg: var(--app-btn-manage-hover-bg);
+
   --app-btn-edit-color: var(--p-primary-color);
   --app-btn-edit-hover-color: var(--p-primary-700);
   --app-btn-edit-hover-bg: var(--p-primary-50);

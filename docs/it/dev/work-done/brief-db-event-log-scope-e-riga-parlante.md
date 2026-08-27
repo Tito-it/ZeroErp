@@ -26,7 +26,7 @@
 > | --- | --- |
 > | Il **Passo A** (timeline di un caso) e i rilievi della ricognizione | [analisi-osservabilita-log.md](../work-in-progress/analisi-osservabilita-log.md) §3-quater — è il **piano**, ed è lì che il Passo A vive |
 > | **R-1** — l'orario di transazione, chiesto al team DB e **risolto** (`clock_timestamp()`, changeSet `20260824-16/17`) | idem, §3-quater |
-> | Il **prezzo non negoziato** dentro un push riuscito, annotato come «fuori cantiere» | [brief-ddt-righe-senza-prezzo.md](../work-in-progress/brief-ddt-righe-senza-prezzo.md), che tratta già quel codice |
+> | Il **prezzo non negoziato** dentro un push riuscito, annotato come «fuori cantiere» | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md), che tratta già quel codice |
 >
 > ⚠️ **I riferimenti a questo file nei corpi SQL e nei changelog citano il vecchio
 > percorso** (`work-in-progress/…`) e resteranno così: i primi vivono nei

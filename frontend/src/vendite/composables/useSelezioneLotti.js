@@ -42,14 +42,29 @@ import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 //   due cose diverse sullo stesso oggetto.
 import { lottoNumerabile } from './useLottoAzioni'
 
-export function useSelezioneLotti({ righeVisibili, abilitata }) {
+// `chiaviInGiro`: Set REATTIVO degli id dei lotti dentro un giro di numerazione
+// ancora vivo (`useRigheInGiro` del chiamante). Un lotto in volo NON è
+// spuntabile — è così che due selezioni non possono sovrapporsi, e la seconda
+// non ri-manda ciò che la prima sta già numerando.
+// ⚠️ Va passato il Set reattivo e non un predicato: il prune sotto deve
+//    SCATTARE quando parte un giro, e un predicato non è una dipendenza che
+//    Vue possa osservare. Stessa forma della lista gruppi del cruscotto
+//    competenza, che sorveglia `[gruppi, gruppiInCorso]` per la stessa ragione.
+export function useSelezioneLotti({ righeVisibili, abilitata, chiaviInGiro = null }) {
   const { t } = useI18n()
   const selezione = ref([])
+
+  const inGiro = (row) => (chiaviInGiro ? chiaviInGiro.value.has(row?.id) : false)
+
+  // Scopo: questo lotto si può spuntare? Numerabile E non già in volo.
+  //        Sede UNICA del predicato: lo usano le caselle, il seleziona-tutto,
+  //        il guard del toggle e il prune.
+  const selezionabile = (row) => lottoNumerabile(row) && !inGiro(row)
 
   // Le righe della PAGINA che si possono spuntare. Il BB vuole l'elenco delle
   // selezionabili: qui è per pagina, ed è coerente col seleziona-tutto sotto.
   const selezionabiliInPagina = computed(
-    () => (righeVisibili.value ?? []).filter(lottoNumerabile),
+    () => (righeVisibili.value ?? []).filter(selezionabile),
   )
 
   const {
@@ -67,18 +82,37 @@ export function useSelezioneLotti({ righeVisibili, abilitata }) {
   //    spuntata può ricomparire con uno stato diverso. Si toglie dalla
   //    selezione SOLO ciò che la pagina corrente dichiara non più
   //    selezionabile: le righe di altre pagine non sono in discussione qui.
-  watch(righeVisibili, (righe) => {
+  // ⚠️ Sorvegliati ENTRAMBI i motivi per cui una riga smette di essere
+  //    spuntabile: il cambio delle righe visibili (cambio pagina/scheda, o uno
+  //    stato cambiato sotto i piedi) E l'ingresso in un giro. Il secondo non
+  //    dipende da una fetch, quindi un watch sulle sole righe non scatterebbe
+  //    all'avvio di una numerazione — ed è proprio lì che serve: le righe
+  //    appena spedite devono USCIRE dalla selezione, o il contatore del
+  //    pulsante conterebbe lavoro già in volo e il giro dopo lo rimanderebbe.
+  watch([righeVisibili, () => chiaviInGiro?.value], ([righe]) => {
+    // Motivo 1 — la PAGINA dichiara la riga non più selezionabile (stato
+    // cambiato sotto i piedi). Si guarda solo ciò che la pagina mostra: le
+    // righe di altre pagine non sono in discussione qui.
     const nonPiu = new Set(
-      (righe ?? []).filter((r) => !lottoNumerabile(r)).map((r) => r.id),
+      (righe ?? []).filter((r) => !selezionabile(r)).map((r) => r.id),
     )
-    if (!nonPiu.size) return
-    selezione.value = selezione.value.filter((r) => !nonPiu.has(r.id))
+    // Motivo 2 — la riga è IN VOLO, e questo vale OVUNQUE si trovi, anche su
+    // una pagina che non stiamo guardando.
+    // ⚠️ È la differenza che conta: si può spuntare a pagina 1, andare a
+    //    pagina 2 e inviare. Con il solo motivo 1 quella riga resterebbe
+    //    spuntata e invisibile, e il giro successivo la rimanderebbe — cioè
+    //    esattamente ciò che l'uscita dalla selezione deve impedire.
+    const filtrata = selezione.value.filter((r) => !nonPiu.has(r.id) && !inGiro(r))
+    if (filtrata.length === selezione.value.length) return
+    selezione.value = filtrata
   })
 
   // Il motivo per cui una riga non si spunta, sulla casella spenta. ⚠️ Sulle
   // righe spuntabili torna `undefined` e non stringa vuota: un tooltip vuoto
   // comparirebbe comunque, come un rettangolo senza testo.
   function motivoNonSelezionabile(row) {
+    // Il lotto è in volo: il motivo è quello, non lo stato del documento.
+    if (inGiro(row)) return t('vendite.lotti.lotto_in_giro_tooltip')
     if (lottoNumerabile(row)) return undefined
     return t('vendite.lotti.non_numerabile_motivo', {
       stato: row?.stato_doc_fiscale_descrizione || row?.stato_doc_fiscale_codice || '—',
@@ -94,7 +128,7 @@ export function useSelezioneLotti({ righeVisibili, abilitata }) {
     // colonna delle caselle.
     perLista: computed(() => (abilitata.value ? {
       isSelezionato: isSelected,
-      isSelezionabile: lottoNumerabile,
+      isSelezionabile: selezionabile,
       motivoNonSelezionabile,
       toggle: toggleRow,
       tuttiInPagina,

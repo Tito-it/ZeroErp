@@ -43,7 +43,7 @@ uno è indipendente.
 | **1** | **Partita generalizzata**                       | **questo**                                                                         | È la nozione su cui gli altri due poggiano. Cambiarla dopo obbliga a rifarli                                                                   |
 | **2** | Pannello «situazione merce» su ordine **e DDT** | [brief-design-situazione-merce-ordine.md](brief-design-situazione-merce-ordine.md) | Legge la partita. Fatto prima, mostrerebbe spedizioni miste con conti parziali **sul DDT**, dove l'incoerenza si vede a occhio                 |
 | **3** | Nota di credito (emissione dell'accredito) — ✅ **CHIUSO 2026-08-26**, in `work-done` | [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md)             | Attribuisce l'accredito **alla partita**. Scritta sulla chiave di oggi, andrebbe riscritta — e nel frattempo avrà emesso **documenti fiscali** |
-| **—** | Righe DDT a prezzo zero                         | [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md)                 | **Indipendente**: riguarda il pricing in inserimento, non la partita. Può procedere in parallelo e sblocca la validazione DL-28                |
+| **—** | Righe DDT a prezzo zero                         | [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md)                 | **Indipendente**: riguarda il pricing in inserimento, non la partita. Può procedere in parallelo e sblocca la validazione DL-28                |
 
 ⚠️ **La catena 1 → 2 → 3 non è una preferenza di comodo.** Il punto 3 produce
 documenti fiscali: rifarlo significa riconciliare note di credito già emesse,
@@ -2470,7 +2470,7 @@ con il caso vero davanti.
    resta **uno**. Il **3 (nota di credito)** è chiuso e archiviato in
    `work-done` — collaudo in-app compreso, 39 spunte su 39. Restano le **righe
    DDT a prezzo zero**, il cui collaudo non è ancora cominciato
-   ([collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md)).
+   ([collaudo-in-app-ddt-righe-senza-prezzo.md](../work-done/collaudo-in-app-ddt-righe-senza-prezzo.md)).
    **Quando quello si chiude, questo indice si archivia con lui.**
 2. ~~**Ha lavoro vivo**: il §23.2 è una richiesta DB presa in carico~~ —
    ✅ **superato**: il §23.2 è chiuso dal 2026-08-18. Non è più una ragione.

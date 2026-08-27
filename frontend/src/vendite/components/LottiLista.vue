@@ -46,6 +46,12 @@ defineProps({
   //    dell'operatore senza permesso di numerare, che non deve nemmeno vedere
   //    le caselle.
   selezione: { type: Object, default: null },
+  // Predicato «questo lotto è dentro un giro di numerazione ancora vivo»:
+  // alimenta la rotellina accanto al codice. Il chiamante lo governa (è la sua
+  // macchina `useRigheInGiro`); qui si rende soltanto.
+  // ⚠️ Default che risponde SEMPRE false, non `null`: così il template non
+  //    ramifica e una scheda che non passa il predicato si comporta come prima.
+  inGiro: { type: Function, default: () => false },
 })
 
 const emit = defineEmits(['page', 'sort', 'row-click', 'config-loaded', 'lista-pronta'])
@@ -110,8 +116,21 @@ onMounted(() => emit('lista-pronta', listaRef.value))
       />
     </template>
 
+    <!-- ⭐ Rotellina sul lotto dentro un giro di numerazione vivo. Sta accanto
+         al CODICE, dove l'occhio è già posato — stessa scelta della lista
+         gruppi del cruscotto competenza, che ha lo stesso gesto.
+         ⚠️ Dice «su questa riga si sta lavorando», non «non toccare»: i due
+         verbi sono già spenti per conto loro mentre un giro è vivo. -->
     <template #cell-codice="{ data }">
-      <strong>{{ data.codice }}</strong>
+      <span class="app-cella-con-spinner">
+        <strong>{{ data.codice }}</strong>
+        <i
+          v-if="inGiro(data.id)"
+          class="pi pi-spin pi-spinner app-spinner-in-corso"
+          v-tooltip.right="t('vendite.lotti.lotto_in_giro_tooltip')"
+          :aria-label="t('vendite.lotti.lotto_in_giro_tooltip')"
+        />
+      </span>
     </template>
     <template #cell-tipo_lotto="{ data }">
       <Tag :value="data.tipo_lotto" severity="secondary" />
@@ -170,3 +189,4 @@ onMounted(() => emit('lista-pronta', listaRef.value))
     </template>
   </ListaConfigurabile>
 </template>
+

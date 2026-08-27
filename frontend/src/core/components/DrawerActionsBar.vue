@@ -171,7 +171,18 @@ const infoText = computed(() =>
     <slot name="prefix" />
 
     <span class="app-drawer-actions-desktop">
-      <span v-for="a in inlineDesktopActions" :key="a.key" class="app-drawer-action-wrap">
+      <!-- ⛔ Il tooltip sta sull'INVOLUCRO, non sul Button: un `<button disabled>`
+           non emette eventi del mouse, quindi appeso al Button non comparirebbe
+           mai — e a pulsante spento e' quando serve, perche' porta il MOTIVO
+           che il DB manda con `enabled:false` + `reason`.
+           ⭐ Qui l'involucro c'era gia' (gli serve per il badge): il tooltip si
+           e' solo spostato di un nodo. -->
+      <span
+        v-for="a in inlineDesktopActions"
+        :key="a.key"
+        class="app-drawer-action-wrap"
+        v-tooltip.bottom="buttonTooltip(a)"
+      >
         <Button
           :icon="a.icon"
           :label="a.label"
@@ -179,7 +190,6 @@ const infoText = computed(() =>
           :severity="buttonSeverity(a)"
           :class="buttonClass(a)"
           :disabled="isActionDisabled(a)"
-          v-tooltip.bottom="buttonTooltip(a)"
           @click="runAction(a, $event)"
         />
         <span
@@ -204,18 +214,22 @@ const infoText = computed(() =>
 
     <slot name="suffix" />
 
-    <Button
+    <span
       v-for="a in primaryActions"
       :key="a.key"
-      :icon="a.icon"
-      :label="a.label"
-      :outlined="buttonOutlined(a)"
-      :severity="buttonSeverity(a)"
-      :class="buttonClass(a)"
-      :disabled="isActionDisabled(a)"
+      class="app-action-tooltip-wrap"
       v-tooltip.bottom="buttonTooltip(a)"
-      @click="runAction(a, $event)"
-    />
+    >
+      <Button
+        :icon="a.icon"
+        :label="a.label"
+        :outlined="buttonOutlined(a)"
+        :severity="buttonSeverity(a)"
+        :class="buttonClass(a)"
+        :disabled="isActionDisabled(a)"
+        @click="runAction(a, $event)"
+      />
+    </span>
 
     <span class="app-drawer-actions-compact">
       <span class="app-drawer-action-wrap">

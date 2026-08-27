@@ -49,6 +49,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
+import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
@@ -478,43 +479,19 @@ function isGruppoEmittibile(row) {
   return row.commessa_emittibile !== false
 }
 
-// Gruppi attualmente IN LAVORAZIONE, per GIRO: `jobId → gruppo_key[]`. Non un
-// insieme piatto, e il motivo e' tutto qui: con piu' giri in volo la
-// conclusione del primo deve togliere le marcature SOLO sue: un insieme unico
-// si potrebbe unire all'avvio ma non sottrarre selettivamente alla fine, e il
-// secondo giro resterebbe senza segno mentre e' ancora vivo.
-// ⚠️ Dichiarata QUI e non piu' accanto ai verbi: alimenta `gruppiSelezionabili`
+// Gruppi attualmente IN LAVORAZIONE, per GIRO: `jobId → gruppo_key[]`.
+// ⭐ La macchina (mappa per giro + sostituzione invece di mutazione, con le due
+//    trappole che ne sono la ragione) e' stata estratta il 2026-08-27 nel BB
+//    `useRigheInGiro`: era la stessa che serviva alla lista Lotti per i lotti
+//    dentro un giro di numerazione. Qui resta il solo nome di dominio.
+// ⚠️ Dichiarato QUI e non piu' accanto ai verbi: alimenta `gruppiSelezionabili`
 // poche righe sotto, e in `<script setup>` una const usata piu' in alto e' una
 // TDZ silenziosa (memoria feedback_vue_watch_immediate_tdz).
-const gruppiInCorsoPerGiro = ref(new Map())
-
-// Scopo: marca/smarca i gruppi di UN giro. La mappa si sostituisce (mai mutata
-//        in place): un `.set`/`.delete` sull'istanza dentro il ref non cambia
-//        l'identita' dell'oggetto e Vue non riesegue i computed che ne
-//        dipendono — le righe resterebbero senza spinner con lo stato interno
-//        gia' avanti.
-function marcaGiro(jobId, gruppi) {
-  const mappa = new Map(gruppiInCorsoPerGiro.value)
-  mappa.set(jobId, gruppi)
-  gruppiInCorsoPerGiro.value = mappa
-}
-
-function smarcaGiro(jobId) {
-  if (!gruppiInCorsoPerGiro.value.has(jobId)) return
-  const mappa = new Map(gruppiInCorsoPerGiro.value)
-  mappa.delete(jobId)
-  gruppiInCorsoPerGiro.value = mappa
-}
-
-// Vista piatta per il template e per i predicati: `.has(gruppo_key)` resta
-// l'interfaccia di prima, chi la usa non sa che sotto c'e' una mappa.
-const gruppiInCorso = computed(() => {
-  const piatto = new Set()
-  for (const chiavi of gruppiInCorsoPerGiro.value.values()) {
-    for (const chiave of chiavi) piatto.add(chiave)
-  }
-  return piatto
-})
+const {
+  chiaviInGiro: gruppiInCorso,
+  marca: marcaGiro,
+  smarca: smarcaGiro,
+} = useRigheInGiro()
 
 // Selezionabile = testata emittibile E non gia' presa da un giro vivo. Il
 // secondo pezzo e' la difesa contro la sovrapposizione parziale, e deve stare
@@ -2324,7 +2301,7 @@ onActivated(() => {
                          al nome, dove l'occhio è già posato. -->
                     <i
                       v-if="gruppiInCorso.has(data.gruppo_key)"
-                      class="pi pi-spin pi-spinner app-dash-gruppo-in-corso"
+                      class="pi pi-spin pi-spinner app-spinner-in-corso"
                       v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')"
                     />
                   </template>

@@ -162,6 +162,6 @@ sposterebbe l'errore su un momento in cui la risposta non c'è ancora. Il
 presidio sta **all'emissione**, che è il momento in cui il documento comincia ad
 avere effetti.
 
-**Approfondimento**: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md`
+**Approfondimento**: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`
 · decisione di design DL-28 in
 `docs/it/dev/work-done/brief-design-fatturazione-due-lenti.md` §10.

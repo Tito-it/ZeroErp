@@ -132,7 +132,7 @@ lato DB mette `NULL` se anche un solo figlio è scoperto.
 Il BE non fa `COALESCE(false)` di proposito: al client serve distinguere «non
 vende» da «non lo so ancora» (DEC-5).
 
-Riferimento: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md`.
+Riferimento: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`.
 
 ## Codici errore principali
 
