@@ -18,6 +18,10 @@
 >
 > ⛔ **Nessun file scritto, nessuna migrazione applicata**
 > ([[feedback_db_actions_passaggio_team]], [[feedback_mai_applicare_migrazioni_db]]).
+>
+> 🔴 **Quella riga vale per la RICHIESTA, non per lo stato di oggi.** Il lato DB
+> è **scritto e APPLICATO** (migrate di Tid, 2026-08-27 08:20): vedi §6. Restano
+> aperte le due consegne BE/FE del §7, e la prima è un **cancello CI rosso**.
 
 ---
 
@@ -105,6 +109,10 @@ GIRO_IN_CORSO     -- lucchettata, stato_esecuzione <> 'COMPLETED'
 RESIDUO           -- lucchettata e COMPLETED, senza riga di fattura
 ```
 
+> 🔴 **I valori applicati sono QUATTRO, e il terzo confronto non è `<>`.** Vedi
+> §6.2: il modello ammette una quarta situazione che questo elenco non prevede,
+> e `stato_esecuzione` è **nullable**.
+
 ⚠️ **Perché una colonna e non tre booleani sparsi**: il consumatore deve poter
 dire *quale* delle tre, non ricomporla — e l'export della lista, che condivide la
 stessa proiezione, deve poterla scrivere in chiaro.
@@ -150,8 +158,15 @@ itera su ciò che c'è passa a vuoto su un database ricostruito da zero, cioè i
 
 ### D-4 — il seed della lista dei residui
 
-`ui.lista_definizione` (prossimo id libero, **44**) + le righe di
-`ui.lista_colonna`, sul modello delle tre sorelle già a catalogo:
+`ui.lista_definizione` + le righe di `ui.lista_colonna`, sul modello delle tre
+sorelle già a catalogo:
+
+> 🔴 **CORREZIONE (2026-08-26, team DB): l'id libero non è 44, è 49.** Il 44 è
+> già `vendite.fondi_fattura_da_decidere` (2026-08-15) e il catalogo è arrivato
+> a **48**. ⚠️ Il numero qui sopra era una **fotografia** del catalogo, presa
+> quando è stato scritto il brief: è la ragione per cui un id libero non si
+> dichiara in un documento — si legge dal CSV nel momento in cui si semina.
+
 
 ```text
 41  vendite.dash_competenza_errori     Competenza — errori vivi
@@ -214,6 +229,249 @@ Non bloccano niente, ma dicono il falso a chi legge:
    le righe.** Cercarli **dal codice**, non dalla direzione del cambio: la
    lezione della regressione di L7b è che un guard allargato rompe i test come
    uno ristretto, al contrario.
+
+---
+
+---
+
+## 6. Risposta del team DB — ✅ **APPLICATO** (migrate di Tid, 2026-08-27 08:20)
+
+> ✅ **I tre changeSet sono `EXECUTED`**, e non lo dice questo brief: lo dice
+> `databasechangelog` ([[feedback_stato_apply_si_legge_dal_databasechangelog]]).
+>
+> ```text
+> 20260826-54-update-vw-dash-competenza-attivita-motivo-non-fatturata   EXECUTED
+> 20260826-55-update-vw-dash-competenza-mensile-motivo-non-fatturata    EXECUTED
+> 20260826-56-update-fn-annulla-commessa-attivita-nomina-documento      EXECUTED
+> ```
+>
+> I tre mirror `runOnChange` dei seed risultano **`RERAN`** nello stesso
+> migrate (`20260507-06` liste, `20260806-15` colonne, `20260614-08` messaggi):
+> è la conferma che i CSV sono entrati **dalla loro sede** e non da un `UPDATE`
+> a parte.
+>
+> **Verificato sugli oggetti vivi**: 8/8 colonne nuove sul dettaglio,
+> `security_invoker=on` su **entrambe** le viste (la reloption che un `REPLACE`
+> azzera in silenzio), lista `49` con 11 colonne, le due `soluzione` riscritte,
+> e il guard 4 che chiama davvero il resolver.
+>
+> ⛔ **Nessun commit** ([[feedback_no_commit_autonomo]]).
+
+### 6.0 ⭐ Cosa la prova pre-apply NON poteva dire — e adesso è detto
+
+⚠️ I pgTAP provati **prima** del migrate girano per forza da **owner**
+([[reference_pgtap_pre_apply_gira_solo_da_owner]]), e l'owner **non è soggetto
+alla RLS**: quella corsa verde non aveva esercitato nessuna policy. Le due viste
+sono `security_invoker` e il perimetro del verbo *è* la RLS su
+`vendite.commesse_attivita`, quindi era il pezzo che contava di più.
+
+Rigirati **come applicazione** (`PGTAP_RUNNER=app`) a migrate fatto:
+
+| File | Esito |
+| --- | --- |
+| `vendite/test-motivo-non-fatturata-v1` | ✅ **17/17** |
+| `vendite/test-annulla-commessa-attivita-v1` | ✅ **28/28** (incluso il 18-bis di D-6) |
+| `vendite/test-fn-list-commessa-attivita-provenienza-v1` | ✅ **28/28** (incluso il 22, la grana) |
+
+E `scripts/pgtap-baseline.sh vendite` (Tid): **nessuna regressione**.
+
+⚠️ La doc auto-generata è stata rigenerata dal migrate e riflette gli oggetti
+vivi — comprese le due viste e `fn_annulla_commessa_attivita`, che adesso mostra
+la chiamata al resolver.
+
+### 6.1 Cosa c'è
+
+| # | File | Cosa |
+| --- | --- | --- |
+| **54** | `20_code/vendite/…-update-vw-dash-competenza-attivita-motivo-non-fatturata-mctit.yaml` | D-1 — **otto** colonne in coda al dettaglio |
+| **55** | `20_code/vendite/…-update-vw-dash-competenza-mensile-motivo-non-fatturata-mctit.yaml` | D-2 — la dimensione entra nel `GROUP BY` |
+| **56** | `20_code/vendite/…-update-fn-annulla-commessa-attivita-nomina-documento-mctit.yaml` | D-6 — il guard 4 **nomina** il documento |
+| — | `80_data/sql/ui/lista_definizione.csv` · `lista_colonna.csv` | D-4 — lista **49** + 11 colonne (555…565) |
+| — | `80_data/sql/config/messaggi_errore.csv` | D-5 e D-6 — le due `soluzione` riscritte |
+| — | `db/pgtap/vendite/test-motivo-non-fatturata-v1.sql` | D-3 — **nuovo**, 17 asserzioni |
+| — | `db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql` | test 22 portato sulla grana nuova |
+| — | `db/pgtap/vendite/test-annulla-commessa-attivita-v1.sql` | 18-bis: il presidio della **frase** di D-6 |
+| — | 3 schede in `dbzero/vendite/manual/` + `guide/cruscotti-fatturazione.md` §3.1 | la doc, con **due affermazioni corrette** |
+
+### 6.2 ⭐ Tre cose che il brief non prevedeva, e perché sono entrate
+
+Tutte e tre nascono dalla stessa domanda — *«il modello lo ammette?»* — e non da
+una misura sui dati.
+
+#### 1. ⛔ `IS DISTINCT FROM 'COMPLETED'`, non `<>`
+
+`attivita_fatturabili.stato_esecuzione` è **nullable** dal `20260222-01-02` e il
+`CHECK` ammette anche `ERRORE`. Con il `<>` del vocabolario proposto, un
+lucchetto a `NULL` darebbe `NULL`, il `CASE` cadrebbe sul ramo successivo e la
+vista direbbe **`RESIDUO` su una riga che la mutazione RIFIUTA** — cioè
+esattamente la divergenza silenziosa che il D-3 esiste per impedire.
+`fn_check_attivita_riportabile_da_emettere` usa `IS DISTINCT FROM`, e la vista
+adesso usa lo stesso.
+
+ℹ️ Conseguenza dichiarata: **`ERRORE` finisce in `GIRO_IN_CORSO`**. Il nome dice
+«il giro non ha finito», che è vero, e il rimedio è identico.
+
+#### 2. ⭐ Un **quarto** valore: `SENZA_ATTIVITA_FATTURABILE`
+
+Il `LEFT JOIN` ammette una riga di commessa a `EMESSA` **senza nessuna riga in
+`attivita_fatturabili`**, e il guard di `DELETE` su quella tabella ammette per
+progetto la cancellazione di una riga non ancora fatturata.
+
+⛔ Senza un ramo suo cadrebbe su `IN_ATTESA_LOTTO` per via del `COALESCE`, cioè
+*«il prossimo giro la prende»* — **falso**: la pull filtra su `stato_emissione` e
+non la riprende mai più. E `attivita_fatturabile_id` sarebbe `NULL`, quindi il
+verbo non avrebbe nemmeno la chiave: la lista lo proporrebbe su una riga senza
+bersaglio.
+
+⚠️ **Nessun percorso scritto oggi la produce** — cercato: in tutto il repo non
+c'è un solo `DELETE FROM vendite.attivita_fatturabili`. Non è una ragione per
+non trattarla: *zero occorrenze non significa che il caso non esiste*, e la
+fixture del pgTAP se lo **costruisce**.
+
+➡️ **Per il BE**: la whitelist del vocabolario ha **quattro** valori, non tre.
+
+#### 3. ⭐ Quattro colonne in più delle quattro chieste
+
+Il D-4 elenca fra le colonne suggerite il **«lotto di provenienza»** e
+l'**«articolo»**, e nessuna delle due era raggiungibile dalla vista:
+
+| Colonna | Perché non bastava quello che c'era |
+| --- | --- |
+| `lotto_provenienza_id` · `_codice` | ⛔ `lotto_id` nasce dalla catena della **fattura**, e su un residuo la fattura **non c'è**: era `NULL` proprio sulle righe della lista nuova. Il legame vero è `af.lock_batch_id`, che ha un **`UNIQUE`** gemello su `fatturazione_lotti` |
+| `articolo_codice` · `_descrizione` | ⛔ la vista esponeva il solo `articolo_id`, che è un **UUID**: una lista su cui si deve *agire* e che non dice quale lavoro sta chiedendo l'azione non è azionabile. Il decode è lo **stesso** di `fn_list_commessa_attivita`, un livello sopra sulla stessa colonna |
+
+⚠️ **Il brief diceva «non aggiungono un `JOIN`» (Trappola 3), e queste due coppie
+ne aggiungono due.** La ragione per cui è sostenibile è **strutturale, non una
+misura**: sono `LEFT JOIN` su chiavi con indice `UNIQUE`, quindi PostgreSQL può
+*provare* che non moltiplicano le righe e li **elimina dal piano** quando nessuna
+delle loro colonne è selezionata (*left join removal*).
+
+📌 **Fatto datato, e non è il motivo.** Il 2026-08-26, con contesto operatore, nei
+piani di `vw_dash_competenza_gruppi` e della vista stessa interrogata senza le
+colonne nuove **non compare nessuna scansione** di `fatturazione_lotti` né di
+`catalogo.articoli`; compaiono solo interrogando la lista dei residui.
+⚠️ La condizione che regge tutto è il `UNIQUE`: è verificato in `preCondition` e
+ha un'asserzione sua (test 13).
+
+### 6.3 ⭐ Una scelta di forma: lo stadio si calcola una volta sola
+
+`motivo_non_fatturata` è definito **sopra** lo stadio («`NULL` fuori da
+`EMESSA_NON_FATTURATA`»), e in SQL un alias di `SELECT` non è riferibile da
+un'altra espressione della stessa `SELECT`. Ricopiare la condizione avrebbe messo
+la definizione dello stadio in **due posti della stessa vista**, dove divergere
+non produce nessun errore — cioè avrebbe ricreato in piccolo il difetto che
+questo cantiere serve a chiudere.
+
+Lo stadio vive ora in una `CROSS JOIN LATERAL` e serve entrambe le colonne.
+⚠️ Verificato sul vivo: la colonna `stadio` resta **attnum 12**, tipo
+`character varying`, valore identico. Nessun consumatore la vede cambiare.
+
+### 6.4 Le prove PRE-APPLY — e i presidi visti **rossi prima**
+
+> ℹ️ Questa sezione racconta la verifica fatta **prima** del migrate, quando
+> ancora si poteva scegliere. Resta perché è il momento in cui i presidi sono
+> stati messi alla prova; l'esito **come applicazione** sta nella §6.0.
+
+⭐ *Un presidio che non si è mai visto fallire non è un presidio: è una speranza.*
+I tre che contano sono stati mutati apposta:
+
+| Mutazione applicata alla vista | Cosa è diventato rosso |
+| --- | --- |
+| `IS DISTINCT FROM` → `<>` | test **7** (il caso costruito) **e test 11** (il giro generale) |
+| tolto il ramo `SENZA_ATTIVITA_FATTURABILE` | test **8** |
+| mensile ri-aggregata a valle con `min(…)` | test **14** |
+| changeSet 56 non applicato | test **18-bis** di `test-annulla-commessa-attivita-v1` |
+
+**Esiti** (i pgTAP girano da *owner*, perché provati **prima** del migrate —
+[[reference_pgtap_pre_apply_gira_solo_da_owner]]):
+
+* `test-motivo-non-fatturata-v1` → **17/17**;
+* **caccia ai consumatori, dal codice e non dalla direzione del cambio**: gli
+  **11** file pgTAP che nominano le due viste e i **3** che nominano
+  `fn_annulla_commessa_attivita` o i due codici, eseguiti *prima* e *dopo* i
+  changeSet: **zero regressioni**. L'unico rosso-prima/verde-dopo è dei presidi
+  nuovi;
+* cancelli statici: letterali SQL, `runOnChange`, preambolo pgTAP,
+  `gen_master_autogen --strict` (nessuna collisione su 54/55/56), test 5 del
+  catalogo messaggi (**arità dei segnaposto invariata**) → **verdi**;
+* `codici-errore-baseline.sh` → nessun allargamento. ⚠️ Resta il **rientrato**
+  `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO`, che è il rosso preesistente già
+  dichiarato in `brief-db-lavoro-che-non-torna-indietro` §14.9 e **non è di
+  questo cantiere**.
+
+📌 **Fatto datato — e non decide niente.** Con contesto operatore, sul dato del
+2026-08-26 la card contiene **5 righe su 5** classificate `RESIDUO`, e per tutte
+e cinque `fn_check_*` non ha motivi, cioè il verbo le accetta. ⚠️ È un
+controesempio mancato, non una prova: la prova sono le fixture **costruite**.
+
+### 6.5 ⛔ Cosa NON è stato fatto, e perché
+
+| Non fatto | Perché |
+| --- | --- |
+| il **bersaglio** («apri il documento») sul messaggio di D-6 | servirebbe un codice di `config.tipi_entita`, e la sorgente lì è **polimorfa**: dedurlo da `config.sorgenti.codice_interno` per simmetria di nomi sarebbe una scommessa, e `api.md` è esplicito — un bersaglio che punta a qualcosa che non si apre è **un pulsante in un vicolo cieco**. Se serve, è un cantiere suo con la mappa dichiarata |
+| bonificare le 5 righe residue | ⛔ **sono il banco di prova**, come dice il §4 di questo brief |
+| toccare `backend/` o `frontend/` | [[feedback_perimetro_db_no_modifiche_be]]: le richieste si scrivono qui |
+
+---
+
+## 7. ⛔ Le richieste a BE/FE — e la prima è un cancello CI
+
+### 7.1 🔴 **BLOCCANTE** — le quattro chiavi i18n
+
+Il catalogo delle liste dichiara la chiave, e
+`scripts/check_i18n_keys.py` (CI) **confronta il CSV coi locales**: verificato,
+prima del seed usciva `exit=0`, dopo esce **`exit=1`** con queste quattro:
+
+```text
+vendite.dashboard_competenza.col_competenza              →  "Competenza"
+vendite.dashboard_competenza.col_articolo_descrizione    →  "Descrizione"
+vendite.dashboard_competenza.col_lotto_provenienza       →  "Lotto di provenienza"
+vendite.dashboard_competenza.col_motivo_non_fatturata    →  "Motivo"
+```
+
+In `frontend/src/locales/it.json` **e** `en.json` (la parità è presidiata).
+⚠️ Non è un incidente: è lo stesso schema del `20260826-18`, dove il DB seminò
+`col_registro`/`col_data_prevista` e il FE le aggiunse **lo stesso giorno**. Le
+due metà vanno concordate insieme; finché non arrivano, quel cancello è rosso.
+
+### 7.2 🔴 Il breakdown della mensile elenca **una voce per riga**
+
+`vw_dash_competenza_mensile` ha una dimensione in più, quindi un bucket
+`EMESSA_NON_FATTURATA` che contiene più situazioni **si spezza in una riga per
+situazione**. I totali reggono (il pivot accumula), il breakdown no: senza
+adeguamento il frontend mostrerebbe **`EMESSA_NON_FATTURATA` due volte**.
+⚠️ È la stessa conseguenza dichiarata il 2026-08-20 per `tipo_movimento`, e va
+fatta **nello stesso giro**.
+
+### 7.3 Il vocabolario da mettere in whitelist — **quattro** valori
+
+| Valore | Chiede un'azione? | Il codice che la mutazione solleva |
+| --- | --- | --- |
+| `IN_ATTESA_LOTTO` | ⛔ no | `E_ATTIVITA_GIA_DA_EMETTERE` |
+| `GIRO_IN_CORSO` | ⛔ no | `E_ATTIVITA_IN_LAVORAZIONE` |
+| ⭐ `RESIDUO` | ✅ **sì** | — (nessun motivo: il verbo accetta) |
+| `SENZA_ATTIVITA_FATTURABILE` | ⛔ no | — (**la chiave è `NULL`**: il verbo non è proponibile) |
+
+⚠️ **La card si spezza in due sul discriminante `RESIDUO` / non-`RESIDUO`**, non
+su quattro numeri: gli altri tre sono «niente da fare», e distinguerli serve al
+*drill-down*, non al contatore.
+
+### 7.4 La lista dei residui
+
+`ui.lista_definizione` id **49**, codice `vendite.dash_competenza_residui`,
+`vista_sql = NULL` come le tre sorelle: **la query la compone il backend**
+leggendo `vw_dash_competenza_attivita` con
+`WHERE motivo_non_fatturata = 'RESIDUO'`.
+
+⚠️ `attivita_fatturabile_id` **non è a catalogo** ed è deliberato: serve al verbo,
+non all'occhio. Il backend lo proietta comunque — è la chiave che passa a
+`vendite.fn_riporta_attivita_da_emettere`.
+
+### 7.5 Il pulsante
+
+Il verbo è collaudato lato DB dal cantiere precedente; **manca il gesto a
+video**. Le 5 righe vere sono il banco di prova, e il recupero è il primo gesto
+del frontend.
 
 ---
 

@@ -552,3 +552,14 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 552,12,data_documento,Data documento,Data documento dichiarata sul lotto: se vuota la decide il registro di numerazione,data_documento,informazione,date,date_short,110,25,center,Identificazione,1,f,t,t,f,f,t,2026-08-25 00:00:00,mctit,vendite.lotti.col_data_documento,85
 553,42,registro,Registro,Sezionale su cui nascera il documento,registro_codice,informazione,string,,,75,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_registro,45
 554,42,data_documento_prevista,Data prevista,Data che il documento prendera se nessuno ne dichiara un altra,data_documento_prevista,informazione,date,date_short,,78,center,,,f,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_data_prevista,50
+555,49,commessa_codice,Commessa,,commessa_codice,identificatore,string,,,10,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_commessa,100
+556,49,cliente_display,Cliente,,cliente_display,informazione,string,,,20,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_cliente,90
+557,49,articolo,Articolo,,articolo_codice,informazione,string,,,30,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_articolo,70
+558,49,articolo_descrizione,Descrizione,Che lavoro e' rimasto senza fattura,articolo_descrizione,informazione,string,,,40,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_articolo_descrizione,45
+559,49,competenza_mese,Competenza,,competenza_mese,informazione,date,date_short,,50,center,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_competenza,85
+560,49,data_attivita,Data attivita,,data_attivita,informazione,date,date_short,,60,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_data_attivita,55
+561,49,valore,Valore,,valore,informazione,numeric,currency_eur,,70,right,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_valore,95
+562,49,lotto_provenienza,Lotto di provenienza,Il giro di fatturazione che ha lucchettato la riga senza portarla in fattura,lotto_provenienza_codice,informazione,string,,,80,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_lotto_provenienza,80
+563,49,motivo_non_fatturata,Motivo,Perche' la riga e' emessa ma non fatturata: solo RESIDUO chiede un'azione,motivo_non_fatturata,informazione,string,,,90,center,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_motivo_non_fatturata,98
+564,49,emittente_fiscale,Emittente,Ragione sociale dell emittente fiscale,emittente_ragione_sociale,informazione,string,,,100,left,,,t,t,t,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_emittente,30
+565,49,azioni,Azioni,,,azione,string,,,999,center,,,f,f,f,f,f,t,2026-08-26 00:00:00,mctit,vendite.dashboard_competenza.col_azioni,100

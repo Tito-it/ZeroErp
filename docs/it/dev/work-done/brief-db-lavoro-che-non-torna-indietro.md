@@ -2292,10 +2292,18 @@ baseline **non è stata stretta**: va allineata da chi possiede quel codice.
   ed è un comportamento che l'operatore deve **sapere prima**. Va nella guida —
   ⚠️ ma quella pagina è contesa con l'altro cantiere (§11.3) e la §7.1 aspetta
   comunque la consegna BE/FE.
-- ⏸️ Il messaggio di `E_RIGA_COMMESSA_NON_MANUALE` (guard 4 di
-  `fn_annulla_commessa_attivita`) dice *«il rimedio è SEMPRE a monte, sul
-  documento»*: ⭐ **da oggi quella frase è vera**, e il messaggio può nominare il
-  documento invece di lasciarlo cercare.
+- ✅ **FATTO il 2026-08-27** (changeSet `20260826-56`, brief
+  [brief-db-residui-competenza-dimensione-e-chiave](../work-in-progress/brief-db-residui-competenza-dimensione-e-chiave.md)
+  D-6). Il messaggio di `E_RIGA_COMMESSA_NON_MANUALE` (guard 4 di
+  `fn_annulla_commessa_attivita`) diceva *«il rimedio è SEMPRE a monte, sul
+  documento»*: ⭐ **da L7b quella frase è vera**, e adesso il messaggio **nomina**
+  il documento invece di lasciarlo cercare — il terzo segnaposto riceveva
+  `sorgente_uid`, cioè un UUID, e ora arriva da
+  `vendite.fn_get_sorgente_documento_ref`, lo **stesso** resolver della colonna
+  «Origine». ⭐ E la `soluzione` a catalogo ha smesso di consegnare una `SELECT`
+  all'operatore: dice che chiudere il documento **ritira da sé** le righe non
+  ancora emesse. Presidio: test **18-bis** di
+  `db/pgtap/vendite/test-annulla-commessa-attivita-v1.sql`, visto rosso prima.
 
 ---
 
