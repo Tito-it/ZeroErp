@@ -25,9 +25,12 @@
 > fatti che il documento dava per veri (§R) e una voce **nuova** che con l'IVA
 > non c'entra — CIG/CUP/commessa sul cliente (`D9`).
 >
-> ⭐ **Due decisioni di dominio già prese** (Tid, 2026-08-27) e **una ancora
-> aperta**: sono nel §D, etichettate una per una. Le decise non vanno ri-discusse
-> a valle; l'aperta **blocca** la richiesta `I6` e nient'altro.
+> ✅ **2026-08-29 — nessuna decisione resta aperta.** `D1`, l'ultima, è decisa:
+> l'IVA di riga **non è modificabile a mano**. Il brief è **completo lato
+> disegno**; quello che resta è costruire, nell'ordine del §5.
+>
+> ⭐ Le decisioni stanno nel §D e nel §D-bis, etichettate una per una, e non vanno
+> ri-discusse a valle.
 >
 > **Correlati:**
 > [config.iva](/dbzero/config/tabelle/iva) ·
@@ -62,15 +65,34 @@ fiscale — non ha niente.
 > ri-aperta al primo dubbio.
 >
 > ⚠️ **Ognuna dice di chi è.** `D2` e `D3` sono **decisioni di Tid**, prese a
-> parole il 2026-08-27. `D1` è **aperta**: c'è la proposta e l'argomento, non
-> c'è la decisione. `D4` non è una decisione affatto — è una constatazione
+> parole il 2026-08-27. ~~`D1` è **aperta**~~ → **decisa il 2026-08-29**, e il
+> testo che segue conserva la proposta e i due argomenti perché è così che ci si
+> è arrivati. `D4` non è una decisione affatto — è una constatazione
 > tecnica. Attribuire a qualcuno una scelta che non ha fatto è il modo in cui un
 > documento diventa inaffidabile, e qui non serve nemmeno: l'argomento regge da
 > sé anche senza una firma sotto.
 
-### D1 · ❓ **APERTA** — l'IVA di riga è modificabile a mano o no?
+### D1 · ✅ **DECISA (Tid, 2026-08-29)** — l'IVA di riga **non è modificabile a mano**
 
-**Proposta: no**, su nessun documento. Varrebbe per **DDT, ordini e preventivi**
+> ✅ **Chiusa.** L'argomento contro — *«esistono titoli per-operazione che il
+> risolutore non coprirà, e togliere la casella toglie l'unica uscita»* — è
+> **caduto con `D10`**: la famiglia dei titoli assorbe tutti e quattro i casi
+> noti, e ognuno **si registra** invece di digitarsi. Non resta nessun titolo
+> fuori dal risolutore.
+>
+> **La regola:** su DDT, ordini e preventivi, in **CREATE e in EDIT**, il valore
+> lo produce il risolutore. L'operatore non lo digita e non lo corregge.
+> Realizzazione in `I6`, che va **per ultima** — vedi l'avvertenza sull'ordine.
+>
+> ⚠️ **E oggi è mezzo bloccata, che è la forma peggiore** (verificato 2026-08-29):
+> in **EDIT** il campo è grigio nei tre form (`:disabled="isEdit"`), in **CREATE**
+> è libero, e l'**API accetta l'aggiornamento in tutti e tre i casi** — `iva_id`
+> è dentro le chiavi di update di `ddt_service`, `ordini_service` e
+> `preventivi_service`. Non protegge (chi chiama l'endpoint scavalca) e impedisce
+> lo stesso (all'operatore il campo è grigio, e ciò che è grigio oggi è il valore
+> **detto dall'articolo**). `I6` deve chiudere entrambe le metà, non una.
+
+**Proposta originale (2026-08-27): no**, su nessun documento. Varrebbe per **DDT, ordini e preventivi**
 — le tre sedi che hanno una riga con aliquota — sia in CREATE che in EDIT: il
 valore lo produce il risolutore (**D2**), l'operatore non lo digita e non lo
 corregge.
@@ -358,6 +380,173 @@ modello ammette più emittenti: `vendite.contratti.emittente_fiscale_id` è
 **un solo contatore** — un errore silenzioso su precisamente il numero che
 l'Agenzia delle Entrate verifica. **Proprietario: il soggetto. Destinatario:
 l'emittente.** Due colonne, stessa riga.
+
+### D12 · ⚠️ **PRECISAZIONE** — lo stadio B si valuta **per riga**, e l'ambito è un **filtro**, non un'etichetta
+
+Rilievo di Tid, 2026-08-28: *«alcune aliquote agevolate, esempio quelle per
+disabilità, si possono applicare solo su alcune categorie di prodotti; se alla
+seconda passata vince quella del soggetto il rischio è che si applichi a tutto»*.
+
+⛔ **È il difetto giusto da temere**, e nasce da come `D7` era stato raccontato:
+«il titolo sostituisce l'aliquota ordinaria» suona come un interruttore di
+documento. Non lo è.
+
+**Lo stadio B si valuta riga per riga**, e per ogni riga il titolo entra **solo
+se l'articolo di quella riga ricade nel suo ambito**. Un documento con dieci
+righe e un titolo `AGEVOLATA_104` ristretto a due articoli produce **due** righe
+agevolate e otto ordinarie. L'ambito di `D10` non è documentazione del titolo:
+è la **condizione di applicabilità**, e senza di essa il titolo sarebbe
+esattamente il `clienti.iva_id` che `D7-bis` ha tolto — un valore che vince su
+tutto perché nessuno gli ha detto dove fermarsi.
+
+⚠️ **Corollario sulla firma**: il risolutore riceve **l'articolo**, non solo il
+documento. Era già così per lo stadio A; ora è vincolante anche per B.
+
+### D13 · ✅ **DECISA (Tid)** — due titoli sulla stessa riga: **vince il più specifico**
+
+Discende da `D12`. L'`EXCLUDE` di `D10` impedisce due titoli **dello stesso tipo
+e stesso ambito** validi insieme; due titoli di **tipo diverso** che coprono la
+stessa riga sono invece possibili in linea di principio.
+
+**Regola: articolo > categoria di merce > tutto.** È la stessa dello stadio A e
+della cascata degli indirizzi — nessun secondo vocabolario. A parità di
+specificità restano due titoli indistinguibili: quello è un **errore di
+configurazione** e si solleva, non si risolve scegliendone uno.
+
+⭐ **Ma è un presidio, non un percorso ordinario, e la ragione è di modello**
+(rilievo di Tid, 2026-08-28): l'esempio che avevo portato — intento +
+agevolazione disabili sullo stesso soggetto — **non regge**, perché la
+dichiarazione d'intento presuppone una **partita IVA** (un esportatore abituale)
+mentre l'agevolazione per disabilità è di una **persona fisica**, sul codice
+fiscale. Gli altri incroci sono altrettanto improbabili.
+
+⚠️ **Per questo la regola resta scritta lo stesso.** Non è impossibile che i due
+identificativi convivano — `anagrafiche.soggetti` porta `partita_iva` **e**
+`codice_fiscale`, entrambe nullable, e una ditta individuale le ha tutte e due —
+ed è il caso di `AGENTS.md`: *«zero occorrenze non significa che il caso non
+esiste»*. Una regola dichiarata che non scatta mai costa una riga; un'ambiguità
+che si risolve sull'ordine degli id costa una fattura sbagliata.
+
+### D14 · ✅ **DECISA (Tid)** — il risolutore prende una **data di riferimento**, non legge `now()`
+
+Rilievo di Tid, 2026-08-28: *«la differenza tra documento e fattura è che,
+temporalmente, venendo eseguito prima potrebbe stabilire l'aliquota di quel
+momento, che potrebbe essere diversa da quella del momento della fattura»*.
+
+⭐ **È più preciso di come `P1` era scritto.** «Il documento proietta, la fattura
+decide» faceva pensare a due calcoli di natura diversa. Non lo sono: è la
+**stessa funzione, eseguita due volte, in due momenti**. Il DDT non produce un
+valore "provvisorio" perché è di seconda classe — produce il valore **giusto alla
+sua data**, e la fattura produce quello giusto **alla sua**. Se divergono non c'è
+nessun errore: è cambiato il mondo in mezzo (un titolo scaduto, un plafond
+esaurito, una dichiarazione revocata).
+
+⛔ **Ne discende un vincolo di firma, e va preso adesso come la ripartizione del
+§2.7.3**: la funzione riceve una **data di riferimento come parametro** e non
+chiama mai `now()` / `CURRENT_DATE` al suo interno.
+
+Le ragioni, dopo la correzione di `D15`:
+
+* ⭐ **la principale**: la fattura deve risolvere **alla propria data documento**,
+  che non è l'istante in cui gira il calcolo. `vendite.fatture.data` ha default
+  `script.fn_data_operativa()` — il progetto ha già una nozione di data operativa
+  distinta dall'orologio, e un risolutore che guardasse `CURRENT_DATE`
+  risponderebbe alla domanda sbagliata ogni volta che il lotto gira il giorno
+  dopo;
+* un **pgTAP** non potrebbe costruire il caso «titolo scaduto» senza aspettare il
+  calendario.
+
+⛔ ~~«senza, ristampare un documento vecchio darebbe un risultato diverso da
+quello stampato»~~ — **argomento ritirato il 2026-08-28**: era sbagliato, e lo
+corregge `D15`. Una ristampa **non chiama il risolutore affatto**, quindi non
+poteva provare niente sulla sua firma. La conclusione regge, la ragione no —
+ed è il caso peggiore di `AGENTS.md`: *la conclusione giusta appoggiata
+all'argomento sbagliato*.
+
+⚠️ **Secondo corollario, e tiene pulita la parte più delicata**: il risolutore è
+in **sola lettura** (`STABLE`). Non consuma il plafond. Il consumo è un
+**passo separato**, che fa **solo la fattura** (`P1`), scrivendo una riga nel
+registro di `D5`. Un risolutore che consuma sarebbe impossibile da chiamare per
+mostrare un'anteprima — cioè proprio l'uso che ne fa il documento.
+
+### D15 · ✅ **DECISA (Tid)** — il risolutore gira **fino alla DEFINITIVA**, e da lì il valore è **congelato**
+
+Rilievo di Tid, 2026-08-28: *«la ristampa di un documento non dovrebbe far girare
+il risolutore, in quel caso si prende sempre l'IVA esistente nel documento. In
+bozza passa il risolutore, tra bozza e definitiva dovrebbe ripassare, ma da
+definitiva (compreso) in poi si ristampa sempre senza rigenerare l'aliquota.
+Questo vale anche per la fattura»*.
+
+| Momento | Il risolutore gira? |
+| --- | --- |
+| documento in **bozza** | ✅ sì, a ogni modifica delle righe |
+| passaggio **bozza → definitiva** | ✅ sì, ed è **l'ultima volta** |
+| da **definitiva** compresa in poi (ristampa, invio, riemissione del PDF) | ⛔ **mai più**: si legge il valore scritto sulla riga |
+
+⭐ **Non è una regola nuova: è la stessa che il DB già applica al riepilogo IVA.**
+`vendite.fn_ricalcola_riepilogo_iva_fattura` rifiuta il ricalcolo fuori da
+`('DRAFT', 'EMESSA')` — *«oltre quella soglia il documento è uno snapshot
+fiscale»*. Il risolutore deve obbedire **alla stessa soglia**, non a una sua:
+due finestre di congelamento diverse sullo stesso documento sono due verità che
+divergono in silenzio.
+
+⚠️ **Ma la soglia oggi è una lista di codici scritta a mano nel corpo della
+funzione** (`NOT IN ('DRAFT','EMESSA')`), e va **dichiarata** — il progetto la
+regola dell'hardcode ce l'ha già (`chiude_lotto` come unico meccanismo di
+chiusura lotto).
+
+✅ **DECISO (Tid, 2026-08-29)**: nasce **`config.stati_doc_fiscale.congela_fiscale`**
+(`boolean NOT NULL DEFAULT false`), e **`fn_ricalcola_riepilogo_iva_fattura` va
+portata a leggerlo** al posto della lista. → richiesta **`I10`**.
+
+⚠️ Due avvertenze operative per chi lo scriverà:
+
+* il valore si semina **dal CSV** `80_data/sql/config/stati_doc_fiscale.csv`, che
+  va esteso di una colonna su **tutte** le righe — non con un `UPDATE` SQL, che
+  creerebbe una seconda sorgente di verità;
+* la funzione è **esistente**: il corpo si prende dalla **doc auto-gen** e si
+  crea un file **nuovo** con numerazione successiva. Partire dallo YAML che la
+  definisce oggi farebbe regredire le revisioni intermedie (fra cui il fix
+  del 2026-08-02 sui due guard di stato).
+
+📌 `congela_fiscale = true` su `DEFINITIVA`, `INVIATA`, `REGISTRATA`, `ANNULLATA`;
+`false` su `DRAFT` ed `EMESSA`. ⭐ Scritto così il flag dice **una cosa sola** ed è
+verificabile riga per riga — a differenza della lista `NOT IN`, che diceva la
+stessa cosa **per esclusione** e quindi si allargava da sola a ogni stato nuovo.
+
+⛔ **Tre scorciatoie da non prendere, tutte e tre disponibili e tutte e tre
+sbagliate**, verificato sul seed di `config.stati_doc_fiscale`:
+
+1. **`fase`** non serve: `EMESSA` (ricalcolo ammesso) e `DEFINITIVA` (congelata)
+   hanno **la stessa** `fase = 'IN_CORSO'`. Il flag che cerchiamo non c'è;
+2. **`ordine`** non serve, ed è la trappola più invitante (`DRAFT` 10, `EMESSA`
+   20, `DEFINITIVA` 30): *«la colonna `ordine` di `config.stati_doc_*` non è un
+   ciclo di vita»*. `INVIATA` è 40 e `ANNULLATA` 70, ma una soglia numerica su
+   quella colonna è una convenzione grafica scambiata per una macchina a stati;
+3. ⛔ **`chiude_lotto` non si riusa**, benché oggi sia `true` esattamente su
+   `DEFINITIVA` e su nessun altro stato (c'è pure un `UNIQUE` che lo garantisce).
+   Risponde a **un'altra domanda** — «questo stato chiude il lotto?» — e
+   appoggiarci sopra il congelamento fiscale è la forma esatta di
+   `reference_flag_composto_non_e_invertibile`: il giorno che le due risposte
+   divergono, non c'è modo di separarle.
+
+#### D15-bis · Il plafond si consuma **nello stesso momento in cui il valore si congela**
+
+Discende da `D15` e da `P1`. Il consumo non avviene «quando si fa la fattura» in
+senso vago: avviene **nella transizione a DEFINITIVA**, insieme all'ultima corsa
+del risolutore. Le due cose sono **una sola unità atomica**
+(`feedback_atomicita_madre_db`) — l'ultima risoluzione decide la spezzatura di
+`P2`, e la spezzatura decide quanto plafond va consumato. Separarle
+significherebbe scrivere nel registro una quota che il documento non porta.
+
+⚠️ **E qui il lock diventa necessario, non prudenziale.** Finché due fatture
+stanno in bozza o in EMESSA, entrambe **proiettano** sullo stesso residuo non
+ancora consumato: è corretto, sono anteprime. Ma se arrivano alla DEFINITIVA in
+parallelo, senza un lock sul titolo consumano tutte e due la stessa capienza e il
+plafond va sotto zero in silenzio. ⭐ Serve anche un **ordine deterministico** fra
+le due — chi arriva prima si prende la capienza — e «prima» dev'essere una regola
+del dominio (data documento, poi numero), non l'ordine di arrivo dei processi.
+📌 Da risolvere dentro `I7`, non nel risolutore, che resta in sola lettura.
 
 ### D11 · 📌 **Constatazione** — l'anello «uso della fornitura» esiste già: `config.tipi_utenze`
 
@@ -727,9 +916,10 @@ di gestire anche altre eccezioni in un unico punto»*. È il criterio con cui
 guardare le prossime — ogni titolo che oggi non ha una sede si registra, non si
 digita.
 
-⚠️ **`D1` resta formalmente aperta** solo per la verifica che non ci siano
-**altri** titoli per-operazione fuori dal risolutore. Il caso che la teneva in
-piedi è risolto.
+~~⚠️ **`D1` resta formalmente aperta** solo per la verifica che non ci siano
+**altri** titoli per-operazione fuori dal risolutore.~~ ✅ **Verifica fatta con
+`D10` (2026-08-28) e `D1` chiusa il 2026-08-29**: i titoli sono quattro, hanno
+tutti una sede, e nessuno si digita sulla riga.
 
 ### 2.7 ⭐ La forma del risolutore: due stadi, una cascata, una ripartizione
 
@@ -922,13 +1112,20 @@ modo in cui questo difetto è arrivato fin qui.
 | **I5** | `split_payment` / `cliente_pa` → riga e riepilogo fattura + payload SDI (`EsigibilitaIVA`), **fuori** dal risolutore (`D4`). ⭐ **Voce corta**: `fatture_righe` e `fatture_riepiloghi_iva` hanno **già** le colonne e il raggruppamento — manca solo chi le riempie (`D8`) | DB + BE | dopo `I0` |
 | **I8** | ⭐ **Nuova, e non è IVA**: `codice_cig` / `codice_cup` / `codice_commessa` da `clienti` a **`vendite.contratti`**, + **snapshot** sulla fattura all'emissione (`D9`). ⚠️ `vendite.fatture` non ha nessun link al contratto: senza snapshot non arrivano mai | DB + BE + FE | 🟢 **da fare adesso**: il builder XML non è ancora scritto |
 | **I9** | ⭐ **Nuova**: il gate «riga con prezzo senza aliquota» esiste **solo sul DDT**. `vw_ordini_righe_iva_base` non filtra nemmeno `prezzo_unitario`, e per ordini e preventivi non c'è nessun `fn_check_*_emittibile` (`R-3`) | DB | indipendente |
-| **I6** | ❓ **Ferma su D1.** Se «l'IVA di riga non si cambia» è una regola, la sua sede non è un `:disabled` nel template: o scende nel BE (`iva_id` fuori da `_UPDATE_KEYS_RIGA`) o si dichiara che è solo un aiuto della UI | BE | **per ultima** |
+| **I10** | ⭐ **Nuova** (`D15`): `config.stati_doc_fiscale.congela_fiscale` — colonna nuova + seed **dal CSV** su tutte le righe, e `vendite.fn_ricalcola_riepilogo_iva_fattura` portata a leggerla al posto della lista `NOT IN ('DRAFT','EMESSA')`. È la **soglia unica** cui dovrà obbedire anche il risolutore | DB | indipendente, e **precede `I2`**: senza, il risolutore copierebbe l'hardcode |
+| **I6** | ✅ **Sbloccata da `D1` (2026-08-29)**: l'IVA di riga non si digita. **Due metà, servono entrambe** — (a) BE: `iva_id` **fuori** da `_UPDATE_KEYS_RIGA` **e** da `_CREATE_KEYS_RIGA` in `ddt_service`, `ordini_service`, `preventivi_service` (in `preventivi_service` è una tupla inline, non una `frozenset`); (b) FE: `<IvaSelect>` disabilitata **anche in CREATE** nei tre `*RigaForm.vue`, e il campo mostra il risultato del risolutore. ⚠️ In `PreventiviRigaForm` il `canSave` pretende `f.iva_id`: va ripensato, o la creazione si blocca da sola | BE + FE | ⛔ **per ultima** |
 
 ⛔ **L'ordine fra I6 e le altre non è indifferente, ed è l'unico modo di sbagliare
 in silenzio.** `I6` toglie all'operatore l'ultima uscita manuale: applicata
 **prima** di I2/I3 — cioè prima che le righe nascano con l'aliquota giusta —
 cementerebbe i buchi e i valori sbagliati che oggi si possono ancora correggere
-via API. `I6` va **per ultima**, e solo dopo che D1 è stata decisa.
+via API. `I6` va **per ultima**.
+
+⚠️ **Ora che `D1` è decisa, quel vincolo è più fragile, non meno**: la decisione
+c'è, quindi `I6` sembra «pronta» e la si può fare in mezz'ora. È proprio per
+questo che va scritto — *una voce sbloccata non è una voce da anticipare*. Finché
+`I2`/`I3` non girano, chiudere la casella significa congelare i valori di oggi
+senza lasciare a nessuno il modo di correggerli.
 
 ⭐ **La dipendenza nuova della Rev 2, e va nel verso non ovvio**: `I7` **non** è
 una voce parallela a `I2`, è il suo **prerequisito**. Finché i titoli non hanno
@@ -936,10 +1133,54 @@ una sede, lo stadio B non ha niente da leggere — e con `clienti.iva_id` tolta 
 `I0`, un risolutore scritto prima di `I7` sarebbe uno **stadio A soltanto**, cioè
 il comportamento di oggi con più codice intorno.
 
-⚠️ **`I0`, `I8` e `I9` sono indipendenti fra loro e da tutto il resto**, e
-conviene farle subito: sono le tre che oggi costano meno e che dopo costeranno di
+⚠️ **`I0`, `I8`, `I9` e `I10` sono indipendenti fra loro e da tutto il resto**, e
+conviene farle subito: sono quelle che oggi costano meno e che dopo costeranno di
 più — `I0` perché non ha consumatori veri, `I8` perché il builder FatturaPA non
-esiste ancora, `I9` perché è la stessa regola già scritta e collaudata sul DDT.
+esiste ancora, `I9` perché è la stessa regola già scritta e collaudata sul DDT,
+`I10` perché finché la soglia è un hardcode il risolutore la **ricopierà**, e
+allora gli hardcode diventano due.
+
+### Il processo di sviluppo, in quattro fasi
+
+> Aggiornato il 2026-08-29, con `D1` decisa. Le fasi sono **sequenziali fra
+> loro**; dentro una fase le voci sono indipendenti e si possono fare in
+> parallelo. Ogni fase si chiude con i suoi pgTAP, non alla fine di tutto.
+
+```text
+FASE 1 — sgombero          I0 · I8 · I9 · I10      indipendenti fra loro
+FASE 2 — le sedi           I7                      titoli + registro + lock
+FASE 3 — il risolutore     I2  →  I3 · I4 · I5     I3/I4/I5 dopo I2
+FASE 4 — la chiusura       I6                      ⛔ mai prima della Fase 3
+```
+
+**FASE 1 — sgombero.** Sono le quattro voci che non dipendono da niente e che
+oggi costano meno di quanto costeranno dopo: `I0` perché quelle colonne non hanno
+consumatori veri, `I8` perché il builder XML FatturaPA non è ancora scritto, `I9`
+perché è la stessa regola già collaudata sul DDT, `I10` perché finché la soglia di
+congelamento è un hardcode il risolutore la **ricopierà**. ⭐ Si può cominciare
+oggi, e nessuna delle quattro ha bisogno che il disegno del risolutore sia
+finito.
+
+**FASE 2 — le sedi.** `I7` costruisce `anagrafiche.soggetti_titoli_iva`, il
+vocabolario dei tipi, l'ambito, il registro dei movimenti, il lock e il codice
+`config.iva` con `natura_iva_id = 8`. ⛔ **È il prerequisito di `I2`, non una
+voce parallela**: senza titoli lo stadio B non ha sorgenti, e un risolutore
+scritto prima sarebbe uno stadio A soltanto — cioè il comportamento di oggi con
+più codice intorno.
+
+**FASE 3 — il risolutore.** `I2` è la funzione (firma da `D14`: articolo, data di
+riferimento, sola lettura, ritorna una ripartizione). Poi, in parallelo, i tre
+consumatori: `I3` la riga di documento, `I4` la riga di fattura, `I5` esigibilità
+e split. ⚠️ `I4` è un **breaking change dichiarato** — le fatture smettono di
+rileggere `art.iva_id`.
+
+**FASE 4 — la chiusura.** `I6` toglie all'operatore la casella. Ha senso **solo**
+quando le righe nascono già con l'aliquota giusta, cioè a valle della Fase 3.
+
+⭐ **Il pgTAP che chiude il cantiere** è quello del §6 sull'unione delle due
+determinazioni: la stessa riga letta come documento e come attività di
+fatturazione deve dare lo **stesso** `iva_id`. Finché restano due strade, è
+l'unico test che si accorge quando divergono.
 
 ---
 
@@ -1018,12 +1259,20 @@ perché il gas di casa non paga come il gas di uno stabilimento. Vince il livell
 **più specifico**, esattamente come per il prezzo. A questo punto esiste
 un'aliquota ordinaria, e per chiunque è quella.
 
-**Tempo 2 — questo cliente ha un titolo che la sostituisce?** Si va a vedere se
-il **soggetto** — la partita IVA, non la singola fornitura — ha un **titolo
-registrato e valido oggi**: una dichiarazione d'intento, una dichiarazione di uso
-industriale, un'agevolazione per disabile, la qualifica di cooperativa sociale.
-Se non ce n'è, il Tempo 1 è la risposta finale. Se ce n'è uno, **prende il posto**
-dell'aliquota ordinaria per quella riga.
+**Tempo 2 — questo cliente ha un titolo che la sostituisce *su questa riga*?** Si
+va a vedere se il **soggetto** — la partita IVA, non la singola fornitura — ha un
+**titolo registrato e valido a quella data**: una dichiarazione d'intento, una
+dichiarazione di uso industriale, un'agevolazione per disabile, la qualifica di
+cooperativa sociale. Se non ce n'è, il Tempo 1 è la risposta finale. Se ce n'è
+uno **e l'articolo di questa riga ricade nel suo ambito**, prende il posto
+dell'aliquota ordinaria.
+
+⚠️ **Le tre parole «su questa riga» sono la sostanza, non una precisazione**
+(`D12`). Un titolo non accende un documento: si valuta **riga per riga**. Un
+cliente con un'agevolazione limitata a due articoli, su un documento di dieci
+righe, ottiene due righe agevolate e otto ordinarie. Senza questo, il titolo
+sarebbe la stessa cosa che abbiamo appena tolto dal cliente: un valore che vince
+su tutto perché nessuno gli ha detto dove fermarsi.
 
 Un titolo non è un flag: è un **documento**. Ha un protocollo o una prova, una
 data di inizio e una di fine, dice **a chi** è stato presentato (l'emittente) e
@@ -1039,11 +1288,32 @@ l'aliquota no. Se un cliente ha diritto a qualcosa di diverso, quel diritto **si
 registra una volta** come titolo, con la sua carta, e da quel momento vale da solo
 su tutti i documenti finché è valido.
 
-**Il documento a monte proietta, la fattura decide.** L'IVA che l'operatore vede
-su un preventivo, un ordine o un DDT serve a mostrargli che cosa verrà applicato e
-a fare il riepilogo del documento. Non è il valore che finirà in fattura: la
-fattura **rifà** il calcolo al momento in cui nasce, perché nel frattempo un
-titolo può essere scaduto o un plafond essersi esaurito.
+**Il documento a monte proietta, la fattura decide — ed è una differenza di
+*quando*, non di *come*** (`D14`). È la **stessa funzione**, eseguita due volte in
+due momenti. Il DDT non produce un valore di serie B: produce quello **giusto
+alla sua data**, e la fattura quello giusto **alla sua**. Se divergono non c'è
+nessun errore — è cambiato qualcosa in mezzo: un titolo scaduto, un plafond
+esaurito, una dichiarazione revocata.
+
+⭐ Per questo il risolutore **si fa dare la data** invece di guardare l'orologio:
+la fattura deve rispondere alla **propria data documento**, non all'istante in
+cui il lotto gira — che può essere il giorno dopo.
+
+**E a un certo punto il calcolo si ferma per sempre** (`D15`). Il risolutore gira
+finché il documento è in bozza, ripassa un'ultima volta quando diventa
+**definitivo**, e da lì in poi non gira **mai più**: una ristampa, un invio, un
+PDF rigenerato leggono l'aliquota **scritta sulla riga**, non la ricalcolano. Un
+documento definitivo è uno snapshot fiscale, e uno snapshot che si ricalcola non
+è uno snapshot.
+
+⭐ È anche il momento in cui il **plafond si consuma**: l'ultima risoluzione
+decide come si spezza la riga, e la spezzatura decide quanta capienza va via —
+sono la stessa operazione, non due. Prima di quel momento tutte le anteprime
+guardano lo stesso residuo senza toccarlo, ed è giusto così: sono anteprime.
+
+Per lo stesso motivo il risolutore **legge e basta**. Se consumasse, non lo si
+potrebbe chiamare per mostrare un'anteprima — che è precisamente l'uso che ne fa
+il documento.
 
 **Restano fuori due cose che sembrano IVA e non lo sono.** Lo *split payment* e
 il *cliente PA* non cambiano l'aliquota: cambiano chi versa l'imposta all'erario,
@@ -1061,4 +1331,8 @@ fattura ci arrivano copiati da lì.
 | 2026-08-28 (mattina) | ✅ `I1` **applicata** fuori da questo brief, dalla Fase C di `brief-db-ddt-riconsegna-eredita-testata`: `E_DDT_RIGA_IVA_MANCANTE`, e con il discrimine sul **prezzo** invece che sulla causale (`R-1`) |
 | 2026-08-28 (Rev 2) | Rilettura critica con Tid, partita dal suo dubbio: *«avevo dato prioritaria l'IVA su soggetto rispetto all'articolo, credo debba essere il contrario»*. ⛔ **`D2` superata da `D7`**: non c'era una precedenza da invertire, c'erano due domande diverse. Verificati sulla doc auto-gen quattro fatti che il documento dava per veri (§R): `I1` già fatta, il pgTAP del §6 sbagliato, il gate mancante su ordini/preventivi, `fn_get_iva_override` **rotta**. Trovato che l'anello «uso fornitura» **esisteva già** (`config.tipi_utenze`, `D11`) e che l'aliquota **cavalca già la catena del prezzo** in tre tabelle mai lette |
 | 2026-08-28 (Rev 2, seguito) | Partendo dalle colonne che Tid aveva messo sul cliente *«perché potevano essere diverse per utility»*: ⭐ **non erano un gruppo solo**. `clienti.iva_id` **si toglie** (`D7-bis`), `split_payment`/`cliente_pa` salgono su **`soggetti`** (`D8`), CIG/CUP/commessa vanno al **contratto** con snapshot in fattura (`D9`) — voce che nel brief non c'era |
+| 2026-08-28 (Rev 2, rilievi di Tid sul racconto) | Due precisazioni nate dal §8. ⚠️ **`D12`**: lo stadio B si valuta **per riga**, e l'ambito è la **condizione di applicabilità** — un titolo ristretto a due articoli non agevola le altre otto righe. Il rischio che Tid ha visto (*«si applica a tutto»*) era nel racconto, non nel disegno, ma senza l'ambito il titolo sarebbe stato il `clienti.iva_id` appena tolto. ❓ Ne esce **`D13` APERTA**: due titoli di tipo diverso sulla stessa riga — proposta «vince il più specifico», da verificare sul merito fiscale. ✅ **`D14`**: la differenza documento/fattura è **temporale, non di natura** — stessa funzione, due momenti; quindi la **data è un parametro** e il risolutore è in **sola lettura** |
+| 2026-08-28 (Rev 2, il congelamento) | ✅ **`D13` chiusa**: vince il più specifico — ma Tid smonta l'esempio che la motivava (intento è su **partita IVA**, disabilità su **codice fiscale**: non convivono). Resta scritta come presidio, perché `soggetti` porta entrambi gli identificativi e una ditta individuale li ha tutti e due. ⛔ **`D15`, ed è una correzione mia**: una **ristampa non fa girare il risolutore** — il calcolo si ferma alla **DEFINITIVA** e da lì il documento è uno snapshot. L'argomento che avevo usato per `D14` («ristampare darebbe un numero diverso») era sbagliato: **ritirato**, la conclusione regge sulla **data documento**. ⭐ Scoperto che la soglia **esiste già** in `fn_ricalcola_riepilogo_iva_fattura` (`NOT IN ('DRAFT','EMESSA')`) ma è **hardcoded**, e che le tre scorciatoie disponibili — `fase`, `ordine`, `chiude_lotto` — sono tutte e tre sbagliate. **`D15-bis`**: il plafond si consuma **nella stessa transizione**, atomica, con lock e ordine deterministico |
+| 2026-08-29 | ✅ Tid conferma i consigli aperti. Diventano decisioni: **`congela_fiscale`** su `config.stati_doc_fiscale` con il porting di `fn_ricalcola_riepilogo_iva_fattura` (→ **`I10`**), e il **lock + ordine deterministico** sul consumo del plafond dentro `I7`. Aggiunto l'**ordine consigliato** delle voci: `I0`/`I8`/`I9`/`I10` subito e in parallelo, poi `I7`, poi `I2` con la sua coda, `I6` per ultima |
+| 2026-08-29 (chiusura del disegno) | ✅ **`D1` DECISA: l'IVA di riga non è modificabile a mano**, in CREATE e in EDIT. L'argomento contro era caduto con `D10` — i titoli si registrano, non si digitano — e non restava nessun caso per-operazione fuori dal risolutore. ⚠️ Verificato lo stato reale prima di deciderla, ed era **mezzo bloccata**: campo grigio in EDIT nei tre form, libero in CREATE, e **API aperta in tutti e tre i casi** (`iva_id` nelle chiavi di update di `ddt_service`, `ordini_service`, `preventivi_service`). Non proteggeva e impediva lo stesso. `I6` diventa concreta e a **due metà** (BE + FE), e resta **per ultima**. ⭐ Il §5 diventa un **processo in quattro fasi**. **Nessuna decisione resta aperta: il brief è completo lato disegno, e niente è ancora applicato** |
 | 2026-08-28 (Rev 2, chiusura) | Tid nomina i casi che rendono la famiglia reale — agevolata disabili, società al 10% senza dichiarazione d'intento. ⭐ `soggetti_intento` diventa **`anagrafiche.soggetti_titoli_iva`** (`D10`), con l'**emittente destinatario** in chiave (`D10-bis`) e l'**ambito fino al singolo articolo**. `I7` sale a **prerequisito di `I2`**. Aggiunto il §8, il racconto in linguaggio piano |

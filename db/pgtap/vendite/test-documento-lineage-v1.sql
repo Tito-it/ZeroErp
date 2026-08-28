@@ -12,7 +12,7 @@
 --   I 2 spot-check sui casi reali §5 (PRV0000185, commessa 186) sono protetti da
 --   skip() quando i dati non sono presenti (es. CI su DB fresco).
 --
--- Indice test (1..44):
+-- Indice test (1..46):
 --    1) vw_documento_lineage_nodi esiste
 --    2) vw_documento_lineage_archi esiste
 --    3) vw_documento_lineage esiste
@@ -76,7 +76,7 @@
 --      «Transito» chiama «Fattura» una nota di credito: vendite.fatture e' UNA
 --      tabella e le viste di lista non proiettano frontiera_uid, cioe' la
 --      chiave con cui si andrebbe a leggere la natura.
---   40) summary: frontiera_natura_doc_codice E' la natura del nodo di
+--   40) summary: frontiera_natura_doc_codice_interno E' la natura del nodo di
 --       frontiera — non quella del nodo proprio
 --   ⭐ 41..43 — L'ARCO U e il RANGO DICHIARATO, aggiunti il 2026-08-28
 --      (changeSet 20260828-24 e -25). U e' «DDT -> Commessa», la quarta
@@ -91,6 +91,14 @@
 --       secondo la regola dichiarata — nessun arco entrante lo batte
 --   44) ⭐⭐ summary: il ROOT e' un arco che ESISTE — cioe' i tre array_agg
 --       hanno pescato dalla stessa riga (il 43 da solo non lo vede)
+--   ⭐ 45..46 — IL CODICE DEL TIPO, aggiunto il 2026-08-29 (changeSet
+--      20260829-02, richiesta BE). Il grafo esponeva il tipo solo come
+--      tipo_id e ogni consumatore se lo traduceva da se': dieci copie a mano
+--      nel backend. ⛔ Il nome e' `*_codice_interno` e non `*_codice` perche'
+--      il valore e' config.sorgenti.codice_interno, cioe' la colonna
+--      IMMUTABILE su cui si fa logica (linee-guida-sql §6c).
+--   45) nodi/summary: tipo_codice_interno E' il codice_interno di tipo_id
+--   46) summary: frontiera_tipo_codice_interno idem, sul nodo di frontiera
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -109,7 +117,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(44);
+SELECT plan(46);
 
 -- ---- 1..4: esistenza oggetti ---------------------------------------------
 SELECT has_view('vendite', 'vw_documento_lineage_nodi',  'vw_documento_lineage_nodi esiste');
@@ -124,7 +132,13 @@ SELECT columns_are('vendite', 'vw_documento_lineage_nodi',
     ARRAY['tipo_id','uid','codice','stato_codice_interno','stato_codice',
           'stato_descrizione','fase','is_abortito','pipeline_rank',
           -- rev 2026-08-21: la natura del documento (solo nodi FATTURA)
-          'natura_doc_codice','natura_doc_descrizione'],
+          'natura_doc_codice_interno','natura_doc_descrizione',
+          -- ⭐ rev 2026-08-29: il CODICE del tipo accanto al suo id, cosi' i
+          -- consumatori smettono di rifarsi il join a config.sorgenti (dieci
+          -- copie a mano nel backend). ⛔ `_codice_interno` e non `_codice`:
+          -- e' la colonna immutabile, e §6c vieta di chiamarla col nome
+          -- dell'altra — il guardrail CI fallisce sul pattern.
+          'tipo_codice_interno'],
     'colonne di vw_documento_lineage_nodi');
 
 SELECT columns_are('vendite', 'vw_documento_lineage_archi',
@@ -132,7 +146,7 @@ SELECT columns_are('vendite', 'vw_documento_lineage_archi',
           'to_stato_codice_interno','to_fase','to_is_abortito','ruolo','arco',
           -- rev 2026-08-21: la proprieta' «ramo di ritorno» vive QUI, una volta
           -- sola: prima la lettera 'R' era ripetuta a mano in tre posti.
-          'is_ramo_inverso','from_natura_doc_codice','to_natura_doc_codice',
+          'is_ramo_inverso','from_natura_doc_codice_interno','to_natura_doc_codice_interno',
           -- ⭐ rev 2026-08-28: il rango DICHIARATO della sorgente. Vive qui per
           -- la stessa ragione di is_ramo_inverso — una proprieta' dell'arco,
           -- calcolata una volta sola — e serve alla CTE inc della summary, che
@@ -149,7 +163,7 @@ SELECT columns_are('vendite', 'vw_documento_lineage',
           'n_sorgenti','root_tipo_id','root_uid','root_codice',
           -- rev 2026-08-21: la natura del nodo, perche' una lista di fatture
           -- smetta di scrivere «Fattura» sopra una nota di credito.
-          'natura_doc_codice','natura_doc_descrizione',
+          'natura_doc_codice_interno','natura_doc_descrizione',
           -- ⭐ rev 2026-08-28 (20260828-22): la natura del nodo di FRONTIERA.
           -- ⛔ QUI STAVA SCRITTO, PER TRE VERSIONI, PERCHE' QUESTA COLONNA NON
           -- DOVEVA ESISTERE — ed e' la ragione per cui il commento sta ancora
@@ -171,7 +185,9 @@ SELECT columns_are('vendite', 'vw_documento_lineage',
           -- ⚠️ Sta in ULTIMA posizione, e non accanto alle sorelle frontiera_*,
           -- perche' CREATE OR REPLACE VIEW puo' solo appendere: chi rilegge
           -- questo elenco non ci veda un disordine da sistemare.
-          'frontiera_natura_doc_codice'],
+          'frontiera_natura_doc_codice_interno',
+          -- ⭐ rev 2026-08-29: il codice del tipo, del nodo e della frontiera.
+          'tipo_codice_interno','frontiera_tipo_codice_interno'],
     'colonne di vw_documento_lineage');
 
 -- ---- 8..10: security_invoker=on sulle 3 viste ----------------------------
@@ -360,7 +376,7 @@ SELECT is(
 -- deve restare NULL. Un valore li' vorrebbe dire che un ramo l'ha copiata.
 SELECT is(
     (SELECT count(*)::int FROM vendite.vw_documento_lineage_nodi
-      WHERE natura_doc_codice IS NOT NULL
+      WHERE natura_doc_codice_interno IS NOT NULL
         AND tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'FATTURA')),
     0, '31) nodi: la natura e'' valorizzata solo sui nodi FATTURA');
 
@@ -372,8 +388,8 @@ SELECT CASE
             (SELECT count(*)::int
                FROM vendite.vw_documento_lineage_archi a
               WHERE a.arco = 'N'
-                AND a.to_natura_doc_codice   = 'NOTA_CREDITO'
-                AND a.from_natura_doc_codice IS DISTINCT FROM 'NOTA_CREDITO'),
+                AND a.to_natura_doc_codice_interno   = 'NOTA_CREDITO'
+                AND a.from_natura_doc_codice_interno IS DISTINCT FROM 'NOTA_CREDITO'),
             (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi WHERE arco = 'N'),
             '32) §44: ogni arco N va da un documento non-NC a una NOTA DI CREDITO'
         )
@@ -423,7 +439,7 @@ SELECT is(
 SELECT is(
     (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
       WHERE arco = 'S'
-        AND to_natura_doc_codice IS DISTINCT FROM 'NOTA_CREDITO'),
+        AND to_natura_doc_codice_interno IS DISTINCT FROM 'NOTA_CREDITO'),
     0, '35) archi: l''arco S arriva sempre a una NOTA DI CREDITO');
 
 -- ⭐ Il presidio della decisione «S non e' un ramo di ritorno», lato discendenti:
@@ -509,7 +525,7 @@ SELECT is(
 --    sua CHIAVE (frontiera_tipo_id, frontiera_uid) e si confronta.
 -- ⛔ L'ERRORE CHE PRENDE, ed e' quello plausibile: esporre la natura del NODO
 --    PROPRIO al posto di quella del nodo di FRONTIERA — cioe' scrivere
---    `n.natura_doc_codice` dove va `fr.d_natura_doc_codice`. Le due colonne
+--    `n.natura_doc_codice_interno` dove va `fr.d_natura_doc_codice_interno`. Le due colonne
 --    hanno lo stesso tipo, la vista si crea senza un errore, e su OGNI nodo che
 --    e' frontiera di se stesso (che sono la maggioranza) i due valori
 --    coincidono: il difetto si vedrebbe solo sulle righe che il chip «Transito»
@@ -523,12 +539,12 @@ SELECT is(
     (SELECT count(*)::int
        FROM vendite.vw_documento_lineage s
       WHERE s.frontiera_tipo_id IS NOT NULL
-        AND s.frontiera_natura_doc_codice IS DISTINCT FROM
-            (SELECT n.natura_doc_codice
+        AND s.frontiera_natura_doc_codice_interno IS DISTINCT FROM
+            (SELECT n.natura_doc_codice_interno
                FROM vendite.vw_documento_lineage_nodi n
               WHERE n.tipo_id = s.frontiera_tipo_id
                 AND n.uid     = s.frontiera_uid)),
-    0, '40) summary: frontiera_natura_doc_codice e'' la natura del nodo di FRONTIERA');
+    0, '40) summary: frontiera_natura_doc_codice_interno e'' la natura del nodo di FRONTIERA');
 
 -- ---- 41..43: l'arco U e il rango dichiarato -------------------------------
 
@@ -647,6 +663,32 @@ SELECT is(
                  AND a.from_tipo_id = s.root_tipo_id AND a.from_uid = s.root_uid
                  AND NOT a.is_ramo_inverso)),
     0, '44) summary: il ROOT corrisponde a un arco entrante che esiste davvero');
+
+-- ⭐ 45..46 — IL CODICE DEL TIPO DICE DAVVERO IL TIPO.
+--    Non e' una tautologia: la colonna esiste per SOSTITUIRE dieci join a
+--    config.sorgenti scritti a mano, e qui si rifa' quel join una volta sola,
+--    dalla parte opposta, per pretendere lo stesso risultato.
+-- ⛔ L'errore che prende e' quello che ha reso necessaria la colonna: un join
+--    sbagliato o dimenticato. E ne prende uno peggiore — `s.codice` al posto
+--    di `s.codice_interno`: oggi i due valori COINCIDONO su tutte e 15 le
+--    righe di config.sorgenti, quindi il difetto sarebbe invisibile finche'
+--    qualcuno non rinomina un codice a video. Qui il confronto e' esplicito
+--    contro codice_interno, che e' la colonna immutabile.
+-- ⚠️ Seed-agnostici: su un DB vuoto contano zero e asseriscono zero.
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.vw_documento_lineage s
+       JOIN config.sorgenti so ON so.id = s.tipo_id
+      WHERE s.tipo_codice_interno IS DISTINCT FROM so.codice_interno),
+    0, '45) summary: tipo_codice_interno e'' il codice_interno di tipo_id');
+
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.vw_documento_lineage s
+       JOIN config.sorgenti so ON so.id = s.frontiera_tipo_id
+      WHERE s.frontiera_tipo_id IS NOT NULL
+        AND s.frontiera_tipo_codice_interno IS DISTINCT FROM so.codice_interno),
+    0, '46) summary: frontiera_tipo_codice_interno e'' il codice_interno della frontiera');
 
 SELECT * FROM finish();
 ROLLBACK;
