@@ -18,7 +18,7 @@
 // ⚠️ Niente export: il backend non espone `/export/` per questo dominio, e dal
 //    2026-07-31 il BB il pulsante non lo mette se non gli passi `exportFn`. Un
 //    pulsante che apre un dialogo inerte e' peggio della sua assenza.
-import { onActivated, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
@@ -34,15 +34,14 @@ import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { DATE_FORMAT } from '../../core/constants'
-import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDistintaSeverity } from '../../core/utils/severity'
+import { useEtichettePagamenti } from '../etichette'
 import { euro } from '../formato'
-import { ORIGINI_DISTINTA } from '../vocabolari'
 import { useDistinteStore } from '../stores/distinte'
 
 
-const emit = defineEmits(['row-click'])
-const { t, te } = useI18n()
+const emit = defineEmits(['row-click', 'new'])
+const { t } = useI18n()
 const store = useDistinteStore()
 const isBlocked = useInjectBlocked()
 
@@ -50,6 +49,11 @@ const {
   onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
+  // ⭐ «Apri distinta» e non «Nuovo»: il gesto ha un nome nel dominio, e non e'
+  //    una creazione qualunque — e' un *get or create* che puo' RIDARTI quella
+  //    di stamattina (Q-3). Il BB monta l'azione solo perche' passiamo `onNew`.
+  onNew: () => emit('new'),
+  newTooltipKey: 'pagamenti.distinte.apri_tooltip',
   searchTableOptions: { defaultSortField: 'data_contabile', defaultSortOrder: 'desc' },
 })
 
@@ -72,21 +76,19 @@ const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
 //    database aggiunge e i locales non conoscono si vede come CODICE. Con `t()`
 //    diretto a video sarebbe finito il PATH della chiave
 //    («pagamenti.distinte.origine_xxx»), che non e' un'etichetta ne' un errore.
-const etichettaOrigine = (o) =>
-  labelOrCode(t, te, `pagamenti.distinte.origine_${String(o).toLowerCase()}`, o)
-const opzioniOrigine = ORIGINI_DISTINTA.map((o) => ({ value: o, label: etichettaOrigine(o) }))
+const { origineDistinta: etichettaOrigine, opzioniOrigineDistinta } = useEtichettePagamenti()
+const opzioniOrigine = opzioniOrigineDistinta()
 
 function onRowClick(data) { emit('row-click', data) }
 
 // ⭐ Coda di lavoro: carica subito, senza aspettare un filtro. Non e' una lista
 //    storica — l'arretrato e' proprio cio' che si viene a vedere.
 onMounted(() => store.fetchList())
-// ⚠️ `onActivated` E NON SOLO `onMounted`: le viste vivono sotto KeepAlive, e al
-//    rientro nella scheda `onMounted` non scatta piu' — la coda resterebbe ferma
-//    a com'era dieci minuti fa. Su elenchi che esistono per non far sparire del
-//    denaro, «vuoto» e «vuoto da allora» si leggono uguali
-//    (memoria feedback_keepalive_onactivated).
-onActivated(() => store.fetchList())
+// ⛔ NIENTE `onActivated` che ricarica: la freschezza al rientro nella scheda la
+//    tiene gia' `useSearchTable` (refetch idempotente della pagina corrente,
+//    saltato alla prima attivazione). Aggiungerne un secondo qui manderebbe DUE
+//    richieste identiche a ogni rientro, e le loro risposte possono tornare in
+//    ordine inverso — su una lista di denaro, l'ordine conta.
 </script>
 
 <template>

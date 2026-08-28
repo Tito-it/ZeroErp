@@ -22,26 +22,31 @@
 > vuole.»*
 >
 > **Correlati:**
-> [brief-db-numerazione-data-documento-e-sequenza.md](../work-done/brief-db-numerazione-data-documento-e-sequenza.md)
+> [brief-db-numerazione-data-documento-e-sequenza.md](brief-db-numerazione-data-documento-e-sequenza.md)
 > (la data dichiarata e il cancello di sequenza — questo brief ne è il seguito
 > naturale) ·
-> [brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)
+> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
 >
-> 🟡 **Stato al 2026-08-26: REALIZZATO E COLLAUDATO A METÀ.**
+> ✅ **Stato al 2026-08-28: CHIUSO.**
 > Backend e frontend sono scritti, verificati e in albero; l'interfaccia è stata
 > vista in-app da Tid («ora la grafica funziona», «da fatturate il link porta
-> correttamente ai lotti»).
+> correttamente ai lotti»), e il **collaudo dei verbi è stato eseguito per
+> intero**: sedici prove verdi, numeri veri consumati e riletti sui lotti.
 >
-> **Resta aperto, e il brief NON si chiude finché non lo è:**
->
-> | | Cosa manca | Chi |
+> | | Cosa mancava | Come si è chiusa |
 > | --- | --- | --- |
-> | 🔴 **C-1** | il collaudo dei **verbi**: numerare una selezione, numerare il mese, il limite che si sposta fra sezionali diversi. ⭐ **Copione scritto il 2026-08-27**: [collaudo-in-app-rendi-definitive-sui-lotti.md](collaudo-in-app-rendi-definitive-sui-lotti.md) — 13 prove, ordinate perché le sei che **non** consumano numeri vengano prima delle cinque che li consumano | Tid |
-> | 🔴 **C-2** | la **guida** (§7.1 e §6.3 di `cruscotti-fatturazione.md`) | dopo il passo L5 dell'altro cantiere (§9.1) |
+> | ✅ **C-1** | il collaudo dei **verbi**: numerare una selezione, numerare il mese, il limite che si sposta fra sezionali diversi | **Chiuso il 2026-08-28 da Tid**: verbale in [collaudo-in-app-rendi-definitive-sui-lotti.md](collaudo-in-app-rendi-definitive-sui-lotti.md) — 16 prove, tutte verdi, **quattro difetti** trovati e corretti (R-1 → R-4) |
+> | ✅ **C-2** | la **guida**, che descriveva ancora «Rendi definitive» sulla card `Fatturate` | **Trasferita e FATTA** il 2026-08-28 dal cantiere gemello [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) (§12.3), che possiede la stessa §7.1: riscritta da **una mano sola**. ⚠️ Due riferimenti di questa consegna erano sbagliati e sono corretti là: il passo **L5** era **già fatto** (è un lotto del brief DB, chiuso il 2026-08-27), e la guida **non ha un §6.3** — quel numero è una sezione di *questo* brief, e il punto da correggere era la **§7.5** |
 >
-> ⚠️ C-1 non è una formalità: è un **atto fiscale**, e finora ne è stato provato
-> il percorso (endpoint, coda, perimetro, guard) ma non l'**esito** — nessun
-> numero è stato consumato in collaudo.
+> ⭐ **C-2 non è stata dichiarata fatta né lasciata cadere con l'archiviazione**:
+> è stata **spostata dove sta la mano che la esegue**. La §9.1 vietava di
+> riscrivere la §7.1 in parallelo da due cantieri; archiviare questo brief
+> lasciandola qui l'avrebbe resa invisibile proprio a chi deve farla.
+>
+> ⚠️ C-1 non era una formalità: è un **atto fiscale**, e fino al 2026-08-27 ne
+> era stato provato il percorso (endpoint, coda, perimetro, guard) ma non
+> l'**esito** — nessun numero era stato consumato in collaudo. Ora sì, ed è
+> quello che ha chiuso il cantiere.
 >
 > ⛔ **E il primo click vero, il 2026-08-27, ha trovato subito un difetto**: il
 > verbo su **selezione** non aveva mai funzionato. Il frontend mandava
@@ -64,9 +69,10 @@
 > test**: non c'è un runner FE e i test Django mockano la request. Si vede solo
 > con una chiamata vera.
 >
-> ⛔ C-2 è bloccato da un ordine, non da un dubbio: la stessa tabella dei verbi
+> ⛔ C-2 era bloccata da un ordine, non da un dubbio: la stessa tabella dei verbi
 > viene riscritta anche dal cantiere gemello, e fare i due passi in parallelo
-> significa che una delle due mani perde il lavoro dell'altra.
+> significa che una delle due mani perde il lavoro dell'altra. Per questo, alla
+> chiusura, è passata **al gemello** invece di restare qui.
 
 ---
 
@@ -624,7 +630,8 @@ in coda al §«Pagina Lotti bianca»: **una firma non si ricorda, si legge**.
 - **Il rimando porta il mese, non «solo gli emessi»** (D-8): il filtro della
   lista Lotti è sullo stato del *lavoro*, non del *documento*. Quali righe si
   numerino lo dice la casella, riga per riga, col suo motivo.
-- **La guida** (C-2): bloccata dall'ordine col cantiere gemello.
+- **La guida** (C-2): bloccata dall'ordine col cantiere gemello — alla chiusura
+  del brief (2026-08-28) la voce è **passata al gemello**, passo L5.
 
 ### ⚠️ Nota per chi committerà
 
@@ -693,6 +700,30 @@ avrebbe preso il verde misurando niente.
 
 ### 10.4 Cosa resta
 
-**C-1 non è chiuso**: il collaudo è in corso, 15 prove di cui 4 consumano numeri.
-**C-2** (la guida) è invariato — sempre in attesa del passo L5 del cantiere
-gemello (§9.1).
+*(scritto il 2026-08-27, superato il giorno dopo)* **C-1 non è chiuso**: il
+collaudo è in corso, 15 prove di cui 4 consumano numeri. **C-2** (la guida) è
+invariato — sempre in attesa del passo L5 del cantiere gemello (§9.1).
+
+---
+
+## 11. Chiusura — 2026-08-28
+
+**C-1 è chiuso.** Tid ha eseguito il collaudo per intero: 16 prove (0 → 15),
+tutte verdi, numeri veri consumati sulle prove 6, 9, 10 e 11 e **riletti sui
+lotti** — che era il punto dell'intero copione. Verbale:
+[collaudo-in-app-rendi-definitive-sui-lotti.md](collaudo-in-app-rendi-definitive-sui-lotti.md).
+
+**C-2 non muore qui: cambia sede.** La riscrittura di §7.1 e §6.3 di
+`cruscotti-fatturazione.md` è una voce esplicita del cantiere gemello
+[brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md),
+passo **L5** — l'unico che può riscrivere quella tabella senza che due mani si
+sovrascrivano (§9.1). Finché quella voce è aperta, la guida **dice il falso**
+sulla posizione di «Rendi definitive»: è la cosa da guardare per prima, aprendo
+il gemello.
+
+⚠️ **Cosa questo cantiere lascia scritto.** Il difetto R-1 — frontend che
+serializza in un modo, backend che legge in un altro, con accanto un commento che
+affermava il contrario — **non lo prende nessun test**: non c'è un runner FE e i
+test Django mockano la request. Si è visto solo con una chiamata vera, fatta da
+una persona. È l'argomento a favore di questi copioni di collaudo, non una
+scusa per averne avuto bisogno.

@@ -52,7 +52,7 @@
 > | 🔴 | **Il collaudo in-app** — il copione è scritto: [collaudo-in-app-riporta-da-emettere.md](collaudo-in-app-riporta-da-emettere.md), **11 prove**. Le 5 righe vere (`1123`, `1130`–`1133`, luglio 2026, 5.019 €) sono ancora dove erano: il recupero è il primo gesto. ⛔ Se il verbo non le prende non ha fallito la bonifica, **ha fallito il perimetro** | **Tid** |
 > | ⏸️ | **E-3** — il codice «rientrato» in `codici-errore-baseline.sh` (**§9**). ⚠️ Finché la baseline non si stringe, quella famiglia resta *dichiarata ammessa* e il presidio non la vedrebbe tornare: è un cancello mezzo spento | chi possiede quel codice |
 > | ⏸️ | **§11.6** — due convenzioni per `ordinamento_default` in `ui`. Per noi indifferente: `competenza_mese` risolve con entrambe | chi possiede lo schema `ui` |
-> | ⚠️ | **La §7.1 della guida è contesa** con `brief-be-fe-rendi-definitive-sui-lotti.md` (§7 qui sotto). Il nostro intervento è **additivo**, quindi un merge non ha nulla da scegliere — ma la tabella la riscrivono due mani | da coordinare |
+> | ✅ | **C-2 — la guida non dice più il falso su «Rendi definitive»**: ereditata il 2026-08-28 dal cantiere gemello [brief-be-fe-rendi-definitive-sui-lotti.md](../work-done/brief-be-fe-rendi-definitive-sui-lotti.md) e **fatta lo stesso giorno** (§12.3). ⛔ Due annotazioni della consegna erano sbagliate e sono corrette lì | **fatta** |
 > | 🔵 | La prova del seleziona-tutto **non gira in CI**: nel frontend non c'è un runner (**§13.6**). Non è un debito di questo cantiere, è del frontend | — |
 >
 > ⛔ **Tutto il resto in questo file è CHIUSO.** I §§ che leggono come richieste
@@ -853,6 +853,56 @@ lotti») deve riscrivere. ⚠️ Il mio intervento è **additivo** — una riga 
 coda alla tabella e tre note sotto — e non tocca la riga di «Rendi definitive»:
 un merge fra i due lavori non ha nulla da scegliere. Resta valido l'avvertimento
 di coordinarsi, non di lavorare in parallelo sulla stessa riga.
+
+> ⭐ **Aggiornamento 2026-08-28 — la contesa non c'è più: è diventata eredità.**
+> Il cantiere gemello ha chiuso il suo collaudo (16 prove verdi, numeri veri
+> consumati) ed è stato archiviato in
+> [work-done](../work-done/brief-be-fe-rendi-definitive-sui-lotti.md) **con la
+> sua voce C-2 ancora aperta**: la riscrittura di §7.1 e §6.3. Quella voce è
+> passata **qui**, nella tabella «Cosa resta aperto» in testa al file, perché
+> l'ordine che la bloccava era proprio l'attesa del nostro **L5**.
+>
+> ➡️ **Eseguita il 2026-08-28**: il dettaglio, e le due annotazioni della
+> consegna che erano sbagliate, stanno nel **§12.3** qui sotto.
+
+
+### 12.3 ✅ C-2 — la guida rimessa in pari su «Rendi definitive» (2026-08-28)
+
+La voce **C-2** è arrivata qui dal cantiere gemello, che ha chiuso il suo
+collaudo (16 prove, numeri veri consumati) ed è stato archiviato **lasciandola
+aperta**. È stata eseguita lo stesso giorno.
+
+#### ⛔ Prima: due annotazioni della consegna erano sbagliate
+
+| Annotazione | Perché è sbagliata |
+| --- | --- |
+| *«la riscrittura va fatta **al passo L5**»* | 🔴 **L5 era già fatto.** `L5` è un lotto del **brief DB** — «la card *Emesse non fatturate* prende un verbo» — ed è esattamente il §12 di questo brief, chiuso il 2026-08-27. L'ordine che bloccava C-2 era **decaduto da un giorno**, e la riga la dichiarava ancora bloccata |
+| *«§7.1 e **§6.3** di `cruscotti-fatturazione.md`»* | 🔴 **La guida non ha un §6.3.** Ha `## 6. Come si distinguono` senza sottosezioni. `§6.3` è una sezione **del brief gemello** («Sulla Lente 1»): i due riferimenti si sono fusi passando di mano. Il punto vero da correggere nella guida era la **§7.5** |
+
+⭐ **Ed è la specie di difetto che questo cantiere insegue da tre giorni**: non un
+errore di codice, ma **un'indicazione che era vera quando è stata scritta**.
+Chi avesse eseguito la consegna alla lettera avrebbe aspettato un passo già
+fatto, e cercato una sezione che non esiste.
+
+#### Cosa è stato corretto, e su cosa si è verificata la verità
+
+⚠️ Non sulla parola del brief gemello: **sul codice**. `DashboardCompetenzaView`
+non ha più il verbo sulla card `Fatturate` — ha il pulsante «Vai ai lotti (N)»
+col filtro (mese + stato `EMESSA`), gated su permesso e conteggio; il verbo vive
+in `LottiListView` in due forme, sui selezionati e sul mese. Sono le decisioni
+**D-1 → D-3** del gemello, applicate.
+
+| Dove | Cosa diceva | Cosa dice |
+| --- | --- | --- |
+| guida §7.1, tabella dei verbi | «Rendi definitive» → card `Fatturate` | ➡️ **non è più qui**: sta su Vendite → Lotti; sulla card resta il **rimando** filtrato |
+| guida §7.1, nota sotto | ⚠️ *«sta sulla card `Fatturate`, non su `Emesse non fatturate`»* — una correzione di agosto che **si è a sua volta invecchiata** | ⭐ il racconto dello spostamento, con la tabella «dove c'è cosa» e la regola che lo motiva: **un verbo sta dove sta l'elenco del suo oggetto** |
+| guida §7.5 | 🔴 *«dalla card `Fatturate` al lotto non si arriva: è un buco noto»* | ✅ **il buco è chiuso**: dalla card ci si arriva col rimando filtrato. Resta aperto l'aggancio **dalla singola riga**, e adesso la guida distingue le due cose |
+| guida, testata | — | la revisione dichiara lo spostamento e avverte che **le regole non cambiano: cambia dove si preme** |
+| `mappa-concentrica.md` | «dalle tre lenti si agisce: … «Rendi definitive» …» | corretta: «Rendi definitive» **non** è fra quelli, e al suo posto entra «Riporta da emettere» |
+
+🔎 La riga della mappa era il **terzo punto** segnalato dal gemello, ed è l'unico
+dei tre che era giusto: la stessa affermazione in un documento diverso, che chi
+corregge solo la guida si lascia dietro.
 
 ---
 

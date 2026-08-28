@@ -73,7 +73,7 @@ dei `task_runs` — `fn_start_lotto_task_run` / `fn_complete_lotto_task_run` /
 «inserisci un giro già finito» non è più un'operazione che esiste: lasciarla
 sarebbe una seconda porta sulla stessa tabella, che scrive righe senza
 `correlation_id` e senza passare dallo stato aperto. Non siamo in produzione
-([memoria](../../../.codex/AGENTS.md), e la decisione D-4 dello stesso cantiere
+([memoria](../../../../.codex/AGENTS.md), e la decisione D-4 dello stesso cantiere
 ha già azzerato `event_log`): il `DROP` è la risposta pulita, e il BE adegua il
 proprio repository nello stesso giro.
 

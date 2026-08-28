@@ -9,7 +9,9 @@
 > cantiere insieme alla guida (C-2). Il codice è scritto, committato
 > (`625c743c6`) e l'interfaccia è stata vista. Ma di questi verbi è stato provato
 > il **percorso** — endpoint, coda, perimetro, guard — mai l'**esito**:
-> ⛔ **nessun numero è stato consumato in collaudo**.
+> ⛔ **nessun numero è stato consumato in collaudo** *(vero al 2026-08-27: il
+> 2026-08-28 le prove 6, 9, 10 e 11 hanno consumato numeri veri, ed è
+> esattamente ciò che ha chiuso il collaudo)*.
 >
 > ⭐ **E il primo click vero ha già trovato un difetto**: il 2026-08-27 Tid ha
 > spuntato un lotto, ha chiesto «Rendi definitivi i selezionati» e il dialog ha
@@ -17,7 +19,11 @@
 > nella **prova 0**. Il che dice due cose: che questo documento serve, e che il
 > verbo su selezione **non era mai stato percorso da una persona**.
 >
-> **Stato**: in corso — due difetti già trovati e corretti (R-1, R-2 nel verbale).
+> ✅ **Stato: CHIUSO il 2026-08-28.** Le 16 prove del verbale (0 → 15) sono
+> state eseguite da Tid, tutte con esito verde; i numeri **sono stati consumati**
+> e riletti sui lotti. Quattro difetti trovati e corretti strada facendo
+> (R-1 → R-4). Il documento è archiviato in `work-done/`: la voce **C-1** del
+> brief si chiude qui.
 > **Ambiente**: sviluppo (`dbdev`).
 > **Pagina**: `vendite/lotti`.
 
@@ -275,50 +281,59 @@ E sulla card **non** deve esserci più il vecchio pulsante «Rendi definitive».
 
 ## Verbale
 
-**Chiuso il**: ______ · **Da**: ______ · **Ambiente**: ______
+**Chiuso il**: 2026-08-28 · **Da**: Tid · **Ambiente**: sviluppo (`dbdev`)
 
 | #   | Prova                                        | Consuma numeri | Esito | Note |
 | --- | -------------------------------------------- | -------------- | ----- | ---- |
-| 0   | Il dialog legge la finestra                  | no             | ⬜     |      |
-| 1   | Selezione sopravvive al cambio pagina        | no             | ⬜     |      |
-| 2   | Selezione attraversa le due schede           | no             | ⬜     |      |
-| 3   | Seleziona-tutto è **di pagina**              | no             | ⬜     |      |
-| 4   | Conteggio onesto (selezionati vs numerabili) | no             | ⬜     |      |
-| 5   | La casella si spegne sotto i piedi           | no             | ⬜     |      |
-| 6   | **Numerare una selezione — il numero c'è**   | **sì**         | ⬜     |      |
-| 7   | Il limite fra sezionali diversi              | no             | ⬜     |      |
-| 8   | Stesso perimetro → nessun secondo giro       | no             | ⬜     |      |
-| 9   | Selezioni diverse → due giri                 | **sì**         | ⬜     |      |
-| 10  | Verbo per-riga (non regressione)             | **sì**         | ⬜     |      |
-| 11  | Numerare il mese, senza toccare i recuperi   | **sì**         | ⬜     |      |
-| 12  | Selezione intatta dopo un fallimento         | no             | ⬜     |      |
-| 13  | Il rimando dalla Lente 1 porta il filtro     | no             | ⬜     |      |
-| 14  | I verbi si riaccendono dopo il giro          | no             | ⬜     |      |
-| 15  | Rotellina sui lotti del giro, e sparisce     | no             | ⬜     |      |
+| 0   | Il dialog legge la finestra                  | no             | ✅     | dopo la correzione **R-1** |
+| 1   | Selezione sopravvive al cambio pagina        | no             | ✅     |      |
+| 2   | Selezione attraversa le due schede           | no             | ✅     |      |
+| 3   | Seleziona-tutto è **di pagina**              | no             | ✅     |      |
+| 4   | Conteggio onesto (selezionati vs numerabili) | no             | ✅     |      |
+| 5   | La casella si spegne sotto i piedi           | no             | ✅     |      |
+| 6   | **Numerare una selezione — il numero c'è**   | **sì**         | ✅     | numeri consumati e **riletti sul lotto** |
+| 7   | Il limite fra sezionali diversi              | no             | ✅     |      |
+| 8   | Stesso perimetro → nessun secondo giro       | no             | ✅     |      |
+| 9   | Selezioni diverse → due giri                 | **sì**         | ✅     | eseguibile solo dopo i **giri concorrenti** (§10.2 del brief) |
+| 10  | Verbo per-riga (non regressione)             | **sì**         | ✅     |      |
+| 11  | Numerare il mese, senza toccare i recuperi   | **sì**         | ✅     | i recuperi **non** sono stati toccati |
+| 12  | Selezione intatta dopo un fallimento         | no             | ✅     |      |
+| 13  | Il rimando dalla Lente 1 porta il filtro     | no             | ✅     |      |
+| 14  | I verbi si riaccendono dopo il giro          | no             | ✅     | dopo la correzione **R-2** |
+| 15  | Rotellina sui lotti del giro, e sparisce     | no             | ✅     |      |
 
 ### Che cosa ha trovato il collaudo
 
-> Da riempire strada facendo. Vale più delle spunte: un elenco vuoto accanto a
-> tredici verdi si legge come «non abbiamo guardato», non come «era tutto a
-> posto».
+> Vale più delle spunte: un elenco vuoto accanto a sedici verdi si legge come
+> «non abbiamo guardato», non come «era tutto a posto». Questo, di righe, ne ha
+> **quattro** — e due di esse rendevano il verbo su selezione inutilizzabile.
 
 | #   | Cosa                                                                                                                                                                | Dove è finito                                              |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | R-1 | La selezione viaggiava come `?lotti[]=…` mentre il backend legge `lotti`                                                                                            | ✅ corretto il 2026-08-27 in `api/lotti.js` (prova 0)       |
 | R-2 | I due verbi restavano **spenti per sempre** dopo un giro: `useJobPolling` si sospendeva da sé al cambio tab e delegava il `resume()` alla view, che non lo chiamava | ✅ corretto il 2026-08-27 nel BB `useJobPolling` (prova 14) |
-|     |                                                                                                                                                                     |                                                            |
+| R-3 | Dopo l'invio la selezione **non si svuotava**: il contatore continuava a contare righe già in volo                                                                  | ✅ corretto il 2026-08-27 — `useRigheInGiro` + prune in `useSelezioneLotti` (§10.2 del brief) |
+| R-4 | La scheda **«Recuperi» sopravviveva al cambio mese**: il mese nuovo si apriva sulla vista di eccezione                                                              | ✅ corretto il 2026-08-27 — `watch` su `competenzaParam` (`onActivated` non basta: un cambio filtro non riattiva niente) |
 
 ---
 
-## Quando questo verbale è chiuso
+## ✅ Verbale chiuso — 2026-08-28
 
-La voce **C-1** del brief si chiude. Resta **C-2** — la guida
+La voce **C-1** del brief **è chiusa**: sedici prove verdi, numeri consumati e
+riletti sui lotti, quattro difetti trovati e corretti. Il brief
+[brief-be-fe-rendi-definitive-sui-lotti.md](brief-be-fe-rendi-definitive-sui-lotti.md)
+è archiviato qui accanto, in `work-done/`.
+
+Resta **C-2** — la guida
 (`cruscotti-fatturazione.md` §7.1 e §6.3), che oggi descrive ancora «Rendi
 definitive» sulla card `Fatturate`, cioè il contrario di quello che
 l'applicazione fa. ⛔ È bloccata da un **ordine**, non da un dubbio: la stessa
 tabella dei verbi la riscrive anche il passo **L5** del cantiere gemello, e farli
 in parallelo significa che una delle due mani perde il lavoro dell'altra (§9.1
-del brief).
+del brief). ⭐ **Per non perderlo con l'archiviazione, C-2 è stato trascritto
+come voce esplicita nel cantiere gemello**
+[brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md),
+che possiede il passo L5 e la §7.1: la riscrive **una mano sola**, la sua.
 
 ⚠️ **Un difetto trovato qui non riapre il brief da sé**: va guardato dove
 appartiene. Quello della prova 0 era di questo cantiere ed è stato corretto qui;

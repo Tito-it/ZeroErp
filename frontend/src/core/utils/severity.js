@@ -432,6 +432,22 @@ export function statoRigaContabileSeverity(codice) {
   return resolveSeverity(STATO_RIGA_CONTABILE_MAP, codice)
 }
 
+// Stati di un ATTO DI SISTEMAZIONE (`pagamenti.sistemazioni.stato`):
+// BOZZA=arancio (una decisione presa e NON ancora eseguita: e' quella che
+// chiede il gesto successivo) · CONFERMATA=verde (il denaro si e' mosso) ·
+// ANNULLATA=grigio (scartata, resta a registro con la sua ragione).
+// ⚠️ ANNULLATA e' grigia e non rossa: scartare una decisione non e' un guasto,
+// e' un esito previsto — colorarla di rosso metterebbe in allarme per una cosa
+// che qualcuno ha deciso apposta.
+export const STATO_SISTEMAZIONE_MAP = {
+  BOZZA: 'warn',
+  CONFERMATA: 'success',
+  ANNULLATA: 'secondary',
+}
+export function statoSistemazioneSeverity(codice) {
+  return resolveSeverity(STATO_SISTEMAZIONE_MAP, codice)
+}
+
 // Classi di azionabilita' backlog fatturazione (Lente 2, DL-6/7):
 // RECUPERABILE=arancio (lavoro interno da fare), SOLLECITO_CLIENTE=azzurro
 // (attesa esterna), ANOMALIA=rosso (da rivedere). Il FISIOLOGICO non arriva

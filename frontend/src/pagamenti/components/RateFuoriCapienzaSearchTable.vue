@@ -17,7 +17,7 @@
 //    del dovuto) e movimento contrario (un segno che non torna). Il filtro le
 //    separa; il vocabolario e' chiuso, e un valore sbagliato darebbe una lista
 //    vuota — cioe' «non c'e' niente da sistemare», che qui e' la bugia peggiore.
-import { onActivated, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
@@ -30,15 +30,14 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { labelOrCode } from '../../core/utils/i18nLabel'
+import { useEtichettePagamenti } from '../etichette'
 import { euro } from '../formato'
-import { MOTIVI_FUORI_CAPIENZA } from '../vocabolari'
 import { useRateFuoriCapienzaStore } from '../stores/rateFuoriCapienza'
 
 const emit = defineEmits(['row-click'])
 // ⚠️ `te` serve a decodificare fail-visible: un motivo che il database aggiunge
 //    e i locales non conoscono si vede come CODICE, non come cella vuota.
-const { t, te } = useI18n()
+const { t } = useI18n()
 const store = useRateFuoriCapienzaStore()
 const isBlocked = useInjectBlocked()
 
@@ -55,19 +54,17 @@ const { value: motivoFilter, onChange: onMotivoChange } = bindSelect('motivo')
 // ⛔ Vocabolario CHIUSO, e sono DUE mondi diversi: `SOVRA_INCASSATA` (e' entrato
 //    piu' del dovuto) e `MOVIMENTO_CONTRARIO` (un segno che non torna). Due voci
 //    statiche e non un lookup: e' un CHECK del backend, non una tabella.
-// Scopo: etichetta del motivo, fail-visible (BB `labelOrCode`).
-const etichettaMotivo = (m) =>
-  labelOrCode(t, te, `pagamenti.rate_fuori_capienza.motivo_${String(m).toLowerCase()}`, m)
-const opzioniMotivo = MOTIVI_FUORI_CAPIENZA.map((m) => ({ value: m, label: etichettaMotivo(m) }))
+const { motivoFuoriCapienza: etichettaMotivo, opzioniMotivoFuoriCapienza } =
+  useEtichettePagamenti()
+const opzioniMotivo = opzioniMotivoFuoriCapienza()
 
 function onRowClick(data) { emit('row-click', data) }
 onMounted(() => store.fetchList())
-// ⚠️ `onActivated` E NON SOLO `onMounted`: le viste vivono sotto KeepAlive, e al
-//    rientro nella scheda `onMounted` non scatta piu' — la coda resterebbe ferma
-//    a com'era dieci minuti fa. Su elenchi che esistono per non far sparire del
-//    denaro, «vuoto» e «vuoto da allora» si leggono uguali
-//    (memoria feedback_keepalive_onactivated).
-onActivated(() => store.fetchList())
+// ⛔ NIENTE `onActivated` che ricarica: la freschezza al rientro nella scheda la
+//    tiene gia' `useSearchTable` (refetch idempotente della pagina corrente,
+//    saltato alla prima attivazione). Aggiungerne un secondo qui manderebbe DUE
+//    richieste identiche a ogni rientro, e le loro risposte possono tornare in
+//    ordine inverso — su una lista di denaro, l'ordine conta.
 </script>
 
 <template>
