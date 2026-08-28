@@ -21,11 +21,17 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-07-18)
+(rev 2026-08-28)
 
 Blocca l'**emissione** di un DDT (transizione a stato `EMESSO`) quando il documento non
-dichiara **perché la merce viaggia**, o quando dichiara una vendita ma non ha prezzi con cui
-fatturarla.
+dichiara **perché la merce viaggia**, quando dichiara una vendita ma non ha prezzi con cui
+fatturarla, o quando una riga porta un **prezzo senza aliquota**.
+
+> ⚠️ **Il nome nomina la sola causale, ed è rimasto quello di quando il motivo era uno.**
+> Oggi il guard è il gate del **valore della riga** in tre facce. Il nome **non si cambia** —
+> rinominare una trigger function significa rinominare il trigger, ogni doc auto-generata che la
+> cita e ogni pgTAP che la nomina, per un guadagno di sola leggibilità — ma chi legge non deve
+> dedurlo: sta scritto qui e nello `Scopo` del corpo.
 
 Applicata dal trigger `trg_ddt_a10_guard_causale_emissione_upd`
 (fase `_a10_`, `BEFORE UPDATE OF stato_doc_ddt_id`) — stesso posizionamento del guard
@@ -40,7 +46,7 @@ compila — la causale di trasporto.
 
 ---
 
-### Le due regole
+### Le tre regole
 
 **R1 — la causale è obbligatoria all'emissione.**
 `ddt.causale_trasporto_id` è nullable, ma dall'emissione in poi non è più ammesso: senza
@@ -67,14 +73,52 @@ solo trasporto.
 Il risultato è che **il prezzo dimenticato diventa un errore all'emissione**, invece di un
 documento silenziosamente mal classificato che poi genererebbe attività senza prezzo.
 
+**R3 — una riga che porta un *prezzo* porta anche l'*aliquota*.** (rev 2026-08-28)
+Se `prezzo_unitario` è valorizzato e `iva_id` no, l'emissione si ferma. In **bozza il NULL
+resta legittimo**, come per la causale in R1: il documento si lavora, e si dichiara completo
+quando esce.
+
+> ⭐ **Qui il discrimine è il PREZZO, non la causale — ed è la differenza con R2.**
+> R2 si condiziona sulla causale perché un documento che non vende non deve avere un prezzo
+> *risolvibile*. Ma se un prezzo **c'è** — e su un conto visione può esserci — quella riga entra
+> comunque nel **riepilogo IVA** del documento, che la causale non la guarda affatto: ne
+> uscirebbe una riga con **imponibile pieno, codice IVA vuoto e imposta zero**, su un foglio che
+> si stampa e si consegna.
+>
+> > *Un vincolo deve avere lo stesso perimetro del consumatore che protegge.*
+>
+> ⚠️ E per la stessa ragione R3 guarda `prezzo_unitario` della riga DDT e **non** la `COALESCE`
+> col fulfillment che usa R2: una riga dal prezzo solo **derivato** nel riepilogo non entra,
+> quindi non ha il difetto — pretendere lì l'aliquota bloccherebbe un documento sano.
+>
+> ⛔ **Perché non un `NOT NULL` sulla colonna**, che sarebbe la forma ovvia:
+> `vendite.ordini_righe.iva_id` è **nullable** e `fn_genera_ddt_da_ordine` la copia tale e
+> quale, quindi il vincolo avrebbe fatto **fallire l'evasione di un ordine** con un errore
+> tecnico muto, su un percorso che funziona. Il NULL è ammesso lungo tutta la catena: chiudere
+> l'ultimo anello sposta il punto di rottura su chi non c'entra. *Un vincolo si mette dove il
+> dato si può fornire, non dove il difetto si vede.*
+
 ---
 
 ### Errori sollevati
 
-| Codice | Quando | Contesto |
-|---|---|---|
-| `E_DDT_CAUSALE_OBBLIGATORIA` (544) | R1: emissione senza causale | `ddt_id`, `numero` |
-| `E_DDT_PREZZO_NON_RISOLVIBILE` (545) | R2: causale fatturabile + riga senza prezzo risolvibile | `ddt_id`, `numero`, **`riga_id`** — nomina la riga colpevole |
+| Codice | Quando | Contesto | Nella frase |
+|---|---|---|---|
+| `E_DDT_CAUSALE_OBBLIGATORIA` (544) | R1: emissione senza causale | `ddt_id`, `numero` | numero DDT |
+| `E_DDT_PREZZO_NON_RISOLVIBILE` (545) | R2: causale fatturabile + riga senza prezzo risolvibile | `ddt_id`, `numero`, **`riga_id`** | numero DDT + `riga_id` |
+| `E_DDT_RIGA_IVA_MANCANTE` (1009) | R3: riga con prezzo e senza aliquota | `ddt_id`, `numero`, `riga_id`, **`riga_nr`** | numero DDT + **`riga_nr`** |
+
+> ⚠️ **Il codice nuovo mette nella frase il NUMERO di riga, non l'id** — e il gemello (545)
+> mette l'id. Non è un'incoerenza rimasta lì per caso: i valori che riempiono i `%s`
+> **compongono la frase che una persona legge**, e un id tecnico non si cerca a mano sul
+> documento. L'id resta nel contesto, che è il canale di chi diagnostica. ⛔ Il 545 **non** è
+> stato «corretto» nello stesso giro: cambiare il testo di un messaggio in servizio dentro un
+> changeSet che parla d'altro è un'altra modifica.
+>
+> ⚠️ `E_DDT_RIGA_IVA_MANCANTE` è **`CONFLITTO_STATO`** (409) come i suoi due gemelli, non
+> `DATO_ERRATO`: la richiesta è *«porta il DDT a EMESSO»*, e non c'è un campo **di quella
+> richiesta** da correggere — è la situazione del documento a non consentirla. Ne discende che
+> nel contesto **non** va la chiave `campo`.
 
 ---
 
@@ -106,7 +150,20 @@ UPDATE vendite.ddt
 * **Impatto sulle fixture di test**: qualunque test che porti un DDT a `EMESSO` deve ora
   valorizzare la causale prima della transizione. È il motivo per cui le fixture pgTAP della
   slice assegnano `VENDITA` prima di emettere.
-* Test: `db/pgtap/vendite/test-ddt-solo-trasporto-causale-v1.sql`.
+  ⚠️ **Dal 2026-08-28 non basta più**: con R3, una fixture che valorizza il prezzo e non
+  l'aliquota non emette. E ⛔ *«DDT di solo trasporto»* sono **due** condizioni, non una —
+  causale **non** fatturabile **e** righe **senza** prezzo: con la causale `VENDITA` una riga
+  senza prezzo la ferma già R2, con un errore che *sembra* di R3 e non lo è. Costato un rosso
+  in fase di scrittura del test.
+* **Il predicato non si riscrive qui**: le tre condizioni le valuta
+  [`script.fn_check_ddt_emittibile`](/dbzero/script/funzioni/fn_check_ddt_emittibile), che è la
+  sorgente unica condivisa con la capability. Questo guard **sceglie** dai motivi ricevuti
+  quelli di propria competenza e li solleva. ⚠️ Il `LOOP` non ha un `ELSE`, di proposito: i
+  motivi che non riconosce li solleva un altro dei quattro guard di emissione, e un catch-all
+  qui farebbe uscire gli indirizzi mancanti con l'area e il nome sbagliati nel log.
+* Test: `db/pgtap/vendite/test-ddt-solo-trasporto-causale-v1.sql` (R1, R2) ·
+  `db/pgtap/vendite/test-fn-genera-ddt-riconsegna-eredita-v1.sql` asserzioni 13-16 (R3, tutte e
+  quattro le combinazioni di causale × prezzo).
 
 ---
 

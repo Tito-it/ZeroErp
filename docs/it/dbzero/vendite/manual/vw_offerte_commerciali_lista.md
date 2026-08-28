@@ -118,13 +118,21 @@ piu' nessuno stato** — il significato di `SUPERATA` sta ora dove stanno gia'
 * **`is_superata`** — semantica garantita dal trigger
   `trgfn_offerte_commerciali_revisione` (`_z90_ AFTER INSERT`), che porta il padre
   in `SUPERATA` quando nasce la revisione successiva. Costo O(1).
-  > ⚠️ *Limite noto, invariato*: se l'ultima revisione di un lineage viene
-  > annullata **senza successore**, il padre resta `SUPERATA` e nessuna offerta
-  > del lineage risulta attiva. E' un limite del modello a trigger (lo stato non
-  > rifluisce all'indietro), non della vista: qui `is_superata` continua a dire
-  > cio' che il modello ha scritto. Nei preventivi la stessa domanda e' derivata
-  > dalla relazione e il caso non si presenta — asimmetria tracciata nel brief
-  > `brief-db-revisione-attiva-due-domande` §8.2.
+  > ✅ *Il limite noto e' stato chiuso il 2026-08-28* (changeSet `20260828-12` e
+  > `20260828-13`, su segnalazione del backend). Fino a quel giorno, se l'ultima
+  > revisione di un lineage veniva annullata **senza successore**, il padre
+  > restava `SUPERATA` e **nessuna** offerta del lineage risultava attiva: lo
+  > stato sapeva andare e non sapeva tornare. Ora un trigger `_z90_` riporta il
+  > padre a `EMESSA` quando la revisione che lo superava viene annullata e non
+  > ne resta nessun'altra viva — l'inverso esatto di
+  > `trgfn_offerte_commerciali_revisione`, e la stessa regola che i preventivi
+  > hanno per costruzione: *una revisione abortita non rimpiazza nessuno*.
+  > ⚠️ La transizione `SUPERATA -> EMESSA` e' ora ammessa, quindi non e' piu'
+  > vero che `SUPERATA` sia senza uscite. La porta e' chiusa da una **regola**,
+  > non da un privilegio: si esce dal superamento solo se non esiste piu' una
+  > revisione figlia viva, altrimenti
+  > `E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA` — vale per chiunque scriva, non solo
+  > per il trigger.
 * **`has_next_revisione`** — `TRUE` se esiste almeno un figlio (qualunque stato).
   Diverso da `is_superata`: dice «qualcuno ha **provato** a revisionarla», non
   «qualcuno l'ha **rimpiazzata**». Efficiente grazie all'indice parziale

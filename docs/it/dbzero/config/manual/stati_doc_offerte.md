@@ -39,7 +39,17 @@ niente a che vedere l'una con l'altra**:
 | Colonna | Stato marcato | Domanda a cui risponde | Chi la scrive |
 | --- | --- | --- | --- |
 | `is_abortito` | `ANNULLATA` | «è stata **annullata**?» | l'operatore, con l'azione di annullamento |
-| `is_superato` | `SUPERATA` | «è stata **rimpiazzata** da una revisione successiva?» | il trigger `vendite.trgfn_offerte_commerciali_revisione`, sul padre, all'inserimento della revisione successiva |
+| `is_superato` | `SUPERATA` | «è stata **rimpiazzata** da una revisione successiva?» | il trigger `vendite.trgfn_offerte_commerciali_revisione`, sul padre, all'inserimento della revisione successiva — e lo **toglie** `vendite.trgfn_offerte_commerciali_rientro_padre` quando quella revisione viene annullata |
+
+⚠️ **`SUPERATA` non è più uno stato senza uscite** (dal 2026-08-28): ha la sola
+transizione `SUPERATA -> EMESSA`, seedata con `manuale: false` perché è un
+**rientro automatico**, non un gesto offerto all'operatore. Serve a sostenere il
+flusso «ho sbagliato a revisionare, annullo e torno a operare sul predecessore»,
+che prima lasciava l'intero lineage senza nessuna offerta attiva. La porta è
+chiusa da una regola in `trgfn_offerte_commerciali_guard_transizione` — si esce
+dal superamento **solo** se non esiste più una revisione figlia viva, altrimenti
+`E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA` — perché una transizione ammessa vale per
+chiunque scriva, non solo per il trigger che l'ha resa necessaria.
 
 Un'offerta è **attiva** quando nessuno dei due è vero:
 

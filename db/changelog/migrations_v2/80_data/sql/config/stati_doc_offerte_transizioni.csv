@@ -4,3 +4,4 @@ id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_u
 3,2,3,t,"{""action_key"":""accetta"",""label_key"":""vendite.offerte.azione_accetta"",""severity"":""success"",""icon"":""pi pi-check"",""requires_confirm"":true,""requires_motivazione"":false,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
 4,2,4,t,"{""action_key"":""rifiuta"",""label_key"":""vendite.offerte.azione_rifiuta"",""severity"":""danger"",""icon"":""pi pi-ban"",""requires_confirm"":true,""requires_motivazione"":true,""manuale"":true}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
 5,2,5,t,"{""manuale"":false}",2026-05-24 00:00:00+02,SEED,2026-05-24 00:00:00+02,SEED
+6,5,2,t,"{""manuale"":false}",2026-08-28 00:00:00+02,mctit,2026-08-28 00:00:00+02,mctit

@@ -1,0 +1,277 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CODA 2a — LA REGOLA DEL RIENTRO (il guard)
+#   vendite.trgfn_offerte_commerciali_guard_transizione
+#   Segnalato dal BE il 2026-08-28.
+#
+# ── ⚠️ IL FATTO ──────────────────────────────────────────────────────
+#   «Ho sbagliato a revisionare, annullo e torno a operare sul predecessore»
+#   e' un flusso che i preventivi sostengono per costruzione: una revisione
+#   abortita non rimpiazza nessuno, e il padre torna la revisione viva. Nelle
+#   offerte no — il superamento e' uno STATO, e uno stato non rifluisce:
+#     rev1 EMESSA -> crea revisione -> rev1 SUPERATA, rev2 BOZZA
+#     -> l'operatore annulla rev2 -> rev1 resta SUPERATA, rev2 e' ANNULLATA
+#     -> ⛔ NESSUNA offerta del lineage e' attiva. Il documento e' vivo per il
+#        cliente e morto per il sistema.
+#   ⚠️ E non e' un caso di nicchia costruito a tavolino: e' l'UNICO modo di
+#   annullare una revisione, perche' BOZZA->ANNULLATA e' l'unica transizione di
+#   annullamento che il catalogo ammette, e una revisione nasce sempre in BOZZA.
+#
+# ── ⭐ LA CURA, e perche' il ritorno e' EMESSA ───────────────────────
+#   Si riapre l'unica uscita da SUPERATA: SUPERATA -> EMESSA (riga di seed
+#   nuova, `manuale: false` — non e' un pulsante, e' un automatismo).
+#   ⭐ EMESSA non e' una scelta fra tante: e' l'unico stato da cui un'offerta
+#   PUO' essere arrivata a SUPERATA. Lo impone fn_crea_revisione_offerta, che
+#   rifiuta con E_OFFERTA_REVISIONE_STATO_NON_AMMESSO qualunque sorgente diversa
+#   da EMESSA. Il rientro non indovina lo stato precedente: lo deriva da un
+#   guard scritto, non da com'e' fatta la popolazione di oggi.
+#
+# ── ⛔ MA UNA TRANSIZIONE AMMESSA E' UNA PORTA APERTA A TUTTI ────────
+#   `manuale: false` governa solo la VISIBILITA' del pulsante in
+#   script.fn_available_actions_offerta; il guard di transizione guarda la
+#   tabella, non il meta. Senza altro, un UPDATE qualunque potrebbe resuscitare
+#   un'offerta superata MENTRE la revisione che la supera e' ancora viva — due
+#   revisioni vive sullo stesso lineage, che e' esattamente l'invariante che il
+#   dominio non ammette (ed e' il motivo per cui il 20260708-07 aveva rimesso il
+#   self-term sui preventivi).
+#   ⭐ Percio' la regola non e' «il trigger puo', gli altri no» — quello sarebbe
+#   un privilegio, non una regola. E' una condizione VERA per chiunque scriva:
+#   **si esce da uno stato di superamento solo se non c'e' piu' una revisione
+#   figlia viva**. Il rientro automatico e' semplicemente il caso in cui la
+#   condizione e' appena diventata vera.
+#   Nuovo codice: E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA (CONFLITTO_STATO).
+#
+# ── ⚠️ E LA DATA DI EMISSIONE NON SI RISCRIVE ────────────────────────
+#   Il CASE finale faceva `data_emissione := now()` su OGNI ingresso in EMESSA.
+#   Con il rientro, quel ramo si accenderebbe una seconda volta e cancellerebbe
+#   la data in cui l'offerta e' stata davvero mandata al cliente, sostituendola
+#   con oggi — un dato falso, scritto in silenzio, su un documento che il
+#   cliente ha in mano. Diventa COALESCE(NEW.data_emissione, now()): sul primo
+#   ingresso (BOZZA->EMESSA la colonna e' NULL) il valore e' identico a prima.
+#
+# ── ⚠️ IL GUARD LEGGE LE FIGLIE SOTTO RLS, ed e' voluto ─────────────
+#   Un EXISTS sotto row security non distingue «non c'e'» da «non la vedo», e
+#   qui sbaglierebbe in senso permissivo. Regge perche' padre e figlie hanno lo
+#   STESSO emittente — fn_crea_revisione_offerta copia oc.emittente_fiscale_id —
+#   e la policy di offerte_commerciali scopa per emittente: chi puo' aggiornare
+#   il padre vede per forza le figlie. ⛔ Se un giorno la revisione smettesse di
+#   ereditare l'emittente, questo guard va portato a SECURITY DEFINER.
+#
+# ⚠️ Definizione ripresa dalla doc auto-gen (l'oggetto VIVO). Le sole differenze
+#   sono il blocco «rientro» e il COALESCE su data_emissione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-12-update-trgfn-offerte-guard-transizione-rientro-mctit.yaml
+
+  - changeSet:
+      id: 20260828-12-update-trgfn-offerte-guard-transizione-rientro
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Coda del cantiere «due domande» (segnalazione BE 2026-08-28): il guard di transizione
+        delle offerte acquisisce la regola del rientro — si esce da uno stato di superamento
+        (stati_doc_offerte.is_superato) solo se non esiste piu' una revisione figlia non
+        abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA. Serve a rendere sicura la
+        transizione SUPERATA->EMESSA aperta per il rientro automatico del padre. In piu'
+        data_emissione diventa COALESCE(NEW.data_emissione, now()): un rientro non deve
+        riscrivere la data in cui l'offerta e' stata davvero emessa al cliente.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_offerte'
+                   AND column_name  = 'is_superato'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: bloccare transizioni stato non ammesse sul workflow offerta
+              -- commerciale (config-driven via stati_doc_offerte_transizioni).
+              -- Valorizza i timestamp di passaggio stato e applica guard listino
+              -- al momento dell'emissione (BOZZA->EMESSA).
+              -- rev 2026-08-28: + regola del rientro da uno stato di superamento;
+              -- data_emissione non si riscrive su un secondo ingresso in EMESSA.
+              DECLARE
+                  v_codice_da config.stati_doc_offerte.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_offerte.codice_interno%TYPE;
+                  v_superato_da boolean;
+                  v_superato_a  boolean;
+                  v_figlia_viva_codice vendite.offerte_commerciali.codice%TYPE;
+                  v_stato_versione vendite.listini_versioni.stato%TYPE;
+              BEGIN
+                  -- Nessuna transizione effettiva: niente da validare.
+                  IF OLD.stato_doc_offerta_id = NEW.stato_doc_offerta_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Risolve i codici interni degli stati per messaggi leggibili,
+                  -- e la dichiarazione di superamento dei due estremi.
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_offerta_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_offerta_id THEN codice_interno END),
+                      bool_or(id = OLD.stato_doc_offerta_id AND is_superato IS TRUE),
+                      bool_or(id = NEW.stato_doc_offerta_id AND is_superato IS TRUE)
+                    INTO v_codice_da, v_codice_a, v_superato_da, v_superato_a
+                    FROM config.stati_doc_offerte
+                   WHERE id IN (OLD.stato_doc_offerta_id, NEW.stato_doc_offerta_id);
+
+                  -- Verifica transizione ammessa (config-driven, solo righe attive).
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.stati_doc_offerte_transizioni
+                       WHERE stato_da_id = OLD.stato_doc_offerta_id
+                         AND stato_a_id  = NEW.stato_doc_offerta_id
+                         AND attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_OFFERTA_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'offerta_id', NEW.id,
+                              'stato_da',   coalesce(v_codice_da, OLD.stato_doc_offerta_id::text),
+                              'stato_a',    coalesce(v_codice_a,  NEW.stato_doc_offerta_id::text)
+                          ),
+                          NEW.tx_id,
+                          coalesce(v_codice_da, OLD.stato_doc_offerta_id::text),
+                          coalesce(v_codice_a,  NEW.stato_doc_offerta_id::text)
+                      );
+                  END IF;
+
+                  -- ⭐ RIENTRO da uno stato di superamento. La transizione SUPERATA->EMESSA
+                  -- esiste per l'automatismo «annullo la revisione, il padre torna vivo»
+                  -- (trg_offerte_commerciali_z90_rientro_padre_upd). Ma una transizione
+                  -- ammessa e' una porta aperta a chiunque scriva, quindi la condizione va
+                  -- detta qui, dove vale per tutti: si esce dal superamento SOLO se non c'e'
+                  -- piu' una revisione figlia viva. Altrimenti il lineage avrebbe due
+                  -- revisioni vive insieme, che e' l'invariante che il dominio non ammette.
+                  IF COALESCE(v_superato_da, false) AND NOT COALESCE(v_superato_a, false) THEN
+
+                      -- Una figlia "viva" e' una revisione il cui stato non e' di
+                      -- annullamento: una revisione abortita non rimpiazza nessuno.
+                      -- ⚠️ Legge sotto RLS, e regge perche' le figlie ereditano
+                      -- l'emittente del padre (fn_crea_revisione_offerta) e la policy
+                      -- scopa per emittente: chi aggiorna il padre vede le figlie.
+                      SELECT f.codice
+                        INTO v_figlia_viva_codice
+                        FROM vendite.offerte_commerciali f
+                        JOIN config.stati_doc_offerte sf
+                          ON sf.id = f.stato_doc_offerta_id
+                       WHERE f.revisione_padre_id = NEW.id
+                         AND sf.is_abortito IS FALSE
+                       ORDER BY f.revisione_numero DESC, f.id DESC
+                       LIMIT 1;
+
+                      IF v_figlia_viva_codice IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA',
+                              jsonb_build_object(
+                                  'offerta_id',   NEW.id,
+                                  'stato_da',     coalesce(v_codice_da, OLD.stato_doc_offerta_id::text),
+                                  'stato_a',      coalesce(v_codice_a,  NEW.stato_doc_offerta_id::text),
+                                  'revisione_viva_codice', v_figlia_viva_codice
+                              ),
+                              NEW.tx_id,
+                              coalesce(NEW.codice, NEW.id::text),
+                              v_figlia_viva_codice
+                          );
+                      END IF;
+
+                  END IF;
+
+                  -- Guard specifica BOZZA -> EMESSA: listino_versione_id obbligatorio + ATTIVA.
+                  IF v_codice_da = 'BOZZA' AND v_codice_a = 'EMESSA' THEN
+
+                      -- listino_versione_id deve essere valorizzato.
+                      IF NEW.listino_versione_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
+                              jsonb_build_object('offerta_id', NEW.id),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+
+                      -- La versione listino deve essere in stato ATTIVA.
+                      SELECT stato INTO v_stato_versione
+                        FROM vendite.listini_versioni
+                       WHERE id = NEW.listino_versione_id;
+
+                      IF v_stato_versione IS DISTINCT FROM 'ATTIVA' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA',
+                              jsonb_build_object(
+                                  'offerta_id',          NEW.id,
+                                  'listino_versione_id', NEW.listino_versione_id,
+                                  'stato_versione',      v_stato_versione
+                              ),
+                              NEW.tx_id,
+                              coalesce(v_stato_versione, 'NULL')
+                          );
+                      END IF;
+
+                  END IF;
+
+                  -- Valorizza il timestamp corrispondente al passaggio stato.
+                  -- ⚠️ data_emissione con COALESCE: un rientro SUPERATA->EMESSA e' un
+                  -- SECONDO ingresso in EMESSA, e riscrivere la data cancellerebbe il
+                  -- giorno in cui l'offerta e' stata davvero mandata al cliente. Sul primo
+                  -- ingresso (BOZZA->EMESSA) la colonna e' NULL: valore identico a prima.
+                  CASE v_codice_a
+                      WHEN 'EMESSA'    THEN NEW.data_emissione    := COALESCE(NEW.data_emissione, now());
+                      WHEN 'ACCETTATA' THEN NEW.data_accettazione := now();
+                      WHEN 'RIFIUTATA' THEN NEW.data_rifiuto      := now();
+                      WHEN 'ANNULLATA' THEN NEW.data_annullamento  := now();
+                      ELSE NULL;
+                  END CASE;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
+              IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse '
+                 '(config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: '
+                 'listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): '
+                 'si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia '
+                 'non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale '
+                 'per chiunque scriva, non solo per il trigger di rientro. Valorizza '
+                 'data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora '
+                 'NULL (un rientro non riscrive la data di emissione reale).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino NON gestito qui: togliere la regola del rientro senza togliere
+              -- anche la transizione SUPERATA->EMESSA (seed 80_data) e il trigger di
+              -- rientro (20260828-13) lascerebbe una porta aperta senza guard, che e'
+              -- peggio dello stato di partenza. Il ritorno indietro si fa con un changeSet
+              -- dedicato che smonta i tre pezzi nell'ordine inverso.
+              SELECT 1;

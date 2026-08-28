@@ -47,9 +47,10 @@
 > §9.4.1, e **sulla struttura**: `DDT_VENDITA` ha `pipeline_rank` 3 e `FATTURA`
 > 5, quindi i due figli in avanti di un reso non pareggiano mai.
 > ⛔ **Ma la parte DB NON e' finita e NON passa tutto al frontend**: restano la
-> **doc manuale** di 5 oggetti (perimetro DB), una **rigenerazione lato BE**
+> ~~doc manuale di 5 oggetti~~ ✅ **scritta**, una **rigenerazione lato BE**
 > (`manage.py genera_error_policies` — emersa solo dopo l'apply) e la chiave
 > i18n del FE, che e' l'unica a **bloccare la CI adesso**. Dettaglio: **§12**.
+> ⭐ **Il perimetro DB e' chiuso**: restano solo BE e FE.
 >
 > 🔴 **Rev. 2026-08-28, quarta passata — UNA REGRESSIONE, trovata da Tid**
 > subito dopo l'apply: l'arco T ha rotto il pgTAP che enumera il **vocabolario
@@ -1532,7 +1533,38 @@ riguardato lì.
 > **tre** sedi, non due — il catalogo DB (fatto), il file generato del backend
 > (da fare), i locales del frontend (da fare). Il piano ne aveva previste due.
 
-#### 🟡 DATABASE — resta la doc MANUALE, ed è perimetro nostro
+#### ✅ DATABASE — la doc MANUALE è FATTA (2026-08-28)
+
+> ⭐ **Aggiornata il 2026-08-28: i cinque file sono scritti, e il perimetro DB è
+> chiuso.** La sezione qui sotto resta come **elenco di cosa c'era da fare** e di
+> **perché** — non si cancella, si marca.
+
+| File | Cosa è entrato |
+| --- | --- |
+| `script/manual/fn_check_ddt_emittibile.md` | tabella **5 → 6 condizioni**, con la **3-bis** al posto giusto (fra prezzo e indirizzi, perché l'ordine dell'array è il contratto); riquadro sul perché il discrimine è il **prezzo e non la causale**, sul perché si guarda `dr.prezzo_unitario` e non il `COALESCE`, e sul perché non è un `NOT NULL` di colonna; nota che aggiungere un motivo qui **non basta** (guard + catalogo + locales) |
+| `vendite/manual/fn_genera_ddt_riconsegna.md` | logica da 5 a **6 passi** (eredità testata, sorgente sempre dichiarata, cascata indirizzi, valore di riga); sezione **«L'eredità»** con le due tabelle *relazione* / *viaggio* e il criterio in una riga; riquadro sul **vettore** e su «Mezzo proprio»; sezione sul valore di riga **standalone sì / order-backed no**; le due trappole (`attivo`, testata mancante); e il promemoria che **il freno della fatturazione non si è allentato** |
+| `vendite/manual/trgfn_ddt_guard_causale_emissione.md` | «le **due** regole» → **tre**; **R3** con il suo perché; tabella errori + `E_DDT_RIGA_IVA_MANCANTE` e la colonna «nella frase» (numero di riga, non id); nota sul **nome** che ormai dice meno di quel che fa; nota sulle fixture — *«solo trasporto» sono due condizioni, non una* |
+| `vendite/manual/vw_documento_lineage_archi.md` | riga **T** nella tabella degli archi; `arco` da **undici a dodici**, con il riquadro sul **vocabolario chiuso come cricchetto**; sezione **«Arco T»** completa: perché è un avanzamento, perché la sorgente è il ponte e non `ddt.sorgente_*`, i due figli in avanti coi `pipeline_rank`, il perimetro RLS |
+| `vendite/manual/vw_ddt_lista.md` | riquadro **«La provenienza ha due popolazioni»**: `RESO_VENDITA` accanto a `ORDINE_VENDITA`, perché il join è ora qualificato, e il rimando a `fn_get_sorgente_documento_ref` per chi serve il numero della sorgente generica |
+
+✅ Verificato dopo la scrittura: modificati **solo** file sotto `manual/` (nessun
+auto-gen toccato), i cinque `include-markdown` degli auto-gen intatti, e tutti i
+link e i percorsi di test citati esistono.
+
+> ⭐ **Una cosa che vale oltre questi cinque file.** Tre delle cinque note più
+> utili non descrivono *cosa fa* l'oggetto — quello lo dice la doc auto-gen — ma
+> **perché una strada ovvia è sbagliata**: il `NOT NULL` che rompe l'evasione
+> ordine, il vettore vuoto che stampa «Mezzo proprio», il «solo trasporto» che
+> sono due condizioni e non una. Sono le tre che hanno prodotto un errore vero
+> mentre si lavorava, ed è per quelle che la doc manuale esiste.
+
+---
+
+#### ~~🟡 DATABASE — restava la doc MANUALE~~ ✅ CHIUSO
+
+> ⚠️ **Sezione superata, marcata e non cancellata**: è l'elenco di *cosa* era
+> stantio e *perché*, cioè la ragione per cui i cinque file andavano scritti.
+> Serve a chi domani toccherà uno di quegli oggetti.
 
 La doc **auto-gen** è a posto perché si rigenera. La doc **manuale** no: si
 scrive a mano, è la sede della documentazione concettuale
@@ -1554,8 +1586,9 @@ cercare un sesto motivo che «non c'è».
 
 ### 12.4 In una riga
 
-> **DB: manca la doc manuale (5 file). BE: una rigenerazione. FE: una chiave.**
-> Le tre cose sono indipendenti e si possono fare in parallelo; la sola che
-> **blocca la CI adesso** è quella del frontend.
+> ~~**DB: manca la doc manuale (5 file).**~~ ✅ **fatta il 2026-08-28: il
+> perimetro DB e' CHIUSO.** Restano **BE: una rigenerazione** e **FE: una
+> chiave** — indipendenti fra loro, e la sola che **blocca la CI adesso** e'
+> quella del frontend.
 
 E resta, come sempre, il **commit** — che non è stato fatto.
