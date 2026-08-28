@@ -18,6 +18,13 @@
 > colonne, whitelist del backend, template del frontend. Nessuna misura sui dati,
 > nessun file scritto, nessuna migrazione.
 >
+> ⭐ **Rev 2 — 2026-08-28.** Rilettura critica con Tid. `D2` è **superata** da
+> `D7`, e con essa cade l'idea che il regime del cliente viva in una colonna di
+> default: l'influenza del soggetto sull'IVA passa **sempre** da un titolo
+> registrato e documentato. Ne discendono `D7`…`D11`, la correzione di quattro
+> fatti che il documento dava per veri (§R) e una voce **nuova** che con l'IVA
+> non c'entra — CIG/CUP/commessa sul cliente (`D9`).
+>
 > ⭐ **Due decisioni di dominio già prese** (Tid, 2026-08-27) e **una ancora
 > aperta**: sono nel §D, etichettate una per una. Le decise non vanno ri-discusse
 > a valle; l'aperta **blocca** la richiesta `I6` e nient'altro.
@@ -31,14 +38,15 @@
 
 ---
 
-## 0. Le quattro voci in una riga
+## 0. Le voci in una riga
 
 | # | Cosa | Gravità | Chi lo vede oggi |
 | --- | --- | --- | --- |
 | **1** | L'IVA si determina in **due punti indipendenti** (riga di documento, riga di fattura) e in entrambi **dal solo articolo**. Uno dei due è nel **frontend** | 🔴 il numero fiscale di una riga non ha una sede | nessuno: finché tutti i clienti sono a regime ordinario i due valori coincidono |
-| **2** | `clienti.iva_id` (**`NOT NULL`**), `clienti.split_payment`, `clienti.cliente_pa`: l'operatore li compila nel drawer, **nessun documento li legge** | 🔴 un campo che promette una cosa che non succede | chi imposta un cliente in reverse charge e ritrova l'aliquota ordinaria in fattura |
-| **3** | Il gate all'emissione del DDT pretende il **prezzo** e non l'**aliquota** | 🟠 piccolo, ed è quello che chiude il collaudo | chi emette un DDT con una riga senza IVA: esce, e il riepilogo è muto |
-| **4** | La **dichiarazione d'intento** non ha nessuna sede: la natura `N3.5` è seminata e **orfana** — nessun codice IVA la usa, nessuna tabella tiene protocollo, validità e plafond | 🔴 un titolo di non imponibilità che il sistema non sa rappresentare | chi vende a un esportatore abituale: oggi non ha nessuna strada |
+| **2** | `clienti.iva_id` (**`NOT NULL`**), `clienti.split_payment`, `clienti.cliente_pa`: l'operatore li compila nel drawer, **nessun documento li legge**. ⭐ Rev 2: il rimedio **non** è farli leggere — è `D7` (l'`iva_id` si toglie) e `D8` (gli altri due salgono al soggetto) | 🔴 un campo che promette una cosa che non succede | chi imposta un cliente in reverse charge e ritrova l'aliquota ordinaria in fattura |
+| ~~**3**~~ | ~~Il gate all'emissione del DDT pretende il **prezzo** e non l'**aliquota**~~ — ✅ **FATTA il 2026-08-28**, e con una regola migliore di quella scritta qui: §R-1 | — | — |
+| **4** | La **dichiarazione d'intento** non ha nessuna sede: la natura `N3.5` è seminata e **orfana** — nessun codice IVA la usa, nessuna tabella tiene protocollo, validità e plafond. ⭐ Rev 2: non è un caso unico ma **il primo di una famiglia** (`D10`) | 🔴 un titolo di non imponibilità che il sistema non sa rappresentare | chi vende a un esportatore abituale: oggi non ha nessuna strada |
+| **5** | ⭐ **Voce nuova (Rev 2), e con l'IVA non c'entra**: `clienti.codice_cig`, `codice_cup`, `codice_commessa` stanno su una riga **per fornitura**, mentre nominano un **contratto**. Un cliente PA con tre contratti ha tre CIG | 🔴 un dato per-contratto tenuto in anagrafica: si ripete su ogni fornitura dello stesso contratto e non ne regge due sulla stessa | nessuno **ancora**: non li legge niente, e il builder XML FatturaPA non è scritto. È la ragione per cui spostarli **adesso** costa zero |
 
 ⭐ **Cosa hanno in comune**: sono lo stesso buco visto da tre distanze. Il prezzo
 ha un risolutore centralizzato e una memoria che ne vieta gli scavalcamenti
@@ -105,14 +113,35 @@ l'aggiornamento dell'IVA lo accetta: `iva_id` è dentro `_UPDATE_KEYS_RIGA` in
 `ddt_service.py`. Una regola presidiata da un `:disabled` in un template non è
 una regola — è un suggerimento che chiunque chiami l'endpoint scavalca.
 
-### D2 · ✅ **DECISA (Tid)** — quando cliente e articolo divergono, **vince il cliente**
+### ~~D2 · quando cliente e articolo divergono, vince il cliente~~ — ⛔ **SUPERATA il 2026-08-28 da `D7`**
 
-La ragione sta sul modello, non sulla preferenza: *l'articolo dichiara la natura
+> ⛔ **Non applicare.** Tenuta per storia, perché è l'inquadramento da cui è
+> partito tutto il brief e perché §2.4 e `I2` sono nati con il suo vocabolario.
+> La regola valida è in **`D7`**.
+>
+> **Perché è caduta, in una riga**: la domanda «chi vince?» ha senso solo se i
+> due rispondono alla **stessa** domanda, e `D6` — decisa lo stesso giorno,
+> poche ore dopo — ha stabilito che non è così. Sotto `D6` non c'è nessuna
+> precedenza da assegnare: l'articolo dice sempre l'aliquota ordinaria, il
+> soggetto può solo **sostituirla** con un titolo. `D2` è il residuo
+> dell'inquadramento precedente, rimasto scritto accanto a quello che lo
+> smentisce.
+>
+> ⚠️ E c'era un secondo difetto, strutturale: la regola faceva vincere
+> `clienti.iva_id`, che è **`NOT NULL` senza default DB** e che il backend
+> riempie col parametro `DEFAULT_IVA_ID` quando il chiamante non la passa
+> (`clienti_service.py`). Ogni cliente porta quindi un codice IVA **che nessuno
+> ha scelto**, indistinguibile da uno scelto apposta: «vince il cliente»
+> significava far vincere un valore *mai espresso* su uno *espresso*.
+> Specularmente `catalogo.articoli.iva_id` è **nullable** — è l'articolo, non il
+> cliente, ad avere la forma di chi *può* tacere.
+
+~~La ragione sta sul modello, non sulla preferenza: *l'articolo dichiara la natura
 merceologica* — cosa è quella merce, e quindi quale aliquota le compete in via
 ordinaria. *Il cliente dichiara il regime* — in che rapporto fiscale è quella
 controparte con chi vende (esente art. 8, reverse charge, PA in scissione dei
 pagamenti). Il regime è una proprietà del **rapporto**, e un rapporto vince su
-una classificazione merceologica perché la modifica **per legge**, non per scelta.
+una classificazione merceologica perché la modifica **per legge**, non per scelta.~~
 
 ### D3 · ✅ **DECISA (Tid)** — un'aliquota assente, **dove serve il prezzo**, è un errore, non un'annotazione
 
@@ -156,6 +185,249 @@ diverse: **quale aliquota compete alla merce** (varia per utility perché varia 
 **merce**) e **se la controparte ha un titolo che la sostituisce** (della partita
 IVA). Non competono, quindi non c'è nessuna precedenza da invertire. Forma
 completa nel **§2.7**.
+
+---
+
+## D-bis. Le decisioni della Rev 2 — 2026-08-28
+
+> Tutte prese a parole da Tid il 2026-08-28, salvo dove indicato. `D7` sostituisce
+> `D2`; le altre sono nuove e nessuna ri-apre ciò che era già deciso il 27.
+
+### D7 · ✅ **DECISA (Tid)** — l'aliquota la dice la **merce**; il soggetto porta solo un **titolo documentato**
+
+**Sostituisce `D2`.** Non è un'inversione di precedenza: è la constatazione che
+non c'era nessuna precedenza da assegnare.
+
+* **quale aliquota compete** → la decide la **merce e il suo uso**: articolo →
+  catena del prezzo → tipo di utenza (`D11`). Il soggetto non entra **mai** in
+  questa domanda;
+* **se quella aliquota viene sostituita** → lo decide un **titolo del soggetto**,
+  registrato, datato e con una prova documentale (`D10`). Mai una colonna di
+  default appesa all'anagrafica.
+
+⭐ **Il principio, ed è ciò che il brief cercava dall'inizio**: *l'influenza del
+soggetto sull'IVA passa sempre da un titolo, mai da un default.* È la ragione per
+cui `clienti.iva_id` se ne va (`D7-bis`) e **non** viene sostituita da un
+`soggetti.iva_id`: spostare la colonna avrebbe riprodotto il difetto un piano
+più su.
+
+⚠️ **La prova che regge**: `catalogo.articoli.iva_id` è nullable, quindi
+l'articolo può dire «non ho un'opinione»; `clienti.iva_id` è `NOT NULL` con
+default di sistema, quindi non può. Una regola che fa vincere chi non sa tacere
+su chi sa tacere è invertita rispetto alla struttura, indipendentemente da quale
+sia la risposta fiscale giusta.
+
+#### D7-bis · ✅ **DECISA (Tid)** — `anagrafiche.clienti.iva_id` **si toglie**, non si sposta
+
+Poteva avere tre significati, e tutti e tre hanno già una sede migliore:
+
+| Se significava… | Sede giusta | Stato |
+| --- | --- | --- |
+| «questo soggetto ha un'agevolazione» | un **titolo** del soggetto (`D10`) | da costruire |
+| «questa utility tratta l'IVA in modo suo» | `config.tipi_utenze.iva_id` (`D11`) | **esiste già**, nessuno la legge |
+| «questa merce ha questa aliquota» | `catalogo.articoli.iva_id` | esiste, ed è l'unica che arriva sui documenti |
+
+Non le resta un quarto lavoro. ⭐ **`DROP COLUMN` diretto, senza passare da un
+`nullable` transitorio** (Tid: *«si può fare subito perché non usato e non ho
+produzione»*, coerente con `project_no_produzione_solo_sviluppo`). Si porta
+dietro la whitelist del BE (`clienti_repository.py`, `clienti_service.py`, il
+default `DEFAULT_IVA_ID`), il campo nel `ClienteDrawer.vue` e il ramo in
+`anagrafiche.fn_update_cliente`.
+
+⚠️ **C'è un consumatore da non dimenticare**, ed è l'unico: `clienti.iva_id`
+**non** è letta da «nessuno» come dice il §4. La legge
+`BillingAccountRepository.get_cliente_defaults` e la restituisce l'endpoint
+`/vendite/preventivi/form-defaults/` (`iva_id`, `iva_codice`, `iva_descrizione`).
+È il **frontend** a buttarla via: il `PreventiviDrawer.vue` commenta *«per
+termine/iva sovrascriviamo solo se vuoti»* ma l'`apply` tocca solo il termine di
+pagamento — e comunque `vendite.preventivi` una colonna IVA di testata non ce
+l'ha. Vanno tolte anche quelle tre chiavi dal payload.
+
+### D8 · ✅ **DECISA (Tid)** — `split_payment` e `cliente_pa` salgono su **`anagrafiche.soggetti`**
+
+Un ente **è** o **non è** una Pubblica Amministrazione: non lo è per il gas e non
+per l'acqua. Oggi stanno su `anagrafiche.clienti`, che è **una riga per
+fornitura** (`UNIQUE uq_clienti_istanza_utility`): due forniture dello stesso
+soggetto possono dichiarare cose opposte e niente lo impedisce.
+
+⭐ **Restano fuori dai titoli di `D10`**, ed è `D4`: non cambiano l'aliquota,
+cambiano **chi versa l'imposta** — in fattura elettronica sono `EsigibilitaIVA`.
+
+⭐ **Il binario d'arrivo esiste già e non va costruito**: `vendite.fatture_righe`
+ha già le colonne `esigibilita` e `split_payment`, e
+`vendite.fatture_riepiloghi_iva` raggruppa già per `iva_id` + `natura_id` +
+`esigibilita` + `split_payment` (lo fa `fn_ricalcola_riepilogo_iva_fattura`).
+Manca **solo l'anello che le riempie**: una lettura in più quando nasce la riga
+di fattura. Questo rende `I5` una voce corta, non un cantiere.
+
+⚠️ **Sede: `soggetti`, non `soggetti_ruoli`** — decisione di Tid, con la porta
+lasciata aperta: *«aggiungerlo in futuro sui ruoli se dovesse servire si farà, e
+sarà predominante rispetto al soggetto»*. Chi scriverà il lettore lo tenga
+presente: la forma futura è un `COALESCE(ruolo, soggetto)`, quindi conviene che
+la lettura passi da **un solo punto** fin da subito, anche se oggi quel punto
+legge una colonna sola.
+
+### D9 · ✅ **DECISA (Tid)** — CIG, CUP e commessa vanno **sul contratto**, e in fattura come **snapshot**
+
+È la voce 5 del §0, e con l'IVA non c'entra niente: si è trovata guardando le
+colonne vicine sul cliente.
+
+**Tutti e tre insieme, su `vendite.contratti`.** La ragione è che in fattura
+elettronica stanno **nello stesso blocco** (`DatiContratto` / `DatiOrdineAcquisto`:
+`IdDocumento`, `CodiceCUP`, `CodiceCIG`, `CodiceCommessaConvenzione`): nascono
+insieme, si compilano insieme e nominano lo stesso atto. Separare la commessa
+sull'ordine vorrebbe dire costruire un blocco XML da due tabelle con due cicli di
+vita, senza guadagnarci nulla.
+
+⚠️ **Non basta metterli sul contratto, o non arrivano mai in fattura**:
+`vendite.fatture` **non ha nessun collegamento al contratto** — solo
+`billing_account_id` e la coppia `sorgente_tipo_id`/`sorgente_uid`. Servono
+**copiati sulla fattura all'emissione**, ed è anche la forma giusta nel merito:
+un CIG corretto in anagrafica domani non deve cambiare su una fattura già emessa.
+⭐ Il pattern esiste già su quella stessa tabella — `emittente_snapshot`,
+`cliente_snapshot`, `termine_pagamento_snapshot` (jsonb).
+
+⭐ **Perché adesso e non dopo**: oggi quelle tre colonne **non le legge nessuno**
+tranne il CRUD del cliente (verificato: non esistono in nessun'altra tabella del
+progetto), e il **generatore XML FatturaPA non è ancora scritto** —
+`fn_prepare_sdi_payload` prepara solo il tentativo d'invio, non il contenuto.
+Spostarle prima che il builder nasca costa zero; dopo significa riscriverlo.
+
+📌 **Fuori perimetro, dichiarato**: negli accordi quadro PA il contratto ha un CIG
+«padre» e ogni ordine attuativo ne ha uno derivato. Se quel caso arriverà, la
+forma è **gli stessi tre campi sull'ordine**, nullable, col contratto come
+ripiego (`COALESCE`). Non si fa ora e non è una previsione sui dati: è
+l'annotazione di dove andrebbe, visto che il lettore sarà uno solo.
+
+### D10 · ✅ **DECISA (Tid)** — non `soggetti_intento` ma **`anagrafiche.soggetti_titoli_iva`**: è una **famiglia**
+
+Il §2.7.5 lo sospettava (*«è la prima di una famiglia, conviene che nasca
+sapendolo»*). Non è più un sospetto: Tid ha nominato i casi, e sono almeno
+quattro.
+
+| Titolo | Di chi | Vale per | Ha un tetto? | La prova |
+| --- | --- | --- | --- | --- |
+| **Dichiarazione d'intento** | soggetto → **verso un emittente** | tutto | **sì**, il plafond | protocollo Agenzia Entrate |
+| **Uso industriale/agricolo** gas-EE | soggetto → verso un emittente | solo quella fornitura | no | dichiarazione resa al fornitore |
+| **Agevolata disabili** (L. 104) | soggetto | **solo certe merci** | no | certificazione / prescrizione |
+| **Cooperative sociali, ONLUS** | soggetto | certe prestazioni | no | iscrizione all'albo |
+
+⭐ **Uno schema solo**: *chi* × *per cosa vale* × *da quando a quando* × *con
+quale prova* → **quale codice IVA sostituisce quello ordinario**. Solo il primo
+ha un contatore che si consuma — e quindi il plafond è una **proprietà di un
+tipo di titolo**, non la colonna portante della tabella. Nascere col nome
+`soggetti_intento` avrebbe scambiato il caso particolare per la regola.
+
+**La forma:**
+
+* **`anagrafiche.soggetti_titoli_iva`** — il soggetto proprietario;
+  l'**emittente fiscale destinatario**; il **tipo di titolo** (vocabolario a
+  seed: `INTENTO`, `USO_INDUSTRIALE`, `AGEVOLATA_104`, `COOPERATIVA`…);
+  `validita` come **`daterange`**; l'`iva_id` che sostituisce; gli estremi
+  documentali (protocollo, data di ricezione, riferimento);
+* **l'ambito, dichiarato esplicitamente** — non lasciato al `NULL`
+  (`feedback_null_nelle_chiavi_due_forme`): una colonna che dice *se* il titolo
+  vale per tutto o è ristretto, e quando è ristretto le righe figlie che dicono a
+  cosa. ✅ **Decisione di Tid: l'ambito arriva fino al singolo articolo** — quindi
+  i livelli sono **categoria di merce** (`catalogo.articoli.gruppo_voce_id` /
+  `tipo_voce_id`, che esistono già) **e articolo**;
+* **il plafond e il registro dei movimenti** (`D5`) **solo per i tipi che un tetto
+  ce l'hanno**. Il registro resta esattamente come deciso: fattura `+`, nota di
+  credito `−`, forzatura manuale `±` con motivo obbligatorio;
+* ⚠️ **il guard di non sovrapposizione** di §2.6.4 va ripensato sulla forma nuova:
+  la chiave non è più «un soggetto», è **(soggetto, emittente, tipo, ambito)**.
+  Due titoli dello **stesso tipo e stesso ambito** validi insieme restano
+  un'ambiguità da chiudere con `EXCLUDE USING gist`; due titoli di **tipo
+  diverso** possono coesistere legittimamente, ed è il caso da non bloccare per
+  errore.
+
+#### D10-bis · ⭐ Perché l'**emittente** compare, se il titolo è del soggetto
+
+Tid, 2026-08-28: *«è una tabella legata al soggetto e basta, quella partita IVA
+ha una dichiarazione d'intento»*. Il **proprietario** è il soggetto, ed è giusto:
+è lui l'esportatore abituale, non un suo contratto.
+
+⚠️ Ma una dichiarazione d'intento non è un'etichetta che il cliente si appende
+addosso: è un **documento che presenta a un fornitore preciso**, con un
+protocollo suo e un importo suo. Lo stesso esportatore abituale che compra da due
+società emittenti presenta **due dichiarazioni**, ognuna col suo plafond. E il
+modello ammette più emittenti: `vendite.contratti.emittente_fiscale_id` è
+**`NOT NULL`**.
+
+⛔ Senza quella seconda colonna, i plafond di due emittenti si consumerebbero da
+**un solo contatore** — un errore silenzioso su precisamente il numero che
+l'Agenzia delle Entrate verifica. **Proprietario: il soggetto. Destinatario:
+l'emittente.** Due colonne, stessa riga.
+
+### D11 · 📌 **Constatazione** — l'anello «uso della fornitura» esiste già: `config.tipi_utenze`
+
+§2.4 e §2.7.2 lo davano per assente (*«non esiste da nessuna parte»*). **Esiste**:
+[config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze) — *«tipo d'uso
+(Domestico, Altri usi, Condominio, Pubblico)»* — ha `iva_id` con FK, indice e
+`COMMENT ON COLUMN … IS 'Id IVA'`, ed è agganciata alla fornitura via
+`vendite.contratti_utilities.tipo_utenza_id`. Non la legge nessuno.
+
+⭐ **E risolve un'apparente contraddizione con `D7`.** Il gas e l'energia a usi
+industriali scontano l'aliquota ridotta, e lì sembra che a decidere sia il
+*soggetto*. Non è così, e l'incastro è pulito:
+
+* la **classificazione dell'uso** sta sulla **fornitura** — ed è giusto lì: la
+  stessa società può avere uno stabilimento industriale e un ufficio;
+* la **dichiarazione del cliente** è il **documento che giustifica** quella
+  classificazione, e sta fra i titoli di `D10`.
+
+Chi ha creato `tipi_utenze` con dentro un `iva_id` questa cosa l'aveva già vista.
+
+---
+
+## R. Rev 2 — i quattro fatti che il documento dava per veri
+
+> Verificati il 2026-08-28 sulla **doc auto-gen** e sul codice, non sui dati.
+> Stanno qui e non sparsi nel testo perché ognuno invalida una richiesta del §5.
+
+### R-1 · ✅ `I1` è **già fatta**, e con una regola **diversa** da quella scritta nel §3
+
+`E_DDT_RIGA_IVA_MANCANTE` è entrato in `script.fn_check_ddt_emittibile` come
+**sesto motivo** con i changeSet `20260828-02` e `20260828-03`
+(decisione di Tid, R4-ter di
+[brief-db-ddt-riconsegna-eredita-testata](../work-done/brief-db-ddt-riconsegna-eredita-testata.md), Fase C).
+
+⛔ **La regola applicata non è quella di `D3`.** Il §3 dice *«se la causale è
+fatturabile, ogni riga attiva deve avere un'aliquota»*. L'implementato dice **il
+discrimine è il PREZZO, non la causale**, e il controllo sta **fuori** dal ramo
+`fatturabile`. La ragione è migliore di quella scritta qui: `vw_ddt_righe_iva_base`
+filtra `prezzo_unitario IS NOT NULL` e **non** guarda la causale, quindi anche un
+conto visione valorizzato entrava nel riepilogo con imponibile pieno e imposta
+zero. *Il vincolo deve avere lo stesso perimetro del consumatore che protegge.*
+
+### R-2 · ⛔ Il primo pgTAP atteso del §6 codificherebbe la regola **sbagliata**
+
+Il §6 chiede: *«causale non fatturabile + riga senza `iva_id` → l'emissione
+passa»*. Con la regola di R-1, se quella riga **ha un prezzo** l'emissione **si
+ferma**. Il test va riscritto sul prezzo: riga **senza** prezzo e senza `iva_id`
+→ passa (è il DDT di solo trasporto); riga **con** prezzo e senza `iva_id` →
+blocca, qualunque sia la causale.
+
+### R-3 · 🔴 Lo stesso difetto silenzioso è **aperto su ordini e preventivi**
+
+`vendite.vw_ordini_righe_iva_base` filtra solo `attivo IS TRUE AND quantita > 0` —
+**non filtra nemmeno `prezzo_unitario`** — e con `iva_id IS NULL` produce
+imponibile pieno e aliquota nulla in `vw_ordini_riepilogo_iva_dettaglio`. Non
+esiste nessun `fn_check_ordine_emittibile` (solo `fn_check_ordine_annullabile`), e
+`vendite.preventivi_riepiloghi_iva` ha la stessa forma. Il gate è stato messo su
+**una delle tre sedi**. → nuova richiesta `I9`.
+
+### R-4 · ⛔ Il §2.4 cita l'ingrediente **rotto** e ignora quello **vivo**
+
+[script.fn_get_iva_override](/dbzero/script/funzioni/fn_get_iva_override) legge
+`i.assoggettamento_iva` e `s.assoggettamento_override`: **nessuna delle due
+colonne esiste**. Le vive sono `config.iva.assoggettamento_id` e
+`config.iva_stati.assoggettamento_id_override`. Non è «esiste già e non la chiama
+nessuno»: **è rotta a runtime**, e va riscritta o ritirata.
+
+⭐ Quella viva è [config.fn_get_aliquota_iva](/dbzero/config/funzioni/fn_get_aliquota_iva)`(iva_id, stato_id)`,
+già chiamata dentro le `vw_*_righe_iva_base`. ⚠️ È dichiarata **`VOLATILE`** pur
+essendo sola lettura, e gira dentro delle viste: va portata a `STABLE`.
 
 ---
 
@@ -257,20 +529,29 @@ della stessa regola che invecchiano separate.
 > primo, ritorno a ripartizione). Qui ci sono i soli **ingredienti**, cioè le
 > sedi che esistono già e che nessuno legge — la ragione per cui questo brief
 > parla di anelli mancanti e non di cose da inventare.
+>
+> ⭐ **Riscritto in Rev 2** (2026-08-28): la lista di ieri dava per assente un
+> anello che esiste (`D11`), per esistente uno che è rotto (`R-4`), e teneva
+> `clienti.iva_id` fra gli ingredienti quando invece **si toglie** (`D7-bis`).
 
 * **articolo** — `catalogo.articoli.iva_id`: la proposta ordinaria dello
-  **stadio A**;
-* **fornitura** — l'anello dello stadio A che oggi non esiste da nessuna parte:
-  l'uso della fornitura (gas domestico vs altri usi) non ha una sede. Vedi §2.7.2;
-* **cliente / soggetto** — `anagrafiche.clienti.iva_id`, che è **`NOT NULL`**: una
-  IVA di cliente c'è **sempre**, non è un caso da gestire. È l'anello che oggi
-  manca del tutto. ⚠️ La sua **sede** è però in discussione (§2.6.3): la colonna
-  sta su una riga per istanza di utenza, mentre `D6` colloca il titolo sul
-  **soggetto**;
-* **titolo documentato** — `anagrafiche.soggetti_intento` (§2.6), lo **stadio B**:
-  da costruire, con la natura `N3.5` che è già a seed e orfana;
-* **stato** — `script.fn_get_iva_override(codice_iva, stato_id)` +
-  `config.iva_stati`: esiste già, e nella catena vendite non la chiama nessuno.
+  **stadio A**. ⚠️ È **nullable**: l'articolo può legittimamente non avere
+  un'opinione, e quel caso va gestito;
+* **catena del prezzo** — ⭐ e nessuno se n'era accorto: l'aliquota è **già**
+  accanto al prezzo a ogni livello — `vendite.listini_righe_componenti.iva_id`,
+  `contratti_righe_componenti.iva_id`,
+  `offerte_commerciali_eccezioni_componenti.iva_id`. Lo stadio A non è una catena
+  da inventare: è una catena **già cablata in colonne e mai letta**;
+* **fornitura / uso** — `config.tipi_utenze.iva_id`, agganciata via
+  `vendite.contratti_utilities.tipo_utenza_id`. **Esiste** (`D11`), contro quanto
+  scriveva la versione di ieri;
+* ~~**cliente / soggetto** — `anagrafiche.clienti.iva_id`~~ ⛔ **fuori**: si toglie
+  (`D7-bis`). Non è un anello mancante, è una colonna senza lavoro;
+* **titolo documentato** — `anagrafiche.soggetti_titoli_iva` (`D10`, §2.6), lo
+  **stadio B**: da costruire, con la natura `N3.5` che è già a seed e orfana;
+* **stato** — `config.fn_get_aliquota_iva(iva_id, stato_id)` + `config.iva_stati`:
+  è la funzione **viva**, già chiamata dalle `vw_*_righe_iva_base`.
+  ⛔ **Non** `script.fn_get_iva_override`, che è **rotta**: vedi `R-4`.
 
 ⚠️ **`split_payment` e `cliente_pa` NON sono un codice IVA e non entrano nel
 risolutore.** La scissione dei pagamenti non cambia l'aliquota: cambia **chi versa
@@ -290,7 +571,20 @@ payload SDI. Confonderli farebbe nascere codici IVA fasulli.
    progetto è ammesso (`project_no_produzione_solo_sviluppo`) — ma va **detto**,
    non scoperto.
 
-### 2.6 🔴 La dichiarazione d'intento — `anagrafiche.soggetti_intento`
+### 2.6 🔴 La dichiarazione d'intento — ~~`anagrafiche.soggetti_intento`~~ → **`anagrafiche.soggetti_titoli_iva`**
+
+> ⭐ **Rev 2, 2026-08-28 — il nome e la forma cambiano: leggere `D10` prima di
+> questo paragrafo.** La dichiarazione d'intento **non è un caso unico**: è il
+> primo di una famiglia di **almeno quattro** titoli (intento, uso
+> industriale/agricolo gas-EE, agevolata disabili L.104, cooperative sociali e
+> ONLUS). Il plafond, che qui sotto è la colonna portante, è la **proprietà di un
+> tipo** — solo l'intento ce l'ha.
+>
+> **Resta valido tutto il merito**: le sei domande di `P1`…`P5` + sede, il
+> registro dei movimenti di `D5`, il fatto che la fattura ri-risolve e non
+> trasporta. **Cambiano** il nome, la chiave (entra l'**emittente destinatario**,
+> `D10-bis`), l'**ambito** (che arriva fino al singolo articolo) e la forma del
+> guard di non sovrapposizione (§2.6.4).
 
 Richiesta di Tid, 2026-08-27: *«serve una tabella specifica dove si salvano le
 informazioni della dichiarazione d'intento con data inizio e fine validità e il
@@ -536,7 +830,14 @@ Il che suggerisce che B non sia una colonna sul soggetto ma un insieme di
 
 ---
 
-## 3. 🟠 Il gate all'emissione: chiede il prezzo, non l'aliquota
+## ~~3. 🟠 Il gate all'emissione: chiede il prezzo, non l'aliquota~~ — ✅ **CHIUSA il 2026-08-28**
+
+> ✅ **Fatta e applicata**, ma **non come scritto qui**: la regola entrata guarda
+> il **prezzo** e non la **causale**, ed è migliore. Dettaglio e conseguenze in
+> **`R-1`**; il pgTAP che il §6 chiede va riscritto (**`R-2`**).
+> Il testo sotto resta per storia — è l'inquadramento da cui è partita la voce.
+
+### ~~Testo originale (2026-08-27)~~
 
 `vendite.trgfn_ddt_guard_causale_emissione` (che delega la valutazione a
 `script.fn_check_ddt_emittibile`, single source con la capability) oggi verifica:
@@ -573,11 +874,21 @@ e il ripiego senza `%s` (`feedback_ripiego_ogni_codice_vivo`).
 
 `anagrafiche.clienti` porta il regime fiscale della controparte:
 
-| Colonna | Nullable | Chi la scrive | Chi la legge |
-| --- | --- | --- | --- |
-| `iva_id` | **`NO`** | `fn_update_cliente` + `ClienteDrawer.vue` (con default da `DEFAULT_IVA_ID`) | ⛔ **nessuno**, in tutta la catena vendite |
-| `split_payment` | `NO`, default `'N'` | `ClienteDrawer.vue` | ⛔ **nessuno** — non è né su `vendite.fatture` né in `fn_prepare_sdi_payload` |
-| `cliente_pa` | `NO`, default `'N'` | `ClienteDrawer.vue` | ⛔ **nessuno** |
+| Colonna | Nullable | Chi la scrive | Chi la legge | ⭐ Rev 2: destino |
+| --- | --- | --- | --- | --- |
+| `iva_id` | **`NO`** | `fn_update_cliente` + `ClienteDrawer.vue` (con default da `DEFAULT_IVA_ID`) | ⚠️ **quasi nessuno** — la legge `BillingAccountRepository.get_cliente_defaults` e la espone `/vendite/preventivi/form-defaults/`; è il FE a scartarla (`D7-bis`) | ⛔ **si toglie** (`D7-bis`) |
+| `split_payment` | `NO`, default `'N'` | `ClienteDrawer.vue` | ⛔ **nessuno** — non è né su `vendite.fatture` né in `fn_prepare_sdi_payload` | ⬆️ **sale su `soggetti`** (`D8`) |
+| `cliente_pa` | `NO`, default `'N'` | `ClienteDrawer.vue` | ⛔ **nessuno** | ⬆️ **sale su `soggetti`** (`D8`) |
+| `codice_cig` | `SI` | `ClienteDrawer.vue` | ⛔ **nessuno** — non esistono in nessun'altra tabella | ➡️ **al contratto** (`D9`) |
+| `codice_cup` | `SI` | `ClienteDrawer.vue` | ⛔ **nessuno** | ➡️ **al contratto** (`D9`) |
+| `codice_commessa` | `SI` | `ClienteDrawer.vue` | ⛔ **nessuno** | ➡️ **al contratto** (`D9`) |
+
+⭐ **Le sei colonne non erano un gruppo solo, ed è la scoperta della Rev 2.**
+Erano tutte lì per la stessa ragione — Tid le aveva messe su `clienti` perché
+*«potevano essere diverse in base alla utility»*, e `clienti` era l'unica tabella
+per fornitura disponibile. Ma rispondono a **tre domande con tre padroni
+diversi**: `iva_id` alla merce e al suo uso, `split_payment`/`cliente_pa` alla
+partita IVA, i tre codici al **contratto**.
 
 Il modello concettuale della tabella li dichiara: *«classificazioni speciali (PA,
 split payment)»*, e il diagramma scrive `iva ||--o{ clienti : vat_of`.
@@ -596,15 +907,22 @@ modo in cui questo difetto è arrivato fin qui.
 
 ## 5. La richiesta, in ordine
 
-| # | Cosa | A chi | Blocca il collaudo? |
+> ⭐ **Tabella riscritta in Rev 2** (2026-08-28). `I1` è chiusa; `I7` sale a
+> **prerequisito di `I2`**; entrano `I8` (CIG/CUP/commessa) e `I9` (il gate
+> mancante su ordini e preventivi).
+
+| # | Cosa | A chi | Stato |
 | --- | --- | --- | --- |
-| **I1** | Gate IVA all'emissione dentro `script.fn_check_ddt_emittibile` + codice errore nuovo a catalogo (§3) | DB | 🟠 è la voce che lo chiude |
-| **I2** | Risolutore IVA a **due stadi** (§2.7, `D6`): A = aliquota ordinaria con cascata `articolo → … → fornitura`; B = titolo di non imponibilità dal **soggetto**, che sostituisce A. ⭐ **Ritorna una ripartizione** `(quota, codice IVA)`, non un codice (§2.7.3). Funzione DB sul modello di `fn_resolve_prezzo_listino_v2` | DB | no |
-| **I3** | Il BE chiama I2 alla creazione della riga; il FE **smette** di fare l'auto-fill e mostra il risultato del risolutore (§2.5.1) | BE + FE | no |
-| **I4** | La riga di fattura smette di rileggere `art.iva_id` e **ri-risolve** via I2. ⛔ L'alternativa «l'IVA viaggia nella catena `attivita_fatturabili`» è **esclusa da P1**: la fattura rifà, non trasporta. ⚠️ **Breaking change dichiarato** (§2.5.2) | DB + BE | no |
-| **I5** | `split_payment` / `cliente_pa` → testata fattura + payload SDI (`EsigibilitaIVA`), **fuori** dal risolutore (§2.4) | DB + BE | no |
-| **I7** | **`anagrafiche.soggetti_intento`** + registro movimenti + codice `config.iva` con `natura_iva_id = 8` (oggi la natura è **orfana**) + `EXCLUDE` anti-sovrapposizione. ✅ **Le sei domande sono decise** (§2.6.2/§2.6.3): consumo alla **fattura**, riga che **si spezza**, `imponibile_utilizzato` memorizzato, NC che **restituisce**, protocollo **fino all'XML**, sede sul **soggetto** | DB + BE | no — ma **sblocca D1** |
-| **I6** | ❓ **Ferma su D1.** Se «l'IVA di riga non si cambia» è una regola, la sua sede non è un `:disabled` nel template: o scende nel BE (`iva_id` fuori da `_UPDATE_KEYS_RIGA`) o si dichiara che è solo un aiuto della UI | BE | no |
+| ~~**I1**~~ | ~~Gate IVA all'emissione dentro `script.fn_check_ddt_emittibile`~~ | DB | ✅ **FATTA** 2026-08-28, con regola diversa e migliore (`R-1`) |
+| **I0** | ⭐ **Nuova, ed è il passo che sblocca gli altri**: `DROP` di `anagrafiche.clienti.iva_id` (`D7-bis`) + salita di `split_payment`/`cliente_pa` su `anagrafiche.soggetti` (`D8`). Si porta dietro `fn_update_cliente`, la whitelist BE e il `ClienteDrawer.vue` | DB + BE + FE | 🟢 pronta: nessun consumatore vero |
+| **I7** | **`anagrafiche.soggetti_titoli_iva`** (`D10`) — famiglia con vocabolario dei tipi, **emittente destinatario** in chiave (`D10-bis`), ambito fino al **singolo articolo**, `validita` `daterange`, registro movimenti (`D5`) e plafond **solo per i tipi che ce l'hanno**; + codice `config.iva` con `natura_iva_id = 8` (oggi la natura è **orfana**); + `EXCLUDE` anti-sovrapposizione sulla chiave nuova. ✅ Le sei domande di §2.6.2 restano decise | DB + BE | ⛔ **prerequisito di `I2`**: senza, lo stadio B non ha nessuna sorgente |
+| **I2** | Risolutore IVA a **due stadi** (§2.7, `D6`+`D7`): A = aliquota ordinaria, cascata `articolo → catena prezzo → tipo utenza`; B = **titolo documentato** dal soggetto, che sostituisce A. ⭐ **Ritorna una ripartizione** `(quota, codice IVA)`, non un codice (§2.7.3). Sul modello di `fn_resolve_prezzo_listino_v2` | DB | dopo `I7` |
+| **I3** | Il BE chiama `I2` alla creazione della riga; il FE **smette** di fare l'auto-fill e mostra il risultato del risolutore (§2.5.1) | BE + FE | dopo `I2` |
+| **I4** | La riga di fattura smette di rileggere `art.iva_id` e **ri-risolve** via `I2`. ⛔ L'alternativa «l'IVA viaggia nella catena `attivita_fatturabili`» è **esclusa da P1**: la fattura rifà, non trasporta. ⚠️ **Breaking change dichiarato** (§2.5.2) | DB + BE | dopo `I2` |
+| **I5** | `split_payment` / `cliente_pa` → riga e riepilogo fattura + payload SDI (`EsigibilitaIVA`), **fuori** dal risolutore (`D4`). ⭐ **Voce corta**: `fatture_righe` e `fatture_riepiloghi_iva` hanno **già** le colonne e il raggruppamento — manca solo chi le riempie (`D8`) | DB + BE | dopo `I0` |
+| **I8** | ⭐ **Nuova, e non è IVA**: `codice_cig` / `codice_cup` / `codice_commessa` da `clienti` a **`vendite.contratti`**, + **snapshot** sulla fattura all'emissione (`D9`). ⚠️ `vendite.fatture` non ha nessun link al contratto: senza snapshot non arrivano mai | DB + BE + FE | 🟢 **da fare adesso**: il builder XML non è ancora scritto |
+| **I9** | ⭐ **Nuova**: il gate «riga con prezzo senza aliquota» esiste **solo sul DDT**. `vw_ordini_righe_iva_base` non filtra nemmeno `prezzo_unitario`, e per ordini e preventivi non c'è nessun `fn_check_*_emittibile` (`R-3`) | DB | indipendente |
+| **I6** | ❓ **Ferma su D1.** Se «l'IVA di riga non si cambia» è una regola, la sua sede non è un `:disabled` nel template: o scende nel BE (`iva_id` fuori da `_UPDATE_KEYS_RIGA`) o si dichiara che è solo un aiuto della UI | BE | **per ultima** |
 
 ⛔ **L'ordine fra I6 e le altre non è indifferente, ed è l'unico modo di sbagliare
 in silenzio.** `I6` toglie all'operatore l'ultima uscita manuale: applicata
@@ -612,23 +930,43 @@ in silenzio.** `I6` toglie all'operatore l'ultima uscita manuale: applicata
 cementerebbe i buchi e i valori sbagliati che oggi si possono ancora correggere
 via API. `I6` va **per ultima**, e solo dopo che D1 è stata decisa.
 
-⚠️ **I1 è indipendente da tutte le altre** e vale la pena farla per prima: chiude
-la casella del collaudo e rende **visibile** il difetto delle altre voci invece di
-lasciarlo silenzioso. Un documento che oggi esce senza aliquota, domani si ferma
-e lo dice.
+⭐ **La dipendenza nuova della Rev 2, e va nel verso non ovvio**: `I7` **non** è
+una voce parallela a `I2`, è il suo **prerequisito**. Finché i titoli non hanno
+una sede, lo stadio B non ha niente da leggere — e con `clienti.iva_id` tolta da
+`I0`, un risolutore scritto prima di `I7` sarebbe uno **stadio A soltanto**, cioè
+il comportamento di oggi con più codice intorno.
+
+⚠️ **`I0`, `I8` e `I9` sono indipendenti fra loro e da tutto il resto**, e
+conviene farle subito: sono le tre che oggi costano meno e che dopo costeranno di
+più — `I0` perché non ha consumatori veri, `I8` perché il builder FatturaPA non
+esiste ancora, `I9` perché è la stessa regola già scritta e collaudata sul DDT.
 
 ---
 
 ## 6. Presidi attesi
 
-* **pgTAP su I1**: causale fatturabile + riga senza `iva_id` → l'emissione
-  solleva il codice nuovo, con il `riga_id` nel contesto; causale **non**
-  fatturabile + riga senza `iva_id` → l'emissione **passa** (è il DDT di solo
-  trasporto, e senza questo test la voce diventa una `NOT NULL` mascherata);
-* **pgTAP su I2**, e va **costruito**, non cercato: cliente con `iva_id` diverso
-  da quello dell'articolo → il risolutore ritorna **quello del cliente**. Un test
-  che itera sui clienti di oggi passerebbe a vuoto se nessuno diverge, ed è la
-  forma del «verde per sottrazione» che `AGENTS.md` vieta;
+* ~~**pgTAP su I1**: causale fatturabile + riga senza `iva_id` → l'emissione
+  solleva il codice nuovo; causale **non** fatturabile + riga senza `iva_id` →
+  l'emissione **passa**~~ ⛔ **SBAGLIATO, vedi `R-2`**: il discrimine è il
+  **prezzo**, non la causale. La forma giusta è — riga **senza** prezzo e senza
+  `iva_id` → **passa** (è il DDT di solo trasporto, e senza questo test la voce
+  diventa una `NOT NULL` mascherata); riga **con** prezzo e senza `iva_id` →
+  **blocca**, qualunque sia la causale;
+* **pgTAP su I2**, e va **costruito**, non cercato: soggetto con un **titolo**
+  valido diverso dall'aliquota dell'articolo → il risolutore ritorna **quello del
+  titolo**; stesso soggetto con il titolo **scaduto** → ritorna quello
+  dell'articolo. ⭐ Rev 2: il test di ieri diceva «cliente con `iva_id` diverso»,
+  e non si può più scrivere — quella colonna non esiste (`D7-bis`). Un test che
+  itera sui soggetti di oggi passerebbe comunque a vuoto: è il «verde per
+  sottrazione» che `AGENTS.md` vieta;
+* ⭐ **pgTAP su I7, ed è quello che nessuno penserebbe di scrivere**: stesso
+  soggetto, **due emittenti**, un titolo per ciascuno → il consumo di plafond
+  dell'uno **non** intacca l'altro (`D10-bis`). È l'errore che si vedrebbe solo
+  su un plafond esaurito prima del dovuto, cioè sul numero che l'Agenzia delle
+  Entrate verifica;
+* **pgTAP su I7 / ambito**: titolo con ambito ristretto a un **articolo** → il
+  risolutore lo applica su quella riga e **non** su una riga di un altro
+  articolo dello stesso documento (è il caso «agevolata disabili», `D10`);
 * **il test che nessuno scrive**: `split_payment = 'S'` **non** cambia il codice
   IVA risolto. È la confusione più facile da fare e la più cara da scoprire in
   fattura;
@@ -660,3 +998,67 @@ e lo dice.
   «quanti clienti hanno un'IVA diversa da quella dei loro articoli?» non decide
   niente. Il modello ammette la divergenza — `clienti.iva_id` è una colonna
   `NOT NULL` con una FK a `config.iva` — e tanto basta.
+
+---
+
+## 8. ⭐ Come funziona l'IVA, con le regole decise
+
+> Il racconto in linguaggio piano, richiesto da Tid il 2026-08-28. È la stessa
+> cosa detta dalle decisioni sopra; serve a chi arriva e vuole capire il disegno
+> prima di leggere le colonne.
+
+**Una riga di documento ottiene la sua IVA in due tempi.**
+
+**Tempo 1 — quale aliquota compete a questa merce.** Risponde la merce e il suo
+uso, mai la controparte. Si guarda l'articolo; se la riga viene da un listino, un
+contratto o un'offerta, quelli possono dire la loro perché ognuno porta già un
+`iva_id` accanto al prezzo; e per le utility si guarda il **tipo d'uso** della
+fornitura (domestico, altri usi, condominio, pubblico), che è dove sta scritto
+perché il gas di casa non paga come il gas di uno stabilimento. Vince il livello
+**più specifico**, esattamente come per il prezzo. A questo punto esiste
+un'aliquota ordinaria, e per chiunque è quella.
+
+**Tempo 2 — questo cliente ha un titolo che la sostituisce?** Si va a vedere se
+il **soggetto** — la partita IVA, non la singola fornitura — ha un **titolo
+registrato e valido oggi**: una dichiarazione d'intento, una dichiarazione di uso
+industriale, un'agevolazione per disabile, la qualifica di cooperativa sociale.
+Se non ce n'è, il Tempo 1 è la risposta finale. Se ce n'è uno, **prende il posto**
+dell'aliquota ordinaria per quella riga.
+
+Un titolo non è un flag: è un **documento**. Ha un protocollo o una prova, una
+data di inizio e una di fine, dice **a chi** è stato presentato (l'emittente) e
+dice **per cosa vale** — tutto, oppure solo certe categorie di merce, oppure un
+articolo solo. Se ha un tetto — è il caso della dichiarazione d'intento — ogni
+fattura ne consuma un pezzo, ogni nota di credito ne restituisce uno, e se il
+tetto finisce a metà riga la riga **si spezza**: non imponibile fino a capienza,
+il resto ad aliquota ordinaria.
+
+**L'operatore non digita l'IVA.** Non è una scelta, è una conseguenza: si applica.
+Il prezzo si negozia — e infatti chi lo scavalca passa da un'approvazione —
+l'aliquota no. Se un cliente ha diritto a qualcosa di diverso, quel diritto **si
+registra una volta** come titolo, con la sua carta, e da quel momento vale da solo
+su tutti i documenti finché è valido.
+
+**Il documento a monte proietta, la fattura decide.** L'IVA che l'operatore vede
+su un preventivo, un ordine o un DDT serve a mostrargli che cosa verrà applicato e
+a fare il riepilogo del documento. Non è il valore che finirà in fattura: la
+fattura **rifà** il calcolo al momento in cui nasce, perché nel frattempo un
+titolo può essere scaduto o un plafond essersi esaurito.
+
+**Restano fuori due cose che sembrano IVA e non lo sono.** Lo *split payment* e
+il *cliente PA* non cambiano l'aliquota: cambiano chi versa l'imposta all'erario,
+e viaggiano per conto loro fino alla fattura elettronica. E CIG, CUP e commessa
+non c'entrano con l'IVA affatto: sono i riferimenti del **contratto**, e in
+fattura ci arrivano copiati da lì.
+
+---
+
+## 9. Diario
+
+| Data | Cosa |
+| --- | --- |
+| 2026-08-27 | Nascita del brief dalla domanda di Tid sul collaudo delle righe DDT senza prezzo. Quattro voci, `D1`…`D5`, poi `D6` in giornata (due stadi) — che senza dirlo rendeva `D2` priva d'oggetto |
+| 2026-08-28 (mattina) | ✅ `I1` **applicata** fuori da questo brief, dalla Fase C di `brief-db-ddt-riconsegna-eredita-testata`: `E_DDT_RIGA_IVA_MANCANTE`, e con il discrimine sul **prezzo** invece che sulla causale (`R-1`) |
+| 2026-08-28 (Rev 2) | Rilettura critica con Tid, partita dal suo dubbio: *«avevo dato prioritaria l'IVA su soggetto rispetto all'articolo, credo debba essere il contrario»*. ⛔ **`D2` superata da `D7`**: non c'era una precedenza da invertire, c'erano due domande diverse. Verificati sulla doc auto-gen quattro fatti che il documento dava per veri (§R): `I1` già fatta, il pgTAP del §6 sbagliato, il gate mancante su ordini/preventivi, `fn_get_iva_override` **rotta**. Trovato che l'anello «uso fornitura» **esisteva già** (`config.tipi_utenze`, `D11`) e che l'aliquota **cavalca già la catena del prezzo** in tre tabelle mai lette |
+| 2026-08-28 (Rev 2, seguito) | Partendo dalle colonne che Tid aveva messo sul cliente *«perché potevano essere diverse per utility»*: ⭐ **non erano un gruppo solo**. `clienti.iva_id` **si toglie** (`D7-bis`), `split_payment`/`cliente_pa` salgono su **`soggetti`** (`D8`), CIG/CUP/commessa vanno al **contratto** con snapshot in fattura (`D9`) — voce che nel brief non c'era |
+| 2026-08-28 (Rev 2, chiusura) | Tid nomina i casi che rendono la famiglia reale — agevolata disabili, società al 10% senza dichiarazione d'intento. ⭐ `soggetti_intento` diventa **`anagrafiche.soggetti_titoli_iva`** (`D10`), con l'**emittente destinatario** in chiave (`D10-bis`) e l'**ambito fino al singolo articolo**. `I7` sale a **prerequisito di `I2`**. Aggiunto il §8, il racconto in linguaggio piano |
