@@ -227,7 +227,7 @@ perdere.
 **Materia misurata il 2026-08-28** — preventivi in stato **`ACCETTATO`** (da cui
 l'annullamento è ammesso) con **1 riga di commessa `NON_EMESSA`** da ritirare:
 
-> `PRV0000099` · `PRV0000133` · `PRV0000135` · `PRV0000136` · e altri
+> `PRV0000099` · `PRV0000133`  CMM-20260610194705159-31740c · `PRV0000135` · `PRV0000136` · e altri
 
 1. apri il preventivo (`vendite/preventivi`) e prendi nota della **commessa** che
    ha alimentato;
@@ -307,22 +307,22 @@ prima si accendeva a sproposito.
 
 **Chiuso il**: ______ · **Da**: ______ · **Ambiente**: ______
 
-| #   | Prova                                            | Scrive | Esito | Note |
-| --- | ------------------------------------------------ | ------ | ----- | ---- |
-| 1   | La card dice DUE cose                            | no     | ⬜     |      |
-| 2   | Mese senza residui: «nessuno da recuperare»      | no     | ⬜     |      |
-| 3   | Il tooltip non racconta la storia vecchia        | no     | ⬜     |      |
-| 4   | La lista è quella dei residui                    | no     | ⬜     |      |
-| 5a  | 🔴 **Esporta** scarica i RESIDUI                  | no     | ⬜     |      |
-| 5b  | 🔴 **Personalizza colonne** apre la lista giusta  | no     | ⬜     |      |
-| 5c  | 🔴 **Le 10 colonne ordinabili**, in due direzioni | no     | ⬜     |      |
-| 6   | Senza permesso la porta non si vede              | no     | ⬜     |      |
-| 7   | ⭐ **Il gesto — una riga sola** (perimetro)       | **sì** | ⬜     |      |
-| 8   | Il recupero è vero: si rifattura                 | **sì** | ⬜     |      |
-| 9   | L'elenco invecchiato si riconosce da sé          | **sì** | ⬜     |      |
-| 10.1| **Annullare** un documento ritira il non emesso  | **sì** | ⬜     | brucia il documento |
-| 10.2| Con righe emesse l'annullamento è **rifiutato**  | no     | ⬜     | unico esemplare: `DDT0010839` |
-| 11  | Seleziona-tutto **di pagina** (altra lista)      | no     | ⬜     |      |
+| #    | Prova                                            | Scrive | Esito | Note                          |
+| ---- | ------------------------------------------------ | ------ | ----- | ----------------------------- |
+| 1    | La card dice DUE cose                            | no     | ⬜     |                               |
+| 2    | Mese senza residui: «nessuno da recuperare»      | no     | ⬜     |                               |
+| 3    | Il tooltip non racconta la storia vecchia        | no     | ⬜     |                               |
+| 4    | La lista è quella dei residui                    | no     | ⬜     |                               |
+| 5a   | 🔴 **Esporta** scarica i RESIDUI                  | no     | ⬜     |                               |
+| 5b   | 🔴 **Personalizza colonne** apre la lista giusta  | no     | ⬜     |                               |
+| 5c   | 🔴 **Le 10 colonne ordinabili**, in due direzioni | no     | ⬜     |                               |
+| 6    | Senza permesso la porta non si vede              | no     | ⬜     |                               |
+| 7    | ⭐ **Il gesto — una riga sola** (perimetro)       | **sì** | ⬜     |                               |
+| 8    | Il recupero è vero: si rifattura                 | **sì** | ⬜     |                               |
+| 9    | L'elenco invecchiato si riconosce da sé          | **sì** | ⬜     |                               |
+| 10.1 | **Annullare** un documento ritira il non emesso  | **sì** | ⬜     | brucia il documento           |
+| 10.2 | Con righe emesse l'annullamento è **rifiutato**  | no     | ⬜     | unico esemplare: `DDT0010839` |
+| 11   | Seleziona-tutto **di pagina** (altra lista)      | no     | ⬜     |                               |
 
 ### Che cosa ha trovato il collaudo
 

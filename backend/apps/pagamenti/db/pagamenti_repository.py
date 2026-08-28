@@ -50,6 +50,11 @@ _FN = "pagamenti.pagamenti_repository"
 # non e' un errore che un operatore possa causare compilando qualcosa.
 _E_CHIAMATA = "E_PAGAMENTI_CHIAMATA_NON_VALIDA"
 
+# ✅ Il «fuori perimetro», gia' a catalogo (classe `NON_PERMESSO` -> **403**) e
+# gia' col suo ripiego: non se ne inventa uno nuovo, che cadrebbe su
+# `E_GENERICO` e quindi su un **500**.
+_E_SCOPE_EMITTENTE = "E_SCOPE_EMITTENTE"
+
 
 # ══════════════════════════════════════════════════════════════════
 #  Frammenti SQL condivisi
@@ -1031,6 +1036,40 @@ class PagamentiRepository:
             rows = rows_to_list(cursor)
         return self._shape(rows[0]) if rows else None
 
+    # Scopo: L'emittente indicato e' dentro il perimetro di chi sta chiedendo?
+    # 🔴 Serve perche' `anagrafiche.soggetti_ruoli_conti_bancari` ha la row
+    #    security SPENTA di proposito: la' il perimetro non lo mette il
+    #    database, quindi se non lo mette il backend non lo mette nessuno.
+    #    ⛔ Misurato il 2026-08-28 (E-4): senza questa domanda un operatore
+    #    dell'emittente A leggeva l'IBAN di incasso dell'emittente B passando il
+    #    suo `soggetto_ruolo_id` — e senza nessun errore.
+    # ⛔ SENZA UTENTE NON SI PASSA, e non e' pignoleria: la canonica
+    #    `fn_check_user_emittente_scope` risponde **true** quando
+    #    `p_auth_user_id` e' NULL (regola 1, «job batch»). Delegarle la domanda
+    #    su un percorso senza GUC aprirebbe il perimetro invece di chiuderlo:
+    #    qui «non so chi sei» vale **no**.
+    def emittente_nel_perimetro(self, emittente_soggetto_ruolo_id: int) -> bool:
+        self._guard_canale_sistema("emittente_nel_perimetro")
+        with connection.cursor() as cursor:
+            # ⚠️ La GUC si chiama `app.current_user_id`, NON `app.auth_user_id`:
+            #    e' il nome che usano le policy RLS di questo schema, ed e' da
+            #    li' che si legge — mai dal nome che sembra giusto. Con il nome
+            #    sbagliato il `current_setting` risponde NULL e questa funzione
+            #    rifiuta TUTTO, compreso chi ha diritto: un difetto che i mock
+            #    non vedono, perche' i mock non hanno GUC.
+            cursor.execute(
+                "SELECT NULLIF(current_setting('app.current_user_id', true), '')::int"
+            )
+            row = cursor.fetchone()
+            auth_user_id = row[0] if row else None
+            if auth_user_id is None:
+                return False
+            cursor.execute(
+                "SELECT COALESCE(script.fn_scope_ef_whitelist_via_sr(%s, %s), false)",
+                [int(auth_user_id), int(emittente_soggetto_ruolo_id)],
+            )
+            return bool(cursor.fetchone()[0])
+
     # Scopo: I conti che un emittente puo' agganciare a un canale.
     # 🔴 **Solo quelli con `uso = 'INCASSO'`**, ed e' la richiesta BE-8: il
     #    database rifiuta gli altri con un errore parlante, ma un elenco che li
@@ -1043,6 +1082,21 @@ class PagamentiRepository:
     #    una svista del modello: e' quella garanzia.
     def list_conti_incasso(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
         self._guard_canale_sistema("list_conti_incasso")
+        # 🔴 IL PERIMETRO, e sta QUI e non nel service: e' lo stesso posto e la
+        #    stessa ragione di `_guard_canale_sistema` — il repository e'
+        #    l'ultimo cancello prima della stringa SQL, e un controllo un piano
+        #    piu' su lo salta il secondo chiamante che nascera'.
+        # ⚠️ Si RIFIUTA, non si risponde vuoto: un elenco vuoto direbbe «questo
+        #    emittente non ha conti di incasso», che e' un'altra frase — e
+        #    falsa. E' la trappola del conteggio fail-closed.
+        ErrorManager.require(
+            self.emittente_nel_perimetro(soggetto_ruolo_id),
+            code=_E_SCOPE_EMITTENTE,
+            message="Questo emittente non e' nel tuo perimetro.",
+            detail=f"soggetto_ruolo_id={soggetto_ruolo_id}",
+            context={"field": "soggetto_ruolo_id"},
+            function_name=f"{_FN}.list_conti_incasso",
+        )
         sql = f"""
             SELECT src.id            AS soggetto_ruolo_conto_bancario_id,
                    src.soggetto_ruolo_id,
