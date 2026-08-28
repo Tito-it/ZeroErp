@@ -1793,7 +1793,7 @@ se qualcuno cambia la causale dopo; ordini e preventivi continuano a rifiutare.
 
 | Residuo | Dove |
 | --- | --- |
-| `fn_genera_ddt_riconsegna` genera un DDT **nudo** — niente causale, niente indirizzi, e sulla riga né prezzo né sconto né IVA. Il gemello che parte da un **ordine**, sorgente più povera, copia di più | [brief-db-ddt-riconsegna-eredita-testata.md](../work-in-progress/brief-db-ddt-riconsegna-eredita-testata.md) |
+| `fn_genera_ddt_riconsegna` genera un DDT **nudo** — niente causale, niente indirizzi, e sulla riga né prezzo né sconto né IVA. Il gemello che parte da un **ordine**, sorgente più povera, copia di più | [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md) |
 | L'IVA non ha un **risolutore**: la decide l'articolo, in due punti indipendenti, e uno è nel frontend. Il regime fiscale del cliente è scritto dall'operatore e letto da nessuno. Include la **dichiarazione d'intento**, che non ha nessuna sede | [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md) — 6 decisioni di Tid già prese |
 | L'unificazione di `canSave` fra `DdtRigaForm`, `OrdiniRigaForm` e `PreventiviRigaForm` (stessa forma, difetto latente sui due gemelli) | proposta a Tid, **in attesa di ok** — regola del 2 |
 

@@ -5,7 +5,7 @@
 > consumato tutto ciò che questo brief chiedeva (§7).
 >
 > ➡️ **Il seguito vive in
-> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md)**,
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md)**,
 > che resta l'**unico brief aperto** del cantiere: lì stanno il collaudo in-app
 > di Tid sulle 5 righe vere e i due
 > punti che questo brief lascia a **chi li possiede** — il codice errore
@@ -21,7 +21,7 @@
 > ([[feedback_be_fe_attende_prerequisiti_db]]).
 >
 > **Origine.** 2026-08-26, scrivendo il piano applicativo di
-> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md),
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md),
 > cioè la metà BE/FE del cantiere che il team DB ha appena chiuso
 > ([brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)).
 > Il verbo **«Riporta da emettere»** è applicato, collaudato sulle 5 righe vere e
@@ -449,7 +449,7 @@ controesempio mancato, non una prova: la prova sono le fixture **costruite**.
 
 > Erano aperte quando questo brief è stato scritto; sono tutte consegnate.
 > Il dettaglio applicativo, le prove e la revisione critica stanno in
-> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md)
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md)
 > §10 (BE), §11 (FE), §12 (doc) e §13 (revisione).
 
 ### 7.1 ✅ Le quattro chiavi i18n — erano un cancello CI rosso, ora è verde
@@ -629,4 +629,4 @@ giusta se il filtro si allargasse — non perché metta «i più vecchi in cima�
 ---
 
 *Scritto il 2026-08-26 — Tid / Claude. Piano applicativo che ne dipende:
-[brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) §6.*
+[brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md) §6.*

@@ -3823,6 +3823,22 @@
       "stato_bozza": "Draft",
       "stato_confermata": "Confirmed",
       "stato_annullata": "Discarded"
+    },
+    "correggi": {
+      "azione": "Correct",
+      "titolo": "Correct the sheet",
+      "conferma": "Create the correction",
+      "che_cosa_fa": "A new sheet is created, as a draft, with the lines of {codice} reversed in sign — invoice and instalment included. No money moves until you post it.",
+      "data_aiuto": "It is the date of the new sheet, not of the one you are correcting.",
+      "campo_motivo": "Why you are correcting it",
+      "motivo_aiuto": "It stays written on the new sheet: whoever finds two twin documents of opposite sign will read it.",
+      "solo_le_registrate": "Only posted lines are reversed: the others produced no movements, so there is nothing to correct.",
+      "creata": "Correction created, with {righe} lines to match.",
+      "creata_con_saltate": "Correction created with {righe} lines. {saltate} lines were not reversed: they were not posted.",
+      "nulla_da_correggere": "This sheet has no posted lines: there is nothing to correct.",
+      "gia_corretta": "Already corrected by sheet {codice}: open that one and work there.",
+      "e_la_correzione_di": "This sheet corrects {codice}",
+      "e_stata_corretta_da": "This sheet has already been corrected by {codice}"
     }
   },
   "dash_mesi": {

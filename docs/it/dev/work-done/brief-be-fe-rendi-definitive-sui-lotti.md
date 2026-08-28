@@ -36,7 +36,7 @@
 > | | Cosa mancava | Come si è chiusa |
 > | --- | --- | --- |
 > | ✅ **C-1** | il collaudo dei **verbi**: numerare una selezione, numerare il mese, il limite che si sposta fra sezionali diversi | **Chiuso il 2026-08-28 da Tid**: verbale in [collaudo-in-app-rendi-definitive-sui-lotti.md](collaudo-in-app-rendi-definitive-sui-lotti.md) — 16 prove, tutte verdi, **quattro difetti** trovati e corretti (R-1 → R-4) |
-> | ✅ **C-2** | la **guida**, che descriveva ancora «Rendi definitive» sulla card `Fatturate` | **Trasferita e FATTA** il 2026-08-28 dal cantiere gemello [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) (§12.3), che possiede la stessa §7.1: riscritta da **una mano sola**. ⚠️ Due riferimenti di questa consegna erano sbagliati e sono corretti là: il passo **L5** era **già fatto** (è un lotto del brief DB, chiuso il 2026-08-27), e la guida **non ha un §6.3** — quel numero è una sezione di *questo* brief, e il punto da correggere era la **§7.5** |
+> | ✅ **C-2** | la **guida**, che descriveva ancora «Rendi definitive» sulla card `Fatturate` | **Trasferita e FATTA** il 2026-08-28 dal cantiere gemello [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md) (§12.3), che possiede la stessa §7.1: riscritta da **una mano sola**. ⚠️ Due riferimenti di questa consegna erano sbagliati e sono corretti là: il passo **L5** era **già fatto** (è un lotto del brief DB, chiuso il 2026-08-27), e la guida **non ha un §6.3** — quel numero è una sezione di *questo* brief, e il punto da correggere era la **§7.5** |
 >
 > ⭐ **C-2 non è stata dichiarata fatta né lasciata cadere con l'archiviazione**:
 > è stata **spostata dove sta la mano che la esegue**. La §9.1 vietava di
@@ -715,7 +715,7 @@ lotti** — che era il punto dell'intero copione. Verbale:
 
 **C-2 non muore qui: cambia sede.** La riscrittura di §7.1 e §6.3 di
 `cruscotti-fatturazione.md` è una voce esplicita del cantiere gemello
-[brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md),
+[brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md),
 passo **L5** — l'unico che può riscrivere quella tabella senza che due mani si
 sovrascrivano (§9.1). Finché quella voce è aperta, la guida **dice il falso**
 sulla posizione di «Rendi definitive»: è la cosa da guardare per prima, aprendo

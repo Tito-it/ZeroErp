@@ -9,7 +9,7 @@
 >
 > Il caso da cui è partita — una riga di ri-consegna senza aliquota — è
 > l'inciampo, non il tema: quello sta in
-> [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md).
+> [brief-db-ddt-riconsegna-eredita-testata.md](../work-done/brief-db-ddt-riconsegna-eredita-testata.md).
 > Cercando la risposta è emerso che **l'IVA, in questo progetto, la decide
 > l'articolo e nessun altro** — e che le colonne dove vive il regime fiscale del
 > cliente sono compilate dall'operatore e lette da nessuno.
@@ -641,7 +641,7 @@ e lo dice.
 ## 7. Cosa NON è in questo brief
 
 * la riga di ri-consegna che nasce senza IVA: è
-  [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md)
+  [brief-db-ddt-riconsegna-eredita-testata.md](../work-done/brief-db-ddt-riconsegna-eredita-testata.md)
   §3-bis / R4. Le due cose si toccano ma non si sostituiscono — la ri-consegna
   deve ereditare l'aliquota **applicata sulla spedizione d'origine**, che è un
   fatto storico e non il risultato del risolutore di oggi;

@@ -29,7 +29,16 @@ const distintaId = ref(null)
 // Note: ⚠️ Vale anche per una distinta RITROVATA: il dialog ha gia' annunciato
 //       che conteneva delle righe, e portarci dentro e' cio' che rende
 //       l'annuncio azionabile invece che una notifica e basta.
-function onAperta(id) {
+function onAperta(id) { vaiA(id) }
+
+// Scopo: porta il drawer su UNA distinta, e ricarica l'elenco.
+// ⚠️ Il refetch non e' opzionale in nessuno dei due casi che arrivano qui —
+//    l'apertura di una distinta e i legami della correzione: si arriva perche'
+//    un documento e' appena nato o e' appena cambiato, e una lista ferma
+//    direbbe che non c'e'.
+// ⛔ Il click di RIGA invece non ricarica: li' non e' successo niente, e un
+//    refetch a ogni clic riavvolgerebbe la pagina sotto le mani.
+function vaiA(id) {
   if (!id) return
   distintaId.value = id
   drawerVisible.value = true
@@ -53,10 +62,15 @@ function apriDistinta(riga) {
     <!-- ⚠️ `@cambiata` ricarica la lista: i contatori di riga (registrabili,
          totale, scarto) cambiano a ogni gesto fatto dentro il drawer, e una
          lista ferma direbbe numeri vecchi accanto a un foglio gia' avanzato. -->
+    <!-- ⭐ `@apri-distinta`: la correzione produce un DOCUMENTO NUOVO, e i due
+         legami in testata portano all'altro. Si cambia il documento del drawer
+         invece di aprirne un secondo annidato — chi corregge deve lavorare la
+         correzione, non guardarla da dietro il documento sbagliato. -->
     <DistintaDrawer
       v-model:visible="drawerVisible"
       :distinta-id="distintaId"
       @cambiata="store.fetchList()"
+      @apri-distinta="vaiA"
     />
   </div>
 </template>

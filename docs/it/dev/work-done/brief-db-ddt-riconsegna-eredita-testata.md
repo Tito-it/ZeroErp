@@ -3,9 +3,9 @@
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **Origine.** Collaudo in-app di Tid del 2026-08-27, prova **9** di
-> [collaudo-in-app-ddt-righe-senza-prezzo.md](../work-done/collaudo-in-app-ddt-righe-senza-prezzo.md)
+> [collaudo-in-app-ddt-righe-senza-prezzo.md](collaudo-in-app-ddt-righe-senza-prezzo.md)
 > (ri-consegna standalone, casella **6** del §19 di
-> [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md)):
+> [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md)):
 > reso generato dal DDT `DDT0023451`, ri-consegna generata → il DDT nuovo arriva
 > **senza causale di trasporto e senza indirizzi**, e l'operatore li deve
 > ridigitare a mano su un documento che il DB ha generato da sé.
@@ -79,7 +79,7 @@
 > [fn_genera_ddt_riconsegna](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna) ·
 > [fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) ·
 > [trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) ·
-> [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
+> [brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
 
 ---
 
@@ -432,7 +432,7 @@ un contratto pubblicato:
    `ordini_righe_fulfillment` (passo 5) — ma va **detto**, non dedotto.
 
 Questa voce tocca lo stesso nervo di
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
 §2 («commesse che dichiarano di non avere origine»): vale la pena che i due
 cantieri si guardino prima di scrivere.
 
@@ -446,7 +446,7 @@ cantieri si guardino prima di scrivere.
 | **R2** | Cascata indirizzi ambito `DDT`, modellata sul passo 4-bis di `fn_genera_ddt_da_ordine` | 🔴 sì — senza, l'emissione è bloccata dal guard |
 | **R3** | ⛔ **Nessuna** eredità del blocco «viaggio» del §3 — e scritto nel corpo della funzione **perché** (un `-- non si copia` senza motivo lo rimette dentro il prossimo che passa) | — |
 | **R4** | **Riga**: `prezzo_unitario` e `sconto_percentuale` dalla riga di DDT d'origine (`resi_righe.ddt_riga_id`, `NOT NULL`) **solo nel ramo standalone** — nell'order-backed il `COALESCE` a valle fa già il lavoro e una copia lo peggiora (§3-bis) | 🔴 sì — oggi lo standalone non ha uscita |
-| **R4-quater** | ⚠️ **`iva_id`: la copia è una misura di attesa, non la sede.** Con il risolutore IVA la riga di ri-consegna prende l'aliquota **da lì**, come ogni altra riga — e la decisione **P1** di Tid (2026-08-27) dice perché: *il documento a monte proietta, la fattura decide*, quindi l'IVA del DDT è una **proiezione** e si ri-risolve, non si trasporta. Finché il risolutore non c'è, copiarla dalla riga d'origine è meglio del `NULL` di oggi; quando ci sarà, questa copia **va tolta** o saranno due meccanismi per lo stesso campo. Vedi [brief-db-be-iva-risolutore-e-regime-cliente.md](brief-db-be-iva-risolutore-e-regime-cliente.md) §2.6.2 | 🟠 da coordinare coi due cantieri |
+| **R4-quater** | ⚠️ **`iva_id`: la copia è una misura di attesa, non la sede.** Con il risolutore IVA la riga di ri-consegna prende l'aliquota **da lì**, come ogni altra riga — e la decisione **P1** di Tid (2026-08-27) dice perché: *il documento a monte proietta, la fattura decide*, quindi l'IVA del DDT è una **proiezione** e si ri-risolve, non si trasporta. Finché il risolutore non c'è, copiarla dalla riga d'origine è meglio del `NULL` di oggi; quando ci sarà, questa copia **va tolta** o saranno due meccanismi per lo stesso campo. Vedi [brief-db-be-iva-risolutore-e-regime-cliente.md](../work-in-progress/brief-db-be-iva-risolutore-e-regime-cliente.md) §2.6.2 | 🟠 da coordinare coi due cantieri |
 | ~~R4-bis~~ | ✅ **FATTO lato FE il 2026-08-27**: `canSave` non pretende più in EDIT i campi che l'EDIT non invia — la riga di ri-consegna ora si salva. ⚠️ **Non sostituisce R4**: resta una riga **senza aliquota**, e il select IVA in EDIT resta `:disabled`. Se il team DB decide di non ereditare `iva_id`, allora quel campo va sbloccato | — |
 | **R4-ter** | ~~❓ Una riga di DDT **senza `iva_id`** è ammessa a regime?~~ ✅ **RISPOSTO da Tid il 2026-08-28: NO, è impossibile.** Il vincolo va quindi nel DB, non nel pulsante Salva — come questa riga già anticipava. La forma del vincolo, e perché non può essere un `NOT NULL` di colonna oggi, nel **§9.3** riscritto | no |
 | **R5** | ~~Decisione di Tid sul vettore (§3.2)~~ ✅ **RISPOSTO da Tid il 2026-08-28: il vettore EREDITA.** Vedi §3.2, che ora porta anche il fatto che ha deciso: un vettore vuoto **non è un silenzio**, la stampa scrive «Mezzo proprio» | no — sbloccata la Fase A |
@@ -709,7 +709,7 @@ inverso perché è l'*avanzamento* del reso. La ri-consegna è nella stessa
 famiglia: la merce è tornata e adesso riparte. Se sia un avanzamento del reso o
 un ramo inverso è una **decisione di quel cantiere**, e va presa lì — motivo per
 cui la Fase D si coordina con
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md),
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md),
 come il §5 già suggeriva.
 
 ⚠️ Una cosa da guardare quando si scriverà: `vw_ddt_lista` fa
@@ -1100,7 +1100,7 @@ dato per buono: è esattamente quella differenza a renderlo sicuro, e se un doma
 non ci fosse più, il difetto tornerebbe silenzioso.
 
 **Coordinamento**: la stesura dell'arco si fa insieme a
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
 §2 — è lo stesso nervo, «documenti che dichiarano di non avere origine».
 
 ### 9.5 Decisioni — chiuse il 2026-08-28, e quel che resta
@@ -1580,7 +1580,7 @@ tutti — **ora stantia in modo sostanziale**, non cosmetico:
 | `vendite/manual/vw_ddt_lista.md` | il join alla sorgente è ora qualificato |
 
 ⚠️ **Non è un dettaglio di forma.** La doc manuale è ciò che
-[AGENTS.md](.codex/AGENTS.md) indica come da leggere *prima di strutturare una
+[AGENTS.md](../../../../.codex/AGENTS.md) indica come da leggere *prima di strutturare una
 soluzione*: una tabella dei motivi ferma a cinque manderà il prossimo a
 cercare un sesto motivo che «non c'è».
 
@@ -1721,3 +1721,58 @@ l'**esito a video** — che il drawer del DDT nuovo mostri davvero la causale, g
 indirizzi e il prezzo. La classe di difetto che nessun test prende — il DB
 scrive in un modo e l'interfaccia legge in un altro — si vede solo guardando lo
 schermo.
+
+---
+
+## 14. ✅ CANTIERE CHIUSO — 2026-08-28 sera
+
+> **Le tre voci del §12.3 sono tutte rientrate**, e il collaudo in-app è stato
+> fatto da Tid. Il brief si archivia in `work-done/`.
+
+### 14.1 I tre destinatari, chiusi
+
+| Chi | Cosa restava | Come si è chiuso |
+| --- | --- | --- |
+| 🟡 **DB** | la doc **manuale** di 5 oggetti (§12.3) | ✅ commit `03ac7620f` — verificate tutte e cinque: `fn_check_ddt_emittibile.md` porta il motivo **3-bis** nella tabella (che quindi non è più «ferma a cinque»), `vw_documento_lineage_archi.md` ha la riga dell'arco **T** e una sezione dedicata, `vw_ddt_lista.md` spiega perché il join è ora qualificato |
+| 🟠 **BE** | rigenerazione **+ ripiego** (§13.1) | ✅ commit `27757045a` |
+| 🔴 **FE** | `vendite.ddt.azione_reason.iva_mancante` | ✅ commit `27757045a` — il cancello i18n è tornato verde |
+| ⭐ **Tid** | il **collaudo in-app** (§13.6) | ✅ **fatto**: la ri-consegna nasce con la sua testata |
+
+### 14.2 ➡️ L'unico residuo, e dove è andato
+
+Resta la seconda voce del §13.5: il changeSet `20260828-05` non porta nessun
+`COMMENT ON VIEW`, quindi la **descrizione** di `vw_documento_lineage_archi` —
+quella che la doc auto-gen stampa in cima — dice ancora *«grafo archi
+normalizzato A-H + R e N + S»*, **senza `T`**.
+
+⛔ **E adesso è peggio di prima, non uguale**: la doc manuale scritta nel
+frattempo dichiara *«lettera diagnostica `A`..`H`, `R`, `N`, `S`, `T` —
+**dodici** dal 2026-08-28»*. Le due frasi stanno **sulla stessa pagina** (il
+manuale è `include-markdown` in cima all'auto-gen) e si contraddicono: una dice
+undici lettere, l'altra dodici. Chi legge non ha modo di sapere quale delle due
+è la vecchia.
+
+➡️ **Trasferito** al cantiere che possiede queste viste:
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md),
+dove è entrato come **quarta voce** — il posto giusto perché quel brief apre
+`vw_documento_lineage_archi` per altri due motivi, e il §0 dice che chi la apre
+«le sistema in un giro solo».
+
+⚠️ **Non si chiude un brief lasciando cadere ciò che resta**: la voce non è
+morta con l'archiviazione, ha cambiato sede. È la stessa mossa che il §7-bis del
+brief madre del lineage ha fatto verso quello stesso file.
+
+### 14.3 ⭐ Le tre cose che questo cantiere lascia scritte
+
+1. **Un codice errore nuovo ha QUATTRO sedi**, non tre: catalogo DB, file
+   generato del BE, **ripiego** del BE, locales del FE. La terza si vede solo
+   *dopo* aver fatto la seconda, perché è il file generato ad accendere il
+   cancello che la cerca (§13.1).
+2. **Un'eredità che può impedire la generazione non è una comodità, è un guasto
+   nuovo**: ogni colonna di catalogo ereditata passa da un `LEFT JOIN` filtrato
+   su `attivo`, o un elemento ritirato *dopo* fa fallire la funzione invece di
+   lasciare un campo vuoto (§10.2.1).
+3. **Il criterio dell'eredità**: si eredita ciò che è una **scelta** (la
+   relazione — causale, indirizzi, vettore), non ciò che è una **misura** (il
+   viaggio — colli, pesi, targa, tracking). È la riga che ha reso decidibile,
+   una per una, quali delle quaranta colonne copiare (§2 e §3).
