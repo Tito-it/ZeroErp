@@ -52,7 +52,21 @@ SELECT
   (SELECT b.id FROM anagrafiche.bank_branches b
     WHERE b.attivo IS TRUE ORDER BY b.id LIMIT 1)   AS bank_branch_id,
   (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                         AS soggetto_ruolo_id;
+    ORDER BY sr.id LIMIT 1)                         AS soggetto_ruolo_id_qualunque,
+  -- ⭐ Dal 2026-08-28 `enti_incasso` ha la RLS: un canale lo puo' creare solo
+  --    chi ne e' padrone. Quindi il conto NON si aggancia a un soggetto-ruolo
+  --    qualunque, ma a quello dell'EMITTENTE dell'operatore che gira il test —
+  --    la fixture torna a scrivere dove scrive l'applicazione.
+  -- ⚠️ Se questo test un giorno tornasse rosso con un 42501, la domanda da
+  --    farsi e' «con che contesto sta girando?», non «il guard e' cambiato?».
+  (SELECT ef.soggetto_ruolo_id
+     FROM config.user_emittenti_fiscali uef
+     JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
+    WHERE script.fn_has_identita_attiva(
+              uef.auth_user_id, 'OPERATORE'::config.ruolo_applicativo)
+      AND NOT script.fn_is_super_admin(uef.auth_user_id)
+    ORDER BY uef.auth_user_id
+    LIMIT 1)                                      AS soggetto_ruolo_id;
 
 SELECT ok(
   (SELECT bank_branch_id IS NOT NULL AND soggetto_ruolo_id IS NOT NULL FROM tmp_refs),

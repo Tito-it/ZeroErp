@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LEGAME DELLA CORREZIONE, E IL CODICE CHE SI GENERA DA SE'
+#   pagamenti.vendite_contabili — passo S6-3 (lotto 10)
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-quater S6-3 · Decisioni C-3 e C-4 (Tid, 2026-08-28)
+#
+# ── ⭐ C-3: IL LEGAME E' UNA COLONNA, NON UNA CHIAVE DI `meta` ───────
+#   La distinta di correzione deve sapere **quale documento corregge**. Il
+#   backend proponeva tre sedi: una colonna, una riga in `vendite_contabili_lotti`
+#   o `meta`. ⛔ `meta` no: un legame che nessuno interroga non e' un legame — e
+#   la domanda «questa distinta e' gia' stata corretta?» va fatta a un vincolo,
+#   non a un jsonb. ⛔ `vendite_contabili_lotti` no: quella dice «questa distinta
+#   appartiene a quel lotto», che e' un'altra cosa.
+#   ⭐ Lo stampo esiste gia' ed e' `sistemazioni.contabile_id` con
+#   `uq_sistemazioni_contabile`: **il documento NUOVO tiene l'id di quello da
+#   cui nasce**.
+#
+# ── ⭐ C-4: UNA SOLA CORREZIONE PER DISTINTA ────────────────────────
+#   `UNIQUE` parziale sul legame. ⚠️ Non blocca il caso vero: se e' la
+#   CORREZIONE a essere sbagliata si corregge **lei**, e il legame punta alla
+#   correzione — la catena resta leggibile. Senza il vincolo si moltiplicano
+#   le distinte gemelle sullo stesso documento e nessuno sa quale vale.
+#   ⚠️ E una distinta non corregge se stessa: il `CHECK` lo dice, perche' una
+#   FK verso la propria tabella da sola non lo impedisce.
+#
+# ── ⭐ IL `codice` SI GENERA DA SE', E QUESTA E' LA RAGIONE ─────────
+#   `codice` era `NOT NULL` **senza default**: a comporlo era
+#   `fn_get_or_create_vendite_contabile`, dentro il proprio corpo. ⛔ La madre
+#   della correzione NON puo' usare quella funzione — la sua chiave di riuso su
+#   `MANUALE` comprende giornata + canale + OPERATORE, quindi le righe di
+#   correzione finirebbero dentro la distinta di lavoro di oggi — e riscrivere
+#   qui la stessa espressione sarebbe una **seconda sede**.
+#   ⭐ Quindi la regola torna dove appartiene: **sulla colonna**. Chi inserisce
+#   una testata non deve piu' saperlo, e il changeSet successivo (`-13`) toglie
+#   il calcolo inline dalla funzione — il ramo che diventa morto si toglie nello
+#   stesso lotto che lo rende morto, non «dopo».
+#   ⚠️ Il formato e' IDENTICO a quello che la funzione compone oggi, carattere
+#   per carattere: `VC_` + timestamp al millisecondo + 8 caratteri di casualita'.
+#   Cambiarlo qui avrebbe reso i codici nuovi diversi dai vecchi senza che
+#   nessuno lo chiedesse.
+#
+# ⚠️ Nessuna automazione ATTIVO si arma su questa FK: `vendite_contabili` non
+#   ha una colonna `attivo`, quindi non nasce nessun guard generato accanto.
+#
+# Verifica: db/pgtap/pagamenti/test-fn-crea-distinta-correzione.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/pagamenti/20260828-18-add-contabile-corretta-id-e-default-codice-mctit.yaml
+
+    - changeSet:
+          id: 20260828-18-add-contabile-corretta-id-e-default-codice
+          author: mctit
+          runOnChange: false
+          validCheckSums:
+              - ANY
+          failOnError: true
+          comment: >
+              La distinta di correzione tiene l'id del documento che corregge, in una colonna e non in
+              meta: la domanda «questa distinta e' gia' stata corretta?» va fatta a un vincolo. UNIQUE
+              parziale perche' la correzione e' una sola, e un CHECK perche' una distinta non corregge
+              se stessa. Piu' il default sul codice, che finora componeva la funzione get-or-create nel
+              proprio corpo: la madre della correzione non puo' usarla e riscrivere qui la stessa
+              espressione sarebbe una seconda sede, quindi la regola torna sulla colonna e il changeSet
+              successivo toglie il calcolo inline.
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - columnExists:
+                          schemaName: pagamenti
+                          tableName: vendite_contabili
+                          columnName: codice
+                    - not:
+                          - columnExists:
+                                schemaName: pagamenti
+                                tableName: vendite_contabili
+                                columnName: contabile_corretta_id
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ═══════════════════════════════════════════════════════════
+                        -- 1) Il legame fra la correzione e il documento corretto.
+                        -- ═══════════════════════════════════════════════════════════
+                        ALTER TABLE pagamenti.vendite_contabili
+                            -- ⚠️ `bigint` e non `%TYPE`: in un DDL semplice il riferimento
+                            --    di tipo non e' ammesso — vale nelle firme e nei DECLARE
+                            --    delle funzioni, non in un ALTER TABLE.
+                            ADD COLUMN contabile_corretta_id bigint;
+
+                        ALTER TABLE pagamenti.vendite_contabili
+                            ADD CONSTRAINT fk_vendite_contabili_corretta
+                            FOREIGN KEY (contabile_corretta_id)
+                            REFERENCES pagamenti.vendite_contabili(id);
+
+                        -- ⚠️ Una FK verso la propria tabella non impedisce di puntare a
+                        --    se stessi: lo dice questo CHECK.
+                        ALTER TABLE pagamenti.vendite_contabili
+                            ADD CONSTRAINT chk_vendite_contabili_corretta_non_se_stessa
+                            CHECK (contabile_corretta_id IS DISTINCT FROM id);
+
+                        -- ⭐ C-4: una correzione sola per documento. Parziale, perche' le
+                        --    distinte che non correggono niente sono la stragrande
+                        --    maggioranza e un UNIQUE pieno le vieterebbe tutte tranne una.
+                        CREATE UNIQUE INDEX uq_vendite_contabili_correzione
+                            ON pagamenti.vendite_contabili (contabile_corretta_id)
+                            WHERE contabile_corretta_id IS NOT NULL;
+
+                        COMMENT ON COLUMN pagamenti.vendite_contabili.contabile_corretta_id
+                        IS 'Il documento che questa distinta CORREGGE, e il verso conta: lo tiene la distinta NUOVA, come sistemazioni.contabile_id tiene la contabile che l''atto ha generato. ⭐ Q-7: la correzione non e'' un documento speciale (D3-d) — e'' una contabile con importi di segno opposto — quindi a distinguerla e'' questo legame, non un tipo o uno stato nuovo. ⛔ Non sta in `meta`: la domanda «questa distinta e'' gia'' stata corretta?» la fa un vincolo (uq_vendite_contabili_correzione), e un legame che nessuno puo'' interrogare non e'' un legame. ⚠️ UNIQUE parziale: una correzione sola per documento, ma correggere LA CORREZIONE resta possibile — il legame punta a lei e la catena resta leggibile. ⛔ E una distinta non corregge se stessa: lo impedisce chk_vendite_contabili_corretta_non_se_stessa, perche'' una FK verso la propria tabella da sola non lo dice.';
+
+                        -- ═══════════════════════════════════════════════════════════
+                        -- 2) Il codice si genera da se'.
+                        --    ⚠️ Formato IDENTICO a quello che compone oggi
+                        --    fn_get_or_create_vendite_contabile: cambiarlo qui avrebbe
+                        --    reso i codici nuovi diversi dai vecchi senza che nessuno
+                        --    lo chiedesse.
+                        -- ═══════════════════════════════════════════════════════════
+                        ALTER TABLE pagamenti.vendite_contabili
+                            ALTER COLUMN codice SET DEFAULT concat(
+                                'VC_',
+                                to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+                                '_',
+                                substr(md5(random()::text || clock_timestamp()::text), 1, 8)
+                            );
+
+                        COMMENT ON COLUMN pagamenti.vendite_contabili.codice
+                        IS 'Il codice leggibile della distinta: `VC_` + istante al millisecondo + otto caratteri di casualita''. ⭐ Dal 2026-08-28 lo compone il DEFAULT della colonna e non piu'' il corpo di fn_get_or_create_vendite_contabile: la madre della correzione non puo'' usare quella funzione (la sua chiave di riuso comprende l''operatore e le righe finirebbero nella distinta di lavoro di oggi), e riscriverne l''espressione altrove sarebbe stata una seconda sede. Chi inserisce una testata non deve piu'' saperlo. ⚠️ Resta UNIQUE: il millisecondo da solo non basterebbe, gli otto caratteri casuali si''.';
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: true
+                    sql: |
+                        DROP INDEX IF EXISTS pagamenti.uq_vendite_contabili_correzione;
+                        ALTER TABLE pagamenti.vendite_contabili DROP CONSTRAINT IF EXISTS chk_vendite_contabili_corretta_non_se_stessa;
+                        ALTER TABLE pagamenti.vendite_contabili DROP CONSTRAINT IF EXISTS fk_vendite_contabili_corretta;
+                        ALTER TABLE pagamenti.vendite_contabili DROP COLUMN IF EXISTS contabile_corretta_id;
+                        ALTER TABLE pagamenti.vendite_contabili ALTER COLUMN codice DROP DEFAULT;

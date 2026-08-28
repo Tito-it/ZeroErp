@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying | NO | concat('VC_', to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'::text), '_', substr(md5(((random())::text || (clock_timestamp())::text)), 1, 8)) |
 | centro_riscossione_id | bigint | NO |  |
 | data_contabile | date | NO |  |
 | data_registrazione | date | NO |  |
@@ -25,14 +25,17 @@
 | user_conferma | text | YES |  |
 | origine | character varying | NO | 'GENERATA'::character varying |
 | importo_dichiarato | numeric | YES |  |
+| contabile_corretta_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_vendite_contabili_automatica_dichiara |  |
+| CHECK | chk_vendite_contabili_corretta_non_se_stessa |  |
 | CHECK | chk_vendite_contabili_generata_non_dichiara |  |
 | CHECK | chk_vendite_contabili_origine |  |
 | FOREIGN KEY | fk_vendite_contabili_centro_riscossione | centro_riscossione_id |
+| FOREIGN KEY | fk_vendite_contabili_corretta | contabile_corretta_id |
 | FOREIGN KEY | fk_vendite_contabili_ente_incasso | ente_incasso_id |
 | FOREIGN KEY | fk_vendite_contabili_stato | stato_id |
 | PRIMARY KEY | pk_vendite_contabili | id |
@@ -43,6 +46,7 @@
 |------|-------------|
 | pk_vendite_contabili | `CREATE UNIQUE INDEX pk_vendite_contabili ON pagamenti.vendite_contabili USING btree (id)` |
 | uq_vendite_contabili_codice | `CREATE UNIQUE INDEX uq_vendite_contabili_codice ON pagamenti.vendite_contabili USING btree (codice)` |
+| uq_vendite_contabili_correzione | `CREATE UNIQUE INDEX uq_vendite_contabili_correzione ON pagamenti.vendite_contabili USING btree (contabile_corretta_id) WHERE (contabile_corretta_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

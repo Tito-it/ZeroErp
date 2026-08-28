@@ -135,7 +135,7 @@
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
 - [fn_fondo_fattura_proponibile](manual/fn_fondo_fattura_proponibile.md) — (latest review 15-08-2026)
 - [fn_genera_ddt_da_ordine](manual/fn_genera_ddt_da_ordine.md) — (rev 2026-07-09)
-- [fn_genera_ddt_riconsegna](manual/fn_genera_ddt_riconsegna.md) — (rev 2026-07-26)
+- [fn_genera_ddt_riconsegna](manual/fn_genera_ddt_riconsegna.md) — (rev 2026-08-28)
 - [fn_genera_fondi_fattura_lotto](manual/fn_genera_fondi_fattura_lotto.md) — (latest review 15-08-2026)
 - [fn_genera_fondi_fattura_source](manual/fn_genera_fondi_fattura_source.md) — (latest review 15-08-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** crea in `fatture_fondi_fattura_source` i fondi delle fatture **«di minimo»**, cioè quelle il cui importo cade dentro la banda configurata per emittente × utility: sono i documenti che **non si incassano da soli** e il cui valore viene riportato sulla fattura successiva.
 - [fn_genera_pratica_da_preventivo](manual/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
@@ -267,7 +267,7 @@
 - [trgfn_contratti_utilities_guard_tipo_classe](manual/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_ddt_default_emittente](manual/trgfn_ddt_default_emittente.md) — (rev 2026-07-13)
 - [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
-- [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-07-18)
+- [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
 - [trgfn_ddt_guard_causale_immutabile](manual/trgfn_ddt_guard_causale_immutabile.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice B, decisione D-4)
 - [trgfn_ddt_guard_emittente_ba](manual/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_ddt_guard_indirizzi_obbligatori](manual/trgfn_ddt_guard_indirizzi_obbligatori.md) — (rev 2026-07-11)
@@ -366,7 +366,7 @@
 - [vw_dash_fatturazione_offerte](manual/vw_dash_fatturazione_offerte.md) — (latest review 03-07-2026) Resolver dell'area **OFFERTE** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per offerta, **a conteggi** (decisione D-2: niente valore in euro in v1 — le righe offerta sono eccezioni al listino, non hanno totale di testata). `valore_* = NULL`, `unita_totali = 1`, `unita_transitate = 0/1`.
 - [vw_dash_fatturazione_ordini](manual/vw_dash_fatturazione_ordini.md) — (latest review 2026-07-18) Resolver dell'area **ORDINI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per ordine con valore **imponibile** totale vs **transitato a commessa** e il motivo del fermo. Read-time, nessun mirror.
 - [vw_dash_fatturazione_preventivi](manual/vw_dash_fatturazione_preventivi.md) — (latest review 03-07-2026) Resolver dell'area **PREVENTIVI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per preventivo con valore **imponibile** totale vs **transitato** (decisione D-4: senza IVA) e il motivo del fermo. Read-time, nessun mirror.
-- [vw_ddt_lista](manual/vw_ddt_lista.md) — (rev 2026-07-09)
+- [vw_ddt_lista](manual/vw_ddt_lista.md) — (rev 2026-08-28)
 - [vw_ddt_riepilogo_iva_dettaglio](manual/vw_ddt_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)
 - [vw_ddt_righe_iva_base](manual/vw_ddt_righe_iva_base.md) — (rev 2026-08-21)
 - [vw_documento_lineage](manual/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
@@ -381,7 +381,7 @@
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
 - [vw_ordini_righe_iva_base](manual/vw_ordini_righe_iva_base.md) — (latest review 05-06-2026)
 - [vw_partite_merce](manual/vw_partite_merce.md) — (latest review 2026-08-17)
-- [vw_preventivi](manual/vw_preventivi.md) — (rev 15-05-2026)
+- [vw_preventivi](manual/vw_preventivi.md) — (rev 15-05-2026 · aggiornata 2026-08-28)
 - [vw_preventivi_lista](manual/vw_preventivi_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_preventivi_pratiche](manual/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_riepilogo_iva_dettaglio](manual/vw_preventivi_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)

@@ -143,7 +143,15 @@ SELECT throws_ok(
 );
 
 -- Un canale, col suo conto di incasso (dal lotto 6 e' obbligatorio).
-CREATE TEMP TABLE tmp_ente AS
+-- 🔴 DUE ISTRUZIONI E NON UNA, e non e' stile: dal 2026-08-28 `enti_incasso`
+--    ha una policy che chiede «esiste un conto TUO con questo id?». Se il
+--    legame nasce nella STESSA istruzione, quella sottoquery non lo vede — la
+--    snapshot del comando non contiene le righe che il comando stesso sta
+--    scrivendo — e la `WITH CHECK` rifiuta con 42501. E' la trappola RLS+CTE
+--    che il progetto ha gia' pagato altrove: padre e figlio nella stessa CTE
+--    non passano mai. ⚠️ Vale identica per il backend: chi crea conto e canale
+--    in un colpo solo trovera' lo stesso rifiuto.
+CREATE TEMP TABLE tmp_legame_sis AS
 WITH conto AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
   SELECT 'IT00PGTAPSISTEMAZIONI0000001', r.bank_branch, true, false,
@@ -155,13 +163,18 @@ WITH conto AS (
   SELECT r.emittente_sr, conto.id, 'INCASSO', false, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM conto CROSS JOIN tmp_ref r RETURNING id
-), ente AS (
+)
+SELECT id AS legame_id FROM legame;
+
+CREATE TEMP TABLE tmp_ente AS
+WITH ente AS (
   INSERT INTO pagamenti.enti_incasso
       (codice, descrizione, tipo, attivo, soggetto_ruolo_conto_bancario_id,
        centro_riscossione_id, meta)
-  SELECT 'PGTAP_SIS_BANCA', 'canale pgtap sistemazioni', 'ALTRO', true, legame.id,
+  SELECT 'PGTAP_SIS_BANCA', 'canale pgtap sistemazioni', 'ALTRO', true,
+         (SELECT legame_id FROM tmp_legame_sis),
          r.centro_banca, jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM legame CROSS JOIN tmp_ref r
+    FROM tmp_ref r
   RETURNING id
 )
 SELECT id AS ente_id FROM ente;
