@@ -27,18 +27,23 @@
 
 ---
 
-## 0. Le tre voci in una riga
+## 0. Le quattro voci in una riga
 
 | # | Cosa | Gravità | Chi lo vede oggi |
 | --- | --- | --- | --- |
 | **1** | Il `root` di un nodo con più sorgenti si sceglie su `from_tipo_id`, cioè su un **id di `config.sorgenti`** e non su una chiave stabile | 🟠 fragilità silenziosa, nessun effetto oggi | nessuno — finché gli id non cambiano |
 | **2** | `commesse_sorgenti` ha righe **`DDT_VENDITA`** che non producono nessun arco: quelle commesse risultano **senza origine** nel grafo | 🔴 dato vero non rappresentato | chi apre il pannello «Passaggi» di quelle due commesse, e la colonna «Transito» dei due DDT |
 | **3** | La colonna «Transito» **chiama «Fattura» una nota di credito**, e mostra il numero **nudo** (`1`): la natura e il codice parlante non escono dalla summary | 🔴 dice la parola sbagliata | **ogni** operatore che guarda la lista resi o la lista ordini |
+| **4** | La **descrizione** di `vw_documento_lineage_archi` non nomina l'arco **`T`**, che esiste dal 2026-08-28 — e la doc **manuale** sulla stessa pagina dice «dodici lettere». Le due si contraddicono | 🟠 doc che dice il falso su un vocabolario dichiarato **chiuso** | chi apre la doc della vista per sapere quali archi esistono |
 
-⭐ **Le tre hanno una cosa in comune, ed è il motivo per cui stanno insieme**: la
-cura sta **sul nodo o sull'arco**, mai sulle sette viste di lista che li
-proiettano. Chi apre `vw_documento_lineage_nodi` / `vw_documento_lineage` le
-sistema in un giro solo.
+⭐ **Le prime tre hanno una cosa in comune, ed è il motivo per cui stanno
+insieme**: la cura sta **sul nodo o sull'arco**, mai sulle sette viste di lista
+che li proiettano. Chi apre `vw_documento_lineage_nodi` /
+`vw_documento_lineage` le sistema in un giro solo.
+
+⭐ **E la quarta si paga zero** se si fa in quello stesso giro: è una riga di
+`COMMENT`, e chi sta già riscrivendo `vw_documento_lineage_archi` per la voce 2
+la scrive senza aprire niente in più (§3-bis).
 
 ---
 
@@ -331,6 +336,62 @@ la natura guardi anche questo — sono un giro solo.
 
 ---
 
+## 3-bis. 🟠 La descrizione della vista archi non nomina `T` — e si contraddice da sé
+
+> **Ereditata il 2026-08-28** dal cantiere
+> [brief-db-ddt-riconsegna-eredita-testata.md](../work-done/brief-db-ddt-riconsegna-eredita-testata.md)
+> (§13.5 e §14.2), che l'ha trovata chiudendosi. Non è di lì: quel cantiere ha
+> **aggiunto** l'arco, questo possiede la vista.
+
+### 3-bis.1 Il fatto
+
+Il changeSet `20260828-05` aggiunge l'arco **`T`** (reso → DDT di ri-consegna)
+alla `UNION ALL` di `vendite.vw_documento_lineage_archi`, ma **non contiene
+nessun `COMMENT ON VIEW`**. La descrizione della vista è quindi rimasta quella
+del 2026-08-25:
+
+> *«grafo archi normalizzato A-H + R e N (rami di ritorno) + S»*
+
+**Senza `T`.** E quella frase non è un ornamento: è ciò che la doc auto-gen
+stampa in cima alla pagina della vista, cioè la prima riga che legge chi vuole
+sapere **quali archi esistono**.
+
+### 3-bis.2 ⛔ Perché non è una svista cosmetica
+
+Due ragioni, e la seconda è quella che la rende una voce e non una nota.
+
+**1 · La pagina si contraddice da sola.** La doc **manuale** — scritta il
+2026-08-28, `include-markdown` in cima alla stessa pagina — dichiara:
+
+> *«**`arco`**: lettera diagnostica `A`..`H`, `R`, `N`, `S`, `T` — **dodici**
+> dal 2026-08-28»*
+
+Undici lettere sopra, dodici sotto, sulla stessa schermata. Chi legge non ha
+modo di sapere quale delle due frasi sia la vecchia — e la più autorevole in
+apparenza (la descrizione ufficiale della vista) è proprio quella sbagliata.
+
+**2 · Il vocabolario è dichiarato CHIUSO, e presidiato.** Un pgTAP enumera le
+lettere ammesse e **fallisce apposta** a ogni arco nuovo, per costringere chi lo
+aggiunge a passare di lì (è il cricchetto che ha preso la regressione del §11 di
+quel brief). Un elenco di riferimento che ne nomina **una in meno** di quante il
+`WHERE` ne produce toglie valore al cricchetto: il prossimo che allarga
+l'elenco legge la descrizione per sapere da dove parte, e parte da un numero
+sbagliato.
+
+### 3-bis.3 La richiesta
+
+Un `COMMENT ON VIEW vendite.vw_documento_lineage_archi` che nomini `T` insieme
+alle altre, nello stesso changeSet che tocca la vista per le voci **1** e **2**.
+Nessuna riga di logica, nessun test nuovo: la doc auto-gen si rigenera e la
+contraddizione sparisce.
+
+⚠️ **La regola che questa voce lascia scritta**: un `CREATE OR REPLACE VIEW` che
+cambia *cosa la vista produce* e non tocca il suo `COMMENT` lascia indietro
+l'unica documentazione che si rigenera da sé — ed è la sola che nessuno pensa a
+rileggere, proprio perché «si aggiorna da sola».
+
+---
+
 ## 4. Cosa NON è di questo brief
 
 * L'arco `S` e il perimetro RLS: **fatti e applicati** (`20260825-19/20/21`).
@@ -360,6 +421,14 @@ neutra — e ciò che intanto è certo è che **due commesse vive dichiarano di 
 avere origine**, che è un'affermazione falsa fatta dal grafo.
 
 **Nessun file scritto, nessuna migrazione, nessuna decisione presa.**
+
+### 2026-08-28 · Arriva la quarta voce
+
+Il cantiere `brief-db-ddt-riconsegna-eredita-testata` si è chiuso e ha lasciato
+qui il **§3-bis**: la descrizione di `vw_documento_lineage_archi` non nomina
+l'arco `T`. ⭐ È entrata **qui** e non è morta con l'archiviazione di quel brief
+perché la sede di una voce è **l'oggetto che tocca**, non il cantiere che l'ha
+vista: quella vista è di questo file, che la apre già per le voci 1 e 2.
 
 ---
 
