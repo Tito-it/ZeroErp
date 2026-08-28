@@ -16,6 +16,19 @@
 > Il backend ha chiuso la sua metà (§1.4) e non tocca DDL.
 >
 > **Scritto il 2026-08-28**, misurando contro il database di sviluppo.
+>
+> ✅ **CHIUSO il 2026-08-28**, lo stesso giorno. Il team DB ha consegnato
+> entrambe le richieste (§3-bis), il backend e il frontend le hanno consumate
+> (§10.9 e registro del brief BE/FE), e la correzione guidata e' il gesto che
+> chiude il cantiere incassi.
+>
+> 🔵 **Due cose restano, e nessuna delle due e' codice**:
+>
+> * **C-1** — le righe di correzione nascono con fattura e rata compilate ma in
+>   `DA_ABBINARE`. E' la quarta strada trovata dalla misura del team DB, ed e'
+>   quella implementata; ⚠️ **la decisione formale e' di Tid** (§5.8).
+> * **P-1** — `sepa_mandati` sotto RLS: 🔵 *non ora, e non con quel predicato*
+>   (§5.4). Quando quella tabella avra' un consumatore, si riapre da li'.
 
 ---
 

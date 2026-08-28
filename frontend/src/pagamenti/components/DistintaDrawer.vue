@@ -19,6 +19,7 @@
 //    porta il dettaglio — non si deduce dal nome dello stato.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
@@ -45,6 +46,7 @@ import { statoDistintaSeverity, statoRigaContabileSeverity } from '../../core/ut
 import { cambiaStatoDistinta, cambiaStatoRiga, getDistinta } from '../api/pagamenti'
 import { euro } from '../formato'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
+import CorreggiDistintaDialog from './CorreggiDistintaDialog.vue'
 import DistintaRigaForm from './DistintaRigaForm.vue'
 import RegistraDistintaDialog from './RegistraDistintaDialog.vue'
 
@@ -52,7 +54,10 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   distintaId: { type: [Number, null], default: null },
 })
-const emit = defineEmits(['update:visible', 'cambiata'])
+// ⭐ `apri-distinta` e non un secondo drawer annidato: la correzione produce un
+//    DOCUMENTO NUOVO, e lo si apre al posto di questo — chi corregge deve
+//    lavorare la correzione, non guardarla da dietro il documento sbagliato.
+const emit = defineEmits(['update:visible', 'cambiata', 'apri-distinta'])
 
 const { t } = useI18n()
 const onClose = useDrawerClose(emit)
@@ -74,6 +79,7 @@ const rigaInModifica = ref(null)
 const abbinaVisible = ref(false)
 const rigaDaAbbinare = ref(null)
 const registraVisible = ref(false)
+const correggiVisible = ref(false)
 
 const distinta = computed(() => dettaglio.value?.distinta || null)
 const righe = computed(() => dettaglio.value?.righe || [])
@@ -98,6 +104,22 @@ const modificabile = computed(
 // ⚠️ `importo_dichiarato` NULL non e' zero: significa «non e' stato dichiarato
 //    niente», quindi la quadratura NON SI APPLICA. Mostrare 0,00 direbbe
 //    «quadra» di una distinta che nessuno ha mai quadrato. Tre esiti, non due.
+// ⭐ Si corregge cio' che e' REGISTRATO, e lo stato si legge dal CATALOGO:
+//    `CHIUSA` e' il nome di oggi, `stato_is_postabile`/`is_final` sono i fatti.
+//    ⚠️ Qui serve proprio «registrata», che fra gli stati finali e' l'unico —
+//    `ANNULLATA` e' finale ma non ha prodotto movimenti, e correggerla non
+//    vuol dire niente. Il dato che li distingue e' `data_conferma`: la scrive
+//    il posting, quindi c'e' se e solo se dei movimenti sono nati.
+// ⚠️ Il readonly NON sta qui: lo toglie `hideWhenReadonly` sulla barra, come
+//    per la registrazione. Ripeterlo in due punti significa che il giorno in cui
+//    uno dei due cambia l'altro resta indietro — e questo predicato risponde a
+//    una domanda sola: «questo documento e' correggibile?».
+const correggibile = computed(
+  () => distinta.value != null
+    && distinta.value.stato_is_final
+    && distinta.value.data_conferma != null,
+)
+
 const quadraturaApplicabile = computed(() => distinta.value?.importo_dichiarato != null)
 const scarto = computed(() => distinta.value?.scarto_dichiarato ?? null)
 const quadra = computed(
@@ -132,6 +154,35 @@ const drawerActions = computed(() => {
         command: () => onCambiaStato(codice, stato?.descrizione || codice, stato?.is_final),
       }
     })
+
+  // ⭐ LA CORREZIONE GUIDATA (Q-7), e vive sull'ALTRA meta' della vita del
+  //    documento: si propone solo su una distinta gia' REGISTRATA, dove la
+  //    registrazione non ha piu' senso. Le due non compaiono mai insieme.
+  // ⛔ Non si chiama «storno»: `STORNATA` e' fuori dal catalogo dal 21/08.
+  // ⚠️ Il cancello e' lo stesso della registrazione (`registra_distinta`): un
+  //    gesto che rovescia del denaro non puo' avere una porta piu' larga di
+  //    quello che lo ha scritto.
+  if (correggibile.value) {
+    azioni.push({
+      key: 'correggi',
+      kind: 'secondary',
+      label: t('pagamenti.correggi.azione'),
+      icon: MANAGE_ICONS.CORREZIONE,
+      severity: 'warn',
+      hideWhenReadonly: true,
+      action: 'registra_distinta',
+      // ⚠️ Gia' corretta: si DISABILITA col motivo invece di sparire — e il
+      //    motivo nomina la correzione che c'e', che e' il documento su cui
+      //    andare a lavorare.
+      disabled: distinta.value.correzione_id != null,
+      tooltip: distinta.value.correzione_id != null
+        ? t('pagamenti.correggi.gia_corretta', {
+            codice: distinta.value.correzione_codice || '',
+          })
+        : undefined,
+      command: () => { correggiVisible.value = true },
+    })
+  }
 
   // ⛔ La registrazione e' l'unico gesto irreversibile: sta in fondo, e non e'
   //    una transizione di stato come le altre — apre l'anteprima.
@@ -383,6 +434,42 @@ watch(
 
         <DrawerActionsBar :actions="drawerActions" />
 
+        <!-- ⭐ IL LEGAME DELLA CORREZIONE, nei due versi. Senza, due documenti
+             gemelli di segno opposto stanno nell'elenco senza niente che dica
+             che uno rovescia l'altro — e chi li trova fra sei mesi non ha modo
+             di saperlo. Sono cliccabili perche' il gesto ovvio, letta la riga,
+             e' andare a vedere l'altro documento. -->
+        <Message
+          v-if="distinta.contabile_corretta_id"
+          severity="warn"
+          :closable="false"
+          size="small"
+        >
+          <Button
+            link
+            size="small"
+            :label="t('pagamenti.correggi.e_la_correzione_di', {
+              codice: distinta.contabile_corretta_codice || distinta.contabile_corretta_id,
+            })"
+            @click="emit('apri-distinta', distinta.contabile_corretta_id)"
+          />
+        </Message>
+        <Message
+          v-if="distinta.correzione_id"
+          severity="info"
+          :closable="false"
+          size="small"
+        >
+          <Button
+            link
+            size="small"
+            :label="t('pagamenti.correggi.e_stata_corretta_da', {
+              codice: distinta.correzione_codice || distinta.correzione_id,
+            })"
+            @click="emit('apri-distinta', distinta.correzione_id)"
+          />
+        </Message>
+
         <!-- ══ La quadratura ══ -->
         <div class="app-drawer-section">
           <h4>{{ t('pagamenti.distinte.sezione_quadratura') }}</h4>
@@ -531,6 +618,16 @@ watch(
       :riga="rigaDaAbbinare"
       @abbinata="ricarica"
     />
+    <!-- ⛔ SOLO `apri-distinta`, non anche `cambiata`: chi lo riceve porta il
+         drawer sulla distinta nuova E ricarica gia' l'elenco. Emetterli
+         entrambi manderebbe DUE richieste identiche, e due risposte possono
+         tornare in ordine inverso. -->
+    <CorreggiDistintaDialog
+      v-model:visible="correggiVisible"
+      :distinta="distinta"
+      @corretta="(id) => emit('apri-distinta', id)"
+    />
+
     <RegistraDistintaDialog
       v-model:visible="registraVisible"
       :distinta-id="distintaId"

@@ -345,6 +345,84 @@ class RegistrazioneTests(_ServiceTestCase):
         self.assertEqual(ricevuta["esito"], "NULLA_DA_POSTARE")
 
 
+class CorrezioneGuidataTests(_ServiceTestCase):
+    """Q-7 — la correzione guidata: da una distinta registrata ne nasce una
+    nuova, con le righe di segno opposto gia' compilate."""
+
+    _CREATA = {
+        "contabile_id": 42,
+        "righe_create": 3,
+        "righe_saltate": 1,
+        "esito": "CREATA",
+    }
+    _NULLA = {
+        "contabile_id": None,
+        "righe_create": 0,
+        "righe_saltate": 2,
+        "esito": "NULLA_DA_CORREGGERE",
+    }
+
+    # Scopo: Il gesto arriva alla madre con i suoi parametri, e basta.
+    # ⭐ Le tre regole (solo il registrato, una correzione per documento, le
+    #    righe non postate si saltano) stanno TUTTE nella funzione: il service
+    #    che le ricopiasse sarebbe una seconda sede che diverge al primo cambio.
+    def test_chiama_la_madre_coi_parametri(self):
+        self.repo.crea_distinta_correzione.return_value = dict(self._CREATA)
+        pagamenti_service.correggi_distinta(
+            7, {"data_contabile": "2026-09-01", "motivo": "importo digitato male"}
+        )
+        kwargs = self.repo.crea_distinta_correzione.call_args.kwargs
+        self.assertEqual(kwargs["contabile_id"], 7)
+        self.assertEqual(kwargs["data_contabile"], date(2026, 9, 1))
+        self.assertEqual(kwargs["motivo"], "importo digitato male")
+
+    # ⚠️ Senza data non si inventa un default QUI: lo mette la madre
+    #    (`CURRENT_DATE`). Due default sulla stessa cosa divergono al primo
+    #    cambio, e il secondo nessuno lo va a cercare.
+    def test_senza_data_non_si_inventa_un_default(self):
+        self.repo.crea_distinta_correzione.return_value = dict(self._CREATA)
+        pagamenti_service.correggi_distinta(7, {})
+        self.assertIsNone(self.repo.crea_distinta_correzione.call_args.kwargs["data_contabile"])
+
+    # Scopo: Creata -> si rilegge la distinta NUOVA, non quella di partenza:
+    #        e' quella che l'operatore deve aprire per lavorarci.
+    def test_creata_rilegge_la_distinta_nuova(self):
+        self.repo.crea_distinta_correzione.return_value = dict(self._CREATA)
+        esito = pagamenti_service.correggi_distinta(7, {})
+        self.assertEqual(esito["esito"]["esito"], "CREATA")
+        self.assertIsNotNone(esito["distinta"])
+        self.repo.get_distinta.assert_called_with(42)
+
+    # Scopo: 🔴 «Niente da correggere» NON e' un errore, ed e' la stessa regola
+    #        di `NULLA_DA_POSTARE`: e' un esito, e risale intatto.
+    # ⛔ E non si rilegge nessun dettaglio: `contabile_id` e' NULL perche' non e'
+    #    stata creata nessuna distinta — cercarla sarebbe un 404 su un esito
+    #    legittimo, cioe' un errore inventato dal backend.
+    def test_nulla_da_correggere_non_e_un_errore(self):
+        self.repo.crea_distinta_correzione.return_value = dict(self._NULLA)
+        esito = pagamenti_service.correggi_distinta(7, {})
+        self.assertEqual(esito["esito"]["esito"], "NULLA_DA_CORREGGERE")
+        self.assertIsNone(esito["distinta"])
+        # ⚠️ `get_distinta` viene chiamata UNA volta sola: il 404 di dominio
+        #    sulla distinta di partenza. Mai una seconda su un id che non c'e'.
+        self.assertEqual(self.repo.get_distinta.call_count, 1)
+
+    # ⚠️ Le righe SALTATE risalgono: una riga non postata non ha prodotto
+    #    movimenti e non c'e' niente da correggere — ma il silenzio lascia
+    #    l'operatore a chiedersi dove sia finita.
+    def test_le_righe_saltate_risalgono(self):
+        self.repo.crea_distinta_correzione.return_value = dict(self._CREATA)
+        esito = pagamenti_service.correggi_distinta(7, {})
+        self.assertEqual(esito["esito"]["righe_saltate"], 1)
+
+    # ⛔ Vocabolario chiuso: una chiave inventata e' un rifiuto, non un campo
+    #    ignorato in silenzio.
+    def test_chiave_estranea_rifiutata(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.correggi_distinta(7, {"forzata": True})
+        self.repo.crea_distinta_correzione.assert_not_called()
+
+
 class ImportiTests(_ServiceTestCase):
     _PAYLOAD = {"centro_riscossione_id": 39, "data_contabile": "2026-08-24"}
 

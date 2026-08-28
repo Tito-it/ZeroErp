@@ -98,6 +98,16 @@ _DISTINTA_SELECT = """
         c.importo_dichiarato,
         c.data_conferma,
         c.user_conferma,
+        -- ⭐ IL LEGAME DELLA CORREZIONE, letto nei DUE versi (Q-7, C-3): una
+        --    distinta puo' essere la correzione di un'altra, oppure essere
+        --    quella che e' stata corretta. ⛔ Sono due domande diverse e a
+        --    video dicono due cose opposte: «questo documento rovescia quello»
+        --    e «questo documento e' gia' stato rovesciato». Portarne una sola
+        --    lascerebbe l'altra meta' invisibile.
+        c.contabile_corretta_id,
+        orig.codice        AS contabile_corretta_codice,
+        corr.id            AS correzione_id,
+        corr.codice        AS correzione_codice,
         lot.lotti_ids,
         c.meta,
         tot.righe_totali,
@@ -114,6 +124,13 @@ _DISTINTA_SELECT = """
       JOIN pagamenti.centri_riscossione cr        ON cr.id = c.centro_riscossione_id
       LEFT JOIN pagamenti.enti_incasso ei         ON ei.id = c.ente_incasso_id
       LEFT JOIN pagamenti.vendite_contabili_stati st ON st.id = c.stato_id
+      -- Il documento da cui questa correzione nasce.
+      LEFT JOIN pagamenti.vendite_contabili orig     ON orig.id = c.contabile_corretta_id
+      -- ⚠️ E la correzione di QUESTO documento, se c'e'. E' un LEFT JOIN
+      --    diretto e non una LATERAL perche' non puo' duplicare la riga:
+      --    `uq_vendite_contabili_correzione` e' un unico parziale su
+      --    `contabile_corretta_id`, quindi la corrispondenza e' al piu' una.
+      LEFT JOIN pagamenti.vendite_contabili corr     ON corr.contabile_corretta_id = c.id
       -- 🔴 I lotti si AGGREGANO, non si joinano. L'unico e' su
       -- `(lotto_id, contabile_id)` e NON sul solo `contabile_id`: una distinta
       -- puo' legittimamente appartenere a piu' lotti, e un LEFT JOIN diretto
@@ -1406,6 +1423,46 @@ class PagamentiRepository:
             function_name=f"{_FN}.posta_contabile",
         )
         return rows[0]  # type: ignore[return-value]
+
+    # Scopo: La CORREZIONE GUIDATA (Q-7) — apre una distinta nuova con le righe
+    #        di segno opposto gia' dentro.
+    # ⭐ UNA SOLA `SELECT` sulla madre, come le altre tre: la distinta e le sue N
+    #    righe nascono atomiche per costruzione. ⛔ Nessun ciclo nel service —
+    #    produrrebbe una distinta a meta' se qualcosa si rompe a meta' elenco,
+    #    cioe' esattamente il documento che nessuno sa piu' leggere.
+    # ⛔ E non e' uno «storno»: `STORNATA` e' stata ritirata dal catalogo il
+    #    21/08, e rimetterne la parola riaprirebbe una porta che il lotto 2 ha
+    #    chiuso. Si chiama correzione.
+    # ⭐ Non solleva su «niente da correggere»: risponde `NULLA_DA_CORREGGERE`
+    #    con `contabile_id` a NULL, ed e' un ESITO — il backend lo passa senza
+    #    interpretarlo, come gia' fa con `NULLA_DA_POSTARE`.
+    def crea_distinta_correzione(
+        self,
+        *,
+        contabile_id: int,
+        data_contabile: date | None = None,
+        motivo: str | None = None,
+    ) -> dict[str, Any]:
+        self._guard_canale_sistema("crea_distinta_correzione")
+        sql = """
+            SELECT contabile_id, righe_create, righe_saltate, esito
+              FROM pagamenti.fn_crea_distinta_correzione(
+                       %s, COALESCE(%s::date, CURRENT_DATE), %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(contabile_id), data_contabile, motivo])
+            rows = rows_to_list(cursor)
+        # La funzione risponde SEMPRE una riga, anche sul nulla da correggere.
+        # Se non lo facesse, il contratto sarebbe cambiato sotto — e tacere su
+        # un gesto che ha creato un documento e' la cosa peggiore.
+        ErrorManager.require(
+            bool(rows),
+            code=_E_CHIAMATA,
+            message="La correzione non ha prodotto nessun esito.",
+            detail="pagamenti.fn_crea_distinta_correzione non ha restituito righe.",
+            function_name=f"{_FN}.crea_distinta_correzione",
+        )
+        return rows[0]
 
     # ══════════════════════════════════════════════════════════════
     #  Mapping di riga

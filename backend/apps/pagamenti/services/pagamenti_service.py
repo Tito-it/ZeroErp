@@ -787,3 +787,49 @@ def registra_distinta(contabile_id: int, payload: dict[str, Any]) -> RicevutaPos
             righe_attese=righe_attese,
             totale_atteso=totale_atteso,
         )
+
+
+# Scopo: La CORREZIONE GUIDATA (Q-7) — da una distinta registrata nasce una
+#        distinta nuova con le righe di segno opposto gia' compilate.
+# ⭐ Il backend qui fa quasi niente, ed e' voluto: legge il payload e chiama la
+#    madre. Le tre regole (si corregge solo il registrato, una correzione per
+#    documento, le righe non postate si saltano e si contano) stanno tutte nella
+#    funzione, che e' l'unica sede.
+# ⛔ Non si chiama «storno»: `STORNATA` e' stata ritirata dal catalogo il 21/08.
+# ⚠️ `NULLA_DA_CORREGGERE` NON e' un errore: si passa intatto, come
+#    `NULLA_DA_POSTARE`. Chi legge decide la frase; qui non si interpreta.
+def correggi_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    _PAYLOAD.validate_allowed_keys(
+        payload, allowed=frozenset({"data_contabile", "motivo"})
+    )
+    # ⚠️ Facoltativa: se non arriva, la madre usa `CURRENT_DATE`. Il default sta
+    #    LA' e non qui — due default sulla stessa cosa divergono al primo cambio.
+    data_contabile = _PAYLOAD.optional_date(payload, "data_contabile")
+    motivo = _PAYLOAD.optional_string(payload, "motivo")
+
+    repository = PagamentiRepository()
+    # ⚠️ Il 404 di dominio PRIMA della madre: sotto RLS «non esiste» e «non la
+    #    vedi» sono indistinguibili di proposito, e la madre risponderebbe con
+    #    il proprio codice — ma il giro dei quattro gesti sulla distinta risponde
+    #    gia' cosi', e due frasi diverse per lo stesso caso confondono.
+    _distinta_o_404(repository, contabile_id)
+    with _db_errors("correggi_distinta"):
+        esito = repository.crea_distinta_correzione(
+            contabile_id=contabile_id,
+            data_contabile=data_contabile,
+            motivo=motivo,
+        )
+
+    # ⭐ Sul nulla da correggere `contabile_id` e' NULL: non si legge nessun
+    #    dettaglio, e la risposta dice l'esito e basta. Cercare una distinta che
+    #    non e' stata creata sarebbe un 404 su un esito legittimo.
+    # ⛔ `is None` e non un test di verita': e' la regola di tutto il cantiere —
+    #    uno zero legittimo non deve leggersi come «assente». Qui un id a zero
+    #    non esiste, ma la forma dev'essere la stessa ovunque: e' quando cambia
+    #    da un punto all'altro che qualcuno la sbaglia dove conta.
+    if esito.get("contabile_id") is None:
+        return {"esito": esito, "distinta": None}
+    return {
+        "esito": esito,
+        "distinta": _distinta_o_404(repository, int(esito["contabile_id"])),
+    }

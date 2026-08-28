@@ -179,6 +179,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CONFIG_MATRICE_FK": "Utility o tipo ruolo inesistente.",
     "E_CONFIG_MATRICE_NOT_FOUND": "Riga matrice utilities/ruoli non trovata.",
     "E_CONFIG_VALIDATION": "Parametri di configurazione non validi.",
+    # ⚠️ SENZA `%s`: il ripiego serve proprio quando il messaggio del
+    #    catalogo (che porta i suoi argomenti) non e' disponibile — un
+    #    segnaposto qui resterebbe a video come tale.
+    "E_CONTABILE_CORREZIONE_NON_REGISTRATA": "La distinta non e' registrata: finche' non ha prodotto movimenti non c'e' niente da correggere.",
+    "E_CONTABILE_GIA_CORRETTA": "Questa distinta ha gia' la sua correzione: aprila e lavora li'.",
     "E_CONTABILE_CENTRO_ENTE_INCOERENTE": "Il centro di riscossione della testata non e' quello dell'ente di incasso indicato.",
     "E_CONTABILE_CHIUSURA_CON_RIGHE_PRONTE": "La distinta contabile ha ancora righe pronte da registrare: non si puo' chiudere.",
     "E_CONTABILE_DATI_OBBLIGATORI": "Per aprire una distinta contabile mancano dei dati obbligatori.",
@@ -483,6 +488,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OFFERTA_ORDINE_GIA_GENERATO": "Questa offerta ha già generato un ordine.",
     "E_OFFERTA_PUSH_STATO_NON_AMMESSO": "Push a contratto non ammesso: l'offerta deve essere ACCETTATA.",
     "E_OFFERTA_REVISIONE_STATO_NON_AMMESSO": "Revisione non ammessa nello stato corrente dell'offerta.",
+    "E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA": "L'offerta non può uscire dal superamento: esiste ancora una revisione viva su questo documento. Va prima annullata quella.",
     "E_OFFERTA_TRANSIZIONE_NON_AMMESSA": "Transizione di stato non ammessa per l'offerta.",
     "E_ONERE_ARTICOLO_MANCANTE": "Articolo-onere non valido: inesistente, non attivo o senza causale associata.",
     "E_ONERE_CAUSALE_NON_VALIDA": "Causale onere non valida o non attiva.",

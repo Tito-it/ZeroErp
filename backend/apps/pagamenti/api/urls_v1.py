@@ -12,6 +12,7 @@ from django.urls import path
 from apps.pagamenti.api.views import (
     ApiDistintaAnteprimaRegistrazione,
     ApiDistintaDetail,
+    ApiDistintaCorreggi,
     ApiDistintaRegistra,
     ApiDistintaRighe,
     ApiDistintaStato,
@@ -58,6 +59,14 @@ urlpatterns = [
         "distinte/<int:contabile_id>/registra/",
         ApiDistintaRegistra.as_view(),
         name="pagamenti-distinta-registra",
+    ),
+    # ⭐ La CORREZIONE GUIDATA (Q-7): apre una distinta nuova con le righe di
+    #    segno opposto gia' compilate. ⛔ Va PRIMA della rotta di dettaglio, come
+    #    tutte le sue sorelle: `distinte/<id>/` la intercetterebbe.
+    path(
+        "distinte/<int:contabile_id>/correggi/",
+        ApiDistintaCorreggi.as_view(),
+        name="pagamenti-distinta-correggi",
     ),
     path(
         "distinte/<int:contabile_id>/",

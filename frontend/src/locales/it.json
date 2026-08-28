@@ -3823,6 +3823,22 @@
       "stato_bozza": "Bozza",
       "stato_confermata": "Confermata",
       "stato_annullata": "Scartata"
+    },
+    "correggi": {
+      "azione": "Correggi",
+      "titolo": "Correggi la distinta",
+      "conferma": "Crea la correzione",
+      "che_cosa_fa": "Nasce una distinta nuova, in bozza, con le righe di {codice} rovesciate di segno — fattura e rata comprese. Il denaro non si muove finché non la registri tu.",
+      "data_aiuto": "È la data della distinta nuova, non di quella che stai correggendo.",
+      "campo_motivo": "Perché la correggi",
+      "motivo_aiuto": "Resta scritto sulla distinta nuova: lo leggerà chi si troverà davanti due documenti gemelli di segno opposto.",
+      "solo_le_registrate": "Si rovesciano solo le righe già registrate: le altre non hanno prodotto movimenti, quindi non c'è niente da correggere.",
+      "creata": "Correzione creata, con {righe} righe da abbinare.",
+      "creata_con_saltate": "Correzione creata con {righe} righe. {saltate} righe non sono state rovesciate: non erano registrate.",
+      "nulla_da_correggere": "Questa distinta non ha righe registrate: non c'è niente da correggere.",
+      "gia_corretta": "Già corretta dalla distinta {codice}: apri quella e lavora lì.",
+      "e_la_correzione_di": "Questa distinta corregge la {codice}",
+      "e_stata_corretta_da": "Questa distinta è già stata corretta dalla {codice}"
     }
   },
   "dash_mesi": {

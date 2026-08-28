@@ -127,6 +127,25 @@ export function registraDistinta(contabileId, { righeAttese, totaleAtteso } = {}
   return api.post(`${BASE}/distinte/${contabileId}/registra/`, payload, idem())
 }
 
+// ⭐ LA CORREZIONE GUIDATA (Q-7): da una distinta REGISTRATA nasce una distinta
+// nuova, in bozza, con le righe di **segno opposto** già compilate — fattura e
+// rata comprese. ⛔ Non ricopiatura a mano: su venti righe è lì che nasce il
+// secondo errore.
+// ⭐ Le righe nascono in `DA_ABBINARE`, non `ABBINATA`, ed è una decisione
+// misurata (C-1): su una rata saldata dal movimento che si sta correggendo non
+// c'è capienza in nessuna direzione, quindi «già abbinata» avrebbe richiesto di
+// scrivere `forzata = true` **al posto dell'operatore**. La correzione guida
+// tutto tranne l'ultimo clic.
+// ⛔ NON si chiama «storno»: `STORNATA` è fuori dal catalogo dal 21/08.
+// ⚠️ `esito = NULLA_DA_CORREGGERE` **non è un errore**: è la risposta vera di
+// una distinta senza righe postate, e arriva con `distinta: null`.
+export function correggiDistinta(contabileId, { dataContabile, motivo } = {}) {
+  const payload = {}
+  if (dataContabile) payload.data_contabile = dataContabile
+  if (motivo) payload.motivo = motivo
+  return api.post(`${BASE}/distinte/${contabileId}/correggi/`, payload, idem())
+}
+
 // ══════════════════════════════════════════════════════════════
 //  Le code del riconciliatore
 // ══════════════════════════════════════════════════════════════
