@@ -2,7 +2,9 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: Colonne lineage sulle 6 liste documento (Fase B).
+-- Test: Colonne lineage sulle liste documento (Fase B).
+--   ⚠️ SEI fino al 2026-08-28, SETTE dal 2026-08-29: il blocco frontiera_*
+--   ce l'ha anche vw_fatture_lista, che in questo file non era mai entrata.
 --   Viste: vw_preventivi_lista, vw_offerte_commerciali_lista, vw_ordini_lista,
 --          vw_contratti_lista, vw_ddt_lista, vw_resi_lista — estese con fase +
 --          colonne lineage.
@@ -21,7 +23,7 @@
 --   correttezza del seed, invariante seed-agnostica. 1 spot-check §5 (PRV0000185)
 --   protetto da skip() se i dati non ci sono.
 --
--- Indice test (1..30):
+-- Indice test (1..47):
 --   1..18) le 6 viste espongono pratica_numero, fase, frontiera_codice
 --  19..24) le 6 viste hanno security_invoker attivo (preservato)
 --     25)  seed: 18 righe (pratica/fase/transito su liste 4..9)
@@ -33,6 +35,25 @@
 --     29)  §7 follow-up: preset default liste 4..9 hanno pratica/fase/transito
 --          con visibile=true (18 righe lista_preset_colonna, resi inclusi)
 --     30)  §7 follow-up: preset ddt_default (lista 8) creato e is_default
+--   ⭐ 31..39 — LA NATURA DELLA FRONTIERA, aggiunta il 2026-08-29 (changeSet
+--      20260829-01). Senza, il chip «Transito» decodifica il solo tipo e
+--      chiama «Fattura» una nota di credito: vendite.fatture e' UNA tabella.
+--      ⛔ E QUI LE VISTE SONO SETTE, non sei: il blocco frontiera_* ce l'ha
+--      anche vw_fatture_lista. I test 1..30 ne coprono sei perche' la settima
+--      non era mai entrata in questo file — ed e' il motivo per cui l'elenco
+--      delle sorelle, nei documenti, era sbagliato.
+--  31..37) le 7 viste espongono frontiera_natura_doc_codice_interno
+--     38)  vw_fatture_lista ha security_invoker attivo (la settima, che nei
+--          test 19..24 non c'era)
+--     39)  ⭐⭐ invariante: una natura di frontiera valorizzata implica una
+--          frontiera di tipo FATTURA — su tutte e sette insieme
+--   ⭐ 40..47 — IL CODICE DEL TIPO DI FRONTIERA, aggiunto il 2026-08-29
+--      (changeSet 20260829-02, richiesta BE): prima ogni repository si
+--      rifaceva il join a config.sorgenti — sette copie, piu' due altrove.
+--  40..46) le 7 viste espongono frontiera_tipo_codice_interno
+--     47)  ⭐⭐ invariante: quel valore e' SEMPRE un codice_interno che
+--          esiste in config.sorgenti (l'errore da prendere e' la riga
+--          copiata dalla sorella: una fase o una natura al posto del tipo)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -51,7 +72,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(30);
+SELECT plan(47);
 
 -- ---- 1..18: colonne nuove presenti sulle 6 viste ------------------------
 SELECT has_column('vendite', 'vw_preventivi_lista',          'pratica_numero',  'preventivi: pratica_numero');
@@ -180,6 +201,130 @@ SELECT ok(
     EXISTS (SELECT 1 FROM ui.lista_preset
              WHERE lista_id = 8 AND codice = 'ddt_default' AND is_default IS TRUE AND attivo),
     'preset ddt_default creato e is_default');
+
+-- ---- 31..37: la natura della frontiera sulle SETTE liste -----------------
+-- ⚠️ L'ELENCO E' ESPLICITO, E DEVE RESTARLO. La forma comoda sarebbe un giro
+--    su information_schema con table_name LIKE 'vw_%_lista': resterebbe VERDE
+--    aggiungendo una lista che la colonna non ce l'ha, perche' conterebbe solo
+--    quelle che ci sono. In un elenco entra chi c'e', non chi dovrebbe
+--    esserci. Stessa lezione dei test 25/26/29 in testa a questo file.
+-- ⭐ Sono SETTE e non sei: il blocco frontiera_* ce l'ha anche
+--    vw_fatture_lista. La sesta/settima e' esattamente l'errore che si vuole
+--    rendere impossibile da ripetere.
+SELECT has_column('vendite', 'vw_preventivi_lista',          'frontiera_natura_doc_codice_interno', 'preventivi: frontiera_natura_doc_codice_interno');
+SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_natura_doc_codice_interno', 'offerte: frontiera_natura_doc_codice_interno');
+SELECT has_column('vendite', 'vw_ordini_lista',              'frontiera_natura_doc_codice_interno', 'ordini: frontiera_natura_doc_codice_interno');
+SELECT has_column('vendite', 'vw_contratti_lista',           'frontiera_natura_doc_codice_interno', 'contratti: frontiera_natura_doc_codice_interno');
+SELECT has_column('vendite', 'vw_ddt_lista',                 'frontiera_natura_doc_codice_interno', 'ddt: frontiera_natura_doc_codice_interno');
+SELECT has_column('vendite', 'vw_resi_lista',                'frontiera_natura_doc_codice_interno', 'resi: frontiera_natura_doc_codice_interno');
+-- ⚠️ La settima: su vw_fatture_lista la colonna e' COSTANTE (una fattura e'
+--    sempre frontiera di se stessa - pgTAP 30 di test-documento-lineage-v1) e
+--    il chip non e' montato. C'e' lo stesso, e il test la pretende, perche' la
+--    ragione e' di FORMA: sette sorelle devono esporre lo stesso blocco, o chi
+--    scrive l'ottava copia da quella diversa.
+SELECT has_column('vendite', 'vw_fatture_lista',             'frontiera_natura_doc_codice_interno', 'fatture: frontiera_natura_doc_codice_interno');
+
+-- ---- 38: security_invoker sulla SETTIMA ---------------------------------
+-- ⛔ vw_fatture_lista non era in questo file, quindi nessuno verificava che
+--    conservasse security_invoker - ed e' una reloption INVISIBILE in
+--    pg_get_viewdef: un CREATE OR REPLACE che non la ripete la azzera senza
+--    nessun errore, e la RLS emittente smette di mordere su quella lista.
+--    Il 20260829-01 fa un replace anche su di lei: senza questa riga sarebbe
+--    l'unica delle sette a passare da un replace non presidiato.
+SELECT ok(EXISTS (SELECT 1 FROM pg_class c, unnest(c.reloptions) o
+                   WHERE c.oid='vendite.vw_fatture_lista'::regclass
+                     AND o IN ('security_invoker=on','security_invoker=true')),
+          'fatture: security_invoker preservato');
+
+-- ---- 39: l'invariante che has_column non sa vedere -----------------------
+-- ⭐⭐ COSA PRESIDIA, e perche' i sette has_column da soli non bastano.
+--    has_column verifica il NOME della colonna, non da dove viene il valore.
+--    L'errore plausibile qui e' la riga copiata dalla sorella sopra:
+--      lin.frontiera_fase AS frontiera_natura_doc_codice_interno
+--    Sette viste quasi identiche, sette righe quasi identiche, e il replace
+--    non darebbe nessun errore: has_column resterebbe verde e il chip
+--    scriverebbe una FASE dove va una natura.
+-- ⚠️ L'invariante e' seed-agnostica e non nomina nessun documento: la natura
+--    esiste SOLO per le fatture (e' un asse diverso dal tipo), quindi una
+--    natura di frontiera valorizzata implica una frontiera di tipo FATTURA.
+--    Su un DB vuoto conta zero e asserisce zero.
+-- ⚠️ Elenco esplicito anche qui, per la stessa ragione dei 31..37: una lista
+--    nuova non entra da sola, e non deve sembrare che ci sia.
+SELECT is(
+    (SELECT sum(n)::int FROM (
+        SELECT count(*) n FROM vendite.vw_preventivi_lista
+          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_offerte_commerciali_lista
+          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_ordini_lista
+          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_contratti_lista
+          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_ddt_lista
+          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_resi_lista
+          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_fatture_lista
+          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
+    ) x),
+    0, 'liste: una natura di frontiera valorizzata implica una frontiera FATTURA');
+
+-- ---- 40..46: il codice del tipo di frontiera sulle SETTE liste ----------
+-- ⚠️ Elenco esplicito, per la stessa ragione dei 31..37: in un elenco entra
+--    chi c'e', non chi dovrebbe esserci.
+-- ⛔ E il nome e' `_codice_interno`, non `_codice`: il BE aveva chiesto
+--    `frontiera_tipo_codice` per non cambiare una riga a valle, ma quel valore
+--    e' config.sorgenti.codice_interno — la colonna IMMUTABILE, che il FE usa
+--    per la chiave i18n e per instradare, cioe' come LOGICA. §6c vieta
+--    `codice_interno AS *_codice` e il guardrail CI fallisce sul pattern.
+SELECT has_column('vendite', 'vw_preventivi_lista',          'frontiera_tipo_codice_interno', 'preventivi: frontiera_tipo_codice_interno');
+SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_tipo_codice_interno', 'offerte: frontiera_tipo_codice_interno');
+SELECT has_column('vendite', 'vw_ordini_lista',              'frontiera_tipo_codice_interno', 'ordini: frontiera_tipo_codice_interno');
+SELECT has_column('vendite', 'vw_contratti_lista',           'frontiera_tipo_codice_interno', 'contratti: frontiera_tipo_codice_interno');
+SELECT has_column('vendite', 'vw_ddt_lista',                 'frontiera_tipo_codice_interno', 'ddt: frontiera_tipo_codice_interno');
+SELECT has_column('vendite', 'vw_resi_lista',                'frontiera_tipo_codice_interno', 'resi: frontiera_tipo_codice_interno');
+SELECT has_column('vendite', 'vw_fatture_lista',             'frontiera_tipo_codice_interno', 'fatture: frontiera_tipo_codice_interno');
+
+-- ---- 47: il valore, non solo il nome ------------------------------------
+-- ⭐⭐ L'INVARIANTE CHE I SETTE has_column NON SANNO FARE. L'errore plausibile
+--    su sette viste quasi identiche e' la riga copiata dalla sorella accanto:
+--      lin.frontiera_fase                  AS frontiera_tipo_codice_interno
+--      lin.frontiera_natura_doc_codice_interno AS frontiera_tipo_codice_interno
+--    Nessun errore alla creazione, i has_column tutti verdi, e il consumatore
+--    che instrada sul tipo finisce su una fase.
+-- ⚠️ Qui si pretende che il valore sia un codice_interno che ESISTE in
+--    config.sorgenti: 'IN_CORSO' e 'NOTA_CREDITO' non ci sono, e la copia
+--    viene presa. Seed-agnostica: su un DB vuoto conta zero e asserisce zero.
+SELECT is(
+    (SELECT sum(n)::int FROM (
+        SELECT count(*) n FROM vendite.vw_preventivi_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_offerte_commerciali_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_ordini_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_contratti_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_ddt_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_resi_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
+        UNION ALL
+        SELECT count(*) FROM vendite.vw_fatture_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
+    ) x),
+    0, 'liste: frontiera_tipo_codice_interno e'' sempre un codice_interno di config.sorgenti');
 
 SELECT * FROM finish();
 ROLLBACK;
