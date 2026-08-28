@@ -22,13 +22,18 @@
 > (§10.9 e registro del brief BE/FE), e la correzione guidata e' il gesto che
 > chiude il cantiere incassi.
 >
-> 🔵 **Due cose restano, e nessuna delle due e' codice**:
+> ✅ **C-1 chiusa da Tid il 2026-08-29**, sulla strada implementata. La regola,
+> nelle sue parole: *«se la rettifica nasce da un pagamento abbinato a una rata,
+> prende quella rata; se dipende da un'eccedenza non assegnata a una rata, e'
+> naturale che non possa essere associata a una rata»*. ⭐ E' esattamente cio'
+> che la madre fa — il legame si **eredita** dalla riga corretta, non si
+> inventa. Resta `DA_ABBINARE`: la rata e' gia' scritta, ma il tasto finale lo
+> preme una persona, o il sistema scriverebbe una **forzatura che nessuno ha
+> deciso** — e l'elenco delle rate fuori capienza esiste per contenere solo
+> decisioni vere.
 >
-> * **C-1** — le righe di correzione nascono con fattura e rata compilate ma in
->   `DA_ABBINARE`. E' la quarta strada trovata dalla misura del team DB, ed e'
->   quella implementata; ⚠️ **la decisione formale e' di Tid** (§5.8).
-> * **P-1** — `sepa_mandati` sotto RLS: 🔵 *non ora, e non con quel predicato*
->   (§5.4). Quando quella tabella avra' un consumatore, si riapre da li'.
+> 🔵 **Resta solo P-1** — `sepa_mandati` sotto RLS: *non ora, e non con quel
+> predicato* (§5.4). Quando quella tabella avra' un consumatore, si riapre da li'.
 
 ---
 
