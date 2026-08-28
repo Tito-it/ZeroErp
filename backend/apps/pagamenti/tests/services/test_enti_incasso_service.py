@@ -47,6 +47,11 @@ def _repo() -> MagicMock:
     repo.list_conti_incasso.return_value = [
         {"soggetto_ruolo_conto_bancario_id": 312, "iban": "IT22…", "predefinito": True}
     ]
+    # ⛔ Il perimetro NON si prova qui: e' una domanda al database (le GUC
+    #    dell'identita'), e un doppio non ha un perimetro — risponderebbe
+    #    quello che gli si dice. La prova vera sta in
+    #    `tests/db/test_perimetro_conti_incasso.py`, contro il DB provvisto.
+    repo.emittente_nel_perimetro.return_value = True
     return repo
 
 

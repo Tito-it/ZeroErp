@@ -162,6 +162,10 @@ def get_ente_incasso(ente_id: int) -> dict[str, Any]:
 #    deve dirlo, perche' un menu vuoto senza spiegazione sembra un guasto.
 def list_conti_incasso(soggetto_ruolo_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
+    # 🔴 Il PERIMETRO lo tiene il repository, accanto all'SQL (E-4, 28/08):
+    #    `soggetti_ruoli_conti_bancari` ha la row security spenta di proposito,
+    #    quindi su questa lettura il database non filtra niente — e un controllo
+    #    scritto qui lo salterebbe il secondo chiamante. ⛔ Non si duplica.
     conti = repository.list_conti_incasso(soggetto_ruolo_id)
     return {
         "count": len(conti),
