@@ -17,6 +17,7 @@
 ## ⚙️ Funzioni
 - [fn_annulla_sistemazione](funzioni/fn_annulla_sistemazione.md) — (rev 2026-08-22)
 - [fn_conferma_sistemazione](funzioni/fn_conferma_sistemazione.md) — (rev 2026-08-22)
+- [fn_crea_distinta_correzione](funzioni/fn_crea_distinta_correzione.md)
 - [fn_get_or_create_vendite_contabile](funzioni/fn_get_or_create_vendite_contabile.md) — Recuperare una testata contabile vendite esistente oppure crearne una nuova, con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.
 - [fn_get_saldo_fattura](funzioni/fn_get_saldo_fattura.md) — (latest review 25-08-2026)   La funzione **`pagamenti.fn_get_saldo_fattura()`** risponde a **tre domande diverse su un documento**, e tenerle separate è il motivo per cui esiste:
 - [fn_get_saldo_fattura_contabili](funzioni/fn_get_saldo_fattura_contabili.md) — (latest review 13-02-2026)   La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il saldo contabile di una fattura calcolato sulle sole righe in stato `is_postabile = true`.

@@ -381,6 +381,52 @@ chiede nessuna modifica di schema oltre alla colonna del legame.
 
 ---
 
+## 3-bis. ✅ Risposto, scritto e provato — 2026-08-28
+
+⛔ **Niente applicato**: il migrate lo chiede Tid. Ma le due richieste sono
+**scritte e provate**, e il piano riga per riga è
+[§2.3-quater e §6.17 del brief DB](brief-db-posting-e-abbinamento-rata.md).
+
+| Richiesta | Esito |
+| --- | --- |
+| §1 — la policy sui canali | ✅ scritta (`20260828-11`), **con `WITH CHECK`** e il predicato sul **conto**: quella proposta avrebbe reso la tabella **non scrivibile** (§5.1). Provata: **5 su 5**, e la prima è che **creare un canale sul proprio conto passa** |
+| §2 — la madre della correzione | ✅ scritta (`20260828-14`) con la colonna del legame e il `UNIQUE` (`-12`). Provata: **14 su 14** |
+| P-1 `sepa_mandati` | 🔵 **non ora**, e non con quel predicato (§5.4) |
+| P-2 `centri_riscossione` | ✅ **resta comune**: non ha nessuna colonna di emittente (§5.3) |
+| P-3 scrittura | ✅ **sì**, e non è una scelta (§5.5) |
+| C-1 | 🔴 **cambiata da una misura**: le righe nascono con fattura e rata **compilate** ma in `DA_ABBINARE` (§5.8) |
+
+📮 **Che cosa cambia per il backend, quando il migrate sarà passato:**
+
+* la rotta `POST /distinte/{id}/correggi/` chiama
+  `pagamenti.fn_crea_distinta_correzione(id, data, motivo)` — **una sola
+  `SELECT`**, come le altre tre madri;
+* la risposta porta `contabile_id · righe_create · righe_saltate · esito`, e
+  ⛔ **`NULLA_DA_CORREGGERE` non è un errore**: si passa intatto, come
+  `NULLA_DA_POSTARE`;
+* ⚠️ **la distinta di correzione si apre con le righe DA ABBINARE**: il pulsante
+  «abbina» incontrerà il **409 della capienza** con `confirm_and_retry` — è
+  voluto, ed è lo stesso doppio tempo già costruito per la slice 3;
+* due codici nuovi da rigenerare nelle policy:
+  `E_CONTABILE_CORREZIONE_NON_REGISTRATA` e `E_CONTABILE_GIA_CORRETTA`;
+* ⚠️ e **una fixture vostra potrebbe rompersi allo stesso modo della nostra**:
+  con la policy accesa, un canale si crea solo nel contesto del suo padrone.
+
+🔴 **E una cosa che vi capitera' identica.** Con la policy accesa, **creare il
+conto e il canale in una sola istruzione non funziona**: la `WITH CHECK` cerca
+il legame che quella stessa istruzione sta scrivendo, e la snapshot del comando
+non contiene le righe del comando. E' la trappola RLS + CTE, ed e' gia' costata
+un pgTAP il 28/08. ⭐ Il rimedio e' **due statement**: prima il conto e il suo
+legame, poi il canale. ⚠️ Se il drawer dei canali fa entrambe le cose in un
+`transaction.atomic()` va bene — quello che non deve essere unico e' lo
+**statement**, non la transazione.
+
+⚠️ **Un rosso annunciato**: `db/pgtap/rls/test-rls-pagamenti-perimetro.sql` è a
+**15 su 18** finché la policy non è applicata — i tre rossi sono i test nuovi, e
+diventano verdi col migrate.
+
+---
+
 ## 4. Registro delle revisioni
 
 | Data | Cosa |

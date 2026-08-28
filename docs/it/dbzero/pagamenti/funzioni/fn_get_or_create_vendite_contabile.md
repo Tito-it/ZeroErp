@@ -16,7 +16,6 @@ DECLARE
   v_contabile_id pagamenti.vendite_contabili.id%TYPE;
   v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
   v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
-  v_codice pagamenti.vendite_contabili.codice%TYPE;
   v_operatore pagamenti.vendite_contabili.user_insert%TYPE;
 BEGIN
   -- =========================================================
@@ -208,15 +207,11 @@ BEGIN
   END IF;
 
   IF v_contabile_id IS NULL THEN
-    v_codice := concat(
-      'VC_',
-      to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
-      '_',
-      substr(md5(random()::text || clock_timestamp()::text), 1, 8)
-    );
-
+    -- ⭐ Rev 2026-08-28 (S6-3): il codice NON si compone piu' qui. Lo mette
+    --    il DEFAULT della colonna, che e' la sua sede: la madre della
+    --    correzione crea una testata senza passare da questa funzione, e due
+    --    espressioni che compongono lo stesso codice sarebbero due sedi.
     INSERT INTO pagamenti.vendite_contabili (
-      codice,
       centro_riscossione_id,
       ente_incasso_id,
       data_contabile,
@@ -225,7 +220,6 @@ BEGIN
       origine,
       meta
     ) VALUES (
-      v_codice,
       p_centro_riscossione_id,
       p_ente_incasso_id,
       p_data_contabile,
@@ -255,7 +249,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb, p_origine character varying)
-IS 'Recupera o crea la testata contabile per un centro, un canale e una giornata. ⭐ Su una distinta MANUALE la chiave di riuso comprende CHI STA LAVORANDO (D12-a): il raggruppamento «giornata + canale» non ha un referente nel mondo, il lotto di lavoro di una persona si'' — e con quello la contesa fra due operatori non esiste, quindi il lock che sarebbe servito a governarla non si costruisce. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e con lui il guard di parametro, la mutua esclusione con p_lotto_id e il ramo di riuso «una testata per atto». Girato il verso del legame e'' l''ATTO a tenere l''id della sua contabile: chiederla qui voleva dire far nascere la testata sapendo gia'' di chi sarebbe stata — il verso opposto a come funziona il processo. L''unicita'' «una contabile per atto» vive su uq_sistemazioni_contabile. 🔴 La firma e'' cambiata, quindi la funzione e'' stata eliminata e ricreata: una sostituzione con parametri diversi affianca un overload, e coi default le chiamate diventano ambigue.';
+IS 'Recupera o crea la testata contabile per un centro, un canale e una giornata. ⭐ Su una distinta MANUALE la chiave di riuso comprende CHI STA LAVORANDO (D12-a): il raggruppamento «giornata + canale» non ha un referente nel mondo, il lotto di lavoro di una persona si'' — e con quello la contesa fra due operatori non esiste, quindi il lock che sarebbe servito a governarla non si costruisce. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e con lui il guard di parametro, la mutua esclusione con p_lotto_id e il ramo di riuso «una testata per atto». Girato il verso del legame e'' l''ATTO a tenere l''id della sua contabile: chiederla qui voleva dire far nascere la testata sapendo gia'' di chi sarebbe stata — il verso opposto a come funziona il processo. L''unicita'' «una contabile per atto» vive su uq_sistemazioni_contabile. 🔴 La firma e'' cambiata, quindi la funzione e'' stata eliminata e ricreata: una sostituzione con parametri diversi affianca un overload, e coi default le chiamate diventano ambigue. ⭐ Rev 2026-08-28 (S6-3): il `codice` non si compone piu'' qui — lo mette il DEFAULT della colonna. La madre della correzione guidata crea una testata SENZA passare da questa funzione (la chiave di riuso comprende l''operatore, e le righe di correzione finirebbero nella distinta di lavoro di oggi), e due espressioni che compongono lo stesso codice sarebbero due sedi: il ramo diventato morto si toglie nello stesso lotto che lo rende morto.';
 ```
 
 ---

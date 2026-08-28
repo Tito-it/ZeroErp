@@ -137,7 +137,7 @@
 - [fn_fail_lotto_task_run](funzioni/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
 - [fn_fondo_fattura_proponibile](funzioni/fn_fondo_fattura_proponibile.md) — (latest review 15-08-2026)
 - [fn_genera_ddt_da_ordine](funzioni/fn_genera_ddt_da_ordine.md) — (rev 2026-07-09)
-- [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — (rev 2026-07-26)
+- [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — (rev 2026-08-28)
 - [fn_genera_fondi_fattura_lotto](funzioni/fn_genera_fondi_fattura_lotto.md) — (latest review 15-08-2026)
 - [fn_genera_fondi_fattura_source](funzioni/fn_genera_fondi_fattura_source.md) — (latest review 15-08-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** crea in `fatture_fondi_fattura_source` i fondi delle fatture **«di minimo»**, cioè quelle il cui importo cade dentro la banda configurata per emittente × utility: sono i documenti che **non si incassano da soli** e il cui valore viene riportato sulla fattura successiva.
 - [fn_genera_pratica_da_preventivo](funzioni/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
@@ -271,7 +271,7 @@
 - [trgfn_contratti_utilities_guard_tipo_classe](funzioni/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_ddt_default_emittente](funzioni/trgfn_ddt_default_emittente.md) — (rev 2026-07-13)
 - [trgfn_ddt_gen_numero_emesso](funzioni/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
-- [trgfn_ddt_guard_causale_emissione](funzioni/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-07-18)
+- [trgfn_ddt_guard_causale_emissione](funzioni/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
 - [trgfn_ddt_guard_causale_immutabile](funzioni/trgfn_ddt_guard_causale_immutabile.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice B, decisione D-4)
 - [trgfn_ddt_guard_emittente_ba](funzioni/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_ddt_guard_indirizzi_obbligatori](funzioni/trgfn_ddt_guard_indirizzi_obbligatori.md) — (rev 2026-07-11)
@@ -316,6 +316,7 @@
 - [trgfn_offerte_commerciali_guard_emittente_ba](funzioni/trgfn_offerte_commerciali_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_offerte_commerciali_guard_transizione](funzioni/trgfn_offerte_commerciali_guard_transizione.md) — (rev 2026-08-21 — funzione rev 2026-05-25)
 - [trgfn_offerte_commerciali_revisione](funzioni/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24)
+- [trgfn_offerte_commerciali_rientro_padre](funzioni/trgfn_offerte_commerciali_rientro_padre.md)
 - [trgfn_ordini_default_emittente](funzioni/trgfn_ordini_default_emittente.md) — (rev 2026-06-01)
 - [trgfn_ordini_ful_guard_consistenza](funzioni/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 - [trgfn_ordini_gen_codice](funzioni/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.
@@ -372,7 +373,7 @@
 - [vw_dash_fatturazione_offerte](views/vw_dash_fatturazione_offerte.md) — (latest review 03-07-2026) Resolver dell'area **OFFERTE** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per offerta, **a conteggi** (decisione D-2: niente valore in euro in v1 — le righe offerta sono eccezioni al listino, non hanno totale di testata). `valore_* = NULL`, `unita_totali = 1`, `unita_transitate = 0/1`.
 - [vw_dash_fatturazione_ordini](views/vw_dash_fatturazione_ordini.md) — (latest review 2026-07-18) Resolver dell'area **ORDINI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per ordine con valore **imponibile** totale vs **transitato a commessa** e il motivo del fermo. Read-time, nessun mirror.
 - [vw_dash_fatturazione_preventivi](views/vw_dash_fatturazione_preventivi.md) — (latest review 03-07-2026) Resolver dell'area **PREVENTIVI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per preventivo con valore **imponibile** totale vs **transitato** (decisione D-4: senza IVA) e il motivo del fermo. Read-time, nessun mirror.
-- [vw_ddt_lista](views/vw_ddt_lista.md) — (rev 2026-07-09)
+- [vw_ddt_lista](views/vw_ddt_lista.md) — (rev 2026-08-28)
 - [vw_ddt_riepilogo_iva_dettaglio](views/vw_ddt_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)
 - [vw_ddt_righe_iva_base](views/vw_ddt_righe_iva_base.md) — (rev 2026-08-21)
 - [vw_documento_lineage](views/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
@@ -388,7 +389,7 @@
 - [vw_ordini_riepilogo_iva_dettaglio](views/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
 - [vw_ordini_righe_iva_base](views/vw_ordini_righe_iva_base.md) — (latest review 05-06-2026)
 - [vw_partite_merce](views/vw_partite_merce.md) — (latest review 2026-08-17)
-- [vw_preventivi](views/vw_preventivi.md) — (rev 15-05-2026)
+- [vw_preventivi](views/vw_preventivi.md) — (rev 15-05-2026 · aggiornata 2026-08-28)
 - [vw_preventivi_lista](views/vw_preventivi_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_preventivi_pratiche](views/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_riepilogo_iva_dettaglio](views/vw_preventivi_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)
