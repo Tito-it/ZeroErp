@@ -2312,7 +2312,8 @@
       "vedi_fatture": "Vedi le fatture",
       "collegamento_soggetto": "Fatture del soggetto {valore} — senza limite di data.",
       "collegamento_cliente": "Fatture di {valore} — senza limite di data.",
-      "collegamento_rimuovi": "Togli il filtro"
+      "collegamento_rimuovi": "Togli il filtro",
+      "sez_saldo": "Saldo"
     },
     "indirizzi": {
       "da_soggetto": "da soggetto",
@@ -3731,14 +3732,15 @@
       "azione": "Registra",
       "titolo": "Registra la distinta",
       "conferma": "Registra",
-      "fatto": "Distinta registrata.",
       "irreversibile": "La registrazione genera i movimenti e non si torna indietro.",
       "righe_registrabili": "Righe registrabili",
       "totale_registrabile": "Totale registrabile",
       "niente_da_registrare": "Nessuna riga e' pronta: prima vanno abbinate a una fattura.",
       "scarto_aperto": "La quadratura non torna: scarto di {importo}. Si puo' registrare lo stesso, ma vale la pena guardarlo.",
       "restano_indietro": "Restano indietro {n} righe",
-      "anteprima_non_letta": "Non è stato possibile leggere l'anteprima: da qui non si registra, perché registrare senza vedere che cosa si registra è il salto nel buio che questa finestra esiste per evitare."
+      "anteprima_non_letta": "Non è stato possibile leggere l'anteprima: da qui non si registra, perché registrare senza vedere che cosa si registra è il salto nel buio che questa finestra esiste per evitare.",
+      "fatto_con_numeri": "Registrata: {righe} righe per {totale}.",
+      "nulla_da_postare": "Non è stato registrato niente: questa distinta non aveva righe pronte."
     },
     "canali": {
       "nuovo": "Nuovo canale",
@@ -4714,6 +4716,16 @@
       "scelta_conferma": "Inizia",
       "scelta_errore": "Non è stato possibile caricare gli emittenti. Riprova, oppure continua in sola lettura.",
       "scelta_rimanda": "Continua senza selezionare"
+    },
+    "saldi": {
+      "residuo": "Residuo",
+      "in_lavorazione": "In lavorazione",
+      "in_lavorazione_aiuto": "Già digitati su una distinta e non ancora registrati: non abbassano il residuo.",
+      "incassato": "Incassato",
+      "incassato_non_disponibile": "L'incassato non è disponibile a questo livello: non è zero, non si sa.",
+      "nessun_movimento": "Su questo documento non è ancora arrivato niente.",
+      "non_letto": "Non è stato possibile leggere il saldo: riprova prima di concludere che non c'è nulla da pagare.",
+      "livello_non_pronto": "Il saldo di questo livello non è ancora disponibile."
     }
   },
   "fattura_lookup": {

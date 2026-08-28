@@ -106,3 +106,11 @@ export const STATO_SISTEMAZIONE_TERMINALI = Object.freeze(['CONFERMATA', 'ANNULL
 //    guard: «chi cerca la regola nei dati non la trova»), quindi la copia nel
 //    frontend e' inevitabile — e allora sta in un posto solo, dove si vede.
 export const STATO_SISTEMAZIONE_BOZZA = 'BOZZA'
+
+// ⭐ Gli esiti della REGISTRAZIONE — vocabolario chiuso della funzione madre
+//    (`fn_posta_contabile`), senza tabella di catalogo. ⛔ `NULLA_DA_POSTARE`
+//    NON e' un errore: e' la risposta vera di una distinta che non aveva righe
+//    registrabili, e va detta come **avviso** — un toast di successo su un
+//    gesto che non e' successo e' la bugia peggiore di tutto il cantiere.
+export const ESITO_POSTATA = 'POSTATA'
+export const ESITO_NULLA_DA_POSTARE = 'NULLA_DA_POSTARE'

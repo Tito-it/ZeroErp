@@ -39,6 +39,8 @@ import Column from 'primevue/column'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import SaldoPanel from '../../core/components/SaldoPanel.vue'
+import { LIVELLO } from '../../core/composables/useSaldi'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
@@ -580,6 +582,22 @@ function onNoteSaved(total) {
             </TabList>
             <TabPanels>
               <TabPanel value="documento">
+          <!-- ⭐ IL SALDO PER PRIMO: «questa fattura e' stata pagata?» e' la
+               domanda per cui si apre questo drawer, e sta sopra i dati
+               anagrafici perche' e' quella che si fa entrando.
+               ⛔ DUE numeri e non tre (Q-6): l'«incassato» risponde a una
+               domanda di tesoreria, non a «questa fattura e' a posto?». Il
+               pannello lo sa mostrare — e' la stessa base — ma questa
+               schermata non lo accende.
+               ⚠️ Il pannello legge da se' e si rilegge al cambio di fattura:
+               il drawer e' un'istanza sola riusata cambiando `fatturaId`. -->
+          <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_saldo') }}</h4></div>
+          <SaldoPanel
+            :livello="LIVELLO.DOCUMENTO"
+            :riferimento-id="fatturaId"
+            :mostra="['residuo', 'in_lavorazione']"
+          />
+
           <!-- Cliente e Documento affiancati (`form-grid-2col`, collassa a una
                colonna su schermi stretti): due schede corte, nessuna ragione di
                incolonnarle su un drawer WIDE. -->

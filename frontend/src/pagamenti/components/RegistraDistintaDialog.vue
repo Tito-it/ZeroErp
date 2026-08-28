@@ -29,10 +29,12 @@ import Tag from 'primevue/tag'
 
 import AppDialog from '../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { statoRigaContabileSeverity } from '../../core/utils/severity'
 import { anteprimaRegistrazione, registraDistinta } from '../api/pagamenti'
 import { euro } from '../formato'
+import { ESITO_NULLA_DA_POSTARE } from '../vocabolari'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -41,6 +43,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'registrata'])
 
 const { t } = useI18n()
+const notify = useNotify()
 const { execute, loading } = useApiHandler()
 
 // ⛔ «Non ho letto l'anteprima» e «l'anteprima dice zero» sono due cose diverse,
@@ -81,14 +84,42 @@ watch(() => props.visible, async (aperto) => {
 
 async function onRegistra() {
   if (!anteprima.value) return
+  // ⛔ NIENTE `successMessage` fisso: la frase giusta dipende dall'ESITO, e un
+  //    toast di successo su `NULLA_DA_POSTARE` direbbe «registrata» di un gesto
+  //    che non e' successo — su una distinta di denaro e' la bugia peggiore che
+  //    si possa costruire.
   const ricevuta = await execute(
     () => registraDistinta(props.distintaId, {
       righeAttese: anteprima.value.righe_registrabili,
       totaleAtteso: anteprima.value.totale_registrabile,
     }),
-    { successMessage: t('pagamenti.registra.fatto') },
   )
-  if (ricevuta === null) return
+
+  if (ricevuta === null) {
+    // ⛔ RIFIUTATA: si RILEGGE l'anteprima e il dialog resta aperto.
+    // ⚠️ NON si riprova in automatico: un retry cieco su un gesto irreversibile
+    //    e' la cosa peggiore che si possa costruire. Chi conferma deve vedere i
+    //    numeri NUOVI e decidere di nuovo.
+    // ⭐ E si rilegge su QUALUNQUE rifiuto, non sul codice della dichiarazione
+    //    non corrispondente: e' la stessa regola del resto del cantiere —
+    //    si riconosce la SITUAZIONE, non il codice. E la situazione e' una
+    //    sola: il gesto e' stato rifiutato, quindi i numeri a video potrebbero
+    //    non essere piu' quelli veri. Legarsi a un codice lascerebbe fuori il
+    //    secondo motivo di rifiuto che nascera'.
+    await caricaAnteprima(props.distintaId)
+    return
+  }
+
+  // ⭐ La frase segue l'esito, e porta i NUMERI della ricevuta: «fatto» senza
+  //    numeri non dice se sono state registrate due righe o venti.
+  if (ricevuta.esito === ESITO_NULLA_DA_POSTARE) {
+    notify.warn(t('pagamenti.registra.nulla_da_postare'))
+  } else {
+    notify.success(t('pagamenti.registra.fatto_con_numeri', {
+      righe: ricevuta.righe_postate ?? 0,
+      totale: euro(ricevuta.totale_postato),
+    }))
+  }
   emit('registrata', ricevuta)
   emit('update:visible', false)
 }
