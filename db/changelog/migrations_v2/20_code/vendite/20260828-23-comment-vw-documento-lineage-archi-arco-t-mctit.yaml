@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DESCRIZIONE DELLA VISTA NON NOMINAVA L'ARCO T.
+#
+# -- IL FATTO --------------------------------------------------------
+#   Il 20260828-05 ha aggiunto l'arco T (reso -> DDT di ri-consegna) alla
+#   UNION ALL di vw_documento_lineage_archi, ma non contiene nessun
+#   COMMENT ON VIEW. La descrizione e' quindi rimasta quella del 20260825-19:
+#     «grafo archi normalizzato A-H + R e N (rami di ritorno) + S»
+#   Senza T. E quella frase non e' un ornamento: e' cio' che la doc auto-gen
+#   stampa in cima alla pagina della vista, cioe' la prima riga che legge chi
+#   vuole sapere QUALI ARCHI ESISTONO.
+#
+# -- ⛔ PERCHE' NON E' UNA SVISTA COSMETICA ---------------------------
+#   1. LA PAGINA SI CONTRADDICE DA SOLA. La doc manuale, in include-markdown
+#      in cima alla stessa pagina, dichiara «lettera diagnostica A..H, R, N,
+#      S, T — dodici dal 2026-08-28». Undici sopra, dodici sotto, sulla stessa
+#      schermata, e la piu' autorevole in apparenza — la descrizione ufficiale
+#      dell'oggetto — e' proprio quella sbagliata.
+#   2. IL VOCABOLARIO E' DICHIARATO CHIUSO, E PRESIDIATO. Il pgTAP 13 enumera
+#      le lettere ammesse e fallisce apposta a ogni arco nuovo, per costringere
+#      chi lo aggiunge a passare di li'. Un elenco di riferimento che ne nomina
+#      UNA IN MENO di quante il WHERE ne produce toglie valore al cricchetto:
+#      il prossimo che allarga l'elenco legge la descrizione per sapere da dove
+#      parte, e parte da un numero sbagliato.
+#
+# -- ⚠️ LA REGOLA CHE QUESTO CHANGESET LASCIA SCRITTA -----------------
+#   Un CREATE OR REPLACE VIEW che cambia COSA LA VISTA PRODUCE e non tocca il
+#   suo COMMENT lascia indietro l'unica documentazione che si rigenera da se' —
+#   ed e' la sola che nessuno pensa a rileggere, proprio perche' «si aggiorna
+#   da sola». La descrizione non si aggiorna da sola: si rigenera da una
+#   stringa che qualcuno deve aver riscritto.
+#
+# -- ⚠️ PERCHE' UN COMMENT ON VIEW DA SOLO ---------------------------
+#   Ricreare vw_documento_lineage_archi per cambiarle una stringa vorrebbe dire
+#   ricopiare dodici rami di UNION ALL e RI-SPECIFICARE security_invoker=on,
+#   che e' una reloption invisibile in pg_get_viewdef: dimenticarla la AZZERA
+#   senza nessun errore, e la RLS emittente smetterebbe di mordere.
+#   Precedenti dello stesso taglio: 20260825-20, 20260819-23, 20260819-24.
+#
+# Dipendenze: 20260828-05 (l'arco T, verificato in precondizione: senza, questa
+#             prosa direbbe una cosa che il grafo non fa — il difetto opposto).
+# Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §3-bis
+#           (ereditato da brief-db-ddt-riconsegna-eredita-testata §13.5 e §14.2)
+# Verifica: docs/it/dbzero/vendite/views/vw_documento_lineage_archi.md (auto-gen)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-23-comment-vw-documento-lineage-archi-arco-t-mctit.yaml
+
+  - changeSet:
+      id: 20260828-23-comment-vw-documento-lineage-archi-arco-t
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La descrizione della vista si fermava a S e non nominava l'arco T, aggiunto dal
+        20260828-05 senza COMMENT: sulla stessa pagina della doc auto-gen la descrizione diceva
+        undici lettere e la doc manuale dodici. Un elenco di riferimento in difetto toglie valore
+        al cricchetto del pgTAP 13, che presidia un vocabolario dichiarato CHIUSO.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_archi
+            # ⛔ «20260828-05 prima di questo», in una forma che il DB puo' verificare:
+            #    senza l'arco T la prosa nuova nominerebbe una lettera che il WHERE non
+            #    produce — cioe' lo stesso difetto, nel verso opposto.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname   = 'vw_documento_lineage_archi'
+                     AND definition LIKE '%''T''::text%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                  'Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R e N '
+                  '(rami di ritorno) + S e T. DODICI lettere dal 2026-08-28, e il vocabolario e'' '
+                  'CHIUSO: il pgTAP 13 le enumera e fallisce apposta a ogni arco nuovo, per '
+                  'costringere chi lo aggiunge a passare di li''. Chi allarga l''elenco aggiorna '
+                  'ANCHE questa frase: e'' quella che la doc auto-gen stampa in cima alla pagina, '
+                  'cioe'' la prima riga che legge chi vuole sapere quali archi esistono. '
+                  'Chiave nodo polimorfa (tipo_id, uid::text). Nodo target '
+                  'decorato via vw_documento_lineage_nodi. security_invoker=on. Base di '
+                  'vw_documento_lineage e fn_documento_lineage. '
+                  '⭐ rev 2026-08-25 — ARCO S: reso -> nota di credito, letto da '
+                  'vendite.resi_righe_accrediti (la tabella nata il 2026-08-18 per registrare il '
+                  'FATTO dell''accredito «contro cosa»), via commessa_attivita_id -> '
+                  'attivita_fatturabili -> fatture_righe. Soft-link calcolato come G e N, nessuna '
+                  'tabella ponte. Prima il grafo si fermava sul reso: la nota era collegata alla '
+                  'fattura che rettifica e alla commessa, ma non al reso, e i due rami di ritorno '
+                  '— la merce che torna e il valore che torna — non si toccavano mai. '
+                  '⛔ S NON E'' UN RAMO DI RITORNO, ed e'' una scelta: «inverso» vuol dire ramo di '
+                  'RITORNO, un verso che il grafo forward non percorre; S invece e'' '
+                  'l''AVANZAMENTO del reso (la merce e'' tornata, adesso si accredita), come H lo '
+                  'e'' dell''ordine. La conseguenza voluta e'' che il reso smette di essere una '
+                  'foglia e prende la nota come FRONTIERA. '
+                  '⛔ NON si aggiunge un arco «reso -> fattura ORIGINALE», benche'' '
+                  'resi_righe_accrediti.fattura_riga_rettificata_id lo renda banale: sarebbe '
+                  'forward, i due nodi FATTURA finirebbero allo stesso livello e con lo stesso '
+                  'pipeline_rank, e la frontiera del reso si deciderebbe sul confronto '
+                  'lessicografico fra due uid testuali. Il triangolo si chiude gia'' via N. '
+                  '⭐ rev 2026-08-28 — ARCO T: reso -> DDT di RI-CONSEGNA, letto dal ponte '
+                  'vendite.resi_righe_riconsegne (via resi_righe e ddt_righe), con DISTINCT '
+                  'perche'' un reso con piu'' righe ri-consegnate nello stesso DDT produrrebbe '
+                  'un arco per riga. Il grafo aveva R (la merce torna) e S (il valore si '
+                  'accredita) ma non l''arco che dice che la merce e'' RIPARTITA: un reso '
+                  'ri-consegnato finiva come una foglia. ⛔ T NON E'' UN RAMO DI RITORNO, per la '
+                  'stessa ragione gia'' scritta per S: il ritorno e'' gia'' avvenuto ed e'' R, e '
+                  'da li'' il reso ha due modi di andare AVANTI — accreditare (S) o '
+                  'ri-consegnare (T). is_ramo_inverso resta ARRAY[''R'',''N''] e la lettera T non '
+                  'ci entra: e'' la dichiarazione, non una dimenticanza. ⭐ Si costruisce dal '
+                  'ponte e non da ddt.sorgente_*, quindi copre anche le ri-consegne ORDER-BACKED, '
+                  'che dichiarano ORDINE_VENDITA e non nominerebbero mai il reso. ⚠️ Un reso in '
+                  'parte accreditato e in parte ri-consegnato ha due figli in avanti di TIPO '
+                  'DIVERSO (FATTURA e DDT): e'' il pipeline_rank a separarli. '
+                  '⛔ REGOLA DI PERIMETRO (rev 2026-08-25): ogni ramo passa dalle TABELLE-TESTATA '
+                  'dei due documenti che collega, perche'' sono quelle che portano la RLS. Le '
+                  'tabelle-ponte (commesse_sorgenti, attivita_fatturabili, resi_righe, '
+                  'resi_righe_accrediti, resi_righe_riconsegne, ddt_righe) hanno '
+                  'relrowsecurity = f e non danno perimetro: un ramo '
+                  'che si ferma li'' produce un arco verso un documento che il chiamante non vede, '
+                  'e la decorazione non lo ferma perche'' i join ai nodi sono LEFT. Fino al '
+                  '2026-08-24 lo facevano B, E, F (entrambi gli estremi, via commesse_sorgenti) e '
+                  'G (la commessa, via attivita_fatturabili). ⚠️ La chiave di '
+                  'commesse_sorgenti.sorgente_uid e'' POLIMORFA (key_selector): uid per il '
+                  'preventivo, id::text per ordine e contratto — i tre join non si copiano l''uno '
+                  'dall''altro, e si casta l''id a text, mai il testo a uuid. '
+                  '⭐ is_ramo_inverso E'' CALCOLATO QUI, una volta sola: prima la lettera R era '
+                  'ripetuta in tre posti (due WHERE della summary e fn_documento_lineage) e il '
+                  'terzo dimenticato non avrebbe rotto niente di visibile. '
+                  'Espone anche from/to_natura_doc_codice, per distinguere i due nodi FATTURA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico, e il motivo e' lo stesso del 20260825-20:
+              --    il rollback rimetterebbe sull'oggetto un elenco di archi INCOMPLETO,
+              --    cioe' una frase falsa. Un commento sbagliato non fallisce mai, quindi
+              --    nessuno se ne accorgerebbe.
+              --    Se serve tornare indietro sul comportamento si annulla 20260828-05;
+              --    la prosa, allora, va ristretta a mano.
+              SELECT 1;

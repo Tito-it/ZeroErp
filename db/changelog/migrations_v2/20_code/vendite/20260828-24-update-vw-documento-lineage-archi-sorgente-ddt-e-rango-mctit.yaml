@@ -1,0 +1,571 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TREDICESIMO ARCO (DDT -> COMMESSA) E IL RANGO DICHIARATO.
+#
+# Due cose in un CREATE OR REPLACE solo, e non per fretta: toccano la stessa
+# vista e la seconda serve a leggere bene la prima. Riscrivere due volte in due
+# giorni una vista con security_invoker e' il modo di perderla.
+#
+# ============ 1. L'ARCO 'U' — DDT -> Commessa =======================
+#
+# -- IL DIFETTO ------------------------------------------------------
+#   vendite.commesse_sorgenti contiene righe con sorgente DDT_VENDITA che non
+#   producono NESSUN arco: le commesse nate da un DDT risultano nel grafo
+#   SENZA ORIGINE. E n_sorgenti = 0 non e' «non lo so», e' un'affermazione: il
+#   pannello «Passaggi» scrive «nessuna origine» sopra una commessa che
+#   un'origine ce l'ha, scritta nella sua tabella dei legami. Nel verso opposto,
+#   la lista DDT non mostra la commessa (e quindi le fatture) nate dal DDT.
+#
+# -- ⛔ PERCHE' NON SONO «RIGHE DA BUTTARE», E COME LO SI E' DECISO ---
+#   NON contandole: due righe non dicono se sono la regola o l'eccezione.
+#   Si e' letto CHI LE SCRIVE, ed e' una catena sola:
+#     HandlerDdt -> CommesseRepository.link_sorgente -> fn_link_commessa_sorgente
+#   ⭐ `HandlerDdt` e' un handler REGISTRATO del push, sottoclasse di
+#   BaseSourceHandler come gli altri quattro (PREVENTIVO, ORDINE_VENDITA,
+#   CONTRATTO, ATTIVITA_CONSUMI): non un percorso laterale, non un residuo.
+#   ⭐ E ne' il chiamante ne' fn_link_commessa_sorgente hanno una whitelist di
+#   tipi: la funzione legge target_table e key_selector da config.sorgenti e
+#   normalizza la chiave, per QUALUNQUE sorgente attiva. Il database non ha mai
+#   detto che un DDT non puo' essere sorgente di commessa — non c'e' nessun
+#   vincolo che quelle righe stiano violando.
+#   Quindi la risposta e' «si', e' ammesso», ed e' una risposta di MODELLO:
+#   quelle righe sono il PRODOTTO di un handler costruito apposta.
+#   Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §2.4-bis.
+#
+# -- ⚠️ LA CHIAVE SI LEGGE, NON SI COPIA DAL VICINO -------------------
+#   commesse_sorgenti.sorgente_uid e' POLIMORFA. Letto da config.sorgenti:
+#   PREVENTIVO ha key_selector='uid', mentre CONTRATTO, ORDINE_VENDITA e
+#   DDT_VENDITA hanno 'id'. Il ramo nuovo usa quindi d.id::text, come E ed F e
+#   NON come B. ⛔ Un ramo scritto con la chiave copiata dal vicino sbagliato
+#   non da' errore: azzera quel gruppo di archi, in silenzio. Il test 38 lo
+#   direbbe insieme al conteggio per lettera.
+#
+# -- ⚠️ IL PERIMETRO, ED E' IL PRIMO RAMO A RISPETTARLO PER NASCITA ---
+#   commesse_sorgenti ha relrowsecurity = f e non da' nessun perimetro: il ramo
+#   passa da vendite.ddt E da vendite.commesse, che la policy ce l'hanno
+#   entrambe. E' la regola scritta in testa alla vista il 2026-08-25; B, E, F e
+#   G ci sono arrivati per CORREZIONE, questo ci nasce.
+#
+# -- ⚠️ E IL GEMELLO CHE QUESTO ARCO NON RISOLVE ---------------------
+#   Gli handler sono cinque, non quattro. Il quinto e' HandlerConsumi
+#   (ATTIVITA_CONSUMI) e scrive nella stessa tabella passando dalla stessa
+#   funzione generica. ⛔ Ma ATTIVITA_CONSUMI NON E' UN NODO del grafo — un
+#   consumo non e' un documento — quindi per quelle righe non basterebbe un
+#   arco: mancherebbe prima il nodo da cui farlo partire. Oggi non ha righe, e
+#   questo non prova niente. Difetto della stessa famiglia e di taglia diversa,
+#   fuori da questo changeSet: va nominato qui perche' e' dove lo cerchera' chi
+#   cerca i gemelli.
+#
+# ============ 2. `rango_origine` — il ROOT smette di dipendere da un id ====
+#
+# -- IL DIFETTO ------------------------------------------------------
+#   La CTE `inc` della summary sceglie il root con
+#     ORDER BY (ruolo='ROOT') DESC NULLS LAST, from_tipo_id, from_uid
+#   Quando NESSUNA sorgente porta ruolo='ROOT' — cioe' per ogni arco che un
+#   ruolo non ce l'ha, perche' non c'e' una tabella ponte che lo scriva — il
+#   primo criterio pareggia e a decidere resta from_tipo_id, che e' la PK di
+#   config.sorgenti. ⛔ Un comportamento che dipende da un ID DI SEED non e'
+#   una scelta, e' un'ambiguita' del modello: oggi la commessa vince sul reso
+#   solo perche' 13 < 15, e una riseminatura di config.sorgenti cambierebbe il
+#   root di OGNI nota di credito senza un errore e senza una riga di log.
+#
+# -- ⭐ LA CURA: IL RANGO E' DICHIARATO SULL'ARCO --------------------
+#   Non si ordina piu' su un id ma su una colonna scritta a mano, qui, una
+#   volta sola — la stessa forma gia' scelta per is_ramo_inverso: una PROPRIETA'
+#   DELL'ARCO, calcolata nella vista archi e letta dai consumatori.
+#   La scala dichiara QUANTO E' A MONTE il documento SORGENTE nel flusso:
+#     10 la trattativa (preventivo, offerta) · 20 l'impegno (ordine, contratto)
+#     30 l'esecuzione (commessa) · 40 la consegna (DDT) · 50 il ritorno (reso,
+#     rettifica). Piu' basso = piu' vicino all'origine.
+#
+# -- ⛔ E NON E' «ORDINARE SUL TIPO CON UN ALTRO NOME» ----------------
+#   La differenza e' la PROVENIENZA del numero, ed e' tutta la differenza:
+#     · il rango e' SCRITTO, e si legge — from_tipo_id era un effetto
+#       collaterale dell'ordine di inserimento di una tabella di catalogo;
+#     · riseminare config.sorgenti non sposta piu' niente;
+#     · un arco NUOVO senza rango vale NULL, e un pgTAP lo prende (test 41).
+#       Con from_tipo_id l'arco nuovo prendeva un ordinamento silenzioso e
+#       plausibile, cioe' la specie di difetto che non fallisce mai.
+#   ⭐ Ed e' la scelta che rende OBBLIGATORIA la domanda: non si scrive un
+#   rango senza aver deciso, per ogni arco, che cosa conta come origine.
+#
+# -- LE DUE GARE VERE, e come finiscono adesso ------------------------
+#   Solo due destinazioni hanno davvero piu' archi forward in ingresso:
+#     · FATTURA <- G (commessa, 30) e S (reso, 50)  -> vince la COMMESSA.
+#       E' il risultato di oggi, ma per una ragione invece che per 13 < 15:
+#       il reso e' una CONSEGUENZA del flusso, non la sua origine.
+#     · DDT <- H (ordine, 20) e T (reso, 50)  -> vince l'ORDINE. ⚠️ Questa gara
+#       non era stata vista da nessuno: un DDT di ri-consegna ORDER-BACKED ha
+#       davvero entrambi gli archi in ingresso, dal 2026-08-28.
+#   ⚠️ I pareggi rimasti sono DELIBERATI: A/D (offerta e preventivo verso lo
+#   stesso ordine si escludono a vicenda per costruzione) ed E/F (ordine e
+#   contratto sulla stessa commessa, dove il modello non ha una preferenza e
+#   ruolo_link decide prima). Il tie-break residuo e' from_uid, che e'
+#   IMMUTABILE: il risultato resta stabile, semplicemente non e' significativo,
+#   ed e' meglio dirlo che fingere una regola che non c'e'.
+#
+# -- ⚠️ R e N HANNO UN RANGO ANCHE SE NON GAREGGIANO MAI -------------
+#   Sono rami di ritorno, e la `inc` filtra NOT is_ramo_inverso: il loro rango
+#   non entra mai in un ORDER BY. Ce l'hanno lo stesso perche' il presidio del
+#   test 41 chiede il rango a TUTTI gli archi: un'eccezione «tanto non serve»
+#   e' esattamente il buco da cui passa il prossimo arco senza rango.
+#
+# Dipendenze: 20260828-05 (l'arco T) e 20260828-23 (il COMMENT che nomina T:
+#             questo lo riscrive per la tredicesima lettera).
+# Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §1 e §2
+# Origine: testo dello YAML 20260825-19 + il ramo T del 20260828-05,
+#          verificato con round-trip sul risultato (non sul testo).
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql (6, 13, 41, 42, 43)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-24-update-vw-documento-lineage-archi-sorgente-ddt-e-rango-mctit.yaml
+
+  - changeSet:
+      id: 20260828-24-update-vw-documento-lineage-archi-sorgente-ddt-e-rango
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arco U (DDT -> Commessa, tredicesima lettera): commesse_sorgenti ha righe DDT_VENDITA che
+        non producevano nessun arco, e quelle commesse dichiaravano nel grafo di non avere origine.
+        Ammesso perche' lo scrive HandlerDdt, un handler registrato del push, e ne' il BE ne'
+        fn_link_commessa_sorgente hanno una whitelist di tipi. Chiave d.id::text (key_selector), e
+        il ramo passa dalle testate ddt+commesse: primo ramo a rispettare il perimetro per nascita.
+        Nella stessa passata rango_origine: il root smette di dipendere da from_tipo_id, cioe' da
+        un id di seed, e legge un rango DICHIARATO sull'arco - stessa forma di is_ramo_inverso.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_archi
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_sorgenti
+            # ⛔ «20260828-05 prima di questo»: il corpo qui sotto contiene il ramo T,
+            #    e se non fosse gia' applicato questo changeSet lo introdurrebbe di
+            #    straforo, senza il suo presidio e senza la sua prosa.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_views
+                   WHERE schemaname = 'vendite'
+                     AND viewname   = 'vw_documento_lineage_archi'
+                     AND definition LIKE '%''T''::text%'
+            # ⚠️ La chiave del ramo nuovo NON e' una scelta di chi scrive: e' letta da
+            #    config.sorgenti. Se un giorno DDT_VENDITA passasse a key_selector='uid'
+            #    questo ramo azzererebbe i suoi archi in silenzio — meglio fermarsi.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM config.sorgenti
+                   WHERE codice_interno = 'DDT_VENDITA'
+                     AND attivo IS TRUE
+                     AND key_selector = 'id'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              -- ⛔ REGOLA DI PERIMETRO, valida per OGNI ramo di questa vista.
+              --   Ogni arco deve passare dalle TABELLE-TESTATA dei due documenti che
+              --   collega, perche' sono quelle che portano la RLS. Le tabelle-ponte
+              --   (commesse_sorgenti, attivita_fatturabili, resi_righe,
+              --   resi_righe_accrediti, resi_righe_riconsegne, ddt_righe) hanno
+              --   relrowsecurity = f e NON danno nessun perimetro: un ramo che si ferma
+              --   li' produce un arco verso un documento che il chiamante non puo'
+              --   vedere, e la decorazione non lo ferma perche'
+              --   vw_documento_lineage_nodi e' in LEFT JOIN — la riga resta, con il
+              --   codice a NULL.
+              --   Chi aggiunge il quattordicesimo arco legga questa riga prima di
+              --   scriverlo, e gli dia un rango_origine (vedi in fondo).
+              WITH archi AS (
+                  -- A — Preventivo -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id AS from_tipo_id, (p.uid)::text AS from_uid,
+                         s_to.id   AS to_tipo_id,   (o.id)::text  AS to_uid,
+                         NULL::varchar AS ruolo, 'A'::text AS arco
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO'     AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA' AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'PREVENTIVO'
+                  UNION ALL
+                  -- B — Preventivo -> Commessa (sorgente polimorfa; ruolo ROOT/COLLEGATO)
+                  --   ⭐ rev 2026-08-25: i due join a preventivi e commesse sono la
+                  --   REGOLA DI PERIMETRO qui sopra. commesse_sorgenti non ha RLS, e
+                  --   prima questo ramo non toccava nessuna delle due testate: l'arco
+                  --   compariva anche fra due documenti che il chiamante non vede.
+                  --   ⛔ La chiave e' POLIMORFA (key_selector): per il preventivo
+                  --   sorgente_uid e' lo UID, per ordine, contratto e DDT e' id::text. Si
+                  --   casta l'id a text e MAI il testo a uuid — un cast del lato text
+                  --   solleverebbe a runtime sulla riga di un altro ramo.
+                  SELECT s_from.id, (p.uid)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'B'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.preventivi p  ON p.uid::text = cs.sorgente_uid
+                    JOIN vendite.commesse   cm ON cm.id       = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- C — Offerta -> Contratto (contratti.offerta_id)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (c.id)::text,
+                         NULL::varchar, 'C'::text
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'CONTRATTO'           AND s_to.attivo   IS TRUE
+                   WHERE c.offerta_id IS NOT NULL
+                  UNION ALL
+                  -- D — Offerta -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (o.id)::text,
+                         NULL::varchar, 'D'::text
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA'      AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'OFFERTA'
+                  UNION ALL
+                  -- E — Ordine -> Commessa (sorgente polimorfa)
+                  --   rev 2026-08-25: perimetro, vedi il ramo B. Qui la chiave e'
+                  --   id::text, non lo uid.
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'E'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.ordini   o  ON o.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- F — Contratto -> Commessa (sorgente polimorfa; 1:N)
+                  --   rev 2026-08-25: perimetro, vedi il ramo B. Chiave id::text.
+                  SELECT s_from.id, (c.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'F'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.contratti c  ON c.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse  cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- U — DDT -> Commessa (sorgente polimorfa; 1:N) ⭐ rev 2026-08-28
+                  --   La QUARTA sorgente di commessa, ed e' la gemella di B, E ed F:
+                  --   stessa tabella (commesse_sorgenti), stesso ruolo_link, stesso
+                  --   perimetro. Sta qui e non in fondo alla UNION proprio per questo —
+                  --   un ramo si legge accanto ai suoi simili.
+                  --   ⛔ AMMESSA PERCHE' LO DICE CHI SCRIVE, non perche' ci sono righe:
+                  --   HandlerDdt e' un handler registrato del push (uno di cinque) e
+                  --   fn_link_commessa_sorgente non ha nessuna whitelist di tipi. Il DB
+                  --   non ha mai vietato che un DDT sia sorgente di commessa: quelle
+                  --   righe non violano niente, sono il prodotto di un handler.
+                  --   ⚠️ La chiave e' id::text — LETTA da config.sorgenti.key_selector,
+                  --   che per DDT_VENDITA vale 'id' come per ordine e contratto, e non
+                  --   'uid' come per il preventivo. Copiarla dal ramo B non darebbe
+                  --   errore: azzererebbe questo gruppo di archi, in silenzio.
+                  --   ⚠️ I due join a ddt e commesse sono la REGOLA DI PERIMETRO in
+                  --   testa: e' il primo ramo che la rispetta per NASCITA e non per
+                  --   correzione.
+                  SELECT s_from.id, (d.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'U'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.ddt      d  ON d.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- G — Commessa -> Fattura (via attivita fatturabili gia' fatturate; 1:N)
+                  --   rev 2026-08-25: il join a commesse e' il perimetro. Prima questo
+                  --   ramo emetteva af.commessa_id senza toccare vendite.commesse, che
+                  --   ha la RLS: l'estremo fattura era protetto (fatture_righe ce l'ha),
+                  --   l'estremo commessa no.
+                  SELECT DISTINCT
+                         s_from.id, (cm.id)::text,
+                         s_to.id, (f.id)::text,
+                         NULL::varchar, 'G'::text
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse cm ON cm.id = af.commessa_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'  AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+                  UNION ALL
+                  -- H — Ordine -> DDT (colonna diretta uuid ddt.sorgente_uid -> ordini.uid; 1:N)
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (d.id)::text,
+                         NULL::varchar, 'H'::text
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- R — DDT -> Reso (ramo INVERSO; colonna diretta uuid resi.sorgente_uid -> ddt.uid; 1:N)
+                  SELECT s_from.id, (d.id)::text,
+                         s_to.id, (r.id)::text,
+                         NULL::varchar, 'R'::text
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- N — Fattura rettificata -> Nota di credito (ramo di RITORNO; 1:N)
+                  --   ⭐ Ricostruito da vendite.fatture_righe.riga_rettificata_id, cioe' dal
+                  --   legame RIGA-RIGA, e non da vendite.fatture_rettifiche. Le due fonti
+                  --   dicono la stessa cosa ma non nello stesso momento: il ponte
+                  --   documentale lo popola un task della fase DEFINITIVA, DOPO la
+                  --   numerazione, mentre riga_rettificata_id esiste dalla generazione delle
+                  --   righe. Il grafo deve mostrare il legame quando c'e', non quando il
+                  --   documento e' chiuso.
+                  --   ⚠️ Entrambi gli estremi sono nodi FATTURA: e' il primo arco del grafo
+                  --   fra due nodi dello STESSO tipo. Un arco X->X non direbbe una
+                  --   genealogia, direbbe un ciclo: si esclude esplicitamente.
+                  --   Il perimetro c'e' gia': fatture_righe ha la RLS su entrambi i lati.
+                  --   DISTINCT come in G: N righe di rettifica producono UN arco.
+                  SELECT DISTINCT
+                         s_fat.id, (rr.fattura_id)::text,
+                         s_fat.id, (fr.fattura_id)::text,
+                         NULL::varchar, 'N'::text
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.fatture_righe rr ON rr.id = fr.riga_rettificata_id
+                    JOIN config.sorgenti s_fat ON s_fat.codice_interno = 'FATTURA' AND s_fat.attivo IS TRUE
+                   WHERE fr.riga_rettificata_id IS NOT NULL
+                     AND rr.fattura_id <> fr.fattura_id
+                  UNION ALL
+                  -- S — Reso -> Nota di credito (AVANZAMENTO del reso; 1:N) ⭐ rev 2026-08-25
+                  --   Si legge da vendite.resi_righe_accrediti, la tabella nata il
+                  --   2026-08-18 per registrare il FATTO dell'accredito «contro cosa».
+                  --   Soft-link calcolato, come G e N: nessuna tabella ponte.
+                  --   ⚠️ Il passaggio da vendite.resi NON e' decorativo, e' la regola di
+                  --   perimetro in testa: resi ha la RLS (rls_resi_ef_whitelist),
+                  --   resi_righe e resi_righe_accrediti no. Senza questo join l'arco
+                  --   esisterebbe anche per un reso che la whitelist dell'operatore
+                  --   nasconde. E' lo stesso perimetro dell'arco R.
+                  --   DISTINCT: piu' accrediti dello stesso reso confluiscono nella stessa
+                  --   nota (tre, nel caso reale del 2026-08-25) e devono dare UN arco.
+                  --   Il WHERE e' quello dell'arco G: prima dell'emissione la riga di
+                  --   fattura non esiste ancora, e l'arco deve comparire quando c'e'.
+                  --   ⭐ S NON e' un ramo di ritorno: e' l'avanzamento del reso, come H lo
+                  --   e' dell'ordine. Vedi la nota su is_ramo_inverso piu' sotto.
+                  SELECT DISTINCT
+                         s_from.id, (r.id)::text,
+                         s_to.id,   (fr.fattura_id)::text,
+                         NULL::varchar, 'S'::text
+                    FROM vendite.resi_righe_accrediti acc
+                    JOIN vendite.resi_righe rr           ON rr.id = acc.resi_riga_id
+                    JOIN vendite.resi r                  ON r.id  = rr.reso_id
+                    JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = acc.commessa_attivita_id
+                    JOIN vendite.fatture_righe fr        ON fr.id = af.fattura_riga_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'      AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+                  UNION ALL
+                  -- T — Reso -> DDT di RI-CONSEGNA (AVANZAMENTO; 1:N) ⭐ rev 2026-08-28
+                  --   Si legge dal ponte vendite.resi_righe_riconsegne, l'aggancio duro
+                  --   che fn_genera_ddt_riconsegna popola per ENTRAMBI i rami: leggerlo
+                  --   di li' fa coprire all'arco anche le ri-consegne ORDER-BACKED, che
+                  --   dichiarano ORDINE_VENDITA e non nominerebbero mai il reso.
+                  --   ⛔ T NON e' un ramo di ritorno: il ritorno e' gia' avvenuto ed e'
+                  --   R. Da li' il reso ha due modi di andare AVANTI — accreditare (S) o
+                  --   ri-consegnare (T).
+                  --   ⚠️ Il join passa dalle TESTATE (resi, ddt): le tre tabelle di mezzo
+                  --   non hanno RLS e non darebbero perimetro.
+                  --   ⚠️ DISTINCT obbligatorio: un reso con piu' righe ri-consegnate
+                  --   nello stesso DDT produrrebbe un arco per riga.
+                  SELECT DISTINCT
+                         s_from.id, (r.id)::text,
+                         s_to.id,   (d.id)::text,
+                         NULL::varchar, 'T'::text
+                    FROM vendite.resi_righe_riconsegne rrr
+                    JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                    JOIN vendite.resi r        ON r.id  = rr.reso_id
+                    JOIN vendite.ddt_righe dr  ON dr.id = rrr.ddt_riga_id
+                    JOIN vendite.ddt d         ON d.id  = dr.ddt_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'DDT_VENDITA'  AND s_to.attivo   IS TRUE
+              )
+              SELECT a.from_tipo_id,
+                     a.from_uid,
+                     nf.codice AS from_codice,
+                     a.to_tipo_id,
+                     a.to_uid,
+                     nt.codice AS to_codice,
+                     nt.stato_codice_interno AS to_stato_codice_interno,
+                     nt.fase                 AS to_fase,
+                     nt.is_abortito          AS to_is_abortito,
+                     a.ruolo,
+                     a.arco,
+                     -- ⭐ rev 2026-08-20: LA PROPRIETA' VIVE QUI, UNA VOLTA SOLA.
+                     --   Prima la lettera 'R' era scritta a mano in TRE posti: due WHERE
+                     --   della summary e il calcolo dentro fn_documento_lineage. Il posto
+                     --   dimenticato non avrebbe dato NESSUN errore: solo la nota di
+                     --   credito comparsa come discendente forward, cioe' una FRONTIERA
+                     --   diversa su ogni riga di lista, in silenzio.
+                     -- ⚠️ «Inverso» non vuol dire «all'indietro nel tempo» (la nota nasce
+                     --   DOPO). Vuol dire ramo di RITORNO — nel reso torna la merce, nella
+                     --   nota il valore — e come tale non e' un avanzamento del flusso.
+                     -- ⛔ rev 2026-08-25: L'ARCO S RESTA FUORI DA QUESTO ELENCO, E LA
+                     --   SCELTA E' CONSAPEVOLE. S non e' un ritorno: e' l'avanzamento
+                     --   naturale del reso (la merce e' tornata, adesso si accredita),
+                     --   esattamente come H e' l'avanzamento dell'ordine. E' cio' che fa
+                     --   smettere al reso di essere una foglia e gli da' la nota di
+                     --   credito come FRONTIERA — l'informazione che prima mancava del
+                     --   tutto. Marcarlo inverso lo lascerebbe frontiera di se' stesso,
+                     --   cioe' al punto di partenza.
+                     --   Chi volesse aggiungerlo «per simmetria» faccia prima girare il
+                     --   test 29 di test-documento-lineage-v1.sql: diventa rosso apposta.
+                     -- ⛔ rev 2026-08-28: e nemmeno T, per la stessa ragione, e nemmeno U —
+                     --   che e' un ingresso in commessa come B, E ed F.
+                     (a.arco IN ('R', 'N')) AS is_ramo_inverso,
+                     nf.natura_doc_codice AS from_natura_doc_codice,
+                     nt.natura_doc_codice AS to_natura_doc_codice,
+                     -- ⭐ rev 2026-08-28: IL RANGO DELL'ORIGINE, DICHIARATO.
+                     --   Serve a una domanda sola: quando piu' archi forward entrano nello
+                     --   STESSO nodo, quale delle sorgenti e' «l'origine»? Prima rispondeva
+                     --   from_tipo_id, cioe' la PK di config.sorgenti — un id di seed. Oggi
+                     --   la commessa vince sul reso solo perche' 13 < 15, e una
+                     --   riseminatura del catalogo cambierebbe il root di ogni nota di
+                     --   credito senza un errore e senza una riga di log.
+                     -- ⭐ LA SCALA dichiara quanto e' A MONTE il documento SORGENTE:
+                     --     10 la trattativa · 20 l'impegno · 30 l'esecuzione
+                     --     40 la consegna   · 50 il ritorno.   Piu' basso = piu' origine.
+                     -- ⛔ NON e' «ordinare sul tipo con un altro nome»: la differenza e' la
+                     --   PROVENIENZA del numero. Questo e' scritto e si legge; from_tipo_id
+                     --   era un effetto collaterale dell'ordine di inserimento di una
+                     --   tabella di catalogo. E un arco nuovo senza rango vale NULL, che il
+                     --   test 41 prende — mentre con from_tipo_id prendeva un ordinamento
+                     --   silenzioso e plausibile.
+                     -- ⚠️ R e N un rango ce l'hanno anche se non gareggiano MAI (la CTE inc
+                     --   filtra NOT is_ramo_inverso): un'eccezione «tanto non serve» e' il
+                     --   buco da cui passa il prossimo arco senza rango.
+                     CASE a.arco
+                         -- 10 — la TRATTATIVA: dove il flusso comincia davvero
+                         WHEN 'A' THEN 10   -- preventivo -> ordine
+                         WHEN 'B' THEN 10   -- preventivo -> commessa
+                         WHEN 'C' THEN 10   -- offerta    -> contratto
+                         WHEN 'D' THEN 10   -- offerta    -> ordine
+                         -- 20 — l'IMPEGNO: il documento che vincola le parti
+                         WHEN 'E' THEN 20   -- ordine    -> commessa
+                         WHEN 'F' THEN 20   -- contratto -> commessa
+                         WHEN 'H' THEN 20   -- ordine    -> ddt
+                         -- 30 — l'ESECUZIONE: la commessa, che e' gia' un effetto
+                         WHEN 'G' THEN 30   -- commessa -> fattura
+                         -- 40 — la CONSEGNA: il DDT, piu' a valle della commessa
+                         WHEN 'U' THEN 40   -- ddt -> commessa
+                         WHEN 'R' THEN 40   -- ddt -> reso        (inverso: mai in gara)
+                         -- 50 — il RITORNO: cio' che il flusso rimanda indietro. Un reso
+                         --   e' una CONSEGUENZA, mai l'origine di niente.
+                         WHEN 'S' THEN 50   -- reso    -> nota di credito
+                         WHEN 'T' THEN 50   -- reso    -> ddt di ri-consegna
+                         WHEN 'N' THEN 50   -- fattura -> nota di credito (inverso)
+                     END::smallint AS rango_origine
+                FROM archi a
+                LEFT JOIN vendite.vw_documento_lineage_nodi nf ON nf.tipo_id = a.from_tipo_id AND nf.uid = a.from_uid
+                LEFT JOIN vendite.vw_documento_lineage_nodi nt ON nt.tipo_id = a.to_tipo_id   AND nt.uid = a.to_uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                  'Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R e N '
+                  '(rami di ritorno) + S, T e U. TREDICI lettere dal 2026-08-28, e il '
+                  'vocabolario e'' CHIUSO: il pgTAP 13 le enumera e fallisce apposta a ogni arco '
+                  'nuovo, per costringere chi lo aggiunge a passare di li''. Chi allarga l''elenco '
+                  'aggiorna ANCHE questa frase e da'' all''arco nuovo un rango_origine: e'' questa '
+                  'la riga che la doc auto-gen stampa in cima alla pagina, cioe'' la prima che '
+                  'legge chi vuole sapere quali archi esistono. '
+                  'Chiave nodo polimorfa (tipo_id, uid::text). Nodo target decorato via '
+                  'vw_documento_lineage_nodi. security_invoker=on. Base di vw_documento_lineage e '
+                  'fn_documento_lineage. '
+                  '⭐ rev 2026-08-25 — ARCO S: reso -> nota di credito, letto da '
+                  'vendite.resi_righe_accrediti (la tabella nata il 2026-08-18 per registrare il '
+                  'FATTO dell''accredito «contro cosa»), via commessa_attivita_id -> '
+                  'attivita_fatturabili -> fatture_righe. Soft-link calcolato come G e N, nessuna '
+                  'tabella ponte. ⛔ S NON E'' UN RAMO DI RITORNO, ed e'' una scelta: «inverso» '
+                  'vuol dire ramo di RITORNO, un verso che il grafo forward non percorre; S '
+                  'invece e'' l''AVANZAMENTO del reso (la merce e'' tornata, adesso si '
+                  'accredita), come H lo e'' dell''ordine. La conseguenza voluta e'' che il reso '
+                  'smette di essere una foglia e prende la nota come FRONTIERA. '
+                  '⛔ NON si aggiunge un arco «reso -> fattura ORIGINALE», benche'' '
+                  'resi_righe_accrediti.fattura_riga_rettificata_id lo renda banale: sarebbe '
+                  'forward, i due nodi FATTURA finirebbero allo stesso livello e con lo stesso '
+                  'pipeline_rank, e la frontiera del reso si deciderebbe sul confronto '
+                  'lessicografico fra due uid testuali. Il triangolo si chiude gia'' via N. '
+                  '⭐ rev 2026-08-28 — ARCO T: reso -> DDT di RI-CONSEGNA, letto dal ponte '
+                  'vendite.resi_righe_riconsegne. Il grafo aveva R (la merce torna) e S (il '
+                  'valore si accredita) ma non l''arco che dice che la merce e'' RIPARTITA: un '
+                  'reso ri-consegnato finiva come una foglia. ⛔ Nemmeno T e'' un ramo di '
+                  'ritorno: il ritorno e'' gia'' avvenuto ed e'' R, e da li'' il reso ha due modi '
+                  'di andare AVANTI. Si costruisce dal ponte e non da ddt.sorgente_*, quindi '
+                  'copre anche le ri-consegne ORDER-BACKED. '
+                  '⭐ rev 2026-08-28 — ARCO U: DDT -> Commessa, la QUARTA sorgente di commessa e '
+                  'la gemella di B, E ed F (stessa tabella commesse_sorgenti, stesso ruolo_link, '
+                  'stesso perimetro). Prima le righe DDT_VENDITA di commesse_sorgenti non '
+                  'producevano NESSUN arco, e quelle commesse dichiaravano nel grafo di non avere '
+                  'origine — n_sorgenti = 0, che non e'' «non lo so» ma un''affermazione falsa. '
+                  '⛔ AMMESSA PERCHE'' LO DICE CHI SCRIVE, non perche'' ci sono righe: le scrive '
+                  'HandlerDdt, un handler REGISTRATO del push (uno di cinque, con PREVENTIVO, '
+                  'ORDINE_VENDITA, CONTRATTO e ATTIVITA_CONSUMI), e ne'' il chiamante ne'' '
+                  'vendite.fn_link_commessa_sorgente hanno una whitelist di tipi — la funzione '
+                  'legge target_table e key_selector da config.sorgenti per QUALUNQUE sorgente '
+                  'attiva. Il database non ha mai vietato che un DDT sia sorgente di commessa. '
+                  '⚠️ Il quinto handler, ATTIVITA_CONSUMI, scrive nella stessa tabella ma NON e'' '
+                  'un nodo del grafo: per quelle righe non basterebbe un arco, mancherebbe il '
+                  'nodo. Difetto della stessa famiglia, taglia diversa, altro cantiere. '
+                  '⭐ rev 2026-08-28 — RANGO_ORIGINE: quando piu'' archi forward entrano nello '
+                  'STESSO nodo, dichiara quale sorgente e'' «l''origine». Scala per quanto e'' a '
+                  'monte il documento SORGENTE: 10 trattativa, 20 impegno, 30 esecuzione, 40 '
+                  'consegna, 50 ritorno; piu'' basso = piu'' origine. ⛔ NON e'' «ordinare sul '
+                  'tipo con un altro nome»: prima decideva from_tipo_id, cioe'' la PK di '
+                  'config.sorgenti — un id di SEED, per cui la commessa vinceva sul reso solo '
+                  'perche'' 13 < 15 e una riseminatura avrebbe cambiato il root di ogni nota di '
+                  'credito in silenzio. Questo numero e'' SCRITTO, si legge, non si sposta se il '
+                  'catalogo cambia, e un arco nuovo senza rango vale NULL — che il pgTAP 41 '
+                  'prende. Le due gare vere: FATTURA <- G(30) e S(50), vince la COMMESSA; DDT <- '
+                  'H(20) e T(50), vince l''ORDINE. I pareggi A/D ed E/F sono DELIBERATI (nel '
+                  'primo caso i due archi si escludono per costruzione, nel secondo il modello '
+                  'non ha una preferenza e ruolo_link decide prima) e il tie-break residuo e'' '
+                  'from_uid, che e'' immutabile: stabile, ma non significativo, ed e'' meglio '
+                  'dirlo che fingere una regola che non c''e''. '
+                  '⛔ REGOLA DI PERIMETRO (rev 2026-08-25): ogni ramo passa dalle TABELLE-TESTATA '
+                  'dei due documenti che collega, perche'' sono quelle che portano la RLS. Le '
+                  'tabelle-ponte (commesse_sorgenti, attivita_fatturabili, resi_righe, '
+                  'resi_righe_accrediti, resi_righe_riconsegne, ddt_righe) hanno '
+                  'relrowsecurity = f e non danno perimetro: un ramo che si ferma li'' produce un '
+                  'arco verso un documento che il chiamante non vede, e la decorazione non lo '
+                  'ferma perche'' i join ai nodi sono LEFT. Fino al 2026-08-24 lo facevano B, E, '
+                  'F e G; U e'' il primo ramo a rispettarla per NASCITA. ⚠️ La chiave di '
+                  'commesse_sorgenti.sorgente_uid e'' POLIMORFA (key_selector): uid per il '
+                  'preventivo, id::text per ordine, contratto e DDT — i quattro join non si '
+                  'copiano l''uno dall''altro, e si casta l''id a text, mai il testo a uuid. '
+                  '⭐ is_ramo_inverso E'' CALCOLATO QUI, una volta sola: prima la lettera R era '
+                  'ripetuta in tre posti (due WHERE della summary e fn_documento_lineage) e il '
+                  'terzo dimenticato non avrebbe rotto niente di visibile. '
+                  'Espone anche from/to_natura_doc_codice, per distinguere i due nodi FATTURA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico, e ci sono due ragioni distinte.
+              --    1) Togliere rango_origine richiede DROP + CREATE, perche' una
+              --       colonna non si toglie con CREATE OR REPLACE: il DROP ... CASCADE
+              --       porterebbe via vw_documento_lineage e fn_documento_lineage.
+              --    2) Tornare indietro rimette il root a dipendere da from_tipo_id, e
+              --       ri-toglie l'origine alle commesse nate da un DDT: due difetti
+              --       che non danno nessun errore, solo valori diversi.
+              --    Se serve davvero, si riapplica 20260828-05 dopo aver droppato i
+              --    consumatori in ordine inverso, e si annulla anche 20260828-25.
+              SELECT 1;

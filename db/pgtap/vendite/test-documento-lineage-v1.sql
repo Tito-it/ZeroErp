@@ -12,7 +12,7 @@
 --   I 2 spot-check sui casi reali §5 (PRV0000185, commessa 186) sono protetti da
 --   skip() quando i dati non sono presenti (es. CI su DB fresco).
 --
--- Indice test (1..39):
+-- Indice test (1..44):
 --    1) vw_documento_lineage_nodi esiste
 --    2) vw_documento_lineage_archi esiste
 --    3) vw_documento_lineage esiste
@@ -25,7 +25,7 @@
 --   10) summary: security_invoker attivo
 --   11) fn: STABLE
 --   12) fn: SECURITY INVOKER (NON definer)
---   13) archi: arco solo in A..H,R,N,S,T (vocabolario CHIUSO: e' un cricchetto)
+--   13) archi: arco solo in A..H,R,N,S,T,U (vocabolario CHIUSO: e' un cricchetto)
 --   14) archi: arco 'R' punta sempre a un nodo RESO_VENDITA
 --   15) nodi: pipeline_rank sempre in 0..5
 --   16) config.sorgenti RESO_VENDITA seedato e attivo (prereq Step 1)
@@ -71,6 +71,26 @@
 --      RIPARTITA, e un reso ri-consegnato restava una foglia.
 --   39) archi: T va da RESO_VENDITA a DDT_VENDITA ed e' un AVANZAMENTO
 --       (gemello di S), non un ramo di ritorno
+--   ⭐ 40 — LA NATURA DEL NODO DI FRONTIERA, aggiunta il 2026-08-28 (changeSet
+--      20260828-22). Senza quella colonna ogni lista che rende il chip
+--      «Transito» chiama «Fattura» una nota di credito: vendite.fatture e' UNA
+--      tabella e le viste di lista non proiettano frontiera_uid, cioe' la
+--      chiave con cui si andrebbe a leggere la natura.
+--   40) summary: frontiera_natura_doc_codice E' la natura del nodo di
+--       frontiera — non quella del nodo proprio
+--   ⭐ 41..43 — L'ARCO U e il RANGO DICHIARATO, aggiunti il 2026-08-28
+--      (changeSet 20260828-24 e -25). U e' «DDT -> Commessa», la quarta
+--      sorgente di commessa: le righe DDT_VENDITA di commesse_sorgenti non
+--      producevano nessun arco e quelle commesse dichiaravano di non avere
+--      origine. rango_origine toglie il ROOT dalle mani di from_tipo_id,
+--      cioe' di un id di seed.
+--   41) archi: OGNI arco ha un rango_origine (il cricchetto del rango)
+--   42) archi: ogni riga DDT_VENDITA di commesse_sorgenti che vede le due
+--       testate produce il suo arco U (presidio della CHIAVE polimorfa)
+--   43) ⭐⭐ summary: il ROOT scelto e' il MIGLIORE degli archi entranti
+--       secondo la regola dichiarata — nessun arco entrante lo batte
+--   44) ⭐⭐ summary: il ROOT e' un arco che ESISTE — cioe' i tre array_agg
+--       hanno pescato dalla stessa riga (il 43 da solo non lo vede)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -89,7 +109,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(39);
+SELECT plan(44);
 
 -- ---- 1..4: esistenza oggetti ---------------------------------------------
 SELECT has_view('vendite', 'vw_documento_lineage_nodi',  'vw_documento_lineage_nodi esiste');
@@ -112,7 +132,12 @@ SELECT columns_are('vendite', 'vw_documento_lineage_archi',
           'to_stato_codice_interno','to_fase','to_is_abortito','ruolo','arco',
           -- rev 2026-08-21: la proprieta' «ramo di ritorno» vive QUI, una volta
           -- sola: prima la lettera 'R' era ripetuta a mano in tre posti.
-          'is_ramo_inverso','from_natura_doc_codice','to_natura_doc_codice'],
+          'is_ramo_inverso','from_natura_doc_codice','to_natura_doc_codice',
+          -- ⭐ rev 2026-08-28: il rango DICHIARATO della sorgente. Vive qui per
+          -- la stessa ragione di is_ramo_inverso — una proprieta' dell'arco,
+          -- calcolata una volta sola — e serve alla CTE inc della summary, che
+          -- prima sceglieva il root su from_tipo_id, cioe' su un id di seed.
+          'rango_origine'],
     'colonne di vw_documento_lineage_archi');
 
 SELECT columns_are('vendite', 'vw_documento_lineage',
@@ -124,19 +149,29 @@ SELECT columns_are('vendite', 'vw_documento_lineage',
           'n_sorgenti','root_tipo_id','root_uid','root_codice',
           -- rev 2026-08-21: la natura del nodo, perche' una lista di fatture
           -- smetta di scrivere «Fattura» sopra una nota di credito.
-          -- ⛔ NON c'e' una frontiera_natura_doc_codice, ma la ragione scritta
-          -- qui fino al 2026-08-24 era FALSA e diceva: «l'arco N e' escluso dal
-          -- grafo forward, quindi una NC non e' mai frontiera e quella colonna
-          -- varrebbe sempre NULL». La premessa e' giusta, la conclusione no:
-          -- l'arco G (commessa -> fattura) NON e' un ramo di ritorno, quindi una
-          -- nota di credito E' raggiungibile in avanti — lo dice il test 30 qui
-          -- sotto, ed era gia' misurato il 2026-08-21 (frontiera dell'ordine 240
-          -- e della commessa 322). Dal 2026-08-25 l'arco S la rende frontiera
-          -- anche del RESO. La colonna non c'e' perche' il consumatore la ricava
-          -- da se' (get_lineage_nodo), NON perche' varrebbe sempre NULL.
-          -- ⚠️ Era un COMMENTO, cioe' la specie che non fallisce mai: e' stato
-          -- corretto sull'oggetto (20260825-20) e qui, insieme.
-          'natura_doc_codice','natura_doc_descrizione'],
+          'natura_doc_codice','natura_doc_descrizione',
+          -- ⭐ rev 2026-08-28 (20260828-22): la natura del nodo di FRONTIERA.
+          -- ⛔ QUI STAVA SCRITTO, PER TRE VERSIONI, PERCHE' QUESTA COLONNA NON
+          -- DOVEVA ESISTERE — ed e' la ragione per cui il commento sta ancora
+          -- qui invece di essere cancellato. Prima diceva «l'arco N e' escluso
+          -- dal grafo forward, quindi una NC non e' mai frontiera e la colonna
+          -- varrebbe sempre NULL»: premessa giusta, conclusione falsa, perche'
+          -- l'arco G (commessa -> fattura) NON e' un ramo di ritorno e una nota
+          -- di credito E' raggiungibile in avanti — lo dice il test 30, ed era
+          -- gia' misurato il 2026-08-21. Poi, corretta quella, diceva «non c'e'
+          -- perche' il consumatore la ricava da se'»: vero per UNO (il pannello
+          -- del drawer, che legge questa vista e quindi ha frontiera_uid) e
+          -- falso per tutte le viste di LISTA, che frontiera_uid non la
+          -- proiettano e senza la chiave del nodo non hanno modo onesto di
+          -- leggere la natura.
+          -- ⚠️ Tre versioni della stessa frase, e nessuna e' mai fallita: un
+          -- commento e' la specie che non si accorge di essere sbagliata. La
+          -- colonna adesso c'e', e il test 40 qui sotto dice COSA contiene —
+          -- che e' l'unica forma che fallisce.
+          -- ⚠️ Sta in ULTIMA posizione, e non accanto alle sorelle frontiera_*,
+          -- perche' CREATE OR REPLACE VIEW puo' solo appendere: chi rilegge
+          -- questo elenco non ci veda un disordine da sistemare.
+          'frontiera_natura_doc_codice'],
     'colonne di vw_documento_lineage');
 
 -- ---- 8..10: security_invoker=on sulle 3 viste ----------------------------
@@ -176,10 +211,17 @@ SELECT is(
 --    e basta trasformerebbe un cricchetto in una formalita'.
 --    · T aggiunto il 2026-08-28 (reso -> DDT di ri-consegna),
 --      brief-db-ddt-riconsegna-eredita-testata §9.4.1.
+--    · U aggiunto il 2026-08-28 (DDT -> commessa, la quarta sorgente di
+--      commessa), brief-db-lineage-residui-root-e-sorgente-ddt §2.
+-- ⛔ E DAL 2026-08-28 IL CRICCHETTO E' DOPPIO: il test 41 chiede a ogni arco
+--    anche un rango_origine. Una lettera nuova che passasse di qui senza
+--    rango non farebbe fallire QUESTO test — passerebbe l'elenco e prenderebbe
+--    un ordinamento silenzioso nel root. Le due asserzioni vanno lette
+--    insieme: l'elenco dice CHI esiste, il rango dice QUANTO conta.
 SELECT is(
     (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
-      WHERE arco NOT IN ('A','B','C','D','E','F','G','H','R','N','S','T')),
-    0, 'archi: arco sempre in A..H,R,N,S,T');
+      WHERE arco NOT IN ('A','B','C','D','E','F','G','H','R','N','S','T','U')),
+    0, 'archi: arco sempre in A..H,R,N,S,T,U');
 
 SELECT is(
     (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
@@ -459,6 +501,152 @@ SELECT is(
           OR a.to_tipo_id   <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')
           OR a.is_ramo_inverso)),
     0, '39) archi: T va da RESO_VENDITA a DDT_VENDITA ed e'' un AVANZAMENTO, non un ritorno');
+
+-- ⭐ COSA PRESIDIA IL 40 — e perche' non e' una tautologia.
+--    La summary porta la natura della frontiera dalla CTE `frontiera`, dove il
+--    LEFT JOIN sui nodi c'era gia' per il pipeline_rank del tie-break. Qui la
+--    si ri-deriva per la strada opposta: si rilegge il nodo di frontiera dalla
+--    sua CHIAVE (frontiera_tipo_id, frontiera_uid) e si confronta.
+-- ⛔ L'ERRORE CHE PRENDE, ed e' quello plausibile: esporre la natura del NODO
+--    PROPRIO al posto di quella del nodo di FRONTIERA — cioe' scrivere
+--    `n.natura_doc_codice` dove va `fr.d_natura_doc_codice`. Le due colonne
+--    hanno lo stesso tipo, la vista si crea senza un errore, e su OGNI nodo che
+--    e' frontiera di se stesso (che sono la maggioranza) i due valori
+--    coincidono: il difetto si vedrebbe solo sulle righe che il chip «Transito»
+--    esiste per rendere. Verde per costruzione ovunque tranne dove serve.
+-- ⚠️ IS DISTINCT FROM e non <>: la natura e' NULL su sette tipi di nodo su
+--    otto ed e' corretto, e con <> quelle righe non entrerebbero MAI nel
+--    conteggio — il test sarebbe verde anche se la colonna fosse sempre NULL.
+-- ⚠️ Seed-agnostico: vale anche su un DB vuoto, dove conta zero righe e
+--    asserisce zero. Non e' una riproduzione del caso del reso 24.
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.vw_documento_lineage s
+      WHERE s.frontiera_tipo_id IS NOT NULL
+        AND s.frontiera_natura_doc_codice IS DISTINCT FROM
+            (SELECT n.natura_doc_codice
+               FROM vendite.vw_documento_lineage_nodi n
+              WHERE n.tipo_id = s.frontiera_tipo_id
+                AND n.uid     = s.frontiera_uid)),
+    0, '40) summary: frontiera_natura_doc_codice e'' la natura del nodo di FRONTIERA');
+
+-- ---- 41..43: l'arco U e il rango dichiarato -------------------------------
+
+-- ⭐ IL CRICCHETTO DEL RANGO, gemello del 13 e per la stessa ragione.
+--    rango_origine e' un CASE sulla lettera senza ELSE: un arco nuovo non
+--    elencato li' vale NULL. E NULL non fa rumore — nella CTE inc finirebbe
+--    semplicemente in fondo all'ORDER BY (ASC mette i NULL per ultimi), cioe'
+--    l'arco nuovo non sarebbe MAI il root di nessuno, in silenzio.
+-- ⛔ E' il motivo per cui anche R e N un rango ce l'hanno pur essendo rami di
+--    ritorno, che nella inc non entrano mai: un'eccezione «tanto non serve» e'
+--    il buco da cui passa il prossimo arco senza rango.
+SELECT is(
+    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
+      WHERE rango_origine IS NULL),
+    0, '41) archi: ogni arco ha un rango_origine dichiarato');
+
+-- ⭐ IL PRESIDIO DELLA CHIAVE POLIMORFA, sul ramo appena nato.
+--    commesse_sorgenti.sorgente_uid segue config.sorgenti.key_selector: 'uid'
+--    per il preventivo, 'id' per ordine, contratto e DDT. Il ramo U usa
+--    d.id::text — e se un giorno qualcuno lo «allineasse» al ramo B copiandogli
+--    d.uid::text, non ci sarebbe NESSUN errore: il join non troverebbe piu'
+--    niente e il gruppo di archi U si azzererebbe. Le commesse tornerebbero
+--    senza origine come prima, e nessun test se ne accorgerebbe.
+-- ⚠️ Il test parte dalla RIGA e cerca l'arco, non viceversa: e' l'unico verso
+--    che vede un gruppo di archi SPARITO. Contare gli archi U non lo direbbe —
+--    zero archi e' anche il risultato di un DB senza righe DDT_VENDITA.
+-- ⚠️ I due join alle testate non sono decorativi nemmeno qui: sotto RLS una
+--    riga la cui commessa o il cui DDT non sono visibili non deve produrre
+--    arco, quindi non deve nemmeno essere pretesa da questa asserzione.
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.commesse_sorgenti cs
+       JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
+                             AND s.codice_interno = 'DDT_VENDITA'
+       JOIN vendite.ddt      d  ON d.id::text = cs.sorgente_uid
+       JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
+      WHERE NOT EXISTS (
+              SELECT 1 FROM vendite.vw_documento_lineage_archi a
+               WHERE a.arco     = 'U'
+                 AND a.from_uid = d.id::text
+                 AND a.to_uid   = cm.id::text)),
+    0, '42) archi: ogni sorgente DDT di commessa produce il suo arco U');
+
+-- ⭐⭐ LA REGOLA DEL ROOT, ASSERITA COME REGOLA E NON COME DATO.
+--    Non ricopia l'ORDER BY della CTE inc — sarebbe una tautologia. Dice la
+--    proprieta' che quell'ORDER BY deve produrre: fra tutti gli archi forward
+--    che entrano in un nodo, quello scelto come root non deve essere battuto
+--    da nessun altro. Seed-agnostica: su un DB vuoto conta zero e asserisce
+--    zero, e non nomina nessun documento reale.
+-- ⛔ L'ERRORE CHE PRENDE, ed e' quello vero: root_tipo_id, root_uid e
+--    root_codice escono da TRE array_agg separati che devono avere lo stesso
+--    ORDER BY. Se uno solo divergesse, il root sarebbe composto a pezzi presi
+--    da archi DIVERSI — un documento che non esiste, senza nessun errore.
+--    Qui il join cerca UN arco che vada davvero da (root_tipo_id, root_uid) al
+--    nodo: un root composto a pezzi non lo trova e il conteggio non torna.
+-- ⚠️ L'ordine dei criteri e' replicato per PROPRIETA', non per copia:
+--    (ruolo='ROOT') DESC NULLS LAST mette prima TRUE, poi FALSE, poi NULL —
+--    ed e' il CASE qui sotto, che vale 0/1/2. Chi cambiasse la regola nella
+--    vista senza cambiarla qui vedrebbe rosso, che e' lo scopo.
+-- ⛔ COSA QUESTO TEST NON PRENDE, e va detto invece di lasciarlo credere.
+--    Provato per MUTAZIONE il 2026-08-28, riscrivendo la CTE inc in quattro
+--    modi sbagliati e rigirando la suite:
+--      · rango_origine DESC (la scala letta al contrario) ......... ROSSO
+--      · ORDER BY senza (ruolo='ROOT') (la dichiarazione ignorata)  ROSSO
+--      · il ritorno a from_tipo_id, cioe' al vecchio id di seed .... VERDE
+--    L'ultima resta VERDE, e non e' un difetto del test: sul DB di sviluppo
+--    del 2026-08-28 l'ordine accidentale degli id COINCIDE con la scala
+--    dichiarata su ogni nodo, quindi il caso non e' producibile. E' un
+--    PRESIDIO, non una riproduzione: diventera' rosso il giorno in cui i due
+--    ordini divergeranno — che e' esattamente il giorno per cui esiste.
+--    ⚠️ Chi lo legge non concluda «allora il rango non serviva»: la coincidenza
+--    di oggi e' proprio la ragione per cui il difetto era invisibile.
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.vw_documento_lineage s
+       JOIN vendite.vw_documento_lineage_archi ar
+         ON  ar.to_tipo_id   = s.tipo_id      AND ar.to_uid   = s.uid
+         AND ar.from_tipo_id = s.root_tipo_id AND ar.from_uid = s.root_uid
+         AND NOT ar.is_ramo_inverso
+      WHERE s.root_tipo_id IS NOT NULL
+        AND EXISTS (
+              SELECT 1
+                FROM vendite.vw_documento_lineage_archi a2
+               WHERE a2.to_tipo_id = s.tipo_id AND a2.to_uid = s.uid
+                 AND NOT a2.is_ramo_inverso
+                 AND (CASE WHEN a2.ruolo = 'ROOT' THEN 0
+                           WHEN a2.ruolo IS NOT NULL THEN 1 ELSE 2 END,
+                      a2.rango_origine)
+                   < (CASE WHEN ar.ruolo = 'ROOT' THEN 0
+                           WHEN ar.ruolo IS NOT NULL THEN 1 ELSE 2 END,
+                      ar.rango_origine))),
+    0, '43) summary: nessun arco entrante batte il ROOT scelto (regola dichiarata)');
+
+-- ⭐⭐ IL ROOT E' UN ARCO CHE ESISTE, e questo test nasce da un buco del 43.
+--    root_tipo_id, root_uid e root_codice escono da TRE array_agg separati
+--    della CTE inc. Devono avere lo stesso ORDER BY: se uno solo divergesse,
+--    il root verrebbe composto a PEZZI presi da archi diversi — il tipo di uno
+--    e l'uid di un altro — cioe' un documento che non esiste, senza nessun
+--    errore da nessuna parte.
+-- ⛔ IL 43 DA SOLO NON LO VEDE, ed e' stato misurato: disallineando UN solo
+--    array_agg il test 43 resta VERDE. Il motivo e' istruttivo e vale oltre
+--    questo file — il 43 fa un JOIN sull'arco scelto e conta le violazioni, e
+--    un root composto a pezzi NON TROVA nessun arco: il nodo esce dal join e
+--    smette di essere contato. Un test che conta i cattivi diventa muto
+--    proprio quando il dato e' cosi' rotto da sparire dal conteggio.
+-- ⚠️ Per questo qui si conta al contrario: si parte dai nodi che DICHIARANO un
+--    root e si pretende che l'arco esista. Le due asserzioni vanno insieme —
+--    il 44 dice che il root e' una riga vera, il 43 che e' la riga giusta.
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.vw_documento_lineage s
+      WHERE s.root_tipo_id IS NOT NULL
+        AND NOT EXISTS (
+              SELECT 1 FROM vendite.vw_documento_lineage_archi a
+               WHERE a.to_tipo_id   = s.tipo_id      AND a.to_uid   = s.uid
+                 AND a.from_tipo_id = s.root_tipo_id AND a.from_uid = s.root_uid
+                 AND NOT a.is_ramo_inverso)),
+    0, '44) summary: il ROOT corrisponde a un arco entrante che esiste davvero');
 
 SELECT * FROM finish();
 ROLLBACK;

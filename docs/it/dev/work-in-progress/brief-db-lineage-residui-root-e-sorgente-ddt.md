@@ -10,10 +10,21 @@
 > anche il suo §7-bis (§3) — un brief non si chiude *sopra* un difetto aperto,
 > e quello ha la stessa sede degli altri.
 >
-> **Stato.** 2026-08-26 — analisi e misure. **Nessun file scritto, nessuna
-> migrazione.** Due domande di modello prima di qualunque riga di SQL (§1.3 e
-> §2.4); la terza voce invece non ha domande aperte — la richiesta è scritta
-> (§3.4).
+> **Stato.** ⭐ **2026-08-28 — TUTTE E QUATTRO LE VOCI SONO SCRITTE.**
+> Quattro changeSet (`20260828-22` … `-25`) e il pgTAP da **39 a 44** test.
+> ⛔ **Provati, NON applicati**: l'SQL **estratto dagli YAML** gira in
+> `BEGIN`/`ROLLBACK`, la suite dà **44/44 verdi** e il round-trip dice che i
+> dodici archi preesistenti **non si sono mossi di una riga**.
+> ⚠️ Provato da owner: il test **38** (perimetro RLS) in quella corsa è verde
+> per costruzione e non presidia niente — vale solo alla suite vera.
+>
+> **Le due domande di modello hanno avuto risposta**, e nessuna delle due dai
+> dati: il §2.4 da **chi scrive** le righe (§2.4-bis), il §1.3 da una
+> **decisione dichiarata** (§1.6). Resta fuori il §3.6, che si è rivelato una
+> decisione e non un fix.
+>
+> *(Superato: «2026-08-26 — analisi e misure, nessun file scritto». Resta qui
+> perché è la data di nascita del cantiere.)*
 >
 > ⚠️ **La seconda voce è più grossa di come il brief madre la descriveva.**
 > Diceva *«2 righe `DDT_VENDITA` che non producono nessun arco — residuo?»*.
@@ -35,6 +46,19 @@
 | **2** | `commesse_sorgenti` ha righe **`DDT_VENDITA`** che non producono nessun arco: quelle commesse risultano **senza origine** nel grafo | 🔴 dato vero non rappresentato | chi apre il pannello «Passaggi» di quelle due commesse, e la colonna «Transito» dei due DDT |
 | **3** | La colonna «Transito» **chiama «Fattura» una nota di credito**, e mostra il numero **nudo** (`1`): la natura e il codice parlante non escono dalla summary | 🔴 dice la parola sbagliata | **ogni** operatore che guarda la lista resi o la lista ordini |
 | **4** | La **descrizione** di `vw_documento_lineage_archi` non nomina l'arco **`T`**, che esiste dal 2026-08-28 — e la doc **manuale** sulla stessa pagina dice «dodici lettere». Le due si contraddicono | 🟠 doc che dice il falso su un vocabolario dichiarato **chiuso** | chi apre la doc della vista per sapere quali archi esistono |
+
+**Stato al 2026-08-28 — tutte scritte, nessuna applicata.**
+
+| # | changeSet | presidio |
+| --- | --- | --- |
+| **1** | `20260828-24` (`rango_origine`) + `20260828-25` (la `inc` lo legge) | pgTAP **41**, **43**, **44** |
+| **2** | `20260828-24` (arco **`U`**, DDT → Commessa) | pgTAP **13**, **42** |
+| **3** | `20260828-22` (`frontiera_natura_doc_codice`) | pgTAP **7**, **40** |
+| **4** | `20260828-23` (`COMMENT` che nomina `T`) | la doc auto-gen |
+
+⭐ **Le voci 1 e 2 sono finite nello stesso `CREATE OR REPLACE`**, come diceva
+la nota qui sotto: riscrivere due volte in due giorni una vista con
+`security_invoker` è il modo di perderla.
 
 ⭐ **Le prime tre hanno una cosa in comune, ed è il motivo per cui stanno
 insieme**: la cura sta **sul nodo o sull'arco**, mai sulle sette viste di lista
@@ -99,6 +123,8 @@ lettera `'R'` scritta in tre posti, la prosa del `COMMENT` mai riletta).
    **dichiarato sull'arco** (una colonna calcolata nella vista archi, come
    `is_ramo_inverso`) invece che dedotto dal tipo del nodo.
 
+> ✅ **RISPOSTO il 2026-08-28.** Vedi §1.6.
+
 ### 1.4 Le due cure candidate
 
 | | Cura | Pro | Contro |
@@ -112,16 +138,80 @@ per `is_ramo_inverso` — *una proprietà dell'arco, calcolata una volta sola ne
 vista archi, letta dai consumatori* — e ha il vantaggio di rendere la domanda
 1.3.1 **obbligatoria**: non si può scrivere un rango senza aver deciso la regola.
 
+> ✅ **Scelta la (b) il 2026-08-28.**
+
 ### 1.5 Il presidio che manca
+
+> ✅ **Non manca più**: pgTAP **41**, **43** e **44**.
 
 Nessun pgTAP oggi asserisce niente sul `root` di un nodo multi-sorgente. Qualunque
 cura scelta, serve un test che dica **la regola** e non il dato di oggi (lezione
 del rilievo 3 del §0.2 del brief madre): *«a parità di `ruolo`, il `root` di un
 nodo è ⟨la regola⟩»*, seed-agnostico.
 
+### 1.6 ⭐ La regola, dichiarata — `20260828-24` e `20260828-25`
+
+**`rango_origine`, una colonna della vista archi**, accanto a `is_ramo_inverso`.
+Dichiara quanto è **a monte** il documento **sorgente** dell'arco:
+
+| rango | che cosa | archi |
+| ---: | --- | --- |
+| **10** | la **trattativa** — dove il flusso comincia | `A` `B` `C` `D` |
+| **20** | l'**impegno** — il documento che vincola | `E` `F` `H` |
+| **30** | l'**esecuzione** — la commessa, che è già un effetto | `G` |
+| **40** | la **consegna** — il DDT | `U` `R` |
+| **50** | il **ritorno** — ciò che il flusso rimanda indietro | `S` `T` `N` |
+
+E la `inc` diventa
+`ORDER BY (ruolo='ROOT') DESC NULLS LAST, rango_origine, from_uid`.
+
+⭐ **L'ordine dei tre criteri *è* la regola**, e va letto così:
+
+1. **`ruolo='ROOT'` prima di tutto.** Quando una tabella ponte ha **dichiarato**
+   qual è l'origine (`commesse_sorgenti.ruolo_link`, sui rami `B`/`E`/`F`/`U`),
+   quella dichiarazione batte qualunque scala generale: *un dato scritto da chi
+   sa vale più di una regola dedotta*.
+2. **`rango_origine`**, fra archi che un ruolo non ce l'hanno.
+3. **`from_uid`**, tie-break residuo — e vale **solo** dove il modello non ha una
+   preferenza. È immutabile, quindi stabile; non è significativo, ed è meglio
+   dirlo che fingere una regola che non c'è.
+
+**Le due gare vere** — le uniche due destinazioni che ricevono davvero più archi
+forward:
+
+| destinazione | contendenti | vince | perché |
+| --- | --- | --- | --- |
+| `FATTURA` | `G` commessa (30) · `S` reso (50) | la **commessa** | è il risultato di prima, ma per una **ragione** invece che per 13 < 15: un reso è una *conseguenza*, non un'origine |
+| `DDT` | `H` ordine (20) · `T` reso (50) | l'**ordine** | ⚠️ **questa gara non l'aveva vista nessuno**: un DDT di ri-consegna *order-backed* ha davvero entrambi gli archi in ingresso, dal 2026-08-28 |
+
+⛔ **E non è «ordinare sul tipo con un altro nome»** — l'obiezione è giusta e la
+risposta sta nella **provenienza** del numero:
+
+* il rango è **scritto**, e si legge; `from_tipo_id` era un effetto collaterale
+  dell'ordine di inserimento di una tabella di catalogo;
+* riseminare `config.sorgenti` non sposta più niente;
+* un arco **nuovo** senza rango vale `NULL`, e il pgTAP **41** lo prende. Con
+  `from_tipo_id` l'arco nuovo prendeva un ordinamento silenzioso e plausibile,
+  cioè la specie di difetto che non fallisce mai.
+
+⚠️ **`R` e `N` hanno un rango pur non gareggiando mai** (la `inc` filtra
+`NOT is_ramo_inverso`): un'eccezione *«tanto non serve»* è il buco da cui passa
+il prossimo arco senza rango.
+
+⚠️ **I pareggi rimasti sono deliberati.** `A`/`D` (offerta e preventivo verso lo
+stesso ordine si escludono per costruzione — `documento_origine_tipo` è una
+colonna sola) ed `E`/`F` (ordine e contratto sulla stessa commessa, dove il
+modello non ha una preferenza e `ruolo_link` decide prima).
+
 ---
 
 ## 2. 🔴 Due commesse dichiarano di non avere origine
+
+> ✅ **CHIUSA il 2026-08-28 — arco `U`, nel `20260828-24`.** Misurato in
+> transazione annullata: le due commesse passano da `n_sorgenti = 0` e
+> `root_codice` vuoto a **`n_sorgenti = 1`** con root `DDT0000030` e
+> `DDT0010839`. E sono gli **unici due nodi** dell'intero grafo il cui root si
+> muove: la nuova regola del §1.6, da sola, non ha spostato nient'altro.
 
 ### 2.1 Il fatto, misurato il 2026-08-26
 
@@ -199,6 +289,57 @@ regola o l'eccezione. Si sceglie leggendo **chi le scrive**, ed è la prima cosa
 da misurare — è la stessa istruzione che ha evitato il difetto sull'arco `S`
 (*«il legame va letto, non trasportato»*: prima si guarda a cosa serve la
 colonna, poi la si usa).
+
+### 2.4-bis. ⭐ Chi le scrive — letto il 2026-08-28
+
+**Un handler di prima classe, con un nome, uno di cinque.**
+
+La catena di scrittura è una sola e non ha rami: `HandlerDdt` →
+`CommesseRepository.link_sorgente` → `vendite.fn_link_commessa_sorgente` →
+`INSERT INTO vendite.commesse_sorgenti`.
+
+| anello | cosa dice |
+| --- | --- |
+| `HandlerDdt`, in `commesse_source_handlers.py` | `sorgente_codice = "DDT_VENDITA"`, sottoclasse di `BaseSourceHandler` come gli altri quattro. **Non è un percorso laterale: è un handler registrato del push** |
+| `link_sorgente` (BE) | **generica** — passa avanti il `sorgente_tipo_id` che l'handler le dà, senza sapere quale sia |
+| `fn_link_commessa_sorgente` (DB) | **generica anch'essa** — nessuna whitelist di tipi: legge `target_table` e `key_selector` da `config.sorgenti` e normalizza la chiave. ⛔ **Il DB non ha mai detto che un DDT non può essere sorgente**: non c'è nessun vincolo da violare |
+
+⭐ **Quindi la risposta alla domanda del §2.4 è «Sì, è ammesso»**, ed è una
+risposta di **modello**, non un'inferenza dalle due righe: quelle due righe sono
+il *prodotto* di un handler costruito apposta, non il residuo di qualcosa.
+Il lavoro che ne segue è il **dodicesimo arco** `DDT → Commessa`.
+
+⚠️ **E la chiave si legge, non si copia** — è la trappola che il §2.5 nomina.
+Letto da `config.sorgenti` il 2026-08-28:
+
+| sorgente | id | `key_selector` | `target_table` | è un nodo del grafo? |
+| --- | ---: | --- | --- | --- |
+| `PREVENTIVO` | 2 | **`uid`** | `vendite.preventivi` | sì |
+| `CONTRATTO` | 4 | `id` | `vendite.contratti` | sì |
+| `ORDINE_VENDITA` | 6 | `id` | `vendite.ordini` | sì |
+| **`DDT_VENDITA`** | **8** | **`id`** | `vendite.ddt` | **sì** |
+| **`ATTIVITA_CONSUMI`** | 12 | `id` | `vendite.attivita_consumi` | ⛔ **NO** |
+
+Per il ramo nuovo la chiave è quindi `d.id::text`, come `E` e `F` e **non** come
+`B`. Il modo giusto di saperlo è quello usato qui: leggere `key_selector`, non
+guardare il vicino.
+
+### 2.4-ter. ⛔ E il gemello che il §2.1 non poteva vedere
+
+Gli handler sono **cinque**, non quattro. Il quinto è `HandlerConsumi`,
+`sorgente_codice = "ATTIVITA_CONSUMI"`, e scrive nella stessa
+`commesse_sorgenti` passando dalla stessa funzione generica.
+
+⛔ **Ma `ATTIVITA_CONSUMI` non è un nodo del grafo**: `vw_documento_lineage_nodi`
+ha otto rami e un consumo non è fra loro — non è un documento. Quindi per quelle
+righe **non basta un arco**: mancherebbe prima il nodo da cui farlo partire.
+
+⚠️ **Nella tabella del §2.1 non compare, e non è una prova che il caso non
+esista**: è una specie che oggi non ha righe. Sono due difetti della stessa
+famiglia — *un handler che scrive un legame che il grafo non sa rappresentare* —
+di taglia molto diversa, e vanno tenuti distinti: il primo è un arco, il secondo
+è la domanda se un consumo debba essere un nodo. **Il secondo non è di questo
+cantiere**, ma va nominato qui perché è dove si troverà chi cercherà i gemelli.
 
 ### 2.5 ⚠️ Se la risposta è «sì», due cose da non ripetere
 
@@ -285,10 +426,25 @@ se n'è accorto nessuno perché è **una riga**; sul reso diventa la regola.
 
 **Esporre `frontiera_natura_doc_codice` su `vendite.vw_documento_lineage`.**
 
-* La sorgente è già lì: la CTE della frontiera conosce `frontiera_tipo_id` e
-  `frontiera_uid`, e `vw_documento_lineage_nodi` porta già
-  `natura_doc_codice` (rev 2026-08-20). È **un `LEFT JOIN` sul nodo di
-  frontiera**, lo stesso che il BE scrive a mano in `get_lineage_nodo`.
+> ✅ **SCRITTA il 2026-08-28 — `20260828-22`.** Provata in `BEGIN`/`ROLLBACK`,
+> **non applicata**. Presidio: pgTAP **40**.
+
+* ⛔ **Correzione a questa richiesta: il join NON va aggiunto, c'è già.** La
+  frase qui sotto diceva *«è un `LEFT JOIN` sul nodo di frontiera»* ed era vera
+  a metà: la CTE `frontiera` fa **già** `LEFT JOIN vw_documento_lineage_nodi nd`,
+  perché le serve `nd.pipeline_rank` per il tie-break del `ROW_NUMBER()`.
+  L'unica cosa che mancava era **portare avanti una colonna che quel join già
+  vedeva**. Costo reale: una colonna, zero accessi in più.
+  ⭐ Vale come regola: prima di aggiungere un join a una CTE, guardare **cosa
+  quella CTE già tocca per altri motivi**.
+* *(Testo originale, superato:)* la sorgente è già lì: la CTE della frontiera
+  conosce `frontiera_tipo_id` e `frontiera_uid`, e `vw_documento_lineage_nodi`
+  porta già `natura_doc_codice` (rev 2026-08-20). È un `LEFT JOIN` sul nodo di
+  frontiera, lo stesso che il BE scrive a mano in `get_lineage_nodo`.
+* ⚠️ **E la colonna sta in ULTIMA posizione**, non accanto alle sorelle
+  `frontiera_*`: `CREATE OR REPLACE VIEW` può solo **appendere**, e metterla in
+  mezzo vorrebbe dire `DROP … CASCADE` delle viste di lista che leggono questa.
+  Chi rilegge l'elenco delle colonne non ci veda un disordine da sistemare.
 * ⚠️ **`LEFT`, non `JOIN`**: `natura_doc_id` è nullable su `vendite.fatture`, e
   sugli altri sette tipi di nodo la natura è NULL **ed è corretto** (la natura è
   un asse diverso dal tipo, ed esiste solo per le fatture).
@@ -333,6 +489,20 @@ mentre per gli altri sei tipi il `codice` è già parlante (`DDT0000031`,
 
 ⭐ **Sede identica**: il nodo. Chi mette mano a `vw_documento_lineage_nodi` per
 la natura guardi anche questo — sono un giro solo.
+
+⛔ **Ma non è dello stesso giro del `20260828-22`, e il motivo è che ha una
+domanda dentro.** Letto il 2026-08-28: l'identità di una fattura sono **tre**
+colonne — `anno` (smallint), `serie` (varchar), `numero` (bigint), tutte
+nullable finché il documento non è numerato — e **non esiste in DB un codice
+parlante canonico** per una fattura. `vw_fatture_lista` espone le tre colonne
+separate e lascia comporre al consumatore; cinque funzioni SDI compongono a modo
+loro un `codice_doc` come `anno || serie || numero`.
+
+⚠️ **Quindi «mostrare `NC0000001`» non è un fix, è una decisione**: *qual è il
+codice parlante di una fattura, e chi lo possiede*. Se si sceglie di comporlo nel
+nodo, quella diventa la **settima** forma in giro per il progetto, e le altre sei
+restano dove sono. La cura onesta è una sola sede che lo dichiara — e va decisa
+prima, non dentro un changeSet che parla di natura.
 
 ---
 
@@ -380,10 +550,25 @@ sbagliato.
 
 ### 3-bis.3 La richiesta
 
+> ✅ **SCRITTA il 2026-08-28 — `20260828-23`.** Provata in `BEGIN`/`ROLLBACK`,
+> **non applicata**.
+
 Un `COMMENT ON VIEW vendite.vw_documento_lineage_archi` che nomini `T` insieme
-alle altre, nello stesso changeSet che tocca la vista per le voci **1** e **2**.
-Nessuna riga di logica, nessun test nuovo: la doc auto-gen si rigenera e la
-contraddizione sparisce.
+alle altre. Nessuna riga di logica, nessun test nuovo: la doc auto-gen si
+rigenera e la contraddizione sparisce.
+
+⚠️ **Non ha aspettato le voci 1 e 2**, come invece diceva la riga qui sopra
+(*«nello stesso changeSet che tocca la vista»*, superata). Due ragioni: quelle
+due voci hanno una decisione davanti e non si sa quando arrivano, e un
+`COMMENT ON VIEW` **da solo** non richiede il `CREATE OR REPLACE` — cioè non
+corre il rischio di azzerare `security_invoker`, che è una reloption invisibile
+in `pg_get_viewdef`. Aspettare avrebbe tenuto in piedi una frase falsa per
+guadagnare un changeSet in meno.
+
+⭐ E il testo nuovo non si limita ad aggiungere la lettera: **dichiara il numero
+e il presidio** — *«DODICI lettere dal 2026-08-28, e il vocabolario è CHIUSO: il
+pgTAP 13 le enumera e fallisce apposta a ogni arco nuovo»*. Chi allarga l'elenco
+trova scritto, nella descrizione stessa, che deve tornare a riscriverla.
 
 ⚠️ **La regola che questa voce lascia scritta**: un `CREATE OR REPLACE VIEW` che
 cambia *cosa la vista produce* e non tocca il suo `COMMENT` lascia indietro
@@ -429,6 +614,132 @@ qui il **§3-bis**: la descrizione di `vw_documento_lineage_archi` non nomina
 l'arco `T`. ⭐ È entrata **qui** e non è morta con l'archiviazione di quel brief
 perché la sede di una voce è **l'oggetto che tocca**, non il cantiere che l'ha
 vista: quella vista è di questo file, che la apre già per le voci 1 e 2.
+
+---
+
+### 2026-08-28 · Le due voci senza domande sono scritte, e la seconda ha una risposta
+
+**Scritti — provati, NON applicati.**
+
+| file | voce | cosa fa |
+| --- | --- | --- |
+| `20260828-22-update-vw-documento-lineage-frontiera-natura-mctit.yaml` | **3** | `CREATE OR REPLACE` della summary: espone `frontiera_natura_doc_codice` + `COMMENT` riscritto |
+| `20260828-23-comment-vw-documento-lineage-archi-arco-t-mctit.yaml` | **4** | solo `COMMENT ON VIEW` sulla vista archi: nomina `T`, dichiara «dodici» e il cricchetto |
+| `db/pgtap/vendite/test-documento-lineage-v1.sql` | **3** | `plan(39) → plan(40)`, colonne del test **7**, e il test **40** nuovo |
+
+**La prova.** L'SQL **estratto dai due YAML** (non ricopiato) eseguito in
+`BEGIN`/`ROLLBACK`: le due viste si creano, `security_invoker=on` sopravvive, la
+colonna nuova esce in posizione 26 e la suite dà **40/40 verdi, nessuno skip**.
+⚠️ **Girata da owner**, quindi il test **38** — il perimetro RLS — in quella
+corsa è verde per costruzione: quello vale solo alla suite vera, come
+`zeroerp_app`, dopo il migrate.
+
+⭐ **Il test 40 non è una tautologia, ed è il motivo per cui esiste.** Ri-deriva
+la natura per la strada opposta a quella della vista: rilegge il nodo di
+frontiera dalla sua **chiave** e confronta. L'errore che prende è quello
+plausibile — esporre la natura del **nodo proprio** al posto di quella della
+**frontiera**: stesso tipo, nessun errore alla creazione, e su ogni nodo che è
+frontiera di sé stesso (la maggioranza) i due valori coincidono. Sarebbe verde
+ovunque tranne che sulle righe per cui la colonna esiste.
+⚠️ E usa `IS DISTINCT FROM`, non `<>`: la natura è NULL su sette tipi di nodo su
+otto: con `<>` quelle righe non entrerebbero **mai** nel conteggio, e il test
+sarebbe verde anche se la colonna valesse sempre NULL.
+
+**La misura che ha risposto al §2.4** (§2.4-bis): la catena di scrittura è una
+sola — `HandlerDdt` → `link_sorgente` → `fn_link_commessa_sorgente` — e
+`HandlerDdt` è un **handler registrato del push**, uno di cinque, non un
+percorso laterale. Né il BE né il DB hanno una whitelist di tipi: **il database
+non ha mai detto che un DDT non può essere sorgente di commessa**.
+⭐ La risposta «sì, è ammesso» viene quindi dal **modello** — da chi scrive e da
+come è costruito — e non dalle due righe: quelle sono il prodotto dell'handler,
+non un residuo.
+
+⛔ **E il gemello** (§2.4-ter): il quinto handler è `HandlerConsumi`,
+`ATTIVITA_CONSUMI`, che scrive nella stessa tabella ma **non è un nodo del
+grafo**. Oggi non ha righe, e questo non prova niente: è un difetto della stessa
+famiglia e di taglia diversa, e non è di questo cantiere.
+
+**Restano aperte** la voce **1** (§1.3, due domande) e la scrittura della voce
+**2** (l'arco, ora che la domanda ha risposta), più il §3.6, che si è rivelato
+una decisione e non un fix.
+
+*(Superato in giornata: le voci 1 e 2 sono state decise e scritte poche ore
+dopo — sotto.)*
+
+### 2026-08-28 · Le decisioni prese, e le altre due voci scritte
+
+**Le due domande di modello, decise.** Il §2.4 dalla lettura di **chi scrive**
+(§2.4-bis); il §1.3 con la cura **(b)**, il rango dichiarato sull'arco (§1.6).
+⭐ Nessuna delle due è stata decisa **contando righe**: la prima leggendo la
+catena di scrittura, la seconda dichiarando una scala sul flusso.
+
+| file | voci | cosa fa |
+| --- | --- | --- |
+| `20260828-24-…-archi-sorgente-ddt-e-rango-mctit.yaml` | **1** e **2** | arco `U` (DDT → Commessa, tredicesima lettera) + colonna `rango_origine` |
+| `20260828-25-…-lineage-root-rango-mctit.yaml` | **1** | la CTE `inc` ordina su `rango_origine` invece che su `from_tipo_id` |
+| `test-documento-lineage-v1.sql` | **1** e **2** | `plan(40) → plan(44)`, test **6** e **13** allargati, test **41**…**44** nuovi |
+
+⭐ **Perché 1 e 2 in un `CREATE OR REPLACE` solo**: toccano la stessa vista, e
+riscriverla due volte in due giorni è il modo di perdere `security_invoker` —
+una reloption invisibile in `pg_get_viewdef`, che un `CREATE OR REPLACE` che non
+la ripete **azzera senza errori**.
+
+#### La prova — round-trip sul RISULTATO, non sul testo
+
+L'SQL **estratto dai quattro YAML** eseguito in `BEGIN`/`ROLLBACK`, con una
+fotografia degli archi prima e dopo:
+
+| verifica | atteso | ottenuto |
+| --- | --- | --- |
+| archi preesistenti **spariti** | 0 | **0** |
+| archi **comparsi** oltre a `U` | 0 | **0** |
+| archi con `rango_origine` NULL | 0 | **0** (13 lettere, tutte con rango) |
+| archi `U` prodotti | i 2 legami del §2.1 | **2**, entrambi `ruolo = ROOT` |
+| `security_invoker` sulle due viste | `on` | **`on`** |
+| nodi il cui **root cambia** | solo le 2 commesse | **solo le 2 commesse** |
+| suite pgTAP | 44/44 | **44/44, nessuno skip** |
+
+⭐ **L'ultima riga è la più informativa, e non è il risultato che ci si
+aspetterebbe**: il passaggio da `from_tipo_id` a `rango_origine`, da solo, non
+sposta **nessun** root. Sul DB di sviluppo di oggi l'ordine accidentale degli id
+**coincide** con la scala dichiarata su ogni nodo. ⚠️ E questo non dice «allora
+non serviva»: dice che il difetto era **invisibile**, che è la ragione per cui
+era sopravvissuto dal 2026-07-14.
+
+#### ⭐ La prova di MUTAZIONE, e un buco trovato nel presidio
+
+Un test che non sa fallire non presidia niente. La CTE `inc` è stata riscritta
+in quattro modi sbagliati, rigirando la suite ogni volta:
+
+| mutazione | test **43** | test **44** |
+| --- | --- | --- |
+| `rango_origine DESC` — la scala letta al contrario | 🔴 **ROSSO** | verde |
+| `ORDER BY` senza `(ruolo='ROOT')` — la dichiarazione ignorata | 🔴 **ROSSO** | verde |
+| ritorno a `from_tipo_id` — il vecchio id di seed | 🟢 verde | verde |
+| **un solo** `array_agg` disallineato dagli altri due | 🟢 verde | 🔴 **ROSSO** |
+
+⛔ **La quarta riga ha trovato un buco vero**, ed era nel presidio che avevo
+appena scritto. Il test 43 fa un `JOIN` sull'arco scelto e **conta le
+violazioni**: un root composto a pezzi — il tipo da un arco, l'uid da un altro —
+non trova nessun arco, quindi il nodo **esce dal join** e smette di essere
+contato. ⚠️ *Un test che conta i cattivi diventa muto proprio quando il dato è
+così rotto da sparire dal conteggio* — è la stessa specie del
+[[feedback_test_ordine_relativo_passa_se_manca]]. Da lì il **44**, che conta al
+rovescio: parte dai nodi che **dichiarano** un root e pretende che l'arco esista.
+
+⚠️ **La terza riga resta verde ed è dichiarata tale nel file**, come vuole la
+regola zero: è un **presidio**, non una riproduzione. Diventerà rosso il giorno
+in cui l'ordine degli id divergerà dalla scala — che è il giorno per cui esiste.
+
+#### Cosa resta
+
+* **§3.6** — il numero nudo: è una **decisione**, non un fix (una fattura non ha
+  un codice parlante canonico in DB: `anno` + `serie` + `numero`, tutti
+  nullable). Non tocca nessuno dei quattro changeSet.
+* **Il gemello `ATTIVITA_CONSUMI`** (§2.4-ter): altro cantiere, e prima di un
+  arco servirebbe un **nodo**.
+* ⛔ **Il migrate**: quattro changeSet e un file pgTAP, **scritti e provati, mai
+  applicati**.
 
 ---
 
