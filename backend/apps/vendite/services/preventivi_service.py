@@ -89,7 +89,7 @@ def list_preventivi_rows(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
-    solo_attiva: bool = True,
+    solo_ultima_revisione: bool = True,
     auth_user_id: int | None = None,
     limit: int,
     offset: int,
@@ -105,7 +105,7 @@ def list_preventivi_rows(
         data_da=data_da,
         data_al=data_al,
         search=search,
-        solo_attiva=solo_attiva,
+        solo_ultima_revisione=solo_ultima_revisione,
         auth_user_id=auth_user_id,
         limit=limit,
         offset=offset,
@@ -123,7 +123,7 @@ def list_preventivi(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
-    solo_attiva: bool = True,
+    solo_ultima_revisione: bool = True,
     auth_user_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -144,7 +144,7 @@ def list_preventivi(
         data_da=data_da,
         data_al=data_al,
         search=search,
-        solo_attiva=solo_attiva,
+        solo_ultima_revisione=solo_ultima_revisione,
         auth_user_id=auth_user_id,
         limit=page_size,
         offset=offset,
@@ -165,7 +165,7 @@ def resolve_filtri_export_label(
     utility_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
-    solo_attiva: bool = True,
+    solo_ultima_revisione: bool = True,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if search:
@@ -180,8 +180,8 @@ def resolve_filtri_export_label(
         out["Dal"] = str(data_da)
     if data_al is not None:
         out["Al"] = str(data_al)
-    # solo_attiva=False = storico revisioni incluso (informazione utile nel file)
-    if not solo_attiva:
+    # solo_ultima_revisione=False = storico revisioni incluso (informazione utile nel file)
+    if not solo_ultima_revisione:
         out["Storico revisioni"] = "incluso"
     return out
 

@@ -1,14 +1,19 @@
 <script setup>
 // Scopo: Tab giornale (audit log) dentro il drawer pratica.
 // Timeline cronologica inversa degli eventi sulla pratica.
-// Componente riutilizzabile — sara' usato anche da altri domini in futuro.
+//
+// ⭐ Dal 2026-08-28 la resa NON vive più qui: è il BB `core/components/GiornaleEventi.vue`,
+//    estratto alla seconda occorrenza (registro delle righe di commessa, ok Tid).
+//    Questo file possiede ciò che è delle PRATICHE — la fetch, il vocabolario
+//    delle azioni, la forma del dettaglio — e niente altro.
+//    ⚠️ Il comportamento non cambia: il BB nasce con `caricato` a `true` di
+//    default, che è esattamente ciò che questo tab faceva prima.
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchGiornale } from '../api/pratiche-api'
-import { displayDate, displayTime } from '../../core/utils/date'
 import { azioneGiornaleStyle } from '../../core/utils/severity'
 import { labelOrCode } from '../../core/utils/i18nLabel'
-import Tag from 'primevue/tag'
+import GiornaleEventi from '../../core/components/GiornaleEventi.vue'
 
 const { t, te } = useI18n()
 
@@ -18,9 +23,6 @@ const props = defineProps({
 
 const eventi = ref([])
 const loading = ref(false)
-
-// Alias locale per brevita' nel template.
-const azioneStyle = azioneGiornaleStyle
 
 // Scopo: label leggibile dell'azione (i18n) con fallback al codice grezzo se la
 // chiave non esiste (codici nuovi a DB non ancora tradotti restano comunque visibili).
@@ -62,100 +64,28 @@ watch(() => props.praticaId, (id) => {
 </script>
 
 <template>
-  <div class="pratica-giornale-tab">
-    <div v-if="loading" class="text-center text-color-secondary p-3">
-      <i class="pi pi-spin pi-spinner"></i>
-    </div>
-
-    <div v-else-if="eventi.length === 0" class="text-center text-color-secondary p-3">
-      {{ t('pratiche.giornale_vuoto') }}
-    </div>
-
-    <div v-else class="giornale-list">
-      <div v-for="ev in eventi" :key="ev.id" class="giornale-entry">
-        <div class="giornale-entry-header">
-          <i :class="azioneStyle(ev.azione).icon" class="giornale-icon"></i>
-          <Tag :value="azioneLabel(ev.azione)" :severity="azioneStyle(ev.azione).severity" />
-          <span v-if="ev.flusso_template_descrizione" class="giornale-flusso">
-            {{ ev.flusso_template_descrizione }}
-          </span>
-          <span v-if="ev.user_insert" class="giornale-user">{{ ev.user_insert }}</span>
-          <!-- Quando: data sopra, ora sotto, allineati in fondo a destra. -->
-          <div class="giornale-when">
-            <span class="giornale-date">{{ displayDate(ev.data_insert) }}</span>
-            <span class="giornale-time">{{ displayTime(ev.data_insert) }}</span>
-          </div>
-        </div>
-        <div v-if="formatDettaglio(ev)" class="giornale-detail">
-          {{ formatDettaglio(ev) }}
-        </div>
-      </div>
-    </div>
-  </div>
+  <GiornaleEventi
+    :eventi="eventi"
+    :loading="loading"
+    campo-codice="azione"
+    :etichetta="azioneLabel"
+    :stile="azioneGiornaleStyle"
+    :dettaglio="formatDettaglio"
+    :testo-vuoto="t('pratiche.giornale_vuoto')"
+  >
+    <!-- Il flusso di appartenenza: informazione delle sole pratiche. -->
+    <template #voce-extra="{ evento }">
+      <span v-if="evento.flusso_template_descrizione" class="giornale-flusso">
+        {{ evento.flusso_template_descrizione }}
+      </span>
+    </template>
+  </GiornaleEventi>
 </template>
 
 <style scoped>
-.giornale-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.giornale-entry {
-  padding: 0.5rem 0.75rem;
-  border-left: 3px solid var(--app-toolbar-border);
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
-}
-
-.giornale-entry-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.giornale-icon {
-  font-size: 0.8rem;
-  color: var(--app-icon-color);
-}
-
 .giornale-flusso {
   font-size: var(--app-font-size-sm);
   font-weight: 600;
   color: var(--text-color);
-}
-
-/* Blocco "quando": spinto in fondo a destra, data sopra / ora sotto. */
-.giornale-when {
-  margin-left: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
-  line-height: 1.2;
-}
-
-.giornale-date {
-  font-size: var(--app-font-size-sm);
-  color: var(--app-topbar-breadcrumb-color);
-}
-
-.giornale-time {
-  font-size: var(--app-font-size-sm);
-  color: var(--app-topbar-breadcrumb-color);
-}
-
-.giornale-user {
-  font-size: var(--app-font-size-sm);
-  color: var(--app-topbar-breadcrumb-color);
-  font-style: italic;
-}
-
-.giornale-detail {
-  margin-top: 0.25rem;
-  font-size: var(--app-font-size-sm);
-  color: var(--p-text-muted-color);
-  padding-left: 1.3rem;
 }
 </style>

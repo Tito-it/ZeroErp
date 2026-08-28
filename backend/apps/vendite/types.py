@@ -454,12 +454,48 @@ class PreventivoListRow(TypedDict):
     data_insert: str | None
 
 
+class CommessaRegistroEventoRow(TypedDict):
+    # Un evento del REGISTRO di una riga di commessa
+    # (`vendite.commesse_attivita_log`): risponde a «perche' questa riga e'
+    # cosi'» — chi, quando, con quale motivo.
+    #
+    # ⚠️ `evento` e' a vocabolario APERTO e lo possiede il database: oggi sei
+    # valori, domani di piu'. Qui non se ne dichiara nessuno e non si valida —
+    # chi rende risolve l'etichetta con ripiego sul codice grezzo, cosi' un
+    # evento nuovo si vede invece di sparire.
+    id: int
+    commessa_attivita_id: int
+    evento: str
+    # Il payload dell'evento, COM'E'. La forma cambia per evento e appiattirla
+    # nel backend vorrebbe dire rifarlo a ogni evento nuovo.
+    dettaglio: dict[str, object]
+    # ⭐ Estratto a parte perche' e' l'unica chiave che piu' eventi condividono
+    # ed e' la frase che l'operatore sta cercando.
+    motivo: str | None
+    data_insert: str | None
+    user_insert: str | None
+    # Contesto della riga: senza, un elenco di eventi non dice SU COSA sono
+    # successi. Arrivano dal JOIN che e' anche il cancello di scope.
+    segment_key: str | None
+    stato_emissione: str | None
+    tipo_movimento: str | None
+    articolo_codice: str | None
+    articolo_descrizione: str | None
+
+
 class PreventivoDetailRow(TypedDict):
     id: int
     uid: str
     numero: str
     rev: int
+    # ⭐ Tre domande diverse sulla stessa riga: il consumatore SCEGLIE, non deduce.
+    # Il perche' di ciascuna, con l'esempio che le distingue, sta accanto all'SQL
+    # che le proietta — `PreventiviRepository.get_preventivo`. ⚠️ Non si ricopia
+    # qui: due copie di una spiegazione divergono come due copie di codice, e
+    # quella accanto alla query e' quella che si legge quando serve.
     is_attiva: bool
+    is_superata: bool
+    has_next_revision: bool
     data: str
     stato_doc_preventivo_id: int
     stato_codice_interno: str

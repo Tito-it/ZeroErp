@@ -1,6 +1,9 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultima revisione**: 28 agosto 2026 — ⭐ **«Rendi definitive» ha lasciato
+> **Ultima revisione**: 28 agosto 2026 — ✅ **il registro della riga adesso si
+> apre**: dal kebab, voce «Registro della riga», con chi/quando/**perché** per
+> ogni evento (§7.7). Prima quegli eventi il database li scriveva e nessuna
+> schermata li leggeva: la §7.7 prometteva un registro che non si poteva aprire. ⭐ E **«Rendi definitive» ha lasciato
 > questo cruscotto**: sta su **Vendite → Lotti**, e sulla card `Fatturate` resta
 > il **rimando** «Vai ai lotti», col filtro già messo (§7.1 e §7.5). Un verbo sta
 > dove sta l'elenco del suo oggetto — qui accanto c'erano le commesse, non i
@@ -622,9 +625,24 @@ il documento si annulla portandosi via anche quelle.
 righe: le rifà il push, e solo se il documento è tornato spingibile. Vale la pena
 guardare cosa si sta per ritirare **prima** di annullare.
 
-ℹ️ Ogni riga ritirata lascia la sua traccia nel registro della commessa, con il
-motivo: «il lavoro è sparito» non deve poter essere indistinguibile da un
-difetto.
+**Come si riconosce una riga ritirata.** Nel drawer della commessa la riga
+**resta**, con lo stato emissione a `ANNULLATA`. ⚠️ Se non la vedi, controlla il
+**filtro «Stato emissione»**: arrivando da una card del cruscotto il drawer lo
+eredita già impostato (es. `NON_EMESSA`), e una riga annullata resta fuori. Con
+il filtro su **«Tutte»** ricompare.
+
+✅ **E il motivo si legge.** Dal kebab della riga, voce **«Registro della
+riga»**: si apre l'elenco degli eventi in ordine cronologico inverso, con chi,
+quando e **con quale motivo** — per un ritiro la frase è *«Ritiro automatico alla
+chiusura del documento di origine (PREVENTIVO PRV0000133)»*, col numero del
+documento che l'ha causato.
+
+> ℹ️ Il registro non riguarda solo i ritiri: raccoglie tutto ciò che è successo a
+> quella riga — oneri aggiunti, annullamenti a mano, riporti «da emettere»,
+> accrediti. È la risposta a «perché questa riga è così».
+> ⚠️ Fino al 28 agosto 2026 quegli eventi il database li scriveva e **nessuna
+> schermata li leggeva**: questa pagina prometteva un registro che non si poteva
+> aprire. La promessa adesso è mantenuta.
 
 ### 7.8 Cosa non si fa ancora da qui
 

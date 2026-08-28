@@ -143,9 +143,14 @@ provide(READONLY_KEY, isReadonly)
 
 // Discriminante terminale vs intermedio per la severity del banner: il BE
 // espone `can_edit_testata=false` sia per EMESSA/ACCETTATA (intermedi, "passa
-// al cambio stato") sia per RIFIUTATA/ANNULLATA/SUPERATA (terminali, "non
-// puoi piu' fare nulla"). La lista locale distingue i due casi senza dover
-// chiedere un flag in piu' al BE.
+// al cambio stato") sia per RIFIUTATA/ANNULLATA/SUPERATA ("non puoi piu' fare
+// nulla"). La lista locale distingue i due casi senza dover chiedere un flag in
+// piu' al BE.
+// ⚠️ Su SUPERATA «non puoi piu' fare nulla» resta vero per l'OPERATORE, ma dal
+//    2026-08-28 non e' piu' vero per il documento: il database la riporta a
+//    EMESSA da se' se l'ultima revisione viva viene annullata (transizione
+//    automatica, non manuale). Il banner non cambia; la frase si', perche'
+//    diceva una cosa che ha smesso di essere vera.
 const isStatoTerminale = computed(
   () => STATI_OFFERTA_TERMINALI.includes(stato.value),
 )

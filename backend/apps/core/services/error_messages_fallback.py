@@ -238,6 +238,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DDT_ORDINE_NOT_FOUND": "Ordine di origine non trovato.",
     "E_DDT_ORDINE_STATO_NON_EVADIBILE": "L'ordine non e' in uno stato che consente l'evasione (genera DDT).",
     "E_DDT_PREZZO_NON_RISOLVIBILE": "Causale fatturabile ma una riga del DDT non ha un prezzo risolvibile (proprio o ereditato dall'ordine).",
+    "E_DDT_RIGA_IVA_MANCANTE": "Una riga del DDT ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_DDT_RIGA_NON_TROVATA": "Riga DDT non trovata.",
     "E_DDT_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del DDT.",
     "E_DDT_VALIDAZIONE": "Parametri DDT non validi.",

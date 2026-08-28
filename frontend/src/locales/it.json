@@ -1463,6 +1463,20 @@
       "tot_da_riallineare": "Prezzi da riallineare",
       "righe_titolo": "Attività della commessa",
       "azione_apri_sorgente": "Apri documento di origine",
+      "azione_registro": "Registro della riga",
+      "registro_header": "Registro della riga",
+      "registro_placeholder": "Il registro della riga compare qui.",
+      "registro_vuoto": "Nessun evento registrato su questa riga.",
+      "registro_stato_precedente": "Stato precedente",
+      "registro_importo": "Importo",
+      "registro_evento": {
+        "onere_aggiunto": "Onere aggiunto",
+        "riga_manuale_annullata": "Riga annullata a mano",
+        "riga_ritirata_da_sorgente": "Ritirata alla chiusura del documento",
+        "riga_riportata_da_emettere": "Riportata fra quelle da emettere",
+        "accredito_richiesto": "Accredito richiesto",
+        "accredito_annullato": "Accredito annullato"
+      },
       "azione_apri_fattura": "Apri la fattura",
       "azione_apri_fattura_numerata": "Apri la fattura n. {numero}",
       "filtro_stato_label": "Filtra per stato di emissione",
@@ -2190,6 +2204,7 @@
       "azione_reason": {
         "causale_mancante": "Manca la causale di trasporto: obbligatoria per emettere il DDT.",
         "prezzo_non_risolvibile": "Una o più righe non hanno un prezzo risolvibile (proprio o ereditato dall'ordine) con causale fatturabile.",
+        "iva_mancante": "Una o più righe hanno un prezzo ma nessuna aliquota IVA: scegli l'aliquota, oppure togli il prezzo se la merce non si valorizza.",
         "componenti_prezzo_pendente": "Componenti con prezzo in attesa di valorizzazione.",
         "componenti_non_valorizzati": "Componenti del documento non ancora valorizzati."
       }

@@ -265,7 +265,7 @@ class CercaPreventiviTool(AITool):
                         "type": "string",
                         "description": "Filtro data documento - fine (YYYY-MM-DD).",
                     },
-                    "solo_attiva": {
+                    "solo_ultima_revisione": {
                         "type": "boolean",
                         "description": "True (default) ritorna solo l'ultima revisione per numero. False per vedere lo storico revisioni.",
                     },
@@ -312,7 +312,7 @@ class CercaPreventiviTool(AITool):
             data_da=params.get("data_da"),
             data_al=params.get("data_al"),
             search=params.get("search"),
-            solo_attiva=params.get("solo_attiva", True),
+            solo_ultima_revisione=params.get("solo_ultima_revisione", True),
             auth_user_id=auth_user_id,
             page=1,
             page_size=self.safe_page_size(params),

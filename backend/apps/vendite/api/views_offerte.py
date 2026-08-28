@@ -229,11 +229,13 @@ class ApiOfferteList(DomainAPIView):
             OpenApiParameter(name="validita_dal_min", type=str, required=False,
                              description="Data ISO YYYY-MM-DD. Nessun default backend."),
             OpenApiParameter(name="validita_dal_max", type=str, required=False),
-            OpenApiParameter(name="solo_attiva", type=bool, required=False,
-                             description="Default true: solo l'ultima revisione viva per "
-                                         "lineage (vw_offerte_commerciali_lista.is_attiva). "
-                                         "Passa false per vedere lo storico completo delle "
-                                         "revisioni (superate/annullate incluse)."),
+            OpenApiParameter(name="solo_ultima_revisione", type=bool, required=False,
+                             description="Default true: solo la revisione non rimpiazzata "
+                                         "per lineage (vw_offerte_commerciali_lista.is_superata "
+                                         "IS FALSE). Passa false per vedere lo storico completo "
+                                         "delle revisioni. ATTENZIONE: filtra sulla POSIZIONE "
+                                         "nella catena, non sullo stato — le offerte ANNULLATE "
+                                         "restano visibili e filtrabili per stato."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False,
@@ -262,7 +264,7 @@ class ApiOfferteList(DomainAPIView):
             listino_id=qp_int_optional(qp.get("listino_id"), "listino_id"),
             validita_dal_min=qp_str(qp.get("validita_dal_min")),
             validita_dal_max=qp_str(qp.get("validita_dal_max")),
-            solo_attiva=qp_bool(qp.get("solo_attiva"), default=True),
+            solo_ultima_revisione=qp_bool(qp.get("solo_ultima_revisione"), default=True),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
@@ -313,7 +315,7 @@ class ApiOfferteExportView(DomainAPIView):
             OpenApiParameter(name="listino_id", type=int, required=False),
             OpenApiParameter(name="validita_dal_min", type=str, required=False),
             OpenApiParameter(name="validita_dal_max", type=str, required=False),
-            OpenApiParameter(name="solo_attiva", type=bool, required=False),
+            OpenApiParameter(name="solo_ultima_revisione", type=bool, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
@@ -336,7 +338,7 @@ class ApiOfferteExportView(DomainAPIView):
         listino_id = qp_int_optional(qp.get("listino_id"), "listino_id")
         validita_dal_min = qp_str(qp.get("validita_dal_min"))
         validita_dal_max = qp_str(qp.get("validita_dal_max"))
-        solo_attiva = qp_bool(qp.get("solo_attiva"), default=True)
+        solo_ultima_revisione = qp_bool(qp.get("solo_ultima_revisione"), default=True)
 
         svc = OfferteService()
         results, total = svc.list_offerte(
@@ -347,7 +349,7 @@ class ApiOfferteExportView(DomainAPIView):
             listino_id=listino_id,
             validita_dal_min=validita_dal_min,
             validita_dal_max=validita_dal_max,
-            solo_attiva=solo_attiva,
+            solo_ultima_revisione=solo_ultima_revisione,
             limit=EXPORT_MAX_ROWS + 1,
             offset=0,
             order_by=p["order_by"],
@@ -361,7 +363,7 @@ class ApiOfferteExportView(DomainAPIView):
             listino_id=listino_id,
             validita_dal_min=validita_dal_min,
             validita_dal_max=validita_dal_max,
-            solo_attiva=solo_attiva,
+            solo_ultima_revisione=solo_ultima_revisione,
         )
         return build_export_response(
             request,

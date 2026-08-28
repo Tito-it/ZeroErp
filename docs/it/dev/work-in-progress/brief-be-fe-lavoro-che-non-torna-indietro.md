@@ -39,9 +39,12 @@
 > | `brief-db-lavoro-che-non-torna-indietro.md` | la causa: «Elimina dal lotto» non liberava niente. 16 changeSet | [work-done](../work-done/brief-db-lavoro-che-non-torna-indietro.md) — chiuso 2026-08-26 |
 > | `brief-db-residui-competenza-dimensione-e-chiave.md` | il prerequisito: la chiave del verbo, la dimensione, la lista 49 | [work-done](../work-done/brief-db-residui-competenza-dimensione-e-chiave.md) — chiuso 2026-08-27 |
 >
-> ⚠️ **Due punti dei brief archiviati sono vivi e stanno QUI**, per non perderli
-> chiudendo il loro file: il codice errore «rientrato» (**§9, E-3**) e le due
-> convenzioni di `ordinamento_default` (**§11.6**). Nessuno dei due è nostro —
+> ⚠️ **Due punti dei brief archiviati sono vivi e stanno QUI**, per non
+> perderli chiudendo il loro file: il codice errore «rientrato» (**§9, E-3**), le
+> due convenzioni di `ordinamento_default` (**§11.6**). I due rilievi sulle
+> offerte ereditati da `revisione-attiva-due-domande` sono stati **chiusi dal
+> team DB** il 2026-08-28: averli tenuti scritti qui è il motivo per cui
+> qualcuno se n'è occupato, invece di perderli con l'archiviazione. Nessuno dei due è nostro —
 > sono di chi possiede quei perimetri — ma da qualche parte devono restare
 > scritti, e un brief archiviato non è quella parte.
 >
@@ -53,6 +56,8 @@
 > | ⏸️ | **E-3** — il codice «rientrato» in `codici-errore-baseline.sh` (**§9**). ⚠️ Finché la baseline non si stringe, quella famiglia resta *dichiarata ammessa* e il presidio non la vedrebbe tornare: è un cancello mezzo spento | chi possiede quel codice |
 > | ⏸️ | **§11.6** — due convenzioni per `ordinamento_default` in `ui`. Per noi indifferente: `competenza_mese` risolve con entrambe | chi possiede lo schema `ui` |
 > | ✅ | **C-2 — la guida non dice più il falso su «Rendi definitive»**: ereditata il 2026-08-28 dal cantiere gemello [brief-be-fe-rendi-definitive-sui-lotti.md](../work-done/brief-be-fe-rendi-definitive-sui-lotti.md) e **fatta lo stesso giorno** (§12.3). ⛔ Due annotazioni della consegna erano sbagliate e sono corrette lì | **fatta** |
+> | ✅ | **Le due voci sulle offerte sono CHIUSE dal team DB il 2026-08-28**: il `SELECT INTO` risolve ora da `config.stati_doc_offerte.is_superato` con guard **sull'arità** (due stati marcati sono lo stesso difetto di zero: senza `STRICT` ne sceglierebbe uno a caso, in silenzio), e il limite del modello non c'è più — annullata l'ultima revisione viva, il padre **rientra** da `SUPERATA` a `EMESSA`. Ricadute per noi nel **§15** | fatto |
+> | ⏸️ | **In attesa del merge**: il ripiego per `E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA` (**§15.2**). ⛔ Non si può scrivere prima: il presidio lega ripiego e policy **nei due versi**, e la policy si rigenera dal database — che qui è **avanti rispetto a git** | noi, appena arriva |
 > | 🔵 | La prova del seleziona-tutto **non gira in CI**: nel frontend non c'è un runner (**§13.6**). Non è un debito di questo cantiere, è del frontend | — |
 >
 > ⛔ **Tutto il resto in questo file è CHIUSO.** I §§ che leggono come richieste
@@ -75,6 +80,7 @@
 | **FE-2** | il verbo sulla card «Emesse non fatturate» | ✅ **fatto** (§11) — tutti i presidi verdi (§12) | `DashboardCompetenzaView` |
 | **DOC** | guida operativa + doc API | ✅ **fatta** (§12) | `guide/cruscotti-fatturazione.md` · `backend/vendite/manual/` · `dev/api.md` |
 | **REV** | revisione critica del codice: bug, fragilità, duplicati, valori a mano | ✅ **fatta** (§13) — 13 corrette, 2 segnalate | tutto il cantiere + i due cataloghi BB |
+| **R-3** | il **registro delle righe di commessa**, che si scriveva e non si leggeva | ✅ **fatto** (2026-08-28) — nato dal collaudo, §14 | `commesse/<id>/registro/` · `CommessaRegistroDialog.vue` |
 
 ---
 
@@ -1129,4 +1135,178 @@ imposta, e `SUPER_ADMIN` non è il valore che `app.ruolo_applicativo` si aspetta
 Le righe si sono viste solo con un contesto **OPERATORE** e un utente davvero
 mappato sull'emittente giusto (`pk 32` → `sr 72`). ⚠️ La ricetta era già scritta
 nel §8 di questo brief — e l'ho ritrovata sbagliando prima.
+
+---
+
+## 14. R-3 — il registro che si scriveva e non si leggeva (2026-08-28)
+
+⭐ **Non era in programma: l'ha trovato il collaudo.** Tid annulla `PRV0000133`
+per la prova 10.1, la riga di commessa passa ad `ANNULLATA` come deve, e chiede:
+*«non mi sembra di vedere il motivo».*
+
+### 14.1 Il fatto
+
+`vendite.commesse_attivita_log` **non aveva un solo `SELECT` in tutto il
+backend.** Nessuna rotta, nessun pannello, nessuna tab. **Sei** tipi di evento
+scritti fedelmente dal database e **irraggiungibili** da qualunque schermata:
+
+`ONERE_AGGIUNTO` · `RIGA_MANUALE_ANNULLATA` · `RIGA_RITIRATA_DA_SORGENTE` ·
+`RIGA_RIPORTATA_DA_EMETTERE` · `ACCREDITO_RICHIESTO` · `ACCREDITO_ANNULLATO`
+
+🔴 **E la §7.7 della guida prometteva il contrario** — *«ogni riga ritirata lascia
+la sua traccia nel registro della commessa, con il motivo»*. L'ho scritta io il
+2026-08-27 fidandomi di ciò che il changeSet dichiarava, **senza chiedermi chi
+lo legge**. Due giorni di promessa falsa, e l'operatore che scopre di non poter
+distinguere «il lavoro è stato ritirato» da «il lavoro è sparito».
+
+### 14.2 Cosa è stato fatto
+
+| Pezzo | Dove |
+| --- | --- |
+| `CommesseRepository.list_registro_attivita` | `db/commesse_repository.py` |
+| `fn_commessa_registro` + tetto di pagina | `services/commesse_service.py` |
+| `ApiCommessaRegistro` · `GET commesse/<id>/registro/` | `api/views.py` + `urls_v1.py` |
+| `CommessaRegistroEventoRow` | `types.py` |
+| `listCommessaRegistro` | `vendite/api/commesse.js` |
+| `CommessaRegistroDialog.vue` + voce «Registro della riga» nel kebab | `vendite/components/` |
+| `EVENTO_REGISTRO_COMMESSA_MAP` + `eventoRegistroCommessaStyle` | `core/utils/severity.js` |
+| 6 etichette evento + 5 chiavi pannello, it/en | `locales/` |
+| **8 test** | `tests/db/test_commessa_registro.py` |
+
+### 14.3 ⛔ Lo scope sta sulla RIGA, non sul log
+
+`vendite.commesse_attivita_log` **non ha row level security**;
+`vendite.commesse_attivita` sì. Leggere il log da solo sarebbe **fail-open**: si
+vedrebbero i motivi di commesse fuori perimetro, in chiaro.
+
+Il `JOIN` su `ca` non è una decorazione per prendere due colonne — **è il
+cancello** — e vale anche per il **conteggio**: un totale calcolato senza
+direbbe «12 eventi» mostrandone 3.
+
+⚠️ **È la stessa lezione già pagata su `attivita_fatturabili`** col verbo
+«Riporta da emettere» (§8 di questo brief). La seconda volta che la stessa forma
+di fail-open si presenta in due settimane, su due tabelle diverse: non è un caso,
+è come sono fatte le tabelle di appoggio di questo dominio — **quelle senza RLS
+si leggono passando da quella che ce l'ha**.
+
+⭐ Ed è il test che apre il file: `test_lo_scope_passa_dal_join_su_commesse_attivita`,
+**provato rosso** togliendo il `JOIN`.
+
+### 14.4 ⚠️ Il vocabolario è del database, e resta aperto
+
+Sei eventi oggi. La query **non ne nomina nessuno** e non filtra: un evento nuovo
+compare da sé. Il frontend risolve l'etichetta con `labelOrCode` e la coppia
+severity/icona con un ripiego — un codice sconosciuto si **vede col proprio
+nome** invece di sparire.
+
+🔵 Un test lo presidia (`test_nessun_evento_e_nominato_nella_query`): se qualcuno
+mettesse una whitelist nella query, diventa rosso.
+
+### 14.5 ✅ Il BB estratto — `GiornaleEventi` (2026-08-28)
+
+Il pannello era il **secondo «giornale»** dell'applicazione. Il primo è
+`PraticaGiornaleTab.vue`, che portava scritto in testa *«componente riutilizzabile
+— sarà usato anche da altri domini in futuro»*: stessa forma — timeline inversa,
+tag per evento, chi/quando in testata, riga di dettaglio, ripiego sul codice.
+
+⭐ **Estratto in `core/components/GiornaleEventi.vue`** (regola del 2, ok Tid), e
+i due consumatori ci poggiano sopra. `PraticaGiornaleTab` passa da **161 a 91
+righe**.
+
+| Cosa resta al dominio | Cosa passa al BB |
+| --- | --- |
+| la **fetch** (rotta, parametri, stato di caricamento) | la resa: voce, tag, icona, «quando», dettaglio |
+| `etichetta(codice)` — la frase leggibile | il ripiego quando manca |
+| `stile(codice)` — severity + icona | il default sui codici sconosciuti |
+| `dettaglio(evento)` — la riga sotto | la decisione se mostrarla |
+
+⛔ **Il BB è presentazionale e basta**: non conosce rotte, non fa fetch, non sa di
+quale dominio mostra la storia. Le tre decisioni arrivano come **funzioni** —
+metterle dentro avrebbe voluto dire una mappa di tutti i domini in un componente
+di `core/`, cioè il contrario di un BB.
+
+⚠️ **Due dettagli che sarebbero stati facili da sbagliare:**
+
+* **`campo-codice`**, perché il codice dell'evento si chiama diversamente nei due
+  domini (`azione` per le pratiche, `evento` per le commesse). Rinominarne uno
+  sarebbe stato un **cambio di contratto d'API per far tornare un nome di
+  componente**.
+* **`caricato` con default `true`**, che è esattamente ciò che il primo
+  consumatore faceva prima: l'estrazione **non cambia il comportamento delle
+  pratiche**. Chi lo passa (le commesse) distingue «non c'è niente» da «non lo
+  sappiamo ancora» — un empty-state positivo su una fetch mai riuscita afferma
+  il falso.
+
+ℹ️ Registrato nel [catalogo BB frontend](../frontend/catalogo-building-block-frontend.md),
+che è la prima difesa contro la terza copia.
+
+---
+
+## 15. Offerte — il rientro del padre, e cosa tocca a noi (2026-08-28)
+
+Il team DB ha chiuso le **due voci** che questo brief teneva in custodia per
+conto loro (§ tabella in testa). La prima non ci riguarda; la seconda **cambia il
+modello**, e una parte è nostra.
+
+### 15.1 ✅ Le tre voci che ci vengono rielencate erano GIÀ FATTE
+
+Il loro messaggio ripropone **BE-1**, **BE-2** e **FE-1** come da fare: è il
+testo del brief precedente, scritto prima di vedere il nostro lavoro. Sono state
+consegnate il **2026-08-28 al mattino** e verificate sul DB vero (§ il §7 del
+loro brief archiviato porta la prova):
+
+| | Stato |
+| --- | --- |
+| **BE-1** — `v.is_superata IS FALSE` nei due repository, `solo_attiva` → `solo_ultima_revisione` | ✅ fatto (70 occorrenze, 13 file) |
+| **BE-2** — `get_preventivo` legge `has_next_revisione` dalla vista | ✅ fatto |
+| **FE-1** — il banner del drawer legge `is_superata` | ✅ fatto, col readonly motivato dallo **stato** e non dal superamento |
+
+⭐ E il filtro «Annullato» **non è più vuoto**: da 0 per costruzione a 17.
+
+### 15.2 ⏸️ Il codice errore nuovo — l'unica cosa in attesa
+
+`E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA` (`CONFLITTO_STATO` → 409) è **già a
+catalogo nel database locale**, insieme al trigger di rientro e alla transizione
+`SUPERATA → EMESSA`. ⛔ **Ma i changeSet non sono ancora in git**: il merge è su
+`Tito-dev` e non è arrivato qui.
+
+⚠️ **Perché il ripiego non si può scrivere adesso.** Il presidio
+`test_error_policies_classi` lega ripiego e policy **nei due versi**: un ripiego
+senza il codice in `CLASSE_PER_CODICE` fa **rosso** (`test_nessun_messaggio_orfano`),
+e `CLASSE_PER_CODICE` è **generato dal database**. Rigenerarlo ora vorrebbe dire
+scrivere nel repo uno stato che il repo non ha — la regola è **mai rigenerare col
+DB avanti rispetto a git**.
+
+➡️ **Appena il merge arriva**: `genera_error_policies` + la frase di ripiego,
+senza segnaposto. Il testo è pronto:
+
+> *«L'offerta non può uscire dal superamento: esiste ancora una revisione viva su
+> questo documento. Va prima annullata quella.»*
+
+### 15.3 ✅ Tre dichiarazioni diventate false — corrette
+
+`SUPERATA` **non è più uno stato senza uscite**: ne ha una, `SUPERATA → EMESSA`,
+percorsa dal database da sé e seedata `manuale: false` — quindi nessuna azione,
+nessun pulsante, nessun cambiamento per chi guarda.
+
+⛔ **Ma tre punti del codice lo dichiaravano terminale «senza transizioni
+uscenti»**, ed erano veri fino a ieri:
+
+| Dove | Cosa diceva | Nota |
+| --- | --- | --- |
+| `offerte_service._STATI_TERMINALI` | *«no editing, no transizioni uscenti»* | 🔴 **ed è una costante MORTA**: definita e mai letta in tutto il backend. Non l'ho cancellata — è di chi possiede le offerte — ma una costante morta che dichiara anche il falso è il peggio dei due casi |
+| `offerte/constants.js` | *«stati terminali (workflow morto)»* | il comportamento resta giusto (severity `warn`), cambia il **perché** |
+| `OffertaDrawer.vue` | *«terminali, non puoi più fare nulla»* | vero per l'**operatore**, non più per il **documento** |
+
+⭐ **Nessun comportamento è stato cambiato**: solo le frasi che avevano smesso di
+essere vere. È la stessa specie di difetto che questo cantiere insegue da tre
+giorni — e stavolta è arrivata da un cambio del modello fatto da altri, che è il
+modo in cui si formano quasi sempre.
+
+### 15.4 ℹ️ Cosa NON tocca a noi
+
+* il guard sull'**arità** del `SELECT INTO` — DB, e nessun impatto applicativo;
+* `data_emissione` non riscritta dal rientro (`COALESCE`) — DB. ⭐ Vale la pena
+  notarlo lo stesso: è la stessa specie di difetto dei nostri, *un valore che si
+  sovrascrive perché nessuno si è chiesto se quel campo aveva già un significato*.
 

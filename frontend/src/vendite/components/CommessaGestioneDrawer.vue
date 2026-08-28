@@ -29,6 +29,7 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import CommessaRegistroDialog from './CommessaRegistroDialog.vue'
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
@@ -509,8 +510,32 @@ const sbloccaMotivo = ref('')
 //        Le tre colonne che le alimentano (`sorgente_area`,
 //        `sorgente_documento_id`, `fattura_id`) arrivano dalla lista dal
 //        2026-08-16 (changeSet 20260816-04): prima si fermavano al database.
+// ─────────────────────────────────────────────────────────────────────────
+// REGISTRO DI RIGA: «perché questa riga è così».
+// ⭐ Fino al 2026-08-28 la risposta esisteva solo nel database: sei tipi di
+//    evento scritti su `commesse_attivita_log` e nessuna schermata che li
+//    leggesse. Trovato in collaudo — una riga passata ad ANNULLATA da sé e
+//    nessun modo di sapere perché.
+// ⚠️ L'azione è di SOLA LETTURA e resta disponibile anche in readonly: sta in
+//    `buildRowNavActions`, insieme alle altre due che navigano e non scrivono.
+//    Metterla fra le azioni di modifica l'avrebbe nascosta proprio a chi guarda
+//    una commessa che non può toccare — cioè nel caso in cui serve di più.
+const registroVisible = ref(false)
+const registroRigaId = ref(null)
+
+function apriRegistroRiga(rigaId) {
+  registroRigaId.value = rigaId
+  registroVisible.value = true
+}
+
 function buildRowNavActions(row) {
   return [
+    {
+      key: 'registro',
+      label: t('vendite.commesse.azione_registro'),
+      icon: 'pi pi-history',
+      command: () => apriRegistroRiga(row.id),
+    },
     // Documento di ORIGINE: stesso BB del Backlog fatturazione, stessa
     // meccanica area → drawer. L'azione si nasconde da sé quando l'id è
     // nullo, che copre due casi diversi e ugualmente corretti: la voce
@@ -750,7 +775,14 @@ const drawerActions = computed(() => [
   >
     <template #header>
       <DrawerTitle :title="t('vendite.commesse.gestione_titolo')" icon="pi pi-briefcase" />
-    </template>
+    <!-- Il REGISTRO della riga: sola lettura, quindi FUORI dai dialog di azione e
+         senza `app-escape`. Si apre dal kebab, anche a commessa in readonly. -->
+    <CommessaRegistroDialog
+      v-model:visible="registroVisible"
+      :commessa-id="props.commessaId"
+      :commessa-attivita-id="registroRigaId"
+    />
+  </template>
 
     <div class="app-drawer-content">
       <template v-if="contentReady">

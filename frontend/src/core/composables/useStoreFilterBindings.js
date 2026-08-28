@@ -20,7 +20,7 @@
 //
 // `buildExportParams` resta caller-side: la mappatura filtri→query export
 // diverge per ogni lista (rename `data_a`→`data_al`/`validita_dal_max`,
-// `solo_attiva` string-cast, `scadenza_mese` YYYY-MM) e ingabbiarla qui
+// `solo_ultima_revisione` string-cast, `scadenza_mese` YYYY-MM) e ingabbiarla qui
 // sarebbe un config piu' lungo del codice che sostituisce.
 
 import { ref, watch } from 'vue'

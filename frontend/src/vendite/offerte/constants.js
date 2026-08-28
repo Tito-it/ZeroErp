@@ -25,10 +25,18 @@ export const STATO_OFFERTA = Object.freeze({
   SUPERATA: 'SUPERATA',
 })
 
-// Stati terminali (workflow morto). Usato dal banner del drawer per
-// scegliere severity `warn` (terminale) vs `info` (post-BOZZA non
-// terminale, EMESSA/ACCETTATA). Il BE espone `can_edit_testata=false`
-// per entrambi i casi: la distinzione UI vive solo qui.
+// Stati in cui l'operatore non ha piu' nulla da fare. Usato dal banner del
+// drawer per scegliere severity `warn` vs `info` (post-BOZZA non terminale,
+// EMESSA/ACCETTATA). Il BE espone `can_edit_testata=false` per entrambi i casi:
+// la distinzione UI vive solo qui.
+//
+// ⚠️ `SUPERATA` resta in elenco, ma dal 2026-08-28 NON e' piu' «workflow morto»:
+//    il database la riporta a `EMESSA` da se' quando l'ultima revisione viva
+//    viene annullata e il padre torna a essere l'offerta del lineage. La
+//    transizione e' `manuale: false` — nessuna azione, nessun pulsante — quindi
+//    per chi guarda non cambia niente e la severity resta quella giusta.
+//    ⛔ Cambia il PERCHE', non il comportamento: chiamarlo «morto» avrebbe
+//    portato il prossimo lettore a costruirci sopra un'inferenza sbagliata.
 export const STATI_OFFERTA_TERMINALI = Object.freeze([
   STATO_OFFERTA.RIFIUTATA,
   STATO_OFFERTA.ANNULLATA,
