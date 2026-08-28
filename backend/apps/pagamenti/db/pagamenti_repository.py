@@ -266,7 +266,10 @@ _ENTE_INCASSO_SELECT = f"""
         cr.codice          AS centro_codice,
         cr.descrizione     AS centro_descrizione,
         e.soggetto_ruolo_id,
+        srp.ragione_sociale_completa AS soggetto_ragione_sociale,
         e.bank_branch_id,
+        bb.name       AS bank_branch_nome,
+        bb.bank_code  AS bank_branch_bank_code,
         e.soggetto_ruolo_conto_bancario_id,
         cb.iban            AS conto_iban,
         src.uso            AS conto_uso,
@@ -279,6 +282,13 @@ _ENTE_INCASSO_SELECT = f"""
       LEFT JOIN anagrafiche.soggetti_ruoli_conti_bancari src
              ON src.id = e.soggetto_ruolo_conto_bancario_id
       LEFT JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+      -- ⭐ Filiale e soggetto PSP IN CHIARO, e non e' cosmesi: il drawer li
+      --    mostra su un canale gia' configurato, e senza il nome resterebbe un
+      --    campo vuoto accanto a un id valorizzato — cioe' direbbe «non c'e'
+      --    filiale» di un canale BANCA, dove la filiale e' obbligatoria.
+      LEFT JOIN anagrafiche.bank_branches bb ON bb.id = e.bank_branch_id
+      LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srp
+             ON srp.soggetto_ruolo_id = e.soggetto_ruolo_id
       {_UTILITY_DEL_CONTO_JOIN}
 """
 

@@ -28,8 +28,8 @@ import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { DATE_FORMAT } from '../../core/constants'
-import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoRigaContabileSeverity } from '../../core/utils/severity'
+import { useEtichettePagamenti } from '../etichette'
 import { useCodaRigheStore } from '../stores/codaRighe'
 import { CODE, ROTTA_PER_CODA } from '../vocabolari'
 
@@ -40,7 +40,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['row-click'])
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 const router = useRouter()
 const store = useCodaRigheStore()
 const isBlocked = useInjectBlocked()
@@ -56,8 +56,7 @@ const { bindDate } = useStoreFilterBindings(store, applyFilters)
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
 const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
 
-const etichettaCoda = (c) =>
-  labelOrCode(t, te, `pagamenti.righe.coda_${String(c).toLowerCase()}`, c)
+const { opzioniCoda: costruisciOpzioniCoda } = useEtichettePagamenti()
 
 // ⭐ Il selettore resta a video — chi lavora le sospese deve poter passare
 //    all'altra coda senza tornare al menu — ma NAVIGA invece di cambiare uno
@@ -71,9 +70,9 @@ const etichettaCoda = (c) =>
 // ⚠️ Le opzioni sono DUE, quante sono le porte: `TUTTE` esiste nel contratto
 //    dell'endpoint ma non ha una rotta, e offrirla qui darebbe una voce che
 //    porta in una pagina che non esiste.
-const opzioniCoda = computed(() =>
-  Object.keys(ROTTA_PER_CODA).map((c) => ({ value: c, label: etichettaCoda(c) })),
-)
+// ⚠️ `computed` e non una costante: le etichette dipendono dalla lingua, e al
+//    cambio lingua un array calcolato una volta sola resterebbe in italiano.
+const opzioniCoda = computed(() => costruisciOpzioniCoda())
 const codaCorrente = computed({
   get: () => props.coda,
   set: (v) => {
@@ -85,21 +84,29 @@ const codaCorrente = computed({
 function onRowClick(data) { emit('row-click', data) }
 
 // Scopo: allinea lo store alla coda della ROTTA, e ricarica.
-// Note: ⚠️ Idempotente di proposito. Se la coda e' gia' quella giusta si
-//       ricarica soltanto: chiamare `apriCoda` anche li' azzererebbe l'offset,
-//       cioe' rientrare nella scheda dopo aver cambiato tab riavvolgerebbe la
-//       lista a pagina 1 senza che nessuno l'abbia chiesto.
-function sincronizzaConLaRotta() {
+// Note: ⚠️ Idempotente di proposito. Se la coda e' gia' quella giusta NON si
+//       chiama `apriCoda`: azzererebbe l'offset, cioe' rientrare nella scheda
+//       dopo aver cambiato tab riavvolgerebbe la lista a pagina 1 senza che
+//       nessuno l'abbia chiesto.
+//       ⛔ E in quel ramo non si ricarica nemmeno: al rientro nella scheda ci
+//       pensa gia' `useSearchTable` (refetch idempotente della pagina
+//       corrente). Farlo anche qui manderebbe DUE richieste identiche, con le
+//       risposte che possono tornare in ordine inverso. `ricaricaSempre` serve
+//       ai due casi in cui nessun altro ricarica: il primo mount e il cambio di
+//       rotta a coda invariata — che non esiste oggi, ma il giorno che nascesse
+//       una terza porta sulla stessa coda il silenzio sarebbe una lista ferma.
+function sincronizzaConLaRotta({ ricaricaSempre = false } = {}) {
   if (store.filters.coda !== props.coda) store.apriCoda(props.coda)
-  else store.fetchList()
+  else if (ricaricaSempre) store.fetchList()
 }
 
 // ⚠️ `onActivated` E NON SOLO `onMounted`: le viste vivono sotto KeepAlive, e
-//    al rientro nella scheda `onMounted` non scatta piu' — la coda resterebbe
-//    quella di prima e i dati stantii (memoria feedback_keepalive_onactivated).
-watch(() => props.coda, sincronizzaConLaRotta)
-onMounted(sincronizzaConLaRotta)
-onActivated(sincronizzaConLaRotta)
+//    al rientro nella scheda `onMounted` non scatta piu' — la CODA resterebbe
+//    quella di prima (memoria feedback_keepalive_onactivated). E' il cambio di
+//    coda che va rifatto qui, non il caricamento dei dati.
+watch(() => props.coda, () => sincronizzaConLaRotta({ ricaricaSempre: true }))
+onMounted(() => sincronizzaConLaRotta({ ricaricaSempre: true }))
+onActivated(() => sincronizzaConLaRotta())
 </script>
 
 <template>

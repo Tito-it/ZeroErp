@@ -49,6 +49,7 @@ export const NAV_ICONS = Object.freeze({
   CODA_SOSPESE: 'pi pi-pause',
   RATE_FUORI_CAPIENZA: 'pi pi-exclamation-triangle',
   ECCEDENZE: 'pi pi-money-bill',
+  CANALI_INCASSO: 'pi pi-building-columns',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
@@ -222,6 +223,9 @@ export const DOMAIN_MENUS = {
     { key: 'coda-sospese', icon: NAV_ICONS.CODA_SOSPESE, to: '/pagamenti/righe/sospese' },
     { key: 'rate-fuori-capienza', icon: NAV_ICONS.RATE_FUORI_CAPIENZA, to: '/pagamenti/rate-fuori-capienza' },
     { key: 'eccedenze', icon: NAV_ICONS.ECCEDENZE, to: '/pagamenti/eccedenze' },
+    // ⚠️ Ultima voce di proposito: e' CONFIGURAZIONE, non lavoro di giornata —
+    //    metterla fra le code la farebbe sembrare una coda da smaltire.
+    { key: 'canali-incasso', icon: NAV_ICONS.CANALI_INCASSO, to: '/pagamenti/canali-incasso' },
   ],
   'contabilita': [],
   'strumenti': [

@@ -402,6 +402,12 @@ const router = createRouter({
           meta: { domain: 'pagamenti', menuKey: 'eccedenze' }
         },
         {
+          path: 'pagamenti/canali-incasso',
+          name: 'pagamenti-canali-incasso',
+          component: () => import('../pagamenti/views/CanaliIncassoView.vue'),
+          meta: { domain: 'pagamenti', menuKey: 'canali-incasso' }
+        },
+        {
           path: 'vendite/ddt',
           name: 'vendite-ddt',
           component: () => import('../vendite/ddt/views/DdtView.vue'),

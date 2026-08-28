@@ -14,7 +14,7 @@
 // ⭐ L'elenco PRESENTA, non sana: nessuna riga ha un gemello automatico che la
 //    corregge, perche' sanarla vorrebbe dire muovere denaro senza che nessuno
 //    l'abbia deciso.
-import { onActivated, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
@@ -27,13 +27,13 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { labelOrCode } from '../../core/utils/i18nLabel'
+import { useEtichettePagamenti } from '../etichette'
 import { euro } from '../formato'
-import { CHI_E_IN_CREDITO, SEVERITY_CHI_E_IN_CREDITO } from '../vocabolari'
+import { SEVERITY_CHI_E_IN_CREDITO } from '../vocabolari'
 import { useEccedenzeStore } from '../stores/eccedenze'
 
 const emit = defineEmits(['row-click'])
-const { t, te } = useI18n()
+const { t } = useI18n()
 const store = useEccedenzeStore()
 const isBlocked = useInjectBlocked()
 
@@ -50,9 +50,8 @@ const { value: creditoFilter, onChange: onCreditoChange } = bindSelect('chi_e_in
 // ⛔ IL VERSO NON E' UN DETTAGLIO: sbagliarlo significa rimborsare cio' che si
 //    deve incassare. Per questo e' un filtro esposto e una colonna a Tag, non
 //    un segno da leggere dentro un numero.
-const etichettaCredito = (c) =>
-  labelOrCode(t, te, `pagamenti.eccedenze.credito_${String(c).toLowerCase()}`, c)
-const opzioniCredito = CHI_E_IN_CREDITO.map((c) => ({ value: c, label: etichettaCredito(c) }))
+const { credito: etichettaCredito, opzioniCredito: costruisciOpzioni } = useEtichettePagamenti()
+const opzioniCredito = costruisciOpzioni()
 
 // ⚠️ Il colore viene dalla MAPPA, non da un confronto inline: un terzo valore
 //    (se il vocabolario si allargasse) cadrebbe nel ramo `else` e si
@@ -62,12 +61,11 @@ const severityCredito = (c) => SEVERITY_CHI_E_IN_CREDITO[c] || 'secondary'
 
 function onRowClick(data) { emit('row-click', data) }
 onMounted(() => store.fetchList())
-// ⚠️ `onActivated` E NON SOLO `onMounted`: le viste vivono sotto KeepAlive, e al
-//    rientro nella scheda `onMounted` non scatta piu' — la coda resterebbe ferma
-//    a com'era dieci minuti fa. Su elenchi che esistono per non far sparire del
-//    denaro, «vuoto» e «vuoto da allora» si leggono uguali
-//    (memoria feedback_keepalive_onactivated).
-onActivated(() => store.fetchList())
+// ⛔ NIENTE `onActivated` che ricarica: la freschezza al rientro nella scheda la
+//    tiene gia' `useSearchTable` (refetch idempotente della pagina corrente,
+//    saltato alla prima attivazione). Aggiungerne un secondo qui manderebbe DUE
+//    richieste identiche a ogni rientro, e le loro risposte possono tornare in
+//    ordine inverso — su una lista di denaro, l'ordine conta.
 </script>
 
 <template>

@@ -60,3 +60,49 @@ export const SEVERITY_CHI_E_IN_CREDITO = Object.freeze({
   CLIENTE: 'warn',
   AZIENDA: 'info',
 })
+
+// I quattro tipi di canale di incasso — `CHECK chk_enti_incasso_tipo`.
+export const TIPI_CANALE = Object.freeze(['BANCA', 'POSTE', 'PSP', 'ALTRO'])
+
+// ⛔ Il tipo che pretende la FILIALE, e la pretende in ESCLUSIVA: il
+//    `CHECK chk_enti_incasso_bank_branch_tipo` vuole `bank_branch_id` NOT NULL
+//    su BANCA e NULL su tutti gli altri. Non e' «facoltativo altrove»: e'
+//    vietato — un valore rimasto in memoria dopo un cambio di tipo e' un
+//    rifiuto del database, non un campo di troppo.
+export const TIPO_CANALE_CON_FILIALE = 'BANCA'
+
+// ⛔ Il tipo che pretende il SOGGETTO PSP (`trgfn_enti_incasso_guard_psp`): il
+//    soggetto_ruolo dev'esserci, essere di ruolo PSP e avere una riga attiva in
+//    `anagrafiche.psp`. Le altre due condizioni le verifica il database.
+export const TIPO_CANALE_PSP = 'PSP'
+
+// Il codice del tipo ruolo da cercare per il soggetto di un canale PSP.
+export const RUOLO_PSP = 'PSP'
+
+// ⭐ Le tre destinazioni di una sistemazione. Non sono tre modi di dire la
+//    stessa cosa: producono DUE specie diverse di oggetto — un fondo fattura
+//    (riporto) oppure una distinta contabile (rimborso, compensazione).
+export const DESTINAZIONI = Object.freeze(['RIPORTO', 'RIMBORSO', 'COMPENSAZIONE'])
+
+// Le destinazioni che vogliono un SECONDO documento: il denaro va da qualche
+// parte. ⛔ Sul rimborso e' vietato — li' il denaro esce dal sistema, e un
+// secondo documento non esiste.
+export const DESTINAZIONI_CON_DESTINATARIO = Object.freeze(['RIPORTO', 'COMPENSAZIONE'])
+
+// ⭐ L'unica destinazione che chiede il CANALE, e lo chiede alla CONFERMA: da
+//    quale conto esce il bonifico e' una decisione del momento in cui si paga.
+export const DESTINAZIONE_CON_CANALE = 'RIMBORSO'
+
+// Gli stati di un atto di sistemazione — `CHECK chk_sistemazioni_stato`, senza
+// tabella di catalogo (tre stati e due passaggi: la regola sta nel guard, non
+// nei dati). ⚠️ CONFERMATA e ANNULLATA sono TERMINALI: da CONFERMATA non si
+// torna perche' il denaro si e' gia' mosso, e la correzione e' un atto NUOVO.
+export const STATI_SISTEMAZIONE = Object.freeze(['BOZZA', 'CONFERMATA', 'ANNULLATA'])
+export const STATO_SISTEMAZIONE_TERMINALI = Object.freeze(['CONFERMATA', 'ANNULLATA'])
+
+// ⭐ L'unico stato su cui i due verbi hanno senso. ⚠️ Sta QUI e non come stringa
+//    dentro un componente perche' e' un vocabolario **senza catalogo**: la
+//    tabella `sistemazioni` non ha stati a tabella (lo dice il commento del
+//    guard: «chi cerca la regola nei dati non la trova»), quindi la copia nel
+//    frontend e' inevitabile — e allora sta in un posto solo, dove si vede.
+export const STATO_SISTEMAZIONE_BOZZA = 'BOZZA'

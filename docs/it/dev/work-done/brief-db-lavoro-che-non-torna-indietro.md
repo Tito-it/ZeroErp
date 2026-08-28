@@ -10,7 +10,7 @@
 >
 > **Correlati:**
 > [brief-db-numerazione-data-documento-e-sequenza.md](brief-db-numerazione-data-documento-e-sequenza.md) ·
-> [brief-be-fe-rendi-definitive-sui-lotti.md](../work-in-progress/brief-be-fe-rendi-definitive-sui-lotti.md)
+> [brief-be-fe-rendi-definitive-sui-lotti.md](brief-be-fe-rendi-definitive-sui-lotti.md)
 > (l'altro esito della stessa conversazione)
 >
 > ✅ **CHIUSO il 2026-08-26 — lato DB tutto consegnato e applicato.**

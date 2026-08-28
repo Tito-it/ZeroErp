@@ -127,10 +127,10 @@ non riconosce lo stadio — è il ramo `STADIO_RESIDUI` in `loadDrillDown`.
 Sono le più importanti di tutta la sezione: nessuna di queste dà un errore
 rosso se è rotta. Danno un risultato **plausibile e sbagliato**.
 
-| | Cosa premere | Cosa deve succedere |
-| --- | --- | --- |
-| **5a** | **Esporta** (CSV o XLSX) | il file contiene i **RESIDUI**: 5 righe, le colonne della lista. ⛔ *Era il difetto: scaricava le **commesse**. Un file che non corrisponde a ciò che si ha davanti è peggio di nessun file — chi lo apre crede di avere quel perimetro e non ha modo di accorgersene* |
-| **5b** | **Personalizza colonne** | si apre la configurazione della lista **residui**. ⚠️ *Puntava alla lista commesse, che su questa card non è nemmeno montata* |
+|        | Cosa premere                                                   | Cosa deve succedere                                                                                                                                                                                                                                                    |
+| ------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **5a** | **Esporta** (CSV o XLSX)                                       | il file contiene i **RESIDUI**: 5 righe, le colonne della lista. ⛔ *Era il difetto: scaricava le **commesse**. Un file che non corrisponde a ciò che si ha davanti è peggio di nessun file — chi lo apre crede di avere quel perimetro e non ha modo di accorgersene*  |
+| **5b** | **Personalizza colonne**                                       | si apre la configurazione della lista **residui**. ⚠️ *Puntava alla lista commesse, che su questa card non è nemmeno montata*                                                                                                                                           |
 | **5c** | ogni **intestazione** di colonna, in **entrambe** le direzioni | l'elenco si riordina, sempre 5 righe, **nessun errore**. ⚠️ *Un valore non ammesso in una clausola SQL non fallisce educatamente: è un **500**. Occhio a **Articolo** e **Lotto di provenienza**, gli unici due dove il nome della colonna e il campo fisico divergono* |
 
 ⚠️ Dopo l'export, **apri davvero il file**. Contare le righe dal browser non
@@ -178,6 +178,9 @@ e segnalalo: è un difetto di modello, non un intoppo.
 l'elenco a schermo era invecchiato (vedi prova 9). Se è un errore rosso, leggi
 il codice: `E_ATTIVITA_ANCORA_IN_FATTURA` deve offrire **«Apri Fattura …»**.
 
+
+FINO QUI TUTTO OK 
+
 ### 8 · Il recupero è VERO, non cosmetico
 
 1. dopo la prova 7, vai sulla card **«Da emettere»** dello stesso mese;
@@ -190,7 +193,7 @@ il giro.
 ⭐ **È l'unica prova che dimostra che il recupero significa qualcosa.** Riportare
 una riga che poi non si riesce a fatturare avrebbe spostato il problema, non
 risolto.
-
+OK GIUSTO
 ### 9 · L'elenco invecchiato si riconosce da sé
 
 1. apri il cruscotto in **due schede** del browser, sulla stessa card;
@@ -205,17 +208,65 @@ selezione azzerata e l'elenco **ricaricato**.
 ricontrollo, il rifiuto arriverebbe come **un** errore per l'intero elenco e non
 sapresti **quale** riga l'ha fermato né perché — e riproveresti.
 
-### 10 · Chiudere un documento adesso **ritira** lavoro *(§7.7 della guida)*
+### 10 · **ANNULLARE** un documento ritira il lavoro *(§7.7 della guida)*
 
-È il comportamento **nuovo** che l'operatore deve sapere *prima*, non scoprire
-dopo.
+⛔ **«Chiudere» era la parola sbagliata** — questa prova diceva «chiudi il
+documento», e non era eseguibile perché non diceva *quale gesto*. Misurato sul
+database il 2026-08-28: il trigger si sveglia **solo** sul passaggio a uno stato
+con `is_abortito`, e in tutti e quattro i vocabolari — preventivi, ordini, DDT,
+contratti — quello stato è **uno solo: `ANNULLATO`**.
+⚠️ **Evadere o completare un documento NON ritira niente.** Il gesto da fare è
+**Annulla**.
 
-1. prendi un documento sorgente con righe di commessa **non ancora emesse** e
-   chiudilo.
-   **Atteso**: le righe vengono **ritirate da sé** — nessuno deve ricordarsene.
-2. prendi un documento con righe **già emesse** e prova a chiuderlo.
-   **Atteso**: **rifiuta**, e il messaggio nomina la via d'uscita —
-   «Riporta da emettere» dalla casella «Emesse non fatturate».
+#### 10.1 · Il documento si annulla, e **si porta via** il lavoro non emesso
+
+⚠️ **Questa prova brucia un documento**: `ANNULLATO` non si disfa, e riaprirlo
+non riporta indietro le righe (§7.7). Scegli un preventivo che sei disposto a
+perdere.
+
+**Materia misurata il 2026-08-28** — preventivi in stato **`ACCETTATO`** (da cui
+l'annullamento è ammesso) con **1 riga di commessa `NON_EMESSA`** da ritirare:
+
+> `PRV0000099` · `PRV0000133` · `PRV0000135` · `PRV0000136` · e altri
+
+1. apri il preventivo (`vendite/preventivi`) e prendi nota della **commessa** che
+   ha alimentato;
+2. **annullalo**;
+3. apri quella commessa e guarda la riga che veniva da lì.
+
+**Cosa deve succedere**: la riga di commessa è passata ad **`ANNULLATA`**, da
+sola, e nel **registro della commessa** c'è la traccia col motivo — *«Ritiro
+automatico alla chiusura del documento di origine (PREVENTIVO …)»*.
+
+⭐ **Perché conta**: prima, annullare un preventivo fermava i passaggi futuri ma
+lasciava fatturabile ciò che era già passato in commessa — e quel lavoro prima o
+poi finiva in una fattura che nessuno si aspettava più.
+
+**Se non succede**: se la riga resta `NON_EMESSA`, il trigger `_z90_` non è
+scattato. Verifica che il preventivo sia davvero passato ad `ANNULLATO` e non a
+un altro stato.
+
+#### 10.2 · Con righe **già emesse** il documento **non si annulla affatto**
+
+🔴 **Un solo esemplare in tutto il database**, misurato il 2026-08-28:
+
+> **`DDT0010839`** — stato `CONSEGNATO`, **1 riga di commessa `EMESSA`**
+
+⛔ **Non ce ne sono altri**, e non è un dettaglio: tutti gli altri documenti con
+righe emesse sono in stato `EVASO`, **da cui l'annullamento non è ammesso** — il
+rifiuto arriverebbe dal guard delle *transizioni*, che è un altro trigger e dice
+un'altra cosa. Provare lì non proverebbe niente.
+
+1. apri `DDT0010839` e prova ad **annullarlo**.
+
+**Cosa deve succedere**: **rifiuta**, e il messaggio nomina la via d'uscita —
+si recuperano prima le righe con **«Riporta da emettere»** dalla Lente 1, e
+**dopo** il documento si annulla portandosele via.
+
+⚠️ **Il messaggio deve parlare di righe già emesse**, non di transizione non
+ammessa: sono due rifiuti di due trigger diversi (`a10_guard_chiusura_sorgente`
+contro `a10_guard_transizione`). Se leggi il secondo, la prova è **nulla** — non
+hai esercitato il guard che volevi.
 
 ⭐ Le due superfici devono dire **la stessa cosa**: il messaggio del database e
 la §7.7 della guida. Se divergono, è la guida ad avere torto.
@@ -256,21 +307,22 @@ prima si accendeva a sproposito.
 
 **Chiuso il**: ______ · **Da**: ______ · **Ambiente**: ______
 
-| #   | Prova                                              | Scrive | Esito | Note |
-| --- | -------------------------------------------------- | ------ | ----- | ---- |
-| 1   | La card dice DUE cose                              | no     | ⬜     |      |
-| 2   | Mese senza residui: «nessuno da recuperare»        | no     | ⬜     |      |
-| 3   | Il tooltip non racconta la storia vecchia          | no     | ⬜     |      |
-| 4   | La lista è quella dei residui                      | no     | ⬜     |      |
-| 5a  | 🔴 **Esporta** scarica i RESIDUI                    | no     | ⬜     |      |
-| 5b  | 🔴 **Personalizza colonne** apre la lista giusta    | no     | ⬜     |      |
-| 5c  | 🔴 **Le 10 colonne ordinabili**, in due direzioni   | no     | ⬜     |      |
-| 6   | Senza permesso la porta non si vede                | no     | ⬜     |      |
-| 7   | ⭐ **Il gesto — una riga sola** (perimetro)          | **sì** | ⬜     |      |
-| 8   | Il recupero è vero: si rifattura                   | **sì** | ⬜     |      |
-| 9   | L'elenco invecchiato si riconosce da sé            | **sì** | ⬜     |      |
-| 10  | Chiudere un documento ritira lavoro                | **sì** | ⬜     |      |
-| 11  | Seleziona-tutto **di pagina** (altra lista)        | no     | ⬜     |      |
+| #   | Prova                                            | Scrive | Esito | Note |
+| --- | ------------------------------------------------ | ------ | ----- | ---- |
+| 1   | La card dice DUE cose                            | no     | ⬜     |      |
+| 2   | Mese senza residui: «nessuno da recuperare»      | no     | ⬜     |      |
+| 3   | Il tooltip non racconta la storia vecchia        | no     | ⬜     |      |
+| 4   | La lista è quella dei residui                    | no     | ⬜     |      |
+| 5a  | 🔴 **Esporta** scarica i RESIDUI                  | no     | ⬜     |      |
+| 5b  | 🔴 **Personalizza colonne** apre la lista giusta  | no     | ⬜     |      |
+| 5c  | 🔴 **Le 10 colonne ordinabili**, in due direzioni | no     | ⬜     |      |
+| 6   | Senza permesso la porta non si vede              | no     | ⬜     |      |
+| 7   | ⭐ **Il gesto — una riga sola** (perimetro)       | **sì** | ⬜     |      |
+| 8   | Il recupero è vero: si rifattura                 | **sì** | ⬜     |      |
+| 9   | L'elenco invecchiato si riconosce da sé          | **sì** | ⬜     |      |
+| 10.1| **Annullare** un documento ritira il non emesso  | **sì** | ⬜     | brucia il documento |
+| 10.2| Con righe emesse l'annullamento è **rifiutato**  | no     | ⬜     | unico esemplare: `DDT0010839` |
+| 11  | Seleziona-tutto **di pagina** (altra lista)      | no     | ⬜     |      |
 
 ### Che cosa ha trovato il collaudo
 
@@ -278,9 +330,55 @@ prima si accendeva a sproposito.
 > undici verdi si legge come «non abbiamo guardato», non come «era tutto a
 > posto».
 
-| # | Cosa | Dove è finito |
-| --- | --- | --- |
-|     |      |      |
+| #       | Cosa                                                                                                                                                                                                                                        | Dove è finito                                                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **R-1** | Alla prova 7 il residuo **sembra già fatturato**: il lotto di provenienza porta a una fattura **numerata e definitiva**. Non lo è — quel documento è di un **altro cliente** dello stesso lotto. Difetto di **leggibilità**, non di modello | ✅ chiarito qui sotto; note in `cruscotti-fatturazione.md` §3.1 |
+|         |                                                                                                                                                                                                                                             |                                                                |
+
+#### R-1 · «ma quella fattura ha già un numero» — cosa è emerso davvero
+
+⚠️ **Il dubbio è nato a video ed è legittimo**, e nessun test l'avrebbe trovato:
+è un problema di *nomi*, e i nomi si leggono solo guardando la schermata.
+
+Misurato sul database il 2026-08-28. Il lotto **`LTF-0000679`** (COMPLETATO ·
+CHIUSO) conteneva **15 attività di DUE clienti**:
+
+| Cliente    | Attività                  | Fattura                                              |
+| ---------- | ------------------------- | ---------------------------------------------------- |
+| **BA 169** | 10                        | ✅ **2026/R2/11** · DEFINITIVA · 31/07 · **10 righe** |
+| **BA 173** | 5 — `1123`, `1130`–`1133` | 🔴 **nessuna**                                        |
+
+⭐ **Un lotto produce una fattura per CLIENTE.** Quella del BA 169 esiste ed è
+numerata; quella del BA 173 no. Aprendo il *lotto di provenienza* da un residuo
+si arriva quindi a un documento **numerato che non è il suo** — è esattamente
+l'inciampo.
+
+⛔ **E «emessa» è sovraccarico**: `stato_emissione = EMESSA` sta sull'**attività
+di commessa** e significa *«presa da un lotto, entrata nella pipeline»*, **non**
+*«esiste un documento fiscale»*. Sono due «emesse» diverse che si chiamano
+uguale. La domanda dell'operatore lo ha dimostrato meglio di qualunque revisione
+a tavolino.
+
+**Il riporto della prova 7, verificato riga per riga:**
+
+|                        |                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `af 1123`              | `fattura_riga_id=NULL` · `lock=False` · `stato_esecuzione=NULL` · `lock_batch_id=NULL` · **`stato_emissione=NON_EMESSA`** ✅ |
+| Fattura **2026/R2/11** | ancora **10 righe**, DEFINITIVA — **non toccata** ✅                                                                         |
+| Registro               | `RIGA_RIPORTATA_DA_EMETTERE`, 28/08 08:04, utente `tid`, col `lock_batch_id` precedente ✅                                   |
+
+⛔ **Nessun doppione.** `1123` è un **ONERE da 5.000 €** sulla commessa
+`CMM-20260710145604304-c6a64e`; l'altra attività di quella commessa (`886`,
+240 €) sta nella fattura **632**, un documento diverso. L'onere non è in nessuna
+fattura, né prima né dopo il riporto.
+
+ℹ️ E il verbo non poteva sbagliare nemmeno volendo: il perimetro a DB è
+`fattura_riga_id IS NULL`, quindi una riga agganciata a una fattura viva viene
+**rifiutata** con `E_ATTIVITA_ANCORA_IN_FATTURA` — che a video offre
+«Apri Fattura …».
+
+➡️ **Conseguenza**: nessuna modifica al codice. Due note in guida (§3.1), perché
+chi arriva dopo inciampi una volta in meno.
 
 ---
 
@@ -297,7 +395,7 @@ Restano fuori, e **non** lo tengono aperto:
 * **§11.6** — le due convenzioni di `ordinamento_default` in `ui`: di chi
   possiede quello schema;
 * la **§7.1 della guida**, contesa con
-  [brief-be-fe-rendi-definitive-sui-lotti.md](brief-be-fe-rendi-definitive-sui-lotti.md):
+  [brief-be-fe-rendi-definitive-sui-lotti.md](../work-done/brief-be-fe-rendi-definitive-sui-lotti.md):
   da **coordinare**, non da fare in parallelo.
 
 ⚠️ **Un difetto trovato qui non riapre il brief da sé**: va guardato dove
