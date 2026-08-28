@@ -35,17 +35,14 @@ logger = logging.getLogger(__name__)
 
 _FN = "pagamenti.enti_incasso_service"
 
-# 🔴 **A catalogo manca un `E_ENTE_INCASSO_NON_TROVATO`**, e non se ne inventa
-# uno: un codice non registrato non fallisce — `resolve()` lo manda su
-# `E_GENERICO` e un 404 diventa un **500**. Nel progetto non esiste nemmeno un
-# NON_TROVATO generico: ogni dominio ha il suo, ed e' la convenzione.
-# ⚠️ Nel frattempo si usa il codice di validazione del dominio: la classe e'
-# `DATO_ERRATO` (400) e non `NON_TROVATO` (404), quindi lo **stato HTTP e' meno
-# preciso del vero** — ma il messaggio e' giusto e nessuna richiesta finisce in
-# un errore di server. E' un ripiego dichiarato, non una scelta.
-# 📮 Chiesto al team DB insieme ai seed: quando arriva, cambia SOLO questa riga
-#    (e' lo stesso giro gia' fatto con `E_PAGAMENTI_VALIDATION`).
-E_ENTE_NON_TROVATO = E_VALIDAZIONE
+# ✅ Il codice di dominio del 404 dei canali, a catalogo dal 2026-08-27 (lotto 9,
+# classe `NON_TROVATO`). Fino ad allora qui c'era il codice di validazione come
+# **ripiego dichiarato**: la classe era `DATO_ERRATO` (400) dove il vero e'
+# `NON_TROVATO` (404), quindi lo stato HTTP era meno preciso del vero.
+# ⚠️ Non si e' inventato un codice: uno non registrato non fallisce — `resolve()`
+# lo manda su `E_GENERICO` e un 404 sarebbe diventato un **500**. E un
+# NON_TROVATO generico nel progetto non esiste: ogni dominio ha il suo.
+E_ENTE_NON_TROVATO = "E_ENTE_INCASSO_NON_TROVATO"
 
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 

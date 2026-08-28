@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 798, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 799, di cui 88 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -450,6 +450,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_EMITTENTE_NON_MODIFICABILE": "CONFLITTO_STATO",
     # pagamenti.trgfn_enti_incasso_guard_conto_incasso: il conto agganciato a un canale di incasso non ha uso INCASSO. E' un errore di CONFIGURAZIONE, e si fallisce li' apposta (D5): un ente senza il conto giusto produrrebbe una coda invisibile in esercizio, dove non se ne accorge nessuno. ⭐ Il punto non e' l'etichetta: l'unicita' che regge tutto il perimetro degli incassi (ex_src_bancari_conto_incasso_un_solo_soggetto) vive SOLO sulle righe con uso = 'INCASSO'. Un ente appeso alla riga dei PAGAMENTI starebbe fuori da quella garanzia, e «un conto -> un solo emittente» tornerebbe a essere un'assunzione senza che nessun errore lo dica. ⚠️ Da non confondere con la FK fk_enti_incasso_conto_incasso, che presidia una cosa diversa: quella sa che la riga ESISTE, questo che cosa E'. DATO_ERRATO e non NON_PERMESSO perche' il rimedio e' cambiare un campo — scegliere l'altro conto — e il contesto porta la chiave campo perche' l'interfaccia possa evidenziarlo.
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "DATO_ERRATO",
+    # Il canale di incasso indicato non esiste — o non e' visibile a chi chiede. Nasce il 2026-08-25 su richiesta del backend (slice 4 del cantiere incassi): senza, l'elenco e il dettaglio dei canali ripiegavano su E_PAGAMENTI_VALIDATION, che e' DATO_ERRATO (400) mentre qui la risposta giusta e' 404 - un ripiego dichiarato, non una scelta. ⛔ Non si e' usato un NON_TROVATO generico perche' nel progetto non esiste: ogni dominio ha il suo, ed e' la convenzione (E_FATTURA_NON_TROVATA, E_RATA_NON_TROVATA, E_CONTABILE_NON_TROVATA). ⚠️ Il messaggio NON ha segnaposti: a sollevarlo e' il backend, che passa accanto al codice la frase specifica; format() ignora i valori che avanzano ma non perdona quelli che mancano.
+    "E_ENTE_INCASSO_NON_TROVATO": "NON_TROVATO",
     # pagamenti.trgfn_enti_incasso_guard_psp: il soggetto-ruolo ha il ruolo PSP ma non ha una riga attiva in anagrafiche.psp, dove stanno i dati del prestatore. CONFLITTO_STATO e non NON_TROVATO perche' la cosa indicata dalla richiesta - l'ente, il soggetto-ruolo - esiste: manca un censimento a monte, e finche' non c'e' l'operazione non si puo' fare. Terzo gradino del guard PSP: vedi E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO (949).
     "E_ENTE_INCASSO_PSP_NON_CENSITO": "CONFLITTO_STATO",
     # pagamenti.trgfn_enti_incasso_guard_psp: il soggetto-ruolo indicato esiste ma il suo tipo_ruolo non e' PSP (confronto su config.tipi_ruoli.codice_interno, non su codice). Secondo gradino del guard PSP: vedi E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO (949).

@@ -394,6 +394,44 @@ export function statoDocFiscaleSeverity(codice) {
   return resolveSeverity(STATO_DOC_FISCALE_MAP, codice)
 }
 
+// Stati della DISTINTA CONTABILE (`pagamenti.vendite_contabili_stati`):
+// BOZZA=grigio (si sta ancora digitando), IMPORTATA=azzurro (arrivata da un
+// flusso), VALIDATA=arancio, CHIUSA=verde (registrata), ANNULLATA=rosso.
+// ⭐ VALIDATA e' arancio e non azzurro di proposito: e' lo stato in cui la
+// distinta ASPETTA il gesto irreversibile — la registrazione — e l'arancio dice
+// «c'e' qualcosa da fare qui», che e' esattamente la verita'.
+export const STATO_DISTINTA_MAP = {
+  BOZZA: 'secondary',
+  IMPORTATA: 'info',
+  VALIDATA: 'warn',
+  CHIUSA: 'success',
+  ANNULLATA: 'danger',
+}
+export function statoDistintaSeverity(codice) {
+  return resolveSeverity(STATO_DISTINTA_MAP, codice)
+}
+
+// Stati della RIGA contabile (`pagamenti.vendite_contabili_righe_stati`), letti
+// per «che cosa deve fare l'operatore»:
+// IMPORTATA=grigio (nessuno l'ha ancora presa in mano) · DA_ABBINARE=arancio
+// (e' LA coda, chiede lavoro) · ABBINATA=azzurro (pronta, in attesa della
+// registrazione) · SOSPESA=rosso (uscita dal flusso, richiede risoluzione:
+// e' quella che non va dimenticata) · SCARTATA=grigio (chiusa senza effetto,
+// non e' un errore) · POSTATA=verde (registrata).
+// ⚠️ IMPORTATA e SCARTATA condividono il grigio, e non competono mai per
+// l'attenzione: una sta prima del lavoro, l'altra dopo che e' stato archiviato.
+export const STATO_RIGA_CONTABILE_MAP = {
+  IMPORTATA: 'secondary',
+  DA_ABBINARE: 'warn',
+  ABBINATA: 'info',
+  SOSPESA: 'danger',
+  SCARTATA: 'secondary',
+  POSTATA: 'success',
+}
+export function statoRigaContabileSeverity(codice) {
+  return resolveSeverity(STATO_RIGA_CONTABILE_MAP, codice)
+}
+
 // Classi di azionabilita' backlog fatturazione (Lente 2, DL-6/7):
 // RECUPERABILE=arancio (lavoro interno da fare), SOLLECITO_CLIENTE=azzurro
 // (attesa esterna), ANOMALIA=rosso (da rivedere). Il FISIOLOGICO non arriva
