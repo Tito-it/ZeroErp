@@ -58,11 +58,14 @@ class ApiDistinteList(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
-    # 📮 `lista_codice = "pagamenti.distinte"` si dichiara INSIEME al seed di
-    #    `ui.lista_definizione`, non prima: il cancello di perimetro emittente
-    #    risolve il codice a catalogo e, se non lo trova, rifiuta la lista a
-    #    un utente multi-emittente. Dichiararlo adesso spegnerebbe la
-    #    schermata per chi ha piu' di un emittente.
+    # ✅ Dichiarabile dal 2026-08-27: il codice e' a catalogo (lotto 9, seed di
+    # `ui.lista_definizione`). Prima non si poteva, ed e' il verso in cui vale
+    # la pena ricordarlo: il cancello di perimetro emittente risolve il codice a
+    # catalogo e, non trovandolo, rifiuta la lista a un utente MULTI-emittente —
+    # cioe' dichiararlo troppo presto spegneva la schermata invece di prepararla.
+    # ⚠️ La lista nasce `multi_emittente = f` (default: non certificata): chi ha
+    # piu' di un emittente deve sceglierne uno prima di entrare.
+    lista_codice = "pagamenti.distinte"
 
     @extend_schema(
         operation_id="pagamenti_distinte_list",
@@ -438,6 +441,10 @@ class ApiRigheCoda(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
+    # ⭐ Una definizione sola per DUE porte (Q-4 → c): «da abbinare» e «sospese»
+    # sono la stessa lista col filtro `coda` gia' impostato, quindi condividono
+    # la configurazione di colonne — che e' il motivo per cui il seed e' uno.
+    lista_codice = "pagamenti.righe"
 
     @extend_schema(
         operation_id="pagamenti_righe_coda",
@@ -508,6 +515,7 @@ class ApiRateFuoriCapienza(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
+    lista_codice = "pagamenti.rate_fuori_capienza"
 
     @extend_schema(
         operation_id="pagamenti_rate_fuori_capienza",
@@ -653,6 +661,7 @@ class ApiEccedenze(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
+    lista_codice = "pagamenti.eccedenze"
 
     @extend_schema(
         operation_id="pagamenti_eccedenze",

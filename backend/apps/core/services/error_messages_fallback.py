@@ -295,6 +295,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": "Impossibile disattivare l'emittente fiscale: esistono entita' collegate.",
     "E_EMITTENTE_NON_MODIFICABILE": "L'emittente fiscale di un operatore e' immutabile. Per cambiare l'associazione disattivare l'utente e crearne uno nuovo per l'altro emittente.",
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "Il conto indicato per questo canale di incasso non e' un conto di incasso.",
+    "E_ENTE_INCASSO_NON_TROVATO": "Il canale di incasso indicato non esiste, oppure appartiene a un emittente fuori dal tuo perimetro.",
     "E_ENTE_INCASSO_PSP_NON_CENSITO": "Il soggetto-ruolo ha il ruolo PSP ma non risulta censito e attivo fra i PSP.",
     "E_ENTE_INCASSO_PSP_RUOLO_NON_PSP": "Il soggetto-ruolo indicato non ha il ruolo PSP: non puo' essere il prestatore di un ente di incasso di tipo PSP.",
     "E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO": "L'ente di incasso e' di tipo PSP: il soggetto-ruolo del prestatore di servizi di pagamento e' obbligatorio.",

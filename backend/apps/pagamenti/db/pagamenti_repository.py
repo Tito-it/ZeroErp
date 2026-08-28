@@ -181,14 +181,27 @@ _RIGA_CODA_SELECT = f"""
       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
 """
 
-# Colonne ordinabili della lista distinte: whitelist chiusa, chiavi del
-# contratto API -> espressioni SQL. ⛔ Mai input utente dentro l'ORDER BY.
+# 🔴 LE CHIAVI SONO IL `campo_sorgente` DEL SEED, NON IL `codice` LOGICO — e la
+# differenza non e' di stile. `<ListaConfigurabile>` monta le Column con
+# `:field="col.campo_sorgente"`, quindi al click sull'intestazione PrimeVue
+# manda **il nome fisico**: una whitelist chiavata sul codice logico risponde
+# **400 su una colonna che il catalogo dichiara ordinabile**. E' il difetto gia'
+# pagato su `vendite.lotti` il 2026-07-31, presidiato da
+# `apps/core/tests/test_liste_configurabili_seed.py`
+# (`test_whitelist_chiavata_sul_campo_sorgente`).
+# ⚠️ Dove il codice logico e il campo fisico divergono, anche il VALORE segue il
+# campo mostrato (`stato_descrizione`, non `stato_codice`): una colonna che
+# mostra una cosa e ordina per un'altra sembra semplicemente non ordinata —
+# codice e descrizione non hanno lo stesso ordine alfabetico.
+# ⛔ Mai input utente dentro l'ORDER BY: la whitelist e' chiusa.
+
+# Colonne ordinabili della lista distinte.
 DISTINTE_SORT_COLUMNS: dict[str, str] = {
     "data_contabile": "data_contabile",
     "codice": "codice",
-    "stato": "stato_codice",
+    "stato_descrizione": "stato_descrizione",
     "origine": "origine",
-    "centro": "centro_codice",
+    "centro_descrizione": "centro_descrizione",
     "totale_righe": "totale_righe",
 }
 
@@ -196,8 +209,8 @@ DISTINTE_SORT_COLUMNS: dict[str, str] = {
 RIGHE_SORT_COLUMNS: dict[str, str] = {
     "data_pagamento": "data_pagamento",
     "importo": "importo",
-    "stato": "stato_codice",
-    "distinta": "contabile_codice",
+    "stato_descrizione": "stato_descrizione",
+    "contabile_codice": "contabile_codice",
 }
 
 # Colonne ordinabili dell'elenco delle rate fuori capienza.
@@ -206,7 +219,7 @@ RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
     "motivo": "motivo",
     "residuo": "residuo",
     "importo_rata": "importo_rata",
-    "fattura": "fattura_numero",
+    "fattura_numero": "fattura_numero",
 }
 
 # Colonne ordinabili dell'elenco delle eccedenze da sistemare.
@@ -214,14 +227,39 @@ RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
 #    guardando il cliente (D15-b) — compensare significa mettere insieme due
 #    documenti suoi.
 ECCEDENZE_SORT_COLUMNS: dict[str, str] = {
-    "cliente": "cliente_ragione_sociale",
+    "cliente_ragione_sociale": "cliente_ragione_sociale",
     "eccedenza_cliente": "eccedenza_cliente",
     "eccedenza": "eccedenza",
     "fattura_data": "fattura_data",
-    "fattura": "fattura_numero",
+    "fattura_numero": "fattura_numero",
 }
 
-_ENTE_INCASSO_SELECT = """
+# ⭐ La utility di un conto: si legge nei DUE punti in cui si sceglie un conto —
+# l'elenco dei conti agganciabili e il canale che ne ha gia' uno — perche' un
+# elenco che non la dice fa scegliere il conto del gas al posto di quello
+# dell'energia, e chi sbaglia se ne accorge dopo (BE-11).
+# ⛔ NON e' una colonna di `enti_incasso`: la utility e' un fatto del CONTO, e
+#    dichiararla anche sul canale sarebbe una seconda sede.
+# ⚠️ Non si passa da `anagrafiche.vw_istanze_utilities_dettaglio` benche' la
+#    porti: quella vista descrive l'istanza col suo INDIRIZZO — sei join, due
+#    dei quali su viste di indirizzo che PostgreSQL non pota. Misurato con
+#    EXPLAIN il 2026-08-27 sull'elenco dei conti: **928.86 contro 6.10**, per
+#    decodificare una parola. La catena diretta e' anche la forma gia' in uso
+#    in `BillingAccountRepository.search_lookup`.
+# ⚠️ La descrizione e' NULL in DUE casi legittimi, e sono diversi: il conto non
+#    ha istanza (`istanza_utility_id` e' nullable: e' il conto generico del
+#    ruolo, cfr. `uq_src_bancari_..._no_istanza`), oppure l'istanza non ha PDP.
+#    ⛔ A video NULL non e' un buco: e' «nessuna utility», e va reso come tale.
+# ⚠️ Chi lo innesta usa una f-string: una graffa LETTERALE nell'SQL (un
+#    `'{}'::jsonb`) andrebbe raddoppiata. Il difetto sarebbe rumoroso — errore
+#    all'import, l'applicazione non parte — non silenzioso.
+_UTILITY_DEL_CONTO_JOIN = """
+      LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = src.istanza_utility_id
+      LEFT JOIN anagrafiche.pdp p ON p.id = iu.pdp_id
+      LEFT JOIN config.utilities u ON u.id = p.utility_id
+"""
+
+_ENTE_INCASSO_SELECT = f"""
     SELECT
         e.id, e.codice, e.codice_interno, e.descrizione, e.tipo, e.attivo,
         e.centro_riscossione_id,
@@ -233,12 +271,15 @@ _ENTE_INCASSO_SELECT = """
         cb.iban            AS conto_iban,
         src.uso            AS conto_uso,
         src.soggetto_ruolo_id AS conto_soggetto_ruolo_id,
+        src.istanza_utility_id AS conto_istanza_utility_id,
+        u.descrizione      AS conto_utility_descrizione,
         e.formato_flusso, e.regole_match, e.meta
       FROM pagamenti.enti_incasso e
       LEFT JOIN pagamenti.centri_riscossione cr ON cr.id = e.centro_riscossione_id
       LEFT JOIN anagrafiche.soggetti_ruoli_conti_bancari src
              ON src.id = e.soggetto_ruolo_conto_bancario_id
       LEFT JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+      {_UTILITY_DEL_CONTO_JOIN}
 """
 
 # Le colonne aggiornabili di un canale. ⛔ `codice_interno` NON c'e': e' la
@@ -251,6 +292,12 @@ _COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
 )
 
 # Colonne ordinabili dell'elenco dei canali di incasso.
+# ⚠️ QUESTA E' ANCORA CHIAVATA SUI CODICI LOGICI, ed e' legittimo **finche'**
+#    l'elenco non diventa una `<ListaConfigurabile>`: non ha un seed in
+#    `ui.lista_colonna`, quindi nessuno le manda un `campo_sorgente` e nessun
+#    presidio la copre. ⛔ Il giorno in cui la schermata dei canali si monta sul
+#    BB, `centro` va riscritta come `centro_descrizione` — o l'intestazione
+#    rispondera' **400** al click, come sarebbe successo alle altre quattro.
 ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
     "descrizione": "descrizione",
@@ -986,7 +1033,7 @@ class PagamentiRepository:
     #    una svista del modello: e' quella garanzia.
     def list_conti_incasso(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
         self._guard_canale_sistema("list_conti_incasso")
-        sql = """
+        sql = f"""
             SELECT src.id            AS soggetto_ruolo_conto_bancario_id,
                    src.soggetto_ruolo_id,
                    src.predefinito,
@@ -994,9 +1041,14 @@ class PagamentiRepository:
                    cb.id             AS conto_bancario_id,
                    cb.iban,
                    cb.bic_swift,
-                   cb.intestatario_predefinito
+                   cb.intestatario_predefinito,
+                   -- ⭐ La utility del conto: qui e' la tendina in cui si SCEGLIE,
+                   --    quindi e' il punto in cui non dirla fa sbagliare (BE-11).
+                   src.istanza_utility_id AS conto_istanza_utility_id,
+                   u.descrizione     AS conto_utility_descrizione
               FROM anagrafiche.soggetti_ruoli_conti_bancari src
               JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+              {_UTILITY_DEL_CONTO_JOIN}
              WHERE src.soggetto_ruolo_id = %s
                AND src.uso = 'INCASSO'
                AND src.bloccato IS NOT TRUE

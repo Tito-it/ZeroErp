@@ -288,6 +288,13 @@
     "pratiche": {
       "home": "Cases Home",
       "gestione": "Case Management"
+    },
+    "pagamenti": {
+      "distinte": "Collection sheets",
+      "coda-abbinare": "To match",
+      "coda-sospese": "On hold",
+      "rate-fuori-capienza": "Beyond capacity",
+      "eccedenze": "Excess amounts"
     }
   },
   "config_panel": {
@@ -3580,7 +3587,23 @@
       "col_ente_descrizione": "Collection channel",
       "col_data_registrazione": "Posting date",
       "col_data_conferma": "Posted at",
-      "col_user_conferma": "Posted by"
+      "col_user_conferma": "Posted by",
+      "titolo_singolare": "Collection sheet",
+      "solo_consultazione": "This screen is read-only: opening a sheet, entering lines, matching them to instalments and posting are coming in the next round.",
+      "nessuna_distinta": "No collection sheets",
+      "nessuna_riga": "This sheet has no lines yet",
+      "filtro_stato": "Status",
+      "filtro_origine": "Origin",
+      "filtro_centro": "Collection centre",
+      "filtro_canale": "Collection channel",
+      "origine_manuale": "Manual",
+      "origine_automatica": "Automatic",
+      "origine_generata": "Generated",
+      "sezione_quadratura": "Reconciliation",
+      "sezione_registrazione": "Posting",
+      "sezione_righe": "Lines",
+      "quadratura_non_applicabile": "No declared amount",
+      "quadra": "Balanced"
     },
     "righe": {
       "col_data_pagamento": "Payment date",
@@ -3597,7 +3620,11 @@
       "col_motivo_forzatura": "Forcing reason",
       "col_contabile_data": "Batch date",
       "col_contabile_origine": "Batch origin",
-      "col_data_valuta": "Value date"
+      "col_data_valuta": "Value date",
+      "forzata": "Forced",
+      "coda_da_abbinare": "To match",
+      "coda_sospese": "On hold",
+      "coda_vuota": "No lines in this queue"
     },
     "rate_fuori_capienza": {
       "col_motivo": "Reason",
@@ -3612,7 +3639,12 @@
       "col_in_lavorazione": "In progress",
       "col_motivi_forzatura": "Reasons",
       "col_anno": "Year",
-      "col_serie": "Series"
+      "col_serie": "Series",
+      "filtro_motivo": "Reason",
+      "motivo_sovra_incassata": "Over-collected",
+      "motivo_movimento_contrario": "Opposite movement",
+      "di_troppo": "{importo} in excess",
+      "nessuna_rata": "No instalments beyond capacity"
     },
     "eccedenze": {
       "col_cliente": "Customer",
@@ -3625,7 +3657,11 @@
       "col_sistemazioni_in_bozza": "Draft actions",
       "col_sistemazioni_confermate": "Confirmed actions",
       "col_residuo": "Balance",
-      "col_totale_a_pagare": "Document total"
+      "col_totale_a_pagare": "Document total",
+      "filtro_credito": "Who is in credit",
+      "credito_cliente": "Customer",
+      "credito_azienda": "Company",
+      "nessuna_eccedenza": "No excess to settle"
     }
   },
   "dash_mesi": {

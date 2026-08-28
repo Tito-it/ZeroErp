@@ -288,6 +288,13 @@
     "pratiche": {
       "home": "Home Pratiche",
       "gestione": "Gestione Pratiche"
+    },
+    "pagamenti": {
+      "distinte": "Distinte",
+      "coda-abbinare": "Da abbinare",
+      "coda-sospese": "Sospese",
+      "rate-fuori-capienza": "Rate fuori capienza",
+      "eccedenze": "Eccedenze"
     }
   },
   "config_panel": {
@@ -3580,7 +3587,23 @@
       "col_ente_descrizione": "Canale",
       "col_data_registrazione": "Data registrazione",
       "col_data_conferma": "Registrata il",
-      "col_user_conferma": "Registrata da"
+      "col_user_conferma": "Registrata da",
+      "titolo_singolare": "Distinta contabile",
+      "solo_consultazione": "Questa schermata e' di sola consultazione: l'apertura di una distinta, la digitazione delle righe, l'abbinamento alle rate e la registrazione arrivano nel prossimo giro.",
+      "nessuna_distinta": "Nessuna distinta contabile",
+      "nessuna_riga": "Questa distinta non ha ancora righe",
+      "filtro_stato": "Stato",
+      "filtro_origine": "Origine",
+      "filtro_centro": "Centro di riscossione",
+      "filtro_canale": "Canale di incasso",
+      "origine_manuale": "Manuale",
+      "origine_automatica": "Automatica",
+      "origine_generata": "Generata",
+      "sezione_quadratura": "Quadratura",
+      "sezione_registrazione": "Registrazione",
+      "sezione_righe": "Righe",
+      "quadratura_non_applicabile": "Nessun importo dichiarato",
+      "quadra": "Quadra"
     },
     "righe": {
       "col_data_pagamento": "Data pagamento",
@@ -3597,7 +3620,11 @@
       "col_motivo_forzatura": "Motivo forzatura",
       "col_contabile_data": "Data distinta",
       "col_contabile_origine": "Origine distinta",
-      "col_data_valuta": "Valuta"
+      "col_data_valuta": "Valuta",
+      "forzata": "Forzata",
+      "coda_da_abbinare": "Da abbinare",
+      "coda_sospese": "Sospese",
+      "coda_vuota": "Nessuna riga in questa coda"
     },
     "rate_fuori_capienza": {
       "col_motivo": "Motivo",
@@ -3612,7 +3639,12 @@
       "col_in_lavorazione": "In lavorazione",
       "col_motivi_forzatura": "Motivi",
       "col_anno": "Anno",
-      "col_serie": "Serie"
+      "col_serie": "Serie",
+      "filtro_motivo": "Motivo",
+      "motivo_sovra_incassata": "Sovra-incassata",
+      "motivo_movimento_contrario": "Movimento contrario",
+      "di_troppo": "{importo} di troppo",
+      "nessuna_rata": "Nessuna rata fuori capienza"
     },
     "eccedenze": {
       "col_cliente": "Cliente",
@@ -3625,7 +3657,11 @@
       "col_sistemazioni_in_bozza": "Atti in bozza",
       "col_sistemazioni_confermate": "Atti confermati",
       "col_residuo": "Residuo",
-      "col_totale_a_pagare": "Totale documento"
+      "col_totale_a_pagare": "Totale documento",
+      "filtro_credito": "Chi e' in credito",
+      "credito_cliente": "Cliente",
+      "credito_azienda": "Azienda",
+      "nessuna_eccedenza": "Nessuna eccedenza da sistemare"
     }
   },
   "dash_mesi": {
