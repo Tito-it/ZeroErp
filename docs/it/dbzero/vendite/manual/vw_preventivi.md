@@ -11,33 +11,87 @@
 
 ### 🎯 Scopo Principale
 
-(rev 15-05-2026)
+(rev 15-05-2026 · aggiornata 2026-08-28)
 
 `vendite.vw_preventivi` e' il **wrapper standard di `vendite.preventivi`** da usare
 lato BE per ogni query che necessita di sapere se una revisione e' la corrente per
-il proprio numero. Espone tutti i campi della tabella piu' la colonna derivata `is_attiva`.
+il proprio numero. Espone tutti i campi della tabella piu' **quattro** colonne
+derivate: `is_attiva`, `is_superata`, `is_abortito`, `has_next_revisione`.
+
+⚠️ Il nome `is_attiva` risponde alla domanda composta («e' l'ultima **e** non e'
+annullata»). Se la domanda che si sta facendo e' una sola delle due, la colonna da
+usare e' un'altra — sezione seguente.
 
 ---
 
-### Colonna `is_attiva`
+### Le tre colonne derivate — e le DUE domande che rispondono
+
+(rev 2026-08-28 — changeSet `20260828-08`, brief `brief-db-revisione-attiva-due-domande`)
+
+Una revisione puo' non essere «quella buona» per **due ragioni diverse**, che non
+hanno niente a che vedere l'una con l'altra:
+
+| Colonna | Domanda | Espressione |
+| --- | --- | --- |
+| `is_superata` | «qualcuno l'ha **rimpiazzata**?» | esiste una rev con `rev` maggiore e stato **non** abortito, per lo stesso `numero` |
+| `is_abortito` | «e' stata **annullata**?» | lo stato proprio ha `stati_doc_preventivi.is_abortito = TRUE` |
+| `has_next_revisione` | «qualcuno ha **provato** a revisionarla?» | esiste una rev con `rev` maggiore, di **qualunque** stato |
+
+E `is_attiva` e' la composizione delle prime due:
 
 ```sql
-NOT EXISTS (
-    SELECT 1
-      FROM vendite.preventivi p2
-      JOIN config.stati_doc_preventivi s2 ON s2.id = p2.stato_doc_preventivo_id
-     WHERE p2.numero = p.numero
-       AND p2.rev    > p.rev
-       AND s2.is_abortito IS FALSE
-) AS is_attiva
+is_attiva = NOT is_abortito AND NOT is_superata
 ```
 
-**Semantica**: `TRUE` se non esiste una revisione con `rev` maggiore e stato non-abortito
-per lo stesso `numero`. Equivale a "questa e' la revisione viva piu' recente del numero".
+⭐ **«E' l'ultima revisione?» si chiede a `is_superata IS FALSE`**, e da sola. E' il
+motivo per cui le colonne esistono: fino al 2026-08-28 c'era **solo** `is_attiva`,
+che rispondeva alle due domande insieme e in AND — quindi a valle non erano piu'
+separabili. Chi voleva «solo l'ultima revisione» si portava dietro «e non
+annullato», e non poteva farne a meno.
 
-**Proprieta' matematica**: per costruzione e' impossibile che due revisioni dello stesso
-numero abbiano entrambe `is_attiva = TRUE` contemporaneamente. Se rev B > rev A con
-`is_abortito = FALSE`, allora rev A ha `is_attiva = FALSE` per definizione.
+⚠️ **Le conseguenze erano due, entrambe visibili in interfaccia**:
+
+* la lista preventivi filtra `is_attiva IS TRUE` di default, percio' il filtro di
+  stato «Annullato» non poteva restituire **niente** — mai, per costruzione. Un
+  documento annullato spariva del tutto e riappariva solo col toggle «Mostra
+  storico revisioni», che pero' promette un'altra cosa: *un annullato non e' una
+  revisione storica*;
+* `PreventiviDrawer.vue` leggeva `!is_attiva` come «revisione superata» e forzava
+  il readonly. Su un annullato che e' l'**ultima** revisione del numero, quel
+  banner e' una frase falsa: nessuno l'ha superato.
+
+⚠️ **`is_superata` e `has_next_revisione` non sono la stessa cosa**, ed e' la
+distinzione che regge il flusso «ho sbagliato a revisionare, annullo e torno a
+operare sul predecessore»:
+
+| Caso | `has_next_revisione` | `is_superata` | `is_attiva` |
+| --- | --- | --- | --- |
+| rev 0 EMESSO, rev 1 DRAFT | `TRUE` | `TRUE` | `FALSE` |
+| rev 0 EMESSO, rev 1 ANNULLATO | `TRUE` | **`FALSE`** | `TRUE` |
+
+Una revisione abortita **non rimpiazza nessuno**: il predecessore torna a essere
+la revisione viva del numero.
+
+⛔ `has_next_revisione` era gia' calcolata a mano dal backend
+(`preventivi_repository.get_preventivo`, come `has_next_revision`): stessa logica
+in due posti, e uno dei due fuori dal database. Ora la sede e' una sola.
+
+---
+
+### Perche' `is_attiva` e' *derivata* dalle due componenti
+
+Nella vista `is_attiva` non e' riscritta a parte: e' calcolata da `is_abortito` e
+`is_superata` (un `CROSS JOIN LATERAL` le produce una volta sola). Cosi' **non
+puo' driftare** da loro. Riscriverla in parallelo avrebbe ricreato, dentro la
+stessa vista, esattamente il difetto che questo cantiere sta togliendo: due sedi
+per lo stesso fatto.
+
+**Proprieta' matematica (invariata)**: e' impossibile che due revisioni dello
+stesso numero abbiano entrambe `is_attiva = TRUE`. Il termine sullo stato proprio
+— aggiunto dal changeSet `20260708-07` — e' cio' che la garantisce anche quando
+l'abortita e' in cima alla catena, e **resta**. Il difetto corretto nel 2026-08-28
+non e' che `is_attiva` sbagliasse: e' che non c'era nessun'altra colonna a cui
+chiedere una sola delle due domande.
 
 ---
 
@@ -77,20 +131,24 @@ l'intera negoziazione del numero — non solo la revisione — e non sono aborti
 
 ### Quando usarla
 
-| Caso d'uso | Vista consigliata |
+| Caso d'uso | Vista / colonna |
 | --- | --- |
-| Detail preventivo (tutti i campi + is_attiva) | `vw_preventivi` |
-| Lista preventivi con join cliente/stato/utility | `vw_preventivi_list` |
+| Detail preventivo (tutti i campi + i flag di revisione) | `vw_preventivi` |
+| Lista preventivi con join cliente/stato/utility | `vw_preventivi_lista` (la `vw_preventivi_list` e' stata rimossa dal `20260603-09`) |
+| «Mostra **solo l'ultima revisione**» | `is_superata IS FALSE` — **non** `is_attiva` |
+| «Il documento e' vivo e corrente» (cruscotti, resolver) | `is_attiva IS TRUE` |
+| «Qualcuno ha provato a revisionarla» (diagnostica) | `has_next_revisione` |
 | INSERT / UPDATE | `vendite.preventivi` direttamente (le viste non sono aggiornabili) |
-| Query interne DB senza is_attiva | `vendite.preventivi` direttamente |
+| Query interne DB senza flag di revisione | `vendite.preventivi` direttamente |
 
 ---
 
 ### Performance
 
-Il `NOT EXISTS` usa l'indice `uq_preventivi_numero_rev` su `(numero, rev)`: cerca
+I tre `EXISTS` usano l'indice `uq_preventivi_numero_rev` su `(numero, rev)`: cercano
 per `numero = ?` e `rev > ?`, operazione O(log N) sul numero di revisioni per numero.
-In pratica ogni numero ha poche revisioni — costo trascurabile.
+In pratica ogni numero ha poche revisioni — costo trascurabile. Il `LATERAL` li
+valuta **una volta per riga**, non una volta per colonna esposta.
 
 ---
 

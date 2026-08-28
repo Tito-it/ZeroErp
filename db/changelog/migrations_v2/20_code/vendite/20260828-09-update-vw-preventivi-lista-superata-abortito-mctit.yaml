@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE 2b — LE DUE DOMANDE ARRIVANO ALLA LISTA
+#   vendite.vw_preventivi_lista
+#   Piano: brief-db-revisione-attiva-due-domande, §5.3
+#
+# ── ⚠️ PERCHE' SERVE ANCHE QUI ───────────────────────────────────────
+#   La lista preventivi non legge vw_preventivi: legge questa vista, ed e' qui
+#   che il repository BE applica `is_attiva IS TRUE` quando il toggle «Mostra
+#   storico revisioni» e' spento. Le tre colonne aggiunte dal 20260828-08 non
+#   arrivano da sole — una vista non propaga cio' che non nomina.
+#
+# ── ⭐ COSA CAMBIA PER CHI LEGGE ─────────────────────────────────────
+#   Il toggle «Mostra storico revisioni» promette una cosa sola: nascondere le
+#   revisioni che qualcuno ha rimpiazzato. Il predicato che lo dice e'
+#   `is_superata IS FALSE`, non `is_attiva IS TRUE` — quest'ultimo nasconde ANCHE
+#   gli annullati, che non sono revisioni storiche e che nessun filtro di stato
+#   puo' piu' riportare a galla.
+#   ⛔ Il DB qui non decide: espone. La commutazione del filtro di default e'
+#   del BE (preventivi_repository), ed e' scritta come richiesta nel brief §7.
+#
+# ── ⚠️ NESSUNA COLONNA ESISTENTE CAMBIA ─────────────────────────────
+#   Stessi nomi, stesso ordine, stessi valori — `is_attiva` compresa. Le tre
+#   colonne nuove vanno in coda: un CREATE OR REPLACE VIEW ammette solo l'append,
+#   e la posizione non conta per chi seleziona per nome.
+#   ⚠️ Il catalogo liste (ui.lista_colonna, lista_id=5) non referenzia nessuna
+#   delle tre: nulla da riseminare, e il trigger che valida `campo_sorgente`
+#   contro le colonne della vista resta verde (le colonne si aggiungono).
+#
+# ── ⛔ security_invoker=on VA RI-SPECIFICATA ─────────────────────────
+#   PostgreSQL la AZZERA su un CREATE OR REPLACE VIEW che non la ripete. E' nel
+#   testo qui sotto.
+#
+# ⚠️ Definizione ripresa dalla doc auto-gen (l'oggetto VIVO). L'unica differenza
+#   sono le tre colonne in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-09-update-vw-preventivi-lista-superata-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260828-09-update-vw-preventivi-lista-superata-abortito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        brief-db-revisione-attiva-due-domande §5.3: vw_preventivi_lista propaga is_superata,
+        is_abortito e has_next_revisione da vw_preventivi (20260828-08). Serve al toggle
+        «Mostra storico revisioni», che deve poter chiedere «solo l'ultima revisione»
+        (is_superata IS FALSE) senza chiedere anche «e non annullato» — oggi impossibile,
+        percio' il filtro di stato «Annullato» non puo' restituire nulla. Nessuna colonna
+        esistente cambia nome, ordine o valore.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_preventivi_lista
+          - sqlCheck:
+              expectedResult: 3
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'vendite'
+                   AND table_name   = 'vw_preventivi'
+                   AND column_name IN ('is_superata', 'is_abortito', 'has_next_revisione')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_lista
+              WITH (security_invoker = on) AS
+              SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdp.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  -- Le due componenti di is_attiva, separate (20260828-08).
+                  -- «Solo l'ultima revisione» = is_superata IS FALSE.
+                  -- «Non annullato»           = is_abortito IS FALSE.
+                  p.is_superata,
+                  p.is_abortito,
+                  -- Esiste una rev superiore di QUALUNQUE stato: e' il
+                  -- predicato «qualcuno ha provato a revisionarla», non
+                  -- «qualcuno l'ha rimpiazzata».
+                  p.has_next_revisione
+                 FROM ((((((((((vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = p.billing_account_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = p.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = p.utility_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = p.valuta_id)))
+                   LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE (((sorgenti.codice_interno)::text = 'PREVENTIVO'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (p.uid)::text))));
+
+              COMMENT ON VIEW vendite.vw_preventivi_lista IS
+                  'Vista flat canonica preventivi per la lista UI configurabile '
+                  '(vendite.preventivi). Nomi canonici (ragione_sociale_completa, '
+                  'id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Dal 2026-08-28 espone '
+                  'anche le DUE componenti di is_attiva come colonne proprie: is_superata '
+                  '(rimpiazzata da una rev superiore viva — il complemento e'' «e'' l''ultima '
+                  'revisione») e is_abortito (annullato), piu'' has_next_revisione. Il toggle '
+                  '«Mostra storico revisioni» si scrive is_superata IS FALSE: is_attiva '
+                  'nasconde anche gli annullati e rende vuoto per costruzione il filtro di '
+                  'stato «Annullato». Pura denormalizzazione: nessuno scope/filtro/paginazione '
+                  '(restano nel repository consumer). security_invoker=on (RLS-ready). '
+                  'Soggetto via istanze_utilities (1 join, valorizzato anche per prospect).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino NON gestito qui: un CREATE OR REPLACE VIEW non sa
+              -- TOGLIERE colonne, e la vista e' referenziata da
+              -- ui.lista_definizione (codice 'vendite.preventivi') — un DROP la
+              -- staccherebbe dal catalogo liste. Se serve tornare indietro:
+              -- changeSet dedicato con numerazione successiva.
+              SELECT 1;

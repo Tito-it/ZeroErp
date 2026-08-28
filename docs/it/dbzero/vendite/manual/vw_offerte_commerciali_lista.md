@@ -78,23 +78,57 @@ diventa un dato di dominio unico e testabile.
 
 ---
 
-### Colonne derivate — `is_attiva` e `has_next_revisione` (invariate)
+### ⭐ Colonne derivate — le DUE domande, separate (rev 2026-08-28)
 
 ```sql
-sdo.codice_interno NOT IN ('SUPERATA', 'ANNULLATA')                       AS is_attiva
+sdo.is_superato AS is_superata          -- «rimpiazzata da una revisione successiva?»
+sdo.is_abortito                          -- «annullata?»
+(NOT sdo.is_superato AND NOT sdo.is_abortito)  AS is_attiva
 EXISTS (SELECT 1 FROM vendite.offerte_commerciali f
-         WHERE f.revisione_padre_id = o.id)                               AS has_next_revisione
+         WHERE f.revisione_padre_id = o.id)    AS has_next_revisione
 ```
 
-* **`is_attiva`** — `TRUE` se l'offerta non è superata da una revisione
-  successiva né annullata (semantica garantita dal trigger
-  `trgfn_offerte_commerciali_revisione`, `_z90_ AFTER INSERT`). Costo O(1).
-  > *Edge case noto*: se l'ultima revisione di un lineage viene annullata senza
-  > successore, il padre resta SUPERATA e nessuna offerta del lineage risulta
-  > `is_attiva` — limite del modello trigger attuale, fuori scope.
-* **`has_next_revisione`** — `TRUE` se esiste almeno un figlio (qualunque stato):
-  alimenta il toggle UI «mostra storico revisioni». Efficiente grazie all'indice
-  parziale `ix_offerte_commerciali_revisione_padre`.
+Fino al 2026-08-28 `is_attiva` era scritta cosi':
+
+```sql
+sdo.codice_interno NOT IN ('SUPERATA', 'ANNULLATA')   -- ⛔ due domande, un flag
+```
+
+⛔ **Il difetto non era il valore, era che le due domande non erano piu'
+separabili.** La lista offerte filtra `is_attiva IS TRUE` di default
+(`offerte_repository`, parametro `solo_attiva`): un'offerta ANNULLATA non era
+raggiungibile da **nessun** filtro di stato, e riappariva solo col toggle «storico
+revisioni» — che promette di nascondere le revisioni *rimpiazzate*, non gli
+annullamenti. Stesso difetto, e stessa correzione, dei preventivi
+(`vw_preventivi`, changeSet `20260828-08`).
+
+| Cosa si vuole chiedere | Predicato |
+| --- | --- |
+| «solo l'ultima revisione» (toggle storico OFF) | `is_superata IS FALSE` |
+| «l'offerta e' viva e corrente» | `is_attiva IS TRUE` |
+| «le annullate» (filtro di stato) | `stato_codice_interno = 'ANNULLATA'`, che ora **trova** qualcosa |
+
+⚠️ **Nessun valore e' cambiato.** `is_superato` e' `true` sul solo `SUPERATA`,
+`is_abortito` sul solo `ANNULLATA`: la nuova espressione seleziona esattamente le
+stesse righe del letterale precedente. Il guadagno e' che la vista **non nomina
+piu' nessuno stato** — il significato di `SUPERATA` sta ora dove stanno gia'
+`fase`, `esito` e `terminale`, cioe' in
+[config.stati_doc_offerte](/dbzero/config/tabelle/stati_doc_offerte).
+
+* **`is_superata`** — semantica garantita dal trigger
+  `trgfn_offerte_commerciali_revisione` (`_z90_ AFTER INSERT`), che porta il padre
+  in `SUPERATA` quando nasce la revisione successiva. Costo O(1).
+  > ⚠️ *Limite noto, invariato*: se l'ultima revisione di un lineage viene
+  > annullata **senza successore**, il padre resta `SUPERATA` e nessuna offerta
+  > del lineage risulta attiva. E' un limite del modello a trigger (lo stato non
+  > rifluisce all'indietro), non della vista: qui `is_superata` continua a dire
+  > cio' che il modello ha scritto. Nei preventivi la stessa domanda e' derivata
+  > dalla relazione e il caso non si presenta — asimmetria tracciata nel brief
+  > `brief-db-revisione-attiva-due-domande` §8.2.
+* **`has_next_revisione`** — `TRUE` se esiste almeno un figlio (qualunque stato).
+  Diverso da `is_superata`: dice «qualcuno ha **provato** a revisionarla», non
+  «qualcuno l'ha **rimpiazzata**». Efficiente grazie all'indice parziale
+  `ix_offerte_commerciali_revisione_padre`.
 
 ---
 
@@ -116,7 +150,7 @@ EXISTS (SELECT 1 FROM vendite.offerte_commerciali f
 ### 📑 Campi chiave esposti
 
 * **Identificatori**: `id`, `uid`, `codice`, `revisione_numero`, `revisione_padre_id`
-* **Flag revisione**: **`is_attiva`**, **`has_next_revisione`**
+* **Flag revisione**: **`is_attiva`**, **`is_superata`**, **`is_abortito`**, **`has_next_revisione`**
 * **Stato**: `stato_doc_offerta_id`, **`stato_codice_interno`** (severity Tag FE), `stato_descrizione`
 * **Scadenza**: **`is_scaduta`** (badge FE, gating per stato lato frontend)
 * **Cliente (via istanza)**: `billing_account_id`, **`ba_codice`**, `soggetto_id`, **`ragione_sociale_completa`**, **`id_fiscale_univoco_cf_piva`**
@@ -152,7 +186,7 @@ L'attributo **`priorita`** governa il ritiro dinamico: resistono `cliente` (95),
 ```sql
 -- Lista offerte attive per un emittente, con listino e flag scadenza
 SELECT id, codice, revisione_numero,
-       is_attiva, is_scaduta,
+       is_attiva, is_superata, is_abortito, is_scaduta,
        stato_codice_interno, ragione_sociale_completa, id_fiscale_univoco_cf_piva,
        ba_codice, utility_codice,
        listino_codice, listino_versione_codice,
@@ -160,6 +194,16 @@ SELECT id, codice, revisione_numero,
   FROM vendite.vw_offerte_commerciali_lista
  WHERE emittente_fiscale_id = 1
    AND is_attiva = TRUE
+ ORDER BY validita_dal DESC, id;
+```
+
+```sql
+-- Toggle «Mostra storico revisioni» OFF = solo l'ultima revisione del lineage.
+-- ⚠️ is_superata, NON is_attiva: quest'ultima nasconderebbe anche le annullate,
+--    e il filtro di stato «Annullata» tornerebbe vuoto per costruzione.
+SELECT id, codice, revisione_numero, stato_codice_interno, ragione_sociale_completa
+  FROM vendite.vw_offerte_commerciali_lista
+ WHERE is_superata IS FALSE
  ORDER BY validita_dal DESC, id;
 ```
 

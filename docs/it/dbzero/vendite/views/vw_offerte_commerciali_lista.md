@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista flat canonica e self-contained offerte commerciali per la lista UI configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice). Assorbe listino_codice/listino_versione_codice/valuta_codice (JOIN gia' nel repository) e materializza is_scaduta (validita_al scaduta; gating per stato lato FE). Pura denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). is_attiva = non SUPERATA/ANNULLATA; has_next_revisione = EXISTS figlio. Sostituisce vw_offerte_commerciali_list (deprecata, drop differito post-BE).
+> Vista flat canonica e self-contained offerte commerciali per la lista UI configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice). Assorbe listino_codice/listino_versione_codice/valuta_codice e materializza is_scaduta (validita_al scaduta; gating per stato lato FE). Pura denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). Dal 2026-08-28 le due domande sono colonne distinte: is_superata (= stati_doc_offerte.is_superato, rimpiazzata da una revisione successiva) e is_abortito (= stati_doc_offerte.is_abortito, annullata); is_attiva = NOT is_superata AND NOT is_abortito — stessi valori del precedente letterale NOT IN ('SUPERATA','ANNULLATA'), ora scritti sul catalogo. «Solo l'ultima revisione» si chiede a is_superata IS FALSE. has_next_revisione = EXISTS figlio (qualunque stato).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -15,7 +15,7 @@ SELECT o.id,
     o.codice,
     o.revisione_numero,
     o.revisione_padre_id,
-    ((sdo.codice_interno)::text <> ALL (ARRAY[('SUPERATA'::character varying)::text, ('ANNULLATA'::character varying)::text])) AS is_attiva,
+    ((NOT sdo.is_superato) AND (NOT sdo.is_abortito)) AS is_attiva,
     (EXISTS ( SELECT 1
            FROM vendite.offerte_commerciali figlio
           WHERE (figlio.revisione_padre_id = o.id))) AS has_next_revisione,
@@ -61,7 +61,9 @@ SELECT o.id,
     lin.frontiera_stato_codice_interno,
     lin.frontiera_fase,
     lin.n_discendenti_attivi,
-    lin.is_transitato
+    lin.is_transitato,
+    sdo.is_superato AS is_superata,
+    sdo.is_abortito
    FROM ((((((((((((vendite.offerte_commerciali o
      JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
