@@ -254,6 +254,133 @@ CREATE FUNCTION pagamenti.fn_crea_distinta_correzione(
 
 ---
 
+## 5. ✅ Risposte del team DB — misurate il 2026-08-28
+
+> ⭐ **La diagnosi di §1 regge**: `enti_incasso` non ha row security, la tabella
+> porta dato **per emittente**, e la funzione giusta esiste già. Il piano è
+> **§2.3-quater e §6.17** del [piano DB](brief-db-posting-e-abbinamento-rata.md).
+> Qui stanno le risposte, e **tre correzioni** che cambiano cosa si scrive.
+
+### 5.1 🔴 La policy proposta, così com'è, rende la tabella NON SCRIVIBILE
+
+⛔ È la cosa più importante di questa risposta. Una policy `FOR ALL` **senza**
+`WITH CHECK` usa la `USING` anche per le righe nuove. E la `USING` proposta
+chiede `fn_scope_ef_whitelist_via_ente_incasso(user, id)`, che risolve
+l'emittente **rileggendo `enti_incasso` per quell'id**.
+
+⚠️ **Il motivo vero non è che «l'id non esiste ancora»** (§1.3): l'id c'è, lo
+mette il default prima del controllo. È che **la riga non è ancora visibile** a
+una query che parte da dentro lo stesso comando — la funzione risolve `NULL`,
+la canonica risponde `false`, e ogni `INSERT` viene rifiutato. È la stessa
+famiglia della trappola RLS+CTE già pagata dal progetto: *chi legge dentro il
+comando che scrive non vede ciò che quel comando sta scrivendo*.
+
+⭐ **Il rimedio è più semplice della diagnosi**: un predicato **solo**, scritto
+sul **conto** — che è una colonna della riga (`NOT NULL`) e punta a una tabella
+senza row security. Vale identico in lettura e in scrittura, quindi `USING` e
+`WITH CHECK` dicono la stessa cosa e non ci sono due formulazioni della stessa
+regola da tenere allineate.
+
+```sql
+-- La forma che il piano DB realizza (S6-1).
+USING / WITH CHECK:
+    current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+    AND EXISTS (
+        SELECT 1 FROM anagrafiche.soggetti_ruoli_conti_bancari src
+         WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+           AND script.fn_scope_ef_whitelist_via_sr(
+                   NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                   src.soggetto_ruolo_id))
+```
+
+✅ `fn_scope_ef_whitelist_via_ente_incasso` **resta** e non è sprecata: la usa la
+policy di `vendite_contabili`, dove l'`ente_incasso_id` è una colonna della riga
+e il giro non si richiude su sé stesso.
+
+### 5.2 ⚠️ Un buco che la policy nuova EREDITA, e che non è suo
+
+`script.fn_check_user_emittente_scope` risponde **`true`** con
+`p_auth_user_id` a `NULL` — lo avete scritto in §1.4 per la vostra lettura, ma
+vale anche **dentro le policy**: se `app.current_user_id` è vuota, il predicato
+di scope diventa vero e l'unico cancello rimasto è il primo congiunto
+(`ruolo_applicativo = 'OPERATORE'`).
+
+⚠️ **Non è un difetto introdotto da questa policy: ce l'hanno tutte e quattro
+quelle già in esercizio.** Lo si scrive perché una policy in più su uno stampo
+condiviso è il momento in cui lo stampo va guardato, non perché blocchi
+qualcosa. ⛔ Non si «corregge» in questo giro: cambiare la regola 1 di quella
+funzione tocca ogni percorso batch del progetto, ed è un cantiere suo.
+
+### 5.3 ✅ P-2 — risposta dal modello, non dall'opinione
+
+`pagamenti.centri_riscossione` **non ha nessuna colonna di emittente**: `id,
+codice, codice_interno, descrizione, is_compensazione, is_fondo_fattura, attivo,
+meta` più l'audit. ⇒ I centri sono **condivisi per costruzione**, non per scelta
+non rivista: non c'è nessun secondo difetto, e la tendina dell'apertura distinta
+non propone niente di altrui. ⛔ Nessuna policy: metterla vorrebbe dire prima
+inventare un proprietario che il modello non ha.
+
+### 5.4 🔵 P-1 — `sepa_mandati`: sì un giorno, ma **non con quel predicato**
+
+⚠️ La somiglianza con `enti_incasso` è apparente e porta fuori strada.
+`soggetto_ruolo_conto_id` su un mandato è il conto **da addebitare**, cioè quello
+del **cliente**: risolvere l'emittente da lì darebbe il cliente, non
+l'emittente. Il commento della tabella lo dice — *«legati a conto di ruolo e
+perimetro **BA/istanza utility**»* — e il perimetro giusto è quello del
+**billing account**, come per le fatture.
+
+📊 Misurato: **0 righe**, **zero** consumatori in `backend/` e `frontend/`, un
+solo trigger di guard nel database. ⇒ **Non adesso**: una policy su una tabella
+che nessuno legge non protegge niente e fissa un predicato prima che il cantiere
+che la userà abbia deciso la sua forma. Resta il *pezzo di modello orfano* che il
+brief madre dichiara da agosto.
+
+### 5.5 ✅ P-3 — sì, e non è una scelta
+
+Vedi §5.1: senza `WITH CHECK` la tabella non si scrive. Con il predicato sul
+conto, la scrittura è presidiata **gratis** — e impedisce di creare un canale sul
+conto di un altro emittente, che oggi non impedisce nessuno.
+
+### 5.6 🟡 `vendite_contabili_lotti` — misurata, e va bene com'è
+
+È la tabella-ponte fra distinta e lotto: due FK e nient'altro. ⛔ Nessun dato
+proprio, quindi niente da nascondere; e le due tabelle che collega hanno
+entrambe il loro perimetro. ⭐ Ma vale la nota generale: **un ponte senza policy
+dice che un legame esiste**, e su volumi veri quello è già un'informazione. Oggi
+`vendite_contabili` ha 0 righe: si guarderà quando ne avrà.
+
+### 5.7 ⚠️ Una correzione di inquadramento su §1.1
+
+*«Un operatore dell'emittente A vede i conti di incasso dell'emittente B»* — ✅
+sarà vero, **non lo è oggi**: `pagamenti.enti_incasso` ha **0 righe**. ⭐ E la
+conseguenza è a favore: si chiude la porta **prima** che ci passi qualcosa,
+quindi niente bonifica, nessun dato da correggere, e la policy nasce su una
+tabella vuota — il momento più economico che esista per accenderla.
+
+---
+
+### 5.8 📮 Le quattro domande della madre (C-1…C-4)
+
+| | Risposta del team DB | Perché |
+| --- | --- | --- |
+| **C-1** | 🔴 **DOMANDA APERTA — la mia prima risposta era sbagliata, e l'ha smentita la prova** | ⛔ Avevo scritto «già abbinata, e il guard la regge per costruzione». **Falso, misurato il 28/08**: una riga `-100` su una rata **saldata dal movimento che si sta correggendo** viene **RIFIUTATA** — «restano 0.00 da regolare: un importo di -100.00 non ci rientra». R = 0 non è spazio in nessuna direzione, e il commento del guard lo dice. ⇒ «Già abbinata» è possibile **solo** scrivendo anche `forzata = true`, cioè **forzando al posto dell'operatore** — il contrario di ciò per cui il doppio tempo esiste. ⭐ **La misura ha però trovato una quarta strada**, che nessuno dei due aveva visto: la riga nasce con **fattura e rata già compilate** ma in stato **`DA_ABBINARE`** — il guard verifica la capienza *solo* sulle righe in stato postabile, quindi passa. La correzione guida **tutto tranne l'ultimo clic**, e il doppio tempo resta il gesto di una persona. ✅ Provata: accettata. **Decide Tid** |
+| **C-2** | Si **saltano** e l'esito **le conta** | Una riga non postata non ha prodotto movimenti: non c'è niente da correggere. Ma il silenzio lascia l'operatore a chiedersi dove sono finite ⇒ la madre risponde `righe_saltate`, **lo stesso vocabolario di `fn_posta_contabile`**. Un secondo verbo che risponde come il primo si impara una volta sola |
+| **C-3** | Una **colonna** `contabile_corretta_id` su `vendite_contabili`, con FK | ⛔ Non `meta`: un legame che nessuno interroga non è un legame. ⛔ Non `vendite_contabili_lotti`: quella dice «questa distinta appartiene a quel lotto», un'altra cosa. ⭐ Lo stampo esiste già ed è `sistemazioni.contabile_id` con `uq_sistemazioni_contabile`: il documento **nuovo** tiene l'id di quello da cui nasce |
+| **C-4** | **Una sola correzione per distinta**, con un `UNIQUE` parziale sul legame | ⭐ E non blocca il caso vero: se è la **correzione** a essere sbagliata, si corregge **lei** — il legame punta alla correzione, non all'originale, e la catena resta leggibile. Senza il vincolo, due gemelle sullo stesso documento e nessuno sa quale vale |
+
+⚠️ **E una trappola che la firma proposta non vede.** ⛔ La madre **non deve**
+usare `fn_get_or_create_vendite_contabile`: quella è un *get-or-create* la cui
+chiave di riuso, su `MANUALE`, comprende **giornata + canale + operatore** —
+chiamarla farebbe atterrare le righe di correzione **dentro la distinta di
+lavoro di oggi** dell'operatore, mescolando una correzione col lavoro corrente.
+La distinta di correzione è un documento **proprio**: si crea con un `INSERT`.
+
+✅ **E una buona notizia sul modello**: l'unico `CHECK` sull'importo di riga è
+`importo <> 0`. ⇒ Le righe negative **sono già ammesse**: la correzione non
+chiede nessuna modifica di schema oltre alla colonna del legame.
+
+---
+
 ## 4. Registro delle revisioni
 
 | Data | Cosa |

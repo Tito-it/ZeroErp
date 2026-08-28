@@ -1,0 +1,234 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CODA 2b — IL RIENTRO DEL PADRE (l'automatismo)
+#   vendite.trgfn_offerte_commerciali_rientro_padre  (+ trigger _z90_)
+#   Segnalato dal BE il 2026-08-28. Guard e transizione: 20260828-12 + seed.
+#
+# ── ⭐ E' L'INVERSO ESATTO DEL TRIGGER GIA' ESISTENTE ────────────────
+#   trg_offerte_commerciali_z90_revisione_ins (AFTER INSERT) dice: «nasce una
+#   revisione -> il padre e' superato». Qui: «la revisione muore -> il padre non
+#   e' piu' superato». Sono le due meta' della stessa regola, e finora ne
+#   esisteva una sola: il superamento sapeva andare e non sapeva tornare.
+#
+# ── ⭐ PERCHE' UN TRIGGER E NON UNA MADRE ────────────────────────────
+#   L'invariante e' «una revisione abortita non rimpiazza nessuno», e deve
+#   valere per OGNI scrittore: l'endpoint generico di cambio stato, una
+#   correzione a mano, un batch futuro. Una funzione madre coprirebbe solo
+#   chi la chiama — e chi non la chiama lascerebbe di nuovo il lineage morto.
+#   ⚠️ E' anche il motivo per cui la META' che vieta (il guard del -12) sta
+#   dentro il guard di transizione e non qui: una regola e un automatismo sono
+#   cose diverse, e la regola non deve dipendere da chi fa la scrittura.
+#
+# ── ⚠️ LE QUATTRO CONDIZIONI, e nessuna e' decorativa ───────────────
+#   1) lo stato e' appena diventato di annullamento (prima non lo era);
+#   2) la riga E' una revisione (revisione_padre_id NOT NULL);
+#   3) il padre e' in uno stato di superamento — se non lo e', non c'e' niente
+#      da riportare indietro;
+#   4) ⛔ NON esiste un'ALTRA figlia viva dello stesso padre. Oggi il modello
+#      non produce due figlie (creare la seconda richiederebbe il padre in
+#      EMESSA, e la prima l'ha gia' portato a SUPERATA), ma nessun vincolo lo
+#      VIETA: `revisione_padre_id` ha un indice parziale, non uno UNIQUE. Si
+#      progetta su cio' che il modello ammette, non su cio' che oggi capita.
+#
+# ── ⭐ IL RITORNO E' EMESSA, e non e' un indovinello ─────────────────
+#   fn_crea_revisione_offerta rifiuta qualunque sorgente diversa da EMESSA
+#   (E_OFFERTA_REVISIONE_STATO_NON_AMMESSO): un'offerta in stato di superamento
+#   era EMESSA un attimo prima, per guard scritto. Il target si risolve dal
+#   catalogo con guard sull'arita' (zero o due stati EMESSA sono lo stesso
+#   difetto: il catalogo non dice quale).
+#
+# ── ⚠️ RICORSIONE: si spegne da sola ─────────────────────────────────
+#   L'UPDATE del padre riaccende questo stesso trigger sul padre, che pero'
+#   entra in EMESSA — stato non di annullamento — e la condizione (1) lo ferma
+#   alla prima riga. Nessun loop.
+#
+# ── ⚠️ E l'UPDATE del padre PASSA dal guard di transizione ──────────
+#   Quindi serve la riga di seed SUPERATA->EMESSA (80_data, manuale=false) e
+#   serve che il guard del -12 sia gia' in piedi: la figlia in questo momento
+#   risulta gia' annullata (siamo in un AFTER UPDATE), quindi il guard non
+#   trova figlie vive e lascia passare. E' il caso legittimo, verificato dalla
+#   stessa regola che vieta gli altri.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-13-create-trgfn-offerte-rientro-padre-mctit.yaml
+
+  - changeSet:
+      id: 20260828-13-create-trgfn-offerte-rientro-padre
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Coda del cantiere «due domande» (segnalazione BE 2026-08-28): quando una revisione di
+        offerta viene annullata e non resta nessun'altra revisione viva, il padre esce dallo
+        stato di superamento e torna EMESSA. Chiude il limite «ultima revisione annullata
+        senza successore -> il padre resta SUPERATA e nessuna offerta del lineage e' attiva»,
+        allineando le offerte al comportamento che i preventivi hanno per costruzione (una
+        revisione abortita non rimpiazza nessuno). Inverso esatto di
+        trg_offerte_commerciali_z90_revisione_ins.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_offerte'
+                   AND column_name  = 'is_superato'
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM config.codici_errore
+                 WHERE codice = 'E_CONFIG_MANCANTE'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: quando una revisione di offerta viene ANNULLATA e non resta
+              -- nessun'altra revisione viva dello stesso padre, riporta il padre fuori
+              -- dallo stato di superamento (SUPERATA -> EMESSA).
+              -- E' l'inverso di trgfn_offerte_commerciali_revisione, che al nascere della
+              -- revisione porta il padre a SUPERATA: la regola di dominio e' «una revisione
+              -- abortita non rimpiazza nessuno», ed e' la stessa che i preventivi hanno per
+              -- costruzione (li' il superamento e' una relazione, non uno stato).
+              DECLARE
+                  v_padre_superato   boolean;
+                  v_altre_vive       integer;
+                  v_stato_emessa_id  config.stati_doc_offerte.id%TYPE;
+                  v_n_emessa         integer;
+              BEGIN
+                  -- (1) Interessa solo il momento in cui lo stato DIVENTA di annullamento.
+                  --     Un UPDATE che lascia lo stato invariato, o che si muove fra due
+                  --     stati non abortiti, non ha niente a che vedere col rientro.
+                  IF NEW.stato_doc_offerta_id IS NOT DISTINCT FROM OLD.stato_doc_offerta_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = NEW.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) OR EXISTS (
+                      SELECT 1 FROM config.stati_doc_offerte s
+                       WHERE s.id = OLD.stato_doc_offerta_id
+                         AND s.is_abortito IS TRUE
+                  ) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (2) Deve essere una revisione: senza padre non c'e' niente da riportare.
+                  IF NEW.revisione_padre_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (3) Il padre dev'essere effettivamente in uno stato di superamento.
+                  SELECT sp.is_superato
+                    INTO v_padre_superato
+                    FROM vendite.offerte_commerciali p
+                    JOIN config.stati_doc_offerte sp ON sp.id = p.stato_doc_offerta_id
+                   WHERE p.id = NEW.revisione_padre_id;
+
+                  IF NOT COALESCE(v_padre_superato, false) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- (4) ⛔ Nessun'ALTRA figlia viva. Il modello non vieta due revisioni con
+                  --     lo stesso padre (revisione_padre_id ha un indice parziale, non uno
+                  --     UNIQUE): se ce ne fosse un'altra ancora viva, il padre resterebbe
+                  --     superato da quella e riportarlo indietro creerebbe due revisioni
+                  --     vive sullo stesso lineage.
+                  SELECT count(*)
+                    INTO v_altre_vive
+                    FROM vendite.offerte_commerciali f
+                    JOIN config.stati_doc_offerte sf ON sf.id = f.stato_doc_offerta_id
+                   WHERE f.revisione_padre_id = NEW.revisione_padre_id
+                     AND f.id <> NEW.id
+                     AND sf.is_abortito IS FALSE;
+
+                  IF v_altre_vive > 0 THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Stato di ritorno: EMESSA. Non e' una scelta fra tante — e' l'unico
+                  -- stato da cui fn_crea_revisione_offerta ammette di partire, quindi
+                  -- un'offerta superata era EMESSA un attimo prima, per guard scritto.
+                  -- Guard sull'ARITA': zero o due righe sono lo stesso difetto, il
+                  -- catalogo non dice quale.
+                  SELECT count(*), min(s.id)
+                    INTO v_n_emessa, v_stato_emessa_id
+                    FROM config.stati_doc_offerte s
+                   WHERE s.codice_interno = 'EMESSA'
+                     AND s.attivo IS TRUE;
+
+                  IF v_n_emessa <> 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object(
+                              'tabella', 'config.stati_doc_offerte',
+                              'codice',  'EMESSA',
+                              'attesi',  1,
+                              'trovati', v_n_emessa
+                          ),
+                          NEW.tx_id,
+                          'config.stati_doc_offerte: atteso esattamente uno stato attivo '
+                          || 'EMESSA per il rientro del padre, trovati ' || v_n_emessa::text
+                      );
+                  END IF;
+
+                  -- Rientro. Passa dal guard _a10_ di transizione, che verifica sia
+                  -- l'ammissibilita' SUPERATA->EMESSA sia la regola «nessuna revisione
+                  -- figlia viva» (20260828-12). Qui la figlia risulta gia' annullata:
+                  -- siamo in un AFTER UPDATE, la riga e' scritta.
+                  -- ⚠️ Ricorsione: l'UPDATE riaccende questo trigger sul padre, che entra
+                  -- in EMESSA — non abortito — e si ferma alla condizione (1).
+                  UPDATE vendite.offerte_commerciali
+                     SET stato_doc_offerta_id = v_stato_emessa_id
+                   WHERE id = NEW.revisione_padre_id;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()
+              IS 'AFTER UPDATE OF stato_doc_offerta_id su vendite.offerte_commerciali: quando una '
+                 'revisione viene annullata e non resta nessun''altra revisione viva dello stesso '
+                 'padre, riporta il padre da SUPERATA a EMESSA. Inverso di '
+                 'trgfn_offerte_commerciali_revisione. Chiude il limite «ultima revisione annullata '
+                 'senza successore -> nessuna offerta del lineage attiva» e allinea le offerte alla '
+                 'regola che i preventivi hanno per costruzione: una revisione abortita non '
+                 'rimpiazza nessuno. La META'' che VIETA il rientro fuori da questo caso sta nel '
+                 'guard di transizione, perche'' e'' una regola e non un automatismo. rev 2026-08-28.';
+
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_z90_rientro_padre_upd
+                ON vendite.offerte_commerciali;
+
+              CREATE TRIGGER trg_offerte_commerciali_z90_rientro_padre_upd
+                AFTER UPDATE OF stato_doc_offerta_id ON vendite.offerte_commerciali
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_z90_rientro_padre_upd
+                ON vendite.offerte_commerciali;
+
+              DROP FUNCTION IF EXISTS vendite.trgfn_offerte_commerciali_rientro_padre();
