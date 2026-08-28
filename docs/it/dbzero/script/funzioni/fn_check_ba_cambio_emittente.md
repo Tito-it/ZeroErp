@@ -22,24 +22,50 @@ DECLARE
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Elencare i motivi che impediscono di cambiare
-    --   l'emittente di un billing account. Funzione PURA
-    --   (fn_check_*): nessun raise di dominio, nessuna
+    --   Elencare i motivi che impediscono di togliere o cambiare
+    --   una riga di anagrafiche.emittenti_fiscali_billing_account.
+    --   Funzione PURA (fn_check_*): nessun raise, nessuna
     --   scrittura. Consumatori: la madre
-    --   anagrafiche.fn_guard_ba_cambio_emittente (che solleva il
-    --   codice del primo motivo) e la lista dei mapping nel
-    --   drawer dell'emittente (che spegne il cestino di riga).
+    --   anagrafiche.fn_guard_ba_cambio_emittente (solleva il
+    --   primo motivo) e la lista dei mapping nel drawer
+    --   dell'emittente (spegne il cestino di riga).
     --
     -- Ritorna: [] se ammesso; altrimenti array ORDINATO di
     --   {codice, reason, reason_key, dettaglio, valori} — §12.5.1.
     -- ⚠️ L'ordine e' il contratto: la madre solleva il PRIMO.
+    --
+    -- ⭐ UNA sola funzione per entrambe le specie di riga (il
+    --   mapping specifico e il gestore globale), e non e'
+    --   pigrizia: il frontend chiama UNA cosa per riga. Con due
+    --   check sarebbe il chiamante a dover dedurre «che tipo di
+    --   riga e' questa», cioe' a ricalcolare fuori sede una cosa
+    --   che qui e' un IF.
     -- =========================================================
 
-    -- 1) La riga senza billing account e' quella del GESTORE
-    --    GLOBALE: ha un raggio diverso (N clienti, non uno) e la
-    --    guarda anagrafiche.fn_guard_ba_gestore_globale_storia.
+    -- 1) ⭐ LA RIGA DEL GESTORE GLOBALE (billing_account_id NULL).
+    --    Prima tornava `[]` — «non e' il mio caso» — e il cestino
+    --    restava acceso proprio sulla riga che il repository
+    --    tiene IN TESTA (ORDER BY is_default DESC).
+    --    ⛔ Quella riga non si toglie MAI: il singleton di
+    --    anagrafiche.trgfn_emittenti_fiscali_default_guard
+    --    pretende esattamente un default, e cancellarla porta il
+    --    conteggio a zero. La risposta e' INCONDIZIONATA — non
+    --    dipende dalla storia — ed e' il motivo per cui qui NON
+    --    si e' scritta la gemella del guard raggio N: avrebbe
+    --    dato un motivo condizionale, suggerendo che senza storia
+    --    la riga si potrebbe togliere.
+    --    ⚠️ Questo motivo serve alla RIGA, non al raise: a
+    --    rifiutare e' il guard singleton, che compone la propria
+    --    frase. I `valori` portano il conteggio che RISULTEREBBE.
     IF p_billing_account_id IS NULL THEN
-        RETURN v_motivi;
+        RETURN v_motivi || jsonb_build_object(
+            'codice',     'E_EMITTENTE_DEFAULT_SINGLETON',
+            'reason',     'DEFAULT_SINGLETON',
+            'reason_key', 'amministrazione.emittenti_fiscali.ba_blocco.default_singleton',
+            'dettaglio',  jsonb_build_object(
+                              'is_default',         true,
+                              'emittente_sr_prima', p_emittente_sr_prima),
+            'valori',     jsonb_build_array('0'));
     END IF;
 
     -- 2) ⛔ LA META' DEL PREDICATO CHE SI DIMENTICA.
@@ -47,8 +73,6 @@ BEGIN
     --    presidiare: togliere un mapping specifico quando il
     --    gestore globale punta allo stesso emittente non sposta
     --    nessun documento, ed e' manutenzione ordinaria.
-    --    Senza questa riga il cestino si spegnerebbe su quasi
-    --    tutte le righe di un'installazione a un solo emittente.
     IF p_emittente_sr_prima IS NOT DISTINCT FROM p_emittente_sr_dopo THEN
         RETURN v_motivi;
     END IF;
@@ -67,9 +91,7 @@ BEGIN
      WHERE ba.id = p_billing_account_id;
 
     -- ⭐ L'emittente si nomina per CODICE: il canale VARIADIC
-    --    compone la frase che legge una PERSONA, e un
-    --    soggetto_ruolo_id li' dentro e' rumore. La colonna
-    --    esiste ed e' NOT NULL; il COALESCE e' la rete.
+    --    compone la frase che legge una PERSONA.
     SELECT ef.codice INTO v_codice_ef
       FROM anagrafiche.emittenti_fiscali ef
      WHERE ef.soggetto_ruolo_id = p_emittente_sr_prima;
@@ -96,7 +118,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
-IS 'Pure check (§12.5.1): elenca i motivi che impediscono di cambiare l''emittente di un billing account. [] = ammesso; altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva — sollevare e'' mestiere della madre. ⛔ IL PREDICATO E'' UNA COPPIA, e la meta'' che si dimentica e'' la prima: togliere un mapping specifico fa ricadere il billing account sul GESTORE GLOBALE, quindi il cambio di emittente esiste SOLO SE l''emittente della riga e'' diverso da quello del default — se coincidono non si sposta nessun documento e la rimozione deve restare ammessa, perche'' e'' manutenzione ordinaria. Scrivere solo «il cliente ha storia» spegnerebbe il gesto su quasi tutte le righe di un''installazione a un solo emittente, tutte a torto. ⭐ Sede unica condivisa: anagrafiche.fn_guard_ba_cambio_emittente CHIAMA questa funzione e solleva il codice del PRIMO motivo (§12.5.2), quindi il tooltip del pulsante e l''errore del rifiuto non possono divergere — non «coincidono oggi»: non possono. ⚠️ L''ORDINE dell''array e'' il contratto: la madre solleva il primo, e un ordine diverso farebbe dire al tooltip una cosa e all''errore un''altra. ⚠️ SECURITY DEFINER, come la madre e per la stessa ragione: la storia si conta su vendite.fatture e vendite.commesse, che hanno la RLS accesa, e da SECURITY INVOKER la funzione risponderebbe «nessuna storia» proprio nel caso in cui il pulsante va spento. ⚠️ Nessun codice errore nuovo: E_BA_EMITTENTE_CON_STORIA e'' gia'' a catalogo (20260826-49). ⭐ I `valori` nominano l''emittente per CODICE e non per soggetto_ruolo_id — correzione del messaggio nato col 20260826-47, che diceva «…con l''emittente 72»: il canale VARIADIC compone la frase che legge una persona. Piano: brief-db-motivo-rimozione-mapping-ba, N1.';
+IS 'Pure check (§12.5.1): elenca i motivi che impediscono di togliere o cambiare una riga di anagrafiche.emittenti_fiscali_billing_account. [] = ammesso; altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva. ⭐ rev 2026-08-27 (N7): risponde anche per la RIGA DEL GESTORE GLOBALE (billing_account_id NULL), che prima cadeva su un «non e'' il mio caso» e lasciava il cestino ACCESO — proprio sulla riga che il repository tiene in testa (ORDER BY is_default DESC), cioe'' la prima che l''operatore vede. ⛔ E la causa NON e'' il guard raggio N, come sembrava: a rifiutare quella cancellazione e'' prima di tutto anagrafiche.trgfn_emittenti_fiscali_default_guard, che impone il SINGLETON — quella riga non si toglie MAI, con o senza storia. Per questo NON si e'' scritta la gemella fn_check_* del raggio N: avrebbe prodotto un motivo CONDIZIONALE dove la risposta e'' incondizionata, suggerendo che senza storia la riga si potrebbe togliere — e un tooltip che dichiara una condizione inesistente manda a cercare come soddisfarla. ⚠️ Il motivo del singleton serve alla RIGA, non al raise: chi rifiuta davvero e'' il guard singleton, che compone la propria frase; i `valori` portano il conteggio che RISULTEREBBE (0). ⚠️ Il guard raggio N (anagrafiche.fn_guard_ba_gestore_globale_storia) resta necessario e non e'' coperto da qui: presidia il CAMBIO dell''emittente del gestore globale — un UPDATE, o un DELETE seguito da un INSERT — non la cancellazione secca. ⭐ UNA sola funzione per entrambe le specie di riga: il frontend chiama una cosa per riga, e con due check sarebbe il chiamante a dover dedurre in Python «che tipo di riga e'' questa», cioe'' a ricalcolare fuori sede cio'' che qui e'' un IF. ⛔ IL PREDICATO DEL MAPPING SPECIFICO E'' UNA COPPIA: togliere l''aggancio fa ricadere il billing account sul gestore globale, quindi il cambio esiste solo se l''emittente della riga e'' DIVERSO da quello del default — se coincidono non si sposta nessun documento e la rimozione resta ammessa. ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la RLS. ⚠️ Nessun codice errore nuovo. Piano: brief-db-motivo-rimozione-mapping-ba, N1 e N7.';
 ```
 
 ---

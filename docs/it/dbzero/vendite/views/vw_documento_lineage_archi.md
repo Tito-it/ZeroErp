@@ -144,6 +144,20 @@ WITH archi AS (
              JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_from.attivo IS TRUE))))
              JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'FATTURA'::text) AND (s_to.attivo IS TRUE))))
           WHERE (af.fattura_riga_id IS NOT NULL)
+        UNION ALL
+         SELECT DISTINCT s_from.id,
+            (r.id)::text AS id,
+            s_to.id,
+            (d.id)::text AS id,
+            NULL::character varying AS "varchar",
+            'T'::text AS text
+           FROM ((((((vendite.resi_righe_riconsegne rrr
+             JOIN vendite.resi_righe rr ON ((rr.id = rrr.resi_riga_id)))
+             JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+             JOIN vendite.ddt_righe dr ON ((dr.id = rrr.ddt_riga_id)))
+             JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+             JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_from.attivo IS TRUE))))
+             JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
         )
  SELECT a.from_tipo_id,
     a.from_uid,

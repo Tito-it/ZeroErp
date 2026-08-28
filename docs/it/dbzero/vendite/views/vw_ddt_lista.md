@@ -91,7 +91,7 @@ SELECT d.id,
      LEFT JOIN config.aspetti_beni ab ON ((ab.id = d.aspetto_bene_id)))
      LEFT JOIN config.modalita_addebito_trasporto mat ON ((mat.id = d.modalita_addebito_trasporto_id)))
      LEFT JOIN config.sorgenti src ON ((src.id = d.sorgente_tipo_id)))
-     LEFT JOIN vendite.ordini o_src ON ((o_src.uid = d.sorgente_uid)))
+     LEFT JOIN vendite.ordini o_src ON (((o_src.uid = d.sorgente_uid) AND ((src.codice_interno)::text = 'ORDINE_VENDITA'::text))))
      LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
            FROM config.sorgenti
           WHERE (((sorgenti.codice_interno)::text = 'DDT_VENDITA'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (d.id)::text))));

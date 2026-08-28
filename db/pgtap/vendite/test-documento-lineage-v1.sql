@@ -12,7 +12,7 @@
 --   I 2 spot-check sui casi reali §5 (PRV0000185, commessa 186) sono protetti da
 --   skip() quando i dati non sono presenti (es. CI su DB fresco).
 --
--- Indice test (1..38):
+-- Indice test (1..39):
 --    1) vw_documento_lineage_nodi esiste
 --    2) vw_documento_lineage_archi esiste
 --    3) vw_documento_lineage esiste
@@ -25,7 +25,7 @@
 --   10) summary: security_invoker attivo
 --   11) fn: STABLE
 --   12) fn: SECURITY INVOKER (NON definer)
---   13) archi: arco solo in A..H,R,N,S
+--   13) archi: arco solo in A..H,R,N,S,T (vocabolario CHIUSO: e' un cricchetto)
 --   14) archi: arco 'R' punta sempre a un nodo RESO_VENDITA
 --   15) nodi: pipeline_rank sempre in 0..5
 --   16) config.sorgenti RESO_VENDITA seedato e attivo (prereq Step 1)
@@ -65,6 +65,12 @@
 --   36) summary: un reso con arco S non e' piu' una foglia (is_transitato)
 --   37) summary: la frontiera di un reso accreditato e' la nota, non se stesso
 --   38) ⭐⭐ archi: NESSUN arco esce dal perimetro RLS
+--   ⭐ 39 — L'ARCO T, aggiunto il 2026-08-28 (changeSet 20260828-05). E'
+--      «reso -> DDT di ri-consegna»: il grafo aveva R (la merce torna) e S
+--      (il valore si accredita) ma non l'arco che dice che la merce e'
+--      RIPARTITA, e un reso ri-consegnato restava una foglia.
+--   39) archi: T va da RESO_VENDITA a DDT_VENDITA ed e' un AVANZAMENTO
+--       (gemello di S), non un ramo di ritorno
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -83,7 +89,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(38);
+SELECT plan(39);
 
 -- ---- 1..4: esistenza oggetti ---------------------------------------------
 SELECT has_view('vendite', 'vw_documento_lineage_nodi',  'vw_documento_lineage_nodi esiste');
@@ -161,10 +167,19 @@ SELECT is(
     false, 'fn_documento_lineage e'' SECURITY INVOKER');
 
 -- ---- 13..16: invarianti strutturali sugli archi/nodi ---------------------
+-- ⭐ VOCABOLARIO CHIUSO, ED E' UN CRICCHETTO VOLUTO: ogni arco nuovo fa
+--    fallire questo test finche' non lo si DICHIARA qui. E' l'unico posto del
+--    progetto che enumera le lettere (verificato il 2026-08-28: il frontend
+--    legge `is_ramo_inverso`, non la lettera; fn_documento_lineage e la
+--    summary pure). ⛔ Chi allarga l'elenco aggiunge anche l'asserzione che
+--    dice COSA SIGNIFICA la lettera nuova — sotto, come per R e N. Allargare
+--    e basta trasformerebbe un cricchetto in una formalita'.
+--    · T aggiunto il 2026-08-28 (reso -> DDT di ri-consegna),
+--      brief-db-ddt-riconsegna-eredita-testata §9.4.1.
 SELECT is(
     (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
-      WHERE arco NOT IN ('A','B','C','D','E','F','G','H','R','N','S')),
-    0, 'archi: arco sempre in A..H,R,N,S');
+      WHERE arco NOT IN ('A','B','C','D','E','F','G','H','R','N','S','T')),
+    0, 'archi: arco sempre in A..H,R,N,S,T');
 
 SELECT is(
     (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi
@@ -252,7 +267,6 @@ SELECT CASE
     ELSE skip('commessa id=186 non presente nei dati', 1)
 END;
 
-
 -- ---- 27..32: l'arco N (nota di credito) e la natura ----------------------
 -- ⭐ L'arco N sta fra due nodi dello STESSO tipo: e' il primo del grafo, e la
 --    coppia di controlli qui sotto e' quello che impedisce che diventi altro.
@@ -324,7 +338,6 @@ SELECT CASE
     ELSE
         skip('32) §44: nessuna nota di credito in archivio, spot-check saltato', 1)
 END;
-
 
 -- ---- 33..38: l'arco S (reso -> nota di credito) e il perimetro RLS -------
 -- ⭐ Il grafo si fermava sul reso: la nota di credito che lo accredita era
@@ -428,6 +441,24 @@ SELECT is(
          OR NOT EXISTS (SELECT 1 FROM vendite.vw_documento_lineage_nodi n
                          WHERE n.tipo_id = a.to_tipo_id   AND n.uid = a.to_uid)),
     0, '38) archi: nessun arco esce dal perimetro RLS (entrambi gli estremi visibili)');
+
+-- ⭐ COSA SIGNIFICA L'ARCO T (2026-08-28) — reso -> DDT di RI-CONSEGNA.
+--    Le due proprieta' che lo definiscono, insieme: parte da un RESO_VENDITA,
+--    arriva a un DDT_VENDITA, e NON e' un ramo di ritorno.
+-- ⭐ La seconda meta' e' quella che vale: T e' la GEMELLA di S — la merce e'
+--    tornata (arco R, quello si' di ritorno) e adesso RIPARTE, come con S
+--    torna il valore. Se un domani finisse dentro l'elenco dei rami inversi,
+--    il reso smetterebbe di avere il DDT di ri-consegna come frontiera e
+--    tornerebbe a essere una foglia — senza errori, solo con una colonna
+--    diversa in ogni lista. Il 29) non lo direbbe: quello confronta la
+--    proprieta' con l'elenco, e se cambiassero INSIEME resterebbe verde.
+SELECT is(
+    (SELECT count(*)::int FROM vendite.vw_documento_lineage_archi a
+      WHERE a.arco = 'T'
+        AND (a.from_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'RESO_VENDITA')
+          OR a.to_tipo_id   <> (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')
+          OR a.is_ramo_inverso)),
+    0, '39) archi: T va da RESO_VENDITA a DDT_VENDITA ed e'' un AVANZAMENTO, non un ritorno');
 
 SELECT * FROM finish();
 ROLLBACK;
