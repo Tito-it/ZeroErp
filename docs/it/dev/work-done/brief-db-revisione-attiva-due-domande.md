@@ -1,11 +1,34 @@
 # Brief DB — `is_attiva` risponde a due domande con un flag solo: separarle
 
+> ✅ **CHIUSO e ARCHIVIATO il 2026-08-28.** Le due metà sono consegnate: i quattro
+> changeSet applicati e **verificati sugli oggetti vivi** (`is_superata` e
+> `has_next_revisione` su tutte e tre le viste, `config.stati_doc_offerte.is_superato`),
+> e le tre richieste del **§7** — BE-1, BE-2, FE-1 — eseguite su `dev/backend-tid`
+> lo stesso giorno, con la prova sul DB vero riportata lì.
+>
+> ⭐ **Il difetto che ha originato il cantiere è chiuso a video**: il filtro di
+> stato «Annullato» passa da **0 risultati per costruzione** a **17**, e il banner
+> «revisione superata» non compare più su un documento annullato.
+>
+> ➡️ **Due rilievi di questo brief NON sono chiusi e vivono altrove**, per non
+> perderli archiviando — entrambi del **team DB**, entrambi sulle offerte, ed
+> entrambi già scritti qui nel **§8.2**:
+>
+> | Rilievo | Dove è registrato |
+> | --- | --- |
+> | il **guard mancante** su `trgfn_offerte_commerciali_revisione` (`NULL` su colonna `NOT NULL` → errore con la frase sbagliata) | tabella «Cosa resta aperto» di [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) |
+> | il **limite del modello a trigger**: ultima revisione annullata senza successore → nessuna offerta attiva nel lineage | idem |
+>
+> ⚠️ **Quel che si legge sotto è il testo com'era quando è stato scritto.** Le
+> parti al futuro («serve», «va fatto») sono la RICHIESTA, non lo stato di oggi.
+
+
 > **Destinatario:** team DB (`dev/db-tid`), con due richieste al BE e una al FE (§7).
 >
 > **Origine.** Collaudo in-app di Tid del **2026-08-28**, «Riporta da emettere»:
 > provando l'annullamento di `PRV0000133` il documento **sparisce dalla lista** e
 > non lo riporta a galla nessun filtro di stato. Il collaudo
-> ([collaudo-in-app-riporta-da-emettere.md](collaudo-in-app-riporta-da-emettere.md))
+> ([collaudo-in-app-riporta-da-emettere.md](../work-in-progress/collaudo-in-app-riporta-da-emettere.md))
 > dice esplicitamente che un difetto trovato lì va guardato **dove appartiene**:
 > questo non riguarda il verbo, la card o la lista dei residui, quindi apre un
 > cantiere suo.
@@ -300,6 +323,31 @@ due assi non si distinguono. Servono le due colonne.
 
 > ⛔ Perimetro DB: `backend/` e `frontend/` non sono stati toccati. Qui c'è cosa
 > serve e perché.
+>
+> ✅ **BE-1, BE-2 e FE-1 sono FATTE il 2026-08-28** (`dev/backend-tid`), dopo aver
+> verificato che le colonne nuove fossero **vive** e non solo committate:
+> `is_superata` e `has_next_revisione` su tutte e tre le viste,
+> `config.stati_doc_offerte.is_superato` presente.
+>
+> **La prova, sul DB vero e in transazione rollata** — lista con contesto
+> operatore, filtro di stato «Annullato»:
+>
+> | | Prima | Dopo |
+> | --- | --- | --- |
+> | default (solo ultima revisione) + `ANNULLATO` | **0**, per costruzione | **17**, e `PRV0000133` è in prima pagina |
+> | storico completo + `ANNULLATO` | 18 | 18 (il 18° è davvero superato) |
+> | dettaglio `PRV0000133` | banner «revisione superata» | `is_superata = False` → **niente banner**; `is_attiva = False`, `has_next_revision = False` |
+>
+> ⚠️ **Il rinominio è stato fatto, ed è stato la parte con più rischio**:
+> `solo_attiva` → `solo_ultima_revisione` tocca anche la **query string**, quindi
+> andava spostato tutto insieme — un sito dimenticato e il toggle avrebbe smesso
+> di funzionare **in silenzio** (nome ignoto → `default=True`). 70 occorrenze in
+> 13 file. ⛔ Due consumatori non erano nel primo elenco e sono emersi solo
+> grep-ando a rinomina finita: il tool AI `vendite_tools.py` (che si sarebbe
+> rotto con un `TypeError`) e i test. Suite **4142 verde**, `vite build` verde.
+>
+> ⭐ E `is_attiva` **non è stata toccata dove la domanda è giusta**: i cruscotti
+> (`vw_dash_fatturazione_preventivi`) chiedono davvero «vivo e corrente».
 
 **BE-1 — il toggle dello storico cambia predicato** (`dev/backend-tid`).
 In `preventivi_repository._build_filters` e `offerte_repository._build_offerte_filters`

@@ -149,6 +149,29 @@ export const AZIONE_GIORNALE_MAP = {
 
 const _AZIONE_DEFAULT = { severity: 'secondary', icon: 'pi pi-circle' }
 
+// Eventi del REGISTRO delle righe di commessa (`vendite.commesse_attivita_log`).
+// ⚠️ Le chiavi sono i CODICI del database, non nomi astratti: la funzione riceve
+// il codice grezzo, quindi devono combaciare.
+// ⛔ Vocabolario APERTO e posseduto dal DB: un evento nuovo non deve rompere
+// niente — cade sul default e resta visibile col proprio codice. Mai una lista
+// chiusa che faccia sparire ciò che non conosce.
+export const EVENTO_REGISTRO_COMMESSA_MAP = {
+  ONERE_AGGIUNTO: { severity: 'info', icon: 'pi pi-plus-circle' },
+  RIGA_MANUALE_ANNULLATA: { severity: 'danger', icon: 'pi pi-times-circle' },
+  // Il ritiro non è un errore: è il documento di origine che è stato annullato
+  // e si è portato via il lavoro non ancora emesso.
+  RIGA_RITIRATA_DA_SORGENTE: { severity: 'warn', icon: 'pi pi-undo' },
+  RIGA_RIPORTATA_DA_EMETTERE: { severity: 'warn', icon: 'pi pi-replay' },
+  ACCREDITO_RICHIESTO: { severity: 'info', icon: 'pi pi-money-bill' },
+  ACCREDITO_ANNULLATO: { severity: 'secondary', icon: 'pi pi-ban' },
+}
+
+// Scopo: Risolve severity+icon per un evento del registro commessa.
+//        Trim automatico, ripiego secondario sui codici non ancora mappati.
+export function eventoRegistroCommessaStyle(evento) {
+  return EVENTO_REGISTRO_COMMESSA_MAP[(evento || '').trim()] || _AZIONE_DEFAULT
+}
+
 // Scopo: Risolve severity+icon per azione giornale. Trim automatico, fallback secondario.
 export function azioneGiornaleStyle(azione) {
   return AZIONE_GIORNALE_MAP[(azione || '').trim()] || _AZIONE_DEFAULT

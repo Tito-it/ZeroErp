@@ -75,7 +75,7 @@ class ApiPreventiviList(DomainAPIView):
             OpenApiParameter(name="data_al", type=str, required=False, description="ISO date"),
             OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(
-                name="solo_attiva", type=bool, required=False,
+                name="solo_ultima_revisione", type=bool, required=False,
                 description="Default true: mostra solo l'ultima revisione per numero. "
                             "Passare false per includere lo storico revisioni superseded.",
             ),
@@ -112,7 +112,7 @@ class ApiPreventiviList(DomainAPIView):
             search=qp_str(qp.get("search")),
             # Default true: lista pulita senza storico revisioni. Il FE
             # passa "false" esplicito col toggle "Mostra storico".
-            solo_attiva=qp_bool(qp.get("solo_attiva"), default=True),
+            solo_ultima_revisione=qp_bool(qp.get("solo_ultima_revisione"), default=True),
             auth_user_id=auth_user_id,
             limit=p["limit"],
             offset=p["offset"],
@@ -183,7 +183,7 @@ class ApiPreventiviExportView(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_al", type=str, required=False),
-            OpenApiParameter(name="solo_attiva", type=bool, required=False),
+            OpenApiParameter(name="solo_ultima_revisione", type=bool, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
@@ -207,7 +207,7 @@ class ApiPreventiviExportView(DomainAPIView):
         data_da = optional_iso_date({"v": qp.get("data_da")}, "v")
         data_al = optional_iso_date({"v": qp.get("data_al")}, "v")
         search = qp_str(qp.get("search"))
-        solo_attiva = qp_bool(qp.get("solo_attiva"), default=True)
+        solo_ultima_revisione = qp_bool(qp.get("solo_ultima_revisione"), default=True)
 
         results, total = preventivi_service.list_preventivi_rows(
             stato_codice=stato_codice,
@@ -216,7 +216,7 @@ class ApiPreventiviExportView(DomainAPIView):
             data_da=data_da,
             data_al=data_al,
             search=search,
-            solo_attiva=solo_attiva,
+            solo_ultima_revisione=solo_ultima_revisione,
             auth_user_id=auth_user_id,
             limit=EXPORT_MAX_ROWS + 1,
             offset=0,
@@ -231,7 +231,7 @@ class ApiPreventiviExportView(DomainAPIView):
             utility_id=utility_id,
             data_da=data_da,
             data_al=data_al,
-            solo_attiva=solo_attiva,
+            solo_ultima_revisione=solo_ultima_revisione,
         )
         return build_export_response(
             request,

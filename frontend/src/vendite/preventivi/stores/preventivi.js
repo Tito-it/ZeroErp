@@ -30,7 +30,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     // Default true: la lista mostra solo l'ultima revisione per numero
     // (le revisioni superseded restano nello storico DB ma non in UI).
     // Toggle "Mostra storico revisioni" lo flippa.
-    solo_attiva: true,
+    solo_ultima_revisione: true,
     limit: 25,
     offset: 0,
     order_by: 'data',
@@ -54,9 +54,9 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
       if (f.utility_id != null) params.utility_id = f.utility_id
       if (f.data_da) params.data_da = f.data_da
       if (f.data_a) params.data_al = f.data_a
-      // Passa solo_attiva sempre esplicito: se l'operatore vuole lo storico
+      // Passa solo_ultima_revisione sempre esplicito: se l'operatore vuole lo storico
       // (toggle ON => filtro OFF) il BE deve riceverlo come 'false'.
-      params.solo_attiva = f.solo_attiva ? 'true' : 'false'
+      params.solo_ultima_revisione = f.solo_ultima_revisione ? 'true' : 'false'
       // Paginazione standard limit/offset (allineata a offerte/ordini/clienti;
       // la view BE ora usa parse_list_params, 2026-06-03).
       params.limit = f.limit || 25

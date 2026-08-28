@@ -49,6 +49,7 @@ from apps.vendite.services.commesse_service import (
     cambia_stato_commessa,
     fn_get_commessa_stato,
     fn_get_commesse_push_log,
+    fn_commessa_registro,
     fn_list_commessa_attivita,
     fn_riallinea_prezzo,
     fn_sblocca_prezzo,
@@ -1407,6 +1408,75 @@ class ApiCommessaStato(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+
+
+class ApiCommessaRegistro(DomainAPIView):
+    """GET /api/v1/vendite/commesse/<id>/registro/ — il registro delle righe.
+
+    Gli eventi che il database scrive su `vendite.commesse_attivita_log`: oneri
+    aggiunti, righe annullate a mano, ritirate alla chiusura del documento di
+    origine, riportate da emettere, accrediti. Risponde a «perche' questa riga
+    e' cosi'» — chi, quando, con quale motivo.
+
+    ⛔ Lo scope sta sulla RIGA DI COMMESSA, non sul log: quella tabella non ha
+    row level security, `vendite.commesse_attivita` si'. Il repository legge
+    passando dal `JOIN`, che e' il cancello — leggere il log da solo mostrerebbe
+    i motivi di commesse fuori perimetro.
+
+    ⚠️ Il vocabolario degli eventi e' del database ed e' aperto: qui non se ne
+    nomina nessuno e non si filtra, cosi' un evento nuovo compare da se'.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="commessa_attivita_id", type=int, location=OpenApiParameter.QUERY,
+                required=False,
+                description="Restringe a una riga sola (il caso d'uso del kebab di riga). "
+                            "Assente = tutti gli eventi della commessa.",
+            ),
+            OpenApiParameter(
+                name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Eventi per pagina (default 100, max 200).",
+            ),
+            OpenApiParameter(
+                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Offset paginazione (default 0).",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaRegistroResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaRegistroData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "count": serializers.IntegerField(),
+                            "rows": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il registro paginato di una commessa.
+    def get(self, request: Request, commessa_id: int) -> JsonResponse:
+        qp = request.query_params
+        return success_response(
+            fn_commessa_registro(
+                commessa_id=commessa_id,
+                commessa_attivita_id=optional_int(
+                    {"v": qp.get("commessa_attivita_id")}, "v",
+                ),
+                limit=optional_int({"limit": qp.get("limit", "100")}, "limit"),
+                offset=optional_int({"offset": qp.get("offset", "0")}, "offset"),
+            )
+        )
 
 
 class ApiCommessaAttivita(DomainAPIView):

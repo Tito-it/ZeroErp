@@ -134,3 +134,19 @@ export function exportCommessaAttivita(commessaId, params = {}) {
     responseType: 'blob',
   })
 }
+
+// GET /vendite/commesse/<id>/registro/?commessa_attivita_id=&limit=&offset=
+// Il REGISTRO delle righe: gli eventi che il database scrive su
+// `commesse_attivita_log` — oneri aggiunti, righe annullate a mano, ritirate
+// alla chiusura del documento di origine, riportate da emettere, accrediti.
+// Risponde a «perche' questa riga e' cosi'»: chi, quando, con quale motivo.
+//
+// ⛔ Fino al 2026-08-28 quella tabella si SCRIVEVA e non si LEGGEVA da nessuna
+//    parte: nessuna rotta, nessun pannello. Il motivo di un ritiro esisteva nel
+//    database ed era irraggiungibile — e la guida prometteva il contrario.
+// ⚠️ `commessa_attivita_id` restringe a UNA riga: e' il caso d'uso del kebab,
+//    dove la domanda non e' «cosa e' successo alla commessa» ma «cosa e'
+//    successo a QUESTA riga».
+export function listCommessaRegistro(commessaId, params = {}) {
+  return api.get(`${BASE}/${commessaId}/registro/`, { params })
+}

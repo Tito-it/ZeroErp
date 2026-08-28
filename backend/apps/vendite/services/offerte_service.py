@@ -128,7 +128,20 @@ _ESITI_AMMESSI_DA_EMESSA: frozenset[str] = frozenset(
 _ORDER_BY_OFFERTE: frozenset[str] = frozenset(_ORDER_COLS_OFFERTE)
 
 
-# Stati terminali (no editing, no transizioni uscenti).
+# Stati in cui l'offerta non si modifica e non offre azioni all'operatore.
+#
+# ⛔ NON piu' «senza transizioni uscenti», e la differenza e' del 2026-08-28:
+#    `SUPERATA` una transizione uscente ORA CE L'HA — `SUPERATA -> EMESSA`, che
+#    il database percorre da se' quando l'ultima revisione viva viene annullata
+#    e il padre deve tornare a essere l'offerta del lineage. E' seedata
+#    `manuale: false`, quindi non compare fra le azioni disponibili e nessun
+#    pulsante la propone: per chi guarda lo stato resta chiuso, ma dire «non ha
+#    uscite» era vero fino a ieri e adesso non lo e' piu'.
+#
+# ⚠️ COSTANTE NON USATA: nessuno la legge, in tutto il backend. Resta perche'
+#    cancellarla e' una decisione di chi possiede le offerte, non di chi passava
+#    di qui — ma una costante morta che dichiara anche una cosa falsa e' il
+#    peggio dei due casi, e la dichiarazione e' stata corretta.
 _STATI_TERMINALI: frozenset[str] = frozenset(
     {"ACCETTATA", "RIFIUTATA", "ANNULLATA", "SUPERATA"}
 )
@@ -361,7 +374,7 @@ class OfferteService:
         listino_id: int | None = None,
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
-        solo_attiva: bool = True,
+        solo_ultima_revisione: bool = True,
         limit: int = 25,
         offset: int = 0,
         order_by: str = "data_insert",
@@ -389,7 +402,7 @@ class OfferteService:
             "validita_dal_min": validita_dal_min,
             "validita_dal_max": validita_dal_max,
             "search": search_norm,
-            "solo_attiva": solo_attiva,
+            "solo_ultima_revisione": solo_ultima_revisione,
         }
         rows = self._repo.list_offerte(
             **filters,
@@ -414,7 +427,7 @@ class OfferteService:
         listino_id: int | None = None,
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
-        solo_attiva: bool = True,
+        solo_ultima_revisione: bool = True,
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
         if search:
@@ -431,8 +444,8 @@ class OfferteService:
             out["Dal"] = str(validita_dal_min)
         if validita_dal_max:
             out["Al"] = str(validita_dal_max)
-        # solo_attiva=False = storico revisioni incluso.
-        if not solo_attiva:
+        # solo_ultima_revisione=False = storico revisioni incluso.
+        if not solo_ultima_revisione:
             out["Storico revisioni"] = "incluso"
         return out
 

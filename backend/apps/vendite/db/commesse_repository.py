@@ -21,6 +21,7 @@ from apps.vendite.types import (
     CommessaEmitResult,
     CommessaEmittibileLane,
     CommessaPushLogRow,
+    CommessaRegistroEventoRow,
     CommessaStatoResult,
     GruppoDiagnosi,
     GruppoEsitoGiro,
@@ -176,6 +177,14 @@ TIPO_MOVIMENTO_VALUES: frozenset[str] = frozenset(
 # `p_limit`. Il tetto di PAGINA (200) NON sta qui — vive nel service, dove e'
 # un errore parlante invece di un troncamento muto.
 _ATTIVITA_EXPORT_MAX_ROWS = 10_000
+
+# Tetto della QUERY del registro. ⚠️ Non e' il tetto di PAGINA (200, nel service):
+# quello risponde 400 e DICE il limite a chi ha chiesto troppo, questo clampa in
+# silenzio ed esiste solo perche' un chiamante interno non possa tirare fuori
+# l'intero log di una commessa grande in un colpo. Due regole diverse, due sedi.
+# ⛔ Aveva un nome? No: era un `500` scritto in mezzo alla lista dei parametri,
+# dove un tetto non si vede e nessuno lo trova quando serve cambiarlo.
+_REGISTRO_QUERY_MAX_ROWS = 500
 
 
 @dataclass(frozen=True)
@@ -1319,6 +1328,111 @@ class CommesseRepository(EventLogRepositoryMixin):
                 )
                 for row in cursor.fetchall()
             ]
+
+    # Scopo: Il REGISTRO delle righe di una commessa — gli eventi che il
+    #        database scrive su `vendite.commesse_attivita_log`. Risponde a
+    #        «perche' questa riga e' cosi'»: chi, quando, e con quale motivo.
+    # Perimetro: sola lettura. Ordine cronologico INVERSO (l'ultimo fatto in
+    #        cima), paginato. `commessa_attivita_id` opzionale restringe a una
+    #        riga sola — e' il caso d'uso del kebab di riga.
+    # Risultato: tuple (eventi, conteggio totale).
+    #
+    # ⛔ LO SCOPE STA SULLA RIGA DI COMMESSA, NON SUL LOG.
+    #    `vendite.commesse_attivita_log` **non ha row level security**;
+    #    `vendite.commesse_attivita` si'. Leggere il log da solo sarebbe
+    #    **fail-open**: si vedrebbero gli eventi di commesse fuori perimetro, coi
+    #    loro motivi in chiaro. Il `JOIN` su `ca` non e' una decorazione per
+    #    prendere due colonne — **e' il cancello**, ed e' la stessa lezione gia'
+    #    pagata su `attivita_fatturabili` col verbo «Riporta da emettere».
+    #
+    # ⚠️ Il vocabolario degli eventi e' APERTO e lo possiede il database: oggi
+    #    sono sei (ONERE_AGGIUNTO, RIGA_MANUALE_ANNULLATA, RIGA_RITIRATA_DA_SORGENTE,
+    #    RIGA_RIPORTATA_DA_EMETTERE, ACCREDITO_RICHIESTO, ACCREDITO_ANNULLATO).
+    #    Qui non se ne nomina NESSUNO e non si filtra: un evento nuovo deve
+    #    comparire da se'. Chi rende lo risolve con ripiego sul codice grezzo.
+    #
+    # ⚠️ `dettaglio` esce COM'E' (jsonb), piu' `motivo` estratto a parte perche'
+    #    e' l'unica chiave che tre eventi su sei condividono ed e' la frase che
+    #    l'operatore cerca. Non si appiattisce il resto in una stringa qui: la
+    #    forma di ogni evento e' diversa, e deciderla nel repository
+    #    significherebbe rifarla a ogni evento nuovo.
+    def list_registro_attivita(
+        self,
+        commessa_id: int,
+        *,
+        commessa_attivita_id: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[CommessaRegistroEventoRow], int]:
+        where = ["ca.commessa_id = %s"]
+        params: list[Any] = [commessa_id]
+        if commessa_attivita_id is not None:
+            where.append("l.commessa_attivita_id = %s")
+            params.append(commessa_attivita_id)
+        where_sql = " AND ".join(where)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*)
+                  FROM vendite.commesse_attivita_log l
+                  JOIN vendite.commesse_attivita ca ON ca.id = l.commessa_attivita_id
+                 WHERE {where_sql}
+                """,  # noqa: S608 - where_sql da letterali, i valori sono bind
+                params,
+            )
+            row = cursor.fetchone()
+            total = int(row[0]) if row else 0
+
+            cursor.execute(
+                f"""
+                SELECT
+                    l.id,
+                    l.commessa_attivita_id,
+                    l.evento,
+                    l.dettaglio,
+                    l.dettaglio ->> 'motivo'    AS motivo,
+                    l.data_insert,
+                    l.user_insert,
+                    ca.segment_key,
+                    ca.stato_emissione,
+                    ca.tipo_movimento,
+                    art.codice                  AS articolo_codice,
+                    art.descrizione             AS articolo_descrizione
+                  FROM vendite.commesse_attivita_log l
+                  JOIN vendite.commesse_attivita ca ON ca.id = l.commessa_attivita_id
+                  LEFT JOIN catalogo.articoli art ON art.id = ca.articolo_id
+                 WHERE {where_sql}
+                 ORDER BY l.data_insert DESC, l.id DESC
+                 LIMIT %s OFFSET %s
+                """,  # noqa: S608 - idem
+                [*params, max(1, min(int(limit), _REGISTRO_QUERY_MAX_ROWS)), max(0, int(offset))],
+            )
+            eventi: list[CommessaRegistroEventoRow] = []
+            for r in cursor.fetchall():
+                dettaglio = r[3]
+                # ⚠️ Stesso ramo difensivo del verbo «Riporta da emettere»: il
+                #    `jsonb` puo' arrivare come STRINGA, e passarlo cosi' al
+                #    frontend gli farebbe rendere caratteri invece di campi.
+                if isinstance(dettaglio, str):
+                    dettaglio = json.loads(dettaglio)
+                eventi.append(
+                    {
+                        "id": int(r[0]),
+                        "commessa_attivita_id": int(r[1]),
+                        "evento": str(r[2]),
+                        "dettaglio": dettaglio or {},
+                        "motivo": None if r[4] is None else str(r[4]),
+                        "data_insert": r[5].isoformat() if r[5] is not None else None,
+                        "user_insert": None if r[6] is None else str(r[6]),
+                        "segment_key": None if r[7] is None else str(r[7]),
+                        "stato_emissione": None if r[8] is None else str(r[8]),
+                        "tipo_movimento": None if r[9] is None else str(r[9]),
+                        "articolo_codice": None if r[10] is None else str(r[10]),
+                        "articolo_descrizione": None if r[11] is None else str(r[11]),
+                    }
+                )
+        return eventi, total
 
     # Scopo: CONSUNTIVO di un giro di fatturazione — quali gruppi fatturabili
     #        hanno prodotto righe fatturate davvero, quali no, e quali sono

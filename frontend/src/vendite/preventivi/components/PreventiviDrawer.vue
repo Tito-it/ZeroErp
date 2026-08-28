@@ -94,20 +94,30 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 // storico immutabile (non si possono avere due revisioni "vive" sullo stesso
 // numero che possano essere accettate o annullate in parallelo).
 //
-// Predicato: `!detail.is_attiva` (post-refactor 2026-05-15, predicato derivato
-// da `vendite.vw_preventivi.is_attiva`). Ignora le rev abortite (ANNULLATO):
-//   - rev 0 EMESSO + rev 1 DRAFT     → rev 0 is_attiva=F → superseded
-//   - rev 0 EMESSO + rev 1 ANNULLATO → rev 0 is_attiva=T → NON superseded
+// Predicato: `detail.is_superata` (2026-08-28, brief-db-revisione-attiva-due-domande).
+//   - rev 0 EMESSO + rev 1 DRAFT     → rev 0 is_superata=T → superseded
+//   - rev 0 EMESSO + rev 1 ANNULLATO → rev 0 is_superata=F → NON superseded
 // La seconda casistica chiude il flusso "ho sbagliato a revisionare, annullo
-// e torno a operare sul predecessore". Diverso dal flag `has_next_revision`
-// (esposto comunque dal BE per usi diagnostici), che resta TRUE anche se la
-// rev superiore e' abortita.
+// e torno a operare sul predecessore". Diverso da `has_next_revision`, che
+// resta TRUE anche se la revisione successiva e' abortita.
+//
+// ⛔ ERA `!detail.is_attiva`, e il banner AFFERMAVA IL FALSO su un documento
+//    annullato: `is_attiva` rispondeva a due domande in un flag solo — «e'
+//    l'ultima revisione?» E «non e' annullato?» — quindi aprendo un preventivo
+//    ANNULLATO si leggeva «revisione superata», che e' un'altra cosa. Nessun
+//    errore, una frase sbagliata: l'operatore andava a cercare la revisione
+//    successiva che l'aveva rimpiazzato, e non esisteva.
 const parentReadonly = useInjectReadonly()
 const isSuperseded = computed(
-  () => detail.value !== null && detail.value.is_attiva === false,
+  () => detail.value !== null && detail.value.is_superata === true,
 )
 // isReadonly cumulativo: include permessi area parent + props.readonly +
-// is_attiva=false (revisione superseded) + stato post-DRAFT del preventivo.
+// `is_superata` (revisione rimpiazzata) + stato post-DRAFT del preventivo.
+// ⚠️ Un preventivo ANNULLATO resta readonly lo stesso, ma per il ramo dello
+//    STATO post-DRAFT — non perche' «superato». Sono due motivazioni diverse e
+//    restano scritte come tali: un motivo sbagliato che produce l'effetto
+//    giusto e' comunque un motivo sbagliato, e il giorno che una delle due
+//    regole cambia si scopre di averle confuse.
 // Lo stato post-DRAFT entra qui perche' la regola di dominio "modifiche
 // libere solo in BOZZA" si applica a tutti i sub-drawer (note, righe). Le
 // azioni di stato (Accetta/Rifiuta/Annulla dal BE `availableActions`)

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 799, di cui 88 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 800, di cui 88 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -362,6 +362,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DDT_ORDINE_NOT_FOUND": "NON_TROVATO",
     "E_DDT_ORDINE_STATO_NON_EVADIBILE": "CONFLITTO_STATO",
     "E_DDT_PREZZO_NON_RISOLVIBILE": "CONFLITTO_STATO",
+    # Una riga di DDT che porta un PREZZO deve portare anche l'ALIQUOTA: senza, vendite.vw_ddt_righe_iva_base la fa entrare nel riepilogo (filtra prezzo_unitario e NON iva_id) e vw_ddt_riepilogo_iva_dettaglio la somma con COALESCE(aliquota,0), producendo un imponibile pieno con codice IVA vuoto e imposta zero - su un documento emesso e stampato. Sollevato dal gate all'emissione vendite.trgfn_ddt_guard_causale_emissione, via il sesto motivo di script.fn_check_ddt_emittibile. CONFLITTO_STATO come i due gemelli (E_DDT_CAUSALE_OBBLIGATORIA, E_DDT_PREZZO_NON_RISOLVIBILE): la richiesta e' "porta il DDT a EMESSO" e non c'e' un campo di quella richiesta da correggere, e' la situazione che non lo consente - ne discende che nel contesto non va la chiave `campo`. ⛔ Il discrimine e' il PREZZO e non la causale, quindi il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda. ⛔ Niente `bersaglio`: si solleva sul DDT che l'operatore sta gia' guardando, e un pulsante che riporta dove si e' gia' non e' un gesto. ⚠️ Nel VARIADIC va il NUMERO di riga, non l'id: e' la frase che legge una persona. Decisione di Tid 2026-08-28 (R4-ter): una riga senza iva_id e' impossibile, e "impossibile" si traduce in non emittibile - in bozza il NULL resta legittimo, come gia' per la causale. Piano: brief-db-ddt-riconsegna-eredita-testata, Fase C.
+    "E_DDT_RIGA_IVA_MANCANTE": "CONFLITTO_STATO",
     "E_DDT_RIGA_NON_TROVATA": "NON_TROVATO",
     "E_DDT_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_DDT_VALIDAZIONE": "DATO_ERRATO",

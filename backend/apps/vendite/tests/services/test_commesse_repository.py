@@ -48,7 +48,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from inspect import signature
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from apps.vendite.db.commesse_repository import (
     BatchUpsertResult,
@@ -58,16 +58,7 @@ from apps.vendite.db.commesse_repository import (
     UpsertAttivitaResult,
     _SORGENTE_FN_MAP,
 )
-
-
-def _mock_cursor(fetchone=None, fetchall=None, description=None):
-    cursor = MagicMock()
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-    cursor.fetchone.return_value = fetchone
-    cursor.fetchall.return_value = fetchall or []
-    cursor.description = description
-    return cursor
+from apps.vendite.tests._helpers.mock_cursor import mock_cursor as _mock_cursor
 
 
 # Colonne restituite da fn_list_ordini_da_pushare (31 totali: 3 source + 28

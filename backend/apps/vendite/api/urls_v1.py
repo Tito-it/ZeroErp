@@ -2,6 +2,7 @@ from django.urls import include, path
 
 from apps.vendite.api.views import (
     ApiCommessaAttivita,
+    ApiCommessaRegistro,
     ApiCommessaAttivitaAnnulla,
     ApiCommessaAttivitaApprova,
     ApiCommessaAttivitaExport,
@@ -408,6 +409,14 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/<int:att_id>/annulla/",
         ApiCommessaAttivitaAnnulla.as_view(),
         name="vendite-commessa-attivita-annulla",
+    ),
+    # Il REGISTRO delle righe: gli eventi che il DB scrive su
+    # `commesse_attivita_log`. ⛔ Fino al 2026-08-28 quella tabella si scriveva e
+    # non si leggeva da nessuna parte — sei tipi di evento irraggiungibili.
+    path(
+        "commesse/<int:commessa_id>/registro/",
+        ApiCommessaRegistro.as_view(),
+        name="vendite-commessa-registro",
     ),
     path(
         "commesse/<int:commessa_id>/attivita/",

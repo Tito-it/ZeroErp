@@ -235,8 +235,17 @@ l'annullamento è ammesso) con **1 riga di commessa `NON_EMESSA`** da ritirare:
 3. apri quella commessa e guarda la riga che veniva da lì.
 
 **Cosa deve succedere**: la riga di commessa è passata ad **`ANNULLATA`**, da
-sola, e nel **registro della commessa** c'è la traccia col motivo — *«Ritiro
-automatico alla chiusura del documento di origine (PREVENTIVO …)»*.
+sola.
+
+⚠️ **La riga resta nell'elenco, non sparisce** — ma il drawer eredita il filtro
+«Stato emissione» dalla card di provenienza: con `NON_EMESSA` attivo una riga
+annullata resta fuori. Metti il filtro su **«Tutte»**.
+
+✅ **E il motivo si verifica**: kebab della riga → **«Registro della riga»**.
+Deve mostrare l'evento con la frase *«Ritiro automatico alla chiusura del
+documento di origine (PREVENTIVO …)»*, il numero del documento, l'utente e
+l'orario. ⚠️ Se il pannello è vuoto su una riga appena ritirata, il ritiro non
+è avvenuto — o non è avvenuto per quella riga.
 
 ⭐ **Perché conta**: prima, annullare un preventivo fermava i passaggi futuri ma
 lasciava fatturabile ciò che era già passato in commessa — e quel lavoro prima o
@@ -333,6 +342,7 @@ prima si accendeva a sproposito.
 | #       | Cosa                                                                                                                                                                                                                                        | Dove è finito                                                  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | **R-1** | Alla prova 7 il residuo **sembra già fatturato**: il lotto di provenienza porta a una fattura **numerata e definitiva**. Non lo è — quel documento è di un **altro cliente** dello stesso lotto. Difetto di **leggibilità**, non di modello | ✅ chiarito qui sotto; note in `cruscotti-fatturazione.md` §3.1 |
+| **R-3** | 🔴 **Il registro delle attività di commessa si scrive e non si legge mai.** `vendite.commesse_attivita_log` non ha nessun `SELECT` in tutto il backend: nessuna rotta, nessun pannello. Il motivo del ritiro esiste nel database ed è **irraggiungibile** — e la guida §7.7 prometteva il contrario | ✅ **CHIUSO il 2026-08-28**: rotta `commesse/<id>/registro/` + voce «Registro della riga» nel kebab del drawer commessa. Guida §7.7 riscritta: la promessa adesso è mantenuta |
 |         |                                                                                                                                                                                                                                             |                                                                |
 
 #### R-1 · «ma quella fattura ha già un numero» — cosa è emerso davvero

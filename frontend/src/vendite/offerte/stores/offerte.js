@@ -56,7 +56,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     // Filtro revisione attiva (mirror preventivi): default true = mostra solo
     // l'ultima revisione viva per lineage. Toggle "Mostra storico revisioni"
     // lo nega (false) per vedere tutte le revisioni incluse SUPERATA/ANNULLATA.
-    solo_attiva: true,
+    solo_ultima_revisione: true,
     limit: 25,
     offset: 0,
     // Default coerente con `OfferteSearchTable.useSearchTable.defaultSortField`:
@@ -91,10 +91,10 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
       // (vedi views_offerte.py): si applicano sul `validita_dal` della testata.
       if (f.data_da) params.validita_dal_min = f.data_da
       if (f.data_a) params.validita_dal_max = f.data_a
-      // Passa sempre solo_attiva esplicito (false = mostra storico). Default
+      // Passa sempre solo_ultima_revisione esplicito (false = mostra storico). Default
       // BE e' true: lo allineamento esplicito FE→BE evita ambiguita' se
       // l'operatore disattiva il toggle "Mostra storico revisioni".
-      if (f.solo_attiva === false) params.solo_attiva = false
+      if (f.solo_ultima_revisione === false) params.solo_ultima_revisione = false
       params.limit = f.limit || 25
       params.offset = f.offset || 0
       if (f.order_by) {

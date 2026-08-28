@@ -1559,3 +1559,132 @@ cercare un sesto motivo che «non c'è».
 > **blocca la CI adesso** è quella del frontend.
 
 E resta, come sempre, il **commit** — che non è stato fatto.
+
+➡️ **BE e FE sono stati chiusi il 2026-08-28 pomeriggio: §13.** Lì c'è anche
+ciò che questa conta non aveva — il lato BE era di **due** pezzi, non di uno —
+e due cose che tornano al DB.
+
+
+---
+
+## 13. ✅ BE e FE chiusi — 2026-08-28 pomeriggio
+
+> **Chi**: ramo `dev/backend-tid`, dopo il merge #1416 che ha portato in `main`
+> i sei changeSet. Il §12.3 assegnava tre destinatari; qui si chiudono i due che
+> non sono il DB — e si scopre che uno dei due era di **due** pezzi.
+
+### 13.1 ⛔ Il lato BE non era «una rigenerazione»: erano due file
+
+Il §12.3 chiedeva `manage.py genera_error_policies` e si fermava lì. **Non
+basta**, e il motivo è che quel comando *accende un cancello che oggi tace*:
+
+* `error_policies_generated.py` mette il codice in `CLASSE_PER_CODICE`;
+* `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`
+  (`apps/core/tests/services/test_error_policies_classi.py`) confronta quel
+  dizionario con `USER_MESSAGE_FALLBACK` e **fallisce** per ogni codice vivo
+  che non abbia la sua frase in `error_messages_fallback.py`.
+
+Finché il codice non è nel file generato il test non lo cerca. Rigenerare senza
+scrivere il ripiego avrebbe quindi consegnato un ramo **rosso**, e rosso su un
+test che prima del proprio intervento era verde: la forma peggiore, perché
+sembra una regressione altrui.
+
+> ⭐ **La lezione del §12.3 era giusta e va allungata di uno.** Un codice errore
+> nuovo ha **quattro** sedi, non tre: il catalogo DB, il file **generato** del
+> backend, il **ripiego** del backend, i locales del frontend. La quarta non è
+> una dimenticanza di chi ha scritto il brief — è che le prime due si vedono da
+> un `--check`, e la terza si vede solo dal **test**, cioè dopo aver fatto la
+> seconda.
+>
+> ⚠️ Il ripiego va **senza `%s`**: si mostra proprio quando gli argomenti non
+> arrivano, e un segnaposto finirebbe a video in chiaro
+> (`test_i_messaggi_di_ripiego_non_hanno_segnaposto`).
+
+### 13.2 Cosa è stato scritto
+
+| Lato | File | Cosa |
+| --- | --- | --- |
+| **BE** | `apps/core/services/error_policies_generated.py` | rigenerato: `E_DDT_RIGA_IVA_MANCANTE` → `CONFLITTO_STATO` |
+| **BE** | `apps/core/services/error_messages_fallback.py` | la frase di ripiego, argument-free |
+| **FE** | `src/locales/it.json` · `en.json` | `vendite.ddt.azione_reason.iva_mancante`, inserita **fra `prezzo_non_risolvibile` e `componenti_prezzo_pendente`** — lo stesso posto che il motivo ha nella funzione, fra il 3 e il 4 |
+| **doc** | `docs/it/dev/api.md` · `catalogo-building-block-backend.md` | il conteggio delle voci del file generato era fermo a **689 (79 ritirate)**, ora **800 (88)** — era già stantio prima di questo cantiere |
+
+⭐ **Il testo dei due locales dice anche la via d'uscita**, non solo il divieto:
+*«scegli l'aliquota, oppure togli il prezzo se la merce non si valorizza»*. È la
+`soluzione` che il catalogo già scriveva, e senza di essa il motivo lascia
+l'operatore davanti a una riga che non sa come sbloccare — il DDT di solo
+trasporto è una risposta legittima, non un ripiego.
+
+### 13.3 La verifica prima di dire che è finita
+
+| # | Cosa | Esito |
+| --- | --- | --- |
+| 1 | **Il DB non è avanti rispetto a git** — la condizione che vieterebbe di rigenerare: confrontato il CSV in git col file generato **prima** di toccare niente | ✅ 744 codici a catalogo, **uno solo** assente: quello nuovo |
+| 2 | ⭐ **Il diff della rigenerazione**: una riga aggiunta, **zero classi spostate** — una classe che si muove cambia lo status HTTP di una risposta esistente | ✅ +1 voce, +1 sul conteggio in testata, nient'altro |
+| 3 | `genera_error_policies --check` | ✅ *«allineato al catalogo»* |
+| 4 | `scripts/check_i18n_keys.py` | ✅ exit **0**, *«tutto pulito»* — era exit 1 |
+| 5 | I tre cancelli dei codici errore (`test_error_codes_db_policy_guardrail`, `..._declared_guardrail`, `test_error_policies_divergenza_db`) **con `ZEROERP_TEST_DB_E2E=1`**, cioè contro il DB vero | ✅ 9/9 |
+| 6 | `test_error_policies_classi` — dove vive il cancello del ripiego | ✅ 17/17 |
+| 7 | Non-regressione: `apps.core` + `apps.vendite` | ✅ **2587 test**, 0 rossi |
+| 8 | `vite build` | ✅ verde |
+
+⛔ **Il punto 1 non è cerimoniale**: rigenerare mentre il DB locale è avanti
+rispetto a git aggancia il modulo BE a un changeSet non mergiato, e in CI il
+cancello diventa rosso **al contrario** — la CI ricostruisce il DB dal changelog
+e quei codici non li trova. La condizione va **misurata ogni volta**, non
+ereditata da un handoff: qui i sei changeSet erano in `HEAD` (merge #1416,
+verificato con `git merge-base --is-ancestor`).
+
+### 13.4 ✅ Cosa NON serviva — verificato, non assunto
+
+Tre cose che sembravano lavoro e non lo erano. Le scrivo perché il prossimo che
+legge il §12.3 non le rifaccia:
+
+* **L'arco `T` non chiede niente al frontend.** Il FE non mappa le lettere degli
+  archi: decide per **direzione** (`is_ramo_inverso`, calcolato nella vista) ed
+  etichetta i **nodi** per tipo. `vendite.lineage.tipo_reso_vendita` e
+  `tipo_ddt_vendita` esistono entrambe dal loro cantiere. Il reso comparirà nella
+  barra collegamenti del DDT di ri-consegna da sé.
+* **La sorgente `RESO_VENDITA` sul DDT non chiede niente al backend.** La colonna
+  `ordine_origine_numero` di `vw_ddt_lista` resta vuota, ed è **corretto**: il
+  join a `vendite.ordini` è ora qualificato su `ORDINE_VENDITA` (changeSet 06).
+  Il drawer sa già aprire un `RESO_VENDITA` (`DOCUMENTO_DRAWER_TIPI`).
+* **Nessun override di UI per il codice nuovo.** `CONFLITTO_STATO` dà già 409 +
+  banner, e `test_nessun_override_ripete_il_default_della_classe` **vieta** un
+  override che ripeta il default.
+
+### 13.5 ➡️ Due cose che tornano al DB
+
+**1 · Le cinque doc manuali del §12.3 non sono nel push.** Verificato sul commit
+`05c61d1b1`: tocca `docs/it/dbzero/**/funzioni/` e `**/views/` — cioè la doc
+**auto-gen** — e mai `**/manual/`. Restano stantie tutte e cinque, come il §12.3
+le elenca.
+
+**2 · ⚠️ E ce n'è una sesta che il §12.3 non elenca: il `COMMENT ON VIEW` di
+`vw_documento_lineage_archi`.** Il changeSet `20260828-05` non contiene nessuno
+`COMMENT`, quindi la descrizione della vista — quella che finisce in cima alla
+doc auto-gen — dice ancora:
+
+> *«grafo archi normalizzato A-H + R e N (rami di ritorno) + S»*
+
+**Senza `T`.** È la stessa classe di difetto della tabella dei motivi ferma a
+cinque, e in un posto che pesa di più: il §11 racconta che quel vocabolario è
+presidiato **come chiuso** da un pgTAP: il prossimo che allarga l'elenco legge la
+descrizione per sapere quali lettere esistono, e ne trova una in meno di quante
+il `WHERE` ne produce.
+
+### 13.6 Cosa resta
+
+| # | Cosa | Chi |
+| --- | --- | --- |
+| 1 | La doc manuale dei 5 oggetti **+ il `COMMENT` della vista** (§13.5) | **DB** |
+| 2 | Il collaudo in-app della ri-consegna: generare un reso da DDT, generarne la ri-consegna, e guardare che testata, indirizzi e valore di riga **ci siano** — è la prova 9 che ha aperto questo cantiere | **Tid** |
+| 3 | Il commit | **Tid** — nessun commit autonomo |
+
+⚠️ **Il punto 2 non è una formalità**, ed è la stessa lezione del cantiere
+gemello «Rendi definitive»: qui è stato provato il **percorso** (17 asserzioni
+pgTAP sotto RLS, i cancelli dei codici, la chiave che risolve) ma non
+l'**esito a video** — che il drawer del DDT nuovo mostri davvero la causale, gli
+indirizzi e il prezzo. La classe di difetto che nessun test prende — il DB
+scrive in un modo e l'interfaccia legge in un altro — si vede solo guardando lo
+schermo.
