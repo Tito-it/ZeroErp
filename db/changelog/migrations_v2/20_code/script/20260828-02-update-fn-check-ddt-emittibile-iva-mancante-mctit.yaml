@@ -1,0 +1,337 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE C (C-1) — UNA RIGA CON PREZZO PORTA ANCHE L'ALIQUOTA
+#   script.fn_check_ddt_emittibile
+#   Piano: brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter
+#   Decisione di Tid, 2026-08-28: «una riga di DDT senza iva_id e' impossibile»,
+#   precisata subito dopo come «impossibile si traduce in NON EMITTIBILE».
+#
+# ── ⭐ IL DIFETTO CHE CHIUDE, ED E' SILENZIOSO ─────────────────────────
+#   vendite.vw_ddt_righe_iva_base filtra `prezzo_unitario IS NOT NULL` e NON
+#   filtra `iva_id`; espone anzi `aliquota_effettiva` a NULL quando l'aliquota
+#   manca. vendite.vw_ddt_riepilogo_iva_dettaglio aggrega per (iva_id,
+#   aliquota_effettiva) e calcola l'imposta con COALESCE(aliquota, 0).
+#   Conseguenza: una riga con prezzo e senza aliquota produce una riga di
+#   riepilogo con IMPONIBILE PIENO, codice IVA VUOTO e IMPOSTA ZERO — su un
+#   documento che si emette e si STAMPA. Nessun guard lo fermava: nessuno dei
+#   cinque punti di questa funzione guardava iva_id, e su vendite.ddt_righe non
+#   c'e' nessun trigger di default (l'unico che nomina la colonna e'
+#   trgfn_child_requires_active_parent, che verifica solo che l'aliquota citata
+#   sia ATTIVA — non che ci sia).
+#
+# ── ⛔ PERCHE' NON UN `NOT NULL` SULLA COLONNA ────────────────────────
+#   Sarebbe la forma letterale, e non e' disponibile in un passo:
+#   vendite.ordini_righe.iva_id e' NULLABLE, e fn_genera_ddt_da_ordine copia
+#   `orr.iva_id` tale e quale. Un NOT NULL su vendite.ddt_righe.iva_id farebbe
+#   FALLIRE L'EVASIONE DI UN ORDINE ogni volta che la riga d'ordine non ha
+#   l'aliquota — con un 23502, cioe' un errore tecnico muto, su un percorso che
+#   oggi funziona. Il NULL e' ammesso lungo TUTTA la catena (ordini_righe,
+#   ddt_righe_componenti, ddt_righe): chiudere l'ultimo anello senza chiudere i
+#   primi non rende il dato obbligatorio, sposta il punto di rottura su chi non
+#   c'entra. ⭐ Un vincolo si mette dove il dato SI PUO' FORNIRE, non dove il
+#   difetto si vede.
+#
+# ── ⭐ IL DISCRIMINE E' IL PREZZO, NON LA CAUSALE ─────────────────────
+#   Il punto nuovo NON e' dentro `IF COALESCE(v_fatturabile, false)`, e la
+#   differenza e' portante. Il punto 3 si condiziona sulla causale perche' un
+#   documento che non vende non deve avere un prezzo RISOLVIBILE. Ma se un
+#   prezzo c'e' — e su un conto visione puo' esserci — la riga entra comunque
+#   in vw_ddt_righe_iva_base, che la causale non la guarda affatto. Il vincolo
+#   deve avere lo stesso perimetro del CONSUMATORE che protegge.
+#   In una riga: c'e' un prezzo, quindi c'e' un valore, quindi serve
+#   un'aliquota. E' lo stesso discrimine del punto 1 — «il DDT di solo
+#   trasporto resta legittimo: quello e' righe SENZA PREZZO».
+#
+# ── ⚠️ SI GUARDA `dr.prezzo_unitario`, NON IL COALESCE COL FULFILLMENT ─
+#   Il punto 3 risale il prezzo alla riga d'ordine; qui NO, di proposito. Una
+#   riga il cui prezzo e' solo DERIVATO non entra in vw_ddt_righe_iva_base
+#   (che legge la sola colonna) e quindi non produce il riepilogo anonimo:
+#   pretendere li' l'aliquota bloccherebbe un documento che non ha il difetto.
+#   ⚠️ Che poi la vista NON conosca il fulfillment e' un'asimmetria vera —
+#   un DDT da evasione ordine stampa un riepilogo IVA vuoto — ma e' un'altra
+#   voce, di un altro perimetro (§8.3 del brief), e va curata insegnando il
+#   COALESCE alla vista, non allargando questo punto.
+#
+# ── ⛔ NON SI RIUSA fn_check_ddt_riga_richiede_prezzo ─────────────────
+#   Risponde a un'altra domanda — «questa riga appartiene a un documento che
+#   VENDE?» — ed e' proprio la domanda che qui NON si pone. Riusarla
+#   condizionerebbe il controllo alla causale, cioe' il difetto descritto sopra.
+#
+# ── ⚠️ L'ORDINE DELL'ARRAY E' IL CONTRATTO ───────────────────────────
+#   script.fn_available_actions_ddt legge `v_motivi -> 0`, cioe' il PRIMO
+#   motivo, e ne fa reason/reason_key del pulsante «Emetti» disabilitato. Il
+#   punto nuovo va DOPO il prezzo e PRIMA degli indirizzi: struttura, intento,
+#   valore della riga, testata, componenti. Un ordine non scritto e' un ordine
+#   che il prossimo cambia senza accorgersene.
+#
+# ── ⚠️ LA reason_key E' UN DEBITO VERSO IL FRONTEND ──────────────────
+#   `vendite.ddt.azione_reason.iva_mancante` — quinta della famiglia che questa
+#   funzione gia' emette (causale_mancante, prezzo_non_risolvibile,
+#   componenti_prezzo_pendente, componenti_non_valorizzati). Il testo (it + en)
+#   lo mette il FE in frontend/src/locales, NELLO STESSO GIRO: una reason_key
+#   emessa e assente dai locales e' un pulsante grigio col tooltip VUOTO, e
+#   scripts/check_i18n_keys.py (controllo 4) fa fallire la CI.
+#
+# ⚠️ Corpo ripreso dalla doc auto-gen (l'oggetto VIVO), non da uno YAML.
+#   Firma invariata, quindi CREATE OR REPLACE senza DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260828-02-update-fn-check-ddt-emittibile-iva-mancante-mctit.yaml
+
+  - changeSet:
+      id: 20260828-02-update-fn-check-ddt-emittibile-iva-mancante
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Fase C (C-1) del brief-db-ddt-riconsegna-eredita-testata: sesto motivo di non
+        emittibilita' — una riga attiva CON PREZZO e senza iva_id blocca l'emissione
+        (E_DDT_RIGA_IVA_MANCANTE). Chiude un difetto silenzioso: vw_ddt_righe_iva_base filtra
+        il prezzo e NON l'aliquota, quindi quella riga entrava nel riepilogo con imponibile
+        pieno, codice IVA vuoto e imposta zero, su un documento stampato. ⭐ Il discrimine e'
+        il PREZZO e non la causale — la vista del riepilogo la causale non la guarda, e il
+        vincolo deve avere lo stesso perimetro del consumatore che protegge. ⚠️ Si guarda
+        dr.prezzo_unitario e non il COALESCE col fulfillment: una riga dal prezzo solo derivato
+        non entra nella vista, quindi non ha il difetto. ⛔ Non e' un NOT NULL di colonna:
+        ordini_righe.iva_id e' nullable e fn_genera_ddt_da_ordine la copia, quindi il vincolo
+        farebbe fallire l'evasione ordine con un 23502 muto. Decisione di Tid 2026-08-28
+        (R4-ter): «impossibile» si traduce in «non emittibile», e in bozza il NULL resta
+        legittimo come gia' per la causale.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_check_ddt_emittibile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+
+              -- Scopo: elencare i motivi che impediscono l'emissione (EMESSO) di
+              --   un DDT. Funzione PURA (fn_check_*): non solleva, non scrive.
+              --   Consumatori: i 4 guard trigger di emissione (sollevano il
+              --   proprio codice) e script.fn_available_actions_ddt (espone
+              --   l'azione disabled + reason). Brief:
+              --   brief-db-guard-righe-avanzamento-stato §1a-bis (Rev 2).
+              -- Ritorna: [] se emittibile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                  v_motivi      jsonb := '[]'::jsonb;
+                  v_fatturabile boolean;
+                  v_riga_senza  vendite.ddt_righe.id%TYPE;
+                  v_riga_no_iva vendite.ddt_righe.id%TYPE;
+                  v_riga_no_iva_nr vendite.ddt_righe.riga_nr%TYPE;
+                  v_presenti    integer[];
+                  v_mancanti    text[];
+              BEGIN
+                  -- 1. STRUTTURA — zero righe attive = niente da trasportare (543).
+                  --    Il "DDT di solo trasporto" resta legittimo: quello e' righe
+                  --    SENZA PREZZO, non zero righe.
+                  IF NOT EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe dr
+                       WHERE dr.ddt_id = p_ddt.id
+                         AND dr.attivo IS TRUE
+                  ) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_DDT_EMISSIONE_SENZA_RIGHE',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  NULL);
+                  END IF;
+
+                  -- 2. INTENTO — la causale dichiara se la merce che viaggia e'
+                  --    una vendita da fatturare o solo un trasporto (544, DL-28).
+                  --    In bozza il NULL resta legittimo: il vincolo e' qui, non
+                  --    sul salvataggio.
+                  IF p_ddt.causale_trasporto_id IS NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_DDT_CAUSALE_OBBLIGATORIA',
+                          'reason',     'CAUSALE_MANCANTE',
+                          'reason_key', 'vendite.ddt.azione_reason.causale_mancante',
+                          'dettaglio',  NULL);
+                  ELSE
+                      -- 3. DATI RIGA — causale fatturabile => ogni riga attiva deve
+                      --    avere prezzo RISOLVIBILE: proprio o ereditato dalla riga
+                      --    d'ordine via fulfillment (545). Stessa COALESCE del
+                      --    lister. NB: vw_ddt_righe_iva_base NON e' riusabile qui
+                      --    (filtra prezzo_unitario IS NOT NULL, perderebbe proprio
+                      --    le righe da esaminare).
+                      SELECT ct.fatturabile INTO v_fatturabile
+                        FROM config.causali_trasporto ct
+                       WHERE ct.id = p_ddt.causale_trasporto_id;
+
+                      IF COALESCE(v_fatturabile, false) THEN
+                          SELECT dr.id INTO v_riga_senza
+                            FROM vendite.ddt_righe dr
+                            LEFT JOIN LATERAL (
+                                SELECT or_r.prezzo_unitario
+                                  FROM vendite.ordini_righe_fulfillment ful
+                                  JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                                 WHERE ful.ddt_riga_id = dr.id
+                                 ORDER BY ful.id LIMIT 1
+                            ) src ON TRUE
+                           WHERE dr.ddt_id = p_ddt.id
+                             AND dr.attivo IS TRUE
+                             AND COALESCE(dr.prezzo_unitario, src.prezzo_unitario) IS NULL
+                           ORDER BY dr.id
+                           LIMIT 1;
+
+                          IF v_riga_senza IS NOT NULL THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_DDT_PREZZO_NON_RISOLVIBILE',
+                                  'reason',     'PREZZO_NON_RISOLVIBILE',
+                                  'reason_key', 'vendite.ddt.azione_reason.prezzo_non_risolvibile',
+                                  'dettaglio',  jsonb_build_object('riga_id', v_riga_senza));
+                          END IF;
+                      END IF;
+                  END IF;
+
+                  -- 3-bis. VALORE DELLA RIGA — una riga che porta un PREZZO porta
+                  --   anche l'ALIQUOTA. Decisione di Tid del 2026-08-28 (R4-ter del
+                  --   brief-db-ddt-riconsegna-eredita-testata): una riga di DDT senza
+                  --   iva_id e' «impossibile», e «impossibile» si traduce in NON
+                  --   EMITTIBILE — in bozza il NULL resta legittimo, come gia' per la
+                  --   causale al punto 2.
+                  --
+                  -- ⭐ IL DISCRIMINE E' IL PREZZO, NON LA CAUSALE, e per questo il
+                  --   controllo sta FUORI dal ramo `v_fatturabile`. Il punto 3 si
+                  --   condiziona sulla causale perche' un documento che non vende non
+                  --   deve avere un prezzo risolvibile; ma se un prezzo C'E' — e su un
+                  --   conto visione puo' esserci — la riga entra comunque in
+                  --   vendite.vw_ddt_righe_iva_base, che la causale non la guarda
+                  --   affatto. Il vincolo deve avere lo STESSO PERIMETRO del
+                  --   consumatore che protegge.
+                  --
+                  -- ⛔ COSA SUCCEDEVA SENZA, ed era silenzioso: vw_ddt_righe_iva_base
+                  --   filtra `prezzo_unitario IS NOT NULL` e NON filtra `iva_id`;
+                  --   vw_ddt_riepilogo_iva_dettaglio aggrega per (iva_id,
+                  --   aliquota_effettiva) e calcola con COALESCE(aliquota, 0). La riga
+                  --   produceva quindi un imponibile pieno con codice IVA vuoto e
+                  --   imposta zero, su un documento emesso e stampato.
+                  --
+                  -- ⚠️ Si guarda `dr.prezzo_unitario`, NON il COALESCE col
+                  --   fulfillment del punto 3, e non e' una svista: una riga dal
+                  --   prezzo solo DERIVATO non entra nella vista del riepilogo,
+                  --   quindi non ha il difetto — pretendere li' l'aliquota
+                  --   bloccherebbe un documento sano.
+                  --
+                  -- ⛔ Non si riusa vendite.fn_check_ddt_riga_richiede_prezzo:
+                  --   risponde a un'altra domanda («la riga appartiene a un documento
+                  --   che VENDE?»), che qui non si pone.
+                  --
+                  -- ⚠️ Nel dettaglio va l'id (per chi diagnostica) E il numero di riga
+                  --   (per la frase che legge una persona): sono due destinatari
+                  --   diversi.
+                  SELECT dr.id, dr.riga_nr INTO v_riga_no_iva, v_riga_no_iva_nr
+                    FROM vendite.ddt_righe dr
+                   WHERE dr.ddt_id = p_ddt.id
+                     AND dr.attivo IS TRUE
+                     AND dr.prezzo_unitario IS NOT NULL
+                     AND dr.iva_id IS NULL
+                   ORDER BY dr.riga_nr, dr.id
+                   LIMIT 1;
+
+                  IF v_riga_no_iva IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_DDT_RIGA_IVA_MANCANTE',
+                          'reason',     'RIGA_SENZA_ALIQUOTA',
+                          'reason_key', 'vendite.ddt.azione_reason.iva_mancante',
+                          'dettaglio',  jsonb_build_object('riga_id', v_riga_no_iva,
+                                                           'riga_nr', v_riga_no_iva_nr));
+                  END IF;
+
+                  -- 4. TESTATA — indirizzi marcati obbligatori per l'ambito DDT.
+                  SELECT array_agg(di.tipo_indirizzo_id) INTO v_presenti
+                    FROM vendite.ddt_indirizzi di
+                   WHERE di.ddt_id = p_ddt.id;
+
+                  v_mancanti := script.fn_indirizzi_obbligatori_mancanti('DDT', v_presenti);
+
+                  IF array_length(v_mancanti, 1) IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_INDIRIZZO_DOC_OBBLIGATORIO',
+                          'reason',     'INDIRIZZI_MANCANTI',
+                          'reason_key', 'common.azione_reason.indirizzi_mancanti',
+                          'dettaglio',  jsonb_build_object('mancanti', to_jsonb(v_mancanti)));
+                  END IF;
+
+                  -- 5. COMPONENTI BoM CASO A — ma solo se il documento VENDE.
+                  --
+                  -- ⛔ La condizione e' nuova (2026-08-19, slice C del brief righe DDT senza
+                  --   prezzo) e senza di essa il kit in conto visione resterebbe bloccato
+                  --   proprio adesso che il resto della slice lo ha reso possibile:
+                  --   vendite.ddt_righe_componenti.prezzo_unitario e' diventato facoltativo
+                  --   (20260819-13), quindi il secondo controllo qui sotto — che fino a ieri
+                  --   era IRRAGGIUNGIBILE, perche' la colonna era NOT NULL su tutte e quattro
+                  --   le tabelle gemelle — da oggi scatta davvero. Se non lo si condiziona,
+                  --   ferma all'emissione ogni DDT con un kit non valorizzato, compresi
+                  --   quelli che non si fatturano.
+                  --
+                  -- ⭐ E' la stessa regola del punto 3, applicata un livello piu' sotto:
+                  --   padre e figli obbediscono alla stessa dichiarazione, la causale. Un
+                  --   prezzo in attesa di approvazione o non ancora messo non ha nulla da
+                  --   dire su un documento che non produce valore.
+                  --
+                  -- ⚠️ v_fatturabile e' valorizzato dal punto 2 e resta NULL quando la
+                  --   causale manca: in quel caso l'emissione e' gia' bloccata da
+                  --   E_DDT_CAUSALE_OBBLIGATORIA e questi due controlli non aggiungono nulla.
+                  IF COALESCE(v_fatturabile, false) THEN
+                      -- 5. COMPONENTI BoM CASO A — prezzo in attesa di approvazione...
+                      IF EXISTS (
+                          SELECT 1 FROM vendite.ddt_righe dr
+                            JOIN vendite.ddt_righe_componenti drc ON drc.riga_ddt_id = dr.id
+                           WHERE dr.ddt_id = p_ddt.id
+                             AND drc.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+                      ) THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_COMPONENTE_PREZZO_PENDENTE',
+                              'reason',     'COMPONENTI_PREZZO_PENDENTE',
+                              'reason_key', 'vendite.ddt.azione_reason.componenti_prezzo_pendente',
+                              'dettaglio',  NULL);
+                      END IF;
+
+                      -- ...oppure non ancora valorizzato.
+                      IF EXISTS (
+                          SELECT 1 FROM vendite.ddt_righe dr
+                            JOIN vendite.ddt_righe_componenti drc ON drc.riga_ddt_id = dr.id
+                           WHERE dr.ddt_id = p_ddt.id
+                             AND drc.attivo = TRUE
+                             AND drc.prezzo_unitario IS NULL
+                      ) THEN
+                          v_motivi := v_motivi || jsonb_build_object(
+                              'codice',     'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
+                              'reason',     'COMPONENTI_NON_VALORIZZATI',
+                              'reason_key', 'vendite.ddt.azione_reason.componenti_non_valorizzati',
+                              'dettaglio',  NULL);
+                      END IF;
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
+              IS 'Single source dei motivi che impediscono l''emissione (EMESSO) di un DDT: righe attive (543), causale (544), prezzo risolvibile se causale fatturabile (545), aliquota sulle righe che portano un prezzo, indirizzi obbligatori, componenti BoM CASO A pendenti/non valorizzati. Ritorna [] se emittibile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva. rev 2026-08-19: i due motivi sui COMPONENTI si valutano solo se la causale e'' fatturabile, come gia'' faceva il motivo sulle righe. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter, decisione di Tid): sesto motivo E_DDT_RIGA_IVA_MANCANTE — una riga attiva CON PREZZO e senza iva_id non si emette. Chiudeva un difetto silenzioso: vw_ddt_righe_iva_base filtra prezzo_unitario e NON iva_id, quindi quella riga entrava nel riepilogo con imponibile pieno, codice IVA vuoto e imposta zero, su un documento stampato. ⭐ Il discrimine e'' il PREZZO e non la causale, e per questo il controllo sta FUORI dal ramo fatturabile: la vista del riepilogo la causale non la guarda, e il vincolo deve avere lo stesso perimetro del consumatore che protegge. ⚠️ Si guarda dr.prezzo_unitario e NON il COALESCE col fulfillment del punto 3: una riga dal prezzo solo derivato non entra nella vista, quindi non ha il difetto. ⛔ Non e'' un NOT NULL di colonna, e non poteva esserlo: ordini_righe.iva_id e'' nullable e fn_genera_ddt_da_ordine la copia, quindi il vincolo avrebbe fatto fallire l''evasione ordine con un 23502 muto. ⚠️ Il punto nuovo sta fra il prezzo e gli indirizzi: fn_available_actions_ddt legge il PRIMO motivo, quindi l''ordine e'' il contratto.';
+      rollback:
+        - empty: {}
