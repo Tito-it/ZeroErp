@@ -88,4 +88,59 @@ avere righe CLIENTE e FORNITORE nella stessa espansione — servono colonne adat
 
 ---
 
+## 3. Quattro residui del cantiere «il lavoro che non torna indietro»
+
+> Aggiunti il **2026-08-28**, archiviando
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-done/brief-be-fe-lavoro-che-non-torna-indietro.md).
+> ⛔ Nessuno dei quattro è un difetto di quel cantiere: sono cose **di altri
+> perimetri** o **decisioni di prodotto**, tenute scritte perché un brief
+> archiviato non è il posto dove lasciare roba viva.
+
+### 3.1 ⏸️ Il codice errore «rientrato» nella baseline — *di chi possiede quel codice*
+
+`E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` risulta **rientrato** in
+`scripts/codici-errore-baseline.sh` (verificato sul file committato
+`db/baseline-codici-errore-famiglie.tsv`, riga 81).
+
+⚠️ **Non è cosmetico**: finché la baseline non si stringe, quella famiglia resta
+*dichiarata ammessa* e il presidio **non la vedrebbe tornare**. È un cancello
+mezzo spento. Si chiude con `--update`, che è una **decisione** — ogni riga che
+cambia dice che un codice ha cambiato significato.
+
+### 3.2 ⏸️ Due convenzioni per `ordinamento_default` — *di chi possiede lo schema `ui`*
+
+`clienti_default` ed `emittenti_fiscali_default` ordinano per **`campo_sorgente`**,
+tutti gli altri preset per **`codice`**. Il team DB l'ha trovata e **non l'ha
+chiusa di proposito**: deciderlo dentro un test significherebbe stabilire una
+convenzione fuori dal cantiere che possiede le liste.
+
+➡️ O si sceglie una convenzione e si bonifica, o si dichiara che valgono entrambe.
+
+### 3.3 🟡 `pagina_dimensione` dichiarata e non applicata — *decisione di prodotto*
+
+I preset delle liste della Lente 1 dichiarano `pagina_dimensione = 25`
+(`dash_competenza_commesse`, `_gruppi`, `_residui`), ma il cruscotto pagina a
+**10** (`PAGINATION.COMPACT_ROWS`) — liste compatte sotto le card.
+
+Dalla correzione della paginazione del 2026-08-28 il caller vince sulla config
+(vedi `frontend-standards.md`, *«una sola sorgente per `rows` e `first`»*), quindi
+per quelle tre liste **il preset è dichiarato e non applicato**.
+
+➡️ Va deciso quale dei due ha ragione: allineare il cruscotto al catalogo, o
+correggere il preset a 10. ⚠️ Non è un difetto — è una divergenza fra ciò che il
+catalogo dichiara e ciò che la schermata fa, ed è meglio saperlo che scoprirlo.
+
+### 3.4 🔵 Il frontend non ha un runner di test — *debito trasversale*
+
+Due correzioni del 2026-08-28 — il seleziona-tutto di pagina e la cascata della
+paginazione — sono state provate con **script `node` usa-e-getta** sulla
+reattività Vue vera: rossi prima, verdi dopo. ⛔ Ma **non girano in CI**, quindi
+niente impedisce che tornino.
+
+➡️ Se il frontend prende un runner (vitest), quelle due sono i primi casi da
+portarci dentro: sono piccole, pure, e presidiano difetti che si vedevano solo a
+video.
+
+---
+
 *ZeroERP Migliorie Generiche — avviato 25 marzo 2026*

@@ -11,7 +11,7 @@ normale: **nessun lotto viene rigenerato, nessuna fattura viene ricreata**.
 ## Contesto
 
 Consegna **BE-3** di
-[brief-be-fe-lavoro-che-non-torna-indietro.md](../../../dev/work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md),
+[brief-be-fe-lavoro-che-non-torna-indietro.md](../../../dev/work-done/brief-be-fe-lavoro-che-non-torna-indietro.md),
 metà applicativa del cantiere DB
 [brief-db-lavoro-che-non-torna-indietro.md](../../../dev/work-done/brief-db-lavoro-che-non-torna-indietro.md).
 

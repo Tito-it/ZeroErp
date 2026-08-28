@@ -1,7 +1,7 @@
 # Brief BE/FE — il lavoro che non torna indietro: la metà applicativa
 
 > **Destinatario:** backend + frontend. È il seguito di
-> [brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md),
+> [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md),
 > che il team DB ha **chiuso il 2026-08-26** (16 changeSet, `20260826-23` …
 > `20260826-38`, tutti applicati) lasciando **due consegne e un verbo** a questo
 > lato.
@@ -36,8 +36,8 @@
 >
 > | Brief | Cosa conteneva | Dove |
 > | --- | --- | --- |
-> | `brief-db-lavoro-che-non-torna-indietro.md` | la causa: «Elimina dal lotto» non liberava niente. 16 changeSet | [work-done](../work-done/brief-db-lavoro-che-non-torna-indietro.md) — chiuso 2026-08-26 |
-> | `brief-db-residui-competenza-dimensione-e-chiave.md` | il prerequisito: la chiave del verbo, la dimensione, la lista 49 | [work-done](../work-done/brief-db-residui-competenza-dimensione-e-chiave.md) — chiuso 2026-08-27 |
+> | `brief-db-lavoro-che-non-torna-indietro.md` | la causa: «Elimina dal lotto» non liberava niente. 16 changeSet | [work-done](brief-db-lavoro-che-non-torna-indietro.md) — chiuso 2026-08-26 |
+> | `brief-db-residui-competenza-dimensione-e-chiave.md` | il prerequisito: la chiave del verbo, la dimensione, la lista 49 | [work-done](brief-db-residui-competenza-dimensione-e-chiave.md) — chiuso 2026-08-27 |
 >
 > ⚠️ **Due punti dei brief archiviati sono vivi e stanno QUI**, per non
 > perderli chiudendo il loro file: il codice errore «rientrato» (**§9, E-3**), le
@@ -48,21 +48,31 @@
 > sono di chi possiede quei perimetri — ma da qualche parte devono restare
 > scritti, e un brief archiviato non è quella parte.
 >
-> ### 📋 Cosa resta aperto — al 2026-08-27
+> ### ✅ CHIUSO il 2026-08-28
 >
-> | | Cosa | Di chi |
-> | --- | --- | --- |
-> | 🔴 | **Il collaudo in-app** — il copione è scritto: [collaudo-in-app-riporta-da-emettere.md](collaudo-in-app-riporta-da-emettere.md), **11 prove**. Le 5 righe vere (`1123`, `1130`–`1133`, luglio 2026, 5.019 €) sono ancora dove erano: il recupero è il primo gesto. ⛔ Se il verbo non le prende non ha fallito la bonifica, **ha fallito il perimetro** | **Tid** |
-> | ⏸️ | **E-3** — il codice «rientrato» in `codici-errore-baseline.sh` (**§9**). ⚠️ Finché la baseline non si stringe, quella famiglia resta *dichiarata ammessa* e il presidio non la vedrebbe tornare: è un cancello mezzo spento | chi possiede quel codice |
-> | ⏸️ | **§11.6** — due convenzioni per `ordinamento_default` in `ui`. Per noi indifferente: `competenza_mese` risolve con entrambe | chi possiede lo schema `ui` |
-> | ✅ | **C-2 — la guida non dice più il falso su «Rendi definitive»**: ereditata il 2026-08-28 dal cantiere gemello [brief-be-fe-rendi-definitive-sui-lotti.md](../work-done/brief-be-fe-rendi-definitive-sui-lotti.md) e **fatta lo stesso giorno** (§12.3). ⛔ Due annotazioni della consegna erano sbagliate e sono corrette lì | **fatta** |
-> | ✅ | **Le due voci sulle offerte sono CHIUSE dal team DB il 2026-08-28**: il `SELECT INTO` risolve ora da `config.stati_doc_offerte.is_superato` con guard **sull'arità** (due stati marcati sono lo stesso difetto di zero: senza `STRICT` ne sceglierebbe uno a caso, in silenzio), e il limite del modello non c'è più — annullata l'ultima revisione viva, il padre **rientra** da `SUPERATA` a `EMESSA`. Ricadute per noi nel **§15** | fatto |
-> | ⏸️ | **In attesa del merge**: il ripiego per `E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA` (**§15.2**). ⛔ Non si può scrivere prima: il presidio lega ripiego e policy **nei due versi**, e la policy si rigenera dal database — che qui è **avanti rispetto a git** | noi, appena arriva |
-> | 🔵 | La prova del seleziona-tutto **non gira in CI**: nel frontend non c'è un runner (**§13.6**). Non è un debito di questo cantiere, è del frontend | — |
+> Il **collaudo in-app è passato** — «ora funziona tutto» (Tid): 11 prove, il
+> gesto vero sulle 5 righe reali, e il lavoro recuperato rifatturato dal giro
+> normale. Verbale in
+> [collaudo-in-app-riporta-da-emettere.md](../work-done/collaudo-in-app-riporta-da-emettere.md).
 >
-> ⛔ **Tutto il resto in questo file è CHIUSO.** I §§ che leggono come richieste
-> al futuro («va fatto», «si può fare adesso») sono **piani eseguiti**: restano
-> perché dicono *perché* una cosa andava fatta, non perché manchi.
+> ⭐ **Il collaudo ha trovato quattro difetti che 4166 test non potevano vedere**,
+> e tre su quattro erano difetti di ciò che il programma **dice**, non di ciò che
+> fa: un nome sovraccarico («emessa»), una promessa invecchiata (il registro che
+> nessuno leggeva), un'istruzione non eseguibile («chiudi il documento»). Il
+> quarto — la paginazione che saltava — riguardava **tutte le liste
+> dell'applicazione**, non questo cantiere.
+>
+> ➡️ **Quattro residui NON sono chiusi e vivono altrove**, per non perderli
+> archiviando: il codice errore «rientrato», le due convenzioni di
+> `ordinamento_default`, la `pagina_dimensione` dichiarata e non applicata, e il
+> runner di test che il frontend non ha. Stanno nel §3 di
+> [migliorie-generiche.md](../work-in-progress/migliorie-generiche.md) — ⛔ **nessuno dei quattro è
+> un difetto di questo cantiere**: sono di altri perimetri o decisioni di
+> prodotto.
+>
+> ⚠️ **Quel che si legge sotto è il testo com'era quando è stato scritto.** I §§
+> che leggono come richieste al futuro sono **piani eseguiti**: restano perché
+> dicono *perché* una cosa andava fatta, non perché manchi.
 
 ---
 
@@ -587,7 +597,7 @@ parallelo.
 
 ## 9. Ereditato dal brief DB, che è stato archiviato
 
-Il brief del team DB — [brief-db-lavoro-che-non-torna-indietro.md](../work-done/brief-db-lavoro-che-non-torna-indietro.md)
+Il brief del team DB — [brief-db-lavoro-che-non-torna-indietro.md](brief-db-lavoro-che-non-torna-indietro.md)
 — è **chiuso e spostato in `work-done/`** il 2026-08-26: lato database tutto
 consegnato e applicato (16 changeSet). ⚠️ Prima di archiviarlo i suoi punti
 sospesi sono stati censiti **uno per uno**; questi tre non avevano ancora una
@@ -863,7 +873,7 @@ di coordinarsi, non di lavorare in parallelo sulla stessa riga.
 > ⭐ **Aggiornamento 2026-08-28 — la contesa non c'è più: è diventata eredità.**
 > Il cantiere gemello ha chiuso il suo collaudo (16 prove verdi, numeri veri
 > consumati) ed è stato archiviato in
-> [work-done](../work-done/brief-be-fe-rendi-definitive-sui-lotti.md) **con la
+> [work-done](brief-be-fe-rendi-definitive-sui-lotti.md) **con la
 > sua voce C-2 ancora aperta**: la riscrittura di §7.1 e §6.3. Quella voce è
 > passata **qui**, nella tabella «Cosa resta aperto» in testa al file, perché
 > l'ordine che la bloccava era proprio l'attesa del nostro **L5**.

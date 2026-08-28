@@ -314,18 +314,39 @@ watch(
   },
 )
 
-// Pagina dimensione effettiva: cascata config BE (preferenza/preset) ->
-// fallback PAGINATION.DEFAULT_ROWS. Costante centralizzata in
-// core/constants.js: cambiandola li' si aggiorna anche il default qui.
+// Pagina dimensione effettiva. ⭐ CASCATA, e l'ordine e' il punto:
+//   1. quello che il CALLER dichiara (`paginatorOptions.rows`) — e' lo stato con
+//      cui ha appena fatto la fetch, quindi e' l'unica verita';
+//   2. la config BE (preferenza/preset) — vale finche' il caller non ne ha uno;
+//   3. `PAGINATION.DEFAULT_ROWS`.
+//
+// ⛔ FINO AL 2026-08-28 IL CALLER NON ERA NELLA CASCATA, e la paginazione
+//    SALTAVA. `pageSize` era una computed sulla SOLA config, quindi la scelta
+//    «righe per pagina» dell'operatore non arrivava mai qui: lui sceglieva 10, il
+//    caller rifaceva la fetch con 10, e al render successivo il paginator tornava
+//    a disegnarsi con i 25 del catalogo. Da li' in poi i due numeri
+//    litigavano — PrimeVue calcolava l'offset del «vai a pagina 2» con 25 e il
+//    caller lo interpretava con 10: si passava da pagina 1 a pagina 3.
+//    ⚠️ Trovato in collaudo. Prima si era corretto solo il valore INIZIALE
+//    (allineamento su `@config-loaded`): non bastava, perche' il difetto non e'
+//    nel valore di partenza — e' che la scelta dell'operatore non era MAI letta.
 const pageSize = computed(
-  () => config.value?.pagina_dimensione ?? PAGINATION.DEFAULT_ROWS,
+  () => props.paginatorOptions?.rows
+    ?? config.value?.pagina_dimensione
+    ?? PAGINATION.DEFAULT_ROWS,
 )
-// Offset 0-based per il paginator. Resta a 0 finche' la config non e'
-// caricata, cosi' DataTable non "salta" quando arriva pagina_dimensione
-// diversa dal default usato dal caller per il primo fetch.
-const firstOffset = computed(() =>
-  config.value ? (props.page - 1) * pageSize.value : 0,
-)
+// Offset 0-based del paginator, con la stessa cascata e per la stessa ragione:
+// se il caller dichiara `first`, quello E' la posizione — ricalcolarla qui da
+// `page x pageSize` significa farlo con un moltiplicatore che potrebbe non
+// essere il suo.
+// ⚠️ Resta a 0 finche' la config non e' caricata E il caller non ha detto
+//    niente: e' la difesa originale contro il salto del primo render, e vale
+//    ancora per le liste che non passano `first`.
+const firstOffset = computed(() => {
+  const dalCaller = props.paginatorOptions?.first
+  if (dalCaller != null) return dalCaller
+  return config.value ? (props.page - 1) * pageSize.value : 0
+})
 
 // Eventi DataTable -> il caller decide come gestire (server-side fetch).
 // Azzeriamo lo stato expansion su cambio pagina/sort: le chiavi dataKey della

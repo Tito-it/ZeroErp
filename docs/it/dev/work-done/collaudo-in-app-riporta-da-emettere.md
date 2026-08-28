@@ -1,5 +1,24 @@
 # Collaudo in-app · «Riporta da emettere» e la card che si spezza in due
 
+> ✅ **CHIUSO il 2026-08-28** — «ora funziona tutto» (Tid). Le 11 prove sono
+> passate, comprese le tre che sarebbero fallite in silenzio (export, personalizza
+> colonne, le dieci colonne ordinabili) e il gesto vero sulle 5 righe reali.
+>
+> ⭐ **Ha trovato QUATTRO difetti che nessun test aveva visto**, e nessuno era nel
+> codice del verbo:
+>
+> | | Cosa | Dove viveva |
+> | --- | --- | --- |
+> | **R-1** | il residuo *sembra* già fatturato: il lotto porta alla fattura di un **altro cliente** | un nome ambiguo — «emessa» |
+> | **R-2** | la prova diceva «chiudi il documento», gesto che non esiste: è **annullare** | il mio copione, e la guida |
+> | **R-3** | il registro delle righe **si scriveva e non si leggeva**: sei tipi di evento irraggiungibili | una promessa della guida che nessuna schermata manteneva |
+> | **R-4** | la **paginazione saltava** (1 → 3) su tutte le liste dell'applicazione | due sorgenti per la stessa dimensione di pagina |
+>
+> ⛔ **Tre su quattro sono difetti di ciò che il programma DICE**, non di ciò che
+> fa: nomi sovraccarichi, promesse invecchiate, istruzioni non eseguibili. Nessuno
+> dei 4166 test poteva vederli — si vedono solo guardando la schermata. È la
+> ragione per cui questo documento esiste.
+
 > **Cos'è.** Il copione della validazione a video: si tiene aperto accanto
 > all'applicazione e si spunta. Non è il brief — il *perché* di ogni scelta sta
 > in [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md);
@@ -254,6 +273,7 @@ poi finiva in una fattura che nessuno si aspettava più.
 **Se non succede**: se la riga resta `NON_EMESSA`, il trigger `_z90_` non è
 scattato. Verifica che il preventivo sia davvero passato ad `ANNULLATO` e non a
 un altro stato.
+Tutto ok 
 
 #### 10.2 · Con righe **già emesse** il documento **non si annulla affatto**
 
@@ -271,6 +291,9 @@ un'altra cosa. Provare lì non proverebbe niente.
 **Cosa deve succedere**: **rifiuta**, e il messaggio nomina la via d'uscita —
 si recuperano prima le righe con **«Riporta da emettere»** dalla Lente 1, e
 **dopo** il documento si annulla portandosele via.
+
+
+QUesto è ancora meglio il pulsante Annulla non è attivo
 
 ⚠️ **Il messaggio deve parlare di righe già emesse**, non di transizione non
 ammessa: sono due rifiuti di due trigger diversi (`a10_guard_chiusura_sorgente`
@@ -309,29 +332,33 @@ prima si accendeva a sproposito.
 
 **Se non succede**: la lista sta ancora usando `toggleAll` invece di
 `toggleAllInPagina` (vedi §13.6 del brief).
-
+Ok tutto ok funziona tutto
 ---
 
 ## Verbale
 
-**Chiuso il**: ______ · **Da**: ______ · **Ambiente**: ______
+**Chiuso il**: 2026-08-28 · **Da**: Tid · **Ambiente**: sviluppo (`dbdev`)
+
+> ✅ **Esito dichiarato da Tid il 2026-08-28: «ora funziona tutto».**
+> ⚠️ Le spunte qui sotto registrano quella dichiarazione, non un'osservazione
+> di chi scrive: chi ha guardato la schermata è Tid.
 
 | #    | Prova                                            | Scrive | Esito | Note                          |
 | ---- | ------------------------------------------------ | ------ | ----- | ----------------------------- |
-| 1    | La card dice DUE cose                            | no     | ⬜     |                               |
-| 2    | Mese senza residui: «nessuno da recuperare»      | no     | ⬜     |                               |
-| 3    | Il tooltip non racconta la storia vecchia        | no     | ⬜     |                               |
-| 4    | La lista è quella dei residui                    | no     | ⬜     |                               |
-| 5a   | 🔴 **Esporta** scarica i RESIDUI                  | no     | ⬜     |                               |
-| 5b   | 🔴 **Personalizza colonne** apre la lista giusta  | no     | ⬜     |                               |
-| 5c   | 🔴 **Le 10 colonne ordinabili**, in due direzioni | no     | ⬜     |                               |
-| 6    | Senza permesso la porta non si vede              | no     | ⬜     |                               |
-| 7    | ⭐ **Il gesto — una riga sola** (perimetro)       | **sì** | ⬜     |                               |
-| 8    | Il recupero è vero: si rifattura                 | **sì** | ⬜     |                               |
-| 9    | L'elenco invecchiato si riconosce da sé          | **sì** | ⬜     |                               |
-| 10.1 | **Annullare** un documento ritira il non emesso  | **sì** | ⬜     | brucia il documento           |
-| 10.2 | Con righe emesse l'annullamento è **rifiutato**  | no     | ⬜     | unico esemplare: `DDT0010839` |
-| 11   | Seleziona-tutto **di pagina** (altra lista)      | no     | ⬜     |                               |
+| 1    | La card dice DUE cose                            | no     | ✅     |                               |
+| 2    | Mese senza residui: «nessuno da recuperare»      | no     | ✅     |                               |
+| 3    | Il tooltip non racconta la storia vecchia        | no     | ✅     |                               |
+| 4    | La lista è quella dei residui                    | no     | ✅     |                               |
+| 5a   | 🔴 **Esporta** scarica i RESIDUI                  | no     | ✅     |                               |
+| 5b   | 🔴 **Personalizza colonne** apre la lista giusta  | no     | ✅     |                               |
+| 5c   | 🔴 **Le 10 colonne ordinabili**, in due direzioni | no     | ✅     |                               |
+| 6    | Senza permesso la porta non si vede              | no     | ✅     |                               |
+| 7    | ⭐ **Il gesto — una riga sola** (perimetro)       | **sì** | ✅     |                               |
+| 8    | Il recupero è vero: si rifattura                 | **sì** | ✅     |                               |
+| 9    | L'elenco invecchiato si riconosce da sé          | **sì** | ✅     |                               |
+| 10.1 | **Annullare** un documento ritira il non emesso  | **sì** | ✅     | brucia il documento           |
+| 10.2 | Con righe emesse l'annullamento è **rifiutato**  | no     | ✅     | unico esemplare: `DDT0010839` |
+| 11   | Seleziona-tutto **di pagina** (altra lista)      | no     | ✅     |                               |
 
 ### Che cosa ha trovato il collaudo
 
@@ -339,11 +366,13 @@ prima si accendeva a sproposito.
 > undici verdi si legge come «non abbiamo guardato», non come «era tutto a
 > posto».
 
-| #       | Cosa                                                                                                                                                                                                                                        | Dove è finito                                                  |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **R-1** | Alla prova 7 il residuo **sembra già fatturato**: il lotto di provenienza porta a una fattura **numerata e definitiva**. Non lo è — quel documento è di un **altro cliente** dello stesso lotto. Difetto di **leggibilità**, non di modello | ✅ chiarito qui sotto; note in `cruscotti-fatturazione.md` §3.1 |
+| #       | Cosa                                                                                                                                                                                                                                                                                               | Dove è finito                                                                                                                                                                |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **R-1** | Alla prova 7 il residuo **sembra già fatturato**: il lotto di provenienza porta a una fattura **numerata e definitiva**. Non lo è — quel documento è di un **altro cliente** dello stesso lotto. Difetto di **leggibilità**, non di modello                                                        | ✅ chiarito qui sotto; note in `cruscotti-fatturazione.md` §3.1                                                                                                               |
+| **R-2** | La prova 10 diceva **«chiudi il documento»**: un gesto che non esiste. Il trigger scatta solo sul passaggio a uno stato `is_abortito`, e in tutti e quattro i vocabolari quello stato è **uno solo: `ANNULLATO`** — *evadere o completare non ritira niente*. La stessa ambiguità era nella guida | ✅ prova 10 riscritta con i documenti veri; `cruscotti-fatturazione.md` §7.7 corretta |
 | **R-3** | 🔴 **Il registro delle attività di commessa si scrive e non si legge mai.** `vendite.commesse_attivita_log` non ha nessun `SELECT` in tutto il backend: nessuna rotta, nessun pannello. Il motivo del ritiro esiste nel database ed è **irraggiungibile** — e la guida §7.7 prometteva il contrario | ✅ **CHIUSO il 2026-08-28**: rotta `commesse/<id>/registro/` + voce «Registro della riga» nel kebab del drawer commessa. Guida §7.7 riscritta: la promessa adesso è mantenuta |
-|         |                                                                                                                                                                                                                                             |                                                                |
+| **R-4** | 🔴 **La paginazione saltava**: scelte 10 righe, da pagina 1 si finiva su **pagina 3**. `ListaConfigurabile` disegnava il paginator con `rows`/`first` presi dalla **sola config** (25 a catalogo) e **sovrascriveva** quelli del caller (10): PrimeVue emetteva `first=25`, il caller lo leggeva con 10 → `25/10+1 = 3`. Colpiva **tutte** le liste dell'applicazione, non solo questa | ✅ corretto: il caller entra nella cascata **per primo**. Regola scritta in `frontend-standards.md` |
+|         |                                                                                                                                                                                                                                                                                                    |                                                                                                                                                                              |
 
 #### R-1 · «ma quella fattura ha già un numero» — cosa è emerso davvero
 

@@ -16,7 +16,7 @@
 >
 > | Rilievo | Dove è registrato |
 > | --- | --- |
-> | il **guard mancante** su `trgfn_offerte_commerciali_revisione` (`NULL` su colonna `NOT NULL` → errore con la frase sbagliata) | tabella «Cosa resta aperto» di [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) |
+> | il **guard mancante** su `trgfn_offerte_commerciali_revisione` (`NULL` su colonna `NOT NULL` → errore con la frase sbagliata) | tabella «Cosa resta aperto» di [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md) |
 > | il **limite del modello a trigger**: ultima revisione annullata senza successore → nessuna offerta attiva nel lineage | idem |
 >
 > ⚠️ **Quel che si legge sotto è il testo com'era quando è stato scritto.** Le
@@ -28,7 +28,7 @@
 > **Origine.** Collaudo in-app di Tid del **2026-08-28**, «Riporta da emettere»:
 > provando l'annullamento di `PRV0000133` il documento **sparisce dalla lista** e
 > non lo riporta a galla nessun filtro di stato. Il collaudo
-> ([collaudo-in-app-riporta-da-emettere.md](../work-in-progress/collaudo-in-app-riporta-da-emettere.md))
+> ([collaudo-in-app-riporta-da-emettere.md](collaudo-in-app-riporta-da-emettere.md))
 > dice esplicitamente che un difetto trovato lì va guardato **dove appartiene**:
 > questo non riguarda il verbo, la card o la lista dei residui, quindi apre un
 > cantiere suo.

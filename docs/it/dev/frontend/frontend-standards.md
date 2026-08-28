@@ -673,6 +673,48 @@ const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 
 Nessun componente lista deve implementare onPage/onSort/debounce manualmente.
 
+### ⛔ Paginazione corretta: **una sola sorgente** per `rows` e `first`
+
+🔴 **Il difetto che questa regola evita**: cambi la dimensione di pagina, poi vai
+da pagina 1 a pagina 2 e ti ritrovi su **pagina 3**. Non è un bug di PrimeVue: è
+**la dimensione di pagina contata da due parti diverse**.
+
+**La regola, in una riga:** `rows` e `first` li possiede **il caller** — è lui
+che ha fatto la fetch, e solo lui sa con quale dimensione. Chi disegna il
+paginator li legge, non li ricalcola.
+
+`<ListaConfigurabile>` applica questa cascata, **in quest'ordine**:
+
+1. `paginatorOptions.rows` / `.first` del **caller** — lo stato vero;
+2. `config.pagina_dimensione` — il preset a catalogo, finché il caller non ha uno stato suo;
+3. `PAGINATION.DEFAULT_ROWS`.
+
+⛔ **Fino al 2026-08-28 il caller non era nella cascata**: `rows` veniva dalla
+sola config e **sovrascriveva** quello che il caller dichiarava. La scelta
+«righe per pagina» dell'operatore non arrivava mai al paginator: lui sceglieva
+10, il caller rifaceva la fetch con 10, e al render successivo il paginator
+tornava a disegnarsi con i 25 del catalogo. Poi PrimeVue calcolava l'offset del
+«vai a pagina 2» con **25** e il caller lo interpretava con **10**:
+`25/10 + 1 = 3`.
+
+**Come si scrive una lista che pagina bene:**
+
+| Lista | Cosa usare |
+| --- | --- |
+| lista di ricerca standard | `useSearchTable(store)` — `paginatorProps` porta già `rows`/`first` dallo store, e `onPage` ha le due guardie (evento che non cambia niente → esci; fetch in volo → ignora) |
+| **cruscotti / drawer** (che `useSearchTable` non può servire: pretende uno store «ricerca + sort + limit») | `usePagedDashFetch` + `paginatorOptions` che dichiara **sempre** `rows` e `first` calcolati con la **stessa** dimensione della fetch |
+
+⚠️ **Il difetto si nasconde dove i numeri combaciano.** Sulla Lente 1 saltavano
+**tre liste su quattro**: gli `errori` hanno `pagina_dimensione = 10` a catalogo,
+uguale a `PAGINATION.COMPACT_ROWS`, quindi lì i due numeri coincidevano per caso
+e non succedeva niente. Sembrava il problema di una lista sola.
+
+⚠️ **Conseguenza da conoscere**: con la cascata, `pagina_dimensione` del preset
+vale come **valore iniziale** solo per le liste il cui caller si allinea alla
+config (`@config-loaded`, che **46 consumatori su 51** agganciano). Per le altre
+il preset resta dichiarato e non applicato — è una divergenza aperta, non un
+difetto di questa regola.
+
 ### Pattern: Ricerca universale → lista filtrata
 
 Quando l'utente seleziona un risultato dalla ricerca universale (SearchDrawer), il sistema:

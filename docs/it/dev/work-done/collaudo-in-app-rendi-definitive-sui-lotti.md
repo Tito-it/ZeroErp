@@ -332,7 +332,7 @@ tabella dei verbi la riscrive anche il passo **L5** del cantiere gemello, e farl
 in parallelo significa che una delle due mani perde il lavoro dell'altra (§9.1
 del brief). ⭐ **Per non perderlo con l'archiviazione, C-2 è stato trascritto
 come voce esplicita nel cantiere gemello**
-[brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md),
+[brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md),
 che possiede il passo L5 e la §7.1: la riscrive **una mano sola**, la sua.
 
 ⚠️ **Un difetto trovato qui non riapre il brief da sé**: va guardato dove

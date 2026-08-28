@@ -30,7 +30,7 @@
 >
 > | Cosa restava | Dove vive adesso |
 > | --- | --- |
-> | `BE-1` la fatturazione ferma · `BE-2` le policy dei 7 codici | ✅ **fatti**, [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-in-progress/brief-be-fe-lavoro-che-non-torna-indietro.md) §2 e §3 |
+> | `BE-1` la fatturazione ferma · `BE-2` le policy dei 7 codici | ✅ **fatti**, [brief-be-fe-lavoro-che-non-torna-indietro.md](brief-be-fe-lavoro-che-non-torna-indietro.md) §2 e §3 |
 > | il verbo «Riporta da emettere» a video | stesso brief, §4 e §5 — ⛔ **bloccato** da un prerequisito DB |
 > | il prerequisito DB (la chiave del verbo e la card che conta due popolazioni) | [brief-db-residui-competenza-dimensione-e-chiave.md](brief-db-residui-competenza-dimensione-e-chiave.md) |
 > | ⏸️ la guida operativa: chiudere un documento adesso **ritira lavoro** | brief BE/FE, §7 |
