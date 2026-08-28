@@ -114,31 +114,67 @@ Modello allineato a `acquisti.ordini` per la parte fornitore e a `vendite.preven
 | `storicizza` | boolean, default true | |
 | audit columns | | |
 
-**Revisione attiva — pattern derivato (simmetrico a `vendite.preventivi` post-refactor 2026-05-15):**
+**Revisione attiva — pattern derivato (simmetrico a `vendite.preventivi`):**
 
-Nessuna colonna `is_revision_attiva` persistita sulla tabella. Il predicato "è la
-rev viva del numero" è derivato in `acquisti.vw_preventivi` (e `vw_preventivi_list`)
-come:
+Nessuna colonna `is_revision_attiva` persistita sulla tabella: tutto derivato in
+`acquisti.vw_preventivi`.
+
+⛔ **AGGIORNATO 2026-08-28 — la forma scritta qui prima era quella VECCHIA, e
+riproduceva due difetti gia' corretti su vendite.** Diceva `is_attiva = NOT EXISTS
+(rev superiore non abortita)`: (1) senza il termine sullo stato **proprio**,
+un annullato in cima si auto-dichiara attivo e l'unicita' salta (fix vendite
+`20260708-07`); (2) con un flag solo, «e' l'ultima revisione?» e «non e'
+annullato?» restano in AND e non sono piu' separabili a valle — il difetto del
+brief `brief-db-revisione-attiva-due-domande` (2026-08-28). Il gemello acquisti
+nasce con la forma **corretta**, non con quella da correggere dopo.
+
+Le colonne da esporre sono **quattro**:
 
 ```sql
-NOT EXISTS (
-    SELECT 1 FROM acquisti.preventivi p2
-      JOIN config.stati_doc_preventivi_acq s2 ON s2.id = p2.stato_doc_preventivo_acq_id
-     WHERE p2.numero = p.numero
-       AND p2.rev > p.rev
-       AND s2.is_abortito IS FALSE
-) AS is_attiva
+-- «e' annullato?» — lo stato PROPRIO e' abortito
+EXISTS (SELECT 1 FROM config.stati_doc_preventivi_acq s0
+         WHERE s0.id = p.stato_doc_preventivo_acq_id
+           AND s0.is_abortito IS TRUE)                    AS is_abortito,
+
+-- «e' stata rimpiazzata?» — esiste una rev superiore NON abortita.
+-- Il complemento (is_superata IS FALSE) e' «e' l'ultima revisione».
+EXISTS (SELECT 1 FROM acquisti.preventivi p2
+          JOIN config.stati_doc_preventivi_acq s2
+            ON s2.id = p2.stato_doc_preventivo_acq_id
+         WHERE p2.numero = p.numero
+           AND p2.rev    > p.rev
+           AND s2.is_abortito IS FALSE)                   AS is_superata,
+
+-- «qualcuno ha PROVATO a revisionarla?» — rev superiore di qualunque stato
+EXISTS (SELECT 1 FROM acquisti.preventivi p3
+         WHERE p3.numero = p.numero AND p3.rev > p.rev)   AS has_next_revisione,
+
+-- composta dalle prime due: cosi' non puo' driftare da loro
+(NOT is_abortito AND NOT is_superata)                     AS is_attiva
 ```
+
+⭐ Le tre `EXISTS` si calcolano una volta sola in un `CROSS JOIN LATERAL` e
+`is_attiva` le compone — vedi `vendite.vw_preventivi` (changeSet `20260828-08`)
+per la forma esatta.
+
+⚠️ **Chi filtra cosa**: la lista con toggle «storico revisioni» spento usa
+`is_superata IS FALSE`, **non** `is_attiva` — quest'ultima nasconde anche gli
+annullati e rende vuoto per costruzione il filtro di stato «Annullato». I
+cruscotti («il documento e' vivo e corrente») usano `is_attiva`.
 
 Dipendenza: `config.stati_doc_preventivi_acq` deve esporre colonna
 `is_abortito BOOLEAN NOT NULL DEFAULT FALSE` (true solo per lo stato ANNULLATO).
+⚠️ **Non** serve un `is_superato`: nei preventivi il superamento e' una relazione
+fra righe `(numero, rev)`, non uno stato — quella colonna esiste solo su
+`config.stati_doc_offerte`, dove il superamento e' scritto da un trigger.
 
 Razionale: vedi `docs/it/dev/work-done/brief-db-preventivi-revisione-attiva-derivata.md`
-per il modello e i pgTAP applicati su vendite. Un flag persistito mantenuto
-manualmente diverge dai dati strutturali appena uno stato terminale di una
-revisione viene applicato (rev annullata che non rifluisce al predecessore).
-Il predicato derivato chiude per costruzione tutti i casi senza trigger di
-sincronizzazione.
+per il modello e i pgTAP applicati su vendite, e
+`brief-db-revisione-attiva-due-domande` per la separazione delle due domande.
+Un flag persistito mantenuto manualmente diverge dai dati strutturali appena uno
+stato terminale di una revisione viene applicato (rev annullata che non rifluisce
+al predecessore). Il predicato derivato chiude per costruzione tutti i casi senza
+trigger di sincronizzazione.
 
 `fn_crea_revisione_preventivo_acq` (futura): copia testata + righe + componenti
 BoM (se la sorgente acquisti adotterà il modello componenti) + indirizzi.

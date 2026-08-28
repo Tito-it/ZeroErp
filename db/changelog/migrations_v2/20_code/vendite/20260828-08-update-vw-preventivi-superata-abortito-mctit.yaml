@@ -1,0 +1,193 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE 2 — LE DUE DOMANDE PRENDONO UN NOME
+#   vendite.vw_preventivi
+#   Piano: brief-db-revisione-attiva-due-domande, §5.2
+#
+# ── ⚠️ IL FATTO ──────────────────────────────────────────────────────
+#   `is_attiva` risponde a due domande diverse con un flag solo:
+#     1) «e' l'ultima revisione?»  — non esiste una rev superiore viva;
+#     2) «non e' annullato?»       — lo stato proprio non e' abortito.
+#   Sono in AND, quindi a valle non sono piu' separabili: chi vuole «solo
+#   l'ultima revisione» si porta dietro «e non annullata», e non puo' farne a
+#   meno. La lista filtra `is_attiva IS TRUE` di default, percio' il filtro di
+#   stato «Annullato» non puo' restituire nulla — mai, per costruzione — e il
+#   documento riappare solo col toggle «Mostra storico revisioni», che pero'
+#   promette un'altra cosa: un annullato non e' una revisione storica.
+#   ⛔ E non e' solo la lista: PreventiviDrawer.vue legge `!is_attiva` come
+#   «revisione superata» e forza il readonly. Su un annullato che e' l'ULTIMA
+#   revisione del numero, quel banner e' una frase falsa.
+#
+# ── ⛔ COSA NON SI TOCCA, ed e' il punto ─────────────────────────────
+#   `is_attiva` NON cambia ne' formula ne' valori. Il termine sullo stato
+#   proprio (self-term) e' stato aggiunto DI PROPOSITO dal 20260708-07 per
+#   ripristinare l'unicita' — una sola rev attiva per numero — e resta.
+#   Il difetto non e' che `is_attiva` sbagli: e' che non esiste NESSUN'ALTRA
+#   colonna a cui chiedere la domanda 1 da sola.
+#
+# ── ⭐ COSA SI AGGIUNGE ──────────────────────────────────────────────
+#   Tre colonne, in coda (CREATE OR REPLACE ammette solo l'append):
+#     * `is_superata`        — esiste una rev superiore NON abortita: qualcuno
+#                              l'ha rimpiazzata. «E' l'ultima revisione?» =
+#                              `is_superata IS FALSE`;
+#     * `is_abortito`        — proiezione fedele di
+#                              config.stati_doc_preventivi.is_abortito;
+#     * `has_next_revisione` — esiste una rev superiore, di QUALUNQUE stato.
+#                              Oggi il BE se la ricalcola a mano nel dettaglio
+#                              (preventivi_repository.get_preventivo): stessa
+#                              logica in due posti, e uno dei due e' fuori dal DB.
+#
+# ── ⭐ IL LATERAL NON E' ESTETICA ────────────────────────────────────
+#   `is_attiva` e' ricavata dalle DUE componenti (`NOT is_abortito AND NOT
+#   is_superata`) invece di essere riscritta a parte. Cosi' non puo' driftare da
+#   loro: se un giorno si tocca una delle due, il flag composto la segue da se'.
+#   Riscriverla in parallelo avrebbe ricreato, dentro la stessa vista, il difetto
+#   che questo cantiere sta togliendo.
+#
+# ── ⛔ security_invoker=on VA RI-SPECIFICATA ─────────────────────────
+#   PostgreSQL la AZZERA su un CREATE OR REPLACE VIEW che non la ripete. E' nel
+#   testo qui sotto.
+#
+# ⚠️ Definizione ripresa dalla doc auto-gen (l'oggetto VIVO), con la lista
+#   colonne ESPLICITA al posto di `p.*`: cosi' una colonna aggiunta domani a
+#   vendite.preventivi non si infila prima di `is_attiva` facendo fallire il
+#   prossimo CREATE OR REPLACE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-08-update-vw-preventivi-superata-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260828-08-update-vw-preventivi-superata-abortito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        brief-db-revisione-attiva-due-domande §5.2: vw_preventivi espone le due componenti di
+        is_attiva come colonne proprie — is_superata (esiste una rev superiore non abortita)
+        e is_abortito (proiezione di stati_doc_preventivi.is_abortito) — piu'
+        has_next_revisione (rev superiore di qualunque stato, oggi ricalcolata nel BE).
+        is_attiva resta invariata nei valori ed e' ora DERIVATA dalle due componenti, cosi'
+        non puo' driftare. «E' l'ultima revisione?» si chiede a is_superata IS FALSE, senza
+        chiedere anche «e non annullato».
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_preventivi
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_preventivi'
+                   AND column_name  = 'is_abortito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi
+              WITH (security_invoker = on) AS
+              SELECT
+                  p.id,
+                  p.numero,
+                  p.rev,
+                  p.billing_account_id,
+                  p.istanza_utility_id,
+                  p.utility_id,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  p.meta,
+                  p.data_insert,
+                  p.user_insert,
+                  p.data_update,
+                  p.user_update,
+                  p.competenza_mese,
+                  p.fatturazione_immediata,
+                  p.stato_doc_preventivo_id,
+                  p.data,
+                  p.termine_pagamento_id,
+                  p.uid,
+                  p.storicizza,
+                  p.tx_id,
+                  p.emittente_fiscale_id,
+                  -- is_attiva: INVARIATA nei valori (self-term 20260708-07 +
+                  -- assenza di rev superiore viva). Qui e' ricavata dalle due
+                  -- componenti invece di essere riscritta: non puo' driftare
+                  -- da loro.
+                  (NOT d.is_abortito AND NOT d.is_superata) AS is_attiva,
+                  -- Le due domande, separate. In coda perche' un
+                  -- CREATE OR REPLACE VIEW ammette solo l'append.
+                  d.is_superata,
+                  d.is_abortito,
+                  d.has_next_revisione
+                FROM vendite.preventivi p
+                CROSS JOIN LATERAL (
+                    SELECT
+                        -- «e' annullato?» — lo stato PROPRIO e' abortito.
+                        EXISTS (
+                            SELECT 1
+                              FROM config.stati_doc_preventivi s0
+                             WHERE s0.id = p.stato_doc_preventivo_id
+                               AND s0.is_abortito IS TRUE
+                        ) AS is_abortito,
+                        -- «e' stata rimpiazzata?» — esiste una rev superiore
+                        -- NON abortita per lo stesso numero. Il complemento
+                        -- (`is_superata IS FALSE`) e' «e' l'ultima revisione».
+                        EXISTS (
+                            SELECT 1
+                              FROM vendite.preventivi p2
+                              JOIN config.stati_doc_preventivi s2
+                                ON s2.id = p2.stato_doc_preventivo_id
+                             WHERE p2.numero = p.numero
+                               AND p2.rev    > p.rev
+                               AND s2.is_abortito IS FALSE
+                        ) AS is_superata,
+                        -- «qualcuno ha provato a revisionarla?» — rev superiore
+                        -- di QUALUNQUE stato, abortite comprese. Diverso da
+                        -- is_superata: una rev annullata non rimpiazza nessuno.
+                        EXISTS (
+                            SELECT 1
+                              FROM vendite.preventivi p3
+                             WHERE p3.numero = p.numero
+                               AND p3.rev    > p.rev
+                        ) AS has_next_revisione
+                ) d;
+
+              COMMENT ON VIEW vendite.vw_preventivi IS
+                  'Wrapper di vendite.preventivi con i flag di revisione derivati. Le due '
+                  'domande sono colonne distinte: is_superata (esiste una rev superiore '
+                  'non-abortita che la rimpiazza; il complemento e'' «e'' l''ultima '
+                  'revisione») e is_abortito (lo stato proprio e'' di annullamento). '
+                  'is_attiva = NOT is_abortito AND NOT is_superata: invariata dal 2026-07-08, '
+                  'esattamente una per numero. has_next_revisione = esiste una rev superiore '
+                  'di qualunque stato (abortite comprese). Chi vuole «solo l''ultima '
+                  'revisione» filtra is_superata IS FALSE, non is_attiva. rev 2026-08-28.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino NON gestito qui, ed e' una scelta: un
+              -- CREATE OR REPLACE VIEW non sa TOGLIERE colonne, e un DROP
+              -- richiederebbe il CASCADE su vw_preventivi_lista e
+              -- vw_dash_fatturazione_preventivi — cioe' distruggere due viste
+              -- per rimuovere tre colonne che nessuno e' obbligato a leggere.
+              -- Se serve tornare indietro: changeSet dedicato con numerazione
+              -- successiva che ricrea la catena nell'ordine giusto.
+              SELECT 1;

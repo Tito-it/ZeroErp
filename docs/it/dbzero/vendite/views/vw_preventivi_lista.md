@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista flat canonica preventivi per la lista UI configurabile (vendite.preventivi). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Pura denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). security_invoker=on (RLS-ready). Soggetto via istanze_utilities (1 join, valorizzato anche per prospect). Sostituisce vw_preventivi_list (deprecata, drop differito post-BE).
+> Vista flat canonica preventivi per la lista UI configurabile (vendite.preventivi). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Dal 2026-08-28 espone anche le DUE componenti di is_attiva come colonne proprie: is_superata (rimpiazzata da una rev superiore viva — il complemento e' «e' l'ultima revisione») e is_abortito (annullato), piu' has_next_revisione. Il toggle «Mostra storico revisioni» si scrive is_superata IS FALSE: is_attiva nasconde anche gli annullati e rende vuoto per costruzione il filtro di stato «Annullato». Pura denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). security_invoker=on (RLS-ready). Soggetto via istanze_utilities (1 join, valorizzato anche per prospect).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -50,7 +50,10 @@ SELECT p.id,
     lin.frontiera_stato_codice_interno,
     lin.frontiera_fase,
     lin.n_discendenti_attivi,
-    lin.is_transitato
+    lin.is_transitato,
+    p.is_superata,
+    p.is_abortito,
+    p.has_next_revisione
    FROM ((((((((((vendite.vw_preventivi p
      JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))

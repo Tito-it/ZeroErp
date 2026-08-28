@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE 1 — L'ASSE «SUPERATO» SI DICHIARA A CATALOGO
+#   config.stati_doc_offerte.is_superato
+#   Piano: brief-db-revisione-attiva-due-domande, §5.1
+#
+# ── ⚠️ IL FATTO ──────────────────────────────────────────────────────
+#   vendite.vw_offerte_commerciali_lista calcola oggi:
+#       sdo.codice_interno NOT IN ('SUPERATA', 'ANNULLATA')  AS is_attiva
+#   Quella coppia di letterali dice DUE cose diverse in un flag solo:
+#     1) «e' stata rimpiazzata da una revisione successiva» (SUPERATA);
+#     2) «e' stata annullata»                               (ANNULLATA).
+#   E la seconda meta' e' gia' dichiarata a catalogo — `is_abortito`, messo dal
+#   20260714-05 per la frontiera del lineage — ma la vista la ignora e se la
+#   ridichiara per conto suo. Due sedi per lo stesso fatto: una delle due puo'
+#   cambiare senza che l'altra se ne accorga.
+#
+# ── ⭐ PERCHE' UNA COLONNA E NON UN LETTERALE ────────────────────────
+#   Un letterale contro `codice_interno` e' lecito (linee-guida-sql §6d: e' la
+#   chiave stabile). Non e' il confronto a essere sbagliato: e' che la vista
+#   sarebbe l'unico posto dove sta scritto CHE COSA significa SUPERATA. Uno
+#   stato nuovo che voglia dire la stessa cosa non entrerebbe nel predicato, e
+#   nessun errore lo direbbe. Con la colonna, il significato sta dove stanno gia'
+#   `fase`, `terminale`, `esito` e `is_abortito`: nel catalogo che descrive gli
+#   stati, e la vista smette di nominarne uno.
+#
+# ── ⚠️ PERCHE' SOLO SULLE OFFERTE ────────────────────────────────────
+#   Nelle offerte il superamento e' uno STATO, scritto da
+#   vendite.trgfn_offerte_commerciali_revisione all'INSERT della rev. successiva.
+#   Nei preventivi e' una RELAZIONE fra righe (numero, rev) e si deriva: li' non
+#   c'e' nessuno stato SUPERATO e la colonna non avrebbe righe da marcare. Le due
+#   famiglie restano diverse nel meccanismo e uguali in cio' che espongono.
+#
+# ── ⚠️ NON CAMBIA NESSUN VALORE ──────────────────────────────────────
+#   `is_superato = true` sul solo SUPERATA: e' esattamente l'insieme che il
+#   letterale selezionava. Il changeSet 20260828-10 riscrive `is_attiva` su
+#   questa colonna ottenendo, riga per riga, gli stessi valori di oggi.
+#
+# SEED: backfill keyed su codice_interno (come 20260714-05); su DB nuovo vince
+#   comunque la CSV estesa in 80_data (20260524-04, mirror runOnChange).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260828-07-alter-stati-doc-offerte-add-is-superato-mctit.yaml
+
+  - changeSet:
+      id: 20260828-07-alter-stati-doc-offerte-add-is-superato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        brief-db-revisione-attiva-due-domande §5.1: aggiunge is_superato (NOT NULL DEFAULT
+        false) a config.stati_doc_offerte e marca SUPERATA. Dichiara a catalogo l'asse
+        «rimpiazzata da una revisione successiva», oggi scritto come letterale dentro
+        vw_offerte_commerciali_lista insieme ad ANNULLATA — due domande in un flag solo.
+        Nessun valore cambia: is_superato=true sul solo SUPERATA, cioe' l'insieme che il
+        letterale gia' selezionava.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: stati_doc_offerte
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_offerte'
+                   AND column_name  = 'is_abortito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_offerte
+                ADD COLUMN is_superato BOOLEAN NOT NULL DEFAULT false;
+
+              -- Solo SUPERATA: e' lo stato che il trigger di revisione scrive
+              -- sul padre quando nasce la rev. successiva. ANNULLATA resta
+              -- fuori — quella e' l'altra domanda, e ha gia' is_abortito.
+              UPDATE config.stati_doc_offerte
+                 SET is_superato = true
+               WHERE codice_interno = 'SUPERATA';
+
+              COMMENT ON COLUMN config.stati_doc_offerte.is_superato IS
+                  'true = stato di superamento per revisione (SUPERATA), scritto dal '
+                  'trigger vendite.trgfn_offerte_commerciali_revisione sul padre. Asse '
+                  'ORTOGONALE a is_abortito: superata = rimpiazzata da una revisione '
+                  'successiva, abortita = annullata. Un''offerta e'' attiva quando '
+                  'nessuno dei due e'' vero; tenerli distinti serve a poter chiedere '
+                  '«solo l''ultima revisione» senza chiedere anche «e non annullata».';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_offerte
+                DROP COLUMN IF EXISTS is_superato;

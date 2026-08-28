@@ -59,10 +59,15 @@ RLS-ready) e **non** espone `termine_pagamento_*` (non serve alla lista).
 
 La vista legge **`FROM vendite.vw_preventivi p`**, non dalla tabella
 `vendite.preventivi`. Motivo: la colonna fisica `is_revision_attiva` è stata
-**droppata** e `is_attiva` è ora **derivata** in `vw_preventivi` (`TRUE` se non
-esiste una revisione successiva non-abortita). Leggendo dalla vista base si
-riusa quella derivazione senza duplicare logica — stesso pattern adottato dalla
-precedente `vw_preventivi_list` (ora rimossa).
+**droppata** e i flag di revisione sono **derivati** in `vw_preventivi`. Leggendo
+dalla vista base si riusa quella derivazione senza duplicare logica — stesso
+pattern adottato dalla precedente `vw_preventivi_list` (ora rimossa).
+
+⚠️ Dal 2026-08-28 i flag propagati sono **quattro**, non uno: `is_attiva` più le
+due componenti che la compongono (`is_superata`, `is_abortito`) e
+`has_next_revisione`. Sono documentati per esteso in
+[vw_preventivi](/dbzero/vendite/views/vw_preventivi); qui sotto conta **quale
+serve al toggle dello storico**, che non è `is_attiva`.
 
 ---
 
@@ -81,7 +86,7 @@ precedente `vw_preventivi_list` (ora rimossa).
 
 ### 📑 Campi chiave esposti
 
-* **Identificatori**: `id`, `uid`, `numero`, `rev`, **`is_attiva`**, `data`
+* **Identificatori**: `id`, `uid`, `numero`, `rev`, `data`
 * **Stato**: `stato_doc_preventivo_id`, **`stato_codice_interno`** (severity Tag FE), `stato_descrizione`
 * **Cliente (via istanza)**: `billing_account_id`, **`ba_codice`**, `soggetto_id`, **`ragione_sociale_completa`**, **`id_fiscale_univoco_cf_piva`**
 * **Permessi / emittente**: `emittente_fiscale_id` (scope), **`emittente_fiscale_codice`**
@@ -90,10 +95,37 @@ precedente `vw_preventivi_list` (ora rimossa).
 * **Validità**: `validita_dal`, **`validita_al`**, `competenza_mese`
 * **Valuta**: `valuta_id`, `valuta_codice`
 * **Audit**: `data_insert`
+* **Flag di revisione** (rev 2026-08-28, changeSet `20260828-09`): **`is_attiva`**,
+  **`is_superata`**, **`is_abortito`**, **`has_next_revisione`** — propagati da
+  `vw_preventivi`, dove sono documentati per esteso.
 
-**Filtro storico revisioni**: il toggle UI «mostra storico revisioni» si traduce
-nel predicato `is_attiva` (mostra solo la revisione viva quando ON), gestito dal
-repository — non è una colonna della lista.
+---
+
+### ⭐ Filtro storico revisioni: quale predicato, e perché non `is_attiva`
+
+Il toggle UI «mostra storico revisioni» promette **una** cosa: nascondere le
+revisioni che qualcuno ha **rimpiazzato**. Il predicato che lo dice è:
+
+```sql
+WHERE is_superata IS FALSE     -- «solo l'ultima revisione»
+```
+
+⛔ **Non `is_attiva`**, che fino al 2026-08-28 era l'unico predicato disponibile.
+`is_attiva` è `NOT is_abortito AND NOT is_superata`: nasconde anche gli
+**annullati**, che non sono revisioni storiche. Poiché la lista filtrava
+`is_attiva IS TRUE` di default, il filtro di stato «Annullato» non poteva
+restituire **niente** — mai, per costruzione — e il documento riappariva solo col
+toggle dello storico, che raccontava una cosa diversa da quella accaduta.
+
+| Cosa si vuole chiedere | Predicato |
+| --- | --- |
+| «solo l'ultima revisione» (toggle storico OFF) | `is_superata IS FALSE` |
+| «il documento è vivo e corrente» (cruscotti, resolver di fatturazione) | `is_attiva IS TRUE` |
+| «gli annullati» (filtro di stato) | `stato_codice_interno = 'ANNULLATO'`, che ora **trova** qualcosa |
+
+⚠️ Nessuno dei due è una colonna *della lista configurabile*: restano predicati del
+repository backend, come lo era `is_attiva`. Il catalogo `ui.lista_colonna`
+(`lista_id=5`) non li referenzia.
 
 ---
 
@@ -130,11 +162,20 @@ SELECT id, numero, rev, data,
 ```
 
 ```sql
--- Solo la revisione viva (toggle storico OFF)
-SELECT id, numero, rev, ragione_sociale_completa, totale_documento
+-- Toggle «Mostra storico revisioni» OFF = solo l'ultima revisione del numero.
+-- ⚠️ is_superata, NON is_attiva: quest'ultima nasconderebbe anche gli annullati.
+SELECT id, numero, rev, stato_codice_interno, ragione_sociale_completa, totale_documento
   FROM vendite.vw_preventivi_lista
- WHERE is_attiva = TRUE
+ WHERE is_superata IS FALSE
  ORDER BY data DESC;
+```
+
+```sql
+-- «Il documento e' vivo e corrente»: e' un'altra domanda, e ha la sua colonna.
+-- E' il predicato dei cruscotti (vw_dash_fatturazione_preventivi), non della lista.
+SELECT id, numero, rev, totale_documento
+  FROM vendite.vw_preventivi_lista
+ WHERE is_attiva IS TRUE;
 ```
 
 ---
