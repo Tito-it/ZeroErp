@@ -39,7 +39,7 @@
 > ✅ **CHIUSO il 2026-08-26**: verifica in-app fatta da Tid, esito OK. I tre
 > residui — il tie-break del `root`, le righe `DDT_VENDITA` senza arco e la
 > natura della frontiera — hanno un cantiere loro
-> ([brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)),
+> ([brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)),
 > perché la loro sede è il **nodo**, non questa vista.
 >
 > **Correlati:**
@@ -874,7 +874,7 @@ in §7 / §7-bis — vale la pena saperlo prima, per non fermare il collaudo:
 
 > ⭐ **Le prime due voci sono uscite di qui il 2026-08-26** (voce **L7.5**):
 > hanno un cantiere loro, con le misure rifatte —
-> [brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md).
+> [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md).
 > ⚠️ E **la seconda è cresciuta misurandola**: le due righe `DDT_VENDITA` sono
 > `ROOT`, sono l'**unica** sorgente delle loro commesse, i due DDT esistono e una
 > riga è del **2026-08-17**. «Residuo» è l'ipotesi meno probabile, e intanto due
@@ -886,7 +886,7 @@ in §7 / §7-bis — vale la pena saperlo prima, per non fermare il collaudo:
   arco** → §2 del brief residui.
 * ➡️ **Come un nodo FATTURA si presenta in lista** — due difetti della stessa
   famiglia, stessa sede (il **nodo**, non le sette viste che lo proiettano) →
-  §3 del [brief residui](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md):
+  §3 del [brief residui](brief-db-lineage-residui-root-e-sorgente-ddt.md):
   * 🔴 la colonna «Transito» **chiama «Fattura» la nota di credito**, perché
     `frontiera_natura_doc_codice` non esce dalla summary (il join vuole
     `frontiera_uid`, che le liste non hanno). ⭐ **Asimmetria misurata il
@@ -908,7 +908,7 @@ in §7 / §7-bis — vale la pena saperlo prima, per non fermare il collaudo:
 
 ⭐ **Questa sezione è uscita di qui alla chiusura del 2026-08-26.** Vive ora nel
 **§3** di
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md),
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md),
 insieme agli altri due residui, perché ha la loro stessa **sede**: la cura sta
 sul **nodo**, non sulle sette viste di lista che lo proiettano.
 
@@ -1364,7 +1364,7 @@ scripts/pgtap-baseline.sh vendite
 
 Tutto ciò che era di questo cantiere è fatto e verificato in app. Ciò che resta
 non è di qui e ha il suo brief:
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md).
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md).
 * [X] L7.5: i due residui del §7 portati a un cantiere loro —
-  [brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md).
+  [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md).
   ⭐ La spunta era rimasta indietro: il brief esiste dal 2026-08-26

@@ -3,7 +3,7 @@
 > **Destinatario:** team DB (`dev/db-tid`).
 >
 > **Origine.** Voce **L7.5** di
-> [brief-db-lineage-arco-reso-nota-credito.md](../work-done/brief-db-lineage-arco-reso-nota-credito.md):
+> [brief-db-lineage-arco-reso-nota-credito.md](brief-db-lineage-arco-reso-nota-credito.md):
 > *«portare a un cantiere suo i due residui del §7»*. Sono usciti da lì e non
 > sono di lì: il cantiere dell'arco `S` li ha **esposti**, non creati.
 > ⭐ **Dal 2026-08-26 sono TRE**: alla chiusura del brief madre è arrivato qui
@@ -16,10 +16,14 @@
 > colonna sulle viste di lista — e portato l'estrazione del §3-ter. Il BE/FE
 > del §3.5 è scritto e committato (`dd562af68`).
 >
-> ⛔ **Resta il solo §3.6**, e non è più una domanda: ✅ **la decisione è stata
-> presa il 2026-08-29** — una sola sede, forma `numero - serie` senza anno, e la
-> data **fuori** dal codice (§3.6-ter). Quel che manca è **scriverla**: una sede
-> in DB che la compone, e il nodo del grafo che la legge.
+> ✅ **E il §3.6 è chiuso anche lui**: decisione di Tid il 2026-08-29 (una sola
+> sede, forma `numero - serie` senza anno, §3.6-ter), `fn_numero_documento_fattura`
+> dal team DB (`20260829-15/16`), e le tre schermate che componevano per conto
+> loro passate a leggerla.
+>
+> 🎉 **CANTIERE CHIUSO il 2026-08-29, collaudo in app compreso**: Tid ha
+> verificato e confermato. Il BE/FE è in
+> [piano-be-fe-lineage-natura-frontiera-liste.md](piano-be-fe-lineage-natura-frontiera-liste.md).
 >
 > *(Superato: «2026-08-28 — tutte e quattro SCRITTE, provate e NON applicate».
 > Quella riga è rimasta vera per un giorno e falsa per due, ed è la ragione per
@@ -254,7 +258,7 @@ Quattro misure, tutte contrarie all'ipotesi «vecchie righe da buttare»:
 
 ⭐ **Ed è materiale vivo del collaudo in corso**: `DDT0010839` è il DDT dei resi
 `5797`/`5799` della tabella in cima a
-[collaudo-in-app-nota-credito-resi.md](../work-done/collaudo-in-app-nota-credito-resi.md).
+[collaudo-in-app-nota-credito-resi.md](collaudo-in-app-nota-credito-resi.md).
 
 ### 2.3 Cosa si vede a video, oggi
 
@@ -720,7 +724,7 @@ composto accanto alle tre colonne che già espone. Richiesta al team BE/FE.
 ## 3-bis. 🟠 La descrizione della vista archi non nomina `T` — e si contraddice da sé
 
 > **Ereditata il 2026-08-28** dal cantiere
-> [brief-db-ddt-riconsegna-eredita-testata.md](../work-done/brief-db-ddt-riconsegna-eredita-testata.md)
+> [brief-db-ddt-riconsegna-eredita-testata.md](brief-db-ddt-riconsegna-eredita-testata.md)
 > (§13.5 e §14.2), che l'ha trovata chiudendosi. Non è di lì: quel cantiere ha
 > **aggiunto** l'arco, questo possiede la vista.
 
@@ -1250,6 +1254,35 @@ due `natura_doc_codice` del backend sono passate a `_interno` perché **nessun
 seed le legava**; questa no. ⚠️ Rinominare una delle due metà da sola svuota la
 colonna «Natura» del drawer lotto. **Alias e seed si muovono insieme, o non si
 muovono.**
+
+### 🎉 2026-08-29 · Chiuso, collaudo compreso
+
+**Tutte e quattro le voci applicate, il §3.6 deciso e scritto, il BE/FE
+consegnato e collaudato in applicazione.** Il cantiere si chiude e passa in
+`work-done` insieme al suo piano BE/FE.
+
+**Le quattro voci, una riga ciascuna:**
+
+1. il `root` non dipende più da un id di seed — `rango_origine`, **dichiarato**;
+2. le due commesse hanno un'origine — arco `U`, e sono gli **unici due nodi** del
+   grafo il cui root si è mosso;
+3. la colonna «Transito» dice `Nota di credito` e non più `Fattura`, e il numero
+   della fattura ha **una sede sola** (`numero - serie`);
+4. la descrizione della vista archi nomina `T`, e dichiara quante lettere sono e
+   chi le presidia.
+
+⭐ **E due cose sono nate dal cantiere invece che dalla sua lista**: l'arco `U`
+era descritto come *«due righe residue»* e si è rivelato un **modello** (§2.4-bis:
+lo scrive un handler registrato, il DB non ha mai vietato che un DDT sia sorgente
+di commessa); e il §3-ter — il tipo che viaggiava in id mentre la natura viaggiava
+in codice — non era nel brief, l'ha reso visibile la voce 3 aprendo le stesse
+viste.
+
+⛔ **Restano fuori, dichiarate e con la loro sede**: il gemello
+`ATTIVITA_CONSUMI` (§2.4-ter — prima di un arco servirebbe un **nodo**), la
+colonna «Transito» sulla lista fatture (si aggiunge quando serve, non «per
+completezza»), e 15 voci di debito di naming in altri domini, ora sorvegliate dal
+gemello Python del guardrail.
 
 ---
 

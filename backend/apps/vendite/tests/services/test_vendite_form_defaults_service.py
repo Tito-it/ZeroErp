@@ -333,8 +333,13 @@ class TestPreventivoFormDefaults(TestCase):
     def test_preventivo_con_ba_termini_da_cliente(
         self, mock_param_cls, mock_ba_repo_cls,
     ):
-        # Scopo: termine_pagamento_id/iva_id arrivano dal cliente del BA;
-        #        valuta dal BA stesso (LOOKUP_SELECT_COLUMNS la espone).
+        # Scopo: termine_pagamento_id/modalita_pagamento_id arrivano dal cliente
+        #        del BA; valuta dal BA stesso (LOOKUP_SELECT_COLUMNS la espone).
+        # ⛔ `iva_id` NON e' piu' fra i defaults (I0/D7-bis, decisione Q3 del
+        #    2026-08-29): la colonna e' uscita da `anagrafiche.clienti`. Il dict
+        #    del repo qui sotto NON la porta, ed e' il punto — se un giorno
+        #    tornasse, il payload la ri-esporrebbe senza che nessuno se ne
+        #    accorga. L'assenza e' asserita sotto.
         mock_param_cls.return_value.get_defaults.return_value = {
             "VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG": "30",
         }
@@ -344,17 +349,15 @@ class TestPreventivoFormDefaults(TestCase):
             "termine_pagamento_id": 12,
             "termine_pagamento_codice": "30GG",
             "termine_pagamento_descrizione": "30 giorni",
-            "iva_id": 3,
-            "iva_codice": "22",
-            "iva_descrizione": "IVA 22%",
             "modalita_pagamento_id": 5,
             "modalita_pagamento_codice": "BONIFICO",
             "modalita_pagamento_descrizione": "Bonifico bancario",
         }
         result = fn_get_preventivo_form_defaults(billing_account_id=10)
         self.assertEqual(result["termine_pagamento_id"], 12)
-        self.assertEqual(result["iva_id"], 3)
         self.assertEqual(result["modalita_pagamento_id"], 5)
+        for chiave in ("iva_id", "iva_codice", "iva_descrizione"):
+            self.assertNotIn(chiave, result)
         # Valuta dal BA (no fallback emittente perche' BA ha valuta_id=1).
         self.assertEqual(result["valuta_id"], 1)
         self.assertEqual(result["valuta_codice"], "EUR")

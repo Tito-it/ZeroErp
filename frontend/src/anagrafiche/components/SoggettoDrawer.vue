@@ -30,6 +30,7 @@ import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDraw
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
 import Drawer from 'primevue/drawer'
+import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
@@ -43,6 +44,15 @@ const soggetto = useSoggettoForm()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+
+// Opzioni S/N dei flag di regime fiscale (I0/D8, 2026-08-29).
+// ⭐ Spostate qui da `ClienteDrawer.vue` insieme ai due campi: sono la stessa
+//   coppia di sempre, non una seconda occorrenza — il consumatore precedente
+//   e' morto nello stesso passo (regola del 2 non attivata).
+const paOptions = computed(() => [
+  { value: 'N', label: t('common.no') },
+  { value: 'S', label: t('common.yes') },
+])
 
 // Lookup forme giuridiche (ricaricato al cambio tipo) — passato a useDatiSocietariForm
 const formeGiuridicheLookup = ref([])
@@ -170,6 +180,17 @@ function populateFromDetail(data) {
   soggetto.form.sesso = data.sesso || 'M'
   soggetto.form.data_nascita = parseDate(data.data_nascita)
   soggetto.form.comune_nascita_id = data.comune_nascita_id || null
+  // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
+  //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
+  // ⚠️ `?? null` e NON `|| 'N'`: se la risposta non porta il flag, il form deve
+  //    dire «non lo so», non «no». Con il default 'N' il salvataggio sotto
+  //    SPEGNEREBBE uno split payment attivo — un errore fiscale silenzioso,
+  //    nella direzione peggiore (la stessa che il travaso a DB ha risolto con
+  //    `bool_or`, facendo vincere 'S').
+  // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
+  //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
+  soggetto.form.split_payment = data.split_payment?.trim() ?? null
+  soggetto.form.cliente_pa = data.cliente_pa?.trim() ?? null
   // Oggetto completo per restore ComuneAutocomplete
   comuneNascitaItem.value = data.comune_nascita_id
     ? { id: data.comune_nascita_id, descrizione: data.comune_nascita_descrizione || '', provincia_sigla: data.comune_nascita_provincia_sigla || '' }
@@ -286,6 +307,14 @@ async function handleSave() {
     }
     payload.codice_fiscale = f.codice_fiscale?.trim() || null
     payload.partita_iva = f.partita_iva?.trim() || null
+    // Regime fiscale (I0/D8). Solo in EDIT: alla creazione il DB applica il
+    // default 'N', che e' la direzione sicura — un soggetto di cui nessuno ha
+    // detto nulla non e' in scissione dei pagamenti.
+    // ⛔ Si spediscono SOLO se valorizzati: un flag che il dettaglio non ha
+    //    portato resta `null`, e mandarlo scriverebbe un valore che nessuno ha
+    //    letto ne' scelto. Chiave assente = colonna non toccata.
+    if (f.split_payment) payload.split_payment = f.split_payment
+    if (f.cliente_pa) payload.cliente_pa = f.cliente_pa
 
     const result = await execute(
       () => store.update(props.itemId, payload),
@@ -450,6 +479,32 @@ async function handleSave() {
           :required="soggetto.requireDatiSocietari.value"
           :disabled="false"
         />
+      </template>
+
+      <!-- Sezione: Dati fiscali (edit mode) — regime della controparte.
+           I0/D8: i due flag sono saliti da `anagrafiche.clienti`, dove stavano
+           su una riga PER FORNITURA e ammettevano valori opposti per la stessa
+           partita IVA. Stanno accanto a CF/P.IVA perche' e' da li' che
+           discendono. ⚠️ NON sono un codice IVA e non entrano nel risolutore
+           (D4): non cambiano l'aliquota, cambiano CHI VERSA l'imposta. -->
+      <template v-if="isEdit">
+        <div class="app-drawer-section">
+          <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
+            <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
+              option-label="label" option-value="value" class="w-full"
+              :disabled="isReadonly" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
+            <Select v-model="soggetto.form.split_payment" :options="paOptions"
+              option-label="label" option-value="value" class="w-full"
+              :disabled="isReadonly" />
+          </div>
+        </div>
       </template>
 
       <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->

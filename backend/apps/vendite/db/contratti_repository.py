@@ -131,6 +131,12 @@ _SELECT_COLS_CONTRATTO = """
     lv.codice_versione AS listino_versione_codice,
     c.tipo_variazione_globale,
     c.valore_variazione_globale,
+    -- Riferimenti dell'atto (I8/D9, 2026-08-29): in fattura elettronica stanno
+    -- nello stesso blocco DatiContratto/DatiOrdineAcquisto. Senza qui, il drawer
+    -- non li rileggerebbe dopo il salvataggio.
+    c.codice_cig,
+    c.codice_cup,
+    c.codice_commessa,
     c.categoria_cliente_id_snapshot,
     cc_snap.codice AS categoria_cliente_snapshot_codice,
     cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
@@ -735,6 +741,12 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         # DB respinge l'UPDATE dopo il push in commessa, e la whitelist di
         # patch per stato lo ammette solo in DRAFT.
         "fatturazione_immediata",
+        # Riferimenti dell'atto (I8/D9, 2026-08-29). ⭐ Ammessi in PATCH anche in
+        # ATTIVO (decisione Q1): non toccano prezzo ne' validita' e non
+        # producono effetto finche' la fattura non ne fa lo snapshot (I4).
+        "codice_cig",
+        "codice_cup",
+        "codice_commessa",
         "meta",
     )
 
