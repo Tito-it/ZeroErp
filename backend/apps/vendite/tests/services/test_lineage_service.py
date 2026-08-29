@@ -48,7 +48,7 @@ _SORGENTE_PREVENTIVO = {
 def _nodo(**overrides):
     base = {
         "tipo_id": 6,
-        "tipo_codice": "ORDINE_VENDITA",
+        "tipo_codice_interno": "ORDINE_VENDITA",
         "uid": "163",
         "codice": "ORD0000163",
         "stato_codice_interno": "CONFERMATO",
@@ -60,7 +60,7 @@ def _nodo(**overrides):
         "pratica_numero": "PRA-0000818",
         "n_pratiche": 1,
         "frontiera_tipo_id": 8,
-        "frontiera_tipo_codice": "DDT_VENDITA",
+        "frontiera_tipo_codice_interno": "DDT_VENDITA",
         "frontiera_uid": "31",
         "frontiera_codice": "DDT0000031",
         "frontiera_stato_codice_interno": "SPEDITO",
@@ -71,10 +71,10 @@ def _nodo(**overrides):
         "n_sorgenti": 1,
         "root_codice": "PRV0000185",
         # NULL su un ordine: la natura esiste solo sui documenti fiscali.
-        "natura_doc_codice": None,
+        "natura_doc_codice_interno": None,
         # Frontiera DDT: nemmeno lei ha natura. Il caso valorizzato (frontiera
         # = nota di credito) ha il suo test dedicato.
-        "frontiera_natura_doc_codice": None,
+        "frontiera_natura_doc_codice_interno": None,
     }
     base.update(overrides)
     return base
@@ -87,14 +87,14 @@ def _passaggio(**overrides):
         "arco": "H",
         "ruolo": None,
         "from_tipo_id": 6,
-        "from_tipo_codice": "ORDINE_VENDITA",
+        "from_tipo_codice_interno": "ORDINE_VENDITA",
         "from_uid": "163",
         "from_codice": "ORD0000163",
         "from_stato_codice_interno": "CONFERMATO",
         "from_fase": "IN_CORSO",
         "from_doc_id": 163,
         "to_tipo_id": 8,
-        "to_tipo_codice": "DDT_VENDITA",
+        "to_tipo_codice_interno": "DDT_VENDITA",
         "to_uid": "31",
         "to_codice": "DDT0000031",
         "to_stato_codice_interno": "SPEDITO",
@@ -102,8 +102,8 @@ def _passaggio(**overrides):
         "to_is_abortito": False,
         "to_doc_id": 31,
         "is_ramo_inverso": False,
-        "from_natura_doc_codice": None,
-        "to_natura_doc_codice": None,
+        "from_natura_doc_codice_interno": None,
+        "to_natura_doc_codice_interno": None,
     }
     base.update(overrides)
     return base
@@ -160,7 +160,7 @@ class LineagePassaggiServiceTests(TestCase):
     def test_shape_risposta_e_direzioni(self, _mock_sorg, _mock_nodo, mock_passaggi):
         mock_passaggi.return_value = [_passaggio()]
         data = get_documento_passaggi("ORDINE_VENDITA", 163)
-        self.assertEqual(data["nodo"]["tipo_codice"], "ORDINE_VENDITA")
+        self.assertEqual(data["nodo"]["tipo_codice_interno"], "ORDINE_VENDITA")
         self.assertEqual(data["nodo"]["codice"], "ORD0000163")
         self.assertEqual(data["pratica"]["pratica_numero"], "PRA-0000818")
         self.assertEqual(data["frontiera"]["codice"], "DDT0000031")
@@ -186,7 +186,7 @@ class LineagePassaggiServiceTests(TestCase):
     @patch.object(
         vendite_service.VenditeRepository,
         "get_lineage_nodo",
-        return_value=_nodo(tipo_id=2, tipo_codice="PREVENTIVO", uid="abc-uuid"),
+        return_value=_nodo(tipo_id=2, tipo_codice_interno="PREVENTIVO", uid="abc-uuid"),
     )
     @patch.object(vendite_service.VenditeRepository, "resolve_lineage_node_uid", return_value="abc-uuid")
     @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_PREVENTIVO)
@@ -235,7 +235,7 @@ class LineagePassaggiServiceTests(TestCase):
         "get_lineage_nodo",
         return_value=_nodo(
             frontiera_tipo_id=6,
-            frontiera_tipo_codice="ORDINE_VENDITA",
+            frontiera_tipo_codice_interno="ORDINE_VENDITA",
             frontiera_uid="163",
             frontiera_codice="ORD0000163",
         ),
@@ -254,8 +254,8 @@ class LineagePassaggiServiceTests(TestCase):
         self.assertEqual(
             data["frontiera"],
             {
-                "tipo_codice": "DDT_VENDITA",
-                "natura_doc_codice": None,
+                "tipo_codice_interno": "DDT_VENDITA",
+                "natura_doc_codice_interno": None,
                 "codice": "DDT0000031",
                 "stato_codice_interno": "SPEDITO",
                 "fase": "IN_CORSO",
@@ -279,18 +279,18 @@ class LineagePassaggiServiceTests(TestCase):
         "get_lineage_nodo",
         return_value=_nodo(
             frontiera_tipo_id=10,
-            frontiera_tipo_codice="FATTURA",
+            frontiera_tipo_codice_interno="FATTURA",
             frontiera_uid="15353",
             frontiera_codice=None,
             frontiera_stato_codice_interno="EMESSA",
-            frontiera_natura_doc_codice="NOTA_CREDITO",
+            frontiera_natura_doc_codice_interno="NOTA_CREDITO",
         ),
     )
     @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
     def test_frontiera_nota_di_credito_porta_la_natura(self, _mock_sorg, _mock_nodo, _mock_p):
         data = get_documento_passaggi("ORDINE_VENDITA", 240)
-        self.assertEqual(data["frontiera"]["tipo_codice"], "FATTURA")
-        self.assertEqual(data["frontiera"]["natura_doc_codice"], "NOTA_CREDITO")
+        self.assertEqual(data["frontiera"]["tipo_codice_interno"], "FATTURA")
+        self.assertEqual(data["frontiera"]["natura_doc_codice_interno"], "NOTA_CREDITO")
         self.assertIsNone(data["frontiera"]["codice"])
 
     # Scopo: gli OTTO tipi con endpoint /passaggi/. La lista si scrive per
@@ -328,7 +328,7 @@ class LineagePassaggiServiceTests(TestCase):
             _passaggio(
                 ordine=2,
                 arco="R",
-                to_tipo_codice="RESO_VENDITA",
+                to_tipo_codice_interno="RESO_VENDITA",
                 to_codice="RES0000004",
                 is_ramo_inverso=True,
             ),

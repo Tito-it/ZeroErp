@@ -16,9 +16,13 @@
 > **codice del tipo** (`tipo_codice_interno`, `frontiera_tipo_codice_interno`) e
 > ha reso canonico il suffisso `_interno` sulle nature. BE e FE sono allineati,
 > il chip dice la parola giusta, gli undici join scritti a mano sono diventati due.
-> ⛔ **Resta una coda di NOMI**, dichiarata in §7-bis: tre alias `natura_doc_codice`
-> costruiti a mano nel BE, che il rename non ha toccato perché non leggono una
-> vista — e che per allinearsi vogliono un seed `ui.lista_colonna` dal team DB.
+> ✅ **E la coda di NOMI è chiusa in giornata** (§7-bis): i tre alias
+> `natura_doc_codice` costruiti a mano nel BE sono passati al nome fedele — due
+> da soli, il terzo **insieme al seed `ui.lista_colonna` id 494**, perché una
+> metà sola svuotava la colonna a video.
+>
+> ⛔ **Restano solo il collaudo in app** (§6) e **15 voci di debito di naming** di
+> altri domini, ora sorvegliate dal gemello Python del guardrail (§5).
 >
 > ⚠️ **E il rename aveva rotto tre cose vive**, trovate misurando e non
 > aspettando un ticket: il pannello «Passaggi» di tutti e sette i domini, il
@@ -516,6 +520,15 @@ causato da noi.
 **Quindi**: un giro corto BE + un seed DB, insieme. Non una toppa da una parte
 sola ([[feedback_no_quick_fix_soluzione_assoluta]]).
 
+> ✅ **2026-08-29 — due delle tre sono chiuse.** `get_fattura_testata` e
+> `_legame_rettifiche` sono passate a `natura_doc_codice_interno` insieme al loro
+> consumatore (`FatturaDrawer`): lì **nessun seed le legava**, ed era la
+> distinzione che serviva fare — non «le tre insieme», ma «quelle che si possono
+> muovere da sole».
+> ✅ **E il 2026-08-29 anche la terza**, `list_lotto_fatture`, **con le due metà
+> insieme**: il seed dal team DB, l'alias e il frontend da qui. La coda dei nomi
+> è chiusa.
+
 ---
 
 ## 8. Code lasciate al team DB
@@ -525,6 +538,7 @@ sola ([[feedback_no_quick_fix_soluzione_assoluta]]).
 | ✅ **D-1** | **DB-1** (§2): la colonna sulle sette viste di lista + il pgTAP | **Chiuso il 2026-08-29** (`20260829-01`), e insieme è arrivata l'estrazione del §2-bis (`20260829-02`) |
 | ✅ **D-2 / D-3** | Riga di stato stantia e «sei viste» invece di sette nel brief DB | Chiusi dal team nella stessa ondata |
 | 🔴 **D-4** | Il seed `ui.lista_colonna` **id 494** (lista 45, `vendite.lotto_fatture`), se si allinea l'alias `natura_doc_codice` → `_interno` | §7-bis: è un giro **BE + seed insieme**. Da solo, uno dei due lati spegne la colonna «Natura» del drawer lotto |
+| ✅ **D-6** | Il seed `ui.lista_colonna` **id 494** + l'alias nel BE | **Chiusa il 2026-08-29**: seed dal team DB (`6325a8d98`), alias e frontend da qui, nello stesso giro |
 | 🟡 **D-5** | `fn_documento_lineage` espone `from_tipo_id`/`to_tipo_id` e non i codici: sono i **due** join sopravvissuti all'estrazione | §2-bis. Non urgente e non un difetto: una sede sola, non sette. Da valutare quando quella funzione si riapre |
 
 ---
@@ -692,6 +706,219 @@ difetti su sette, il settimo l'ha trovato la mutazione.
 `eslint` pulito · `check_i18n_keys.py` pulito · e l'SQL del pannello
 **ri-eseguito sul database vero**, perché i commenti che ho aggiunto stanno
 *dentro* la stringa della query e un `--` fuori posto non lo vede nessun test.
+
+### 2026-08-29 (2) · Il nome fedele arriva al payload, e nasce il cancello che mancava
+
+**Segnalato dal team DB** (§3-ter.5 del brief), e la segnalazione era giusta:
+dopo il `20260829-02` lo stesso valore aveva **due nomi** a seconda
+dell'endpoint. Le sette liste fedeli end-to-end, il drawer «Passaggi» che
+leggeva la colonna fedele e la **ri-aliasava al nome vecchio in Python**.
+
+⛔ **La mia difesa del giorno prima era sbagliata a metà.** Avevo scritto che
+pannello e liste chiamano le cose in modo diverso perché sono *due trasporti
+diversi*, e la parte sul **prefisso** regge (il payload annida, quindi
+`frontiera.tipo_codice` invece di `frontiera_tipo_codice`). Ma il **suffisso**
+non è trasporto: `_codice` contro `_codice_interno` è un nome diverso per lo
+stesso genere di valore — e quel valore il FE lo usa come **logica**, per la
+chiave i18n e per instradare. ⭐ La prova sta nello stesso payload: lo **stato**
+diceva già `stato_codice_interno`. Non due regole: **una regola applicata a
+metà**.
+
+**Fatto**: ri-aliasature via, nome fedele fino al payload, `types.py`, service,
+i due `.vue`, e la doc API con la nota BREAKING. Il nome della **rotta** non
+cambia: si tocca ciò che il BE espone, non ciò che riceve.
+
+⛔ **E il buco era più grande della voce.** Applicando le tre regex del
+guardrail SQL ai file Python del backend: **25** violazioni in sette file, non
+7. La voce segnalava un caso; sotto c'era una famiglia — che è la conferma che
+la sede è quella. Perché il guardrail CI (`check_naming_stato_codice.sql`)
+scansiona `pg_views`/`pg_matviews`/`pg_proc`: **l'SQL scritto in Python non lo
+vede nessuno**.
+
+**Quindi non ho chiuso solo il caso: ho costruito il gemello mancante.**
+`apps/core/tests/test_naming_codice_interno_python.py` trascrive le tre regole e
+le applica ai repository. Le **18** residue entrano in un **registro del debito
+che deve calare**, chiavato su *(file, alias)* e **non** sul numero di riga — una
+riga che si sposta farebbe rosso per il motivo sbagliato, e un presidio che
+boccia a caso viene spento ([[feedback_whitelist_dal_percorso_reale]]).
+
+⚠️ **Provato rompendolo**: alias nuovo → rosso; voce del registro sanata e non
+tolta → rosso; **commento** che cita un alias → verde. E la copia locale dello
+spogliatore di commenti, nata un'ora prima, è morta subito: la terza occorrenza
+ha trovato **una sede** invece di diventare la terza copia.
+
+**Verificato**: 4170 test verdi · build e lint puliti · guard i18n pulito · e le
+due query del pannello **eseguite sul database vero**, che ora rispondono
+`tipo_codice_interno` / `frontiera_natura_doc_codice_interno`.
+
+⭐ **E il §3.6 l'ha chiuso il DB nello stesso giro**: `fn_numero_documento_fattura`
+e il nodo che la legge. Verificato: il nodo fattura ora dice **`103 - VX2`**,
+cioè esattamente la forma decisa da Tid. Il BE/FE non ha dovuto toccare niente —
+il codice viaggia già come `codice` del nodo.
+
+### 2026-08-29 (3) · La bonifica: tre schermate smettono di comporre
+
+**L'ultimo pezzo del §3.6**, e la seconda metà della decisione di Tid: la sede
+unica esisteva (`fn_numero_documento_fattura`, `20260829-15`) ma **tre schermate
+componevano ancora per conto loro**, in tre modi diversi e nessuno dei tre era
+quello deciso.
+
+| dove | prima | ora |
+| --- | --- | --- |
+| `FatturaDrawer` | `serie numero/anno` → `VX2 103/2026` | `103 - VX2` dalla sede unica |
+| `LottoDrawer` | `serie numero` → `VX2 103` | idem |
+| `DashboardCompetenzaView` | `serie numero/anno` | idem |
+
+**Quattro payload BE** portano ora il numero composto — `get_fattura_testata`,
+`_legame_rettifiche`, `list_lotto_fatture`, `list_dash_competenza_errori` — e
+lo leggono dalla **funzione DB**, non ricomponendolo.
+⚠️ **`list_dash_competenza_attivita` NO, di proposito**: spedisce anche lui
+`fattura_serie`/`numero`, ma **nessuno lo compone**. Aggiungere un campo che
+nessuno legge è la definizione di «per completezza», che il team DB ha
+esplicitamente escluso.
+⭐ E il **ripiego resta al frontend**: il DB risponde NULL sul non-numerato, e
+chi rende sceglie la frase — «non numerata» nel drawer fattura, un trattino
+altrove. Un placeholder scritto a DB avrebbe tolto la scelta a entrambi.
+
+#### ⛔ Due difetti trovati scrivendo, e nessuno dei due dava errore
+
+**1 · Le colonne mappate per INDICE.** `list_lotto_fatture` e
+`list_dash_competenza_errori` costruiscono il dict con `row[0]`, `row[1]`…:
+inserire una colonna in mezzo **sposta tutto quello che segue di una casella**.
+Nessun errore — solo la data nel campo del billing account e il totale in quello
+del soggetto. Corretti gli indici e, ⚠️ **una riga fuori dal dict** che il primo
+giro aveva mancato: `errore_meta = jsonb_out(row[22])`, che stava *prima* del
+blocco e non era stata spostata.
+⭐ **Provato eseguendo davvero i due metodi** contro il database, in transazione
+annullata, e guardando *dove atterrano i valori*: `numero_documento` = `7 - R2`
+accanto a `numero` 7, `serie` R2, `data` 2026-08-17. Contare le colonne a mano
+non è una prova.
+
+**2 · Codice morto in `vendite_repository`** (non mio, verificato in `HEAD` e
+prima del mio primo commit): dentro `get_registro_codice`, **dopo un `return`
+incondizionato**, ci sono ~100 righe irraggiungibili che duplicano il corpo di
+`list_dash_competenza_errori`. ⚠️ **Mi ha quasi fatto scrivere nel ramo morto**:
+la stringa che cercavo compariva due volte, e l'asserzione «una sola occorrenza»
+ha fermato la sostituzione. Da lì in poi l'ho ancorata alla firma del metodo
+vivo.
+
+> ✅ **Rimosso su ok di Tid, 2026-08-29**: **103 righe**. I confini presi per
+> **contenuto** e non per numero di riga, il commento `Scopo:` del metodo
+> successivo preservato (stava dentro l'intervallo ma non era morto), e il
+> metodo vivo gemello ri-eseguito **contro il database** dopo la cancellazione.
+> ⭐ **E poi la domanda che conta: ce ne sono altri?** Cercati con l'AST su tutto
+> `backend/apps` — istruzioni che seguono un `return`/`raise`/`continue`
+> incondizionato nello stesso blocco: **zero**. Quello era l'unico, e adesso è
+> un fatto misurato invece di una speranza.
+> ⚠️ Perché la ricerca valeva la pena: il codice morto non è «brutto», è
+> **pericoloso in un modo specifico** — duplica un metodo vivo, quindi chi cerca
+> una stringa la trova due volte e può correggere la copia sbagliata. È
+> esattamente quello che stava per succedere qui.
+
+#### Il registro del debito ha imparato a calare
+
+Chiavato su *(file, alias)* non vedeva che avevo sanato **2 occorrenze su 3**
+nello stesso file: la voce restava «viva» e il debito sembrava fermo. Ora conta
+le **occorrenze**, e i due test dicono due cose diverse — *non cresce* e *si
+aggiorna quando cala*. ⚠️ Provato rompendolo in tre modi: alias nuovo → rosso;
+una occorrenza in più su una voce nota → rosso; **una sanata su due** → rosso,
+che era il caso cieco.
+
+**Verificato**: 4170 test verdi · build e lint puliti · guard i18n pulito · e i
+quattro payload **eseguiti davvero** sul database (`103 - VX2` sulla numerata,
+`None` sulla non numerata, `11 - R2` su un legame di rettifica reale).
+
+### 2026-08-29 (4) · La coda dei nomi si chiude, e il cancello si accende da solo
+
+Il team DB ha fatto la sua metà di D-6 (`6325a8d98`): `ui.lista_colonna` id 494,
+`campo_sorgente` → `natura_doc_codice_interno`. ⚠️ **Applicata già sul DB di
+sviluppo**, quindi in quel momento la colonna «Natura» del drawer lotto era
+**rotta**: il catalogo chiedeva un nome che il payload non portava — e non lo
+dice nessuno, la colonna esce vuota.
+
+**Fatta la metà BE nello stesso giro**: alias in `list_lotto_fatture`, chiave del
+dict, `LottoFattureRow`, e il `Tag` in `LottoDrawer`.
+
+⭐ **E il cancello scritto ieri si è acceso da solo**, che è la prima volta che
+serve davvero: togliendo l'ultimo `natura_doc_codice` il debito è calato e
+`test_il_registro_si_aggiorna_quando_il_debito_cala` è diventato **rosso**,
+chiedendo di aggiornare il registro. È esattamente il caso cieco che la versione
+a soli insiemi non vedeva, e per cui era stato riscritto a conteggi poche ore
+prima. Registro: da **16 occorrenze in 13 punti** a **15 in 12**.
+⛔ La voce è stata **tolta**, non messa a zero: un registro che tiene gli zeri è
+un elenco di eccezioni con l'aria di un debito.
+
+⭐ **La prova non è «il test è verde», ed è il punto**: ho verificato che
+**catalogo e payload tornino a dire la stessa cosa** — `ui.lista_colonna` id 494
+chiede `natura_doc_codice_interno`, e il payload di `list_lotto_fatture` porta
+quella chiave con dentro `FATTURA`. Il contratto rotto era quello, non un test.
+
+**Verificato**: 4170 test verdi · il presidio seed↔whitelist (che legge il CSV
+cambiato) verde · guard i18n verde — ⭐ e regge perché il team DB ha lasciato
+stare `codice` e `etichetta_i18n_key`: la seconda è una chiave i18n, non un nome
+di colonna, e rinominarla avrebbe rotto la traduzione per allineare una cosa che
+non c'entrava · build e lint puliti.
+
+### 2026-08-29 (5) · Rilettura critica del secondo giro
+
+Su richiesta di Tid, riletto il diff di giornata. **Sei cose**, e la più
+importante non è un difetto ma una **classe** di difetto.
+
+| # | Cosa | Perché contava |
+| --- | --- | --- |
+| **1** | `list_lotto_fatture` mappava le colonne **per indice** | ⛔ Non ho corretto solo l'istanza: il metodo è passato all'**accesso per nome** (`rows_to_list`, che è già l'idioma di quel file). Inserire una colonna non può più spostare niente. È il difetto su cui ero già inciampato una volta oggi, e una riga (`errore_meta`) era sfuggita persino alla correzione |
+| **2** | `list_dash_competenza_errori` mappa ancora per indice | Non convertibile allo stesso prezzo: passa da `_query_paged_view`, un helper **condiviso** con otto chiamanti. ⭐ **Dichiarato dove morde**, con scritto cosa succede a chi tocca la SELECT — non è la stessa cosa che averlo risolto, ed è meglio che lasciarlo muto |
+| **3** | «Sede UNICA del formato» scritto sopra una funzione che **non lo è più** | Il commento di `numeroDocumento` in `FatturaDrawer` rivendicava un ruolo passato al database. ⛔ Un commento che dice il falso su *dove sta una regola* è peggio di nessun commento: manda la prossima modifica nel posto sbagliato |
+| **4** | Altri due commenti stantii | «serie, numero e anno» nei legami; «l'etichetta a video la compone il FE» nel drawer lotto — dove il FE non compone più niente |
+| **5** | Le tre regex del gemello Python **potevano divergere** dal guardrail SQL | Le due trascrizioni della stessa regola sono il difetto che questo cantiere ha passato tre giorni a togliere, e io ne avevo appena create due. Ora un test **rilegge il file SQL** e pretende che le tre righe siano ancora quelle: se la regola cambia di là, questo file diventa rosso invece di presidiare una regola che non esiste più |
+| **6** | La sostituzione «per conteggio» stava per colpire di nuovo | `rows = cursor.fetchall()` compare **due volte** con lo stesso contorno. L'assert l'ha fermata, e la sostituzione è stata **ancorata alla firma del metodo** — la stessa lezione del codice morto, imparata due volte in un giorno |
+
+⭐ **La differenza fra il primo e il secondo giro di rilettura**: il primo aveva
+corretto sei istanze, questo ha tolto una **classe** (l'accesso per indice, dove
+si poteva) e ha chiuso una **deriva** (le due trascrizioni). Un'istanza corretta
+torna; una classe rimossa no.
+
+⚠️ **E una cosa che NON ho toccato perché è una scelta di UI, non un difetto**:
+`documentoLabel` compone `«103 - VX2 — 31/07/2026»` — il trattino *dentro* il
+numero e la lineetta *fra* numero e data si somigliano a colpo d'occhio. ⭐ La
+frase con cui Tid ha dichiarato il formato usava una parola al posto del segno:
+*«fattura n. 1 - VX2 **del** 21/08/2026»*. Sostituire `—` con `del` è una riga,
+ma è una decisione sua e si vede solo in app: va al collaudo, non a me.
+
+**Provato**: 4171 test verdi · i due metodi ri-eseguiti **contro il database**
+dopo la conversione per nome · il guard della deriva rotto apposta (cambiando
+una regola nel file SQL → rosso) · build, lint e guard i18n puliti.
+
+### 2026-08-29 (6) · Passata sui documenti, e tre di loro dicevano il falso
+
+Domanda di Tid: *«hai aggiornato i documenti allo stato di sviluppo?»*. La
+risposta onesta era **no, non tutti** — e le prime due bugie le avevo scritte io
+il giorno prima.
+
+| documento | diceva | verità di oggi |
+| --- | --- | --- |
+| catalogo BB **backend** | *«le chiavi del payload NON cambiano: il contratto verso il FE è del BE e non specchia i nomi di colonna»* | ⛔ Cambiate poche ore dopo. ⭐ E non era sbagliata a metà: era sbagliata **nella metà che conta** — il *prefisso* il payload lo cambia davvero (annida), il *suffisso* no |
+| catalogo BB **frontend** | *«pannello e liste chiamano le stesse cose con nomi diversi: non è una svista da uniformare, sono due trasporti diversi»* | ⛔ Uniformati lo stesso giorno |
+| **cinque manuali API** (`api_offerte`, `api_ordini`, `api_contratti`, `api_preventivi`, `api_ddt`) + `api_fatture_list` | *«`frontiera_tipo_codice` (decodificato dal repo via `config.sorgenti`)»* | ⛔ Nome **e** sorgente cambiati entrambi. È la categoria peggiore: sono i manuali che uno sviluppatore apre per sapere **cosa risponde l'endpoint oggi** |
+
+⭐ **E la passata ne ha trovata una che non era mia**: `api_resi.md` diceva
+*«nessuna colonna lineage sulla lista resi»*, falso dal **2026-08-25**, da quando
+i resi sono la sesta sorella. Tre giorni di documentazione ferma su un endpoint
+che nel frattempo aveva preso tre colonne.
+
+⚠️ **Distinzione tenuta**, e non è pedanteria: la prosa **storica** (i brief in
+`work-done`, il racconto di questo piano, il testo originale delle richieste)
+cita i nomi vecchi ed è **giusto che li citi** — è un registro datato. Ho toccato
+solo ciò che descrive **il contratto di oggi**. Un documento storico riscritto
+smette di dire quando le cose sono cambiate.
+
+⭐ **Registrato anche il presidio nuovo nel catalogo BB backend**: un cancello
+che nessuno sa che esiste è un cancello che il prossimo aggira senza saperlo.
+
+⛔ **La lezione, ed è la stessa del §3-ter.5 vista dall'altra parte**: il team DB
+mi ha segnalato un disallineamento che il *loro* guardrail non poteva vedere. Qui
+il disallineamento era fra **codice e documentazione**, e non c'è nessun
+guardrail che lo veda — l'ha visto una domanda.
 
 ---
 

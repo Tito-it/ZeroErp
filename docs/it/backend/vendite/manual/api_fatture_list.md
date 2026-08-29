@@ -63,8 +63,15 @@ verrebbe intercettato prima della view.
 Envelope standard `success_response(paginated_envelope(...))`: `results`,
 `count`, `page`, `page_size`.
 
-Ogni riga è la riga della vista, più `frontiera_tipo_codice` (LEFT JOIN su
-`config.sorgenti`) per la cella lineage.
+Ogni riga è **la riga della vista** (`SELECT v.*`), e basta: dal changeSet
+`20260829-01/02` la vista porta gia' `frontiera_tipo_codice_interno` e
+`frontiera_natura_doc_codice_interno`, quindi il repository non decodifica piu'
+niente. ⛔ *(Testo superato: «più `frontiera_tipo_codice` (LEFT JOIN su
+`config.sorgenti`)» — quel join era la stessa riga ricopiata in sette
+repository, e dimenticarla spegneva la cella «Transito» in silenzio.)*
+⚠️ E `natura_doc_codice` della riga si chiama ora `natura_doc_codice_interno`:
+il **filtro** in query string resta `natura_doc_codice`, perche' e' un nome di
+parametro d'ingresso e non di colonna.
 
 L'export risponde `text/csv` o XLSX, con **colonne, ordine e visibilità presi
 dalla configurazione lista dell'operatore** (`UiService.get_lista_config` +
@@ -114,7 +121,7 @@ senza cancello.
 
 - `vendite.vw_fatture_lista` (changeSet `20260824-15`, pgTAP
   `db/pgtap/vendite/test-vw-fatture-lista.sql`)
-- `config.sorgenti` (LEFT JOIN per `frontiera_tipo_codice`)
+- ~~`config.sorgenti` (LEFT JOIN per `frontiera_tipo_codice`)~~ — non piu': la vista porta il codice (`20260829-02`)
 - `ui.lista_definizione` **48** `vendite.fatture` — 22 colonne, preset
   `fatture_default` (ordinamento `data desc`, pagina 25), `multi_emittente = f`
 

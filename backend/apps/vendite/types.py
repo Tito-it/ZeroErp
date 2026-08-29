@@ -169,9 +169,13 @@ class LottoFattureRow(TypedDict):
     soggetto_id: int
     ragione_sociale_completa: str | None
     id_fiscale_univoco_cf_piva: str | None
+    # ⭐ Il numero documento composto dalla SEDE UNICA
+    # (`vendite.fn_numero_documento_fattura`, 20260829-15): `numero - serie`,
+    # senza anno. NULL se non ancora numerata — il ripiego lo sceglie chi rende.
+    numero_documento: str | None
     # Natura del documento (FATTURA | NOTA_CREDITO | NOTA_DEBITO): un lotto ne
     # puo' contenere di diverse, quindi «N fatture» e' «N documenti».
-    natura_doc_codice: str | None
+    natura_doc_codice_interno: str | None
     natura_doc_descrizione: str | None
     # ⭐ L'ULTIMA segnalazione VIVA della fattura, DALLE PIU' GRAVI (D-6):
     # tutti i livelli, non solo i critici, e a parita' vince la gravita' prima
@@ -1191,6 +1195,10 @@ class DashCompetenzaErroreRow(TypedDict):
     fattura_anno: int | None
     fattura_serie: str | None
     fattura_numero: int | None
+    # ⭐ Il numero documento dalla SEDE UNICA (20260829-15): `numero - serie`.
+    # ⚠️ Le tre colonne sopra RESTANO: sono ordinabili a catalogo e servono a
+    # chi filtra, non a chi legge. Questa serve a chi legge.
+    fattura_numero_documento: str | None
     task_code: str | None
     error_code: str | None
     messaggio: str | None
@@ -1214,7 +1222,7 @@ class LineageNodoRow(TypedDict):
     # Riga summary di vendite.vw_documento_lineage per un documento:
     # nodo + pratica collegata + frontiera forward + contatori genealogia.
     tipo_id: int
-    tipo_codice: str
+    tipo_codice_interno: str
     uid: str
     codice: str | None
     stato_codice_interno: str | None
@@ -1226,7 +1234,7 @@ class LineageNodoRow(TypedDict):
     pratica_numero: str | None
     n_pratiche: int
     frontiera_tipo_id: int | None
-    frontiera_tipo_codice: str | None
+    frontiera_tipo_codice_interno: str | None
     frontiera_uid: str | None
     frontiera_codice: str | None
     frontiera_stato_codice_interno: str | None
@@ -1241,12 +1249,12 @@ class LineageNodoRow(TypedDict):
     # commessa sono indistinguibili — il grafo e' nato quando `FATTURA` era una
     # cosa sola. NULL per tutti i tipi che non sono documenti fiscali.
     # (La descrizione NON si porta: il FE decodifica il codice via i18n come
-    # per `tipo_codice` — due sorgenti di etichetta divergerebbero.)
-    natura_doc_codice: str | None
+    # per `tipo_codice_interno` — due sorgenti di etichetta divergerebbero.)
+    natura_doc_codice_interno: str | None
     # Natura del nodo FRONTIERA (JOIN alla vista nodi): la frontiera puo'
     # essere una nota di credito — arco G dalla commessa — e senza questa il
     # pannello la etichetta «Fattura».
-    frontiera_natura_doc_codice: str | None
+    frontiera_natura_doc_codice_interno: str | None
 
 
 class LineagePassaggioRow(TypedDict):
@@ -1258,14 +1266,14 @@ class LineagePassaggioRow(TypedDict):
     arco: str
     ruolo: str | None
     from_tipo_id: int
-    from_tipo_codice: str | None
+    from_tipo_codice_interno: str | None
     from_uid: str
     from_codice: str | None
     from_stato_codice_interno: str | None
     from_fase: str | None
     from_doc_id: int | None
     to_tipo_id: int
-    to_tipo_codice: str | None
+    to_tipo_codice_interno: str | None
     to_uid: str
     to_codice: str | None
     to_stato_codice_interno: str | None
@@ -1273,11 +1281,11 @@ class LineagePassaggioRow(TypedDict):
     to_is_abortito: bool
     to_doc_id: int | None
     is_ramo_inverso: bool
-    # Natura dei due estremi (vedi `LineageNodoRow.natura_doc_codice`): e' cio'
+    # Natura dei due estremi (vedi `LineageNodoRow.natura_doc_codice_interno`): e' cio'
     # che permette a una tappa di dire «Nota di credito» invece di «Fattura»
     # per la seconda volta di fila.
-    from_natura_doc_codice: str | None
-    to_natura_doc_codice: str | None
+    from_natura_doc_codice_interno: str | None
+    to_natura_doc_codice_interno: str | None
 
 
 class FondoFatturaDaDecidereRow(TypedDict):

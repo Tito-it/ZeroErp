@@ -947,12 +947,17 @@ const commessePaginatorOptions = computed(() => ({
   rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
 }))
 
-// Scopo: display compatto degli estremi fattura (serie numero/anno).
+// Scopo: display del numero documento della fattura in errore.
+// ⛔ Non compone: legge la sede unica (`vendite.fn_numero_documento_fattura`,
+// 20260829-15). Prima scriveva `serie numero/anno` — la terza forma delle tre
+// che il frontend aveva per lo stesso documento.
+// ⚠️ Due «vuoti» diversi e vanno tenuti distinti: nessuna fattura sull'evento
+// (`fattura_id` assente) e fattura non ancora numerata. Il secondo caso arriva
+// come NULL dal backend, ed e' giusto che si veda come il primo: da qui in poi
+// e' l'evento a non avere un documento da nominare.
 function fatturaDisplay(row) {
   if (!row.fattura_id) return '—'
-  const serie = row.fattura_serie ? `${row.fattura_serie} ` : ''
-  const numero = row.fattura_numero ?? '—'
-  return `${serie}${numero}/${row.fattura_anno ?? '—'}`
+  return row.fattura_numero_documento || '—'
 }
 
 // Azioni di lista (personalizza colonne + esporta). ⚠️ Questa pagina ha TRE

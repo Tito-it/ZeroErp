@@ -47,10 +47,10 @@ function passaggioToRow(p, lato) {
   return {
     key: `${lato}-${p.ordine}`,
     livello: p.livello,
-    tipoCodice: from ? p.from_tipo_codice : p.to_tipo_codice,
+    tipoCodice: from ? p.from_tipo_codice_interno : p.to_tipo_codice_interno,
     // La natura del documento fiscale: e' cio' che distingue una nota di
     // credito da una fattura, che condividono il tipo sorgente.
-    naturaCodice: from ? p.from_natura_doc_codice : p.to_natura_doc_codice,
+    naturaCodice: from ? p.from_natura_doc_codice_interno : p.to_natura_doc_codice_interno,
     codice: from ? p.from_codice : p.to_codice,
     docId: from ? p.from_doc_id : p.to_doc_id,
     stato: from ? p.from_stato_codice_interno : p.to_stato_codice_interno,
@@ -81,7 +81,7 @@ const sezioni = computed(() => [
 ])
 
 // ⚠️ Due argomenti espliciti e non la riga intera: FRONTIERA e tappe hanno
-// forme diverse (`tipo_codice` vs `tipoCodice`). La natura serve a ENTRAMBE:
+// forme diverse (`tipo_codice_interno` vs `tipoCodice`). La natura serve a ENTRAMBE:
 // la frontiera puo' essere una nota di credito — l'arco G dalla commessa non
 // e' un ramo di ritorno, e al 2026-08-21 la NC e' gia' la frontiera
 // dell'ordine 240 (misurato). «Una NC non e' mai frontiera» e' l'invariante
@@ -135,7 +135,7 @@ const isApribile = isTappaApribile
         <span class="lineage-label">{{ t('vendite.lineage.frontiera') }}</span>
         <template v-if="frontiera">
           <Tag
-            :value="tipoLabel(frontiera.tipo_codice, frontiera.natura_doc_codice)"
+            :value="tipoLabel(frontiera.tipo_codice_interno, frontiera.natura_doc_codice_interno)"
             severity="secondary" />
           <!-- Stessa fallback delle tappe: una frontiera EMESSA ma non ancora
                numerata ha `codice` NULL, e il vuoto si legge «manca il
