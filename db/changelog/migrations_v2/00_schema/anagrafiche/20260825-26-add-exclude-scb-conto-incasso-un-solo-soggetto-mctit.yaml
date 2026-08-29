@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SECONDA PORTA DEL CONTO DI INCASSO — decisione di Tid, 2026-08-25
+#   anagrafiche.soggetti_conti_bancari
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §3-bis · Rilievo del backend (brief BE/FE §10.8) · Gemello del
+#          vincolo del lotto 6 (20260822-15)
+#
+# ── 🔴 IL BUCO, IN UNA RIGA ──────────────────────────────────────────
+#   «Un conto di INCASSO appartiene a una sola azienda» e' la garanzia da cui
+#   il perimetro ricava DI CHI SONO i soldi arrivati prima della fattura. Fino
+#   a oggi era scritta su UNA SOLA delle due porte da cui un conto puo' entrare:
+#
+#     * `soggetti_ruoli_conti_bancari` -> presidiata dal 2026-08-22
+#       (`ex_src_bancari_conto_incasso_un_solo_soggetto`);
+#     * `soggetti_conti_bancari`       -> ⛔ NIENTE. L'unico vincolo e'
+#       (soggetto, conto, uso), che impedisce il doppione della STESSA riga e
+#       non dice niente su due soggetti diversi.
+#
+#   ⇒ Lo stesso IBAN poteva essere dichiarato «di incasso» per due aziende
+#   diverse senza che niente lo impedisse. ⚠️ Non e' un difetto teorico: e' il
+#   rilievo con cui il backend ha chiuso la slice 4, ed e' arrivato guardando
+#   proprio i due conti di test finiti sulla porta senza vincolo.
+#
+# ── ⭐ IL DUBBIO DI TID, E PERCHE' NON SI AVVERA ─────────────────────
+#   «Due emittenti che puntano allo stesso soggetto potrebbero voler usare lo
+#   stesso conto di incasso» — misurato il 2026-08-25: **non possono esistere**.
+#   La catena e' 1:1:1 per costruzione:
+#     `uq_soggetto_ruolo UNIQUE (soggetto_id, tipo_ruolo_id)`
+#         -> un soggetto ha AL PIU' UN ruolo per tipo, quindi un solo ruolo
+#            «emittente»;
+#     `uq_emittenti_fiscali_ruolo UNIQUE (soggetto_ruolo_id)`
+#         -> quel ruolo regge AL PIU' UN emittente fiscale.
+#   ⇒ Due emittenti sullo stesso soggetto non sono anomali: sono impossibili,
+#   e questo vincolo non toglie nessun caso legittimo.
+#
+# ── ⚠️ RESTA UN'ASIMMETRIA FRA I DUE VINCOLI, e va detta ─────────────
+#   Il gemello del lotto 6 nomina il RUOLO (`soggetto_ruolo_id WITH <>`), questo
+#   nomina il SOGGETTO. Il primo e' quindi piu' stretto: se un soggetto avesse
+#   due ruoli diversi (es. emittente e fornitore) e volesse dichiarare lo stesso
+#   IBAN come INCASSO su entrambi, oggi verrebbe rifiutato — pur essendo la
+#   stessa azienda. ⛔ Non si allarga qui: allentare un vincolo che regge il
+#   perimetro e' una decisione di dominio, non una rifinitura di coerenza, e
+#   nessuno ha ancora quel caso.
+#
+# ── ⚠️ E LE DUE PORTE RESTANO INDIPENDENTI ──────────────────────────
+#   Ogni EXCLUDE presidia la propria tabella: lo stesso conto potrebbe essere
+#   INCASSO per il soggetto A su una porta e per un ruolo del soggetto B
+#   sull'altra. Una garanzia CROCIATA vorrebbe due trigger, uno per tabella.
+#   ⭐ Non si costruisce adesso, e la ragione e' misurata: il perimetro legge
+#   SOLO la porta dei ruoli (`enti_incasso` -> `soggetti_ruoli_conti_bancari`),
+#   quindi una riga a livello soggetto non puo' mentirgli. Oggi le incoerenze
+#   fra le due porte sono ZERO (misurate il 2026-08-25).
+#
+# Dati verificati PRIMA: 7 righe `uso = 'INCASSO'` a livello soggetto, e
+#   ZERO violazioni del vincolo nuovo. Nessuna bonifica necessaria.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260825-26-add-exclude-scb-conto-incasso-un-solo-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20260825-26-add-exclude-scb-conto-incasso-un-solo-soggetto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Chiude la seconda porta del conto di incasso: lo stesso conto non puo' essere
+        dichiarato `INCASSO` per due soggetti diversi nemmeno a livello soggetto, dove finora
+        non c'era nessun vincolo. E' il gemello di ex_src_bancari_conto_incasso_un_solo_soggetto
+        (lotto 6), che presidiava solo la porta dei ruoli. La garanzia «un conto di incasso
+        appartiene a una sola azienda» e' quella da cui il perimetro ricava di chi sono i soldi
+        arrivati prima della fattura: scritta su una porta sola, reggeva perche' nessuno aveva
+        usato l'altra. Verificato prima: 7 righe INCASSO a livello soggetto, zero violazioni.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_conti_bancari
+            # L'estensione che permette `=` e `<>` dentro un EXCLUDE su tipi
+            # scalari: c'e' dal vincolo gemello, ma qui si pretende.
+            - sqlCheck:
+                expectedResult: 1
+                sql: SELECT COUNT(*) FROM pg_extension WHERE extname = 'btree_gist';
+            # ⚠️ Il vincolo si aggiunge solo su dati che lo rispettano gia':
+            # se qualcuno avesse scritto la violazione nel frattempo, il migrate
+            # deve fermarsi QUI e non a meta' di un ALTER.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM (
+                      SELECT conto_bancario_id
+                        FROM anagrafiche.soggetti_conti_bancari
+                       WHERE uso = 'INCASSO'
+                       GROUP BY conto_bancario_id
+                      HAVING COUNT(DISTINCT soggetto_id) > 1
+                  ) violazioni;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ `WITH <>` sul soggetto e `WITH =` sul conto: il conflitto e'
+              --    «stesso conto, soggetto diverso». ⛔ Un UNIQUE non basterebbe:
+              --    vieterebbe anche lo stesso conto sullo STESSO soggetto, che e'
+              --    configurazione legittima (validita' diverse, dichiarazioni
+              --    d'intestazione diverse).
+              -- ⚠️ Il filtro parziale e' quello che rende il vincolo scrivibile:
+              --    un conto puo' benissimo essere di PAGAMENTO per piu' soggetti.
+              ALTER TABLE anagrafiche.soggetti_conti_bancari
+                  ADD CONSTRAINT ex_scb_conto_incasso_un_solo_soggetto
+                  EXCLUDE USING gist (
+                      conto_bancario_id WITH =,
+                      soggetto_id       WITH <>
+                  ) WHERE (uso = 'INCASSO');
+
+              COMMENT ON CONSTRAINT ex_scb_conto_incasso_un_solo_soggetto
+                  ON anagrafiche.soggetti_conti_bancari
+              IS 'Un conto dichiarato di INCASSO appartiene a UN SOLO soggetto. ⭐ E'' la garanzia da cui il perimetro dei pagamenti ricava DI CHI SONO i soldi arrivati prima che esista una fattura: quando il denaro atterra su un IBAN, quell''IBAN deve avere un padrone solo. Gemello di ex_src_bancari_conto_incasso_un_solo_soggetto (2026-08-22), che presidia la porta dei RUOLI: fino al 2026-08-25 questa porta non aveva nessun vincolo, e lo stesso conto poteva essere dichiarato di incasso per due aziende diverse senza che niente lo impedisse. ⚠️ Il gemello nomina il ruolo e questo il soggetto, quindi il gemello e'' piu'' stretto: lo stesso IBAN come INCASSO su due RUOLI dello stesso soggetto oggi e'' rifiutato la'', pur essendo la stessa azienda — allentarlo e'' una decisione di dominio, non una rifinitura. ⚠️ I due EXCLUDE presidiano ciascuno la propria tabella: una garanzia CROCIATA vorrebbe due trigger, e non si costruisce perche'' il perimetro legge SOLO la porta dei ruoli (enti_incasso -> soggetti_ruoli_conti_bancari), quindi una riga a livello soggetto non puo'' mentirgli. ⛔ NON e'' un UNIQUE: lo stesso conto sullo STESSO soggetto resta legittimo (validita'' o intestazioni diverse), a essere vietato e'' il soggetto DIVERSO. Il filtro parziale e'' cio'' che lo rende scrivibile: un conto di PAGAMENTO puo'' stare su piu'' soggetti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_conti_bancari
+                  DROP CONSTRAINT IF EXISTS ex_scb_conto_incasso_un_solo_soggetto;

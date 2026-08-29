@@ -199,18 +199,19 @@ class ResiRepository:
 
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_resi_lista v {where}"  # noqa: S608
         # Tiebreaker v.id per paginazione deterministica.
-        # `frontiera_tipo_codice` decodificato per il chip transito FE, come
-        # sulle cinque sorelle.
         # ⛔ NON e' decorazione: `LineageFrontieraChip` ha il gate su
-        #    `isTransitato && tipoCodice`, quindi senza questa colonna la cella
+        #    `isTransitato && tipoCodice`, quindi senza quella colonna la cella
         #    mostra «—» — cioe' «non transitato» — proprio sul reso accreditato,
         #    che e' l'unica cosa che questa lista doveva dire (arco S,
-        #    2026-08-25). La vista espone l'id, mai il codice: il grafo parla
-        #    per id, il FE per `codice_interno`.
+        #    2026-08-25).
+        # ⭐ Dal 20260829-02 il codice lo porta LA VISTA
+        #    (`frontiera_tipo_codice_interno`) e qui non si decodifica piu'
+        #    niente: prima il grafo parlava per id e ogni lista si scriveva il
+        #    suo `LEFT JOIN config.sorgenti` — sette copie della stessa riga, e
+        #    proprio questa era nata senza.
         data_sql = f"""
-            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            SELECT v.*
             FROM vendite.vw_resi_lista v
-            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
@@ -298,100 +299,37 @@ class ResiRepository:
             row = cursor.fetchone()
             return int(row[0]) if row else 0
 
-    # Scopo: Righe attive del reso con decodifiche articolo/uom/tipo reso e la
-    #        copertura ri-consegna: qta_riconsegnata (ponte
-    #        `resi_righe_riconsegne`), qta_rinunciata (ponte
-    #        `resi_righe_rinunce`), qta_residua e stato_riconsegna DERIVATI
-    #        (R1: nessuna colonna fisica).
-    #        ⚠️ Il residuo NON si ricalcola qui: arriva da
-    #        `vendite.fn_resi_riga_residuo_riconsegna` — l'helper unico estratto
-    #        dal team DB (brief chiusura-riconsegna §4.2-bis) proprio perche' la
-    #        formula `quantita − Σric` era gia' triplicata a DB. Questa era la
-    #        QUARTA copia, ed era diventata SBAGLIATA con l'arrivo delle rinunce
-    #        (non le sottraeva): mostrava come ri-spedibile una quota gia'
-    #        dichiarata definitiva. Le due uscite condividono la copertura, il
-    #        residuo e' `quantita − Σric − Σrin` e lo dice una funzione sola.
+    # Scopo: Righe attive del reso, lette dalla vista canonica
+    #        `vendite.vw_resi_righe_dettaglio` (changeSet `20260825-25`).
+    #        Porta le decodifiche articolo/uom/tipo reso, la copertura
+    #        ri-consegna (`qta_riconsegnata`/`qta_rinunciata`/`qta_residua`/
+    #        `stato_riconsegna`), `gia_accreditato` e — dal 2026-08-25 —
+    #        `annullo_blocco_codice`, il motivo per cui l'annullo dell'accredito
+    #        NON e' ammesso (`NULL` = ammesso).
+    #
+    # ⭐ QUI C'ERANO CINQUANTA RIGHE DI SQL, ed erano una vista scritta in
+    #    Python: nessun filtro dinamico, solo `reso_id` e `attivo`. Le righe del
+    #    reso erano l'UNICO dettaglio documento senza una sede a DB — ed e' il
+    #    motivo per cui il motivo di blocco dell'annullo poteva arrivare sulla
+    #    coda accrediti e non sulla superficie dove il pulsante vive davvero.
+    #    Verificato prima dello scambio: `EXCEPT` nei due versi fra la vecchia
+    #    query e la vista, su tutti i resi -> **0 differenze**, 17 righe.
+    #
+    # ⚠️ Il filtro `attivo` resta QUI, e la vista non lo incorpora: `attivo` e'
+    #    una colonna, non un filtro nascosto. Una vista «dettaglio» che
+    #    nascondesse righe di nascosto darebbe un conteggio diverso da quello
+    #    della tabella senza dirlo (presidiato dal pgTAP 5 della vista).
+    # ⛔ Il perimetro non e' a carico di questo metodo: la vista passa da
+    #    `vendite.resi` (che ha la RLS `rls_resi_ef_whitelist`) perche'
+    #    `vendite.resi_righe` non ce l'ha. Che il service autorizzi prima non
+    #    basta — un oggetto di database dev'essere sicuro da solo.
     def list_righe(self, reso_id: int) -> list[dict[str, Any]]:
         sql = """
-            SELECT
-                rr.id,
-                rr.reso_id,
-                rr.riga_nr,
-                rr.attivo,
-                rr.ddt_riga_id,
-                rr.ordine_riga_id,
-                rr.articolo_id,
-                a.codice                AS articolo_codice,
-                a.descrizione           AS articolo_descrizione,
-                rr.descrizione,
-                rr.quantita,
-                rr.qta_operativa,
-                rr.factor_to_base,
-                rr.uom_operativa_id,
-                um.codice               AS uom_codice,
-                rr.tipo_reso_id,
-                tr.codice_interno       AS tipo_reso_codice_interno,
-                tr.descrizione          AS tipo_reso_descrizione,
-                tr.riapre_residuo,
-                rr.motivo,
-                COALESCE(ric.tot, 0::numeric) AS qta_riconsegnata,
-                COALESCE(rin.tot, 0::numeric) AS qta_rinunciata,
-                res.residuo AS qta_residua,
-                -- Stati allineati 1:1 a vw_resi_da_riconsegnare (stessa
-                -- semantica nel drawer e nella coda): RINUNCIATA quando la
-                -- copertura si e' chiusa per rinuncia e non per consegna.
-                CASE
-                    WHEN tr.riapre_residuo IS NOT TRUE THEN NULL
-                    WHEN res.residuo = 0::numeric
-                         AND COALESCE(rin.tot, 0::numeric) > 0::numeric
-                        THEN 'RINUNCIATA'
-                    WHEN COALESCE(ric.tot, 0::numeric) = 0::numeric
-                         AND COALESCE(rin.tot, 0::numeric) = 0::numeric
-                        THEN 'DA_RICONSEGNARE'
-                    WHEN res.residuo > 0::numeric
-                        THEN 'PARZIALE'
-                    ELSE 'COMPLETATA'
-                END AS stato_riconsegna,
-                -- Quanto di questa riga e' GIA' stato accreditato, in unita'
-                -- di merce. ⭐ Si legge dalla fn del DB, che e' il punto UNICO
-                -- della formula (la consuma anche `vw_resi_da_accreditare` per
-                -- non ri-offrire una quota gia' accreditata): rifare qui la
-                -- somma sul ponte darebbe una seconda verita' — e sbagliata,
-                -- perche' su un kit N righe portano la STESSA quota padre e
-                -- sommarle la moltiplicherebbe.
-                -- Serve al drawer per offrire l'ANNULLO dell'accredito: dopo il
-                -- verbo la riga esce dalla coda, quindi il reso e' l'unica sede
-                -- da cui si puo' ancora disfare (§30.2 del brief).
-                acc.accreditato AS gia_accreditato,
-                rr.meta,
-                rr.data_insert,
-                rr.data_update
-              FROM vendite.resi_righe rr
-              LEFT JOIN catalogo.articoli a      ON a.id  = rr.articolo_id
-              LEFT JOIN catalogo.unita_misura um ON um.id = rr.uom_operativa_id
-              LEFT JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
-              LEFT JOIN (
-                    SELECT resi_riga_id, SUM(qta) AS tot
-                      FROM vendite.resi_righe_riconsegne
-                     GROUP BY resi_riga_id
-              ) ric ON ric.resi_riga_id = rr.id
-              LEFT JOIN (
-                    SELECT resi_riga_id, SUM(qta) AS tot
-                      FROM vendite.resi_righe_rinunce
-                     GROUP BY resi_riga_id
-              ) rin ON rin.resi_riga_id = rr.id
-              -- Helper valutato UNA volta per riga e riusato da qta_residua e
-              -- dai tre rami della CASE: senza il LATERAL sarebbero 3 chiamate
-              -- per riga (STABLE non garantisce il riuso fra occorrenze).
-              CROSS JOIN LATERAL (
-                    SELECT vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo
-              ) res
-              CROSS JOIN LATERAL (
-                    SELECT vendite.fn_resi_riga_accreditato_partita(rr.id) AS accreditato
-              ) acc
-             WHERE rr.reso_id = %s
-               AND rr.attivo IS TRUE
-             ORDER BY rr.riga_nr, rr.id
+            SELECT *
+              FROM vendite.vw_resi_righe_dettaglio
+             WHERE reso_id = %s
+               AND attivo IS TRUE
+             ORDER BY riga_nr, id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [reso_id])

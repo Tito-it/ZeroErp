@@ -72,15 +72,26 @@ compare senza genealogia, non sparisce.
   transitato»*, proprio sul reso che HA transitato. Difetto trovato il
   2026-08-25 e presidiato da
   `apps/vendite/tests/services/test_lineage_liste_be.py`.
-- **`frontiera_natura_doc_codice`** — ⛔ **non c'è, e su questa vista serve
-  sempre.** `vendite.fatture` è una tabella sola: fattura e nota di credito si
-  distinguono solo per `natura_doc_id`, e la frontiera di un reso accreditato è
-  **sempre** una nota di credito (pgTAP 35). Senza la natura la colonna
-  «Transito» etichetta «Fattura» il documento che il cantiere esiste per
-  nominare. La colonna manca **su `vw_documento_lineage`**, che è la sede: il
-  pannello «Passaggi» la ricava per conto suo in `get_lineage_nodo` joinando
-  `vw_documento_lineage_nodi` su `frontiera_uid` — chiave che **le liste non
-  hanno**. Richiesta al team DB: brief arco S §7-bis.
+- **`frontiera_natura_doc_codice_interno`** — ✅ **c'è dal 2026-08-29**, e su
+  questa vista serve sempre. `vendite.fatture` è una tabella sola: fattura e nota
+  di credito si distinguono solo per `natura_doc_id`, e la frontiera di un reso
+  accreditato è **sempre** una nota di credito (pgTAP 35). Senza la natura la
+  colonna «Transito» etichettava «Fattura» il documento che il cantiere esiste
+  per nominare.
+  ⚠️ **Il nome porta il suffisso `_interno` e non è un vezzo**: il valore viene da
+  `config.nature_doc_fiscale.codice_interno`, la colonna **immutabile** su cui si
+  fa logica, e chiamarla `*_codice` — il nome della colonna *modificabile* —
+  è vietato da `linee-guida-sql` §6c, con un guardrail CI che lo blocca.
+  *(Testo superato, tenuto perché spiega da dove si veniva: «non c'è, e la
+  colonna manca su `vw_documento_lineage`, che è la sede; il pannello
+  «Passaggi» la ricava per conto suo in `get_lineage_nodo` joinando
+  `vw_documento_lineage_nodi` su `frontiera_uid` — chiave che le liste non
+  hanno». La sede l'ha esposta il `20260828-22`, le sette liste la portano
+  avanti dal `20260829-01`.)*
+- **`frontiera_tipo_codice_interno`** — il **codice** del tipo di frontiera
+  accanto al suo id (`20260829-02`). Prima ogni repository si rifaceva lo stesso
+  join a `config.sorgenti`: dieci copie scritte a mano, tutte fuori dalla portata
+  del guardrail, che scansiona solo le viste.
 
 ### Consumo
 

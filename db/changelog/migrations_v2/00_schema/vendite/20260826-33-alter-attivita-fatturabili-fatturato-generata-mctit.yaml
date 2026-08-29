@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L3b pezzo 3 — IL TIMBRO SMETTE DI ESSERE UN FATTO AUTONOMO
+#   vendite.attivita_fatturabili.fatturato -> colonna GENERATA
+#   Piano: brief-db-lavoro-che-non-torna-indietro, L3b / Q-7 strada B (§9.3)
+#
+# ── ⭐ LA DOMANDA DI TID, E PERCHE' ERA QUELLA GIUSTA ───────────────
+#   La proposta iniziale era un `CHECK` che vietasse il disaccordo fra
+#   `fatturato` e `fattura_riga_id`. Tid ha chiesto: *«non sarebbe logico
+#   togliere il timbro?»* — e la risposta e' si'. Un `CHECK` da' per scontato
+#   che i due dati debbano esistere entrambi. Non devono: sono **due colonne
+#   per un fatto solo**, e il difetto di questo cantiere e' esattamente il
+#   minuto in cui hanno smesso di dire la stessa cosa.
+#
+#   Con la colonna generata il disaccordo **non e' piu' rappresentabile**: non
+#   si puo' scrivere, quindi non si puo' disallineare. ⭐ E il `CHECK` cade da
+#   se': un vincolo su una colonna che nessuno puo' scrivere e' sempre vero.
+#
+# ── ⭐ E SPARISCE ANCHE IL DIFETTO LATENTE DEL NULL ─────────────────
+#   Oggi `fatturato` e' **nullable** (default false), e
+#   `fn_select_attivita_fatturabili` filtra `a.fatturato IS FALSE`: una riga con
+#   `NULL` non verrebbe **mai** selezionata, e nessuno se ne accorgerebbe.
+#   L'espressione generata non produce mai NULL, e la colonna nasce `NOT NULL`.
+#
+# ── ⚠️ SI FA IN DUE PASSI PERCHE' NON SI PUO' FARE IN UNO ──────────
+#   PostgreSQL non converte una colonna esistente in generata: serve
+#   `DROP COLUMN` + `ADD COLUMN`, con riscrittura della tabella.
+#   ⚠️ Il `DROP COLUMN` porta via **l'indice che la contiene**,
+#   `ix_attivita_articolo_flags`: va ricreato qui, nello stesso changeSet.
+#
+# ── ⚠️ IL RAGGIO, CENSITO PRIMA DI TOCCARE ─────────────────────────
+#   · viste che dipendono dalla colonna → **ZERO** (`pg_depend` su `pg_rewrite`);
+#   · indici → **uno**, `ix_attivita_articolo_flags`, ricreato qui;
+#   · `CHECK` / policy RLS che la nominano → **zero**;
+#   · trigger con `UPDATE OF ... fatturato` → **zero**;
+#   · `dbops.automation_lock_columns` per questa tabella → **zero righe**;
+#   · lo **storico** e' un `to_jsonb(NEW)`, non una copia colonna per colonna:
+#     lo spostamento della colonna in fondo non lo tocca;
+#   · `fn_select_attivita_fatturabili` fa `RETURNING a.*` ma dichiara
+#     `RETURNS SETOF vendite.attivita_fatturabili`, cioe' il tipo composito
+#     **della tabella stessa**: si adatta da solo a qualunque ordine;
+#   · il backend legge quelle righe con una **lista di colonne esplicita**, non
+#     posizionalmente su `a.*`: lo spostamento non lo tocca.
+#
+# ── ⛔ IL CANCELLO CHE QUESTO FILE NON PUO' PRESIDIARE ──────────────
+#   Le scritture DB sono due e le tolgono i changeSet 31 e 32, che hanno numero
+#   piu' basso. ⛔ **Ma restano DUE scritture nel backend**, e una preCondition
+#   non puo' vederle:
+#
+#     backend/apps/vendite/db/pipeline_repository.py
+#       · riga ~2760  `fatturato = TRUE,`  → in `mark_attivita_fatturata`, che
+#                     e' **codice morto** (nessun riferimento fuori dal file
+#                     oltre a un doppione in un test): il metodo si cancella;
+#       · riga ~2962  `fatturato = TRUE,`  → il **ramo aggregato**, che e' vivo:
+#                     lo statement deve smettere di nominare la colonna.
+#
+#   ⛔ Finche' quel secondo statement esiste, la **prima fatturazione fallisce**:
+#   scrivere una colonna generata e' un errore, non un no-op. Non e' «il backend
+#   si allinea dopo»: e' la fatturazione ferma finche' non si allinea.
+#   ⚠️ Applicato di proposito con questa consapevolezza (decisione di Tid,
+#   2026-08-26). La richiesta al backend e' nel brief, §14.8.
+#
+# ── ℹ️ E IL LUCCHETTO NON SI TOCCA ─────────────────────────────────
+#   `lock_in_fatturazione` **non** e' un doppione e non si puo' generare: e'
+#   vero legittimamente *durante* il giro, quando la riga di fattura non esiste
+#   ancora. ⛔ E' il motivo per cui togliere il timbro NON basta, e per cui il
+#   riordino di L1 resta necessario: senza, cancellare una riga di fattura
+#   toglierebbe il timbro da solo e lascerebbe il lavoro fuori dal giro **per
+#   un'altra colonna**.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260826-33-alter-attivita-fatturabili-fatturato-generata-mctit.yaml
+
+  - changeSet:
+      id: 20260826-33-alter-attivita-fatturabili-fatturato-generata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L3b / Q-7 strada B: vendite.attivita_fatturabili.fatturato diventa una colonna
+        GENERATA su (fattura_riga_id IS NOT NULL), STORED e NOT NULL. ⭐ Toglie il doppione
+        invece di vietarne il disaccordo con un CHECK: due colonne per un fatto solo, e il
+        difetto di questo cantiere e' il minuto in cui hanno smesso di dire la stessa cosa.
+        Da qui il disaccordo non e' piu' rappresentabile, e sparisce anche il difetto latente
+        del NULL (oggi la colonna e' nullable e fn_select_attivita_fatturabili filtra IS
+        FALSE: una riga NULL non sarebbe mai selezionata). ⚠️ DROP+ADD perche' PostgreSQL non
+        converte in place; l'indice ix_attivita_articolo_flags muore col DROP e si ricrea qui.
+        Raggio censito: zero viste, zero CHECK, zero policy, zero trigger UPDATE OF, storico a
+        snapshot JSONB, RETURNS SETOF della tabella stessa. ⛔ RESTANO DUE SCRITTURE NEL
+        BACKEND (pipeline_repository.py): finche' il ramo aggregato nomina la colonna, la
+        prima fatturazione fallisce. Applicato di proposito con questa consapevolezza.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+                columnName: fatturato
+            # ⛔ I due scrittori DB devono aver gia' smesso (changeSet 31 e 32).
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_emit_attivita_fatturabili_da_commessa'
+                     AND p.prosrc LIKE '%approvato, fatturato,%';
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_libera_attivita_fatturabili'
+                     AND p.prosrc ~ 'fatturato[[:space:]]*=[[:space:]]*false';
+            # ⚠️ Nessuna vista dipende dalla colonna: un DROP la porterebbe via
+            #    (o fallirebbe). Misurato al momento dell'applicazione, non
+            #    quando il file e' stato scritto.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(DISTINCT r.ev_class)
+                    FROM pg_depend d
+                    JOIN pg_rewrite r ON r.oid = d.objid
+                   WHERE d.refobjid = 'vendite.attivita_fatturabili'::regclass
+                     AND d.classid  = 'pg_rewrite'::regclass
+                     AND d.refobjsubid = (SELECT attnum FROM pg_attribute
+                                           WHERE attrelid = 'vendite.attivita_fatturabili'::regclass
+                                             AND attname = 'fatturato');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il DROP porta via anche ix_attivita_articolo_flags, che
+              --    contiene la colonna. E' voluto: viene ricreato sotto,
+              --    identico, nello stesso changeSet.
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP COLUMN fatturato;
+
+              -- ⭐ Il timbro smette di essere un fatto autonomo: e' la lettura
+              --    del puntatore, e non si puo' scrivere. NOT NULL perche'
+              --    `IS NOT NULL` non produce mai NULL — e cosi' sparisce anche
+              --    il difetto latente per cui una riga a NULL non sarebbe mai
+              --    stata selezionata da fn_select_attivita_fatturabili.
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD COLUMN fatturato boolean
+                      GENERATED ALWAYS AS (fattura_riga_id IS NOT NULL) STORED
+                      NOT NULL;
+
+              CREATE INDEX ix_attivita_articolo_flags
+                  ON vendite.attivita_fatturabili
+                  USING btree (articolo_id, approvato, fatturato);
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.fatturato IS
+                  'Colonna GENERATA dal 20260826-33: vale `fattura_riga_id IS NOT NULL`, '
+                  'e non si puo'' scrivere. ⭐ Prima era un booleano autonomo, cioe'' una '
+                  'SECONDA colonna per lo stesso fatto: il timbro vecchio, nato quando il '
+                  'legame con la riga di fattura non c''era. Le due hanno smesso di dire la '
+                  'stessa cosa fra il 2026-07-28 e il 2026-08-26 — attivita'' timbrate senza '
+                  'nessuna fattura — ed e'' il difetto da cui nasce il cantiere '
+                  'brief-db-lavoro-che-non-torna-indietro. Generandola, il disaccordo smette '
+                  'di essere RAPPRESENTABILE: non e'' vietato, e'' impossibile. ⭐ Ed e'' anche '
+                  'il motivo per cui il CHECK proposto in prima battuta e'' caduto: un vincolo '
+                  'su una colonna che nessuno puo'' scrivere e'' sempre vero. ⭐ Sparisce anche '
+                  'un difetto latente: prima era NULLABLE, e fn_select_attivita_fatturabili '
+                  'filtra `fatturato IS FALSE` — una riga a NULL non sarebbe stata selezionata '
+                  'MAI, senza che nessuno se ne accorgesse. ⛔ NON confondere con '
+                  '`lock_in_fatturazione`: quello NON e'' un doppione e non si puo'' generare, '
+                  'perche'' e'' vero legittimamente DURANTE il giro, quando la riga di fattura '
+                  'non esiste ancora. E'' il motivo per cui togliere il timbro non basta e il '
+                  'riordino di fn_cleanup_fatture_by_ids resta necessario. ⚠️ Chi la legge non '
+                  'cambia niente; chi provasse a scriverla riceve un errore, ed e'' il punto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP COLUMN fatturato;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD COLUMN fatturato boolean DEFAULT false;
+
+              UPDATE vendite.attivita_fatturabili
+                 SET fatturato = (fattura_riga_id IS NOT NULL);
+
+              CREATE INDEX ix_attivita_articolo_flags
+                  ON vendite.attivita_fatturabili
+                  USING btree (articolo_id, approvato, fatturato);

@@ -74,7 +74,15 @@ SELECT is(
   (SELECT coalesce(string_agg(x, ', ' ORDER BY x), '')
      FROM unnest(ARRAY['id','uid','numero','serie','anno','data',
                        'stato_codice_interno','stato_descrizione','fase',
-                       'natura_doc_codice','natura_doc_descrizione',
+                       -- ⛔ rev 2026-08-29: `natura_doc_codice` si chiama ora
+                       -- `natura_doc_codice_interno` (20260829-02). Il valore viene da
+                       -- config.nature_doc_fiscale.codice_interno, la colonna IMMUTABILE,
+                       -- e linee-guida-sql §6c vieta `codice_interno AS *_codice`: il nome
+                       -- mentiva sulla sorgente e il guardrail CI
+                       -- scripts/sql/check_naming_stato_codice.sql era ROSSO su questa
+                       -- vista. ⚠️ E' un cambio di CONTRATTO col frontend, voluto e
+                       -- concordato: la rinomina a valle e' meccanica.
+                       'natura_doc_codice_interno','natura_doc_descrizione',
                        'ragione_sociale_completa','id_fiscale_univoco_cf_piva',
                        'ba_codice','billing_account_id','soggetto_id',
                        'utility_id','utility_codice','utility_descrizione',

@@ -1,0 +1,256 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I10 (Fase 1) del brief brief-db-be-iva-risolutore-e-regime-cliente, D15 —
+# secondo pezzo. Il primo (20260829-03) ha creato
+# config.stati_doc_fiscale.congela_fiscale; qui la funzione smette di decidere
+# da se' e va a leggerla.
+#
+# PRIMA:  IF v_codice_interno IS NULL OR v_codice_interno NOT IN ('DRAFT','EMESSA')
+# DOPO:   IF v_codice_interno IS NULL OR COALESCE(v_congela_fiscale, true)
+#
+# ⭐ PERCHE'. La soglia non cambia comportamento — DRAFT ed EMESSA restano gli
+#   unici stati in cui il ricalcolo e' ammesso — ma cambia SEDE. Serviva perche'
+#   il risolutore IVA (I2 del brief) ha bisogno della stessa identica soglia:
+#   lasciandola cablata qui, il secondo consumatore l'avrebbe RICOPIATA, e due
+#   finestre di congelamento sullo stesso documento sono due verita' che
+#   divergono in silenzio. Ora la sede e' una, ed e' un dato.
+#
+# ⭐ FAIL-CLOSED CONSERVATO, in due punti e per due ragioni diverse:
+#   - `v_codice_interno IS NULL` resta identico a prima: uno stato non
+#     risolvibile ferma il ricalcolo. Il ramo e' irraggiungibile oggi (la FK
+#     ammette solo id validi, e il NULL e' respinto sopra) e si tiene perche'
+#     costa zero — stessa motivazione della rev 2026-08-02;
+#   - `COALESCE(v_congela_fiscale, true)` e' la difesa gemella sulla colonna
+#     nuova: e' NOT NULL, quindi il NULL non arriva, ma se arrivasse la risposta
+#     giusta e' «congelato». Un dubbio su uno snapshot fiscale si risolve NON
+#     ricalcolando.
+#
+# ⚠️ Il perimetro NON si allarga e NON si restringe: il seed di 20260829-03 mette
+#   congela_fiscale = false esattamente su DRAFT ed EMESSA. Se un giorno qualcuno
+#   vorra' cambiare la soglia, ora si cambia una cella di CSV invece di questo
+#   corpo.
+#
+# 📌 NOTATO E NON CORRETTO QUI, per non allargare il perimetro: il codice
+#   sollevato resta E_PARAMETRO_INVALIDO, ma «il documento e' congelato» non e'
+#   un parametro invalido — e' un conflitto di stato, e la sede giusta sarebbe un
+#   codice CONFLITTO_STATO come i tre gemelli del gate DDT. Coniarlo significa
+#   catalogo + CSV + classe, cioe' un changeSet suo. Scritto nel brief come
+#   strascico di I10.
+#
+# Base: corpo vivo da docs/it/dbzero/vendite/funzioni/fn_ricalcola_riepilogo_iva_fattura.md.
+#   Firma con %TYPE ripresa dall'ultimo YAML (20260802-25): l'auto-gen scioglie i
+#   %TYPE in tipi concreti e riprodurla da li' li perderebbe.
+#   Firma e RETURNS invariati -> CREATE OR REPLACE puro, nessun DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-04-update-fn-ricalcola-riepilogo-iva-fattura-congela-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260829-04-update-fn-ricalcola-riepilogo-iva-fattura-congela-fiscale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_ricalcola_riepilogo_iva_fattura legge la soglia di congelamento da
+        config.stati_doc_fiscale.congela_fiscale invece della lista cablata
+        NOT IN ('DRAFT','EMESSA'). Stesso comportamento, sede unica: il
+        risolutore IVA (I2) userà la stessa colonna invece di ricopiare i codici.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name = 'stati_doc_fiscale'
+                 AND column_name = 'congela_fiscale'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(deleted_rows integer, inserted_rows integer)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_deleted_rows  INTEGER := 0;
+                  v_inserted_rows INTEGER := 0;
+                  v_stato_id      vendite.fatture.stato_doc_fiscale_id%TYPE;
+                  v_codice_interno config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_congela_fiscale config.stati_doc_fiscale.congela_fiscale%TYPE;
+                  v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT f.stato_doc_fiscale_id INTO v_stato_id FROM vendite.fatture f WHERE f.id = p_fattura_id;
+
+                  -- ⚠️ L'esistenza si misura con NOT FOUND, non con l'IS NULL di
+                  --    una colonna NULLABILE. `stato_doc_fiscale_id` puo' essere
+                  --    NULL su una fattura che esiste: il codice precedente la
+                  --    dichiarava «non trovata» e mandava a cercare un documento
+                  --    che invece era li'.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_FATTURA_NON_TROVATA',
+                          jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  -- La fattura c'e' ma non ha stato: e' un'altra cosa, e va detta
+                  -- come tale. Senza stato non si puo' decidere se il ricalcolo
+                  -- sia ammesso, quindi non si procede.
+                  IF v_stato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('fattura_id', p_fattura_id, 'campo', 'stato_doc_fiscale_id'),
+                          NULL::uuid, concat('stato_doc_fiscale_id della fattura ', p_fattura_id));
+                  END IF;
+
+                  SELECT s.codice_interno, s.congela_fiscale
+                    INTO v_codice_interno, v_congela_fiscale
+                    FROM config.stati_doc_fiscale s
+                   WHERE s.id = v_stato_id;
+
+                  -- ⭐ LA SOGLIA E' UN DATO, non una lista qui dentro
+                  --    (rev 2026-08-29, D15 del brief IVA). Prima era
+                  --    `v_codice_interno NOT IN ('DRAFT','EMESSA')`: stesso
+                  --    perimetro, ma cablato — e il risolutore IVA avrebbe avuto
+                  --    bisogno della STESSA soglia, quindi l'avrebbe ricopiata.
+                  --    Due finestre di congelamento sullo stesso documento sono
+                  --    due verita' che divergono in silenzio.
+                  --
+                  -- ⚠️ `IS NULL OR`: senza, uno stato non risolvibile renderebbe
+                  --    l'espressione NULL e l'IF non scatterebbe, quindi il
+                  --    ricalcolo procederebbe su un documento di stato ignoto.
+                  --    Oggi il ramo e' IRRAGGIUNGIBILE (la FK
+                  --    fk_fatture_stato_doc_fiscale ammette solo id validi, e il
+                  --    NULL e' respinto sopra): si tiene perche' costa zero e non
+                  --    fa dipendere questo guard da un vincolo di un'altra tabella.
+                  --
+                  -- ⚠️ Il COALESCE e' la difesa gemella sulla colonna nuova, che
+                  --    e' NOT NULL: se un NULL arrivasse comunque, la risposta
+                  --    giusta e' «congelato». Un dubbio su uno snapshot fiscale
+                  --    si risolve NON ricalcolando.
+                  IF v_codice_interno IS NULL OR COALESCE(v_congela_fiscale, true) THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
+                                             'stato_doc_fiscale_id', v_stato_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, concat('ricalcolo IVA non ammesso per stato ', COALESCE(v_codice_interno, '(non risolvibile)')));
+                  END IF;
+
+                  -- Recupero stato emittente per override aliquota IVA
+                  SELECT s.stato_id INTO v_stato_emittente_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                    JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   WHERE f.id = p_fattura_id;
+
+                  DELETE FROM vendite.fatture_riepiloghi_iva WHERE fattura_id = p_fattura_id;
+                  GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+
+                  INSERT INTO vendite.fatture_riepiloghi_iva (fattura_id, iva_id, natura_id, esigibilita, split_payment, imponibile, imposta, arrotondamento)
+                  SELECT r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment,
+                         ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2),
+                         ROUND(ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2) * (COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)::NUMERIC / 100::NUMERIC), 2),
+                         SUM(COALESCE(r.imponibile_riga, 0)) - ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2)
+                    FROM vendite.fatture_righe r
+                    LEFT JOIN config.iva i ON i.id = r.iva_id
+                    LEFT JOIN config.iva_natura n ON n.codice = r.iva_natura
+                   WHERE r.fattura_id = p_fattura_id
+                   GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
+                  GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_deleted_rows, v_inserted_rows;
+              END;
+              $function$;
+
+              -- ⚠️ Qui il tipo e' CONCRETO, non `%TYPE`: COMMENT ON e' DDL plain
+              --    e risolve la firma per lookup, non la interpreta. Il `%TYPE`
+              --    vale nella firma del CREATE FUNCTION, nel DECLARE e nel
+              --    RETURNS TABLE — non in COMMENT ON / DROP FUNCTION / GRANT.
+              COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
+              IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per aliquota/natura/esigibilita/split e applicando l''override di aliquota per stato dell''emittente. ⭐ rev 2026-08-29 (D15 del brief brief-db-be-iva-risolutore-e-regime-cliente): la soglia di congelamento NON e'' piu'' una lista di codici in questo corpo — si legge da config.stati_doc_fiscale.congela_fiscale. Il perimetro non cambia (il seed mette congela_fiscale = false esattamente su DRAFT ed EMESSA), cambia la SEDE: il risolutore IVA di I2 ha bisogno della stessa identica soglia e, lasciandola cablata qui, l''avrebbe ricopiata — due finestre di congelamento sullo stesso documento sono due verita'' che divergono in silenzio. Cambiare la soglia e'' ora una cella di CSV. ⚠️ Il COALESCE(v_congela_fiscale, true) e'' fail-closed sulla colonna nuova: e'' NOT NULL, ma se un NULL arrivasse la risposta giusta e'' «congelato» — un dubbio su uno snapshot fiscale si risolve NON ricalcolando. 📌 Strascico noto e non chiuso qui: il codice sollevato resta E_PARAMETRO_INVALIDO, mentre «documento congelato» e'' un conflitto di stato e meriterebbe un codice CONFLITTO_STATO come i tre gemelli del gate DDT. rev 2026-08-02: due difetti chiusi sul controllo dello stato, opposti fra loro e con la stessa radice — usare un valore nullabile come prova di esistenza. (1) L''esistenza si misura con NOT FOUND: stato_doc_fiscale_id e'' NULLABLE, quindi l''IS NULL precedente dichiarava «fattura non trovata» anche per una fattura che esiste ma non ha stato; ora i due casi hanno messaggi distinti (E_FATTURA_NON_TROVATA vs E_VALORE_MANCANTE). (2) Il guard di stato era fail-open nella FORMA: con codice_interno NULL l''espressione NOT IN vale NULL e l''IF non sarebbe scattato; il ramo e'' pero'' IRRAGGIUNGIBILE oggi, quindi l''IS NULL OR e'' difesa in profondita''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: la funzione torna a decidere da se', con la lista cablata.
+              -- Va eseguito PRIMA del rollback di 20260829-03, che toglie la colonna.
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(deleted_rows integer, inserted_rows integer)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_deleted_rows  INTEGER := 0;
+                  v_inserted_rows INTEGER := 0;
+                  v_stato_id      vendite.fatture.stato_doc_fiscale_id%TYPE;
+                  v_codice_interno config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT f.stato_doc_fiscale_id INTO v_stato_id FROM vendite.fatture f WHERE f.id = p_fattura_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_FATTURA_NON_TROVATA',
+                          jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  IF v_stato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('fattura_id', p_fattura_id, 'campo', 'stato_doc_fiscale_id'),
+                          NULL::uuid, concat('stato_doc_fiscale_id della fattura ', p_fattura_id));
+                  END IF;
+
+                  SELECT s.codice_interno INTO v_codice_interno FROM config.stati_doc_fiscale s WHERE s.id = v_stato_id;
+
+                  IF v_codice_interno IS NULL OR v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
+                                             'stato_doc_fiscale_id', v_stato_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, concat('ricalcolo IVA non ammesso per stato ', COALESCE(v_codice_interno, '(non risolvibile)')));
+                  END IF;
+
+                  SELECT s.stato_id INTO v_stato_emittente_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                    JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   WHERE f.id = p_fattura_id;
+
+                  DELETE FROM vendite.fatture_riepiloghi_iva WHERE fattura_id = p_fattura_id;
+                  GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+
+                  INSERT INTO vendite.fatture_riepiloghi_iva (fattura_id, iva_id, natura_id, esigibilita, split_payment, imponibile, imposta, arrotondamento)
+                  SELECT r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment,
+                         ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2),
+                         ROUND(ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2) * (COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)::NUMERIC / 100::NUMERIC), 2),
+                         SUM(COALESCE(r.imponibile_riga, 0)) - ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2)
+                    FROM vendite.fatture_righe r
+                    LEFT JOIN config.iva i ON i.id = r.iva_id
+                    LEFT JOIN config.iva_natura n ON n.codice = r.iva_natura
+                   WHERE r.fattura_id = p_fattura_id
+                   GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
+                  GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_deleted_rows, v_inserted_rows;
+              END;
+              $function$;

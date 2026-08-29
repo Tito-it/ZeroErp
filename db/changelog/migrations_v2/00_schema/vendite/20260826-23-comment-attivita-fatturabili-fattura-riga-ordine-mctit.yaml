@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L1 pezzo 1 — LA MOTIVAZIONE DELLA `ON DELETE SET NULL`, CORRETTA
+#   COMMENT ON COLUMN vendite.attivita_fatturabili.fattura_riga_id
+#   Piano: brief-db-lavoro-che-non-torna-indietro, L1 punto 3 (§9.1),
+#          dichiarazione #1 dell'inventario §8.3
+#
+# ── ⛔ COSA DICEVA, E PERCHE' NON E' UN REFUSO ──────────────────────
+#   Il commento scritto insieme alla chiave esterna (20260728-11) motivava
+#   `ON DELETE SET NULL` cosi':
+#
+#     > «ON DELETE SET NULL perche' fn_cleanup_fatture_by_ids cancella le
+#     >  righe PRIMA di riallineare le attivita'; l'UPDATE implicito passa il
+#     >  guard guard_fatturato solo grazie alla GUC ... che quella funzione
+#     >  imposta.»
+#
+#   Era vero, ed e' esattamente il difetto scambiato per progetto. Quell'ordine
+#   dei passi — cancella, poi riallinea — e' cio' che ha reso MORTO il predicato
+#   `fattura_riga_id = ANY(v_righe_ids)` delle due UPDATE successive: l'azione
+#   referenziale scatta a fine istruzione, quindi quando la UPDATE arrivava il
+#   puntatore era gia' NULL e non corrispondeva piu' a nessuna riga.
+#   ⛔ Il danno non era solo il lucchetto: dallo stesso predicato nasceva anche
+#   l'insieme delle `commesse_attivita` da riportare in coda. Due porte chiuse.
+#
+# ── ⭐ COSA DICE ADESSO ─────────────────────────────────────────────
+#   Con il riordino (20260826-25) la pulizia RIALLINEA PRIMA e cancella DOPO.
+#   Quando il `DELETE` arriva non c'e' piu' nessun puntatore vivo verso le righe
+#   che sta cancellando: la `SET NULL` non scatta sul percorso buono. Da qui in
+#   avanti e' **la rete, non il meccanismo** — e il commento deve dirlo, perche'
+#   e' l'unico posto dove chi guarda la colonna legge il perche'.
+#
+# ── ⚠️ E RESTA UNA COSA DA NON PERDERE ──────────────────────────────
+#   La GUC `zeroerp.maintenance_reset_lotto_draft` serve ancora, ma per un
+#   motivo DIVERSO da quello scritto prima: non copre piu' l'UPDATE implicito
+#   della chiave esterna, copre l'UPDATE ESPLICITA del ripristino, che ora
+#   avviene mentre `fattura_riga_id` e' ANCORA valorizzato — cioe' proprio nella
+#   condizione in cui `trgfn_attivita_fatturabili_guard_fatturato` blocca.
+#   ⭐ Ed e' la proprieta' che rende possibile il muro di L3a (la FK portata a
+#   `NO ACTION`): se nessun puntatore sopravvive al ripristino, una `NO ACTION`
+#   non scatta mai sul percorso buono e scatta SOLO su una porta che qualcuno
+#   avesse dimenticato di far passare di qui.
+#
+# ⚠️ Nessun oggetto cambia: e' solo il testo del commento. Il changeSet e'
+#   idempotente e non ha bisogno di preCondition sul contenuto precedente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260826-23-comment-attivita-fatturabili-fattura-riga-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260826-23-comment-attivita-fatturabili-fattura-riga-ordine
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L1 punto 3: corregge la motivazione della ON DELETE SET NULL su
+        vendite.attivita_fatturabili.fattura_riga_id. ⛔ Il testo del 20260728-11 diceva
+        «la pulizia cancella le righe PRIMA di riallineare le attivita'» — vero, ed era la
+        descrizione del difetto scambiata per progetto: quell'ordine rendeva morto il
+        predicato delle due UPDATE di ripristino, perche' l'azione referenziale scatta a fine
+        istruzione. ⭐ Dal riordino di fn_cleanup_fatture_by_ids (20260826-25) la pulizia
+        riallinea PRIMA e cancella DOPO: la SET NULL diventa la RETE, non il meccanismo. ⚠️ La
+        GUC di manutenzione serve ancora, ma per l'UPDATE ESPLICITA del ripristino — che ora
+        avviene mentre fattura_riga_id e' ancora valorizzato — non piu' per quella implicita
+        della chiave esterna.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnName: fattura_riga_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.attivita_fatturabili.fattura_riga_id IS
+                  'Riga di fattura che aggrega questa attivita''. E'' il legame *n*->1 fra la '
+                  'riga di sintesi e il suo dettaglio, e dal 20260728-12 e'' l''UNICO: sulla riga '
+                  'aggregata le colonne sorgente_* vanno a NULL, non esistendo piu'' una sorgente '
+                  'singola. ON DELETE SET NULL e'' la RETE, non il meccanismo: dal 20260826-25 '
+                  'fn_cleanup_fatture_by_ids RIALLINEA le attivita'' PRIMA di cancellare le righe, '
+                  'quindi quando il DELETE arriva non esiste piu'' nessun puntatore vivo e '
+                  'l''azione referenziale non scatta sul percorso buono. ⛔ Prima diceva il '
+                  'contrario («cancella le righe prima di riallineare»), ed era la descrizione '
+                  'del difetto scambiata per progetto: l''azione referenziale scatta a fine '
+                  'istruzione, quindi azzerava il puntatore PRIMA che le UPDATE di ripristino '
+                  'potessero usarlo — e quelle UPDATE non corrispondevano piu'' a nessuna riga, '
+                  'lasciando l''attivita'' fatturata senza fattura e la commessa_attivita su '
+                  'EMESSA. ⚠️ La GUC zeroerp.maintenance_reset_lotto_draft serve ancora, ma per '
+                  'l''UPDATE ESPLICITA del ripristino, che avviene mentre questa colonna e'' '
+                  'ANCORA valorizzata: e'' li'' che trgfn_attivita_fatturabili_guard_fatturato '
+                  'blocca, ed e'' giusto che blocchi chiunque non stia cancellando la fattura. '
+                  'brief-fix-importi-riga-fattura-zero §4.6; correzione in '
+                  'brief-db-lavoro-che-non-torna-indietro §8.3.';
+      rollback:
+        - empty: {}

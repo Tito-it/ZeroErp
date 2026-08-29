@@ -1429,6 +1429,58 @@ def _assert_annullabile(
     )
 
 
+# Tetto di pagina del registro. ⚠️ Non e' il tetto della query (500, nel
+# repository): questo risponde 400 e DICE il limite, quello clampa in silenzio
+# — due regole diverse, e la seconda esiste solo perche' un chiamante interno
+# non possa chiedere tutto il log di una commessa grande.
+_REGISTRO_MAX_LIMIT = 200
+
+
+# Scopo: Il REGISTRO di una commessa — gli eventi scritti dal database sulle sue
+#        righe. Risponde a «perche' questa riga e' cosi'».
+# Perimetro: sola lettura; lo scope e' DB-side (il repository legge il log
+#        passando dal JOIN su `commesse_attivita`, che ha la RLS).
+# Risultato: dict con commessa_id, count, rows.
+#
+# ⭐ ESISTE PERCHE' IL REGISTRO SI SCRIVEVA E NON SI LEGGEVA. Fino al 2026-08-28
+#    `vendite.commesse_attivita_log` non aveva un solo `SELECT` in tutto il
+#    backend: sei tipi di evento — oneri aggiunti, righe annullate a mano,
+#    ritirate alla chiusura del documento, riportate da emettere, accrediti —
+#    scritti fedelmente e **irraggiungibili** da qualunque schermata. La guida
+#    prometteva il contrario, e la promessa e' rimasta falsa per due giorni:
+#    «il lavoro e' sparito» restava indistinguibile da un difetto.
+def fn_commessa_registro(
+    *,
+    commessa_id: int,
+    commessa_attivita_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object]:
+    ErrorManager.require(
+        1 <= int(limit) <= _REGISTRO_MAX_LIMIT,
+        code="E_COMMESSA_VALIDATION",
+        message="Parametro limit non valido.",
+        detail=f"limit deve essere fra 1 e {_REGISTRO_MAX_LIMIT}.",
+        context={"limit": limit},
+        function_name="vendite.commesse_service.fn_commessa_registro",
+    )
+    ErrorManager.require(
+        int(offset) >= 0,
+        code="E_COMMESSA_VALIDATION",
+        message="Parametro offset non valido.",
+        detail="offset deve essere >= 0.",
+        context={"offset": offset},
+        function_name="vendite.commesse_service.fn_commessa_registro",
+    )
+    rows, total = CommesseRepository().list_registro_attivita(
+        commessa_id,
+        commessa_attivita_id=commessa_attivita_id,
+        limit=int(limit),
+        offset=int(offset),
+    )
+    return {"commessa_id": commessa_id, "count": total, "rows": rows}
+
+
 # Scopo: Annulla una riga MANUALE di commessa caricata per errore (causale
 #        sbagliata, importo sbagliato, doppio click): la riga resta, con importo
 #        e storia, ma esce dal giro — `stato_emissione='ANNULLATA'` e' gia'

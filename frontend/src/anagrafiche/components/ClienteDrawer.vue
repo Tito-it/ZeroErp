@@ -13,7 +13,6 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
-import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { listUtilitiesPerBillingAccount } from '../api/anagrafiche'
@@ -30,7 +29,6 @@ import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.v
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import IvaSelect from '../../core/components/IvaSelect.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -49,10 +47,11 @@ const isReadonly = useInjectReadonly()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
-// Defer: il load parte quando il drawer si apre (in watch(visible)), non
-// al mount del parent. Evita fetch premature che causano flash di UI
-// quando il drawer viene renderizzato ma non ancora aperto.
-const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults(['DEFAULT_IVA_ID'])
+// ⛔ `useParameterDefaults(['DEFAULT_IVA_ID'])` rimosso il 2026-08-29 (I0/D7-bis
+//    del brief brief-be-fe-iva-risolutore-e-regime-cliente): il cliente non
+//    porta piu' un codice IVA, quindi non c'e' piu' nessun default da
+//    pre-caricare. L'IVA di riga la produrra' il risolutore (I2), e l'influenza
+//    del soggetto passa da un titolo documentato (D10), mai da un default.
 
 // Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
 // (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale,
@@ -67,10 +66,10 @@ const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
 const utilities = useLookup(() => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE))
 
 // Opzioni statiche (label tramite i18n)
-const paOptions = computed(() => [
-  { value: 'N', label: t('common.no') },
-  { value: 'S', label: t('common.yes') },
-])
+// ⛔ `paOptions` (S/N per PA e split payment) spostato in `SoggettoDrawer.vue`
+//    il 2026-08-29 (I0/D8): i due flag sono proprieta' del SOGGETTO — un ente
+//    e' o non e' una Pubblica Amministrazione, e non lo e' per il gas e non per
+//    l'acqua. Qui non resta nessun consumatore.
 const garanziaTipoOptions = computed(() => [
   { value: 'D', label: t('anagrafiche.clienti.opt_garanzia_deposito') },
   { value: 'F', label: t('anagrafiche.clienti.opt_garanzia_fidejussione') },
@@ -132,9 +131,7 @@ function defaultForm() {
   return {
     utility_id: null, indirizzo_dettaglio_id: null,
     ba_categoria_cliente_id: null,
-    iva_id: null, modalita_pagamento_id: null, termine_pagamento_id: null,
-    cliente_pa: 'N', split_payment: 'N',
-    codice_cig: null, codice_cup: null, codice_commessa: null,
+    modalita_pagamento_id: null, termine_pagamento_id: null,
     servizio_da_fatturare: true,
     garanzia_tipo: 'D', garanzia_importo: 0,
     stato_cliente_id: null
@@ -160,14 +157,8 @@ function populateFormFromDetail(d) {
     // In edit la categoria non finisce nel payload PATCH; le modifiche passano
     // per contratto (F3-FE-05) o azione dedicata con storicizzazione.
     ba_categoria_cliente_id: d.ba_categoria_cliente_id,
-    iva_id: d.iva_id,
     modalita_pagamento_id: d.modalita_pagamento_id,
     termine_pagamento_id: d.termine_pagamento_id,
-    cliente_pa: (d.cliente_pa || 'N').trim(),
-    split_payment: (d.split_payment || 'N').trim(),
-    codice_cig: d.codice_cig,
-    codice_cup: d.codice_cup,
-    codice_commessa: d.codice_commessa,
     servizio_da_fatturare: d.servizio_da_fatturare ?? true,
     garanzia_tipo: (d.garanzia_tipo || 'D').trim(),
     stato_cliente_id: d.stato_cliente_id,
@@ -210,9 +201,8 @@ watch(() => props.visible, async (val) => {
 
   // Lazy load dei lookup: partono solo all'apertura effettiva del drawer,
   // non al mount del parent. Cache interna (loaded flag) evita rifetch.
-  // loadDefaults() fire-and-forget; loadUtilityDefault e' awaitato sotto
-  // (branch CREATE) per garantire utility_id risolto al primo render.
-  loadDefaults()
+  // loadUtilityDefault e' awaitato sotto (branch CREATE) per garantire
+  // utility_id risolto al primo render.
   if (!isEdit.value) {
     utilities.load()
   }
@@ -247,14 +237,11 @@ watch(() => props.visible, async (val) => {
     populateFormFromDetail(d)
   } else {
     resetForm()
-    // Attendiamo paramDefaults + utilityDefault cosi' IVA/Utility default sono
-    // gia' presenti al primo render → niente flash da null a valore.
+    // Attendiamo utilityDefault cosi' la Utility di default e' gia' presente al
+    // primo render → niente flash da null a valore.
     // utilityDefault risolve codice_interno -> id via lookup utilities-per-emittente.
-    await Promise.all([loadDefaults(), loadUtilityDefault()])
+    await loadUtilityDefault()
     if (!fgFv.isCurrent(v)) return
-    if (paramDefaults.value.DEFAULT_IVA_ID) {
-      form.value.iva_id = Number(paramDefaults.value.DEFAULT_IVA_ID)
-    }
     if (utilityDefaultId.value) {
       form.value.utility_id = utilityDefaultId.value
     }
@@ -267,14 +254,8 @@ watch(() => props.visible, async (val) => {
 function buildEditablePayload() {
   const f = form.value
   return {
-    iva_id: f.iva_id || null,
     modalita_pagamento_id: f.modalita_pagamento_id || null,
     termine_pagamento_id: f.termine_pagamento_id || null,
-    cliente_pa: f.cliente_pa,
-    split_payment: f.split_payment,
-    codice_cig: f.codice_cig || null,
-    codice_cup: f.codice_cup || null,
-    codice_commessa: f.codice_commessa || null,
     servizio_da_fatturare: f.servizio_da_fatturare,
     garanzia_tipo: f.garanzia_tipo,
     garanzia_importo: f.garanzia_importo || 0,
@@ -474,10 +455,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <h4 class="mt-3">{{ t('anagrafiche.clienti.section_pagamento') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_iva') }}</label>
-            <IvaSelect v-model="form.iva_id" />
-          </div>
-          <div class="form-field">
             <label>
               {{ t('anagrafiche.clienti.field_categoria_cliente') }}
               <span v-if="!isEdit">*</span>
@@ -501,34 +478,18 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </div>
         </div>
 
-        <!-- === PA === -->
-        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_pa') }}</h4>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_cliente_pa') }}</label>
-            <Select v-model="form.cliente_pa" :options="paOptions"
-              option-label="label" option-value="value" class="w-full" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_split_payment') }}</label>
-            <Select v-model="form.split_payment" :options="paOptions"
-              option-label="label" option-value="value" class="w-full" />
-          </div>
-        </div>
-        <div v-if="form.cliente_pa === 'S'" class="form-grid-3col">
-          <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_codice_cig') }}</label>
-            <InputText v-model="form.codice_cig" class="w-full" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_codice_cup') }}</label>
-            <InputText v-model="form.codice_cup" class="w-full" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_codice_commessa') }}</label>
-            <InputText v-model="form.codice_commessa" class="w-full" />
-          </div>
-        </div>
+        <!-- ⛔ === Sezione PA rimossa il 2026-08-29 (I0/I8) ===
+             I due flag (Pubblica Amm. / Split payment) sono saliti sul SOGGETTO
+             (D8): un ente e' o non e' una PA, e non lo e' per il gas e non per
+             l'acqua — qui stavano su una riga PER FORNITURA, che ammetteva tre
+             valori diversi per la stessa partita IVA. Si gestiscono dal
+             `SoggettoDrawer`.
+             I tre codici (CIG/CUP/commessa) sono andati sul CONTRATTO (D9):
+             nominano una gara e un atto, non un cliente — una PA con tre
+             contratti ha tre CIG. Si gestiscono dal `ContrattoDrawer`.
+             ⚠️ La sezione sparisce intera, titolo compreso: un `<h4>` senza
+             campi sotto e' peggio di un campo sbagliato, perche' non ha
+             nemmeno un modo di essere notato. -->
 
         <!-- === Garanzia === -->
         <h4 class="mt-3">{{ t('anagrafiche.clienti.section_garanzia') }}</h4>

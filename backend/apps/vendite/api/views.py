@@ -37,7 +37,8 @@ from apps.core.services.value_normalizer import as_bool
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
-    gruppi_digest,
+    insieme_digest,
+    parse_lotti,
     parse_gruppi,
 )
 from apps.vendite.services.commesse_service import (
@@ -48,6 +49,7 @@ from apps.vendite.services.commesse_service import (
     cambia_stato_commessa,
     fn_get_commessa_stato,
     fn_get_commesse_push_log,
+    fn_commessa_registro,
     fn_list_commessa_attivita,
     fn_riallinea_prezzo,
     fn_sblocca_prezzo,
@@ -1408,6 +1410,75 @@ class ApiCommessaStato(DomainAPIView):
 
 
 
+class ApiCommessaRegistro(DomainAPIView):
+    """GET /api/v1/vendite/commesse/<id>/registro/ — il registro delle righe.
+
+    Gli eventi che il database scrive su `vendite.commesse_attivita_log`: oneri
+    aggiunti, righe annullate a mano, ritirate alla chiusura del documento di
+    origine, riportate da emettere, accrediti. Risponde a «perche' questa riga
+    e' cosi'» — chi, quando, con quale motivo.
+
+    ⛔ Lo scope sta sulla RIGA DI COMMESSA, non sul log: quella tabella non ha
+    row level security, `vendite.commesse_attivita` si'. Il repository legge
+    passando dal `JOIN`, che e' il cancello — leggere il log da solo mostrerebbe
+    i motivi di commesse fuori perimetro.
+
+    ⚠️ Il vocabolario degli eventi e' del database ed e' aperto: qui non se ne
+    nomina nessuno e non si filtra, cosi' un evento nuovo compare da se'.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="commessa_attivita_id", type=int, location=OpenApiParameter.QUERY,
+                required=False,
+                description="Restringe a una riga sola (il caso d'uso del kebab di riga). "
+                            "Assente = tutti gli eventi della commessa.",
+            ),
+            OpenApiParameter(
+                name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Eventi per pagina (default 100, max 200).",
+            ),
+            OpenApiParameter(
+                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
+                description="Offset paginazione (default 0).",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaRegistroResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaRegistroData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "count": serializers.IntegerField(),
+                            "rows": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET il registro paginato di una commessa.
+    def get(self, request: Request, commessa_id: int) -> JsonResponse:
+        qp = request.query_params
+        return success_response(
+            fn_commessa_registro(
+                commessa_id=commessa_id,
+                commessa_attivita_id=optional_int(
+                    {"v": qp.get("commessa_attivita_id")}, "v",
+                ),
+                limit=optional_int({"limit": qp.get("limit", "100")}, "limit"),
+                offset=optional_int({"offset": qp.get("offset", "0")}, "offset"),
+            )
+        )
+
+
 class ApiCommessaAttivita(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
@@ -1943,11 +2014,28 @@ class ApiFatturazioneFinestraNumerazione(DomainAPIView):
                 required=False,
                 description=(
                     "Perimetro «atto sul mese» (YYYY-MM-DD): il pavimento piu' "
-                    "restrittivo fra i lotti EMESSA di quel mese. Alternativo a "
-                    "lotto_id."
+                    "restrittivo fra i lotti EMESSA di quel mese."
+                ),
+            ),
+            OpenApiParameter(
+                name="lotti",
+                type=int,
+                many=True,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Perimetro «selezione» — parametro RIPETUTO "
+                    "(`?lotti=12&lotti=15`): il pavimento piu' restrittivo fra i "
+                    "lotti indicati. Serve al dialog per ricalcolare il limite "
+                    "mentre l'operatore spunta, perche' il pavimento e' di ogni "
+                    "SEZIONALE e un lotto di un altro registro puo' spostarlo in "
+                    "avanti."
                 ),
             ),
         ],
+        # ⛔ I tre perimetri sono ALTERNATIVI, esattamente uno: senza perimetro
+        #    la domanda non ha risposta, con due ne avrebbe due e non si saprebbe
+        #    quale si e' ottenuta. Fuori dai tre -> 400.
         responses={
             200: inline_serializer(
                 name="VenditeFinestraNumerazioneResponse",
@@ -1957,6 +2045,7 @@ class ApiFatturazioneFinestraNumerazione(DomainAPIView):
                         fields={
                             "lotto_id": serializers.IntegerField(allow_null=True),
                             "competenza_mese": serializers.CharField(allow_null=True),
+                            "n_lotti": serializers.IntegerField(allow_null=True),
                             "data_documento": serializers.CharField(allow_null=True),
                             "data_corrente": serializers.CharField(allow_null=True),
                             "data_minima": serializers.CharField(allow_null=True),
@@ -1977,13 +2066,45 @@ class ApiFatturazioneFinestraNumerazione(DomainAPIView):
         competenza_mese = qp_iso_date_optional(
             request.query_params.get("competenza_mese"), "competenza_mese",
         )
+        # ⭐ Il terzo perimetro: la SELEZIONE della lista lotti, ripetuta
+        #    (`?lotti=12&lotti=15`). Serve al dialog per ricalcolare il limite
+        #    MENTRE si spunta — il pavimento e' di ogni sezionale, e aggiungere
+        #    un lotto di un altro registro puo' spostarlo in avanti.
+        # ⚠️ `getlist` e non `get`: con `get` arriverebbe il solo ULTIMO valore,
+        #    e il limite verrebbe calcolato su un lotto invece che su tutti —
+        #    piu' basso del vero, cioe' una data che il DB poi rifiuta.
+        lotti_ids = _query_lotti_ids(request)
         return success_response(
             finestra_numerazione(
                 lotto_id=lotto_id,
                 competenza_mese=competenza_mese,
+                lotti_ids=lotti_ids,
                 auth_user_id=get_scope_user_id(request),
             ),
         )
+
+
+# Scopo: gli id dei lotti dalla query string (`?lotti=12&lotti=15`), validati.
+# ⚠️ Il parametro ASSENTE e la lista VUOTA sono due cose diverse: assente = «non
+#    sto chiedendo per selezione» (None), mentre una lista vuota qui non e'
+#    rappresentabile — `getlist` la restituisce vuota anche quando il parametro
+#    non c'e'. Per questo il ripiego e' `None`: e' l'unica forma che il servizio
+#    interpreta come «perimetro non richiesto».
+# ⛔ E LA REGOLA SUGLI ID E' LA STESSA DELLA POST (`parse_lotti`), non una
+#    seconda scritta qui. Quando erano due, divergevano: la POST rifiutava
+#    `lotti=[0]` mentre la GET lo accettava e rispondeva `data_minima: null` —
+#    cioe' «niente da numerare», un errore di chiamante travestito da dato
+#    tranquillo. Misurato il 2026-08-26 su `?lotti=0` e `?lotti=-3`.
+# ⚠️ Prima si converte (un non-numero e' un errore di FORMA, `lotti_invalid`),
+#    poi si valida il dominio (un id <= 0 e' un errore di VALORE): due errori
+#    diversi meritano due messaggi diversi.
+def _query_lotti_ids(request: Request) -> list[int] | None:
+    grezzi = request.query_params.getlist("lotti")
+    if not grezzi:
+        return None
+    numeri = [qp_int_strict(v, "lotti", 0) for v in grezzi]
+    validati = parse_lotti(numeri, error_code="E_VALIDATION_INPUT")
+    return list(validati) if validati else None
 
 
 # Scopo: Normalizza `data_documento` nel payload di un job di fatturazione:
@@ -2023,6 +2144,13 @@ def _payload_con_data_documento(payload: dict[str, object]) -> dict[str, object]
 #        silenzio (l'operatore vede «accodato» e non succede nulla). Senza
 #        gruppi il digest e' vuoto → chiave IDENTICA a prima per il giro di
 #        massa (nessuna regressione sulla dedup esistente).
+#
+#        `accetta_lotti=True` (numerazione su SELEZIONE, solo «Rendi
+#        definitive»): stessa identica meccanica con la lista dei lotti
+#        spuntati. ⛔ I due flag sono ALTERNATIVI per verbo — si fattura per
+#        gruppi, si numera per lotti — e non si combinano: sono due atti
+#        diversi, e un verbo che accettasse entrambi non saprebbe quale
+#        perimetro sta applicando.
 def _accoda_job_fatturazione(
     request: Request,
     payload: dict[str, object],
@@ -2030,6 +2158,7 @@ def _accoda_job_fatturazione(
     job_type: str,
     extra_payload_keys: tuple[str, ...] = (),
     accetta_gruppi: bool = False,
+    accetta_lotti: bool = False,
 ) -> dict[str, object]:
     competenza = optional_iso_date(payload, "competenza_mese")
     ErrorManager.require(
@@ -2081,11 +2210,26 @@ def _accoda_job_fatturazione(
     if gruppi:
         job_payload["gruppi"] = list(gruppi)
 
-    # Chiave di BUSINESS (competenza + scope [+ gruppi]), NON l'header HTTP:
-    # dedup dei job VIVI (due click sullo stesso mese/scope → stesso job).
-    # Il digest e' vuoto senza gruppi: la chiave del giro di massa resta quella
-    # storica, quella mirata cambia con il perimetro selezionato.
-    digest = gruppi_digest(gruppi)
+    # Perimetro della numerazione su SELEZIONE (lista lotti). Stessa disciplina
+    # dei gruppi: validato qui, 400 parlante, mai un perimetro che degenera.
+    lotti = (
+        parse_lotti(payload.get("lotti"), error_code="E_VALIDATION_INPUT")
+        if accetta_lotti
+        else None
+    )
+    if lotti:
+        job_payload["lotti"] = list(lotti)
+
+    # Chiave di BUSINESS (competenza + scope [+ perimetro mirato]), NON l'header
+    # HTTP: dedup dei job VIVI (due click sullo stesso mese/scope → stesso job).
+    # ⛔ Il digest COPRE il perimetro mirato, qualunque esso sia: senza, due
+    #    selezioni DIVERSE sullo stesso mese sarebbero lo stesso job e la
+    #    seconda verrebbe assorbita in silenzio — «accodato», e non succede
+    #    niente. Vuoto sui giri di massa, cosi' la loro chiave resta quella
+    #    storica.
+    # ⚠️ Un verbo accetta gruppi OPPURE lotti, mai entrambi (sono due atti
+    #    diversi): l'insieme che alimenta il digest e' quello dei due che c'e'.
+    digest = insieme_digest(gruppi or lotti)
     idempotency_key = f"{job_type}:{competenza.isoformat()}:{scope_key}"
     if digest:
         idempotency_key = f"{idempotency_key}:{digest}"
@@ -2279,6 +2423,18 @@ class ApiFatturazioneNumera(DomainAPIView):
             name="VenditeFatturazioneNumeraRequest",
             fields={
                 "competenza_mese": serializers.DateField(required=True),
+                "lotti": serializers.ListField(
+                    child=serializers.IntegerField(),
+                    required=False,
+                    help_text=(
+                        "Perimetro SELEZIONATO: gli id dei lotti da numerare. "
+                        "Assente = tutti i lotti EMESSA della competenza (atto "
+                        "di mese). Lista vuota -> 400, mai «tutti»: su un atto "
+                        "fiscale non si indovina. ⚠️ Lo stato EMESSA si applica "
+                        "comunque: un lotto selezionato ma non emesso non viene "
+                        "numerato."
+                    ),
+                ),
                 "data_documento": serializers.DateField(
                     required=False,
                     allow_null=True,
@@ -2322,6 +2478,7 @@ class ApiFatturazioneNumera(DomainAPIView):
                 request, _payload_con_data_documento(payload),
                 job_type=JOB_TYPE_FATTURAZIONE_NUMERA,
                 extra_payload_keys=("data_documento",),
+                accetta_lotti=True,
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

@@ -1,0 +1,333 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL ROOT LEGGE IL RANGO DICHIARATO, NON L'ID DI SEED.
+#
+# -- COSA CAMBIA, E COSA NO -------------------------------------------
+#   Cambia UNA cosa: il secondo criterio dei tre array_agg della CTE `inc`.
+#     prima:  ORDER BY (ruolo='ROOT') DESC NULLS LAST, from_tipo_id, from_uid
+#     dopo:   ORDER BY (ruolo='ROOT') DESC NULLS LAST, rango_origine, from_uid
+#   ⛔ E il risultato NON e' garantito identico, a differenza del 20260821-03:
+#   qui il root di alcuni nodi PUO' cambiare, ed e' lo scopo. Cambia dove la
+#   scala dichiarata dissente dall'ordine accidentale degli id — ed e' l'unico
+#   modo di sapere che prima dipendeva da un accidente.
+#
+# -- ⚠️ PERCHE' NON BASTAVA CAMBIARE L'ORDER BY -----------------------
+#   Perche' `rango_origine` non esisteva: la fragilita' non era nell'ORDER BY,
+#   era nel fatto che il modello non aveva MAI dichiarato che cosa conta come
+#   origine, e la vista se lo faceva dire da una PK. La cura sta quindi
+#   nell'altra vista (20260828-24), e questa la legge. Qui c'e' la conseguenza.
+#
+# -- ⛔ E PERCHE' NON SI ORDINA SU codice_interno ---------------------
+#   Era la cura corta: `codice_interno` e' immutabile per trigger, una riga
+#   sola. Ma sostituisce una coincidenza NUMERICA (13 < 15) con una
+#   coincidenza ALFABETICA ('COMMESSA' < 'RESO_VENDITA'). Regge oggi, per
+#   caso, esattamente come regge oggi l'id: nessuno avrebbe DICHIARATO niente.
+#
+# -- ⚠️ L'ORDINE DEI TRE CRITERI E' LA REGOLA -------------------------
+#   `ruolo='ROOT'` resta PRIMO, e non e' un dettaglio: quando una tabella
+#   ponte ha dichiarato qual e' l'origine (commesse_sorgenti.ruolo_link, sui
+#   rami B/E/F/U), quella dichiarazione batte qualunque scala generale. Un
+#   dato scritto da chi sa vale piu' di una regola dedotta.
+#
+# -- ⛔ LA TRAPPOLA DEI TRE array_agg ---------------------------------
+#   root_tipo, root_uid e root_codice sono tre pezzi della STESSA riga, presi
+#   con tre aggregazioni separate. Devono avere lo stesso ORDER BY, sempre: se
+#   uno solo divergesse verrebbero da archi DIVERSI — un root inesistente
+#   composto a pezzi, senza nessun errore. E' scritto anche nel corpo, dove lo
+#   legge chi modifica.
+#
+# Dipendenze: 20260828-24 (rango_origine sulla vista archi, in precondizione)
+#             e 20260828-22 (frontiera_natura_doc_codice, gia' nel corpo).
+# Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §1
+# Origine: testo dello YAML 20260828-22, con la sola CTE inc modificata.
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql (test 43)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-25-update-vw-documento-lineage-root-rango-mctit.yaml
+
+  - changeSet:
+      id: 20260828-25-update-vw-documento-lineage-root-rango
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il ROOT di un nodo multi-sorgente smette di dipendere da from_tipo_id, cioe' dalla PK di
+        config.sorgenti: il secondo criterio dei tre array_agg della CTE inc diventa
+        rango_origine, dichiarato sull'arco dal 20260828-24. Prima, per ogni nota di credito
+        (commessa via G e reso via S, entrambi con ruolo NULL) vinceva la commessa solo perche'
+        13 < 15. Il risultato PUO' cambiare su qualche nodo, ed e' lo scopo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage
+            # Senza rango_origine questo corpo non si crea nemmeno. La precondizione
+            # c'e' lo stesso perche' un errore di colonna mancante dice «non esiste»,
+            # non «hai saltato il 20260828-24».
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name   = 'vw_documento_lineage_archi'
+                     AND column_name  = 'rango_origine'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage
+              WITH (security_invoker=on) AS
+              WITH RECURSIVE
+              fwd AS (
+                  -- grafo forward (esclude i rami di RITORNO: R reso, N nota di credito)
+                  -- ⭐ rev 2026-08-20: si filtra sulla PROPRIETA', non sulla lettera. Il
+                  --   filtro `arco <> 'R'` era scritto qui, venti righe piu' sotto, e una
+                  --   terza volta in fn_documento_lineage: con l'arrivo dell'arco N un solo
+                  --   posto dimenticato avrebbe fatto comparire la nota di credito come
+                  --   discendente forward della fattura che rettifica, cambiando la
+                  --   FRONTIERA di ogni riga di lista — e senza errori, solo con un valore
+                  --   diverso. Ora l'elenco dei rami di ritorno vive in
+                  --   vw_documento_lineage_archi.is_ramo_inverso e qui si legge.
+                  SELECT from_tipo_id, from_uid, to_tipo_id, to_uid,
+                         to_codice, to_stato_codice_interno, to_fase, to_is_abortito, ruolo
+                    FROM vendite.vw_documento_lineage_archi
+                   WHERE NOT is_ramo_inverso
+              ),
+              walk AS (
+                  -- livello 1: discendenti diretti di ogni nodo
+                  SELECT f.from_tipo_id AS o_tipo, f.from_uid AS o_uid,
+                         f.to_tipo_id   AS d_tipo, f.to_uid   AS d_uid,
+                         f.to_codice AS d_codice, f.to_stato_codice_interno AS d_stato,
+                         f.to_fase AS d_fase, f.to_is_abortito AS d_abortito,
+                         1 AS lvl,
+                         ARRAY[(f.from_tipo_id::text || ':' || f.from_uid),
+                               (f.to_tipo_id::text   || ':' || f.to_uid)] AS visited
+                    FROM fwd f
+                  UNION ALL
+                  SELECT w.o_tipo, w.o_uid,
+                         f.to_tipo_id, f.to_uid, f.to_codice, f.to_stato_codice_interno,
+                         f.to_fase, f.to_is_abortito,
+                         w.lvl + 1,
+                         w.visited || (f.to_tipo_id::text || ':' || f.to_uid)
+                    FROM walk w
+                    JOIN fwd f ON f.from_tipo_id = w.d_tipo AND f.from_uid = w.d_uid
+                   WHERE w.lvl < 10
+                     AND NOT ((f.to_tipo_id::text || ':' || f.to_uid) = ANY (w.visited))
+              ),
+              cand AS (
+                  -- candidati frontiera: il nodo stesso (lvl 0) + i discendenti forward
+                  SELECT n.tipo_id AS o_tipo, n.uid AS o_uid,
+                         n.tipo_id AS d_tipo, n.uid AS d_uid, n.codice AS d_codice,
+                         n.stato_codice_interno AS d_stato, n.fase AS d_fase,
+                         n.is_abortito AS d_abortito, 0 AS lvl
+                    FROM vendite.vw_documento_lineage_nodi n
+                  UNION ALL
+                  SELECT o_tipo, o_uid, d_tipo, d_uid, d_codice, d_stato, d_fase, d_abortito, lvl
+                    FROM walk
+              ),
+              frontiera AS (
+                  -- Scelta della frontiera per ogni nodo origine, in ordine:
+                  --  1. prima gli ATTIVI: fase<>CHIUSO AND NOT is_abortito
+                  --  2. poi il piu' PROFONDO: lvl DESC
+                  --  3. a parita' di livello, il piu' A VALLE nel flusso via
+                  --     pipeline_rank DESC [fattura>commessa>ddt>ordine=contratto>preventivo=offerta]
+                  --  4. tie-break finale deterministico: tipo, uid
+                  -- ⭐ rev 2026-08-28: si porta avanti anche nd.natura_doc_codice. Il join
+                  --   sui nodi era GIA' QUI per il pipeline_rank: la natura della frontiera
+                  --   costa una colonna, non un accesso.
+                  SELECT c.o_tipo, c.o_uid, c.d_tipo, c.d_uid, c.d_codice, c.d_stato, c.d_fase,
+                         nd.natura_doc_codice AS d_natura_doc_codice,
+                         ROW_NUMBER() OVER (
+                             PARTITION BY c.o_tipo, c.o_uid
+                             ORDER BY (CASE WHEN c.d_fase <> 'CHIUSO'
+                                             AND NOT COALESCE(c.d_abortito, false)
+                                            THEN 0 ELSE 1 END),
+                                      c.lvl DESC,
+                                      COALESCE(nd.pipeline_rank, 0) DESC,
+                                      c.d_tipo, c.d_uid
+                         ) AS rn
+                    FROM cand c
+                    LEFT JOIN vendite.vw_documento_lineage_nodi nd
+                           ON nd.tipo_id = c.d_tipo AND nd.uid = c.d_uid
+              ),
+              disc AS (
+                  -- conteggi discendenti diretti (lvl 1)
+                  SELECT o_tipo, o_uid,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid)) AS n_diretti,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid))
+                             FILTER (WHERE d_fase <> 'CHIUSO' AND NOT COALESCE(d_abortito, false))
+                             AS n_attivi
+                    FROM walk
+                   WHERE lvl = 1
+                   GROUP BY o_tipo, o_uid
+              ),
+              inc AS (
+                  -- archi forward ENTRANTI nel nodo (lato inverso; per lista commesse)
+                  -- ⭐ rev 2026-08-28: IL ROOT NON DIPENDE PIU' DA UN ID DI SEED.
+                  --   Il tie-break si spezzava su from_tipo_id, cioe' sulla PK di
+                  --   config.sorgenti, ogni volta che nessuna sorgente portava
+                  --   ruolo='ROOT' — ed e' il caso di ogni nota di credito, che ha la
+                  --   commessa via G e il reso via S, tutti e due con ruolo NULL. Oggi
+                  --   vinceva la commessa solo perche' 13 < 15: una riseminatura del
+                  --   catalogo avrebbe cambiato il root di ogni nota, senza un errore,
+                  --   senza un log, solo con un valore diverso.
+                  --   Adesso decide rango_origine, che e' DICHIARATO sull'arco — stessa
+                  --   sede e stessa forma di is_ramo_inverso.
+                  -- ⚠️ L'ORDINE DEI TRE CRITERI E' LA REGOLA, e va letto cosi':
+                  --   1. ruolo='ROOT' PRIMA DI TUTTO: quando una tabella ponte ha
+                  --      DICHIARATO qual e' l'origine (commesse_sorgenti.ruolo_link, sui
+                  --      rami B/E/F/U), quella dichiarazione batte qualunque scala. Un
+                  --      dato scritto da chi sa vale piu' di una regola generale.
+                  --   2. rango_origine: fra archi che un ruolo non ce l'hanno, vince la
+                  --      sorgente piu' a monte nel flusso.
+                  --   3. from_uid: tie-break residuo, e vale solo dove il modello NON ha
+                  --      una preferenza (E/F). E' immutabile, quindi il risultato e'
+                  --      stabile — non significativo, ma stabile, ed e' meglio dirlo che
+                  --      fingere una regola che non c'e'.
+                  -- ⛔ I tre array_agg devono avere lo STESSO ORDER BY, sempre: sono tre
+                  --   pezzi della stessa riga presi con tre aggregazioni diverse. Se uno
+                  --   solo divergesse, root_tipo, root_uid e root_codice verrebbero da
+                  --   archi DIVERSI — un root che non esiste, composto a pezzi, e nessun
+                  --   errore da nessuna parte.
+                  SELECT to_tipo_id AS tipo, to_uid AS uid,
+                         COUNT(*) AS n_sorgenti,
+                         (array_agg(from_tipo_id ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_tipo,
+                         (array_agg(from_uid     ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_uid,
+                         (array_agg(from_codice  ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_codice
+                    FROM vendite.vw_documento_lineage_archi
+                   WHERE NOT is_ramo_inverso   -- stessa regola del grafo forward, stessa sede
+                   GROUP BY to_tipo_id, to_uid
+              ),
+              prat AS (
+                  -- pratica 1:1 difensiva: prima per id + conteggio
+                  SELECT ps.sorgente_tipo_id AS tipo, ps.sorgente_uid AS uid,
+                         COUNT(DISTINCT ps.pratica_id) AS n_pratiche,
+                         (array_agg(p.id     ORDER BY p.id))[1] AS pratica_id,
+                         (array_agg(p.codice ORDER BY p.id))[1] AS pratica_numero
+                    FROM pratiche.pratiche_sorgenti ps
+                    JOIN pratiche.pratiche p ON p.id = ps.pratica_id
+                   GROUP BY ps.sorgente_tipo_id, ps.sorgente_uid
+              )
+              SELECT
+                  n.tipo_id,
+                  n.uid,
+                  n.codice,
+                  n.stato_codice_interno,
+                  n.stato_codice,
+                  n.stato_descrizione,
+                  n.fase,
+                  n.is_abortito,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  COALESCE(pr.n_pratiche, 0)          AS n_pratiche,
+                  fr.d_tipo                           AS frontiera_tipo_id,
+                  fr.d_uid                            AS frontiera_uid,
+                  fr.d_codice                         AS frontiera_codice,
+                  fr.d_stato                          AS frontiera_stato_codice_interno,
+                  fr.d_fase                           AS frontiera_fase,
+                  COALESCE(dc.n_diretti, 0)           AS n_discendenti_diretti,
+                  COALESCE(dc.n_attivi, 0)            AS n_discendenti_attivi,
+                  (COALESCE(dc.n_diretti, 0) > 0)     AS is_transitato,
+                  COALESCE(ic.n_sorgenti, 0)          AS n_sorgenti,
+                  ic.root_tipo                        AS root_tipo_id,
+                  ic.root_uid                         AS root_uid,
+                  ic.root_codice                      AS root_codice,
+                  -- ⭐ rev 2026-08-20: la natura del nodo, per le liste. Senza, una lista di
+                  --   fatture scrive «Fattura» anche sopra una nota di credito — che e' la
+                  --   stessa cecita' per cui, nei «Passaggi», due documenti della stessa
+                  --   commessa erano indistinguibili.
+                  n.natura_doc_codice,
+                  n.natura_doc_descrizione,
+                  -- ⭐ rev 2026-08-28: la natura del nodo di FRONTIERA. E' la stessa cecita'
+                  --   di sopra, sull'altra colonna: il chip «Transito» decodifica il tipo, e
+                  --   il tipo di una nota di credito e' FATTURA.
+                  -- ⚠️ Sta in fondo e non accanto alle sorelle frontiera_* perche'
+                  --   CREATE OR REPLACE VIEW puo' solo APPENDERE: inserirla in mezzo
+                  --   vorrebbe dire DROP CASCADE delle viste di lista che leggono questa.
+                  -- ⛔ NULL qui NON e' «non lo so»: e' «la frontiera non e' un documento
+                  --   fiscale». La natura e' un asse diverso dal tipo ed esiste solo per le
+                  --   fatture; sugli altri sette tipi di nodo e' NULL ed e' corretto.
+                  fr.d_natura_doc_codice              AS frontiera_natura_doc_codice
+                FROM vendite.vw_documento_lineage_nodi n
+                LEFT JOIN prat pr      ON pr.tipo   = n.tipo_id AND pr.uid   = n.uid
+                LEFT JOIN frontiera fr ON fr.o_tipo = n.tipo_id AND fr.o_uid = n.uid AND fr.rn = 1
+                LEFT JOIN disc dc      ON dc.o_tipo = n.tipo_id AND dc.o_uid = n.uid
+                LEFT JOIN inc ic       ON ic.tipo   = n.tipo_id AND ic.uid   = n.uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage IS
+                  'Lineage documenti vendite (Step 3): summary per nodo per arricchire le liste. '
+                  'Espone pratica (1:1 difensiva + n_pratiche), fase propria, frontiera forward '
+                  '(piu'' a valle attivo, esclude i rami di RITORNO), discendenti diretti/attivi, '
+                  'is_transitato, lato inverso (n_sorgenti + ROOT), natura del documento e natura '
+                  'del documento di frontiera. security_invoker=on. '
+                  '⭐ rev 2026-08-20 — DUE COSE. (1) i due filtri del grafo forward non nominano '
+                  'piu'' la lettera R ma leggono vw_documento_lineage_archi.is_ramo_inverso: con '
+                  'l''arrivo dell''arco N (fattura rettificata -> nota di credito) la lettera era '
+                  'scritta a mano in TRE posti, e il terzo dimenticato non avrebbe dato nessun '
+                  'errore — solo la nota di credito come discendente forward, cioe'' una FRONTIERA '
+                  'diversa su ogni riga di lista. (2) espone natura_doc_codice/'
+                  'natura_doc_descrizione del nodo, cosi'' una lista di fatture smette di scrivere '
+                  '«Fattura» sopra una nota di credito. '
+                  '⭐ rev 2026-08-28 — E ADESSO ANCHE frontiera_natura_doc_codice, che e'' la '
+                  'TERZA versione di questa frase perche'' le prime due erano vere a meta''. Il '
+                  '20260821-03 diceva «varrebbe sempre NULL»: falso, l''arco G (commessa -> '
+                  'fattura) non e'' un ramo di ritorno e una nota di credito E'' raggiungibile in '
+                  'avanti. Il 20260825-20 ha corretto in «il consumatore la ricava per conto '
+                  'suo»: vero per UNO — il pannello del drawer, che legge questa vista e ha '
+                  'frontiera_uid — e falso per tutti gli altri, perche'' le viste di LISTA '
+                  'proiettano frontiera_tipo_id/codice/stato/fase e la CHIAVE del nodo di '
+                  'frontiera si ferma li''. Senza quella chiave non c''e'' modo onesto di '
+                  'leggere la natura, e ogni lista chiama «Fattura» una nota di credito: sulla '
+                  'lista resi non e'' nemmeno un caso limite, e'' IL caso, perche'' l''arco S '
+                  'arriva sempre a una nota di credito (pgTAP 35). '
+                  'La ragione della colonna, al positivo: la chiave del nodo di frontiera non '
+                  'esce dalla summary, e senza la natura ogni lista dice la parola sbagliata '
+                  'proprio nel punto per cui la colonna «Transito» e'' stata seminata. '
+                  '⭐ Costa una colonna e non un join: la CTE frontiera fa gia'' LEFT JOIN su '
+                  'vw_documento_lineage_nodi per il pipeline_rank del tie-break. '
+                  '⚠️ Sta in ULTIMA posizione e non accanto alle sorelle frontiera_* perche'' '
+                  'CREATE OR REPLACE VIEW puo'' solo appendere colonne: metterla in mezzo '
+                  'richiederebbe un DROP CASCADE delle viste di lista che leggono questa. '
+                  '⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento '
+                  'fiscale»: la natura e'' un asse diverso dal tipo ed esiste solo per le '
+                  'fatture. Si espone il solo CODICE e non la descrizione: il consumatore '
+                  'traduce dal codice, le chiavi i18n esistono gia''. '
+                  '⭐ rev 2026-08-28 — IL ROOT NON DIPENDE PIU'' DA UN ID DI SEED. La CTE inc '
+                  'ordinava ORDER BY (ruolo=''ROOT'') DESC NULLS LAST, from_tipo_id, from_uid: '
+                  'ogni volta che nessuna sorgente portava un ruolo — cioe'' per ogni nota di '
+                  'credito, che ha la commessa via G e il reso via S, tutti e due con ruolo NULL '
+                  '— a decidere restava from_tipo_id, la PK di config.sorgenti. La commessa '
+                  'vinceva solo perche'' 13 < 15, e una riseminatura del catalogo avrebbe '
+                  'cambiato il root di OGNI nota di credito senza un errore e senza un log. Ora '
+                  'il secondo criterio e'' rango_origine, DICHIARATO sull''arco in '
+                  'vw_documento_lineage_archi — stessa sede e stessa forma di is_ramo_inverso. '
+                  'L''ordine dei tre criteri E'' la regola: (1) ruolo=''ROOT'' prima di tutto, '
+                  'perche'' una tabella ponte che ha dichiarato l''origine batte qualunque scala; '
+                  '(2) rango_origine, fra archi senza ruolo; (3) from_uid, tie-break residuo dove '
+                  'il modello non ha una preferenza — immutabile, quindi stabile, ma non '
+                  'significativo. ⛔ I tre array_agg devono avere sempre lo STESSO ORDER BY: sono '
+                  'tre pezzi della stessa riga, e uno che divergesse comporrebbe un root '
+                  'inesistente a pezzi, in silenzio.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Nessun ripristino automatico: si riapplica 20260828-22, e con esso
+              -- torna un root che dipende dall'ordine di inserimento di
+              -- config.sorgenti. Non darebbe nessun errore - cambierebbe solo un
+              -- valore, che e' la ragione per cui e' stato corretto.
+              SELECT 1;

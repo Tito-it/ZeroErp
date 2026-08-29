@@ -85,7 +85,26 @@ BEGIN
         ROUND(SUM(r.imponibile_riga), 2)                                       AS imponibile,
         ROUND(
             ROUND(SUM(r.imponibile_riga), 2)
-            * (COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)::numeric / 100::numeric),
+            -- ⭐ rev 2026-08-29: la guardia `r.iva_id IS NOT NULL` che le viste
+            --   gemelle avevano gia' e questa funzione no. Il COALESCE non
+            --   proteggeva niente: config.fn_get_aliquota_iva SOLLEVA su
+            --   p_iva_id NULL (E_PARAMETRO_INVALIDO), quindi non arrivava mai a
+            --   ritornare NULL. L'effetto era che una riga di preventivo senza
+            --   aliquota NON SI POTEVA SALVARE — il trigger AFTER di ricalcolo
+            --   faceva fallire l'INSERT — e il messaggio che l'operatore leggeva
+            --   nominava un parametro PL/pgSQL, «p_iva_id obbligatorio e > 0».
+            -- ⚠️ Non era una decisione di dominio: vw_ordini_righe_iva_base e la
+            --   gemella dei DDT scrivono `CASE WHEN r.iva_id IS NOT NULL THEN
+            --   config.fn_get_aliquota_iva(...)`. Qui mancava.
+            -- ⛔ Aperta la strada, la riga senza aliquota entrerebbe nel
+            --   riepilogo con imposta zero: e' il difetto silenzioso che il
+            --   cancello all'EMISSIONE (Regola 2 di
+            --   trgfn_preventivi_guard_transizione, changeSet 20260829-10)
+            --   chiude. Le due modifiche sono UNA SOLA e non si applicano
+            --   separate: da sola, questa aprirebbe un buco senza rete.
+            * (CASE WHEN r.iva_id IS NOT NULL
+                    THEN COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)
+                    ELSE 0 END::numeric / 100::numeric),
             2
         )                                                                      AS imposta,
         SUM(r.imponibile_riga) - ROUND(SUM(r.imponibile_riga), 2)               AS arrotondamento
@@ -98,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id bigint)
-IS 'Ricalcola riepilogo IVA preventivo (pattern fiscalmente corretto, speculare a fn_ricalcola_riepilogo_iva_fattura). Override aliquota da stato emittente via config.fn_get_aliquota_iva. Firma usa %TYPE su vendite.preventivi.id (tipo concreto risolto: bigint).';
+IS 'Ricalcola riepilogo IVA preventivo (pattern fiscalmente corretto, speculare a fn_ricalcola_riepilogo_iva_fattura). Override aliquota da stato emittente via config.fn_get_aliquota_iva. Firma usa %TYPE su vendite.preventivi.id (tipo concreto risolto: bigint). ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): aggiunta la guardia r.iva_id IS NOT NULL, che le viste gemelle (vw_ordini_righe_iva_base, vw_ddt_righe_iva_base) avevano gia'' e questa funzione no. Il COALESCE non proteggeva nulla, perche'' config.fn_get_aliquota_iva SOLLEVA su p_iva_id NULL invece di ritornare NULL: l''effetto era che una riga di preventivo senza aliquota non si poteva nemmeno SALVARE — il trigger AFTER di ricalcolo faceva fallire l''INSERT — con un messaggio che nominava un parametro PL/pgSQL. Non era una decisione di dominio ma una svista, e divergeva da DDT e ordini, dove la bozza resta libera e il vincolo sta al momento in cui il documento diventa autorevole. ⛔ Questa modifica NON si applica da sola: apre la strada a una riga senza aliquota, che senza rete finirebbe nel riepilogo con imponibile pieno e imposta zero. La rete e'' il cancello all''EMISSIONE (Regola 2 di vendite.trgfn_preventivi_guard_transizione, changeSet 20260829-10, via script.fn_check_preventivo_emettibile). Le due cose sono una slice sola. ⚠️ La gemella sulle FATTURE (fn_ricalcola_riepilogo_iva_fattura) ha lo stesso COALESCE senza guardia e NON e'' stata toccata: li'' non esiste ancora un cancello IVA, quindi togliere il raise scambierebbe un errore rumoroso con un numero sbagliato silenzioso. Va fatto insieme a I4.';
 ```
 
 ---

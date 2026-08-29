@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I10 (Fase 1) del brief brief-db-be-iva-risolutore-e-regime-cliente, D15:
+# dichiara la SOGLIA DI CONGELAMENTO FISCALE, che oggi esiste ma non e' scritta
+# da nessuna parte — vive come lista di codici nel corpo di
+# vendite.fn_ricalcola_riepilogo_iva_fattura: NOT IN ('DRAFT','EMESSA').
+#
+# Regola di dominio (Tid, 2026-08-28): il ricalcolo gira in bozza, ripassa
+# un'ultima volta nella transizione a DEFINITIVA, e da DEFINITIVA COMPRESA in poi
+# non gira mai piu' — una ristampa legge il valore scritto sul documento.
+#
+# ⭐ PERCHE' UNA COLONNA E NON IL RIUSO DI UNA ESISTENTE. Verificato sul seed:
+#   - `fase` non separa niente: EMESSA (ricalcolo ammesso) e DEFINITIVA
+#     (congelata) hanno la STESSA fase = 'IN_CORSO';
+#   - `ordine` (DRAFT 10, EMESSA 20, DEFINITIVA 30) e' ordinamento di
+#     presentazione, non un ciclo di vita — vale la stessa avvertenza gia'
+#     scritta per config.stati_doc_*;
+#   - ⛔ `chiude_lotto` funzionerebbe OGGI (e' true esattamente su DEFINITIVA, con
+#     un UNIQUE che lo garantisce) ma risponde a un'ALTRA domanda. Appoggiarci
+#     sopra il congelamento fiscale significa avere un flag che risponde a due
+#     domande in AND: il giorno che divergono non si separano piu'.
+#
+# ⭐ DEFAULT true, ed e' la scelta che conta. La forma vecchia diceva la cosa per
+#   ESCLUSIONE, quindi uno stato nuovo era congelato d'ufficio: e' la direzione
+#   SICURA e va conservata. Con DEFAULT false uno stato che nessuno classifica
+#   lascerebbe RICALCOLARE uno snapshot fiscale, in silenzio; con DEFAULT true
+#   produce un errore parlante e qualcuno sistema il seed. Il difetto del NOT IN
+#   era solo che e' cablato (e il risolutore IVA di I2 lo ricopierebbe), non il
+#   suo default.
+#
+# ⚠️ IL BACKFILL C'E' ANCHE SE IL CSV LO COPRE, ed e' voluto. La sede del dato e'
+#   il CSV 80_data/sql/config/stati_doc_fiscale.csv (mirror loadUpdateData
+#   runOnChange), che in questo commit prende la colonna nuova. Ma il mirror
+#   20250912-01 elenca 10 colonne su 12 — `fase` e `is_abortito` NON sono nel suo
+#   blocco `columns` — quindi il fatto che una colonna non dichiarata venga letta
+#   e' un comportamento su cui non conviene poggiare un dato fiscale. Stesso
+#   partito preso da 20260714-02 (is_abortito), che si porto' dietro un backfill
+#   keyed su codice_interno. Qui e' idempotente e su fresh DB e' un no-op.
+#
+# ⚠️ UN SOLO changeSet, a differenza di 20260714-02 che ne usa TRE. Quel file era
+#   costretto a spezzarsi perche' faceva UPDATE e POI ALTER TABLE nella stessa
+#   transazione, e config.stati_doc_fiscale ha un trigger AFTER
+#   (trg_stati_doc_fiscale_chiude_lotto_guard_iud): PostgreSQL rifiuta un ALTER
+#   con eventi trigger accodati. Qui l'ordine e' l'opposto — prima l'ALTER (che
+#   non accoda niente: aggiungere una colonna con default e' metadata-only), poi
+#   l'UPDATE, che non ha nessuna DDL dopo di se'. Il vincolo non si applica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260829-03-alter-stati-doc-fiscale-congela-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260829-03-alter-stati-doc-fiscale-congela-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.stati_doc_fiscale.congela_fiscale (NOT NULL DEFAULT true):
+        dichiara la soglia oltre la quale un documento fiscale e' uno snapshot e
+        non si ricalcola. Sostituisce la lista cablata NOT IN ('DRAFT','EMESSA')
+        di vendite.fn_ricalcola_riepilogo_iva_fattura, portata a leggerla dal
+        changeSet 20260829-04.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_fiscale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale
+                ADD COLUMN IF NOT EXISTS congela_fiscale BOOLEAN NOT NULL DEFAULT true;
+
+              COMMENT ON COLUMN config.stati_doc_fiscale.congela_fiscale IS
+                  'true = da questo stato in poi il documento è uno SNAPSHOT FISCALE: '
+                  'i valori calcolati (riepilogo IVA, e dal risolutore IVA anche '
+                  'l''aliquota di riga) non si ricalcolano più, si rileggono. '
+                  'false = il ricalcolo è ammesso (bozza e lavorazione). '
+                  'Sede UNICA della soglia: chi ha bisogno di sapere se un documento '
+                  'è congelato legge questa colonna e non ricopia una lista di codici. '
+                  'DEFAULT true perché è la direzione sicura: uno stato nuovo che '
+                  'nessuno classifica rifiuta il ricalcolo con un errore parlante, '
+                  'invece di lasciar riscrivere in silenzio uno snapshot fiscale. '
+                  'Decisione di Tid 2026-08-29, D15 del brief '
+                  'brief-db-be-iva-risolutore-e-regime-cliente.';
+
+              -- Backfill sugli stati esistenti, keyed su codice_interno (chiave
+              -- naturale stabile, non sull'id). Idempotente: su un DB ricostruito
+              -- da zero il seed arriva dal CSV di 80_data e questo è un no-op.
+              -- Solo DRAFT ed EMESSA ammettono il ricalcolo; DEFINITIVA, INVIATA,
+              -- REGISTRATA e ANNULLATA restano al DEFAULT true.
+              UPDATE config.stati_doc_fiscale
+                 SET congela_fiscale = false
+               WHERE codice_interno IN ('DRAFT', 'EMESSA')
+                 AND congela_fiscale IS DISTINCT FROM false;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale
+                DROP COLUMN IF EXISTS congela_fiscale;

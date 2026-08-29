@@ -1,0 +1,290 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-3 — LA VISTA ATTIVITA' PORTA IL SEZIONALE E LA DATA PREVISTA
+#   Piano: brief-db-registro-e-data-prevista-in-competenza §11.4 L4
+#
+# ── ℹ️ PERCHE' QUI, SE LA COLONNA VA SULLA LISTA GRUPPI ────────────
+#   Perche' `vw_dash_competenza_gruppi` e' costruita SOPRA questa vista: il
+#   sezionale si risolve alla grana dell'attivita' — dove tipo documento e
+#   natura sono colonne di riga — e la vista gruppi lo aggrega. A catalogo, di
+#   queste quattro colonne, non ne va nessuna: la lista a grana attivita' non
+#   esiste (la 43 e' aggregata per commessa).
+#
+# ── ⛔ L'AGGANCIO E' CONDIZIONATO, E NON E' UN'OTTIMIZZAZIONE ──────
+#   `ON (af.fattura_riga_id IS NULL)` — decisione D-9 di Tid: dove il documento
+#   ESISTE GIA' la previsione non si fa. La colonna si chiama «prevista» e deve
+#   restare fedele al nome: accanto a una fattura che ha gia' la sua data,
+#   mostrare cosa succederebbe rifatturando e' la mezza verita' che questo
+#   cantiere serve a togliere.
+#   ⚠️ Il discriminante e' la RIGA DI FATTURA, non lo stadio. Degli stadi che la
+#   vista calcola, tre non hanno ancora nessun documento — `DA_APPROVARE`,
+#   `DA_EMETTERE` e anche `EMESSA_NON_FATTURATA`, dove «emessa» vuol dire che
+#   l'attivita' e' passata in attivita_fatturabili, non che sia stata fatturata.
+#   ⭐ E su quello stadio la previsione SERVE: e' li' che finiscono le attivita'
+#   rimaste orfane di una fattura eliminata (brief-db-lavoro-che-non-torna-indietro),
+#   cioe' lavoro da ri-emettere — e sapere dove finira' e' esattamente
+#   l'informazione utile.
+#
+# ── ⛔ IL `CASE` SULLA DATA E' OBBLIGATORIO, NON DIFENSIVO ─────────
+#   `fn_calcola_data_documento` SOLLEVA su `p_registro_id` nullo. Un `CASE`
+#   cortocircuita e non valuta il ramo, un argomento no: senza, la prima riga
+#   con un sezionale non risolvibile farebbe morire l'intera lista.
+#
+# ── ⛔ security_invoker=on VA RI-SPECIFICATO ───────────────────────
+#   E' una reloption invisibile nel corpo della vista: un `CREATE OR REPLACE`
+#   che non la ripete la AZZERA, senza errore e senza che nulla lo dica. Qui e'
+#   lo scope emittente a dipenderne.
+#
+# ── ℹ️ COSTO, DICHIARATO ──────────────────────────────────────────
+#   Due chiamate di funzione per riga, e questa vista e' la base di altre
+#   quattro (`vw_dash_competenza_gruppi`, `_mensile`, `_gruppi_riepilogo`,
+#   `vw_lotti_gruppi_serviti`) piu' tre funzioni. Attenuanti verificate:
+#   TUTTA la catena e' STABLE — fn_resolve_registro_documento,
+#   fn_lookup_registro_id, fn_get_ba_emittente_sr_id, fn_calcola_data_documento
+#   e i pavimenti che quest'ultima chiama — quindi il planner puo' potare le
+#   colonne dai consumatori che non le guardano; e le tabelle di configurazione
+#   lette (registri_fatturazione, tipi_doc_fiscale_registri,
+#   emittenti_fiscali_billing_account) non hanno RLS e hanno cardinalita' di
+#   dominio, non di documento.
+#
+# ── ⚠️ `registro_codice` VIENE DA `codice`, CHE E' MUTABILE ────────
+#   Ed e' corretto: e' una colonna di DISPLAY, l'alias e' fedele alla sorgente
+#   (linee-guida-sql §6c) e `registri_fatturazione` non espone `codice_interno`.
+#   ⛔ Quindi nessuna logica puo' appoggiarcisi, e non deve: chi filtra lo fara'
+#   su `registro_id` (D-5), non su questa stringa.
+#
+# ── ⚠️ DIPENDENZA D'ORDINE COL CANTIERE GEMELLO ───────────────────
+#   `fn_calcola_data_documento` ha la firma a QUATTRO parametri (p_serie terzo,
+#   senza DEFAULT) dal 20260826-08 del brief del limite di emissione. Questo
+#   changeSet ha numero piu' alto apposta: da qui in avanti una vista DIPENDE
+#   da quella funzione, e un DROP successivo fallirebbe finche' la vista esiste.
+#
+# Dipendenze: 20260826-16 (fn_resolve_registro_documento),
+#             20260826-08 (fn_calcola_data_documento con p_serie).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-18-update-vw-dash-competenza-attivita-registro-mctit.yaml
+
+  - changeSet:
+      id: 20260826-18-update-vw-dash-competenza-attivita-registro
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-3: vw_dash_competenza_attivita porta il SEZIONALE e la DATA PREVISTA — quattro
+        colonne in coda (registro_id, registro_codice, politica_data_documento,
+        data_documento_prevista). ℹ️ Stanno qui e non sulla vista gruppi perche' il sezionale
+        si risolve alla grana dell'attivita', dove tipo documento e natura sono colonne di
+        riga; la vista gruppi le aggrega. Nessuna delle quattro va a catalogo. ⛔ L'aggancio
+        e' CONDIZIONATO — ON (af.fattura_riga_id IS NULL), decisione D-9: dove il documento
+        esiste gia' la previsione non si fa, o la colonna mentirebbe al proprio nome. ⚠️ Il
+        discriminante e' la riga di fattura, non lo stadio: su EMESSA_NON_FATTURATA il
+        documento non c'e' ancora e la previsione serve. ⛔ Il CASE sulla data e' obbligatorio:
+        fn_calcola_data_documento solleva su registro nullo, e senza il cortocircuito la prima
+        riga irrisolvibile ucciderebbe la lista. ⛔ security_invoker=on RI-SPECIFICATO: e' una
+        reloption invisibile che un REPLACE azzera in silenzio, e qui ci sta lo scope
+        emittente. ℹ️ Costo dichiarato: due funzioni per riga su una vista che ne alimenta
+        altre quattro — ma tutta la catena e' STABLE e le tabelle lette sono configurazione
+        senza RLS.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_resolve_registro_documento';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_calcola_data_documento'
+                     AND p.pronargs = 4;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  (
+                      CASE
+                          WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                          WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                          WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END)::character varying AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  -- R-4: il nome dell'emittente della COMMESSA. E' un campo di
+                  -- co, non dell'attivita': per questo il drill-down puo'
+                  -- metterlo nel GROUP BY senza spezzare la riga.
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  -- ⭐ 2026-08-26 (L4): il SEZIONALE su cui il documento
+                  --   nascera', e la DATA che prendera'. Quattro colonne, e
+                  --   nessuna e' a catalogo: la lista a grana attivita' non
+                  --   esiste, le usa la vista GRUPPI che sta sopra.
+                  reg.registro_id,
+                  -- ⚠️ `codice` e' la colonna MUTABILE, e va bene: e' display,
+                  --   l'alias e' fedele alla sorgente (linee-guida-sql §6c) e
+                  --   registri_fatturazione non espone codice_interno. ⛔ Chi
+                  --   filtra lo fa su registro_id, mai su questa stringa.
+                  rf.codice AS registro_codice,
+                  -- Il PERCHE' della data: la politica vive sul sezionale.
+                  reg.politica_data_documento,
+                  -- ⛔ Il CASE non e' difensivo, e' obbligatorio:
+                  --   fn_calcola_data_documento SOLLEVA su registro nullo, e un
+                  --   CASE cortocircuita mentre un argomento no.
+                  -- ⚠️ p_data_dichiarata => NULL: qui si chiede «cosa nascera'
+                  --   se nessuno dichiara una data», che e' la definizione
+                  --   stessa di previsione.
+                  CASE
+                      WHEN reg.registro_id IS NOT NULL
+                      THEN vendite.fn_calcola_data_documento(
+                               p_registro_id     => reg.registro_id,
+                               p_competenza_mese => ca.competenza_mese,
+                               p_serie           => reg.serie,
+                               p_data_dichiarata => NULL)
+                  END AS data_documento_prevista
+                 FROM vendite.commesse co
+                 JOIN vendite.stati_commessa sc ON sc.id = co.stato_commessa_id
+                 JOIN vendite.commesse_attivita ca ON ca.commessa_id = co.id
+                 LEFT JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
+                 LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                 LEFT JOIN vendite.fatture f ON f.id = fr.fattura_id
+                 LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                 LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                 LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                 LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                 -- ⚠️ sr_ef/s_ef e non sr/s: quelli sopra sono il CLIENTE (via
+                 --   billing account), questi l'EMITTENTE. Due catene distinte
+                 --   sulle stesse due tabelle, e confonderle sarebbe invisibile
+                 --   finche' non si guarda un nome sbagliato a video.
+                 LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = co.emittente_soggetto_ruolo_id
+                 LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                 LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                       FROM vendite.fatturazione_lotti_fatture flf
+                      WHERE (flf.fattura_id = f.id)
+                      ORDER BY flf.lotto_id DESC
+                     LIMIT 1) lf ON (true)
+                 -- ⭐ LA CATENA DEL SEZIONALE, chiamata e non ricopiata: e' la
+                 --   STESSA funzione che usa fn_build_fattura_key quando la
+                 --   fattura nasce davvero. I due ancoraggi (BA di fatturazione
+                 --   dal PADRE, utility dalla RIGA) vivono li' dentro.
+                 -- ⚠️ Si passa co.billing_account_id, cioe' il BA della RIGA:
+                 --   la funzione risale al padre da se'. Passarle il BA di
+                 --   fatturazione darebbe una previsione plausibile e sbagliata
+                 --   proprio sui BA con padre.
+                 -- ⛔ ON (af.fattura_riga_id IS NULL) e non ON true (D-9): dove
+                 --   il documento esiste gia' non si fa nessuna previsione.
+                 LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(
+                          p_billing_account_id_riga => co.billing_account_id,
+                          p_tipo_doc_fiscale_id     => ca.tipo_doc_fiscale_id,
+                          p_natura_doc_id           => ca.natura_doc_id) reg
+                      ON (af.fattura_riga_id IS NULL)
+                 LEFT JOIN vendite.registri_fatturazione rf ON rf.id = reg.registro_id
+                 CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+                  AND ((sc.codice_interno)::text <> 'ANNULLATA'::text)
+                  AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text)
+                  AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_attivita IS
+                  'Lente 1 Competenza, grana ATTIVITA'': una riga per attivita'' di commessa '
+                  'con lo stadio del ciclo (DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA '
+                  '/ FATTURATA), il valore, il collegamento a fattura e lotto e lo stato della '
+                  'commessa. Alimenta il drill-down commesse, che il backend AGGREGA per '
+                  'commessa. SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): '
+                  'fail-closed. security_invoker=on. '
+                  '⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda '
+                  '`emittente_ragione_sociale`. Il drill-down puo'' metterla nel GROUP BY in '
+                  'sicurezza: l''emittente e'' una colonna di vendite.commesse e commessa_id ne '
+                  'e'' la chiave primaria, quindi una commessa non puo'' avere attivita'' di '
+                  'emittenti diversi — l''emittente non sta sull''attivita''. La colonna nel '
+                  'GROUP BY serve comunque: su una colonna di VISTA PostgreSQL non deduce la '
+                  'dipendenza funzionale. '
+                  '⚠️ Due catene distinte sulle stesse tabelle: sr/s sono il CLIENTE (via '
+                  'billing account), sr_ef/s_ef l''EMITTENTE. Scambiarle non darebbe nessun '
+                  'errore, solo un nome sbagliato a video. '
+                  '⭐ Rev 2026-08-26 (L4, brief-db-registro-e-data-prevista-in-competenza): '
+                  'quattro colonne nuove in coda — registro_id, registro_codice, '
+                  'politica_data_documento, data_documento_prevista. Rispondono alle due '
+                  'domande che la schermata da cui si fattura non sapeva dire PRIMA di '
+                  'premere: su quale sezionale finira'' il documento, e che data portera''. '
+                  '⭐ Il sezionale si risolve chiamando vendite.fn_resolve_registro_documento, '
+                  'cioe'' LA STESSA funzione che usa fn_build_fattura_key quando la fattura '
+                  'nasce davvero: la previsione e'' una lettura, non una profezia, e non puo'' '
+                  'divergere dal documento perche'' non e'' una seconda implementazione. '
+                  '⚠️ Le si passa co.billing_account_id, il BA della RIGA: la funzione risale '
+                  'al padre da se'', e passarle il BA di fatturazione darebbe una previsione '
+                  'plausibile e sbagliata proprio sui BA con padre. '
+                  '⛔ L''aggancio e'' CONDIZIONATO — ON (af.fattura_riga_id IS NULL), decisione '
+                  'D-9: dove il documento esiste gia'' la previsione non si fa, o la colonna '
+                  'mentirebbe al proprio nome. ⚠️ Il discriminante e'' la riga di fattura e non '
+                  'lo stadio: su EMESSA_NON_FATTURATA il documento non c''e'' ancora — e li'' '
+                  'finiscono le attivita'' rimaste orfane di una fattura eliminata, cioe'' '
+                  'lavoro da ri-emettere, per cui sapere dove finira'' e'' proprio '
+                  'l''informazione utile. '
+                  '⛔ Il CASE sulla data e'' obbligatorio e non difensivo: '
+                  'fn_calcola_data_documento SOLLEVA su registro nullo, un CASE cortocircuita '
+                  'e un argomento no — senza, la prima riga con un sezionale non risolvibile '
+                  'farebbe morire l''intera lista. '
+                  '⚠️ registro_codice viene da registri_fatturazione.codice, colonna MUTABILE: '
+                  'e'' display, l''alias e'' fedele alla sorgente (linee-guida-sql §6c) e quella '
+                  'tabella non espone codice_interno. Nessuna logica puo'' appoggiarcisi — chi '
+                  'filtra lo fa su registro_id. '
+                  'ℹ️ Costo dichiarato: due chiamate di funzione per riga su una vista che ne '
+                  'alimenta altre quattro. Tutta la catena e'' STABLE e le tabelle di '
+                  'configurazione lette non hanno RLS.';

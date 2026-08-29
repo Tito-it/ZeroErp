@@ -79,6 +79,13 @@ export function useApiHandler() {
   // Su QUALE cosa l'errore e' successo. Stesse regole di `campiErrati`: si
   // azzera a ogni chiamata, si popola anche in `silent`.
   const bersagli = ref([])
+  // ⭐ La FRASE dell'ultimo errore, gia' estratta dall'envelope. Serve a chi
+  // deve RENDERLA da se' invece che nel toast — il caso e' il rifiuto
+  // confermabile, dove il messaggio del database porta i numeri («restano X da
+  // regolare: un importo di Y non ci rientra») e va dentro la richiesta di
+  // conferma. ⚠️ Senza questo, quel chiamante dovrebbe riscriversi
+  // `extractErrorMessage` coi suoi tre ripieghi: una seconda sede.
+  const messaggioErrore = ref(null)
 
   /**
    * Esegue una chiamata API con gestione errori/toast automatica.
@@ -88,6 +95,9 @@ export function useApiHandler() {
    * @param {string} [options.successMessage] - messaggio toast su successo (null = nessun toast)
    * @param {string} [options.errorMessage] - messaggio fallback se il backend non restituisce dettagli
    * @param {boolean} [options.silent] - true = nessun toast di errore (utile per polling)
+   * @param {string[]} [options.azioniGestite] - `ui_action` che il chiamante gestisce
+   *        da se' (es. `['confirm_and_retry']`): su quelle il toast non parte, il
+   *        resto della gestione errori resta invariata
    * @returns {*} data interna dall'envelope { data, meta } in caso di successo, null in caso di errore
    */
   async function execute(apiFn, options = {}) {
@@ -95,6 +105,7 @@ export function useApiHandler() {
     campiErrati.value = []
     azioneUi.value = null
     bersagli.value = []
+    messaggioErrore.value = null
     try {
       const response = await apiFn()
       if (options.successMessage) {
@@ -115,8 +126,24 @@ export function useApiHandler() {
       azioneUi.value = err.response?.data?.error?.ui_action ?? null
       bersagli.value = estraiBersagli(err.response?.data?.error)
       const codice = err.response?.data?.error?.code
-      if (!options.silent && !CODICI_SENZA_TOAST.has(codice)) {
-        const message = extractErrorMessage(err) || options.errorMessage
+      messaggioErrore.value = extractErrorMessage(err)
+      // ⭐ Il chiamante puo' dichiarare di gestire da se' UNA CLASSE di
+      // comportamento (`ui_action`), e allora il toast non parte: il caso e' il
+      // rifiuto CONFERMABILE (`confirm_and_retry`), che non e' un fallimento ma
+      // una domanda — un banner rosso direbbe la cosa sbagliata.
+      // ⛔ Si dichiara l'`ui_action`, MAI un elenco di codici: il frontend
+      //    riconosce il comportamento e resta cieco ai codici (Q-1 del brief
+      //    incassi). Al terzo codice, un elenco se lo dimentica qualcuno.
+      // ⚠️ E non si usa `silent` per ottenere lo stesso effetto: `silent` spegne
+      //    il toast per QUALUNQUE errore, quindi il chiamante dovrebbe
+      //    ri-decidere da se' fra errore di sistema, gesto e toast normale —
+      //    cioe' riscrivere questa scelta altrove.
+      const gestitoDalChiamante =
+        Array.isArray(options.azioniGestite) &&
+        azioneUi.value != null &&
+        options.azioniGestite.includes(azioneUi.value)
+      if (!options.silent && !gestitoDalChiamante && !CODICI_SENZA_TOAST.has(codice)) {
+        const message = messaggioErrore.value || options.errorMessage
         const isSystem = isSystemError(err)
         // ⭐ Il gesto, quando c'e' qualcosa da raggiungere. `azioniDaBersagli`
         // scarta da se' i bersagli irraggiungibili (tipo senza destinazione,
@@ -138,7 +165,7 @@ export function useApiHandler() {
     }
   }
 
-  return { execute, loading, campiErrati, azioneUi, bersagli }
+  return { execute, loading, campiErrati, azioneUi, bersagli, messaggioErrore }
 }
 
 // Estrae i nomi dei campi da correggere dall'envelope: { error: { fields: [...] } }.

@@ -88,13 +88,13 @@ a {
   align-items: center;
 }
 
-/* Pulsante ricarica lista — icona verde coerente con app-action-btn */
+/* Pulsante ricarica lista — stesso colore di app-action-btn */
 .app-reload-btn.p-button {
-  color: var(--p-primary-color);
+  color: var(--app-btn-action-color);
 }
 .app-reload-btn.p-button:hover:not(:disabled) {
-  color: var(--p-primary-700);
-  background: var(--p-primary-50);
+  color: var(--app-btn-action-hover-color);
+  background: var(--app-btn-action-hover-bg);
 }
 
 /* ===== Drawer responsive globale =====
@@ -282,6 +282,29 @@ a {
 .app-drawer-action-wrap {
   position: relative;
   display: inline-flex;
+}
+
+/* ⛔ Involucro per il TOOLTIP di un pulsante che puo' essere DISABILITATO.
+ * Un `<button disabled>` non emette eventi del mouse — la directive tooltip di
+ * PrimeVue aggancia `mouseenter` sull'elemento stesso — quindi un tooltip
+ * appeso al Button non compare mai proprio quando serve: a pulsante spento,
+ * per dire PERCHE'.
+ * ⚠️ Non e' un dettaglio di stile: e' il canale con cui il database spiega che
+ * un'azione non si puo' fare adesso (`fn_available_actions_*` emette
+ * `enabled:false` + `reason`, `useDrawerActions` li traduce in disabled +
+ * tooltip). Senza involucro quel motivo e' muto ovunque.
+ * `inline-flex` perche' l'involucro prende il posto del Button come elemento
+ * flex del contenitore: la spaziatura resta quella di prima. */
+.app-action-tooltip-wrap {
+  display: inline-flex;
+}
+
+/* Tag «mio» accanto al proprietario/operatore nelle liste delle code.
+ * Era scoped e IDENTICO nelle due schede: una classe `app-*` usata da piu'
+ * componenti vive qui (feedback_css_centralizzazione). */
+.app-code-mio-tag {
+  margin-left: 0.35rem;
+  font-size: 0.65rem;
 }
 
 /* Badge counter sopra un pulsante azione drawer kind:'manage'.
@@ -556,14 +579,15 @@ a {
 }
 
 /* Pulsanti azione interni al form (gestisci, modifica, aggiungi).
- * Icona + label verde, senza sfondo. Grigio se disabilitato.
- * Applicare class="app-action-btn" ai Button interni. */
+ * Icona + label, senza sfondo. Grigio se disabilitato.
+ * Applicare class="app-action-btn" ai Button interni.
+ * Colore: `--app-btn-action-*` (theme.css) — blu dal 2026-08-27. */
 .app-action-btn.p-button {
-  color: var(--p-primary-color);
+  color: var(--app-btn-action-color);
 }
 .app-action-btn.p-button:hover:not(:disabled) {
-  color: var(--p-primary-700);
-  background: var(--p-primary-50);
+  color: var(--app-btn-action-hover-color);
+  background: var(--app-btn-action-hover-bg);
 }
 .app-action-btn.p-button:disabled {
   color: var(--p-text-muted-color);
@@ -735,12 +759,12 @@ a {
 /* Voce menu "azione positiva" — verde, coerente con app-action-btn / app-reload-btn. */
 .app-menu-item-action .p-menu-item-link,
 .app-menu-item-action .p-tieredmenu-item-link {
-  color: var(--p-primary-color);
+  color: var(--app-btn-action-color);
 }
 .app-menu-item-action .p-menu-item-link:hover,
 .app-menu-item-action .p-tieredmenu-item-link:hover {
-  color: var(--p-primary-700);
-  background: var(--p-primary-50);
+  color: var(--app-btn-action-hover-color);
+  background: var(--app-btn-action-hover-bg);
 }
 .app-menu-item-action .p-menu-item-icon,
 .app-menu-item-action .p-tieredmenu-item-icon {
@@ -2118,10 +2142,22 @@ a {
   font-size: 0.85rem;
 }
 
-/* Spinner «fatturazione in corso su questa riga»: il verbo accoda un job e la
- * riga resta a video per tutta la durata. Colore d'accento e non di allarme —
- * è un'attività normale in corso, non un problema. */
-.app-dash-gruppo-in-corso {
+/* Spinner «lavoro in corso su questa riga»: il verbo accoda un job e la riga
+ * resta a video per tutta la durata. Colore d'accento e non di allarme — è
+ * un'attività normale in corso, non un problema.
+ * ⭐ Classe UNICA per i tre posti che hanno lo stesso gesto (2026-08-27):
+ * gruppi fatturabili del cruscotto competenza (dov'è nata, come
+ * `.app-dash-gruppo-in-corso`), lotti dentro un giro di numerazione, righe
+ * vive delle due code. Tre copie dello stesso colore sarebbero tre colori il
+ * giorno che uno cambia. */
+/* Wrapper «testo + rotellina» sulla stessa riga di base, senza far crescere la
+ * cella. Usato dalle liste che mettono la rotellina accanto a un valore. */
+.app-cella-con-spinner {
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-spinner-in-corso {
   margin-left: 0.4rem;
   color: var(--app-in-corso-color);
   font-size: 0.85rem;
@@ -2169,6 +2205,18 @@ a {
  * tooltip quando il bottone è DISABILITATO — un bottone spento non riceve
  * eventi del mouse, quindi il tooltip appeso a lui non comparirebbe proprio
  * quando il motivo serve. `display: inline-flex` per non alterare la toolbar. */
+/* Il caso «più sezionali» si legge come una NOTA e non come un codice: è
+   l'unico valore di quella colonna che non nomina un sezionale ma dichiara una
+   condizione — e affiancato ai codici veri, in tondo, sembrerebbe il nome di un
+   registro che non esiste. */
+.app-dash-registro-multi {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--app-text-muted);
+  font-style: italic;
+}
+
 .app-dash-fattura-wrap {
   display: inline-flex;
 }

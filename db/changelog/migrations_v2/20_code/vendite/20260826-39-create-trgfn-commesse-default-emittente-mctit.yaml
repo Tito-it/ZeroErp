@@ -1,0 +1,167 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L1 — IL RIEMPITORE: l'emittente della commessa si deriva dal billing account
+#   vendite.trgfn_commesse_default_emittente()   [fase _a10_, BEFORE INSERT]
+#   Piano: brief-db-emittente-commessa-invariante, L1 (§7.1)
+#
+# ── ⭐ PERCHE' ESISTE: la commessa e' l'unica che non ce l'ha ────────
+#   Il presidio «l'emittente del documento concorda con quello del suo billing
+#   account» esiste gia' su SEI tabelle del ciclo di vendita, con una
+#   convenzione di nome: trgfn_<tabella>_default_emittente (riempie) +
+#   trgfn_<tabella>_guard_emittente_ba (giudica) su ordini, preventivi,
+#   contratti, ddt, offerte_commerciali, resi. `vendite.commesse` e' l'unica
+#   tabella che porta un emittente e non ha ne' l'uno ne' l'altro.
+#   Non c'era un presidio da inventare: c'era una riga vuota in una tabella
+#   gia' piena.
+#
+# ── ⭐ CON UNA DIFFERENZA, ED E' LA DECISIONE D-1 ───────────────────
+#   Nei sei fratelli il default si prende dall'OPERATORE
+#   (script.fn_resolve_emittente_for_user sulla GUC app.current_user_id): sono
+#   documenti che una persona crea in un form. La commessa NON la crea nessuno
+#   a mano — nasce dal push — quindi il suo riempitore lo prende dal BILLING
+#   ACCOUNT. E' la decisione D-1 di Tid: «l'emittente si prende dal billing
+#   account, sempre derivato e mai passato da fuori».
+#
+# ── ⭐ NON SERVE UN GUARD SUL NULL RESIDUO ──────────────────────────
+#   anagrafiche.fn_get_emittente_fiscale_id SOLLEVA
+#   (E_EMITTENTE_DEFAULT_MISSING) invece di tornare NULL. Era «l'unica cosa
+#   che oggi garantisce il valore» (§3 del brief); da qui in poi e' una delle
+#   due, insieme al NOT NULL del 20260826-41.
+#
+# ── ⛔ E NON SOVRASCRIVE MAI UNA SCELTA ESPLICITA ───────────────────
+#   Se la colonna arriva valorizzata, il riempitore esce subito: a giudicare il
+#   valore ci pensa il guard (20260826-40). Una normalizzazione muta e' la
+#   forma in cui un test diventa verde smettendo di verificare.
+#
+# ── ⭐ EFFETTO COLLATERALE BUONO, E VALE LA PENA SAPERLO ────────────
+#   PostgreSQL valuta il WITH CHECK della RLS sulla riga FINALE, cioe' DOPO i
+#   trigger BEFORE. Con questo trigger in servizio la policy
+#   rls_commesse_ef_whitelist giudica l'emittente VERO invece di un NULL — che
+#   oggi, per un operatore con perimetro ristretto, fa fallire l'INSERT in modo
+#   fail-closed.
+#
+# ⚠️ BEFORE INSERT e basta: un `UPDATE ... SET emittente = NULL` lo respinge il
+#   NOT NULL, e far «seguire» il valore a un cambio di billing_account_id
+#   sarebbe una propagazione silenziosa su una colonna di perimetro.
+# ⚠️ commesse.billing_account_id e' NOT NULL: a differenza dei sei fratelli non
+#   c'e' nessun ramo «BA assente» da saltare, e scriverlo lo stesso lascerebbe
+#   un ramo che nessun percorso puo' raggiungere.
+# ⚠️ I BEFORE ROW scattano in ordine ALFABETICO: `default_` viene prima di
+#   `guard_`, quindi il riempitore gira prima del giudice. E' l'unico ordine
+#   che funziona, ed e' la stessa disposizione degli ordini
+#   (trg_ordini_a10_default_emittente_ins prima di
+#   trg_ordini_a10_guard_emittente_ba_ins_upd).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-39-create-trgfn-commesse-default-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260826-39-create-trgfn-commesse-default-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L1: il riempitore. L'emittente della commessa si DERIVA dal billing account quando
+        la colonna arriva NULL (decisione D-1: sempre derivato, mai passato da fuori).
+        ⭐ Estende di un anello una famiglia che esiste gia': trgfn_*_default_emittente +
+        trgfn_*_guard_emittente_ba presidiano ordini, preventivi, contratti, ddt, offerte e
+        resi — vendite.commesse era l'unica tabella con un emittente e senza nessuno dei due.
+        ⭐ Con una differenza voluta: i sei fratelli derivano dall'OPERATORE perche' sono
+        documenti creati in un form; la commessa nasce dal push e deriva dal BILLING ACCOUNT.
+        ⛔ Non sovrascrive mai un valore esplicito: a giudicarlo ci pensa il guard del
+        20260826-40. ⭐ Il NULL residuo non e' possibile perche' fn_get_emittente_fiscale_id
+        solleva invece di tornarlo. ⭐ E la RLS valuta il WITH CHECK DOPO i trigger BEFORE:
+        da qui la policy giudica l'emittente vero invece di un NULL fail-closed.
+        Piano: brief-db-emittente-commessa-invariante, L1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'fn_get_emittente_fiscale_id'
+                     AND p.pronargs = 1;
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name   = 'commesse'
+                     AND column_name  = 'emittente_soggetto_ruolo_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_default_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'emittente della commessa non e' un attributo che
+                  --   qualcuno sceglie: e' la sua CHIAVE DI PERIMETRO, e si
+                  --   deriva dal billing account. Qui la si riempie quando
+                  --   arriva NULL.
+                  --
+                  -- Regole:
+                  --   - valore gia' dichiarato -> si esce subito (a giudicarlo
+                  --     ci pensa trgfn_commesse_guard_emittente_ba: qui non si
+                  --     sovrascrive mai in silenzio una scelta esplicita);
+                  --   - altrimenti si deriva dal BA con la funzione di casa,
+                  --     che e' la stessa usata da fn_build_fattura_key per
+                  --     scegliere il registro: «emittente della commessa» e
+                  --     «emittente che fattura» sono la stessa affermazione.
+                  -- =========================================================
+
+                  -- 1) Skip se gia' valorizzato esplicitamente nel payload.
+                  IF NEW.emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 2) Derivazione dal billing account.
+                  --    ⭐ Nessun guard sul NULL a valle: la funzione SOLLEVA
+                  --    (E_EMITTENTE_DEFAULT_MISSING) invece di tornare NULL —
+                  --    e' la proprieta' che finora garantiva da sola il valore
+                  --    su questa colonna.
+                  --    ⚠️ NEW.billing_account_id e' NOT NULL, quindi non c'e'
+                  --    nessun ramo «BA assente» da saltare come nei sei
+                  --    fratelli documento.
+                  NEW.emittente_soggetto_ruolo_id :=
+                      anagrafiche.fn_get_emittente_fiscale_id(NEW.billing_account_id);
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_default_emittente()
+              IS 'BEFORE INSERT su vendite.commesse: riempie emittente_soggetto_ruolo_id derivandolo dal billing account (anagrafiche.fn_get_emittente_fiscale_id) quando il payload lo lascia NULL. ⭐ Estende di un anello la famiglia gia'' in servizio su ordini, preventivi, contratti, ddt, offerte_commerciali e resi (trgfn_*_default_emittente + trgfn_*_guard_emittente_ba): vendite.commesse era l''unica tabella del ciclo che porta un emittente e non aveva ne'' il riempitore ne'' il guard. ⭐ Con una differenza VOLUTA: nei sei fratelli il default si prende dall''OPERATORE (script.fn_resolve_emittente_for_user sulla GUC app.current_user_id) perche'' sono documenti che una persona crea in un form; la commessa non la crea nessuno a mano — nasce dal push — quindi il suo emittente si prende dal BILLING ACCOUNT. E'' la decisione D-1: sempre derivato, mai passato da fuori. ⛔ Non sovrascrive MAI un valore gia'' presente nel payload: a giudicarlo ci pensa vendite.trgfn_commesse_guard_emittente_ba, e una normalizzazione muta sarebbe la forma in cui un test diventa verde smettendo di verificare. ⭐ Nessun guard sul NULL residuo, e non e'' un''omissione: fn_get_emittente_fiscale_id solleva E_EMITTENTE_DEFAULT_MISSING invece di tornare NULL. ⚠️ Solo BEFORE INSERT: un UPDATE che azzera la colonna lo respinge il NOT NULL, e far seguire il valore a un cambio di billing_account_id sarebbe una propagazione silenziosa su una colonna di perimetro — chi sposta la commessa di cliente deve dichiarare anche l''emittente. ⭐ Effetto collaterale portante: PostgreSQL valuta il WITH CHECK della RLS sulla riga FINALE, cioe'' dopo i trigger BEFORE, quindi da qui in poi rls_commesse_ef_whitelist giudica l''emittente vero invece di un NULL fail-closed. ⚠️ I BEFORE ROW scattano in ordine alfabetico: default_ precede guard_, ed e'' l''unico ordine che funziona. Piano: brief-db-emittente-commessa-invariante, L1.';
+
+              -- ⚠️ Il nome del trigger e' scelto per l'ORDINE, non per
+              --    l'estetica: `default_emittente` viene prima di
+              --    `guard_emittente_ba` in ordine alfabetico, e i BEFORE ROW
+              --    scattano in quell'ordine.
+              CREATE OR REPLACE TRIGGER trg_commesse_a10_default_emittente_ins
+                  BEFORE INSERT ON vendite.commesse
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_default_emittente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_a10_default_emittente_ins ON vendite.commesse;
+              DROP FUNCTION IF EXISTS vendite.trgfn_commesse_default_emittente();

@@ -48,3 +48,19 @@ a differenza dei billing account. I due trigger di questo controllo lavorano
 quindi con due visibilita' diverse — ed e' una delle ragioni per cui la lettura
 dei billing account e' incapsulata in una funzione privilegiata invece che
 scritta qui.
+---
+
+### ⚠️ Una nota del 2026-08-26: i tre movimenti sono ora condizionati
+
+I tre movimenti che questo controllo presidia — creare, cambiare e cancellare
+l'aggancio — **non sono più operazioni ordinarie**. Dal 2026-08-26 sono ammessi
+solo finché il cliente non ha storia: nessuna fattura, nessuna commessa.
+
+⛔ Non è un divieto, è una **condizione**. Un cliente nasce già agganciato
+all'emittente di chi lo crea, quindi può nascere sbagliato: la correzione deve
+restare possibile finché su quel cliente non è passato del lavoro.
+
+Il fratello che lo impone è
+[`trgfn_efba_guard_storia_emittente`](/dbzero/anagrafiche/manual/trgfn_efba_guard_storia_emittente):
+uno dice *«l'albero non può diventare misto»*, l'altro *«la storia non si
+sposta»*.

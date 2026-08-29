@@ -43,10 +43,10 @@ const props = defineProps({
   //                 documenti, quindi il dialog lo dice prima.
   //   `creazione` — si sta per creare i lotti: la data e' FACOLTATIVA, e
   //                 lasciarla vuota non vuol dire «oggi» — vuol dire «la
-  //                 decide la politica del registro». Non c'e' nessuna data da
-  //                 spostare, perche' i documenti non esistono ancora: qui
-  //                 `data_corrente` (che parla dei lotti GIA' emessi) sarebbe
-  //                 la risposta a un'altra domanda, e non si legge.
+  //                 decide la politica del registro». ⛔ Qui NON si legge la
+  //                 finestra di numerazione, ne' la data corrente ne' il
+  //                 pavimento: parlano dei lotti GIA' esistenti, e sono la
+  //                 risposta a un'altra domanda. Vedi `carica()`.
   // ⛔ `validator` e non solo un default: un refuso nel valore ricadrebbe in
   //    silenzio sul modo `numera`, che e' la direzione PERICOLOSA — il dialog
   //    di creazione pretenderebbe una data e annuncerebbe «niente da numerare»
@@ -57,12 +57,15 @@ const props = defineProps({
     default: MODO_DATA_DOCUMENTO.NUMERA,
     validator: (v) => Object.values(MODO_DATA_DOCUMENTO).includes(v),
   },
-  // Esattamente uno dei due. Entrambi null = il dialog non chiede niente.
+  // Esattamente uno dei tre. Tutti vuoti = il dialog non chiede niente.
   lottoId: { type: [Number, null], default: null },
   competenzaMese: { type: [String, null], default: null },
-  // Quanti lotti tocca l'atto (solo perimetro competenza): serve alla frase,
-  // non alla logica.
-  nLotti: { type: Number, default: 0 },
+  // ⭐ Il perimetro SELEZIONATO (lista Lotti). ⚠️ Il limite si ricalcola a ogni
+  //   cambio di selezione — è nelle dipendenze del `watch` che chiama
+  //   `carica()` — perché il pavimento è di ogni SEZIONALE: spuntare un lotto
+  //   di un altro registro può spostarlo in avanti, e un limite calcolato una
+  //   volta all'apertura sarebbe quello di una selezione che non esiste più.
+  lotti: { type: Array, default: null },
   // ⭐ La frase del perimetro, quando il chiamante ne ha una piu' precisa della
   //   nostra. In creazione e' il PESO di cio' che sta per succedere — «3 gruppi,
   //   47 attivita'» — che prima stava nella conferma secca: assorbendo quella
@@ -85,6 +88,14 @@ const corrente = ref(null)   // data che i documenti portano oggi (Date | null)
 //   nemmeno risposto. Un errore travestito da dato tranquillo.
 //   Copre anche il primo render, prima che `carica()` parta.
 const caricato = ref(false)
+// ⛔ QUANTI LOTTI L'ATTO TOCCHERA', e lo dice il SERVER — non il chiamante.
+//   Sono due numeri diversi: una selezione puo' contenere lotti non piu'
+//   numerabili (li ha presi un altro giro, un collega li ha resi definitivi), e
+//   sul perimetro MESE il chiamante quel numero non ce l'ha proprio.
+//   ⚠️ La prima versione lo riceveva come prop e la lista Lotti gli passava `0`
+//   sull'atto di mese: il dialog annunciava «l'atto numera 0 lotti» mentre stava
+//   per numerarli tutti.
+const nLottiPerimetro = ref(0)
 
 // Scopo: la data da proporre. Se quella che i documenti portano gia' va bene,
 //   si propone QUELLA — confermare non cambia niente ed e' il caso normale.
@@ -104,12 +115,41 @@ async function carica() {
   dataScelta.value = null
   minima.value = null
   corrente.value = null
+  nLottiPerimetro.value = 0
   caricato.value = false
-  if (props.lottoId == null && !props.competenzaMese) return
+
+  // ⛔ IN CREAZIONE NON SI LEGGE NIENTE, ed è la correzione di un difetto vero
+  //   (Tid, 2026-08-26). La prima versione mostrava anche qui il pavimento, con
+  //   la motivazione «un lotto creato oggi con una data indietro verrebbe
+  //   rifiutato al momento di numerarlo, meglio saperlo adesso».
+  //   **Quel ragionamento è sbagliato**, e il messaggio che produceva era
+  //   falso: il pavimento è una proprietà di UN SEZIONALE, e alla creazione il
+  //   sezionale dei lotti che nasceranno **non si sa ancora** — lo decide la
+  //   coppia (tipo documento, natura) delle attività che entrano. Quello che
+  //   l'endpoint restituisce per un mese di competenza è il massimo fra i
+  //   pavimenti dei lotti GIÀ ESISTENTI, che con i nuovi non c'entrano nulla.
+  //
+  //   🔴 Misurato: fatturando un gruppo che finiva sul Back-office (serie
+  //   `VX1`, mai numerata, nessun pavimento) il dialog annunciava «l'ultimo
+  //   numero già emesso su questo registro porta la data 24/08/2026» — che è
+  //   il pavimento del **Front-office** (`VX2`), un altro sezionale. Un vincolo
+  //   inesistente, dichiarato con sicurezza, su cui una persona ha poi
+  //   ragionato per mezz'ora.
+  //
+  //   ⚠️ Senza pavimento non c'è nemmeno un `minDate`: in creazione la data è
+  //   facoltativa e qualunque valore è ammesso — il cancello vero la giudicherà
+  //   al momento di numerare, quando il sezionale sarà noto.
+  if (inCreazione.value) {
+    caricato.value = true
+    return
+  }
+
+  if (props.lottoId == null && !props.competenzaMese && !props.lotti?.length) return
   const res = await execute(
     () => getFinestraNumerazione({
       lottoId: props.lottoId,
       competenzaMese: props.competenzaMese,
+      lotti: props.lotti,
     }),
   )
   // `!== null`: una risposta con tutti i campi a null e' un esito legittimo
@@ -119,18 +159,29 @@ async function carica() {
   //    diventa «non c'era niente da fare».
   if (res === null) return
   caricato.value = true
+  nLottiPerimetro.value = Number(res.n_lotti ?? 0)
   minima.value = res.data_minima ? parseIsoDate(res.data_minima) : null
-  // ⚠️ In creazione `data_corrente` NON si legge: parla dei lotti gia' emessi,
-  //    non di quelli che stanno per nascere. Il pavimento invece vale in
-  //    entrambi i modi — un lotto creato oggi con una data indietro verrebbe
-  //    rifiutato al momento di numerarlo, ed e' meglio saperlo adesso.
-  corrente.value = inCreazione.value
-    ? null
-    : (res.data_corrente ? parseIsoDate(res.data_corrente) : null)
-  dataScelta.value = inCreazione.value ? null : proponi()
+  corrente.value = res.data_corrente ? parseIsoDate(res.data_corrente) : null
+  dataScelta.value = proponi()
 }
 
-watch(() => props.visible, (v) => { if (v) carica() })
+// Ricarica all'apertura, e anche se il PERIMETRO cambia sotto.
+// ⚠️ Oggi il secondo caso NON si verifica, ed è giusto saperlo invece di
+//   crederlo: il dialog è modale e riceve una copia della selezione presa al
+//   momento dell'apertura, quindi mentre è aperto nessuno può spuntare altro.
+//   Il ricalcolo c'è perché il limite dipende dal perimetro e non dal momento —
+//   se un domani il limite si mostrasse accanto alla lista, mentre si spunta,
+//   questo watch è già la cosa giusta. Il commento precedente descriveva quel
+//   comportamento come se accadesse già: non accadeva.
+// ⛔ E il limite DIPENDE davvero dal perimetro: è di ogni sezionale, e spuntare
+//   un lotto di un altro registro lo sposta in avanti.
+// ⚠️ La chiave è la lista ORDINATA e serializzata, non l'array: due riferimenti
+//   diversi con gli stessi id sono la stessa selezione e non devono ricaricare,
+//   mentre gli stessi id in ordine diverso nemmeno — è un insieme.
+watch(
+  () => [props.visible, [...(props.lotti ?? [])].sort((a, b) => a - b).join(',')],
+  ([visibile]) => { if (visibile) carica() },
+)
 
 // Confermare SPOSTA le date dei documenti (e con esse le scadenze): e' la
 // conseguenza che l'operatore non si aspetta, e va detta prima, non dopo.
@@ -189,10 +240,19 @@ function conferma() {
         {{ t('vendite.numerazione_data.perimetro_lotto') }}
       </template>
       <template v-else>
-        {{ t('vendite.numerazione_data.perimetro_competenza', { n: nLotti }) }}
+        {{ t('vendite.numerazione_data.perimetro_competenza', { n: nLottiPerimetro }) }}
       </template>
+      <!-- ⚠️ Due frasi, perché i due perimetri NON dicono la stessa cosa: su un
+           lotto il pavimento è di quel sezionale; su un mese è il PIÙ ALTO fra
+           i sezionali che l'atto tocca. Dire «questo registro» nel secondo caso
+           è la stessa imprecisione che in creazione era una bugia. -->
       <template v-if="minima">
-        {{ ' ' }}{{ t('vendite.numerazione_data.pavimento', { data: displayDate(minima) }) }}
+        {{ ' ' }}{{ t(
+          lottoId != null
+            ? 'vendite.numerazione_data.pavimento'
+            : 'vendite.numerazione_data.pavimento_perimetro',
+          { data: displayDate(minima) },
+        ) }}
       </template>
     </Message>
 

@@ -418,7 +418,7 @@ def fn_get_ddt_form_defaults(
 
 
 # Scopo: Defaults per il form preventivo contestuali al BA selezionato.
-#        Risolve termine_pagamento_id/iva_id/modalita_pagamento_id dal cliente
+#        Risolve termine_pagamento_id/modalita_pagamento_id dal cliente
 #        associato al BA (tripletta istanza+soggetto+utility) e valuta_id
 #        tramite il BB centralizzato `resolve_valuta_default` (catena
 #        BA → EF-del-BA → EF-utente).
@@ -449,9 +449,11 @@ def fn_get_preventivo_form_defaults(
         "termine_pagamento_id": None,
         "termine_pagamento_codice": None,
         "termine_pagamento_descrizione": None,
-        "iva_id": None,
-        "iva_codice": None,
-        "iva_descrizione": None,
+        # ⛔ `iva_id`/`iva_codice`/`iva_descrizione` tolte il 2026-08-29
+        #    (I0/D7-bis, decisione Q3 del piano BE/FE): venivano da
+        #    `anagrafiche.clienti.iva_id`, colonna che non esiste piu'. Nessun
+        #    consumatore le leggeva — `vendite.preventivi` una colonna IVA di
+        #    testata non ce l'ha, e l'IVA di riga la produrra' il risolutore (I2).
         "modalita_pagamento_id": None,
         "modalita_pagamento_codice": None,
         "modalita_pagamento_descrizione": None,
@@ -493,7 +495,7 @@ def fn_get_preventivo_form_defaults(
     if ba is None:
         return payload
 
-    # BA-specific: utility/istanza + cliente (termini/iva/modalita).
+    # BA-specific: utility/istanza + cliente (termini/modalita).
     assert ba_id is not None
     payload.update({
         "billing_account_id": ba_id,
@@ -503,7 +505,7 @@ def fn_get_preventivo_form_defaults(
         "utility_descrizione": ba.get("utility_descrizione"),
     })
 
-    # Cliente del BA (relazione 1:1 via tripletta) -> termini/iva/modalita.
+    # Cliente del BA (relazione 1:1 via tripletta) -> termini/modalita.
     ba_repo = BillingAccountRepository()
     cliente = ba_repo.get_cliente_defaults(
         istanza_utility_id=int(ba["istanza_utility_id"]),
@@ -515,9 +517,6 @@ def fn_get_preventivo_form_defaults(
             "termine_pagamento_id": cliente.get("termine_pagamento_id"),
             "termine_pagamento_codice": cliente.get("termine_pagamento_codice"),
             "termine_pagamento_descrizione": cliente.get("termine_pagamento_descrizione"),
-            "iva_id": cliente.get("iva_id"),
-            "iva_codice": cliente.get("iva_codice"),
-            "iva_descrizione": cliente.get("iva_descrizione"),
             "modalita_pagamento_id": cliente.get("modalita_pagamento_id"),
             "modalita_pagamento_codice": cliente.get("modalita_pagamento_codice"),
             "modalita_pagamento_descrizione": cliente.get("modalita_pagamento_descrizione"),

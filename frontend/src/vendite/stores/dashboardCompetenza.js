@@ -18,6 +18,7 @@ import {
   listDashboardCompetenzaCommesse,
   listDashboardCompetenzaErrori,
   listDashboardCompetenzaGruppi,
+  listDashboardCompetenzaResidui,
 } from '../api/dashboardCompetenza'
 
 // Stadio del funnel il cui drill-down NON è la lista commesse ma la lista dei
@@ -26,6 +27,15 @@ import {
 // che è multi-sorgente e quindi non isola nulla. Costante unica: la usano il
 // gate della fetch e il template.
 export const STADIO_GRUPPI = 'DA_EMETTERE'
+
+// Stadio il cui drill-down NON è la lista commesse ma la lista dei RESIDUI.
+// ⭐ Stessa forma di STADIO_GRUPPI, e per la stessa ragione: qui il verbo è
+// «Riporta da emettere», e agisce su un'ATTIVITÀ — la commessa aggregata non
+// direbbe su cosa si sta per agire.
+// ⚠️ La card conta più di quello che la lista mostra, ed è voluto: lo stadio
+// contiene quattro situazioni e solo `RESIDUO` chiede un'azione. Il numero
+// grande è «quanto lavoro è fermo qui», la lista è «su cosa si può agire».
+export const STADIO_RESIDUI = 'EMESSA_NON_FATTURATA'
 
 // Voce «cliente non determinabile» del filtro cliente: sono i gruppi il cui BA
 // di fatturazione non e' risolvibile (tipicamente il padre e' fuori dallo scope
@@ -37,6 +47,17 @@ export const STADIO_GRUPPI = 'DA_EMETTERE'
 // riceve mai un id finto in un campo che trasporta chiavi vere. Stringa e non
 // numero apposta: non puo' collidere con nessun id.
 export const GRUPPI_CLIENTE_NON_DETERMINABILE = '__NON_DETERMINABILE__'
+
+// Voce «sezionale non determinabile» del filtro sezionale: i gruppi il cui
+// registro di fatturazione non è risolvibile — tipicamente perché il tipo
+// documento non è ancora stato scelto sulle righe (il vincolo a DB lo pretende
+// solo da riga approvata e non emessa, quindi su `DA_APPROVARE` il vuoto è
+// legittimo).
+// ⚠️ Stesso sentinella di sola INTERFACCIA della voce cliente qui sopra, e per
+// lo stesso motivo: una `<Select>` ha un valore solo, ma all'API non deve
+// arrivare un id finto in un campo che trasporta chiavi vere. Lo store lo
+// traduce nel parametro `registro_non_risolvibile`.
+export const GRUPPI_REGISTRO_NON_RISOLVIBILE = '__NON_RISOLVIBILE__'
 
 // Riepilogo di perimetro vuoto: forma stabile per il render prima della prima
 // risposta (mai `undefined` nel template).
@@ -132,20 +153,55 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
   // cosi' l'API non porta id finti in un campo che trasporta chiavi vere.
   const gruppiCliente = ref(null)
   const gruppiClienti = ref([])
+  // Filtro SEZIONALE (D-5). ⚠️ L'asse è l'INSIEME dei sezionali del gruppo, non
+  // il codice unico: un gruppo che ne tocca due ha il codice vuoto e deve
+  // comparire sotto entrambe le voci. Filtrare per codice lo farebbe sparire da
+  // tutte e due — cioè proprio il gruppo che c'è da guardare.
+  const gruppiRegistro = ref(null)
+  const gruppiRegistri = ref([])
+  // Quanti gruppi ha il perimetro BASE, per la sola voce «Tutti i sezionali».
+  // ⚠️ Non si ricava dalla facet (sommarla sovrastima: un gruppo su due
+  // sezionali è contato sotto entrambi) né dal riepilogo (che segue i filtri,
+  // quindi «Tutti» scenderebbe al conteggio del sezionale scelto).
+  const gruppiPerimetroN = ref(0)
   // Ricerca libera. Separata dal filtro cliente perche' risponde a un'altra
   // domanda — «dov'e' finito ORD0005174» invece di «dammi tutto di Rossi» —
   // e sotto i 3 caratteri il BE la ignora (non svuota la lista).
   const gruppiSearch = ref('')
+  // Scopo: i filtri di dominio della lista gruppi, nella forma che l'API vuole.
+  //
+  // ⛔ ESISTE PERCHÉ LE COPIE ERANO DUE, e la seconda ha davvero sbagliato: la
+  //    fetch li componeva qui, l'export se li ricomponeva nella view — e
+  //    aggiungendo il filtro sezionale è finito solo nella fetch. Il file
+  //    esportato avrebbe portato TUTTE le righe mentre a video ne restavano 32,
+  //    e chi lo apre non ha modo di accorgersene: crede di avere il perimetro
+  //    che aveva a schermo. È lo stesso difetto che il commento dell'export
+  //    dichiarava di voler evitare.
+  //    Una sede sola: il prossimo filtro nasce in tutti e due i posti o in
+  //    nessuno.
+  //
+  // ⚠️ Fuori NON escono i sentinella: `gruppiClienteParams`/`gruppiRegistroParams`
+  //    li traducono nei due flag dedicati, così all'API non arriva mai un id
+  //    finto in un campo che trasporta chiavi vere.
+  // ⛔ Niente paginazione né `formato`: sono di trasporto, e i due chiamanti li
+  //    trattano diversamente (l'export salta la paginazione).
+  function gruppiFiltriApi() {
+    return {
+      stadio: STADIO_GRUPPI,
+      tipo_gruppo: gruppiTipo.value,
+      ...gruppiClienteParams(),
+      ...gruppiRegistroParams(),
+      search: gruppiSearch.value || null,
+      order_by: gruppiSort.orderBy.value,
+      order_dir: gruppiSort.orderDir.value,
+    }
+  }
+
   const gruppiFetch = usePagedDashFetch(
     (paging, competenzaMese) =>
       listDashboardCompetenzaGruppi({
         competenza_mese: competenzaMese,
-        stadio: STADIO_GRUPPI,
-        tipo_gruppo: gruppiTipo.value,
-        ...gruppiClienteParams(),
-        search: gruppiSearch.value || null,
-        order_by: gruppiSort.orderBy.value,
-        order_dir: gruppiSort.orderDir.value,
+        ...gruppiFiltriApi(),
         ...paging,
       }),
     {
@@ -153,6 +209,8 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
         gruppiRiepilogo.value = payload.riepilogo ?? { ...RIEPILOGO_VUOTO }
         gruppiTipi.value = payload.tipi ?? []
         gruppiClienti.value = payload.clienti ?? []
+        gruppiRegistri.value = payload.registri ?? []
+        gruppiPerimetroN.value = Number(payload.n_gruppi_perimetro ?? 0)
       },
     }
   )
@@ -165,6 +223,15 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
       return { ba_non_determinabile: true }
     }
     return { ba_fatturazione_id: gruppiCliente.value }
+  }
+
+  // Scopo: gemello del precedente per il sezionale. Il sentinella non esce mai
+  //        da qui: fuori viaggiano o un id vero, o il flag dedicato.
+  function gruppiRegistroParams() {
+    if (gruppiRegistro.value === GRUPPI_REGISTRO_NON_RISOLVIBILE) {
+      return { registro_non_risolvibile: true }
+    }
+    return { registro_id: gruppiRegistro.value }
   }
 
   // Scopo: carica una pagina di gruppi fatturabili del mese. Parte solo sullo
@@ -185,6 +252,9 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     gruppiTipi.value = []
     gruppiCliente.value = null
     gruppiClienti.value = []
+    gruppiRegistro.value = null
+    gruppiRegistri.value = []
+    gruppiPerimetroN.value = 0
     gruppiSearch.value = ''
   }
 
@@ -202,6 +272,46 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
       }),
     { defaultPageSize: PAGINATION.COMPACT_ROWS }
   )
+
+  // Drill-down RESIDUI (card «Emesse non fatturate»): l'elenco su cui agisce
+  // «Riporta da emettere».
+  // ⭐ Ordinamento `competenza_mese` ASC, e NON `valore` DESC come le sorelle:
+  // e' allineato all'`ordinamento_default` del preset `dash_competenza_residui_default`
+  // (`ui.lista_preset`, 2026-08-27), che quel campo non lo consuma ancora il
+  // frontend — la convenzione e' allinearlo a mano, come fanno `auditLog` ed
+  // `emittentiFiscali`.
+  // ⛔ E la ragione e' di dominio, non di simmetria: questa non e' una lista di
+  // GRANDEZZE, e' una CODA DI RECUPERO. Un residuo che invecchia si avvicina al
+  // limite di emissione, quindi il piu' vecchio e' il piu' a rischio — stessa
+  // logica del backlog (`anzianita_giorni desc`), non dei gruppi fatturabili.
+  // ⚠️ La prima versione ordinava per `valore` DESC per copia dalle sorelle:
+  // avrebbe messo in cima i residui piu' grossi invece dei piu' urgenti, e la
+  // lista avrebbe raccontato una priorita' diversa da quella che il catalogo
+  // dichiara — senza che niente andasse storto.
+  const residuiSort = useSortState('competenza_mese', 'asc')
+  const residuiFetch = usePagedDashFetch(
+    (paging, competenzaMese) =>
+      listDashboardCompetenzaResidui({
+        competenza_mese: competenzaMese,
+        order_by: residuiSort.orderBy.value,
+        order_dir: residuiSort.orderDir.value,
+        ...paging,
+      }),
+    { defaultPageSize: PAGINATION.COMPACT_ROWS }
+  )
+
+  // Scopo: carica una pagina di residui del mese. Parte solo con la card
+  //        «Emesse non fatturate» selezionata, come le altre sezioni.
+  async function fetchResidui(competenzaMese) {
+    if (stadioSelezionato.value !== STADIO_RESIDUI) return
+    await residuiFetch.fetch(competenzaMese)
+  }
+
+  // Scopo: azzera la lista residui (cambio mese/anno o deselezione card).
+  function resetResidui() {
+    residuiSort.reset()
+    residuiFetch.reset()
+  }
 
   // Scopo: carica una pagina di commesse per (mese, stadio selezionato,
   //        filtro ritardo). Senza stadio attivo non parte nessuna fetch.
@@ -225,6 +335,11 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     // lista gruppi, altrimenti resterebbe a video appesa a uno stadio che non
     // e' piu' selezionato.
     resetGruppi()
+    // ⚠️ E la lista residui, per la stessa ragione. Dimenticarla qui e' il
+    //    difetto che non si vede provando una card sola: si apre «Emesse non
+    //    fatturate», si clicca un'altra card, e la selezione di righe resta
+    //    viva sotto uno stadio che non c'e' piu'.
+    resetResidui()
   }
 
   // Scopo: azzera il pannello errori (cambio mese/anno) e invalida le fetch.
@@ -244,6 +359,11 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     soloRitardo.value = false
     commesseSort.reset()
     commesseFetch.resetAll()
+    // ⚠️ `resetAll` e non `reset`: al logout si riporta al default anche la
+    //    dimensione di pagina, che e' una preferenza dell'operatore che se ne
+    //    va — la stessa regola delle sezioni sorelle (feedback_pinia_userscoped).
+    residuiSort.reset()
+    residuiFetch.resetAll()
     gruppiSort.reset()
     gruppiRiepilogo.value = { ...RIEPILOGO_VUOTO }
     gruppiTipo.value = null
@@ -254,6 +374,9 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     // nemmeno (memoria feedback_pinia_userscoped).
     gruppiCliente.value = null
     gruppiClienti.value = []
+    gruppiRegistro.value = null
+    gruppiRegistri.value = []
+    gruppiPerimetroN.value = 0
     gruppiSearch.value = ''
     gruppiFetch.resetAll()
     erroriSort.reset()
@@ -288,11 +411,27 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     gruppiTipi,
     gruppiCliente,
     gruppiClienti,
+    gruppiRegistro,
+    gruppiRegistri,
+    gruppiPerimetroN,
+    gruppiFiltriApi,
     gruppiSearch,
     applyGruppiPage: gruppiFetch.applyPageEvent,
     applyGruppiSort: gruppiSort.apply,
     fetchGruppi,
     resetGruppi,
+    residui: residuiFetch.items,
+    residuiCount: residuiFetch.count,
+    residuiPage: residuiFetch.page,
+    residuiPageSize: residuiFetch.pageSize,
+    residuiLoading: residuiFetch.loading,
+    residuiLoaded: residuiFetch.loaded,
+    residuiOrderBy: residuiSort.orderBy,
+    residuiOrderDir: residuiSort.orderDir,
+    applyResiduiPage: residuiFetch.applyPageEvent,
+    applyResiduiSort: residuiSort.apply,
+    fetchResidui,
+    resetResidui,
     errori: erroriFetch.items,
     erroriCount: erroriFetch.count,
     erroriPage: erroriFetch.page,

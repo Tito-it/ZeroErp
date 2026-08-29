@@ -31,3 +31,4 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 30,2,cambia_stato_commessa,Cambia stato commessa (chiudi/riapri/annulla),t,t,{},2026-07-27 00:00:00+02,postgres,2026-07-27 00:00:00+02,postgres
 31,2,accredita_riga_reso,Accredita riga di reso (genera la rettifica per la nota di credito),t,t,{},2026-08-18 00:00:00+02,mctit,2026-08-18 00:00:00+02,mctit
 32,7,registra_distinta,Registra la distinta contabile (crea i movimenti: irreversibile),t,t,{},2026-08-25 00:00:00+02,mctit,2026-08-25 00:00:00+02,mctit
+33,2,riporta_da_emettere,Riporta da emettere le attivita fatturabili residue,f,t,{},2026-08-26 00:00:00+02,mctit,2026-08-26 00:00:00+02,mctit

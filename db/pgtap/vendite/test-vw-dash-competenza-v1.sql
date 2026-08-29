@@ -287,13 +287,13 @@ INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, valuta_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, fattura_riga_id, fatturato, data_insert)
+  commessa_id, commessa_attivita_id, fattura_riga_id, data_insert)
 SELECT r.articolo_id, r.istanza_utility_id, DATE '2080-01-01', 1,
        DATE '2080-01-01', DATE '2080-01-01', DATE '2080-01-31',
        r.uom_id, r.valuta_id, 40.000000, r.tipo_doc_fiscale_id,
        (SELECT id FROM tmp_dc_commessa),
        (SELECT attivita_id FROM tmp_dc_att WHERE slot = 'A4_FATTURATA'),
-       (SELECT id FROM tmp_dc_fattura_riga), true,
+       (SELECT id FROM tmp_dc_fattura_riga),
        TIMESTAMPTZ '2080-03-15 10:00:00+00'
 FROM tmp_dc_refs r;
 
@@ -466,7 +466,7 @@ SELECT af.id, af.data_insert
 -- Bypass del guard fatturato (stesso GUC usato dal cleanup di produzione).
 SELECT set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
 UPDATE vendite.attivita_fatturabili
-   SET fattura_riga_id = NULL, fatturato = false, stato_esecuzione = NULL,
+   SET fattura_riga_id = NULL, stato_esecuzione = NULL,
        lock_in_fatturazione = false, lock_batch_id = NULL, data_update = now()
  WHERE id = (SELECT id FROM tmp_dc_af_before);
 SELECT set_config('zeroerp.maintenance_reset_lotto_draft', '', true);

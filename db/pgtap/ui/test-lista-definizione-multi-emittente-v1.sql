@@ -133,6 +133,16 @@ SELECT is(
           'vendite.dash_competenza_commesse',
           'vendite.dash_competenza_errori',
           'vendite.dash_competenza_gruppi',
+          -- ⭐ 2026-08-27 — certificata dal cantiere «residui in competenza»
+          --   (seed `lista_definizione` id 49, commit b543f51fa). Il biglietto
+          --   e' stato pagato QUI, che e' il punto di questo test: il flag non
+          --   si accende senza che qualcuno venga a dichiararlo.
+          --   ✅ Verificato prima di scriverla: la lista porta la colonna
+          --   `emittente_fiscale` a catalogo — che e' la condizione meccanica
+          --   presidiata dal test 6 — ed e' della stessa famiglia delle altre
+          --   quattro `dash_*` gia' certificate, con lo stesso meccanismo di
+          --   scope.
+          'vendite.dash_competenza_residui',
           'vendite.lotti']::text[],
     '5. le liste certificate multi_emittente sono esattamente quelle dichiarate qui'
 );

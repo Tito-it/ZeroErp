@@ -19,31 +19,24 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
+import { paramsPagina } from '../../core/utils/listParams'
 import { listFondiFatturaDaDecidere } from '../api/fondiFattura'
 
 // Scopo: mappa i filtri dello store nei query param dell'endpoint.
 //
 // ⚠️ L'endpoint e' PAGE-BASED (`page`/`page_size`), mentre `useSearchTable`
-// governa `limit`/`offset`: la conversione sta QUI, una volta, invece che nel
-// componente. `Math.floor` con guard sul limit: un `limit` a 0 produrrebbe una
-// divisione per zero e una `page` NaN, che il backend rifiuterebbe con un 400
-// incomprensibile.
+// governa `limit`/`offset`: la conversione sta nel BB `paramsPagina`
+// (`core/utils/listParams`), estratto il 2026-08-28 alla terza sede — questa
+// era la seconda. Il guard sul limit e il ripiego di `order_dir` sono i
+// medesimi di prima: l'estrazione non cambia il comportamento.
 //
 // ⚠️ La `search` NON si inoltra: questo endpoint non ha ricerca testuale.
 // Passarla sarebbe un parametro ignorato in silenzio — l'operatore digiterebbe
 // e vedrebbe la lista intera, convinto di aver cercato. Il campo di ricerca
 // infatti non e' montato nella pagina.
 function buildParams(f) {
-  const pageSize = f.limit > 0 ? f.limit : 25
-  const p = {
-    page: Math.floor((f.offset || 0) / pageSize) + 1,
-    page_size: pageSize,
-  }
+  const p = paramsPagina(f)
   if (f.motivo) p.motivo = f.motivo
-  if (f.order_by) {
-    p.order_by = f.order_by
-    p.order_dir = f.order_dir || 'desc'
-  }
   return p
 }
 

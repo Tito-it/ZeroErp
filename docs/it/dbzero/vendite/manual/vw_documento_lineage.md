@@ -114,12 +114,12 @@ profondo**: la nota avrebbe vinto sulla fattura stessa, e ogni riga di lista
 avrebbe cambiato la propria frontiera. Senza errori, senza log, solo un valore
 diverso.
 
-**La natura del nodo** (`natura_doc_codice` / `natura_doc_descrizione`) è esposta
+**La natura del nodo** (`natura_doc_codice_interno` / `natura_doc_descrizione`) è esposta
 anche qui, così una lista di fatture smette di scrivere «Fattura» sopra una nota
 di credito.
 
 ⛔ **CORREZIONE (2026-08-25) — qui c'era una frase falsa, e lo era già il giorno
-in cui è stata scritta.** Diceva: *«non esiste una `frontiera_natura_doc_codice`,
+in cui è stata scritta.** Diceva: *«non esiste una `frontiera_natura_doc_codice_interno`,
 e non è una dimenticanza: l'arco N è escluso dal grafo forward, quindi una nota
 di credito non può mai essere la frontiera di nessuno e quella colonna varrebbe
 sempre NULL»*. La **premessa** è giusta, la **conclusione** no — e il paragrafo
@@ -138,7 +138,7 @@ ri-specificare `security_invoker=on`, che se dimenticato si azzera in silenzio).
 
 **La colonna quindi non c'è per un'altra ragione**: il consumatore la ricava per
 conto suo. `get_lineage_nodo` la legge joinando `vw_documento_lineage_nodi` sulla
-frontiera (`nfr.natura_doc_codice AS frontiera_natura_doc_codice`).
+frontiera (`nfr.natura_doc_codice_interno`).
 
 🔴 **E questo oggi basta per un consumatore solo.** Il join richiede
 `frontiera_uid`, che la summary espone **ma le `vw_*_lista` no**: le sei liste
@@ -147,7 +147,8 @@ del nodo, quindi la colonna «Transito» **non può** ricavare la natura e scriv
 «Fattura» sopra una nota di credito. Misurato il 2026-08-25: 4 nodi hanno una NC
 come frontiera (ordine, reso, commessa, e la NC stessa), e sul reso il caso è
 **strutturale** — il pgTAP 35 asserisce che l'arco `S` arriva *sempre* a una
-`NOTA_CREDITO`. Richiesta al team DB nel brief dell'arco S, §7-bis.
+`NOTA_CREDITO`. Richiesta al team DB nel brief
+`brief-db-lineage-residui-root-e-sorgente-ddt.md`, §3.
 
 📌 **Un'invariante che vale la pena conoscere**, ed è quella che presidia la
 scelta: *una fattura è sempre frontiera di sé stessa* — nel grafo forward non ha

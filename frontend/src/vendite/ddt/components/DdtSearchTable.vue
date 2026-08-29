@@ -215,7 +215,8 @@ onMounted(() => store.fetchList())
           <LineageFaseTag :fase="data.fase" />
         </template>
         <template #cell-transito="{ data }">
-          <LineageFrontieraChip :is-transitato="data.is_transitato" :tipo-codice="data.frontiera_tipo_codice"
+          <LineageFrontieraChip :is-transitato="data.is_transitato" :tipo-codice="data.frontiera_tipo_codice_interno"
+            :natura-codice="data.frontiera_natura_doc_codice_interno"
             :codice="data.frontiera_codice" :stato="data.frontiera_stato_codice_interno"
             :fase="data.frontiera_fase" :n-attivi="data.n_discendenti_attivi" />
         </template>

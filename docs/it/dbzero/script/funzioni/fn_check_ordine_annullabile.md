@@ -36,7 +36,6 @@ DECLARE
   v_motivi   jsonb := '[]'::jsonb;
   v_uid      vendite.ordini.uid%TYPE;
   v_ddt      integer := 0;
-  v_commesse integer := 0;
 BEGIN
   IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -78,20 +77,25 @@ BEGIN
 
   -- MOTIVO 2 — l'ordine e' gia' entrato in una commessa.
   -- Tabella polimorfa: per ORDINE_VENDITA key_selector dice 'id'.
-  SELECT count(*)
-    INTO v_commesse
-    FROM vendite.commesse_sorgenti cs
-   WHERE cs.sorgente_uid = p_ordine_id::text
-     AND cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s
-                                 WHERE s.codice_interno = 'ORDINE_VENDITA');
-
-  IF v_commesse > 0 THEN
-    v_motivi := v_motivi || jsonb_build_object(
-      'codice',     'E_ORD_ANNULLA_IN_COMMESSA',
-      'reason',     'GIA_IN_COMMESSA',
-      'reason_key', 'vendite.ordini.azione_reason.gia_in_commessa',
-      'dettaglio',  v_commesse);
-  END IF;
+  -- ⛔ rev 2026-08-26 (L7b, Q-9) — E_ORD_ANNULLA_IN_COMMESSA SI RITIRA.
+  -- Vietava di annullare un ordine che aveva spinto in commessa, e il motivo
+  -- era che NON C'ERA MODO di disfare il push. Adesso c'e': alla chiusura il
+  -- documento RITIRA da se' le righe che nessuno ha ancora emesso
+  -- (trg_ordini_z90_ritira_commessa_attivita_upd).
+  -- ⭐ Al suo posto resta un freno SOLO, e su una condizione VERA: le righe
+  -- gia' EMESSA sono in volo verso una fattura e non si ritirano. Il conteggio
+  -- non si riscrive qui — si delega alla primitiva condivisa, la stessa che il
+  -- guard generico usa: una implementazione, due superfici (questa accende il
+  -- pulsante, quella ferma la scrittura).
+  -- ⚠️ Il codice resta a catalogo con `obsoleto_dal`: non si cancella, smette
+  -- di essere sollevato.
+  -- ⛔ E la CHIAVE cambia insieme al criterio: la primitiva legge
+  -- vendite.commesse_attivita, dove `sorgente_uid` porta `uid::text` — non
+  -- l'`id::text` che vendite.commesse_sorgenti usa per l'ordine. Passare la
+  -- chiave vecchia non darebbe errore: darebbe zero motivi.
+  v_motivi := v_motivi || script.fn_check_sorgente_chiudibile(
+      (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
+      v_uid::text);
 
   RETURN v_motivi;
 END;

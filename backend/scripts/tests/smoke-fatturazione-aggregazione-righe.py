@@ -115,7 +115,7 @@ def crea_attivita_fatturabile(cur, t, *, ca_id, lock_batch_id, quantita, prezzo,
             competenza_mese, competenza_dal, competenza_al,
             commessa_id, commessa_attivita_id,
             sorgente_tipo_id, sorgente_uid, sorgente_origine_tipo_id,
-            lock_batch_id, lock_in_fatturazione, fatturato, approvato,
+            lock_batch_id, lock_in_fatturazione, approvato,
             stato_esecuzione, prezzo_bloccato, meta
         ) VALUES (
             %s, %s, %s, %s,
@@ -124,7 +124,7 @@ def crea_attivita_fatturabile(cur, t, *, ca_id, lock_batch_id, quantita, prezzo,
             %s, %s, %s,
             %s, %s,
             %s, %s, %s,
-            %s, TRUE, FALSE, TRUE,
+            %s, TRUE, TRUE,
             'PENDING', TRUE, %s::jsonb
         ) RETURNING id
         """,

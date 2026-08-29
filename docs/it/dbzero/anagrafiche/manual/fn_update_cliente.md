@@ -53,10 +53,28 @@ anagrafiche.fn_update_cliente(
 | `p_ba_categoria_cliente_id` | `billing_account.categoria_cliente_id%TYPE` | Categoria da scrivere sul BA. Se `NULL` la categoria non viene toccata; **mai** impostata a NULL (colonna NOT NULL). |
 | `p_cliente_fields` | `jsonb` | **Delta** dei campi editabili: solo le chiavi **presenti** vengono aggiornate (chiave presente con valore null ⇒ colonna azzerata; chiave assente ⇒ invariata). Le chiavi non whitelisted sono ignorate. |
 
-**Whitelist campi editabili:** `iva_id`, `modalita_pagamento_id`,
-`termine_pagamento_id`, `tipo_gg_scadenza_ft`, `nr_giorni_scadenza`,
-`cliente_pa`, `split_payment`, `codice_cig`, `codice_cup`, `codice_commessa`,
+**Whitelist campi editabili:** `modalita_pagamento_id`, `termine_pagamento_id`,
 `servizio_da_fatturare`, `garanzia_tipo`, `garanzia_importo`.
+
+> ⛔ **rev 2026-08-29 — la whitelist si e' DIMEZZATA, e la doc era gia' indietro.**
+>
+> Uscite adesso (changeSet `20260829-20`), perche' le colonne non esistono piu' su
+> `anagrafiche.clienti` (`20260829-22`):
+> `iva_id` — non aveva piu' un lavoro: l'aliquota la decide la merce;
+> `cliente_pa` e `split_payment` — sono saliti su
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti), perche' discendono dalla
+> partita IVA e non dalla fornitura;
+> `codice_cig`, `codice_cup`, `codice_commessa` — sono andati su
+> [vendite.contratti](/dbzero/vendite/tabelle/contratti), perche' nominano un contratto.
+> Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, I0-B / I8-B.
+>
+> ⚠️ **`tipo_gg_scadenza_ft` e `nr_giorni_scadenza` erano gia' false**: tolte il
+> 2026-07-31 (D-I, piano satelliti 3a.5) e mai aggiornate qui. Un elenco che non ha un
+> presidio invecchia in silenzio, e chi lo legge non ha modo di accorgersene.
+>
+> ⚠️ **Effetto per il chiamante, e va saputo**: una chiave non whitelisted **non fa
+> errore, viene ignorata**. Finche' il backend manda ancora `iva_id`, il salvataggio
+> riesce e quel valore non va da nessuna parte.
 
 ### Ritorno
 

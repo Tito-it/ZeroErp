@@ -71,7 +71,33 @@ GROUP BY stadio;
   impostare la GUC. Il pgTAP la imposta esplicitamente.
 * Un'attività `EMESSA` senza riga AF (solo manutenzioni fuori flusso) cade in
   `EMESSA_NON_FATTURATA` con `data_emissione` NULL: classificazione corretta,
-  ritardo non calcolabile.
+  ritardo non calcolabile. ⭐ **Dal 2026-08-26 quel caso ha un nome**:
+  `motivo_non_fatturata = 'SENZA_ATTIVITA_FATTURABILE'`, e la chiave del verbo
+  resta `NULL` — vedi la sezione dedicata più in basso.
+* ⚠️ **`EMESSA_NON_FATTURATA` è uno stadio RESIDUALE, non una tappa.** Pull e
+  generazione righe stanno nello stesso step DRAFT: il percorso normale va da
+  `DA_EMETTERE` a `FATTURATA` e questo stadio resta **vuoto** finché l'emissione
+  e la fatturazione sono un gesto solo.
+
+    > 🔴 **CORREZIONE (2026-08-26), e va letta prima di usare questa voce per
+    > decidere.** Questo punto diceva due cose che oggi sono false, ed erano
+    > entrambe vere quando furono scritte:
+    >
+    > 1. *«che azzera `fattura_riga_id` lasciando però `fatturato = t`»* — ⛔ non
+    >    più possibile: dal `20260826-33` `fatturato` è una colonna **GENERATA**
+    >    da `fattura_riga_id`, quindi il disaccordo fra le due **non è più
+    >    rappresentabile**. È il lotto L3b del cantiere «il lavoro che non torna
+    >    indietro»;
+    > 2. *«chi legge un numero in questa card lo legga come una perdita
+    >    silenziosa»* — ⛔ vero **solo** per una delle popolazioni. In questo
+    >    stadio ne convivono più d'una, con **rimedi opposti**, ed è il motivo
+    >    per cui esiste `motivo_non_fatturata`: chi emette in modo mirato ci
+    >    vede passare lavoro perfettamente sano.
+    >
+    > 📌 Resta vero il **fatto datato** che motivò la voce: il 2026-08-26 la card
+    > conteneva 5 AF di luglio (5.019 €) orfane della fattura 834 del lotto 603,
+    > tutte residue. ⚠️ Ed è un fatto, non un motivo: il modello ammette le altre
+    > popolazioni anche nel giorno in cui non ce n'è nessuna.
 * Test: `db/pgtap/vendite/test-vw-dash-competenza-v1.sql`.
 
 ---
@@ -163,6 +189,121 @@ perimetro-emittente §7, decisione 3). Il controllo automatico
 `dbops.vw_liste_multi_emittente_non_certificate` deve restare a zero righe.
 
 * Test: `db/pgtap/vendite/test-viste-dash-emittente-v1.sql`.
+
+---
+
+---
+
+### 🆕 La chiave del verbo e la dimensione *(D-1, 26-08-2026)*
+
+Changeset `20260826-54`, brief `brief-db-residui-competenza-dimensione-e-chiave`
+(richiesta del backend). **Otto** colonne in coda.
+
+| Colonna | Cosa | Perché
+| --- | --- | --- |
+| `attivita_fatturabile_id` | `attivita_fatturabili.id` | ⛔ **la chiave del verbo** |
+| `lock_in_fatturazione` | `COALESCE(…, false)` | metà del discriminante |
+| `stato_esecuzione` | l'altra metà | separa **l'orfana dal giro vivo** |
+| `motivo_non_fatturata` | vocabolario chiuso, `NULL` fuori dallo stadio | **la dimensione** |
+| `lotto_provenienza_id` · `_codice` | da `fatturazione_lotti` via `lock_batch_id` | «da dove viene questo residuo» |
+| `articolo_codice` · `articolo_descrizione` | decode di `catalogo.articoli` | **che lavoro è** |
+
+#### ⛔ Perché la chiave sta qui e non si traduce a valle
+
+`vendite.fn_riporta_attivita_da_emettere` consuma `attivita_fatturabili.id`, e
+nessuna vista lo esponeva: **il frontend non aveva la chiave del verbo**. Esiste
+un `UNIQUE` 1:1 su `attivita_fatturabili(commessa_attivita_id)`, quindi il
+backend *potrebbe* tradurre da sé — ma tradurre a mano un legame che il database
+conosce già è una **seconda implementazione**, ed è la forma di difetto che il
+cantiere precedente ha appena finito di pagare.
+
+⚠️ `attivita_fatturabile_id` è un **identificatore**, non una colonna da
+mostrare: non va a catalogo in `ui.lista_colonna`.
+
+#### ⭐ La dimensione: lo stadio guarda una cosa sola
+
+Il ramo `EMESSA_NON_FATTURATA` del `CASE` guarda **solo** `fattura_riga_id`, e
+dentro quel valore finiscono situazioni con **rimedi opposti**:
+
+| `motivo_non_fatturata` | Come si riconosce | Rimedio | Il verbo la tocca? |
+| --- | --- | --- | --- |
+| `IN_ATTESA_LOTTO` | non lucchettata | ⏳ nessuno: il prossimo giro la prende da sé | ⛔ no (`E_ATTIVITA_GIA_DA_EMETTERE`) |
+| `GIRO_IN_CORSO` | lucchettata, `stato_esecuzione` ≠ `COMPLETED` | ⏳ si aspetta che il lotto finisca | ⛔ no (`E_ATTIVITA_IN_LAVORAZIONE`) |
+| ⭐ `RESIDUO` | lucchettata **e** `COMPLETED`, senza riga di fattura | ✅ «Riporta da emettere» | ✅ sì |
+| `SENZA_ATTIVITA_FATTURABILE` | nessuna riga in `attivita_fatturabili` | ⚠️ nessuno: non c'è niente da riportare | ⛔ no: **la chiave è `NULL`** |
+
+⛔ **Non si spezza lo stadio in due valori.** Lo *stadio* dice **a che punto del
+ciclo** è il lavoro, e queste situazioni sono allo **stesso punto**: cambia la
+loro *salute*, non il loro *avanzamento*. Spezzarlo confonderebbe i due assi e
+romperebbe un vocabolario consumato da whitelist BE, i18n FE e cataloghi di
+lista. È lo stesso ragionamento con cui il 2026-08-20 `tipo_movimento` entrò
+come **dimensione** e non come colonna `valore_rettifiche`.
+
+#### ⛔ Le due superfici non devono poter divergere
+
+`motivo_non_fatturata` e
+[`script.fn_check_attivita_riportabile_da_emettere`](/dbzero/script/funzioni/fn_check_attivita_riportabile_da_emettere)
+rispondono alla **stessa domanda** da due lati. Scritte due volte, divergono — e
+la divergenza sarebbe **silenziosa**: la lista proporrebbe il verbo su una riga
+che la mutazione rifiuta, oppure lo nasconderebbe su una che accetta.
+
+Il presidio è `db/pgtap/vendite/test-motivo-non-fatturata-v1.sql`, con una
+fixture **costruita** per ciascun caso: un test che itera su ciò che c'è
+passerebbe a vuoto su un database ricostruito da zero, cioè in CI.
+
+⛔ **`IS DISTINCT FROM 'COMPLETED'`, mai `<>`.** `stato_esecuzione` è
+**nullable** e il `CHECK` ammette anche `ERRORE`: con un `<>` un lucchetto a
+`NULL` darebbe `NULL`, il `CASE` cadrebbe sul ramo successivo e la vista direbbe
+`RESIDUO` dove la funzione risponde `E_ATTIVITA_IN_LAVORAZIONE`. `ERRORE`
+finisce perciò in `GIRO_IN_CORSO`, e il rimedio — aspettare che il lotto si
+chiuda — è lo stesso.
+
+⛔ **E `fatturato` non entra nel discriminante.** Dal `20260826-33` è generata da
+`fattura_riga_id`: dentro `EMESSA_NON_FATTURATA` è **sempre falsa**, quindi non
+distingue niente.
+
+#### ⭐ Lo stadio si calcola una volta sola
+
+`motivo_non_fatturata` è definito **sopra** lo stadio («`NULL` fuori da
+`EMESSA_NON_FATTURATA`»), e in SQL un alias di `SELECT` non è riferibile da
+un'altra espressione della stessa `SELECT`. Ricopiare la condizione avrebbe
+messo la definizione dello stadio in **due posti della stessa vista**: la
+`CROSS JOIN LATERAL … st` la calcola una volta e la serve a entrambe le colonne.
+Valore, nome e tipo della colonna `stadio` non cambiano.
+
+#### ⚠️ Il lotto di provenienza non è `lotto_id`
+
+`lotto_id` arriva dalla catena della **fattura** (`fatture_righe → fatture →
+fatturazione_lotti_fatture`): su un residuo la fattura **non c'è**, quindi è
+`NULL` proprio sulle righe per cui la domanda si pone. `lotto_provenienza_*`
+arriva invece da `attivita_fatturabili.lock_batch_id`, il timbro del giro che
+l'ha lucchettata.
+
+* il `LEFT JOIN` è lecito perché `fatturazione_lotti.lock_batch_id` ha un
+  **`UNIQUE`**: non può moltiplicare le righe di una vista che ne alimenta altre
+  quattro. Il vincolo è verificato in `preCondition` e ha un test suo;
+* ⚠️ `LEFT` e non `INNER` perché `fatturazione_lotti` ha la **RLS**: un lotto
+  fuori perimetro deve lasciare le colonne a `NULL`, non far sparire il residuo;
+* ⚠️ `lotto_provenienza_codice` viene da `codice`, colonna **mutabile**: è
+  display (§6c) e nessuna logica può appoggiarcisi.
+
+#### ℹ️ I due JOIN nuovi non li paga chi non li usa
+
+La ragione è **strutturale, non una misura**: entrambi sono `LEFT JOIN` su
+chiavi con indice `UNIQUE`, quindi PostgreSQL può *provare* che non moltiplicano
+le righe e li **elimina dal piano** quando nessuna delle loro colonne è
+selezionata (*left join removal*).
+
+📌 Fatto datato, e non è il motivo: il 2026-08-26 nei piani di
+`vw_dash_competenza_gruppi` e della vista stessa interrogata senza le colonne
+nuove non compare nessuna scansione di `fatturazione_lotti` né di
+`catalogo.articoli`. ⚠️ **La condizione che regge tutto è il `UNIQUE`**:
+togliendolo, l'eliminazione smetterebbe di essere lecita e la vista comincerebbe
+a contare doppio in silenzio.
+
+* Test: `db/pgtap/vendite/test-motivo-non-fatturata-v1.sql` (17 asserzioni).
+* Lista a catalogo: `ui.lista_definizione` **49** —
+  `vendite.dash_competenza_residui`.
 
 ---
 

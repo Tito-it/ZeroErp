@@ -9,30 +9,32 @@
 //        confronta identità). Gate stato sui CODICI stabili (I-2), enforcement
 //        vero nel BE (I-3: qui si nasconde, là si blinda).
 //
-//        Convertita a <ListaConfigurabile> (config DB `dbops.coda_lavori`,
-//        ui.lista_definizione id 34 — 7° lotto, 2026-08-03): personalizzazione
+//        Lista configurabile su config DB `dbops.coda_lavori`
+//        (ui.lista_definizione id 34 — 7° lotto, 2026-08-03): personalizzazione
 //        colonne + ordinamento server-side (whitelist BE ELENCA_SORT_SQL,
 //        estesa a `stato`/`proprietario` il 2026-08-02) + preset
 //        `started_at desc` che replica il default BE. Stato lista nello store
 //        Pinia `useCodaLavoriStore` (stores/codeJobs.js).
-import { ref, onMounted } from 'vue'
+//
+// ⭐ Dal 2026-08-27 lo SCHELETRO (toolbar, stato worker, lista, refresh
+//    periodico silenzioso, colonna stato con la rotellina, empty) vive in
+//    `CodaTabBase`, condiviso con la coda stampa. Qui restano le colonne di
+//    dominio e — ciò che la stampa non ha — le AZIONI di riga e il drawer di
+//    dettaglio.
+// ⚠️ Il reload dopo un'azione passa dal ref al base (`baseRef.load()`): la
+//    fetch è sua, insieme al refresh dello stato worker.
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
-import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
-import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { extractApiError } from '../../core/utils/apiError'
 import { statoCodaLavoriSeverity, STATO_CODA_LAVORI_MAP } from '../../core/utils/severity'
 import { annullaCodaLavoro, requeueCodaLavoro } from '../../core/api/tracciamento'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
 import { useCodaLavoriStore } from '../stores/codeJobs'
-import CodaFiltriToolbar from './CodaFiltriToolbar.vue'
-import CodaWorkerStato from './CodaWorkerStato.vue'
+import CodaTabBase from './CodaTabBase.vue'
 import JobDettaglioDrawer from './JobDettaglioDrawer.vue'
 
 const { t } = useI18n()
@@ -43,39 +45,13 @@ const isReadonly = useInjectReadonly()
 
 const store = useCodaLavoriStore()
 
-// Helper UI condivisi dei tab code (opzioni + gate azioni code_manage).
-const { canManage, statoOptions, ambitoOptions } = useCodaFiltri(STATO_CODA_LAVORI_MAP)
+// Solo il gate delle AZIONI: le opzioni dei filtri le prende il base.
+const { canManage } = useCodaFiltri(STATO_CODA_LAVORI_MAP)
 
-// Stato worker: ricaricato insieme alla lista, così «Ricarica» aggiorna anche
-// l'ultimo giro (altrimenti resterebbe fermo al primo ingresso nel tab).
-const workerStatoRef = ref(null)
-
-// Scopo: fetch con refresh worker e cattura errore (fail-visible: una tabella
-//        vuota per errore non deve sembrare "coda vuota").
-async function load() {
-  workerStatoRef.value?.refresh()
-  try {
-    await store.fetchList()
-  } catch (err) {
-    notify.error(extractApiError(err, t('common.error')))
-  }
+const baseRef = ref(null)
+function ricarica() {
+  baseRef.value?.load()
 }
-
-const {
-  onPage, onSort, paginatorProps, tablePage,
-  listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, { onReload: load })
-
-// Cambio filtro toolbar: si riparte da pagina 1.
-function onFilterChange() {
-  store.filters.offset = 0
-  load()
-}
-
-// Primo caricamento al mount: con <Tabs lazy> ogni attivazione del tab è un
-// MOUNT (pattern ResiCodaTable); la freshness al rientro rotta la gestisce
-// l'onActivated di useSearchTable dentro lo scaffolding.
-onMounted(load)
 
 // Drawer dettaglio (FE-6).
 const dettaglioVisible = ref(false)
@@ -96,7 +72,7 @@ function annullaJob(row) {
       const res = await execute(() => annullaCodaLavoro(row.id))
       if (res !== null) {
         notify.success(t('strumenti.code.annulla_esito'))
-        load()
+        ricarica()
       }
     },
   })
@@ -111,7 +87,7 @@ function requeueJob(row) {
       const res = await execute(() => requeueCodaLavoro(row.id))
       if (res !== null) {
         notify.success(t('strumenti.code.requeue_esito'))
-        load()
+        ricarica()
       }
     },
   })
@@ -156,95 +132,59 @@ function buildRowActions(row) {
 function onRowClick(data) {
   if (data.is_mio === true || canManage.value) apriDettaglio(data)
 }
+
+// Prop del base: si passa la FUNZIONE, non il booleano — il base la invoca per
+// riga. `computed` solo per il loading, che è reattivo.
+const loadingAzione = computed(() => azioneLoading.value)
 </script>
 
 <template>
-  <div class="app-tab-content">
-    <CodaFiltriToolbar
-      :filtri="store.filters"
-      :stato-options="statoOptions"
-      :ambito-options="ambitoOptions"
-      :page-actions="pageActions"
-      :filtri-inerti="perimetroBloccato"
-      @change="onFilterChange"
-    >
-      <template #actions-suffix>
-        <ListaConfigStatusTag :dirty="dirty" />
-      </template>
-    </CodaFiltriToolbar>
+  <CodaTabBase
+    ref="baseRef"
+    :store="store"
+    codice="dbops.coda_lavori"
+    coda="coda_lavori"
+    :stato-map="STATO_CODA_LAVORI_MAP"
+    :stato-severity="statoCodaLavoriSeverity"
+    empty-key="strumenti.code.nessuna_riga"
+    empty-icon="pi pi-inbox"
+    :extra-loading="loadingAzione"
+    :build-row-actions="buildRowActions"
+    :on-row-click="onRowClick"
+  >
+    <template #cell-job_type="{ data }">
+      <span class="app-code-tipo">{{ data.job_type }}</span>
+    </template>
+    <template #cell-proprietario="{ data }">
+      <span>
+        {{ data.proprietario ?? '—' }}
+        <Tag
+          v-if="data.is_mio"
+          :value="t('strumenti.code.mio_tag')"
+          severity="info"
+          class="app-code-mio-tag"
+        />
+      </span>
+    </template>
+    <!-- Colonna calcolata FE (seed: campo_sorgente vuoto, ordinabile=f). -->
+    <template #cell-tentativi="{ data }">
+      {{ data.tentativi }}/{{ data.max_tentativi }}
+    </template>
+    <!-- started_at/ended_at non hanno slot: il seed dichiara `datetime_short`
+         e il formatter di serie le rende gia' cosi'. -->
 
-    <!-- Liveness del drainer: dice se la coda sta girando o è ferma. Il
-         conteggio delle sue esecuzioni è volutamente assente (un poller a
-         1/min produce numeri enormi che non informano su nulla). -->
-    <CodaWorkerStato ref="workerStatoRef" coda="coda_lavori" />
-
-    <ListaConfigurabile
-      ref="listaRef"
-      codice="dbops.coda_lavori"
-      data-key="id"
-      :rows="store.items"
-      :total="store.totalRecords"
-      :loading="store.loading || azioneLoading"
-      :paginator-options="paginatorProps"
-      :page="tablePage"
-      :sort-field="paginatorProps.sortField"
-      :sort-order="paginatorProps.sortOrder"
-      @page="onPage"
-      @sort="onSort"
-      @row-click="onRowClick"
-      @config-loaded="onConfigLoaded"
-    >
-      <template #cell-job_type="{ data }">
-        <span class="app-code-tipo">{{ data.job_type }}</span>
-      </template>
-      <template #cell-stato="{ data }">
-        <Tag :value="data.stato" :severity="statoCodaLavoriSeverity(data.stato)" />
-      </template>
-      <template #cell-proprietario="{ data }">
-        <span>
-          {{ data.proprietario ?? '—' }}
-          <Tag
-            v-if="data.is_mio"
-            :value="t('strumenti.code.mio_tag')"
-            severity="info"
-            class="app-code-mio-tag"
-          />
-        </span>
-      </template>
-      <!-- Colonna calcolata FE (seed: campo_sorgente vuoto, ordinabile=f). -->
-      <template #cell-tentativi="{ data }">
-        {{ data.tentativi }}/{{ data.max_tentativi }}
-      </template>
-      <!-- started_at/ended_at non hanno slot: il seed dichiara
-           `datetime_short` e il formatter di serie le rende gia' cosi'. -->
-
-      <template #actions="{ data, compact }">
-        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
-      </template>
-
-      <template #empty>
-        <div class="app-empty-state">
-          <i class="pi pi-inbox" />
-          <p>{{ t('strumenti.code.nessuna_riga') }}</p>
-        </div>
-      </template>
-    </ListaConfigurabile>
-
-    <JobDettaglioDrawer
-      v-model:visible="dettaglioVisible"
-      :job-id="dettaglioJobId"
-      @changed="load"
-    />
-  </div>
+    <template #extra>
+      <JobDettaglioDrawer
+        v-model:visible="dettaglioVisible"
+        :job-id="dettaglioJobId"
+        @changed="ricarica"
+      />
+    </template>
+  </CodaTabBase>
 </template>
 
 <style scoped>
 .app-code-tipo {
   font-family: monospace;
-  font-size: 0.85em;
-}
-.app-code-mio-tag {
-  margin-left: 0.35rem;
-  font-size: 0.65rem;
 }
 </style>

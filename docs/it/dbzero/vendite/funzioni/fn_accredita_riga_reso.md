@@ -371,6 +371,33 @@ BEGIN
                   p_prezzo_da_riallineare         => false,
                   p_stato_approvazione            => 'APPROVATA',
                   p_stato_emissione               => 'NON_EMESSA',
+                  -- ⭐ SOURCELESS DI PROPOSITO, e questa e' l'unica riga di
+                  --    questa chiamata che ha bisogno di essere spiegata.
+                  --    Una RETTIFICA non nasce da un documento: nasce CONTRO una
+                  --    commessa. Il reso c'e', e viaggia nel SEGMENTO
+                  --    (DDT:<uid>:R:<riga>#RET:<n>), ma non e' la sua sorgente.
+                  -- ⛔ E non e' una scelta libera: il CHECK
+                  --    chk_commesse_attivita_sorgente_pair impone la coppia
+                  --    TUTTA-NULL o TUTTA-PIENA, quindi valorizzarne una sola —
+                  --    la tentazione di chi passa di qui e pensa «il DDT lo
+                  --    conosco» — solleverebbe. E valorizzarle entrambe col DDT
+                  --    non solleverebbe affatto: cambierebbe in silenzio il
+                  --    GRUPPO FATTURABILE.
+                  -- ⚠️ LA CONSEGUENZA CHE SORPRENDE, ed e' il motivo per cui il
+                  --    commento sta qui e non nel COMMENT della funzione:
+                  --    vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, id)
+                  --    risponde 'MAN:<commessa_id>', cioe' il gruppo «oneri di
+                  --    commessa». Verificato sulla REGOLA e non sui dati il
+                  --    2026-08-29: (NULL, NULL, 999) -> 'MAN:999'.
+                  --    Il gruppo di una rettifica NON e' il DDT da cui la merce
+                  --    e' tornata, ed e' corretto: il gruppo e' l'unita'
+                  --    dell'emissione mirata, non del documento. Chi
+                  --    «riparasse» questi due NULL col DDT farebbe finire la
+                  --    rettifica nel gruppo della merce, senza nessun errore.
+                  -- ⭐ Che poi non finisca nella fattura ordinaria lo garantisce
+                  --    un'altra cosa ancora: fn_build_fattura_key porta la
+                  --    NATURA (rev 2026-08-18). Sono due presidi distinti, e
+                  --    vale sapere quale fa cosa.
                   p_sorgente_tipo_id              => NULL,
                   p_sorgente_uid                  => NULL,
                   p_tipo_movimento                => 'RETTIFICA',

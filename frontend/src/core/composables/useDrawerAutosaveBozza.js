@@ -16,6 +16,8 @@
 //   execute          useApiHandler().execute del drawer (loading condiviso)
 //   loading          ref loading del drawer (guard re-entrancy del trigger)
 //   createdId        ref del drawer (id bozza creata; null = non ancora)
+//   visible          getter () => bool (prop `visible` del drawer): serve al
+//                    ciclo di vita di `createdId` — vedi il watch in fondo
 //   isEdit           getter () => bool (skip in EDIT classico)
 //   contentReady     getter () => bool (drawer ancora in animazione → skip)
 //   triggerSources   getter () => value | [values] osservati per l'auto-save
@@ -42,6 +44,7 @@ export function useDrawerAutosaveBozza({
   execute,
   loading,
   createdId,
+  visible,
   isEdit,
   contentReady,
   triggerSources,
@@ -126,8 +129,39 @@ export function useDrawerAutosaveBozza({
     await autoSaveBozza()
   })
 
+  // ⛔ La bozza auto-salvata appartiene alla SESSIONE DI CREAZIONE che l'ha
+  // creata, e a nessun'altra. `createdId` sopravviveva invece alla chiusura del
+  // drawer, perche' l'unico punto che lo azzerava era il `resetForm()` del ramo
+  // CREATE: l'istanza del drawer e' montata una volta sola nella view e riusata
+  // a ogni apertura, quindi il ref restava valorizzato.
+  //
+  // Effetto per l'operatore (rilievo di Tid sul DDT, 2026-08-27): dopo aver
+  // creato un documento, `effectiveXId = createdId ?? props.xId` faceva vincere
+  // la bozza vecchia sulla riga cliccata, e QUALUNQUE riga della lista apriva
+  // sempre lo stesso documento. Sembrava un difetto della lista — ricaricarla
+  // non cambiava niente, ricaricare la pagina sanava tutto (l'istanza muore e
+  // il ref con lei), che e' il segno che il dato stantio era in memoria.
+  //
+  // ⚠️ Il ciclo di vita sta QUI e non nei drawer: il difetto viveva in tutti e
+  // tre i consumatori, ed era stato corretto a mano nel solo `PreventiviDrawer`
+  // (che tiene comunque il suo reset in apertura: quel drawer e' un'attivita'
+  // dinamica della dashboard pratiche e puo' essere riusato senza passare da
+  // una chiusura). Si azzera sul fronte di CHIUSURA e non su quello di
+  // apertura: l'ordine dei watch dipende dall'ordine di dichiarazione nel
+  // setup, e questo BB e' istanziato DOPO il `watch(visible)` che carica il
+  // dettaglio — un reset in apertura arriverebbe a fetch gia' partita.
+  watch(visible, (v) => {
+    if (v) return
+    createdId.value = null
+  })
+
   // Bozza creata via auto-save ma rimasta senza righe.
+  // ⚠️ `isEdit()` non e' ridondante: senza, una sessione EDIT su un documento
+  // senza righe proponeva l'abbandono della BOZZA di un'altra sessione e ne
+  // chiedeva la cancellazione. Un id stantio che apre il documento sbagliato e'
+  // un fastidio; lo stesso id stantio passato a `deleteDraft` cancella.
   const hasOrphanedDraft = computed(() => {
+    if (isEdit()) return false
     if (createdId.value === null) return false
     return righeCountGetter() === 0
   })

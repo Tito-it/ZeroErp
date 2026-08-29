@@ -35,6 +35,10 @@ Indice test eseguiti:
 23) Slice5ApiTests.test_registrazione_senza_idempotency_key_rifiutata
 24) Slice5ApiTests.test_conferma_ok
 25) Slice5ApiTests.test_annulla_ok
+26) CorrezioneApiTests.test_la_rotta_esiste_e_non_e_intercettata
+27) CorrezioneApiTests.test_senza_idempotency_key_rifiutata
+28) CorrezioneApiTests.test_nulla_da_correggere_risale_intatto
+29) CorrezioneApiTests.test_creata_porta_la_distinta_nuova
 """
 
 from datetime import date
@@ -285,6 +289,87 @@ class RegistrazioneApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["esito"], "NULLA_DA_POSTARE")
+
+
+class CorrezioneApiTests(JwtMockedApiTest):
+    """Q-7 — la rotta della correzione guidata."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    # ⛔ La rotta sta PRIMA del pattern con l'id, come tutte le sue sorelle:
+    #    `distinte/<id>/` la intercetterebbe e il POST finirebbe sul dettaglio.
+    def test_la_rotta_esiste_e_non_e_intercettata(self):
+        self.assertEqual(
+            reverse("pagamenti-distinta-correggi", args=[7]),
+            "/api/v1/pagamenti/distinte/7/correggi/",
+        )
+
+    # ⚠️ E' una scrittura che crea un documento: senza chiave di idempotenza un
+    #    doppio invio produrrebbe due distinte di correzione — che poi il
+    #    vincolo del database rifiuta, ma con un errore invece di un no-op.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.correggi_distinta")
+    def test_senza_idempotency_key_rifiutata(self, mocked, _auth):
+        response = self.client.post(
+            "/api/v1/pagamenti/distinte/7/correggi/",
+            data={},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        mocked.assert_not_called()
+
+    # Scopo: 🔴 L'esito risale INTATTO. `NULLA_DA_CORREGGERE` non e' un errore e
+    #        non diventa un 409: il database dice il fatto, la frase la sceglie
+    #        il frontend — la stessa regola di `NULLA_DA_POSTARE`.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.correggi_distinta")
+    def test_nulla_da_correggere_risale_intatto(self, mocked, _auth):
+        mocked.return_value = {
+            "esito": {
+                "contabile_id": None,
+                "righe_create": 0,
+                "righe_saltate": 2,
+                "esito": "NULLA_DA_CORREGGERE",
+            },
+            "distinta": None,
+        }
+        response = self.client.post(
+            "/api/v1/pagamenti/distinte/7/correggi/",
+            data={},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-correzione-1",
+        )
+        self.assertEqual(response.status_code, 200)
+        dati = response.json()["data"]
+        self.assertEqual(dati["esito"]["esito"], "NULLA_DA_CORREGGERE")
+        self.assertIsNone(dati["distinta"])
+
+    # Scopo: Creata -> risale la distinta NUOVA, che e' quella da aprire.
+    @_AUTH
+    @patch("apps.pagamenti.api.views.pagamenti_service.correggi_distinta")
+    def test_creata_porta_la_distinta_nuova(self, mocked, _auth):
+        mocked.return_value = {
+            "esito": {
+                "contabile_id": 42,
+                "righe_create": 3,
+                "righe_saltate": 1,
+                "esito": "CREATA",
+            },
+            "distinta": {"id": 42, "codice": "CNT-0042"},
+        }
+        response = self.client.post(
+            "/api/v1/pagamenti/distinte/7/correggi/",
+            data={"motivo": "importo digitato male"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="test-key-correzione-2",
+        )
+        self.assertEqual(response.status_code, 200)
+        dati = response.json()["data"]
+        self.assertEqual(dati["distinta"]["id"], 42)
+        self.assertEqual(dati["esito"]["righe_saltate"], 1)
 
 
 class Slice3RotteTests(JwtMockedApiTest):

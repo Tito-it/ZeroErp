@@ -18,6 +18,7 @@
 import Tag from 'primevue/tag'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Checkbox from 'primevue/checkbox'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { statoLottoSeverity } from '../../core/utils/severity'
@@ -36,6 +37,21 @@ defineProps({
   azioniDisabled: { type: Boolean, default: false },
   emptyKey: { type: String, default: 'vendite.lotti.nessun_lotto' },
   emptyIcon: { type: String, default: 'pi pi-server' },
+  // ⭐ SELEZIONE (numerazione su selezione). Il chiamante la governa: qui il
+  //    componente rende solo le caselle, perché la selezione VIVE ATTRAVERSO LE
+  //    DUE SCHEDE — un lotto di competenza precedente, spuntato nei «recuperi»,
+  //    si numera insieme a quelli del mese. Tenerla dentro il wrapper
+  //    significherebbe due selezioni separate che non si vedono fra loro.
+  // ⚠️ `null` = nessuna selezione: la colonna non compare affatto. È il caso
+  //    dell'operatore senza permesso di numerare, che non deve nemmeno vedere
+  //    le caselle.
+  selezione: { type: Object, default: null },
+  // Predicato «questo lotto è dentro un giro di numerazione ancora vivo»:
+  // alimenta la rotellina accanto al codice. Il chiamante lo governa (è la sua
+  // macchina `useRigheInGiro`); qui si rende soltanto.
+  // ⚠️ Default che risponde SEMPRE false, non `null`: così il template non
+  //    ramifica e una scheda che non passa il predicato si comporta come prima.
+  inGiro: { type: Function, default: () => false },
 })
 
 const emit = defineEmits(['page', 'sort', 'row-click', 'config-loaded', 'lista-pronta'])
@@ -73,8 +89,48 @@ onMounted(() => emit('lista-pronta', listaRef.value))
     @row-click="$emit('row-click', $event)"
     @config-loaded="$emit('config-loaded', $event)"
   >
+    <!-- Casella di selezione. ⚠️ Slot `#selection` (col gemello
+         `#selection-header`), non una colonna di catalogo: la selezione non è
+         un dato del lotto.
+         ⛔ `disabled` sulle righe NON numerabili invece di nasconderle: la riga
+         resta a video con la sua ragione, e l'operatore vede PERCHÉ non la può
+         spuntare. Nasconderle darebbe una lista che cambia sotto gli occhi a
+         seconda del verbo. -->
+    <template v-if="selezione" #selection-header>
+      <Checkbox
+        :model-value="selezione.tuttiInPagina.value"
+        :indeterminate="selezione.alcuniInPagina.value"
+        binary
+        :aria-label="t('vendite.lotti.seleziona_pagina')"
+        @update:model-value="selezione.toggleTuttiInPagina"
+      />
+    </template>
+    <template v-if="selezione" #selection="{ data }">
+      <Checkbox
+        :model-value="selezione.isSelezionato(data)"
+        :disabled="!selezione.isSelezionabile(data)"
+        binary
+        v-tooltip.right="selezione.motivoNonSelezionabile(data)"
+        :aria-label="data.codice"
+        @update:model-value="() => selezione.toggle(data)"
+      />
+    </template>
+
+    <!-- ⭐ Rotellina sul lotto dentro un giro di numerazione vivo. Sta accanto
+         al CODICE, dove l'occhio è già posato — stessa scelta della lista
+         gruppi del cruscotto competenza, che ha lo stesso gesto.
+         ⚠️ Dice «su questa riga si sta lavorando», non «non toccare»: i due
+         verbi sono già spenti per conto loro mentre un giro è vivo. -->
     <template #cell-codice="{ data }">
-      <strong>{{ data.codice }}</strong>
+      <span class="app-cella-con-spinner">
+        <strong>{{ data.codice }}</strong>
+        <i
+          v-if="inGiro(data.id)"
+          class="pi pi-spin pi-spinner app-spinner-in-corso"
+          v-tooltip.right="t('vendite.lotti.lotto_in_giro_tooltip')"
+          :aria-label="t('vendite.lotti.lotto_in_giro_tooltip')"
+        />
+      </span>
     </template>
     <template #cell-tipo_lotto="{ data }">
       <Tag :value="data.tipo_lotto" severity="secondary" />
@@ -133,3 +189,4 @@ onMounted(() => emit('lista-pronta', listaRef.value))
     </template>
   </ListaConfigurabile>
 </template>
+

@@ -392,7 +392,7 @@ Tutta l'infrastruttura a valle dell'handler e identica per commerciali e utiliti
   >
   > ⚠️ E vale la nota in testa a quel documento: il **come** e' superato. La
   > correzione di **merce** (reso gia' fatturato) non passa di li' — ha il suo
-  > modello in [brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
+  > modello in [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
 - Un ricalcolo NON modifica righe con `stato_emissione = 'EMESSA'` e `fatturato = TRUE`
   (guard in `fn_upsert_commessa_attivita` e `fn_emit`).
 

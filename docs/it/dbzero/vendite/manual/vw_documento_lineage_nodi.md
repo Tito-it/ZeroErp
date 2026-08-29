@@ -81,7 +81,7 @@ WHERE tipo_id = (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_V
 
 ### ⭐ La natura del documento (rev 2026-08-21)
 
-Il nodo espone anche `natura_doc_codice` / `natura_doc_descrizione`, da
+Il nodo espone anche `natura_doc_codice_interno` / `natura_doc_descrizione`, da
 `config.nature_doc_fiscale`.
 
 **Perché.** Il grafo è nato il 2026-07-14, quando `FATTURA` era **una cosa

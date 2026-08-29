@@ -160,12 +160,12 @@ INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, fattura_riga_id, fatturato)
+  commessa_id, commessa_attivita_id, fattura_riga_id)
 SELECT r.articolo_id, r.istanza_utility_id, DATE '2026-10-15', 1,
        DATE '2026-10-01', DATE '2026-10-01', DATE '2026-10-31',
        r.uom_id, 10.000000, r.tipo_doc_fiscale_id,
        (SELECT commessa_id FROM tmp_commessa_lcf),
-       (SELECT id_af_non_fatt FROM tmp_att_lcf), NULL, false
+       (SELECT id_af_non_fatt FROM tmp_att_lcf), NULL
 FROM tmp_refs_lcf r;
 
 -- ⚠️ 2026-07-28: serve una riga di fattura VERA.
@@ -212,12 +212,12 @@ INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
   uom_id, prezzo_unitario, tipo_doc_fiscale_id,
-  commessa_id, commessa_attivita_id, fattura_riga_id, fatturato)
+  commessa_id, commessa_attivita_id, fattura_riga_id)
 SELECT r.articolo_id, r.istanza_utility_id, DATE '2026-10-15', 1,
        DATE '2026-10-01', DATE '2026-10-01', DATE '2026-10-31',
        r.uom_id, 10.000000, r.tipo_doc_fiscale_id,
        (SELECT commessa_id FROM tmp_commessa_lcf),
-       (SELECT id_af_fatt FROM tmp_att_lcf), (SELECT riga_id FROM tmp_fattura_lcf), true
+       (SELECT id_af_fatt FROM tmp_att_lcf), (SELECT riga_id FROM tmp_fattura_lcf)
 FROM tmp_refs_lcf r;
 
 -- ============================================================

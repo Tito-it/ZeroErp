@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA POLICY NON DEVE COPRIRE IL «MANCA IL CONTO» — correzione in avanti
+#   pagamenti.enti_incasso · corregge 20260828-17 (S6-1, lotto 10)
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §6.17
+#
+# ── 🔴 IL DIFETTO, TROVATO DA UN pgTAP CHE C'ERA GIA' ───────────────
+#   `test-enti-incasso-conto-incasso.sql` verifica che un canale **senza
+#   conto** non si crei, e si aspetta `23502` — la violazione del `NOT NULL`.
+#   Con la policy del changeSet `-17` il rifiuto arriva prima e vale `42501`:
+#   la `WITH CHECK` chiede «esiste un conto TUO con questo id?», e con l'id a
+#   `NULL` la risposta e' no.
+#
+#   ⛔ **Il risultato e' che «hai dimenticato il conto» diventa un errore di
+#   PERMESSO.** Sul filo HTTP: **403 invece di 400**, cioe' «non ti e'
+#   consentito» al posto di «manca un campo». All'operatore che sta compilando
+#   il form si direbbe la cosa sbagliata, e a chi guarda i log sembrerebbe un
+#   problema di perimetro.
+#
+#   ⭐ E la RLS aveva **coperto un vincolo**, che e' il modo peggiore in cui una
+#   policy puo' sbagliare: non lascia passare niente di troppo, ma toglie la
+#   parola a un controllo che sapeva spiegarsi meglio di lei.
+#
+# ── ⭐ IL RIMEDIO: la policy TACE dove il vincolo parla ─────────────
+#   Si aggiunge `soggetto_ruolo_conto_bancario_id IS NULL OR …`.
+#   ⛔ Non e' un buco: la colonna e' `NOT NULL`, quindi una riga con quel valore
+#   nullo **non puo' esistere** — in lettura il ramo non seleziona mai niente,
+#   e in scrittura serve solo a lasciare che sia il `NOT NULL` a rifiutare, con
+#   il suo messaggio e il suo SQLSTATE.
+#   ⭐ La regola generale che ne discende: *una policy non deve rispondere a una
+#   domanda che un vincolo risponde meglio.*
+#
+# ── ⚠️ PERCHE' NON L'HA PRESO LA PROVA DEL LOTTO ───────────────────
+#   La prova di `-17` verificava i due casi del perimetro (il proprio conto e
+#   quello altrui) e non il caso **senza conto**, che al perimetro non
+#   appartiene. A prenderlo e' stato un pgTAP scritto per un'altra ragione,
+#   dopo l'apply. ⇒ La lezione sta nel brief: una policy nuova su una tabella
+#   si prova rilanciando **tutti** i test che quella tabella la scrivono, non
+#   solo quelli che si stanno toccando.
+#
+# Verifica: db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql (test 2)
+#           db/pgtap/rls/test-rls-pagamenti-perimetro.sql (14-17, invariati)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260828-21-fix-policy-enti-incasso-conto-nullo-mctit.yaml
+
+  - changeSet:
+      id: 20260828-21-fix-policy-enti-incasso-conto-nullo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La policy sui canali copriva il NOT NULL del conto: con l'id a nullo la WITH CHECK
+        rispondeva no, e «hai dimenticato il conto» diventava un errore di permesso — 403 invece
+        di 400, cioe' la frase sbagliata a chi sta compilando un form. Si aggiunge il ramo IS
+        NULL, che non e' un buco perche' la colonna e' NOT NULL: in lettura non seleziona mai
+        niente, in scrittura lascia parlare il vincolo. Una policy non deve rispondere a una
+        domanda che un vincolo risponde meglio.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_policies
+               WHERE schemaname = 'pagamenti' AND tablename = 'enti_incasso'
+                 AND policyname = 'rls_enti_incasso_perimetro_incasso';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ `ALTER POLICY` e non un DROP+CREATE: la policy resta la
+              --    stessa, cambia il predicato. Un DROP lascerebbe la tabella
+              --    scoperta per l'istante fra i due comandi.
+              ALTER POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          -- ⛔ Ramo che in LETTURA non seleziona mai niente: la
+                          --    colonna e' NOT NULL. Esiste per la scrittura.
+                          soggetto_ruolo_conto_bancario_id IS NULL
+                          OR EXISTS (
+                              SELECT 1
+                                FROM anagrafiche.soggetti_ruoli_conti_bancari src
+                               WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+                                 AND script.fn_scope_ef_whitelist_via_sr(
+                                         NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                         src.soggetto_ruolo_id)
+                          )
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND (
+                          -- ⭐ Qui il ramo serve: senza, la policy rifiuterebbe
+                          --    con 42501 una riga che il NOT NULL rifiuta con
+                          --    23502 e una frase che si capisce.
+                          soggetto_ruolo_conto_bancario_id IS NULL
+                          OR EXISTS (
+                              SELECT 1
+                                FROM anagrafiche.soggetti_ruoli_conti_bancari src
+                               WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+                                 AND script.fn_scope_ef_whitelist_via_sr(
+                                         NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                         src.soggetto_ruolo_id)
+                          )
+                      )
+                  );
+
+              COMMENT ON POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+              IS 'Il perimetro dei CANALI di incasso: un operatore vede e scrive solo i canali il cui CONTO appartiene a un emittente del suo scope. ⭐ E'' D5 applicata alla configurazione: il canale porta il conto su cui atterra il denaro, cioe'' di chi sono i soldi prima che esista una fattura. 🔴 Il predicato sta sul CONTO e NON sull''id del canale: una espressione che rilegge `enti_incasso` per il proprio id non vede la riga che il comando sta inserendo, e ogni INSERT sarebbe rifiutato. ⚠️ Rev 2026-08-28 (changeSet -20): aggiunto il ramo `soggetto_ruolo_conto_bancario_id IS NULL`. Senza, la policy COPRIVA il NOT NULL della colonna — un canale creato senza conto veniva rifiutato con 42501 invece che con 23502, cioe'' «non ti e'' consentito» al posto di «manca un campo»: 403 invece di 400, la frase sbagliata a chi sta compilando un form. ⛔ Il ramo non e'' un buco: la colonna e'' NOT NULL, quindi in lettura non seleziona mai niente e in scrittura serve solo a lasciare che sia il vincolo a parlare. ⭐ La regola generale: una policy non deve rispondere a una domanda che un vincolo risponde meglio. ⚠️ FOR ALL e non FOR SELECT: la RLS nega cio'' che nessuna policy permette. ⚠️ script.fn_check_user_emittente_scope risponde TRUE con l''utente a NULL (regola job batch): con app.current_user_id vuota l''unico cancello resta il congiunto sul ruolo applicativo — vale per tutte le policy di questo schema. S6-1 del cantiere incassi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Si torna al predicato senza il ramo IS NULL, cioe' a quello
+              --    che copre il NOT NULL: e' un passo indietro su un difetto,
+              --    non su una scelta.
+              ALTER POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_ruoli_conti_bancari src
+                           WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+                             AND script.fn_scope_ef_whitelist_via_sr(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     src.soggetto_ruolo_id)
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_ruoli_conti_bancari src
+                           WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+                             AND script.fn_scope_ef_whitelist_via_sr(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     src.soggetto_ruolo_id)
+                      )
+                  );

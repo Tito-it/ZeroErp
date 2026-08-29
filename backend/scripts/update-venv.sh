@@ -39,6 +39,23 @@ OUT="../requirements.txt"
 [[ -f "$IN" ]] || { echo "Missing $IN"; exit 1; }
 [[ -n "${VIRTUAL_ENV:-}" ]] || { echo "Activate venv first (source .venv/bin/activate)"; exit 1; }
 
+# ⛔ Guard sull'ambiente ATTIVO, non solo sulla sua esistenza (2026-08-26).
+#    `piptools sync` fa quello che dichiara: installa E RIMUOVE i pacchetti che
+#    non stanno in requirements.txt. Lanciato con attiva la venv degli STRUMENTI
+#    di sviluppo (mkdocs, zensical, pre-commit) la SVUOTEREBBE — portandosi via
+#    anche `pre-commit`, e con lui l'hook di .git/hooks, che punta proprio a
+#    quell'interprete.
+#    Il controllo qui sopra chiedeva solo che UNA venv fosse attiva: bastava
+#    quando l'ambiente era uno solo, non basta piu' da quando sono due.
+VENV_ATTESA="$(cd .. && pwd)/.venv"
+if [[ "$(readlink -f "${VIRTUAL_ENV}")" != "$(readlink -f "${VENV_ATTESA}")" ]]; then
+  echo "Venv sbagliata: questo script governa SOLO quella del backend."
+  echo "  attiva:  ${VIRTUAL_ENV}"
+  echo "  attesa:  ${VENV_ATTESA}"
+  echo "Per gli strumenti di sviluppo si usa scripts/update-venv.sh dalla radice."
+  exit 1
+fi
+
 
 # 1) Aggiorna pip
 #    Storia: pip 26.2 aveva rimosso `stdlib_pkgs` da

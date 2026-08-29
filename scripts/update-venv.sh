@@ -33,10 +33,35 @@
 
 set -euo pipefail
 
+# ⛔ ANCORAGGIO (2026-08-26). Sotto c'e' un `pip freeze > requirements.txt` senza
+#    percorso: prima di questa riga scriveva nella CARTELLA CORRENTE, quindi
+#    lanciato da `backend/` sostituiva `backend/requirements.txt` — che e'
+#    generato da `pip-compile` — con un freeze piatto, cancellando il lock.
+#    ⚠️ Ed e' un errore facile: i due script si chiamano UGUALE
+#    (`scripts/update-venv.sh` qui, `backend/scripts/update-venv.sh` la'), e il
+#    fratello del backend e' gia' ancorato cosi'.
+cd "$(dirname "$0")/.."
+
 if [[ -z "${VIRTUAL_ENV:-}" ]]; then
   echo "⚠️  Non sembra attiva una virtualenv (VIRTUAL_ENV non impostata)."
   read -r -p "Vuoi continuare lo stesso? [y/N] " RESP
   [[ "${RESP}" == "y" ]] || exit 1
+fi
+
+# ⛔ E non dev'essere la venv del BACKEND: qui si fa `pip freeze` di tutto
+#    l'ambiente sul requirements.txt di radice, quindi con quella attiva la lista
+#    degli strumenti di sviluppo diventerebbe l'elenco dei pacchetti Django.
+#    ⚠️ Si vieta quella sbagliata invece di pretendere quella giusta: dove viva
+#    l'ambiente degli strumenti e' una scelta della macchina (qui
+#    ~/.venvs/zeroerp-tools), e cablarla renderebbe lo script inservibile
+#    altrove. La venv del backend, invece, sta nel repo e la sappiamo.
+VENV_BACKEND="$(pwd)/backend/.venv"
+if [[ -n "${VIRTUAL_ENV:-}" \
+      && "$(readlink -f "${VIRTUAL_ENV}")" == "$(readlink -f "${VENV_BACKEND}")" ]]; then
+  echo "Venv sbagliata: questa e' quella del BACKEND, governata da pip-compile."
+  echo "  attiva: ${VIRTUAL_ENV}"
+  echo "Per il backend si usa backend/scripts/update-venv.sh."
+  exit 1
 fi
 
 PYTHON_BIN="${PYTHON_BIN:-python}"

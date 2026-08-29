@@ -1,0 +1,229 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L1 pezzo 2 — LA PRIMITIVA DEL RITORNO IN CODA
+#   vendite.fn_libera_attivita_fatturabili(bigint[])
+#       -> TABLE(updated_attivita integer, riemesse_attivita integer)
+#   Piano: brief-db-lavoro-che-non-torna-indietro, L1 / Q-6 (§9.1)
+#
+# ── ⭐ PERCHE' NASCE ADESSO, E NON DOPO ─────────────────────────────
+#   «Questo lavoro torna disponibile» e' UN fatto solo, e si scrive su DUE
+#   livelli: l'attivita' fatturabile si libera (lucchetto, timbro, legame con la
+#   riga di fattura, stato di esecuzione) e la riga di commessa torna
+#   NON_EMESSA. Se i due divergono, uno torna in coda e l'altro no — in
+#   silenzio, che e' esattamente il male da cui nasce questo cantiere.
+#
+#   Oggi quella coppia esiste in UN posto (fn_cleanup_fatture_by_ids). Il verbo
+#   «Riporta da emettere» (L5) sarebbe il SECONDO. Estrarla ora significa che la
+#   duplicazione **non esiste mai**; estrarla dopo significa scriverla due volte
+#   e rifattorizzare una funzione appena corretta.
+#
+# ── ⛔ NON IMPOSTA LA GUC DI MANUTENZIONE, ED E' LA PARTE PORTANTE ──
+#   `trgfn_attivita_fatturabili_guard_fatturato` rifiuta l'UPDATE quando
+#   `OLD.fattura_riga_id` e' valorizzato, salvo GUC
+#   `zeroerp.maintenance_reset_lotto_draft`.
+#
+#   Se la primitiva impostasse quella GUC da se', diventerebbe **il modo di
+#   scollegare una fattura VIVA**: chiunque la chiamasse su un'attivita' ancora
+#   agganciata la staccherebbe dal suo documento senza che nulla protesti.
+#   Impostarla resta quindi una decisione del CHIAMANTE, e ne ha diritto solo
+#   chi la fattura la sta cancellando — fn_cleanup_fatture_by_ids, che la
+#   imposta gia' due passi prima. Il verbo di recupero di L5 non ce l'ha e non
+#   deve averla: agisce su attivita' ORFANE, dove `fattura_riga_id` e' gia' NULL
+#   e il guard lascia passare da se'.
+#
+# ── ⛔ L'INSIEME VUOTO NON E' UN ERRORE, QUI ────────────────────────
+#   Array NULL o vuoto: nessuna scrittura, contatori a zero. E' una primitiva
+#   interna, e la pulizia la chiama legittimamente con l'insieme vuoto (una
+#   fattura senza righe non ha attivita' da liberare).
+#   ⚠️ Il guard sull'array vuoto e' un dovere del VERBO — dove un array vuoto e'
+#   un errore di chiamante e non deve poter uscire come un dato — non della
+#   primitiva che il verbo consuma.
+#
+# ── ℹ️ LE COMMESSE_ATTIVITA SI RACCOLGONO PRIMA ─────────────────────
+#   La UPDATE sulle attivita' azzera `fattura_riga_id`, ma soprattutto
+#   `lock_batch_id`: l'insieme delle righe di commessa da riportare in coda si
+#   ricava dalle attivita' PRIMA di toccarle. Due statement e due
+#   `GET DIAGNOSTICS` distinti, non una CTE con RETURNING: i due livelli restano
+#   misurabili separatamente, ed e' cio' che permette a chi chiama di accorgersi
+#   se uno dei due non ha fatto niente.
+#   Solo le `EMESSA` tornano a `NON_EMESSA`: le `ANNULLATA` sono state annullate
+#   di proposito e non tornano in coda per una pulizia.
+#
+# ── ℹ️ SECURITY INVOKER, e array bigint[] espliciti ─────────────────
+#   Invoker per contratto (linee-guida-sql §5b): RLS e scope emittente restano
+#   applicati identici al chiamante — `vendite.commesse_attivita` ha RLS attiva.
+#   ⚠️ `colonna%TYPE[]` non esiste in PostgreSQL: gli array si dichiarano
+#   espliciti, e i due contatori sono `integer` perche' vengono da ROW_COUNT,
+#   non da una colonna.
+#
+# Consumatori: 20260826-25 (fn_cleanup_fatture_by_ids riordinata) e, a seguire,
+#              il verbo «Riporta da emettere» del lotto L5.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-24-create-fn-libera-attivita-fatturabili-mctit.yaml
+
+  - changeSet:
+      id: 20260826-24-create-fn-libera-attivita-fatturabili
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L1 / Q-6: la coppia di scritture del ritorno in coda diventa una primitiva condivisa.
+        ⭐ «Questo lavoro torna disponibile» e' UN fatto scritto su DUE livelli
+        (attivita_fatturabili liberata, commesse_attivita da EMESSA a NON_EMESSA): se i due
+        divergono, uno torna in coda e l'altro no, in silenzio. Consumata da
+        fn_cleanup_fatture_by_ids (20260826-25) e dal verbo «Riporta da emettere» di L5, cosi'
+        la duplicazione non esiste mai. ⛔ NON imposta la GUC di manutenzione: impostarla la
+        renderebbe il modo di scollegare una fattura viva. Resta una decisione del chiamante,
+        e ne ha diritto solo chi la fattura la sta cancellando. ⛔ Array vuoto = zero scritture
+        e contatori a zero: il guard sull'array vuoto e' un dovere del verbo, non della
+        primitiva.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+            # ⚠️ Nessun overload: si conta su pronargs, non sulla stringa dei
+            #    tipi — pg_get_function_identity_arguments restituisce anche i
+            #    NOMI dei parametri e un confronto testuale non combacia mai.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_libera_attivita_fatturabili'
+                     AND p.pronargs <> 1;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_libera_attivita_fatturabili(
+                  -- ⚠️ Array esplicito: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  p_attivita_fatturabili_ids bigint[]
+              )
+               RETURNS TABLE(updated_attivita integer, riemesse_attivita integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_ca_ids            bigint[];
+                  v_updated_attivita  integer := 0;
+                  v_riemesse_attivita integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rimettere in coda di fatturazione un insieme di
+                  --   attivita_fatturabili: le libera (lucchetto, timbro,
+                  --   legame con la riga di fattura, stato di esecuzione) e
+                  --   riporta a NON_EMESSA le commesse_attivita che erano
+                  --   passate a EMESSA per causa loro.
+                  --
+                  -- ⭐ PERCHE' E' UNA PRIMITIVA e non due UPDATE copiate.
+                  --   Sono le due scritture che compongono UN SOLO fatto —
+                  --   «questo lavoro torna disponibile» — e vivono su due
+                  --   livelli diversi. Se divergono, un livello torna in coda
+                  --   e l'altro no, IN SILENZIO: nessun errore, nessun
+                  --   contatore fuori posto, e il lavoro esce dal giro.
+                  --   E' la stessa ragione per cui RD-4 aveva messo il ritorno
+                  --   a NON_EMESSA dentro la pulizia invece che nei suoi tre
+                  --   chiamanti.
+                  --
+                  -- ⛔ NON imposta zeroerp.maintenance_reset_lotto_draft, ed e'
+                  --   la parte portante. trgfn_attivita_fatturabili_guard_fatturato
+                  --   rifiuta l'UPDATE quando OLD.fattura_riga_id e'
+                  --   valorizzato: se la GUC la impostasse questa funzione,
+                  --   diventerebbe il modo di SCOLLEGARE UNA FATTURA VIVA.
+                  --   Impostarla resta una decisione del chiamante, e ne ha
+                  --   diritto solo chi la fattura la sta cancellando.
+                  --
+                  -- Regole:
+                  --   - array NULL o vuoto: nessuna scrittura, contatori a
+                  --     zero. Non e' un errore di dominio, e' l'insieme vuoto
+                  --     — e la pulizia la chiama cosi' quando una fattura non
+                  --     ha righe. Il guard sull'array vuoto e' un dovere del
+                  --     VERBO che questa primitiva serve, non suo;
+                  --   - stato_esecuzione torna a NULL: l'attivita' non e' piu'
+                  --     dentro nessun giro di fatturazione;
+                  --   - solo le commesse_attivita in EMESSA tornano a
+                  --     NON_EMESSA: le ANNULLATA sono state annullate di
+                  --     proposito e non tornano in coda per una pulizia.
+                  -- =========================================================
+                  IF p_attivita_fatturabili_ids IS NULL
+                     OR array_length(p_attivita_fatturabili_ids, 1) IS NULL THEN
+                      RETURN QUERY SELECT 0, 0;
+                      RETURN;
+                  END IF;
+
+                  -- Le righe di commessa da riportare in coda si raccolgono
+                  -- PRIMA della UPDATE qui sotto: quella azzera il legame e il
+                  -- lucchetto, e dopo l'insieme non sarebbe piu' ricostruibile.
+                  -- ℹ️ commessa_attivita_id e' NOT NULL: il filtro non toglie
+                  --    righe oggi, tiene fuori il NULL dall'array_agg se un
+                  --    giorno la colonna diventasse nullable.
+                  SELECT array_agg(DISTINCT af.commessa_attivita_id)
+                    INTO v_ca_ids
+                    FROM vendite.attivita_fatturabili af
+                   WHERE af.id = ANY(p_attivita_fatturabili_ids)
+                     AND af.commessa_attivita_id IS NOT NULL;
+
+                  IF v_ca_ids IS NULL THEN
+                      v_ca_ids := ARRAY[]::bigint[];
+                  END IF;
+
+                  -- ── livello 1: l'attivita' fatturabile torna disponibile ──
+                  UPDATE vendite.attivita_fatturabili
+                     SET lock_in_fatturazione = false,
+                         lock_batch_id        = NULL,
+                         fatturato            = false,
+                         fattura_riga_id      = NULL,
+                         stato_esecuzione     = NULL,
+                         data_update          = now(),
+                         user_update          = current_user
+                   WHERE id = ANY(p_attivita_fatturabili_ids);
+                  GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
+
+                  -- ── livello 2: la riga di commessa torna emettibile ───────
+                  -- 🔴 RD-4 — il livello che mancava. Senza, le attivita'
+                  -- restano marcate come emesse: fn_emit_attivita_fatturabili_da_commessa
+                  -- filtra su stato_emissione = 'EMESSA' e non le riprende mai
+                  -- piu', e il cruscotto competenza continua a contarle
+                  -- lavorate.
+                  -- ⚠️ Due statement e due GET DIAGNOSTICS distinti, non una
+                  --    CTE con RETURNING: i due livelli restano misurabili
+                  --    separatamente, ed e' cio' che permette al chiamante di
+                  --    accorgersi se uno dei due non ha fatto niente.
+                  UPDATE vendite.commesse_attivita ca
+                     SET stato_emissione = 'NON_EMESSA',
+                         data_update     = now(),
+                         user_update     = current_user
+                   WHERE ca.id = ANY(v_ca_ids)
+                     AND ca.stato_emissione = 'EMESSA';
+                  GET DIAGNOSTICS v_riemesse_attivita = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_updated_attivita, v_riemesse_attivita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_libera_attivita_fatturabili(bigint[])
+              IS 'Rimette in coda di fatturazione un insieme di attivita_fatturabili: le libera (lock_in_fatturazione, lock_batch_id, fatturato, fattura_riga_id, stato_esecuzione) e riporta a NON_EMESSA le commesse_attivita che erano passate a EMESSA per causa loro. Torna i due contatori separati. ⭐ E'' UNA PRIMITIVA e non due UPDATE copiate perche'' le due scritture compongono UN SOLO fatto — «questo lavoro torna disponibile» — su due livelli diversi: se divergono, un livello torna in coda e l''altro no, in silenzio, senza nessun errore e senza nessun contatore fuori posto. E'' la stessa ragione per cui RD-4 aveva messo il ritorno a NON_EMESSA dentro fn_cleanup_fatture_by_ids invece che nei suoi tre chiamanti. Consumata da vendite.fn_cleanup_fatture_by_ids e dal verbo di recupero «Riporta da emettere». ⛔ NON imposta la GUC zeroerp.maintenance_reset_lotto_draft, ed e'' la parte portante: trgfn_attivita_fatturabili_guard_fatturato rifiuta l''UPDATE quando OLD.fattura_riga_id e'' valorizzato, quindi una primitiva che si aprisse la strada da se'' diventerebbe il modo di SCOLLEGARE UNA FATTURA VIVA. Impostare la GUC resta una decisione del chiamante, e ne ha diritto solo chi la fattura la sta cancellando; il verbo di recupero non ce l''ha e non deve averla, perche'' agisce su attivita'' ORFANE dove fattura_riga_id e'' gia'' NULL e il guard lascia passare da se''. ⛔ Array NULL o vuoto: nessuna scrittura e contatori a zero — non e'' un errore di dominio, e'' l''insieme vuoto, e la pulizia la chiama cosi'' quando una fattura non ha righe. Il guard sull''array vuoto e'' un dovere del VERBO, non della primitiva. ℹ️ Le commesse_attivita si raccolgono PRIMA della UPDATE, che azzera il legame e il lucchetto; solo le EMESSA tornano a NON_EMESSA, perche'' le ANNULLATA sono state annullate di proposito. ℹ️ SECURITY INVOKER: commesse_attivita ha RLS attiva e lo scope resta quello del chiamante. Piano: brief-db-lavoro-che-non-torna-indietro, L1 / Q-6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_libera_attivita_fatturabili(bigint[]);

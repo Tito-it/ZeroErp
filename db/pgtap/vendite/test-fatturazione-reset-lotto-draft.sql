@@ -16,6 +16,29 @@
 -- 10) Cleanup completato (note + righe + fatture)
 -- 11) Reset singola fattura DRAFT (nuova funzione)
 -- 12) Chiusura test e rollback
+-- 13) 🔴 L'attivita' della fattura tolta e' tornata LIBERA
+-- 14) 🔴 La sua commessa_attivita e' tornata NON_EMESSA
+-- 15) Il contatore updated_attivita dice 1 (non 0)
+-- 16) Il contatore riemesse_attivita dice 1 (non 0)
+--
+-- ⛔ rev 2026-08-26 — PERCHE' I QUATTRO IN FONDO SONO STATI AGGIUNTI
+--   Fino a oggi l'ultimo test costruiva ESATTAMENTE il caso giusto — lotto
+--   DRAFT, commessa_attivita, attivita' portata a mano ad agganciata +
+--   fatturata + lucchettata — e poi asseriva su `deleted_fatture`, che e' una
+--   colonna A SINISTRA di quella che si era rotta. Fra il 2026-07-28 e il
+--   2026-08-26 `updated_attivita` valeva 0 e questo file era VERDE.
+--   Il difetto non era «mancava un test»: il test c'era, la fixture era
+--   corretta, e l'asserzione guardava la colonna sbagliata.
+--   Brief: brief-db-lavoro-che-non-torna-indietro §8.4.
+--
+-- ⚠️ E la commessa_attivita dello slot RL2 viene portata a EMESSA PRIMA della
+--   chiamata. Senza quel passo nasce NON_EMESSA, quindi `riemesse_attivita`
+--   varrebbe 0 sia con la correzione sia senza: sarebbe verde per sottrazione.
+--
+-- ⚠️ La mutazione e' chiamata in un'ISTRUZIONE SEPARATA dalle asserzioni e il
+--   risultato e' materializzato in una temp: dentro la stessa istruzione la
+--   snapshot leggerebbe lo stato PRIMA delle scritture, e il rosso accuserebbe
+--   la funzione invece del test.
 --
 -- ⚠️ rev 2026-08-18 (bonifica baseline). I due inserimenti di
 -- attivita_fatturabili erano "nudi": non e' piu' un caso possibile
@@ -44,7 +67,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(16);
 -- ============================================================
 -- 0) Riferimenti e costanti
 -- ============================================================
@@ -210,7 +233,6 @@ CREATE TEMP TABLE tmp_attivita_rl AS WITH ins AS (
       competenza_al,
       quantita,
       approvato,
-      fatturato,
       sospesa,
       tipo_doc_fiscale_id,
       valuta_id,
@@ -227,7 +249,6 @@ CREATE TEMP TABLE tmp_attivita_rl AS WITH ins AS (
     (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
-    false,
     false,
     r.tipo_doc_fiscale_id,
     r.valuta_id,
@@ -312,7 +333,6 @@ SET lock_in_fatturazione = true,
     SELECT lock_batch_id
     FROM tmp_lotto_rl
   ),
-  fatturato = true,
   fattura_riga_id = (
     SELECT id
     FROM tmp_fattura_riga_rl
@@ -452,7 +472,6 @@ CREATE TEMP TABLE tmp_attivita_rl2 AS WITH ins AS (
       competenza_al,
       quantita,
       approvato,
-      fatturato,
       sospesa,
       tipo_doc_fiscale_id,
       valuta_id,
@@ -469,7 +488,6 @@ CREATE TEMP TABLE tmp_attivita_rl2 AS WITH ins AS (
     (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
-    false,
     false,
     r.tipo_doc_fiscale_id,
     r.valuta_id,
@@ -534,7 +552,6 @@ SET lock_in_fatturazione = true,
     SELECT lock_batch_id
     FROM tmp_lotto_rl2
   ),
-  fatturato = true,
   fattura_riga_id = (
     SELECT id
     FROM tmp_fattura_riga_rl2
@@ -543,21 +560,100 @@ WHERE id = (
     SELECT id
     FROM tmp_attivita_rl2
   );
+-- ⚠️ La commessa_attivita dello slot RL2 nasce NON_EMESSA. Portarla a EMESSA
+--   e' cio' che rende SIGNIFICATIVA l'asserzione su `riemesse_attivita`:
+--   lasciandola dov'era, quel contatore varrebbe 0 sia con la correzione sia
+--   senza, e il test sarebbe verde per sottrazione.
+UPDATE vendite.commesse_attivita
+SET stato_emissione = 'EMESSA'
+WHERE id = (
+    SELECT attivita_id
+    FROM tmp_ca_rl
+    WHERE slot = 'RL2'
+  );
+-- ⚠️ La mutazione gira in un'ISTRUZIONE SEPARATA e il suo esito si
+--   materializza: chiamandola dentro l'asserzione, la snapshot di statement
+--   leggerebbe lo stato PRIMA delle scritture.
+CREATE TEMP TABLE tmp_esito_rl2 AS
+SELECT *
+FROM vendite.fn_elimina_fattura_da_lotto(
+    p_lotto_id => (
+      SELECT id
+      FROM tmp_lotto_rl2
+    ),
+    p_fattura_id => (
+      SELECT fattura_id
+      FROM tmp_fattura_rl2
+    )
+  );
 SELECT ok(
     (
       SELECT deleted_fatture = 1
-      FROM vendite.fn_elimina_fattura_da_lotto(
-          p_lotto_id => (
-            SELECT id
-            FROM tmp_lotto_rl2
-          ),
-          p_fattura_id => (
-            SELECT fattura_id
-            FROM tmp_fattura_rl2
-          )
-        )
+      FROM tmp_esito_rl2
     ),
     'Reset singola fattura DRAFT'
+  );
+-- ============================================================
+-- 13) 🔴 L'attivita' e tornata LIBERA — l asserzione che mancava
+-- ============================================================
+-- ⛔ E' la colonna che si era rotta. Con il ripristino a valle del DELETE
+--   (fino al 2026-08-26) qui restava fatturato = true e il lucchetto messo:
+--   l attivita usciva dal giro e fn_select_attivita_fatturabili non la
+--   sceglieva mai piu.
+SELECT ok(
+    (
+      SELECT a.fatturato IS FALSE
+        AND a.fattura_riga_id IS NULL
+        AND COALESCE(a.lock_in_fatturazione, false) IS FALSE
+        AND a.lock_batch_id IS NULL
+        AND a.stato_esecuzione IS NULL
+      FROM vendite.attivita_fatturabili a
+      WHERE a.id = (
+          SELECT id
+          FROM tmp_attivita_rl2
+        )
+    ),
+    '13) l attivita della fattura tolta e tornata libera (timbro, legame, lucchetto, stato)'
+  );
+-- ============================================================
+-- 14) 🔴 La commessa_attivita e tornata NON_EMESSA
+-- ============================================================
+-- ⛔ Il secondo livello, e il piu costoso: senza,
+--   fn_emit_attivita_fatturabili_da_commessa filtra su EMESSA e non la
+--   ri-emette mai piu. Due porte chiuse invece di una.
+SELECT is(
+    (
+      SELECT ca.stato_emissione
+      FROM vendite.commesse_attivita ca
+      WHERE ca.id = (
+          SELECT attivita_id
+          FROM tmp_ca_rl
+          WHERE slot = 'RL2'
+        )
+    ),
+    'NON_EMESSA'::character varying,
+    '14) la commessa_attivita della fattura tolta e tornata NON_EMESSA'
+  );
+-- ============================================================
+-- 15-16) I due contatori dicono quello che e successo
+-- ============================================================
+-- ⚠️ Sono le colonne che la funzione restituisce e che nessuno leggeva: un
+--   ripristino che non ripristina si vede QUI prima che altrove.
+SELECT is(
+    (
+      SELECT updated_attivita
+      FROM tmp_esito_rl2
+    ),
+    1,
+    '15) updated_attivita = 1 (era 0 con il ripristino a valle del DELETE)'
+  );
+SELECT is(
+    (
+      SELECT riemesse_attivita
+      FROM tmp_esito_rl2
+    ),
+    1,
+    '16) riemesse_attivita = 1 (la commessa_attivita era EMESSA per costruzione)'
   );
 SELECT *
 FROM finish();

@@ -32,6 +32,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.pagamenti.services import enti_incasso_service
 
 _ENTE = {"id": 4, "codice": "BANCA-1", "tipo": "BANCA", "conto_iban": "IT00…"}
@@ -46,6 +47,11 @@ def _repo() -> MagicMock:
     repo.list_conti_incasso.return_value = [
         {"soggetto_ruolo_conto_bancario_id": 312, "iban": "IT22…", "predefinito": True}
     ]
+    # ⛔ Il perimetro NON si prova qui: e' una domanda al database (le GUC
+    #    dell'identita'), e un doppio non ha un perimetro — risponderebbe
+    #    quello che gli si dice. La prova vera sta in
+    #    `tests/db/test_perimetro_conti_incasso.py`, contro il DB provvisto.
+    repo.emittente_nel_perimetro.return_value = True
     return repo
 
 
@@ -145,11 +151,20 @@ class PatchTests(_Base):
         enti_incasso_service.aggiorna_ente_incasso(4, {})
         self.repo.update_ente_incasso.assert_not_called()
 
+    # Scopo: un canale inesistente risponde 404, e lo si verifica sullo STATO
+    #        risolto — non sul nome del codice.
+    # Note: ⚠️ Fino al 2026-08-27 questo test confrontava `exception.code` con
+    #        `E_ENTE_NON_TROVATO`, cioe' con la costante che il codice stesso
+    #        legge: una tautologia, verde anche mentre il ripiego rispondeva
+    #        **400**. Il nome del test prometteva un 404 che nessuna asserzione
+    #        guardava. Lo stato lo decide la CLASSE del codice a catalogo, ed e'
+    #        quello il fatto che questo test deve tenere fermo.
     def test_canale_inesistente_404(self):
         self.repo.get_ente_incasso.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             enti_incasso_service.aggiorna_ente_incasso(999, {"descrizione": "x"})
         self.assertEqual(ctx.exception.code, enti_incasso_service.E_ENTE_NON_TROVATO)
+        self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 404)
 
 
 class ListaTests(_Base):

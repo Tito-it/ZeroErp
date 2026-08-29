@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-13 — BACKFILL DI vendite.fatture.competenza_mese
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-13 (decisione D-9)
+#
+# ── ⭐ PERCHE' MIN() E NON UNA COLONNA QUALSIASI ────────────────────
+#   Il modello ammette una fattura in PIU' LOTTI: l'unico vincolo su
+#   `vendite.fatturazione_lotti_fatture` e' `UNIQUE (lotto_id, fattura_id)`, che
+#   vieta il doppione della coppia e non il secondo lotto. Un backfill senza
+#   regola prenderebbe una competenza a caso.
+#
+#   La regola e' `MIN(competenza_mese)`, cioe' la piu' VECCHIA: e' la piu'
+#   SEVERA, perche' il permesso di datare a fine competenza scade prima. Su un
+#   dato ambiguo si sceglie il verso che chiude, non quello che apre.
+#
+#   ⚠️ Vale solo per le righe gia' scritte. Dal changeSet 20260826-08 in poi la
+#   competenza la scrive `fn_get_or_create_fattura_header` dal lotto DENTRO CUI
+#   la fattura nasce, che e' uno solo e non ambiguo.
+#
+# ── ⚠️ runOnChange: false FOTOGRAFA UN MINUTO — E QUI E' CORRETTO ───
+#   Una bonifica `runOnChange: false` e' una fotografia, e diventa una trappola
+#   quando la sorgente continua a sporcare. Qui NON continua: la sorgente si
+#   chiude nello stesso giro (20260826-08 scrive la colonna alla nascita), quindi
+#   c'e' uno storico da leggere UNA VOLTA e nessuno che riapra il buco.
+#   E' lo stesso argomento gia' scritto in `20260825-10` per `ultima_data`.
+#   ⛔ Se un domani la colonna tornasse a riempirsi a meta', il rimedio NON e' un
+#   secondo backfill: e' trovare chi scrive senza valorizzarla.
+#
+# ── ℹ️ COSA TOCCA E COSA NO ─────────────────────────────────────────
+#   `WHERE f.competenza_mese IS NULL`: idempotente, e la seconda passata non
+#   tocca nulla.
+#
+#   ⚠️ L'UPDATE fa scattare i trigger BEFORE UPDATE di `vendite.fatture`, ed e'
+#   stato guardato uno per uno prima di scriverlo:
+#     * `trgfn_fatture_guard_data_numerata` — guarda `NEW.data`, che qui non si
+#       tocca: passa;
+#     * `trgfn_fatture_guard_stato`, `trgfn_fatture_guard_uscita_draft`,
+#       `trgfn_fatture_numerata_non_annulabile` — escono in testa quando lo stato
+#       non cambia: passano;
+#     * `trgfn_guard_emittente_scope` — esce con RETURN NEW quando non c'e'
+#       nessun utente applicativo (batch job) e quando la colonna dell'emittente
+#       non cambia: passa;
+#     * `trgfn_fattura_satellite_guard_congelamento` — e' agganciata a
+#       `UPDATE OF emittente_snapshot, cliente_snapshot`: non scatta.
+#   ⚠️ `trgfn_audit_data_user_generic` bumpa `data_update`/`user_update` e
+#   `trgfn_storico_generic` scrive una riga di storico per fattura toccata. E'
+#   voluto: la colonna e' cambiata davvero, e lo storico e' il posto in cui si
+#   legge che e' successo qui.
+#   ⚠️ Il trigger differito `trg_fatture_def_guard_stato_lotto_coerente_ins_upd`
+#   ricontrolla la coerenza fattura/lotto al COMMIT: se questo changeSet fallisce
+#   la' dentro, la causa e' un'INCOERENZA PREESISTENTE nei dati e non il
+#   backfill — si sana a mano (non siamo in produzione), non con un fix software.
+#
+# Dipendenze: 20260826-02 (la colonna). ⚠️ 80_data gira dopo 00_schema: c'e'.
+# Verifica: db/pgtap/vendite/test-limite-emissione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260826-04-backfill-fatture-competenza-mese-mctit.yaml
+
+  - changeSet:
+      id: 20260826-04-backfill-fatture-competenza-mese
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-13 (decisione D-9): backfill di vendite.fatture.competenza_mese da
+        fatturazione_lotti_fatture -> fatturazione_lotti. ⭐ MIN(competenza_mese) e non una a
+        caso: il modello ammette una fattura in piu' lotti (UNIQUE (lotto_id, fattura_id) vieta
+        il doppione della coppia, non il secondo lotto), e la piu' vecchia e' la piu' severa —
+        il permesso di datare a fine competenza scade prima. runOnChange:false e' la forma
+        giusta qui: la sorgente si chiude nello stesso giro (dal 20260826-08 la competenza la
+        scrive fn_get_or_create_fattura_header alla nascita), quindi c'e' uno storico da
+        leggere una volta e nessuno che riapra il buco. Idempotente: WHERE competenza_mese IS
+        NULL. ⚠️ Bumpa data_update e scrive una riga di storico per fattura toccata, ed e'
+        voluto: la colonna e' cambiata davvero.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture
+                columnName: competenza_mese
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti_fatture
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $backfill$
+              DECLARE
+                  v_righe   integer;
+                  v_residue integer;
+              BEGIN
+                  -- ⭐ MIN e non max: su una fattura che sta in due lotti si
+                  --    sceglie la competenza piu' VECCHIA, cioe' quella il cui
+                  --    permesso scade prima. Su un dato ambiguo si sceglie il
+                  --    verso che chiude.
+                  UPDATE vendite.fatture f
+                     SET competenza_mese = x.competenza
+                    FROM (
+                        SELECT lf.fattura_id,
+                               min(fl.competenza_mese) AS competenza
+                          FROM vendite.fatturazione_lotti_fatture lf
+                          JOIN vendite.fatturazione_lotti fl ON fl.id = lf.lotto_id
+                         GROUP BY lf.fattura_id
+                    ) x
+                   WHERE f.id = x.fattura_id
+                     -- idempotente: la seconda passata non tocca nulla
+                     AND f.competenza_mese IS NULL;
+
+                  GET DIAGNOSTICS v_righe = ROW_COUNT;
+
+                  -- ℹ️ Le fatture SENZA riga di ponte restano a NULL, ed e'
+                  --    legittimo: il modello le ammette e chi legge la colonna
+                  --    ripiega sulla deduzione dalla data. Si contano per
+                  --    lasciarne traccia nel log del migrate, non per fallire.
+                  SELECT count(*) INTO v_residue
+                    FROM vendite.fatture f
+                   WHERE f.competenza_mese IS NULL;
+
+                  RAISE NOTICE 'backfill fatture.competenza_mese: % righe valorizzate, % senza lotto (restano NULL, e va bene)',
+                               v_righe, v_residue;
+              END
+              $backfill$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              UPDATE vendite.fatture
+                 SET competenza_mese = NULL
+               WHERE competenza_mese IS NOT NULL;

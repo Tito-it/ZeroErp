@@ -6,6 +6,7 @@ import { DOMAINS, resolveTabLabel, resolveTabIcon } from '../core/navigation'
 import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
 import i18n from '../core/i18n'
 import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale'
+import { CODE } from '../pagamenti/vocabolari'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
 
@@ -42,7 +43,7 @@ function resolvePathNamespace(path) {
 
 // Genera rotte placeholder per domini senza pagine dedicate
 function domainPlaceholderRoutes() {
-  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'pratiche', 'strumenti', 'vendite'])
+  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'pagamenti', 'pratiche', 'strumenti', 'vendite'])
   return DOMAINS
     .filter(d => !domainsWithRoutes.has(d.key))
     .map(d => ({
@@ -365,6 +366,46 @@ const router = createRouter({
           name: 'vendite-fatture',
           component: () => import('../vendite/views/FattureListView.vue'),
           meta: { domain: 'vendite', menuKey: 'fatture' }
+        },
+        // ── Incassi ───────────────────────────────────────────────
+        {
+          path: 'pagamenti/distinte',
+          name: 'pagamenti-distinte',
+          component: () => import('../pagamenti/views/DistinteListView.vue'),
+          meta: { domain: 'pagamenti', menuKey: 'distinte' }
+        },
+        // ⭐ Due rotte, UNA vista: la coda che si apre la dice `meta.coda`
+        // (Q-4 -> c). Cosi' le due porte sono deep-linkabili e distinguibili
+        // nel tab, pur essendo la stessa lista con un filtro diverso.
+        {
+          path: 'pagamenti/righe/da-abbinare',
+          name: 'pagamenti-coda-abbinare',
+          component: () => import('../pagamenti/views/CodaRigheView.vue'),
+          meta: { domain: 'pagamenti', menuKey: 'coda-abbinare', coda: CODE.DA_ABBINARE }
+        },
+        {
+          path: 'pagamenti/righe/sospese',
+          name: 'pagamenti-coda-sospese',
+          component: () => import('../pagamenti/views/CodaRigheView.vue'),
+          meta: { domain: 'pagamenti', menuKey: 'coda-sospese', coda: CODE.SOSPESE }
+        },
+        {
+          path: 'pagamenti/rate-fuori-capienza',
+          name: 'pagamenti-rate-fuori-capienza',
+          component: () => import('../pagamenti/views/RateFuoriCapienzaView.vue'),
+          meta: { domain: 'pagamenti', menuKey: 'rate-fuori-capienza' }
+        },
+        {
+          path: 'pagamenti/eccedenze',
+          name: 'pagamenti-eccedenze',
+          component: () => import('../pagamenti/views/EccedenzeView.vue'),
+          meta: { domain: 'pagamenti', menuKey: 'eccedenze' }
+        },
+        {
+          path: 'pagamenti/canali-incasso',
+          name: 'pagamenti-canali-incasso',
+          component: () => import('../pagamenti/views/CanaliIncassoView.vue'),
+          meta: { domain: 'pagamenti', menuKey: 'canali-incasso' }
         },
         {
           path: 'vendite/ddt',

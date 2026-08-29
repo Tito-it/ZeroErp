@@ -58,11 +58,14 @@ class ApiDistinteList(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
-    # 📮 `lista_codice = "pagamenti.distinte"` si dichiara INSIEME al seed di
-    #    `ui.lista_definizione`, non prima: il cancello di perimetro emittente
-    #    risolve il codice a catalogo e, se non lo trova, rifiuta la lista a
-    #    un utente multi-emittente. Dichiararlo adesso spegnerebbe la
-    #    schermata per chi ha piu' di un emittente.
+    # ✅ Dichiarabile dal 2026-08-27: il codice e' a catalogo (lotto 9, seed di
+    # `ui.lista_definizione`). Prima non si poteva, ed e' il verso in cui vale
+    # la pena ricordarlo: il cancello di perimetro emittente risolve il codice a
+    # catalogo e, non trovandolo, rifiuta la lista a un utente MULTI-emittente —
+    # cioe' dichiararlo troppo presto spegneva la schermata invece di prepararla.
+    # ⚠️ La lista nasce `multi_emittente = f` (default: non certificata): chi ha
+    # piu' di un emittente deve sceglierne uno prima di entrare.
+    lista_codice = "pagamenti.distinte"
 
     @extend_schema(
         operation_id="pagamenti_distinte_list",
@@ -395,6 +398,44 @@ class ApiDistintaRegistra(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ApiDistintaCorreggi(DomainAPIView):
+    """POST /api/v1/pagamenti/distinte/<id>/correggi/ — la correzione guidata."""
+
+    area_funzionale = AREA
+    # 🔴 Lo stesso cancello della registrazione, e per la stessa ragione: la
+    #    correzione nasce dal registrato e produrra' movimenti di segno opposto
+    #    quando qualcuno la registrera'. ⛔ Un gesto che rovescia del denaro non
+    #    puo' avere una porta piu' larga di quello che lo ha scritto.
+    post_permission = "registra_distinta"
+
+    @extend_schema(
+        operation_id="pagamenti_distinta_correggi",
+        request=inline_serializer(
+            name="PagamentiDistintaCorreggi",
+            fields={
+                "data_contabile": serializers.DateField(required=False),
+                "motivo": serializers.CharField(required=False),
+            },
+        ),
+        responses={200: _RISPOSTA_GENERICA},
+    )
+    # Scopo: Apre via POST una distinta NUOVA con le righe di segno opposto gia'
+    #        compilate — una sola `SELECT` sulla funzione madre.
+    # ⭐ Le righe nascono con fattura e rata gia' scritte ma in `DA_ABBINARE`
+    #    (decisione C-1, misurata dal team DB il 28/08): nascerle gia' abbinate
+    #    avrebbe richiesto di scrivere `forzata = true` al posto dell'operatore,
+    #    perche' su una rata saldata dal movimento che si sta correggendo non
+    #    c'e' capienza in nessuna direzione. La correzione guida tutto tranne
+    #    l'ultimo clic, e il doppio tempo resta il gesto di una persona.
+    # ⛔ `NULLA_DA_CORREGGERE` risale INTATTO: e' un esito, non un errore.
+    # ⛔ E non si chiama «storno»: `STORNATA` e' fuori dal catalogo dal 21/08.
+    def post(self, request: Request, contabile_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return pagamenti_service.correggi_distinta(contabile_id, dict(payload))
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 # ══════════════════════════════════════════════════════════════════
 #  Abbinamento, code e saldi (slice 3)
 # ══════════════════════════════════════════════════════════════════
@@ -438,6 +479,10 @@ class ApiRigheCoda(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
+    # ⭐ Una definizione sola per DUE porte (Q-4 → c): «da abbinare» e «sospese»
+    # sono la stessa lista col filtro `coda` gia' impostato, quindi condividono
+    # la configurazione di colonne — che e' il motivo per cui il seed e' uno.
+    lista_codice = "pagamenti.righe"
 
     @extend_schema(
         operation_id="pagamenti_righe_coda",
@@ -508,6 +553,7 @@ class ApiRateFuoriCapienza(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
+    lista_codice = "pagamenti.rate_fuori_capienza"
 
     @extend_schema(
         operation_id="pagamenti_rate_fuori_capienza",
@@ -653,6 +699,7 @@ class ApiEccedenze(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
+    lista_codice = "pagamenti.eccedenze"
 
     @extend_schema(
         operation_id="pagamenti_eccedenze",

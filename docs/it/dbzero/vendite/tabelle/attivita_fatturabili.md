@@ -16,7 +16,6 @@
 | quantita | numeric | NO |  |
 | competenza_mese | date | NO |  |
 | approvato | boolean | YES | false |
-| fatturato | boolean | YES | false |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
@@ -62,6 +61,7 @@
 | tipo_movimento | character varying | NO | 'NORMALE'::character varying |
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 | fattura_riga_rettificata_id | bigint | YES |  |
+| fatturato | boolean | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

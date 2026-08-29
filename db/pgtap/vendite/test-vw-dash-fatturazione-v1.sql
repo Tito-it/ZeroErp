@@ -134,6 +134,41 @@ SELECT
   (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id,
   (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') AS natura_serv_id;
 
+-- ⭐ 2026-08-26 — IL BILLING ACCOUNT DELL'EMITTENTE B, e perche' serve.
+--   La commessa B nasceva sul billing account di A con l'emittente di B: uno
+--   stato che il modello non ammette piu' (vendite.trgfn_commesse_guard_emittente_ba,
+--   20260826-40) e che non ammetteva nemmeno prima — semplicemente non lo
+--   fermava nessuno. L'emittente della commessa si DERIVA dal cliente, quindi
+--   per avere una commessa di B serve un cliente di B.
+--   ⚠️ Se l'installazione non ne ha, i test 19-20 si skippano: la condizione
+--   di skip si sposta da «esiste un secondo emittente» a «esiste un cliente
+--   del secondo emittente», che e' la precondizione vera.
+ALTER TABLE tmp_df_refs ADD COLUMN ba_b_id bigint;
+ALTER TABLE tmp_df_refs ADD COLUMN ba_b_utility_id integer;
+
+-- ⚠️ Due UPDATE e non un LATERAL: in PostgreSQL la FROM di un UPDATE non puo'
+--   referenziare l'alias del target, e il predicato e' correlato a r.ef_b_sr.
+-- ⚠️ Si usa script.fn_get_ba_emittente_sr_id e NON
+--   anagrafiche.fn_get_emittente_fiscale_id: la seconda SOLLEVA quando non
+--   risolve, e qui si sta scandendo l'intera tabella dei clienti — un
+--   emittente non configurato farebbe morire la fixture invece di lasciarla
+--   rispondere «nessuno».
+UPDATE tmp_df_refs r
+   SET ba_b_id = (
+        SELECT ba.id
+          FROM anagrafiche.billing_account ba
+         WHERE ba.utility_id IS NOT NULL
+           AND r.ef_b_sr IS NOT NULL
+           AND script.fn_get_ba_emittente_sr_id(ba.id) = r.ef_b_sr
+         ORDER BY ba.id
+         LIMIT 1);
+
+UPDATE tmp_df_refs r
+   SET ba_b_utility_id = (
+        SELECT ba.utility_id
+          FROM anagrafiche.billing_account ba
+         WHERE ba.id = r.ba_b_id);
+
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND art_merce_id IS NOT NULL
       AND art_serv_id IS NOT NULL AND prev_accettato_id IS NOT NULL
@@ -639,17 +674,21 @@ SELECT ok(
 -- ============================================================
 -- 19-20) P1: coerenza scope commesse card vs drill-down (2 emittenti)
 --   Commessa B (emittente B) NON deve comparire per l'operatore A, ne' nel
---   resolver/drill-down ne' nella mensile (card). Se il seed ha un solo
---   emittente (ef_b_sr NULL) i due test sono skippati.
+--   resolver/drill-down ne' nella mensile (card).
+--   ⚠️ La commessa B si costruisce sul CLIENTE dell'emittente B, non su quello
+--   di A: l'emittente di una commessa si deriva dal cliente, e la coppia
+--   «cliente di A + emittente di B» non e' uno stato del modello. Se
+--   l'installazione non ha clienti sul secondo emittente (ba_b_id NULL) i due
+--   test sono skippati.
 -- ============================================================
 CREATE TEMP TABLE tmp_df_commessa_b AS
 WITH ins AS (
   INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
                                 emittente_soggetto_ruolo_id, stato_commessa_id)
   SELECT 'PGTAP-DF-CMB-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_b_sr, r.stato_commessa_id
+         r.ba_b_id, r.ba_b_utility_id, r.ef_b_sr, r.stato_commessa_id
     FROM tmp_df_refs r
-   WHERE r.ef_b_sr IS NOT NULL
+   WHERE r.ba_b_id IS NOT NULL
   RETURNING id)
 SELECT id FROM ins;
 
@@ -673,7 +712,7 @@ WHERE EXISTS (SELECT 1 FROM tmp_df_commessa_b);
 
 -- 19) Il resolver/drill-down commesse (operatore A) esclude la commessa B e
 --     include la A: card e drill-down leggono la stessa vista scope-aware.
-SELECT CASE WHEN (SELECT ef_b_sr FROM tmp_df_refs) IS NULL
+SELECT CASE WHEN (SELECT ba_b_id FROM tmp_df_refs) IS NULL
   THEN pass('19. [skip] seed con un solo emittente: coerenza scope non testabile')
   ELSE ok(
     (SELECT NOT EXISTS (
@@ -688,7 +727,7 @@ END;
 
 -- 20) Coerenza scope sul mese di B: per l'operatore A la union non contiene
 --     la commessa B (la mensile e' dismessa: resta il perimetro documenti).
-SELECT CASE WHEN (SELECT ef_b_sr FROM tmp_df_refs) IS NULL
+SELECT CASE WHEN (SELECT ba_b_id FROM tmp_df_refs) IS NULL
   THEN pass('20. [skip] seed con un solo emittente: coerenza scope non testabile')
   ELSE ok(
     (SELECT NOT EXISTS (

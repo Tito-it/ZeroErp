@@ -12,11 +12,26 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: bloccare l'emissione (EMESSO) di un DDT che non dichiara
---   la causale, o che dichiara una causale fatturabile ma ha righe
---   senza prezzo risolvibile (brief-db-fatturazione-ddt-resi §4a,
---   DL-28). rev 2026-07-19: valutazione delegata a
+-- Scopo: gate all'emissione (EMESSO) di un DDT sul VALORE DELLA
+--   RIGA, in tre facce (brief-db-fatturazione-ddt-resi §4a, DL-28):
+--     1. la causale di trasporto e' dichiarata;
+--     2. se e' fatturabile, ogni riga attiva ha un prezzo
+--        risolvibile (proprio o ereditato dalla riga d'ordine);
+--     3. ogni riga attiva CHE PORTA UN PREZZO ha anche l'aliquota.
+--   rev 2026-07-19: valutazione delegata a
 --   script.fn_check_ddt_emittibile — single source con la capability.
+--   rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C):
+--   + E_DDT_RIGA_IVA_MANCANTE.
+--
+-- ⚠️ IL NOME NOMINA LA SOLA CAUSALE, ed e' rimasto quello di quando
+--   il motivo era uno. Non si rinomina — costerebbe il trigger, ogni
+--   doc auto-gen e ogni pgTAP che la citano, per sola leggibilita' —
+--   ma chi legge non deve dedurlo: e' scritto qui.
+--
+-- ⚠️ Il LOOP non ha un ELSE: i motivi che questa funzione non
+--   riconosce li solleva un altro dei quattro guard di emissione. Un
+--   catch-all qui farebbe sollevare a QUESTO trigger anche gli
+--   indirizzi mancanti, con l'area e il nome sbagliati nel log.
 DECLARE
     v_stato_codice  config.stati_doc_ddt.codice_interno%TYPE;
     v_motivo        jsonb;
@@ -52,6 +67,27 @@ BEGIN
                 COALESCE(NEW.numero, NEW.id::text),
                 COALESCE(v_motivo->'dettaglio'->>'riga_id', 'NULL')
             );
+        ELSIF v_motivo->>'codice' = 'E_DDT_RIGA_IVA_MANCANTE' THEN
+            -- ⚠️ Nel VARIADIC va il NUMERO di riga, non l'id: quel
+            --   valore riempie i %s, cioe' compone la frase che una
+            --   persona legge, e un id tecnico non si cerca a mano
+            --   sul documento. L'id viaggia nel context, che e' il
+            --   canale di chi diagnostica.
+            -- ⛔ E nessuna chiave `campo`: il codice e'
+            --   CONFLITTO_STATO, non DATO_ERRATO — la richiesta e'
+            --   «porta il DDT a EMESSO», e non c'e' un campo di
+            --   QUELLA richiesta da accendere.
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_DDT_RIGA_IVA_MANCANTE',
+                jsonb_build_object(
+                    'ddt_id',   NEW.id,
+                    'numero',   NEW.numero,
+                    'riga_id',  (v_motivo->'dettaglio'->>'riga_id')::bigint,
+                    'riga_nr',  (v_motivo->'dettaglio'->>'riga_nr')::integer),
+                NEW.tx_id,
+                COALESCE(NEW.numero, NEW.id::text),
+                COALESCE(v_motivo->'dettaglio'->>'riga_nr', '?')
+            );
         END IF;
     END LOOP;
 
@@ -60,7 +96,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
-IS 'Gate all''emissione DDT (brief-db-fatturazione-ddt-resi §4a, DL-28): (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore e argomenti invariati (544/545).';
+IS 'Gate all''emissione DDT sul VALORE DELLA RIGA (brief-db-fatturazione-ddt-resi §4a, DL-28), in tre facce: (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment); (3) ogni riga attiva CHE PORTA UN PREZZO deve avere anche l''aliquota. rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore e argomenti invariati (544/545). ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter): + E_DDT_RIGA_IVA_MANCANTE. Si e'' esteso questo guard invece di crearne uno nuovo perche'' e'' gia'' il gate del valore della riga e il LOOP con ELSIF per codice e'' fatto per crescere cosi''. ⚠️ Nel VARIADIC del codice nuovo va il NUMERO di riga e non l''id: quel valore compone la frase che legge una persona, e un id tecnico non si cerca a mano; l''id resta nel context. ⚠️ Il nome nomina la sola causale ed e'' rimasto quello di quando il motivo era uno: non si rinomina (costerebbe trigger, doc auto-gen e pgTAP per sola leggibilita''), ma lo Scopo nel corpo lo dichiara.';
 ```
 
 ---

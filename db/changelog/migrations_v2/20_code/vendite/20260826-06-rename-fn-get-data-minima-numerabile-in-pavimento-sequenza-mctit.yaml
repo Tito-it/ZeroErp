@@ -1,0 +1,243 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-8 (parte 1) — IL PAVIMENTO DI SEQUENZA PRENDE IL SUO NOME
+#   vendite.fn_get_data_minima_numerabile  ->  vendite.fn_get_pavimento_sequenza
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-8
+#
+# ── ⭐ PERCHE' SI RINOMINA, INVECE DI LASCIARLA COM'E' ──────────────
+#   Da oggi i pavimenti sono DUE — la sequenza dei numeri e il limite di
+#   emissione — e a comporli e' `vendite.fn_get_pavimento_data_documento`.
+#   Il nome `fn_get_data_minima_numerabile` descrive esattamente cio' che fa la
+#   funzione COMPOSTA, non questa: lasciandolo, il nome mentirebbe sulla
+#   sorgente proprio mentre gli nasce accanto la funzione che quel nome merita.
+#
+#   Tre nomi paralleli, e ognuno dice che cosa guarda:
+#     * fn_get_pavimento_sequenza     (registro, serie)              -> primitiva
+#     * fn_get_pavimento_emissione    (registro, competenza)         -> primitiva
+#     * fn_get_pavimento_data_documento (registro, serie, competenza)-> composta
+#
+# ── ℹ️ IL RENAME NON ROMPE NIENTE, ED E' STATO VERIFICATO ───────────
+#   Al 2026-08-26 `fn_get_data_minima_numerabile` (senza `_lotto`) ha ZERO
+#   chiamanti: non la chiama nessuna funzione PL/pgSQL (verificato su pg_proc e
+#   sulla doc auto-gen), non la chiama il backend (i tre punti di
+#   `pipeline_repository.py` usano la sorella `_lotto`), non la chiama nessun
+#   pgTAP se non quello che la prova.
+#   ⛔ La sorella `fn_get_data_minima_numerabile_lotto` NON si rinomina: quella
+#   il backend la chiama, e per il frontend e' la `minDate` del dialog. Il suo
+#   nome resta un contratto.
+#
+# ── ⛔ IL DEFAULT SU p_serie SPARISCE, ED E' VOLUTO ─────────────────
+#   La versione vecchia aveva `p_serie text DEFAULT NULL` perche' era pensata
+#   come API di lettura: «il minimo del registro 3» senza conoscerne la serie.
+#   Da primitiva interna quel default e' un rischio: dimenticare la serie fa
+#   cercare il contatore di UN'ALTRA sequenza, e la risposta sbagliata e'
+#   «nessun pavimento» — la piu' permissiva possibile proprio dove il cancello
+#   poi rifiuta (brief §10 V-7). Chi chiama deve DECIDERE cosa passare.
+#   ℹ️ `NULL` resta un valore legittimo e significa «la serie di default del
+#   registro»: e' la risoluzione, non l'omissione, a essere ammessa.
+#
+# ── ℹ️ IL CORPO NON CAMBIA ──────────────────────────────────────────
+#   Copiato dalla doc auto-gen (l'oggetto vivo), non dallo YAML. Cambiano il
+#   NOME, il tipo di `p_serie` (ora ancorato a `vendite.fatture.serie%TYPE`:
+#   e' una funzione nuova, quindi non c'e' nessuna identita' da preservare) e
+#   il COMMENT, che smette di citare un path `work-in-progress/` ormai morto.
+#
+# Dipendenze: nessuna. La usa fn_get_pavimento_data_documento (20260826-07).
+# Verifica: db/pgtap/vendite/test-registri-progressivi.sql · test-limite-emissione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-06-rename-fn-get-data-minima-numerabile-in-pavimento-sequenza-mctit.yaml
+
+  - changeSet:
+      id: 20260826-06-rename-fn-get-data-minima-numerabile-in-pavimento-sequenza
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-8 (parte 1): vendite.fn_get_data_minima_numerabile diventa
+        vendite.fn_get_pavimento_sequenza. ⭐ Da oggi i pavimenti sono due — sequenza dei
+        numeri e limite di emissione — e il nome vecchio descrive cio' che fa la funzione
+        COMPOSTA (fn_get_pavimento_data_documento), non questa: lasciandolo, mentirebbe sulla
+        sorgente proprio mentre gli nasce accanto la funzione che quel nome merita. ℹ️ Il
+        rename non rompe niente, verificato: zero chiamanti (ne' PL/pgSQL, ne' backend, ne'
+        pgTAP oltre al suo). ⛔ La sorella _lotto NON si rinomina: quella il backend la chiama
+        e per il frontend e' la minDate del dialog. ⛔ Sparisce il DEFAULT su p_serie: da
+        primitiva interna, dimenticare la serie fa leggere il contatore di un'altra sequenza e
+        rispondere «nessun pavimento», la risposta piu' permissiva proprio dove il cancello
+        rifiuta. Il corpo non cambia.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: registri_fatturazione_progressivi
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_data_minima_numerabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_sequenza(
+                  p_registro_id vendite.registri_fatturazione.id%TYPE,
+                  p_serie       vendite.fatture.serie%TYPE
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_serie      vendite.fatture.serie%TYPE;
+                  v_pavimento  vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da quale data in poi questo sezionale accetta un numero,
+                  --   guardando SOLO la sequenza gia' emessa.
+                  --   NULL = nessun pavimento (non e' ancora uscito niente).
+                  --
+                  -- Regole:
+                  --   - si legge il CONTATORE, non le fatture: il contatore non
+                  --     ha RLS e la risposta e' sempre completa;
+                  --   - il massimo si prende ATTRAVERSO GLI ANNI, come fa il
+                  --     cancello.
+                  -- =========================================================
+
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_pavimento_sequenza',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_pavimento_sequenza',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- ⭐ Serie NULL = quella del registro. E' la RISOLUZIONE a
+                  --    essere ammessa, non l'omissione: il parametro non ha
+                  --    default, cosi' chi chiama deve decidere cosa passare.
+                  -- ⚠️ La stessa risoluzione, COALESCE(serie, serie_default,''),
+                  --    la usano chi numera e il backfill del contatore: se una
+                  --    delle tre divergesse, cercherebbe una riga di contatore
+                  --    che non esiste e risponderebbe «nessun vincolo».
+                  SELECT COALESCE(p_serie, r.serie_default, '')
+                    INTO v_serie
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_pavimento_sequenza',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          concat('registro di fatturazione ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  SELECT max(rp.ultima_data)
+                    INTO v_pavimento
+                    FROM vendite.registri_fatturazione_progressivi rp
+                   WHERE rp.registro_id = p_registro_id
+                     AND rp.serie       = v_serie;
+
+                  RETURN v_pavimento;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_pavimento_sequenza(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatture.serie%TYPE)
+                IS 'Da quale data in poi questo sezionale (registro + serie) accetta un numero, guardando SOLO LA SEQUENZA gia'' emessa. NULL = nessun pavimento: da quella sequenza non e'' ancora uscito niente, qualunque data va bene. ⛔ NON e'' «la data minima numerabile»: quella e'' la COMPOSIZIONE con il limite di emissione, e la fa vendite.fn_get_pavimento_data_documento. Questa e'' una delle due primitive, e il nome lo dice — fino al 2026-08-26 si chiamava fn_get_data_minima_numerabile, ed era un nome che sarebbe diventato falso nel momento in cui il secondo pavimento e'' nato. ⚠️ LA SERIE SI RISOLVE COME LA RISOLVE CHI NUMERA: COALESCE(p_serie, r.serie_default, ''''). Misurato il 2026-08-25: tutte le fatture non numerate hanno serie NULL e la prendono dal serie_default, quindi un COALESCE(serie,'''') cercherebbe il contatore della serie vuota, non lo troverebbe e risponderebbe NULL — la risposta piu'' permissiva possibile proprio dove il cancello rifiuta. ⛔ p_serie NON ha DEFAULT, al contrario della versione vecchia: da primitiva interna, dimenticare la serie significa leggere il contatore di un''ALTRA sequenza. NULL resta un valore legittimo e significa «la serie di default del registro» — e'' la risoluzione a essere ammessa, non l''omissione. ℹ️ Si legge il CONTATORE e non vendite.fatture: il contatore non ha RLS, quindi la risposta e'' completa per chiunque; e il massimo si prende ATTRAVERSO GLI ANNI, come fa il cancello — altrimenti un documento retrodatato al 31/12 dell''anno scorso passerebbe indisturbato. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-8.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_sequenza(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatture.serie%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_sequenza(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatture.serie%TYPE) TO zeroerp_batch_fatturazione;
+
+              -- ⛔ Il DROP viene DOPO la CREATE, e in questo stesso changeSet:
+              --    il rename e' un atto solo, e fra i due statement non deve
+              --    esistere un istante in cui nessuna delle due risponde.
+              --    Zero chiamanti, quindi nessuna finestra da presidiare.
+              DROP FUNCTION IF EXISTS vendite.fn_get_data_minima_numerabile(bigint, text);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il rollback rimette il nome vecchio con la firma vecchia
+              -- (p_serie text DEFAULT NULL) e toglie quello nuovo.
+              CREATE OR REPLACE FUNCTION vendite.fn_get_data_minima_numerabile(
+                  p_registro_id vendite.registri_fatturazione.id%TYPE,
+                  p_serie       text DEFAULT NULL
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_serie      TEXT;
+                  v_pavimento  vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+              BEGIN
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_data_minima_numerabile',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT COALESCE(p_serie, r.serie_default, '')
+                    INTO v_serie
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_data_minima_numerabile',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          concat('registro di fatturazione ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  SELECT max(rp.ultima_data)
+                    INTO v_pavimento
+                    FROM vendite.registri_fatturazione_progressivi rp
+                   WHERE rp.registro_id = p_registro_id
+                     AND rp.serie       = v_serie;
+
+                  RETURN v_pavimento;
+              END;
+              $function$;
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile(
+                  vendite.registri_fatturazione.id%TYPE, text) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_data_minima_numerabile(
+                  vendite.registri_fatturazione.id%TYPE, text) TO zeroerp_batch_fatturazione;
+
+              DROP FUNCTION IF EXISTS vendite.fn_get_pavimento_sequenza(bigint, character varying);

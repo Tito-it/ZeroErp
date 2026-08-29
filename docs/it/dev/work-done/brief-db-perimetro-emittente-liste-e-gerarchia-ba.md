@@ -4344,3 +4344,32 @@ più economica per estendere la copertura senza introdurre una suite.
 | GUC emittente attivo (BE) | `backend/apps/core/api/jwt_audit_authentication.py` |
 | Cantiere che ha fatto emergere i buchi | [brief-db-dash-competenza-gruppi-cliente-e-ricerca.md](brief-db-dash-competenza-gruppi-cliente-e-ricerca.md) |
 | Architettura multi-face auth | `docs/it/guide/architettura-multi-face-auth.md` |
+
+---
+
+## 2026-08-26 · ⚠️ Postilla: la colonna era nata SPENTA
+
+Scoperto chiudendo il cantiere
+[registro e data prevista in competenza](brief-db-registro-e-data-prevista-in-competenza.md),
+e corretto lo stesso giorno su richiesta di Tid.
+
+⛔ **Il seed in `ui.lista_colonna` non basta perche' una colonna si veda.** Lo
+step 3 di `ui.fn_resolve_lista_config` — «merge automatico colonne nuove dal
+catalogo» — unisce con **`visibile => FALSE`** ogni colonna che non abbia una
+riga nel **preset** (`ui.lista_preset_colonna`).
+
+⇒ Le colonne consegnate da questo cantiere sulla lista 42
+(`vendite.dash_competenza_gruppi`) sono rimaste **a catalogo ma invisibili**:
+comparivano solo nel contatore `colonne_nuove`, cioe' nel badge «Personalizza»,
+e nessun operatore le vedeva senza spuntarle a mano.
+
+✅ **Corretto**: righe aggiunte al preset di sistema `42`
+(`dash_competenza_gruppi_default`) in `80_data/sql/ui/lista_preset_colonna.csv`.
+Nessun changeSet nuovo — il loader `20260507-09` e' `loadUpdateData`
+`runOnChange: true` con chiave `(preset_id, colonna_id)`.
+
+⭐ **La lezione, che vale oltre queste colonne**: chi aggiunge una colonna a
+catalogo decide **anche** se nasce accesa o spenta, e lo scrive. «Spenta» e' una
+scelta legittima per una colonna di nicchia — ma dev'essere una scelta, non
+l'esito di un passo saltato. Qui erano **tre** colonne su due cantieri diversi,
+il che dice che il passo si dimentica per abitudine.

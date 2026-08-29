@@ -38,6 +38,7 @@ target è decorato (stato/fase/is_abortito) tramite `vw_documento_lineage_nodi`.
 | **R** | DDT → Reso | **1:N** | `resi.sorgente_uid`(uuid)=`ddt.uid` — **ramo INVERSO** |
 | **N** | Fattura rettificata → Nota di credito | **1:N** | `fatture_righe.riga_rettificata_id` — **ramo INVERSO** (rev 2026-08-21, sezione in fondo) |
 | **S** | Reso → Nota di credito | **1:N** | `resi_righe_accrediti` → `attivita_fatturabili.fattura_riga_id` (rev 2026-08-25, sezione in fondo) |
+| **T** | Reso → DDT di ri-consegna | **1:N** | `resi_righe_riconsegne` → `ddt_righe` → `ddt` (rev 2026-08-28, sezione in fondo) |
 
 Le **colonne tipizzate dirette** in uuid (`ddt.sorgente_uid`, `resi.sorgente_uid`) sono
 tradotte alla chiave nodo con un JOIN alla tabella target (regola brief §0 Q1). I tipi
@@ -51,7 +52,23 @@ sono risolti per `codice_interno` (§6d), mai id letterali.
 * **Destinazione arco**: `to_tipo_id`, `to_uid`, `to_codice`
 * **Stato del target** (dal nodo): `to_stato_codice_interno`, `to_fase`, `to_is_abortito`
 * **`ruolo`**: `ROOT`/`COLLEGATO` dove esiste (archi da `commesse_sorgenti`), altrimenti NULL
-* **`arco`**: lettera diagnostica `A`..`H`, `R`, `N`, `S` — **undici** dal 2026-08-25
+* **`arco`**: lettera diagnostica `A`..`H`, `R`, `N`, `S`, `T`, `U` — **tredici** dal
+  2026-08-29 (`U` = DDT → Commessa, la quarta sorgente di commessa)
+
+> ⭐ **Il vocabolario delle lettere è CHIUSO, e il presidio è un cricchetto.**
+> `db/pgtap/vendite/test-documento-lineage-v1.sql` asserisce
+> `arco NOT IN ('A',…,'T')`: **ogni arco nuovo lo fa fallire apposta**, per costringere chi lo
+> aggiunge a dichiararlo. È l'**unico** posto del progetto che enumera le lettere — verificato
+> il 2026-08-28: il frontend, `fn_documento_lineage` e la summary leggono tutti la proprietà
+> derivata `is_ramo_inverso`, non la lettera.
+>
+> ⛔ **Chi allarga l'elenco non si ferma lì**: aggiunge anche l'asserzione che dice **cosa
+> significa** la lettera nuova — da dove parte, dove arriva, che natura ha — come il file già fa
+> per `R`, `N`, `S` e `T`. Allargare e basta trasforma un cricchetto in una formalità, e il
+> valore successivo passerebbe senza che nessuno lo guardi.
+>
+> ⚠️ *Un consumatore che legge la **lettera** è un secondo elenco da tenere allineato a mano.*
+> Chi aggiunge un arco lo tenga presente: la forma giusta è leggere una proprietà.
 
 ---
 
@@ -214,6 +231,79 @@ il test **38** del pgTAP (che è generale e non parla di `S`).
 ⚠️ Quel test vale **solo** perché la suite gira come `zeroerp_app` con la RLS
 attiva. Con `PGTAP_RUNNER=owner` sarebbe verde per costruzione: **chi lo sposta
 lo spegne.**
+
+---
+
+### ⭐ Arco T — Reso → DDT di ri-consegna (rev 2026-08-28)
+
+| Arco | Da → A | Card. | Fonte |
+|---|---|---|---|
+| **T** | Reso → DDT di ri-consegna | **1:N** | `resi_righe_riconsegne` → `ddt_righe` → `ddt` |
+
+**Cosa mancava.** Il grafo aveva `R` — la merce che **torna** — e `S` — il valore
+che si **accredita** — ma non l'arco che dice che quella merce è **ripartita**. Un
+reso ri-consegnato finiva come una **foglia**: il viaggio di ritorno non compariva
+da nessuna parte, benché il ponte che lo registra esista dal 2026-07.
+
+⭐ **`T` NON è un ramo di ritorno**, e la ragione è la stessa già scritta per `S`:
+«inverso» vuol dire ramo di **ritorno**, un verso che il grafo forward non
+percorre. Il ritorno è già avvenuto ed è `R`; da lì in poi il reso ha **due modi
+di andare avanti** — accreditare la merce (`S`) o ri-consegnarla (`T`). Nessuno dei
+due cammina all'indietro. `is_ramo_inverso` resta quindi `arco = ANY (ARRAY['R','N'])`.
+
+La conseguenza è voluta e gemella di quella di `S`: **il reso smette di essere una
+foglia e prende il DDT di ri-consegna come FRONTIERA.**
+
+#### ⭐ La sorgente è il PONTE, non `ddt.sorgente_*`
+
+L'arco si costruisce da `vendite.resi_righe_riconsegne`, l'aggancio duro che
+[`fn_genera_ddt_riconsegna`](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna)
+popola per **entrambi** i rami. Due conseguenze, e la seconda ha sorpreso chi
+scriveva:
+
+* l'arco copre anche le ri-consegne **order-backed**, che dichiarano
+  `ORDINE_VENDITA` e il reso non lo nominerebbero mai;
+* **non dipende** dalla revisione che valorizza `ddt.sorgente_tipo_id = RESO_VENDITA`
+  sulle sole standalone. Sono **due cose diverse**, non due metà della stessa: quella
+  dice *chi è il padre* **sul documento** (il campo «Origine», l'azione «apri
+  sorgente»), questa lo fa *comparire* **nel grafo**.
+
+#### ⚠️ Due figli in avanti, e perché il caso è sicuro
+
+Un reso può essere **in parte accreditato e in parte ri-consegnato**, quindi avere
+due figli forward. È esattamente il pericolo che la nota dell'arco `S` segnalava —
+lì i due figli sarebbero stati **dello stesso tipo** (due nodi FATTURA allo stesso
+livello, stesso `pipeline_rank`, e la frontiera decisa sul confronto lessicografico
+fra due uid testuali).
+
+Qui i due figli sono di **tipo diverso**, e i ranghi li separano:
+
+| tipo | `pipeline_rank` |
+|---|---:|
+| `RESO_VENDITA` | 0 |
+| `DDT_VENDITA` | **3** |
+| `FATTURA` | **5** |
+
+Il pareggio non può verificarsi. ⛔ **È quella differenza a rendere sicuro il caso**:
+se un domani non ci fosse più, il difetto tornerebbe silenzioso.
+
+> ⚠️ La risposta arriva dal **rango**, che è struttura. Che oggi *nessun reso abbia
+> entrambi i figli* è un fatto datato e non prova niente: zero occorrenze non
+> significa che il caso non esiste, significa che non c'è ancora un controesempio.
+
+#### ⚠️ Il perimetro RLS, come per ogni ramo
+
+Il join attraversa `vendite.resi` e `vendite.ddt` — le **testate**, che sono le
+tabelle che portano la RLS. Le tre di mezzo (`resi_righe_riconsegne`, `resi_righe`,
+`ddt_righe`) hanno `relrowsecurity = f`: un ramo che si fermasse lì produrrebbe un
+arco verso un documento che il chiamante non vede, e la decorazione non lo ferma
+perché i join ai nodi sono `LEFT`.
+
+⚠️ **`DISTINCT` obbligatorio**: un reso con più righe ri-consegnate nello stesso DDT
+produrrebbe un arco per riga.
+
+Piano: `brief-db-ddt-riconsegna-eredita-testata` §9.4.1. Presidio: test **39** del
+pgTAP (`T` va da `RESO_VENDITA` a `DDT_VENDITA` ed è un avanzamento).
 
 ---
 

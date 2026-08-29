@@ -62,6 +62,8 @@ riceve `403 Forbidden`.
 | `E_ANAG_VALIDAZIONE` | 400 | Campi obbligatori mancanti o non validi |
 | `E_ANAG_NOT_FOUND` | 404 | Risorsa non trovata o non appartenente al padre |
 | `E_ANAG_DUPLICATO` | 409 | Vincolo univocita' violato (codice, soggetto, default) |
+| `E_BA_EMITTENTE_CON_STORIA` | 409 | **Sub-resource 5**: si sta spostando un billing account che ha gia' fatture o commesse. Nasce nel database (`20260826-49`) e arriva al client **senza codice Python**: la classe `CONFLITTO_STATO` a catalogo lo mappa a 409 dalla catena centralizzata. ⚠️ Non c'e' la chiave `campo` nel contesto — su un conflitto di stato non esiste un input da accendere |
+| `E_EMITTENTE_DEFAULT_SINGLETON` | 409 | **Sub-resource 5**: si sta cancellando il gestore globale, che deve sempre esistere e non e' mai rimovibile |
 
 > Eccezioni inattese vengono normalizzate dal middleware
 > [error-handling-api](../../core/manual/error-handling-api.md) in
@@ -326,6 +328,12 @@ billing account a un emittente fiscale, oppure definire il **default globale**
 - UNIQUE su `billing_account_id`: un BA puo' essere mappato a un solo emittente.
 - UNIQUE WHERE `is_default = true`: un solo default globale in tutto il sistema.
 - Trigger `default_guard` su INSERT/UPDATE/DELETE per rispetto invarianti.
+- ⭐ Trigger `trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt`
+  (dal `20260826-49`): un billing account che ha gia' **fatture o commesse** non
+  cambia piu' emittente. ⛔ E il movimento da presidiare non e' solo l'`INSERT`:
+  il backend non espone nessun `UPDATE` sul mapping, quindi «spostare un cliente
+  da un emittente all'altro» si fa con `DELETE` + `INSERT` — ed e' la
+  **cancellazione** a fare il danno.
 - Tutte le richieste sono validate dal service tramite `_resolve_soggetto_ruolo_id`
   (l'emittente padre deve esistere) e, su DELETE, da `belongs_to_emittente`
   (il mapping deve appartenere all'emittente atteso, fail safe).
@@ -362,7 +370,9 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
         "billing_account_ragione_sociale": null,
         "data_insert": "2026-04-07T10:00:00Z",
         "data_update": "2026-04-07T10:00:00Z",
-        "can_remove": true
+        "can_remove": false,
+        "rimozione_blocco_reason": "DEFAULT_SINGLETON",
+        "rimozione_blocco_reason_key": "amministrazione.emittenti_fiscali.ba_blocco.default_singleton"
       },
       {
         "id": 11,
@@ -372,7 +382,9 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
         "billing_account_ragione_sociale": "Acme Energia Srl",
         "data_insert": "2026-04-07T10:05:00Z",
         "data_update": "2026-04-07T10:05:00Z",
-        "can_remove": true
+        "can_remove": true,
+        "rimozione_blocco_reason": null,
+        "rimozione_blocco_reason_key": null
       }
     ]
   }
@@ -381,11 +393,49 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
 
 Ordinamento: default per primo, poi per codice BA crescente.
 
-**Fase 4 — capability di riga BA mapping**: ogni riga include `can_remove: bool`
-(sempre `true` oggi). Il BA mapping non ha PATCH (solo CREATE/DELETE), quindi
-`can_update`/`can_configure` non sono applicabili. La capability esplicita
-allinea la UI col pattern utility e prepara espansioni future
-(es. policy "default non rimovibile se l'unico mapping").
+#### Capability di riga — `can_remove` e il motivo del blocco
+
+Ogni riga porta **tre** campi che riguardano la sola azione «rimuovi»:
+
+| Campo | Tipo | Significato |
+| --- | --- | --- |
+| `can_remove` | bool | `false` quando la riga **non** si puo' togliere |
+| `rimozione_blocco_reason` | string \| null | codice macchina del **primo** motivo. `null` = ammesso |
+| `rimozione_blocco_reason_key` | string \| null | chiave i18n del tooltip. Il testo **non** viaggia mai nel payload |
+
+⚠️ **`can_remove` NON e' piu' `true` per costruzione**, ed e' il cambiamento del
+2026-08-27: prima era scritto a mano nel service, e da quando un billing account
+con storia non cambia piu' emittente era diventato una **promessa falsa** —
+l'operatore scopriva il divieto premendo, dopo aver confermato un dialog. Chi
+consuma questa lista non deve piu' presumerlo.
+
+⭐ **I tre campi vengono dalla stessa funzione che il database usa per
+rifiutare** — `script.fn_check_ba_cambio_emittente`, chiamata in `LATERAL` sulla
+riga e chiamata dalla madre `fn_guard_ba_cambio_emittente` per sollevare
+l'errore. ⇒ Tooltip e rifiuto non «coincidono oggi»: **non possono divergere**,
+perche' la regola sta scritta in un posto solo (`linee-guida-sql` §12.5.2).
+
+**I due motivi oggi a contratto** — l'elenco lo decide il database, non questa
+pagina, e puo' crescere senza che il backend cambi:
+
+| `reason` | `codice` sollevato | Quando |
+| --- | --- | --- |
+| `BA_CON_STORIA` | `E_BA_EMITTENTE_CON_STORIA` | il cliente ha fatture o commesse **e** l'emittente cambierebbe davvero |
+| `DEFAULT_SINGLETON` | `E_EMITTENTE_DEFAULT_SINGLETON` | riga del **gestore globale**: deve sempre esistercene una, quindi non si toglie **mai** |
+
+⛔ **Il predicato di un mapping specifico e' una COPPIA**, e la meta' che si
+dimentica e' la prima: togliere l'aggancio fa ricadere il billing account sul
+gestore globale, quindi il cambio di emittente esiste **solo se** l'emittente
+della riga e' **diverso** da quello del default. Se coincidono non si sposta
+nessun documento e la rimozione resta ammessa — e' manutenzione ordinaria.
+⚠️ Su un'installazione con un solo emittente questo e' il caso **normale**: chi
+consumasse un `can_remove` derivato dalla sola presenza di storia spegnerebbe il
+gesto su quasi tutte le righe, tutte a torto.
+
+⛔ **Il client non ricalcola il motivo e non compone il testo**: rende
+`reason_key` (con ripiego su `reason` se la chiave manca) e disabilita l'azione.
+Il BA mapping non ha `PATCH`, quindi `can_update`/`can_configure` non sono
+applicabili.
 
 ### 5.2 Crea mapping
 
@@ -437,6 +487,14 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bil
 | --- | --- | --- |
 | `E_ANAG_NOT_FOUND` | 404 | Emittente padre non trovato |
 | `E_ANAG_DUPLICATO` | 409 | Il BA e' gia' associato a un emittente o il default globale esiste gia' |
+| `E_BA_EMITTENTE_CON_STORIA` | 409 | Il billing account ha gia' fatture o commesse presso un **altro** emittente: agganciarlo qui lo sposterebbe |
+
+⚠️ **Su questo verbo non c'e' capability che lo anticipi**, ed e' deliberato: il
+billing account si sceglie da un lookup, quindi finche' non e' scelto non c'e'
+niente da spegnere. Il 409 resta il canale, e qui **non fa perdere lavoro** —
+davanti non c'e' nessun form da compilare, solo un click. La questione e'
+tracciata come **Q-2** nel brief `brief-db-motivo-rimozione-mapping-ba`, aperta
+d'accordo col team DB.
 
 ### 5.3 Elimina mapping
 
@@ -465,6 +523,14 @@ curl -X DELETE "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/b
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
 | `E_ANAG_NOT_FOUND` | 404 | Mapping non esiste o non appartiene all'emittente indicato |
+| `E_BA_EMITTENTE_CON_STORIA` | 409 | Il cliente ha gia' fatture o commesse e la rimozione lo sposterebbe su un altro emittente |
+| `E_EMITTENTE_DEFAULT_SINGLETON` | 409 | Si sta cancellando il gestore globale |
+
+⭐ **Questi due 409 sono gli stessi che `can_remove` anticipa** (§5.1): l'errore
+resta la rete, non il canale — un client che legge la capability non ci arriva.
+⚠️ Nessuno dei due e' sollevato da codice Python: nascono nel database e
+attraversano il backend senza essere catturati (`create_with_dedup` intercetta
+il solo `IntegrityError`, e un `RAISE` PL/pgSQL e' `P0001`).
 
 ### 5.4 Summary mapping BA
 

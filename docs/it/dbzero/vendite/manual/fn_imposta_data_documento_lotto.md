@@ -104,6 +104,44 @@ numero glielo dice.
 * Guard di parametro: `p_lotto_id` obbligatorio e maggiore di zero.
 * Brief: `docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md` §4 DB-11.
 
+
+### ⭐ rev 2026-08-26 — il guard guarda due pavimenti, e sceglie fra due frasi
+
+Brief: `brief-db-limite-emissione-e-data-verificata` (**DB-9**).
+
+Il pavimento arriva **già composto** da
+[`fn_get_pavimento_lotto`](/dbzero/vendite/funzioni/fn_get_pavimento_lotto),
+che torna anche l'**origine**: qui non si riscrive nessuna regola, si sceglie la
+frase.
+
+| origine | codice | perché è una frase diversa |
+|---|---|---|
+| `SEQUENZA` | `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO` | si rimedia risalendo alla fattura che porta quel numero |
+| `EMISSIONE` | `E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE` | si rimedia solo avvicinando la data a oggi |
+
+Dire la prima quando vale la seconda manda a cercare la cosa sbagliata. A parità
+di data vince `SEQUENZA`, perché la sua frase può portare un **bersaglio**.
+
+⭐ **La data nella frase è sempre il pavimento EFFETTIVO**, non quello di
+`origine`: nominarne un altro direbbe all'operatore di scegliere una data che
+verrebbe rifiutata di nuovo.
+
+### ⭐ Qui il controllo è SEVERO, e non per caso
+
+Questa è la porta da cui una **persona** dichiara una data, e qui il sistema ha
+in mano il **lotto** — quindi la competenza vera. Il cancello di
+[`fn_get_next_progressivo`](/dbzero/vendite/funzioni/fn_get_next_progressivo)
+riceve solo il documento e la sua data, e la **deduce** dalla data stessa.
+
+| dove | cosa sa | quanto è severo |
+|---|---|---|
+| **qui** (dove si sceglie la data) | il lotto, quindi la competenza vera | severo: confronta con la competenza |
+| **assegnazione del numero** (dove non si può aggirare) | il documento e la sua data | deduce il mese dalla data |
+
+⛔ Sono **due severità diverse, ed è voluto**: chi confronta le due funzioni non
+deve leggere la differenza come un difetto. Il residuo — un fine-mese dichiarato
+sul mese sbagliato — si può produrre solo scrivendo direttamente nel database.
+
 ---
 
 {% include-markdown "signature-core.md" %}

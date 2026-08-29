@@ -81,6 +81,20 @@ def _repo_root() -> Path:
 _SEED_DIR = _repo_root() / "db/changelog/migrations_v2/80_data/sql/ui"
 
 
+# Scopo: sorgente `.vue` senza commenti. Serve a distinguere chi USA uno slot da
+#        chi lo NOMINA — un presidio che cerca una PAROLA si accende sui
+#        messaggi, ed e' successo il 2026-08-26: un commento che citava
+#        `#cell-azioni` per spiegare il difetto ha fatto diventare rosso il
+#        test che quel difetto presidia.
+# ⭐ Non e' una toppa: il guard gemello `frontend/scripts/check-liste-configurabili.mjs`
+#    ha `senzaCommenti()` dal primo giorno, con la stessa motivazione scritta
+#    accanto. Qui mancava, ed era l'unica differenza fra i due.
+def _senza_commenti(testo: str) -> str:
+    senza_html = re.sub(r"<!--.*?-->", "", testo, flags=re.S)
+    senza_blocco = re.sub(r"/\*.*?\*/", "", senza_html, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", senza_blocco, flags=re.M)
+
+
 # Scopo: whitelist di ordinamento di una lista il cui ORDINE vive nella funzione
 #        DB, non in Python — letta dalla doc auto-gen della funzione.
 #
@@ -283,6 +297,12 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("vendite.dash_competenza_errori", _whitelist_di_classe("DASH_COMPETENZA_ERRORI_SORT_COLUMNS")),
     ("vendite.dash_competenza_gruppi", _whitelist_di_classe("DASH_COMPETENZA_GRUPPI_SORT_COLUMNS")),
     ("vendite.dash_competenza_commesse", _whitelist_di_classe("DASH_COMPETENZA_COMMESSE_SORT_COLUMNS")),
+    # Lista dei RESIDUI (2026-08-27): l'elenco su cui agisce «Riporta da
+    # emettere». ⭐ Registrata nello STESSO passo in cui il frontend la monta,
+    # ed e' il presidio ad averlo imposto: montandola senza registrarla
+    # `test_registro_copre_tutte_le_liste_montate_dal_frontend` e' andato
+    # rosso da solo, che e' esattamente il suo mestiere.
+    ("vendite.dash_competenza_residui", _whitelist_di_classe("DASH_COMPETENZA_RESIDUI_SORT_COLUMNS")),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),
@@ -295,6 +315,30 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("vendite.resi", _da_costante("apps.vendite.db.resi_repository", "_ORDER_COLS_RESI")),
     ("vendite.resi_da_accreditare", _whitelist_coda_resi("vendite.vw_resi_da_accreditare")),
     ("vendite.resi_da_riconsegnare", _whitelist_coda_resi("vendite.vw_resi_da_riconsegnare")),
+    # ══════════════════════════════════════════════════════════════════
+    # Le quattro liste del cantiere INCASSI (seed lotto 9 del team DB,
+    # 2026-08-27; montate dal frontend il 2026-08-28).
+    #
+    # 🔴 E QUI IL PRESIDIO HA TROVATO UN DIFETTO VERO, non solo una riga
+    # mancante. Le quattro whitelist erano chiavate sul `codice` LOGICO
+    # del seed — perche' cosi' diceva il brief con cui il team DB le ha
+    # generate, e cosi' era stato verificato: `codice` contro chiave, in
+    # entrambi i versi, tutto combaciante. Ma il confronto era fra le
+    # cose sbagliate: `<ListaConfigurabile>` monta `:field="campo_sorgente"`,
+    # quindi al click PrimeVue manda il nome FISICO. Le SETTE colonne in
+    # cui i due nomi divergono — `stato`, `centro`, `distinta`, `fattura`
+    # (×2), `cliente` — avrebbero risposto **400** su un gesto normale.
+    # ⭐ Non l'ha trovato una rilettura: l'ha trovato questo test, andando
+    # rosso da solo appena le liste sono state montate.
+    # ══════════════════════════════════════════════════════════════════
+    ("pagamenti.distinte",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "DISTINTE_SORT_COLUMNS")),
+    ("pagamenti.righe",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "RIGHE_SORT_COLUMNS")),
+    ("pagamenti.rate_fuori_capienza",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "RATE_FUORI_CAPIENZA_SORT_COLUMNS")),
+    ("pagamenti.eccedenze",
+     _da_costante("apps.pagamenti.db.pagamenti_repository", "ECCEDENZE_SORT_COLUMNS")),
 )
 
 
@@ -462,11 +506,14 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
     #
     # ⚠️ Il presidio guarda i `.vue`, non il seed: e' un difetto di CHIAMATA,
     #    e nel database non se ne vede traccia.
+    # ⚠️ E guarda il sorgente SENZA COMMENTI (`_senza_commenti`): chi NOMINA lo
+    #    slot sbagliato per spiegarlo non lo sta usando. Senza, il presidio si
+    #    accende sulla propria documentazione — successo il 2026-08-26.
     def test_lo_slot_delle_azioni_si_chiama_actions(self) -> None:
         src = _repo_root() / "frontend/src"
         colpevoli: list[str] = []
         for percorso in sorted(src.rglob("*.vue")):
-            testo = percorso.read_text(encoding="utf-8")
+            testo = _senza_commenti(percorso.read_text(encoding="utf-8"))
             if "<ListaConfigurabile" not in testo:
                 continue
             if "#cell-azioni" in testo:

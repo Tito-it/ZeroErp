@@ -134,7 +134,7 @@ davvero**.
 
 ⚠️ E quella risoluzione — `COALESCE(f.serie, r.serie_default, '')` — dev'essere
 **identica** in tutti e tre i posti che la usano: qui, in
-`fn_get_data_minima_numerabile` e nel backfill di `ultima_data`. Se una delle tre
+`fn_get_pavimento_sequenza` e nel backfill di `ultima_data`. Se una delle tre
 diverge, cerca una riga di contatore che non esiste e risponde «nessun vincolo».
 📌 Misurato il 2026-08-25: **tutte** le fatture non ancora numerate hanno
 `f.serie IS NULL` e prendono la serie dal registro — quindi è proprio il caso
@@ -149,6 +149,33 @@ normale, non un bordo.
 
 E va bene così: il D-K guarda **la fattura**, il cancello guarda **la sequenza**.
 Solo il secondo ha bisogno del lock.
+
+
+### ⭐ rev 2026-08-26 — passa la COMPETENZA al cancello
+
+Brief: `brief-db-limite-emissione-e-data-verificata` (**DB-14**).
+
+Il cancello ha bisogno della competenza del documento per applicare il **limite
+di emissione**. Gliela passa questa funzione, e **costa una colonna in una
+`SELECT` che c'è già** — quella con `FOR UPDATE OF f`.
+
+⭐ **Ed è la ragione per cui la competenza sta sulla FATTURA e non si va a
+prendere dal lotto**: qui la riga è già stata letta per numerarla, quindi la RLS
+lavora nel verso giusto — *se non vedi la riga non la numeri nemmeno*. Leggere
+`vendite.fatturazione_lotti` da dentro una `SECURITY INVOKER` renderebbe invece
+**fail-open** l'unico presidio non aggirabile.
+
+ℹ️ `NULL` è ammesso (fatture nate prima del 2026-08-26) e significa «non la so»:
+il cancello ripiega sul mese della data.
+
+ℹ️ **Firma e tipo di ritorno non cambiano**: i `%TYPE` entrati nella firma e nel
+`RETURNS TABLE` risolvono agli stessi tipi di prima. A cambiare firma è la
+funzione **chiamata**.
+
+⭐ Il guard di parametro passa da `E_PARAMETRO_INVALIDO` — che portava
+`p_fattura_id obbligatorio e > 0` nella frase letta da una persona — a
+`E_VENDITE_CHIAMATA_NON_VALIDA`. ℹ️ Il guard D3 e il D-K con le sue **sette**
+condizioni restano parola per parola.
 
 ---
 

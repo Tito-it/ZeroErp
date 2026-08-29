@@ -9,9 +9,43 @@
 repos:
   - repo: local
     hooks:
+      # ⚠️ `python3`, non `python`: fuori da una virtualenv e dai shim di pyenv
+      #    il nome senza il 3 NON esiste su questa macchina (verificato il
+      #    2026-08-26: `/usr/bin/python` assente, `/usr/bin/python3` presente).
+      #    L'hook reggeva perche' si committa da una shell che ha pyenv sul
+      #    PATH; da un contesto che non ce l'ha sarebbe fallito con «command not
+      #    found» — cioe' avrebbe bloccato il commit per il motivo sbagliato.
       - id: check-license-header
         name: Controlla header licenza
-        entry: python scripts/check_license.py
+        entry: python3 scripts/check_license.py
         language: system
         files: \.(py|js|vue|ya?ml)$
         exclude: ^docs/
+
+      # Guard delle chiavi i18n: chiavi rotte, parita' it/en, radici, chiavi
+      # EMESSE DAL DB non risolvibili, e chiavi definite due volte.
+      # ⛔ Perche' in pre-commit: sono tutti difetti SILENZIOSI — non danno un
+      #    errore a runtime, danno testo mancante o la frase sbagliata, e si
+      #    scoprono guardando la schermata. Fino al 2026-08-26 il guard esisteva
+      #    e non lo lanciava nessun automatismo: un presidio che nessuno lancia
+      #    e' a un passo dall'essere spento.
+      # ⚠️ `pass_filenames: false` e' obbligatorio, non stile: il guard e'
+      #    GLOBALE — confronta l'intero frontend con i due locales, la doc
+      #    auto-gen e i seed. Un elenco di file lo restringerebbe proprio dove
+      #    serve intero (una chiave si rompe cambiando il locale, non il
+      #    componente che la cita), e i nomi finirebbero comunque in `sys.argv`,
+      #    che il guard legge per `--strict-roots`.
+      # ⚠️ `files` elenca le QUATTRO sorgenti che il guard legge davvero
+      #    (SRC, LOCALES, DBDOCS, SEED nel suo header) piu' se stesso: se una si
+      #    sposta, va spostata anche qui o il guard smette di svegliarsi.
+      # ⛔ La regex sta su UNA riga di proposito: scritta come scalare `>-` di
+      #    YAML, ogni a capo diventa uno SPAZIO dentro il pattern — le
+      #    alternative nascerebbero con uno spazio davanti e non matcherebbero
+      #    piu' niente. Un guard che non si sveglia mai e' verde per
+      #    sottrazione, ed e' il modo peggiore di sbagliare questo file.
+      - id: check-i18n-keys
+        name: Controlla chiavi i18n
+        entry: python3 scripts/check_i18n_keys.py
+        language: system
+        pass_filenames: false
+        files: '^(frontend/src/.*\.(vue|js|json)|docs/it/dbzero/.*\.md|db/changelog/migrations_v2/80_data/sql/.*\.csv|scripts/check_i18n_keys\.py)$'

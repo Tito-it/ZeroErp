@@ -264,8 +264,12 @@ class BillingAccountRepository:
     #        cliente (es. form-defaults preventivi).
     # Perimetro: sola lettura. Nessun raise: se nessun cliente coincide
     #        (es. BA fornitore o anagrafica gestita altrove) ritorna {}.
-    # Risultato: dict con termine_pagamento_id/iva_id/modalita_pagamento_id
+    # Risultato: dict con termine_pagamento_id/modalita_pagamento_id
     #        + descrizioni, oppure dict vuoto.
+    # ⛔ `iva_id` NON c'e' piu' (2026-08-29, I0/D7-bis): la colonna e' stata
+    #    rimossa da `anagrafiche.clienti`. Era l'unico consumatore vero di quella
+    #    colonna in tutto il progetto — la restituiva a
+    #    `/vendite/preventivi/form-defaults/`, dove il frontend la buttava via.
     def get_cliente_defaults(
         self,
         *,
@@ -278,15 +282,11 @@ class BillingAccountRepository:
                 cl.termine_pagamento_id,
                 tp.codice      AS termine_pagamento_codice,
                 tp.descrizione AS termine_pagamento_descrizione,
-                cl.iva_id,
-                iva.codice      AS iva_codice,
-                iva.descrizione AS iva_descrizione,
                 cl.modalita_pagamento_id,
                 mp.codice      AS modalita_pagamento_codice,
                 mp.descrizione AS modalita_pagamento_descrizione
               FROM anagrafiche.clienti cl
               LEFT JOIN config.termini_pagamento tp ON tp.id = cl.termine_pagamento_id
-              LEFT JOIN config.iva iva ON iva.id = cl.iva_id
               LEFT JOIN config.modalita_pagamento mp ON mp.id = cl.modalita_pagamento_id
              WHERE cl.istanza_utility_id = %s
                AND cl.soggetto_ruolo_id  = %s

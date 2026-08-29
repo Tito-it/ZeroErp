@@ -362,7 +362,6 @@ with transaction.atomic():
             """
             SELECT vendite.fn_get_or_create_commessa(
                 p_billing_account_id => %s, p_utility_id => c.utility_id,
-                p_emittente_soggetto_ruolo_id => c.emittente_soggetto_ruolo_id,
                 p_competenza_dal => %s, p_competenza_al => %s,
                 p_meta => %s::jsonb, p_force_new => true)
               FROM vendite.commesse c WHERE c.id = %s
@@ -408,13 +407,12 @@ with transaction.atomic():
                 uom_operativa_id, factor_to_base, prezzo_unitario, valuta_id,
                 tipo_doc_fiscale_id, competenza_mese, competenza_dal,
                 competenza_al, commessa_id, commessa_attivita_id,
-                sorgente_tipo_id, sorgente_uid, lock_in_fatturazione,
-                fatturato, approvato, stato_esecuzione, prezzo_bloccato, meta
+                sorgente_tipo_id, sorgente_uid, lock_in_fatturazione, approvato, stato_esecuzione, prezzo_bloccato, meta
             )
             SELECT a.articolo_id, a.istanza_utility_id, a.billing_account_id,
                    %s, 1, a.uom_id, 1, a.uom_id, 1, 10, a.valuta_id,
                    a.tipo_doc_fiscale_id, %s, %s, %s, %s, %s,
-                   a.sorgente_tipo_id, %s, FALSE, FALSE, FALSE,
+                   a.sorgente_tipo_id, %s, FALSE, FALSE,
                    'PENDING', TRUE, '{}'::jsonb
               FROM vendite.attivita_fatturabili a WHERE a.id = %s
             RETURNING id

@@ -149,7 +149,7 @@ class PreventiviRepository(
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
-        solo_attiva: bool = True,
+        solo_ultima_revisione: bool = True,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -192,15 +192,24 @@ class PreventiviRepository(
             like = f"%{search}%"
             params.extend([like, like])
         # Filtro revisione attiva: di default mostra solo l'ultima revisione
-        # "viva" per numero. La condizione e' `is_attiva IS TRUE` derivata
-        # dalla vista sorgente `vw_preventivi` (predicato post-refactor
-        # 2026-05-15): "non esiste una rev superiore non-abortita per lo
-        # stesso numero". Una rev annullata NON oscura il predecessore, che
-        # ricompare in lista come attiva. Quando l'operatore vuole vedere lo
-        # storico completo (toggle "Mostra storico"), il FE passa
-        # solo_attiva=false.
-        if solo_attiva:
-            conditions.append("v.is_attiva IS TRUE")
+        # "viva" per numero: `is_superata IS FALSE` — "non esiste una revisione
+        # successiva che l'abbia rimpiazzata". Quando l'operatore vuole lo
+        # storico completo (toggle "Mostra storico revisioni") il FE passa
+        # solo_ultima_revisione=false.
+        #
+        # ⛔ ERA `is_attiva IS TRUE`, ed era il difetto (brief-db-revisione-attiva-due-domande,
+        #    2026-08-28). `is_attiva` rispondeva a DUE domande in un flag solo —
+        #    «e' l'ultima revisione?» E «non e' annullato?» — in AND, quindi non
+        #    piu' separabili da chi legge. Effetto misurato: 18 preventivi
+        #    ANNULLATO su 18 avevano `is_attiva = false`, e il filtro di stato
+        #    «Annullato» non poteva restituire NIENTE, mai, per costruzione.
+        #    Un'opzione di filtro che esiste nel menu e da' sempre zero.
+        # ⚠️ `is_attiva` NON e' stata ritirata e resta giusta dov'e' la domanda
+        #    giusta: nei cruscotti (`vw_dash_fatturazione_preventivi`) si chiede
+        #    davvero «il documento e' vivo e corrente». La distinzione fra le due
+        #    domande e' il punto del cantiere, non un dettaglio di nomi.
+        if solo_ultima_revisione:
+            conditions.append("v.is_superata IS FALSE")
 
         # Scope emittente (defense-in-depth applicativa). La vista
         # `vw_preventivi_lista` e' `security_invoker=on`: la RLS della tabella
@@ -223,12 +232,12 @@ class PreventiviRepository(
         # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
         # Senza id, righe con stessa data/numero (es. revisioni) possono
         # comparire duplicate o sparire fra pagine consecutive.
-        # Decodifica frontiera_tipo_id -> codice_interno per il chip transito FE
-        # (mai id numerici verso il FE, memoria feedback_no_hardcoded_ids).
+        # ⭐ Il chip transito legge `frontiera_tipo_codice_interno` dalla vista
+        # (20260829-02): mai id numerici verso il FE, e mai una decodifica
+        # ricopiata per lista (memoria feedback_no_hardcoded_ids).
         data_sql = f"""
-            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            SELECT v.*
             FROM vendite.vw_preventivi_lista v
-            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
@@ -254,18 +263,23 @@ class PreventiviRepository(
                 p.numero,
                 p.rev,
                 p.is_attiva,
-                -- has_next_revision: true se esiste un'altra riga con stesso
-                -- numero e rev maggiore (= questo preventivo e' superseded
-                -- da qualsiasi revisione successiva, anche se abortita).
-                -- Diverso da `!is_attiva`: `is_attiva` ignora le rev abortite
-                -- (ANNULLATO). Esempi:
-                --   rev 0 EMESSO + rev 1 DRAFT     → has_next=T, is_attiva=F
-                --   rev 0 EMESSO + rev 1 ANNULLATO → has_next=T, is_attiva=T
-                -- Il FE puo' usare il predicato piu' adatto al caso d'uso.
-                EXISTS (
-                  SELECT 1 FROM vendite.preventivi p2
-                   WHERE p2.numero = p.numero AND p2.rev > p.rev
-                ) AS has_next_revision,
+                -- ⭐ LE TRE DOMANDE, e sono tre perche' hanno risposte diverse
+                --    sulla stessa riga (brief-db-revisione-attiva-due-domande):
+                --      `is_superata`        — esiste una revisione successiva
+                --                             che l'ha RIMPIAZZATA (non abortita)
+                --      `has_next_revisione` — esiste una revisione successiva
+                --                             QUALUNQUE, anche annullata
+                --      `is_attiva`          — non superata E non annullata
+                --    Esempio: rev 0 EMESSO + rev 1 ANNULLATO
+                --      -> has_next = TRUE, is_superata = FALSE, is_attiva = TRUE
+                --    Il consumatore sceglie la domanda, invece di dedurla.
+                -- ⛔ `has_next_revisione` NON si ricalcola qui: fino al 2026-08-28
+                --    c'era un `EXISTS` inline che duplicava il predicato della
+                --    vista. Due copie della stessa regola divergono senza che
+                --    niente fallisca — e il nome esposto all'API resta inglese
+                --    per non rompere il contratto col frontend.
+                p.has_next_revisione AS has_next_revision,
+                p.is_superata,
                 p.data::text AS data,
                 p.stato_doc_preventivo_id,
                 sdp.codice_interno AS stato_codice_interno,

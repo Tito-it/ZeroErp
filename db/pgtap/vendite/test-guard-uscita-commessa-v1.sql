@@ -1,15 +1,18 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgtap-runner: owner
--- pgtap-runner-motivo: la fixture azzera vendite.commesse.emittente_soggetto_ruolo_id per
---   raggiungere il ramo «emittente mancante» di
---   fn_check_commessa_pronta_fatturazione, che e' una condizione di TESTATA e
---   l'unica via rimasta per lo scenario «tutte le azioni spente».
---   Con la RLS attiva nessun operatore puo' portare quella colonna a NULL: il
---   WITH CHECK valuta la riga NUOVA e l'SR NULL e' fail-closed.
---   ⚠️ Seconda categoria ammessa per il marcatore (brief §26). E resta una
---   domanda aperta di prodotto: quel ramo e' raggiungibile solo da un ruolo
---   BYPASSRLS, mai da un operatore — vedi §26.4.
+-- pgtap-runner-motivo: ⚠️ IL MOTIVO ORIGINALE E' DECADUTO IL 2026-08-26, e il
+--   marcatore resta in attesa di D-5.
+--   Era: «la fixture azzera vendite.commesse.emittente_soggetto_ruolo_id per
+--   raggiungere il ramo emittente mancante di fn_check_commessa_pronta_fatturazione,
+--   l'unica via rimasta per lo scenario tutte le azioni spente». Quella colonna
+--   e' NOT NULL dal changeSet 20260826-41: l'UPDATE non e' piu' scrivibile da
+--   NESSUNO, owner compreso, e lo scenario e' uscito dal modello (vedi la nota
+--   estesa al test 14).
+--   ⛔ Il marcatore NON si toglie qui: farlo significherebbe cambiare il ruolo
+--   con cui gira tutto il file in un commit che sta chiudendo un'altra cosa, e
+--   scoprire i rossi da RLS mescolati a questi. Va rivalutato quando D-5 si
+--   chiude — brief-db-emittente-commessa-invariante §7.12.
 -- pgTAP test per Zero ERP
 -- Test: guard di USCITA dalla commessa (->CHIUSA / ->ANNULLATA),
 --       arco IN_ESECUZIONE->CHIUSA e capabilities con enabled/reasons.
@@ -52,8 +55,8 @@
 --  11   [B] ->CHIUSA da IN_ESECUZIONE ammessa  <- chiude il vicolo cieco
 --  12   [C] _annullabile: motivo 558 con righe EMESSE
 --  13   [C] ->ANNULLATA con righe emesse rifiutata
---  14a  [C] le tre azioni da IN_ESECUZIONE sono presenti e tutte disabilitate
---  14   [C] capabilities: can_change_state=false se tutte le azioni sono disabilitate
+--  14a  [C] da IN_ESECUZIONE: annulla e chiudi spente, rendi_pronta accesa
+--  14   [C] SKIP dichiarato: lo scenario «tutte spente» e' uscito dal modello (D-5)
 --  15   [D] ->ANNULLATA senza righe emesse ammessa
 --  16   fn_get_commessa_stato espone commessa_codice e cliente_display
 -- ------------------------------------------------------------
@@ -313,32 +316,54 @@ SELECT throws_ok(
 -- `rendi_pronta`: le due condizioni sono l'una il complemento dell'altra, e
 -- sulle righe lo scenario «tutte disabilitate» non e' piu' raggiungibile.
 --
--- Lo si raggiunge dalla TESTATA: il secondo motivo di
--- fn_check_commessa_pronta_fatturazione e' l'emittente fiscale mancante, che
--- e' una condizione di testata e non di riga. Si azzera QUI, dopo le
--- transizioni (che l'emittente lo pretendono) e prima della verifica.
--- La commessa C non serve ad altro: i test 15 e 16 lavorano su tmp_d e tmp_a.
-UPDATE vendite.commesse
-   SET emittente_soggetto_ruolo_id = NULL
- WHERE id = (SELECT commessa_id FROM tmp_c);
+-- ⛔ 2026-08-26 — LA TERZA LEVA E' CADUTA, E CON LEI LO SCENARIO.
+--    Qui si azzerava l'emittente della commessa C: era il secondo motivo di
+--    fn_check_commessa_pronta_fatturazione, una condizione di TESTATA, e
+--    l'ultima via rimasta per spegnere anche `rendi_pronta`.
+--    Dal changeSet 20260826-41 `vendite.commesse.emittente_soggetto_ruolo_id`
+--    e' NOT NULL — la colonna e' la chiave di perimetro della commessa, e con
+--    un NULL la commessa spariva a chiunque avesse un perimetro ristretto —
+--    quindi quell'UPDATE non e' piu' scrivibile da nessuno.
+--
+--    ⭐ E lo scenario «tutte e tre spente» non e' piu' UNO STATO DEL MODELLO,
+--    non per caso ma per costruzione:
+--      - `chiudi` spento      <=> esiste una riga APPROVATA + NON_EMESSA;
+--      - `rendi_pronta` spento <=> NON esiste una riga
+--                                  APPROVATA + NON_EMESSA + tipo_doc;
+--      - e vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile impone
+--        APPROVATA + NON_EMESSA => tipo_doc NOT NULL.
+--    ⇒ `chiudi` spento IMPLICA `rendi_pronta` acceso: sono complementari.
+--    (Le tre `enabled` vengono SOLO dalle tre fn pure — verificato su
+--     script.fn_available_actions_commessa: nessun gate di permesso.)
+--
+--    Questo file l'aveva gia' visto arrivare sull'asse delle RIGHE (nota del
+--    2026-08-04) e aveva tappato il buco spostandosi sulla TESTATA. Ora e'
+--    chiuso anche quello — ed era gia' scritto nell'intestazione che il ramo
+--    era «raggiungibile solo da un ruolo BYPASSRLS, mai da un operatore».
+--
+--    ▶ Decisione aperta D-5: brief-db-emittente-commessa-invariante §7.12.
 
--- Anti-test-vacuo: il 14 vale solo se le azioni ci sono DAVVERO e sono
--- tutte spente. Senza questo, un giorno in cui l'array tornasse vuoto il
--- test sotto passerebbe senza dimostrare niente.
+-- 14a) Lo STATO VERO, ed e' ancora un'asserzione forte: le tre azioni ci sono
+--      tutte, e si dice esattamente QUALI sono spente. Se un giorno l'array
+--      tornasse vuoto, o se `rendi_pronta` si spegnesse insieme a `chiudi`
+--      (cioe' se l'invariante del tipo_doc cadesse), questo diventa rosso.
 SELECT is(
-  (SELECT array_agg(e->>'key' ORDER BY e->>'key')
+  (SELECT jsonb_object_agg(e->>'key', (e->>'enabled')::boolean)
      FROM jsonb_array_elements(
        script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_c))
-         -> 'available_actions') e
-    WHERE (e->>'enabled')::boolean IS FALSE),
-  ARRAY['annulla', 'chiudi', 'rendi_pronta'],
-  '14a) le tre azioni da IN_ESECUZIONE sono presenti e tutte disabilitate');
+         -> 'available_actions') e),
+  '{"annulla": false, "chiudi": false, "rendi_pronta": true}'::jsonb,
+  '14a) da IN_ESECUZIONE: annulla e chiudi spente, rendi_pronta accesa');
 
-SELECT is(
-  (script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_c))
-     ->> 'can_change_state')::boolean,
-  false,
-  '14) capabilities: can_change_state=false se tutte le azioni sono disabilitate');
+-- 14) ⛔ SKIP DICHIARATO, non asserzione indebolita.
+--     Questo test nasceva per distinguere «azioni presenti ma tutte spente»
+--     da «nessuna azione» — il suo commento diceva: *col vecchio
+--     jsonb_array_length(actions) > 0 questo test fallirebbe*. Quello stato
+--     non esiste piu' (vedi sopra), e riscrivere l'asserzione su
+--     `can_change_state = true` la farebbe passare SMETTENDO di verificare
+--     proprio quella distinzione: sarebbe verde per sottrazione.
+--     Il debito resta qui, visibile, finche' D-5 non e' chiusa.
+SELECT skip('14) can_change_state con tutte le azioni spente: scenario ritirato dal NOT NULL sull''emittente (20260826-41), in attesa di D-5 — brief-db-emittente-commessa-invariante §7.12', 1);
 
 -- ============================================================
 -- [D] IN_ESECUZIONE senza righe emesse -> annullamento lecito

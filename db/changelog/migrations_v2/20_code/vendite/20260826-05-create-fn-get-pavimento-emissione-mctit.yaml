@@ -1,0 +1,400 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-3 — IL PAVIMENTO DI EMISSIONE: UNA SOLA SEDE PER LA REGOLA
+#   vendite.fn_get_limite_emissione_default(code)          -> smallint
+#   vendite.fn_get_pavimento_emissione(registro, competenza) -> date
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-3 (decisioni D-2, D-6)
+#
+# ── ⭐ UNA REGOLA CON LA SUA ESENZIONE, NON DUE FORME ───────────────
+#   * la REGOLA: un documento non puo' essere datato piu' di N giorni fa. Vale
+#     per TUTTI i documenti, su entrambe le politiche;
+#   * il PERMESSO della differita: un documento datato l'ultimo giorno del mese M
+#     resta emettibile fino al giorno G del mese M+1. Quando scade, torna la
+#     regola.
+#
+#       pavimento(registro, competenza) =
+#           LEAST( data_operativa() - giorni,
+#                  CASE WHEN politica = 'FINE_MESE_COMPETENZA'
+#                        AND data_operativa() <= scadenza(competenza)
+#                       THEN fine_mese(competenza) END )
+#
+#   ⛔ PERCHE' NON LA FORMA DEL §2 DEL BRIEF. La scadenza («15 del mese
+#   successivo») e' una data nello spazio «quando stai lavorando»; il pavimento
+#   e' una data nello spazio «data del documento». Messe nello stesso GREATEST,
+#   il lotto di luglio lavorato il 5 agosto — il caso normale — nascerebbe datato
+#   15/08: OGNI documento differito prenderebbe il 15 del mese dopo. La verifica
+#   §10 V-1 del brief.
+#
+#   ⚠️ `LEAST` in PostgreSQL IGNORA i NULL (torna NULL solo se lo sono tutti): a
+#   permesso scaduto il secondo ramo sparisce da solo e resta `oggi - giorni`.
+#   Nessun COALESCE difensivo, e vale allo specchio per il GREATEST di chi
+#   compone i due pavimenti.
+#
+# ── ⭐ IL GIORNO DEL MESE SI CALCOLA SUL MESE (decisione D-6) ───────
+#   `LEAST(primo_del_mese_successivo + giorno - 1, ultimo_del_mese_successivo)`:
+#   con 31 su un febbraio la scadenza e' il 28 (o il 29), non il 2 marzo.
+#   Il CHECK di colonna ammette 1..31 apposta: a fare i conti col mese e' QUESTA
+#   funzione, perche' un vincolo non conosce il mese su cui il valore cadra'.
+#
+# ── ℹ️ TORNA SEMPRE UNA DATA, MAI NULL ──────────────────────────────
+#   Il pavimento generale esiste sempre: anche con `limite_emissione_giorni = 0`
+#   la risposta e' «oggi». Chi vuole un sezionale senza limite pratico configura
+#   un numero grande — ed e' esattamente cio' che fanno le fixture pgTAP che
+#   numerano con date d'archivio.
+#
+# ── ⛔ IL PARAMETRO NON SI LEGGE CON script.fn_get_parameter_full ───
+#   Quello e' il lettore canonico, con la cascata utente/gruppo/sessione/
+#   emittente. Qui la cascata sarebbe il difetto: darebbe ALLO STESSO documento
+#   limiti diversi a seconda di CHI lo genera. Si legge il `default_value` nudo,
+#   e l'unico asse di override e' il REGISTRO — che e' un fatto del sezionale,
+#   non di chi ci lavora. Stessa scelta, e stessa ragione, di
+#   `script.fn_data_operativa()`.
+#   ⛔ Se questa riga sparisse dal COMMENT, il prossimo lo «correggerebbe» verso
+#   il building block e riaprirebbe il buco.
+#
+# ── ⛔ NESSUN ELSE CHE INGOIA ───────────────────────────────────────
+#   Una politica non riconosciuta SOLLEVA, non si comporta come OGGI. Un
+#   pavimento plausibile e sbagliato non lo nota nessuno, e quando lo si nota il
+#   numero e' gia' stato consumato. Stesso ragionamento gia' scritto in
+#   `fn_calcola_data_documento` e in `fn_genera_scadenze_fattura`.
+#
+# ── ℹ️ PERCHE' DUE FUNZIONI E NON UNA ───────────────────────────────
+#   `fn_get_limite_emissione_default` esiste perche' la lettura di un limite dal
+#   catalogo serve DUE volte (i giorni e il giorno del mese) e con tre modi di
+#   sbagliare identici: assente, vuoto, non numerico. Una sede sola.
+#   ⛔ E' deliberatamente NARROW — `vendite.`, e il nome dice di quale famiglia
+#   di parametri parla: un lettore generico di parametri esiste gia'
+#   (`script.fn_get_parameter_full`) e questa NON e' una sua alternativa.
+#
+# Dipendenze: 20260826-01 (le due colonne di override), 20260826-03 (i due
+#             parametri: vive in 80_data, che gira DOPO 20_code — fra i due
+#             momenti la funzione solleva E_CONFIG_MANCANTE, ed e' voluto),
+#             script.fn_data_operativa (20260825-02).
+# Verifica: db/pgtap/vendite/test-limite-emissione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-05-create-fn-get-pavimento-emissione-mctit.yaml
+
+  - changeSet:
+      id: 20260826-05-create-fn-get-pavimento-emissione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-3: la sede unica del limite di emissione. ⭐ UNA REGOLA CON LA SUA ESENZIONE, non
+        due forme: pavimento = LEAST(data_operativa - giorni, fine_mese(competenza) se il
+        permesso della differita e' ancora aperto). ⛔ La forma «scadenza dentro il GREATEST»
+        del §2 del brief farebbe nascere OGNI documento differito datato il 15 del mese
+        successivo — una scadenza e un pavimento non stanno nello stesso GREATEST (verifica
+        §10 V-1). ⭐ Il giorno del mese si calcola SUL MESE: LEAST(primo + giorno - 1, ultimo
+        del mese), quindi 31 su un febbraio da' il 28. ⛔ Il parametro si legge come
+        default_value NUDO e non via script.fn_get_parameter_full: la cascata di override
+        darebbe allo stesso documento limiti diversi secondo chi lo genera — l'unico asse di
+        override e' il registro. ⛔ Nessun ELSE che ingoia: una politica non riconosciuta
+        solleva. Torna sempre una data, mai NULL.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: limite_emissione_giorni
+            - columnExists:
+                schemaName: vendite
+                tableName: registri_fatturazione
+                columnName: limite_emissione_giorno_mese
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_data_operativa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_limite_emissione_default(
+                  p_code config.parameters.code%TYPE
+              )
+               RETURNS smallint
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_valore config.parameters.default_value%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il valore di un limite di emissione dal catalogo dei
+                  --   parametri, come numero.
+                  --
+                  -- Regole:
+                  --   - si legge il default NUDO, mai la cascata di override;
+                  --   - fail-loud su tutte e tre le forme di guasto: assente,
+                  --     vuoto, non numerico.
+                  -- =========================================================
+
+                  -- Guard di parametro: un codice vuoto lo produce solo un
+                  -- chiamante rotto, ed e' per questo che il codice e' TECNICO.
+                  IF p_code IS NULL OR btrim(p_code) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_limite_emissione_default',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'codice del parametro obbligatorio'),
+                          NULL::uuid,
+                          'vendite.fn_get_limite_emissione_default',
+                          'p_code (obbligatorio)');
+                  END IF;
+
+                  -- ⛔ default_value NUDO, non script.fn_get_parameter_full: la
+                  --    cascata di override (utente/gruppo/sessione/emittente)
+                  --    darebbe ALLO STESSO documento limiti diversi a seconda
+                  --    di chi lo genera. L'unico asse di override e' il
+                  --    registro, ed e' un fatto del sezionale. Vedi il COMMENT.
+                  SELECT p.default_value
+                    INTO v_valore
+                    FROM config.parameters p
+                   WHERE p.code = p_code;
+
+                  -- 1) Assente, oppure presente e vuoto. ⚠️ Il secondo caso e'
+                  --    raggiungibile davvero: default_value e' NOT NULL ma non
+                  --    ha nessun CHECK di non-vuoto, e a catalogo ci sono gia'
+                  --    parametri a stringa vuota.
+                  IF v_valore IS NULL OR btrim(v_valore) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_limite_emissione_default',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', p_code, 'valore', v_valore),
+                          NULL::uuid,
+                          -- ⭐ Nel VARIADIC va la CHIAVE DI CONFIGURAZIONE, che
+                          --    un amministratore riconosce e sa dove mettere.
+                          p_code);
+                  END IF;
+
+                  -- 2) C'e' ed e' pieno, ma non e' un numero.
+                  --    ⛔ Senza questo controllo il cast alza un 22P02 grezzo:
+                  --       il contratto «P0001 + CONSTRAINT = errore di dominio»
+                  --       salta e il guasto arriva al backend come 500 non
+                  --       tradotto.
+                  --    ⚠️ Il quantificatore {1,4} non e' estetica: limita a
+                  --       0..9999 e quindi al dominio di smallint, cosi' un
+                  --       valore assurdo non alza un 22003 al posto della frase.
+                  IF btrim(v_valore) !~ '^[0-9]{1,4}$' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_limite_emissione_default',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', p_code, 'valore', v_valore),
+                          NULL::uuid,
+                          -- ⭐ Qui la frase nomina anche IL VALORE: e' l'unica
+                          --    cosa che dice dove sta l'errore di battitura.
+                          concat(p_code, ' = ', quote_literal(btrim(v_valore)),
+                                 ' (non e'' un numero intero fra 0 e 9999)'));
+                  END IF;
+
+                  RETURN btrim(v_valore)::smallint;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_limite_emissione_default(config.parameters.code%TYPE)
+                IS 'Il valore di un limite di emissione dal catalogo dei parametri, come numero. Serve i due codici VENDITE_LIMITE_EMISSIONE_IMMEDIATA_GIORNI e VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE, letti da vendite.fn_get_pavimento_emissione quando il registro non dichiara un override suo. ⛔ LEGGE IL default_value NUDO e NON script.fn_get_parameter_full, che pure e'' il lettore canonico: la sua cascata di override (utente/gruppo/sessione/emittente) darebbe ALLO STESSO documento limiti diversi a seconda di chi lo genera, cioe'' il difetto che il limite di emissione chiude. L''unico asse di override e'' il REGISTRO, che e'' un fatto del sezionale e non di chi ci lavora — stessa scelta, e stessa ragione, di script.fn_data_operativa(). ⛔ FAIL-LOUD su tre condizioni, tutte con E_CONFIG_MANCANTE perche'' a rimediare e'' sempre chi amministra la configurazione: parametro assente, valore vuoto (raggiungibile: default_value e'' NOT NULL ma senza CHECK di non-vuoto, e a catalogo ci sono gia'' stringhe vuote), valore non numerico. ⚠️ La regex ammette 1..4 cifre e non un numero qualunque: limita al dominio di smallint, cosi'' un valore assurdo produce la frase invece di un 22003 grezzo che farebbe saltare il contratto P0001. ⛔ NON e'' un lettore generico di parametri e non va usata come tale: e'' narrow per dominio e per famiglia, apposta. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-3.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_limite_emissione_default(
+                  config.parameters.code%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_limite_emissione_default(
+                  config.parameters.code%TYPE) TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_emissione(
+                  p_registro_id     vendite.registri_fatturazione.id%TYPE,
+                  p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE
+              )
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_politica    vendite.registri_fatturazione.politica_data_documento%TYPE;
+                  v_giorni      vendite.registri_fatturazione.limite_emissione_giorni%TYPE;
+                  v_giorno_mese vendite.registri_fatturazione.limite_emissione_giorno_mese%TYPE;
+                  -- ⚠️ Ancorate a fatture.data e non a `date` nudo: sono date di
+                  --    DOCUMENTO, ed e' la colonna che ne decide il tipo.
+                  v_oggi        vendite.fatture.data%TYPE;
+                  v_primo_succ  vendite.fatture.data%TYPE;
+                  v_fine_succ   vendite.fatture.data%TYPE;
+                  v_scadenza    vendite.fatture.data%TYPE;
+                  v_fine_comp   vendite.fatture.data%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Da quale data in poi un documento di questo sezionale e'
+                  --   ancora EMETTIBILE. Non dice niente sulla sequenza dei
+                  --   numeri: quello e' l'altro pavimento.
+                  --
+                  -- Regole:
+                  --   - una regola generale (oggi - giorni) e un PERMESSO della
+                  --     sola differita che scade;
+                  --   - il valore e' un DATO (config.parameters + override sul
+                  --     registro), mai una costante nel codice;
+                  --   - nessun ELSE che ingoia: una politica non riconosciuta
+                  --     solleva.
+                  -- =========================================================
+
+                  -- Guard di parametro: un id nullo o non positivo non esce da
+                  -- nessuna interfaccia — lo produce solo un chiamante rotto,
+                  -- ed e' per questo che il codice e' TECNICO.
+                  IF p_registro_id IS NULL OR p_registro_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_pavimento_emissione',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'registro_id obbligatorio e maggiore di zero',
+                              'p_registro_id', p_registro_id),
+                          NULL::uuid,
+                          'vendite.fn_get_pavimento_emissione',
+                          'p_registro_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- ⚠️ Questa tabella non ha RLS: «non trovato» vuol dire
+                  --    davvero «non esiste».
+                  SELECT r.politica_data_documento,
+                         r.limite_emissione_giorni,
+                         r.limite_emissione_giorno_mese
+                    INTO v_politica, v_giorni, v_giorno_mese
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = p_registro_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_pavimento_emissione',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('registro_id', p_registro_id),
+                          NULL::uuid,
+                          concat('registro di fatturazione ', p_registro_id, ' inesistente'));
+                  END IF;
+
+                  v_oggi := script.fn_data_operativa();
+
+                  -- ⭐ I GIORNI SERVONO SEMPRE, anche sulla differita: sono la
+                  --    REGOLA GENERALE, e la differita ci ricade appena il suo
+                  --    permesso scade. NULL sull'override = vale il default
+                  --    globale, non «nessun limite».
+                  IF v_giorni IS NULL THEN
+                      v_giorni := vendite.fn_get_limite_emissione_default(
+                                      'VENDITE_LIMITE_EMISSIONE_IMMEDIATA_GIORNI');
+                  END IF;
+
+                  -- ─── 1) IMMEDIATA: solo la regola generale ────────────────
+                  IF v_politica = 'OGGI' THEN
+                      RETURN v_oggi - v_giorni;
+                  END IF;
+
+                  -- ─── 2) DIFFERITA: la regola, piu' il permesso finche' dura ─
+                  IF v_politica = 'FINE_MESE_COMPETENZA' THEN
+
+                      -- ⛔ Niente ripiego su oggi: la competenza decide il
+                      --    permesso, e senza permesso il pavimento sarebbe piu'
+                      --    severo del vero senza dirlo.
+                      IF p_competenza_mese IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'vendite.fn_get_pavimento_emissione',
+                              'E_VENDITE_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object(
+                                  'detail', 'competenza obbligatoria con politica FINE_MESE_COMPETENZA',
+                                  'registro_id', p_registro_id,
+                                  'politica', v_politica),
+                              NULL::uuid,
+                              'vendite.fn_get_pavimento_emissione',
+                              'p_competenza_mese (obbligatorio con politica FINE_MESE_COMPETENZA)');
+                      END IF;
+
+                      IF v_giorno_mese IS NULL THEN
+                          v_giorno_mese := vendite.fn_get_limite_emissione_default(
+                                               'VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE');
+                      END IF;
+
+                      -- ℹ️ date_trunc anche se la competenza e' il primo del
+                      --    mese per abitudine: la funzione non deve dipendere
+                      --    da un'abitudine che nessun vincolo impone.
+                      v_primo_succ := (date_trunc('month', p_competenza_mese)
+                                       + interval '1 month')::date;
+                      v_fine_succ  := (v_primo_succ + interval '1 month - 1 day')::date;
+
+                      -- ⭐ IL GIORNO SI APPOGGIA AL MESE, NON LO SCAVALCA
+                      --    (decisione D-6): con 30 su un febbraio la scadenza
+                      --    e' il 28 (o il 29), non il 2 marzo. Il CHECK di
+                      --    colonna ammette 1..31 apposta — un vincolo non
+                      --    conosce il mese su cui il valore cadra'.
+                      v_scadenza := LEAST(v_primo_succ + (v_giorno_mese - 1), v_fine_succ);
+
+                      IF v_oggi <= v_scadenza THEN
+                          -- Il permesso e' ancora aperto: la data di fine
+                          -- competenza resta ammessa ANCHE se e' piu' vecchia
+                          -- del pavimento mobile.
+                          v_fine_comp := (date_trunc('month', p_competenza_mese)
+                                          + interval '1 month - 1 day')::date;
+
+                          -- ⚠️ LEAST e non GREATEST: si prende la piu'
+                          --    PERMISSIVA delle due, perche' sono due ragioni
+                          --    INDIPENDENTI per cui una data e' ammessa — la
+                          --    regola generale e il permesso — e basta che ne
+                          --    valga una.
+                          RETURN LEAST(v_oggi - v_giorni, v_fine_comp);
+                      END IF;
+
+                      -- Permesso scaduto: torna la regola generale (decisione
+                      -- D-2, ramo B). ⛔ Non «solo oggi»: i giorni sono la
+                      -- regola di tutti i documenti, e quando un permesso in
+                      -- piu' scade non ne compare uno piu' severo.
+                      RETURN v_oggi - v_giorni;
+                  END IF;
+
+                  -- ─── 3) ⭐ Nessun ELSE che ingoia ─────────────────────────
+                  -- Il CHECK di colonna rende questo ramo irraggiungibile
+                  -- finche' regge; se un giorno si allargasse, la funzione si
+                  -- ferma e lo DICE invece di inventare un pavimento.
+                  PERFORM script.fn_log_and_raise_error(
+                      'database', 'vendite.fn_get_pavimento_emissione',
+                      'E_CONFIG_MANCANTE',
+                      jsonb_build_object('registro_id', p_registro_id,
+                                         'politica_data_documento', v_politica),
+                      NULL::uuid,
+                      concat('politica data documento non gestita: ',
+                             quote_literal(v_politica),
+                             ' sul registro ', p_registro_id));
+
+                  -- Irraggiungibile: la riga sopra solleva sempre. Serve al
+                  -- compilatore, che pretende un ritorno su ogni percorso.
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_pavimento_emissione(vendite.registri_fatturazione.id%TYPE, vendite.fatturazione_lotti.competenza_mese%TYPE)
+                IS 'Da quale data in poi un documento di questo sezionale e'' ancora EMETTIBILE. ⛔ Non dice niente sulla sequenza dei numeri: quello e'' l''altro pavimento (vendite.fn_get_pavimento_sequenza), e a comporli e'' vendite.fn_get_pavimento_data_documento. ⭐ UNA REGOLA GENERALE CON LA SUA ESENZIONE, non due forme: pavimento = LEAST(data_operativa - giorni, fine_mese(competenza) se il permesso della differita e'' ancora aperto). I giorni valgono su ENTRAMBE le politiche — sulla differita sono il pavimento a cui si ricade appena il permesso scade (decisione D-2, ramo B): quando un permesso IN PIU'' scade non ne compare uno piu'' SEVERO di quello di tutti. ⛔ La forma alternativa — la scadenza «15 del mese successivo» dentro un GREATEST con la data della politica — e'' SBAGLIATA e va nominata perche'' sembra giusta: una scadenza vive nello spazio «quando stai lavorando», un pavimento nello spazio «data del documento», e messe insieme farebbero nascere OGNI documento differito datato il 15 del mese dopo (brief §10 V-1). ⚠️ LEAST e non GREATEST nel ramo del permesso: la regola generale e il permesso sono due ragioni INDIPENDENTI per cui una data e'' ammessa, e basta che ne valga una. ⭐ IL GIORNO DEL MESE SI CALCOLA SUL MESE (decisione D-6): LEAST(primo_del_mese_successivo + giorno - 1, ultimo_del_mese_successivo), quindi 31 su un febbraio da'' il 28 (o il 29). Il CHECK di colonna ammette 1..31 apposta — un vincolo non conosce il mese su cui il valore cadra''. ⛔ IL PARAMETRO SI LEGGE NUDO, mai con script.fn_get_parameter_full: la cascata di override darebbe ALLO STESSO documento limiti diversi secondo chi lo genera, e l''unico asse di override e'' il registro. ⛔ NESSUN ELSE CHE INGOIA: una politica non riconosciuta solleva invece di comportarsi come OGGI. ℹ️ Torna SEMPRE una data, mai NULL: il pavimento generale esiste sempre, e chi vuole un sezionale senza limite pratico configura un numero grande (e'' cio'' che fanno le fixture pgTAP che numerano con date d''archivio). ℹ️ STABLE: legge configurazione e si appoggia a script.fn_data_operativa(), che e'' STABLE perche'' now() e'' l''istante di inizio transazione. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-3.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_emissione(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_emissione(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE) TO zeroerp_batch_fatturazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_pavimento_emissione(bigint, date);
+              DROP FUNCTION IF EXISTS vendite.fn_get_limite_emissione_default(character varying);

@@ -159,9 +159,15 @@ const {
   isSelectable: isRigaAccreditabile,
   isSelected: isRigaSelezionata,
   toggleRow: toggleRiga,
-  toggleAll: toggleTutte,
-  allSelected: tutteSelezionate,
-  anySelected: alcuneSelezionate,
+  // ⛔ La terna «in pagina», non `toggleAll`/`anySelected`: questa coda e'
+  //    PAGINATA e la selezione vive attraverso le pagine. Fino al 2026-08-27
+  //    qui c'era `toggleAll`, che SOSTITUISCE la selezione con la pagina
+  //    corrente: spuntare «tutte» a pagina 2 buttava via quanto spuntato a
+  //    pagina 1, in silenzio — se ne vedeva solo il contatore del pulsante
+  //    calare. Vedi il blocco in fondo a `useSelezioneToggle`.
+  allInPagina: tutteSelezionate,
+  anyInPagina: alcuneSelezionate,
+  toggleAllInPagina: toggleTutte,
 } = useSelezioneToggle({
   selected: selezione,
   selezionabili: righeSelezionabili,
@@ -293,17 +299,35 @@ function buildRowActions(data) {
     label: t('vendite.resi.accredito_azione_riga'),
     icon: MANAGE_ICONS.CONFIRM,
     disabled: !isRigaAccreditabile(data),
-    motivo: data.blocco_codice ? bloccoLabel(data.blocco_codice) : undefined,
+    // ⛔ ERA `motivo:`, E NON LO LEGGEVA NESSUNO (corretto 2026-08-26). Il
+    //    campo del contratto di `RowActionsMenu` e' `tooltip`: e' da li' che il
+    //    BB ricava la riga del popup (`actionMotivo`) e il tooltip inline.
+    //    `action.motivo` non e' letto in nessun punto — quindi il motivo del
+    //    bottone spento non e' MAI stato reso, ne' su desktop ne' su touch.
+    //    Un campo dichiarato e non letto e' peggio della sua assenza: sembra
+    //    presidiato. Stessa specie di `#cell-azioni` al posto di `#actions` e
+    //    del campo `action` ignorato dal BB fino al 2026-08-17.
+    tooltip: data.blocco_codice ? bloccoLabel(data.blocco_codice) : undefined,
     command: () => chiediConferma([data]),
   })
 
-  // L'annullo compare solo se questa riga ha gia' un accredito registrato.
+  // L'annullo compare solo se questa riga ha gia' un accredito registrato...
   if (Number(data.gia_accreditato) > 0) {
+    // ...ed e' SPENTO col motivo quando la madre lo rifiuterebbe. Il codice
+    // arriva dal DB (`vw_resi_da_accreditare.annullo_blocco_codice`, che nasce
+    // da `script.fn_check_accredito_annullabile` — la stessa sede che la madre
+    // chiama), mai da una regola ricalcolata qui.
+    // ⚠️ Su questa superficie il caso e' RARO e va saputo: una riga esce dalla
+    //    coda AL VERBO (§N9), quindi qui restano solo gli accrediti PARZIALI.
+    //    La sede principale del gate e' il drawer del reso (`ResoRigheTable`).
+    const blocco = data.annullo_blocco_codice || null
     azioni.push({
       key: 'annulla-accredito',
       label: t('vendite.resi.annullo_azione'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
+      disabled: blocco != null,
+      tooltip: blocco ? annulloBloccoLabel(blocco) : undefined,
       command: () => apriAnnullo(data),
     })
   }
@@ -314,6 +338,14 @@ function buildRowActions(data) {
 // codice grezzo, mai la chiave i18n letterale.
 function bloccoLabel(codice) {
   return labelOrCode(t, te, `vendite.resi.coda_blocco.${codice}`, codice)
+}
+
+// Gemella della precedente per il verbo OPPOSTO. ⛔ I due blocchi NON si
+// confondono: `blocco_codice` dice «non posso accreditare» e il suo unico
+// valore (`GIA_ACCREDITATO`) e' esattamente la condizione che ABILITA
+// l'annullo. Stessa colonna per i due avrebbe spento il bottone sbagliato.
+function annulloBloccoLabel(codice) {
+  return labelOrCode(t, te, `vendite.resi.annullo_blocco.${String(codice).toLowerCase()}`, codice)
 }
 
 // Etichetta del filtro documento (deep-link dal pannello situazione merce).

@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigin
 AS $function$
 DECLARE
   v_righe_ids         bigint[];
-  v_ca_ids            bigint[];
+  v_af_ids            bigint[];
   v_deleted_fatture   integer := 0;
   v_deleted_righe     integer := 0;
   v_updated_attivita  integer := 0;
@@ -29,6 +29,9 @@ BEGIN
   --   (ritorno in coda di emissione).
   --
   -- Regole:
+  --   - ⛔ SI RIPRISTINA PRIMA DI CANCELLARE. L'ordine e' la
+  --     correzione D-1' del 2026-08-26, non una preferenza di
+  --     stile: il motivo sta nel blocco marcato qui sotto;
   --   - usa GUC di manutenzione per bypass guard fatturato
   --   - su ripristino: stato_esecuzione torna a NULL
   --   - D-N pezzo 3 (C-23): PRIMA di cancellare, restituisce
@@ -37,7 +40,10 @@ BEGIN
   --   - RD-4: il ritorno a NON_EMESSA delle commesse_attivita
   --     vive QUI e non nei chiamanti, perche' i chiamanti sono
   --     tre e la correttezza di ognuno dipende dal fatto che
-  --     facciano la stessa cosa
+  --     facciano la stessa cosa. Dal 2026-08-26 la coppia di
+  --     scritture e' nella primitiva condivisa
+  --     vendite.fn_libera_attivita_fatturabili, che serve anche
+  --     il verbo di recupero «Riporta da emettere»
   -- =========================================================
   IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
     RETURN QUERY SELECT 0, 0, 0, 0;
@@ -137,6 +143,67 @@ BEGIN
     v_righe_ids := ARRAY[]::bigint[];
   END IF;
 
+  -- ══ RIPRISTINO PRIMA DELLA CANCELLAZIONE (D-1', 2026-08-26) ══
+  -- ⛔ L'ORDINE E' LA CORREZIONE, non una preferenza di stile.
+  --    `fk_attivita_fatturabili_fattura_riga` e' ON DELETE SET
+  --    NULL e NOT DEFERRABLE: l'azione referenziale scatta a
+  --    FINE ISTRUZIONE del DELETE sulle righe, qui sotto. Fino al
+  --    2026-08-26 questo ripristino stava DOPO quel DELETE,
+  --    quindi girava quando `af.fattura_riga_id` era gia' NULL e
+  --    il predicato non corrispondeva piu' a nessuna riga.
+  -- ⛔ Il danno era DOPPIO: dallo stesso predicato nasceva anche
+  --    l'insieme delle commesse_attivita da riportare in coda.
+  --    Restavano sia `fatturato = true` (e
+  --    fn_select_attivita_fatturabili non la seleziona mai piu')
+  --    sia `stato_emissione = 'EMESSA'` (e
+  --    fn_emit_attivita_fatturabili_da_commessa non la ri-emette
+  --    mai piu'). Due porte chiuse invece di una, e in silenzio:
+  --    la funzione tornava updated_attivita = 0, e nessuno legge
+  --    quel contatore come un'anomalia.
+  -- ⭐ Riordinando, il legame si usa MENTRE E' ANCORA VIVO e la
+  --    ON DELETE SET NULL diventa INERTE: quando il DELETE
+  --    arriva non c'e' piu' nessun puntatore verso le righe che
+  --    sta cancellando.
+  -- ⚠️ CHI AGGIUNGE UN PASSO non lo metta fra questo blocco e i
+  --    DELETE: il ripristino deve restare a monte di qualunque
+  --    cosa tocchi vendite.fatture_righe. E' l'unica cosa che
+  --    tiene in piedi il predicato.
+  -- ⚠️ La GUC di manutenzione e' impostata sopra, e da qui in
+  --    avanti serve per QUESTA scrittura: gira mentre
+  --    `fattura_riga_id` e' ancora valorizzato, cioe' proprio
+  --    dove trgfn_attivita_fatturabili_guard_fatturato blocca.
+  --    Prima copriva l'UPDATE IMPLICITA della chiave esterna.
+  --
+  -- ⚠️ Il primo ramo prende TUTTE le attivita' del batch: e'
+  --    voluto nel reset globale (libera anche quelle agganciate
+  --    al lotto che non sono mai diventate riga) ed e' il motivo
+  --    per cui il reset PER-FATTURA deve passare p_lock_batch_id
+  --    NULL (C-22).
+  -- ⭐ E il predicato si valuta UNA VOLTA SOLA. Prima era
+  --    ripetuto identico in due punti «di proposito, perche' se
+  --    divergessero si sbloccherebbe un insieme e se ne
+  --    rimetterebbe in coda un altro»: quel rischio ora sparisce
+  --    per costruzione, l'insieme e' uno ed e' un array di id.
+  SELECT array_agg(af.id)
+    INTO v_af_ids
+    FROM vendite.attivita_fatturabili af
+   WHERE (p_lock_batch_id IS NOT NULL AND af.lock_batch_id = p_lock_batch_id)
+      OR af.fattura_riga_id = ANY(v_righe_ids);
+
+  IF v_af_ids IS NULL THEN
+    v_af_ids := ARRAY[]::bigint[];
+  END IF;
+
+  -- 🔴 RD-4 — il livello che mancava, e che ora vive nella
+  -- primitiva condivisa (20260826-24): «attivita' liberata» e
+  -- «commessa_attivita di nuovo NON_EMESSA» sono UN fatto solo su
+  -- due livelli, e il verbo di recupero «Riporta da emettere»
+  -- consuma la stessa primitiva — cosi' la duplicazione non
+  -- esiste mai.
+  SELECT l.updated_attivita, l.riemesse_attivita
+    INTO v_updated_attivita, v_riemesse_attivita
+    FROM vendite.fn_libera_attivita_fatturabili(v_af_ids) AS l;
+
   DELETE FROM vendite.note
    WHERE target_tipo = 'FATTURA'
      AND target_riga_id = ANY(v_righe_ids);
@@ -162,61 +229,13 @@ BEGIN
    WHERE id = ANY(p_fatture_ids);
   GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
 
-  -- ⚠️ RD-4: si raccoglie PRIMA della UPDATE qui sotto, che azzera
-  -- `fattura_riga_id` e con esso il legame. Il predicato e'
-  -- IDENTICO a quello della UPDATE, di proposito: se i due
-  -- divergessero si sbloccherebbe un insieme di attivita' e se ne
-  -- rimetterebbe in coda un altro, in silenzio.
-  SELECT array_agg(DISTINCT af.commessa_attivita_id)
-    INTO v_ca_ids
-    FROM vendite.attivita_fatturabili af
-   WHERE af.commessa_attivita_id IS NOT NULL
-     AND (
-           (p_lock_batch_id IS NOT NULL AND af.lock_batch_id = p_lock_batch_id)
-        OR af.fattura_riga_id = ANY(v_righe_ids)
-         );
-
-  IF v_ca_ids IS NULL THEN
-    v_ca_ids := ARRAY[]::bigint[];
-  END IF;
-
-  -- ⚠️ Il primo ramo prende TUTTE le attivita' del batch: e'
-  -- voluto nel reset globale (libera anche quelle agganciate al
-  -- lotto che non sono mai diventate riga) ed e' il motivo per cui
-  -- il reset PER-FATTURA deve passare p_lock_batch_id NULL (C-22).
-  UPDATE vendite.attivita_fatturabili
-     SET lock_in_fatturazione = false,
-         lock_batch_id = NULL,
-         fatturato = false,
-         fattura_riga_id = NULL,
-         stato_esecuzione = NULL,
-         data_update = now(),
-         user_update = current_user
-   WHERE (p_lock_batch_id IS NOT NULL AND lock_batch_id = p_lock_batch_id)
-      OR fattura_riga_id = ANY(v_righe_ids);
-  GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
-
-  -- 🔴 RD-4 — il livello che mancava. Senza, le attivita' restano
-  -- marcate come emesse: fn_emit_attivita_fatturabili_da_commessa
-  -- filtra su stato_emissione = 'EMESSA' e non le riprende mai
-  -- piu', e il cruscotto competenza continua a contarle lavorate.
-  -- Solo le EMESSA: le ANNULLATA sono state annullate di proposito
-  -- e non tornano in coda per una pulizia.
-  UPDATE vendite.commesse_attivita ca
-     SET stato_emissione = 'NON_EMESSA',
-         data_update     = now(),
-         user_update     = current_user
-   WHERE ca.id = ANY(v_ca_ids)
-     AND ca.stato_emissione = 'EMESSA';
-  GET DIAGNOSTICS v_riemesse_attivita = ROW_COUNT;
-
   RETURN QUERY
   SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita, v_riemesse_attivita;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(p_fatture_ids bigint[], p_lock_batch_id uuid)
-IS 'Pulizia centralizzata delle fatture e ripristino COMPLETO di cio'' che avevano consumato. Cancella note, riepiloghi IVA, righe, log, collegamento al lotto e testate; storna dall''ambito di compensazione l''arrotondamento delle fatture cancellate (D-N pezzo 3 / C-23) PRIMA di toccarle; azzera i fondi; sblocca le attivita_fatturabili; e — dal 2026-08-03, RD-4 — riporta le commesse_attivita collegate a stato_emissione = NON_EMESSA. ⚠️ Quest''ultimo passo vive QUI e non nei chiamanti: sono TRE (fn_annulla_lotto_da_draft, fn_elimina_fattura_da_lotto, fn_riporta_lotto_a_draft) e la correttezza di ognuno dipende dal fatto che facciano la stessa cosa — senza, le attivita'' restano emesse senza fattura e nessun giro futuro le riprende. ⚠️ La popolazione delle commesse_attivita usa il predicato IDENTICO alla UPDATE su attivita_fatturabili e si raccoglie PRIMA di essa, che azzera fattura_riga_id. ⚠️ Il ramo su p_lock_batch_id prende TUTTE le attivita'' del batch: corretto nel reset globale, ed e'' il motivo per cui il reset per-fattura deve passare NULL (C-22). ⭐ NON cancella da vendite.fatture_rettifiche, e NON e'' una dimenticanza (domanda del backend, 2026-08-18, brief note-credito P-2). La proiezione del legame documentale delle note di credito la scrive il task popola_fatture_rettifiche, che gira DOPO numera_fatture: esiste quindi solo su documenti NUMERATI. E un documento numerato non e'' raggiungibile da nessuna delle tre porte di reset, perche'' tutte e tre lo rifiutano con un controllo ESPLICITO sul numero — fn_check_fattura_eliminabile_da_lotto motivo 4 (E_FATTURA_GIA_NUMERATA), fn_check_lotto_riportabile_a_draft motivo 3 e fn_check_lotto_annullabile motivo 3 (E_LOTTO_FATTURE_NUMERATE, aggiunto il 2026-08-18 proprio per chiudere l''ultima che si affidava al solo stato). ⚠️ La garanzia sta in quelle CONDIZIONI, non nei nomi delle funzioni: l''argomento «sono tutte *_da_draft» era vero e ha smesso di esserlo il 2026-08-04, quando fn_elimina_fattura_da_lotto_draft e'' stata rinominata e il suo perimetro allargato al pre-fiscale (RD-7). ⚠️ Se un giorno una porta di reset ammettesse un documento numerato, questa funzione dovrebbe cancellare anche la coppia in fatture_rettifiche: fk_fatture_ret_fattura NON e'' ON DELETE CASCADE, quindi il reset sbatterebbe su una violazione di chiave esterna grezza dentro una funzione che i suoi chiamanti danno per infallibile.';
+IS 'Pulizia centralizzata delle fatture e ripristino COMPLETO di cio'' che avevano consumato. Storna dall''ambito di compensazione l''arrotondamento delle fatture cancellate (D-N pezzo 3 / C-23) PRIMA di toccarle; azzera i fondi; RIPRISTINA le attivita_fatturabili (sblocco) e le commesse_attivita collegate (ritorno a stato_emissione = NON_EMESSA, dal 2026-08-03 RD-4); e SOLO DOPO cancella note, riepiloghi IVA, righe, log, collegamento al lotto e testate. ⚠️ Il ritorno a NON_EMESSA vive QUI e non nei chiamanti: sono TRE (fn_annulla_lotto_da_draft, fn_elimina_fattura_da_lotto, fn_riporta_lotto_a_draft) e la correttezza di ognuno dipende dal fatto che facciano la stessa cosa — senza, le attivita'' restano emesse senza fattura e nessun giro futuro le riprende. ⛔ L''ORDINE DEI PASSI E'' PORTANTE, dal 2026-08-26 (D-1''): il ripristino avviene PRIMA di qualunque cancellazione. fk_attivita_fatturabili_fattura_riga e'' ON DELETE SET NULL e NOT DEFERRABLE, quindi l''azione referenziale scatta a fine istruzione del DELETE sulle righe: con il ripristino a valle il predicato girava quando fattura_riga_id era gia'' NULL e non corrispondeva piu'' a nessuna riga, e il danno era DOPPIO perche'' dallo stesso predicato nasceva l''insieme delle commesse_attivita. L''attivita'' restava fatturata senza fattura e la sua riga di commessa su EMESSA, in silenzio: updated_attivita tornava 0, e nessuno legge quel contatore come un''anomalia. ⭐ Riordinando, il legame si usa mentre e'' ancora vivo e la SET NULL diventa INERTE — quando il DELETE arriva non c''e'' piu'' nessun puntatore verso le righe che sta cancellando. ⚠️ Chi aggiunge un passo NON lo metta fra il ripristino e i DELETE. ⭐ E il predicato si valuta UNA volta sola: prima era ripetuto identico in due punti «di proposito», e bastava che i due divergessero per sbloccare un insieme e rimetterne in coda un altro. ⭐ La coppia di scritture del ripristino vive in vendite.fn_libera_attivita_fatturabili, consumata anche dal verbo di recupero «Riporta da emettere»: la duplicazione non esiste mai. ⚠️ Il ramo su p_lock_batch_id prende TUTTE le attivita'' del batch: corretto nel reset globale, ed e'' il motivo per cui il reset per-fattura deve passare NULL (C-22). ⭐ NON cancella da vendite.fatture_rettifiche, e NON e'' una dimenticanza (domanda del backend, 2026-08-18, brief note-credito P-2). La proiezione del legame documentale delle note di credito la scrive il task popola_fatture_rettifiche, che gira DOPO numera_fatture: esiste quindi solo su documenti NUMERATI. E un documento numerato non e'' raggiungibile da nessuna delle tre porte di reset, perche'' tutte e tre lo rifiutano con un controllo ESPLICITO sul numero — fn_check_fattura_eliminabile_da_lotto motivo 4 (E_FATTURA_GIA_NUMERATA), fn_check_lotto_riportabile_a_draft motivo 3 e fn_check_lotto_annullabile motivo 3 (E_LOTTO_FATTURE_NUMERATE, aggiunto il 2026-08-18 proprio per chiudere l''ultima che si affidava al solo stato). ⚠️ La garanzia sta in quelle CONDIZIONI, non nei nomi delle funzioni: l''argomento «sono tutte *_da_draft» era vero e ha smesso di esserlo il 2026-08-04, quando fn_elimina_fattura_da_lotto_draft e'' stata rinominata e il suo perimetro allargato al pre-fiscale (RD-7). ⚠️ Se un giorno una porta di reset ammettesse un documento numerato, questa funzione dovrebbe cancellare anche la coppia in fatture_rettifiche: fk_fatture_ret_fattura NON e'' ON DELETE CASCADE, quindi il reset sbatterebbe su una violazione di chiave esterna grezza dentro una funzione che i suoi chiamanti danno per infallibile. Piano: brief-db-lavoro-che-non-torna-indietro, L1.';
 ```
 
 ---

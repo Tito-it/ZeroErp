@@ -81,7 +81,6 @@ class ClientiView(DomainAPIView):
             "indirizzo_dettaglio_id": serializers.IntegerField(required=False),
             "termine_pagamento_id": serializers.IntegerField(required=False),
             "modalita_pagamento_id": serializers.IntegerField(required=False),
-            "iva_id": serializers.IntegerField(required=False),
             "ba_fatturazione_ordini": serializers.CharField(required=False),
             "ba_parent_account_id": serializers.IntegerField(required=False),
         }),
@@ -122,17 +121,18 @@ class ClientiDetailView(DomainAPIView):
 
     @extend_schema(
         request=inline_serializer(name="ClienteUpdateReq", fields={
-            "iva_id": serializers.IntegerField(required=False),
             "modalita_pagamento_id": serializers.IntegerField(required=False),
             "termine_pagamento_id": serializers.IntegerField(required=False),
-            "cliente_pa": serializers.CharField(required=False),
-            "split_payment": serializers.CharField(required=False),
             "garanzia_tipo": serializers.CharField(required=False),
             "garanzia_importo": serializers.FloatField(required=False),
         }),
         responses={200: inline_serializer(name="ClienteUpdateResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Aggiorna campi editabili del cliente (pagamento, PA, garanzia, servizio).
+    # Scopo: Aggiorna campi editabili del cliente (pagamento, garanzia, servizio).
+    #        ⛔ `iva_id`, `cliente_pa` e `split_payment` sono usciti il 2026-08-29
+    #        (I0/D7-bis/D8): le prime due colonne non esistono piu' su
+    #        `anagrafiche.clienti`, i due flag vivono ora su `anagrafiche.soggetti`
+    #        e si aggiornano dalla PATCH del soggetto.
     def patch(self, request: Request, cliente_id: int) -> JsonResponse:
         svc = ClientiService()
         result = svc.update_cliente(cliente_id, request.data)

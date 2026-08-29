@@ -18,8 +18,8 @@
 #   3) parse_gruppi: lista vuota rifiutata (ambigua: «niente» o «tutto»?)
 #   4) parse_gruppi: elemento non stringa / vuoto rifiutato
 #   5) parse_gruppi: oltre il cap → errore parlante
-#   6) gruppi_digest: vuoto senza gruppi (chiave del giro di massa invariata)
-#   7) gruppi_digest: invariante all'ordine, diverso per insiemi diversi
+#   6) insieme_digest: vuoto senza gruppi (chiave del giro di massa invariata)
+#   7) insieme_digest: invariante all'ordine, diverso per insiemi diversi
 #   8) runner: i gruppi sono persistiti alla CREAZIONE del lotto
 #   9) runner: su lotto ESISTENTE (rerun) il perimetro NON viene riscritto
 #  10) runner: senza gruppi non si tocca la tabella del perimetro
@@ -48,7 +48,7 @@ from django.test import SimpleTestCase
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services._fatturazione_job_helpers import (
     MAX_GRUPPI_EMISSIONE_MIRATA,
-    gruppi_digest,
+    insieme_digest,
     parse_gruppi,
 )
 from apps.vendite.services.fatturazione_driver_service import (
@@ -110,15 +110,28 @@ class GruppiDigestTests(TestCase):
     # 6) Senza gruppi il digest e' vuoto → la chiave di business del giro di
     #    massa resta IDENTICA a prima della slice (non-regressione dedup).
     def test_digest_vuoto_senza_gruppi(self):
-        self.assertEqual(gruppi_digest(None), "")
-        self.assertEqual(gruppi_digest(()), "")
+        self.assertEqual(insieme_digest(None), "")
+        self.assertEqual(insieme_digest(()), "")
 
     # 7) Stesso insieme = stesso lavoro (ordine irrilevante); insiemi diversi
     #    = job diversi, altrimenti la seconda emissione mirata del mese
     #    verrebbe assorbita dalla dedup dei job vivi.
     def test_digest_invariante_ordine_e_distinto_per_insieme(self):
-        self.assertEqual(gruppi_digest(("B", "A")), gruppi_digest(("A", "B")))
-        self.assertNotEqual(gruppi_digest(("A",)), gruppi_digest(("A", "B")))
+        self.assertEqual(insieme_digest(("B", "A")), insieme_digest(("A", "B")))
+        self.assertNotEqual(insieme_digest(("A",)), insieme_digest(("A", "B")))
+
+    # 7-bis) ⭐ Generalizzato ai LOTTI (2026-08-26, regola del 2): la
+    #     numerazione su selezione usa lo stesso digest con id NUMERICI.
+    #     ⛔ E' il punto che rende la funzione condivisibile: due selezioni
+    #     diverse sullo stesso mese devono restare due job, o la dedup assorbe
+    #     la seconda e l'operatore legge «accodato» senza che succeda niente.
+    def test_digest_su_id_numerici(self) -> None:
+        self.assertEqual(insieme_digest((15, 12)), insieme_digest((12, 15)))
+        self.assertNotEqual(insieme_digest((12,)), insieme_digest((12, 15)))
+        self.assertEqual(insieme_digest([]), "")
+        # ⚠️ Ordina come STRINGHE, non come numeri: indifferente al risultato
+        #     (serve solo che sia deterministico) ma va saputo da chi legge.
+        self.assertEqual(insieme_digest((2, 10)), insieme_digest((10, 2)))
 
 
 class RunnerPersistenzaGruppiTests(SimpleTestCase):

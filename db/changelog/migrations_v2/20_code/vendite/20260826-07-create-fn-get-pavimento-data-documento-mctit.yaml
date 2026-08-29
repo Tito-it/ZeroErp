@@ -1,0 +1,194 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DB-4 — LA SEDE UNICA CHE COMPONE I DUE PAVIMENTI
+#   vendite.fn_get_pavimento_data_documento(registro, serie, competenza)
+#     -> TABLE(pavimento date, origine text)
+#   Piano: brief-db-limite-emissione-e-data-verificata §11 DB-4 (decisione D-4)
+#
+# ── ⛔ PERCHE' UNA SEDE E NON TRE GREATEST ──────────────────────────
+#   Il pavimento effettivo serve in TRE posti — la nascita del documento
+#   (fn_calcola_data_documento), la targa (fn_get_pavimento_lotto) e il cancello
+#   (fn_get_next_progressivo). Tre `GREATEST` scritti a mano in tre punti sono
+#   tre implementazioni della stessa regola, e il giorno in cui una cambia le
+#   altre due mentono senza che nulla lo dica.
+#   ⭐ Si condivide la FUNZIONE, non una copia della sua logica.
+#
+# ── ⭐ TORNA ANCHE `origine`, E SERVE A SCEGLIERE LA FRASE ──────────
+#   Il cancello deve rifiutare con codici errore DIVERSI a seconda del pavimento
+#   che ha morso: «il documento e' piu' vecchio del limite di emissione» e «la
+#   data e' anteriore all'ultimo numero emesso» sono due cose diverse, si
+#   rimediano in due modi diversi, e dire la seconda quando e' la prima manda a
+#   cercare la cosa sbagliata. Una funzione che tornasse solo una `date` avrebbe
+#   gia' perso l'informazione che serve a scegliere.
+#
+#   ⚠️ IL PAREGGIO VA A `SEQUENZA` (decisione D-4). Quando i due pavimenti
+#   coincidono la data minima e' la stessa ma le frasi no, e la frase della
+#   sequenza puo' portare con se' un BERSAGLIO — il pulsante che apre la fattura
+#   gia' numerata — mentre quella del limite puo' solo dire una data. A parita',
+#   si mostra quella che porta l'operatore da qualche parte.
+#
+# ── ⭐ `pavimento` E' SEMPRE QUELLO EFFETTIVO ───────────────────────
+#   Cioe' il MAGGIORE dei due, non quello di `origine`. E' il valore che va
+#   nella frase dell'errore e nella `minDate` del dialog: nominare il pavimento
+#   di sequenza mentre a mordere e' il limite direbbe all'operatore di scegliere
+#   una data CHE VERRA' RIFIUTATA DI NUOVO — un messaggio che manda a sbattere
+#   due volte e' peggio di un messaggio generico. (brief §10 V-10, decisione D-4)
+#
+# ── ℹ️ `GREATEST` IGNORA I NULL, E QUI SERVE ────────────────────────
+#   `fn_get_pavimento_sequenza` torna NULL quando dalla sequenza non e' ancora
+#   uscito niente; `fn_get_pavimento_emissione` torna sempre una data. Il
+#   GREATEST se la cava da solo — nessun COALESCE difensivo.
+#   ⛔ Il caso «entrambi NULL» oggi non esiste, ma la funzione lo regge: torna
+#   `pavimento` NULL e `origine` NULL, cioe' «nessun vincolo», e chi legge deve
+#   trattarlo come tale.
+#
+# ── ℹ️ I GUARD DI PARAMETRO STANNO NELLE DUE PRIMITIVE ──────────────
+#   Questa funzione delega subito, e le due primitive guardano gia'
+#   `p_registro_id` (NULL o <= 0) e la competenza obbligatoria sulla differita.
+#   Ripeterli qui sarebbe una seconda copia della stessa validazione, con il
+#   difetto in piu' di poter divergere. ⚠️ Conseguenza da sapere: l'errore
+#   nomina la primitiva, non questa funzione.
+#
+# ── ℹ️ PERCHE' `origine` E' `text` E NON UN %TYPE ───────────────────
+#   Non riflette nessuna colonna: e' un discriminante interno con due valori
+#   (SEQUENZA, EMISSIONE) che vivono solo nel dialogo fra questa funzione e chi
+#   la chiama. Il `%TYPE` si usa dove c'e' una colonna che decide il tipo — qui
+#   non c'e', e ancorarlo a una colonna qualunque sarebbe un legame falso.
+#
+# Dipendenze: 20260826-05 (fn_get_pavimento_emissione),
+#             20260826-06 (fn_get_pavimento_sequenza).
+# Verifica: db/pgtap/vendite/test-limite-emissione-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-07-create-fn-get-pavimento-data-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260826-07-create-fn-get-pavimento-data-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        DB-4: la sede unica che compone i due pavimenti — sequenza dei numeri e limite di
+        emissione — e dice quale ha vinto. ⛔ Esiste perche' il pavimento effettivo serve in
+        tre posti (nascita, targa, cancello) e tre GREATEST scritti a mano sono tre
+        implementazioni della stessa regola. ⭐ `pavimento` e' SEMPRE quello EFFETTIVO, cioe'
+        il maggiore: nominare quello di sequenza mentre a mordere e' il limite direbbe
+        all'operatore di scegliere una data che verra' rifiutata di nuovo. ⭐ `origine`
+        (SEQUENZA | EMISSIONE) serve a scegliere il codice errore: i due rifiuti si rimediano
+        in modi diversi. ⚠️ Il pareggio va a SEQUENZA (decisione D-4): a parita' di data si
+        mostra la frase che puo' portare un bersaglio, cioe' un pulsante che apre la fattura
+        gia' numerata. ℹ️ GREATEST ignora i NULL e qui serve; i guard di parametro stanno
+        nelle due primitive, per non averne due copie.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_pavimento_emissione';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_get_pavimento_sequenza';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_data_documento(
+                  p_registro_id     vendite.registri_fatturazione.id%TYPE,
+                  p_serie           vendite.fatture.serie%TYPE,
+                  p_competenza_mese vendite.fatturazione_lotti.competenza_mese%TYPE
+              )
+               RETURNS TABLE(
+                  pavimento vendite.registri_fatturazione_progressivi.ultima_data%TYPE,
+                  -- ⚠️ `text` e non un %TYPE: non riflette nessuna colonna, e'
+                  --    un discriminante che vive solo fra questa funzione e chi
+                  --    la chiama. Ancorarlo a una colonna qualunque sarebbe un
+                  --    legame falso.
+                  origine   text
+               )
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_seq vendite.registri_fatturazione_progressivi.ultima_data%TYPE;
+                  v_emi vendite.fatture.data%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il pavimento EFFETTIVO della data di un documento — il
+                  --   maggiore fra quello della sequenza e quello del limite di
+                  --   emissione — e QUALE dei due ha vinto.
+                  --
+                  -- Regole:
+                  --   - una sede sola: nascita, targa e cancello leggono qui;
+                  --   - `pavimento` e' sempre il maggiore, mai quello di
+                  --     `origine`;
+                  --   - il pareggio va a SEQUENZA, perche' la sua frase puo'
+                  --     portare un bersaglio.
+                  -- =========================================================
+
+                  -- ℹ️ I guard di parametro stanno nelle due primitive, che li
+                  --    hanno gia' entrambi: qui sarebbero una seconda copia
+                  --    della stessa validazione, e due copie divergono.
+                  v_seq := vendite.fn_get_pavimento_sequenza(p_registro_id, p_serie);
+                  v_emi := vendite.fn_get_pavimento_emissione(p_registro_id, p_competenza_mese);
+
+                  -- ⚠️ GREATEST IGNORA I NULL (torna NULL solo se lo sono
+                  --    tutti): la sequenza risponde NULL quando non e' ancora
+                  --    uscito niente, e il GREATEST se la cava da solo. Nessun
+                  --    COALESCE difensivo.
+                  RETURN QUERY
+                  SELECT GREATEST(v_seq, v_emi),
+                         CASE
+                             -- ⭐ Il pareggio va a SEQUENZA: a parita' di data
+                             --    si sceglie la frase che puo' portare
+                             --    l'operatore su un documento vero.
+                             WHEN v_seq IS NOT NULL
+                                  AND (v_emi IS NULL OR v_seq >= v_emi) THEN 'SEQUENZA'::text
+                             WHEN v_emi IS NOT NULL                     THEN 'EMISSIONE'::text
+                             -- Nessun pavimento da nessuna delle due parti:
+                             -- «nessun vincolo». Oggi non capita — il limite di
+                             -- emissione c'e' sempre — ma la funzione lo regge.
+                             ELSE NULL::text
+                         END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_pavimento_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatture.serie%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE)
+                IS 'Il pavimento EFFETTIVO della data di un documento — il maggiore fra il pavimento della SEQUENZA (vendite.fn_get_pavimento_sequenza) e quello del LIMITE DI EMISSIONE (vendite.fn_get_pavimento_emissione) — e quale dei due ha vinto. ⛔ E'' LA SEDE UNICA, e il motivo per cui esiste e'' che il pavimento effettivo serve in TRE posti: la nascita del documento (fn_calcola_data_documento), la targa del dialog (fn_get_pavimento_lotto) e il cancello (fn_get_next_progressivo). Tre GREATEST scritti a mano sarebbero tre implementazioni della stessa regola, e il giorno in cui una cambia le altre due mentono in silenzio: si condivide la funzione, non una copia della sua logica. ⭐ `pavimento` e'' SEMPRE QUELLO EFFETTIVO, mai quello di `origine`: e'' il valore che va nella frase dell''errore e nella minDate del dialog, e nominare il pavimento di sequenza mentre a mordere e'' il limite direbbe all''operatore di scegliere una data CHE VERRA'' RIFIUTATA DI NUOVO — un messaggio che manda a sbattere due volte e'' peggio di uno generico. ⭐ `origine` (SEQUENZA | EMISSIONE) esiste per scegliere il CODICE ERRORE: «piu'' vecchio del limite di emissione» e «anteriore all''ultimo numero emesso» sono due cose diverse, si rimediano in due modi diversi, e dire la seconda quando e'' la prima manda a cercare la cosa sbagliata. ⚠️ IL PAREGGIO VA A SEQUENZA (decisione D-4): a parita'' di data le frasi non sono equivalenti — quella della sequenza puo'' portare un BERSAGLIO, cioe'' un pulsante che apre la fattura gia'' numerata, quella del limite puo'' solo dire una data. ℹ️ GREATEST ignora i NULL e qui serve: la sequenza risponde NULL finche'' non e'' uscito niente. Se un giorno fossero NULL entrambi la risposta e'' «nessun vincolo» (pavimento e origine NULL), e chi legge deve trattarla come tale. ℹ️ I guard di parametro stanno nelle due primitive: qui sarebbero una seconda copia, e l''errore nomina quindi la primitiva. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-4.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatture.serie%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_get_pavimento_data_documento(
+                  vendite.registri_fatturazione.id%TYPE,
+                  vendite.fatture.serie%TYPE,
+                  vendite.fatturazione_lotti.competenza_mese%TYPE) TO zeroerp_batch_fatturazione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_pavimento_data_documento(bigint, character varying, date);

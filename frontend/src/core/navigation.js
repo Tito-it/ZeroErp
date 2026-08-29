@@ -40,6 +40,16 @@ export const NAV_ICONS = Object.freeze({
   // futuro giri/job). pi-wrench = cassetta attrezzi, non-tecnico.
   STRUMENTI: 'pi pi-wrench',
   CODE_LAVORO: 'pi pi-inbox',
+  // Dominio INCASSI. ⚠️ Nessuna e' l'icona del dominio (`pi-credit-card`): una
+  // voce di menu che ripete l'icona del suo dominio non distingue niente.
+  DISTINTE: 'pi pi-wallet',
+  // Le due porte della stessa coda: `pi-link` = legare l'incasso alla rata,
+  // `pi-pause` = messa da parte in attesa di risoluzione.
+  CODA_ABBINARE: 'pi pi-link',
+  CODA_SOSPESE: 'pi pi-pause',
+  RATE_FUORI_CAPIENZA: 'pi pi-exclamation-triangle',
+  ECCEDENZE: 'pi pi-money-bill',
+  CANALI_INCASSO: 'pi pi-building-columns',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
@@ -202,7 +212,21 @@ export const DOMAIN_MENUS = {
   ],
   'acquisti': [],
   'magazzino': [],
-  'pagamenti': [],
+  // ⭐ Dominio INCASSI. L'ordine e' il PERCORSO del denaro, non l'alfabeto: si
+  // apre una distinta, si abbinano le sue righe alle rate, e quello che non
+  // torna finisce nei due elenchi in fondo.
+  // ⭐ «Da abbinare» e «sospese» sono DUE PORTE DELLA STESSA LISTA (Q-4 -> c):
+  // stesso seed a catalogo, filtro diverso — due mestieri, non due schermate.
+  'pagamenti': [
+    { key: 'distinte', icon: NAV_ICONS.DISTINTE, to: '/pagamenti/distinte' },
+    { key: 'coda-abbinare', icon: NAV_ICONS.CODA_ABBINARE, to: '/pagamenti/righe/da-abbinare' },
+    { key: 'coda-sospese', icon: NAV_ICONS.CODA_SOSPESE, to: '/pagamenti/righe/sospese' },
+    { key: 'rate-fuori-capienza', icon: NAV_ICONS.RATE_FUORI_CAPIENZA, to: '/pagamenti/rate-fuori-capienza' },
+    { key: 'eccedenze', icon: NAV_ICONS.ECCEDENZE, to: '/pagamenti/eccedenze' },
+    // ⚠️ Ultima voce di proposito: e' CONFIGURAZIONE, non lavoro di giornata —
+    //    metterla fra le code la farebbe sembrare una coda da smaltire.
+    { key: 'canali-incasso', icon: NAV_ICONS.CANALI_INCASSO, to: '/pagamenti/canali-incasso' },
+  ],
   'contabilita': [],
   'strumenti': [
     { key: 'code-lavoro', icon: NAV_ICONS.CODE_LAVORO, to: '/strumenti/code-lavoro' }

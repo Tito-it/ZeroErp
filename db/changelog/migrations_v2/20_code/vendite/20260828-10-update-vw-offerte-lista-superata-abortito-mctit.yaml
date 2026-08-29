@@ -1,0 +1,195 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE 3 — LA GEMELLA DELLE OFFERTE
+#   vendite.vw_offerte_commerciali_lista
+#   Piano: brief-db-revisione-attiva-due-domande, §5.4
+#
+# ── ⚠️ IL FATTO, identico ai preventivi con un'altra forma ───────────
+#   La vista calcola oggi:
+#       sdo.codice_interno NOT IN ('SUPERATA', 'ANNULLATA')  AS is_attiva
+#   Due domande in un flag solo, in AND, non piu' separabili a valle:
+#     1) «e' l'ultima revisione?» — SUPERATA, scritta sul padre dal trigger
+#        vendite.trgfn_offerte_commerciali_revisione;
+#     2) «non e' annullata?»      — ANNULLATA.
+#   La lista offerte filtra `is_attiva IS TRUE` di default (offerte_repository,
+#   `solo_attiva`), quindi un'offerta ANNULLATA non e' raggiungibile da nessun
+#   filtro di stato: riappare solo col toggle «storico revisioni», che pero'
+#   promette un'altra cosa.
+#
+# ── ⭐ COSA CAMBIA, e cosa NO ────────────────────────────────────────
+#   `is_attiva` NON cambia un solo valore. Cambia da che cosa e' scritta:
+#     prima  sdo.codice_interno NOT IN ('SUPERATA','ANNULLATA')
+#     ora    NOT sdo.is_superato AND NOT sdo.is_abortito
+#   `is_abortito` esiste dal 20260714-05 ed e' true sul solo ANNULLATA;
+#   `is_superato` arriva col 20260828-07 ed e' true sul solo SUPERATA. Gli
+#   insiemi coincidono con la coppia di letterali — quindi e' una riscrittura,
+#   non un cambio di comportamento.
+#   ⭐ Il guadagno: la vista smette di essere l'unico posto dove sta scritto CHE
+#   COSA significa SUPERATA, e le due domande diventano due colonne:
+#     * `is_superata` — «e' stata rimpiazzata da una revisione successiva»;
+#     * `is_abortito` — «e' stata annullata».
+#   «E' l'ultima revisione?» = `is_superata IS FALSE`, da sola.
+#
+# ── ⚠️ IL LIMITE NOTO RESTA, e resta dichiarato ─────────────────────
+#   Se l'ultima revisione di un lineage viene annullata senza successore, il
+#   padre resta SUPERATA e nessuna offerta del lineage risulta attiva. E' un
+#   limite del modello a trigger (lo stato non rifluisce all'indietro), non di
+#   questa vista: qui `is_superata` continua a dire cio' che il modello ha
+#   scritto. Derivarla dalla relazione (`EXISTS figlio non abortito`, come nei
+#   preventivi) la sanerebbe, ma sarebbe ristrutturare le revisioni — fuori
+#   perimetro, tracciato nel brief §8.2.
+#
+# ── ⛔ security_invoker=on VA RI-SPECIFICATA ─────────────────────────
+#   PostgreSQL la AZZERA su un CREATE OR REPLACE VIEW che non la ripete. E' nel
+#   testo qui sotto.
+#
+# ⚠️ Definizione ripresa dalla doc auto-gen (l'oggetto VIVO). Le sole differenze
+#   sono la riscrittura di is_attiva e le due colonne in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-10-update-vw-offerte-lista-superata-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260828-10-update-vw-offerte-lista-superata-abortito
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        brief-db-revisione-attiva-due-domande §5.4: vw_offerte_commerciali_lista espone
+        is_superata e is_abortito come colonne proprie e riscrive is_attiva su di esse
+        (NOT is_superato AND NOT is_abortito) al posto del letterale
+        codice_interno NOT IN ('SUPERATA','ANNULLATA'). Gli insiemi coincidono: nessun valore
+        cambia. Serve a poter chiedere «solo l'ultima revisione» (is_superata IS FALSE) senza
+        chiedere anche «e non annullata» — oggi impossibile, percio' il filtro di stato
+        «Annullata» non puo' restituire nulla.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_offerte_commerciali_lista
+          - sqlCheck:
+              expectedResult: 2
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_offerte'
+                   AND column_name IN ('is_abortito', 'is_superato')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista
+              WITH (security_invoker = on) AS
+              SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  -- is_attiva: stessi valori di prima, scritta sul catalogo
+                  -- invece che sui letterali 'SUPERATA'/'ANNULLATA'.
+                  ((NOT sdo.is_superato) AND (NOT sdo.is_abortito)) AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE (figlio.revisione_padre_id = o.id))) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  ((o.validita_al IS NOT NULL) AND (o.validita_al < CURRENT_DATE)) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  -- Le due componenti di is_attiva, separate. In coda perche'
+                  -- un CREATE OR REPLACE VIEW ammette solo l'append.
+                  -- «Solo l'ultima revisione» = is_superata IS FALSE.
+                  -- «Non annullata»           = is_abortito IS FALSE.
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito
+                 FROM ((((((((((((vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = o.billing_account_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = o.utility_id)))
+                   LEFT JOIN vendite.listini l ON ((l.id = o.listino_id)))
+                   LEFT JOIN vendite.listini_versioni lv ON ((lv.id = o.listino_versione_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)))
+                   LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE (((sorgenti.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (o.uid)::text))));
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_lista IS
+                  'Vista flat canonica e self-contained offerte commerciali per la lista UI '
+                  'configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, '
+                  'id_fiscale_univoco_cf_piva, ba_codice). Assorbe '
+                  'listino_codice/listino_versione_codice/valuta_codice e materializza '
+                  'is_scaduta (validita_al scaduta; gating per stato lato FE). Pura '
+                  'denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). '
+                  'Dal 2026-08-28 le due domande sono colonne distinte: is_superata '
+                  '(= stati_doc_offerte.is_superato, rimpiazzata da una revisione successiva) '
+                  'e is_abortito (= stati_doc_offerte.is_abortito, annullata); '
+                  'is_attiva = NOT is_superata AND NOT is_abortito — stessi valori del '
+                  'precedente letterale NOT IN (''SUPERATA'',''ANNULLATA''), ora scritti sul '
+                  'catalogo. «Solo l''ultima revisione» si chiede a is_superata IS FALSE. '
+                  'has_next_revisione = EXISTS figlio (qualunque stato).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino NON gestito qui: un CREATE OR REPLACE VIEW non sa
+              -- TOGLIERE colonne, e la vista e' referenziata da
+              -- ui.lista_definizione (codice 'vendite.offerte') — un DROP la
+              -- staccherebbe dal catalogo liste. Se serve tornare indietro:
+              -- changeSet dedicato con numerazione successiva.
+              SELECT 1;

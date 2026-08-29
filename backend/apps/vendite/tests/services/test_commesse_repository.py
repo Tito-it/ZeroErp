@@ -10,6 +10,7 @@ Indice test eseguiti:
 1) CommesseRepositoryUnitTests.test_get_or_create_commessa_returns_int
 1b) CommesseRepositoryUnitTests.test_get_or_create_commessa_propaga_condizioni_pagamento
 1c) CommesseRepositoryUnitTests.test_get_or_create_commessa_condizioni_assenti_passano_null
+1d) CommesseRepositoryUnitTests.test_get_or_create_commessa_non_passa_emittente
 2) CommesseRepositoryUnitTests.test_link_sorgente_returns_int
 3) CommesseRepositoryUnitTests.test_upsert_attivita_returns_result
 4) CommesseRepositoryUnitTests.test_upsert_attivita_uses_defaults
@@ -45,8 +46,9 @@ Indice test eseguiti:
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from inspect import signature
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from apps.vendite.db.commesse_repository import (
     BatchUpsertResult,
@@ -56,16 +58,7 @@ from apps.vendite.db.commesse_repository import (
     UpsertAttivitaResult,
     _SORGENTE_FN_MAP,
 )
-
-
-def _mock_cursor(fetchone=None, fetchall=None, description=None):
-    cursor = MagicMock()
-    cursor.__enter__ = MagicMock(return_value=cursor)
-    cursor.__exit__ = MagicMock(return_value=False)
-    cursor.fetchone.return_value = fetchone
-    cursor.fetchall.return_value = fetchall or []
-    cursor.description = description
-    return cursor
+from apps.vendite.tests._helpers.mock_cursor import mock_cursor as _mock_cursor
 
 
 # Colonne restituite da fn_list_ordini_da_pushare (31 totali: 3 source + 28
@@ -124,7 +117,6 @@ class CommesseRepositoryUnitTests(TestCase):
             policy_fatturazione="DA_DOCUMENTO",
             fatturazione_immediata=False,
             priorita_operativa="NORMALE",
-            emittente_soggetto_ruolo_id=3,
             competenza_dal=date(2026, 6, 1),
             competenza_al=date(2026, 6, 30),
         )
@@ -145,16 +137,17 @@ class CommesseRepositoryUnitTests(TestCase):
         repo.get_or_create_commessa(
             billing_account_id=1,
             utility_id=2,
-            emittente_soggetto_ruolo_id=3,
             competenza_dal=date(2026, 8, 1),
             competenza_al=date(2026, 8, 31),
             termine_pagamento_id=3,
             modalita_pagamento_id=5,
         )
         sql, args = mock_cursor_factory.return_value.execute.call_args[0]
-        # I due parametri devono essere NOMINATI nella chiamata: la fn ha 13
-        # argomenti e la chiamata e' per nome, quindi un posizionale sbagliato
-        # non e' rilevabile guardando i soli valori.
+        # I due parametri devono essere NOMINATI nella chiamata: la chiamata
+        # e' per nome, quindi un posizionale sbagliato non e' rilevabile
+        # guardando i soli valori. ⛔ Quante siano le colonne non si scrive
+        # qui: e' un fatto del database, e un numero copiato in un commento
+        # invecchia senza che niente lo segnali (era «13» fino al 2026-08-26).
         self.assertIn("p_termine_pagamento_id", sql)
         self.assertIn("p_modalita_pagamento_id", sql)
         self.assertEqual(args[-2:], [3, 5])
@@ -179,6 +172,34 @@ class CommesseRepositoryUnitTests(TestCase):
         # Verifica default: tipo_commessa="AUTO", priorita_operativa="NORMALE"
         self.assertEqual(params[2], "AUTO")
         self.assertEqual(params[5], "NORMALE")
+
+    # Scopo: L'EMITTENTE NON SI PASSA PIU', e questo test e' il cancello che
+    #        impedisce di rimetterlo. Dal 2026-08-26 il parametro non esiste
+    #        piu' nella funzione DB (changeSet `20260826-52`): la chiamata e'
+    #        per NOME, quindi ri-aggiungerlo non darebbe uno shift posizionale
+    #        silenzioso — darebbe un «funzione inesistente» su OGNI push.
+    #        ⚠️ I due lati vanno guardati ENTRAMBI, e non e' ridondanza: la
+    #        firma Python che lo riaccettasse senza spedirlo lo farebbe
+    #        ignorare in silenzio, l'SQL che lo spedisse senza averlo in firma
+    #        romperebbe il push. Sono due difetti diversi.
+    #        ⛔ Non si asserisce il NUMERO dei parametri: e' un fatto che vive
+    #        nel database, e scriverlo qui lo duplicherebbe in un posto che
+    #        invecchia da solo. Cio' che questo test puo' provare da se' e'
+    #        che segnaposti e valori si CORRISPONDONO — se divergono la
+    #        chiamata e' irrisolvibile, e guardando i soli nomi non si
+    #        vedrebbe (stesso idioma di `test_fatturazione_job_helpers`).
+    #        Piano: `brief-db-emittente-commessa-invariante` (D-2, lotto L5).
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_or_create_commessa_non_passa_emittente(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(79,))
+        CommesseRepository().get_or_create_commessa(billing_account_id=1, utility_id=2)
+        sql, args = mock_cursor_factory.return_value.execute.call_args[0]
+        self.assertNotIn("p_emittente_soggetto_ruolo_id", sql)
+        self.assertNotIn(
+            "emittente_soggetto_ruolo_id",
+            signature(CommesseRepository.get_or_create_commessa).parameters,
+        )
+        self.assertEqual(sql.count("%s"), len(args))
 
     # Scopo: Verifica che link_sorgente chiami la funzione DB e restituisca int.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

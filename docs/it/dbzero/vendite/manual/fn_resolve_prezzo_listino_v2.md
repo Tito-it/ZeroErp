@@ -284,4 +284,4 @@ Ci sono anche i due parametri che nessuno aveva chiesto — la classe di utenza 
 la versione di listino preferita — perché senza di essi due chiamate diverse
 lasciano righe identiche, e chi legge non può distinguerle.
 
-**Brief**: `docs/it/dev/work-in-progress/brief-ddt-righe-senza-prezzo.md` §9 slice A.
+**Brief**: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md` §9 slice A.

@@ -59,12 +59,12 @@ const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
 const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
 // Toggle "mostra storico revisioni": negazione del filtro store
-// (mostraStorico=ON ⇔ solo_attiva=false). computed get/set per restare
+// (mostraStorico=ON ⇔ solo_ultima_revisione=false). computed get/set per restare
 // allineato al filtro reale anche se cambia altrove (reset, logout,
 // ripristino sessione): single source of truth = store.
 const mostraStorico = computed({
-  get: () => !store.filters.solo_attiva,
-  set: (val) => { store.filters.solo_attiva = !val },
+  get: () => !store.filters.solo_ultima_revisione,
+  set: (val) => { store.filters.solo_ultima_revisione = !val },
 })
 
 // Params export: i filtri vivono in store.filters (sincronizzati dagli handler
@@ -77,7 +77,7 @@ function buildExportParams(format) {
   if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
   if (store.filters.data_da) p.data_da = store.filters.data_da
   if (store.filters.data_a) p.data_al = store.filters.data_a
-  p.solo_attiva = store.filters.solo_attiva ? 'true' : 'false'
+  p.solo_ultima_revisione = store.filters.solo_ultima_revisione ? 'true' : 'false'
   if (store.filters.order_by) {
     p.order_by = store.filters.order_by
     p.order_dir = store.filters.order_dir || 'desc'
@@ -210,7 +210,8 @@ onMounted(() => store.fetchList())
           <LineageFaseTag :fase="data.fase" />
         </template>
         <template #cell-transito="{ data }">
-          <LineageFrontieraChip :is-transitato="data.is_transitato" :tipo-codice="data.frontiera_tipo_codice"
+          <LineageFrontieraChip :is-transitato="data.is_transitato" :tipo-codice="data.frontiera_tipo_codice_interno"
+            :natura-codice="data.frontiera_natura_doc_codice_interno"
             :codice="data.frontiera_codice" :stato="data.frontiera_stato_codice_interno"
             :fase="data.frontiera_fase" :n-attivi="data.n_discendenti_attivi" />
         </template>

@@ -64,7 +64,7 @@
 | 📋 **Il piano, logico** | Slice **0** (terreno) → **1** (posting) → **2** (rata) → **3** (perimetro) → **4** (sistemazioni). ✅ **Tutte applicate** | §2 |
 | ⭐ **Il piano, operativo** | **Sette lotti** — che cosa si scrive, si prova e si applica insieme. Non coincidono con le slice | §6 |
 | ✅ **Stato** | 🎉 **TUTTI E SETTE I LOTTI CHIUSI** — 71 changeSet applicati (`20260821-11`…`-34`, `20260821-48`…`-55`, `20260822-01`…`-39`), 14 pgTAP nuovi, doc manuale completa. ⭐ `pagamenti` ha un **vocabolario, due matrici e quindici guard**; il fondo fattura ha il suo **quarto stato**; C-1…C-8 sono **tutti chiusi**. ⭐ **Il primo movimento esiste**, ⭐ **sa a quale RATA appartiene**, ⭐ **sa DI CHI È**, ⭐ **e adesso il denaro di troppo ha un elenco e un registro**. 📮 Resta **S3-3**, che è **dato** e non codice | §6.7 · §6.9 · §6.10 · §6.11 · §6.12 · §6.13 · §6.14 |
-| ✅ **Slice 5 — la consegna** *(nuova e CHIUSA il 25/08)* | **Tre porte** che il backend non può aprire da solo: `fn_get_saldo_fattura` a **tre numeri** (DB-10) · il **cancello** `registra_distinta` + il ritiro di `approva_rimessa` (DB-11) · il codice `E_PAGAMENTI_VALIDATION`. ✅ **Applicato alle 11:26** (in due migrate: il primo si è fermato su DATO-3): un changeSet, cinque righe di CSV, 13 asserzioni nuove, **0 rossi su 15** col runner vero. 📮 Restano i **quattro seed di lista** (aspettano la bozza BE) e la madre della correzione, **differita** | §2.3-ter · §6.15 |
+| ✅ **Slice 5 — la consegna** *(nuova e CHIUSA il 25/08)* | **Tre porte** che il backend non può aprire da solo: `fn_get_saldo_fattura` a **tre numeri** (DB-10) · il **cancello** `registra_distinta` + il ritiro di `approva_rimessa` (DB-11) · il codice `E_PAGAMENTI_VALIDATION`. ✅ **Applicato alle 11:26** (in due migrate: il primo si è fermato su DATO-3): un changeSet, cinque righe di CSV, 13 asserzioni nuove, **0 rossi su 15** col runner vero. ✅ **CHIUSA il 27/08 col lotto 9**: i quattro seed di lista (53 colonne, 4 preset, 53 chiavi i18n), il 404 dei canali e la **seconda porta** del conto di incasso. ⭐ Con quello il database aveva finito. 🔴 **Poi il 28/08 il BE ha rimandato indietro due cose** — un **difetto di perimetro** su `enti_incasso` e la **madre della correzione** — ed è la **slice 6**: ⭐ **scritta e provata in giornata**, quattro changeSet e due pgTAP, ⛔ non applicata | §2.3-ter · §2.3-quater · §6.15…§6.17 |
 | 🔴 **Due cose da fare a mano** | **DATO-1** (il conto `INCASSO` dei due emittenti: mai configurato) · **DATO-2** (assegnare `registra_distinta` a un profilo, o non registra nessuno). ✅ **DATO-3 risolto il 25/08** — ma solo dopo che il migrate ci era morto sopra | §3-bis · §6.15 |
 | 🔴 **Il terreno, rimisurato il 25/08** | **DATO-1 NON è configurato** (i due IBAN esistono, il legame no: gli emittenti non hanno nessun conto) · la RLS è su **4 tabelle su 12**, non dodici · le distinte esistenti sono **zero**. ✅ In compenso: `vw_fk_senza_indice` a 0 e **BE-1 chiusa davvero** (0 codici senza policy) | §3-bis |
 | ✅ **Domande aperte** | **Zero** — tutte e nove chiuse il 21/08, tre **senza essere decise**. Resta il solo dettaglio **D15-e** | §5 |
@@ -1215,7 +1215,8 @@ scelta finché `pagamenti` non ha questa porta.
 | --- | --- | --- | --- |
 | **S5-1** | ✅ **APPLICATO** (25/08, 11:26) — `fn_get_saldo_fattura` a **tre numeri** (DB-10, Q-10 chiusa da Tid il 24/08) | `20_code` | Da `(saldo, has_movimenti)` a `(saldo, in_lavorazione, incassato, has_movimenti)`: **la stessa forma e lo stesso ordine** della sorella `fn_get_saldo_rata`. ⭐ Non è una rifinitura: la «base unica dei saldi» del BE (§2.7 del loro brief) nasce storta **proprio al livello che dovrà reggere il saldo cliente** |
 | **S5-2** | ✅ **APPLICATO** (25/08, 11:26) — il cancello sulla registrazione (DB-11, Q-5) | `80_data` | Due righe di `config/azioni_processo.csv`: nasce `registra_distinta` (area **7**, `pericolosa = true`), si ritira `approva_rimessa` (`attivo = false`). ✅ **DATO-3 risolto** — ma il primo migrate ci si è fermato (§6.15) |
-| **S5-3** | 📮 **IN ATTESA della bozza BE** — i **quattro seed di lista** (DB-2/3/4/8) | `80_data` | `ui.lista_definizione` + `ui.lista_colonna` per distinte · coda righe (**una sola**, Q-4) · rate fuori capienza · eccedenze |
+| **S5-3** | ✅ **APPLICATO** (27/08) — i **quattro seed di lista** (DB-2/3/4/8) | `80_data` | `pagamenti.distinte` · `pagamenti.righe` (**una sola** definizione, due porte: Q-4) · `pagamenti.rate_fuori_capienza` · `pagamenti.eccedenze`. **53 colonne, 4 preset, 53 chiavi i18n**. ⭐ Le colonne NON sono inventate: `campo_sorgente` viene dai `SELECT` del repository BE, e il `codice` di ogni colonna **ordinabile** coincide con la chiave della whitelist di ordinamento del backend |
+| **S5-7** | ✅ **APPLICATO** (27/08) — `E_ENTE_INCASSO_NON_TROVATO` | `80_data` | Il 404 dei canali di incasso, chiesto dal BE: senza, un canale inesistente rispondeva **400** — ripiego dichiarato, non scelta |
 | **S5-4** | ✅ **APPLICATO** (25/08) — `E_PAGAMENTI_VALIDATION` | `80_data` | Il codice di validazione del dominio, che **non esisteva**: il service del BE ripiegava sul generico `E_VALIDATION_INPUT` |
 | **S5-5** | 🔵 **DIFFERITA per scelta** — la madre della **correzione** (Q-7) | `20_code` | Si scrive **quando parte la slice che la chiama**, non prima |
 | **S5-6** | ✅ **ESEGUITA il 2026-08-25** — le verifiche del terreno | — | Nessun changeSet: si legge il database e si scrive che cosa dice |
@@ -1351,6 +1352,87 @@ service (`E_VALIDAZIONE = "E_PAGAMENTI_VALIDATION"`,
 | RLS di `pagamenti` | 🔴 **4 tabelle su 12**, non dodici: `vendite_contabili`, `vendite_contabili_righe`, `vendite_movimenti`, `sistemazioni`. Le altre otto (compresi `enti_incasso`, `centri_riscossione` e i due cataloghi di stato) hanno la row security **spenta** — ed è coerente col lotto 6, che ha creato **tre** policy (più quella del lotto 7). ⚠️ È il brief BE/FE §2.6 a dire «le dodici tabelle»: la correzione è in §3 |
 | Il perimetro **morde**? | 🔴 **Oggi no, sulle distinte.** La policy di `vendite_contabili` ammette la riga quando `ente_incasso_id IS NULL` — «le distinte interne non sono di nessuno» — e `pagamenti.enti_incasso` ha **0 righe**: ⇒ ogni distinta futura nasce senza canale e **la vede qualunque `OPERATORE`**. Morde su `vendite_movimenti` (via fattura) e sulle righe con fattura |
 | **DATO-1 / S3-3** | 🔴 **NON risolto**, contrariamente al brief BE/FE. Dettaglio in §3 |
+
+---
+
+### 2.3-quater Slice 6 — Il perimetro dei canali, e la correzione guidata
+
+> 📮 **Aperta il 2026-08-28** da una richiesta del backend:
+> [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md).
+> Due cose che si consegnano insieme e non sono la stessa: **un difetto di
+> perimetro** trovato dal passo E-4, e la **madre della correzione** (Q-7), che
+> era differita per scelta e adesso è dovuta.
+>
+> ⭐ **Le risposte alle sette domande stanno nel documento del BE (§5)**, misurate
+> il 28/08: qui ci sono i passi che ne discendono.
+
+| | Passo | Fase | Cosa fa |
+| --- | --- | --- | --- |
+| **S6-1** | ✅ **SCRITTO E PROVATO** (28/08) — RLS su `pagamenti.enti_incasso` | `00_schema` | `ENABLE ROW LEVEL SECURITY` + una policy `FOR ALL`. 🔴 **Con `WITH CHECK` esplicito**, e il predicato scritto sul **conto**: la proposta del BE (`USING` sull'id del canale) renderebbe la tabella **non scrivibile** |
+| **S6-2** | ✅ **SCRITTO E PROVATO** (28/08) — la prova del perimetro | test | `db/pgtap/rls/test-rls-pagamenti-perimetro.sql` esteso: dentro e fuori perimetro **in lettura e in scrittura** |
+| **S6-3** | ✅ **SCRITTO E PROVATO** (28/08) — il legame, e il `codice` che si genera da sé | `00_schema` + `20_code` | `vendite_contabili.contabile_corretta_id` + FK + `UNIQUE` parziale (C-3, C-4) |
+| **S6-4** | ✅ **SCRITTO E PROVATO** (28/08) — `fn_crea_distinta_correzione` | `20_code` | La madre di Q-7: una distinta nuova con le righe di segno opposto già dentro, **in un atto solo** |
+| **S6-5** | ✅ **SCRITTO** (28/08) — i codici errore | `80_data` | Due nuovi + due riusati. ⭐ «Niente da correggere» **non è un errore**: è un esito |
+| **S6-6** | 🔵 **NON SI FA** — `sepa_mandati` sotto RLS | — | 0 righe, **zero** consumatori, e il predicato giusto non è quello dei canali: il suo perimetro è il **billing account**, non il conto (che è del cliente). Si decide quando quel cantiere si apre |
+
+---
+
+#### 🔴 S6-1 — perché la policy proposta va corretta prima di scriverla
+
+Una policy `FOR ALL` **senza** `WITH CHECK` usa la `USING` anche per le righe
+nuove. La `USING` proposta risolve l'emittente **rileggendo `enti_incasso` per
+quell'id** — e dentro il comando che sta inserendo, **quella riga non è ancora
+visibile**: la funzione risponde `NULL`, la canonica `false`, e ogni `INSERT`
+viene rifiutato. ⛔ La tabella diventa non scrivibile, e l'errore sembra un
+difetto dell'applicazione.
+
+⭐ **Il predicato giusto è UNO SOLO, e sta sul conto** — una colonna della riga
+(`soggetto_ruolo_conto_bancario_id`, `NOT NULL`) che punta a una tabella **senza**
+row security. Vale identico in lettura e in scrittura, quindi `USING` e
+`WITH CHECK` dicono la stessa cosa e non ci sono due formulazioni della stessa
+regola da tenere allineate:
+
+```text
+ruolo_applicativo = 'OPERATORE'
+AND EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli_conti_bancari src
+             WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+               AND script.fn_scope_ef_whitelist_via_sr(<user>, src.soggetto_ruolo_id))
+```
+
+⭐ **E si accende su una tabella VUOTA** (0 canali): nessuna bonifica, nessun
+dato da correggere. È il momento più economico che esista.
+
+⚠️ **Un buco che eredita e che non è suo**: `fn_check_user_emittente_scope`
+risponde **`true`** con l'utente a `NULL` (regola «job batch»), quindi con
+`app.current_user_id` vuota l'unico cancello resta il primo congiunto. ⛔ Ce
+l'hanno **tutte e quattro** le policy già in esercizio: si scrive perché una
+policy in più sullo stampo è il momento in cui lo stampo si guarda, non perché
+questo giro lo cambi.
+
+---
+
+#### ⭐ S6-3 / S6-4 — la correzione, e le quattro decisioni
+
+| | Decisione | Perché |
+| --- | --- | --- |
+| **C-1** | 🔴 **APERTA — decide Tid.** La prima risposta («già abbinata, il guard la regge») è stata **smentita dalla prova** | Misurato: una riga `-100` sulla rata **saldata dal movimento da correggere** è **rifiutata** — con residuo 0 non c'è spazio in nessuna direzione. ⇒ «Già abbinata» pretende `forzata = true`, cioè **forzare al posto dell'operatore**. ⭐ La prova ha trovato una **quarta strada**: fattura e rata **già compilate**, stato **`DA_ABBINARE`** — il guard controlla la capienza solo sulle righe postabili, quindi passa, e il doppio tempo resta di una persona. È quella che propongo |
+| **C-2** | Le righe **non postate** si saltano, e l'esito **le conta** | Non hanno prodotto movimenti: non c'è niente da correggere. Ma il silenzio lascia l'operatore a chiedersi dove sono finite ⇒ `righe_saltate`, **lo stesso vocabolario di `fn_posta_contabile`** |
+| **C-3** | Il legame è una **colonna**: `vendite_contabili.contabile_corretta_id` | ⛔ Non `meta`: un legame che nessuno interroga non è un legame. ⭐ Stampo esistente: `sistemazioni.contabile_id` con `uq_sistemazioni_contabile` |
+| **C-4** | **Una correzione per distinta**, `UNIQUE` parziale sul legame | ⭐ Non blocca il caso vero: se è la **correzione** a essere sbagliata si corregge **lei**, e la catena resta leggibile |
+
+⚠️ **La trappola che la firma proposta non vede.** ⛔ La madre **non** deve usare
+`fn_get_or_create_vendite_contabile`: la sua chiave di riuso su `MANUALE`
+comprende **giornata + canale + operatore**, quindi le righe di correzione
+finirebbero **dentro la distinta di lavoro di oggi**. La distinta di correzione è
+un documento **proprio**: si crea con un `INSERT`.
+
+✅ **Niente altro da cambiare nello schema**: l'unico `CHECK` sull'importo di riga
+è `importo <> 0`, quindi le righe negative **sono già ammesse**.
+
+⭐ **«Niente da correggere» è un ESITO, non un errore** — `NULLA_DA_CORREGGERE`,
+esattamente come `NULLA_DA_POSTARE`: il backend lo passa senza interpretarlo e la
+frase la sceglie il frontend. I codici nuovi servono per i due **rifiuti** veri:
+la distinta non registrata e la distinta già corretta.
 
 ---
 
@@ -1516,8 +1598,17 @@ il soggetto_ruolo 64, quindi `fn_check_user_emittente_scope(NULL)` risponde
 `false`: **la coda di quel canale diventerebbe invisibile a tutti, senza un
 errore.** Il brief BE avvisa che «i due IBAN sull'emittente sbagliato darebbero
 liste sbagliate»: il caso raggiungibile oggi è peggiore, dà liste **vuote**.
-🔵 Se si vuole chiudere anche questa, è un guard in più — **non** è nella slice
-5, ed è una decisione, non una rifinitura.
+✅ **CHIUSA da Tid il 2026-08-25: si estende il vincolo** (§6.16). ⭐ E il suo
+dubbio — *«due emittenti sullo stesso soggetto potrebbero voler usare lo stesso
+conto»* — è stato **misurato invece che discusso**: non possono esistere.
+`uq_soggetto_ruolo (soggetto_id, tipo_ruolo_id)` dà a un soggetto **al più un
+ruolo per tipo**, e `uq_emittenti_fiscali_ruolo` dà a quel ruolo **al più un
+emittente**: la catena è 1:1:1 per costruzione, quindi il vincolo non toglie
+nessun caso legittimo.
+
+⚠️ Resta un guard **diverso** e non fatto: quello che verifica che il conto di
+un canale appartenga all'**emittente del canale**. È l'altra metà del rilievo, e
+non è in questo giro.
 
 ✅ **Tutto il resto del §1.4 del brief BE/FE è stato riverificato ed è esatto**:
 le firme delle cinque funzioni e delle due madri, i nomi e le colonne delle due
@@ -1527,6 +1618,23 @@ viste (`vw_rate_fuori_capienza` con i suoi 17 campi e i due `motivo`,
 colonna del catalogo e `STORNATA` ritirata dal 21/08. ℹ️ Una imprecisione senza
 conseguenze: le funzioni pubbliche di `pagamenti` sono **sette**, non otto (più
 quindici `trgfn_`).
+
+📮 **BE-11 — esporre la utility del conto, che c'è già.** `src.istanza_utility_id`
+non compare né nel `SELECT` del canale (`_ENTE_INCASSO_SELECT`) né nella lookup
+dei conti agganciabili (`list_conti_incasso`): chi configura un canale **non
+vede** se sta scegliendo il conto del gas o quello dell'energia. ⛔ La risposta
+**non** è una colonna su `enti_incasso` — sarebbe una seconda sede di un fatto
+che appartiene al conto. Sono due righe di `SELECT`. Misura e ragionamento in
+**§6.16**.
+
+| Dove | Che cosa aggiungere |
+| --- | --- |
+| `pagamenti_repository._ENTE_INCASSO_SELECT` | `src.istanza_utility_id AS conto_istanza_utility_id`, e per la frase un `LEFT JOIN anagrafiche.vw_istanze_utilities_dettaglio` su `istanza_id` → `utility_descrizione` |
+| `pagamenti_repository.list_conti_incasso` | le stesse due colonne, così la tendina dice «IT60… — Gas» e non solo l'IBAN |
+| FE, drawer del canale | mostrare la utility accanto al conto: è la stessa ragione per cui l'elenco propone **solo** i conti di incasso — un elenco che non distingue fa sbagliare, e chi sbaglia se ne accorge dopo |
+
+⭐ La vista `vw_istanze_utilities_dettaglio` porta già `utility_codice` e
+`utility_descrizione`: non serve niente di nuovo lato DB.
 
 📮 **DATO-2 — nuovo, e gemello di DATO-1.** L'assegnazione dell'azione
 `registra_distinta` a un profilo **non è seminabile**: `config.profili_accesso_azioni`
@@ -3108,10 +3216,329 @@ rossi visti in quelle corse — `test-rls-pagamenti-perimetro` e
 
 ---
 
+### 6.16 ✅ Lotto 9 — CHIUSO: **le liste, il 404 e la seconda porta**
+
+> ⭐ Aperto e scritto dopo il lotto 8, ✅ **applicato da Tid il 2026-08-27 alle
+> 23:23** (letto dal `databasechangelog`, non dal ricordo). Chiude gli **ultimi**
+> prerequisiti DB del brief BE/FE: i quattro seed di lista (DB-2/3/4/8), un
+> codice errore che il backend ha chiesto scrivendo la slice 4, e la **seconda
+> porta** del conto di incasso.
+>
+> ✅ **Verificato dopo l'apply**: 4 liste, **53 colonne**, 4 preset a catalogo ·
+> `E_ENTE_INCASSO_NON_TROVATO` con la sua classe `NON_TROVATO` · il vincolo
+> `ex_scb_conto_incasso_un_solo_soggetto` presente (`contype = x`) · pgTAP
+> `anagrafiche/test-conto-incasso-un-solo-soggetto` **10 su 10** col runner vero
+> (`app`), baseline verde.
+
+| Passo | Che cos'è | File |
+| --- | --- | --- |
+| **S5-3** | I quattro seed di lista | `80_data/sql/ui/lista_definizione.csv` (4 righe, id **50-53**) · `lista_colonna.csv` (**53**) · `lista_preset.csv` (4) · `lista_preset_colonna.csv` (53) |
+| **S5-7** | `E_ENTE_INCASSO_NON_TROVATO` (`NON_TROVATO`, 404) | `config/codici_errore.csv` + `config/messaggi_errore.csv` (id **1008**) |
+| i18n | Le 53 chiavi delle intestazioni | `frontend/src/locales/it.json` e `en.json` — ⚠️ **fuori dal perimetro DB, e di proposito**: vedi sotto |
+| **S5-8** | ✅ **APPLICATO** (27/08) — **la seconda porta del conto di incasso** *(decisione di Tid)* | `00_schema/anagrafiche/20260825-26-add-exclude-scb-conto-incasso-un-solo-soggetto-mctit.yaml` + il pgTAP del lotto 6 esteso da 6 a **10** asserzioni |
+
+#### ⭐ Le colonne non sono state inventate
+
+`campo_sorgente` viene dai `SELECT` del repository del backend (o dalle viste per
+le due liste che ne hanno una), non da come immagino la schermata. ⭐ E il
+**`codice`** di ogni colonna **ordinabile** coincide con la chiave della
+whitelist di ordinamento del BE (`DISTINTE_SORT_COLUMNS` e sorelle): il catalogo
+dice al frontend «questa colonna si ordina», il frontend manda quel nome, e il
+backend lo deve riconoscere — se i due elenchi divergono, un gesto normale
+diventa un 400. Una delle sette asserzioni della prova verifica **esattamente
+questo**, lista per lista.
+
+⚠️ **Tre scelte dichiarate, perché nessuna si vede dal dato:**
+
+* **`sensibile = f` su tutte e 53.** È un **cancello**, non un'etichetta: `t`
+  senza il grant corrispondente rende la colonna invisibile **a tutti**. Se una
+  colonna di questo dominio va protetta, si decide e si accende con il suo
+  grant;
+* **`multi_emittente = f` su tutte e quattro.** È il default documentato («una
+  lista nuova nasce NON certificata»), e vuol dire che un super admin con più
+  emittenti deve sceglierne uno prima di entrare. 🔵 Due delle quattro
+  *potrebbero* diventare `t` — le viste portano `emittente_soggetto_ruolo_id` —
+  ma si accende quando la riga lo **espone davvero**, non per simmetria;
+* **`vista_sql = NULL` su tutte e quattro**: le alimenta un endpoint di dominio,
+  ed è la forma delle liste dell'8° lotto. ⚠️ Il costo è che il guard DB sui
+  `campo_sorgente` **non gira**: l'unico presidio resta quello del backend.
+
+#### ⚠️ Le chiavi i18n: perché il DB ha attraversato il confine
+
+`scripts/check_i18n_keys.py` è un **cancello CI** che legge
+`lista_colonna.csv` e pretende che ogni `etichetta_i18n_key` esista **in
+entrambi** i locales. ⇒ Le due metà **non possono atterrare separate**: seminare
+le chiavi senza le traduzioni fa fallire la build di chiunque passi, e seminare
+senza chiavi lascia 53 intestazioni che non si traducono.
+
+⭐ Si è scelta la strada che tiene il cancello verde: le 53 chiavi sono nei CSV
+**e** le traduzioni (it + en) nei locales, in una radice `pagamenti` che **non
+esisteva** — quindi additiva, senza toccare una riga di nessun altro. ⚠️ Resta
+un attraversamento di perimetro, ed è dichiarato qui perché si veda.
+
+#### ⭐ S5-8 — la garanzia era scritta su una porta sola
+
+«Un conto di **incasso** appartiene a una sola azienda» è ciò da cui il perimetro
+ricava **di chi sono** i soldi arrivati prima della fattura. Un conto però entra
+da **due** porte, e fino a oggi la regola stava solo sulla prima:
+
+| Porta | Presidio |
+| --- | --- |
+| `soggetti_ruoli_conti_bancari` (ruolo) | ✅ `ex_src_bancari_conto_incasso_un_solo_soggetto`, dal lotto 6 |
+| `soggetti_conti_bancari` (soggetto) | ⛔ **niente**: l'unico è `(soggetto, conto, uso)`, che ferma il doppione della stessa riga e non dice nulla su due soggetti diversi |
+
+⇒ Lo stesso IBAN poteva essere dichiarato «di incasso» per due aziende senza che
+niente lo impedisse. ⚠️ Non è teorico: è il rilievo con cui il backend ha chiuso
+la slice 4, e nasce guardando i due conti di test finiti proprio sulla porta
+senza vincolo.
+
+⭐ **Il dubbio di Tid, misurato e non discusso.** *«Due emittenti che puntano
+allo stesso soggetto potrebbero usare lo stesso conto»* — **non possono
+esistere**: `uq_soggetto_ruolo (soggetto_id, tipo_ruolo_id)` + `uq_emittenti_fiscali_ruolo`
+rendono la catena soggetto → ruolo emittente → emittente **1:1:1**. Il vincolo
+nuovo non toglie nessun caso legittimo.
+
+⚠️ **Due cose che restano, e vanno dette:**
+
+* i due `EXCLUDE` nominano cose diverse — il gemello il **ruolo**, questo il
+  **soggetto** — quindi il gemello è più stretto: lo stesso IBAN come `INCASSO`
+  su due **ruoli** dello stesso soggetto oggi è rifiutato, pur essendo la stessa
+  azienda. ⛔ Non si allenta qui: allentare un vincolo che regge il perimetro è
+  una decisione di dominio;
+* ogni `EXCLUDE` presidia la **propria** tabella: una garanzia **crociata**
+  vorrebbe due trigger. Non si costruisce, e la ragione è misurata — il
+  perimetro legge **solo** la porta dei ruoli, quindi una riga a livello
+  soggetto non può mentirgli, e oggi le incoerenze fra le due porte sono
+  **zero**.
+
+✅ **Dati verificati prima di scrivere il vincolo**: 7 righe `INCASSO` a livello
+soggetto, **zero** violazioni. Nessuna bonifica necessaria — e una `preCondition`
+lo ricontrolla al migrate, così se qualcuno la scrivesse nel frattempo il
+migrate si ferma **prima** dell'`ALTER`.
+
+##### ⭐ «E i conti separati per utility?» — misurato, non risposto a parole
+
+Domanda di Tid (25/08): *un emittente che fattura gas ed energia potrebbe voler
+separare i conti di incasso, e una società grande potrebbe averne più d'uno per
+la stessa utility.* ⚠️ È la domanda giusta da fare a un vincolo nuovo — e la
+risposta si prende dal database, col vincolo **iniettato**:
+
+| Caso | Esito |
+| --- | --- |
+| Due conti `INCASSO` sulla **stessa** utility (uno predefinito, uno alternativo) | ✅ accettati |
+| Un conto `INCASSO` per una **seconda** utility dello stesso emittente | ✅ accettato |
+| Un conto `INCASSO` **senza** utility, in più ai precedenti | ✅ accettato |
+| Tre conti `INCASSO` per lo stesso soggetto, sulla porta nuova | ✅ accettati |
+| ⛔ Lo **stesso** conto a un'**altra** azienda | rifiutato — ed è l'unica cosa che il vincolo vieta |
+
+⭐ **Il modello lo prevedeva già**: `soggetti_ruoli_conti_bancari` ha
+`istanza_utility_id` e **due** indici unici distinti — uno per i conti legati a
+una utility (`uq_src_bancari_ruolo_istanza_conto_uso`), uno per quelli generali
+(`…_no_istanza`). Separare gli incassi per utility è **configurazione**, non una
+modifica di modello.
+
+⚠️ **Un solo limite vero, e non è di questo vincolo**:
+`uq_src_bancari_predefinito_istanza` ammette **un solo predefinito per utility**.
+Gli altri conti restano: sono alternativi, non vietati. È la regola «quale uso se
+non me lo dici».
+
+🔵 **La conseguenza di disegno, e la richiesta che ne nasce.** Un canale
+(`enti_incasso`) punta a **un** conto, quindi separare per utility significa **un
+canale per conto** — «Gas · Banca X», «EE · Banca Y». `enti_incasso` **non** ha
+una colonna `istanza_utility_id`, e ⛔ **non deve averla**: la utility è un fatto
+del **conto**, e dichiararla anche sul canale creerebbe una **seconda sede** che
+diverge al primo aggiornamento — poi servirebbe un guard per tenerle allineate,
+cioè il presidio di una duplicazione che abbiamo scelto noi. È la stessa regola
+per cui l'emittente della commessa **si deriva**.
+📮 Ciò che manca davvero è **esporre** ciò che già c'è: `src.istanza_utility_id`
+non compare né nel `SELECT` del canale né nella lookup dei conti agganciabili
+(`list_conti_incasso`), quindi chi configura un canale **non vede** se sta
+scegliendo il conto del gas o quello dell'energia. Due righe di `SELECT`, lato
+backend.
+
+#### ✅ La prova
+
+| Che cosa | Esito |
+| --- | --- |
+| I quattro CSV caricati in transazione annullata, come farebbero i mirror | ✅ **7 verifiche su 7**: le 4 liste, nessuna colonna orfana, **ogni colonna ordinabile ha un codice che il BE sa tradurre** (4 controlli, uno per lista), l'ordinamento di default di ogni preset punta a una colonna ordinabile, zero colonne `sensibili`, ogni colonna con la sua chiave i18n e nessun duplicato dentro `pagamenti.*`, ogni preset con almeno una colonna visibile |
+| `check_i18n_keys.py` | ✅ **tutto pulito** (i due avvisi che restano sono preesistenti e non di questo cantiere) |
+| Il codice nuovo, col catalogo che lo contiene | ✅ 3 verifiche + `guardrail_codice_errore_strutturato.sql` verde |
+| `codici-errore-baseline.sh` | ✅ 0 accumuli, 0 ristretti |
+| Il vincolo nuovo, in transazione annullata | ✅ **5 verifiche su 5**, e ⭐ **provato facendogli rifiutare la riga per cui esiste**: stesso conto `INCASSO` su due soggetti → respinto (`23P01`); stesso conto con uso diverso → passa (è parziale); doppione sullo **stesso** soggetto → lo ferma l'`UNIQUE` e **non** l'esclusione, cioè il vincolo non vieta più della sua regola |
+| Il pgTAP del lotto 6, esteso da 6 a 10 asserzioni | ✅ **10 su 10** col vincolo iniettato. Cancello del preambolo verde, debito `throws_ok` invariato (i due `throws_ok` nuovi dichiarano lo SQLSTATE) |
+| 🔴 **Una collisione di id, presa dalla prova** | L'`id` del messaggio era stato allocato su una fotografia del catalogo (**989**), e nel frattempo un altro cantiere ne aveva scritti venti: 989 era **già di un'altra**. ⭐ La prova l'ha rifiutata col vincolo di chiave primaria — è la ragione per cui l'`id` di un seed si ricontrolla **prima** di ogni consegna, non quando lo si sceglie |
+
+#### 📮 Che cosa resta dopo il migrate
+
+* **BE**: rigenerare `error_policies_generated.py`, cambiare **una riga** in
+  `enti_incasso_service.py` (`E_ENTE_NON_TROVATO`) e **dichiarare
+  `lista_codice`** sulle quattro view di lista — adesso il codice a catalogo
+  c'è, quindi il cancello del perimetro emittente lo risolve;
+* **FE**: le schermate, che da qui in poi hanno dove atterrare.
+
+---
+
+### 6.17 ⭐ Lotto 10 — **SCRITTO E PROVATO**: il perimetro dei canali e la correzione
+
+> 📮 Aperto il **2026-08-28** dalla richiesta del backend. ⛔ Niente scritto e
+> niente applicato: questo è il piano. Le risposte alle sette domande stanno in
+> [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md) §5.
+
+**Quattro changeSet, due righe di CSV e due pgTAP.** ⛔ Niente applicato: il
+migrate lo chiede Tid.
+
+| Passo | File | Fase |
+| --- | --- | --- |
+| **S6-1** | ✅ `20260828-11-enable-rls-enti-incasso-perimetro` — RLS + policy `FOR ALL` con `USING` **e** `WITH CHECK` sul conto | `00_schema` |
+| **S6-3** | ✅ `20260828-12-add-contabile-corretta-id-e-default-codice` — colonna, FK, `CHECK`, `UNIQUE` parziale **e il DEFAULT del codice** | `00_schema` |
+| **S6-3** | ✅ `20260828-13-recreate-fn-get-or-create-senza-codice-inline` — il ramo diventato morto, tolto nello stesso lotto | `20_code` |
+| **S6-4** | ✅ `20260828-14-create-fn-crea-distinta-correzione` | `20_code` |
+| **S6-5** | ✅ due righe in `codici_errore.csv` + `messaggi_errore.csv` (id **1011**, **1012**) | `80_data` |
+| **S6-2** | ✅ `test-rls-pagamenti-perimetro.sql` da 14 a **18** asserzioni · ✅ `test-fn-crea-distinta-correzione.sql` (**14** nuove) | test |
+| doc | `manual/` della colonna, della madre e della policy | 📮 dopo il migrate |
+
+---
+
+#### ⭐ Il `codice` torna sulla colonna, e perché è un passo e non un contorno
+
+`vendite_contabili.codice` era `NOT NULL` **senza default**: a comporlo era
+`fn_get_or_create_vendite_contabile`, nel proprio corpo. ⛔ La madre della
+correzione **non può** usare quella funzione — la sua chiave di riuso su
+`MANUALE` comprende **giornata + canale + operatore**, quindi le righe di
+correzione atterrerebbero nella distinta di lavoro di oggi — e riscrivere
+l'espressione nella madre sarebbe stata una **seconda sede**.
+
+⇒ La regola torna dove appartiene, **sulla colonna**, e il calcolo inline esce
+dalla funzione **nello stesso lotto che lo rende morto**. ⭐ E la riscrittura di
+una funzione di **245 righe** per toglierne tre non è stata una trascrizione: il
+corpo è stato **estratto** dalla doc auto-generata, modificato con tre tagli e
+**confrontato riga per riga** con l'originale — il `diff` mostra la variabile che
+sparisce dal `DECLARE`, il calcolo che diventa un commento e la colonna che esce
+dall'`INSERT`. Nient'altro. ⚠️ La **firma** invece viene dall'ultimo YAML, non
+dall'auto-gen: l'auto-gen scioglie i `%TYPE`, e prenderla da lì li avrebbe persi.
+
+⭐ **L'ordine non è estetico**: la colonna del legame (S6-3) deve esistere
+**prima** del corpo che la scrive (S6-4) — l'autogen ordina `00_schema` e
+`20_code` per numero, quindi la numerazione **è** la dipendenza. E i codici
+errore stanno in `80_data`, che gira dopo `20_code`: si rispetta scrivendo
+nell'ordine, non con una preCondition.
+
+**Che cosa si prova, e come**
+
+| Che cosa | Come |
+| --- | --- |
+| La policy **non chiude la scrittura** | ⭐ È la prova che conta: un `INSERT` di un canale **dentro** il perimetro deve **passare**. La proposta del BE, così com'era, lo rifiutava — e un test scritto solo sulla lettura sarebbe stato verde |
+| La policy **morde** | Due operatori di due emittenti veri, dentro e fuori: si guarda **la differenza**, non che «funziona» |
+| ⚠️ Il pgTAP del perimetro gira **senza `FORCE`** | Col `FORCE` il risolutore `SECURITY DEFINER` rientrerebbe sotto la policy che regge: sarebbe una **ricorsione**, ed è la stessa nota del lotto 6 |
+| La madre | La quadratura: `Σ righe correzione = −Σ righe postate dell'originale`. E il caso che distingue: una riga **non postata** non genera niente e **viene contata** in `righe_saltate` |
+| Il doppio gesto | Correggere due volte la stessa distinta è **rifiutato** dal `UNIQUE`; correggere **la correzione** passa |
+
+#### ✅ Le prove, eseguite il 2026-08-28
+
+⛔ L'SQL è **estratto dagli YAML**, non ricopiato, e il wrapper `BEGIN … ROLLBACK`
+sta dentro il file eseguito.
+
+| Che cosa | Esito |
+| --- | --- |
+| La madre, dal percorso reale | ✅ **14 verifiche su 14**: il DEFAULT del codice, il rifiuto su una distinta non registrata, due righe create e **una contata come saltata**, la quadratura a −100, il legame, la testata in `BOZZA`/`MANUALE`, il doppio rifiuto della seconda correzione e ⭐ **la correzione della correzione che passa** |
+| ⭐ La policy, provata **col `FORCE`** | ✅ **5 su 5**, e la prima è quella che conta: **creare un canale sul proprio conto PASSA**. Una policy che protegge e impedisce di lavorare è peggio del difetto che chiude |
+| ⭐ Perché il `FORCE` si è potuto usare | Il lotto 6 non poteva: il suo predicato passa da una `SECURITY DEFINER` che **rilegge la tabella protetta**, e col `FORCE` sarebbe una ricorsione. Quello di S6-1 legge il **conto**, che sta altrove e senza row security. ⭐ Essere provabile è un effetto della forma giusta, non un caso |
+| `test-fn-crea-distinta-correzione.sql`, col lotto iniettato | ✅ **14 su 14** |
+| `test-rls-pagamenti-perimetro.sql` esteso | ✅ **18 su 18** col lotto iniettato. ⚠️ Col runner vero e **senza** il lotto è **15 su 18**: i tre rossi sono i test 14, 16 e 17, cioè esattamente quelli che aspettano la policy. Diventano verdi col migrate |
+| 🔴 **La fixture che la policy ha rotto** | Il pgTAP del perimetro creava **i due canali in un `INSERT` solo**, sotto un contesto qualunque: senza row security nessuno se ne accorgeva. Con la policy quell'`INSERT` viene rifiutato — ed è **giusto**. ⭐ Adeguata nello stesso lotto: ogni canale si crea **nel contesto del suo padrone**, come già facevano le distinte due righe più sotto |
+| Cancelli statici | ✅ `runOnChange`, preambolo pgTAP (debito `throws_ok` invariato: i tre nuovi dichiarano lo SQLSTATE), baseline codici errore **0 accumuli** |
+
+---
+
+#### ⚠️ Due cose che la prova ha trovato, e che il piano non prevedeva
+
+* 🔴 **`NULLA_DA_CORREGGERE` non si raggiunge dal percorso normale.** Una
+  distinta `CHIUSA` ha per costruzione almeno una riga postata — si chiude
+  registrando — e quella riga **non si può disattivare** finché ha un movimento
+  attivo: un guard lo impedisce. ⇒ L'esito è **difensivo**, e per provarlo si
+  deve prima spegnere il movimento. ⭐ Resta, perché una madre che incontra uno
+  stato impossibile deve **rispondere**, non rompersi — ma è dichiarato per
+  quello che è, non spacciato per un percorso di lavoro;
+* ⚠️ **Il guard del canale legge sotto RLS.** `trgfn_vendite_contabili_guard_ente_centro`
+  è `SECURITY INVOKER` e legge `enti_incasso`: con la policy accesa, un canale
+  «che non vedi» diventa «che non esiste», e il messaggio dice *«non esiste,
+  oppure non ha un centro configurato»* quando la verità è *«non è tuo»*. ⛔ Il
+  **comportamento** è giusto (fail-closed nel verso buono) e non si tocca in
+  questo lotto; è la **frase** a mentire. 🔵 Portarlo a `SECURITY DEFINER` è la
+  stessa correzione che il lotto 6 fece per il risolutore dell'emittente, e vale
+  come voce a parte.
+
+---
+
+#### 🔴 Le DUE REGRESSIONI dopo l'apply, e la lezione che le lega
+
+> ⛔ **La prova del lotto era insufficiente, e non di poco.** La policy e' stata
+> provata sui due file che si stavano toccando; i pgTAP che **scrivono quella
+> tabella per altre ragioni** non sono stati rilanciati. Li ha trovati Tid,
+> dopo l'apply.
+>
+> ⭐ **La regola che ne resta**, e vale oltre questo lotto: *una policy nuova su
+> una tabella si prova rilanciando **tutti** i test che quella tabella la
+> scrivono — non quelli che si stanno modificando.* Un `grep` del nome della
+> tabella nella cartella dei test costa dieci secondi.
+
+**1. 🔴 La policy COPRIVA un vincolo** — difetto vero, non fixture.
+
+`test-enti-incasso-conto-incasso` verifica che un canale **senza conto** non si
+crei, e si aspetta `23502`. Con la policy il rifiuto arrivava prima e valeva
+`42501`: la `WITH CHECK` chiede «esiste un conto **tuo** con questo id?», e con
+l'id a `NULL` la risposta e' no.
+
+⛔ Sul filo HTTP: **403 invece di 400** — «non ti e' consentito» al posto di
+«manca un campo», a chi sta compilando un form. ⭐ Ed e' il modo peggiore in cui
+una policy puo' sbagliare: non lascia passare niente di troppo, ma **toglie la
+parola a un controllo che sapeva spiegarsi meglio di lei**.
+
+✅ Corretto in avanti: `20260828-20` aggiunge il ramo
+`soggetto_ruolo_conto_bancario_id IS NULL OR …`. ⛔ Non e' un buco — la colonna
+e' `NOT NULL`, quindi in lettura quel ramo non seleziona mai niente e in
+scrittura serve solo a **lasciare che sia il vincolo a rifiutare**.
+⭐ La regola: *una policy non deve rispondere a una domanda che un vincolo
+risponde meglio.*
+
+**2. ⭐ La trappola RLS + CTE, resa raggiungibile dalla policy** — ed e' la
+stessa che la policy proposta dal backend aveva **dentro** (§5.1 del loro
+documento): `test-sistemazioni-giro-completo` creava conto, legame e canale in
+**una sola istruzione**. La `WITH CHECK` cerca il legame che quella stessa
+istruzione sta scrivendo, e non lo vede: la snapshot del comando non contiene le
+righe del comando. ✅ Rimedio noto e applicato: **due istruzioni**.
+
+⚠️ **E la stessa cosa capitera' al backend**: chi crea il conto e il canale in
+un colpo solo trovera' lo stesso 42501. E' scritto nella richiesta al BE.
+
+**Lo stato dopo la correzione**
+
+| | |
+| --- | --- |
+| `pagamenti` | ✅ **15 su 16 verdi**. 🔴 Resta rosso `test-enti-incasso-conto-incasso` (**test 2**), e resta rosso **finche' non si applica `20260828-20`**: e' il difetto che quel changeSet corregge |
+| `rls` | ✅ **0 rossi su 16** — il perimetro esteso e' **18 su 18** ora che la policy c'e' |
+| `anagrafiche` | ✅ verde, compreso il test delle due porte del conto |
+
+---
+
+⚠️ **Che cosa questo lotto NON fa**: `sepa_mandati` resta senza policy (S6-6, e
+il perché è misurato), `centri_riscossione` resta comune — **non ha nessuna
+colonna di emittente**, quindi è condivisa per costruzione e non per svista — e
+il buco del `NULL` utente nello stampo delle policy **non si tocca**: cambiarlo
+tocca ogni percorso batch del progetto, ed è un cantiere suo.
+
+---
+
 ## 7. Registro delle revisioni
 
 | Data | Cosa |
 | --- | --- |
+| **2026-08-28** (apply e regressioni) | ⚠️ **LOTTO 10 APPLICATO da Tid (15:51), e ha portato DUE REGRESSIONI: la prova era insufficiente.** ⛔ La policy l'avevo provata sui due file che stavo toccando, e non ho rilanciato i pgTAP che **scrivono quella tabella per altre ragioni**. Li ha trovati Tid. ⭐ **La regola che resta**: una policy nuova su una tabella si prova rilanciando TUTTI i test che quella tabella la scrivono — un grep del nome nella cartella dei test costa dieci secondi. 🔴 **La prima e' un difetto VERO, non una fixture**: la policy COPRIVA il `NOT NULL` del conto — un canale creato senza conto veniva rifiutato con 42501 invece che 23502, cioe' **403 invece di 400**, «non ti e' consentito» al posto di «manca un campo». ⭐ E' il modo peggiore in cui una policy puo' sbagliare: non lascia passare niente di troppo, ma toglie la parola a un controllo che sapeva spiegarsi meglio di lei. Corretta in avanti con `20260828-20` (ramo `IS NULL`, che non e' un buco perche' la colonna e' NOT NULL). ⭐ **La seconda e' la trappola RLS + CTE**, la STESSA che avevo corretto nella proposta del backend: un test creava conto, legame e canale in un'istruzione sola, e la WITH CHECK non vede il legame che quella istruzione sta scrivendo. Spezzata in due — ⚠️ e capitera' identica al backend, che e' scritto nella richiesta. ✅ Stato dopo la correzione: `pagamenti` 15 su 16 (l'unico rosso e' il test che aspetta `-20`), `rls` 0 su 16 col perimetro esteso a **18 su 18**, `anagrafiche` verde |
+| **2026-08-28** (lotto 10, scritto) | ⭐ **LOTTO 10 SCRITTO E PROVATO** — quattro changeSet (`20260828-11`…`-14`), due righe di CSV e due pgTAP (14 nuove asserzioni + il perimetro da 14 a 18). ⛔ Niente applicato. 🔴 **La decisione C-1 e' stata CAMBIATA DA UNA MISURA, e la prima risposta era mia e sbagliata**: avevo scritto «le righe nascono gia' abbinate, il guard le regge per costruzione». Provato: una riga di segno opposto su una rata **saldata dal movimento che si sta correggendo** viene RIFIUTATA — con residuo zero non c'e' spazio in nessuna direzione, e il commento del guard lo diceva. Nascere gia' ABBINATA avrebbe preteso `forzata = true` scritta dalla madre, cioe' **forzare al posto dell'operatore**: l'opposto del doppio tempo di D14-d. ⭐ La prova ha trovato la strada giusta, che nessuno dei due brief aveva visto: fattura e rata **gia' compilate** ma stato **DA_ABBINARE** — il guard esamina la capienza solo sulle righe che occupano spazio, quindi passa, e l'ultimo clic resta di una persona. ⭐ **E il `codice` torna sulla colonna**: la madre non puo' usare il get-or-create (chiave di riuso con l'operatore: le righe finirebbero nella distinta di oggi) e riscrivere l'espressione sarebbe stata una seconda sede, quindi il DEFAULT va sulla colonna e il calcolo inline esce dalla funzione **nello stesso lotto che lo rende morto** — 245 righe riscritte senza trascriverne una: corpo ESTRATTO dall'auto-gen, tre tagli, e il `diff` a dimostrare che non e' cambiato altro (firma dall'ultimo YAML, che i `%TYPE` li ha). 🔴 **Corretta anche la policy proposta dal BE**: `FOR ALL` senza `WITH CHECK` usa la `USING` anche per le righe nuove, e quella `USING` rilegge `enti_incasso` per il proprio id — dentro il comando che inserisce la riga non e' ancora visibile, quindi **ogni INSERT sarebbe stato rifiutato**. Il predicato sta sul CONTO, identico in lettura e scrittura. ⭐ Effetto collaterale della forma giusta: la policy si e' potuta provare **col FORCE** (il lotto 6 non poteva — il suo predicato rilegge la tabella protetta e ricorrerebbe). ✅ **Prove**: 14 su 14 sulla madre, 5 su 5 sulla policy (e la prima e' che **la scrittura passa**: una policy che impedisce di lavorare e' peggio del difetto), 18 su 18 il perimetro col lotto iniettato. 🔴 **La policy ha rotto una fixture** — il pgTAP creava i due canali in un INSERT solo sotto un contesto qualunque — e la fixture e' stata adeguata nello stesso lotto: ogni canale si crea nel contesto del suo padrone. ⚠️ Due scoperte dichiarate: `NULLA_DA_CORREGGERE` **non si raggiunge dal percorso normale** (una CHIUSA ha sempre una riga postata, e quella riga non si spegne finche' ha un movimento attivo) ed e' quindi un ramo difensivo; e il guard del canale legge **sotto RLS**, quindi con la policy accesa «non lo vedo» diventa «non esiste» — il comportamento e' giusto, la frase mente, e portarlo a SECURITY DEFINER e' una voce a parte |
+| **2026-08-28** (slice 6, piano) | 📮 **IL BACKEND RIMANDA INDIETRO DUE COSE, e la prima e' un difetto di perimetro.** `pagamenti.enti_incasso` non ha row security e porta il conto su cui atterra il denaro, cioe' **di chi sono i soldi**: senza policy l'elenco dei canali — IBAN compreso — sarebbe comune a tutti gli emittenti. ⭐ **Trovato dal passo E-4**, che esisteva per questo. 🔴 **Ma la policy proposta, cosi' com'era, avrebbe reso la tabella NON SCRIVIBILE**: `FOR ALL` senza `WITH CHECK` usa la `USING` anche per le righe nuove, e quella `USING` risolve l'emittente **rileggendo `enti_incasso` per quell'id** — dentro il comando che inserisce, quella riga non e' ancora visibile, quindi ogni `INSERT` sarebbe stato rifiutato. ⚠️ E il motivo non e' «l'id non esiste ancora» come diceva la richiesta: l'id c'e', e' la **riga** a non essere visibile — stessa famiglia della trappola RLS+CTE gia' pagata. ⭐ Il rimedio e' **piu' semplice della diagnosi**: un predicato solo, scritto sul **conto** (colonna della riga, tabella senza RLS), identico in lettura e scrittura. ⭐ E si accende su una tabella **vuota**: nessuna bonifica. ✅ **Due domande su tre chiuse dalla misura invece che dall'opinione**: `centri_riscossione` **non ha nessuna colonna di emittente** — e' condivisa per costruzione, non c'e' nessun secondo difetto; `sepa_mandati` ha 0 righe, **zero** consumatori, e il predicato che sembrava ovvio e' **sbagliato** — il suo `soggetto_ruolo_conto_id` e' il conto del CLIENTE da addebitare, quindi il perimetro giusto e' il billing account e non il conto. ⚠️ Trovato anche un buco che la policy nuova **eredita e che non e' suo**: `fn_check_user_emittente_scope` risponde `true` con l'utente a NULL, quindi con `app.current_user_id` vuota l'unico cancello resta il congiunto sul ruolo — ce l'hanno tutte e quattro le policy in esercizio, e cambiarlo e' un cantiere suo. ⭐ **Sulla madre della correzione, quattro decisioni prese e una trappola**: le righe nascono **gia' abbinate** (non si inventa un abbinamento, si rispecchia quello scelto da una persona — e il guard della rata lo regge perche' la capienza e' simmetrica e una riga negativa *riduce* cio' che e' registrato); le righe non postate si **saltano e si contano** (`righe_saltate`, lo stesso vocabolario del posting); il legame e' una **colonna** con `UNIQUE` parziale e non `meta`; ⛔ e la madre **non deve** usare `fn_get_or_create_vendite_contabile`, la cui chiave di riuso comprende giornata+canale+**operatore**: le righe di correzione finirebbero dentro la distinta di lavoro di oggi. ✅ Niente da cambiare nello schema per gli importi: l'unico CHECK e' `importo <> 0`, le righe negative sono gia' ammesse. Piano in **§2.3-quater** e **§6.17**; risposte alle sette domande nel documento del BE, §5 |
+| **2026-08-27** (apply) | ✅ **LOTTO 9 APPLICATO (23:23) — il database non deve piu' niente al cantiere.** Un changeSet di schema e cinque CSV: le **quattro liste** di `pagamenti` (53 colonne, 4 preset, 53 chiavi i18n), `E_ENTE_INCASSO_NON_TROVATO` e il vincolo `ex_scb_conto_incasso_un_solo_soggetto`. ✅ **Verificato sul database dopo l'apply** e non dedotto dal migrate: 4 liste, 53 colonne, 4 preset, il codice con la sua classe `NON_TROVATO`, il vincolo presente con `contype = x`. ✅ pgTAP `anagrafiche/test-conto-incasso-un-solo-soggetto` **10 su 10 col runner vero** (`app`, RLS attiva) — le corse di prova giravano come owner, dove la RLS non si esercita. 📮 Restano fuori dal DB: **DATO-1** (il conto INCASSO dei due emittenti, mai configurato), **DATO-2** (assegnare `registra_distinta` a un profilo) e le tre richieste al BE — rigenerare le policy dei codici, cambiare le due costanti di ripiego, e **BE-11**, esporre la utility del conto dove si sceglie |
+| **2026-08-25** (seconda porta) | ⭐ **LA GARANZIA DEL CONTO DI INCASSO ERA SCRITTA SU UNA PORTA SOLA — decisione di Tid, chiusa scrivendola.** «Un conto di incasso appartiene a una sola azienda» e' cio' da cui il perimetro ricava DI CHI SONO i soldi arrivati prima della fattura; ma un conto entra da **due** porte e il vincolo stava solo su `soggetti_ruoli_conti_bancari`. Sull'altra — `soggetti_conti_bancari` — l'unico e' `(soggetto, conto, uso)`, che ferma il doppione della stessa riga e **non dice niente su due soggetti diversi**: lo stesso IBAN poteva essere dichiarato di incasso per due aziende senza che niente lo impedisse. ⚠️ Non e' teorico: e' il rilievo con cui il backend ha chiuso la slice 4, nato guardando i due conti di test finiti proprio sulla porta senza vincolo. ⭐ **E il dubbio di Tid e' stato MISURATO invece che discusso**: «due emittenti sullo stesso soggetto potrebbero usare lo stesso conto» — non possono esistere, perche' `uq_soggetto_ruolo (soggetto_id, tipo_ruolo_id)` da' a un soggetto al piu' UN ruolo per tipo e `uq_emittenti_fiscali_ruolo` da' a quel ruolo al piu' UN emittente: la catena e' 1:1:1 per costruzione, e il vincolo non toglie nessun caso legittimo. ⚠️ **Due cose restano e sono dichiarate**: i due EXCLUDE nominano cose diverse (il gemello il RUOLO, questo il SOGGETTO), quindi il gemello e' piu' stretto — lo stesso IBAN come INCASSO su due ruoli dello STESSO soggetto e' rifiutato pur essendo la stessa azienda, e allentarlo e' una decisione di dominio; e ogni EXCLUDE presidia la propria tabella, quindi una garanzia CROCIATA vorrebbe due trigger — non si costruisce perche' il perimetro legge SOLO la porta dei ruoli, e oggi le incoerenze fra le due sono zero. ✅ **Verificato prima di scrivere**: 7 righe INCASSO a livello soggetto, ZERO violazioni, nessuna bonifica — e una preCondition lo ricontrolla al migrate, cosi' se qualcuno la scrivesse nel frattempo ci si ferma prima dell'ALTER. ✅ **5 verifiche su 5** in transazione annullata, ⭐ provate facendo RIFIUTARE al vincolo la riga per cui esiste (e verificando che il doppione sullo stesso soggetto lo fermi l'UNIQUE e non l'esclusione: un vincolo che vieta piu' della sua regola si scopre il giorno in cui rifiuta qualcosa di giusto), e il pgTAP del lotto 6 **esteso da 6 a 10 asserzioni** — 10 su 10 |
+| **2026-08-25** (lotto 9) | ⭐ **SCRITTI I QUATTRO SEED DI LISTA E IL 404 DEI CANALI — il database non deve piu' niente a questo cantiere.** ⛔ Niente applicato. ⭐ **Le colonne non sono state inventate**: `campo_sorgente` viene dai `SELECT` del repository del backend (o dalle viste), e il **`codice`** di ogni colonna ordinabile coincide con la chiave della whitelist di ordinamento del BE — il catalogo dice al frontend «questa si ordina», il frontend manda quel nome, e se i due elenchi divergono un gesto normale diventa un 400: una delle sette asserzioni verifica esattamente questo, lista per lista. ⚠️ **Tre scelte dichiarate perche' non si vedono dal dato**: `sensibile = f` su tutte e 53 (e' un cancello, non un'etichetta), `multi_emittente = f` su tutte e quattro (default documentato: una lista nuova nasce NON certificata), `vista_sql = NULL` (le alimenta un endpoint — e il costo e' che il guard DB sui `campo_sorgente` non gira). ⚠️ **Il DB ha attraversato il confine dell'i18n, e si dichiara**: `check_i18n_keys.py` e' un cancello CI che pretende ogni `etichetta_i18n_key` in **entrambi** i locales, quindi le due meta' non possono atterrare separate — seminare le chiavi senza traduzioni fa fallire la build di chi passa. Le 53 chiavi stanno nei CSV **e** in `it.json`/`en.json`, in una radice `pagamenti` che non esisteva: additiva, senza toccare una riga di nessun altro. 🔴 **Un difetto trovato dalla prova**: l'`id` del messaggio nuovo era stato allocato su una fotografia del catalogo (989) e nel frattempo un altro cantiere ne aveva scritti venti — 989 era gia' di un'altra, e il vincolo di chiave primaria l'ha rifiutato. ⭐ *Un id di seed si ricontrolla prima di consegnare, non quando lo si sceglie.* ✅ 7 verifiche su 7 sui quattro CSV caricati in transazione annullata, `check_i18n_keys` pulito, `guardrail_codice_errore_strutturato` verde col catalogo che contiene il codice, baseline codici 0 accumuli |
 | **2026-08-25** (apply) | ✅ **LOTTO 8 APPLICATO — il cantiere DB è chiuso una seconda volta.** Applicato da Tid alle **11:26**, in **DUE** migrate. 🔴 **Il primo è morto esattamente dove la prova diceva**: il mirror `20260228-18` — un changeSet di **febbraio** — ha tentato il ritiro di `approva_rimessa` e il guard `dbops.trgfn_prevent_deactivate_if_children` l'ha rifiutato per le quattro assegnazioni spente (DATO-3). ⭐ **La previsione era giusta, l'ordine di consegna no**: DATO-3 era scritto nel brief come «prima del migrate», ma è arrivato in fondo a una risposta lunga — e un prerequisito che si legge dopo non è un prerequisito. La prossima volta va **in testa e da solo**. ⚠️ **Il primo migrate NON è stato inutile né dannoso**: `00_schema` e `20_code` girano prima di `80_data`, quindi `20260825-01` era già passato intero — funzione a quattro colonne, vista ricreata con `security_invoker` e GRANT, verificati sul database prima di ripartire. Tolte le quattro righe, il secondo migrate ha finito. ✅ **Le prove col terreno vero**: `pgtap-baseline.sh pagamenti` → **0 rossi su 15** col runner `app` (le corse della sera prima giravano come owner, dove la RLS non si esercita), auto-gen rigenerata, e i due `manual/` scritti — `fn_get_saldo_fattura` (perché «incassato» non è «saldato», e perché il dichiarato si **delega** invece di ricalcolarlo) e `vw_eccedenze_da_sistemare` (perché è stata ricreata **senza cambiare una colonna**). 📮 Restano fuori i quattro seed di lista (aspettano la bozza BE), **DATO-1** e **DATO-2** |
 | **2026-08-25** (sera) | ⭐ **LOTTO 8 SCRITTO E PROVATO** — un changeSet (`20260825-01`), cinque righe di CSV, un pgTAP nuovo da 13 asserzioni. ⛔ **Niente applicato**: il migrate lo chiede Tid. ⭐ **S5-1 è UN changeSet e non tre**, correzione al piano di stamattina: fra il `DROP` della vista e la sua ricreazione il database non deve restare **mai**, nemmeno per un migrate interrotto fra due changeSet — Liquibase li commette uno alla volta. ⭐ `in_lavorazione` **si delega** a `fn_get_saldo_fattura_contabili`: il dichiarato ha già una sede, e riscriverne il predicato avrebbe creato la seconda proprio nel passo che costruisce la base unica dei saldi. 🔴 **E la prova ha trovato un difetto che non è del lotto: il ritiro di `approva_rimessa` FA FALLIRE IL MIGRATE.** A rifiutarlo è il guard generico `dbops.trgfn_prevent_deactivate_if_children`, che blocca la disattivazione di una riga con figlie: `config.profili_accesso_azioni` ha **quattro** assegnazioni all'azione, tutte a permesso **negato** — ma l'automazione cerca una colonna che si chiama `attivo` e lì si chiama `abilitata`, quindi «figlia spenta» non esiste e contano tutte. ⚠️ Il changeSet che sarebbe fallito è di **FEBBRAIO** (il mirror `runOnChange` del CSV): un migrate rosso su un file che nessuno ha toccato. Rimedio **DATO-3**, un `DELETE` di quattro righe **prima** del migrate — non può essere un changeSet, perché il mirror di febbraio si ordina prima di qualunque file di oggi. ✅ In CI non serve: quella tabella non ha seed, quindi su un database ricostruito da zero è vuota — la classe di difetto di C-1 vista dal verso opposto. 🔵 Un rimedio strutturale esiste (una riga di `dbops.automation_overrides_cols` che insegna `ATTIVO_COL = abilitata`) ma **non è in questo lotto**: i trigger si rigenerano in `ci_apply`, quindi non sbloccherebbe questo passaggio, e tocca ogni guard che ha quella tabella per figlia. ⭐ **Il nome del codice nuovo è stato CONTATO, non preferito** (decisione di Tid): `_VALIDATION` sta su 17 codici, `_VALIDAZIONE` su 13 → nasce `E_PAGAMENTI_VALIDATION`, e la riga del brief BE che lo chiama `_VALIDAZIONE` va corretta. ✅ **Le prove**: SQL **estratto dallo YAML** e non ricopiato, 10 verifiche sul changeSet (identità invariata, nessun overload, la vista con le stesse colonne, `security_invoker` e GRANT rimessi, `saldo`/`has_movimenti` **identici a prima su tutte le 18 fatture**), il **rollback** provato e funzionante, **15 su 15** i pgTAP di `pagamenti` col lotto iniettato, verdi i 6 di `vendite` sui fondi, e ⭐ un **controllo negativo**: rimesso il difetto, il test 10 diventa rosso — la coppia 9-10 è l'unica che distingue `incassato` da `saldo`, e adesso è dimostrato. Cancelli statici verdi (`runOnChange`, preambolo pgTAP, baseline codici errore: 0 accumuli) |
 | **2026-08-25** (giorno) | 📮 **NASCE LA SLICE 5 — «la consegna» — e con essa l'ottavo lotto.** Il piano DB si era chiuso il 22/08 perché era finito il **modello**; il backend ha poi scritto le slice 0-3 (quattordici rotte, 86 test, zero frontend) e il consuntivo dice che cosa il database gli deve ancora: **tre porte piccole e nessuna di modello** — `fn_get_saldo_fattura` a **tre numeri** (DB-10, Q-10 chiusa da Tid), il **cancello** `registra_distinta` col ritiro di `approva_rimessa` (DB-11, Q-5) e i **quattro seed** di lista, che aspettano la bozza del BE. Più un conio da confermare (`E_PAGAMENTI_VALIDAZIONE`, che gli altri undici domini hanno e `pagamenti` no) e la madre della **correzione**, differita per scelta: una madre pronta che nessuno chiama è già successo col posting. ⭐ **E S5-1 è tre file, non uno**: cambiare il `RETURNS TABLE` vuole `DROP` + `CREATE`, ma `vw_eccedenze_da_sistemare` chiama la funzione con la **lista di alias a due nomi** — quindi la vista va droppata e ricreata (⛔ mai `CASCADE`), ripetendo `security_invoker = on`, che è una reloption e sparirebbe **senza errore**, e rimettendo i GRANT, che una vista ricreata perde fino al giro di `ci_apply`. ⭐ `in_lavorazione` **si delega** a `fn_get_saldo_fattura_contabili` invece di riscriverne il predicato: il vincolo «i saldi hanno una sede sola» si romperebbe nel changeSet che lo realizza. 🔴 **E la rimisura del terreno ha trovato tre cose che il brief BE/FE dà per vere e il database smentisce** (§3-bis): **DATO-1 NON è configurato** — i due IBAN `IT00TESTINCASSO…` esistono come conti bancari (scritti da `tid` il 24/08) ma **nessuna riga li lega a un soggetto**, e le uniche due righe `uso = 'INCASSO'` sono di **agosto 6, su un terzo soggetto**: gli emittenti (SR 72 e 159) non hanno **nessun** conto, `enti_incasso` è a 0 e la loro slice 4 **non è sbloccata**; la RLS di `pagamenti` è su **4 tabelle su 12** e non su dodici — quindi la prova del perimetro fatta sulla tabella sbagliata **passerebbe dicendo il contrario** di ciò che verifica; e le distinte esistenti sono **zero**, non «solo quelle `GENERATA`». ⚠️ Trovato anche un modo di sbagliare che nessuno dei due brief nomina: il guard del conto di incasso controlla l'`uso` ma **non** che il conto sia dell'emittente del canale — un ente appeso alle righe esistenti passerebbe e renderebbe la sua coda **invisibile a tutti, senza errore**. ✅ Chiuse due verifiche vecchie: `vw_fk_senza_indice` su `pagamenti` è a **0 righe** (la coda del lotto 7) e **BE-1 è chiusa davvero** — `dbops.codici_errore_senza_policy` risponde 0 |

@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L7b pezzo 3 — L'AGGANCIO: freno e motore sulle quattro testate
+#   Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-10 (§9.7.6)
+#
+# ── ⭐ QUATTRO TESTATE, E PERCHE' PROPRIO QUESTE ────────────────────
+#   Sono le sorgenti che **spingono davvero** in commessa, cioe' quelle con una
+#   `fn_list_*_da_pushare`: preventivi, ordini, DDT, contratti.
+#
+#   ⚠️ La quinta che pusha, `vendite.attivita_consumi`, **non si monta**: non ha
+#   una colonna di stato con vocabolario (ha `stato_calcolo`, un varchar senza
+#   `is_abortito`), ed e' anche un flusso non ancora acceso —
+#   `test-cleanup-fattura-copertura-figlie-v1` la classifica `SCOPERTA_NOTA` e
+#   sorveglia che resti vuota. Va montata il giorno che il flusso si accende, e
+#   quel giorno servira' prima un modo di dire «chiuso» su quella tabella.
+#
+#   ⚠️ Offerte e resi **non pushano** in commessa (nessuna `fn_list_*_da_pushare`
+#   per loro): non hanno niente da ritirare, e montarli sarebbe rumore.
+#
+# ── ⭐ DUE TRIGGER PER TESTATA, E RESTANO DUE ───────────────────────
+#   `_a10_` BEFORE = il **freno**: se ci sono righe gia' `EMESSA` la chiusura
+#   non passa. `_z90_` AFTER = il **motore**: ritira le `NON_EMESSA`.
+#   ⛔ Non si fondono. La cosa che BLOCCA e la cosa che AGISCE sono due
+#   decisioni diverse, e tenerle separate e' cio' che permette di cambiarne una
+#   senza toccare l'altra.
+#
+# ── ⚠️ `UPDATE OF <colonna di stato>` ───────────────────────────────
+#   Il trigger si sveglia solo quando cambia la colonna che conta. Senza,
+#   girerebbe su ogni `UPDATE` della testata — anche quelli che non c'entrano —
+#   e pagherebbe una lettura del vocabolario ogni volta.
+#   ⚠️ Il `DROP` futuro di quella colonna inciampa in questa lista: e' il
+#   prezzo dichiarato di `UPDATE OF`, e va saputo prima e non dopo.
+#
+# ── ⚠️ L'ORDINE ALFABETICO DEI BEFORE ROW ───────────────────────────
+#   I `BEFORE ROW` scattano in ordine alfabetico. `trg_<tabella>_a10_guard_chiusura_sorgente_upd`
+#   convive con i `trg_<tabella>_a10_guard_transizione` gia' presenti su ordini,
+#   DDT e preventivi: `guard_chiusura_sorgente` precede `guard_transizione`.
+#   ⭐ E' innocuo, e vale la pena dire perche': i due rifiutano cose diverse —
+#   uno il lavoro ancora in volo, l'altro la transizione in se' — quindi
+#   qualunque dei due parli per primo dice una cosa vera. Non c'e' un ordine
+#   «giusto» da difendere, e infatti nessun test lo asserisce.
+#
+# ⚠️ `CREATE OR REPLACE TRIGGER` (PostgreSQL 14+) invece di DROP+CREATE:
+#   riapplicare il changeSet non lascia una finestra senza guard.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260826-36-create-trigger-ritiro-commessa-su-testate-mctit.yaml
+
+  - changeSet:
+      id: 20260826-36-create-trigger-ritiro-commessa-su-testate
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L7b: freno (_a10_) e motore (_z90_) montati sulle QUATTRO testate che spingono
+        davvero in commessa — preventivi, ordini, DDT, contratti, cioe' quelle con una
+        fn_list_*_da_pushare. ⚠️ attivita_consumi non si monta: non ha una colonna di stato
+        con vocabolario (stato_calcolo e' un varchar senza is_abortito) ed e' un flusso non
+        ancora acceso; offerte e resi non pushano e non hanno niente da ritirare. ⛔ I due
+        trigger restano DUE: la cosa che blocca e la cosa che agisce sono decisioni diverse.
+        UPDATE OF sulla sola colonna di stato. ⚠️ I BEFORE ROW scattano in ordine alfabetico e
+        guard_chiusura_sorgente precede guard_transizione: innocuo, perche' i due rifiutano
+        cose diverse e qualunque parli per primo dice una cosa vera.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname IN ('trgfn_doc_guard_chiusura_sorgente',
+                                       'trgfn_doc_ritira_commessa_attivita');
+            # ⚠️ Le quattro sorgenti devono essere a catalogo con quel codice:
+            #    un trigger montato su un codice inesistente sarebbe fail-closed
+            #    a runtime, ma il posto giusto per accorgersene e' qui.
+            - sqlCheck:
+                expectedResult: 4
+                sql: |
+                  SELECT COUNT(*) FROM config.sorgenti
+                   WHERE codice_interno IN ('PREVENTIVO', 'ORDINE_VENDITA',
+                                            'DDT_VENDITA', 'CONTRATTO');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── PREVENTIVI: solo il MOTORE, e non e' una dimenticanza ─────
+              -- ⛔ Il freno generico NON si monta qui. Il preventivo ha gia' il
+              --    suo gate — trgfn_preventivi_guard_annullamento chiama
+              --    script.fn_check_preventivo_annullabile — e Tid ha deciso
+              --    (Q-9) che il suo codice E_PREV_ANNULLA_COMMESSA_EMESSA
+              --    RESTA. Montando anche il guard generico, la stessa
+              --    condizione uscirebbe con DUE codici diversi a seconda di
+              --    quale trigger parla per primo: per l'operatore sarebbe lo
+              --    stesso rifiuto con due nomi, e per il frontend due
+              --    reason_key da mappare.
+              -- ⭐ La REGOLA resta una sola lo stesso: da 20260826-38 quella
+              --    fn_check_* delega il conteggio a
+              --    script.fn_check_sorgente_chiudibile e si limita a
+              --    RIETICHETTARE il motivo col proprio codice. Una
+              --    implementazione, due superfici.
+              CREATE OR REPLACE TRIGGER trg_preventivi_z90_ritira_commessa_attivita_upd
+                  AFTER UPDATE OF stato_doc_preventivo_id ON vendite.preventivi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita(
+                      'PREVENTIVO', 'stato_doc_preventivo_id', 'config.stati_doc_preventivi');
+
+              -- ── ORDINI ────────────────────────────────────────────────────
+              CREATE OR REPLACE TRIGGER trg_ordini_a10_guard_chiusura_sorgente_upd
+                  BEFORE UPDATE OF stato_doc_ordine_id ON vendite.ordini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_chiusura_sorgente(
+                      'ORDINE_VENDITA', 'stato_doc_ordine_id', 'config.stati_doc_ordini');
+
+              CREATE OR REPLACE TRIGGER trg_ordini_z90_ritira_commessa_attivita_upd
+                  AFTER UPDATE OF stato_doc_ordine_id ON vendite.ordini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita(
+                      'ORDINE_VENDITA', 'stato_doc_ordine_id', 'config.stati_doc_ordini');
+
+              -- ── DDT ───────────────────────────────────────────────────────
+              CREATE OR REPLACE TRIGGER trg_ddt_a10_guard_chiusura_sorgente_upd
+                  BEFORE UPDATE OF stato_doc_ddt_id ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_chiusura_sorgente(
+                      'DDT_VENDITA', 'stato_doc_ddt_id', 'config.stati_doc_ddt');
+
+              CREATE OR REPLACE TRIGGER trg_ddt_z90_ritira_commessa_attivita_upd
+                  AFTER UPDATE OF stato_doc_ddt_id ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita(
+                      'DDT_VENDITA', 'stato_doc_ddt_id', 'config.stati_doc_ddt');
+
+              -- ── CONTRATTI ─────────────────────────────────────────────────
+              CREATE OR REPLACE TRIGGER trg_contratti_a10_guard_chiusura_sorgente_upd
+                  BEFORE UPDATE OF stato_doc_contratto_id ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_chiusura_sorgente(
+                      'CONTRATTO', 'stato_doc_contratto_id', 'config.stati_doc_contratti');
+
+              CREATE OR REPLACE TRIGGER trg_contratti_z90_ritira_commessa_attivita_upd
+                  AFTER UPDATE OF stato_doc_contratto_id ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita(
+                      'CONTRATTO', 'stato_doc_contratto_id', 'config.stati_doc_contratti');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_z90_ritira_commessa_attivita_upd ON vendite.preventivi;
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_chiusura_sorgente_upd      ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_ordini_z90_ritira_commessa_attivita_upd     ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_chiusura_sorgente_upd         ON vendite.ddt;
+              DROP TRIGGER IF EXISTS trg_ddt_z90_ritira_commessa_attivita_upd        ON vendite.ddt;
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_chiusura_sorgente_upd   ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_contratti_z90_ritira_commessa_attivita_upd  ON vendite.contratti;

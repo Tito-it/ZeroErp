@@ -52,13 +52,14 @@
 | --- | --- | --- |
 | ✅ **Il DB è finito** | **Sette lotti su sette chiusi** il 2026-08-22. `pagamenti` ha 12 tabelle, **8 funzioni pubbliche**, **2 viste**, 15 guard, 2 matrici di transizione e la **RLS accesa** su tutto. Il posting, la rata, il perimetro e le sistemazioni **esistono e sono provati** (14 pgTAP) | §1.3 · §1.4 |
 | ✅ **Già pronto lato BE** | `apps.pagamenti` in `INSTALLED_APPS` · area funzionale `pagamenti` (id 7) · dominio in `DOMAINS` del FE · **BE-1 chiusa e cumulativa**: verificato oggi che **778 codici su 778** del catalogo hanno la loro classe in `error_policies_generated.py` e che **tutti** i codici di questo cantiere hanno anche il ripiego · i **quattro cataloghi** di `pagamenti` sono in whitelist della lookup generica | §1.1 |
-| 🔴 **Da zero** | `urls_v1.py` non esiste e non è montato · `views.py` è una riga di commento · `frontend/src/pagamenti/` sono **due `.gitkeep`** · `DOMAIN_MENUS['pagamenti']` è `[]` · **nessuna** `ui.lista_definizione` è di `pagamenti` | §1.2 |
+| ~~🔴 **Da zero**~~ | ✅ **Non più: il 28/08 non c'è più niente da zero.** `urls_v1.py` monta 23 rotte · `views.py` ha 20 view · `frontend/src/pagamenti/` ha 5 viste, 8 componenti, 5 store, i vocabolari e le etichette · `DOMAIN_MENUS['pagamenti']` ha **6 voci** · quattro `ui.lista_definizione` seminate (⚠️ i **canali** no, e per questo la loro lista **non** è configurabile — §10.4-ter) | §1.2 · §10 |
 | 🔴 **Cinque misure del 22/08 oggi sbagliate** | la vista **non si chiama** `vw_rate_sovra_incassate` · la forzatura **non è un flag di payload**, è una colonna della riga · il lookup delle rate **non è un prerequisito DB** · l'`ui_action` **non sta a catalogo DB** · `fn_get_or_create_vendite_contabile` ha **cambiato firma** | §1.5 |
 | 📋 **Il piano** | **Sei slice**, nessuna in attesa. Ordinate per valore: S0 telaio → S1 distinta e righe → **S2 la registrazione** → S3 rata e capienza → S4 perimetro e canali → S5 sistemazioni. ⛔ La settima (spezzatura) **è caduta con D1-ter** | §3 |
 | 🔌 **Il contratto** | 18 endpoint, grammatica URL di `api.md`. ⭐ Il posting è **una sola `SELECT`**; l'abbinamento è **un verbo solo** che porta anche la forzatura | §4 |
-| 🎨 **Il frontend** | 5 schermate, 2 drawer, 3 pannelli. **17 building block riusati**, **4 candidati** all'estrazione (nessuno al primo colpo) | §5 |
-| 📮 **Al team DB** | **Tre**: i **seed delle liste** (che genero io in bozza), le **due righe dell'azione di processo** (Q-5) e l'**asimmetria del saldo fattura** (Q-10), più la madre della correzione come **differita**. ⛔ La spezzatura **è caduta con D1-ter**. ✅ E il prerequisito di **dato** (conto `INCASSO`) è **risolto**: configurato in-app il 24/08 | §6 |
-| ⭐ **Stato del codice** | ✅ **BACKEND COMPLETO — tutte e cinque le slice.** Ventitré rotte, **128 test**, SQL provati con EXPLAIN sul database vero. 🔴 **FE: non iniziato.** 📮 Al team DB restano i seed delle liste, l'azione di processo e due codici errore. ⛔ **E un blocco sul DATO**: i conti di incasso sono censiti a livello SOGGETTO e i canali li vogliono a livello RUOLO (§10.8) | §10 |
+| 🎨 **Il frontend** | ✅ **FATTO (28/08).** 6 schermate, 3 drawer, 4 dialoghi. **17 building block riusati** e **quattro estratti**: `useForzaturaConfermata`, `FatturaLookup`, `useLetturaTreStati`, più i due di dominio (`etichette`, `useCanaliIncasso`) | §5 · §10.4-ter |
+| 🟡 **Al team DB** | ⭐ **Consegnato tutto quanto era stato chiesto** (allineato dal team DB il 27/08). ✅ **Chieste il 28/08 e CONSEGNATE lo stesso giorno** ([brief](brief-db-perimetro-canali-e-correzione-guidata.md)): la **policy RLS** su `enti_incasso` (trovata da E-4) e la madre della **correzione guidata** (Q-7). ⭐ Il team DB ha corretto la mia policy proposta — così com'era avrebbe reso la tabella **non scrivibile** — e ha **smentito con una misura** la risposta che aveva dato a C-1. I quattro **seed di lista** con le 53 chiavi i18n, le due righe dell'**azione di processo**, `fn_get_saldo_fattura` a **tre numeri**, più due cose che non erano nell'elenco: il **404 dei canali** e la **seconda porta** del conto di incasso. 📮 Resta differita solo la madre della correzione | §6 · §6-bis |
+| ⭐ **Stato del codice** | ✅ **BACKEND E FRONTEND COMPLETI.** BE: 23 rotte, SQL provati con EXPLAIN sul database vero, §6-bis chiuso e DATO-1 chiuso (28/08). FE: fondamenta, 4 liste, il giro della distinta, i canali di incasso e le sistemazioni — **tutto il 28/08**. ✅ **E la correzione guidata (Q-7), l'ultimo gesto**, chiusa lo stesso giorno con la madre consegnata dal team DB. ⭐ **Il cantiere non ha più niente di aperto in codice**: restano due cose che non lo sono — l'azione di processo da assegnare a un profilo, e la **decisione C-1** che il team DB ha lasciato a Tid | §10 |
+| 🔴 **Che cosa resta** | ⛔ **Niente da costruire, e niente mai VISTO**: `pagamenti` ha **zero righe**. Il copione della validazione a video è [collaudo-in-app-incassi-distinte-e-sistemazioni.md](collaudo-in-app-incassi-distinte-e-sistemazioni.md), e **non parte** finché `registra_distinta` non è assegnata a un profilo (**P-0**). ⚠️ Un punto è gia' noto prima di cominciare: la tendina dei centri offre i **due centri interni** | §collaudo |
 | ✅ **Domande aperte** | **ZERO.** Nove chiuse il 24/08 — **Q-1** `confirm_and_retry` · **Q-2** cade con D1-ter · **Q-3** apertura con form · **Q-4** due porte una lista · **Q-5** nasce `registra_distinta` · **Q-6** saldi con **una sede sola** (§2.7) · **Q-7** correzione guidata · **Q-8** lookup in `vendite` · **Q-10** simmetria del saldo fattura — più Q-9 chiusa da sé | §7 |
 
 ---
@@ -280,9 +281,27 @@ Da cui:
 
 ### 2.6 🔴 *(nuovo, dal lotto 6)* `pagamenti.*` pretende **l'operatore**
 
-Da lotto 6 le dodici tabelle di `pagamenti` hanno la RLS accesa con policy
-`FOR ALL`: pretendono `app.ruolo_applicativo = 'OPERATORE'` **per leggere e per
-scrivere**. Un percorso senza quella GUC **non vede niente e non scrive niente**.
+~~Da lotto 6 le dodici tabelle di `pagamenti` hanno la RLS accesa con policy
+`FOR ALL`.~~ 🔴 **FALSO, misurato il 2026-08-28 (E-4): sono QUATTRO su dodici.**
+
+Hanno la RLS accesa le **transazionali** — `vendite_contabili`,
+`vendite_contabili_righe`, `vendite_movimenti`, `sistemazioni` — e lì la policy
+pretende davvero `app.ruolo_applicativo = 'OPERATORE'` **per leggere e per
+scrivere**: un percorso senza quella GUC non vede niente e non scrive niente.
+
+⛔ **Ma `enti_incasso` non ce l'ha**, e porta dato per emittente: il conto su cui
+atterra il denaro, cioè **di chi sono i soldi**. Senza policy l'elenco dei canali
+— IBAN compreso — è comune a tutti gli emittenti. Le sei tabelle di catalogo e
+matrice è **giusto** che non l'abbiano; restano da decidere `sepa_mandati` e
+`centri_riscossione`. 📮 Tutto in
+[brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md).
+
+⚠️ **La lezione, che vale oltre questa riga.** Quella frase era scritta e
+creduta, e nessun test poteva smentirla: una policy che non c'è non solleva
+niente — dà un elenco più lungo del vero. ⭐ Le uniche cose che l'hanno trovata
+sono state **una misura strutturale** (`relrowsecurity` tabella per tabella) e
+**due operatori veri di due emittenti diversi**. Un conteggio sui dati di oggi
+sarebbe stato zero ovunque, cioè verde per sottrazione.
 
 ✅ **Verificato oggi**: la impostano sia `jwt_audit_middleware` (ciclo web) sia
 `coda_lavori/context.py` (worker). ⚠️ Resta da verificare, **una a una**, la
@@ -324,6 +343,22 @@ proprio `incassato`. Non si sana con una somma nel backend (§7, **Q-10**).
 
 ## 3. Il piano — sei slice, nessuna in attesa
 
+> ⚠️ **Le marcature di questa sezione sono state riallineate il 2026-08-29**,
+> una riga per volta **contro il codice** e non contro la memoria. Fino a quel
+> giorno erano ferme al 22/08: mostravano 🔴 su venti passi già costruiti, e un
+> piano che dice rosso su ciò che è verde smette di essere leggibile — chi lo
+> apre non sa più quali rossi contano.
+>
+> ⭐ **Ne restavano tre veri, e due erano difetti**: la frase sull'esito della
+> registrazione (**P-5**) era un toast fisso che avrebbe detto «registrata» anche
+> su `NULLA_DA_POSTARE`, e il rifiuto della dichiarazione (**P-6**) non
+> rileggeva l'anteprima. Corretti lo stesso giorno. Il terzo — **A-8**, la base
+> dei saldi — ✅ **costruito il 29/08**.
+>
+> ⭐ **Da lì il cantiere non ha più niente da costruire.** Restano due cose che
+> non sono codice: l'azione `registra_distinta` da assegnare a un profilo
+> (**P-0**) e la decisione **C-1**.
+
 ```text
   S0 telaio ──▶ S1 distinta e righe ──▶ S2 LA REGISTRAZIONE ──▶ S3 rata e capienza
                                                                       │
@@ -362,11 +397,11 @@ Nessun valore di dominio. È ciò senza cui la slice 1 non si scrive.
 | ✅ **T-3** | `apps/pagamenti/services/pagamenti_service.py` | BE | La facciata. ⚠️ Il traduttore degli errori si prende da `make_db_errors_translator`, **non** si riscrive |
 | ✅ **T-4** | `apps/pagamenti/types.py` | BE | `TypedDict` delle righe DB (`DistintaRow`, `RigaContabileRow`, `RicevutaPosting`, `SaldoRata`, `EccedenzaRow`) |
 | ✅ **T-5** | ⭐ **Le due code dei lotti** | BE | Riscrivere il ripiego di `E_RIGA_CONTABILE_DISTINTA_FINALE` (frase nuova, **senza `%s`**) e **togliere** i tre codici obsoleti dal ripiego (BE-10). §1.5 |
-| 🔴 **T-6** | `frontend/src/pagamenti/{views,components,stores,api}/` | FE | Le quattro cartelle |
-| 🔴 **T-7** | `DOMAIN_MENUS['pagamenti']` + rotte | FE | Da `[]` alle voci della slice 1. ⚠️ `meta` per `resolveTabLabel`/`resolveTabIcon` |
-| 🔴 **T-8** | Namespace i18n `pagamenti.*` in `it.json` e `en.json` | FE | ⚠️ `check_i18n_keys.py` è **un cancello CI**: una `label_key` seminata a DB senza la sua chiave **fa fallire la build** |
-| 🔴 **T-9** | `useReadonlyMode('pagamenti')` sulle viste | FE | Piramide permessi standard |
-| 🟡 **T-10** | ⚠️ **La prova del perimetro** | BE | Una lettura qualunque di `pagamenti` con e senza la GUC operatore, per **vedere** la RLS mordere prima che lo faccia in una lista (§2.6) ⚠️ **Non fatto: serve il database vero.** I test del backend girano senza DB (`SimpleTestCase`), quindi la RLS non si esercita in nessuno di essi — questa prova si fa in-app, e va fatta **prima** della prima lista a video: uno zero fail-closed somiglia in tutto a «nessun risultato» |
+| ✅ **T-6** | `frontend/src/pagamenti/{views,components,stores,api}/` | FE | Le quattro cartelle |
+| ✅ **T-7** | `DOMAIN_MENUS['pagamenti']` + rotte | FE | Da `[]` alle voci della slice 1. ⚠️ `meta` per `resolveTabLabel`/`resolveTabIcon` |
+| ✅ **T-8** | Namespace i18n `pagamenti.*` in `it.json` e `en.json` | FE | ⚠️ `check_i18n_keys.py` è **un cancello CI**: una `label_key` seminata a DB senza la sua chiave **fa fallire la build** |
+| ✅ **T-9** | `useReadonlyMode('pagamenti')` sulle viste | FE | Piramide permessi standard |
+| ✅ **T-10** | ⚠️ **La prova del perimetro** | BE | Una lettura qualunque di `pagamenti` con e senza la GUC operatore, per **vedere** la RLS mordere prima che lo faccia in una lista (§2.6) ⚠️ **Non fatto: serve il database vero.** I test del backend girano senza DB (`SimpleTestCase`), quindi la RLS non si esercita in nessuno di essi — questa prova si fa in-app, e va fatta **prima** della prima lista a video: uno zero fail-closed somiglia in tutto a «nessun risultato» |
 
 ⭐ **Nessun endpoint di lookup da scrivere**: i quattro cataloghi sono già in
 whitelist. Il FE usa `LookupSelect` con `rel="pagamenti.centri_riscossione"`.
@@ -380,18 +415,18 @@ righe**: sono un drawer solo e si costruiscono insieme.
 | --- | --- | --- | --- |
 | ✅ **D-1** | `GET /pagamenti/distinte/` — lista paginata | BE | 📮 **Prerequisito**: seed `ui.lista_definizione` + `lista_colonna` (§6). Filtri: stato, origine, centro, **data** (`data_contabile`, col floor standard di `defaultFiltroDataDa`) |
 | ✅ **D-2** | `POST /pagamenti/distinte/` | BE | Una `SELECT fn_get_or_create_vendite_contabile(...)` con `p_origine := 'MANUALE'`, `p_codice_stato_interno := 'BOZZA'`. ⭐ Il BE **non passa** l'operatore. ⚠️ `Idempotency-Key` obbligatoria |
-| 🔴 **D-2-bis** | Dialogo «Apri distinta» | FE | ✅ **Q-3 chiusa su (a)**: l'apertura è **un form**, non un pulsante — canale (da cui **si deriva il centro**), centro se il canale non c'è, data contabile, importo dichiarato. ⚠️ Se il *get-or-create* **riapre** una distinta che ha già righe, la schermata **lo dice** |
+| ✅ **D-2-bis** | Dialogo «Apri distinta» | FE | ✅ **Q-3 chiusa su (a)**: l'apertura è **un form**, non un pulsante — canale (da cui **si deriva il centro**), centro se il canale non c'è, data contabile, importo dichiarato. ⚠️ Se il *get-or-create* **riapre** una distinta che ha già righe, la schermata **lo dice** |
 | ✅ **D-3** | `GET /pagamenti/distinte/{id}/` | BE | Testata + totali derivati (somma righe, righe registrabili, scarto dal dichiarato) + **il catalogo degli stati coi suoi flag** (`is_postabile`, `richiede_abbinamento`, `is_final`) |
 | ✅ **D-4** | `PATCH /pagamenti/distinte/{id}/` | BE | Solo i campi che una persona compila: `data_contabile`, `ente_incasso_id`, `importo_dichiarato`, `meta`. ⛔ **Non** lo stato |
 | ✅ **D-5** | `POST /pagamenti/distinte/{id}/stato/` | BE | `{nuovo_stato: 'VALIDATA'\|'BOZZA'\|'ANNULLATA'}` — **tre valori, non quattro** (§1.5 punto 5). Un `UPDATE stato_id`, e i guard fanno il resto |
 | ✅ **R-1** | `GET/POST /pagamenti/distinte/{id}/righe/` | BE | Lista e creazione righe |
 | ✅ **R-2** | `PATCH /pagamenti/righe/{id}/` | BE | I **fatti**: `importo`, le tre date, `riferimento_ente`, `motivo_sospeso`. ⛔ **Non** l'abbinamento: quello è un verbo (S3, ma il campo `scadenza_id` esiste già e va previsto nel form fin da subito) |
 | ✅ **R-3** | `POST /pagamenti/righe/{id}/stato/` | BE | Il percorso di D14-a. I guard rifiutano ciò che non è ammesso, **compreso** `ABBINATA` senza fattura |
-| 🔴 **D-6** | `DistinteListView.vue` | FE | `<ListaConfigurabile>` + `useListaConfigurabilePage` + `PageActionsBar`. Modello: `ApprovazioniPrezzoListView.vue` |
-| 🔴 **D-7** | `DistintaDrawer.vue` | FE | Testata + **master-detail inline** delle righe (`RigheMasterDetailTable`). ⚠️ `readonly` + `useInjectReadonly` **obbligatori** |
-| 🔴 **D-8** | Pannello «validazione» | FE | Dichiarato vs digitato e **il delta**, così l'errore si vede **prima** di premere. ⚠️ Post-BOZZA il drawer è `.app-readonly` ⇒ **wrapper `app-escape` obbligatorio** |
-| 🔴 **R-6** | Form riga | FE | `BillingAccountLookup` (esiste) + `FatturaLookup` (nuovo). ⚠️ Salvare l'`_obj` nel form per il restore dell'AutoComplete server-side |
-| 🔴 **R-7** | Azioni di riga | FE | `RowActionsMenu` + `MANAGE_ICONS.KEBAB`. ⛔ **Mai la matita** |
+| ✅ **D-6** | `DistinteListView.vue` | FE | `<ListaConfigurabile>` + `useListaConfigurabilePage` + `PageActionsBar`. Modello: `ApprovazioniPrezzoListView.vue` |
+| ✅ **D-7** | `DistintaDrawer.vue` | FE | Testata + **master-detail inline** delle righe (`RigheMasterDetailTable`). ⚠️ `readonly` + `useInjectReadonly` **obbligatori** |
+| ✅ **D-8** | Pannello «validazione» | FE | Dichiarato vs digitato e **il delta**, così l'errore si vede **prima** di premere. ⚠️ Post-BOZZA il drawer è `.app-readonly` ⇒ **wrapper `app-escape` obbligatorio** |
+| ⭐ **R-6** | Form riga | FE | 🔀 **SUPERATO dal disegno, non fatto com'era scritto.** Il form della riga tiene i **fatti** (importo, riferimento, date); fattura e rata stanno nel verbo `abbina`, che e' un gesto proprio. ⛔ Mescolarli avrebbe fatto cambiare STATO a una riga mentre si corregge un importo. `FatturaLookup` esiste ed e' in `core/` |
+| ✅ **R-7** | Azioni di riga | FE | `RowActionsMenu` + `MANAGE_ICONS.KEBAB`. ⛔ **Mai la matita** |
 
 ⚠️ **Un'avvertenza sul contenuto di questa lista, oggi.** Le uniche distinte
 esistenti sono **`GENERATA`** — le crea il sync dei fondi fattura e nascono già
@@ -406,14 +441,14 @@ da lì `fn_get_saldo_fattura` smette di mentire nell'interfaccia.
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
-| 🟡 **P-0** | ⭐ **Il cancello** *(Q-5 → a)* | BE | `registra_distinta` a catalogo (`pericolosa = true`), `approva_rimessa` ritirata con `attivo = false`, `check_azione` nella view del verbo. 🔴 **Con l'assegnazione a un profilo nello stesso giro**: senza, il pulsante esiste e non funziona per nessuno |
+| 🟡 **P-0** | ⭐ **Il cancello** *(Q-5 → a)* | BE ✅ a catalogo · 📮 **da ASSEGNARE a un profilo, in-app** | `registra_distinta` a catalogo (`pericolosa = true`), `approva_rimessa` ritirata con `attivo = false`, `check_azione` nella view del verbo. 🔴 **Con l'assegnazione a un profilo nello stesso giro**: senza, il pulsante esiste e non funziona per nessuno |
 | ✅ **P-1** | `GET /pagamenti/distinte/{id}/anteprima-registrazione/` | BE | La **fotografia**: quante righe sono registrabili adesso, per che totale, quante restano indietro e perché. È ciò che l'operatore vede **prima** di premere, ed è ciò che poi **dichiara** |
 | ✅ **P-2** | `POST /pagamenti/distinte/{id}/registra/` | BE | **Una sola** `SELECT fn_posta_contabile(id, righe_attese, totale_atteso)`. ⚠️ I due parametri o **entrambi o nessuno**. `Idempotency-Key` obbligatoria |
 | ✅ **P-3** | La ricevuta risale intatta | BE | `{movimenti_creati, righe_postate, righe_saltate, totale_postato, esito}` dentro `success_response`. ⛔ Il BE **non** trasforma `NULLA_DA_POSTARE` in un errore |
-| 🔴 **P-4** | Pannello «Registra» nel drawer | FE | Mostra l'anteprima, chiede conferma, invia la dichiarazione. ⚠️ `app-escape` |
-| 🔴 **P-5** | La frase sull'esito | FE | `POSTATA` → toast coi numeri della ricevuta; `NULLA_DA_POSTARE` → **avviso**, non errore: *«questa distinta era già registrata»* |
-| 🔴 **P-6** | Il rifiuto della dichiarazione | FE | Su `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE` (963) **non si riprova in automatico**: si ricarica l'anteprima e si mostra la differenza. Un retry cieco su un gesto irreversibile è la cosa peggiore che si possa costruire |
-| 🔴 **P-7** | ⭐ **La distinta si chiude da sé** | FE | Dopo la registrazione lo stato è `CHIUSA`: il drawer va ricaricato e il pannello sparisce. ⛔ Nessun pulsante «chiudi» da nessuna parte |
+| ✅ **P-4** | Pannello «Registra» nel drawer | FE | Mostra l'anteprima, chiede conferma, invia la dichiarazione. ⚠️ `app-escape` |
+| ✅ **P-5** | La frase sull'esito | FE | `POSTATA` → toast coi numeri della ricevuta; `NULLA_DA_POSTARE` → **avviso**, non errore: *«questa distinta era già registrata»* |
+| ✅ **P-6** | Il rifiuto della dichiarazione | FE | Su `E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE` (963) **non si riprova in automatico**: si ricarica l'anteprima e si mostra la differenza. Un retry cieco su un gesto irreversibile è la cosa peggiore che si possa costruire |
+| ✅ **P-7** | ⭐ **La distinta si chiude da sé** | FE | Dopo la registrazione lo stato è `CHIUSA`: il drawer va ricaricato e il pannello sparisce. ⛔ Nessun pulsante «chiudi» da nessuna parte |
 
 ### 3.3 S3 — La rata e la capienza
 
@@ -423,20 +458,20 @@ da lì `fn_get_saldo_fattura` smette di mentire nell'interfaccia.
 | ✅ **A-2** | `GET /pagamenti/fatture/{id}/rate/` | BE | Le rate di una fattura **col loro saldo**, in un giro solo. 🔴 **Non è dove diceva Q-8**: `api.md` vieta le chiamate laterali fra moduli di pari livello, quindi un endpoint in `vendite` non potrebbe chiedere i saldi a `pagamenti` — e senza saldo quell'elenco non risponde alla domanda per cui esiste. Vedi la correzione in **Q-8** |
 | ✅ **A-3** | ⭐ **La base dei saldi** *(§2.7)* | BE | `apps/pagamenti/services/saldi_service.py`: **l'unico** lettore delle funzioni di saldo. Forma unica `residuo · in_lavorazione · incassato`, tre livelli previsti (documento · rata · **cliente**, il terzo si accende dopo). Endpoint `GET /pagamenti/rate/{id}/saldo/` e `GET /vendite/fatture/{id}/saldo/` sono **due consumatori**, non due implementazioni |
 | ✅ **A-4** | `GET /pagamenti/rate/fuori-capienza/` | BE | Sopra `vw_rate_fuori_capienza`. 📮 Prerequisito: **solo il seed** della lista — la vista c'è |
-| 🟡 **A-5** | La forzatura a due tempi | BE+FE | Il primo tentativo **non** porta `forzata`; sul 409 `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` il FE mostra il messaggio del DB (che porta già i numeri) e chiede conferma; il secondo porta `forzata: true` + `motivo_forzatura`. Come il FE lo **riconosce** è **Q-1** |
-| 🔴 **A-6** | `RateFuoriCapienzaListView.vue` | FE | Lista. ⭐ La prima colonna è **`motivo`**: due popolazioni diverse in un elenco solo |
-| 🔴 **A-7** | Selettore rata nel form riga | FE | Alimentato dalla fattura scelta; si azzera quando la fattura cambia. ⚠️ La rata resta **facoltativa** anche su `ABBINATA` — la riga del fondo fattura ha fattura sì e rata no |
-| 🔴 **A-8** | `SaldoPanel` nel drawer fattura | FE | ✅ **Q-6**: **residuo** in grande, **in lavorazione** in piccolo e solo quando c'è. ⛔ **Niente «incassato»** su questa schermata. ⭐ Un componente solo per tutti i livelli (§2.7) |
+| ✅ **A-5** | La forzatura a due tempi | BE+FE | Il primo tentativo **non** porta `forzata`; sul 409 `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` il FE mostra il messaggio del DB (che porta già i numeri) e chiede conferma; il secondo porta `forzata: true` + `motivo_forzatura`. Come il FE lo **riconosce** è **Q-1** |
+| ✅ **A-6** | `RateFuoriCapienzaListView.vue` | FE | Lista. ⭐ La prima colonna è **`motivo`**: due popolazioni diverse in un elenco solo |
+| ✅ **A-7** | Selettore rata nel form riga | FE | Alimentato dalla fattura scelta; si azzera quando la fattura cambia. ⚠️ La rata resta **facoltativa** anche su `ABBINATA` — la riga del fondo fattura ha fattura sì e rata no |
+| ✅ **A-8** | `SaldoPanel` nel drawer fattura | FE ✅ **29/08.** ⭐ Non «il pannello della fattura»: la **base** (`useSaldi` + `SaldoPanel` in `core/`), e la fattura e' il primo consumatore. Tre livelli in testa, il cliente **dichiarato e non acceso** | ✅ **Q-6**: **residuo** in grande, **in lavorazione** in piccolo e solo quando c'è. ⛔ **Niente «incassato»** su questa schermata. ⭐ Un componente solo per tutti i livelli (§2.7). 🔴 **Il dislivello che il pannello gestiva NON ERA del database: era del backend** — vedi §10.10 |
 | ✅ **A-9** | ⭐ **La coda del riconciliatore** *(salita dalla slice 4 — Q-4)* | BE+FE | `GET /pagamenti/righe/` con filtro di stato: lista **cross-distinta**. ✅ **Q-4 → (c)**: **due voci di menu** («Da abbinare» · «Sospese») che aprono **la stessa lista** con il filtro già impostato — due porte, **un solo** seed |
 
 ### 3.4 S4 — Il perimetro e i canali ✅ *(BE scritto il 2026-08-25)*
 
 | | Passo | Lato | Cosa fa |
 | --- | --- | --- | --- |
-| ✅ **E-1** | Gestione `enti_incasso` | BE+FE | Drawer dedicato: ha JOIN (soggetto_ruolo, filiale, **conto**) quindi **non** è un pannello config generico. ⭐ **BE-8**: l'elenco dei conti mostra **solo** quelli con `uso = 'INCASSO'` dell'emittente — il DB rifiuta gli altri, ma un elenco che li propone fa sbagliare |
-| **E-2** | ✅ **Il blocco è caduto** | dato | **DATO-1 risolto in-app da Tid il 24/08**: due conti `INCASSO` fittizi, uno per emittente (`IT00TESTINCASSO000000000{1,2}`). ⚠️ **Da riverificare al primo canale creato**: che ogni IBAN sia sull'emittente giusto — il perimetro è vero anche se il dato è finto, e uno scambio non dà errore, dà liste sbagliate |
+| ✅ **E-1** | Gestione `enti_incasso` | BE+FE ✅ **FE fatto il 28/08** | Drawer dedicato: ha JOIN (soggetto_ruolo, filiale, **conto**) quindi **non** è un pannello config generico. ⭐ **BE-8**: l'elenco dei conti mostra **solo** quelli con `uso = 'INCASSO'` dell'emittente — il DB rifiuta gli altri, ma un elenco che li propone fa sbagliare |
+| **E-2** | ✅ **Il blocco è caduto** | dato | **DATO-1 chiuso il 28/08** (configurato il 24/08, rifatto al livello giusto poi): due conti `INCASSO` fittizi, uno per emittente (`IT00TESTINCASSO000000000{1,2}`), a livello **ruolo**. ✅ **La riverifica che questa riga chiedeva è FATTA** e sta in §10.8 — ogni IBAN è sul soggetto_ruolo del proprio emittente (72 → 32, 159 → 44). ⚠️ Il perimetro è vero anche se il dato è finto: uno scambio non darebbe errore, darebbe liste sbagliate — per questo si guarda, non si assume |
 | ~~**E-3**~~ | ~~Coda «da abbinare»~~ | — | ⬆️ **Salita alla slice 3 (A-9)** con la chiusura di **Q-4**: la coda si riempie già con l'inserimento manuale, non aspetta l'import |
-| 🟡 **E-4** | Riverifica di **tutte** le liste sotto RLS | BE | ⚠️ §2.6: dentro e fuori perimetro, e si guarda la differenza |
+| ✅ **E-4** | Riverifica di **tutte** le liste sotto RLS | BE ✅ **FATTA il 28/08** | ⭐ E ha trovato **due buchi**: `enti_incasso` senza policy (→ team DB) e l'elenco dei conti agganciabili che **usciva dal perimetro** — misurato su due operatori veri, chiuso lo stesso giorno con un test sul DB provvisto. §10.9 |
 
 ### 3.5 S5 — Le sistemazioni
 
@@ -446,12 +481,22 @@ da lì `fn_get_saldo_fattura` smette di mentire nell'interfaccia.
 | ✅ **S-2** | `POST /pagamenti/sistemazioni/` | BE | ⭐ Un **`INSERT`**, non un verbo: `{destinazione, importo, cliente_…, emittente_…, fattura_origine_id, fattura_destinazione_id?, motivo?}`. I CHECK del DB tengono le combinazioni |
 | ✅ **S-3** | `POST /pagamenti/sistemazioni/{id}/conferma/` | BE | Una `SELECT fn_conferma_sistemazione(id, ente_incasso_id)`. ⚠️ **Il canale del rimborso si chiede QUI**: da quale conto esce il bonifico è una decisione del momento in cui si paga |
 | ✅ **S-4** | `POST /pagamenti/sistemazioni/{id}/annulla/` | BE | `fn_annulla_sistemazione(id, motivo)`. ⚠️ Il motivo è **obbligatorio** se l'atto non ne aveva già uno |
-| 🔴 **S-5** | `EccedenzeView.vue` + drawer decisione | FE | La vista presenta, la persona decide, l'atto diventa un fatto. ⭐ `chi_e_in_credito` in evidenza: cliente o azienda cambia completamente che cosa si sta guardando |
-| 🔴 **S-6** | Il dialogo della conferma | FE | Chiede il **canale** solo su `RIMBORSO` (sulle altre due destinazioni non serve) |
+| ✅ **S-5** | `EccedenzeView.vue` + drawer decisione | FE ✅ **28/08** | La vista presenta, la persona decide, l'atto diventa un fatto. ⭐ `chi_e_in_credito` in evidenza: cliente o azienda cambia completamente che cosa si sta guardando |
+| ✅ **S-6** | Il dialogo della conferma | FE ✅ **28/08** | Chiede il **canale** solo su `RIMBORSO` (sulle altre due destinazioni non serve) |
 
 📮 Con S-3 si chiude **BE-4** e si sblocca la **Fase D del cantiere fondi**,
 ferma per scelta da agosto: il riporto **è** il fondo `origine = MANUALE` che
 quel cantiere aspettava.
+
+### 3.6-bis S6 — La correzione guidata ✅ *(2026-08-28)*
+
+| | Passo | Lato | Cosa fa |
+| --- | --- | --- | --- |
+| ✅ **S6-1** | `fn_crea_distinta_correzione` | DB | La madre: distinta nuova in bozza, righe di **segno opposto**, fattura e rata rispecchiate. ⭐ `righe_saltate` nell'esito, **stesso vocabolario di `fn_posta_contabile`** — un secondo verbo che risponde come il primo si impara una volta sola |
+| ✅ **S6-2** | `pagamenti.enti_incasso` sotto RLS | DB | Nata da E-4. ⭐ Il predicato passa dal **conto** e non dall'id: quello proposto avrebbe reso la tabella non scrivibile |
+| ✅ **S6-3** | `POST /distinte/{id}/correggi/` | BE | Una sola `SELECT`. Stesso cancello della registrazione (`registra_distinta`): ⛔ un gesto che rovescia denaro non può avere una porta più larga di quello che lo ha scritto |
+| ✅ **S6-4** | Dialogo + legame fra i due documenti | FE | ⭐ Il legame si legge nei **due versi** — «questa corregge la X» e «questa è già stata corretta dalla Y» — ed è cliccabile: senza, due gemelli di segno opposto stanno nell'elenco senza niente che dica che uno rovescia l'altro |
+| ✅ **S6-5** | La decisione **C-1** | Tid ✅ **29/08** | ⭐ **Il legame si EREDITA dalla riga che si corregge**: pagamento su una rata → la rettifica prende quella rata; pagamento sulla sola fattura (fondo, eccedenza non assegnata) → nessuna rata, perché non ce n'era una. ⛔ E le righe nascono **`DA_ABBINARE`**: la rata è già scritta, ma il tasto finale lo preme una persona — se lo premesse il sistema scriverebbe una **forzatura che nessuno ha deciso**, e l'elenco «rate fuori capienza» esiste proprio per contenere solo decisioni vere. 📮 Se il clic per riga pesasse, la risposta è un «abbina tutte» che chiede il motivo **una volta sola**, non la forzatura automatica |
 
 ### ~~3.6 S6 — La spezzatura~~ ⛔ **CADUTA (D1-ter, 2026-08-24)**
 
@@ -541,7 +586,7 @@ verbo compare **solo** per le azioni di dominio e come **ultimo** segmento.
 | **Distinte contabili** | S1 | `<ListaConfigurabile>` — paginatore in alto, filtri stato/origine/centro/data, click riga → drawer |
 | **DistintaDrawer** | S1-S2 | Testata + master-detail righe + pannello validazione + pannello registrazione |
 | **Rate fuori capienza** | S3 | Lista, **prima colonna `motivo`**. Senza, la forzatura nasconde invece di registrare |
-| **Canali di incasso** | S4 | Drawer di configurazione. ✅ Il prerequisito di dato è stato risolto il 24/08 |
+| **Canali di incasso** | S4 | Drawer di configurazione. ✅ Il prerequisito di dato è chiuso il **28/08** (§10.8): da adesso un canale è **creabile** — prima non lo era, perché il conto è obbligatorio su tutti i tipi e a livello ruolo non ce n'era. ⭐ Il drawer mostra la **utility del conto** accanto all'IBAN (BE-11), e `null` si legge «nessuna utility», non come un campo vuoto |
 | **Da abbinare** · **Sospese** | S3 | ⭐ **La stessa lista, due voci di menu** con il filtro di stato già impostato (Q-4 → c) |
 | **Eccedenze da sistemare** | S5 | Lista raggruppata **per cliente** + drawer decisione + dialogo conferma |
 
@@ -553,14 +598,21 @@ verbo compare **solo** per le azioni di dominio e come **ultimo** segmento.
 `BillingAccountLookup` · `useReadonlyMode` · `useConfirmAction` ·
 `useDrawerContentReady` · `createCrudStore` · `defaultFiltroDataDa`.
 
-### 5.3 🆕 I quattro candidati all'estrazione — e tre non sono nostri
+⭐ **E cinque nati qui** (28/08): `useForzaturaConfermata` · `FatturaLookup` ·
+`useLetturaTreStati` in `core/`, `etichette.js` · `useCanaliIncasso` nel dominio.
+⚠️ Tutti **fabbriche**, mai oggetti già costruiti: un oggetto condiviso
+legherebbe ogni consumatore al `t` del primo componente montato, e al cambio
+lingua il secondo resterebbe indietro **in silenzio**.
+
+### 5.3 ✅ I quattro candidati all'estrazione — tre estratti, uno ancora no
 
 | BB | Dove vivrebbe | Perché |
 | --- | --- | --- |
-| `FatturaLookup.vue` | `core/components/` | Autocomplete fattura cross-dominio. ⭐ Serve a chiunque debba puntare una fattura da un altro schema |
-| `ScadenzaSelect.vue` | `core/components/` | Rate di una fattura **col saldo accanto**. Gemello del precedente un piano più giù |
+| ✅ `FatturaLookup.vue` | `core/components/` | ✅ **ESTRATTO il 28/08** alla seconda occorrenza: abbinamento di una riga e sistemazione di un'eccedenza fanno la stessa domanda, da due domini diversi. ⚠️ Vive in `core/` e **non** in `vendite/`: chi lo usa sta fuori da vendite |
+| 🟡 `ScadenzaSelect.vue` | `core/components/` | Rate di una fattura **col saldo accanto**. ⚠️ **Ancora una occorrenza sola** (l'abbinamento): la regola del 2 dice di aspettare la seconda, e la seconda non c'è |
 | `SaldoPanel.vue` + `useSaldi.js` | `core/components/` · `core/composables/` | ⭐ **Non è più un candidato: è un vincolo** (§2.7, decisione di Tid). Un componente e un composable **soli**, forma unica `residuo · in_lavorazione · incassato`, e ogni schermata sceglie **quali** numeri accendere. Nasce con **tre livelli in testa** — documento, rata, **cliente** |
-| `useForzaturaConfermata.js` | `core/composables/` | Il doppio-tempo «rifiuto parlante → conferma → ripeti». ✅ **Q-1 è chiusa su (a)**, quindi può nascere BB davvero: astrae **un comportamento** (`azioneUi === 'confirm_and_retry'`) e non un elenco di codici |
+| ✅ `useForzaturaConfermata.js` | `core/composables/` | ✅ **ESTRATTO il 28/08.** Astrae **un comportamento** (`azioneUi === 'confirm_and_retry'`) e non un elenco di codici — ed è il **primo consumatore di `azioneUi` in tutto il prodotto**: fino a ieri quel campo era emesso, trasportato e letto da nessuno |
+| ✅ `useLetturaTreStati.js` | `core/composables/` | 🆕 **Non era in elenco, ed è quello che serviva di più.** «C'è · è vuoto · non l'ho letto»: il terzetto era riscritto a mano in **quattro** punti e in **tre** me l'ero dimenticato alla prima stesura. Un difetto che si ripete tre volte su quattro non è distrazione: è una cosa che il codice deve dare per costruzione |
 
 ⚠️ **Sulla regola del 2**: nessuno dei quattro si estrae *prima* di averlo visto
 funzionare una volta. Sono dichiarati qui perché il piano li prevede.
@@ -581,7 +633,20 @@ funzionare una volta. Sono dichiarati qui perché il piano li prevede.
 
 ---
 
-## 6. 📮 I prerequisiti a carico del team DB: da nove a **tre**
+## 6. ✅ I prerequisiti a carico del team DB: da nove a tre, e **poi a zero**
+
+> ✅ **ALLINEATO DAL TEAM DB IL 2026-08-27.** I tre prerequisiti che restavano
+> sono **consegnati e applicati**: i quattro seed di lista (53 colonne, 4 preset,
+> **53 chiavi i18n** già nei locales), le due righe dell'azione di processo, e
+> `fn_get_saldo_fattura` allargata a tre numeri. ⭐ **Il database non deve più
+> niente a questo cantiere**, tranne la madre della correzione, che resta
+> differita per scelta.
+>
+> ✅ **E le tre cose passate al backend sono FATTE** il 2026-08-28 (§6-bis).
+> ✅ **DATO-1 è chiuso** lo stesso giorno, verificato sul database: §10.8 non è
+> più un blocco. ⭐ **Il cantiere non ha più prerequisiti di nessun tipo — né
+> DB, né dato, né backend: resta il frontend.**
+
 
 ⛔ **Non li eseguo io** (le azioni DB si passano al team): si scrivono in un
 brief e si aspetta. Ecco il consuntivo della revisione.
@@ -589,17 +654,27 @@ brief e si aspetta. Ecco il consuntivo della revisione.
 | | Prerequisito del 22/08 | Oggi |
 | --- | --- | --- |
 | **DB-1** | vista `vw_vendite_contabili_lista` | 🔵 **Probabilmente non serve**: le liste alimentate da un endpoint di dominio si seminano con `vista_sql = NULL` (è la forma delle 6 liste dell'8° lotto e delle 3 del drawer lotto). I display field si fanno in JOIN **nel repository**. ⚠️ Costo: con `vista_sql` nullo il guard DB sui `campo_sorgente` **salta**, e l'unico presidio resta quello Python |
-| **DB-2** | seed lista **distinte** | 📮 **RESTA** |
-| **DB-11** | 🆕 due righe in `config/azioni_processo.csv`: `approva_rimessa` → `attivo = false`, e `registra_distinta` (area 7, `pericolosa = true`) | 📮 **NUOVO, da Q-5**: il cancello sulla registrazione. ⚠️ Minuscolo, ma **blocca la slice 2** se arriva dopo |
-| **DB-3** | seed lista **righe da abbinare** | 📮 **RESTA**, ed è **uno solo**: con Q-4 → (c) le due code condividono la definizione e si separano col filtro |
-| **DB-4** | vista + seed **rate sovra-incassate** | ⭐ **La vista c'è già** (`vw_rate_fuori_capienza`, lotto 5), col nome giusto e più contenuto di quanto chiedessi. 📮 Resta **il seed** |
+| **DB-2** | seed lista **distinte** | ✅ **CONSEGNATO** (applicato 27/08): `pagamenti.distinte`, 14 colonne + preset |
+| **DB-11** | 🆕 due righe in `config/azioni_processo.csv`: `approva_rimessa` → `attivo = false`, e `registra_distinta` (area 7, `pericolosa = true`) | ✅ **CONSEGNATO** (25/08). ⚠️ Il ritiro ha fatto **fallire il primo migrate**: un guard generico rifiuta di spegnere una riga con figlie, e `profili_accesso_azioni` ne aveva quattro (tutte a permesso negato). Tolte a mano, il secondo migrate è passato. 📮 **Ma il cancello resta chiuso**: l'azione va ancora **assegnata a un profilo**, o registra solo il super admin |
+| **DB-3** | seed lista **righe da abbinare** | ✅ **CONSEGNATO** (27/08): `pagamenti.righe`, 15 colonne. Ed è **uno solo**: con Q-4 → (c) le due code condividono la definizione e si separano col filtro |
+| **DB-4** | vista + seed **rate sovra-incassate** | ⭐ **La vista c'è già** (`vw_rate_fuori_capienza`, lotto 5), col nome giusto e più contenuto di quanto chiedessi. ✅ **E il seed è CONSEGNATO** (27/08): `pagamenti.rate_fuori_capienza`, 13 colonne, prima colonna `motivo` |
 | ~~**DB-5**~~ | `fn_spezza_riga_contabile` | ⛔ **CADUTO (D1-ter, 2026-08-24)**: il gesto che lo richiedeva non esiste più. ⭐ Era l'unico oggetto DB mancante — **adesso il database non deve più niente a questo cantiere, tranne i seed** |
 | **DB-6** | lookup rate di una fattura | ✅ **ANNULLATO**: `list_fattura_scadenze` esiste, e i numeri li dà `fn_get_saldo_rata` |
 | **DB-7** | `ui_action` per i rifiuti confermabili | ✅ **ANNULLATO**: le `ui_action` sono un file **Python scritto a mano** (`error_ui_overrides.py`) |
-| **DB-8** | vista + seed **eccedenze** | ⭐ **La vista c'è già** (`vw_eccedenze_da_sistemare`, lotto 7), e porta pure il raggruppamento per cliente. 📮 Resta **il seed** |
+| **DB-8** | vista + seed **eccedenze** | ⭐ **La vista c'è già** (`vw_eccedenze_da_sistemare`, lotto 7), e porta pure il raggruppamento per cliente. ✅ **E il seed è CONSEGNATO** (27/08): `pagamenti.eccedenze`, 11 colonne, ordinate per cliente |
 | **DB-9** | conferma che le liste reggano sotto RLS | ✅ **ANNULLATO come richiesta**: il lotto 6 ha portato `test-rls-pagamenti-perimetro.sql` (14 asserzioni). ⚠️ Diventa **lavoro BE**: la prova dentro/fuori perimetro su ogni lista (§2.6, T-10, E-4) |
-| **DB-10** | 🆕 | 📮 **NUOVO e CONFERMATO** (Q-10 → a, Tid 24/08): allargare `fn_get_saldo_fattura` a `residuo · in_lavorazione · incassato`, la stessa forma di `fn_get_saldo_rata`. ⭐ Non è una rifinitura: senza, la **base unica dei saldi** (§2.7) nasce storta al livello che dovrà reggere il **saldo cliente** |
-| ~~**DATO-1**~~ | ✅ **RISOLTO il 2026-08-24** | Non era una richiesta al DB ma **configurazione**, e **non serviva nessuna colonna nuova**: il conto di incasso è una **riga** in `anagrafiche.soggetti_ruoli_conti_bancari` con `uso = 'INCASSO'`, non un parametro dell'emittente. ⛔ Metterlo fra i parametri sarebbe stata una **seconda sede** fuori dal vincolo «un conto `INCASSO` → un solo soggetto», che è ciò che regge il perimetro. Fatto in-app da Tid con due IBAN di test, uno per emittente |
+| **DB-10** | 🆕 | ✅ **CONSEGNATO** (applicato 25/08) — era: 📮 **NUOVO e CONFERMATO** (Q-10 → a, Tid 24/08): allargare `fn_get_saldo_fattura` a `residuo · in_lavorazione · incassato`, la stessa forma di `fn_get_saldo_rata`. ⭐ Non è una rifinitura: senza, la **base unica dei saldi** (§2.7) nasce storta al livello che dovrà reggere il **saldo cliente** |
+| ~~**DATO-1**~~ | ✅ **RISOLTO il 2026-08-28** (⚠️ configurato il 24/08, ma **al livello sbagliato**: la misura del 25/08 lo trovò a livello *soggetto*, e §10.8 restò aperta fino al rifacimento a livello **ruolo**) | Non era una richiesta al DB ma **configurazione**, e **non serviva nessuna colonna nuova**: il conto di incasso è una **riga** in `anagrafiche.soggetti_ruoli_conti_bancari` con `uso = 'INCASSO'`, non un parametro dell'emittente. ⛔ Metterlo fra i parametri sarebbe stata una **seconda sede** fuori dal vincolo «un conto `INCASSO` → un solo soggetto», che è ciò che regge il perimetro. Fatto in-app da Tid con due IBAN di test, uno per emittente |
+
+⚠️ **Come sono arrivati davvero.** La bozza non è mai partita da qui: il team DB
+ha generato le 53 righe **dal contratto del backend** — `campo_sorgente` dai
+`SELECT` del repository, e il **`codice`** di ogni colonna ordinabile uguale alla
+chiave della whitelist di ordinamento (`DISTINTE_SORT_COLUMNS` e sorelle), così
+che un ordinamento dichiarato a catalogo non diventi un 400. ⭐ Tre scelte sono
+**dichiarate e non dedotte**: `sensibile = f` ovunque (è un cancello, non
+un'etichetta), `multi_emittente = f` (default: una lista nuova nasce **non
+certificata**), `vista_sql = NULL` — col costo, detto, che il guard DB sui
+`campo_sorgente` non gira e l'unico presidio resta quello Python.
 
 ⭐ **E i quattro seed si chiedono in un colpo solo, già scritti.** Esiste
 `scripts/gen_seed_lista.py`, che genera le righe dei quattro CSV a partire dal
@@ -609,6 +684,46 @@ confluire nei CSV di seed. Un round-trip invece di quattro, e nessuno scrive
 269 colonne a mano una seconda volta.
 
 ---
+
+## 6-bis. ✅ Che cosa era passato al backend — **fatto il 2026-08-28**
+
+> Elenco scritto dal team DB il 27/08 consegnando il lotto 9; ✅ **tutti e
+> quattro chiusi il 28/08**, più un presidio che l'elenco non chiedeva.
+
+| | Cosa | Esito |
+| --- | --- | --- |
+| **BE-a** | Rigenerare `error_policies_generated.py`: due codici nuovi a catalogo | ✅ **fatto.** ⚠️ Non si rigenera al buio: la divergenza è stata **guardata prima** ed era **esattamente un codice** (`E_ENTE_INCASSO_NON_TROVATO`, 798 → 799 voci) — nessun lavoro di altri a bordo. ⭐ **E il secondo tempo che l'elenco non nomina**: un codice vivo vuole anche il suo **ripiego senza segnaposti** in `error_messages_fallback.py`, o `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` è rosso. `E_PAGAMENTI_VALIDATION` ce l'aveva già dal 25/08, l'altro no |
+| **BE-b** | `E_ENTE_NON_TROVATO = "E_ENTE_INCASSO_NON_TROVATO"` — **una riga** | ✅ **fatto**, più il commento riscritto (diceva «a catalogo manca», che adesso è falso: *una regola spiegata con un fatto scaduto insegna una cosa falsa a chi si fida*). 🔴 **E il test che lo copriva non copriva niente**: `test_canale_inesistente_404` confrontava `exception.code` con la costante che il codice stesso legge — una tautologia, **verde anche mentre il ripiego rispondeva 400**. Il nome prometteva un 404 che nessuna asserzione guardava. Ora l'asserzione è sullo **stato risolto** |
+| **BE-c** | Dichiarare `lista_codice` sulle **quattro** view di lista | ✅ **fatto**: `pagamenti.distinte` · `pagamenti.righe` · `pagamenti.rate_fuori_capienza` · `pagamenti.eccedenze` |
+| **BE-11** | ⭐ **Esporre la utility del conto, che c'è già** | ✅ **fatto** nei due punti (`_ENTE_INCASSO_SELECT` e `list_conti_incasso`). ⚠️ **Ma non passando dalla vista suggerita**: `vw_istanze_utilities_dettaglio` porta `utility_descrizione` e con essa **sei join**, due su viste di indirizzo che PostgreSQL non pota. Misurato con EXPLAIN sull'elenco dei conti: **928.86 contro 6.10** per decodificare una parola. Si usa la catena diretta `istanza → pdp → utility`, che è anche la forma già in uso in `BillingAccountRepository.search_lookup`. ⚠️ E la descrizione è **NULL in due casi legittimi e diversi** — conto senza istanza (è il conto *generico* del ruolo) o istanza senza PDP: a video NULL è «nessuna utility», non un buco |
+| 🆕 **BE-d** | ⭐ **Il presidio sui `campo_sorgente`, che nessuno aveva chiesto** | ✅ **scritto.** Con `vista_sql = NULL` il guard DB sulle colonne **non gira**, e il team DB l'ha dichiarato: *«l'unico presidio resta quello del backend»* — cioè una responsabilità **ricevuta**, non un extra. `apps/pagamenti/tests/db/test_lista_campo_sorgente_guardrail.py` verifica che tutti e **53** i `campo_sorgente` esistano fra le colonne che le liste proiettano. ✅ Verde oggi (53/53), e **provato rimettendo il difetto**: diventa rosso |
+
+⭐ **E le due liste di colonne ordinabili sono state ricontrollate da questo
+lato**, non prese per buone: `codice` a catalogo contro le chiavi di
+`DISTINTE_SORT_COLUMNS` e sorelle — **combaciano su tutte e quattro**, in
+entrambi i versi. È il controllo che vale la pena rifare perché il modo in cui
+fallisce non è educato: un ordinamento dichiarato e non riconosciuto è un
+**400** su un gesto normale.
+
+⚠️ **Le colonne le dichiara il CURSORE, non le righe.** Il presidio legge
+`cursor.description`, quindi vale anche su una lista **oggi vuota** — che è il
+caso in cui serve di più: una lista senza righe non può smentire niente, e un
+confronto fatto sui dati sarebbe verde per sottrazione.
+
+📌 **E anche una prova è un programma.** La prima stesura di quella misura
+spiava `rows_to_list` e rispondeva «0 colonne esposte» su tutte e quattro: un
+rosso che non veniva dal codice ma dalla misura — le liste paginate passano da
+`fetch_paged_with_total`.
+
+⚠️ **E il nome del codice di validazione è `E_PAGAMENTI_VALIDATION`, non
+`_VALIDAZIONE`**: il catalogo ha due convenzioni vive e si è scelta la
+maggioranza (17 contro 13). §10.7 qui sotto dice ancora l'altro — è quella riga
+a essere vecchia, non il codice.
+
+⭐ **Le 53 chiavi i18n sono già nei locales**, in una radice `pagamenti` nuova:
+il cancello `check_i18n_keys.py` legge il CSV delle colonne e pretende le
+traduzioni in **entrambe** le lingue, quindi le due metà non potevano atterrare
+separate.
 
 ## 7. ✅ Domande aperte — **nessuna**
 
@@ -717,7 +832,7 @@ dire come, e non si anticipa adesso.
 | Campo | Nota |
 | --- | --- |
 | **canale** (`ente_incasso_id`) | ⭐ **si sceglie questo per primo, e il centro si deriva da lui**: l'ente porta il suo `centro_riscossione_id`, e un guard rifiuta la coppia incoerente. Chiederli entrambi a mano significa costruire un errore che si può evitare |
-| **centro di riscossione** | obbligatorio. Si chiede **direttamente** solo quando un canale non c'è (la cassa). ⚠️ **Oggi è sempre così**: `enti_incasso` è a zero righe e non è creabile (DATO-1), quindi il form deve funzionare col solo centro |
+| **centro di riscossione** | obbligatorio. Si chiede **direttamente** solo quando un canale non c'è (la cassa). ⚠️ **Oggi `enti_incasso` è ancora a zero righe**, quindi il form deve funzionare col solo centro — ma dal 28/08 è a zero perché nessuno ne ha ancora creato uno, **non perché non si possa** (DATO-1 è chiuso). ⇒ Il form regge **entrambi** i casi, e il secondo arriverà appena si configura il primo canale |
 | **data contabile** | obbligatoria |
 | **importo dichiarato** | facoltativo. È la **quadratura** di D13: quanto dice il totale in cima al foglio arrivato |
 | note (`meta`) | facoltativo |
@@ -985,7 +1100,7 @@ l'astrazione), e nessun commit di propria iniziativa.
 
 ## 10. ⭐ Stato di sviluppo
 
-> Aggiornato al **2026-08-24**. ⚠️ Questa sezione dice **che cosa esiste
+> Aggiornato al **2026-08-28**. ⚠️ Questa sezione dice **che cosa esiste
 > davvero**, non che cosa è pianificato: il piano è §3, questo è il consuntivo.
 
 ### 10.1 Che cosa esiste, e dove
@@ -1002,6 +1117,17 @@ l'astrazione), e nessun commit di propria iniziativa.
 | `apps/pagamenti/services/sistemazioni_service.py` | Il giro delle sistemazioni: l'elenco, la registrazione della decisione e i due verbi. ⭐ **Nessuna macchina nuova** — le tre destinazioni usano meccanismi che esistevano già tutti |
 | `apps/pagamenti/services/_helpers.py` | I pezzi che i service del dominio condividono (codice di validazione, lettura di un importo, involucro paginato), spostati qui alla **seconda occorrenza** |
 | `apps/pagamenti/tests/{api,services,db}/` | **108 test**: 78 sui service, 25 sugli endpoint, 17 sull'SQL e sui cataloghi |
+
+#### E il frontend, dal 2026-08-28
+
+| File | Che cos'è |
+| --- | --- |
+| `pagamenti/api/pagamenti.js` | Le 23 rotte. ⭐ Sul filo la risorsa si chiama **`distinte`**, non `contabili`: è la parola che l'operatore legge |
+| `pagamenti/vocabolari.js` | ⛔ **Solo i vocabolari SENZA catalogo** (`CHECK` a DB o whitelist del BE): lì una copia nel frontend è inevitabile, e allora sta in un posto solo. Gli **stati** non ci sono — sono tabelle di catalogo, e copiarli nasconderebbe lo stato che nasce domani |
+| `pagamenti/etichette.js` | La fabbrica delle etichette, tutte **fail-visible**: un valore che il backend aggiunge e i locales non conoscono si vede come **codice**, mai come cella vuota |
+| `pagamenti/stores/` | Cinque store, tutti `userScoped`. ⭐ **Nessun pavimento temporale**: sono code di lavoro e configurazione — un incasso di tre mesi fa da abbinare è lavoro di oggi |
+| `pagamenti/views/` + `components/` | 6 pagine · `DistintaDrawer` (master-detail + i verbi) · `CanaleIncassoDrawer` · `SistemazioneDrawer` · i 4 dialoghi (apertura, abbinamento, registrazione, conferma) |
+| `core/composables/{useForzaturaConfermata,useLetturaTreStati}.js` · `core/components/FatturaLookup.vue` | I tre BB nati qui e finiti in `core/` perché non sanno niente di incassi |
 
 ### 10.2 Le venti rotte, e a che punto sono
 
@@ -1061,6 +1187,63 @@ l'astrazione), e nessun commit di propria iniziativa.
 | **5** | ⚠️ **Altri codici cablati senza presidio**: gli stati delle due code, lo stato dell'abbinamento, i due motivi di «fuori capienza» | Un refuso qui **non dà errore**: dà una coda vuota o un elenco vuoto — la risposta più rassicurante possibile su liste che esistono per non far sparire del denaro | Presìdi contro i CSV di seed e contro la definizione della vista |
 | **6** | ⚠️ **Due tipi dichiarati e mai usati** (`RigaCodaRow`, `SaldoRow`), più un `import` inline dentro un test | Un tipo che nessuno annota è un commento travestito da contratto | Agganciati alle firme che li producono |
 
+### 10.4-ter 🔴 La terza revisione (frontend), e i difetti del *modello* che ha trovato
+
+> Fatta il **2026-08-28** su richiesta di Tid, dopo le due schermate finali.
+> ⭐ La differenza con le prime due: qui i difetti peggiori non erano bug di
+> codice, erano **assunzioni sul modello scritte come costanti**.
+
+| | Difetto | Perché contava | Rimedio |
+| --- | --- | --- | --- |
+| **1** | 🔴 **Gli stati della riga erano CABLATI**, contro la regola che questo stesso brief mette in §5.4: `finale = stato_codice === 'POSTATA'`. Ma a catalogo **`STORNATA` è anch'esso terminale** | Su una riga stornata il drawer offriva abbinamento e transizioni **che il database rifiuta**: gesti che finiscono in errore, su un documento di denaro | `is_final` si legge dal **catalogo**, che il dettaglio già porta. E le transizioni si **generano** da `stati_richiedibili.riga` × catalogo, come già faceva la testata |
+| **2** | 🔴 **Una transizione dichiarata e mai offerta.** Scrivendo a mano solo `SOSPESA` e `SCARTATA` avevo lasciato fuori il ritorno a **`DA_ABBINARE`** — l'unico modo di **sganciare un abbinamento sbagliato** | ⭐ Il contratto la dichiara ammessa: ciò che il contratto dichiara va **provato per intero**, e qui non era nemmeno raggiungibile | Generandole dal catalogo è ricomparsa da sé. ⛔ L'unica esclusa resta `ABBINATA`, che ha un **verbo proprio** |
+| **3** | 🔴 **Il rosso della conferma diceva il falso.** `danger: codice === 'SCARTATA'` — ma a catalogo `SCARTATA` ha `is_final = false` | Allarmava per un gesto **reversibile**, e non allarmava per gli altri: un colore che mente è peggio di nessun colore | Il rosso è `is_final`, in **tutte e due** le sedi (testata e riga): rosso = «da qui non si torna» |
+| **4** | 🔴 **L'anteprima di registrazione era in `silent`** — lo stesso difetto corretto in tre punti il giro prima | Una lettura fallita si leggeva come «non c'è niente da registrare»: un'**affermazione**, e falsa, sul foglio che sta per essere chiuso | Via il `silent`, e i tre stati passano al BB nuovo |
+| **5** | ⚠️ **Un `onActivated` che ricarica in quattro liste** — ma `useSearchTable` lo fa già | **Due richieste identiche** a ogni rientro nella scheda, e due risposte possono tornare in ordine inverso | Tolto. Nella coda righe resta il solo allineamento con la **rotta**, che nessun altro fa |
+| **6** | ⚠️ **Il conto del canale azzerato in silenzio** all'apertura in modifica: una corsa fra il caricamento dei conti e quello del dettaglio | Cancellava la configurazione di un canale — e il conto **è il perimetro dei soldi** | Si azzera solo su un cambio **voluto** di emittente; e un conto non più agganciabile si **dichiara** invece di apparire come campo vuoto |
+| **7** | ⚠️ **Duplicazione, tre volte** (regola del 2): il terzetto dei tre stati ×4, la riga `labelOrCode` in **otto** componenti con tre prefissi in coppia, il caricamento dei canali ×2 | Due copie divergono alla prima correzione, e la copia rimasta indietro sbaglia **su una sola delle due schermate** — cioè nel modo più difficile da vedere | Tre estrazioni, tutte **fabbriche** (§5.2) |
+
+⭐ **E la verifica che è valsa di più**: tutti e **17** i codici d'errore che le
+due schermate nuove possono far scattare — i tre guard PSP, il conto non di
+incasso, i nove delle sistemazioni — sono **a catalogo e col ripiego**. Nessuno
+diventa un 500: era la trappola segnata nell'handoff, e questa volta non è
+scattata.
+
+### 10.9 🔴 E-4 — la riverifica sotto RLS, e i due buchi che ha trovato
+
+> Fatta il **2026-08-28**. ⭐ È il passo che §2.6 chiedeva: *«ogni lista va
+> provata con un utente dentro e uno fuori dal perimetro, e la differenza va
+> guardata»*. Due operatori veri di **due emittenti diversi**, più il caso senza
+> contesto.
+
+**Il metodo, e perché non poteva essere un conteggio.** Le tabelle transazionali
+di `pagamenti` sono **vuote** oggi: un confronto sui dati avrebbe dato zero in
+tutti e tre i contesti, cioè **verde per sottrazione** — la trappola del
+conteggio fail-closed, in cui uno zero senza contesto sembra un dato. Le due
+prove che hanno trovato qualcosa sono di specie diversa:
+
+| Prova | Che cosa ha detto |
+| --- | --- |
+| **Strutturale** — `relrowsecurity` e conteggio policy, tabella per tabella | 🔴 **4 su 12**, non 12 su 12. E `enti_incasso`, che porta dato per emittente, è fra quelle scoperte |
+| **Comportamentale** — la stessa lettura fatta da due operatori di due emittenti | 🔴 L'operatore dell'emittente 32 leggeva l'**IBAN di incasso** dell'emittente 44 passandone il `soggetto_ruolo_id`. Nessun errore, un elenco pieno |
+
+| | Buco | Di chi è | Stato |
+| --- | --- | --- | --- |
+| **1** | 🔴 `pagamenti.enti_incasso` **senza row security**: l'elenco dei canali, IBAN compreso, è comune a tutti gli emittenti | **Team DB**: è una policy, e le policy non le scrive questo cantiere | 📮 **Chiesta il 28/08** ([brief](brief-db-perimetro-canali-e-correzione-guidata.md) §1), con la funzione già esistente da usare e tre domande |
+| **2** | 🔴 `GET /conti-incasso/?soggetto_ruolo_id=…` **fuori perimetro** | **Backend**, e non per ripiego: `anagrafiche.soggetti_ruoli_conti_bancari` ha la RLS **spenta di proposito**, quindi lì il perimetro può metterlo solo chi chiede | ✅ **Chiuso il 28/08**: rifiuto `E_SCOPE_EMITTENTE` (**403**, già a catalogo e col ripiego), cancello nel **repository** accanto all'SQL, test sul DB provvisto **provato rimettendo il difetto** |
+
+⚠️ **E due trappole pagate scrivendo il rimedio**, che valgono per chiunque
+scriva un'altra lettura fuori dalla row security:
+
+1. `script.fn_check_user_emittente_scope` risponde **`true`** su
+   `p_auth_user_id = NULL` (regola 1, «job batch»). Delegarle la domanda su un
+   percorso senza GUC **apre** il perimetro invece di chiuderlo: il backend deve
+   rifiutare **prima**, perché «non so chi sei» vale **no**.
+2. La GUC si chiama **`app.current_user_id`**, non `app.auth_user_id`. Col nome
+   sbagliato il cancello rifiutava **tutti**, compreso chi ha diritto — ⛔ e i
+   test col doppio erano **verdi**, perché un doppio non ha un perimetro. È il
+   motivo per cui la prova di questo presidio gira sul **database vero**.
+
 ### 10.5 ⭐ Gli SQL provati contro il database vero
 
 ⚠️ **Fino a qui erano provati solo coi mock, che non vedono l'SQL.** Sono stati
@@ -1101,44 +1284,163 @@ PostgreSQL.
 > rompe niente in modo visibile: produce un elenco ordinato male, che si
 > scopre solo guardando una lista vera.*
 
-### 10.8 🔴 Il blocco che resta, ed è sul DATO — non sul codice
+### 10.8 ✅ DATO-1 — CHIUSO il 2026-08-28. Il cantiere non ha più blocchi
 
-> Misurato il **2026-08-25** leggendo il database col contesto operatore.
+> ⭐ **Risolto da Tid**, e **verificato sul database col contesto operatore** il
+> **2026-08-28** — non preso per buono: i due conti sono stati rifatti a livello
+> **RUOLO**, ciascuno sul ruolo del proprio emittente.
 
-**DATO-1 non è risolto**, e la ragione è precisa: i due conti creati il 24/08
-esistono e hanno `uso = 'INCASSO'`, ma sono legati **a livello SOGGETTO**
-(`anagrafiche.soggetti_conti_bancari`) — e un canale di incasso pretende il
-legame **a livello RUOLO** (`anagrafiche.soggetti_ruoli_conti_bancari`), perché
-è lì che vive l'unicità «un conto `INCASSO` → un solo soggetto», la garanzia da
-cui il perimetro dipende.
+| IBAN | soggetto_ruolo | emittente | livello |
+| --- | --- | --- | --- |
+| `IT00TESTINCASSO0000000001` | **72** | **32** `PGTAP-EF-…` | ✅ ruolo |
+| `IT00TESTINCASSO0000000002` | **159** | **44** `EMI-TEST` | ✅ ruolo |
 
-| IBAN | Dov'è finito | Serve |
+Entrambi `bloccato = false` e con validità aperta (`valido_dal`/`valido_al`
+nulli, cioè infinita), quindi passano il filtro di validità della lookup.
+⇒ `GET /pagamenti/conti-incasso/?soggetto_ruolo_id=72` risponde **una riga**
+dove il 25/08 rispondeva **zero** con `nessun_conto_di_incasso: true`.
+
+⭐ **Che cosa si sblocca, ed è più di una schermata.** Prima nessun canale di
+incasso era **creabile** — il conto è obbligatorio su tutti i tipi (D5) e a
+livello ruolo non ce n'era nessuno per i due emittenti. Oggi
+`list_enti_incasso` risponde **zero canali** non più perché non si possono
+fare, ma perché non ne è ancora stato fatto uno. Ne discende che il giro
+completo diventa esercitabile in-app: canale → distinta (che il **centro** lo
+deriva dal canale, Q-3) → righe → registrazione.
+
+⚠️ **Un residuo che non blocca niente, e va detto.**
+`IT00TESTINCASSO0000000001` è rimasto **anche** a livello soggetto, sullo
+stesso soggetto: la riga del 24/08 non è stata tolta. Non ha effetto sui canali
+(la lookup legge la tabella di **ruolo**) e non viola il vincolo nuovo — che
+proibisce lo stesso IBAN come `INCASSO` su soggetti **diversi**, non su due
+livelli dello stesso. Resta però una seconda dichiarazione dello stesso fatto:
+⛔ non la tolgo di mia iniziativa, è un dato.
+
+✅ **E la domanda di modello che stava qui è stata raccolta dal team DB.**
+L'unicità «un conto `INCASSO` → un solo soggetto» presidiava **solo** la tabella
+a livello ruolo, quindi la porta a livello soggetto ne stava fuori: lo stesso
+conto poteva essere dichiarato `INCASSO` per due soggetti diversi senza che
+niente lo impedisse. Il lotto 9 ha chiuso anche quella
+(`ex_scb_conto_incasso_un_solo_soggetto`, S5-8, con il pgTAP del lotto 6 esteso
+da 6 a 10 asserzioni). ⚠️ Resta fuori un guard **diverso**: che il conto di un
+canale appartenga all'**emittente del canale**. È l'altra metà del rilievo, e
+non è in questo giro.
+
+### 10.10 🔴 Il difetto che la rilettura di A-8 ha trovato: una richiesta esaudita e mai raccolta
+
+> Trovato il **2026-08-29** costruendo sopra la base dei saldi, e corretto lo
+> stesso giorno. ⭐ **Non era un bug di codice: era un documento e un codice che
+> dicevano la stessa cosa falsa, e nessuno dei due mentiva da solo.**
+
+**Il fatto.** `pagamenti.fn_get_saldo_fattura` risponde **quattro** colonne —
+`saldo, in_lavorazione, incassato, has_movimenti` — dal **25/08**: è **DB-10**,
+la richiesta che questo cantiere aveva fatto (Q-10) e ottenuto. Ma il backend:
+
+| | Prima | Adesso |
 | --- | --- | --- |
-| `IT00TESTINCASSO0000000001` | soggetto dell'emittente **72** ✅, ma solo a livello soggetto | il legame sul **ruolo 72** |
-| `IT00TESTINCASSO0000000002` | ⛔ su un soggetto **che non ha nessun ruolo**, e **non è** quello dell'emittente 159 | va rifatto sul soggetto dell'emittente **159**, a livello ruolo |
+| colonne lette | **due** (`saldo`, `has_movimenti`) | tutte e quattro |
+| `incassato` a livello documento | 🔴 **buttato via** → `None` | il numero che il database dà |
+| `in_lavorazione` | preso da `fn_get_saldo_fattura_contabili.saldo_contabile` | preso da `f.in_lavorazione` — **una sede sola** |
+| il commento sopra il metodo | *«il database risponde due numeri e non tre»* | 🔴 falso dal 25/08 |
+| il test | `test_sul_documento_incassato_e_none` — **verde** | riscritto, più uno che asserisce che documento e rata hanno la **stessa forma** |
 
-⇒ Oggi `GET /pagamenti/conti-incasso/?soggetto_ruolo_id=72` risponde **zero
-conti** con `nessun_conto_di_incasso: true` — verificato sul database vero. I
-due conti `INCASSO` visibili a livello ruolo sono ancora quelli del **terzo
-soggetto** (SR 64), esattamente come diceva il piano DB.
+🔴 **Il pezzo che vale la pena ricordare è il test.** Era verde, e difendeva
+l'errore: asseriva un'**assenza** — «`incassato` è `None`» — cioè *l'ipotesi*
+sotto cui era stato scritto, non il sistema. Quando l'assenza è stata colmata,
+il test ha continuato a passare e a proteggere il buco. *Un test che asserisce
+che un numero non c'è lo tiene fuori anche il giorno in cui arriva.*
 
-🔴 **E c'è una domanda di modello che vale la pena porre al team DB.** L'unicità
-«un conto `INCASSO` → un solo soggetto» presidia **solo** la tabella a livello
-ruolo. Un conto di incasso censito a livello **soggetto** sta fuori da quella
-garanzia: oggi lo stesso conto può essere dichiarato `INCASSO` per due soggetti
-diversi senza che niente lo impedisca. Non è un problema di questo cantiere —
-è il vincolo del lotto 6 che copre una porta e non l'altra.
+⚠️ **E la cosa somiglia a un difetto già registrato in questo brief**: il
+`test_canale_inesistente_404` di §6-bis, che confrontava `exception.code` con la
+costante che il codice stesso leggeva. Due forme diverse dello stesso vizio —
+**un test che verifica la propria ipotesi**.
+
+#### ⭐ Il difetto figlio, trovato rileggendo la correzione appena scritta
+
+La prima stesura teneva il `CROSS JOIN` con `fn_get_saldo_fattura_contabili`
+«per una ragione sola: `has_righe_postabili`» — e la ragione era **scritta, non
+verificata**. `has_righe_postabili` **non lo legge nessuno**: né il service, né
+la view, né il frontend. Quindi il join faceva girare, a ogni apertura del
+drawer fattura, una funzione che `fn_get_saldo_fattura` **chiama già al suo
+interno**.
+
+⚠️ E non era gratis: quella funzione **non è `STABLE`** (il suo ramo d'errore
+scrive nel registro), quindi due valutazioni sono due letture indipendenti — la
+stessa trappola pagata sul guard del fondo, dove una funzione `VOLATILE` letta
+due volte poteva accettare metà condizione e rifiutare l'altra. Adesso è **una
+`SELECT` su una funzione sola**, provata con `EXPLAIN` sul database vero: una
+*function scan* invece di un *nested loop* su due.
+
+> 📌 *Giustificare una cosa in un commento non è verificarla. Il commento
+> «resta per una ragione sola» era la mia ipotesi sul perché quel join servisse,
+> e bastava un `grep` a smentirla.*
+
+#### Che cosa ne discende per il frontend: **niente**, e non per caso
+
+`SaldoPanel` gestiva già `incassato == null` con un messaggio a parole invece
+che con un trattino. Il ramo semplicemente non si accende più sul documento, e
+⛔ **resta**: è la risposta a un caso che il modello ammette — il livello
+**CLIENTE**, finché somma solo documenti — e *un presidio non si toglie perché
+oggi il suo ramo è irraggiungibile*. Aggiornati i due commenti che dichiaravano
+il dislivello come un fatto del database.
+
+⭐ **E il terzo livello ha perso il suo ostacolo**: il saldo cliente aspettava
+proprio l'`incassato` a livello documento. Non è stato acceso — è una decisione,
+non una conseguenza — ma la nota nel service non dice più che manca un
+prerequisito.
+
+---
+
+### 10.11 ⭐ Il ripiego a trattino diventa il default, e `pagamenti/formato.js` sparisce
+
+> Autorizzato da Tid il **2026-08-29**, dopo la dichiarazione della seconda
+> occorrenza. ⚠️ **Il raggio d'azione è dichiarato, non scoperto**: su **67**
+> chiamanti di `formatCurrency`, **nove** passavano `{ placeholder: '—' }` a mano
+> e **cinquantotto** si appoggiavano alla stringa vuota — `CellaConfigurabile`
+> compresa, quindi ogni colonna `currency_eur` di ogni lista configurabile.
+
+**Perché è il default giusto, e vale solo per gli importi.** Su un importo
+`null` significa «questo conto non si applica»: una cella **vuota** si legge
+come *un dato perso*, il trattino come *una risposta*. ⛔ `formatNumber` **non**
+è stato cambiato: una quantità assente non è per forza «non si applica», e
+cambiarlo per simmetria sarebbe una decisione presa senza motivo.
+
+**E `pagamenti/formato.js` è stato cancellato** (autorizzato). Esisteva per una
+riga — `formatCurrency(v, { placeholder: '—' })` — e con il default quella riga
+non aggiungeva più niente. Gli otto componenti del dominio chiamano ora
+`formatCurrency` **col suo nome**, come gli altri cinquantanove del progetto:
+⛔ l'alias `as euro` è stato scartato perché sarebbe stata la stessa convenzione
+riscritta a mano in otto file, cioè il difetto che si stava togliendo.
+
+🔵 **Debito dichiarato, non toccato**: restano **133** `|| '—'` a mano nei
+template su campi **non** valutari (IBAN, descrizioni, utenti). Quelli
+`formatCurrency` non li copre, ed è un cantiere suo.
+
+#### ⚠️ Due presidi aggiunti a `SaldoPanel` rileggendolo
+
+| | Difetto | Perché contava |
+| --- | --- | --- |
+| **1** | `mostra` accettava **qualunque** stringa | Un nome sbagliato non dà errore: dà **una riga in meno** — un numero che sparisce da un pannello di saldi senza che niente lo dica. Ora c'è `CAMPI_SALDO` esportato da `useSaldi` (accanto a `LIVELLO`, che era già lì) e un `validator` |
+| **2** | Il livello si legge **una volta** al montaggio — scritto in un commento del composable, presidiato da nessuno | Chi legasse `:livello` a una variabile senza `:key` vedrebbe il saldo di **un'altra cosa** sotto l'etichetta giusta, in silenzio. Ora il pannello si **spegne** e lo dichiara |
+
+> 🔴 **E un difetto introdotto e corretto nello stesso giro**: il default di
+> `mostra` era diventato `[CAMPI_SALDO[0], CAMPI_SALDO[1]]`, cioè legato
+> all'**ordine** di una lista che il commento accanto dichiara intoccabile — un
+> riordino avrebbe cambiato in silenzio quali numeri si accendono. Rimessi i due
+> nomi per esteso: *la lista presidia i nomi, non li sostituisce.*
+
+---
 
 ### 10.7 🔴 Che cosa NON è stato fatto, e perché
 
 | Non fatto | Perché |
 | --- | --- |
-| **Tutto il frontend** | `frontend/src/pagamenti/` sono ancora due `.gitkeep`. Le schermate hanno senso quando la lista può essere resa, cioè col seed |
-| I **seed delle liste** | ⛔ Azione DB: si chiedono, non si eseguono. Le righe le genero io in bozza con `scripts/gen_seed_lista.py` |
-| L'**azione di processo** `registra_distinta` | ⛔ Azione DB (due righe di seed). Il codice che la usa **c'è già**, ed è fail-closed nel frattempo |
+| ~~**Tutto il frontend**~~ | ✅ **FATTO (28/08).** Fondamenta + quattro liste · il giro della distinta operativo (apertura col form, righe master-detail, transizioni di stato, abbinamento con la forzatura a due tempi, registrazione con anteprima) · **canali di incasso** (elenco + drawer) · **sistemazioni** (drawer decisione + dialogo conferma). ✅ **E la correzione guidata (Q-7) è arrivata anch'essa il 28/08**: madre consegnata dal team DB, rotta `POST /distinte/{id}/correggi/`, dialogo e legame fra i due documenti. ⭐ **Non resta niente da costruire** |
+| ~~I **seed delle liste**~~ | ✅ **CONSEGNATI dal team DB il 27/08**: 4 definizioni, 53 colonne, 4 preset, 53 chiavi i18n già nei locales |
+| ~~L'**azione di processo** `registra_distinta`~~ | ✅ **CONSEGNATA il 25/08.** ⚠️ **Ma il cancello resta chiuso finché non è ASSEGNATA a un profilo**: il seed la crea, non la concede — senza assegnazione registra solo il super admin. È una cosa da fare in-app, non in codice |
 | Il verbo **`POST /righe/{id}/abbina/`** | È la slice 3 e porta con sé la rata, la capienza e la forzatura a due tempi. Va scritto **con** l'`ui_action` `confirm_and_retry` (Q-1), o il rifiuto confermabile arriva al frontend come un muro |
 | La **base dei saldi** (§2.7) | Slice 3. ⚠️ Nasce come **modulo unico** con tre livelli in testa, non come pannello della fattura: è il vincolo, non una rifinitura |
-| `E_PAGAMENTI_VALIDAZIONE` | Non esiste a catalogo (gli altri domini hanno il loro). Il service usa oggi il generico `E_VALIDATION_INPUT`, che è registrato e risolve 400: quando il codice di dominio arriverà, **cambia una riga sola** |
+| ~~`E_PAGAMENTI_VALIDAZIONE`~~ | ✅ **ARRIVATO il 25/08**, e si chiama **`E_PAGAMENTI_VALIDATION`**: il catalogo ha due convenzioni vive e si è scelta la maggioranza (17 contro 13). La riga è già cambiata nel service |
 
 ---
 
@@ -1146,6 +1448,17 @@ diversi senza che niente lo impedisca. Non è un problema di questo cantiere —
 
 | Data | Cosa |
 | --- | --- |
+| **2026-08-29** (rilettura critica della base dei saldi) | 🔴 **UNA RICHIESTA ESAUDITA E MAI RACCOLTA, E UN TEST CHE LA TENEVA FUORI.** Costruendo sopra A-8 e' venuto fuori che `pagamenti.fn_get_saldo_fattura` risponde **quattro** colonne dal **25/08** — e' **DB-10**, la richiesta che questo cantiere aveva fatto (Q-10) e ottenuto — mentre il backend ne leggeva **due**, buttava via l'`incassato` e prendeva `in_lavorazione` da una **seconda funzione** invece che da quella. Sopra c'era un commento che diceva *«il database ne da' due»*, falso da quattro giorni. 🔴 **E il pezzo che vale piu' della correzione e' il test**: `test_sul_documento_incassato_e_none` era **verde** e difendeva il buco, perche' asseriva un'ASSENZA — cioe' l'ipotesi sotto cui era stato scritto, non il sistema. *Un test che asserisce che un numero non c'e' lo tiene fuori anche il giorno in cui arriva.* ⚠️ Stessa specie del `test_canale_inesistente_404` di §6-bis: **un test che verifica la propria ipotesi**. **Corretto**: repository, service, test riscritto piu' uno nuovo che asserisce che documento e rata hanno la **stessa forma** — il presidio che mancava al vincolo §2.7. ⭐ **Difetto figlio, trovato rileggendo la correzione appena scritta**: avevo tenuto il `CROSS JOIN` «per una ragione sola, `has_righe_postabili`» — ragione **scritta e non verificata**: quella colonna non la legge nessuno, quindi il join faceva girare a ogni apertura del drawer una funzione che `fn_get_saldo_fattura` chiama gia' al suo interno, e che **non e' STABLE** (due valutazioni = due letture indipendenti, la trappola gia' pagata sul guard del fondo). Ora e' una `SELECT` su una funzione sola, provata con `EXPLAIN` sul database vero: *function scan* invece di *nested loop*. 📌 *Giustificare una cosa in un commento non e' verificarla — bastava un `grep`.* ⭐ **Lato FE non e' servito niente**, e non per caso: `SaldoPanel` gia' gestiva `incassato == null` a parole invece che con un trattino. Il ramo non si accende piu' sul documento e **resta**, perche' e' la risposta a un caso che il modello ammette (il livello CLIENTE) — *un presidio non si toglie perche' oggi il suo ramo e' irraggiungibile*. ✅ **E il terzo livello ha perso il suo ostacolo**: il saldo cliente aspettava proprio quell'`incassato`. ⭐ **Autorizzato da Tid**: `formatCurrency` ha `placeholder: '—'` come **default** (raggio dichiarato: 58 chiamanti su 67 si appoggiavano alla stringa vuota, `CellaConfigurabile` compresa) e **`pagamenti/formato.js` e' stato cancellato** — esisteva per una riga che il default rende inutile; gli otto componenti chiamano `formatCurrency` col suo nome, ⛔ non con un alias `as euro` riscritto a mano in otto file. `formatNumber` **non** toccato: una quantita' assente non e' per forza «non si applica». 🔵 Debito dichiarato: restano **133** `|| '—'` a mano su campi non valutari. ⚠️ **Due presidi aggiunti a `SaldoPanel`**: `CAMPI_SALDO` esportato + `validator` su `mostra` (un nome sbagliato non dava errore, dava **una riga in meno**), e il **livello divergente** che spegne il pannello invece di mostrare il saldo di un'altra cosa sotto l'etichetta giusta. 🔴 **E un difetto introdotto e corretto nello stesso giro**: il default di `mostra` era finito a `[CAMPI_SALDO[0], CAMPI_SALDO[1]]`, legato all'**ordine** di una lista dichiarata intoccabile. Verdi: **145 test** `pagamenti` · eslint · build · `EXPLAIN` sul DB vero |
+| **2026-08-29** (A-8 · la base dei saldi) | ⭐ **L'ULTIMO PEZZO, E NON E' UN PANNELLO.** Il vincolo §2.7 diceva di costruire **la base**, non «il saldo della fattura»: nascono `useSaldi` e `SaldoPanel` in `core/`, con **tre livelli in testa** — documento, rata, cliente — e il terzo **dichiarato e non acceso**, perché accenderlo oggi significherebbe sommare un `incassato` che a livello documento il database non dà. ⭐ **Q-6 in due numeri e non tre**: residuo in grande, «in lavorazione» in piccolo **e solo quando c'è** (né `null` né zero). L'«incassato» il pannello lo sa mostrare — è la stessa base — ma questa schermata non lo accende. ⛔ **Quattro casi e non uno**: non letto · livello non pronto · **letto e senza nessun movimento** · letto coi numeri. Il terzo è quello che si confonde col residuo pieno, e la prova sul database vero lo ha trovato **subito**: le due fatture misurate hanno `residuo = totale` con `has_movimenti = false` — senza quella riga «nessuno ha ancora pagato niente» e «ha pagato e manca tutto» si leggono uguali. ⚠️ E il **dislivello** è confermato dalla misura: al documento `incassato` arriva `null`, alla rata arriva `0`. ⛔ Non si somma per riempirlo — `null` vuol dire «non si sa», e il pannello lo dice a parole invece di mostrare un trattino che si legge come zero. 🔵 Stili **propri** e non `app-dash-stat-n` presa in prestito (nasce per le card della lente Competenza), i18n sotto la radice `core` che esiste già invece di una quarta radice in cima. 📮 Seconda occorrenza di `formatCurrency(v, { placeholder: '—' })`: la sede naturale sarebbe un default in `formatCurrency`, **dichiarato e non fatto di mia iniziativa** — cambia il ripiego di tutto il progetto |
+| **2026-08-28** (S6 — la correzione guidata) | ⭐ **IL CANTIERE È CHIUSO IN CODICE.** Il team DB ha consegnato entrambe le richieste **lo stesso giorno**, e due delle loro risposte hanno **smentito me**: (1) ⛔ la policy che avevo proposto avrebbe reso `enti_incasso` **non scrivibile** — la `WITH CHECK` cercava il legame che l'`INSERT` stesso stava scrivendo. L'hanno riscritta passando dal **conto**, che è la forma che avevo segnalato come necessaria ma non applicata alla mia stessa proposta; (2) 🔴 su **C-1** avevano risposto «già abbinata, il guard la regge» e **la prova li ha smentiti**: su una rata saldata dal movimento che si sta correggendo non c'è capienza in nessuna direzione (`R = 0` non è spazio nemmeno in negativo). ⭐ La misura ha trovato una **quarta strada** che nessuno dei due aveva visto — righe con fattura e rata **compilate** ma in `DA_ABBINARE`: la correzione guida tutto tranne l'ultimo clic, e il doppio tempo resta il gesto di una persona. **Decide Tid.** **Scritto**: `crea_distinta_correzione` nel repository (una sola `SELECT`), `correggi_distinta` nel service, `POST /distinte/{id}/correggi/` col **cancello della registrazione** — un gesto che rovescia denaro non può avere una porta più larga di quello che lo ha scritto — dialogo `CorreggiDistintaDialog`, e il **legame nei due versi** in testata al drawer, cliccabile. ⭐ Il legame è la metà che si vede: senza, due documenti gemelli di segno opposto stanno nell'elenco **senza niente che dica che uno rovescia l'altro**. ⚠️ `NULLA_DA_CORREGGERE` risale **intatto**, come `NULLA_DA_POSTARE`: è un esito, non un errore. E le **righe saltate** si annunciano — una riga non postata non ha niente da rovesciare, ma il silenzio lascia l'operatore a chiedersi dove sia finita. 🔵 Rigenerate le policy (**803 voci**) e scritti i due ripieghi **senza `%s`**. ⚠️ Un terzo codice del cantiere offerte (`E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA`) è a catalogo **senza ripiego**: non è mio e non ne invento la frase — segnalato. Verdi: build · eslint · guard i18n · **4166 test** (con i test DB accesi) |
+| **2026-08-28** (E-4 · perimetro) | 🔴 **DUE BUCHI DI PERIMETRO, E UNO È DEL MODELLO.** Eseguito il passo E-4 con due operatori veri di due emittenti diversi. (1) ⛔ **`pagamenti.enti_incasso` non ha row security**: la riga di §2.6 che diceva «le dodici tabelle hanno la RLS accesa» è **falsa** — sono **quattro su dodici** — e la tabella scoperta è proprio quella che porta il conto su cui atterra il denaro. L'elenco dei canali, **IBAN compreso**, è comune a tutti gli emittenti. È una policy: chiesta al team DB. (2) ⛔ **`GET /conti-incasso/` usciva dal perimetro**: l'operatore dell'emittente 32 leggeva l'IBAN di incasso dell'emittente 44 passandone il soggetto. **Chiuso lo stesso giorno** — `E_SCOPE_EMITTENTE` (403, già a catalogo), cancello nel **repository** accanto all'SQL e non nel service (il service lo salterebbe il secondo chiamante), test sul DB provvisto **provato rimettendo il difetto**. ⭐ **Perché un conteggio non l'avrebbe trovato**: le tabelle sono vuote, quindi tutti e tre i contesti danno zero — verde per sottrazione. Le prove che hanno morso sono una **misura strutturale** (`relrowsecurity` tabella per tabella) e una **comportamentale** su due emittenti veri. ⚠️ E due trappole pagate scrivendo il rimedio: `fn_check_user_emittente_scope` risponde **true** su utente NULL («job batch»), quindi senza GUC il perimetro si **apre**; e la GUC si chiama `app.current_user_id`, non `app.auth_user_id` — col nome sbagliato il cancello rifiutava tutti **coi test verdi**, perché un doppio non ha un perimetro. 📮 Scritto [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md): §1 la policy mancante con tre domande, §2 la madre della **correzione guidata** (Q-7) con quattro domande di modello. Verdi: **4142 test** |
+| **2026-08-28** (rilettura critica del frontend) | 🔴 **DUE DIFETTI CHE NESSUN TEST CHIEDEVA, E DUE ESTRAZIONI.** (1) ⛔ **Gli stati della riga erano CABLATI**, contro la regola del cantiere: `finale = stato_codice === 'POSTATA'` — ma `STORNATA` e' anch'esso terminale a catalogo, quindi su una riga stornata il drawer offriva abbinamento e transizioni **che il database rifiuta**. Ora `is_final` si legge dal catalogo, e le transizioni si **generano** da `stati_richiedibili.riga` × catalogo: cade il codice cablato **e** ricompare una transizione che il contratto dichiara ammessa e che l'interfaccia non offriva — il ritorno a `DA_ABBINARE`, cioe' l'unico modo di sganciare un abbinamento sbagliato. (2) ⛔ Il rosso della conferma era `codice === 'SCARTATA'`: il **modello dice il contrario** — a catalogo `SCARTATA` ha `is_final = false`, quindi quel rosso allarmava per un gesto reversibile. Adesso il rosso e' `is_final`, in tutte e due le sedi. (3) ⛔ L'anteprima di registrazione era in `silent`: una lettura fallita si leggeva come «non c'e' niente da registrare» — un'affermazione, e falsa, sul foglio che sta per essere chiuso. ⭐ **Estratto `useLetturaTreStati`** in `core/composables/`: il terzetto «c'e' · e' vuoto · non l'ho letto» era riscritto a mano in **quattro** punti, e in **tre** me l'ero dimenticato alla prima stesura — un difetto che si ripete tre volte su quattro non e' una distrazione, e' una cosa che il codice deve dare per costruzione. ⭐ **Estratti `pagamenti/etichette.js`** (la stessa riga `labelOrCode` in **otto** componenti, tre prefissi duplicati) e **`useCanaliIncasso`** (stessa pagina, stesso filtro, stesso terzetto, in due dialoghi). Entrambi **fabbriche**, non oggetti condivisi: un oggetto gia' costruito legherebbe tutti al `t` del primo montato, e al cambio lingua il secondo consumatore resterebbe indietro in silenzio. 🔵 Minori: le opzioni delle code si derivano dalle **rotte** invece che da un elenco a mano; l'errore del lookup emittenti si dice; il motivo di una voce disabilitata distingue «riga gia' registrata» da «foglio chiuso»; niente kebab a zero voci; `page_size: 200` non e' piu' un numero sparso. ⚠️ E la verifica che valeva di piu': **tutti e 17 i codici d'errore** che le due schermate nuove possono far scattare sono **a catalogo e col ripiego** — nessuno diventa un 500. Verdi: build · eslint · guard i18n · **970 test** su `pagamenti` e `core` |
+| **2026-08-28** (frontend — canali di incasso e sistemazioni) | ⭐ **LE DUE SCHERMATE CHE MANCAVANO, E IL FRONTEND DEL CANTIERE È COMPLETO** (S4 · S5). **Canali**: elenco + drawer di configurazione. ⛔ Tabella **semplice** e non `<ListaConfigurabile>`, e non è una scorciatoia — `pagamenti.enti_incasso` **non ha un seed** in `ui.lista_definizione` (verificato sul DB: le liste seminate del dominio sono quattro), e montarla sul BB avrebbe mandato al backend il `campo_sorgente` di colonne mai dichiarate: **400 al click sull'intestazione**, lo stesso difetto già pagato sulle altre quattro. ⛔ **La trappola dei due `soggetto_ruolo_id`**: quello scelto in cima al form è l'**emittente** e serve SOLO a filtrare i conti — sul canale non esiste e non viaggia nel payload; `soggetto_ruolo_id` sul canale è il soggetto **PSP**. **Sistemazioni**: drawer decisione (tre destinazioni, il destinatario solo dove il denaro va da qualche parte) + dialogo conferma che chiede il **canale solo sul RIMBORSO**. ⭐ Dopo una conferma il drawer **si chiude**: il denaro si è mosso e l'eccedenza in testata è vecchia — tenerla a video mostrerebbe un numero falso accanto ai pulsanti per decidere di nuovo. ⭐ **Estratto `FatturaLookup.vue`** in `core/` alla seconda occorrenza (regola del 2, primo dei quattro candidati di §5.3): abbinamento riga e sistemazione fanno la stessa domanda. 🔵 **BE**: `_ENTE_INCASSO_SELECT` porta ora **filiale e soggetto PSP in chiaro** — senza, il drawer mostrava un campo vuoto accanto a un id valorizzato, cioè «nessuna filiale» su un canale BANCA dove è obbligatoria. Misurato con EXPLAIN: **9,91 → 18,56**, nessuna esplosione come quella di BE-11. 🔴 **Tre difetti trovati rileggendo, e due erano del giro precedente**: (1) un `onActivated` che ricarica in **quattro** liste — `useSearchTable` lo fa già, quindi erano **due richieste identiche** a ogni rientro nella scheda, con le risposte che possono tornare in ordine inverso; (2) il conto del canale **azzerato in silenzio** all'apertura in modifica, per una corsa fra il caricamento dei conti e quello del dettaglio; (3) il kebab che si disegna anche con **zero azioni**. Verdi: build · eslint · guard i18n · **4139 test BE** |
+| **2026-08-28** (frontend — i verbi della distinta) | ⭐ **IL GIRO DELLA DISTINTA È OPERATIVO**: si apre col form (Q-3), si digitano le righe, si abbinano alla rata e si registra. ⭐ **Nasce `useForzaturaConfermata`** (§5.3), e nasce **building block davvero**: astrae un COMPORTAMENTO — l'`ui_action` `confirm_and_retry` — e resta **cieco ai codici**, com'era la ragione di Q-1. ⚠️ È il **primo consumatore di `azioneUi`** in tutto il prodotto: fino a ieri il campo era emesso, trasportato e non letto da nessuno. ⭐ Per farlo funzionare `useApiHandler` guadagna due cose additive: **`messaggioErrore`** (la frase del database, che sul rifiuto di capienza porta già i numeri e va dentro la richiesta di conferma) e **`azioniGestite`** — ⛔ e NON si è usato `silent`, che avrebbe spento il toast per *qualunque* errore e costretto il chiamante a ri-decidere fra errore di sistema, gesto e toast normale: cioè a riscrivere altrove l'unica sede di quella scelta. 🔴 **Il primo tentativo si manda SEMPRE senza forzatura**: forzare al primo colpo nasconde invece di registrare, e il `forzata` resta scritto sulla riga — è quello che l'elenco delle rate fuori capienza legge per esistere. ⭐ **Gli stati non sono cablati**: le transizioni si costruiscono incrociando `stati_richiedibili` col catalogo che il dettaglio già porta, e la modificabilità viene da `stato_is_final` — dedurla dal nome («CHIUSA») sarebbe una seconda copia della regola. **Tre difetti miei corretti alla rilettura**: due liste caricate in `silent` che, fallendo, avrebbero detto «nessun canale configurato» e «questa fattura non ha rate» — affermazioni, e false (ora «vuoto» e «non lo so» sono casi distinti, tre e non due); e la creazione della distinta anch'essa `silent`, che sui guard del database avrebbe lasciato la finestra aperta senza dire perché. ⚠️ Trovato di rimbalzo: `class="w-full"` è usata in una ventina di componenti del progetto ed è **definita in nessun CSS** — non l'ho propagata (i campi si stirano da `.form-field`). ✅ Build e lint puliti, i18n verde, suite backend **4139**. 📮 Il cancello `registra_distinta` è a catalogo ma **non ancora assegnato a un profilo**: finché non lo è, registra solo il super admin |
+| **2026-08-28** (controllo critico del codice appena scritto) | 🔴 **UN DIFETTO CHE AVREBBE DATO 400 SU UN GESTO NORMALE, e l'ha trovato un presidio, non una rilettura.** Le quattro whitelist di ordinamento erano chiavate sul **`codice` logico** del seed — perché così diceva il brief con cui il team DB le ha generate, e così era stato verificato: codice contro chiave, in entrambi i versi, tutto combaciante. ⛔ **Ma il confronto era fra le cose sbagliate**: `<ListaConfigurabile>` monta le Column con `:field="col.campo_sorgente"`, quindi al click PrimeVue manda il **nome fisico**. Le **sette** colonne in cui i due nomi divergono — `stato`, `centro`, `distinta`, `fattura` (×2), `cliente` — avrebbero risposto **400**. È lo stesso difetto pagato su `vendite.lotti` il 2026-07-31, e a scoprirlo è stato `test_registro_copre_tutte_le_liste_montate_dal_frontend`, andato rosso da solo appena le liste sono state montate. 📌 *Una verifica accurata sulla coppia sbagliata è indistinguibile da nessuna verifica.* ✅ Whitelist riscritte sul campo fisico e le quattro liste **registrate in `_LISTE`** (il debito `_DEBITO_WHITELIST_LOGICA` è a zero: dovevano essere in regola, non condonate). ⭐ E il guardrail del cantiere è stato **esteso a provare OGNI ordinamento dichiarato** — 20 colonne × 2 versi — perché il presidio trasversale confronta due *elenchi* e non fa partire l'SQL: là un nome non riconosciuto è un 400, qui una colonna che l'SQL non ha è un **500**, ed è già successo su questa coda il 24/08. **Altri sei rilievi corretti**: l'`origine` della distinta si risolveva con `t()` diretto e a video sarebbe finito il **path della chiave** (ora `labelOrCode`, come gli altri vocabolari) · il selettore di coda cambiava lo **store** mentre la rotta restava l'altra — tab che mentiva, deep-link che non descriveva più la pagina (ora **naviga**: la rotta è l'unica verità) · le tre liste avevano la freschezza solo in `onMounted`, cioè **dati fermi al rientro nella scheda** sotto KeepAlive (aggiunto `onActivated` idempotente, che non riavvolge la pagina) · `pagamenti` era ancora fra i domini **senza rotte**, quindi `/pagamenti` avrebbe renderizzato un placeholder · `limit: 25` cablato in quattro store (ora `PAGINATION.DEFAULT_ROWS`) e `euro` in quattro file (ora uno) · i vocabolari chiusi sparsi in sei punti, router compreso (ora `pagamenti/vocabolari.js`, senza pinia perché lo legge anche il router). ✅ **Verificato che i tre JOIN di BE-11 non moltiplicano le righe** (4 = 4 sul dato vero) — è il difetto che aveva già colpito la lista distinte coi lotti. ✅ Suite **4139 verdi**, `pagamenti` **131**, build e lint puliti, i 3 rilievi oxlint residui sono preesistenti (identici con il lavoro stashato) |
+| **2026-08-28** (frontend — fondamenta e le quattro liste) | 🟡 **IL FRONTEND ESISTE**, in sola lettura. Client API delle 23 rotte · quattro store `userScoped` · le **quattro liste** su `<ListaConfigurabile>` coi codici del seed (`pagamenti.distinte` · `pagamenti.righe` · `pagamenti.rate_fuori_capienza` · `pagamenti.eccedenze`) · cinque voci di menu, cinque rotte · **35 chiavi i18n per lingua** · il **drawer della distinta** in consultazione (testata, quadratura, righe). ✅ Build verde, `oxlint` e `eslint` puliti, `check_i18n_keys.py` e `check_license.py` verdi, **zero chiavi i18n perse** (4132 → 4167 per lingua, verificato contro HEAD). ⭐ **Nessun verbo montato, ed è una scelta**: un pulsante che non fa niente sembra presidiato — è la stessa specie del campo `action` che `RowActionsMenu` ignorava fino al 17/08. ⭐ **Le due porte della coda sono DUE ROTTE e una vista** (`meta.coda`), non uno stato interno: così sono deep-linkabili e il tab del browser ricorda quale si stava lavorando; il ripiego è `DA_ABBINARE` e non «tutte», perché una coda che mostra anche il lavorato smette di essere una coda. ⚠️ **Tre decisioni di resa che il modello impone**: lo **scarto** `null` non è zero (non è stato dichiarato niente ⇒ la quadratura *non si applica*, e mostrare 0,00 direbbe «quadra» di una distinta mai quadrata — tre esiti, non due); il **residuo negativo** delle rate fuori capienza si legge «120,00 di troppo» e mai «-120,00», che si legge come un guasto; la **utility del conto** `null` è «nessuna utility», non un campo vuoto. ⚠️ E la conversione `limit/offset → page/page_size` sta in **un punto solo** del dominio invece che nei quattro store: 📮 è la **terza sede** nel progetto (`vendite` ne ha due) ed è un candidato alla promozione in `core/` — dichiarato, non fatto di mia iniziativa. 📮 **Restano i verbi** e le due schermate di sistemazioni e canali |
+| **2026-08-28** (rientro al backend + DATO-1) | ✅ **IL CANTIERE NON HA PIÙ PREREQUISITI: resta il frontend.** Chiusi i quattro punti che il team DB aveva rimandato qui (§6-bis) e **DATO-1** (§10.8). ⭐ **DATO-1 verificato sul database, non creduto**: i due IBAN di test sono ora a livello **RUOLO**, `IT00…0001` sul SR **72** (emittente 32) e `IT00…0002` sul SR **159** (emittente 44), entrambi non bloccati e con validità aperta — `conti-incasso?soggetto_ruolo_id=72` risponde **una riga** dove il 25/08 ne rispondeva **zero**. ⭐ E ciò che si sblocca è più di una schermata: prima **nessun canale era creabile** (il conto è obbligatorio su tutti i tipi), quindi il giro canale → distinta → righe → registrazione diventa esercitabile in-app. ⚠️ Resta un **residuo di dato** che non blocca: `IT00…0001` è rimasto **anche** a livello soggetto, sullo stesso soggetto — non viola il vincolo nuovo e i canali non lo leggono, ma è una seconda dichiarazione dello stesso fatto. 🔴 **Due difetti trovati mentre chiudevo, e nessuno dei due dava errore**: `test_canale_inesistente_404` **non provava il 404** — confrontava il codice con la costante che il codice stesso legge, quindi era verde anche quando il ripiego rispondeva 400 (il nome del test prometteva ciò che nessuna asserzione guardava); e la prima stesura del presidio sui `campo_sorgente` dichiarava «0 colonne esposte» su tutte e quattro le liste, che era un difetto **della misura** — le liste paginate passano da `fetch_paged_with_total`, non da `rows_to_list`. ⚠️ **BE-11 non passa dalla vista suggerita**: `vw_istanze_utilities_dettaglio` porta il nome della utility ma con sei join, due su viste di indirizzo che PostgreSQL non pota — misurato con EXPLAIN, **928.86 contro 6.10** per decodificare una parola; si usa la catena diretta, che è anche la forma già in uso in `BillingAccountRepository.search_lookup`. ⭐ **Un presidio nuovo che nessuno aveva chiesto ma che il `vista_sql = NULL` ci ha lasciato in mano**: tutti e **53** i `campo_sorgente` a catalogo esistono fra le colonne che le liste proiettano — verde oggi, e **provato rimettendo il difetto**. E le colonne **ordinabili** a catalogo combaciano con le whitelist del BE su tutte e quattro le liste, in entrambi i versi: un ordinamento dichiarato e non riconosciuto sarebbe un **400** su un gesto normale. ✅ Test **128 → 130**, policy riallineate al catalogo (`--check` verde), zero regressioni |
+| **2026-08-27** (allineamento dal team DB) | ✅ **I TRE PREREQUISITI DB SONO CONSEGNATI E APPLICATI, e la palla torna qui.** I quattro **seed di lista** (53 colonne, 4 preset, **53 chiavi i18n gia' nei locales**), le due righe dell'**azione di processo** e `fn_get_saldo_fattura` allargata a **tre numeri** — piu' due cose che questo brief non chiedeva: il **404 dei canali** (`E_ENTE_INCASSO_NON_TROVATO`, che §10.8 dichiarava come ripiego) e la **seconda porta** del conto di incasso. ⚠️ **La bozza dei seed non e' mai partita da qui**: il team DB ha generato le 53 righe dal contratto del backend — `campo_sorgente` dai `SELECT` del repository e il **`codice`** di ogni colonna ordinabile uguale alla chiave della whitelist di ordinamento, cosi' che un ordinamento a catalogo non diventi un 400. ⭐ Tre scelte dichiarate: `sensibile = f` (e' un cancello, non un'etichetta), `multi_emittente = f` (una lista nuova nasce **non certificata**), `vista_sql = NULL` col costo che il guard DB sui `campo_sorgente` non gira. 🔴 **E due cose da sapere prima di ripartire**: il nome del codice di validazione e' **`E_PAGAMENTI_VALIDATION`** e non `_VALIDAZIONE` (§10.7 diceva l'altro), e il cancello della registrazione **resta chiuso** finche' l'azione non e' assegnata a un profilo — il seed la crea, non la concede. 📮 **Adesso tocca al backend**: rigenerare le policy, cambiare `E_ENTE_NON_TROVATO`, dichiarare `lista_codice` sulle quattro view, e **BE-11** — esporre `src.istanza_utility_id` dove si sceglie il conto, perche' chi configura un canale non vede se sta prendendo quello del gas o quello dell'energia. Dettaglio in **§6-bis**. ⛔ **DATO-1 resta aperto**: §10.8 vale parola per parola |
 | **2026-08-24** (dato) | ✅ **DATO-1 risolto, e senza scrivere niente.** Era l'ultimo blocco del cantiere: nessuno dei due emittenti aveva un conto con `uso = 'INCASSO'`, quindi nessun canale di incasso era creabile. ⭐ **Non serviva nessuna colonna nuova** — la domanda era se aggiungerla ai parametri dell'emittente, e la risposta è no: il conto di incasso **non è un attributo**, è una **riga di relazione** in `anagrafiche.soggetti_ruoli_conti_bancari` con `uso = 'INCASSO'`, e il giro per crearla (endpoint + drawer + voce «Incasso» tradotta) **esisteva già tutto**. ⛔ Metterlo fra i parametri avrebbe creato una **seconda sede fuori dal vincolo** «un conto `INCASSO` appartiene a un solo soggetto» — che è esattamente la garanzia da cui il database ricava di chi sono i soldi arrivati prima della fattura: due emittenti avrebbero potuto dichiarare lo stesso conto senza che nessun errore lo dicesse. Tid l'ha configurato in-app con **due IBAN fittizi**, `IT00TESTINCASSO0000000001` e `…0002` — **due e non uno**, proprio per quel vincolo. ⚠️ Restano due avvertenze: il **perimetro è vero anche se il dato è finto** (i due IBAN sull'emittente sbagliato darebbero liste sbagliate **senza errore**), e in produzione servono quelli reali — ⛔ questi non devono viaggiare, e si riconoscono dal nome apposta. ℹ️ Il `CHECK` sull'IBAN è solo formale (`^[A-Z0-9]{15,34}$`, nessun checksum), quindi un valore di test passa |
 | **2026-08-25** (slice 4) | ✅ **BACKEND DEL CANTIERE COMPLETO: anche i canali di incasso.** Tre rotte — elenco/creazione, dettaglio/modifica, e **l'elenco dei conti agganciabili** (BE-8). ⭐ Quest'ultimo e' il pezzo che conta: il database rifiuta un conto che non e' di incasso con un errore parlante, ma **un elenco che lo propone fa sbagliare**, e chi sbaglia se ne accorge dopo aver compilato tutto il resto. Il conto e' obbligatorio su **tutti** i tipi e non solo su BANCA (un canale POSTE o PSP senza conto e' lo stesso difetto travestito), mentre la **filiale** vale solo per la banca — due fatti diversi che si somigliano. ⚠️ E un elenco di conti VUOTO **si dichiara** (`nessun_conto_di_incasso`): e' la condizione voluta da D5, ma un menu vuoto senza spiegazione sembra un guasto dell'applicazione. 🔴 **Due difetti trovati scrivendo, prima di consegnare**: il codice 404 che avevo scelto **non esiste a catalogo** — e un codice non registrato non fallisce, diventa un **500** — quindi si usa il codice di dominio col ripiego dichiarato e si chiede quello giusto; e il nome di una FK era sbagliato nella mappa di traduzione (`fk_enti_incasso_centro` invece di `..._centro_riscossione`), cioe' un errore che sarebbe uscito col messaggio grezzo del database. ⛔ **E il blocco vero non e' il codice: e' il dato** (§10.8) — i due conti creati il 24/08 sono legati al livello sbagliato, e uno al soggetto sbagliato. ✅ Test **108 → 128**, i nove SQL nuovi provati con EXPLAIN, e il lookup **provato sui dati veri** con le tre risposte che ci si aspetta |
 | **2026-08-25** (slice 5) | ✅ **Il giro delle sistemazioni, e con esso il BACKEND del cantiere e' completo tranne i canali di incasso.** Sei rotte: l'elenco delle eccedenze, la registrazione della decisione e i due verbi. ⭐ **Il backend qui fa MENO di quanto sembri**, ed e' il punto: registra un atto con un `INSERT` (una scrittura sola non ha bisogno di una madre) e chiama due funzioni madri — non sceglie la strada fra le tre destinazioni, non verifica l'eccedenza, non muove denaro. 🔴 **Cliente ed emittente si DERIVANO dalla fattura di origine e non si dichiarano**: il guard del database li verifica con un codice TECNICO apposta, perche' «non li sceglie una persona in un modulo, li deriva chi costruisce l'atto» — e il payload li rifiuta proprio per questo. ⚠️ **Registrare non e' eseguire**: l'atto nasce in bozza e il controllo dell'eccedenza sta alla CONFERMA, perche' fra decidere e confermare puo' arrivare un altro incasso — verificarla prima darebbe una garanzia che scade. E il **canale del rimborso** si chiede alla conferma, non alla registrazione. ⭐ L'elenco e' ordinato **per cliente** di default (D15-b) e il backend **non somma niente**: il raggruppamento la vista lo porta gia' in finestra. 📌 **Un presidio riscritto perche' dava un falso positivo**: cercava la parola «eccedenza» nel sorgente e si accendeva sul MESSAGGIO all'operatore — ora guarda le CHIAMATE, che e' cio' che voleva dire. ⭐ E due helper passati in una sede condivisa (`_helpers.py`) alla loro seconda occorrenza, invece di importare i nomi privati di un altro modulo. ✅ Test **86 → 108**, gli otto SQL nuovi provati con EXPLAIN sul database vero, le due madri NON chiamate (confermare muove denaro: si sono lette le firme). ⚠️ Le prove degli endpoint non hanno potuto girare in suite: un'altra sessione stava scrivendo BE-5 in `vendite` e l'URLconf del progetto era momentaneamente rotta da un import a meta' — le venti rotte del dominio sono state verificate con una URLconf isolata |

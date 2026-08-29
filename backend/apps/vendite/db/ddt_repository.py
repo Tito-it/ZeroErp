@@ -180,9 +180,8 @@ class DdtRepository(
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_ddt_lista v {where}"  # noqa: S608
         # Tiebreaker v.id per paginazione deterministica.
         data_sql = f"""
-            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            SELECT v.*
             FROM vendite.vw_ddt_lista v
-            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s

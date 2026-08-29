@@ -1,5 +1,80 @@
 # AGENTS.md
 
+## ⛔ Regola zero — le misure non disegnano il progetto
+
+> **Le misure servono a trovare gli errori, non a disegnare il progetto.**
+> Un dato del DB può solo **smentire** una regola: non decide mai la forma, il
+> perimetro o la priorità di ciò che si costruisce.
+> **Si sviluppa sul modello, non sulle righe di oggi.**
+
+Questa è la prima cosa da leggere, ogni volta. Vale per DB, backend e frontend.
+
+**Cosa può fare una misura**: portare un **controesempio**. «Questo caso esiste
+ed è gestito male» è un fatto, e va corretto. È l'unico uso legittimo.
+
+**Cosa NON può fare una misura** — e sono tutti argomenti da rifiutare, anche
+quando li sto scrivendo io:
+
+* ⛔ *«sono 168 su 349, non è un caso di nicchia»* → la frequenza non decide se
+  una cosa va fatta. Se la regola è giusta vale anche a 1 su 349;
+* ⛔ *«oggi non capita mai»* → **zero occorrenze non significa che il caso non
+  esiste**: significa che non c'è ancora un controesempio. Un guard non si
+  restringe perché il ramo oggi è irraggiungibile;
+* ⛔ *«oggi 1 riga su 3, domani tutte»* → è una previsione sui dati travestita
+  da progetto. La ragione dev'essere sul modello, o non è una ragione;
+* ⛔ *«oggi vince la commessa perché 13 < 15»* → un comportamento che dipende
+  da un ID esistente è un'ambiguità del modello, non una scelta;
+* ⛔ *«il test è verde»*, quando è verde **perché i dati di oggi non sanno
+  produrre il caso**. Non prova niente: è un presidio, e va dichiarato tale.
+
+**Il segnale d'allarme, mentre scrivo**: se in un brief compare
+*«misurato: … quindi facciamo così»*, la misura sta guidando il progetto. La
+misura entra nel documento come **fatto datato**, mai come **motivo**. Il motivo
+si riscrive sul modello — e se sul modello non regge, non era una ragione.
+
+⚠️ Corollario per i documenti: un numero misurato invecchia in silenzio. Va
+scritto **con la data e con il contesto** in cui è stato preso, e non va mai
+usato come premessa di una decisione strutturale.
+
+### ⭐ Come si distingue, in pratica: struttura contro popolazione
+
+Non tutto ciò che si legge dal database è una «misura». Il discriminante e' se
+si sta guardando il **progetto** o il suo **contenuto**:
+
+| Cosa si legge | Che natura ha | Decide? |
+| --- | --- | --- |
+| Nullabilita' di una colonna, `CHECK`, chiavi, FK, RLS, GRANT, volatilita' e corpo di una funzione, seed in `80_data`, contratto di un endpoint | **contratto**: e' il progetto, scritto | ✅ si' — e' la sorgente giusta |
+| `count(*)`, «zero righe in quello stato», «N su M hanno il padre valorizzato», distribuzione dei valori | **istantanea**: la fotografia di una macchina | ⛔ no |
+
+Leggere la struttura non e' «misurare»: e' leggere il progetto, e va fatto — anzi
+va fatto sulla **doc auto-gen** e non dagli YAML, che sono quasi sempre stantii.
+La domanda che decide resta **«il modello lo ammette?»**: se una colonna e'
+nullable, il NULL e' un caso da gestire anche quando in questo momento non ce
+n'e' nemmeno uno.
+
+### ⚠️ La prova del nove, su ogni riga che scrivo
+
+**Togli la misura.** Se l'argomento resta in piedi identico, era **colore** — e
+va dichiarato tale. Se l'argomento si affloscia, era **appoggiato alla cosa
+sbagliata** e va riscritto sulla struttura.
+
+⭐ Il caso peggiore non e' la conclusione sbagliata: e' la conclusione **giusta**
+appoggiata a un conteggio. Li' non c'e' niente da correggere nel risultato, e la
+misura sta occupando il posto dell'argomento — un documento cosi' scade con la
+macchina su cui e' stato scritto.
+
+### ⛔ Corollario sui test, ed e' dove il difetto rientra dalla finestra
+
+Una prova che confronta il risultato nuovo con i **dati esistenti** non prova la
+regola: prova i soli casi che quella popolazione **per caso** contiene. Un ramo
+che si distingue solo quando una colonna opzionale e' valorizzata si prova
+**costruendo** quel caso in un pgTAP, non confrontando una popolazione.
+
+⚠️ E un test che itera su cio' che c'e' passa **a vuoto** su un database
+ricostruito da zero — cioe' in CI: e' la forma classica del «verde per
+sottrazione», che passa smettendo di verificare. O si dichiara con uno `skip()`
+motivato, o si sostituisce con un test che i soggetti se li fabbrica.
+
 ## Quick Start per AI Agent
 
 - Progetto: ERP Django + PostgreSQL, open-source GPL v3
@@ -51,6 +126,22 @@
 - Accesso webserver configurato: test migrazione solo su richiesta
 - Per i file Python **generati** aggiungere sempre l'header standard in `templates/python-header.txt`.
 - Per ogni nuovo file Python (non generato da Django) aggiungere l'header standard di `templates/python-header.txt` e un breve commento iniziale sullo scopo.
+  ⭐ **È un cricchetto, e la parola «nuovo» è la regola**: `scripts/check_license.py`
+  (hook pre-commit) guarda i file **aggiunti**, non quelli modificati — toccare un
+  file vecchio senza header non blocca il commit.
+  ⚠️ Perché: l'hook ha girato per la **prima volta** il 2026-08-26 (`pre-commit`
+  non era installato su nessuna macchina, quindi la configurazione esisteva e non
+  presidiava niente), e quel giorno erano **2042 file su 5189** senza header — il
+  39% del repo, **579 su 605** sotto `frontend/src`. Con i modificati dentro il
+  perimetro, qualunque lavoro sul frontend si sarebbe bloccato al primo commit, e
+  la reazione ovvia sarebbe stata spegnere l'hook. *Un presidio che blocca tutto
+  viene disattivato, e allora non presidia più nemmeno i casi per cui era nato.*
+  ⛔ Quei 2042 sono un **registro del debito** e devono calare — ma per decisione,
+  non per attrito.
+  ✅ **Vale anche per `.js`/`.vue`** (Tid, 2026-08-26): la regola e i due
+  template stanno nella sezione Frontend qui sotto. Il filtro dell'hook
+  (`py|js|vue|yaml`) resta quello che era: non e' stato allargato, e' stato
+  finalmente **acceso**.
 - Nei file Python aggiungere un commento sintetico (`# Scopo: ...`) prima di ogni funzione/metodo (`def`/`async def`), in italiano.
 - Per funzioni/metodi che orchestrano processi complessi (pipeline, transazioni, dispatch task, integrazioni esterne), rendere il commento `Scopo` iniziale piu` dettagliato: obiettivo, perimetro e risultato atteso.
 - Nei file Python aggiungere commenti sintetici nei blocchi non banali (orchestrazione, transazioni, mapping task/SQL), scritti in italiano.
@@ -104,6 +195,19 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Sicurezza: route guard su tutte le rotte (default protette), token refresh automatico, no `window.location` per redirect
 - Multilingua: ogni testo visibile all'utente usa `$t()` — mai stringhe hardcoded nei componenti
 - Build: `./node_modules/.bin/vite build` (richiede nvm per caricare Node)
+- **Header di licenza obbligatorio sui file nuovi**, come per il backend
+  (decisione di Tid, 2026-08-26): `templates/javascript-header.txt` per i `.js`,
+  `templates/vue-header.txt` per i `.vue`. Presidiato da `scripts/check_license.py`
+  (hook pre-commit), che guarda i file **aggiunti** — il pregresso non blocca.
+  ⚠️ In un `.vue` l'header va **prima di `<script setup>`** e in commento HTML:
+  e' l'unica forma valida in cima a un Single File Component, e il presidio legge
+  le prime 10 righe del file. Lo `Scopo:` invece **non** sta li': resta un
+  commento `// Scopo: ...` dentro `<script setup>`, dov'e' gia' la convenzione e
+  dove lo trova chi legge il codice.
+  ⚠️ **Non e' una regola nuova: era gia' in vigore di fatto e non scritta.**
+  L'hook include `js|vue` da sempre, ma non ha mai girato (`pre-commit` non era
+  installato), e i 26 file frontend che l'header ce l'hanno usano gia' esattamente
+  questa forma — i template la mettono per iscritto, non la inventano.
 
 ## Liquibase v2 Workflow
 
@@ -187,7 +291,10 @@ preventivi e in CI cancellava `outlined`/icona dell'annullamento,
 
 ### Build docs (Zensical) - prerequisiti obbligatori
 
-- Stack docs corrente: `zensical==0.0.24` (con `deepmerge==2.0`) + tooling Python in `requirements.txt`.
+- Stack docs corrente: `zensical==0.0.57` (con `deepmerge==3.0`) + tooling Python in `requirements.txt`.
+  ⚠️ Le versioni **si leggono da `requirements.txt`**, non da questa riga: al 2026-08-26 diceva
+  `0.0.24`/`2.0` mentre il lock era gia' a `0.0.57`/`3.0`. Un numero scritto in due posti ne ha
+  sempre uno stantio, e questo e' quello senza presidio.
 - Non usare piu` `mkdocs build` come comando primario di progetto.
 - Build docs locale/CI: `python scripts/build_docs_zensical.py`
   - lo script preprocessa `docs/` in `.tmp/zensical_docs`
@@ -326,6 +433,39 @@ Regola completa, esempi e criterio «riuso o conio un codice?»:
 - Nei file di test, all'inizio inserire un indice dei test eseguiti nei commenti.
 - Nei file di test Python/Django, inserire all'inizio un breve indice dei test previsti (nome test/caso).
 - Negli smoke test bash (`backend/scripts/smoke-test-*.sh`), inserire un blocco `# Indice test (0..N):` dopo l'header, elencando ogni sezione di test.
+
+### ⚠️ Gli smoke: nessuno li lancia, e per un giorno erano rotti in sei
+
+`backend/scripts/tests/smoke-*.py` — undici script che parlano col database di
+sviluppo, ognuno in `transaction.atomic()` + `set_rollback(True)`, quindi
+**eseguibili senza lasciare niente**.
+
+⛔ **Non li raccoglie il runner Django** (stanno fuori da `apps/`, hanno il
+trattino nel nome e il pattern di scoperta e' `test*.py`) e **non li esegue la
+CI**. Il 2026-08-27 sei degli undici erano rossi **da un giorno** senza che
+nessuno se ne accorgesse: `vendite.attivita_fatturabili.fatturato` era diventata
+`GENERATED` e le fixture continuavano a scriverla. Il difetto veniva da un
+cantiere che quei file non li aveva nemmeno aperti.
+
+```bash
+scripts/smoke-baseline.sh                   # tutti, ~4 min
+scripts/smoke-baseline.sh fattura-scadenze  # solo quelli col nome dato
+scripts/smoke-baseline.sh --update          # rigenera il registro dei noti
+```
+
+Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, non-verde
+**nuovo** → `exit 1`, noto rientrato → lo segnala. Registro in
+`backend/scripts/tests/baseline-smoke.tsv`, che e' un **debito** e deve calare.
+
+⛔ **Il codice di uscita di uno smoke non dice la verita'**: ce n'e' uno che
+stampa «ESITO: FALLITO» e esce **0**. Chi li lancia a mano con `&&` legge verde
+su un rosso — lo script classifica dall'**output**, ed e' il motivo per cui
+esiste invece di essere un `for`.
+
+⚠️ **Gli esiti sono TRE.** Oltre a verde e rosso c'e' `SENZA_MATERIA`: lo script
+si ferma su una precondizione assente e lo **dichiara** (`raise SystemExit`).
+Non e' un difetto, ma la copertura di quel giro vale **zero**, non «parziale»:
+va vista, non nascosta fra i verdi.
 - Struttura test Django per app: `apps/<schema>/tests/` con sottocartelle minime `api/` e `services/`.
 - Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
 - Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).

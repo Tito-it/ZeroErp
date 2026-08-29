@@ -1,0 +1,176 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L2 — IL GUARD: l'emittente della commessa concorda col billing account (H2)
+#   vendite.trgfn_commesse_guard_emittente_ba()  [fase _a10_, BEFORE INS/UPD OF]
+#   Piano: brief-db-emittente-commessa-invariante, L2 (§7.2)
+#
+# ── ⭐ PERCHE' NEL TRIGGER E NON DENTRO LA FUNZIONE (D-2) ───────────
+#   fn_get_or_create_commessa e' UN solo scrittore. Un guard scritto li'
+#   protegge da chi passa per la funzione, e non da una INSERT diretta — che
+#   nel repository esiste eccome: 22 file pgTAP scrivono in vendite.commesse
+#   senza passarci. E' la regola gia' a registro nel progetto: *il vincolo non
+#   sa chi lo scrive*.
+#
+# ── ⚠️ `UPDATE OF` E NON `UPDATE` NUDO, e non e' un dettaglio ───────
+#   Con un UPDATE generico ogni modifica di stato o di competenza
+#   rivaliderebbe l'emittente contro il BA: e nel momento in cui il mapping del
+#   billing account cambia (tema dell'altro cantiere), TUTTE le commesse di
+#   quel cliente diventerebbero non piu' modificabili, con un errore che parla
+#   di una colonna che nessuno stava toccando.
+#   Con UPDATE OF il guard scatta solo su chi tocca davvero la coppia, e la
+#   fotografia stantia resta un problema di
+#   brief-db-billing-account-cambio-emittente, dove ha il suo rimedio.
+#
+# ── ⛔ IL CODICE E' `TECNICO`, E DIVERGE DI PROPOSITO DAI SEI FRATELLI
+#   Il NOME resta quello della famiglia — chi lo incontra in error_log deve
+#   riconoscerlo accanto a E_ORDINE_/E_PREV_/E_DDT_/E_CONTRATTO_/E_OFFERTA_ —
+#   ma la CLASSE no:
+#     * nei sei fratelli il valore lo fornisce una PERSONA in un form
+#       documento  -> DATO_ERRATO (400), con context->>'campo' per il frontend;
+#     * sulla commessa non ci arriva nessuno: nasce dal push, derivata dal BA.
+#       Solo un chiamante rotto o una INSERT a mano puo' produrre un valore
+#       diverso -> TECNICO (500).
+#   ⚠️ Su un TECNICO la chiave `campo` ESCE dal contesto: su un 500 non c'e'
+#   nessun campo da accendere. E niente `bersaglio`: il bersaglio si mette solo
+#   sugli errori rimediabili, e un pulsante «vai alla commessa» su un 500 e' un
+#   vicolo cieco.
+#   ⛔ E non si riusa E_PARAMETRO_INVALIDO: quel codice e' un debito con lo
+#   split rimandato, non una sede (precedente: E_VENDITE_PRICING_ESITO_ASSENTE,
+#   2026-08-19).
+#
+# ⚠️ Puo' PROPAGARE E_EMITTENTE_DEFAULT_MISSING dal risolutore: non e' un
+#   verdetto di dominio ma un difetto di configurazione (nessun gestore
+#   globale), e mascherarlo qui lo renderebbe invisibile. E' la stessa scelta
+#   gia' dichiarata nel corpo di fn_check_ba_coppia_emittente_omogenea.
+# ⚠️ I BEFORE ROW scattano in ordine ALFABETICO:
+#     trg_commesse_a10_default_emittente_ins        <- riempie (20260826-39)
+#     trg_commesse_a10_guard_emittente_ba_ins_upd   <- giudica (questo)
+#     trg_commesse_a10_guard_transizione_upd        (esistente)
+#     trg_vendite_commesse_a10_guard_chiave_immutabile_upd (esistente, `trg_v...`)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-40-create-trgfn-commesse-guard-emittente-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260826-40-create-trgfn-commesse-guard-emittente-ba
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L2 / H2: il guard. L'emittente della commessa deve coincidere con quello risolto dal
+        suo billing account. ⭐ Sta nel TRIGGER e non dentro fn_get_or_create_commessa perche'
+        quella e' UN solo scrittore: 22 file pgTAP fanno INSERT diretta in vendite.commesse
+        senza passarci. Il vincolo non sa chi lo scrive. ⚠️ UPDATE OF e non UPDATE nudo: con
+        un UPDATE generico, il giorno in cui il mapping del BA cambia, ogni modifica di stato
+        rivaliderebbe l'emittente e le commesse del cliente diventerebbero non piu'
+        modificabili — la fotografia stantia e' un problema di
+        brief-db-billing-account-cambio-emittente, dove ha il suo rimedio. ⛔ Codice TECNICO e
+        non DATO_ERRATO come i sei fratelli documento: a quel valore non arriva nessuna
+        persona, solo un chiamante rotto — quindi niente `campo` e niente `bersaglio`.
+        Piano: brief-db-emittente-commessa-invariante, L2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'fn_get_emittente_fiscale_id'
+                     AND p.pronargs = 1;
+            # ⚠️ Il riempitore deve gia' esserci: senza, una INSERT che omette
+            #    la colonna prenderebbe questo errore invece di essere servita.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_commesse_default_emittente';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_guard_emittente_ba()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_emittente_atteso vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'emittente della commessa non e' un attributo: e' la
+                  --   sua chiave di perimetro (RLS, scope delle viste del
+                  --   cruscotto, giornale degli eventi). Qui si verifica che
+                  --   coincida con quello risolto dal billing account.
+                  --
+                  -- Regole:
+                  --   - vale per OGNI scrittore, non solo per
+                  --     fn_get_or_create_commessa: il vincolo non sa chi lo
+                  --     scrive;
+                  --   - il trigger e' montato UPDATE OF sulle due sole colonne
+                  --     che possono romperlo, cosi' una modifica di stato non
+                  --     rivalida niente e un mapping cambiato non congela le
+                  --     commesse esistenti (quello e' l'altro cantiere).
+                  --
+                  -- ⚠️ Puo' PROPAGARE E_EMITTENTE_DEFAULT_MISSING dal
+                  --   risolutore: non e' un verdetto di dominio ma un difetto
+                  --   di configurazione, e mascherarlo qui lo renderebbe
+                  --   invisibile.
+                  -- =========================================================
+                  v_emittente_atteso :=
+                      anagrafiche.fn_get_emittente_fiscale_id(NEW.billing_account_id);
+
+                  IF NEW.emittente_soggetto_ruolo_id IS DISTINCT FROM v_emittente_atteso THEN
+                      -- ⛔ TECNICO: niente `campo` (su un 500 non c'e' nessun
+                      --    campo da accendere) e niente `bersaglio` (nessun
+                      --    gesto da offrire). Nel VARIADIC va la frase che
+                      --    legge una persona: il CODICE della commessa e i due
+                      --    emittenti, non i nomi delle colonne.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_commesse_guard_emittente_ba',
+                          'E_COMMESSA_EMITTENTE_BA_INCOERENTE',
+                          jsonb_build_object(
+                              'commessa_id',                 NEW.id,
+                              'codice',                      NEW.codice,
+                              'billing_account_id',          NEW.billing_account_id,
+                              'emittente_soggetto_ruolo_id', NEW.emittente_soggetto_ruolo_id,
+                              'emittente_atteso_id',         v_emittente_atteso),
+                          NULL::uuid,
+                          NEW.codice,
+                          COALESCE(NEW.emittente_soggetto_ruolo_id::text, '<nessuno>'),
+                          NEW.billing_account_id::text,
+                          v_emittente_atteso::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_guard_emittente_ba()
+              IS 'Guard BEFORE INSERT / UPDATE OF (billing_account_id, emittente_soggetto_ruolo_id) su vendite.commesse: verifica che emittente_soggetto_ruolo_id coincida con anagrafiche.fn_get_emittente_fiscale_id(billing_account_id). Solleva E_COMMESSA_EMITTENTE_BA_INCOERENTE. ⭐ Sta nel TRIGGER e non dentro vendite.fn_get_or_create_commessa perche'' quella e'' UNO solo degli scrittori: nel repository ci sono 22 file pgTAP che fanno INSERT diretta in vendite.commesse senza passarci, e il vincolo non sa chi lo scrive. ⚠️ UPDATE OF e non UPDATE nudo, ed e'' la riga che evita di congelare le commesse: con un UPDATE generico ogni modifica di stato o di competenza rivaliderebbe l''emittente contro il BA, e nel momento in cui il mapping del billing account cambia tutte le commesse di quel cliente diventerebbero non piu'' modificabili con un errore che parla di una colonna che nessuno stava toccando. La fotografia stantia resta un problema di brief-db-billing-account-cambio-emittente, dove ha il suo rimedio. ⛔ La CLASSE del codice diverge di proposito dai sei fratelli documento (E_ORDINE_/E_PREV_/E_DDT_/E_CONTRATTO_/E_OFFERTA_EMITTENTE_BA_INCOERENTE, tutti DATO_ERRATO): li'' il valore lo fornisce una persona in un form, qui non ci arriva nessuno — la commessa nasce dal push, derivata dal BA — quindi solo un chiamante rotto o una INSERT a mano puo'' produrre un valore diverso, ed e'' TECNICO. Ne discende che nel contesto NON c''e'' la chiave `campo` (su un 500 non c''e'' nessun campo da accendere) e non c''e'' il `bersaglio` (nessun gesto da offrire). ⛔ E non si riusa E_PARAMETRO_INVALIDO: quel codice e'' un debito con lo split rimandato, non una sede. ⚠️ Puo'' PROPAGARE E_EMITTENTE_DEFAULT_MISSING dal risolutore — difetto di configurazione, non verdetto di dominio: stessa scelta gia'' dichiarata in anagrafiche.fn_check_ba_coppia_emittente_omogenea. ⚠️ Il nome del trigger e'' scelto per l''ordine: i BEFORE ROW scattano in ordine alfabetico e `default_` precede `guard_`, quindi il riempitore gira prima del giudice. Piano: brief-db-emittente-commessa-invariante, L2.';
+
+              CREATE OR REPLACE TRIGGER trg_commesse_a10_guard_emittente_ba_ins_upd
+                  BEFORE INSERT OR UPDATE OF billing_account_id, emittente_soggetto_ruolo_id
+                  ON vendite.commesse
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_guard_emittente_ba();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_a10_guard_emittente_ba_ins_upd ON vendite.commesse;
+              DROP FUNCTION IF EXISTS vendite.trgfn_commesse_guard_emittente_ba();

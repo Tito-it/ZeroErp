@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from django.db import DatabaseError
 
+from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
     validate_enum_param,
@@ -27,6 +28,7 @@ from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
     LOTTO_FATTURE_SORT_COLUMNS,
+    MOTIVO_NON_FATTURATA_RESIDUO,
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
     DASH_BACKLOG_CLASSI,
@@ -42,6 +44,7 @@ from apps.vendite.types import (
     DashApertoRiepilogoRow,
     DashBacklogDocumentoRow,
     DashCompetenzaAttivitaRow,
+    DashCompetenzaResiduoRow,
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaGruppoRow,
@@ -97,6 +100,37 @@ def _paging_o_export(
         )
         return max_rows, 0
     return page_size, _validate_pagination(page, page_size, function_name)
+
+
+# Scopo: wrapper di dominio su `validate_order_params` — riempie l'`error_code`
+#        di vendite e ammette l'assenza (`None` = ordine di default del
+#        repository, cioe' quello dichiarato a catalogo).
+#
+# ⭐ E' un WRAPPER, non un secondo guard: la prima stesura di questa passata
+#    riscriveva i due `ErrorManager.require` in casa, e il BB che li fa esisteva
+#    da giugno — usato tredici volte, una delle quali in QUESTO stesso file
+#    (`fn_list_lotto_fatture`). Il catalogo BB e' la prima difesa contro questa
+#    specie di duplicato, e va letto PRIMA di estrarre, non dopo.
+#    Stessa forma di `_validate_enum` qui sotto, per la stessa ragione.
+#
+# ⚠️ Il `lower()` sta qui e non nel BB: le liste di vendite accettano `ASC` da
+#    sempre, e allargare il confronto nel BB l'avrebbe allargato anche ai
+#    tredici chiamanti che non l'hanno mai voluto.
+def _valida_ordinamento(
+    order_by: str | None,
+    order_dir: str | None,
+    *,
+    whitelist: dict[str, str],
+    function_name: str,
+) -> None:
+    validate_order_params(
+        order_by,
+        order_dir.lower() if order_dir is not None else None,
+        allowed_columns=whitelist,
+        error_code="E_VENDITE_VALIDATION",
+        function_name=function_name,
+        nullable=True,
+    )
 
 
 # Scopo: Valida un parametro enum con E_VENDITE_VALIDATION (whitelist del
@@ -518,23 +552,9 @@ def fn_dash_aperto_documenti(
     # standard): whitelist della lista + direzione asc/desc, fail-fast 400 —
     # nessun input grezzo entra nell'ORDER BY. Assenti -> ordine di default
     # (i piu' "in essere da" prima) deciso dal repository.
-    ErrorManager.require(
-        order_by is None or order_by in VenditeRepository.DASH_APERTO_SORT_COLUMNS,
-        code="E_VENDITE_VALIDATION",
-        message="Colonna di ordinamento non valida.",
-        detail=(
-            f"order_by='{order_by}' non ammesso. Valori: "
-            f"{', '.join(sorted(VenditeRepository.DASH_APERTO_SORT_COLUMNS))}."
-        ),
-        context={"order_by": order_by},
-        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
-    )
-    ErrorManager.require(
-        order_dir is None or order_dir.lower() in ("asc", "desc"),
-        code="E_VENDITE_VALIDATION",
-        message="Direzione di ordinamento non valida.",
-        detail="order_dir deve essere 'asc' o 'desc'.",
-        context={"order_dir": order_dir},
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=VenditeRepository.DASH_APERTO_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     limit, offset = _paging_o_export(
@@ -611,6 +631,14 @@ class _CellaCompetenza:
     # 🔴 E si vedeva solo su luglio: ad agosto la cardinalita' non cambia
     # affatto, quindi provare il solo mese del rilievo avrebbe detto «a posto».
     stati_fattura_per_stato: dict[str | None, dict[str, object]] = field(default_factory=dict)
+    # ⭐ La quota RESIDUA dentro `EMESSA_NON_FATTURATA`. Sta a parte e non
+    # sostituisce il totale, perche' la card deve dire DUE cose: quanto lavoro
+    # e' fermo in quello stadio, e quanta parte di quel lavoro **chiede
+    # un'azione**. Le altre tre situazioni dello stadio — in attesa del lotto,
+    # giro in corso, senza attivita' fatturabile — non chiedono niente, e
+    # sommarle al residuo darebbe un numero solo per rimedi opposti.
+    n_residui: int = 0
+    valore_residui: Decimal = Decimal(0)
 
 
 # Scopo: Serializza una cella-stadio nel payload API. Contratto SIMMETRICO su
@@ -677,6 +705,14 @@ def _cella_stadio_payload(
         "valore_display": str(display),
         "n_in_ritardo": cella.n_in_ritardo,
         "valore_in_ritardo": str(cella.valore_in_ritardo),
+        # ⭐ La quota che CHIEDE UN'AZIONE dentro lo stadio. Contratto
+        # SIMMETRICO come tutto il resto della cella (DL-8): il campo c'e' su
+        # ogni stadio e vale 0 dove non si applica — il frontend rende, non
+        # deduce. Su `EMESSA_NON_FATTURATA` e' la meta' su cui vive il verbo
+        # «Riporta da emettere»; l'altra meta' (n_attivita - n_residui) e'
+        # transito legittimo e non va toccata.
+        "n_residui": cella.n_residui,
+        "valore_residui": str(cella.valore_residui),
         # Le voci del breakdown, serializzate qui una volta sola: dentro la
         # cella i valori restano Decimal (si sommano fra loro), fuori sono
         # stringhe come ogni altro importo del payload.
@@ -760,6 +796,22 @@ def fn_dash_competenza_mensile(
         if r["tipo_movimento"] == TIPO_MOVIMENTO_RETTIFICA:
             cella.n_rettifiche += r["n_attivita"]
             cella.valore_rettifiche += Decimal(r["valore"])
+        # ⚠️ Si guarda il MOTIVO, non lo stadio: e' il motivo a dire se quella
+        #    quota chiede un'azione. Sugli altri stadi e' `None` e la condizione
+        #    e' falsa da se', senza bisogno di nominare `EMESSA_NON_FATTURATA`
+        #    — cosi' il giorno che il vocabolario cresce non c'e' un secondo
+        #    posto da aggiornare.
+        if r.get("motivo_non_fatturata") == MOTIVO_NON_FATTURATA_RESIDUO:
+            cella.n_residui += r["n_attivita"]
+            # ⛔ NETTO, non assoluto: questo numero si legge SOTTO `valore` nella
+            #    stessa card e SOPRA una lista che mostra il valore con segno.
+            #    Con l'assoluto un residuo di RETTIFICA — che il verbo tocca
+            #    eccome (Q-8) — direbbe «di cui 1 · 500,00 €» sotto un totale di
+            #    -500,00 €: due meta' che non si sommano al tutto, e chi guarda
+            #    non ha modo di capire quale delle due mente. L'assoluto ha una
+            #    sede sola in questa funzione ed e' `valore_abs`, che serve al
+            #    donut di copertura — dove non compensare e' proprio il punto.
+            cella.valore_residui += Decimal(r["valore"])
         if r["stadio"] == "FATTURATA":
             # Una voce per STATO FATTURA, con i movimenti sommati dentro: il
             # breakdown risponde a «di cio' che e' fatturato, in che stato sono
@@ -885,24 +937,9 @@ def fn_dash_competenza_attivita(
     # Ordinamento server-side (convenzione order_by/order_dir come le liste
     # standard): whitelist della lista + direzione asc/desc, fail-fast 400 —
     # nessun input grezzo entra nell'ORDER BY. Assenti -> default repository.
-    ErrorManager.require(
-        order_by is None
-        or order_by in VenditeRepository.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS,
-        code="E_VENDITE_VALIDATION",
-        message="Colonna di ordinamento non valida.",
-        detail=(
-            f"order_by='{order_by}' non ammesso. Valori: "
-            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS))}."
-        ),
-        context={"order_by": order_by},
-        function_name="vendite.vendite_service.fn_dash_competenza_attivita",
-    )
-    ErrorManager.require(
-        order_dir is None or order_dir.lower() in ("asc", "desc"),
-        code="E_VENDITE_VALIDATION",
-        message="Direzione di ordinamento non valida.",
-        detail="order_dir deve essere 'asc' o 'desc'.",
-        context={"order_dir": order_dir},
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=VenditeRepository.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_competenza_attivita",
     )
     offset = _validate_pagination(
@@ -954,24 +991,9 @@ def fn_dash_competenza_commesse(
         param_name="stadio",
         function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
-    ErrorManager.require(
-        order_by is None
-        or order_by in VenditeRepository.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS,
-        code="E_VENDITE_VALIDATION",
-        message="Colonna di ordinamento non valida.",
-        detail=(
-            f"order_by='{order_by}' non ammesso. Valori: "
-            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS))}."
-        ),
-        context={"order_by": order_by},
-        function_name="vendite.vendite_service.fn_dash_competenza_commesse",
-    )
-    ErrorManager.require(
-        order_dir is None or order_dir.lower() in ("asc", "desc"),
-        code="E_VENDITE_VALIDATION",
-        message="Direzione di ordinamento non valida.",
-        detail="order_dir deve essere 'asc' o 'desc'.",
-        context={"order_dir": order_dir},
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=VenditeRepository.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
     limit, offset = _paging_o_export(
@@ -994,6 +1016,151 @@ def fn_dash_competenza_commesse(
     )
 
 
+# Numero massimo di attivita' per una sola chiamata del verbo. ⚠️ Non e' una
+# soglia di prestazione: e' che oltre un certo punto «riporta indietro N righe»
+# smette di essere un gesto che una persona ha guardato. La lista pagina a 200,
+# ed e' lo stesso tetto.
+MAX_ATTIVITA_RIPORTO = 200
+
+
+# Scopo: Legge i motivi che impediscono il riporto, senza tentarlo. Serve
+#        all'interfaccia per SPIEGARE invece di far fallire: il codice
+#        `E_ATTIVITA_GIA_DA_EMETTERE` dichiara a catalogo che incontrarlo
+#        significa che l'elenco a schermo era invecchiato.
+# Risultato: {"motivi": [...]} — lista vuota se il verbo e' ammesso su tutte.
+def fn_check_attivita_riportabili(*, attivita_fatturabili_ids: list[int]) -> dict[str, object]:
+    function_name = "vendite.vendite_service.fn_check_attivita_riportabili"
+    ids = _valida_ids_riporto(attivita_fatturabili_ids, function_name=function_name)
+    repository = VenditeRepository()
+    with translate_db_errors(
+        context={"op": function_name, "n_attivita": len(ids)},
+        fallback_code="E_VENDITE_VALIDATION",
+        fallback_message="Verifica delle attivita' da riportare non riuscita.",
+    ):
+        motivi = repository.check_attivita_riportabili_da_emettere(ids)
+    return {"motivi": motivi}
+
+
+# Scopo: «Riporta da emettere» — rimette in coda di fatturazione un elenco di
+#        attivita' RESIDUE, cioe' rimaste senza fattura dopo che il documento
+#        che le conteneva e' stato eliminato.
+# Perimetro e risultato atteso: delega alla madre DB, che fa le due scritture e
+#        l'evento di registro in una transazione sola. Il perimetro lo decide il
+#        database (`fattura_riga_id IS NULL` + lucchetto + `COMPLETED`), non
+#        questo service: ricalcolarlo qui sarebbe una seconda implementazione, e
+#        la divergenza sarebbe silenziosa.
+#        ⛔ SINCRONO: nessuna coda. Accodarlo per simmetria con «Rendi
+#        definitive» importerebbe il problema della dedup, che qui non esiste.
+# Risultato: {"riportate": n, "riemesse_attivita": n}.
+def fn_riporta_attivita_da_emettere(
+    *, attivita_fatturabili_ids: list[int],
+) -> dict[str, object]:
+    function_name = "vendite.vendite_service.fn_riporta_attivita_da_emettere"
+    ids = _valida_ids_riporto(attivita_fatturabili_ids, function_name=function_name)
+    repository = VenditeRepository()
+    # ⭐ `translate_db_errors` e non `raise_from_database_error`, ed e' una
+    #    scelta: il secondo accetta il codice del database solo se il chiamante
+    #    lo ha DICHIARATO in un elenco locale — cioe' una seconda copia del
+    #    catalogo. I motivi qui sono cinque oggi; il vocabolario di questo
+    #    dominio e' gia' cresciuto da tre a quattro valori senza che il backend
+    #    lo sapesse, e una copia si sarebbe disallineata in silenzio.
+    #    Cosi' invece un codice nuovo arriva all'operatore com'e', col suo
+    #    messaggio, la sua `soluzione` e il suo BERSAGLIO — che qui non e' un
+    #    dettaglio: la madre lo compone (prima la COMMESSA, poi la FATTURA) ed e'
+    #    cio' che trasforma «non si puo'» in «apri la fattura 820».
+    with translate_db_errors(
+        context={"op": function_name, "n_attivita": len(ids)},
+        fallback_code="E_VENDITE_VALIDATION",
+        fallback_message="Riporto delle attivita' non riuscito.",
+    ):
+        return repository.riporta_attivita_da_emettere(ids)
+
+
+# Scopo: normalizza e valida l'elenco di id del verbo, in una sede sola.
+# ⛔ L'elenco VUOTO si rifiuta, e non e' pedanteria: passandolo, la madre
+#    solleverebbe comunque (`E_ATTIVITA_RIPORTO_SELEZIONE_VUOTA`, TECNICO), ma
+#    fermarlo qui evita un 500 per un errore di chiamante. E soprattutto un
+#    elenco vuoto che passasse darebbe «zero attivita' riportate», cioe' un
+#    messaggio identico a quello di un'operazione riuscita che non aveva niente
+#    da fare — la stessa forma di silenzio che questo cantiere sta chiudendo.
+def _valida_ids_riporto(ids: object, *, function_name: str) -> list[int]:
+    ErrorManager.require(
+        isinstance(ids, list) and len(ids) > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Selezionare almeno un'attivita' da riportare.",
+        detail="attivita_fatturabili_ids deve essere una lista non vuota.",
+        context={"field": "attivita_fatturabili_ids"},
+        function_name=function_name,
+    )
+    assert isinstance(ids, list)
+    ErrorManager.require(
+        all(isinstance(i, int) and not isinstance(i, bool) and i > 0 for i in ids),
+        code="E_VENDITE_VALIDATION",
+        message="Elenco di attivita' non valido.",
+        detail="Ogni elemento di attivita_fatturabili_ids deve essere un intero positivo.",
+        context={"field": "attivita_fatturabili_ids"},
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        len(ids) <= MAX_ATTIVITA_RIPORTO,
+        code="E_VENDITE_VALIDATION",
+        message=f"Troppe attivita' selezionate (massimo {MAX_ATTIVITA_RIPORTO}).",
+        detail=f"Ricevute {len(ids)} attivita'.",
+        context={"field": "attivita_fatturabili_ids"},
+        function_name=function_name,
+    )
+    # Dedup con ordine preservato: due volte lo stesso id e' la stessa riga, e
+    # la madre lo tratterebbe una volta sola — ma il conteggio a video direbbe
+    # un numero diverso da quello che si e' spuntato.
+    visti: set[int] = set()
+    return [i for i in ids if not (i in visti or visti.add(i))]
+
+
+# Scopo: Elenco dei RESIDUI di un mese di competenza — le attivita' fatturabili
+#        rimaste senza fattura e che nessun giro riprendera' da solo. E'
+#        l'elenco su cui agisce il verbo «Riporta da emettere», e la ragione per
+#        cui esiste una lista invece di un contatore: il verbo agisce per riga,
+#        quindi l'operatore deve vedere COSA sta riportando.
+# Perimetro: sola lettura; scope emittente DB-side (vista `security_invoker`,
+#        fail-closed senza GUC operatore). ⛔ Il filtro `RESIDUO` sta nel
+#        repository e viene dalla vista: non si ricalcola qui.
+# Risultato: dict con count, page, page_size, total_pages, results.
+def fn_dash_competenza_residui(
+    *,
+    competenza_mese: date,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+    # Export (BB `build_dash_export_response`), come le liste sorelle.
+    max_rows: int | None = None,
+) -> dict[str, object]:
+    # ⚠️ Nessun parametro `stadio`: la lista E' uno stadio, anzi una delle
+    #    quattro situazioni dentro `EMESSA_NON_FATTURATA`. Accettarlo darebbe
+    #    all'invocante l'illusione di poter allargare il perimetro del verbo.
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=VenditeRepository.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS,
+        function_name="vendite.vendite_service.fn_dash_competenza_residui",
+    )
+    limit, offset = _paging_o_export(
+        page=page, page_size=page_size, max_rows=max_rows,
+        function_name="vendite.vendite_service.fn_dash_competenza_residui",
+    )
+    repository = VenditeRepository()
+    results: list[DashCompetenzaResiduoRow]
+    results, total_count = repository.list_dash_competenza_residui(
+        competenza_mese=competenza_mese.replace(day=1),
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+    return _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )
+
+
 # Scopo: Elenco dei GRUPPI FATTURABILI di un mese/stadio — l'unita' su cui
 #        agisce l'emissione mirata. Restituisce la pagina E il riepilogo di
 #        perimetro nella STESSA risposta: la riga di totali («7 documenti · 29
@@ -1003,6 +1170,49 @@ def fn_dash_competenza_commesse(
 # Perimetro: sola lettura; scope emittente DB-side (viste security_invoker,
 #        fail-closed senza GUC operatore).
 # Risultato: dict con count, page, page_size, total_pages, results, riepilogo.
+# Scopo: il codice leggibile di un registro di fatturazione — serve alla riga
+#        «Filtri applicati» dell'export, dove un `registro_id=4` non dice niente
+#        a chi apre il foglio un mese dopo su un'altra macchina.
+# Risultato: il codice, oppure `None` se l'id non esiste (e allora chi chiama
+#        lascia il valore grezzo: meglio un id di un'etichetta inventata).
+def fn_get_registro_codice(registro_id: int) -> str | None:
+    return VenditeRepository().get_registro_codice(int(registro_id))
+
+
+# Etichetta di ripiego del sezionale quando il gruppo ne tocca piu' di uno.
+# ⛔ ITALIANO NEL BACKEND, ed e' una deroga consapevole (D-4, decisa con Tid).
+#    Il progetto compone le etichette nel FE via i18n — «cliente non
+#    determinabile» e' fatto cosi' — ma quella strada lascerebbe la cella VUOTA
+#    nell'export, che condivide questa stessa proiezione e legge i valori
+#    grezzi (`ui.lista_colonna.campo_sorgente`), senza passare da nessuno slot.
+#    Un export che tace dove la lista dice qualcosa e' peggio di un export che
+#    parla una lingua sola.
+# ⭐ E il FE NON legge questa stringa: ricompone la propria da `registri_n`
+#    (chiave `col_registro_multi`), quindi a video resta bilingue. Le due
+#    versioni non possono divergere perche' dipendono dallo STESSO numero, non
+#    l'una dall'altra.
+# ⚠️ Il giorno in cui l'export sapra' la lingua del richiedente, questa
+#    funzione e' il posto da cui togliere la deroga — non ce ne sono altre.
+_ETICHETTA_MULTI_REGISTRO = "Più sezionali ({n})"
+
+
+# Scopo: scrive nel `registro_codice` delle righe multi-sezionale l'etichetta
+#        che l'export mostrera'. Muta le righe in posto: sono gia' dizionari
+#        appena costruiti dal repository, e copiarle per una sola chiave
+#        sarebbe rumore.
+# ⚠️ La condizione e' `registri_n > 1`, NON `registro_codice is None`: quel NULL
+#        ha DUE significati (piu' sezionali, oppure nessuno risolvibile — il
+#        caso `{NULL}`, che la vista conta comunque 1) e trattarli allo stesso
+#        modo direbbe «sono piu' di uno» su un gruppo che di sezionali non ne ha
+#        nemmeno uno.
+def _marca_gruppi_multi_registro(results: list[DashCompetenzaGruppoRow]) -> None:
+    for riga in results:
+        if int(riga.get("registri_n") or 0) > 1 and riga.get("registro_codice") is None:
+            riga["registro_codice"] = _ETICHETTA_MULTI_REGISTRO.format(
+                n=riga["registri_n"],
+            )
+
+
 def fn_dash_competenza_gruppi(
     *,
     competenza_mese: date,
@@ -1015,6 +1225,14 @@ def fn_dash_competenza_gruppi(
     # finisce confrontato con una PK.
     ba_fatturazione_id: int | None = None,
     ba_non_determinabile: bool = False,
+    # Filtro SEZIONALE (D-5): l'asse e' `registri_ids`, non il codice — un
+    # gruppo che tocca due sezionali deve comparire sotto ENTRAMBE le voci.
+    # `registro_non_risolvibile` e' la voce «sezionale non determinabile», cioe'
+    # l'ASSENZA del valore: stessa forma del filtro cliente, e per lo stesso
+    # motivo (un id sentinella in un campo che porta chiavi vere prima o poi
+    # finisce confrontato con una PK).
+    registro_id: int | None = None,
+    registro_non_risolvibile: bool = False,
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
@@ -1030,24 +1248,9 @@ def fn_dash_competenza_gruppi(
         param_name="stadio",
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
     )
-    ErrorManager.require(
-        order_by is None
-        or order_by in VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS,
-        code="E_VENDITE_VALIDATION",
-        message="Colonna di ordinamento non valida.",
-        detail=(
-            f"order_by='{order_by}' non ammesso. Valori: "
-            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS))}."
-        ),
-        context={"order_by": order_by},
-        function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
-    )
-    ErrorManager.require(
-        order_dir is None or order_dir.lower() in ("asc", "desc"),
-        code="E_VENDITE_VALIDATION",
-        message="Direzione di ordinamento non valida.",
-        detail="order_dir deve essere 'asc' o 'desc'.",
-        context={"order_dir": order_dir},
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
     )
     # ⚠️ Ricerca sotto la soglia: si IGNORA, non si solleva e non si svuota la
@@ -1072,44 +1275,65 @@ def fn_dash_competenza_gruppi(
         tipo_gruppo=tipo_gruppo,
         ba_fatturazione_id=ba_fatturazione_id,
         ba_non_determinabile=ba_non_determinabile,
+        registro_id=registro_id,
+        registro_non_risolvibile=registro_non_risolvibile,
         search=search_param,
         order_by=order_by,
         order_dir=order_dir,
         limit=limit,
         offset=offset,
     )
+    _marca_gruppi_multi_registro(results)
     payload = _build_list_response(
         results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
     )
+    # ⭐ EXPORT: si fermano qui. Riepilogo e facet servono all'INTERFACCIA — i
+    #    totali sopra la lista e le tre tendine — e `build_dash_export_response`
+    #    dall'envelope legge soltanto `results` e `count`. Calcolarli su una
+    #    chiamata che scorre fino a 10.000 righe sono cinque aggregazioni
+    #    buttate, sulla richiesta piu' pesante delle sei.
+    # ⚠️ `max_rows` valorizzato = export: e' l'unico chiamante che lo passa
+    #    (`build_dash_export_response`), ed e' anche l'unico che salta la
+    #    paginazione. Se un giorno ne nascesse un secondo che vuole i totali,
+    #    troverebbe le chiavi ASSENTI — un KeyError, non un numero sbagliato.
+    if max_rows is not None:
+        return payload
     # Due perimetri DIVERSI nella stessa risposta, ed e' voluto:
-    #  - `riepilogo` SEGUE tutti i filtri (tipo, cliente, ricerca): e' la
-    #    riconciliazione della lista che l'utente sta guardando, e un totale che
-    #    descrive un perimetro diverso dalle righe sopra di se' e' peggio di
-    #    nessun totale;
-    #  - `tipi` e `clienti` (le due facet) NON li seguono: devono mostrare tutte
-    #    le voci disponibili anche quando una e' selezionata, altrimenti
+    #  - `riepilogo` SEGUE tutti i filtri (tipo, cliente, sezionale, ricerca):
+    #    e' la riconciliazione della lista che l'utente sta guardando, e un
+    #    totale che descrive un perimetro diverso dalle righe sopra di se' e'
+    #    peggio di nessun totale;
+    #  - le TRE facet e `n_gruppi_perimetro` NON li seguono: devono mostrare
+    #    tutte le voci disponibili anche quando una e' selezionata, altrimenti
     #    scegliendo «Preventivi» le altre sparirebbero dalla tendina e non si
     #    potrebbe piu' cambiare idea senza azzerare il filtro alla cieca.
-    #    ⚠️ Entrambe sul perimetro BASE (competenza+stadio) e non una sull'altra:
+    #    ⚠️ Tutte sul perimetro BASE (competenza+stadio) e non una sull'altra:
     #    se `clienti` seguisse il tipo e `tipi` no, le due tendine
     #    racconterebbero perimetri diversi e il conteggio cambierebbe a seconda
     #    dell'ORDINE in cui l'operatore sceglie i filtri.
-    payload["riepilogo"] = repository.get_dash_competenza_gruppi_riepilogo(
-        competenza_mese=competenza,
-        stadio=stadio,
-        tipo_gruppo=tipo_gruppo,
-        ba_fatturazione_id=ba_fatturazione_id,
-        ba_non_determinabile=ba_non_determinabile,
-        search=search_param,
+    #
+    # ⭐ UNA SOLA LETTURA (2026-08-26). Erano cinque query, una per blocco, e
+    #    ognuna rileggeva la vista da capo: ~1,46 s dei ~2,47 s dell'endpoint.
+    #    I due perimetri ora convivono dentro la stessa query — vedi
+    #    `get_dash_competenza_gruppi_accessori`, dove sono due CTE distinte.
+    payload.update(
+        repository.get_dash_competenza_gruppi_accessori(
+            competenza_mese=competenza,
+            stadio=stadio,
+            tipo_gruppo=tipo_gruppo,
+            ba_fatturazione_id=ba_fatturazione_id,
+            ba_non_determinabile=ba_non_determinabile,
+            registro_id=registro_id,
+            registro_non_risolvibile=registro_non_risolvibile,
+            search=search_param,
+        )
     )
-    payload["tipi"] = repository.list_dash_competenza_gruppi_tipi(
-        competenza_mese=competenza,
-        stadio=stadio,
-    )
-    payload["clienti"] = repository.list_dash_competenza_gruppi_clienti(
-        competenza_mese=competenza,
-        stadio=stadio,
-    )
+    # ℹ️ `n_gruppi_perimetro` arriva dallo stesso blocco: e' il conteggio del
+    #    perimetro BASE, e serve alla voce «Tutti i sezionali» della tendina,
+    #    che non puo' ricavarlo da nessun altro numero della risposta —
+    #    sommare le voci della facet SOVRASTIMA (un gruppo su due sezionali e'
+    #    contato sotto entrambi, ed e' giusto che lo sia), e `riepilogo` segue
+    #    i filtri.
     return payload
 
 
@@ -1228,23 +1452,9 @@ def fn_dash_backlog_documenti(
     # standard): whitelist della lista + direzione asc/desc, fail-fast 400 —
     # nessun input grezzo entra nell'ORDER BY. Assenti -> default repository
     # (i piu' "fermo da" prima).
-    ErrorManager.require(
-        order_by is None or order_by in VenditeRepository.DASH_BACKLOG_SORT_COLUMNS,
-        code="E_VENDITE_VALIDATION",
-        message="Colonna di ordinamento non valida.",
-        detail=(
-            f"order_by='{order_by}' non ammesso. Valori: "
-            f"{', '.join(sorted(VenditeRepository.DASH_BACKLOG_SORT_COLUMNS))}."
-        ),
-        context={"order_by": order_by},
-        function_name="vendite.vendite_service.fn_dash_backlog_documenti",
-    )
-    ErrorManager.require(
-        order_dir is None or order_dir.lower() in ("asc", "desc"),
-        code="E_VENDITE_VALIDATION",
-        message="Direzione di ordinamento non valida.",
-        detail="order_dir deve essere 'asc' o 'desc'.",
-        context={"order_dir": order_dir},
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=VenditeRepository.DASH_BACKLOG_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     limit, offset = _paging_o_export(
@@ -1287,24 +1497,9 @@ def fn_dash_competenza_errori(
     # Ordinamento server-side (8° lotto liste, 2026-08-03): whitelist +
     # direzione validate qui, fail-fast 400 — stessa forma delle altre liste
     # dash. Assenti -> ordine storico (eventi recenti prima).
-    ErrorManager.require(
-        order_by is None
-        or order_by in VenditeRepository.DASH_COMPETENZA_ERRORI_SORT_COLUMNS,
-        code="E_VENDITE_VALIDATION",
-        message="Colonna di ordinamento non valida.",
-        detail=(
-            f"order_by='{order_by}' non ammesso. Valori: "
-            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_ERRORI_SORT_COLUMNS))}."
-        ),
-        context={"order_by": order_by},
-        function_name="vendite.vendite_service.fn_dash_competenza_errori",
-    )
-    ErrorManager.require(
-        order_dir is None or order_dir.lower() in ("asc", "desc"),
-        code="E_VENDITE_VALIDATION",
-        message="Direzione di ordinamento non valida.",
-        detail="order_dir deve essere 'asc' o 'desc'.",
-        context={"order_dir": order_dir},
+    _valida_ordinamento(
+        order_by, order_dir,
+        whitelist=VenditeRepository.DASH_COMPETENZA_ERRORI_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_competenza_errori",
     )
     limit, offset = _paging_o_export(
@@ -1442,12 +1637,12 @@ def get_documento_passaggi(
     )
     if nodo["is_transitato"] and nodo["frontiera_tipo_id"] is not None and not is_self:
         frontiera = {
-            "tipo_codice": nodo["frontiera_tipo_codice"],
+            "tipo_codice_interno": nodo["frontiera_tipo_codice_interno"],
             # ⚠️ La frontiera puo' essere una nota di credito (arco G dalla
             # commessa): senza la natura il FE la etichetterebbe «Fattura».
             # E' l'invariante che il pgTAP del DB ha corretto (§44.5): «una NC
             # non e' mai frontiera di un altro nodo» e' FALSO.
-            "natura_doc_codice": nodo["frontiera_natura_doc_codice"],
+            "natura_doc_codice_interno": nodo["frontiera_natura_doc_codice_interno"],
             "codice": nodo["frontiera_codice"],
             "stato_codice_interno": nodo["frontiera_stato_codice_interno"],
             "fase": nodo["frontiera_fase"],
@@ -1463,7 +1658,7 @@ def get_documento_passaggi(
 
     return {
         "nodo": {
-            "tipo_codice": nodo["tipo_codice"],
+            "tipo_codice_interno": nodo["tipo_codice_interno"],
             "codice": nodo["codice"],
             "stato_codice_interno": nodo["stato_codice_interno"],
             "stato_descrizione": nodo["stato_descrizione"],
@@ -1476,7 +1671,7 @@ def get_documento_passaggi(
             # La natura distingue la nota di credito dalla fattura: sono lo
             # stesso tipo documento e, senza, il pannello scrive due volte
             # «Fattura · EMESSA» per due documenti diversi.
-            "natura_doc_codice": nodo["natura_doc_codice"],
+            "natura_doc_codice_interno": nodo["natura_doc_codice_interno"],
             # ⭐ Il codice della radice: per una fattura e' l'informazione che
             # conta davvero, perche' la frontiera indica sempre se stessa (nodo
             # terminale del grafo forward). Dice «da dove viene».

@@ -367,7 +367,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_min: str | None,
         validita_dal_max: str | None,
         search: str | None,
-        solo_attiva: bool = True,
+        solo_ultima_revisione: bool = True,
     ) -> tuple[str, list[Any]]:
         # Filtri sulla vista canonica `vw_offerte_commerciali_lista` (alias `v`).
         # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
@@ -397,12 +397,18 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             # soggetto). L'API impone >=3 char.
             wheres.append("(v.codice ILIKE %s OR v.ragione_sociale_completa ILIKE %s)")
             params.extend([f"%{search}%", f"%{search}%"])
-        # Filtro revisione attiva (mirror preventivi `solo_attiva`): di default
-        # mostra solo l'ultima revisione "viva" per lineage. `is_attiva` e'
-        # calcolato dalla vista (predicato: stato NOT IN ('SUPERATA','ANNULLATA')).
-        # Quando false, mostra storico completo (tutte le revisioni).
-        if solo_attiva:
-            wheres.append("v.is_attiva IS TRUE")
+        # Filtro ultima revisione (mirror preventivi): di default mostra solo la
+        # revisione non rimpiazzata per lineage. Quando false, storico completo.
+        #
+        # ⛔ ERA `is_attiva IS TRUE`, e il commento di allora dichiarava il difetto
+        #    senza vederlo: «predicato: stato NOT IN ('SUPERATA','ANNULLATA')».
+        #    Sono DUE domande in un flag solo — *superata* e' una posizione nella
+        #    catena delle revisioni, *annullata* e' uno STATO — e in AND non si
+        #    separano piu'. Conseguenza identica ai preventivi: il filtro di stato
+        #    «Annullata» non poteva restituire niente.
+        #    (brief-db-revisione-attiva-due-domande, 2026-08-28)
+        if solo_ultima_revisione:
+            wheres.append("v.is_superata IS FALSE")
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         return where_clause, params
 
@@ -418,7 +424,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
         search: str | None = None,
-        solo_attiva: bool = True,
+        solo_ultima_revisione: bool = True,
         order_by: str = "data_insert",
         order_dir: str = "DESC",
         limit: int = 25,
@@ -434,13 +440,14 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             validita_dal_min=validita_dal_min,
             validita_dal_max=validita_dal_max,
             search=search,
-            solo_attiva=solo_attiva,
+            solo_ultima_revisione=solo_ultima_revisione,
         )
-        # frontiera_tipo_codice decodificato per il chip transito FE.
+        # ⭐ Nessuna decodifica qui: `frontiera_tipo_codice_interno` e
+        #    `frontiera_natura_doc_codice_interno` arrivano dalla vista
+        #    (20260829-01/02) e passano con `v.*`.
         sql = f"""
-            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            SELECT v.*
               {_FROM_LISTA_OFFERTE}
-              LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
               {where_clause}
              ORDER BY {order_col} {order_dir_safe}, v.id DESC
              LIMIT %s OFFSET %s
@@ -461,7 +468,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
         search: str | None = None,
-        solo_attiva: bool = True,
+        solo_ultima_revisione: bool = True,
     ) -> int:
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
@@ -471,7 +478,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             validita_dal_min=validita_dal_min,
             validita_dal_max=validita_dal_max,
             search=search,
-            solo_attiva=solo_attiva,
+            solo_ultima_revisione=solo_ultima_revisione,
         )
         sql = f"""
             SELECT COUNT(*)

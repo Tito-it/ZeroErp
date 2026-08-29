@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente —
+# IL GUARD DI COERENZA DEL TITOLO: le due regole che un CHECK non puo' scrivere.
+#
+# ── ⛔ PERCHE' NON SONO DUE `CHECK` DI COLONNA ──────────────────────────
+#
+#   Un CHECK vede solo la riga su cui sta. Queste due regole guardano altrove:
+#
+#     1. «il plafond esiste se e solo se il TIPO ne prevede uno»
+#        -> deve leggere config.tipi_titolo_iva.ha_plafond, un'ALTRA TABELLA;
+#     2. «un titolo che vale per TUTTO non ha righe di ambito»
+#        -> deve contare le righe FIGLIE.
+#
+#   ⚠️ E' la stessa forma gia' incontrata nel progetto: un vincolo non puo'
+#   referenziare un'altra tabella, quindi o si denormalizza uno snapshot o si
+#   scrive un guard. Qui il guard, perche' `ha_plafond` cambia praticamente mai
+#   e uno snapshot da tenere in sync sarebbe piu' superficie di quella che
+#   toglie.
+#
+# ── ⭐ LA REGOLA DEL PLAFOND VALE SUI DUE VERSI, E IL SECONDO E' QUELLO
+#      CHE SI DIMENTICA ────────────────────────────────────────────────
+#
+#   * tipo con `ha_plafond` e plafond ASSENTE  -> il tetto non esiste, e la
+#     primitiva di consumo non avrebbe capienza da confrontare: consumerebbe
+#     zero o tutto, secondo come e' scritta. E' il verso ovvio;
+#   * tipo SENZA `ha_plafond` e plafond VALORIZZATO -> il numero c'e', nessuno lo
+#     consuma, e chi lo guarda crede che quel titolo abbia un tetto. E' la voce
+#     2 di questo brief in miniatura: un campo che promette una cosa che non
+#     succede.
+#
+# ── ⚠️ `SECURITY INVOKER`, ED E' UNA SCELTA MOTIVATA ───────────────────
+#
+#   Il guard conta le righe di `soggetti_titoli_iva_ambiti`, che ha una policy
+#   RLS. Un guard che legge sotto RLS di solito non distingue «non lo vedo» da
+#   «e' di un altro», e per questo si scrive SECURITY DEFINER. ⭐ Qui no, e la
+#   ragione e' strutturale: le righe contate sono le FIGLIE DELLA RIGA STESSA
+#   che si sta scrivendo, e la policy delle figlie passa dallo stesso
+#   `emittente_fiscale_id` del padre. Chi puo' scrivere il padre vede tutte le
+#   sue figlie, sempre: non esiste il caso «ce n'e' una che non vedo».
+#   Un SECURITY DEFINER qui aggiungerebbe una funzione privilegiata senza
+#   chiudere nessun buco.
+#
+# ── ⚠️ L'ORDINE DEI TRIGGER, che si vede solo quando morde ─────────────
+#
+#   I BEFORE ROW scattano in ordine ALFABETICO di nome. Le FK nuove verso
+#   `config.iva` e `config.tipi_titolo_iva` fanno nascere dalle automazioni due
+#   guard `trg_soggetti_titoli_iva_a10_*_require_attivo_ins_upd`. Questo si
+#   chiama `..._a10_guard_coerenza_ins_upd`: `g` precede `i` e `t`, quindi
+#   scatta per primo e il messaggio che l'operatore legge e' quello di dominio.
+#   Non e' un caso: e' il nome scelto sapendo chi altro arrivera'.
+#
+# Codici sollevati: E_TITOLO_IVA_PLAFOND_MANCANTE,
+#   E_TITOLO_IVA_PLAFOND_NON_AMMESSO, E_TITOLO_IVA_AMBITO_NON_AMMESSO
+#   (seed in 80_data, codici_errore.csv + messaggi_errore.csv).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260829-28-create-trgfn-soggetti-titoli-iva-guard-coerenza-mctit.yaml
+
+  - changeSet:
+      id: 20260829-28-create-trgfn-soggetti-titoli-iva-guard-coerenza
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di coerenza su anagrafiche.soggetti_titoli_iva: il plafond esiste se e solo
+        se il TIPO ne prevede uno (legge config.tipi_titolo_iva.ha_plafond), e un titolo
+        che vale per TUTTO non porta righe di ambito. Due regole che un CHECK non puo'
+        scrivere perche' guardano un'altra tabella e le righe figlie. Il nome sceglie
+        l'ordine: scatta prima dei guard che le FK nuove faranno nascere dalle automazioni.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva_ambiti
+            - tableExists:
+                schemaName: config
+                tableName: tipi_titolo_iva
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: tenere le due regole del titolo IVA che un CHECK di
+              --   colonna non puo' esprimere, perche' guardano fuori dalla riga.
+              --   (1) il plafond esiste se e solo se config.tipi_titolo_iva
+              --       dichiara ha_plafond per il tipo del titolo;
+              --   (2) un titolo con ambito TUTTO non porta righe di ambito.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I7 / D10.
+              -- ⚠️ SECURITY INVOKER e non DEFINER: le righe contate sono le
+              --   figlie della riga stessa, e la loro policy passa dallo stesso
+              --   emittente del padre — chi scrive il padre le vede tutte.
+              DECLARE
+                  v_ha_plafond   config.tipi_titolo_iva.ha_plafond%TYPE;
+                  v_tipo_descr   config.tipi_titolo_iva.descrizione%TYPE;
+                  v_n_ambiti     bigint;
+              BEGIN
+                  SELECT t.ha_plafond, t.descrizione
+                    INTO v_ha_plafond, v_tipo_descr
+                    FROM config.tipi_titolo_iva t
+                   WHERE t.id = NEW.tipo_titolo_iva_id;
+
+                  -- ⚠️ Se il tipo non c'e' la FK lo dira' con la sua voce: qui
+                  --   non si inventa un secondo errore per la stessa causa.
+                  --   ⭐ E il SELECT INTO senza righe AZZERA le variabili, quindi
+                  --   senza questa uscita i due rami sotto leggerebbero NULL e
+                  --   non scatterebbero mai — un guard verde per sottrazione.
+                  IF v_ha_plafond IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── REGOLA 1a — il tetto dichiarato dal tipo dev'esserci.
+                  IF v_ha_plafond IS TRUE AND NEW.plafond IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'trgfn_soggetti_titoli_iva_guard_coerenza',
+                          'E_TITOLO_IVA_PLAFOND_MANCANTE',
+                          jsonb_build_object('campo', 'plafond',
+                                             'titolo_iva_id', NEW.id,
+                                             'tipo_titolo_iva_id', NEW.tipo_titolo_iva_id),
+                          NEW.tx_id,
+                          v_tipo_descr);
+                  END IF;
+
+                  -- ── REGOLA 1b — il verso che si dimentica: un tetto su un
+                  --    titolo che non ne ha e' un numero che nessuno consuma, e
+                  --    chi lo legge crede che quel titolo abbia un limite.
+                  IF v_ha_plafond IS FALSE AND NEW.plafond IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'trgfn_soggetti_titoli_iva_guard_coerenza',
+                          'E_TITOLO_IVA_PLAFOND_NON_AMMESSO',
+                          jsonb_build_object('campo', 'plafond',
+                                             'titolo_iva_id', NEW.id,
+                                             'tipo_titolo_iva_id', NEW.tipo_titolo_iva_id),
+                          NEW.tx_id,
+                          v_tipo_descr);
+                  END IF;
+
+                  -- ── REGOLA 2 — «vale per tutto» e «vale per queste voci» non
+                  --    stanno insieme. Il caso non si crea solo inserendo una
+                  --    riga di ambito (quello lo ferma il guard delle figlie):
+                  --    si crea anche RIPORTANDO A 'TUTTO' un titolo che le righe
+                  --    ce l'ha gia'. Senza questo ramo, l'ambito resterebbe
+                  --    scritto e il risolutore leggerebbe «vale per tutto»
+                  --    mentre la tabella dice un'altra cosa.
+                  IF NEW.ambito = 'TUTTO' AND TG_OP = 'UPDATE' THEN
+                      SELECT count(*)
+                        INTO v_n_ambiti
+                        FROM anagrafiche.soggetti_titoli_iva_ambiti a
+                       WHERE a.titolo_iva_id = NEW.id;
+
+                      IF v_n_ambiti > 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', 'trgfn_soggetti_titoli_iva_guard_coerenza',
+                              'E_TITOLO_IVA_AMBITO_NON_AMMESSO',
+                              jsonb_build_object('campo', 'ambito',
+                                                 'titolo_iva_id', NEW.id,
+                                                 'righe_ambito', v_n_ambiti),
+                              NEW.tx_id,
+                              v_tipo_descr);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza()
+              IS 'Le due regole di anagrafiche.soggetti_titoli_iva che un CHECK di colonna non puo'' scrivere, perche'' guardano fuori dalla riga. (1) IL PLAFOND ESISTE SE E SOLO SE IL TIPO NE PREVEDE UNO: legge config.tipi_titolo_iva.ha_plafond, e vale sui DUE versi — un tetto assente dove serve lascia la primitiva di consumo senza capienza da confrontare, un tetto presente dove non serve e'' un numero che nessuno consuma e che chi legge scambia per un limite (E_TITOLO_IVA_PLAFOND_MANCANTE / E_TITOLO_IVA_PLAFOND_NON_AMMESSO). (2) UN TITOLO CHE VALE PER TUTTO NON HA RIGHE DI AMBITO: il ramo qui dentro copre il verso che il guard delle figlie non vede — riportare a TUTTO un titolo che le righe ce l''ha gia'' (E_TITOLO_IVA_AMBITO_NON_AMMESSO). ⚠️ SECURITY INVOKER e non DEFINER, ed e'' motivato: le righe contate sono le figlie della riga stessa e la loro policy passa dallo stesso emittente del padre, quindi chi puo'' scrivere il padre le vede tutte — non esiste il caso «ce n''e'' una che non vedo» che rende cieco un guard sotto RLS. ⚠️ Il nome del trigger sceglie l''ORDINE: i BEFORE ROW scattano in ordine alfabetico, e le FK verso config.iva e config.tipi_titolo_iva faranno nascere dalle automazioni dei guard *_require_attivo_*; `guard_coerenza` viene prima, quindi il messaggio che l''operatore legge e'' quello di dominio. I7 di brief-db-be-iva-risolutore-e-regime-cliente.';
+
+              DROP TRIGGER IF EXISTS trg_soggetti_titoli_iva_a10_guard_coerenza_ins_upd
+                  ON anagrafiche.soggetti_titoli_iva;
+              CREATE TRIGGER trg_soggetti_titoli_iva_a10_guard_coerenza_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_titolo_iva_id, plafond, ambito
+                  ON anagrafiche.soggetti_titoli_iva
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_titoli_iva_a10_guard_coerenza_ins_upd
+                  ON anagrafiche.soggetti_titoli_iva;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza();

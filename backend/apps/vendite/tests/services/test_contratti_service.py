@@ -624,6 +624,88 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(args[0], 1)
         self.assertEqual(args[1]["valido_al"], date(2026, 12, 31))
 
+    # Scopo: contratto ATTIVO -> i tre riferimenti dell'atto (CIG/CUP/commessa)
+    #        passano (I8/D9, decisione Q1 di Tid del 2026-08-29).
+    # ⭐ Sono l'ECCEZIONE al lock post-DRAFT, e la ragione e' di merito: non
+    #   toccano prezzo, validita' o perimetro, e non producono nessun effetto
+    #   finche' la fattura non ne fa lo snapshot (I4). Negli appalti PA il CIG
+    #   arriva quando arriva, e puo' arrivare a contratto gia' ATTIVO: negarlo
+    #   costringerebbe a creare un contratto nuovo PER UN PEZZO DI CARTA.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_attivo_ammette_codici_atto(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "stato_codice_interno": "ATTIVO",
+        }
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().update_contratto(1, {
+            "codice_cig": "1234567890ABCDE",
+            "codice_cup": "H51B09000000001",
+            "codice_commessa": "CONV-2026/17",
+        })
+
+        data = repo.update_contratto.call_args.args[1]
+        self.assertEqual(data["codice_cig"], "1234567890ABCDE")
+        self.assertEqual(data["codice_cup"], "H51B09000000001")
+        self.assertEqual(data["codice_commessa"], "CONV-2026/17")
+
+    # Scopo: stringa vuota su un riferimento dell'atto -> NULL, non ''.
+    # ⚠️ `feedback_null_vs_empty`: un '' sarebbe un valore che SEMBRA un codice,
+    #   e finirebbe nel blocco XML della FatturaPA come tag vuoto.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_codice_atto_vuoto_diventa_null(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().update_contratto(1, {"codice_cig": "   "})
+
+        data = repo.update_contratto.call_args.args[1]
+        self.assertIn("codice_cig", data)
+        self.assertIsNone(data["codice_cig"])
+
+    # Scopo: un CIG piu' lungo della colonna e' respinto dal service.
+    # ⚠️ Senza il guard arriverebbe come DataError del driver, cioe' come 500 con
+    #   un messaggio che nomina una colonna invece del campo compilato.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_codice_atto_troppo_lungo(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"codice_cig": "X" * 16})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_contratto.assert_not_called()
+
+    # Scopo: contratto CESSATO -> tutti i campi rifiutati (whitelist vuota),
+    #        i tre riferimenti dell'atto compresi: li' la regola e'
+    #        immutabilita' piena e l'eccezione di Q1 non arriva.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_cessato_rifiuta_codici_atto(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "stato_codice_interno": "CESSATO",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"codice_cig": "1234567890ABCDE"})
+        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+
     # Scopo: contratto CESSATO -> tutti i campi rifiutati (whitelist vuota).
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_contratto_cessato_rifiuta_qualsiasi_campo(self, repo_cls):
@@ -2934,6 +3016,11 @@ class ContrattiCatenaUpdateTests(TestCase):
         "valore_variazione_globale": "-5",
         "categoria_cliente_id_snapshot": 3,
         "fatturazione_immediata": True,
+        # Riferimenti dell'atto (I8/D9, 2026-08-29). Lunghezze entro i limiti
+        # delle colonne: VARCHAR(15) per CIG e CUP, VARCHAR(100) per la commessa.
+        "codice_cig": "1234567890ABCDE",
+        "codice_cup": "H51B09000000001",
+        "codice_commessa": "CONV-2026/17",
         "meta": {"nota": "guardrail"},
     }
 
@@ -2943,6 +3030,37 @@ class ContrattiCatenaUpdateTests(TestCase):
         "tipo_variazione_globale": "valore_variazione_globale",
         "valore_variazione_globale": "tipo_variazione_globale",
     }
+
+    # 0) ⭐ L'invariante su cui si regge il FRONTEND, e che nessuno vedeva.
+    #    `ContrattoDrawer.buildPayload()` costruisce il payload della PATCH, e
+    #    `handleSave` lo SPREADA dentro il payload di CREATE. La create BE
+    #    (`validate_allowed_keys` su `_CREATE_KEYS_TESTATA`) RIFIUTA l'intero
+    #    payload se contiene una chiave che non ammette — non la ignora.
+    #    Quindi ogni chiave accettata in UPDATE dev'essere accettata anche in
+    #    CREATE, oppure il drawer deve cancellarla esplicitamente prima di
+    #    spedire: altrimenti la creazione contratto smette di funzionare.
+    # ⛔ Oggi l'eccezione e' UNA SOLA e dichiarata: i tre riferimenti dell'atto
+    #    (I8/D9), che la whitelist della fn madre `vendite.fn_create_contratto`
+    #    non conosce ancora — vedi brief-db-fn-create-contratto-codici-atto.md.
+    #    Quando quel changeSet e' applicato, le tre chiavi entrano in
+    #    `_CREATE_KEYS_TESTATA`, questo set torna VUOTO e il `v-if` nel drawer
+    #    cade. Il test e' il segnalibro: si accorge sia di una nuova eccezione
+    #    non dichiarata, sia del momento in cui questa smette di servire.
+    def test_update_keys_accettate_anche_in_create_salvo_eccezioni(self) -> None:
+        from apps.vendite.services.contratti_service import (
+            _CODICI_ATTO,
+            _CREATE_KEYS_TESTATA,
+            _UPDATE_KEYS_TESTATA,
+        )
+
+        solo_update = set(_UPDATE_KEYS_TESTATA) - set(_CREATE_KEYS_TESTATA)
+        self.assertEqual(
+            solo_update, set(_CODICI_ATTO),
+            "Chiavi accettate in UPDATE ma non in CREATE. Il drawer spreda il "
+            "payload della PATCH dentro quello della create, e la create "
+            "rifiuta le chiavi ignote: o si aggiungono a _CREATE_KEYS_TESTATA, "
+            "o `ContrattoDrawer.buildPayload` deve escluderle esplicitamente.",
+        )
 
     # 1) Ogni chiave accettata ha un campione: è il gancio che costringe a
     #    passare di qui quando si allarga la whitelist.

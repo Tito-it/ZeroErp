@@ -149,6 +149,29 @@ export const AZIONE_GIORNALE_MAP = {
 
 const _AZIONE_DEFAULT = { severity: 'secondary', icon: 'pi pi-circle' }
 
+// Eventi del REGISTRO delle righe di commessa (`vendite.commesse_attivita_log`).
+// ⚠️ Le chiavi sono i CODICI del database, non nomi astratti: la funzione riceve
+// il codice grezzo, quindi devono combaciare.
+// ⛔ Vocabolario APERTO e posseduto dal DB: un evento nuovo non deve rompere
+// niente — cade sul default e resta visibile col proprio codice. Mai una lista
+// chiusa che faccia sparire ciò che non conosce.
+export const EVENTO_REGISTRO_COMMESSA_MAP = {
+  ONERE_AGGIUNTO: { severity: 'info', icon: 'pi pi-plus-circle' },
+  RIGA_MANUALE_ANNULLATA: { severity: 'danger', icon: 'pi pi-times-circle' },
+  // Il ritiro non è un errore: è il documento di origine che è stato annullato
+  // e si è portato via il lavoro non ancora emesso.
+  RIGA_RITIRATA_DA_SORGENTE: { severity: 'warn', icon: 'pi pi-undo' },
+  RIGA_RIPORTATA_DA_EMETTERE: { severity: 'warn', icon: 'pi pi-replay' },
+  ACCREDITO_RICHIESTO: { severity: 'info', icon: 'pi pi-money-bill' },
+  ACCREDITO_ANNULLATO: { severity: 'secondary', icon: 'pi pi-ban' },
+}
+
+// Scopo: Risolve severity+icon per un evento del registro commessa.
+//        Trim automatico, ripiego secondario sui codici non ancora mappati.
+export function eventoRegistroCommessaStyle(evento) {
+  return EVENTO_REGISTRO_COMMESSA_MAP[(evento || '').trim()] || _AZIONE_DEFAULT
+}
+
 // Scopo: Risolve severity+icon per azione giornale. Trim automatico, fallback secondario.
 export function azioneGiornaleStyle(azione) {
   return AZIONE_GIORNALE_MAP[(azione || '').trim()] || _AZIONE_DEFAULT
@@ -392,6 +415,60 @@ export const STATO_DOC_FISCALE_MAP = {
 }
 export function statoDocFiscaleSeverity(codice) {
   return resolveSeverity(STATO_DOC_FISCALE_MAP, codice)
+}
+
+// Stati della DISTINTA CONTABILE (`pagamenti.vendite_contabili_stati`):
+// BOZZA=grigio (si sta ancora digitando), IMPORTATA=azzurro (arrivata da un
+// flusso), VALIDATA=arancio, CHIUSA=verde (registrata), ANNULLATA=rosso.
+// ⭐ VALIDATA e' arancio e non azzurro di proposito: e' lo stato in cui la
+// distinta ASPETTA il gesto irreversibile — la registrazione — e l'arancio dice
+// «c'e' qualcosa da fare qui», che e' esattamente la verita'.
+export const STATO_DISTINTA_MAP = {
+  BOZZA: 'secondary',
+  IMPORTATA: 'info',
+  VALIDATA: 'warn',
+  CHIUSA: 'success',
+  ANNULLATA: 'danger',
+}
+export function statoDistintaSeverity(codice) {
+  return resolveSeverity(STATO_DISTINTA_MAP, codice)
+}
+
+// Stati della RIGA contabile (`pagamenti.vendite_contabili_righe_stati`), letti
+// per «che cosa deve fare l'operatore»:
+// IMPORTATA=grigio (nessuno l'ha ancora presa in mano) · DA_ABBINARE=arancio
+// (e' LA coda, chiede lavoro) · ABBINATA=azzurro (pronta, in attesa della
+// registrazione) · SOSPESA=rosso (uscita dal flusso, richiede risoluzione:
+// e' quella che non va dimenticata) · SCARTATA=grigio (chiusa senza effetto,
+// non e' un errore) · POSTATA=verde (registrata).
+// ⚠️ IMPORTATA e SCARTATA condividono il grigio, e non competono mai per
+// l'attenzione: una sta prima del lavoro, l'altra dopo che e' stato archiviato.
+export const STATO_RIGA_CONTABILE_MAP = {
+  IMPORTATA: 'secondary',
+  DA_ABBINARE: 'warn',
+  ABBINATA: 'info',
+  SOSPESA: 'danger',
+  SCARTATA: 'secondary',
+  POSTATA: 'success',
+}
+export function statoRigaContabileSeverity(codice) {
+  return resolveSeverity(STATO_RIGA_CONTABILE_MAP, codice)
+}
+
+// Stati di un ATTO DI SISTEMAZIONE (`pagamenti.sistemazioni.stato`):
+// BOZZA=arancio (una decisione presa e NON ancora eseguita: e' quella che
+// chiede il gesto successivo) · CONFERMATA=verde (il denaro si e' mosso) ·
+// ANNULLATA=grigio (scartata, resta a registro con la sua ragione).
+// ⚠️ ANNULLATA e' grigia e non rossa: scartare una decisione non e' un guasto,
+// e' un esito previsto — colorarla di rosso metterebbe in allarme per una cosa
+// che qualcuno ha deciso apposta.
+export const STATO_SISTEMAZIONE_MAP = {
+  BOZZA: 'warn',
+  CONFERMATA: 'success',
+  ANNULLATA: 'secondary',
+}
+export function statoSistemazioneSeverity(codice) {
+  return resolveSeverity(STATO_SISTEMAZIONE_MAP, codice)
 }
 
 // Classi di azionabilita' backlog fatturazione (Lente 2, DL-6/7):

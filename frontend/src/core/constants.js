@@ -23,6 +23,11 @@ export const DIALOG_WIDTH = {
 // Durata toast in millisecondi
 export const TOAST_DURATION = {
   SUCCESS: 3000,
+  // ⭐ L'informativo dura come il successo, e non come l'avviso: dice che una
+  // cosa È SUCCESSA («il lavoro è in coda», «lo stava già facendo un altro
+  // giro»), non che c'è qualcosa da guardare. Voce propria perché i due
+  // possano divergere senza che nessuno debba scegliere quale «riusare».
+  INFO: 3000,
   WARN: 4000,
   ERROR: 5000,
   SYSTEM_ERROR: 0,  // 0 = persistente, chiusura manuale
@@ -379,6 +384,12 @@ export const MANAGE_ICONS = {
   // stampe + allegati di una sorgente. Regola del 2: era hardcoded
   // `pi pi-folder-open` in LottoDrawer e FatturaDrawer.
   ARCHIVE: 'pi pi-folder-open',
+  // Correzione di un documento registrato: si apre un documento NUOVO che
+  // rovescia il primo. ⛔ Non `CONVERSIONI` (`pi-sync`), che nel progetto
+  // significa un'altra cosa — la conversione fra unita' di misura: prendere in
+  // prestito il nome di un'altra idea e' il modo in cui due gesti diversi
+  // finiscono per sembrare lo stesso.
+  CORREZIONE: 'pi pi-replay',
 }
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.

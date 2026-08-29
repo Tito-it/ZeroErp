@@ -172,6 +172,41 @@ Ogni handler (`BaseSourceHandler`) implementa:
 * validazioni forti su quantita`, prezzo e stato commessa modificabile;
 * nessun bypass diretto sorgente -> `attivita_fatturabili`.
 
+### ⭐ L'emittente della commessa non si passa: si deriva
+
+> Aggiunto il 2026-08-26 — cantiere «l'emittente della commessa è un invariante».
+
+L'emittente della commessa **si ricava dal cliente**, sempre, e da nessun'altra
+parte. Chi spinge un documento non lo dichiara: se lo dichiarasse uguale sarebbe
+ridondante, se lo dichiarasse diverso verrebbe respinto — e per questo il
+parametro è stato **tolto dalla firma** di `fn_get_or_create_commessa`.
+
+⛔ **Non è un dettaglio di comodo.** Quella colonna è la chiave con cui il
+sistema decide chi vede la commessa: la row security della tabella, il filtro
+del cruscotto competenza e il giornale degli eventi ci si appoggiano tutti.
+Con l'emittente sbagliato — o vuoto — la commessa non compariva sbagliata:
+**spariva**. Il lavoro restava nel database, non lo vedeva nessuno e non veniva
+mai fatturato.
+
+⚠️ E una commessa **non può aggregare due emittenti**: è l'emittente a decidere
+su quale registro la fattura verrà numerata, quindi documenti di emittenti
+diversi nella stessa commessa renderebbero falsa quella scelta per una parte
+delle righe. Il controllo sta sul collegamento della sorgente.
+
+⇒ Dettaglio completo, con i tre presidi:
+[gestione commesse § Di chi è una commessa](/guide/gestione-commesse).
+
+### ⚠️ E a monte: il cliente non cambia emittente dopo aver fatturato
+
+La fattura **congela** chi l'ha emessa (`emittente_soggetto_ruolo_id` e
+`emittente_snapshot`) e non lo cambia mai. Spostare il cliente su un altro
+emittente non riscriverebbe i documenti già emessi: li lascerebbe **orfani** —
+visibili a chi li ha emessi, ma senza più il cliente a cui si riferiscono.
+
+Per questo il legame cliente → emittente si corregge solo **finché non c'è
+storia**; dopo, la strada è una fornitura nuova presso l'altro emittente. Vedi
+[generazione cliente § L'emittente del cliente](/guide/generazione-cliente).
+
 ---
 
 ## Fase 2 - Governo stato commessa
@@ -822,7 +857,7 @@ rilancio dice all'operatore tutto ciò che manca al documento.
 
 > Sezione aggiunta il **2026-08-21**, quando la prima nota di credito è
 > esistita sui dati veri. Design-of-record:
-> [brief-design-note-credito-resi.md](../dev/work-in-progress/brief-design-note-credito-resi.md).
+> [brief-design-note-credito-resi.md](../dev/work-done/brief-design-note-credito-resi.md).
 
 Fino al 2026-08 il flusso copriva solo l'andata: sorgente → commessa → fattura →
 SDI. La nota di credito è il **ritorno del valore**, e sta al valore come il

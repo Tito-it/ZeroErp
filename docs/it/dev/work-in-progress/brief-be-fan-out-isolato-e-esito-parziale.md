@@ -34,7 +34,7 @@
 > era **vuota da sempre**, ha la sua prima riga: accredito dovuto 5, etichetta
 > DOVUTA, verificata a video. ⏸️ **DL-28 sospeso**: la metà «blocco parlante»
 > non è costruibile finché le righe a prezzo zero non sono ammesse
-> ([brief dedicato](brief-ddt-righe-senza-prezzo.md), decisione di Tid presa).
+> ([brief dedicato](../work-done/brief-ddt-righe-senza-prezzo.md), decisione di Tid presa).
 > Restano provabili: **DL-23** (da costruire), le **card DDT/RESI con i
 > drill-down**, la seconda metà di DL-28 e il ramo «reso in DRAFT» di DL-27.
 >
@@ -42,7 +42,7 @@
 > giornata (testata DDT non salvata in creazione, per due finestre distinte —
 > dettaglio in §13.2). E un cantiere nuovo: la coda accrediti è un **ramo
 > morto** senza il verbo che emette la nota di credito
-> ([brief-design-note-credito-resi.md](brief-design-note-credito-resi.md),
+> ([brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md),
 > decisioni di dominio già prese).
 >
 > **Stato al 2026-08-17, fine giornata — V2 quasi chiusa.** Fatti anche:
@@ -538,7 +538,7 @@ Checklist in ordine di rischio, derivata dalle decisioni DL-19..28:
   → **blocco parlante** all'emissione, non silenzio. E causale non fatturabile (es.
   CONTO_VISIONE) → fuori dalle card. **SOSPESO il 2026-08-17**: la metà «blocco parlante»
   non è provabile perché il caso **non è costruibile** — vedi il riquadro in fondo alla
-  sezione e [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md).
+  sezione e [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md).
   ⭐ **Aggiornamento 2026-08-19**: il lato DB è chiuso e applicato; il caso resta
   non costruibile solo perché il backend non usa ancora il nuovo resolver
   (richiesta BE-1). ✅ La metà
@@ -706,7 +706,7 @@ caricare, la metà «blocco parlante» del gate **non è mai scattata e non può
 scattare**: non è un gate sbagliato, è un gate che presidia una porta murata.
 
 **Decisione di Tid (2026-08-17): le righe a prezzo zero devono essere ammesse.**
-Perimetro e domande aperte in [brief-ddt-righe-senza-prezzo.md](brief-ddt-righe-senza-prezzo.md);
+Perimetro e domande aperte in [brief-ddt-righe-senza-prezzo.md](../work-done/brief-ddt-righe-senza-prezzo.md);
 va corretta anche la **premessa nel design-of-record**, che oggi descrive come
 esistente un caso che il prodotto non consente.
 
@@ -798,7 +798,7 @@ già — *«è 🟢 perché nessuna azione esiste oggi»*.
 verificabile ora (resta da confermare che il drill-down si apra: era il difetto
 della whitelist fail-closed); l'area RESI lo diventerà **con la slice NC**, e
 allora basteranno due celle di seed — vedi §6.1 di
-[brief-design-note-credito-resi.md](brief-design-note-credito-resi.md).
+[brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
 
 ### 13.3 Le due cose non-validazione — una chiusa, una aperta
 
@@ -815,7 +815,7 @@ allora basteranno due celle di seed — vedi §6.1 di
 
   | Dove | Cosa |
   | --- | --- |
-  | `docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md` | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` |
+  | ~~`docs/it/dbzero/pratiche/index.md` e il gemello `index.ci.md`~~ | 4 link morti: `vw_definizioni_drift.md` e `fn_pubblica_definizione.md` — ✅ **causa corretta nel generatore il 2026-08-26**, spariscono alla prossima rigenerazione (vedi sotto) |
   | `docs/it/dev/frontend/i18n-namespace-radici.md` | 1 àncora morta verso `frontend-standards.md#struttura-chiavi--radici-dei-namespace` |
 
   > ℹ️ **I 4 link morti non sono un contenuto sbagliato: è il generatore.**
@@ -825,6 +825,33 @@ allora basteranno due celle di seed — vedi §6.1 di
   > pagine sono sorelle — ma issato di un livello nell'index punta a una cartella
   > dove quel file non c'è. Il generatore non riscrive i link relativi quando li
   > sposta di cartella. Si corregge lì, una volta per tutti gli schemi.
+  >
+  > ✅ **CORRETTO IL 2026-08-26, dove diceva questo paragrafo**: in
+  > `scripts/gen_db_docs.py`. `extract_scopo` riceve ora la cartella dello schema
+  > e riscrive i link relativi nudi risolvendoli sulla sottocartella che contiene
+  > davvero il file — `funzioni/`, `views/`, `tabelle/` per `index.md`,
+  > `manual/` per `index.ci.md`, che sono **due bersagli diversi dalla stessa
+  > cartella**.
+  >
+  > ⭐ La riscrittura vive **dentro `extract_scopo`**, non nei quattro punti che
+  > la chiamano: la lettura dello «Scopo» è una sola, e quattro copie della
+  > stessa riscrittura sarebbero quattro occasioni di divergere.
+  > ⚠️ **Un nome non risolvibile si lascia com'è**: il generatore non inventa una
+  > destinazione. Meglio un link che il build segnala di uno che punta altrove.
+  >
+  > ⛔ **La doc NON è stata rigenerata**, ed è la regola: l'auto-gen si rigenera
+  > al suo giro, non a mano e non da qui. La correzione arriva ai due index di
+  > `pratiche` alla prossima rigenerazione.
+  > ⭐ **Provata comunque prima di fermarsi**: rigenerando in prova i due index
+  > il diff è **esattamente** i 4 link e nient'altro — che è anche la prova che
+  > il generatore, per il resto, è stabile — e su **tutti** gli schemi i link
+  > morti passano da **4 a 0**. La prova è stata poi annullata.
+  >
+  > 📌 **E il residuo era stato letto male, una volta.** Il 2026-08-26 un
+  > controllo automatico l'ha segnalato come *«link rotto in questo brief»*: ma
+  > il link qui sopra sta dentro un **esempio citato**, e citare non è linkare.
+  > Il difetto vero non era mai stato in questo file — era nel generatore, dove
+  > questo paragrafo diceva fin dall'inizio che fosse.
 
   ⚠️ **E una cosa che va saputa a proposito di questo residuo: non poteva
   validare nulla di questo cantiere.** `work-done/` e `work-in-progress/` sono

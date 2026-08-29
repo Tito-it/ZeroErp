@@ -1,0 +1,213 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L6c — Il cancello: una commessa non aggrega due emittenti (H4 / D-4)
+#   vendite.fn_guard_commessa_sorgente_emittente(...)     [fail-fast, DEFINER]
+#   vendite.trgfn_commesse_sorgenti_guard_emittente()     [trigger, INVOKER]
+#   trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd
+#   Piano: brief-db-emittente-commessa-invariante, L6 (§7.6.2)
+#
+# ── ⛔ IL NOME DEL TRIGGER E' SCELTO PER L'ORDINE ───────────────────
+#   Sulla tabella c'e' gia' trg_commesse_sorgenti_a10_guard_sorgente_ins_upd —
+#   il guard polimorfo, che verifica CHE IL DOCUMENTO ESISTA. I BEFORE ROW
+#   scattano in ordine alfabetico: con un nome tipo `...a10_guard_emittente_...`
+#   il nostro girerebbe PRIMA e proverebbe a risolvere il billing account di un
+#   documento che potrebbe non esistere, restituendo il nostro errore al posto
+#   del suo, che e' piu' preciso.
+#     trg_commesse_sorgenti_a10_guard_sorgente_ins_upd              <- esiste
+#     trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd   <- questo
+#   («i» < «o»: l'ordine e' quello giusto.)
+#
+# ── ⛔ IL GUARD STA SUL TRIGGER, NON DENTRO fn_link_commessa_sorgente
+#   Stessa ragione di L2: la funzione e' UNO scrittore, il trigger e' il
+#   vincolo. vendite.fn_link_commessa_sorgente NON si tocca affatto.
+#
+# ── ⭐ LA COPPIA check/guard E' IL MODELLO DI CASA ──────────────────
+#   fn_check_* -> boolean, nessun raise (20260826-44)
+#   fn_guard_* -> fail-fast, SECURITY DEFINER, compone la frase
+#   trgfn_*    -> INVOKER, delega e basta
+#   E' esattamente la disposizione di fn_check_ba_coppia_emittente_omogenea /
+#   fn_guard_albero_ba_emittente / trgfn_efba_guard_albero_emittente.
+#
+# ── ⛔ IL CODICE E' `TECNICO` ───────────────────────────────────────
+#   Oggi le sorgenti le collega il PUSH, non una persona: a quel valore non
+#   arriva nessun operatore, quindi niente `campo` e niente `bersaglio`.
+#   ⚠️ Da rivedere il giorno in cui il frontend offrira' un gesto «aggiungi
+#   questo documento alla commessa»: li' a scegliere sara' un operatore e la
+#   classe diventera' DATO_ERRATO. Scritto perche' non venga scoperto da capo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-45-create-trgfn-commesse-sorgenti-guard-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260826-45-create-trgfn-commesse-sorgenti-guard-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L6c / H4 / D-4: il cancello. Una sorgente si collega a una commessa solo se sta sullo
+        stesso emittente fiscale. ⛔ Sta sul TRIGGER e non dentro fn_link_commessa_sorgente,
+        che non viene toccata: la funzione e' uno scrittore, il trigger e' il vincolo.
+        ⛔ Il nome del trigger e' scelto per l'ORDINE: i BEFORE ROW scattano in ordine
+        alfabetico e `...guard_sorgente_omogeneita_...` viene DOPO `...guard_sorgente_...`, il
+        guard polimorfo che verifica l'esistenza del documento — al contrario, questo
+        proverebbe a risolvere il billing account di un documento fantasma e restituirebbe il
+        proprio errore al posto di uno piu' preciso. ⭐ Coppia check/guard/trgfn identica a
+        quella di anagrafiche (fn_check_ba_coppia_emittente_omogenea /
+        fn_guard_albero_ba_emittente / trgfn_efba_guard_albero_emittente). ⛔ Codice TECNICO:
+        oggi le sorgenti le collega il push, non una persona — niente `campo`, niente
+        `bersaglio`. Piano: brief-db-emittente-commessa-invariante, L6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'fn_check_commessa_sorgente_emittente_omogeneo'
+                     AND p.pronargs = 3;
+            # ⚠️ Il guard polimorfo deve essere gia' montato: e' quello che
+            #    garantisce l'esistenza del documento, e questo gli sta dietro.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_trigger t
+                    JOIN pg_class c ON c.oid = t.tgrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE NOT t.tgisinternal
+                     AND n.nspname = 'vendite'
+                     AND c.relname = 'commesse_sorgenti'
+                     AND t.tgname  = 'trg_commesse_sorgenti_a10_guard_sorgente_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_guard_commessa_sorgente_emittente(
+                  p_commessa_id      vendite.commesse.id%TYPE,
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_codice_commessa vendite.commesse.codice%TYPE;
+                  v_ba_commessa     anagrafiche.billing_account.id%TYPE;
+                  v_ba_sorgente     anagrafiche.billing_account.id%TYPE;
+                  v_codice_sorgente config.sorgenti.codice_interno%TYPE;
+                  v_ef_commessa     anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  v_ef_sorgente     anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fail-fast sull'invariante «una commessa non aggrega due
+                  --   emittenti». La DECISIONE sta nel check
+                  --   (fn_check_commessa_sorgente_emittente_omogeneo): qui si
+                  --   compone soltanto la frase che una persona legge.
+                  --
+                  -- ⚠️ SECURITY DEFINER: per il messaggio si rileggono
+                  --   vendite.commesse e la tabella del documento, che hanno la
+                  --   RLS. Da INVOKER il caso da bloccare sarebbe invisibile.
+                  -- =========================================================
+                  IF vendite.fn_check_commessa_sorgente_emittente_omogeneo(
+                         p_commessa_id, p_sorgente_tipo_id, p_sorgente_uid) THEN
+                      RETURN;
+                  END IF;
+
+                  -- Da qui in poi si sta solo componendo il messaggio: la
+                  -- logica e' gia' stata applicata dal check, e non si
+                  -- ricopia. E' la stessa disposizione di
+                  -- fn_guard_albero_ba_emittente, che ririsolve gli emittenti
+                  -- solo per nominarli nell'errore.
+                  SELECT c.codice, c.billing_account_id
+                    INTO v_codice_commessa, v_ba_commessa
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+
+                  SELECT s.codice_interno INTO v_codice_sorgente
+                    FROM config.sorgenti s WHERE s.id = p_sorgente_tipo_id;
+
+                  BEGIN
+                      v_ba_sorgente := script.fn_get_sorgente_billing_account_id(
+                                           p_sorgente_tipo_id, p_sorgente_uid);
+                      v_ef_sorgente := anagrafiche.fn_get_emittente_fiscale_id(v_ba_sorgente);
+                  EXCEPTION WHEN OTHERS THEN
+                      -- ⚠️ Il messaggio non deve MAI mangiarsi il verdetto: se
+                      --   la risoluzione fallisce qui, l'errore di dominio esce
+                      --   lo stesso con un «?» al posto dell'emittente.
+                      v_ef_sorgente := NULL;
+                  END;
+
+                  BEGIN
+                      v_ef_commessa := anagrafiche.fn_get_emittente_fiscale_id(v_ba_commessa);
+                  EXCEPTION WHEN OTHERS THEN
+                      v_ef_commessa := NULL;
+                  END;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'fn_guard_commessa_sorgente_emittente',
+                      'E_COMMESSA_SORGENTE_EMITTENTE_MISTO',
+                      jsonb_build_object(
+                          'commessa_id',             p_commessa_id,
+                          'codice',                  v_codice_commessa,
+                          'billing_account_commessa', v_ba_commessa,
+                          'sorgente_tipo_id',        p_sorgente_tipo_id,
+                          'sorgente_codice',         v_codice_sorgente,
+                          'sorgente_uid',            p_sorgente_uid,
+                          'billing_account_sorgente', v_ba_sorgente,
+                          'emittente_sr_commessa',   v_ef_commessa,
+                          'emittente_sr_sorgente',   v_ef_sorgente),
+                      NULL::uuid,
+                      COALESCE(v_codice_commessa, p_commessa_id::text),
+                      concat(COALESCE(v_codice_sorgente, p_sorgente_tipo_id::text), ' ', p_sorgente_uid),
+                      COALESCE(v_ef_commessa::text, '?'),
+                      COALESCE(v_ef_sorgente::text, '?'));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_guard_commessa_sorgente_emittente(bigint, bigint, text)
+              IS 'Guard fail-fast sull''invariante «una commessa non puo'' aggregare diversi emittenti insieme» (H4): la sorgente che si sta collegando deve stare sullo stesso emittente fiscale della commessa. Solleva E_COMMESSA_SORGENTE_EMITTENTE_MISTO nominando la commessa, il documento e i due emittenti. ⭐ La DECISIONE non e'' qui: sta in vendite.fn_check_commessa_sorgente_emittente_omogeneo, e questa funzione compone soltanto la frase — si condivide la funzione, non una copia della sua logica. E'' la stessa disposizione di anagrafiche.fn_guard_albero_ba_emittente, che ririsolve gli emittenti solo per nominarli nell''errore. ⚠️ SECURITY DEFINER: per comporre il messaggio rilegge vendite.commesse e la tabella del documento, che hanno la RLS — da SECURITY INVOKER il caso da bloccare sarebbe invisibile. ⚠️ Le due risoluzioni del messaggio sono avvolte in un blocco EXCEPTION: se falliscono, l''errore di dominio esce lo stesso con un «?» al posto dell''emittente — il messaggio non deve mai mangiarsi il verdetto. ⛔ Nessuna GUC di override e nessuna eccezione per il pregresso. Piano: brief-db-emittente-commessa-invariante, L6.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_sorgenti_guard_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Trigger sottile: delega e basta. Il DEFINER sta nel guard,
+                  -- perche' e' li' che si legge sotto RLS.
+                  PERFORM vendite.fn_guard_commessa_sorgente_emittente(
+                      NEW.commessa_id, NEW.sorgente_tipo_id, NEW.sorgente_uid);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_sorgenti_guard_emittente()
+              IS 'Trigger BEFORE INSERT / UPDATE OF (commessa_id, sorgente_tipo_id, sorgente_uid) su vendite.commesse_sorgenti: delega a vendite.fn_guard_commessa_sorgente_emittente. SECURITY INVOKER, sottile per scelta — il DEFINER sta nel guard, che e'' dove si legge sotto RLS. ⛔ Il nome del TRIGGER e'' scelto per l''ORDINE e non per l''estetica: sulla tabella c''e'' gia'' trg_commesse_sorgenti_a10_guard_sorgente_ins_upd (il guard polimorfo, che verifica che il documento ESISTA), i BEFORE ROW scattano in ordine alfabetico e «...guard_sorgente_omogeneita_...» viene dopo «...guard_sorgente_...». Al contrario, questo girerebbe per primo e proverebbe a risolvere il billing account di un documento fantasma, restituendo il proprio errore al posto di uno piu'' preciso. ⛔ Il guard sta qui e non dentro vendite.fn_link_commessa_sorgente — che non e'' stata toccata — per la stessa ragione del guard sulla commessa: la funzione e'' UNO scrittore, il trigger e'' il vincolo. Piano: brief-db-emittente-commessa-invariante, L6.';
+
+              CREATE OR REPLACE TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd
+                  BEFORE INSERT OR UPDATE OF commessa_id, sorgente_tipo_id, sorgente_uid
+                  ON vendite.commesse_sorgenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_sorgenti_guard_emittente();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_sorgenti_a10_guard_sorgente_omogeneita_ins_upd ON vendite.commesse_sorgenti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_commesse_sorgenti_guard_emittente();
+              DROP FUNCTION IF EXISTS vendite.fn_guard_commessa_sorgente_emittente(bigint, bigint, text);

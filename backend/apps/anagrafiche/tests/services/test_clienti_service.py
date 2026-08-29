@@ -217,6 +217,56 @@ class TestCreaClienteManuale(TestCase):
         # utility_id non deve essere passato a create_istanza_fittizia
         self.assertNotIn("utility_id", kwargs)
 
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_crea_cliente_senza_iva_id_non_inietta_default(self, mock_repo, _tx):
+        """I0/D7-bis: il payload senza `iva_id` crea il cliente, e nessuno
+        inietta piu' il parametro DEFAULT_IVA_ID.
+
+        ⭐ E' il caso che il difetto rendeva impossibile, ed e' proprio quello
+        che il payload NON porta: fino al 2026-08-29 il service riempiva
+        `iva_id` da solo perche' la colonna era NOT NULL senza default DB —
+        quindi ogni cliente nasceva con un codice IVA che nessuno aveva scelto,
+        e dopo il DROP della colonna l'INSERT falliva. Un test che passasse
+        `iva_id` esplicito non si accorgerebbe di niente.
+        """
+        repo = self._setup_repo(mock_repo)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        payload = _base_payload()
+        self.assertNotIn("iva_id", payload)
+        ClientiService().crea_cliente(payload)
+        repo.create_cliente.assert_called_once()
+        kwargs = repo.create_cliente.call_args.kwargs
+        for chiave in ("iva_id", "cliente_pa", "split_payment",
+                       "codice_cig", "codice_cup", "codice_commessa"):
+            self.assertNotIn(chiave, kwargs)
+        # Il lettore del parametro non esiste piu': se qualcuno lo reintroduce
+        # senza la colonna, l'INSERT torna a fallire.
+        # ⚠️ `assert_not_called` e non un `hasattr`: su un MagicMock `hasattr` e'
+        #    sempre vero, quindi la clausola sarebbe stata logica morta.
+        repo.get_default_iva_id.assert_not_called()
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_crea_cliente_scarta_le_sei_chiavi_migrate(self, mock_repo, _tx):
+        """Le sei chiavi di I0/I8 nel payload non arrivano a `create_cliente`.
+
+        ⚠️ Non sono chiavi ignote: sono quelle che il FE ha spedito per mesi.
+        Se rientrassero, l'INSERT nominerebbe colonne che non esistono piu' —
+        cioe' una 500 su ogni creazione cliente, che e' esattamente il difetto
+        che questa slice ha chiuso.
+        """
+        repo = self._setup_repo(mock_repo)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        ClientiService().crea_cliente(_base_payload(
+            iva_id=5, cliente_pa="S", split_payment="S",
+            codice_cig="A1", codice_cup="B2", codice_commessa="C3",
+        ))
+        kwargs = repo.create_cliente.call_args.kwargs
+        for chiave in ("iva_id", "cliente_pa", "split_payment",
+                       "codice_cig", "codice_cup", "codice_commessa"):
+            self.assertNotIn(chiave, kwargs)
+
     @patch(CLI_REPO)
     def test_crea_cliente_manuale_utility_pdp_bloccata(self, mock_repo):
         """Utility con richiede_pdp=true → creazione manuale bloccata."""
@@ -379,13 +429,16 @@ class TestUpdateCliente(TestCase):
         }
         from apps.anagrafiche.services.clienti_service import ClientiService
         result = ClientiService().update_cliente(1, {
-            "iva_id": 5, "cliente_pa": "S", "garanzia_importo": 500,
+            "modalita_pagamento_id": 5, "garanzia_tipo": "F", "garanzia_importo": 500,
         })
         self.assertTrue(result["updated"])
         repo.update_cliente_atomico.assert_called_once_with(
             1,
             ba_categoria_cliente_id=None,
-            cliente_fields={"iva_id": 5, "cliente_pa": "S", "garanzia_importo": 500},
+            cliente_fields={
+                "modalita_pagamento_id": 5, "garanzia_tipo": "F",
+                "garanzia_importo": 500,
+            },
         )
 
     @patch(CLI_REPO)
@@ -394,7 +447,7 @@ class TestUpdateCliente(TestCase):
         mock_repo.return_value.get_cliente.return_value = None
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
-            ClientiService().update_cliente(999, {"iva_id": 5})
+            ClientiService().update_cliente(999, {"modalita_pagamento_id": 5})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
     @patch(CLI_REPO)
@@ -478,14 +531,14 @@ class TestBaCategoriaF2BE04(TestCase):
         from apps.anagrafiche.services.clienti_service import ClientiService
         ClientiService().update_cliente(1, {
             "ba_categoria_cliente_id": 9,
-            "iva_id": 5,
+            "modalita_pagamento_id": 5,
         })
         repo.update_cliente_atomico.assert_called_once()
         kwargs = repo.update_cliente_atomico.call_args.kwargs
         self.assertEqual(kwargs["ba_categoria_cliente_id"], 9)
         # ba_categoria_cliente_id NON deve finire tra i campi cliente.
         self.assertNotIn("ba_categoria_cliente_id", kwargs["cliente_fields"])
-        self.assertEqual(kwargs["cliente_fields"]["iva_id"], 5)
+        self.assertEqual(kwargs["cliente_fields"]["modalita_pagamento_id"], 5)
 
     @patch(CLI_REPO)
     def test_update_cliente_categoria_invalida_zero(self, mock_repo):

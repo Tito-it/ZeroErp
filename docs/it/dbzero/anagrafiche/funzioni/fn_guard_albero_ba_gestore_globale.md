@@ -49,7 +49,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_guard_albero_ba_gestore_globale()
-IS 'Guard fail-fast per lo spostamento del gestore globale (is_default), l''unica operazione del cantiere con raggio N: cambia in blocco l''emittente di tutti i BA senza mapping specifico. Verifica i soli BA non mappati che stanno in un albero — se entrambi i lati di una coppia sono non mappati si spostano insieme e l''albero resta omogeneo (decisione Q3: la condizione e'' la COPPIA MISTA). SECURITY DEFINER: legge billing_account, che ha la RLS. Brief P-1 §11.3.';
+IS 'Guard fail-fast per lo spostamento del gestore globale (is_default), l''unica operazione del cantiere con raggio N: cambia in blocco l''emittente di tutti i BA senza mapping specifico. Verifica i soli BA non mappati che stanno in un albero — se entrambi i lati di una coppia sono non mappati si spostano insieme e l''albero resta omogeneo (decisione Q3: la condizione e'' la COPPIA MISTA). SECURITY DEFINER: legge billing_account, che ha la RLS. Brief P-1 §11.3. ⚠️ rev 2026-08-26: dal 20260826-48 quello stesso movimento ha un SECONDO cancello, anagrafiche.fn_guard_ba_gestore_globale_storia, che lo vieta se anche UN SOLO billing account non mappato ha gia'' fatture o commesse — cioe'', su un''installazione che ha gia'' fatturato, quasi sempre. Spostare il gestore globale li'' non e'' una configurazione da rivedere: e'' una riscrittura retroattiva della storia. ⭐ I due guard restano entrambi: questo chiede «l''albero puo'' diventare misto?», l''altro «c''e'' storia da proteggere?». Brief: brief-db-billing-account-cambio-emittente.';
 ```
 
 ---

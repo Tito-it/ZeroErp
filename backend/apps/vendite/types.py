@@ -169,9 +169,13 @@ class LottoFattureRow(TypedDict):
     soggetto_id: int
     ragione_sociale_completa: str | None
     id_fiscale_univoco_cf_piva: str | None
+    # ⭐ Il numero documento composto dalla SEDE UNICA
+    # (`vendite.fn_numero_documento_fattura`, 20260829-15): `numero - serie`,
+    # senza anno. NULL se non ancora numerata — il ripiego lo sceglie chi rende.
+    numero_documento: str | None
     # Natura del documento (FATTURA | NOTA_CREDITO | NOTA_DEBITO): un lotto ne
     # puo' contenere di diverse, quindi «N fatture» e' «N documenti».
-    natura_doc_codice: str | None
+    natura_doc_codice_interno: str | None
     natura_doc_descrizione: str | None
     # ⭐ L'ULTIMA segnalazione VIVA della fattura, DALLE PIU' GRAVI (D-6):
     # tutti i livelli, non solo i critici, e a parita' vince la gravita' prima
@@ -454,12 +458,48 @@ class PreventivoListRow(TypedDict):
     data_insert: str | None
 
 
+class CommessaRegistroEventoRow(TypedDict):
+    # Un evento del REGISTRO di una riga di commessa
+    # (`vendite.commesse_attivita_log`): risponde a «perche' questa riga e'
+    # cosi'» — chi, quando, con quale motivo.
+    #
+    # ⚠️ `evento` e' a vocabolario APERTO e lo possiede il database: oggi sei
+    # valori, domani di piu'. Qui non se ne dichiara nessuno e non si valida —
+    # chi rende risolve l'etichetta con ripiego sul codice grezzo, cosi' un
+    # evento nuovo si vede invece di sparire.
+    id: int
+    commessa_attivita_id: int
+    evento: str
+    # Il payload dell'evento, COM'E'. La forma cambia per evento e appiattirla
+    # nel backend vorrebbe dire rifarlo a ogni evento nuovo.
+    dettaglio: dict[str, object]
+    # ⭐ Estratto a parte perche' e' l'unica chiave che piu' eventi condividono
+    # ed e' la frase che l'operatore sta cercando.
+    motivo: str | None
+    data_insert: str | None
+    user_insert: str | None
+    # Contesto della riga: senza, un elenco di eventi non dice SU COSA sono
+    # successi. Arrivano dal JOIN che e' anche il cancello di scope.
+    segment_key: str | None
+    stato_emissione: str | None
+    tipo_movimento: str | None
+    articolo_codice: str | None
+    articolo_descrizione: str | None
+
+
 class PreventivoDetailRow(TypedDict):
     id: int
     uid: str
     numero: str
     rev: int
+    # ⭐ Tre domande diverse sulla stessa riga: il consumatore SCEGLIE, non deduce.
+    # Il perche' di ciascuna, con l'esempio che le distingue, sta accanto all'SQL
+    # che le proietta — `PreventiviRepository.get_preventivo`. ⚠️ Non si ricopia
+    # qui: due copie di una spiegazione divergono come due copie di codice, e
+    # quella accanto alla query e' quella che si legge quando serve.
     is_attiva: bool
+    is_superata: bool
+    has_next_revision: bool
     data: str
     stato_doc_preventivo_id: int
     stato_codice_interno: str
@@ -860,6 +900,42 @@ class DashCompetenzaMensileRow(TypedDict):
     valore_fatturato: str
     n_in_ritardo: int
     valore_in_ritardo: str
+    # ⭐ La dimensione arrivata col `20260826-55`: dentro `EMESSA_NON_FATTURATA`
+    # distingue il RESIDUO (chiede un'azione) dalle tre situazioni di transito
+    # (non chiedono niente). `None` sugli altri stadi.
+    motivo_non_fatturata: str | None
+
+
+class DashCompetenzaResiduoRow(TypedDict):
+    # Riga della lista dei RESIDUI (`ui.lista_definizione` 49) — le attivita'
+    # che una fattura non ce l'hanno piu' e che nessun giro riprendera' da solo.
+    # E' l'oggetto del verbo «Riporta da emettere».
+    #
+    # ⚠️ `attivita_fatturabile_id` e' la CHIAVE DEL VERBO e NON e' a catalogo:
+    # non si mostra, si passa a `vendite.fn_riporta_attivita_da_emettere`.
+    # E' dichiarato opzionale perche' il tipo descrive la vista, dove la colonna
+    # e' nullable (il caso `SENZA_ATTIVITA_FATTURABILE`); su questa lista, che
+    # filtra `motivo_non_fatturata = 'RESIDUO'`, e' sempre valorizzato — ma
+    # dichiararlo `int` qui direbbe una cosa piu' forte di quella che la
+    # sorgente garantisce.
+    attivita_fatturabile_id: int | None
+    commessa_attivita_id: int
+    commessa_id: int
+    commessa_codice: str | None
+    cliente_display: str | None
+    articolo_codice: str | None
+    articolo_descrizione: str | None
+    competenza_mese: str | None
+    data_attivita: str | None
+    quantita: str | None
+    valore: str | None
+    # ⛔ Il lotto di PROVENIENZA, non `lotto_id`: quello nasce dalla catena della
+    # fattura, e su un residuo la fattura non c'e' — sarebbe NULL proprio sulle
+    # righe di questa lista. Il legame vero e' `af.lock_batch_id`.
+    lotto_provenienza_id: int | None
+    lotto_provenienza_codice: str | None
+    motivo_non_fatturata: str | None
+    emittente_ragione_sociale: str | None
 
 
 class DashCompetenzaAttivitaRow(TypedDict):
@@ -972,6 +1048,59 @@ class DashCompetenzaGruppoRow(TypedDict):
     # colonna si spunta e resta vuota — che e' peggio di non averla, perche'
     # SEMBRA la garanzia che il flag `multi_emittente` pretende.
     emittente_ragione_sociale: str | None
+    # ═══ Il SEZIONALE che il documento prendera', e la data che portera' ═══
+    # (brief-db-registro-e-data-prevista-in-competenza, consegne L5/BE-1).
+    #
+    # ⭐ Non sono una previsione «parallela»: la vista li calcola con
+    # `fn_resolve_registro_documento`, che dal 2026-08-26 e' la STESSA funzione
+    # che `fn_build_fattura_key` usa per scrivere la chiave del documento vero.
+    # Lista e documento non coincidono perche' due implementazioni si comportano
+    # uguale, ma perche' e' un'implementazione sola.
+    #
+    # `registri_ids` porta TUTTI i sezionali toccati dal gruppo, e non e' una
+    # ridondanza di `registro_codice`: la chiave del gruppo non contiene tipo
+    # documento ne' natura — che sono colonne di RIGA — quindi un gruppo su piu'
+    # sezionali e' ammesso per costruzione, non e' un'anomalia. E' anche l'asse
+    # del filtro (D-5): un gruppo multi-sezionale deve comparire sotto ENTRAMBE
+    # le voci, e un filtro su `registro_codice` non potrebbe farlo perche' li'
+    # e' NULL.
+    # ⛔ La lista degli id NON esce nel payload: serve al WHERE del filtro e
+    # alla facet, che vivono entrambi nel repository. Esporla obbligherebbe a
+    # scegliere se tenere i NULL che `array_agg(DISTINCT)` conserva — con i
+    # NULL e' una lista scomoda, senza diverge da `registri_n` che invece li
+    # conta, e due numeri che rispondono «quanti sezionali» in modo diverso
+    # sono una domanda senza risposta.
+    registri_n: int
+    # ⚠️ NULL in DUE casi diversi, e il FE deve distinguerli:
+    #   · `registri_n > 1` -> il gruppo tocca piu' sezionali: non e' «non lo so»,
+    #     e' «sono piu' di uno». La frase la compone il BE (D-4), cosi' esce
+    #     anche nell'export, che condivide questa stessa proiezione;
+    #   · `registri_n = 0` -> non risolvibile (tipo documento non ancora scelto
+    #     su una riga DA_APPROVARE: il CHECK lo pretende solo da approvata e non
+    #     emessa). Cella vuota, ed e' onesto.
+    registro_codice: str | None
+    # Vuota dove il documento ESISTE GIA' (D-9): il join si aggancia su
+    # `fattura_riga_id IS NULL`. ⚠️ Il discriminante e' la riga di fattura, non
+    # lo stadio — `EMESSA_NON_FATTURATA` un documento non ce l'ha ancora.
+    data_documento_prevista: str | None
+
+
+class DashCompetenzaGruppoRegistroRow(TypedDict):
+    # Voce del filtro SEZIONALE della lista gruppi (facet, D-5).
+    # ⚠️ L'asse e' `registri_ids`, non `registro_codice`: un gruppo che tocca due
+    # sezionali va contato sotto ENTRAMBI, e con la seconda colonna sarebbe
+    # invisibile a tutte e due le voci (li' e' NULL).
+    # ⇒ Conseguenza dichiarata: la somma degli `n_gruppi` delle voci puo'
+    # SUPERARE il numero di gruppi del perimetro. Non e' un errore di conteggio,
+    # e' cio' che significa «un gruppo sta su due sezionali».
+    # `registro_id` NULL = voce dei gruppi con sezionale NON RISOLVIBILE, che e'
+    # l'assenza del valore e non un id sentinella (stessa forma della voce
+    # «cliente non determinabile» del facet clienti).
+    registro_id: int | None
+    codice: str | None
+    descrizione: str | None
+    n_gruppi: int
+    n_attivita: int
 
 
 class DashCompetenzaGruppoClienteRow(TypedDict):
@@ -1066,6 +1195,10 @@ class DashCompetenzaErroreRow(TypedDict):
     fattura_anno: int | None
     fattura_serie: str | None
     fattura_numero: int | None
+    # ⭐ Il numero documento dalla SEDE UNICA (20260829-15): `numero - serie`.
+    # ⚠️ Le tre colonne sopra RESTANO: sono ordinabili a catalogo e servono a
+    # chi filtra, non a chi legge. Questa serve a chi legge.
+    fattura_numero_documento: str | None
     task_code: str | None
     error_code: str | None
     messaggio: str | None
@@ -1089,7 +1222,7 @@ class LineageNodoRow(TypedDict):
     # Riga summary di vendite.vw_documento_lineage per un documento:
     # nodo + pratica collegata + frontiera forward + contatori genealogia.
     tipo_id: int
-    tipo_codice: str
+    tipo_codice_interno: str
     uid: str
     codice: str | None
     stato_codice_interno: str | None
@@ -1101,7 +1234,7 @@ class LineageNodoRow(TypedDict):
     pratica_numero: str | None
     n_pratiche: int
     frontiera_tipo_id: int | None
-    frontiera_tipo_codice: str | None
+    frontiera_tipo_codice_interno: str | None
     frontiera_uid: str | None
     frontiera_codice: str | None
     frontiera_stato_codice_interno: str | None
@@ -1116,12 +1249,12 @@ class LineageNodoRow(TypedDict):
     # commessa sono indistinguibili — il grafo e' nato quando `FATTURA` era una
     # cosa sola. NULL per tutti i tipi che non sono documenti fiscali.
     # (La descrizione NON si porta: il FE decodifica il codice via i18n come
-    # per `tipo_codice` — due sorgenti di etichetta divergerebbero.)
-    natura_doc_codice: str | None
+    # per `tipo_codice_interno` — due sorgenti di etichetta divergerebbero.)
+    natura_doc_codice_interno: str | None
     # Natura del nodo FRONTIERA (JOIN alla vista nodi): la frontiera puo'
     # essere una nota di credito — arco G dalla commessa — e senza questa il
     # pannello la etichetta «Fattura».
-    frontiera_natura_doc_codice: str | None
+    frontiera_natura_doc_codice_interno: str | None
 
 
 class LineagePassaggioRow(TypedDict):
@@ -1133,14 +1266,14 @@ class LineagePassaggioRow(TypedDict):
     arco: str
     ruolo: str | None
     from_tipo_id: int
-    from_tipo_codice: str | None
+    from_tipo_codice_interno: str | None
     from_uid: str
     from_codice: str | None
     from_stato_codice_interno: str | None
     from_fase: str | None
     from_doc_id: int | None
     to_tipo_id: int
-    to_tipo_codice: str | None
+    to_tipo_codice_interno: str | None
     to_uid: str
     to_codice: str | None
     to_stato_codice_interno: str | None
@@ -1148,11 +1281,11 @@ class LineagePassaggioRow(TypedDict):
     to_is_abortito: bool
     to_doc_id: int | None
     is_ramo_inverso: bool
-    # Natura dei due estremi (vedi `LineageNodoRow.natura_doc_codice`): e' cio'
+    # Natura dei due estremi (vedi `LineageNodoRow.natura_doc_codice_interno`): e' cio'
     # che permette a una tappa di dire «Nota di credito» invece di «Fattura»
     # per la seconda volta di fila.
-    from_natura_doc_codice: str | None
-    to_natura_doc_codice: str | None
+    from_natura_doc_codice_interno: str | None
+    to_natura_doc_codice_interno: str | None
 
 
 class FondoFatturaDaDecidereRow(TypedDict):

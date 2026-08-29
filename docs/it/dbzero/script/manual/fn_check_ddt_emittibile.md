@@ -27,15 +27,84 @@ sola — il pulsante «Emetti» risultava abilitato e il click falliva con 409.
 Con questa funzione capability e guard leggono **lo stesso verdetto** e non
 possono più divergere: al prossimo vincolo aggiunto, si aggiunge QUI e basta.
 
-### Le cinque condizioni (in ordine di restituzione)
+### Le sei condizioni (in ordine di restituzione)
 
 | # | asse | codice | quando |
 |---|---|---|---|
 | 1 | struttura | `E_DDT_EMISSIONE_SENZA_RIGHE` (543) | nessuna riga attiva — zero righe = niente da trasportare; il "solo trasporto" è righe **senza prezzo**, non zero righe |
 | 2 | intento | `E_DDT_CAUSALE_OBBLIGATORIA` (544) | `causale_trasporto_id` NULL — in bozza il NULL è legittimo (DL-28): il vincolo è all'emissione |
 | 3 | dati riga | `E_DDT_PREZZO_NON_RISOLVIBILE` (545) | causale **fatturabile** e almeno una riga attiva senza prezzo risolvibile (proprio o ereditato dall'ordine via fulfillment) |
+| **3-bis** | **valore riga** | **`E_DDT_RIGA_IVA_MANCANTE`** (1009) | ⭐ **rev 2026-08-28**: una riga attiva che porta un **prezzo** e non ha `iva_id`. ⚠️ **Non** condizionato alla causale — vedi il riquadro qui sotto |
 | 4 | testata | `E_INDIRIZZO_DOC_OBBLIGATORIO` | mancano indirizzi marcati obbligatori per l'ambito DDT |
 | 5 | componenti | `E_COMPONENTE_PREZZO_PENDENTE` / `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE` | ⚠️ **solo se la causale è fatturabile** (rev 2026-08-19): componenti BoM CASO A in approvazione o senza prezzo |
+
+> ## ⭐ Rev 2026-08-28 — chi porta un prezzo porta anche l'aliquota
+>
+> **La domanda che l'ha decisa**, posta da Tid: *«una riga di DDT senza `iva_id`
+> è ammessa a regime?»*. Risposta: **no** — e «impossibile» si traduce in **non
+> emittibile**. In bozza il NULL resta legittimo, esattamente come per la
+> causale al punto 2: il documento si lavora, e si dichiara completo quando esce.
+>
+> **Il difetto che chiude, ed era silenzioso.** `vendite.vw_ddt_righe_iva_base`
+> filtra `prezzo_unitario IS NOT NULL` e **non** filtra `iva_id`;
+> `vw_ddt_riepilogo_iva_dettaglio` aggrega per `(iva_id, aliquota_effettiva)` e
+> calcola l'imposta con `COALESCE(aliquota, 0)`. Una riga con prezzo e senza
+> aliquota produceva quindi una **riga di riepilogo con imponibile pieno, codice
+> IVA vuoto e imposta zero** — su un documento che si emette e si **stampa**.
+> Nessuno lo fermava: nessun altro punto guarda `iva_id`, e su
+> `vendite.ddt_righe` non esiste alcun trigger di default (l'unico che nomina la
+> colonna verifica soltanto che l'aliquota citata sia **attiva**, non che ci sia).
+>
+> ### ⭐ Il discrimine è il PREZZO, non la causale
+>
+> Per questo il controllo sta **fuori** dal ramo `IF COALESCE(v_fatturabile,
+> false)`, dove invece stanno i punti 3, 5 e 6. Metterlo dentro è la cosa che
+> *sembra ordinata*, e sarebbe sbagliata: la vista del riepilogo la causale **non
+> la guarda affatto**, quindi anche su un conto visione una riga valorizzata
+> entrerebbe nel conto con l'imposta a zero.
+>
+> > **Un vincolo deve avere lo stesso perimetro del consumatore che protegge.**
+>
+> In una riga: *c'è un prezzo, quindi c'è un valore, quindi serve un'aliquota* —
+> ed è lo stesso discrimine già scelto al punto 1, dove il «DDT di solo
+> trasporto» è dichiarato legittimo perché è fatto di righe **senza prezzo**.
+>
+> ### ⚠️ Si guarda `dr.prezzo_unitario`, non il `COALESCE` col fulfillment
+>
+> Il punto 3 risale il prezzo alla riga d'ordine; qui **no**, di proposito. Una
+> riga dal prezzo solo **derivato** non entra in `vw_ddt_righe_iva_base` (che
+> legge la sola colonna), quindi non ha il difetto: pretendere lì l'aliquota
+> bloccherebbe un documento sano.
+>
+> ⚠️ Che poi la vista **non conosca** il fulfillment è un'asimmetria vera — un
+> DDT da evasione ordine supera questo gate e stampa un riepilogo IVA vuoto — ma
+> è un'altra voce, di un altro perimetro: si cura insegnando il `COALESCE` alla
+> vista, non allargando questo punto.
+>
+> ### ⛔ Perché non un `NOT NULL` sulla colonna
+>
+> Sarebbe la forma letterale, e **non è disponibile in un passo**:
+> `vendite.ordini_righe.iva_id` è **nullable**, e `fn_genera_ddt_da_ordine` copia
+> quel valore tale e quale. Un `NOT NULL` su `vendite.ddt_righe.iva_id` avrebbe
+> fatto **fallire l'evasione di un ordine** ogni volta che la riga d'ordine non
+> ha l'aliquota — con un `23502`, cioè un errore tecnico muto, su un percorso che
+> funziona. Il NULL è ammesso lungo **tutta** la catena (`ordini_righe`,
+> `ddt_righe_componenti`, `ddt_righe`): chiudere l'ultimo anello senza chiudere i
+> primi non rende il dato obbligatorio, sposta il punto di rottura su chi non
+> c'entra.
+>
+> ⭐ *Un vincolo si mette dove il dato **si può fornire**, non dove il difetto si
+> vede.*
+>
+> ### ⛔ E non si riusa `fn_check_ddt_riga_richiede_prezzo`
+>
+> Risponde a un'altra domanda — *«questa riga appartiene a un documento che
+> **vende**?»* — che qui non si pone: riusarla condizionerebbe il controllo alla
+> causale, cioè il difetto descritto sopra.
+>
+> Piano: `brief-db-ddt-riconsegna-eredita-testata`, Fase C.
+
+---
 
 > ## ⚠️ Rev 2026-08-19 — anche i componenti seguono la causale
 >
@@ -68,6 +137,19 @@ possono più divergere: al prossimo vincolo aggiunto, si aggiunge QUI e basta.
   dell'array, ed espone l'array completo nel campo `reasons` dell'azione.
 - ⚠️ `vw_ddt_righe_iva_base` NON è riusabile per la condizione 3: filtra
   `prezzo_unitario IS NOT NULL`, perdendo proprio le righe da esaminare.
+  ⭐ Per la **3-bis** vale l'opposto, ed è coerente: lì la vista è il
+  **consumatore da proteggere**, quindi il controllo ne copia il perimetro
+  (`prezzo_unitario IS NOT NULL`) invece di ignorarlo.
+- ⚠️ **L'ordine dell'array è il contratto**: la capability mostra il **primo**
+  motivo. La 3-bis sta fra il prezzo e gli indirizzi — struttura, intento,
+  valore della riga, testata, componenti. Un ordine non scritto è un ordine che
+  il prossimo cambia senza accorgersene.
+- ⛔ **Aggiungere un motivo qui non basta**: va aggiunto anche il ramo nel guard
+  che lo solleva (per la 3-bis è
+  [`trgfn_ddt_guard_causale_emissione`](/dbzero/vendite/funzioni/trgfn_ddt_guard_causale_emissione)),
+  il codice nel catalogo `config.codici_errore` + `messaggi_errore`, **e la
+  `reason_key` nei locales del frontend** — che è la sede che si dimentica, e
+  che `scripts/check_i18n_keys.py` fa fallire in CI.
 
 ### Dipendenze DB
 
@@ -75,3 +157,11 @@ possono più divergere: al prossimo vincolo aggiunto, si aggiunge QUI e basta.
 `vendite.ordini_righe_fulfillment` + `vendite.ordini_righe` (eredità prezzo),
 `vendite.ddt_indirizzi` + `script.fn_indirizzi_obbligatori_mancanti`,
 `vendite.ddt_righe_componenti`.
+
+### Test
+
+`db/pgtap/vendite/test-fn-genera-ddt-riconsegna-eredita-v1.sql` (asserzioni
+13, 14, 15, 16) copre la condizione **3-bis** in tutte e quattro le
+combinazioni. ⭐ La **16** è quella che vale: *causale **non** fatturabile, riga
+**con** prezzo senza aliquota → rifiuta lo stesso.* È l'unica asserzione che si
+accorgerebbe se qualcuno spostasse la 3-bis dentro il ramo `fatturabile`.

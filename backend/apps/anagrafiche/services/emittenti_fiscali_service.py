@@ -212,13 +212,41 @@ class EmittentiFiscaliBillingAccountService:
         self._parent = EmittentiFiscaliService()
 
     # Scopo: Lista paginata mapping BA per un emittente con search.
-    #        Ogni riga arricchita con `can_remove=True` (Fase 4 — A7).
+    #        Ogni riga arricchita con `can_remove` (Fase 4 — A7).
     #        Il BA mapping non ha PATCH (solo CREATE/DELETE), quindi
     #        `can_update`/`can_configure` non sono applicabili: il pattern
     #        slot/override si limita a "esiste/non esiste". Espongo
     #        `can_remove` come capability esplicita per allineare la UI col
     #        pattern utility (delega gating al BE invece di derivarlo dalla
     #        presenza del record).
+    #
+    #        ⭐ E DAL 2026-08-27 QUELLA PROMESSA E' MANTENUTA. Fino a ieri
+    #        `can_remove` era scritto `True` a mano su ogni riga: da quando
+    #        un billing account con storia non cambia piu' emittente
+    #        (`20260826-49`) era diventata una promessa falsa, e l'operatore
+    #        scopriva il divieto premendo — dopo aver confermato un dialog.
+    #        Ora l'esito arriva da `script.fn_check_ba_cambio_emittente`,
+    #        cioe' dallo STESSO predicato che il database usa per rifiutare
+    #        (`linee-guida-sql` §12.5.2): tooltip e rifiuto non «coincidono
+    #        oggi», non possono divergere.
+    #        ⛔ La regola NON si ricalcola qui: il backend legge il motivo e
+    #        lo trasporta, non lo deduce.
+    #        ⭐ COPERTA ANCHE LA RIGA DEL GESTORE GLOBALE (`is_default`,
+    #        senza billing account), che fino al `20260827-03` cadeva su un
+    #        «non e' il mio caso» e restava accesa — ed e' la PRIMA della
+    #        lista, perche' il repository ordina `is_default DESC`.
+    #        ⛔ E la causa non era quella che il backend aveva ipotizzato
+    #        (il guard raggio N, `fn_guard_ba_gestore_globale_storia`): a
+    #        rifiutare la cancellazione e' prima di tutto il SINGLETON
+    #        (`trgfn_emittenti_fiscali_default_guard`), quindi quella riga
+    #        non si toglie MAI — con o senza storia. La gemella `fn_check_*`
+    #        del raggio N avrebbe dato un motivo CONDIZIONALE dove la
+    #        risposta e' secca, cioe' un tooltip che manda a cercare come
+    #        soddisfare una condizione che non esiste.
+    #        ⭐ Una sola `fn_check_*` per entrambe le specie di riga, e non
+    #        per pigrizia: con due, a dedurre «che tipo di riga e' questa»
+    #        sarebbe questo servizio — la regola ricalcolata fuori sede.
+    #        `brief-db-motivo-rimozione-mapping-ba`, N7.
     def list_mapping(
         self,
         emittente_id: int,
@@ -239,7 +267,19 @@ class EmittentiFiscaliBillingAccountService:
             order_dir=order_dir,
         )
         for row in rows:
-            row["can_remove"] = True
+            # `rimozione_blocco_reason` NULL = nessun motivo ostativo. Il
+            # motivo e la sua chiave i18n restano nel payload: li rende il
+            # frontend come tooltip del pulsante spento.
+            # ⛔ Accesso con `[...]` e non con `.get()`, ed e' deliberato: se
+            #    un domani la colonna sparisse dal SELECT, un `.get()`
+            #    risponderebbe `None` e riaccenderebbe OGNI pulsante — senza
+            #    che niente fallisca, che e' esattamente il difetto che questo
+            #    cantiere ha chiuso. Meglio una `KeyError` rumorosa: la
+            #    colonna e la sua lettura vivono nella stessa app e cambiano
+            #    insieme. ⚠️ Non e' il caso dei fratelli `utilities`, dove le
+            #    chiavi sono davvero opzionali (slot/override) e `.get()` e'
+            #    la lettura giusta.
+            row["can_remove"] = row["rimozione_blocco_reason"] is None
         return rows, total
 
     # Scopo: Crea un nuovo mapping BA->emittente.

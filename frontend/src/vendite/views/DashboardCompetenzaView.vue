@@ -9,6 +9,7 @@
 //        qui restano solo card stadi, pannello errori e drill-down.
 import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
@@ -28,6 +29,7 @@ import {
   exportDashboardCompetenzaCommesse,
   exportDashboardCompetenzaErrori,
   exportDashboardCompetenzaGruppi,
+  exportDashboardCompetenzaResidui,
 } from '../api/dashboardCompetenza'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
@@ -47,6 +49,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
 import { useJobPolling } from '../../core/composables/useJobPolling'
+import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { MODO_DATA_DOCUMENTO, STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { extractApiError } from '../../core/utils/apiError'
@@ -55,17 +58,21 @@ import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { approvaCompetenza } from '../api/commesse'
-import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lotti'
+import { getFatturazioneRun, runFatturazione } from '../api/lotti'
 import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
+import { checkRiportabili, riportaDaEmettere } from '../api/attivitaFatturabili'
 import {
   GRUPPI_CLIENTE_NON_DETERMINABILE,
+  GRUPPI_REGISTRO_NON_RISOLVIBILE,
   STADIO_GRUPPI,
+  STADIO_RESIDUI,
   useDashboardCompetenzaStore,
 } from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
+const router = useRouter()
 const notify = useNotify()
 
 // Provider readonly di area: con le azioni di processo (Fase A cockpit) il
@@ -94,6 +101,14 @@ const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lo
 // il vicolo cieco lo si scopre solo dopo averlo imboccato.
 const { isAllowed: canCambiareStatoCommessa } = useActionPermission('cambia_stato_commessa')
 const canNumerare = computed(() => canNumerareFatture.value && !areaReadonly.value)
+// Gate del verbo «Riporta da emettere»: permesso DEDICATO
+// (`config.azioni_processo` 33) + readonly d'area. ⛔ Non si riusa
+// `reset_lotto_fattura_draft`: legare un verbo di RECUPERO a chi puo'
+// CANCELLARE documenti sarebbe mettere insieme due mestieri diversi. Il gate e'
+// lo stesso dell'endpoint, e qui serve perche' senza permesso la selezione non
+// deve nemmeno comparire — una checkbox che porta a un 403 e' un vicolo cieco.
+const { isAllowed: canRiportareDaEmettere } = useActionPermission('riporta_da_emettere')
+const canRiportare = computed(() => canRiportareDaEmettere.value && !areaReadonly.value)
 const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
@@ -123,8 +138,20 @@ const {
   gruppiTipo,
   gruppiTipi,
   gruppiCliente,
+  gruppiRegistro,
+  gruppiRegistri,
+  gruppiPerimetroN,
+  gruppiFiltriApi,
   gruppiClienti,
   gruppiSearch,
+  residui,
+  residuiCount,
+  residuiPage,
+  residuiPageSize,
+  residuiLoading,
+  residuiLoaded,
+  residuiOrderBy,
+  residuiOrderDir,
   errori,
   erroriCount,
   erroriPage,
@@ -202,6 +229,11 @@ const cards = computed(() => {
     nFattureStato: cella.n_fatture_stato ?? 'NON_APPLICABILE',
     valoreDisplay: Number(cella.valore_display ?? 0),
     nInRitardo: cella.n_in_ritardo ?? 0,
+    // La quota che CHIEDE UN'AZIONE dentro lo stadio. Contratto simmetrico: il
+    // campo c'e' su ogni card e vale 0 dove non si applica — il FE rende, non
+    // deduce quali stadi ce l'abbiano.
+    nResidui: cella.n_residui ?? 0,
+    valoreResidui: Number(cella.valore_residui ?? 0),
     statiFattura: cella.stati_fattura ?? [],
   }))
 })
@@ -315,12 +347,26 @@ async function loadGruppi() {
   }
 }
 
-// Il drill-down della card «Da emettere» scende sui GRUPPI FATTURABILI, quello
-// delle altre card resta sulle commesse: ogni card scende sull'unita' del
-// proprio verbo. Un solo punto di smistamento, cosi' non puo' capitare che una
-// card carichi una lista e ne mostri un'altra.
+// Scopo: carica la pagina corrente dei RESIDUI del mese (drill-down della card
+//        «Emesse non fatturate»: le attivita' su cui si preme «Riporta da
+//        emettere»).
+async function loadResidui() {
+  try {
+    await store.fetchResidui(competenzaCorrente.value)
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  }
+}
+
+// Ogni card scende sull'unita' del PROPRIO verbo: «Da emettere» sui gruppi
+// fatturabili (si fattura un documento), «Emesse non fatturate» sui residui (si
+// riporta un'attivita'), le altre sulle commesse. Un solo punto di smistamento,
+// cosi' non puo' capitare che una card carichi una lista e ne mostri un'altra —
+// ed e' anche l'unico posto da toccare quando una card cambia unita'.
 function loadDrillDown() {
-  return stadioSelezionato.value === STADIO_GRUPPI ? loadGruppi() : loadCommesse()
+  if (stadioSelezionato.value === STADIO_GRUPPI) return loadGruppi()
+  if (stadioSelezionato.value === STADIO_RESIDUI) return loadResidui()
+  return loadCommesse()
 }
 
 // Scopo: carica la pagina corrente degli errori vivi del mese (blocco 4).
@@ -362,6 +408,10 @@ function selezionaStadio(stadio) {
   }
   store.resetCommesse()
   azzeraStatoGruppi()
+  // ⚠️ E la selezione dei residui: e' stato dell'operatore legato a UNA card, e
+  //    sopravvivere al cambio di card la renderebbe invisibile ma ancora
+  //    contata nel pulsante.
+  selezioneResidui.value = []
   stadioSelezionato.value = stadio
   // ⭐ Scegliere un'area la porta davanti: e' il senso della modifica.
   tabAttiva.value = TAB_AREA
@@ -429,43 +479,19 @@ function isGruppoEmittibile(row) {
   return row.commessa_emittibile !== false
 }
 
-// Gruppi attualmente IN LAVORAZIONE, per GIRO: `jobId → gruppo_key[]`. Non un
-// insieme piatto, e il motivo e' tutto qui: con piu' giri in volo la
-// conclusione del primo deve togliere le marcature SOLO sue: un insieme unico
-// si potrebbe unire all'avvio ma non sottrarre selettivamente alla fine, e il
-// secondo giro resterebbe senza segno mentre e' ancora vivo.
-// ⚠️ Dichiarata QUI e non piu' accanto ai verbi: alimenta `gruppiSelezionabili`
+// Gruppi attualmente IN LAVORAZIONE, per GIRO: `jobId → gruppo_key[]`.
+// ⭐ La macchina (mappa per giro + sostituzione invece di mutazione, con le due
+//    trappole che ne sono la ragione) e' stata estratta il 2026-08-27 nel BB
+//    `useRigheInGiro`: era la stessa che serviva alla lista Lotti per i lotti
+//    dentro un giro di numerazione. Qui resta il solo nome di dominio.
+// ⚠️ Dichiarato QUI e non piu' accanto ai verbi: alimenta `gruppiSelezionabili`
 // poche righe sotto, e in `<script setup>` una const usata piu' in alto e' una
 // TDZ silenziosa (memoria feedback_vue_watch_immediate_tdz).
-const gruppiInCorsoPerGiro = ref(new Map())
-
-// Scopo: marca/smarca i gruppi di UN giro. La mappa si sostituisce (mai mutata
-//        in place): un `.set`/`.delete` sull'istanza dentro il ref non cambia
-//        l'identita' dell'oggetto e Vue non riesegue i computed che ne
-//        dipendono — le righe resterebbero senza spinner con lo stato interno
-//        gia' avanti.
-function marcaGiro(jobId, gruppi) {
-  const mappa = new Map(gruppiInCorsoPerGiro.value)
-  mappa.set(jobId, gruppi)
-  gruppiInCorsoPerGiro.value = mappa
-}
-
-function smarcaGiro(jobId) {
-  if (!gruppiInCorsoPerGiro.value.has(jobId)) return
-  const mappa = new Map(gruppiInCorsoPerGiro.value)
-  mappa.delete(jobId)
-  gruppiInCorsoPerGiro.value = mappa
-}
-
-// Vista piatta per il template e per i predicati: `.has(gruppo_key)` resta
-// l'interfaccia di prima, chi la usa non sa che sotto c'e' una mappa.
-const gruppiInCorso = computed(() => {
-  const piatto = new Set()
-  for (const chiavi of gruppiInCorsoPerGiro.value.values()) {
-    for (const chiave of chiavi) piatto.add(chiave)
-  }
-  return piatto
-})
+const {
+  chiaviInGiro: gruppiInCorso,
+  marca: marcaGiro,
+  smarca: smarcaGiro,
+} = useRigheInGiro()
 
 // Selezionabile = testata emittibile E non gia' presa da un giro vivo. Il
 // secondo pezzo e' la difesa contro la sovrapposizione parziale, e deve stare
@@ -490,7 +516,12 @@ const selezioneGruppi = ref([])
 const {
   isSelected: isGruppoSelezionato,
   toggleRow: toggleGruppo,
-  allSelected: tuttiGruppiSelezionati,
+  // ⚠️ La terna «in pagina», non `toggleAll`/`anySelected`: questa lista e'
+  //    PAGINATA e la selezione vive attraverso le pagine. Vedi il blocco in
+  //    fondo a `useSelezioneToggle`.
+  allInPagina: tuttiGruppiSelezionati,
+  anyInPagina: alcuniGruppiSelezionati,
+  toggleAllInPagina: toggleTuttiGruppi,
 } = useSelezioneToggle({
   selected: selezioneGruppi,
   selezionabili: gruppiSelezionabili,
@@ -519,40 +550,6 @@ watch([gruppi, gruppiInCorso], ([rows]) => {
     (r) => !nonSelezionabili.has(r.gruppo_key),
   )
 })
-
-// ⚠️ `toggleAll`/`anySelected` del BB NON sono riusabili qui, ed e' il punto
-// meno ovvio di questa lista. Il BB nasce per dialog a lista INTERA (evasione
-// ordine, crea-reso): `toggleAll` fa `selected = [...selezionabili]`, cioe'
-// SOSTITUISCE la selezione. Su una lista PAGINATA questo significa che
-// spuntare «tutti» in pagina 2 butterebbe via quanto selezionato in pagina 1 —
-// silenziosamente, e l'operatore se ne accorgerebbe solo dal conteggio del
-// pulsante. Qui la selezione e' per chiave di dominio e vive attraverso le
-// pagine, quindi il seleziona-tutto opera SOLO sulla pagina corrente,
-// aggiungendo o togliendo e lasciando intatto il resto.
-const chiaviPagina = computed(() => gruppiSelezionabili.value.map((r) => r.gruppo_key))
-
-// Selezione parziale DELLA PAGINA (stato indeterminate della checkbox header).
-const alcuniGruppiSelezionati = computed(
-  () => !tuttiGruppiSelezionati.value
-    && gruppiSelezionabili.value.some((r) => isGruppoSelezionato(r)),
-)
-
-// Il seleziona-tutto di pagina opera sulle sole righe SELEZIONABILI: le
-// bloccate non entrano nemmeno dal toggle di massa.
-function toggleTuttiGruppi() {
-  if (tuttiGruppiSelezionati.value) {
-    const daTogliere = new Set(chiaviPagina.value)
-    selezioneGruppi.value = selezioneGruppi.value.filter(
-      (r) => !daTogliere.has(r.gruppo_key),
-    )
-    return
-  }
-  const gia = new Set(selezioneGruppi.value.map((r) => r.gruppo_key))
-  selezioneGruppi.value = [
-    ...selezioneGruppi.value,
-    ...gruppiSelezionabili.value.filter((r) => !gia.has(r.gruppo_key)),
-  ]
-}
 
 // Lotti prodotti dalle emissioni mirate: sono N per giro, non uno (un gruppo
 // con righe di tipo doc fiscale diverso finisce in lotti diversi). Alimentano
@@ -593,6 +590,143 @@ function registraLottiEmessi(lotti, competenza) {
 //    sparire da una lista in cui il lavoro e' ancora in corso.
 function azzeraStatoGruppi() {
   selezioneGruppi.value = []
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RESIDUI: selezione e verbo «Riporta da emettere».
+// ⭐ Ogni riga della lista e' selezionabile per costruzione: il BACKEND filtra
+//    `motivo_non_fatturata = 'RESIDUO'`, cioe' esattamente il perimetro del
+//    verbo. Non si ri-filtra qui — sarebbe una seconda implementazione di un
+//    predicato che vive nel database, e la divergenza sarebbe silenziosa.
+const selezioneResidui = ref([])
+const residuiSelezionabili = computed(() => residui.value ?? [])
+const {
+  isSelected: isResiduoSelezionato,
+  toggleRow: toggleResiduo,
+  // ⛔ La terna «in pagina», e la prima stesura aveva preso quella sbagliata:
+  //    `toggleAll` SOSTITUISCE la selezione con la pagina corrente, quindi
+  //    spuntare «tutti» a pagina 2 buttava via quanto spuntato a pagina 1 —
+  //    in silenzio, e con la lista sorella dei gruppi cento righe piu' su che
+  //    faceva gia' la cosa giusta.
+  allInPagina: tuttiResiduiSelezionati,
+  anyInPagina: alcuniResiduiSelezionati,
+  toggleAllInPagina: toggleTuttiResidui,
+} = useSelezioneToggle({
+  selected: selezioneResidui,
+  selezionabili: residuiSelezionabili,
+  rowKey: 'attivita_fatturabile_id',
+})
+
+const residuiSortOrder = computed(() => (residuiOrderDir.value === 'desc' ? -1 : 1))
+
+// Scopo: paginazione della lista residui. La selezione NON si azzera al cambio
+//        pagina: le chiavi sono di dominio, non indici di riga, e la selezione
+//        si compone su piu' pagine.
+function onResiduiPage(event) {
+  store.applyResiduiPage(event)
+  loadResidui()
+}
+
+function onResiduiSort(event) {
+  store.applyResiduiSort(event)
+  residuiPage.value = 1
+  loadResidui()
+}
+
+// Scopo: l'etichetta del motivo. ⚠️ `labelOrCode`: il vocabolario e'
+//        estensibile lato DB (e' gia' passato da tre a quattro valori), quindi
+//        un valore nuovo deve mostrarsi COM'E' invece di sparire — mai il path
+//        della chiave a video, mai una cella vuota.
+// Scopo: l'etichetta di un motivo OSTATIVO (quelli di `riportabili/`).
+// ⭐ Il patto dei tre livelli: il DB emette l'indirizzo (`reason_key`), il BE lo
+//    trasporta intatto, il FE lo risolve. Qui non si traduce un codice in una
+//    frase — si risolve l'indirizzo che arriva, e se il vocabolario cresce la
+//    frase nuova compare senza toccare il frontend. Il ripiego e' il `codice`,
+//    mai il path della chiave e mai una cella vuota.
+function motivoOstacoloLabel(motivo) {
+  return labelOrCode(t, te, motivo?.reason_key ?? '', motivo?.codice ?? '—')
+}
+
+function motivoLabel(codice) {
+  if (!codice) return '—'
+  return labelOrCode(
+    t, te,
+    `vendite.dashboard_competenza.motivo_${String(codice).toLowerCase()}`,
+    codice,
+  )
+}
+
+const riportoInCorso = ref(false)
+
+// Scopo: «Riporta da emettere» sulle righe spuntate — rimette il lavoro in coda
+//        di fatturazione. Sincrono: due scritture e una transazione lato DB,
+//        nessun job da seguire.
+// ⚠️ La conferma c'e' anche se l'azione e' REVERSIBILE (si rifattura e si e' al
+//    punto di prima): non protegge da un danno, dichiara quante righe sta per
+//    toccare — un verbo di massa che parte al primo click su una lista paginata
+//    e' il modo di riportare indietro piu' di quanto si e' guardato.
+function riportaSelezionati() {
+  const righe = [...selezioneResidui.value]
+  if (!righe.length) return
+  confirmAction({
+    header: t('vendite.dashboard_competenza.riporta_header'),
+    message: t('vendite.dashboard_competenza.riporta_conferma', { n: righe.length }),
+    acceptLabel: t('vendite.dashboard_competenza.riporta_header'),
+    onAccept: async () => {
+      riportoInCorso.value = true
+      try {
+        const ids = righe.map((r) => r.attivita_fatturabile_id)
+        // ⭐ SI RI-GUARDA PRIMA DI AGIRE, ed e' il catalogo a chiederlo: il
+        //    codice `E_ATTIVITA_GIA_DA_EMETTERE` porta scritto che incontrarlo
+        //    significa che l'elenco mostrato era invecchiato, e che il verbo va
+        //    gate-ato sui motivi invece di essere proposto sempre. Fra il
+        //    momento in cui la pagina si e' caricata e questo click puo' essere
+        //    passato un giro di fatturazione, o un altro operatore.
+        // ⚠️ Senza questo passo il rifiuto arriverebbe comunque — la madre DB
+        //    non si fida di nessuno — ma come UN errore per l'intero elenco,
+        //    che e' atomico: l'operatore non saprebbe QUALE riga lo ha fermato
+        //    ne' perche', e riproverebbe.
+        const check = await execute(() => checkRiportabili(ids))
+        if (check === null) return
+        const ostacoli = check.data?.data?.motivi ?? []
+        if (ostacoli.length) {
+          notify.warn(t('vendite.dashboard_competenza.riporta_ostacoli', {
+            n: ostacoli.length,
+            motivo: motivoOstacoloLabel(ostacoli[0]),
+          }))
+          // L'elenco era vecchio: si azzera e si ri-legge, invece di lasciare
+          // in mano una selezione che si e' appena dimostrata falsa.
+          selezioneResidui.value = []
+          await Promise.all([loadResidui(), store.fetchMensile()])
+          return
+        }
+        const res = await execute(() => riportaDaEmettere(ids))
+        // ⚠️ `res !== null` e non `if (res)`: un envelope valido puo' essere
+        //    falsy, e `useApiHandler` restituisce `null` SOLO in errore. Con
+        //    `if (res)` un esito legittimo verrebbe scambiato per un fallimento.
+        if (res === null) return
+        const d = res.data?.data ?? {}
+        const riportate = Number(d.riportate ?? 0)
+        if (riportate > 0) {
+          notify.success(t('vendite.dashboard_competenza.riporta_esito', {
+            riportate,
+            riemesse: Number(d.riemesse_attivita ?? 0),
+          }))
+        } else {
+          // ⛔ Zero riportate non e' un successo da annunciare in verde: vuol
+          //    dire che l'elenco a schermo era invecchiato.
+          notify.warn(t('vendite.dashboard_competenza.riporta_nulla'))
+        }
+        selezioneResidui.value = []
+        // Il lavoro e' uscito dai residui ed e' rientrato in «Da emettere»:
+        // vanno ricaricate ENTRAMBE le facce, o la card resta a raccontare il
+        // minuto prima.
+        await Promise.all([loadResidui(), store.fetchMensile()])
+      } finally {
+        riportoInCorso.value = false
+      }
+    },
+  })
 }
 
 const gruppiSortOrder = computed(() => (gruppiOrderDir.value === 'desc' ? -1 : 1))
@@ -686,6 +820,44 @@ const opzioniCliente = computed(() => {
   ]
 })
 
+// Voci del filtro SEZIONALE (facet dal BE, stesso perimetro base delle altre
+// due tendine: deve restare possibile cambiare sezionale senza prima azzerare
+// il filtro alla cieca).
+// ⚠️ La somma dei conteggi puo' SUPERARE il numero di gruppi del perimetro, e
+// non e' un errore: un gruppo che tocca due sezionali e' contato — e trovato —
+// sotto entrambi. Per questo la voce «Tutti» non somma le voci: «Tutti (46)»
+// starebbe sopra una lista di 39 righe.
+// ⛔ E NEMMENO dal `riepilogo`, che e' la prima cosa che viene in mente e che
+// SEGUE i filtri: scelto «Back-office», la voce «Tutti» scenderebbe a 32 —
+// cioe' direbbe 32 di un'opzione che, premuta, ne mostra 39. Il numero arriva
+// dal BE calcolato sul perimetro BASE, che e' lo stesso della facet.
+// ⚠️ La tendina dei CLIENTI somma le sue voci e fa bene: li' ogni gruppo sta
+// sotto una voce sola. La differenza non e' fra le due tendine, e' fra
+// partizione e appartenenza multipla.
+const opzioniRegistro = computed(() => {
+  const voci = gruppiRegistri.value.map((r) => {
+    if (r.registro_id === null || r.registro_id === undefined) {
+      return {
+        value: GRUPPI_REGISTRO_NON_RISOLVIBILE,
+        label: t('vendite.dashboard_competenza.registro_non_risolvibile', { n: r.n_gruppi }),
+      }
+    }
+    return {
+      value: r.registro_id,
+      label: `${r.codice || r.descrizione || r.registro_id} (${r.n_gruppi})`,
+    }
+  })
+  return [
+    {
+      value: null,
+      label: t('vendite.dashboard_competenza.registro_tutti', {
+        n: gruppiPerimetroN.value,
+      }),
+    },
+    ...voci,
+  ]
+})
+
 // Scopo: etichetta del gruppo — riferimento leggibile del documento
 //        (PRV-0012…) oppure, per gli oneri sourceless, la commessa che li
 //        contiene. Il BE risolve gia' il riferimento: qui solo il fallback.
@@ -749,6 +921,7 @@ const erroriConChiave = computed(() =>
 const listaErroriRef = ref(null)
 const listaGruppiRef = ref(null)
 const listaCommesseRef = ref(null)
+const listaResiduiRef = ref(null)
 const erroriPaginatorOptions = computed(() => ({
   totalRecords: erroriCount.value,
   rows: erroriPageSize.value,
@@ -761,6 +934,12 @@ const gruppiPaginatorOptions = computed(() => ({
   first: (gruppiPage.value - 1) * gruppiPageSize.value,
   rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
 }))
+const residuiPaginatorOptions = computed(() => ({
+  totalRecords: residuiCount.value,
+  rows: residuiPageSize.value,
+  first: (residuiPage.value - 1) * residuiPageSize.value,
+  rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
+}))
 const commessePaginatorOptions = computed(() => ({
   totalRecords: commesseCount.value,
   rows: commessePageSize.value,
@@ -768,12 +947,17 @@ const commessePaginatorOptions = computed(() => ({
   rowsPerPageOptions: PAGINATION.ROWS_OPTIONS,
 }))
 
-// Scopo: display compatto degli estremi fattura (serie numero/anno).
+// Scopo: display del numero documento della fattura in errore.
+// ⛔ Non compone: legge la sede unica (`vendite.fn_numero_documento_fattura`,
+// 20260829-15). Prima scriveva `serie numero/anno` — la terza forma delle tre
+// che il frontend aveva per lo stesso documento.
+// ⚠️ Due «vuoti» diversi e vanno tenuti distinti: nessuna fattura sull'evento
+// (`fattura_id` assente) e fattura non ancora numerata. Il secondo caso arriva
+// come NULL dal backend, ed e' giusto che si veda come il primo: da qui in poi
+// e' l'evento a non avere un documento da nominare.
 function fatturaDisplay(row) {
   if (!row.fattura_id) return '—'
-  const serie = row.fattura_serie ? `${row.fattura_serie} ` : ''
-  const numero = row.fattura_numero ?? '—'
-  return `${serie}${numero}/${row.fattura_anno ?? '—'}`
+  return row.fattura_numero_documento || '—'
 }
 
 // Azioni di lista (personalizza colonne + esporta). ⚠️ Questa pagina ha TRE
@@ -808,22 +992,41 @@ const contestoLista = computed(() => {
     return {
       lista: listaGruppiRef.value,
       exportFn: exportDashboardCompetenzaGruppi,
-      // ⚠️ TUTTI i filtri a video, cliente e ricerca compresi: un export che
-      // non corrisponde a cio' che si ha davanti e' peggio di nessun export —
-      // chi lo apre crede di avere quel perimetro e non ha modo di accorgersi
-      // che non e' cosi'. Il sentinella «non determinabile» si traduce qui
-      // esattamente come nello store: fuori viaggia solo il flag.
+      // ⚠️ TUTTI i filtri a video: un export che non corrisponde a ciò che si
+      // ha davanti è peggio di nessun export — chi lo apre crede di avere quel
+      // perimetro e non ha modo di accorgersi che non è così.
+      // ⛔ E per questo i filtri NON si ricompongono qui: li dà lo store, che è
+      //    lo stesso posto da cui li prende la lista. Finché erano due copie
+      //    hanno divergito davvero — il filtro sezionale è finito nella lista
+      //    e non nell'export, che avrebbe scritto un file con tutte le righe
+      //    mentre a video ne restavano 32 (rilievo 2026-08-26).
       params: (formato) => ({
         formato,
         competenza_mese: competenzaCorrente.value,
-        stadio: STADIO_GRUPPI,
-        tipo_gruppo: gruppiTipo.value,
-        ...(gruppiCliente.value === GRUPPI_CLIENTE_NON_DETERMINABILE
-          ? { ba_non_determinabile: true }
-          : { ba_fatturazione_id: gruppiCliente.value }),
-        search: gruppiSearch.value || null,
-        order_by: gruppiOrderBy.value,
-        order_dir: gruppiOrderDir.value,
+        ...gruppiFiltriApi(),
+      }),
+    }
+  }
+  // ⛔ Il ramo dei RESIDUI viene PRIMA di quello generico, e senza di lui la
+  //    card «Emesse non fatturate» cadeva nel ramo delle commesse: a video la
+  //    lista dei residui, e «Esporta» che scaricava le COMMESSE. E' il difetto
+  //    che il commento del ramo gruppi qui sopra dichiara di voler evitare —
+  //    «un export che non corrisponde a cio' che si ha davanti e' peggio di
+  //    nessun export» — rientrato dalla porta di servizio aggiungendo una lista
+  //    e dimenticando lo smistamento.
+  //    ⚠️ Anche «Personalizza colonne» ne dipende: puntava a `listaCommesseRef`,
+  //    che su questa card non e' nemmeno montata.
+  if (stadioSelezionato.value === STADIO_RESIDUI) {
+    return {
+      lista: listaResiduiRef.value,
+      exportFn: exportDashboardCompetenzaResidui,
+      // L'ordinamento a video entra nell'export: il file deve raccontare la
+      // stessa coda, nello stesso ordine di urgenza.
+      params: (formato) => ({
+        formato,
+        competenza_mese: competenzaCorrente.value,
+        order_by: residuiOrderBy.value,
+        order_dir: residuiOrderDir.value,
       }),
     }
   }
@@ -1094,31 +1297,16 @@ const { avvia: onFatturaMese, nGiriInCorso: nGiriMese, resume: resumeMese } = us
   },
 })
 
-// Verbo RENDI DEFINITIVE (C-7): card EMESSA_NON_FATTURATA. Numerazione di
-// perimetro (step DEFINITIVA sui lotti EMESSA del mese) — atto fiscale.
-const {
-  avvia: onRendiDefinitive, nGiriInCorso: nGiriNumera, resume: resumeNumera,
-} = useVerboFatturazione({
-  apiFn: runNumerazione,
-  keys: {
-    accodato: 'vendite.dashboard_competenza.numera_mese_accodato',
-    errore: 'vendite.dashboard_competenza.numera_mese_errore',
-    inCoda: 'vendite.dashboard_competenza.numera_mese_in_coda',
-  },
-  buildEsitoOk: (r) => {
-    const lotti = Number(r.lotti ?? 0)
-    const numerati = Number(r.numerati ?? 0)
-    const saltati = Number(r.saltati ?? 0)
-    const falliti = Number(r.falliti ?? 0)
-    // «saltato» = lotto processato ma NON transitato a DEFINITIVA (es. legacy
-    // senza step eseguibili): esito parziale quanto un errore, va mostrato.
-    if (falliti > 0 || saltati > 0) {
-      notify.warn(t('vendite.dashboard_competenza.numera_mese_esito_parziale', { numerati, saltati, falliti, lotti }))
-    } else {
-      notify.success(t('vendite.dashboard_competenza.numera_mese_esito', { numerati }))
-    }
-  },
-})
+// ⛔ IL VERBO «RENDI DEFINITIVE» NON VIVE PIU' QUI (2026-08-26). Agiva sui
+// LOTTI e stava accanto a un elenco di COMMESSE: per sapere cosa si stava per
+// rendere definitivo bisognava andarsene altrove. E' passato alla lista Lotti,
+// dove quell'elenco esiste e dove si puo' anche scegliere QUALI.
+// ⚠️ Qui resta il CONTEGGIO (`nDaNumerare`) e il rimando: la card deve
+// continuare a dire quante fatture aspettano un numero — e' l'informazione che
+// manda l'operatore dove il verbo adesso vive.
+// ⚠️ Non e' rimasto niente di spento: il verbo, il suo dialog e il suo polling
+// sono stati TOLTI, non lasciati inerti. Un percorso morto accanto a uno vivo
+// non si distingue leggendo, e il prossimo verbo non saprebbe quale imitare.
 
 // Verbo FATTURA MIRATA: stesso endpoint e stesso core del verbo di mese
 // (I-1), ma con il perimetro ristretto ai gruppi selezionati. Si ferma a
@@ -1213,7 +1401,6 @@ const {
 //     prenderanno il numero, e il dialog porta il PAVIMENTO del sezionale —
 //     senza, sul Back-office (politica FINE_MESE_COMPETENZA) ogni mese
 //     arretrato proporrebbe una data che il DB rifiuta.
-const dialogNumeraMese = ref(false)
 const dialogDataCreazione = ref({ visible: false, perimetro: '', esegui: null })
 
 // Scopo: apre il dialog della data prima di un verbo di CREAZIONE, portandosi
@@ -1238,14 +1425,6 @@ function onFatturaMeseClick() {
       apiOptions: dataDocumento ? { dataDocumento } : null,
     }),
   )
-}
-
-// Verbo «Rendi definitive competenza»: UNA data per l'intero atto (decisione 5
-// del brief), che vale per tutti i lotti che il giro numera.
-function confermaNumeraMese(dataDocumento) {
-  onRendiDefinitive({
-    apiOptions: dataDocumento ? { dataDocumento } : null,
-  })
 }
 
 // Scopo: avvia l'emissione mirata sui gruppi passati (una riga dal kebab,
@@ -1483,6 +1662,18 @@ const {
 const lottoDrawerVisible = ref(false)
 const lottoDrawerId = ref(null)
 
+// Scopo: porta alla lista Lotti sul MESE che si sta guardando — è dove vive
+//        «Rendi definitive» da quando ha lasciato questa schermata.
+// ⚠️ Il rimando porta la competenza e non «solo gli emessi»: il filtro di
+//    quella lista è sullo stato del LAVORO, non del documento. Quali righe si
+//    possano numerare lo dice la casella di selezione, riga per riga.
+function vaiAiLottiDaNumerare() {
+  router.push({
+    name: 'vendite-lotti',
+    query: { competenza: competenzaCorrente.value },
+  })
+}
+
 function apriLotto(lottoId) {
   if (!lottoId) return
   lottoDrawerId.value = lottoId
@@ -1525,7 +1716,6 @@ onActivated(() => {
   // arrivava mai. La fatturazione era avvenuta e da qui non si vedeva.
   // Idempotente: senza giri vivi non fa nulla (memoria feedback_keepalive_onactivated).
   resumeMese()
-  resumeNumera()
   resumeMirata()
 })
 </script>
@@ -1746,22 +1936,25 @@ onActivated(() => {
                 @click.stop="onFatturaMeseClick"
               />
             </span>
-            <!-- Verbo RENDI DEFINITIVE a grana mese (C-7): sulla card
-                 FATTURATA, dove stanno le fatture ancora EMESSA — cioe' quelle
-                 che questo verbo numera (fix difetto D2, §6-bis). Atto FISCALE
-                 (I-7): severity warn per distinguerlo dal pre-fiscale «Fattura».
-                 Loading = numerazione in corso (polling non bloccante). -->
+            <!-- ⭐ IL VERBO SE N'È ANDATO, e al suo posto c'è la strada per
+                 raggiungerlo (2026-08-26). «Rendi definitive» agisce sui LOTTI
+                 e viveva qui, accanto a un elenco di COMMESSE: per sapere cosa
+                 si stava per rendere definitivo bisognava andarsene altrove.
+                 Ora vive nella lista Lotti, dove quell'elenco esiste — e lì
+                 si può anche scegliere QUALI.
+                 ⛔ Il rimando porta con sé il FILTRO (mese + stato emessa): un
+                 collegamento all'elenco nudo sarebbe un passo indietro, non
+                 avanti. -->
             <Button
               v-if="card.stadio === 'FATTURATA' && nDaNumerare > 0 && canNumerare"
-              :label="t('vendite.dashboard_competenza.numera_mese')"
-              icon="pi pi-lock"
+              :label="t('vendite.dashboard_competenza.vai_ai_lotti', { n: nDaNumerare })"
+              icon="pi pi-external-link"
               size="small"
               severity="warn"
-              :loading="nGiriNumera > 0"
-              :disabled="azioneLoading || nGiriNumera > 0"
-              v-tooltip.bottom="t('vendite.dashboard_competenza.numera_mese_tooltip', { n: nDaNumerare })"
+              outlined
+              v-tooltip.bottom="t('vendite.dashboard_competenza.vai_ai_lotti_tooltip')"
               style="margin-top: 0.5rem;"
-              @click.stop="dialogNumeraMese = true"
+              @click.stop="vaiAiLottiDaNumerare"
             />
             <!-- Difetto D3 (§6-bis): «Emesse non fatturate» NON e' un passaggio
                  del percorso — pull e generazione righe fattura avvengono nello
@@ -1770,13 +1963,29 @@ onActivated(() => {
                  RESIDUI (AF sospese, posticipate, o rimaste indietro per un
                  giro interrotto). Dirlo evita che l'operatore aspetti un
                  avanzamento che non arrivera' da solo. -->
+            <!-- ⭐ LA CARD DICE DUE COSE, e sono due perche' hanno rimedi
+                 OPPOSTI. Dentro «Emesse non fatturate» ci sono quattro
+                 situazioni: il RESIDUO chiede un'azione, le altre tre — in
+                 attesa del lotto, giro in corso, senza attivita' fatturabile —
+                 chiedono di aspettare. Un numero solo per due rimedi opposti
+                 era il difetto: la guida diceva «se c'e' un numero, qualcosa si
+                 e' rotto», e non era vero per la parte in transito.
+                 ⛔ Il conteggio arriva dal BE (`n_residui`), non si deduce
+                 dalla lista: la lista e' paginata, e sommare la pagina darebbe
+                 un parziale che sembra un totale. -->
             <span
-              v-if="card.stadio === 'EMESSA_NON_FATTURATA' && card.nAttivita > 0"
+              v-if="card.stadio === STADIO_RESIDUI && card.nAttivita > 0"
               class="app-dash-residui-hint"
               v-tooltip.bottom="t('vendite.dashboard_competenza.residui_tooltip')"
             >
               <i class="pi pi-info-circle" />
-              {{ t('vendite.dashboard_competenza.residui_hint') }}
+              <template v-if="card.nResidui > 0">
+                {{ t('vendite.dashboard_competenza.residui_di_cui', { n: card.nResidui }) }}
+                · {{ formatCurrency(card.valoreResidui) }}
+              </template>
+              <template v-else>
+                {{ t('vendite.dashboard_competenza.residui_nessuno_da_recuperare') }}
+              </template>
             </span>
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />
@@ -1938,6 +2147,24 @@ onActivated(() => {
                       v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_cliente_tooltip')"
                       @change="applicaFiltroGruppi"
                     />
+                    <!-- Filtro SEZIONALE: quale registro fiscale prenderà il
+                         documento. ⚠️ Il valore è l'ID del registro, non il
+                         codice, ed è voluto: un gruppo che tocca più sezionali
+                         il codice non ce l'ha (a video legge «Più sezionali»),
+                         e deve comunque comparire scegliendo uno qualunque dei
+                         suoi. Il filtro lavora sull'insieme, non sull'etichetta.
+                         Niente `filter`: i sezionali sono pochi per costruzione
+                         — crescono con gli emittenti, non coi clienti. -->
+                    <Select
+                      v-model="gruppiRegistro"
+                      :options="opzioniRegistro"
+                      option-label="label"
+                      option-value="value"
+                      class="app-form-select"
+                      :placeholder="t('vendite.dashboard_competenza.filtro_registro')"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_registro_tooltip')"
+                      @change="applicaFiltroGruppi"
+                    />
                     <!-- Ricerca libera: risponde a «dov'è finito ORD0005174», che è
                          una domanda diversa da «dammi tutto di Rossi» — per quella
                          c'è il filtro qui accanto. Sotto i 3 caratteri il backend la
@@ -2079,7 +2306,7 @@ onActivated(() => {
                          al nome, dove l'occhio è già posato. -->
                     <i
                       v-if="gruppiInCorso.has(data.gruppo_key)"
-                      class="pi pi-spin pi-spinner app-dash-gruppo-in-corso"
+                      class="pi pi-spin pi-spinner app-spinner-in-corso"
                       v-tooltip.bottom="t('vendite.dashboard_competenza.gruppo_in_corso_tooltip')"
                     />
                   </template>
@@ -2110,6 +2337,34 @@ onActivated(() => {
                     <span v-else>—</span>
                   </template>
 
+                  <!-- IL SEZIONALE PREVISTO (FE-1). Lo slot si nomina sul
+                       `codice` della colonna a catalogo — `registro` — non sul
+                       `campo_sorgente` (`registro_codice`), che serve al dato.
+                       ⚠️ La frase del caso multi la ricompone il FE da
+                       `registri_n`, e NON legge quella che il BE ha messo nel
+                       campo: quella è italiana e serve all'export, che la
+                       lingua del richiedente non la sa. Le due non possono
+                       divergere perché dipendono dallo STESSO numero.
+                       ⚠️ Il vuoto è «—» e non la frase: `registri_n <= 1` col
+                       codice assente vuol dire «non lo so», che è un fatto
+                       diverso da «sono più di uno» — succede sui gruppi il cui
+                       tipo documento non è ancora stato scelto. -->
+                  <template #cell-registro="{ data }">
+                    <span
+                      v-if="Number(data.registri_n) > 1"
+                      class="app-dash-registro-multi"
+                      v-tooltip.bottom="t('vendite.dashboard_competenza.col_registro_multi_tooltip')"
+                    >
+                      <i class="pi pi-clone" />
+                      {{ t('vendite.dashboard_competenza.col_registro_multi', { n: data.registri_n }) }}
+                    </span>
+                    <span v-else>{{ data.registro_codice || '—' }}</span>
+                  </template>
+                  <!-- data_documento_prevista non ha slot: il seed dichiara
+                       `date_short`, e una data si formatta dove si formattano
+                       tutte le altre. Vuota dove il documento esiste già
+                       (D-9) — una previsione su un documento nato non ha senso. -->
+
                   <template #actions="{ data, compact }">
                     <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" :force-compact="compact" />
                   </template>
@@ -2122,6 +2377,121 @@ onActivated(() => {
                 <div v-else-if="gruppiLoaded" class="app-empty-state">
                   <i class="pi pi-check-circle" />
                   <p>{{ t('vendite.dashboard_competenza.nessun_gruppo') }}</p>
+                </div>
+              </template>
+
+              <!-- Card «Emesse non fatturate»: il drill-down scende sui RESIDUI,
+                   non sulle commesse. Motivo: qui il verbo e' «Riporta da
+                   emettere» e agisce su un'ATTIVITA' — la commessa aggregata
+                   non direbbe su cosa si sta per agire.
+                   ⚠️ La lista mostra MENO della card, ed e' voluto: lo stadio
+                   contiene quattro situazioni e solo `RESIDUO` chiede
+                   un'azione. Il numero grande e' «quanto lavoro e' fermo qui»,
+                   la lista e' «su cosa si puo' agire» — e la card lo dichiara
+                   con la riga «di cui N da recuperare». -->
+              <template v-else-if="stadioSelezionato === STADIO_RESIDUI">
+                <div class="app-page-toolbar">
+                  <h4 class="app-dash-fermi-title">
+                    {{ t('vendite.dashboard_competenza.residui_titolo') }}
+                  </h4>
+                  <!-- Il verbo di massa. Gate su permesso E readonly, come i
+                       fratelli; spento a selezione vuota. Il tooltip sta sul
+                       WRAPPER perche' un bottone disabilitato non riceve
+                       eventi del mouse — ed e' spento che il motivo serve. -->
+                  <span
+                    v-if="canRiportare"
+                    v-tooltip.bottom="t('vendite.dashboard_competenza.riporta_tooltip')"
+                    class="app-dash-fattura-wrap"
+                  >
+                    <Button
+                      :label="t('vendite.dashboard_competenza.riporta', { n: selezioneResidui.length })"
+                      icon="pi pi-replay"
+                      size="small"
+                      severity="warn"
+                      :loading="riportoInCorso"
+                      :disabled="selezioneResidui.length === 0 || riportoInCorso"
+                      @click="riportaSelezionati"
+                    />
+                  </span>
+                </div>
+                <ListaConfigurabile
+                  v-if="residuiCount > 0 || residuiLoading"
+                  ref="listaResiduiRef"
+                  codice="vendite.dash_competenza_residui"
+                  data-key="attivita_fatturabile_id"
+                  :rows="residui"
+                  :total="residuiCount"
+                  :loading="residuiLoading"
+                  :paginator-options="residuiPaginatorOptions"
+                  :page="residuiPage"
+                  :sort-field="residuiOrderBy"
+                  :sort-order="residuiSortOrder"
+                  @page="onResiduiPage"
+                  @sort="onResiduiSort"
+                >
+                  <!-- Selezione: chrome del BB (slot dedicato), non colonna di
+                       catalogo. PrimeVue 4 non ha piu' il predicato per-riga sul
+                       selectionMode, quindi la checkbox e' custom. -->
+                  <template v-if="canRiportare" #selection-header>
+                    <Checkbox
+                      binary
+                      :model-value="tuttiResiduiSelezionati"
+                      :indeterminate="alcuniResiduiSelezionati"
+                      :disabled="!residuiSelezionabili.length"
+                      @update:model-value="toggleTuttiResidui"
+                    />
+                  </template>
+                  <template v-if="canRiportare" #selection="{ data }">
+                    <Checkbox
+                      binary
+                      :model-value="isResiduoSelezionato(data)"
+                      @update:model-value="toggleResiduo(data)"
+                    />
+                  </template>
+
+                  <template #cell-commessa_codice="{ data }">
+                    {{ data.commessa_codice ?? `#${data.commessa_id}` }}
+                  </template>
+                  <template #cell-cliente_display="{ data }">
+                    {{ data.cliente_display ?? '—' }}
+                  </template>
+                  <template #cell-articolo="{ data }">
+                    {{ data.articolo_codice ?? '—' }}
+                  </template>
+                  <template #cell-articolo_descrizione="{ data }">
+                    {{ data.articolo_descrizione ?? '—' }}
+                  </template>
+                  <!-- ⭐ Il lotto di PROVENIENZA: risponde a «da dove viene
+                       questo residuo», che prima non si vedeva da nessuna
+                       parte. Non e' `lotto_id` — quello nasce dalla catena
+                       della fattura, e su un residuo la fattura non c'e'. -->
+                  <template #cell-lotto_provenienza="{ data }">
+                    <Button
+                      v-if="data.lotto_provenienza_id"
+                      link
+                      class="app-cell-link"
+                      :label="data.lotto_provenienza_codice ?? String(data.lotto_provenienza_id)"
+                      v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
+                      @click="apriLotto(data.lotto_provenienza_id)"
+                    />
+                    <span v-else>—</span>
+                  </template>
+                  <template #cell-motivo_non_fatturata="{ data }">
+                    <Tag :value="motivoLabel(data.motivo_non_fatturata)" severity="warn" />
+                  </template>
+                  <!-- competenza_mese, data_attivita e valore non hanno slot:
+                       il seed dichiara `date_short` e `currency_eur`. -->
+                </ListaConfigurabile>
+                <!-- ⚠️ `residuiLoaded` e non `!residuiLoading`: un empty-state
+                     positivo su una fetch mai riuscita direbbe «non c'e' niente
+                     da recuperare» quando invece non lo sappiamo. -->
+                <div v-else-if="residuiLoaded" class="app-empty-state">
+                  <i class="pi pi-check-circle" />
+                  <p>{{ t('vendite.dashboard_competenza.residui_vuoto') }}</p>
+                </div>
+                <div v-else class="app-empty-state">
+                  <i class="pi pi-inbox" />
+                  <p>{{ t('vendite.dashboard_competenza.residui_placeholder') }}</p>
                 </div>
               </template>
 
@@ -2240,13 +2610,5 @@ onActivated(() => {
       @conferma="confermaDataCreazione"
     />
 
-    <!-- FE-2: «Rendi definitive competenza» — UNA data per l'intero atto, col
-         pavimento del sezionale piu' restrittivo fra i lotti del mese. -->
-    <NumerazioneDataDialog
-      v-model:visible="dialogNumeraMese"
-      :competenza-mese="competenzaCorrente"
-      :n-lotti="nDaNumerare"
-      @conferma="confermaNumeraMese"
-    />
   </div>
 </template>

@@ -39,6 +39,8 @@ import Column from 'primevue/column'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
+import SaldoPanel from '../../core/components/SaldoPanel.vue'
+import { LIVELLO } from '../../core/composables/useSaldi'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
@@ -165,13 +167,25 @@ function apriStoria() {
 // assegna alla numerazione. Renderlo esplicito, mai una cella vuota: in un
 // documento fiscale un vuoto si legge come dato perso, non come stato del
 // processo.
-// Scopo: il numero fiscale in una stringa — «R1 1234/2026». Sede UNICA del
-//        formato: lo usano l'intestazione del documento corrente e i documenti
-//        collegati del legame (F5). Due copie mostrerebbero lo STESSO documento
-//        in due modi diversi nella stessa schermata alla prima modifica.
+// Scopo: il numero fiscale in una stringa — «1234 - R1».
+// ⛔ QUESTA NON E' PIU' LA SEDE DEL FORMATO, e la riga qui sopra diceva di
+//    esserlo: la sede e' `vendite.fn_numero_documento_fattura` (20260829-15), e
+//    qui si legge soltanto. La ragione per cui la sede dev'essere una sola non
+//    e' cambiata — due copie mostrerebbero lo STESSO documento in due modi
+//    diversi nella stessa schermata alla prima modifica — e' cambiato DOVE
+//    sta: nel database, dove la vedono anche il grafo e le altre schermate.
+// ⛔ QUI NON SI COMPONE PIU'. Il numero documento di una fattura ha UNA sede,
+// ed e' `vendite.fn_numero_documento_fattura` (20260829-15): forma
+// `numero - serie`, senza anno perche' accanto c'e' sempre la data. Prima
+// questa funzione ne produceva una sua (`serie numero/anno`), il drawer del
+// lotto un'altra e la dashboard competenza una terza — tre schermate, tre modi
+// di scrivere lo stesso documento.
+// ⚠️ Il ripiego resta QUI, e non a DB: il backend risponde NULL su un documento
+// non ancora numerato, e la frase da mostrare la sceglie chi rende — questa
+// dice «non numerata», il drawer del lotto un trattino. Un placeholder scritto
+// a DB avrebbe tolto la scelta a entrambi.
 function numeroDocumento(doc) {
-  if (!doc?.numero) return t('vendite.fatture.non_numerata')
-  return `${doc.serie ? doc.serie + ' ' : ''}${doc.numero}${doc.anno ? '/' + doc.anno : ''}`
+  return doc?.numero_documento || t('vendite.fatture.non_numerata')
 }
 
 const numeroDisplay = computed(() =>
@@ -182,7 +196,7 @@ const numeroDisplay = computed(() =>
 // il commento nel template. `FATTURA` è il default della colonna a DB, quindi
 // una testata senza natura è una fattura, non un dato mancante.
 const naturaNonOrdinaria = computed(() => {
-  const codice = fattura.value?.natura_doc_codice
+  const codice = fattura.value?.natura_doc_codice_interno
   return !!codice && codice !== NATURA_DOC.FATTURA
 })
 
@@ -206,9 +220,11 @@ const blocchiCollegati = computed(() => {
 })
 const haLegameRiga = computed(() => righe.value.some((r) => r.riga_rettificata_id))
 
-// Scopo: il documento collegato in una stringa sola — serie, numero e anno
-//        come li scrive `numeroDisplay` per il documento corrente, così i due
-//        si leggono uguale.
+// Scopo: il documento collegato in una stringa sola, scritto come
+//        `numeroDisplay` scrive il documento corrente — così i due si leggono
+//        uguale. ⭐ Adesso lo garantisce il backend e non piu' questo file:
+//        testata e legami portano entrambi `numero_documento` dalla stessa
+//        funzione DB.
 function documentoLabel(d) {
   const numero = numeroDocumento(d)
   return d.data ? `${numero} — ${displayDate(d.data)}` : numero
@@ -485,8 +501,8 @@ function onNoteSaved(total) {
                      totale negativo è il suo contenuto, non un difetto. -->
                 <Tag
                   v-if="naturaNonOrdinaria"
-                  :value="fattura.natura_doc_descrizione || fattura.natura_doc_codice"
-                  :severity="naturaDocSeverity(fattura.natura_doc_codice)"
+                  :value="fattura.natura_doc_descrizione || fattura.natura_doc_codice_interno"
+                  :severity="naturaDocSeverity(fattura.natura_doc_codice_interno)"
                 />
                 <Tag
                   v-if="fattura.stato_descrizione"
@@ -580,6 +596,22 @@ function onNoteSaved(total) {
             </TabList>
             <TabPanels>
               <TabPanel value="documento">
+          <!-- ⭐ IL SALDO PER PRIMO: «questa fattura e' stata pagata?» e' la
+               domanda per cui si apre questo drawer, e sta sopra i dati
+               anagrafici perche' e' quella che si fa entrando.
+               ⛔ DUE numeri e non tre (Q-6): l'«incassato» risponde a una
+               domanda di tesoreria, non a «questa fattura e' a posto?». Il
+               pannello lo sa mostrare — e' la stessa base — ma questa
+               schermata non lo accende.
+               ⚠️ Il pannello legge da se' e si rilegge al cambio di fattura:
+               il drawer e' un'istanza sola riusata cambiando `fatturaId`. -->
+          <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_saldo') }}</h4></div>
+          <SaldoPanel
+            :livello="LIVELLO.DOCUMENTO"
+            :riferimento-id="fatturaId"
+            :mostra="['residuo', 'in_lavorazione']"
+          />
+
           <!-- Cliente e Documento affiancati (`form-grid-2col`, collassa a una
                colonna su schermi stretti): due schede corte, nessuna ragione di
                incolonnarle su un drawer WIDE. -->

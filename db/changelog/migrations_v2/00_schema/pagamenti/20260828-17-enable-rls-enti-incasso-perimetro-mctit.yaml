@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO DEI CANALI DI INCASSO — passo S6-1 (lotto 10)
+#   pagamenti.enti_incasso
+#   Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
+#          §2.3-quater S6-1 · Richiesta e misure:
+#          brief-db-perimetro-canali-e-correzione-guidata.md §1 e §5
+#
+# ── 🔴 IL DIFETTO, IN UNA RIGA ───────────────────────────────────────
+#   `enti_incasso` porta `soggetto_ruolo_conto_bancario_id`: il conto su cui
+#   atterra il denaro di quel canale, cioe' **DI CHI SONO I SOLDI** prima che
+#   esista una fattura (D5). Quella tabella non aveva row security, quindi
+#   l'elenco dei canali — IBAN compreso — sarebbe stato comune a tutti gli
+#   emittenti. ⚠️ E si sarebbe visto come un DATO, non come un errore: una
+#   lista piu' lunga del vero non la mette in dubbio nessuno.
+#   ⭐ Trovato dal passo E-4 del brief BE/FE, che esisteva per questo.
+#
+# ── ⭐ SI ACCENDE SU UNA TABELLA VUOTA ───────────────────────────────
+#   Misurato il 2026-08-28: `enti_incasso` ha ZERO righe. Nessuna bonifica,
+#   nessun dato da correggere, nessun collaudo su popolazione mista: e' il
+#   momento piu' economico che esista per accendere una policy.
+#
+# ── 🔴 PERCHE' IL PREDICATO STA SUL CONTO, E NON SULL'ID DEL CANALE ──
+#   La richiesta proponeva `fn_scope_ef_whitelist_via_ente_incasso(user, id)`,
+#   che risolve l'emittente RILEGGENDO `enti_incasso` per quell'id. ⛔ Su una
+#   policy `FOR ALL` quella espressione vale anche per le righe NUOVE (senza
+#   `WITH CHECK`, PostgreSQL usa la `USING`), e dentro il comando che sta
+#   inserendo **la riga non e' ancora visibile**: la funzione risolve NULL, la
+#   canonica risponde false, e OGNI INSERT viene rifiutato.
+#   ⚠️ Non e' che «l'id non esiste ancora»: l'id c'e', lo mette il default. E'
+#   la RIGA a non essere visibile — stessa famiglia della trappola RLS+CTE.
+#   ⭐ Il predicato giusto sta sul CONTO: `soggetto_ruolo_conto_bancario_id` e'
+#   una colonna della riga, `NOT NULL`, e punta a una tabella SENZA row
+#   security. Vale identico in lettura e in scrittura, quindi `USING` e
+#   `WITH CHECK` dicono la stessa cosa e non ci sono due formulazioni della
+#   stessa regola da tenere allineate.
+#
+# ── ⚠️ `FOR ALL`, NON `FOR SELECT` ──────────────────────────────────
+#   La RLS nega cio' che nessuna policy permette: con la sola lettura la
+#   tabella diventerebbe di scrittura impossibile. E' la stessa scelta delle
+#   tre policy del lotto 6.
+#
+# ── ⚠️ UN BUCO CHE QUESTA POLICY EREDITA, E CHE NON E' SUO ──────────
+#   `script.fn_check_user_emittente_scope` risponde TRUE con l'utente a NULL
+#   (regola «job batch»). Con `app.current_user_id` vuota il congiunto di scope
+#   diventa vero e l'unico cancello resta `ruolo_applicativo = 'OPERATORE'`.
+#   ⛔ Ce l'hanno tutte e quattro le policy gia' in esercizio: si scrive perche'
+#   una policy in piu' sullo stampo e' il momento in cui lo stampo si guarda,
+#   non perche' questo changeSet lo cambi. Cambiare quella regola tocca ogni
+#   percorso batch del progetto.
+#
+# ── ⚠️ E IL PGTAP DEL PERIMETRO NON USA IL `FORCE` ──────────────────
+#   Col `FORCE ROW LEVEL SECURITY` il risolutore `SECURITY DEFINER` rientrerebbe
+#   sotto la policy che sta reggendo: sarebbe una ricorsione. E' la stessa nota
+#   del lotto 6, e vale identica qui.
+#
+# ⛔ Cosa NON si tocca, e il perche' e' misurato:
+#   * `centri_riscossione` -> NON ha nessuna colonna di emittente: e' condivisa
+#     per costruzione, non per svista. Una policy vorrebbe prima inventare un
+#     proprietario che il modello non ha;
+#   * `sepa_mandati` -> 0 righe, ZERO consumatori, e il predicato che sembra
+#     ovvio e' sbagliato: il suo `soggetto_ruolo_conto_id` e' il conto del
+#     CLIENTE da addebitare, quindi il perimetro giusto e' il billing account.
+#     Si decide quando quel cantiere si apre.
+#
+# Dipendenze: `script.fn_scope_ef_whitelist_via_sr` (gia' a catalogo).
+# Verifica: db/pgtap/rls/test-rls-pagamenti-perimetro.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20260828-17-enable-rls-enti-incasso-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20260828-17-enable-rls-enti-incasso-perimetro
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Accende la row security su pagamenti.enti_incasso, che porta il conto su cui atterra il
+        denaro di un canale — cioe' di chi sono i soldi prima che esista una fattura. Senza
+        policy l'elenco dei canali, IBAN compreso, era comune a tutti gli emittenti. La policy e'
+        FOR ALL con USING e WITH CHECK identici, e il predicato sta sul CONTO e non sull'id del
+        canale: un predicato che rilegge la propria tabella non vede la riga che il comando sta
+        inserendo, e avrebbe reso la tabella non scrivibile. Si accende su una tabella vuota:
+        nessuna bonifica.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pagamenti
+                tableName: enti_incasso
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist_via_sr';
+            # ⚠️ La policy si accende su una tabella VUOTA, ed e' meta' del suo
+            #    valore: se nel frattempo qualcuno ha creato dei canali, il
+            #    migrate si ferma e si decide guardando i dati, non al buio.
+            - sqlCheck:
+                expectedResult: 0
+                sql: SELECT COUNT(*) FROM pagamenti.enti_incasso;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.enti_incasso ENABLE ROW LEVEL SECURITY;
+
+              -- ⚠️ USING e WITH CHECK sono lo STESSO predicato, scritto una volta
+              --    per la lettura e una per la scrittura: PostgreSQL non ammette
+              --    di dichiararlo una volta sola su una policy FOR ALL, ma le due
+              --    espressioni devono restare identiche — se divergono, la tabella
+              --    mostra righe che poi non lascia scrivere.
+              CREATE POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_ruoli_conti_bancari src
+                           WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+                             AND script.fn_scope_ef_whitelist_via_sr(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     src.soggetto_ruolo_id)
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_ruoli_conti_bancari src
+                           WHERE src.id = enti_incasso.soggetto_ruolo_conto_bancario_id
+                             AND script.fn_scope_ef_whitelist_via_sr(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     src.soggetto_ruolo_id)
+                      )
+                  );
+
+              COMMENT ON POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+              IS 'Il perimetro dei CANALI di incasso: un operatore vede e scrive solo i canali il cui CONTO appartiene a un emittente del suo scope. ⭐ E'' D5 applicata alla configurazione: il canale porta il conto su cui atterra il denaro, cioe'' di chi sono i soldi prima che esista una fattura — senza questa policy l''elenco dei canali, IBAN compreso, sarebbe comune a tutti gli emittenti, e si vedrebbe come un dato e non come un errore. 🔴 Il predicato sta sul CONTO e NON sull''id del canale, e non e'' una preferenza: una espressione che rilegge `enti_incasso` per il proprio id non vede la riga che il comando sta inserendo — la funzione risolverebbe NULL, la canonica false, e ogni INSERT sarebbe rifiutato. ⚠️ USING e WITH CHECK sono lo stesso predicato scritto due volte perche'' PostgreSQL non permette di dichiararlo una volta sola: se divergono, la tabella mostra righe che poi non lascia scrivere. ⚠️ FOR ALL e non FOR SELECT: la RLS nega cio'' che nessuna policy permette, e con la sola lettura la tabella diventerebbe di scrittura impossibile. ⚠️ script.fn_check_user_emittente_scope risponde TRUE con l''utente a NULL (regola job batch): con app.current_user_id vuota l''unico cancello resta il congiunto sul ruolo applicativo — vale per tutte le policy di questo schema, e cambiarlo e'' un cantiere suo. S6-1 del cantiere incassi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP POLICY IF EXISTS rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso;
+              ALTER TABLE pagamenti.enti_incasso DISABLE ROW LEVEL SECURITY;

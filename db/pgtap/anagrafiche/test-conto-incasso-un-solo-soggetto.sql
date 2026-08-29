@@ -3,14 +3,18 @@
 -- pgTAP test per Zero ERP
 -- Test: un conto di INCASSO appartiene a UN SOLO soggetto
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 10):
 --  1) Riferimenti minimi presenti
 --  2) Il vincolo esiste, ed e' un'ESCLUSIONE
 --  3) Lo stesso conto INCASSO su un SECONDO soggetto e' rifiutato
 --  4) ⭐ Lo stesso conto INCASSO sullo STESSO soggetto, a livello di istanza,
 --     NON e' rifiutato — il caso che l'indice unico del piano avrebbe vietato
 --  5) Con un uso diverso il vincolo non parla: e' parziale
---  6) Assert finale cleanup
+--  6) ⭐ La SECONDA PORTA: il vincolo gemello a livello SOGGETTO esiste
+--  7) Lo stesso conto INCASSO su due SOGGETTI diversi e' rifiutato anche li'
+--  8) Con un uso diverso la seconda porta tace: e' parziale come la prima
+--  9) ⭐ Lo stesso conto sullo stesso soggetto NON e' rifiutato dall'esclusione
+-- 10) Assert finale cleanup
 --
 -- Scopo:
 --  - collaudare il pezzo che regge il perimetro degli incassi (S3-2, D5). La
@@ -25,8 +29,17 @@
 --    dichiarano legittima. Un vincolo che vieta piu' della sua regola si scopre
 --    il giorno in cui rifiuta qualcosa di giusto.
 --
+--  - ⭐ **dal 2026-08-25 le porte sono DUE** (test 6-9). Un conto entra da
+--    `soggetti_ruoli_conti_bancari` (ruolo) e da `soggetti_conti_bancari`
+--    (soggetto), e fino a quel giorno la regola era scritta solo sulla prima:
+--    lo stesso IBAN poteva essere dichiarato di incasso per due aziende
+--    diverse dalla seconda, senza che niente lo impedisse. Una garanzia che
+--    regge su una porta sola non e' una garanzia: e' una convenzione che
+--    nessuno ha ancora infranto.
+--
 -- Piano: docs/it/dev/work-in-progress/brief-db-posting-e-abbinamento-rata.md
---        §2.3 S3-2 · Decisione: brief madre D5 · lotto 6
+--        §2.3 S3-2 (lotto 6) · §3-bis e §6.16 la seconda porta (lotto 9)
+--        Decisione: brief madre D5 · la seconda porta: Tid, 2026-08-25
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE.
@@ -38,7 +51,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+SELECT plan(10);
 
 -- ============================================================
 -- Fixture — un conto nuovo, due soggetti-ruolo, una istanza utility
@@ -55,7 +68,17 @@ SELECT
   (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
     ORDER BY sr.id OFFSET 1 LIMIT 1)                           AS sr_secondo,
   (SELECT iu.id FROM anagrafiche.istanze_utilities iu
-    ORDER BY iu.id LIMIT 1)                                    AS istanza_utility_id;
+    ORDER BY iu.id LIMIT 1)                                    AS istanza_utility_id,
+  -- ⚠️ Per la seconda porta servono due SOGGETTI distinti, non due ruoli: il
+  --    vincolo gemello nomina il soggetto, e due ruoli possono essere dello
+  --    stesso soggetto — prenderli per buoni renderebbe il test verde per la
+  --    ragione sbagliata.
+  (SELECT sr.soggetto_id FROM anagrafiche.soggetti_ruoli sr
+    ORDER BY sr.id LIMIT 1)                                    AS sogg_primo,
+  (SELECT sr2.soggetto_id FROM anagrafiche.soggetti_ruoli sr2
+    WHERE sr2.soggetto_id <> (SELECT sr.soggetto_id FROM anagrafiche.soggetti_ruoli sr
+                               ORDER BY sr.id LIMIT 1)
+    ORDER BY sr2.id LIMIT 1)                                   AS sogg_secondo;
 
 SELECT ok(
   (SELECT bank_branch_id IS NOT NULL
@@ -63,8 +86,11 @@ SELECT ok(
           AND sr_secondo IS NOT NULL
           AND sr_primo <> sr_secondo
           AND istanza_utility_id IS NOT NULL
+          AND sogg_primo IS NOT NULL
+          AND sogg_secondo IS NOT NULL
+          AND sogg_primo <> sogg_secondo
      FROM tmp_refs),
-  'Riferimenti minimi presenti: filiale, due soggetti-ruolo distinti, una istanza utility'
+  'Riferimenti minimi presenti: filiale, due ruoli e due SOGGETTI distinti, una istanza utility'
 );
 
 -- Il conto su cui si contende.
@@ -151,7 +177,72 @@ SELECT lives_ok(
 ) FROM tmp_refs r CROSS JOIN tmp_conto c;
 
 -- ============================================================
--- 6. Cleanup
+-- 6-9. ⭐ LA SECONDA PORTA — `anagrafiche.soggetti_conti_bancari`
+-- ============================================================
+-- 🔴 Un conto entra da DUE porte, e fino al 2026-08-25 la regola era scritta
+--    su una sola: dalla seconda lo stesso IBAN poteva essere dichiarato di
+--    incasso per due aziende diverse. I quattro test qui sotto sono gli stessi
+--    2, 3, 5 e 4 di sopra, ripetuti sull'altra porta — perche' una garanzia
+--    vale quanto la porta piu' debole.
+SELECT is(
+  (SELECT con.contype::text
+     FROM pg_constraint con
+    WHERE con.conrelid = 'anagrafiche.soggetti_conti_bancari'::regclass
+      AND con.conname = 'ex_scb_conto_incasso_un_solo_soggetto'),
+  'x',
+  'ex_scb_conto_incasso_un_solo_soggetto esiste ed e'' un vincolo di ESCLUSIONE'
+);
+
+-- Il legame legittimo sulla seconda porta: il primo soggetto incassa li'.
+INSERT INTO anagrafiche.soggetti_conti_bancari
+    (soggetto_id, conto_bancario_id, uso, predefinito, verificato, bloccato,
+     storicizza, meta)
+SELECT r.sogg_primo, c.conto_id, 'INCASSO', false, false, false, false,
+       jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+  FROM tmp_refs r CROSS JOIN tmp_conto c;
+
+SELECT throws_ok(
+  format(
+    $sql$INSERT INTO anagrafiche.soggetti_conti_bancari
+            (soggetto_id, conto_bancario_id, uso, predefinito, verificato,
+             bloccato, storicizza)
+         VALUES (%L, %s, 'INCASSO', false, false, false, false)$sql$,
+    r.sogg_secondo, c.conto_id
+  ),
+  '23P01',
+  NULL,
+  'Lo stesso conto INCASSO su un SECONDO soggetto e'' rifiutato anche dalla porta del soggetto'
+) FROM tmp_refs r CROSS JOIN tmp_conto c;
+
+SELECT lives_ok(
+  format(
+    $sql$INSERT INTO anagrafiche.soggetti_conti_bancari
+            (soggetto_id, conto_bancario_id, uso, predefinito, verificato,
+             bloccato, storicizza)
+         VALUES (%L, %s, 'PAGAMENTO', false, false, false, false)$sql$,
+    r.sogg_secondo, c.conto_id
+  ),
+  'Sulla seconda porta un uso diverso passa: il vincolo e'' parziale come il gemello'
+) FROM tmp_refs r CROSS JOIN tmp_conto c;
+
+-- ⭐ E non e' piu' stretto della sua regola: il doppione sullo STESSO soggetto
+--    lo rifiuta l'UNIQUE (23505), non l'esclusione. Se rispondesse 23P01, il
+--    vincolo vieterebbe piu' di cio' che il dominio dice.
+SELECT throws_ok(
+  format(
+    $sql$INSERT INTO anagrafiche.soggetti_conti_bancari
+            (soggetto_id, conto_bancario_id, uso, predefinito, verificato,
+             bloccato, storicizza)
+         VALUES (%L, %s, 'INCASSO', false, false, false, false)$sql$,
+    r.sogg_primo, c.conto_id
+  ),
+  '23505',
+  NULL,
+  'Il doppione sullo STESSO soggetto lo ferma l''UNIQUE, non l''esclusione: la regola non e'' allargata'
+) FROM tmp_refs r CROSS JOIN tmp_conto c;
+
+-- ============================================================
+-- 10. Cleanup
 -- ============================================================
 SELECT ok(true, 'Cleanup: la transazione viene annullata, nessun residuo');
 

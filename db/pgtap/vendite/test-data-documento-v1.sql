@@ -13,7 +13,7 @@
 --  4) fn_data_operativa: fuso NON riconosciuto -> solleva, e la frase nomina il valore
 --  5) fn_data_operativa: parametro ASSENTE -> solleva
 --  6) fn_calcola_data_documento, politica OGGI
---  7) fn_calcola_data_documento, politica FINE_MESE_COMPETENZA -> ultimo del mese
+--  7) fn_calcola_data_documento, FINE_MESE_COMPETENZA -> ultimo del mese di competenza
 --  8) la data DICHIARATA sul lotto vince su ENTRAMBE le politiche
 --  9) FINE_MESE_COMPETENZA senza competenza -> solleva (nessun ripiego su oggi)
 -- 10) fn_imposta_data_documento_lotto: scrive la data e RIGENERA il piano rate
@@ -142,15 +142,34 @@ ON CONFLICT (id) DO UPDATE SET default_value = 'Europe/Rome';
 -- ============================================================
 SELECT is(
   vendite.fn_calcola_data_documento(
-      (SELECT reg_oggi FROM tmp_ddoc_reg), date '2026-07-01'),
+      (SELECT reg_oggi FROM tmp_ddoc_reg), date '2026-07-01', NULL),
   script.fn_data_operativa(),
   '6) politica OGGI -> la data operativa (la competenza non c''entra)');
 
+-- ⚠️ rev 2026-08-26: p_serie e' il TERZO argomento ed e' OBBLIGATORIO — senza
+--   di essa il clamp leggerebbe il contatore di un'altra sequenza. NULL
+--   significa «la serie di default del registro».
+-- ⭐ Su politica OGGI il clamp del limite di emissione e' un NO-OP per
+--   costruzione: la politica da' data_operativa() e il pavimento e'
+--   data_operativa() - giorni. Questo test resta quindi identico a prima.
+
+-- ⛔ LA COMPETENZA E' RELATIVA A OGGI, E NON E' PIGRIZIA. Con una competenza
+--   LETTERALE (era `2026-07-01` -> atteso `2026-07-31`) questo test diventava
+--   rosso da solo il 16/08/2026: da quel giorno il permesso della differita per
+--   luglio e' scaduto, e il clamp del limite di emissione risponde OGGI invece
+--   della fine competenza. La proprieta' da provare qui e' «la politica torna
+--   l'ultimo giorno del mese di competenza», e si prova sul mese CORRENTE —
+--   dove il permesso e' aperto per costruzione (oggi e' sempre prima del 15 del
+--   mese successivo) e il clamp non entra in gioco.
+--   ⚠️ Il caso opposto — permesso SCADUTO, quindi clamp a oggi — vive in
+--   test-limite-emissione-v1.sql, che e' il file di quel presidio.
 SELECT is(
   vendite.fn_calcola_data_documento(
-      (SELECT reg_finemese FROM tmp_ddoc_reg), date '2026-07-01'),
-  date '2026-07-31',
-  '7) politica FINE_MESE_COMPETENZA: competenza 2026-07 -> 31/07/2026');
+      (SELECT reg_finemese FROM tmp_ddoc_reg),
+      date_trunc('month', script.fn_data_operativa())::date,
+      NULL),
+  (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
+  '7) politica FINE_MESE_COMPETENZA: competenza del mese corrente -> ultimo giorno di quel mese');
 
 -- ⭐ La dichiarazione vince su ENTRAMBE, ed e' il senso della decisione «una
 --   data sola per l'intero atto»: un lotto puo' contenere documenti di registri
@@ -158,18 +177,25 @@ SELECT is(
 SELECT is(
   ARRAY[
     vendite.fn_calcola_data_documento(
-        (SELECT reg_oggi FROM tmp_ddoc_reg),     date '2026-07-01', date '2026-08-10'),
+        (SELECT reg_oggi FROM tmp_ddoc_reg),     date '2026-07-01', NULL, date '2026-08-10'),
     vendite.fn_calcola_data_documento(
-        (SELECT reg_finemese FROM tmp_ddoc_reg), date '2026-07-01', date '2026-08-10')
+        (SELECT reg_finemese FROM tmp_ddoc_reg), date '2026-07-01', NULL, date '2026-08-10')
   ],
   ARRAY[date '2026-08-10', date '2026-08-10'],
   '8) la data DICHIARATA vince su entrambe le politiche');
+
+-- ⛔ E rev 2026-08-26: la dichiarata vince ANCHE SUI DUE PAVIMENTI, e non e' una
+--   svista. Il clamp vale per il DEFAULT, il cancello vale per la
+--   DICHIARAZIONE: spostare in silenzio una scelta esplicita e' la classe di
+--   difetto che il cantiere della numerazione ha passato tre giorni a togliere.
+--   Il 10/08/2026 e' sotto il limite di emissione di oggi, e questo test lo
+--   pretende INVARIATO.
 
 -- ⛔ Nessun ripiego su oggi: una data plausibile e sbagliata su un documento
 --   fiscale non la nota nessuno, e quando la si nota il numero e' gia' stato
 --   consumato.
 SELECT throws_ok(
-  format($$ SELECT vendite.fn_calcola_data_documento(%s, NULL) $$,
+  format($$ SELECT vendite.fn_calcola_data_documento(%s, NULL, NULL) $$,
          (SELECT reg_finemese FROM tmp_ddoc_reg)),
   'P0001', NULL,
   '9) FINE_MESE_COMPETENZA senza competenza -> solleva, non ripiega su oggi');

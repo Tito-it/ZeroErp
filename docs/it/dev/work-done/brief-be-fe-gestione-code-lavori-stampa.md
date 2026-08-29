@@ -212,9 +212,92 @@ dalla vista completa governa (annulla/requeue) **i propri** job; l'admin vede e 
 | P-4 | «Ritenta» coda stampa | ✅ **CHIUSO**: fuori scope — il drainer ritenta già in automatico. |
 | P-5 | `is_mio` calcolato dal BE | ✅ **CHIUSO**: flag `is_mio` dal BE (confronto `scope_key`), come `PraticheCodaLavoro`. Vedi BE-1/FE-5. |
 | P-3 | Cadenza polling badge | ✅ **CHIUSO**: 60 s, sospeso quando la tab è nascosta (FE-1). |
+| P-6 | **Le liste delle code non si aggiornavano** | ✅ **CHIUSO 2026-08-27** — vedi §8 |
 
 ---
 
 *Brief vivo: chiudere gli step aggiornando la colonna Stato (⬜ → ✅ con data); a fine cantiere
 il documento passa in `work-done/` con il consuntivo. Nessuna azione DB dall'agent: il seed
 del permesso (§6) passa al team DB.*
+
+---
+
+## 8. Rientro del 2026-08-27 — le liste erano una fotografia
+
+> Il brief era chiuso. È stato riaperto per una riga, e la riga è questa: **P-3
+> aveva dato il polling al badge e non alle liste**. Non era una svista di
+> realizzazione, era il perimetro: il punto si chiamava *«cadenza polling
+> badge»*, e nessuno ha chiesto cosa facesse la lista sotto.
+
+### 8.1 Il rilievo
+
+Tid, in-app, durante il collaudo della numerazione:
+*«nella coda di stampa il lavoro in esecuzione non si vede, si vede solo quando
+ha finito»*, e poco dopo *«c'è voluto molto tempo prima che passasse in
+pending»*.
+
+### 8.2 Cosa succedeva davvero — tre cause, non una
+
+1. ⛔ **Le due schede non si aggiornavano**: caricavano al montaggio e al
+   «Ricarica» a mano, e nient'altro. Nessun timer. Mentre un piano più su il
+   badge della topbar si aggiornava da sé ogni 60 s (`useQueueCountsPolling`).
+   ⭐ **Due letture della stessa coda, una viva e una congelata**: il badge poteva
+   dire «2 lavori vivi» e la lista sotto, aperta da cinque minuti, non mostrare
+   niente.
+2. **La riga di stampa non esisteva ancora.** È creata *alla fine* del giro di
+   numerazione (`fn_accoda_stampe_lotto`, chiamata dal task), e quel giro parte
+   al tick del timer di systemd. Catena reale: click → `dbops.coda_lavori`
+   PENDING → `zeroerp-coda-lavori.timer` (**`OnCalendar=*:0/1`, ogni minuto**)
+   numera **e solo alla fine accoda le stampe** → `zeroerp-coda-stampa.timer`
+   (**`*:0/2`, ogni due minuti**) rende. Dal click alla comparsa in coda stampa
+   può passare **un minuto pieno**, e altri due prima del FATTO.
+3. **`IN_CORSO` non è uno stato osservabile.** I drainer sono **oneshot**: si
+   avviano, svuotano, escono. La finestra in cui una riga è `IN_CORSO` dura
+   millisecondi, e con un ricarico a mano non si prende praticamente mai —
+   mentre la UI lo presenta come uno stato guardabile (ha il suo colore in
+   `STATO_CODA_STAMPA_MAP`). Non è un difetto del codice: è un'aspettativa che
+   l'interfaccia crea e non può mantenere.
+
+### 8.3 Cosa è stato fatto
+
+| | Cosa |
+| --- | --- |
+| ⭐ nuovo BB · **`useRigheInGiro`** | `core/composables/`: quali RIGHE di una lista sono dentro un giro asincrono ancora vivo (mappa **per giro**, sostituita e mai mutata in place — le due trappole sono nel file). Estratto alla **3ª occorrenza** dalla lista gruppi del cruscotto competenza; consumer: `DashboardCompetenzaView` e `LottiListView`. Usato per la **rotellina di riga** sui lotti dentro un giro di numerazione. ⚠️ Non serve sulle liste code: là la riga **è** il lavoro e lo stato sta nel dato (`rigaCodaViva`), che è più forte — sopravvive al ricarico e vede i giri di altri operatori |
+| ⭐ nuovo BB | **`useRefreshPeriodico`** (`core/composables/`): ri-esegue un'azione a intervalli **finché la pagina è davanti all'operatore**. 15 s. Tre modi di «non essere davanti», presidiati tutti: tab del browser (`visibilitychange`), scheda KeepAlive (`onDeactivated`), smontaggio (`onUnmounted`); al ritorno in primo piano un giro **immediato**. Porta il **token di generazione** di `useQueueCountsPolling` contro le catene di polling parallele |
+| `useListaEmptyStateFetch` | opzione **`fetchList({ silent: true })`**: aggiorna **senza** accendere `loading`. ⚠️ Cambia solo lo spinner — il guard anti-race resta identico |
+| `CodaLavoriTab` · `CodaStampaTab` | una riga: `useRefreshPeriodico(() => load({ silent: true }))`. Il «Ricarica» a mano resta **rumoroso**: lì l'operatore ha chiesto una risposta e deve averla, anche quando è un errore |
+
+⛔ **Il ciclo di vita sta tutto nel BB, e non è un dettaglio di stile.** Poche ore
+prima, nello stesso giorno, `useJobPolling` aveva mostrato il costo della scelta
+opposta: si sospendeva da sé su `onDeactivated` e lasciava il `resume()` alla
+view. Il primo consumatore lo chiamava, il secondo se l'era dimenticato, e i due
+verbi «Rendi definitive» restavano **spenti per sempre** dopo un cambio scheda.
+
+> ⭐ **La regola che ne esce**: *ciò che un building block si prende in carico da
+> solo deve avere il suo **contrario** nello stesso posto.* Un contratto
+> annotato nel commento del composable lo rispetta il primo che lo legge e lo
+> dimentica il secondo — ed è successo con due consumatori su due.
+
+### 8.4 Cosa resta
+
+* ✅ **Il gemello è collassato** (stessa giornata, ok di Tid):
+  `useQueueCountsPolling` è stato riscritto sopra `useRefreshPeriodico`. Là
+  resta il dominio — endpoint, lettura dei conteggi, politica sugli errori;
+  la disciplina del timer è una sola per tutti.
+  ⭐ **E il secondo consumatore ha migliorato il BB**, che è il modo in cui si
+  vede se un'estrazione era giusta: sono nate due opzioni che la prima stesura
+  non aveva — **`abilitato`** (senza, dopo un 403 un rientro in primo piano
+  avrebbe **riacceso** il polling su un endpoint che aveva già detto di no) e
+  **`subitoAlMount`** (un contatore nasce vuoto, una lista no).
+  ⚠️ **API pubblica invariata**, e i quattro comportamenti delicati verificati
+  uno per uno: `refresh()` dopo un 403 resta inerte · `stop()` continua a
+  fermare tutto · il primo giro si sposta di un tick e basta · ⭐ e l'app aperta
+  in una **tab nascosta** ora non fa più la fetch iniziale a vuoto, ma riparte
+  al primo `visibilitychange` — l'unico cambiamento di comportamento, ed è in
+  meglio.
+* 🔵 **La cadenza dei timer di systemd** (`*:0/1` e `*:0/2`) rende il collaudo
+  lento. Stringerli in sviluppo è ambiente, non codice: non toccato.
+* 📌 **`IN_CORSO` invisibile** (§8.2 punto 3): oggi l'operatore non ha modo di
+  distinguere «sta lavorando» da «non è ancora partito». Con il refresh a 15 s e
+  drainer a 1-2 minuti la distinzione resta teorica. Se un giorno conterà, la
+  sede è il **worker**, non la lista.

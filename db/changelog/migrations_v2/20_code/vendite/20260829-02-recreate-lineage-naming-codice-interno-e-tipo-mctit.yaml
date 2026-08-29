@@ -1,0 +1,1883 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL NOME FEDELE: bonifica §6c + il CODICE DEL TIPO sul lineage.
+#
+# Due lavori in una passata sola, e non per comodita': toccano gli stessi
+# oggetti e chiedono lo stesso teardown. Farli separati vorrebbe dire
+# smontare e rimontare due volte l'intero grafo.
+#
+# ============ 1. LA BONIFICA §6c — un guardrail CI gia' ROSSO ========
+#
+# -- IL FATTO --------------------------------------------------------
+#   scripts/sql/check_naming_stato_codice.sql (passo CI, .github/workflows/
+#   ci-validate.yaml) scansiona le definizioni LIVE e FALLISCE sul pattern
+#   `codice_interno AS <x>_codice`. Lanciato il 2026-08-29 sul DB di sviluppo
+#   e' ROSSO su due viste:
+#     VIEW vendite.vw_documento_lineage_nodi   -> nd.codice_interno AS natura_doc_codice
+#     VIEW vendite.vw_fatture_lista            -> tdf.codice_interno AS tipo_doc_fiscale_codice
+#                                              -> ndf.codice_interno AS natura_doc_codice
+#   ⚠️ NON e' un rosso nuovo: i tre pattern arrivano dal 20260821-01 e dal
+#   20260824-15, cioe' precedono questo cantiere. Il 20260829-01 li ha
+#   RIPRODOTTI, non introdotti — il suo corpo era generato da pg_get_viewdef,
+#   quindi ha ricopiato fedelmente anche il difetto.
+#
+# -- ⛔ PERCHE' IL NOME NON E' UN DETTAGLIO ESTETICO ------------------
+#   §6c: `codice_interno` e' IMMUTABILE (lock) e serve alla logica; `codice` e'
+#   MODIFICABILE dall'utente ed e' solo display. Un alias che chiama `*_codice`
+#   il primo mente sulla sorgente: chi legge un `*_codice` e ci fa un confronto
+#   sta scrivendo un bug latente, e funziona finche' nessuno rinomina.
+#   ⚠️ Su config.sorgenti oggi `codice` e `codice_interno` COINCIDONO su tutte
+#   e 15 le righe. E' esattamente il «funziona per caso» che §6c descrive: non
+#   e' una rassicurazione, e' la ragione per cui il difetto e' invisibile.
+#
+# ============ 2. IL CODICE DEL TIPO — richiesta BE del 2026-08-29 ====
+#
+# -- COSA SERVE ------------------------------------------------------
+#   Il grafo esponeva il tipo del nodo SOLO come `tipo_id`, e ogni consumatore
+#   se lo traduceva da se' con lo stesso join a config.sorgenti: DIECI copie
+#   scritte a mano nel backend (sette repository di lista + due in
+#   vendite_repository). Una copia dimenticabile — e la lista resi lo aveva
+#   gia' dimostrato nascendo senza: colonna a catalogo, dato a database, e a
+#   video niente, senza nessun errore.
+#   ⭐ L'argomento vero non e' che sono dieci: e' che nella STESSA vista la
+#   natura esce come codice e il tipo no. Due attributi dello stesso nodo, due
+#   convenzioni diverse.
+#
+# -- ⛔ IL NOME CHIESTO NON SI POTEVA DARE, E LA RAGIONE E' LA (1) ----
+#   Il BE chiedeva esattamente `tipo_codice` / `frontiera_tipo_codice`, per non
+#   cambiare una riga a valle. Ma il valore che serve e'
+#   `config.sorgenti.codice_interno` — lo dichiara il BE stesso in
+#   lineage_views.py, e il FE lo usa per costruire la chiave i18n
+#   (`vendite.lineage.tipo_<codice>`) e per instradare il drawer: e' LOGICA,
+#   non display. Chiamarlo `*_codice` sarebbe il pattern A di §6c.
+#   ⭐ E c'e' un dettaglio che ribalta la richiesta: le dieci copie del backend
+#   sono TUTTE `s.codice_interno AS frontiera_tipo_codice`, cioe' dieci
+#   mislabel §6c — che nessuno vede perche' vivono in Python, e il guardrail
+#   scansiona solo le viste. Centralizzarle col nome chiesto le avrebbe
+#   spostate nell'unico posto dove il guardrail le vede: CI rosso al primo
+#   giro. Centralizzarle col nome FEDELE le cancella davvero.
+#   Nomi esposti: `tipo_codice_interno` e `frontiera_tipo_codice_interno`.
+#
+# -- ⚠️ COSA COSTA A VALLE, e perche' e' il momento giusto -----------
+#   Una rinomina meccanica di prop nel FE e nei repository. BE e FE toccano
+#   quei file COMUNQUE per togliere le dieci copie: farlo adesso e' una sola
+#   ondata invece di due.
+#
+# ============ 3. COME, e i tre punti da non sbagliare ================
+#
+# -- ⛔ DROP + CREATE, e l'ordine non e' estetico ---------------------
+#   Una vista non rinomina le proprie colonne: CREATE OR REPLACE puo' solo
+#   APPENDERE in coda. Quindi si smonta e si rimonta. L'ordine di DROP va dai
+#   consumatori alla base (7 liste -> fn -> lineage -> archi -> nodi) ed e'
+#   l'unico che funziona.
+#   ⚠️ NESSUN CASCADE: porterebbe via anche cio' che non sappiamo di avere, e
+#   la ricostruzione qui sotto non lo saprebbe rimettere.
+#
+# -- ⛔ I GRANT, che il DROP porta via -------------------------------
+#   Misurati PRIMA del teardown e ripristinati identici: zeroerp_app =
+#   SELECT/INSERT/UPDATE/DELETE su tutte e dieci le viste,
+#   zeroerp_batch_fatturazione = SELECT; sulla funzione EXECUTE a entrambi.
+#   Senza, l'applicazione smette di vedere il lineage fino al prossimo
+#   ci_apply — e ci_apply gira alle 21:00, non al migrate.
+#
+# -- ⚠️ IL SEED ui.lista_colonna: verificato, NON e' coinvolto --------
+#   L'unica riga di catalogo che nomina `natura_doc_codice` e' la id 494 della
+#   lista 45 (vendite.lotto_fatture), che ha `vista_sql` NULL: la alimenta il
+#   backend, non una di queste viste. Nessuna colonna di lista punta ai nomi
+#   che si rinominano qui. ⛔ Verificato PRIMA, perche' un `campo_sorgente` che
+#   non risolve piu' e' esattamente il difetto che il BE ha descritto: colonna
+#   a catalogo, dato a database, e a video niente — senza nessun errore.
+#
+# -- ⚠️ security_invoker=on su tutte e dieci ------------------------
+#   Reloption invisibile in pg_get_viewdef: dieci occasioni di perderla.
+#   Verificata prima e dopo, in transazione.
+#
+# Dipendenze: 20260829-01 (le sette liste con la natura di frontiera).
+# Cantiere: brief-db-lineage-residui-root-e-sorgente-ddt §3 (richiesta BE
+#           2026-08-29) + linee-guida-sql §6c.
+# Origine: corpi LEGGIBILI dai loro ultimi YAML (nodi 20260821-01, archi
+#          20260828-24, lineage 20260828-25, fn 20260821-04) per non perdere
+#          la prosa; le sette liste da pg_get_viewdef, che leggibili non sono
+#          mai state. Round-trip verificato sul risultato.
+# Verifica: db/pgtap/vendite/test-documento-lineage-v1.sql,
+#           db/pgtap/vendite/test-colonne-lineage-liste-v1.sql,
+#           scripts/sql/check_naming_stato_codice.sql (deve tornare VERDE)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-02-recreate-lineage-naming-codice-interno-e-tipo-mctit.yaml
+
+  - changeSet:
+      id: 20260829-02-recreate-lineage-naming-codice-interno-e-tipo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Bonifica naming §6c e codice del tipo, in un teardown solo. I mislabel `codice_interno AS
+        *_codice` (natura_doc_codice, tipo_doc_fiscale_codice) rendono ROSSO il guardrail CI
+        check_naming_stato_codice.sql, e precedono questo cantiere (20260821-01, 20260824-15).
+        Nella stessa passata arriva il codice del tipo chiesto dal BE - con nome FEDELE
+        (tipo_codice_interno, frontiera_tipo_codice_interno) e non `tipo_codice`: il valore e'
+        config.sorgenti.codice_interno, che il FE usa come logica, e le dieci traduzioni a mano
+        del backend erano tutte mislabel §6c nascoste in Python. DROP+CREATE perche' una vista non
+        rinomina le proprie colonne; GRANT misurati prima e ripristinati; nessun CASCADE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_nodi
+            # ⛔ «20260829-01 prima di questo»: il corpo delle sette liste qui sotto
+            #    contiene gia' la natura di frontiera. Senza, questo changeSet la
+            #    introdurrebbe di straforo, senza il suo presidio.
+            - sqlCheck:
+                expectedResult: 7
+                sql: |
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name LIKE 'vw\_%\_lista'
+                     AND column_name = 'frontiera_natura_doc_codice'
+            # ⚠️ E il seed NON deve puntare ai nomi che si rinominano: se qualcuno
+            #    avesse nel frattempo seminato una colonna di lista su di essi, il
+            #    rename la lascerebbe orfana — colonna a catalogo e niente a video,
+            #    senza nessun errore.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*) FROM ui.lista_colonna lc
+                   JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
+                   WHERE ld.vista_sql IS NOT NULL
+                     AND lc.campo_sorgente ~ '(natura_doc_codice|tipo_doc_fiscale_codice)$'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) TEARDOWN — dall'alto verso il basso, cioe' dai consumatori.
+              --    ⛔ Serve un DROP e non un CREATE OR REPLACE perche' si RINOMINANO
+              --    colonne, e una vista non rinomina le proprie: CREATE OR REPLACE puo'
+              --    solo appendere in coda. Il DROP di vw_documento_lineage_nodi non e'
+              --    possibile finche' vive qualcuno che la legge, quindi l'ordine qui sotto
+              --    NON e' estetico: e' l'unico che funziona.
+              --    ⚠️ Nessun CASCADE, mai: un CASCADE porterebbe via anche cio' che non
+              --    sappiamo di avere, e la ricostruzione piu' sotto non lo saprebbe.
+              -- ============================================================
+
+              DROP VIEW vendite.vw_preventivi_lista;
+
+              DROP VIEW vendite.vw_offerte_commerciali_lista;
+
+              DROP VIEW vendite.vw_ordini_lista;
+
+              DROP VIEW vendite.vw_contratti_lista;
+
+              DROP VIEW vendite.vw_ddt_lista;
+
+              DROP VIEW vendite.vw_resi_lista;
+
+              DROP VIEW vendite.vw_fatture_lista;
+
+              DROP FUNCTION vendite.fn_documento_lineage(bigint, text, text);
+
+              DROP VIEW vendite.vw_documento_lineage;
+
+              DROP VIEW vendite.vw_documento_lineage_archi;
+
+              DROP VIEW vendite.vw_documento_lineage_nodi;
+
+
+              -- ============================================================
+              -- 2) RICOSTRUZIONE — in ordine inverso, coi GRANT che il DROP ha portato via.
+              --    ⛔ I GRANT non sono un di piu': senza, zeroerp_app perde la lettura e
+              --    l'applicazione smette di vedere il lineage fino al prossimo ci_apply.
+              --    Ripristinati esattamente come misurati prima del teardown:
+              --    zeroerp_app = SELECT/INSERT/UPDATE/DELETE, zeroerp_batch_fatturazione = SELECT.
+              -- ============================================================
+
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_nodi
+              WITH (security_invoker=on) AS
+              -- ⭐ rev 2026-08-20: il nodo porta anche la NATURA del documento.
+              --    Il grafo e' nato quando FATTURA era una cosa sola. Da quando la natura
+              --    esiste (config.nature_doc_fiscale) due nodi FATTURA della stessa commessa
+              --    — la fattura e la nota di credito che la rettifica — sono INDISTINGUIBILI
+              --    a video: stesso tipo, stesso stato, e `codice` NULL finche' non sono
+              --    numerati. Chi guarda i «Passaggi» vede due volte «Fattura · EMESSA».
+              --    ⚠️ La natura NON e' il tipo documento: il tipo dice da quale tabella
+              --    viene il nodo, la natura che cosa e' fiscalmente. Sono due assi, e il
+              --    secondo esiste solo per le fatture: per tutti gli altri nodi qui e' NULL,
+              --    ed e' corretto che lo sia.
+              --    Nomi allineati a quelli che il backend gia' usa altrove
+              --    (natura_doc_codice_interno / natura_doc_descrizione, da codice_interno):
+              --    un vocabolario solo fra DB e applicazione.
+              SELECT s.id AS tipo_id, (p.uid)::text AS uid, p.numero AS codice,
+                     st.codice_interno AS stato_codice_interno,
+                     st.codice          AS stato_codice,
+                     st.descrizione     AS stato_descrizione,
+                     st.fase, st.is_abortito,
+                     1::smallint AS pipeline_rank,
+                     NULL::varchar AS natura_doc_codice_interno,
+                     NULL::varchar AS natura_doc_descrizione,
+                     s.codice_interno AS tipo_codice_interno
+                FROM vendite.preventivi p
+                JOIN config.sorgenti s ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_preventivi st ON st.id = p.stato_doc_preventivo_id
+              UNION ALL
+              SELECT s.id, (oc.uid)::text, oc.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.offerte_commerciali oc
+                JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_offerte st ON st.id = oc.stato_doc_offerta_id
+              UNION ALL
+              SELECT s.id, (o.id)::text, o.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.ordini o
+                JOIN config.sorgenti s ON s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ordini st ON st.id = o.stato_doc_ordine_id
+              UNION ALL
+              SELECT s.id, (c.id)::text, c.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.contratti c
+                JOIN config.sorgenti s ON s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_contratti st ON st.id = c.stato_doc_contratto_id
+              UNION ALL
+              SELECT s.id, (d.id)::text, d.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     3::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.ddt d
+                JOIN config.sorgenti s ON s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ddt st ON st.id = d.stato_doc_ddt_id
+              UNION ALL
+              -- ⭐ L'UNICO ramo che valorizza la natura: qui vive la distinzione fra una
+              --    fattura e una nota di credito. LEFT JOIN e non JOIN: `natura_doc_id` e'
+              --    nullable e una fattura storica puo' non averla — con il JOIN quel
+              --    documento sparirebbe dal grafo, che e' molto peggio di una natura vuota.
+              SELECT s.id, (f.id)::text, (f.numero)::text,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     5::smallint, nd.codice_interno, nd.descrizione,
+                     s.codice_interno
+                FROM vendite.fatture f
+                JOIN config.sorgenti s ON s.codice_interno = 'FATTURA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_fiscale st ON st.id = f.stato_doc_fiscale_id
+                LEFT JOIN config.nature_doc_fiscale nd ON nd.id = f.natura_doc_id
+              UNION ALL
+              SELECT s.id, (cm.id)::text, cm.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     4::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.commesse cm
+                JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
+                LEFT JOIN vendite.stati_commessa st ON st.id = cm.stato_commessa_id
+              UNION ALL
+              SELECT s.id, (r.id)::text, r.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     0::smallint, NULL::varchar, NULL::varchar,
+                     s.codice_interno
+                FROM vendite.resi r
+                JOIN config.sorgenti s ON s.codice_interno = 'RESO_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_reso st ON st.id = r.stato_doc_reso_id;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_nodi IS
+                  'Lineage documenti vendite: dimensione nodo condivisa (una riga per '
+                  'documento nodo, chiave polimorfa tipo_id+uid::text per key_selector, '
+                  'stato/fase/is_abortito normalizzati, pipeline_rank per il tie-break '
+                  'frontiera). Base di vw_documento_lineage_archi, vw_documento_lineage e '
+                  'fn_documento_lineage. security_invoker=on. '
+                  '⭐ rev 2026-08-20: il nodo porta anche natura_doc_codice_interno/natura_doc_descrizione '
+                  '(da config.nature_doc_fiscale.codice_interno/descrizione). Serve perche'' il grafo '
+                  'e'' nato quando FATTURA era una cosa sola: due nodi FATTURA della stessa commessa — '
+                  'la fattura e la nota di credito che la rettifica — erano indistinguibili, stesso tipo '
+                  'e stesso stato, con `codice` NULL finche'' non numerati. La natura e'' un ASSE DIVERSO '
+                  'dal tipo documento (il tipo dice da quale tabella viene il nodo, la natura che cosa e'' '
+                  'fiscalmente) ed esiste solo per le fatture: negli altri sette rami e'' NULL, ed e'' '
+                  'corretto. LEFT JOIN sulla natura perche'' natura_doc_id e'' nullable: con un JOIN una '
+                  'fattura senza natura sparirebbe dal grafo.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_documento_lineage_nodi TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_documento_lineage_nodi TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              -- ⛔ REGOLA DI PERIMETRO, valida per OGNI ramo di questa vista.
+              --   Ogni arco deve passare dalle TABELLE-TESTATA dei due documenti che
+              --   collega, perche' sono quelle che portano la RLS. Le tabelle-ponte
+              --   (commesse_sorgenti, attivita_fatturabili, resi_righe,
+              --   resi_righe_accrediti, resi_righe_riconsegne, ddt_righe) hanno
+              --   relrowsecurity = f e NON danno nessun perimetro: un ramo che si ferma
+              --   li' produce un arco verso un documento che il chiamante non puo'
+              --   vedere, e la decorazione non lo ferma perche'
+              --   vw_documento_lineage_nodi e' in LEFT JOIN — la riga resta, con il
+              --   codice a NULL.
+              --   Chi aggiunge il quattordicesimo arco legga questa riga prima di
+              --   scriverlo, e gli dia un rango_origine (vedi in fondo).
+              WITH archi AS (
+                  -- A — Preventivo -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id AS from_tipo_id, (p.uid)::text AS from_uid,
+                         s_to.id   AS to_tipo_id,   (o.id)::text  AS to_uid,
+                         NULL::varchar AS ruolo, 'A'::text AS arco
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO'     AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA' AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'PREVENTIVO'
+                  UNION ALL
+                  -- B — Preventivo -> Commessa (sorgente polimorfa; ruolo ROOT/COLLEGATO)
+                  --   ⭐ rev 2026-08-25: i due join a preventivi e commesse sono la
+                  --   REGOLA DI PERIMETRO qui sopra. commesse_sorgenti non ha RLS, e
+                  --   prima questo ramo non toccava nessuna delle due testate: l'arco
+                  --   compariva anche fra due documenti che il chiamante non vede.
+                  --   ⛔ La chiave e' POLIMORFA (key_selector): per il preventivo
+                  --   sorgente_uid e' lo UID, per ordine, contratto e DDT e' id::text. Si
+                  --   casta l'id a text e MAI il testo a uuid — un cast del lato text
+                  --   solleverebbe a runtime sulla riga di un altro ramo.
+                  SELECT s_from.id, (p.uid)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'B'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.preventivi p  ON p.uid::text = cs.sorgente_uid
+                    JOIN vendite.commesse   cm ON cm.id       = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- C — Offerta -> Contratto (contratti.offerta_id)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (c.id)::text,
+                         NULL::varchar, 'C'::text
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'CONTRATTO'           AND s_to.attivo   IS TRUE
+                   WHERE c.offerta_id IS NOT NULL
+                  UNION ALL
+                  -- D — Offerta -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (o.id)::text,
+                         NULL::varchar, 'D'::text
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA'      AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'OFFERTA'
+                  UNION ALL
+                  -- E — Ordine -> Commessa (sorgente polimorfa)
+                  --   rev 2026-08-25: perimetro, vedi il ramo B. Qui la chiave e'
+                  --   id::text, non lo uid.
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'E'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.ordini   o  ON o.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- F — Contratto -> Commessa (sorgente polimorfa; 1:N)
+                  --   rev 2026-08-25: perimetro, vedi il ramo B. Chiave id::text.
+                  SELECT s_from.id, (c.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'F'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.contratti c  ON c.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse  cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- U — DDT -> Commessa (sorgente polimorfa; 1:N) ⭐ rev 2026-08-28
+                  --   La QUARTA sorgente di commessa, ed e' la gemella di B, E ed F:
+                  --   stessa tabella (commesse_sorgenti), stesso ruolo_link, stesso
+                  --   perimetro. Sta qui e non in fondo alla UNION proprio per questo —
+                  --   un ramo si legge accanto ai suoi simili.
+                  --   ⛔ AMMESSA PERCHE' LO DICE CHI SCRIVE, non perche' ci sono righe:
+                  --   HandlerDdt e' un handler registrato del push (uno di cinque) e
+                  --   fn_link_commessa_sorgente non ha nessuna whitelist di tipi. Il DB
+                  --   non ha mai vietato che un DDT sia sorgente di commessa: quelle
+                  --   righe non violano niente, sono il prodotto di un handler.
+                  --   ⚠️ La chiave e' id::text — LETTA da config.sorgenti.key_selector,
+                  --   che per DDT_VENDITA vale 'id' come per ordine e contratto, e non
+                  --   'uid' come per il preventivo. Copiarla dal ramo B non darebbe
+                  --   errore: azzererebbe questo gruppo di archi, in silenzio.
+                  --   ⚠️ I due join a ddt e commesse sono la REGOLA DI PERIMETRO in
+                  --   testa: e' il primo ramo che la rispetta per NASCITA e non per
+                  --   correzione.
+                  SELECT s_from.id, (d.id)::text,
+                         s_to.id, (cm.id)::text,
+                         cs.ruolo_link, 'U'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.ddt      d  ON d.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id      = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- G — Commessa -> Fattura (via attivita fatturabili gia' fatturate; 1:N)
+                  --   rev 2026-08-25: il join a commesse e' il perimetro. Prima questo
+                  --   ramo emetteva af.commessa_id senza toccare vendite.commesse, che
+                  --   ha la RLS: l'estremo fattura era protetto (fatture_righe ce l'ha),
+                  --   l'estremo commessa no.
+                  SELECT DISTINCT
+                         s_from.id, (cm.id)::text,
+                         s_to.id, (f.id)::text,
+                         NULL::varchar, 'G'::text
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse cm ON cm.id = af.commessa_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'  AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+                  UNION ALL
+                  -- H — Ordine -> DDT (colonna diretta uuid ddt.sorgente_uid -> ordini.uid; 1:N)
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (d.id)::text,
+                         NULL::varchar, 'H'::text
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- R — DDT -> Reso (ramo INVERSO; colonna diretta uuid resi.sorgente_uid -> ddt.uid; 1:N)
+                  SELECT s_from.id, (d.id)::text,
+                         s_to.id, (r.id)::text,
+                         NULL::varchar, 'R'::text
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- N — Fattura rettificata -> Nota di credito (ramo di RITORNO; 1:N)
+                  --   ⭐ Ricostruito da vendite.fatture_righe.riga_rettificata_id, cioe' dal
+                  --   legame RIGA-RIGA, e non da vendite.fatture_rettifiche. Le due fonti
+                  --   dicono la stessa cosa ma non nello stesso momento: il ponte
+                  --   documentale lo popola un task della fase DEFINITIVA, DOPO la
+                  --   numerazione, mentre riga_rettificata_id esiste dalla generazione delle
+                  --   righe. Il grafo deve mostrare il legame quando c'e', non quando il
+                  --   documento e' chiuso.
+                  --   ⚠️ Entrambi gli estremi sono nodi FATTURA: e' il primo arco del grafo
+                  --   fra due nodi dello STESSO tipo. Un arco X->X non direbbe una
+                  --   genealogia, direbbe un ciclo: si esclude esplicitamente.
+                  --   Il perimetro c'e' gia': fatture_righe ha la RLS su entrambi i lati.
+                  --   DISTINCT come in G: N righe di rettifica producono UN arco.
+                  SELECT DISTINCT
+                         s_fat.id, (rr.fattura_id)::text,
+                         s_fat.id, (fr.fattura_id)::text,
+                         NULL::varchar, 'N'::text
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.fatture_righe rr ON rr.id = fr.riga_rettificata_id
+                    JOIN config.sorgenti s_fat ON s_fat.codice_interno = 'FATTURA' AND s_fat.attivo IS TRUE
+                   WHERE fr.riga_rettificata_id IS NOT NULL
+                     AND rr.fattura_id <> fr.fattura_id
+                  UNION ALL
+                  -- S — Reso -> Nota di credito (AVANZAMENTO del reso; 1:N) ⭐ rev 2026-08-25
+                  --   Si legge da vendite.resi_righe_accrediti, la tabella nata il
+                  --   2026-08-18 per registrare il FATTO dell'accredito «contro cosa».
+                  --   Soft-link calcolato, come G e N: nessuna tabella ponte.
+                  --   ⚠️ Il passaggio da vendite.resi NON e' decorativo, e' la regola di
+                  --   perimetro in testa: resi ha la RLS (rls_resi_ef_whitelist),
+                  --   resi_righe e resi_righe_accrediti no. Senza questo join l'arco
+                  --   esisterebbe anche per un reso che la whitelist dell'operatore
+                  --   nasconde. E' lo stesso perimetro dell'arco R.
+                  --   DISTINCT: piu' accrediti dello stesso reso confluiscono nella stessa
+                  --   nota (tre, nel caso reale del 2026-08-25) e devono dare UN arco.
+                  --   Il WHERE e' quello dell'arco G: prima dell'emissione la riga di
+                  --   fattura non esiste ancora, e l'arco deve comparire quando c'e'.
+                  --   ⭐ S NON e' un ramo di ritorno: e' l'avanzamento del reso, come H lo
+                  --   e' dell'ordine. Vedi la nota su is_ramo_inverso piu' sotto.
+                  SELECT DISTINCT
+                         s_from.id, (r.id)::text,
+                         s_to.id,   (fr.fattura_id)::text,
+                         NULL::varchar, 'S'::text
+                    FROM vendite.resi_righe_accrediti acc
+                    JOIN vendite.resi_righe rr           ON rr.id = acc.resi_riga_id
+                    JOIN vendite.resi r                  ON r.id  = rr.reso_id
+                    JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = acc.commessa_attivita_id
+                    JOIN vendite.fatture_righe fr        ON fr.id = af.fattura_riga_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'      AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+                  UNION ALL
+                  -- T — Reso -> DDT di RI-CONSEGNA (AVANZAMENTO; 1:N) ⭐ rev 2026-08-28
+                  --   Si legge dal ponte vendite.resi_righe_riconsegne, l'aggancio duro
+                  --   che fn_genera_ddt_riconsegna popola per ENTRAMBI i rami: leggerlo
+                  --   di li' fa coprire all'arco anche le ri-consegne ORDER-BACKED, che
+                  --   dichiarano ORDINE_VENDITA e non nominerebbero mai il reso.
+                  --   ⛔ T NON e' un ramo di ritorno: il ritorno e' gia' avvenuto ed e'
+                  --   R. Da li' il reso ha due modi di andare AVANTI — accreditare (S) o
+                  --   ri-consegnare (T).
+                  --   ⚠️ Il join passa dalle TESTATE (resi, ddt): le tre tabelle di mezzo
+                  --   non hanno RLS e non darebbero perimetro.
+                  --   ⚠️ DISTINCT obbligatorio: un reso con piu' righe ri-consegnate
+                  --   nello stesso DDT produrrebbe un arco per riga.
+                  SELECT DISTINCT
+                         s_from.id, (r.id)::text,
+                         s_to.id,   (d.id)::text,
+                         NULL::varchar, 'T'::text
+                    FROM vendite.resi_righe_riconsegne rrr
+                    JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                    JOIN vendite.resi r        ON r.id  = rr.reso_id
+                    JOIN vendite.ddt_righe dr  ON dr.id = rrr.ddt_riga_id
+                    JOIN vendite.ddt d         ON d.id  = dr.ddt_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'DDT_VENDITA'  AND s_to.attivo   IS TRUE
+              )
+              SELECT a.from_tipo_id,
+                     a.from_uid,
+                     nf.codice AS from_codice,
+                     a.to_tipo_id,
+                     a.to_uid,
+                     nt.codice AS to_codice,
+                     nt.stato_codice_interno AS to_stato_codice_interno,
+                     nt.fase                 AS to_fase,
+                     nt.is_abortito          AS to_is_abortito,
+                     a.ruolo,
+                     a.arco,
+                     -- ⭐ rev 2026-08-20: LA PROPRIETA' VIVE QUI, UNA VOLTA SOLA.
+                     --   Prima la lettera 'R' era scritta a mano in TRE posti: due WHERE
+                     --   della summary e il calcolo dentro fn_documento_lineage. Il posto
+                     --   dimenticato non avrebbe dato NESSUN errore: solo la nota di
+                     --   credito comparsa come discendente forward, cioe' una FRONTIERA
+                     --   diversa su ogni riga di lista, in silenzio.
+                     -- ⚠️ «Inverso» non vuol dire «all'indietro nel tempo» (la nota nasce
+                     --   DOPO). Vuol dire ramo di RITORNO — nel reso torna la merce, nella
+                     --   nota il valore — e come tale non e' un avanzamento del flusso.
+                     -- ⛔ rev 2026-08-25: L'ARCO S RESTA FUORI DA QUESTO ELENCO, E LA
+                     --   SCELTA E' CONSAPEVOLE. S non e' un ritorno: e' l'avanzamento
+                     --   naturale del reso (la merce e' tornata, adesso si accredita),
+                     --   esattamente come H e' l'avanzamento dell'ordine. E' cio' che fa
+                     --   smettere al reso di essere una foglia e gli da' la nota di
+                     --   credito come FRONTIERA — l'informazione che prima mancava del
+                     --   tutto. Marcarlo inverso lo lascerebbe frontiera di se' stesso,
+                     --   cioe' al punto di partenza.
+                     --   Chi volesse aggiungerlo «per simmetria» faccia prima girare il
+                     --   test 29 di test-documento-lineage-v1.sql: diventa rosso apposta.
+                     -- ⛔ rev 2026-08-28: e nemmeno T, per la stessa ragione, e nemmeno U —
+                     --   che e' un ingresso in commessa come B, E ed F.
+                     (a.arco IN ('R', 'N')) AS is_ramo_inverso,
+                     nf.natura_doc_codice_interno AS from_natura_doc_codice_interno,
+                     nt.natura_doc_codice_interno AS to_natura_doc_codice_interno,
+                     -- ⭐ rev 2026-08-28: IL RANGO DELL'ORIGINE, DICHIARATO.
+                     --   Serve a una domanda sola: quando piu' archi forward entrano nello
+                     --   STESSO nodo, quale delle sorgenti e' «l'origine»? Prima rispondeva
+                     --   from_tipo_id, cioe' la PK di config.sorgenti — un id di seed. Oggi
+                     --   la commessa vince sul reso solo perche' 13 < 15, e una
+                     --   riseminatura del catalogo cambierebbe il root di ogni nota di
+                     --   credito senza un errore e senza una riga di log.
+                     -- ⭐ LA SCALA dichiara quanto e' A MONTE il documento SORGENTE:
+                     --     10 la trattativa · 20 l'impegno · 30 l'esecuzione
+                     --     40 la consegna   · 50 il ritorno.   Piu' basso = piu' origine.
+                     -- ⛔ NON e' «ordinare sul tipo con un altro nome»: la differenza e' la
+                     --   PROVENIENZA del numero. Questo e' scritto e si legge; from_tipo_id
+                     --   era un effetto collaterale dell'ordine di inserimento di una
+                     --   tabella di catalogo. E un arco nuovo senza rango vale NULL, che il
+                     --   test 41 prende — mentre con from_tipo_id prendeva un ordinamento
+                     --   silenzioso e plausibile.
+                     -- ⚠️ R e N un rango ce l'hanno anche se non gareggiano MAI (la CTE inc
+                     --   filtra NOT is_ramo_inverso): un'eccezione «tanto non serve» e' il
+                     --   buco da cui passa il prossimo arco senza rango.
+                     CASE a.arco
+                         -- 10 — la TRATTATIVA: dove il flusso comincia davvero
+                         WHEN 'A' THEN 10   -- preventivo -> ordine
+                         WHEN 'B' THEN 10   -- preventivo -> commessa
+                         WHEN 'C' THEN 10   -- offerta    -> contratto
+                         WHEN 'D' THEN 10   -- offerta    -> ordine
+                         -- 20 — l'IMPEGNO: il documento che vincola le parti
+                         WHEN 'E' THEN 20   -- ordine    -> commessa
+                         WHEN 'F' THEN 20   -- contratto -> commessa
+                         WHEN 'H' THEN 20   -- ordine    -> ddt
+                         -- 30 — l'ESECUZIONE: la commessa, che e' gia' un effetto
+                         WHEN 'G' THEN 30   -- commessa -> fattura
+                         -- 40 — la CONSEGNA: il DDT, piu' a valle della commessa
+                         WHEN 'U' THEN 40   -- ddt -> commessa
+                         WHEN 'R' THEN 40   -- ddt -> reso        (inverso: mai in gara)
+                         -- 50 — il RITORNO: cio' che il flusso rimanda indietro. Un reso
+                         --   e' una CONSEGUENZA, mai l'origine di niente.
+                         WHEN 'S' THEN 50   -- reso    -> nota di credito
+                         WHEN 'T' THEN 50   -- reso    -> ddt di ri-consegna
+                         WHEN 'N' THEN 50   -- fattura -> nota di credito (inverso)
+                     END::smallint AS rango_origine
+                FROM archi a
+                LEFT JOIN vendite.vw_documento_lineage_nodi nf ON nf.tipo_id = a.from_tipo_id AND nf.uid = a.from_uid
+                LEFT JOIN vendite.vw_documento_lineage_nodi nt ON nt.tipo_id = a.to_tipo_id   AND nt.uid = a.to_uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                  'Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R e N '
+                  '(rami di ritorno) + S, T e U. TREDICI lettere dal 2026-08-28, e il '
+                  'vocabolario e'' CHIUSO: il pgTAP 13 le enumera e fallisce apposta a ogni arco '
+                  'nuovo, per costringere chi lo aggiunge a passare di li''. Chi allarga l''elenco '
+                  'aggiorna ANCHE questa frase e da'' all''arco nuovo un rango_origine: e'' questa '
+                  'la riga che la doc auto-gen stampa in cima alla pagina, cioe'' la prima che '
+                  'legge chi vuole sapere quali archi esistono. '
+                  'Chiave nodo polimorfa (tipo_id, uid::text). Nodo target decorato via '
+                  'vw_documento_lineage_nodi. security_invoker=on. Base di vw_documento_lineage e '
+                  'fn_documento_lineage. '
+                  '⭐ rev 2026-08-25 — ARCO S: reso -> nota di credito, letto da '
+                  'vendite.resi_righe_accrediti (la tabella nata il 2026-08-18 per registrare il '
+                  'FATTO dell''accredito «contro cosa»), via commessa_attivita_id -> '
+                  'attivita_fatturabili -> fatture_righe. Soft-link calcolato come G e N, nessuna '
+                  'tabella ponte. ⛔ S NON E'' UN RAMO DI RITORNO, ed e'' una scelta: «inverso» '
+                  'vuol dire ramo di RITORNO, un verso che il grafo forward non percorre; S '
+                  'invece e'' l''AVANZAMENTO del reso (la merce e'' tornata, adesso si '
+                  'accredita), come H lo e'' dell''ordine. La conseguenza voluta e'' che il reso '
+                  'smette di essere una foglia e prende la nota come FRONTIERA. '
+                  '⛔ NON si aggiunge un arco «reso -> fattura ORIGINALE», benche'' '
+                  'resi_righe_accrediti.fattura_riga_rettificata_id lo renda banale: sarebbe '
+                  'forward, i due nodi FATTURA finirebbero allo stesso livello e con lo stesso '
+                  'pipeline_rank, e la frontiera del reso si deciderebbe sul confronto '
+                  'lessicografico fra due uid testuali. Il triangolo si chiude gia'' via N. '
+                  '⭐ rev 2026-08-28 — ARCO T: reso -> DDT di RI-CONSEGNA, letto dal ponte '
+                  'vendite.resi_righe_riconsegne. Il grafo aveva R (la merce torna) e S (il '
+                  'valore si accredita) ma non l''arco che dice che la merce e'' RIPARTITA: un '
+                  'reso ri-consegnato finiva come una foglia. ⛔ Nemmeno T e'' un ramo di '
+                  'ritorno: il ritorno e'' gia'' avvenuto ed e'' R, e da li'' il reso ha due modi '
+                  'di andare AVANTI. Si costruisce dal ponte e non da ddt.sorgente_*, quindi '
+                  'copre anche le ri-consegne ORDER-BACKED. '
+                  '⭐ rev 2026-08-28 — ARCO U: DDT -> Commessa, la QUARTA sorgente di commessa e '
+                  'la gemella di B, E ed F (stessa tabella commesse_sorgenti, stesso ruolo_link, '
+                  'stesso perimetro). Prima le righe DDT_VENDITA di commesse_sorgenti non '
+                  'producevano NESSUN arco, e quelle commesse dichiaravano nel grafo di non avere '
+                  'origine — n_sorgenti = 0, che non e'' «non lo so» ma un''affermazione falsa. '
+                  '⛔ AMMESSA PERCHE'' LO DICE CHI SCRIVE, non perche'' ci sono righe: le scrive '
+                  'HandlerDdt, un handler REGISTRATO del push (uno di cinque, con PREVENTIVO, '
+                  'ORDINE_VENDITA, CONTRATTO e ATTIVITA_CONSUMI), e ne'' il chiamante ne'' '
+                  'vendite.fn_link_commessa_sorgente hanno una whitelist di tipi — la funzione '
+                  'legge target_table e key_selector da config.sorgenti per QUALUNQUE sorgente '
+                  'attiva. Il database non ha mai vietato che un DDT sia sorgente di commessa. '
+                  '⚠️ Il quinto handler, ATTIVITA_CONSUMI, scrive nella stessa tabella ma NON e'' '
+                  'un nodo del grafo: per quelle righe non basterebbe un arco, mancherebbe il '
+                  'nodo. Difetto della stessa famiglia, taglia diversa, altro cantiere. '
+                  '⭐ rev 2026-08-28 — RANGO_ORIGINE: quando piu'' archi forward entrano nello '
+                  'STESSO nodo, dichiara quale sorgente e'' «l''origine». Scala per quanto e'' a '
+                  'monte il documento SORGENTE: 10 trattativa, 20 impegno, 30 esecuzione, 40 '
+                  'consegna, 50 ritorno; piu'' basso = piu'' origine. ⛔ NON e'' «ordinare sul '
+                  'tipo con un altro nome»: prima decideva from_tipo_id, cioe'' la PK di '
+                  'config.sorgenti — un id di SEED, per cui la commessa vinceva sul reso solo '
+                  'perche'' 13 < 15 e una riseminatura avrebbe cambiato il root di ogni nota di '
+                  'credito in silenzio. Questo numero e'' SCRITTO, si legge, non si sposta se il '
+                  'catalogo cambia, e un arco nuovo senza rango vale NULL — che il pgTAP 41 '
+                  'prende. Le due gare vere: FATTURA <- G(30) e S(50), vince la COMMESSA; DDT <- '
+                  'H(20) e T(50), vince l''ORDINE. I pareggi A/D ed E/F sono DELIBERATI (nel '
+                  'primo caso i due archi si escludono per costruzione, nel secondo il modello '
+                  'non ha una preferenza e ruolo_link decide prima) e il tie-break residuo e'' '
+                  'from_uid, che e'' immutabile: stabile, ma non significativo, ed e'' meglio '
+                  'dirlo che fingere una regola che non c''e''. '
+                  '⛔ REGOLA DI PERIMETRO (rev 2026-08-25): ogni ramo passa dalle TABELLE-TESTATA '
+                  'dei due documenti che collega, perche'' sono quelle che portano la RLS. Le '
+                  'tabelle-ponte (commesse_sorgenti, attivita_fatturabili, resi_righe, '
+                  'resi_righe_accrediti, resi_righe_riconsegne, ddt_righe) hanno '
+                  'relrowsecurity = f e non danno perimetro: un ramo che si ferma li'' produce un '
+                  'arco verso un documento che il chiamante non vede, e la decorazione non lo '
+                  'ferma perche'' i join ai nodi sono LEFT. Fino al 2026-08-24 lo facevano B, E, '
+                  'F e G; U e'' il primo ramo a rispettarla per NASCITA. ⚠️ La chiave di '
+                  'commesse_sorgenti.sorgente_uid e'' POLIMORFA (key_selector): uid per il '
+                  'preventivo, id::text per ordine, contratto e DDT — i quattro join non si '
+                  'copiano l''uno dall''altro, e si casta l''id a text, mai il testo a uuid. '
+                  '⭐ is_ramo_inverso E'' CALCOLATO QUI, una volta sola: prima la lettera R era '
+                  'ripetuta in tre posti (due WHERE della summary e fn_documento_lineage) e il '
+                  'terzo dimenticato non avrebbe rotto niente di visibile. '
+                  'Espone anche from/to_natura_doc_codice_interno, per distinguere i due nodi FATTURA.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_documento_lineage_archi TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_documento_lineage_archi TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage
+              WITH (security_invoker=on) AS
+              WITH RECURSIVE
+              fwd AS (
+                  -- grafo forward (esclude i rami di RITORNO: R reso, N nota di credito)
+                  -- ⭐ rev 2026-08-20: si filtra sulla PROPRIETA', non sulla lettera. Il
+                  --   filtro `arco <> 'R'` era scritto qui, venti righe piu' sotto, e una
+                  --   terza volta in fn_documento_lineage: con l'arrivo dell'arco N un solo
+                  --   posto dimenticato avrebbe fatto comparire la nota di credito come
+                  --   discendente forward della fattura che rettifica, cambiando la
+                  --   FRONTIERA di ogni riga di lista — e senza errori, solo con un valore
+                  --   diverso. Ora l'elenco dei rami di ritorno vive in
+                  --   vw_documento_lineage_archi.is_ramo_inverso e qui si legge.
+                  SELECT from_tipo_id, from_uid, to_tipo_id, to_uid,
+                         to_codice, to_stato_codice_interno, to_fase, to_is_abortito, ruolo
+                    FROM vendite.vw_documento_lineage_archi
+                   WHERE NOT is_ramo_inverso
+              ),
+              walk AS (
+                  -- livello 1: discendenti diretti di ogni nodo
+                  SELECT f.from_tipo_id AS o_tipo, f.from_uid AS o_uid,
+                         f.to_tipo_id   AS d_tipo, f.to_uid   AS d_uid,
+                         f.to_codice AS d_codice, f.to_stato_codice_interno AS d_stato,
+                         f.to_fase AS d_fase, f.to_is_abortito AS d_abortito,
+                         1 AS lvl,
+                         ARRAY[(f.from_tipo_id::text || ':' || f.from_uid),
+                               (f.to_tipo_id::text   || ':' || f.to_uid)] AS visited
+                    FROM fwd f
+                  UNION ALL
+                  SELECT w.o_tipo, w.o_uid,
+                         f.to_tipo_id, f.to_uid, f.to_codice, f.to_stato_codice_interno,
+                         f.to_fase, f.to_is_abortito,
+                         w.lvl + 1,
+                         w.visited || (f.to_tipo_id::text || ':' || f.to_uid)
+                    FROM walk w
+                    JOIN fwd f ON f.from_tipo_id = w.d_tipo AND f.from_uid = w.d_uid
+                   WHERE w.lvl < 10
+                     AND NOT ((f.to_tipo_id::text || ':' || f.to_uid) = ANY (w.visited))
+              ),
+              cand AS (
+                  -- candidati frontiera: il nodo stesso (lvl 0) + i discendenti forward
+                  SELECT n.tipo_id AS o_tipo, n.uid AS o_uid,
+                         n.tipo_id AS d_tipo, n.uid AS d_uid, n.codice AS d_codice,
+                         n.stato_codice_interno AS d_stato, n.fase AS d_fase,
+                         n.is_abortito AS d_abortito, 0 AS lvl
+                    FROM vendite.vw_documento_lineage_nodi n
+                  UNION ALL
+                  SELECT o_tipo, o_uid, d_tipo, d_uid, d_codice, d_stato, d_fase, d_abortito, lvl
+                    FROM walk
+              ),
+              frontiera AS (
+                  -- Scelta della frontiera per ogni nodo origine, in ordine:
+                  --  1. prima gli ATTIVI: fase<>CHIUSO AND NOT is_abortito
+                  --  2. poi il piu' PROFONDO: lvl DESC
+                  --  3. a parita' di livello, il piu' A VALLE nel flusso via
+                  --     pipeline_rank DESC [fattura>commessa>ddt>ordine=contratto>preventivo=offerta]
+                  --  4. tie-break finale deterministico: tipo, uid
+                  -- ⭐ rev 2026-08-28: si porta avanti anche nd.natura_doc_codice_interno. Il join
+                  --   sui nodi era GIA' QUI per il pipeline_rank: la natura della frontiera
+                  --   costa una colonna, non un accesso.
+                  SELECT c.o_tipo, c.o_uid, c.d_tipo, c.d_uid, c.d_codice, c.d_stato, c.d_fase,
+                         nd.natura_doc_codice_interno AS d_natura_doc_codice_interno,
+                         nd.tipo_codice_interno       AS d_tipo_codice_interno,
+                         ROW_NUMBER() OVER (
+                             PARTITION BY c.o_tipo, c.o_uid
+                             ORDER BY (CASE WHEN c.d_fase <> 'CHIUSO'
+                                             AND NOT COALESCE(c.d_abortito, false)
+                                            THEN 0 ELSE 1 END),
+                                      c.lvl DESC,
+                                      COALESCE(nd.pipeline_rank, 0) DESC,
+                                      c.d_tipo, c.d_uid
+                         ) AS rn
+                    FROM cand c
+                    LEFT JOIN vendite.vw_documento_lineage_nodi nd
+                           ON nd.tipo_id = c.d_tipo AND nd.uid = c.d_uid
+              ),
+              disc AS (
+                  -- conteggi discendenti diretti (lvl 1)
+                  SELECT o_tipo, o_uid,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid)) AS n_diretti,
+                         COUNT(DISTINCT (d_tipo::text || ':' || d_uid))
+                             FILTER (WHERE d_fase <> 'CHIUSO' AND NOT COALESCE(d_abortito, false))
+                             AS n_attivi
+                    FROM walk
+                   WHERE lvl = 1
+                   GROUP BY o_tipo, o_uid
+              ),
+              inc AS (
+                  -- archi forward ENTRANTI nel nodo (lato inverso; per lista commesse)
+                  -- ⭐ rev 2026-08-28: IL ROOT NON DIPENDE PIU' DA UN ID DI SEED.
+                  --   Il tie-break si spezzava su from_tipo_id, cioe' sulla PK di
+                  --   config.sorgenti, ogni volta che nessuna sorgente portava
+                  --   ruolo='ROOT' — ed e' il caso di ogni nota di credito, che ha la
+                  --   commessa via G e il reso via S, tutti e due con ruolo NULL. Oggi
+                  --   vinceva la commessa solo perche' 13 < 15: una riseminatura del
+                  --   catalogo avrebbe cambiato il root di ogni nota, senza un errore,
+                  --   senza un log, solo con un valore diverso.
+                  --   Adesso decide rango_origine, che e' DICHIARATO sull'arco — stessa
+                  --   sede e stessa forma di is_ramo_inverso.
+                  -- ⚠️ L'ORDINE DEI TRE CRITERI E' LA REGOLA, e va letto cosi':
+                  --   1. ruolo='ROOT' PRIMA DI TUTTO: quando una tabella ponte ha
+                  --      DICHIARATO qual e' l'origine (commesse_sorgenti.ruolo_link, sui
+                  --      rami B/E/F/U), quella dichiarazione batte qualunque scala. Un
+                  --      dato scritto da chi sa vale piu' di una regola generale.
+                  --   2. rango_origine: fra archi che un ruolo non ce l'hanno, vince la
+                  --      sorgente piu' a monte nel flusso.
+                  --   3. from_uid: tie-break residuo, e vale solo dove il modello NON ha
+                  --      una preferenza (E/F). E' immutabile, quindi il risultato e'
+                  --      stabile — non significativo, ma stabile, ed e' meglio dirlo che
+                  --      fingere una regola che non c'e'.
+                  -- ⛔ I tre array_agg devono avere lo STESSO ORDER BY, sempre: sono tre
+                  --   pezzi della stessa riga presi con tre aggregazioni diverse. Se uno
+                  --   solo divergesse, root_tipo, root_uid e root_codice verrebbero da
+                  --   archi DIVERSI — un root che non esiste, composto a pezzi, e nessun
+                  --   errore da nessuna parte.
+                  SELECT to_tipo_id AS tipo, to_uid AS uid,
+                         COUNT(*) AS n_sorgenti,
+                         (array_agg(from_tipo_id ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_tipo,
+                         (array_agg(from_uid     ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_uid,
+                         (array_agg(from_codice  ORDER BY (ruolo = 'ROOT') DESC NULLS LAST, rango_origine, from_uid))[1] AS root_codice
+                    FROM vendite.vw_documento_lineage_archi
+                   WHERE NOT is_ramo_inverso   -- stessa regola del grafo forward, stessa sede
+                   GROUP BY to_tipo_id, to_uid
+              ),
+              prat AS (
+                  -- pratica 1:1 difensiva: prima per id + conteggio
+                  SELECT ps.sorgente_tipo_id AS tipo, ps.sorgente_uid AS uid,
+                         COUNT(DISTINCT ps.pratica_id) AS n_pratiche,
+                         (array_agg(p.id     ORDER BY p.id))[1] AS pratica_id,
+                         (array_agg(p.codice ORDER BY p.id))[1] AS pratica_numero
+                    FROM pratiche.pratiche_sorgenti ps
+                    JOIN pratiche.pratiche p ON p.id = ps.pratica_id
+                   GROUP BY ps.sorgente_tipo_id, ps.sorgente_uid
+              )
+              SELECT
+                  n.tipo_id,
+                  n.uid,
+                  n.codice,
+                  n.stato_codice_interno,
+                  n.stato_codice,
+                  n.stato_descrizione,
+                  n.fase,
+                  n.is_abortito,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  COALESCE(pr.n_pratiche, 0)          AS n_pratiche,
+                  fr.d_tipo                           AS frontiera_tipo_id,
+                  fr.d_uid                            AS frontiera_uid,
+                  fr.d_codice                         AS frontiera_codice,
+                  fr.d_stato                          AS frontiera_stato_codice_interno,
+                  fr.d_fase                           AS frontiera_fase,
+                  COALESCE(dc.n_diretti, 0)           AS n_discendenti_diretti,
+                  COALESCE(dc.n_attivi, 0)            AS n_discendenti_attivi,
+                  (COALESCE(dc.n_diretti, 0) > 0)     AS is_transitato,
+                  COALESCE(ic.n_sorgenti, 0)          AS n_sorgenti,
+                  ic.root_tipo                        AS root_tipo_id,
+                  ic.root_uid                         AS root_uid,
+                  ic.root_codice                      AS root_codice,
+                  -- ⭐ rev 2026-08-20: la natura del nodo, per le liste. Senza, una lista di
+                  --   fatture scrive «Fattura» anche sopra una nota di credito — che e' la
+                  --   stessa cecita' per cui, nei «Passaggi», due documenti della stessa
+                  --   commessa erano indistinguibili.
+                  n.natura_doc_codice_interno,
+                  n.natura_doc_descrizione,
+                  -- ⭐ rev 2026-08-28: la natura del nodo di FRONTIERA. E' la stessa cecita'
+                  --   di sopra, sull'altra colonna: il chip «Transito» decodifica il tipo, e
+                  --   il tipo di una nota di credito e' FATTURA.
+                  -- ⚠️ Sta in fondo e non accanto alle sorelle frontiera_* perche'
+                  --   CREATE OR REPLACE VIEW puo' solo APPENDERE: inserirla in mezzo
+                  --   vorrebbe dire DROP CASCADE delle viste di lista che leggono questa.
+                  -- ⛔ NULL qui NON e' «non lo so»: e' «la frontiera non e' un documento
+                  --   fiscale». La natura e' un asse diverso dal tipo ed esiste solo per le
+                  --   fatture; sugli altri sette tipi di nodo e' NULL ed e' corretto.
+                  fr.d_natura_doc_codice_interno              AS frontiera_natura_doc_codice_interno,
+                  -- ⭐ rev 2026-08-29 (richiesta BE): il CODICE del tipo accanto al suo id.
+                  --   Il grafo esponeva il tipo solo come tipo_id, e ogni consumatore se lo
+                  --   traduceva da se' con lo stesso join a config.sorgenti: DIECI copie
+                  --   scritte a mano nel backend, tutte fuori dalla portata del guardrail
+                  --   naming, che scansiona solo le viste.
+                                -- ⛔ Il nome NON e' `tipo_codice`, che il BE aveva chiesto: il valore e'
+                  --   `config.sorgenti.codice_interno` (immutabile, usato dal FE per la
+                  --   chiave i18n e per instradare, cioe' LOGICA) e §6c vieta
+                  --   `codice_interno AS *_codice`. Le dieci copie erano tutte mislabel;
+                  --   centralizzarle col nome sbagliato le avrebbe rese un errore CI.
+                  n.tipo_codice_interno,
+                  fr.d_tipo_codice_interno                    AS frontiera_tipo_codice_interno
+                FROM vendite.vw_documento_lineage_nodi n
+                LEFT JOIN prat pr      ON pr.tipo   = n.tipo_id AND pr.uid   = n.uid
+                LEFT JOIN frontiera fr ON fr.o_tipo = n.tipo_id AND fr.o_uid = n.uid AND fr.rn = 1
+                LEFT JOIN disc dc      ON dc.o_tipo = n.tipo_id AND dc.o_uid = n.uid
+                LEFT JOIN inc ic       ON ic.tipo   = n.tipo_id AND ic.uid   = n.uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage IS
+                  'Lineage documenti vendite (Step 3): summary per nodo per arricchire le liste. '
+                  'Espone pratica (1:1 difensiva + n_pratiche), fase propria, frontiera forward '
+                  '(piu'' a valle attivo, esclude i rami di RITORNO), discendenti diretti/attivi, '
+                  'is_transitato, lato inverso (n_sorgenti + ROOT), natura del documento e natura '
+                  'del documento di frontiera. security_invoker=on. '
+                  '⭐ rev 2026-08-20 — DUE COSE. (1) i due filtri del grafo forward non nominano '
+                  'piu'' la lettera R ma leggono vw_documento_lineage_archi.is_ramo_inverso: con '
+                  'l''arrivo dell''arco N (fattura rettificata -> nota di credito) la lettera era '
+                  'scritta a mano in TRE posti, e il terzo dimenticato non avrebbe dato nessun '
+                  'errore — solo la nota di credito come discendente forward, cioe'' una FRONTIERA '
+                  'diversa su ogni riga di lista. (2) espone natura_doc_codice_interno/'
+                  'natura_doc_descrizione del nodo, cosi'' una lista di fatture smette di scrivere '
+                  '«Fattura» sopra una nota di credito. '
+                  '⭐ rev 2026-08-28 — E ADESSO ANCHE frontiera_natura_doc_codice_interno, che e'' la '
+                  'TERZA versione di questa frase perche'' le prime due erano vere a meta''. Il '
+                  '20260821-03 diceva «varrebbe sempre NULL»: falso, l''arco G (commessa -> '
+                  'fattura) non e'' un ramo di ritorno e una nota di credito E'' raggiungibile in '
+                  'avanti. Il 20260825-20 ha corretto in «il consumatore la ricava per conto '
+                  'suo»: vero per UNO — il pannello del drawer, che legge questa vista e ha '
+                  'frontiera_uid — e falso per tutti gli altri, perche'' le viste di LISTA '
+                  'proiettano frontiera_tipo_id/codice/stato/fase e la CHIAVE del nodo di '
+                  'frontiera si ferma li''. Senza quella chiave non c''e'' modo onesto di '
+                  'leggere la natura, e ogni lista chiama «Fattura» una nota di credito: sulla '
+                  'lista resi non e'' nemmeno un caso limite, e'' IL caso, perche'' l''arco S '
+                  'arriva sempre a una nota di credito (pgTAP 35). '
+                  'La ragione della colonna, al positivo: la chiave del nodo di frontiera non '
+                  'esce dalla summary, e senza la natura ogni lista dice la parola sbagliata '
+                  'proprio nel punto per cui la colonna «Transito» e'' stata seminata. '
+                  '⭐ Costa una colonna e non un join: la CTE frontiera fa gia'' LEFT JOIN su '
+                  'vw_documento_lineage_nodi per il pipeline_rank del tie-break. '
+                  '⚠️ Sta in ULTIMA posizione e non accanto alle sorelle frontiera_* perche'' '
+                  'CREATE OR REPLACE VIEW puo'' solo appendere colonne: metterla in mezzo '
+                  'richiederebbe un DROP CASCADE delle viste di lista che leggono questa. '
+                  '⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento '
+                  'fiscale»: la natura e'' un asse diverso dal tipo ed esiste solo per le '
+                  'fatture. Si espone il solo CODICE e non la descrizione: il consumatore '
+                  'traduce dal codice, le chiavi i18n esistono gia''. '
+                  '⭐ rev 2026-08-28 — IL ROOT NON DIPENDE PIU'' DA UN ID DI SEED. La CTE inc '
+                  'ordinava ORDER BY (ruolo=''ROOT'') DESC NULLS LAST, from_tipo_id, from_uid: '
+                  'ogni volta che nessuna sorgente portava un ruolo — cioe'' per ogni nota di '
+                  'credito, che ha la commessa via G e il reso via S, tutti e due con ruolo NULL '
+                  '— a decidere restava from_tipo_id, la PK di config.sorgenti. La commessa '
+                  'vinceva solo perche'' 13 < 15, e una riseminatura del catalogo avrebbe '
+                  'cambiato il root di OGNI nota di credito senza un errore e senza un log. Ora '
+                  'il secondo criterio e'' rango_origine, DICHIARATO sull''arco in '
+                  'vw_documento_lineage_archi — stessa sede e stessa forma di is_ramo_inverso. '
+                  'L''ordine dei tre criteri E'' la regola: (1) ruolo=''ROOT'' prima di tutto, '
+                  'perche'' una tabella ponte che ha dichiarato l''origine batte qualunque scala; '
+                  '(2) rango_origine, fra archi senza ruolo; (3) from_uid, tie-break residuo dove '
+                  'il modello non ha una preferenza — immutabile, quindi stabile, ma non '
+                  'significativo. ⛔ I tre array_agg devono avere sempre lo STESSO ORDER BY: sono '
+                  'tre pezzi della stessa riga, e uno che divergesse comporrebbe un root '
+                  'inesistente a pezzi, in silenzio.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_documento_lineage TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_documento_lineage TO zeroerp_batch_fatturazione;
+
+              -- ⛔ DROP e non CREATE OR REPLACE: la RETURNS TABLE cambia (due colonne in
+              --    piu') e PostgreSQL non lo consente in place. Il DROP e' esplicito e senza
+              --    CASCADE — misurato che nessuna funzione e nessuna vista la chiamano: il
+              --    solo consumatore e' il backend (vendite_repository, pannello «Passaggi»),
+              --    che seleziona per nome e non si rompe per due colonne in coda.
+              DROP FUNCTION IF EXISTS vendite.fn_documento_lineage(bigint, text, text);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage(
+                  p_tipo_id   config.sorgenti.id%TYPE,
+                  -- ⚠️ p_uid NON e' ancorabile: e' la chiave POLIMORFA del nodo — uuid per
+                  --    preventivi e offerte, id per tutto il resto, secondo il key_selector
+                  --    di config.sorgenti — resa a text. Non e' il riflesso di UNA colonna.
+                  p_uid       text,
+                  -- ⚠️ idem p_direzione: 'avanti'|'indietro' non e' il valore di una colonna.
+                  p_direzione text DEFAULT 'avanti'
+              )
+               RETURNS TABLE(
+                             -- livello e ordine li CALCOLA il traversal: non c'e' colonna.
+                             livello                 integer,
+                             ordine                  integer,
+                             -- la lettera diagnostica nasce nella vista archi, non in tabella.
+                             arco                    text,
+                             ruolo                   vendite.commesse_sorgenti.ruolo_link%TYPE,
+                             from_tipo_id            config.sorgenti.id%TYPE,
+                             -- from_uid/to_uid e from_codice/to_codice: stessa ragione di
+                             -- p_uid — chiave polimorfa e `numero` di otto tabelle diverse.
+                             from_uid                text,
+                             from_codice             text,
+                             to_tipo_id              config.sorgenti.id%TYPE,
+                             to_uid                  text,
+                             to_codice               text,
+                             -- lo stato arriva dalla UNION di otto config.stati_doc_*:
+                             -- nessuna singola colonna da ancorare.
+                             to_stato_codice_interno character varying,
+                             to_fase                 character varying,
+                             to_is_abortito          boolean,
+                             is_ramo_inverso         boolean,
+                             -- ⭐ rev 2026-08-20: la NATURA dei due estremi. Senza, nel
+                             --    pannello «Passaggi» due nodi FATTURA della stessa commessa
+                             --    — la fattura e la nota di credito che la rettifica — sono
+                             --    la stessa riga scritta due volte: stesso tipo, stesso
+                             --    stato, e `codice` NULL finche' non sono numerati.
+                             from_natura_doc_codice_interno  config.nature_doc_fiscale.codice_interno%TYPE,
+                             to_natura_doc_codice_interno    config.nature_doc_fiscale.codice_interno%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- Guard parametri (AGENTS: ID numerici NOT NULL e > 0).
+                  IF p_tipo_id IS NULL OR p_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_tipo_id obbligatorio e > 0',
+                                             'p_tipo_id', p_tipo_id),
+                          NULL::uuid,
+                          concat('p_tipo_id non valido: ', COALESCE(p_tipo_id::text, 'NULL')));
+                  END IF;
+
+                  IF p_uid IS NULL OR btrim(p_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_uid obbligatorio (chiave nodo)'),
+                          NULL::uuid,
+                          'p_uid non valido (NULL o vuoto)');
+                  END IF;
+
+                  IF p_direzione IS NULL OR p_direzione NOT IN ('avanti', 'indietro') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_direzione deve essere avanti|indietro',
+                                             'p_direzione', p_direzione),
+                          NULL::uuid,
+                          concat('p_direzione non valido: ', COALESCE(p_direzione, 'NULL')));
+                  END IF;
+
+                  RETURN QUERY
+                  WITH RECURSIVE trav AS (
+                      -- Livello 1: archi adiacenti al nodo di partenza nella direzione scelta.
+                      SELECT a.from_tipo_id, a.from_uid, a.from_codice,
+                             a.to_tipo_id, a.to_uid, a.to_codice,
+                             a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
+                             a.ruolo, a.arco, a.is_ramo_inverso,
+                             a.from_natura_doc_codice_interno, a.to_natura_doc_codice_interno,
+                             1 AS livello,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END AS cur_tipo,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END AS cur_uid,
+                             ARRAY[
+                                 p_tipo_id::text || ':' || p_uid,
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                     || ':' ||
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                             ] AS visited
+                        FROM vendite.vw_documento_lineage_archi a
+                       WHERE (p_direzione = 'avanti'   AND a.from_tipo_id = p_tipo_id AND a.from_uid = p_uid)
+                          OR (p_direzione = 'indietro' AND a.to_tipo_id   = p_tipo_id AND a.to_uid   = p_uid)
+                      UNION ALL
+                      -- Espansione: dal nodo corrente segui gli archi nella stessa direzione.
+                      SELECT a.from_tipo_id, a.from_uid, a.from_codice,
+                             a.to_tipo_id, a.to_uid, a.to_codice,
+                             a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
+                             a.ruolo, a.arco, a.is_ramo_inverso,
+                             a.from_natura_doc_codice_interno, a.to_natura_doc_codice_interno,
+                             t.livello + 1,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END,
+                             t.visited || (
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                     || ':' ||
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                             )
+                        FROM trav t
+                        JOIN vendite.vw_documento_lineage_archi a
+                          ON (p_direzione = 'avanti'   AND a.from_tipo_id = t.cur_tipo AND a.from_uid = t.cur_uid)
+                          OR (p_direzione = 'indietro' AND a.to_tipo_id   = t.cur_tipo AND a.to_uid   = t.cur_uid)
+                       WHERE t.livello < 10
+                         AND NOT (
+                             (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                 || ':' ||
+                             (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                         ) = ANY (t.visited)
+                  )
+                  -- Cast espliciti al tipo dichiarato dalla RETURNS TABLE: la union di
+                  -- vw_documento_lineage_nodi.codice risolve a varchar, quindi from_codice/
+                  -- to_codice arrivano varchar mentre la firma li vuole text (PG e' rigido
+                  -- sul match esatto, SQLSTATE 42804).
+                  SELECT t.livello::integer,
+                         (ROW_NUMBER() OVER (ORDER BY t.livello,
+                                                      t.from_tipo_id, t.from_uid,
+                                                      t.to_tipo_id, t.to_uid))::integer AS ordine,
+                         t.arco::text, t.ruolo::varchar,
+                         t.from_tipo_id, t.from_uid::text, t.from_codice::text,
+                         t.to_tipo_id, t.to_uid::text, t.to_codice::text,
+                         t.to_stato_codice_interno::varchar, t.to_fase::varchar, t.to_is_abortito,
+                         -- ⭐ rev 2026-08-20: NON si ricalcola piu' `t.arco = 'R'`. La
+                         --    proprieta' arriva da vw_documento_lineage_archi, che e' l'unica
+                         --    sede dell'elenco dei rami di ritorno. Con l'arrivo dell'arco N
+                         --    (nota di credito) quella lettera era scritta a mano in tre
+                         --    posti: qui e nei due WHERE della summary. Il posto dimenticato
+                         --    non avrebbe dato nessun errore — solo un ramo di ritorno reso
+                         --    come avanzamento del flusso.
+                         t.is_ramo_inverso,
+                         t.from_natura_doc_codice_interno::varchar, t.to_natura_doc_codice_interno::varchar
+                    FROM trav t
+                   ORDER BY ordine;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_lineage(bigint, text, text)
+              IS 'Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet.';
+
+              -- Il DROP ha portato via i GRANT: senza questa riga il pannello «Passaggi»
+              -- e i pgTAP (che girano come zeroerp_app) prendono «permesso negato» fino
+              -- alla passata serale di ci_apply. Stesso rimedio di 20260819-07.
+              -- ⚠️ Solo zeroerp_app: i ruoli batch si concedono nel provisioning, non qui.
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_lineage(bigint, text, text) TO zeroerp_app;
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_lineage(bigint, text, text) TO zeroerp_batch_fatturazione;
+
+
+              -- ---- le sette liste, coi COMMENT riscritti dal testo vivo ----
+
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_lista
+              WITH (security_invoker=on) AS
+               SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdp.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  p.is_superata,
+                  p.is_abortito,
+                  p.has_next_revisione,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = p.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = p.valuta_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'PREVENTIVO'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = p.uid::text;
+
+              COMMENT ON VIEW vendite.vw_preventivi_lista IS
+                  'Vista flat canonica preventivi per la lista UI configurabile (vendite.preventivi). Nomi '
+                  'canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Dal '
+                  '2026-08-28 espone anche le DUE componenti di is_attiva come colonne proprie: is_superata '
+                  '(rimpiazzata da una rev superiore viva — il complemento e'' «e'' l''ultima revisione») e '
+                  'is_abortito (annullato), piu'' has_next_revisione. Il toggle «Mostra storico revisioni» si '
+                  'scrive is_superata IS FALSE: is_attiva nasconde anche gli annullati e rende vuoto per '
+                  'costruzione il filtro di stato «Annullato». Pura denormalizzazione: nessuno '
+                  'scope/filtro/paginazione (restano nel repository consumer). security_invoker=on (RLS-ready). '
+                  'Soggetto via istanze_utilities (1 join, valorizzato anche per prospect). ⭐ rev 2026-08-29 — '
+                  'porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle '
+                  'altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama '
+                  '«Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di '
+                  'frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto '
+                  'di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' '
+                  'solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la '
+                  'frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev '
+                  '2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si '
+                  'chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da '
+                  '`config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql '
+                  '§6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un '
+                  'consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail '
+                  'CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva '
+                  '`frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni '
+                  'consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a '
+                  'mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ '
+                  'Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e '
+                  'il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` '
+                  'avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_preventivi_lista TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_preventivi_lista TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  NOT sdo.is_superato AND NOT sdo.is_abortito AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE figlio.revisione_padre_id = o.id)) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  o.validita_al IS NOT NULL AND o.validita_al < CURRENT_DATE AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN vendite.listini l ON l.id = o.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'OFFERTA_COMMERCIALE'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = o.uid::text;
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_lista IS
+                  'Vista flat canonica e self-contained offerte commerciali per la lista UI configurabile '
+                  '(vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, '
+                  'ba_codice). Assorbe listino_codice/listino_versione_codice/valuta_codice e materializza '
+                  'is_scaduta (validita_al scaduta; gating per stato lato FE). Pura denormalizzazione: nessuno '
+                  'scope/filtro. security_invoker=on (RLS-ready). Dal 2026-08-28 le due domande sono colonne '
+                  'distinte: is_superata (= stati_doc_offerte.is_superato, rimpiazzata da una revisione '
+                  'successiva) e is_abortito (= stati_doc_offerte.is_abortito, annullata); is_attiva = NOT '
+                  'is_superata AND NOT is_abortito — stessi valori del precedente letterale NOT IN '
+                  '(''SUPERATA'',''ANNULLATA''), ora scritti sul catalogo. «Solo l''ultima revisione» si chiede '
+                  'a is_superata IS FALSE. has_next_revisione = EXISTS figlio (qualunque stato). ⭐ rev '
+                  '2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, '
+                  'accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e '
+                  'chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo '
+                  'di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo '
+                  'onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW '
+                  'puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma '
+                  '«la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev '
+                  '2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si '
+                  'chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da '
+                  '`config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql '
+                  '§6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un '
+                  'consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail '
+                  'CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva '
+                  '`frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni '
+                  'consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a '
+                  'mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ '
+                  'Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e '
+                  'il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` '
+                  'avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_offerte_commerciali_lista TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_offerte_commerciali_lista TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_ordini_lista
+              WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  o.soggetto_ruolo_id,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  o.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.tasso_cambio,
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa AS agente_denominazione,
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                      CASE o.documento_origine_tipo
+                          WHEN 'PREVENTIVO'::text THEN pv.numero
+                          WHEN 'OFFERTA'::text THEN oc.codice::character varying
+                          ELSE NULL::character varying
+                      END AS documento_origine_codice,
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update,
+                  sd.pdf_mode,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.ordini o
+                   JOIN config.stati_doc_ordini sd ON sd.id = o.stato_doc_ordine_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = o.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN config.modalita_pagamento mp ON mp.id = o.modalita_pagamento_id
+                   LEFT JOIN config.termini_pagamento tp ON tp.id = o.termine_pagamento_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON sr_ag.id = o.agente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ag ON s_ag.id = sr_ag.soggetto_id
+                   LEFT JOIN vendite.preventivi pv ON pv.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'PREVENTIVO'::text
+                   LEFT JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'OFFERTA'::text
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'ORDINE_VENDITA'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = o.id::text;
+
+              COMMENT ON VIEW vendite.vw_ordini_lista IS
+                  'Vista canonica lista/dettaglio ordini vendita: testata + decodifiche denormalizzate (stato, '
+                  'cliente, billing/emittente/utility, pagamento, valuta, agente, documento origine) + pdf_mode '
+                  '(modalita'' bottone PDF per-riga, data-driven). Sola denormalizzazione: nessuno '
+                  'scope/filtro. security_invoker=on (RLS-ready). rev 2026-07-11: +pdf_mode. ⭐ rev 2026-08-29 — '
+                  'porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle '
+                  'altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama '
+                  '«Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di '
+                  'frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto '
+                  'di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' '
+                  'solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la '
+                  'frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev '
+                  '2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si '
+                  'chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da '
+                  '`config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql '
+                  '§6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un '
+                  'consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail '
+                  'CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva '
+                  '`frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni '
+                  'consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a '
+                  'mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ '
+                  'Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e '
+                  'il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` '
+                  'avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_ordini_lista TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_ordini_lista TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_contratti_lista
+              WITH (security_invoker=on) AS
+               SELECT c.id,
+                  c.uid,
+                  c.numero,
+                  c.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  c.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  c.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  c.ambito,
+                  c.data,
+                  c.valido_dal,
+                  c.valido_al,
+                  c.stato_doc_contratto_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.codice AS stato_codice,
+                  sd.descrizione AS stato_descrizione,
+                  c.listino_id,
+                  l.codice AS listino_codice,
+                  l.descrizione AS listino_descrizione,
+                  c.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  c.tipo_variazione_globale,
+                  c.valore_variazione_globale,
+                  c.categoria_cliente_id_snapshot,
+                  cc_snap.codice AS categoria_cliente_snapshot_codice,
+                  cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
+                  c.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  v_val.descrizione AS valuta_descrizione,
+                  c.data_insert,
+                  c.user_insert,
+                  c.data_update,
+                  c.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.contratti c
+                   JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   JOIN config.utilities u ON u.id = c.utility_id
+                   JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = c.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN vendite.listini l ON l.id = c.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
+                   LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
+                   LEFT JOIN config.valute v_val ON v_val.id = c.valuta_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'CONTRATTO'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = c.id::text;
+
+              COMMENT ON VIEW vendite.vw_contratti_lista IS
+                  'Vista flat contratti per la lista UI configurabile (vendite.contratti). Pura '
+                  'denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). '
+                  'security_invoker=on per rispettare la RLS della tabella base. stato_codice_interno = '
+                  'codice_interno (logica/severity), stato_codice = codice (display). Sorgente dati per '
+                  'ui.lista_definizione codice=''vendite.contratti''. ⭐ rev 2026-08-29 — porta avanti anche '
+                  'frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro '
+                  'frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota '
+                  'di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera '
+                  '(frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di '
+                  'ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' '
+                  'solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la '
+                  'frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev '
+                  '2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si '
+                  'chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da '
+                  '`config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql '
+                  '§6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un '
+                  'consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail '
+                  'CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva '
+                  '`frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni '
+                  'consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a '
+                  'mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ '
+                  'Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e '
+                  'il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` '
+                  'avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_contratti_lista TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_contratti_lista TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_ddt_lista
+              WITH (security_invoker=on) AS
+               SELECT d.id,
+                  d.uid,
+                  d.numero,
+                  d.serie,
+                  d.anno,
+                  d.data,
+                  d.stato_doc_ddt_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  d.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  d.mittente_soggetto_ruolo_id,
+                  s_mitt.ragione_sociale_completa AS mittente_denominazione,
+                  d.vettore_soggetto_ruolo_id,
+                  s_vett.ragione_sociale_completa AS vettore_denominazione,
+                  d.billing_account_id,
+                  ba.codice AS ba_codice,
+                  d.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  d.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  d.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  d.causale_trasporto_id,
+                  ct.codice AS causale_trasporto_codice,
+                  ct.descrizione AS causale_trasporto_descrizione,
+                  d.aspetto_bene_id,
+                  ab.codice AS aspetto_bene_codice,
+                  ab.descrizione AS aspetto_bene_descrizione,
+                  d.modalita_addebito_trasporto_id,
+                  mat.codice AS modalita_addebito_trasporto_codice,
+                  d.num_colli,
+                  d.peso_lordo,
+                  d.peso_netto,
+                  d.volume,
+                  d.targa,
+                  d.autista,
+                  d.data_ora_partenza,
+                  d.data_ora_consegna_prev,
+                  d.tracking_code,
+                  d.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  d.sorgente_uid,
+                  o_src.id AS ordine_origine_id,
+                  o_src.numero AS ordine_origine_numero,
+                  d.data_insert,
+                  d.user_insert,
+                  d.data_update,
+                  d.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.ddt d
+                   JOIN config.stati_doc_ddt sd ON sd.id = d.stato_doc_ddt_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = d.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_mitt ON sr_mitt.id = d.mittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_mitt ON s_mitt.id = sr_mitt.soggetto_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_vett ON sr_vett.id = d.vettore_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_vett ON s_vett.id = sr_vett.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = d.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = d.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = d.valuta_id
+                   LEFT JOIN config.causali_trasporto ct ON ct.id = d.causale_trasporto_id
+                   LEFT JOIN config.aspetti_beni ab ON ab.id = d.aspetto_bene_id
+                   LEFT JOIN config.modalita_addebito_trasporto mat ON mat.id = d.modalita_addebito_trasporto_id
+                   LEFT JOIN config.sorgenti src ON src.id = d.sorgente_tipo_id
+                   LEFT JOIN vendite.ordini o_src ON o_src.uid = d.sorgente_uid AND src.codice_interno::text = 'ORDINE_VENDITA'::text
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE sorgenti.codice_interno::text = 'DDT_VENDITA'::text AND sorgenti.attivo IS TRUE)) AND lin.uid = d.id::text;
+
+              COMMENT ON VIEW vendite.vw_ddt_lista IS
+                  'Vista flat canonica e self-contained DDT per la lista UI. Nomi canonici. Destinatario via '
+                  'soggetto_ruolo diretto; mittente/vettore nullable. +emittente_fiscale_id/_codice (scope, '
+                  '§15). Campi trasporto per il PDF. Ordine di origine via sorgente_uid. security_invoker=on. '
+                  'Mirror vw_ordini_lista. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da '
+                  'vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip '
+                  '«Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture '
+                  'e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, '
+                  'quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA '
+                  'posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da '
+                  'sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: '
+                  'la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL '
+                  'TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: '
+                  'il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna '
+                  'IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome '
+                  'mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la '
+                  'colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul '
+                  'pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: '
+                  'prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie '
+                  'scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le '
+                  'viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' '
+                  '`config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' '
+                  'come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico '
+                  'posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_ddt_lista TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_ddt_lista TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_resi_lista
+              WITH (security_invoker=on) AS
+               SELECT r.id,
+                  r.uid,
+                  r.numero,
+                  r.anno,
+                  r.data,
+                  r.stato_doc_reso_id,
+                  sr.codice_interno AS stato_codice_interno,
+                  sr.descrizione AS stato_descrizione,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  r.billing_account_id,
+                  ba.codice AS ba_codice,
+                  r.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  r.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  r.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  r.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  r.sorgente_uid,
+                  d_src.id AS ddt_origine_id,
+                  d_src.numero AS ddt_origine_numero,
+                  r.data_insert,
+                  r.user_insert,
+                  r.data_update,
+                  r.user_update,
+                  sr.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.resi r
+                   JOIN config.stati_doc_reso sr ON sr.id = r.stato_doc_reso_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = r.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = r.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = r.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = r.sorgente_tipo_id
+                   LEFT JOIN vendite.ddt d_src ON d_src.uid = r.sorgente_uid
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT s.id
+                         FROM config.sorgenti s
+                        WHERE s.codice_interno::text = 'RESO_VENDITA'::text AND s.attivo IS TRUE)) AND lin.uid = r.id::text;
+
+              COMMENT ON VIEW vendite.vw_resi_lista IS
+                  'Lista/dettaglio resi vendita (mirror vw_ddt_lista). security_invoker=on + RLS su base; '
+                  'espone emittente_fiscale_id/_codice e emittente_ragione_sociale. ⭐ rev 2026-08-25 — LA SESTA '
+                  'SORELLA: fase + colonne di genealogia da vendite.vw_documento_lineage (pratica, frontiera, '
+                  'discendenti, is_transitato), nella stessa forma delle altre liste documento. `fase` non '
+                  'c''era: la vista aveva lo stato ma non la fase normalizzata, e il seed della colonna omonima '
+                  'la cerca con quel nome esatto — senza, la colonna sarebbe nata vuota e in silenzio. ⭐ SU UN '
+                  'RESO frontiera_codice E'' IL NUMERO DELLA NOTA DI CREDITO: con l''arco S (20260825-19) il '
+                  'reso smette di essere una foglia e la sua frontiera diventa la nota che lo accredita. La '
+                  'colonna «Transito» risponde percio'' a «questo reso e'' gia'' stato accreditato, e con quale '
+                  'documento» — che prima era una QUANTITA'' (gia_accreditato) in un drawer, non un documento '
+                  'in lista. ⚠️ Il join al lineage e'' LEFT come sulle sorelle: un reso senza genealogia '
+                  'compare senza genealogia, non sparisce. Consumo: ui.lista_definizione ''vendite.resi'' (id '
+                  '9) + preset resi_default; il frontend e'' gia'' <ListaConfigurabile>, quindi le colonne '
+                  'arrivano dal seed. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da '
+                  'vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip '
+                  '«Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture '
+                  'e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, '
+                  'quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA '
+                  'posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da '
+                  'sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: '
+                  'la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL '
+                  'TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: '
+                  'il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna '
+                  'IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome '
+                  'mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la '
+                  'colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul '
+                  'pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: '
+                  'prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie '
+                  'scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le '
+                  'viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' '
+                  '`config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' '
+                  'come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico '
+                  'posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_resi_lista TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_resi_lista TO zeroerp_batch_fatturazione;
+
+              CREATE OR REPLACE VIEW vendite.vw_fatture_lista
+              WITH (security_invoker=on) AS
+               SELECT f.id,
+                  f.uid,
+                  f.numero,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  f.registro_id,
+                  f.stato_doc_fiscale_id,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.descrizione AS stato_descrizione,
+                  sdf.fase,
+                  f.tipo_doc_fiscale_id,
+                  tdf.codice_interno AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione AS tipo_doc_fiscale_descrizione,
+                  f.natura_doc_id,
+                  ndf.codice_interno AS natura_doc_codice_interno,
+                  ndf.descrizione AS natura_doc_descrizione,
+                  f.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s_cli.id AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  f.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  f.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  f.imponibile_tot,
+                  f.imposta_tot,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  f.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  f.sorgente_uid,
+                  f.data_insert,
+                  f.user_insert,
+                  f.data_update,
+                  f.user_update,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno
+                 FROM vendite.fatture f
+                   JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
+                   LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                   LEFT JOIN config.tipi_doc_fiscale tdf ON tdf.id = f.tipo_doc_fiscale_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON sr_cli.id = ba.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_cli ON s_cli.id = sr_cli.soggetto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = f.emittente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = f.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = f.valuta_id
+                   LEFT JOIN config.sorgenti src ON src.id = f.sorgente_tipo_id
+                   LEFT JOIN vendite.vw_documento_lineage lin ON lin.tipo_id = (( SELECT s.id
+                         FROM config.sorgenti s
+                        WHERE s.codice_interno::text = 'FATTURA'::text AND s.attivo IS TRUE)) AND lin.uid = f.id::text;
+
+              COMMENT ON VIEW vendite.vw_fatture_lista IS
+                  'Vista flat canonica e self-contained delle fatture di vendita per la lista UI — la settima '
+                  'sorella di vw_contratti/ddt/offerte_commerciali/ordini/preventivi/resi_lista, e l''ultimo '
+                  'documento del ciclo attivo che ne era privo. Nomi canonici gia'' noti al frontend: '
+                  'stato_codice_interno/stato_descrizione, ragione_sociale_completa, '
+                  'id_fiscale_univoco_cf_piva, ba_codice, utility_codice/utility_descrizione, '
+                  'emittente_ragione_sociale, soggetto_id. Cliente risolto via billing_account -> '
+                  'soggetto_ruolo -> soggetto (la fattura non porta un soggetto_ruolo cliente). '
+                  'emittente_fiscale_id DERIVATO da anagrafiche.emittenti_fiscali.soggetto_ruolo_id, che ha un '
+                  'vincolo di unicita'' (uq_emittenti_fiscali_ruolo): il join non moltiplica le righe. Importi '
+                  'coi nomi della tabella (imponibile_tot, imposta_tot, totale_doc, totale_a_pagare) perche'' '
+                  'fra le sorelle quel nome NON e'' canonico. ⛔ security_invoker=on: vendite.fatture ha la RLS '
+                  '(rls_fatture_ef_whitelist per l''operatore, rls_fatture_ba_ownership per il portale) ed e'' '
+                  'quella a dover mordere — la vista non filtra e non fa scope, denormalizza soltanto. ⛔ UN '
+                  'SOLO join interno, config.nature_doc_fiscale, e solo perche'' natura_doc_id e'' NOT NULL con '
+                  'FK; tutto il resto e'' LEFT. In particolare anagrafiche.billing_account, che ha una RLS '
+                  'propria risolta da fn_scope_ef_whitelist_via_efba mentre la fattura usa '
+                  'fn_scope_ef_whitelist_via_sr: le due derivazioni del perimetro possono divergere, e un inner '
+                  'join farebbe sparire dalla lista una fattura che la sua policy lascia passare — una lista '
+                  'che mostra meno del dovuto senza nessun segnale. Le colonne nullable '
+                  '(stato/tipo/utility/valuta) sono LEFT per la stessa ragione di forma: una fattura senza '
+                  'stato deve comparire senza stato, non sparire. Bozze incluse: numero/serie/anno sono NULL '
+                  'finche'' il documento non e'' numerato. Genealogia da vendite.vw_documento_lineage (18 righe '
+                  'su 18 fatture, misurate): n_discendenti_attivi e is_transitato sono zero per costruzione '
+                  'perche'' la fattura e'' terminale. NON contiene il lotto di appartenenza: questa lista '
+                  'esiste per raggiungere la fattura SENZA passare dal lotto. Seed lista: ui.lista_definizione '
+                  '''vendite.fatture'' (attivo = f finche'' il backend non espone l''endpoint). Registro: '
+                  'docs/it/dev/work-in-progress/piano-migrazione-primevue-5.md §9, 2026-08-24. ⭐ rev 2026-08-29 '
+                  '— porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto '
+                  'alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama '
+                  '«Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di '
+                  'frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto '
+                  'di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' '
+                  'solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la '
+                  'frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⚠️ SU QUESTA '
+                  'VISTA LA COLONNA E'' COSTANTE, ed e'' bene saperlo prima di leggerla: una fattura e'' sempre '
+                  'frontiera di SE STESSA (nel grafo forward non ha archi uscenti — l''arco N e'' un ramo di '
+                  'ritorno; lo asserisce il pgTAP 30 di test-documento-lineage-v1.sql), quindi '
+                  'frontiera_natura_doc_codice qui vale SEMPRE la natura della riga stessa. C''e'' lo stesso, e '
+                  'per una ragione di forma e non di dato: le sette liste sorelle devono esporre lo STESSO '
+                  'blocco frontiera_*, altrimenti chi scrive l''ottava copia da quella sbagliata. ⛔ E chi un '
+                  'giorno montasse la colonna «Transito» qui sappia che renderebbe il documento su se stesso: '
+                  'non un''etichetta sbagliata, un chip che non dice niente. ⛔ rev 2026-08-29 — BONIFICA NAMING '
+                  '§6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora '
+                  '`frontiera_natura_doc_codice_interno`: il valore viene da '
+                  '`config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql '
+                  '§6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un '
+                  'consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail '
+                  'CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva '
+                  '`frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni '
+                  'consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a '
+                  'mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ '
+                  'Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e '
+                  'il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` '
+                  'avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_fatture_lista TO zeroerp_app;
+              GRANT SELECT ON vendite.vw_fatture_lista TO zeroerp_batch_fatturazione;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⛔ Nessun ripristino automatico, e qui la ragione e' doppia.
+              --    1) Tornare indietro vorrebbe dire un secondo teardown completo
+              --       del grafo, per rimettere DEI NOMI CHE MENTONO sulla sorgente:
+              --       il guardrail CI tornerebbe rosso di proposito.
+              --    2) I consumatori a valle (repository BE, prop FE) saranno gia'
+              --       passati ai nomi fedeli: un ripristino li romperebbe TUTTI,
+              --       mentre l'avanti li rompe una volta sola e in modo visibile.
+              --    Se serve davvero: si riapplicano, in ordine, 20260821-01,
+              --    20260828-24, 20260828-25, 20260821-04, 20260824-15 e 20260829-01,
+              --    dopo aver droppato i consumatori a mano.
+              SELECT 1;

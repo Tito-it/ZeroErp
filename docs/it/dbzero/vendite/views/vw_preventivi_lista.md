@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista flat canonica preventivi per la lista UI configurabile (vendite.preventivi). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Pura denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). security_invoker=on (RLS-ready). Soggetto via istanze_utilities (1 join, valorizzato anche per prospect). Sostituisce vw_preventivi_list (deprecata, drop differito post-BE).
+> Vista flat canonica preventivi per la lista UI configurabile (vendite.preventivi). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Dal 2026-08-28 espone anche le DUE componenti di is_attiva come colonne proprie: is_superata (rimpiazzata da una rev superiore viva — il complemento e' «e' l'ultima revisione») e is_abortito (annullato), piu' has_next_revisione. Il toggle «Mostra storico revisioni» si scrive is_superata IS FALSE: is_attiva nasconde anche gli annullati e rende vuoto per costruzione il filtro di stato «Annullato». Pura denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). security_invoker=on (RLS-ready). Soggetto via istanze_utilities (1 join, valorizzato anche per prospect). ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e' in ULTIMA posizione perche' CREATE OR REPLACE VIEW puo' solo appendere: non e' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e' `frontiera_tipo_codice`: quel valore e' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l'unico posto dove il guardrail li vede.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -50,7 +50,12 @@ SELECT p.id,
     lin.frontiera_stato_codice_interno,
     lin.frontiera_fase,
     lin.n_discendenti_attivi,
-    lin.is_transitato
+    lin.is_transitato,
+    p.is_superata,
+    p.is_abortito,
+    p.has_next_revisione,
+    lin.frontiera_natura_doc_codice_interno,
+    lin.frontiera_tipo_codice_interno
    FROM ((((((((((vendite.vw_preventivi p
      JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))

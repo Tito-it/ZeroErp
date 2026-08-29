@@ -1,0 +1,317 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FASE D (D-2) — ARCO T: IL RESO SMETTE DI ESSERE UN VICOLO CIECO
+#   vendite.vw_documento_lineage_archi
+#   Piano: brief-db-ddt-riconsegna-eredita-testata, Fase D / D-2 (§9.4.1)
+#   Si coordina con brief-db-lineage-residui-root-e-sorgente-ddt §2
+#
+# ── ⭐ IL FATTO ───────────────────────────────────────────────────────
+#   Il grafo aveva l'arco R (DDT -> reso, la merce che torna) e l'arco S (reso
+#   -> nota di credito, il valore che si accredita), ma NON l'arco che dice che
+#   quella merce e' RIPARTITA. Su «Transito/Passaggi» un reso ri-consegnato
+#   finiva come una foglia: il viaggio di ritorno non compariva da nessuna
+#   parte, benche' il ponte che lo registra esista dal 2026-07.
+#
+# ── ⭐ AVANZAMENTO, NON RAMO DI RITORNO — e la ragione era gia' scritta ─
+#   La vista marchia ogni arco in un modo solo:
+#     is_ramo_inverso = arco IN ('R','N')
+#   e i quattro archi del ritorno merce, letti insieme, danno gia' la regola:
+#     H  ordine  -> DDT                avanzamento
+#     R  DDT     -> reso               RITORNO  (la merce torna)
+#     N  fattura -> nota di credito    RITORNO  (il valore torna)
+#     S  reso    -> nota di credito    avanzamento
+#   Quando fu aggiunto S, il motivo fu messo per iscritto nel corpo della
+#   vista: «"inverso" vuol dire ramo di RITORNO, un verso che il grafo forward
+#   non percorre; S invece e' l'AVANZAMENTO del reso — la merce e' tornata,
+#   adesso si accredita».
+#   T e' la gemella di S: la merce e' tornata, adesso RIPARTE. Il ritorno e'
+#   gia' avvenuto ed e' R; da li' in poi il reso ha DUE modi di andare avanti.
+#   ⚠️ Per questo `is_ramo_inverso` NON cambia: la lettera T non entra
+#   nell'ARRAY, ed e' la dichiarazione, non una dimenticanza.
+#
+# ── ⚠️ IL CASO CHE LA NOTA DELL'ARCO S SEGNALAVA, e perche' qui e' sicuro ─
+#   Un reso puo' essere IN PARTE accreditato e IN PARTE ri-consegnato, quindi
+#   avere DUE figli in avanti, e il grafo deve saper dire quale dei due e' il
+#   piu' avanzato. Con S il pericolo era che i due figli fossero DELLO STESSO
+#   TIPO — due nodi FATTURA allo stesso livello, stesso pipeline_rank, e la
+#   frontiera decisa sul confronto lessicografico fra due uid testuali. Qui i
+#   due figli sono di TIPO DIVERSO — una FATTURA (arco S) e un DDT (arco T) —
+#   quindi il rango li separa e il caso e' sicuro. ⛔ E' esattamente quella
+#   differenza a renderlo sicuro: se un domani non ci fosse piu', il difetto
+#   tornerebbe silenzioso.
+#
+# ── ⭐ LA SORGENTE E' IL PONTE, NON ddt.sorgente_* ────────────────────
+#   L'arco si costruisce da vendite.resi_righe_riconsegne, l'aggancio duro che
+#   fn_genera_ddt_riconsegna popola per ENTRAMBI i rami. Due conseguenze, ed
+#   erano il motivo per cui il brief teneva D-1 e D-2 nella stessa fase:
+#     · l'arco copre anche le ri-consegne ORDER-BACKED, che dichiarano
+#       ORDINE_VENDITA e il reso non lo nominerebbero mai;
+#     · NON dipende dal 20260828-04. I due changeSet dicono cose diverse:
+#       quello CHI E' IL PADRE sul documento (il campo «Origine», l'azione
+#       «apri sorgente»), questo lo fa COMPARIRE NEL GRAFO.
+#
+# ── ⚠️ REGOLA DI PERIMETRO — ogni ramo passa dalle TESTATE ───────────
+#   Il join attraversa vendite.resi e vendite.ddt, che sono le tabelle che
+#   portano la RLS. Le tre di mezzo (resi_righe_riconsegne, resi_righe,
+#   ddt_righe) hanno relrowsecurity = f: un ramo che si fermasse li'
+#   produrrebbe un arco verso un documento che il chiamante non vede, e la
+#   decorazione non lo ferma, perche' i join ai nodi sono LEFT. E' la regola
+#   scritta nella rev 2026-08-25 della vista, dove B, E, F e G la violavano.
+#
+# ── ⛔ security_invoker=on VA RI-SPECIFICATA ─────────────────────────
+#   PostgreSQL AZZERA la reloption su un CREATE OR REPLACE VIEW che non la
+#   ripete, e la vista diventerebbe SECURITY DEFINER di fatto — cioe'
+#   scavalcherebbe la RLS senza dirlo. E' nel testo qui sotto.
+#
+# ── ⚠️ DISTINCT obbligatorio ─────────────────────────────────────────
+#   Un reso con piu' righe ri-consegnate nello stesso DDT produrrebbe un arco
+#   per riga.
+#
+# ⚠️ Definizione ripresa dalla doc auto-gen (l'oggetto VIVO): questa vista ha
+#   piu' revisioni e un singolo YAML sarebbe stale. L'unica differenza rispetto
+#   al vivo e' il blocco UNION ALL dell'arco T.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260828-05-update-vw-documento-lineage-archi-riconsegna-mctit.yaml
+
+  - changeSet:
+      id: 20260828-05-update-vw-documento-lineage-archi-riconsegna
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Fase D (D-2) del brief-db-ddt-riconsegna-eredita-testata: arco T, reso -> DDT di
+        ri-consegna. Il grafo aveva R (la merce torna) e S (il valore si accredita) ma non
+        l'arco che dice che la merce e' RIPARTITA: un reso ri-consegnato finiva come una
+        foglia. ⭐ E' un AVANZAMENTO, non un ramo di ritorno, per la stessa ragione gia'
+        scritta per l'arco S: il ritorno e' gia' avvenuto ed e' R, e da li' il reso ha due modi
+        di andare avanti — accreditare (S) o ri-consegnare (T). is_ramo_inverso resta
+        ARRAY['R','N'] e la lettera T non ci entra: e' la dichiarazione, non una dimenticanza.
+        ⭐ Si costruisce dal ponte resi_righe_riconsegne e non da ddt.sorgente_*, quindi copre
+        anche le ri-consegne order-backed e NON dipende dal 20260828-04. ⚠️ Il join passa dalle
+        TESTATE (resi, ddt): le tre tabelle di mezzo non hanno RLS e non darebbero perimetro.
+        ⚠️ Un reso in parte accreditato e in parte ri-consegnato ha due figli in avanti, di
+        TIPO DIVERSO (FATTURA e DDT): il rango li separa, ed e' quella differenza a rendere
+        sicuro il caso che la nota dell'arco S segnalava. ⛔ security_invoker=on ri-specificata:
+        un CREATE OR REPLACE che non la ripete la azzera.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM config.sorgenti
+               WHERE codice_interno = 'RESO_VENDITA' AND attivo IS TRUE;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              WITH archi AS (
+                       SELECT s_from.id AS from_tipo_id,
+                          (p.uid)::text AS from_uid,
+                          s_to.id AS to_tipo_id,
+                          (o.id)::text AS to_uid,
+                          NULL::character varying AS ruolo,
+                          'A'::text AS arco
+                         FROM (((vendite.ordini o
+                           JOIN vendite.preventivi p ON ((p.id = o.documento_origine_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'PREVENTIVO'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE ((o.documento_origine_tipo)::text = 'PREVENTIVO'::text)
+                      UNION ALL
+                       SELECT s_from.id,
+                          (p.uid)::text AS uid,
+                          s_to.id,
+                          (cm.id)::text AS id,
+                          cs.ruolo_link,
+                          'B'::text AS text
+                         FROM ((((vendite.commesse_sorgenti cs
+                           JOIN vendite.preventivi p ON (((p.uid)::text = cs.sorgente_uid)))
+                           JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
+                           JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT s_from.id,
+                          (oc.uid)::text AS uid,
+                          s_to.id,
+                          (c.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'C'::text AS text
+                         FROM (((vendite.contratti c
+                           JOIN vendite.offerte_commerciali oc ON ((oc.id = c.offerta_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'CONTRATTO'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE (c.offerta_id IS NOT NULL)
+                      UNION ALL
+                       SELECT s_from.id,
+                          (oc.uid)::text AS uid,
+                          s_to.id,
+                          (o.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'D'::text AS text
+                         FROM (((vendite.ordini o
+                           JOIN vendite.offerte_commerciali oc ON ((oc.id = o.documento_origine_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE ((o.documento_origine_tipo)::text = 'OFFERTA'::text)
+                      UNION ALL
+                       SELECT s_from.id,
+                          (o.id)::text AS id,
+                          s_to.id,
+                          (cm.id)::text AS id,
+                          cs.ruolo_link,
+                          'E'::text AS text
+                         FROM ((((vendite.commesse_sorgenti cs
+                           JOIN vendite.ordini o ON (((o.id)::text = cs.sorgente_uid)))
+                           JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
+                           JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT s_from.id,
+                          (c.id)::text AS id,
+                          s_to.id,
+                          (cm.id)::text AS id,
+                          cs.ruolo_link,
+                          'F'::text AS text
+                         FROM ((((vendite.commesse_sorgenti cs
+                           JOIN vendite.contratti c ON (((c.id)::text = cs.sorgente_uid)))
+                           JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
+                           JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT DISTINCT s_from.id,
+                          (cm.id)::text AS id,
+                          s_to.id,
+                          (f.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'G'::text AS text
+                         FROM (((((vendite.attivita_fatturabili af
+                           JOIN vendite.commesse cm ON ((cm.id = af.commessa_id)))
+                           JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                           JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'COMMESSA'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'FATTURA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE (af.fattura_riga_id IS NOT NULL)
+                      UNION ALL
+                       SELECT s_from.id,
+                          (o.id)::text AS id,
+                          s_to.id,
+                          (d.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'H'::text AS text
+                         FROM (((vendite.ddt d
+                           JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
+                           JOIN vendite.ordini o ON ((o.uid = d.sorgente_uid)))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT s_from.id,
+                          (d.id)::text AS id,
+                          s_to.id,
+                          (r.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'R'::text AS text
+                         FROM (((vendite.resi r
+                           JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
+                           JOIN vendite.ddt d ON ((d.uid = r.sorgente_uid)))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                      UNION ALL
+                       SELECT DISTINCT s_fat.id,
+                          (rr.fattura_id)::text AS fattura_id,
+                          s_fat.id,
+                          (fr.fattura_id)::text AS fattura_id,
+                          NULL::character varying AS "varchar",
+                          'N'::text AS text
+                         FROM ((vendite.fatture_righe fr
+                           JOIN vendite.fatture_righe rr ON ((rr.id = fr.riga_rettificata_id)))
+                           JOIN config.sorgenti s_fat ON ((((s_fat.codice_interno)::text = 'FATTURA'::text) AND (s_fat.attivo IS TRUE))))
+                        WHERE ((fr.riga_rettificata_id IS NOT NULL) AND (rr.fattura_id <> fr.fattura_id))
+                      UNION ALL
+                       SELECT DISTINCT s_from.id,
+                          (r.id)::text AS id,
+                          s_to.id,
+                          (fr.fattura_id)::text AS fattura_id,
+                          NULL::character varying AS "varchar",
+                          'S'::text AS text
+                         FROM ((((((vendite.resi_righe_accrediti acc
+                           JOIN vendite.resi_righe rr ON ((rr.id = acc.resi_riga_id)))
+                           JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+                           JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = acc.commessa_attivita_id)))
+                           JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'FATTURA'::text) AND (s_to.attivo IS TRUE))))
+                        WHERE (af.fattura_riga_id IS NOT NULL)
+                      UNION ALL
+              -- ARCO T — reso -> DDT DI RI-CONSEGNA. La merce e' tornata, adesso RIPARTE.
+              --   ⭐ AVANZAMENTO, non ramo di ritorno, ed e' la stessa ragione gia' scritta
+              --   per l'arco S: «inverso» vuol dire ramo di RITORNO, un verso che il grafo
+              --   forward non percorre. Il ritorno e' gia' avvenuto ed e' l'arco R
+              --   (DDT -> reso); da li' in poi il reso ha DUE modi di andare avanti —
+              --   accreditare la merce (S) o ri-consegnarla (T). Nessuno dei due cammina
+              --   all'indietro. Conseguenza voluta, gemella di quella di S: il reso smette
+              --   di essere una foglia e prende il DDT di ri-consegna come FRONTIERA.
+              --   ⚠️ is_ramo_inverso resta ARRAY['R','N'] e la lettera T non ci entra: e'
+              --   la dichiarazione, non una dimenticanza.
+              --
+              --   ⭐ LA SORGENTE E' IL PONTE, NON ddt.sorgente_*. vendite.resi_righe_riconsegne
+              --   e' l'aggancio duro che fn_genera_ddt_riconsegna popola per ENTRAMBI i rami
+              --   dal 2026-07. Leggerlo di li' ha due conseguenze: l'arco copre anche le
+              --   ri-consegne ORDER-BACKED (che dichiarano ORDINE_VENDITA e non nominerebbero
+              --   mai il reso) e NON dipende dal 20260828-04, che valorizza la sorgente sul
+              --   solo ramo standalone. I due changeSet dicono cose diverse: quello CHI E' IL
+              --   PADRE sul documento, questo lo fa COMPARIRE NEL GRAFO.
+              --
+              --   ⚠️ REGOLA DI PERIMETRO (rev 2026-08-25): il ramo passa dalle TABELLE-TESTATA
+              --   dei due documenti — vendite.resi e vendite.ddt — perche' sono quelle che
+              --   portano la RLS. Le tre tabelle di mezzo (resi_righe_riconsegne, resi_righe,
+              --   ddt_righe) hanno relrowsecurity = f e non darebbero perimetro: un ramo che
+              --   si fermasse li' produrrebbe un arco verso un documento che il chiamante non
+              --   vede, e la decorazione non lo ferma perche' i join ai nodi sono LEFT.
+              --
+              --   ⚠️ DISTINCT obbligatorio: un reso con piu' righe ri-consegnate nello stesso
+              --   DDT produrrebbe un arco per riga.
+                       SELECT DISTINCT s_from.id,
+                          (r.id)::text AS id,
+                          s_to.id,
+                          (d.id)::text AS id,
+                          NULL::character varying AS "varchar",
+                          'T'::text AS text
+                         FROM ((((((vendite.resi_righe_riconsegne rrr
+                           JOIN vendite.resi_righe rr ON ((rr.id = rrr.resi_riga_id)))
+                           JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+                           JOIN vendite.ddt_righe dr ON ((dr.id = rrr.ddt_riga_id)))
+                           JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+                           JOIN config.sorgenti s_from ON ((((s_from.codice_interno)::text = 'RESO_VENDITA'::text) AND (s_from.attivo IS TRUE))))
+                           JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'DDT_VENDITA'::text) AND (s_to.attivo IS TRUE))))
+                      )
+               SELECT a.from_tipo_id,
+                  a.from_uid,
+                  nf.codice AS from_codice,
+                  a.to_tipo_id,
+                  a.to_uid,
+                  nt.codice AS to_codice,
+                  nt.stato_codice_interno AS to_stato_codice_interno,
+                  nt.fase AS to_fase,
+                  nt.is_abortito AS to_is_abortito,
+                  a.ruolo,
+                  a.arco,
+                  (a.arco = ANY (ARRAY['R'::text, 'N'::text])) AS is_ramo_inverso,
+                  nf.natura_doc_codice AS from_natura_doc_codice,
+                  nt.natura_doc_codice AS to_natura_doc_codice
+                 FROM ((archi a
+                   LEFT JOIN vendite.vw_documento_lineage_nodi nf ON (((nf.tipo_id = a.from_tipo_id) AND (nf.uid = a.from_uid))))
+                   LEFT JOIN vendite.vw_documento_lineage_nodi nt ON (((nt.tipo_id = a.to_tipo_id) AND (nt.uid = a.to_uid))));
+              ;
+      rollback:
+        - empty: {}

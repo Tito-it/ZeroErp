@@ -332,6 +332,25 @@ record può cambiare, e lì `disabled` + `tooltip` spiega e resta a video.
 > [linee-guida-sql §12](/linee-guida-sql). ⚠️ Le due copie vanno tenute
 > allineate: il 2026-08-20 una decisione DB è stata presa ignorando questa
 > pagina, perché chi scrive SQL non la legge.
+>
+> ⭐ **E per le azioni PER RIGA il motivo lo deve dare il database lo stesso**
+> (`linee-guida-sql §12.5`, dal 2026-08-26). Le capability stanno sul dettaglio,
+> quindi una riga non le ha: il motivo arriva come **colonna della vista di
+> riga**, prodotta da una `script.fn_check_*` che la **madre chiama** per
+> rifiutare — così il tooltip e l'errore non possono dire due cose diverse.
+> ⛔ **Non ricalcolare la regola qui**: fra «riscriverla nel frontend» e «non
+> dirla affatto» la terza strada è chiederla al DB. È il difetto trovato in app
+> sul pulsante «Annulla l'accredito», acceso su un annullo che sarebbe stato
+> rifiutato dopo aver fatto scrivere all'operatore un motivo obbligatorio.
+
+⛔ **E il campo si chiama `tooltip`, non `motivo`.** `RowActionsMenu` legge
+`action.tooltip` e da lì ricava **da solo** il tooltip inline e la riga sotto la
+voce nel kebab (`actionMotivo`). Un `motivo:` sull'azione non lo legge nessuno:
+misurato il 2026-08-26, il motivo di un pulsante spento **non era mai stato
+reso** — ed è anche il motivo per cui la chiave i18n mancante non si era mai
+vista a video, perché l'etichetta non veniva proprio chiesta. È la terza
+occorrenza della stessa specie in questa pagina, insieme allo slot delle azioni
+col nome sbagliato e al campo `action` ignorato fino al 2026-08-17.
 
 **Regola record inattivo (`attivo=false` / `is_active=false`):**
 
@@ -609,9 +628,36 @@ Usato da: `FormFooter` (Ctrl+S salva).
 | `app-row-actions-inline`   | Interno `RowActionsMenu`          | Wrapper pulsanti inline — visibile solo con hover + viewport `>=1024px`    |
 | `app-row-actions-compact`  | Interno `RowActionsMenu`          | Wrapper kebab + menu popup — visibile su touch o viewport `<1024px`        |
 | `app-menu-item-manage`     | Voce `Menu` PrimeVue              | Colore blu — default popup `RowActionsMenu`                                |
-| `app-menu-item-action`     | Voce `Menu` PrimeVue              | Colore verde — default popup `PageActionsBar` / severity `primary`         |
+| `app-menu-item-action`     | Voce `Menu` PrimeVue              | **Blu dal 2026-08-27** (era verde) — default popup `PageActionsBar` / severity `primary`. Vedi la nota sotto |
 | `app-menu-item-warn`       | Voce `Menu` PrimeVue              | Colore arancio — severity `warn` (cautela)                                 |
 | `app-menu-item-danger`     | Voce `Menu` PrimeVue              | Colore rosso — severity `danger` (distruttiva)                             |
+
+#### ⭐ I pulsanti di AZIONE sono blu (decisione di Tid, 2026-08-27)
+
+Erano metà verdi e metà blu: sulla **stessa riga** di una lista «Gestisci note»
+usciva blu e «Apri documenti» verde, perché la prima non ha `severity` (fallback
+`app-menu-item-manage`) e la seconda ha `severity: primary`. La differenza non
+voleva dire niente per chi guarda.
+
+**Sede unica**: `--app-btn-action-*` in `theme.css`. I tre punti che erano verdi
+— `app-action-btn`, `app-reload-btn`, `app-menu-item-action` — puntano lì. Per
+tornare al verde si cambiano quelle tre righe, **non** i blocchi in `main.css`.
+
+⛔ **Restano intatti i colori che PORTANO un significato**: rosso per
+cancellazione e PDF, arancio per gli avvisi. Uniformare quelli cancellerebbe
+un'informazione, non un'incoerenza.
+
+#### ⛔ Il tooltip di un pulsante che può essere DISABILITATO va sull'involucro
+
+Un `<button disabled>` **non emette eventi del mouse**, e la directive tooltip di
+PrimeVue aggancia `mouseenter` sull'elemento stesso: appeso al Button il tooltip
+non compare **mai**, e a pulsante spento è esattamente quando serve.
+
+Si avvolge in uno `<span class="app-action-tooltip-wrap">` (`inline-flex`, così
+prende il posto del Button come elemento flex e la spaziatura non cambia).
+`PageActionsBar` e `DrawerActionsBar` lo fanno **dal 2026-08-27**: prima il
+motivo che il DB manda con `enabled:false` + `reason` era muto su tutte le liste
+e su tutti i drawer.
 
 ### Composable `useSearchTable(store)`
 
@@ -626,6 +672,48 @@ const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 ```
 
 Nessun componente lista deve implementare onPage/onSort/debounce manualmente.
+
+### ⛔ Paginazione corretta: **una sola sorgente** per `rows` e `first`
+
+🔴 **Il difetto che questa regola evita**: cambi la dimensione di pagina, poi vai
+da pagina 1 a pagina 2 e ti ritrovi su **pagina 3**. Non è un bug di PrimeVue: è
+**la dimensione di pagina contata da due parti diverse**.
+
+**La regola, in una riga:** `rows` e `first` li possiede **il caller** — è lui
+che ha fatto la fetch, e solo lui sa con quale dimensione. Chi disegna il
+paginator li legge, non li ricalcola.
+
+`<ListaConfigurabile>` applica questa cascata, **in quest'ordine**:
+
+1. `paginatorOptions.rows` / `.first` del **caller** — lo stato vero;
+2. `config.pagina_dimensione` — il preset a catalogo, finché il caller non ha uno stato suo;
+3. `PAGINATION.DEFAULT_ROWS`.
+
+⛔ **Fino al 2026-08-28 il caller non era nella cascata**: `rows` veniva dalla
+sola config e **sovrascriveva** quello che il caller dichiarava. La scelta
+«righe per pagina» dell'operatore non arrivava mai al paginator: lui sceglieva
+10, il caller rifaceva la fetch con 10, e al render successivo il paginator
+tornava a disegnarsi con i 25 del catalogo. Poi PrimeVue calcolava l'offset del
+«vai a pagina 2» con **25** e il caller lo interpretava con **10**:
+`25/10 + 1 = 3`.
+
+**Come si scrive una lista che pagina bene:**
+
+| Lista | Cosa usare |
+| --- | --- |
+| lista di ricerca standard | `useSearchTable(store)` — `paginatorProps` porta già `rows`/`first` dallo store, e `onPage` ha le due guardie (evento che non cambia niente → esci; fetch in volo → ignora) |
+| **cruscotti / drawer** (che `useSearchTable` non può servire: pretende uno store «ricerca + sort + limit») | `usePagedDashFetch` + `paginatorOptions` che dichiara **sempre** `rows` e `first` calcolati con la **stessa** dimensione della fetch |
+
+⚠️ **Il difetto si nasconde dove i numeri combaciano.** Sulla Lente 1 saltavano
+**tre liste su quattro**: gli `errori` hanno `pagina_dimensione = 10` a catalogo,
+uguale a `PAGINATION.COMPACT_ROWS`, quindi lì i due numeri coincidevano per caso
+e non succedeva niente. Sembrava il problema di una lista sola.
+
+⚠️ **Conseguenza da conoscere**: con la cascata, `pagina_dimensione` del preset
+vale come **valore iniziale** solo per le liste il cui caller si allinea alla
+config (`@config-loaded`, che **46 consumatori su 51** agganciano). Per le altre
+il preset resta dichiarato e non applicato — è una divergenza aperta, non un
+difetto di questa regola.
 
 ### Pattern: Ricerca universale → lista filtrata
 
@@ -1708,7 +1796,22 @@ Corollari operativi:
 **Controllo automatico (obbligatorio prima di toccare chiavi o namespace):**
 `python3 scripts/check_i18n_keys.py [--strict-roots]` — rende rumoroso l'errore
 silenzioso: chiavi citate ma assenti, chiavi emesse dal DB (capability + seed)
-non risolvibili, parità it/en, radici di dominio in cima. Va tenuto verde.
+non risolvibili, parità it/en, radici di dominio in cima, e **chiavi definite due
+volte nello stesso oggetto**. Va tenuto verde.
+
+⚠️ **Una chiave scritta due volte non è un errore di sintassi**: in JSON è
+lecito, e ogni parser tiene l'**ultima** — `JSON.parse` come `json.load`. La
+prima è quindi *morta*, senza errori e senza test rossi, e il file mostra una
+frase che a video non compare. ⭐ Fa danno quando i consumatori sono **due con
+contratti diversi**: il 2026-08-26 `vendite.lotti.numera_esito` era definita due
+volte, e la numerazione **di massa** — che passa `{numerati}` — riceveva la frase
+del **singolo lotto**, perdendo il conteggio. Un segnaposto che non compare non
+si vede.
+⛔ E il cancello era **cieco al proprio difetto** fino a quel giorno: faceva
+`json.load`, cioè leggeva il dizionario già collassato — guardava il *risultato*
+invece del difetto. Ora usa un `object_pairs_hook`, che vede le coppie prima che
+si schiaccino. *Un presidio che parsifica il formato eredita la tolleranza del
+formato.*
 
 **Procedura di classificazione e inventario** (come si decide dove va una radice
 esistente, soglia del 70%, casi «due indirizzi con lo stesso nome»):

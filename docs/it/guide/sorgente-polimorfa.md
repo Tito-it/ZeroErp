@@ -43,6 +43,29 @@ La soluzione è un **aggancio universale**: invece del tunnel dedicato, si memor
 > Analogia: un **adattatore universale**. Non serve una presa diversa per ogni Paese:
 > basta l'adattatore + l'indicazione di quale spina usare (`key_selector`).
 
+## 2a. Le tre domande che il meccanismo sa fare
+
+Un aggancio universale serve a poco se poi, del documento agganciato, non si sa
+niente. Oggi il meccanismo risponde a **tre** domande, e ognuna ha un pezzo suo:
+
+| Domanda | Chi risponde |
+|---|---|
+| **esiste?** | `script.trgfn_guard_sorgente_polimorfa_testuale` — blocca gli agganci a documenti fantasma |
+| **in che stato è?** | `script.vw_stato_sorgente` — traduce lo stato nel vocabolario comune |
+| **chi lo emette?** | [`script.fn_get_sorgente_emittente_sr_id`](/dbzero/script/manual/fn_get_sorgente_emittente_sr_id) — dal 2026-08-26 |
+
+La terza è nata per il controllo che vieta a una commessa di aggregare documenti
+di emittenti diversi, ma la domanda è generale e la risposta ora esiste in **un
+posto solo**.
+
+⛔ **Una trappola che quella funzione ha già pagato**, e che vale per chiunque
+scriva un risolutore su questo meccanismo: l'emittente **non** si chiede al
+cliente del documento. Su `ordini`, `preventivi`, `ddt` e `resi` il cliente
+**può mancare** — è uno stato legittimo — mentre l'emittente c'è sempre. Un
+risolutore che passasse dal cliente si fermerebbe su documenti perfettamente
+validi, e *un controllo che rifiuta una situazione che il modello ammette non è
+severo: è rotto*.
+
 ## 3. Come si usa — esempio
 
 Una **pratica** deve collegarsi all'ordine `ORD0000163`:

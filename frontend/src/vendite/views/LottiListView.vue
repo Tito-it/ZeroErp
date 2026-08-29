@@ -6,7 +6,7 @@
 //        apre il LottoDrawer diagnostico (step corrente, fatture, task-run,
 //        segnalazioni) con le azioni di governo. Nessuna logica di dominio:
 //        stato/step/gate vivono nel motore, la lista rende e naviga.
-import { ref, computed, nextTick, onActivated } from 'vue'
+import { ref, computed, nextTick, onActivated, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { registraDrawerChiudibile } from '../../core/composables/useDrawerChiusuraGlobale'
 import { useI18n } from 'vue-i18n'
@@ -33,9 +33,18 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import Message from 'primevue/message'
 import { useLottoAzioni } from '../composables/useLottoAzioni'
+import { useSelezioneLotti } from '../composables/useSelezioneLotti'
+import { useJobPolling } from '../../core/composables/useJobPolling'
+import { useRigheInGiro } from '../../core/composables/useRigheInGiro'
+import { useActionPermission } from '../../core/composables/useActionPermission'
+import { useApiHandler } from '../../core/composables/useApiHandler'
+import { runNumerazione, getFatturazioneRun } from '../api/lotti'
+import Button from 'primevue/button'
+import Menu from 'primevue/menu'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
-import { READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import { menuItemClass } from '../../core/utils/rowActions'
 import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
 import { useLottiStore } from '../stores/lotti'
 
@@ -122,6 +131,20 @@ const {
 //    non c'è. È lo stesso caso per cui quel BB è nato (una lista pilotata da un
 //    contesto esterno) — il nome dice «drawer» solo perché lì è stato estratto.
 const schedaAttiva = ref('lotti')
+
+// ⭐ Cambiando PERIODO si torna sempre ai «Lotti del mese» (rilievo di Tid,
+//    2026-08-27). I «Recuperi» sono la vista di eccezione — i lotti di
+//    competenza precedente che hanno emesso documenti nel mese filtrato — e
+//    restarci dentro cambiando mese è la strada per credere che il mese nuovo
+//    abbia quelle poche righe lì, e non i suoi lotti.
+// ⚠️ NON basta il reset in `onActivated`: quello copre l'apertura della pagina
+//    e il rientro nel tab, ma un cambio mese non smonta né riattiva niente —
+//    cambia un filtro e basta. Erano due strade diverse per lo stesso stato, e
+//    la prima correzione ne aveva coperta una sola.
+// ⚠️ Si osserva `competenzaParam` e non l'handler del mese: così vale per ogni
+//    modo di cambiare periodo — il click sul mese, le frecce, il cambio anno —
+//    senza doverli rincorrere uno per uno.
+watch(competenzaParam, () => { schedaAttiva.value = 'lotti' })
 
 // Scopo: inoltra a `listaRef` l'istanza di `<ListaConfigurabile>` che
 //        `<LottiLista>` espone, invece del wrapper.
@@ -242,6 +265,15 @@ function onFilterChange() {
 // evita il doppio fetch concorrente. Al primo mount invece il suo hook si
 // auto-salta (firstActivation) ed è QUESTO a fare il fetch iniziale.
 onActivated(() => {
+  // ⭐ La pagina si apre SEMPRE sui «Lotti del mese». Il `ref('lotti')` da solo
+  //    non basta: la view vive sotto KeepAlive, quindi il valore iniziale vale
+  //    al PRIMO mount e mai piu' — chi usciva dalla scheda «Recuperi» la
+  //    ritrovava aperta al rientro.
+  // ⚠️ Questa e' UNA delle due strade: l'altra e' il cambio di periodo, che non
+  //    passa di qui (non smonta e non riattiva) ed e' coperta dal watch su
+  //    `competenzaParam`, accanto alla dichiarazione di `schedaAttiva`.
+  // ⚠️ Scatta anche al primo mount, dove e' un no-op.
+  schedaAttiva.value = 'lotti'
   syncFiltri()
   if (!store.loading) load()
   loadMensile()
@@ -278,12 +310,42 @@ function apriLotto(row) {
 // ⚠️ Il param si ripulisce subito: senza, un refresh della pagina riaprirebbe
 // il pannello che l'operatore aveva appena chiuso.
 function applicaDeepLink() {
-  const grezzo = route.query.open
+  const query = { ...route.query }
+  let cambiato = false
+
+  // ⭐ `?competenza=YYYY-MM-DD`: arrivare sul MESE giusto. Lo usa la Lente 1,
+  //    da cui «Rendi definitive» se n'è andato: senza, il rimando lascerebbe
+  //    l'operatore sul mese che la lista aveva l'ultima volta, e la card da cui
+  //    è partito parlava di un altro periodo.
+  // ⚠️ Porta il MESE e NON «solo i lotti emessi», ed è una limitazione da
+  //    sapere: il filtro di questa lista è sullo stato del LAVORO
+  //    (bozza/completato/errore), che è un altro asse dallo stato del
+  //    DOCUMENTO (emessa/definitiva). Quali righe si possano numerare lo dice
+  //    la casella di selezione, riga per riga, col suo motivo.
+  const competenza = query.competenza
+  if (competenza) {
+    delete query.competenza
+    cambiato = true
+    const d = new Date(competenza)
+    if (!Number.isNaN(d.getTime())) {
+      // ⛔ `cambiaAnno` prende un DELTA, non l'anno: passargli `2026` avrebbe
+      //    calcolato `anno + 2026`, sforato il range e fatto un `return`
+      //    silenzioso — si sarebbe atterrati sul mese giusto dell'anno
+      //    sbagliato, senza un solo errore. (Sbagliato in prima stesura.)
+      const delta = d.getFullYear() - anno.value
+      if (delta !== 0) cambiaAnno(delta)
+      selezionaMese(d.getMonth())
+    }
+  }
+
+  const grezzo = query.open
+  if (grezzo) {
+    delete query.open
+    cambiato = true
+  }
+  if (cambiato) router.replace({ query })
   if (!grezzo) return
   const id = Number(grezzo)
-  const query = { ...route.query }
-  delete query.open
-  router.replace({ query })
   if (!Number.isFinite(id) || id <= 0) return
   nextTick(() => apriLotto({ id }))
 }
@@ -306,6 +368,238 @@ const {
     await loadMensile()
   },
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDI DEFINITIVE — l'atto fiscale, dove sta l'elenco del suo oggetto
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⭐ Il verbo è ARRIVATO QUI dalla Lente 1 (2026-08-26). Là agiva sui LOTTI e
+//    viveva accanto a un elenco di COMMESSE: per sapere cosa si stava per
+//    rendere definitivo bisognava andarsene altrove. La regola è una sola —
+//    **un verbo sta dove sta l'elenco del suo oggetto** — ed è la stessa che
+//    tiene «Riporta da emettere» sulla card dei residui, dove quell'elenco
+//    esiste e non c'è altrove.
+//
+// ⭐ DUE VERBI NELLO STESSO POSTO, e non è la contraddizione che sembra: quello
+//    che Tid non voleva era la stessa azione in DUE POSTI. Qui convivono come
+//    su «Da emettere» convivono «Fattura adesso» (il mese) e «Fattura questo»
+//    (la selezione).
+//
+// ⛔ E il verbo di massa RESTA, perché la lista è paginata: il seleziona-tutto
+//    opera sulla pagina corrente, quindi un mese da 120 lotti diventerebbe un
+//    giro di pagine. Chi vuole chiudere il mese non deve pagare quel prezzo.
+// ⚠️ `useActionPermission(codename)` prende l'azione come ARGOMENTO e torna un
+//    computed `isAllowed` — non un predicato da chiamare. La prima stesura
+//    inventava una firma (`const { can } = useActionPermission()`, poi
+//    `can('vendite', '…')`): `can` usciva `undefined` e il computed SOLLEVAVA
+//    al primo render, lasciando la pagina **bianca**. Né eslint né la build lo
+//    vedono, e di test sul frontend non ce ne sono: l'unico modo di
+//    accorgersene è leggere l'API invece di ricordarsela.
+// ⭐ Gate UNICO permesso + readonly: le caselle di selezione e i due verbi
+//    usano lo stesso predicato, mai due copie che possono divergere.
+const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lotti')
+const canNumerare = computed(() => canNumerareFatture.value && !isReadonly.value)
+
+// Le righe che l'operatore sta guardando: cambiano con la SCHEDA, e la
+// selezione le attraversa entrambe — un lotto di competenza precedente,
+// spuntato nei «recuperi», si numera insieme a quelli del mese. È il caso che
+// il verbo di massa non sa fare, perché lavora su una competenza sola.
+const righeVisibili = computed(() => (schedaAttiva.value === 'recuperi'
+  ? listaRecuperi.righe.value
+  : store.items))
+
+// I lotti dentro un giro di numerazione ancora vivo (BB condiviso col cruscotto
+// competenza). Fa DUE cose, e la seconda è la più importante:
+//   1. la rotellina sulla riga — si sa su quali righe si sta lavorando, che il
+//      pulsante non può dire;
+//   2. ⭐ quelle righe ESCONO dalla selezione e non si ri-spuntano finché il
+//      giro è vivo. È così che due invii non possono sovrapporsi, ed è la
+//      ragione per cui i giri concorrenti si possono ammettere (sotto).
+// ⚠️ Dichiarato QUI, sopra `useSelezioneLotti` che lo consuma: in `<script
+//    setup>` una const usata più in alto è una TDZ silenziosa
+//    (feedback_vue_watch_immediate_tdz).
+// ⚠️ Il perimetro di MESE non marca niente — non ha un elenco di chiavi — ed è
+//    esattamente per questo che il suo verbo resta spento finché c'è un giro
+//    vivo: il suo perimetro è TUTTO, e si sovrapporrebbe alle righe in volo.
+const lottiInGiro = useRigheInGiro()
+
+const selezioneLotti = useSelezioneLotti({
+  righeVisibili,
+  abilitata: canNumerare,
+  chiaviInGiro: lottiInGiro.chiaviInGiro,
+})
+
+const { execute: eseguiNumera } = useApiHandler()
+
+// Polling del job: `useJobPolling` è il BB condiviso con la Lente 1.
+// ⛔ Qui NON si riusa `useVerboFatturazione` della dashboard: quella funzione
+//    porta con sé concetti che questa lista non ha — i «gruppi non serviti», le
+//    marcature per `gruppo_key` — e riusarla significherebbe trascinarli dentro
+//    per poi ignorarli. Ciò che era davvero condiviso è già estratto, ed è il
+//    polling.
+// ⭐ GIRI CONCORRENTI AMMESSI (decisione di Tid, 2026-08-27), ricalcando
+//    l'emissione mirata del cruscotto competenza (`maxConcurrent: Infinity`,
+//    decisione del 2026-08-17). Prima il tetto era 1 e i due verbi restavano
+//    spenti per tutta la durata: una seconda selezione si poteva comporre ma
+//    non inviare, e intanto la prima restava spuntata — il contatore diceva
+//    «(2)» contando lavoro già in volo.
+// ⚠️ Si può ammettere SOLO perché le righe spedite escono dalla selezione
+//    (`lottiInGiro`): senza quella, due invii avrebbero perimetri sovrapposti e
+//    il secondo rimanderebbe lotti già numerati.
+const { start: seguiJob, isFollowing, nJobsInCorso: nGiriNumera } = useJobPolling({
+  fetchStatus: (jobId) => getFatturazioneRun(jobId),
+  maxConcurrent: Infinity,
+  onDone: (stato, context) => {
+    // ⚠️ Si smarca SEMPRE, anche su esito negativo: una riga marcata da un giro
+    //    concluso male resterebbe con la rotellina per sempre — e fuori dalla
+    //    selezione, cioè non più lavorabile proprio quando serve riprovare.
+    lottiInGiro.smarca(context?.jobId)
+    if (stato.stato === 'FATTO') {
+      const r = stato.result ?? {}
+      const numerati = Number(r.numerati ?? 0)
+      const saltati = Number(r.saltati ?? 0)
+      const falliti = Number(r.falliti ?? 0)
+      // ⚠️ «saltato» = lotto percorso ma NON transitato a definitiva: è un
+      //    esito parziale quanto un errore, e tacerlo lascerebbe credere che
+      //    tutto il perimetro sia stato numerato.
+      if (falliti > 0 || saltati > 0) {
+        notify.warn(t('vendite.lotti.numera_esito_parziale', {
+          numerati, saltati, falliti, lotti: Number(r.lotti ?? 0),
+        }))
+      } else {
+        notify.success(t('vendite.lotti.numera_esito', { numerati }))
+      }
+      // ⛔ QUI NON SI AZZERA PIÙ LA SELEZIONE, ed è un cambiamento voluto.
+      //    Con i giri concorrenti la selezione che c'è adesso è quella NUOVA,
+      //    composta mentre questo giro viaggiava: azzerarla butterebbe via il
+      //    lavoro di preparazione dell'operatore per un giro che non lo
+      //    riguarda. Le righe di QUESTO giro erano già uscite all'invio, per
+      //    mano del prune su `chiaviInGiro`.
+      // ⚠️ Il vecchio azzeramento era corretto quando i giri erano uno per
+      //    volta: allora «la selezione» e «il perimetro appena spedito» erano
+      //    la stessa cosa. Non lo sono più.
+    } else {
+      notify.error(stato.ultimo_errore?.message || t('vendite.lotti.numera_errore'))
+    }
+    reload()
+    loadMensile()
+  },
+  onTimeout: (context) => {
+    lottiInGiro.smarca(context?.jobId)
+    notify.warn(t('vendite.lotti.numera_in_coda'))
+    reload()
+  },
+})
+
+// Il dialog della data: un solo componente per i due perimetri. `lotti` vuoto =
+// atto sul mese.
+const dialogNumeraPerimetro = ref({ visible: false, lotti: null })
+
+function chiediNumeraSelezione() {
+  dialogNumeraPerimetro.value = { visible: true, lotti: [...selezioneLotti.ids.value] }
+}
+
+function chiediNumeraMese() {
+  dialogNumeraPerimetro.value = { visible: true, lotti: null }
+}
+
+// ⚠️ La competenza si congela QUI: il giro può concludersi dopo che l'operatore
+//    ha cambiato mese, e i suoi lotti appartengono al mese in cui è partito.
+async function confermaNumeraPerimetro(dataDocumento) {
+  const lotti = dialogNumeraPerimetro.value.lotti
+  dialogNumeraPerimetro.value = { visible: false, lotti: null }
+  const competenza = competenzaParam.value
+  const res = await eseguiNumera(() => runNumerazione(competenza, {
+    dataDocumento: dataDocumento || null,
+    lotti,
+  }))
+  if (res === null) return
+  // Stesso perimetro ancora vivo → il backend non crea un secondo job: torna
+  // l'id di quello in corso (chiave competenza + scope + digest del perimetro).
+  // Seguirlo di nuovo lo conterebbe due volte, e all'operatore va detto che non
+  // ha avviato niente di nuovo.
+  if (isFollowing(res.job_id)) {
+    notify.info(t('vendite.lotti.numera_gia_in_corso'))
+    return
+  }
+  notify.info(t('vendite.lotti.numera_accodato'))
+  // ⚠️ Si marca SOLO se il polling ha davvero preso in carico il giro. `start`
+  //    può rifiutare (job già seguito, o tetto raggiunto) e ritorna `false`:
+  //    marcare comunque lascerebbe righe con la rotellina e fuori dalla
+  //    selezione PER SEMPRE, perché lo `smarca` vive in `onDone`/`onTimeout` —
+  //    callback di un giro che nessuno sta seguendo e che quindi non arriveranno
+  //    mai. Sono righe che diventano non lavorabili senza che niente lo dica.
+  const seguito = seguiJob(res.job_id, { jobId: res.job_id, competenza })
+  // Le chiavi del giro sono gli id del perimetro: solo per l'atto su SELEZIONE.
+  if (seguito && lotti?.length) lottiInGiro.marca(res.job_id, lotti)
+}
+
+// ⭐ I DUE VERBI SU SCHERMO PICCOLO. Sotto i 1024px (o su un dispositivo senza
+//    hover) i pulsanti a etichetta lunga non ci stanno: finiscono in un kebab,
+//    che e' lo standard di tutte le liste — le stesse classi
+//    `app-page-actions-desktop` / `app-page-actions-compact` di
+//    `PageActionsBar`, cosi' il punto di rottura e' UNO e non due che possono
+//    divergere.
+// ⚠️ I verbi restano QUI, accanto alla lista, e non salgono nella barra azioni
+//    di pagina: quella e' la toolbar di utility (ricarica / personalizza /
+//    esporta), e il principio di questo cantiere e' che «un verbo sta dove sta
+//    l'elenco del suo oggetto». Cambiare posto per guadagnare il kebab avrebbe
+//    disfatto la ragione per cui i verbi sono arrivati su questa pagina.
+// ⚠️ Nel menu il motivo per cui una voce e' spenta si vede lo stesso: una voce
+//    di Menu disabilitata mostra comunque il suo testo, mentre un Button
+//    disabilitato non riceve nemmeno gli eventi del mouse (vedi il wrapper del
+//    tooltip nel template).
+// Icona dei due verbi dell'atto fiscale: una sola, usata dai pulsanti e dalle
+// voci del kebab.
+const VERBO_NUMERA_ICONA = 'pi pi-lock'
+
+const verbiMenuRef = ref(null)
+function toggleVerbiMenu(event) {
+  verbiMenuRef.value?.toggle(event)
+}
+
+// ⭐ SORGENTE UNICA dei due verbi: etichetta, icona, quando sono spenti, il
+//    motivo e il comando. Da qui li rendono ENTRAMBE le forme — i pulsanti per
+//    esteso sopra i 1024px e le voci del kebab sotto.
+// ⚠️ Prima erano scritti due volte, e il difetto non sarebbe stato un errore
+//    ma una DERIVA: si cambia il testo o la condizione di spegnimento da una
+//    parte sola, e le due forme dicono cose diverse a seconda della larghezza
+//    della finestra — cioè il difetto piu' difficile da riprodurre che esista.
+const verbiNumerazione = computed(() => {
+  const nSelezionati = selezioneLotti.selezione.value.length
+  const giroVivo = nGiriNumera.value > 0
+  return [
+    {
+      key: 'numera-selezionati',
+      label: t('vendite.lotti.numera_selezionati', { n: nSelezionati }),
+      disabled: nSelezionati === 0,
+      tooltip: t('vendite.lotti.numera_selezionati_tooltip'),
+      command: chiediNumeraSelezione,
+    },
+    {
+      key: 'numera-mese',
+      label: t('vendite.lotti.numera_mese'),
+      // Il verbo di MESE aspetta ogni giro vivo: il suo perimetro è TUTTO e si
+      // sovrapporrebbe alle righe già in volo. Vedi il commento su `lottiInGiro`.
+      disabled: giroVivo,
+      loading: giroVivo,
+      tooltip: giroVivo
+        ? t('vendite.lotti.numera_mese_atteso')
+        : t('vendite.lotti.numera_mese_tooltip'),
+      command: chiediNumeraMese,
+    },
+  ]
+})
+
+const verbiMenuItems = computed(() => verbiNumerazione.value.map((v) => ({
+  label: v.label,
+  icon: VERBO_NUMERA_ICONA,
+  // Classe via helper centralizzato: la palette delle voci kebab vive in
+  // `rowActions.js`, non in una stringa scritta qui.
+  class: menuItemClass(undefined, 'app-menu-item-action'),
+  disabled: v.disabled,
+  command: v.command,
+})))
 
 // Azioni di pagina: quelle standard del BB (reload / personalizza / export).
 // Niente «Nuovo» — un lotto non si crea da qui, lo genera la pipeline: lo
@@ -392,6 +686,54 @@ const azioniPagina = computed(() =>
               />
             </div>
           </div>
+
+          <!-- I DUE VERBI DELL'ATTO FISCALE. ⚠️ `severity="warn"` su entrambi:
+               è la convenzione che distingue la numerazione — irreversibile —
+               dai verbi pre-fiscali. -->
+          <!-- ⭐ Gate UNICO: `canNumerare` porta già permesso E readonly, e lo
+               stesso predicato governa le caselle di selezione. Ripeterlo sui
+               `:disabled` sarebbe una seconda copia che può divergere. -->
+          <div v-if="canNumerare" class="app-lotti-verbi">
+            <!-- Sopra i 1024px: i due verbi per esteso. Sotto: il kebab qui in
+                 fondo, con le stesse due voci. -->
+            <span class="app-page-actions-desktop">
+              <!-- ⚠️ Il tooltip sta sul WRAPPER e non sul Button: un bottone
+                   disabilitato non riceve eventi del mouse, quindi il tooltip
+                   appeso a lui non comparirebbe mai — ed è proprio quando è
+                   spento che il motivo serve. Stessa ragione per cui dal
+                   2026-08-27 le due barre azioni condivise hanno l'involucro. -->
+              <span
+                v-for="v in verbiNumerazione"
+                :key="v.key"
+                class="app-action-tooltip-wrap"
+                v-tooltip.bottom="v.tooltip"
+              >
+                <Button
+                  :label="v.label"
+                  :icon="VERBO_NUMERA_ICONA"
+                  size="small"
+                  severity="warn"
+                  :outlined="v.key === 'numera-mese'"
+                  :loading="v.loading"
+                  :disabled="v.disabled"
+                  @click="v.command"
+                />
+              </span>
+            </span>
+
+            <span class="app-page-actions-compact">
+              <Button
+                :icon="MANAGE_ICONS.KEBAB"
+                text
+                rounded
+                class="app-manage-btn"
+                v-tooltip.bottom="t('common.altre_azioni')"
+                aria-haspopup="true"
+                @click="toggleVerbiMenu"
+              />
+              <Menu ref="verbiMenuRef" :model="verbiMenuItems" popup />
+            </span>
+          </div>
         </div>
 
         <!-- Colonne, ordine e visibilità arrivano dal catalogo `vendite.lotti`:
@@ -427,6 +769,8 @@ const azioniPagina = computed(() =>
                 :sort-order="paginatorProps.sortOrder"
                 :build-row-actions="(data) => azioniRiga(data, { readonly: isReadonly })"
                 :azioni-disabled="azioniLoading"
+                :selezione="selezioneLotti.perLista.value"
+                :in-giro="lottiInGiro.inGiro"
                 @page="onPage"
                 @sort="onSort"
                 @row-click="apriLotto"
@@ -462,6 +806,8 @@ const azioniPagina = computed(() =>
                 :sort-order="listaRecuperi.sortOrder.value"
                 :build-row-actions="(data) => azioniRiga(data, { readonly: isReadonly })"
                 :azioni-disabled="azioniLoading"
+                :selezione="selezioneLotti.perLista.value"
+                :in-giro="lottiInGiro.inGiro"
                 empty-key="vendite.lotti.nessun_recupero_lista"
                 empty-icon="pi pi-history"
                 @page="listaRecuperi.onPage"
@@ -502,10 +848,26 @@ const azioniPagina = computed(() =>
       :lotto-id="numeraDialog.lottoId"
       @conferma="confermaNumera"
     />
+    <!-- La data dell'atto di PERIMETRO (selezione oppure mese intero). ⚠️ È lo
+         stesso componente del verbo per-riga, in modo `numera`: il limite lo
+         porta lui, ricalcolandolo sul perimetro che riceve. -->
+    <NumerazioneDataDialog
+      v-model:visible="dialogNumeraPerimetro.visible"
+      :competenza-mese="dialogNumeraPerimetro.lotti ? null : competenzaParam"
+      :lotti="dialogNumeraPerimetro.lotti"
+      @conferma="confermaNumeraPerimetro"
+    />
   </div>
 </template>
 
 <style scoped>
+/* I due verbi dell'atto fiscale, in barra accanto ai filtri. */
+.app-lotti-verbi {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .app-lotto-stato-cella {
   display: inline-flex;
   align-items: center;

@@ -50,6 +50,11 @@ _FN = "pagamenti.pagamenti_repository"
 # non e' un errore che un operatore possa causare compilando qualcosa.
 _E_CHIAMATA = "E_PAGAMENTI_CHIAMATA_NON_VALIDA"
 
+# ✅ Il «fuori perimetro», gia' a catalogo (classe `NON_PERMESSO` -> **403**) e
+# gia' col suo ripiego: non se ne inventa uno nuovo, che cadrebbe su
+# `E_GENERICO` e quindi su un **500**.
+_E_SCOPE_EMITTENTE = "E_SCOPE_EMITTENTE"
+
 
 # ══════════════════════════════════════════════════════════════════
 #  Frammenti SQL condivisi
@@ -93,6 +98,16 @@ _DISTINTA_SELECT = """
         c.importo_dichiarato,
         c.data_conferma,
         c.user_conferma,
+        -- ⭐ IL LEGAME DELLA CORREZIONE, letto nei DUE versi (Q-7, C-3): una
+        --    distinta puo' essere la correzione di un'altra, oppure essere
+        --    quella che e' stata corretta. ⛔ Sono due domande diverse e a
+        --    video dicono due cose opposte: «questo documento rovescia quello»
+        --    e «questo documento e' gia' stato rovesciato». Portarne una sola
+        --    lascerebbe l'altra meta' invisibile.
+        c.contabile_corretta_id,
+        orig.codice        AS contabile_corretta_codice,
+        corr.id            AS correzione_id,
+        corr.codice        AS correzione_codice,
         lot.lotti_ids,
         c.meta,
         tot.righe_totali,
@@ -109,6 +124,13 @@ _DISTINTA_SELECT = """
       JOIN pagamenti.centri_riscossione cr        ON cr.id = c.centro_riscossione_id
       LEFT JOIN pagamenti.enti_incasso ei         ON ei.id = c.ente_incasso_id
       LEFT JOIN pagamenti.vendite_contabili_stati st ON st.id = c.stato_id
+      -- Il documento da cui questa correzione nasce.
+      LEFT JOIN pagamenti.vendite_contabili orig     ON orig.id = c.contabile_corretta_id
+      -- ⚠️ E la correzione di QUESTO documento, se c'e'. E' un LEFT JOIN
+      --    diretto e non una LATERAL perche' non puo' duplicare la riga:
+      --    `uq_vendite_contabili_correzione` e' un unico parziale su
+      --    `contabile_corretta_id`, quindi la corrispondenza e' al piu' una.
+      LEFT JOIN pagamenti.vendite_contabili corr     ON corr.contabile_corretta_id = c.id
       -- 🔴 I lotti si AGGREGANO, non si joinano. L'unico e' su
       -- `(lotto_id, contabile_id)` e NON sul solo `contabile_id`: una distinta
       -- puo' legittimamente appartenere a piu' lotti, e un LEFT JOIN diretto
@@ -181,14 +203,27 @@ _RIGA_CODA_SELECT = f"""
       JOIN pagamenti.vendite_contabili c ON c.id = r.contabile_id
 """
 
-# Colonne ordinabili della lista distinte: whitelist chiusa, chiavi del
-# contratto API -> espressioni SQL. ⛔ Mai input utente dentro l'ORDER BY.
+# 🔴 LE CHIAVI SONO IL `campo_sorgente` DEL SEED, NON IL `codice` LOGICO — e la
+# differenza non e' di stile. `<ListaConfigurabile>` monta le Column con
+# `:field="col.campo_sorgente"`, quindi al click sull'intestazione PrimeVue
+# manda **il nome fisico**: una whitelist chiavata sul codice logico risponde
+# **400 su una colonna che il catalogo dichiara ordinabile**. E' il difetto gia'
+# pagato su `vendite.lotti` il 2026-07-31, presidiato da
+# `apps/core/tests/test_liste_configurabili_seed.py`
+# (`test_whitelist_chiavata_sul_campo_sorgente`).
+# ⚠️ Dove il codice logico e il campo fisico divergono, anche il VALORE segue il
+# campo mostrato (`stato_descrizione`, non `stato_codice`): una colonna che
+# mostra una cosa e ordina per un'altra sembra semplicemente non ordinata —
+# codice e descrizione non hanno lo stesso ordine alfabetico.
+# ⛔ Mai input utente dentro l'ORDER BY: la whitelist e' chiusa.
+
+# Colonne ordinabili della lista distinte.
 DISTINTE_SORT_COLUMNS: dict[str, str] = {
     "data_contabile": "data_contabile",
     "codice": "codice",
-    "stato": "stato_codice",
+    "stato_descrizione": "stato_descrizione",
     "origine": "origine",
-    "centro": "centro_codice",
+    "centro_descrizione": "centro_descrizione",
     "totale_righe": "totale_righe",
 }
 
@@ -196,8 +231,8 @@ DISTINTE_SORT_COLUMNS: dict[str, str] = {
 RIGHE_SORT_COLUMNS: dict[str, str] = {
     "data_pagamento": "data_pagamento",
     "importo": "importo",
-    "stato": "stato_codice",
-    "distinta": "contabile_codice",
+    "stato_descrizione": "stato_descrizione",
+    "contabile_codice": "contabile_codice",
 }
 
 # Colonne ordinabili dell'elenco delle rate fuori capienza.
@@ -206,7 +241,7 @@ RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
     "motivo": "motivo",
     "residuo": "residuo",
     "importo_rata": "importo_rata",
-    "fattura": "fattura_numero",
+    "fattura_numero": "fattura_numero",
 }
 
 # Colonne ordinabili dell'elenco delle eccedenze da sistemare.
@@ -214,31 +249,69 @@ RATE_FUORI_CAPIENZA_SORT_COLUMNS: dict[str, str] = {
 #    guardando il cliente (D15-b) — compensare significa mettere insieme due
 #    documenti suoi.
 ECCEDENZE_SORT_COLUMNS: dict[str, str] = {
-    "cliente": "cliente_ragione_sociale",
+    "cliente_ragione_sociale": "cliente_ragione_sociale",
     "eccedenza_cliente": "eccedenza_cliente",
     "eccedenza": "eccedenza",
     "fattura_data": "fattura_data",
-    "fattura": "fattura_numero",
+    "fattura_numero": "fattura_numero",
 }
 
-_ENTE_INCASSO_SELECT = """
+# ⭐ La utility di un conto: si legge nei DUE punti in cui si sceglie un conto —
+# l'elenco dei conti agganciabili e il canale che ne ha gia' uno — perche' un
+# elenco che non la dice fa scegliere il conto del gas al posto di quello
+# dell'energia, e chi sbaglia se ne accorge dopo (BE-11).
+# ⛔ NON e' una colonna di `enti_incasso`: la utility e' un fatto del CONTO, e
+#    dichiararla anche sul canale sarebbe una seconda sede.
+# ⚠️ Non si passa da `anagrafiche.vw_istanze_utilities_dettaglio` benche' la
+#    porti: quella vista descrive l'istanza col suo INDIRIZZO — sei join, due
+#    dei quali su viste di indirizzo che PostgreSQL non pota. Misurato con
+#    EXPLAIN il 2026-08-27 sull'elenco dei conti: **928.86 contro 6.10**, per
+#    decodificare una parola. La catena diretta e' anche la forma gia' in uso
+#    in `BillingAccountRepository.search_lookup`.
+# ⚠️ La descrizione e' NULL in DUE casi legittimi, e sono diversi: il conto non
+#    ha istanza (`istanza_utility_id` e' nullable: e' il conto generico del
+#    ruolo, cfr. `uq_src_bancari_..._no_istanza`), oppure l'istanza non ha PDP.
+#    ⛔ A video NULL non e' un buco: e' «nessuna utility», e va reso come tale.
+# ⚠️ Chi lo innesta usa una f-string: una graffa LETTERALE nell'SQL (un
+#    `'{}'::jsonb`) andrebbe raddoppiata. Il difetto sarebbe rumoroso — errore
+#    all'import, l'applicazione non parte — non silenzioso.
+_UTILITY_DEL_CONTO_JOIN = """
+      LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = src.istanza_utility_id
+      LEFT JOIN anagrafiche.pdp p ON p.id = iu.pdp_id
+      LEFT JOIN config.utilities u ON u.id = p.utility_id
+"""
+
+_ENTE_INCASSO_SELECT = f"""
     SELECT
         e.id, e.codice, e.codice_interno, e.descrizione, e.tipo, e.attivo,
         e.centro_riscossione_id,
         cr.codice          AS centro_codice,
         cr.descrizione     AS centro_descrizione,
         e.soggetto_ruolo_id,
+        srp.ragione_sociale_completa AS soggetto_ragione_sociale,
         e.bank_branch_id,
+        bb.name       AS bank_branch_nome,
+        bb.bank_code  AS bank_branch_bank_code,
         e.soggetto_ruolo_conto_bancario_id,
         cb.iban            AS conto_iban,
         src.uso            AS conto_uso,
         src.soggetto_ruolo_id AS conto_soggetto_ruolo_id,
+        src.istanza_utility_id AS conto_istanza_utility_id,
+        u.descrizione      AS conto_utility_descrizione,
         e.formato_flusso, e.regole_match, e.meta
       FROM pagamenti.enti_incasso e
       LEFT JOIN pagamenti.centri_riscossione cr ON cr.id = e.centro_riscossione_id
       LEFT JOIN anagrafiche.soggetti_ruoli_conti_bancari src
              ON src.id = e.soggetto_ruolo_conto_bancario_id
       LEFT JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+      -- ⭐ Filiale e soggetto PSP IN CHIARO, e non e' cosmesi: il drawer li
+      --    mostra su un canale gia' configurato, e senza il nome resterebbe un
+      --    campo vuoto accanto a un id valorizzato — cioe' direbbe «non c'e'
+      --    filiale» di un canale BANCA, dove la filiale e' obbligatoria.
+      LEFT JOIN anagrafiche.bank_branches bb ON bb.id = e.bank_branch_id
+      LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srp
+             ON srp.soggetto_ruolo_id = e.soggetto_ruolo_id
+      {_UTILITY_DEL_CONTO_JOIN}
 """
 
 # Le colonne aggiornabili di un canale. ⛔ `codice_interno` NON c'e': e' la
@@ -251,6 +324,12 @@ _COLONNE_ENTE_INCASSO_AGGIORNABILI = frozenset(
 )
 
 # Colonne ordinabili dell'elenco dei canali di incasso.
+# ⚠️ QUESTA E' ANCORA CHIAVATA SUI CODICI LOGICI, ed e' legittimo **finche'**
+#    l'elenco non diventa una `<ListaConfigurabile>`: non ha un seed in
+#    `ui.lista_colonna`, quindi nessuno le manda un `campo_sorgente` e nessun
+#    presidio la copre. ⛔ Il giorno in cui la schermata dei canali si monta sul
+#    BB, `centro` va riscritta come `centro_descrizione` — o l'intestazione
+#    rispondera' **400** al click, come sarebbe successo alle altre quattro.
 ENTI_INCASSO_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
     "descrizione": "descrizione",
@@ -777,20 +856,38 @@ class PagamentiRepository:
     #    DUE ISTANTI diversi. Se una registrazione atterra fra l'una e l'altra,
     #    il pannello mostra un residuo di prima accanto a un «in lavorazione»
     #    di dopo — due numeri veri che insieme raccontano una cosa falsa.
-    # ⚠️ Due numeri e non tre: a questo livello il database non sa ancora dire
-    #    l'incassato (richiesta DB-10). Chi compone la risposta lo dichiara
-    #    `None`, e ⛔ non lo inventa sommando le rate — una riga puo' avere
-    #    fattura SENZA rata (il fondo fattura e' esattamente cosi').
+    # ⭐ TRE numeri, dal 2026-08-29: la richiesta DB-10 e' atterrata il 25/08 e
+    #    `fn_get_saldo_fattura` risponde `saldo, in_lavorazione, incassato,
+    #    has_movimenti` — la stessa forma e lo stesso ordine della sorella della
+    #    rata. Fino a ieri qui se ne leggevano DUE e l'`incassato` si buttava
+    #    via: la richiesta che questo cantiere aveva fatto era stata esaudita e
+    #    nessuno era passato a raccoglierla.
+    # ⛔ E `in_lavorazione` si prende da `f`, non da `fn_get_saldo_fattura_contabili`:
+    #    il numero e' lo stesso — la funzione delega proprio a quella — ma
+    #    leggerlo dalla seconda gli darebbe DUE sorgenti con lo stesso nome, che
+    #    e' cio' che il vincolo «una sede sola per i saldi» vieta.
+    # ⭐ UNA funzione sola, e non e' un'ottimizzazione. Fino al 2026-08-29 qui
+    #    c'era un `CROSS JOIN` con `fn_get_saldo_fattura_contabili` per prendere
+    #    `has_righe_postabili`: quella colonna **non la legge nessuno** — ne'
+    #    service, ne' view, ne' frontend — quindi il join faceva girare una
+    #    seconda volta, a ogni apertura del drawer fattura, una funzione che
+    #    `fn_get_saldo_fattura` chiama gia' al suo interno.
+    #    ⚠️ E non era gratis: `fn_get_saldo_fattura` NON e' dichiarata STABLE (il
+    #    suo ramo d'errore scrive nel registro), quindi due valutazioni sono due
+    #    letture indipendenti — la trappola gia' pagata sul guard del fondo, dove
+    #    una funzione VOLATILE letta due volte poteva accettare meta' condizione
+    #    e rifiutare l'altra.
+    #    📮 Se un giorno servira' `has_righe_postabili`, la sede giusta e'
+    #    aggiungerlo a `fn_get_saldo_fattura` — che quella funzione la interroga
+    #    gia' — non rimettere il join qui.
     def get_saldo_documento(self, fattura_id: int) -> dict[str, Any] | None:
         self._guard_canale_sistema("get_saldo_documento")
         sql = """
-            SELECT f.saldo, f.has_movimenti,
-                   c.saldo_contabile, c.has_righe_postabili
+            SELECT f.saldo, f.in_lavorazione, f.incassato, f.has_movimenti
               FROM pagamenti.fn_get_saldo_fattura(%s) f
-              CROSS JOIN pagamenti.fn_get_saldo_fattura_contabili(%s) c
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id), int(fattura_id)])
+            cursor.execute(sql, [int(fattura_id)])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 
@@ -974,6 +1071,40 @@ class PagamentiRepository:
             rows = rows_to_list(cursor)
         return self._shape(rows[0]) if rows else None
 
+    # Scopo: L'emittente indicato e' dentro il perimetro di chi sta chiedendo?
+    # 🔴 Serve perche' `anagrafiche.soggetti_ruoli_conti_bancari` ha la row
+    #    security SPENTA di proposito: la' il perimetro non lo mette il
+    #    database, quindi se non lo mette il backend non lo mette nessuno.
+    #    ⛔ Misurato il 2026-08-28 (E-4): senza questa domanda un operatore
+    #    dell'emittente A leggeva l'IBAN di incasso dell'emittente B passando il
+    #    suo `soggetto_ruolo_id` — e senza nessun errore.
+    # ⛔ SENZA UTENTE NON SI PASSA, e non e' pignoleria: la canonica
+    #    `fn_check_user_emittente_scope` risponde **true** quando
+    #    `p_auth_user_id` e' NULL (regola 1, «job batch»). Delegarle la domanda
+    #    su un percorso senza GUC aprirebbe il perimetro invece di chiuderlo:
+    #    qui «non so chi sei» vale **no**.
+    def emittente_nel_perimetro(self, emittente_soggetto_ruolo_id: int) -> bool:
+        self._guard_canale_sistema("emittente_nel_perimetro")
+        with connection.cursor() as cursor:
+            # ⚠️ La GUC si chiama `app.current_user_id`, NON `app.auth_user_id`:
+            #    e' il nome che usano le policy RLS di questo schema, ed e' da
+            #    li' che si legge — mai dal nome che sembra giusto. Con il nome
+            #    sbagliato il `current_setting` risponde NULL e questa funzione
+            #    rifiuta TUTTO, compreso chi ha diritto: un difetto che i mock
+            #    non vedono, perche' i mock non hanno GUC.
+            cursor.execute(
+                "SELECT NULLIF(current_setting('app.current_user_id', true), '')::int"
+            )
+            row = cursor.fetchone()
+            auth_user_id = row[0] if row else None
+            if auth_user_id is None:
+                return False
+            cursor.execute(
+                "SELECT COALESCE(script.fn_scope_ef_whitelist_via_sr(%s, %s), false)",
+                [int(auth_user_id), int(emittente_soggetto_ruolo_id)],
+            )
+            return bool(cursor.fetchone()[0])
+
     # Scopo: I conti che un emittente puo' agganciare a un canale.
     # 🔴 **Solo quelli con `uso = 'INCASSO'`**, ed e' la richiesta BE-8: il
     #    database rifiuta gli altri con un errore parlante, ma un elenco che li
@@ -986,7 +1117,22 @@ class PagamentiRepository:
     #    una svista del modello: e' quella garanzia.
     def list_conti_incasso(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
         self._guard_canale_sistema("list_conti_incasso")
-        sql = """
+        # 🔴 IL PERIMETRO, e sta QUI e non nel service: e' lo stesso posto e la
+        #    stessa ragione di `_guard_canale_sistema` — il repository e'
+        #    l'ultimo cancello prima della stringa SQL, e un controllo un piano
+        #    piu' su lo salta il secondo chiamante che nascera'.
+        # ⚠️ Si RIFIUTA, non si risponde vuoto: un elenco vuoto direbbe «questo
+        #    emittente non ha conti di incasso», che e' un'altra frase — e
+        #    falsa. E' la trappola del conteggio fail-closed.
+        ErrorManager.require(
+            self.emittente_nel_perimetro(soggetto_ruolo_id),
+            code=_E_SCOPE_EMITTENTE,
+            message="Questo emittente non e' nel tuo perimetro.",
+            detail=f"soggetto_ruolo_id={soggetto_ruolo_id}",
+            context={"field": "soggetto_ruolo_id"},
+            function_name=f"{_FN}.list_conti_incasso",
+        )
+        sql = f"""
             SELECT src.id            AS soggetto_ruolo_conto_bancario_id,
                    src.soggetto_ruolo_id,
                    src.predefinito,
@@ -994,9 +1140,14 @@ class PagamentiRepository:
                    cb.id             AS conto_bancario_id,
                    cb.iban,
                    cb.bic_swift,
-                   cb.intestatario_predefinito
+                   cb.intestatario_predefinito,
+                   -- ⭐ La utility del conto: qui e' la tendina in cui si SCEGLIE,
+                   --    quindi e' il punto in cui non dirla fa sbagliare (BE-11).
+                   src.istanza_utility_id AS conto_istanza_utility_id,
+                   u.descrizione     AS conto_utility_descrizione
               FROM anagrafiche.soggetti_ruoli_conti_bancari src
               JOIN anagrafiche.conti_bancari cb ON cb.id = src.conto_bancario_id
+              {_UTILITY_DEL_CONTO_JOIN}
              WHERE src.soggetto_ruolo_id = %s
                AND src.uso = 'INCASSO'
                AND src.bloccato IS NOT TRUE
@@ -1290,6 +1441,46 @@ class PagamentiRepository:
             function_name=f"{_FN}.posta_contabile",
         )
         return rows[0]  # type: ignore[return-value]
+
+    # Scopo: La CORREZIONE GUIDATA (Q-7) — apre una distinta nuova con le righe
+    #        di segno opposto gia' dentro.
+    # ⭐ UNA SOLA `SELECT` sulla madre, come le altre tre: la distinta e le sue N
+    #    righe nascono atomiche per costruzione. ⛔ Nessun ciclo nel service —
+    #    produrrebbe una distinta a meta' se qualcosa si rompe a meta' elenco,
+    #    cioe' esattamente il documento che nessuno sa piu' leggere.
+    # ⛔ E non e' uno «storno»: `STORNATA` e' stata ritirata dal catalogo il
+    #    21/08, e rimetterne la parola riaprirebbe una porta che il lotto 2 ha
+    #    chiuso. Si chiama correzione.
+    # ⭐ Non solleva su «niente da correggere»: risponde `NULLA_DA_CORREGGERE`
+    #    con `contabile_id` a NULL, ed e' un ESITO — il backend lo passa senza
+    #    interpretarlo, come gia' fa con `NULLA_DA_POSTARE`.
+    def crea_distinta_correzione(
+        self,
+        *,
+        contabile_id: int,
+        data_contabile: date | None = None,
+        motivo: str | None = None,
+    ) -> dict[str, Any]:
+        self._guard_canale_sistema("crea_distinta_correzione")
+        sql = """
+            SELECT contabile_id, righe_create, righe_saltate, esito
+              FROM pagamenti.fn_crea_distinta_correzione(
+                       %s, COALESCE(%s::date, CURRENT_DATE), %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(contabile_id), data_contabile, motivo])
+            rows = rows_to_list(cursor)
+        # La funzione risponde SEMPRE una riga, anche sul nulla da correggere.
+        # Se non lo facesse, il contratto sarebbe cambiato sotto — e tacere su
+        # un gesto che ha creato un documento e' la cosa peggiore.
+        ErrorManager.require(
+            bool(rows),
+            code=_E_CHIAMATA,
+            message="La correzione non ha prodotto nessun esito.",
+            detail="pagamenti.fn_crea_distinta_correzione non ha restituito righe.",
+            function_name=f"{_FN}.crea_distinta_correzione",
+        )
+        return rows[0]
 
     # ══════════════════════════════════════════════════════════════
     #  Mapping di riga

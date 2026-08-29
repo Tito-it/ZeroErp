@@ -1040,6 +1040,42 @@ conto non distinguerebbe più niente. Escluso dalla regola di dominio sopra —
 ed è proprio il caso che il vincolo (2) rende **impossibile invece che
 improbabile**.
 
+#### 🔴 Addendum 2026-08-27 — «impossibile» lo era su **una porta sola**
+
+Il vincolo (2) presidiava `soggetti_ruoli_conti_bancari`. Ma un conto entra da
+**due** porte, e sull'altra — `soggetti_conti_bancari`, il legame a livello
+**soggetto** — non c'era niente: lo stesso IBAN poteva essere dichiarato «di
+incasso» per due aziende diverse senza che nulla lo impedisse. ⚠️ La garanzia
+reggeva perché nessuno aveva usato quella porta, non perché fosse chiusa.
+
+✅ **Decisione di Tid (2026-08-27): si estende il vincolo**, non lo si sposta —
+la regola vale ovunque il fatto si dichiari. Realizzata con
+`ex_scb_conto_incasso_un_solo_soggetto`, gemella della prima. Misure e passi nel
+piano DB (§6.16 del brief DB).
+
+⭐ **E il dubbio che ha accompagnato la decisione è stato misurato, non
+discusso** — vale la pena tenerlo qui perché tornerà:
+
+* *«Due emittenti sullo stesso soggetto potrebbero voler usare lo stesso conto»*
+  → **non possono esistere**: un soggetto ha al più un ruolo per tipo
+  (`uq_soggetto_ruolo`) e quel ruolo al più un emittente
+  (`uq_emittenti_fiscali_ruolo`). La catena è **1:1:1** per costruzione;
+* *«Un emittente che fattura gas ed energia deve poter separare i conti, e una
+  società grande può averne più d'uno per la stessa utility»* → ✅ **già
+  possibile, e non da oggi**: `soggetti_ruoli_conti_bancari` ha
+  `istanza_utility_id` e due indici unici distinti (conti legati a una utility /
+  conti generali). Il vincolo dice «stesso conto **+ azienda diversa**»: sul
+  **numero** di conti per azienda non ha niente da dire. ⚠️ L'unico limite è che
+  il **predefinito** per utility è uno solo — gli altri restano, come
+  alternativi.
+
+⇒ Ne discende una conseguenza di disegno che vale come regola: **un canale di
+incasso punta a un conto**, quindi separare gli incassi per utility significa
+**un canale per conto**. ⛔ `enti_incasso` **non** prende una colonna
+`istanza_utility_id`: la utility è un fatto del **conto**, e dichiararla anche
+sul canale sarebbe una seconda sede che diverge al primo aggiornamento. Manca
+solo **esporla** dove si sceglie il conto — richiesta BE-11 nel piano DB.
+
 ---
 
 ## 3. Le attività aperte
@@ -2032,7 +2068,7 @@ qui perché una domanda non scritta si ripresenta come sorpresa.
 | **D4** | L'**abbinamento automatico** è nella prima slice? | **No** — vedi il riquadro sotto |
 | **D6** | L'**import del flusso** bancario è nella prima slice? | **No** — vedi il riquadro sotto |
 | ~~**D7**~~ | ~~Lo **storno** è una riga di segno opposto o un cambio di stato?~~ | **Chiusa da D3-d il 2026-08-09**: non è né l'uno né l'altro, perché lo storno non esiste come concetto. È una contabile con importi negativi |
-| **D8** | Come interagiscono **note di credito** e compensazioni col saldo per rata? | 🟡 **Aperta, ma dal 2026-08-18 molto più precisa.** `pagamenti.compensazioni` resta il candidato. ⭐ Il design NC ([brief-design-note-credito-resi.md](brief-design-note-credito-resi.md) §12.4-bis.7) ha stabilito che una NC ha `totale_a_pagare` **negativo** e quindi **nessuna rata** — `fn_genera_scadenze_fattura` lo tratta già (*«saldo a favore del cliente»*, D-D caso 3) e `fn_assign_numero_fattura` lo presidia (*«un documento non positivo non si rateizza»*). Ne discende che **la NC non entra nel saldo per rata: non ne ha**. Il credito si regola in due modi, e solo il secondo è aperto: (a) **dentro la banda del minimo** → fondo fattura negativo applicato alla fattura successiva, ✅ già progettato; (b) **fuori dalla banda** → nessun fondo automatico e nessuna rata, quindi serve il **processo rimborsi**, che la doc di `fatture_fondi_fattura_source` nomina già (fondo `origine = MANUALE`, motivo obbligatorio, *«arriva dal processo rimborsi di `pagamenti`»*) ma che **non esiste**. 🔴 **La domanda vera di D8 è (b): dove si vede un credito grande che va rimborsato?** — oggi da nessuna parte |
+| **D8** | Come interagiscono **note di credito** e compensazioni col saldo per rata? | 🟡 **Aperta, ma dal 2026-08-18 molto più precisa.** `pagamenti.compensazioni` resta il candidato. ⭐ Il design NC ([brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md) §12.4-bis.7) ha stabilito che una NC ha `totale_a_pagare` **negativo** e quindi **nessuna rata** — `fn_genera_scadenze_fattura` lo tratta già (*«saldo a favore del cliente»*, D-D caso 3) e `fn_assign_numero_fattura` lo presidia (*«un documento non positivo non si rateizza»*). Ne discende che **la NC non entra nel saldo per rata: non ne ha**. Il credito si regola in due modi, e solo il secondo è aperto: (a) **dentro la banda del minimo** → fondo fattura negativo applicato alla fattura successiva, ✅ già progettato; (b) **fuori dalla banda** → nessun fondo automatico e nessuna rata, quindi serve il **processo rimborsi**, che la doc di `fatture_fondi_fattura_source` nomina già (fondo `origine = MANUALE`, motivo obbligatorio, *«arriva dal processo rimborsi di `pagamenti`»*) ma che **non esiste**. 🔴 **La domanda vera di D8 è (b): dove si vede un credito grande che va rimborsato?** — oggi da nessuna parte |
 
 ### ⚠️ D4 e D6 sono **due mestieri diversi**, e vanno tenuti separati
 

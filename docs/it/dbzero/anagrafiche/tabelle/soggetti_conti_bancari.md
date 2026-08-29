@@ -39,6 +39,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ex_scb_conto_incasso_un_solo_soggetto | `CREATE INDEX ex_scb_conto_incasso_un_solo_soggetto ON anagrafiche.soggetti_conti_bancari USING gist (conto_bancario_id, soggetto_id) WHERE ((uso)::text = 'INCASSO'::text)` |
 | ix_anagrafiche_soggetti_conti_bancari_conto_bancario_id | `CREATE INDEX ix_anagrafiche_soggetti_conti_bancari_conto_bancario_id ON anagrafiche.soggetti_conti_bancari USING btree (conto_bancario_id)` |
 | ix_soggetti_conti_bancari_predef_per_uso | `CREATE UNIQUE INDEX ix_soggetti_conti_bancari_predef_per_uso ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id, uso) WHERE (predefinito = true)` |
 | pk_soggetti_conti_bancari | `CREATE UNIQUE INDEX pk_soggetti_conti_bancari ON anagrafiche.soggetti_conti_bancari USING btree (id)` |

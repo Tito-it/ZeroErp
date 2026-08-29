@@ -22,6 +22,7 @@ import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
 import { PAGINATION } from '../../core/constants'
+import { paramsPagina } from '../../core/utils/listParams'
 import { listLotti } from '../api/lotti'
 
 export const useLottiStore = defineStore('vendite-lotti', () => {
@@ -50,18 +51,17 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     filters,
     alwaysFetch: true,
     buildParams: (f) => {
-      // limit/offset (lingua del BB) -> page/page_size (lingua dell'endpoint).
-      const pageSize = f.limit || PAGINATION.DEFAULT_ROWS
-      const params = {
-        page: Math.floor((f.offset || 0) / pageSize) + 1,
-        page_size: pageSize,
-      }
+      // limit/offset (lingua del BB) -> page/page_size (lingua dell'endpoint),
+      // via `paramsPagina` (`core/utils/listParams`, estratto il 2026-08-28
+      // alla terza sede: questa era la prima).
+      // ⛔ `orderDirDefault: 'asc'` NON e' una svista da uniformare: e' il
+      //    ripiego che questo store aveva, diverso da quello degli altri due
+      //    consumatori (`desc`). Oggi non scatta — `order_dir` e' sempre
+      //    valorizzato nei filtri — ma appianarlo avrebbe cambiato il verso di
+      //    questa lista in silenzio il giorno in cui quel ramo si accendesse.
+      const params = paramsPagina(f, { orderDirDefault: 'asc' })
       if (f.competenza_mese) params.competenza_mese = f.competenza_mese
       if (f.stato_lotto) params.stato_lotto = f.stato_lotto
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'asc'
-      }
       return params
     },
     fetchPage: listLotti,

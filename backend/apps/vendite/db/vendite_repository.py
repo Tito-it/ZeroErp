@@ -8,6 +8,7 @@
 # Contiene operazioni generiche sullo schema vendite che non appartengono
 # a nessun sottodominio specifico (pipeline, reset, ecc.).
 
+import json
 import logging
 import re
 from datetime import date
@@ -32,7 +33,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._coda_documento_filtro import filtro_coda_per_documento
 from apps.vendite.db._data_documento_sql import (
     SQL_DATA_DOCUMENTO_CORRENTE,
-    SQL_PERIMETRO_LOTTI_NUMERABILI,
+    costruisci_perimetro_lotti_numerabili,
 )
 from apps.vendite.types import (
     DashApertoDocumentoRow,
@@ -40,9 +41,11 @@ from apps.vendite.types import (
     DashBacklogDocumentoRow,
     DashBacklogRiepilogoRow,
     DashCompetenzaAttivitaRow,
+    DashCompetenzaResiduoRow,
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaGruppiRiepilogoRow,
+    DashCompetenzaGruppoRegistroRow,
     DashCompetenzaGruppoRow,
     DashCompetenzaGruppoTipoRow,
     DashCompetenzaMensileRow,
@@ -197,6 +200,18 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
     "FATTURATA",
 )
 
+# ⭐ L'unico dei quattro valori di `motivo_non_fatturata` (vocabolario chiuso
+# della vista `vw_dash_competenza_attivita`, changeSet 20260826-54) che CHIEDE
+# un'azione: le altre tre situazioni — IN_ATTESA_LOTTO, GIRO_IN_CORSO,
+# SENZA_ATTIVITA_FATTURABILE — sono «niente da fare».
+# ⛔ Vive QUI, in una sede sola, e si passa come PARAMETRO SQL: il letterale
+# embedded e' la lezione gia' pagata sullo stadio (vedi
+# TIPO_INDIRIZZO_FATTURAZIONE qui sotto). Il service la importa invece di
+# riscriverla — due copie dello stesso valore, una in SQL e una in Python,
+# divergono senza che niente fallisca: la lista mostrerebbe un perimetro e la
+# card ne conterebbe un altro.
+MOTIVO_NON_FATTURATA_RESIDUO = "RESIDUO"
+
 # Codice stabile (codice_interno di config.tipi_indirizzi) dello slot letto
 # nella testata fattura per la stampa: indirizzo di fatturazione del cliente,
 # dalla riga FATT del satellite congelato `fatture_indirizzi`. Costante passata
@@ -243,6 +258,23 @@ _RETTIFICHE_VERSI: dict[str, tuple[str, str]] = {
     "rettifica": ("fattura_id", "rettificata_id"),
     "rettificata_da": ("rettificata_id", "fattura_id"),
 }
+
+
+# Colonne che gli AGGREGATI del contorno lista-gruppi leggono (riepilogo, tre
+# facet, conteggio di perimetro). ⚠️ Sono solo quelle degli aggregati: cio' che
+# serve ai FILTRI lo dichiara `_where_gruppi_filtri`, accanto al predicato che
+# lo usa — e solo quando quel filtro e' davvero attivo.
+_ACCESSORI_COLONNE_AGGREGATI = (
+    "g.tipo_gruppo",
+    "g.area_documento",
+    "g.n_attivita",
+    "g.valore",
+    "g.ba_fatturazione_id",
+    "g.cliente_fatturazione_display",
+    "g.ba_codice_fatturazione",
+    "g.id_fiscale",
+    "g.registri_ids",
+)
 
 
 class VenditeRepository:
@@ -690,9 +722,23 @@ class VenditeRepository:
     #    diverso da quello con cui il giro numera davvero.
     # ⚠️ `NULLS LAST`: un lotto senza fatture da numerare non ha una data da
     #    confrontare — va in coda, non in testa.
+    # ⭐ DUE PERIMETRI, e l'ordinamento vale per entrambi: anche su una selezione
+    #    fatta a mano i lotti si numerano in ordine di data documento, o il
+    #    cancello di sequenza rifiuta il secondo. La selezione decide QUALI, mai
+    #    in che ordine.
     def list_lotti_numerabili(
-        self, *, competenza_mese: date, stato_doc_fiscale_id: int,
+        self,
+        *,
+        stato_doc_fiscale_id: int,
+        competenza_mese: date | None = None,
+        lotti_ids: list[int] | None = None,
     ) -> list[dict[str, Any]]:
+        perimetro, par_perimetro = costruisci_perimetro_lotti_numerabili(
+            lotti_alias="fl",
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            competenza_mese=competenza_mese,
+            lotti_ids=lotti_ids,
+        )
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -705,9 +751,9 @@ class VenditeRepository:
                  ORDER BY d.data_doc NULLS LAST, fl.id
                 """.format(
                     data_corrente=SQL_DATA_DOCUMENTO_CORRENTE.format(lotto="fl.id"),
-                    perimetro=SQL_PERIMETRO_LOTTI_NUMERABILI.format(lotti="fl"),
+                    perimetro=perimetro,
                 ),
-                [competenza_mese, int(stato_doc_fiscale_id)],
+                par_perimetro,
             )
             return [
                 {"id": int(row[0]), "codice": row[1]}
@@ -951,7 +997,16 @@ class VenditeRepository:
                 m.valore_tot,
                 m.valore_fatturato_tot,
                 m.n_in_ritardo,
-                m.valore_in_ritardo
+                m.valore_in_ritardo,
+                -- ⭐ La dimensione arrivata col `20260826-55`, IN CODA di
+                --    proposito: le righe si leggono per POSIZIONE, quindi una
+                --    colonna infilata in mezzo sposta in silenzio tutte quelle
+                --    dopo — e `int(row[5])` che diventa una stringa non e' un
+                --    errore di sintassi, e' un numero sbagliato a video.
+                --    Serve alla card «Emesse non fatturate», che senza di lei
+                --    somma DUE cose con rimedi opposti: il RESIDUO, che chiede
+                --    un'azione, e il transito legittimo, su cui non si fa nulla.
+                m.motivo_non_fatturata
             FROM vendite.vw_dash_competenza_mensile m
             LEFT JOIN config.stati_doc_fiscale sdf
                 ON sdf.codice_interno = m.stato_fattura_codice_interno
@@ -979,6 +1034,7 @@ class VenditeRepository:
                     "valore_fatturato": str(row[7]) if row[7] is not None else "0",
                     "n_in_ritardo": int(row[8]),
                     "valore_in_ritardo": str(row[9]) if row[9] is not None else "0",
+                    "motivo_non_fatturata": None if row[10] is None else str(row[10]),
                 }
             )
         return result
@@ -1262,6 +1318,152 @@ class VenditeRepository:
             )
         return result, total_count
 
+    # Colonne ordinabili della lista dei RESIDUI (`ui.lista_definizione` 49).
+    # ⚠️ Le chiavi sono i `campo_sorgente` del catalogo, non i `codice` delle
+    # colonne: due divergono (`articolo` -> `articolo_codice`,
+    # `lotto_provenienza` -> `lotto_provenienza_codice`) e il presidio
+    # `apps/core/tests/test_liste_configurabili_seed.py` lega catalogo e
+    # whitelist nei DUE versi — una colonna `ordinabile = t` fuori whitelist fa
+    # rosso (la freccia a video risponderebbe 400) e una in whitelist marcata
+    # `ordinabile = f` fa rosso pure lei.
+    DASH_COMPETENZA_RESIDUI_SORT_COLUMNS = {
+        "commessa_codice": "commessa_codice",
+        "cliente_display": "cliente_display",
+        "articolo_codice": "articolo_codice",
+        "articolo_descrizione": "articolo_descrizione",
+        "competenza_mese": "competenza_mese",
+        "data_attivita": "data_attivita",
+        "valore": "valore",
+        "lotto_provenienza_codice": "lotto_provenienza_codice",
+        "motivo_non_fatturata": "motivo_non_fatturata",
+        "emittente_ragione_sociale": "emittente_ragione_sociale",
+    }
+
+    # Scopo: Elenco dei RESIDUI di un mese di competenza — le attivita' che una
+    #        fattura non ce l'hanno piu' e che nessun giro riprendera' da solo.
+    #        E' l'oggetto del verbo «Riporta da emettere»: la lista esiste
+    #        perche' il verbo agisce per riga, e l'operatore deve vedere COSA
+    #        sta riportando.
+    # Perimetro: sola lettura su `vw_dash_competenza_attivita`, che e'
+    #        `security_invoker` e fail-closed senza GUC operatore. Lo scope non
+    #        si aggiunge qui: sta gia' nella vista, sul JOIN con
+    #        `vendite.commesse_attivita` — `vendite.attivita_fatturabili` NON ha
+    #        row level security, quindi leggerla da sola sarebbe fail-open.
+    # Risultato: tuple (righe, conteggio totale).
+    def list_dash_competenza_residui(
+        self,
+        *,
+        competenza_mese: date,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[DashCompetenzaResiduoRow], int]:
+        # ⛔ IL PERIMETRO E' `motivo_non_fatturata = 'RESIDUO'`, e non e' un
+        #    filtro di comodo: lo stadio `EMESSA_NON_FATTURATA` contiene QUATTRO
+        #    situazioni con rimedi diversi, e solo questa chiede un'azione. Le
+        #    altre tre — `IN_ATTESA_LOTTO`, `GIRO_IN_CORSO`,
+        #    `SENZA_ATTIVITA_FATTURABILE` — sono «niente da fare», e proporre il
+        #    verbo su di loro significherebbe disfare emissioni corrette oppure
+        #    (l'ultima) offrirlo su una riga la cui chiave e' NULL.
+        #    Il discriminante lo calcola la VISTA, che lo ricava con lo stesso
+        #    `IS DISTINCT FROM` di `script.fn_check_attivita_riportabile_da_emettere`:
+        #    ricalcolarlo qui sarebbe una seconda implementazione, e la
+        #    divergenza sarebbe silenziosa (la lista proporrebbe il verbo su una
+        #    riga che la mutazione rifiuta).
+        conditions = ["a.competenza_mese = %s", "a.motivo_non_fatturata = %s"]
+        params: list[Any] = [competenza_mese, MOTIVO_NON_FATTURATA_RESIDUO]
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        sort_col = self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS.get(order_by or "")
+        # ⚠️ `default_desc=False`, al contrario delle liste sorelle: il default
+        #    dichiarato a catalogo e' `competenza_mese` ASC, e la direzione deve
+        #    valere anche per il TIEBREAK — altrimenti la primaria salirebbe e lo
+        #    spareggio scenderebbe, cioe' dentro lo stesso mese l'elenco andrebbe
+        #    al contrario di come e' stato chiesto (e' il difetto corretto in 30
+        #    punti il 2026-08-03).
+        direction = sql_order_direction(order_dir, default_desc=False)
+        tiebreak_dir = sql_tiebreak_direction(direction)
+        # ⚠️ Il tiebreak e' `attivita_fatturabile_id`: e' la chiave del verbo,
+        #    quindi l'unica univoca su questa lista — e su un elenco da cui si
+        #    SELEZIONA, una paginazione non deterministica farebbe agire su
+        #    righe diverse da quelle spuntate.
+        tiebreak = f"commessa_codice ASC, attivita_fatturabile_id {tiebreak_dir}"
+        if sort_col is not None:
+            order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
+        else:
+            # ⭐ Il default e' `competenza_mese` ASC, fedele
+            #    all'`ordinamento_default` del preset a catalogo — e deve
+            #    coincidere con quello che il frontend manda, altrimenti
+            #    l'export (che non passa dai filtri a video) darebbe un ordine
+            #    diverso dalla schermata e nessuno se ne accorgerebbe aprendo
+            #    il foglio.
+            # ⚠️ MA su questa lista quella colonna e' COSTANTE: il perimetro e'
+            #    un mese solo (`a.competenza_mese = %s`), quindi l'ordine che si
+            #    vede lo decide per intero il tiebreak — commessa, poi chiave.
+            #    Si scrive lo stesso, e per due ragioni: e' cio' che il catalogo
+            #    dichiara (divergere sarebbe un contratto non mantenuto), e il
+            #    giorno che il filtro si allargasse a un intervallo la clausola
+            #    e' gia' quella giusta. ⛔ Quel che NON si puo' dire e' «i piu'
+            #    vecchi in cima»: dentro un mese solo non c'e' nessun ordine di
+            #    anzianita' da leggere qui.
+            order_clause = f"ORDER BY competenza_mese {direction}, {tiebreak}"
+
+        # ⚠️ `attivita_fatturabile_id` si proietta ma NON e' a catalogo: serve al
+        #    verbo, non all'occhio (§7.4 del brief DB). Toglierlo dalla SELECT
+        #    lascerebbe una lista che si puo' guardare e non azionare.
+        select_sql = f"""
+            SELECT
+                a.attivita_fatturabile_id,
+                a.commessa_attivita_id,
+                a.commessa_id,
+                a.commessa_codice,
+                a.cliente_display,
+                a.articolo_codice,
+                a.articolo_descrizione,
+                a.competenza_mese,
+                a.data_attivita,
+                a.quantita,
+                a.valore,
+                a.lotto_provenienza_id,
+                a.lotto_provenienza_codice,
+                a.motivo_non_fatturata,
+                a.emittente_ragione_sociale
+            FROM vendite.vw_dash_competenza_attivita a
+            {where_clause}
+        """
+
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
+
+        result: list[DashCompetenzaResiduoRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "attivita_fatturabile_id": None if row[0] is None else int(row[0]),
+                    "commessa_attivita_id": int(row[1]),
+                    "commessa_id": int(row[2]),
+                    "commessa_codice": None if row[3] is None else str(row[3]),
+                    "cliente_display": None if row[4] is None else str(row[4]),
+                    "articolo_codice": None if row[5] is None else str(row[5]),
+                    "articolo_descrizione": None if row[6] is None else str(row[6]),
+                    "competenza_mese": row[7].isoformat() if row[7] is not None else None,
+                    "data_attivita": row[8].isoformat() if row[8] is not None else None,
+                    "quantita": str(row[9]) if row[9] is not None else None,
+                    "valore": str(row[10]) if row[10] is not None else None,
+                    "lotto_provenienza_id": None if row[11] is None else int(row[11]),
+                    "lotto_provenienza_codice": None if row[12] is None else str(row[12]),
+                    "motivo_non_fatturata": None if row[13] is None else str(row[13]),
+                    "emittente_ragione_sociale": None if row[14] is None else str(row[14]),
+                }
+            )
+        return result, total_count
+
     # Colonne di ordinamento ammesse per il drill-down AGGREGATO per commessa.
     # Su aggregati si ordina per gli aggregati, non per le colonne di riga.
     DASH_COMPETENZA_COMMESSE_SORT_COLUMNS = {
@@ -1418,6 +1620,22 @@ class VenditeRepository:
         # `codice` della colonna a catalogo (`emittente_fiscale`): il secondo
         # verso dello stesso presidio verifica proprio questo.
         "emittente_ragione_sociale": "emittente_ragione_sociale",
+        # Sezionale previsto e data prevista (BE-2, brief
+        # brief-db-registro-e-data-prevista-in-competenza). Stessa coppia
+        # inscindibile delle voci qui sopra: le righe 553/554 del CSV
+        # `ui/lista_colonna.csv` sono `ordinabile = t`, e il presidio
+        # `test_liste_configurabili_seed` lega catalogo e whitelist nei DUE
+        # versi. Il DB le ha consegnate sapendo che restavano rosse fino a qui.
+        # ⚠️ La chiave e' il `campo_sorgente`, non il `codice` a catalogo: la
+        # colonna del registro si chiama `registro` a catalogo e
+        # `registro_codice` sulla vista — la whitelist vuole il secondo.
+        # ⚠️ Ordinare per `registro_codice` mette insieme, in fondo, i gruppi
+        # multi-sezionale e quelli non risolvibili: sulla vista sono entrambi
+        # NULL. E' l'unico ordinamento possibile (il primo gruppo un codice non
+        # ce l'ha) ed e' anche quello utile: le righe da guardare finiscono
+        # vicine.
+        "registro_codice": "registro_codice",
+        "data_documento_prevista": "data_documento_prevista",
     }
 
     # Scopo: colonne su cui lavora la ricerca libera della lista gruppi (D-6).
@@ -1465,29 +1683,83 @@ class VenditeRepository:
     # ⚠️ La ricerca sotto i 3 caratteri viene IGNORATA (non svuota la lista):
     #        policy ricerca e paginazione. Il gate vero e' nel service, qui c'e'
     #        la rete perche' il repository e' chiamato anche dall'export.
+    # Scopo: il perimetro BASE — competenza e stadio, e nient'altro.
+    # ⭐ Separato dagli altri filtri perche' i due insiemi rispondono a domande
+    #    diverse: la lista e i totali seguono TUTTI i filtri, le tre facet solo
+    #    questo. Finche' `_where_gruppi` era una funzione sola, l'unico modo di
+    #    avere il perimetro base era chiamarla senza gli altri argomenti — cioe'
+    #    una seconda esecuzione della query piu' cara del giro.
     @staticmethod
-    def _where_gruppi(
-        *,
-        competenza_mese: date,
-        stadio: str | None,
-        tipo_gruppo: str | None = None,
-        ba_fatturazione_id: int | None = None,
-        ba_non_determinabile: bool = False,
-        search: str | None = None,
+    def _where_gruppi_base(
+        *, competenza_mese: date, stadio: str | None,
     ) -> tuple[list[str], list[Any]]:
         conditions: list[str] = ["g.competenza_mese = %s"]
         params: list[Any] = [competenza_mese]
         if stadio is not None:
             conditions.append("g.stadio = %s")
             params.append(stadio)
+        return conditions, params
+
+    # Scopo: i filtri SCELTI dall'operatore (tipo, cliente, sezionale, ricerca),
+    #        cioe' cio' che restringe il perimetro base.
+    # ⚠️ Le condizioni restano prefissate `g.`: si applicano sulla vista come su
+    #        una CTE che porti lo stesso alias. E' la proprieta' che permette di
+    #        filtrare un perimetro gia' letto invece di rileggerlo.
+    # ⭐ Torna anche le COLONNE che legge, e non e' zavorra: chi filtra un
+    #    perimetro gia' materializzato (`get_dash_competenza_gruppi_accessori`)
+    #    deve sapere quali colonne portarsi dietro. Dichiararle QUI — accanto al
+    #    predicato che le usa — e' l'unico modo perche' non si dimentichino: il
+    #    primo tentativo teneva l'elenco altrove e si e' rotto sulla RICERCA
+    #    LIBERA, che guarda cinque colonne di cui tre non erano previste.
+    #    Chi aggiunge un filtro aggiunge la sua condizione e le sue colonne
+    #    nello stesso punto, o non compila.
+    @staticmethod
+    def _where_gruppi_filtri(
+        *,
+        tipo_gruppo: str | None = None,
+        ba_fatturazione_id: int | None = None,
+        ba_non_determinabile: bool = False,
+        registro_id: int | None = None,
+        registro_non_risolvibile: bool = False,
+        search: str | None = None,
+    ) -> tuple[list[str], list[Any], list[str]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        colonne: list[str] = []
         if tipo_gruppo is not None:
             conditions.append("g.tipo_gruppo = %s")
             params.append(tipo_gruppo)
+            colonne.append("g.tipo_gruppo")
         if ba_non_determinabile:
             conditions.append("g.ba_fatturazione_id IS NULL")
+            colonne.append("g.ba_fatturazione_id")
         elif ba_fatturazione_id is not None:
             conditions.append("g.ba_fatturazione_id = %s")
             params.append(ba_fatturazione_id)
+            colonne.append("g.ba_fatturazione_id")
+        # ── Filtro SEZIONALE (D-5) ────────────────────────────────────────
+        # ⛔ `= ANY(g.registri_ids)` e NON `g.registro_codice = %s`, ed e' la
+        #    decisione portante del filtro: un gruppo che tocca due sezionali
+        #    deve comparire sotto ENTRAMBE le voci, e sulla seconda colonna e'
+        #    NULL — quindi con un filtro sul codice sparirebbe da tutte e due.
+        #    E' anche la ragione per cui la vista espone l'array e non solo il
+        #    codice.
+        # ⚠️ `registro_non_risolvibile` e' ALTERNATIVO, non aggiuntivo: e'
+        #    l'ASSENZA del valore (stessa forma di `ba_non_determinabile`), e
+        #    si scrive come array vuoto o di soli NULL — non come un id
+        #    sentinella, che prima o poi finisce confrontato con una PK.
+        #    `cardinality(...) = 0` non basterebbe: `array_agg(DISTINCT)`
+        #    conserva i NULL, quindi un gruppo interamente non risolvibile ha
+        #    `{NULL}`, cardinalita' 1.
+        if registro_non_risolvibile:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM unnest(g.registri_ids) r WHERE r IS NOT NULL)"
+            )
+            colonne.append("g.registri_ids")
+        elif registro_id is not None:
+            conditions.append("%s = ANY(g.registri_ids)")
+            params.append(registro_id)
+            colonne.append("g.registri_ids")
         termine = (search or "").strip()
         if len(termine) >= SEARCH_MIN_LEN:
             # OR fra le cinque colonne, in UN solo gruppo parentesizzato: senza
@@ -1499,7 +1771,41 @@ class VenditeRepository:
             )
             conditions.append(f"({rami})")
             params.extend([f"%{termine}%"] * len(VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS))
-        return conditions, params
+            colonne.extend(VenditeRepository.DASH_COMPETENZA_GRUPPI_SEARCH_COLUMNS)
+        return conditions, params, colonne
+
+    # Scopo: il predicato COMPLETO (base + filtri), com'era prima della
+    #        separazione. Firma e comportamento invariati: e' cio' che usano
+    #        lista, totali e conteggi.
+    # ⚠️ L'ordine e' portante — base PRIMA dei filtri — perche' i parametri
+    #        viaggiano posizionali e devono seguire l'ordine in cui i segnaposto
+    #        compaiono nel testo SQL.
+    @staticmethod
+    def _where_gruppi(
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+        tipo_gruppo: str | None = None,
+        ba_fatturazione_id: int | None = None,
+        ba_non_determinabile: bool = False,
+        registro_id: int | None = None,
+        registro_non_risolvibile: bool = False,
+        search: str | None = None,
+    ) -> tuple[list[str], list[Any]]:
+        cond_base, par_base = VenditeRepository._where_gruppi_base(
+            competenza_mese=competenza_mese, stadio=stadio,
+        )
+        cond_filtri, par_filtri, _colonne = VenditeRepository._where_gruppi_filtri(
+            tipo_gruppo=tipo_gruppo,
+            ba_fatturazione_id=ba_fatturazione_id,
+            ba_non_determinabile=ba_non_determinabile,
+            registro_id=registro_id,
+            registro_non_risolvibile=registro_non_risolvibile,
+            search=search,
+        )
+        # Le colonne non servono qui: chi interroga la VISTA le ha tutte. Sono
+        # per chi filtra un perimetro gia' materializzato.
+        return cond_base + cond_filtri, par_base + par_filtri
 
     def list_dash_competenza_gruppi(
         self,
@@ -1509,6 +1815,8 @@ class VenditeRepository:
         tipo_gruppo: str | None = None,
         ba_fatturazione_id: int | None = None,
         ba_non_determinabile: bool = False,
+        registro_id: int | None = None,
+        registro_non_risolvibile: bool = False,
         search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -1519,6 +1827,8 @@ class VenditeRepository:
             competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
             ba_fatturazione_id=ba_fatturazione_id,
             ba_non_determinabile=ba_non_determinabile,
+            registro_id=registro_id,
+            registro_non_risolvibile=registro_non_risolvibile,
             search=search,
         )
         where_clause = "WHERE " + " AND ".join(conditions)
@@ -1583,7 +1893,10 @@ class VenditeRepository:
                 g.commessa_stato_descrizione,
                 g.ba_codice_fatturazione,
                 g.id_fiscale,
-                g.emittente_ragione_sociale
+                g.emittente_ragione_sociale,
+                g.registri_n,
+                g.registro_codice,
+                g.data_documento_prevista
             FROM vendite.vw_dash_competenza_gruppi g
             {where_clause}
             """,
@@ -1633,26 +1946,77 @@ class VenditeRepository:
                     # il campo da se', lo deve portare questo SELECT. Se le due
                     # divergono la colonna si spunta e resta VUOTA.
                     "emittente_ragione_sociale": None if row[19] is None else str(row[19]),
+                    # ═══ Sezionale previsto e data prevista (BE-1) ═══════════
+                    # ⛔ Le due CHIAVI devono restare identiche al
+                    # `campo_sorgente` a catalogo (`registro_codice`,
+                    # `data_documento_prevista`, righe 553/554): la lista ha
+                    # `vista_sql = NULL`, quindi il catalogo il campo non lo
+                    # pesca da se' — lo porta questo SELECT. Se divergono, la
+                    # colonna si spunta e resta VUOTA su tutte le righe, senza
+                    # nessun errore.
+                    # ⛔ `registri_ids` NON entra nel payload, ed e' una scelta.
+                    # Serve al WHERE del filtro e alla facet — che stanno
+                    # entrambi qui — ma esporlo obbligherebbe a decidere se
+                    # tenere i NULL che `array_agg(DISTINCT)` conserva: con i
+                    # NULL e' una lista scomoda, senza diverge da `registri_n`
+                    # che li conta. Due numeri che dicono «quanti sezionali» e
+                    # non coincidono sono una domanda senza risposta. Al FE
+                    # bastano il conteggio e il codice.
+                    "registri_n": 0 if row[20] is None else int(row[20]),
+                    "registro_codice": None if row[21] is None else str(row[21]),
+                    "data_documento_prevista": (
+                        row[22].isoformat() if row[22] is not None else None
+                    ),
                 }
             )
         return result, total_count
 
-    # Scopo: Totali di perimetro dell'elenco gruppi (riga di riconciliazione
-    #        «N gruppi · M attivita' · X €»). Vengono dal DB e non dalla somma
-    #        delle righe della pagina corrente, che sarebbe un parziale con
-    #        l'aria di un totale — e nessuno somma a mano piu' pagine per
-    #        accorgersene.
-    # Perimetro: aggrega `vw_dash_competenza_gruppi` con lo STESSO predicato
-    #        della lista (`_where_gruppi`, filtro tipo incluso): i totali
-    #        descrivono esattamente le righe che stanno sopra, non un perimetro
-    #        vicino.
-    #        ⚠️ NON usa `vw_dash_competenza_gruppi_riepilogo`: quella vista
-    #        aggrega per (competenza, stadio, emittente) e **non espone
-    #        `tipo_gruppo`**, quindi non saprebbe seguire il filtro. I numeri
-    #        sono gli stessi — e' l'aggregazione della stessa vista di
-    #        dettaglio — ma qui la sorgente e' letteralmente quella della
-    #        lista. La vista di riepilogo resta valida per altri consumatori.
-    def get_dash_competenza_gruppi_riepilogo(
+    # ═══════════════════════════════════════════════════════════════════════
+    # IL CONTORNO DELLA LISTA GRUPPI, IN UNA SOLA LETTURA
+    # ═══════════════════════════════════════════════════════════════════════
+    # Scopo: tutto cio' che sta INTORNO alla lista — il riepilogo di perimetro,
+    #        le tre facet dei filtri e il totale del perimetro base — in UNA
+    #        query sola.
+    #
+    # ⭐ PERCHE' ESISTE. Erano cinque metodi e cinque query, e ognuna rileggeva
+    #    `vw_dash_competenza_gruppi` da capo: la vista e' un innesto di una
+    #    dozzina di join, quindi la sola cornice della lista pagava ~1,46 s sui
+    #    ~2,47 s dell'endpoint (misurato il 2026-08-26 con
+    #    `CaptureQueriesContext`). Qui la vista si legge UNA volta e i cinque
+    #    conteggi girano su quel materiale: ~0,31 s per tutti e cinque.
+    #
+    # ⛔ DUE PERIMETRI DENTRO LA STESSA QUERY, ED E' IL PUNTO DA NON SBAGLIARE.
+    #    · `base`     = competenza + stadio. Ci girano le TRE FACET e il totale
+    #                   di perimetro: le tendine devono mostrare tutte le voci
+    #                   anche quando una e' gia' scelta, altrimenti scegliendo
+    #                   «Preventivi» le altre sparirebbero e non si potrebbe piu'
+    #                   cambiare idea senza azzerare il filtro alla cieca;
+    #    · `filtrato` = base PIU' i filtri dell'operatore. Ci gira il RIEPILOGO,
+    #                   che deve riconciliare le righe che l'utente ha davanti.
+    #    Unificare i due sarebbe la scorciatoia ovvia e romperebbe le tendine in
+    #    silenzio: una query sola che risponde a una domanda sola. Presidiato da
+    #    `test_due_perimetri_dentro_la_query`.
+    #
+    # ⚠️ `AS MATERIALIZED` NON e' una vista materializzata: e' un'istruzione al
+    #    pianificatore valida per QUESTA query — «questo pezzo calcolalo una
+    #    volta e riusalo» — e sparisce con la query. Nessun oggetto nel
+    #    database, nessun dato da rinfrescare. Una CTE citata piu' volte sarebbe
+    #    materializzata comunque: e' scritto per non dipendere da quella regola,
+    #    e perche' dichiara l'intenzione a chi legge.
+    #
+    # ⛔ `SUM(g.valore)::text` e NON un numero JSON: il valore e' denaro, e un
+    #    `numeric` che passa da JSON diventa un float in Python. Un totale
+    #    fiscale non passa da un binario a virgola mobile — e' la stessa regola
+    #    per cui `valore` esce come stringa da tutte le liste.
+    #
+    # ⚠️ `jsonb_agg(... ORDER BY ...)` e non un `ORDER BY` sulla CTE: l'ordine
+    #    di una CTE non sopravvive all'aggregazione. Le tre clausole sono le
+    #    STESSE dei cinque metodi che questo sostituisce, e l'equivalenza delle
+    #    uscite e' stata provata sul DB vero su sette perimetri (perimetro vuoto
+    #    compreso) prima di rimuoverli.
+    # ⚠️ `COALESCE(..., '[]')`: su perimetro vuoto `jsonb_agg` torna NULL, e al
+    #    FE arriverebbe `null` dove aspetta una lista.
+    def get_dash_competenza_gruppi_accessori(
         self,
         *,
         competenza_mese: date,
@@ -1660,146 +2024,127 @@ class VenditeRepository:
         tipo_gruppo: str | None = None,
         ba_fatturazione_id: int | None = None,
         ba_non_determinabile: bool = False,
+        registro_id: int | None = None,
+        registro_non_risolvibile: bool = False,
         search: str | None = None,
-    ) -> DashCompetenzaGruppiRiepilogoRow:
-        conditions, params = self._where_gruppi(
-            competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
+    ) -> dict[str, Any]:
+        cond_base, par_base = self._where_gruppi_base(
+            competenza_mese=competenza_mese, stadio=stadio,
+        )
+        cond_filtri, par_filtri, colonne_filtri = self._where_gruppi_filtri(
+            tipo_gruppo=tipo_gruppo,
             ba_fatturazione_id=ba_fatturazione_id,
             ba_non_determinabile=ba_non_determinabile,
+            registro_id=registro_id,
+            registro_non_risolvibile=registro_non_risolvibile,
             search=search,
         )
-        where_clause = "WHERE " + " AND ".join(conditions)
-
+        where_base = "WHERE " + " AND ".join(cond_base)
+        where_filtri = ("WHERE " + " AND ".join(cond_filtri)) if cond_filtri else ""
+        # ⛔ SOLO le colonne che servono, e non `g.*`: su questa vista il costo
+        #    dipende da COSA le si chiede — 348 ms per le dodici che servono,
+        #    **1052 ms** per `g.*` (misurato). `g.*` era il primo rimedio alla
+        #    fragilita' dell'elenco, e costava 0,7 s a ogni caricamento.
+        # ⭐ L'elenco non si scrive a mano: e' quello degli AGGREGATI piu' quello
+        #    che i filtri attivi DICHIARANO di leggere. Un filtro che non c'e'
+        #    non porta le sue colonne — la ricerca libera ne chiede cinque, e
+        #    solo quando l'operatore ha davvero digitato qualcosa.
+        colonne = list(dict.fromkeys([*_ACCESSORI_COLONNE_AGGREGATI, *colonne_filtri]))
+        select_base = ",\n                           ".join(colonne)
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
+                WITH base AS MATERIALIZED (
+                    SELECT {select_base}
+                      FROM vendite.vw_dash_competenza_gruppi g
+                      {where_base}
+                ),
+                filtrato AS (
+                    SELECT g.* FROM base g
+                    {where_filtri}
+                ),
+                riepilogo AS (
+                    SELECT COUNT(*)::int                          AS n_gruppi,
+                           COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita,
+                           COALESCE(SUM(g.valore), 0)::text       AS valore,
+                           COUNT(*) FILTER (WHERE g.tipo_gruppo = %s)::int
+                                                                  AS n_gruppi_oneri
+                      FROM filtrato g
+                ),
+                tipi AS (
+                    SELECT g.tipo_gruppo,
+                           MIN(g.area_documento)                  AS area_documento,
+                           COUNT(*)::int                          AS n_gruppi,
+                           COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
+                      FROM base g
+                     GROUP BY g.tipo_gruppo
+                ),
+                clienti AS (
+                    SELECT g.ba_fatturazione_id,
+                           MIN(g.cliente_fatturazione_display)    AS cliente_display,
+                           MIN(g.ba_codice_fatturazione)          AS ba_codice_fatturazione,
+                           MIN(g.id_fiscale)                      AS id_fiscale,
+                           COUNT(*)::int                          AS n_gruppi,
+                           COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
+                      FROM base g
+                     GROUP BY g.ba_fatturazione_id
+                ),
+                registri AS (
+                    SELECT r.id                                   AS registro_id,
+                           MIN(rf.codice)                         AS codice,
+                           MIN(rf.descrizione)                    AS descrizione,
+                           COUNT(*)::int                          AS n_gruppi,
+                           COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
+                      FROM base g
+                      LEFT JOIN LATERAL unnest(g.registri_ids) AS r(id) ON TRUE
+                      LEFT JOIN vendite.registri_fatturazione rf ON rf.id = r.id
+                     GROUP BY r.id
+                )
                 SELECT
-                    COUNT(*)::int,
-                    COALESCE(SUM(g.n_attivita), 0)::bigint,
-                    COALESCE(SUM(g.valore), 0),
-                    COUNT(*) FILTER (WHERE g.tipo_gruppo = %s)::int
-                FROM vendite.vw_dash_competenza_gruppi g
-                {where_clause}
+                    (SELECT to_jsonb(x) FROM riepilogo x),
+                    (SELECT COALESCE(jsonb_agg(to_jsonb(x)
+                                ORDER BY x.n_gruppi DESC, x.tipo_gruppo ASC),
+                             '[]'::jsonb) FROM tipi x),
+                    (SELECT COALESCE(jsonb_agg(to_jsonb(x)
+                                ORDER BY x.n_gruppi DESC,
+                                         x.cliente_display ASC NULLS LAST,
+                                         x.ba_fatturazione_id ASC NULLS LAST),
+                             '[]'::jsonb) FROM clienti x),
+                    (SELECT COALESCE(jsonb_agg(to_jsonb(x)
+                                ORDER BY x.n_gruppi DESC,
+                                         x.codice ASC NULLS LAST,
+                                         x.registro_id ASC NULLS LAST),
+                             '[]'::jsonb) FROM registri x),
+                    (SELECT COUNT(*)::int FROM base)
                 """,
-                [TIPO_GRUPPO_ONERI, *params],
+                # ⛔ L'ordine segue i SEGNAPOSTO NEL TESTO, non la logica: la
+                # CTE `filtrato` sta prima di `riepilogo`, quindi i parametri
+                # dei filtri precedono la costante degli oneri. Invertirli non
+                # da' errore — confronta il tipo gruppo col valore sbagliato e
+                # torna numeri plausibili.
+                [*par_base, *par_filtri, TIPO_GRUPPO_ONERI],
             )
             row = cursor.fetchone()
         assert row is not None
+        # ⚠️ `json.loads` ESPLICITO: psycopg 3 in questa configurazione consegna
+        #    il `jsonb` come STRINGA, non come oggetto Python (verificato). Non
+        #    e' un dettaglio del driver da dare per scontato — se un domani lo
+        #    parsasse da se', `json.loads` su un dict alzerebbe subito, invece
+        #    di far viaggiare una stringa dove il FE aspetta una lista.
+        # ⛔ E qui si vede perche' `valore` doveva uscire come TESTO dalla
+        #    query: dentro il JSON un `numeric` e' un numero, e `json.loads` lo
+        #    trasformerebbe in un **float**. Il denaro sarebbe passato da un
+        #    binario a virgola mobile senza che nessuno se ne accorgesse.
+        def _dati(valore: Any) -> Any:
+            return json.loads(valore) if isinstance(valore, str) else valore
+
         return {
-            "n_gruppi": int(row[0]),
-            "n_attivita": int(row[1]),
-            "valore": str(row[2]) if row[2] is not None else None,
-            "n_gruppi_oneri": int(row[3]),
+            "riepilogo": _dati(row[0]),
+            "tipi": _dati(row[1]),
+            "clienti": _dati(row[2]),
+            "registri": _dati(row[3]),
+            "n_gruppi_perimetro": int(row[4]),
         }
-
-    # Scopo: Voci del filtro «tipo documento/sorgente» della lista gruppi,
-    #        calcolate SUI DATI del perimetro (facet) con il conteggio accanto.
-    #        Cosi' la tendina offre solo cio' che esiste davvero: un'opzione che
-    #        dà sempre zero risultati e' peggio di nessun filtro.
-    # ⚠️ Il predicato NON include `tipo_gruppo`: le facet devono restare tutte
-    #        visibili anche quando una e' selezionata, altrimenti scegliendo
-    #        «Preventivi» le altre voci sparirebbero e l'operatore resterebbe
-    #        chiuso dentro il filtro appena messo.
-    # Perimetro: sola lettura su vw_dash_competenza_gruppi (scope GUC in vista).
-    def list_dash_competenza_gruppi_tipi(
-        self,
-        *,
-        competenza_mese: date,
-        stadio: str | None,
-    ) -> list[DashCompetenzaGruppoTipoRow]:
-        conditions, params = self._where_gruppi(
-            competenza_mese=competenza_mese, stadio=stadio,
-        )
-        where_clause = "WHERE " + " AND ".join(conditions)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    g.tipo_gruppo,
-                    MIN(g.area_documento) AS area_documento,
-                    COUNT(*)::int         AS n_gruppi,
-                    COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
-                FROM vendite.vw_dash_competenza_gruppi g
-                {where_clause}
-                GROUP BY g.tipo_gruppo
-                ORDER BY COUNT(*) DESC, g.tipo_gruppo ASC
-                """,
-                params,
-            )
-            rows = cursor.fetchall()
-        return [
-            {
-                "tipo_gruppo": str(r[0]),
-                "area_documento": None if r[1] is None else str(r[1]),
-                "n_gruppi": int(r[2]),
-                "n_attivita": int(r[3]),
-            }
-            for r in rows
-        ]
-
-    # Scopo: Voci del filtro CLIENTE della lista gruppi (facet), calcolate sui
-    #        dati del perimetro con il conteggio accanto. L'asse e'
-    #        `ba_fatturazione_id` — lo STESSO elemento che `fn_build_fattura_key`
-    #        mette in chiave — e non la ragione sociale.
-    # ⚠️ Perche' NON per ragione sociale, che sarebbe l'ovvio: un soggetto puo'
-    #        avere piu' alberi di billing account, anche sotto emittenti diversi,
-    #        tutti con la stessa ragione sociale e lo stesso codice fiscale (caso
-    #        reale: quattro BA sotto un emittente e quattro sotto un altro).
-    #        Filtrando per nome si raccoglierebbero alberi che finiscono su
-    #        fatture DIVERSE, e la tendina mostrerebbe la stessa voce due volte
-    #        senza modo di distinguerle. Per questo il `codice` sta
-    #        nell'etichetta e non e' decorativo.
-    # ⚠️ Il predicato NON include cliente ne' ricerca — stessa ragione della
-    #        facet dei tipi: le voci devono restare tutte visibili anche quando
-    #        una e' selezionata, altrimenti l'operatore resta chiuso dentro il
-    #        filtro appena messo. E non include nemmeno `tipo_gruppo`, cosi' le
-    #        due facet descrivono lo STESSO perimetro (competenza+stadio) e non
-    #        una l'altra a seconda dell'ordine in cui si scelgono.
-    # ⚠️ La voce «cliente non determinabile» (`ba_fatturazione_id` NULL) e'
-    #        emessa come le altre, col suo conteggio: e' il caso in cui il padre
-    #        e' fuori dallo scope dell'operatore. Nasconderla la renderebbe
-    #        invisibile pur restando in lista — la riga dimenticata, di nuovo.
-    # Perimetro: sola lettura su vw_dash_competenza_gruppi (scope GUC in vista).
-    def list_dash_competenza_gruppi_clienti(
-        self,
-        *,
-        competenza_mese: date,
-        stadio: str | None,
-    ) -> list[DashCompetenzaGruppoClienteRow]:
-        conditions, params = self._where_gruppi(
-            competenza_mese=competenza_mese, stadio=stadio,
-        )
-        where_clause = "WHERE " + " AND ".join(conditions)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT
-                    g.ba_fatturazione_id,
-                    MIN(g.cliente_fatturazione_display) AS cliente_display,
-                    MIN(g.ba_codice_fatturazione)       AS ba_codice,
-                    MIN(g.id_fiscale)                   AS id_fiscale,
-                    COUNT(*)::int                       AS n_gruppi,
-                    COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
-                FROM vendite.vw_dash_competenza_gruppi g
-                {where_clause}
-                GROUP BY g.ba_fatturazione_id
-                ORDER BY COUNT(*) DESC, MIN(g.cliente_fatturazione_display) ASC NULLS LAST,
-                         g.ba_fatturazione_id ASC NULLS LAST
-                """,
-                params,
-            )
-            rows = cursor.fetchall()
-        return [
-            {
-                "ba_fatturazione_id": None if r[0] is None else int(r[0]),
-                "cliente_display": None if r[1] is None else str(r[1]),
-                "ba_codice_fatturazione": None if r[2] is None else str(r[2]),
-                "id_fiscale": None if r[3] is None else str(r[3]),
-                "n_gruppi": int(r[4]),
-                "n_attivita": int(r[5]),
-            }
-            for r in rows
-        ]
 
     # Colonne ordinabili della lista errori vivi (8° lotto liste, 2026-08-03).
     # Alias di output della union: la vista non ha una PK e le colonne di
@@ -1857,6 +2202,11 @@ class VenditeRepository:
                 e.fattura_anno,
                 e.fattura_serie,
                 e.fattura_numero,
+                -- Sede unica del numero documento (20260829-15): questa lista
+                -- componeva `serie numero/anno` nel .vue, cioe' una delle sei
+                -- forme in giro.
+                vendite.fn_numero_documento_fattura(e.fattura_numero, e.fattura_serie)
+                                             AS fattura_numero_documento,
                 e.task_code,
                 e.error_code,
                 e.messaggio,
@@ -1911,6 +2261,19 @@ class VenditeRepository:
             offset=offset,
         )
 
+        # ⚠️ QUI SI MAPPA ANCORA PER INDICE, ed e' dichiarato invece che
+        #    scoperto: `_query_paged_view` (otto chiamanti in questo file, piu'
+        #    quelli del core) restituisce tuple, non dict. Il gemello
+        #    `list_lotto_fatture` e' passato all'accesso per nome il 2026-08-29
+        #    perche' li' il `fetchall` e' locale; qui servirebbe cambiare un
+        #    helper condiviso, che e' una decisione di infrastruttura e non di
+        #    questo cantiere.
+        # ⛔ Finche' resta cosi': aggiungere o togliere una colonna nella SELECT
+        #    qui sopra SPOSTA di una casella tutto quello che segue, **senza
+        #    nessun errore** — la data finisce nel campo del task, il messaggio
+        #    in quello della data. E' successo il 2026-08-29 inserendo
+        #    `fattura_numero_documento`. Chi tocca la SELECT ricontrolla gli
+        #    indici QUI SOTTO, uno per uno.
         result: list[DashCompetenzaErroreRow] = []
         for row in rows:
             result.append(
@@ -1924,16 +2287,34 @@ class VenditeRepository:
                     "fattura_anno": None if row[6] is None else int(row[6]),
                     "fattura_serie": None if row[7] is None else str(row[7]),
                     "fattura_numero": None if row[8] is None else int(row[8]),
-                    "task_code": None if row[9] is None else str(row[9]),
-                    "error_code": None if row[10] is None else str(row[10]),
-                    "messaggio": None if row[11] is None else str(row[11]),
-                    "data_evento": row[12].isoformat() if row[12] is not None else None,
+                    # Numero documento dalla sede unica DB (20260829-15).
+                    "fattura_numero_documento": row[9],
+                    "task_code": None if row[10] is None else str(row[10]),
+                    "error_code": None if row[11] is None else str(row[11]),
+                    "messaggio": None if row[12] is None else str(row[12]),
+                    "data_evento": row[13].isoformat() if row[13] is not None else None,
                     # Emittente (P-4, Fase E): chiave = `campo_sorgente`
                     # del catalogo, o la colonna resta vuota a video.
-                    "emittente_ragione_sociale": row[13],
+                    "emittente_ragione_sociale": row[14],
                 }
             )
         return result, total_count
+
+    # Scopo: il `codice` di un registro di fatturazione, per l'etichetta della
+    #        riga «Filtri applicati» dell'export. `None` se l'id non esiste.
+    # ⚠️ Sta QUI e non nella view: leggere una tabella con SQL grezzo dentro un
+    #    layer di presentazione e' il punto da cui nascono le seconde
+    #    risoluzioni della stessa regola. `registri_fatturazione` non ha RLS —
+    #    e' un catalogo di configurazione — quindi «non trovato» significa
+    #    davvero «non esiste».
+    def get_registro_codice(self, registro_id: int) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT codice FROM vendite.registri_fatturazione WHERE id = %s",
+                [registro_id],
+            )
+            row = cursor.fetchone()
+        return None if row is None else str(row[0])
 
     # Scopo: Restituisce i contatori del backlog (Lente 2) a grana
     #        classe × area — il pivot per classe (3 classi sempre presenti)
@@ -2436,6 +2817,9 @@ class VenditeRepository:
                 fllf.stato_esecuzione,
                 f.numero,
                 f.serie,
+                -- Sede unica del numero documento (20260829-15).
+                vendite.fn_numero_documento_fattura(f.numero, f.serie)
+                                        AS numero_documento,
                 f.data,
                 f.billing_account_id,
                 f.totale_doc,
@@ -2449,7 +2833,12 @@ class VenditeRepository:
                 -- verbo «numera» le numera entrambe, sui rispettivi registri
                 -- (§12.4-bis.8). Senza questa decodifica il drawer del lotto
                 -- non «assume» che siano tutte fatture: non ha il dato.
-                ndf.codice_interno      AS natura_doc_codice,
+                -- ⭐ Nome fedele dal 2026-08-29, e le due meta' sono andate
+                -- INSIEME: il `campo_sorgente` del seed `ui.lista_colonna`
+                -- id 494 e questo alias. ⛔ Una sola delle due svuota la
+                -- colonna «Natura» del drawer lotto — il catalogo chiede un
+                -- nome che il payload non porta, e non lo dice nessuno.
+                ndf.codice_interno      AS natura_doc_codice_interno,
                 ndf.descrizione         AS natura_doc_descrizione,
                 err.messaggio           AS errore_messaggio,
                 err.data_ora            AS errore_quando,
@@ -2475,7 +2864,16 @@ class VenditeRepository:
             total_count = int(row[0])
 
             cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
+            # ⛔ PER NOME, non per indice, ed e' una correzione del 2026-08-29.
+            #    Questo dict era costruito con `row[0]`, `row[1]`…: inserire una
+            #    colonna in mezzo alla SELECT sposta di una casella TUTTO quello
+            #    che segue, e non da' nessun errore — mette la data nel campo del
+            #    billing account e il totale in quello del soggetto. E' successo
+            #    davvero aggiungendo `numero_documento`, e una riga FUORI dal
+            #    blocco (`errore_meta`) era sfuggita anche alla correzione.
+            #    ⭐ L'accesso per nome e' gia' l'idioma di questo file
+            #    (`row_to_dict` due metodi piu' su): qui era l'eccezione.
+            rows = rows_to_list(cursor)
 
         result: list[LottoFattureRow] = []
         for row in rows:
@@ -2483,31 +2881,33 @@ class VenditeRepository:
             # fa un `json.loads` (dal cursore RAW il jsonb arriva come stringa),
             # e chiamarlo una volta per chiave lo ripeterebbe a ogni chiave
             # nuova — su una lista paginata, per ogni riga.
-            errore_meta = jsonb_out(row[22]) or {}
+            errore_meta = jsonb_out(row["errore_meta"]) or {}
             result.append(
                 {
-                    "id": int(row[0]),
-                    "lotto_id": int(row[1]),
-                    "fattura_id": int(row[2]),
-                    "stato_sdi_id": None if row[3] is None else int(row[3]),
-                    "stato_sdi_descrizione": row[4],
-                    "stato_doc_fiscale_id": None if row[5] is None else int(row[5]),
-                    "stato_doc_fiscale_descrizione": row[6],
-                    "stato_esecuzione": str(row[7]),
-                    "numero": None if row[8] is None else int(row[8]),
-                    "serie": row[9],
-                    "data": row[10].isoformat() if row[10] is not None else None,
-                    "billing_account_id": int(row[11]),
-                    "totale_doc": str(row[12]) if row[12] is not None else None,
-                    "totale_a_pagare": str(row[13]) if row[13] is not None else None,
-                    "soggetto_id": int(row[14]),
-                    "ragione_sociale_completa": row[15],
-                    "id_fiscale_univoco_cf_piva": row[16],
-                    "stato_doc_fiscale_codice": row[17],
-                    "natura_doc_codice": row[18],
-                    "natura_doc_descrizione": row[19],
-                    "errore_messaggio": row[20],
-                    "errore_quando": row[21].isoformat() if row[21] is not None else None,
+                    "id": int(row["id"]),
+                    "lotto_id": int(row["lotto_id"]),
+                    "fattura_id": int(row["fattura_id"]),
+                    "stato_sdi_id": None if row["stato_sdi_id"] is None else int(row["stato_sdi_id"]),
+                    "stato_sdi_descrizione": row["stato_sdi_descrizione"],
+                    "stato_doc_fiscale_id": None if row["stato_doc_fiscale_id"] is None else int(row["stato_doc_fiscale_id"]),
+                    "stato_doc_fiscale_descrizione": row["stato_doc_fiscale_descrizione"],
+                    "stato_esecuzione": str(row["stato_esecuzione"]),
+                    "numero": None if row["numero"] is None else int(row["numero"]),
+                    "serie": row["serie"],
+                    # Numero documento dalla sede unica DB (20260829-15).
+                    "numero_documento": row["numero_documento"],
+                    "data": row["data"].isoformat() if row["data"] is not None else None,
+                    "billing_account_id": int(row["billing_account_id"]),
+                    "totale_doc": str(row["totale_doc"]) if row["totale_doc"] is not None else None,
+                    "totale_a_pagare": str(row["totale_a_pagare"]) if row["totale_a_pagare"] is not None else None,
+                    "soggetto_id": int(row["soggetto_id"]),
+                    "ragione_sociale_completa": row["ragione_sociale_completa"],
+                    "id_fiscale_univoco_cf_piva": row["id_fiscale_univoco_cf_piva"],
+                    "stato_doc_fiscale_codice": row["stato_doc_fiscale_codice"],
+                    "natura_doc_codice_interno": row["natura_doc_codice_interno"],
+                    "natura_doc_descrizione": row["natura_doc_descrizione"],
+                    "errore_messaggio": row["errore_messaggio"],
+                    "errore_quando": row["errore_quando"].isoformat() if row["errore_quando"] is not None else None,
                     # Il codice sta nel `meta` di chi ha scritto la riga: dice
                     # DI CHE errore si tratta, non solo che c'e'. `jsonb_out`
                     # perche' dal cursore RAW il jsonb arriva come stringa.
@@ -2519,7 +2919,7 @@ class VenditeRepository:
                     # metterci. Forma: `[{"type": "FATTURA", "id": "820"}]`.
                     # Brief: `brief-db-bersaglio-errore.md` §7-bis (B7).
                     "errore_bersagli": errore_meta.get("bersagli"),
-                    "errore_livello": row[23],
+                    "errore_livello": row["errore_livello"],
                 }
             )
         return result, total_count
@@ -2606,6 +3006,21 @@ class VenditeRepository:
                 f.anno,
                 f.serie,
                 f.numero,
+                -- ⭐ IL NUMERO DEL DOCUMENTO, dalla SEDE UNICA. L'identita' di
+                -- una fattura sono TRE colonne (anno, serie, numero) e nessuna
+                -- di loro e' il «codice parlante»: per gli altri sei documenti
+                -- `numero` e' gia' un testo (DDT0000031), qui e' un contatore.
+                -- La forma — `numero - serie`, senza anno perche' la data sta
+                -- sempre accanto — e' una decisione di Tid del 2026-08-29 e vive
+                -- in `vendite.fn_numero_documento_fattura` (20260829-15).
+                -- ⛔ NON si ricompone qui e NON si ricompone nel frontend: erano
+                -- gia' sei forme diverse in giro per il progetto, e la settima
+                -- sarebbe stata questa.
+                -- ⚠️ NULL quando il documento non e' ancora numerato: il
+                -- consumatore ha gia' la sua fallback, e un placeholder scritto
+                -- qui gliene toglierebbe la scelta.
+                vendite.fn_numero_documento_fattura(f.numero, f.serie)
+                                             AS numero_documento,
                 f.data,
                 f.tipo_doc_fiscale_id,
                 tdf.codice_interno           AS tipo_doc_fiscale_codice,
@@ -2615,7 +3030,7 @@ class VenditeRepository:
                 -- dal registro. Sta accanto a `serie` perche' le tre cose
                 -- insieme dicono su quale sezionale il documento e' numerato.
                 f.natura_doc_id,
-                ndf.codice_interno           AS natura_doc_codice,
+                ndf.codice_interno           AS natura_doc_codice_interno,
                 ndf.descrizione              AS natura_doc_descrizione,
                 f.stato_doc_fiscale_id,
                 sdf.codice_interno           AS stato_codice_interno,
@@ -2841,7 +3256,11 @@ class VenditeRepository:
         sql = f"""
             SELECT %s::text AS verso,
                    f.id, f.numero, f.serie, f.anno, f.data,
-                   ndf.codice_interno AS natura_doc_codice
+                   -- Stessa sede unica della testata: un legame di rettifica
+                   -- mostra un documento, e lo scrive come tutto il resto.
+                   vendite.fn_numero_documento_fattura(f.numero, f.serie)
+                        AS numero_documento,
+                   ndf.codice_interno AS natura_doc_codice_interno
               FROM vendite.fatture_rettifiche fr
               JOIN vendite.fatture f ON f.id = fr.{col_target}
               LEFT JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
@@ -2969,7 +3388,22 @@ class VenditeRepository:
         sql = """
             SELECT
                 l.tipo_id,
-                s.codice_interno            AS tipo_codice,
+                -- ⭐ Il CODICE del tipo lo porta la vista (20260829-02): fino a
+                -- ieri il grafo esponeva solo l'id e ogni consumatore lo
+                -- traduceva da se' con lo stesso join a config.sorgenti —
+                -- UNDICI volte nel backend, e una di quelle undici era stata
+                -- gia' dimenticata (lista resi, 25/08: colonna a catalogo, dato
+                -- a database, niente a video e nessun errore).
+                -- ⚠️ E qui c'era una `JOIN` (INNER) a config.sorgenti: la
+                -- garanzia che il tipo esista non e' sparita insieme al join,
+                -- si e' SPOSTATA — `vw_documento_lineage` legge
+                -- `FROM vw_documento_lineage_nodi`, e la vista nodi costruisce
+                -- ogni suo ramo con una `JOIN sorgenti` interna. Un nodo senza
+                -- sorgente attiva non esiste proprio, quindi la colonna non e'
+                -- mai NULL ed e' lecito il `str()` sul lato Python. E' una
+                -- garanzia STRUTTURALE (una join interna in una definizione di
+                -- vista), non un'osservazione sui dati di oggi.
+                l.tipo_codice_interno,
                 l.uid,
                 l.codice,
                 l.stato_codice_interno,
@@ -2981,7 +3415,7 @@ class VenditeRepository:
                 l.pratica_numero,
                 l.n_pratiche,
                 l.frontiera_tipo_id,
-                sf.codice_interno           AS frontiera_tipo_codice,
+                l.frontiera_tipo_codice_interno,
                 l.frontiera_uid,
                 l.frontiera_codice,
                 l.frontiera_stato_codice_interno,
@@ -2991,22 +3425,29 @@ class VenditeRepository:
                 l.is_transitato,
                 l.n_sorgenti,
                 l.root_codice,
-                l.natura_doc_codice,
-                -- ⚠️ La natura della FRONTIERA si legge dal SUO nodo, non da
-                -- questa riga: la summary porta solo la natura del documento
-                -- stesso. E serve davvero — la frontiera PUO' essere una nota
-                -- di credito (arco G dalla commessa, che non e' un ramo di
-                -- ritorno): misurato il 2026-08-21, e' gia' la frontiera
-                -- dell'ordine 240 e della commessa 322. Senza questa colonna
-                -- il pannello la etichetta «Fattura». Stesso JOIN alla vista
-                -- nodi del traversal qui sotto.
-                nfr.natura_doc_codice          AS frontiera_natura_doc_codice
+                l.natura_doc_codice_interno,
+                -- ⭐ La natura della FRONTIERA la porta LA VISTA, dal
+                -- changeSet 20260828-22. Fino ad allora la summary non ce
+                -- l'aveva e questo repository se la ricavava da solo, con un
+                -- LEFT JOIN a vw_documento_lineage_nodi sulla chiave del nodo
+                -- di frontiera. Erano DUE SEDI per la stessa regola, e la
+                -- seconda ricalcolava dall'esterno una frontiera che la CTE
+                -- della vista risolve col tie-break su pipeline_rank: finche'
+                -- coincidevano non lo diceva nessuno, ma il giorno in cui la
+                -- regola della frontiera cambia in un posto solo il pannello e
+                -- le liste direbbero due cose diverse sullo STESSO documento,
+                -- e nessuna delle due darebbe errore. Tolta la copia, non
+                -- scelta la migliore.
+                -- ⚠️ Serve davvero, e non e' un caso limite: la frontiera PUO'
+                -- essere una nota di credito (arco G dalla commessa, che non
+                -- e' un ramo di ritorno) — misurato il 2026-08-21, e' gia' la
+                -- frontiera dell'ordine 240 e della commessa 322. Senza, il
+                -- pannello la etichetta «Fattura».
+                -- ⛔ NULL non vuol dire «non lo so» ma «la frontiera non e' un
+                -- documento fiscale»: la natura e' un asse diverso dal tipo ed
+                -- esiste solo per le fatture.
+                l.frontiera_natura_doc_codice_interno
             FROM vendite.vw_documento_lineage l
-            JOIN config.sorgenti s ON s.id = l.tipo_id
-            LEFT JOIN config.sorgenti sf ON sf.id = l.frontiera_tipo_id
-            LEFT JOIN vendite.vw_documento_lineage_nodi nfr
-                   ON nfr.tipo_id = l.frontiera_tipo_id
-                  AND nfr.uid = l.frontiera_uid
             WHERE l.tipo_id = %s
               AND l.uid = %s
         """
@@ -3017,7 +3458,7 @@ class VenditeRepository:
             return None
         return {
             "tipo_id": int(row[0]),
-            "tipo_codice": str(row[1]),
+            "tipo_codice_interno": str(row[1]),
             "uid": str(row[2]),
             "codice": row[3],
             "stato_codice_interno": row[4],
@@ -3029,7 +3470,7 @@ class VenditeRepository:
             "pratica_numero": row[10],
             "n_pratiche": int(row[11]),
             "frontiera_tipo_id": None if row[12] is None else int(row[12]),
-            "frontiera_tipo_codice": row[13],
+            "frontiera_tipo_codice_interno": row[13],
             "frontiera_uid": row[14],
             "frontiera_codice": row[15],
             "frontiera_stato_codice_interno": row[16],
@@ -3039,8 +3480,8 @@ class VenditeRepository:
             "is_transitato": bool(row[20]),
             "n_sorgenti": int(row[21]),
             "root_codice": row[22],
-            "natura_doc_codice": row[23],
-            "frontiera_natura_doc_codice": row[24],
+            "natura_doc_codice_interno": row[23],
+            "frontiera_natura_doc_codice_interno": row[24],
         }
 
     # Scopo: Catena dei passaggi di un documento via
@@ -3057,7 +3498,7 @@ class VenditeRepository:
                 p.arco,
                 p.ruolo,
                 p.from_tipo_id,
-                sf.codice_interno           AS from_tipo_codice,
+                sf.codice_interno           AS from_tipo_codice_interno,
                 p.from_uid,
                 p.from_codice,
                 nf.stato_codice_interno     AS from_stato_codice_interno,
@@ -3072,7 +3513,7 @@ class VenditeRepository:
                     CASE WHEN sf.key_selector = 'id'
                          THEN NULLIF(p.from_uid, '')::bigint END) AS from_doc_id,
                 p.to_tipo_id,
-                st.codice_interno           AS to_tipo_codice,
+                st.codice_interno           AS to_tipo_codice_interno,
                 p.to_uid,
                 p.to_codice,
                 p.to_stato_codice_interno,
@@ -3085,8 +3526,8 @@ class VenditeRepository:
                 -- La natura dei due estremi: distingue una nota di credito da
                 -- una fattura quando la tappa e' la seconda di fila sotto lo
                 -- stesso tipo documento (arco N).
-                p.from_natura_doc_codice,
-                p.to_natura_doc_codice
+                p.from_natura_doc_codice_interno,
+                p.to_natura_doc_codice_interno
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
@@ -3115,14 +3556,14 @@ class VenditeRepository:
                     "arco": str(row[2]),
                     "ruolo": row[3],
                     "from_tipo_id": int(row[4]),
-                    "from_tipo_codice": row[5],
+                    "from_tipo_codice_interno": row[5],
                     "from_uid": str(row[6]),
                     "from_codice": row[7],
                     "from_stato_codice_interno": row[8],
                     "from_fase": row[9],
                     "from_doc_id": None if row[10] is None else int(row[10]),
                     "to_tipo_id": int(row[11]),
-                    "to_tipo_codice": row[12],
+                    "to_tipo_codice_interno": row[12],
                     "to_uid": str(row[13]),
                     "to_codice": row[14],
                     "to_stato_codice_interno": row[15],
@@ -3130,8 +3571,8 @@ class VenditeRepository:
                     "to_is_abortito": bool(row[17]),
                     "to_doc_id": None if row[18] is None else int(row[18]),
                     "is_ramo_inverso": bool(row[19]),
-                    "from_natura_doc_codice": row[20],
-                    "to_natura_doc_codice": row[21],
+                    "from_natura_doc_codice_interno": row[20],
+                    "to_natura_doc_codice_interno": row[21],
                 }
             )
         return result
@@ -3665,3 +4106,60 @@ class VenditeRepository:
         if not row:
             return 0, 0, 0
         return int(row[0]), int(row[1]), int(row[2])
+
+    # Scopo: I motivi che impediscono di riportare «da emettere» un elenco di
+    #        attivita' fatturabili. Lettura pura: nessuna scrittura, nessun
+    #        raise di dominio — serve a SPIEGARE invece di far fallire.
+    # Perimetro: `script.fn_check_attivita_riportabile_da_emettere`, che porta
+    #        con se' il proprio cancello di scope (il JOIN su
+    #        `vendite.commesse_attivita`, che ha la RLS).
+    # Risultato: lista di motivi; `[]` se il verbo e' ammesso su tutte.
+    def check_attivita_riportabili_da_emettere(
+        self, attivita_fatturabili_ids: list[int],
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_check_attivita_riportabile_da_emettere(%s::bigint[])",
+                [attivita_fatturabili_ids],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        payload = row[0]
+        # ⛔ Il `jsonb` arriva come STRINGA su questa connessione, non come lista
+        #    — misurato il 2026-08-27. Senza questo ramo `list(payload)` itera i
+        #    CARATTERI: `"[]"` diventa `['[', ']']`, cioe' **due motivi** dove non
+        #    ce n'era nessuno, e il verbo risulterebbe bloccato su righe
+        #    perfettamente riportabili. Nessun errore, nessun test rosso: un
+        #    difetto plausibile a video.
+        #    ⚠️ E' lo stesso ramo difensivo di `apps.core.db._helpers.call_jsonb_fn`,
+        #    che qui non si puo' riusare perche' e' annotato `-> dict` e questa
+        #    funzione ritorna un ARRAY. Al secondo consumatore di array si estrae.
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        return list(payload or [])
+
+    # Scopo: Rimette in coda di fatturazione un elenco di attivita' RESIDUE —
+    #        la madre DB del verbo «Riporta da emettere».
+    # Perimetro e risultato atteso: UNA sola `SELECT` sulla funzione madre, che
+    #        e' atomica per costruzione: libera le attivita', riporta a
+    #        NON_EMESSA le righe di commessa passate a EMESSA per causa loro e
+    #        scrive l'evento di registro, tutto nella stessa transazione.
+    #        ⛔ Niente `transaction.atomic()` con due chiamate: sarebbe una
+    #        seconda implementazione di un'atomicita' che il database gia'
+    #        garantisce.
+    # Risultato: dict con `riportate` e `riemesse_attivita`.
+    def riporta_attivita_da_emettere(
+        self, attivita_fatturabili_ids: list[int],
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT riportate, riemesse_attivita
+                FROM vendite.fn_riporta_attivita_da_emettere(%s::bigint[])
+                """,
+                [attivita_fatturabili_ids],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return {"riportate": int(row[0]), "riemesse_attivita": int(row[1])}
+

@@ -224,21 +224,24 @@ class ClientiService:
 
         # Dati cliente (passati direttamente al repository)
         cliente_data: dict[str, Any] = {}
-        for key in ["termine_pagamento_id", "modalita_pagamento_id", "iva_id"]:
+        for key in ["termine_pagamento_id", "modalita_pagamento_id"]:
             val = optional_int(payload, key)
             if val is not None:
                 cliente_data[key] = val
-        # iva_id e' NOT NULL senza default DB: se non fornito, risolvi dal DB
-        if "iva_id" not in cliente_data:
-            cliente_data["iva_id"] = self._repo.get_default_iva_id()
-        for key in ["cliente_pa", "split_payment", "garanzia_tipo"]:
-            val = optional_str(payload, key)
-            if val is not None:
-                cliente_data[key] = val
-        for key in ["codice_cig", "codice_cup", "codice_commessa"]:
-            val = optional_str(payload, key)
-            if val is not None:
-                cliente_data[key] = val
+        # ⛔ Sei chiavi tolte il 2026-08-29 (I0/I8 del brief
+        #    brief-be-fe-iva-risolutore-e-regime-cliente): non sono piu' colonne
+        #    di `anagrafiche.clienti`.
+        #    ⭐ E con loro se ne va il default `DEFAULT_IVA_ID`, che era il difetto
+        #      nel difetto: `iva_id` era NOT NULL senza default DB, quindi il
+        #      service la riempiva SEMPRE — ogni cliente portava un codice IVA che
+        #      nessuno aveva scelto, indistinguibile da uno scelto apposta.
+        #      L'influenza del soggetto sull'IVA passa da un titolo documentato
+        #      (D10), mai da una colonna di default (D7-bis).
+        #    Le nuove sedi: `split_payment`/`cliente_pa` su `anagrafiche.soggetti`
+        #    (D8), `codice_cig`/`_cup`/`_commessa` su `vendite.contratti` (D9).
+        garanzia_tipo = optional_str(payload, "garanzia_tipo")
+        if garanzia_tipo is not None:
+            cliente_data["garanzia_tipo"] = garanzia_tipo
         if "servizio_da_fatturare" in payload:
             cliente_data["servizio_da_fatturare"] = bool(payload["servizio_da_fatturare"])
         if "garanzia_importo" in payload and payload["garanzia_importo"] is not None:

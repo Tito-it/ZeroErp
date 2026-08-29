@@ -1,6 +1,43 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultima revisione**: 22 agosto 2026 — «Rendi definitive» **può rifiutare**
+> **Ultima revisione**: 28 agosto 2026 — ✅ **il registro della riga adesso si
+> apre**: dal kebab, voce «Registro della riga», con chi/quando/**perché** per
+> ogni evento (§7.7). Prima quegli eventi il database li scriveva e nessuna
+> schermata li leggeva: la §7.7 prometteva un registro che non si poteva aprire. ⭐ E **«Rendi definitive» ha lasciato
+> questo cruscotto**: sta su **Vendite → Lotti**, e sulla card `Fatturate` resta
+> il **rimando** «Vai ai lotti», col filtro già messo (§7.1 e §7.5). Un verbo sta
+> dove sta l'elenco del suo oggetto — qui accanto c'erano le commesse, non i
+> lotti. ⚠️ Le regole di comportamento non cambiano: cambia **dove si preme**.
+> ⛔ E **la §7.7 parlava di «chiudere» un
+> documento: il gesto è **ANNULLARE**, e nient'altro.** Evadere o completare non
+> ritira niente. ⭐ E **due chiarimenti nati dal collaudo**,
+> e da un dubbio vero davanti alla schermata (§3.1): **«emessa» non vuol dire
+> «fattura emessa»** — dice che il lavoro è stato preso in carico dalla
+> fatturazione — e il **lotto di provenienza può portarti alla fattura di un
+> ALTRO cliente**, numerata e definitiva, che col tuo residuo non c'entra.
+> Revisione precedente (27 agosto): ✅ **il pulsante c'è.** «Riporta da
+> emettere» è a video sulla card `Emesse non fatturate`, con la sua lista e la
+> selezione delle righe (§7.1 e §3.1). Nasce la **§7.7**: annullare un documento
+> adesso **ritira** il lavoro che aveva spinto in commessa, ed è un comportamento
+> da sapere **prima**. ⚠️ E le situazioni dentro quella casella sono **quattro**,
+> non tre: la quarta è un'anomalia, e la §3.1 dice cosa farne.
+> La card dice **«di cui N da recuperare»**, e il verbo **ricontrolla le righe
+> spuntate** prima di agire — se l'elenco era invecchiato lo dice e lo ricarica
+> invece di fallire in blocco (§7.1).
+> Revisione precedente (26 agosto, sera): la **§3.1** si aggiorna: dentro
+> «Emesse non fatturate» le situazioni chiedono rimedi opposti; il database
+> adesso le distingue una per una, la card **si spezza in due numeri** e i soli
+> residui hanno una lista propria.
+> Revisione precedente (26 agosto, mattina): 🔴 **avvertenza sull'«Elimina dal
+> lotto»** in §7.6: il verbo **non rimette in coda** il lavoro della fattura
+> cancellata (difetto aperto, misurato). Nuova **§3.1**: le quattro caselle del
+> funnel **non sono quattro passaggi**, e «Emesse non fatturate» è la casella
+> dei **residui** (con un caso reale misurato). ⚠️ Corrette due affermazioni
+> false: «Rendi definitive» sta sulla card **`Fatturate`** (§7.1), e dalle righe
+> già fatturate **non** si arriva al lotto (§7.5). ⚠️ *Entrambe si sono a loro
+> volta invecchiate il 26 agosto: vedi la revisione in cima.* Aggiunti il verbo di riga
+> «Fattura questo» e la **data del documento** che ogni verbo ora chiede.
+> Revisione precedente (22 agosto): «Rendi definitive» **può rifiutare**
 > (§7.1) e nasce la §7.6 sulle **vie d'uscita**: riportare un lotto in
 > lavorazione, togliere una singola fattura, annullare il lotto. Revisione
 > precedente (9 agosto): entrano **DDT e resi**, le aree del §2.1
@@ -140,6 +177,81 @@ fattura, mese per mese di competenza. Per il mese selezionato mostra:
 - il funnel per **stadio**, nell'ordine commessa → fattura:
   `Da approvare` → `Da emettere` → `Emesse non fatturate` → `Fatturate`;
 - l'evidenza degli **errori vivi** di fatturazione nel mese.
+
+### 3.1 Le quattro caselle non sono quattro passaggi
+
+⚠️ È la domanda che torna più spesso, e le card messe in fila la
+alimentano: sembrano un percorso a quattro tappe, ma il percorso vero ne usa
+**due**.
+
+| Casella | Cosa contiene davvero |
+| --- | --- |
+| **Da approvare** | lavoro registrato, non ancora dichiarato buono per la fattura |
+| **Da emettere** | lavoro buono, non ancora in fattura — **è da qui che parte il lotto** |
+| **Emesse non fatturate** | lavoro **in transito o rimasto a metà**: non è un passaggio. Ci convivono quattro situazioni, e solo una chiede un'azione |
+| **Fatturate** | lavoro finito dentro una fattura, numerata o no |
+
+Il verbo **Fattura adesso** prende il lavoro e ne fa le righe di fattura **in un
+solo passo**: un'attività salta da `Da emettere` dritta a `Fatturate`. Nessuno
+transita da `Emesse non fatturate`.
+
+⚠️ **Quella casella non conta una cosa sola, e conviene saperlo prima di
+guardarla.** Ci convivono **quattro** situazioni che chiedono rimedi **opposti**:
+
+| Cosa ci trovi | Che cos'è | Cosa devi fare |
+| --- | --- | --- |
+| lavoro **che aspetta il suo lotto** | **transito normale**: succede quando l'emissione e la fatturazione sono due gesti separati, ed è il caso di chi emette in modo mirato e fattura dopo | ⏳ niente: il prossimo giro lo prende da sé |
+| lavoro **dentro un giro ancora in corso** | il lotto lo sta lavorando **adesso** | ⏳ niente: si aspetta che il lotto finisca |
+| ⭐ lavoro **rimasto senza la sua fattura** | **il residuo**: la fattura c'era ed è stata eliminata | ✅ **«Riporta da emettere»** |
+| 🟠 riga di commessa **senza nessuna attività da fatturare** | **anomalia**: la riga risulta emessa ma non esiste niente da mettere in fattura | ⛔ il verbo **non si può proporre** (non c'è niente su cui agire): va segnalata |
+
+**È il terzo caso la spia**, e per un motivo preciso: quel lavoro risulta già
+emesso, quindi **nessun giro futuro lo riprenderà**. Resterebbe invisibile per
+sempre, se non ci fosse quel contatore.
+
+> ⛔ **«Emessa» qui NON vuol dire «fattura emessa».** È la parola più
+> fraintendibile della schermata, e conviene toglierla di mezzo subito:
+> **emessa** dice che quel lavoro è stato **preso in carico dalla fatturazione**
+> — è entrato in un lotto — non che esista un documento fiscale. Le due cose si
+> chiamano uguale e sono diverse: il senso di questa casella è proprio
+> *«preso in carico, e un documento non c'è»*.
+
+> 🔴 **E il «lotto di provenienza» può portarti alla fattura di un ALTRO
+> cliente.** Un lotto raggruppa il lavoro di più clienti e produce **una fattura
+> per ciascuno**: se il tuo residuo è del cliente A e il lotto conteneva anche il
+> cliente B, aprendo quel lotto trovi la fattura di B — **numerata e definitiva**,
+> e sembra che il tuo lavoro sia già fatturato. Non lo è.
+> ⭐ **La verifica che vale un secondo**: guarda il **cliente** sulla riga del
+> residuo e confrontalo con l'intestatario della fattura che hai aperto. Se sono
+> diversi, quel documento non c'entra col tuo residuo.
+> ℹ️ E in ogni caso il programma non ti lascerebbe sbagliare: una riga che sta
+> davvero dentro una fattura viva **viene rifiutata**, con un messaggio che ti
+> porta ad aprire quella fattura.
+
+> ⚠️ Una versione precedente di questa pagina diceva *«se in quella casella c'è
+> un numero, qualcosa si è rotto»*. Era vero **solo** perché *Fattura adesso* fa
+> emissione e fatturazione in un passo unico — cioè era una proprietà di quel
+> verbo, non della casella. Chi emette in modo mirato ci vede passare lavoro
+> perfettamente sano.
+
+✅ **La causa è chiusa dal 26 agosto 2026**: eliminare una fattura da un lotto
+adesso rimette in coda il suo lavoro (§7.6), quindi da quella strada non se ne
+creano più.
+
+⭐ **E da lì in poi la casella si legge in chiaro.** Dal 26 agosto 2026 il
+database distingue le quattro situazioni una per una, quindi la card **si spezza
+in due numeri** — quello che chiede un'azione e quello che chiede solo di
+aspettare — e l'elenco dei soli **residui** ha una lista sua, con il lotto da cui
+ciascuno proviene. Sulla card lo dice una riga sotto il totale: **«di cui N da
+recuperare»** con il loro valore, oppure **«nessuno da recuperare»** quando il
+lavoro fermo lì è tutto in transito legittimo. ⚠️ Vale la pena ricordare che *«un numero in quella casella»*
+di per sé non è più un allarme: **è il numero dei residui a esserlo.**
+
+✅ **E dal 27 agosto 2026 il pulsante c'è.** Cliccando la card si apre l'elenco
+dei soli residui: si spuntano le righe da recuperare e si preme **«Riporta da
+emettere»** (§7.1). ℹ️ Al 26 agosto 2026 la casella conteneva **5 attività di
+luglio per 5.019 €**, orfane di una fattura eliminata dopo un errore di
+numerazione: sono il primo caso reale su cui il verbo va provato.
 
 **Quando usarla**: a fine/inizio mese, per capire quanto del competenza è stato
 fatturato e cosa manca per chiudere il mese.
@@ -281,18 +393,64 @@ Le altre lenti sono **fotografie**: si guardano, poi si va altrove a lavorare. L
 **Lente 1 — Competenza** no: da lì si **agisce**. I pulsanti stanno sulle card del
 funnel, così l'azione è sempre accanto al numero che la motiva.
 
-### 7.1 I tre verbi
+### 7.1 I verbi
 
-Si procede da sinistra a destra nel funnel. Ogni verbo agisce sull'**intero mese**
-selezionato e chiede sempre conferma, mostrando quante attività coinvolge.
+Si procede da sinistra a destra nel funnel. I verbi di massa agiscono
+sull'**intero mese** selezionato e chiedono sempre conferma, mostrando quante
+attività coinvolgono.
 
 | Verbo | Card | Cosa fa | Serve il permesso |
 | --- | --- | --- | --- |
 | **Approva** | `Da approvare` | Rende le attività **emettibili**: dice che quel lavoro è buono per essere fatturato | Approvazione attività commessa |
 | **Fattura adesso** | `Da emettere` | Crea le fatture del mese e le porta fino a **EMESSA**. Si ferma lì: **non numera** | Generazione fatture/lotti |
-| **Rendi definitive** | `Emesse non fatturate` | **Numera** le fatture (atto fiscale) e le manda in stampa | Numerazione fatture/lotti (dedicato) |
+| **Fattura questo** | riga dell'elenco `Da emettere` | Lo stesso verbo, ma **su un documento solo** (o su quelli selezionati) invece che su tutto il mese | Generazione fatture/lotti |
+| **Rendi definitive** | ➡️ **non è più qui**: sta su **Vendite → Lotti**. Sulla card `Fatturate` resta il **rimando** «Vai ai lotti (N)», che ci porta col filtro già messo | **Numera** le fatture (atto fiscale) e le manda in stampa | Numerazione fatture/lotti (dedicato) |
+| ⭐ **Riporta da emettere** | righe dell'elenco `Emesse non fatturate` | Rimette **il lavoro selezionato** fra quello da emettere: torna disponibile per il prossimo giro. Nessun lotto viene rigenerato, nessuna fattura ricreata | Riporta da emettere (dedicato) |
 
-Tre dettagli che non sono ovvi:
+⭐ **«Rendi definitive» ha lasciato questo cruscotto** (agosto 2026), e la
+ragione è la stessa che vale per ogni verbo di questa guida: **un verbo sta dove
+sta l'elenco del suo oggetto.** Numerare agisce sui **lotti**, e qui accanto
+c'era un elenco di **commesse**: per sapere cosa si stava per rendere definitivo
+bisognava andarsene da un'altra parte.
+
+Adesso vive su **Vendite → Lotti**, dove quell'elenco esiste — e dove si può
+anche scegliere **quali** numerare invece di prendere tutto il mese.
+
+| Dove | Cosa c'è |
+| --- | --- |
+| card `Fatturate` (qui) | ➡️ il **rimando** «Vai ai lotti (N)», che porta con sé il **filtro** — competenza del mese e stato `EMESSA`. ⛔ Un collegamento all'elenco nudo sarebbe stato un passo indietro |
+| **Vendite → Lotti** | il verbo, in due forme: **«Rendi definitivi i selezionati»** (si spuntano i lotti) e **«Rendi definitivo il mese»** |
+
+⚠️ **Il rimando compare solo se c'è qualcosa da numerare** e se hai il permesso:
+a mese tutto definitivo non c'è nulla da raggiungere, e il pulsante tace.
+
+ℹ️ Questa guida, fino al 28 agosto 2026, diceva che il verbo stava sulla card
+`Fatturate`. Era vero fino al 26 agosto — poi il verbo si è spostato e la frase
+è rimasta indietro. **Le regole di comportamento qui sotto valgono ancora tutte**:
+cambia *dove si preme*, non *cosa succede*.
+
+⭐ **«Riporta da emettere» agisce sulle RIGHE spuntate, non sul mese.** È
+l'unico verbo di questo cruscotto che non lavora sull'intero mese, e la ragione è
+che recuperare è una decisione **riga per riga**: si guarda da quale lotto viene
+ogni residuo, e si sceglie. Il pulsante dice sempre **quante** righe sta per
+riportare.
+
+⚠️ **E il permesso è suo.** Non è quello che genera le fatture né quello che
+cancella i documenti: chi può *recuperare* del lavoro non deve per forza poter
+*cancellare* una fattura — sono due mestieri diversi.
+
+ℹ️ **Se l'elenco che hai davanti è invecchiato, il programma se ne accorge da
+solo.** Confermato il gesto, prima di toccare qualunque cosa ricontrolla le
+righe spuntate: se nel frattempo qualcun altro ha lavorato, non riporta niente,
+dice **quante** righe non si possono più riportare e **perché**, e ricarica
+l'elenco. ⚠️ Serve perché il riporto è **tutto o niente**: senza quel controllo
+il rifiuto arriverebbe come un errore unico sull'intero elenco, e non sapresti
+quale riga lo ha fermato.
+
+ℹ️ Se invece risponde «nessuna attività riportata», il senso è lo stesso —
+l'elenco era vecchio — e non è un guasto.
+
+Quattro dettagli che non sono ovvi:
 
 - **«Fattura adesso» è cumulativo**: raccoglie l'arretrato dei mesi precedenti,
   non solo il mese a schermo. Se a maggio era rimasto indietro qualcosa, fatturando
@@ -309,6 +467,16 @@ Tre dettagli che non sono ovvi:
   in anagrafica o in commessa — e si riporta il lotto in lavorazione (§7.6).
   L'elenco puntuale dei controlli è in
   [Fatturazione — non si numera un documento incoerente](/guide/fatturazione).
+- **Ogni verbo chiede prima la data del documento** (da agosto 2026), e la
+  domanda non è la stessa nei due casi:
+  - quando si **crea** (`Fattura adesso`, `Fattura questo`) la data è
+    **facoltativa**: lasciarla vuota non vuol dire «oggi», vuol dire «decide il
+    registro» — che per alcuni registri significa la fine del mese di
+    competenza;
+  - quando si **numera** (`Rendi definitive`) la data è quella con cui le
+    fatture prenderanno il numero, e il riquadro mostra anche il **limite**: non
+    si può numerare con una data precedente all'ultimo numero già emesso su quel
+    registro. Se si prova, il sistema rifiuta e dice quale data non va bene.
 
 ### 7.2 Perché la numerazione è un passo separato
 
@@ -364,8 +532,17 @@ verranno eseguiti. È il caso in cui vale la pena avvisare chi gestisce il siste
 Gli errori vivi del mese compaiono nel **pannello errori** della Lente 1. Da lì il
 codice del lotto è **cliccabile** e porta direttamente al lotto interessato, dove si
 vedono le fatture, i tentativi già fatti e il motivo del blocco — senza doverlo
-cercare a mano nell'elenco dei lotti. Lo stesso collegamento esiste sulle righe già
-fatturate del drill-down.
+cercare a mano nell'elenco dei lotti.
+
+⚠️ **Dalle righe della card `Fatturate` al lotto non si arriva**: il menu della
+riga offre la sola «Apri commessa», e l'elenco non porta né il numero di fattura
+né il codice del lotto.
+
+✅ **Ma dalla card sì**, da agosto 2026: il pulsante **«Vai ai lotti (N)»** porta
+all'elenco dei lotti **già filtrato** su competenza e stato `EMESSA` — cioè
+esattamente quelli da numerare (§7.1). Il collegamento che questa guida
+prometteva e che non esisteva adesso c'è; quello che manca ancora è l'aggancio
+**dalla singola riga**.
 
 ### 7.6 Tornare indietro: le tre vie d'uscita
 
@@ -377,12 +554,25 @@ si arriva anche dal pannello errori della Lente 1 (§7.5).
 | Verbo | Su cosa agisce | Cosa resta dopo |
 | --- | --- | --- |
 | **Riporta in lavorazione** | tutto il lotto, da EMESSA (o da bozza) | Il lotto **resta aperto** e torna in bozza: le sue fatture vengono eliminate, le righe di commessa tornano «da emettere» e al giro successivo le fatture si **rigenerano** |
-| **Elimina dal lotto** | **una** fattura | Solo quella fattura sparisce; il lotto e le altre fatture proseguono. Le sue righe rientrano nel giro successivo |
+| **Elimina dal lotto** | **una** fattura | Solo quella fattura sparisce; il lotto e le altre fatture proseguono. Le sue righe **tornano «da emettere»** e rientrano nel giro successivo; quelle delle altre fatture **non vengono toccate** |
 | **Annulla lotto** | tutto il lotto, solo se è ancora in **bozza** | Il lotto è **chiuso e non si riapre**: le righe tornano libere e servirà un lotto nuovo |
 
 **La regola per scegliere**: se il lavoro va rifatto, *Riporta in lavorazione*;
 se il problema è un documento solo, *Elimina dal lotto*; *Annulla lotto* è per
 un giro partito per sbaglio, che non deve produrre nulla.
+
+> ✅ **Corretto il 26 agosto 2026.** Fino a quella data *Elimina dal lotto*
+> cancellava la fattura ma **non rimetteva in coda il lavoro che conteneva**:
+> quel lavoro restava marcato come già fatturato e nessun giro successivo lo
+> riprendeva. L'avvertenza che consigliava di usare *Riporta in lavorazione*
+> sull'intero lotto **non serve più**: le due strade adesso rimettono in coda
+> allo stesso modo, e la scelta fra loro torna a essere quella descritta qui
+> sopra — tutto il lotto, oppure un documento solo.
+>
+> ✅ **E il lascito adesso si recupera.** Le attività rimaste indietro *prima*
+> della correzione non si sbloccano da sole: si contano nella casella *Emesse non
+> fatturate* della Lente 1 (§3.1), e da lì il verbo **«Riporta da emettere»**
+> (§7.1) le rimette in coda. È il gesto per cui quella casella ha una lista.
 
 Tre avvertenze, tutte pagate sul campo:
 
@@ -402,7 +592,59 @@ Tre avvertenze, tutte pagate sul campo:
   rigenerata al giro successivo. Vale la pena leggere gli avvisi, non darli per
   puliti.
 
-### 7.7 Cosa non si fa ancora da qui
+### 7.7 **Annullare** un documento adesso ritira il lavoro che aveva spinto
+
+⚠️ **Da sapere prima, non da scoprire dopo.** Dal 26 agosto 2026 **annullare** un
+documento — preventivo, ordine, DDT, contratto — **non ferma solo i passaggi
+futuri**: ritira anche le righe di commessa che quel documento aveva già prodotto
+e che nessuno ha ancora emesso. Quelle righe passano ad **ANNULLATA**.
+
+> ⛔ **È l'ANNULLAMENTO, e nient'altro.** *Evadere*, *completare* o *chiudere* un
+> documento in qualunque altro modo **non ritira niente**: quel lavoro resta
+> fatturabile, ed è giusto così — è arrivato in fondo, non è stato disdetto.
+> Il ritiro è legato all'atto che dice «questo documento non vale più».
+
+⭐ **Perché.** Prima, annullare un ordine impediva i passaggi successivi ma
+lasciava fatturabile ciò che era già passato in commessa: il lavoro restava lì e
+prima o poi finiva in una fattura che nessuno si aspettava più. L'annullamento di
+un documento adesso è un'operazione **che arriva fino in fondo**.
+
+| Stato della riga di commessa | Cosa succede **annullando** il documento |
+| --- | --- |
+| non ancora emessa | ⭐ **viene ritirata**: passa ad `ANNULLATA` |
+| ⛔ già **emessa** | **il documento non si annulla affatto**, e il messaggio dice perché |
+| già annullata | non si tocca |
+
+⛔ **Il rifiuto sulle righe già emesse non è un capriccio**: quel lavoro è *in
+volo* verso una fattura, e ritirarlo lascerebbe un'attività orfana per strada —
+cioè il residuo di cui parla la §3.1. La via d'uscita c'è e il messaggio la
+nomina: si **recuperano prima** con «Riporta da emettere» dalla Lente 1, e dopo
+il documento si annulla portandosi via anche quelle.
+
+⚠️ **`ANNULLATA` non si disfa.** Riaprire il documento non riporta indietro le
+righe: le rifà il push, e solo se il documento è tornato spingibile. Vale la pena
+guardare cosa si sta per ritirare **prima** di annullare.
+
+**Come si riconosce una riga ritirata.** Nel drawer della commessa la riga
+**resta**, con lo stato emissione a `ANNULLATA`. ⚠️ Se non la vedi, controlla il
+**filtro «Stato emissione»**: arrivando da una card del cruscotto il drawer lo
+eredita già impostato (es. `NON_EMESSA`), e una riga annullata resta fuori. Con
+il filtro su **«Tutte»** ricompare.
+
+✅ **E il motivo si legge.** Dal kebab della riga, voce **«Registro della
+riga»**: si apre l'elenco degli eventi in ordine cronologico inverso, con chi,
+quando e **con quale motivo** — per un ritiro la frase è *«Ritiro automatico alla
+chiusura del documento di origine (PREVENTIVO PRV0000133)»*, col numero del
+documento che l'ha causato.
+
+> ℹ️ Il registro non riguarda solo i ritiri: raccoglie tutto ciò che è successo a
+> quella riga — oneri aggiunti, annullamenti a mano, riporti «da emettere»,
+> accrediti. È la risposta a «perché questa riga è così».
+> ⚠️ Fino al 28 agosto 2026 quegli eventi il database li scriveva e **nessuna
+> schermata li leggeva**: questa pagina prometteva un registro che non si poteva
+> aprire. La promessa adesso è mantenuta.
+
+### 7.8 Cosa non si fa ancora da qui
 
 L'**invio allo SDI** non è disponibile dalla dashboard: resta un passo successivo,
 gestito fuori da questa schermata. La dashboard copre il percorso

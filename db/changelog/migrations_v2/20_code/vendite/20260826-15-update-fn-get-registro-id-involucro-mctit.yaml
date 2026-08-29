@@ -1,0 +1,232 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L1 — fn_get_registro_id DIVENTA L'INVOLUCRO DEL LOOKUP
+#   Piano: brief-db-registro-e-data-prevista-in-competenza §11.1 L1 (R-2)
+#
+# ── ⭐ COSA CAMBIA, E COSA NON CAMBIA ───────────────────────────────
+#   Cambia: la RICERCA se ne va in vendite.fn_lookup_registro_id (20260826-14).
+#   NON cambia: la firma (nomi, ordine, DEFAULT), il RETURNS TABLE, i tre
+#   errori — stessi codici, stesso contesto, stesse frasi.
+#   ⚠️ La firma identica non e' cortesia: i pgTAP che la esercitano la chiamano
+#   con parametri NOMINATI (`p_tipo_doc_fiscale_id => …`), e i due file
+#   `test-registri-per-emittente-v1` e `test-chiave-fattura-tre-specchi-v1`
+#   asseriscono sui RISULTATI. Cambiare un nome li romperebbe senza toccare una
+#   riga di logica.
+#
+# ── ⭐ PERCHE' IL LOOKUP TORNA ANCHE LA NATURA ──────────────────────
+#   Perche' questo involucro deve distinguere DUE errori — «natura non risolta»
+#   e «registro non trovato» — e senza la natura in mano dovrebbe rifarsi il
+#   COALESCE per conto proprio. Sarebbe una terza copia di una regola che
+#   stiamo estraendo proprio per averne una sola.
+#
+# ── ⭐ IL GUARD CAMBIA CODICE: DA E_PARAMETRO_INVALIDO A TECNICO ────
+#   ⚠️ E' l'UNICA cosa che cambia oltre all'estrazione, ed e' una decisione
+#   presa da Tid il 2026-08-26, non un effetto collaterale.
+#
+#   Prima: `E_PARAMETRO_INVALIDO` (classe DATO_ERRATO, 400) con nel VARIADIC
+#   `'p_tipo_doc_fiscale_id obbligatorio e > 0'` — cioe' un nome di parametro
+#   PL/pgSQL dentro la frase che l'operatore legge. E' esattamente il difetto
+#   descritto in AGENTS.md, e il corollario dice di GUARDARE il messaggio
+#   quando si tocca una funzione vecchia.
+#
+#   ⭐ PERCHE' TECNICO E' LA VERITA', e l'argomento e' strutturale:
+#     * l'unico chiamante e' `fn_build_fattura_key`, che il tipo documento lo
+#       legge da `attivita_fatturabili`, riga creata dall'emit a partire da
+#       un'attivita' APPROVATA — e `chk_commesse_attivita_tipo_doc_emittibile`
+#       garantisce che un'attivita' approvata e non ancora emessa il tipo
+#       documento CE L'ABBIA. Un NULL li' non e' «l'operatore ha dimenticato un
+#       campo»: e' un guasto a monte;
+#     * ⛔ e la spia decisiva: nel contesto NON c'e' la chiave `campo`. Un
+#       DATO_ERRATO esiste per dire al frontend quale campo accendere; qui non
+#       c'e' niente da accendere, quindi oggi e' un 400 che all'operatore non
+#       offre nulla da correggere. Un 400 solo di nome.
+#
+#   ℹ️ COSTO PER IL BACKEND: ZERO. `E_VENDITE_CHIAMATA_NON_VALIDA` e' gia'
+#   registrato su tutti e tre i lati — catalogo DB, `error_messages_fallback.py`
+#   e `error_policies_generated.py` (classe TECNICO) — e undici funzioni di
+#   vendite lo usano gia', otto delle quali scritte lo stesso giorno dal
+#   cantiere del limite di emissione. Nessun codice da coniare, nessuna riga da
+#   aggiungere ai CSV, nessuna policy da rigenerare.
+#
+#   ⭐ E nominare il parametro nella frase qui SMETTE di essere l'antipattern:
+#   la registrazione di quel codice lo autorizza esplicitamente, perche' il suo
+#   lettore e' chi ha scritto la chiamata, non chi compila un form.
+#
+#   ⚠️ PRECEDENTE CONTRARIO, e va conosciuto: in `error_policies_generated.py`
+#   e' registrato un caso in cui sei guard gemelli RESTARONO su
+#   `E_PARAMETRO_INVALIDO` proprio perche' «il lettore e' chi legge
+#   dbops.error_log, non chi compila un form». Quel commento e' ANTERIORE alla
+#   nascita di E_VENDITE_CHIAMATA_NON_VALIDA (2026-08-22), che esiste per
+#   essere la casa di quei casi: precedente superato, non contraddizione.
+#
+#   ⚠️ Effetto per chi consuma: lo status passa da 400 a 500 su un caso che,
+#   strutturalmente, solo un chiamante rotto puo' produrre. Scritto nel brief
+#   perche' il BE lo veda.
+#
+# ── ℹ️ I DUE E_CONFIG_MANCANTE RESTANO INTATTI ──────────────────────
+#   Stesso codice, stesso contesto, stessa frase — e anche stessa coppia
+#   area/nome (`'vendite'`, `'fn_get_registro_id'`), che NON viene allineata
+#   allo stile `'database'`/`'vendite.fn_…'` usato dal guard nuovo. La
+#   differenza dentro la stessa funzione e' voluta: cambiare area e nome su un
+#   punto di log che nessuno mi ha chiesto di toccare e' rumore, e i due
+#   messaggi sono la cosa che il collaudo confronta.
+#
+# ── ℹ️ VOLATILITA': L'INVOLUCRO RESTA COM'E' ────────────────────────
+#   Il lookup e' STABLE perche' finisce nel target list di una vista. Questo no:
+#   lo chiama solo chi SCRIVE (`fn_build_fattura_key`), e cambiargli la
+#   volatilita' cambierebbe il piano di query dei chiamanti esistenti senza che
+#   nessuno l'abbia chiesto.
+#
+# ── ℹ️ UN SOLO CHIAMANTE ────────────────────────────────────────────
+#   Verificato sul codice: `vendite.fn_build_fattura_key` e' l'unico. Da
+#   20260826-16 in poi passera' per fn_resolve_registro_documento, e questo
+#   involucro restera' come cancello del percorso di scrittura.
+#
+# Dipendenze: 20260826-14 (vendite.fn_lookup_registro_id).
+# Verifica: db/pgtap/vendite/test-registri-per-emittente-v1.sql,
+#           db/pgtap/vendite/test-chiave-fattura-tre-specchi-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260826-15-update-fn-get-registro-id-involucro-mctit.yaml
+
+  - changeSet:
+      id: 20260826-15-update-fn-get-registro-id-involucro
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L1: fn_get_registro_id smette di cercare e diventa l'INVOLUCRO di
+        fn_lookup_registro_id (20260826-14). ⭐ Firma e RETURNS TABLE INVARIATI, e i due
+        E_CONFIG_MANCANTE pure — stesso codice, stesso contesto, stessa frase: i due pgTAP
+        che la esercitano chiamano con parametri nominati e asseriscono sui risultati. ⭐ Il
+        lookup torna anche la NATURA risolta, ed e' cosi' che questo involucro distingue
+        «natura non risolta» da «registro non trovato» senza rifare il COALESCE per conto
+        proprio — cioe' senza una terza copia della regola che stiamo estraendo. ⭐ UNA cosa
+        cambia, e su decisione di Tid del 2026-08-26: il guard di parametro passa da
+        E_PARAMETRO_INVALIDO (DATO_ERRATO, 400) a E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO,
+        500). ⛔ Non e' una sfumatura: l'unico chiamante legge il tipo documento da una riga
+        nata APPROVATA, dove il CHECK lo pretende — quindi un NULL li' e' un guasto a monte,
+        non un campo dimenticato; e nel contesto non c'e' nessuna chiave `campo`, cioe' oggi
+        e' un 400 che all'operatore non offre niente da correggere. ℹ️ Costo backend ZERO:
+        il codice e' gia' registrato su tutti e tre i lati e undici funzioni di vendite lo
+        usano. ⚠️ Per chi consuma cambia lo STATUS: 400 -> 500. ℹ️ Volatilita' invariata.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_lookup_registro_id';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_registro_id(
+                  -- ⚠️ Tipi ANCORATI con %TYPE (linee-guida-sql §5b), firma e
+                  --    RETURNS TABLE comprese. ⛔ FIRMA INVARIATA: nomi,
+                  --    ordine e DEFAULT sono quelli del 20260818-31 — i pgTAP
+                  --    chiamano con parametri NOMINATI.
+                  p_tipo_doc_fiscale_id         vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                  p_natura_doc_id               vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE           DEFAULT NULL,
+                  p_utility_id                  vendite.registri_fatturazione.utility_id%TYPE                  DEFAULT NULL,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(registro_id vendite.registri_fatturazione.id%TYPE,
+                             serie       vendite.tipi_doc_fiscale_registri.serie%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_natura_doc_id config.nature_doc_fiscale.id%TYPE;
+                  v_registro_id   vendite.registri_fatturazione.id%TYPE;
+                  v_serie         vendite.tipi_doc_fiscale_registri.serie%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dato un tipo documento E UNA NATURA, il registro di
+                  --   numerazione e la serie su cui il documento va scritto —
+                  --   e SOLLEVA se non e' risolvibile.
+                  --
+                  -- rev 2026-08-26 (brief-db-registro-e-data-prevista-in-competenza,
+                  --   L1): la RICERCA se ne va in fn_lookup_registro_id. Qui
+                  --   resta il punto in cui un NULL diventa un errore di
+                  --   dominio, perche' questo e' il percorso di chi SCRIVE: un
+                  --   buco di configurazione deve fermare, non passare.
+                  --   ⭐ Stessa coppia lettore/involucro gia' in casa
+                  --   sull'emittente (script.fn_get_ba_emittente_sr_id /
+                  --   anagrafiche.fn_get_emittente_fiscale_id).
+                  --
+                  -- rev 2026-08-18 (brief-design-note-credito-resi N2): la
+                  --   natura entra nella chiave del mapping e la serie esce
+                  --   insieme al registro.
+                  -- =========================================================
+
+                  -- Guard di parametro. ⭐ TECNICO dal 2026-08-26 (decisione
+                  -- di Tid): un tipo documento nullo qui non lo produce un
+                  -- operatore — l'unico chiamante lo legge da una riga nata
+                  -- APPROVATA, dove il CHECK lo pretende. E nel contesto non
+                  -- c'e' nessuna chiave `campo`: un 400 senza campo da
+                  -- accendere e' un 400 solo di nome.
+                  -- ⚠️ Qui nominare il parametro nella frase e' AUTORIZZATO
+                  --    dalla registrazione del codice: il lettore e' chi ha
+                  --    scritto la chiamata.
+                  IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_get_registro_id',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'detail', 'tipo documento fiscale obbligatorio e maggiore di zero',
+                              'p_tipo_doc_fiscale_id', p_tipo_doc_fiscale_id),
+                          NULL::uuid,
+                          'vendite.fn_get_registro_id',
+                          'p_tipo_doc_fiscale_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- ⭐ La ricerca, il default della natura e la gerarchia a
+                  --   quattro livelli vivono TUTTI nel lookup: qui non si
+                  --   cerca piu' niente. La natura risolta torna indietro
+                  --   apposta, per distinguere i due errori qui sotto.
+                  SELECT k.natura_doc_id, k.registro_id, k.serie
+                    INTO v_natura_doc_id, v_registro_id, v_serie
+                    FROM vendite.fn_lookup_registro_id(
+                             p_tipo_doc_fiscale_id         => p_tipo_doc_fiscale_id,
+                             p_natura_doc_id               => p_natura_doc_id,
+                             p_utility_id                  => p_utility_id,
+                             p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id) k;
+
+                  IF v_natura_doc_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_registro_id', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('parametro', 'p_natura_doc_id', 'valore', p_natura_doc_id),
+                          NULL::uuid, 'natura documento non risolta (config.nature_doc_fiscale)');
+                  END IF;
+
+                  IF v_registro_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_registro_id', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('tipo_doc_fiscale_id', p_tipo_doc_fiscale_id,
+                                             'natura_doc_id', v_natura_doc_id,
+                                             'utility_id', p_utility_id,
+                                             'emittente', p_emittente_soggetto_ruolo_id),
+                          NULL::uuid, concat('registro non risolto per tipo_doc ', p_tipo_doc_fiscale_id,
+                                             ' e natura ', v_natura_doc_id));
+                  END IF;
+
+                  RETURN QUERY SELECT v_registro_id, v_serie;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_registro_id(
+                  vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                  vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE,
+                  vendite.registri_fatturazione.utility_id%TYPE,
+                  vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE)
+              IS 'Dato un tipo documento fiscale E UNA NATURA (piu'', opzionalmente, utility ed emittente), il registro di numerazione e la SERIE su cui il documento va scritto — e SOLLEVA se non e'' risolvibile. rev 2026-08-26 (brief-db-registro-e-data-prevista-in-competenza, L1): la RICERCA e'' stata estratta in vendite.fn_lookup_registro_id e questa funzione e'' diventata il suo INVOLUCRO. ⭐ E'' la stessa coppia gia'' in casa sull''emittente — script.fn_get_ba_emittente_sr_id legge e torna NULL, anagrafiche.fn_get_emittente_fiscale_id trasforma il NULL in errore — e serve alla stessa cosa: chi LEGGE (le viste della dashboard di competenza, che mostrano una previsione) consuma il lettore, chi SCRIVE consuma questo, dove un buco di configurazione DEVE fermare. ⛔ Firma, RETURNS TABLE e i tre errori sono INVARIATI: i pgTAP che la esercitano chiamano con parametri nominati e asseriscono sui risultati. ⭐ Il lookup restituisce anche la NATURA risolta, ed e'' cosi'' che qui si distingue «natura non risolta» da «registro non trovato» senza rifare il COALESCE del default — cioe'' senza una terza copia della regola che l''estrazione serviva a unificare. ⭐ Il guard su p_tipo_doc_fiscale_id e'' passato da E_PARAMETRO_INVALIDO (DATO_ERRATO, 400) a E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO, 500) — decisione di Tid, 2026-08-26. L''argomento e'' strutturale, non di gusto: l''unico chiamante e'' fn_build_fattura_key, che il tipo documento lo legge da attivita_fatturabili, riga creata dall''emit a partire da un''attivita'' APPROVATA — e chk_commesse_attivita_tipo_doc_emittibile garantisce che li'' il tipo documento ci sia. Un NULL non e'' quindi «l''operatore ha dimenticato un campo» ma un guasto a monte. ⛔ E la spia decisiva: nel contesto NON c''e'' la chiave `campo`, cioe'' finora era un 400 che al frontend non diceva nessun campo da accendere — un 400 solo di nome. ⭐ Nominare il parametro nella frase qui e'' AUTORIZZATO dalla registrazione del codice, il cui lettore e'' chi ha scritto la chiamata. ℹ️ Costo backend zero: il codice e'' gia'' nel catalogo, in error_messages_fallback.py e in error_policies_generated.py. ⚠️ Per chi consuma lo status passa da 400 a 500. ⚠️ I due E_CONFIG_MANCANTE restano invece INTATTI, area e nome compresi: cambiarli sarebbe rumore su punti di log che nessuno ha chiesto di toccare. ℹ️ Volatilita'' invariata: STABLE serve al lookup, che finisce nel target list di una vista; questa la chiama solo chi scrive.';

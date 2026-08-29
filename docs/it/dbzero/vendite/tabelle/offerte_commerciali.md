@@ -76,8 +76,8 @@
 | trg_offerte_commerciali_a10_default_valuta_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_default_valuta()` |
 | trg_offerte_commerciali_a10_emittenti_fiscali_require_at_7d73a6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_offerte_commerciali_a10_emittenti_fiscali_require_at_7d73a6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
-| trg_offerte_commerciali_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_gen_codice()` |
 | trg_offerte_commerciali_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_gen_codice()` |
+| trg_offerte_commerciali_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_gen_codice()` |
 | trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_guard_emittente_ba()` |
 | trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_guard_emittente_ba()` |
 | trg_offerte_commerciali_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
@@ -92,9 +92,10 @@
 | trg_offerte_commerciali_a10_stati_doc_offerte_require_at_3731e5 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_doc_offerta_id', 'id')` |
 | trg_offerte_commerciali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_offerte_commerciali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_z90_revisione_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_revisione()` |
+| trg_offerte_commerciali_z90_rientro_padre_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: il perimetro degli incassi — dal CONTO, non dalla fattura
 --
--- Elenco test (plan 14):
+-- Elenco test (plan 18):
 --  1) Riferimenti minimi presenti: due emittenti, due operatori, una fattura
 --  2) L'operatore A vede la propria distinta
 --  3) ...e NON vede quella dell'altro emittente
@@ -17,7 +17,11 @@
 -- 11) 🔴 L'operatore B non puo' scrivere una riga sulla distinta di A
 -- 12) 🔴 L'operatore B non puo' aprire una distinta sul canale di A
 -- 13) Senza ruolo applicativo non si vede niente: il cancello e' quello
--- 14) Assert finale cleanup
+-- 14) ⭐ La policy sui CANALI esiste, ed e' FOR ALL
+-- 15) Creare un canale sul PROPRIO conto: PASSA — e' la prova che conta
+-- 16) 🔴 Sul conto di un ALTRO emittente: rifiutato
+-- 17) ...e l'altro emittente non lo vede
+-- 18) Assert finale cleanup
 --
 -- Scopo:
 --  - collaudare S3-5 e S3-4 dove contano davvero, cioe' come utente
@@ -29,6 +33,12 @@
 --    proprietario, e con il FORCE quella rientrerebbe sotto la policy della
 --    tabella che sta leggendo — una RICORSIONE. Girare come applicazione e'
 --    insieme piu' fedele e l'unico modo che funziona;
+--  - ⭐ **dal 2026-08-28 copre anche i CANALI** (test 14-17). `enti_incasso`
+--    porta il conto su cui atterra il denaro — cioe' di chi sono i soldi prima
+--    che esista una fattura — e fino a quel giorno non aveva row security:
+--    l'elenco dei canali, IBAN compreso, sarebbe stato comune a tutti. ⭐ E il
+--    test 15 e' quello che conta davvero: una policy che protegge e impedisce
+--    di lavorare e' peggio del difetto che chiude;
 --  - ⭐ presidiare i due casi che il perimetro dal conto esiste per servire: la
 --    riga «da abbinare» (test 5), che con un predicato via fattura sarebbe
 --    invisibile a TUTTI, e la distinta interna (test 7/8), che e' condivisa
@@ -55,7 +65,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(18);
 
 -- ============================================================
 -- Fixture — due lati: A (l'emittente che ha delle fatture) e B (l'altro)
@@ -144,22 +154,52 @@ SELECT (SELECT l.id FROM legami l JOIN conti c ON c.id = l.conto_bancario_id
        (SELECT l.id FROM legami l JOIN conti c ON c.id = l.conto_bancario_id
          WHERE c.iban LIKE '%LATOB%') AS legame_b;
 
-CREATE TEMP TABLE tmp_enti AS
+-- ⭐ Ogni canale si crea NEL CONTESTO DEL SUO PADRONE, come le distinte qui
+--    sotto. ⚠️ Fino al 2026-08-28 i due si creavano in un INSERT solo, sotto un
+--    contesto qualunque: `enti_incasso` non aveva row security e nessuno se ne
+--    accorgeva. Con la policy del lotto 10 quell'INSERT verrebbe rifiutato —
+--    ed e' giusto: nell'applicazione un canale lo crea chi ne e' padrone.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT a_user FROM tmp_ab)); END $ctx$;
+
+CREATE TEMP TABLE tmp_ente_a AS
 WITH ins AS (
   INSERT INTO pagamenti.enti_incasso
       (codice, descrizione, tipo, attivo, soggetto_ruolo_conto_bancario_id,
        centro_riscossione_id, meta)
-  SELECT v.codice, 'canale pgtap perimetro', 'ALTRO', true, v.legame, ab.centro_banca,
+  SELECT 'PGTAP_PERIM_A', 'canale pgtap perimetro', 'ALTRO', true,
+         (SELECT legame_a FROM tmp_legami), ab.centro_banca,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_ab ab
-    CROSS JOIN (SELECT 'PGTAP_PERIM_A'::text AS codice, (SELECT legame_a FROM tmp_legami) AS legame
-                UNION ALL
-                SELECT 'PGTAP_PERIM_B',                 (SELECT legame_b FROM tmp_legami)) AS v
-  RETURNING id, codice
-)
-SELECT max(id) FILTER (WHERE codice = 'PGTAP_PERIM_A') AS ente_a,
-       max(id) FILTER (WHERE codice = 'PGTAP_PERIM_B') AS ente_b
-  FROM ins;
+  RETURNING id
+) SELECT id AS ente_a FROM ins;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT b_user FROM tmp_ab)); END $ctx$;
+
+CREATE TEMP TABLE tmp_ente_b AS
+WITH ins AS (
+  INSERT INTO pagamenti.enti_incasso
+      (codice, descrizione, tipo, attivo, soggetto_ruolo_conto_bancario_id,
+       centro_riscossione_id, meta)
+  SELECT 'PGTAP_PERIM_B', 'canale pgtap perimetro', 'ALTRO', true,
+         (SELECT legame_b FROM tmp_legami), ab.centro_banca,
+         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
+    FROM tmp_ab ab
+  RETURNING id
+) SELECT id AS ente_b FROM ins;
+
+CREATE TEMP TABLE tmp_enti AS
+SELECT (SELECT ente_a FROM tmp_ente_a) AS ente_a,
+       (SELECT ente_b FROM tmp_ente_b) AS ente_b;
+
+-- ⚠️ Si torna nei panni di A: da qui in poi il file lavora dal suo lato, e un
+--    contesto lasciato su B farebbe fallire la creazione della distinta di A
+--    con un messaggio che parla di un'altra cosa («canale inesistente»).
+--    ⭐ E' la stessa ragione per cui il guard del canale meriterebbe di essere
+--    SECURITY DEFINER: sotto RLS «non lo vedo» diventa «non esiste».
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT a_user FROM tmp_ab)); END $ctx$;
 
 -- ⭐ Le distinte si creano NEL CONTESTO DEL LORO PADRONE: la policy e' FOR ALL,
 --    e una distinta creata dall'operatore sbagliato verrebbe rifiutata dal
@@ -393,9 +433,76 @@ SELECT is(
 );
 
 -- ============================================================
--- 14. Cleanup
+-- 14-17. ⭐ I CANALI DI INCASSO — il perimetro della configurazione
 -- ============================================================
-SELECT ok(true, '14) Cleanup: la transazione viene annullata, nessun residuo');
+-- ⚠️ Si asserisce il comando oltre all'esistenza: una policy FOR SELECT con lo
+--    stesso nome passerebbe un controllo di sola presenza e renderebbe la
+--    tabella di scrittura impossibile.
+SELECT is(
+  (SELECT p.cmd FROM pg_policies p
+    WHERE p.schemaname = 'pagamenti' AND p.tablename = 'enti_incasso'
+      AND p.policyname = 'rls_enti_incasso_perimetro_incasso'),
+  'ALL',
+  '14) La policy sui canali esiste ed e'' FOR ALL, non FOR SELECT'
+);
+
+-- Il conto di incasso di ciascun lato: e' da li' che il canale prende il suo
+-- padrone (D5).
+CREATE TEMP TABLE tmp_conti AS
+SELECT (SELECT min(src.id) FROM anagrafiche.soggetti_ruoli_conti_bancari src
+         WHERE src.soggetto_ruolo_id = (SELECT a_sr FROM tmp_ab) AND src.uso = 'INCASSO') AS conto_a,
+       (SELECT min(src.id) FROM anagrafiche.soggetti_ruoli_conti_bancari src
+         WHERE src.soggetto_ruolo_id = (SELECT b_sr FROM tmp_ab) AND src.uso = 'INCASSO') AS conto_b;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT a_user FROM tmp_ab)); END $ctx$;
+
+-- ⭐ 15) LA PROVA CHE CONTA: la policy non deve chiudere la scrittura.
+SELECT CASE WHEN (SELECT conto_a FROM tmp_conti) IS NULL
+       THEN skip('15) nessun conto di INCASSO sull''emittente A: caso non misurabile', 1)
+       ELSE lives_ok(
+         format(
+           $sql$INSERT INTO pagamenti.enti_incasso
+                   (codice, descrizione, tipo, attivo, centro_riscossione_id,
+                    soggetto_ruolo_id, soggetto_ruolo_conto_bancario_id)
+                VALUES ('PGTAP_CANALE_A', 'Canale di prova A', 'ALTRO', true, %s, %s, %s)$sql$,
+           (SELECT centro_banca FROM tmp_ab), (SELECT a_sr FROM tmp_ab),
+           (SELECT conto_a FROM tmp_conti)),
+         '15) Creare un canale sul PROPRIO conto PASSA: la policy protegge senza impedire di lavorare')
+       END;
+
+-- 🔴 16) Sul conto di un altro emittente: rifiutato dalla WITH CHECK.
+-- ⚠️ 42501 e' insufficient_privilege: e' cosi' che una policy rifiuta una
+--    scrittura, e dichiararlo distingue il rifiuto dal crash di un guard.
+SELECT CASE WHEN (SELECT conto_b FROM tmp_conti) IS NULL
+       THEN skip('16) nessun conto di INCASSO sull''emittente B: caso non misurabile', 1)
+       ELSE throws_ok(
+         format(
+           $sql$INSERT INTO pagamenti.enti_incasso
+                   (codice, descrizione, tipo, attivo, centro_riscossione_id,
+                    soggetto_ruolo_id, soggetto_ruolo_conto_bancario_id)
+                VALUES ('PGTAP_CANALE_B', 'Canale di prova B', 'ALTRO', true, %s, %s, %s)$sql$,
+           (SELECT centro_banca FROM tmp_ab), (SELECT a_sr FROM tmp_ab),
+           (SELECT conto_b FROM tmp_conti)),
+         '42501',
+         NULL,
+         '16) Un canale sul conto di un ALTRO emittente e'' rifiutato: il perimetro morde in scrittura')
+       END;
+
+-- 17) E in lettura l'altro emittente non lo vede.
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT b_user FROM tmp_ab)); END $ctx$;
+
+SELECT is(
+  (SELECT count(*) FROM pagamenti.enti_incasso e WHERE e.codice = 'PGTAP_CANALE_A'),
+  0::bigint,
+  '17) Il canale di A e'' invisibile a B: l''elenco dei canali non e'' piu'' comune'
+);
+
+-- ============================================================
+-- 18. Cleanup
+-- ============================================================
+SELECT ok(true, '18) Cleanup: la transazione viene annullata, nessun residuo');
 
 SELECT * FROM finish();
 ROLLBACK;

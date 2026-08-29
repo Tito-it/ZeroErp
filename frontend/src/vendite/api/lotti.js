@@ -140,16 +140,40 @@ export function numeraLotto(lottoId, { dataDocumento = null } = {}) {
 
 // GET la FINESTRA DI NUMERAZIONE di un perimetro: con quale data si puo'
 // numerare, e da quale data i documenti partono adesso.
-// Un perimetro solo per chiamata: `{ lottoId }` oppure `{ competenzaMese }`.
-// Risposta: { lotto_id, competenza_mese, data_documento, data_corrente,
+// Un perimetro solo per chiamata: `{ lottoId }`, `{ competenzaMese }` oppure
+// `{ lotti }` (la selezione della lista). Due insieme → 400.
+// Risposta: { lotto_id, competenza_mese, n_lotti, data_documento, data_corrente,
 //             data_minima } — tutte ISO o null.
 // ⚠️ `data_minima` null = nessun pavimento (nessun numero ancora emesso su quei
 // sezionali), non «nessun limite noto».
-export function getFinestraNumerazione({ lottoId = null, competenzaMese = null } = {}) {
+// ⭐ Sul perimetro `lotti` il limite va richiesto di nuovo a OGNI cambio di
+//    selezione: il pavimento è di ogni SEZIONALE, e aggiungere un lotto di un
+//    altro registro può spostarlo in avanti.
+export function getFinestraNumerazione({ lottoId = null, competenzaMese = null, lotti = null } = {}) {
   const params = {}
   if (lottoId != null) params.lotto_id = lottoId
   if (competenzaMese) params.competenza_mese = competenzaMese
-  return api.get('/vendite/fatturazione/finestra-numerazione/', { params })
+  if (lotti?.length) params.lotti = lotti
+  // ⛔ `indexes: null` NON è un dettaglio di stile: senza, axios serializza un
+  //    array come `?lotti[]=12&lotti[]=15` (provato su axios 1.20, che è la
+  //    versione in `package.json`), mentre il backend legge
+  //    `query_params.getlist('lotti')` — cerca la chiave `lotti`, trova la
+  //    chiave `lotti[]`, e non vede NIENTE.
+  // ⚠️ Il difetto non si presenta come «parametro ignorato»: `_query_lotti_ids`
+  //    traduce la lista vuota in `None` di proposito (assente = «non sto
+  //    chiedendo per selezione»), quindi il servizio riceve tutti e tre i
+  //    perimetri nulli e risponde `E_VALIDATION_INPUT` — «indicarne esattamente
+  //    uno» — su una richiesta in cui l'operatore UNO l'aveva indicato.
+  //    A video: «La finestra di numerazione non è stata letta».
+  // ⭐ Qui prima c'era un commento che affermava l'opposto («axios serializza
+  //    un array così di default»). Era falso, ed è il motivo per cui questa
+  //    riga è arrivata fino al collaudo: la giustificazione era scritta accanto
+  //    al codice e nessuno l'ha messa alla prova. Trovato in-app da Tid il
+  //    2026-08-27, primo giro vero del verbo su selezione.
+  return api.get('/vendite/fatturazione/finestra-numerazione/', {
+    params,
+    paramsSerializer: { indexes: null },
+  })
 }
 
 // POST ristampa MASSIVA di un lotto DEFINITIVA (C-8): accoda in coda stampa una
@@ -210,9 +234,14 @@ export function runFatturazione(competenzaMese, { gruppi = null, dataDocumento =
 // (I-7). Ritorna { job_id, stato: 'PENDING' }; avanzamento via getFatturazioneRun.
 // `dataDocumento` (facoltativa): UNA data per l'INTERO atto — vale per tutti i
 // lotti che il giro numera, non una per lotto (decisione 5 del brief).
-export function runNumerazione(competenzaMese, { dataDocumento = null } = {}) {
+// ⭐ `lotti`: il perimetro SELEZIONATO. Assente = tutti i lotti emessi della
+//    competenza (atto di mese). ⛔ Una lista VUOTA non si manda: il backend la
+//    rifiuta con un 400, e fa bene — «numera niente» e «numera tutto» non si
+//    indovinano su un atto fiscale. Chi non ha spuntato nulla non deve premere.
+export function runNumerazione(competenzaMese, { dataDocumento = null, lotti = null } = {}) {
   const payload = { competenza_mese: competenzaMese }
   if (dataDocumento) payload.data_documento = dataDocumento
+  if (lotti?.length) payload.lotti = lotti
   return api.post(
     '/vendite/fatturazione/numera/',
     payload,

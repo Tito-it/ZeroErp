@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I10 (Fase 1) del brief brief-db-be-iva-risolutore-e-regime-cliente — coda.
+# Ri-ancora il mirror di config.stati_doc_fiscale dichiarando TUTTE le colonne
+# del CSV. Stesso pattern di 20260806-13/-14/-15 e 20260821-30.
+#
+# ⛔ IL PROBLEMA, ed e' una trappola ARMATA e non un difetto teorico. Il mirror
+#   originale 20250912-01 dichiara DIECI colonne; il CSV oggi ne ha TREDICI:
+#     - `fase` e `is_abortito` sono nate il 2026-07-14 (changeSet 20260714-02),
+#       dieci mesi dopo il mirror, e nessuno le ha aggiunte alla sua lista;
+#     - `congela_fiscale` nasce oggi con 20260829-03.
+#   Tutte e tre hanno avuto il loro backfill una volta, quindi il DB e' giusto e
+#   NIENTE SEGNALA il problema. Ma una colonna fuori dalla lista del mirror non
+#   e' governata dal CSV: il giorno che qualcuno cambia una cella di `fase` o di
+#   `congela_fiscale` e lancia il migrate, il valore NON si muove — e non c'e'
+#   nessun errore da leggere.
+#
+# ⭐ E per questo cantiere non e' un dettaglio: D15 promette che «cambiare la
+#   soglia di congelamento e' una cella di CSV». Senza questo file quella frase
+#   e' falsa, e sarebbe stata scoperta da qualcuno che cambia la soglia e vede
+#   che non succede niente.
+#
+# ✅ VERIFICATO PRIMA DI SCRIVERE (2026-08-29): CSV e tabella viva coincidono su
+#   tutte e tredici le colonne, riga per riga, su tutte e sei le righe. Il CSV
+#   NON e' stantio, quindi ri-ancorare non riporta indietro nessun valore.
+#
+# ℹ️ COLONNE: tutte e tredici, ed e' una differenza voluta rispetto al
+#   20260806-14 (stati_doc_contratti), dove `fase`/`terminale`/`esito` restano
+#   FUORI perche' le governa un altro changeSet (20260702-12) e il mirror le
+#   riporterebbe indietro. Qui non c'e' nessun governante alternativo: il
+#   20260714-02 e' stato un backfill una-tantum, non un processo vivo. La
+#   domanda «chi governa questa colonna?» va rifatta ogni volta, non ereditata.
+#
+# ⚠️ La sede degli stati fattura resta il CSV
+#   80_data/sql/config/stati_doc_fiscale.csv: nessun UPDATE SQL nuovo qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260829-05-riancora-mirror-stati-doc-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260829-05-riancora-mirror-stati-doc-fiscale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ri-ancora il mirror di config.stati_doc_fiscale dichiarando tutte e 13 le
+        colonne del CSV. Il mirror originale (20250912-01) ne dichiara 10: fase e
+        is_abortito, nate dopo, e congela_fiscale, nata oggi, non erano governate
+        dal CSV — una modifica a quelle celle non si sarebbe propagata, e in
+        silenzio. Verificato che CSV e tabella viva coincidono su tutte le righe.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_fiscale
+        - columnExists:
+            schemaName: config
+            tableName: stati_doc_fiscale
+            columnName: congela_fiscale
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/stati_doc_fiscale.csv
+            tableName: stati_doc_fiscale
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordine, type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  # se il CSV ha valore vuoto, usa {} come JSON valido
+                  defaultValue: "{}"
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: applica_lotto, type: BOOLEAN }
+              - column: { name: applica_fattura, type: BOOLEAN }
+              - column: { name: chiude_lotto, type: BOOLEAN }
+              - column: { name: fase, type: STRING }
+              - column: { name: is_abortito, type: BOOLEAN }
+              - column: { name: congela_fiscale, type: BOOLEAN }
