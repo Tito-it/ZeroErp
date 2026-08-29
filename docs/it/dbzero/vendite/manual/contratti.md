@@ -99,6 +99,41 @@ Obiettivi principali:
 
 ---
 
+### 📄 Riferimenti dell'atto: CIG, CUP e commessa (dal 2026-08-29)
+
+Tre colonne nullable — `codice_cig`, `codice_cup`, `codice_commessa` — che portano i
+riferimenti dell'**atto** da cui il contratto nasce: rispettivamente la gara, il progetto
+d'investimento e il riferimento di commessa/convenzione che il cliente chiede di vedere in
+fattura.
+
+⭐ **Vanno insieme, e non e` comodita`**: in fattura elettronica stanno nello **stesso
+blocco** (`DatiContratto` / `DatiOrdineAcquisto`: `IdDocumento`, `CodiceCUP`, `CodiceCIG`,
+`CodiceCommessaConvenzione`). Nascono insieme, si compilano insieme e nominano lo stesso
+atto: separarli vorrebbe dire costruire un blocco XML da due tabelle con due cicli di vita.
+
+⛔ **Prima stavano su `anagrafiche.clienti`, e sbagliavano in due direzioni insieme.** Li` la
+riga e` **per fornitura**, mentre un CIG identifica una **gara**: una PA con tre contratti ha
+tre CIG. Su una riga per fornitura ne entrava uno solo — ripetuto identico su tutte le
+forniture dello stesso contratto (troppo) e incapace di tenerne due sulla stessa (troppo
+poco).
+
+⚠️ **In fattura non ci arrivano ancora.** `vendite.fatture` non ha **nessun** collegamento al
+contratto — solo `billing_account_id` e la coppia `sorgente_tipo_id`/`sorgente_uid` — quindi
+i tre codici vanno **copiati** al momento dell'emissione.
+⭐ E la sede giusta e` la **riga di fattura**, non la testata: `vendite.fatture_righe` porta
+una sorgente per riga fra **quindici tipi** (`config.sorgenti`), quindi una fattura puo`
+mescolare righe di **contratti diversi** — un campo di testata dovrebbe sceglierne uno fra
+tanti. E` anche cio` che la FatturaPA prevede, con `RiferimentoNumeroLinea`.
+Da costruire insieme a chi lo riempie (cantiere IVA, `I4`).
+
+📌 **Fuori perimetro, annotato**: negli accordi quadro PA il contratto ha un CIG «padre» e
+ogni ordine attuativo ne ha uno derivato. Se quel caso arrivera`, la forma sono gli stessi
+tre campi su `vendite.ordini`, nullable, col contratto come ripiego (`COALESCE`).
+
+Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, D9 / I8.
+
+---
+
 ### Integrazione con `anagrafiche.istanze_dati_precontrattuali`
 
 I dati precontrattuali sono **tipici del dominio utilities** e sono riferiti a `istanza_utility_id` e `utility_id`. Il contratto li integra in modo **non invasivo**:

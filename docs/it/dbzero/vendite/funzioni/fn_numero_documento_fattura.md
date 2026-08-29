@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_numero_documento_fattura.md" %}
 # ⚙️ Funzione `fn_numero_documento_fattura`
 
 ```sql

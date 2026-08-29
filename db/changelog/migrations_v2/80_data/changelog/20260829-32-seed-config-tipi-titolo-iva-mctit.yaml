@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente, D10 —
+# il seed dei QUATTRO tipi di titolo che Tid ha nominato il 2026-08-28.
+#
+# ⭐ NON SONO UN ELENCO DI POSSIBILITA', SONO I CASI CHE ESISTONO. D10 li ha
+#   nominati uno per uno con la loro prova documentale, e il vocabolario nasce
+#   con tutti e quattro perche' e' guardandoli insieme che si e' visto lo schema
+#   comune — chi x per cosa vale x da quando a quando x con quale prova.
+#   Seminare il solo INTENTO avrebbe fatto sembrare gli altri tre un'ipotesi.
+#
+# ⚠️ `ha_plafond = true` SU UNO SOLO, ed e' la riga che porta l'informazione:
+#   solo la dichiarazione d'intento ha un contatore che si consuma. Gli altri
+#   tre sostituiscono l'aliquota e basta. E' la ragione per cui il plafond non
+#   e' la colonna portante della tabella dei titoli.
+#
+# ⚠️ Nessuno di questi quattro e' ATTIVABILE finche' non esiste il codice IVA
+#   che ciascuno applica: la riga di titolo pretende `iva_id` NOT NULL. Per
+#   l'intento il codice nasce nello stesso giro (NI35, 20260829-33); per gli
+#   altri tre si sceglie fra i codici gia' a catalogo quando si registrera' il
+#   primo titolo — non si conia niente al buio.
+#
+# ℹ️ La sede resta il CSV: 80_data/sql/config/tipi_titolo_iva.csv. Un tipo nuovo
+#   e' un append, non un INSERT SQL a parte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260829-32-seed-config-tipi-titolo-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260829-32-seed-config-tipi-titolo-iva
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Semina i quattro tipi di titolo IVA nominati da Tid il 2026-08-28: INTENTO,
+        USO_INDUSTRIALE, AGEVOLATA_104, COOPERATIVA. ha_plafond e' true su uno solo -
+        e' la riga che porta l'informazione, perche' solo la dichiarazione d'intento ha
+        un contatore che si consuma. Nascono tutti e quattro insieme: e' guardandoli
+        insieme che si e' visto lo schema comune, e seminare il solo intento avrebbe
+        fatto sembrare gli altri tre un'ipotesi.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_titolo_iva
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/tipi_titolo_iva.csv
+            tableName: tipi_titolo_iva
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: ha_plafond, type: BOOLEAN }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: ordine, type: STRING }
+              - column:
+                  name: meta
+                  type: JSON
+                  # se il CSV ha valore vuoto, usa {} come JSON valido
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ La PK e' IDENTITY BY DEFAULT e il CSV forza gli id 1..4: la
+              --   sequenza resta a 1 e il primo tipo inserito da un'interfaccia
+              --   sbatterebbe sulla PK. Si riallinea, come fanno i resync di
+              --   90_end per le altre tabelle a seed.
+              SELECT setval(
+                  pg_get_serial_sequence('config.tipi_titolo_iva', 'id'),
+                  GREATEST((SELECT COALESCE(MAX(id), 0) FROM config.tipi_titolo_iva), 1),
+                  true);

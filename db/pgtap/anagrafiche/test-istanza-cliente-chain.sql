@@ -315,7 +315,7 @@ FROM ins_ba;
 -- 1) Primo cliente per il PDP (istanza base) → parent_istanza_id NULL
 -- =========================================================
 -- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
---   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-22):
 --   l'aliquota la decide la merce, non il cliente.
 WITH ins_cli AS (
     INSERT INTO anagrafiche.clienti (
@@ -478,7 +478,7 @@ SELECT is(
 ----------------------------------------------------------
 -- 2.3) Cliente 2 ATTIVO per istanza 2
 -- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
---   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-22):
 --   l'aliquota la decide la merce, non il cliente.
 WITH ins_cli2 AS (
     INSERT INTO anagrafiche.clienti (
@@ -642,7 +642,7 @@ SELECT is(
     );
 -- 3.3) Cliente 3 ANNULLATO (stato = AN) → deve essere escluso dalla catena
 -- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
---   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-22):
 --   l'aliquota la decide la merce, non il cliente.
 WITH ins_cli3 AS (
     INSERT INTO anagrafiche.clienti (
@@ -806,7 +806,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
  */
 -- 4.4) Cliente 4 ATTIVO per istanza 4 (data più recente)
 -- ⚠️ rev 2026-08-29: via la CTE `iva`, la colonna `iva_id` e il join su di essa.
---   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-17):
+--   anagrafiche.clienti.iva_id non esiste piu' (changeSet 20260829-22):
 --   l'aliquota la decide la merce, non il cliente.
 WITH ins_cli4 AS (
     INSERT INTO anagrafiche.clienti (

@@ -1155,7 +1155,7 @@ modo in cui questo difetto è arrivato fin qui.
 | --- | --- | --- | --- |
 | ~~**I1**~~ | ~~Gate IVA all'emissione dentro `script.fn_check_ddt_emittibile`~~ | DB | ✅ **FATTA** 2026-08-28, con regola diversa e migliore (`R-1`) |
 | **I0** | ⭐ **Nuova, ed è il passo che sblocca gli altri**: `DROP` di `anagrafiche.clienti.iva_id` (`D7-bis`) + salita di `split_payment`/`cliente_pa` su `anagrafiche.soggetti` (`D8`). Si porta dietro `fn_update_cliente`, la whitelist BE e il `ClienteDrawer.vue` | DB + BE + FE | 🟢 pronta: nessun consumatore vero |
-| **I7** | **`anagrafiche.soggetti_titoli_iva`** (`D10`) — famiglia con vocabolario dei tipi, **emittente destinatario** in chiave (`D10-bis`), ambito fino al **singolo articolo**, `validita` `daterange`, registro movimenti (`D5`) e plafond **solo per i tipi che ce l'hanno**; + codice `config.iva` con `natura_iva_id = 8` (oggi la natura è **orfana**); + `EXCLUDE` anti-sovrapposizione sulla chiave nuova. ✅ Le sei domande di §2.6.2 restano decise | DB + BE | ⛔ **prerequisito di `I2`**: senza, lo stadio B non ha nessuna sorgente |
+| **I7** | **`anagrafiche.soggetti_titoli_iva`** (`D10`) — famiglia con vocabolario dei tipi, **emittente destinatario** in chiave (`D10-bis`), ambito fino al **singolo articolo**, `validita` `daterange`, registro movimenti (`D5`) e plafond **solo per i tipi che ce l'hanno**; + codice `config.iva` con `natura_iva_id = 8` (oggi la natura è **orfana**); + `EXCLUDE` anti-sovrapposizione sulla chiave nuova. ✅ Le sei domande di §2.6.2 restano decise | DB + BE | ✅ **APPLICATA** 2026-08-29 — §8-ter. Lo stadio B ha la sua sorgente: `I2` è sbloccata |
 | **I2** | Risolutore IVA a **due stadi** (§2.7, `D6`+`D7`): A = aliquota ordinaria, cascata `articolo → catena prezzo → tipo utenza`; B = **titolo documentato** dal soggetto, che sostituisce A. ⭐ **Ritorna una ripartizione** `(quota, codice IVA)`, non un codice (§2.7.3). Sul modello di `fn_resolve_prezzo_listino_v2` | DB | dopo `I7` |
 | **I3** | Il BE chiama `I2` alla creazione della riga; il FE **smette** di fare l'auto-fill e mostra il risultato del risolutore (§2.5.1) | BE + FE | dopo `I2` |
 | **I4** | La riga di fattura smette di rileggere `art.iva_id` e **ri-risolve** via `I2`. ⛔ L'alternativa «l'IVA viaggia nella catena `attivita_fatturabili`» è **esclusa da P1**: la fattura rifà, non trasporta. ⚠️ **Breaking change dichiarato** (§2.5.2) | DB + BE | dopo `I2` |
@@ -1198,7 +1198,7 @@ allora gli hardcode diventano due.
 
 ```text
 FASE 1 — sgombero          I0 · I8 · I9 · I10      indipendenti fra loro
-FASE 2 — le sedi           I7                      titoli + registro + lock
+FASE 2 — le sedi           I7                      titoli + registro + lock   ✅ FATTA 29/08
 FASE 3 — il risolutore     I2  →  I3 · I4 · I5     I3/I4/I5 dopo I2
 FASE 4 — la chiusura       I6                      ⛔ mai prima della Fase 3
 ```
@@ -1617,9 +1617,17 @@ insieme a `I4`**, quando la riga di fattura viene rifatta.
 
 | # | File | Cosa |
 | --- | --- | --- |
-| 1 | `20_code/anagrafiche/20260829-15-update-fn-update-cliente-drop-sei-chiavi` | chi **scrive** smette |
-| 2 | `20_code/dbops/20260829-16-recreate-vw-diag-v-clienti-links-senza-iva` | chi **legge** smette |
-| 3 | `00_schema/anagrafiche/20260829-17-alter-clienti-drop-iva-flag-e-codici` | le colonne **spariscono** |
+| 1 | `20_code/anagrafiche/20260829-20-update-fn-update-cliente-drop-sei-chiavi` | chi **scrive** smette |
+| 2 | `20_code/dbops/20260829-21-recreate-vw-diag-v-clienti-links-senza-iva` | chi **legge** smette |
+| 3 | `00_schema/anagrafiche/20260829-22-alter-clienti-drop-iva-flag-e-codici` | le colonne **spariscono** |
+
+> ⚠️ **Erano `-15`/`-16`/`-17` e sono stati rinumerati a `-20`/`-21`/`-22`**, perché
+> `-15`…`-17` sono stati presi da un altro cantiere lo stesso giorno (numero documento in
+> fattura, lineage, reso sourceless). ⛔ **Dentro i tre YAML i commenti citano ancora i
+> numeri vecchi**, e non sono stati corretti di proposito: i changeSet sono **applicati e
+> committati**, e `-22` non porta `validCheckSums` — riscriverne anche un commento farebbe
+> fallire il prossimo migrate con un errore di checksum. *Il riferimento buono è questa
+> tabella.* Manual e pgTAP sono invece allineati (18 riferimenti corretti).
 
 #### ⛔ Quattro dipendenze censite prima di toccare, e due non si vedono da un `\d`
 
@@ -1722,7 +1730,202 @@ nessuna parte.
 (`vendite.contratti.codice_cig`/`_cup`/`_commessa`), i due flag sul form del
 **soggetto** (`anagrafiche.soggetti.split_payment`/`cliente_pa`).
 
+### 📄 Documentazione manual — fatta il 2026-08-29
+
+> ⚠️ Solo i `manual/` (documentazione **concettuale**): l'auto-gen la rigenera Tid.
+
+**Due manual NUOVI**, per le due funzioni nate in questo cantiere:
+`script/manual/fn_check_ordine_confermabile.md` e
+`script/manual/fn_check_preventivo_emettibile.md`. Il secondo porta anche la tabella delle
+**tre asimmetrie** con la gemella (niente `riga_nr`, `quantita` senza `CHECK`, `attivo`
+nullable), che è la ragione per cui le due funzioni non sono copie.
+
+⛔ **Tre manual dicevano il FALSO** dopo i `DROP`, e sono stati corretti:
+
+| File | Cosa affermava di falso |
+| --- | --- |
+| `anagrafiche/manual/clienti.md` | le regole di validazione di `cliente_pa` e `split_payment`, colonne non più lì |
+| `anagrafiche/manual/fn_update_cliente.md` | la whitelist con tutte e sei le chiavi |
+| `dbops/manual/vw_diag_v_clienti_links.md` | il blocco IVA fra le entità collegate, i join e le colonne |
+
+⚠️ **E su `fn_update_cliente` la doc era già indietro prima di me**: la whitelist elencava
+`tipo_gg_scadenza_ft` e `nr_giorni_scadenza`, tolte il **2026-07-31** e mai aggiornate lì.
+*Un elenco senza presidio invecchia in silenzio, e chi lo legge non ha modo di accorgersene.*
+
+**Tre manual arricchiti** con le colonne nuove — incompleti, non falsi:
+`config/manual/stati_doc_fiscale.md` (`congela_fiscale`, con le tre scorciatoie sbagliate e
+il perché del `DEFAULT true`), `anagrafiche/manual/soggetti.md`
+(`split_payment`/`cliente_pa`, con il default `N` e perché va nella direzione **opposta**),
+`vendite/manual/contratti.md` (CIG/CUP/commessa, con la conclusione che in fattura la sede è
+la **riga** e non la testata).
+
 ### ✅ Fase 1 completata lato DB
+
+---
+
+## 8-ter. Fase 2 — `I7`, le sedi dei titoli — ✅ **APPLICATA il 2026-08-29**
+
+> ✅ **Applicata da Tid il 2026-08-29**, dodici changeSet. Baseline `anagrafiche` e
+> `script` rilanciate: **verdi, nessuna regressione**.
+>
+> ⭐ **E con il migrate si chiude il limite dichiarato più sotto**: i due pgTAP nuovi
+> stanno in `db/pgtap/anagrafiche/`, quindi la baseline li ha eseguiti **come
+> applicazione** — la RLS delle tre tabelle è stata esercitata sul serio, non solo
+> nella corsa pre-apply da owner.
+
+### I file
+
+| # | File | Cosa |
+| --- | --- | --- |
+| 23 | `00_schema/config/…-create-config-tipi-titolo-iva` | il **vocabolario** dei tipi (`D10`), con `ha_plafond` |
+| 24 | `00_schema/anagrafiche/…-create-soggetti-titoli-iva` | la **sede**: soggetto + emittente in chiave, ambito, `validita` `daterange`, plafond, `EXCLUDE` |
+| 25 | `00_schema/anagrafiche/…-create-soggetti-titoli-iva-ambiti` | l'**ambito** su tre livelli — articolo, gruppo voce, tipologia voce |
+| 26 | `00_schema/anagrafiche/…-create-soggetti-titoli-iva-movimenti` | il **registro** di `D5` |
+| 27 | `00_schema/anagrafiche/…-enable-rls-soggetti-titoli-iva` | il **perimetro emittente** sulle tre tabelle |
+| 28 | `20_code/anagrafiche/…-guard-coerenza` | plafond ⇔ tipo, e «TUTTO non ha righe di ambito» |
+| 29 | `20_code/anagrafiche/…-guard-ambito-sovrapposizione` | `fn_check_titolo_iva_ambito` + **due** trigger che la chiamano |
+| 30 | `20_code/anagrafiche/…-movimenti-accumulatore` | `imponibile_utilizzato` = somma del registro |
+| 31 | `20_code/anagrafiche/…-fn-consuma-plafond-titolo-iva` | la **primitiva** con il lock di `D15-bis` e la ripartizione di `P2` |
+| 32 | `80_data/changelog/…-seed-config-tipi-titolo-iva` | i quattro tipi, da CSV |
+| — | `80_data/sql/config/iva.csv` | append del codice **`NI35`** (id 18), `natura_iva_id = 8`: la natura non è più orfana |
+| 33 | `80_data/changelog/…-fk-index-policy-titoli-iva` | undici FK: **un sì e dieci no** |
+| 34 | `90_end/…-grant-titoli-iva-app` | i privilegi runtime, che fuori CI nessuno concede |
+| — | `80_data/sql/config/codici_errore.csv` + `messaggi_errore.csv` | **sette** codici nuovi, id messaggio 1015‑1021 |
+| — | `db/pgtap/anagrafiche/test-soggetti-titoli-iva.sql` | 23 asserzioni, runner **app** |
+| — | `db/pgtap/anagrafiche/test-soggetti-titoli-iva-due-emittenti.sql` | 5 asserzioni, runner **owner** dichiarato |
+
+### ⭐ Cinque decisioni di forma da non ri-discutere a valle
+
+1. **L'anti-sovrapposizione è un vincolo vero solo su metà dei casi, ed è
+   dichiarato** (decisione di Tid, 2026-08-29). La chiave di `D10` è
+   (soggetto, emittente, tipo, **ambito**), e l'ambito dei titoli ristretti vive
+   in una tabella **figlia**: un `EXCLUDE` non la può leggere. Quindi `EXCLUDE`
+   reale su `ambito = 'TUTTO'`, guard sulle figlie per i ristretti. ⛔ Scriverli
+   entrambi come guard avrebbe indebolito il caso forte; pretendere un `EXCLUDE`
+   anche sul caso debole avrebbe voluto dire denormalizzare quattro colonne sulla
+   figlia e tenerle in sync.
+2. 🔴 **Il guard dell'ambito sta su DUE trigger, e il secondo è quello che si
+   dimentica.** Due titoli diventano sovrapposti anche quando cambia il **padre**
+   — si allarga `valido_al`, si riattiva un titolo spento, si cambia il tipo — e
+   in nessuno di quei casi la tabella figlia viene toccata. ⭐ La regola sta in
+   **una funzione pura** (`anagrafiche.fn_check_titolo_iva_ambito`) e i due
+   trigger la **chiamano**: il presidio non è «gli esiti coincidono», è «il guard
+   non contiene più il predicato».
+3. ⭐ **Solo il pareggio esatto è un'ambiguità.** Due titoli su **livelli
+   diversi** (articolo e categoria) convivono legittimamente — li risolve `D13`
+   per specificità. Un guard scritto largo avrebbe passato tutti i test e
+   rifiutato la configurazione normale: per questo il pgTAP ha il test gemello
+   che pretende che **passi**.
+4. ⛔ **Il tetto non si controlla nell'accumulatore**, ed è una decisione. Sulle
+   fatture il caso non si presenta (la spezzatura di `P2` la calcola la
+   primitiva); sulle **forzature** un superamento è un'informazione sul mondo —
+   una forzatura esiste per registrare fatturazioni fuori dal sistema, e
+   impedire di scriverla impedirebbe di **accorgersene**. 📌 Il presidio giusto
+   per quel caso è una **lista di titoli sfondati che qualcuno guarda**, e non
+   fa parte di `I7`.
+5. ⚠️ **`imponibile_utilizzato` non ha un `CHECK >= 0`.** Quella colonna la
+   scrive un trigger che gira dentro una scrittura su un'**altra** tabella: un
+   `23514` lì sarebbe un errore muto, lontano dal gesto dell'operatore. Il conto
+   sotto zero lo rifiuta il trigger, con un codice registrato e una frase che
+   nomina il titolo.
+
+### ⛔ La metà di `D15-bis` che il DB non può tenere — richiesta al BACKEND
+
+`D15-bis` chiede due cose e il DB ne dà **una**:
+
+* ✅ **il lock**: `SELECT … FOR UPDATE` sulla riga del titolo dentro
+  `fn_consuma_plafond_titolo_iva`. Due transizioni a DEFINITIVA in parallelo si
+  serializzano, e il plafond non va sotto zero;
+* ⛔ **l'ordine deterministico** — «chi arriva prima si prende la capienza», e
+  «prima» dev'essere una regola del dominio (data documento, poi numero) — **non
+  è realizzabile nella primitiva**: un lock non può sapere che esiste una
+  fattura precedente non ancora arrivata.
+
+**La sede è il ciclo che chiama**: il giro di lotto deve iterare le fatture
+`ORDER BY data documento, numero`. Va scritto quando `I4` porta il consumo nella
+transizione a DEFINITIVA. ⭐ Il registro lo rende comunque **verificabile a
+posteriori**: `data_movimento` e `fattura_id` dicono in quale ordine la capienza
+è andata via.
+
+### ✅ Verifica fatta
+
+**L'SQL provato è quello VERO, non una riscrittura**: generato con
+`liquibase updateSQL` su una copia dei dodici changelog privata delle sole
+`preConditions` (che vengono valutate contro il database vivo, dove le tabelle
+non esistono ancora, e avrebbero fatto `HALT` dal secondo file in poi). I 363
+statement girano interi in una transazione con `ON_ERROR_STOP=1` che si chiude in
+`ROLLBACK`: **zero errori**.
+
+**pgTAP**: 23/23 e 5/5 verdi, con la DDL iniettata nella stessa transazione.
+
+⭐ **E discriminano — provato spegnendo i presidi uno per uno:**
+
+| mutazione | cadono |
+| --- | --- |
+| spento il guard sull'ambito (figlie + padre) | **esattamente** 10, 11, 13 |
+| spento l'accumulatore del registro | **esattamente** 14, 15, 16 |
+| tolto l'`EXCLUDE` anti-sovrapposizione | **esattamente** 7 |
+| spento il guard di coerenza del plafond | 4 e 5, e poi la corsa **si ferma**: le righe che il guard avrebbe rifiutato fanno saltare l'`EXCLUDE` due test dopo |
+| l'emittente **esce** dalla chiave dell'`EXCLUDE` | il file «due emittenti» non riesce nemmeno a **costruire** il caso: il secondo titolo prende un `23P01` |
+
+⚠️ E i due test «non blocca più del dovuto» — il rinnovo annuale (8) e i due
+titoli su livelli diversi (12) — restano **verdi** sotto tutte le mutazioni: è
+quello che devono fare.
+
+~~⚠️ **Limite dichiarato**: la corsa pre-apply gira per forza da **owner** (la DDL
+non applicata va iniettata nella stessa transazione), quindi la **RLS non è stata
+esercitata**. Va rilanciata come app dopo il migrate.~~ ✅ **Chiuso il 2026-08-29
+con il migrate**: la baseline `anagrafiche` gira come `zeroerp_app` e ha eseguito
+entrambi i file — verdi.
+
+### ⭐ Un fatto misurato che CORREGGE una riga del §8-bis
+
+Il §8-bis scrive, a proposito del mirror di `stati_doc_fiscale`, che *«una colonna
+fuori dalla lista del mirror non è governata dal CSV: cambiare quella cella e
+lanciare il migrate non sposta niente, senza errori»*. **È falso su Liquibase
+5.0.3**, e si è visto generando l'SQL invece di ragionarci sopra:
+
+```text
+INSERT INTO config.stati_doc_fiscale (id, codice, descrizione, attivo, ordine, meta,
+  codice_interno, applica_lotto, applica_fattura, chiude_lotto, fase, is_abortito,
+  congela_fiscale) VALUES (…)
+```
+
+Il mirror storico `20250912-01` ne dichiara **dieci**, e ne emette **tredici**: il
+blocco `columns:` configura i **tipi**, non restringe quali colonne si caricano —
+Liquibase prende **tutto l'header del CSV**. Stessa prova su `config.iva`, il cui
+mirror dichiara perfino una colonna **cancellata** nel 2025 (`assoggettamento_iva`)
+e la ignora senza rumore.
+
+⭐ **Conseguenze, e sono due:**
+
+1. la promessa di `D15` — *«cambiare la soglia è una cella di CSV»* — **era già
+   vera**. `20260829-05` non ha fatto danni ed è più esplicito di prima, ma la
+   ragione con cui è stato scritto non regge: va letto come una **pulizia**, non
+   come una riparazione;
+2. per questo `I7` **non ri-ancora** il mirror di `config.iva` prima di
+   appenderci `NI35`: non serve. ⚠️ Verificato comunque che il file non sia una
+   **mina** — CSV e tabella viva coincidono su tutte e 14 le righe, l'upsert
+   completo passa in transazione annullata, e la riga nuova supera entrambi i
+   `CHECK` di `config.iva`.
+
+⭐ *È il caso peggiore descritto da `AGENTS.md` al contrario: una conclusione
+giusta appoggiata a un meccanismo che non esiste. Il rimedio non era rifare il
+lavoro, era generare l'SQL e guardarlo.*
+
+### 📌 Residui dichiarati di `I7`
+
+* ⚠️ **tre righe di `fk_index_policy` sono un «no» RIMANDATO, non definitivo**:
+  gli indici sulle colonne di ambito (`articolo_id`, `gruppo_voce_id`,
+  `tipo_voce_id`). Oggi il risolutore entra dal **titolo** e poi guarda le sue
+  righe; se la query vera di `I2` entrerà dall'**articolo**, si accende una cella
+  di CSV. Accenderla adesso sarebbe indicizzare su una previsione;
+* 📌 la **lista dei titoli sfondati** (punto 4 qui sopra) non esiste;
+* ⚠️ l'**applicazione** del titolo su una riga di documento è di `I2`: qui si
+  prova che l'ambito è registrabile e coerente, non che qualcuno lo legga;
+* 📌 i tre tipi diversi da `INTENTO` non hanno ancora un `config.iva` da
+  applicare, e **non se ne conia nessuno al buio**: si sceglie fra i codici a
+  catalogo quando si registrerà il primo titolo di quella specie.
 
 ---
 
@@ -1742,4 +1945,6 @@ nessuna parte.
 | 2026-08-29 (`I8`/`I0`) | Scritta la metà **additiva** di entrambe: i tre codici sul **contratto**, `split_payment`/`cliente_pa` sul **soggetto** con travaso `bool_or` (vince `'S'`) e `CHECK ('S','N')`. ⭐ **Il §`D9` sbagliava sul lato fattura**: `fatture_righe` porta una sorgente **per riga** fra 15 tipi, quindi una fattura **può mescolare più contratti** — la sede è la **riga**, non la testata, e la colonna si aggiunge con `I4` insieme a chi la riempie, per non creare l'ennesimo campo scritto e mai letto. ⛔ Le due metà che **tolgono** sono gated sul BE, con la richiesta puntuale nel §8-bis |
 | 2026-08-29 (`I0-B`/`I8-B`) | ✅ Su autorizzazione esplicita di Tid, le sei colonne **spariscono** da `anagrafiche.clienti` in tre passi ordinati (chi scrive → chi legge → il DROP). ⛔ **Quattro dipendenze censite prima di toccare**, e la peggiore non si vedeva: `trg_iva_a10_clienti_block_deact_upd` su `config.iva` nomina la colonna come **stringa**, quindi PostgreSQL non ha nessuna dipendenza da invalidare — sarebbe sopravvissuto al DROP per fallire a **runtime**, su un'altra tabella, alla prima disattivazione di un codice IVA. ⭐ E una quinta cosa che avrebbe ucciso il migrate successivo: la riga di `dbops.fk_index_policy`, che avrebbe fatto indicizzare una colonna inesistente al prossimo `90_end`. ⭐ Due pgTAP adeguati, e il secondo non è un rattoppo: la prova di **atomicità** di `fn_update_cliente` era costruita sulle chiavi rimosse — la proprietà resta, cambia il veicolo, e ne è uscita **più precisa** (SQLSTATE `23503` invece di «un errore qualsiasi») |
 | 2026-08-29 (chiusura del disegno) | ✅ **`D1` DECISA: l'IVA di riga non è modificabile a mano**, in CREATE e in EDIT. L'argomento contro era caduto con `D10` — i titoli si registrano, non si digitano — e non restava nessun caso per-operazione fuori dal risolutore. ⚠️ Verificato lo stato reale prima di deciderla, ed era **mezzo bloccata**: campo grigio in EDIT nei tre form, libero in CREATE, e **API aperta in tutti e tre i casi** (`iva_id` nelle chiavi di update di `ddt_service`, `ordini_service`, `preventivi_service`). Non proteggeva e impediva lo stesso. `I6` diventa concreta e a **due metà** (BE + FE), e resta **per ultima**. ⭐ Il §5 diventa un **processo in quattro fasi**. **Nessuna decisione resta aperta: il brief è completo lato disegno, e niente è ancora applicato** |
+| 2026-08-29 (Fase 2, `I7`) | ✅ **Le sedi dei titoli scritte**, dodici changeSet + due pgTAP, niente applicato (§8-ter). ⭐ Tre decisioni di forma prese con Tid prima di scrivere: l'anti-sovrapposizione è un `EXCLUDE` **vero solo su `ambito = 'TUTTO'`** e un guard sui ristretti — la chiave attraversa una tabella figlia e un vincolo non la può leggere; la **RLS si accende subito**, su tabelle che nascono vuote; il codice della natura N3.5 è **`NI35`**, e da oggi quella natura non è più orfana. 🔴 Il guard dell'ambito sta su **due** trigger: due titoli diventano sovrapposti anche quando cambia il **padre**, e in quei casi la figlia non viene toccata — la regola sta in una funzione pura che entrambi **chiamano**. ⛔ Di `D15-bis` il DB dà **una metà**: il lock c'è, l'**ordine deterministico è del chiamante** e diventa una richiesta al BE per `I4` — un lock non può sapere che esiste una fattura precedente non ancora arrivata. ⭐ E una riga del §8-bis è stata **corretta misurando invece di ragionare**: «una colonna fuori dalla lista del mirror non è governata dal CSV» è **falsa** su Liquibase 5.0.3 — il blocco `columns:` configura i tipi, non restringe il caricamento. La promessa di `D15` era già vera, e `20260829-05` va riletto come una pulizia. |
+| 2026-08-29 (Fase 2 applicata) | ✅ **`I7` applicata** (Tid). Baseline `anagrafiche` e `script` verdi, nessuna regressione — e siccome girano come applicazione, il limite della corsa pre-apply (owner, RLS non esercitata) **si chiude da sé**. ⭐ Da qui in poi `I2` non ha più prerequisiti: lo stadio B ha una sorgente da leggere, ed è la Fase 3. |
 | 2026-08-28 (Rev 2, chiusura) | Tid nomina i casi che rendono la famiglia reale — agevolata disabili, società al 10% senza dichiarazione d'intento. ⭐ `soggetti_intento` diventa **`anagrafiche.soggetti_titoli_iva`** (`D10`), con l'**emittente destinatario** in chiave (`D10-bis`) e l'**ambito fino al singolo articolo**. `I7` sale a **prerequisito di `I2`**. Aggiunto il §8, il racconto in linguaggio piano |

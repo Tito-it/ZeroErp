@@ -183,6 +183,7 @@
 - [fn_log_pipeline_fase](manual/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
 - [fn_lookup_registro_id](manual/fn_lookup_registro_id.md) — **Cercare il sezionale di numerazione, e basta.**
 - [fn_numera_fattura_opz_emessa](manual/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
+- [fn_numero_documento_fattura](manual/fn_numero_documento_fattura.md) — **È la sede unica che dice come si scrive il numero di una fattura.**
 - [fn_offerta_eccezione_componenti_init](manual/fn_offerta_eccezione_componenti_init.md)
 - [fn_offerta_eccezione_componenti_preview](manual/fn_offerta_eccezione_componenti_preview.md)
 - [fn_offerta_righe_espanse](manual/fn_offerta_righe_espanse.md)

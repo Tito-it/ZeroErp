@@ -1,0 +1,285 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente, D5 —
+# quarto pezzo: IL REGISTRO DEI MOVIMENTI DI PLAFOND.
+#
+# ── ⭐ PERCHE' UN REGISTRO E NON UNA COLONNA (D5, approvata da Tid) ─────
+#
+#   P3 chiede un residuo MEMORIZZATO, e la ragione e' buona: serve a poterlo
+#   ridurre a mano quando esistono fatturazioni fuori dal sistema. P4 chiede che
+#   la nota di credito RESTITUISCA plafond.
+#
+#   ⛔ Ma un numero memorizzato *e* forzabile a mano diverge in silenzio da cio'
+#   che rappresenta — due sorgenti della stessa verita', e nessuna delle due sa
+#   di essere sbagliata. Su un plafond il costo non e' un numero storto in una
+#   lista: e' il dato che l'Agenzia delle Entrate verifica.
+#
+#   ⭐ La colonna `soggetti_titoli_iva.imponibile_utilizzato` resta — ma e' la
+#   SOMMA di questo registro, non un valore scritto sopra a un altro. Si
+#   guadagnano tre cose che la colonna nuda non da':
+#     * la forzatura ha un MOTIVO, un AUTORE e una DATA;
+#     * il consumo e' ALGEBRICO, senza casi speciali per la nota di credito;
+#     * la riconciliazione col fatturato e' una query, non un'indagine.
+#
+#   ⚠️ Non e' un pattern nuovo da inventare: il progetto lo usa gia' nel ponte
+#   `vendite.resi_righe_riconsegne` e nelle rettifiche di `vw_partite_merce`.
+#
+# ── ℹ️ TRE MOVIMENTI, TRE SEGNI ────────────────────────────────────────
+#
+#     FATTURA       +   la fattura emessa sotto il titolo consuma capienza
+#     NOTA_CREDITO  −   la nota di credito la restituisce (P4)
+#     FORZATURA     ±   l'operatore, con MOTIVO OBBLIGATORIO
+#
+#   Il segno e' nel valore, non in una colonna a parte, e un CHECK lo lega al
+#   tipo: cosi' una nota di credito che aumentasse il consumo non si scrive.
+#
+# ── ⚠️ UNA FORZATURA NON NOMINA NESSUNA FATTURA, ED E' IL SUO SENSO ────
+#
+#   Esiste per registrare cio' che il sistema NON ha fatturato. Un CHECK impone
+#   `fattura_id IS NULL` sulla forzatura e `fattura_id IS NOT NULL` sugli altri
+#   due: senza, «forzatura» diventerebbe la scorciatoia con cui si scrive un
+#   consumo di fattura saltando la primitiva che lo calcola.
+#
+# ── ⭐ LA UNIQUE PARZIALE E' IL PRESIDIO CONTRO IL DOPPIO CONSUMO ───────
+#
+#   `(titolo, tipo, fattura, riga)` con `NULLS NOT DISTINCT`, solo dove c'e' una
+#   fattura: lo stesso documento non consuma due volte lo stesso titolo. E' la
+#   rete sotto al lock di D15-bis — il lock serializza due transizioni a
+#   DEFINITIVA in corsa, questa ferma la ripetizione a distanza di tempo.
+#   ⚠️ Sulle FORZATURE non si applica, ed e' voluto: due forzature identiche
+#   nello stesso giorno possono essere due correzioni distinte.
+#
+# ── ⛔ NIENTE ON DELETE CASCADE VERSO IL TITOLO ────────────────────────
+#
+#   Contrario alla scelta fatta per gli AMBITI (20260829-25), e la differenza e'
+#   di natura: un ambito e' una clausola del titolo, un movimento di plafond e'
+#   un FATTO CONTABILE. Un titolo con movimenti non si cancella — si spegne.
+#
+# ── ⚠️ `data_movimento` E' NOT NULL SENZA DEFAULT ──────────────────────
+#
+#   Nessun `now()`, nessuna `fn_data_operativa()`: la data la porta chi scrive —
+#   la data documento della fattura, o la data che l'operatore dichiara sulla
+#   forzatura. E' lo stesso vincolo di firma di D14 sul risolutore, per la
+#   stessa ragione: il lotto puo' girare il giorno dopo, e un registro fiscale
+#   datato con l'orologio del batch racconta il giorno sbagliato.
+#
+# ── ℹ️ La FK verso `vendite` da uno schema di anagrafiche ──────────────
+#
+#   Non e' un precedente: `anagrafiche.categorie_clienti_listini` punta gia' a
+#   `vendite.listini`. Il movimento senza il suo documento sarebbe una riga di
+#   registro che nomina una fattura che non esiste — su un plafond, la cosa
+#   peggiore che possa capitare a una riconciliazione.
+#
+# Accumulatore che mantiene la somma: 20260829-30.
+# Primitiva di consumo con il lock: 20260829-31.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260829-26-create-soggetti-titoli-iva-movimenti-mctit.yaml
+
+  - changeSet:
+      id: 20260829-26-create-soggetti-titoli-iva-movimenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.soggetti_titoli_iva_movimenti, il registro del consumo di plafond
+        (D5, approvata da Tid). imponibile_utilizzato resta memorizzato come chiede P3, ma
+        e' la somma di questo registro e non un numero scritto sopra a un altro: una colonna
+        memorizzata e forzabile a mano diverge in silenzio da cio' che rappresenta, e su un
+        plafond quel numero e' proprio quello che il fisco verifica. Tre movimenti con tre
+        segni - fattura +, nota di credito -, forzatura +/- con motivo obbligatorio - e una
+        UNIQUE parziale che impedisce allo stesso documento di consumare due volte.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: anagrafiche
+                    tableName: soggetti_titoli_iva_movimenti
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_righe
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: soggetti_titoli_iva_movimenti
+            remarks: >-
+              Registro del consumo di plafond di un titolo IVA (D5). Ogni
+              fattura, ogni nota di credito e ogni forzatura manuale e' una
+              riga; imponibile_utilizzato sul titolo e' la loro somma.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_soggetti_titoli_iva_movimenti, nullable: false }
+
+              - column: { name: titolo_iva_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> anagrafiche.soggetti_titoli_iva.id. Nessun CASCADE: un movimento di plafond e' un fatto contabile, non una clausola del titolo. Un titolo con movimenti si spegne, non si cancella." }
+              - column: { name: tipo_movimento, type: VARCHAR(24), constraints: { nullable: false }, remarks: "FATTURA | NOTA_CREDITO | FORZATURA. Il segno vive nel valore e un CHECK lo lega al tipo: una nota di credito che aumentasse il consumo non si scrive." }
+              - column: { name: imponibile, type: "numeric(15,2)", constraints: { nullable: false }, remarks: "L'imponibile mosso, CON SEGNO: positivo consuma capienza, negativo la restituisce. Si registra l'imponibile applicato e non il residuo (P4): il primo si confronta col fatturato, il secondo con niente." }
+              - column: { name: data_movimento, type: date, constraints: { nullable: false }, remarks: "La data a cui il movimento appartiene: la data documento della fattura, o la data dichiarata sulla forzatura. NOT NULL SENZA DEFAULT, apposta - nessun now(): il lotto puo' girare il giorno dopo, e un registro fiscale datato con l'orologio del batch racconta il giorno sbagliato (stesso vincolo di firma di D14)." }
+
+              - column: { name: fattura_id, type: bigint, remarks: "FK -> vendite.fatture.id: il documento che ha mosso il plafond. Obbligatorio su FATTURA e NOTA_CREDITO, vietato sulla FORZATURA - che esiste proprio per registrare cio' che il sistema NON ha fatturato." }
+              - column: { name: fattura_riga_id, type: bigint, remarks: "FK -> vendite.fatture_righe.id: la riga, quando il movimento nasce da una riga precisa. Facoltativa, ma richiede la fattura: la spezzatura di P2 avviene per riga, e senza questo la riconciliazione si fermerebbe al documento." }
+
+              - column: { name: motivo, type: VARCHAR(255), remarks: "OBBLIGATORIO sulla FORZATURA (CHECK): una forzatura che non dice perche' e' esattamente il numero sovrascritto che D5 ha eliminato. Facoltativo sugli altri due, dove il perche' e' il documento." }
+
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva_movimenti
+            baseColumnNames: titolo_iva_id
+            constraintName: fk_soggetti_titoli_iva_movimenti_titolo
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_titoli_iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva_movimenti
+            baseColumnNames: fattura_id
+            constraintName: fk_soggetti_titoli_iva_movimenti_fattura
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva_movimenti
+            baseColumnNames: fattura_riga_id
+            constraintName: fk_soggetti_titoli_iva_movimenti_fattura_riga
+            referencedTableSchemaName: vendite
+            referencedTableName: fatture_righe
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  ADD CONSTRAINT chk_stiva_movimenti_tipo
+                      CHECK (tipo_movimento IN ('FATTURA', 'NOTA_CREDITO', 'FORZATURA')),
+
+                  -- Il segno segue il tipo. Zero non e' un movimento: e' una
+                  -- riga che non muove niente e sporca il registro.
+                  ADD CONSTRAINT chk_stiva_movimenti_segno
+                      CHECK (
+                          (tipo_movimento = 'FATTURA'      AND imponibile > 0)
+                       OR (tipo_movimento = 'NOTA_CREDITO' AND imponibile < 0)
+                       OR (tipo_movimento = 'FORZATURA'    AND imponibile <> 0)
+                      ),
+
+                  -- ⚠️ Una forzatura NON nomina una fattura, ed e' il suo senso:
+                  --    esiste per registrare cio' che il sistema non ha
+                  --    fatturato. Senza questo vincolo diventerebbe la
+                  --    scorciatoia con cui si scrive un consumo di fattura
+                  --    saltando la primitiva che lo calcola.
+                  ADD CONSTRAINT chk_stiva_movimenti_documento
+                      CHECK (
+                          (tipo_movimento = 'FORZATURA' AND fattura_id IS NULL)
+                       OR (tipo_movimento <> 'FORZATURA' AND fattura_id IS NOT NULL)
+                      ),
+
+                  -- Una riga senza il suo documento non si sa a cosa appartiene.
+                  ADD CONSTRAINT chk_stiva_movimenti_riga_con_fattura
+                      CHECK (fattura_riga_id IS NULL OR fattura_id IS NOT NULL),
+
+                  -- ⭐ Il motivo e' cio' che distingue una forzatura tracciata da
+                  --    un numero sovrascritto. `btrim` perche' uno spazio non e'
+                  --    una spiegazione.
+                  ADD CONSTRAINT chk_stiva_movimenti_motivo_forzatura
+                      CHECK (
+                          tipo_movimento <> 'FORZATURA'
+                       OR (motivo IS NOT NULL AND btrim(motivo) <> '')
+                      );
+
+              -- ── ⭐ La rete contro il doppio consumo dello stesso documento.
+              --    NULLS NOT DISTINCT: senza, due movimenti con fattura_riga_id
+              --    a NULL sulla stessa fattura non collidono.
+              -- ── ⚠️ Parziale sulle sole righe con fattura: due FORZATURE
+              --    identiche nello stesso giorno possono essere due correzioni
+              --    distinte, e bloccarle sarebbe un vincolo che nessuno ha
+              --    chiesto.
+              CREATE UNIQUE INDEX uq_stiva_movimenti_documento
+                  ON anagrafiche.soggetti_titoli_iva_movimenti
+                     (titolo_iva_id, tipo_movimento, fattura_id, fattura_riga_id)
+                  NULLS NOT DISTINCT
+                  WHERE (fattura_id IS NOT NULL);
+
+              -- L'accesso naturale del registro: tutti i movimenti di un titolo.
+              -- Copre anche la FK su titolo_iva_id, per prefisso.
+              CREATE INDEX ix_stiva_movimenti_titolo
+                  ON anagrafiche.soggetti_titoli_iva_movimenti (titolo_iva_id, data_movimento);
+
+              COMMENT ON TABLE anagrafiche.soggetti_titoli_iva_movimenti IS
+                'Il REGISTRO del consumo di plafond di un titolo IVA (D5 di '
+                'brief-db-be-iva-risolutore-e-regime-cliente, approvata da Tid il '
+                '2026-08-27). Ogni fattura, ogni nota di credito e ogni forzatura '
+                'manuale e'' una riga; anagrafiche.soggetti_titoli_iva.imponibile_utilizzato '
+                'e'' la loro somma, mantenuta dal trigger dell''accumulatore. '
+                '⭐ Perche'' un registro e non una colonna: P3 chiede un valore '
+                'MEMORIZZATO — serve a poterlo ridurre a mano quando esistono '
+                'fatturazioni fuori dal sistema — ma un numero memorizzato E forzabile '
+                'diverge in silenzio da cio'' che rappresenta, e su un plafond quel '
+                'numero e'' precisamente quello che l''Agenzia delle Entrate verifica. '
+                'Col registro la forzatura ha un motivo, un autore e una data; il '
+                'consumo e'' algebrico senza casi speciali per la nota di credito (P4); '
+                'e la riconciliazione col fatturato e'' una query, non un''indagine. '
+                'Non e'' un pattern nuovo: vendite.resi_righe_riconsegne e le rettifiche '
+                'di vw_partite_merce fanno gia'' cosi''. '
+                '⚠️ Una FORZATURA non nomina nessuna fattura, ed e'' il suo senso: '
+                'registra cio'' che il sistema NON ha fatturato. Senza il CHECK '
+                'diventerebbe la scorciatoia per scrivere un consumo di fattura saltando '
+                'anagrafiche.fn_consuma_plafond_titolo_iva, che e'' l''unica a prendere '
+                'il lock e a calcolare la spezzatura di P2. '
+                '⭐ La UNIQUE parziale e'' la rete sotto al lock di D15-bis: il lock '
+                'serializza due transizioni a DEFINITIVA in corsa, questa ferma la '
+                'ripetizione a distanza di tempo. Sulle forzature non si applica, perche'' '
+                'due correzioni identiche nello stesso giorno possono essere due fatti '
+                'distinti. '
+                '⚠️ data_movimento e'' NOT NULL SENZA default: nessun now(), la data la '
+                'porta chi scrive. Stesso vincolo di firma di D14 sul risolutore, e per '
+                'la stessa ragione — il lotto puo'' girare il giorno dopo. '
+                '⛔ Nessun ON DELETE CASCADE verso il titolo, al contrario degli AMBITI: '
+                'un ambito e'' una clausola, un movimento e'' un fatto contabile. '
+                'rev 2026-08-29.';
+
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva_movimenti.imponibile IS
+                  'Imponibile mosso, CON SEGNO: + consuma capienza, − la restituisce. Il CHECK lega segno e tipo.';
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva_movimenti.motivo IS
+                  'Obbligatorio sulla FORZATURA: e'' cio'' che distingue una correzione tracciata da un numero sovrascritto.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS anagrafiche.soggetti_titoli_iva_movimenti;

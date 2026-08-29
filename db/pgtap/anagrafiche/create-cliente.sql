@@ -270,7 +270,7 @@ WITH stato AS (
         utility_id
         -- ⚠️ rev 2026-08-29: via `iva_id` (e la CTE che la risolveva) e via la
         --   nota su `cliente_pa`: quelle colonne non esistono piu' su
-        --   anagrafiche.clienti (changeSet 20260829-17). L'aliquota la decide la
+        --   anagrafiche.clienti (changeSet 20260829-22). L'aliquota la decide la
         --   merce; i due flag di scissione sono saliti su anagrafiche.soggetti.
         -- (rev 2026-07-31: tipo_gg_scadenza_ft e nr_giorni_scadenza, che qui
         --  erano citate, non esistono piu' — D-I, piano satelliti 3a.5.)

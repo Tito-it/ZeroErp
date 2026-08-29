@@ -129,7 +129,7 @@ SELECT id INTO TEMP TABLE tmp_billing_account FROM ins;
 
 -- 5) Cliente (stato PR)
 -- ⚠️ rev 2026-08-29: via `iva_id` dalla fixture — la colonna non esiste piu' su
---   anagrafiche.clienti (changeSet 20260829-17).
+--   anagrafiche.clienti (changeSet 20260829-22).
 WITH ins AS (
     INSERT INTO anagrafiche.clienti (
         soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, billing_account_id
@@ -206,7 +206,7 @@ SELECT is(
 -- ATOMICITA' (il cuore del fix): una FK inesistente fa fallire l'UPDATE
 -- clienti; la categoria BA (passata C1) NON deve restare scritta.
 -- ⚠️ rev 2026-08-29: il veicolo era `iva_id`, colonna che non esiste piu'
---   (changeSet 20260829-17). La PROPRIETA' provata e' la stessa — o tutto o
+--   (changeSet 20260829-22). La PROPRIETA' provata e' la stessa — o tutto o
 --   niente — e si prova con un'altra chiave scrivibile che ha una FK:
 --   `modalita_pagamento_id`. Cambia il veicolo, non il test.
 -- ⚠️ SQLSTATE esplicito 23503: qui la FK e' l'unica strada per fallire, quindi

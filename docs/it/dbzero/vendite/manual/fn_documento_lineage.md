@@ -82,7 +82,8 @@ ORDER BY ordine;
 
 ### ⭐ Le due colonne nuove, e una conseguenza a video (rev 2026-08-21)
 
-Il traversal espone anche `from_natura_doc_codice` / `to_natura_doc_codice`: sono
+Il traversal espone anche `from_natura_doc_codice_interno` /
+`to_natura_doc_codice_interno`: sono
 ciò che, nel pannello «Passaggi», distingue la fattura dalla nota di credito che
 la rettifica — due nodi che senza la natura hanno stesso tipo, stesso stato e
 `codice` NULL finché non sono numerati.
