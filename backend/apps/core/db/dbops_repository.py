@@ -39,6 +39,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.esiti_flussi_pratiche",
         "config.forme_giuridiche",
         "config.iva",
+        "config.tipi_titolo_iva",
         "config.iva_assoggettamenti",
         "config.iva_natura",
         "config.lingue",
@@ -157,6 +158,19 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         # percorso operatore (pratiche_service).
         "extra_col": "selezionabile_operatore",
         "extra_expr": "t.is_verdetto",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+    },
+    "config.tipi_titolo_iva": {
+        # ha_plafond: distingue le due specie della famiglia dei titoli (D10) —
+        # solo l'INTENTO ha un contatore che si consuma. Il FE la usa per
+        # mostrare il campo plafond SOLO dove un tetto esiste: proporlo altrove
+        # produrrebbe un numero che nessuno consuma, cioe' un campo che promette
+        # una cosa che non succede.
+        # ⛔ Senza questa riga il lookup generico proietta solo
+        #   id/codice/descrizione e il drawer non saprebbe MAI che il tipo ha un
+        #   tetto: il campo non comparirebbe mai, in silenzio.
+        "extra_col": "ha_plafond",
         "has_codice_interno": True,
         "has_obsoleto": False,
     },

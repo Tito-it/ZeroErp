@@ -534,6 +534,52 @@ positività), quindi il messaggio dice *«righe con quantità»*. Un messaggio c
 promette un perimetro più largo di quello vero manda l'operatore a cercare una
 riga che il guard non ha guardato.
 
+### ✅ `S5` — i nove codici errore senza policy (2026-08-29, dopo la Fase 2 DB)
+
+> ⛔ **Voce non prevista da questo piano**, e due dei nove erano **un mio buco
+> della Fase 1**. Trovata rispondendo alla domanda «cosa si è sbloccato con la
+> Fase 2».
+
+`api.md` §«Il cancello» è netto: *ogni codice che il DB può nominare deve avere
+una policy*, e dal 2026-08-07 il registro del debito è a zero — quindi **un
+codice nuovo senza policy è rosso il giorno stesso**. Lanciato il guardrail:
+**rosso, nove codici**.
+
+| Origine | Codici |
+| --- | --- |
+| **Fase 2 (`I7`)**, seminati dal team DB | `E_TITOLO_IVA_PLAFOND_MANCANTE`, `..._PLAFOND_NON_AMMESSO`, `..._AMBITO_NON_AMMESSO`, `..._AMBITO_SOVRAPPOSTO`, `..._UTILIZZATO_NEGATIVO`, `..._CONSUMO_NON_INVOCABILE`, `..._CONSUMO_FUORI_VALIDITA` |
+| ⛔ **Fase 1 (`I9`)** — **mancati da me** | `E_ORDINE_RIGA_IVA_MANCANTE`, `E_PREV_RIGA_IVA_MANCANTE` |
+
+⛔ **Perché li ho mancati, ed è la lezione**: della coda FE di `I9` avevo visto
+**solo** il debito che il team DB aveva *scritto* nel brief — le due `reason_key`
+i18n (`S4`). Un codice errore nuovo ha **due** code lato BE, non una:
+`feedback_ripiego_ogni_codice_vivo` lo dice per esteso — *policy generata **E**
+ripiego senza `%s`*. Ho seguito la richiesta invece della regola, ed è lo stesso
+errore di metodo che il §0 rimprovera alla «Richiesta al BACKEND» del brief
+madre: **ci si muove sul percorso, non sull'elenco che qualcun altro ha scritto**.
+
+**Cosa è stato fatto:**
+
+* `error_policies_generated.py` **rigenerato** con `manage.py genera_error_policies`
+  (803 → 812 voci). ⚠️ Il file è generato e non si tocca a mano: la classe di un
+  codice si cambia **a catalogo**. Le classi sono quelle già decise dal team DB
+  nel CSV — `DATO_ERRATO` ×5, `TECNICO` ×2, `CONFLITTO_STATO` ×2;
+* ⭐ **il diff è stato guardato prima di fidarsi**, per la regola «mai rigenerare
+  col DB avanti rispetto a git»: conteneva **esattamente** i nove attesi e la
+  riga di conteggio nell'header, niente altro. Se avesse portato un decimo
+  codice, sarebbe stato un codice applicato al DB e non ancora in git — e il
+  rigenerato lo avrebbe cementato senza che nessuno lo avesse letto;
+* i **nove ripieghi** in `error_messages_fallback.py`, **senza segnaposto**: i
+  messaggi a catalogo hanno tutti dei `%s`, e il ripiego serve proprio quando
+  quegli argomenti non arrivano. ⭐ Per i due di `I9` la frase è **la stessa** del
+  gemello `E_DDT_RIGA_IVA_MANCANTE`, adattata al documento: è la stessa regola su
+  tre sedi, e tre frasi diverse la farebbero sembrare tre regole.
+
+**Verifica:** guardrail `test_error_codes_db_policy_guardrail` **verde**,
+`genera_error_policies --check` dice *«allineato al catalogo»*, suite backend
+**4182 test OK** con `ZEROERP_TEST_DB_E2E=1` (24 in più della corsa senza E2E:
+i test che parlano col DB prima non giravano).
+
 ### 🟡 `S3-b` — la CREATE, gated sul DB
 
 ⛔ **Non fatta, ed è una scelta.** `vendite.fn_create_contratto` ha una whitelist
@@ -675,4 +721,5 @@ normalizzazione, valore ignoto → `E_ANAG_VALIDAZIONE`); i tre codici in `ATTIV
 stringa vuota → NULL, lunghezza eccessiva → errore parlante, `CESSATO` rifiuta,
 e il segnalibro di `S3-b`.
 | 2026-08-29 (revisione critica) | Su richiesta di Tid, rilettura del codice appena scritto. **Sei rilievi, tutti corretti** (§8). 🔴 Il primo è una **regressione dura**: `ContrattoDrawer.buildPayload()` è spreadato dentro il payload di CREATE, quindi le tre chiavi nuove arrivavano a un endpoint che `validate_allowed_keys` fa **rifiutare per intero** — la creazione contratto sarebbe fallita sempre. ⛔ **Nessuna verifica poteva vederlo**: vive nel giunto fra il payload builder del FE e la whitelist del BE, che nessuno dei due lati collauda da solo. Corretto, e reso visibile con un guardrail BE nuovo che dichiara l'invariante *«ogni chiave di UPDATE dev'essere accettata anche in CREATE»* e la sua unica eccezione, con scadenza a `S3-b`. 🟠 Altri due difetti silenziosi: un validatore che **mutava `request.data`**, e un flag assente che diventava `'N'` **spegnendo** lo split payment — la direzione sbagliata dello stesso errore che il travaso a DB aveva risolto con `bool_or`. 🟡 Poi de-duplicazione dei tre nomi, hardcode FE estratti, un'asserzione morta. ✅ Verificate e cadute due ipotesi: le guard DB su contratto ATTIVO sono `UPDATE OF`-scoped su altre colonne, e il dettaglio soggetto passa dalla proiezione estesa. Suite backend 4158 OK, i18n verde, build FE OK |
+| 2026-08-29 (dopo la Fase 2 DB) | Il team DB applica la **Fase 2** (`I7`: `soggetti_titoli_iva`, ambiti, movimenti, RLS, guard, primitiva di consumo). Cercando cosa si fosse sbloccato lato BE/FE è saltato fuori che il **cancello dei codici errore era rosso**: nove codici che il DB può nominare senza policy — sette di `I7` e ⛔ **due di `I9` che avevo mancato io** in Fase 1, avendo letto il debito *scritto* nel brief (le due `reason_key`) invece della **regola** (`feedback_ripiego_ogni_codice_vivo`: policy **e** ripiego). Chiusa come slice `S5`. ⭐ `fn_create_contratto` **non** è stata estesa: `S3-b` resta gated. |
 
