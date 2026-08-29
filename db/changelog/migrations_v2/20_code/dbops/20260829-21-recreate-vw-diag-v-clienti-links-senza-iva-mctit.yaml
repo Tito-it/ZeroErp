@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I0-B (Fase 1) del brief brief-db-be-iva-risolutore-e-regime-cliente — SECONDO
+# dei tre passi. La vista diagnostica smette di LEGGERE anagrafiche.clienti.iva_id
+# prima che la colonna sparisca (20260829-17).
+#
+# ⚠️ DROP + CREATE e non CREATE OR REPLACE, ed e' obbligato: le tre colonne che
+#   escono (iva_id, iva_codice, iva_descrizione) stanno IN MEZZO alla proiezione,
+#   e CREATE OR REPLACE VIEW sa solo AGGIUNGERE colonne in coda — non toglierle
+#   ne' riordinarle. Fallirebbe con «cannot drop columns from view».
+#
+# ⛔ NIENTE CASCADE. Verificato che NESSUNO dipende da questa vista: nessun'altra
+#   vista nel database (pg_depend), nessun riferimento in backend/ o frontend/.
+#   Un CASCADE messo «per sicurezza» qui avrebbe potuto portarsi via oggetti che
+#   nessuno stava guardando.
+#
+# ⚠️ `security_invoker=on` E' RIPETUTO NELLA CREATE, e non e' decorazione: la
+#   vista ce l'ha oggi, e ricrearla senza la ripeterebbe SPEGNEREBBE il controllo
+#   RLS in silenzio — la vista tornerebbe a leggere con i diritti del definitore.
+#   E' una diagnostica su dati di clienti: girerebbe fuori dal perimetro
+#   dell'operatore senza che nessuno se ne accorga.
+#
+# ℹ️ La vista e' diagnostica (schema dbops) e serve a incrociare cliente, billing
+#   account, istanza e ruolo per trovare i legami rotti. Il blocco IVA li' dentro
+#   non c'entrava con quella domanda: esce e basta, non viene sostituito.
+#
+# Base: definizione viva da pg_get_viewdef, con le tre colonne e il LEFT JOIN su
+#   config.iva rimossi meccanicamente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260829-21-recreate-vw-diag-v-clienti-links-senza-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260829-21-recreate-vw-diag-v-clienti-links-senza-iva
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.vw_diag_v_clienti_links ricreata senza il blocco IVA: era l'unica
+        vista che leggeva anagrafiche.clienti.iva_id, che sparisce con
+        20260829-17. DROP+CREATE perché le colonne stanno in mezzo alla
+        proiezione; security_invoker=on ripetuto perché altrimenti si azzera.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: dbops
+            viewName: vw_diag_v_clienti_links
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_diag_v_clienti_links;
+
+              CREATE VIEW dbops.vw_diag_v_clienti_links
+              WITH (security_invoker = on) AS
+              SELECT c.id AS cliente_id,
+                  c.soggetto_ruolo_id AS cliente_soggetto_ruolo_id,
+                  c.istanza_utility_id AS cliente_istanza_utility_id,
+                  c.utility_id AS cliente_utility_id,
+                  c.billing_account_id AS cliente_billing_account_id,
+                  ba.id AS ba_id,
+                  ba.istanza_utility_id AS ba_istanza_utility_id,
+                  ba.soggetto_ruolo_id AS ba_soggetto_ruolo_id,
+                  ba.utility_id AS ba_utility_id,
+                  s.id AS soggetto_id,
+                  s.codice AS soggetto_codice,
+                  s.ragione_sociale,
+                  s.cognome,
+                  s.nome,
+                  iu.id AS istanza_id,
+                  iu.fittizia AS istanza_fittizia,
+                  u.id AS utility_id,
+                  u.codice_interno AS utility_codice_interno,
+                  u.descrizione AS utility_descrizione,
+                  tr.id AS tipo_ruolo_id,
+                  tr.codice_interno AS tipo_ruolo_codice_interno,
+                  tr.descrizione AS tipo_ruolo_descrizione,
+                  ba.istanza_utility_id = c.istanza_utility_id AS ba_match_istanza,
+                  ba.soggetto_ruolo_id = c.soggetto_ruolo_id AS ba_match_soggetto_ruolo,
+                  ba.utility_id = c.utility_id AS ba_match_utility
+                 FROM anagrafiche.clienti c
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = c.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = c.istanza_utility_id
+                   LEFT JOIN config.utilities u ON u.id = c.utility_id
+                   LEFT JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id;
+
+              COMMENT ON VIEW dbops.vw_diag_v_clienti_links IS
+                  'Diagnostica dei legami di un cliente: billing account, istanza utility, '
+                  'soggetto e tipo ruolo, con i tre flag ba_match_* che dicono dove il legame '
+                  'si rompe. security_invoker=on: legge nel perimetro di chi interroga. '
+                  '⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I0-B): fuori '
+                  'il blocco IVA (iva_id/iva_codice/iva_descrizione e il LEFT JOIN su config.iva). '
+                  'Era l''unica vista del database che leggeva anagrafiche.clienti.iva_id, colonna '
+                  'rimossa da 20260829-17 perché non aveva più un lavoro: l''aliquota la decide la '
+                  'merce, e il regime del soggetto passa da un titolo documentato. Il blocco non '
+                  'viene sostituito perché non rispondeva alla domanda di questa vista.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_diag_v_clienti_links;
+
+              CREATE VIEW dbops.vw_diag_v_clienti_links
+              WITH (security_invoker = on) AS
+              SELECT c.id AS cliente_id,
+                  c.soggetto_ruolo_id AS cliente_soggetto_ruolo_id,
+                  c.istanza_utility_id AS cliente_istanza_utility_id,
+                  c.utility_id AS cliente_utility_id,
+                  c.billing_account_id AS cliente_billing_account_id,
+                  ba.id AS ba_id,
+                  ba.istanza_utility_id AS ba_istanza_utility_id,
+                  ba.soggetto_ruolo_id AS ba_soggetto_ruolo_id,
+                  ba.utility_id AS ba_utility_id,
+                  s.id AS soggetto_id,
+                  s.codice AS soggetto_codice,
+                  s.ragione_sociale,
+                  s.cognome,
+                  s.nome,
+                  iu.id AS istanza_id,
+                  iu.fittizia AS istanza_fittizia,
+                  u.id AS utility_id,
+                  u.codice_interno AS utility_codice_interno,
+                  u.descrizione AS utility_descrizione,
+                  tr.id AS tipo_ruolo_id,
+                  tr.codice_interno AS tipo_ruolo_codice_interno,
+                  tr.descrizione AS tipo_ruolo_descrizione,
+                  iv.id AS iva_id,
+                  iv.codice AS iva_codice,
+                  iv.descrizione AS iva_descrizione,
+                  ba.istanza_utility_id = c.istanza_utility_id AS ba_match_istanza,
+                  ba.soggetto_ruolo_id = c.soggetto_ruolo_id AS ba_match_soggetto_ruolo,
+                  ba.utility_id = c.utility_id AS ba_match_utility
+                 FROM anagrafiche.clienti c
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = c.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = c.istanza_utility_id
+                   LEFT JOIN config.utilities u ON u.id = c.utility_id
+                   LEFT JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                   LEFT JOIN config.iva iv ON iv.id = c.iva_id;

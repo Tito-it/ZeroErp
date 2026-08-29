@@ -17,6 +17,7 @@ DECLARE
     v_inserted_rows INTEGER := 0;
     v_stato_id      vendite.fatture.stato_doc_fiscale_id%TYPE;
     v_codice_interno config.stati_doc_fiscale.codice_interno%TYPE;
+    v_congela_fiscale config.stati_doc_fiscale.congela_fiscale%TYPE;
     v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
 BEGIN
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
@@ -45,16 +46,32 @@ BEGIN
             NULL::uuid, concat('stato_doc_fiscale_id della fattura ', p_fattura_id));
     END IF;
 
-    SELECT s.codice_interno INTO v_codice_interno FROM config.stati_doc_fiscale s WHERE s.id = v_stato_id;
+    SELECT s.codice_interno, s.congela_fiscale
+      INTO v_codice_interno, v_congela_fiscale
+      FROM config.stati_doc_fiscale s
+     WHERE s.id = v_stato_id;
 
+    -- ⭐ LA SOGLIA E' UN DATO, non una lista qui dentro
+    --    (rev 2026-08-29, D15 del brief IVA). Prima era
+    --    `v_codice_interno NOT IN ('DRAFT','EMESSA')`: stesso
+    --    perimetro, ma cablato — e il risolutore IVA avrebbe avuto
+    --    bisogno della STESSA soglia, quindi l'avrebbe ricopiata.
+    --    Due finestre di congelamento sullo stesso documento sono
+    --    due verita' che divergono in silenzio.
+    --
     -- ⚠️ `IS NULL OR`: senza, uno stato non risolvibile renderebbe
-    --    l'espressione NULL — e `NULL NOT IN (...)` NON e' vero,
-    --    quindi l'IF non scatterebbe e il ricalcolo procederebbe su
-    --    un documento di stato ignoto. Oggi il ramo e' IRRAGGIUNGIBILE
-    --    (la FK fk_fatture_stato_doc_fiscale ammette solo id validi, e
-    --    il NULL e' respinto sopra): si tiene perche' costa zero e non
+    --    l'espressione NULL e l'IF non scatterebbe, quindi il
+    --    ricalcolo procederebbe su un documento di stato ignoto.
+    --    Oggi il ramo e' IRRAGGIUNGIBILE (la FK
+    --    fk_fatture_stato_doc_fiscale ammette solo id validi, e il
+    --    NULL e' respinto sopra): si tiene perche' costa zero e non
     --    fa dipendere questo guard da un vincolo di un'altra tabella.
-    IF v_codice_interno IS NULL OR v_codice_interno NOT IN ('DRAFT', 'EMESSA') THEN
+    --
+    -- ⚠️ Il COALESCE e' la difesa gemella sulla colonna nuova, che
+    --    e' NOT NULL: se un NULL arrivasse comunque, la risposta
+    --    giusta e' «congelato». Un dubbio su uno snapshot fiscale
+    --    si risolve NON ricalcolando.
+    IF v_codice_interno IS NULL OR COALESCE(v_congela_fiscale, true) THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
             jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
                                'stato_doc_fiscale_id', v_stato_id, 'fattura_id', p_fattura_id),
@@ -88,7 +105,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
-IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per aliquota/natura/esigibilita/split e applicando l''override di aliquota per stato dell''emittente. Ammesso SOLO in DRAFT o EMESSA: oltre quella soglia il documento e'' uno snapshot fiscale. rev 2026-08-02: due difetti chiusi sul controllo dello stato, opposti fra loro e con la stessa radice — usare un valore nullabile come prova di esistenza. (1) L''esistenza si misura con NOT FOUND: stato_doc_fiscale_id e'' NULLABLE, quindi l''IS NULL precedente dichiarava «fattura non trovata» anche per una fattura che esiste ma non ha stato, mandando a cercare un documento presente; ora i due casi hanno messaggi distinti (E_FATTURA_NON_TROVATA vs E_VALORE_MANCANTE). (2) Il guard di stato era fail-open nella FORMA: con codice_interno NULL l''espressione NOT IN vale NULL e l''IF non sarebbe scattato; il ramo e'' pero'' IRRAGGIUNGIBILE oggi (la FK fk_fatture_stato_doc_fiscale ammette solo id validi e il NULL e'' respinto dal punto 1), quindi l''IS NULL OR aggiunto e'' difesa in profondita'' e non la correzione di un bug vivo — si tiene perche'' costa zero e svincola il guard da un constraint di un''altra tabella. Trovati adeguando le fixture al guard D-K della Fase 4b.';
+IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per aliquota/natura/esigibilita/split e applicando l''override di aliquota per stato dell''emittente. ⭐ rev 2026-08-29 (D15 del brief brief-db-be-iva-risolutore-e-regime-cliente): la soglia di congelamento NON e'' piu'' una lista di codici in questo corpo — si legge da config.stati_doc_fiscale.congela_fiscale. Il perimetro non cambia (il seed mette congela_fiscale = false esattamente su DRAFT ed EMESSA), cambia la SEDE: il risolutore IVA di I2 ha bisogno della stessa identica soglia e, lasciandola cablata qui, l''avrebbe ricopiata — due finestre di congelamento sullo stesso documento sono due verita'' che divergono in silenzio. Cambiare la soglia e'' ora una cella di CSV. ⚠️ Il COALESCE(v_congela_fiscale, true) e'' fail-closed sulla colonna nuova: e'' NOT NULL, ma se un NULL arrivasse la risposta giusta e'' «congelato» — un dubbio su uno snapshot fiscale si risolve NON ricalcolando. 📌 Strascico noto e non chiuso qui: il codice sollevato resta E_PARAMETRO_INVALIDO, mentre «documento congelato» e'' un conflitto di stato e meriterebbe un codice CONFLITTO_STATO come i tre gemelli del gate DDT. rev 2026-08-02: due difetti chiusi sul controllo dello stato, opposti fra loro e con la stessa radice — usare un valore nullabile come prova di esistenza. (1) L''esistenza si misura con NOT FOUND: stato_doc_fiscale_id e'' NULLABLE, quindi l''IS NULL precedente dichiarava «fattura non trovata» anche per una fattura che esiste ma non ha stato; ora i due casi hanno messaggi distinti (E_FATTURA_NON_TROVATA vs E_VALORE_MANCANTE). (2) Il guard di stato era fail-open nella FORMA: con codice_interno NULL l''espressione NOT IN vale NULL e l''IF non sarebbe scattato; il ramo e'' pero'' IRRAGGIUNGIBILE oggi, quindi l''IS NULL OR e'' difesa in profondita''.';
 ```
 
 ---

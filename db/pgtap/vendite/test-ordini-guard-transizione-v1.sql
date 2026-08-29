@@ -81,6 +81,12 @@ SELECT
     ORDER BY a.data_insert DESC NULLS LAST, a.id LIMIT 1
   ) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  -- ⚠️ Aggiunta 2026-08-29: dal changeSet 20260829-07 il guard rifiuta
+  --   l'ingresso in CONFERMATO se una riga attiva porta un prezzo senza
+  --   aliquota (Regola 4, E_ORDINE_RIGA_IVA_MANCANTE). Le righe di questa
+  --   fixture il prezzo ce l'hanno — prezzo_unitario e' NOT NULL — quindi
+  --   senza iva_id descrivono un documento che il dominio non ammette piu'.
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'      LIMIT 1) AS stato_draft_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO' LIMIT 1) AS stato_conf_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO'  LIMIT 1) AS stato_ann_id,
@@ -97,8 +103,8 @@ WITH ins AS (
   FROM tmp_refs_gt r RETURNING id
 ) SELECT id FROM ins;
 INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga A', 3.0, 3.0, 10.0, true, false, '{}'::jsonb
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'riga A', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
 FROM tmp_gt_a o, tmp_refs_gt r;
 
 -- Slot B: DRAFT senza righe (test 3)
@@ -121,8 +127,8 @@ WITH ins AS (
   FROM tmp_refs_gt r RETURNING id
 ) SELECT id FROM ins;
 INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga C', 3.0, 3.0, 10.0, true, false, '{}'::jsonb
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'riga C', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
 FROM tmp_gt_c o, tmp_refs_gt r;
 
 -- Slot D: DRAFT con riga (test 5 transizione fuori matrice)
@@ -135,8 +141,8 @@ WITH ins AS (
   FROM tmp_refs_gt r RETURNING id
 ) SELECT id FROM ins;
 INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga D', 3.0, 3.0, 10.0, true, false, '{}'::jsonb
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'riga D', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
 FROM tmp_gt_d o, tmp_refs_gt r;
 
 -- Slot E: CONFERMATO con riga (test 6 CONFERMATO->ANNULLATO disabilitata)
@@ -149,8 +155,8 @@ WITH ins AS (
   FROM tmp_refs_gt r RETURNING id
 ) SELECT id FROM ins;
 INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga E', 3.0, 3.0, 10.0, true, false, '{}'::jsonb
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'riga E', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
 FROM tmp_gt_e o, tmp_refs_gt r;
 
 -- ============================================================

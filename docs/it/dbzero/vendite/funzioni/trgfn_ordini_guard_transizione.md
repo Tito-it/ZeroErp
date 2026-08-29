@@ -15,13 +15,16 @@ AS $function$
 -- Scopo: enforcement DB-first del grafo transizioni stato ordine.
 --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
 --   presente e attiva in config.transizioni_stati_ordini. In piu',
---   DRAFT->CONFERMATO richiede almeno una riga ordine ATTIVA, e
---   ->ANNULLATO passa da script.fn_check_ordine_annullabile.
+--   DRAFT->CONFERMATO richiede almeno una riga ordine ATTIVA,
+--   ->CONFERMATO passa da script.fn_check_ordine_confermabile e
+--   ->ANNULLATO da script.fn_check_ordine_annullabile.
 --   Letto dalla matrice (no grafo hardcodato): SSOT col lato
 --   lettura fn_available_actions_ordine.
 --   rev 2026-07-16: Regola 2 filtra attivo IS TRUE.
 --   rev 2026-08-04: Regola 3, l'annullamento riattivato ha i suoi
 --   controlli (brief-db-vie-uscita-operatore).
+--   rev 2026-08-29: Regola 4, l'aliquota sulle righe che portano
+--   un prezzo (brief-db-be-iva-risolutore-e-regime-cliente, I9).
 DECLARE
     v_codice_da config.stati_doc_ordini.codice_interno%TYPE;
     v_codice_a  config.stati_doc_ordini.codice_interno%TYPE;
@@ -122,12 +125,55 @@ BEGIN
         END IF;
     END IF;
 
+    -- Regola 4 (rev 2026-08-29): una riga che porta un PREZZO porta
+    -- anche l'ALIQUOTA. Stessa forma della Regola 3 — la regola sta
+    -- nella funzione pura, qui si solleva soltanto.
+    --
+    -- ⚠️ Il perimetro e' QUALUNQUE transizione verso CONFERMATO, non
+    --   il solo DRAFT->CONFERMATO della Regola 2: la matrice ammette
+    --   il rientro da PARZIALMENTE_EVASO e da EVASO, e un ordine che
+    --   torna CONFERMATO con una riga senza aliquota produce lo
+    --   stesso riepilogo storto del percorso diretto. La vista del
+    --   riepilogo non sa da dove si arriva, e il vincolo deve avere
+    --   lo stesso perimetro del consumatore che protegge.
+    --
+    -- ⚠️ Nel VARIADIC va il NUMERO di riga, non l'id: quel valore
+    --   riempie i %s, cioe' compone la frase che una persona legge,
+    --   e un id tecnico non si cerca a mano sul documento. L'id
+    --   viaggia nel context, che e' il canale di chi diagnostica.
+    -- ⛔ E nessuna chiave `campo`: il codice e' CONFLITTO_STATO, non
+    --   DATO_ERRATO — la richiesta e' «porta l'ordine a CONFERMATO»,
+    --   e non c'e' un campo di QUELLA richiesta da accendere.
+    IF v_codice_a = 'CONFERMATO' THEN
+        v_motivi := script.fn_check_ordine_confermabile(NEW.id);
+
+        IF jsonb_array_length(v_motivi) > 0 THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME::text,
+                v_motivi -> 0 ->> 'codice',
+                jsonb_build_object(
+                    'ordine_id', NEW.id,
+                    'numero',    NEW.numero,
+                    'stato_da',  v_codice_da,
+                    'stato_a',   v_codice_a,
+                    'riga_id',   (v_motivi -> 0 -> 'dettaglio' ->> 'riga_id')::bigint,
+                    'riga_nr',   (v_motivi -> 0 -> 'dettaglio' ->> 'riga_nr')::integer,
+                    'motivi',    v_motivi
+                ),
+                NEW.tx_id,
+                coalesce(NEW.numero, NEW.id::text),
+                coalesce(v_motivi -> 0 -> 'dettaglio' ->> 'riga_nr', '?')
+            );
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ordini_guard_transizione()
-IS 'Trigger function: enforcement del grafo transizioni stato ordine (matrice config.transizioni_stati_ordini), riga attiva obbligatoria su DRAFT->CONFERMATO, e dal 2026-08-04 controlli sull''annullamento delegati a script.fn_check_ordine_annullabile — la stessa funzione letta da fn_available_actions_ordine, cosi'' bottone e guard non divergono.';
+IS 'Trigger function: enforcement del grafo transizioni stato ordine (matrice config.transizioni_stati_ordini), riga attiva obbligatoria su DRAFT->CONFERMATO, controlli sull''annullamento delegati a script.fn_check_ordine_annullabile (2026-08-04) e, dal 2026-08-29, controlli sulla CONFERMA delegati a script.fn_check_ordine_confermabile — le stesse funzioni lette da fn_available_actions_ordine, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 4, una riga attiva che porta un PREZZO deve portare anche l''ALIQUOTA, altrimenti l''ordine non si conferma. Chiude su ordini il difetto silenzioso gia'' sanato sul DDT il 2026-08-28: vw_ordini_righe_iva_base filtra solo attivo e quantita > 0, quindi la riga entra nel riepilogo con imponibile pieno e imposta zero. ⚠️ Il perimetro della Regola 4 e'' QUALUNQUE transizione verso CONFERMATO e non il solo DRAFT->CONFERMATO della Regola 2: la matrice ammette il rientro da PARZIALMENTE_EVASO e da EVASO, e la vista del riepilogo non sa da dove si arriva. ⛔ Non e'' un NOT NULL di colonna e non poteva esserlo: ordini_righe.iva_id e'' nullable e la bozza deve restare libera — il vincolo e'' alla conferma, non al salvataggio.';
 ```
 
 ---

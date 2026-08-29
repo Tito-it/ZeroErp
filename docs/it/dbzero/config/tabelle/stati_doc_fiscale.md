@@ -20,6 +20,7 @@
 | chiude_lotto | boolean | NO | false |
 | fase | character varying | NO |  |
 | is_abortito | boolean | NO | false |
+| congela_fiscale | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

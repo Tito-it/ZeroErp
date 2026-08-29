@@ -63,39 +63,24 @@ BEGIN
       INTO v_has_fields
       FROM jsonb_object_keys(v_fields) AS k
      WHERE k IN (
-               'iva_id', 'modalita_pagamento_id', 'termine_pagamento_id',
-               'cliente_pa', 'split_payment',
-               'codice_cig', 'codice_cup', 'codice_commessa',
+               -- ⚠️ rev 2026-08-29 (brief IVA, I0-B / I8-B): via SEI chiavi.
+               --   `iva_id` non aveva piu' un lavoro (D7-bis); `cliente_pa` e
+               --   `split_payment` sono saliti su anagrafiche.soggetti (D8);
+               --   `codice_cig`/`codice_cup`/`codice_commessa` sono andati su
+               --   vendite.contratti (D9). Le colonne non esistono piu'.
+               'modalita_pagamento_id', 'termine_pagamento_id',
                'servizio_da_fatturare',
                'garanzia_tipo', 'garanzia_importo'
            );
 
     IF v_has_fields THEN
         UPDATE anagrafiche.clienti c
-           SET iva_id = CASE WHEN jsonb_exists(v_fields, 'iva_id')
-                             THEN (v_fields->>'iva_id')::integer
-                             ELSE c.iva_id END,
-               modalita_pagamento_id = CASE WHEN jsonb_exists(v_fields, 'modalita_pagamento_id')
+           SET modalita_pagamento_id = CASE WHEN jsonb_exists(v_fields, 'modalita_pagamento_id')
                              THEN (v_fields->>'modalita_pagamento_id')::integer
                              ELSE c.modalita_pagamento_id END,
                termine_pagamento_id = CASE WHEN jsonb_exists(v_fields, 'termine_pagamento_id')
                              THEN (v_fields->>'termine_pagamento_id')::bigint
                              ELSE c.termine_pagamento_id END,
-               cliente_pa = CASE WHEN jsonb_exists(v_fields, 'cliente_pa')
-                             THEN (v_fields->>'cliente_pa')
-                             ELSE c.cliente_pa END,
-               split_payment = CASE WHEN jsonb_exists(v_fields, 'split_payment')
-                             THEN (v_fields->>'split_payment')
-                             ELSE c.split_payment END,
-               codice_cig = CASE WHEN jsonb_exists(v_fields, 'codice_cig')
-                             THEN (v_fields->>'codice_cig')
-                             ELSE c.codice_cig END,
-               codice_cup = CASE WHEN jsonb_exists(v_fields, 'codice_cup')
-                             THEN (v_fields->>'codice_cup')
-                             ELSE c.codice_cup END,
-               codice_commessa = CASE WHEN jsonb_exists(v_fields, 'codice_commessa')
-                             THEN (v_fields->>'codice_commessa')
-                             ELSE c.codice_commessa END,
                servizio_da_fatturare = CASE WHEN jsonb_exists(v_fields, 'servizio_da_fatturare')
                              THEN (v_fields->>'servizio_da_fatturare')::boolean
                              ELSE c.servizio_da_fatturare END,

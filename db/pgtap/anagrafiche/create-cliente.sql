@@ -260,22 +260,23 @@ SELECT is(
 CREATE TEMP TABLE tmp_cliente AS
 WITH stato AS (
     SELECT id FROM config.stati_cliente WHERE codice_interno = 'PR' LIMIT 1
-), iva AS (
-    SELECT id FROM config.iva WHERE codice = '22' LIMIT 1
 ), ins AS (
     INSERT INTO anagrafiche.clienti (
         soggetto_ruolo_id, istanza_utility_id, stato_cliente_id,
-        iva_id, billing_account_id,
+        billing_account_id,
         -- Nullable, ma il test 8 verifica proprio che coincida con quella del
         -- billing account: lasciarla NULL renderebbe ba_match_utility NULL e
         -- il test rosso per omissione invece che per incoerenza.
         utility_id
-        -- cliente_pa ha default, usiamo quello.
+        -- ⚠️ rev 2026-08-29: via `iva_id` (e la CTE che la risolveva) e via la
+        --   nota su `cliente_pa`: quelle colonne non esistono piu' su
+        --   anagrafiche.clienti (changeSet 20260829-17). L'aliquota la decide la
+        --   merce; i due flag di scissione sono saliti su anagrafiche.soggetti.
         -- (rev 2026-07-31: tipo_gg_scadenza_ft e nr_giorni_scadenza, che qui
         --  erano citate, non esistono piu' — D-I, piano satelliti 3a.5.)
     )
-    SELECT sr.id, i.id, sc.id, v.id, ba.id, u.id
-      FROM tmp_soggetto_ruolo sr, tmp_istanza i, stato sc, iva v,
+    SELECT sr.id, i.id, sc.id, ba.id, u.id
+      FROM tmp_soggetto_ruolo sr, tmp_istanza i, stato sc,
            tmp_billing_account ba, tmp_utility u
     RETURNING id
 )

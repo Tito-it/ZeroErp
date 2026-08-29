@@ -33,10 +33,14 @@
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | attivo | boolean | NO | true |
+| split_payment | character | NO | 'N'::bpchar |
+| cliente_pa | character | NO | 'N'::bpchar |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_soggetti_cliente_pa |  |
+| CHECK | chk_soggetti_split_payment |  |
 | FOREIGN KEY | fk_comuni_config | comune_id |
 | FOREIGN KEY | fk_contatti_anagrafiche | default_contatto_id |
 | FOREIGN KEY | fk_soggetti_tipo_soggetto_dettaglio | tipo_soggetto_dettaglio_id |

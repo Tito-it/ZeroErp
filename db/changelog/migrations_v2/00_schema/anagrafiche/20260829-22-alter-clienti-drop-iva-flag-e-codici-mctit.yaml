@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I0-B / I8-B (Fase 1) del brief brief-db-be-iva-risolutore-e-regime-cliente —
+# TERZO e ultimo passo. Spariscono da anagrafiche.clienti le sei colonne che non
+# hanno piu' una sede qui.
+#
+# ⭐ NON ERANO UN GRUPPO SOLO, ed e' la scoperta della Rev 2: stavano tutte su
+#   clienti perche' quella era l'unica tabella «per fornitura» disponibile, ma
+#   rispondono a TRE domande con TRE padroni diversi:
+#     - `iva_id`            -> nessun padrone: il suo lavoro e' di altri tre
+#                              (articolo, tipo utenza, titolo del soggetto). D7-bis
+#     - `cliente_pa`,
+#       `split_payment`     -> il SOGGETTO (partita IVA). D8, colonne create da
+#                              20260829-14 e travasate li'
+#     - `codice_cig`,
+#       `codice_cup`,
+#       `codice_commessa`   -> il CONTRATTO. D9, colonne create da 20260829-13
+#
+# ⛔ QUATTRO DIPENDENZE CENSITE PRIMA DI TOCCARE, e due non si vedono da un
+#   `\\d anagrafiche.clienti`:
+#
+#  1. `dbops.vw_diag_v_clienti_links` leggeva `c.iva_id` -> gia' ricreata senza,
+#     dal changeSet 20260829-16. Se non lo fosse, questo DROP fallirebbe.
+#
+#  2. `anagrafiche.fn_update_cliente` le scriveva tutte e sei -> gia' adeguata,
+#     dal changeSet 20260829-15. ⚠️ Il plpgsql e' a legatura TARDIVA: il DROP
+#     sarebbe passato lo stesso, e la funzione avrebbe cominciato a fallire al
+#     primo salvataggio. L'ordine dei tre passi serve a questo.
+#
+#  3. `trg_clienti_a10_iva_require_attivo_ins_upd` su anagrafiche.clienti —
+#     constraint trigger `AFTER INSERT OR UPDATE OF iva_id`. Si toglie qui,
+#     esplicitamente, invece di affidarsi al comportamento del DROP COLUMN.
+#
+#  4. ⛔ `trg_iva_a10_clienti_block_deact_upd` su **config.iva** — ED E' LA MINA.
+#     Chiama dbops.trgfn_prevent_deactivate_if_children('anagrafiche','clienti',
+#     'iva_id','id','attivo'): la colonna e' nominata come STRINGA, quindi
+#     PostgreSQL non registra nessuna dipendenza. Il trigger SOPRAVVIVE al DROP e
+#     poi fallisce a RUNTIME, su una tabella diversa (config.iva) e in un momento
+#     lontano — quando qualcuno disattiva un codice IVA. E' il difetto che nessun
+#     CASCADE avrebbe preso, perche' non c'e' niente da cascatare.
+#     ⚠️ Il gemello e' vivo e va lasciato stare: il trigger su catalogo.articoli
+#     resta, perche' articoli.iva_id resta.
+#
+#  5. `dbops.fk_index_policy`, riga (anagrafiche, clienti, fk_iva_config) con
+#     `consentito = t` e la DLL che crea ix_anagrafiche_clienti_iva_id. La FK e
+#     l'indice se ne vanno con la colonna, ma la RIGA DI POLICY resta: al
+#     prossimo `90_end` la dbops.apply_fk_index_policy() proverebbe a creare un
+#     indice su una colonna che non esiste, e il migrate morirebbe li'. Si
+#     cancella, ed e' il caso in cui un DELETE su 80_data/dbops e' legittimo:
+#     loadUpdateData non cancella, e la riga descrive un vincolo che non c'e' piu'.
+#
+# ℹ️ Lo STORICO non e' toccato: storico.clienti conserva uno `snapshot` jsonb,
+#   non colonne speculari. Gli snapshot vecchi continuano a portare le sei chiavi,
+#   ed e' corretto — raccontano com'era il cliente allora.
+#
+# ⚠️ IL BACKEND SI ROMPE, ed e' autorizzato (Tid, 2026-08-29: «fai tutto, non c'e'
+#   produzione; appena abbiamo fatto tutto faro' iniziare il BE per la
+#   sistemazione»). La lista dei file da adeguare e' nel §8-bis del brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260829-22-alter-clienti-drop-iva-flag-e-codici-mctit.yaml
+
+  - changeSet:
+      id: 20260829-22-alter-clienti-drop-iva-flag-e-codici
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.clienti: via iva_id, cliente_pa, split_payment, codice_cig,
+        codice_cup, codice_commessa. Con loro il trigger su clienti, il trigger
+        GEMELLO su config.iva (che nomina la colonna come stringa e sarebbe
+        sopravvissuto al DROP per fallire a runtime) e la riga di
+        dbops.fk_index_policy che avrebbe fatto morire il prossimo 90_end.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: iva_id
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: soggetti
+            columnName: split_payment
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti
+            columnName: codice_cig
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Il trigger sulla tabella stessa.
+              DROP TRIGGER IF EXISTS trg_clienti_a10_iva_require_attivo_ins_upd
+                  ON anagrafiche.clienti;
+
+              -- 2) ⛔ LA MINA: il trigger su config.iva che nomina
+              --    'anagrafiche','clienti','iva_id' come ARGOMENTI TESTUALI.
+              --    PostgreSQL non ha nessuna dipendenza da invalidare, quindi
+              --    sopravviverebbe al DROP COLUMN e fallirebbe a runtime alla
+              --    prima disattivazione di un codice IVA — su un'altra tabella e
+              --    in un altro momento.
+              --    ⚠️ Si tocca SOLO quello dei clienti: i gemelli su articoli,
+              --    ddt_righe, fatture_righe e compagnia restano, perche' quelle
+              --    colonne iva_id restano.
+              DROP TRIGGER IF EXISTS trg_iva_a10_clienti_block_deact_upd
+                  ON config.iva;
+
+              -- 3) La riga di policy indici FK: la FK se ne va con la colonna, ma
+              --    questa resterebbe e farebbe morire il prossimo 90_end
+              --    (apply_fk_index_policy proverebbe a indicizzare una colonna
+              --    inesistente). DELETE forward-only: e' l'unica forma ammessa,
+              --    perche' loadUpdateData non cancella.
+              DELETE FROM dbops.fk_index_policy
+               WHERE schema_name = 'anagrafiche'
+                 AND table_name  = 'clienti'
+                 AND constraint_name = 'fk_iva_config';
+
+              -- 4) Le sei colonne. La FK fk_iva_config e l'indice
+              --    ix_anagrafiche_clienti_iva_id se ne vanno con iva_id.
+              --    ⛔ Nessun CASCADE: l'unica vista che leggeva iva_id
+              --    (dbops.vw_diag_v_clienti_links) e' gia' stata ricreata senza,
+              --    dal changeSet 20260829-16. Se qualcosa d'altro dipendesse
+              --    ancora dalla colonna, questo statement DEVE fallire e dirlo.
+              ALTER TABLE anagrafiche.clienti
+                DROP COLUMN iva_id,
+                DROP COLUMN cliente_pa,
+                DROP COLUMN split_payment,
+                DROP COLUMN codice_cig,
+                DROP COLUMN codice_cup,
+                DROP COLUMN codice_commessa;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Rollback STRUTTURALE, non dei dati: le colonne tornano vuote.
+              --   I valori che c'erano sono stati travasati (soggetti) o non
+              --   avevano piu' un lavoro (iva_id), e questo blocco non li ripesca.
+              --   iva_id torna NULLABLE e non NOT NULL: rimetterla NOT NULL su
+              --   righe vuote fallirebbe.
+              ALTER TABLE anagrafiche.clienti
+                ADD COLUMN IF NOT EXISTS iva_id          INTEGER,
+                ADD COLUMN IF NOT EXISTS cliente_pa      CHARACTER(1) NOT NULL DEFAULT 'N',
+                ADD COLUMN IF NOT EXISTS split_payment   CHARACTER(1) NOT NULL DEFAULT 'N',
+                ADD COLUMN IF NOT EXISTS codice_cig      CHARACTER VARYING(15),
+                ADD COLUMN IF NOT EXISTS codice_cup      CHARACTER VARYING(15),
+                ADD COLUMN IF NOT EXISTS codice_commessa CHARACTER VARYING(100);
+
+              ALTER TABLE anagrafiche.clienti
+                DROP CONSTRAINT IF EXISTS fk_iva_config;
+              ALTER TABLE anagrafiche.clienti
+                ADD CONSTRAINT fk_iva_config FOREIGN KEY (iva_id) REFERENCES config.iva(id);

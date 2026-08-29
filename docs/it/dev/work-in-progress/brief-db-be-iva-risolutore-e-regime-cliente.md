@@ -495,9 +495,27 @@ funzione** (`NOT IN ('DRAFT','EMESSA')`), e va **dichiarata** — il progetto la
 regola dell'hardcode ce l'ha già (`chiude_lotto` come unico meccanismo di
 chiusura lotto).
 
-✅ **DECISO (Tid, 2026-08-29)**: nasce **`config.stati_doc_fiscale.congela_fiscale`**
-(`boolean NOT NULL DEFAULT false`), e **`fn_ricalcola_riepilogo_iva_fattura` va
-portata a leggerlo** al posto della lista. → richiesta **`I10`**.
+✅ **DECISO (Tid, 2026-08-29)**: nasce **`config.stati_doc_fiscale.congela_fiscale`**,
+e **`fn_ricalcola_riepilogo_iva_fattura` va portata a leggerlo** al posto della
+lista. → richiesta **`I10`**.
+
+⛔ **`DEFAULT true`, e correggo qui una riga che avevo scritto sbagliata**
+(`DEFAULT false`, in questa sezione fino al 2026-08-29). Il ragionamento era:
+*«il `NOT IN` dice la cosa per esclusione, quindi si allarga da sola a ogni stato
+nuovo»* — trattato come un difetto. **Non lo è: è la direzione sicura**, ed è
+l'unica parte di quella forma che meritava di sopravvivere.
+
+Cosa succede a uno stato futuro che nessuno classifica:
+
+| Default | Stato nuovo non classificato | Se la classificazione giusta era l'altra |
+| --- | --- | --- |
+| `false` | ricalcolo **ammesso** | uno **snapshot fiscale cambia in silenzio** |
+| `true` | ricalcolo **rifiutato** | un **errore parlante**, e qualcuno sistema il seed |
+
+⭐ Il difetto del `NOT IN` era **solo** che è cablato e destinato a essere
+duplicato dal risolutore. Il suo default era giusto, e `DEFAULT true` lo
+conserva: chi introduce uno stato senza pensarci trova un errore, non una fattura
+riscritta.
 
 ⚠️ Due avvertenze operative per chi lo scriverà:
 
@@ -597,7 +615,39 @@ ferma**. Il test va riscritto sul prezzo: riga **senza** prezzo e senza `iva_id`
 → passa (è il DDT di solo trasporto); riga **con** prezzo e senza `iva_id` →
 blocca, qualunque sia la causale.
 
-### R-3 · 🔴 Lo stesso difetto silenzioso è **aperto su ordini e preventivi**
+### R-3 · 🔴 Lo stesso difetto è aperto su ordini e preventivi — ⚠️ **ma sui preventivi NON è silenzioso**
+
+> ⛔ **Correzione del 2026-08-29, ed è emersa solo provando.** La frase qui sotto
+> — *«`vendite.preventivi_riepiloghi_iva` ha la stessa forma»* — è **giusta sulla
+> struttura e sbagliata sull'effetto**. Sui preventivi una riga senza aliquota
+> **non si riesce nemmeno a salvare**: il trigger `AFTER`
+> `trg_preventivi_righe_z90_ricalcola_totali` chiama
+> `fn_ricalcola_riepilogo_iva_preventivo`, che chiama
+> `config.fn_get_aliquota_iva(NULL, …)` — e quella **solleva** invece di
+> ritornare `NULL`. L'`INSERT` fallisce con *«Parametro non valido: p_iva_id
+> obbligatorio e > 0»*.
+>
+> ⚠️ **Il `COALESCE` che sembrava una guardia non lo era**: per proteggere
+> avrebbe dovuto ricevere un `NULL`, e il `NULL` non arriva mai perché la
+> funzione solleva prima. È un `COALESCE` che *sembra* difendere e non difende.
+>
+> ⭐ **E non era una decisione di dominio, era una svista**: le viste gemelle la
+> guardia ce l'hanno (`vw_ordini_righe_iva_base` scrive
+> `CASE WHEN r.iva_id IS NOT NULL THEN config.fn_get_aliquota_iva(…)`), solo
+> quella funzione no. Il risultato divergeva da DDT e ordini su tre punti tutti
+> contrari a quanto deciso qui: il vincolo scattava **in bozza al salvataggio**,
+> il messaggio **nominava un parametro PL/pgSQL** a un operatore, e l'errore
+> arrivava da una funzione di catalogo **tre livelli sotto** l'azione.
+>
+> ✅ Risolto con `20260829-12` (guardia) **insieme a** `20260829-10` (cancello
+> all'emissione) — vedi §8-bis. Decisione di Tid, 2026-08-29.
+>
+> ⚠️ **`fn_ricalcola_riepilogo_iva_fattura` ha lo stesso `COALESCE` senza
+> guardia e NON è stata toccata**, ed è una scelta: lì non esiste ancora un
+> cancello IVA all'emissione, quindi togliere il raise scambierebbe un errore
+> rumoroso con un **numero sbagliato silenzioso** — il contrario di ciò che
+> questo cantiere fa. **Va fatto dentro `I4`**, quando la riga di fattura
+> ri-risolve l'aliquota.
 
 `vendite.vw_ordini_righe_iva_base` filtra solo `attivo IS TRUE AND quantita > 0` —
 **non filtra nemmeno `prezzo_unitario`** — e con `iva_id IS NULL` produce
@@ -1112,7 +1162,7 @@ modo in cui questo difetto è arrivato fin qui.
 | **I5** | `split_payment` / `cliente_pa` → riga e riepilogo fattura + payload SDI (`EsigibilitaIVA`), **fuori** dal risolutore (`D4`). ⭐ **Voce corta**: `fatture_righe` e `fatture_riepiloghi_iva` hanno **già** le colonne e il raggruppamento — manca solo chi le riempie (`D8`) | DB + BE | dopo `I0` |
 | **I8** | ⭐ **Nuova, e non è IVA**: `codice_cig` / `codice_cup` / `codice_commessa` da `clienti` a **`vendite.contratti`**, + **snapshot** sulla fattura all'emissione (`D9`). ⚠️ `vendite.fatture` non ha nessun link al contratto: senza snapshot non arrivano mai | DB + BE + FE | 🟢 **da fare adesso**: il builder XML non è ancora scritto |
 | **I9** | ⭐ **Nuova**: il gate «riga con prezzo senza aliquota» esiste **solo sul DDT**. `vw_ordini_righe_iva_base` non filtra nemmeno `prezzo_unitario`, e per ordini e preventivi non c'è nessun `fn_check_*_emittibile` (`R-3`) | DB | indipendente |
-| **I10** | ⭐ **Nuova** (`D15`): `config.stati_doc_fiscale.congela_fiscale` — colonna nuova + seed **dal CSV** su tutte le righe, e `vendite.fn_ricalcola_riepilogo_iva_fattura` portata a leggerla al posto della lista `NOT IN ('DRAFT','EMESSA')`. È la **soglia unica** cui dovrà obbedire anche il risolutore | DB | indipendente, e **precede `I2`**: senza, il risolutore copierebbe l'hardcode |
+| **I10** | ⭐ **Nuova** (`D15`): `config.stati_doc_fiscale.congela_fiscale` — colonna nuova + seed **dal CSV** su tutte le righe, e `vendite.fn_ricalcola_riepilogo_iva_fattura` portata a leggerla al posto della lista `NOT IN ('DRAFT','EMESSA')`. È la **soglia unica** cui dovrà obbedire anche il risolutore | DB | ✅ **SCRITTA** 2026-08-29, **non applicata** — §8-bis |
 | **I6** | ✅ **Sbloccata da `D1` (2026-08-29)**: l'IVA di riga non si digita. **Due metà, servono entrambe** — (a) BE: `iva_id` **fuori** da `_UPDATE_KEYS_RIGA` **e** da `_CREATE_KEYS_RIGA` in `ddt_service`, `ordini_service`, `preventivi_service` (in `preventivi_service` è una tupla inline, non una `frozenset`); (b) FE: `<IvaSelect>` disabilitata **anche in CREATE** nei tre `*RigaForm.vue`, e il campo mostra il risultato del risolutore. ⚠️ In `PreventiviRigaForm` il `canSave` pretende `f.iva_id`: va ripensato, o la creazione si blocca da sola | BE + FE | ⛔ **per ultima** |
 
 ⛔ **L'ordine fra I6 e le altre non è indifferente, ed è l'unico modo di sbagliare
@@ -1323,6 +1373,359 @@ fattura ci arrivano copiati da lì.
 
 ---
 
+## 8-bis. Avanzamento — cosa è scritto e cosa è applicato
+
+> ⛔ **Niente di quanto segue è applicato.** I file esistono nel branch
+> `dev/db-tid` e nessun `liquibase update` è stato lanciato: lo stato reale si
+> legge da `databasechangelog`, non da questa tabella.
+
+### ✅ `I10` — soglia di congelamento (scritta il 2026-08-29)
+
+| File | Cosa |
+| --- | --- |
+| `00_schema/config/20260829-03-alter-stati-doc-fiscale-congela-fiscale-mctit.yaml` | colonna `congela_fiscale BOOLEAN NOT NULL DEFAULT true` + `COMMENT` + backfill su `codice_interno` |
+| `80_data/sql/config/stati_doc_fiscale.csv` | colonna aggiunta su tutte e 6 le righe (`f` su DRAFT/EMESSA, `t` sugli altri quattro) |
+| `20_code/vendite/20260829-04-update-fn-ricalcola-riepilogo-iva-fattura-congela-fiscale-mctit.yaml` | la funzione legge la colonna invece della lista cablata |
+| `db/pgtap/config/test-stati-doc-fiscale-congela-fiscale.sql` | 7 asserzioni |
+
+**Verifica fatta** (SQL **estratto** dagli YAML, non riscritto, eseguito intero
+in una transazione con `ON_ERROR_STOP=1` che si chiude in `ROLLBACK`): entrambi i
+changeSet passano, `UPDATE 2` conferma che il backfill tocca esattamente DRAFT ed
+EMESSA. I 7 pgTAP sono verdi.
+
+⭐ **E il test 7 è stato provato dal percorso reale**: rilanciato contro la
+funzione **vecchia** (quella del blocco `rollback`, con la lista cablata) diventa
+**rosso**. Senza questa controprova non si saprebbe se è verde perché la funzione
+legge il dato o perché l'asserzione non sa produrre il caso.
+
+✅ **APPLICATA il 2026-08-29** (Tid; `databasechangelog`: `20260829-03` e
+`-04` EXECUTED, `20250912-01` RERAN). Nessuna regressione sulla baseline `config`.
+
+**I due limiti dichiarati sono stati chiusi dopo il migrate:**
+
+1. ✅ pgTAP **rilanciato come app** (`scripts/testpgtap.sh`, ruolo `zeroerp_app`,
+   RLS attiva): **7/7 verdi**. La corsa pre-apply girava per forza da owner —
+   la DDL non ancora applicata va iniettata nella stessa transazione — quindi
+   non aveva esercitato la RLS;
+2. ⛔ il secondo limite non era un dubbio: era **una trappola armata**, e ne è
+   uscito un file in più. Il mirror `20250912-01` dichiara **10 colonne su 13**:
+   `fase` e `is_abortito`, nate dieci mesi dopo (`20260714-02`), non sono mai
+   state aggiunte alla sua lista, e `congela_fiscale` sarebbe stata la terza.
+   Tutte e tre hanno avuto il loro backfill, quindi **il DB è giusto e niente
+   segnala il problema** — ma una colonna fuori dalla lista del mirror **non è
+   governata dal CSV**: cambiare quella cella e lanciare il migrate non sposta
+   niente, senza errori.
+   ⭐ E per questo cantiere non è un dettaglio: `D15` promette che *«cambiare la
+   soglia è una cella di CSV»*, e senza rimedio quella frase era **falsa**.
+   → **`20260829-05-riancora-mirror-stati-doc-fiscale-mctit.yaml`**, che
+   ri-ancora il mirror con tutte e 13 le colonne (pattern di `20260806-13/-14`).
+   Verificato prima di scriverlo che CSV e tabella viva **coincidono su tutte e
+   13 le colonne, riga per riga** (quindi ri-ancorare non riporta indietro
+   nulla), e che l'upsert su **tutte e sei** le righe passa in transazione
+   annullata — cioè che il mirror è risvegliabile e non è una mina della specie
+   «irriscrivibile».
+   ⚠️ Differenza voluta rispetto a `20260806-14`, dove `fase`/`terminale`/`esito`
+   restano **fuori** perché le governa un altro changeSet: qui nessun processo
+   vivo le governa (il `20260714-02` era un backfill una-tantum). *La domanda
+   «chi governa questa colonna?» va rifatta ogni volta, non ereditata.*
+
+📌 **Strascico noto e non chiuso**: il codice sollevato resta
+`E_PARAMETRO_INVALIDO`, mentre «documento congelato» è un **conflitto di stato** e
+meriterebbe un codice `CONFLITTO_STATO` come i tre gemelli del gate DDT. Coniarlo
+è catalogo + CSV + classe, cioè un changeSet suo.
+
+### 🟡 `I9` — gate su ordini: **scritta** il 2026-08-29, non applicata. Preventivi ancora da fare
+
+| File | Cosa |
+| --- | --- |
+| `20_code/script/20260829-06-create-fn-check-ordine-confermabile-mctit.yaml` | `script.fn_check_ordine_confermabile`, funzione pura |
+| `20_code/vendite/20260829-07-update-trgfn-ordini-guard-transizione-iva-mctit.yaml` | **Regola 4** nel guard: ogni ingresso in `CONFERMATO` passa dalla funzione |
+| `20_code/script/20260829-08-update-fn-available-actions-ordine-conferma-iva-mctit.yaml` | il **bottone** espone la reason, così guard e capability non divergono |
+| `80_data/sql/config/codici_errore.csv` + `messaggi_errore.csv` | `E_ORDINE_RIGA_IVA_MANCANTE`, classe `CONFLITTO_STATO` (id messaggio 1013) |
+| `db/pgtap/vendite/test-ordini-guard-conferma-iva.sql` | 8 asserzioni |
+
+⭐ **Tre decisioni di forma che vale la pena non ri-discutere:**
+
+1. **funzione specifica dell'AZIONE**, gemella di `fn_check_ordine_annullabile`, e
+   **non** una `fn_check_ordine_confermabile` «completa» che assorbe anche
+   «documento senza righe». Quel motivo non è una regola della conferma: è una
+   precondizione generica guidata dalla **matrice** (`meta.requires_righe`), che
+   il lato lettura applica a qualunque transizione la dichiari. ⛔ Oggi
+   `requires_righe` risulta su **una sola** transizione, ma è una lettura del
+   **seed**: portarla nel codice avrebbe trasformato un meccanismo data-driven in
+   un hardcode sulla base di una fotografia;
+2. ⭐ **il perimetro della Regola 4 è QUALUNQUE transizione verso `CONFERMATO`**,
+   non il solo `DRAFT→CONFERMATO` della Regola 2 che le sta accanto. La matrice
+   ammette il rientro da `PARZIALMENTE_EVASO` e da `EVASO`, e la vista del
+   riepilogo **non sa da dove si arriva**. È la stessa lezione di `R-1` sul DDT:
+   *il vincolo deve avere lo stesso perimetro del consumatore che protegge*;
+3. **la condizione `prezzo_unitario IS NOT NULL` è scritta anche se oggi è sempre
+   vera** — `vendite.ordini_righe.prezzo_unitario` è `NOT NULL`, quindi di fatto
+   la regola vale su ogni riga attiva. Si scrive perché è la forma vera della
+   regola, e perché in questo progetto una colonna prezzo è **già** diventata
+   facoltativa una volta (`20260819-13` su `ddt_righe_componenti`).
+
+**Verifica fatta** (SQL estratto dagli YAML, eseguito intero in transazione
+annullata): i tre changeSet passano. **8/8 pgTAP verdi**, con i due codici errore
+iniettati in transazione perché il CSV di `80_data` arriva solo al migrate.
+
+⭐ **Controprova dal percorso reale**: rilanciato il test contro il guard e la
+capability **vecchi** (i blocchi `rollback` di `-07` e `-08`, tenendo la funzione
+pura), cadono **esattamente** le tre asserzioni che provano la regola nuova —
+bottone spento, blocco su `DRAFT→CONFERMATO`, blocco sul rientro da `EVASO` —
+mentre le altre restano verdi. Il test discrimina, non è verde per sottrazione.
+
+✅ **APPLICATA il 2026-08-29** (Tid). Baseline `vendite` rilanciata **come app**:
+**242 file, 5 rossi, tutti e 5 già noti in baseline — nessuna regressione**.
+
+⛔ **Ma una regressione c'era stata, ed è un errore di metodo da scrivere.** Il
+guard nuovo ha fatto fallire `vendite/test-ordini-guard-transizione-v1.sql`: le
+sue quattro fixture inserivano righe d'ordine **senza `iva_id`**, e siccome
+`prezzo_unitario` è `NOT NULL` quelle righe un prezzo ce l'hanno per forza —
+descrivevano cioè un documento che il dominio non ammette più. Fixture adeguata
+(`iva_id` nei riferimenti e nelle quattro righe), ora 8/8.
+
+⚠️ **La regola per non ricascarci non è «grep del nome della tabella»**: quasi
+tutti i test toccano `vendite.ordini_righe`. Il grep che trova i candidati veri è
+sulle **liste di colonne** degli `INSERT` — quelli che *non nominano* la colonna
+che il guard ora pretende. Sono usciti 6 file su 44; provati uno per uno, solo
+quello regrediva.
+
+⚠️ **E un rosso trovato strada facendo NON era mio**:
+`script/test-seed-stati-doc-ordini-evaso-v1.sql` fallisce perché asserisce che
+`EVASO` è terminale mentre la matrice ha `EVASO→CONFERMATO`. È **già in
+`baseline-rossi.tsv`** — verificato prima di attribuirselo.
+
+✅ Coperte anche le suite fuori dal perimetro della baseline `vendite` — cinque
+test di `script/` e `rls/` che portano un ordine a CONFERMATO, tutti verdi — e
+gli **smoke Django**: `smoke-push-termine-documento-commessa.py` valorizza già
+`iva_id`, quindi è salvo.
+
+📌 **Debito verso il frontend, dichiarato**: la `reason_key`
+`vendite.ordini.azione_reason.iva_mancante` **non esiste nei locales** — la
+gemella del DDT (`vendite.ddt.azione_reason.iva_mancante`) sì. Va aggiunta, ed è
+fuori dal perimetro DB di questo branch.
+
+### 🟡 `I9` — metà preventivi: **scritta** il 2026-08-29, non applicata
+
+| File | Cosa |
+| --- | --- |
+| `20_code/script/20260829-09-create-fn-check-preventivo-emettibile-mctit.yaml` | `script.fn_check_preventivo_emettibile`, funzione pura |
+| `20_code/vendite/20260829-12-update-fn-ricalcola-riepilogo-iva-preventivo-guardia-iva-mctit.yaml` | ⭐ la **guardia** `iva_id IS NOT NULL` che mancava (§R-3) |
+| `20_code/vendite/20260829-10-update-trgfn-preventivi-guard-transizione-iva-mctit.yaml` | **Regola 2** nel guard: ogni ingresso in `EMESSO` passa dalla funzione |
+| `20_code/script/20260829-11-update-fn-available-actions-preventivo-emetti-iva-mctit.yaml` | il bottone **Emetti** espone la reason |
+| `80_data/…/codici_errore.csv` + `messaggi_errore.csv` | `E_PREV_RIGA_IVA_MANCANTE`, `CONFLITTO_STATO` (id messaggio 1014) |
+| `db/pgtap/vendite/test-preventivi-guard-emissione-iva.sql` | 8 asserzioni |
+
+⛔ **`-12` e `-10` sono UNA slice e non si applicano separati**: la guardia da
+sola aprirebbe la strada a una riga senza aliquota, che finirebbe nel riepilogo
+con imponibile pieno e imposta zero. Il cancello all'emissione è la rete.
+
+⭐ **Tre asimmetrie con la gemella sugli ordini**, tutte verificate sulla
+struttura, e per cui la funzione **non è una copia**:
+
+1. `preventivi_righe` **non ha `riga_nr`** — ha `ordine smallint DEFAULT 0`, che è
+   una chiave di ordinamento. Nel messaggio va la **descrizione**: «la riga 0»
+   non aiuterebbe nessuno;
+2. `preventivi_righe.quantita` è **nullable e senza `CHECK` di positività**,
+   mentre `ordini_righe` ha `chk_ordini_v_r_qta_pos`. Il filtro `quantita > 0`
+   qui **serve davvero** — è nel predicato del consumatore, e senza si
+   bloccherebbe un preventivo per una riga che nel riepilogo non entra mai;
+3. `preventivi_righe.attivo` è **nullable** (su `ordini_righe` è `NOT NULL`):
+   `attivo IS TRUE` esclude il `NULL`, esattamente come fa il consumatore.
+
+⭐ **Il test 5 prova il lato che nessuno prova mai — che il guard NON blocchi più
+del dovuto**: riga senza aliquota ma a **quantità zero** → l'emissione **passa**,
+perché quella riga nel riepilogo non entra. Con il predicato copiato dagli ordini
+bloccherebbe un preventivo sano.
+
+**Verifica**: i quattro changeSet eseguono in transazione annullata, **8/8 pgTAP
+verdi**.
+
+⭐ **E questa volta lo sweep dei test esistenti è stato fatto PRIMA**, non dopo:
+27 file che toccano preventivi provati con la DDL iniettata. Tre rossi — tutti e
+tre **già in `baseline-rossi.tsv`** e rossi identici senza le modifiche.
+**Zero regressioni nuove.**
+
+📌 Debito verso il frontend: la `reason_key`
+`vendite.preventivi.azione_reason.iva_mancante` va aggiunta ai locales.
+
+### 🟡 `I8` e `I0` — la **metà additiva** scritta il 2026-08-29, non applicata
+
+> ⭐ Entrambe si dividono in due: una parte **additiva**, che non rompe niente e
+> si può applicare subito, e una parte **che toglie**, che rompe il backend
+> perché oggi quelle chiavi le scrive. La seconda è **gated**, e la richiesta al
+> BE è qui sotto.
+
+| File | Cosa |
+| --- | --- |
+| `00_schema/vendite/20260829-13-alter-contratti-add-cig-cup-commessa-mctit.yaml` | `I8-A`: `codice_cig`, `codice_cup`, `codice_commessa` su `vendite.contratti` |
+| `00_schema/anagrafiche/20260829-14-alter-soggetti-add-split-payment-cliente-pa-mctit.yaml` | `I0-A`: `split_payment` e `cliente_pa` su `anagrafiche.soggetti` + `CHECK ('S','N')` + travaso una tantum |
+| `db/pgtap/anagrafiche/test-soggetti-split-payment-cliente-pa.sql` | 5 asserzioni |
+
+**Verifica**: entrambi eseguono in transazione annullata; il travaso fa
+`UPDATE 1` e la controprova nella stessa transazione conta **0 soggetti
+incoerenti** rispetto alle proprie righe cliente. **5/5 pgTAP verdi.**
+
+⭐ **Il travaso usa `bool_or`, e la direzione è una decisione**: quando le righe
+cliente dello stesso soggetto dissentono, **vince `'S'`**. Lo split payment è un
+obbligo quando si applica, quindi ometterlo è un errore *fiscale*, mentre
+applicarlo in più è un errore *visibile e correggibile*.
+
+⚠️ **Tipo `character(1)` con `CHECK ('S','N')`, non un boolean** — è la forma
+dell'origine, tenuta apposta: cambiare tipo nello stesso passo in cui si cambia
+sede avrebbe reso il travaso qualcosa di diverso da una copia. Il pgTAP prova che
+il `CHECK` **morde**, e non è burocrazia: senza, la colonna accetterebbe `'Y'`,
+`'t'`, `'1'` o uno spazio, e ognuno si comporterebbe come «non applicare lo
+split» al primo `= 'S'` — un errore fiscale silenzioso, nella direzione peggiore.
+
+⚠️ **E il default qui è `'N'`, l'opposto della scelta fatta per
+`congela_fiscale`.** Là un dato mancante deve **bloccare**; qui un soggetto di
+cui nessuno ha detto nulla **non è** in scissione — dichiararlo tale d'ufficio
+produrrebbe fatture sbagliate su tutta l'anagrafica. *La domanda «qual è la
+direzione sicura?» si rifà ogni volta, non si eredita.*
+
+#### ⭐ `I8` lato fattura: dove atterrano i tre codici — **deciso sulla struttura**
+
+Il §`D9` diceva «snapshot sulla **testata** della fattura». **È sbagliato**, e lo
+decide una lettura del modello: `vendite.fatture_righe` porta
+`sorgente_tipo_id`/`sorgente_uid` con **15 tipi** possibili
+(`config.sorgenti`), fra cui `CONTRATTO` e `CONTRATTO_RIGA`. Una fattura nasce
+aggregando attività di **sorgenti diverse**, quindi **può mescolare righe di più
+contratti**: un campo di testata dovrebbe sceglierne uno fra tanti.
+
+**La sede giusta è la RIGA di fattura**, ed è anche ciò che la FatturaPA
+prevede — `DatiContratto` / `DatiOrdineAcquisto` possono portare
+`RiferimentoNumeroLinea`.
+
+⛔ **Ma la colonna non si aggiunge adesso, ed è una scelta.** Chi la riempie è la
+generazione della fattura, che deve risalire `riga → sorgente → contratto`
+passando dalla chiave polimorfa (`reference_sorgente_polimorfa_key_selector`:
+`uid` per preventivo/offerta, `id::text` per il resto). Aggiungere ora una
+colonna che nessuno riempie ricreerebbe **esattamente** il difetto della voce 2
+di questo brief — un campo che promette una cosa che non succede. **Va costruita
+insieme a `I4`**, quando la riga di fattura viene rifatta.
+
+### 🟡 `I0-B` e `I8-B` — le sei colonne **spariscono** da `clienti` (2026-08-29)
+
+> ⚠️ **Autorizzate da Tid il 2026-08-29**: *«fai tutto, non c'è produzione;
+> appena abbiamo fatto tutto farò iniziare il BE per la sistemazione»*. Avevo
+> segnalato che rompono il CRUD del cliente; la decisione è di procedere.
+
+**Tre passi, e l'ordine È il contratto** — l'autogen mescola `00_schema` e
+`20_code` ordinando per **numero**, quindi è il numero a garantire la sequenza:
+
+| # | File | Cosa |
+| --- | --- | --- |
+| 1 | `20_code/anagrafiche/20260829-15-update-fn-update-cliente-drop-sei-chiavi` | chi **scrive** smette |
+| 2 | `20_code/dbops/20260829-16-recreate-vw-diag-v-clienti-links-senza-iva` | chi **legge** smette |
+| 3 | `00_schema/anagrafiche/20260829-17-alter-clienti-drop-iva-flag-e-codici` | le colonne **spariscono** |
+
+#### ⛔ Quattro dipendenze censite prima di toccare, e due non si vedono da un `\d`
+
+1. **`dbops.vw_diag_v_clienti_links`** leggeva `c.iva_id` → ricreata senza (passo 2).
+   ⚠️ `DROP + CREATE` e non `CREATE OR REPLACE`: le tre colonne uscivano **da in
+   mezzo** alla proiezione, e `REPLACE` sa solo aggiungere in coda. ⚠️ E
+   `security_invoker=on` **ripetuto**, altrimenti si azzera in silenzio e una
+   diagnostica su dati di clienti tornerebbe a leggere fuori dal perimetro RLS.
+   ⛔ Nessun `CASCADE`: verificato che nessuno dipende dalla vista, né nel DB né
+   nel repo.
+2. **`anagrafiche.fn_update_cliente`** le scriveva tutte e sei → adeguata (passo 1).
+   ⚠️ Il plpgsql è a legatura **tardiva**: il `DROP` sarebbe passato lo stesso e
+   la funzione avrebbe iniziato a fallire al primo salvataggio. *L'ordine dei tre
+   passi serve esattamente a questo.*
+3. **`trg_clienti_a10_iva_require_attivo_ins_upd`** su `clienti` → tolto esplicitamente.
+4. ⛔ **`trg_iva_a10_clienti_block_deact_upd` su `config.iva` — LA MINA.** Chiama
+   `dbops.trgfn_prevent_deactivate_if_children('anagrafiche','clienti','iva_id',…)`:
+   la colonna è nominata come **stringa**, quindi PostgreSQL non registra nessuna
+   dipendenza. Sarebbe **sopravvissuto** al `DROP` per poi fallire a **runtime**,
+   su un'**altra tabella** e in un momento lontano — quando qualcuno disattiva un
+   codice IVA. *Nessun `CASCADE` l'avrebbe preso, perché non c'era niente da
+   cascatare.* ⚠️ Tolto **solo** quello dei clienti: i 19 gemelli su `config.iva`
+   restano, e la controprova lo verifica.
+
+⭐ **Quinta cosa, che non è una dipendenza ma avrebbe ucciso il migrate
+successivo**: la riga di `dbops.fk_index_policy` per `fk_iva_config`. La FK e
+l'indice se ne vanno con la colonna, ma **la riga di policy resta**, e al
+prossimo `90_end` `apply_fk_index_policy()` proverebbe a creare un indice su una
+colonna inesistente. Cancellata — ed è il caso in cui un `DELETE` su `dbops` è
+legittimo: `loadUpdateData` non cancella, e la riga descrive un vincolo che non
+c'è più.
+
+ℹ️ Lo **storico non è toccato**: `storico.clienti` conserva uno `snapshot` jsonb,
+non colonne speculari. Gli snapshot vecchi continuano a portare le sei chiavi, ed
+è corretto — raccontano com'era il cliente allora.
+
+**Verifica**: i cinque changeSet (`-13`…`-17`) eseguono in un'unica transazione
+annullata, con quattro controprove nella stessa transazione: **0** colonne
+residue, **0** trigger-mina, **0** righe di policy, **19** trigger gemelli su
+`config.iva` sopravvissuti.
+
+#### ⭐ Due pgTAP adeguati — e il secondo non era un rattoppo
+
+- `anagrafiche/create-cliente.sql`: fixture con `iva_id` (era `NOT NULL`) → tolta;
+- `anagrafiche/test-fn-update-cliente-v1.sql`: ⚠️ il suo **cuore** è la prova di
+  **atomicità** — «se l'UPDATE del cliente fallisce, la categoria scritta sul BA
+  viene annullata» — ed era costruita proprio su `iva_id` e `codice_commessa`. La
+  **proprietà** resta identica, cambia il **veicolo**: la FK inesistente ora è su
+  `modalita_pagamento_id`, e il campo che deve restare invariato è
+  `servizio_da_fatturare`. ⭐ Ne è uscito anche più preciso: prima passava
+  `NULL` come SQLSTATE perché l'errore poteva arrivare da due parti (FK o guard
+  iva-attivo), ora asserisce `23503`.
+
+**Sweep pre-apply**: ⛔ **e qui ho sbagliato di nuovo il grep, nello stesso punto
+e in modo diverso.** Avevo cercato le sei colonne con una regex **legata alla
+riga** (`clienti` e il nome di colonna entro 40 caratteri): ma le liste di
+colonne degli `INSERT` **vanno a capo**, quindi `iva_id` cadeva fuori dalla
+finestra. Uscivano 4 file su 86; ne mancavano **quattro**, tutti trovati da Tid
+sull'applicato.
+
+⭐ **Il grep che funziona non ha vincoli di prossimità**: si cercano i nomi di
+colonna **da soli** in tutta la suite (`grep -rlE '\b(iva_id|split_payment|…)\b'`),
+e poi si restringe a chi tocca la tabella. 86 file → 7 candidati → 4 rotti.
+*Due volte di fila la regola «fai il grep» è stata rispettata e il grep era
+comunque sbagliato: la parte difficile non è ricordarsi di cercare, è la forma
+della ricerca.*
+
+**I quattro adeguati** (nessuno era in `baseline-rossi.tsv`, quindi tutte
+regressioni mie): `anagrafiche/test-istanza-cliente-chain` (4 blocchi: CTE `iva`,
+colonna, valore e join), `anagrafiche/test-simula-subentro` (2 blocchi — ⚠️ e la
+rimozione lasciava una **virgola pendente** che il primo giro non aveva visto),
+`anagrafiche/test-clienti-sync-utility-pdp-policy` (4 blocchi),
+`script/test-fn-disdetta-cliente` (il più intrecciato: colonna di temp table,
+termine in un'asserzione, variabile, `SELECT INTO` e `INSERT`).
+
+⚠️ In due file la temp table `tmp_iva` è stata **lasciata**, con la sua
+asserzione: fa parte del `plan` e verifica ancora `config.iva`, che esiste.
+Toglierla avrebbe cambiato il conteggio senza guadagnare nulla.
+
+#### ⛔ Richiesta al BACKEND — da fare adesso
+
+Dal momento in cui `-15` è applicato, un payload che contiene una delle sei
+chiavi **non viene respinto: viene ignorato in silenzio**, perché la whitelist
+non le conosce più. ⭐ È il comportamento meno peggiore dei due — sollevare
+avrebbe bloccato ogni salvataggio cliente — **ma va saputo**: finché il FE manda
+ancora `iva_id`, l'operatore salva, non vede errori, e quel valore non va da
+nessuna parte.
+
+| Dove | Cosa togliere |
+| --- | --- |
+| `apps/anagrafiche/db/clienti_repository.py` | le sei chiavi dalle liste di colonne (righe ~167, ~381-386, ~445-447) |
+| `apps/anagrafiche/services/clienti_service.py` | le sei chiavi + **il default `DEFAULT_IVA_ID`** (righe ~227-233, ~238) |
+| `apps/anagrafiche/api/views_clienti.py` | `iva_id` dai serializer (righe ~84, ~125) |
+| `apps/anagrafiche/db/billing_account_repository.py` | `cl.iva_id` e il `LEFT JOIN config.iva` da `get_cliente_defaults` (righe ~281, ~289) |
+| `apps/vendite/services/vendite_form_defaults_service.py` | `iva_id`/`iva_codice`/`iva_descrizione` dal payload di `/vendite/preventivi/form-defaults/` (righe ~452, ~518) |
+| `frontend/src/anagrafiche/components/ClienteDrawer.vue` | il campo `IvaSelect`, i tre codici e il default `DEFAULT_IVA_ID` |
+| `frontend/src/vendite/preventivi/components/PreventiviDrawer.vue` | il commento «per termine/iva sovrascriviamo solo se vuoti», che ora è falso |
+
+📌 **E dove rimetterli**: i tre codici sul form del **contratto**
+(`vendite.contratti.codice_cig`/`_cup`/`_commessa`), i due flag sul form del
+**soggetto** (`anagrafiche.soggetti.split_payment`/`cliente_pa`).
+
+### ✅ Fase 1 completata lato DB
+
+---
+
 ## 9. Diario
 
 | Data | Cosa |
@@ -1334,5 +1737,9 @@ fattura ci arrivano copiati da lì.
 | 2026-08-28 (Rev 2, rilievi di Tid sul racconto) | Due precisazioni nate dal §8. ⚠️ **`D12`**: lo stadio B si valuta **per riga**, e l'ambito è la **condizione di applicabilità** — un titolo ristretto a due articoli non agevola le altre otto righe. Il rischio che Tid ha visto (*«si applica a tutto»*) era nel racconto, non nel disegno, ma senza l'ambito il titolo sarebbe stato il `clienti.iva_id` appena tolto. ❓ Ne esce **`D13` APERTA**: due titoli di tipo diverso sulla stessa riga — proposta «vince il più specifico», da verificare sul merito fiscale. ✅ **`D14`**: la differenza documento/fattura è **temporale, non di natura** — stessa funzione, due momenti; quindi la **data è un parametro** e il risolutore è in **sola lettura** |
 | 2026-08-28 (Rev 2, il congelamento) | ✅ **`D13` chiusa**: vince il più specifico — ma Tid smonta l'esempio che la motivava (intento è su **partita IVA**, disabilità su **codice fiscale**: non convivono). Resta scritta come presidio, perché `soggetti` porta entrambi gli identificativi e una ditta individuale li ha tutti e due. ⛔ **`D15`, ed è una correzione mia**: una **ristampa non fa girare il risolutore** — il calcolo si ferma alla **DEFINITIVA** e da lì il documento è uno snapshot. L'argomento che avevo usato per `D14` («ristampare darebbe un numero diverso») era sbagliato: **ritirato**, la conclusione regge sulla **data documento**. ⭐ Scoperto che la soglia **esiste già** in `fn_ricalcola_riepilogo_iva_fattura` (`NOT IN ('DRAFT','EMESSA')`) ma è **hardcoded**, e che le tre scorciatoie disponibili — `fase`, `ordine`, `chiude_lotto` — sono tutte e tre sbagliate. **`D15-bis`**: il plafond si consuma **nella stessa transizione**, atomica, con lock e ordine deterministico |
 | 2026-08-29 | ✅ Tid conferma i consigli aperti. Diventano decisioni: **`congela_fiscale`** su `config.stati_doc_fiscale` con il porting di `fn_ricalcola_riepilogo_iva_fattura` (→ **`I10`**), e il **lock + ordine deterministico** sul consumo del plafond dentro `I7`. Aggiunto l'**ordine consigliato** delle voci: `I0`/`I8`/`I9`/`I10` subito e in parallelo, poi `I7`, poi `I2` con la sua coda, `I6` per ultima |
+| 2026-08-29 (costruzione) | ⛔ **`I10` applicata**, e con essa una trappola trovata per caso: il mirror del CSV degli stati fattura dichiarava **10 colonne su 13** — `fase`, `is_abortito` e `congela_fiscale` non erano governate dal CSV, e nessuno se ne sarebbe accorto. Ri-ancorato (`20260829-05`). ⛔ **Corretta una mia decisione del brief**: `congela_fiscale` nasce `DEFAULT true`, non `false` — il `NOT IN` congelava d'ufficio ogni stato nuovo, ed **era la direzione sicura**. ✅ **`I9` ordini applicata**: una regressione mia su un pgTAP esistente (fixture senza `iva_id`), corretta; ⚠️ e la lezione utile non è «fai il grep» ma **quale** grep — sul nome della tabella escono 44 file, sulle **liste di colonne degli `INSERT`** ne escono 6, e uno solo regrediva |
+| 2026-08-29 (preventivi) | ⛔ **La premessa del §R-3 era sbagliata**, e si è visto solo provando: sui preventivi la riga senza aliquota **non si salva nemmeno**, perché `fn_get_aliquota_iva` **solleva** su NULL e il `COALESCE` che sembrava una guardia non poteva intervenire. Non era una decisione di dominio ma una **svista** — le viste gemelle la guardia ce l'hanno. ✅ Guardia + cancello all'emissione applicati **come slice unica**. ⚠️ La gemella sulle **fatture** ha lo stesso difetto e **non è stata toccata**: lì manca il cancello, e togliere il raise scambierebbe un errore rumoroso con un numero sbagliato silenzioso → legata a `I4`. ⭐ Lo sweep dei test esistenti stavolta **prima**: 27 file, 3 rossi tutti già in baseline, zero regressioni |
+| 2026-08-29 (`I8`/`I0`) | Scritta la metà **additiva** di entrambe: i tre codici sul **contratto**, `split_payment`/`cliente_pa` sul **soggetto** con travaso `bool_or` (vince `'S'`) e `CHECK ('S','N')`. ⭐ **Il §`D9` sbagliava sul lato fattura**: `fatture_righe` porta una sorgente **per riga** fra 15 tipi, quindi una fattura **può mescolare più contratti** — la sede è la **riga**, non la testata, e la colonna si aggiunge con `I4` insieme a chi la riempie, per non creare l'ennesimo campo scritto e mai letto. ⛔ Le due metà che **tolgono** sono gated sul BE, con la richiesta puntuale nel §8-bis |
+| 2026-08-29 (`I0-B`/`I8-B`) | ✅ Su autorizzazione esplicita di Tid, le sei colonne **spariscono** da `anagrafiche.clienti` in tre passi ordinati (chi scrive → chi legge → il DROP). ⛔ **Quattro dipendenze censite prima di toccare**, e la peggiore non si vedeva: `trg_iva_a10_clienti_block_deact_upd` su `config.iva` nomina la colonna come **stringa**, quindi PostgreSQL non ha nessuna dipendenza da invalidare — sarebbe sopravvissuto al DROP per fallire a **runtime**, su un'altra tabella, alla prima disattivazione di un codice IVA. ⭐ E una quinta cosa che avrebbe ucciso il migrate successivo: la riga di `dbops.fk_index_policy`, che avrebbe fatto indicizzare una colonna inesistente al prossimo `90_end`. ⭐ Due pgTAP adeguati, e il secondo non è un rattoppo: la prova di **atomicità** di `fn_update_cliente` era costruita sulle chiavi rimosse — la proprietà resta, cambia il veicolo, e ne è uscita **più precisa** (SQLSTATE `23503` invece di «un errore qualsiasi») |
 | 2026-08-29 (chiusura del disegno) | ✅ **`D1` DECISA: l'IVA di riga non è modificabile a mano**, in CREATE e in EDIT. L'argomento contro era caduto con `D10` — i titoli si registrano, non si digitano — e non restava nessun caso per-operazione fuori dal risolutore. ⚠️ Verificato lo stato reale prima di deciderla, ed era **mezzo bloccata**: campo grigio in EDIT nei tre form, libero in CREATE, e **API aperta in tutti e tre i casi** (`iva_id` nelle chiavi di update di `ddt_service`, `ordini_service`, `preventivi_service`). Non proteggeva e impediva lo stesso. `I6` diventa concreta e a **due metà** (BE + FE), e resta **per ultima**. ⭐ Il §5 diventa un **processo in quattro fasi**. **Nessuna decisione resta aperta: il brief è completo lato disegno, e niente è ancora applicato** |
 | 2026-08-28 (Rev 2, chiusura) | Tid nomina i casi che rendono la famiglia reale — agevolata disabili, società al 10% senza dichiarazione d'intento. ⭐ `soggetti_intento` diventa **`anagrafiche.soggetti_titoli_iva`** (`D10`), con l'**emittente destinatario** in chiave (`D10-bis`) e l'**ambito fino al singolo articolo**. `I7` sale a **prerequisito di `I2`**. Aggiunto il §8, il racconto in linguaggio piano |

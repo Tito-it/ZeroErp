@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Diagnostica relazioni cliente: verifica coerenza FK tra cliente, billing_account, soggetto, istanza, utility e IVA. tipo_ruolo_codice_interno = tr.codice_interno (fedele).
+> Diagnostica dei legami di un cliente: billing account, istanza utility, soggetto e tipo ruolo, con i tre flag ba_match_* che dicono dove il legame si rompe. security_invoker=on: legge nel perimetro di chi interroga. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I0-B): fuori il blocco IVA (iva_id/iva_codice/iva_descrizione e il LEFT JOIN su config.iva). Era l'unica vista del database che leggeva anagrafiche.clienti.iva_id, colonna rimossa da 20260829-17 perché non aveva più un lavoro: l'aliquota la decide la merce, e il regime del soggetto passa da un titolo documentato. Il blocco non viene sostituito perché non rispondeva alla domanda di questa vista.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -32,20 +32,16 @@ SELECT c.id AS cliente_id,
     tr.id AS tipo_ruolo_id,
     tr.codice_interno AS tipo_ruolo_codice_interno,
     tr.descrizione AS tipo_ruolo_descrizione,
-    iv.id AS iva_id,
-    iv.codice AS iva_codice,
-    iv.descrizione AS iva_descrizione,
     (ba.istanza_utility_id = c.istanza_utility_id) AS ba_match_istanza,
     (ba.soggetto_ruolo_id = c.soggetto_ruolo_id) AS ba_match_soggetto_ruolo,
     (ba.utility_id = c.utility_id) AS ba_match_utility
-   FROM (((((((anagrafiche.clienti c
+   FROM ((((((anagrafiche.clienti c
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = c.billing_account_id)))
      LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = c.soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = c.istanza_utility_id)))
      LEFT JOIN config.utilities u ON ((u.id = c.utility_id)))
-     LEFT JOIN config.tipi_ruoli tr ON ((tr.id = sr.tipo_ruolo_id)))
-     LEFT JOIN config.iva iv ON ((iv.id = c.iva_id)));
+     LEFT JOIN config.tipi_ruoli tr ON ((tr.id = sr.tipo_ruolo_id)));
 ```
 
 

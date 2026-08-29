@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I8 (Fase 1) del brief brief-db-be-iva-risolutore-e-regime-cliente, D9 —
+# prima meta': la SEDE. CIG, CUP e codice commessa nascono su
+# vendite.contratti, che e' l'atto che li genera.
+#
+# ⛔ DOVE STANNO OGGI, ed e' la voce 5 del §0: su anagrafiche.clienti, cioe' su
+#   una riga PER FORNITURA (UNIQUE uq_clienti_istanza_utility). Tid le aveva
+#   messe li' perche' «potevano essere diverse in base alla utility», e clienti
+#   era l'unica tabella per fornitura disponibile. Ma non dipendono dalla
+#   fornitura: dipendono dal CONTRATTO.
+#
+# ⭐ PERCHE' SBAGLIA IN DUE DIREZIONI INSIEME. Un CIG identifica una GARA: una PA
+#   con tre contratti ha tre CIG. Su una riga per fornitura ne entra UNO SOLO,
+#   quindi il codice si ripete identico su tutte le forniture dello stesso
+#   contratto (troppo) e non riesce a tenere due contratti sulla stessa fornitura
+#   (troppo poco). Il CUP identifica un progetto d'investimento e il codice
+#   commessa e' il riferimento che il cliente chiede di riportare in fattura:
+#   stessa natura.
+#
+# ⭐ TUTTI E TRE INSIEME, e non e' comodita': in fattura elettronica stanno nello
+#   STESSO BLOCCO (DatiContratto / DatiOrdineAcquisto: IdDocumento, CodiceCUP,
+#   CodiceCIG, CodiceCommessaConvenzione). Nascono insieme, si compilano insieme
+#   e nominano lo stesso atto. Separarli vorrebbe dire costruire un blocco XML da
+#   due tabelle con due cicli di vita.
+#
+# ⭐ E SI FA ADESSO PERCHE' ADESSO COSTA ZERO: verificato che le tre colonne
+#   esistono SOLO su anagrafiche.clienti, in nessun'altra tabella del progetto, e
+#   che le legge SOLTANTO il CRUD del cliente (fn_update_cliente + il repository
+#   BE + ClienteDrawer.vue). Nessun documento, nessuna fattura, nessun payload
+#   SDI. E il generatore XML FatturaPA NON e' ancora scritto —
+#   fn_prepare_sdi_payload prepara solo il tentativo d'invio, non il contenuto.
+#   Spostarle prima che il builder nasca e' gratis; dopo significa riscriverlo.
+#
+# ⚠️ QUESTO CHANGESET E' ADDITIVO E NON TOGLIE NIENTE. La rimozione da
+#   anagrafiche.clienti (con l'adeguamento di anagrafiche.fn_update_cliente) e'
+#   la seconda meta' di I8 ed e' GATED sul backend, che oggi quelle chiavi le
+#   scrive: toglierle prima romperebbe il CRUD del cliente. La richiesta al BE e'
+#   scritta nel brief.
+#
+# 📌 Fuori perimetro, dichiarato: negli accordi quadro PA il contratto ha un CIG
+#   «padre» e ogni ordine attuativo ne ha uno derivato. Se quel caso arrivera',
+#   la forma sono GLI STESSI TRE CAMPI su vendite.ordini, nullable, col contratto
+#   come ripiego (COALESCE). Non si fa ora e non e' una previsione sui dati: e'
+#   l'annotazione di dove andrebbero, visto che il lettore sara' uno solo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260829-13-alter-contratti-add-cig-cup-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260829-13-alter-contratti-add-cig-cup-commessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti: codice_cig, codice_cup, codice_commessa — la sede
+        giusta dei tre riferimenti che oggi stanno su anagrafiche.clienti, cioè
+        su una riga per fornitura, mentre nominano un contratto. Additivo: la
+        rimozione da clienti è la seconda metà di I8, gated sul backend.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: contratti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                ADD COLUMN IF NOT EXISTS codice_cig      VARCHAR(15),
+                ADD COLUMN IF NOT EXISTS codice_cup      VARCHAR(15),
+                ADD COLUMN IF NOT EXISTS codice_commessa VARCHAR(100);
+
+              COMMENT ON COLUMN vendite.contratti.codice_cig IS
+                  'Codice Identificativo Gara (CIG) dell''atto da cui nasce questo contratto. '
+                  'In fattura elettronica finisce nel blocco DatiContratto/DatiOrdineAcquisto, '
+                  'insieme a CUP e codice commessa: i tre nascono e si compilano insieme perché '
+                  'nominano lo stesso atto. ⚠️ Sta sul CONTRATTO e non sul cliente: un CIG '
+                  'identifica una gara, quindi una PA con tre contratti ha tre CIG — su una riga '
+                  'per fornitura (anagrafiche.clienti) ne entrerebbe uno solo, ripetuto su tutte '
+                  'le forniture dello stesso contratto e incapace di tenerne due sulla stessa. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D9 / I8.';
+
+              COMMENT ON COLUMN vendite.contratti.codice_cup IS
+                  'Codice Unico di Progetto (CUP) dell''investimento a cui questo contratto '
+                  'afferisce. Viaggia nello stesso blocco XML di CIG e codice commessa. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D9 / I8.';
+
+              COMMENT ON COLUMN vendite.contratti.codice_commessa IS
+                  'Riferimento di commessa/convenzione che il cliente chiede di riportare in '
+                  'fattura (CodiceCommessaConvenzione della FatturaPA). ⚠️ È il riferimento DEL '
+                  'CLIENTE, non la commessa interna di vendite.commesse: cambia da contratto a '
+                  'contratto e viaggia nel blocco XML insieme a CIG e CUP. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D9 / I8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                DROP COLUMN IF EXISTS codice_commessa,
+                DROP COLUMN IF EXISTS codice_cup,
+                DROP COLUMN IF EXISTS codice_cig;
