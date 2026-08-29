@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente — `D22`:
+# IL REVERSE CHARGE DIVENTA UN DATO. Sede scelta da Tid, 2026-08-29.
+#
+# ── ⭐ PERCHE' SERVE, e non era gia' li' ──────────────────────────────
+#
+#   `D18` vuole che il risolutore ritorni un **composito**, e fra i suoi campi
+#   c'e' l'inversione contabile. Oggi quell'informazione **non esiste come dato**:
+#   e' implicita nel prefisso `N6` del codice natura, cioe' leggibile solo da chi
+#   conosce a memoria il catalogo FatturaPA.
+#
+# ── ⛔ LA TERZA STRADA, SCARTATA A PRESCINDERE ────────────────────────
+#
+#   Dedurlo con `codice LIKE 'N6%'` sarebbe un **letterale su una colonna di
+#   catalogo**: e' l'antipattern che le linee guida chiamano `BUG_DUAL` (§6d).
+#   Funzionerebbe finche' nessuno rinomina un codice, e al primo rename
+#   smetterebbe di agganciarsi **in silenzio** — su un flag fiscale.
+#
+# ── ⭐ PERCHE' SU `iva_natura` E NON SU `config.iva` (decisione di Tid) ──
+#
+#   L'inversione contabile e' una proprieta' della **natura**, non del singolo
+#   codice: `N6.1`…`N6.9` *sono* l'inversione contabile — rottami, oro,
+#   subappalto edile, fabbricati, cellulari, prodotti elettronici, comparto
+#   edile, settore energetico, altri casi. Metterlo su `config.iva` vorrebbe dire
+#   ripeterlo su ogni codice che porta quella natura, con il rischio che due
+#   codici della stessa natura dicano cose diverse.
+#
+# ── ⚠️ `NOT NULL` SENZA DEFAULT, come `ha_plafond` ────────────────────
+#
+#   Chi conia una natura nuova deve **dire** se e' inversione contabile. Con un
+#   default lo erediterebbe per distrazione, e la classificazione sbagliata si
+#   vedrebbe solo su una fattura elettronica rifiutata.
+#   ⚠️ Percio' la colonna nasce nullable, si riempie **una volta** qui, e solo
+#   dopo diventa obbligatoria: un `NOT NULL` con default sarebbe stato piu'
+#   comodo e avrebbe tolto proprio la domanda che si vuole costringere a porsi.
+#
+# ── ℹ️ IL BACKFILL E' UNA-TANTUM, LA SEDE RESTA IL CSV ────────────────
+#
+#   Le nove righe si nominano **per `codice`**, esplicitamente, invece di
+#   scriverle con un `LIKE`: cosi' l'elenco e' leggibile e verificabile riga per
+#   riga in review. Da qui in avanti il valore lo governa
+#   `80_data/sql/config/iva_natura.csv`, che prende la colonna nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260829-47-alter-iva-natura-add-is-reverse-charge-mctit.yaml
+
+  - changeSet:
+      id: 20260829-47-alter-iva-natura-add-is-reverse-charge
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.iva_natura prende is_reverse_charge (D22): l'inversione contabile diventa un
+        dato invece di restare implicita nel prefisso N6 del codice. Sede scelta da Tid: la
+        natura e non il singolo codice IVA, perche' N6.1..N6.9 SONO l'inversione contabile
+        - metterlo su config.iva vorrebbe dire ripeterlo su ogni codice che porta quella
+        natura, col rischio che due codici della stessa natura dicano cose diverse. ⛔
+        Scartato dedurlo da codice LIKE 'N6%': e' un letterale su una colonna di catalogo,
+        e al primo rename smetterebbe di agganciarsi in silenzio.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: iva_natura
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: iva_natura
+                    columnName: is_reverse_charge
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.iva_natura
+                ADD COLUMN is_reverse_charge BOOLEAN;
+
+              -- ── Backfill UNA TANTUM. Le nove nature si nominano per CODICE,
+              --    esplicitamente e non con un LIKE: l'elenco e' leggibile e
+              --    verificabile riga per riga in review, e un LIKE avrebbe
+              --    portato dentro il difetto che questa colonna esiste per
+              --    togliere.
+              UPDATE config.iva_natura
+                 SET is_reverse_charge = (codice IN ('N6.1','N6.2','N6.3','N6.4','N6.5',
+                                                     'N6.6','N6.7','N6.8','N6.9'))
+               WHERE is_reverse_charge IS NULL;
+
+              -- ⚠️ NOT NULL DOPO il backfill e SENZA default: chi conia una
+              --    natura nuova deve DIRE se e' inversione contabile. Con un
+              --    default lo erediterebbe per distrazione, e la classificazione
+              --    sbagliata si vedrebbe solo su una fattura elettronica
+              --    rifiutata.
+              ALTER TABLE config.iva_natura
+                ALTER COLUMN is_reverse_charge SET NOT NULL;
+
+              COMMENT ON COLUMN config.iva_natura.is_reverse_charge IS
+                  'true = questa natura e'' un''INVERSIONE CONTABILE (reverse charge): '
+                  'l''imposta la assolve il cessionario, non chi emette. ⭐ Nasce il '
+                  '2026-08-29 con D22 del cantiere IVA, perche'' il risolutore ritorna un '
+                  'composito e l''inversione contabile e'' uno dei suoi campi: fino a ieri '
+                  'quell''informazione non esisteva come DATO, era implicita nel prefisso '
+                  'N6 del codice — leggibile solo da chi conosce a memoria il catalogo '
+                  'FatturaPA. '
+                  '⭐ Sta sulla NATURA e non sul singolo codice IVA (decisione di Tid): '
+                  'N6.1…N6.9 SONO l''inversione contabile — rottami, oro, subappalto '
+                  'edile, fabbricati, cellulari, prodotti elettronici, comparto edile, '
+                  'settore energetico, altri casi. Su config.iva andrebbe ripetuto su ogni '
+                  'codice che porta quella natura, col rischio che due codici della stessa '
+                  'natura dicano cose diverse. '
+                  '⛔ E NON si deduce da codice LIKE ''N6%%'': sarebbe un letterale su una '
+                  'colonna di catalogo (linee-guida §6d, BUG_DUAL), che al primo rename '
+                  'smette di agganciarsi in silenzio — su un flag fiscale. '
+                  '⚠️ NOT NULL senza default: chi conia una natura nuova deve DIRE di che '
+                  'specie e''. La sede del valore e'' il CSV '
+                  '80_data/sql/config/iva_natura.csv; il backfill qui e'' una-tantum. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D22.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.iva_natura DROP COLUMN IF EXISTS is_reverse_charge;

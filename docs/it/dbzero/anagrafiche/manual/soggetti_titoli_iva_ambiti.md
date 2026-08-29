@@ -10,6 +10,19 @@
 
 ---
 
+### 👀 Chi legge questa tabella
+
+⭐ [`vendite.fn_resolve_iva_riga`](/dbzero/vendite/funzioni/fn_resolve_iva_riga),
+nel suo stadio B. L'ambito e` cio` che rende un titolo applicabile **a questa riga
+e non a tutte**: senza, un titolo sarebbe il vecchio «codice IVA del cliente» con
+un altro nome.
+
+⚠️ E decide anche **chi vince** quando i titoli sono piu` d'uno: il risolutore
+sceglie il **piu` specifico** — un titolo sul singolo articolo batte uno che vale
+per tutto — e a parita` di specificita` **solleva**, invece di scegliere a caso.
+
+---
+
 ### 🎯 Scopo Principale
 
 (rev 2026-08-29 — tabella nata il 2026-08-29)

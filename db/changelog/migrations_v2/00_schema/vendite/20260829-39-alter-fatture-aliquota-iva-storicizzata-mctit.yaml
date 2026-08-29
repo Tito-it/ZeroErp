@@ -1,0 +1,231 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente — D19:
+# L'ALIQUOTA APPLICATA DIVENTA UN DATO STORICIZZATO, su ENTRAMBE le tabelle.
+# Decisione di Tid, 2026-08-29.
+#
+# ── ⭐ COSA C'ERA GIA', e va detto perche' cambia la misura del problema ──
+#
+#   Il numero fiscale NON era in pericolo: `fatture_riepiloghi_iva` porta
+#   `imponibile`, `imposta` e `arrotondamento` MEMORIZZATI, `fatture.imposta_tot`
+#   pure, e `fn_ricalcola_riepilogo_iva_fattura` si rifiuta di girare oltre la
+#   soglia `congela_fiscale`. Una fattura del 2024 ristampata oggi mostra gli
+#   euro di allora.
+#
+#   ⛔ Quello che manca e' la PERCENTUALE che spiega quegli euro: le viste la
+#   ripescano viva da `config.iva`. Dopo un cambio di aliquota un documento
+#   vecchio direbbe «23%» accanto a un'imposta calcolata al 22% — cioe' un
+#   documento che **contraddice se stesso**. Sbaglia la spiegazione del numero,
+#   non il numero.
+#
+# ── 🔴 MA LA RAGIONE VERA E' UN'ALTRA, ed e' quella che decide la SEDE ──
+#
+#   Rilievo di Tid: *«a volte viene richiesto di rigenerare i riepiloghi, che
+#   prendono la riga: e' necessario sapere l'aliquota che era stata applicata al
+#   tempo»*.
+#
+#   ⭐ E' l'argomento che batte «basta il riepilogo». `fn_ricalcola_riepilogo_iva_fattura`
+#   ricostruisce i riepiloghi **dalle righe**, e oggi ricava l'aliquota
+#   chiamando `config.fn_get_aliquota_iva` — cioe' **viva**. Se una rigenerazione
+#   parte dopo un cambio di aliquota, produce numeri diversi dall'originale, e
+#   non c'e' niente nella riga che possa smentirla: **la riga non ha memoria**.
+#
+#   Quindi la colonna serve in due punti, per due ragioni diverse:
+#     * sulla RIGA  -> perche' e' la sorgente da cui si ricostruisce;
+#     * sul RIEPILOGO -> perche' e' dove vivono imponibile e imposta, cioe' i due
+#       numeri che l'aliquota deve spiegare. Con l'aliquota accanto, quel gruppo
+#       si verifica da solo senza uscire dalla riga.
+#
+# ── ⛔ NON RIAPRE LA DECISIONE DI GIUGNO, ed e' una distinzione di merito ──
+#
+#   `20260604-05` ha tolto `fatture_righe.iva_perc` con una ragione scritta:
+#   *«l'aliquota si deriva da iva_id via config.iva, non si denormalizza in
+#   colonna»*. Quella ragione era GIUSTA per cio' che `iva_perc` era: una
+#   scorciatoia per evitare un join su un documento **vivo**, che invecchia.
+#
+#   ⭐ Questa colonna e' un'altra cosa, e la prova sta sulla stessa riga:
+#   `iva_natura` e' sopravvissuta alla stessa potatura, perche' e' uno SNAPSHOT.
+#
+#     | su un documento VIVO      | denormalizzazione che invecchia | duplicato |
+#     | su un documento CONGELATO | fatto storico, come              |           |
+#     |                           | emittente_snapshot               | non lo e' |
+#
+#   ⚠️ E c'e' un pezzo che a giugno non esisteva: `congela_fiscale`, entrato con
+#   I10. Il congelamento non e' piu' una convenzione: e' un dato, e su
+#   `fatture_righe` c'e' gia' `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt`
+#   che impedisce di toccare le righe di un documento congelato. Quindi il valore
+#   resta fermo **per costruzione**, senza bisogno di un secondo presidio.
+#
+# ── ⚠️ IL BACKFILL NON PUO' RECUPERARE LA STORIA CHE NON C'E' ─────────
+#
+#   Le righe esistenti prendono l'aliquota **corrente** del loro codice, con lo
+#   stesso override per stato che il riepilogo applica. Per un documento
+#   anteriore a un cambio di aliquota quel valore e' quello di oggi, non quello
+#   del tempo — e non c'e' modo di fare meglio, perche' non e' mai stato scritto
+#   da nessuna parte. Da qui in avanti si', prima no.
+#   ⭐ Tid, 2026-08-29: *«non perdiamo nulla, solo test»*.
+#
+#   ⚠️ Le righe SENZA `iva_id` restano a NULL e non sollevano:
+#   `config.fn_get_aliquota_iva` solleva su un id nullo (e' il difetto §R-3
+#   ancora aperto sulle fatture), quindi il backfill lo evita con un filtro
+#   invece di incontrarlo.
+#
+# Chi le riempie da qui in avanti: 20260829-40 (il trigger, sulla riga) e
+# 20260829-41 (la funzione di ricalcolo, sul riepilogo — che da li' in poi
+# aggrega leggendo la riga invece di ricalcolare).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260829-39-alter-fatture-aliquota-iva-storicizzata-mctit.yaml
+
+  - changeSet:
+      id: 20260829-39-alter-fatture-aliquota-iva-storicizzata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        L'aliquota applicata diventa un dato storicizzato su vendite.fatture_righe e
+        vendite.fatture_riepiloghi_iva (D19). Sulla RIGA perche' e' la sorgente da cui
+        fn_ricalcola_riepilogo_iva_fattura ricostruisce i riepiloghi, e oggi ricava
+        l'aliquota viva: una rigenerazione dopo un cambio di aliquota produrrebbe numeri
+        diversi dall'originale, e la riga non ha memoria per smentirla. Sul RIEPILOGO
+        perche' e' dove vivono imponibile e imposta, cioe' i numeri che l'aliquota deve
+        spiegare. ⛔ Non riapre il drop di iva_perc del 20260604-05: quella era una
+        denormalizzazione su un documento vivo, questa e' uno snapshot - la stessa
+        distinzione per cui iva_natura era sopravvissuta alla stessa potatura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_righe
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_riepiloghi_iva
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_righe
+                    columnName: aliquota_iva
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ `numeric(5,2)` esplicito e non `%TYPE`: in una DDL semplice
+              --    l'ancoraggio al tipo di una colonna non e' ammesso. E' la
+              --    stessa forma di config.iva.aliquota_iva.
+              -- ⚠️ Nullable: una riga senza codice IVA non ha un'aliquota, e in
+              --    bozza e' legittimo (D3). A rifiutare il documento sono i
+              --    cancelli all'emissione, non una NOT NULL che spegnerebbe
+              --    anche i casi buoni.
+              ALTER TABLE vendite.fatture_righe
+                ADD COLUMN IF NOT EXISTS aliquota_iva numeric(5,2);
+
+              ALTER TABLE vendite.fatture_riepiloghi_iva
+                ADD COLUMN IF NOT EXISTS aliquota_iva numeric(5,2);
+
+              COMMENT ON COLUMN vendite.fatture_righe.aliquota_iva IS
+                  'L''aliquota IVA APPLICATA a questa riga, congelata al momento in cui la '
+                  'riga e'' stata scritta. ⭐ Non e'' una denormalizzazione per evitare un '
+                  'join — e'' uno SNAPSHOT, la stessa specie di `iva_natura` che le sta '
+                  'accanto. Il drop di `iva_perc` (20260604-05) riguardava l''altra specie: '
+                  'una scorciatoia su un documento vivo, che invecchia. '
+                  '🔴 La ragione per cui sta sulla RIGA e non solo sul riepilogo: '
+                  'vendite.fn_ricalcola_riepilogo_iva_fattura ricostruisce i riepiloghi '
+                  'DALLE RIGHE, e senza questa colonna ricaverebbe l''aliquota viva da '
+                  'config.iva — una rigenerazione dopo un cambio di aliquota produrrebbe '
+                  'numeri diversi dall''originale, e niente nella riga potrebbe smentirla. '
+                  '⚠️ Resta ferma per costruzione: '
+                  'trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt impedisce di '
+                  'toccare le righe di un documento congelato, quindi non serve un secondo '
+                  'presidio. La riempie trgfn_fatture_righe_guard_normalize, nello stesso '
+                  'punto in cui copia iva_natura. '
+                  '⚠️ NULL su una riga senza codice IVA: in bozza e'' legittimo, e a '
+                  'rifiutare il documento sono i cancelli all''emissione. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D19.';
+
+              COMMENT ON COLUMN vendite.fatture_riepiloghi_iva.aliquota_iva IS
+                  'L''aliquota applicata al gruppo, accanto a `imponibile` e `imposta`. '
+                  '⭐ Rende il gruppo AUTO-CONSISTENTE: i tre numeri si verificano a '
+                  'vicenda senza uscire dalla riga. Senza, una ristampa mostrerebbe la '
+                  'percentuale ripescata viva da config.iva accanto a un''imposta scritta '
+                  'in un altro momento — un documento che contraddice se stesso. '
+                  'La scrive vendite.fn_ricalcola_riepilogo_iva_fattura, che l''aliquota '
+                  'la aveva gia'' in mano per calcolare l''imposta e la scartava. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, D19.';
+
+              -- ══ BACKFILL ═══════════════════════════════════════════════════
+              -- ⚠️ Stesso percorso con cui il riepilogo ricava lo stato
+              --    dell'emittente (fatture -> soggetti_ruoli -> soggetti), cosi'
+              --    l'override per stato e' quello vero e non una seconda regola.
+              -- ⚠️ Solo le righe con un codice IVA: config.fn_get_aliquota_iva
+              --    SOLLEVA su un id nullo, e il backfill evita di incontrarlo
+              --    invece di gestirlo.
+              --
+              -- ⛔ E SOLO SUI DOCUMENTI NON CONGELATI, ed e' la scoperta di
+              --    questo changeSet: `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt`
+              --    rifiuta QUALUNQUE scrittura sulle righe di una fattura oltre
+              --    la soglia — «oltre DRAFT/EMESSA le righe sono uno snapshot
+              --    fiscale e non si toccano piu'».
+              --
+              --    ⭐ Il guard ha un bypass (`zeroerp.maintenance_reset_lotto_draft`),
+              --    e NON si usa: quel nome dice a cosa serve, e dirottarlo per un
+              --    backfill IVA farebbe credere al prossimo lettore che sia in
+              --    corso un reset di lotto.
+              --
+              --    ⭐ Ma soprattutto NON SI DEVE: scrivere su una riga congelata
+              --    e' esattamente cio' che il guard esiste per impedire, e non
+              --    diventa lecito perche' la colonna e' nuova. Le righe dei
+              --    documenti chiusi restano a NULL, e quel NULL SIGNIFICA
+              --    qualcosa: «questa riga e' anteriore allo snapshot». Non
+              --    perdono niente — per loro l'aliquota applicata resta
+              --    ricostruibile dal riepilogo, che questo stesso changeSet
+              --    riempie, e il ricalcolo su di loro non puo' comunque girare
+              --    (congela_fiscale).
+              UPDATE vendite.fatture_righe r
+                 SET aliquota_iva = config.fn_get_aliquota_iva(r.iva_id, s.stato_id)
+                FROM vendite.fatture f
+                JOIN config.stati_doc_fiscale sf   ON sf.id = f.stato_doc_fiscale_id
+                JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+               WHERE f.id = r.fattura_id
+                 AND sf.congela_fiscale IS FALSE
+                 AND r.iva_id IS NOT NULL
+                 AND r.aliquota_iva IS NULL;
+
+              -- ⭐ Il RIEPILOGO invece si riempie per TUTTI, congelati compresi,
+              --    e non e' un'incoerenza con il blocco sopra: la tabella non e'
+              --    protetta dal guard dei satelliti (che copre `fatture`,
+              --    `fatture_indirizzi` e `fatture_scadenze`, non questa), e
+              --    soprattutto qui non si tocca nessun numero fiscale — si
+              --    aggiunge la PERCENTUALE che spiega imponibile e imposta gia'
+              --    scritti. E' proprio cio' che toglie di mezzo il documento che
+              --    contraddice se stesso.
+              -- ⚠️ Per i documenti anteriori a un cambio di aliquota questo
+              --    valore e' quello di OGGI, non quello del tempo: la storia non
+              --    c'e' mai stata, e nessun backfill puo' inventarla.
+              UPDATE vendite.fatture_riepiloghi_iva q
+                 SET aliquota_iva = config.fn_get_aliquota_iva(q.iva_id, s.stato_id)
+                FROM vendite.fatture f
+                JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+               WHERE f.id = q.fattura_id
+                 AND q.iva_id IS NOT NULL
+                 AND q.aliquota_iva IS NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_riepiloghi_iva DROP COLUMN IF EXISTS aliquota_iva;
+              ALTER TABLE vendite.fatture_righe          DROP COLUMN IF EXISTS aliquota_iva;

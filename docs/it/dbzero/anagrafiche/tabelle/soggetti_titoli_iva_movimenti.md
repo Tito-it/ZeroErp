@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/soggetti_titoli_iva_movimenti.md" %}
 # 📚 Tabella `soggetti_titoli_iva_movimenti`
 
 > 📝 **Descrizione**
@@ -47,6 +48,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_soggetti_titoli_iva_movimenti_a10_soggetti_titoli_iv_39df48 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti_titoli_iva', 'attivo', 'titolo_iva_id', 'id')` |
+| trg_soggetti_titoli_iva_movimenti_a10_soggetti_titoli_iv_39df48 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti_titoli_iva', 'attivo', 'titolo_iva_id', 'id')` |
+| trg_soggetti_titoli_iva_movimenti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_soggetti_titoli_iva_movimenti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_soggetti_titoli_iva_movimenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_titoli_iva_movimenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |
 | trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |
 | trg_stiva_movimenti_z90_accumulatore_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore()` |

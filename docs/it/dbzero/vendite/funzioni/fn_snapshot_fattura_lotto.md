@@ -61,14 +61,23 @@ BEGIN
     v_batch_size := p_batch_size;
 
     -- ===== Chi si lavora e chi no, in una sola lettura =====
-    -- Soglia identica al guard di congelamento: oltre EMESSA lo
+    -- ⭐ LA SOGLIA E' UN DATO, non una lista scritta qui (D33).
+    --    Fino al 2026-08-30 questa funzione portava la propria copia di
+    --    `NOT IN ('DRAFT','EMESSA')`. Erano OTTO copie della stessa frase,
+    --    e `config.stati_doc_fiscale.congela_fiscale` era nata (I10) proprio
+    --    per toglierle: era stata collegata a un solo lettore.
+    -- ⚠️ Il comportamento NON cambia: verificato che sui sei stati esistenti
+    --    colonna e lista dicono la stessa cosa. Cambia la SEDE, cioe' quante
+    --    cose vanno toccate il giorno che il confine si sposta - da otto a una.
+    -- ⚠️ E il trattamento dello STATO MANCANTE resta identico a prima: e' una
+    --    decisione di questa funzione, non della soglia.
+    -- Soglia identica al guard di congelamento, e ora: oltre EMESSA lo
     -- snapshot e' definitivo. Filtrare QUI e' diverso da provarci
     -- e riprendersi: non si tenta nemmeno la scrittura.
     SELECT array_agg(lf.fattura_id ORDER BY lf.fattura_id)
-               FILTER (WHERE s.codice_interno IN ('DRAFT', 'EMESSA')),
+               FILTER (WHERE s.congela_fiscale IS FALSE),
            count(*)
-               FILTER (WHERE s.codice_interno IS NULL
-                          OR s.codice_interno NOT IN ('DRAFT', 'EMESSA'))
+               FILTER (WHERE COALESCE(s.congela_fiscale, true))
       INTO v_ids, v_skipped
       FROM vendite.fatturazione_lotti_fatture lf
       JOIN vendite.fatture f ON f.id = lf.fattura_id

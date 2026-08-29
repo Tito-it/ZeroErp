@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente — LA STORIA DELLE
+# TABELLE IVA. Decisione di Tid, 2026-08-29.
+#
+# ── ⭐ PERCHE', e viene da un ragionamento sul risolutore ──────────────
+#
+#   Discutendo la firma del risolutore e' venuta la domanda: se l'aliquota di un
+#   codice cambia, come si ristampa una fattura vecchia? La risposta di Tid —
+#   *«il versionamento si recupera dalle rispettive tabelle in storico»* — e'
+#   giusta come impianto, ma **misurata sulla struttura non regge ancora**:
+#
+#     config.iva                  trigger ✅  gemella ✅  ma `storicizza = f` su TUTTE le righe
+#     config.iva_assoggettamenti  trigger ✅  gemella ✅  idem
+#     config.iva_natura           trigger ⛔  gemella ⛔  la colonna non c'e' proprio
+#     config.iva_stati            trigger ⛔  gemella ⛔  idem
+#
+#   La macchina c'era e il rubinetto era chiuso. Questo changeSet apre il
+#   rubinetto dove serve una colonna nuova; il flag sulle due tabelle che la
+#   colonna ce l'hanno gia' si gira dal CSV, che e' la loro sede.
+#
+# ── ℹ️ BASTA LA COLONNA: il resto lo fanno le automazioni ─────────────
+#
+#   `dbops.fn_run_automations_storico_provision()` crea `storico.iva_natura` e
+#   `fn_run_automations_storico()` aggancia il trigger, entrambe guardando le
+#   tabelle che hanno una colonna `storicizza`. E poiche' il DEFAULT e' `true`,
+#   `maintenance.proc_sync_storico_set_storicizza` registra la tabella fra
+#   quelle a storicizzazione **permanente** — cioe' il flag non viene azzerato
+#   dopo ogni UPDATE, che e' il comportamento giusto per un catalogo.
+#
+#   ⚠️ Quelle automazioni girano SOLO nel contesto `ci_apply`: dopo un migrate
+#   manuale la tabella di storico e il trigger arrivano col `db-ci-apply` o col
+#   job serale, non subito. Non e' un difetto, ma va saputo — altrimenti si
+#   cerca un errore che non c'e'.
+#
+# ── ⛔ `config.iva_stati` NON e' in questo changeSet, e non e' una svista ──
+#
+#   Ha una **PK composita** `(iva_id, stato_id)`, mentre le tabelle di storico
+#   portano UNA sola colonna di riferimento — `storico.iva` ha `iva_id integer`,
+#   cioe' il meccanismo assume una chiave a colonna sola. Aggiungerle
+#   `storicizza` produrrebbe un provisioning storto invece di uno storico.
+#
+#   ⭐ Il rimedio esiste ed e' la convenzione del progetto (linee-guida §4:
+#   *«per chiavi composte preferire una surrogate key `id`»*): darle un `id`
+#   identity e retrocedere la coppia a `UNIQUE`. ✅ Verificato che **nessuna FK
+#   punta a `config.iva_stati`**, quindi si puo' fare senza toccare altro. Ma e'
+#   un cambio di chiave primaria su una tabella viva, cioe' un'altra cosa da
+#   questa: resta scritto nel brief come residuo con la sua forma, da decidere.
+#
+# ── ⚠️ E LA STORIA NON RETROAGISCE ────────────────────────────────────
+#
+#   Da qui in avanti ogni modifica lascia una traccia; il passato non torna.
+#   Tid, 2026-08-29: *«sulle tabelle non e' un problema, non perdiamo nulla,
+#   solo test»*. Va scritto perche' il giorno che qualcuno cerchera' l'aliquota
+#   di due anni fa non la trovera', e deve sapere che non e' un guasto.
+#
+#   ⛔ E soprattutto: **lo storico non sostituisce lo snapshot sul documento.**
+#   Serve a ricostruire com'era un catalogo, non a garantire che una fattura
+#   emessa si ristampi identica — quella e' un'altra voce, ed e' il buco aperto
+#   su `vendite.fatture_righe`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260829-38-alter-iva-natura-add-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20260829-38-alter-iva-natura-add-storicizza
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.iva_natura entra nella storicizzazione: basta la colonna storicizza, e le
+        automazioni creano la tabella di storico e il trigger. Nasce dal ragionamento sul
+        risolutore IVA - «il versionamento si recupera dallo storico» e' giusto come
+        impianto, ma delle quattro tabelle IVA due non avevano ne' trigger ne' gemella e
+        due avevano il flag spento su tutte le righe. ⛔ config.iva_stati resta fuori: ha
+        una PK composita e il meccanismo assume una chiave a colonna sola - il rimedio e'
+        una surrogate key, ed e' un cambio di chiave primaria, cioe' un'altra cosa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: iva_natura
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: iva_natura
+                    columnName: storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DEFAULT true: e' anche cio' che fa registrare la tabella fra
+              -- quelle a storicizzazione PERMANENTE (proc_sync_storico_set_storicizza
+              -- guarda proprio il default), quindi il flag non viene azzerato
+              -- dopo ogni UPDATE. E' il comportamento giusto per un catalogo:
+              -- una natura IVA cambia di rado e ogni cambio conta.
+              ALTER TABLE config.iva_natura
+                ADD COLUMN IF NOT EXISTS storicizza BOOLEAN NOT NULL DEFAULT true;
+
+              COMMENT ON COLUMN config.iva_natura.storicizza IS
+                  'Se true, ogni UPDATE o DELETE della riga lascia uno snapshot in '
+                  'storico.iva_natura. ⭐ Nasce il 2026-08-29 dal cantiere IVA: delle '
+                  'quattro tabelle della famiglia, due non avevano ne'' trigger ne'' '
+                  'tabella gemella e due avevano il flag spento su tutte le righe — la '
+                  'macchina c''era e il rubinetto era chiuso. '
+                  'ℹ️ Basta questa colonna: dbops.fn_run_automations_storico_provision '
+                  'crea storico.iva_natura e fn_run_automations_storico aggancia il '
+                  'trigger, entrambe girando nel contesto ci_apply — quindi dopo un '
+                  'migrate manuale arrivano col db-ci-apply o col job serale, non subito. '
+                  '⚠️ Il DEFAULT true non e'' solo un valore: '
+                  'maintenance.proc_sync_storico_set_storicizza guarda proprio il default '
+                  'per registrare la tabella fra quelle a storicizzazione PERMANENTE, in '
+                  'cui il flag non viene azzerato dopo ogni UPDATE. '
+                  '⛔ Lo storico NON sostituisce lo snapshot sul documento: serve a '
+                  'ricostruire com''era un catalogo, non a garantire che una fattura '
+                  'emessa si ristampi identica. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, Fase 3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.iva_natura DROP COLUMN IF EXISTS storicizza;

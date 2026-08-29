@@ -16,6 +16,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | assoggettamento_id_override | bigint | YES |  |
+| id | bigint | NO |  |
+| storicizza | boolean | NO | true |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -25,13 +27,15 @@
 | FOREIGN KEY | fk_iva_stati_assoggettamento_override | assoggettamento_id_override |
 | FOREIGN KEY | fk_iva_stati_iva | iva_id |
 | FOREIGN KEY | fk_iva_stati_stato | stato_id |
-| PRIMARY KEY | pk_iva_stati | iva_id, stato_id |
+| PRIMARY KEY | pk_iva_stati | id |
+| UNIQUE | uq_iva_stati_iva_stato | iva_id, stato_id |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | ix_config_iva_stati_stato_id | `CREATE INDEX ix_config_iva_stati_stato_id ON config.iva_stati USING btree (stato_id)` |
-| pk_iva_stati | `CREATE UNIQUE INDEX pk_iva_stati ON config.iva_stati USING btree (iva_id, stato_id)` |
+| pk_iva_stati | `CREATE UNIQUE INDEX pk_iva_stati ON config.iva_stati USING btree (id)` |
+| uq_iva_stati_iva_stato | `CREATE UNIQUE INDEX uq_iva_stati_iva_stato ON config.iva_stati USING btree (iva_id, stato_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

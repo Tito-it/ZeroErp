@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_consuma_plafond_titolo_iva.md" %}
 # ⚙️ Funzione `fn_consuma_plafond_titolo_iva`
 
 ```sql

@@ -212,27 +212,33 @@ BEGIN
         -- ORDER BY c.id DESC: deterministico su overlap multi-istanza.
         -- Legge anche listino_versione_id (snapshot fissato all'attivazione).
         -- ============================================================
-        SELECT c.id,
-               c.listino_id,
-               c.listino_versione_id,
-               c.tipo_variazione_globale,
-               c.valore_variazione_globale,
-               c.categoria_cliente_id_snapshot
-          INTO v_contratto_id,
-               v_contr_listino_id,
-               v_contr_listino_versione_id,
-               v_contr_tipo_var,
-               v_contr_valore_var,
-               v_contr_cat_snapshot
-          FROM vendite.contratti c
-          JOIN config.stati_doc_contratti s
-            ON s.id = c.stato_doc_contratto_id
-         WHERE c.billing_account_id = p_ba_id
-           AND c.utility_id         = p_utility_id
-           AND c.validita          @> p_data_riferimento
-           AND s.codice_interno     = 'ATTIVO'
-         ORDER BY c.id DESC
-         LIMIT 1;
+        -- ⭐ IL PREDICATO «contratto attivo» NON STA PIU' QUI: la sede unica
+        --    e' vendite.fn_get_contratto_attivo. Serve IDENTICO al risolutore
+        --    IVA, che da quel contratto arriva al tipo d'uso della fornitura —
+        --    se le due funzioni scegliessero contratti diversi sullo stesso
+        --    overlap, prezzo e aliquota della STESSA riga verrebbero da
+        --    forniture diverse, e nessuno se ne accorgerebbe.
+        v_contratto_id := vendite.fn_get_contratto_attivo(
+                              p_ba_id, p_utility_id, p_data_riferimento);
+
+        -- Le colonne che al pricing servono DOPO restano affar suo: sono
+        -- snapshot del contratto, non il predicato che lo sceglie.
+        -- ⚠️ Senza contratto le cinque variabili restano NULL, esattamente
+        --    come faceva il SELECT INTO senza righe di prima.
+        IF v_contratto_id IS NOT NULL THEN
+            SELECT c.listino_id,
+                   c.listino_versione_id,
+                   c.tipo_variazione_globale,
+                   c.valore_variazione_globale,
+                   c.categoria_cliente_id_snapshot
+              INTO v_contr_listino_id,
+                   v_contr_listino_versione_id,
+                   v_contr_tipo_var,
+                   v_contr_valore_var,
+                   v_contr_cat_snapshot
+              FROM vendite.contratti c
+             WHERE c.id = v_contratto_id;
+        END IF;
 
         IF v_contratto_id IS NOT NULL THEN
             v_snapshot_categoria := COALESCE(v_contr_cat_snapshot, v_categoria_cliente_id);
@@ -629,7 +635,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2_esito(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer, p_articolo_padre_contesto uuid, p_listino_versione_id_preferito bigint)
-IS 'NUCLEO del resolver prezzi v5: stesso corpo di vendite.fn_resolve_prezzo_listino_v2, ma NON solleva e NON logga gli 8 esiti «prezzo che non c''e''» — li RITORNA in esito_codice, esito_context, esito_valori (NULL = risolto). Restano errori i 2 E_PARAMETRO_INVALIDO: un parametro sbagliato e'' un difetto del chiamante, un prezzo che non c''e'' e'' un esito (D-3). Esiste perche'' script.fn_log_error_only scrive via dblink FUORI transazione: catturare l''eccezione avrebbe nascosto l''errore ma non la riga di log, una per tentativo. Chi vuole il comportamento storico chiama il guscio fn_resolve_prezzo_listino_v2, che ha firma e RETURNS invariati. Brief: brief-ddt-righe-senza-prezzo §9 slice A.';
+IS '⭐ rev 2026-08-29: il predicato «contratto attivo per (ba, utility, data)» NON sta piu'' qui dentro — e'' stato ESTRATTO in vendite.fn_get_contratto_attivo, che ne e'' la sede unica. Serve identico al risolutore IVA, che da quel contratto arriva al tipo d''uso della fornitura: se le due funzioni scegliessero contratti diversi sullo stesso overlap, prezzo e aliquota della STESSA riga verrebbero da forniture diverse e nessun errore lo direbbe. La scelta del contratto e le colonne lette DOPO sono ora due istruzioni invece di una, ed e'' l''unica differenza: stesso contratto, stesse colonne, stesso esito. NUCLEO del resolver prezzi v5: stesso corpo di vendite.fn_resolve_prezzo_listino_v2, ma NON solleva e NON logga gli 8 esiti «prezzo che non c''e''» — li RITORNA in esito_codice, esito_context, esito_valori (NULL = risolto). Restano errori i 2 E_PARAMETRO_INVALIDO: un parametro sbagliato e'' un difetto del chiamante, un prezzo che non c''e'' e'' un esito (D-3). Esiste perche'' script.fn_log_error_only scrive via dblink FUORI transazione: catturare l''eccezione avrebbe nascosto l''errore ma non la riga di log, una per tentativo. Chi vuole il comportamento storico chiama il guscio fn_resolve_prezzo_listino_v2, che ha firma e RETURNS invariati. Brief: brief-ddt-righe-senza-prezzo §9 slice A.';
 ```
 
 ---

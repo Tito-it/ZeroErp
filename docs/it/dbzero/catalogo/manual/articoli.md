@@ -50,6 +50,16 @@
 * **Identità**: `id UUID` (PK), `codice VARCHAR(50)` (**UNIQUE**), `descrizione VARCHAR(150)`, `descrizione_breve VARCHAR(80)`
 * **Classificazione**: `uom_id`, `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`
 * **Fiscale/Contabile**: `iva_id`, `conto_contabile_vendita_id`, `conto_contabile_acquisto_id`
+
+> ⭐ **`iva_id` e` il PRIMO gradino del risolutore IVA** (dal 2026-08-29):
+> `vendite.fn_resolve_iva_riga` chiede prima all'articolo, e se l'articolo
+> risponde la sua risposta **vince** — nemmeno l'uso della fornitura la scavalca.
+>
+> ⛔ **E il suo `NULL` SIGNIFICA qualcosa: «non ho un'opinione sull'IVA».** Non e`
+> un dato mancante da bonificare, ed e` il motivo per cui la colonna e` nullabile.
+> Renderla `NOT NULL` «per igiene» spegnerebbe il secondo gradino — quello che
+> legge il tipo d'uso della fornitura — perche` il risolutore non avrebbe piu`
+> modo di sapere quando l'articolo non ha niente da dire.
 * **Flag funzionali**: `is_composito` (distinta), `is_solo_componente` (solo componente), `requires_serial` (serializzazione), `voce_utility` (voce utility)
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Tecnico**: `meta JSONB`, `attivo BOOLEAN` (default `true`), `storicizza BOOLEAN` (default `true`), `tx_id UUID`

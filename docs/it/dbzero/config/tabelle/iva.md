@@ -20,11 +20,13 @@
 | attivo | boolean | NO | true |
 | storicizza | boolean | YES | true |
 | assoggettamento_id | bigint | YES |  |
+| codice_interno | character varying | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_iva_aliquota_pos_no_natura_assogg |  |
+| CHECK | chk_iva_codice_interno_non_vuoto |  |
 | CHECK | chk_iva_zero_requires_natura_or_assogg |  |
 | FOREIGN KEY | fk_iva_assoggettamento | assoggettamento_id |
 | FOREIGN KEY | fk_iva_conto_acq | conto_iva_acquisti_id |
@@ -33,6 +35,7 @@
 | FOREIGN KEY | fk_iva_split | id_iva_split |
 | PRIMARY KEY | pk_iva | id |
 | UNIQUE | uq_iva_codice | codice |
+| UNIQUE | uq_iva_codice_interno | codice_interno |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -40,6 +43,7 @@
 | ix_iva_desc | `CREATE INDEX ix_iva_desc ON config.iva USING btree (descrizione)` |
 | pk_iva | `CREATE UNIQUE INDEX pk_iva ON config.iva USING btree (id)` |
 | uq_iva_codice | `CREATE UNIQUE INDEX uq_iva_codice ON config.iva USING btree (codice)` |
+| uq_iva_codice_interno | `CREATE UNIQUE INDEX uq_iva_codice_interno ON config.iva USING btree (codice_interno)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
@@ -60,6 +64,7 @@
 | trg_iva_a10_preventivi_riepiloghi_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_riepiloghi_iva', 'iva_id', 'id', 'attivo')` |
 | trg_iva_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'iva_id', 'id', 'attivo')` |
 | trg_iva_a10_preventivi_righe_componenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe_componenti', 'iva_id', 'id', 'attivo')` |
+| trg_iva_a10_soggetti_titoli_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_titoli_iva', 'iva_id', 'id', 'attivo')` |
 | trg_iva_a10_tipi_utenze_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'tipi_utenze', 'iva_id', 'id', 'attivo')` |
 | trg_iva_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

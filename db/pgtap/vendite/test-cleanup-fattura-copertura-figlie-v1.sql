@@ -1,5 +1,16 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: dieci asserzioni su undici leggono il CATALOGO
+--   (pg_constraint, pg_proc), che la RLS non filtra. L undicesima, il test 5,
+--   e l unica che CONTA RIGHE — ed e proprio su quello zero che si fonda
+--   l eccezione SCOPERTA_NOTA. Sotto RLS uno zero non distingue «la tabella e
+--   vuota» da «non la vedo»: dal 2026-08-29 l elenco comprende
+--   anagrafiche.soggetti_titoli_iva_movimenti, che ha RLS ATTIVA e policy per
+--   emittente, quindi da zeroerp_app quel conteggio sarebbe fail-closed e il
+--   presidio si autoassolverebbe. Da owner (relforcerowsecurity = false) il
+--   conteggio e una misura. Nessuna copertura RLS si perde: in questo file non
+--   ce n era.
 -- pgTAP test per Zero ERP
 -- Test: la pulizia della fattura copre TUTTE le sue tabelle figlie
 --       (piano-db-ritorno-lotto-a-draft.md §5.5 — invariante di catalogo)
@@ -141,7 +152,32 @@ INSERT INTO tmp_inventario(tab, categoria, perche) VALUES
   ('pagamenti.sistemazioni',               'BLOCCO_VOLUTO', 'una fattura su cui e stata REGISTRATA una decisione di sistemazione NON si deve poter disfare: se l atto e CONFERMATO ha gia generato una distinta o un fondo, e cancellare il documento lascerebbe quel denaro senza origine; se e in BOZZA e comunque una decisione che qualcuno ha preso e che va ritrovata. ⚠️ Sul percorso vero il blocco non scatta mai - il cleanup lavora su fatture in DRAFT, e una sistemazione nasce da un sovra-incasso, cioe da movimenti su un documento gia emesso - ma il giorno che quel percorso cambiasse, il rifiuto e la risposta giusta'),
 
   -- ── SCOPERTA_NOTA: eccezione a tempo ───────────────────────────────
-  ('vendite.attivita_consumi',             'SCOPERTA_NOTA', 'flusso consumi non ancora acceso: 0 righe e nessuno scrittore (solo fn_list_consumi_da_pushare, che legge). fattura_id e NULLABLE apposta, quindi il giorno che si accende il ripristino dovra azzerarlo, non cancellare il consumo');
+  ('vendite.attivita_consumi',             'SCOPERTA_NOTA', 'flusso consumi non ancora acceso: 0 righe e nessuno scrittore (solo fn_list_consumi_da_pushare, che legge). fattura_id e NULLABLE apposta, quindi il giorno che si accende il ripristino dovra azzerarlo, non cancellare il consumo'),
+  -- ⭐ rev 2026-08-29 (cantiere IVA, Fase 2 / changeSet 20260829-26): la tabella
+  --   registra il CONSUMO DI PLAFOND di un titolo IVA (una dichiarazione
+  --   d intento) da parte di una fattura. E nata ieri, e questo file l ha
+  --   nominata il giorno dopo: e esattamente il lavoro per cui esiste.
+  --
+  -- ⚠️ Perche SCOPERTA_NOTA e non una delle due categorie definitive: la
+  --   risposta giusta DIPENDE da una decisione ancora aperta, il punto I5 del
+  --   brief - DOVE si consuma il plafond.
+  --     * se il consumo si registra all EMISSIONE, la pulizia (che lavora su
+  --       documenti in DRAFT) non incontrera mai un movimento, e il giorno che
+  --       lo incontrasse il rifiuto sarebbe la risposta giusta: BLOCCO_VOLUTO,
+  --       la stessa posizione di pagamenti.sistemazioni qui sopra;
+  --     * se invece si registra gia in bozza, un ripristino DEVE stornare il
+  --       movimento prima di cancellare - altrimenti il plafond di un terzo
+  --       resta mangiato da un documento che non esiste piu: GESTITA, e la
+  --       pulizia va estesa.
+  --   Scriverne una adesso significherebbe fissare la decisione da qui, che e
+  --   il verso sbagliato. SCOPERTA_NOTA e la categoria ARMATA: scade da sola
+  --   nel momento esatto in cui la decisione diventa reale.
+  --
+  -- ℹ️ Oggi il presupposto e vero e verificabile: 0 righe e NESSUNO scrittore -
+  --   anagrafiche.fn_consuma_plafond_titolo_iva esiste ma non ha chiamanti.
+  -- ⚠️ La stessa riga copre anche il secondo livello: la tabella ha una FK anche
+  --   verso vendite.fatture_righe, e una tabella vuota e vuota per entrambe.
+  ('anagrafiche.soggetti_titoli_iva_movimenti', 'SCOPERTA_NOTA', 'consumo di plafond di un titolo IVA: 0 righe e nessuno scrittore (fn_consuma_plafond_titolo_iva non ha chiamanti). Entrambe le FK verso fatture e fatture_righe sono NO ACTION e lo sono di proposito - il movimento e un fatto contabile - ma la categoria definitiva dipende da I5: consumo all EMISSIONE -> BLOCCO_VOLUTO come pagamenti.sistemazioni; consumo gia in bozza -> GESTITA, e la pulizia deve stornare il movimento prima di cancellare, altrimenti il plafond di un terzo resta mangiato da un documento che non esiste piu');
 
 -- Le figlie vere, lette dal catalogo
 CREATE TEMP TABLE tmp_figlie AS
@@ -221,13 +257,34 @@ SELECT is(
 -- ============================================================
 -- 5) L'eccezione a tempo, e la sua scadenza
 -- ============================================================
--- attivita_consumi e' fuori copertura perche' NESSUNO la popola. Il giorno
--- che il flusso consumi si accende, questo test diventa rosso — che e'
+-- Le SCOPERTA_NOTA sono fuori copertura perche' NESSUNO le popola. Il giorno
+-- che uno dei due flussi si accende, questo test diventa rosso — che e'
 -- esattamente quando serve saperlo, non mesi dopo su una DELETE esplosa.
+--
+-- ⚠️ L'elenco resta ESPLICITO, e non diventa un giro sull'inventario: la
+--   categoria e' una stringa scritta a mano, e un presidio che si costruisce
+--   da sola la lista delle cose da sorvegliare si spegne nel momento in cui
+--   qualcuno scrive male la categoria. Qui la lista e' seconda firma.
+-- ⭐ E il messaggio NOMINA la tabella che si e' popolata, con quante righe: un
+--   rosso che dice solo «una delle due» costringe a rifare il lavoro a mano.
+-- ⛔ E' l'unica asserzione del file che conta righe, ed e' il motivo del
+--   marcatore `pgtap-runner: owner` in testa: soggetti_titoli_iva_movimenti ha
+--   RLS attiva, e sotto RLS uno zero non distingue «e' vuota» da «non la
+--   vedo». Il presidio si sarebbe autoassolto.
+CREATE TEMP TABLE tmp_scoperte AS
+SELECT 'vendite.attivita_consumi'::text AS tab,
+       (SELECT count(*) FROM vendite.attivita_consumi) AS righe
+UNION ALL
+SELECT 'anagrafiche.soggetti_titoli_iva_movimenti'::text,
+       (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_movimenti);
+
 SELECT is(
-  (SELECT count(*) FROM vendite.attivita_consumi),
+  (SELECT count(*) FROM tmp_scoperte WHERE righe > 0),
   0::bigint,
-  '5) attivita_consumi e ancora vuota: l eccezione SCOPERTA_NOTA e ancora valida'
+  '5) le SCOPERTA_NOTA sono ancora vuote, l eccezione e ancora valida: '
+  || COALESCE((SELECT string_agg(tab || ' (' || righe || ' righe)', ', ' ORDER BY tab)
+                 FROM tmp_scoperte WHERE righe > 0),
+              'tutte vuote')
 );
 
 
@@ -270,7 +327,18 @@ INSERT INTO tmp_inventario_righe(vincolo, tab, categoria, perche) VALUES
   ('fk_resi_accrediti_fattura_riga',               'vendite.resi_righe_accrediti', 'BLOCCO_VOLUTO',
    'l accredito del reso punta alla riga accreditata: e il documento che prova quanto e stato reso'),
   ('fk_fatture_righe_riga_rettificata',            'vendite.fatture_righe',        'BLOCCO_VOLUTO',
-   'auto-riferimento: la riga di nota di credito punta alla riga rettificata. ⚠️ Blocca SOLO se la riga che rettifica sta FUORI dall insieme cancellato: se muoiono insieme la NO ACTION e soddisfatta a fine istruzione, ed e il caso normale della nota di credito nello stesso lotto');
+   'auto-riferimento: la riga di nota di credito punta alla riga rettificata. ⚠️ Blocca SOLO se la riga che rettifica sta FUORI dall insieme cancellato: se muoiono insieme la NO ACTION e soddisfatta a fine istruzione, ed e il caso normale della nota di credito nello stesso lotto'),
+
+  -- ── SCOPERTA_NOTA: eccezione a tempo, la prima di questo inventario ─
+  -- ⭐ rev 2026-08-29 (cantiere IVA, Fase 2): e la SECONDA chiave esterna della
+  --   stessa tabella gia classificata al primo livello. Compare qui perche
+  --   questo inventario e indicizzato per VINCOLO e non per tabella - e questo
+  --   e il caso che mostra perche: la classificazione e la stessa, ma senza la
+  --   voce il test 6 sarebbe rosso e nessuna motivazione lo spiegherebbe.
+  -- ⚠️ La verifica di vuotezza NON si duplica: sta al test 5, una volta sola,
+  --   perche una tabella vuota e vuota per tutte le sue chiavi esterne.
+  ('fk_soggetti_titoli_iva_movimenti_fattura_riga', 'anagrafiche.soggetti_titoli_iva_movimenti', 'SCOPERTA_NOTA',
+   'stesso legame visto dal lato riga: il movimento di plafond puo puntare alla singola riga che lo ha consumato. Motivazione e scadenza sono quelle del primo livello - 0 righe, nessuno scrittore, e la categoria definitiva decisa da I5. Vuotezza verificata dal test 5');
 
 CREATE TEMP TABLE tmp_figlie_righe AS
 SELECT c.conname                       AS vincolo,

@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente — `I2`, l'anello
+# che porta il risolutore IVA al TIPO D'USO della fornitura (`D11`).
+#
+# ── ⭐ A COSA SERVE ───────────────────────────────────────────────────
+#
+#   Nello stadio A il ripiego all'articolo e' l'uso della fornitura — domestico,
+#   altri usi, condominio, pubblico — perche' il gas di casa non paga come il gas
+#   di uno stabilimento. Quell'informazione sta in `config.tipi_utenze`, che si
+#   raggiunge solo via `vendite.contratti_utilities.contratto_id`.
+#
+# ── ⭐ IL PREDICATO NON E' QUI, ED E' LA DIFFERENZA CON LA PRIMA STESURA ──
+#
+#   La prima versione (scritta e ritirata il 2026-08-29) **ricopiava** il
+#   predicato «contratto attivo» dal nucleo del pricing, dichiarando il debito.
+#   Tid ha scelto la strada pulita: il predicato e' stato **estratto** in
+#   `vendite.fn_get_contratto_attivo` (20260829-44), e sia il pricing sia questa
+#   funzione lo **chiamano**.
+#
+#   ⭐ Cosi' non c'e' niente da tenere allineato: prezzo e aliquota della stessa
+#   riga vengono dalla stessa fornitura **per costruzione**, non per disciplina.
+#
+# ── ℹ️ NESSUN `LIMIT` SULLA SECONDA LETTURA ───────────────────────────
+#
+#   `uq_contratti_utilities_contratto_id` garantisce **una riga per contratto**.
+#   Un `LIMIT 1` qui non sarebbe una precauzione: sarebbe rumore che nasconde un
+#   vincolo — e senza `ORDER BY` sarebbe anche una scommessa.
+#
+# ── ⚠️ RITORNA NULL, NON SOLLEVA ──────────────────────────────────────
+#
+#   Nessun contratto attivo, contratto senza riga utility, o tipo d'uso non
+#   dichiarato: tutti casi legittimi. Nel risolutore «non lo so» significa
+#   semplicemente che il ripiego non si applica e vale quel che dice l'articolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-46-create-fn-get-tipo-utenza-fornitura-mctit.yaml
+
+  - changeSet:
+      id: 20260829-46-create-fn-get-tipo-utenza-fornitura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_get_tipo_utenza_fornitura: dato (billing account, utility, data) dice il
+        tipo d'uso della fornitura, che nello stadio A del risolutore IVA e' il ripiego
+        all'articolo (D11). ⭐ Non contiene il predicato «contratto attivo»: lo CHIAMA da
+        vendite.fn_get_contratto_attivo, la stessa funzione che usa il nucleo del pricing -
+        cosi' prezzo e aliquota della stessa riga vengono dalla stessa fornitura per
+        costruzione, non per disciplina.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti_utilities
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_get_contratto_attivo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_tipo_utenza_fornitura(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                  p_utility_id         config.utilities.id%TYPE,
+                  p_data_riferimento   date
+              )
+              RETURNS config.tipi_utenze.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dire qual e' il TIPO D'USO della fornitura — domestico,
+              --   altri usi, condominio, pubblico — partendo dalla terna che ogni
+              --   testata di documento porta. E' il livello di ripiego dello
+              --   stadio A del risolutore IVA (D11): il gas di casa non paga come
+              --   il gas di uno stabilimento.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I2 / D11.
+              -- Ritorna: l'id del tipo utenza, oppure NULL se non c'e' una
+              --   fornitura attiva a quella data o se il tipo d'uso non e'
+              --   dichiarato. NON solleva: sono casi legittimi.
+              DECLARE
+                  v_contratto_id   vendite.contratti.id%TYPE;
+                  v_tipo_utenza_id config.tipi_utenze.id%TYPE;
+              BEGIN
+                  -- ⭐ Il predicato «contratto attivo» sta in un posto solo, e
+                  --    questa funzione lo CHIAMA — lo stesso che chiama il nucleo
+                  --    del pricing. Prezzo e aliquota della stessa riga vengono
+                  --    cosi' dalla stessa fornitura per costruzione.
+                  v_contratto_id := vendite.fn_get_contratto_attivo(
+                                        p_billing_account_id,
+                                        p_utility_id,
+                                        p_data_riferimento);
+
+                  IF v_contratto_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- ℹ️ Nessun LIMIT: uq_contratti_utilities_contratto_id
+                  --    garantisce UNA riga per contratto. Un LIMIT 1 qui non
+                  --    sarebbe una precauzione, sarebbe rumore che nasconde un
+                  --    vincolo — e senza ORDER BY sarebbe una scommessa.
+                  SELECT cu.tipo_utenza_id
+                    INTO v_tipo_utenza_id
+                    FROM vendite.contratti_utilities cu
+                   WHERE cu.contratto_id = v_contratto_id;
+
+                  RETURN v_tipo_utenza_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_tipo_utenza_fornitura(bigint, integer, date)
+              IS 'Dato (billing account, utility, data) ritorna il TIPO D''USO della fornitura — domestico, altri usi, condominio, pubblico. E'' il livello di ripiego dello stadio A del risolutore IVA (D11): il gas di casa non paga come il gas di uno stabilimento, e quell''informazione sta in config.tipi_utenze, che si raggiunge solo via vendite.contratti_utilities.contratto_id. ⭐ NON contiene il predicato «contratto attivo»: lo CHIAMA da vendite.fn_get_contratto_attivo, la stessa funzione che usa il nucleo del pricing. La prima stesura lo ricopiava dichiarando il debito; Tid ha scelto di estrarlo, e cosi'' non c''e'' piu'' niente da tenere allineato — prezzo e aliquota della stessa riga vengono dalla stessa fornitura per COSTRUZIONE, non per disciplina. ℹ️ Nessun LIMIT sulla lettura di contratti_utilities: uq_contratti_utilities_contratto_id garantisce una riga per contratto, e un LIMIT senza ORDER BY sarebbe una scommessa che nasconde un vincolo. ⚠️ Ritorna NULL e non solleva: nessun contratto attivo, un contratto senza riga utility o un tipo d''uso non dichiarato sono tutti casi legittimi — un preventivo a un cliente nuovo non ha ancora nessuna fornitura, e nel risolutore «non lo so» significa che il ripiego non si applica e vale quel che dice l''articolo. STABLE, sola lettura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_tipo_utenza_fornitura(bigint, integer, date);

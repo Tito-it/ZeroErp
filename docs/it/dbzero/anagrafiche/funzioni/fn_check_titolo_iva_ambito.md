@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_check_titolo_iva_ambito.md" %}
 # ⚙️ Funzione `fn_check_titolo_iva_ambito`
 
 ```sql

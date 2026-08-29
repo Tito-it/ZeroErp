@@ -52,25 +52,14 @@ BEGIN
      WHERE s.id = v_stato_id;
 
     -- ⭐ LA SOGLIA E' UN DATO, non una lista qui dentro
-    --    (rev 2026-08-29, D15 del brief IVA). Prima era
-    --    `v_codice_interno NOT IN ('DRAFT','EMESSA')`: stesso
-    --    perimetro, ma cablato — e il risolutore IVA avrebbe avuto
-    --    bisogno della STESSA soglia, quindi l'avrebbe ricopiata.
-    --    Due finestre di congelamento sullo stesso documento sono
-    --    due verita' che divergono in silenzio.
-    --
+    --    (rev 2026-08-29, D15 del brief IVA). Due finestre di
+    --    congelamento sullo stesso documento sono due verita' che
+    --    divergono in silenzio.
     -- ⚠️ `IS NULL OR`: senza, uno stato non risolvibile renderebbe
-    --    l'espressione NULL e l'IF non scatterebbe, quindi il
-    --    ricalcolo procederebbe su un documento di stato ignoto.
-    --    Oggi il ramo e' IRRAGGIUNGIBILE (la FK
-    --    fk_fatture_stato_doc_fiscale ammette solo id validi, e il
-    --    NULL e' respinto sopra): si tiene perche' costa zero e non
-    --    fa dipendere questo guard da un vincolo di un'altra tabella.
-    --
-    -- ⚠️ Il COALESCE e' la difesa gemella sulla colonna nuova, che
-    --    e' NOT NULL: se un NULL arrivasse comunque, la risposta
-    --    giusta e' «congelato». Un dubbio su uno snapshot fiscale
-    --    si risolve NON ricalcolando.
+    --    l'espressione NULL e l'IF non scatterebbe. Oggi il ramo e'
+    --    irraggiungibile: si tiene perche' costa zero.
+    -- ⚠️ Il COALESCE e' la difesa gemella sulla colonna nuova: un
+    --    dubbio su uno snapshot fiscale si risolve NON ricalcolando.
     IF v_codice_interno IS NULL OR COALESCE(v_congela_fiscale, true) THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
             jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
@@ -88,16 +77,67 @@ BEGIN
     DELETE FROM vendite.fatture_riepiloghi_iva WHERE fattura_id = p_fattura_id;
     GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
 
-    INSERT INTO vendite.fatture_riepiloghi_iva (fattura_id, iva_id, natura_id, esigibilita, split_payment, imponibile, imposta, arrotondamento)
-    SELECT r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment,
-           ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2),
-           ROUND(ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2) * (COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)::NUMERIC / 100::NUMERIC), 2),
-           SUM(COALESCE(r.imponibile_riga, 0)) - ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2)
-      FROM vendite.fatture_righe r
-      LEFT JOIN config.iva i ON i.id = r.iva_id
-      LEFT JOIN config.iva_natura n ON n.codice = r.iva_natura
+    -- ⭐ LE RIGHE SI RIALLINEANO PRIMA DI ESSERE AGGREGATE (D30).
+    --    Questa funzione, per costruzione, vede SOLO documenti
+    --    non congelati: il guard qui sopra rifiuta gli altri.
+    --    Su un documento che puo' ancora cambiare la risposta
+    --    giusta e' il catalogo di ADESSO — e' la stessa regola
+    --    che segue il trigger di riga, che riscrive l'aliquota
+    --    a ogni scrittura. Lo snapshot diventa una fotografia
+    --    quando il documento smette di essere scritto, non
+    --    perche' qualcuno smette di leggerlo.
+    -- ⚠️ `IS DISTINCT FROM`: senza, ogni ricalcolo toccherebbe
+    --    tutte le righe e produrrebbe una riga di storico per
+    --    ognuna. Cosi' si muove solo cio' che e' davvero
+    --    cambiato, e quel movimento e' proprio il fatto che
+    --    vale la pena registrare.
+    UPDATE vendite.fatture_righe r
+       SET aliquota_iva = config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id)
      WHERE r.fattura_id = p_fattura_id
-     GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
+       AND r.iva_id IS NOT NULL
+       AND r.aliquota_iva IS DISTINCT FROM
+           config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id);
+
+    -- ⚠️ E l'aggregazione continua a chiamare il catalogo invece di
+    --    leggere `r.aliquota_iva`, che dopo la UPDATE qui sopra porta
+    --    lo stesso identico valore. Non e' una svista: su una riga
+    --    SENZA codice IVA `config.fn_get_aliquota_iva` SOLLEVA, mentre
+    --    `r.aliquota_iva` sarebbe NULL e diventerebbe uno zero muto.
+    --    Trasformare un errore in uno zero su una funzione fiscale e'
+    --    esattamente il genere di cambiamento che non si fa di
+    --    contrabbando dentro un altro lavoro: e' il difetto §R-3, e
+    --    si chiude dove vive.
+    -- ⚠️ `MAX` e non un valore per riga: il gruppo non comprende
+    --    l'aliquota, e non puo' — lo impedisce uq_fatture_r_iva_key.
+    --    Dentro un gruppo l'aliquota e' una sola per costruzione
+    --    (funzione di codice IVA e stato emittente, costanti sulla
+    --    fattura); se divergesse, `MAX` la collassa. Residuo
+    --    dichiarato nel brief.
+    -- ⚠️ La sottoquery serve SOLO a poter usare l'aliquota due
+    --    volte senza ripetere l'espressione: la formula di
+    --    imponibile, imposta e arrotondamento e' identica a prima.
+    INSERT INTO vendite.fatture_riepiloghi_iva
+        (fattura_id, iva_id, natura_id, esigibilita, split_payment,
+         imponibile, imposta, arrotondamento, aliquota_iva)
+    SELECT g.fattura_id, g.iva_id, g.natura_id, g.esigibilita, g.split_payment,
+           ROUND(g.imponibile_grezzo, 2),
+           ROUND(ROUND(g.imponibile_grezzo, 2) * (COALESCE(g.aliquota, 0)::NUMERIC / 100::NUMERIC), 2),
+           g.imponibile_grezzo - ROUND(g.imponibile_grezzo, 2),
+           g.aliquota
+      FROM (
+          SELECT r.fattura_id,
+                 r.iva_id,
+                 n.id AS natura_id,
+                 r.esigibilita,
+                 r.split_payment,
+                 SUM(COALESCE(r.imponibile_riga, 0)) AS imponibile_grezzo,
+                 MAX(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id)) AS aliquota
+            FROM vendite.fatture_righe r
+            LEFT JOIN config.iva i ON i.id = r.iva_id
+            LEFT JOIN config.iva_natura n ON n.codice = r.iva_natura
+           WHERE r.fattura_id = p_fattura_id
+           GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment
+      ) g;
     GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
 
     RETURN QUERY SELECT v_deleted_rows, v_inserted_rows;
@@ -105,7 +145,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
-IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per aliquota/natura/esigibilita/split e applicando l''override di aliquota per stato dell''emittente. ⭐ rev 2026-08-29 (D15 del brief brief-db-be-iva-risolutore-e-regime-cliente): la soglia di congelamento NON e'' piu'' una lista di codici in questo corpo — si legge da config.stati_doc_fiscale.congela_fiscale. Il perimetro non cambia (il seed mette congela_fiscale = false esattamente su DRAFT ed EMESSA), cambia la SEDE: il risolutore IVA di I2 ha bisogno della stessa identica soglia e, lasciandola cablata qui, l''avrebbe ricopiata — due finestre di congelamento sullo stesso documento sono due verita'' che divergono in silenzio. Cambiare la soglia e'' ora una cella di CSV. ⚠️ Il COALESCE(v_congela_fiscale, true) e'' fail-closed sulla colonna nuova: e'' NOT NULL, ma se un NULL arrivasse la risposta giusta e'' «congelato» — un dubbio su uno snapshot fiscale si risolve NON ricalcolando. 📌 Strascico noto e non chiuso qui: il codice sollevato resta E_PARAMETRO_INVALIDO, mentre «documento congelato» e'' un conflitto di stato e meriterebbe un codice CONFLITTO_STATO come i tre gemelli del gate DDT. rev 2026-08-02: due difetti chiusi sul controllo dello stato, opposti fra loro e con la stessa radice — usare un valore nullabile come prova di esistenza. (1) L''esistenza si misura con NOT FOUND: stato_doc_fiscale_id e'' NULLABLE, quindi l''IS NULL precedente dichiarava «fattura non trovata» anche per una fattura che esiste ma non ha stato; ora i due casi hanno messaggi distinti (E_FATTURA_NON_TROVATA vs E_VALORE_MANCANTE). (2) Il guard di stato era fail-open nella FORMA: con codice_interno NULL l''espressione NOT IN vale NULL e l''IF non sarebbe scattato; il ramo e'' pero'' IRRAGGIUNGIBILE oggi, quindi l''IS NULL OR e'' difesa in profondita''.';
+IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per codice IVA/natura/esigibilita/split, e scrive l''aliquota sul riepilogo accanto a imponibile e imposta. ⭐ rev 2026-08-29 bis (D30 del brief IVA): PRIMA di aggregare, la funzione RIALLINEA vendite.fatture_righe.aliquota_iva al catalogo di adesso. La revisione precedente leggeva l''aliquota dalla riga con un COALESCE, per «preservare l''aliquota di allora»: era sbagliato, e il motivo e'' scritto sette righe piu'' su nella funzione stessa. Questa funzione, per costruzione, vede SOLO documenti NON congelati - il guard su congela_fiscale rifiuta gli altri - quindi quel COALESCE non poteva mai proteggere un documento emesso: agiva solo sulle bozze, cioe'' esattamente dove il catalogo di adesso e'' la risposta giusta. E produceva la divergenza che il commento di trgfn_fatture_righe_guard_normalize dichiara inaccettabile: quel trigger riscrive l''aliquota della riga a OGNI scrittura, quindi con il COALESCE riga e riepilogo dello stesso documento potevano portare aliquote diverse, e nessuno se ne sarebbe accorto finche'' non quadrava un totale. Il test pgTAP test-ricalcola-riepiloghi-iva («Override iva_stati applicato») lo ha smentito in un giorno. ⭐ La regola vera: lo snapshot dell''aliquota diventa una FOTOGRAFIA quando il documento smette di essere scritto, non perche'' qualcuno smette di leggerlo. Le colonne aggiunte da 20260829-39 servono a chi rigenera un documento GIA'' CONGELATO - un percorso che oggi non esiste, perche'' questa funzione lo rifiuta - e quel percorso, il giorno che nascera'', dovra'' leggere la riga e non il catalogo. ⚠️ Il riallineamento e'' guardato da IS DISTINCT FROM: senza, ogni ricalcolo toccherebbe tutte le righe e genererebbe una riga di storico per ognuna. ⚠️ E l''aggregazione continua a chiamare config.fn_get_aliquota_iva invece di leggere r.aliquota_iva, che dopo il riallineamento porta lo stesso valore: su una riga SENZA codice IVA la funzione SOLLEVA mentre la colonna sarebbe NULL e diventerebbe uno zero muto - trasformare un errore in uno zero su una funzione fiscale non si fa di contrabbando dentro un altro lavoro (difetto §R-3, si chiude dove vive). ⚠️ L''aliquota e'' aggregata con MAX perche'' il gruppo non la comprende e non puo'': lo impedisce uq_fatture_r_iva_key, l''unica sulla tabella; dentro un gruppo il valore e'' uno solo per costruzione, ma se divergesse MAX lo collassa - caso COLLASSATO, non risolto, residuo dichiarato nel brief. ⚠️ La formula di imponibile, imposta e arrotondamento e'' IDENTICA a quella del 2026-08-02, parentesi e arrotondamenti compresi: nessun documento si sposta di un centesimo. ⭐ rev 2026-08-29 (D15): la soglia di congelamento si legge da config.stati_doc_fiscale.congela_fiscale, e il COALESCE(v_congela_fiscale, true) e'' fail-closed. 📌 Strascico noto: il codice sollevato resta E_PARAMETRO_INVALIDO, mentre «documento congelato» e'' un conflitto di stato. rev 2026-08-02: l''esistenza si misura con NOT FOUND (stato_doc_fiscale_id e'' nullabile).';
 ```
 
 ---

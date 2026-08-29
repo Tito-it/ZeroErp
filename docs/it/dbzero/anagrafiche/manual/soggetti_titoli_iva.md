@@ -15,6 +15,20 @@ Approfondimento funzioni:
 
 ---
 
+### 👀 Chi legge questa tabella
+
+⭐ **Un consumatore solo, ed e` nato il 2026-08-29**:
+[`vendite.fn_resolve_iva_riga`](/dbzero/vendite/funzioni/fn_resolve_iva_riga) — il
+risolutore IVA di riga. E` il suo **stadio B**: dopo aver stabilito quale aliquota
+compete alla merce, guarda se il cliente ha un titolo che la **sostituisce su
+quella riga**.
+
+⚠️ Il risolutore **non consuma il plafond**: e` in sola lettura, e la ripartizione
+che ritorna e` una **proiezione** sul residuo di adesso. Il consumo e` un atto
+contabile e passa da `anagrafiche.fn_consuma_plafond_titolo_iva`.
+
+---
+
 ### 🎯 Scopo Principale
 
 (rev 2026-08-29 — tabella nata il 2026-08-29)

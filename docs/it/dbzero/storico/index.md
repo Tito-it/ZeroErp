@@ -48,6 +48,8 @@
 - [istanze_dati_precontrattuali](tabelle/istanze_dati_precontrattuali.md)
 - [iva](tabelle/iva.md)
 - [iva_assoggettamenti](tabelle/iva_assoggettamenti.md)
+- [iva_natura](tabelle/iva_natura.md)
+- [iva_stati](tabelle/iva_stati.md)
 - [listini_tipologie](tabelle/listini_tipologie.md)
 - [listini_tipologie_utilities](tabelle/listini_tipologie_utilities.md)
 - [magazzini](tabelle/magazzini.md)
@@ -88,6 +90,9 @@
 - [soggetti](tabelle/soggetti.md) — * **Versionamento dei soggetti**   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md)
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md)
+- [soggetti_titoli_iva](tabelle/soggetti_titoli_iva.md)
+- [soggetti_titoli_iva_ambiti](tabelle/soggetti_titoli_iva_ambiti.md)
+- [soggetti_titoli_iva_movimenti](tabelle/soggetti_titoli_iva_movimenti.md)
 - [sospensioni](tabelle/sospensioni.md)
 - [stati_pdp](tabelle/stati_pdp.md)
 - [stradario](tabelle/stradario.md) — * **Audit Trail**: Conservare una traccia completa di ogni modifica o cancellazione effettuata su `config.stradario`. * **Versioning dei record**: Permettere la ricostruzione dello stato di una via in un dato momento, grazie ai campi `valid_from` e `valid_to`. * **Riproduzione dello schema**: Utilizzare il campo **`snapshot`** (JSONB) per salvare tutti i dettagli di `config.stradario` al momento dell’operazione, anche a fronte di evoluzioni dello schema. * **Classificazione delle operazioni**: Impiegare **`tipo_operazione_id`** (1=insert iniziale, 2=update, 3=delete) e **`change_type`** (A=Active, S=Suppressed, F=Fused, D=Divided) per distinguere rapidamente la natura del cambiamento.
