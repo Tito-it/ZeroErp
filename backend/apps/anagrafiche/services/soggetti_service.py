@@ -18,6 +18,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
 from apps.core.db.lookup_repository import LookupRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
@@ -62,6 +63,7 @@ class SoggettiService:
         self._repo = SoggettiRepository()
         self._ind = IndirizziRepository()
         self._conti = ContiBancariRepository()
+        self._titoli_iva = TitoliIvaRepository()
         self._lookup = LookupRepository()
 
     # =================================================================
@@ -113,6 +115,10 @@ class SoggettiService:
         soggetto["ruoli"] = self._repo.get_soggetto_ruoli(soggetto_id, emittente_ids)
         soggetto["dati_societari"] = self._repo.get_dati_societari(soggetto_id)
         soggetto["conti_bancari"] = self._conti.list_conti_soggetto(soggetto_id)
+        # Titoli IVA (I7/D10): composti qui come le altre sotto-entita', e non
+        # chiesti a parte dal drawer. ⭐ Il riepilogo nella sezione del soggetto
+        # arriva cosi' senza un round-trip in piu', esattamente come i conti.
+        soggetto["titoli_iva"] = self._titoli_iva.list_titoli_soggetto(soggetto_id)
         soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
         return soggetto
 

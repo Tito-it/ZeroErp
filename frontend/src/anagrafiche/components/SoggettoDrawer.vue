@@ -17,7 +17,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
 import { lookupProvince } from '../api/anagrafiche'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { toDateString } from '../../core/utils/date'
 import SoggettoForm from '../../core/components/SoggettoForm.vue'
@@ -29,6 +29,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
@@ -79,6 +80,8 @@ const indirizziRiepilogo = ref([])
 const contattiDrawerVisible = ref(false)
 const contattiRiepilogo = ref([])
 const contiBancariDrawerVisible = ref(false)
+const titoliIvaDrawerVisible = ref(false)
+const titoliIvaRiepilogo = ref([])
 const contiBancariRiepilogo = ref([])
 
 const props = defineProps({
@@ -207,6 +210,7 @@ function populateFromDetail(data) {
   // []), distingue dal sentinel null usato in create mode.
   tipiModificabiliIds.value = data.tipi_modificabili_ids ?? null
   nonEditableFields.value = data.non_editable_fields ?? []
+  titoliIvaRiepilogo.value = data.titoli_iva || []
   // Indirizzi, contatti e conti bancari riepilogo
   indirizziRiepilogo.value = data.indirizzi || []
   contattiRiepilogo.value = data.contatti || []
@@ -228,6 +232,16 @@ async function onIndirizziSaved() {
   try {
     const data = await store.fetchDetail(props.itemId)
     indirizziRiepilogo.value = data.indirizzi || []
+  } catch { /* silent */ }
+}
+
+// ⭐ I titoli IVA arrivano gia' dentro il dettaglio del soggetto (come conti e
+//   contatti): il riepilogo non costa un round-trip in piu'.
+async function onTitoliIvaSaved() {
+  if (!props.itemId) return
+  try {
+    const data = await store.fetchDetail(props.itemId)
+    titoliIvaRiepilogo.value = data.titoli_iva || []
   } catch { /* silent */ }
 }
 
@@ -560,6 +574,39 @@ async function handleSave() {
         </div>
       </template>
 
+      <!-- Sezione: Titoli IVA (edit mode) — I7/D10.
+           ⭐ E' la sede che realizza D7: l'influenza del soggetto sull'IVA passa
+           SEMPRE da un titolo registrato, datato e con una prova documentale —
+           mai da una colonna di default appesa all'anagrafica. E' la ragione per
+           cui `clienti.iva_id` e' stata tolta e non sostituita. -->
+      <template v-if="isEdit">
+        <div class="app-drawer-section">
+          <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
+        </div>
+        <div class="riepilogo-section">
+          <div v-if="titoliIvaRiepilogo.length > 0" class="riepilogo-list">
+            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="riepilogo-item">
+              <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
+              <span class="riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
+              <span v-if="ti.residuo != null" class="riepilogo-detail">
+                {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
+              </span>
+            </div>
+          </div>
+          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+            {{ t('anagrafiche.titoli_iva.lista_vuota') }}
+          </div>
+          <Button
+            :label="t('anagrafiche.titoli_iva.gestisci_titoli')"
+            :icon="MANAGE_ICONS.TITOLI_IVA"
+            text
+            size="small"
+            class="app-action-btn app-escape mt-025"
+            @click="titoliIvaDrawerVisible = true"
+          />
+        </div>
+      </template>
+
       <!-- Sezione: Ruoli (solo edit mode, readonly) -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
@@ -598,6 +645,15 @@ async function handleSave() {
     @update:visible="v => contattiDrawerVisible = v"
     :soggetto-id="props.itemId"
     @saved="onContattiSaved"
+  />
+
+  <!-- Drawer titoli IVA soggetto (edit mode) -->
+  <TitoliIvaSoggettoDrawer
+    :visible="titoliIvaDrawerVisible"
+    @update:visible="v => titoliIvaDrawerVisible = v"
+    :soggetto-id="props.itemId"
+    :soggetto-nome="_buildNominativo()"
+    @saved="onTitoliIvaSaved"
   />
 
   <!-- Drawer conti bancari soggetto (edit mode) -->
