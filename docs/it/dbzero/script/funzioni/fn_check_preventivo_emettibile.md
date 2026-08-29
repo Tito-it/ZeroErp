@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_preventivo_emettibile.md" %}
 # ⚙️ Funzione `fn_check_preventivo_emettibile`
 
 ```sql

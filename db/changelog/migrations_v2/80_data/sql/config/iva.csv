@@ -13,3 +13,4 @@ id,codice,descrizione,descrizione_breve,aliquota_iva,natura_iva_id,conto_iva_acq
 10,EC,Escluso I.V.A. Art. 2,Escluso I.V.A. Art. 2,0.00,10,,,,2025-04-22 23:35:23.692164+02,postgres,2026-01-16 17:38:32.022289+01,titodb,t,f,2
 13,VG,Escluso I.V.A. Art.15,Escluso I.V.A. Art.15,0.00,10,,,,2025-04-22 23:35:23.692164+02,postgres,2026-01-16 17:38:32.022289+01,titodb,t,f,2
 14,VF,Escluso I.V.A. Art. 2,Escluso I.V.A. Art. 2,0.00,10,,,,2025-04-22 23:35:23.692164+02,postgres,2026-01-16 17:38:32.022289+01,titodb,t,f,2
+18,NI35,Non imponibile art. 8 c.1 lett. c - dichiarazione d'intento,Non imp. dich. intento,0.00,8,,,,2026-08-29 00:00:00+02,SEED,2026-08-29 00:00:00+02,SEED,t,f,

@@ -65,6 +65,43 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 ---
 
+### 🧾 Regime fiscale della controparte: `split_payment` e `cliente_pa` (dal 2026-08-29)
+
+Due colonne `character(1)` con valori ammessi `S`/`N`, default `N`, `CHECK` esplicito.
+
+* `cliente_pa` → la controparte e` una **Pubblica Amministrazione**;
+* `split_payment` → le operazioni verso di lei sono in **scissione dei pagamenti**.
+
+⭐ **Stanno sul soggetto perche` discendono dalla partita IVA**: un ente **e`** o **non e`**
+una PA, e non lo e` per il gas e non per l'acqua. Prima vivevano su `anagrafiche.clienti`,
+che ha `UNIQUE` per istanza di utenza — una riga **per fornitura** — e quindi ammetteva che
+lo stesso soggetto dichiarasse tre valori diversi per la stessa partita IVA.
+
+⚠️ **NON sono un codice IVA e non entrano nel risolutore.** La scissione dei pagamenti non
+cambia l'**aliquota**: cambia **chi versa** l'imposta all'erario, e in fattura elettronica e`
+l'`EsigibilitaIVA`. Confonderli farebbe nascere codici IVA fasulli a catalogo — e un codice
+fasullo, una volta seminato, se lo porta dietro ogni documento emesso.
+
+⭐ **Il binario d'arrivo esiste gia`**: `vendite.fatture_righe` ha le colonne `esigibilita` e
+`split_payment`, e `vendite.fatture_riepiloghi_iva` raggruppa gia` per
+(`iva_id`, `natura_id`, `esigibilita`, `split_payment`). Manca solo l'anello che le riempie.
+
+⚠️ **Il default `N` e` una decisione, e va nella direzione opposta a `congela_fiscale`.** La`
+un dato mancante deve **bloccare**; qui un soggetto di cui nessuno ha detto nulla **non e`**
+in scissione — dichiararlo tale d'ufficio produrrebbe fatture sbagliate su tutta
+l'anagrafica. *La domanda «qual e` la direzione sicura?» si rifa` ogni volta, non si eredita.*
+
+📌 **Il travaso dai clienti e` stato una tantum**, con `bool_or`: dove le righe cliente dello
+stesso soggetto dissentivano ha vinto `'S'`, perche` omettere lo split payment e` un errore
+**fiscale** mentre applicarlo in piu` e` un errore **visibile e correggibile**.
+
+📌 **Porta lasciata aperta**: se un giorno servira` distinguere per **ruolo**
+(`anagrafiche.soggetti_ruoli`), quel valore sara` **predominante** su questo.
+
+Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, D8 / I0.
+
+---
+
 ### 🚩 Regole di Validazione Condizionale
 
 1. **Campo `tipo_soggetto`**  

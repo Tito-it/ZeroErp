@@ -95,6 +95,7 @@
 - [tipi_soggetto_dettaglio](tabelle/tipi_soggetto_dettaglio.md) — * **Gestione Internazionale**   Permette di adattare la validazione di CF/P.IVA alle regole di ciascuno Stato (`stato_iso2`). * **Estendibilità**   Il collegamento a `config.tipi_soggetto` garantisce macro-categorie estensibili (Fisico, Giuridico, Ente, …). * **Controllo Applicativo**   Centralizza il formato di CF/P.IVA, evitando logiche duplicate nel backend.
 - [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md) — (latest review 19-12-25) La tabella **`config.tipi_soggetto_dettaglio_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:
 - [tipi_tariffe_ee](tabelle/tipi_tariffe_ee.md) — (rev 2026-08-21)
+- [tipi_titolo_iva](tabelle/tipi_titolo_iva.md)
 - [tipi_ubicazione](tabelle/tipi_ubicazione.md) — (rev 2026-08-21)
 - [tipi_utenze](tabelle/tipi_utenze.md) — (rev 2026-08-21)
 - [titoli_cortesia](tabelle/titoli_cortesia.md) — * **Uniformare i titoli**     Gestire centralmente i titoli di cortesia per tutti i soggetti/contatti, evitando discrepanze tra form, report e stampe.

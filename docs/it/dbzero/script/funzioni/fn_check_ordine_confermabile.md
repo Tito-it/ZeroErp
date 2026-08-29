@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_ordine_confermabile.md" %}
 # ⚙️ Funzione `fn_check_ordine_confermabile`
 
 ```sql

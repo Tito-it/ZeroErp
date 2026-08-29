@@ -1,0 +1,183 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente, D10 —
+# primo pezzo: IL VOCABOLARIO DEI TIPI DI TITOLO.
+#
+# ── ⭐ PERCHE' ESISTE UN VOCABOLARIO, E NON UNA TABELLA `soggetti_intento` ──
+#
+#   Il brief nasceva chiedendo «una tabella per la dichiarazione d'intento».
+#   D10 ha stabilito che non e' un caso unico ma il PRIMO DI UNA FAMIGLIA, e ne
+#   ha nominati quattro:
+#
+#     | titolo                     | vale per        | ha un tetto? | la prova            |
+#     | -------------------------- | --------------- | ------------ | ------------------- |
+#     | dichiarazione d'intento    | tutto           | SI', plafond | protocollo AE       |
+#     | uso industriale/agricolo   | quella fornitura| no           | dichiarazione resa  |
+#     | agevolata disabili (L.104) | certe merci     | no           | certificazione      |
+#     | cooperative sociali/ONLUS  | certe prestaz.  | no           | iscrizione all'albo |
+#
+#   ⭐ Uno schema solo: *chi* x *per cosa vale* x *da quando a quando* x *con
+#   quale prova* -> quale codice IVA sostituisce quello ordinario. Nascere col
+#   nome `soggetti_intento` avrebbe scambiato il caso particolare per la regola,
+#   e allargare dopo una tabella nata come caso unico e' il modo in cui si
+#   ottengono due meccanismi per la stessa cosa.
+#
+# ── ⚠️ `ha_plafond` E' UNA PROPRIETA' DEL TIPO, NON DELLA RIGA ──────────
+#
+#   Solo l'intento ha un contatore che si consuma. Il plafond quindi NON e' la
+#   colonna portante della tabella dei titoli: e' una proprieta' di UN tipo, e
+#   sta qui. La riga di titolo porta il VALORE del tetto (quanto), il tipo dice
+#   SE il tetto esiste. Un guard tiene insieme le due cose
+#   (20260829-28): il CHECK di colonna non puo' leggere un'altra tabella.
+#
+# ── ⛔ NIENTE `richiede_protocollo`, ED E' UNA SCELTA ───────────────────
+#
+#   Tutti e quattro i titoli hanno una prova documentale, ma solo l'intento ha
+#   un PROTOCOLLO dell'Agenzia delle Entrate; gli altri hanno una carta di
+#   natura diversa. La tentazione era una seconda colonna di flag. D10 non la
+#   chiede, e una colonna che nessuna regola legge e' esattamente la voce 2 di
+#   questo brief — un campo che promette una cosa che non succede. Se un giorno
+#   servira' obbligare il protocollo su un tipo, la colonna nasce allora, con il
+#   suo guard.
+#
+# ── ℹ️ FORMA: lo stampo di config.tipi_reso / config.causali_onere ──────
+#
+#   `codice_interno` immutabile (il lock `script.trgfn_lock_columns` si
+#   auto-provisiona dalla sola presenza della colonna, linee-guida-sql §6b),
+#   `codice` per il display, `descrizione` mono-lingua come label — nessuna
+#   `label_key`, che in questo progetto e' il pattern dei bottoni-azione di una
+#   macchina a stati, non delle voci di tendina.
+#
+# Seed dei quattro valori: 20260829-32 (CSV, non SQL inline).
+# Consumatori: anagrafiche.soggetti_titoli_iva (20260829-24) e il guard di
+# coerenza del plafond (20260829-28).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260829-23-create-config-tipi-titolo-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260829-23-create-config-tipi-titolo-iva
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea config.tipi_titolo_iva, il vocabolario dei titoli che sostituiscono
+        l'aliquota ordinaria (D10). Non e' la tabella della dichiarazione d'intento:
+        e' la famiglia di cui l'intento e' il primo caso. Il flag ha_plafond dice
+        quali tipi hanno un tetto che si consuma - solo l'intento, oggi. Data-driven
+        come tipi_reso: nessun IF hardcoded, il consumatore legge il codice_interno.
+        Seed in 20260829-32.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_titolo_iva
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: tipi_titolo_iva
+            remarks: >-
+              Vocabolario dei tipi di titolo IVA del soggetto (D10). Uno schema
+              solo per intento, uso industriale, agevolata disabili e
+              cooperative: chi x per cosa vale x da quando a quando x con quale
+              prova. ha_plafond dice quali hanno un tetto che si consuma.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_titolo_iva
+                    nullable: false
+
+              - column: { name: codice_interno, type: VARCHAR(64), constraints: { nullable: false }, remarks: "Codice interno immutabile (chiave logica): INTENTO, USO_INDUSTRIALE, AGEVOLATA_104, COOPERATIVA. La logica si aggancia SOLO a questo." }
+              - column: { name: codice, type: VARCHAR(64), constraints: { nullable: false }, remarks: "Codice stabile per display/API. Modificabile dall'utente: mai usato in logica." }
+              - column: { name: descrizione, type: VARCHAR(160), constraints: { nullable: false }, remarks: "Descrizione (IT) resa a video come label. Mono-lingua, stampo tipi_reso." }
+
+              - column:
+                  name: ha_plafond
+                  type: boolean
+                  constraints: { nullable: false }
+                  remarks: "true = questo tipo di titolo porta un TETTO che si consuma fattura dopo fattura (oggi solo INTENTO). Governa se plafond e registro dei movimenti sono ammessi sulla riga di titolo. NOT NULL senza default: chi introduce un tipo nuovo deve dire quale delle due specie e', non ereditarlo per distrazione."
+
+              - column: { name: attivo, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: ordine, type: smallint, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_titolo_iva
+            columnNames: codice_interno
+            constraintName: uq_tipi_titolo_iva_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_titolo_iva
+            columnNames: codice
+            constraintName: uq_tipi_titolo_iva_codice
+
+        - createIndex: { schemaName: config, tableName: tipi_titolo_iva, indexName: ix_tipi_titolo_iva_attivo, columns: [ { name: attivo } ] }
+        - createIndex: { schemaName: config, tableName: tipi_titolo_iva, indexName: ix_tipi_titolo_iva_ordine, columns: [ { name: ordine } ] }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE config.tipi_titolo_iva IS
+                'Vocabolario dei TITOLI che sostituiscono l''aliquota ordinaria di una '
+                'riga (D10 di brief-db-be-iva-risolutore-e-regime-cliente). '
+                '⭐ Non e'' la tabella della dichiarazione d''intento: e'' la FAMIGLIA di '
+                'cui l''intento e'' il primo caso. I quattro noti al 2026-08-29 sono '
+                'INTENTO, USO_INDUSTRIALE, AGEVOLATA_104, COOPERATIVA, e rispondono '
+                'tutti allo stesso schema: chi x per cosa vale x da quando a quando x '
+                'con quale prova -> quale codice IVA prende il posto di quello '
+                'ordinario. Nascere col nome soggetti_intento avrebbe scambiato il caso '
+                'particolare per la regola. '
+                '⚠️ ha_plafond e'' la sola proprieta'' che distingue le due specie: solo '
+                'l''intento ha un contatore che si consuma, quindi il plafond NON e'' la '
+                'colonna portante della tabella dei titoli — e'' una proprieta'' di un '
+                'TIPO. La riga di titolo porta il valore del tetto, il tipo dice se il '
+                'tetto esiste; a tenerle insieme e'' il guard '
+                'anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza, perche'' un CHECK '
+                'di colonna non puo'' leggere un''altra tabella. '
+                '⛔ Nessun flag richiede_protocollo: tutti e quattro hanno una prova '
+                'documentale, ma di natura diversa, e una colonna che nessuna regola '
+                'legge e'' esattamente il difetto che questo cantiere sta chiudendo. '
+                'Mono-lingua: la descrizione e'' il label (stampo config.tipi_reso). '
+                'Seed dal CSV 80_data/sql/config/tipi_titolo_iva.csv. rev 2026-08-29.';
+
+              COMMENT ON COLUMN config.tipi_titolo_iva.codice_interno IS
+                  'Codice interno immutabile (lock auto-provisionato dalla sola presenza della colonna). La logica si aggancia SOLO a questo, mai a `codice`.';
+              COMMENT ON COLUMN config.tipi_titolo_iva.codice IS
+                  'Codice per display/API. Modificabile dall''utente: mai in logica.';
+              COMMENT ON COLUMN config.tipi_titolo_iva.ha_plafond IS
+                  'true = il titolo porta un TETTO che si consuma (oggi solo INTENTO). '
+                  'Governa se plafond e movimenti sono ammessi sulla riga di titolo. '
+                  '⚠️ NOT NULL senza default: chi conia un tipo nuovo deve DIRE di quale '
+                  'delle due specie e''. Un default lo farebbe ereditare per distrazione, '
+                  'e la specie sbagliata si vedrebbe solo su un plafond che non si '
+                  'consuma o su un tetto che nessuno ha messo.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: tipi_titolo_iva

@@ -1,0 +1,249 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente, D10/D12 —
+# terzo pezzo: L'AMBITO, cioe' PER COSA VALE un titolo ristretto.
+#
+# ── 🔴 PERCHE' QUESTA TABELLA E' LA DIFFERENZA FRA UN TITOLO E IL DIFETTO
+#      CHE ABBIAMO APPENA TOLTO ─────────────────────────────────────────
+#
+#   Rilievo di Tid (D12): «alcune aliquote agevolate, esempio quelle per
+#   disabilita', si possono applicare solo su alcune categorie di prodotti; se
+#   alla seconda passata vince quella del soggetto il rischio e' che si applichi
+#   a tutto».
+#
+#   ⭐ Senza l'ambito, un titolo sarebbe esattamente `anagrafiche.clienti.iva_id`
+#   — la colonna tolta il 2026-08-29 — spostata di un piano: **un valore che
+#   vince su tutto perche' nessuno gli ha detto dove fermarsi**.
+#
+# ── ⭐ TRE LIVELLI, E SONO GIA' TUTTI NEL MODELLO ───────────────────────
+#
+#   Decisione di Tid: l'ambito arriva fino al SINGOLO ARTICOLO. I livelli sono
+#   quindi tre, e nessuno va inventato:
+#
+#     ARTICOLO     -> catalogo.articoli.id            (uuid)
+#     GRUPPO_VOCE  -> vendite.articoli_gruppi.id      (catalogo.articoli.gruppo_voce_id)
+#     TIPO_VOCE    -> vendite.articoli_tipologie.id   (catalogo.articoli.tipo_voce_id)
+#
+#   ⚠️ Le due classificazioni stanno in `vendite`, non in `catalogo`: e' la sede
+#   che hanno da sempre, e le FK di catalogo.articoli puntano li'.
+#
+# ── ⚠️ IL LIVELLO E' DICHIARATO, NON DEDOTTO DA QUALE COLONNA E' PIENA ──
+#
+#   Si potrebbe stare senza `livello` e guardare quale delle tre FK e'
+#   valorizzata. Non si fa, ed e' la prima delle due trappole gemelle del NULL
+#   nelle chiavi: una riga con due colonne piene sarebbe un'ambiguita' che
+#   nessuno vede, e una con zero colonne piene un ambito che non nomina niente.
+#   `livello` NOT NULL + un CHECK che lega livello e colonna chiudono entrambi i
+#   casi, e la lettura non deve indovinare.
+#
+# ── ⚠️ `UNIQUE ... NULLS NOT DISTINCT`, e serve davvero ─────────────────
+#
+#   Con la regola standard (`NULLS DISTINCT`) due righe identiche che portano
+#   due NULL nelle stesse colonne NON collidono: la stessa categoria si potrebbe
+#   dichiarare due volte sullo stesso titolo. `NULLS NOT DISTINCT` (PG 15+) le
+#   fa collidere. E' la seconda delle due trappole gemelle.
+#
+# ── ℹ️ NIENTE COLONNA `attivo` ─────────────────────────────────────────
+#
+#   L'ambito e' la definizione del titolo, non un'entita' con un ciclo di vita
+#   suo: si aggiunge o si toglie. Una riga di ambito «non attiva» vorrebbe dire
+#   un titolo che vale per una cosa a meta', che non e' un caso del dominio. A
+#   spegnere il titolo intero c'e' `soggetti_titoli_iva.attivo`.
+#
+# ── ⛔ IL CASCADE E' VOLUTO ────────────────────────────────────────────
+#
+#   Una riga di ambito senza il suo titolo non significa niente: non e' un
+#   fatto storico da conservare, e' una clausola. ⚠️ Il registro dei MOVIMENTI
+#   (20260829-26) invece NON cascata: quello e' un fatto contabile.
+#
+# Guard di coerenza e anti-sovrapposizione: 20260829-29.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260829-25-create-soggetti-titoli-iva-ambiti-mctit.yaml
+
+  - changeSet:
+      id: 20260829-25-create-soggetti-titoli-iva-ambiti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.soggetti_titoli_iva_ambiti: le righe che dicono PER COSA vale un
+        titolo ristretto (D10/D12). Tre livelli gia' presenti nel modello - articolo,
+        gruppo voce, tipologia voce. Senza queste righe un titolo sarebbe il clienti.iva_id
+        appena tolto, spostato di un piano: un valore che vince su tutto perche' nessuno
+        gli ha detto dove fermarsi. Il livello e' dichiarato e non dedotto da quale colonna
+        e' piena, e la UNIQUE e' NULLS NOT DISTINCT perche' altrimenti due righe identiche
+        con gli stessi NULL non collidono.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: anagrafiche
+                    tableName: soggetti_titoli_iva_ambiti
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+            - tableExists:
+                schemaName: vendite
+                tableName: articoli_gruppi
+            - tableExists:
+                schemaName: vendite
+                tableName: articoli_tipologie
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: soggetti_titoli_iva_ambiti
+            remarks: >-
+              Per cosa vale un titolo IVA ristretto: articolo, gruppo voce o
+              tipologia voce. Una riga per oggetto coperto. Senza queste righe
+              un titolo RISTRETTO non copre nulla, ed e' la direzione sicura.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_soggetti_titoli_iva_ambiti, nullable: false }
+
+              - column: { name: titolo_iva_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> anagrafiche.soggetti_titoli_iva.id. ON DELETE CASCADE: una clausola senza il suo titolo non significa niente." }
+              - column: { name: livello, type: VARCHAR(16), constraints: { nullable: false }, remarks: "ARTICOLO | GRUPPO_VOCE | TIPO_VOCE. Dichiarato e non dedotto da quale FK e' piena: cosi' non esistono ne' righe con due colonne piene ne' righe che non nominano niente. E' anche la specificita' con cui D13 arbitra due titoli sulla stessa riga." }
+
+              - column: { name: articolo_id, type: uuid, remarks: "FK -> catalogo.articoli.id. Valorizzata se e solo se livello = 'ARTICOLO'." }
+              - column: { name: gruppo_voce_id, type: bigint, remarks: "FK -> vendite.articoli_gruppi.id (la colonna gruppo_voce_id di catalogo.articoli punta li'). Valorizzata se e solo se livello = 'GRUPPO_VOCE'." }
+              - column: { name: tipo_voce_id, type: bigint, remarks: "FK -> vendite.articoli_tipologie.id (la colonna tipo_voce_id di catalogo.articoli punta li'). Valorizzata se e solo se livello = 'TIPO_VOCE'." }
+
+              - column: { name: note, type: VARCHAR(255) }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva_ambiti
+            baseColumnNames: titolo_iva_id
+            constraintName: fk_soggetti_titoli_iva_ambiti_titolo
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_titoli_iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva_ambiti
+            baseColumnNames: articolo_id
+            constraintName: fk_soggetti_titoli_iva_ambiti_articolo
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva_ambiti
+            baseColumnNames: gruppo_voce_id
+            constraintName: fk_soggetti_titoli_iva_ambiti_gruppo
+            referencedTableSchemaName: vendite
+            referencedTableName: articoli_gruppi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva_ambiti
+            baseColumnNames: tipo_voce_id
+            constraintName: fk_soggetti_titoli_iva_ambiti_tipo_voce
+            referencedTableSchemaName: vendite
+            referencedTableName: articoli_tipologie
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── Il livello e la colonna devono dire la stessa cosa, e le
+              --    altre due devono tacere. Un solo CHECK con tre rami: cosi'
+              --    non c'e' nessuna combinazione ammessa per distrazione.
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_ambiti
+                  ADD CONSTRAINT chk_soggetti_titoli_iva_ambiti_livello
+                  CHECK (
+                      (livello = 'ARTICOLO'
+                          AND articolo_id    IS NOT NULL
+                          AND gruppo_voce_id IS NULL
+                          AND tipo_voce_id   IS NULL)
+                   OR (livello = 'GRUPPO_VOCE'
+                          AND gruppo_voce_id IS NOT NULL
+                          AND articolo_id    IS NULL
+                          AND tipo_voce_id   IS NULL)
+                   OR (livello = 'TIPO_VOCE'
+                          AND tipo_voce_id   IS NOT NULL
+                          AND articolo_id    IS NULL
+                          AND gruppo_voce_id IS NULL)
+                  );
+
+              -- ── ⚠️ NULLS NOT DISTINCT, e serve: con la regola standard due
+              --    righe identiche che portano NULL nelle stesse due colonne
+              --    NON collidono, e la stessa categoria si potrebbe dichiarare
+              --    due volte sullo stesso titolo.
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_ambiti
+                  ADD CONSTRAINT uq_soggetti_titoli_iva_ambiti_oggetto
+                  UNIQUE NULLS NOT DISTINCT
+                      (titolo_iva_id, livello, articolo_id, gruppo_voce_id, tipo_voce_id);
+
+              COMMENT ON TABLE anagrafiche.soggetti_titoli_iva_ambiti IS
+                'PER COSA vale un titolo IVA ristretto (D10/D12 di '
+                'brief-db-be-iva-risolutore-e-regime-cliente): una riga per oggetto '
+                'coperto, su tre livelli — articolo, gruppo voce, tipologia voce. '
+                '🔴 E'' la differenza fra un titolo e il difetto appena rimosso: senza '
+                'l''ambito un titolo sarebbe anagrafiche.clienti.iva_id spostato di un '
+                'piano, cioe'' un valore che vince su tutto perche'' nessuno gli ha detto '
+                'dove fermarsi. Il rilievo e'' di Tid: un''agevolazione per disabilita'' '
+                'vale su certe merci, e applicata a tutto il documento produrrebbe otto '
+                'righe agevolate che non lo sono. '
+                '⭐ I tre livelli sono gia'' nel modello e nessuno va inventato: '
+                'catalogo.articoli.id, vendite.articoli_gruppi.id e '
+                'vendite.articoli_tipologie.id, cioe'' esattamente le due classificazioni '
+                'che catalogo.articoli porta gia'' (gruppo_voce_id, tipo_voce_id). '
+                '⚠️ `livello` e'' DICHIARATO e non dedotto da quale FK e'' piena: cosi'' '
+                'non esistono ne'' righe con due colonne piene ne'' righe che non nominano '
+                'niente — le due trappole gemelle del NULL in una chiave. E la UNIQUE e'' '
+                'NULLS NOT DISTINCT perche'' con la regola standard due righe identiche '
+                'con gli stessi NULL non collidono. '
+                '⚠️ Nessuna colonna `attivo`: l''ambito e'' la definizione del titolo, '
+                'non un''entita'' con un ciclo di vita — si aggiunge o si toglie, e a '
+                'spegnere il titolo intero c''e'' soggetti_titoli_iva.attivo. '
+                '⛔ ON DELETE CASCADE, a differenza del registro dei movimenti: una '
+                'clausola senza il suo titolo non significa niente, un movimento di '
+                'plafond invece e'' un fatto contabile. '
+                'Il livello e'' anche la SPECIFICITA'' con cui D13 arbitra due titoli '
+                'sulla stessa riga: articolo > categoria di merce > tutto. rev 2026-08-29.';
+
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva_ambiti.livello IS
+                  'ARTICOLO | GRUPPO_VOCE | TIPO_VOCE. Un CHECK a tre rami lega il livello alla sua colonna e impone il silenzio alle altre due.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS anagrafiche.soggetti_titoli_iva_ambiti;

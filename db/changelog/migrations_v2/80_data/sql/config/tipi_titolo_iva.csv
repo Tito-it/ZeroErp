@@ -1,0 +1,5 @@
+id,codice_interno,codice,descrizione,ha_plafond,attivo,ordine,meta,data_insert,user_insert,data_update,user_update
+1,INTENTO,INTENTO,Dichiarazione d'intento (esportatore abituale),true,true,10,{},2026-08-29 00:00:00+02,SEED,2026-08-29 00:00:00+02,SEED
+2,USO_INDUSTRIALE,USO_INDUSTRIALE,Dichiarazione di uso industriale o agricolo (gas ed energia elettrica),false,true,20,{},2026-08-29 00:00:00+02,SEED,2026-08-29 00:00:00+02,SEED
+3,AGEVOLATA_104,AGEVOLATA_104,Agevolazione per disabilita' (L. 104/1992),false,true,30,{},2026-08-29 00:00:00+02,SEED,2026-08-29 00:00:00+02,SEED
+4,COOPERATIVA,COOPERATIVA,Cooperativa sociale o ente del terzo settore,false,true,40,{},2026-08-29 00:00:00+02,SEED,2026-08-29 00:00:00+02,SEED

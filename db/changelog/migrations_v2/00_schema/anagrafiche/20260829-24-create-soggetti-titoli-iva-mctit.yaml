@@ -1,0 +1,343 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente, D10 —
+# secondo pezzo: LA SEDE DEI TITOLI.
+#
+# ── ⭐ IL PRINCIPIO CHE QUESTA TABELLA REALIZZA (D7) ────────────────────
+#
+#   «L'influenza del soggetto sull'IVA passa SEMPRE da un titolo, mai da un
+#   default.» E' la ragione per cui `anagrafiche.clienti.iva_id` se n'e' andata
+#   il 2026-08-29 (I0-B) e NON e' stata sostituita da un `soggetti.iva_id`:
+#   spostare la colonna avrebbe riprodotto lo stesso difetto un piano piu' su —
+#   un valore che vince su tutto perche' nessuno gli ha detto dove fermarsi.
+#
+#   Un titolo non e' un flag: e' un DOCUMENTO. Ha una prova, una finestra di
+#   validita', dice A CHI e' stato presentato e dice PER COSA vale.
+#
+# ── 🔴 PERCHE' L'EMITTENTE E' IN CHIAVE, se il titolo e' del soggetto (D10-bis) ──
+#
+#   Il PROPRIETARIO e' il soggetto — e' lui l'esportatore abituale, non un suo
+#   contratto. Ma una dichiarazione d'intento non e' un'etichetta che il cliente
+#   si appende addosso: e' un documento che presenta a UN FORNITORE PRECISO, con
+#   un protocollo suo e un importo suo. Lo stesso esportatore abituale che
+#   compra da due societa' emittenti presenta DUE dichiarazioni.
+#
+#   ⚠️ E il modello ammette piu' emittenti: `vendite.contratti.emittente_fiscale_id`
+#   e' NOT NULL, quindi ogni fornitura ne nomina uno.
+#
+#   ⛔ Senza la seconda colonna i plafond di due emittenti si consumerebbero da
+#   UN SOLO contatore — un errore silenzioso su precisamente il numero che
+#   l'Agenzia delle Entrate verifica. **Proprietario: il soggetto. Destinatario:
+#   l'emittente. Due colonne, stessa riga.**
+#
+# ── ⚠️ `ambito` E' LA CONDIZIONE DI APPLICABILITA', NON UN'ETICHETTA (D12) ──
+#
+#   Rilievo di Tid: «alcune aliquote agevolate, esempio quelle per disabilita',
+#   si possono applicare solo su alcune categorie di prodotti; se alla seconda
+#   passata vince quella del soggetto il rischio e' che si applichi a tutto».
+#   E' il difetto giusto da temere. Lo stadio B si valuta RIGA PER RIGA, e il
+#   titolo entra solo se l'articolo di quella riga ricade nel suo ambito: un
+#   documento di dieci righe con un titolo AGEVOLATA_104 ristretto a due
+#   articoli produce DUE righe agevolate e otto ordinarie.
+#
+#   ⭐ L'ambito e' DICHIARATO, non lasciato al NULL: `ambito = 'TUTTO'` oppure
+#   `'RISTRETTO'` con le righe figlie in anagrafiche.soggetti_titoli_iva_ambiti
+#   (20260829-25). Una colonna nullable che significasse «se e' vuoto vale per
+#   tutto» sarebbe la prima delle due trappole gemelle del NULL nelle chiavi.
+#
+#   ⛔ E un titolo RISTRETTO SENZA righe figlie non si applica a nulla — non e'
+#   un errore di vincolo ed e' voluto: il caso si puo' costruire solo in due
+#   istruzioni (prima il titolo, poi il suo ambito), quindi un CHECK lo
+#   rifiuterebbe a meta' strada. Il RISOLUTORE (I2) lo legge come «nessun
+#   articolo ricade nell'ambito» e lascia l'aliquota ordinaria, che e' la
+#   direzione sicura.
+#
+# ── ⚠️ L'ANTI-SOVRAPPOSIZIONE E' UN VINCOLO VERO SOLO SU META' DEI CASI ──
+#
+#   La chiave di D10 e' (soggetto, emittente, tipo, AMBITO), e l'ambito dei
+#   titoli ristretti vive in una tabella FIGLIA: un EXCLUDE non puo' leggerla.
+#   Divisione dichiarata (decisione di Tid, 2026-08-29):
+#
+#     * `ambito = 'TUTTO'`     -> EXCLUDE USING gist REALE, qui sotto. Due
+#       titoli dello stesso tipo, dello stesso soggetto, verso lo stesso
+#       emittente, validi insieme e validi per TUTTO: ambiguita' chiusa dal DB;
+#     * `ambito = 'RISTRETTO'` -> guard trigger sulle righe di ambito
+#       (20260829-29), che confronta livello e oggetto oltre al periodo.
+#
+#   ⚠️ Due titoli di TIPO DIVERSO possono coesistere legittimamente, ed e' il
+#   caso da non bloccare per errore: il tipo e' in chiave apposta. Quale dei due
+#   vince su una riga lo decide D13 — «articolo > categoria di merce > tutto» —
+#   e sta nel risolutore, non qui.
+#
+# ── ⚠️ `plafond` E `imponibile_utilizzato` NON HANNO UN CHECK DI COERENZA ──
+#
+#   «Il plafond esiste solo per i tipi che ce l'hanno» e' una regola che
+#   attraversa due tabelle: un CHECK non puo' leggere config.tipi_titolo_iva.
+#   La tiene il guard 20260829-28, e la tiene sui DUE versi — plafond su un tipo
+#   che non ne ha, e plafond assente su un tipo che lo pretende.
+#
+#   ⛔ E `imponibile_utilizzato` non ha nemmeno un CHECK `>= 0`, e non e' una
+#   dimenticanza: quella colonna la scrive il trigger che somma il registro
+#   (20260829-30), che gira DENTRO una scrittura sui movimenti. Un 23514 li'
+#   sarebbe un errore muto dentro un trigger, su una tabella diversa da quella
+#   che l'operatore stava toccando. Il conto sotto zero lo rifiuta il trigger
+#   stesso, con un codice registrato e una frase che nomina il titolo.
+#
+# ── ℹ️ D5: `imponibile_utilizzato` E' MEMORIZZATO, MA E' LA SOMMA DI UN REGISTRO ──
+#
+#   P3 chiede un valore memorizzato — serve a poterlo ridurre a mano quando
+#   esistono fatturazioni fuori dal sistema. P4 chiede che la nota di credito
+#   restituisca plafond. D5 le tiene insieme: la colonna resta, ma non e' un
+#   numero scritto sopra a un altro — e' la somma di
+#   anagrafiche.soggetti_titoli_iva_movimenti (20260829-26). Una forzatura ha
+#   cosi' un motivo, un autore e una data, e la riconciliazione col fatturato e'
+#   una query invece che un'indagine.
+#
+# ── ℹ️ COSA NON STA QUI ────────────────────────────────────────────────
+#
+#   * `split_payment` e `cliente_pa`: NON sono titoli e non cambiano l'aliquota
+#     (D4). Stanno su anagrafiche.soggetti da 20260829-14;
+#   * l'aliquota ORDINARIA (stadio A): la dice la merce e il suo uso —
+#     articolo, catena del prezzo, config.tipi_utenze. Il soggetto non entra
+#     mai in quella domanda (D7).
+#
+# Dipendenze: anagrafiche.soggetti, anagrafiche.emittenti_fiscali,
+#   config.tipi_titolo_iva (20260829-23), config.iva.
+# Consumatori: 20260829-25 (ambiti), -26 (registro), -27 (RLS), -28/-29/-30
+#   (guard e accumulatore), -31 (la primitiva di consumo), e il risolutore I2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260829-24-create-soggetti-titoli-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260829-24-create-soggetti-titoli-iva
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.soggetti_titoli_iva (D10): la sede dei titoli che sostituiscono
+        l'aliquota ordinaria. Proprietario il soggetto, destinatario l'emittente fiscale -
+        senza la seconda colonna i plafond di due emittenti si consumerebbero da un solo
+        contatore (D10-bis). L'ambito e' dichiarato e non lasciato al NULL: TUTTO oppure
+        RISTRETTO con le righe figlie, perche' lo stadio B si valuta riga per riga (D12).
+        EXCLUDE anti-sovrapposizione reale sui titoli ambito=TUTTO; per i ristretti la
+        chiave attraversa la tabella figlia e la tiene un guard (20260829-29).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: anagrafiche
+                    tableName: soggetti_titoli_iva
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+            - tableExists:
+                schemaName: config
+                tableName: tipi_titolo_iva
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: soggetti_titoli_iva
+            remarks: >-
+              Titoli IVA del soggetto (D10): il documento registrato che
+              sostituisce l'aliquota ordinaria su una riga, quando l'articolo di
+              quella riga ricade nel suo ambito e la data del documento cade
+              nella sua validita'. Proprietario il soggetto, destinatario
+              l'emittente fiscale.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_soggetti_titoli_iva, nullable: false }
+
+              - column: { name: soggetto_id, type: uuid, constraints: { nullable: false }, remarks: "FK -> anagrafiche.soggetti.id: il PROPRIETARIO del titolo. E' la partita IVA (o il codice fiscale) a cui il titolo appartiene, non una sua fornitura: un esportatore abituale con tre forniture ha UNA dichiarazione, non tre." }
+              - column: { name: emittente_fiscale_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> anagrafiche.emittenti_fiscali.id: il DESTINATARIO, cioe' a chi il titolo e' stato presentato. NOT NULL e in chiave: lo stesso soggetto che compra da due emittenti presenta due titoli, ognuno col suo plafond - senza questa colonna i due contatori diventerebbero uno." }
+              - column: { name: tipo_titolo_iva_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> config.tipi_titolo_iva.id: di che specie e' il titolo. Governa anche se il plafond e' ammesso (ha_plafond)." }
+              - column: { name: iva_id, type: integer, constraints: { nullable: false }, remarks: "FK -> config.iva.id: il codice IVA che PRENDE IL POSTO di quello ordinario sulle righe coperte. NOT NULL: un titolo che non dice cosa applicare non e' un titolo." }
+
+              - column: { name: ambito, type: VARCHAR(16), defaultValue: "TUTTO", constraints: { nullable: false }, remarks: "TUTTO = il titolo copre ogni riga; RISTRETTO = copre solo cio' che dicono le righe di anagrafiche.soggetti_titoli_iva_ambiti. Dichiarato e non dedotto dal NULL: e' la condizione di applicabilita' (D12), non un'etichetta." }
+
+              - column: { name: valido_dal, type: date, constraints: { nullable: false }, remarks: "Primo giorno di validita' del titolo." }
+              - column: { name: valido_al, type: date, remarks: "Ultimo giorno INCLUSO (convenzione del progetto). NULL = finestra ancora aperta." }
+
+              - column: { name: protocollo, type: VARCHAR(64), remarks: "Protocollo del documento presso l'ente che lo ha rilasciato - per la dichiarazione d'intento e' il protocollo dell'Agenzia delle Entrate, che viaggia fino all'XML della fattura elettronica (P5)." }
+              - column: { name: data_ricezione, type: date, remarks: "Data in cui il documento e' stato ricevuto/protocollato. Diversa da valido_dal: un titolo puo' arrivare oggi e valere da gennaio." }
+              - column: { name: riferimento, type: VARCHAR(255), remarks: "Gli altri estremi della prova, in chiaro: numero di certificazione, albo di iscrizione, protocollo interno. Testo libero perche' la forma cambia con il tipo di titolo." }
+
+              - column: { name: plafond, type: "numeric(15,2)", remarks: "Il TETTO di imponibile che il titolo copre. Valorizzato SOLO per i tipi con ha_plafond = true (oggi INTENTO); il guard trgfn_soggetti_titoli_iva_guard_coerenza lo impone sui due versi, perche' un CHECK non puo' leggere config.tipi_titolo_iva." }
+              - column: { name: imponibile_utilizzato, type: "numeric(15,2)", defaultValueNumeric: 0, constraints: { nullable: false }, remarks: "Quanto plafond e' stato consumato: la SOMMA di anagrafiche.soggetti_titoli_iva_movimenti, mantenuta dal trigger dell'accumulatore. Si memorizza l'imponibile USATO e non il residuo (P4) perche' il primo si confronta col fatturato e il secondo con niente; il residuo e' aritmetica." }
+
+              - column: { name: attivo, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: note, type: VARCHAR(255) }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva
+            baseColumnNames: soggetto_id
+            constraintName: fk_soggetti_titoli_iva_soggetto
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva
+            baseColumnNames: emittente_fiscale_id
+            constraintName: fk_soggetti_titoli_iva_emittente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: emittenti_fiscali
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva
+            baseColumnNames: tipo_titolo_iva_id
+            constraintName: fk_soggetti_titoli_iva_tipo
+            referencedTableSchemaName: config
+            referencedTableName: tipi_titolo_iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_titoli_iva
+            baseColumnNames: iva_id
+            constraintName: fk_soggetti_titoli_iva_iva
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── La finestra di validita', pattern del progetto dal 2026-04:
+              --    colonne di input + colonna range STORED generated. Nessun
+              --    trigger la mantiene, e il COALESCE simmetrico e' quello che
+              --    fa funzionare l'operatore @> (linee-guida-sql §7b).
+              ALTER TABLE anagrafiche.soggetti_titoli_iva
+                  ADD COLUMN validita daterange
+                      GENERATED ALWAYS AS (
+                          daterange(COALESCE(valido_dal, '-infinity'::date),
+                                    COALESCE(valido_al,  'infinity'::date), '[]')
+                      ) STORED NOT NULL;
+
+              ALTER TABLE anagrafiche.soggetti_titoli_iva
+                  ADD CONSTRAINT chk_soggetti_titoli_iva_ambito
+                      CHECK (ambito IN ('TUTTO', 'RISTRETTO')),
+                  ADD CONSTRAINT chk_soggetti_titoli_iva_finestra
+                      CHECK (valido_al IS NULL OR valido_al >= valido_dal),
+                  ADD CONSTRAINT chk_soggetti_titoli_iva_plafond_pos
+                      CHECK (plafond IS NULL OR plafond > 0);
+
+              -- ── ⚠️ EXCLUDE e NON un CREATE INDEX USING gist: un indice gist
+              --    non enforca niente, e il progetto ha gia' pagato quella
+              --    lezione (refactor-overlap, mag 2026 — cinque vincoli
+              --    silenziosamente disarmati con lo stesso nome `ex_*`).
+              -- ── ⚠️ Il predicato include `ambito = 'TUTTO'`: per i titoli
+              --    RISTRETTI la chiave attraversa la tabella figlia degli
+              --    ambiti, e un EXCLUDE non la puo' leggere. Quella meta' la
+              --    tiene il guard di 20260829-29. La divisione e' dichiarata,
+              --    non subita.
+              ALTER TABLE anagrafiche.soggetti_titoli_iva
+                  ADD CONSTRAINT ex_soggetti_titoli_iva_no_overlap
+                  EXCLUDE USING gist (
+                      soggetto_id          WITH =,
+                      emittente_fiscale_id WITH =,
+                      tipo_titolo_iva_id   WITH =,
+                      validita             WITH &&
+                  )
+                  WHERE (attivo IS TRUE AND ambito = 'TUTTO');
+
+              -- ── L'ingresso del risolutore: dato un soggetto e un emittente,
+              --    quali titoli sono validi a una data. Non parziale apposta —
+              --    un predicato diverso da `IS NOT NULL` non copre la FK
+              --    (linee-guida-sql §8.4), e cosi' invece la FK su soggetto_id
+              --    e' servita per prefisso.
+              CREATE INDEX ix_soggetti_titoli_iva_soggetto_emittente
+                  ON anagrafiche.soggetti_titoli_iva (soggetto_id, emittente_fiscale_id);
+
+              COMMENT ON TABLE anagrafiche.soggetti_titoli_iva IS
+                'I TITOLI IVA del soggetto: il documento registrato che sostituisce '
+                'l''aliquota ordinaria di una riga (D10 di '
+                'brief-db-be-iva-risolutore-e-regime-cliente). '
+                '⭐ Realizza il principio di D7 — l''influenza del soggetto sull''IVA '
+                'passa SEMPRE da un titolo, mai da un default. E'' la ragione per cui '
+                'anagrafiche.clienti.iva_id e'' stata tolta e NON sostituita da un '
+                'soggetti.iva_id: spostare la colonna avrebbe riprodotto lo stesso '
+                'difetto un piano piu'' su. '
+                '🔴 PROPRIETARIO il soggetto, DESTINATARIO l''emittente, due colonne '
+                'sulla stessa riga (D10-bis): il titolo appartiene alla partita IVA, ma '
+                'si presenta a un fornitore preciso, con un protocollo suo e un importo '
+                'suo. Lo stesso esportatore abituale che compra da due emittenti '
+                'presenta due dichiarazioni — senza la seconda colonna i due plafond si '
+                'consumerebbero da un solo contatore, cioe'' un errore silenzioso su '
+                'precisamente il numero che l''Agenzia delle Entrate verifica. '
+                '⚠️ AMBITO: e'' la condizione di applicabilita'' e non un''etichetta '
+                '(D12). Lo stadio B del risolutore si valuta RIGA PER RIGA, e il titolo '
+                'entra solo se l''articolo di quella riga ricade nel suo ambito: dieci '
+                'righe e un titolo AGEVOLATA_104 ristretto a due articoli fanno due '
+                'righe agevolate e otto ordinarie. Dichiarato (TUTTO / RISTRETTO), mai '
+                'dedotto da un NULL. ⛔ Un titolo RISTRETTO senza righe figlie non copre '
+                'niente, ed e'' voluto: il caso si costruisce in due istruzioni, quindi '
+                'un vincolo lo rifiuterebbe a meta'' strada — il risolutore lo legge '
+                'come «nessun articolo nell''ambito» e lascia l''aliquota ordinaria, che '
+                'e'' la direzione sicura. '
+                '⚠️ L''anti-sovrapposizione e'' un EXCLUDE vero solo per ambito=TUTTO: '
+                'per i ristretti la chiave attraversa la tabella figlia e la tiene il '
+                'guard trgfn_soggetti_titoli_iva_ambiti_guard. Due titoli di TIPO '
+                'DIVERSO possono coesistere legittimamente — chi vince su una riga lo '
+                'decide D13, articolo > categoria > tutto, e sta nel risolutore. '
+                '⚠️ imponibile_utilizzato e'' MEMORIZZATO (P3) ma e'' la SOMMA del '
+                'registro anagrafiche.soggetti_titoli_iva_movimenti (D5): una colonna '
+                'memorizzata e forzabile a mano diverge in silenzio da cio'' che '
+                'rappresenta, e su un plafond quel numero e'' proprio quello che il '
+                'fisco verifica. '
+                '⛔ split_payment e cliente_pa NON sono titoli e non stanno qui: non '
+                'cambiano l''aliquota, cambiano chi versa l''imposta (D4) — vivono su '
+                'anagrafiche.soggetti. rev 2026-08-29.';
+
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva.emittente_fiscale_id IS
+                  'A CHI il titolo e'' stato presentato. In chiave insieme al soggetto e al tipo: due emittenti = due titoli = due plafond distinti (D10-bis).';
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva.ambito IS
+                  'TUTTO oppure RISTRETTO. Con RISTRETTO le righe di anagrafiche.soggetti_titoli_iva_ambiti dicono a cosa: articolo, gruppo voce o tipologia voce. E'' la condizione di applicabilita'' valutata riga per riga (D12).';
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED, mai scrivibile. ⚠️ Nei BEFORE trigger vale NULL: per il range del nuovo valore si ricostruisce l''espressione con lo stesso COALESCE simmetrico.';
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva.plafond IS
+                  'Il tetto di imponibile coperto dal titolo. Ammesso SOLO sui tipi con ha_plafond = true, e su quelli obbligatorio: la regola attraversa due tabelle, quindi la tiene un guard e non un CHECK.';
+              COMMENT ON COLUMN anagrafiche.soggetti_titoli_iva.imponibile_utilizzato IS
+                  'Somma del registro dei movimenti, mantenuta dal trigger dell''accumulatore. ⛔ Nessun CHECK >= 0: la colonna la scrive un trigger che gira dentro una scrittura su UN''ALTRA tabella, e un 23514 li'' sarebbe un errore muto lontano dal gesto dell''operatore. Il conto sotto zero lo rifiuta il trigger, con un codice registrato.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS anagrafiche.soggetti_titoli_iva;

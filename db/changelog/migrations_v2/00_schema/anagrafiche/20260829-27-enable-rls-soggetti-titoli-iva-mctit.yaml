@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I7 (Fase 2) del brief brief-db-be-iva-risolutore-e-regime-cliente —
+# IL PERIMETRO EMITTENTE SUI TITOLI IVA. Decisione di Tid, 2026-08-29.
+#
+# ── 🔴 COSA PROTEGGE, e non e' l'anagrafica ─────────────────────────────
+#
+#   Un titolo dice quanto plafond ha un cliente VERSO UN EMITTENTE, con il
+#   protocollo del documento che lo prova. Senza policy quell'elenco sarebbe
+#   comune a tutti gli emittenti: chi opera per la societa' A leggerebbe il
+#   plafond che il cliente ha presentato alla societa' B, protocollo compreso.
+#   ⚠️ E si vedrebbe come un DATO, non come un errore — una lista piu' lunga del
+#   vero non la mette in dubbio nessuno.
+#
+# ── ⭐ SI ACCENDE SU TABELLE CHE NASCONO VUOTE ──────────────────────────
+#
+#   Le tre tabelle sono state create pochi changeSet fa. Nessuna bonifica,
+#   nessun collaudo su popolazione mista, nessun dato da riclassificare: e' il
+#   momento piu' economico che esista per accendere una policy, e per questo si
+#   fa adesso invece che «quando il BE la consumera'».
+#
+# ── ⚠️ PERCHE' ANCHE LE DUE FIGLIE, e non solo il titolo ───────────────
+#
+#   Il registro dei movimenti porta gli IMPORTI del consumo; le righe di ambito
+#   dicono su quali articoli quel cliente e' agevolato. Proteggere il titolo e
+#   lasciare aperto il registro vorrebbe dire nascondere la riga e mostrare il
+#   numero — cioe' proprio il dato che D10-bis chiama «quello che l'Agenzia
+#   delle Entrate verifica».
+#
+#   ⭐ Il predicato delle due figlie passa dal PADRE, che porta la colonna
+#   dell'emittente. ⚠️ Non e' la trappola di `enti_incasso` (2026-08-28): li' il
+#   predicato rileggeva LA PROPRIA tabella per il proprio id, e dentro l'INSERT
+#   la riga non e' ancora visibile — ogni scrittura veniva rifiutata. Qui la
+#   sottoquery legge un'ALTRA tabella, e la riga di padre esiste gia' (una figlia
+#   senza padre non si scrive: c'e' la FK).
+#
+# ── ⚠️ `FOR ALL`, NON `FOR SELECT` ─────────────────────────────────────
+#
+#   La RLS nega cio' che nessuna policy permette: con la sola lettura le tre
+#   tabelle diventerebbero di scrittura impossibile. E' la stessa scelta delle
+#   policy del lotto 6 e di `pagamenti.enti_incasso`.
+#
+# ── ⚠️ NESSUN `FORCE ROW LEVEL SECURITY` ───────────────────────────────
+#
+#   Coerente con tutte le policy gia' in esercizio (`vendite.fatture`,
+#   `anagrafiche.billing_account`, `pagamenti.enti_incasso`): le tabelle NON
+#   sono di proprieta' del ruolo applicativo, quindi §10.5 non lo pretende, e col
+#   FORCE una funzione SECURITY DEFINER che legge queste tabelle rientrerebbe
+#   sotto la policy che sta reggendo.
+#
+# ── ⚠️ UN BUCO EREDITATO, E CHE NON E' DI QUESTE POLICY ────────────────
+#
+#   `script.fn_check_user_emittente_scope` risponde TRUE con l'utente a NULL
+#   (regola «job batch»). Con `app.current_user_id` vuota il congiunto di scope
+#   diventa vero e l'unico cancello resta `ruolo_applicativo = 'OPERATORE'`.
+#   Ce l'hanno tutte le policy gia' in esercizio: si scrive perche' una policy in
+#   piu' sullo stampo e' il momento in cui lo stampo si guarda, non perche'
+#   questo changeSet lo cambi — cambiarlo tocca ogni percorso batch del progetto.
+#
+# Dipendenze: script.fn_scope_ef_whitelist (adapter PK, gia' a catalogo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260829-27-enable-rls-soggetti-titoli-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260829-27-enable-rls-soggetti-titoli-iva
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Accende il perimetro emittente sulle tre tabelle dei titoli IVA. Un titolo dice
+        quanto plafond ha un cliente verso un emittente, col protocollo che lo prova:
+        senza policy quell'elenco sarebbe comune a tutti gli emittenti, e una lista piu'
+        lunga del vero non la mette in dubbio nessuno. Anche le due figlie, perche'
+        proteggere il titolo e lasciare aperto il registro vorrebbe dire nascondere la
+        riga e mostrare il numero. Si accende su tabelle che nascono vuote: nessuna
+        bonifica.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva_ambiti
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva_movimenti
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ef_whitelist';
+            # ⚠️ Le policy si accendono su tabelle VUOTE, ed e' meta' del loro
+            #    valore: se nel frattempo qualcuno ha registrato dei titoli, il
+            #    migrate si ferma e si decide guardando i dati, non al buio.
+            - sqlCheck:
+                expectedResult: 0
+                sql: SELECT COUNT(*) FROM anagrafiche.soggetti_titoli_iva;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ══ 1. IL TITOLO ══════════════════════════════════════════════
+              ALTER TABLE anagrafiche.soggetti_titoli_iva ENABLE ROW LEVEL SECURITY;
+
+              -- ⚠️ USING e WITH CHECK sono lo STESSO predicato scritto due
+              --    volte: PostgreSQL non ammette di dichiararlo una volta sola
+              --    su una policy FOR ALL, ma le due espressioni devono restare
+              --    identiche — se divergono, la tabella mostra righe che poi
+              --    non lascia scrivere.
+              CREATE POLICY rls_soggetti_titoli_iva_ef_whitelist ON anagrafiche.soggetti_titoli_iva
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_fiscale_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              emittente_fiscale_id)
+                  );
+
+              COMMENT ON POLICY rls_soggetti_titoli_iva_ef_whitelist ON anagrafiche.soggetti_titoli_iva
+              IS 'Il perimetro emittente sui TITOLI IVA: un operatore vede e scrive solo i titoli presentati a un emittente del suo scope. 🔴 Un titolo dice quanto plafond ha un cliente verso un emittente, con il protocollo del documento che lo prova: senza policy chi opera per la societa'' A leggerebbe il plafond che il cliente ha presentato alla societa'' B — e si vedrebbe come un dato, non come un errore. ⭐ Il predicato sta sulla colonna `emittente_fiscale_id` della riga, che e'' NOT NULL: vale identico in lettura e in scrittura, quindi USING e WITH CHECK dicono la stessa cosa. ⚠️ FOR ALL e non FOR SELECT: la RLS nega cio'' che nessuna policy permette, e con la sola lettura la tabella diventerebbe di scrittura impossibile. ⚠️ script.fn_check_user_emittente_scope risponde TRUE con l''utente a NULL (regola job batch): con app.current_user_id vuota l''unico cancello resta il congiunto sul ruolo applicativo — vale per tutte le policy del progetto, e cambiarlo e'' un cantiere suo. I7 di brief-db-be-iva-risolutore-e-regime-cliente.';
+
+              -- ══ 2. L'AMBITO ═══════════════════════════════════════════════
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_ambiti ENABLE ROW LEVEL SECURITY;
+
+              -- ⭐ Il predicato passa dal PADRE, che porta la colonna
+              --    dell'emittente. ⚠️ NON e' la trappola di enti_incasso: li' la
+              --    policy rileggeva la PROPRIA tabella per il proprio id, e
+              --    dentro l'INSERT quella riga non e' ancora visibile. Qui la
+              --    sottoquery legge un'ALTRA tabella, e il padre esiste gia' —
+              --    una figlia senza padre non si scrive, c'e' la FK.
+              CREATE POLICY rls_soggetti_titoli_iva_ambiti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_ambiti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_titoli_iva t
+                           WHERE t.id = soggetti_titoli_iva_ambiti.titolo_iva_id
+                             AND script.fn_scope_ef_whitelist(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     t.emittente_fiscale_id)
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_titoli_iva t
+                           WHERE t.id = soggetti_titoli_iva_ambiti.titolo_iva_id
+                             AND script.fn_scope_ef_whitelist(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     t.emittente_fiscale_id)
+                      )
+                  );
+
+              COMMENT ON POLICY rls_soggetti_titoli_iva_ambiti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_ambiti
+              IS 'Il perimetro emittente sull''AMBITO di un titolo IVA: le righe di ambito seguono il titolo. Dicono su quali articoli o categorie quel cliente e'' agevolato, ed e'' informazione commerciale oltre che fiscale. ⭐ Il predicato passa dal PADRE, che porta emittente_fiscale_id. ⚠️ Non e'' la trappola di rls_enti_incasso_perimetro_incasso: quella rileggeva la propria tabella per il proprio id e non vedeva la riga che il comando stava inserendo; qui la sottoquery legge un''altra tabella e il padre esiste gia'', garantito dalla FK. I7 di brief-db-be-iva-risolutore-e-regime-cliente.';
+
+              -- ══ 3. IL REGISTRO ════════════════════════════════════════════
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti ENABLE ROW LEVEL SECURITY;
+
+              CREATE POLICY rls_soggetti_titoli_iva_movimenti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_movimenti
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_titoli_iva t
+                           WHERE t.id = soggetti_titoli_iva_movimenti.titolo_iva_id
+                             AND script.fn_scope_ef_whitelist(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     t.emittente_fiscale_id)
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.soggetti_titoli_iva t
+                           WHERE t.id = soggetti_titoli_iva_movimenti.titolo_iva_id
+                             AND script.fn_scope_ef_whitelist(
+                                     NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                     t.emittente_fiscale_id)
+                      )
+                  );
+
+              COMMENT ON POLICY rls_soggetti_titoli_iva_movimenti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_movimenti
+              IS 'Il perimetro emittente sul REGISTRO del plafond: i movimenti seguono il titolo. ⭐ E'' la meta'' che non si poteva lasciare fuori — proteggere il titolo e lasciare aperto il registro vorrebbe dire nascondere la riga e mostrare il NUMERO, cioe'' esattamente il dato che D10-bis chiama «quello che l''Agenzia delle Entrate verifica». Il predicato passa dal padre, che porta emittente_fiscale_id. I7 di brief-db-be-iva-risolutore-e-regime-cliente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP POLICY IF EXISTS rls_soggetti_titoli_iva_movimenti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_movimenti;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_soggetti_titoli_iva_ambiti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_ambiti;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_ambiti DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_soggetti_titoli_iva_ef_whitelist ON anagrafiche.soggetti_titoli_iva;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva DISABLE ROW LEVEL SECURITY;
