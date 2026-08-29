@@ -1,0 +1,444 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `I2` (Fase 3) del brief brief-db-be-iva-risolutore-e-regime-cliente —
+# L'IMPLEMENTAZIONE ITALIANA del risolutore IVA.
+#
+# ── ℹ️ QUESTA E' LA LOGICA, NON LA PORTA ──────────────────────────────
+#
+#   Chi chiama passa dal guscio `vendite.fn_resolve_iva_riga` (20260829-50), che
+#   smista per paese (`D21`). Qui c'e' la regola **italiana** e basta: il giorno
+#   che ne serve un'altra nasce una `_xx` accanto, e il guscio non cambia.
+#
+# ── LA FORMA: due stadi, e non competono (D6 / D7) ────────────────────
+#
+#     STADIO A   quale aliquota compete a questa MERCE?   articolo, poi l'uso
+#     STADIO B   la controparte ha un TITOLO che la sostituisce?   il soggetto
+#
+#   ⛔ B non «vince su» A: **sostituisce il risultato di A**, dopo che A ha
+#   risposto. Il soggetto non entra mai in A, la fornitura non entra mai in B.
+#
+# ── STADIO A: due livelli, e l'ordine non e' una preferenza (D16 / D17) ──
+#
+#     A1  catalogo.articoli.iva_id       se valorizzato, vince
+#     A2  config.tipi_utenze.iva_id      SOLO se l'articolo tace
+#
+#   ⭐ `catalogo.articoli.iva_id` e' **nullable**: l'articolo PUO' dichiarare di
+#   non avere un'opinione. `config.tipi_utenze.iva_id` invece non ha nessun modo
+#   di dire su QUALI merci vale — applicato per primo si prenderebbe ogni riga
+#   della fornitura, cauzioni e servizi compresi. E' il difetto «vince su tutto
+#   perche' nessuno gli ha detto dove fermarsi» che `D12` ha chiuso un piano
+#   sopra, per i titoli.
+#
+#   ⛔ I bundle restano fuori (`D16`): l'aliquota accanto al prezzo esiste solo
+#   sui **componenti**, e quella la portano gia' le `*_righe_componenti` del
+#   documento — e' materia di chi costruisce la riga.
+#
+# ── STADIO B: si valuta PER RIGA (D12), e i pari si sollevano (D13) ───
+#
+#   Specificita': **articolo (3) > categoria di merce (2) > tutto (1)**, con
+#   `GRUPPO_VOCE` e `TIPO_VOCE` nella **stessa banda**. A parita' due titoli sono
+#   indistinguibili e **si solleva** invece di sceglierne uno: un'ambiguita' che
+#   si risolve sull'ordine degli id e' un difetto del modello.
+#
+# ── ⭐ IL RITORNO E' UN COMPOSITO (D18), non un numerico ──────────────
+#
+#   *Le operazioni non imponibili hanno tutte aliquota zero ma non sono la stessa
+#   cosa fra loro, e la fattura elettronica pretende che tu dica quale zero e'.*
+#   Quindi accanto alla quota escono: codice IVA, **aliquota**, **natura**,
+#   **inversione contabile**, **esigibilita'**, **split payment** e il
+#   **riferimento normativo** da stampare.
+#
+#   ⚠️ **`esigibilita` e `split_payment` sono TRASPORTATI, non usati** — e questo
+#   tiene insieme `D4` e `D18`, che sembravano in conflitto. La scissione dei
+#   pagamenti non cambia l'aliquota, cambia **chi versa l'imposta**: non entra
+#   nella scelta del codice, ma esce nel composito perche' chi costruisce la riga
+#   di fattura ha bisogno di un oggetto solo.
+#
+#   ⚠️ Il **riferimento normativo** e' `config.iva.descrizione` (`D24`): non c'e'
+#   una colonna sua perche' `config.iva` e' gia' piu' fine della natura — `EC`,
+#   `VG` e `VF` condividono `natura_iva_id = 10` e differiscono solo per
+#   l'articolo citato. Il riferimento e' l'**identita' della riga**.
+#
+# ── ⭐ RITORNA UNA RIPARTIZIONE (§2.7.3 / P2) ─────────────────────────
+#
+#   Il plafond puo' finire **a meta' riga**: parte non imponibile fino a
+#   capienza, il resto ad aliquota ordinaria. **L'ordine delle righe e' il
+#   contratto**: prima la quota coperta dal titolo, poi il resto.
+#
+# ── ⚠️ SOLA LETTURA: NON CONSUMA (D14) ───────────────────────────────
+#
+#   `STABLE`. La ripartizione e' una **proiezione** sul residuo. Se consumasse
+#   non lo si potrebbe chiamare per un'anteprima — che e' l'uso che ne fa il
+#   documento a monte. Il consumo lo fa
+#   `anagrafiche.fn_consuma_plafond_titolo_iva` alla DEFINITIVA, e per questo si
+#   restituisce `titolo_iva_id`: e' l'anello che dice a `I4` **quale** titolo.
+#
+# ── ⚠️ LA DATA E' UN PARAMETRO, MAI L'OROLOGIO (D14) ─────────────────
+#
+#   Il documento a monte proietta, la fattura decide: e' la **stessa** funzione
+#   eseguita in due momenti. Se i due valori divergono non c'e' errore — e'
+#   cambiato il mondo in mezzo.
+#
+# ── ⛔ IL CONGELAMENTO NON E' UN PARAMETRO ────────────────────────────
+#
+#   `D15` e' una proprieta' del **documento**; questa funzione riceve un
+#   articolo. E' un contratto dei chiamanti (`I3`/`I4`), che leggono
+#   `config.stati_doc_fiscale.congela_fiscale` prima di ri-risolvere.
+#
+# ── ⚠️ `SECURITY INVOKER` (decisione di Tid) e il contratto che ne segue ──
+#
+#   Legge `anagrafiche.soggetti_titoli_iva`, che ha la RLS. L'applicazione passa
+#   l'emittente del documento che sta lavorando — in perimetro per costruzione —
+#   e i ruoli batch hanno `BYPASSRLS`. ⛔ Un chiamante **senza contesto** legge
+#   zero titoli e ottiene l'aliquota ordinaria, in silenzio: e' la stessa forma
+#   di fail-closed di ogni lettura sotto RLS, ma qui il costo e' un'imposta
+#   applicata dove non andava. Va **saputo**, e c'e' un pgTAP che lo fotografa.
+#
+# Codici sollevati: E_IVA_RESOLVE_NON_INVOCABILE (TECNICO),
+#   E_IVA_TITOLI_AMBIGUI (NON_ESEGUIBILE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-49-create-fn-resolve-iva-riga-it-mctit.yaml
+
+  - changeSet:
+      id: 20260829-49-create-fn-resolve-iva-riga-it
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_resolve_iva_riga_it: la logica ITALIANA del risolutore IVA a due stadi
+        (D6/D7). A = quale aliquota compete alla merce (articolo, poi l'uso della fornitura
+        dove l'articolo tace); B = il titolo del soggetto che la sostituisce, se l'articolo
+        di QUESTA riga ricade nel suo ambito. Ritorna un COMPOSITO (D18) - codice, aliquota,
+        natura, reverse charge, esigibilita, split, riferimento normativo - e una
+        RIPARTIZIONE, perche' il plafond puo' finire a meta' riga (P2). STABLE: non consuma.
+        esigibilita e split sono TRASPORTATI e non usati nella scelta del codice, che tiene
+        insieme D4 e D18.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: iva_natura
+                columnName: is_reverse_charge
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_titoli_iva
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_get_tipo_utenza_fornitura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_iva_riga_it(
+                  p_articolo_id          catalogo.articoli.id%TYPE,
+                  p_data_riferimento     date,
+                  p_imponibile           numeric                                  DEFAULT NULL,
+                  p_billing_account_id   anagrafiche.billing_account.id%TYPE      DEFAULT NULL,
+                  p_utility_id           config.utilities.id%TYPE                 DEFAULT NULL,
+                  p_soggetto_id          anagrafiche.soggetti.id%TYPE             DEFAULT NULL,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE    DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  quota                 numeric,
+                  iva_id                config.iva.id%TYPE,
+                  aliquota              config.iva.aliquota_iva%TYPE,
+                  natura_codice         config.iva_natura.codice%TYPE,
+                  is_reverse_charge     config.iva_natura.is_reverse_charge%TYPE,
+                  esigibilita           vendite.fatture_righe.esigibilita%TYPE,
+                  split_payment         vendite.fatture_righe.split_payment%TYPE,
+                  riferimento_normativo config.iva.descrizione%TYPE,
+                  origine               varchar(16),
+                  titolo_iva_id         anagrafiche.soggetti_titoli_iva.id%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dire quale trattamento IVA si applica a UNA riga di
+              --   documento, e in che proporzione, secondo la regola ITALIANA.
+              --   Due stadi (D6/D7): A stabilisce l'aliquota che compete alla
+              --   merce, B verifica se un titolo del soggetto la sostituisce SU
+              --   QUESTA RIGA (D12).
+              --   Perimetro: sola lettura. NON consuma il plafond — la
+              --   ripartizione e' una proiezione sul residuo (D14).
+              --   Risultato: una riga nel caso ordinario, DUE quando il plafond
+              --   finisce a meta' riga (P2), nell'ordine «prima la quota coperta
+              --   dal titolo, poi il resto» — e l'ordine e' il contratto.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I2.
+              -- ⚠️ La data e' un PARAMETRO: mai CURRENT_DATE (D14).
+              -- ⛔ Il congelamento oltre la DEFINITIVA (D15) NON si controlla
+              --   qui: e' una proprieta' del documento, ed e' contratto dei
+              --   chiamanti.
+              DECLARE
+                  v_art_iva        catalogo.articoli.iva_id%TYPE;
+                  v_art_gruppo     catalogo.articoli.gruppo_voce_id%TYPE;
+                  v_art_tipo       catalogo.articoli.tipo_voce_id%TYPE;
+                  v_art_trovato    boolean := false;
+                  v_tipo_utenza_id config.tipi_utenze.id%TYPE;
+                  v_iva_ord        config.iva.id%TYPE;
+                  v_origine_ord    varchar(16);
+                  v_stato_emitt    anagrafiche.soggetti.stato_id%TYPE;
+                  v_split_sogg     anagrafiche.soggetti.split_payment%TYPE;
+                  -- ⚠️ Scalari e non un `record`: PostgreSQL non ammette di
+                  --   mescolare uno scalare (il conteggio dei pari) e un record
+                  --   nella stessa INTO — «v_titolo non e' una variabile scalare».
+                  v_tit_id         anagrafiche.soggetti_titoli_iva.id%TYPE;
+                  v_tit_iva        config.iva.id%TYPE;
+                  v_tit_plafond    anagrafiche.soggetti_titoli_iva.plafond%TYPE;
+                  v_tit_usato      anagrafiche.soggetti_titoli_iva.imponibile_utilizzato%TYPE;
+                  v_tit_ha_plaf    config.tipi_titolo_iva.ha_plafond%TYPE;
+                  v_n_pari         bigint;
+                  v_residuo        anagrafiche.soggetti_titoli_iva.plafond%TYPE;
+                  v_coperta        numeric;
+                  -- la ripartizione: al massimo due parti
+                  v_q1             numeric;
+                  v_iva1           config.iva.id%TYPE;
+                  v_org1           varchar(16);
+                  v_tit1           anagrafiche.soggetti_titoli_iva.id%TYPE;
+                  v_q2             numeric;
+                  v_iva2           config.iva.id%TYPE;
+                  v_org2           varchar(16);
+                  v_due_parti      boolean := false;
+                  -- il contorno del composito, uguale su tutte le parti
+                  v_esigibilita    vendite.fatture_righe.esigibilita%TYPE;
+                  v_split          vendite.fatture_righe.split_payment%TYPE;
+              BEGIN
+                  -- ══ GUARD DI INVOCAZIONE ═══════════════════════════════════
+                  -- ⚠️ TECNICI: non li produce una persona che compila un form,
+                  --   li produce un chiamante rotto. Il messaggio nomina il
+                  --   PARAMETRO, ed e' il solo caso in cui farlo e' giusto.
+                  IF p_articolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_RESOLVE_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'articolo_id'), NULL::uuid, 'articolo_id');
+                  END IF;
+                  IF p_data_riferimento IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_RESOLVE_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'data_riferimento'), NULL::uuid, 'data_riferimento');
+                  END IF;
+                  IF p_imponibile IS NOT NULL AND p_imponibile < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_RESOLVE_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'imponibile', 'valore', p_imponibile),
+                          NULL::uuid, 'imponibile');
+                  END IF;
+
+                  -- ══ STADIO A — QUALE ALIQUOTA COMPETE ALLA MERCE ═══════════
+                  SELECT a.iva_id, a.gruppo_voce_id, a.tipo_voce_id, true
+                    INTO v_art_iva, v_art_gruppo, v_art_tipo, v_art_trovato
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id;
+
+                  -- ⚠️ SELECT INTO senza righe azzera le variabili e prosegue:
+                  --   senza questo guard un articolo inesistente darebbe
+                  --   «nessuna aliquota» invece di dire che la chiamata e' rotta.
+                  IF NOT COALESCE(v_art_trovato, false) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_RESOLVE_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'articolo_id', 'valore', p_articolo_id),
+                          NULL::uuid, 'articolo_id');
+                  END IF;
+
+                  v_iva_ord     := v_art_iva;          -- A1: l'articolo
+                  v_origine_ord := 'ARTICOLO';
+
+                  -- A2: l'uso della fornitura, SOLO dove l'articolo tace (D17).
+                  IF v_iva_ord IS NULL THEN
+                      v_tipo_utenza_id := vendite.fn_get_tipo_utenza_fornitura(
+                                              p_billing_account_id, p_utility_id, p_data_riferimento);
+                      IF v_tipo_utenza_id IS NOT NULL THEN
+                          SELECT tu.iva_id INTO v_iva_ord
+                            FROM config.tipi_utenze tu WHERE tu.id = v_tipo_utenza_id;
+                          IF v_iva_ord IS NOT NULL THEN
+                              v_origine_ord := 'TIPO_UTENZA';
+                          END IF;
+                      END IF;
+                  END IF;
+
+                  -- ⭐ «Non lo so» si DICE, non si tace: chi legge deve poter
+                  --   distinguere un'aliquota assente da una non cercata.
+                  IF v_iva_ord IS NULL THEN
+                      v_origine_ord := 'ASSENTE';
+                  END IF;
+
+                  -- ══ IL CONTORNO DEL COMPOSITO ══════════════════════════════
+                  -- Lo stato dell'emittente serve all'override di aliquota per
+                  -- stato; split e esigibilita' vengono dal SOGGETTO (D8).
+                  IF p_emittente_fiscale_id IS NOT NULL THEN
+                      SELECT s.stato_id INTO v_stato_emitt
+                        FROM anagrafiche.emittenti_fiscali ef
+                        JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
+                        JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+                       WHERE ef.id = p_emittente_fiscale_id;
+                  END IF;
+
+                  IF p_soggetto_id IS NOT NULL THEN
+                      SELECT s.split_payment INTO v_split_sogg
+                        FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
+                  END IF;
+
+                  -- ⚠️ TRASPORTATI, NON USATI: la scissione dei pagamenti non
+                  --   cambia l'aliquota, cambia CHI VERSA l'imposta (D4). Non
+                  --   entra nella scelta del codice, ma esce nel composito
+                  --   perche' chi costruisce la riga di fattura ha bisogno di un
+                  --   oggetto solo (D18). 'S' = scissione, 'I' = immediata.
+                  v_split       := (v_split_sogg = 'S');
+                  v_esigibilita := CASE WHEN v_split THEN 'S' ELSE 'I' END;
+
+                  -- ══ STADIO B — UN TITOLO CHE LA SOSTITUISCE, SU QUESTA RIGA ═
+                  IF p_soggetto_id IS NOT NULL AND p_emittente_fiscale_id IS NOT NULL THEN
+                      WITH candidati AS (
+                          SELECT t.id, t.iva_id, t.plafond, t.imponibile_utilizzato, tt.ha_plafond,
+                                 MAX(CASE
+                                       WHEN t.ambito  = 'TUTTO'    THEN 1
+                                       WHEN a.livello = 'ARTICOLO' THEN 3
+                                       ELSE 2   -- GRUPPO_VOCE e TIPO_VOCE: stessa banda (D13)
+                                     END) AS specificita
+                            FROM anagrafiche.soggetti_titoli_iva t
+                            JOIN config.tipi_titolo_iva tt ON tt.id = t.tipo_titolo_iva_id
+                            LEFT JOIN anagrafiche.soggetti_titoli_iva_ambiti a
+                                   ON a.titolo_iva_id = t.id
+                                  AND (   (a.livello = 'ARTICOLO'    AND a.articolo_id    = p_articolo_id)
+                                       OR (a.livello = 'GRUPPO_VOCE' AND a.gruppo_voce_id = v_art_gruppo)
+                                       OR (a.livello = 'TIPO_VOCE'   AND a.tipo_voce_id   = v_art_tipo))
+                           WHERE t.soggetto_id          = p_soggetto_id
+                             AND t.emittente_fiscale_id = p_emittente_fiscale_id
+                             AND t.attivo               IS TRUE
+                             AND t.validita            @> p_data_riferimento
+                             AND tt.attivo              IS TRUE
+                             AND (t.ambito = 'TUTTO' OR a.id IS NOT NULL)
+                           GROUP BY t.id, t.iva_id, t.plafond, t.imponibile_utilizzato, tt.ha_plafond
+                      ), vincitori AS (
+                          SELECT c.* FROM candidati c
+                           WHERE c.specificita = (SELECT MAX(c2.specificita) FROM candidati c2)
+                      )
+                      SELECT (SELECT count(*) FROM vincitori), v.id, v.iva_id,
+                             v.plafond, v.imponibile_utilizzato, v.ha_plafond
+                        INTO v_n_pari, v_tit_id, v_tit_iva,
+                             v_tit_plafond, v_tit_usato, v_tit_ha_plaf
+                        FROM vincitori v
+                       -- ⚠️ ORDER BY prima del LIMIT: se i pari sono due si
+                       --   solleva subito sotto, ma senza ordine il messaggio
+                       --   nominerebbe un titolo diverso a ogni corsa.
+                       ORDER BY v.id
+                       LIMIT 1;
+
+                      -- ⛔ D13: a parita' di specificita' non c'e' niente da
+                      --   scegliere. Un'ambiguita' che si risolve sull'ordine
+                      --   degli id e' un difetto del modello, non una scelta.
+                      IF COALESCE(v_n_pari, 0) > 1 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_resolve_iva_riga_it', 'E_IVA_TITOLI_AMBIGUI',
+                              jsonb_build_object('articolo_id', p_articolo_id,
+                                                 'soggetto_id', p_soggetto_id,
+                                                 'emittente_fiscale_id', p_emittente_fiscale_id,
+                                                 'titoli_in_pari', v_n_pari),
+                              NULL::uuid, v_n_pari::text,
+                              to_char(p_data_riferimento, 'DD/MM/YYYY'));
+                      END IF;
+                  END IF;
+
+                  -- ══ LA RIPARTIZIONE ════════════════════════════════════════
+                  IF v_tit_id IS NULL THEN
+                      -- Nessun titolo: risponde lo stadio A.
+                      v_q1 := p_imponibile; v_iva1 := v_iva_ord; v_org1 := v_origine_ord; v_tit1 := NULL;
+
+                  ELSIF v_tit_ha_plaf IS NOT TRUE THEN
+                      -- Titolo senza tetto: sostituisce e basta.
+                      v_q1 := p_imponibile; v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
+
+                  ELSE
+                      -- ⚠️ GREATEST(..., 0): un titolo gia' sfondato da una
+                      --   forzatura ha residuo negativo. Sfondato vuol dire
+                      --   capienza zero, non capienza al contrario.
+                      v_residuo := GREATEST(v_tit_plafond - v_tit_usato, 0);
+
+                      IF p_imponibile IS NULL THEN
+                          -- ⭐ Anteprima senza importo: la spezzatura non e'
+                          --   calcolabile e non si inventa. Si dice cosa vale sul
+                          --   PRIMO euro, che e' cio' che serve a un form quando
+                          --   l'operatore ha appena scelto l'articolo.
+                          v_q1 := NULL;
+                          IF v_residuo > 0 THEN
+                              v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
+                          ELSE
+                              v_iva1 := v_iva_ord; v_org1 := v_origine_ord; v_tit1 := NULL;
+                          END IF;
+                      ELSE
+                          v_coperta := LEAST(p_imponibile, v_residuo);
+                          IF v_coperta <= 0 THEN
+                              -- Plafond esaurito: il titolo non copre piu' niente.
+                              v_q1 := p_imponibile; v_iva1 := v_iva_ord; v_org1 := v_origine_ord; v_tit1 := NULL;
+                          ELSE
+                              v_q1 := v_coperta; v_iva1 := v_tit_iva; v_org1 := 'TITOLO'; v_tit1 := v_tit_id;
+                              IF p_imponibile > v_coperta THEN
+                                  -- ⭐ P2: il resto torna all'aliquota ordinaria.
+                                  --   Puo' uscire con origine ASSENTE, ed e'
+                                  --   corretto: il titolo copriva una parte, e sul
+                                  --   resto nessuno sa dire l'aliquota. Il cancello
+                                  --   all'emissione lo fermera'.
+                                  v_due_parti := true;
+                                  v_q2 := p_imponibile - v_coperta;
+                                  v_iva2 := v_iva_ord; v_org2 := v_origine_ord;
+                              END IF;
+                          END IF;
+                      END IF;
+                  END IF;
+
+                  -- ══ IL COMPOSITO (D18) ═════════════════════════════════════
+                  -- ⚠️ Il CASE attorno a fn_get_aliquota_iva e' la guardia che
+                  --   §R-3 ha insegnato: quella funzione SOLLEVA su un id nullo,
+                  --   e un COALESCE non farebbe in tempo a difendere. Le viste
+                  --   sorelle ce l'hanno gia'.
+                  -- ⚠️ `descrizione` come riferimento normativo e' D24: non c'e'
+                  --   una colonna sua perche' config.iva e' gia' piu' fine della
+                  --   natura — EC, VG e VF condividono natura 10 e differiscono
+                  --   solo per l'articolo citato.
+                  RETURN QUERY
+                  WITH parti(ord, q, iva, org, tit) AS (
+                      VALUES (1, v_q1, v_iva1, v_org1, v_tit1),
+                             (2, v_q2, v_iva2, v_org2, NULL::bigint)
+                  )
+                  SELECT p.q,
+                         p.iva,
+                         CASE WHEN p.iva IS NOT NULL
+                              THEN config.fn_get_aliquota_iva(p.iva, v_stato_emitt) END,
+                         n.codice,
+                         n.is_reverse_charge,
+                         v_esigibilita,
+                         v_split,
+                         i.descrizione,
+                         p.org,
+                         p.tit
+                    FROM parti p
+                    LEFT JOIN config.iva i        ON i.id = p.iva
+                    LEFT JOIN config.iva_natura n ON n.id = i.natura_iva_id
+                   WHERE p.ord = 1 OR v_due_parti
+                   ORDER BY p.ord;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_resolve_iva_riga_it(uuid, date, numeric, bigint, integer, uuid, bigint)
+              IS 'La logica ITALIANA del risolutore IVA di riga (I2 di brief-db-be-iva-risolutore-e-regime-cliente). Chi chiama passa dal guscio vendite.fn_resolve_iva_riga, che smista per paese (D21): qui c''e'' la regola italiana e basta, e il giorno che ne serve un''altra nasce una _xx accanto senza toccare il guscio. ⭐ DUE STADI che non competono (D6/D7): A stabilisce quale aliquota compete alla MERCE, B verifica se un TITOLO del soggetto la sostituisce — B non vince su A, sostituisce il risultato di A dopo che A ha risposto. STADIO A a due livelli: l''articolo, e l''uso della fornitura SOLO dove l''articolo tace (D17) — catalogo.articoli.iva_id e'' nullable, quindi l''articolo puo'' dichiarare di non avere un''opinione, mentre config.tipi_utenze.iva_id non ha modo di dire su quali merci vale e applicato per primo si prenderebbe ogni riga della fornitura, cauzioni comprese. ⛔ I bundle restano fuori (D16): l''aliquota accanto al prezzo esiste solo sui componenti, e la portano gia'' le *_righe_componenti del documento. STADIO B si valuta PER RIGA (D12), con specificita'' articolo > categoria > tutto e GRUPPO_VOCE/TIPO_VOCE nella stessa banda; a parita'' si solleva E_IVA_TITOLI_AMBIGUI invece di scegliere (D13). ⭐ RITORNA UN COMPOSITO (D18) e non un numerico: le operazioni non imponibili hanno tutte aliquota zero ma non sono la stessa cosa, e la fattura elettronica pretende che si dica QUALE zero — quindi accanto alla quota escono codice, aliquota, natura, inversione contabile, esigibilita'', split payment e riferimento normativo. ⚠️ esigibilita e split_payment sono TRASPORTATI e NON usati nella scelta del codice: e'' cio'' che tiene insieme D4 (la scissione non cambia l''aliquota, cambia chi versa) e D18 (chi costruisce la riga di fattura vuole un oggetto solo). ⚠️ Il riferimento normativo e'' config.iva.descrizione (D24): nessuna colonna nuova, perche'' config.iva e'' gia'' piu'' fine della natura — EC, VG e VF condividono natura 10 e differiscono solo per l''articolo citato, quindi il riferimento e'' l''identita'' della riga. ⭐ E RITORNA UNA RIPARTIZIONE (P2): il plafond puo'' finire a meta'' riga, e l''ORDINE delle righe e'' il contratto — prima la quota coperta dal titolo, poi il resto. ⚠️ STABLE: NON consuma, la ripartizione e'' una proiezione sul residuo (D14); il consumo lo fa anagrafiche.fn_consuma_plafond_titolo_iva alla DEFINITIVA, e per questo esce titolo_iva_id. ⚠️ La data e'' un parametro e mai CURRENT_DATE. ⛔ Il congelamento (D15) non si controlla qui: e'' una proprieta'' del documento, contratto dei chiamanti. ⚠️ Il CASE attorno a config.fn_get_aliquota_iva e'' la guardia che §R-3 ha insegnato: quella funzione solleva su un id nullo e un COALESCE non farebbe in tempo a difendere. ⚠️ SECURITY INVOKER (decisione di Tid): chi chiama deve avere un contesto che vede i titoli — l''applicazione passa l''emittente del documento, i ruoli batch hanno BYPASSRLS; un chiamante senza contesto legge zero titoli e ottiene l''aliquota ordinaria in silenzio, e qui il costo e'' un''imposta applicata dove non andava.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_resolve_iva_riga_it(uuid, date, numeric, bigint, integer, uuid, bigint);

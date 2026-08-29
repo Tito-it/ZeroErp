@@ -25,7 +25,9 @@ AS $function$
 DECLARE
   v_motivi        jsonb := '[]'::jsonb;
   v_lotto_stato   config.stati_doc_fiscale.codice_interno%TYPE;
+  v_lotto_congela config.stati_doc_fiscale.congela_fiscale%TYPE;
   v_fatt_stato    config.stati_doc_fiscale.codice_interno%TYPE;
+  v_fatt_congela  config.stati_doc_fiscale.congela_fiscale%TYPE;
   v_fatt_numero   vendite.fatture.numero%TYPE;
   v_trovato       boolean;
   v_collegata     boolean;
@@ -49,8 +51,8 @@ BEGIN
   -- Stato del LOTTO, per codice: il codice_interno e' la chiave
   -- stabile, l'id no (lezione B-4). LEFT JOIN perche' un lotto
   -- senza stato deve arrivare al confronto e fallirlo.
-  SELECT true, sdf.codice_interno
-    INTO v_trovato, v_lotto_stato
+  SELECT true, sdf.codice_interno, sdf.congela_fiscale
+    INTO v_trovato, v_lotto_stato, v_lotto_congela
     FROM vendite.fatturazione_lotti fl
     LEFT JOIN config.stati_doc_fiscale sdf
       ON sdf.id = fl.stato_doc_fiscale_id
@@ -64,8 +66,8 @@ BEGIN
   END IF;
 
   v_trovato := NULL;
-  SELECT true, sdf.codice_interno, f.numero
-    INTO v_trovato, v_fatt_stato, v_fatt_numero
+  SELECT true, sdf.codice_interno, f.numero, sdf.congela_fiscale
+    INTO v_trovato, v_fatt_stato, v_fatt_numero, v_fatt_congela
     FROM vendite.fatture f
     LEFT JOIN config.stati_doc_fiscale sdf
       ON sdf.id = f.stato_doc_fiscale_id
@@ -84,7 +86,10 @@ BEGIN
   -- sorelle (non numerato), ed e' anche quello che il FE
   -- applica gia' — il vecchio guard produceva una voce di menu
   -- che falliva sui lotti EMESSA.
-  IF COALESCE(v_lotto_stato, '') NOT IN ('DRAFT', 'EMESSA') THEN
+  -- ⚠️ `COALESCE(..., true)` tiene il comportamento di prima: con lo stato
+  --    non risolvibile la vecchia forma confrontava '' contro la lista e
+  --    quindi BLOCCAVA. Qui resta fail-closed, come era.
+  IF COALESCE(v_lotto_congela, true) THEN
     v_motivi := v_motivi || jsonb_build_object(
       'codice',     'E_LOTTO_NON_PRE_FISCALE',
       'reason',     'STATO_LOTTO_NON_PRE_FISCALE',
@@ -111,7 +116,10 @@ BEGIN
   -- MOTIVO 3 — la FATTURA e' oltre il pre-fiscale.
   -- Gate fiscale, non un'asimmetria: le DEFINITIVA+ restano
   -- rifiutate anche se il lotto che le contiene sarebbe aperto.
-  IF COALESCE(v_fatt_stato, '') NOT IN ('DRAFT', 'EMESSA') THEN
+  -- ⚠️ `COALESCE(..., true)` tiene il comportamento di prima: con lo stato
+  --    non risolvibile la vecchia forma confrontava '' contro la lista e
+  --    quindi BLOCCAVA. Qui resta fail-closed, come era.
+  IF COALESCE(v_fatt_congela, true) THEN
     v_motivi := v_motivi || jsonb_build_object(
       'codice',     'E_FATTURA_GIA_FISCALE',
       'reason',     'FATTURA_NON_PRE_FISCALE',

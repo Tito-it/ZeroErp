@@ -146,6 +146,7 @@
 - [fn_get_anno_registro](funzioni/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
 - [fn_get_arrotondamento_scope](funzioni/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
 - [fn_get_commessa_stato](funzioni/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
+- [fn_get_contratto_attivo](funzioni/fn_get_contratto_attivo.md) — (latest review 30-08-2026)
 - [fn_get_data_minima_numerabile_lotto](funzioni/fn_get_data_minima_numerabile_lotto.md) — **Da quale data in poi TUTTE le fatture non ancora numerate di questo lotto possono prendere un numero.**
 - [fn_get_limite_emissione_default](funzioni/fn_get_limite_emissione_default.md) — **Il valore di un limite di emissione dal catalogo dei parametri, come numero.**
 - [fn_get_lotto_segnalazioni_summary](funzioni/fn_get_lotto_segnalazioni_summary.md) — (latest review 23-02-2026)   La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto, unificando:
@@ -163,6 +164,7 @@
 - [fn_get_scope_fatture_lotto](funzioni/fn_get_scope_fatture_lotto.md) — (latest review 15-08-2026)
 - [fn_get_sorgente_documento_ref](funzioni/fn_get_sorgente_documento_ref.md) — Dire **qual è il documento di origine** di una riga a sorgente polimorfa, in due informazioni e **una sola lettura**:
 - [fn_get_tipo_doc_fiscale_id](funzioni/fn_get_tipo_doc_fiscale_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_tipo_doc_fiscale_id`** risolve il tipo documento fiscale a partire dalla sorgente o dalla utility.
+- [fn_get_tipo_utenza_fornitura](funzioni/fn_get_tipo_utenza_fornitura.md) — (latest review 30-08-2026)
 - [fn_get_totale_fondi_fattura](funzioni/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
@@ -208,6 +210,8 @@
 - [fn_resi_riga_residuo_riconsegna](funzioni/fn_resi_riga_residuo_riconsegna.md) — (rev 2026-07-26)
 - [fn_resi_riga_tetti_accredito](funzioni/fn_resi_riga_tetti_accredito.md) — (rev 2026-08-18)
 - [fn_resolve_fatturazione_pipeline_step](funzioni/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
+- [fn_resolve_iva_riga](funzioni/fn_resolve_iva_riga.md) — (latest review 30-08-2026)
+- [fn_resolve_iva_riga_it](funzioni/fn_resolve_iva_riga_it.md) — (latest review 30-08-2026)
 - [fn_resolve_lotto_task_execution_mode](funzioni/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 - [fn_resolve_prezzo_listino_v2](funzioni/fn_resolve_prezzo_listino_v2.md) — (rev 2026-05-20 — 9° param p_listino_versione_id_preferito: fast path diretto)
@@ -298,8 +302,7 @@
 - [trgfn_fatture_log_sync_ai_stmt](funzioni/trgfn_fatture_log_sync_ai_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_au_stmt](funzioni/trgfn_fatture_log_sync_au_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo UPDATE su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_numerata_non_annulabile](funzioni/trgfn_fatture_numerata_non_annulabile.md) — Blocca il passaggio a stato `ANNULLATA` per una fattura gia` numerata.
-- [trgfn_fatture_righe_guard_congelamento](funzioni/trgfn_fatture_righe_guard_congelamento.md) — La fattura è un documento fiscale: **superata la soglia `DRAFT`/`EMESSA` le sue righe sono uno snapshot e non si toccano più**, né in scrittura né in cancellazione.
-- [trgfn_fatture_righe_guard_normalize](funzioni/trgfn_fatture_righe_guard_normalize.md) — Normalizza i dati di riga fattura su inserimento/aggiornamento: * eredita `dest_billing_account_id` dalla testata se assente; * allinea lo snapshot `iva_natura` in base a `config.iva`.
+- [trgfn_fatture_righe_guard_normalize](funzioni/trgfn_fatture_righe_guard_normalize.md) — Normalizza i dati di riga fattura su inserimento/aggiornamento: * eredita `dest_billing_account_id` dalla testata se assente; * allinea lo snapshot `iva_natura` in base a `config.iva`; * ⭐ **congela `aliquota_iva`** (dal 2026-08-29); * ⭐ **riempie `esigibilita` e `split_payment`** dal soggetto **cliente**   (dal 2026-08-30).
 - [trgfn_fatture_righe_importo](funzioni/trgfn_fatture_righe_importo.md) — Garantire che **l'importo di una riga di fattura esista sempre e sia coerente** con quantità, prezzo e sconto della riga stessa.
 - [trgfn_fondi_source_guard_importo](funzioni/trgfn_fondi_source_guard_importo.md) — (latest review 15-08-2026)
 - [trgfn_fondi_source_guard_transizione](funzioni/trgfn_fondi_source_guard_transizione.md) — (latest review 22-08-2026)

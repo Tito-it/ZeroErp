@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_titoli_iva_guard_ambito.md" %}
 # ⚙️ Funzione `trgfn_soggetti_titoli_iva_guard_ambito`
 
 ```sql

@@ -73,6 +73,7 @@ BEGIN
     WITH lavorabili AS (
         SELECT lf.fattura_id,
                s.codice_interno AS stato,
+               s.congela_fiscale AS congela,
                EXISTS (
                    SELECT 1
                      FROM vendite.fatture_log fl
@@ -87,13 +88,12 @@ BEGIN
          WHERE lf.lotto_id = p_lotto_id
     )
     SELECT array_agg(l.fattura_id ORDER BY l.fattura_id)
-               FILTER (WHERE l.stato IN ('DRAFT', 'EMESSA')
+               FILTER (WHERE l.congela IS FALSE
                          AND NOT l.critico_altrui),
            count(*)
-               FILTER (WHERE l.stato IS NULL
-                          OR l.stato NOT IN ('DRAFT', 'EMESSA')),
+               FILTER (WHERE COALESCE(l.congela, true)),
            count(*)
-               FILTER (WHERE l.stato IN ('DRAFT', 'EMESSA')
+               FILTER (WHERE l.congela IS FALSE
                          AND l.critico_altrui)
       INTO v_ids, v_skipped, v_skip_err
       FROM lavorabili l;

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_titoli_iva_guard_coerenza.md" %}
 # ⚙️ Funzione `trgfn_soggetti_titoli_iva_guard_coerenza`
 
 ```sql

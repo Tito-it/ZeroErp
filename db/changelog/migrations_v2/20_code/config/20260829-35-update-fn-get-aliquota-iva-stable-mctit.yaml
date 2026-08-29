@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# §R-4 del brief brief-db-be-iva-risolutore-e-regime-cliente — coda della Fase 3.
+# `config.fn_get_aliquota_iva` era dichiarata VOLATILE pur essendo in SOLA
+# LETTURA. Diventa STABLE. Il corpo NON cambia di una riga.
+#
+# ── ⚠️ PERCHE' NON E' COSMESI, ed e' il posto dove si vede ─────────────
+#
+#   La funzione gira DENTRO le viste dei riepiloghi IVA —
+#   `vw_ddt_righe_iva_base`, `vw_ordini_righe_iva_base`,
+#   `vw_preventivi_righe_dettaglio` — cioe' in un contesto dove il planner la
+#   valuta **per ogni riga**. Con `VOLATILE` PostgreSQL deve assumere che il
+#   risultato possa cambiare fra una riga e l'altra della stessa query, quindi:
+#     * non puo' riusare il valore per lo stesso `(iva_id, stato_id)`;
+#     * non puo' spostare la chiamata fuori da un ciclo;
+#     * la esclude dagli indici di espressione e da alcuni piani.
+#   Con `STABLE` la promessa e' quella vera: **dentro una singola istruzione il
+#   risultato non cambia**.
+#
+# ── ⭐ E' LA VOLATILITA' GIUSTA, non una piu' larga ────────────────────
+#
+#   Non `IMMUTABLE`: il valore dipende da `config.iva` e `config.iva_stati`, che
+#   sono tabelle — un `IMMUTABLE` direbbe «lo stesso input da' lo stesso output
+#   per sempre», e sarebbe falso il giorno che qualcuno corregge un'aliquota.
+#   `STABLE` e' esattamente la categoria di chi legge il database e non lo scrive.
+#
+# ── ℹ️ PERCHE' PROPRIO ORA ─────────────────────────────────────────────
+#
+#   Il risolutore IVA (I2) nasce nello stesso giro e restituisce un CODICE, non
+#   un'aliquota: la conversione codice → aliquota resta di questa funzione, che
+#   diventa quindi il pezzo piu' chiamato della famiglia. Guardare la sua
+#   volatilita' adesso costa un changeSet; guardarla dopo vuol dire trovarla in
+#   un profilo di query.
+#
+# ── ⚠️ COSA NON CAMBIA, e resta un residuo dichiarato ─────────────────
+#
+#   La funzione **solleva** quando `p_iva_id` e' NULL invece di ritornare NULL.
+#   E' cio' che sui preventivi rendeva impossibile perfino SALVARE una riga
+#   senza aliquota (§R-3), risolto il 2026-08-29 mettendo la guardia nella
+#   funzione chiamante e non qui. ⚠️ La gemella sulle FATTURE ha ancora lo stesso
+#   `COALESCE` senza guardia, e va sanata dentro `I4`: qui non si tocca, perche'
+#   togliere il raise senza il cancello all'emissione scambierebbe un errore
+#   rumoroso con un numero sbagliato silenzioso.
+#
+# ⚠️ Il corpo e' preso dalla doc auto-gen (l'oggetto VIVO) e la firma dall'ultimo
+#   YAML che lo definisce (20260331-06): l'auto-gen scioglie i `%TYPE` in
+#   `integer`, e ricopiarla da li' avrebbe perso l'ancoraggio alle colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260829-35-update-fn-get-aliquota-iva-stable-mctit.yaml
+
+  - changeSet:
+      id: 20260829-35-update-fn-get-aliquota-iva-stable
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.fn_get_aliquota_iva passa da VOLATILE a STABLE. Il corpo non cambia di una
+        riga: e' sempre stata in sola lettura, e la dichiarazione diceva il falso. Non e'
+        cosmesi - la funzione gira dentro le viste dei riepiloghi IVA, dove il planner la
+        valuta per riga, e con VOLATILE non puo' riusare il risultato per lo stesso codice
+        ne' spostarla fuori da un ciclo. Non IMMUTABLE: il valore dipende da config.iva e
+        config.iva_stati, che sono tabelle. Residuo §R-4 del cantiere IVA.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config' AND p.proname = 'fn_get_aliquota_iva';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_get_aliquota_iva(
+                  p_iva_id   config.iva.id%TYPE,
+                  p_stato_id config.stati.id%TYPE
+              )
+              RETURNS NUMERIC
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_aliquota config.iva.aliquota_iva%TYPE;
+              BEGIN
+                  -- Guard: p_iva_id obbligatorio
+                  IF p_iva_id IS NULL OR p_iva_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config',
+                          'fn_get_aliquota_iva',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'parametro', 'p_iva_id',
+                              'valore', p_iva_id
+                          ),
+                          NULL::uuid,
+                          'p_iva_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Recupera aliquota con override per stato
+                  SELECT COALESCE(s.aliquota_override, i.aliquota_iva)
+                    INTO v_aliquota
+                    FROM config.iva i
+                    LEFT JOIN config.iva_stati s
+                      ON s.iva_id = i.id
+                     AND s.stato_id = p_stato_id
+                   WHERE i.id = p_iva_id;
+
+                  IF v_aliquota IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config',
+                          'fn_get_aliquota_iva',
+                          'E_CODICE',
+                          jsonb_build_object('iva_id', p_iva_id),
+                          NULL::uuid,
+                          p_iva_id::text, 'config.iva'
+                      );
+                  END IF;
+
+                  RETURN v_aliquota;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_get_aliquota_iva(INTEGER, INTEGER)
+                IS 'Aliquota IVA con override per stato (config.iva_stati). Errori: E_PARAMETRO_INVALIDO, E_CODICE. ⭐ STABLE dal 2026-08-29 (§R-4 del cantiere IVA): e'' sempre stata in sola lettura, e la dichiarazione VOLATILE diceva il falso. Non e'' cosmesi — la funzione gira DENTRO vw_ddt_righe_iva_base, vw_ordini_righe_iva_base e vw_preventivi_righe_dettaglio, cioe'' dove il planner la valuta per riga: con VOLATILE non puo'' riusare il risultato per lo stesso (iva_id, stato_id) ne'' spostare la chiamata fuori da un ciclo. ⛔ Non IMMUTABLE, e la differenza conta: il valore dipende da config.iva e config.iva_stati, quindi «stesso input, stesso output per sempre» sarebbe falso il giorno che qualcuno corregge un''aliquota. ⚠️ Residuo NON toccato qui: la funzione SOLLEVA su p_iva_id nullo invece di ritornare NULL, ed e'' cio'' che sui preventivi impediva perfino di salvare una riga senza aliquota — sanato il 2026-08-29 con una guardia nella funzione chiamante. La gemella sulle fatture ha ancora lo stesso difetto e si chiude dentro I4, perche'' togliere il raise senza il cancello all''emissione scambierebbe un errore rumoroso con un numero sbagliato silenzioso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Torna VOLATILE (il default): stesso corpo, sola dichiarazione.
+              ALTER FUNCTION config.fn_get_aliquota_iva(INTEGER, INTEGER) VOLATILE;

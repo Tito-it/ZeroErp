@@ -25,6 +25,7 @@ DECLARE
     v_termine_id     vendite.fatture.termine_pagamento_id%TYPE;
     v_modalita_id    vendite.fatture.modalita_pagamento_id%TYPE;
     v_stato          config.stati_doc_fiscale.codice_interno%TYPE;
+    v_congela        config.stati_doc_fiscale.congela_fiscale%TYPE;
     v_trovata        boolean := FALSE;
     v_num_rate       config.termini_pagamento.numero_rate%TYPE;
     v_intervallo     config.termini_pagamento.intervallo%TYPE;
@@ -55,8 +56,8 @@ BEGIN
     END IF;
 
     SELECT TRUE, f.data, f.totale_a_pagare, f.termine_pagamento_id,
-           f.modalita_pagamento_id, s.codice_interno
-      INTO v_trovata, v_data, v_base, v_termine_id, v_modalita_id, v_stato
+           f.modalita_pagamento_id, s.codice_interno, s.congela_fiscale
+      INTO v_trovata, v_data, v_base, v_termine_id, v_modalita_id, v_stato, v_congela
       FROM vendite.fatture f
       LEFT JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
      WHERE f.id = p_fattura_id;
@@ -73,11 +74,27 @@ BEGIN
     -- Stessa soglia (per codice_interno) del guard satelliti di 1.1:
     -- qui si solleva con il codice giusto invece di lasciar fallire
     -- la DELETE piu' sotto su un errore di trigger.
-    IF v_stato IS NOT NULL AND v_stato NOT IN ('DRAFT', 'EMESSA') THEN
+    -- ⭐ LA SOGLIA E' UN DATO, non una lista scritta qui (D33).
+    --    Fino al 2026-08-30 questa funzione portava la propria copia di
+    --    `NOT IN ('DRAFT','EMESSA')`. Erano OTTO copie della stessa frase,
+    --    e `config.stati_doc_fiscale.congela_fiscale` era nata (I10) proprio
+    --    per toglierle: era stata collegata a un solo lettore.
+    -- ⚠️ Il comportamento NON cambia: verificato che sui sei stati esistenti
+    --    colonna e lista dicono la stessa cosa. Cambia la SEDE, cioe' quante
+    --    cose vanno toccate il giorno che il confine si sposta - da otto a una.
+    -- ⚠️ E il trattamento dello STATO MANCANTE resta identico a prima: e' una
+    --    decisione di questa funzione, non della soglia.
+    -- ⚠️ `IS TRUE` e non un test nudo, e non e' pignoleria: la vecchia forma
+    --    era `v_stato IS NOT NULL AND v_stato NOT IN (...)`, cioe' con lo stato
+    --    NON risolvibile la funzione LASCIAVA PASSARE. `v_congela IS TRUE` e'
+    --    falso quando la colonna e' NULL, quindi quel ramo resta identico.
+    --    Non si e' colta l'occasione per renderlo fail-closed: sarebbe un
+    --    cambiamento di comportamento nascosto dentro un lavoro di sede.
+    IF v_congela IS TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_genera_scadenze_fattura', 'E_SCADENZE_FATTURA_BLOCCATA',
             jsonb_build_object('fattura_id', p_fattura_id, 'stato', v_stato,
-                               'soglia', 'DRAFT,EMESSA'),
+                               'soglia', 'congela_fiscale'),
             NULL::uuid, p_fattura_id::text, v_stato
         );
     END IF;

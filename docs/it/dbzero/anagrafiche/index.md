@@ -33,17 +33,17 @@
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md) — (latest review 10-01-26) `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 - [soggetti_ruoli](tabelle/soggetti_ruoli.md) — (latest review 15-02-26) * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `meta` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md) — (latest review 25-03-26) `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
-- [soggetti_titoli_iva](tabelle/soggetti_titoli_iva.md)
-- [soggetti_titoli_iva_ambiti](tabelle/soggetti_titoli_iva_ambiti.md)
-- [soggetti_titoli_iva_movimenti](tabelle/soggetti_titoli_iva_movimenti.md)
+- [soggetti_titoli_iva](tabelle/soggetti_titoli_iva.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
+- [soggetti_titoli_iva_ambiti](tabelle/soggetti_titoli_iva_ambiti.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
+- [soggetti_titoli_iva_movimenti](tabelle/soggetti_titoli_iva_movimenti.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
 - [vettori](tabelle/vettori.md) — (rev 2026-08-21)
 
 ## ⚙️ Funzioni
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
 - [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
-- [fn_check_titolo_iva_ambito](funzioni/fn_check_titolo_iva_ambito.md)
-- [fn_consuma_plafond_titolo_iva](funzioni/fn_consuma_plafond_titolo_iva.md)
+- [fn_check_titolo_iva_ambito](funzioni/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_consuma_plafond_titolo_iva](funzioni/fn_consuma_plafond_titolo_iva.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore_v2](funzioni/fn_crea_operatore_v2.md)
@@ -132,10 +132,10 @@
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md) — (last review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:
 - [trgfn_soggetti_ruoli_guard_indirizzi_required](funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un **ruolo soggetto** abbia tutti i tipi di indirizzo **obbligatori** definiti nella matrice `config.tipi_ruolo_tipi_indirizzo`.
 - [trgfn_soggetti_ruoli_guard_natura_ammessa](funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`** e una **trigger function di tipo "guard"** che:
-- [trgfn_soggetti_titoli_iva_ambiti_guard](funzioni/trgfn_soggetti_titoli_iva_ambiti_guard.md)
-- [trgfn_soggetti_titoli_iva_guard_ambito](funzioni/trgfn_soggetti_titoli_iva_guard_ambito.md)
-- [trgfn_soggetti_titoli_iva_guard_coerenza](funzioni/trgfn_soggetti_titoli_iva_guard_coerenza.md)
-- [trgfn_soggetti_titoli_iva_movimenti_accumulatore](funzioni/trgfn_soggetti_titoli_iva_movimenti_accumulatore.md)
+- [trgfn_soggetti_titoli_iva_ambiti_guard](funzioni/trgfn_soggetti_titoli_iva_ambiti_guard.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [trgfn_soggetti_titoli_iva_guard_ambito](funzioni/trgfn_soggetti_titoli_iva_guard_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [trgfn_soggetti_titoli_iva_guard_coerenza](funzioni/trgfn_soggetti_titoli_iva_guard_coerenza.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [trgfn_soggetti_titoli_iva_movimenti_accumulatore](funzioni/trgfn_soggetti_titoli_iva_movimenti_accumulatore.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — (latest review 29-12-25) La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
 - [trgfn_vettori_gen_codice](funzioni/trgfn_vettori_gen_codice.md) — (rev 2026-08-21 — **funzione nata il 2026-08-21**)
 - [trgfn_vettori_guard_ruolo_vettore](funzioni/trgfn_vettori_guard_ruolo_vettore.md) — (rev 2026-08-21)

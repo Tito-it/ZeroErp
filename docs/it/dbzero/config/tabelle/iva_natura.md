@@ -15,6 +15,8 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_insert | text | YES |  |
 | user_update | text | YES |  |
+| storicizza | boolean | NO | true |
+| is_reverse_charge | boolean | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -84,7 +84,19 @@ fasullo, una volta seminato, se lo porta dietro ogni documento emesso.
 
 ⭐ **Il binario d'arrivo esiste gia`**: `vendite.fatture_righe` ha le colonne `esigibilita` e
 `split_payment`, e `vendite.fatture_riepiloghi_iva` raggruppa gia` per
-(`iva_id`, `natura_id`, `esigibilita`, `split_payment`). Manca solo l'anello che le riempie.
+(`iva_id`, `natura_id`, `esigibilita`, `split_payment`).
+
+> ✅ ~~Manca solo l'anello che le riempie.~~ **Non manca piu`, dal 2026-08-30**:
+> lo riempie `vendite.trgfn_fatture_righe_guard_normalize`, che legge
+> `split_payment` **da qui** passando dal `billing_account` della testata fattura.
+> ⚠️ Fino ad allora quelle due colonne erano `NULL` su **tutte** le righe: la
+> frase «manca solo l'anello» era vera, ed e` esattamente il genere di frase che
+> va rivista quando l'anello nasce.
+>
+> ⭐ E l'anello **non sovrascrive tutto**: `split_payment` e` una derivazione pura
+> e si riscrive sempre, mentre l'esigibilita` fuori dalla scissione riempie solo
+> il **vuoto** — una `'D'` (differita) scelta di proposito sopravvive, perche` e`
+> una decisione del documento che nessuna colonna sa dedurre.
 
 ⚠️ **Il default `N` e` una decisione, e va nella direzione opposta a `congela_fiscale`.** La`
 un dato mancante deve **bloccare**; qui un soggetto di cui nessuno ha detto nulla **non e`**

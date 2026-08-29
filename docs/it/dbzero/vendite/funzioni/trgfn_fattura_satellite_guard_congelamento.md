@@ -22,10 +22,19 @@ AS $function$
 --   una funzione, N montaggi (piano C-11).
 DECLARE
     v_fk_col      text := TG_ARGV[0];
+    -- ⭐ Il CODICE ERRORE e' un argomento (D34). Senza, questa funzione
+    --    poteva servire solo i satelliti «generici», e chi voleva un errore
+    --    piu' preciso doveva scriversi una funzione tutta sua — che e'
+    --    esattamente cio' che era successo con le righe di fattura.
+    -- ⚠️ TG_ARGV fuori range da' NULL, non un errore: il COALESCE tiene il
+    --    comportamento di chi monta il trigger con un argomento solo.
+    v_codice      text := COALESCE(NULLIF(btrim(TG_ARGV[1]), ''),
+                                  'E_FATTURA_SATELLITE_CONGELATO');
     v_row         jsonb;
     v_fattura_id  vendite.fatture.id%TYPE;
     v_riga_id     bigint;
     v_stato       config.stati_doc_fiscale.codice_interno%TYPE;
+    v_congela config.stati_doc_fiscale.congela_fiscale%TYPE;
     v_allow_reset text;
 BEGIN
     -- Guard di montaggio: senza la colonna FK il trigger non sa
@@ -70,8 +79,8 @@ BEGIN
     END IF;
 
     -- Stato per codice_interno (immutabile), mai per codice.
-    SELECT s.codice_interno
-      INTO v_stato
+    SELECT s.codice_interno, s.congela_fiscale
+      INTO v_stato, v_congela
       FROM vendite.fatture f
       JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
      WHERE f.id = v_fattura_id;
@@ -84,19 +93,31 @@ BEGIN
         IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
     END IF;
 
-    -- Stessa soglia di fn_ricalcola_riepilogo_iva_fattura.
-    IF v_stato NOT IN ('DRAFT', 'EMESSA') THEN
+    -- ⭐ LA SOGLIA E' UN DATO, non una lista scritta qui (D33).
+    --    Fino al 2026-08-30 questa funzione portava la propria copia di
+    --    `NOT IN ('DRAFT','EMESSA')`. Erano OTTO copie della stessa frase,
+    --    e `config.stati_doc_fiscale.congela_fiscale` era nata (I10) proprio
+    --    per toglierle: era stata collegata a un solo lettore.
+    -- ⚠️ Il comportamento NON cambia: verificato che sui sei stati esistenti
+    --    colonna e lista dicono la stessa cosa. Cambia la SEDE, cioe' quante
+    --    cose vanno toccate il giorno che il confine si sposta - da otto a una.
+    -- ⚠️ E il trattamento dello STATO MANCANTE resta identico a prima: e' una
+    --    decisione di questa funzione, non della soglia.
+    -- ⚠️ Qui `v_congela` non puo' essere NULL: la colonna e' NOT NULL e il
+    --    JOIN e' interno, quindi se lo stato non si risolve `v_stato` e' NULL e
+    --    la funzione e' gia' uscita sopra, dal ramo che resta com'era.
+    IF v_congela THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite',
             'trgfn_fattura_satellite_guard_congelamento',
-            'E_FATTURA_SATELLITE_CONGELATO',
+            v_codice,
             jsonb_build_object(
                 'operazione', TG_OP,
                 'tabella',    TG_TABLE_NAME,
                 'fattura_id', v_fattura_id,
                 'riga_id',    v_riga_id,
                 'stato',      v_stato,
-                'soglia',     'DRAFT,EMESSA'),
+                'soglia',     'congela_fiscale'),
             NULL::uuid,
             v_fattura_id::text, v_stato, TG_TABLE_NAME
         );

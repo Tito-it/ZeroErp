@@ -1,0 +1,277 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente — D19, terzo
+# pezzo: LA RIGENERAZIONE LEGGE LA RIGA, e scrive l'aliquota sul riepilogo.
+#
+# ── 🔴 E' QUI CHE LA COLONNA SULLA RIGA SERVE A QUALCOSA ──────────────
+#
+#   Aggiungere `fatture_righe.aliquota_iva` e lasciare che la rigenerazione
+#   continui a chiamare `config.fn_get_aliquota_iva` sarebbe stato il difetto
+#   che questo cantiere sta chiudendo: un campo scritto e mai letto.
+#
+#   Rilievo di Tid: *«a volte viene richiesto di rigenerare i riepiloghi, che
+#   prendono la riga: e' necessario sapere l'aliquota che era stata applicata al
+#   tempo»*. Da qui in avanti l'aggregazione prende l'aliquota **dalla riga**, e
+#   ricade sul catalogo solo dove la riga non ce l'ha.
+#
+#   ⭐ `COALESCE` corto-circuita: se lo snapshot c'e', `fn_get_aliquota_iva` non
+#   viene nemmeno chiamata. Il ripiego serve per le righe **anteriori** alla
+#   colonna, che il backfill di `20260829-39` ha gia' riempito, e per quelle
+#   senza codice IVA — dove il comportamento resta **identico a oggi**, raise
+#   compreso (e' il difetto §R-3 sul lato fatture, che non si chiude qui).
+#
+# ── ⚠️ L'ALIQUOTA E' AGGREGATA CON `MAX`, E VA SPIEGATO ──────────────
+#
+#   Il gruppo del riepilogo e' (fattura, iva_id, natura, esigibilita, split) e
+#   **non** comprende l'aliquota. Non e' una scelta di questo changeSet: lo
+#   impone `uq_fatture_r_iva_key`, l'unica sulla tabella, che ha esattamente
+#   quelle colonne. Due righe con lo stesso codice IVA e aliquote diverse non
+#   sono rappresentabili.
+#
+#   Nella pratica il caso non si presenta: l'aliquota e' funzione di
+#   (codice IVA, stato emittente), che dentro una fattura sono costanti — quindi
+#   dentro un gruppo il valore e' uno solo e `MAX` restituisce quello.
+#
+#   ⛔ Ma **puo'** divergere, ed e' proprio lo scenario per cui il cantiere
+#   esiste: righe scritte prima e dopo un cambio di aliquota, sullo stesso
+#   documento ancora in bozza. In quel caso `MAX` prende la piu' alta e la
+#   divergenza sparisce. **Non e' un caso risolto: e' un caso collassato**, e
+#   sta scritto nel brief come residuo. La forma giusta sarebbe l'aliquota nel
+#   gruppo e nell'unica — cioe' un altro changeSet, che tocca un vincolo su cui
+#   si appoggiano altri consumatori.
+#
+# ── ℹ️ COSA NON CAMBIA ────────────────────────────────────────────────
+#
+#   * la **formula** di imponibile, imposta e arrotondamento e' identica,
+#     parentesi e arrotondamenti compresi: la ristrutturazione in sottoquery
+#     serve solo a poter usare l'aliquota due volte senza ripetere
+#     l'espressione, e non sposta di un centesimo nessun documento;
+#   * la **soglia di congelamento**, i tre guard di stato e i messaggi restano
+#     quelli della revisione del 2026-08-29;
+#   * il `LEFT JOIN config.iva i` non serviva gia' prima ed e' **lasciato
+#     com'era**: toglierlo e' una pulizia, e mescolarla qui renderebbe meno
+#     leggibile il diff di una funzione che tocca numeri fiscali.
+#
+# ⚠️ Corpo preso dalla doc auto-gen (l'oggetto VIVO). ⚠️ E la firma ritorna una
+#   `TABLE`: un `CREATE OR REPLACE` non puo' cambiarne la forma — qui infatti
+#   non cambia, restano `deleted_rows` e `inserted_rows`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260829-41-update-fn-ricalcola-riepilogo-iva-legge-aliquota-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260829-41-update-fn-ricalcola-riepilogo-iva-legge-aliquota-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La rigenerazione dei riepiloghi IVA prende l'aliquota DALLA RIGA invece di
+        ricalcolarla dal catalogo, e la scrive sul riepilogo accanto a imponibile e
+        imposta. E' il punto in cui la colonna aggiunta da 20260829-39 serve a qualcosa:
+        senza, una rigenerazione dopo un cambio di aliquota produrrebbe numeri diversi
+        dall'originale. Il COALESCE corto-circuita, quindi il catalogo si tocca solo dove
+        la riga non ha lo snapshot. Formula di imponibile, imposta e arrotondamento
+        identica: nessun documento si sposta di un centesimo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: aliquota_iva
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_riepiloghi_iva
+                columnName: aliquota_iva
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
+               RETURNS TABLE(deleted_rows integer, inserted_rows integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_deleted_rows  INTEGER := 0;
+                  v_inserted_rows INTEGER := 0;
+                  v_stato_id      vendite.fatture.stato_doc_fiscale_id%TYPE;
+                  v_codice_interno config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_congela_fiscale config.stati_doc_fiscale.congela_fiscale%TYPE;
+                  v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT f.stato_doc_fiscale_id INTO v_stato_id FROM vendite.fatture f WHERE f.id = p_fattura_id;
+
+                  -- ⚠️ L'esistenza si misura con NOT FOUND, non con l'IS NULL di
+                  --    una colonna NULLABILE. `stato_doc_fiscale_id` puo' essere
+                  --    NULL su una fattura che esiste: il codice precedente la
+                  --    dichiarava «non trovata» e mandava a cercare un documento
+                  --    che invece era li'.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_FATTURA_NON_TROVATA',
+                          jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  -- La fattura c'e' ma non ha stato: e' un'altra cosa, e va detta
+                  -- come tale. Senza stato non si puo' decidere se il ricalcolo
+                  -- sia ammesso, quindi non si procede.
+                  IF v_stato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('fattura_id', p_fattura_id, 'campo', 'stato_doc_fiscale_id'),
+                          NULL::uuid, concat('stato_doc_fiscale_id della fattura ', p_fattura_id));
+                  END IF;
+
+                  SELECT s.codice_interno, s.congela_fiscale
+                    INTO v_codice_interno, v_congela_fiscale
+                    FROM config.stati_doc_fiscale s
+                   WHERE s.id = v_stato_id;
+
+                  -- ⭐ LA SOGLIA E' UN DATO, non una lista qui dentro
+                  --    (rev 2026-08-29, D15 del brief IVA). Due finestre di
+                  --    congelamento sullo stesso documento sono due verita' che
+                  --    divergono in silenzio.
+                  -- ⚠️ `IS NULL OR`: senza, uno stato non risolvibile renderebbe
+                  --    l'espressione NULL e l'IF non scatterebbe. Oggi il ramo e'
+                  --    irraggiungibile: si tiene perche' costa zero.
+                  -- ⚠️ Il COALESCE e' la difesa gemella sulla colonna nuova: un
+                  --    dubbio su uno snapshot fiscale si risolve NON ricalcolando.
+                  IF v_codice_interno IS NULL OR COALESCE(v_congela_fiscale, true) THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
+                                             'stato_doc_fiscale_id', v_stato_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, concat('ricalcolo IVA non ammesso per stato ', COALESCE(v_codice_interno, '(non risolvibile)')));
+                  END IF;
+
+                  -- Recupero stato emittente per override aliquota IVA
+                  SELECT s.stato_id INTO v_stato_emittente_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                    JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   WHERE f.id = p_fattura_id;
+
+                  DELETE FROM vendite.fatture_riepiloghi_iva WHERE fattura_id = p_fattura_id;
+                  GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+
+                  -- ⭐ L'ALIQUOTA VIENE DALLA RIGA (D19). Senza, una rigenerazione
+                  --    dopo un cambio di aliquota produrrebbe numeri diversi
+                  --    dall'originale, e niente nella riga potrebbe smentirla.
+                  --    Il COALESCE corto-circuita: dove lo snapshot c'e',
+                  --    config.fn_get_aliquota_iva non viene nemmeno chiamata.
+                  -- ⚠️ `MAX` e non un valore per riga: il gruppo non comprende
+                  --    l'aliquota, e non puo' — lo impedisce uq_fatture_r_iva_key.
+                  --    Dentro un gruppo l'aliquota e' una sola per costruzione
+                  --    (funzione di codice IVA e stato emittente, costanti sulla
+                  --    fattura); se divergesse, `MAX` la collassa. Residuo
+                  --    dichiarato nel brief.
+                  -- ⚠️ La sottoquery serve SOLO a poter usare l'aliquota due
+                  --    volte senza ripetere l'espressione: la formula di
+                  --    imponibile, imposta e arrotondamento e' identica a prima.
+                  INSERT INTO vendite.fatture_riepiloghi_iva
+                      (fattura_id, iva_id, natura_id, esigibilita, split_payment,
+                       imponibile, imposta, arrotondamento, aliquota_iva)
+                  SELECT g.fattura_id, g.iva_id, g.natura_id, g.esigibilita, g.split_payment,
+                         ROUND(g.imponibile_grezzo, 2),
+                         ROUND(ROUND(g.imponibile_grezzo, 2) * (COALESCE(g.aliquota, 0)::NUMERIC / 100::NUMERIC), 2),
+                         g.imponibile_grezzo - ROUND(g.imponibile_grezzo, 2),
+                         g.aliquota
+                    FROM (
+                        SELECT r.fattura_id,
+                               r.iva_id,
+                               n.id AS natura_id,
+                               r.esigibilita,
+                               r.split_payment,
+                               SUM(COALESCE(r.imponibile_riga, 0)) AS imponibile_grezzo,
+                               MAX(COALESCE(r.aliquota_iva,
+                                            config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id))) AS aliquota
+                          FROM vendite.fatture_righe r
+                          LEFT JOIN config.iva i ON i.id = r.iva_id
+                          LEFT JOIN config.iva_natura n ON n.codice = r.iva_natura
+                         WHERE r.fattura_id = p_fattura_id
+                         GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment
+                    ) g;
+                  GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_deleted_rows, v_inserted_rows;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
+              IS 'Ricalcola i riepiloghi IVA di una fattura (DELETE + INSERT per fattura_id), raggruppando le righe per codice IVA/natura/esigibilita/split. ⭐ rev 2026-08-29 (D19 del brief IVA): l''aliquota viene ora DALLA RIGA (vendite.fatture_righe.aliquota_iva) e viene SCRITTA anche sul riepilogo, accanto a imponibile e imposta. E'' il punto in cui quella colonna serve a qualcosa: la rigenerazione ricostruisce i riepiloghi dalle righe, e chiamando il catalogo avrebbe prodotto, dopo un cambio di aliquota, numeri diversi dall''originale — con niente nella riga capace di smentirla. Il COALESCE corto-circuita: dove lo snapshot c''e'', config.fn_get_aliquota_iva non viene nemmeno chiamata; il ripiego copre le righe anteriori alla colonna e quelle senza codice IVA, dove il comportamento resta identico a prima, raise compreso (difetto §R-3 sul lato fatture, non chiuso qui). ⚠️ L''aliquota e'' aggregata con MAX perche'' il gruppo non la comprende e non puo'': lo impedisce uq_fatture_r_iva_key, l''unica sulla tabella. Dentro un gruppo il valore e'' uno solo per costruzione — l''aliquota e'' funzione di (codice IVA, stato emittente), costanti sulla fattura — ma se divergesse (righe scritte prima e dopo un cambio, su un documento ancora in bozza) MAX la collassa: e'' un caso COLLASSATO, non risolto, ed e'' residuo dichiarato nel brief. La forma giusta e'' l''aliquota nel gruppo e nell''unica, cioe'' un altro changeSet. ⚠️ La formula di imponibile, imposta e arrotondamento e'' IDENTICA, parentesi e arrotondamenti compresi: la sottoquery serve solo a usare l''aliquota due volte senza ripetere l''espressione, e non sposta di un centesimo nessun documento. ⭐ rev 2026-08-29 (D15): la soglia di congelamento si legge da config.stati_doc_fiscale.congela_fiscale, non e'' piu'' una lista di codici qui dentro. Il COALESCE(v_congela_fiscale, true) e'' fail-closed: un dubbio su uno snapshot fiscale si risolve NON ricalcolando. 📌 Strascico noto: il codice sollevato resta E_PARAMETRO_INVALIDO, mentre «documento congelato» e'' un conflitto di stato. rev 2026-08-02: l''esistenza si misura con NOT FOUND (stato_doc_fiscale_id e'' nullabile), e l''IS NULL OR sul guard di stato e'' difesa in profondita'' su un ramo oggi irraggiungibile.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback riporta la funzione a NON scrivere aliquota_iva e a
+              --    ricalcolare dal catalogo. Le colonne restano: le toglie il
+              --    rollback di 20260829-39.
+              CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id bigint)
+               RETURNS TABLE(deleted_rows integer, inserted_rows integer)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_deleted_rows  INTEGER := 0;
+                  v_inserted_rows INTEGER := 0;
+                  v_stato_id      vendite.fatture.stato_doc_fiscale_id%TYPE;
+                  v_codice_interno config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_congela_fiscale config.stati_doc_fiscale.congela_fiscale%TYPE;
+                  v_stato_emittente_id anagrafiche.soggetti.stato_id%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+                  SELECT f.stato_doc_fiscale_id INTO v_stato_id FROM vendite.fatture f WHERE f.id = p_fattura_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_FATTURA_NON_TROVATA',
+                          jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
+                  END IF;
+                  IF v_stato_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('fattura_id', p_fattura_id, 'campo', 'stato_doc_fiscale_id'),
+                          NULL::uuid, concat('stato_doc_fiscale_id della fattura ', p_fattura_id));
+                  END IF;
+                  SELECT s.codice_interno, s.congela_fiscale INTO v_codice_interno, v_congela_fiscale
+                    FROM config.stati_doc_fiscale s WHERE s.id = v_stato_id;
+                  IF v_codice_interno IS NULL OR COALESCE(v_congela_fiscale, true) THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepilogo_iva_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_codice_interno,
+                                             'stato_doc_fiscale_id', v_stato_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, concat('ricalcolo IVA non ammesso per stato ', COALESCE(v_codice_interno, '(non risolvibile)')));
+                  END IF;
+                  SELECT s.stato_id INTO v_stato_emittente_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.emittente_soggetto_ruolo_id
+                    JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   WHERE f.id = p_fattura_id;
+                  DELETE FROM vendite.fatture_riepiloghi_iva WHERE fattura_id = p_fattura_id;
+                  GET DIAGNOSTICS v_deleted_rows = ROW_COUNT;
+                  INSERT INTO vendite.fatture_riepiloghi_iva (fattura_id, iva_id, natura_id, esigibilita, split_payment, imponibile, imposta, arrotondamento)
+                  SELECT r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment,
+                         ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2),
+                         ROUND(ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2) * (COALESCE(config.fn_get_aliquota_iva(r.iva_id, v_stato_emittente_id), 0)::NUMERIC / 100::NUMERIC), 2),
+                         SUM(COALESCE(r.imponibile_riga, 0)) - ROUND(SUM(COALESCE(r.imponibile_riga, 0)), 2)
+                    FROM vendite.fatture_righe r
+                    LEFT JOIN config.iva i ON i.id = r.iva_id
+                    LEFT JOIN config.iva_natura n ON n.codice = r.iva_natura
+                   WHERE r.fattura_id = p_fattura_id
+                   GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
+                  GET DIAGNOSTICS v_inserted_rows = ROW_COUNT;
+                  RETURN QUERY SELECT v_deleted_rows, v_inserted_rows;
+              END;
+              $function$;

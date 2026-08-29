@@ -109,12 +109,16 @@ GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
 
 ```sql
 -- 1) Riepilogo fattura pronto per stampa/trasmissione
-SELECT r.*, i.aliquota_iva, n.codice AS natura
+-- ⛔ La versione precedente di questo esempio prendeva l'aliquota da
+--    config.iva con una JOIN. Era sbagliato per una stampa: quella e' la
+--    percentuale di OGGI, e su una fattura del 2024 avrebbe stampato un
+--    numero che non torna con l'imposta scritta accanto.
+-- ⭐ Dal 2026-08-29 il riepilogo porta la SUA aliquota, congelata.
+SELECT r.*, n.codice AS natura
 FROM vendite.fatture_riepiloghi_iva r
-LEFT JOIN config.iva i ON i.id = r.iva_id
 LEFT JOIN config.iva_natura n ON n.id = r.natura_id
 WHERE r.fattura_id = :fattura_id
-ORDER BY COALESCE(n.codice, 'ZZZ'), COALESCE(i.aliquota_iva, 0);
+ORDER BY COALESCE(n.codice, 'ZZZ'), COALESCE(r.aliquota_iva, 0);
 
 -- 2) Controllo coerenza con testata
 SELECT

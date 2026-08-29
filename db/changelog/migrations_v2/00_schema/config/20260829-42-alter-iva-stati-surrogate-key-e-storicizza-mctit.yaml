@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3 del brief brief-db-be-iva-risolutore-e-regime-cliente —
+# `config.iva_stati` prende una CHIAVE SURROGATA ed entra nella storicizzazione.
+# Decisione di Tid, 2026-08-29.
+#
+# ── ⛔ IL PROBLEMA: non era storicizzabile, e non per una dimenticanza ──
+#
+#   La tabella aveva PK **composita** `(iva_id, stato_id)`. Le tabelle di storico
+#   di questo progetto portano **una sola** colonna di riferimento — `storico.iva`
+#   ha `iva_id integer` — cioe' il meccanismo assume una chiave a colonna sola.
+#   Darle `storicizza` e basta avrebbe prodotto un provisioning storto invece di
+#   uno storico, e il difetto si sarebbe visto solo cercando una versione vecchia
+#   e non trovandola.
+#
+# ── ⭐ IL RIMEDIO E' LA CONVENZIONE DI CASA, non un'invenzione ────────
+#
+#   linee-guida-sql §4: *«Foreign Key con composti: preferire surrogate key
+#   (`id`) e colonne FK piuttosto che chiavi composte»*. Qui la coppia non
+#   sparisce: **retrocede a `UNIQUE`**, quindi continua a garantire «una riga per
+#   (codice IVA, stato)» esattamente come prima. Cambia chi e' la chiave, non
+#   cosa e' unico.
+#
+# ── ✅ VERIFICATO PRIMA DI TOCCARE ────────────────────────────────────
+#
+#   * **nessuna FK punta a `config.iva_stati`** — la PK composita non era
+#     referenziata da nessuno, quindi lo scambio non trascina niente;
+#   * i due soli consumatori sono funzioni che la **joinano**, non che ne usano
+#     la chiave: `config.fn_get_aliquota_iva` (viva) e `script.fn_get_iva_override`
+#     (⚠️ **rotta** — legge due colonne che non esistono, §R-4 del brief). Nessuna
+#     vista dipende dalla tabella, quindi nessun `DROP` a cascata;
+#   * il CSV `80_data/sql/config/iva_stati.csv` contiene **solo l'intestazione**
+#     e **nessun mirror lo carica**: non c'e' nessun seed da riallineare.
+#
+# ── ℹ️ L'ORDINE DEI PASSI E' IL CONTRATTO ─────────────────────────────
+#
+#   Prima la colonna `id` (l'IDENTITY numera le righe esistenti), poi lo scambio
+#   della chiave. Invertendoli si chiederebbe a PostgreSQL una PK su una colonna
+#   che non esiste ancora.
+#
+# ── ⚠️ E LA STORIA NON RETROAGISCE ────────────────────────────────────
+#
+#   `storicizza` con DEFAULT `true` fa anche registrare la tabella fra quelle a
+#   storicizzazione **permanente** (`proc_sync_storico_set_storicizza` guarda
+#   proprio il default). Tabella di storico e trigger li creano le automazioni,
+#   che girano **solo** nel contesto `ci_apply`: dopo un migrate manuale arrivano
+#   col `db-ci-apply` o col job serale, non subito.
+#
+# 📌 Tid, 2026-08-29: *«iva_stati a questo punto credo che serva una chiave
+#   primaria, ho fatto una cazzata. Poi faremo la FK per leggerla»*. La FK di cui
+#   parla — un riferimento diretto alla riga di override invece del join per
+#   coppia — diventa possibile **solo** dopo questo changeSet, ed e' un passo suo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260829-42-alter-iva-stati-surrogate-key-e-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20260829-42-alter-iva-stati-surrogate-key-e-storicizza
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.iva_stati prende una chiave surrogata `id` e la coppia (iva_id, stato_id)
+        retrocede a UNIQUE: cambia chi e' la chiave, non cosa e' unico. Serve perche' le
+        tabelle di storico portano UNA sola colonna di riferimento, quindi con una PK
+        composita la tabella non era storicizzabile - e il difetto si sarebbe visto solo
+        cercando una versione vecchia e non trovandola. Verificato: nessuna FK e nessuna
+        vista dipendono dalla tabella, e il suo CSV e' solo intestazione senza mirror.
+        Con la chiave a posto entra anche nella storicizzazione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: iva_stati
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: iva_stati
+                    columnName: id
+            # ⚠️ Se nel frattempo qualcuno avesse creato una FK verso la coppia,
+            #    lo scambio della chiave la trascinerebbe: il migrate si ferma e
+            #    si guarda, invece di procedere al buio.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM pg_constraint
+                   WHERE contype = 'f' AND confrelid = 'config.iva_stati'::regclass;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ── 1. La chiave surrogata. L'IDENTITY numera le righe esistenti.
+              ALTER TABLE config.iva_stati
+                ADD COLUMN id BIGINT GENERATED BY DEFAULT AS IDENTITY;
+
+              -- ── 2. Lo scambio: la coppia non sparisce, retrocede a UNIQUE.
+              --    Continua a garantire «una riga per (codice IVA, stato)»
+              --    esattamente come prima.
+              ALTER TABLE config.iva_stati DROP CONSTRAINT pk_iva_stati;
+
+              ALTER TABLE config.iva_stati
+                ADD CONSTRAINT pk_iva_stati PRIMARY KEY (id);
+
+              ALTER TABLE config.iva_stati
+                ADD CONSTRAINT uq_iva_stati_iva_stato UNIQUE (iva_id, stato_id);
+
+              -- ── 3. Ora che la chiave e' a colonna sola, la storicizzazione e'
+              --    possibile. DEFAULT true: e' anche cio' che fa registrare la
+              --    tabella fra quelle a storicizzazione PERMANENTE.
+              ALTER TABLE config.iva_stati
+                ADD COLUMN IF NOT EXISTS storicizza BOOLEAN NOT NULL DEFAULT true;
+
+              COMMENT ON COLUMN config.iva_stati.id IS
+                  'Chiave surrogata, aggiunta il 2026-08-29. ⭐ La coppia (iva_id, stato_id) '
+                  'non e'' sparita: e'' retrocessa a UNIQUE, quindi continua a garantire una '
+                  'riga per codice IVA e stato — cambia chi e'' la chiave, non cosa e'' unico. '
+                  'La ragione e'' la storicizzazione: le tabelle di storico di questo '
+                  'progetto portano UNA sola colonna di riferimento, quindi con una PK '
+                  'composita questa tabella non era storicizzabile, e il difetto si sarebbe '
+                  'visto solo cercando una versione vecchia e non trovandola. '
+                  '✅ Verificato prima dello scambio che nessuna FK puntasse alla coppia e '
+                  'che nessuna vista dipendesse dalla tabella. '
+                  'Piano: brief-db-be-iva-risolutore-e-regime-cliente, Fase 3.';
+
+              COMMENT ON COLUMN config.iva_stati.storicizza IS
+                  'Se true, ogni UPDATE o DELETE della riga lascia uno snapshot in '
+                  'storico.iva_stati. Possibile solo da quando la tabella ha una chiave a '
+                  'colonna sola. ⚠️ Tabella di storico e trigger li creano le automazioni, '
+                  'che girano solo nel contesto ci_apply: dopo un migrate manuale arrivano '
+                  'col db-ci-apply o col job serale. ⚠️ La storia non retroagisce: da qui in '
+                  'avanti ogni modifica lascia traccia, il passato no. '
+                  '⛔ E non sostituisce lo snapshot sul documento: serve a ricostruire '
+                  'com''era un catalogo, non a garantire che una fattura si ristampi '
+                  'identica — quella e'' vendite.fatture_righe.aliquota_iva.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.iva_stati DROP COLUMN IF EXISTS storicizza;
+              ALTER TABLE config.iva_stati DROP CONSTRAINT IF EXISTS uq_iva_stati_iva_stato;
+              ALTER TABLE config.iva_stati DROP CONSTRAINT IF EXISTS pk_iva_stati;
+              ALTER TABLE config.iva_stati DROP COLUMN IF EXISTS id;
+              ALTER TABLE config.iva_stati ADD CONSTRAINT pk_iva_stati PRIMARY KEY (iva_id, stato_id);

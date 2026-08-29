@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_titolo_iva.md" %}
 # 📚 Tabella `tipi_titolo_iva`
 
 > 📝 **Descrizione**
@@ -35,6 +36,13 @@
 | pk_tipi_titolo_iva | `CREATE UNIQUE INDEX pk_tipi_titolo_iva ON config.tipi_titolo_iva USING btree (id)` |
 | uq_tipi_titolo_iva_codice | `CREATE UNIQUE INDEX uq_tipi_titolo_iva_codice ON config.tipi_titolo_iva USING btree (codice)` |
 | uq_tipi_titolo_iva_codice_interno | `CREATE UNIQUE INDEX uq_tipi_titolo_iva_codice_interno ON config.tipi_titolo_iva USING btree (codice_interno)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_tipi_titolo_iva_a10_soggetti_titoli_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_titoli_iva', 'tipo_titolo_iva_id', 'id', 'attivo')` |
+| trg_tipi_titolo_iva_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_titolo_iva_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}
