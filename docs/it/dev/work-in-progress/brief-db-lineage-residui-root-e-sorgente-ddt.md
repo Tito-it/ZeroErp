@@ -896,6 +896,45 @@ espone `from/to_natura_doc_codice_interno` e **nessun** codice del tipo. Il nome
 vecchio **nasce e muore in Python**. Chiuderlo è una riga in quel repository più
 la prop del drawer — perimetro BE/FE, decisione loro.
 
+#### 3-ter.6 ✅ Chiusa dal BE il 2026-08-29 — e il buco era più grande della voce
+
+**Fatto**: le ri-aliasature sono sparite e il nome fedele arriva fino al payload.
+`tipo_codice` → `tipo_codice_interno`, `natura_doc_codice` →
+`natura_doc_codice_interno`, e i gemelli `from_*`/`to_*` delle tappe. Toccati
+repository, `types.py`, service, i due `.vue` che leggono quel payload e la doc
+API (con la nota BREAKING). ⚠️ **Il nome della rotta non cambia**: si è toccato
+solo ciò che il backend **espone**, non ciò che riceve.
+
+⭐ **L'argomento che ha deciso non è stato «due nomi sono brutti», ed è nel
+payload stesso**: lì lo **stato** diceva già `stato_codice_interno`. Non c'era
+una regola diversa per il tipo — c'era **la stessa regola applicata a metà**.
+
+⛔ **E applicando le tre regex del guardrail ai file Python del backend, le
+violazioni non erano 7 ma 25**, in sette file: `soggetti_repository`,
+`lookup_repository`, `pagamenti_repository`, `pratiche_repository`,
+`_indirizzi_repo_mixin` e `vendite_repository`. La voce segnalava un caso; sotto
+c'era **una famiglia**, ed è la conferma che la sede è quella e non è un
+incidente.
+
+**Quindi non è stato chiuso solo il caso: è stato costruito il cancello che
+mancava.** `apps/core/tests/test_naming_codice_interno_python.py` trascrive le
+tre regole di `check_naming_stato_codice.sql` e le applica all'SQL scritto in
+Python. Le **18** violazioni residue entrano in un **registro del debito che
+deve calare**, chiavato su *(file, nome dell'alias)* e non sul numero di riga —
+una riga che si sposta farebbe rosso per il motivo sbagliato, e un presidio che
+boccia a caso viene spento.
+⚠️ Il registro **non è un permesso**: una delle 18 (`lookup_repository`, dove
+`codice` è il nome del campo nel contratto della lookup) è probabilmente
+un'esclusione legittima e va **dichiarata** tale, come fa il guardrail SQL con
+le sue due. Le tre `natura_doc_codice` di `vendite_repository` sono la «coda dei
+nomi» già nota: vogliono anche il seed `ui.lista_colonna` **id 494**, quindi
+sono un giro BE + DB insieme.
+
+⚠️ **Provato rompendolo**: rimettendo una ri-aliasatura nuova → rosso; sanando
+una voce del registro senza toglierla → rosso (il debito deve calare, non
+restare); un **commento** che cita un alias rimosso → resta verde, perché il
+sorgente si legge senza commenti.
+
 ---
 
 ## 4. Cosa NON è di questo brief
@@ -1173,12 +1212,44 @@ dichiara chiuso deve dire *sopra cosa* si chiude:
 | --- | --- | --- |
 | i **quattro** punti del frontend che compongono ancora il numero fattura a modo loro (§3.6-quinquies) | `FatturaDrawer`, `LottoDrawer`, `FondiFatturaDaDecidereTab`, `DashboardCompetenzaView` | è il consumatore che sceglie se leggere la sede unica |
 | se `vw_fatture_lista` debba esporre il numero **composto** accanto alle tre colonne che già espone | decisione BE/FE | nessuno l'ha chiesto: si aggiunge quando serve, non «per completezza» |
-| il nome fedele che **si ferma al bordo Python** (§3-ter.5) | `get_lineage_nodo` ri-aliasa a `frontiera_tipo_codice` | il guardrail non ci arriva, ma è codice loro |
+| ~~il nome fedele che **si ferma al bordo Python** (§3-ter.5)~~ ✅ **chiusa** il 2026-08-29 | — | §3-ter.6: chiusa, e sotto quel caso c'era una famiglia di 25 — da lì il **gemello Python del guardrail** |
 | il gemello **`ATTIVITA_CONSUMI`** (§2.4-ter) | — | prima di un arco servirebbe un **nodo**: è un cantiere suo, non un residuo di questo |
 
 
 ⛔ **Nessuna di queste è un residuo nascosto**: sono tutte dichiarate, con la
 loro sede. È la differenza fra un cantiere chiuso e un cantiere abbandonato.
+
+### ✅ 2026-08-29 (BE/FE) — due delle quattro sono chiuse in giornata
+
+| voce | esito |
+| --- | --- |
+| i **quattro** punti del frontend che compongono il numero fattura | ✅ **chiusa**: tre schermate componevano (`serie numero/anno`, `serie numero`, `serie numero/anno`), la quarta rendeva le colonne separate. Ora leggono tutte la sede unica: `103 - VX2`. Quattro payload BE portano il numero composto letto da `fn_numero_documento_fattura` |
+| il nome fedele che si ferma al bordo Python (§3-ter.5) | ✅ **chiusa**, §3-ter.6 — e ha fatto nascere il **gemello Python del guardrail**, perché sotto quel caso c'era una famiglia di 25 |
+| `vw_fatture_lista` che esponga il numero composto | ⬜ **non fatta, di proposito**: nessuno lo compone da quella lista. Vale la vostra regola — si aggiunge quando serve |
+| il gemello `ATTIVITA_CONSUMI` | ⬜ altro cantiere, come scritto |
+
+> ✅ **CHIUSA lo stesso giorno, con le due metà insieme.** Il seed dal team DB
+> (`6325a8d98`), l'alias in `list_lotto_fatture` e il `Tag` del drawer da noi.
+>
+> ⚠️ **E in mezzo c'è stata una finestra in cui la colonna era rotta**: il seed
+> era già applicato sul DB di sviluppo quando l'abbiamo letto, quindi il catalogo
+> chiedeva `natura_doc_codice_interno` e il payload portava ancora il nome
+> vecchio. Nessun errore, colonna vuota. ⭐ **Non è un rimprovero, è la prova del
+> punto**: una modifica in due metà ha una finestra di rottura per costruzione, e
+> l'unico modo di non pagarla è che le due metà partano insieme — o che chi arriva
+> secondo sappia di essere secondo.
+>
+> ⭐ **E la verifica non è stata «il test è verde»**: abbiamo controllato che
+> **catalogo e payload tornassero a dire la stessa cosa** — `ui.lista_colonna`
+> id 494 chiede `natura_doc_codice_interno`, il payload di `list_lotto_fatture`
+> porta quella chiave con dentro `FATTURA`. Il contratto rotto era quello.
+
+*(Testo originale della richiesta:)* il seed `ui.lista_colonna` **id 494**
+(`vendite.lotto_fatture`) porta `campo_sorgente = natura_doc_codice`. Le altre
+due `natura_doc_codice` del backend sono passate a `_interno` perché **nessun
+seed le legava**; questa no. ⚠️ Rinominare una delle due metà da sola svuota la
+colonna «Natura» del drawer lotto. **Alias e seed si muovono insieme, o non si
+muovono.**
 
 ---
 

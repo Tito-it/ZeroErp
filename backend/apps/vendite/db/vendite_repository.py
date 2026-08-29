@@ -2202,6 +2202,11 @@ class VenditeRepository:
                 e.fattura_anno,
                 e.fattura_serie,
                 e.fattura_numero,
+                -- Sede unica del numero documento (20260829-15): questa lista
+                -- componeva `serie numero/anno` nel .vue, cioe' una delle sei
+                -- forme in giro.
+                vendite.fn_numero_documento_fattura(e.fattura_numero, e.fattura_serie)
+                                             AS fattura_numero_documento,
                 e.task_code,
                 e.error_code,
                 e.messaggio,
@@ -2256,6 +2261,19 @@ class VenditeRepository:
             offset=offset,
         )
 
+        # ⚠️ QUI SI MAPPA ANCORA PER INDICE, ed e' dichiarato invece che
+        #    scoperto: `_query_paged_view` (otto chiamanti in questo file, piu'
+        #    quelli del core) restituisce tuple, non dict. Il gemello
+        #    `list_lotto_fatture` e' passato all'accesso per nome il 2026-08-29
+        #    perche' li' il `fetchall` e' locale; qui servirebbe cambiare un
+        #    helper condiviso, che e' una decisione di infrastruttura e non di
+        #    questo cantiere.
+        # ⛔ Finche' resta cosi': aggiungere o togliere una colonna nella SELECT
+        #    qui sopra SPOSTA di una casella tutto quello che segue, **senza
+        #    nessun errore** — la data finisce nel campo del task, il messaggio
+        #    in quello della data. E' successo il 2026-08-29 inserendo
+        #    `fattura_numero_documento`. Chi tocca la SELECT ricontrolla gli
+        #    indici QUI SOTTO, uno per uno.
         result: list[DashCompetenzaErroreRow] = []
         for row in rows:
             result.append(
@@ -2269,13 +2287,15 @@ class VenditeRepository:
                     "fattura_anno": None if row[6] is None else int(row[6]),
                     "fattura_serie": None if row[7] is None else str(row[7]),
                     "fattura_numero": None if row[8] is None else int(row[8]),
-                    "task_code": None if row[9] is None else str(row[9]),
-                    "error_code": None if row[10] is None else str(row[10]),
-                    "messaggio": None if row[11] is None else str(row[11]),
-                    "data_evento": row[12].isoformat() if row[12] is not None else None,
+                    # Numero documento dalla sede unica DB (20260829-15).
+                    "fattura_numero_documento": row[9],
+                    "task_code": None if row[10] is None else str(row[10]),
+                    "error_code": None if row[11] is None else str(row[11]),
+                    "messaggio": None if row[12] is None else str(row[12]),
+                    "data_evento": row[13].isoformat() if row[13] is not None else None,
                     # Emittente (P-4, Fase E): chiave = `campo_sorgente`
                     # del catalogo, o la colonna resta vuota a video.
-                    "emittente_ragione_sociale": row[13],
+                    "emittente_ragione_sociale": row[14],
                 }
             )
         return result, total_count
@@ -2295,102 +2315,6 @@ class VenditeRepository:
             )
             row = cursor.fetchone()
         return None if row is None else str(row[0])
-
-
-        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-
-        # La union (anti-join task_runs + LATERAL fatture_log) e' la query piu'
-        # costosa della pagina: una sola valutazione + clamp offset via
-        # _query_paged_view. La union non ha una PK: tiebreaker deterministico
-        # su tutte le chiavi naturali (evento, lotto, fattura, task).
-        select_sql = f"""
-            SELECT
-                e.tipo_evento,
-                e.competenza_mese,
-                e.lotto_id,
-                e.lotto_codice,
-                e.stato_lotto,
-                e.fattura_id,
-                e.fattura_anno,
-                e.fattura_serie,
-                e.fattura_numero,
-                e.task_code,
-                e.error_code,
-                e.messaggio,
-                e.data_evento,
-                -- Emittente (P-4, Fase E). ⛔ L'alias deve restare
-                -- `emittente_ragione_sociale`: e' il `campo_sorgente`
-                -- del catalogo, e la lista ha `vista_sql = NULL` —
-                -- il campo lo porta questo SELECT o non arriva.
-                e.emittente_ragione_sociale
-            FROM vendite.vw_dash_competenza_errori e
-            {where_clause}
-        """
-
-        # ORDER BY server-side (stessa convenzione delle altre liste dash):
-        # colonna dalla whitelist + direzione, NULLS LAST esplicito (le colonne
-        # di documento sono NULL su meta' della union — in DESC finirebbero in
-        # testa), tiebreak = la catena deterministica storica sulle chiavi
-        # naturali. order_by assente -> ordine storico (eventi recenti prima).
-        _tiebreak = """tipo_evento ASC,
-                     lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
-                     task_code ASC NULLS LAST"""
-        sort_col = self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS.get(order_by or "")
-        if sort_col is not None:
-            direction = sql_order_direction(order_dir)
-            # Il tiebreak qui e' una catena di chiavi NATURALI (la union non ha
-            # una PK): resta fissa, non e' uno spareggio tecnico da allineare.
-            #
-            # 🔴 Qui c'era un ` NULLS LAST` incollato dopo `{direction}`, e
-            #    rendeva questa lista NON ORDINABILE PER NIENTE: `direction`
-            #    porta gia' la clausola (`ASC NULLS FIRST` / `DESC NULLS LAST`),
-            #    quindi l'SQL usciva `... ASC NULLS FIRST NULLS LAST` e
-            #    PostgreSQL rifiutava con un errore di sintassi — 500 su ogni
-            #    click di intestazione, su tutte e cinque le colonne.
-            #    E' un residuo dell'unificazione dei 29 call-site in
-            #    `sql_order_direction` (2026-07-19), che la sua docstring
-            #    dichiara: *«3 avevano un NULLS LAST fisso incollato al
-            #    template — semantica diversa che qui viene uniformata»*. Su
-            #    questo call-site il pezzo vecchio non e' stato tolto.
-            #    ⚠️ Nessun presidio poteva vederlo: quello del seed confronta
-            #    catalogo e whitelist (statico) e i test mockano
-            #    `_query_paged_view`, quindi l'SQL non arriva mai al database.
-            #    Trovato provando un ORDER BY vero contro il DB.
-            order_clause = f"ORDER BY {sort_col} {direction}, {_tiebreak}"
-        else:
-            order_clause = f"ORDER BY data_evento DESC NULLS LAST, {_tiebreak}"
-
-        rows, total_count = self._query_paged_view(
-            select_sql=select_sql,
-            order_by=order_clause,
-            params=params,
-            limit=limit,
-            offset=offset,
-        )
-
-        result: list[DashCompetenzaErroreRow] = []
-        for row in rows:
-            result.append(
-                {
-                    "tipo_evento": str(row[0]),
-                    "competenza_mese": row[1].isoformat() if row[1] is not None else None,
-                    "lotto_id": None if row[2] is None else int(row[2]),
-                    "lotto_codice": None if row[3] is None else str(row[3]),
-                    "stato_lotto": None if row[4] is None else str(row[4]),
-                    "fattura_id": None if row[5] is None else int(row[5]),
-                    "fattura_anno": None if row[6] is None else int(row[6]),
-                    "fattura_serie": None if row[7] is None else str(row[7]),
-                    "fattura_numero": None if row[8] is None else int(row[8]),
-                    "task_code": None if row[9] is None else str(row[9]),
-                    "error_code": None if row[10] is None else str(row[10]),
-                    "messaggio": None if row[11] is None else str(row[11]),
-                    "data_evento": row[12].isoformat() if row[12] is not None else None,
-                    # Emittente (P-4, Fase E): chiave = `campo_sorgente`
-                    # del catalogo, o la colonna resta vuota a video.
-                    "emittente_ragione_sociale": row[13],
-                }
-            )
-        return result, total_count
 
     # Scopo: Restituisce i contatori del backlog (Lente 2) a grana
     #        classe × area — il pivot per classe (3 classi sempre presenti)
@@ -2893,6 +2817,9 @@ class VenditeRepository:
                 fllf.stato_esecuzione,
                 f.numero,
                 f.serie,
+                -- Sede unica del numero documento (20260829-15).
+                vendite.fn_numero_documento_fattura(f.numero, f.serie)
+                                        AS numero_documento,
                 f.data,
                 f.billing_account_id,
                 f.totale_doc,
@@ -2906,7 +2833,12 @@ class VenditeRepository:
                 -- verbo «numera» le numera entrambe, sui rispettivi registri
                 -- (§12.4-bis.8). Senza questa decodifica il drawer del lotto
                 -- non «assume» che siano tutte fatture: non ha il dato.
-                ndf.codice_interno      AS natura_doc_codice,
+                -- ⭐ Nome fedele dal 2026-08-29, e le due meta' sono andate
+                -- INSIEME: il `campo_sorgente` del seed `ui.lista_colonna`
+                -- id 494 e questo alias. ⛔ Una sola delle due svuota la
+                -- colonna «Natura» del drawer lotto — il catalogo chiede un
+                -- nome che il payload non porta, e non lo dice nessuno.
+                ndf.codice_interno      AS natura_doc_codice_interno,
                 ndf.descrizione         AS natura_doc_descrizione,
                 err.messaggio           AS errore_messaggio,
                 err.data_ora            AS errore_quando,
@@ -2932,7 +2864,16 @@ class VenditeRepository:
             total_count = int(row[0])
 
             cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
+            # ⛔ PER NOME, non per indice, ed e' una correzione del 2026-08-29.
+            #    Questo dict era costruito con `row[0]`, `row[1]`…: inserire una
+            #    colonna in mezzo alla SELECT sposta di una casella TUTTO quello
+            #    che segue, e non da' nessun errore — mette la data nel campo del
+            #    billing account e il totale in quello del soggetto. E' successo
+            #    davvero aggiungendo `numero_documento`, e una riga FUORI dal
+            #    blocco (`errore_meta`) era sfuggita anche alla correzione.
+            #    ⭐ L'accesso per nome e' gia' l'idioma di questo file
+            #    (`row_to_dict` due metodi piu' su): qui era l'eccezione.
+            rows = rows_to_list(cursor)
 
         result: list[LottoFattureRow] = []
         for row in rows:
@@ -2940,31 +2881,33 @@ class VenditeRepository:
             # fa un `json.loads` (dal cursore RAW il jsonb arriva come stringa),
             # e chiamarlo una volta per chiave lo ripeterebbe a ogni chiave
             # nuova — su una lista paginata, per ogni riga.
-            errore_meta = jsonb_out(row[22]) or {}
+            errore_meta = jsonb_out(row["errore_meta"]) or {}
             result.append(
                 {
-                    "id": int(row[0]),
-                    "lotto_id": int(row[1]),
-                    "fattura_id": int(row[2]),
-                    "stato_sdi_id": None if row[3] is None else int(row[3]),
-                    "stato_sdi_descrizione": row[4],
-                    "stato_doc_fiscale_id": None if row[5] is None else int(row[5]),
-                    "stato_doc_fiscale_descrizione": row[6],
-                    "stato_esecuzione": str(row[7]),
-                    "numero": None if row[8] is None else int(row[8]),
-                    "serie": row[9],
-                    "data": row[10].isoformat() if row[10] is not None else None,
-                    "billing_account_id": int(row[11]),
-                    "totale_doc": str(row[12]) if row[12] is not None else None,
-                    "totale_a_pagare": str(row[13]) if row[13] is not None else None,
-                    "soggetto_id": int(row[14]),
-                    "ragione_sociale_completa": row[15],
-                    "id_fiscale_univoco_cf_piva": row[16],
-                    "stato_doc_fiscale_codice": row[17],
-                    "natura_doc_codice": row[18],
-                    "natura_doc_descrizione": row[19],
-                    "errore_messaggio": row[20],
-                    "errore_quando": row[21].isoformat() if row[21] is not None else None,
+                    "id": int(row["id"]),
+                    "lotto_id": int(row["lotto_id"]),
+                    "fattura_id": int(row["fattura_id"]),
+                    "stato_sdi_id": None if row["stato_sdi_id"] is None else int(row["stato_sdi_id"]),
+                    "stato_sdi_descrizione": row["stato_sdi_descrizione"],
+                    "stato_doc_fiscale_id": None if row["stato_doc_fiscale_id"] is None else int(row["stato_doc_fiscale_id"]),
+                    "stato_doc_fiscale_descrizione": row["stato_doc_fiscale_descrizione"],
+                    "stato_esecuzione": str(row["stato_esecuzione"]),
+                    "numero": None if row["numero"] is None else int(row["numero"]),
+                    "serie": row["serie"],
+                    # Numero documento dalla sede unica DB (20260829-15).
+                    "numero_documento": row["numero_documento"],
+                    "data": row["data"].isoformat() if row["data"] is not None else None,
+                    "billing_account_id": int(row["billing_account_id"]),
+                    "totale_doc": str(row["totale_doc"]) if row["totale_doc"] is not None else None,
+                    "totale_a_pagare": str(row["totale_a_pagare"]) if row["totale_a_pagare"] is not None else None,
+                    "soggetto_id": int(row["soggetto_id"]),
+                    "ragione_sociale_completa": row["ragione_sociale_completa"],
+                    "id_fiscale_univoco_cf_piva": row["id_fiscale_univoco_cf_piva"],
+                    "stato_doc_fiscale_codice": row["stato_doc_fiscale_codice"],
+                    "natura_doc_codice_interno": row["natura_doc_codice_interno"],
+                    "natura_doc_descrizione": row["natura_doc_descrizione"],
+                    "errore_messaggio": row["errore_messaggio"],
+                    "errore_quando": row["errore_quando"].isoformat() if row["errore_quando"] is not None else None,
                     # Il codice sta nel `meta` di chi ha scritto la riga: dice
                     # DI CHE errore si tratta, non solo che c'e'. `jsonb_out`
                     # perche' dal cursore RAW il jsonb arriva come stringa.
@@ -2976,7 +2919,7 @@ class VenditeRepository:
                     # metterci. Forma: `[{"type": "FATTURA", "id": "820"}]`.
                     # Brief: `brief-db-bersaglio-errore.md` §7-bis (B7).
                     "errore_bersagli": errore_meta.get("bersagli"),
-                    "errore_livello": row[23],
+                    "errore_livello": row["errore_livello"],
                 }
             )
         return result, total_count
@@ -3063,6 +3006,21 @@ class VenditeRepository:
                 f.anno,
                 f.serie,
                 f.numero,
+                -- ⭐ IL NUMERO DEL DOCUMENTO, dalla SEDE UNICA. L'identita' di
+                -- una fattura sono TRE colonne (anno, serie, numero) e nessuna
+                -- di loro e' il «codice parlante»: per gli altri sei documenti
+                -- `numero` e' gia' un testo (DDT0000031), qui e' un contatore.
+                -- La forma — `numero - serie`, senza anno perche' la data sta
+                -- sempre accanto — e' una decisione di Tid del 2026-08-29 e vive
+                -- in `vendite.fn_numero_documento_fattura` (20260829-15).
+                -- ⛔ NON si ricompone qui e NON si ricompone nel frontend: erano
+                -- gia' sei forme diverse in giro per il progetto, e la settima
+                -- sarebbe stata questa.
+                -- ⚠️ NULL quando il documento non e' ancora numerato: il
+                -- consumatore ha gia' la sua fallback, e un placeholder scritto
+                -- qui gliene toglierebbe la scelta.
+                vendite.fn_numero_documento_fattura(f.numero, f.serie)
+                                             AS numero_documento,
                 f.data,
                 f.tipo_doc_fiscale_id,
                 tdf.codice_interno           AS tipo_doc_fiscale_codice,
@@ -3072,7 +3030,7 @@ class VenditeRepository:
                 -- dal registro. Sta accanto a `serie` perche' le tre cose
                 -- insieme dicono su quale sezionale il documento e' numerato.
                 f.natura_doc_id,
-                ndf.codice_interno           AS natura_doc_codice,
+                ndf.codice_interno           AS natura_doc_codice_interno,
                 ndf.descrizione              AS natura_doc_descrizione,
                 f.stato_doc_fiscale_id,
                 sdf.codice_interno           AS stato_codice_interno,
@@ -3298,7 +3256,11 @@ class VenditeRepository:
         sql = f"""
             SELECT %s::text AS verso,
                    f.id, f.numero, f.serie, f.anno, f.data,
-                   ndf.codice_interno AS natura_doc_codice
+                   -- Stessa sede unica della testata: un legame di rettifica
+                   -- mostra un documento, e lo scrive come tutto il resto.
+                   vendite.fn_numero_documento_fattura(f.numero, f.serie)
+                        AS numero_documento,
+                   ndf.codice_interno AS natura_doc_codice_interno
               FROM vendite.fatture_rettifiche fr
               JOIN vendite.fatture f ON f.id = fr.{col_target}
               LEFT JOIN config.nature_doc_fiscale ndf ON ndf.id = f.natura_doc_id
@@ -3441,7 +3403,7 @@ class VenditeRepository:
                 -- mai NULL ed e' lecito il `str()` sul lato Python. E' una
                 -- garanzia STRUTTURALE (una join interna in una definizione di
                 -- vista), non un'osservazione sui dati di oggi.
-                l.tipo_codice_interno       AS tipo_codice,
+                l.tipo_codice_interno,
                 l.uid,
                 l.codice,
                 l.stato_codice_interno,
@@ -3453,7 +3415,7 @@ class VenditeRepository:
                 l.pratica_numero,
                 l.n_pratiche,
                 l.frontiera_tipo_id,
-                l.frontiera_tipo_codice_interno AS frontiera_tipo_codice,
+                l.frontiera_tipo_codice_interno,
                 l.frontiera_uid,
                 l.frontiera_codice,
                 l.frontiera_stato_codice_interno,
@@ -3463,7 +3425,7 @@ class VenditeRepository:
                 l.is_transitato,
                 l.n_sorgenti,
                 l.root_codice,
-                l.natura_doc_codice_interno AS natura_doc_codice,
+                l.natura_doc_codice_interno,
                 -- ⭐ La natura della FRONTIERA la porta LA VISTA, dal
                 -- changeSet 20260828-22. Fino ad allora la summary non ce
                 -- l'aveva e questo repository se la ricavava da solo, con un
@@ -3485,7 +3447,6 @@ class VenditeRepository:
                 -- documento fiscale»: la natura e' un asse diverso dal tipo ed
                 -- esiste solo per le fatture.
                 l.frontiera_natura_doc_codice_interno
-                                            AS frontiera_natura_doc_codice
             FROM vendite.vw_documento_lineage l
             WHERE l.tipo_id = %s
               AND l.uid = %s
@@ -3497,7 +3458,7 @@ class VenditeRepository:
             return None
         return {
             "tipo_id": int(row[0]),
-            "tipo_codice": str(row[1]),
+            "tipo_codice_interno": str(row[1]),
             "uid": str(row[2]),
             "codice": row[3],
             "stato_codice_interno": row[4],
@@ -3509,7 +3470,7 @@ class VenditeRepository:
             "pratica_numero": row[10],
             "n_pratiche": int(row[11]),
             "frontiera_tipo_id": None if row[12] is None else int(row[12]),
-            "frontiera_tipo_codice": row[13],
+            "frontiera_tipo_codice_interno": row[13],
             "frontiera_uid": row[14],
             "frontiera_codice": row[15],
             "frontiera_stato_codice_interno": row[16],
@@ -3519,8 +3480,8 @@ class VenditeRepository:
             "is_transitato": bool(row[20]),
             "n_sorgenti": int(row[21]),
             "root_codice": row[22],
-            "natura_doc_codice": row[23],
-            "frontiera_natura_doc_codice": row[24],
+            "natura_doc_codice_interno": row[23],
+            "frontiera_natura_doc_codice_interno": row[24],
         }
 
     # Scopo: Catena dei passaggi di un documento via
@@ -3537,7 +3498,7 @@ class VenditeRepository:
                 p.arco,
                 p.ruolo,
                 p.from_tipo_id,
-                sf.codice_interno           AS from_tipo_codice,
+                sf.codice_interno           AS from_tipo_codice_interno,
                 p.from_uid,
                 p.from_codice,
                 nf.stato_codice_interno     AS from_stato_codice_interno,
@@ -3552,7 +3513,7 @@ class VenditeRepository:
                     CASE WHEN sf.key_selector = 'id'
                          THEN NULLIF(p.from_uid, '')::bigint END) AS from_doc_id,
                 p.to_tipo_id,
-                st.codice_interno           AS to_tipo_codice,
+                st.codice_interno           AS to_tipo_codice_interno,
                 p.to_uid,
                 p.to_codice,
                 p.to_stato_codice_interno,
@@ -3565,8 +3526,8 @@ class VenditeRepository:
                 -- La natura dei due estremi: distingue una nota di credito da
                 -- una fattura quando la tappa e' la seconda di fila sotto lo
                 -- stesso tipo documento (arco N).
-                p.from_natura_doc_codice_interno AS from_natura_doc_codice,
-                p.to_natura_doc_codice_interno   AS to_natura_doc_codice
+                p.from_natura_doc_codice_interno,
+                p.to_natura_doc_codice_interno
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
@@ -3595,14 +3556,14 @@ class VenditeRepository:
                     "arco": str(row[2]),
                     "ruolo": row[3],
                     "from_tipo_id": int(row[4]),
-                    "from_tipo_codice": row[5],
+                    "from_tipo_codice_interno": row[5],
                     "from_uid": str(row[6]),
                     "from_codice": row[7],
                     "from_stato_codice_interno": row[8],
                     "from_fase": row[9],
                     "from_doc_id": None if row[10] is None else int(row[10]),
                     "to_tipo_id": int(row[11]),
-                    "to_tipo_codice": row[12],
+                    "to_tipo_codice_interno": row[12],
                     "to_uid": str(row[13]),
                     "to_codice": row[14],
                     "to_stato_codice_interno": row[15],
@@ -3610,8 +3571,8 @@ class VenditeRepository:
                     "to_is_abortito": bool(row[17]),
                     "to_doc_id": None if row[18] is None else int(row[18]),
                     "is_ramo_inverso": bool(row[19]),
-                    "from_natura_doc_codice": row[20],
-                    "to_natura_doc_codice": row[21],
+                    "from_natura_doc_codice_interno": row[20],
+                    "to_natura_doc_codice_interno": row[21],
                 }
             )
         return result

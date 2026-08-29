@@ -79,14 +79,14 @@ function chipsDaArchi(archi, lato, { escludiAbortiti = false } = {}) {
   for (const p of archi ?? []) {
     if (p.livello !== 1) continue
     if (escludiAbortiti && p.to_is_abortito) continue
-    const tipoCodice = avanti ? p.to_tipo_codice : p.from_tipo_codice
+    const tipoCodice = avanti ? p.to_tipo_codice_interno : p.from_tipo_codice_interno
     if (!tipoCodice) continue
     // ⭐ SI RAGGRUPPA PER TIPO **E NATURA**, non per tipo soltanto. Fattura e
     // nota di credito hanno lo stesso `codice_interno` sorgente: raggruppate
     // insieme diventerebbero «2 Fattura» su una fattura che ne ha una sola e
     // una nota di credito a valle — cioe' il chip nasconderebbe proprio la
     // cosa che segnala (2026-08-21, arco N).
-    const naturaCodice = avanti ? p.to_natura_doc_codice : p.from_natura_doc_codice
+    const naturaCodice = avanti ? p.to_natura_doc_codice_interno : p.from_natura_doc_codice_interno
     const chiave = `${tipoCodice}|${naturaCodice ?? ''}`
     const corrente = perTipo.get(chiave)
     if (corrente) {
