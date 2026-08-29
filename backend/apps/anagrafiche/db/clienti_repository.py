@@ -55,12 +55,14 @@ class ClientiRepository:
     # Helpers condivisi (riusabili da service per singoli step)
     # =================================================================
 
-    # Scopo: Restituisce l'id IVA di default da config.parameters (code='DEFAULT_IVA_ID').
-    #        Usato come default per clienti creati senza iva_id esplicito.
-    #        Delega al building block core ParameterService.
-    def get_default_iva_id(self) -> int:
-        from apps.core.services.parameter_service import ParameterService
-        return ParameterService().get_parameter_int("DEFAULT_IVA_ID")
+    # ⛔ `get_default_iva_id` RIMOSSA (2026-08-29, I0/D7-bis del brief
+    #    brief-be-fe-iva-risolutore-e-regime-cliente): `anagrafiche.clienti.iva_id`
+    #    non esiste piu'. Leggeva il parametro DEFAULT_IVA_ID per riempire una
+    #    colonna NOT NULL senza default DB — cioe' faceva nascere ogni cliente con
+    #    un codice IVA CHE NESSUNO AVEVA SCELTO, indistinguibile da uno scelto
+    #    apposta. Il parametro di sistema resta a seed: qui muore il lettore.
+    #    L'influenza del soggetto sull'IVA passa da un titolo documentato (D10),
+    #    mai da un default appeso all'anagrafica.
 
     # Scopo: Verifica se l'utility ammette creazione manuale (richiede_pdp = false).
     def get_utility(self, utility_id: int) -> dict[str, Any] | None:
@@ -149,8 +151,8 @@ class ClientiRepository:
 
     # Scopo: Crea record cliente con stato ATTIVO.
     #        I trigger DB gestiscono: sync_utility, set_periodo, sync_pdp, guard.
-    #        Colonne NOT NULL senza default (iva_id) vengono incluse solo se valorizzate;
-    #        il DB ha un default o trigger per i campi NOT NULL rimanenti.
+    #        Le colonne opzionali sono incluse solo se valorizzate; il DB ha un
+    #        default o un trigger per i campi NOT NULL rimanenti.
     def create_cliente(self, **kwargs) -> int:
         # Colonne fisse (sempre presenti)
         cols = ["istanza_utility_id", "billing_account_id", "soggetto_ruolo_id",
@@ -163,10 +165,16 @@ class ClientiRepository:
             "data_attivazione": "CURRENT_DATE",
         }
         # Colonne opzionali: incluse solo se valorizzate (non None)
+        # ⛔ Sei chiavi tolte il 2026-08-29 (I0/I8 del brief
+        #    brief-be-fe-iva-risolutore-e-regime-cliente): `iva_id`,
+        #    `cliente_pa`, `split_payment`, `codice_cig`, `codice_cup`,
+        #    `codice_commessa` non sono piu' colonne di `anagrafiche.clienti`.
+        #    Le loro sedi: i due flag su `anagrafiche.soggetti` (D8 — la PA e' una
+        #    proprieta' dell'ENTE, non della fornitura), i tre codici su
+        #    `vendite.contratti` (D9 — nominano un contratto, non un cliente),
+        #    l'IVA in nessuna colonna di default (D7-bis).
         _OPTIONAL = [
-            "termine_pagamento_id", "modalita_pagamento_id", "iva_id",
-            "cliente_pa", "split_payment",
-            "codice_cig", "codice_cup", "codice_commessa",
+            "termine_pagamento_id", "modalita_pagamento_id",
             "servizio_da_fatturare",
             "garanzia_tipo", "garanzia_importo",
         ]
@@ -378,12 +386,14 @@ class ClientiRepository:
                    -- con la 3a.5 del piano DB satelliti.
                    cl.termine_pagamento_id,
                    cl.modalita_pagamento_id,
-                   cl.iva_id,
-                   cl.cliente_pa,
-                   cl.split_payment,
-                   cl.codice_cig,
-                   cl.codice_cup,
-                   cl.codice_commessa,
+                   -- ⛔ iva_id / cliente_pa / split_payment / codice_cig /
+                   --    codice_cup / codice_commessa: colonne rimosse dal DB il
+                   --    2026-08-29 (I0/I8). I due flag si leggono ora da
+                   --    `anagrafiche.soggetti`, i tre codici da
+                   --    `vendite.contratti`. Il dettaglio cliente NON ne tiene
+                   --    una copia in sola lettura (Q2): un campo che ripete un
+                   --    dato che vive altrove e' la premessa dell'errore che
+                   --    questo cantiere sta chiudendo.
                    cl.servizio_da_fatturare,
                    -- Garanzia
                    cl.garanzia_tipo,
@@ -413,7 +423,6 @@ class ClientiRepository:
                    sc.codice_interno AS stato_codice_interno,
                    sc.codice AS stato_codice,
                    sc.descrizione_breve AS stato_descrizione,
-                   iva.descrizione AS iva_descrizione,
                    mp.descrizione AS modalita_pagamento_descrizione,
                    tp.descrizione AS termine_pagamento_descrizione
               FROM anagrafiche.clienti cl
@@ -422,7 +431,6 @@ class ClientiRepository:
               JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
               JOIN config.utilities u ON u.id = cl.utility_id
               JOIN config.stati_cliente sc ON sc.id = cl.stato_cliente_id
-              LEFT JOIN config.iva iva ON iva.id = cl.iva_id
               LEFT JOIN config.modalita_pagamento mp ON mp.id = cl.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tp ON tp.id = cl.termine_pagamento_id
               LEFT JOIN anagrafiche.categorie_clienti cc ON cc.id = ba.categoria_cliente_id
@@ -435,16 +443,18 @@ class ClientiRepository:
             cursor.execute(sql, [cliente_id])
             return row_to_dict(cursor)
 
-    # Campi editabili sul cliente (pagamento, PA, garanzia, servizio).
+    # Campi editabili sul cliente (pagamento, garanzia, servizio).
     # ATTENZIONE: questo set DEVE restare allineato alla whitelist interna della
     # funzione madre anagrafiche.fn_update_cliente (autorita' finale: ignora le
     # chiavi non whitelisted). Qui e' difesa-in-profondita' + igiene payload (non
     # spedire chiavi ignote nel jsonb), coerente coi repo fratelli
     # (fornitori/emittenti). Aggiungere un campo editabile => aggiornare ENTRAMBI.
+    # ⛔ Le sei chiavi di I0/I8 sono uscite il 2026-08-29 QUI e nella fn madre
+    #    (changeSet 20260829-20). L'allineamento e' il punto: se restassero solo
+    #    qui, la PATCH le accetterebbe e la fn le butterebbe via — l'operatore
+    #    salverebbe senza vedere errori e il valore non andrebbe da nessuna parte.
     _UPDATE_ALLOWED = {
-        "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
-        "cliente_pa", "split_payment",
-        "codice_cig", "codice_cup", "codice_commessa",
+        "modalita_pagamento_id", "termine_pagamento_id",
         "servizio_da_fatturare",
         "garanzia_tipo", "garanzia_importo",
     }

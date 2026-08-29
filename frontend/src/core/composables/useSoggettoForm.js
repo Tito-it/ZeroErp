@@ -21,7 +21,16 @@ export function useSoggettoForm(options = {}) {
     ragione_sociale: '',
     // Comuni PF/PG
     codice_fiscale: '',
-    partita_iva: ''
+    partita_iva: '',
+    // Regime fiscale della controparte (I0/D8, 2026-08-29): saliti da
+    // `anagrafiche.clienti`, che li teneva su una riga PER FORNITURA — lo stesso
+    // soggetto poteva dichiarare valori opposti per gas e acqua. Un ente E' o
+    // NON E' una Pubblica Amministrazione.
+    // ⚠️ Default 'N', e la direzione e' una decisione: un soggetto di cui
+    //    nessuno ha detto nulla NON e' in scissione dei pagamenti — dichiararlo
+    //    tale d'ufficio produrrebbe fatture sbagliate su tutta l'anagrafica.
+    split_payment: 'N',
+    cliente_pa: 'N'
   })
 
   // Lookup tipi soggetto dettaglio
@@ -90,6 +99,8 @@ export function useSoggettoForm(options = {}) {
     form.ragione_sociale = ''
     form.codice_fiscale = ''
     form.partita_iva = ''
+    form.split_payment = 'N'
+    form.cliente_pa = 'N'
     matriceIndirizzi.value = []
   }
 

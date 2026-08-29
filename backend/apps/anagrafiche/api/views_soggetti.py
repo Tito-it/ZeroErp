@@ -115,6 +115,11 @@ class SoggettiDetailView(DomainAPIView):
             "cognome": serializers.CharField(required=False),
             "nome": serializers.CharField(required=False),
             "codice_fiscale": serializers.CharField(required=False),
+            # Regime fiscale della controparte (I0/D8, 2026-08-29): 'S' o 'N'.
+            # Saliti da `anagrafiche.clienti`, che li teneva su una riga per
+            # fornitura. Non sono un codice IVA e non entrano nel risolutore.
+            "cliente_pa": serializers.CharField(required=False),
+            "split_payment": serializers.CharField(required=False),
         }),
         responses={200: inline_serializer(name="SoggettoUpdateResp", fields={"data": serializers.DictField()})},
     )

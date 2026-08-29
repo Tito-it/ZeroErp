@@ -47,7 +47,7 @@ class TestClientiPatchApi(JwtMockedApiTest):
         mock_svc_cls.return_value.update_cliente.return_value = {"updated": True}
         resp = self.client.patch(
             "/api/v1/anagrafiche/clienti/1/",
-            data=json.dumps({"iva_id": 5, "cliente_pa": "S"}),
+            data=json.dumps({"modalita_pagamento_id": 5, "garanzia_tipo": "F"}),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
@@ -79,7 +79,7 @@ class TestClientiPatchApi(JwtMockedApiTest):
         )
         resp = self.client.patch(
             "/api/v1/anagrafiche/clienti/999/",
-            data=json.dumps({"iva_id": 5}),
+            data=json.dumps({"modalita_pagamento_id": 5}),
             content_type="application/json",
         )
         self.assertIn(resp.status_code, (400, 404, 422))

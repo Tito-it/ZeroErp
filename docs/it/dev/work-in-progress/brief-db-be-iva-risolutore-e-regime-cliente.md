@@ -1154,15 +1154,15 @@ modo in cui questo difetto è arrivato fin qui.
 | # | Cosa | A chi | Stato |
 | --- | --- | --- | --- |
 | ~~**I1**~~ | ~~Gate IVA all'emissione dentro `script.fn_check_ddt_emittibile`~~ | DB | ✅ **FATTA** 2026-08-28, con regola diversa e migliore (`R-1`) |
-| **I0** | ⭐ **Nuova, ed è il passo che sblocca gli altri**: `DROP` di `anagrafiche.clienti.iva_id` (`D7-bis`) + salita di `split_payment`/`cliente_pa` su `anagrafiche.soggetti` (`D8`). Si porta dietro `fn_update_cliente`, la whitelist BE e il `ClienteDrawer.vue` | DB + BE + FE | 🟢 pronta: nessun consumatore vero |
-| **I7** | **`anagrafiche.soggetti_titoli_iva`** (`D10`) — famiglia con vocabolario dei tipi, **emittente destinatario** in chiave (`D10-bis`), ambito fino al **singolo articolo**, `validita` `daterange`, registro movimenti (`D5`) e plafond **solo per i tipi che ce l'hanno**; + codice `config.iva` con `natura_iva_id = 8` (oggi la natura è **orfana**); + `EXCLUDE` anti-sovrapposizione sulla chiave nuova. ✅ Le sei domande di §2.6.2 restano decise | DB + BE | ✅ **APPLICATA** 2026-08-29 — §8-ter. Lo stadio B ha la sua sorgente: `I2` è sbloccata |
+| **I0** | ⭐ **Nuova, ed è il passo che sblocca gli altri**: `DROP` di `anagrafiche.clienti.iva_id` (`D7-bis`) + salita di `split_payment`/`cliente_pa` su `anagrafiche.soggetti` (`D8`). Si porta dietro `fn_update_cliente`, la whitelist BE e il `ClienteDrawer.vue` | DB + BE + FE | ✅ **CHIUSA 2026-08-29**: DB applicato; BE/FE nel [piano Fase 1](brief-be-fe-iva-risolutore-e-regime-cliente.md) (`S1` + `S2`) |
+| **I7** | **`anagrafiche.soggetti_titoli_iva`** (`D10`) — famiglia con vocabolario dei tipi, **emittente destinatario** in chiave (`D10-bis`), ambito fino al **singolo articolo**, `validita` `daterange`, registro movimenti (`D5`) e plafond **solo per i tipi che ce l'hanno**; + codice `config.iva` con `natura_iva_id = 8` (oggi la natura è **orfana**); + `EXCLUDE` anti-sovrapposizione sulla chiave nuova. ✅ Le sei domande di §2.6.2 restano decise | DB + BE | ⛔ **prerequisito di `I2`**: senza, lo stadio B non ha nessuna sorgente |
 | **I2** | Risolutore IVA a **due stadi** (§2.7, `D6`+`D7`): A = aliquota ordinaria, cascata `articolo → catena prezzo → tipo utenza`; B = **titolo documentato** dal soggetto, che sostituisce A. ⭐ **Ritorna una ripartizione** `(quota, codice IVA)`, non un codice (§2.7.3). Sul modello di `fn_resolve_prezzo_listino_v2` | DB | dopo `I7` |
 | **I3** | Il BE chiama `I2` alla creazione della riga; il FE **smette** di fare l'auto-fill e mostra il risultato del risolutore (§2.5.1) | BE + FE | dopo `I2` |
 | **I4** | La riga di fattura smette di rileggere `art.iva_id` e **ri-risolve** via `I2`. ⛔ L'alternativa «l'IVA viaggia nella catena `attivita_fatturabili`» è **esclusa da P1**: la fattura rifà, non trasporta. ⚠️ **Breaking change dichiarato** (§2.5.2) | DB + BE | dopo `I2` |
 | **I5** | `split_payment` / `cliente_pa` → riga e riepilogo fattura + payload SDI (`EsigibilitaIVA`), **fuori** dal risolutore (`D4`). ⭐ **Voce corta**: `fatture_righe` e `fatture_riepiloghi_iva` hanno **già** le colonne e il raggruppamento — manca solo chi le riempie (`D8`) | DB + BE | dopo `I0` |
-| **I8** | ⭐ **Nuova, e non è IVA**: `codice_cig` / `codice_cup` / `codice_commessa` da `clienti` a **`vendite.contratti`**, + **snapshot** sulla fattura all'emissione (`D9`). ⚠️ `vendite.fatture` non ha nessun link al contratto: senza snapshot non arrivano mai | DB + BE + FE | 🟢 **da fare adesso**: il builder XML non è ancora scritto |
-| **I9** | ⭐ **Nuova**: il gate «riga con prezzo senza aliquota» esiste **solo sul DDT**. `vw_ordini_righe_iva_base` non filtra nemmeno `prezzo_unitario`, e per ordini e preventivi non c'è nessun `fn_check_*_emittibile` (`R-3`) | DB | indipendente |
-| **I10** | ⭐ **Nuova** (`D15`): `config.stati_doc_fiscale.congela_fiscale` — colonna nuova + seed **dal CSV** su tutte le righe, e `vendite.fn_ricalcola_riepilogo_iva_fattura` portata a leggerla al posto della lista `NOT IN ('DRAFT','EMESSA')`. È la **soglia unica** cui dovrà obbedire anche il risolutore | DB | ✅ **SCRITTA** 2026-08-29, **non applicata** — §8-bis |
+| **I8** | ⭐ **Nuova, e non è IVA**: `codice_cig` / `codice_cup` / `codice_commessa` da `clienti` a **`vendite.contratti`**, + **snapshot** sulla fattura all'emissione (`D9`). ⚠️ `vendite.fatture` non ha nessun link al contratto: senza snapshot non arrivano mai | DB + BE + FE | 🟡 **quasi chiusa**: DB e PATCH fatti ([piano](brief-be-fe-iva-risolutore-e-regime-cliente.md) `S1` + `S3-a`); resta la **CREATE**, gated su [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md) |
+| **I9** | ⭐ **Nuova**: il gate «riga con prezzo senza aliquota» esiste **solo sul DDT**. `vw_ordini_righe_iva_base` non filtra nemmeno `prezzo_unitario`, e per ordini e preventivi non c'è nessun `fn_check_*_emittibile` (`R-3`) | DB | ✅ **CHIUSA 2026-08-29**: ordini e preventivi applicati; le due `reason_key` i18n mancanti aggiunte dal [piano Fase 1](brief-be-fe-iva-risolutore-e-regime-cliente.md) (`S4`) |
+| **I10** | ⭐ **Nuova** (`D15`): `config.stati_doc_fiscale.congela_fiscale` — colonna nuova + seed **dal CSV** su tutte le righe, e `vendite.fn_ricalcola_riepilogo_iva_fattura` portata a leggerla al posto della lista `NOT IN ('DRAFT','EMESSA')`. È la **soglia unica** cui dovrà obbedire anche il risolutore | DB | ✅ **APPLICATA** 2026-08-29 — §8-bis. Nessun consumatore BE/FE da adeguare |
 | **I6** | ✅ **Sbloccata da `D1` (2026-08-29)**: l'IVA di riga non si digita. **Due metà, servono entrambe** — (a) BE: `iva_id` **fuori** da `_UPDATE_KEYS_RIGA` **e** da `_CREATE_KEYS_RIGA` in `ddt_service`, `ordini_service`, `preventivi_service` (in `preventivi_service` è una tupla inline, non una `frozenset`); (b) FE: `<IvaSelect>` disabilitata **anche in CREATE** nei tre `*RigaForm.vue`, e il campo mostra il risultato del risolutore. ⚠️ In `PreventiviRigaForm` il `canSave` pretende `f.iva_id`: va ripensato, o la creazione si blocca da sola | BE + FE | ⛔ **per ultima** |
 
 ⛔ **L'ordine fra I6 e le altre non è indifferente, ed è l'unico modo di sbagliare
@@ -1375,9 +1375,26 @@ fattura ci arrivano copiati da lì.
 
 ## 8-bis. Avanzamento — cosa è scritto e cosa è applicato
 
-> ⛔ **Niente di quanto segue è applicato.** I file esistono nel branch
+> ⛔ ~~**Niente di quanto segue è applicato.** I file esistono nel branch
 > `dev/db-tid` e nessun `liquibase update` è stato lanciato: lo stato reale si
-> legge da `databasechangelog`, non da questa tabella.
+> legge da `databasechangelog`, non da questa tabella.~~
+>
+> ⚠️ **SUPERATA il 2026-08-29 — questa riga è rimasta indietro rispetto al
+> proprio paragrafo.** Le singole voci qui sotto dicono già «✅ APPLICATA», e la
+> **Fase 1 lato DB è chiusa**: verificato sulla doc auto-generata di
+> `docs/it/dbzero/` — le sei colonne non ci sono più su `anagrafiche.clienti`,
+> `split_payment`/`cliente_pa` sono su `anagrafiche.soggetti`, i tre codici su
+> `vendite.contratti`, `congela_fiscale` su `config.stati_doc_fiscale`.
+>
+> ⭐ **Perché la correzione vale la riga che costa**: è l'apertura della sezione,
+> cioè quello che si legge per primo e si smette di leggere se dice che non c'è
+> niente. Chi si è fermato qui ha creduto che il backend avesse tempo — mentre
+> creazione cliente, dettaglio cliente e form-defaults preventivo erano **già in
+> 500**. La riga resta barrata e non cancellata perché è così che si vede che era
+> vera quando è stata scritta.
+>
+> 📌 Resta valido il criterio: **lo stato reale si legge da `databasechangelog`**,
+> non da una tabella scritta a mano.
 
 ### ✅ `I10` — soglia di congelamento (scritta il 2026-08-29)
 
@@ -1709,6 +1726,26 @@ Toglierla avrebbe cambiato il conteggio senza guadagnare nulla.
 
 #### ⛔ Richiesta al BACKEND — da fare adesso
 
+> ✅ **PRESA IN CARICO E CHIUSA il 2026-08-29**, in
+> [brief-be-fe-iva-risolutore-e-regime-cliente.md](brief-be-fe-iva-risolutore-e-regime-cliente.md)
+> — il piano BE/FE della Fase 1, che contiene anche `I8` lato contratto, `I0`
+> lato soggetto e il debito i18n di `I9`. La tabella qui sotto resta come
+> **richiesta originale**, e va letta con due correzioni che sono emerse
+> eseguendola:
+>
+> ⛔ **L'effetto non era il solo «silenzio»**: quello vale per la sola PATCH, che
+> passa da `fn_update_cliente`. Gli altri tre percorsi — `POST` di creazione
+> cliente, `GET` di dettaglio e `/vendite/preventivi/form-defaults/` — sono **SQL
+> diretto sulla tabella**, quindi erano **500**. `S1` è stata un ripristino, non
+> una pulizia. *La richiesta era stata scritta guardando la whitelist, non le
+> query.*
+>
+> ⛔ **Mancava un prerequisito DB**, ed è l'unica coda ancora aperta:
+> `vendite.fn_create_contratto` ha una whitelist interna che **scarta in
+> silenzio** i tre codici in CREATE — stesso difetto di `fatturazione_immediata`
+> del 2026-07-27, sulla stessa funzione. Richiesta in
+> [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md).
+
 Dal momento in cui `-15` è applicato, un payload che contiene una delle sei
 chiavi **non viene respinto: viene ignorato in silenzio**, perché la whitelist
 non le conosce più. ⭐ È il comportamento meno peggiore dei due — sollevare
@@ -1948,3 +1985,5 @@ lavoro, era generare l'SQL e guardarlo.*
 | 2026-08-29 (Fase 2, `I7`) | ✅ **Le sedi dei titoli scritte**, dodici changeSet + due pgTAP, niente applicato (§8-ter). ⭐ Tre decisioni di forma prese con Tid prima di scrivere: l'anti-sovrapposizione è un `EXCLUDE` **vero solo su `ambito = 'TUTTO'`** e un guard sui ristretti — la chiave attraversa una tabella figlia e un vincolo non la può leggere; la **RLS si accende subito**, su tabelle che nascono vuote; il codice della natura N3.5 è **`NI35`**, e da oggi quella natura non è più orfana. 🔴 Il guard dell'ambito sta su **due** trigger: due titoli diventano sovrapposti anche quando cambia il **padre**, e in quei casi la figlia non viene toccata — la regola sta in una funzione pura che entrambi **chiamano**. ⛔ Di `D15-bis` il DB dà **una metà**: il lock c'è, l'**ordine deterministico è del chiamante** e diventa una richiesta al BE per `I4` — un lock non può sapere che esiste una fattura precedente non ancora arrivata. ⭐ E una riga del §8-bis è stata **corretta misurando invece di ragionare**: «una colonna fuori dalla lista del mirror non è governata dal CSV» è **falsa** su Liquibase 5.0.3 — il blocco `columns:` configura i tipi, non restringe il caricamento. La promessa di `D15` era già vera, e `20260829-05` va riletto come una pulizia. |
 | 2026-08-29 (Fase 2 applicata) | ✅ **`I7` applicata** (Tid). Baseline `anagrafiche` e `script` verdi, nessuna regressione — e siccome girano come applicazione, il limite della corsa pre-apply (owner, RLS non esercitata) **si chiude da sé**. ⭐ Da qui in poi `I2` non ha più prerequisiti: lo stadio B ha una sorgente da leggere, ed è la Fase 3. |
 | 2026-08-28 (Rev 2, chiusura) | Tid nomina i casi che rendono la famiglia reale — agevolata disabili, società al 10% senza dichiarazione d'intento. ⭐ `soggetti_intento` diventa **`anagrafiche.soggetti_titoli_iva`** (`D10`), con l'**emittente destinatario** in chiave (`D10-bis`) e l'**ambito fino al singolo articolo**. `I7` sale a **prerequisito di `I2`**. Aggiunto il §8, il racconto in linguaggio piano |
+| 2026-08-29 (Fase 1 chiusa) | ✅ **La metà BE/FE della Fase 1 è fatta**, in [brief-be-fe-iva-risolutore-e-regime-cliente.md](brief-be-fe-iva-risolutore-e-regime-cliente.md): sei chiavi via dal cliente, i due flag sul soggetto, i tre codici sul contratto in PATCH, le due `reason_key` di `I9`. ⛔ **Due correzioni alla «Richiesta al BACKEND» del §8-bis**, entrambe emerse eseguendola: l'effetto **non era solo il silenzio** — tre percorsi su quattro erano **500**, perché SQL diretto sulla tabella e non passano da `fn_update_cliente` (*la richiesta era stata scritta guardando la whitelist, non le query*); e mancava un **prerequisito DB** — `fn_create_contratto` ha una whitelist interna che scarta i tre codici in CREATE, stesso difetto di `fatturazione_immediata` sulla stessa funzione. ⛔ Corretta anche l'apertura del §8-bis, che diceva *«niente di quanto segue è applicato»* mentre le sue stesse voci dicevano APPLICATA. 🟡 Unica coda: `I8` lato CREATE, con [brief-db-fn-create-contratto-codici-atto.md](brief-db-fn-create-contratto-codici-atto.md). **La Fase 2 (`I7`) è ora il prossimo passo** |
+

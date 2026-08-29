@@ -574,13 +574,18 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
 })
 
 // Fase 2.B4 + 2.F6: quando l'operatore valorizza/cambia il BA in create,
-// chiediamo al BE i defaults BA-derived (valuta_id, termine_pagamento_id,
-// iva_id) dal cliente associato. Per termine/iva sovrascriviamo solo se
-// vuoti (proteggiamo scelte utente). Per la valuta SEMPRE sovrascriviamo
+// chiediamo al BE i defaults BA-derived (valuta_id, termine_pagamento_id)
+// dal cliente associato. Per il termine sovrascriviamo solo se vuoto
+// (proteggiamo scelte utente). Per la valuta SEMPRE sovrascriviamo
 // con il valore BA-resolved: la valuta del BA (o del suo EF) prevale sulla
 // valuta dell'EF utente caricata al mount (regola di coerenza dominio:
 // "valuta del BA wins se specificata"). Skippiamo in edit (campi gia'
 // persistiti dal payload preventivo).
+// ⛔ Il commento diceva «per termine/IVA sovrascriviamo solo se vuoti» e da
+//    sempre l'`apply` toccava il SOLO termine: `vendite.preventivi` una colonna
+//    IVA di testata non ce l'ha. Dal 2026-08-29 il BE non manda piu' nemmeno le
+//    tre chiavi `iva_*` (I0/D7-bis, Q3): l'aliquota di riga la produrra' il
+//    risolutore (I2), non un default copiato dall'anagrafica.
 // Watcher BA→defaults condiviso (guard token + valuta BA-wins nel composable).
 // Extra preventivo: termine pagamento (solo se l'operatore non l'ha scelto).
 const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({

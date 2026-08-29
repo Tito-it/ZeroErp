@@ -293,6 +293,14 @@ class SoggettiRepository:
         sql = """
             SELECT s.id, s.ragione_sociale_completa, s.codice_fiscale,
                    s.partita_iva, s.cognome, s.nome, s.ragione_sociale,
+                   -- Regime fiscale della controparte (I0/D8, 2026-08-29): saliti
+                   -- da `anagrafiche.clienti`, che e' una riga PER FORNITURA e
+                   -- ammetteva tre valori diversi per la stessa partita IVA. Un
+                   -- ente E' o NON E' una PA: non lo e' per il gas e non per
+                   -- l'acqua. ⚠️ NON sono un codice IVA e non entrano nel
+                   -- risolutore (D4): non cambiano l'aliquota, cambiano CHI VERSA
+                   -- l'imposta — in fattura elettronica sono l'EsigibilitaIVA.
+                   s.split_payment, s.cliente_pa,
                    s.sesso, s.data_nascita::text, s.comune_id AS comune_nascita_id,
                    c.descrizione AS comune_nascita_descrizione,
                    p.sigla AS comune_nascita_provincia_sigla,
@@ -413,8 +421,15 @@ class SoggettiRepository:
         _ALLOWED = {
             "cognome", "nome", "ragione_sociale", "codice_fiscale",
             "partita_iva", "sesso", "data_nascita", "comune_id",
+            # I0/D8 (2026-08-29): regime fiscale della controparte.
+            "split_payment", "cliente_pa",
         }
-        # Campi dove stringa vuota deve diventare NULL
+        # Campi dove stringa vuota deve diventare NULL.
+        # ⚠️ `split_payment`/`cliente_pa` restano FUORI: sono `character(1)`
+        #    NOT NULL con CHECK ('S','N'), quindi normalizzare a NULL
+        #    trasformerebbe un valore sbagliato in una violazione di NOT NULL —
+        #    un errore piu' oscuro di quello che gia' c'e'. Il valore lo valida
+        #    il service prima di arrivare qui.
         _NULLABLE = {"codice_fiscale", "partita_iva", "data_nascita", "comune_id"}
         # Mapping alias frontend → colonna DB
         _ALIAS = {"comune_nascita_id": "comune_id"}

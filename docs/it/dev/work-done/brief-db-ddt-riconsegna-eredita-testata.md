@@ -79,7 +79,7 @@
 > [fn_genera_ddt_riconsegna](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna) ·
 > [fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) ·
 > [trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) ·
-> [brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
+> [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
 
 ---
 
@@ -432,7 +432,7 @@ un contratto pubblicato:
    `ordini_righe_fulfillment` (passo 5) — ma va **detto**, non dedotto.
 
 Questa voce tocca lo stesso nervo di
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
 §2 («commesse che dichiarano di non avere origine»): vale la pena che i due
 cantieri si guardino prima di scrivere.
 
@@ -709,7 +709,7 @@ inverso perché è l'*avanzamento* del reso. La ri-consegna è nella stessa
 famiglia: la merce è tornata e adesso riparte. Se sia un avanzamento del reso o
 un ramo inverso è una **decisione di quel cantiere**, e va presa lì — motivo per
 cui la Fase D si coordina con
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md),
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md),
 come il §5 già suggeriva.
 
 ⚠️ Una cosa da guardare quando si scriverà: `vw_ddt_lista` fa
@@ -1100,7 +1100,7 @@ dato per buono: è esattamente quella differenza a renderlo sicuro, e se un doma
 non ci fosse più, il difetto tornerebbe silenzioso.
 
 **Coordinamento**: la stesura dell'arco si fa insieme a
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
 §2 — è lo stesso nervo, «documenti che dichiarano di non avere origine».
 
 ### 9.5 Decisioni — chiuse il 2026-08-28, e quel che resta
@@ -1753,7 +1753,7 @@ undici lettere, l'altra dodici. Chi legge non ha modo di sapere quale delle due
 è la vecchia.
 
 ➡️ **Trasferito** al cantiere che possiede queste viste:
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md),
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md),
 dove è entrato come **quarta voce** — il posto giusto perché quel brief apre
 `vw_documento_lineage_archi` per altri due motivi, e il §0 dice che chi la apre
 «le sistema in un giro solo».

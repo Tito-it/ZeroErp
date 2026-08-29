@@ -10,7 +10,16 @@
 > brief DB; un passo BE/FE **solo** qui. Se una decisione cambia, si cambia là e
 > qui si riporta il passo che ne discende — mai il contrario.
 >
-> **Stato al 2026-08-29 — ✅ CHIUSO, meno una coda dichiarata.** Il DB ha
+> ✅ **CHIUSO il 2026-08-29, collaudo in app compreso.** Tid ha verificato le
+> dieci voci del §6 e confermato: *«ho verificato tutto, confermo che tutto
+> funziona»*. ⭐ E ha chiuso anche l'unica domanda di resa rimasta — il trattino
+> del numero accanto alla lineetta della data nel drawer fattura: **non è un
+> difetto**, perché *«la data è a parte»*. Il dubbio era mio e nasceva dal
+> guardare la stringa invece della schermata.
+>
+> *(Cronaca del cantiere, sotto.)*
+>
+> **Stato al 2026-08-29 — il percorso.** Il DB ha
 > consegnato tutto e **più di quanto chiesto**: oltre alla natura sulle sette
 > viste di lista (`20260829-01`), il `20260829-02` ha portato nel grafo anche il
 > **codice del tipo** (`tipo_codice_interno`, `frontiera_tipo_codice_interno`) e
@@ -21,8 +30,10 @@
 > da soli, il terzo **insieme al seed `ui.lista_colonna` id 494**, perché una
 > metà sola svuotava la colonna a video.
 >
-> ⛔ **Restano solo il collaudo in app** (§6) e **15 voci di debito di naming** di
-> altri domini, ora sorvegliate dal gemello Python del guardrail (§5).
+> ⛔ **Non resta niente di questo cantiere.** Fuori perimetro e **dichiarate**:
+> le **15 voci di debito di naming** di altri domini (ora sorvegliate dal gemello
+> Python del guardrail, §5), il gemello `ATTIVITA_CONSUMI`, la colonna «Transito»
+> sulla lista fatture e un runner di test frontend.
 >
 > ⚠️ **E il rename aveva rotto tre cose vive**, trovate misurando e non
 > aspettando un ticket: il pannello «Passaggi» di tutti e sette i domini, il
@@ -919,6 +930,43 @@ che nessuno sa che esiste è un cancello che il prossimo aggira senza saperlo.
 mi ha segnalato un disallineamento che il *loro* guardrail non poteva vedere. Qui
 il disallineamento era fra **codice e documentazione**, e non c'è nessun
 guardrail che lo veda — l'ha visto una domanda.
+
+### 2026-08-29 (7) · ✅ Collaudo in app, e chiusura
+
+**Tid ha verificato le dieci voci del §6 in applicazione e ha confermato che
+tutto funziona.** Il cantiere si chiude qui e i due documenti passano in
+`work-done`.
+
+⭐ **La decima voce si chiude come «non era un difetto», ed è la più istruttiva
+del giro.** Avevo segnalato che nel drawer fattura i documenti collegati escono
+come `103 - VX2 — 31/07/2026`, col trattino *dentro* il numero e la lineetta
+*fra* numero e data che si somigliano. Risposta: *«escono giusti perché la data
+è a parte»*.
+⛔ **Il dubbio nasceva dal guardare la stringa invece della schermata**: a video
+la data sta in una sua posizione e i due segni non competono. È lo stesso errore
+di prospettiva che questo cantiere ha corretto tre volte dall'altra parte —
+misurare il testo di una query invece del contratto, contare le colonne invece di
+eseguirle, rileggere un presidio invece di romperlo. ⚠️ **Un rilievo di resa si
+verifica in applicazione, non nel sorgente** — e la persona che guarda la
+schermata ha ragione sulla persona che guarda il codice.
+
+**Consuntivo del cantiere**, dal §3.5 del brief DB alla chiusura:
+
+| | |
+| --- | --- |
+| difetti a video chiusi | «Fattura» sopra ogni nota di credito · due commesse senza origine · il numero fattura scritto in tre modi |
+| rotture **trovate** (nessuna segnalata da un utente) | 4 dal rename `20260829-02`, di cui una **silenziosa**; 1 dal seed id 494, silenziosa anch'essa |
+| duplicazione tolta | 11 decodifiche del tipo → 2 · 1 seconda sede della natura di frontiera · 3 composizioni del numero fattura → 0 |
+| codice morto | 103 righe, e verificato con l'AST che fosse **l'unico** del backend |
+| presidi nuovi | prop del chip derivata dal seed · gemello Python del guardrail di naming + registro del debito · guardia contro la deriva fra le due trascrizioni |
+| presidi **ribaltati** | «ogni repository decodifica» → «nessuno ridecodifica» |
+| documenti che dicevano il falso, corretti | 3 miei + 6 manuali API + 1 preesistente (`api_resi`) |
+
+⛔ **E la cosa che questo cantiere ha insegnato più di ogni altra**, tre volte in
+tre forme diverse: *un difetto che non dà errore non lo trova chi aspetta un
+errore*. La colonna che smette di comparire, il nome che si ferma al bordo
+Python, il documento che dice il falso — nessuno dei tre ha mai fatto rosso.
+I due l'hanno trovati un guardrail costruito apposta e una domanda di Tid.
 
 ---
 

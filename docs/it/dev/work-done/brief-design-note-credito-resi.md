@@ -21,7 +21,7 @@
 >
 > 🔵 Due code che **non** appartengono più a questo cantiere e non lo trattengono:
 > la richiesta al team DB del **§3** di
-> [brief-db-lineage-residui-root-e-sorgente-ddt.md](../work-in-progress/brief-db-lineage-residui-root-e-sorgente-ddt.md)
+> [brief-db-lineage-residui-root-e-sorgente-ddt.md](brief-db-lineage-residui-root-e-sorgente-ddt.md)
 > (il chip che scrive «Fattura» sopra una nota di credito) e la domanda del
 > **§45.9.6** — le azioni **per riga** non hanno un censimento dei gate, mentre
 > le otto capability **di documento** ce l'hanno (`linee-guida-sql §12.4`).
