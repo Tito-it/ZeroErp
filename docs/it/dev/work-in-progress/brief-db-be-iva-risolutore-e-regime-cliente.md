@@ -1950,6 +1950,31 @@ e la ignora senza rumore.
 giusta appoggiata a un meccanismo che non esiste. Il rimedio non era rifare il
 lavoro, era generare l'SQL e guardarlo.*
 
+### 📄 Documentazione manual — fatta il 2026-08-29
+
+> ⚠️ Solo i `manual/` (documentazione **concettuale**): l'auto-gen la rigenera Tid.
+
+**Dieci file nuovi**, uno per ogni oggetto nato con `I7` — verificato contro
+`pg_class`/`pg_proc` che non ne manchi nessuno e che nessuno sia di troppo:
+
+| Dove | Cosa |
+| --- | --- |
+| `config/manual/tipi_titolo_iva.md` | perché è un **vocabolario** e non una tabella «dichiarazioni d'intento», e perché `ha_plafond` è la sola colonna che porta informazione |
+| `anagrafiche/manual/soggetti_titoli_iva.md` | il principio di `D7`, i **due proprietari** (`D10-bis`), l'ambito come condizione di applicabilità, e l'anti-sovrapposizione che è un vincolo vero solo su metà dei casi |
+| `…/soggetti_titoli_iva_ambiti.md` | perché queste righe sono **la differenza fra un titolo e il `clienti.iva_id` appena tolto** |
+| `…/soggetti_titoli_iva_movimenti.md` | perché un registro e non una colonna, e perché il **tetto non si controlla lì** |
+| `…/fn_consuma_plafond_titolo_iva.md` | la ripartizione di `P2`, il lock, e **la metà di `D15-bis` che il DB non tiene** |
+| `…/fn_check_titolo_iva_ambito.md` | cosa è un **pareggio** e cosa invece si risolve da sé |
+| `…/trgfn_*` (quattro) | uno per guard: perché `AFTER` contro la convenzione, perché il nome sceglie l'**ordine**, e il caso del movimento spostato fra due titoli |
+
+⭐ **Due cose che il DDL non racconta, e per cui i manual esistono**: perché
+l'emittente sta in **chiave** (senza, due plafond diventano un contatore solo), e
+perché l'`EXCLUDE` copre soltanto i titoli `ambito = 'TUTTO'`. Chi legge lo schema
+vede un vincolo parziale e pensa a una dimenticanza.
+
+⚠️ **Non c'è un manual per il file di test né per i changeSet**: la loro sede è
+questo brief.
+
 ### 📌 Residui dichiarati di `I7`
 
 * ⚠️ **tre righe di `fk_index_policy` sono un «no» RIMANDATO, non definitivo**:
