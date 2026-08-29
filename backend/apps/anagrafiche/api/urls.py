@@ -69,6 +69,14 @@ from apps.anagrafiche.api.views_soggetti import (
     SoggettiRuoliView,
     SoggettiView,
 )
+from apps.anagrafiche.api.views_titoli_iva import (
+    SoggettoTitoliIvaDetailView,
+    SoggettoTitoliIvaView,
+    SoggettoTitoloIvaAmbitiView,
+    SoggettoTitoloIvaAmbitoDetailView,
+    SoggettoTitoloIvaMovimentiView,
+    TitoliIvaSfondatiView,
+)
 from apps.anagrafiche.api.views_conti_bancari import (
     BankBranchesLookupView,
     ContiBancariLookupView,
@@ -182,6 +190,15 @@ urlpatterns = [
     path("soggetti/<str:soggetto_id>/indirizzi/<int:indirizzo_soggetto_id>/", SoggettiIndirizziDetailView.as_view(), name="anagrafiche-soggetti-indirizzi-detail"),
     path("soggetti/<str:soggetto_id>/ruoli/", SoggettiRuoliView.as_view(), name="anagrafiche-soggetti-ruoli"),
     # Conti bancari soggetto
+    # Titoli IVA del soggetto (I7 / D10). ⭐ `titoli-iva/sfondati/` sta PRIMA
+    # della rotta di dettaglio del titolo: e' una lista cross-soggetto e non ha
+    # un `soggetto_id`, quindi vive fuori dal ramo annidato.
+    path("titoli-iva/sfondati/", TitoliIvaSfondatiView.as_view(), name="anagrafiche-titoli-iva-sfondati"),
+    path("soggetti/<str:soggetto_id>/titoli-iva/", SoggettoTitoliIvaView.as_view(), name="anagrafiche-soggetti-titoli-iva"),
+    path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/", SoggettoTitoliIvaDetailView.as_view(), name="anagrafiche-soggetti-titoli-iva-detail"),
+    path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/", SoggettoTitoloIvaAmbitiView.as_view(), name="anagrafiche-titoli-iva-ambiti"),
+    path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/<int:ambito_id>/", SoggettoTitoloIvaAmbitoDetailView.as_view(), name="anagrafiche-titoli-iva-ambiti-detail"),
+    path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/movimenti/", SoggettoTitoloIvaMovimentiView.as_view(), name="anagrafiche-titoli-iva-movimenti"),
     path("soggetti/<str:soggetto_id>/conti-bancari/", SoggettoContiBancariView.as_view(), name="anagrafiche-soggetti-conti-bancari"),
     path("soggetti/<str:soggetto_id>/conti-bancari/<int:cb_id>/", SoggettoContiBancariDetailView.as_view(), name="anagrafiche-soggetti-conti-bancari-detail"),
     # Conti bancari — lookup

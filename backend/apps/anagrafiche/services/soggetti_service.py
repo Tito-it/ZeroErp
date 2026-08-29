@@ -18,6 +18,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
 from apps.core.db.lookup_repository import LookupRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
@@ -44,6 +45,16 @@ _LOOKUP_MIN_QUERY_LENGTH = 2
 _LOOKUP_DEFAULT_LIMIT = 20
 _LOOKUP_MAX_LIMIT = 50
 
+# Flag di regime fiscale della controparte (I0/D8, 2026-08-29): saliti da
+# `anagrafiche.clienti`, che e' una riga PER FORNITURA e ammetteva che lo stesso
+# soggetto dichiarasse valori opposti per la stessa partita IVA.
+# ⚠️ NON sono un codice IVA e non entrano nel risolutore (D4): non cambiano
+#    l'aliquota, cambiano CHI VERSA l'imposta — in fattura elettronica sono
+#    l'`EsigibilitaIVA`.
+_FLAG_FISCALI_SOGGETTO: tuple[str, ...] = ("split_payment", "cliente_pa")
+# Dominio ammesso, speculare al CHECK ('S','N') delle due colonne.
+_FLAG_FISCALI_VALORI: frozenset[str] = frozenset({"S", "N"})
+
 
 class SoggettiService:
     """Service per gestione soggetti completa."""
@@ -52,6 +63,7 @@ class SoggettiService:
         self._repo = SoggettiRepository()
         self._ind = IndirizziRepository()
         self._conti = ContiBancariRepository()
+        self._titoli_iva = TitoliIvaRepository()
         self._lookup = LookupRepository()
 
     # =================================================================
@@ -103,6 +115,10 @@ class SoggettiService:
         soggetto["ruoli"] = self._repo.get_soggetto_ruoli(soggetto_id, emittente_ids)
         soggetto["dati_societari"] = self._repo.get_dati_societari(soggetto_id)
         soggetto["conti_bancari"] = self._conti.list_conti_soggetto(soggetto_id)
+        # Titoli IVA (I7/D10): composti qui come le altre sotto-entita', e non
+        # chiesti a parte dal drawer. ⭐ Il riepilogo nella sezione del soggetto
+        # arriva cosi' senza un round-trip in piu', esattamente come i conti.
+        soggetto["titoli_iva"] = self._titoli_iva.list_titoli_soggetto(soggetto_id)
         soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
         return soggetto
 
@@ -161,11 +177,48 @@ class SoggettiService:
 
     # Scopo: Aggiorna campi soggetto.
     def update_soggetto(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        dati = self._normalizza_flag_fiscali(payload)
         return update_with_dedup(
-            lambda: self._repo.update_soggetto(soggetto_id, payload),
+            lambda: self._repo.update_soggetto(soggetto_id, dati),
             "Codice fiscale o partita IVA duplicata.",
             "Soggetto non trovato.",
         )
+
+    # Scopo: Valida e normalizza i due flag di regime fiscale (I0/D8).
+    #        Perimetro: `split_payment` e `cliente_pa`, `character(1)` NOT NULL
+    #        con CHECK ('S','N') a DB.
+    # Risultato: una COPIA del payload con i due flag normalizzati a 'S'/'N'.
+    # ⚠️ Ritorna una copia e non muta l'originale, ed e' deliberato: il payload
+    #    che arriva qui e' `request.data` della view — mutarlo significherebbe
+    #    modificare l'input del chiamante da dentro una funzione che si chiama
+    #    «valida», cioe' un effetto collaterale che il nome non annuncia
+    #    (`feedback_estrarre_non_condividere_stato`). E su un `QueryDict`
+    #    immutabile l'assegnamento solleverebbe.
+    # ⚠️ Il guard NON e' ridondante rispetto al CHECK, ed e' il motivo per cui
+    #    esiste: `update_with_dedup` traduce QUALUNQUE IntegrityError nel
+    #    messaggio di duplicato, quindi un `split_payment = 'Y'` arriverebbe
+    #    all'operatore come «Codice fiscale o partita IVA duplicata» — un
+    #    messaggio che afferma il falso su un campo che non ha toccato.
+    #    Il CHECK a DB resta la difesa dura (defense-in-depth).
+    # ⭐ E il valore sbagliato non e' innocuo: la colonna accetterebbe 'Y', 't',
+    #    '1' o uno spazio, e ognuno si comporterebbe come «non applicare lo
+    #    split» al primo `= 'S'` — un errore fiscale silenzioso, nella direzione
+    #    peggiore.
+    @staticmethod
+    def _normalizza_flag_fiscali(payload: dict[str, Any]) -> dict[str, Any]:
+        dati = dict(payload)
+        for key in _FLAG_FISCALI_SOGGETTO:
+            if key not in dati:
+                continue
+            val = dati[key]
+            ErrorManager.require(
+                isinstance(val, str) and val.strip().upper() in _FLAG_FISCALI_VALORI,
+                code=E_ANAG_VALIDAZIONE,
+                message=f"Valore non ammesso per {key}: attesi 'S' o 'N'.",
+                detail=f"{key}={val!r}",
+            )
+            dati[key] = val.strip().upper()
+        return dati
 
     # =================================================================
     # Contatti

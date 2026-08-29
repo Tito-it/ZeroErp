@@ -756,10 +756,12 @@ function buildFatturaActions(row) {
   return actions
 }
 
+// ⛔ Niente composizione locale: il numero documento viene dalla sede unica
+// (`vendite.fn_numero_documento_fattura`, 20260829-15). Qui si scriveva
+// `serie numero`, nel drawer fattura `serie numero/anno`: due schermate, due
+// documenti scritti in due modi. Il ripiego del non-numerato resta di chi rende.
 function fatturaNumero(row) {
-  if (!row.numero) return '—'
-  const serie = row.serie ? `${row.serie} ` : ''
-  return `${serie}${row.numero}`
+  return row.numero_documento || '—'
 }
 </script>
 
@@ -878,16 +880,19 @@ function fatturaNumero(row) {
                 @sort="listaDocumenti.onSort"
                 @config-loaded="listaDocumenti.onConfigLoaded"
               >
-                <!-- Numero componibile serie+numero: il seed dichiara `numero`,
-                     l'etichetta a video la compone il FE. -->
+                <!-- ⚠️ Il seed dichiara la colonna `numero`, ma a video ci va il
+                     NUMERO DOCUMENTO (`numero - serie`) che arriva gia' composto
+                     dal backend: qui il FE non compone piu' niente. I due nomi
+                     restano diversi di proposito — `numero` e' il campo su cui
+                     si ORDINA, il numero documento e' quello che si LEGGE. -->
                 <template #cell-numero="{ data }">{{ fatturaNumero(data) }}</template>
                 <!-- ⚠️ La nota di credito non e' un'anomalia: severity neutra,
                      mai `danger` — e il totale negativo si mostra com'e',
                      perche' e' il documento a essere di segno opposto. -->
                 <template #cell-natura_doc_descrizione="{ data }">
-                  <Tag v-if="data.natura_doc_codice"
-                    :value="data.natura_doc_descrizione || data.natura_doc_codice"
-                    :severity="naturaDocSeverity(data.natura_doc_codice)" />
+                  <Tag v-if="data.natura_doc_codice_interno"
+                    :value="data.natura_doc_descrizione || data.natura_doc_codice_interno"
+                    :severity="naturaDocSeverity(data.natura_doc_codice_interno)" />
                   <span v-else>—</span>
                 </template>
                 <template #cell-stato_doc_fiscale_descrizione="{ data }">

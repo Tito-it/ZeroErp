@@ -206,6 +206,61 @@ export function lookupStati() {
 
 // --- Conti bancari soggetto ---
 
+// ============================================================
+//  Titoli IVA del soggetto (I7 / D10)
+//  Il documento registrato che SOSTITUISCE l'aliquota ordinaria di una riga.
+//  Proprietario il soggetto, destinatario l'emittente (D10-bis).
+// ============================================================
+
+export function listSoggettoTitoliIva(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/`)
+}
+
+export function getSoggettoTitoloIva(soggettoId, titoloId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/`)
+}
+
+export function createSoggettoTitoloIva(soggettoId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/titoli-iva/`, payload)
+}
+
+export function updateSoggettoTitoloIva(soggettoId, titoloId, payload) {
+  return api.patch(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/`, payload)
+}
+
+export function deleteSoggettoTitoloIva(soggettoId, titoloId) {
+  return api.delete(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/`)
+}
+
+// Ambiti: l'oggetto su cui il titolo si applica (D12). ⚠️ Non e' un'etichetta:
+// e' la condizione di applicabilita', valutata riga per riga dal risolutore.
+export function listTitoloIvaAmbiti(soggettoId, titoloId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/ambiti/`)
+}
+
+export function createTitoloIvaAmbito(soggettoId, titoloId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/ambiti/`, payload)
+}
+
+export function deleteTitoloIvaAmbito(soggettoId, titoloId, ambitoId) {
+  return api.delete(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/ambiti/${ambitoId}/`)
+}
+
+// Registro movimenti del plafond (D5). ⛔ In POST si scrive SOLO una forzatura
+// manuale: fatture e note di credito le produce la fatturazione (I4).
+export function listTitoloIvaMovimenti(soggettoId, titoloId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/movimenti/`)
+}
+
+export function createTitoloIvaForzatura(soggettoId, titoloId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/movimenti/`, payload)
+}
+
+// Presidio cross-soggetto: i titoli il cui consumo ha superato il tetto (Q4).
+export function listTitoliIvaSfondati() {
+  return api.get(`${BASE}/titoli-iva/sfondati/`)
+}
+
 export function listSoggettoContiBancari(soggettoId) {
   return api.get(`${BASE}/soggetti/${soggettoId}/conti-bancari/`)
 }

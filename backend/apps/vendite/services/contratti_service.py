@@ -51,6 +51,7 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     upsert_indirizzo_documento,
 )
 from apps.core.services.payload_helpers import (
+    MISSING,
     PayloadValidator,
     map_integrity_error,
 )
@@ -95,6 +96,26 @@ _ORDER_BY_CONTRATTI: frozenset[str] = frozenset(_ORDER_COLS_CONTRATTI)
 
 
 _AMBITI_VALIDI: frozenset[str] = frozenset({"COMMODITY", "COMMERCIO"})
+
+# Lunghezze massime dei tre riferimenti dell'atto (I8/D9), allineate alle colonne
+# di `vendite.contratti`: VARCHAR(15) per CIG e CUP, VARCHAR(100) per la commessa.
+# ⚠️ Sono anche l'ORDINE in cui il mapper li scorre: e' l'ordine del blocco XML
+#    FatturaPA, non l'alfabetico.
+_CODICI_ATTO_MAX_LEN: dict[str, int] = {
+    "codice_cig": 15,
+    "codice_cup": 15,
+    "codice_commessa": 100,
+}
+# ⭐ FONTE UNICA dei tre nomi dentro questo modulo: whitelist di update,
+#   whitelist per stato ATTIVO e mapper li derivano tutti da qui. Scriverli tre
+#   volte a mano significherebbe tre punti da tenere allineati per una lista che
+#   non cambia mai insieme.
+# 📌 L'unico altro posto che li nomina e' `_UPDATE_WRITE_COLS` nel repository, ed
+#   e' voluto che resti esplicito: e' il TERZO anello, e `ContrattiCatenaUpdateTests`
+#   esiste proprio per confrontare i tre anelli fra loro — derivarlo dallo stesso
+#   oggetto renderebbe il confronto vero per costruzione, cioe' spegnerebbe il
+#   guardrail invece di superarlo.
+_CODICI_ATTO: frozenset[str] = frozenset(_CODICI_ATTO_MAX_LEN)
 # Tipi variazione ammessi sulla variazione GLOBALE della testata contratto.
 # Decisione 2026-05-18 (§3-bis-E refactor): solo PERCENTUALE. VALORE_FISSO
 # resta ammesso unicamente per OVERRIDE su singola riga (semantica "prezzo
@@ -166,6 +187,14 @@ _UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "valore_variazione_globale",
     "categoria_cliente_id_snapshot",
     "fatturazione_immediata",
+    # Riferimenti dell'atto da cui nasce il contratto (I8/D9, 2026-08-29).
+    # In fattura elettronica viaggiano nello STESSO blocco
+    # (DatiContratto/DatiOrdineAcquisto): nascono insieme e nominano lo stesso
+    # atto. Prima stavano su `anagrafiche.clienti`, cioe' su una riga PER
+    # FORNITURA — un CIG identifica una GARA, quindi una PA con tre contratti ha
+    # tre CIG: su quella riga ne entrava uno solo, ripetuto su tutte le forniture
+    # dello stesso contratto e incapace di tenerne due sulla stessa.
+    *_CODICI_ATTO,
     "meta",
 })
 
@@ -179,9 +208,18 @@ _UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
 # completamente immutabile. Per cambi sostanziali in stati post-DRAFT
 # serve creare un nuovo contratto (eventualmente con parent_contratto_id) —
 # pattern audit-friendly.
+# ⭐ In ATTIVO entrano anche i tre riferimenti dell'atto (I8/D9, decisione Q1 di
+#   Tid del 2026-08-29). NON sono un cambio sostanziale: non toccano prezzo,
+#   validita' o perimetro, e non producono NESSUN effetto finche' la fattura non
+#   ne fa lo snapshot (I4). E il caso reale e' proprio questo — negli appalti PA
+#   il CIG arriva quando arriva, e puo' arrivare a contratto gia' attivo:
+#   negarlo costringerebbe a creare un contratto nuovo PER UN PEZZO DI CARTA,
+#   che e' il contrario di cio' che quella regola protegge.
+# ⛔ In CESSATO e ANNULLATO restano fuori: li' la regola e' immutabilita' piena e
+#   non c'e' ragione di scalfirla.
 _CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
     "DRAFT": _UPDATE_KEYS_TESTATA,
-    "ATTIVO": frozenset({"valido_al", "meta"}),
+    "ATTIVO": frozenset({"valido_al", "meta"}) | _CODICI_ATTO,
     "CESSATO": frozenset(),
     # ANNULLATO (refactor 2026-05-20): stato terminale "soft-delete", coerente
     # con preventivi (is_abortito=true). Nessun campo modificabile —
@@ -1992,11 +2030,50 @@ class ContrattiService:
             payload, data, "valuta_id", message=_MESSAGE,
         )
         self._apply_fatturazione_immediata(payload, data)
+        # ⛔ I tre riferimenti dell'atto NON si mappano in CREATE, ed e' una
+        #    scelta: la whitelist interna di `vendite.fn_create_contratto`
+        #    (`v_testata_allowed`) non li conosce ancora, quindi li SCARTEREBBE
+        #    IN SILENZIO — il contratto nascerebbe, l'operatore non vedrebbe
+        #    errori e i codici non andrebbero da nessuna parte. E' lo stesso
+        #    difetto gia' costato un giro su `fatturazione_immediata` il
+        #    2026-07-27, documentato in `_CREATE_KEYS_TESTATA`.
+        #    Si aggiungono con la slice S3-b, ad applicazione avvenuta del
+        #    changeSet DB che estende quella whitelist.
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
                 data["meta"] = meta
         return data
+
+    # Scopo: Estrae i tre riferimenti dell'atto (CIG/CUP/commessa) nel data dict.
+    #        Chiave assente -> non si tocca; stringa vuota o null -> NULL
+    #        (`feedback_null_vs_empty`); stringa -> trim + guard di lunghezza.
+    # ⚠️ Il mapper esiste perche' la whitelist DA SOLA NON BASTA: qui si copia
+    #    campo per campo, ed e' il difetto costato un giro su
+    #    `fatturazione_immediata` il 2026-07-27 — chiave whitelisted e mapper non
+    #    aggiornato = valore scartato in silenzio.
+    # ⚠️ Il guard di lunghezza non e' burocrazia: senza, un CIG di 20 caratteri
+    #    arriverebbe come DataError del driver, cioe' come 500 con un messaggio
+    #    che nomina una colonna invece del campo che l'operatore ha compilato.
+    def _apply_codici_atto(
+        self, payload: dict[str, Any], data: dict[str, Any],
+    ) -> None:
+        for key, max_len in _CODICI_ATTO_MAX_LEN.items():
+            value = self._v.extract_optional_string(
+                payload, key, nullable=True, message=_MESSAGE,
+            )
+            if value is MISSING:
+                continue
+            if value is not None:
+                assert isinstance(value, str)
+                ErrorManager.require(
+                    len(value) <= max_len,
+                    code=E_VENDITE_VALIDATION,
+                    message=_MESSAGE,
+                    detail=f"{key} supera la lunghezza massima di {max_len} caratteri.",
+                    context={"field": key, "len": len(value), "max_len": max_len},
+                )
+            data[key] = value
 
     # Scopo: Porta `fatturazione_immediata` dal payload al dict che raggiunge il
     #        DB. Esiste come metodo suo, condiviso da create e update, perche' i
@@ -2076,6 +2153,7 @@ class ContrattiService:
             payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
         )
         self._apply_fatturazione_immediata(payload, data)
+        self._apply_codici_atto(payload, data)
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:

@@ -296,6 +296,10 @@ export const MANAGE_ICONS = {
   CONTATTI: 'pi pi-id-card',
   INDIRIZZI: 'pi pi-map-marker',
   CONTI_BANCARI: 'pi pi-wallet',
+  // Titolo IVA del soggetto (I7/D10): un documento REGISTRATO che sostituisce
+  // l'aliquota ordinaria. L'icona dice «documentato», non «percentuale»: il
+  // punto del modello e' che l'agevolazione passa da una prova, non da un flag.
+  TITOLI_IVA: 'pi pi-verified',
   // Catalogo
   // UOM: icona composta box+cog (definita in main.css `.app-nav-icon-uom`).
   // Differenzia visivamente le unita' di misura operative dall'articolo

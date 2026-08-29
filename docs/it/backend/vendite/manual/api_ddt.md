@@ -74,7 +74,9 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
 - **Colonne lineage in lista** (Fase B): la lista espone anche `fase`
   (proiezione normalizzata dallo stato), `pratica_id`/`pratica_numero`/
   `n_pratiche` (pratica collegata), `frontiera_tipo_id` +
-  `frontiera_tipo_codice` (decodificato dal repo via `config.sorgenti`),
+  `frontiera_tipo_codice_interno` e `frontiera_natura_doc_codice_interno`
+  (dalla vista, non piu' decodificati dal repository: changeSet `20260829-01/02`
+  — ⛔ il nome e' cambiato, e con lui la sorgente),
   `frontiera_codice`/`frontiera_stato_codice_interno`/`frontiera_fase`,
   `n_discendenti_attivi`, `is_transitato` — dalla vista canonica estesa
   (LEFT JOIN `vendite.vw_documento_lineage`). Colonne configurabili

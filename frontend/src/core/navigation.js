@@ -1,7 +1,7 @@
 // Configurazione centralizzata della navigazione per dominio.
 // Sidebar, HomeView e store navigation leggono da qui — un'unica fonte di verita'.
 
-import { READONLY_DOMAINS } from './constants'
+import { MANAGE_ICONS, READONLY_DOMAINS } from './constants'
 
 export const NAV_ICONS = Object.freeze({
   ANAGRAFICHE: 'pi pi-users',
@@ -175,7 +175,10 @@ export const DOMAIN_MENUS = {
     { key: 'soggetti', icon: NAV_ICONS.ANAGRAFICHE, to: '/anagrafiche/soggetti' },
     { key: 'clienti', icon: NAV_ICONS.CLIENTI, to: '/anagrafiche/clienti' },
     { key: 'fornitori', icon: NAV_ICONS.FORNITORI, to: '/anagrafiche/fornitori' },
-    { key: 'indirizzi', icon: NAV_ICONS.MAP_MARKER, to: '/anagrafiche/indirizzi' }
+    { key: 'indirizzi', icon: NAV_ICONS.MAP_MARKER, to: '/anagrafiche/indirizzi' },
+    // Presidio dei titoli IVA sfondati (I7/Q4): l'altra meta' della decisione
+    // del team DB di NON bloccare il superamento sulle forzature.
+    { key: 'titoli-iva-sfondati', icon: MANAGE_ICONS.TITOLI_IVA, to: '/anagrafiche/titoli-iva-sfondati' }
   ],
   'catalogo': [
     { key: 'articoli', icon: NAV_ICONS.CATALOGO, to: '/catalogo/articoli' },

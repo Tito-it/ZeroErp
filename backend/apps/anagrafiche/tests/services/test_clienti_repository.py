@@ -49,14 +49,14 @@ class UpdateClienteAtomicoTests(TestCase):
         """Una sola SELECT su anagrafiche.fn_update_cliente con id + categoria + jsonb."""
         cursor = _mock_cursor(mocked_factory, row=(True, True))
         ClientiRepository().update_cliente_atomico(
-            7, ba_categoria_cliente_id=9, cliente_fields={"iva_id": 5},
+            7, ba_categoria_cliente_id=9, cliente_fields={"modalita_pagamento_id": 5},
         )
         sql = cursor.execute.call_args.args[0]
         self.assertIn("anagrafiche.fn_update_cliente", sql)
         params = cursor.execute.call_args.args[1]
         self.assertEqual(params[0], 7)
         self.assertEqual(params[1], 9)
-        self.assertEqual(_payload_jsonb(cursor), {"iva_id": 5})
+        self.assertEqual(_payload_jsonb(cursor), {"modalita_pagamento_id": 5})
 
     @patch(CURSOR)
     def test_atomico_whitelist_scarta_ignoti(self, mocked_factory):
@@ -64,21 +64,55 @@ class UpdateClienteAtomicoTests(TestCase):
         cursor = _mock_cursor(mocked_factory)
         ClientiRepository().update_cliente_atomico(
             1, ba_categoria_cliente_id=None,
-            cliente_fields={"iva_id": 5, "campo_ignoto": "x", "id": 999},
+            cliente_fields={"modalita_pagamento_id": 5, "campo_ignoto": "x", "id": 999},
         )
-        self.assertEqual(_payload_jsonb(cursor), {"iva_id": 5})
+        self.assertEqual(_payload_jsonb(cursor), {"modalita_pagamento_id": 5})
 
     @patch(CURSOR)
-    def test_atomico_normalizza_empty_nullable(self, mocked_factory):
-        """Stringa vuota su campo nullable (codice_cig) -> None nel jsonb."""
+    def test_atomico_whitelist_scarta_le_sei_chiavi_migrate(self, mocked_factory):
+        """Le sei chiavi di I0/I8 non arrivano piu' alla fn madre.
+
+        ⭐ Il test guarda il lato che i due sopra non guardano: quelle chiavi
+        non sono "ignote" (un typo), sono chiavi che il FE ha spedito per mesi.
+        Se un giorno rientrassero nella whitelist senza che la colonna esista,
+        la fn le scarterebbe in silenzio e il salvataggio sembrerebbe riuscito.
+        Sedi nuove: i due flag su `anagrafiche.soggetti` (D8), i tre codici su
+        `vendite.contratti` (D9), l'IVA da nessuna parte (D7-bis).
+        """
         cursor = _mock_cursor(mocked_factory)
         ClientiRepository().update_cliente_atomico(
             1, ba_categoria_cliente_id=None,
-            cliente_fields={"codice_cig": "   ", "codice_cup": "ABC"},
+            cliente_fields={
+                "iva_id": 5, "cliente_pa": "S", "split_payment": "S",
+                "codice_cig": "A1", "codice_cup": "B2", "codice_commessa": "C3",
+                "modalita_pagamento_id": 5,
+            },
         )
-        payload = _payload_jsonb(cursor)
-        self.assertIsNone(payload["codice_cig"])
-        self.assertEqual(payload["codice_cup"], "ABC")
+        self.assertEqual(_payload_jsonb(cursor), {"modalita_pagamento_id": 5})
+
+    @patch(CURSOR)
+    def test_atomico_normalizza_empty_nullable(self, mocked_factory):
+        """Stringa whitespace -> None nel jsonb; stringa piena invariata.
+
+        ⚠️ Il veicolo era `codice_cig`/`codice_cup`, colonne uscite da
+        `anagrafiche.clienti` con I8. La PROPRIETA' e' la stessa e vale per
+        tutti i campi editabili (`feedback_null_vs_empty`): qui la porta
+        `garanzia_tipo`, che e' l'unico campo stringa rimasto in whitelist —
+        quindi le due meta' stanno in due chiamate invece che in due colonne.
+        """
+        cursor = _mock_cursor(mocked_factory)
+        ClientiRepository().update_cliente_atomico(
+            1, ba_categoria_cliente_id=None,
+            cliente_fields={"garanzia_tipo": "   "},
+        )
+        self.assertIsNone(_payload_jsonb(cursor)["garanzia_tipo"])
+
+        cursor = _mock_cursor(mocked_factory)
+        ClientiRepository().update_cliente_atomico(
+            1, ba_categoria_cliente_id=None,
+            cliente_fields={"garanzia_tipo": "F"},
+        )
+        self.assertEqual(_payload_jsonb(cursor)["garanzia_tipo"], "F")
 
     @patch(CURSOR)
     def test_atomico_normalizza_empty_numerico(self, mocked_factory):

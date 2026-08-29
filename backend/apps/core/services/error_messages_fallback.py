@@ -499,6 +499,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "Ordine senza righe: impossibile confermare.",
     "E_ORDINE_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+    "E_ORDINE_RIGA_IVA_MANCANTE": "Una riga dell'ordine ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_ORDINE_RIGA_NON_TROVATA": "Riga ordine non trovata.",
     "E_ORDINE_TRANSIZIONE_NON_AMMESSA": "Transizione di stato dell'ordine non ammessa dallo stato attuale.",
     "E_ORD_ANNULLA_CON_DDT": "L'ordine ha gia' DDT collegati: la merce e' uscita, per riportarla dentro si registra un reso.",
@@ -579,6 +580,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PREV_REVISIONE_ATTIVA": "Esiste gia' una revisione attiva per questo preventivo.",
     "E_PREV_REVISIONE_BOZZA_ESISTENTE": "Esiste gia' una revisione in BOZZA per questo preventivo. Completa o annulla la BOZZA esistente prima di crearne una nuova.",
     "E_PREV_REVISIONE_STATO_NON_AMMESSO": "Revisione ammessa solo da preventivo EMESSO.",
+    "E_PREV_RIGA_IVA_MANCANTE": "Una riga del preventivo ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_PREV_RIGA_NATURA_IMMUTABILE": "La natura di vendita della riga non e' modificabile: e' ereditata dall'articolo.",
     "E_PREV_RIGA_NOT_FOUND": "Riga preventivo non trovata.",
     "E_PREV_STATO_CORRENTE_NON_TROVATO": "Stato corrente del preventivo non trovato.",
@@ -733,6 +735,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # misura del §10.1: 3 dei suoi punti dicevano 400 dove serve 500. E' un
     # difetto di MONTAGGIO del trigger — se ne accorge chi lo installa, mai
     # l'operatore — quindi il messaggio non gli chiede di correggere niente.
+    "E_TITOLO_IVA_AMBITO_NON_AMMESSO": "Questo titolo IVA vale per tutte le merci: non ammette un elenco di voci. Togli le voci, oppure dichiara il titolo ristretto.",
+    "E_TITOLO_IVA_AMBITO_SOVRAPPOSTO": "Esiste gia' un titolo IVA dello stesso tipo, valido nello stesso periodo, che copre la stessa merce allo stesso livello.",
+    "E_TITOLO_IVA_CONSUMO_FUORI_VALIDITA": "Consumo di plafond chiesto a una data fuori dalla validita' del titolo.",
+    "E_TITOLO_IVA_CONSUMO_NON_INVOCABILE": "Consumo di plafond invocato senza i dati necessari, o su un titolo che non esiste.",
+    "E_TITOLO_IVA_PLAFOND_MANCANTE": "Questo tipo di titolo ha un tetto che si consuma: indica il plafond.",
+    "E_TITOLO_IVA_PLAFOND_NON_AMMESSO": "Questo tipo di titolo non ha un tetto da consumare: il plafond non si indica.",
+    "E_TITOLO_IVA_UTILIZZATO_NEGATIVO": "Il consumo del titolo scenderebbe sotto zero: non e' un valore possibile.",
     "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",

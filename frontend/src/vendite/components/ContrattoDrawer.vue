@@ -118,6 +118,45 @@ const isReadonly = computed(
 )
 provide(READONLY_KEY, isReadonly)
 
+// I tre riferimenti dell'atto (CIG/CUP/commessa, I8/D9) sono l'ECCEZIONE al
+// lock post-DRAFT, per decisione Q1 di Tid (2026-08-29): non toccano prezzo,
+// validita' o perimetro, e non producono nessun effetto finche' la fattura non
+// ne fa lo snapshot (I4). Negli appalti PA il CIG arriva quando arriva, e puo'
+// arrivare a contratto gia' ATTIVO.
+// ⚠️ NON si allarga `isReadonly`: quello e' propagato via provide a TUTTI i
+//    figli e sbloccherebbe righe, utility e pricing. L'eccezione resta una
+//    condizione a se', letta solo dai tre campi, dal footer e da `canSave`.
+// ⛔ In CESSATO/ANNULLATO restano bloccati: li' la regola e' immutabilita'
+//    piena. E i permessi d'area vincono su tutto.
+// 📌 La lista di stati specchia `_CONTRATTO_PATCH_ALLOWED_BY_STATE` del BE, che
+//    resta l'autorita': qui si evita solo di proporre un campo che il BE
+//    rifiuterebbe. In CREATE non compaiono ancora — la whitelist della fn madre
+//    `vendite.fn_create_contratto` non li conosce, e li scarterebbe in silenzio
+//    (slice S3-b del piano, gated sul DB).
+// Specchio di `_CONTRATTO_PATCH_ALLOWED_BY_STATE` del BE, che resta l'autorita':
+// qui si evita solo di proporre un campo che il BE rifiuterebbe. Costante con un
+// nome perche' e' l'UNICO punto da riallineare se quella whitelist cambia.
+const STATI_CODICI_ATTO_EDITABILI = ['DRAFT', 'ATTIVO']
+
+// Lunghezze massime, speculari alle colonne di `vendite.contratti`
+// (VARCHAR(15)/VARCHAR(15)/VARCHAR(100)) e al guard `_CODICI_ATTO_MAX_LEN` del
+// BE, che resta la difesa vera: qui il `maxlength` serve solo a non far digitare
+// all'operatore caratteri che verrebbero poi respinti.
+const CODICI_ATTO_MAX_LEN = { cig: 15, cup: 15, commessa: 100 }
+
+const codiciAttoEditabili = computed(() => {
+  if (props.readonly || parentReadonly.value) return false
+  if (!isEdit.value) return false
+  return STATI_CODICI_ATTO_EDITABILI.includes(detail.value?.stato_codice_interno)
+})
+
+// Il footer Salva compare in DRAFT (form pieno) oppure quando restano
+// modificabili i soli tre riferimenti dell'atto.
+const mostraFooterSalva = computed(
+  () => (!isReadonly.value && (!detail.value || detail.value.stato_codice_interno === 'DRAFT'))
+    || codiciAttoEditabili.value,
+)
+
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
 // (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -194,6 +233,11 @@ function defaultForm() {
     parent_contratto_id: null,
     // Categoria cliente snapshot
     categoria_cliente_id_snapshot: null,
+    // Riferimenti dell'atto (I8/D9). In CREATE non sono ancora esposti: la fn
+    // madre DB non li whitelista (slice S3-b).
+    codice_cig: null,
+    codice_cup: null,
+    codice_commessa: null,
     // Corsia di instradamento: default differita (DEFAULT false a DB).
     fatturazione_immediata: false,
     // Pricing — refactor modalita 2026-05-15: niente piu' SelectButton A/B/C.
@@ -237,6 +281,9 @@ function populateFromDetail(d) {
     data: d.data,
     parent_contratto_id: d.parent_contratto_id,
     categoria_cliente_id_snapshot: d.categoria_cliente_id_snapshot || null,
+    codice_cig: d.codice_cig || null,
+    codice_cup: d.codice_cup || null,
+    codice_commessa: d.codice_commessa || null,
     fatturazione_immediata: d.fatturazione_immediata ?? false,
     listino_id: d.listino_id,
     tipo_variazione_globale: d.tipo_variazione_globale,
@@ -379,7 +426,9 @@ useBaFormDefaults({ form, isEdit, fetchDefaults: getContrattoFormDefaults })
 // contratto con listino senza variazione e' valido (forma "con_listino"
 // listino tal quale), contratto con listino + variazione e' valido.
 const canSave = computed(() => {
-  if (isReadonly.value) return false
+  // I tre riferimenti dell'atto restano salvabili anche a contratto ATTIVO
+  // (Q1): il lock post-DRAFT non li riguarda.
+  if (isReadonly.value && !codiciAttoEditabili.value) return false
   const f = form.value
   // Coppia variazione coerente: tipo presente <=> valore presente. Applicabile
   // sia in create che in edit — il BE rifiuta la coppia incoerente con
@@ -407,17 +456,30 @@ function buildPayload() {
   // BE accetta nello stato corrente. Il BE applica una guard speculare
   // (E_CONTRATTO_NON_MODIFICABILE) — rispettiamo la stessa whitelist qui
   // per evitare round-trip e fornire UX coerente.
-  // - DRAFT: tutti i campi
-  // - ATTIVO: solo valido_al + meta (programma cessazione + note)
-  // - CESSATO: nessuno (Salva non dovrebbe nemmeno essere cliccabile)
+  // - DRAFT:    tutti i campi
+  // - ATTIVO:   valido_al + meta (via dialog "Cessa contratto") e i TRE
+  //             RIFERIMENTI DELL'ATTO (I8/D9, decisione Q1 del 2026-08-29),
+  //             che il form spedisce da qui
+  // - CESSATO / ANNULLATO: nessuno
+  //
+  // ⛔ ATTENZIONE, ed e' la trappola di questa funzione: `buildPayload()` NON
+  //    serve solo la PATCH — `handleSave` lo SPREADA dentro il payload di
+  //    CREATE. Quindi ogni chiave aggiunta qui finisce anche nella create, e la
+  //    create BE (`validate_allowed_keys` su `_CREATE_KEYS_TESTATA`) RIFIUTA
+  //    l'intero payload se contiene una chiave che non ammette — non la ignora.
+  //    Una chiave accettata in PATCH ma non in CREATE va quindi cancellata qui
+  //    sotto, o rompe la creazione contratto.
   const stato = isEdit.value ? (detail.value?.stato_codice_interno || null) : 'DRAFT'
   const isDraft = stato === 'DRAFT'
 
   if (!isDraft) {
-    // Stati post-DRAFT: il pulsante Salva e' disabilitato (canSave=false
-    // perche' isReadonly=true). Questo branch non dovrebbe mai essere
-    // raggiunto in pratica; ritorniamo payload vuoto per safety. Le
-    // operazioni post-DRAFT sono solo via cambio stato (dialog Cessa).
+    // Post-DRAFT il form e' bloccato tranne i tre riferimenti dell'atto: si
+    // spedisce SOLO quello che il BE accetta nello stato corrente. Mandare di
+    // piu' significherebbe farsi rifiutare l'intera PATCH per campi che
+    // l'operatore non ha nemmeno potuto toccare.
+    if (codiciAttoEditabili.value) return buildCodiciAttoPayload(f)
+    // CESSATO/ANNULLATO: il Salva non e' nemmeno visibile. Payload vuoto per
+    // sicurezza — le operazioni li' passano solo dal cambio stato.
     return {}
   }
 
@@ -445,7 +507,23 @@ function buildPayload() {
     && f.valore_variazione_globale !== '')
     ? String(f.valore_variazione_globale)
     : null
+  // ⛔ Solo in EDIT: in CREATE queste tre chiavi arriverebbero a un endpoint che
+  //    NON le ammette (`_CREATE_KEYS_TESTATA`) e che rifiuta l'intero payload —
+  //    la creazione contratto smetterebbe di funzionare del tutto. Cadono con la
+  //    slice S3-b, quando la whitelist della fn madre DB le accettera'.
+  if (isEdit.value) Object.assign(payload, buildCodiciAttoPayload(f))
   return payload
+}
+
+// Scopo: i tre riferimenti dell'atto (I8/D9), stessa forma in DRAFT e in ATTIVO.
+// ⚠️ Stringa vuota -> null e non '': la colonna e' nullable e un '' sarebbe un
+//    valore che SEMBRA un codice (`feedback_null_vs_empty`).
+function buildCodiciAttoPayload(f) {
+  return {
+    codice_cig: f.codice_cig?.trim() || null,
+    codice_cup: f.codice_cup?.trim() || null,
+    codice_commessa: f.codice_commessa?.trim() || null,
+  }
 }
 
 async function handleSave() {
@@ -865,6 +943,42 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
         <div class="form-field"></div>
       </div>
 
+      <!-- === Riferimenti dell'atto (CIG / CUP / commessa) ===
+           I8/D9: prima stavano su `anagrafiche.clienti`, cioe' su una riga PER
+           FORNITURA, mentre nominano un CONTRATTO — una PA con tre contratti ha
+           tre CIG. In fattura elettronica viaggiano nello stesso blocco
+           (DatiContratto/DatiOrdineAcquisto), quindi stanno insieme.
+           ⭐ Visibili solo in EDIT: in CREATE la whitelist della fn madre DB non
+           li conosce ancora e li scarterebbe in silenzio (slice S3-b).
+           ⭐ Editabili anche a contratto ATTIVO (Q1): il CIG di una gara arriva
+           quando arriva. -->
+      <template v-if="isEdit">
+        <h4 class="mt-3">{{ t('vendite.contratti.section_riferimenti_atto') }}</h4>
+        <div class="form-grid-3col">
+          <div class="form-field">
+            <label>{{ t('vendite.contratti.field_codice_cig') }}</label>
+            <InputText v-model="form.codice_cig" class="w-full"
+              :maxlength="CODICI_ATTO_MAX_LEN.cig"
+              :disabled="!codiciAttoEditabili"
+              :invalid="campiErrati.includes('codice_cig')" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('vendite.contratti.field_codice_cup') }}</label>
+            <InputText v-model="form.codice_cup" class="w-full"
+              :maxlength="CODICI_ATTO_MAX_LEN.cup"
+              :disabled="!codiciAttoEditabili"
+              :invalid="campiErrati.includes('codice_cup')" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('vendite.contratti.field_codice_commessa') }}</label>
+            <InputText v-model="form.codice_commessa" class="w-full"
+              :maxlength="CODICI_ATTO_MAX_LEN.commessa"
+              :disabled="!codiciAttoEditabili"
+              :invalid="campiErrati.includes('codice_commessa')" />
+          </div>
+        </div>
+      </template>
+
       <!-- === Validità === -->
       <h4 class="mt-3">{{ t('vendite.contratti.section_validita') }}</h4>
       <div class="form-grid-3col">
@@ -1035,7 +1149,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
            Quindi UX: mostrare solo Chiudi sgombera il footer da azioni
            ingannevoli ("Salva" semanticamente non porta a nessuna modifica
            visibile per l'operatore in ATTIVO). -->
-      <FormFooter v-if="!isReadonly && (!detail || detail.stato_codice_interno === 'DRAFT')"
+      <FormFooter v-if="mostraFooterSalva"
         :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="onClose" />
       <!-- Fallback close-only: stati post-DRAFT o LETTURA. Footer dedicato

@@ -246,6 +246,12 @@ const router = createRouter({
           component: () => import('../anagrafiche/views/IndirizziView.vue'),
           meta: { domain: 'anagrafiche', menuKey: 'indirizzi' }
         },
+        {
+          path: 'anagrafiche/titoli-iva-sfondati',
+          name: 'anagrafiche-titoli-iva-sfondati',
+          component: () => import('../anagrafiche/views/TitoliIvaSfondatiView.vue'),
+          meta: { domain: 'anagrafiche', menuKey: 'titoli-iva-sfondati' }
+        },
 
         // --- Config ---
         {

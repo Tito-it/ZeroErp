@@ -61,12 +61,30 @@ chiamante, il BE non passa `auth_user_id`). Piano operativo:
 
 ## Output
 
+> ⚠️ **BREAKING, 2026-08-29.** Le chiavi che portano un `config.sorgenti.codice_interno`
+> o una `config.nature_doc_fiscale.codice_interno` hanno preso il suffisso
+> **`_interno`**: `tipo_codice` → `tipo_codice_interno`, `natura_doc_codice` →
+> `natura_doc_codice_interno`, e i gemelli `from_*`/`to_*` delle tappe.
+>
+> ⛔ **Perché non era cosmesi.** Dopo il changeSet `20260829-02` lo **stesso
+> valore** aveva due nomi a seconda dell'endpoint: le sette liste documento lo
+> servivano fedele (`frontiera_tipo_codice_interno`), questo pannello lo leggeva
+> dalla stessa colonna e lo **ri-aliasava** al nome vecchio in Python. E il
+> guardrail CI del naming (`scripts/sql/check_naming_stato_codice.sql`) scansiona
+> **solo** viste e funzioni del database: un alias scritto in Python è invisibile,
+> quindi quel disallineamento non avrebbe fatto rosso mai.
+> ⭐ Nello stesso payload lo **stato** diceva già `stato_codice_interno`: non c'era
+> una regola diversa per il tipo, c'era una regola applicata a metà.
+>
+> ⚠️ Il **nome della rotta non cambia** e non c'è nessun parametro d'ingresso
+> rinominato: qui si tocca solo ciò che il backend **espone**.
+
 `200` — envelope standard, `data`:
 
-- `nodo`: `{tipo_codice, codice, stato_codice_interno, stato_descrizione,
+- `nodo`: `{tipo_codice_interno, codice, stato_codice_interno, stato_descrizione,
   fase, is_abortito, is_transitato, n_discendenti_diretti,
-  n_discendenti_attivi, n_sorgenti, natura_doc_codice, root_codice}`
-  — ⭐ `natura_doc_codice` (`FATTURA`/`NOTA_CREDITO`/`NOTA_DEBITO`, `null` sui
+  n_discendenti_attivi, n_sorgenti, natura_doc_codice_interno, root_codice}`
+  — ⭐ `natura_doc_codice_interno` (`FATTURA`/`NOTA_CREDITO`/`NOTA_DEBITO`, `null` sui
   documenti non fiscali) è ciò che distingue una nota di credito da una
   fattura: **hanno lo stesso tipo sorgente**, e senza la natura una commessa
   che ha generato entrambe mostra due tappe identiche. `root_codice` è il
@@ -74,21 +92,21 @@ chiamante, il BE non passa `auth_user_id`). Piano operativo:
   frontiera è sempre sé stessa.
 - `pratica`: `{pratica_id, pratica_numero, n_pratiche}` oppure `null`
   (conteggio difensivo Q5: il DB non garantisce 1:1)
-- `frontiera`: `{tipo_codice, natura_doc_codice, codice,
+- `frontiera`: `{tipo_codice_interno, natura_doc_codice_interno, codice,
   stato_codice_interno, fase, n_discendenti_attivi}` oppure `null` (documento
   non transitato; la frontiera "= nodo stesso" della summary è normalizzata a
   `null`). ⚠️ **La frontiera può essere una nota di credito** — l'arco G dalla
   commessa non è un ramo di ritorno, e al 2026-08-21 la NC è già la frontiera
-  dell'ordine 240 — quindi porta la sua `natura_doc_codice` (letta dal nodo
+  dell'ordine 240 — quindi porta la sua `natura_doc_codice_interno` (letta dal nodo
   frontiera via JOIN a `vw_documento_lineage_nodi`); e può avere `codice=null`
   (emessa ma non ancora numerata): il FE mostra «(non ancora numerato)», mai
   il vuoto.
 - `avanti[]` / `indietro[]`: archi del traversal, ordinati per `ordine`:
   `{livello, ordine, arco (A..H|R|N), ruolo (ROOT/COLLEGATO|null),
-  from_{tipo_id, tipo_codice, uid, codice, stato_codice_interno, fase,
-  doc_id}, to_{tipo_id, tipo_codice, uid, codice, stato_codice_interno,
-  fase, is_abortito, doc_id}, is_ramo_inverso, from_natura_doc_codice,
-  to_natura_doc_codice}` — il lato `from` è decorato
+  from_{tipo_id, tipo_codice_interno, uid, codice, stato_codice_interno, fase,
+  doc_id}, to_{tipo_id, tipo_codice_interno, uid, codice, stato_codice_interno,
+  fase, is_abortito, doc_id}, is_ramo_inverso, from_natura_doc_codice_interno,
+  to_natura_doc_codice_interno}` — il lato `from` è decorato
   con stato/fase (JOIN a `vw_documento_lineage_nodi`) perché in direzione
   `indietro` la tappa da mostrare è il nodo FROM.
 - `from_doc_id` / `to_doc_id` (bigint | null): **id numerico di dominio** del
@@ -107,7 +125,7 @@ chiamante, il BE non passa `auth_user_id`). Piano operativo:
 {
   "data": {
     "nodo": {
-      "tipo_codice": "PREVENTIVO",
+      "tipo_codice_interno": "PREVENTIVO",
       "codice": "PRV0000185",
       "stato_codice_interno": "EVASO",
       "stato_descrizione": "Evaso",
@@ -120,7 +138,7 @@ chiamante, il BE non passa `auth_user_id`). Piano operativo:
     },
     "pratica": { "pratica_id": 895, "pratica_numero": "PRA-0000818", "n_pratiche": 1 },
     "frontiera": {
-      "tipo_codice": "DDT_VENDITA",
+      "tipo_codice_interno": "DDT_VENDITA",
       "codice": "DDT0000031",
       "stato_codice_interno": "SPEDITO",
       "fase": "IN_CORSO",
@@ -129,11 +147,11 @@ chiamante, il BE non passa `auth_user_id`). Piano operativo:
     "avanti": [
       {
         "livello": 1, "ordine": 1, "arco": "A", "ruolo": null,
-        "from_tipo_id": 2, "from_tipo_codice": "PREVENTIVO",
+        "from_tipo_id": 2, "from_tipo_codice_interno": "PREVENTIVO",
         "from_uid": "…uuid…", "from_codice": "PRV0000185",
         "from_stato_codice_interno": "EVASO", "from_fase": "CHIUSO",
         "from_doc_id": 524,
-        "to_tipo_id": 6, "to_tipo_codice": "ORDINE_VENDITA",
+        "to_tipo_id": 6, "to_tipo_codice_interno": "ORDINE_VENDITA",
         "to_uid": "174", "to_codice": "ORD0000163",
         "to_stato_codice_interno": "EVASO", "to_fase": "CHIUSO",
         "to_is_abortito": false, "to_doc_id": 174,
@@ -141,9 +159,9 @@ chiamante, il BE non passa `auth_user_id`). Piano operativo:
       },
       {
         "livello": 2, "ordine": 2, "arco": "H", "ruolo": null,
-        "from_tipo_codice": "ORDINE_VENDITA", "from_codice": "ORD0000163",
+        "from_tipo_codice_interno": "ORDINE_VENDITA", "from_codice": "ORD0000163",
         "from_doc_id": 174,
-        "to_tipo_codice": "DDT_VENDITA", "to_codice": "DDT0000031",
+        "to_tipo_codice_interno": "DDT_VENDITA", "to_codice": "DDT0000031",
         "to_stato_codice_interno": "SPEDITO", "to_fase": "IN_CORSO",
         "to_doc_id": 55, "is_ramo_inverso": false
       }

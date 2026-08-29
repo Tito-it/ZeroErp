@@ -238,6 +238,63 @@ class TestSoggettiUpdate(TestCase):
             SoggettiService().update_soggetto(FAKE_UUID, {"cognome": "X"})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
+    @patch(SOGG_REPO)
+    def test_update_soggetto_flag_fiscali_ok(self, mock_repo):
+        """I0/D8: `split_payment` e `cliente_pa` arrivano al repository.
+
+        ⭐ La sede e' il SOGGETTO e non il ruolo: un ente E' o NON E' una
+        Pubblica Amministrazione, e non lo e' per il gas e non per l'acqua.
+        Prima stavano su `anagrafiche.clienti`, che e' una riga per fornitura.
+        """
+        mock_repo.return_value.update_soggetto.return_value = True
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().update_soggetto(
+            FAKE_UUID, {"split_payment": "S", "cliente_pa": "S"},
+        )
+        self.assertTrue(result["updated"])
+        payload = mock_repo.return_value.update_soggetto.call_args.args[1]
+        self.assertEqual(payload["split_payment"], "S")
+        self.assertEqual(payload["cliente_pa"], "S")
+
+    @patch(SOGG_REPO)
+    def test_update_soggetto_flag_fiscali_normalizza(self, mock_repo):
+        """Minuscole e spazi sono normalizzati prima dell'UPDATE.
+
+        ⚠️ La colonna e' `character(1)` con CHECK ('S','N'): senza normalizzare,
+        una 's' finirebbe a DB come violazione di vincolo invece che come
+        valore valido.
+        """
+        mock_repo.return_value.update_soggetto.return_value = True
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        originale = {"split_payment": " s "}
+        SoggettiService().update_soggetto(FAKE_UUID, originale)
+        payload = mock_repo.return_value.update_soggetto.call_args.args[1]
+        self.assertEqual(payload["split_payment"], "S")
+        # ⭐ Il payload del chiamante NON viene mutato: qui arriva `request.data`
+        #   della view, e normalizzarlo sul posto sarebbe un effetto collaterale
+        #   che il nome della funzione non annuncia. Su un `QueryDict`
+        #   immutabile l'assegnamento avrebbe anche sollevato.
+        self.assertEqual(originale, {"split_payment": " s "})
+
+    @patch(SOGG_REPO)
+    def test_update_soggetto_flag_fiscali_valore_ignoto(self, mock_repo):
+        """Un valore fuori da ('S','N') e' respinto con la SUA classe.
+
+        ⛔ Il guard non e' ridondante rispetto al CHECK a DB, ed e' il motivo per
+        cui esiste: `update_with_dedup` traduce QUALUNQUE IntegrityError nel
+        messaggio di duplicato, quindi senza guard l'operatore leggerebbe
+        «Codice fiscale o partita IVA duplicata» per un campo che non ha
+        toccato — un messaggio che afferma il falso.
+        ⭐ E il valore sbagliato non e' innocuo: 'Y' si comporterebbe come «non
+        applicare lo split» al primo `= 'S'`, cioe' un errore fiscale silenzioso
+        nella direzione peggiore.
+        """
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().update_soggetto(FAKE_UUID, {"split_payment": "Y"})
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.update_soggetto.assert_not_called()
+
 
 class TestSoggettiContatti(TestCase):
     """Test contatti soggetto."""

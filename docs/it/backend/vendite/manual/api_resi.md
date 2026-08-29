@@ -171,7 +171,13 @@ credito» promette un documento che poi non si trova.
 - **Passaggi** `GET /api/v1/vendite/resi/<id>/passaggi/` — genealogia del
   reso; catena significativa = **Origine** (reso ← DDT ← ordine ← …, arco R
   ramo inverso). Contratto: [api_lineage_passaggi.md](api_lineage_passaggi.md).
-  Nessuna colonna lineage sulla lista resi (fuori perimetro Fase B).
+  ⛔ **Superato il 2026-08-25**: la riga diceva «nessuna colonna lineage sulla
+  lista resi (fuori perimetro Fase B)», ed e' falsa da quando `vw_resi_lista` e'
+  diventata la **sesta sorella**. La lista porta `pratica_numero`, `fase` e le
+  colonne di frontiera, e la cella «Transito» di un reso e' la **nota di
+  credito** che lo accredita (arco `S`). ⚠️ Dal `20260829-01/02` i nomi sono
+  `frontiera_tipo_codice_interno` e `frontiera_natura_doc_codice_interno`, e
+  arrivano **dalla vista**: il repository non decodifica piu' niente.
 
 ## Codici errore principali
 

@@ -1637,12 +1637,12 @@ def get_documento_passaggi(
     )
     if nodo["is_transitato"] and nodo["frontiera_tipo_id"] is not None and not is_self:
         frontiera = {
-            "tipo_codice": nodo["frontiera_tipo_codice"],
+            "tipo_codice_interno": nodo["frontiera_tipo_codice_interno"],
             # ⚠️ La frontiera puo' essere una nota di credito (arco G dalla
             # commessa): senza la natura il FE la etichetterebbe «Fattura».
             # E' l'invariante che il pgTAP del DB ha corretto (§44.5): «una NC
             # non e' mai frontiera di un altro nodo» e' FALSO.
-            "natura_doc_codice": nodo["frontiera_natura_doc_codice"],
+            "natura_doc_codice_interno": nodo["frontiera_natura_doc_codice_interno"],
             "codice": nodo["frontiera_codice"],
             "stato_codice_interno": nodo["frontiera_stato_codice_interno"],
             "fase": nodo["frontiera_fase"],
@@ -1658,7 +1658,7 @@ def get_documento_passaggi(
 
     return {
         "nodo": {
-            "tipo_codice": nodo["tipo_codice"],
+            "tipo_codice_interno": nodo["tipo_codice_interno"],
             "codice": nodo["codice"],
             "stato_codice_interno": nodo["stato_codice_interno"],
             "stato_descrizione": nodo["stato_descrizione"],
@@ -1671,7 +1671,7 @@ def get_documento_passaggi(
             # La natura distingue la nota di credito dalla fattura: sono lo
             # stesso tipo documento e, senza, il pannello scrive due volte
             # «Fattura · EMESSA» per due documenti diversi.
-            "natura_doc_codice": nodo["natura_doc_codice"],
+            "natura_doc_codice_interno": nodo["natura_doc_codice_interno"],
             # ⭐ Il codice della radice: per una fattura e' l'informazione che
             # conta davvero, perche' la frontiera indica sempre se stessa (nodo
             # terminale del grafo forward). Dice «da dove viene».

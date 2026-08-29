@@ -17,7 +17,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
 import { lookupProvince } from '../api/anagrafiche'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { toDateString } from '../../core/utils/date'
 import SoggettoForm from '../../core/components/SoggettoForm.vue'
@@ -29,7 +29,9 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
 import Drawer from 'primevue/drawer'
+import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
@@ -43,6 +45,15 @@ const soggetto = useSoggettoForm()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+
+// Opzioni S/N dei flag di regime fiscale (I0/D8, 2026-08-29).
+// ⭐ Spostate qui da `ClienteDrawer.vue` insieme ai due campi: sono la stessa
+//   coppia di sempre, non una seconda occorrenza — il consumatore precedente
+//   e' morto nello stesso passo (regola del 2 non attivata).
+const paOptions = computed(() => [
+  { value: 'N', label: t('common.no') },
+  { value: 'S', label: t('common.yes') },
+])
 
 // Lookup forme giuridiche (ricaricato al cambio tipo) — passato a useDatiSocietariForm
 const formeGiuridicheLookup = ref([])
@@ -69,6 +80,8 @@ const indirizziRiepilogo = ref([])
 const contattiDrawerVisible = ref(false)
 const contattiRiepilogo = ref([])
 const contiBancariDrawerVisible = ref(false)
+const titoliIvaDrawerVisible = ref(false)
+const titoliIvaRiepilogo = ref([])
 const contiBancariRiepilogo = ref([])
 
 const props = defineProps({
@@ -170,6 +183,17 @@ function populateFromDetail(data) {
   soggetto.form.sesso = data.sesso || 'M'
   soggetto.form.data_nascita = parseDate(data.data_nascita)
   soggetto.form.comune_nascita_id = data.comune_nascita_id || null
+  // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
+  //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
+  // ⚠️ `?? null` e NON `|| 'N'`: se la risposta non porta il flag, il form deve
+  //    dire «non lo so», non «no». Con il default 'N' il salvataggio sotto
+  //    SPEGNEREBBE uno split payment attivo — un errore fiscale silenzioso,
+  //    nella direzione peggiore (la stessa che il travaso a DB ha risolto con
+  //    `bool_or`, facendo vincere 'S').
+  // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
+  //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
+  soggetto.form.split_payment = data.split_payment?.trim() ?? null
+  soggetto.form.cliente_pa = data.cliente_pa?.trim() ?? null
   // Oggetto completo per restore ComuneAutocomplete
   comuneNascitaItem.value = data.comune_nascita_id
     ? { id: data.comune_nascita_id, descrizione: data.comune_nascita_descrizione || '', provincia_sigla: data.comune_nascita_provincia_sigla || '' }
@@ -186,6 +210,7 @@ function populateFromDetail(data) {
   // []), distingue dal sentinel null usato in create mode.
   tipiModificabiliIds.value = data.tipi_modificabili_ids ?? null
   nonEditableFields.value = data.non_editable_fields ?? []
+  titoliIvaRiepilogo.value = data.titoli_iva || []
   // Indirizzi, contatti e conti bancari riepilogo
   indirizziRiepilogo.value = data.indirizzi || []
   contattiRiepilogo.value = data.contatti || []
@@ -207,6 +232,16 @@ async function onIndirizziSaved() {
   try {
     const data = await store.fetchDetail(props.itemId)
     indirizziRiepilogo.value = data.indirizzi || []
+  } catch { /* silent */ }
+}
+
+// ⭐ I titoli IVA arrivano gia' dentro il dettaglio del soggetto (come conti e
+//   contatti): il riepilogo non costa un round-trip in piu'.
+async function onTitoliIvaSaved() {
+  if (!props.itemId) return
+  try {
+    const data = await store.fetchDetail(props.itemId)
+    titoliIvaRiepilogo.value = data.titoli_iva || []
   } catch { /* silent */ }
 }
 
@@ -286,6 +321,14 @@ async function handleSave() {
     }
     payload.codice_fiscale = f.codice_fiscale?.trim() || null
     payload.partita_iva = f.partita_iva?.trim() || null
+    // Regime fiscale (I0/D8). Solo in EDIT: alla creazione il DB applica il
+    // default 'N', che e' la direzione sicura — un soggetto di cui nessuno ha
+    // detto nulla non e' in scissione dei pagamenti.
+    // ⛔ Si spediscono SOLO se valorizzati: un flag che il dettaglio non ha
+    //    portato resta `null`, e mandarlo scriverebbe un valore che nessuno ha
+    //    letto ne' scelto. Chiave assente = colonna non toccata.
+    if (f.split_payment) payload.split_payment = f.split_payment
+    if (f.cliente_pa) payload.cliente_pa = f.cliente_pa
 
     const result = await execute(
       () => store.update(props.itemId, payload),
@@ -452,6 +495,32 @@ async function handleSave() {
         />
       </template>
 
+      <!-- Sezione: Dati fiscali (edit mode) — regime della controparte.
+           I0/D8: i due flag sono saliti da `anagrafiche.clienti`, dove stavano
+           su una riga PER FORNITURA e ammettevano valori opposti per la stessa
+           partita IVA. Stanno accanto a CF/P.IVA perche' e' da li' che
+           discendono. ⚠️ NON sono un codice IVA e non entrano nel risolutore
+           (D4): non cambiano l'aliquota, cambiano CHI VERSA l'imposta. -->
+      <template v-if="isEdit">
+        <div class="app-drawer-section">
+          <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
+            <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
+              option-label="label" option-value="value" class="w-full"
+              :disabled="isReadonly" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
+            <Select v-model="soggetto.form.split_payment" :options="paOptions"
+              option-label="label" option-value="value" class="w-full"
+              :disabled="isReadonly" />
+          </div>
+        </div>
+      </template>
+
       <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
@@ -505,6 +574,39 @@ async function handleSave() {
         </div>
       </template>
 
+      <!-- Sezione: Titoli IVA (edit mode) — I7/D10.
+           ⭐ E' la sede che realizza D7: l'influenza del soggetto sull'IVA passa
+           SEMPRE da un titolo registrato, datato e con una prova documentale —
+           mai da una colonna di default appesa all'anagrafica. E' la ragione per
+           cui `clienti.iva_id` e' stata tolta e non sostituita. -->
+      <template v-if="isEdit">
+        <div class="app-drawer-section">
+          <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
+        </div>
+        <div class="riepilogo-section">
+          <div v-if="titoliIvaRiepilogo.length > 0" class="riepilogo-list">
+            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="riepilogo-item">
+              <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
+              <span class="riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
+              <span v-if="ti.residuo != null" class="riepilogo-detail">
+                {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
+              </span>
+            </div>
+          </div>
+          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+            {{ t('anagrafiche.titoli_iva.lista_vuota') }}
+          </div>
+          <Button
+            :label="t('anagrafiche.titoli_iva.gestisci_titoli')"
+            :icon="MANAGE_ICONS.TITOLI_IVA"
+            text
+            size="small"
+            class="app-action-btn app-escape mt-025"
+            @click="titoliIvaDrawerVisible = true"
+          />
+        </div>
+      </template>
+
       <!-- Sezione: Ruoli (solo edit mode, readonly) -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
@@ -543,6 +645,15 @@ async function handleSave() {
     @update:visible="v => contattiDrawerVisible = v"
     :soggetto-id="props.itemId"
     @saved="onContattiSaved"
+  />
+
+  <!-- Drawer titoli IVA soggetto (edit mode) -->
+  <TitoliIvaSoggettoDrawer
+    :visible="titoliIvaDrawerVisible"
+    @update:visible="v => titoliIvaDrawerVisible = v"
+    :soggetto-id="props.itemId"
+    :soggetto-nome="_buildNominativo()"
+    @saved="onTitoliIvaSaved"
   />
 
   <!-- Drawer conti bancari soggetto (edit mode) -->

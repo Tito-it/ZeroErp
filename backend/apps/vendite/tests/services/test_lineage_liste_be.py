@@ -52,6 +52,13 @@ from unittest import TestCase
 #    l'ok, e questo commento e' la dichiarazione.
 from apps.core.tests.test_liste_configurabili_seed import _repo_root, _seed, _senza_commenti
 
+# ⭐ E lo spogliatore di commenti per il sorgente PYTHON vive dove sta il suo
+#    presidio: il gemello Python del guardrail di naming, in `apps/core`. Era
+#    nato qui in copia locale il 2026-08-29 ed e' durato un'ora — la terza
+#    occorrenza della stessa esigenza («togli i commenti prima di cercare») ha
+#    trovato una sede vera invece di diventare la terza copia.
+from apps.core.tests.test_naming_codice_interno_python import _sorgente_senza_commenti
+
 from apps.vendite.db import (
     contratti_repository,
     ddt_repository,
@@ -61,25 +68,6 @@ from apps.vendite.db import (
     preventivi_repository,
     resi_repository,
 )
-
-# Scopo: sorgente Python (o SQL dentro le sue stringhe) ripulito dai COMMENTI.
-# ⛔ Serve, e non e' prudenza: un presidio che cerca una STRINGA nel sorgente si
-#    accende sulla PROSA che spiega il difetto. E' successo davvero in questo
-#    repo il 2026-08-26, su `test_liste_configurabili_seed`: un commento che
-#    citava `#cell-azioni` per spiegare il difetto ha fatto diventare rosso il
-#    test che quel difetto presidia. Qui il rischio e' identico e piu' vicino:
-#    i repository di lista hanno, in commento, la STORIA del join rimosso.
-# ⚠️ Due forme, perche' in questi file convivono: `#` (Python) e `--` (SQL,
-#    dentro le stringhe della query). Entrambe solo a inizio riga, che e' come
-#    sono scritte qui; un `--` a fine riga di SQL resta, ed e' un limite noto.
-# ⭐ TERZA occorrenza di «togli i commenti prima di cercare»: le altre due sono
-#    `_senza_commenti` (vue/js) e il guard gemello `check-liste-configurabili.mjs`.
-#    La sede giusta e' un helper di test condiviso — da estrarre, non da copiare
-#    una quarta volta.
-def _sorgente_senza_commenti(testo: str) -> str:
-    senza_py = re.sub(r"^[ \t]*#.*$", "", testo, flags=re.M)
-    return re.sub(r"^[ \t]*--.*$", "", senza_py, flags=re.M)
-
 
 # Le 7 whitelist ORDER BY delle liste documento (chiave FE campo_sorgente ->
 # colonna SQL sull'alias `v` della vista canonica), accanto al modulo del
