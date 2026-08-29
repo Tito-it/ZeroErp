@@ -31,7 +31,7 @@ import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useEtichettePagamenti } from '../etichette'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 import { useRateFuoriCapienzaStore } from '../stores/rateFuoriCapienza'
 
 const emit = defineEmits(['row-click'])
@@ -126,11 +126,11 @@ onMounted(() => store.fetchList())
           <Tag
             v-if="Number(data.residuo) < 0"
             :value="t('pagamenti.rate_fuori_capienza.di_troppo', {
-              importo: euro(Math.abs(Number(data.residuo))),
+              importo: formatCurrency(Math.abs(Number(data.residuo))),
             })"
             severity="warn"
           />
-          <span v-else>{{ euro(data.residuo) }}</span>
+          <span v-else>{{ formatCurrency(data.residuo) }}</span>
         </template>
 
         <template #empty>

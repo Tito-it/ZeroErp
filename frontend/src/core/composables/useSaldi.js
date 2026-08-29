@@ -23,14 +23,18 @@
 //
 //        ⭐ NASCE CON TRE LIVELLI IN TESTA — documento, rata, cliente — anche se
 //        il terzo si accende dopo: e' sviluppo concentrico, non YAGNI. Il
-//        backend ha gia' la sua sede vuota per il cliente; quando DB-10 atterra
-//        si accende **qui e li'**, e nessun'altra sede cambia.
+//        backend ha gia' la sua sede vuota per il cliente: quando si accendera'
+//        nasce **qui e li'**, e nessun'altra sede cambia.
 //
-//        ⚠️ E la base trova subito un DISLIVELLO: alla rata il database da'
-//        tutti e tre i numeri, al documento ne da' DUE — `incassato` arriva
-//        `null`. ⛔ Non si sana con una somma: `null` vuol dire «a questo
-//        livello non si sa», che e' diverso da zero, e sommare per riempirlo
-//        sarebbe inventare un numero su cui qualcuno decide.
+//        ⭐ IL DISLIVELLO E' RIENTRATO (2026-08-29). Fino a ieri la rata dava
+//        tre numeri e il documento due: DB-10 e' atterrata il 25/08 e il
+//        backend, dal 29/08, la raccoglie — i due livelli rispondono la stessa
+//        forma piena.
+//        ⛔ Il ramo «non disponibile» RESTA, e non e' un residuo: `null` vuol
+//        dire «a questo livello non si sa», che e' diverso da zero, e il primo
+//        livello che tornera' a non saperlo (il CLIENTE, finche' somma solo
+//        documenti) lo trovera' gia' pronto. ⛔ E non si sana MAI con una somma:
+//        sommare per riempire e' inventare un numero su cui qualcuno decide.
 // ------------------------------------------------------------
 
 import { computed } from 'vue'
@@ -46,6 +50,18 @@ export const LIVELLO = Object.freeze({
   RATA: 'RATA',
   CLIENTE: 'CLIENTE',
 })
+
+// ⭐ I NOMI DEI TRE NUMERI, e stanno qui per la stessa ragione di `LIVELLO`.
+//    Il vincolo dice «i numeri si chiamano sempre allo stesso modo ovunque
+//    compaiano: un livello puo' non mostrarne uno, ⛔ nessuno puo' RINOMINARLO».
+//    Un vincolo sui nomi che vive come stringhe sparse nei template e' un
+//    vincolo che nessuno puo' far rispettare: qui e' una lista sola, e chi
+//    sbaglia un nome lo scopre dal `validator` invece che da un numero che non
+//    compare.
+// ⚠️ E' lo stesso terzetto di `CAMPI_SALDO` in `saldi_service.py`: due sedi ci
+//    sono perche' sono due processi, ⛔ ma l'ORDINE e i NOMI non si toccano da
+//    un lato solo.
+export const CAMPI_SALDO = Object.freeze(['residuo', 'in_lavorazione', 'incassato'])
 
 // I lettori, uno per livello. ⛔ `CLIENTE` non c'e': il backend non ha ancora la
 // funzione, e un lettore che chiama una rotta inesistente darebbe un 404 che si

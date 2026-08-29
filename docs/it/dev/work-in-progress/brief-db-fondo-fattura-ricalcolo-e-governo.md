@@ -2142,7 +2142,7 @@ l'adeguamento dei due esistenti.
 | 🔴 **Nessun limite `> 0` sull'importo**, né CHECK né `WHERE` | **il fondo negativo è metà del meccanismo**: il capo inferiore della banda (`−500`) esiste per riportare avanti i **crediti**. Il limite `> 0` — scritto sia qui sia nel cantiere incassi fino al 2026-08-15 — avrebbe spento quella metà. Si controlla la **corrispondenza col documento**, non il segno |
 | Nessuna quadratura per **fattura** | l'intervallo `[0, totale_a_pagare]` si inverte sulle fatture a credito: è una porta chiusa travestita da controllo. Trappola già scritta nel brief incassi, e qui il caso non è di bordo — è ordinario |
 | Nessun elenco delle eccedenze in `vendite` | il sovra-incasso è del **processo rimborsi**, in `pagamenti`, che se le va a cercare. Due elenchi sullo stesso fatto divergono al primo cambio |
-| Nessuna RLS su `fatture_fondi_fattura_source` | il perimetro passa dalla fattura, che ce l'ha. Una RLS in più su una tabella satellite è un secondo posto dove sbagliare — e `security_invoker` sulla vista (D-10) fa già il lavoro. 🔴 **La conclusione regge ancora, la PREMESSA no** (2026-08-29): quando fu scritta, la tabella aveva un lettore solo e nessuno scrittore fuori da `vendite`. Oggi ha un lettore applicativo, una pagina Vue e **uno scrittore in un altro schema**. Da riguardare — **D-20** in §9 |
+| ~~Nessuna RLS su `fatture_fondi_fattura_source`~~ | ~~il perimetro passa dalla fattura, che ce l'ha. Una RLS in più su una tabella satellite è un secondo posto dove sbagliare — e `security_invoker` sulla vista (D-10) fa già il lavoro.~~ 🔴 **RIBALTATA il 2026-08-29 (G-2, decisione di Tid): la RLS si accende** — passo **D-20**. ⚠️ E non è cambiata solo la conclusione: era **la premessa** a essere scaduta. Quando la riga fu scritta la tabella aveva un lettore solo, protetto da un `JOIN`; oggi ha un lettore applicativo, una pagina Vue, **uno scrittore in un altro schema** e — col gesto di D-21 — un accesso **per id**, che nessun `JOIN` protegge. §9.9 |
 | Nessun tocco a `pagamenti` | il posting, la quadratura, il rimborso e la compensazione sono dell'altro cantiere. Qui si dichiara il confine (Fase F) e si costruisce **una porta** (Fase D), non si attraversa. ⚠️ **Resta vero come regola di questo cantiere, ma il confine è stato attraversato dall'altra parte**: §9 |
 
 ---
@@ -2295,12 +2295,12 @@ soddisfa**, o non saprà mai di essere stato accontentato.
 | | Passo | Dove | Dipende da |
 | --- | --- | --- | --- |
 | **D-19** | ⭐ **La descrizione di `E_FONDO_STATO_NON_AMMESSO` a catalogo racconta la matrice a TRE stati** (*«DISPONIBILE ↔ ASSEGNATO, entrambi verso ANNULLATO, ANNULLATO terminale»*), mentre gli stati sono **quattro** dal 21/08. È il testo che uno sviluppatore legge quando il codice scatta: si corregge la riga in `config/codici_errore.csv` (edit del CSV, **mai** un `UPDATE` SQL) | `80_data/` | — |
-| **D-20** | **Riconfermare o ribaltare la scelta «niente RLS»** su `fatture_fondi_fattura_source`, adesso che la premessa è cambiata (§9.2-d). ⚠️ Qualunque sia l'esito, va **riscritta la ragione** in §8.6: una conclusione giusta appoggiata a una premessa scaduta produce la decisione sbagliata al giro dopo | `00_schema/vendite/` o solo doc | **G-2** |
+| **D-20** | 🔴 **Accendere la RLS** su `fatture_fondi_fattura_source` (**G-2**, decisione di Tid): le **due** policy della famiglia — `ef_whitelist` e `ba_ownership` — come su ogni altro satellite della fattura. ⭐ E qui **non serve il `JOIN` via fattura** che gli altri satelliti hanno dovuto fare: la riga porta `emittente_soggetto_ruolo_id` e `billing_account_id` **NOT NULL** in colonna. §9.9. ⚠️ Va **riscritta anche la ragione** in §8.6, non solo la conclusione | `00_schema/vendite/` | ✅ nessuna |
 | **D-21** | 🔴 **`vendite.fn_cancella_fondo_fattura(p_source_id)`** — era D-12. ⭐ **Non è una funzione nuova: è una funzione ESTRATTA.** I tre blocchi («non ancora fatturato») e la cancellazione in tre passi vivono già dentro `fn_reset_fondi_fattura`, e con D-25 avrebbero un **secondo** consumatore: è la regola del 2, e questo cantiere l'ha già pagata una volta con `fn_saldo_sorgente_fondo`. La consumano `fn_reset_fondi_fattura` (che smette di farlo inline) e `pagamenti.fn_annulla_sistemazione`. ⭐ **E si spacca in due**, perché i due consumatori reagiscono in modo opposto: un **predicato** che dice *perché* non si può, e la funzione che **cancella** — §9.7-b | `20_code/vendite/` | ✅ nessuna |
 | **D-22** | **Il guard di transizione anche in `INSERT`** (§9.2-c): stati di nascita ammessi `DISPONIBILE` e `ASSEGNATO`, gli altri due rifiutati con `E_FONDO_STATO_NON_AMMESSO`. ⚠️ Va montato **dopo** aver verificato che non rompa il riporto — che nasce `ASSEGNATO` ed è il caso da ammettere, non da bloccare. E la matrice di D-7 va riscritta con lo stato di nascita dentro | `20_code/vendite/` | — |
 | **D-23** | **`governa_fondo_fattura`** — l'azione di processo di D-13. ✅ **Serve**: G-1 dice che il gesto esiste, e un gesto che cancella denaro non può avere una porta più larga di quello che lo ha scritto (è la regola con cui il cantiere posting ha gated la correzione guidata sullo stesso cancello della registrazione). ⚠️ **Il seed non è la concessione**: il precedente è `registra_distinta` (id 32, area 7), a catalogo dal 25/08 e **ancora chiuso per tutti tranne il super admin** perché nessuno l'ha assegnata a un profilo. Se si semina, si assegna nello stesso giro | `80_data/` | — |
 | **D-24** | **pgTAP**: la cancellazione di un fondo nato da sistemazione, il rifiuto su ognuno dei **quattro** motivi del predicato (§9.7-b) — compresa la **figlia `DEFINITIVA`**, che è il caso nuovo e va **costruito** in fixture — e i due stati di nascita vietati. ⚠️ `throws_ok` **sempre** con lo SQLSTATE, e la fixture va **costruita** — un test che itera su ciò che c'è passa a vuoto su un DB ricostruito | `db/pgtap/vendite/` | D-21, D-22 |
-| **D-25** | 📮 **NON È DI QUESTO CANTIERE — è una richiesta a `pagamenti`.** `CONFERMATA → ANNULLATA` va aperta nella matrice delle sistemazioni (oggi **entrambi** terminali) e `fn_annulla_sistemazione` va estesa: sull'atto `RIPORTO` confermato chiama D-21 e, **solo se la cancellazione riesce**, porta l'atto ad `ANNULLATA` col motivo. ⚠️ Il varco dev'essere **chirurgico**: il guard oggi *«rifiuta OGNI update e non solo quelli di stato»*, e va continuato a rifiutarli tutti tranne questo. §9.6 | `pagamenti` — **brief al team DB** | **G-5** |
+| **D-25** | 📮 **NON È DI QUESTO CANTIERE — è una richiesta a `pagamenti`.** `CONFERMATA → ANNULLATA` va aperta nella matrice delle sistemazioni (oggi **entrambi** terminali) e `fn_annulla_sistemazione` va estesa: sull'atto `RIPORTO` confermato chiama D-21 e, **solo se la cancellazione riesce**, porta l'atto ad `ANNULLATA` col motivo. ⚠️ Il varco dev'essere **chirurgico** su due assi: solo la transizione di stato (il guard oggi *«rifiuta OGNI update e non solo quelli di stato»*, e deve continuare) e **solo `destinazione = 'RIPORTO'`** (G-5). ⚠️ E il rifiuto sugli altri due tipi deve **nominare la correzione guidata**, non dire «immutabile». §9.6 · §9.8 | `pagamenti` — **brief al team DB** | ✅ nessuna |
 
 #### Lato BE / FE
 
@@ -2318,15 +2318,17 @@ D-19  ─── indipendente, costo nullo, si fa subito
 D-20  ─── decisione (G-2), poi al massimo un changeSet
 D-22  ─── indipendente da G-1: il buco dello stato di nascita c'è comunque
 
-✅ G-1 · ✅ G-3 · ✅ G-4  (Tid, 2026-08-29 — tutte e tre chiuse)
+✅ G-1 · ✅ G-2 · ✅ G-3 · ✅ G-4 · ✅ G-5  (Tid, 2026-08-29 — tutte e cinque chiuse)
         │
-        ├─▶ D-21  ─┬─▶ D-25 (📮 team DB, schema pagamenti) ─▶ FE-3     ⚠️ perimetro: G-5
-        │          ├─▶ BE-4 ─▶ FE-1 ─▶ FE-2      ← l'ALTRA popolazione
-        │          └─▶ D-24
-        └─▶ 🟢 D-21 è SCRIVIBILE: non aspetta piu' nessuna decisione
+        └─▶ D-21  ─┬─▶ D-25 (📮 team DB, schema pagamenti) ─▶ FE-3
+                   ├─▶ BE-4 ─▶ FE-1 ─▶ FE-2      ← l'ALTRA popolazione
+                   └─▶ D-24
+
+🟢 NESSUN PASSO ASPETTA PIU' UNA DECISIONE, E NESSUNA DOMANDA E' APERTA.
+   Da qui e' tutto lavoro: i passi DB si passano al team (§9.10).
 
 D-23  ─── indipendente: il cancello serve comunque, e va ASSEGNATO nello stesso giro
-D-19 · D-20 · D-22  ─── indipendenti da tutto quanto sopra
+D-19 · D-20 (RLS) · D-22  ─── indipendenti da tutto quanto sopra
 ```
 
 ---
@@ -2339,10 +2341,10 @@ D-19 · D-20 · D-22  ─── indipendenti da tutto quanto sopra
 | | Domanda | Che cosa dipende | Stato |
 | --- | --- | --- | --- |
 | **G-1** | **Un riporto già confermato si può disfare?** | D-21 · D-23 · BE-4 · FE-1 · FE-2 — cioè **tutto il resto del cantiere** | ✅ **CHIUSA da Tid, 2026-08-29**: **sì, e il fondo si CANCELLA** — permesso solo se non è già stato **fatturato**. §9.5 |
-| **G-2** | **La RLS su `fatture_fondi_fattura_source` si accende?** Oggi il perimetro passa dal `JOIN` con `vendite.fatture` dentro la vista; da agosto la tabella ha un lettore applicativo, una pagina e uno scrittore di un altro schema | D-20 | 🔵 aperta |
+| **G-2** | **La RLS su `fatture_fondi_fattura_source` si accende?** Oggi il perimetro passa dal `JOIN` con `vendite.fatture` dentro la vista; da agosto la tabella ha un lettore applicativo, una pagina e uno scrittore di un altro schema | D-20 | ✅ **CHIUSA da Tid, 2026-08-29**: **sì, si accende**. §9.9 |
 | **G-3** | ⭐ **Nata dalla risposta a G-1.** «Non ancora **fatturato**»: la soglia è quella con cui il progetto congela già gli altri satelliti della fattura — `stato NOT IN ('DRAFT','EMESSA')` — oppure è più stretta? §9.5-a | il guard di D-21 | ✅ **CHIUSA da Tid, 2026-08-29**: **la stessa soglia**. §9.7 |
 | **G-4** | ⭐ **Nata da una misura, non da un dubbio.** Il `DELETE` del fondo oggi è **impossibile**: la FK di `pagamenti.sistemazioni` lo trattiene e l'atto che lo trattiene è **immutabile**. Che cosa succede a quell'atto quando il fondo si cancella? §9.5-b | la forma di D-21 | ✅ **CHIUSA da Tid, 2026-08-29**: **si annulla anche lui**. §9.6 |
-| **G-5** | ⭐ **Nata dalla risposta a G-4.** L'apertura `CONFERMATA → ANNULLATA` vale **solo per il `RIPORTO`**, o anche per `RIMBORSO` e `COMPENSAZIONE`? ⭐ La derivazione dice **solo `RIPORTO`** — gli altri due producono una **distinta**, e per quella il rimedio esiste già ed è la **correzione guidata** (S6): aprire anche lì l'annullamento darebbe **due** strade per disfare lo stesso fatto. §9.6 | il perimetro di D-25 | 🔵 derivata, **da confermare** |
+| **G-5** | ⭐ **Nata dalla risposta a G-4.** L'apertura `CONFERMATA → ANNULLATA` vale **solo per il `RIPORTO`**, o anche per `RIMBORSO` e `COMPENSAZIONE`? | il perimetro di D-25 | ✅ **CONFERMATA da Tid, 2026-08-29**: **solo `RIPORTO`**. Gli altri due restano terminali com'erano. §9.8 |
 
 ⭐ **G-1 era quella che decideva se il cantiere avesse ancora dei passi**: la
 risposta è sì, e ne ha aperte due che nessuno aveva visto — una di soglia (G-3) e
@@ -2507,12 +2509,12 @@ contraddice da cui è nato lo stato `ESEGUITO` (D-7). ⭐ E l'atomicità è grat
 | D-21 funzione nuova da progettare | **estrazione** di logica che esiste, con un secondo consumatore che la giustifica |
 | l'azione di processo su tutto il gesto | il gesto sul riporto passa dal cancello **di `pagamenti`**, che c'è già; `governa_fondo_fattura` (**D-23**) serve per l'**altra** popolazione — il fondo `AUTOMATICA` non più capiente della lista 44 |
 
-🔵 **E resta una derivazione da confermare** (**G-5**): l'apertura
+✅ **E la derivazione è stata confermata** (**G-5**, Tid, 2026-08-29): l'apertura
 `CONFERMATA → ANNULLATA` vale **solo** per il `RIPORTO`. Gli altri due tipi
 producono una **distinta**, e per quella il rimedio esiste già ed è la
 **correzione guidata** — aprire anche lì l'annullamento darebbe *due* strade per
 disfare lo stesso fatto, che è il modo in cui due meccanismi cominciano a
-divergere.
+divergere. Che cosa ne discende per il messaggio di rifiuto: **§9.8**.
 
 ---
 
@@ -2608,10 +2610,154 @@ e il backend lo consegna al client.
 
 ---
 
+### 9.8 G-5 è confermata: si annulla **solo** il `RIPORTO`
+
+> ✅ **Conferma di Tid, 2026-08-29**: l'apertura `CONFERMATA → ANNULLATA` vale
+> **solo** per il `RIPORTO`; `RIMBORSO` e `COMPENSAZIONE` restano terminali.
+
+**Il perché, in una riga**: le tre destinazioni non producono la stessa cosa.
+
+| Destinazione | Che cosa lascia dietro | Come si disfa |
+| --- | --- | --- |
+| `RIPORTO` | un **fondo** in `vendite` | ⭐ **si annulla l'atto**, e il fondo cade con lui — D-25 |
+| `RIMBORSO` · `COMPENSAZIONE` | una **distinta contabile** | ✅ la **correzione guidata** (S6, `fn_crea_distinta_correzione`), che esiste già |
+
+⛔ **Due strade per disfare lo stesso fatto è il modo in cui due meccanismi
+cominciano a divergere**: la prima volta fanno la stessa cosa, alla prima regola
+nuova no — e nessuno sa più quale delle due è quella giusta.
+
+#### ⚠️ La conseguenza che si vede a video, e va scritta nella richiesta al team DB
+
+Con il varco ristretto al `RIPORTO`, un operatore che prova ad annullare un
+`RIMBORSO` confermato riceve `E_SISTEMAZIONE_IMMUTABILE` — **e non è abbastanza**.
+⭐ Non lo dico io: lo dice già il `COMMENT` di quel guard, che si autocritica
+proprio su questo —
+
+> *«"non può passare da CONFERMATA a BOZZA" è vero ma non aiuta chi sta provando
+> a correggere un importo già eseguito»*
+
+Quindi il rifiuto su `RIMBORSO`/`COMPENSAZIONE` deve **nominare l'alternativa**:
+non «questo atto è immutabile», ma *«un rimborso già eseguito si corregge con la
+correzione guidata sulla sua distinta»*. 🔵 Se serva un codice suo o basti la
+frase del codice esistente lo decide chi scrive il changeSet, col ramo davanti —
+è la stessa domanda «riuso o conio» di §9.7-c, e la risposta si dà **guardando
+chi può rimediare**, non il nome.
+
+⭐ **E il predicato del guard è banale e va detto**: la condizione è
+`destinazione = 'RIPORTO'`, cioè una colonna della **stessa riga**. Nessun JOIN,
+nessuna lettura in `vendite`: il varco si apre su un dato che il guard ha già
+sotto mano.
+
+---
+
+### 9.9 G-2 è chiusa: la RLS si accende. ⭐ E la misura dice che il fondo era l'assente di **due** famiglie
+
+> ✅ **Decisione di Tid, 2026-08-29**: **sì**, si accende la row security su
+> `vendite.fatture_fondi_fattura_source`.
+
+#### (a) L'argomento che il 15 agosto non c'era
+
+La riga di §8.6 non era sbagliata quando fu scritta: l'unico accesso era **la
+lista**, e la lista è protetta dal `JOIN INNER` con `vendite.fatture`. Il gesto di
+**D-21** ne apre uno di natura diversa —
+
+```text
+DELETE /api/v1/vendite/fondi-fattura/{id}/
+                                     └── un id non ha nessun JOIN davanti
+```
+
+— cioè **un accesso per id**, in cui un operatore dell'emittente A può nominare
+un fondo dell'emittente B. ⭐ È **la stessa forma** del buco che **E-4** ha
+appena trovato nel cantiere accanto (`GET /conti-incasso/?soggetto_ruolo_id=…`,
+2026-08-28), e la lezione lì è che *«un conteggio non l'avrebbe trovato: le
+tabelle sono vuote, quindi tutti i contesti danno zero — verde per sottrazione»*.
+
+#### (b) ⭐ La scoperta della misura: è lo stesso assente di D-6
+
+Guardando **quali** satelliti della fattura hanno le policy, viene fuori una
+simmetria che vale più dell'argomento di (a):
+
+| Satellite | Congelamento oltre `EMESSA` | RLS `ef_whitelist` + `ba_ownership` |
+| --- | :---: | :---: |
+| `fatture_scadenze` | ✅ | ✅ |
+| `fatture_indirizzi` | ✅ | ✅ |
+| `fatture_righe` · `fatture_riepiloghi_iva` | ✅ | ✅ |
+| **`fatture_fondi_fattura_source`** | ⛔ **no** (→ G-3, §9.7) | ⛔ **no** (→ G-2, qui) |
+
+🔴 **Il fondo è l'assente di entrambe le famiglie, e non se n'era accorto
+nessuno perché le due assenze erano state discusse in due posti diversi**: la
+prima in D-6 (*«il fondo è l'unico satellite non congelato»*, osservata e
+accettata), la seconda in §8.6 (*«niente RLS: il perimetro passa dalla
+fattura»*, decisa). Sono la stessa dimenticanza, vista da due lati. ⭐ *Due
+eccezioni ragionevoli prese una alla volta fanno una regola che non vale per un
+oggetto solo — e quell'oggetto è l'unico che muove denaro.*
+
+#### (c) La forma, e ⚠️ perché qui è **più semplice** che sugli altri satelliti
+
+`fatture_scadenze` ha dovuto delegare a `script.fn_scope_ba_ownership_via_fattura`
+— *«risolve il BA della fattura e delega»* — perché la riga il billing account non
+ce l'ha. ⭐ Qui invece la riga porta **tutto in colonna, e NOT NULL**:
+
+```text
+emittente_soggetto_ruolo_id   bigint  NOT NULL   → ef_whitelist, senza JOIN
+billing_account_id            bigint  NOT NULL   → ba_ownership, senza JOIN
+```
+
+⚠️ **E questo è precisamente ciò che evita l'errore che il team DB ha dovuto
+correggere su `enti_incasso`**: là la `WITH CHECK` proposta *«cercava il legame
+che l'`INSERT` stesso stava scrivendo»*, e avrebbe reso la tabella non
+scrivibile. Qui i due valori sono **dentro `NEW`**: la `WITH CHECK` li legge
+senza cercare niente altrove, e `pagamenti.fn_conferma_sistemazione` continua a
+scrivere.
+
+#### (d) ⚠️ Le tre cose da verificare accendendola, e non sono formalità
+
+1. 🔴 **Sei file pgTAP scrivono su questa tabella** — `test-fondi-fattura.sql`,
+   `-governo`, `-lotto`, `test-fondo-fattura-eseguito`,
+   `test-cleanup-fattura-copertura-figlie-v1`, `rls/test-role-batch-fatturazione-postura`.
+   Dal **2026-08-07** i pgTAP girano **come l'applicazione**, con le policy
+   attive: una fixture che scrive dove l'applicazione non scrive **non passa
+   più**. ⛔ Vanno guardati tutti e sei **prima** dell'apply, non dopo il rosso.
+2. ⚠️ **Il giro notturno non deve fermarsi**: `fn_genera_fondi_fattura_source` e
+   `fn_applica_fondi_fattura` girano nel contesto batch, e
+   `zeroerp_batch_fatturazione` ha `BYPASSRLS` — quindi non cambia niente. **Va
+   verificato, non dedotto**: è l'unico percorso che, rompendosi, si vedrebbe
+   solo la mattina dopo.
+3. ⚠️ **Un conteggio a zero non è una prova.** La tabella oggi ha zero righe:
+   qualunque misura sui dati darà lo stesso numero con e senza policy. Le due
+   prove che valgono sono quelle di E-4 — **strutturale** (`relrowsecurity` e le
+   policy sul catalogo) e **comportamentale** (la stessa lettura fatta da due
+   operatori di due emittenti diversi).
+
+---
+
+### 9.10 📮 Che cosa passa al team DB
+
+> ⛔ **Le azioni DB non le esegue questo cantiere**: si scrivono e si aspetta. È
+> qui e non in un documento a parte — un brief separato si giustifica quando
+> cambia il **soggetto**, non quando cambia **chi lavora**.
+
+| Ordine | Passo | Schema | Perché in quest'ordine |
+| :---: | --- | --- | --- |
+| 1 | **D-19** — la descrizione di `E_FONDO_STATO_NON_AMMESSO` a catalogo (tre stati → quattro) | `80_data` | costo nullo, e sana un testo **falso oggi** |
+| 2 | **D-22** — il guard di transizione anche in `INSERT` | `20_code/vendite` | indipendente, e chiude un buco che c'è **adesso** |
+| 3 | **D-20** — le due policy RLS | `00_schema/vendite` | prima di D-21, che apre l'accesso per id |
+| 4 | **D-21** — il predicato + `fn_cancella_fondo_fattura` | `20_code/vendite` | è il pezzo che gli altri consumano |
+| 5 | **D-23** — `governa_fondo_fattura` ⚠️ **e la sua assegnazione a un profilo** | `80_data` + in-app | il seed non è la concessione: il precedente `registra_distinta` è chiuso per tutti da quattro giorni |
+| 6 | **D-25** — matrice + `fn_annulla_sistemazione` estesa sul solo `RIPORTO` | **`pagamenti`** | dipende da D-21, ed è **l'unico passo fuori da `vendite`** |
+| 7 | **D-24** — i pgTAP | `db/pgtap/vendite` | ⚠️ nello **stesso lotto** dei passi che collauda |
+
+Poi il backend (**BE-4**) e il frontend (**FE-1**, **FE-2**, **FE-3**), che non
+aspettano altro.
+
+---
+
 ## 10. Registro
 
 | Data | Cosa |
 | --- | --- |
+| 2026-08-29 (notte, 4) | ✅ **G-2 CHIUSA da Tid: la RLS su `fatture_fondi_fattura_source` SI ACCENDE**, e con lei **tutte e cinque le domande sono chiuse**: da qui il cantiere non aspetta piu' nessuna decisione. ⭐ **L'argomento decisivo il 15 agosto non c'era**: quando §8.6 decise «niente RLS» l'unico accesso era **la lista**, protetta dal `JOIN INNER` con `vendite.fatture`; il gesto di D-21 ne apre uno di natura diversa — `DELETE /vendite/fondi-fattura/{id}/` e' un accesso **per id**, e un id non ha nessun JOIN davanti. E' **la stessa forma** del buco che E-4 ha trovato il 28/08 su `GET /conti-incasso/`. ⚠️ Non e' cambiata solo la conclusione: era **la premessa** a essere scaduta, ed e' il difetto piu' insidioso — *una conclusione giusta appoggiata a una premessa scaduta produce la decisione sbagliata al giro dopo, quando la domanda cambia*. 🔴 **E la misura ha trovato piu' di quanto la domanda chiedesse**: guardando QUALI satelliti della fattura hanno le policy viene fuori che `fatture_scadenze`, `fatture_indirizzi`, `fatture_righe` e `fatture_riepiloghi_iva` hanno **entrambe** le famiglie di presidi — congelamento oltre `EMESSA` **e** RLS `ef_whitelist` + `ba_ownership` — e il fondo **non ha ne' l'una ne' l'altra**. ⭐ *Sono la stessa dimenticanza vista da due lati, discussa in due posti diversi (D-6 la prima, §8.6 la seconda) e per questo mai riconosciuta come una sola: due eccezioni ragionevoli prese una alla volta fanno una regola che non vale per un oggetto solo — e quell'oggetto e' l'unico che muove denaro.* ⭐ **E qui la policy e' piu' SEMPLICE che sugli altri satelliti**: `fatture_scadenze` dovette delegare a `fn_scope_ba_ownership_via_fattura` perche' il BA in riga non ce l'ha, mentre qui `emittente_soggetto_ruolo_id` e `billing_account_id` sono **NOT NULL in colonna** — niente JOIN, e soprattutto niente `WITH CHECK` che cerchi il legame che l'`INSERT` sta scrivendo, che e' esattamente l'errore che il team DB ha dovuto correggere su `enti_incasso`. ⚠️ **Tre verifiche dichiarate, non formalita'**: **sei** file pgTAP scrivono su questa tabella e dal 2026-08-07 girano **come l'applicazione** (una fixture che scrive dove l'applicazione non scrive non passa piu' — vanno guardati **prima** dell'apply); il giro notturno gira come `zeroerp_batch_fatturazione` che ha `BYPASSRLS`, quindi non cambia niente — **da verificare, non da dedurre**, perche' rompendosi si vedrebbe solo la mattina dopo; e un **conteggio a zero non e' una prova** su una tabella vuota, valgono solo la misura strutturale e quella su due operatori veri. ⚠️ **Nessun codice scritto**: aggiunte **§9.9** e **§9.10** (l'ordine in cui i sette passi DB passano al team, che sta **qui** e non in un brief a parte — *un brief separato si giustifica quando cambia il soggetto, non chi lavora*), ribaltata la riga di §8.6 e riscritto D-20 |
+| 2026-08-29 (notte, 3) | ✅ **G-5 CONFERMATA da Tid: si annulla SOLO il `RIPORTO`.** `RIMBORSO` e `COMPENSAZIONE` restano terminali com'erano, perche' lasciano dietro una **distinta** e per quella il rimedio esiste gia' — la **correzione guidata** (S6). ⛔ *Due strade per disfare lo stesso fatto e' il modo in cui due meccanismi cominciano a divergere: la prima volta fanno la stessa cosa, alla prima regola nuova no, e nessuno sa piu' quale delle due sia quella giusta.* ⚠️ **E ne discende una cosa che si vede a video e va scritta nella richiesta al team DB**: col varco ristretto, chi prova ad annullare un rimborso confermato riceve `E_SISTEMAZIONE_IMMUTABILE` — e non basta. ⭐ **Non lo dico io: lo dice il `COMMENT` di quel guard, che si autocritica proprio su questo** (*«"non puo' passare da CONFERMATA a BOZZA" e' vero ma non aiuta chi sta provando a correggere un importo gia' eseguito»*). Il rifiuto deve **nominare l'alternativa**, non lo stato. ⭐ E il predicato del varco e' banale: `destinazione = 'RIPORTO'`, una colonna della **stessa riga** — nessun JOIN, nessuna lettura in `vendite`. 🟢 **Con G-5 nessun passo del piano aspetta piu' una decisione**: resta aperta la sola **G-2** (la RLS su `fatture_fondi_fattura_source`), che tocca D-20 e non blocca niente. ⚠️ **Nessun codice scritto**: aggiunta **§9.8**, aggiornati D-25 e il grafo |
 | 2026-08-29 (notte, 2) | ✅ **G-3 CHIUSA da Tid: «la stessa soglia» — DEFINITIVA.** «Non ancora fatturato» e' la soglia con cui il progetto congela gia' gli altri satelliti della fattura: `DRAFT`/`EMESSA` mutabili, da **`DEFINITIVA`** in poi il documento e' uno snapshot e il fondo non si tocca. ⭐ **Non si aggiunge una regola: si finisce di applicarne una che c'e' gia'** — D-6 osservava che il fondo e' **l'unico satellite non congelato**, ed era un'osservazione senza conseguenze finche' nessuno poteva toglierlo di mezzo a mano. 🟢 **Con questa D-21 non aspetta piu' niente**: si cancella (G-1), l'atto cade con lui (G-4), fino a `DEFINITIVA` (G-3). ⭐ **E scrivendo la condizione e' venuto fuori che l'«estrazione» si spacca in due**, perche' i due consumatori vogliono dallo stesso criterio cose **opposte**: `fn_reset_fondi_fattura` **segnala e prosegue** (e' un giro tecnico su N atti, un'eccezione fermerebbe il reset di un lotto), `fn_cancella_fondo_fattura` **rifiuta e lo dice** (e' il gesto di una persona su un atto, e li' il silenzio e' il difetto). ⛔ Quindi non si estrae la funzione, si estrae il **PREDICATO** — `fn_check_fondo_cancellabile(p_source_id)` con quattro motivi chiusi (`ATTO_ESEGUITO`, `RIGA_REGISTRATA`, `CONTABILE_CHIUSA`, **`FIGLIA_CONGELATA`**) — e i due ci costruiscono sopra reazioni diverse. ⭐ **E' lo stesso pattern gia' applicato due volte in questo cantiere** (`fn_saldo_sorgente_fondo`, `fn_check_fondo_fattura_capiente`), e qui il divario sarebbe **peggiore** di quello che quel pattern evito' allora: un reset che cancella un atto che il gesto manuale dichiara intoccabile. ⚠️ Da non ripetere il difetto di Fase C — il predicato si legge **una volta sola**, non due per riga. ⚠️ **Un corollario dichiarato e non scoperto**: `ANNULLATA` sta anch'essa fuori da `('DRAFT','EMESSA')`, quindi il fondo di una figlia annullata non e' cancellabile **da questo gesto** — resta la strada tecnica (`fn_cleanup_fatture_by_ids` col bypass di manutenzione), *perche' il gesto di una persona e la pulizia di un lotto non sono la stessa porta*. 🔵 **Due codici errore proposti**, e su uno c'e' una domanda da porre **prima** di coniarlo: `E_FATTURA_SATELLITE_CONGELATO` esiste gia' ed e' la stessa regola sulla stessa soglia — il criterio di AGENTS.md e' «chi puo' rimediare», e qui e' la stessa persona; l'unico argomento per conjarne uno nuovo e' che il messaggio esistente riceve `TG_TABLE_NAME` nel `VARIADIC`, cioe' infilerebbe **il nome di una tabella** nella frase che l'operatore legge. ⛔ Decide chi scrive il changeSet, col ramo davanti, non dal nome. ⚠️ **Nessun codice scritto**: aggiunta **§9.7**, aggiornati D-21 · D-24 · BE-4 e il grafo. **Resta aperta la sola G-5** (il perimetro di D-25) e G-2 (la RLS) |
 | 2026-08-29 (notte) | ✅ **G-4 CHIUSA da Tid: «annulliamo anche lui»** — la sistemazione che aveva deciso il riporto va ad `ANNULLATA` insieme al fondo che aveva creato. ⭐ **La risposta scioglie il nodo dal capo giusto**: il varco all'immutabilita' (staccare il puntatore lasciando l'atto CONFERMATO) e' l'ipotesi scartata — *non si lascia in piedi un atto che dichiara di aver fatto una cosa che non c'e' piu'*. ⭐ **E ha ACCORCIATO il lavoro invece di allungarlo**, che e' la cosa da non perdere: **(1)** il gesto dell'operatore sul riporto sbagliato **non e' un endpoint nuovo** — e' `POST /pagamenti/sistemazioni/{id}/annulla/`, che **esiste gia' ed e' scritto** (S-4 del cantiere posting): lato BE non c'e' niente da costruire, cambia solo *quando* il FE lo offre (**FE-3**); **(2)** **D-21 non e' una funzione nuova, e' un'ESTRAZIONE** — i tre blocchi e i tre `DELETE` nell'ordine che la FK impone vivono gia' dentro `fn_reset_fondi_fattura`, e con D-25 avrebbero un **secondo** consumatore: regola del 2, gia' pagata una volta in questo cantiere con `fn_saldo_sorgente_fondo`; **(3)** il cancello del gesto e' quello **di `pagamenti`**, che c'e' gia' — `governa_fondo_fattura` (D-23) serve per l'**altra** popolazione, il fondo `AUTOMATICA` non piu' capiente della lista 44, che nessuna sistemazione ha creato. ⭐ **Chi guida e' `pagamenti`, e non e' una preferenza**: chi alza la bandiera la abbassa (il fondo l'ha creato `fn_conferma_sistemazione`), `api.md` vieta le chiamate laterali quindi la sola sede in cui i due schemi si toccano e' **il database** — dov'e' gia' il verso di andata — e l'atto sta in `pagamenti` mentre il fondo e' la sua **conseguenza**. 🔴 **Nuovo passo D-25, e NON e' di questo cantiere**: la matrice delle sistemazioni oggi dice `BOZZA → CONFERMATA | ANNULLATA` con **entrambi terminali**, quindi `CONFERMATA → ANNULLATA` va aperta e `fn_annulla_sistemazione` estesa sul solo ramo `RIPORTO` — richiesta al **team DB**. ⚠️ **L'ordine dentro D-25 non e' indifferente**: prima si cancella il fondo, e **solo se riesce** si annulla l'atto; al contrario resterebbe una sistemazione annullata col fondo ancora vivo, cioe' il record che si contraddice da cui era nato lo stato `ESEGUITO`. ⚠️ Due conseguenze **gia' dichiarate dal `COMMENT` del reset** e riportate qui perche' non si scoprano al primo giro notturno: cancellare **riapre la rigenerazione** (l'atto unico guarda se un atto esiste in qualunque stato), e la tabella **non e' storicizzata** — la traccia resta solo sulla sistemazione `ANNULLATA` col suo motivo, *e' il registro a ricordare, non la conseguenza*. 🔵 **Nasce G-5, derivata e da confermare**: l'apertura vale **solo** per il `RIPORTO`? Gli altri due tipi producono una distinta e per quella il rimedio esiste gia' — la **correzione guidata** — e aprire anche li' l'annullamento darebbe *due* strade per disfare lo stesso fatto. ⚠️ **Nessun codice scritto**: aggiunta **§9.6**, riscritti D-21 · BE-4 · FE-1 · FE-2, aggiunti D-25 e FE-3, rifatto il grafo dell'ordine. **Resta aperta G-3** (la soglia di «fatturato»), che blocca sia D-21 sia D-25 |
 | 2026-08-29 (sera) | ✅ **G-1 CHIUSA da Tid: un riporto sbagliato si disfa, e il fondo si CANCELLA** — permesso solo se non e' gia' stato **fatturato**. ⭐ «Cancellare» e non «annullare» **allinea questo cantiere a una decisione gia' presa altrove**: il 21/08 `fn_reset_fondi_fattura` era gia' stata riscritta per **cancellare** l'atto non eseguito invece di portarlo a `DISPONIBILE` (changeSet `-54`), perche' `ANNULLATO` portava tre significati diversi. 🔴 **Quindi il vecchio D-12 e' superato**, e con esso il codice `E_FONDO_ANNULLAMENTO_BLOCCATO` proposto in D-14 e mai seminato: D-21 diventa `fn_cancella_fondo_fattura(p_source_id)` e l'endpoint diventa un **`DELETE`**, perche' il metodo dice il verbo e `api.md` vieta di scriverlo nel path. ⭐ **E il criterio «non ancora fatturato» esiste gia'**: letta dal corpo vivo, `fn_reset_fondi_fattura` separa **tre** atti che non si toccano (`ESEGUITO`; con una riga contabile `POSTATA` — che e' un'anomalia dell'invariante; in una distinta `CHIUSA`) da tutti gli altri, che **cancella**. ⛔ Non si riscrive: si **estrae**, come gia' fatto una volta in questo cantiere con `fn_saldo_sorgente_fondo`. ⚠️ **Ma i tre parlano di DENARO e Tid ha detto «fatturato»**: il fondo del riporto nasce `ASSEGNATO` su una fattura figlia e ne entra nel `totale_a_pagare`, quindi serve una **quarta** condizione sullo stato della figlia — e la soglia di casa esiste gia' (`trgfn_fattura_satellite_guard_congelamento`: fuori da `('DRAFT','EMESSA')` i satelliti sono uno snapshot). ⭐ *Il fondo e' l'unico satellite non congelato — qui non si aggiungerebbe una regola, si finirebbe di applicarne una che c'e'.* Da confermare: **G-3**. 🔴 **E una misura ha trovato un nodo che nessuno cercava: oggi quel `DELETE` non e' vietato, e' IMPOSSIBILE.** `fk_sistemazioni_fondo_source` e' `ON DELETE NO ACTION` e trattiene il fondo finche' `pagamenti.sistemazioni` lo punta; per staccare il puntatore serve un `UPDATE`; ma su un atto `CONFERMATA` **ogni** update e' rifiutato da `trgfn_sistemazioni_guard_transizione` (`E_SISTEMAZIONE_IMMUTABILE`). ⭐ **Nessuna delle tre regole e' sbagliata**: e' la loro **intersezione** a non essere mai stata percorsa, perche' il gesto che la percorre e' quello che stiamo progettando adesso — *due modelli corretti che si incastrano nel punto in cui si toccano*. E la FK e' `NO ACTION` di proposito (lo dichiara il `COMMENT` della colonna gemella su `vendite_contabili_righe`), quindi la strada non e' cambiare la FK: e' decidere che ne e' dell'atto di sistemazione — **G-4**, che blocca D-21. ⚠️ **Nessun codice scritto**: aggiornati D-21, D-23, D-24, BE-4, FE-2 e il grafo dell'ordine, e aggiunta **§9.5** con le due letture del criterio e il nodo per intero |

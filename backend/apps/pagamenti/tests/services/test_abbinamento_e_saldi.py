@@ -27,11 +27,12 @@ Indice test eseguiti:
 14) RateFuoriCapienzaTests.test_motivo_fuori_vocabolario_rifiutato
 15) RateFuoriCapienzaTests.test_i_due_motivi_passano
 16) SaldiTests.test_forma_unica_sulla_rata
-17) SaldiTests.test_sul_documento_incassato_e_none
+17) SaldiTests.test_sul_documento_i_tre_numeri_arrivano_dal_database
+17a) SaldiTests.test_documento_e_rata_hanno_la_stessa_forma
 18) SaldiTests.test_documento_inesistente_404
 19) SaldiTests.test_rata_inesistente_404
 20) SaldiTests.test_escludi_riga_arriva_al_database
-20a) SaldiTests.test_i_due_numeri_del_documento_da_una_lettura_sola
+20a) SaldiTests.test_i_numeri_del_documento_da_una_lettura_sola
 21) RifiutoConfermabileTests.test_la_capienza_ha_la_sua_ui_action
 """
 
@@ -65,13 +66,16 @@ def _repo() -> MagicMock:
         "incassato": Decimal("800.00"),
         "has_movimenti": True,
     }
-    # ⭐ I due numeri del documento arrivano da UNA lettura sola: letture
-    # separate leggerebbero due istanti diversi.
+    # ⭐ I TRE numeri del documento arrivano da UNA lettura sola: letture separate
+    # leggerebbero due istanti diversi. ⚠️ Le chiavi sono quelle che
+    # `fn_get_saldo_fattura` ha DAVVERO dal 25/08 (DB-10): `in_lavorazione` e
+    # `incassato` in colonna, non piu' `saldo_contabile` preso dalla funzione
+    # accanto.
     repo.get_saldo_documento.return_value = {
         "saldo": Decimal("500.00"),
+        "in_lavorazione": Decimal("100.00"),
+        "incassato": Decimal("300.00"),
         "has_movimenti": True,
-        "saldo_contabile": Decimal("100.00"),
-        "has_righe_postabili": True,
     }
     repo.list_rate_con_saldo.return_value = []
     return repo
@@ -228,23 +232,38 @@ class SaldiTests(_Base):
         self.assertEqual(saldo["residuo"], Decimal("1000.00"))
         self.assertEqual(saldo["incassato"], Decimal("800.00"))
 
-    # Scopo: 🔴 Al livello documento il database da' DUE numeri e non tre.
-    #        `incassato` e' `None` — ⛔ e non si somma dalle rate per riempirlo:
-    #        una riga puo' avere fattura SENZA rata (il fondo fattura e' cosi')
-    #        e quel denaro non comparirebbe in nessuna somma di rate.
-    def test_sul_documento_incassato_e_none(self):
+    # Scopo: ⭐ Anche il DOCUMENTO risponde tutti e tre i numeri, dal 2026-08-29.
+    #        Questo test asseriva il contrario — `incassato is None` — ed era
+    #        verde: ⚠️ *codificava l'ipotesi «il database ne da' due», vera fino
+    #        al 25/08 e falsa da allora.* Un test che asserisce un'assenza la
+    #        difende anche dopo che e' stata colmata.
+    # ⛔ Resta il divieto vero, che non scade: l'`incassato` del documento non si
+    #        somma dalle rate — una riga puo' avere fattura SENZA rata (il fondo
+    #        fattura e' cosi') e quel denaro non comparirebbe in nessuna somma.
+    def test_sul_documento_i_tre_numeri_arrivano_dal_database(self):
         saldo = saldi_service.saldo_documento(2263)
-        self.assertIsNone(saldo["incassato"])
         self.assertEqual(saldo["residuo"], Decimal("500.00"))
         self.assertEqual(saldo["in_lavorazione"], Decimal("100.00"))
+        self.assertEqual(saldo["incassato"], Decimal("300.00"))
         self.repo.list_rate_con_saldo.assert_not_called()
 
-    # Scopo: ⭐ Una lettura sola per residuo e in lavorazione: separate
+    # Scopo: ⛔ La forma e' la STESSA a tutti i livelli, ed e' il vincolo «una
+    #        sede sola per i saldi»: se un giorno il documento tornasse a
+    #        rispondere meno numeri della rata, la base non sarebbe piu' unica.
+    def test_documento_e_rata_hanno_la_stessa_forma(self):
+        doc = saldi_service.saldo_documento(2263)
+        rata = saldi_service.saldo_rata(900)
+        self.assertEqual(set(doc), set(rata))
+        for campo in saldi_service.CAMPI_SALDO:
+            self.assertIsNotNone(doc[campo], f"{campo} spento sul documento")
+            self.assertIsNotNone(rata[campo], f"{campo} spento sulla rata")
+
+    # Scopo: ⭐ Una lettura sola per tutti e tre i numeri: separate
     #        leggerebbero DUE ISTANTI diversi, e se una registrazione atterra
     #        fra l'una e l'altra il pannello mostra un residuo di prima accanto
     #        a un «in lavorazione» di dopo — due numeri veri che insieme
     #        raccontano una cosa falsa.
-    def test_i_due_numeri_del_documento_da_una_lettura_sola(self):
+    def test_i_numeri_del_documento_da_una_lettura_sola(self):
         saldi_service.saldo_documento(2263)
         self.repo.get_saldo_documento.assert_called_once()
 

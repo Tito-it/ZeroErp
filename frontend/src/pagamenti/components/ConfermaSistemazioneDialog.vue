@@ -29,7 +29,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { confermaSistemazione } from '../api/pagamenti'
 import { useCanaliIncasso } from '../composables/useCanaliIncasso'
 import { useEtichettePagamenti } from '../etichette'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 import { DESTINAZIONE_CON_CANALE } from '../vocabolari'
 
 const props = defineProps({
@@ -115,7 +115,7 @@ async function onConferma() {
         </div>
         <div class="form-field">
           <label>{{ t('pagamenti.sistemazioni.col_importo') }}</label>
-          <span>{{ euro(sistemazione.importo) }}</span>
+          <span>{{ formatCurrency(sistemazione.importo) }}</span>
         </div>
       </div>
 

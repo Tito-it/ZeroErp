@@ -856,20 +856,38 @@ class PagamentiRepository:
     #    DUE ISTANTI diversi. Se una registrazione atterra fra l'una e l'altra,
     #    il pannello mostra un residuo di prima accanto a un «in lavorazione»
     #    di dopo — due numeri veri che insieme raccontano una cosa falsa.
-    # ⚠️ Due numeri e non tre: a questo livello il database non sa ancora dire
-    #    l'incassato (richiesta DB-10). Chi compone la risposta lo dichiara
-    #    `None`, e ⛔ non lo inventa sommando le rate — una riga puo' avere
-    #    fattura SENZA rata (il fondo fattura e' esattamente cosi').
+    # ⭐ TRE numeri, dal 2026-08-29: la richiesta DB-10 e' atterrata il 25/08 e
+    #    `fn_get_saldo_fattura` risponde `saldo, in_lavorazione, incassato,
+    #    has_movimenti` — la stessa forma e lo stesso ordine della sorella della
+    #    rata. Fino a ieri qui se ne leggevano DUE e l'`incassato` si buttava
+    #    via: la richiesta che questo cantiere aveva fatto era stata esaudita e
+    #    nessuno era passato a raccoglierla.
+    # ⛔ E `in_lavorazione` si prende da `f`, non da `fn_get_saldo_fattura_contabili`:
+    #    il numero e' lo stesso — la funzione delega proprio a quella — ma
+    #    leggerlo dalla seconda gli darebbe DUE sorgenti con lo stesso nome, che
+    #    e' cio' che il vincolo «una sede sola per i saldi» vieta.
+    # ⭐ UNA funzione sola, e non e' un'ottimizzazione. Fino al 2026-08-29 qui
+    #    c'era un `CROSS JOIN` con `fn_get_saldo_fattura_contabili` per prendere
+    #    `has_righe_postabili`: quella colonna **non la legge nessuno** — ne'
+    #    service, ne' view, ne' frontend — quindi il join faceva girare una
+    #    seconda volta, a ogni apertura del drawer fattura, una funzione che
+    #    `fn_get_saldo_fattura` chiama gia' al suo interno.
+    #    ⚠️ E non era gratis: `fn_get_saldo_fattura` NON e' dichiarata STABLE (il
+    #    suo ramo d'errore scrive nel registro), quindi due valutazioni sono due
+    #    letture indipendenti — la trappola gia' pagata sul guard del fondo, dove
+    #    una funzione VOLATILE letta due volte poteva accettare meta' condizione
+    #    e rifiutare l'altra.
+    #    📮 Se un giorno servira' `has_righe_postabili`, la sede giusta e'
+    #    aggiungerlo a `fn_get_saldo_fattura` — che quella funzione la interroga
+    #    gia' — non rimettere il join qui.
     def get_saldo_documento(self, fattura_id: int) -> dict[str, Any] | None:
         self._guard_canale_sistema("get_saldo_documento")
         sql = """
-            SELECT f.saldo, f.has_movimenti,
-                   c.saldo_contabile, c.has_righe_postabili
+            SELECT f.saldo, f.in_lavorazione, f.incassato, f.has_movimenti
               FROM pagamenti.fn_get_saldo_fattura(%s) f
-              CROSS JOIN pagamenti.fn_get_saldo_fattura_contabili(%s) c
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id), int(fattura_id)])
+            cursor.execute(sql, [int(fattura_id)])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
 

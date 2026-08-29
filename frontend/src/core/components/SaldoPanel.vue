@@ -25,30 +25,48 @@ import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
 
-import { useSaldi } from '../composables/useSaldi'
+import { CAMPI_SALDO, LIVELLO, useSaldi } from '../composables/useSaldi'
 import { formatCurrency } from '../utils/format'
 
 const props = defineProps({
   // `LIVELLO.DOCUMENTO` | `LIVELLO.RATA` | (un giorno) `LIVELLO.CLIENTE`.
-  livello: { type: String, required: true },
+  livello: {
+    type: String,
+    required: true,
+    validator: (v) => Object.values(LIVELLO).includes(v),
+  },
   riferimentoId: { type: [Number, null], default: null },
   // ⭐ Quali numeri accendere. Il default e' quello del documento (Q-6): chi ne
   //    vuole altri lo dichiara — ⛔ non li rinomina.
-  mostra: { type: Array, default: () => ['residuo', 'in_lavorazione'] },
+  // ⚠️ Il `validator` non e' pignoleria: un nome sbagliato qui non da' errore,
+  //    da' una RIGA IN MENO — cioe' un numero che sparisce da un pannello di
+  //    saldi senza che niente lo dica.
+  // ⛔ I due nomi per esteso, NON `CAMPI_SALDO[0], [1]`: indicizzare per
+  //    posizione legherebbe il default all'ORDINE di una lista che il commento
+  //    accanto dichiara intoccabile — e un riordino cambierebbe in silenzio
+  //    quali numeri si accendono. La lista presidia i nomi (il `validator`), non
+  //    li sostituisce.
+  mostra: {
+    type: Array,
+    default: () => ['residuo', 'in_lavorazione'],
+    validator: (v) => v.every((c) => CAMPI_SALDO.includes(c)),
+  },
 })
 
 const { t } = useI18n()
+// ⚠️ Il livello si legge UNA VOLTA (vedi `useSaldi`): il lettore si sceglie al
+//    montaggio e non cambia. Chi deve cambiarlo rimonta il componente con
+//    `:key="livello"`.
+const livelloMontato = props.livello
 const { saldo, caricato, errore, loading, leggi, azzera, livelloSupportato, senzaMovimenti } =
-  useSaldi(props.livello)
+  useSaldi(livelloMontato)
 
-// ⚠️ `placeholder: '—'` e non stringa vuota: qui `null` significa «questo conto
-//    non si applica», e una cella VUOTA si legge come un dato perso mentre il
-//    trattino si legge come una risposta.
-// 📮 E' la SECONDA occorrenza di questa coppia (l'altra e' `pagamenti/formato.js`):
-//    la sede naturale sarebbe un `placeholder` di default in `formatCurrency`.
-//    Dichiarato, non fatto di mia iniziativa — cambia il ripiego di tutto il
-//    progetto.
-const euro = (v) => formatCurrency(v, { placeholder: '—' })
+// ⛔ E se il prop cambia SENZA `:key`, il pannello si spegne invece di mostrare
+//    i numeri del livello vecchio. Fino a oggi quel caso era solo scritto in un
+//    commento del composable: un contratto che nessuno presidia e' una regola
+//    che qualcuno infrangera' — e qui l'infrazione non darebbe un errore, darebbe
+//    il saldo di un'ALTRA cosa sotto l'etichetta giusta.
+const livelloDivergente = computed(() => props.livello !== livelloMontato)
 
 const acceso = (campo) => props.mostra.includes(campo)
 
@@ -61,9 +79,14 @@ const inLavorazioneVisibile = computed(() => {
   return v != null && Number(v) !== 0
 })
 
-// ⚠️ Acceso ma NON disponibile a questo livello (`incassato` sul documento: il
-//    database da' due numeri e non tre). Si dice a parole: un trattino da solo
-//    si legge come «zero», e questo numero non e' zero — non si sa.
+// ⚠️ Acceso ma NON disponibile a questo livello. Si dice a parole: un trattino
+//    da solo si legge come «zero», e questo numero non e' zero — non si sa.
+// ⭐ Dal 2026-08-29 nessun livello vivo ci finisce piu': documento e rata
+//    rispondono entrambi tutti e tre i numeri (DB-10, raccolta dal backend il
+//    29/08). ⛔ Il ramo resta perche' e' la RISPOSTA a un caso che il modello
+//    ammette, non a uno che oggi capita: un livello che non sa dire l'incassato
+//    e' previsto — il CLIENTE, finche' somma solo documenti — e un presidio non
+//    si toglie perche' oggi il suo ramo e' irraggiungibile.
 const incassatoNonDisponibile = computed(
   () => acceso('incassato') && caricato.value && !errore.value
     && saldo.value?.incassato == null,
@@ -81,7 +104,12 @@ watch(
     <!-- ⛔ Il livello che il frontend non sa ancora leggere si DICHIARA: e'
          previsto (il cliente) e non ancora acceso, e tacere lo farebbe
          sembrare un saldo a zero. -->
-    <Message v-if="!livelloSupportato" severity="secondary" :closable="false" size="small">
+    <Message
+      v-if="!livelloSupportato || livelloDivergente"
+      severity="secondary"
+      :closable="false"
+      size="small"
+    >
       {{ t('core.saldi.livello_non_pronto') }}
     </Message>
 
@@ -99,14 +127,14 @@ watch(
       <div class="saldo-panel__numeri">
         <div v-if="acceso('residuo')" class="saldo-panel__principale">
           <span class="saldo-panel__etichetta">{{ t('core.saldi.residuo') }}</span>
-          <span class="saldo-panel__valore">{{ euro(saldo.residuo) }}</span>
+          <span class="saldo-panel__valore">{{ formatCurrency(saldo.residuo) }}</span>
         </div>
 
         <!-- ⭐ In piccolo, e col PERCHE' accanto: chi vede un residuo che non
              cala vuole sapere che i soldi ci sono ma non sono registrati. -->
         <div v-if="inLavorazioneVisibile" class="saldo-panel__secondario">
           <span class="saldo-panel__etichetta">{{ t('core.saldi.in_lavorazione') }}</span>
-          <span>{{ euro(saldo.in_lavorazione) }}</span>
+          <span>{{ formatCurrency(saldo.in_lavorazione) }}</span>
           <small class="app-text-muted">{{ t('core.saldi.in_lavorazione_aiuto') }}</small>
         </div>
 
@@ -115,7 +143,7 @@ watch(
           class="saldo-panel__secondario"
         >
           <span class="saldo-panel__etichetta">{{ t('core.saldi.incassato') }}</span>
-          <span>{{ euro(saldo.incassato) }}</span>
+          <span>{{ formatCurrency(saldo.incassato) }}</span>
         </div>
       </div>
 
