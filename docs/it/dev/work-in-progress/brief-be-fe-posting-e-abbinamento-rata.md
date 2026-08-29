@@ -461,7 +461,7 @@ da lì `fn_get_saldo_fattura` smette di mentire nell'interfaccia.
 | ✅ **A-5** | La forzatura a due tempi | BE+FE | Il primo tentativo **non** porta `forzata`; sul 409 `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` il FE mostra il messaggio del DB (che porta già i numeri) e chiede conferma; il secondo porta `forzata: true` + `motivo_forzatura`. Come il FE lo **riconosce** è **Q-1** |
 | ✅ **A-6** | `RateFuoriCapienzaListView.vue` | FE | Lista. ⭐ La prima colonna è **`motivo`**: due popolazioni diverse in un elenco solo |
 | ✅ **A-7** | Selettore rata nel form riga | FE | Alimentato dalla fattura scelta; si azzera quando la fattura cambia. ⚠️ La rata resta **facoltativa** anche su `ABBINATA` — la riga del fondo fattura ha fattura sì e rata no |
-| ✅ **A-8** | `SaldoPanel` nel drawer fattura | FE ✅ **29/08.** ⭐ Non «il pannello della fattura»: la **base** (`useSaldi` + `SaldoPanel` in `core/`), e la fattura e' il primo consumatore. Tre livelli in testa, il cliente **dichiarato e non acceso** | ✅ **Q-6**: **residuo** in grande, **in lavorazione** in piccolo e solo quando c'è. ⛔ **Niente «incassato»** su questa schermata. ⭐ Un componente solo per tutti i livelli (§2.7) |
+| ✅ **A-8** | `SaldoPanel` nel drawer fattura | FE ✅ **29/08.** ⭐ Non «il pannello della fattura»: la **base** (`useSaldi` + `SaldoPanel` in `core/`), e la fattura e' il primo consumatore. Tre livelli in testa, il cliente **dichiarato e non acceso** | ✅ **Q-6**: **residuo** in grande, **in lavorazione** in piccolo e solo quando c'è. ⛔ **Niente «incassato»** su questa schermata. ⭐ Un componente solo per tutti i livelli (§2.7). 🔴 **Il dislivello che il pannello gestiva NON ERA del database: era del backend** — vedi §10.10 |
 | ✅ **A-9** | ⭐ **La coda del riconciliatore** *(salita dalla slice 4 — Q-4)* | BE+FE | `GET /pagamenti/righe/` con filtro di stato: lista **cross-distinta**. ✅ **Q-4 → (c)**: **due voci di menu** («Da abbinare» · «Sospese») che aprono **la stessa lista** con il filtro già impostato — due porte, **un solo** seed |
 
 ### 3.4 S4 — Il perimetro e i canali ✅ *(BE scritto il 2026-08-25)*
@@ -1326,6 +1326,111 @@ da 6 a 10 asserzioni). ⚠️ Resta fuori un guard **diverso**: che il conto di 
 canale appartenga all'**emittente del canale**. È l'altra metà del rilievo, e
 non è in questo giro.
 
+### 10.10 🔴 Il difetto che la rilettura di A-8 ha trovato: una richiesta esaudita e mai raccolta
+
+> Trovato il **2026-08-29** costruendo sopra la base dei saldi, e corretto lo
+> stesso giorno. ⭐ **Non era un bug di codice: era un documento e un codice che
+> dicevano la stessa cosa falsa, e nessuno dei due mentiva da solo.**
+
+**Il fatto.** `pagamenti.fn_get_saldo_fattura` risponde **quattro** colonne —
+`saldo, in_lavorazione, incassato, has_movimenti` — dal **25/08**: è **DB-10**,
+la richiesta che questo cantiere aveva fatto (Q-10) e ottenuto. Ma il backend:
+
+| | Prima | Adesso |
+| --- | --- | --- |
+| colonne lette | **due** (`saldo`, `has_movimenti`) | tutte e quattro |
+| `incassato` a livello documento | 🔴 **buttato via** → `None` | il numero che il database dà |
+| `in_lavorazione` | preso da `fn_get_saldo_fattura_contabili.saldo_contabile` | preso da `f.in_lavorazione` — **una sede sola** |
+| il commento sopra il metodo | *«il database risponde due numeri e non tre»* | 🔴 falso dal 25/08 |
+| il test | `test_sul_documento_incassato_e_none` — **verde** | riscritto, più uno che asserisce che documento e rata hanno la **stessa forma** |
+
+🔴 **Il pezzo che vale la pena ricordare è il test.** Era verde, e difendeva
+l'errore: asseriva un'**assenza** — «`incassato` è `None`» — cioè *l'ipotesi*
+sotto cui era stato scritto, non il sistema. Quando l'assenza è stata colmata,
+il test ha continuato a passare e a proteggere il buco. *Un test che asserisce
+che un numero non c'è lo tiene fuori anche il giorno in cui arriva.*
+
+⚠️ **E la cosa somiglia a un difetto già registrato in questo brief**: il
+`test_canale_inesistente_404` di §6-bis, che confrontava `exception.code` con la
+costante che il codice stesso leggeva. Due forme diverse dello stesso vizio —
+**un test che verifica la propria ipotesi**.
+
+#### ⭐ Il difetto figlio, trovato rileggendo la correzione appena scritta
+
+La prima stesura teneva il `CROSS JOIN` con `fn_get_saldo_fattura_contabili`
+«per una ragione sola: `has_righe_postabili`» — e la ragione era **scritta, non
+verificata**. `has_righe_postabili` **non lo legge nessuno**: né il service, né
+la view, né il frontend. Quindi il join faceva girare, a ogni apertura del
+drawer fattura, una funzione che `fn_get_saldo_fattura` **chiama già al suo
+interno**.
+
+⚠️ E non era gratis: quella funzione **non è `STABLE`** (il suo ramo d'errore
+scrive nel registro), quindi due valutazioni sono due letture indipendenti — la
+stessa trappola pagata sul guard del fondo, dove una funzione `VOLATILE` letta
+due volte poteva accettare metà condizione e rifiutare l'altra. Adesso è **una
+`SELECT` su una funzione sola**, provata con `EXPLAIN` sul database vero: una
+*function scan* invece di un *nested loop* su due.
+
+> 📌 *Giustificare una cosa in un commento non è verificarla. Il commento
+> «resta per una ragione sola» era la mia ipotesi sul perché quel join servisse,
+> e bastava un `grep` a smentirla.*
+
+#### Che cosa ne discende per il frontend: **niente**, e non per caso
+
+`SaldoPanel` gestiva già `incassato == null` con un messaggio a parole invece
+che con un trattino. Il ramo semplicemente non si accende più sul documento, e
+⛔ **resta**: è la risposta a un caso che il modello ammette — il livello
+**CLIENTE**, finché somma solo documenti — e *un presidio non si toglie perché
+oggi il suo ramo è irraggiungibile*. Aggiornati i due commenti che dichiaravano
+il dislivello come un fatto del database.
+
+⭐ **E il terzo livello ha perso il suo ostacolo**: il saldo cliente aspettava
+proprio l'`incassato` a livello documento. Non è stato acceso — è una decisione,
+non una conseguenza — ma la nota nel service non dice più che manca un
+prerequisito.
+
+---
+
+### 10.11 ⭐ Il ripiego a trattino diventa il default, e `pagamenti/formato.js` sparisce
+
+> Autorizzato da Tid il **2026-08-29**, dopo la dichiarazione della seconda
+> occorrenza. ⚠️ **Il raggio d'azione è dichiarato, non scoperto**: su **67**
+> chiamanti di `formatCurrency`, **nove** passavano `{ placeholder: '—' }` a mano
+> e **cinquantotto** si appoggiavano alla stringa vuota — `CellaConfigurabile`
+> compresa, quindi ogni colonna `currency_eur` di ogni lista configurabile.
+
+**Perché è il default giusto, e vale solo per gli importi.** Su un importo
+`null` significa «questo conto non si applica»: una cella **vuota** si legge
+come *un dato perso*, il trattino come *una risposta*. ⛔ `formatNumber` **non**
+è stato cambiato: una quantità assente non è per forza «non si applica», e
+cambiarlo per simmetria sarebbe una decisione presa senza motivo.
+
+**E `pagamenti/formato.js` è stato cancellato** (autorizzato). Esisteva per una
+riga — `formatCurrency(v, { placeholder: '—' })` — e con il default quella riga
+non aggiungeva più niente. Gli otto componenti del dominio chiamano ora
+`formatCurrency` **col suo nome**, come gli altri cinquantanove del progetto:
+⛔ l'alias `as euro` è stato scartato perché sarebbe stata la stessa convenzione
+riscritta a mano in otto file, cioè il difetto che si stava togliendo.
+
+🔵 **Debito dichiarato, non toccato**: restano **133** `|| '—'` a mano nei
+template su campi **non** valutari (IBAN, descrizioni, utenti). Quelli
+`formatCurrency` non li copre, ed è un cantiere suo.
+
+#### ⚠️ Due presidi aggiunti a `SaldoPanel` rileggendolo
+
+| | Difetto | Perché contava |
+| --- | --- | --- |
+| **1** | `mostra` accettava **qualunque** stringa | Un nome sbagliato non dà errore: dà **una riga in meno** — un numero che sparisce da un pannello di saldi senza che niente lo dica. Ora c'è `CAMPI_SALDO` esportato da `useSaldi` (accanto a `LIVELLO`, che era già lì) e un `validator` |
+| **2** | Il livello si legge **una volta** al montaggio — scritto in un commento del composable, presidiato da nessuno | Chi legasse `:livello` a una variabile senza `:key` vedrebbe il saldo di **un'altra cosa** sotto l'etichetta giusta, in silenzio. Ora il pannello si **spegne** e lo dichiara |
+
+> 🔴 **E un difetto introdotto e corretto nello stesso giro**: il default di
+> `mostra` era diventato `[CAMPI_SALDO[0], CAMPI_SALDO[1]]`, cioè legato
+> all'**ordine** di una lista che il commento accanto dichiara intoccabile — un
+> riordino avrebbe cambiato in silenzio quali numeri si accendono. Rimessi i due
+> nomi per esteso: *la lista presidia i nomi, non li sostituisce.*
+
+---
+
 ### 10.7 🔴 Che cosa NON è stato fatto, e perché
 
 | Non fatto | Perché |
@@ -1343,6 +1448,7 @@ non è in questo giro.
 
 | Data | Cosa |
 | --- | --- |
+| **2026-08-29** (rilettura critica della base dei saldi) | 🔴 **UNA RICHIESTA ESAUDITA E MAI RACCOLTA, E UN TEST CHE LA TENEVA FUORI.** Costruendo sopra A-8 e' venuto fuori che `pagamenti.fn_get_saldo_fattura` risponde **quattro** colonne dal **25/08** — e' **DB-10**, la richiesta che questo cantiere aveva fatto (Q-10) e ottenuto — mentre il backend ne leggeva **due**, buttava via l'`incassato` e prendeva `in_lavorazione` da una **seconda funzione** invece che da quella. Sopra c'era un commento che diceva *«il database ne da' due»*, falso da quattro giorni. 🔴 **E il pezzo che vale piu' della correzione e' il test**: `test_sul_documento_incassato_e_none` era **verde** e difendeva il buco, perche' asseriva un'ASSENZA — cioe' l'ipotesi sotto cui era stato scritto, non il sistema. *Un test che asserisce che un numero non c'e' lo tiene fuori anche il giorno in cui arriva.* ⚠️ Stessa specie del `test_canale_inesistente_404` di §6-bis: **un test che verifica la propria ipotesi**. **Corretto**: repository, service, test riscritto piu' uno nuovo che asserisce che documento e rata hanno la **stessa forma** — il presidio che mancava al vincolo §2.7. ⭐ **Difetto figlio, trovato rileggendo la correzione appena scritta**: avevo tenuto il `CROSS JOIN` «per una ragione sola, `has_righe_postabili`» — ragione **scritta e non verificata**: quella colonna non la legge nessuno, quindi il join faceva girare a ogni apertura del drawer una funzione che `fn_get_saldo_fattura` chiama gia' al suo interno, e che **non e' STABLE** (due valutazioni = due letture indipendenti, la trappola gia' pagata sul guard del fondo). Ora e' una `SELECT` su una funzione sola, provata con `EXPLAIN` sul database vero: *function scan* invece di *nested loop*. 📌 *Giustificare una cosa in un commento non e' verificarla — bastava un `grep`.* ⭐ **Lato FE non e' servito niente**, e non per caso: `SaldoPanel` gia' gestiva `incassato == null` a parole invece che con un trattino. Il ramo non si accende piu' sul documento e **resta**, perche' e' la risposta a un caso che il modello ammette (il livello CLIENTE) — *un presidio non si toglie perche' oggi il suo ramo e' irraggiungibile*. ✅ **E il terzo livello ha perso il suo ostacolo**: il saldo cliente aspettava proprio quell'`incassato`. ⭐ **Autorizzato da Tid**: `formatCurrency` ha `placeholder: '—'` come **default** (raggio dichiarato: 58 chiamanti su 67 si appoggiavano alla stringa vuota, `CellaConfigurabile` compresa) e **`pagamenti/formato.js` e' stato cancellato** — esisteva per una riga che il default rende inutile; gli otto componenti chiamano `formatCurrency` col suo nome, ⛔ non con un alias `as euro` riscritto a mano in otto file. `formatNumber` **non** toccato: una quantita' assente non e' per forza «non si applica». 🔵 Debito dichiarato: restano **133** `|| '—'` a mano su campi non valutari. ⚠️ **Due presidi aggiunti a `SaldoPanel`**: `CAMPI_SALDO` esportato + `validator` su `mostra` (un nome sbagliato non dava errore, dava **una riga in meno**), e il **livello divergente** che spegne il pannello invece di mostrare il saldo di un'altra cosa sotto l'etichetta giusta. 🔴 **E un difetto introdotto e corretto nello stesso giro**: il default di `mostra` era finito a `[CAMPI_SALDO[0], CAMPI_SALDO[1]]`, legato all'**ordine** di una lista dichiarata intoccabile. Verdi: **145 test** `pagamenti` · eslint · build · `EXPLAIN` sul DB vero |
 | **2026-08-29** (A-8 · la base dei saldi) | ⭐ **L'ULTIMO PEZZO, E NON E' UN PANNELLO.** Il vincolo §2.7 diceva di costruire **la base**, non «il saldo della fattura»: nascono `useSaldi` e `SaldoPanel` in `core/`, con **tre livelli in testa** — documento, rata, cliente — e il terzo **dichiarato e non acceso**, perché accenderlo oggi significherebbe sommare un `incassato` che a livello documento il database non dà. ⭐ **Q-6 in due numeri e non tre**: residuo in grande, «in lavorazione» in piccolo **e solo quando c'è** (né `null` né zero). L'«incassato» il pannello lo sa mostrare — è la stessa base — ma questa schermata non lo accende. ⛔ **Quattro casi e non uno**: non letto · livello non pronto · **letto e senza nessun movimento** · letto coi numeri. Il terzo è quello che si confonde col residuo pieno, e la prova sul database vero lo ha trovato **subito**: le due fatture misurate hanno `residuo = totale` con `has_movimenti = false` — senza quella riga «nessuno ha ancora pagato niente» e «ha pagato e manca tutto» si leggono uguali. ⚠️ E il **dislivello** è confermato dalla misura: al documento `incassato` arriva `null`, alla rata arriva `0`. ⛔ Non si somma per riempirlo — `null` vuol dire «non si sa», e il pannello lo dice a parole invece di mostrare un trattino che si legge come zero. 🔵 Stili **propri** e non `app-dash-stat-n` presa in prestito (nasce per le card della lente Competenza), i18n sotto la radice `core` che esiste già invece di una quarta radice in cima. 📮 Seconda occorrenza di `formatCurrency(v, { placeholder: '—' })`: la sede naturale sarebbe un default in `formatCurrency`, **dichiarato e non fatto di mia iniziativa** — cambia il ripiego di tutto il progetto |
 | **2026-08-28** (S6 — la correzione guidata) | ⭐ **IL CANTIERE È CHIUSO IN CODICE.** Il team DB ha consegnato entrambe le richieste **lo stesso giorno**, e due delle loro risposte hanno **smentito me**: (1) ⛔ la policy che avevo proposto avrebbe reso `enti_incasso` **non scrivibile** — la `WITH CHECK` cercava il legame che l'`INSERT` stesso stava scrivendo. L'hanno riscritta passando dal **conto**, che è la forma che avevo segnalato come necessaria ma non applicata alla mia stessa proposta; (2) 🔴 su **C-1** avevano risposto «già abbinata, il guard la regge» e **la prova li ha smentiti**: su una rata saldata dal movimento che si sta correggendo non c'è capienza in nessuna direzione (`R = 0` non è spazio nemmeno in negativo). ⭐ La misura ha trovato una **quarta strada** che nessuno dei due aveva visto — righe con fattura e rata **compilate** ma in `DA_ABBINARE`: la correzione guida tutto tranne l'ultimo clic, e il doppio tempo resta il gesto di una persona. **Decide Tid.** **Scritto**: `crea_distinta_correzione` nel repository (una sola `SELECT`), `correggi_distinta` nel service, `POST /distinte/{id}/correggi/` col **cancello della registrazione** — un gesto che rovescia denaro non può avere una porta più larga di quello che lo ha scritto — dialogo `CorreggiDistintaDialog`, e il **legame nei due versi** in testata al drawer, cliccabile. ⭐ Il legame è la metà che si vede: senza, due documenti gemelli di segno opposto stanno nell'elenco **senza niente che dica che uno rovescia l'altro**. ⚠️ `NULLA_DA_CORREGGERE` risale **intatto**, come `NULLA_DA_POSTARE`: è un esito, non un errore. E le **righe saltate** si annunciano — una riga non postata non ha niente da rovesciare, ma il silenzio lascia l'operatore a chiedersi dove sia finita. 🔵 Rigenerate le policy (**803 voci**) e scritti i due ripieghi **senza `%s`**. ⚠️ Un terzo codice del cantiere offerte (`E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA`) è a catalogo **senza ripiego**: non è mio e non ne invento la frase — segnalato. Verdi: build · eslint · guard i18n · **4166 test** (con i test DB accesi) |
 | **2026-08-28** (E-4 · perimetro) | 🔴 **DUE BUCHI DI PERIMETRO, E UNO È DEL MODELLO.** Eseguito il passo E-4 con due operatori veri di due emittenti diversi. (1) ⛔ **`pagamenti.enti_incasso` non ha row security**: la riga di §2.6 che diceva «le dodici tabelle hanno la RLS accesa» è **falsa** — sono **quattro su dodici** — e la tabella scoperta è proprio quella che porta il conto su cui atterra il denaro. L'elenco dei canali, **IBAN compreso**, è comune a tutti gli emittenti. È una policy: chiesta al team DB. (2) ⛔ **`GET /conti-incasso/` usciva dal perimetro**: l'operatore dell'emittente 32 leggeva l'IBAN di incasso dell'emittente 44 passandone il soggetto. **Chiuso lo stesso giorno** — `E_SCOPE_EMITTENTE` (403, già a catalogo), cancello nel **repository** accanto all'SQL e non nel service (il service lo salterebbe il secondo chiamante), test sul DB provvisto **provato rimettendo il difetto**. ⭐ **Perché un conteggio non l'avrebbe trovato**: le tabelle sono vuote, quindi tutti e tre i contesti danno zero — verde per sottrazione. Le prove che hanno morso sono una **misura strutturale** (`relrowsecurity` tabella per tabella) e una **comportamentale** su due emittenti veri. ⚠️ E due trappole pagate scrivendo il rimedio: `fn_check_user_emittente_scope` risponde **true** su utente NULL («job batch»), quindi senza GUC il perimetro si **apre**; e la GUC si chiama `app.current_user_id`, non `app.auth_user_id` — col nome sbagliato il cancello rifiutava tutti **coi test verdi**, perché un doppio non ha un perimetro. 📮 Scritto [brief-db-perimetro-canali-e-correzione-guidata.md](brief-db-perimetro-canali-e-correzione-guidata.md): §1 la policy mancante con tre domande, §2 la madre della **correzione guidata** (Q-7) con quattro domande di modello. Verdi: **4142 test** |

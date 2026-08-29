@@ -10,18 +10,26 @@
 > anche il suo §7-bis (§3) — un brief non si chiude *sopra* un difetto aperto,
 > e quello ha la stessa sede degli altri.
 >
-> **Stato.** ⭐ **2026-08-28 — TUTTE E QUATTRO LE VOCI SONO SCRITTE.**
-> Quattro changeSet (`20260828-22` … `-25`) e il pgTAP da **39 a 44** test.
-> ⛔ **Provati, NON applicati**: l'SQL **estratto dagli YAML** gira in
-> `BEGIN`/`ROLLBACK`, la suite dà **44/44 verdi** e il round-trip dice che i
-> dodici archi preesistenti **non si sono mossi di una riga**.
-> ⚠️ Provato da owner: il test **38** (perimetro RLS) in quella corsa è verde
-> per costruzione e non presidia niente — vale solo alla suite vera.
+> **Stato.** ✅ **2026-08-29 — TUTTE E QUATTRO LE VOCI SONO APPLICATE, e la 3
+> è arrivata fino a video.** Sei changeSet: `20260828-22` … `-25` (le quattro
+> voci) più `20260829-01` e `-02`, che hanno chiuso la coda del §3.4 — la
+> colonna sulle viste di lista — e portato l'estrazione del §3-ter. Il BE/FE
+> del §3.5 è scritto e committato (`dd562af68`).
+>
+> ⛔ **Resta il solo §3.6**, e non è più una domanda: ✅ **la decisione è stata
+> presa il 2026-08-29** — una sola sede, forma `numero - serie` senza anno, e la
+> data **fuori** dal codice (§3.6-ter). Quel che manca è **scriverla**: una sede
+> in DB che la compone, e il nodo del grafo che la legge.
+>
+> *(Superato: «2026-08-28 — tutte e quattro SCRITTE, provate e NON applicate».
+> Quella riga è rimasta vera per un giorno e falsa per due, ed è la ragione per
+> cui questo aggiornamento esiste: è esattamente il difetto della voce 4 —
+> la documentazione che nessuno rilegge perché «si aggiorna da sola».)*
 >
 > **Le due domande di modello hanno avuto risposta**, e nessuna delle due dai
 > dati: il §2.4 da **chi scrive** le righe (§2.4-bis), il §1.3 da una
-> **decisione dichiarata** (§1.6). Resta fuori il §3.6, che si è rivelato una
-> decisione e non un fix.
+> **decisione dichiarata** (§1.6). *(E il §3.6, che il 28/08 «restava fuori
+> perché era una decisione e non un fix», è stato deciso il 29 — sopra.)*
 >
 > *(Superato: «2026-08-26 — analisi e misure, nessun file scritto». Resta qui
 > perché è la data di nascita del cantiere.)*
@@ -47,14 +55,15 @@
 | **3** | La colonna «Transito» **chiama «Fattura» una nota di credito**, e mostra il numero **nudo** (`1`): la natura e il codice parlante non escono dalla summary | 🔴 dice la parola sbagliata | **ogni** operatore che guarda la lista resi o la lista ordini |
 | **4** | La **descrizione** di `vw_documento_lineage_archi` non nomina l'arco **`T`**, che esiste dal 2026-08-28 — e la doc **manuale** sulla stessa pagina dice «dodici lettere». Le due si contraddicono | 🟠 doc che dice il falso su un vocabolario dichiarato **chiuso** | chi apre la doc della vista per sapere quali archi esistono |
 
-**Stato al 2026-08-28 — tutte scritte, nessuna applicata.**
+**Stato al 2026-08-29 — tutte applicate.**
 
-| # | changeSet | presidio |
-| --- | --- | --- |
-| **1** | `20260828-24` (`rango_origine`) + `20260828-25` (la `inc` lo legge) | pgTAP **41**, **43**, **44** |
-| **2** | `20260828-24` (arco **`U`**, DDT → Commessa) | pgTAP **13**, **42** |
-| **3** | `20260828-22` (`frontiera_natura_doc_codice`) | pgTAP **7**, **40** |
-| **4** | `20260828-23` (`COMMENT` che nomina `T`) | la doc auto-gen |
+| # | changeSet | presidio | esito |
+| --- | --- | --- | --- |
+| **1** | `20260828-24` (`rango_origine`) + `20260828-25` (la `inc` lo legge) | pgTAP **41**, **43**, **44** | ✅ nessun lavoro BE/FE: la regola vive nella vista |
+| **2** | `20260828-24` (arco **`U`**, DDT → Commessa) | pgTAP **13**, **42** | ✅ misurato il 29/08: le due commesse hanno `n_sorgenti = 1` e root `DDT0000030` / `DDT0010839` |
+| **3** | `20260828-22` + **`20260829-01`** (la colonna sulle **sette** viste di lista) | pgTAP **7**, **40**, **31..37** | ✅ BE/FE in `dd562af68`. ⛔ La metà «numero nudo» (§3.6) resta aperta |
+| **4** | `20260828-23` (`COMMENT` che nomina `T`) | la doc auto-gen | ✅ |
+| **3-ter** | **`20260829-02`** — `tipo_codice_interno` nel grafo + suffisso `_interno` canonico | pgTAP **40..46** | ✅ non era nel brief: nasce dal §3-ter, sotto |
 
 ⭐ **Le voci 1 e 2 sono finite nello stesso `CREATE OR REPLACE`**, come diceva
 la nota qui sotto: riscrivere due volte in due giorni una vista con
@@ -448,9 +457,16 @@ se n'è accorto nessuno perché è **una riga**; sul reso diventa la regola.
 * ⚠️ **`LEFT`, non `JOIN`**: `natura_doc_id` è nullable su `vendite.fatture`, e
   sugli altri sette tipi di nodo la natura è NULL **ed è corretto** (la natura è
   un asse diverso dal tipo, ed esiste solo per le fatture).
-* Poi le **sei** `vw_*_lista` la portano avanti come già fanno con
-  `frontiera_fase`, e i sei repository la proiettano accanto a
-  `frontiera_tipo_codice`.
+* ✅ **Poi le viste di lista la portano avanti** come già fanno con
+  `frontiera_fase` — fatto il 2026-08-29 con `20260829-01`.
+  ⛔ **Ed erano SETTE, non sei**: c'è anche `vw_fatture_lista`, che porta le
+  stesse quattro colonne `frontiera_*` delle sorelle. La settima non ha (ancora)
+  la colonna «Transito» a catalogo, quindi il difetto lì non si vedeva — ed è
+  esattamente il motivo per cui entra: il giorno in cui qualcuno la aggiunge, il
+  chip nasce con l'etichetta sbagliata **dove nessuno guarda**.
+  ⚠️ **E i repository non la proiettano affatto**: fanno `SELECT v.*`, quindi la
+  colonna arriva al frontend da sola. La riga *«i sei repository la proiettano»*
+  descriveva un lavoro che non esiste.
 
 ⭐ **E la ragione dichiarata nel `COMMENT` va aggiornata di conseguenza**, perché
 è la seconda volta che quella frase è vera a metà. Il `20260825-20` ha corretto
@@ -460,10 +476,18 @@ consumatore che la ricava è **uno**, e i consumatori che non possono sono
 frontiera non esce dalla summary, e senza di lei ogni lista chiama Fattura una
 nota di credito»*.
 
-### 3.5 Cosa fa il BE/FE nel frattempo
+### 3.5 ✅ Cosa fa il BE/FE — fatto il 2026-08-29
 
-**Niente, e aspetta** ([[feedback_be_fe_attende_prerequisiti_db]]). Il lavoro a
-valle è piccolo e già scritto qui, così quando la colonna arriva è un giro solo:
+> **Chiuso**, commit `dd562af68`. Piano e registro completo in
+> [piano-be-fe-lineage-natura-frontiera-liste.md](piano-be-fe-lineage-natura-frontiera-liste.md).
+> ⚠️ Due dei quattro punti qui sotto si sono rivelati diversi da come erano
+> scritti — il **1** non aveva lavoro dentro (`SELECT v.*`) e il **4** non era
+> scrivibile nella forma richiesta (vedi sotto). Restano com'erano perché la
+> differenza fra ciò che si prevede e ciò che si trova è l'informazione utile.
+
+*(Testo originale:)* **Niente, e aspetta**
+([[feedback_be_fe_attende_prerequisiti_db]]). Il lavoro a valle è piccolo e già
+scritto qui, così quando la colonna arriva è un giro solo:
 
 1. sei repository: `v.frontiera_natura_doc_codice` nella `SELECT`;
 2. `LineageFrontieraChip`: prop `naturaCodice` e `lineageDocumentoLabel` al posto
@@ -476,7 +500,16 @@ valle è piccolo e già scritto qui, così quando la colonna arriva è un giro s
 
 ⚠️ **Le chiavi i18n ci sono già tutte** (`vendite.lineage.natura_nota_credito`,
 `natura_fattura`, `natura_nota_debito`, in `it.json` e `en.json`): non c'è niente
-da tradurre, il giorno che si accende.
+da tradurre, il giorno che si accende. ✅ **Verificato: era vero.**
+
+#### ⭐ Cosa è andato diversamente da come è scritto qui sopra
+
+| punto | previsto | trovato |
+| --- | --- | --- |
+| **1** | «sei repository: la colonna nella `SELECT`» | ⛔ **Nessun lavoro**: tutti e sette fanno `SELECT v.*` e la colonna arriva da sola |
+| **2** | prop + `lineageDocumentoLabel` al posto di `lineageTipoLabel` | ✅ come previsto. In più: `lineageTipoLabel` **non è più esportata** — senza consumatori restava l'unica porta da cui il difetto rientra |
+| **3** | «le sei liste passano la prop» | ✅ e toccavano comunque quella riga: il **tipo** ha cambiato nome col `20260829-02`, e senza quel rename il chip sarebbe rimasto **muto** (il gate è su `tipoCodice`) |
+| **4** | «un test gemello di `test_ogni_lista_decodifica_il_tipo_della_frontiera`» | ⛔ **Non scrivibile in quella forma**: con `SELECT v.*` nel sorgente del repository non c'è niente da cercare, e un test scritto per analogia sarebbe stato verde a vuoto. Il presidio si è spostato dove la traduzione avviene davvero — i `.vue` — e il vecchio test si è **ribaltato**: da «ogni repository decodifica» a «nessuno ridecodifica» |
 
 ---
 
@@ -503,6 +536,87 @@ codice parlante di una fattura, e chi lo possiede*. Se si sceglie di comporlo ne
 nodo, quella diventa la **settima** forma in giro per il progetto, e le altre sei
 restano dove sono. La cura onesta è una sola sede che lo dichiara — e va decisa
 prima, non dentro un changeSet che parla di natura.
+
+#### 3.6-bis ⭐ Lo stato della decisione al 2026-08-29, e l'asimmetria in una riga
+
+✅ **Tid ha deciso la metà «chi lo possiede»: UNA SOLA SEDE.**
+✅ **E poche ore dopo anche l'altra metà, «che forma ha»: vedi §3.6-ter.**
+⛔ Resta la **bonifica** delle forme esistenti, che è il lavoro vero.
+
+**L'asimmetria, letta dalla struttura e non dai dati.** Per DDT, ordine, reso e
+preventivo la colonna `numero` **è** il codice parlante: un `varchar`, del tipo
+`DDT0000031`. Per la fattura `numero` è un **`bigint`**, cioè un contatore, e
+l'identità sono tre colonne — `anno` (smallint), `serie` (varchar), `numero` —
+**tutte e tre nullable** finché il documento non è numerato. Due esempi reali
+letti il 2026-08-29:
+
+| documento | `anno` | `serie` | `numero` |
+| --- | --- | --- | --- |
+| una fattura | 2026 | `VX2` | 103 |
+| una nota di credito | 2026 | **vuota** | 1 |
+
+⛔ **Quindi il `1` a video non è sbagliato: è ambiguo.** Nello stesso anno
+possono esistere una fattura `1` e una nota di credito `1`, e in lista sono
+indistinguibili. ⚠️ E la **serie vuota** non è un caso limite: è la riga qui
+sopra, cioè proprio la nota di credito del §3.1.
+
+**Le due domande da chiudere:**
+
+1. **Che forma ha**, su una riga sola — e cosa si scrive quando la serie è vuota
+   e quando il documento **non è ancora numerato** (prima di «Rendi definitive»
+   le tre colonne sono NULL, e il chip ha già la sua fallback `non_numerato`).
+2. **Quale delle forme esistenti diventa quella ufficiale**, o se è nuova.
+
+#### 3.6-ter ✅ La forma, decisa da Tid il 2026-08-29
+
+> **`numero - serie`, senza anno.** In prosa: *«fattura n. 1 - VX2 del
+> 21/08/2026»* — il numero e la serie compongono il codice, **la data resta un
+> dato a sé** e sta accanto, non dentro.
+
+| caso | cosa esce |
+| --- | --- |
+| fattura `2026 \| VX2 \| 103` | `103 - VX2` |
+| nota di credito `2026 \| serie vuota \| 1` | **`1`** — nessun trattino orfano |
+| non ancora numerata (le tre colonne NULL) | **NULL**, così il consumatore usa la fallback che ha già (`vendite.lineage.non_numerato` sul chip) |
+
+⛔ **L'anno esce di proposito**: la regola dichiarata è *«accanto c'è sempre la
+data»*, e ripetere l'anno dentro il codice lo direbbe due volte.
+
+**La domanda che ne è nata, e la sua risposta.** Verificato il 2026-08-29
+leggendo la struttura: nel lineage **non viaggia nessuna data** — non
+`vw_documento_lineage_nodi`, non la frontiera della summary, non
+`fn_documento_lineage`, non il chip. Cioè la premessa della regola è vera nelle
+liste e nei drawer (dove la data è una colonna della riga) e **falsa proprio nei
+due posti di questo cantiere**.
+
+> ✅ **Decisione di Tid: la data NON entra nel chip. Se serve, sta fuori.**
+> Niente colonna data nel grafo.
+
+⚠️ **La conseguenza, dichiarata invece che scoperta dopo**: nella colonna
+«Transito» e nelle tappe del pannello il codice viaggia **senza data**, quindi
+due documenti con la stessa natura, lo stesso numero e nessuna serie sono
+indistinguibili lì. È un'ambiguità **accettata**, non un difetto rimasto aperto.
+
+⭐ **E il §3.6 vale molto meno di quanto sembrava**, il che spiega perché non
+serviva farlo di fretta: la voce 3 gli ha già tolto il pezzo che faceva danno.
+Il chip diceva `→ Fattura 1` su un accredito — **la parola sbagliata**; oggi dice
+`→ Nota di credito 1`. Quel che resta non è più «fattura o nota?» ma un numero
+incompleto fra documenti della stessa natura.
+⚠️ E sul documento che ha aperto la voce non cambia **niente**: la nota di
+credito del reso 24 ha la **serie vuota**, quindi col formato nuovo resta `1`.
+
+**Cosa resta da fare, ed è poco:** una **sola sede** in DB che compone
+`numero - serie` accanto alla fattura, e il nodo del grafo che la legge al posto
+di `fatture.numero`. Le sei composizioni esistenti si riportano su quella —
+⛔ **tranne quella SDI**, che è una stringa per una macchina e va dichiarata
+deliberatamente diversa (§3.6-bis).
+
+⚠️ **E una distinzione da non perdere**: la composizione delle funzioni SDI
+(`COALESCE(anno) || COALESCE(serie) || COALESCE(numero)`, **senza separatore** →
+`2026VX2103`) è una stringa **per una macchina**, non per una persona. Unificarla
+con l'etichetta umana sembra economia e non lo è: sono due contratti con due
+committenti diversi, e il giorno che uno dei due cambia si scopre di averli
+legati. Va dichiarata **deliberatamente diversa**, non fusa.
 
 ---
 
@@ -574,6 +688,82 @@ trova scritto, nella descrizione stessa, che deve tornare a riscriverla.
 cambia *cosa la vista produce* e non tocca il suo `COMMENT` lascia indietro
 l'unica documentazione che si rigenera da sé — ed è la sola che nessuno pensa a
 rileggere, proprio perché «si aggiorna da sola».
+
+---
+
+## 3-ter. ⭐ L'estrazione che la voce 3 ha reso evidente — il tipo viaggiava in id
+
+> **Nata il 2026-08-29 aprendo le viste per il `20260829-01`, decisa da Tid,
+> consegnata dal team DB nello stesso giro** (`20260829-02`). Non era nel brief,
+> ma è di qui: è la **stessa vista** e la stessa specie di difetto.
+
+### 3-ter.1 Il fatto
+
+Il grafo esponeva il tipo di un nodo **solo come `tipo_id`**, e ogni consumatore
+che voleva il codice si scriveva lo stesso `LEFT JOIN config.sorgenti`: **undici
+volte** nel backend — sette repository di lista, due in `get_lineage_nodo`, due
+in `list_lineage_passaggi`.
+
+⛔ **E una di quelle undici era già stata dimenticata.** La lista resi, nata il
+2026-08-25, il join non ce l'aveva: colonna a catalogo, dato a database, e a
+video **niente** — senza un errore. Il presidio Python che esiste da allora
+serviva a sorvegliare quella copia, cioè presidiava il **sintomo**.
+
+### 3-ter.2 ⛔ Perché non è «erano tante»
+
+L'argomento non è il conteggio, ed è il motivo per cui la richiesta regge:
+**nella stessa vista la *natura* usciva già in chiaro come codice, e il *tipo*
+no**. Due attributi dello stesso nodo, due convenzioni diverse. La voce 3 ha
+aggiunto la natura come `codice` accanto a un tipo che restava un id — cioè ha
+reso l'asimmetria visibile invece di crearla.
+
+⚠️ E il `from_tipo_id` della voce 1 era la stessa specie: un id di catalogo usato
+come se fosse una chiave stabile.
+
+### 3-ter.3 Cosa è stato fatto
+
+`tipo_codice_interno` e `frontiera_tipo_codice_interno` sul grafo e sulle sette
+viste di lista, e — nello stesso changeSet — il **suffisso `_interno` reso
+canonico** anche sulle nature (`natura_doc_codice` → `natura_doc_codice_interno`).
+
+| | prima | dopo |
+| --- | ---: | ---: |
+| join scritti a mano nei 7 repository di lista | 7 | **0** |
+| in `get_lineage_nodo` | 2 | **0** |
+| in `list_lineage_passaggi` | 2 | **2** |
+
+⚠️ **I due che restano non sono un residuo**: `fn_documento_lineage` espone
+`from_tipo_id`/`to_tipo_id` e non i codici, e quei join servono anche per
+`key_selector`. Una sede, non sette. Da valutare quando quella funzione si
+riapre.
+
+⭐ **Tolto anche un join che non era una decodifica**: `get_lineage_nodo` si
+ricavava la natura della frontiera con un `LEFT JOIN vw_documento_lineage_nodi`
+suo. Dal `20260828-22` la vista la porta, quindi erano **due sedi** della stessa
+regola — e la seconda ricalcolava dall'esterno una frontiera che la CTE della
+vista risolve col tie-break su `pipeline_rank`. Confrontate le due strade su
+tutti i **439** nodi del grafo con `IS DISTINCT FROM`: **0 divergenze** su **82**
+righe con una natura non nulla.
+
+### 3-ter.4 ⛔ E il rename ha rotto quattro cose, di cui una in silenzio
+
+Il `20260829-02` ha rinominato `natura_doc_codice` **anche dove il backend la
+leggeva**, e la suite Django era **verde su tutte e quattro**: `get_lineage_nodo`
+è mockato in ogni test che lo tocca.
+
+| cosa | sintomo |
+| --- | --- |
+| `get_lineage_nodo` e `list_lineage_passaggi` | **500** sul pannello «Passaggi» di tutti e **sette** i domini |
+| filtro per natura della lista fatture | **500** |
+| il Tag della natura su **ogni riga** della lista fatture | **spariva, senza errore** |
+
+⛔ **L'ultima è la peggiore**, e vale come regola generale: un rename a DB rompe
+**due specie** di consumatore e solo la prima fa rumore. Chi legge la colonna in
+una `WHERE` dà 500 e qualcuno lo segnala; chi la legge in una **cella** smette di
+disegnare, e non lo segnala nessuno.
+
+⚠️ **Trovate ri-eseguendo l'SQL estratto dai file sul database vero**, non dalla
+suite ([[feedback_rinomina_db_binding_mockato]]).
 
 ---
 
@@ -738,8 +928,51 @@ in cui l'ordine degli id divergerà dalla scala — che è il giorno per cui esi
   nullable). Non tocca nessuno dei quattro changeSet.
 * **Il gemello `ATTIVITA_CONSUMI`** (§2.4-ter): altro cantiere, e prima di un
   arco servirebbe un **nodo**.
-* ⛔ **Il migrate**: quattro changeSet e un file pgTAP, **scritti e provati, mai
-  applicati**.
+* ~~⛔ **Il migrate**: quattro changeSet e un file pgTAP, **scritti e provati, mai
+  applicati**.~~ ✅ **Superato il 2026-08-29**: applicati, più altri due
+  (`20260829-01/02`). Vedi la voce sotto.
+
+### 2026-08-29 · Applicato, e la voce 3 arriva a video
+
+> ⚠️ **Registrato dal lato BE/FE** (autorizzazione di Tid): il lavoro DB di
+> questa giornata è del team, il migrate l'ha fatto il team, qui si scrive solo
+> ciò che è stato **verificato** — nomi di colonna letti da
+> `information_schema`, changeSet letti da `DATABASECHANGELOG`, SQL rieseguito
+> in contesto operatore.
+
+**Il migrate è passato.** I quattro changeSet del 28/08 risultano in
+`DATABASECHANGELOG`, e con loro `20260829-01` (la colonna sulle **sette** viste
+di lista, coda del §3.4) e `20260829-02` (il §3-ter: `tipo_codice_interno` nel
+grafo e il suffisso `_interno` canonico).
+
+**Le quattro voci, verificate una per una:**
+
+* **1** — `rango_origine` in vista. Nessun lavoro BE/FE: la regola vive dov'è
+  scritta.
+* **2** — misurato in contesto operatore: `CMM-…c6a64e` e `CMM-…b9946f` hanno
+  `n_sorgenti = 1` e root `DDT0000030` / `DDT0010839`. **Le due commesse hanno
+  smesso di dichiarare di non avere origine**, ed è ciò che la voce chiedeva.
+* **3** — DB + BE + FE, commit `dd562af68`. I quattro nodi con una nota di
+  credito come frontiera sono **esattamente** i quattro che il §3.3 aveva
+  contato il 26/08 (`ORDINE_VENDITA`, `RESO_VENDITA`, `COMMESSA`, `FATTURA`).
+* **4** — `COMMENT` applicato, la doc auto-gen non si contraddice più.
+
+⭐ **E il §3-ter è nato da qui**: aprendo le viste per la voce 3 si è visto che
+la natura usciva come **codice** e il tipo come **id**. Undici decodifiche
+scritte a mano nel backend sono diventate due.
+
+⛔ **Resta aperto solo il §3.6**, e la metà «chi lo possiede» è decisa: **una
+sola sede**, e in giornata è arrivata anche la **forma**: `numero - serie`,
+senza anno, con la data dichiaratamente **fuori** dal codice (§3.6-ter). Da qui
+in poi il §3.6 non è più una domanda ma un lavoro corto: una sede che la compone
+e il nodo che la legge.
+
+⚠️ **Una lezione da questo giro, e non è tecnica.** Questo brief ha detto
+*«provati, NON applicati»* per **due giorni dopo** che erano stati applicati.
+È lo stesso difetto della **voce 4** — un testo di riferimento che nessuno
+rilegge — su un documento che quella voce l'aveva appena diagnosticata negli
+altri. *La riga di stato di un cantiere vivo invecchia più in fretta di
+qualunque `COMMENT`, e non ha nessuna doc auto-gen che la rigeneri.*
 
 ---
 

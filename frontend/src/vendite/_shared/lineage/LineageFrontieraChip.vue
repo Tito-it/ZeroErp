@@ -7,11 +7,15 @@
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import { faseDocumentoSeverity } from '../../../core/utils/severity'
-import { lineageTipoLabel } from './lineageLabels'
+import { lineageDocumentoLabel } from './lineageLabels'
 
 defineProps({
   isTransitato: { type: Boolean, default: false },
   tipoCodice: { type: String, default: null },
+  // ⛔ NON entra nel gate del chip: la natura è NULL su sette tipi di nodo su
+  // otto (esiste solo per le fatture) e metterla lì spegnerebbe la cella su
+  // quasi tutti i documenti. Serve solo a scegliere l'ETICHETTA.
+  naturaCodice: { type: String, default: null },
   codice: { type: String, default: null },
   stato: { type: String, default: null },
   fase: { type: String, default: null },
@@ -20,9 +24,15 @@ defineProps({
 
 const { t, te } = useI18n()
 
-// Etichetta i18n del tipo sorgente (helper condiviso lineage, fail-visible).
-function tipoLabel(codice) {
-  return lineageTipoLabel(t, te, codice)
+// Scopo: etichetta del documento di frontiera. ⭐ La NATURA vince sul tipo
+// quando c'è: `vendite.fatture` è una tabella sola e una nota di credito ha lo
+// stesso `codice_interno` sorgente di una fattura (FATTURA). Senza questa
+// regola la colonna «Transito» chiama «Fattura» ogni accredito — e sulla lista
+// resi non è un caso limite ma IL caso, perché l'arco S arriva sempre a una
+// nota di credito (pgTAP 35). Regola unica e condivisa col pannello e con i
+// chip della barra collegamenti: qui cambia la chiamata, non la regola.
+function tipoLabel(codice, natura) {
+  return lineageDocumentoLabel(t, te, codice, natura)
 }
 </script>
 
@@ -34,7 +44,7 @@ function tipoLabel(codice) {
        fallback `non_numerato` delle tappe del pannello (2026-08-20/21). -->
   <span v-if="isTransitato && tipoCodice" class="lineage-cell-chip">
     <i class="pi pi-arrow-right lineage-cell-arrow" />
-    <Tag :value="tipoLabel(tipoCodice)" severity="secondary" />
+    <Tag :value="tipoLabel(tipoCodice, naturaCodice)" severity="secondary" />
     <span class="lineage-cell-codice">{{ codice || t('vendite.lineage.non_numerato') }}</span>
     <Tag
       v-if="stato || fase"

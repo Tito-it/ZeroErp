@@ -44,7 +44,7 @@ import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { statoDistintaSeverity, statoRigaContabileSeverity } from '../../core/utils/severity'
 import { cambiaStatoDistinta, cambiaStatoRiga, getDistinta } from '../api/pagamenti'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 import AbbinaRigaDialog from './AbbinaRigaDialog.vue'
 import CorreggiDistintaDialog from './CorreggiDistintaDialog.vue'
 import DistintaRigaForm from './DistintaRigaForm.vue'
@@ -477,11 +477,11 @@ watch(
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('pagamenti.distinte.col_importo_dichiarato') }}</label>
-            <span>{{ euro(distinta.importo_dichiarato) }}</span>
+            <span>{{ formatCurrency(distinta.importo_dichiarato) }}</span>
           </div>
           <div class="form-field">
             <label>{{ t('pagamenti.distinte.col_totale_righe') }}</label>
-            <span>{{ euro(distinta.totale_righe) }}</span>
+            <span>{{ formatCurrency(distinta.totale_righe) }}</span>
           </div>
           <div class="form-field">
             <label>{{ t('pagamenti.distinte.col_scarto_dichiarato') }}</label>
@@ -489,7 +489,7 @@ watch(
             <span v-if="!quadraturaApplicabile" class="app-text-muted">
               {{ t('pagamenti.distinte.quadratura_non_applicabile') }}
             </span>
-            <Tag v-else-if="!quadra" :value="euro(scarto)" severity="warn" />
+            <Tag v-else-if="!quadra" :value="formatCurrency(scarto)" severity="warn" />
             <Tag v-else :value="t('pagamenti.distinte.quadra')" severity="success" />
           </div>
           <div class="form-field">
@@ -557,7 +557,7 @@ watch(
             :header="t('pagamenti.righe.col_importo')"
             style="text-align: right;"
           >
-            <template #body="{ data }">{{ euro(data.importo) }}</template>
+            <template #body="{ data }">{{ formatCurrency(data.importo) }}</template>
           </Column>
           <Column
             field="billing_account_descrizione"

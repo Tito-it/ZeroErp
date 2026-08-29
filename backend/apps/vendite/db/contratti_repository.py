@@ -420,9 +420,8 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
 
             cursor.execute(
                 f"""
-                SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+                SELECT v.*
                   FROM vendite.vw_contratti_lista v
-                  LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
                 {where_clause}
                  ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
                  LIMIT %s OFFSET %s

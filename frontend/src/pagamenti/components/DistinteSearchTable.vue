@@ -36,7 +36,7 @@ import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBin
 import { DATE_FORMAT } from '../../core/constants'
 import { statoDistintaSeverity } from '../../core/utils/severity'
 import { useEtichettePagamenti } from '../etichette'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 import { useDistinteStore } from '../stores/distinte'
 
 
@@ -203,10 +203,10 @@ onMounted(() => store.fetchList())
           <span v-if="data.scarto_dichiarato == null" class="app-text-muted">—</span>
           <Tag
             v-else-if="Number(data.scarto_dichiarato) !== 0"
-            :value="euro(data.scarto_dichiarato)"
+            :value="formatCurrency(data.scarto_dichiarato)"
             severity="warn"
           />
-          <span v-else>{{ euro(data.scarto_dichiarato) }}</span>
+          <span v-else>{{ formatCurrency(data.scarto_dichiarato) }}</span>
         </template>
 
         <!-- Quante righe sono pronte per la registrazione, sul totale. Le due

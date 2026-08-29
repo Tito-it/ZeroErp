@@ -33,7 +33,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { statoRigaContabileSeverity } from '../../core/utils/severity'
 import { anteprimaRegistrazione, registraDistinta } from '../api/pagamenti'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 import { ESITO_NULLA_DA_POSTARE } from '../vocabolari'
 
 const props = defineProps({
@@ -117,7 +117,7 @@ async function onRegistra() {
   } else {
     notify.success(t('pagamenti.registra.fatto_con_numeri', {
       righe: ricevuta.righe_postate ?? 0,
-      totale: euro(ricevuta.totale_postato),
+      totale: formatCurrency(ricevuta.totale_postato),
     }))
   }
   emit('registrata', ricevuta)
@@ -158,7 +158,7 @@ async function onRegistra() {
         </div>
         <div class="form-field">
           <label>{{ t('pagamenti.registra.totale_registrabile') }}</label>
-          <span>{{ euro(anteprima.totale_registrabile) }}</span>
+          <span>{{ formatCurrency(anteprima.totale_registrabile) }}</span>
         </div>
       </div>
 
@@ -168,7 +168,7 @@ async function onRegistra() {
 
       <!-- La quadratura: segnala, non ferma. -->
       <Message v-if="scartoAperto" severity="warn" :closable="false" size="small">
-        {{ t('pagamenti.registra.scarto_aperto', { importo: euro(scarto) }) }}
+        {{ t('pagamenti.registra.scarto_aperto', { importo: formatCurrency(scarto) }) }}
       </Message>
 
       <!-- ⭐ CHI RESTA INDIETRO, E PERCHE'. Senza questo elenco la
@@ -184,7 +184,7 @@ async function onRegistra() {
           data-key="id"
         >
           <Column field="importo" :header="t('pagamenti.righe.col_importo')">
-            <template #body="{ data }">{{ euro(data.importo) }}</template>
+            <template #body="{ data }">{{ formatCurrency(data.importo) }}</template>
           </Column>
           <Column field="stato_descrizione" :header="t('pagamenti.righe.col_stato')">
             <template #body="{ data }">

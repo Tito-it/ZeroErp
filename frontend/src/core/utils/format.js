@@ -28,11 +28,25 @@ export function formatSize(bytes) {
 /**
  * Formatta un valore come valuta locale (default EUR in it-IT).
  *
+ * ⭐ `placeholder` vale `'—'` di default dal 2026-08-29 (autorizzato da Tid).
+ *    Prima era la stringa vuota, e nove chiamanti su sessantasette passavano
+ *    `{ placeholder: '—' }` a mano — cioe' la convenzione c'era gia' ed era
+ *    scritta a mano ogni volta. ⛔ Su un IMPORTO la cella vuota e il trattino
+ *    non sono la stessa cosa: `null` qui vuol dire «questo conto non si
+ *    applica» (un importo mai dichiarato, un saldo che non esiste), e una cella
+ *    vuota si legge come **un dato perso** mentre il trattino si legge come
+ *    una risposta.
+ * ⚠️ Chi vuole davvero il vuoto lo chiede: `{ placeholder: '' }`.
+ * ⚠️ `formatNumber` qui sotto ha ancora `placeholder: ''` — non e' stato
+ *    cambiato perche' non e' la stessa domanda: una quantita' assente non e'
+ *    per forza «non si applica». Se un giorno lo diventera', si cambia li' e
+ *    si dichiara, non per simmetria.
+ *
  * @param {number|string|null} value
  * @param {Object} [opts]
  * @param {string} [opts.currency='EUR']
  * @param {string} [opts.locale='it-IT']
- * @param {string} [opts.placeholder=''] - cosa restituire per null/undefined
+ * @param {string} [opts.placeholder='—'] - cosa restituire per null/undefined
  * @param {number} [opts.minimumFractionDigits] - override decimali min (default locale: 2 per EUR)
  * @param {number} [opts.maximumFractionDigits] - override decimali max (default locale: 2 per EUR)
  * @returns {string}
@@ -41,7 +55,7 @@ export function formatCurrency(value, opts = {}) {
   const {
     currency = 'EUR',
     locale = 'it-IT',
-    placeholder = '',
+    placeholder = '—',
     minimumFractionDigits,
     maximumFractionDigits,
   } = opts

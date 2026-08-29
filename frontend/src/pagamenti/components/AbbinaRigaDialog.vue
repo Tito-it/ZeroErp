@@ -36,7 +36,7 @@ import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfe
 import { RISULTATI, useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { displayDate } from '../../core/utils/date'
 import { abbinaRiga, listRateFattura } from '../api/pagamenti'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -80,8 +80,8 @@ watch(fattura, async (f) => {
 function etichettaRata(r) {
   const residuo = Number(r.residuo ?? 0)
   const stato = residuo < 0
-    ? t('pagamenti.abbina.rata_di_troppo', { importo: euro(Math.abs(residuo)) })
-    : t('pagamenti.abbina.rata_residuo', { importo: euro(residuo) })
+    ? t('pagamenti.abbina.rata_di_troppo', { importo: formatCurrency(Math.abs(residuo)) })
+    : t('pagamenti.abbina.rata_residuo', { importo: formatCurrency(residuo) })
   return `${t('pagamenti.abbina.rata_n', { n: r.numero_rata })} · ${displayDate(r.data_scadenza)} · ${stato}`
 }
 
@@ -138,7 +138,7 @@ function chiudiConEsito() {
       <!-- Che cosa si sta abbinando: senza, si sceglie una fattura al buio. -->
       <Message v-if="riga" severity="secondary" :closable="false" size="small">
         {{ t('pagamenti.abbina.contesto', {
-          importo: euro(riga.importo),
+          importo: formatCurrency(riga.importo),
           data: displayDate(riga.data_pagamento),
         }) }}
         <template v-if="riga.riferimento_ente"> · {{ riga.riferimento_ente }}</template>

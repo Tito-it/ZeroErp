@@ -442,11 +442,12 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             search=search,
             solo_ultima_revisione=solo_ultima_revisione,
         )
-        # frontiera_tipo_codice decodificato per il chip transito FE.
+        # ⭐ Nessuna decodifica qui: `frontiera_tipo_codice_interno` e
+        #    `frontiera_natura_doc_codice_interno` arrivano dalla vista
+        #    (20260829-01/02) e passano con `v.*`.
         sql = f"""
-            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            SELECT v.*
               {_FROM_LISTA_OFFERTE}
-              LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
               {where_clause}
              ORDER BY {order_col} {order_dir_safe}, v.id DESC
              LIMIT %s OFFSET %s

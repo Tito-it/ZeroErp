@@ -28,7 +28,7 @@ import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useEtichettePagamenti } from '../etichette'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 import { SEVERITY_CHI_E_IN_CREDITO } from '../vocabolari'
 import { useEccedenzeStore } from '../stores/eccedenze'
 
@@ -136,7 +136,7 @@ onMounted(() => store.fetchList())
         <!-- ⚠️ Il residuo qui si mostra COL SUO SEGNO, ed e' voluto: e' il
              verso, non il valore — e la colonna accanto (`chi_e_in_credito`)
              dice gia' a parole di chi sono i soldi. -->
-        <template #cell-residuo="{ data }">{{ euro(data.residuo) }}</template>
+        <template #cell-residuo="{ data }">{{ formatCurrency(data.residuo) }}</template>
 
         <template #empty>
           <div class="app-empty-state">

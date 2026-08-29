@@ -53,7 +53,7 @@ import {
   listSistemazioniFattura,
 } from '../api/pagamenti'
 import { useEtichettePagamenti } from '../etichette'
-import { euro } from '../formato'
+import { formatCurrency } from '../../core/utils/format'
 import {
   DESTINAZIONI_CON_DESTINATARIO,
   SEVERITY_CHI_E_IN_CREDITO,
@@ -288,18 +288,18 @@ function buildRowActions(atto) {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('pagamenti.eccedenze.col_eccedenza') }}</label>
-            <span>{{ euro(eccedenza.eccedenza) }}</span>
+            <span>{{ formatCurrency(eccedenza.eccedenza) }}</span>
           </div>
           <div class="form-field">
             <label>{{ t('pagamenti.eccedenze.col_totale_a_pagare') }}</label>
-            <span>{{ euro(eccedenza.totale_a_pagare) }}</span>
+            <span>{{ formatCurrency(eccedenza.totale_a_pagare) }}</span>
           </div>
           <!-- ⭐ Il totale del CLIENTE accanto a quello del documento: e' il
                numero su cui la compensazione ha senso, e senza non si vede che
                lo stesso cliente ha altri documenti scoperti. -->
           <div class="form-field">
             <label>{{ t('pagamenti.eccedenze.col_eccedenza_cliente') }}</label>
-            <span>{{ euro(eccedenza.eccedenza_cliente) }}</span>
+            <span>{{ formatCurrency(eccedenza.eccedenza_cliente) }}</span>
           </div>
           <div class="form-field">
             <label>{{ t('pagamenti.eccedenze.col_documenti_cliente') }}</label>
@@ -338,7 +338,7 @@ function buildRowActions(atto) {
             :header="t('pagamenti.sistemazioni.col_importo')"
             style="text-align: right;"
           >
-            <template #body="{ data }">{{ euro(data.importo) }}</template>
+            <template #body="{ data }">{{ formatCurrency(data.importo) }}</template>
           </Column>
           <Column field="stato" :header="t('pagamenti.sistemazioni.col_stato')">
             <template #body="{ data }">

@@ -70,12 +70,17 @@ def _saldo(
 # ══════════════════════════════════════════════════════════════════
 
 # Scopo: Il saldo di una fattura.
-# ⚠️ `incassato` e' `None`, e non e' una svista: a questo livello il database
-#    risponde due numeri e non tre (richiesta DB-10 al team DB).
-# ⛔ E NON si somma dalle rate per riempirlo: una riga contabile puo' avere
-#    fattura SENZA rata — il fondo fattura e' esattamente cosi' — e quel denaro
-#    non comparirebbe in nessuna somma di rate. Un numero incompleto che si
-#    presenta come completo e' peggio di un numero assente.
+# ⭐ Dal 2026-08-29 risponde TUTTI E TRE i numeri. Fino a ieri `incassato` era
+#    `None` con la nota «il database ne risponde due»: la nota era vera quando fu
+#    scritta e ha smesso di esserlo il 25/08, quando la richiesta DB-10 — fatta
+#    da questo stesso cantiere — e' atterrata. ⚠️ *Una richiesta esaudita e non
+#    raccolta e' peggio di una non fatta: il documento dice che manca, il
+#    database ce l'ha, e nessuno dei due mente da solo.*
+# ⛔ Resta il divieto che quella nota portava, e vale per sempre: l'`incassato`
+#    del documento NON si somma dalle rate. Una riga contabile puo' avere fattura
+#    SENZA rata — il fondo fattura e' esattamente cosi' — e quel denaro non
+#    comparirebbe in nessuna somma di rate. Un numero incompleto che si presenta
+#    come completo e' peggio di un numero assente.
 def saldo_documento(fattura_id: int) -> SaldoRow:
     repository = PagamentiRepository()
     # ⭐ Una lettura sola per i due numeri: separate leggerebbero due istanti
@@ -96,8 +101,8 @@ def saldo_documento(fattura_id: int) -> SaldoRow:
     assert numeri is not None
     return _saldo(
         residuo=numeri["saldo"],
-        in_lavorazione=numeri["saldo_contabile"],
-        incassato=None,
+        in_lavorazione=numeri["in_lavorazione"],
+        incassato=numeri["incassato"],
         has_movimenti=bool(numeri["has_movimenti"]),
         livello="DOCUMENTO",
         riferimento_id=fattura_id,
@@ -149,10 +154,11 @@ def saldi_rate_documento(fattura_id: int) -> dict[str, Any]:
 #  Livello CLIENTE — dichiarato, non ancora acceso
 # ══════════════════════════════════════════════════════════════════
 #
-# 📮 Il terzo livello e' previsto (decisione di Tid, §2.7 del brief BE/FE) e
-#    non si scrive adesso: «quanto mi deve questo cliente» somma piu' documenti
-#    e pretende l'`incassato` a livello di documento, che oggi il database non
-#    da'. ⛔ Scriverlo prima significherebbe sommare un numero che manca, cioe'
-#    costruire il difetto che §2.4 esiste per impedire. Quando DB-10 atterra,
-#    la funzione nasce QUI e nessun'altra sede cambia — che e' il punto di
-#    avere una base sola.
+# 📮 Il terzo livello e' previsto (decisione di Tid, §2.7 del brief BE/FE) e non
+#    si scrive adesso. ⭐ Ma il suo prerequisito NON manca piu': DB-10 e'
+#    atterrata il 25/08 e da oggi `saldo_documento` risponde anche l'`incassato`
+#    — cioe' il numero che «quanto mi deve questo cliente» pretende e che, fino a
+#    ieri, sarebbe stato sommato mancante.
+# ⭐ Quando si accendera' nasce QUI e nessun'altra sede cambia: e' il punto di
+#    avere una base sola. ⛔ E si sommeranno i DOCUMENTI, mai le rate — vale a
+#    ogni livello la ragione scritta su `saldo_documento`.

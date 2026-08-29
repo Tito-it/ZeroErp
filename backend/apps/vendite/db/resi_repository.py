@@ -199,18 +199,19 @@ class ResiRepository:
 
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_resi_lista v {where}"  # noqa: S608
         # Tiebreaker v.id per paginazione deterministica.
-        # `frontiera_tipo_codice` decodificato per il chip transito FE, come
-        # sulle cinque sorelle.
         # ⛔ NON e' decorazione: `LineageFrontieraChip` ha il gate su
-        #    `isTransitato && tipoCodice`, quindi senza questa colonna la cella
+        #    `isTransitato && tipoCodice`, quindi senza quella colonna la cella
         #    mostra «—» — cioe' «non transitato» — proprio sul reso accreditato,
         #    che e' l'unica cosa che questa lista doveva dire (arco S,
-        #    2026-08-25). La vista espone l'id, mai il codice: il grafo parla
-        #    per id, il FE per `codice_interno`.
+        #    2026-08-25).
+        # ⭐ Dal 20260829-02 il codice lo porta LA VISTA
+        #    (`frontiera_tipo_codice_interno`) e qui non si decodifica piu'
+        #    niente: prima il grafo parlava per id e ogni lista si scriveva il
+        #    suo `LEFT JOIN config.sorgenti` — sette copie della stessa riga, e
+        #    proprio questa era nata senza.
         data_sql = f"""
-            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            SELECT v.*
             FROM vendite.vw_resi_lista v
-            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id {tiebreak_dir}
             LIMIT %s OFFSET %s
